@@ -155,8 +155,14 @@ mut:
 	largest_retire_prior_to u64
 	// pending_retire_cids and pending_path_responses are control frames
 	// owed to the peer, sent by drain_pending_cid_and_path_frames.
-	pending_retire_cids           []u64
-	pending_path_responses        [][]u8
+	pending_retire_cids    []u64
+	pending_path_responses [][]u8
+	// retire_cids_in_flight maps a sent 1-RTT packet number to the
+	// RETIRE_CONNECTION_ID sequence numbers it carried. An entry is dropped
+	// when the packet is acknowledged, and its sequence numbers are queued
+	// again when the packet is declared lost (RFC 9000 §13.3). It holds only
+	// packets still awaiting an acknowledgment.
+	retire_cids_in_flight         map[u64][]u64
 	peer_scid                     []u8
 	token                         []u8
 	retry_accepted                bool
@@ -611,6 +617,7 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 			}
 		} else if timeout_result.lost.len > 0 {
 			c.congestion_control.on_packets_lost(timeout_result.lost, false, now)
+			c.requeue_lost_retire_cids(timeout_result.loss_space, timeout_result.lost)
 		}
 
 		if c.state == .handshaking || c.state == .established {
@@ -1345,8 +1352,10 @@ fn (mut c QuicConn) handle_ack_frame(space QuicPacketNumberSpace, frame AckFrame
 		c.received_set(space).forget_through(forget_through)
 	}
 	c.congestion_control.on_packets_acked(result.newly_acked)
+	c.note_retire_cids_acked(space, result.newly_acked)
 	if result.lost.len > 0 {
 		c.congestion_control.on_packets_lost(result.lost, result.persistent_congestion, now)
+		c.requeue_lost_retire_cids(space, result.lost)
 	}
 	if counts := frame.ecn_counts {
 		c.ecn.note_ack_ecn_counts(counts)
@@ -1611,8 +1620,10 @@ fn (mut c QuicConn) handle_new_connection_id_frame(f NewConnectionIdFrame) ! {
 	}
 	c.track_current_dcid()
 	// RFC 9000 §19.15: a sequence number already below Retire Prior To is
-	// retired straight away and never added. No per-sequence state is kept
-	// for it, so a peer cannot grow this connection's memory this way.
+	// retired straight away and never added to the peer's connection IDs.
+	// Its retirement is held only until it is sent, and then in
+	// retire_cids_in_flight until that packet is acknowledged or lost, so a
+	// peer cannot grow this connection's memory beyond its packets in flight.
 	if f.sequence_number < c.largest_retire_prior_to {
 		c.pending_retire_cids << f.sequence_number
 		return
@@ -1721,17 +1732,19 @@ fn (mut c QuicConn) switch_to_lowest_peer_cid() ! {
 
 // drain_pending_cid_and_path_frames sends queued RETIRE_CONNECTION_ID and
 // PATH_RESPONSE frames, packed together into as few 1-RTT packets as fit.
-// Neither is retransmitted if lost: PATH_RESPONSE never is (RFC 9000 §13.3),
-// and this connection has no general retransmission of lost frames yet.
+// RFC 9000 §13.3: the retired sequence numbers each packet carries are kept
+// in retire_cids_in_flight until it is acknowledged, and sent again if it is
+// lost (requeue_lost_retire_cids); a PATH_RESPONSE is never sent again.
 fn (mut c QuicConn) drain_pending_cid_and_path_frames(now u64, mut result PollResult) ! {
 	if c.pending_retire_cids.len == 0 && c.pending_path_responses.len == 0 {
 		return
 	}
 	// RETIRE_CONNECTION_ID frames first, then PATH_RESPONSE frames from
 	// index first_path_response on.
-	first_path_response := c.pending_retire_cids.len
+	retiring := c.pending_retire_cids.clone()
+	first_path_response := retiring.len
 	mut frames := [][]u8{}
-	for seq in c.pending_retire_cids {
+	for seq in retiring {
 		frames << encode_retire_connection_id_frame(seq)!
 	}
 	for data in c.pending_path_responses {
@@ -1744,27 +1757,66 @@ fn (mut c QuicConn) drain_pending_cid_and_path_frames(now u64, mut result PollRe
 	// size of 1200 bytes" (a client has no anti-amplification limit).
 	mut payload := []u8{}
 	mut has_path_response := false
+	mut packet_retires := []u64{}
 	for i, frame in frames {
 		if payload.len > 0 && payload.len + frame.len > max_control_frame_payload {
-			result.outgoing << c.build_one_rtt_packet_padded(payload, true, if has_path_response {
-				min_initial_datagram_size
-			} else {
-				0
-			}, now)!
+			c.send_cid_and_path_packet(payload, has_path_response, packet_retires, now, mut
+				result)!
 			payload = []u8{}
 			has_path_response = false
+			packet_retires = []u64{}
 		}
 		payload << frame
 		if i >= first_path_response {
 			has_path_response = true
+		} else {
+			packet_retires << retiring[i]
 		}
 	}
 	if payload.len > 0 {
-		result.outgoing << c.build_one_rtt_packet_padded(payload, true, if has_path_response {
-			min_initial_datagram_size
-		} else {
-			0
-		}, now)!
+		c.send_cid_and_path_packet(payload, has_path_response, packet_retires, now, mut
+			result)!
+	}
+}
+
+// send_cid_and_path_packet builds one 1-RTT packet of drain_pending_cid_and_path_frames
+// and records the retired sequence numbers it carries under its packet number.
+fn (mut c QuicConn) send_cid_and_path_packet(payload []u8, has_path_response bool, retires []u64, now u64, mut result PollResult) ! {
+	result.outgoing << c.build_one_rtt_packet_padded(payload, true, if has_path_response {
+		min_initial_datagram_size
+	} else {
+		0
+	}, now)!
+	if retires.len > 0 {
+		c.retire_cids_in_flight[c.pn_spaces.application_data.next_send_pn - 1] = retires.clone()
+	}
+}
+
+// note_retire_cids_acked forgets the retirements carried by acknowledged
+// 1-RTT packets: the peer has them.
+fn (mut c QuicConn) note_retire_cids_acked(space QuicPacketNumberSpace, acked []SentPacketInfo) {
+	if space != .application_data || c.retire_cids_in_flight.len == 0 {
+		return
+	}
+	for info in acked {
+		c.retire_cids_in_flight.delete(info.packet_number)
+	}
+}
+
+// requeue_lost_retire_cids queues again the retirements carried by lost
+// 1-RTT packets (RFC 9000 §13.3), skipping any already queued.
+fn (mut c QuicConn) requeue_lost_retire_cids(space QuicPacketNumberSpace, lost []SentPacketInfo) {
+	if space != .application_data || c.retire_cids_in_flight.len == 0 {
+		return
+	}
+	for info in lost {
+		seqs := c.retire_cids_in_flight[info.packet_number] or { continue }
+		c.retire_cids_in_flight.delete(info.packet_number)
+		for seq in seqs {
+			if seq !in c.pending_retire_cids {
+				c.pending_retire_cids << seq
+			}
+		}
 	}
 }
 

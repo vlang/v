@@ -1887,6 +1887,20 @@ fn test_new_connection_id_same_sequence_different_token_is_protocol_violation() 
 	assert cid_test_close_code(r2)? == 0x0a
 }
 
+// A known connection ID repeated under a new sequence number is refused
+// (RFC 9000 §19.15).
+fn test_new_connection_id_known_cid_under_new_sequence_is_protocol_violation() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	cid := [u8(5), 5, 5, 5]
+	r1 := cid_test_send(mut c, cid_test_new_connection_id(1, 0, cid, cid_test_token(5)), now)!
+	assert cid_test_close_code(r1) == none
+	r2 := cid_test_send(mut c, cid_test_new_connection_id(2, 0, cid, cid_test_token(6)), now)!
+	assert cid_test_close_code(r2)? == 0x0a
+}
+
 // A repeat of a known sequence, connection ID and token that raises Retire
 // Prior To is not just a retransmission: the increase still applies (RFC 9000
 // §5.1.2, §19.15), so sequence 0 is retired and the DCID moves to sequence 1.
@@ -2065,6 +2079,28 @@ fn test_retire_prior_to_retires_preferred_address_cid() {
 		assert frames.any(it is RetireConnectionIdFrame
 			&& (it as RetireConnectionIdFrame).sequence_number == seq), 'no RETIRE_CONNECTION_ID(${seq}) in ${frames}'
 	}
+	// A later NEW_CONNECTION_ID must not bring the retired preferred_address
+	// connection ID back: the seeding runs once.
+	later := cid_test_send(mut c, cid_test_new_connection_id(3, 2, [u8(4), 4, 4, 4], cid_test_token(0x14)),
+		now)!
+	assert cid_test_close_code(later) == none, later.events.str()
+	assert 1 !in c.peer_cids, 'the retired preferred_address connection ID came back'
+}
+
+// A zero-length preferred_address connection ID is not recorded as sequence 1.
+fn test_zero_length_preferred_address_cid_is_not_tracked() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	c.handshake.peer_transport_parameters.preferred_address = PreferredAddress{
+		connection_id:         []u8{}
+		stateless_reset_token: cid_test_token(0x15)
+	}
+	result := cid_test_send(mut c, cid_test_new_connection_id(2, 0, [u8(6), 6, 6, 6], cid_test_token(0x16)),
+		now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	assert 1 !in c.peer_cids, 'a zero-length preferred_address connection ID was tracked'
 }
 
 // RFC 9000 §8.2.2: a datagram carrying PATH_RESPONSE MUST be expanded to at
@@ -2169,4 +2205,201 @@ fn test_new_token_rejected_when_role_is_server() {
 		return
 	}
 	assert false, 'expected PROTOCOL_VIOLATION'
+}
+
+// retire_test_seqs returns the sequence numbers of the RETIRE_CONNECTION_ID
+// frames the client sent in `result`, in order.
+fn retire_test_seqs(mut c QuicConn, result PollResult) ![]u64 {
+	mut seqs := []u64{}
+	for f in cid_test_sent_frames(mut c, result)! {
+		if f is RetireConnectionIdFrame {
+			seqs << f.sequence_number
+		}
+	}
+	return seqs
+}
+
+// retire_test_ack delivers a peer ACK of the client's packets
+// `smallest`..`largest`.
+fn retire_test_ack(mut c QuicConn, smallest u64, largest u64, now u64) !PollResult {
+	return cid_test_send(mut c, encode_ack_frame([
+		AckRange{
+			smallest: smallest
+			largest:  largest
+		},
+	], 0, none)!, now)!
+}
+
+// retire_test_retire_sequence_zero has the peer raise Retire Prior To to 1
+// with a PATH_CHALLENGE in the same packet, so the client sends
+// RETIRE_CONNECTION_ID(0) and a PATH_RESPONSE together. It returns the
+// packet number that carried them.
+fn retire_test_retire_sequence_zero(mut c QuicConn, now u64) !u64 {
+	mut payload := cid_test_new_connection_id(1, 1, [u8(0xb1), 0xb1, 0xb1, 0xb1], cid_test_token(0x51))
+	payload << cid_test_varint(0x1a)
+	payload << [u8(1), 2, 3, 4, 5, 6, 7, 8]
+	result := cid_test_send(mut c, payload, now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	assert retire_test_seqs(mut c, result)! == [u64(0)]
+	assert cid_test_sent_frames(mut c, result)!.any(it is PathResponseFrame)
+	return ack_test_largest_sent_pn(c)
+}
+
+// RFC 9000 §13.3: "Information about the connection IDs retired by a
+// RETIRE_CONNECTION_ID frame is sent in a new RETIRE_CONNECTION_ID frame if
+// the packet containing it is lost", while PATH_RESPONSE is never resent.
+// Here the loss is found by packet threshold (RFC 9002 §6.1.1) when the peer
+// acknowledges three later packets. Found by maintainer review on
+// vlang/v#31596.
+fn test_lost_retire_connection_id_is_resent_until_acknowledged() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	carrier := retire_test_retire_sequence_zero(mut c, now)!
+	// Three ACK-only packets from the client, after the carrier.
+	for _ in 0 .. 3 {
+		cid_test_send(mut c, ack_test_ping, now)!
+	}
+	after := ack_test_largest_sent_pn(c)
+	assert after >= carrier + 3
+	lost := retire_test_ack(mut c, carrier + 1, after, now)!
+	assert retire_test_seqs(mut c, lost)! == [u64(0)], 'the lost retirement was not sent again'
+	assert !cid_test_sent_frames(mut c, lost)!.any(it is PathResponseFrame), 'PATH_RESPONSE was sent again'
+	resend := ack_test_largest_sent_pn(c)
+	assert resend > after
+
+	// The copy is acknowledged: nothing more is sent for sequence 0, on the
+	// next packet or after any timer.
+	acked := retire_test_ack(mut c, resend, resend, now)!
+	assert retire_test_seqs(mut c, acked)!.len == 0
+	assert c.retire_cids_in_flight.len == 0, 'an acknowledged retirement is still tracked'
+	quiet := cid_test_send(mut c, ack_test_ping, now)!
+	assert retire_test_seqs(mut c, quiet)!.len == 0
+	timed := c.process_timeouts(now + 5 * u64(time.second))!
+	assert retire_test_seqs(mut c, timed)!.len == 0
+}
+
+// Two retirements and two PATH_RESPONSEs owed at once go out in one packet,
+// and that packet records exactly the two retired sequence numbers.
+fn test_two_retirements_and_two_path_responses_share_one_packet() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	// Sequence 1 arrives below Retire Prior To 2, so sequences 0 and 1 are
+	// both retired.
+	mut payload := cid_test_new_connection_id(1, 0, [u8(0xc1), 0xc1, 0xc1, 0xc1], cid_test_token(0x61))
+	payload << cid_test_new_connection_id(2, 2, [u8(0xc2), 0xc2, 0xc2, 0xc2], cid_test_token(0x62))
+	for d in [u8(1), 2] {
+		payload << cid_test_varint(0x1a)
+		payload << []u8{len: 8, init: d}
+	}
+	result := cid_test_send(mut c, payload, now)!
+	assert cid_test_close_code(result) == none, result.events.str()
+	carrier := ack_test_largest_sent_pn(c)
+	keys := c.app_write_keys or { panic('unreachable') }
+	carrier_frames := conn_test_decrypt_one_rtt(result.outgoing.last().bytes, c.dcid.len,
+		keys)!
+	mut retired := []u64{}
+	mut responses := 0
+	for f in carrier_frames {
+		if f is RetireConnectionIdFrame {
+			retired << f.sequence_number
+		} else if f is PathResponseFrame {
+			responses++
+		}
+	}
+	assert retired == [u64(0), 1], 'both retirements belong in the last datagram'
+	assert responses == 2, 'one PATH_RESPONSE per PATH_CHALLENGE'
+	recorded := c.retire_cids_in_flight[carrier] or { []u64{} }
+	assert recorded == [u64(0), 1]
+}
+
+// note_retire_cids_acked and requeue_lost_retire_cids act only on 1-RTT
+// packets, on every packet of the list, and on every sequence a packet
+// carried; a sequence already queued is not queued twice.
+fn test_retire_cid_tracking_follows_each_listed_packet() {
+	mut c, _, _ := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	three := [SentPacketInfo{
+		packet_number: 1
+	}, SentPacketInfo{
+		packet_number: 2
+	}, SentPacketInfo{
+		packet_number: 3
+	}]
+	c.retire_cids_in_flight[2] = [u64(5), 6]
+	// A Handshake or Initial packet 2 is another packet.
+	c.note_retire_cids_acked(.handshake, three)
+	c.requeue_lost_retire_cids(.initial, three)
+	assert c.retire_cids_in_flight.len == 1
+	assert c.pending_retire_cids.len == 0
+	c.note_retire_cids_acked(.application_data, three)
+	assert c.retire_cids_in_flight.len == 0, 'the middle packet of an ACK was not forgotten'
+
+	c.retire_cids_in_flight[2] = [u64(5), 6]
+	c.pending_retire_cids = [u64(7)]
+	c.requeue_lost_retire_cids(.application_data, three)
+	assert c.pending_retire_cids == [u64(7), 5, 6], 'the middle lost packet, both of its sequences'
+	assert c.retire_cids_in_flight.len == 0
+	c.retire_cids_in_flight[3] = [u64(6)]
+	c.requeue_lost_retire_cids(.application_data, three)
+	assert c.pending_retire_cids == [u64(7), 5, 6], 'a sequence already queued was queued twice'
+}
+
+// A drain too large for one packet records under each packet number only the
+// retirements that packet carries.
+fn test_retire_cids_split_over_packets_are_recorded_per_packet() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	seqs := []u64{len: 600, init: u64(100 + index)}
+	c.pending_retire_cids = seqs.clone()
+	c.pending_path_responses = [[u8(1), 2, 3, 4, 5, 6, 7, 8]]
+	before := c.pn_spaces.application_data.next_send_pn
+	mut result := PollResult{}
+	c.drain_pending_cid_and_path_frames(now, mut result)!
+	sent := int(c.pn_spaces.application_data.next_send_pn - before)
+	assert sent >= 2, 'the drain did not split'
+	assert result.outgoing.len == sent
+	mut fit := 0
+	mut size := 0
+	for seq in seqs {
+		frame := encode_retire_connection_id_frame(seq)!
+		if size > 0 && size + frame.len > max_control_frame_payload {
+			break
+		}
+		size += frame.len
+		fit++
+	}
+	first := c.retire_cids_in_flight[before] or { []u64{} }
+	assert first == seqs[..fit], 'the first packet recorded other retirements than it carries'
+	mut all := []u64{}
+	for i in 0 .. sent {
+		all << c.retire_cids_in_flight[before + u64(i)] or { []u64{} }
+	}
+	assert all == seqs, 'the packets together did not record each retirement once'
+}
+
+// The same retirement lost by time threshold (RFC 9002 §6.1.2): one later
+// packet is acknowledged, too few for packet threshold, and the loss timer
+// declares the carrier lost.
+fn test_retire_connection_id_lost_by_timer_is_resent() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	carrier := retire_test_retire_sequence_zero(mut c, now)!
+	cid_test_send(mut c, ack_test_ping, now)!
+	next := ack_test_largest_sent_pn(c)
+	assert next > carrier
+	early := retire_test_ack(mut c, next, next, now)!
+	assert retire_test_seqs(mut c, early)!.len == 0, 'resent before it was lost'
+	timed := c.process_timeouts(now + 2 * u64(time.second))!
+	assert retire_test_seqs(mut c, timed)! == [u64(0)], 'the lost retirement was not sent again'
+	assert !cid_test_sent_frames(mut c, timed)!.any(it is PathResponseFrame), 'PATH_RESPONSE was sent again'
 }

@@ -443,9 +443,12 @@ pub fn (mut ld QuicLossDetectionTimer) next_timeout(handshake_confirmed bool, ma
 // verdict.
 pub struct LossTimeoutResult {
 pub:
-	lost      []SentPacketInfo
-	pto_fired bool
-	pto_space QuicPacketNumberSpace
+	lost []SentPacketInfo
+	// loss_space is the packet number space `lost` belongs to; packet
+	// numbers alone do not identify a packet across spaces.
+	loss_space QuicPacketNumberSpace
+	pto_fired  bool
+	pto_space  QuicPacketNumberSpace
 }
 
 // on_loss_detection_timeout is RFC 9002 Appendix A.9's OnLossDetectionTimeout:
@@ -456,7 +459,8 @@ pub fn (mut ld QuicLossDetectionTimer) on_loss_detection_timeout(now u64, handsh
 	if _, loss_space := ld.loss_time_and_space() {
 		lost := ld.detect_and_remove_lost_packets(loss_space, now)
 		return LossTimeoutResult{
-			lost: lost
+			lost:       lost
+			loss_space: loss_space
 		}
 	}
 
