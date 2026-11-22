@@ -20,6 +20,11 @@ fn full_compiler_is_required(args []string) bool {
 				return true
 			}
 		}
+		'riscv64', 'riscv', 'rv64' {
+			$if skip_riscv64 ? {
+				return true
+			}
+		}
 		'wasm' {
 			$if skip_wasm ? {
 				return true
