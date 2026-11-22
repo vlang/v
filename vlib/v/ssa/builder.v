@@ -9471,7 +9471,9 @@ fn (b &Builder) source_fn_is_used(name string, module_name string) bool {
 	// Method declarations include their receiver; a bare libc name is unrelated.
 	qualified_method := name.replace('__', '.').contains('.')
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		return b.fn_is_used_for_decl(fn_name, qualified_method)
+		// A bare key owned by main or builtin must not retain a same-named
+		// function from another module: its body may never have been lowered.
+		return b.fn_is_used_for_decl(fn_name, qualified_method || b.v_fn_decl_names[name])
 	}
 	return b.fn_is_used_for_decl(name, qualified_method) || b.fn_is_used_for_decl(fn_name, qualified_method)
 }

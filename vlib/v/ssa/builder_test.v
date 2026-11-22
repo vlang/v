@@ -759,6 +759,31 @@ fn test_used_function_names_preserve_method_receivers() ! {
 	assert !m.funcs.any(it.name == 'os.CommandArgs.close')
 }
 
+fn test_used_main_function_does_not_retain_same_named_module_function() {
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_text('library.v', 'module library\nfn parse() { unreachable_generic_call() }\n')
+	p.parse_text('main.v', 'module main\nfn parse() int { return 17 }\nfn main() { parse() }\n')
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	for library_used in [false, true] {
+		mut used := {
+			'parse': true
+		}
+		if library_used {
+			used['library.parse'] = true
+		}
+		mut b := Builder{ used_fns: used, a: p.a }
+		b.prepare_used_fn_lookups()
+		b.collect_export_fn_shadows()
+		assert b.source_fn_is_used('parse', 'main')
+		assert b.source_fn_is_used('parse', 'library') == library_used
+	}
+	m := build_with_used(p.a, {
+		'parse': true
+	}, unsafe { nil })
+	assert m.funcs.any(it.name == 'parse' && it.blocks.len > 0)
+	assert !m.funcs.any(it.name == 'library.parse')
+}
+
 fn test_enum_lookup_keeps_exact_keyword_members_before_fallback() {
 	b := Builder{
 		enum_values: {

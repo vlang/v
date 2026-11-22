@@ -48,6 +48,21 @@ fn run_arm64_project(name string, files map[string]string) string {
 	return run.output.trim_space()
 }
 
+fn test_main_parse_does_not_retain_unreachable_json_parser() {
+	$if macos && arm64 {
+		output := run_arm64('json_parse_name_collision', 'import json2
+struct Item { name string }
+fn parse() int { return 17 }
+fn main() {
+	println(parse())
+	item := json2.decode[Item](\'{"name":"Ada"}\') or { panic(err) }
+	println(item.name)
+}
+')
+		assert output == '17\nAda', output
+	}
+}
+
 // u128/i128 multiply, divide, remainder, shifts by a run-time count, negation,
 // complement, increments, `match`/`in` and conversions to and from scalars.
 fn test_128_bit_arithmetic_and_conversions() {
