@@ -22,6 +22,20 @@ fn test_packet_roundtrip() {
 	assert r.remaining() == 0
 }
 
+fn test_datagram_header_symmetry() {
+	mut wire := new_packet()
+	wire.write_u16(1234)
+	wire.write_u16(99)
+	wire.write_u32(0xDEADBEEF)
+	wire.write_u8(7)
+	wire.write_u8(8)
+	seq, ack, bits, body := decode_header(wire.bytes())!
+	assert seq == 1234
+	assert ack == 99
+	assert bits == 0xDEADBEEF
+	assert body == [u8(7), 8]
+}
+
 fn test_packet_truncation() {
 	mut p := from_bytes([u8(1)])
 	assert p.read_u8()! == 1

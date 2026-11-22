@@ -24,7 +24,8 @@ pub fn connect(addr string) !&Peer {
 	return &Peer{ conn: conn }
 }
 
-// send writes a sequenced datagram. seq/ack are stored in the first 6 bytes.
+// send writes a sequenced datagram. The 8-byte header is seq:u16,
+// last_ack:u16, ack_bits:u32.
 pub fn (mut p Peer) send(payload Packet) ! {
 	mut wire := new_packet()
 	p.sequence++
@@ -38,24 +39,32 @@ pub fn (mut p Peer) send(payload Packet) ! {
 	p.conn.write(wire.bytes())!
 }
 
+// decode_header splits an 8-byte datagram header and returns seq, last_ack,
+// ack_bits and the remaining payload bytes.
+pub fn decode_header(data []u8) !(u16, u16, u32, []u8) {
+	if data.len < 8 {
+		return error('netcode: datagram too short')
+	}
+	mut wire := from_bytes(data)
+	seq := wire.read_u16()!
+	last_ack := wire.read_u16()!
+	ack_bits := wire.read_u32()!
+	return seq, last_ack, ack_bits, wire.data[wire.pos..].clone()
+}
+
 // recv reads one datagram and returns its payload after the header.
 pub fn (mut p Peer) recv() !Packet {
 	mut buf := []u8{len: 4096}
 	n, _ := p.conn.read(mut buf)!
-	if n < 6 {
-		return error('netcode: datagram too short')
-	}
-	mut wire := from_bytes(buf[..n])
-	seq := wire.read_u16()!
-	p.last_ack = seq
+	seq, sender_ack, bits, body := decode_header(buf[..n])!
+	p.last_ack = sender_ack
+	p.ack_bits = bits
 	if seq > p.sequence {
 		p.sequence = seq
 	}
-	p.ack_bits = wire.read_u32()!
-	_ = wire.read_u16()! // ack field from sender
 	mut payload := new_packet()
-	for wire.remaining() > 0 {
-		payload.write_u8(wire.read_u8()!)
+	for b in body {
+		payload.write_u8(b)
 	}
 	return payload
 }

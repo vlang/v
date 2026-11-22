@@ -19,6 +19,10 @@ pub fn sokol_device(cfg DeviceConfig) Device {
 }
 
 fn sokol_setup(cfg DeviceConfig) !bool {
+	// sokol asserts on a second setup; gg may already have initialized audio.
+	if sokol_audio.is_valid() {
+		return true
+	}
 	sokol_audio.setup(sample_rate: cfg.sample_rate, num_channels: cfg.channels)
 	return true
 }

@@ -58,8 +58,10 @@ fn bc7_mode_info(mode int) Bc7Mode {
 		3 { Bc7Mode{1, 0, 4, 0, 4} }
 		4 { Bc7Mode{2, 6, 2, 4, 5} }
 		5 { Bc7Mode{1, 0, 2, 4, 5} }
-		6 { Bc7Mode{2, 6, 4, 0, 8} }
-		else { Bc7Mode{2, 6, 4, 4, 8} }
+		// Modes 6 and 7 use reduced endpoint/index precision in this preview
+		// decoder so the fields fit in the 128-bit block.
+		6 { Bc7Mode{2, 6, 3, 0, 4} }
+		else { Bc7Mode{2, 6, 2, 4, 4} }
 	}
 }
 

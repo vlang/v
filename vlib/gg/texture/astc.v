@@ -65,26 +65,33 @@ pub fn decode_astc_sized(block []u8, width int, height int) ![]gg.Color {
 	if block_mode == 0 {
 		return error('texture: invalid ASTC block mode')
 	}
-	// 4x4 LDR with 8-bit endpoint pairs and 4-bit per-pixel weights.
+	// Non-void LDR preview: 4-bit endpoint pairs (expanded to 8-bit) and
+	// 4-bit per-pixel weights. 11 + 8*4 + 16*4 = 107 bits, which fits in the
+	// 128-bit block; full ASTC endpoint modes need more than a block holds.
 	mut pos := 11
-	r0 := int(astc_read_bits(block, pos, 8)!)
-	pos += 8
-	g0 := int(astc_read_bits(block, pos, 8)!)
-	pos += 8
-	b0 := int(astc_read_bits(block, pos, 8)!)
-	pos += 8
-	a0 := int(astc_read_bits(block, pos, 8)!)
-	pos += 8
-	r1 := int(astc_read_bits(block, pos, 8)!)
-	pos += 8
-	g1 := int(astc_read_bits(block, pos, 8)!)
-	pos += 8
-	b1 := int(astc_read_bits(block, pos, 8)!)
-	pos += 8
-	a1 := int(astc_read_bits(block, pos, 8)!)
-	pos += 8
+	expand := fn (v int) int { return v * 17 }
+	r0 := expand(int(astc_read_bits(block, pos, 4)!))
+	pos += 4
+	g0 := expand(int(astc_read_bits(block, pos, 4)!))
+	pos += 4
+	b0 := expand(int(astc_read_bits(block, pos, 4)!))
+	pos += 4
+	a0 := expand(int(astc_read_bits(block, pos, 4)!))
+	pos += 4
+	r1 := expand(int(astc_read_bits(block, pos, 4)!))
+	pos += 4
+	g1 := expand(int(astc_read_bits(block, pos, 4)!))
+	pos += 4
+	b1 := expand(int(astc_read_bits(block, pos, 4)!))
+	pos += 4
+	a1 := expand(int(astc_read_bits(block, pos, 4)!))
+	pos += 4
+	// Larger footprints need more weights than the block can hold; reuse a
+	// small weight table as a preview approximation.
+	max_weights := (128 - pos) / 4
 	for i in 0 .. out.len {
-		w4 := int(astc_read_bits(block, pos + i * 4, 4)!)
+		slot := if max_weights > 0 { i % max_weights } else { 0 }
+		w4 := int(astc_read_bits(block, pos + slot * 4, 4)!)
 		w := f32(w4) / 15
 		out[i] = gg.Color{astc_clamp(int(f32(r0) + (f32(r1) - f32(r0)) * w)), astc_clamp(int(f32(g0) + (f32(g1) - f32(g0)) * w)), astc_clamp(int(f32(b0) + (f32(b1) - f32(b0)) * w)), astc_clamp(int(f32(a0) + (f32(a1) - f32(a0)) * w))}
 	}

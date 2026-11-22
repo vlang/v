@@ -38,12 +38,24 @@ fn test_bc7_mode3() {
 	assert colors.len == 16
 }
 
-fn test_bc7_mode4() {
+fn test_bc7_modes_4_to_7() {
+	for mode in 4 .. 8 {
+		mut block := []u8{len: 16, init: 0}
+		block[0] = u8((1 << u8(mode)) - 1)
+		colors := decode_bc7(block) or { panic('mode ${mode} should decode') }
+		assert colors.len == 16
+	}
+}
+
+fn test_astc_nonvoid() {
 	mut block := []u8{len: 16, init: 0}
-	// Mode 4: 4 leading ones, uses a CEM field and 5-bit endpoints.
-	block[0] = 0x0F
-	colors := decode_bc7(block) or { panic('mode 4 should decode') }
+	block[0] = 0x01
+	colors := decode_astc(block) or { panic('non-void ASTC should decode') }
 	assert colors.len == 16
+	mut sized := []u8{len: 16, init: 0}
+	sized[0] = 0x01
+	big := decode_astc_sized(sized, 8, 8) or { panic('sized ASTC should decode') }
+	assert big.len == 64
 }
 
 fn test_astc_void_extent() {
