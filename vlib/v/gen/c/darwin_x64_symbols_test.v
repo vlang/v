@@ -4,6 +4,14 @@ import os
 import v.cmdexec
 import v.pref
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target macOS or
+	// Linux, and this file generates their C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 const darwin_x64_guard = '#if defined(__APPLE__) && defined(__x86_64__)'
 
 // darwin_x64_program_symbols are the SDK-renamed functions reached by the

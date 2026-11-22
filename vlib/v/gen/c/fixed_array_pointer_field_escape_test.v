@@ -2,6 +2,14 @@ module main
 
 import os
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn test_fixed_array_pointer_field_does_not_heap_promote_value_receiver() {
 	root := os.join_path(os.vtmp_dir(), 'fixed_array_pointer_field_${os.getpid()}')
 	os.mkdir_all(root)!

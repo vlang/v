@@ -2,6 +2,14 @@ module main
 
 import os
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 // An element store in a function marked @[direct_array_access] has to go through
 // the array data pointer, the same way an element load does. When it did not, a
 // hot loop that writes array elements compiled to an array__set() call per

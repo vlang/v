@@ -2,6 +2,14 @@ module main
 
 import os
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn scalar_array_program(flags []string) !string {
 	return scalar_array_generate('
 type Scalar = i64

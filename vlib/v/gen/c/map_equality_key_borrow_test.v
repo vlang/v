@@ -2,6 +2,14 @@ module main
 
 import os
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn test_map_equality_borrows_keys_but_authored_iteration_keeps_clones() {
 	root := os.join_path(os.vtmp_dir(), 'map_equality_key_borrow_${os.getpid()}')
 	os.mkdir_all(root)!
