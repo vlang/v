@@ -288,7 +288,7 @@ fn test_checker_selected_generic_selector_factory_return_type() {
 		tc.fn_ret_types[resolved] = types.Type(types.Pointer{
 			base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		})
-		tc.sparse_resolved_call_names[int(call)] = resolved
+		tc.sparse_resolved_calls[int(call)] = flat.source_type_id(resolved)
 		collector := CallCollector{ a: &a, tc: &tc }
 		assert flat.source_type_name(collector.top_level_call_return_type_name(call, 'main', {
 			'alias': 'gates'
@@ -640,7 +640,7 @@ fn test_generic_factory_return_substitutes_receiver_and_method_arguments_togethe
 		for argument in parts[2].split(', ') { indexed_children << a.add_val(.ident, argument) }
 		indexed := call_helper_node(mut a, flat.Node{ kind: .index }, indexed_children)
 		call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
-		tc.sparse_resolved_call_names[int(call)] = method
+		tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 		collector := CallCollector{ a: &a, tc: &tc }
 		assert flat.source_type_name(collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 			'builder': true
@@ -734,7 +734,7 @@ fn test_promoted_generic_factory_return_substitutes_embedded_receiver() {
 	arg := a.add_val(.ident, 'string')
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [selector, arg])
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
-	tc.sparse_resolved_call_names[int(call)] = method
+	tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 	collector := CallCollector{ a: &a, tc: &tc }
 	inferred_source_id := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 		'outer': true
@@ -758,7 +758,7 @@ fn test_receiver_only_generic_factory_return_substitutes_explicit_receiver_arg()
 	arg := a.add_val(.ident, 'int')
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [selector, arg])
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
-	tc.sparse_resolved_call_names[int(call)] = method
+	tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 	collector := CallCollector{ a: &a, tc: &tc }
 	assert collector.generic_fn_name_is_known(method, 'main')
 	inferred_source_id := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
@@ -770,7 +770,7 @@ fn test_receiver_only_generic_factory_return_substitutes_explicit_receiver_arg()
 	assert inferred == 'gates.Gate[int]'
 	assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'main')? == 'gates.Gate[int].backward'
 	plain_call := call_helper_node(mut a, flat.Node{ kind: .call }, [selector])
-	tc.sparse_resolved_call_names[int(plain_call)] = method
+	tc.sparse_resolved_calls[int(plain_call)] = flat.source_type_id(method)
 	plain_inferred_source_id := collector.top_level_call_return_type_name(plain_call, 'main',
 		map[string]string{}, {
 			'builder': true
@@ -932,7 +932,7 @@ fn test_unindexed_generic_factory_return_infers_argument_type() {
 	base := a.add_val(.ident, 'make_gate')
 	value := a.add_val(.ident, 'value')
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
-	tc.sparse_resolved_call_names[int(call)] = method
+	tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 	collector := CallCollector{ a: &a, tc: &tc }
 	inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 		'value': true
@@ -955,7 +955,7 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 	base := a.add_val(.ident, 'make_gate')
 	value := a.add_val(.ident, 'value')
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
-	tc.sparse_resolved_call_names[int(call)] = method
+	tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 	collector := CallCollector{ a: &a, tc: &tc }
 	for forms in [
 		['Box[U]', 'Box[T]'],
@@ -1031,7 +1031,7 @@ fn test_unindexed_factory_infers_aliased_channel_element_type() {
 	base := a.add_val(.ident, 'make_gate')
 	value := a.add_val(.ident, 'value')
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
-	tc.sparse_resolved_call_names[int(call)] = method
+	tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 	collector := CallCollector{ a: &a, tc: &tc }
 	for actual in ['Mailbox', '&Mailbox', 'MailboxRef'] {
 		inferred_source_id := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
@@ -1071,7 +1071,7 @@ fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {
 			value
 		}
 		call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, arg])
-		tc.sparse_resolved_call_names[int(call)] = method
+		tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 		collector := CallCollector{ a: &a, tc: &tc }
 		actual := if pattern == '...U' { '[]T' } else { 'T' }
 		inferred := flat.source_type_name(collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
@@ -1113,7 +1113,7 @@ fn test_unindexed_generic_factory_uses_prior_local_type() {
 	callee := a.add_val(.ident, 'make_gate')
 	payload_arg := a.add_val(.ident, 'payload')
 	factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, payload_arg])
-	tc.sparse_resolved_call_names[int(factory_call)] = method
+	tc.sparse_resolved_calls[int(factory_call)] = flat.source_type_id(method)
 	gate_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [gate_lhs, factory_call])
 	body := call_helper_node(mut a, flat.Node{ kind: .block }, [payload_decl, gate_decl])
 	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gate' }, [body])
@@ -1145,7 +1145,7 @@ fn test_generic_factory_uses_for_in_element_type() {
 	callee := a.add_val(.ident, 'make_gate')
 	value_arg := a.add_val(.ident, 'value')
 	factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value_arg])
-	tc.sparse_resolved_call_names[int(factory_call)] = method
+	tc.sparse_resolved_calls[int(factory_call)] = flat.source_type_id(method)
 	gate_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [gate_lhs, factory_call])
 	gate_use := a.add_val(.ident, 'gate')
 	backward := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'backward' }, [
@@ -1191,7 +1191,7 @@ fn test_generic_factory_uses_custom_iterator_element_type() {
 	callee := a.add_val(.ident, 'make_gate')
 	value_arg := a.add_val(.ident, 'value')
 	factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value_arg])
-	tc.sparse_resolved_call_names[int(factory_call)] = factory
+	tc.sparse_resolved_calls[int(factory_call)] = flat.source_type_id(factory)
 	gate_lhs := a.add_val(.ident, 'gate')
 	gate_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [gate_lhs, factory_call])
 	gate_use := a.add_val(.ident, 'gate')
@@ -1244,7 +1244,7 @@ fn assert_generic_factory_pipe_lambda_array_callback(callback string) {
 	callee := a.add_val(.ident, 'make_gate')
 	value_arg := a.add_val(.ident, 'value')
 	factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value_arg])
-	tc.sparse_resolved_call_names[int(factory_call)] = method
+	tc.sparse_resolved_calls[int(factory_call)] = flat.source_type_id(method)
 	gate_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [gate_lhs, factory_call])
 	gate_use := a.add_val(.ident, 'gate')
 	backward := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'backward' }, [
@@ -1365,7 +1365,7 @@ fn test_generic_factory_multi_return_decl_uses_component_type() {
 	type_arg := a.add_val(.ident, 'T')
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [callee, type_arg])
 	factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
-	tc.sparse_resolved_call_names[int(factory_call)] = method
+	tc.sparse_resolved_calls[int(factory_call)] = flat.source_type_id(method)
 	gate_lhs := a.add_val(.ident, 'gate')
 	count_lhs := a.add_val(.ident, 'count')
 	decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign, value: '2' }, [
@@ -1576,7 +1576,7 @@ fn test_unindexed_generic_factory_return_infers_callback_result() {
 	base := a.add_val(.ident, 'make_gate')
 	callback := a.add_val(.ident, 'callback')
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, callback])
-	tc.sparse_resolved_call_names[int(call)] = method
+	tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 	collector := CallCollector{ a: &a, tc: &tc }
 	inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 		'callback': true
@@ -1611,7 +1611,7 @@ fn test_unindexed_generic_factory_return_infers_interface_implementer() {
 	base := a.add_val(.ident, 'make_gate')
 	source := a.add_val(.ident, 'source')
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, source])
-	tc.sparse_resolved_call_names[int(call)] = method
+	tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 	collector := CallCollector{ a: &a, tc: &tc }
 	inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 		'source': true
@@ -1653,7 +1653,7 @@ fn test_unindexed_generic_factory_infers_short_struct_fields_together() {
 			items_value,
 		])
 		call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, count, items])
-		tc.sparse_resolved_call_names[int(call)] = method
+		tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 		collector := CallCollector{
 			a:               &a
 			tc:              &tc
@@ -1696,7 +1696,7 @@ fn test_inferred_factory_callback_arguments_keep_caller_generic_names() {
 			base := a.add_val(.ident, 'make_gate')
 			value := a.add_val(.ident, 'value')
 			call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
-			tc.sparse_resolved_call_names[int(call)] = method
+			tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 			collector := CallCollector{ a: &a, tc: &tc }
 			inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 				'value': true
@@ -1748,7 +1748,7 @@ fn test_inferred_factory_interface_arguments_keep_caller_generic_names() {
 			base := a.add_val(.ident, 'make_gate')
 			value := a.add_val(.ident, 'value')
 			call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
-			tc.sparse_resolved_call_names[int(call)] = method
+			tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 			collector := CallCollector{ a: &a, tc: &tc }
 			inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 				'value': true
@@ -1817,7 +1817,7 @@ fn test_factory_local_inference_preserves_lexical_bindings() {
 		callee := a.add_val(.ident, 'make_gate')
 		argument := a.add_val(.ident, 'item')
 		factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, argument])
-		tc.sparse_resolved_call_names[int(factory_call)] = factory
+		tc.sparse_resolved_calls[int(factory_call)] = flat.source_type_id(factory)
 		gate_lhs := a.add_val(.ident, 'gate')
 		gate_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [
 			gate_lhs,
@@ -1865,7 +1865,7 @@ fn test_unindexed_factory_infers_variadic_caller_types() {
 		base := a.add_val(.ident, 'make_gate')
 		value := a.add_val(.ident, 'value')
 		call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
-		tc.sparse_resolved_call_names[int(call)] = method
+		tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 		collector := CallCollector{ a: &a, tc: &tc }
 		inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 			'value': true
@@ -1927,7 +1927,7 @@ fn test_factory_argument_inference_handles_spreads_modifiers_and_container_alias
 			value
 		}
 		call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, arg])
-		tc.sparse_resolved_call_names[int(call)] = method
+		tc.sparse_resolved_calls[int(call)] = flat.source_type_id(method)
 		collector := CallCollector{ a: &a, tc: &tc }
 		inferred_source_id := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 			'value': true
@@ -1965,7 +1965,7 @@ fn test_factory_calls_used_directly_as_receivers_keep_specialized_methods() {
 			}
 			value := a.add_val(.ident, 'value')
 			factory := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value])
-			tc.sparse_resolved_call_names[int(factory)] = method
+			tc.sparse_resolved_calls[int(factory)] = flat.source_type_id(method)
 			if cached_placeholder {
 				tc.sparse_expr_type_values[int(factory)] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			}
@@ -2017,7 +2017,7 @@ fn test_factory_loop_bindings_use_iterator_next_and_checked_variable_types() {
 		value_arg := a.add_val(.ident, 'value')
 		callee := a.add_val(.ident, 'make_gate')
 		factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value_arg])
-		tc.sparse_resolved_call_names[int(factory_call)] = factory
+		tc.sparse_resolved_calls[int(factory_call)] = flat.source_type_id(factory)
 		lhs := a.add_val(.ident, 'gate')
 		decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [lhs, factory_call])
 		method_call := call_helper_method_call(mut a, 'gate', 'backward')
@@ -2104,7 +2104,7 @@ fn test_factory_local_inference_uses_loop_bindings() {
 			callee := a.add_val(.ident, 'make_gate')
 			arg := a.add_val(.ident, if use_key { 'key' } else { 'value' })
 			call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, arg])
-			tc.sparse_resolved_call_names[int(call)] = factory
+			tc.sparse_resolved_calls[int(call)] = flat.source_type_id(factory)
 			lhs := a.add_val(.ident, 'gate')
 			decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [lhs, call])
 			method := call_helper_method_call(mut a, 'gate', 'backward')
@@ -2149,7 +2149,7 @@ fn test_factory_local_inference_decomposes_multi_return_declarations() {
 		type_arg := a.add_val(.ident, 'T')
 		callee := call_helper_node(mut a, flat.Node{ kind: .index }, [base, type_arg])
 		call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee])
-		tc.sparse_resolved_call_names[int(call)] = factory
+		tc.sparse_resolved_calls[int(call)] = flat.source_type_id(factory)
 		first := a.add_val(.ident, if discarded == 'first' { '_' } else { 'first' })
 		ignored := a.add_val(.ident, '_')
 		last := a.add_val(.ident, if discarded == 'last' { '_' } else { 'last' })
@@ -2212,7 +2212,7 @@ fn test_factory_local_inference_preserves_range_integer_types() {
 				callee := a.add_val(.ident, 'make_gate')
 				arg := a.add_val(.ident, 'i')
 				call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, arg])
-				tc.sparse_resolved_call_names[int(call)] = factory
+				tc.sparse_resolved_calls[int(call)] = flat.source_type_id(factory)
 				lhs := a.add_val(.ident, 'gate')
 				decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [lhs, call])
 				method := call_helper_method_call(mut a, 'gate', 'backward')
@@ -2311,7 +2311,7 @@ fn test_initializer_without_local_bindings_keeps_calls_refs_and_generics() {
 	callee := a.add_val(.ident, 'factory')
 	arg := a.add_val(.ident, 'payload')
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, arg])
-	tc.sparse_resolved_call_names[int(call)] = 'factory'
+	tc.sparse_resolved_calls[int(call)] = flat.source_type_id('factory')
 	field := call_helper_node(mut a, flat.Node{ kind: .field_decl, value: 'value' }, [call])
 	collector := CallCollector{
 		a:              &a

@@ -37,6 +37,7 @@ module imap
 import io
 import net
 import net.ssl
+import net.sasl
 import encoding.base64
 import time
 
@@ -210,12 +211,16 @@ pub fn (mut c Client) login() ! {
 }
 
 // login_plain authenticates with the SASL PLAIN mechanism instead, which some
-// servers require and others prefer.
+// servers require and others prefer. It does nothing without a username or
+// once authenticated. Otherwise it returns an error before sending anything
+// when the password is empty, or when the username or the password contains a
+// NUL byte or invalid UTF-8 (RFC 4616).
 pub fn (mut c Client) login_plain() ! {
 	if c.username == '' || c.authenticated {
 		return
 	}
 	c.ensure_auth_is_safe()!
+	plain := sasl.encode_plain(authcid: c.username, password: c.password)!
 	tag := c.next_tag()
 	c.write_line('${tag} AUTHENTICATE PLAIN', false) or {
 		c.shutdown()
@@ -227,9 +232,7 @@ pub fn (mut c Client) login_plain() ! {
 		}
 		return err
 	}
-	// RFC 4616: an authorisation identity, an authentication identity and a
-	// password, joined by NUL bytes.
-	c.write_line(base64.encode_str('\x00${c.username}\x00${c.password}'), true) or {
+	c.write_line(base64.encode_str(plain), true) or {
 		c.shutdown()
 		return err
 	}

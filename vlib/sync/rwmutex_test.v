@@ -121,7 +121,8 @@ fn test_concurrent_try_read_lock_on_zero_value() {
 		for _ in 0 .. 8 { _ := <-ready }
 		for _ in 0 .. 8 { start <- true }
 		for reader in readers {
-			assert reader.wait()
+			saw_consistent_value := reader.wait()
+			assert saw_consistent_value
 		}
 		holder.rw.destroy()
 	}

@@ -73,7 +73,7 @@ fn test_resolved_references_do_not_publish_provisional_unknowns() {
 	assert *first == tc.resolve_type(id)
 	assert tc.body_resolve_memo.filled[int(id)] == 0
 	tc.invalidate_checked_expr_type(int(id))
-	tc.cur_scope.insert('missing', Type(bool_))
+	tc.cur_scope.insert_id(flat.source_type_id('missing'), 'missing', Type(bool_))
 	assert *tc.resolve_type_reference(id) == Type(bool_)
 	assert first.name() != 'bool'
 }

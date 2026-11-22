@@ -98,7 +98,7 @@ fn test_check_ident_accepts_source_backed_and_legacy_spellings() {
 	})
 	mut tc := TypeChecker.new(&a)
 	tc.reset_node_caches(a.nodes.len)
-	tc.cur_scope.insert('bound', Type(int_))
+	tc.cur_scope.insert_id(flat.source_type_id('bound'), 'bound', Type(int_))
 	tc.check_ident(legacy, a.nodes[int(legacy)])
 	tc.check_ident(canonical, a.nodes[int(canonical)])
 	assert tc.expr_key(legacy) == 'bound'

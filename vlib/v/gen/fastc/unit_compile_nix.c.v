@@ -522,13 +522,25 @@ pub fn fastc_run_command(program string, args []string) os.Result {
 
 // fastc_start_capture starts the program of the argument vector with its
 // stdout and stderr merged into a pipe, and reports whether it started.
+// The C side writes C `int`s, so it gets `i32` slots (the declaration says `&int`, as in
+// `os`, and a pointer to an `i32` is what C expects) and the results are widened into
+// `pid` and `read_fd`, which an 8-byte V `int` would only half overwrite.
 fn fastc_start_capture(argv []string, pid &int, read_fd &int) bool {
 	mut cargs := []&char{cap: argv.len + 1}
 	for arg in argv {
 		cargs << &char(arg.str)
 	}
 	cargs << &char(unsafe { nil })
-	return C.v_os_exec_capture_start(cargs.data, pid, read_fd) == 0
+	mut c_pid := i32(0)
+	mut c_read_fd := i32(-1)
+	if C.v_os_exec_capture_start(cargs.data, &c_pid, &c_read_fd) != 0 {
+		return false
+	}
+	unsafe {
+		*pid = int(c_pid)
+		*read_fd = int(c_read_fd)
+	}
+	return true
 }
 
 fn fastc_start_capture_input(argv []string, pid &int, read_fd &int, write_fd &int) bool {
@@ -538,7 +550,18 @@ fn fastc_start_capture_input(argv []string, pid &int, read_fd &int, write_fd &in
 			cargs << &char(arg.str)
 		}
 		cargs << &char(unsafe { nil })
-		return C.v_os_exec_capture_input_start(cargs.data, pid, read_fd, write_fd) == 0
+		mut c_pid := i32(0)
+		mut c_read_fd := i32(-1)
+		mut c_write_fd := i32(-1)
+		if C.v_os_exec_capture_input_start(cargs.data, &c_pid, &c_read_fd, &c_write_fd) != 0 {
+			return false
+		}
+		unsafe {
+			*pid = int(c_pid)
+			*read_fd = int(c_read_fd)
+			*write_fd = int(c_write_fd)
+		}
+		return true
 	} $else {
 		return false
 	}

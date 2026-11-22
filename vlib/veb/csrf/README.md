@@ -20,7 +20,7 @@ isn't vulnerable to CSRF-attacks.
 
 To enable CSRF-protection for your veb app you must embed the `CsrfContext` struct
 on your `Context` struct. You must also provide configuration options
-(see [configuration & security](#configuration--security-considerations)).
+(see [configuration and security](#configuration-and-security-considerations)).
 
 **Example:**
 
@@ -186,7 +186,7 @@ See [client side CSRF][client-side-csrf] for more information.
 
 This is a high level overview of the implementation.
 
-## Configuration & Security Considerations
+## Configuration and Security Considerations
 
 ### The secret key
 

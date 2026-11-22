@@ -11,6 +11,9 @@ f := fractions.fraction(4, 8)
 assert f.reduce().str() == '1/2'
 ```
 
+`approximate_with_eps(value, eps)` accepts a fraction within the given absolute tolerance.
+With zero tolerance, the fraction must convert back to the original `f64` exactly.
+
 ## Generic backends
 
 `fractions.Rational[T]` supports signed builtin integers and `math.big.Integer`.

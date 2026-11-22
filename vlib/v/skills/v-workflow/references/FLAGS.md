@@ -26,7 +26,7 @@ v run main.v -- --verbose --input=x
 | `-g` | larger binary, V line numbers | whenever you will debug |
 | `-cg` | adds C line numbers too | when you need to step into the C |
 | `-prod` | slower build | release builds only |
-| `-showcc` | prints the C command | when a C compilation fails |
+| `-showcc` | prints the C command and post-link steps | when a C build or its output goes wrong |
 | `-keepc` | keeps the generated `.c` | when debugging codegen |
 
 `-g` is nearly free and turns an unreadable crash into a usable backtrace. Leave it

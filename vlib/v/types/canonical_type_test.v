@@ -33,11 +33,11 @@ fn test_parse_canonical_type_cached_does_not_reuse_typeof_across_scopes() {
 	mut tc := TypeChecker.new(&a)
 	tc.set_fresh_type_cache(true)
 	tc.cur_scope = new_scope(tc.file_scope)
-	tc.cur_scope.insert('x', Type(int_))
+	tc.cur_scope.insert_id(flat.source_type_id('x'), 'x', Type(int_))
 	assert tc.parse_canonical_type_cached(flat.source_type_id('[]typeof(x)')).name() == '[]int'
 	// Same text and parse context, but `x` now has another type in scope.
 	tc.cur_scope = new_scope(tc.file_scope)
-	tc.cur_scope.insert('x', Type(string_))
+	tc.cur_scope.insert_id(flat.source_type_id('x'), 'x', Type(string_))
 	assert tc.parse_canonical_type_cached(flat.source_type_id('[]typeof(x)')).name() == '[]string'
 	// Context-independent texts are still memoized.
 	assert tc.parse_canonical_type_cached(flat.source_type_id('[]int')).name() == '[]int'

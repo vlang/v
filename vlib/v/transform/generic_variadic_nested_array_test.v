@@ -121,7 +121,7 @@ fn test_cloned_variadic_call_inference_preserves_a_nested_element() {
 	tc.fn_param_type_texts.set('collect', ['...[]T'])
 	tc.fn_ret_type_texts.set_id('collect', flat.source_type_id('[][]T'))
 	tc.fn_type_modules['collect'] = 'main'
-	tc.sparse_resolved_call_names[int(call_id)] = 'collect'
+	tc.sparse_resolved_calls[int(call_id)] = flat.source_type_id('collect')
 	tc.parallel_check_sparse = true
 	tc.check_range_lo = -1
 	tc.check_range_hi = -1

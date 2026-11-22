@@ -837,13 +837,13 @@ pub fn (mut tc TypeChecker) complete_incremental_check_step(limit int) bool {
 		state.saved_file = tc.cur_file
 		state.saved_module = tc.cur_module
 		state.saved_capture = tc.capture_items
-		state.saved_trusted = tc.direct_parent_index_trusted
+		state.saved_trusted = tc.node_indexes_trusted
 		tc.capture_items = state.verify
 		// As the check found them: the index of the parents holds for the tree the
 		// check checked, unless nodes came since, and the rest of the check, which
 		// changes the tree, builds it again before it completes the check.
 		if !state.saved_trusted {
-			tc.reuse_direct_parent_index_for_unchanged_ast(tc.a)
+			tc.reuse_node_indexes_for_unchanged_ast(tc.a)
 		}
 		tc.resolution_type_mode = false
 		tc.install_type_cache_overlay()
@@ -868,7 +868,7 @@ pub fn (mut tc TypeChecker) complete_incremental_check_step(limit int) bool {
 		return true
 	}
 	tc.restore_type_cache_base()
-	tc.direct_parent_index_trusted = state.saved_trusted
+	tc.node_indexes_trusted = state.saved_trusted
 	tc.resolution_type_mode = true
 	tc.capture_items = state.saved_capture
 	tc.cur_file = state.saved_file

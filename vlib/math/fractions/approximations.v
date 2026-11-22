@@ -74,7 +74,8 @@ pub fn approximate(val f64) Fraction {
 	return approximate_with_eps(val, default_eps)
 }
 
-// approximate_with_eps returns a Fraction
+// approximate_with_eps returns a Fraction with an absolute error of at most eps at f64 precision.
+// A zero eps requires the fraction to convert back to the input value exactly.
 pub fn approximate_with_eps(val f64, eps f64) Fraction {
 	if val == 0.0 {
 		return zero
@@ -108,7 +109,7 @@ pub fn approximate_with_eps(val f64, eps f64) Fraction {
 		// eval_cf is called often so it needs to be performant
 		partial = eval_cf(whole, d)
 		// Check if we're done
-		if math.abs(val - partial.f64()) < eps {
+		if math.abs(val - partial.f64()) <= eps {
 			return partial
 		}
 		frac -= f64(den)

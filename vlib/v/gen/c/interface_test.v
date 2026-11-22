@@ -112,7 +112,7 @@ fn test_interface_init_typ_id_uses_canonical_source_value() {
 	assert a.node(init).value == ''
 	assert a.node(init).source_value_id() == iface_id
 	mut tc := types.TypeChecker.new(&a)
-	tc.cur_scope.insert('cat', types.Type(types.Struct{ name_id: concrete_id }))
+	tc.cur_scope.insert_id(flat.source_type_id('cat'), 'cat', types.Type(types.Struct{ name_id: concrete_id }))
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc

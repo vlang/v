@@ -114,7 +114,7 @@ fn test_multiple_generic_call_arguments_use_the_concrete_checker_result() {
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.sparse_resolved_call_names[int(call)] = 'dep.first'
+	tc.sparse_resolved_calls[int(call)] = flat.source_type_id('dep.first')
 	tc.parallel_check_sparse = true
 	tc.check_range_lo = -1
 	tc.check_range_hi = -1
