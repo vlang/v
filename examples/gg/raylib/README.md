@@ -14,6 +14,11 @@ the gg feature work in PR #32612 stays focused.
 - `shaders/` — approximations of raylib's shader examples with gg materials,
   render targets and immediate-mode geometry
 - `audio/` — WAV/PCM sound playback through gg's small sokol.audio wrapper
+- `games/` — ports of the raylib classic games: `missile_commander`, `arkanoid`,
+  `snake`, `gorilas`, `asteroids`, `asteroids_survival`, `space_invaders`, `pang`,
+  `tetris`, `floppy`, plus the raylib `just_do` platformer.
+  Decorative artwork from the originals is approximated with gg primitives;
+  look for `// PORT NOTE:` comments in each file.
 
 ## Naming
 
