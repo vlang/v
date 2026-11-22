@@ -86,6 +86,19 @@ pub const separator = '-'.repeat(max_header_len) + '\n'
 
 pub const max_compilation_retries = get_max_compilation_retries()
 
+// default_test_timeout_s is how long one test program may run, in seconds, before `v test` kills
+// it and its child processes and reports `timed out`. Without a bound, a test that hangs holds a
+// worker for as long as the CI job lasts (121 minutes), and the empty output of a hang then
+// triggers an automatic retry that hangs as long again. The longest test in vlib runs for about
+// two minutes on a CI runner, so five minutes leaves room; a suite with slower tests raises it
+// with `-timeout <seconds>` or `VTEST_TIMEOUT`, and `0` turns the bound off.
+pub const default_test_timeout_s = 300
+
+pub const test_timeout_env = 'VTEST_TIMEOUT'
+
+// VTEST_RETRY_TIMEOUT=1 makes a timed out test run again like any other failed run.
+pub const retry_timeout_env = 'VTEST_RETRY_TIMEOUT'
+
 // Each worker compiles a separate test program, so bound automatic parallelism
 // by a memory budget per worker, and by the CPU count. Test builds of the
 // compiler's own modules peak at 0.4-1.5 GiB of RSS, a median of 0.6 GiB, and
@@ -93,6 +106,16 @@ pub const max_compilation_retries = get_max_compilation_retries()
 // `vlib/v/{types,transform,gen/c,modulecache,driver}`), so 2 GiB leaves room for
 // the occasional larger build. VJOBS remains an explicit override.
 const test_job_memory_budget = u64(2) * 1024 * 1024 * 1024
+
+// get_test_timeout_s returns the per-test wall limit in seconds: `VTEST_TIMEOUT` when it is set to
+// a number, else default_test_timeout_s.
+pub fn get_test_timeout_s() int {
+	text := os.getenv(test_timeout_env)
+	if text == '' || !text.bytes().all(it.is_digit()) {
+		return default_test_timeout_s
+	}
+	return text.int()
+}
 
 fn get_max_compilation_retries() int {
 	return os.getenv_opt('VTEST_MAX_COMPILATION_RETRIES') or { '3' }.int()
@@ -427,6 +450,9 @@ pub mut:
 
 	exec_mode ActionMode = .compile // .compile_and_run only for `v test`
 
+	timeout_s      int = default_test_timeout_s // wall limit of one test run; 0 means no limit
+	retry_timeouts bool // retry a test that timed out, as for any other failure
+
 	build_environment build_constraint.Environment // see the documentation in v.build_constraint
 	custom_defines    []string                     // for adding custom defines, known only to the individual runners
 mut:
@@ -685,6 +711,27 @@ pub fn (mut ts TestSession) exec_env(args []string, env map[string]string, mtc M
 	return cmdexec.run_in_merged_with_env(args[0], args[1..], '', env)
 }
 
+// exec_timed is exec_env for the run of a test: after `ts.timeout_s` seconds the process and the
+// processes it started are killed, and the second result is true. The output of a killed run is
+// what it had written until then. The child gets the variables of `env` with or without a limit.
+pub fn (mut ts TestSession) exec_timed(args []string, env map[string]string, mtc MessageThreadContext) (os.Result, bool) {
+	if ts.timeout_s <= 0 {
+		return ts.exec_env(args, env, mtc), false
+	}
+	if show_cmd {
+		shown_env := if env.len > 0 { '${env} ' } else { '' }
+		ts.append_message(.info, '> execute cmd: ${shown_env}${args.join(' ')} (limit ${ts.timeout_s} s)',
+			mtc)
+	}
+	return cmdexec.run_merged_timed_with_env(args[0], args[1..], i64(ts.timeout_s) * 1000,
+		env, false)
+}
+
+// timed_out_message is the line that names a test that was killed for running too long.
+pub fn timed_out_message(timeout_s int) string {
+	return 'timed out after ${timeout_s} s: the test and its child processes were killed'
+}
+
 fn (mut ts TestSession) exec_compiler(args []string, env map[string]string, mtc MessageThreadContext) os.Result {
 	// Stats also launches the test program; preserve its environment.
 	if !ts.will_compile || ts.show_stats || ts.compiler_jobs < 1
@@ -717,6 +764,7 @@ pub fn (mut ts TestSession) system_args(args []string, mtc MessageThreadContext)
 fn should_retry_execution(result os.Result) bool {
 	output := result.output.trim_space()
 	return output.len == 0 || output.starts_with('exec failed')
+		|| output.starts_with('os: failed to find executable')
 		|| (output.starts_with('exec(') && output.ends_with(') failed'))
 }
 
@@ -764,6 +812,8 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		resume_dir:    test_resume_dir()
 		nocache:       os.getenv('VTEST_NOCACHE') == '1'
 	}
+	ts.timeout_s = get_test_timeout_s()
+	ts.retry_timeouts = os.getenv(retry_timeout_env) == '1'
 	if keep_session {
 		ts.rm_binaries = false
 		println('> vtmp_dir: ${new_vtmp_dir}')
@@ -846,9 +896,41 @@ fn test_file_is_target_of(this_os string, file string) bool {
 	return pref.os_is_target_of(this_os, os_target)
 }
 
+// cancel_tests is the runner's handler of SIGINT and SIGTERM. A test under a limit is in a
+// process group of its own, so the signal that ends the runner (Ctrl-C in a terminal goes to
+// the runner's group) does not reach it: left alone, the test and what it started would go on
+// with nobody to enforce the limit. The handler only says that the runs are cancelled; a test
+// can be between its fork and its first read at that moment, on another thread, and nothing
+// that is safe in a signal handler could wait for that. Once the tests are over, the same
+// call ends the runner at once, with the signal's status (see cmdexec.cancel_bounded_runs).
+fn cancel_tests(sig os.Signal) {
+	cmdexec.cancel_bounded_runs(int(sig))
+}
+
+// exit_when_tests_are_cancelled is the thread that ends the runner after cancel_tests, while
+// tests are running: every test that has an owner is ended by that owner first. When the
+// tests were over before the signal was seen here, the thread that finished them ends the
+// runner (see the end of the testing in TestSession.test), and this one stands back.
+fn exit_when_tests_are_cancelled() {
+	for cmdexec.bounded_runs_cancelled() == 0 {
+		time.sleep(20 * time.millisecond)
+	}
+	if !cmdexec.begin_cancelled_exit() {
+		return
+	}
+	cmdexec.end_cancelled_bounded_runs(10 * time.second)
+	exit(128 + cmdexec.bounded_runs_cancelled())
+}
+
 // test processes the selected files, matching exclusions by their resolved paths.
 pub fn (mut ts TestSession) test() {
 	unbuffer_stdout()
+	if ts.timeout_s > 0 {
+		cmdexec.begin_cancellable_work()
+		os.signal_opt(.int, cancel_tests) or {}
+		os.signal_opt(.term, cancel_tests) or {}
+		spawn exit_when_tests_are_cancelled()
+	}
 	ts.skip_files = ts.skip_files.map(os.real_path)
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
@@ -901,6 +983,15 @@ pub fn (mut ts TestSession) test() {
 	// all the testing happens here:
 	pool_of_test_runners.work_on_pointers(unsafe { units.pointers() })
 
+	if ts.timeout_s > 0 {
+		// The tests are over. A signal that was accepted before this moment decides how the
+		// runner ends, whichever thread saw it and however near the last test's end it came;
+		// one that arrives from here on ends the runner by itself.
+		cancelled_by := cmdexec.finish_bounded_runs()
+		if cancelled_by != 0 {
+			exit(128 + cancelled_by)
+		}
+	}
 	ts.benchmark_stop()
 	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: '-1' }) // send the sentinel
 	printing_thread.wait()
@@ -1149,7 +1240,7 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 	if ts.show_stats {
 		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut res := ts.exec_env(compile_argv, exec_env, mtc)
+		mut res, stats_run_timed_out := ts.exec_timed(compile_argv, exec_env, mtc)
 		mut status := res.exit_code
 		if res.output != '' {
 			output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
@@ -1159,8 +1250,23 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
+		if stats_run_timed_out && !ts.retry_timeouts {
+			ts.benchmark_fail()
+			tls_bench.fail()
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				'${normalised_relative_file}\n>> ${timed_out_message(ts.timeout_s)}', cmd_duration),
+				cmd_duration, mtc)
+			ts.add_failed_test(file, reproduce_cmd)
+			return pool.no_result
+		}
 		if status != 0 {
 			add_automatic_execution_retry(mut details, res)
+			if stats_run_timed_out && details.retry == 0 {
+				details.retry = 1
+			}
+			// Every retry runs under the limit too: an unbounded one would turn a test that
+			// timed out into a pass, or hold this worker for as long as the test hangs.
+			mut last_run_timed_out := stats_run_timed_out
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
 				if !details.hide_retries {
@@ -1169,7 +1275,8 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				ts.append_message(.cmd_begin, cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				retry_res := ts.exec_env(compile_argv, exec_env, mtc)
+				retry_res, retry_timed_out := ts.exec_timed(compile_argv, exec_env, mtc)
+				last_run_timed_out = retry_timed_out
 				status = retry_res.exit_code
 				if retry_res.output != '' {
 					output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
@@ -1178,6 +1285,17 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
+				if retry_timed_out && !ts.retry_timeouts {
+					// A timeout is one on whichever run it happens: fail the test by name here.
+					// The retries left would let a later run turn it into a pass.
+					ts.benchmark_fail()
+					tls_bench.fail()
+					ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+						'${normalised_relative_file}\n>> ${timed_out_message(ts.timeout_s)}', cmd_duration),
+						cmd_duration, mtc)
+					ts.add_failed_test(file, reproduce_cmd)
+					return pool.no_result
+				}
 				if status == 0 {
 					unsafe {
 						goto test_passed_system
@@ -1198,6 +1316,11 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 			}
 			ts.benchmark_fail()
 			tls_bench.fail()
+			if last_run_timed_out {
+				ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+					'${normalised_relative_file}\n>> ${timed_out_message(ts.timeout_s)}', cmd_duration),
+					cmd_duration, mtc)
+			}
 			ts.add_failed_test(file, reproduce_cmd)
 			return pool.no_result
 		}
@@ -1241,15 +1364,32 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 		mut failure_output := strings.new_builder(1024)
 		ts.append_message(.cmd_begin, run_cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut r := ts.exec_env(os.split_args(run_cmd) or { panic(err) }, exec_env, mtc)
+		mut r, first_run_timed_out := ts.exec_timed(os.split_args(run_cmd) or { panic(err) },
+			exec_env, mtc)
+		mut run_timed_out := first_run_timed_out
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
+		if run_timed_out && !ts.retry_timeouts {
+			// A test that hangs would hang again: fail it by name, and do not run it a second time.
+			ts.benchmark_fail()
+			tls_bench.fail()
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				'${normalised_relative_file}\n>> ${timed_out_message(ts.timeout_s)}\n${r.output.trim_space()}',
+				cmd_duration,
+				preparation: compile_cmd_duration
+			), cmd_duration, mtc)
+			ts.add_failed_test(file, reproduce_cmd)
+			return pool.no_result
+		}
 		if ts.show_asserts && r.exit_code == 0 {
 			println(r.output.split_into_lines().filter(it.contains(' assert')).join('\n'))
 		}
 		if r.exit_code != 0 {
 			mut trimmed_output := r.output.trim_space()
 			add_automatic_execution_retry(mut details, r)
+			if run_timed_out && details.retry == 0 {
+				details.retry = 1 // -retry-timeouts: a killed run has output, so it is not retried by default
+			}
 			if details.retry != 0 {
 				failure_output.write_string(separator)
 				failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
@@ -1263,10 +1403,27 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				ts.append_message(.cmd_begin, run_cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				r = ts.exec_env(os.split_args(run_cmd) or { panic(err) }, exec_env, mtc)
+				r, run_timed_out = ts.exec_timed(os.split_args(run_cmd) or { panic(err) },
+					exec_env, mtc)
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
+				if run_timed_out && !ts.retry_timeouts {
+					// A timeout is one on whichever run it happens: fail the test by name here.
+					// The retries left would let a later run turn it into a pass.
+					failure_output.write_string(separator)
+					failure_output.writeln(' retry: ${retry} ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${r.output.trim_space().len}')
+					failure_output.writeln(r.output.trim_space())
+					ts.benchmark_fail()
+					tls_bench.fail()
+					ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+						'${normalised_relative_file}\n>> ${timed_out_message(ts.timeout_s)}\n${failure_output.str().trim_space()}',
+						cmd_duration,
+						preparation: compile_cmd_duration
+					), cmd_duration, mtc)
+					ts.add_failed_test(file, reproduce_cmd)
+					return pool.no_result
+				}
 				if r.exit_code == 0 {
 					unsafe {
 						goto test_passed_execute
@@ -1276,6 +1433,9 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 				failure_output.write_string(separator)
 				failure_output.writeln(' retry: ${retry} ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
 				failure_output.writeln(trimmed_output)
+				if run_timed_out {
+					failure_output.writeln(timed_out_message(ts.timeout_s))
+				}
 				time.sleep(fail_retry_delay_ms)
 			}
 			full_failure_output := failure_output.str().trim_space()

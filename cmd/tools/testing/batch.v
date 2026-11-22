@@ -713,11 +713,15 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 		if compiled.exit_code == 0 {
 			ts.append_message(.cmd_begin, os.quoted_path(binary), mtc)
 			run_sw := time.new_stopwatch()
-			run := ts.exec([binary], mtc)
+			run, timed_out := ts.exec_timed([binary], map[string]string{}, mtc)
 			run_duration = run_sw.elapsed()
 			ts.append_message_with_duration(.cmd_end, run.output, run_duration, mtc)
 			passed = run.exit_code == 0
-			failure = 'it exited with ${run.exit_code}:\n${test_batch_output_head(run.output)}'
+			failure = if timed_out {
+				timed_out_message(ts.timeout_s)
+			} else {
+				'it exited with ${run.exit_code}:\n${test_batch_output_head(run.output)}'
+			}
 		} else {
 			failure = 'it did not compile:\n${test_batch_output_head(compiled.output)}'
 		}
@@ -737,7 +741,7 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 				mtc)
 		}
 		for k, file in files {
-			if ts.fail_fast && ts.has_failures() {
+			if (ts.fail_fast && ts.has_failures()) || cmdexec.bounded_runs_cancelled() != 0 {
 				break
 			}
 			ts.run_test_file(file, '${test_id}_${k}', thread_id, mut tls_bench)
