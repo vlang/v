@@ -43,7 +43,7 @@ fn test_argument_address_lowering_preserves_values_locals_consts_calls_and_map_e
 				tc.fn_ret_types['consume'] = types.Type(types.void_)
 				tc.fn_param_types['make_value'] = []types.Type{}
 				tc.fn_ret_types['make_value'] = int_type
-				tc.cur_scope.insert('local', int_type)
+				tc.cur_scope.insert_id(flat.source_type_id('local'), 'local', int_type)
 				tc.const_types['limit'] = int_type
 				tc.register_synth_type(arg, int_type)
 				tc.register_synth_type(value, int_type)

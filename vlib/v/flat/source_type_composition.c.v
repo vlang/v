@@ -176,11 +176,10 @@ fn source_type_composition_miss(slot int, kind SourceTypeComposition, parts []u3
 	id := source_type_composition_small_id(kind, parts) or {
 		source_type_composition_scoped_id(kind, parts)
 	}
-	source_type_lock()
-	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
-	cached := source_type_composition_find(slot, kind, parts, hash)
-	if !isnil(cached) {
-		return cached.id
+	// Another writer may have published the tuple while its spelling was built.
+	published := source_type_composition_find(slot, kind, parts, hash)
+	if !isnil(published) {
+		return published.id
 	}
 	max_parts := (u64(0x7fffffff) - u64(sizeof(SourceTypeCompositionEntry))) / u64(sizeof(u32))
 	if u64(parts.len) > max_parts {
@@ -195,19 +194,38 @@ fn source_type_composition_miss(slot int, kind SourceTypeComposition, parts []u3
 		unsafe { vmemcpy(entry.parts(), parts.data, parts.len * int(sizeof(u32))) }
 	}
 	// Process-owned immutable entries are visible only after the release store.
-	unsafe {
-		*entry = SourceTypeCompositionEntry{
-			kind: kind
-			hash: hash
-			len:  parts.len
-			id:   id
-			next: source_type_composition_head(slot)
+	// Push the entry with a compare-and-swap of the chain head, without a lock.
+	// A writer that loses the swap rechecks the new chain, so a tuple is
+	// normally published once; the ID is the interned rendering, so two equal
+	// entries pushed at the same instant still answer alike.
+	for {
+		head := source_type_composition_head(slot)
+		raced := source_type_composition_find(slot, kind, parts, hash)
+		if !isnil(raced) {
+			return raced.id
 		}
-	}
-	$if x32 {
-		C.atomic_store_u32(voidptr(&g_source_type_compositions[slot]), u32(voidptr(entry)))
-	} $else {
-		C.atomic_store_u64(voidptr(&g_source_type_compositions[slot]), u64(voidptr(entry)))
+		unsafe {
+			*entry = SourceTypeCompositionEntry{
+				kind: kind
+				hash: hash
+				len:  parts.len
+				id:   id
+				next: head
+			}
+		}
+		$if x32 {
+			mut expected := u32(voidptr(head))
+			if C.atomic_compare_exchange_strong_u32(voidptr(&g_source_type_compositions[slot]),
+				&expected, u32(voidptr(entry))) {
+				return id
+			}
+		} $else {
+			mut expected := u64(voidptr(head))
+			if C.atomic_compare_exchange_strong_u64(voidptr(&g_source_type_compositions[slot]),
+				&expected, u64(voidptr(entry))) {
+				return id
+			}
+		}
 	}
 	return id
 }

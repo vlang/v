@@ -1,5 +1,7 @@
 module flat
 
+import hash
+
 fn test_source_type_read_cache_rechecks_ids_on_collision() {
 	left_text := '&read_cache.Left'
 	left := source_type_id(left_text)
@@ -45,10 +47,11 @@ fn test_source_type_read_cache_retains_entry_across_growth() {
 	id := source_type_id(text)
 	assert source_type_name(id) == text
 	entry := source_type_read_entry(id)
-	mut table := source_type_table_load()
-	source_type_lock()
-	table.grow()
-	C.atomic_store_u32(&g_source_types_lock, 0)
+	table := source_type_table_load()
+	shard := source_type_shard_of(u32(hash.sum64_string(text, 0)))
+	source_type_shard_lock(shard)
+	source_type_grow_index(table, shard)
+	source_type_shard_unlock(shard)
 	for i in 0 .. source_type_read_cache_size + 1 {
 		source_type_id('read_cache.Growth_${i}')
 	}

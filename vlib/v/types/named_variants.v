@@ -58,7 +58,7 @@ fn (mut tc TypeChecker) declare_named_variant_binding(subject_type Type, branch 
 		display := flat.named_variant_display_name(flat.source_type_name(variant_type_source_id))
 		tc.record_error_at(.condition_mismatch, '`${display}` has no payload to bind to `${binding.value}`',
 			binding_id, binding.pos)
-		tc.cur_scope.insert(binding.value, Type(Unknown{}))
+		tc.cur_scope.insert_id(binding.name_id(), binding.value, Type(Unknown{}))
 		return
 	}
 	if binding.is_mut {

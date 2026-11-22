@@ -60,7 +60,7 @@ fn test_target_module_signature_preserves_variadic_and_synthetic_marker_rules() 
 		mut tc := types.TypeChecker.new(&a)
 		tc.cur_module = 'main'
 		tc.imports['short'] = 'library'
-		tc.cur_scope.insert('short', types.Type(types.int_))
+		tc.cur_scope.insert_id(flat.source_type_id('short'), 'short', types.Type(types.int_))
 		tc.fn_param_types['short.work'] = [types.Type(types.Array{ elem_type: types.Type(types.int_) })]
 		tc.fn_variadic['short.work'] = true
 		mut g := FlatGen.new()
