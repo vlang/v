@@ -17773,21 +17773,23 @@ fn (b &Builder) selector_qualified_name(node flat.Node) string {
 			break
 		}
 		if cur.kind != .selector {
-			break
+			return ''
 		}
 		if cur.value_text().len > 0 {
 			parts << cur.value_text()
 		}
 		if cur.children_count == 0 {
-			break
+			return ''
 		}
 		next_id := b.a.child(&cur, 0)
 		if int(next_id) < 0 || int(next_id) >= b.a.nodes.len {
-			break
+			return ''
 		}
 		cur = b.a.nodes[int(next_id)]
 	}
-	if parts.len == 0 {
+	// A qualified name must reach its identifier root. Indexing, calls and
+	// dereferences are value expressions, even if their field names match globals.
+	if cur.kind != .ident || parts.len == 0 {
 		return ''
 	}
 	mut out := ''

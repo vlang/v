@@ -7,6 +7,30 @@ import v.pref
 import v.transform
 import v.types
 
+fn test_qualified_selector_names_require_an_identifier_root() {
+	mut a := flat.FlatAst.new()
+	mut b := Builder{ a: &a }
+	for kind in [flat.NodeKind.ident, .index, .call, .prefix, .paren] {
+		root := a.add_node(flat.Node{ kind: kind, value: 'root' })
+		start := a.children.len
+		a.children << root
+		field := a.add_node(flat.Node{ kind: .selector, value: 'field', children_start: start, children_count: 1 })
+		nested_start := a.children.len
+		a.children << field
+		nested := a.add_node(flat.Node{ kind: .selector, value: 'nested', children_start: nested_start, children_count: 1 })
+		assert b.selector_qualified_name(a.nodes[field]) == if kind == .ident {
+			'root.field'
+		} else {
+			''
+		}
+		assert b.selector_qualified_name(a.nodes[nested]) == if kind == .ident {
+			'root.field.nested'
+		} else {
+			''
+		}
+	}
+}
+
 fn test_native_noreturn_calls_terminate_only_their_control_flow_edges() {
 	m := native_thread_test_module('noreturn', 'module main
 fn C.exit(int)
