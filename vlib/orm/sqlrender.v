@@ -17,6 +17,13 @@ fn render_qname(name string, q string) string {
 	if !name.contains('.') {
 		return '${q}${name}${q}'
 	}
+	// Two-part qualified names (alias.field) are the common dotted case in
+	// subqueries and joins; avoid the split + join allocations for them.
+	if dot := name.index('.') {
+		if !name[dot + 1..].contains('.') {
+			return '${q}${name[..dot]}${q}.${q}${name[dot + 1..]}${q}'
+		}
+	}
 	mut parts := name.split('.')
 	for i, part in parts {
 		parts[i] = '${q}${part}${q}'
