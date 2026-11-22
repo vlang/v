@@ -84,7 +84,8 @@ of their time compiling that module, and small `main` tests the fixed cost of a 
 `v test` builds up to 16 test files of one directory and module into one binary and runs it once:
 the compiler accepts several distinct `_test.v` files of one directory as its inputs,
 `v -skip-running -o bin a_test.v b_test.v`, and adds the module's other sources once. Files whose
-top-level names collide go to different batches. A file with `// vtest` directives or suite
+top-level names collide go to different batches; text in string literals does not count. A file
+with `// vtest` directives (other than a `// vtest build:` constraint that holds) or suite
 hooks, or one that changes or reads process state (its environment, working directory,
 arguments or exit), is run on its own, as is a `main` test with C flags, headers, exported or
 global symbols. When a batch fails to
