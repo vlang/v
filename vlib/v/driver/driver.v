@@ -55,9 +55,6 @@ $if !skip_riscv64 ? {
 $if !skip_loongarch64 ? {
 	import v.gen.loongarch64
 }
-$if !skip_loongarch64 ? {
-	import v.gen.loongarch64
-}
 
 $if !skip_ssa ? {
 	import v.ssa
