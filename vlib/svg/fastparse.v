@@ -160,7 +160,7 @@ fn (mut p FastParser) parse_element() ?Element {
 			p.i = end + 3
 			continue
 		}
-		if p.i + 8 < p.s.len && p.s[p.i + 1..p.i + 9] == '[CDATA[' {
+		if p.i + 8 < p.s.len && p.s[p.i + 2..p.i + 9] == '[CDATA[' {
 			end := p.s.index_after(']]>', p.i + 9) or { return none }
 			text.write_string(p.s[p.i + 9..end])
 			p.i = end + 3
@@ -173,6 +173,11 @@ fn (mut p FastParser) parse_element() ?Element {
 		}
 		if p.i + 1 < p.s.len && p.s[p.i + 1] == `/` {
 			p.i += 2
+			close_start := p.i
+			for p.i < p.s.len && !xml_ws(p.s[p.i]) && p.s[p.i] != `>` {
+				p.i++
+			}
+			close_name := p.s[close_start..p.i]
 			for p.i < p.s.len && p.s[p.i] != `>` {
 				p.i++
 			}
@@ -180,6 +185,11 @@ fn (mut p FastParser) parse_element() ?Element {
 				return none
 			}
 			p.i++
+			// Mismatched XML must be rejected so parse_svg falls back to
+			// encoding.xml (or reports an error) instead of building a wrong tree.
+			if close_name != name {
+				return none
+			}
 			break
 		}
 		child := p.parse_element() or { return none }

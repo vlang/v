@@ -68,6 +68,13 @@ fn test_path_implicit() {
 	assert p.cmds[4].kind == .close
 }
 
+fn test_path_close_trailing_token_terminates() {
+	// Regression: a token after Z used to be re-read forever.
+	if p := parse_path('M0 0 Z 10 10') {
+		assert p.cmds.len == 1
+	}
+}
+
 fn test_path_bounds_flatten() {
 	p := parse_path('M0 0 L10 0 L10 10 Z')!
 	b := p.bounds()

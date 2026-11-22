@@ -163,6 +163,17 @@ pub fn eval_animation(a Animation, t f64) !string {
 		return error('animation has not started')
 	}
 	mut local := t - a.begin
+	// A discrete animation may legally omit `values` and use from/to instead.
+	// Normalize that into a local list so every indexing path below is safe.
+	mut vals := a.values.clone()
+	if vals.len == 0 {
+		if a.from != '' {
+			vals << a.from
+		}
+		if a.to != '' {
+			vals << a.to
+		}
+	}
 	cycle := a.dur
 	if a.repeat > 1 || math.is_inf(a.repeat, 1) {
 		elapsed_cycle := math.fmod(local, cycle)
@@ -181,31 +192,37 @@ pub fn eval_animation(a Animation, t f64) !string {
 		}
 	}
 	if a.calc_mode == 'discrete' {
-		idx := int(math.floor(local / a.dur * f64(a.values.len)))
-		if idx < a.values.len {
-			return a.values[idx]
+		if vals.len == 0 {
+			return error('animation has no values')
 		}
-		return a.values[a.values.len - 1]
+		idx := int(math.floor(local / a.dur * f64(vals.len)))
+		if idx < 0 {
+			return vals[0]
+		}
+		if idx < vals.len {
+			return vals[idx]
+		}
+		return vals[vals.len - 1]
 	}
 	mut progress := clamp_limits(local / a.dur, 0, 1)
-	if a.key_times.len == a.values.len && a.values.len > 1 {
+	if a.key_times.len == vals.len && vals.len > 1 {
 		for i in 1 .. a.key_times.len {
 			if progress <= a.key_times[i] {
 				span := a.key_times[i] - a.key_times[i - 1]
 				progress = if span < 1e-9 { 0 } else { (progress - a.key_times[i - 1]) / span }
-				progress += f64(i - 1) / f64(a.values.len - 1)
+				progress += f64(i - 1) / f64(vals.len - 1)
 				break
 			}
 		}
 	}
-	if a.values.len >= 2 {
-		scaled := progress * f64(a.values.len - 1)
+	if vals.len >= 2 {
+		scaled := progress * f64(vals.len - 1)
 		idx := int(math.floor(scaled))
-		if idx >= a.values.len - 1 {
-			return a.values[a.values.len - 1]
+		if idx >= vals.len - 1 {
+			return vals[vals.len - 1]
 		}
 		frac := scaled - f64(idx)
-		return interpolate_values(a.values[idx], a.values[idx + 1], frac)
+		return interpolate_values(vals[idx], vals[idx + 1], frac)
 	}
 	if a.from != '' && a.to != '' {
 		return interpolate_values(a.from, a.to, progress)

@@ -42,3 +42,19 @@ fn test_fast_parse_fallback() {
 		assert false
 	}
 }
+
+fn test_fast_parse_rejects_mismatched_close() {
+	// The fast scanner must reject mismatched tags so the general XML parser
+	// reports the error instead of a plausible-looking wrong tree.
+	if _ := parse_svg('<svg><rect></circle></svg>') {
+		assert false
+	}
+}
+
+fn test_fast_parse_cdata() {
+	doc := parse_svg('<svg><text><![CDATA[a < b & c]]></text></svg>') or {
+		assert false
+		return
+	}
+	assert doc.root.children[0].text == 'a < b & c'
+}

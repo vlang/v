@@ -115,6 +115,12 @@ pub fn parse_path(input string) !Path {
 		n := args_for(cmd) or { return err }
 		if n == 0 {
 			p.cmds << PathCmd{ kind: .close, relative: cmd == `z` }
+			// A zero-argument command consumes no input. Without this guard a
+			// stray number/separator after Z would be re-read forever.
+			next := skip_ws(s, i)
+			if next < s.len && !is_cmd_letter(s[next]) {
+				return error('unexpected token after close command')
+			}
 			continue
 		}
 		vals := read_args(s, i, cmd, n) or { return err }

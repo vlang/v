@@ -43,6 +43,28 @@ fn test_animation_eval_discrete() {
 	assert v2 == 'blue'
 }
 
+fn test_discrete_animation_without_values() {
+	a := Animation{
+		attr:      'fill'
+		dur:       1
+		calc_mode: 'discrete'
+		from:      'red'
+		to:        'blue'
+	}
+	v := eval_animation(a, 0.5) or {
+		assert false
+		return
+	}
+	assert v == 'blue'
+
+	empty := Animation{ attr: 'fill', calc_mode: 'discrete' }
+	eval_animation(empty, 0.5) or {
+		assert err.msg().contains('no values')
+		return
+	}
+	assert false
+}
+
 fn test_filter_parse() {
 	doc := parse_svg('<svg><defs><filter id="blur"><feGaussianBlur stdDeviation="2"/></filter></defs><rect width="10" height="10" filter="url(#blur)"/></svg>') or {
 		assert false
