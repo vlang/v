@@ -267,7 +267,13 @@ $if !skip_fastc ? {
 		}
 		// Only the bridges the kept code calls: a C function V declares for another
 		// platform (`__wasi_*` on macOS) has no declaration here.
-		used_bridges := v3_fastc_used_bridge_names(generation.c_pieces)
+		// The reachability prune reports the bridges kept code calls; without it, the
+		// generated pieces are scanned for them.
+		used_bridges := if generation.units.native_bridges_reachable {
+			v3_fastc_bridge_name_set(generation.units.native_reachable_bridges)
+		} else {
+			v3_fastc_used_bridge_names(generation.c_pieces)
+		}
 		mut functions := map[string]bool{}
 		for name, _ in generation.native_declarations {
 			if !name.starts_with('__builtin_') && !name.starts_with('__atomic_') && !name.starts_with('__sync_')
@@ -1191,4 +1197,12 @@ fn v3_fastc_split_native_link_flags(flags []string) ([]string, []string) {
 fn v3_fastc_is_link_input_path(value string) bool {
 	return !value.starts_with('-') && (value.ends_with('.a') || value.ends_with('.o')
 		|| value.ends_with('.dylib') || value.ends_with('.tbd'))
+}
+
+fn v3_fastc_bridge_name_set(names []string) map[string]bool {
+	mut set := map[string]bool{}
+	for name in names {
+		set[name] = true
+	}
+	return set
 }

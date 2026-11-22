@@ -888,6 +888,17 @@ fn test_fastc_collect_c_name_ids_scans_index_markers() {
 	assert found == [1, 2, 3]
 }
 
+fn test_fastc_collect_c_name_ids_finds_native_bridge_calls() {
+	ids := {
+		'v3_native_bridge_open': 0
+		'alpha__one':            1
+	}
+	text := 'int f(void) { return v3_native_bridge_open(1) + alpha__one(); } int xv3_native_bridge_open;'
+	mut found := []int{}
+	fastc_collect_c_name_ids(text, 0, text.len, ids, mut found)
+	assert found == [0, 1]
+}
+
 fn test_parallel_constant_seed_preserves_constant_field_defaults() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

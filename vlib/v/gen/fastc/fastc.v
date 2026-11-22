@@ -1329,6 +1329,10 @@ pub mut:
 	// native sources that may name some of them.
 	native_decl_start int
 	native_decl_end   int
+	// native_bridges_reachable is set when the reachability prune ran: the native owner then
+	// binds only native_reachable_bridges, the C functions kept code calls through a bridge.
+	native_bridges_reachable bool
+	native_reachable_bridges []string
 }
 
 // c_source joins the generated C pieces into one string.
@@ -2949,7 +2953,15 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		walk_body_offsets << body_len
 		mut walk_proto_offsets := output_proto_offsets.clone()
 		walk_proto_offsets << proto_len
-		dead_body_ranges, dead_proto_ranges := fastc_unreachable_function_ranges(walk_outputs, walk_body_offsets, walk_proto_offsets, function_ids.len, root_ids)
+		dead_body_ranges, dead_proto_ranges, reachable := fastc_unreachable_function_ranges(walk_outputs, walk_body_offsets, walk_proto_offsets, function_ids.len, root_ids)
+		if prefs.fastc_native_bridge {
+			units.native_bridges_reachable = true
+			for name, id in function_ids {
+				if reachable[id] && name.starts_with(fastc_native_bridge_prefix) {
+					units.native_reachable_bridges << name[fastc_native_bridge_prefix.len..]
+				}
+			}
+		}
 		mut dead_file_ranges := []int{cap: dead_body_ranges.len}
 		mut dead_helper_ranges := []int{}
 		mut dead_dispatch_ranges := []int{}
@@ -5133,11 +5145,20 @@ fn fastc_partition_c_directive_ranges(total_len int, lines []FastcCDirectiveLine
 // fastc_function_id_table numbers the C names of the indexed functions and
 // methods (the keys of the signature index), as the emitted definitions and
 // calls spell them.
+const fastc_native_bridge_prefix = 'v3_native_bridge_'
+
 fn fastc_function_id_table(functions map[string]FastcFunctionSignature, function_c_names map[string]string, declared_kinds map[u32]FastcDeclaredTypeKind) map[string]int {
 	mut ids := map[string]int{}
 	ids.reserve(u32(functions.len))
 	for key, signature in functions {
 		if key.starts_with('C.') {
+			// A C function called through the native bridge is reached like a function, so
+			// the owner binds only the bridges that kept code calls.
+			if bridge := function_c_names[key] {
+				if bridge.starts_with(fastc_native_bridge_prefix) && bridge !in ids {
+					ids[bridge] = ids.len
+				}
+			}
 			continue
 		}
 		c_name := if compact_name := function_c_names[key] {
@@ -5221,6 +5242,13 @@ fn fastc_collect_c_name_ids(text string, start int, end int, ids map[string]int,
 			word_start = i - 1
 			indexed = word_start == start || !fastc_identifier_byte(text[word_start - 1])
 		}
+		if !indexed && i >= start + 2 && text[i - 1] == `3` && text[i - 2] == `v`
+			&& i + 14 < end && text[i + 1] == `n` && text[i + 8] == `b`
+			&& unsafe { vmemcmp(text.str + i + 1, c'native_bridge_', 14) } == 0 {
+			// `v3_native_bridge_<name>`: a C function called through the native bridge.
+			word_start = i - 2
+			indexed = word_start == start || !fastc_identifier_byte(text[word_start - 1])
+		}
 		if !indexed {
 			i++
 			continue
@@ -5243,7 +5271,7 @@ fn fastc_collect_c_name_ids(text string, start int, end int, ids map[string]int,
 // fastc_unreachable_function_ranges walks the references from `root_ids`
 // through the file outputs and returns the body and prototype ranges (in
 // the outputs' virtual concatenations) of the indexed functions never reached.
-fn fastc_unreachable_function_ranges(outputs []FastcFileGenOutput, body_offsets []int, proto_offsets []int, function_count int, root_ids []int) ([]int, []int) {
+fn fastc_unreachable_function_ranges(outputs []FastcFileGenOutput, body_offsets []int, proto_offsets []int, function_count int, root_ids []int) ([]int, []int, []bool) {
 	mut reachable := []bool{len: function_count}
 	mut def_output := []int{len: function_count}
 	mut def_index := []int{len: function_count}
@@ -5303,7 +5331,7 @@ fn fastc_unreachable_function_ranges(outputs []FastcFileGenOutput, body_offsets 
 			dead_proto << proto_offsets[oi] + output.proto_spans[2 * fi + 1]
 		}
 	}
-	return dead_body, dead_proto
+	return dead_body, dead_proto, reachable
 }
 
 // fastc_subtract_ranges returns the parts of the ascending [start, end)
