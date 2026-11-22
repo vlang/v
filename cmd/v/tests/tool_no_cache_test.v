@@ -23,10 +23,9 @@ fn test_uncached_directory_tools_have_private_executables() ! {
 	os.cp(@VEXE, launcher)!
 	os.chmod(launcher, 0o755)!
 	environment := {
-		'VTMP':                   tmp
-		'VFLAGS':                 '-gc none -d uncached_tool_parent'
-		'VTOOLS_NO_CACHE':        '1'
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VTMP':            tmp
+		'VFLAGS':          '-gc none -d uncached_tool_parent'
+		'VTOOLS_NO_CACHE': '1'
 	}
 	source := os.join_path(root, 'cmd', 'tools', 'vvet')
 	os.mkdir_all(source)!

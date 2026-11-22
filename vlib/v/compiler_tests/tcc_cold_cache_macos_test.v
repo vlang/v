@@ -19,8 +19,8 @@ fn test_macos_tcc_large_cold_cache_respects_no_retry() ! {
 	os.write_file(source, '#include "@DIR/native.m"\nfn C.bridge_answer() int\nfn main() { assert C.bridge_answer() == 42; println(@CCOMPILER) }\nfn padding() {\nmut n := 0\n' +
 		'n += 1\n'.repeat(150_000) + 'println(n)\n}\n')!
 	args := ['-u', 'VFLAGS', '-u', 'VEXE', '-u', 'CFLAGS', '-u', 'LDFLAGS',
-		'V3CACHE=' + os.join_path(root, 'cache'), 'V3_CACHE_TRACE=1', 'V_MACOS_V3_NO_FALLBACK=1',
-		@VEXE, '-cc', 'tcc', '-no-retry-compilation', '-o', exe, source]
+		'V3CACHE=' + os.join_path(root, 'cache'), 'V3_CACHE_TRACE=1', @VEXE, '-cc', 'tcc',
+		'-no-retry-compilation', '-o', exe, source]
 	for reason in ['cold source graph is too large for scoped cache population',
 		'persisted large source graph bypasses cache setup'] {
 		build := cmdexec.run('env', args)

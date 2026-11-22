@@ -574,7 +574,7 @@ fn recorded_input_contents_changed(manifest string, manifest_path string) string
 // unbuildable_tool_failure returns the compiler output of a previous, already recorded,
 // failed build of the tool, but only while that failure still applies to the current sources.
 // Without the second half of that condition a single broken intermediate state of some vlib
-// module would permanently pin the tool to the compatibility compiler.
+// module would prevent the tool from rebuilding after the source error was fixed.
 fn unbuildable_tool_failure(entry ToolCacheEntry) ?string {
 	details := os.read_file(entry.unbuildable) or { return none }
 	if recorded_inputs_changed(entry.unbuildable_manifest) != '' {
@@ -1294,10 +1294,6 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	mut build_args := entry.build_args.clone()
 	build_args << ['-dump-files', dumped, '-o', staged, entry.source]
 	mut environment := os.environ()
-	// The build must either succeed with the current compiler, or fail loudly. Letting the
-	// child silently retry with the compatibility compiler would cache a binary that does
-	// not correspond to this V executable at all.
-	environment[v3_no_fallback_env] = '1'
 	// `build_args` already carries everything `VFLAGS` contributed to this invocation.
 	// Leaving the variable set would make the child prepend all of it a second time.
 	environment['VFLAGS'] = ''

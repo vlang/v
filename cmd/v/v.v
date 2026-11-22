@@ -4,7 +4,6 @@
 module main
 
 import os
-import strings
 import v.cmdexec
 import v.driver
 import v.help
@@ -12,16 +11,6 @@ import v.pref
 import v.util
 
 const v_version = '0.5.2'
-const v1_fallback_binary = 'v1_fallback'
-// Modules that the fallback installer copies to their current public paths.
-// Cached fallback trees are not used until they carry every listed module.
-const v1_fallback_compatibility_modules = ['json2']
-const v1_fallback_compatibility_marker = '.v1-fallback-complete'
-const v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
-const v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
-const v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
-const v3_retry_env = 'V_MACOS_V3_RETRY'
-
 const external_commands = [
 	'ast',
 	'bin2v',
@@ -98,21 +87,6 @@ const external_commands = [
 	'wipe-cache',
 ]
 
-struct RetryState {
-	fallback_file string
-	c_error_dir   string
-	args          []string
-}
-
-@[unsafe]
-fn retry_state(value &RetryState) &RetryState {
-	mut static state := unsafe { &RetryState(nil) }
-	if value != unsafe { nil } {
-		state = value
-	}
-	return state
-}
-
 fn main() {
 	$if windows {
 		disable_windows_loader_dialogs()
@@ -149,13 +123,12 @@ fn main() {
 	} else {
 		compiler_args
 	}
-	// Reject the removed flag before compatibility fallback or tool dispatch can accept it.
+	// Reject the removed flag before tool dispatch can consume compiler options.
 	if compiler_option_requested(option_args, '-usecache') {
 		eprintln('unknown option `-usecache`; caching is enabled by default, use `-nocache` to disable it')
 		exit(1)
 	}
-	// TinyCC is not a -prod compiler. Refuse the pair before any compiler starts, including the
-	// compatibility compiler that `-old-compiler` selects.
+	// Refuse the TinyCC and -prod combination before dispatch.
 	if command !in external_commands
 		&& command !in ['version', '-version', '--version', 'help', '-h', '--help', 'new', 'init',
 			'install', 'link', 'list', 'outdated', 'remove', 'registry', 'search', 'show', 'unlink',
@@ -167,37 +140,6 @@ fn main() {
 	if command in ['version', '-version', '--version'] {
 		println('V ${v_version} ${@VCURRENTHASH}')
 		return
-	}
-	if '-old-compiler' in compiler_args {
-		launch_v1(clean_compiler_selection_flags(args), '`-old-compiler` was requested', RetryState{})
-	}
-	if command == 'build-module' {
-		launch_v1(clean_compiler_selection_flags(args), '`build-module` requires the compatibility compiler',
-			RetryState{})
-	}
-	// The mini-VLS protocol is implemented by the compatibility compiler's AST
-	// parser and checker. Select it before entering V3 instead of treating the
-	// request as a failed V3 compilation; `V_MACOS_V3_NO_FALLBACK` must continue
-	// to disable only retries, not explicit compatibility command modes.
-	if '-vls-mode' in compiler_args && '-new-compiler' !in compiler_args {
-		launch_v1(clean_compiler_selection_flags(args), '`-vls-mode` requires the compatibility compiler',
-			RetryState{})
-	}
-	if '-new-compiler' in compiler_args {
-		os.setenv(v3_no_fallback_env, '1', true)
-	}
-	if race_build_requested(args) {
-		// The compatibility compiler has no race detector. A failed race build must
-		// report its own error instead of silently retrying without instrumentation.
-		os.setenv(v3_no_fallback_env, '1', true)
-	}
-	if compiler_option_requested(args, '-json-errors') {
-		// A tool reads these diagnostics. A retry with the compatibility compiler would
-		// mix its own text into them.
-		os.setenv(v3_no_fallback_env, '1', true)
-	}
-	if '-new-compiler' !in compiler_args && v3_fixture_requires_compatibility_compiler(compiler_args) {
-		launch_v1(clean_compiler_selection_flags(args), 'legacy diagnostic fixture', RetryState{})
 	}
 	if command in ['help', '-h', '--help'] {
 		print_help(args, command_index)
@@ -229,11 +171,7 @@ fn main() {
 		run_external_tool(args, command_index, command)
 		return
 	}
-	args = clean_compiler_selection_flags(args)
 	args = with_project_backend(args)
-	if v3_exact_output_fixture_args(args) && '-nocache' !in args {
-		args.prepend('-nocache')
-	}
 	if full_compiler_is_required(compiler_args_before_program(args)) {
 		launch_full_compiler(args)
 	}
@@ -241,12 +179,7 @@ fn main() {
 		&& !ownership_checker_is_compiled() {
 		launch_ownership_compiler(args)
 	}
-	run_with_fallback(args, args)
-}
-
-// race_build_requested reports whether `-race` is one of the compiler options.
-fn race_build_requested(args []string) bool {
-	return compiler_option_requested(args, '-race')
+	driver.run(args)
 }
 
 // compiler_option_requested reports whether `option` is one of the compiler options, and not
@@ -274,7 +207,7 @@ fn compiler_option_index(args []string, option string) int {
 			return i
 		}
 		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			option_value_follows = profile_option_consumes_value(args, i)
 			continue
 		}
 		if arg == '-raw-vsh-tmp-prefix' && !input_seen {
@@ -458,9 +391,7 @@ fn run_uncached_optional_compiler(vexe string, compiler_source string, name stri
 	mut build_args := compiler_build_args.clone()
 	build_args << ['-o', binary, compiler_source]
 	mut environment := os.environ()
-	// As in `build_tool_binary`: the build has to fail loudly rather than retry with the
-	// compatibility compiler, and `VFLAGS` belongs to the compilation that follows, not to it.
-	environment[v3_no_fallback_env] = '1'
+	// VFLAGS applies to the requested compilation, not the helper build.
 	environment['VFLAGS'] = ''
 	mut build := os.new_process(vexe)
 	build.set_args(build_args)
@@ -482,37 +413,6 @@ fn run_uncached_optional_compiler(vexe string, compiler_source string, name stri
 	exit(code)
 }
 
-// fallback_is_disabled reports whether retrying with the compatibility compiler was turned off.
-fn fallback_is_disabled() bool {
-	return os.getenv(v3_no_fallback_env) == '1' || os.getenv(v3_retry_env) == '1'
-}
-
-fn run_with_fallback(driver_args []string, retry_args []string) {
-	if fallback_is_disabled() {
-		driver.run(driver_args)
-		return
-	}
-	fallback_file := os.join_path(os.vtmp_dir(), 'v3_fallback_${os.getpid()}')
-	c_error_dir := fallback_file + '.c_error'
-	os.rm(fallback_file) or {}
-	os.rmdir_all(c_error_dir) or {}
-	os.setenv(v3_fallback_file_env, fallback_file, true)
-	os.setenv(v3_c_error_dir_env, c_error_dir, true)
-	state := &RetryState{
-		fallback_file: fallback_file
-		c_error_dir:   c_error_dir
-		args:          retry_args.clone()
-	}
-	unsafe { retry_state(state) }
-	at_exit(retry_with_v1_at_exit) or {
-		eprintln('cannot register the V compatibility fallback: ${err}')
-		exit(1)
-	}
-	driver.run(driver_args)
-	os.rm(fallback_file) or {}
-	os.rmdir_all(c_error_dir) or {}
-}
-
 fn find_command(args []string) (int, string) {
 	mut option_value_follows := false
 	for i, arg in args {
@@ -524,7 +424,7 @@ fn find_command(args []string) (int, string) {
 			break
 		}
 		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			option_value_follows = profile_option_consumes_value(args, i)
 			continue
 		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {
@@ -534,7 +434,7 @@ fn find_command(args []string) (int, string) {
 		if arg in external_commands
 			|| arg in ['version', '-version', '--version', 'help', '-h', '--help', 'get', 'interpret',
 				'new', 'init', 'generate', 'install', 'link', 'list', 'outdated', 'remove', 'registry',
-				'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs', 'build-module'] {
+				'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
 			return i, arg
 		}
 		if !arg.starts_with('-') {
@@ -616,7 +516,7 @@ fn external_tool_runtime_args(command string, prefix_args []string, command_args
 	// options for the replacement compiler, not just for the launcher helper.
 	// `v test` needs them for each test compilation and its failure reproduction command.
 	// Keep those options visible after the launcher has built the cached executable.
-	if command in ['build-examples', 'build-tools', 'self', 'test', 'test-self'] {
+	if command in ['build-examples', 'build-tools', 'self', 'test', 'test-all', 'test-self'] {
 		tool_args << prefix_args
 	}
 	if command == 'watch' {
@@ -704,7 +604,6 @@ fn run_uncached_external_tool(vexe string, tool_name string, tool_source string,
 	// The prefix already includes VFLAGS. Keep the original environment for the tool,
 	// but do not prepend the flags twice or retry its build with another compiler.
 	environment['VFLAGS'] = ''
-	environment[v3_no_fallback_env] = '1'
 	mut build := os.new_process(vexe)
 	build.set_args(build_args)
 	build.set_environment(environment)
@@ -755,7 +654,7 @@ fn install_external_tool_modules(tool_name string, tool_source string, compile_a
 // Diagnostic tools used to be built this way by `util.launch_tool`: keep them GC-free so
 // they can start even when libgc cannot allocate executable pages or cannot be loaded.
 fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
-	mut compile_args := clean_compiler_selection_flags(prefix_args)
+	mut compile_args := prefix_args.clone()
 	if tool_name in ['vfmt', 'vself', 'vtest'] {
 		// Backend/target options describe formatting rules, the replacement
 		// compiler, or test programs. Build the helper for the host C backend.
@@ -789,7 +688,7 @@ fn external_tool_args_without_prod(args []string) []string {
 		if arg == '-prod' { continue }
 		result << arg
 		value_follows = if arg in ['-prof', '-profile'] {
-			v1_fallback_profile_option_consumes_value(args, i)
+			profile_option_consumes_value(args, i)
 		} else {
 			arg == '-cf' || pref.option_may_consume_value(arg)
 		}
@@ -820,7 +719,7 @@ fn external_tool_args_without_target(args []string) []string {
 		}
 		result << arg
 		value_follows = if arg in ['-prof', '-profile'] {
-			v1_fallback_profile_option_consumes_value(args, i)
+			profile_option_consumes_value(args, i)
 		} else {
 			arg == '-cf' || pref.option_may_consume_value(arg)
 		}
@@ -850,7 +749,7 @@ fn split_tool_backend_args(args []string) ([]string, []string) {
 		} else {
 			other_args << arg
 			value_follows = if arg in ['-prof', '-profile'] {
-				v1_fallback_profile_option_consumes_value(args, i)
+				profile_option_consumes_value(args, i)
 			} else {
 				arg == '-cf' || pref.option_may_consume_value(arg)
 			}
@@ -933,7 +832,7 @@ fn compiler_args_before_program(args []string) []string {
 			return args[..i]
 		}
 		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			option_value_follows = profile_option_consumes_value(args, i)
 			continue
 		}
 		if arg == '-raw-vsh-tmp-prefix' {
@@ -957,317 +856,7 @@ fn compiler_args_before_program(args []string) []string {
 	return args
 }
 
-fn clean_compiler_selection_flags(args []string) []string {
-	compiler_args := compiler_args_before_program(args)
-	mut result := compiler_args.filter(it !in ['-old-compiler', '-new-compiler'])
-	result << args[compiler_args.len..]
-	return result
-}
-
-fn retry_with_v1_at_exit() {
-	state := unsafe { retry_state(nil) }
-	if state == unsafe { nil } || !os.is_file(state.fallback_file) {
-		return
-	}
-	payload := os.read_file(state.fallback_file) or { return }
-	reason := payload.all_before('\n').trim_space()
-	if reason !in ['compiler_error', 'c_compilation_error', 'inline_asm'] {
-		return
-	}
-	if v3_exact_output_fixture_args(state.args) {
-		if '-no-closures' in state.args {
-			os.rm(state.fallback_file) or {}
-			os.rmdir_all(state.c_error_dir) or {}
-			return
-		}
-		os.setenv(v3_retry_env, '1', true)
-		launch_v1(state.args, 'V compilation failed (${reason})', *state)
-	}
-	if reason != 'c_compilation_error' {
-		// V errors are final. The driver may have deferred their diagnostics while
-		// a failure marker was armed, so replay V3 with fallback disabled instead
-		// of launching V1. Returning preserves the original compiler exit status.
-		diagnostics := v3_fallback_diagnostics(os.real_path(os.executable()), state.args, *state)
-		if diagnostics != '' {
-			eprint(diagnostics)
-		}
-		os.rm(state.fallback_file) or {}
-		os.rmdir_all(state.c_error_dir) or {}
-		return
-	}
-	os.setenv(v3_retry_env, '1', true)
-	launch_v1(state.args, 'V compilation failed (${reason})', *state)
-}
-
-@[noreturn]
-fn launch_v1(args []string, reason string, report_state RetryState) {
-	legacy_module_fixture := v3_fixture_expects_legacy_compiler_modules(args)
-	vls_mode := '-vls-mode' in args
-	transparent_fixture_fallback := vls_mode
-		|| v3_fixture_requires_compatibility_compiler(args)
-		|| (report_state.fallback_file != '' && v3_exact_output_fixture_args(args))
-	diagnostics := if transparent_fixture_fallback {
-		''
-	} else {
-		v3_fallback_diagnostics(os.real_path(os.executable()), args, report_state)
-	}
-	if diagnostics != '' {
-		eprint(diagnostics)
-	}
-	fallback := ensure_v1_fallback(reason, transparent_fixture_fallback) or {
-		report_v3_fallback_unavailable(args, reason, report_state, err.msg(), diagnostics != '')
-		exit(1)
-	}
-	compatibility_vexe := if v3_fixture_uses_current_vlib_compatibility(args) {
-		if current_root := find_vroot(os.real_path(os.executable())) {
-			os.join_path(current_root, v1_fallback_binary + $if windows { '.exe' } $else { '' })
-		} else {
-			fallback
-		}
-	} else {
-		fallback
-	}
-	os.setenv('VEXE', compatibility_vexe, true)
-	os.setenv('VCHILD', 'true', true)
-	if !transparent_fixture_fallback {
-		eprintln('${reason}; retrying with `${fallback}`.')
-	}
-	os.unsetenv(v3_fallback_file_env)
-	os.unsetenv(v3_c_error_dir_env)
-	// A source retry's private marker must not reach the compatibility compiler.
-	os.unsetenv('V3_INTERNAL_CACHE_FORCE_SOURCE')
-	mut launch_args := v1_fallback_args(args)
-	_, launched_command := find_command(args)
-	if launched_command == 'build-module' {
-		if current_root := find_vroot(os.real_path(os.executable())) {
-			launch_args = v1_build_module_args(launch_args, current_root, os.dir(fallback))
-		}
-	}
-	if transparent_fixture_fallback && '-nocache' !in launch_args {
-		launch_args.prepend('-nocache')
-	}
-	mut process := os.new_process(fallback)
-	process.set_args(launch_args)
-	mut compatibility_output := ''
-	if legacy_module_fixture || vls_mode {
-		process.set_redirect_stdio_merged()
-		process.run()
-		compatibility_output = process.stdout_slurp()
-		process.wait()
-	} else {
-		process.wait()
-	}
-	if process.status == .aborted || process.code < 0 {
-		eprintln('failed to launch the V 0.5.2 compatibility compiler `${fallback}`: ${process.err}')
-		process.close()
-		exit(1)
-	}
-	code := process.code
-	process.close()
-	if legacy_module_fixture && compatibility_output != '' {
-		eprint(v3_rewrite_legacy_compiler_module_diagnostics(compatibility_output))
-	} else if vls_mode && compatibility_output != '' {
-		fallback_root := os.dir(fallback)
-		current_root := find_vroot(os.real_path(os.executable())) or { fallback_root }
-		eprint(compatibility_output.replace(fallback_root, current_root))
-	}
-	if code == 0 && report_state.fallback_file != '' && !transparent_fixture_fallback {
-		submit_v3_fallback_report(fallback, report_state)
-	}
-	// These notes describe diagnostics that were suppressed, not errors printed above.
-	if code != 0 && diagnostics == '' && !transparent_fixture_fallback {
-		report_v1_fallback_exit(report_state, v1_fallback_exit_identifies_compiler_failure(args))
-	}
-	os.rm(report_state.fallback_file) or {}
-	os.rmdir_all(report_state.c_error_dir) or {}
-	exit(code)
-}
-
-// v1_fallback_args removes V3's private restart options before launching the
-// compatibility compiler, preserving option values and program arguments.
-fn v1_fallback_args(args []string) []string {
-	mut result := []string{cap: args.len}
-	mut option_value_follows := false
-	mut runs_input := false
-	mut input_seen := false
-	mut command_seen := false
-	for i, arg in args {
-		if option_value_follows {
-			result << arg
-			option_value_follows = false
-			continue
-		}
-		if arg.starts_with('-v3-internal-') || arg in ['-macos-v3-internal-quiet',
-			'-macos-v3-compat-c99'] {
-			continue
-		}
-		result << arg
-		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
-			// After a command, the driver treats the next non-option as profile output.
-			if command_seen && i + 1 < args.len {
-				next := args[i + 1]
-				option_value_follows = next == '-' || !next.starts_with('-')
-			}
-			continue
-		}
-		if arg == '-raw-vsh-tmp-prefix' && !input_seen {
-			runs_input = true
-		}
-		if arg == '-cf' || pref.option_may_consume_value(arg) {
-			option_value_follows = true
-			continue
-		}
-		if arg.starts_with('-') && arg != '-' {
-			continue
-		}
-		if !input_seen && !runs_input && arg in ['run', 'crun'] {
-			runs_input = true
-			command_seen = true
-			continue
-		}
-		if !input_seen && !runs_input && arg in ['build', 'test'] {
-			command_seen = true
-			continue
-		}
-		if runs_input || arg.ends_with('.vsh') {
-			result << args[i + 1..]
-			break
-		}
-		input_seen = true
-	}
-	return result
-}
-
-// v1_build_module_args points `build-module` at the compatibility compiler's own
-// copy of a `vlib` module. That compiler resolves imports from its own V 0.5.2
-// tree and its `-usecache` builds use those modules, while the modules in this
-// checkout target the current compiler and need newer APIs.
-fn v1_build_module_args(args []string, current_root string, fallback_root string) []string {
-	current_vlib := os.join_path(os.real_path(current_root), 'vlib')
-	command_index, _ := find_command(args)
-	mut mapped := args.clone()
-	for i in command_index + 1 .. args.len {
-		arg := args[i]
-		if arg.starts_with('-') || !os.is_dir(arg) {
-			continue
-		}
-		module_dir := os.real_path(arg)
-		if module_dir != current_vlib && !module_dir.starts_with(current_vlib + os.path_separator) {
-			continue
-		}
-		fallback_module := os.join_path(fallback_root, 'vlib', module_dir[current_vlib.len..].trim_left(os.path_separator))
-		if os.is_dir(fallback_module) {
-			mapped[i] = fallback_module
-		}
-	}
-	return mapped
-}
-
-// v1_fallback_exit_identifies_compiler_failure reports whether a nonzero exit
-// can only have come from the compatibility compiler. Commands that run a
-// program, tests, or an external tool can return their child's status after a
-// successful compilation, so their nonzero exits are ambiguous and must not be
-// described as compiler failures.
-fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
-	compiler_args := args[..v1_fallback_compiler_prefix_len(args)]
-	backend := v1_fallback_selected_backend(compiler_args)
-	mut skip_running := os.getenv('VNORUN') != ''
-	mut direct_test := false
-	mut option_value_follows := false
-	// `-raw-vsh-tmp-prefix` runs its input as a script, whatever its extension.
-	mut raw_vsh := false
-	for i, arg in args {
-		if option_value_follows {
-			option_value_follows = false
-			continue
-		}
-		if arg == '-e' || arg.starts_with('-e=') || arg == '-' {
-			return false
-		}
-		if arg == '-raw-vsh-tmp-prefix' {
-			raw_vsh = true
-		}
-		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
-			continue
-		}
-		if arg in ['-skip-running', '-check', '-check-syntax', '-generate-c-project'] {
-			skip_running = true
-		}
-		if arg in ['-o', '-output'] {
-			output := args[i + 1] or { '' }
-			if output == '-' || (backend == 'c' && output.ends_with('.c')) {
-				skip_running = true
-			}
-			option_value_follows = true
-			continue
-		}
-		if arg == '-cf' || pref.option_may_consume_value(arg) {
-			option_value_follows = true
-			continue
-		}
-		if direct_test && !arg.starts_with('-') {
-			return true
-		}
-		if arg in external_commands || arg == 'test' {
-			return false
-		}
-		if arg in ['run', 'crun'] {
-			return skip_running
-		}
-		if !arg.starts_with('-') {
-			// The compatibility compiler runs JavaScript tests even though V3's
-			// test discovery disables them until its JavaScript backend is available.
-			is_test := pref.is_test_file_for_backend(arg, backend)
-				|| (backend == 'js' && arg.ends_with('_test.js.v')) || arg.ends_with('_test.vv')
-			if is_test {
-				direct_test = true
-				continue
-			}
-			return skip_running || !(arg.ends_with('.vsh') || raw_vsh)
-		}
-	}
-	if direct_test {
-		// The retry runs under V 0.5.2, which executes direct tests even when an
-		// explicit executable output is requested. Model the retry, not V3 here.
-		return skip_running
-	}
-	return true
-}
-
-fn v1_fallback_compiler_prefix_len(args []string) int {
-	mut option_value_follows := false
-	mut raw_vsh := false
-	for i, arg in args {
-		if option_value_follows {
-			option_value_follows = false
-			continue
-		}
-		if arg == '-raw-vsh-tmp-prefix' {
-			raw_vsh = true
-		}
-		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
-			continue
-		}
-		if arg == '-cf' || pref.option_may_consume_value(arg) {
-			option_value_follows = true
-			continue
-		}
-		if arg == '-' || arg in external_commands || arg in ['test', 'run', 'crun']
-			|| arg.ends_with('.vsh') || (raw_vsh && !arg.starts_with('-')) {
-			return i
-		}
-	}
-	return args.len
-}
-
-fn v1_fallback_selected_backend(args []string) string {
-	return selected_backend(args, true)
-}
-
-fn selected_backend(args []string, include_compile_backends bool) string {
+fn selected_backend(args []string) string {
 	mut backend := 'c'
 	mut target_arch := pref.host_arch()
 	mut backend_value_follows := false
@@ -1296,22 +885,18 @@ fn selected_backend(args []string, include_compile_backends bool) string {
 			backend = 'native'
 			continue
 		}
-		if arg in ['-b', '-backend']
-			|| (include_compile_backends && arg in ['-compile-backend', '--compile-backend']) {
+		if arg in ['-b', '-backend'] {
 			backend_value_follows = true
 			continue
 		}
-		for option in ['-b=', '-backend=', '-compile-backend=', '--compile-backend='] {
-			if !include_compile_backends && option in ['-compile-backend=', '--compile-backend='] {
-				continue
-			}
+		for option in ['-b=', '-backend='] {
 			if arg.starts_with(option) {
 				backend = arg.all_after(option)
 				break
 			}
 		}
 		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			option_value_follows = profile_option_consumes_value(args, i)
 			continue
 		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {
@@ -1325,9 +910,8 @@ fn selected_backend(args []string, include_compile_backends bool) string {
 	}
 }
 
-// v1_fallback_profile_option_consumes_value mirrors the driver's compatibility
-// rule for V1's optional `-profile [file]` argument.
-fn v1_fallback_profile_option_consumes_value(args []string, idx int) bool {
+// profile_option_consumes_value mirrors the driver's optional profile output argument.
+fn profile_option_consumes_value(args []string, idx int) bool {
 	next := args[idx + 1] or { return false }
 	if next == '-' {
 		return true
@@ -1345,310 +929,6 @@ fn v1_fallback_profile_option_consumes_value(args []string, idx int) bool {
 		}
 	}
 	return false
-}
-
-// report_v1_fallback_exit explains why V3's diagnostics are absent after an
-// unsuccessful compatibility retry. A run-like command may have compiled and
-// returned its program's status, so only identify compiler output when the
-// command cannot have run user code.
-fn report_v1_fallback_exit(state RetryState, compiler_failure bool) {
-	if state.fallback_file == '' {
-		return
-	}
-	payload := os.read_file(state.fallback_file) or { return }
-	for note in v1_fallback_exit_notes(payload, compiler_failure) {
-		eprintln(note)
-	}
-}
-
-// v1_fallback_exit_notes turns a staged fallback payload into the notes shown
-// after an unsuccessful retry.
-fn v1_fallback_exit_notes(payload string, compiler_failure bool) []string {
-	// The stage is only recorded when the payload carries a second line.
-	stage := if payload.contains('\n') { payload.all_after('\n').trim_space() } else { '' }
-	stopped_in := if stage == '' { '' } else { ' during ${stage}' }
-	fallback_note := if compiler_failure {
-		'note: the V ${v_version} compatibility compiler failed too, so the errors above are its own.'
-	} else {
-		'note: the V ${v_version} compatibility retry exited unsuccessfully, so any errors above are its own; the exit status may instead come from the program.'
-	}
-	return [
-		fallback_note,
-		'note: V stopped${stopped_in} and kept its diagnostics quiet for this retry; re-run with `-new-compiler` to see them.',
-	]
-}
-
-fn submit_v3_fallback_report(fallback string, state RetryState) {
-	payload := os.read_file(state.fallback_file) or { return }
-	kind := payload.all_before('\n').trim_space()
-	if kind == 'inline_asm'
-		|| os.getenv('V_C_ERROR_BUG_REPORT_DISABLED').trim_space().to_lower() in ['1', 'true',
-			'yes', 'on'] {
-		return
-	}
-	custom_url := os.getenv('V_C_ERROR_BUG_REPORT_URL').trim_space().trim_right('/')
-	if custom_url == '' && (os.getenv('GITHUB_ACTIONS') == 'true' || os.getenv('GITHUB_JOB') != '') {
-		return
-	}
-	report_url := if custom_url == '' { 'https://bugs.vlang.io/bug-report' } else { custom_url }
-	stage := payload.all_after('\n').trim_space()
-	mut ccompiler := stage
-	mut c_output := ''
-	mut report_kind := 'v3-compiler-error'
-	if kind == 'c_compilation_error' {
-		report_kind = 'v-c-compiler-error'
-		ccompiler = os.read_file(os.join_path(state.c_error_dir, 'compiler')) or { '' }
-		c_output = os.read_file(os.join_path(state.c_error_dir, 'output')) or { '' }
-		if c_output.len > 64 * 1024 {
-			c_output = c_output[..64 * 1024] + '\n... report truncated before upload ...\n'
-		}
-	}
-	report_file := os.join_path(os.vtmp_dir(), 'v3-fallback-report-${os.getpid()}.json')
-	report := '{"kind":${json_quote(report_kind)},"v_version":${json_quote('V ${v_version} ${@VCURRENTHASH}')},"target_os":${json_quote(os.user_os())},"target_backend":"c","arch":${json_quote(@PLATFORM)},"ccompiler":${json_quote(ccompiler)},"build_options":${json_quote(state.args.join(' '))},"c_error":${json_quote(c_output)},"c_file":"","c_line":0,"c_context":[],"v_file":"","v_line":0,"v_context":[],"v_source":""}'
-	os.write_file(report_file, report) or {
-		eprintln('V3 compiler bug report was not staged: ${err}')
-		return
-	}
-	defer {
-		os.rm(report_file) or {}
-	}
-	mut sender := os.new_process(fallback)
-	sender.set_args(['bug-report-send', '--url', report_url, '--file', report_file])
-	sender.set_redirect_stdio_merged()
-	sender.wait()
-	code := sender.code
-	output := sender.stdout_slurp().trim_space()
-	err := sender.err
-	sender.close()
-	if code != 0 {
-		details := if output == '' { err } else { output }
-		eprintln('V3 compiler bug report was not sent to ${report_url}: ${details}')
-		return
-	}
-	eprintln('note: V could not build this program with the default compiler, so it used V 0.5.2 instead.')
-	eprintln('A metadata-only bug report (no source) was submitted to ${report_url} so this can be fixed.')
-	if output != '' {
-		eprintln(output)
-	}
-	eprintln('Set V_C_ERROR_BUG_REPORT_DISABLED=1 to opt out of these automatic reports.')
-}
-
-fn json_quote(value string) string {
-	mut out := strings.new_builder(value.len + 2)
-	out.write_u8(`\"`)
-	for byte in value.bytes() {
-		match byte {
-			`\"` {
-				out.write_string('\\"')
-			}
-			`\\` {
-				out.write_string('\\\\')
-			}
-			`\b` {
-				out.write_string('\\b')
-			}
-			`\f` {
-				out.write_string('\\f')
-			}
-			`\n` {
-				out.write_string('\\n')
-			}
-			`\r` {
-				out.write_string('\\r')
-			}
-			`\t` {
-				out.write_string('\\t')
-			}
-			else {
-				out.write_u8(if byte < 0x20 { ` ` } else { byte })
-			}
-		}
-	}
-	out.write_u8(`\"`)
-	return out.str()
-}
-
-fn ensure_v1_fallback(reason string, quiet_install bool) !string {
-	vroot := find_vroot(os.executable()) or {
-		find_vroot(@VEXEROOT) or {
-			return error('${reason}, but the V source tree could not be found. Run `make v1` in the V source directory.')
-		}
-	}
-	fallback := os.join_path(vroot, v1_fallback_binary + $if windows { '.exe' } $else { '' })
-	if installed := resolve_v1_fallback(fallback) {
-		return installed
-	}
-	cache_parent := v1_fallback_cache_parent()!
-	cached_launcher := v1_fallback_cached_launcher(cache_parent)
-	mut install_output := ''
-	install_notice := '${reason}, but no usable V ${v_version} fallback was found; running `make v1` now...'
-	if installed := resolve_v1_fallback(cached_launcher) {
-		return installed
-	} else {
-		make_command := find_make() or {
-			return error('${reason}, but no usable V ${v_version} fallback was found and make is unavailable. ${v1_fallback_make_hint()} Then run `make v1` in `${vroot}`.')
-		}
-		if !quiet_install {
-			eprintln(install_notice)
-		}
-		mut process := os.new_process(make_command)
-		process.set_args(['v1'])
-		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()), cache_parent, cached_launcher))
-		process.set_work_folder(vroot)
-		if quiet_install {
-			// Mini-VLS responses and exact-output fixtures use the diagnostic stream.
-			// Keep installer progress out of it, but retain it if installation fails.
-			process.set_redirect_stdio_merged()
-			process.run()
-			install_output = process.stdout_slurp()
-		}
-		process.wait()
-		code := process.code
-		process.close()
-		if code != 0 {
-			if quiet_install {
-				eprintln(install_notice)
-				eprint(install_output)
-			}
-			return error('`make v1` failed with exit code ${code}. Run it manually in `${vroot}` for more details.')
-		}
-	}
-	return resolve_installed_v1_fallback(fallback, cached_launcher) or {
-		if quiet_install {
-			eprintln(install_notice)
-			eprint(install_output)
-		}
-		return error('`make v1` completed without installing a usable V ${v_version} fallback at `${cached_launcher}`.')
-	}
-}
-
-fn v1_fallback_make_environment(bootstrap string, cache_parent string, output string) map[string]string {
-	mut environment := os.environ()
-	// Keep path data out of make variable syntax and shell command text. The
-	// installer reads these inherited values directly without re-evaluating them.
-	environment['VEXE'] = './v'
-	environment['V1_FALLBACK_BOOTSTRAP'] = bootstrap
-	environment['V1_FALLBACK_CACHE_DIR'] = cache_parent
-	environment['V1_FALLBACK_OUTPUT'] = output
-	return environment
-}
-
-fn v1_fallback_cache_parent() !string {
-	configured := os.getenv('V1_FALLBACK_CACHE_DIR')
-	if configured != '' {
-		return os.abs_path(configured)
-	}
-	xdg := os.getenv('XDG_CACHE_HOME')
-	if xdg != '' {
-		return os.abs_path(os.join_path(xdg, 'v', 'v1-fallback'))
-	}
-	home := os.getenv('HOME')
-	if home != '' {
-		return os.abs_path(os.join_path(home, '.cache', 'v', 'v1-fallback'))
-	}
-	$if windows {
-		local_app_data := os.getenv('LOCALAPPDATA')
-		if local_app_data != '' {
-			return os.abs_path(os.join_path(local_app_data, 'v', 'v1-fallback'))
-		}
-	}
-	return v1_fallback_private_temp_cache_parent(os.temp_dir())
-}
-
-fn v1_fallback_private_temp_cache_parent(temp_root string) !string {
-	$if windows {
-		return v1_fallback_private_windows_temp_cache_parent(temp_root)
-	} $else {
-		root_attributes := os.stat(temp_root) or {
-			return error('could not inspect the temporary directory `${temp_root}`: ${err}')
-		}
-		if !v1_fallback_temp_root_owner_is_trusted(root_attributes.uid, u32(os.geteuid())) {
-			return error('temporary directory `${temp_root}` is not owned by the current user or root')
-		}
-		if root_attributes.mode & 0o022 != 0 && root_attributes.mode & os.s_isvtx == 0 {
-			return error('temporary directory `${temp_root}` is writable by other users without the sticky bit')
-		}
-		candidate := os.join_path(temp_root, 'v1-fallback-cache-${os.geteuid()}')
-		os.mkdir(candidate, mode: 0o700) or {}
-		attributes := os.lstat(candidate) or {
-			return error('could not create a private V1 fallback cache at `${candidate}`: ${err}')
-		}
-		if os.is_link(candidate) || attributes.get_filetype() != .directory {
-			return error('refusing unsafe V1 fallback cache path `${candidate}`: expected a real directory')
-		}
-		if attributes.uid != u32(os.geteuid()) || attributes.get_mode().bitmask() != 0o700 {
-			return error('refusing unsafe V1 fallback cache path `${candidate}`: expected user-owned mode 0700')
-		}
-		return candidate
-	}
-}
-
-fn v1_fallback_temp_root_owner_is_trusted(owner u32, effective_user u32) bool {
-	return owner == 0 || owner == effective_user
-}
-
-fn v1_fallback_cached_launcher(cache_parent string) string {
-	return os.join_path(cache_parent, v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
-}
-
-fn resolve_installed_v1_fallback(fallback string, cached_launcher string) ?string {
-	if installed := resolve_v1_fallback(fallback) {
-		return installed
-	}
-	if cached_launcher != fallback {
-		return resolve_v1_fallback(cached_launcher)
-	}
-	return none
-}
-
-fn resolve_v1_fallback(fallback string) ?string {
-	if !os.is_executable(fallback) {
-		return none
-	}
-	root_file := fallback + '.vroot'
-	if os.is_file(root_file) {
-		fallback_root := os.read_file(root_file) or { '' }.trim_space()
-		cached_fallback := os.join_path(fallback_root, 'v' + $if windows { '.exe' } $else { '' })
-		if os.is_executable(cached_fallback) && v1_fallback_has_expected_version(cached_fallback)
-			&& v1_fallback_has_crypto_subtle(fallback_root)
-			&& v1_fallback_has_moved_modules(fallback_root) {
-			return cached_fallback
-		}
-	}
-	return none
-}
-
-fn v1_fallback_has_crypto_subtle(root string) bool {
-	module_dir := os.join_path(root, 'vlib', 'crypto', 'subtle')
-	return os.is_file(os.join_path(module_dir, 'aliasing.v'))
-		&& os.is_file(os.join_path(module_dir, 'comparison.v'))
-}
-
-fn v1_fallback_has_moved_modules(root string) bool {
-	for name in v1_fallback_compatibility_modules {
-		module_dir := os.join_path(root, 'vlib', name)
-		if !os.is_file(os.join_path(module_dir, '${name}.v')) {
-			return false
-		}
-		marker := os.read_file(os.join_path(module_dir, v1_fallback_compatibility_marker)) or {
-			return false
-		}
-		if marker.trim_space() != v_version {
-			return false
-		}
-	}
-	return true
-}
-
-fn v1_fallback_has_expected_version(executable string) bool {
-	// Both compilers report 0.5.2. This launcher-only marker also identifies
-	// older launchers copied into the fallback slot before identity checks existed.
-	binary := os.read_file(executable) or { return false }
-	if binary.contains(v3_no_fallback_env) {
-		return false
-	}
-	result := os.exec([executable, 'version'])
-	return result.exit_code == 0 && result.output.starts_with('V ${v_version} ')
 }
 
 fn find_vroot(executable string) ?string {
@@ -1669,32 +949,4 @@ fn find_vroot(executable string) ?string {
 		current = parent
 	}
 	return none
-}
-
-// find_make returns the GNU make to run `make v1` with, or none when PATH has
-// none.
-//
-// `mingw32-make` is the name MSYS2 gives GNU make. A stock Windows install of V
-// has no `make` on PATH, and both `v1:` targets are POSIX shell recipes, so
-// MSYS2 is the toolchain that can run them. It is Windows only: on a Unix host
-// `mingw32-make` is a Windows cross-make, which must not build the fallback.
-fn find_make() ?string {
-	mut names := ['make', 'gmake']
-	$if windows {
-		names << 'mingw32-make'
-	}
-	for name in names {
-		if executable := os.find_abs_path_of_executable(name) {
-			return executable
-		}
-	}
-	return none
-}
-
-// v1_fallback_make_hint says where to get make on this platform.
-fn v1_fallback_make_hint() string {
-	$if windows {
-		return 'On Windows, install GNU make in MSYS2 (`make` or `mingw32-make`) and put its tools, including `sh`, on PATH.'
-	}
-	return 'Install make.'
 }

@@ -12,8 +12,7 @@ fn test_unused_compiler_entry_and_worker_helpers_leave_generated_c() ! {
 	output := os.join_path(root, 'main.c')
 	binary := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
 	environment := {
-		'VFLAGS':                 ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VFLAGS': ''
 	}
 	os.write_file(source, 'import v.driver\nfn main() { println(driver.project_backend_flag) }\n')!
 	compiled := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-no-retry-compilation',

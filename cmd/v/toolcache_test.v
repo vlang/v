@@ -481,7 +481,7 @@ fn test_staged_tool_binary_path_keeps_the_platform_executable_suffix() {
 	}
 }
 
-// A tool that failed to build must not be pinned to the compatibility compiler forever: a
+// A tool that failed to build must be rebuilt after its sources change. A
 // broken intermediate state of any vlib module it imports has to be retried once it is fixed.
 fn test_a_recorded_build_failure_is_retried_once_its_inputs_change() {
 	directory := toolcache_test_dir('failure')

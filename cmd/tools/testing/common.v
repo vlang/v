@@ -86,7 +86,6 @@ pub const separator = '-'.repeat(max_header_len) + '\n'
 
 pub const max_compilation_retries = get_max_compilation_retries()
 
-const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
 // Each worker compiles a separate test program, so bound automatic parallelism
 // by a memory budget per worker, and by the CPU count. Test builds of the
 // compiler's own modules peak at 0.4-1.5 GiB of RSS, a median of 0.6 GiB, and
@@ -694,7 +693,6 @@ fn add_automatic_execution_retry(mut details TestDetails, result os.Result) {
 }
 
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
-	os.setenv(c_error_bug_report_disabled_env, '1', true)
 	mut skip_files := []string{}
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)

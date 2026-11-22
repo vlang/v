@@ -19,7 +19,6 @@ fn test_cached_dependencies_keep_source_module_functions() ! {
 		'VFLAGS':                              ''
 		'V3CACHE':                             cache
 		'VTMP':                                vtmp
-		'V_MACOS_V3_NO_FALLBACK':              '1'
 		'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE': '1'
 		'V3_DISABLE_UNCHANGED_BUILD_CACHE':    '1'
 	}

@@ -174,7 +174,6 @@ fn test_default_build_rechecks_compile_time_environment() {
 		environment.delete('V3_ENABLE_UNCHANGED_BUILD_CACHE')
 		environment['V3CACHE'] = os.join_path(root, 'cache')
 		environment['V3_RECEIPT_ENV_REGRESSION'] = expected
-		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 		mut compiler := os.new_process(@VEXE)
 		compiler.set_environment(environment)
 		compiler.set_args(['-cc', c_compiler, '-o', executable, source])

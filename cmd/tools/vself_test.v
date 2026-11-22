@@ -123,13 +123,6 @@ fn test_linux_tinyc_self_build_does_not_enable_prealloc() {
 	assert !clang_override_result.output.contains('-b fastc'), clang_override_result.output
 	assert clang_override_result.output.contains('-prealloc'), clang_override_result.output
 	assert_vself_preserves_full_cli(clang_override_result.output)
-	old_result :=
-		os.exec(['env', 'VEXE=' + '${noop}', '${tool}', 'self', '-old-compiler', '-o',
-			'/tmp/vself_old_test'])
-	assert old_result.exit_code == 0, old_result.output
-	assert !old_result.output.contains('-new-compiler'), old_result.output
-	assert !old_result.output.contains('-b fastc'), old_result.output
-	assert_vself_preserves_full_cli(old_result.output)
 }
 
 fn test_linux_default_self_build_preserves_full_cli() {
@@ -189,13 +182,6 @@ fn test_macos_default_self_build_compiler_selection() {
 	assert prod_result.exit_code == 0, prod_result.output
 	assert !prod_result.output.contains('-parallel-cc'), prod_result.output
 	assert_vself_preserves_prod_options(prod_result.output)
-	old_result :=
-		os.exec(['env', 'CC=cc', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-old-compiler',
-			'-o', '/tmp/vself_macos_old_test'])
-	assert old_result.exit_code == 0, old_result.output
-	assert !old_result.output.contains('-new-compiler'), old_result.output
-	assert !old_result.output.contains('-b fastc'), old_result.output
-	assert_vself_preserves_full_cli(old_result.output)
 }
 
 fn test_bsd_self_build_uses_system_cc_and_v3_safeguards() {
@@ -266,7 +252,6 @@ fn test_other_native_host_self_replacement_preserves_cli() {
 	assert os.read_file('${isolated_vexe}.manifest')! == 'replacement manifest'
 	assert os.read_file(os.join_path(root, 'v_old.manifest'))! == 'previous manifest'
 	assert !os.exists(os.join_path(root, 'v2.manifest'))
-	assert !os.exists(os.join_path(root, 'v1_fallback'))
 
 	version_result :=
 		os.exec(['env', 'VFLAGS=', 'VOSARGS=', 'VEXE=' + '${isolated_vexe}', isolated_vexe, 'version'])
@@ -316,7 +301,6 @@ fn test_windows_plain_self_transition_does_not_install_fallback() {
 			'VEXE=' + '${isolated_vexe}', '${vself_tool}', 'self', '-silent'])
 	assert self_result.exit_code == 0, self_result.output
 	assert !self_result.output.contains('-prealloc'), self_result.output
-	assert !os.exists(os.join_path(root, 'v1_fallback.exe'))
 }
 
 fn test_self_build_defaults_to_c_backend() {
@@ -372,7 +356,7 @@ fn test_self_build_defaults_to_c_backend() {
 		assert !result.output.contains('-d skip_x64'), result.output
 		assert !result.output.contains('-d skip_ssa'), result.output
 	}
-	for opt_out in [['-d', 'skip_fastc'], ['-dskip_fastc'], ['-old-compiler']] {
+	for opt_out in [['-d', 'skip_fastc'], ['-dskip_fastc']] {
 		mut args := ['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self']
 		args << opt_out
 		args << ['-o', '/tmp/vself_fastc_opt_out_test']

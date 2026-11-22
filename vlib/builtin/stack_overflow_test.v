@@ -156,8 +156,7 @@ fn test_stack_overflow_prints_a_message() {
 }
 
 // Every hosted program links the handler, so it must build with the bundled TCC, whose
-// Linux arm64 runtime has no atomic helpers. A retry with the system C compiler, or with
-// the compatibility compiler, would hide a failure; the flags below disable both.
+// Linux arm64 runtime has no atomic helpers. Disable retrying with a system C compiler.
 fn test_handler_builds_with_tcc() {
 	$if !((linux || macos) && (amd64 || arm64)) {
 		return

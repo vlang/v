@@ -105,7 +105,6 @@ def check_linux(workflow):
             f"{name} shard count must match the scheduled indices",
         )
         require("VTEST_ONLY" not in lane, f"{name} must retain the full suite selection")
-        require(field(lane, "V_MACOS_V3_NO_FALLBACK", 6) == "1", name)
         setup = "uses: ./.github/actions/setup-v"
         dependencies = f"v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_{compiler}"
         command_step(lane, dependencies)
@@ -150,7 +149,6 @@ def check_macos_self_tests(workflow):
         require(field(lane, "VTEST_SELF_SHARD_COUNT", 6) == "'5'", "macOS shard counts must match")
         require(field(lane, "VJOBS", 6) == "'3'", "macOS workers must fit the hosted runner")
         require(field(lane, "VFLAGS", 6) == "-cc clang", "macOS test compiler flags changed")
-        require(field(lane, "V_MACOS_V3_NO_FALLBACK", 6) == "1", "macOS must use V3")
         require(
             re.search(r"^      VTEST_ONLY(?:_FN)?:", lane, re.MULTILINE) is None,
             "macOS must retain the full self-test selection",
@@ -252,7 +250,7 @@ def check_windows_gcc(workflow):
     require(order == sorted(order), "Windows GCC setup must complete before self tests")
     serial = job(workflow, "gcc-windows")
     require("steps.self_tests" not in serial, "Windows GCC still depends on the moved self-test step")
-    javascript = command_step(serial, "v -old-compiler -b js -o hi.js examples/js_hello_world.v && node hi.js")
+    javascript = command_step(serial, "v -b js -o hi.js examples/hello_world.v && node hi.js")
     require(
         "steps.test_pure_v_math_module.outcome == 'success'" in field(javascript, "if", 8),
         "Windows GCC remaining checks must still run after pure math",

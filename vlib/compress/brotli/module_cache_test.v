@@ -59,11 +59,10 @@ fn test_web_imports_retain_the_module_cache() ! {
 	// this test, then reuse it across the independent import programs.
 	cache := os.join_path(root, 'cache')
 	environment := {
-		'VFLAGS':                 ''
-		'VTMP':                   os.join_path(root, 'tmp')
-		'V3CACHE':                cache
-		'V3_CACHE_TRACE':         '1'
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VFLAGS':         ''
+		'VTMP':           os.join_path(root, 'tmp')
+		'V3CACHE':        cache
+		'V3_CACHE_TRACE': '1'
 	}
 	for module_name, type_name in {
 		'net.http':      'http.Request'
@@ -112,11 +111,10 @@ fn test_brotli_unpoison_helper_survives_module_cache() ! {
 		'}\n'
 	os.write_file(source, program_source)!
 	environment := {
-		'VFLAGS':                 ''
-		'VTMP':                   os.join_path(root, 'tmp')
-		'V3CACHE':                cache
-		'V3_CACHE_TRACE':         '1'
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VFLAGS':         ''
+		'VTMP':           os.join_path(root, 'tmp')
+		'V3CACHE':        cache
+		'V3_CACHE_TRACE': '1'
 	}
 	mut cached_objects := []string{}
 	for build in 0 .. 2 {

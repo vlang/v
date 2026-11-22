@@ -59,14 +59,12 @@ fn test_obsolete_skip_unused_preserves_arguments_after_command_named_input_direc
 	}
 }
 
-fn test_removed_usecache_flag_is_rejected_before_tool_or_compatibility_dispatch() {
-	for args in [['-usecache', 'examples/hello_world.v'], ['-usecache', 'help', 'build-c'],
-		['-old-compiler', '-usecache', 'help']] {
+fn test_removed_usecache_flag_is_rejected_before_tool_dispatch() {
+	for args in [['-usecache', 'examples/hello_world.v'], ['-usecache', 'help', 'build-c']] {
 		result := cmdexec.run(@VEXE, args)
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('unknown option `-usecache`'), result.output
 		assert result.output.contains('caching is enabled by default'), result.output
-		assert !result.output.contains('requires the compatibility compiler'), result.output
 	}
 }
 
@@ -87,4 +85,10 @@ fn test_completion_does_not_suggest_the_removed_usecache_flag() {
 	result := cmdexec.run(@VEXE, ['complete', 'bash', 'v', '-usecache'])
 	assert result.exit_code == 0, result.output
 	assert !result.output.contains('-usecache'), result.output
+}
+
+fn test_rejects_the_removed_compiler_selection_option() {
+	result := cmdexec.run(@VEXE, ['-old-compiler', 'examples/hello_world.v'])
+	assert result.exit_code == 1, result.output
+	assert result.output.trim_space() == 'unknown option `-old-compiler`', result.output
 }

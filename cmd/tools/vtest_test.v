@@ -194,10 +194,9 @@ fn test_wimpure_v_warnings_are_shown_for_test_files() {
 	assert res.output.contains('warning: C code will not be allowed in pure .v files'), res.output
 }
 
-fn test_js_tests_are_skipped_without_strict_mode() {
-	// Exercise the ordinary runner, not its -new-compiler-only skip list.
+fn test_js_tests_are_skipped() {
 	tool := vtest_fixture_executable()
-	keys := ['VFLAGS', 'VOSARGS', 'V_MACOS_V3_NO_FALLBACK', 'VTEST_HIDE_SKIP']
+	keys := ['VFLAGS', 'VOSARGS', 'VTEST_HIDE_SKIP']
 	mut old_values := map[string]string{}
 	for key in keys {
 		if value := os.getenv_opt(key) {

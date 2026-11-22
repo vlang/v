@@ -26,10 +26,9 @@ fn main() { production_target() }
 		'vinix', '-arch', pref.host_arch(), '-target-libc-headers', '-nofloat', '-gc', 'none',
 		'-no-closures', '-d', 'no_backtrace', '-exclude', '@vlib/builtin/backtraces_nix.c.v', '-o',
 		c_file, root], os.real_path(os.join_path(@DIR, '../../../..')), {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	assert build.exit_code == 0, build.output
 	c_source := os.read_file(c_file) or { panic(err) }

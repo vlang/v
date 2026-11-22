@@ -34,7 +34,7 @@ fn fastc_preferences_for_entry_paths(paths []string, prefs &pref.Preferences) pr
 fn fastc_builtin_file_excluded(path string, prefs &pref.Preferences) bool {
 	name := os.file_name(path)
 	// V3 uses the pointer-sized map implementation selected by `v3_backend`.
-	// The legacy layout in map.v belongs to the compatibility compiler.
+	// The portable bootstrap still uses the layout in map.v.
 	if name == 'map.v' && 'v3_backend' in prefs.user_defines {
 		return true
 	}

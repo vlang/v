@@ -43,9 +43,8 @@ fn test_lock_on_a_shared_parameter_in_a_spawned_fn_with_cached_module_objects() 
 	}
 	cache := os.join_path(root, 'cache')
 	env := {
-		'VTMP':                          cache
-		'VCACHE':                        cache
-		'V_C_ERROR_BUG_REPORT_DISABLED': '1'
+		'VTMP':   cache
+		'VCACHE': cache
 	}
 	for name in ['first', 'second'] {
 		source := os.join_path(root, '${name}.v')

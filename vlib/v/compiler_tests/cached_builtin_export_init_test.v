@@ -20,7 +20,6 @@ fn test_cached_builtin_exports_link_without_exports_in_main() {
 		'V3_CACHE_FORCE_SOURCE':               ''
 		'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE': '1'
 		'V3_DISABLE_UNCHANGED_BUILD_CACHE':    '1'
-		'V_MACOS_V3_NO_FALLBACK':              '1'
 	}
 	mut first_objects := map[string]string{}
 	for phase in ['cold', 'warm'] {

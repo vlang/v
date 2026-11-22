@@ -25,7 +25,6 @@ fn test_run_and_inline_forward_termination_and_clean_files() ! {
 			mut environment := os.environ()
 			environment.delete('VEXE')
 			environment.delete('VFLAGS')
-			environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 			process.set_environment(environment)
 			process.set_redirect_stdio()
 			process.run()

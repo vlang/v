@@ -208,12 +208,6 @@ class BootstrapConfigurationTests(unittest.TestCase):
                 self.assertIn('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS%', body)
                 self.assertNotIn('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS%', body)
 
-    def test_install_does_not_build_a_fake_compatibility_compiler(self):
-        install = routine("move_updated_to_v")
-        self.assertNotIn("-d v1_fallback", install)
-        self.assertNotIn("V1_FALLBACK", SOURCE)
-        self.assertNotIn("V_FALLBACK_CC_ARGS", SOURCE)
-
     def test_failed_checks_and_postbuild_tools_are_not_masked(self):
         self.assertIn('"%V_EXE%" test-all\nexit /b !ERRORLEVEL!', routine("check"))
         for label, command in (
@@ -1197,15 +1191,13 @@ int main(void) {
             check=False,
         )
 
-    def test_smoke_log_reports_a_compiler_fallback(self):
+    def test_smoke_log_reports_a_c_compiler_retry(self):
         with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
             workdir = Path(directory)
             clean = self.run_smoke_log_check(workdir, "Hello, World!\n")
             self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
             for log_text in (
                 "warning: tcc compilation failed, falling back to gcc.exe\n",
-                "V compilation failed (c_compilation_error); retrying with the V1 compiler\n",
-                "note: V could not build this program with the default compiler\n",
             ):
                 with self.subTest(log=log_text):
                     result = self.run_smoke_log_check(workdir, log_text)

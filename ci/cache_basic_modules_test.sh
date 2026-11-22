@@ -5,7 +5,7 @@ repo=$(CDPATH= cd "$(dirname "$0")/.." && pwd -P)
 vexe=${VEXE:-"$repo/v"}
 work=$(mktemp -d "${TMPDIR:-/tmp}/v-make-cache.XXXXXX")
 trap 'rm -rf "$work"' EXIT
-export V3CACHE="$work/cache" V3_CACHE_TRACE=1 V_MACOS_V3_NO_FALLBACK=1
+export V3CACHE="$work/cache" V3_CACHE_TRACE=1
 export V3_DISABLE_UNCHANGED_BUILD_CACHE=1 V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1
 unset V3_CACHE_FORCE_SOURCE V3_INTERNAL_CACHE_FORCE_SOURCE
 

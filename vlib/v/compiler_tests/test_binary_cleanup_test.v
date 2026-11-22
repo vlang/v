@@ -27,11 +27,7 @@ fn binary_cleanup_compile(root string, args []string) os.Result {
 			os.unsetenv('VTMP')
 		}
 	}
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	cc := $if windows { 'gcc' } $else { 'cc' }
 	mut flags := ['-new-compiler', '-no-retry-compilation', '-memory-limit', '10G', '-cc', cc]
 	flags << args

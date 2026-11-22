@@ -34,7 +34,6 @@ fn test_should_compile_all_reuses_native_module_cache() ! {
 	environment['V3_CACHE_TRACE'] = '1'
 	environment['V3_DISABLE_UNCHANGED_BUILD_CACHE'] = '1'
 	environment['V3_CACHE_DISABLE_PROGRAM_EXECUTABLE'] = '1'
-	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	tool := os.join_path(root, 'vshould-compile-all')
 	built := run_should_compile_cache_command(@VEXE, ['-o', tool,
 		os.join_path(@VEXEROOT, 'cmd', 'tools', 'vshould-compile-all.v')], environment)

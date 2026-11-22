@@ -23,7 +23,6 @@ fn test_compiler_updates_reuse_unchanged_generated_module_objects() ! {
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 	environment['V3_CACHE_REFRESH'] = '1'
 	environment['V_SKIP_VVMRC'] = '1'
-	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	for index in 0 .. 2 {
 		// Different executable identities force fresh compiler-specific interfaces
 		// even though these compilers generate the same module C.
@@ -115,7 +114,6 @@ fn test_synthetic_refresh_reports_failed_tinycc_module_objects() ! {
 	}
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 	environment['VEXE'] = @VEXE
-	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	mut process := os.new_process(helper)
 	process.set_environment(environment)
 	process.set_redirect_stdio()
@@ -154,7 +152,7 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 	saved := os.environ()
 	variables := ['V3CACHE', 'VEXE', 'VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH',
 		'V3_CACHE_REFRESH_ENTRY', 'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V3_CACHE_FORCE_SOURCE',
-		'V3_CACHE_TRACE', 'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
+		'V3_CACHE_TRACE', 'V_SKIP_VVMRC']
 	defer {
 		for variable in variables {
 			if variable in saved {
@@ -169,7 +167,6 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
 	os.setenv('VEXE', @VEXE, true)
 	os.setenv('V_SKIP_VVMRC', '1', true)
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	log := os.join_path(root, 'calls')
 	dependency_log := os.join_path(root, 'dependency_calls')
 	compiler := os.join_path(root, 'cc')

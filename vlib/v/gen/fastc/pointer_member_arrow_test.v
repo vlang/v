@@ -93,10 +93,9 @@ fn run_pointer_member_fastc_program(name string, source string) !string {
 	program := os.join_path(root, 'program')
 	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-gc', 'none', '-o',
 		program, root], os.real_path(os.join_path(@DIR, '../../../..')), {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	if build.exit_code != 0 {
 		return error('fastc build failed: ${build.output}')
