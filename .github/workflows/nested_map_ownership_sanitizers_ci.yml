@@ -1,0 +1,59 @@
+name: Nested map staged-RHS ownership sanitizers
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/nested_map_ownership_sanitizers_ci.yml'
+      - 'vlib/v/transform/**'
+      - 'vlib/v/gen/c/nested_map_append_staged_rhs_test.v'
+      - 'vlib/v/tests/nested_map_mutation_missing_outer_key_test.v'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nested-map-ownership-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  original-regression:
+    name: Nested map ownership (${{ matrix.sanitizer }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [memory, address-no-gc]
+    env:
+      VJOBS: '2'
+      MSAN_OPTIONS: halt_on_error=1:exit_code=86
+      ASAN_OPTIONS: halt_on_error=1:detect_leaks=1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Check original V tests are formatted
+        run: |
+          ./v fmt -verify vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+          ./v fmt -verify vlib/v/gen/c/nested_map_append_staged_rhs_test.v
+      - name: Reproduce corrected original nested-map test with MemorySanitizer
+        if: matrix.sanitizer == 'memory'
+        run: |
+          ./v -cc clang -gc none -d use_bundled_libgc \
+            -cflags -fno-omit-frame-pointer -cflags -maes -cflags -mpclmul \
+            -cflags -fsanitize=memory -silent \
+            vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      - name: Reproduce corrected original nested-map test with AddressSanitizer without GC
+        if: matrix.sanitizer == 'address-no-gc'
+        run: |
+          ./v -cc clang -gc none -cflags -fno-omit-frame-pointer \
+            -cflags -fsanitize=address -silent \
+            vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      - name: Check generated C retains staged-array ownership
+        if: matrix.sanitizer == 'address-no-gc'
+        run: |
+          ./v -cc gcc -silent vlib/v/gen/c/nested_map_append_staged_rhs_test.v
