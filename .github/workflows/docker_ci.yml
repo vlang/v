@@ -2,6 +2,13 @@ name: Docker CI
 
 on:
   workflow_call:
+  # Run the exact Ubuntu musl cold/warm regression on PR changes too; the
+  # master-only caller cannot validate this patch before it is merged.
+  pull_request:
+    paths:
+      - '.github/workflows/docker_ci.yml'
+      - 'vlib/v/gen/c/cached_interface_dispatch_test.v'
+      - 'cmd/tools/vtest-self.v'
 
 concurrency:
   group: docker-docker_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
