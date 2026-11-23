@@ -1049,6 +1049,24 @@ fn test_powi() {
 	assert powi(2, 62) == i64(4611686018427387904)
 	assert powi(0, -2) == -1 // div by 0
 	assert powi(2, -1) == 0
+	assert powi(min_i64, -1) == 0
+	assert powi(min_i64, -2) == 0
+}
+
+fn test_powi_negative_max_odd() {
+	assert powi(max_i64, -1) == 0
+}
+
+fn test_powi_negative_max_even() {
+	assert powi(max_i64, -2) == 0
+}
+
+fn test_powi_negative_min_plus_one_odd() {
+	assert powi(min_i64 + 1, -1) == 0
+}
+
+fn test_powi_negative_min_plus_one_even() {
+	assert powi(min_i64 + 1, -2) == 0
 }
 
 fn test_count_digits() {

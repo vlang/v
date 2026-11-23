@@ -36,9 +36,9 @@ pub fn pow10(n int) f64 {
 
 // powi returns base raised to power (a**b) as an integer (i64)
 //
+// A negative exponent returns 0 for nonzero bases outside 1 and -1.
 // special case:
 // powi(a, b) = -1 for a = 0 and b < 0
-@[ignore_overflow]
 pub fn powi(a i64, b i64) i64 {
 	mut b_ := b
 	mut p := a
@@ -48,23 +48,20 @@ pub fn powi(a i64, b i64) i64 {
 		if a == 0 {
 			return -1 // division by 0
 		}
-		return if a * a != 1 {
-			0
-		} else {
-			if (b_ & 1) > 0 {
-				a
-			} else {
-				1
-			}
+		if a == 1 || a == -1 {
+			return if b_ & 1 > 0 { a } else { 1 }
 		}
+		return 0
 	}
 
 	for ; b_ > 0; {
 		if b_ & 1 > 0 {
 			v *= p
 		}
-		p *= p
 		b_ >>= 1
+		if b_ > 0 {
+			p *= p
+		}
 	}
 
 	return v
