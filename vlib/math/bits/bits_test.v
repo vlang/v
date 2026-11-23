@@ -1,4 +1,5 @@
 // test suite for bits and bits math functions
+// vtest vflags: -check-overflow
 module bits
 
 fn test_leading_zeros() {
@@ -329,6 +330,8 @@ fn test_normalize() {
 	assert normal_exp == 0
 }
 
+// The reference sums and differences wrap while their carries and borrows are checked.
+@[ignore_overflow]
 fn test_randomized_arithmetic_properties() {
 	mut state := u64(0x9e3779b97f4a7c15)
 	for _ in 0 .. 2000 {
@@ -411,7 +414,7 @@ fn test_randomized_arithmetic_properties() {
 // through the randomized property test which guards against y==0, and through manual
 // verification. Direct panic tests are avoided to prevent test suite crashes.
 
-@[inline]
+@[ignore_overflow; inline]
 fn next_u64(state u64) u64 {
 	return state * u64(6364136223846793005) + u64(1442695040888963407)
 }
