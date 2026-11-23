@@ -4012,7 +4012,13 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 
 	checker_result_elem_type_is_usable := decl_type_is_usable(checker_result_elem_type_source_id_2)
 		&& checker_result_elem_type_source_id != flat.source_type_void
-	mut result_elem_type := (if checker_result_elem_type_is_usable {
+	// A call of a local function value, such as a `callback fn (T) T` parameter,
+	// maps to that value's result; the checker's annotation of a generic body can
+	// name the result of a function of the same name.
+	local_fn_value_result := t.local_fn_value_call_result(mapped_value_id)
+	mut result_elem_type := (if local_fn_value_result != 0 {
+		local_fn_value_result
+	} else if checker_result_elem_type_is_usable {
 		checker_result_elem_type_source_id_3
 	} else {
 		t.node_type(mapped_value_id)
@@ -4274,6 +4280,23 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.bound_method_arrays[t.bound_method_array_key(out_name)] = bound_method_info
 	}
 	return result
+}
+
+// local_fn_value_call_result is the result type of `id` when it calls a local
+// function value by its name, or 0.
+fn (t &Transformer) local_fn_value_call_result(id flat.NodeId) u32 {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return 0
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .call || node.children_count == 0 {
+		return 0
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .ident || callee.value.contains('.') {
+		return 0
+	}
+	return t.local_fn_value_return_type_from_type(t.var_type(callee.value)) or { 0 }
 }
 
 fn (t &Transformer) array_map_is_dsl_bound_method(node flat.Node) bool {
