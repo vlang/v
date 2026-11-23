@@ -97,6 +97,8 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 		'fn main() { for (0 .. 3) { println(1) } }':                                                 'range cannot be used as a condition, iterate with `for i in low .. high` instead'
 		'fn main() { if 0 .. 3 { println(1) } }':                                                    'range cannot be used as a condition, iterate with `for i in low .. high` instead'
 		'fn main() { assert 0 .. 3 }':                                                               'range cannot be used as a condition, iterate with `for i in low .. high` instead'
+		'fn main() { match 0 .. 3 { 1 { println(1) } else { println(2) } } }':                       'range cannot be used as a condition, iterate with `for i in low .. high` instead'
+		'fn main() { match (0 .. 3) { 1 { println(1) } else { println(2) } } }':                     'range cannot be used as a condition, iterate with `for i in low .. high` instead'
 	}
 	for source, expected in cases {
 		os.write_file(path, source + '\n')!

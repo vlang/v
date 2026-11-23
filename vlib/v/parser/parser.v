@@ -10337,6 +10337,7 @@ fn (mut p Parser) match_stmt(stop_at_struct_field bool) flat.NodeId {
 		p.record_diagnostic_span('unexpected keyword `sql`, expecting name', p.tok_pos, p.tok_end)
 	}
 	match_expr := p.control_header_expr(.lowest)
+	p.reject_range_condition_expr(match_expr)
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
 	}
