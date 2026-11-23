@@ -18163,21 +18163,28 @@ fn prune_cache_only_function_prototypes(source string, cache_used_fns &map[strin
 	return out.str()
 }
 
+// cache_function_reference_counts counts, up to 2, the identifiers of `source` that are
+// `candidates`. It visits every byte of a C unit: bytes are read directly, and a token is
+// looked up through a view of `source`.
+@[direct_array_access]
 fn cache_function_reference_counts(source string, candidates map[string]bool) map[string]u8 {
 	mut counts := map[string]u8{}
 	mut start := -1
 	for i := 0; i <= source.len; i++ {
-		is_identifier := i < source.len && (source[i].is_alnum() || source[i] == `_`)
-		if is_identifier {
-			if start < 0 {
-				start = i
+		if i < source.len {
+			c := source[i]
+			if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
+				|| c == `_` {
+				if start < 0 {
+					start = i
+				}
+				continue
 			}
-			continue
 		}
 		if start < 0 {
 			continue
 		}
-		token := unsafe { source[start..i] }
+		token := unsafe { tos(source.str + start, i - start) }
 		if candidates[token] && counts[token] < 2 {
 			counts[token]++
 		}
