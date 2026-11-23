@@ -18569,6 +18569,12 @@ fn (mut b Builder) coerce_store_value(source ValueID, target_type TypeID) ValueI
 }
 
 fn (b &Builder) source_name_for_ssa_type_id(typ_id TypeID) ?string {
+	// A transformed Result's err expression may already be typed as IError.
+	// Recover the concrete pointer type from SSA before boxing it into the interface.
+	if b.is_pointer_type(typ_id) {
+		name := b.source_name_for_ssa_type_id(b.m.type_store.types[typ_id].elem_type) or { return none }
+		return '&' + name
+	}
 	if name := b.ssa_type_names[typ_id] {
 		if name.len > 0 {
 			return name

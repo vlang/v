@@ -13,5 +13,13 @@ serial compilation modes:
 ./v vlib/v/gen/amd64/native_generic_sum_test.v
 ```
 
+Custom errors returned as pointers preserve their concrete type and message when stored in
+`IError`, including inside a Result. Test both native compilation modes with:
+
+```sh
+./v -b amd64 vlib/v/tests/result_custom_error_pointer_test.v
+./v -prod -b amd64 vlib/v/tests/result_custom_error_pointer_test.v
+```
+
 See the native backend section in [the language documentation](../../../../doc/docs.md) for
 platform and C interoperability restrictions.
