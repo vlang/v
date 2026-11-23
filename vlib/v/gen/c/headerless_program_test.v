@@ -338,23 +338,34 @@ fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
 	// The macOS targets are spelled as Darwin versions with a minimum macOS version, which
 	// gives the same predefined macros: older clangs (the musl image's) reject `macos13`
 	// in a target triple.
+	mut checks := [][]string{}
 	for target in ['x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu', 'aarch64-linux-android24',
 		'arm64-apple-darwin22 -mmacosx-version-min=13.0',
 		'x86_64-apple-darwin21 -mmacosx-version-min=12.0', 'x86_64-unknown-freebsd14',
 		'x86_64-unknown-openbsd7', 'x86_64-unknown-netbsd10', 'x86_64-unknown-dragonfly6'] {
-		mut args := ['-target']
+		mut args := [clang, '-target']
 		args << target.split(' ')
 		args << ['-std=c99', '-fsyntax-only', '-Wno-everything', '-Werror=implicit-function-declaration',
 			'-DCUSTOM_DEFINE_v1_fallback', c_file]
-		checked := os.exec([clang, ...args])
-		assert checked.exit_code == 0, '${target}: ${checked.output}'
+		checks << args
 	}
 	for target in ['armv7-unknown-linux-gnueabihf', 'i686-unknown-linux-gnu', 'x86_64-unknown-linux-gnu'] {
-		checked := os.exec([clang, '-target', target, '-std=c99', '-fsyntax-only', '-Wno-everything',
+		checks << [clang, '-target', target, '-std=c99', '-fsyntax-only', '-Wno-everything',
 			'-Werror=implicit-function-declaration', '-Werror=incompatible-pointer-types',
 			'-Wno-error=incompatible-pointer-types-discards-qualifiers', '-Werror=int-conversion',
-			'-D${headerless_libc_macro}=1', '-DCUSTOM_DEFINE_v1_fallback', c_file])
-		assert checked.exit_code == 0, '${target}: ${checked.output}'
+			'-D${headerless_libc_macro}=1', '-DCUSTOM_DEFINE_v1_fallback', c_file]
+	}
+	// The checks are independent, and each parses the whole compiler (~2 s, ~300 MB):
+	// run a few at a time.
+	for start := 0; start < checks.len; start += 4 {
+		wave := checks[start..if start + 4 < checks.len { start + 4 } else { checks.len }]
+		mut running := []thread os.Result{}
+		for args in wave {
+			running << spawn os.exec(args)
+		}
+		for i, checked in running.wait() {
+			assert checked.exit_code == 0, '${wave[i][2..wave[i].len - 1].join(' ')}: ${checked.output}'
+		}
 	}
 }
 
