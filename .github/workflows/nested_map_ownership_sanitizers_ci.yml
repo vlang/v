@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sanitizer: [memory, address-no-gc, address-autofree]
+        sanitizer: [memory, address-no-gc, address-autofree, address-delete-key]
     env:
       VJOBS: '2'
       MSAN_OPTIONS: halt_on_error=1:exit_code=86
@@ -38,6 +38,7 @@ jobs:
           symlink: 'false'
       - name: Check original V tests are formatted
         run: |
+          ./v fmt -verify vlib/v/transform/fn.v
           ./v fmt -verify vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
           ./v fmt -verify vlib/v/gen/c/nested_map_append_staged_rhs_test.v
       - name: Reproduce corrected original nested-map test with MemorySanitizer
@@ -80,8 +81,23 @@ jobs:
           ./v -cc clang -gc none -autofree -keepc \
             -cflags -fno-omit-frame-pointer -cflags -fsanitize=address -silent \
             vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      # Run the reduced regression independently; the original full tests above
+      # remain unfiltered and can expose other ownership failures.
+      - name: Verify fixed-array key delete with ASan and autofree
+        if: matrix.sanitizer == 'address-delete-key'
+        env:
+          VTEST_ONLY_FN: test_delete_fixed_array_string_key_with_owned_value
+        run: |
+          ./v -cc clang -gc none -autofree -cflags -fno-omit-frame-pointer \
+            -cflags -fsanitize=address -silent \
+            vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      - name: Run compiler diagnostics and transform regression tests
+        if: matrix.sanitizer == 'address-delete-key'
+        run: |
+          ./v -silent vlib/v/compiler_errors_test.v
+          ./v -silent test vlib/v/transform/
       - name: Preserve generated C even if the sanitizer fails
-        if: always() && matrix.sanitizer != 'memory'
+        if: always() && (matrix.sanitizer == 'address-no-gc' || matrix.sanitizer == 'address-autofree')
         uses: actions/upload-artifact@v7
         with:
           name: nested-map-c-${{ matrix.sanitizer }}
