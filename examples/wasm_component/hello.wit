@@ -1,0 +1,9 @@
+package example:hello@0.1.0;
+
+interface api {
+	run: func() -> string;
+}
+
+world hello {
+	export api;
+}
