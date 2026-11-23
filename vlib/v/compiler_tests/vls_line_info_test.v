@@ -984,7 +984,7 @@ fn read_until(mut p os.Process, marker string) string {
 }
 
 fn test_the_diagnostics_server_answers_queries_between_checks() {
-	$if !linux {
+	$if !linux && !macos {
 		return
 	}
 	mut p := os.new_process(line_info_v3_bin)
@@ -1857,7 +1857,7 @@ fn one_shot_check(dir string) string {
 }
 
 fn test_a_prepared_server_checks_as_a_one_shot_check_does() {
-	$if !linux {
+	$if !linux && !macos {
 		return
 	}
 	dir := os.join_path(work_dir, 'prepared')
@@ -1970,6 +1970,69 @@ fn server_check(mut p os.Process, token string) (int, string) {
 	code := out.all_after('v-diagnostics-server: end ').all_before(' ')
 	assert out.contains('v-diagnostics-server: end ${code} ${token}'), out
 	return child, 'exit ${code}\n' + lines.join('\n').trim_space()
+}
+
+fn test_macos_prepared_server_checks_edits_after_cancelling_a_child() {
+	$if !macos {
+		return
+	}
+	dir := program_dir('macos_cancel', prepared_program)
+	path := os.join_path(dir, 'main.v')
+	fifo := os.join_path(dir, 'cancel.fifo')
+	assert os.exec(['mkfifo', fifo]).exit_code == 0
+	mut p := start_server(dir, {
+		'VJOBS':                     '4'
+		'V_DIAGNOSTICS_PREPARE':     '1'
+		'V_DIAGNOSTICS_SHARED':      '1'
+		'V_DIAGNOSTICS_CHILD_PAUSE': fifo
+	})
+	defer { p.close() }
+	p.stdin_write('check cancel\n')
+	started := read_until(mut p, ' cancel\n')
+	child := started.all_after('v-diagnostics-server: child ').all_before(' ').int()
+	assert child > 0, started
+	assert os.exec(['kill', '-KILL', child.str()]).exit_code == 0
+	cancelled := read_until(mut p, 'v-diagnostics-server: end 137 cancel')
+	assert cancelled.contains('v-diagnostics-server: end 137 cancel'), cancelled
+	os.rm(fifo)!
+
+	_, broken := server_check(mut p, 'broken')
+	assert broken == one_shot_check(dir)
+	assert broken.contains('error:'), broken
+	os.write_file(path, prepared_program.replace(" + 'b'", ''))!
+	_, fixed := server_check(mut p, 'fixed')
+	assert fixed == one_shot_check(dir)
+	assert !fixed.contains('error:'), fixed
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
+fn test_macos_diagnostics_child_exits_when_its_server_is_killed() {
+	$if !macos {
+		return
+	}
+	dir := program_dir('macos_orphan', prepared_program)
+	fifo := os.join_path(dir, 'orphan.fifo')
+	assert os.exec(['mkfifo', fifo]).exit_code == 0
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_CHILD_PAUSE': fifo
+	})
+	defer { p.close() }
+	p.stdin_write('check orphan\n')
+	started := read_until(mut p, ' orphan\n')
+	child := started.all_after('v-diagnostics-server: child ').all_before(' ').int()
+	assert child > 0, started
+	assert os.exec(['kill', '-KILL', p.pid.str()]).exit_code == 0
+	p.wait()
+	for _ in 0 .. 500 {
+		if os.exec(['kill', '-0', child.str()]).exit_code != 0 {
+			return
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	os.exec(['kill', '-KILL', child.str()])
+	assert false, 'diagnostics child ${child} outlived its server'
 }
 
 const shared_program = "module main
