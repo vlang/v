@@ -1853,7 +1853,7 @@ fn build_save_query_data[T](meta []TableField, table_name string, value T) !(Que
 			where_data.data << data.data[i]
 			continue
 		}
-		if orm_insert_only_field(meta, field_name) != none {
+		if orm_immutable_field(meta, field_name) != none {
 			continue
 		}
 		update_data.fields << field_name
@@ -1868,7 +1868,7 @@ fn build_save_query_data[T](meta []TableField, table_name string, value T) !(Que
 	return update_data, where_data
 }
 
-fn orm_insert_only_field(meta []TableField, name string) ?TableField {
+fn orm_immutable_field(meta []TableField, name string) ?TableField {
 	// Callers have already mapped V field names to their SQL column names.
 	for field in meta {
 		for attr in field.attrs {
@@ -1883,7 +1883,7 @@ fn orm_insert_only_field(meta []TableField, name string) ?TableField {
 
 fn validate_update_fields[T](meta []TableField, fields []string) ! {
 	for name in fields {
-		if field := orm_insert_only_field(meta, name) {
+		if field := orm_immutable_field(meta, name) {
 			return error('ORM: cannot update insert-only field `${T.name}.${field.name}` (@[immutable])')
 		}
 	}
@@ -1892,7 +1892,7 @@ fn validate_update_fields[T](meta []TableField, fields []string) ! {
 fn filter_insert_only_update_fields(data QueryData, meta []TableField) QueryData {
 	mut out := QueryData{}
 	for i, name in data.fields {
-		if orm_insert_only_field(meta, name) != none {
+		if orm_immutable_field(meta, name) != none {
 			continue
 		}
 		out.fields << name
@@ -2758,7 +2758,7 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 		if field == key_name {
 			key_index = i
 		} else if (selected_fields.len == 0 || field in selected_fields)
-			&& orm_insert_only_field(qb.meta, field) == none {
+			&& orm_immutable_field(qb.meta, field) == none {
 			value_fields << field
 			value_indexes << i
 		}
