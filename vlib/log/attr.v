@@ -87,7 +87,7 @@ pub fn (a &Attrs) values() []Attr {
 // FixedAttrs is a stack only attribute list for the lowest allocation logging
 // path. Pass it to RecordLogger.log_fixed; no slice is built at the call site.
 pub struct FixedAttrs {
-pub mut:
+mut:
 	items [4]Attr
 	len   int
 }

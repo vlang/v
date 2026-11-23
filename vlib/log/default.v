@@ -10,6 +10,9 @@ pub fn set_logger(logger &Logger) {
 	// C.printf(c"set_logger  logger: %p | old logger: %p\n", logger, default_logger)
 	old_logger := unsafe { default_logger }
 	default_logger = unsafe { logger }
+	// Keep the structured package-level logger at the same effective level as
+	// the logger just installed, so replacing one does not desync the other.
+	set_handler_level(current_record_logger().handler, logger.get_level())
 	free_logger(old_logger)
 }
 

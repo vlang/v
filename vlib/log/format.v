@@ -91,7 +91,10 @@ fn timestamp_direct_supported(f TimeFormat) bool {
 // the temporary string that format_time allocates. It returns false for
 // formats that still need the generic path.
 fn append_timestamp(mut buf []u8, t time.Time, f TimeFormat, local bool) bool {
-	u := if local && t.is_local { t.local_to_utc() } else { t }
+	// Only the RFC3339 formats carry a Z suffix and therefore need UTC. The
+	// legacy formatter renders the other formats from the wall-clock fields as
+	// supplied; converting them here would change local_time output.
+	u := if local && t.is_local && f == .tf_rfc3339_micro { t.local_to_utc() } else { t }
 	match f {
 		.tf_rfc3339_micro {
 			append_ymd(mut buf, u)
