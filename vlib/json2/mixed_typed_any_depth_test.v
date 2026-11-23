@@ -1,6 +1,6 @@
 module json2
 
-// vtest vflags: -new-compiler -no-retry-compilation -cc tcc -d no_backtrace -thread-stack-size 2097152
+// vtest vflags: -no-retry-compilation -cc tcc -d no_backtrace -thread-stack-size 2097152
 
 struct Heavy32 {
 	next ?&Heavy32
