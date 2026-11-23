@@ -7,7 +7,8 @@ import v.pref
 
 fn test_native_bridge_preserves_headers_without_opening_or_expanding_them() {
 	source := '#include "does-not-exist.h"\n#include <project/header.h>\n#import "also-not-present.h"\n#include "/native/implementation.m"\nint value;\n'
-	result := v3_tcc_dylib_declarations(source, ['/native/implementation.m'])
+	// The driver lists the native sources by their real paths, which name a drive on Windows.
+	result := v3_tcc_dylib_declarations(source, [os.real_path('/native/implementation.m')])
 	assert result == '#define V3CACHE_NATIVE_INTERFACE 1\n#include "does-not-exist.h"\n#include <project/header.h>\n#import "also-not-present.h"\nint value;\n'
 }
 
@@ -90,6 +91,11 @@ fn test_native_bridge_dependency_manifest_tracks_project_headers() ! {
 }
 
 fn test_native_bridge_framework_headers_use_ordinary_include_paths() ! {
+	// The TinyCC bridge serves macOS hosts: it matches the `/` separated paths of
+	// framework bundles, and links their headers with symlinks.
+	$if windows {
+		return
+	}
 	root := os.join_path(os.vtmp_dir(), 'native framework headers ${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -105,6 +111,11 @@ fn test_native_bridge_framework_headers_use_ordinary_include_paths() ! {
 }
 
 fn test_native_bridge_links_only_program_frameworks() ! {
+	// The TinyCC bridge serves macOS hosts: it matches the `/` separated paths of
+	// framework bundles.
+	$if windows {
+		return
+	}
 	root := os.join_path(os.vtmp_dir(), 'native program frameworks ${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }

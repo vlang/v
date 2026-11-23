@@ -77,7 +77,7 @@ fn main() {
 		panic(err)
 	}
 	build :=
-		os.exec([promoted_assignment_vexe, '-gc', 'none', '-prealloc', '-path',
+		os.exec([promoted_assignment_vexe, '-gc', 'none', '-path',
 			'${promoted_assignment_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			promoted_assignment_v3_source])
 	assert build.exit_code == 0, build.output

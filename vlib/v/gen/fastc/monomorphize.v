@@ -157,7 +157,13 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value
 			return literal
 		}
 	}
-	inferred := g.infer_expression_type(argument_tokens) or { return u32(0) }
+	mut inferred := g.infer_expression_type(argument_tokens) or { u32(0) }
+	if inferred == 0 {
+		inferred = g.branching_argument_type(argument_tokens)
+		if inferred == 0 {
+			return u32(0)
+		}
+	}
 	mut actual := fastc_normalize_inferred_type(inferred)
 	if fastc_trim_pointer_type(actual) == fastc_type_option {
 		// Every Option shares one C type; a generic `?T` parameter needs the payload,
@@ -205,6 +211,92 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value
 		}
 	}
 	return actual
+}
+
+// branching_argument_type infers a generic argument written as `value or { ... }`,
+// `match subject { ... }` or `if cond { ... } else { ... }`. The streaming renderer
+// learns their type only after the call has been named, so without this the call
+// would reach the erased placeholder, which exits when it runs. Like V, an if/match
+// value takes the type of its first branch that yields one.
+fn (g &Parser) branching_argument_type(tokens []FastcExpressionToken) u32 {
+	if tokens.len < 3 {
+		return u32(0)
+	}
+	mut depth := 0
+	for i, item in tokens {
+		match item.tok {
+			.lpar, .lsbr, .lcbr {
+				depth++
+			}
+			.rpar, .rsbr, .rcbr {
+				depth--
+			}
+			.key_or {
+				if depth == 0 && i > 0 && i + 1 < tokens.len && tokens[i + 1].tok == .lcbr {
+					close := fastc_matching_delimiter(tokens, i + 1, .lcbr, .rcbr) or { return u32(0) }
+					if close != tokens.len - 1 {
+						return u32(0)
+					}
+					return g.option_value_type_for_expression(tokens[..i])
+				}
+			}
+			else {}
+		}
+	}
+	blocks := match tokens[0].tok {
+		.key_if {
+			fastc_top_level_blocks(tokens, 0, tokens.len) or { return u32(0) }
+		}
+		.key_match {
+			// The first brace opens the arms; each arm's value is a block inside it.
+			mut body := 0
+			for body < tokens.len && tokens[body].tok != .lcbr {
+				body++
+			}
+			if body == tokens.len
+				|| (fastc_matching_delimiter(tokens, body, .lcbr, .rcbr) or { -1 }) != tokens.len - 1 {
+				return u32(0)
+			}
+			fastc_top_level_blocks(tokens, body + 1, tokens.len - 1) or { return u32(0) }
+		}
+		else {
+			return u32(0)
+		}
+	}
+	for open in blocks {
+		close := fastc_matching_delimiter(tokens, open, .lcbr, .rcbr) or { continue }
+		value := tokens[open + 1..close]
+		// A branch that leaves the expression (or holds statements) yields no value
+		// to infer from; another branch supplies the type.
+		if value.len == 0 || value[0].tok in [.key_return, .key_break, .key_continue, .key_go]
+			|| value.any(it.tok in [.decl_assign, .assign, .semicolon, .key_return]) {
+			continue
+		}
+		inferred := g.infer_expression_type(value) or { continue }
+		if inferred != 0 && inferred != flat.source_type_void {
+			return inferred
+		}
+	}
+	return u32(0)
+}
+
+// fastc_top_level_blocks lists the opening brace of each block directly inside
+// tokens[start..end], skipping parenthesized and bracketed groups.
+fn fastc_top_level_blocks(tokens []FastcExpressionToken, start int, end int) ?[]int {
+	mut blocks := []int{}
+	mut i := start
+	for i < end {
+		match tokens[i].tok {
+			.lpar { i = fastc_matching_delimiter(tokens, i, .lpar, .rpar)? + 1 }
+			.lsbr { i = fastc_matching_delimiter(tokens, i, .lsbr, .rsbr)? + 1 }
+			.lcbr {
+				blocks << i
+				i = fastc_matching_delimiter(tokens, i, .lcbr, .rcbr)? + 1
+			}
+			else { i++ }
+		}
+	}
+	return blocks
 }
 
 // A generic call is queued before the expression parser consumes transparent
@@ -873,7 +965,7 @@ fn fastc_is_entry_module(sources []FastcSourceFile, module_name string, prefs &p
 
 fn fastc_monomorphize_sources(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
 	after_functions := fastc_monomorphize_functions(sources, prefs)!
-	return fastc_monomorphize_structs(after_functions, prefs)
+	return fastc_monomorphize_structs(after_functions, prefs)!
 }
 
 // fastc_monomorphize_functions repeatedly applies one monomorphization pass until
@@ -898,14 +990,15 @@ fn fastc_monomorphize_functions(sources []FastcSourceFile, prefs &pref.Preferenc
 // fastc_monomorphize_functions_once rewrites `sources` for one round, returning the
 // new sources and whether any generic was monomorphized (so the caller can iterate).
 fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Preferences) !([]FastcSourceFile, bool) {
-	mut generics := []FastcGenericFn{}
+	mut entry_indexes := []int{}
 	for i, source_file in sources {
-		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
-			continue
+		if fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
+			entry_indexes << i
 		}
-		for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, i) {
-			generics << generic
-		}
+	}
+	mut generics := []FastcGenericFn{}
+	for file_generics in fastc_scan_generic_fns_of_files(sources, prefs, entry_indexes) {
+		generics << file_generics
 	}
 	if generics.len == 0 {
 		return sources, false
@@ -942,11 +1035,19 @@ fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Pref
 	mut pairs := []FastcConcretePair{}
 	mut seen_pair := map[string]bool{}
 	mut has_concrete := map[string]bool{}
-	for i, source_file in sources {
-		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
-			continue
+	// Files are scanned apart and merged in source order, as one in-order scan would
+	// record them.
+	for scan in fastc_scan_generic_calls_of_files(sources, prefs, entry_indexes, by_name) {
+		if scan.error_message != '' {
+			return error(scan.error_message)
 		}
-		fastc_scan_generic_calls(source_file.source, source_file.path, prefs, i, by_name, mut calls, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)!
+		calls << scan.calls
+		for name, _ in scan.unresolvable {
+			unresolvable[name] = true
+		}
+		for pair in scan.pairs {
+			fastc_record_concrete(pair.name, pair.concrete, mut pairs, mut seen_pair, mut has_concrete)
+		}
 	}
 	// A generic is monomorphized only when every call resolves.
 	mut active := map[string]bool{}
@@ -1143,9 +1244,14 @@ fn fastc_type_param_substitutions(type_param string, concrete string) map[string
 		if index < concretes.len {
 			concrete_type := concretes[index]
 			// On-demand inference uses C type names. Reparse pointer arguments
-			// with V's prefix spelling instead of inserting a C `T*` token pair.
+			// with V's prefix spelling and canonical platform integer names.
 			syntax := flat.source_type_syntax(concrete_type)
-			mut v_type := syntax.c_pointer_raw_base()
+			base_type := syntax.c_pointer_raw_base()
+			mut v_type := match base_type {
+				flat.source_type_usize { flat.source_type_uint }
+				flat.source_type_isize { flat.source_type_int }
+				else { base_type }
+			}
 			for _ in 0 .. syntax.c_pointer_depth() {
 				v_type = flat.source_type_composition_one(.pointer, v_type)
 			}
@@ -1645,6 +1751,12 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				concrete, bracket_next := fastc_read_bracket_names(mut s)
 				tok = bracket_next
 				if tok == .rsbr {
+					if fastc_source_type_arguments_use_removed_integer(concrete) {
+						previous = .rsbr
+						previous_lit = ''
+						tok = s.scan()
+						continue
+					}
 					after := s.offset
 					if concrete in type_param_names {
 						unresolvable[name] = true
@@ -1974,6 +2086,40 @@ fn fastc_record_var(name string, typ u32, mut var_types map[string]u32, mut var_
 	}
 }
 
+// FastcGenericCallScan is what fastc_scan_generic_calls records for one file.
+struct FastcGenericCallScan {
+mut:
+	calls         []FastcGenericCall
+	unresolvable  map[string]bool
+	pairs         []FastcConcretePair
+	seen_pair     map[string]bool
+	has_concrete  map[string]bool
+	error_message string
+}
+
+// fastc_scan_generic_calls_of_file scans one file's generic calls on their own.
+fn fastc_scan_generic_calls_of_file(sources []FastcSourceFile, prefs &pref.Preferences, index int, by_name map[string]FastcGenericFn) FastcGenericCallScan {
+	source_file := sources[index]
+	mut calls := []FastcGenericCall{}
+	mut unresolvable := map[string]bool{}
+	mut pairs := []FastcConcretePair{}
+	mut seen_pair := map[string]bool{}
+	mut has_concrete := map[string]bool{}
+	fastc_scan_generic_calls(source_file.source, source_file.path, prefs, index, by_name, mut calls, mut
+		unresolvable, mut pairs, mut seen_pair, mut has_concrete) or {
+		return FastcGenericCallScan{
+			error_message: err.msg()
+		}
+	}
+	return FastcGenericCallScan{
+		calls:        calls
+		unresolvable: unresolvable
+		pairs:        pairs
+		seen_pair:    seen_pair
+		has_concrete: has_concrete
+	}
+}
+
 fn fastc_record_concrete(name string, concrete u32, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) {
 	pair_key := '${name}#${concrete}'
 	if pair_key !in seen_pair {
@@ -1990,7 +2136,7 @@ fn fastc_record_concrete(name string, concrete u32, mut pairs []FastcConcretePai
 // as functions: it emits a concrete copy per instantiation `S[Concrete]` and
 // rewrites every reference. A struct is left untouched unless every reference is
 // a concrete instantiation and its body has no nested generic type references.
-fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences) []FastcSourceFile {
+fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
 	mut structs := []FastcGenericFn{}
 	for i, source_file in sources {
 		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
@@ -2043,7 +2189,7 @@ fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences
 		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
 			continue
 		}
-		fastc_scan_generic_struct_instances(source_file.source, source_file.path, prefs, i, by_name, receiver_skip, mut refs, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)
+		fastc_scan_generic_struct_instances(source_file.source, source_file.path, prefs, i, by_name, receiver_skip, mut refs, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)!
 	}
 	for name in method_problematic.keys() {
 		unresolvable[name] = true
@@ -2244,6 +2390,22 @@ fn fastc_body_has_nested_generic(body string, prefs &pref.Preferences) bool {
 	return false
 }
 
+// fastc_source_type_arguments_use_removed_integer keeps legacy arguments out of
+// source-level specialization. The parser rejects active uses after selecting
+// compile-time branches, before their spellings can become internal C types.
+fn fastc_source_type_arguments_use_removed_integer(concrete string) bool {
+	// Ordinary arguments need no type-registry lookup or comma-part materialization.
+	if !concrete.contains('size') {
+		return false
+	}
+	for part in flat.source_type_syntax(flat.source_type_id(concrete)).plain_comma_parts() {
+		if part == flat.source_type_isize || part == flat.source_type_usize {
+			return true
+		}
+	}
+	return false
+}
+
 // fastc_all_concrete_type_args reports whether every comma-joined argument of a
 // (possibly multi-parameter) instantiation is a concrete type.
 fn fastc_all_concrete_type_args(concrete string) bool {
@@ -2274,7 +2436,7 @@ fn fastc_is_concrete_type_arg_id(name_id u32) bool {
 // known generic struct, or marks the struct unresolvable when a reference is not
 // a plain concrete instantiation (a type-parameter argument, a complex type
 // argument, or a bare reference).
-fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, receiver_skip map[string]bool, mut refs []FastcGenericCall, mut unresolvable map[string]bool, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) {
+fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, receiver_skip map[string]bool, mut refs []FastcGenericCall, mut unresolvable map[string]bool, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) ! {
 	file := token.File.unindexed(path, source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
@@ -2312,6 +2474,11 @@ fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.P
 		if tok != .rsbr {
 			unresolvable[name] = true
 			previous = tok
+			continue
+		}
+		if fastc_source_type_arguments_use_removed_integer(concrete) {
+			previous = .rsbr
+			tok = s.scan()
 			continue
 		}
 		after := s.offset

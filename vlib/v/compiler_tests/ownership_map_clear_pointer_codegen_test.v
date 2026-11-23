@@ -22,8 +22,8 @@ fn main() {
 	for mode in ['', '-no-parallel'] {
 		for gc_mode in ['vgc', 'none'] {
 			output := os.join_path(root, 'app')
-			mut args := [@VEXE, '-new-compiler', '-nocache', '-ownership', '-d', 'ownership',
-				'-autofree', '-gc', gc_mode, '-no-prealloc', '-o', output]
+			mut args := [@VEXE, '-nocache', '-ownership', '-d', 'ownership', '-autofree', '-gc',
+				gc_mode, '-no-prealloc', '-o', output]
 			if mode != '' {
 				args << mode
 			}

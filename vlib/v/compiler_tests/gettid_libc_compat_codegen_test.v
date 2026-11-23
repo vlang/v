@@ -6,16 +6,26 @@ const gettid_compat_v3_dir = os.dir(gettid_compat_tests_dir)
 const gettid_compat_vlib_dir = os.dir(gettid_compat_v3_dir)
 const gettid_compat_v3_src = os.join_path(gettid_compat_v3_dir, 'v.v')
 
+const gettid_compat_v3_bin = os.join_path(os.temp_dir(), 'v3_gettid_compat_test_${os.getpid()}')
+
+fn testsuite_end() {
+	os.rm(gettid_compat_v3_bin) or {}
+}
+
+// gettid_compat_build_v3 builds the compiler on first use, as only Linux runs the
+// cases, and returns that build afterwards.
 fn gettid_compat_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_gettid_compat_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	// -prealloc enables the parallel declaration worker that must emit the helper
-	// before function bodies can call it.
+	if os.exists(gettid_compat_v3_bin) {
+		return gettid_compat_v3_bin
+	}
+	// Compiler builds default to -prealloc, which enables the parallel declaration
+	// worker that must emit the helper before function bodies can call it.
 	build :=
-		os.exec([gettid_compat_vexe, '-prealloc', '-path',
-			'${gettid_compat_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${gettid_compat_v3_src}'])
+		os.exec([gettid_compat_vexe, '-gc', 'none', '-path',
+			'${gettid_compat_vlib_dir}' + '|@vlib|@vmodules', '-o', gettid_compat_v3_bin,
+			'${gettid_compat_v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+	return gettid_compat_v3_bin
 }
 
 fn test_v_gettid_uses_declared_libc_compat_helper() {

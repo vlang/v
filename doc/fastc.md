@@ -32,6 +32,18 @@ Native implementation includes follow generated V types, while ordinary C header
 library like any other include of its directory.
 The C compiler's list of headers opened by the TinyCC program is reused while the program's
 preprocessor lines, compiler and flags are unchanged and every listed header keeps its content.
+Native bridge libraries can also be reused after an unused V macro changes, such as a build
+timestamp. Clang must produce identical preprocessed code and report the same header paths;
+all recorded native dependencies still require matching contents before reuse.
+Dependency paths and contents must stay unchanged while Clang preprocesses the native owner.
+Constants using `@BUILD_DATE`, `@BUILD_TIME`, or `@BUILD_TIMESTAMP` are initialized in the
+startup unit. Their shared declarations stay stable across builds, allowing direct native cache
+reuse while retaining the current build metadata and dependency validation.
+FastC uses all available CPU cores for generation by default. Native bridge programs use up to
+six TinyCC units to reduce repeated header processing. `-parallel-cc` permits up to twelve
+concurrent TinyCC units for these programs, without reducing the C generation worker count.
+`VJOBS` overrides these defaults; `-no-parallel` selects one worker.
+Uncached macOS builds stream generated units directly to TinyCC as rendering finishes.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
 C output is published only after the buffered writes, final flush, and close succeed.
@@ -43,11 +55,22 @@ with its source byte offset; FastC does not silently switch to the C backend.
 
 A project can make FastC its default with `backend: 'fastc'` in its `v.mod`. Builds, runs, and
 tests of files under that `v.mod` then use FastC without `-b fastc`; an explicit `-b c` selects
-the C backend again.
+the C backend again. Such a default build does not keep the generated C; `-b fastc` on the
+command line keeps it as `<output>.c`, and `-keepc` keeps it in the temporary folder.
 
 Ordinary `v self` builds include only the C backend. The first `-b fastc` request automatically
 builds a full compiler in the tool cache and runs it; subsequent requests reuse that compiler.
 Use `v -compile-backend fastc self` to include FastC in the main executable instead.
+Production self-builds (`v -o vprod -prod self`) include and PGO-train FastC automatically
+when using Clang, so FastC requests retain the production compiler's speed. Other production
+C toolchains include FastC without PGO. Pass `-d skip_fastc` to omit it explicitly.
+
+Use `int` and `uint` for platform-width integers. FastC rejects declarations and casts using
+the deprecated `isize` and `usize` types. Compile-time compatibility patterns for those types,
+including composite patterns such as `[]usize`, never match. Uses inside inactive compile-time
+branches are ignored. FastC does not run the regular parser to produce deprecation warnings.
+Reflected sum variants retain canonical integer spellings in type tests and zero values.
+Option locals named `isize` or `usize` also work in `if` expressions that narrow their payloads.
 
 On Windows, ordinary FastC programs set stdout and stderr to binary mode, preserving `\n`
 without CRT conversion to `\r\n`, as the default C backend does.
@@ -73,6 +96,13 @@ and source positions.
 
 Ordinary programs support the following constructs:
 
+- Typed pointer comparisons with `nil` in either operand order, including values returned
+  from C calls. Assigning `nil` to a typed pointer still requires `unsafe`.
+- Method calls on pointer fields promoted through embedded structs, including calls inside
+  arithmetic and compound assignments.
+- Parallel declarations of option fields retain their payload types for guards and fallbacks.
+- Struct-valued result fallbacks support conditionals that return from both branches.
+  Nested multi-return guards keep their own result type when a branch returns.
 - Functions, primitive parameters and return values, local variables, constants, and explicit
   global variables enabled with `-enable-globals`.
 - Integer, boolean, and string expressions; string interpolation; `print` and `println` for
@@ -82,6 +112,7 @@ Ordinary programs support the following constructs:
 - Map literals such as `{'a': 1}` with string, integer, or floating point keys, element lookup,
   and `.len`.
   Lookup of an absent key returns the value type's zero value.
+  Call-backed map reads evaluate the receiver before the key and retain stored option values.
 - Array and map element reads in local initializers and function arguments.
 - `in` and `!in` for arrays, map keys, and substrings, including their use in boolean conditions.
 
@@ -124,13 +155,15 @@ parameter shadowing ends with its function and does not affect later constants.
 Function-pointer fields and parameters support mixed named and unnamed parameter types.
 Native function parameters can also name imported V types, such as `gg.Color`.
 Function aliases support nested callback parameter types, including callbacks taking callbacks.
+Callback aliases and loop callbacks do not affect option values captured by later closures.
 Field iteration supports `field.is_shared` and passing `field.attrs` to helper functions.
 Enum value iteration provides each value's `attrs`, and `$for attr in Enum.attributes` provides
 the `name`, `arg` and `has_arg` of the enum's own attributes.
 Member and operator continuations can follow comments on a new line.
 `$zero(Type)` supports scalars, pointers, enums, structs, dynamic arrays, and maps.
 Optional collection elements preserve their payload types. Array guards and `or` fallbacks
-handle both missing indices and stored `none` elements. Struct equality compares optional,
+handle both missing indices and stored `none` elements. Explicit unwrapping remains valid after
+terminal `none` guards. Struct equality compares optional,
 map, array, sum-type, and interface fields by value. Function values retain their signatures
 through options, collections, captures, and returned callbacks; `spawn` accepts callback fields.
 Project imports honor explicit `-path` search roots, including replacements for vlib modules.
@@ -142,7 +175,8 @@ If a call reaches a generic placeholder without a concrete instance, it reports 
 and exits with an error instead of returning a zero value.
 This path supports standard-library imports such as `os` and `toml`,
 composite sum-type tests, integer and floating point interpolation formats, anonymous functions,
-and closure captures. Mutable value captures retain their state across calls. Float formats support
+and closure captures, including fixed arrays captured by value. Mutable value captures retain
+their state across calls. Float formats support
 precision, width, left alignment, and the
 `f` suffix to retain trailing zeros. A single-file entry can select the same runtime with
 `-d fastc_real_builtin`. As with the C backend, a program file named on its own is compiled
@@ -198,6 +232,17 @@ By-value parameters whose addresses escape to spawned workers retain shared stor
 function returns. Later writes and workers from the same invocation use that storage.
 Escaped keyword fields and locals, and the ESC escape `\e` in runes and strings, are supported.
 Multiline values can continue with leading binary operators or a following `else` branch.
+Expression blocks run their scoped defers before yielding their saved value; branch-local
+cleanup stays inside its branch. `defer(fn)` remains active until the function exits.
+Selected `$if` expression branches can begin with local declarations or assignments before
+their final value, including declarations with an `or { return ... }` fallback.
+Branch-local optional values retain their payload type; final nested `$if` and postfix
+expressions retain their values after preceding statements.
+A leading `mut` in a parallel declaration makes every target mutable, matching the C backend.
+References to sum conversions such as `&Sum(variant)` retain both the sum tag and its payload
+after the creating function returns, including within narrowed match branches.
+A newline after a pointer assignment can start an address expression, including the final value
+of an `if` branch; numeric bitwise-AND continuations remain supported.
 Postfix updates used as values return the old value, and trailing variable attributes preserve
 the following statement. Option/Result tuple fallbacks can return an enclosing function's tuple.
 Grouped Option/Result propagation preserves payload types and early returns, including in call

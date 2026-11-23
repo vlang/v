@@ -1,7 +1,6 @@
 module dtm2
 
 import os
-import time
 
 const test_root_name = 'dtm2_test'
 
@@ -165,7 +164,6 @@ fn test_reload_modified_include_without_render_cache() {
 	}
 	first := manager.expand('with_include.html', placeholders: &placeholders)
 	assert first == '<header><nav>Home</nav></header><main>Home</main>'
-	time.sleep(1100 * time.millisecond)
 	os.write_file(os.join_path(dtm2_test_root(), 'partials', 'nav.html'),
 		'<nav class="updated">@title</nav>')!
 	second := manager.expand('with_include.html', placeholders: &placeholders)

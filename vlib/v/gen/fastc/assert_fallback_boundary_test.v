@@ -47,10 +47,9 @@ fn main() {
 	ordinary := os.join_path(root, 'ordinary')
 	ordinary_build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'c', '-nocache', '-gc', 'none',
 		'-o', ordinary, root], @VEXEROOT, {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	assert ordinary_build.exit_code == 0, ordinary_build.output
 	ordinary_run := cmdexec.run(ordinary, [])

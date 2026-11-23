@@ -26,10 +26,9 @@ fn main() { production_target() }
 		'vinix', '-arch', pref.host_arch(), '-target-libc-headers', '-nofloat', '-gc', 'none',
 		'-no-closures', '-d', 'no_backtrace', '-exclude', '@vlib/builtin/backtraces_nix.c.v', '-o',
 		c_file, root], os.real_path(os.join_path(@DIR, '../../../..')), {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	assert build.exit_code == 0, build.output
 	c_source := os.read_file(c_file) or { panic(err) }
@@ -152,9 +151,11 @@ typedef __UINTPTR_TYPE__ uintptr_t;
 int main(void) {
 	int input = 42;
 	int *boxed = v_fastc_interface_box(&input, sizeof(input));
+	int *owned = v_fastc_heap_copy(&input, sizeof(input));
 	input = 0;
-	int result = boxed && *boxed == 42 ? 0 : 1;
+	int result = boxed && *boxed == 42 && owned && *owned == 42 ? 0 : 1;
 	free(boxed);
+	free(owned);
 	return result;
 }
 '
@@ -162,6 +163,35 @@ int main(void) {
 	program := os.join_path(root, 'program')
 	os.write_file(source_file, source) or { panic(err) }
 	build := cmdexec.run('cc', ['-std=gnu11', '-nostdinc', '-I${root}', '-o', program, source_file])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_fastc_hosted_owned_values_can_be_freed_independently() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_hosted_heap_copy_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	source_file := os.join_path(root, 'main.c')
+	program := os.join_path(root, 'program')
+	os.write_file(source_file, c_selfhost_preamble + r'
+int main(void) {
+	int input = 42;
+	int *boxed = v_fastc_interface_box(&input, sizeof(input));
+	int *first = v_fastc_heap_copy(&input, sizeof(input));
+	int *second = v_fastc_heap_copy(&input, sizeof(input));
+	if (!boxed || !first || !second) return 1;
+	input = 0;
+	free(first);
+	int result = *boxed == 42 && *second == 42 ? 0 : 1;
+	free(second);
+	return result;
+}
+') or { panic(err) }
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-o', program, source_file])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
@@ -187,10 +217,11 @@ fn test_fastc_windows_target_entry_switches_stdio_to_binary_mode() {
 	linux_c := generate(source, 'binary_stdio.v', linux_prefs) or { panic(err) }
 	assert !linux_c.contains('_setmode('), linux_c
 
-	// Selfhost builds get binary streams from builtin's own startup instead.
+	// Selfhost builds (every program that compiles the real builtin) need the same
+	// switch: FastC's startup does not run builtin_init, which does it for cgen.
 	mut selfhost_prefs := pref.new_preferences()
 	selfhost_prefs.target = pref.target_from('windows', 'amd64') or { panic(err) }
 	selfhost_prefs.building_v = true
 	selfhost_c := generate(source, 'binary_stdio.v', selfhost_prefs) or { panic(err) }
-	assert !selfhost_c.contains('_setmode(1, _O_BINARY);'), selfhost_c
+	assert selfhost_c.contains('_setmode(1, _O_BINARY);\n\t_setmode(2, _O_BINARY);\n\tsetvbuf(stdout, NULL, _IONBF, 0);'), selfhost_c
 }

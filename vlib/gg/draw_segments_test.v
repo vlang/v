@@ -1,3 +1,4 @@
+// vtest build: !musl? && !self_ubuntu_musl_ci? // gg needs host X11/GL headers
 module gg
 
 fn test_radius_to_segments_swapped_entries_are_monotonic() {

@@ -34,4 +34,11 @@ for stage in success generate compile; do
     esac
     [ ! -e "$(cat "$work/project")" ]
 done
-echo 'sequential production build, cleanup, and failure propagation passed'
+# With a project directory, only the C project is generated, kept, and not compiled.
+printf original > "$work/vprod"
+mkdir -p "$work/kept/stale"
+WORK="$work" sh "$repo/cmd/tools/build_vprod.sh" \
+    "$work/compiler" "$work/vprod" 'compiler with spaces' "$work/kept" > "$work/log" 2>&1
+[ "$(cat "$work/project")" = "$work/kept" ] && [ -f "$work/kept/Makefile" ]
+[ ! -e "$work/kept/stale" ] && [ ! -e "$work/kept/v" ] && [ "$(cat "$work/vprod")" = original ]
+echo 'sequential production build, cleanup, generate-only, and failure propagation passed'

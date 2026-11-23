@@ -119,7 +119,7 @@ fn test_relative_redirects() {
 		panic(err)
 	}
 	defer {
-		server.stop()
+		server.close()
 		t.wait()
 	}
 	res := http.get('http://${server.addr}/relative-redirect/3?abc=xyz') or { panic(err) }
@@ -154,7 +154,7 @@ fn test_redirect_without_location() {
 		panic(err)
 	}
 	defer {
-		server.stop()
+		server.close()
 		t.wait()
 	}
 	// a 3xx without a Location header is terminal, the response is handed back

@@ -228,7 +228,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		for gc_mode in ['vgc', 'none'] {
 			output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}_${gc_mode}')
-			compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -cc clang ${mode} -gc ${gc_mode} -no-prealloc -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+			compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -gc ${gc_mode} -no-prealloc -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 			assert compile.exit_code == 0, '${mode} ${gc_mode}: ${compile.output}'
 			run := os.execute(os.quoted_path(output))
 			assert run.exit_code == 0, '${mode} ${gc_mode}: ${run.output}'

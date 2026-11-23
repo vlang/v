@@ -137,9 +137,10 @@ fn test_connection_validation() {
 fn test_eviction() {
 	mut test_conns := []&pool.ConnectionPoolable{}
 	factory := create_mock_factory(mut test_conns, true, 0)
+	lifetime := 10 * time.millisecond
 	config := pool.ConnectionPoolConfig{
-		max_lifetime:   10 * time.millisecond
-		idle_timeout:   10 * time.millisecond
+		max_lifetime:   lifetime
+		idle_timeout:   lifetime
 		min_idle_conns: 0
 	}
 
@@ -152,11 +153,15 @@ fn test_eviction() {
 	c1 := p.get()!
 	p.put(c1)!
 
-	// Wait longer than timeout thresholds
-	time.sleep(100 * time.millisecond)
+	// Let the connection expire before requesting eviction.
+	time.sleep(2 * lifetime)
 	p.send_eviction(.urgent)
-	time.sleep(10 * time.millisecond)
-	stats := p.stats()
+	timer := time.new_stopwatch()
+	mut stats := p.stats()
+	for stats.evicted_count == 0 && timer.elapsed() < 2 * time.second {
+		time.sleep(time.millisecond)
+		stats = p.stats()
+	}
 	assert stats.evicted_count > 0
 	assert stats.total_conns == 0
 	assert stats.idle_conns == 0
@@ -171,7 +176,7 @@ fn test_retry_mechanism() {
 	factory := create_mock_factory(mut test_conns, true, 3) // First 3 attempts fail
 	config := pool.ConnectionPoolConfig{
 		max_retry_attempts: 5
-		retry_base_delay:   10 * time.millisecond
+		retry_base_delay:   0
 		min_idle_conns:     0 // No idle connections
 	}
 
@@ -256,9 +261,11 @@ fn test_config_update() {
 
 	p.update_config(new_config)!
 
-	// Trigger idle connection replenishment
-	time.sleep(100 * time.millisecond)
-	assert p.stats().idle_conns >= 3
+	timer := time.new_stopwatch()
+	for p.stats().idle_conns < new_config.min_idle_conns && timer.elapsed() < 2 * time.second {
+		time.sleep(time.millisecond)
+	}
+	assert p.stats().idle_conns >= new_config.min_idle_conns
 }
 
 fn test_error_handling() {

@@ -210,13 +210,6 @@ fn test_v_mod_graph_needs_a_project() {
 	assert res.output.contains('no v.mod found'), res.output
 }
 
-// test_v_mod_help_lists_graph: the help text has to name the subcommand.
-fn test_v_mod_help_lists_graph() {
-	res := os.exec([@VEXE, 'mod'])
-	assert res.exit_code == 0, res.output
-	assert res.output.contains('graph'), res.output
-}
-
 fn test_v_mod_rejects_an_unknown_subcommand() {
 	prepare_fixture()!
 	res := os.exec([@VEXE, 'mod', 'nosuchsubcommand'])
@@ -228,6 +221,7 @@ fn test_v_mod_help_lists_the_subcommands() {
 	res := os.exec([@VEXE, 'mod'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('why MODULE'), res.output
+	assert res.output.contains('graph'), res.output
 }
 
 fn testsuite_end() {
@@ -265,21 +259,24 @@ fn test_v_mod_why_resolves_dependencies_from_bare_submodules() {
 }
 
 fn test_v_mod_why_reads_tab_separated_import_tokens() {
-	for import_line in ['import\tos', 'import\tos as local_os', 'import\tos { getwd }'] {
-		prepare_fixture()!
-		call := if import_line.contains('local_os') {
-			'local_os.getwd()'
-		} else if import_line.contains('{') {
-			'getwd()'
-		} else {
-			'os.getwd()'
-		}
-		write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\n${import_line}\nfn main() { println(${call}) }\n')!
-		checked := os.exec([@VEXE, '-check', '.'])
-		assert checked.exit_code == 0, checked.output
-		res := mod_why('os')
+	prepare_fixture()!
+	app := os.join_path(tfolder, 'app')
+	write_file(os.join_path(app, 'main.v'), 'module main\nfn main() {\n\tdirect()\n\taliased()\n\tbraced()\n}\n')!
+	// Distinct dependencies make each import form observable in the shared project.
+	probes := {
+		'os':      'import\tos\nfn direct() { println(os.getwd()) }\n'
+		'math':    'import\tmath as local_math\nfn aliased() { println(local_math.abs(-1.0)) }\n'
+		'strconv': "import\tstrconv { atoi }\nfn braced() { println(atoi('42') or { -1 }) }\n"
+	}
+	for dependency, probe in probes {
+		write_file(os.join_path(app, '${dependency}_probe.v'), 'module main\n${probe}')!
+	}
+	checked := os.exec([@VEXE, '-check', '.'])
+	assert checked.exit_code == 0, checked.output
+	for dependency, _ in probes {
+		res := mod_why(dependency)
 		assert res.exit_code == 0, res.output
-		assert res.output.trim_space().split_into_lines() == ['app', 'os'], res.output
+		assert res.output.trim_space().split_into_lines() == ['app', dependency], res.output
 	}
 }
 
@@ -455,26 +452,40 @@ fn test_v_mod_preserves_import_scopes_with_pkgconfig_conditions() {
 }
 
 fn test_v_mod_preserves_import_scopes_after_quoted_interpolation_braces() {
-	for literal in ["'\${'{'}'", "'\${'}'}'", '\'\${"{"}\'', '\'\${\'\${"{"}\'}\'',
-		"'\${'import ghost { }'}'"] {
-		prepare_fixture()!
-		write_module('ghost', 'module ghost\n')!
-		write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\n\$if true {\n\timport orphan\n\tfn marker() string { return ${literal} }\n} \$else {\n\timport lib\n}\nfn main() {}\n')!
-		checked := os.exec([@VEXE, '-check', '.'])
-		assert checked.exit_code == 0, checked.output
-		for dependency in ['lib', 'orphan'] {
-			res := mod_why(dependency)
-			assert res.exit_code == 0, res.output
-			assert res.output.trim_space().split_into_lines() == ['app', dependency], res.output
-		}
-		graph := mod_graph()
-		assert graph.exit_code == 0, graph.output
-		lines := graph.output.trim_space().split_into_lines()
-		assert lines.contains('lib'), graph.output
-		assert lines.contains('orphan'), graph.output
-		assert lines.contains('  deeper'), graph.output
-		assert !lines.contains('ghost'), graph.output
+	prepare_fixture()!
+	write_module('ghost', 'module ghost\n')!
+	app := os.join_path(tfolder, 'app')
+	write_file(os.join_path(app, 'main.v'), 'module main\nfn main() {}\n')!
+	literals := ["'\${'{'}'", "'\${'}'}'", '\'\${"{"}\'', '\'\${\'\${"{"}\'}\'',
+		"'\${'import ghost { }'}'"]
+	mut branches := []string{}
+	mut expected_graph_lines := []string{}
+	for i, literal in literals {
+		// Give each interpolation its own import branches and graph edge.
+		active := 'active_${i}'
+		inactive := 'inactive_${i}'
+		nested := 'nested_${i}'
+		write_module(active, 'module ${active}\n')!
+		write_module(inactive, 'module ${inactive}\nimport ${nested}\n')!
+		write_module(nested, 'module ${nested}\n')!
+		branches << [active, inactive]
+		expected_graph_lines << [active, inactive, '  ${nested}']
+		write_file(os.join_path(app, 'interpolation_${i}.v'), 'module main\n\$if true {\n\timport ${active}\n\tfn marker_${i}() string { return ${literal} }\n} \$else {\n\timport ${inactive}\n}\n')!
 	}
+	checked := os.exec([@VEXE, '-check', '.'])
+	assert checked.exit_code == 0, checked.output
+	for dependency in branches {
+		res := mod_why(dependency)
+		assert res.exit_code == 0, res.output
+		assert res.output.trim_space().split_into_lines() == ['app', dependency], res.output
+	}
+	graph := mod_graph()
+	assert graph.exit_code == 0, graph.output
+	lines := graph.output.trim_space().split_into_lines()
+	for expected in expected_graph_lines {
+		assert lines.contains(expected), graph.output
+	}
+	assert !lines.contains('ghost'), graph.output
 }
 
 fn test_v_mod_keeps_first_resolved_directory_for_same_named_local_modules() {

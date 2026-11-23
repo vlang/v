@@ -106,6 +106,8 @@ pub mut:
 	status  int
 	headers []H2HeaderField
 	body    []u8
+	// True when a request limit ended the response before its encoded body was complete.
+	body_truncated bool
 }
 
 // H2Conn is a client-side HTTP/2 connection.
@@ -321,6 +323,9 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 				}
 				if frame.data.len > 0 {
 					body_so_far += u64(frame.data.len)
+					if req.stop_copying_limit > 0 && i64(body_so_far) > req.stop_copying_limit {
+						resp.body_truncated = true
+					}
 					// Append the chunk to the response body unless the copy
 					// limit has been reached; the callback still fires.
 					if req.stop_copying_limit < 0
@@ -351,6 +356,7 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 					break
 				}
 				if req.stop_receiving_limit >= 0 && i64(body_so_far) >= req.stop_receiving_limit {
+					resp.body_truncated = true
 					// Cancel the stream (RFC 7540 Section 8.1.4 / 5.4.2) so the
 					// peer stops sending more DATA, and mark the connection
 					// unusable: in-flight DATA frames that the peer has already

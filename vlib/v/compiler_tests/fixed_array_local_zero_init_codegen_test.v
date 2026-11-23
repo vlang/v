@@ -1,14 +1,23 @@
 import os
+import v.tempname
 
 const local_fixed_array_vexe = @VEXE
 const local_fixed_array_tests_dir = os.dir(@FILE)
 const local_fixed_array_v3_dir = os.dir(local_fixed_array_tests_dir)
 const local_fixed_array_vlib_dir = os.dir(local_fixed_array_v3_dir)
 const local_fixed_array_v3_src = os.join_path(local_fixed_array_v3_dir, 'v.v')
+const local_fixed_array_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_fixed_array_local_zero_compiler_${tempname.unique_token()}')
+
+fn testsuite_end() {
+	os.rmdir_all(local_fixed_array_compiler_dir) or {}
+}
 
 fn local_fixed_array_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_local_zero_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(local_fixed_array_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
+	os.mkdir_all(local_fixed_array_compiler_dir) or { panic(err) }
 	build :=
 		os.exec([local_fixed_array_vexe, '-gc', 'none', '-path',
 			'${local_fixed_array_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,

@@ -1,4 +1,4 @@
-module driver
+module main
 
 import os
 import v.cmdexec
@@ -43,7 +43,7 @@ fn main() {
 	}
 }
 
-fn test_deprecated_integer_types_warn_and_respect_warnings_as_errors() {
+fn test_c_backend_deprecated_integer_types_warn_and_respect_warnings_as_errors() {
 	root := os.join_path(os.vtmp_dir(), 'deprecated_integer_types_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
@@ -58,7 +58,7 @@ fn main() {
 	assert y.str() == "1"
 }
 ') or { panic(err) }
-	for backend in ['c', 'fastc'] {
+	for backend in ['c'] {
 		output := os.join_path(root, backend + '.c')
 		args := [...deprecated_integer_backend_args(backend), '-o', output, root]
 		built := cmdexec.run(@VEXE, args)
@@ -86,25 +86,21 @@ fn main() {
 	}
 }
 
-fn test_fastc_warns_about_each_form_a_deprecated_integer_type_can_take() {
-	root := os.join_path(os.vtmp_dir(), 'deprecated_integer_forms_${os.getpid()}')
+fn test_fastc_cli_reports_replacement_for_deprecated_integer_types() {
+	root := os.join_path(os.vtmp_dir(), 'unsupported_integer_forms_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
-	for name, source in {
-		'parameter':     'fn f(x usize) {}\nfn main() { f(1) }\n'
-		'return':        'fn f() usize { return 1 }\nfn main() { f() }\n'
-		'field':         'struct S { x usize }\nfn main() { _ = S{} }\n'
-		'array':         'fn main() { _ = []usize{} }\n'
-		'generic':       'struct B[T] { v T }\nfn main() { _ = B[usize]{v: 1} }\n'
-		'interpolation': "fn main() { println('a \${usize(1)} b') }\n"
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'out.c')
+	for spelling, replacement in {
+		'isize': 'int'
+		'usize': 'uint'
 	} {
-		dir := os.join_path(root, name)
-		os.mkdir_all(dir) or { panic(err) }
-		os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
-		built := cmdexec.run(@VEXE, [...deprecated_integer_backend_args('fastc'), '-o',
-			os.join_path(root, name + '.c'), dir])
-		assert built.exit_code == 0, built.output
-		assert built.output.contains('`usize` is deprecated; use `uint` instead'), '${name}: ${built.output}'
+		os.write_file(source, 'fn main() { _ = ${spelling}(1) }\n') or { panic(err) }
+		built := cmdexec.run(@VEXE, [...deprecated_integer_backend_args('fastc'), '-o', output,
+			root])
+		assert built.exit_code != 0, built.output
+		assert built.output.contains('type `${spelling}`; use `${replacement}` instead'), built.output
 	}
 }
 

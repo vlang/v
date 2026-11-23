@@ -53,7 +53,7 @@ fn test_interpolating_a_heap_alias_reads_it_once() {
 	src := os.join_path(dir, 'main.v')
 	os.write_file(src, heap_program) or { panic(err) }
 	exe := os.join_path(dir, 'main.exe')
-	build := os.exec([vexe, '-new-compiler', '-o', exe, src])
+	build := os.exec([vexe, '-o', exe, src])
 	assert build.exit_code == 0, build.output
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output

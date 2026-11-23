@@ -5,22 +5,30 @@ const closure_tls_tests_dir = os.dir(@FILE)
 const closure_tls_v3_dir = os.dir(closure_tls_tests_dir)
 const closure_tls_vlib_dir = os.dir(closure_tls_v3_dir)
 const closure_tls_v3_src = os.join_path(closure_tls_v3_dir, 'v.v')
+const closure_tls_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_closure_tls_compiler_${os.getpid()}')
+const v3_bin = os.join_path(closure_tls_compiler_dir, 'v3' + $if windows { '.exe' } $else { '' })
+
+fn testsuite_begin() {
+	os.rmdir_all(closure_tls_compiler_dir) or {}
+	os.mkdir_all(closure_tls_compiler_dir)!
+	build := os.exec([closure_tls_vexe, '-gc', 'none', '-path',
+		'${closure_tls_vlib_dir}|@vlib|@vmodules', '-o', v3_bin, closure_tls_v3_src])
+	assert build.exit_code == 0, build.output
+}
+
+fn testsuite_end() {
+	os.rmdir_all(closure_tls_compiler_dir) or {}
+}
 
 fn test_capturing_callbacks_use_owned_capture_contexts() {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_closure_tls_${pid}')
 	src := os.join_path(os.temp_dir(), 'v3_closure_tls_${pid}.v')
 	out := os.join_path(os.temp_dir(), 'v3_closure_tls_program_${pid}')
 	defer {
-		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
 		os.rm(out + '.c') or {}
 	}
-	build :=
-		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
-			'${closure_tls_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${closure_tls_v3_src}'])
-	assert build.exit_code == 0, build.output
 	os.write_file(src, "module main
 
 import time
@@ -73,19 +81,13 @@ fn main() {
 
 fn test_spawned_capturing_literals_use_owned_capture_contexts() {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_spawn_capture_tls_${pid}')
 	src := os.join_path(os.temp_dir(), 'v3_spawn_capture_tls_${pid}.v')
 	out := os.join_path(os.temp_dir(), 'v3_spawn_capture_tls_program_${pid}')
 	defer {
-		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
 		os.rm(out + '.c') or {}
 	}
-	build :=
-		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
-			'${closure_tls_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${closure_tls_v3_src}'])
-	assert build.exit_code == 0, build.output
 	os.write_file(src, "module main
 
 import time
@@ -135,19 +137,13 @@ fn main() {
 
 fn test_spawned_named_capturing_callback_survives_join_and_reuse() {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_${pid}')
 	src := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_${pid}.v')
 	out := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_program_${pid}')
 	defer {
-		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
 		os.rm(out + '.c') or {}
 	}
-	build :=
-		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
-			'${closure_tls_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${closure_tls_v3_src}'])
-	assert build.exit_code == 0, build.output
 	os.write_file(src, "module main
 
 fn main() {

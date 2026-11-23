@@ -61,9 +61,9 @@ fn test_captured_failure() {
 ')!
 	for subsystem in ['auto', 'console', 'windows'] {
 		output := os.join_path(root, '${subsystem}.c')
-		generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc',
-			'none', '-os', 'windows', '-arch', 'amd64', '-subsystem', subsystem, '-run-only',
-			'test_captured_failure', '-o', output, source])
+		generated := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-os',
+			'windows', '-arch', 'amd64', '-subsystem', subsystem, '-run-only', 'test_captured_failure',
+			'-o', output, source])
 		assert generated.exit_code == 0, generated.output
 		code := os.read_file(output)!
 		if subsystem == 'windows' {
@@ -78,9 +78,9 @@ fn test_captured_failure() {
 	}
 	$if windows {
 		output := os.join_path(root, 'capture_test.exe')
-		compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc',
-			'none', '-cc', @CCOMPILER, '-subsystem', 'auto', '-run-only', 'test_captured_failure',
-			'-skip-running', '-o', output, source])
+		compiled := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+			@CCOMPILER, '-subsystem', 'auto', '-run-only', 'test_captured_failure', '-skip-running',
+			'-o', output, source])
 		assert compiled.exit_code == 0, compiled.output
 		ran := os.exec([output])
 		assert ran.exit_code == 1, ran.output

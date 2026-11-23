@@ -130,6 +130,10 @@ pub fn query_unescape(s string) !string {
 	return unescape(s, .encode_query_component)
 }
 
+fn query_unescape_for_parse_query(s string) !string {
+	return unescape_with_query_compatibility(s, .encode_query_component, true)
+}
+
 // path_unescape does the inverse transformation of path_escape,
 // converting each 3-byte encoded substring of the form '%AB' into the
 // hex-decoded byte 0xAB. It returns an error if any % is not followed
@@ -144,7 +148,13 @@ pub fn path_unescape(s string) !string {
 // unescape unescapes a string; the mode specifies
 // which section of the URL string is being unescaped.
 fn unescape(s_ string, mode EncodingMode) !string {
+	return unescape_with_query_compatibility(s_, mode, false)
+}
+
+fn unescape_with_query_compatibility(s_ string, mode EncodingMode, preserve_parse_query_literals bool) !string {
 	mut s := s_
+	mut repaired := strings.new_builder(0)
+	mut pending_write_pos := 0
 	// Count %, check that they're well-formed.
 	mut n := 0
 	mut has_plus := false
@@ -157,10 +167,20 @@ fn unescape(s_ string, mode EncodingMode) !string {
 				}
 				n++
 				if i + 2 >= s.len || !ishex(s[i + 1]) || !ishex(s[i + 2]) {
-					if mode == .encode_query_component && i + 1 < s.len {
-						s = s[..i] + '%25' + s[(i + 1)..]
-						i += 4 // skip the %25 and the next character
-						continue
+					if preserve_parse_query_literals && mode == .encode_query_component
+						&& i + 1 < s.len {
+						// `%c` is a formatter marker as well as a hex prefix; preserve it
+						// only when the following pair is not a valid escape.
+						is_format_marker := s[i + 1] == `c`
+							&& (i + 2 >= s.len || !ishex(s[i + 2]))
+						if !ishex(s[i + 1]) || is_format_marker {
+							repaired.write_string(s[pending_write_pos..i])
+							repaired.write_string('%25')
+							repaired.write_byte(s[i + 1])
+							pending_write_pos = i + 2
+							i += 2
+							continue
+						}
 					}
 					s = s[i..]
 					if s.len > 3 {
@@ -207,6 +227,11 @@ fn unescape(s_ string, mode EncodingMode) !string {
 				i++
 			}
 		}
+	}
+	if pending_write_pos > 0 {
+		repaired.write_string(s[pending_write_pos..])
+		// A repair can expose an adjacent literal `%`; validate the composed bytes again.
+		return unescape(repaired.str(), mode)
 	}
 	if n == 0 && !has_plus {
 		return '${s}' // TODO: `return s` once an autofree bug is fixed
@@ -809,12 +834,12 @@ fn parse_query_values(mut m Values, query string) !bool {
 			value = key[i + 1..]
 			key = key[..i]
 		}
-		k := query_unescape(key) or {
+		k := query_unescape_for_parse_query(key) or {
 			had_error = true
 			continue
 		}
 		key = k
-		v := query_unescape(value) or {
+		v := query_unescape_for_parse_query(value) or {
 			had_error = true
 			continue
 		}
@@ -1015,10 +1040,12 @@ pub fn split_host_port(hostport string) (string, string) {
 
 // valid_userinfo reports whether s is a valid userinfo string per RFC 3986
 // Section 3.2.1:
+// ```
 // userinfo    = *( unreserved / pct-encoded / sub-delims / ':' )
 // unreserved  = ALPHA / DIGIT / '-' / '.' / '_' / '~'
 // sub-delims  = '!' / '$' / '&' / ''' / '(' / ')'
-// / '*' / '+' / ',' / ';' / '='
+//             / '*' / '+' / ',' / ';' / '='
+// ```
 //
 // It doesn't validate pct-encoded. The caller does that via fn unescape.
 pub fn valid_userinfo(s string) bool {

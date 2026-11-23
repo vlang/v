@@ -123,3 +123,61 @@ fn test_document_class_search_handles_empty_and_multiple_names() {
 	assert dom.get_tags_by_class_name('x').len == 3
 	assert dom.get_tags(name: 'div')[0] == dom.get_root()
 }
+
+fn test_attribute_value_indexes_keep_first_seen_order() {
+	mut dom := parse('<html><body><div id="same"></div><p id="other"></p><span id="same"></span><i id=""></i><b id></b></body></html>')
+	same := dom.get_tags_by_attribute_value('id', 'same')
+	empty := dom.get_tags_by_attribute_value('id', '')
+	assert same.len == 2
+	assert same[0].name == 'div'
+	assert same[1].name == 'span'
+	assert empty.len == 2
+	assert empty[0].name == 'i'
+	assert empty[1].name == 'b'
+}
+
+fn test_unknown_attribute_value_queries_do_not_grow_indexes() {
+	mut dom := parse('<div id="known"></div>')
+	id_indexes := dom.attribute_value_indexes['id'] or { panic('id index was not built') }
+	assert id_indexes.len() == 1
+	for index in 0 .. 100 {
+		assert dom.get_tags_by_attribute_value('id', 'missing_${index}').len == 0
+	}
+	assert id_indexes.len() == 1
+	assert dom.get_tags_by_attribute_value('missing', 'value').len == 0
+	assert 'missing' !in dom.attribute_value_indexes
+}
+
+fn test_many_distinct_attribute_values_remain_searchable() {
+	mut temp_html := strings.new_builder(200_000)
+	temp_html.write_string('<div>')
+	for index in 0 .. 4096 {
+		temp_html.write_string('<span id="value_${index}"></span>')
+	}
+	temp_html.write_string('</div>')
+	mut dom := parse(temp_html.str())
+	assert dom.get_tags_by_attribute('id').len == 4096
+	assert dom.get_tags_by_attribute_value('id', 'value_0').len == 1
+	assert dom.get_tags_by_attribute_value('id', 'value_4095').len == 1
+}
+
+fn test_synthetic_text_nodes_cannot_become_dom_containers() {
+	mut dom := DocumentObjectModel{
+		source_bytes: 1024
+	}
+	dom.close_tags['/text'] = true
+	mut tags := [&Tag{
+		name: 'root'
+	}]
+	for _ in 0 .. 300 {
+		tags << &Tag{
+			name:         'text'
+			content:      'x'
+			is_text_node: true
+		}
+	}
+	dom.construct(tags)
+	assert dom.parse_error() == none
+	assert dom.get_root().children.len == 300
+	assert dom.get_root().content == 'x'.repeat(300)
+}

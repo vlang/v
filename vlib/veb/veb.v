@@ -160,6 +160,7 @@ struct SslRequestParams {
 	benchmark_page_generation bool
 	max_request_buffer_size   int
 	max_request_body_size     int
+	read_header_timeout       time.Duration = http.default_http1_request_head_timeout
 }
 
 // render_request dispatches one request without starting a listener and returns
@@ -215,7 +216,7 @@ fn listen_addr(params RunParams) string {
 // request_read_error_response returns the response for a request that
 // `read_request_from_buffered_reader` could not read.
 fn request_read_error_response(err IError) http.Response {
-	if err is http.HeaderLimitError {
+	if err is http.HeaderLimitError || err is http.RequestHeaderLimitError {
 		return http_431
 	}
 	if err is RequestBodyLimitError {
@@ -230,6 +231,9 @@ struct RequestBodyLimitError {
 	Error
 }
 
+// Keep framing values from controlling temporary allocation sizes.
+const request_body_read_buffer_size = 4096
+
 // msg returns the description of the error.
 fn (err RequestBodyLimitError) msg() string {
 	return 'the request body is too large'
@@ -240,6 +244,15 @@ fn (err RequestBodyLimitError) msg() string {
 // read the rest of that body.
 fn read_request_from_buffered_reader(mut reader io.BufferedReader, max_request_body_size int) !http.Request {
 	mut req := http.parse_request_head(mut reader)!
+	return read_request_body_from_buffered_reader(mut reader, mut req, max_request_body_size)
+}
+
+fn read_request_from_buffered_reader_with_timeout(mut reader io.BufferedReader, max_request_body_size int, mut conn http.RequestReadDeadlineSetter, read_header_timeout time.Duration) !http.Request {
+	mut req := http.parse_request_head_with_timeout(mut reader, mut conn, read_header_timeout)!
+	return read_request_body_from_buffered_reader(mut reader, mut req, max_request_body_size)
+}
+
+fn read_request_body_from_buffered_reader(mut reader io.BufferedReader, mut req http.Request, max_request_body_size int) !http.Request {
 	length_values := req.header.values(.content_length)
 	if length_values.len > 0 && req.header.contains(.transfer_encoding) {
 		return error('conflicting request body framing')
@@ -262,9 +275,10 @@ fn read_request_from_buffered_reader(mut reader io.BufferedReader, max_request_b
 	if max_request_body_size > 0 && content_length_i > max_request_body_size {
 		return RequestBodyLimitError{}
 	}
-	mut body := []u8{len: content_length_i}
-	read_exact_bytes(mut reader, mut body)!
-	req.data = body.bytestr()
+	mut body := strings.new_builder(0)
+	mut read_buffer := []u8{}
+	read_request_body_bytes(mut reader, content_length_i, mut body, mut read_buffer)!
+	req.data = body.str()
 	return req
 }
 
@@ -299,6 +313,7 @@ fn transfer_encoding_is_chunked(header http.Header) bool {
 
 fn read_chunked_request_body(mut reader io.BufferedReader, max_request_body_size int) !string {
 	mut sb := strings.new_builder(1024)
+	mut read_buffer := []u8{}
 	for {
 		mut chunk_size_line := reader.read_line()!
 		if semicolon_idx := chunk_size_line.index(';') {
@@ -329,12 +344,18 @@ fn read_chunked_request_body(mut reader io.BufferedReader, max_request_body_size
 				}
 			}
 		}
-		if max_request_body_size > 0 && chunk_size > max_request_body_size - sb.len {
-			return RequestBodyLimitError{}
+		if max_request_body_size > 0 {
+			if sb.len > max_request_body_size {
+				return RequestBodyLimitError{}
+			}
+			if chunk_size > max_request_body_size - sb.len {
+				return RequestBodyLimitError{}
+			}
 		}
-		mut chunk := []u8{len: chunk_size}
-		read_exact_bytes(mut reader, mut chunk)!
-		sb.write(chunk)!
+		if chunk_size > max_int - sb.len {
+			return error('chunked request body is too large')
+		}
+		read_request_body_bytes(mut reader, chunk_size, mut sb, mut read_buffer)!
 		mut delimiter := []u8{len: 2}
 		read_exact_bytes(mut reader, mut delimiter)!
 		if delimiter[0] != `\r` || delimiter[1] != `\n` {
@@ -344,7 +365,28 @@ fn read_chunked_request_body(mut reader io.BufferedReader, max_request_body_size
 	return error('invalid chunked body')
 }
 
-fn read_exact_bytes(mut reader io.BufferedReader, mut buf []u8) ! {
+fn read_request_body_bytes(mut reader io.Reader, body_length int, mut body strings.Builder, mut buffer []u8) ! {
+	if body_length <= 0 {
+		return
+	}
+	buffer_length := if body_length < request_body_read_buffer_size {
+		body_length
+	} else {
+		request_body_read_buffer_size
+	}
+	if buffer.len < buffer_length {
+		buffer = []u8{len: buffer_length}
+	}
+	mut remaining := body_length
+	for remaining > 0 {
+		read_length := if remaining < buffer.len { remaining } else { buffer.len }
+		read_exact_bytes(mut reader, mut buffer[..read_length])!
+		body.write(buffer[..read_length])!
+		remaining -= read_length
+	}
+}
+
+fn read_exact_bytes(mut reader io.Reader, mut buf []u8) ! {
 	mut offset := 0
 	for offset < buf.len {
 		n := reader.read(mut buf[offset..]) or {
@@ -362,6 +404,15 @@ fn read_exact_bytes(mut reader io.BufferedReader, mut buf []u8) ! {
 
 fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Context {
 	mut global_app := unsafe { &A(params.global_app) }
+	$if A is RequestActivityApp {
+		global_app.before_handle_request(req)
+	}
+	defer {
+		$if A is RequestActivityApp {
+			global_app.after_handle_request(req)
+		}
+	}
+
 	page_gen_start := time.ticks()
 	mut url := urllib.parse(req.url) or {
 		eprintln('[veb] error parsing path "${req.url}": ${err}')
@@ -395,7 +446,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 			user_context, url, host)
 		{
 			// Preserve the handled context on the heap before the stack-local user context goes away.
-			ctx.preserve_for_response_writer(user_context.Context)
+			ctx.preserve_for_response_writer(mut user_context.Context)
 			return ctx
 		}
 	}
@@ -406,7 +457,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 	}
 	handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
 	// Preserve the handled context on the heap before the stack-local user context goes away.
-	ctx.preserve_for_response_writer(user_context.Context)
+	ctx.preserve_for_response_writer(mut user_context.Context)
 	return ctx
 }
 

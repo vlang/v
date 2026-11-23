@@ -255,7 +255,13 @@ fn test_periodic_handle_stop_before_first_iteration() {
 	})!
 	handle.stop()
 	handle.wait()!
-	assert_no_periodic_signal(ran, 'periodic handle ran before first interval after stop')
+	select {
+		_ := <-ran {
+			assert false, 'periodic handle ran before first interval after stop'
+		}
+		else {
+		}
+	}
 }
 
 fn test_periodic_handle_stop_between_ticks() {

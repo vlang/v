@@ -1,14 +1,27 @@
 import os
+import v.tempname
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const generics_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_generics_fixtures_${tempname.unique_token()}')
 
-// build_v3 builds v3 data for v3 tests.
+fn testsuite_begin() {
+	os.mkdir_all(generics_fixture_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(generics_fixture_dir) or {}
+}
+
+// build_v3 returns the compiler shared by this test suite.
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generics_test')
+	v3_bin := os.join_path(generics_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${v3_src}'])
@@ -18,9 +31,9 @@ fn build_v3() string {
 
 // run_selfhost_bad supports run selfhost bad handling for v3 tests.
 fn run_selfhost_bad(v3_bin string, name string, src string, expected string) {
-	bad_src := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
+	bad_src := os.join_path(generics_fixture_dir, 'v3_gen_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := os.join_path(os.temp_dir(), 'v3_gen_${name}')
+	bad_bin := os.join_path(generics_fixture_dir, 'v3_gen_${name}')
 	result := os.exec([v3_bin, '${bad_src}', '-selfhost', '-b', 'c', '-o', bad_bin])
 	assert result.exit_code != 0, 'expected error for ${name}, but compilation succeeded'
 	assert result.output.contains(expected), 'expected "${expected}" in output for ${name}, got: ${result.output}'
@@ -34,14 +47,14 @@ fn write_project_file(root string, rel string, src string) {
 }
 
 fn run_selfhost_project_bad(v3_bin string, name string, files map[string]string, input string, expected string) {
-	root := os.join_path(os.temp_dir(), 'v3_gen_${name}_project')
+	root := os.join_path(generics_fixture_dir, 'v3_gen_${name}_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	for rel, src in files {
 		write_project_file(root, rel, src)
 	}
 	input_path := os.join_path(root, input)
-	bad_bin := os.join_path(os.temp_dir(), 'v3_gen_${name}')
+	bad_bin := os.join_path(generics_fixture_dir, 'v3_gen_${name}')
 	result := os.exec([v3_bin, input_path, '-selfhost', '-b', 'c', '-o', bad_bin])
 	assert result.exit_code != 0, 'expected error for ${name}, but compilation succeeded'
 	assert result.output.contains(expected), 'expected "${expected}" in output for ${name}, got: ${result.output}'
@@ -50,18 +63,18 @@ fn run_selfhost_project_bad(v3_bin string, name string, files map[string]string,
 
 // run_no_generic_error supports run no generic error handling for v3 tests.
 fn run_no_generic_error(v3_bin string, name string, src string) {
-	src_file := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
+	src_file := os.join_path(generics_fixture_dir, 'v3_gen_${name}.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_file := os.join_path(os.temp_dir(), 'v3_gen_${name}')
+	bin_file := os.join_path(generics_fixture_dir, 'v3_gen_${name}')
 	result := os.exec([v3_bin, src_file, '-b', 'c', '-o', bin_file])
 	assert !result.output.contains('unsupported generic'), '${name}: should not reject generics without -selfhost, got: ${result.output}'
 }
 
 // run_generic_ok supports run generic ok handling for v3 tests.
 fn run_generic_ok(v3_bin string, name string, src string, expected string) {
-	src_file := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
+	src_file := os.join_path(generics_fixture_dir, 'v3_gen_${name}.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_file := os.join_path(os.temp_dir(), 'v3_gen_${name}')
+	bin_file := os.join_path(generics_fixture_dir, 'v3_gen_${name}')
 	c_file := bin_file + '.c'
 	compile := os.exec([v3_bin, src_file, '-b', 'c', '-o', bin_file])
 	// Check that v3 type checker and transform pass without errors
@@ -78,9 +91,9 @@ fn run_generic_ok(v3_bin string, name string, src string, expected string) {
 }
 
 fn run_generic_exec(v3_bin string, name string, src string) string {
-	src_file := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
+	src_file := os.join_path(generics_fixture_dir, 'v3_gen_${name}.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_file := os.join_path(os.temp_dir(), 'v3_gen_${name}')
+	bin_file := os.join_path(generics_fixture_dir, 'v3_gen_${name}')
 	compile := os.exec([v3_bin, src_file, '-b', 'c', '-o', bin_file])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_file])
@@ -112,7 +125,7 @@ fn main() {
 
 fn test_explicit_main_generic_arg_survives_imported_call_rewrite() {
 	v3_bin := build_v3()
-	root := os.join_path(os.temp_dir(), 'v3_gen_explicit_main_generic_project')
+	root := os.join_path(generics_fixture_dir, 'v3_gen_explicit_main_generic_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	write_project_file(root, 'gate/gate.v', 'module gate
@@ -162,9 +175,9 @@ fn test_late_generic_reachability_runs_to_fixpoint() {
 		}
 	}
 	source += 'fn never() bool {\n\treturn false\n}\n\nfn main() {\n\tif never() {\n\t\t_ = Reach1[string]{} + Reach1[string]{}\n\t}\n\tvalue := Reach1[int]{} + Reach1[int]{}\n\tprintln(value.value)\n}\n'
-	src_file := os.join_path(os.temp_dir(), 'v3_gen_late_generic_reachability_fixpoint.v')
+	src_file := os.join_path(generics_fixture_dir, 'v3_gen_late_generic_reachability_fixpoint.v')
 	os.write_file(src_file, source) or { panic(err) }
-	bin_file := os.join_path(os.temp_dir(), 'v3_gen_late_generic_reachability_fixpoint')
+	bin_file := os.join_path(generics_fixture_dir, 'v3_gen_late_generic_reachability_fixpoint')
 	compile := os.exec(['env', 'VJOBS=4', v3_bin, src_file, '-b', 'c', '-o', bin_file])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_file])
@@ -432,7 +445,7 @@ fn main() {
 
 	// A one-letter concrete type argument should not be treated as an unresolved
 	// generic placeholder when discovering struct specializations.
-	one_letter_src := os.join_path(os.temp_dir(), 'v3_gen_one_letter_concrete_arg.v')
+	one_letter_src := os.join_path(generics_fixture_dir, 'v3_gen_one_letter_concrete_arg.v')
 	os.write_file(one_letter_src, '
 struct A {
 	value int
@@ -453,7 +466,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	one_letter_bin := os.join_path(os.temp_dir(), 'v3_gen_one_letter_concrete_arg')
+	one_letter_bin := os.join_path(generics_fixture_dir, 'v3_gen_one_letter_concrete_arg')
 	one_letter_compile := os.exec([v3_bin, '${one_letter_src}', '-b', 'c', '-o', one_letter_bin])
 	assert !one_letter_compile.output.contains('unsupported generic'), one_letter_compile.output
 	assert !one_letter_compile.output.contains('type checker found'), one_letter_compile.output

@@ -23,7 +23,6 @@ fn test_compiler_updates_reuse_unchanged_generated_module_objects() ! {
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 	environment['V3_CACHE_REFRESH'] = '1'
 	environment['V_SKIP_VVMRC'] = '1'
-	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	for index in 0 .. 2 {
 		// Different executable identities force fresh compiler-specific interfaces
 		// even though these compilers generate the same module C.
@@ -115,7 +114,6 @@ fn test_synthetic_refresh_reports_failed_tinycc_module_objects() ! {
 	}
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 	environment['VEXE'] = @VEXE
-	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	mut process := os.new_process(helper)
 	process.set_environment(environment)
 	process.set_redirect_stdio()
@@ -154,7 +152,7 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 	saved := os.environ()
 	variables := ['V3CACHE', 'VEXE', 'VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH',
 		'V3_CACHE_REFRESH_ENTRY', 'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V3_CACHE_FORCE_SOURCE',
-		'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
+		'V3_CACHE_TRACE', 'V_SKIP_VVMRC']
 	defer {
 		for variable in variables {
 			if variable in saved {
@@ -169,21 +167,20 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
 	os.setenv('VEXE', @VEXE, true)
 	os.setenv('V_SKIP_VVMRC', '1', true)
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	log := os.join_path(root, 'calls')
 	dependency_log := os.join_path(root, 'dependency_calls')
 	compiler := os.join_path(root, 'cc')
 	// Module compilation is allowed. Compiling a program unit or linking the
 	// synthetic importer must fail, even if the ordinary compiler could do it.
-	// Record native helper dependency scans separately so warm refresh still
-	// forbids every new object while allowing dependency validation.
+	// Record dependency and preprocessor checks separately from object builds.
+	// Native interface validation also needs compiler version and -E probes.
 	os.write_file(compiler, '#!/bin/sh\n' +
-		'case "\$*" in --version) exec ' + os.quoted_path(cc) + ' "\$@";; esac\n' +
+		'case "\$*" in --version|-v) exec ' + os.quoted_path(cc) + ' "\$@";; esac\n' +
 		'case "\$*" in *program_main_*|*program_prefix_*) echo "unexpected program object" >&2; exit 97;; esac\n' +
-		'for arg; do\n  if [ "\$arg" = -M ]; then printf "%s\\n" "\$*" >> ' +
-		os.quoted_path(dependency_log) + '; exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
-		'printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n' +
-		'for arg; do\n  if [ "\$arg" = -c ]; then exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
+		'for arg; do\n  case "\$arg" in -M|-E) printf "%s\\n" "\$*" >> ' +
+		os.quoted_path(dependency_log) + '; exec ' + os.quoted_path(cc) + ' "\$@";; esac\ndone\n' +
+		'for arg; do\n  if [ "\$arg" = -c ]; then printf "%s\\n" "\$*" >> ' +
+		os.quoted_path(log) + '; exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
 		'echo "unexpected program link" >&2\nexit 98\n')!
 	os.chmod(compiler, 0o755)!
 	for is_test in [false, true] {
@@ -216,9 +213,20 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 		cold_calls := os.read_file(log)!
 		assert cold_calls.len > 0
 		assert !cold_calls.contains('program_main_') && !cold_calls.contains('program_prefix_'), cold_calls
-		assert collect(os.dir(@VEXE), @VEXE)!.any(it.module == 'crypto.sha3' && it.is_test == is_test)
+		inventory := collect(os.dir(@VEXE), @VEXE)!
+		for request in requests {
+			assert inventory.any(it.module == request.module && it.is_test == is_test), '${request.module} must have a reusable module object'
+		}
+		// Trace cache misses only on the warm replay so CI identifies why an
+		// unchanged object was rebuilt. The trace changes no cache selection.
+		os.setenv('V3_CACHE_TRACE', '1', true)
 		refresh(@VEXE, requests)!
-		assert os.read_file(log)! == cold_calls, 'warm refresh must reuse its validated module objects'
+		os.unsetenv('V3_CACHE_TRACE')
+		warm_calls := os.read_file(log)!
+		diagnostic := 'warm refresh must reuse its validated module objects\n' +
+			'cold compiler calls:\n${cold_calls}\n' + 'after warm refresh:\n${warm_calls}'
+		assert warm_calls == cold_calls, diagnostic
+		assert os.read_file(dependency_log)!.contains(' -E '), 'native interface validation was not run'
 	}
 }
 

@@ -24,13 +24,45 @@ fail() {
     exit 1
 }
 
-# Guard against accidentally omitting or reordering any workflow script task.
+# Guard against omitted/duplicated tasks and changes to the remaining serial
+# task order. GCC/Clang self tests moved to independent matrix jobs, each of
+# which repeats its compiler lane's dependency setup.
 sed -n '/^const ci_tasks = \[/,/^\]/p' "$repo/ci/linux_ci.vsh" |
     sed -n "s/^[[:space:]]*'\([^']*\)',$/\1/p" > "$work/tasks"
-sed -n 's/^[[:space:]]*run: v run ci\/linux_ci.vsh \([^ ]*\)$/\1/p' \
-    "$repo/.github/workflows/linux_ci.yml" > "$work/workflow-tasks"
+awk '
+    /^  [^ ]/ { job = $1; sub(/:$/, "", job) }
+    /^[[:space:]]*run: v run ci\/linux_ci.vsh [^ ]*$/ { print job, $NF }
+' "$repo/.github/workflows/linux_ci.yml" > "$work/workflow-job-tasks"
+awk '{ print $2 }' "$work/workflow-job-tasks" > "$work/workflow-tasks"
 [ -s "$work/tasks" ] || fail 'could not read the CI task list'
-cmp "$work/tasks" "$work/workflow-tasks" || fail 'CI task plan differs from the workflow'
+cp "$work/tasks" "$work/expected-workflow-tasks"
+printf '%s\n' install_dependencies_for_examples_and_tools_gcc \
+    install_dependencies_for_examples_and_tools_clang >> "$work/expected-workflow-tasks"
+LC_ALL=C sort "$work/expected-workflow-tasks" > "$work/expected-sorted"
+LC_ALL=C sort "$work/workflow-tasks" > "$work/workflow-sorted"
+cmp "$work/expected-sorted" "$work/workflow-sorted" || fail 'CI task coverage or duplicate count differs from the workflow'
+awk '!/^self_tests_(gcc|prod_gcc|cstrict_gcc|clang|vprod_clang|cstrict_clang)$/' \
+    "$work/tasks" > "$work/serial-tasks"
+awk '$1 == "tcc-linux" || $1 == "gcc-linux" || $1 == "clang-linux" { print $2 }' \
+    "$work/workflow-job-tasks" > "$work/workflow-serial-tasks"
+cmp "$work/serial-tasks" "$work/workflow-serial-tasks" || fail 'serial CI task order differs from the workflow'
+
+# Direct workflow tasks inherit their compiler from the job, while aggregate CI
+# selects it in ci_vflags. Keep both paths on the same compiler for every lane.
+for lane in tcc-linux gcc-linux clang-linux gcc-linux-self-tests clang-linux-self-tests; do
+    compiler=${lane%%-*}
+    flags=$(awk -v job="$lane:" '
+        /^  [^ ]/ { selected = $1 == job }
+        selected && /^      VFLAGS:/ {
+            sub(/^      VFLAGS:[[:space:]]*/, "")
+            print
+            exit
+        }
+    ' "$repo/.github/workflows/linux_ci.yml")
+    expected="-cc $compiler"
+    [ "$compiler" != tcc ] || expected="$expected -no-retry-compilation"
+    [ "$flags" = "$expected" ] || fail "$lane workflow compiler flags differ from aggregate CI"
+done
 
 runner="$work/runner"
 "$vexe" -o "$runner" "$repo/ci/linux_ci.vsh"
@@ -50,7 +82,6 @@ if [ "$1" = doctor ]; then
 fi
 [ "$1" = run ] && [ "$2" = ci/linux_ci.vsh ] || exit 90
 [ "$CI" = true ] && [ "$GITHUB_ACTIONS" = true ] && [ "$RUNNER_OS" = Linux ] || exit 91
-[ "$V_MACOS_V3_NO_FALLBACK" = 1 ] || exit 92
 [ "${VTEST_FAIL_FAST:-}" = 1 ] && [ "${VJOBS:-}" = 8 ] || exit 93
 [ "${VTEST_SKIP_OWNERSHIP:-}" = 1 ] || exit 93
 [ -z "${VTEST_RESUME_OWNER:-}" ] || exit 99
@@ -80,7 +111,7 @@ run_ci() {
     status=0
     # Aggregate CI must select the workflow compiler without changing parallelism.
     (cd "$checkout" && VTEST_FAIL_FAST=0 VJOBS=8 VFLAGS='-cc inherited' \
-        VTEST_SKIP_OWNERSHIP=0 VTEST_RESUME_OWNER=inherited V_MACOS_V3_NO_FALLBACK=0 \
+        VTEST_SKIP_OWNERSHIP=0 VTEST_RESUME_OWNER=inherited \
         XDG_CACHE_HOME="$work/cache" \
         V_CI_VEXE="$fake_v" "$runner" "$@") > "$work/output" 2>&1 || status=$?
     [ "$status" -eq "$expected_status" ] || fail "exit $status, expected $expected_status"

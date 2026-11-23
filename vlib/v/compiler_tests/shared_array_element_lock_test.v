@@ -21,7 +21,7 @@ fn check_shared_element_lock(name string, source string) os.Result {
 	defer {
 		os.rm(file) or {}
 	}
-	return os.exec([@VEXE, '-new-compiler', '-check', file])
+	return os.exec([@VEXE, '-check', file])
 }
 
 // An element of a `[]shared T` local or parameter is a `shared T` value. Its binding is

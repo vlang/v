@@ -1,18 +1,12 @@
 name: Compiler process regressions
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'vlib/v/cmdexec/**'
-      - 'vlib/v/util/vflags/**'
-      - 'cmd/v/**'
-      - 'vlib/v/driver/**'
-      - '.github/workflows/process_regressions_ci.yml'
+  workflow_call:
+
   workflow_dispatch:
 
 concurrency:
-  group: process-regressions-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: process-regressions-process_regressions_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -26,52 +20,55 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            build: make
             v: ./v
-          - os: macos-14
-            build: make
+          - os: macos-15
             v: ./v
           - os: windows-2025
-            build: .\makev.bat -gcc
             v: ./v.exe
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
       VJOBS: '2'
-      V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Build V with the system C compiler
+      # A private Windows tool cache keeps nested 'v test' launches from
+      # rebuilding cmd/tools/vtest.exe over an executable another test is using.
+      - name: Prepare private tool cache (Windows)
+        if: runner.os == 'Windows'
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - name: Prepare optimized V compiler
         id: build
-        run: ${{ matrix.build }}
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
       - name: Check executable resolution
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_resolve_program_test.v
+        run: ${{ matrix.v }} vlib/v/cmdexec/cmdexec_resolve_program_test.v
       - name: Check capture-only commands receive stdin EOF
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 3
-        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_stdin_test.v
+        run: ${{ matrix.v }} vlib/v/cmdexec/cmdexec_stdin_test.v
       - name: Test the compiler launcher
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler -silent test cmd/v/
+        run: ${{ matrix.v }} -silent test cmd/v/
       - name: Check deadlines and inherited output pipes
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_timeout_test.v
+        run: ${{ matrix.v }} vlib/v/cmdexec/cmdexec_timeout_test.v
       - name: Check unbounded commands with inherited output pipes
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_unbounded_test.v
+        run: ${{ matrix.v }} vlib/v/cmdexec/cmdexec_unbounded_test.v
       - name: Check existing compiler flag tokenization
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_test.v
+        run: ${{ matrix.v }} vlib/v/util/vflags/vflags_test.v
       - name: Check UTF-8 compiler flag tokenization
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_utf8_test.v
+        run: ${{ matrix.v }} vlib/v/util/vflags/vflags_utf8_test.v
       - name: Check adjacent quoted compiler flag fragments
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_quoted_parts_test.v
+        run: ${{ matrix.v }} vlib/v/util/vflags/vflags_quoted_parts_test.v
       - name: Check implicit output preserves source files
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/driver/implicit_output_test.v
+        run: ${{ matrix.v }} vlib/v/driver/implicit_output_test.v

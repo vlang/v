@@ -98,6 +98,7 @@ fn test_fd_helpers_treat_invalid_descriptors_as_no_ops() {
 	assert os.fd_slurp(-1) == []string{}
 	assert os.fd_close(-1) == 0
 	assert !os.fd_is_pending(-1)
+	assert !os.fd_is_pending(-2)
 }
 
 fn test_open_append_and_open_set_a_real_fd() {

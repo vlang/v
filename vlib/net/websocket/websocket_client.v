@@ -32,8 +32,9 @@ mut:
 	read_end          int
 	ssl_conn          &ssl.SSLConn = unsafe { nil } // secure connection used when wss is used
 	proxy_url         string
-	flags             []Flag                // flags used in handshake
-	fragments         []Fragment            // current fragments
+	flags             []Flag     // flags used in handshake
+	fragments         []Fragment // current fragments
+	max_message_bytes int = default_max_message_bytes
 	message_callbacks []MessageEventHandler // all callbacks on_message
 	error_callbacks   []ErrorEventHandler   // all callbacks on_error
 	open_callbacks    []OpenEventHandler    // all callbacks on_open
@@ -95,7 +96,9 @@ pub:
 	read_timeout  i64         = net.infinite_timeout
 	write_timeout i64         = 30 * time.second
 	logger        &log.Logger = default_logger
-	proxy_url     string // optional proxy URL used to open the websocket TCP tunnel
+	// Maximum incoming message size in bytes, including all fragments.
+	max_message_bytes int = default_max_message_bytes
+	proxy_url         string // optional proxy URL used to open the websocket TCP tunnel
 }
 
 // new_client instance a new websocket client
@@ -103,20 +106,21 @@ pub fn new_client(address string, opt ClientOpt) !&Client {
 	uri := parse_uri(address)!
 	is_ssl := address.starts_with('wss')
 	return &Client{
-		conn:          unsafe { nil }
-		is_server:     false
-		ssl_conn:      if is_ssl { ssl.new_ssl_conn()! } else { unsafe { nil } }
-		is_ssl:        is_ssl
-		logger:        opt.logger
-		uri:           uri
-		proxy_url:     opt.proxy_url
-		client_state:  ClientState{
+		conn:              unsafe { nil }
+		is_server:         false
+		max_message_bytes: opt.max_message_bytes
+		ssl_conn:          if is_ssl { ssl.new_ssl_conn()! } else { unsafe { nil } }
+		is_ssl:            is_ssl
+		logger:            opt.logger
+		uri:               uri
+		proxy_url:         opt.proxy_url
+		client_state:      ClientState{
 			state: .closed
 		}
-		id:            rand.uuid_v4()
-		header:        http.new_header()
-		read_timeout:  opt.read_timeout
-		write_timeout: opt.write_timeout
+		id:                rand.uuid_v4()
+		header:            http.new_header()
+		read_timeout:      opt.read_timeout
+		write_timeout:     opt.write_timeout
 	}
 }
 
@@ -412,7 +416,6 @@ pub fn (mut ws Client) close(code int, message string) ! {
 	} else {
 		ws.send_control_frame(.close, 'CLOSE', [])!
 	}
-	ws.fragments = []
 }
 
 // send_control_frame sends a control frame to the server
@@ -541,7 +544,7 @@ pub fn (mut ws Client) reset_state() ! {
 			ws.ssl_conn = ssl.new_ssl_conn()!
 		}
 		ws.flags = []
-		ws.fragments = []
+		ws.clear_fragments()
 	}
 }
 
@@ -562,6 +565,11 @@ pub fn (m &Message) free() {
 // free handles manual free memory of Client struct
 pub fn (c &Client) free() {
 	unsafe {
+		for fragment in c.fragments {
+			if fragment.data.len > 0 {
+				fragment.data.free()
+			}
+		}
 		c.flags.free()
 		c.fragments.free()
 		c.message_callbacks.free()

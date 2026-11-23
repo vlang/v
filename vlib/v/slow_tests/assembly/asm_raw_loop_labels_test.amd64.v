@@ -72,215 +72,182 @@ fn raw_poly1305_blocks_26(data []u8, block_count u64, hibit u64, r0 u64, r1 u64,
 	initial_h4 u64) [5]u64 {
 	mut ptr := data.data
 	mut blocks := block_count
-	mut h0 := initial_h0
-	mut h1 := initial_h1
-	mut h2 := initial_h2
-	mut h3 := initial_h3
-	mut h4 := initial_h4
-	mut d0 := u64(0)
-	mut d1 := u64(0)
-	mut d2 := u64(0)
-	mut d3 := u64(0)
-	mut d4 := u64(0)
-	s1 := r1 * 5
-	s2 := r2 * 5
-	s3 := r3 * 5
-	s4 := r4 * 5
+	// Keep h0..h4, d0..d4, r0..r4, s1..s4 and hibit in one backing array.
+	// One base register also works with ASan's stack layout at -O0.
+	mut state := [initial_h0, initial_h1, initial_h2, initial_h3, initial_h4, u64(0), 0, 0, 0,
+		0, r0, r1, r2, r3, r4, r1 * 5, r2 * 5, r3 * 5, r4 * 5, hibit]!
+	// The assembly uses this pointer only while state is on this stack frame.
+	limbs := unsafe { &state[0] }
 	asm amd64 raw {
 		"testq %[blocks], %[blocks]\n\t"
 		"jz 2f\n\t"
 		"1:\n\t"
 		"movl 0(%[ptr]), %%eax\n\t"
-		"movq %%rax, %[d0]\n\t"
+		"movq %%rax, 40(%[limbs])\n\t"
 		"movl 4(%[ptr]), %%eax\n\t"
-		"movq %%rax, %[d1]\n\t"
+		"movq %%rax, 48(%[limbs])\n\t"
 		"movl 8(%[ptr]), %%eax\n\t"
-		"movq %%rax, %[d2]\n\t"
+		"movq %%rax, 56(%[limbs])\n\t"
 		"movl 12(%[ptr]), %%eax\n\t"
-		"movq %%rax, %[d3]\n\t"
+		"movq %%rax, 64(%[limbs])\n\t"
 
-		"movq %[d0], %%rax\n\t"
+		"movq 40(%[limbs]), %%rax\n\t"
 		"andq $0x3ffffff, %%rax\n\t"
-		"addq %%rax, %[h0]\n\t"
-		"movq %[d0], %%rax\n\t"
+		"addq %%rax, 0(%[limbs])\n\t"
+		"movq 40(%[limbs]), %%rax\n\t"
 		"shrq $26, %%rax\n\t"
-		"movq %[d1], %%rdx\n\t"
+		"movq 48(%[limbs]), %%rdx\n\t"
 		"shlq $6, %%rdx\n\t"
 		"orq %%rdx, %%rax\n\t"
 		"andq $0x3ffffff, %%rax\n\t"
-		"addq %%rax, %[h1]\n\t"
-		"movq %[d1], %%rax\n\t"
+		"addq %%rax, 8(%[limbs])\n\t"
+		"movq 48(%[limbs]), %%rax\n\t"
 		"shrq $20, %%rax\n\t"
-		"movq %[d2], %%rdx\n\t"
+		"movq 56(%[limbs]), %%rdx\n\t"
 		"shlq $12, %%rdx\n\t"
 		"orq %%rdx, %%rax\n\t"
 		"andq $0x3ffffff, %%rax\n\t"
-		"addq %%rax, %[h2]\n\t"
-		"movq %[d2], %%rax\n\t"
+		"addq %%rax, 16(%[limbs])\n\t"
+		"movq 56(%[limbs]), %%rax\n\t"
 		"shrq $14, %%rax\n\t"
-		"movq %[d3], %%rdx\n\t"
+		"movq 64(%[limbs]), %%rdx\n\t"
 		"shlq $18, %%rdx\n\t"
 		"orq %%rdx, %%rax\n\t"
 		"andq $0x3ffffff, %%rax\n\t"
-		"addq %%rax, %[h3]\n\t"
-		"movq %[d3], %%rax\n\t"
+		"addq %%rax, 24(%[limbs])\n\t"
+		"movq 64(%[limbs]), %%rax\n\t"
 		"shrq $8, %%rax\n\t"
-		"addq %[hibit], %%rax\n\t"
-		"addq %%rax, %[h4]\n\t"
+		"addq 152(%[limbs]), %%rax\n\t"
+		"addq %%rax, 32(%[limbs])\n\t"
 
-		"movq %[h0], %%rax\n\t"
-		"imulq %[r0], %%rax\n\t"
-		"movq %[h1], %%rdx\n\t"
-		"imulq %[s4], %%rdx\n\t"
+		"movq 0(%[limbs]), %%rax\n\t"
+		"imulq 80(%[limbs]), %%rax\n\t"
+		"movq 8(%[limbs]), %%rdx\n\t"
+		"imulq 144(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h2], %%rdx\n\t"
-		"imulq %[s3], %%rdx\n\t"
+		"movq 16(%[limbs]), %%rdx\n\t"
+		"imulq 136(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h3], %%rdx\n\t"
-		"imulq %[s2], %%rdx\n\t"
+		"movq 24(%[limbs]), %%rdx\n\t"
+		"imulq 128(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h4], %%rdx\n\t"
-		"imulq %[s1], %%rdx\n\t"
+		"movq 32(%[limbs]), %%rdx\n\t"
+		"imulq 120(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %%rax, %[d0]\n\t"
+		"movq %%rax, 40(%[limbs])\n\t"
 
-		"movq %[h0], %%rax\n\t"
-		"imulq %[r1], %%rax\n\t"
-		"movq %[h1], %%rdx\n\t"
-		"imulq %[r0], %%rdx\n\t"
+		"movq 0(%[limbs]), %%rax\n\t"
+		"imulq 88(%[limbs]), %%rax\n\t"
+		"movq 8(%[limbs]), %%rdx\n\t"
+		"imulq 80(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h2], %%rdx\n\t"
-		"imulq %[s4], %%rdx\n\t"
+		"movq 16(%[limbs]), %%rdx\n\t"
+		"imulq 144(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h3], %%rdx\n\t"
-		"imulq %[s3], %%rdx\n\t"
+		"movq 24(%[limbs]), %%rdx\n\t"
+		"imulq 136(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h4], %%rdx\n\t"
-		"imulq %[s2], %%rdx\n\t"
+		"movq 32(%[limbs]), %%rdx\n\t"
+		"imulq 128(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %%rax, %[d1]\n\t"
+		"movq %%rax, 48(%[limbs])\n\t"
 
-		"movq %[h0], %%rax\n\t"
-		"imulq %[r2], %%rax\n\t"
-		"movq %[h1], %%rdx\n\t"
-		"imulq %[r1], %%rdx\n\t"
+		"movq 0(%[limbs]), %%rax\n\t"
+		"imulq 96(%[limbs]), %%rax\n\t"
+		"movq 8(%[limbs]), %%rdx\n\t"
+		"imulq 88(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h2], %%rdx\n\t"
-		"imulq %[r0], %%rdx\n\t"
+		"movq 16(%[limbs]), %%rdx\n\t"
+		"imulq 80(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h3], %%rdx\n\t"
-		"imulq %[s4], %%rdx\n\t"
+		"movq 24(%[limbs]), %%rdx\n\t"
+		"imulq 144(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h4], %%rdx\n\t"
-		"imulq %[s3], %%rdx\n\t"
+		"movq 32(%[limbs]), %%rdx\n\t"
+		"imulq 136(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %%rax, %[d2]\n\t"
+		"movq %%rax, 56(%[limbs])\n\t"
 
-		"movq %[h0], %%rax\n\t"
-		"imulq %[r3], %%rax\n\t"
-		"movq %[h1], %%rdx\n\t"
-		"imulq %[r2], %%rdx\n\t"
+		"movq 0(%[limbs]), %%rax\n\t"
+		"imulq 104(%[limbs]), %%rax\n\t"
+		"movq 8(%[limbs]), %%rdx\n\t"
+		"imulq 96(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h2], %%rdx\n\t"
-		"imulq %[r1], %%rdx\n\t"
+		"movq 16(%[limbs]), %%rdx\n\t"
+		"imulq 88(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h3], %%rdx\n\t"
-		"imulq %[r0], %%rdx\n\t"
+		"movq 24(%[limbs]), %%rdx\n\t"
+		"imulq 80(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h4], %%rdx\n\t"
-		"imulq %[s4], %%rdx\n\t"
+		"movq 32(%[limbs]), %%rdx\n\t"
+		"imulq 144(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %%rax, %[d3]\n\t"
+		"movq %%rax, 64(%[limbs])\n\t"
 
-		"movq %[h0], %%rax\n\t"
-		"imulq %[r4], %%rax\n\t"
-		"movq %[h1], %%rdx\n\t"
-		"imulq %[r3], %%rdx\n\t"
+		"movq 0(%[limbs]), %%rax\n\t"
+		"imulq 112(%[limbs]), %%rax\n\t"
+		"movq 8(%[limbs]), %%rdx\n\t"
+		"imulq 104(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h2], %%rdx\n\t"
-		"imulq %[r2], %%rdx\n\t"
+		"movq 16(%[limbs]), %%rdx\n\t"
+		"imulq 96(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h3], %%rdx\n\t"
-		"imulq %[r1], %%rdx\n\t"
+		"movq 24(%[limbs]), %%rdx\n\t"
+		"imulq 88(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %[h4], %%rdx\n\t"
-		"imulq %[r0], %%rdx\n\t"
+		"movq 32(%[limbs]), %%rdx\n\t"
+		"imulq 80(%[limbs]), %%rdx\n\t"
 		"addq %%rdx, %%rax\n\t"
-		"movq %%rax, %[d4]\n\t"
+		"movq %%rax, 72(%[limbs])\n\t"
 
-		"movq %[d0], %%rax\n\t"
+		"movq 40(%[limbs]), %%rax\n\t"
 		"shrq $26, %%rax\n\t"
-		"movq %[d0], %%rdx\n\t"
+		"movq 40(%[limbs]), %%rdx\n\t"
 		"andq $0x3ffffff, %%rdx\n\t"
-		"movq %%rdx, %[h0]\n\t"
-		"addq %%rax, %[d1]\n\t"
-		"movq %[d1], %%rax\n\t"
+		"movq %%rdx, 0(%[limbs])\n\t"
+		"addq %%rax, 48(%[limbs])\n\t"
+		"movq 48(%[limbs]), %%rax\n\t"
 		"shrq $26, %%rax\n\t"
-		"movq %[d1], %%rdx\n\t"
+		"movq 48(%[limbs]), %%rdx\n\t"
 		"andq $0x3ffffff, %%rdx\n\t"
-		"movq %%rdx, %[h1]\n\t"
-		"addq %%rax, %[d2]\n\t"
-		"movq %[d2], %%rax\n\t"
+		"movq %%rdx, 8(%[limbs])\n\t"
+		"addq %%rax, 56(%[limbs])\n\t"
+		"movq 56(%[limbs]), %%rax\n\t"
 		"shrq $26, %%rax\n\t"
-		"movq %[d2], %%rdx\n\t"
+		"movq 56(%[limbs]), %%rdx\n\t"
 		"andq $0x3ffffff, %%rdx\n\t"
-		"movq %%rdx, %[h2]\n\t"
-		"addq %%rax, %[d3]\n\t"
-		"movq %[d3], %%rax\n\t"
+		"movq %%rdx, 16(%[limbs])\n\t"
+		"addq %%rax, 64(%[limbs])\n\t"
+		"movq 64(%[limbs]), %%rax\n\t"
 		"shrq $26, %%rax\n\t"
-		"movq %[d3], %%rdx\n\t"
+		"movq 64(%[limbs]), %%rdx\n\t"
 		"andq $0x3ffffff, %%rdx\n\t"
-		"movq %%rdx, %[h3]\n\t"
-		"addq %%rax, %[d4]\n\t"
-		"movq %[d4], %%rax\n\t"
+		"movq %%rdx, 24(%[limbs])\n\t"
+		"addq %%rax, 72(%[limbs])\n\t"
+		"movq 72(%[limbs]), %%rax\n\t"
 		"shrq $26, %%rax\n\t"
-		"movq %[d4], %%rdx\n\t"
+		"movq 72(%[limbs]), %%rdx\n\t"
 		"andq $0x3ffffff, %%rdx\n\t"
-		"movq %%rdx, %[h4]\n\t"
+		"movq %%rdx, 32(%[limbs])\n\t"
 		"leaq (%%rax, %%rax, 4), %%rax\n\t"
-		"addq %%rax, %[h0]\n\t"
-		"movq %[h0], %%rax\n\t"
+		"addq %%rax, 0(%[limbs])\n\t"
+		"movq 0(%[limbs]), %%rax\n\t"
 		"shrq $26, %%rax\n\t"
-		"andq $0x3ffffff, %[h0]\n\t"
-		"addq %%rax, %[h1]\n\t"
+		"andq $0x3ffffff, 0(%[limbs])\n\t"
+		"addq %%rax, 8(%[limbs])\n\t"
 		"addq $16, %[ptr]\n\t"
 		"decq %[blocks]\n\t"
 		"jnz 1b\n\t"
 		"2:"
-		; [h0] "+m" (h0)
-		  [h1] "+m" (h1)
-		  [h2] "+m" (h2)
-		  [h3] "+m" (h3)
-		  [h4] "+m" (h4)
-		  [d0] "=m" (d0)
-		  [d1] "=m" (d1)
-		  [d2] "=m" (d2)
-		  [d3] "=m" (d3)
-		  [d4] "=m" (d4)
-		  [ptr] "+r" (ptr)
-		  [blocks] "+r" (blocks)
-		; [r0] "m" (r0)
-		  [r1] "m" (r1)
-		  [r2] "m" (r2)
-		  [r3] "m" (r3)
-		  [r4] "m" (r4)
-		  [s1] "m" (s1)
-		  [s2] "m" (s2)
-		  [s3] "m" (s3)
-		  [s4] "m" (s4)
-		  [hibit] "m" (hibit)
+		; [ptr] "+&r" (ptr)
+		  [blocks] "+&r" (blocks)
+		; [limbs] "r" (limbs)
 		; rax
 		  rdx
 		  memory
 		  cc
 	}
-	mut h := [5]u64{}
-	h[0] = h0
-	h[1] = h1
-	h[2] = h2
-	h[3] = h3
-	h[4] = h4
-	return h
+	return [state[0], state[1], state[2], state[3], state[4]]!
 }
 
 fn pure_poly1305_blocks_26(data []u8, block_count int, hibit u64, r0 u64, r1 u64, r2 u64,

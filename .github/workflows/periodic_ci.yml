@@ -4,14 +4,10 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'
-  push:
-    branches:
-      - master
-    paths:
-      - '**/periodic_ci.yml'
+  workflow_call:
 
 concurrency:
-  group: periodic-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: periodic-periodic_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -48,10 +44,16 @@ jobs:
         run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Build
         if: runner.os != 'Windows'
-        run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
+          doctor: true
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: ./makev.bat -msvc && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
+          doctor: true
       - name: Install OpenSSL (Windows)
         if: runner.os == 'Windows'
         run: |

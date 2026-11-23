@@ -66,6 +66,13 @@ fn main() {
 	signed := SignedRows{}
 	signed_copy := signature_rows(signed.rows)
 	assert sizeof(signed_copy) == 24 && signed_copy[2][1] == 0
+	row := [i32(17), i32(23)]!
+	mut repeated := [3][2]i32{init: row}
+	repeated[0][0] = 8
+	assert repeated[0][0] == 8
+	assert row[0] == 17 && repeated[1][0] == 17 && repeated[2][1] == 23
+	argument := signature_rows([3][2]i32{init: row})
+	assert argument[0][0] == 17 && argument[2][1] == 23
 }
 ') or { panic(err) }
 	mut prefs := pref.new_preferences()

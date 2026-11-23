@@ -1,6 +1,6 @@
 module main
 
-fn f1() {
+fn f1() thread {
 	x := Abc{111}
-	spawn f(x)
+	return spawn f(x)
 }

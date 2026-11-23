@@ -557,7 +557,7 @@ fn main() {
 	assert c_source.contains('Map_string_int* values;'), c_source
 	assert c_source.contains('*(copy.values)'), c_source
 	assert c_source.contains('*(registry.values)'), c_source
-	assert c_source.contains('(Map_string_int*)v_fastc_interface_box'), c_source
+	assert c_source.contains('(Map_string_int*)v_fastc_heap_copy'), c_source
 }
 
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
@@ -1296,7 +1296,7 @@ fn main() {
 	assert c_source.contains('args->result = configured(args->arg0, args->arg1);'), c_source
 	assert c_source.contains('__vf_sd.value=(default_value());'), c_source
 	assert c_source.contains('.value=(__vf_sf_0)'), c_source
-	assert c_source.contains('v_fastc_interface_box(&(PointerConfig){0}, sizeof(PointerConfig))'), c_source
+	assert c_source.contains('v_fastc_heap_copy(&(PointerConfig){0}, sizeof(PointerConfig))'), c_source
 }
 
 fn test_selfhost_spawn_accepts_shared_named_params_field() {
@@ -3831,7 +3831,7 @@ fn main() {
 }
 ', 'valid_pointer_struct_update.v', prefs) or { panic(err) }
 	assert pointer_update_source.contains('Config __vf_struct_update = *(base);'), pointer_update_source
-	assert pointer_update_source.contains('v_fastc_interface_box(&__vf_struct_update, sizeof(Config))'), pointer_update_source
+	assert pointer_update_source.contains('v_fastc_heap_copy(&__vf_struct_update, sizeof(Config))'), pointer_update_source
 }
 
 fn test_selfhost_struct_field_initializers_preserve_source_order() {
@@ -9229,7 +9229,7 @@ fn boxed_pointer() &Value {
 
 fn main() {}
 ', 'boxed_interface_pointer.v', prefs) or { panic(err) }
-	assert c_source.contains('(Value *)v_fastc_interface_box(&__vf_iface_ref, sizeof(Value))'), c_source
+	assert c_source.contains('(Value *)v_fastc_heap_copy(&__vf_iface_ref, sizeof(Value))'), c_source
 	assert !c_source.contains('&__vf_iface_ref;'), c_source
 }
 
@@ -13104,7 +13104,7 @@ fn main() {
 	run(Params{})
 }
 ', 'selfhost_pointer_struct_or_call.v', prefs) or { panic(err) }
-	assert c_source.contains('(Conn*)v_fastc_interface_box'), c_source
+	assert c_source.contains('(Conn*)v_fastc_heap_copy'), c_source
 	assert c_source.contains('Conn_use(c)'), c_source
 	assert c_source.contains('take(({ Option __v'), c_source
 }

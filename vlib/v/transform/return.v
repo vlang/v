@@ -1488,7 +1488,9 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 	// body can keep the source nodes it did not change, so none of them may be
 	// rewritten in place.
 	t.inplace_rewrite_holds++
+	t.array_dsl_multitype_depth += int(n_conds > 1)
 	body_block := t.match_branch_return_block(branch, n_conds, ret_typ_id, source_return_id, []flat.NodeId{})
+	t.array_dsl_multitype_depth -= int(n_conds > 1)
 	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()

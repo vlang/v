@@ -13,8 +13,8 @@ fn dump_expr_build_v3() string {
 	}
 	os.rm(v3_bin) or {}
 	build :=
-		os.exec([dump_expr_vexe, '-gc', 'none', '-prealloc', '-path',
-			'${dump_expr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${dump_expr_v3_src}'])
+		os.exec([dump_expr_vexe, '-gc', 'none', '-path', '${dump_expr_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${dump_expr_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -106,11 +106,15 @@ fn test_dump_expr_writes_to_stderr() {
 	process.close()
 	assert exit_code == 0, 'stdout:\n${stdout}\nstderr:\n${stderr}'
 	assert stdout == '7', stdout
-	assert stderr.len > 0
+	assert stderr.ends_with('] 3: 3'), stderr
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := dump_expr_compact_c(generated)
-	assert compact.contains('eprintln(string__plus('), generated
+	// The label and the integer value are joined either by string__plus, or by
+	// string_plus_many over a stack buffer for the number (no temporary string).
+	assert compact.contains('eprintln(string__plus(')
+		|| compact.contains('eprintln(({string__v3_internal_symbol_join_'), generated
+	assert !compact.contains('dump('), generated
 }
 
 fn test_dump_expr_respects_nop_dump_and_preserves_evaluation() {

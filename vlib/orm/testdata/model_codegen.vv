@@ -1,0 +1,61 @@
+import db.sqlite
+import orm
+import time
+
+struct First {
+	id int
+}
+
+struct Second {
+	id int
+}
+
+struct Third {
+	id int
+}
+
+type ScalarName = string
+type ScalarCount = int
+type ScalarTime = time.Time
+
+enum ScalarState {
+	ready
+}
+
+struct ScalarModel {
+	id                  int @[primary]
+	name                string
+	count               int
+	ratio               f64
+	enabled             bool
+	state               ScalarState
+	alias_name          ScalarName
+	alias_count         ScalarCount
+	optional_count      ?int
+	optional_name       ?string
+	optional_alias      ?ScalarCount
+	optional_state      ?ScalarState
+	created             time.Time
+	deleted             ?time.Time
+	alias_time          ScalarTime
+	optional_alias_time ?ScalarTime
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:')!
+	defer { db.close() or {} }
+
+	mut first := orm.new_query[First](db)
+	mut second := orm.new_query[Second](db)
+	mut third := orm.new_query[Third](db)
+	first.where('id = ?', 1)!
+	second.where('id = ?', 2)!
+	third.where('id = ?', 3)!
+	_ = first.query()!
+	_ = second.query()!
+	_ = third.query()!
+
+	_ = sql db {
+		select from ScalarModel
+	}!
+}

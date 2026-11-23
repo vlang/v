@@ -14,3 +14,20 @@ leak:string__plus
 leak:malloc_uncollectable
 leak:new_array_from_c_array
 leak:_vinit
+
+# -prealloc keeps the base arena of a spawned thread until the process exits:
+# values that the thread allocated can outlive it (results read by `wait()`,
+# channel messages). Only the thread-local block pointer refers to the arena's
+# header, so LeakSanitizer reports the header once the thread has ended, and
+# gcc 11's LeakSanitizer also the headers of the blocks that the arena grew
+# into. A grown block header is always linked from the first block of its arena
+# or scope, which stays reported when that arena or scope is lost.
+leak:vmemory_block_init_thread
+leak:vmemory_block_grow
+
+# A parallel parse reads each source into memory of the C allocator, and the
+# buffer of a source whose text the compiler keeps goes to the table of kept
+# source texts (flat.FlatAst.source_texts), which keeps it until the process
+# exits. That table is in -prealloc arena memory, which is mapped with mmap and
+# not scanned by LeakSanitizer, so each kept buffer is reported as a direct leak.
+leak:parser__read_batch_source

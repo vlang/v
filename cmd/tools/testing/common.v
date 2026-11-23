@@ -57,21 +57,28 @@ pub const test_only_fn = os.getenv('VTEST_ONLY_FN').split_any(',')
 // Note, it works with `-no-parallel`, and it works when that whole expr is inside a function, like below:
 pub const fail_retry_delay_ms = get_fail_retry_delay_ms()
 
-pub const pkgcmd = get_pkgcmd()
+// The probes below start other programs (node, pkg-config, ps ...), which together take
+// about a tenth of a second. They run only for the `// vtest build:` constraints of the
+// selected test files that name their defines, not on every start of the test runner.
 
-pub const is_node_present = os.exec(['node', '--version']).exit_code == 0
+// is_node_present reports whether `node` can run, which the JS backend tests need.
+pub fn is_node_present() bool {
+	return os.exec(['node', '--version']).exit_code == 0
+}
 
-pub const is_go_present = os.exec(['go', 'version']).exit_code == 0
+fn is_go_present() bool {
+	return os.exec(['go', 'version']).exit_code == 0
+}
 
-pub const is_ruby_present = os.exec(['ruby', '--version']).exit_code == 0
-	&& os.exec(['${pkgcmd}', 'ruby', '--libs']).exit_code == 0
+fn is_ruby_present() bool {
+	return os.exec(['ruby', '--version']).exit_code == 0
+		&& os.exec(['${get_pkgcmd()}', 'ruby', '--libs']).exit_code == 0
+}
 
-pub const is_python_present = os.exec(['python', '--version']).exit_code == 0
-	&& os.exec(['${pkgcmd}', 'python3', '--libs']).exit_code == 0
-
-pub const is_sqlite3_present = get_present_sqlite()
-
-pub const all_processes = get_all_processes()
+fn is_python_present() bool {
+	return os.exec(['python', '--version']).exit_code == 0
+		&& os.exec(['${get_pkgcmd()}', 'python3', '--libs']).exit_code == 0
+}
 
 pub const header_bytes_to_search_for_module_main = 500
 
@@ -79,11 +86,13 @@ pub const separator = '-'.repeat(max_header_len) + '\n'
 
 pub const max_compilation_retries = get_max_compilation_retries()
 
-const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
 // Each worker compiles a separate test program, so bound automatic parallelism
-// by a conservative memory budget. VJOBS remains an explicit override.
-const test_job_memory_budget = u64(8) * 1024 * 1024 * 1024
-const max_automatic_test_jobs = 4
+// by a memory budget per worker, and by the CPU count. Test builds of the
+// compiler's own modules peak at 0.4-1.5 GiB of RSS, a median of 0.6 GiB, and
+// the test programs at under 0.7 GiB (`/usr/bin/time -l` on macOS arm64, for
+// `vlib/v/{types,transform,gen/c,modulecache,driver}`), so 2 GiB leaves room for
+// the occasional larger build. VJOBS remains an explicit override.
+const test_job_memory_budget = u64(2) * 1024 * 1024 * 1024
 
 fn get_max_compilation_retries() int {
 	return os.getenv_opt('VTEST_MAX_COMPILATION_RETRIES') or { '3' }.int()
@@ -101,16 +110,30 @@ fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int 
 	if jobs > memory_jobs {
 		jobs = memory_jobs
 	}
-	if jobs > max_automatic_test_jobs {
-		jobs = max_automatic_test_jobs
-	}
 	return jobs
 }
 
-@[markused]
-fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
+// CgroupLimit is a limit that the test runner reads from the directories of a cgroup.
+enum CgroupLimit {
+	memory_v1 // memory.limit_in_bytes, in bytes
+	memory_v2 // memory.max, in bytes
+	cpu_v1    // cpu.cfs_quota_us / cpu.cfs_period_us, in CPUs
+	cpu_v2    // cpu.max, in CPUs
+}
+
+fn (limit CgroupLimit) fs_type() string {
+	return if limit in [.memory_v1, .cpu_v1] { 'cgroup' } else { 'cgroup2' }
+}
+
+fn (limit CgroupLimit) controller() string {
+	return if limit in [.memory_v1, .memory_v2] { 'memory' } else { 'cpu' }
+}
+
+// cgroup_paths returns the unified (v2) cgroup path of /proc/self/cgroup, and the
+// v1 path of each controller.
+fn cgroup_paths(cgroups string) (string, map[string]string) {
 	mut v2_path := ''
-	mut v1_memory_path := ''
+	mut v1_paths := map[string]string{}
 	for line in cgroups.split_into_lines() {
 		first_separator := line.index(':') or { continue }
 		second_separator := line.index_after(':', first_separator + 1) or { continue }
@@ -118,22 +141,43 @@ fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
 		cgroup_path := line[second_separator + 1..]
 		if controllers == '' {
 			v2_path = cgroup_path
-		} else if 'memory' in controllers.split(',') {
-			v1_memory_path = cgroup_path
+			continue
+		}
+		for controller in controllers.split(',') {
+			v1_paths[controller] = cgroup_path
 		}
 	}
-	if v1_memory_path != '' {
-		if limit := cgroup_memory_limit_for_hierarchy(mountinfo, v1_memory_path, 'cgroup', 'memory.limit_in_bytes') {
+	return v2_path, v1_paths
+}
+
+fn cgroup_limit_from_contents(cgroups string, mountinfo string, v1 CgroupLimit, v2 CgroupLimit) !u64 {
+	v2_path, v1_paths := cgroup_paths(cgroups)
+	v1_path := v1_paths[v1.controller()] or { '' }
+	if v1_path != '' {
+		if limit := cgroup_limit_for_hierarchy(mountinfo, v1_path, v1) {
 			return limit
 		}
 	}
 	if v2_path != '' {
-		return cgroup_memory_limit_for_hierarchy(mountinfo, v2_path, 'cgroup2', 'memory.max')
+		return cgroup_limit_for_hierarchy(mountinfo, v2_path, v2)
 	}
-	return error('no cgroup memory limit found')
+	return error('no cgroup ${v2.controller()} limit found')
 }
 
-fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_type string, limit_file string) !u64 {
+@[markused]
+fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
+	return cgroup_limit_from_contents(cgroups, mountinfo, .memory_v1, .memory_v2)
+}
+
+// cgroup_cpu_limit_from_contents returns the CPU quota of the cgroup, rounded up
+// to whole CPUs. `sysconf` reports the CPUs of the host, not this quota.
+@[markused]
+fn cgroup_cpu_limit_from_contents(cgroups string, mountinfo string) !int {
+	return int(cgroup_limit_from_contents(cgroups, mountinfo, .cpu_v1, .cpu_v2)!)
+}
+
+fn cgroup_limit_for_hierarchy(mountinfo string, cgroup_path string, kind CgroupLimit) !u64 {
+	fs_type := kind.fs_type()
 	for line in mountinfo.split_into_lines() {
 		parts := line.split(' - ')
 		if parts.len != 2 {
@@ -146,14 +190,15 @@ fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_ty
 		}
 		mount_root := decode_mountinfo_path(mount_parts[3])
 		mount_point := decode_mountinfo_path(mount_parts[4])
-		if fs_parts[0] != fs_type || (fs_type == 'cgroup' && 'memory' !in fs_parts[2].split(',')) {
+		if fs_parts[0] != fs_type
+			|| (fs_type == 'cgroup' && kind.controller() !in fs_parts[2].split(',')) {
 			continue
 		}
-		if limit := cgroup_memory_limit_in_hierarchy(mount_root, mount_point, cgroup_path, limit_file) {
+		if limit := cgroup_limit_in_hierarchy(mount_root, mount_point, cgroup_path, kind) {
 			return limit
 		}
 	}
-	return error('no cgroup memory limit found')
+	return error('no cgroup ${kind.controller()} limit found')
 }
 
 fn decode_mountinfo_path(path string) string {
@@ -173,7 +218,7 @@ fn decode_mountinfo_path(path string) string {
 	return result.str()
 }
 
-fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgroup_path string, limit_file string) !u64 {
+fn cgroup_limit_in_hierarchy(mount_root string, mount_point string, cgroup_path string, kind CgroupLimit) !u64 {
 	mut relative_path := cgroup_path.trim_left('/')
 	trimmed_root := mount_root.trim_right('/')
 	if trimmed_root != '' {
@@ -186,13 +231,12 @@ fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgrou
 		// mount_root, so relative_path already maps from the visible mount point.
 	}
 	mut current_path := os.join_path(mount_point, relative_path)
-	mut memory_limit := u64(0)
+	mut lowest_limit := u64(0)
 	for {
-		if content := os.read_file(os.join_path(current_path, limit_file)) {
-			if limit := cgroup_memory_limit_value(content) {
-				if memory_limit == 0 || limit < memory_limit {
-					memory_limit = limit
-				}
+		// The effective limit of a cgroup is the lowest one along its ancestors.
+		if limit := cgroup_directory_limit(current_path, kind) {
+			if lowest_limit == 0 || limit < lowest_limit {
+				lowest_limit = limit
 			}
 		}
 		if current_path == mount_point {
@@ -204,10 +248,32 @@ fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgrou
 		}
 		current_path = parent_path
 	}
-	if memory_limit == 0 {
-		return error('cgroup memory limit is unlimited')
+	if lowest_limit == 0 {
+		return error('cgroup ${kind.controller()} limit is unlimited')
 	}
-	return memory_limit
+	return lowest_limit
+}
+
+fn cgroup_directory_limit(dir string, kind CgroupLimit) !u64 {
+	return match kind {
+		.memory_v1 {
+			cgroup_memory_limit_value(os.read_file(os.join_path(dir, 'memory.limit_in_bytes'))!)!
+		}
+		.memory_v2 {
+			cgroup_memory_limit_value(os.read_file(os.join_path(dir, 'memory.max'))!)!
+		}
+		.cpu_v1 {
+			cgroup_cpu_limit_value(os.read_file(os.join_path(dir, 'cpu.cfs_quota_us'))!,
+				os.read_file(os.join_path(dir, 'cpu.cfs_period_us'))!)!
+		}
+		.cpu_v2 {
+			fields := os.read_file(os.join_path(dir, 'cpu.max'))!.fields()
+			if fields.len != 2 {
+				return error('invalid cgroup cpu.max')
+			}
+			cgroup_cpu_limit_value(fields[0], fields[1])!
+		}
+	}
 }
 
 fn cgroup_memory_limit_value(content string) !u64 {
@@ -220,6 +286,21 @@ fn cgroup_memory_limit_value(content string) !u64 {
 		return error('invalid cgroup memory limit')
 	}
 	return limit
+}
+
+// cgroup_cpu_limit_value rounds a CPU quota up to whole CPUs: a quota of 150000 per
+// period of 100000 allows 2 workers. A quota of `max` (v2) or -1 (v1) is unlimited.
+fn cgroup_cpu_limit_value(quota_text string, period_text string) !u64 {
+	quota := quota_text.trim_space()
+	if quota == 'max' || quota.starts_with('-') {
+		return error('cgroup cpu limit is unlimited')
+	}
+	quota_us := quota.u64()
+	period_us := period_text.trim_space().u64()
+	if quota_us == 0 || period_us == 0 {
+		return error('invalid cgroup cpu limit')
+	}
+	return (quota_us + period_us - 1) / period_us
 }
 
 @[markused]
@@ -246,16 +327,41 @@ fn test_session_jobs(will_compile bool, cpu_jobs int, total_memory u64, configur
 	return automatic_test_jobs(cpu_jobs, total_memory, configured_jobs)
 }
 
+@[markused]
+fn effective_test_cpus(cpu_jobs int, cgroup_cpu_limit int) int {
+	if cgroup_cpu_limit > 0 && cgroup_cpu_limit < cpu_jobs {
+		return cgroup_cpu_limit
+	}
+	return cpu_jobs
+}
+
+fn test_runner_cpus(cpu_jobs int) int {
+	$if linux {
+		cgroup_cpu_limit := cgroup_cpu_limit_from_contents(os.read_file('/proc/self/cgroup') or {
+			return cpu_jobs
+		}, os.read_file('/proc/self/mountinfo') or { return cpu_jobs }) or { return cpu_jobs }
+		return effective_test_cpus(cpu_jobs, cgroup_cpu_limit)
+	}
+	return cpu_jobs
+}
+
 fn test_runner_jobs(will_compile bool) int {
-	cpu_jobs := runtime.nr_jobs()
+	mut cpu_jobs := runtime.nr_jobs()
 	if !will_compile {
 		return test_session_jobs(false, cpu_jobs, 0, 0)
 	}
+	// In a container, the CPU quota of its cgroup bounds the workers that can run.
+	cpu_jobs = test_runner_cpus(cpu_jobs)
 	configured_jobs := os.getenv('VJOBS').int()
 	total_memory := test_runner_memory() or {
 		return test_session_jobs(true, cpu_jobs, 0, configured_jobs)
 	}
 	return test_session_jobs(true, cpu_jobs, total_memory, configured_jobs)
+}
+
+fn test_compiler_jobs(available_cpus int, test_jobs int, configured_jobs int) int {
+	// Concurrent tests share the CPU budget instead of each starting a full pool.
+	return int_max(1, int_min(configured_jobs, available_cpus / int_max(1, test_jobs)))
 }
 
 fn get_fail_retry_delay_ms() time.Duration {
@@ -276,7 +382,7 @@ fn get_present_sqlite() bool {
 		return os.exists(@VEXEROOT + '/thirdparty/sqlite/sqlite3.c')
 	}
 	return os.exec(['sqlite3', '--version']).exit_code == 0
-		&& os.exec(['${pkgcmd}', 'sqlite3', '--libs']).exit_code == 0
+		&& os.exec(['${get_pkgcmd()}', 'sqlite3', '--libs']).exit_code == 0
 }
 
 fn get_all_processes() []string {
@@ -322,8 +428,11 @@ pub mut:
 	build_environment build_constraint.Environment // see the documentation in v.build_constraint
 	custom_defines    []string                     // for adding custom defines, known only to the individual runners
 mut:
-	benchmark_mu &sync.Mutex = sync.new_mutex()
-	resume_dir   string
+	benchmark_mu  &sync.Mutex = sync.new_mutex()
+	resume_dir    string
+	compiler_jobs int
+	// shared_v3_env holds the values that prepare_shared_v3 replaced.
+	shared_v3_env map[string]?string
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -539,6 +648,21 @@ pub fn (mut ts TestSession) exec(args []string, mtc MessageThreadContext) os.Res
 	return os.exec(args)
 }
 
+fn (mut ts TestSession) exec_compiler(args []string, mtc MessageThreadContext) os.Result {
+	// Stats also launches the test program; preserve its environment.
+	if !ts.will_compile || ts.show_stats || ts.compiler_jobs < 1
+		|| ts.compiler_jobs == runtime.nr_jobs() || args.len == 0 {
+		return ts.exec(args, mtc)
+	}
+	if show_cmd {
+		ts.append_message(.info, '> execute cmd: VJOBS=${ts.compiler_jobs} ${args.join(' ')}',
+			mtc)
+	}
+	return cmdexec.run_in_merged_with_env(args[0], args[1..], '', {
+		'VJOBS': ts.compiler_jobs.str()
+	})
+}
+
 // system runs a legacy command string.
 @[deprecated: 'use TestSession.system_args with an argument array to avoid shell injection']
 pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
@@ -571,7 +695,6 @@ fn add_automatic_execution_retry(mut details TestDetails, result os.Result) {
 }
 
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
-	os.setenv(c_error_bug_report_disabled_env, '1', true)
 	mut skip_files := []string{}
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -717,11 +840,18 @@ pub fn (mut ts TestSession) test() {
 	}
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
+	ts.prepare_shared_v3(remaining_files)
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
+	// Batching evaluates the `// vtest build:` constraints of the files.
+	ts.setup_build_environment(remaining_files)
+	// The pool works on units: a single file, or a batch of the tests of one module.
+	units := ts.test_units(remaining_files)
 	mut njobs := test_runner_jobs(ts.will_compile)
-	if remaining_files.len < njobs {
-		njobs = remaining_files.len
+	if units.len < njobs {
+		njobs = units.len
 	}
+	ts.compiler_jobs = test_compiler_jobs(test_runner_cpus(runtime.nr_cpus()), njobs,
+		runtime.nr_jobs())
 	ts.benchmark.njobs = njobs
 	mut pool_of_test_runners := pool.new_pool_processor(
 		callback: worker_trunner
@@ -734,10 +864,8 @@ pub fn (mut ts TestSession) test() {
 	pool_of_test_runners.set_shared_context(&ts)
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
 
-	ts.setup_build_environment()
-
 	// all the testing happens here:
-	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
+	pool_of_test_runners.work_on_pointers(unsafe { units.pointers() })
 
 	ts.benchmark_stop()
 	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: '-1' }) // send the sentinel
@@ -746,6 +874,20 @@ pub fn (mut ts TestSession) test() {
 	ts.reporter.divider()
 	ts.show_list_of_failed_tests()
 
+	for name, value in ts.shared_v3_env {
+		if previous := value {
+			os.setenv(name, previous, true)
+		} else {
+			os.unsetenv(name)
+		}
+	}
+	if ts.shared_v3_env.len > 0 {
+		for name in shared_v3_names {
+			shared_v3 := os.join_path(ts.vtmp_dir, name + $if windows { '.exe' } $else { '' })
+			os.rm(shared_v3) or {}
+			os.rm(shared_v3 + '.reused') or {}
+		}
+	}
 	// cleanup the session folder, if everything was ok:
 	if ts.benchmark.nfail == 0 {
 		if ts.rm_binaries {
@@ -753,7 +895,15 @@ pub fn (mut ts TestSession) test() {
 		}
 	}
 	os.rm(os.join_path(ts.vtmp_dir, '.v.mod.stop')) or {}
-	if os.ls(ts.vtmp_dir) or { [] }.len == 0 {
+	shared_objects := os.join_path(ts.vtmp_dir, session_shared_object_cache)
+	if os.is_link(shared_objects) {
+		os.rm(shared_objects) or {}
+	}
+	// A session left after failures is for the test artifacts in it. The compiler's own `v3_*`
+	// caches and probe results are not; unless VTEST_KEEP_SESSION=1 asked to keep the session,
+	// one holding only them goes as well.
+	entries := os.ls(ts.vtmp_dir) or { [] }
+	if entries.len == 0 || (ts.rm_binaries && entries.all(it.starts_with('v3_'))) {
 		os.rmdir_all(ts.vtmp_dir) or {}
 	}
 }
@@ -774,7 +924,17 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	tls_bench.no_cstep = true
 	tls_bench.njobs = ts.benchmark.njobs
-	abs_path := os.real_path(p.get_item[string](idx))
+	item := p.get_item[string](idx)
+	if item.contains('\n') {
+		return ts.run_test_batch(item.split('\n'), '${idx}_${thread_id}', thread_id, mut
+			tls_bench)
+	}
+	return ts.run_test_file(item, '${idx}_${thread_id}', thread_id, mut tls_bench)
+}
+
+// run_test_file compiles and runs one test file, in the folder `test_id` of the session.
+fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int, mut tls_bench benchmark.Benchmark) voidptr {
+	abs_path := os.real_path(item)
 	mut relative_file := abs_path
 	mut cmd_options := os.split_args(ts.vargs) or { panic(err) }
 	mut run_js := false
@@ -819,7 +979,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	// where an executable is not writable, if it is running).
 	// Note, that the common session temporary folder ts.vtmp_dir,
 	// will be removed after all tests are done.
-	test_id := '${idx}_${thread_id}'
 	mut test_folder_path := os.join_path(ts.vtmp_dir, test_id)
 	if ts.build_tools {
 		// `v build-tools`, produce all executables in the same session folder, so that they can be copied later:
@@ -922,8 +1081,15 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 	}
 	defer {
-		if produces_file_output && ts.rm_binaries {
-			os.rmdir_all(test_folder_path) or {}
+		if produces_file_output {
+			if ts.rm_binaries {
+				os.rmdir_all(test_folder_path) or {}
+			} else if ts.exec_mode == .compile_and_run {
+				os.rm(generated_binary_fpath) or {}
+				$if macos {
+					os.rmdir_all(generated_binary_fpath + '.dSYM') or {}
+				}
+			}
 		}
 	}
 	mut test_succeeded := true
@@ -992,7 +1158,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		compile_d_cmd := time.new_stopwatch()
 		mut compile_r := os.Result{}
 		for cretry in 0 .. max_compilation_retries {
-			compile_r = ts.exec(compile_argv, mtc)
+			compile_r = ts.exec_compiler(compile_argv, mtc)
 			compile_cmd_duration = compile_d_cmd.elapsed()
 			// eprintln('>>>> cretry: ${cretry} | compile_r.exit_code: ${compile_r.exit_code} | compile_cmd_duration: ${compile_cmd_duration:8} | file: ${normalised_relative_file}')
 			if compile_r.exit_code == 0 {
@@ -1301,17 +1467,102 @@ pub fn h_divider() {
 	eprintln(term.h_divider('-')#[..max_header_len])
 }
 
+// The `v` launcher serves plain builds of the V3 source named by these variables with copies of
+// the compiler they name, and builds with `-d ownership` with copies of the ownership compiler
+// (cmd/v/shared_test_compiler.v); vlib/v/test_all.vsh sets the first two as well.
+const shared_v3_env = 'V3_TEST_UNIT_SHARED_V3'
+const shared_v3_src_env = 'V3_TEST_UNIT_V3_SRC'
+const shared_v3_ownership_env = 'V3_TEST_UNIT_SHARED_V3_OWNERSHIP'
+
+// shared_v3_names are the executables that prepare_shared_v3 builds in the session folder.
+const shared_v3_names = ['shared_v3', 'shared_v3_ownership']
+
+// prepare_shared_v3 builds the V3 compiler once, when at least two of `files` build it themselves
+// (as most compiler tests do), and lets the launcher serve their builds with copies of it; the
+// same for the `-d ownership` compiler of the ownership tests. Each build takes ~20 s of CPU.
+// A failed build only leaves the tests to build their own.
+fn (mut ts TestSession) prepare_shared_v3(files []string) {
+	if !ts.will_compile || os.getenv('VTEST_NO_SHARED_V3') == '1' {
+		return
+	}
+	v3_src := os.join_path(ts.vroot, 'vlib', 'v', 'v.v')
+	if !os.is_file(v3_src) {
+		return
+	}
+	// A compiler shared by an outer runner must be of the same source.
+	if configured := os.getenv_opt(shared_v3_src_env) {
+		if os.real_path(configured) != os.real_path(v3_src) {
+			return
+		}
+	}
+	vroot := os.real_path(ts.vroot) + os.path_separator
+	mut builders := 0
+	mut ownership_builders := 0
+	for file in files {
+		path := os.real_path(file)
+		if !path.starts_with(vroot) {
+			continue
+		}
+		source := os.read_file(path) or { continue }
+		if source.contains("'v.v'") {
+			builders++
+			if source.contains("'-d', 'ownership'") {
+				ownership_builders++
+			}
+		}
+	}
+	mut values := map[string]string{}
+	for i, env in [shared_v3_env, shared_v3_ownership_env] {
+		if os.getenv(env) != '' || (if i == 0 { builders } else { ownership_builders }) < 2 {
+			continue
+		}
+		shared_v3 := os.join_path(ts.vtmp_dir, shared_v3_names[i] + $if windows { '.exe' } $else { '' })
+		mut args := [ts.vexe, '-gc', 'none']
+		if i == 1 {
+			args << ['-d', 'ownership']
+		}
+		args << ['-path', os.join_path(ts.vroot, 'vlib'), '-o', shared_v3, v3_src]
+		build := os.exec(args)
+		if build.exit_code == 0 && os.is_executable(shared_v3) {
+			values[env] = shared_v3
+		}
+	}
+	if values.len == 0 {
+		return
+	}
+	values[shared_v3_src_env] = v3_src
+	for name, value in values {
+		ts.shared_v3_env[name] = os.getenv_opt(name)
+		os.setenv(name, value, true)
+	}
+}
+
+// session_shared_object_cache is the VTMP folder of cached native objects that a test session
+// shares with its parent VTMP.
+const session_shared_object_cache = 'v3_thirdparty_objs'
+
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
 // so that V programs/tests will write their temporary files to new location.
 // The new nested folder, and its contents, will get removed after all tests/programs succeed.
 pub fn setup_new_vtmp_folder(hash string) string {
 	// The V3 module cache defaults to VTMP. Keep it in the shared VTMP, so that each
 	// session does not rebuild every cached module, unless isolation was requested.
-	if os.getenv('V3CACHE') == '' && os.getenv('V3_TEST_ISOLATE_CACHE') != '1' {
+	isolate_cache := os.getenv('V3_TEST_ISOLATE_CACHE') == '1'
+	if os.getenv('V3CACHE') == '' && !isolate_cache {
 		os.setenv('V3CACHE', os.vtmp_dir(), true)
 	}
-	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${hash}')
+	parent_vtmp_dir := os.vtmp_dir()
+	new_vtmp_dir := os.join_path(parent_vtmp_dir, 'tsession_${hash}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
+	// The C objects of thirdparty code and native helpers are cached in VTMP too. Link the
+	// session's cache folder to one in the module cache root, which the driver accepts, so
+	// that each session does not compile them again (mbedtls alone is ~100 objects). Where
+	// links cannot be made, the session keeps its own folder, as before.
+	if !isolate_cache {
+		shared_objects := os.join_path(os.getenv('V3CACHE'), session_shared_object_cache)
+		os.mkdir_all(shared_objects) or {}
+		os.symlink(shared_objects, os.join_path(new_vtmp_dir, session_shared_object_cache)) or {}
+	}
 	// A test session must not inherit an unrelated `v.mod` from the shared temp
 	// directory, or from whatever contains it. The explicit project-boundary
 	// marker ends the upward search there.
@@ -1359,7 +1610,7 @@ pub fn get_test_details(file string) TestDetails {
 }
 
 pub fn find_started_process(pname string) !string {
-	for line in all_processes {
+	for line in get_all_processes() {
 		if line.contains(pname) {
 			return line
 		}
@@ -1400,15 +1651,15 @@ fn check_openssl_present() bool {
 	}
 	$if openbsd {
 		return os.exec(['eopenssl35', '--version']).exit_code == 0
-			&& os.exec(['${pkgcmd}', 'eopenssl35', '--libs']).exit_code == 0
+			&& os.exec(['${get_pkgcmd()}', 'eopenssl35', '--libs']).exit_code == 0
 	} $else {
 		return os.exec(['openssl', '--version']).exit_code == 0
-			&& os.exec(['${pkgcmd}', 'openssl', '--libs']).exit_code == 0
+			&& os.exec(['${get_pkgcmd()}', 'openssl', '--libs']).exit_code == 0
 	}
 }
 
 fn check_modern_openssl_present() bool {
-	if !is_openssl_present {
+	if !check_openssl_present() {
 		return false
 	}
 	mut version_cmd := 'openssl version'
@@ -1431,22 +1682,8 @@ fn has_modern_openssl_version(output string) bool {
 	return version.satisfies('>=3.5.0')
 }
 
-pub const is_openssl_present = check_openssl_present()
-pub const is_modern_openssl_present = check_modern_openssl_present()
-
-// is_started_mysqld is true, when the test runner determines that there is a running mysql server
-pub const is_started_mysqld = find_started_process('mysqld') or { '' }
-
-// is_started_postgres is true, when the test runner determines that there is a running postgres server
-pub const is_started_postgres = find_started_process('postgres') or { '' }
-
-// is_started_mssql is true, when the test runner determines that there is a running sql server
-pub const is_started_mssql = find_started_process('sqlservr') or { '' }
-
-// is_started_redis is true, when the test runner determines that there is a running redis server
-// on the default port 6379, which the db.redis tests connect to. A redis-server, that another tool
-// started on a different port, can not serve them.
-pub const is_started_redis = find_started_redis_on_default_port(all_processes) or { '' }
+// A running redis-server only serves the db.redis tests on the default port 6379, which they
+// connect to; one that another tool started on a different port can not serve them.
 
 fn find_started_redis_on_default_port(process_lines []string) !string {
 	for line in process_lines {
@@ -1457,43 +1694,70 @@ fn find_started_redis_on_default_port(process_lines []string) !string {
 	return error('could not find a redis-server process, that serves the default port 6379')
 }
 
-pub fn (mut ts TestSession) setup_build_environment() {
+// build_constraints returns the `// vtest build:` expressions of `files`.
+fn build_constraints(files []string) []string {
+	mut constraints := []string{}
+	for file in files {
+		text := os.read_file(file) or { continue }
+		if !text.contains('// vtest build:') {
+			continue
+		}
+		for line in text.split_into_lines() {
+			if line.starts_with('// vtest build:') {
+				constraints << line.all_after(':').trim_space()
+			}
+		}
+	}
+	return constraints
+}
+
+pub fn (mut ts TestSession) setup_build_environment(files []string) {
 	facts, mut defines := pref.get_build_facts_and_defines()
-	// add the runtime information, that the test runner has already determined by checking once:
 	if github_job.starts_with('sanitize-') {
 		defines << 'sanitized_job'
 	}
-	if is_started_mysqld != '' {
-		defines << 'started_mysqld'
+	// Add the runtime information that a constraint of these files asks for.
+	constraints := build_constraints(files)
+	needs := fn [constraints] (define string) bool {
+		return constraints.any(it.contains(define))
 	}
-	if is_started_postgres != '' {
-		defines << 'started_postgres'
+	if needs('started_') {
+		processes := get_all_processes()
+		started := fn [processes] (pname string) bool {
+			return processes.any(it.contains(pname))
+		}
+		if started('mysqld') {
+			defines << 'started_mysqld'
+		}
+		if started('postgres') {
+			defines << 'started_postgres'
+		}
+		if started('sqlservr') {
+			defines << 'started_mssql'
+		}
+		if _ := find_started_redis_on_default_port(processes) {
+			defines << 'started_redis'
+		}
 	}
-	if is_started_mssql != '' {
-		defines << 'started_mssql'
-	}
-	if is_started_redis != '' {
-		defines << 'started_redis'
-	}
-	if is_node_present {
+	if needs('present_node') && is_node_present() {
 		defines << 'present_node'
 	}
-	if is_python_present {
+	if needs('present_python') && is_python_present() {
 		defines << 'present_python'
 	}
-	if is_ruby_present {
+	if needs('present_ruby') && is_ruby_present() {
 		defines << 'present_ruby'
 	}
-	if is_go_present {
+	if needs('present_go') && is_go_present() {
 		defines << 'present_go'
 	}
-	if is_sqlite3_present {
+	if needs('present_sqlite3') && get_present_sqlite() {
 		defines << 'present_sqlite3'
 	}
-	if is_openssl_present {
+	if needs('present_openssl') && check_openssl_present() {
 		defines << 'present_openssl'
 	}
-	if is_modern_openssl_present {
+	if needs('has_modern_openssl') && check_modern_openssl_present() {
 		defines << 'has_modern_openssl'
 	}
 

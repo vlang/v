@@ -121,19 +121,22 @@ fn test_zlib_wrong_adler32_alone_is_an_adler32_mismatch() {
 		assert decompress(streams.last())! == plain
 	}
 	// what compress() writes: the empty input, short ones, and more than one callback chunk
+	data := 'abcdefghij'.repeat(4_000).bytes()
 	for size in [0, 1, 12, 40_000] {
-		streams << compress('abcdefghij'.repeat(4_000)[..size].bytes())!
+		streams << compress(data[..size])!
 	}
 	for good in streams {
 		assert decompress_error(good) == ''
 		assert callback_error(good) == ''
+		mut bad := good.clone()
 		for i in good.len - 4 .. good.len {
+			original := good[i]
 			for bit in 0 .. 8 {
-				mut bad := good.clone()
-				bad[i] ^= u8(1) << bit
+				bad[i] = original ^ (u8(1) << bit)
 				assert decompress_error(bad) == 'invalid zlib stream: adler32 mismatch'
 				assert callback_error(bad) == 'invalid zlib stream: adler32 mismatch'
 			}
+			bad[i] = original
 		}
 	}
 }

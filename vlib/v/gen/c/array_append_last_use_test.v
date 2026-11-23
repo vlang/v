@@ -135,7 +135,7 @@ fn retain_wrapped_const(mut out []AppendNode) {
 }
 fn main() {}
 ')!
-	compiled := cmdexec.run(@VEXE, ['-new-compiler', '-no-skip-unused', '-o', c_path, path])
+	compiled := cmdexec.run(@VEXE, ['-no-skip-unused', '-o', c_path, path])
 	assert compiled.exit_code == 0, compiled.output
 	code := os.read_file(c_path)!
 	for name in ['consume_local', 'consume_field'] {

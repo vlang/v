@@ -62,7 +62,8 @@ fn (mut g FlatGen) emit_cache_owned_const(name string, val_id flat.NodeId, owner
 	mut scalar_macro := ''
 	if needs_scalar_storage && !had_storage && ct != 'u8'
 		&& !g.name_collides_with_struct_field(cname)
-		&& definition.starts_with('static const ${ct} ${cname} = ') {
+		&& (definition.starts_with('static const ${ct} ${cname} = ')
+			|| definition.starts_with('const ${ct} ${cname} = ')) {
 		value := definition.trim_space().all_after(' = ').all_before_last(';')
 		scalar_macro = '#define ${cname} (${value})'
 		g.writeln(scalar_macro)
@@ -281,13 +282,13 @@ fn cache_prune_generated_support(source string) string {
 	mut out := strings.new_builder(source.len)
 	offset = 0
 	for definition in support {
-		out.write_string(source.substr_unsafe(offset, definition.start))
+		out.write_string(source[offset..definition.start])
 		if refs[definition.name] {
-			out.write_string(source.substr_unsafe(definition.start, definition.end))
+			out.write_string(source[definition.start..definition.end])
 		}
 		offset = definition.end
 	}
-	out.write_string(source.substr_unsafe(offset, source.len))
+	out.write_string(source[offset..])
 	result := out.str()
 	unsafe { out.free() }
 	return result

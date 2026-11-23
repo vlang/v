@@ -1,9 +1,11 @@
 import os
+import time
 
 const child_source = r'
 module main
 
 import os
+import time
 
 struct Item {
 	value int
@@ -156,8 +158,7 @@ fn test_stack_overflow_prints_a_message() {
 }
 
 // Every hosted program links the handler, so it must build with the bundled TCC, whose
-// Linux arm64 runtime has no atomic helpers. A retry with the system C compiler, or with
-// the compatibility compiler, would hide a failure; the flags below disable both.
+// Linux arm64 runtime has no atomic helpers. Disable retrying with a system C compiler.
 fn test_handler_builds_with_tcc() {
 	$if !((linux || macos) && (amd64 || arm64)) {
 		return
@@ -170,8 +171,7 @@ fn test_handler_builds_with_tcc() {
 	source := os.join_path(work_dir, 'child.v')
 	binary := os.join_path(work_dir, 'child')
 	os.write_file(source, child_source)!
-	compile := os.exec([@VEXE, '-new-compiler', '-cc', 'tcc', '-no-retry-compilation', '-o', binary,
-		source])
+	compile := os.exec([@VEXE, '-cc', 'tcc', '-no-retry-compilation', '-o', binary, source])
 	assert compile.exit_code == 0, compile.output
 	// The fault is reported once: by the one-shot handler of the TCC `-bt` runtime, that
 	// V forwards it to, or by V, when there is no such handler (macOS).
@@ -211,92 +211,55 @@ fn test_previous_handler_keeps_its_signal_mask() {
 	assert res.output.contains('previous handler: SIGUSR1 blocked'), res.output
 }
 
-fn test_previous_one_shot_handler_is_consumed() ! {
+fn test_previous_sigbus_handler_lifetime() ! {
 	$if windows || vinix || freestanding {
 		return
 	}
-	work_dir := os.join_path(os.vtmp_dir(), 'stack_overflow_one_shot_${os.getpid()}')
+	work_dir := os.join_path(os.vtmp_dir(), 'stack_overflow_sigbus_${os.getpid()}')
 	os.mkdir_all(work_dir)!
 	defer {
 		os.rmdir_all(work_dir) or {}
 	}
 	header := r'
 #include <signal.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
-static void v_test_one_shot(int sig) {
+
+static void v_test_sigbus_handler(int sig) {
 	(void)sig;
-	write(2, "one shot handler\n", 17);
+	write(2, "previous SIGBUS handler\n", sizeof("previous SIGBUS handler\n") - 1);
 }
 
-__attribute__((constructor)) static void v_test_install_one_shot(void) {
-	struct sigaction sa = {0};
-	sa.sa_handler = v_test_one_shot;
-	sa.sa_flags = SA_RESETHAND;
-	sigemptyset(&sa.sa_mask);
-	sigaction(SIGBUS, &sa, NULL);
-}
-static void v_test_raise_bus(void) { raise(SIGBUS); }
-'
-	os.write_file(os.join_path(work_dir, 'one_shot.h'), header)!
-	source := os.join_path(work_dir, 'child.c.v')
-	binary := os.join_path(work_dir, 'child')
-	os.write_file(source, r'
-module main
-#include "@DIR/one_shot.h"
-fn C.v_test_raise_bus()
-fn main() {
-	C.v_test_raise_bus()
-	C.v_test_raise_bus()
-	println("unexpected survival")
-}
-')!
-	compiler := previous_handler_test_compiler()!
-	compile := os.exec([@VEXE, '-cc', compiler, '-o', binary, source])
-	assert compile.exit_code == 0, compile.output
-	result := run_child(binary, '')
-	assert result.exit_code != 0, result.output
-	assert result.output.count('one shot handler') == 1, result.output
-	assert !result.output.contains('unexpected survival'), result.output
+static int v_test_sigbus_one_shot(void) {
+	const char* mode = getenv("VTEST_SIGBUS_ONE_SHOT");
+	return mode && strcmp(mode, "1") == 0;
 }
 
-fn test_previous_persistent_handler_can_return_twice() ! {
-	$if windows || vinix || freestanding {
-		return
-	}
-	work_dir := os.join_path(os.vtmp_dir(), 'stack_overflow_persistent_${os.getpid()}')
-	os.mkdir_all(work_dir)!
-	defer {
-		os.rmdir_all(work_dir) or {}
-	}
-	header := r'
-#include <signal.h>
-#include <unistd.h>
-static void v_test_persistent(int sig) {
-	(void)sig;
-	write(2, "persistent handler\n", 19);
-}
-__attribute__((constructor)) static void v_test_install_persistent(void) {
+__attribute__((constructor)) static void v_test_install_sigbus_handler(void) {
 	struct sigaction sa = {0};
-	sa.sa_handler = v_test_persistent;
+	sa.sa_handler = v_test_sigbus_handler;
+	sa.sa_flags = v_test_sigbus_one_shot() ? SA_RESETHAND : 0;
 	sigemptyset(&sa.sa_mask);
 	sigaction(SIGBUS, &sa, NULL);
 }
 static void v_test_raise_bus(void) { raise(SIGBUS); }
 static int v_test_persistent_has_precedence(void) {
 #if defined(__APPLE__)
-	struct sigaction sa;
-	return sigaction(SIGBUS, NULL, &sa) == 0 && sa.sa_handler == v_test_persistent;
-#else
-	return 1;
+	if (!v_test_sigbus_one_shot()) {
+		struct sigaction sa;
+		return sigaction(SIGBUS, NULL, &sa) == 0 && sa.sa_handler == v_test_sigbus_handler;
+	}
 #endif
+	return 1;
 }
 '
-	os.write_file(os.join_path(work_dir, 'persistent.h'), header)!
+	os.write_file(os.join_path(work_dir, 'sigbus_handler.h'), header)!
 	source := os.join_path(work_dir, 'child.c.v')
 	binary := os.join_path(work_dir, 'child')
 	os.write_file(source, r'
 module main
-#include "@DIR/persistent.h"
+#include "@DIR/sigbus_handler.h"
 fn C.v_test_raise_bus()
 fn C.v_test_persistent_has_precedence() int
 fn main() {
@@ -309,8 +272,75 @@ fn main() {
 	compiler := previous_handler_test_compiler()!
 	compile := os.exec([@VEXE, '-cc', compiler, '-o', binary, source])
 	assert compile.exit_code == 0, compile.output
-	result := run_child(binary, '')
-	assert result.exit_code == 0, result.output
-	assert result.output.count('persistent handler') == 2, result.output
-	assert result.output.contains('survived'), result.output
+
+	// Select the action before the child starts so its constructor installs it before V.
+	command := ['/bin/sh', '-c', 'VTEST_SIGBUS_ONE_SHOT="$2" "$1" 2>&1', 'vtest', binary]
+	one_shot := os.exec([...command, '1'])
+	persistent := os.exec([...command, '0'])
+	assert one_shot.exit_code != 0, one_shot.output
+	assert one_shot.output.count('previous SIGBUS handler') == 1, one_shot.output
+	assert !one_shot.output.contains('survived'), one_shot.output
+	assert persistent.exit_code == 0, persistent.output
+	assert persistent.output.count('previous SIGBUS handler') == 2, persistent.output
+	assert persistent.output.contains('survived'), persistent.output
+}
+
+// The SIGABRT handler of the TCC `-bt` runtime walks the frame pointer chain from inside
+// libc. With glibc 2.35 that register holds the thread id there, and once thread ids
+// pass 0x1000 the walk faults and the fault handler waits forever for the runtime's lock.
+// V restores the default action, so abort() ends a TCC-built program like any other.
+fn test_tcc_program_aborts_with_the_default_action() ! {
+	$if !(linux && (amd64 || arm64)) {
+		return
+	}
+	work_dir := os.join_path(os.vtmp_dir(), 'stack_overflow_tcc_abort_${os.getpid()}')
+	os.mkdir_all(work_dir)!
+	defer {
+		os.rmdir_all(work_dir) or {}
+	}
+	os.write_file(os.join_path(work_dir, 'abort_action.h'), r'
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int v_test_abort_action_is_default(void) {
+	struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
+	return sigaction(SIGABRT, NULL, &sa) == 0 && sa.sa_handler == SIG_DFL;
+}
+static void v_test_abort(void) { abort(); }
+')!
+	source := os.join_path(work_dir, 'child.c.v')
+	binary := os.join_path(work_dir, 'child')
+	os.write_file(source, r'
+module main
+#include "@DIR/abort_action.h"
+fn C.v_test_abort_action_is_default() int
+fn C.v_test_abort()
+fn main() {
+	println("default abort action: ${C.v_test_abort_action_is_default()}")
+	C.v_test_abort()
+	println("not reached")
+}
+')!
+	compile := os.exec([@VEXE, '-cc', 'tcc', '-no-retry-compilation', '-o', binary, source])
+	assert compile.exit_code == 0, compile.output
+	mut child := os.new_process(binary)
+	child.set_redirect_stdio()
+	child.run()
+	started := time.now()
+	for child.is_alive() {
+		if time.since(started) > 60 * time.second {
+			child.signal_kill()
+			child.wait()
+			assert false, 'abort() did not end the TCC-built program'
+		}
+		time.sleep(50 * time.millisecond)
+	}
+	child.wait()
+	output := child.stdout_slurp()
+	child.close()
+	assert child.code != 0, output
+	assert output.contains('default abort action: 1'), output
+	assert !output.contains('not reached'), output
 }

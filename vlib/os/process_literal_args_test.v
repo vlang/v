@@ -7,8 +7,6 @@ fn test_exec_process_and_v_run_preserve_literal_arguments() {
 	source := os.join_path(root, 'argv.v')
 	binary := os.join_path(root, $if windows { 'argv.exe' } $else { 'argv' })
 	os.write_file(source, 'import os\nfn main() {\n\tfor arg in os.args[1..] {\n\t\tprintln("\${arg.len}:\${arg}")\n\t}\n}\n')!
-	build := os.exec([@VEXE, '-o', binary, source])
-	assert build.exit_code == 0, build.output
 
 	env_name := 'V_LITERAL_PROCESS_ARGUMENT_${os.getpid()}'
 	env_value := r'expanded C:\path\'
@@ -25,6 +23,13 @@ fn test_exec_process_and_v_run_preserve_literal_arguments() {
 	for argument in arguments {
 		expected += '${argument.len}:${argument}\n'
 	}
+	// Keep the binary produced by v run for the two direct execution checks.
+	mut run_argv := [@VEXE, '-o', binary, 'run', source]
+	run_argv << arguments
+	run_result := os.exec(run_argv)
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.replace('\r\n', '\n') == expected, run_result.output
+
 	mut argv := [binary]
 	argv << arguments
 	result := os.exec(argv)
@@ -41,13 +46,6 @@ fn test_exec_process_and_v_run_preserve_literal_arguments() {
 	process.close()
 	assert code == 0, '${output}\n${errors}'
 	assert output.replace('\r\n', '\n') == expected, output
-
-	// The compiler forwards `v run` arguments through Process too.
-	mut run_argv := [@VEXE, 'run', source]
-	run_argv << arguments
-	run_result := os.exec(run_argv)
-	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output.replace('\r\n', '\n') == expected, run_result.output
 
 	$if windows {
 		// Command strings still delegate expansion to the shell.

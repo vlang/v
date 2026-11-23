@@ -44,8 +44,8 @@ fn test_module_cache_reuses_artifacts_after_unbuilt_compiler_source_changes() {
 	os.write_file(source, 'import strings\nfn main() { println(strings.repeat(120, 3)) }\n')!
 	cache := os.join_path(root, 'cache')
 	// `Caching module` is printed only with `-v` (or `-show-timings`).
-	args := ['-u', 'VEXE', '-u', 'VFLAGS', 'V3CACHE=${cache}', compiler, '-new-compiler', '-v',
-		'-cc', 'cc', 'run', source]
+	args := ['-u', 'VEXE', '-u', 'VFLAGS', 'V3CACHE=${cache}', compiler, '-v', '-cc', 'cc', 'run',
+		source]
 	first := cmdexec.run_in('env', args, root)
 	assert first.exit_code == 0, first.output
 	assert has_output_line(first.output, 'xxx'), first.output

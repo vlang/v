@@ -23,13 +23,6 @@ fn test_refresh_records_entry_only_for_project_interface_scopes() {
 	assert v3_cache_refresh_needs_entry(standard.replace('io.Writer=os.File', 'io.Writer=os.File,local.Sink'), &state, vroot)
 }
 
-fn v3_driver_test_executable() string {
-	if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		return os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
-	}
-	return @VEXE
-}
-
 fn test_input_is_cmd_v_accepts_relative_entry_file() {
 	assert input_is_cmd_v('cmd/v')
 	assert input_is_cmd_v('cmd/v/v.v')
@@ -57,6 +50,56 @@ fn test_v3_platform_c_compiler() {
 	assert v3_platform_c_compiler('windows') == 'gcc'
 	assert v3_platform_c_compiler('linux') == 'cc'
 	assert v3_platform_c_compiler('macos') == 'cc'
+}
+
+fn test_clang_lifetime_workaround_recognizes_the_compiler_banner() {
+	for banner in ['clang version 14.0.6', 'Ubuntu clang version 14.0.0-1ubuntu1.1',
+		'Debian clang version 14.0.6', 'Apple clang version 14.0.3 (clang-1403.0.22.14.1)'] {
+		assert v3_clang_lifetime_flags(banner) == ['-Xclang', '-disable-lifetime-markers']
+	}
+	for banner in ['clang version 19.1.7\nInstalledDir: /opt/clang version 14.0.6/bin',
+		'clang version 15.0.7', 'gcc version 14.0.0', ''] {
+		assert v3_clang_lifetime_flags(banner) == [], banner
+	}
+}
+
+fn test_clang_lifetime_workaround_reaches_native_builds_and_c_projects() {
+	$if windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v3_clang_lifetime_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	wrapper := os.join_path(root, 'clang-wrapper')
+	source := os.join_path(root, 'main.v')
+	program := os.join_path(root, 'program')
+	os.write_file(source, "fn main() { assert ' hello '.trim_space() == 'hello' }\n")!
+	for version in ['14.0.6', '19.1.7'] {
+		os.write_file(wrapper, '#!/bin/sh\nif [ "$1" = "--version" ]; then\n  echo "clang version ${version}"\n  exit 0\nfi\nexec ${os.quoted_path(clang)} "$@"\n')!
+		os.chmod(wrapper, 0o700)!
+		args := ['-nocache', '-gc', 'none', '-cc', wrapper, '-cflags', '-O2', '-showcc']
+		mut build_args := args.clone()
+		build_args << ['-o', program, source]
+		built := cmdexec.run_in(@VEXE, build_args, root)
+		assert built.exit_code == 0, built.output
+		assert built.output.contains('-disable-lifetime-markers') == (version == '14.0.6'), built.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		project := os.join_path(root, 'project_${version}')
+		mut export_args := args.clone()
+		export_args << [
+			'-generate-c-project',
+			project,
+			'-o',
+			os.join_path(root, 'program.c'),
+			source,
+		]
+		exported := cmdexec.run_in(@VEXE, export_args, root)
+		assert exported.exit_code == 0, exported.output
+		makefile := os.read_file(os.join_path(project, 'Makefile'))!
+		assert makefile.contains('-disable-lifetime-markers') == (version == '14.0.6'), makefile
+	}
 }
 
 fn test_v3_cache_accepts_default_cc_alias() {
@@ -139,7 +182,7 @@ fn test_module_cache_refresh_reads_only_project_flags_in_refresh_children() ! {
 }
 
 fn test_cached_tcc_main_command_refuses_production_mode() ! {
-	compiler := v3_driver_test_executable()
+	compiler := @VEXE
 	if !os.is_executable(os.join_path(os.dir(compiler), 'thirdparty', 'tcc', 'tcc.exe')) { return }
 	root := os.join_path(os.vtmp_dir(), 'vup_tcc_optimization_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -172,7 +215,10 @@ fn test_cached_tcc_main_command_refuses_production_mode() ! {
 			&& it.contains('src.c') && it.contains('tcc'))
 		assert commands.len == 1, result.output
 		command := cmdexec.split_args(commands[0].trim_space()[2..])!
-		assert command.any(it.contains('v3_module_cache_') && it.ends_with('.o')), commands[0]
+		// TinyCC builds use the module cache only on macOS and Linux hosts.
+		$if macos || linux {
+			assert command.any(it.contains('v3_module_cache_') && it.ends_with('.o')), commands[0]
+		}
 		assert ('-O3' in command) == ('-prod' in mode && '-no-prod-options' !in mode), commands[0]
 		assert '-flto' !in command, commands[0]
 	}
@@ -349,8 +395,8 @@ fn test_v3_no_std_command_keeps_the_user_standard_only() {
 			os.setenv('VFLAGS', value, true)
 		}
 	}
-	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-cc', 'c++',
-		'-no-std', '-cflags', '-std=c++11', '-dump-c-flags', '-', '-o', output, source])
+	build := cmdexec.run(@VEXE, ['-nocache', '-cc', 'c++', '-no-std', '-cflags', '-std=c++11',
+		'-dump-c-flags', '-', '-o', output, source])
 	assert build.exit_code == 0, build.output
 	assert '-std=c++11' in build.output.split_into_lines(), build.output
 	assert !build.output.contains('-std=gnu11'), build.output
@@ -374,8 +420,8 @@ fn test_v3_tcc_linux_output_declares_backtrace() {
 			os.setenv('VFLAGS', value, true)
 		}
 	}
-	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-cc', 'tcc',
-		'-os', 'linux', '-arch', 'amd64', '-o', output, source])
+	build := cmdexec.run(@VEXE, ['-nocache', '-cc', 'tcc', '-os', 'linux', '-arch', 'amd64', '-o',
+		output, source])
 	assert build.exit_code == 0, build.output
 	c_source := os.read_file(output)!
 	assert c_source.contains('tcc_backtrace(char* fmt);')
@@ -429,8 +475,8 @@ fn test_macos_linux_cross_compile_selects_postgres_sysroot_headers() {
 	}
 	// C output exercises conditional headers without requiring a cross toolchain or libpq.
 	for target_os in ['macos', 'linux'] {
-		build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-cc',
-			'clang', '-os', target_os, '-o', output, source])
+		build := cmdexec.run(@VEXE, ['-nocache', '-cc', 'clang', '-os', target_os, '-o', output,
+			source])
 		assert build.exit_code == 0, build.output
 		c_source := os.read_file(output)!
 		assert c_source.contains('#include <libpq/libpq-fe.h>') == (target_os == 'linux')
@@ -1266,7 +1312,7 @@ fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux')
 	assert implicit_tcc == system_tcc
 	assert v3_effective_c_compiler_for_codegen('c', 'cc', implicit_tcc != '', pref.host_target()) == 'tinyc'
-	assert v3_effective_c_compiler_for_codegen('x64', 'cc', false, pref.host_target()) == 'tinyc'
+	assert v3_effective_c_compiler_for_codegen('amd64', 'cc', false, pref.host_target()) == 'tinyc'
 	write_v3_test_tcc(bundled_tcc, 0)
 	assert v3_usable_tcc_compiler(bundled_tcc)
 	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux') == bundled_tcc
@@ -1327,9 +1373,21 @@ fn test_v3_bundled_tcc_native_object_build_is_cwd_independent() {
 	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
 	os.write_file(c_source, '#include <stddef.h>\nsize_t v3_tcc_native_object_probe(void) { return sizeof(size_t); }\n')!
 	os.write_file(v_source, '#flag ${c_object}\n\nfn C.v3_tcc_native_object_probe() uint\n\nfn main() {\n\tassert C.v3_tcc_native_object_probe() > 0\n}\n')!
-	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
-		'-no-retry-compilation', '-cc', 'tcc', '-o', output, v_source], root)
+	build := cmdexec.run_in(@VEXE, ['-nocache', '-no-retry-compilation', '-cc', 'tcc', '-o', output,
+		v_source], root)
 	assert build.exit_code == 0, build.output
+}
+
+// platform_cc_compiles_cpp reports whether the platform `cc` can compile C++, which the
+// driver uses for native C++ sources. gcc runs a separately installed C++ front end
+// (cc1plus), which an image may lack.
+fn platform_cc_compiles_cpp(root string) bool {
+	cc := os.find_abs_path_of_executable('cc') or { return false }
+	probe := os.join_path(root, 'cpp_probe.cpp')
+	os.write_file(probe, '#include <string>\nint probe_size() { return int(std::string("v").size()); }\n') or {
+		return false
+	}
+	return cmdexec.run(cc, ['-fsyntax-only', probe]).exit_code == 0
 }
 
 fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
@@ -1347,6 +1405,9 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
+	if !platform_cc_compiles_cpp(root) {
+		return
+	}
 	cpp_source := os.join_path(root, 'native.cpp')
 	cpp_object := os.join_path(root, 'native.o')
 	v_source := os.join_path(root, 'main.v')
@@ -1360,8 +1421,7 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 			os.setenv('VFLAGS', value, true)
 		}
 	}
-	no_retry := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
-		'-no-retry-compilation', '-o', output, v_source], root)
+	no_retry := cmdexec.run_in(@VEXE, ['-nocache', '-no-retry-compilation', '-o', output, v_source], root)
 	assert !no_retry.output.contains('failed to build C object'), no_retry.output
 	if no_retry.exit_code != 0 {
 		// TinyCC may not find the platform C++ runtime or its GCC support libraries
@@ -1374,8 +1434,7 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 		assert !no_retry.output.contains('regenerating it with'), no_retry.output
 	}
 	// The normal implicit-TinyCC policy must still compile and run the native helper.
-	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-o', output,
-		v_source], root)
+	build := cmdexec.run_in(@VEXE, ['-nocache', '-o', output, v_source], root)
 	assert !build.output.contains('failed to build C object'), build.output
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run_in(output, [], root)
@@ -1630,10 +1689,8 @@ fn test_v3_windows_prod_build_uses_the_platform_compiler_in_one_build() {
 	// with the legacy compiler, report success, and file a bug report.
 	mut saved := map[string]string{}
 	for name, value in {
-		'VFLAGS':                        ''
-		'V_MACOS_V3_NO_FALLBACK':        '1'
-		'V_C_ERROR_BUG_REPORT_DISABLED': '1'
-		'V3_TEST_ISOLATE_CACHE':         '1'
+		'VFLAGS':                ''
+		'V3_TEST_ISOLATE_CACHE': '1'
 	} {
 		if old := os.getenv_opt(name) {
 			saved[name] = old
@@ -1645,8 +1702,7 @@ fn test_v3_windows_prod_build_uses_the_platform_compiler_in_one_build() {
 		}
 	}
 	defer {
-		for name in ['VFLAGS', 'V_MACOS_V3_NO_FALLBACK', 'V_C_ERROR_BUG_REPORT_DISABLED',
-			'V3_TEST_ISOLATE_CACHE'] {
+		for name in ['VFLAGS', 'V3_TEST_ISOLATE_CACHE'] {
 			if old := saved[name] {
 				os.setenv(name, old, true)
 			} else {
@@ -1658,10 +1714,9 @@ fn test_v3_windows_prod_build_uses_the_platform_compiler_in_one_build() {
 	// executable of the bare `cc`, so the first build is monolithic unless it is.
 	for cache_args in [[]string{}, ['-nocache']] {
 		os.rm(output) or {}
-		mut args := ['-new-compiler']
-		args << cache_args
+		mut args := cache_args.clone()
 		args << ['-prod', '-showcc', '-o', output, source]
-		build := cmdexec.run(v3_driver_test_executable(), args)
+		build := cmdexec.run(@VEXE, args)
 		assert build.exit_code == 0, build.output
 		normalized_output := build.output.replace('\\', '/')
 		// -prod needs optimizations TCC cannot do: MSVC, Clang or GCC builds it ...
@@ -1693,16 +1748,20 @@ fn test_v3_windows_auto_gui_build_uses_windows_subsystem() {
 	source := os.join_path(root, 'main.v')
 	output := os.join_path(root, 'main.exe')
 	os.write_file(source, '#flag windows -lgdi32\n\nfn main() {}\n')!
-	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-showcc',
-		'-o', output, source])
+	build := cmdexec.run(@VEXE, ['-nocache', '-showcc', '-o', output, source])
 	assert build.exit_code == 0, build.output
-	assert build.output.contains('-mwindows'), build.output
+	// `-cc msvc` (as VFLAGS in the MSVC CI jobs) passes `-mwindows` to the linker as
+	// `/SUBSYSTEM:WINDOWS`.
+	assert build.output.contains('-mwindows') || build.output.contains('/SUBSYSTEM:WINDOWS'), build.output
 }
 
 fn test_add_v3_tcc_compat_defines() {
 	mut macos_arm64 := []string{}
 	add_v3_tcc_compat_defines(mut macos_arm64, 'macos', 'arm64', false, true)
-	assert macos_arm64 == ['no_backtrace']
+	// macOS builtin walks the stack with libSystem's backtrace(), not TCC's runtime.
+	assert macos_arm64.len == 0
+	add_v3_tcc_compat_defines(mut macos_arm64, 'macos', 'arm64', true, true)
+	assert macos_arm64.len == 0
 
 	mut shared_defines := ['custom']
 	add_v3_tcc_compat_defines(mut shared_defines, 'linux', 'amd64', true, true)
@@ -1731,11 +1790,15 @@ fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
 	assert flags == ['-lpthread', '-lm']
 }
 
-fn test_x64_backend_aliases_are_normalized() {
-	for alias in ['amd64', 'x86_64', 'x86-64'] {
-		assert normalize_backend_name(alias) == 'x64'
+fn test_amd64_backend_aliases_are_normalized() {
+	for alias in ['x64', 'x86_64', 'x86-64'] {
+		assert normalize_backend_name(alias) == 'amd64'
 	}
-	assert normalize_backend_name('x64') == 'x64'
+	assert normalize_backend_name('amd64') == 'amd64'
+}
+
+fn test_native_backend_alias_is_preserved_until_the_target_is_known() {
+	assert normalize_backend_name('native') == 'native'
 }
 
 fn test_v3_fastc_default_linker_flags() {
@@ -1793,8 +1856,8 @@ fn test_v3_fastc_rejects_windows_gui_subsystem() {
 	}
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() {}\n')!
-	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-b', 'fastc',
-		'-os', 'windows', '-subsystem', 'windows', source])
+	build := cmdexec.run(@VEXE, ['-nocache', '-b', 'fastc', '-os', 'windows', '-subsystem', 'windows',
+		source])
 	assert build.exit_code != 0, build.output
 	assert build.output.contains('the V3 fastc backend does not support `-subsystem windows`'), build.output
 }
@@ -2233,6 +2296,32 @@ fn test_v3_native_macos_selects_bundled_tcc_by_default() {
 	}
 }
 
+fn test_v3_linux_hosted_c_flag_plan_exposes_pipe2() {
+	for compiler in ['gcc', 'clang', 'tinyc'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:  'linux'
+			c_compiler: compiler
+			is_tcc:     compiler == 'tinyc'
+			is_o:       true
+		})
+		assert plan.before_inputs.filter(it == '-D_GNU_SOURCE').len == 1
+	}
+	for target_os in ['windows', 'macos', 'freebsd', 'openbsd'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{ target_os: target_os })
+		assert '-D_GNU_SOURCE' !in plan.before_inputs
+	}
+	freestanding := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:       'linux'
+		is_freestanding: true
+	})
+	assert '-D_GNU_SOURCE' !in freestanding.before_inputs
+	provided := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:           'linux'
+		environment_c_flags: ['-D_GNU_SOURCE']
+	})
+	assert provided.before_inputs.filter(it == '-D_GNU_SOURCE').len == 1
+}
+
 fn test_v3_cstrict_flag_plan_has_one_conversion_warning_override() {
 	for compiler in ['gcc', 'clang', 'tinyc'] {
 		for strict in [false, true] {
@@ -2274,14 +2363,13 @@ fn test_v3_tcc_flags_dump_matches_monolithic_command() {
 	for source_text in sources {
 		os.write_file(source, source_text)!
 		for strict in [false, true] {
-			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'tcc', '-gc',
-				'none']
+			mut args := ['-no-retry-compilation', '-nocache', '-cc', 'tcc', '-gc', 'none']
 			if strict {
 				args << '-cstrict'
 			}
 			mut dump_args := args.clone()
 			dump_args << ['-dump-c-flags', '-', '-o', output, source]
-			flags_dump := cmdexec.run(v3_driver_test_executable(), dump_args)
+			flags_dump := cmdexec.run(@VEXE, dump_args)
 			assert flags_dump.exit_code == 0, flags_dump.output
 			dump_lines := flags_dump.output.split_into_lines().filter(it.len > 0)
 			// value-taking flags share a line with their quoted value (`-I "/path"`)
@@ -2301,7 +2389,7 @@ fn test_v3_tcc_flags_dump_matches_monolithic_command() {
 				if with_dump {
 					build_args << ['-dump-c-flags', dump_file]
 				}
-				build := cmdexec.run(v3_driver_test_executable(), build_args)
+				build := cmdexec.run(@VEXE, build_args)
 				assert build.exit_code == 0, build.output
 				commands := build.output.split_into_lines().filter(it.trim_space().starts_with('> ')
 					&& it.contains('-o out'))
@@ -2345,6 +2433,21 @@ fn test_v3_production_object_flag_plan_retains_machine_code() {
 	assert '-flto' in program.before_inputs
 }
 
+// Link time optimization would run after clang's ThreadSanitizer pass, and clang 15 and
+// older lose the instrumentation of struct copies there.
+fn test_v3_production_race_build_is_not_link_time_optimized() {
+	for large in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			is_prod:      true
+			race:         true
+			c_compiler:   'clang'
+			large_c_unit: large
+		})
+		assert '-flto' !in plan.before_inputs
+		assert (if large { '-O2' } else { '-O3' }) in plan.before_inputs
+	}
+}
+
 fn test_v3_production_object_links_with_independent_c_main() {
 	$if windows {
 		return
@@ -2360,8 +2463,7 @@ fn test_v3_production_object_links_with_independent_c_main() {
 	main_c := os.join_path(root, 'main.c')
 	exe := os.join_path(root, 'main')
 	os.write_file(source, "module object_probe\n\n@[export: 'v3_object_probe']\n@[markused]\nfn add(a i32, b i32) i32 { return a + b }\n")!
-	compiled := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-prod', '-cc', clang,
-		'-gc', 'none', '-o', object, source])
+	compiled := cmdexec.run(@VEXE, ['-prod', '-cc', clang, '-gc', 'none', '-o', object, source])
 	assert compiled.exit_code == 0, compiled.output
 	data := os.read_bytes(object)!
 	assert data.len >= 4

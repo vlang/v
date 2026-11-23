@@ -790,14 +790,18 @@ pub type VectoredExceptionHandler = fn (&ExceptionPointers) u32
 // duplicate definitions from displeasing the compiler
 // fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
 pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandler) {
-	C.AddVectoredExceptionHandler(u32(first), voidptr(handler))
+	// Pass the handler as `void*`: the V signature returns u32 where the header's
+	// PVECTORED_EXCEPTION_HANDLER returns LONG, and strict C rejects that pointer.
+	c_handler := voidptr(handler)
+	C.AddVectoredExceptionHandler(u32(first), c_handler)
 }
 
 // uname returns information about the platform on which the program is running.
 // Currently `uname` on windows is not standardized, so it just mimics current practices from other popular software/language implementations:
-//   busybox-v1.35.0 * `busybox uname -a` => "Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows"
-//   rust/coreutils-v0.0.17 * `coreutils uname -a` => `Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows (Windows 10)`
-//   Python3 => `uname_result(system='Windows', node='HOSTNAME', release='10', version='10.0.19044', machine='AMD64')`
+// - busybox-v1.35.0 * `busybox uname -a` => `Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows`
+// - rust/coreutils-v0.0.17 * `coreutils uname -a` => `Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows (Windows 10)`
+// - Python3 => `uname_result(system='Windows', node='HOSTNAME', release='10', version='10.0.19044', machine='AMD64')`
+//
 // See: [NT Version Info](https://en.wikipedia.org/wiki/Windows_NT) @@ <https://archive.is/GnnvF>
 // and: [NT Version Info (detailed)](https://en.wikipedia.org/wiki/Comparison_of_Microsoft_Windows_versions#NT_Kernel-based_2)
 pub fn uname() Uname {

@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 fn fastc_generic_fixture(name string, source string) string {
 	root := os.join_path(os.vtmp_dir(), 'fastc_generic_${name}_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
@@ -552,8 +559,7 @@ fn main() {
 	}
 	for backend in ['c', 'fastc'] {
 		program := os.join_path(root, 'program_' + backend)
-		build := cmdexec.run(@VEXE, ['-new-compiler', '-b', backend, '-gc', 'none', '-nocache',
-			'-o', program, root])
+		build := cmdexec.run(@VEXE, ['-b', backend, '-gc', 'none', '-nocache', '-o', program, root])
 		assert build.exit_code == 0, '${backend}: ${build.output}'
 		run := cmdexec.run(program, [])
 		assert run.exit_code == 0, run.output

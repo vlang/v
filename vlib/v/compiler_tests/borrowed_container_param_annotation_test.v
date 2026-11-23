@@ -28,7 +28,7 @@ fn main() {
 	for ownership in ['', '-ownership -d ownership'] {
 		for parallel in ['', '-no-parallel'] {
 			binary := os.join_path(root, 'case')
-			result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache ${ownership} ${parallel} -o ${os.quoted_path(binary)} run ${os.quoted_path(source)}')
+			result := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache ${ownership} ${parallel} -o ${os.quoted_path(binary)} run ${os.quoted_path(source)}')
 			assert result.exit_code == 0, result.output
 		}
 	}
@@ -52,7 +52,7 @@ fn main() {
 	for ownership in ['', '-ownership -d ownership'] {
 		for parallel in ['', '-no-parallel'] {
 			binary := os.join_path(root, 'case')
-			result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache ${ownership} ${parallel} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+			result := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache ${ownership} ${parallel} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
 			assert result.exit_code != 0, result.output
 			assert result.output.contains('pointer indexing is only allowed in `unsafe` blocks'), result.output
 		}

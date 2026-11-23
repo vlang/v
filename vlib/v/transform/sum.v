@@ -209,6 +209,17 @@ fn (t &Transformer) resolve_sum_name(type_id u32) u32 {
 	return result
 }
 
+// bare_sum_name_names_local_type reports whether `name_id`, a key of the sum type
+// table, is only the short name under which a module's sum type is also listed
+// (`Any` for `json2.Any`), while the program declares a struct, interface or enum
+// of that name, which the name then means.
+fn (t &Transformer) bare_sum_name_names_local_type(name_id u32) bool {
+	if isnil(t.tc) || flat.source_type_shape(name_id).has(.dotted) || t.tc.sum_types.contains(name_id) {
+		return false
+	}
+	return name_id in t.tc.structs || t.tc.interface_names[name_id] || name_id in t.tc.enum_names
+}
+
 // resolve_sum_name_uncached resolves resolve sum name uncached information for transform.
 fn (t &Transformer) resolve_sum_name_uncached(sum_name_id u32) u32 {
 	if sum_name_id == 0 { return 0 }
@@ -219,6 +230,9 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name_id u32) u32 {
 	}
 	sum_name := sum_name_id
 	if t.sum_types.contains(sum_name) {
+		if t.bare_sum_name_names_local_type(sum_name_id) {
+			return 0
+		}
 		return sum_name_id
 	}
 	// Do not let a short/suffix fallback reinterpret an exact concrete type as an

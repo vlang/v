@@ -13,15 +13,17 @@ import test_utils { cmd_fail_args, cmd_ok_args }
 // here pushes that total past `MAX_PATH` and git cannot stat its own object
 // files. The long form of this name was the difference between red and green.
 const test_path = os.join_path(os.vtmp_dir(), 'vpl_${rand.ulid()}')
-const v_exe = os.join_path(test_path, if os.user_os() == 'windows' { 'vpm.exe' } else { 'vpm' })
+const v_exe = os.executable()
 
 fn testsuite_begin() {
+	// Run the CLI in the child before changing its fixture environment.
+	if os.args.len > 1 && parse_vpm_command(os.args[1..]) != '' {
+		main()
+		exit(0)
+	}
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path)!
 	os.setenv('VEXE', @VEXE, true)
-	// Compile once so each isolated store tests the same VPM binary.
-	cmd_ok_args(@LOCATION, [@VEXE, '-cc', @CCOMPILER, '-gc', 'none', '-o', v_exe,
-		os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
 }
 
 fn testsuite_end() {
@@ -34,7 +36,9 @@ fn create_local_git_module(repo_path string, module_name string) string {
 	os.mkdir_all(repo_path) or { panic(err) }
 	os.write_file(os.join_path(repo_path, 'v.mod'),
 		"Module{\n\tname: '${module_name}'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
-	cmd_ok_args(@LOCATION, ['git', 'init', '-b', 'main', repo_path])
+	cmd_ok_args(@LOCATION, ['git', 'init', '-q', repo_path])
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'symbolic-ref', 'HEAD', 'refs/heads/main'])
+	assert cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'symbolic-ref', '--short', 'HEAD']).output.trim_space() == 'main'
 	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'add', 'v.mod'])
 	cmd_ok_args(@LOCATION,
 		['git', '-C', repo_path, '-c', 'user.email=ci@vlang.io', '-c', 'user.name=V CI', 'commit',

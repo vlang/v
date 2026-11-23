@@ -42,6 +42,8 @@ fn fix_windows_path(path string) string {
 }
 
 // open_file tries to open or create a file with custom flags and permissions.
+// On Unix-like systems the file is close-on-exec: programs started later do not
+// inherit it.
 @[noinline]
 pub fn open_file(path string, mode string, options ...int) !File {
 	mut flags := 0
@@ -111,7 +113,7 @@ pub fn open_file(path string, mode string, options ...int) !File {
 		fd := $if windows {
 			C._wopen(p.to_wide(), flags, permission)
 		} $else {
-			C.open(&char(p.str), flags, permission)
+			C.open(&char(p.str), flags | C.O_CLOEXEC, permission)
 		}
 		if fd == -1 {
 			return error_posix()
@@ -951,9 +953,10 @@ pub enum SeekMode {
 
 // seek moves the file cursor (if any) associated with a file to a new location, offset `pos` bytes from the origin.
 // The origin is dependent on the `mode` and can be:
-//   .start   -> the origin is the start of the file
-//   .current -> the current position/cursor in the file
-//   .end     -> the end of the file
+// - `.start` -> the origin is the start of the file
+// - `.current` -> the current position/cursor in the file
+// - `.end` -> the end of the file
+//
 // If the file is not seek-able, or an error occurs, the error will
 // be returned to the caller.
 // A successful call to the fseek() function clears the end-of-file

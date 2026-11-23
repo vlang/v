@@ -42,7 +42,6 @@ chmod 755 "$output"
 printf "TRAIN jobs=%s args=%s\n" "$VJOBS" "$*" >> "$VSELF_PGO_TEST_LOG"
 if [ -n "${VFLAGS-}" ] || [ -n "${VEXE-}" ]; then exit 3; fi
 if [ -n "${LLVM_PROFILE_FILE-}" ]; then exit 6; fi
-if [ "$V_MACOS_V3_NO_FALLBACK" != "1" ]; then exit 4; fi
 if [ "$VSELF_PGO_TEST_FAIL" = "1" ]; then exit 5; fi
 case "$*" in
     *"-b fastc "*) if [ "${VSELF_PGO_TEST_FAIL_FASTC-}" = "1" ]; then exit 7; fi ;;
@@ -174,16 +173,17 @@ done
 	default_build := pgo_test_run(root, tool, [], false, '2', '')
 	assert default_build.exit_code == 0, default_build.output
 	default_calls := os.read_file(os.join_path(root, 'calls'))!
-	assert !default_calls.contains('-compile-backend'), default_calls
-	assert !default_calls.contains('-b fastc '), default_calls
-	assert default_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 2, default_calls
+	assert default_calls.contains('-compile-backend fastc'), default_calls
+	assert !default_calls.contains('-d skip_fastc'), default_calls
+	assert default_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 4, default_calls
+	assert default_calls.split_into_lines().filter(it.starts_with('TRAIN ') && it.contains('-b fastc ')).len == 2, default_calls
 	for extra in [([]string{}), ['-no-parallel']] {
 		os.write_file(os.join_path(root, 'calls'), '')!
 		serial := pgo_test_run(root, tool, extra, false, if extra.len == 0 { '1' } else { '2' }, '')
 		assert serial.exit_code == 0, serial.output
 		serial_calls := os.read_file(os.join_path(root, 'calls'))!
-		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 1, serial_calls
-		assert !serial_calls.contains('-b fastc '), serial_calls
+		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 2, serial_calls
+		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ') && it.contains('-b fastc ')).len == 1, serial_calls
 	}
 	for extra in [['-d', 'skip_fastc'], ['-dskip_fastc'], ['-define', 'skip_fastc=1']] {
 		os.write_file(os.join_path(root, 'calls'), '')!

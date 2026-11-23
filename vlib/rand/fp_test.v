@@ -11,6 +11,20 @@ const count = 9100100
 // Two sets of seeds
 const seeds = [[u32(2742798260), 2159764996], [u32(2135051596), 958016781]]
 
+// count_below counts `candidate` in every bin whose bound it is below. The
+// bounds ascend, so the walk starts at the largest one and stops at the first
+// one the candidate is not below. It runs for every sample, so the index, which
+// the loop keeps in range, is not bounds checked.
+@[direct_array_access; inline]
+fn count_below(mut histo []Histo, candidate f64) {
+	for i := histo.len - 1; i >= 0; i-- {
+		if !(candidate < histo[i].lo) {
+			break
+		}
+		histo[i].ct++
+	}
+}
+
 fn test_f32() {
 	mut histo := []Histo{}
 	mut candidate := f32(0.0)
@@ -25,11 +39,7 @@ fn test_f32() {
 		rand.seed(seed)
 		for _ in 0 .. count {
 			candidate = rand.f32()
-			for mut p in histo {
-				if candidate < p.lo {
-					p.ct += 1
-				}
-			}
+			count_below(mut histo, candidate)
 		}
 	}
 	println(' f32  ')
@@ -46,11 +56,7 @@ fn test_f32() {
 		rand.seed(seed)
 		for _ in 0 .. count {
 			candidate = rand.f32cp()
-			for mut p in histo {
-				if candidate < p.lo {
-					p.ct += 1
-				}
-			}
+			count_below(mut histo, candidate)
 		}
 	}
 	println(' f32cp')
@@ -76,11 +82,7 @@ fn test_f64() {
 		rand.seed(seed)
 		for _ in 0 .. count {
 			candidate = rand.f64()
-			for mut p in histo {
-				if candidate < p.lo {
-					p.ct += 1
-				}
-			}
+			count_below(mut histo, candidate)
 		}
 	}
 	println(' f64  ')
@@ -97,11 +99,7 @@ fn test_f64() {
 		rand.seed(seed)
 		for _ in 0 .. count {
 			candidate = rand.f64cp()
-			for mut p in histo {
-				if candidate < p.lo {
-					p.ct += 1
-				}
-			}
+			count_below(mut histo, candidate)
 		}
 	}
 	println(' f64cp')

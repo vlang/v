@@ -4913,7 +4913,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 		if callee.kind == .ident && callee.value !in tc.a.disabled_fns
-			&& tc.source_declares_bodyless_function(callee.value) {
+			&& tc.source_declares_bodyless_function(callee.value)
+			&& !tc.name_has_local_binding(callee.value) {
 			tc.record_error_at(.unknown_fn, 'cannot call a function that does not have a body', id, node.pos)
 			return
 		}
@@ -5505,6 +5506,9 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		if info.return_type !is Void && info.return_type !is Unknown {
 			tc.remember_expr_type(id, info.return_type)
+			if !semantic_types_equal(info0.return_type, info.return_type) {
+				tc.invalidate_body_resolved_type_chain(id)
+			}
 		}
 		tc.check_instantiated_comptime_method_args(id, node, info)
 		if tc.valid_resolution_fast {
@@ -8375,13 +8379,14 @@ fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ &Type, op f
 		else { op }
 	}
 	key := raw.source_type_id()
+	// `seen` holds every type visited, not just the current path: the question is
+	// whether any reachable type overloads the operator, and a type explored once
+	// answers it. Forgetting types on the way back explored a type once per path,
+	// exponential with empty interfaces, whose implementers are every type.
 	if seen[key] {
 		return false
 	}
 	seen[key] = true
-	defer {
-		seen.delete(key)
-	}
 	if (raw is Struct || raw is Alias) && tc.type_has_infix_operator_method(raw, semantic_op) {
 		return true
 	}
@@ -9332,7 +9337,16 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 	// Reading and scanning one file does not depend on the others. The pool's
 	// threads keep what they allocate, so the texts outlive the batch.
 	pool := checker_worker_pool(a)
-	if !isnil(pool) && pool.size() > 0 && scans.len > 1 {
+	// The index preparation batch may have scanned exactly these files already.
+	prescanned := tc.import_line_prescans.len > 0
+		&& import_line_scans_match(scans, tc.import_line_prescans)
+	if prescanned {
+		scans = tc.import_line_prescans
+	}
+	tc.import_line_prescans = []ImportLineScan{}
+	if prescanned {
+		// Nothing left to scan.
+	} else if !isnil(pool) && pool.size() > 0 && scans.len > 1 {
 		queue := chan int{cap: scans.len}
 		for i in 0 .. scans.len {
 			queue <- i
@@ -9368,7 +9382,7 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 		tc.source_texts_by_file[scan.name] = scan.source
 		tc.source_texts_by_id[scan.file_id] = scan.source
 		if scan.file_id >= 0 && scan.file_id < tc.malformed_const_source_states.len {
-			tc.malformed_const_source_states[scan.file_id] = if scan.source.contains('cosnt') {
+			tc.malformed_const_source_states[scan.file_id] = if scan.has_cosnt {
 				u8(2)
 			} else {
 				u8(1)
@@ -9401,14 +9415,73 @@ mut:
 	read   bool
 	source string
 	lines  []int
+	// The text holds the misspelled keyword `cosnt` somewhere (see
+	// malformed_const_source_states).
+	has_cosnt bool
+	// run was called.
+	scanned bool
+}
+
+// new_import_line_prescans lists every source file of `a` for a scan that
+// runs before index_module_import_lines_of_new_files asks for it.
+fn new_import_line_prescans(a &flat.FlatAst) []ImportLineScan {
+	mut scans := []ImportLineScan{cap: a.source_files.len}
+	for file_id, file in a.source_files {
+		has_source := file_id in a.source_texts
+		scans << ImportLineScan{
+			file_id:    file_id
+			name:       file.name
+			has_source: has_source
+			source:     if has_source { a.source_texts[file_id] } else { '' }
+		}
+	}
+	return scans
+}
+
+// import_line_scans_match reports whether `prescans` holds the finished scans
+// of exactly the files of `scans`, in their order.
+fn import_line_scans_match(scans []ImportLineScan, prescans []ImportLineScan) bool {
+	if scans.len != prescans.len {
+		return false
+	}
+	for i, scan in scans {
+		prescan := prescans[i]
+		if !prescan.scanned || prescan.file_id != scan.file_id || prescan.has_source != scan.has_source
+			|| prescan.name != scan.name {
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut scan ImportLineScan) run() {
+	scan.scanned = true
 	if !scan.has_source {
 		scan.source = os.read_file(scan.name) or { return }
 	}
 	scan.read = true
 	scan.lines = module_import_lines(scan.source)
+	scan.has_cosnt = source_has_cosnt(scan.source)
+}
+
+// source_has_cosnt is `source.contains('cosnt')`. It looks for the pair `sn`,
+// which source code rarely has, and then at the letters around it: a search
+// from the first letter stops at every `c` of the text.
+@[direct_array_access]
+fn source_has_cosnt(source string) bool {
+	mut from := 2
+	for from < source.len {
+		at := source.index_after_('sn', from)
+		if at < 0 {
+			break
+		}
+		if at + 2 < source.len && source[at - 2] == `c` && source[at - 1] == `o`
+			&& source[at + 2] == `t` {
+			return true
+		}
+		from = at + 1
+	}
+	return false
 }
 
 struct ImportLineScanArgs {
@@ -9613,6 +9686,18 @@ fn (tc &TypeChecker) call_has_smartcast_receiver(node flat.Node) bool {
 	return tc.smartcast_type(tc.a.child(fn_node, 0)) != none
 }
 
+// name_has_local_binding reports whether `name` is bound in the current function's
+// scope: a local variable or parameter there shadows a function of that name.
+fn (tc &TypeChecker) name_has_local_binding(name string) bool {
+	if tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	if _ := tc.cur_scope.lookup(name) {
+		return true
+	}
+	return false
+}
+
 @[direct_array_access]
 fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Node) ?CallInfo {
 	if node.children_count == 0 {
@@ -9685,8 +9770,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		fn_id := tc.a.child(&node, 0)
 		mut binding_type := builtin_void_type
+		mut is_local_binding := false
 		if typ := tc.cur_scope.lookup(fn_node.value) {
 			binding_type = typ
+			is_local_binding = true
 		} else if typ := tc.file_scope.lookup(fn_node.value) {
 			binding_type = typ
 		} else if typ := tc.const_type_for_name(fn_node.value) {
@@ -9707,11 +9794,18 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			} else {
 				fn_typ
 			}
+			// A local function value shadows the functions of its name: only its own
+			// type says whether it is variadic, not a declaration found by the name.
+			is_variadic := if is_local_binding && !is_smartcasted {
+				selected.is_variadic || tc.current_binding_is_variadic_fn_value_local(fn_node.value)
+			} else {
+				tc.expr_is_variadic_fn_value(fn_id)
+			}
 			return CallInfo{
 				name:         ''
 				params:       selected.params.map(*it.typ)
 				return_type:  selected.return_type
-				is_variadic:  tc.expr_is_variadic_fn_value(fn_id)
+				is_variadic:  is_variadic
 				params_known: true
 			}
 		}
@@ -10275,12 +10369,14 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					}
 				}
 				'join' {
-					return CallInfo{
-						name:         'array.join'
-						params:       tarr2(base_type, builtin_string_type)
-						return_type:  builtin_string_type
-						has_receiver: true
-						params_known: true
+					if array_method_takes_element('join', clean_array.elem_type) {
+						return CallInfo{
+							name:         'array.join'
+							params:       tarr2(base_type, builtin_string_type)
+							return_type:  builtin_string_type
+							has_receiver: true
+							params_known: true
+						}
 					}
 				}
 				'index', 'last_index' {
@@ -11220,6 +11316,16 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		return none
 	}
 	base_id := tc.a.child(&fn_node, 0)
+	// `callback[T]()` calls a local closure with explicit type arguments; the local
+	// shadows a function `callback` of the module, as it does for `callback()`.
+	local_base := tc.a.nodes[int(base_id)]
+	if local_base.kind == .ident && !local_base.value.contains('.') {
+		if local_type := tc.cur_scope.lookup(local_base.value) {
+			if _ := fn_type_from_type(local_type) {
+				return none
+			}
+		}
+	}
 	type_args_source_ids := tc.generic_call_type_arg_names(fn_node).clone()
 	if type_args_source_ids.len == 0 {
 		return none
@@ -12752,14 +12858,23 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 		return
 	}
 	tc.register_visible_mutation_fn_decl_keys(idx, module_name, qname, source_name, c_qname,
-		c_source_name, false)
-	tc.register_visible_mutation_fn_decl_keys(idx, module_name, qname, source_name, c_qname,
-		c_source_name, true)
+		c_source_name)
 }
 
-// register_visible_mutation_fn_decl_keys records one declaration under either its
-// module-less (`global`) or its module-qualified keys.
-fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string, global bool) {
+// register_visible_mutation_fn_decl_keys records one declaration under its
+// names. The first declaration of a name owns its module-less key; a later one
+// of another module is kept under its module-qualified key.
+fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string) {
+	if isnil(tc.visible_mutation_cache) {
+		return
+	}
+	mut cache := tc.visible_mutation_cache
+	cache.register_fn_decl_keys(idx, module_name, qname, source_name, c_qname, c_source_name)
+}
+
+// register_fn_decl_keys is register_visible_mutation_fn_decl_keys for the
+// index `cache`.
+fn (mut cache VisibleMutationCache) register_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string) {
 	decl_module := if module_name == '' { 'main' } else { module_name }
 	decl := VisibleMutationFnDecl{
 		idx: idx
@@ -12775,10 +12890,6 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 		candidates << c_qname
 		candidates << c_source_name
 	}
-	if isnil(tc.visible_mutation_cache) {
-		return
-	}
-	mut cache := tc.visible_mutation_cache
 	// An insert copies its key, so a short key is spelled in a stack buffer.
 	mut key_buf := [192]u8{}
 	for i, candidate in candidates {
@@ -12787,11 +12898,14 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 		if candidate in candidates[..i] {
 			continue
 		}
-		if global {
-			// The module-less key `\x01${candidate}` keeps `candidate` in global_decls.
-			if candidate !in cache.global_decls {
-				cache.global_decls[candidate] = decl
+		// The module-less key `\x01${candidate}` keeps `candidate` in global_decls.
+		if first := cache.global_decls[candidate] {
+			if first.mod == decl_module {
+				// The module's first declaration of the name is that one.
+				continue
 			}
+		} else {
+			cache.global_decls[candidate] = decl
 			continue
 		}
 		key_len := decl_module.len + 1 + candidate.len
@@ -12849,6 +12963,12 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 				}
 			} else if decl := cache.decls[cache_key] {
 				return decl
+			} else if decl := cache.global_decls[lookup_name] {
+				// A module's first declaration of a name has no module-qualified
+				// key when it is the first one of the program.
+				if decl.mod == fallback_mod {
+					return decl
+				}
 			}
 			if cache.decl_misses[cache_key] {
 				return none
@@ -23012,6 +23132,21 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 	return false
 }
 
+// array_method_takes_element reports whether builtin `method` applies to an array
+// of `elem`. A method belongs to the receiver type it is declared on, with no
+// fallback to the array shape (Go types2 LookupFieldOrMethod, Zig fieldCallBind).
+// A generic element is checked when the function is instantiated.
+fn array_method_takes_element(method string, elem Type) bool {
+	if method !in ['bytestr', 'join'] {
+		return true
+	}
+	clean := unalias_type(elem)
+	if clean is Unknown || (clean is Struct && is_bare_generic_param(clean.name())) {
+		return true
+	}
+	return if method == 'bytestr' { is_byte_type(clean) } else { clean is String }
+}
+
 fn (tc &TypeChecker) is_known_array_receiver_method(receiver &Type, method string) bool {
 	if receiver is Array {
 		for mname in receiver_method_name_candidates(receiver, method, tc.cur_module) {
@@ -23019,12 +23154,17 @@ fn (tc &TypeChecker) is_known_array_receiver_method(receiver &Type, method strin
 				return true
 			}
 		}
+		// These two are declared for one element type, as `fn (a []string) join`.
+		if !array_method_takes_element(method, receiver.elem_type) {
+			return false
+		}
 		// Keep this in sync with the synthetic array receiver methods handled in
 		// resolve_call_info/resolve_type, including `[]thread T.wait()`.
 		return method in ['first', 'last', 'pop', 'pop_left', 'contains', 'join', 'index', 'last_index',
 			'repeat', 'repeat_to_depth', 'delete', 'delete_last', 'clear', 'insert', 'prepend',
 			'filter', 'map', 'any', 'all', 'count', 'sort_with_compare', 'sorted_with_compare',
-			'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals', 'bytestr', 'wait']
+			'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals', 'wait']
+			|| (method == 'bytestr' && is_byte_type(receiver.elem_type))
 	}
 	if receiver is ArrayFixed {
 		array_type := Type(Array{

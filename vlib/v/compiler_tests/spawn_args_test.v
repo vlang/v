@@ -1,13 +1,26 @@
 import os
+import v.tempname
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const spawn_args_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_spawn_args_${tempname.unique_token()}')
+
+fn testsuite_begin() {
+	os.mkdir_all(spawn_args_fixture_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(spawn_args_fixture_dir) or {}
+}
 
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_spawn_args_test')
+	v3_bin := os.join_path(spawn_args_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${v3_src}'])
@@ -16,9 +29,9 @@ fn build_v3() string {
 }
 
 fn gen_c(v3_bin string, name string, src string) string {
-	src_file := os.join_path(os.temp_dir(), '${name}.v')
+	src_file := os.join_path(spawn_args_fixture_dir, '${name}.v')
 	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(os.temp_dir(), '${name}.c')
+	c_out := os.join_path(spawn_args_fixture_dir, '${name}.c')
 	os.rm(c_out) or {}
 	compile := os.exec([v3_bin, src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output

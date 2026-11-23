@@ -6,7 +6,7 @@ import v.vmod
 import test_utils { cmd_fail_args, cmd_ok_args }
 
 const test_path = os.join_path(os.temp_dir(), 'vpm_local_${rand.ulid()}')
-const local_vpm = os.join_path(test_path, if os.user_os() == 'windows' { 'vpm.exe' } else { 'vpm' })
+const local_vpm = os.executable()
 
 struct LocalInstallCase {
 	args        []string
@@ -15,12 +15,14 @@ struct LocalInstallCase {
 }
 
 fn testsuite_begin() {
+	// Run the CLI in the child before changing its fixture environment.
+	if os.args.len > 1 && parse_vpm_command(os.args[1..]) != '' {
+		main()
+		exit(0)
+	}
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path) or { panic(err) }
 	os.setenv('VEXE', @VEXE, true)
-	// VMODULES is part of the tool cache key. Compile once so each isolated
-	// module store exercises the same VPM binary without rebuilding it.
-	cmd_ok_args(@LOCATION, [@VEXE, '-cc', @CCOMPILER, '-o', local_vpm, os.dir(@FILE)])
 }
 
 fn testsuite_end() {
@@ -685,12 +687,14 @@ fn test_a_copy_of_a_local_install_is_not_one() {
 	installed := os.join_path(project_dir, 'copied_pkg')
 	create_local_git_module(installed, 'copied_pkg')
 	record_local_install(installed) or { panic(err) }
+	token := read_local_install_token(installed) or { panic('the install has no token') }
 
 	elsewhere := os.join_path(test_path, 'local_copy_target')
 	os.rmdir_all(elsewhere) or {}
 	os.mkdir_all(elsewhere) or { panic(err) }
 	os.cp_all(installed, os.join_path(elsewhere, 'copied_pkg'), true) or { panic(err) }
 
+	assert read_local_install_token(os.join_path(elsewhere, 'copied_pkg')) or { '' } == token
 	assert !is_recorded_local_install(os.join_path(elsewhere, 'copied_pkg'))
 	assert is_recorded_local_install(installed)
 }
@@ -767,7 +771,11 @@ fn test_a_reused_path_does_not_inherit_a_local_install() {
 	assert is_recorded_local_install(installed)
 
 	// The install is gone, and the project writes its own module at that path.
-	os.rmdir_all(installed) or { panic(err) }
+	// Git maintenance can remove a lock file between rmdir_all's listing and unlink.
+	// That ENOENT is harmless only if the entire old checkout was removed.
+	os.rmdir_all(installed) or {
+		assert os.is_not_exist(err) && !os.exists(installed), err.msg()
+	}
 	os.mkdir_all(installed) or { panic(err) }
 	os.write_file(os.join_path(installed, 'reused_pkg.v'), 'module reused_pkg\n') or { panic(err) }
 	assert !is_recorded_local_install(installed)
@@ -1027,8 +1035,10 @@ fn create_local_git_module(repo_path string, module_name string) {
 		"Module{\n\tname: '${module_name}'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
 	cmd_ok_args(@LOCATION, ['git', 'init', repo_path])
 	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'add', 'v.mod'])
-	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, '-c', 'user.email=ci@vlang.io', '-c',
-		'user.name=V CI', 'commit', '-m', 'initial commit'])
+	// Detached maintenance can remove .git/objects/maintenance.lock while a test
+	// copies or removes this checkout. Keep the fixture stable after commit returns.
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, '-c', 'maintenance.auto=false', '-c',
+		'user.email=ci@vlang.io', '-c', 'user.name=V CI', 'commit', '-m', 'initial commit'])
 }
 
 fn file_url(path string) string {

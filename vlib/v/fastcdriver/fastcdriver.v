@@ -412,19 +412,20 @@ pub fn run(args []string) {
 			pointer_bits:  64
 			object_format: 'macho'
 		}
-		prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'v3_no_parallel', 'arm64', 'skip_x64',
+		prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'v3_no_parallel', 'arm64', 'skip_amd64',
 			'skip_wasm', 'skip_eval']
 		fastc.generate_arm64_files([real_input], prefs, output) or { fail(err.msg()) }
 		return
 	}
-	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_x64', 'skip_wasm',
+	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_amd64', 'skip_wasm',
 		'skip_eval']
 	backtrace_enabled := fastc_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.target.arch)
 	// Mirror the driver's TinyCC compatibility plan (add_v3_tcc_compat_defines):
 	// TCC's backtrace runtime is incompatible with macOS arm64 and Windows amd64,
-	// so builtin must not reference tcc_backtrace there. Descendant generations compile
+	// so builtin must not reference tcc_backtrace there (on macOS, builtin uses
+	// libSystem's `backtrace()` instead). Descendant generations compile
 	// builtin exactly like the first FastC generation did.
-	if !backtrace_enabled {
+	if !backtrace_enabled && prefs.normalized_target_os() != 'macos' {
 		prefs.user_defines << 'no_backtrace'
 	}
 	if prefs.normalized_target_os() == 'windows' && prefs.target.arch == 'amd64' {

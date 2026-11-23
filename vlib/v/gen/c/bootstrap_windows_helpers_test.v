@@ -153,7 +153,15 @@ fn test_bootstrap_windows_streams_reuse_crt_owned_file_objects() ! {
 	// The mock CRT owns the stream objects; all lookups must return those exact
 	// addresses, including their existing buffers and descriptor associations.
 	for variant in ['ucrt', 'tcc64', 'tcc32_dll', 'tcc32_crt'] {
-		mut defines := '#define __cdecl\n'
+		// The probe links against the C runtime of the host, and on Windows that
+		// runtime defines these names itself (`__acrt_iob_func` in the UCRT), so a
+		// mock with the same name is a duplicate symbol. Rename the mock and every
+		// use of it. A 64-bit Windows compiler predefines `_WIN64`, which the 32-bit
+		// TinyCC variants must not see.
+		mut defines := '#define __cdecl\n#define __acrt_iob_func v_mock_acrt_iob_func\n#define __iob_func v_mock_iob_func\n#define _iob v_mock_iob\n#define _imp___iob v_mock_imp_iob\n'
+		if variant.starts_with('tcc32') {
+			defines += '#undef _WIN64\n'
+		}
 		mut crt := ''
 		mut expected := 'streams'
 		if variant == 'ucrt' {

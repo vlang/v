@@ -10,7 +10,7 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_struct_redeclaration_${os.getpid()}_${rand.ulid()}')
 	build :=
-		os.exec([vexe, '-prealloc', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin

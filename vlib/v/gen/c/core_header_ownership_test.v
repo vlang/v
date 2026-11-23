@@ -20,6 +20,8 @@ fn test_core_header_ownership_preserves_application_and_thirdparty_headers() {
 	assert !g.core_native_header_is_redeclared('/project/time/time_windows.c.v', '"/vroot/vlib/time/ticks_windows_api.h"')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/time/timerfd.c.v', '<sys/timerfd.h>')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/os/mmap_nix.c.v', '<sys/mman.h>')
+	assert g.core_native_header_is_redeclared('/vroot/vlib/os/fd.c.v', '<poll.h>')
+	assert !g.core_native_header_is_redeclared('/project/os/fd.c.v', '<poll.h>')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/v/driver/replace_file_windows.c.v', '<windows.h>')
 	assert !g.core_native_header_is_redeclared('/project/v/driver/replace_file_windows.c.v', '<windows.h>')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/v/workers/thread_nix.c.v', '<sys/prctl.h>')
@@ -169,8 +171,13 @@ fn test_headerless_cmdexec_poll_uses_bionic_nfds_type() ! {
 		'\n_Static_assert(__builtin_types_compatible_p(v_cmdexec_nfds_t, unsigned int), "Bionic nfds_t");\n' +
 		'_Static_assert(__builtin_types_compatible_p(__typeof__(&v_cmdexec_poll_sys), int (*)(struct v_cmdexec_pollfd*, unsigned int, int)), "Bionic poll prototype");\n')!
 	// Validate the emitted declaration without claiming execution on an Android device.
-	checked := cmdexec.run(cc, ['-std=gnu11', '-D__ANDROID__', '-U__APPLE__', '-Werror', '-fsyntax-only',
-		source])
+	// A Windows clang predefines `_WIN32`, which hides the whole declaration.
+	mut args := ['-std=gnu11', '-D__ANDROID__', '-U__APPLE__', '-Werror', '-fsyntax-only']
+	$if windows {
+		args << '-U_WIN32'
+	}
+	args << source
+	checked := cmdexec.run(cc, args)
 	assert checked.exit_code == 0, checked.output
 }
 

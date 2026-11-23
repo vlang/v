@@ -175,6 +175,72 @@ fn test_server_h2c_does_not_break_http1() {
 	assert text.contains('h2c: GET /plain')
 }
 
+fn drip_h2c_prefix(mut conn net.TcpConn, tail string, stop chan bool) {
+	for i in 0 .. tail.len {
+		select {
+			_ := <-stop {
+				return
+			}
+			150 * time.millisecond {
+			}
+		}
+		conn.write_string(tail[i..i + 1]) or { return }
+	}
+}
+
+fn check_h2c_request_head_deadline(addr string, prefix string, tail string) ! {
+	mut slow := net.dial_tcp(addr)!
+	defer { slow.close() or {} }
+	slow.write_string(prefix)!
+	stop := chan bool{cap: 1}
+	drip := spawn drip_h2c_prefix(mut slow, tail, stop)
+	defer {
+		stop <- true
+		drip.wait()
+	}
+
+	// The lone worker must finish with the slow client before serving this one.
+	mut legitimate := net.dial_tcp(addr)!
+	defer { legitimate.close() or {} }
+	legitimate.set_read_timeout(1 * time.second)
+	legitimate.write_string('GET /deadline HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')!
+	mut response := []u8{}
+	mut buffer := []u8{len: 1024}
+	for {
+		n := legitimate.read(mut buffer)!
+		if n <= 0 {
+			break
+		}
+		response << buffer[..n]
+		if response.bytestr().contains('\r\n') {
+			break
+		}
+	}
+	assert response.bytestr().starts_with('HTTP/1.1 200 OK\r\n')
+}
+
+fn test_server_h2c_sniff_uses_request_head_deadline() {
+	mut server := &Server{
+		accept_timeout:       h2c_atimeout
+		read_timeout:         5 * time.second
+		read_header_timeout:  300 * time.millisecond
+		worker_num:           1
+		handler:              H2cEchoHandler{}
+		addr:                 '127.0.0.1:0'
+		enable_http2:         true
+		show_startup_message: false
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running()!
+	defer {
+		server.close()
+		t.wait()
+	}
+
+	check_h2c_request_head_deadline(server.addr, 'G', 'G'.repeat(11))!
+	check_h2c_request_head_deadline(server.addr, h2_client_preface[..4], h2_client_preface[4..12])!
+}
+
 struct H2cRemoteAddrHandler {}
 
 fn (mut h H2cRemoteAddrHandler) handle(req Request) Response {

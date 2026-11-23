@@ -5,6 +5,14 @@ import v.flat
 import v.pref
 import v.types
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn test_cached_builtin_request_keeps_its_header_owned_declaration() {
 	mut a := flat.FlatAst.new()
 	header := '/cache/builtin.vh'
@@ -18,6 +26,18 @@ fn test_cached_builtin_request_keeps_its_header_owned_declaration() {
 	user := '/project/binding.c.v'
 	g.files_linking_c_sources[user] = true
 	assert g.should_emit_c_extern_decl_from_file('request', user, 'main')
+}
+
+fn test_pipe2_prototype_survives_unrelated_system_headers() {
+	mut g := FlatGen.new()
+	g.compiler_vroot = @VEXEROOT
+	source := os.join_path(@VEXEROOT, 'vlib', 'os', 'process_nix.c.v')
+	g.add_c_directive('os', '#include <unistd.h>', false)
+	g.note_c_include_directive('os', source)
+	assert g.c_directives_use_system_libc()
+	assert g.should_emit_c_extern_decl_from_file('pipe2', source, 'os')
+	assert g.c_extern_decl_line(flat.Node{}, 'pipe2') == 'i32 pipe2(i32 fds[2], i32 flags);'
+	assert !g.should_emit_c_extern_decl_from_file('unrelated_external', source, 'os')
 }
 
 fn test_late_source_does_not_reemit_multiline_header_context() {
@@ -243,6 +263,11 @@ fn test_cache_extern_declaration_avoids_tgmath_macro_expansion() {
 	assert c_macro_safe_extern_decl('custom', 'int custom(int x);') == 'int custom(int x);'
 }
 
+fn test_cross_bootstrap_pipe_macro_does_not_expand_in_c_prototype() {
+	assert c_macro_safe_extern_decl('v_os_process_pipe_cloexec_cross',
+		'i32 v_os_process_pipe_cloexec_cross(i32* fds);') == 'i32 (v_os_process_pipe_cloexec_cross)(i32* fds);'
+}
+
 fn test_cache_extern_filter_uses_pthread_v_declarations() {
 	mut preamble_gen := FlatGen.new()
 	preamble_gen.preamble()
@@ -293,6 +318,18 @@ fn test_linux_family_system_libc_owns_itimerspec_and_semaphore_declarations() {
 			assert !g.should_emit_c_extern_decl(name), '${target_os}: ${name}'
 		}
 	}
+}
+
+fn test_pollfd_sdk_struct_ownership_keeps_headerless_user_layouts() {
+	for target_os in ['linux', 'macos', 'freebsd', 'openbsd'] {
+		for system_libc in [false, true] {
+			g := posix_declaration_filter_gen(target_os, system_libc)
+			assert g.skip_builtin_struct('C.pollfd') == system_libc, '${target_os}: system_libc=${system_libc}'
+		}
+	}
+	// The Windows SDK does not declare the POSIX pollfd tag.
+	windows := posix_declaration_filter_gen('windows', true)
+	assert !windows.skip_builtin_struct('C.pollfd')
 }
 
 fn test_headerless_linux_family_keeps_itimerspec_and_semaphore_declarations() {
@@ -622,8 +659,8 @@ fn test_target_libc_headers_own_generated_errno_declarations() ! {
 	// no Linux toolchain is needed, even when the host is Windows or macOS.
 	for freestanding in [false, true] {
 		for target_headers in [false, true] {
-			mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-nocache',
-				'-os', 'linux', '-arch', 'amd64']
+			mut args := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-nocache', '-os', 'linux',
+				'-arch', 'amd64']
 			if freestanding {
 				args << '-freestanding'
 			}
@@ -674,8 +711,8 @@ fn main() {
 	println("errno ok")
 }
 ')!
-	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-freestanding',
-		'-gc', 'none', '-cstrict', '-cc', cc, '-o', executable, source])
+	built := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-freestanding', '-gc', 'none',
+		'-cstrict', '-cc', cc, '-o', executable, source])
 	assert built.exit_code == 0, built.output
 	ran := os.exec([executable])
 	assert ran.exit_code == 0, ran.output

@@ -88,7 +88,9 @@ fn local_outdated_git(path string, args ...string) string {
 fn local_outdated_repo(name string) !string {
 	path := os.join_path(test_path, name)
 	os.mkdir_all(path)!
-	local_outdated_git(path, 'init', '-q', '-b', 'main')
+	local_outdated_git(path, 'init', '-q')
+	local_outdated_git(path, 'symbolic-ref', 'HEAD', 'refs/heads/main')
+	assert local_outdated_git(path, 'symbolic-ref', '--short', 'HEAD') == 'main'
 	os.write_file(os.join_path(path, 'v.mod'), "Module { name: 'lib' }")!
 	local_outdated_git(path, 'add', 'v.mod')
 	local_outdated_git(path, 'commit', '-q', '-m', 'initial')

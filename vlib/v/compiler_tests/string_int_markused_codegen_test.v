@@ -6,14 +6,24 @@ const string_int_v3_dir = os.dir(string_int_tests_dir)
 const string_int_vlib_dir = os.dir(string_int_v3_dir)
 const string_int_v3_src = os.join_path(string_int_v3_dir, 'v.v')
 
-fn string_int_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_string_int_markused_test_${os.getpid()}')
+// One compiler serves the whole suite; each case used to build its own.
+const string_int_build_v3_path = os.join_path(os.temp_dir(), 'v3_string_int_markused_test_${os.getpid()}')
+
+fn testsuite_begin() {
+	v3_bin := string_int_build_v3_path
 	os.rm(v3_bin) or {}
 	build :=
 		os.exec([string_int_vexe, '-gc', 'none', '-path',
 			'${string_int_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${string_int_v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rm(string_int_build_v3_path) or {}
+}
+
+fn string_int_build_v3() string {
+	return string_int_build_v3_path
 }
 
 fn test_top_level_string_int_roots_exact_receiver_method() {

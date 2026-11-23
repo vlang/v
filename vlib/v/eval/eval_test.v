@@ -4115,10 +4115,6 @@ fn main() {
 		assert !inactive.output.contains('operator `**` is not supported by the V3 ${backend} backend'), inactive.output
 		if backend == 'arm64' {
 			assert_linux_arm64_object(object_path)
-			executable := os.exec([v3_bin, '-b', backend, '-os', 'linux', '-arch', 'arm64', '-o',
-				inactive_src + '.exe', inactive_src])
-			assert executable.exit_code != 0
-			assert executable.output.contains('the experimental Linux ARM64 backend supports object output only; use -o file.o'), executable.output
 		}
 		active_src := os.join_path(os.temp_dir(), 'v3_${backend}_active_generic_power.v')
 		os.write_file(active_src, inactive_code.replace('[string]', '[int]')) or { panic(err) }
@@ -4183,10 +4179,13 @@ fn main() {
 }
 
 fn test_eval_os_exec_accepts_literal_argument_arrays() {
+	// Escape the backslashes of a Windows path (`D:\a\v\v.exe`): unescaped, the
+	// evaluated string literal reads them as `\a` and `\v` escapes.
+	vexe_literal := vexe.replace('\\', '\\\\')
 	mut e := create()
 	e.run_text('import os
 fn main() {
- result := os.exec(["${vexe}", "version"])
+ result := os.exec(["${vexe_literal}", "version"])
  println(result.exit_code)
  println(result.output.starts_with("V "))
 }

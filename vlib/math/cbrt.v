@@ -15,9 +15,9 @@ module math
 // cbrt returns the cube root of a.
 //
 // special cases are:
-// cbrt(±0) = ±0
-// cbrt(±inf) = ±inf
-// cbrt(nan) = nan
+// - `cbrt(±0) = ±0`
+// - `cbrt(±inf) = ±inf`
+// - `cbrt(nan) = nan`
 pub fn cbrt(a f64) f64 {
 	mut x := a
 	b1 := 715094163 // (682-0.03306235651)*2**20

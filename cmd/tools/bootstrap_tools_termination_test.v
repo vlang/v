@@ -10,8 +10,8 @@ fn test_self_hosted_bootstrap_tools_compile_and_terminate() {
 		source := os.join_path(@VMODROOT, 'cmd', 'tools', '${name}.v')
 		output := os.join_path(root, name)
 		// A bounded subprocess turns the unbounded compilation in #28390 into a failure.
-		build := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-gc',
-			'none', '-nocache', '-o', output, source], 120_000)
+		build := cmdexec.run_with_timeout(vexe, ['-no-retry-compilation', '-gc', 'none', '-nocache',
+			'-o', output, source], 120_000)
 		assert build.exit_code == 0, build.output
 		// Keep this termination check local: doctor's optional GitHub fetch may
 		// first compile the timeout tool. vdoctor_test.v covers fetch dispatch.

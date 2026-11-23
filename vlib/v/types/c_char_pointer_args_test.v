@@ -9,7 +9,7 @@ fn c_char_pointer_check(name string, files map[string]string) os.Result {
 	for file, source in files {
 		os.write_file(os.join_path(root, file), source) or { panic(err) }
 	}
-	return os.exec([@VEXE, '-new-compiler', '-check', root])
+	return os.exec([@VEXE, '-check', root])
 }
 
 fn test_c_calls_accept_character_pointers_of_the_same_depth() {

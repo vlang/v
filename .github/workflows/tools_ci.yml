@@ -1,19 +1,10 @@
 name: Tools CI
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'cmd/**'
-      - '!cmd/tools/vpm/**'
-      - 'vlib/**'
-      - 'thirdparty/**'
-      - '!**.md'
-      - '**/tools_ci.yml'
+  workflow_call:
 
 concurrency:
-  group: tools-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: tools-tools_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -28,16 +19,19 @@ jobs:
     env:
       VFLAGS: -cc gcc
       VJOBS: '2'
-      V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Check apt mirror setup and prerequisite failures
+        run: bash .github/workflows/disable_azure_mirror_test.sh
       - name: Build V for the shell regression tests
         id: build
-        run: make
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
       - name: Check BSD tool job failure propagation
-        run: ./v -new-compiler cmd/tools/tools_ci_test.v
+        run: ./v cmd/tools/tools_ci_test.v
       - name: Check shell regression test formatting
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ./v fmt -verify cmd/tools/tools_ci_test.v
@@ -69,7 +63,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Code in cmd/ is formatted
         if: matrix.suite == 'default' && matrix.shard == 0
         run: ./v fmt -verify cmd/
@@ -108,7 +104,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Test tools with undefined behavior sanitizer
         if: matrix.variant.sanitizer == 'undefined'
         run: ./v -silent -cc clang -cflags -fsanitize=undefined test-self -ubsan-compiler cmd
@@ -117,17 +115,21 @@ jobs:
         run: ./v -silent -gc none -cc clang -cflags -fsanitize=memory test-self -msan-compiler cmd
       - name: Test tools with thread sanitizer
         if: matrix.variant.sanitizer == 'thread'
-        run: ./v -silent -cc gcc -cflags -fsanitize=thread test-self cmd
+        # TSan needs allocator-visible lifetimes; Boehm also stalls waiting for
+        # stop-the-world signal acknowledgements in the multithreaded tool tests.
+        run: ./v -silent -gc none -cc gcc -cflags -fsanitize=thread test-self cmd
       - name: Test tools with address sanitizer
         if: matrix.variant.sanitizer == 'address'
         run: ./v -silent -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self -asan-compiler cmd/tools
 
   tools-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     strategy:
       matrix:
         cc: [clang]
+        suite: [default, strict]
+        shard: [0, 1]
       fail-fast: false
     env:
       # Stop a failing test session at its first failure instead of
@@ -135,22 +137,29 @@ jobs:
       # add no signal.
       VTEST_FAIL_FAST: '1'
       VFLAGS: -cc ${{ matrix.cc }}
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '2'
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Check build-tools
+        if: matrix.suite == 'default' && matrix.shard == 0
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
+        if: matrix.suite == 'default'
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
+        if: matrix.suite == 'strict'
         run: ./v -silent -W -cstrict test-self cmd
 
   tools-windows:
     runs-on: windows-2025
-    timeout-minutes: 40
+    timeout-minutes: 70
     strategy:
       matrix:
         suite: [default, strict]
@@ -179,8 +188,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Build V
-        run: ./makev.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
+        uses: ./.github/actions/setup-v
+        with:
+          doctor: true
       - name: Install OpenSSL for MSVC
         if: ${{ matrix.cc == 'msvc' }}
         run: |
@@ -241,7 +254,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Build V
-        run: make && ./v -cg -o v cmd/v && ./v symlink
+        run: |
+          set -eu
+          make
+          VFLAGS= ./v self -prod -cc musl-gcc -gc none -cg -parallel-cc
+          ./v symlink
       - name: Ensure git commands can be used with no prompts on modern Git versions
         run: git config --global --add safe.directory /__w/v/v
       - name: Verify `v test` works
@@ -270,8 +287,8 @@ jobs:
 
   tools-freebsd:
     runs-on: ubuntu-latest
-    # VM bootstrap takes up to ten minutes before any tool tests can start.
-    timeout-minutes: 25
+    # After VM bootstrap, GCC's strict suite spends minutes per compiler fixture.
+    timeout-minutes: ${{ matrix.cc == 'gcc' && matrix.suite == 'strict' && 45 || 25 }}
     strategy:
       matrix:
         suite: [default, strict]
@@ -298,8 +315,12 @@ jobs:
         with:
           operating_system: freebsd
           version: '15.1'
-          memory: 8G
-          cpu_count: 2
+          # GCC peaks at about 2 GiB compiling the cmd/v tests, which build the whole
+          # compiler; three of them ran out of memory in 8 GiB. The host has 16 GiB.
+          memory: ${{ matrix.cc == 'gcc' && '12G' || '8G' }}
+          # The four-vCPU host leaves one CPU for the runner. Three test
+          # workers fit the compiler test runner's memory budget in 8 GiB.
+          cpu_count: 3
           shell: sh
           sync_files: runner-to-vm
           environment_variables: VFLAGS V_CI_SUITE VTEST_SELF_SHARD_INDEX VTEST_SELF_SHARD_COUNT VTEST_SHOW_START VTEST_SHOW_LONGEST_BY_TOTALTIME
@@ -324,7 +345,8 @@ jobs:
           printf "VFLAGS = %s\n" "$VFLAGS"
           # Non-final commands in an && list are exempt from set -e.
           gmake
-          ./v -showcc -o v cmd/v
+          # Optimize the driver with Clang; retain the matrix compiler for its tests.
+          VFLAGS= ./v self -prod -cc clang -parallel-cc -showcc
           sudo ./v symlink
           echo "::endgroup::"
           echo "::group::v doctor"
@@ -354,8 +376,9 @@ jobs:
 
   tools-openbsd:
     runs-on: ubuntu-latest
-    # VM bootstrap takes up to ten minutes before any tool tests can start.
-    timeout-minutes: 25
+    # VM/bootstrap and initial checks take about 8.5 minutes. The 57-file Clang
+    # shard was still progressing at 25 minutes; leave time for its final tests.
+    timeout-minutes: 35
     strategy:
       matrix:
         suite: [default, strict]
@@ -407,7 +430,8 @@ jobs:
           ulimit -d 6291456
           # Non-final commands in an && list are exempt from set -e.
           gmake
-          ./v -showcc -o v cmd/v
+          # Optimize the driver with Clang; retain the matrix compiler for its tests.
+          VFLAGS= ./v self -prod -cc clang -parallel-cc -showcc
           sudo ./v symlink
           echo "::endgroup::"
           echo "::group::v doctor"

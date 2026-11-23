@@ -105,11 +105,11 @@ fn main() {
 }
 '
 		os.write_file(path, source)!
-		result := os.exec([@VEXE, '-new-compiler', '-check', path])
+		result := os.exec([@VEXE, '-check', path])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('expected 1 arguments to method Counter.touch, but got 0'), result.output
 		os.write_file(path, source.replace('counter.\$method()', 'counter.\$method(?int(7))'))!
-		control := os.exec([@VEXE, '-new-compiler', '-gc', 'none', 'run', path])
+		control := os.exec([@VEXE, '-gc', 'none', 'run', path])
 		assert control.exit_code == 0, control.output
 	}
 }
@@ -153,7 +153,7 @@ fn main() {
   }
 }
 ')!
-		result := os.exec([@VEXE, '-new-compiler', '-check', path])
+		result := os.exec([@VEXE, '-check', path])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('expected 0 arguments to method App.zero, but got 1'), result.output
 	}
@@ -171,7 +171,7 @@ fn main() {
   }
 }
 ')!
-	or_result := os.exec([@VEXE, '-new-compiler', '-check', or_path])
+	or_result := os.exec([@VEXE, '-check', or_path])
 	assert or_result.exit_code != 0, or_result.output
 	assert or_result.output.contains('expected 0 arguments to method App.zero, but got 1'), or_result.output
 	for argument in ['mut value', 'pointer'] {
@@ -190,7 +190,7 @@ fn dispatch(app App, enabled bool) {
 }
 fn main() { dispatch(App{}, true) }
 ')!
-		result := os.exec([@VEXE, '-new-compiler', '-check', path])
+		result := os.exec([@VEXE, '-check', path])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('method `change` parameter `pointer` is `mut'), result.output
 	}
@@ -211,7 +211,7 @@ fn main() {
   }
 }
 ')!
-		result := os.exec([@VEXE, '-new-compiler', '-check', path])
+		result := os.exec([@VEXE, '-check', path])
 		assert result.exit_code != 0, result.output
 		if argument == 'ctx' {
 			assert result.output.contains('method `index` parameter `ctx` is `mut'), result.output

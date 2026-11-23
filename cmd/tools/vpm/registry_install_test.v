@@ -3,6 +3,8 @@ module main
 import json2
 import net.http
 import os
+import sync
+import test_utils
 
 // The registry is one metadata source among several, so these tests answer each
 // source in-process on loopback and record every path it was asked for. What
@@ -14,7 +16,20 @@ import os
 // was given and a copy would otherwise record into a struct nobody reads.
 struct SourceLog {
 mut:
+	mutex &sync.Mutex = sync.new_mutex()
 	asked []string
+}
+
+fn (mut log SourceLog) record(path string) {
+	log.mutex.lock()
+	defer { log.mutex.unlock() }
+	log.asked << path
+}
+
+fn (mut log SourceLog) requests() []string {
+	log.mutex.lock()
+	defer { log.mutex.unlock() }
+	return log.asked.clone()
 }
 
 // SourceHandler answers the routes of one metadata source and 404s anything
@@ -28,7 +43,7 @@ mut:
 
 fn (mut h SourceHandler) handle(req http.Request) http.Response {
 	path := req.url.all_before('?')
-	h.log.asked << path
+	h.log.record(path)
 	body := h.paths[path] or {
 		return http.new_response(http.ResponseConfig{
 			status: .not_found
@@ -43,28 +58,21 @@ fn (mut h SourceHandler) handle(req http.Request) http.Response {
 
 // RunningSource is a test endpoint that has finished binding its port.
 struct RunningSource {
-	base   string
-	server &http.Server
+	base string
+mut:
+	server test_utils.MockHttpServer
 	log    &SourceLog
 }
 
 fn start_source(paths map[string]string) !RunningSource {
 	mut log := &SourceLog{}
-	// The server is held by reference: `listen_and_serve` takes it by `mut`, and
-	// spawning a method on a by-value receiver does not compile.
-	mut srv := &http.Server{
-		addr:                 ':0'
-		handler:              SourceHandler{
-			paths: paths
-			log:   log
-		}
-		show_startup_message: false
-	}
-	spawn srv.listen_and_serve()
-	srv.wait_till_running()!
+	server := test_utils.start_mock_http_server(SourceHandler{
+		paths: paths
+		log:   log
+	})!
 	return RunningSource{
-		base:   'http://127.0.0.1:${srv.listener.addr()!.port()!}'
-		server: srv
+		base:   server.base_url
+		server: server
 		log:    log
 	}
 }
@@ -150,8 +158,8 @@ fn test_an_empty_version_list_is_not_a_hit() {
 	}
 	assert mod.url == registry_test_module_url, mod.url
 	// The registry was asked, and the server that holds the module answered.
-	assert registry.log.asked == ['/alpha/@v/list'], registry.log.asked.join(', ')
-	assert server.log.asked == ['/api/packages/alpha'], server.log.asked.join(', ')
+	assert registry.log.requests() == ['/alpha/@v/list'], registry.log.requests().join(', ')
+	assert server.log.requests() == ['/api/packages/alpha'], server.log.requests().join(', ')
 	assert selector.selected_url == server.base, selector.selected_url
 }
 
@@ -178,8 +186,8 @@ fn test_a_registry_404_does_not_abort_the_resolution() {
 		return
 	}
 	assert mod.url == registry_test_module_url, mod.url
-	assert absent.log.asked == ['/alpha/@v/list'], absent.log.asked.join(', ')
-	assert server.log.asked == ['/api/packages/alpha'], server.log.asked.join(', ')
+	assert absent.log.requests() == ['/alpha/@v/list'], absent.log.requests().join(', ')
+	assert server.log.requests() == ['/api/packages/alpha'], server.log.requests().join(', ')
 }
 
 // With no registry configured the resolution asks exactly the route it asked
@@ -203,7 +211,7 @@ fn test_no_registry_keeps_the_existing_call_sequence() {
 	}
 	assert mod.name == 'alpha', mod.name
 	assert mod.url == registry_test_module_url, mod.url
-	assert server.log.asked == ['/api/packages/alpha'], server.log.asked.join(', ')
+	assert server.log.requests() == ['/api/packages/alpha'], server.log.requests().join(', ')
 	assert selector.selected_url == server.base, selector.selected_url
 }
 
@@ -232,7 +240,7 @@ fn test_a_placeholder_archive_base_fails_clearly() {
 		assert err.msg().contains('placeholder archive base'), err.msg()
 		// Version list, metadata, then configuration: that order is what tells a
 		// registry that holds the module from one that missed.
-		assert registry.log.asked == ['/alpha/@v/list', '/alpha/@v/1.0.0.info', '/config.json'], registry.log.asked.join(', ')
+		assert registry.log.requests() == ['/alpha/@v/list', '/alpha/@v/1.0.0.info', '/config.json'], registry.log.requests().join(', ')
 		return
 	}
 	assert false, 'a registry whose archive base is a placeholder was read as installable'

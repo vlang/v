@@ -4246,6 +4246,10 @@ fn (mut tc TypeChecker) record_implicit_slice_clone_notice(id flat.NodeId) {
 	if unalias_type(tc.resolve_type(id)) !is Array {
 		return
 	}
+	// The detail reads the source file; build it only for a notice that is reported.
+	if !tc.should_diagnose_notice(id) {
+		return
+	}
 	pos := tc.index_suffix_diagnostic_pos(id)
 	file := tc.a.source_files[pos.id] or { return }
 	detail := compiler_errors.formatted_source_error('details:', 'To silence this notice, use either an explicit `a[..].clone()`,\nor use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.', file, pos)
@@ -6694,10 +6698,14 @@ fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name 
 		return false
 	}
 	node_idx := int(id)
-	if name.len == 1 && name[0] >= `A` && name[0] <= `Z`
-		&& node_idx < tc.enclosing_generic_param_masks.len {
+	if name.len == 1 && name[0] >= `A` && name[0] <= `Z` {
 		mask := u32(1) << u32(name[0] - `A`)
-		return tc.enclosing_generic_param_masks[node_idx] & mask != 0
+		if node_idx < tc.enclosing_generic_param_masks.len {
+			return tc.enclosing_generic_param_masks[node_idx] & mask != 0
+		}
+		if node_idx < tc.enclosing_generic_param_ranges.nodes {
+			return tc.enclosing_generic_param_ranges.mask_at(node_idx) & mask != 0
+		}
 	}
 	if tc.fn_context.node_id >= 0 && int(id) >= tc.check_range_lo && int(id) <= tc.check_range_hi {
 		params := tc.enclosing_generic_params_by_node[tc.fn_context.node_id] or { return false }

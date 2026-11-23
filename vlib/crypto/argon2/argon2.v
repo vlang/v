@@ -11,7 +11,6 @@ import crypto.hmac
 import crypto.rand
 import encoding.base64
 import encoding.binary
-import math.bits
 
 pub const version = u32(0x13)
 
@@ -426,115 +425,115 @@ fn blamka_generic(mut block [block_length]u64, a int, b int, c int, d int, e int
 
 	v00 += v04 + 2 * u64(u32(v00)) * u64(u32(v04))
 	v12 ^= v00
-	v12 = bits.rotate_left_64(v12, -32)
+	v12 = ((v12 << 32) | (v12 >> 32))
 	v08 += v12 + 2 * u64(u32(v08)) * u64(u32(v12))
 	v04 ^= v08
-	v04 = bits.rotate_left_64(v04, -24)
+	v04 = ((v04 << 40) | (v04 >> 24))
 
 	v00 += v04 + 2 * u64(u32(v00)) * u64(u32(v04))
 	v12 ^= v00
-	v12 = bits.rotate_left_64(v12, -16)
+	v12 = ((v12 << 48) | (v12 >> 16))
 	v08 += v12 + 2 * u64(u32(v08)) * u64(u32(v12))
 	v04 ^= v08
-	v04 = bits.rotate_left_64(v04, -63)
+	v04 = ((v04 << 1) | (v04 >> 63))
 
 	v01 += v05 + 2 * u64(u32(v01)) * u64(u32(v05))
 	v13 ^= v01
-	v13 = bits.rotate_left_64(v13, -32)
+	v13 = ((v13 << 32) | (v13 >> 32))
 	v09 += v13 + 2 * u64(u32(v09)) * u64(u32(v13))
 	v05 ^= v09
-	v05 = bits.rotate_left_64(v05, -24)
+	v05 = ((v05 << 40) | (v05 >> 24))
 
 	v01 += v05 + 2 * u64(u32(v01)) * u64(u32(v05))
 	v13 ^= v01
-	v13 = bits.rotate_left_64(v13, -16)
+	v13 = ((v13 << 48) | (v13 >> 16))
 	v09 += v13 + 2 * u64(u32(v09)) * u64(u32(v13))
 	v05 ^= v09
-	v05 = bits.rotate_left_64(v05, -63)
+	v05 = ((v05 << 1) | (v05 >> 63))
 
 	v02 += v06 + 2 * u64(u32(v02)) * u64(u32(v06))
 	v14 ^= v02
-	v14 = bits.rotate_left_64(v14, -32)
+	v14 = ((v14 << 32) | (v14 >> 32))
 	v10 += v14 + 2 * u64(u32(v10)) * u64(u32(v14))
 	v06 ^= v10
-	v06 = bits.rotate_left_64(v06, -24)
+	v06 = ((v06 << 40) | (v06 >> 24))
 
 	v02 += v06 + 2 * u64(u32(v02)) * u64(u32(v06))
 	v14 ^= v02
-	v14 = bits.rotate_left_64(v14, -16)
+	v14 = ((v14 << 48) | (v14 >> 16))
 	v10 += v14 + 2 * u64(u32(v10)) * u64(u32(v14))
 	v06 ^= v10
-	v06 = bits.rotate_left_64(v06, -63)
+	v06 = ((v06 << 1) | (v06 >> 63))
 
 	v03 += v07 + 2 * u64(u32(v03)) * u64(u32(v07))
 	v15 ^= v03
-	v15 = bits.rotate_left_64(v15, -32)
+	v15 = ((v15 << 32) | (v15 >> 32))
 	v11 += v15 + 2 * u64(u32(v11)) * u64(u32(v15))
 	v07 ^= v11
-	v07 = bits.rotate_left_64(v07, -24)
+	v07 = ((v07 << 40) | (v07 >> 24))
 
 	v03 += v07 + 2 * u64(u32(v03)) * u64(u32(v07))
 	v15 ^= v03
-	v15 = bits.rotate_left_64(v15, -16)
+	v15 = ((v15 << 48) | (v15 >> 16))
 	v11 += v15 + 2 * u64(u32(v11)) * u64(u32(v15))
 	v07 ^= v11
-	v07 = bits.rotate_left_64(v07, -63)
+	v07 = ((v07 << 1) | (v07 >> 63))
 
 	v00 += v05 + 2 * u64(u32(v00)) * u64(u32(v05))
 	v15 ^= v00
-	v15 = bits.rotate_left_64(v15, -32)
+	v15 = ((v15 << 32) | (v15 >> 32))
 	v10 += v15 + 2 * u64(u32(v10)) * u64(u32(v15))
 	v05 ^= v10
-	v05 = bits.rotate_left_64(v05, -24)
+	v05 = ((v05 << 40) | (v05 >> 24))
 
 	v00 += v05 + 2 * u64(u32(v00)) * u64(u32(v05))
 	v15 ^= v00
-	v15 = bits.rotate_left_64(v15, -16)
+	v15 = ((v15 << 48) | (v15 >> 16))
 	v10 += v15 + 2 * u64(u32(v10)) * u64(u32(v15))
 	v05 ^= v10
-	v05 = bits.rotate_left_64(v05, -63)
+	v05 = ((v05 << 1) | (v05 >> 63))
 
 	v01 += v06 + 2 * u64(u32(v01)) * u64(u32(v06))
 	v12 ^= v01
-	v12 = bits.rotate_left_64(v12, -32)
+	v12 = ((v12 << 32) | (v12 >> 32))
 	v11 += v12 + 2 * u64(u32(v11)) * u64(u32(v12))
 	v06 ^= v11
-	v06 = bits.rotate_left_64(v06, -24)
+	v06 = ((v06 << 40) | (v06 >> 24))
 
 	v01 += v06 + 2 * u64(u32(v01)) * u64(u32(v06))
 	v12 ^= v01
-	v12 = bits.rotate_left_64(v12, -16)
+	v12 = ((v12 << 48) | (v12 >> 16))
 	v11 += v12 + 2 * u64(u32(v11)) * u64(u32(v12))
 	v06 ^= v11
-	v06 = bits.rotate_left_64(v06, -63)
+	v06 = ((v06 << 1) | (v06 >> 63))
 
 	v02 += v07 + 2 * u64(u32(v02)) * u64(u32(v07))
 	v13 ^= v02
-	v13 = bits.rotate_left_64(v13, -32)
+	v13 = ((v13 << 32) | (v13 >> 32))
 	v08 += v13 + 2 * u64(u32(v08)) * u64(u32(v13))
 	v07 ^= v08
-	v07 = bits.rotate_left_64(v07, -24)
+	v07 = ((v07 << 40) | (v07 >> 24))
 
 	v02 += v07 + 2 * u64(u32(v02)) * u64(u32(v07))
 	v13 ^= v02
-	v13 = bits.rotate_left_64(v13, -16)
+	v13 = ((v13 << 48) | (v13 >> 16))
 	v08 += v13 + 2 * u64(u32(v08)) * u64(u32(v13))
 	v07 ^= v08
-	v07 = bits.rotate_left_64(v07, -63)
+	v07 = ((v07 << 1) | (v07 >> 63))
 
 	v03 += v04 + 2 * u64(u32(v03)) * u64(u32(v04))
 	v14 ^= v03
-	v14 = bits.rotate_left_64(v14, -32)
+	v14 = ((v14 << 32) | (v14 >> 32))
 	v09 += v14 + 2 * u64(u32(v09)) * u64(u32(v14))
 	v04 ^= v09
-	v04 = bits.rotate_left_64(v04, -24)
+	v04 = ((v04 << 40) | (v04 >> 24))
 
 	v03 += v04 + 2 * u64(u32(v03)) * u64(u32(v04))
 	v14 ^= v03
-	v14 = bits.rotate_left_64(v14, -16)
+	v14 = ((v14 << 48) | (v14 >> 16))
 	v09 += v14 + 2 * u64(u32(v09)) * u64(u32(v14))
 	v04 ^= v09
-	v04 = bits.rotate_left_64(v04, -63)
+	v04 = ((v04 << 1) | (v04 >> 63))
 
 	block[a] = v00
 	block[b] = v01

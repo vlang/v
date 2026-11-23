@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // These constructs come from Vox and the vlib modules it imports. The C backend
 // prints the same `ok`.
 fn test_fastc_vox_constructs_match_the_c_backend() {
@@ -201,6 +208,102 @@ fn fastc_vox_construct_program(name string, source string) {
 	assert run.output.trim_space() == 'ok'
 }
 
+fn test_fastc_vox_struct_comparisons_and_static_call_arguments() ! {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_vox_call_context_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'mathfixture'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'mathfixture', 'matrix.v'), r'@[has_globals]
+module mathfixture
+
+const matrix = [4, 2]!
+
+fn sum(values [2]int) int {
+	return values[0] + values[1]
+}
+
+pub fn matrix() int {
+	return sum(matrix)
+}
+
+__global callback = fn () int { return 7 }
+
+pub fn callback_value() int {
+	if callback == unsafe { nil } {
+		return 0
+	}
+	return callback()
+}
+
+pub type Label = int | string
+pub struct Box {}
+
+pub fn Box.compute(value f64, label Label) f64 {
+	return value
+}
+')!
+	os.write_file(os.join_path(root, 'main.c.v'), r'module main
+
+import mathfixture
+
+#preinclude <complex.h>
+
+struct Marker {
+	value int
+}
+
+struct OtherMarker {
+	text string
+}
+
+type Choice = Marker | OtherMarker
+
+fn produce(value int) Choice {
+	return Marker{value}
+}
+
+fn (a Marker) == (b Marker) bool {
+	return a.value % 10 == b.value % 10
+}
+
+const workspace_capacity = 3
+
+struct Workspace {
+	values [workspace_capacity]Marker = [workspace_capacity]Marker{init: marker()}
+}
+
+fn marker() Marker {
+	return Marker{42}
+}
+
+fn main() {
+	assert mathfixture.matrix() == 6
+	assert mathfixture.callback_value() == 7
+	complex := true
+	assert mathfixture.Box.compute(if complex { 1 } else { 0 }, mathfixture.Label("name")) == 1
+	choice := produce(12)
+	assert choice is Marker
+	assert choice.value == 12
+	assert [Marker{2}].contains(Marker{12})
+	assert ![Marker{2}].contains(Marker{13})
+	workspace := Workspace{}
+	for index in 0 .. workspace_capacity {
+		assert workspace.values[index].value == 42
+	}
+	println("ok")
+}
+')!
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', 'clang', '-cflags', '-w', '-o', program,
+		root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
 // A member narrowed past `if x.f !is T { return }` is read again after the condition,
 // so a path with a side effect, such as a call or an `if` in an index, is not narrowed:
 // it runs once, as with the C backend.
@@ -286,6 +389,272 @@ fn main() {
 	}
 	assert attributes == ["baz||false", "a: b||false", "key|vA|true", "flag||false", "baz$||false",
 		"cd||false"]
+	println("ok")
+}
+')
+}
+
+// Collections as Vox's JPEG XL decoder spells them: an interface cast of an indexed
+// operand, fixed arrays of dynamic arrays and the reverse, an option cast of a fixed array,
+// an option cast that starts the line after a call, and a slice of a `mut` array parameter.
+fn test_fastc_vox_constructs_collection_casts_and_initializers() {
+	fastc_vox_construct_program('collections', r'module main
+
+interface Shape {
+	area() int
+}
+
+struct Square {
+	side int
+}
+
+fn (s Square) area() int {
+	return s.side * s.side
+}
+
+struct Info {
+	spot ?[4]f32
+	rows [3][]i32
+}
+
+struct Predictor {
+mut:
+	errors [][4]u32
+}
+
+struct Size {
+	width  int
+	height int
+}
+
+struct Frame {
+	side int
+}
+
+fn (f Frame) size() Size {
+	return Size{f.side, f.side * 2}
+}
+
+struct Cache {
+	cells int
+}
+
+struct Holder {
+	cache ?Cache
+}
+
+struct Channel {
+	buffer int
+}
+
+fn shapes(squares []Square) []Shape {
+	mut values := []Shape{cap: squares.len}
+	for index in 0 .. squares.len {
+		values << Shape(squares[index])
+	}
+	return values
+}
+
+fn info(kind int) Info {
+	mut rows := [3][]i32{}
+	for c in 0 .. 3 {
+		mut row := []i32{len: c + 1}
+		row[0] = i32(c * 5)
+		rows[c] = row
+	}
+	mut spot := ?[4]f32(none)
+	if kind == 2 {
+		mut values := [4]f32{}
+		for i in 0 .. 4 {
+			values[i] = f32(i) * 0.5
+		}
+		spot = values
+	}
+	return Info{
+		spot: spot
+		rows: rows
+	}
+}
+
+fn make_cache(width int, height int) !Cache {
+	if width < 0 {
+		return error("negative")
+	}
+	return Cache{width * height}
+}
+
+fn holder(frame Frame, curves ?int) !Holder {
+	cache := if extra := curves {
+		size := frame.size()
+		// The comment keeps the option cast on a line of its own.
+		?Cache(make_cache(size.width + extra, size.height)!)
+	} else {
+		?Cache(none)
+	}
+	return Holder{
+		cache: cache
+	}
+}
+
+fn buffers(mut channels []Channel, begin int, count int) []int {
+	outputs := channels[begin..begin + count].map(it.buffer)
+	channels << Channel{99}
+	return outputs
+}
+
+fn main() {
+	values := shapes([Square{2}, Square{3}])
+	assert values.len == 2
+	assert values[1].area() == 9
+	with_spot := info(2)
+	if spot := with_spot.spot {
+		assert spot[3] == 1.5
+	} else {
+		assert false
+	}
+	assert with_spot.rows[2].len == 3
+	assert with_spot.rows[1][0] == 5
+	assert info(0).spot == none
+	mut predictor := Predictor{
+		errors: [][4]u32{len: 4}
+	}
+	predictor.errors[2][1] = 7
+	mut local := [][4]u32{len: 2}
+	local[1][3] = 9
+	assert predictor.errors.len == 4
+	assert predictor.errors[2][1] + predictor.errors[0][0] + local[1][3] == 16
+	filled := holder(Frame{3}, ?int(1)) or { panic(err) }
+	if cache := filled.cache {
+		assert cache.cells == 24
+	} else {
+		assert false
+	}
+	empty := holder(Frame{3}, ?int(none)) or { panic(err) }
+	assert empty.cache == none
+	mut channels := [Channel{1}, Channel{3}, Channel{5}, Channel{7}]
+	assert buffers(mut channels, 1, 2) == [3, 5]
+	assert channels.len == 5
+	println("ok")
+}
+')
+}
+
+// Match values as Vox's layout and CSS code spell them: a nested match whose subject holds
+// an `unsafe` block, and arms that yield the values of an optional multi-return whose
+// first component is an interface.
+fn test_fastc_vox_constructs_match_values() {
+	fastc_vox_construct_program('match_values', r'module main
+
+enum Mode {
+	loose
+	normal
+}
+
+enum Language {
+	japanese
+	other
+}
+
+enum Break {
+	loose_japanese
+	loose
+	normal
+}
+
+struct Tagged {
+	tag string
+}
+
+fn language(node &Tagged) Language {
+	return if node.tag == "ja" { Language.japanese } else { Language.other }
+}
+
+fn line_break(mode Mode, node Tagged) Break {
+	return match mode {
+		.loose {
+			match language(unsafe { &Tagged(&node) }) {
+				.japanese { Break.loose_japanese }
+				.other { Break.loose }
+			}
+		}
+		.normal {
+			Break.normal
+		}
+	}
+}
+
+interface Value {
+	text() string
+}
+
+struct Keyword {
+	name string
+}
+
+fn (k Keyword) text() string {
+	return "keyword ${k.name}"
+}
+
+struct Length {
+	px int
+}
+
+fn (l Length) text() string {
+	return "${l.px}px"
+}
+
+struct Leaf {
+	px int
+}
+
+struct Sum {
+	terms int
+}
+
+type Node = Leaf | Sum
+
+enum Kind {
+	keyword
+	length
+	prepared
+}
+
+fn node(value Value) ?Node {
+	if value is Length {
+		return Leaf{value.px}
+	}
+	return none
+}
+
+fn prepared(value Value) ?(Value, Node) {
+	leaf := node(value) or { return none }
+	return value, leaf
+}
+
+fn operand(value Value, kind Kind) ?(Value, Node) {
+	return match kind {
+		.keyword { value, Node(Sum{1}) }
+		.length { Value(Keyword{"any"}), node(value)? }
+		.prepared { prepared(value)? }
+	}
+}
+
+fn describe(value Value, kind Kind) string {
+	first, second := operand(value, kind) or { return "none" }
+	return match second {
+		Leaf { "${first.text()} leaf ${second.px}" }
+		Sum { "${first.text()} sum ${second.terms}" }
+	}
+}
+
+fn main() {
+	assert line_break(.loose, Tagged{"ja"}) == .loose_japanese
+	assert line_break(.loose, Tagged{"en"}) == .loose
+	assert line_break(.normal, Tagged{"ja"}) == .normal
+	assert describe(Length{3}, .keyword) == "3px sum 1"
+	assert describe(Length{4}, .length) == "keyword any leaf 4"
+	assert describe(Length{5}, .prepared) == "5px leaf 5"
+	assert describe(Keyword{"x"}, .length) == "none"
 	println("ok")
 }
 ')

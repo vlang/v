@@ -5,7 +5,9 @@ import os
 import time
 import veb
 
-const https_port = 13013
+const https_port = 13093
+const https_timeout_seconds = 1
+const slow_head_close_limit = https_timeout_seconds * time.second + 800 * time.millisecond
 
 pub struct Context {
 	veb.Context
@@ -13,7 +15,18 @@ pub struct Context {
 
 pub struct App {
 	veb.Middleware[Context]
-	started chan bool
+	started  chan bool
+	activity chan string = chan string{cap: 16}
+}
+
+// before_handle_request records entry into TLS dispatch.
+pub fn (mut app App) before_handle_request(req http.Request) {
+	app.activity <- 'before:' + req.url
+}
+
+// after_handle_request records completion of TLS dispatch.
+pub fn (mut app App) after_handle_request(req http.Request) {
+	app.activity <- 'after:' + req.url
 }
 
 fn passthrough_middleware(mut _ctx Context) bool {
@@ -37,7 +50,7 @@ fn test_veb_serves_https_requests() ! {
 		host:               '127.0.0.1'
 		port:               https_port
 		family:             .ip
-		timeout_in_seconds: 2
+		timeout_in_seconds: https_timeout_seconds
 		ssl_config:         mbedtls.SSLConnectConfig{
 			cert:     cert_path
 			cert_key: key_path
@@ -56,6 +69,16 @@ fn test_veb_serves_https_requests() ! {
 	)!
 	assert res.status_code == 200
 	assert res.body == 'secure'
+	for expected in ['before:/', 'after:/'] {
+		select {
+			event := <-app.activity {
+				assert event == expected
+			}
+			5 * time.second {
+				return error('missing TLS activity hook: ${expected}')
+			}
+		}
+	}
 }
 
 fn test_veb_answers_431_to_an_https_request_with_too_many_header_fields() ! {
@@ -79,4 +102,46 @@ fn test_veb_answers_431_to_an_https_request_with_too_many_header_fields() ! {
 	)!
 	assert res.status_code == 200
 	assert res.body == 'secure'
+}
+
+fn test_veb_answers_431_to_an_oversized_https_request_head() ! {
+	path := '/' + 'a'.repeat(http.default_max_http1_request_head_size)
+	res := http.fetch(
+		url:                      'https://127.0.0.1:${https_port}${path}'
+		validate:                 false
+		disable_connection_reuse: true
+	)!
+	assert res.status_code == 431
+}
+
+fn test_veb_closes_a_slow_https_request_head() ! {
+	mut slow := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{})!
+	defer { slow.shutdown() or {} }
+	slow.dial('127.0.0.1', https_port)!
+	slow.set_read_timeout(4 * time.second)
+	slow.write_string('GET / HTTP/1.1\r\nX-Slow: ')!
+	started := time.new_stopwatch()
+	// Keep delivering bytes until the absolute request-head deadline closes the connection.
+	for {
+		if started.elapsed() >= slow_head_close_limit {
+			return error('slow request stayed open after ${started.elapsed()}')
+		}
+		time.sleep(100 * time.millisecond)
+		slow.write_string('a') or { break }
+	}
+	mut response := []u8{}
+	mut buffer := []u8{len: 1024}
+	for {
+		n := slow.read(mut buffer) or { break }
+		if n <= 0 {
+			break
+		}
+		response << buffer[..n]
+		if response.bytestr().contains('\r\n\r\n') {
+			break
+		}
+	}
+	response_text := response.bytestr()
+	assert response_text == '' || response_text.starts_with('HTTP/1.1 400 Bad Request\r\n'), response_text
+	assert started.elapsed() < slow_head_close_limit, 'slow request closed after ${started.elapsed()}'
 }

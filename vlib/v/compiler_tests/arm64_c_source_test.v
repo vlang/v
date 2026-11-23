@@ -3,7 +3,7 @@ module main
 import os
 import v.cmdexec
 
-fn test_arm64_rejects_included_c_source_before_writing_an_executable() {
+fn test_arm64_links_included_c_source_with_the_system_linker() {
 	$if macos && arm64 {
 		root := os.join_path(os.vtmp_dir(), 'arm64_c_source_${os.getpid()}')
 		os.mkdir_all(root)!
@@ -18,11 +18,20 @@ fn test_arm64_rejects_included_c_source_before_writing_an_executable() {
 fn C.add2(a int, b int) int
 fn main() { println(C.add2(2, 3)) }
 ')!
-		result := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, source])
-		assert result.exit_code == 1, result.output
-		assert result.output.count('does not support including native source') == 1, result.output
-		assert result.output.contains('@VMODROOT/native.c'), result.output
-		assert result.output.contains('use the C backend'), result.output
+		compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, source])
+		assert compiled.exit_code == 0, compiled.output
+		run := cmdexec.run(output, []string{})
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '5', run.output
+		os.rm(output)!
+
+		// The built-in linker still refuses native sources before writing anything.
+		internal := cmdexec.run(@VEXE, ['-b', 'arm64', '-d', 'arm64_internal_link', '-o', output,
+			source])
+		assert internal.exit_code == 1, internal.output
+		assert internal.output.count('cannot link native source') == 1, internal.output
+		assert internal.output.contains('@VMODROOT/native.c'), internal.output
+		assert internal.output.contains('arm64_internal_link'), internal.output
 		assert !os.exists(output)
 	}
 }

@@ -1,12 +1,22 @@
 // vtest ownership
 import os
 import strings
+import v.tempname
 
 const callback_vexe = @VEXE
 const callback_tests_dir = os.dir(@FILE)
 const callback_v3_dir = os.dir(callback_tests_dir)
 const callback_vlib_dir = os.dir(callback_v3_dir)
 const callback_v3_src = os.join_path(callback_v3_dir, 'v.v')
+const callback_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_callback_userdata_${tempname.unique_token()}')
+
+fn testsuite_begin() {
+	os.mkdir_all(callback_compiler_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(callback_compiler_dir) or {}
+}
 
 fn callback_build_v3() string {
 	return callback_build_v3_with_flags('serial', '-d ownership')
@@ -17,8 +27,10 @@ fn callback_build_v3_parallel() string {
 }
 
 fn callback_build_v3_with_flags(name string, flags string) string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_callback_userdata_test_${name}_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(callback_compiler_dir, name) + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([callback_vexe, ...(os.split_args(flags) or { panic(err) }), '-gc', 'none', '-path',
 			'${callback_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${callback_v3_src}'])

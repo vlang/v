@@ -5,6 +5,7 @@
 #include <sched.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <time.h>
 static _Atomic int worker_ready, worker_seen, release_worker, worker_done;
 static pthread_t worker_thread;
 static int selected_signal;
@@ -18,8 +19,14 @@ static int fixture_sigprocmask(int, const sigset_t *, sigset_t *);
 static int fixture_kill(pid_t pid, int signo) {
     if (pid == getpid() && signo == SIGSTOP) {
         /* Model resuming the owner before its delayed worker handler completes. */
-        while (!atomic_load(&worker_seen)) sched_yield();
+        while (selected_signal != SIGTTIN && !atomic_load(&worker_seen)) sched_yield();
         return 0;
+    }
+    if (selected_signal == SIGTTIN && signo == SIGCONT && !atomic_load(&worker_done)) {
+        /* Model a pipeline peer's SIGTTIN that reaches the job as it resumes.
+         * The owner blocks it, so the worker forwards it to the stopped app. */
+        kill(getpid(), SIGTTIN);
+        while (!atomic_load(&worker_done)) sched_yield();
     }
     return kill(pid, signo);
 }
@@ -37,6 +44,41 @@ static void delayed_handler(int signo) {
     v3_run_forward_signal(signo);
     atomic_store(&worker_done, 1);
 }
+static void forwarding_handler(int signo) {
+    v3_run_forward_signal(signo);
+    atomic_store(&worker_done, 1);
+}
+/* The owner's SIGCONT discards a stop that the worker forwarded to the stopped
+ * app before it. The app must still stop again, or its waiter never suspends. */
+static int late_forwarded_stop(void) {
+    pid_t app = fork();
+    if (app < 0) return 20;
+    if (!app) {
+        /* Take the default TTIN stop; the alarm ends an app left running. */
+        sigset_t none;
+        sigemptyset(&none);
+        signal(SIGTTIN, SIG_DFL);
+        if (setpgid(0, 0) || sigprocmask(SIG_SETMASK, &none, 0)) _exit(1);
+        alarm(10);
+        raise(SIGSTOP);
+        for (;;) pause();
+    }
+    int status = 0;
+    if (waitpid(app, &status, WUNTRACED) != app || !WIFSTOPPED(status)) return 21;
+    v3_run_child_pid = app;
+    if (v3_run_suspend_owner(SIGTTIN, SIGTTIN)) return 22;
+    pthread_join(worker_thread, 0);
+    int stopped = 0;
+    for (int i = 0; i < 200 && !stopped; i++) {
+        int waited = waitpid(app, &status, WUNTRACED | WNOHANG);
+        stopped = waited == app && WIFSTOPPED(status) && WSTOPSIG(status) == SIGTTIN;
+        if (!waited) nanosleep(&(struct timespec){0, 10000000}, 0);
+    }
+    kill(app, SIGKILL);
+    waitpid(app, 0, 0);
+    printf("late_stop=%d\n", stopped);
+    return !stopped;
+}
 static void *worker(void *unused) {
     (void)unused;
     sigset_t set;
@@ -47,12 +89,11 @@ static void *worker(void *unused) {
     return 0;
 }
 int main(int argc, char **argv) {
-    (void)argv;
-    selected_signal = argc > 1 ? SIGTSTP : SIGQUIT;
+    selected_signal = argc < 2 ? SIGQUIT : argv[1][0] == 'l' ? SIGTTIN : SIGTSTP;
     alarm(10);
     if (setsid() < 0) return 10;
     struct sigaction action = {0};
-    action.sa_handler = delayed_handler;
+    action.sa_handler = selected_signal == SIGTTIN ? forwarding_handler : delayed_handler;
     sigemptyset(&action.sa_mask);
     if (sigaction(selected_signal, &action, 0)) return 11;
     sigset_t set;
@@ -62,6 +103,7 @@ int main(int argc, char **argv) {
     while (!atomic_load(&worker_ready)) sched_yield();
     v3_run_owner_pid = getpid();
     v3_run_owner_group = getpgrp();
+    if (selected_signal == SIGTTIN) return late_forwarded_stop();
     if (selected_signal == SIGTSTP) {
         v3_run_terminal_fd = 0;
         if (v3_run_suspend_owner(SIGTSTP, 0)) return 13;

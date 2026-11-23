@@ -108,6 +108,14 @@ fn wait_header_gen_c(v3_bin string, name string, source string) string {
 	return wait_header_gen_c_with_args(v3_bin, name, source, [])
 }
 
+// wait_header_gen_headerless_c generates host C without C include directives, where V
+// writes the prototypes and C type definitions itself. On a Windows host the
+// stack-overflow handler includes the SDK headers by default, so it is disabled there.
+fn wait_header_gen_headerless_c(v3_bin string, name string, source string) string {
+	extra_args := $if windows { ['-d', 'no_segfault_handler'] } $else { []string{} }
+	return wait_header_gen_c_with_args(v3_bin, name, source, extra_args)
+}
+
 // wait_header_gen_windows_c generates headerless Windows C: without a C include
 // directive, V supplies the SDK types and the prototypes of the program's bindings.
 // Disable the stack-overflow handler, which includes the SDK headers by default.
@@ -581,7 +589,7 @@ fn main() {
 	}
 	for jobs in ['1', '4'] {
 		os.setenv('VJOBS', jobs, true)
-		c_code := wait_header_gen_c(v3_bin, 'c_fn_value_prototype_jobs_${jobs}', source)
+		c_code := wait_header_gen_headerless_c(v3_bin, 'c_fn_value_prototype_jobs_${jobs}', source)
 		assert wait_header_declares(c_code, 'V3WaitHeaderCallback'), 'VJOBS=${jobs}\n${c_code}'
 		assert c_code.contains('(void*)(V3WaitHeaderCallback)'), 'VJOBS=${jobs}\n${c_code}'
 	}
@@ -589,7 +597,7 @@ fn main() {
 
 fn test_synthesized_c_extern_prototypes_preserve_const_pointer_params() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_c(v3_bin, 'c_extern_const_pointer_params', 'module main
+	c_code := wait_header_gen_headerless_c(v3_bin, 'c_extern_const_pointer_params', 'module main
 
 fn C.SSL_CTX_load_verify_locations(ctx voidptr, const_file &char, const_ca_path &char) int
 
@@ -643,7 +651,7 @@ fn main() {
 
 fn test_epoll_data_tag_uses_headerless_preamble_definition() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_c(v3_bin, 'epoll_data_tag_storage', 'module main
+	c_code := wait_header_gen_headerless_c(v3_bin, 'epoll_data_tag_storage', 'module main
 
 @[typedef]
 union C.epoll_data {

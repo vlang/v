@@ -2809,16 +2809,19 @@ VMultiwindowNativePrimitive v_multiwindow_appkit_configure_window_device(void *s
 
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 static VMultiwindowNativePrimitive v_multiwindow_appkit_create_window_actual(void *device_ptr,
-		const char *title, int width, int height, int min_width, int min_height,
-		int resizable, int visible, int high_dpi, int borderless, int fullscreen,
+		const char *title, int width, int height, int min_width, int min_height, int flags,
 		int *out_width, int *out_height, int *out_framebuffer_width,
 		int *out_framebuffer_height) {
 #else
 VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr, const char *title,
-		int width, int height, int min_width, int min_height, int resizable, int visible,
-		int high_dpi, int borderless, int fullscreen, int *out_width, int *out_height,
-		int *out_framebuffer_width, int *out_framebuffer_height) {
+		int width, int height, int min_width, int min_height, int flags, int *out_width,
+		int *out_height, int *out_framebuffer_width, int *out_framebuffer_height) {
 #endif
+	const int resizable = (flags & V_MULTIWINDOW_APPKIT_WINDOW_RESIZABLE) != 0;
+	const int visible = (flags & V_MULTIWINDOW_APPKIT_WINDOW_VISIBLE) != 0;
+	const int high_dpi = (flags & V_MULTIWINDOW_APPKIT_WINDOW_HIGH_DPI) != 0;
+	const int borderless = (flags & V_MULTIWINDOW_APPKIT_WINDOW_BORDERLESS) != 0;
+	const int fullscreen = (flags & V_MULTIWINDOW_APPKIT_WINDOW_FULLSCREEN) != 0;
 	VMultiwindowNativePrimitive result = {0};
 	@autoreleasepool {
 		if (![NSThread isMainThread] || width <= 0 || height <= 0) {
@@ -4798,14 +4801,12 @@ VMultiwindowNativePrimitive v_multiwindow_appkit_release_metal_device(void *devi
 }
 
 VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr,
-		const char *title, int width, int height, int min_width, int min_height,
-		int resizable, int visible, int high_dpi, int borderless, int fullscreen,
+		const char *title, int width, int height, int min_width, int min_height, int flags,
 		int *out_width, int *out_height, int *out_framebuffer_width,
 		int *out_framebuffer_height) {
 	VMultiwindowNativePrimitive raw = v_multiwindow_appkit_create_window_actual(
-		device_ptr, title, width, height, min_width, min_height, resizable,
-		visible, high_dpi, borderless, fullscreen, out_width, out_height,
-		out_framebuffer_width, out_framebuffer_height);
+		device_ptr, title, width, height, min_width, min_height, flags, out_width,
+		out_height, out_framebuffer_width, out_framebuffer_height);
 	v_multiwindow_test_appkit_oracle_append(
 		V_MULTIWINDOW_TEST_APPKIT_WINDOW_CREATE,
 		(uint64_t)(uintptr_t)device_ptr, 0, raw);

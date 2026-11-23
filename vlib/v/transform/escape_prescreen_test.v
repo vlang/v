@@ -97,6 +97,8 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 		t.cur_module = 'main'
 		t.set_cur_fn_ret_type(flat.source_type_int)
 		value := t.make_ident('value')
+		// Wrapped parameters borrow this named value until the analysis below.
+		pointer := types.Type(types.Pointer{ base_type: types.Type(types.int_) })
 		mut source := value
 		match mode {
 			'address' {
@@ -135,7 +137,6 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 				source = escape_prescreen_node(mut a, flat.Node{ kind: .spawn_expr }, [call])
 			}
 			else {
-				pointer := types.Type(types.Pointer{ base_type: types.Type(types.int_) })
 				param := match mode {
 					'pointer_param' { pointer }
 					'wrapped_pointer' {

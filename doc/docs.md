@@ -65,8 +65,10 @@ V keeps using the system compiler without checking the branch again; run
 On macOS, TCC builds use its runtime thread fence directly, including when
 preprocessed C identifies ARM64 with `__arm64__` alone.
 
-After a successful update, `v up` runs `v wipe-cache` to clear module, object,
-temporary, and compiled tool caches, even when V is already up to date.
+After a successful update that changes the V checkout or TCC, or rebuilds the compiler,
+`v up` runs `v wipe-cache` to clear module, object, temporary, and compiled tool caches.
+When nothing changes, the caches are preserved. If the TCC revision cannot be determined,
+the caches are cleared conservatively.
 Subsequent builds recreate the caches they need. Previously recorded build
 configurations and test selectors are not replayed. A failed cache cleanup
 makes `v up` fail.
@@ -211,6 +213,10 @@ modules. Ignored local names remain stable when cached headers replace source fi
 reparsed modules can reuse identical C objects. Compiler flags, source changes and dependency
 changes still invalidate the affected objects.
 
+The stateless native helper used by `os` for file-descriptor polling supports module caching
+and parallel C compilation. Its dependencies are tracked through C compiler manifests;
+V does not inspect C headers to infer their ownership.
+
 Relative cache paths are resolved against the directory where `v up` was invoked.
 When `VCACHE` is unset, this includes the `.cache` directory under the first
 `VMODULES` entry, or `~/.vmodules/.cache` by default. Cleanup stops and returns a
@@ -277,35 +283,9 @@ Keep it disabled when those inputs can change between builds.
 Parallel monomorphization also remains opt-in through `V3_PARALLEL_MONOMORPHIZE=1`
 while nested generic-interface dispatch is being validated.
 
-The standard bootstrap does not build the sibling `v1_fallback` executable
-(`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
-sibling is missing, it reports that it is running `make v1`. That target reuses
-or downloads the complete 0.5.2 release under the user cache. If no release
-binary can run, `oldv` clones the 0.5.2 V sources and matching `vc` snapshot and
-builds the fallback there. You can run `make v1` explicitly to prepare it ahead
-of time. Automatic provisioning keeps its launcher metadata in the user cache,
-so an older read-only sibling installation can remain untouched. `-old-compiler`
-launches the fallback explicitly, and ordinary user builds and external tools
-retry through it after a compiler or C compilation failure. Explicit
-`-new-compiler` builds remain strict default-compiler operations.
-`-new-compiler` remains accepted for command-line compatibility and otherwise
-selects the same embedded driver.
-
 `oldv --command` runs a shell command in the checked-out repository, using `sh -c`
 on Unix and `cmd /c` on Windows. Commands can use shell operators such as `&&`,
 pipes, and redirection; `oldv` returns the command's exit status.
-
-The installer supplements the cached fallback vlib with modules whose public
-paths moved after 0.5.2. Fallback roots missing these compatibility modules are
-not used. The fallback identity check also rejects a current launcher copied into the
-fallback slot, including older launchers that report the same compiler version, so
-compatibility commands cannot recursively launch it.
-If a fallback command exits unsuccessfully, V notes where the default
-compiler stopped and how to show its suppressed diagnostics. For a command
-that may have run user code, the note preserves the child's status without
-mislabeling it as a compiler failure, including JavaScript tests run by the compatibility compiler.
-Re-run the command with `-new-compiler`
-to see the default-compiler diagnostics without a fallback retry.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
@@ -489,6 +469,7 @@ argument, e.g. `v new abc`.
     * [Compiling for iOS](#compiling-for-ios)
     * [Debugging](#debugging)
         * [C Backend binaries Default](#c-backend-binaries-default)
+        * [Panics and stack traces](#panics-and-stack-traces)
         * [Native Backend binaries](#native-backend-binaries)
         * [Javascript Backend](#javascript-backend)
 
@@ -1130,6 +1111,11 @@ assert '-0b1111_0000_1010'.int() == -3850
 For more advanced `string` processing and conversions, refer to the
 [vlib/strconv](https://modules.vlang.io/strconv.html) module.
 
+A loop such as `for part in s.split(',') { ... }` evaluates the source once and uses a snapshot
+of its bytes taken before the loop body runs. Reassigning the source or changing aliased backing
+storage in the body does not affect later parts. Each part is an independent, NUL-terminated copy,
+even when the compiler generates the parts on demand instead of building an array first.
+
 #### String interpolation
 
 Array interpolation resolves each element in its declaring module, including when another
@@ -1401,6 +1387,7 @@ f2 := 456e+2 // 45600
 
 Integer arithmetic wraps on overflow, a shift by the bit width or more gives `0`,
 and a cast to a smaller integer type keeps the low bits.
+String interpolation preserves that integer width before formatting a wrapped result.
 Two opt-in flags turn these into runtime panics:
 
 * `v -check-overflow` checks `+`, `-`, `*`, `++`, `--`, and `min / -1` and `min % -1`
@@ -1424,6 +1411,8 @@ fn hash_step(h u32, b u8) u32 {
 ### Arrays
 
 Returning a new array through helper calls preserves each helper's parameter scope.
+Chained array methods also use the concrete result type of a generic mapper, as in
+`values.map(it.str()).join(', ')`.
 
 
 An array is a collection of data elements of the same type. An array literal is a
@@ -1744,6 +1733,11 @@ nums := [1, 2, 3]
 println(nums.any(it == 2)) // true
 println(nums.all(it >= 2)) // false
 ```
+
+For `s.bytes().any(...)` and `s.bytes().all(...)`, the compiler can scan the string directly
+without allocating a temporary byte array when the predicate only compares bytes with literals
+or uses builtin byte classifiers such as `is_digit()`. Explicit lambda parameters may shadow
+the string receiver: `s.bytes().all(|s| s.is_digit())` checks whether every byte is a digit.
 
 There are further built-in methods for arrays:
 
@@ -2107,6 +2101,8 @@ m.delete('two')
 Maps can have keys of type string, rune, integer, float, voidptr,
 enum, or fixed arrays of those supported key types.
 Struct keys are rejected, including when a generic key parameter is instantiated with a struct.
+The native ARM64 backend keeps fixed-array keys distinct from string keys even when their
+storage sizes are equal.
 
 The whole map can be initialized using this short syntax:
 
@@ -2464,6 +2460,11 @@ x := if n > 2 {
 }
 dump(x)
 ```
+
+An `if` expression combining a byte value with character literals that fit in a byte retains
+the byte type. For example, ``name.bytes().map(if it == `-` { `_` } else { it })`` produces
+`[]u8`, so the result supports `.bytestr()`. Wider literals and explicit rune values retain
+the rune type.
 
 When comparing an enum value with an `if` or `match` expression using `==` or `!=`,
 the enum operand supplies the type for shorthand values such as `.red` in the branches.
@@ -3264,11 +3265,12 @@ For these more rare cases, you can use: `defer(fn) {}` instead of just `defer {}
 
 #### Recovering from panics
 
-A panic runs the pending `defer` blocks of every function on the stack, newest
-first. Calling `recover()` directly in one of these blocks stops the panic, and
-returns its message. The function that deferred the block then runs its other
-deferred blocks, and returns normally, with the zero value of its result type.
-This works like `recover` in Go.
+In a program that calls `recover()`, a panic runs the pending `defer` blocks of
+every function on the stack, newest first. Calling `recover()` directly in one
+of these blocks stops the panic, and returns its message. The function that
+deferred the block then runs its other deferred blocks, and returns normally,
+with the zero value of its result type. `recover()` itself works like `recover`
+in Go.
 
 ```v
 fn parse_age(s string) int {
@@ -3293,10 +3295,15 @@ fn main() {
 `recover()` returns `none` when there is no panic, and when it is not called
 directly in a deferred block that runs because of the panic (for example, in a
 function that such a block calls). A block can also run cleanup code without
-calling `recover()`: the panic then goes on to the callers, and if nothing
-recovers it, the program prints the message and exits once all deferred blocks
-ran. Runtime errors that panic, like an array index out of range, can be
+calling `recover()` itself: the panic then goes on to the callers, and if
+nothing recovers it, the program prints the message and exits once all deferred
+blocks ran. Runtime errors that panic, like an array index out of range, can be
 recovered as well. Signals, like a segmentation fault, cannot.
+
+Any call to `recover()` that `main` can reach counts, even one in a branch that
+is never taken. With `-no-skip-unused`, such a call in a function that nothing calls
+counts too. In a program without one, a panic runs no deferred blocks: the
+program prints the message and exits.
 
 ### Goto
 
@@ -5962,6 +5969,10 @@ another module, including arguments inside arrays, pointers, and maps.
 
 Methods called on a generic factory result retain their dependencies in the compiled program.
 
+The type of a field accessed directly on a generic function's result is determined by the
+concrete type arguments, including when they are inferred. For example, if `wrap(3)`
+returns a `Box[int]` with a `value` field of type `int`, `wrap(3).value << 1` yields `6`.
+
 Returning a generic struct as a generic interface retains its concrete methods, including when
 an interface type argument is itself a generic interface.
 
@@ -6840,6 +6851,9 @@ Race builds:
   collector or an arena allocator hides from it;
 * typically run 2-20x slower and use 5-10x more memory, like in Go (with `-prod`, a function
   that was inlined into its caller is reported as the caller);
+* are not link-time optimized with `-prod` (no `-flto`): link time optimization runs after
+  the ThreadSanitizer instrumentation, and with clang 15 and older it turns copies of strings,
+  arrays and structs back into plain loads and stores, which the race detector does not see;
 * define `race`, so code can check for them with `$if race ? {}`, and `_d_race.v` files are
   compiled in them. That define is reserved: `-d race` without `-race` is an error.
 
@@ -7032,8 +7046,7 @@ assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
 ```
 
 > [!NOTE]
-> V also supports a command line flag `-assert continues`, which will change the
-> behaviour of all asserts globally, as if you had tagged every function with `[assert_continues]`.
+
 
 ### Test files
 
@@ -8537,11 +8550,13 @@ project that locks other revisions of the same packages switches them back. Use
 
    `backend: 'fastc'` makes the project build with the [FastC backend](fastc.md)
    by default. It applies to every build, run, and test whose input file or
-   folder belongs to that `v.mod`, the same as passing `-b fastc`. An explicit
+   folder belongs to that `v.mod`, the same as passing `-b fastc`, except that
+   only a `-b` on the command line keeps the generated C as `<output>.c`. An explicit
    `-b` on the command line still wins, so `v -b c .` uses the C backend. Code
    given with `-e` or on standard input belongs to no project, and each target
    of `v test` uses the backend of its own `v.mod`. The accepted values are `c`,
-   `fastc`, `arm64`, `x64`, and `wasm`.
+   `fastc`, `arm64`, `amd64`, and `wasm`. The aliases `x64`, `x86_64`, and `x86-64`
+   select `amd64`.
 
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:
@@ -10883,6 +10898,10 @@ To debug issues in the generated binary (flag: `-b c`), you can pass these flags
   compilation. Also keep using the same file path, so it is more stable,
   and easier to keep opened in an editor/IDE.
 
+Test builds (`v test` and `v file_test.v`) discard generated C after compilation,
+even with an explicit backend such as `-b c`. Use `-keepc` or `-o file.c` to retain it;
+`-cg` also retains its build directory for C source debugging.
+
 On macOS, debug builds keep their `.dSYM` bundle beside the final executable.
 
 For best debugging experience if you are writing a low-level wrapper for an existing
@@ -10918,6 +10937,42 @@ use `v help`, `v help build` and `v help build-c`.
 * [CodeLite](codelite.md)
 * [Visual Studio Code](vscode.md)
 
+### Panics and stack traces
+
+A panic prints its message, the .v file and line of the `panic()` call, and a stack trace
+of the functions that led to it, innermost first:
+
+```text
+V panic: boom 3
+     at: p.v:3 in main.inner()
+ v hash: afbcf1d
+    pid: 0x2d72
+    tid: 0x2d72
+
+inner()
+middle()
+main()
+(build with `-g` to see the .v line of every frame)
+```
+
+Without `-g`, the executable has no line information, so only the `panic()` call has a .v
+line. `-prod` executables leave it out as well, so they do not contain source paths. Build
+with `-g` to see the .v line of every frame, like in Go:
+
+```text
+inner()
+	/home/user/p.v:3
+middle()
+	/home/user/p.v:9
+main()
+	/home/user/p.v:15
+```
+
+On macOS the lines come from `atos`, which can not read the debug information of TinyCC,
+so use `-cc clang -g` there. On Linux they come from `addr2line`. Panics that the runtime
+raises, like an array index out of range, show the .v line of your code only in such a
+stack trace.
+
 ### Native Backend binaries
 
 `v self` builds the compiler with only the C backend by default. Selecting another backend,
@@ -10926,11 +10981,24 @@ Later requests reuse it until its compiler or source dependencies change. `VTOOL
 builds a temporary full compiler for each request instead. To include optional backends in `v`
 itself, use `v -compile-backend arm64 self` or `v -all-backends self`.
 
-`-b native` has been replaced by `-b arm64` and `-b x64`. Use `v -b arm64 file.v` on macOS
-ARM64 or `v -b x64 file.v` on Linux AMD64. The native backends do not link a garbage collector yet,
-so they always
-build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
-allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
+Use `v -native file.v` or `v -b native file.v` to select the native backend for the target
+architecture. Without `-arch`, the target defaults to the compiler's host architecture.
+Pass `-arch amd64` to select `-b amd64` (`-b x64`), or `-arch arm64` to select `-b arm64`.
+The architecture option can appear before or after the native backend option.
+Explicit backend selection remains available, with the same platform requirements: macOS
+ARM64, Linux AMD64, and Linux ARM64 support executables. For example,
+`v -b native -arch arm64 hello_world.v` on Linux emits an ARM64 ELF executable.
+Cross linking uses `aarch64-linux-gnu-gcc` or `aarch64-linux-musl-gcc` when available;
+use `-cc` to select another Linux ARM64 toolchain, including its startup files and libc.
+Linux ARM64 linking honors libraries and objects declared through source `#flag` directives.
+Environment `CFLAGS` are applied before explicit `-cflags` options.
+Exported V functions and their dependencies remain available to linked C code.
+Object output (`-o hello_world.o`) works without a target linker, including from an AMD64 host.
+For a Linux AMD64 ELF object, use `v -b amd64 -o hello_world.o hello_world.v`.
+
+The native backends do not link a garbage collector yet, so they always build as if `-gc none`
+was passed. For AMD64, `-prod` enables SSA optimization, scalar register
+allocation, and optimized C helpers. Very large AMD64 modules may skip the global SSA pass to
 bound compiler memory. The ARM64 backend retains its existing optimization behavior.
 ARM64 executable linking is silent by default; use `-stats` to display compiler stage timings.
 ARM64 builds reject native source files included with `#include`, `#insert`, `#preinclude`, or
@@ -10939,10 +11007,20 @@ ARM64 resolves a fixed set of platform C constants. Other C constants produce an
 use the C backend when a header defines a constant the native backend does not support.
 The supported set includes the memory-order and pthread compatibility constants used by
 V's synchronization runtime.
-The x64 backend is experimental. Calls without a native implementation fail compilation
+The AMD64 backend is experimental. Calls without a native implementation fail compilation
 or linking rather than producing placeholder implementations.
 It requires a Linux AMD64 host. Passing or returning C structs and arrays by value is
 currently unsupported and produces a diagnostic; pass pointers to C aggregates instead.
+
+The AMD64 backend emits ELF object code and uses the host C toolchain to link a Linux
+executable. `-b x64`, `-b x86_64`, and `-b x86-64` remain aliases for `-b amd64`.
+To compile and run hello world on Linux AMD64:
+
+```sh
+v -b amd64 -o hello_world examples/hello_world.v
+./hello_world
+```
+
 Stored C function values support integer and pointer arguments with 64-bit integer, pointer,
 or void returns. Taking the address of a variadic C function, one with floating-point arguments
 or returns, or one returning a narrower integer produces a diagnostic. Direct C calls retain
@@ -11065,6 +11143,45 @@ and `compress.zstd` do) makes the build bypass the caches too, but `v crun` stil
 reuses its executable while none of its inputs change.
 If a header needs Objective-C syntax, select the language with `#flag -x objective-c`;
 V does not infer the language from header contents.
+
+**Passing C structs by value**
+
+A V `struct Foo` and a C `struct Foo` are distinct types, even when their fields match.
+For a C function that takes or returns a struct by value, redeclare the native type with
+`struct C.Foo`. If the header defines a typedef, also use `@[typedef]`.
+A public type alias can expose it under a V module name:
+
+```v oksyntax
+module native
+
+#include "native.h"
+
+@[typedef]
+pub struct C.CallbackInfo {
+pub:
+	callback fn (voidptr) = unsafe { nil }
+	userdata voidptr
+}
+
+pub type CallbackInfo = C.CallbackInfo
+
+fn C.request(info C.CallbackInfo)
+
+// request passes the native callback-info value to C.
+pub fn request(info CallbackInfo) {
+	C.request(info)
+}
+```
+
+Callers can then use `native.CallbackInfo{callback: on_ready, userdata: data}`.
+The alias preserves the native type's identity; casting a separately declared V struct
+to its own V type does not convert it to the native C type.
+Use the exact C field names in the redeclaration and initializer, including camel case.
+Apply the same rule to nested structs, structs passed to callbacks, and returned structs.
+For example, a WebGPU binding needs native declarations for `WGPURequestAdapterCallbackInfo`,
+`WGPUStringView`, and `WGPUFuture`, rather than separate V structs with those names.
+Keep the field types consistent with the header too: C `size_t` corresponds to V `uint`,
+while C `int` corresponds to V `i32`.
 
 **C. function redeclarations**
 The situation is similar for `C.` functions. If you are going to call just 1 function in a
@@ -11838,6 +11955,22 @@ function unless it is an unquoted numeric label, uses `%=`, or is exported with 
 `.global`, or `.weak`. Quoted symbol definitions are checked too: `"1":` is an ordinary symbol,
 not a numeric local label.
 
+The 32-bit PowerPC C target (`-arch ppc`) supports `asm ppc raw`, including named
+operands, clobbers and assembly at module scope. Use GNU PowerPC assembler syntax
+inside the templates; the C compiler must support the target. Structured PowerPC
+assembly without `raw` is not supported. With the C backend, empty blocks and empty
+templates with only a `memory` clobber are allowed without `raw`, even when building
+for another target. Other backends reject these PowerPC blocks during parsing.
+For example:
+
+```v ignore
+mut ticks := u32(0)
+asm volatile ppc raw {
+    "mftb %[ticks]"
+    ; [ticks] "=r" (ticks)
+}
+```
+
 In x86 raw blocks, the compiler also checks that a size suffix such as `movl` or `incq` matches the
 width of the register or named operand it acts on, and reports an error for a mismatch, as the
 GNU assembler does. Use an operand modifier such as `%k[name]` to select a narrower view of a
@@ -12052,6 +12185,7 @@ Single functions can be extracted as raw machine code with `-hot-fn`:
 v -b arm64 -hot-fn next_value -o next_value.bin native_counter.v
 ```
 
+Extraction omits program startup and thread-local initialization.
 Only self-contained `@[live]` functions are supported for now: functions
 needing address fixups (calls, string literals, globals) are rejected at
 extract time instead of emitting silently broken machine code.
@@ -12059,9 +12193,9 @@ extract time instead of emitting silently broken machine code.
 path (its live function calls other functions and prints strings); it
 remains an example for the C shared-library workflow.
 
-Linux ARM64 output is experimental and currently supports relocatable objects
-only (`v -b arm64 -os linux -o program.o program.v`). Executable linking and
-native live reloading on Linux are not yet supported.
+Linux ARM64 output is experimental and supports executable linking with a Linux ARM64
+toolchain, as well as relocatable objects (`v -b arm64 -os linux -o program.o program.v`).
+Native live reloading on Linux is not yet supported.
 
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).

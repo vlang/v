@@ -2,6 +2,8 @@ import os
 
 const vsh_mode_vlib_dir = os.dir(os.dir(os.dir(@FILE)))
 const vsh_mode_v3_src = os.join_path(os.dir(os.dir(@FILE)), 'v.v')
+const vsh_mode_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_vsh_compiler_${os.getpid()}')
+const v3_bin = vsh_mode_executable_path(os.join_path(vsh_mode_compiler_dir, 'v3_vsh_script_mode'))
 
 fn vsh_mode_executable_path(path string) string {
 	$if windows {
@@ -10,12 +12,16 @@ fn vsh_mode_executable_path(path string) string {
 	return path
 }
 
-fn build_vsh_mode_v3(root string) string {
-	bin := vsh_mode_executable_path(os.join_path(root, 'v3_vsh_script_mode'))
-	build := os.exec([@VEXE, '-gc', 'none', '-path', '${'${vsh_mode_vlib_dir}|@vlib|@vmodules'}',
-		'-o', bin, '${vsh_mode_v3_src}'])
+fn testsuite_begin() {
+	os.rmdir_all(vsh_mode_compiler_dir) or {}
+	os.mkdir_all(vsh_mode_compiler_dir)!
+	build := os.exec([@VEXE, '-gc', 'none', '-path', '${vsh_mode_vlib_dir}|@vlib|@vmodules', '-o',
+		v3_bin, vsh_mode_v3_src])
 	assert build.exit_code == 0, build.output
-	return bin
+}
+
+fn testsuite_end() {
+	os.rmdir_all(vsh_mode_compiler_dir) or {}
 }
 
 fn run_vsh_script(name string, source string) os.Result {
@@ -25,7 +31,6 @@ fn run_vsh_script(name string, source string) os.Result {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_vsh_mode_v3(root)
 	script := os.join_path(root, '${name}.vsh')
 	os.write_file(script, source) or { panic(err) }
 	// `-silent` keeps the driver's benchmark report out of the script's output.
@@ -64,7 +69,6 @@ fn test_vsh_script_can_import_local_module_without_explicit_main() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_vsh_mode_v3(root)
 	module_dir := os.join_path(root, 'helper')
 	os.mkdir_all(module_dir) or { panic(err) }
 	os.write_file(os.join_path(module_dir, 'helper.v'), "module helper
@@ -140,7 +144,6 @@ fn test_raw_vsh_tmp_prefix_runs_extensionless_script() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_vsh_mode_v3(root)
 	script := os.join_path(root, 'myscript')
 	os.write_file(script, '#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp
 println(file_name(executable()))
@@ -193,7 +196,6 @@ fn test_raw_vsh_imported_v_file_does_not_get_implicit_os_symbols() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_vsh_mode_v3(root)
 	module_dir := os.join_path(root, 'helper')
 	os.mkdir_all(module_dir) or { panic(err) }
 	ordinary_file := os.join_path(module_dir, 'helper.v')

@@ -246,10 +246,22 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 		assert c_source.contains('".byte 0x27, 0x35, 0x0f, 0x48\\n\\t"'), c_source
 		assert !c_source.contains('.byte \\\$0x27'), c_source
 	}
-	mut compilers := ['clang']
+	mut compilers := []string{}
+	if clang := os.find_abs_path_of_executable('clang') {
+		mut compatible := true
+		$if windows {
+			// Extended asm uses V's MinGW ABI, rather than clang-cl's MSVC ABI.
+			target := os.exec([clang, '-dumpmachine'])
+			compatible = target.exit_code == 0 && !target.output.contains('windows-msvc')
+		}
+		if compatible {
+			compilers << 'clang'
+		}
+	}
 	if _ := os.find_abs_path_of_executable('gcc') {
 		compilers << 'gcc'
 	}
+	assert compilers.len > 0, 'inline asm requires GCC or a compatible Clang'
 	for compiler in compilers {
 		compile := os.exec([v3_bin, '-enable-globals', '-cc', compiler, '-o', bin_path, source_path])
 		assert compile.exit_code == 0, compile.output

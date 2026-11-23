@@ -208,11 +208,12 @@ fn test_an_invalid_idle_connection_is_discarded_when_getting() {
 
 fn test_an_expired_connection_is_discarded_when_getting() {
 	mut src := &LifeSource{}
+	lifetime := 10 * time.millisecond
 	mut p := pool.new_connection_pool(life_source(mut src), pool.ConnectionPoolConfig{
 		max_conns:      4
 		min_idle_conns: 0
-		max_lifetime:   10 * time.millisecond
-		idle_timeout:   10 * time.millisecond
+		max_lifetime:   lifetime
+		idle_timeout:   lifetime
 		get_timeout:    2 * time.second
 	})!
 	defer {
@@ -220,7 +221,7 @@ fn test_an_expired_connection_is_discarded_when_getting() {
 	}
 	c := p.get()!
 	p.put(c)!
-	time.sleep(100 * time.millisecond)
+	time.sleep(2 * lifetime)
 
 	c2 := p.get()!
 	assert src.conns[0].closed == 1

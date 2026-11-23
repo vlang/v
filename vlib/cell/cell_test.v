@@ -2,6 +2,20 @@ module cell
 
 import os
 
+const borrow_conflict_probe_arg = '--vtest-cell-borrow-conflict'
+
+fn testsuite_begin() {
+	if os.args.len != 2 || os.args[1] != borrow_conflict_probe_arg {
+		return
+	}
+	mut c := new_ref_cell(10)
+	c.with(fn [mut c] (v int) int {
+		c.with_mut(fn (w int) int { return w + 1 })
+		return v
+	})
+	exit(0)
+}
+
 fn test_refcell_with_reads_value() {
 	mut c := new_ref_cell(41)
 	got := c.with(fn (v int) int {
@@ -76,20 +90,7 @@ fn test_refcell_shared_borrow_refuses_exclusive_and_releases() {
 }
 
 fn test_refcell_with_mut_panics_during_shared_borrow() {
-	path := os.join_path(os.temp_dir(), 'cell_borrow_conflict_${os.getpid()}.v')
-	os.write_file(path, 'import cell
-fn main() {
-	mut c := cell.new_ref_cell(10)
-	c.with(fn [mut c] (v int) int {
-		c.with_mut(fn (w int) int { return w + 1 })
-		return v
-	})
-}
-')!
-	defer {
-		os.rm(path) or {}
-	}
-	res := os.exec([@VEXE, 'run', path])
+	res := os.exec([os.executable(), borrow_conflict_probe_arg])
 	assert res.exit_code != 0
 	assert res.output.contains('cell: already borrowed'), res.output
 }

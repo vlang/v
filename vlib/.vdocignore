@@ -1,6 +1,12 @@
 builtin/js
 builtin/wasm
+builtin/dragonfly_bare
+builtin/freebsd_bare
 builtin/linux_bare
+builtin/macos_bare
+builtin/netbsd_bare
+builtin/openbsd_bare
+builtin/solaris_bare
 builtin/wasm_bare
 os/bare
 # Experimental and not part of the 0.5.1 release.

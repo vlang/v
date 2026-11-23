@@ -195,7 +195,7 @@ fn main() { animation.verify_pool() }
 	}
 	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
 	for flags in compilers {
-		mut args := [@VEXE, '-new-compiler', '-no-retry-compilation']
+		mut args := [@VEXE, '-no-retry-compilation']
 		args << flags
 		args << ['-o', binary, root]
 		built := os.exec(args)
@@ -248,7 +248,7 @@ pub fn verify_callbacks() {
 fn main() { animation.verify_callbacks() }
 ') or { panic(err) }
 	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
-	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-o', binary, root])
+	built := os.exec([@VEXE, '-no-retry-compilation', '-o', binary, root])
 	assert built.exit_code == 0, built.output
 	ran := os.exec([binary])
 	assert ran.exit_code == 0, ran.output
@@ -321,7 +321,7 @@ pub fn verify_callbacks() {
 fn main() { animation.verify_callbacks() }
 ') or { panic(err) }
 	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
-	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-o', binary, root])
+	built := os.exec([@VEXE, '-no-retry-compilation', '-o', binary, root])
 	assert built.exit_code == 0, built.output
 	ran := os.exec([binary])
 	assert ran.exit_code == 0, ran.output
@@ -369,7 +369,7 @@ fn main() {
 	animation.invalid(mut value)
 }
 ') or { panic(err) }
-		checked := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-check', root])
+		checked := os.exec([@VEXE, '-no-retry-compilation', '-check', root])
 		assert checked.exit_code != 0, '${pattern}: ${checked.output}'
 		assert checked.output.contains('unknown type') || checked.output.contains("doesn\'t implement interface"), '${pattern}: ${checked.output}'
 	}

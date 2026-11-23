@@ -129,6 +129,54 @@ fn test_single_element_parsing() ! {
 	}
 }
 
+fn nested_xml(depth int) string {
+	return '<r>'.repeat(depth) + '</r>'.repeat(depth)
+}
+
+fn test_parser_accepts_maximum_nesting_depth() ! {
+	doc := XMLDocument.from_string(nested_xml(xml_max_nesting_depth))!
+	assert doc.root.name == 'r'
+}
+
+fn test_parser_rejects_excessive_nesting_depth() {
+	if _ := XMLDocument.from_string(nested_xml(xml_max_nesting_depth + 1)) {
+		assert false, 'XML beyond the nesting limit should return an error'
+	} else {
+		assert err.msg() == 'XML element nesting exceeds the maximum depth of ${xml_max_nesting_depth}.'
+	}
+}
+
+fn test_parser_resets_nesting_depth_for_siblings() ! {
+	deep_sibling := nested_xml(xml_max_nesting_depth - 1)
+	doc := XMLDocument.from_string('<root>${deep_sibling}${deep_sibling}</root>')!
+	assert doc.root.children.len == 2
+}
+
+fn test_parse_single_node_accepts_maximum_nesting_depth() ! {
+	mut reader := FullBufferReader{
+		contents: nested_xml(xml_max_nesting_depth).bytes()
+	}
+	mut local_buf := [u8(0)]
+	assert next_char(mut reader, mut local_buf)! == `<`
+	first_char := next_char(mut reader, mut local_buf)!
+	node := parse_single_node(first_char, mut reader)!
+	assert node.name == 'r'
+}
+
+fn test_parse_single_node_rejects_excessive_nesting_depth() ! {
+	mut reader := FullBufferReader{
+		contents: nested_xml(xml_max_nesting_depth + 1).bytes()
+	}
+	mut local_buf := [u8(0)]
+	assert next_char(mut reader, mut local_buf)! == `<`
+	first_char := next_char(mut reader, mut local_buf)!
+	if _ := parse_single_node(first_char, mut reader) {
+		assert false, 'XML beyond the nesting limit should return an error'
+	} else {
+		assert err.msg() == 'XML element nesting exceeds the maximum depth of ${xml_max_nesting_depth}.'
+	}
+}
+
 fn test_parser_decodes_entities_in_text_and_attributes() {
 	doc := XMLDocument.from_string('<r a="&lt;&gt;&amp;&quot;&apos;">&lt;&gt;&amp;&quot;&apos;</r>')!
 	assert doc.root.attributes['a'] == '<>&"\''

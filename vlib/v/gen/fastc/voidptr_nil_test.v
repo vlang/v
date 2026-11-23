@@ -4,6 +4,13 @@ import os
 import v.cmdexec
 import v.pref
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 const voidptr_nil_source = r'module main
 
 struct Handles {
@@ -58,10 +65,9 @@ fn test_fastc_voidptr_fields_and_locals_can_be_reset_to_nil() {
 	program := os.join_path(root, 'program')
 	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-gc', 'none', '-o',
 		program, root], os.real_path(os.join_path(@DIR, '../../../..')), {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
@@ -82,5 +88,36 @@ fn test_fastc_typed_pointer_nil_still_requires_unsafe() {
 			''
 		}
 		assert message.contains('`nil` outside an `unsafe` block'), message
+	}
+}
+
+fn test_fastc_typed_pointer_nil_comparisons_match_the_c_backend() ! {
+	root := os.join_path(os.vtmp_dir(), 'fastc_nil_comparisons_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, r'module main
+import os
+type Handle = &int
+fn main() {
+    _ = os.args
+    value := 42
+    pointer := &value
+    missing := unsafe { &int(nil) }
+    alias := Handle(pointer)
+    assert pointer != nil && nil != pointer
+    assert missing == nil && nil == missing
+    assert alias != nil && nil != alias
+    assert (unsafe { C.getenv(c"PATH") } != nil) == true
+    println("pointer comparisons work")
+}
+')!
+	for backend in ['c', 'fastc'] {
+		program := os.join_path(root, backend)
+		build := cmdexec.run(@VEXE, ['-b', backend, '-o', program, root])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'pointer comparisons work', run.output
 	}
 }

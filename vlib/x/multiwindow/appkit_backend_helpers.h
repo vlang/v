@@ -112,7 +112,15 @@ int v_multiwindow_appkit_clamped_int(double value);
 char *v_multiwindow_appkit_copy_cstring(char *value);
 VMultiwindowNativePrimitive v_multiwindow_appkit_create_metal_device(void);
 VMultiwindowNativePrimitive v_multiwindow_appkit_release_metal_device(void *device);
-VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr, const char *title, int width, int height, int min_width, int min_height, int resizable, int visible, int high_dpi, int borderless, int fullscreen, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);
+// The window options travel as one bit mask, so that every 4-byte argument of
+// v_multiwindow_appkit_create_window is passed in a register: TinyCC does not pack
+// several 4-byte stack arguments as Apple's arm64 ABI does.
+#define V_MULTIWINDOW_APPKIT_WINDOW_RESIZABLE 1
+#define V_MULTIWINDOW_APPKIT_WINDOW_VISIBLE 2
+#define V_MULTIWINDOW_APPKIT_WINDOW_HIGH_DPI 4
+#define V_MULTIWINDOW_APPKIT_WINDOW_BORDERLESS 8
+#define V_MULTIWINDOW_APPKIT_WINDOW_FULLSCREEN 16
+VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr, const char *title, int width, int height, int min_width, int min_height, int flags, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);
 VMultiwindowNativePrimitive v_multiwindow_appkit_configure_window_device(void *state_ptr, void *device_ptr);
 VMultiwindowNativePrimitive v_multiwindow_appkit_destroy_window(void *state_ptr);
 VMultiwindowNativePrimitive v_multiwindow_appkit_release_window(void *state_ptr);

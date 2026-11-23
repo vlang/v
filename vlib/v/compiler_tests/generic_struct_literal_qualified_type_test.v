@@ -28,6 +28,6 @@ fn main() {
 	assert list.items.len == 0
 }
 ') or { panic(err) }
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', 'run', root])
+	result := os.exec([@VEXE, '-nocache', 'run', root])
 	assert result.exit_code == 0, result.output
 }

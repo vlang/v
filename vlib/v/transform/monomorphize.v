@@ -3816,6 +3816,17 @@ fn (mut t Transformer) collect_generic_struct_spec_from_type(typ_id u32, module_
 		t.collect_generic_struct_spec_from_type(syntax.raw_base(), module_name, file_name, decls, mut specs)
 		return
 	}
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
+		// A concrete callback field can be the only use of its parameter and
+		// return specializations, including a result hidden behind a generic alias.
+		if syntax.function_closed() {
+			for param in syntax.function_params() {
+				t.collect_generic_struct_spec_from_type(flat.source_type_syntax(param).legacy_parameter_mut_type(), module_name, file_name, decls, mut specs)
+			}
+			t.collect_generic_struct_spec_from_type(syntax.function_result(), module_name, file_name, decls, mut specs)
+		}
+		return
+	}
 	if shape.has(.map_type) {
 		if syntax.bracket_closed() {
 			t.collect_generic_struct_spec_from_type(syntax.bracket_raw_inner(), module_name, file_name, decls, mut specs)
@@ -5824,14 +5835,18 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 		}
 	}
 	qname := transform_qualified_fn_name(decl.module, clone_value)
-	t.set_fn_ret_type(clone_value, ret_name_source_id)
+	if !specialization_name_is_bare_module_spelling(decl.module, clone_value, qname) {
+		t.set_fn_ret_type(clone_value, ret_name_source_id)
+	}
 	t.set_fn_ret_type(qname, ret_name_source_id)
 	t.add_receiver_method_suffix_index(clone_value)
 	t.add_receiver_method_suffix_index(qname)
 	if !isnil(t.tc) {
 		t.tc.ensure_private_transform_signatures()
-		mut names := [clone_value, qname, c_name(clone_value), c_name(qname)]
-		names << specialized_generic_fn_signature_aliases(decl, concrete_args_source_ids)
+		mut all_names := [clone_value, qname, c_name(clone_value), c_name(qname)]
+		all_names << specialized_generic_fn_signature_aliases(decl, concrete_args_source_ids)
+		names := all_names.filter(!specialization_name_is_bare_module_spelling(decl.module, it,
+			qname))
 		t.record_generic_specialization_args_for_names(names, concrete_args_source_ids)
 		for name in names {
 			// The names and declaration strings can point into a worker scope
@@ -5855,6 +5870,16 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	t.clear_node_type_memo()
 	t.active_specialization_args = old_specialization_args
 	t.active_specialization_main_types = old_specialization_main_types.move()
+}
+
+// specialization_name_is_bare_module_spelling reports whether `name`, a spelling of
+// a specialization of a function of `module`, is its bare name without the module.
+// A module's specialization does not register it: `json2.decode[[]int]` and
+// `main.decode[[]int]` are both `decode_T_Array_int` there, and the bare name is
+// the program's. Code of the module finds its own by the qualified name.
+fn specialization_name_is_bare_module_spelling(module string, name string, qname string) bool {
+	return module !in ['', 'main', 'builtin'] && name != qname && !name.contains('.')
+		&& !name.contains('__')
 }
 
 fn (mut t Transformer) specialized_fn_return_type_text(decl GenericFnDecl, args_ids []u32) u32 {
@@ -8492,7 +8517,11 @@ fn (mut t Transformer) unshadowed_generic_call_decl_key(id flat.NodeId, node fla
 	if callee.kind == .ident {
 		direct_key := generic_fn_decl_base_value(callee.value_text())
 		if decl := decls[direct_key] {
-			if t.generic_call_arg_count_matches_decl(node, decl) {
+			// The program's own functions are keyed by their bare names. A bare call
+			// in a module names that module's function (`os.create` in os), not one
+			// of the program's generics with the same name.
+			if !(decl.module == 'main' && module_name !in ['', 'main'])
+				&& t.generic_call_arg_count_matches_decl(node, decl) {
 				return direct_key
 			}
 		}

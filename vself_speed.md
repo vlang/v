@@ -4,6 +4,290 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
+## Stages outside tcc and peak memory, 2026-11-21
+
+The request was for the self-host command, the second line of
+
+```sh
+cd vlib/v && ../../v -gc none -prealloc -prod -o v3 v.v
+./v3 -nocache -building-v -o v4 -v v.v
+```
+
+the stages other than `tcc` in at most 600 ms where a busy host measured 848 ms (about -30%), and
+20% less peak memory. **The memory limit is met. The time limit is not met on a host as busy as
+that one**: the stages are 18 to 20% faster at every load measured, which is about 690 ms there.
+Against master `ee5b0d6407`, ten alternating pairs each, the candidate faster in 10 of 10:
+
+| Stage wall time, median ms | Before | After | Before, 4 busy processes | After, 4 busy processes |
+| --- | ---: | ---: | ---: | ---: |
+| parse setup/cache | 11.8 | 3.5 | 14.0 | 4.5 |
+| parse .v | 46.7 | 42.0 | 59.3 | 55.3 |
+| resolve imports | 17.6 | 8.2 | 22.2 | 10.5 |
+| check | 146.8 | 116.9 | 194.9 | 155.2 |
+| markused | 80.7 | 31.1 | 101.5 | 37.5 |
+| transform | 91.3 | 97.2 | 122.9 | 130.8 |
+| cgen | 122.9 | 122.8 | 156.4 | 161.4 |
+| C object cache | 3.6 | 1.0 | 4.3 | 1.2 |
+| All stages except tcc | 524.9 | 425.5 | 680.7 | 556.9 |
+| tcc, for the state of the host | 355.4 | 363.2 | 495.3 | 507.5 |
+
+A third run of an earlier state of the branch, on a host that gave the baseline 819 ms outside tcc
+and 598 ms in it (the state of the request), measured 668 ms (-18.5%).
+
+| Median metric, quiet host, 10 pairs | Before | After |
+| --- | ---: | ---: |
+| Retired instructions | 44,332,709,333 | 42,963,030,204 |
+| Parsed physical source lines | 505,109 | 505,109 |
+| Retired instructions/parsed line | 87,768.60 | 85,056.95 |
+| Peak memory, `peak` column, MB | 1,068 | 852 |
+| Peak memory footprint, MiB | 1,046 | 842 |
+| Page faults | 100,168 | 109,897 |
+| Elapsed time, s | 0.90 | 0.80 |
+
+The median paired instruction difference is `-1.312 G` (-3.09%); no pair regresses. As in the two
+sections below the gain is in the critical path, not in the instruction count (sampled, six
+alternating pairs; the last commit of the branch, which moves 2.3 ms of unmapping off the main
+thread, came after this table):
+
+| Stage | Critical path before, G | After, G | Low-parallel before, G | After, G |
+| --- | ---: | ---: | ---: | ---: |
+| parse | 0.623 | 0.621 | 0.33 | 0.32 |
+| resolve imports | 0.272 | 0.116 | 0.27 | 0.13 |
+| check | 1.672 | 1.253 | 1.22 | 0.77 |
+| markused | 0.598 | 0.275 | 0.51 | 0.10 |
+| transform | 0.960 | 0.993 | 0.33 | 0.32 |
+| cgen | 0.889 | 0.874 | 0.39 | 0.25 |
+
+What changed, by stage:
+
+- Parse and imports. Module directories are listed once; the import resolution of a wave, the
+  implicit-import scan and the C directive scans run in the worker pool; the kept source texts
+  have one copy and the merge leaves no probe caches behind; the merge target is mapped while the
+  parse pool runs.
+- Check. Pass 2 of collection records its registrations and lanes replay them meanwhile; the
+  declaration indexes, the interface receivers and the indexes of the parallel check are built in
+  pool phases beside serial work; workers promote their node caches and mark the calls that the
+  scan for unhandled Results reads; the cheapest bodies are handed out last in small chunks.
+- Markused. The reachability walk keeps its state by declaration number instead of by name; body
+  collection runs in queued pieces, largest first, while the main thread seeds the roots; it no
+  longer interns the 34 thousand spellings it only probes.
+- Transform. The preparation that runs beside markused keeps every prescanned borrow summary,
+  builds its indexes on helper threads and no longer makes markused wait.
+- C generation. One scan of the tree in `collect_gen_info`; tables, interface implementer queries
+  and literal numbering move beside the signature registration; scratch work runs in disposable
+  arenas. The stage's instructions and wall time are unchanged: what it saved in preparation it
+  spends on copying results out of those arenas.
+
+### Memory
+
+The peak was reached in C generation (1,068 MB) and is now reached in the transform pool phase:
+
+- Arenas that only the transform reads (its preparation and pre-scan arenas, 100 MB) are released
+  when C generation starts instead of after it, once a scan has shown that no node names them.
+- Parse, check and C generation helpers work in disposable arenas and copy out their results;
+  tables are sized once, kept sparse, or kept as ranges (generic parameter letters, the
+  visible-mutation index, the merge tables of the transform).
+- From the transform stage on the allocator keeps at most 24 MiB of freed arena blocks for reuse
+  instead of 256 MiB (`prealloc_block_pool_set_limit`). At the peak 80 to 95 MB of the pool sat
+  unused. This is the one change that costs time, because unmapping and mapping in a pool phase
+  contends for the address space far beyond its instruction count:
+
+| Kept blocks from transform on, one binary | Peak MB | Page faults | Transform, fastest of 10, ms |
+| --- | ---: | ---: | ---: |
+| 256 MiB (as before) | 924 | 90.9 k | 91.3 |
+| 64 MiB | 886 | 101.9 k | 96.7 |
+| 24 MiB (chosen) | 848 | 111.4 k | 96.9 |
+
+  It is why the transform line is 6% slower than before while its critical path is not. Without
+  it the peak is 13% lower instead of 20%, and the stages about 1.5% faster.
+
+Generated C is identical to master's for the self-host build at 18, 4, 2 and 1 jobs (five runs at
+18) and for 114 example programs; `compiler_errors_test.v` (1882 cases) and the tests of
+`vlib/v/types`, `transform`, `gen/c`, `markused`, `parser`, `flat` and `workers` pass.
+Two checks found defects that identical C did not:
+
+- ThreadSanitizer reported the first version of the merge-target mapping (an atomic add of zero
+  racing with the caller's appends). It now asks the kernel to wire the pages and writes nothing.
+  The instrumented compiler reports nothing for the self-host build, `examples/2048` and
+  `examples/news_fetcher.v`. `cmd/tools/vdoc` shows, in 1 of 10 runs, the race master already
+  has: two transform workers transform one shared struct field default
+  (`add_missing_struct_defaults`).
+- A build without block recycling (`-d prealloc_no_recycle`: a released arena is unmapped at once)
+  crashed in `unused_import_nodes_by_file`: a header made in an arena that was released while the
+  checker still pointed to it. Recycling had hidden it. That build now passes for the self-host
+  (with identical C) and for `cmd/v`, `vdoc`, `vfmt` and four examples. Run it after any change
+  to arena lifetimes.
+
+### What is left after this round
+
+The pool phases of check, markused, transform and C generation are about 60% of the wall time
+outside tcc and run at 15 to 18 runnable threads: only fewer instructions shorten them. The rest,
+sampled low-parallel work on the main thread:
+
+- Check, 0.77 G: collection's lanes still run with fewer than four threads for 15 ms; constant
+  values, struct defaults and top-level statements are checked serially before the pool (0.10 G,
+  12 ms); the called-function closure (0.09 G); pool tails (0.16 G).
+- Transform, 0.32 G: constants are lowered serially before the pool (0.06 G, moving it changes
+  node numbering), the merge and compaction after it (9 ms) and the late bodies (10 ms).
+- Parse, 0.32 G: each wave waits for its largest file (14 ms); the serial part of the merge (14 ms).
+- C generation, 0.25 G: writing and closing the 37 MB file (7 to 12 ms on a busy host), pool
+  tails, the serial part of `collect_gen_info`.
+- Memory at the new peak: the transform's per-piece forks (51 MB, of which the fixed tables of
+  175 type interners are 23 MB), 47 MB of per-node checker arrays that could be narrower, and
+  `flat.Node` itself (64 bytes, 3.29 M nodes).
+
+## Parse and check wall time, 2026-11-10
+
+Follow-up to the section below for the `parse .v`, `resolve imports` and `check` stages of the
+self-host command, against master `d59b2d37eb`. No limits were given; the work stopped early
+(see "What is left in parse and check"), so these stages are faster but not finished:
+
+| Stage wall time, median ms | Before | After | Pairs faster |
+| --- | ---: | ---: | ---: |
+| parse .v, quiet host (load 6), 10 pairs | 60.9 | 45.2 | 10/10 |
+| resolve imports, quiet host | 16.6 | 18.5 | 0/10 |
+| check, quiet host | 171.6 | 148.6 | 10/10 |
+| parse .v, 45 busy processes beside it, 30 pairs | 83.9 | 64.7 | 30/30 |
+| resolve imports, 45 busy processes | 23.6 | 26.5 | 4/30 |
+| check, 45 busy processes | 442.3 | 353.2 | 26/30 |
+
+| Median metric, quiet host, 10 pairs | Before | After |
+| --- | ---: | ---: |
+| Retired instructions | 42,352,145,195 | 42,137,838,080.5 |
+| Parsed physical source lines | 499,071 | 499,071 |
+| Retired instructions/parsed line | 84,861.96 | 84,432.55 |
+| Peak memory footprint, MiB | 1,042 | 1,018 |
+| Elapsed time, s | 0.94 | 0.91 |
+
+Instructions barely move (-0.51%, 4/10 pairs worse): the gain is in the critical path, the sum
+over time of instructions divided by runnable threads (8 alternating pairs, quiet host):
+
+| Stage | Instructions, G | Critical path, G | Low-parallel, G |
+| --- | ---: | ---: | ---: |
+| parse before | 3.85 | 0.778 | 0.65 |
+| parse after | 3.85 | 0.525 | 0.31 |
+| resolve imports before | 0.24 | 0.241 | 0.24 |
+| resolve imports after | 0.27 | 0.258 | 0.26 |
+| check before | 12.31 | 2.091 | 1.78 |
+| check after | 12.10 | 1.700 | 1.65 |
+
+Before this work 80 to 90% of both stages' critical path was low-parallel. What changed:
+
+- Parse. A file is parsed by one thread, and the compiler's import graph arrives in waves, so
+  each wave waited for its largest file (`driver.v` alone for 16 ms, then `transform.v`,
+  `cleanc.v` and the checker files for 14 ms). A file of at least half a chunk's byte target is
+  now a chunk of its own and starts first. For a compiler build the driver also predicts the
+  next wave from the import lines of the current one and parses it in the same pool phases;
+  the resolver stays the authority and the parse ahead is dropped unless the wave it reaches is
+  exactly the predicted one. That prediction is the 2 ms added to `resolve imports`.
+- Check, called-function closure. The set of functions reachable from the selected files was a
+  breadth-first walk of 13 rounds, each a small pool phase and a serial merge of string-keyed
+  sets. The pool now scans every candidate body once and the walk follows declaration indexes.
+- Check, collect. The index, import-line and misspelling scans share two balanced pool batches
+  instead of five small ones; the pass-2 signature lanes classify and warm what the collecting
+  thread did per function; deprecated symbols and interface implementers are found beside or
+  inside existing lanes.
+
+Generated C is identical for the self-host build at 18, 4, 2 and 1 jobs (five runs at 18), for
+114 example programs and for `cmd/v`, `vdoc`, `vfmt`, `vpm`, `vtest`, `vrepl` and `tetris` built
+as ordinary programs; `compiler_errors_test.v` (1881 cases) and the parser tests pass as before.
+ThreadSanitizer found one race introduced here (pool jobs slicing a shared array, which marks
+its buffer) and it is fixed: the instrumented compiler reports nothing for the self-host build,
+`cmd/v`, `cmd/tools/vdoc`, `examples/2048` and `examples/news_fetcher.v`, three runs each.
+
+### What is left in parse and check
+
+Check is still two thirds low-parallel. By wall time on the collecting thread, quiet host:
+
+- Pass 2 of collect registers every declaration serially: 14 ms, 116 M instructions.
+- Tails of the short pool phases (signature lanes, ancillary tables, body pool, clones): 13 ms.
+- `check_semantics_opt` before the pool: 4 to 6 ms in `new_check_decl_indexes`, a loop over
+  the 60k top-level nodes that reads one cold cache line each, and 2 to 3 ms in
+  `prepare_check_name_filters`. The checker has 84 loops over the top-level index; a compact
+  per-entry kind table would let most of them skip the node memory.
+- Before the body pool: constant values and struct field defaults, 5 ms. After it: the merge
+  (symbol interning, type promotion) 4 ms, `warn_unhandled_result_calls` 5 ms, unused imports
+  2 ms.
+- The body pool itself is balanced; cutting it into finer chunks with larger batches was
+  measured and changed neither instructions nor the critical path.
+- `resolve imports` lists each module directory twice now (prediction, then resolver).
+
+## Transform and C generation wall time, 2026-11-10
+
+The request was stage wall time: `transform` at most 250 ms and `cgen` at most 220 ms for the
+self-host command, measured at about 470 ms and 440 ms on a busy host. **Neither limit is met on
+a busy host.** Against master `22d0de2482` the same command now runs:
+
+| Stage wall time, median ms | Before | After | Pairs faster |
+| --- | ---: | ---: | ---: |
+| transform, quiet host (load 8), 10 pairs | 124.3 | 98.9 | 10/10 |
+| cgen, quiet host, 10 pairs | 125.7 | 105.2 | 10/10 |
+| transform, 45 busy processes beside it, 40 pairs | 460.3 | 335.0 | 39/40 |
+| cgen, 45 busy processes beside it, 40 pairs | 416.9 | 402.3 | 25/40 |
+
+| Median metric, quiet host, 10 pairs | Before | After |
+| --- | ---: | ---: |
+| Retired instructions | 43,988,418,114 | 42,221,617,152 |
+| Parsed physical source lines | 497,332 | 497,332 |
+| Retired instructions/parsed line | 88,448.80 | 84,896.24 |
+| Peak memory footprint, MiB | 1,029 | 1,039 |
+| Elapsed time, s | 0.98 | 0.95 |
+
+The median paired difference is `-1.709 G` (-4.02%); no pair regresses. The serial (`VJOBS=1`)
+stages go from 10.98 G to 10.56 G (transform) and from 9.98 G to 9.44 G (cgen).
+
+### Why instructions were the wrong guide here
+
+A stage's wall time is not proportional to its instruction count. Sampling every thread with
+per-thread instruction counters showed that about half of each stage's wall time passed while
+fewer than four threads were runnable: serial setup before the worker pool starts, serial merges
+after it, and the tail of a pool phase in which most workers had finished. The useful measure is
+the critical path, the sum over time of instructions divided by runnable threads:
+
+| Stage, 8 alternating pairs, quiet host | Instructions, G | Critical path, G | Low-parallel, G |
+| --- | ---: | ---: | ---: |
+| transform before | 12.30 | 1.063 | 0.40 |
+| transform after | 11.30 | 0.846 | 0.24 |
+| cgen before | 10.64 | 1.074 | 0.51 |
+| cgen after | 9.71 | 0.825 | 0.33 |
+
+What changed, in order of effect:
+
+- Transform gave every job one static chunk of function bodies. On six fast and twelve slow
+  cores, or under load, the chunks finished far apart and the runnable threads decayed from 18
+  to 1 over the last third of the phase. A compiler build now cuts the chunks into pieces that
+  all threads pull from one queue; the pieces keep the chunk order, so node numbering and the
+  generated C are unchanged. The caller merges finished pieces while the pool is still running.
+- A piece is transformed as one scratch batch. About 1150 batches, each with a freshly forked
+  checker and transformer, cost 8% of the stage's instructions for no memory benefit.
+- C generation computed the referenced C structs, the embedded field table, the literal
+  numbering, the sparse call-name index and the signature tables on the main thread before any
+  function body was generated. They now run inside existing pool phases or beside them.
+- Sixteen dynamic body chunks per job instead of thirty-two (2% of the stage's instructions).
+- Per-function work: memoized declared return types, call names and per-name facts, cheaper C
+  name lookups, a direct answer for bound identifiers and plain literals.
+
+Generated C is identical for the self-host build at 18, 4, 2 and 1 jobs (five runs at 18) and
+for 114 example programs; the self-hosted compiler builds and runs `hello_world`.
+A ThreadSanitizer build of the compiler reports nothing for the self-host build, `examples/2048`,
+`cmd/tools/vdoc` and `examples/news_fetcher.v`, three runs each.
+
+### What is left
+
+- Under heavy load C generation barely improves. Its preparation is about ten short pool phases
+  and helper threads; one descheduled worker stalls each of them, so 1.0 G of preparation takes
+  as long as the 7.7 G of function bodies (about 190 ms against 177 ms with 45 busy processes).
+  Cutting those phases into more pieces than threads did not help: the stall is the wait for a
+  preempted thread, not the size of its piece. The fix is one combined pass over the tree that
+  feeds all of the scans, followed by one merge.
+- Function bodies are 90% of both stages' instructions and their profiles are flat. Measured in
+  transform: the escape walk 1.25 G (it marks fixed-array views in 4,841 of 15,411 bodies), type
+  queries 1.45 G (38% of the transformer's identifier answers differ from the checker's recorded
+  type, so those cannot be substituted), and 1.17 G of tests before a call is known not to be a
+  special form. In cgen: about fifty helpers of 0.1 to 0.2 G each.
+- The transform prelude still lowers constants serially (about 45 M instructions); moving it
+  would change node numbering.
+
 ## Profile-driven follow-up, 2026-11-03 (round 2)
 
 The same self-host command retires **3.39% fewer instructions** at the median of ten alternating
@@ -126,7 +410,7 @@ for `./v -cc /usr/bin/clang -gc none self` and the production build:
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
-  VJOBS=4 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  VJOBS=4 SOURCE_DATE_EPOCH=0 \
   V_MACOS_V3_VHASH=f7e9ee96c22ca6db47b56d28332e7553715c659f \
   ./v -prod -cc /usr/bin/clang -gc none -no-memory-limit -prealloc \
   -compile-backend fastc -nocache -o ./v-perf cmd/v
@@ -136,7 +420,7 @@ Install each production binary as `./v` in the fixed fixture, then measure seria
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
-  VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  VJOBS=1 SOURCE_DATE_EPOCH=0 \
   V_MACOS_V3_VHASH=2d1367e589ed30c03325e586a8ddfd3bc96c8c3d \
   /usr/bin/time -l -o "$run_log" \
   ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
@@ -194,13 +478,13 @@ The fixed fixture, all 8,498 tracked file hashes, and the parsed inventory remai
 **559,990 physical lines in 562 parsed `.v` files**, with no parsed `.vh` files. Both roles run
 from the fixture directory using the same executable and output paths. The fixture executable is
 restored after measuring. A common `V_MACOS_V3_VHASH` controls only build metadata; both roles use
-`SOURCE_DATE_EPOCH=0`, `V_MACOS_V3_NO_FALLBACK=1`, and no inherited compiler overrides.
+`SOURCE_DATE_EPOCH=0` and no inherited compiler overrides.
 
 Both production builds use this recipe, outside the measured workload:
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
-  VJOBS=4 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  VJOBS=4 SOURCE_DATE_EPOCH=0 \
   ./v -prod -cc /usr/bin/clang -gc none -no-memory-limit -prealloc \
   -compile-backend fastc -nocache -o ./v-perf cmd/v
 ```
@@ -209,7 +493,7 @@ Each role is installed as `./v` in the fixed fixture directory, then measured se
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
-  VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  VJOBS=1 SOURCE_DATE_EPOCH=0 \
   V_MACOS_V3_VHASH=2d1367e589ed30c03325e586a8ddfd3bc96c8c3d \
   /usr/bin/time -l -o "$run_log" \
   ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
@@ -305,7 +589,7 @@ The measured command, from the fixed fixture directory, is:
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
-  VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  VJOBS=1 SOURCE_DATE_EPOCH=0 \
   /usr/bin/time -l -o "$run_log" \
   ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
   -o /Volumes/v-speed-7pct-20261023/fixed-self.c cmd/v
@@ -625,7 +909,7 @@ worker for the instruction comparison; validate default parallelism separately.
    outside measured runs with the same production command and C toolchain:
 
    ```sh
-   env -u VFLAGS -u VEXE SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+   env -u VFLAGS -u VEXE SOURCE_DATE_EPOCH=0 \
      ./v -prod -cc clang self
    ```
 
@@ -639,7 +923,6 @@ worker for the instruction comparison; validate default parallelism separately.
    ```sh
    benchmark_out=$(mktemp -d "${TMPDIR:-/tmp}/vself-speed.XXXXXX")
    env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
-     V_MACOS_V3_NO_FALLBACK=1 \
      ./v -nocache -gc none -prealloc -compile-backend fastc -building-v -v \
        -o "$benchmark_out/self.c" cmd/v \
      > "$benchmark_out/inventory.stdout" 2> "$benchmark_out/inventory.stderr"
@@ -653,7 +936,6 @@ worker for the instruction comparison; validate default parallelism separately.
 
    ```sh
    env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
-     V_MACOS_V3_NO_FALLBACK=1 \
      /usr/bin/time -l -o "$benchmark_out/time.txt" \
      ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
        -o "$benchmark_out/self.c" cmd/v \
@@ -665,7 +947,6 @@ worker for the instruction comparison; validate default parallelism separately.
 
    The measured input is a normal compiler build; `-prod` optimizes the compiler running the
    benchmark, not the input workload. `-nocache` disables V caches, not filesystem caches.
-   `V_MACOS_V3_NO_FALLBACK=1` prevents silent fallback to the legacy compiler.
    Reuse one output C path across all paired runs and keep distinct timing/stdout/stderr logs.
 5. Run one warmup per role, then ten measured pairs, alternating AB, BA, AB, BA, and so on.
    Run only one benchmark at a time. Do not wait for an idle host or pause unrelated work.
@@ -876,7 +1157,7 @@ The same production self-build command was used in each checkout, outside measur
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 \
-  V_MACOS_V3_NO_FALLBACK=1 ./v -prod -cc /opt/homebrew/opt/llvm/bin/clang \
+  ./v -prod -cc /opt/homebrew/opt/llvm/bin/clang \
   -cflags '-mcpu=apple-m1' -o /absolute/path/to/role-v self
 ```
 
@@ -1004,7 +1285,7 @@ and equals-form `-cc=clang` options have the same last-option-wins behavior.
   Bundled TCC: `1d0ad0ecf70a91a1df64cebf215e683b1d5aedb5`; native support objects were warm.
 - Fixed executable and working directory: `/Users/alex/code/v3-self-speed-fixture/v` and its root.
 - Fixed output: `/Users/alex/code/v3-self-speed-artifacts/self.c`.
-- Environment: `SOURCE_DATE_EPOCH=0`, `V_MACOS_V3_NO_FALLBACK=1`;
+- Environment: `SOURCE_DATE_EPOCH=0`;
   `VFLAGS`, `VEXE`, and `LLVM_PROFILE_FILE` were unset.
   `VJOBS=1` for serial measurements and unset for default workers. `CC`, `CFLAGS`, and `LDFLAGS`
   were unset. Locale: `LANG=LC_ALL=C.UTF-8`; SDK: Command Line Tools `MacOSX.sdk`.

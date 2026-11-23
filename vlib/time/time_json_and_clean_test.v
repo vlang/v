@@ -110,9 +110,9 @@ fn test_from_json_string_round_trips_the_quoted_form() {
 
 fn test_stopwatch_restart_zeros_the_elapsed_time() {
 	mut sw := time.new_stopwatch()
-	time.sleep(10 * time.millisecond)
+	sw.end = sw.start + u64(10 * time.millisecond)
 	sw.pause()
-	assert sw.elapsed() > 0
+	assert sw.elapsed() == 10 * time.millisecond
 	sw.restart()
 	assert sw.end == 0
 	sw.stop()

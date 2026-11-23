@@ -25,7 +25,6 @@ fn test_run_and_inline_forward_termination_and_clean_files() ! {
 			mut environment := os.environ()
 			environment.delete('VEXE')
 			environment.delete('VFLAGS')
-			environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 			process.set_environment(environment)
 			process.set_redirect_stdio()
 			process.run()
@@ -91,6 +90,10 @@ fn test_run_signal_relay_received_by_a_worker_is_not_forwarded_twice() ! {
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 		assert result.output.contains('received=0 bridging=0'), result.output
 	}
+	// A stop that a worker forwards to the stopped app must survive the app's SIGCONT.
+	late := os.exec([binary, 'late'])
+	assert late.exit_code == 0, 'late: ${late.output}'
+	assert late.output.contains('late_stop=1'), late.output
 }
 
 fn test_run_signal_forwarded_before_exec_terminates_child() ! {

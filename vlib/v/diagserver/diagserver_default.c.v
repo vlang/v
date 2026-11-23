@@ -1,16 +1,13 @@
 module diagserver
 
-// Request is what a child of the diagnostics server was made for; elsewhere
-// than on Linux there is no server, and so no request.
+// Request describes a diagnostics server request on platforms with a server.
 pub struct Request {
 pub:
 	question    string
 	from_server bool
 }
 
-// serve is a diagnostics server only on Linux, where the child answering a
-// request can restart the compiler's worker pools. Elsewhere every run stays a
-// one-shot compilation, with no question to answer.
+// serve leaves compilation in one-shot mode on platforms without a server.
 pub fn serve() Request {
 	return Request{}
 }

@@ -1,7 +1,7 @@
 // vtest flaky: true
 // vtest retry: 3
 import os
-import log
+import io
 import time
 import net.unix
 
@@ -16,84 +16,43 @@ fn testsuite_end() {
 	os.rmdir_all(tfolder) or {}
 }
 
-fn handle_conn(mut c unix.StreamConn) {
-	log.warn('    handle_conn ${voidptr(c)} start')
-	for {
-		mut buf := []u8{len: 100, init: 0}
-		log.warn('    handle_conn ${voidptr(c)}, reading data...')
-		read := c.read(mut buf) or {
-			log.warn('    handle_conn ${voidptr(c)}, reading failed, connection was dropped.')
-			return
-		}
-		log.warn('    handle_conn ${voidptr(c)}, read: ${read} bytes')
-		written := c.write(buf[..read]) or {
-			log.warn('    handle_conn ${voidptr(c)}, writing failed, connection was dropped.')
-			return
-		}
-		log.warn('    handle_conn ${voidptr(c)}, written: ${written} bytes')
+const echo_connections = 3
+const echo_payload = 'Hello from vlib/net!'
+const echo_timeout = 2 * time.second
+
+fn echo_connection(mut conn unix.StreamConn) ! {
+	defer { conn.close() or {} }
+	conn.set_read_timeout(echo_timeout)
+	mut received := []u8{len: echo_payload.len}
+	io.read_exact(mut conn, mut received)!
+	conn.write(received)!
+}
+
+fn echo_server(mut listener unix.StreamListener) ! {
+	for _ in 0 .. echo_connections {
+		mut conn := listener.accept()!
+		echo_connection(mut conn)!
 	}
 }
 
-fn echo_server(mut l unix.StreamListener) ! {
-	log.warn('echo_server l: ${voidptr(l)}, start')
-	for {
-		log.warn('echo_server l: ${voidptr(l)}, waiting for connections...')
-		mut new_conn := l.accept() or { continue }
-		log.warn('echo_server l: ${voidptr(l)}, accepted new connection: ${voidptr(new_conn)}, spawning a new thread to handle it...')
-		spawn handle_conn(mut new_conn)
-		time.sleep(10 * time.millisecond)
-	}
-}
-
-fn echo() ! {
-	log.info('echo: connecting to ${socket_path}...')
-	mut c := unix.connect_stream(socket_path)!
-	defer {
-		log.info('echo: closing ${voidptr(c)} ...')
-		c.close() or {}
-	}
-	data := 'Hello from vlib/net!'
-	log.info('echo: writing `${data}` to ${voidptr(c)} ...')
-	c.write_string(data)!
-	mut buf := []u8{len: 4096}
-	read := c.read(mut buf)!
-	log.info('echo: read ${read} bytes from ${voidptr(c)} ...')
-	assert read == data.len
-	for i := 0; i < read; i++ {
-		assert buf[i] == data[i]
-	}
-	log.info('echo: got `${buf.bytestr()}` back from ${voidptr(c)}.')
-	return
+fn echo_client() ! {
+	mut conn := unix.connect_stream(socket_path)!
+	defer { conn.close() or {} }
+	conn.set_read_timeout(echo_timeout)
+	conn.write_string(echo_payload)!
+	assert io.read_all(reader: conn)! == echo_payload.bytes()
 }
 
 fn test_tcp() {
-	log.use_stdout()
-	unbuffer_stdout()
-	os.rm(socket_path) or {}
-	assert os.exists(socket_path) == false
-	log.info('${@LOCATION}, setup complete')
+	assert !os.exists(socket_path)
+	mut listener := unix.listen_stream(socket_path)!
+	listener.set_accept_timeout(echo_timeout)
+	server := spawn echo_server(mut listener)
 
-	log.info('>>> create listening socket at ${socket_path}...')
-	mut l := unix.listen_stream(socket_path) or { panic(err) }
-	log.info('>>> listening socket at ${socket_path} is ${voidptr(l)}.')
-	println('')
-
-	log.info('>>> spawning server with connection ${voidptr(l)}...')
-	spawn echo_server(mut l)
-	println('')
-
-	for i in 0 .. 3 {
-		log.info('>>> start echo to server, i: ${i}...')
-		echo()!
-		println('')
+	for _ in 0 .. echo_connections {
+		echo_client()!
 	}
-
-	log.info('>>> closing listening socket ${voidptr(l)}...')
-	l.close() or {}
-	println('')
-
-	// test if socket file is removed/unlinked
-	assert os.exists(socket_path) == false
-
-	log.info('${@LOCATION}, done')
+	server.wait()!
+	listener.close()!
+	assert !os.exists(socket_path)
 }
