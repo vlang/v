@@ -1259,11 +1259,17 @@ fn unique_cache_path_token(attempt int) string {
 	return '${os.getpid()}-${time.now().unix_nano()}-${attempt}'
 }
 
+// tool_cache_build_lock_wait bounds the wait for another process building the same tool.
+const tool_cache_build_lock_wait = 30 * time.minute
+
 // build_tool_binary compiles the tool into its cache slot and records its source closure.
 // It returns the compiler output when the build failed.
 fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	mut build_lock := tool_cache_lock(entry)!
-	if !build_lock.wait_acquire(5 * time.minute) {
+	// The lock is shared by every cache key of the tool, because pruning removes the other
+	// keys' unfinished entries. Several checkouts or flag sets each building a large tool
+	// (`v3_full`) queue behind one another, so the wait covers a queue of builds, not one.
+	if !build_lock.wait_acquire(tool_cache_build_lock_wait) {
 		return error('timed out waiting to build the cached `${entry.name}` tool')
 	}
 	defer {
