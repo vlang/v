@@ -156,6 +156,17 @@ pub fn (mut db DB) select(config orm.SelectConfig, data orm.QueryData, where orm
 	return c.select(config, data, where)
 }
 
+// select_plan runs a full SQL plan on a conn acquired from the pool. Without
+// this, a lowered plan on a pooled `pg.DB` silently fell back to the legacy
+// flat select with empty where/data and returned unfiltered rows.
+pub fn (mut db DB) select_plan(config orm.SelectConfig, plan &orm.SqlQuery) ![][]orm.Primitive {
+	mut c := db.pool.acquire()!
+	defer {
+		c.close() or {}
+	}
+	return c.select_plan(config, plan)
+}
+
 // insert acquires a conn from the pool, runs the ORM INSERT on it, and
 // stashes LASTVAL() captured on the same session for the calling thread.
 // V's `sql db { insert ... }` macro emits a follow-up `db.last_id()` call;
@@ -228,6 +239,13 @@ pub fn (mut db DB) last_id() int {
 pub fn (mut tx Tx) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	tx.ensure_active()!
 	return tx.conn.select(config, data, where)
+}
+
+// select_plan runs a full SQL plan on the transaction's pinned conn so a
+// lowered plan inside a transaction does not fall back to an empty query.
+pub fn (mut tx Tx) select_plan(config orm.SelectConfig, plan &orm.SqlQuery) ![][]orm.Primitive {
+	tx.ensure_active()!
+	return tx.conn.select_plan(config, plan)
 }
 
 // insert runs the ORM INSERT on the pinned transaction conn.

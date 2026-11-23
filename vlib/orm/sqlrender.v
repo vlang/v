@@ -245,8 +245,6 @@ fn render_query_inner(dialect SQLDialect, q string, num bool, qm string, mut c R
 		}
 		out += ' ORDER BY ${parts.join(', ')}'
 	}
-	out += render_limit_offset(dialect, num, qm, mut c, query)
-
 	for set_op in query.set_ops {
 		op := match set_op.kind {
 			.union { 'UNION' }
@@ -256,6 +254,9 @@ fn render_query_inner(dialect SQLDialect, q string, num bool, qm string, mut c R
 		}
 		out += ' ${op} ${render_query_inner(dialect, q, num, qm, mut c, set_op.query)}'
 	}
+	// LIMIT/OFFSET apply to the whole compound, so they follow the set ops.
+	// Bind order still matches emitted marker order (set-op binds come first).
+	out += render_limit_offset(dialect, num, qm, mut c, query)
 	return out
 }
 

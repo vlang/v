@@ -153,6 +153,48 @@ fn test_derived_join_then_where() {
 	assert rows[0].title == 'beta'
 }
 
+fn test_compound_predicate_preserved() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	setup_full_sql_items(mut db)
+
+	// group by triggers full-SQL lowering; the compound WHERE must survive.
+	rows := sql db {
+		select title from FullSqlItem where id == 1 || id == 2 group by title
+	}!
+	assert rows.len == 2, 'compound WHERE should yield 2 rows, got ${rows.len}'
+}
+
+fn test_union_all_preserved() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	setup_full_sql_items(mut db)
+
+	rows := sql db {
+		select title from FullSqlItem where id == 1 union all select title from FullSqlItem where id == 2
+	}!
+	assert rows.len == 2, 'UNION ALL should yield 2 rows, got ${rows.len}'
+}
+
+fn test_multi_key_order_by() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	setup_full_sql_items(mut db)
+
+	// ids 1=alpha, 2=beta, 3=gamma; order by title desc => 3, 2, 1
+	rows := sql db {
+		select title, id from FullSqlItem where id in (select from FullSqlItem) order by title desc
+	}!
+	assert rows.len == 3
+	assert rows[0].id == 3, 'multi-key ORDER BY first id should be 3, got ${rows[0].id}'
+}
+
 fn test_group_by_having_and_union_plan() {
 	mut db := sqlite.connect(':memory:')!
 	defer {
