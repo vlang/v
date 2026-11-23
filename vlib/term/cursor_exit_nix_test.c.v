@@ -21,7 +21,8 @@ fn run_cursor_exit_probe(mode string) {
 		os.signal_ignore(.int, .term)
 	} else if mode.starts_with('default') {
 		// A runner started in the background passes SIGINT on ignored; test the default.
-		C.signal(i32(signal), unsafe { nil })
+		// C.signal changes process-wide signal handling and must be called in unsafe.
+		unsafe { C.signal(i32(signal), nil) }
 	}
 	term.show_cursor_on_exit()
 	term.hide_cursor()
