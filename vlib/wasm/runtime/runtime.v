@@ -135,16 +135,16 @@ pub struct Module {
 pub:
 	exports []Export
 mut:
-	types        []Signature
-	functions    []Function
-	import_count int
-	globals      []Global
-	memory       ?Limits
-	table        ?Limits
-	data         []Segment
-	elements     []Segment
-	start        int = -1
-	data_count   int = -1
+	types                []Signature
+	functions            []Function
+	import_count         int
+	globals              []Global
+	memory               ?Limits
+	table                ?Limits
+	data                 []Segment
+	elements             []Segment
+	start                int = -1
+	data_count           int = -1
 	decoded_instructions int
 }
 
