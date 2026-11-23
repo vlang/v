@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sanitizer: [memory, address-no-gc]
+        sanitizer: [memory, address-no-gc, address-autofree]
     env:
       VJOBS: '2'
       MSAN_OPTIONS: halt_on_error=1:exit_code=86
@@ -59,3 +59,32 @@ jobs:
           ./v -cc clang -gc none -cflags -fno-omit-frame-pointer \
             -cflags -fsanitize=address -silent \
             vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      # Retain a separate translation of the same source after the original
+      # execution, even when LeakSanitizer reports a failure. The original
+      # command above is unchanged: -keepc can alter cache selection.
+      - name: Retain no-GC generated C for ownership analysis
+        if: always() && matrix.sanitizer == 'address-no-gc'
+        env:
+          VTMP: ${{ runner.temp }}/nested-map-no-gc
+        run: |
+          mkdir -p "$VTMP"
+          ./v -cc clang -gc none -keepc -skip-running \
+            -cflags -fno-omit-frame-pointer -cflags -fsanitize=address -silent \
+            vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      - name: Compare original test with explicit autofree and no GC
+        if: matrix.sanitizer == 'address-autofree'
+        env:
+          VTMP: ${{ runner.temp }}/nested-map-autofree
+        run: |
+          mkdir -p "$VTMP"
+          ./v -cc clang -gc none -autofree -keepc \
+            -cflags -fno-omit-frame-pointer -cflags -fsanitize=address -silent \
+            vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      - name: Preserve generated C even if the sanitizer fails
+        if: always() && matrix.sanitizer != 'memory'
+        uses: actions/upload-artifact@v7
+        with:
+          name: nested-map-c-${{ matrix.sanitizer }}
+          path: ${{ runner.temp }}/nested-map-*/*nested_map_mutation_missing_outer_key_test*.tmp.c
+          if-no-files-found: error
+          retention-days: 7
