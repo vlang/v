@@ -47,13 +47,15 @@ jobs:
             -cflags -fno-omit-frame-pointer -cflags -maes -cflags -mpclmul \
             -cflags -fsanitize=memory -silent \
             vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      # Keep the independent GCC ownership control executable even if the
+      # full unsuppressed ASan/LeakSanitizer run below exits nonzero.
+      - name: Check generated C retains staged-array ownership
+        if: matrix.sanitizer == 'address-no-gc'
+        run: |
+          ./v -cc gcc -silent vlib/v/gen/c/nested_map_append_staged_rhs_test.v
       - name: Reproduce corrected original nested-map test with AddressSanitizer without GC
         if: matrix.sanitizer == 'address-no-gc'
         run: |
           ./v -cc clang -gc none -cflags -fno-omit-frame-pointer \
             -cflags -fsanitize=address -silent \
             vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
-      - name: Check generated C retains staged-array ownership
-        if: matrix.sanitizer == 'address-no-gc'
-        run: |
-          ./v -cc gcc -silent vlib/v/gen/c/nested_map_append_staged_rhs_test.v
