@@ -269,7 +269,9 @@ fn test_cached_file_line_uses_source_file_name() {
 	source := 'return [@FILE, @FILE_LINE, @LINE]'
 	source_file := os.join_path(os.vtmp_dir(), 'nested', 'origin.v')
 	rewritten := cached_embedded_source_paths(source, '', source_file, 5)
-	assert rewritten == "return ['${os.real_path(source_file)}', 'origin.v:5', '5']"
+	// The path is a V string literal, so a Windows `\` separator is escaped.
+	file_literal := os.real_path(source_file).replace('\\', '\\\\')
+	assert rewritten == "return ['${file_literal}', 'origin.v:5', '5']"
 }
 
 fn test_without_duplicate_static_string_definitions_keeps_new_literals() {
@@ -1486,13 +1488,15 @@ fn test_program_executable_is_restored_for_the_inputs_that_linked_it() {
 		return
 	}
 	assert cached.notices == 'notices\nof the build\n'
-	restored := os.join_path(root, 'restored')
+	// Windows tells executables apart by their extension.
+	exe_ext := $if windows { '.exe' } $else { '' }
+	restored := os.join_path(root, 'restored${exe_ext}')
 	assert cached.restore(restored)
 	assert os.read_file(restored)! == 'first executable'
 	assert os.is_executable(restored)
 	// The restored file has the permissions of one that a linker creates: all
 	// that the umask of the caller leaves.
-	reference := os.join_path(root, 'reference')
+	reference := os.join_path(root, 'reference${exe_ext}')
 	mut created := os.open_file(reference, 'w', 0o777)!
 	created.close()
 	assert os.stat(restored)!.mode & 0o777 == os.stat(reference)!.mode & 0o777

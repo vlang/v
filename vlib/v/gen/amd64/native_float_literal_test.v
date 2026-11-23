@@ -245,7 +245,8 @@ fn main() {
 		for production in [false, true] {
 			mut args := ['env', 'VFLAGS=', @VEXE, '-no-retry-compilation', '-cc', 'cc', '-gc',
 				'none', '-nocache', '-b', 'amd64', '-o', output, path]
-			if production { args.insert(5, '-prod') }
+			// Before `-cc cc`, not between the option and its value.
+			if production { args.insert(4, '-prod') }
 			compiled := exec_native(args)
 			assert compiled.exit_code == 0, compiled.output
 			result := os.exec([output])

@@ -3,7 +3,6 @@ module diagserver
 import crypto.sha256
 import hash
 import os
-import runtime
 import time
 // The requests carry tokens of their own.
 import v.token as vtoken
@@ -679,8 +678,7 @@ fn resident_kb() i64 {
 
 fn read_resident_kb() ?i64 {
 	$if macos {
-		bytes := runtime.used_memory() or { return none }
-		return i64(bytes / 1024)
+		return macos_resident_kb()
 	}
 	statm := os.read_file('/proc/self/statm') or { return none }
 	fields := statm.fields()

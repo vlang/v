@@ -22384,6 +22384,7 @@ fn (mut tc TypeChecker) reachable_comptime_method_calls(root flat.NodeId) map[in
 	mut calls := map[int]bool{}
 	mut seen := map[int]bool{}
 	mut pending := [root]
+	mut methods := ComptimeMethodNameIndex{}
 	for pending.len > 0 {
 		id := pending.pop()
 		if seen[int(id)] { continue }
@@ -22397,16 +22398,43 @@ fn (mut tc TypeChecker) reachable_comptime_method_calls(root flat.NodeId) map[in
 		w.type_param_texts = map[u32]u32{}
 		w.fn_context.generic_params = tc.infer_decl_generic_param_ids(*node)
 		w.push_scope()
-		w.collect_comptime_method_calls(id, '', mut calls, mut pending)
+		w.collect_comptime_method_calls(id, '', mut calls, mut pending, mut methods)
 		w.pop_scope()
 	}
 	tc.comptime_method_calls_by_decl[int(root)] = calls
 	return calls
 }
 
+// ComptimeMethodNameIndex lists, by method name, the functions that
+// `receiver_method_suffix_index` names unambiguously, built on first use.
+struct ComptimeMethodNameIndex {
+mut:
+	built bool
+	names map[string][]string
+}
+
+// functions_named returns the indexed functions whose name ends with `.method`.
+fn (mut index ComptimeMethodNameIndex) functions_named(tc &TypeChecker, method string) []string {
+	if !index.built {
+		index.built = true
+		mut seen := map[string]bool{}
+		for _, name in tc.receiver_method_suffix_index {
+			if name == receiver_method_suffix_ambiguous || seen[name] {
+				continue
+			}
+			seen[name] = true
+			dot := name.last_index_u8(`.`)
+			if dot >= 0 {
+				index.names[name[dot + 1..]] << name
+			}
+		}
+	}
+	return index.names[method] or { []string{} }
+}
+
 // collect_comptime_method_calls keeps lexical bindings while finding reflected
 // calls and static generic forwarders, excluding nested function bodies.
-fn (mut tc TypeChecker) collect_comptime_method_calls(id flat.NodeId, method_var string, mut calls map[int]bool, mut pending []flat.NodeId) {
+fn (mut tc TypeChecker) collect_comptime_method_calls(id flat.NodeId, method_var string, mut calls map[int]bool, mut pending []flat.NodeId, mut methods ComptimeMethodNameIndex) {
 	node := tc.a.node(id)
 	if node.kind in [.fn_literal, .lambda_expr] { return }
 	if node.kind == .param {
@@ -22436,14 +22464,11 @@ fn (mut tc TypeChecker) collect_comptime_method_calls(id flat.NodeId, method_var
 				// An open generic receiver cannot yet select its concrete method.
 				// Keep candidate generic methods for eligibility and attribution;
 				// the scoped body check dispatches only the actual receiver method.
-				for _, name in tc.receiver_method_suffix_index {
-					if name != receiver_method_suffix_ambiguous
-						&& name.ends_with('.${callee.value}') {
-						module_name := tc.fn_type_modules[name] or { tc.cur_module }
-						if decl := tc.visible_mutation_fn_decl(name, module_name) {
-							if tc.fn_has_receiver_param(*tc.a.node(flat.NodeId(decl.idx))) {
-								tc.collect_comptime_generic_forwarder(name, mut pending)
-							}
+				for name in methods.functions_named(tc, callee.value) {
+					module_name := tc.fn_type_modules[name] or { tc.cur_module }
+					if decl := tc.visible_mutation_fn_decl(name, module_name) {
+						if tc.fn_has_receiver_param(*tc.a.node(flat.NodeId(decl.idx))) {
+							tc.collect_comptime_generic_forwarder(name, mut pending)
 						}
 					}
 				}
@@ -22451,7 +22476,8 @@ fn (mut tc TypeChecker) collect_comptime_method_calls(id flat.NodeId, method_var
 		}
 	}
 	for i in 0 .. node.children_count {
-		tc.collect_comptime_method_calls(tc.a.child(node, i), var_name, mut calls, mut pending)
+		tc.collect_comptime_method_calls(tc.a.child(node, i), var_name, mut calls, mut pending, mut
+			methods)
 	}
 	if node.kind == .decl_assign {
 		// Local callable values shadow static declarations only after their

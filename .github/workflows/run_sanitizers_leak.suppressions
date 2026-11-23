@@ -31,3 +31,12 @@ leak:vmemory_block_grow
 # exits. That table is in -prealloc arena memory, which is mapped with mmap and
 # not scanned by LeakSanitizer, so each kept buffer is reported as a direct leak.
 leak:parser__read_batch_source
+
+# The goroutines runtime allocates the ucontext buffer of each goroutine, and of
+# the scheduler context of each worker thread, with C calloc. It keeps the buffer
+# until the process exits: a finished goroutine goes to a free list and its
+# buffer is reused by the next goroutine. The only pointer to a buffer is in its
+# Goroutine, which -gc boehm allocates on the GC heap. LeakSanitizer does not
+# scan that heap, so it reports each buffer as a direct leak (with -gc none, the
+# Goroutines are C memory that it scans, and nothing is reported).
+leak:goroutines_context_alloc
