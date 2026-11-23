@@ -13669,9 +13669,11 @@ pub fn run(args []string) {
 			mu_stage_sw.restart()
 		}
 		// markused gives a program that only prints literals the minimal runtime. A
-		// debug or coverage build emits the backtrace printers anyway, and the slices
-		// and appends in them become runtime calls only after markused.
-		debug_literal_full_runtime := (is_debug || coverage_dir.len > 0)
+		// debug or coverage C build emits the backtrace printers anyway, and the slices
+		// and appends in them become runtime calls only after markused. Native SSA
+		// supplies its own backtrace helpers without those source-runtime dependencies.
+		debug_literal_full_runtime := backend !in ['arm64', 'amd64']
+			&& (is_debug || coverage_dir.len > 0)
 			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
 		if no_skip_unused {
 			// Every concrete function is used here, `recover` among them, so that cannot

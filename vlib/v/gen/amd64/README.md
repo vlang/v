@@ -3,6 +3,7 @@
 Build and run a Linux x86-64 executable with `./v -b amd64 run program.v`.
 Add `-prod` before `run` to enable SSA optimization and register allocation.
 The backend is experimental and currently uses no garbage collector.
+Debug builds include native backtrace helpers.
 
 Concrete generic sum types retain their variant tags and payload layouts, including recursive
 pointer variants such as `Tree[T] = Empty | &Node[T]`. The binary search tree regression exercises
