@@ -140,6 +140,10 @@ fn test_walks_do_not_take_a_link_to_a_file_for_a_root() {
 	for _ in 0 .. 200 {
 		assert walk_list(shared_link, mut added) == .other
 	}
+	// When nothing says what the opened link is, it is no directory either: neither way of
+	// listing it works.
+	assert walk_list_with(shared_link, mut added, 3, walk_info_first) == .other
+	assert added.len == 0
 	grown := open_handles() - before
 	assert grown < 100, 'the process holds ${grown} more handles after 200 looks at the link'
 	// The link is no root either when it may not be opened.
@@ -385,4 +389,212 @@ fn test_a_walk_closes_the_handle_of_every_folder_it_lists() {
 	// 9 folders are listed per walk: 1800 handles would stay open if none were closed.
 	grown := open_handles() - before
 	assert grown < rounds, 'the process holds ${grown} more handles after ${2 * rounds} walks'
+}
+
+// walk_test_open opens `path` the way walk_list_with does. The caller closes the handle.
+fn walk_test_open(path string) voidptr {
+	wpath := (path + path_separator).to_wide()
+	handle := C.CreateFileW(wpath, walk_access_list, walk_share_all, unsafe { nil }, u32(C.OPEN_EXISTING),
+		walk_open_flags, unsafe { nil })
+	unsafe { free(wpath) }
+	assert handle != invalid_handle_value, path
+	return handle
+}
+
+// walk_test_tree makes a folder with a folder `sub`, a file `file.txt` and a link `link` to
+// `sub` in it. The caller removes it with walk_test_tree_remove.
+fn walk_test_tree(name string) !string {
+	folder := join_path(vtmp_dir(), '${name}_${getpid()}')
+	rmdir(join_path_single(folder, 'link')) or {}
+	rmdir_all(folder) or {}
+	mkdir_all(join_path_single(folder, 'sub'))!
+	write_file(join_path(folder, 'sub', 'in_sub.txt'), 'x')!
+	write_file(join_path_single(folder, 'file.txt'), 'x')!
+	assert exec(['cmd', '/c', 'mklink', '/J', join_path_single(folder, 'link'),
+		join_path_single(folder, 'sub')]).exit_code == 0
+	return folder
+}
+
+fn walk_test_tree_remove(folder string) {
+	// The link first, so that removing the folder can not reach through it.
+	rmdir(join_path_single(folder, 'link')) or {}
+	rmdir_all(folder) or {}
+}
+
+// Some file systems and servers do not answer every way of asking what an open handle is. Each
+// way that fails must hand over to the next one, and none may be taken for "not a directory".
+fn test_walk_attributes_asks_another_way_when_one_fails() {
+	folder := walk_test_tree('walk_attributes')!
+	defer {
+		walk_test_tree_remove(folder)
+	}
+	directory := u32(C.FILE_ATTRIBUTE_DIRECTORY)
+	link_bits := directory | windows_file_attribute_reparse_point
+	for name, want in {
+		'sub':  directory
+		'link': link_bits
+	} {
+		path := join_path_single(folder, name)
+		wpath := (path + path_separator).to_wide()
+		handle := walk_test_open(path)
+		// Each of the three ways alone gives the same answer.
+		for first_way in 0 .. 3 {
+			got := walk_attributes(handle, wpath, first_way)
+			assert got & link_bits == want, '${name}, from way ${first_way}: ${got:x}'
+		}
+		// With no way left, nothing is known.
+		assert walk_attributes(handle, wpath, 3) == walk_attributes_unknown, name
+		C.CloseHandle(handle)
+		// Through a handle that answers nothing, the two ways that use it fail, and the look by
+		// name still tells what the path is.
+		got := walk_attributes(unsafe { nil }, wpath, 0)
+		assert got & link_bits == want, '${name}, by name after two failures: ${got:x}'
+		unsafe { free(wpath) }
+	}
+	// A folder that was renamed after it was opened is no longer found by its name. The two ways
+	// that ask through the handle still answer, each of them alone.
+	sub := join_path_single(folder, 'sub')
+	wsub := (sub + path_separator).to_wide()
+	handle := walk_test_open(sub)
+	rename(sub, join_path_single(folder, 'renamed_sub'))!
+	assert walk_attributes(handle, wsub, 0) & link_bits == directory
+	assert walk_attributes(handle, wsub, 1) & link_bits == directory
+	assert walk_attributes(handle, wsub, 2) == walk_attributes_unknown
+	C.CloseHandle(handle)
+	unsafe { free(wsub) }
+	// Where the look by name fails as well, nothing is known.
+	missing := (join_path_single(folder, 'missing') + path_separator).to_wide()
+	assert walk_attributes(unsafe { nil }, missing, 0) == walk_attributes_unknown
+	unsafe { free(missing) }
+}
+
+fn walk_test_names(remaining []WalkPending) []string {
+	return remaining.map('${file_name(it.path)}:${it.listed_as_dir}')
+}
+
+// A listing that ends, and a listing that the file system does not offer, both stop with a
+// failed call. Only the first is the end of the folder.
+fn test_walk_list_handle_tells_the_end_of_a_folder_from_a_listing_that_is_not_offered() {
+	folder := walk_test_tree('walk_list_handle')!
+	defer {
+		walk_test_tree_remove(folder)
+	}
+	mkdir(join_path_single(folder, 'empty'))!
+	mut handle := walk_test_open(folder)
+	mut remaining := []WalkPending{}
+	assert walk_list_handle(handle, folder, walk_info_first, mut remaining)
+	mut names := walk_test_names(remaining)
+	names.sort()
+	assert names == ['empty:true', 'file.txt:false', 'link:false', 'sub:true']
+	assert remaining.all(it.path.starts_with(folder + path_separator))
+	C.CloseHandle(handle)
+	// A class that no file system knows fails at the first call, as one that this file system
+	// does not offer would: nothing is added, and the caller is told to list another way.
+	handle = walk_test_open(folder)
+	remaining.clear()
+	assert !walk_list_handle(handle, folder, 9999, mut remaining)
+	assert remaining.len == 0
+	C.CloseHandle(handle)
+	// An empty folder was listed, with nothing in it.
+	empty := join_path_single(folder, 'empty')
+	handle = walk_test_open(empty)
+	assert walk_list_handle(handle, empty, walk_info_first, mut remaining)
+	assert remaining.len == 0
+	C.CloseHandle(handle)
+	// A handle that can not be listed at all is no listed folder either.
+	assert !walk_list_handle(unsafe { nil }, folder, walk_info_first, mut remaining)
+	assert remaining.len == 0
+}
+
+// The listing by name is what a walk falls back to, so it must add what the listing through
+// the handle adds, in the same order.
+fn test_walk_list_by_name_adds_what_the_listing_through_the_handle_adds() {
+	folder := walk_test_tree('walk_list_by_name')!
+	defer {
+		walk_test_tree_remove(folder)
+	}
+	for i in 0 .. 40 {
+		write_file(join_path_single(folder, 'n${i:02}_${'y'.repeat(i)}.txt'), 'x')!
+	}
+	handle := walk_test_open(folder)
+	mut through_handle := []WalkPending{}
+	assert walk_list_handle(handle, folder, walk_info_first, mut through_handle)
+	C.CloseHandle(handle)
+	mut by_name := []WalkPending{}
+	assert walk_list_by_name(folder, mut by_name)
+	assert by_name.len == 43
+	assert walk_test_names(by_name) == walk_test_names(through_handle)
+	assert by_name.map(it.path) == through_handle.map(it.path)
+	// What can not be listed by name adds nothing, and says so.
+	mut none_added := []WalkPending{}
+	assert !walk_list_by_name(join_path_single(folder, 'missing'), mut none_added)
+	assert !walk_list_by_name(join_path_single(folder, 'file.txt'), mut none_added)
+	assert none_added.len == 0
+}
+
+// A folder whose listing through the handle is not offered, and one that does not say what it
+// is, are still folders: they are listed, and the walk gets every entry in the usual order.
+fn test_walk_list_lists_a_folder_that_fails_the_look_or_the_listing_through_its_handle() {
+	folder := walk_test_tree('walk_list_with')!
+	defer {
+		walk_test_tree_remove(folder)
+	}
+	mut usual := []WalkPending{}
+	assert walk_list(WalkPending{ path: folder, listed_as_dir: true }, mut usual) == .entered
+	assert usual.len == 3
+	// The listing through the handle is not offered: the folder is listed by name.
+	mut by_name := []WalkPending{}
+	assert walk_list_with(WalkPending{ path: folder, listed_as_dir: true }, mut by_name,
+		0, 9999) == .entered
+	assert walk_test_names(by_name) == walk_test_names(usual)
+	// Nothing says what the open folder is: it is listed all the same.
+	mut unknown := []WalkPending{}
+	assert walk_list_with(WalkPending{ path: folder, listed_as_dir: true }, mut unknown,
+		3, walk_info_first) == .entered
+	assert walk_test_names(unknown) == walk_test_names(usual)
+	// Both at once: nothing shows that it is a directory, and it is not looked up by name,
+	// which would follow a link.
+	mut both := []WalkPending{}
+	assert walk_list_with(WalkPending{ path: folder, listed_as_dir: true }, mut both,
+		3, 9999) == .other
+	assert both.len == 0
+	// A look that works still decides: a link is not entered whichever way it was asked, nor
+	// however it would be listed.
+	link := join_path_single(folder, 'link')
+	mut none_added := []WalkPending{}
+	for first_way in 0 .. 3 {
+		assert walk_list_with(WalkPending{ path: link, listed_as_dir: true }, mut none_added,
+			first_way, 9999) == .link, 'from way ${first_way}'
+	}
+	assert none_added.len == 0
+	// A link that does not say what it is in any way is listed through its own handle, which
+	// was opened without following it: that lists the link and not what it leads to.
+	assert walk_list_with(WalkPending{ path: link, listed_as_dir: true }, mut none_added,
+		3, walk_info_first) == .entered
+	assert none_added.len == 0
+	assert walk_list_with(WalkPending{ path: link, listed_as_dir: true }, mut none_added,
+		3, 9999) == .other
+	assert none_added.len == 0
+}
+
+// The listing by name opens a search handle of its own, which a walk that falls back to it
+// must close like the handle of the folder.
+fn test_a_listing_by_name_closes_its_search_handle() {
+	folder := walk_test_tree('walk_by_name_handles')!
+	defer {
+		walk_test_tree_remove(folder)
+	}
+	mut added := []WalkPending{}
+	pending := WalkPending{
+		path:          folder
+		listed_as_dir: true
+	}
+	assert walk_list_with(pending, mut added, 0, 9999) == .entered
+	before := open_handles()
+	rounds := 200
+	for _ in 0 .. rounds {
+		assert walk_list_with(pending, mut added, 0, 9999) == .entered
+	}
+	grown := open_handles() - before
+	assert grown < rounds / 2, 'the process holds ${grown} more handles after ${rounds} listings'
 }

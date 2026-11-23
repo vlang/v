@@ -956,7 +956,10 @@ fn impl_walk_ext(path string, ext string, mut out []string, opts WalkParams) {
 // differs between platforms and filesystems. For a walk in lexical order, see: `os.walk_dir`
 // On Windows, what an entry is comes from the listing of its directory. Only what was listed
 // as a directory is opened, without following a link, and what was opened is then asked what
-// it is and listed, so a directory that was replaced by a link is never entered. An entry that
+// it is and listed, so a directory that was replaced by a link is not entered. On a file system
+// that can not list a directory through what was opened, the directory is listed by its name
+// once it has said that it is no link, and is entered when it is replaced by a link right then,
+// as on other systems. An entry that
 // was listed as a file or as a link is passed to `f` and not entered, also when the callback
 // or another process has replaced it by a directory before the walk reaches it, and also when
 // its name ends in a dot or a space and a directory has that name without the ending.
@@ -1137,7 +1140,10 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // differs between platforms and filesystems. For a walk in lexical order, see: `os.walk_dir`
 // On Windows, what an entry is comes from the listing of its directory. Only what was listed
 // as a directory is opened, without following a link, and what was opened is then asked what
-// it is and listed, so a directory that was replaced by a link is never entered. An entry that
+// it is and listed, so a directory that was replaced by a link is not entered. On a file system
+// that can not list a directory through what was opened, the directory is listed by its name
+// once it has said that it is no link, and is entered when it is replaced by a link right then,
+// as on other systems. An entry that
 // was listed as a file or as a link is passed to `fcb` and not entered, also when the callback
 // or another process has replaced it by a directory before the walk reaches it, and also when
 // its name ends in a dot or a space and a directory has that name without the ending.
