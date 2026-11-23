@@ -449,18 +449,44 @@ fn (dir ToolCacheWipeDir) remove_folder(name string) ! {
 	}
 }
 
-// remove_tree removes `name` and, when it is a folder, all that is in it, as `os.rmdir_all` does.
-// A link is removed itself. A removal that fails is not tried again: the wipe holds the build locks
-// of the folder meanwhile (see `run_windows_cached_tool` for the one wait it needs).
+// remove_tree removes `name` and, when it is a folder, all that is in it. Every item is attempted,
+// and the first failure is returned afterwards, as `os.rmdir_all` does. A link is removed itself,
+// at any depth, and never followed. A name that is gone already counts as removed at any depth,
+// since another wipe can be at work in the same folder: `os.rmdir_all` fails on a file that went
+// after it listed the folder. A removal that fails is not tried again: the wipe holds the build
+// locks of the folder meanwhile (see `run_windows_cached_tool` for the one wait it needs).
 fn (dir ToolCacheWipeDir) remove_tree(name string) ! {
-	path := os.join_path(dir.path, name)
-	if os.is_link(path) || !os.is_dir(path) {
+	child := dir.open_folder(name) or {
+		if err.code() == tool_cache_wipe_gone {
+			return
+		}
+		// A file, a link, or whatever else is no folder goes as it is.
 		dir.remove_file(name) or { return error('${name}: ${err.msg()}') }
 		return
 	}
-	os.rmdir_all(path) or {
+	mut first_error := ''
+	inner_names := child.names() or {
+		first_error = '${name}: ${err.msg()}'
+		[]string{}
+	}
+	for inner in inner_names {
+		child.remove_tree(inner) or {
+			if first_error == '' {
+				first_error = '${name}${os.path_separator}${err.msg()}'
+			}
+		}
+	}
+	child.close()
+	dir.remove_folder(name) or {
+		if first_error == '' {
+			first_error = '${name}: ${err.msg()}'
+		}
+	}
+	if first_error != '' {
+		// A folder that another wipe removed meanwhile is removed, whatever failed in it here.
+		path := os.join_path(dir.path, name)
 		if os.exists(path) || os.is_link(path) {
-			return error('${name}: ${err.msg()}')
+			return error(first_error)
 		}
 	}
 }

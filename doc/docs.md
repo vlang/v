@@ -151,9 +151,10 @@ folder by then stays in the folder it opened, does not touch the new one, and sa
 folder that appears only after the wipe, opening that path, found a link there or nothing, is
 left as it is.
 
-Two wipes can run at the same time, and both succeed. Each reports what it did itself: a tool
-that one of them names as locked may be held by the other wipe, which then removes the entries
-the first one kept.
+Two wipes can run at the same time. Each reports what it did itself: a tool that one of them
+names as locked may be held by the other wipe, which then removes the entries the first one
+kept. Both succeed, except that on Windows one of them can now and then fail on a folder that the
+other is emptying at that moment, or has open; running the wipe again succeeds.
 
 `make` also warms the default test configuration's builtin module bundle, including
 `strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects

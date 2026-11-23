@@ -3369,7 +3369,9 @@ fn test_a_dry_run_changes_nothing_and_tells_what_a_real_run_removes() ! {
 	})!
 }
 
-// Several wipes at once all succeed: whatever another wipe removed first counts as removed.
+// Several wipes at once all succeed: whatever another wipe removed first counts as removed. On
+// Windows one of them can fail on a name that another one is removing at that moment, and the
+// wipe run again then succeeds.
 fn test_wipes_that_run_at_the_same_time_all_succeed() ! {
 	$if !linux && !windows {
 		// What a system answers about a folder that another process removed a moment ago differs
@@ -3422,9 +3424,30 @@ fn test_wipes_that_run_at_the_same_time_all_succeed() ! {
 				children << child
 			}
 			os.write_file(start_path, '')!
+			mut failures := []string{}
 			for mut child in children {
 				output, code := toolcache_test_finish(mut child, 2 * time.minute)
-				assert code == 0, 'round ${round}: ${output}'
+				if code != 0 {
+					failures << 'round ${round}: ${output}'
+				}
+			}
+			$if windows {
+				// On Windows a file or folder that one wipe is removing stays for a moment, and another
+				// wipe can fail on it (see the docs); the wipe run again succeeds. A name that is gone
+				// already never fails a wipe.
+				for failure in failures {
+					assert !failure.contains('No such file or directory'), failure
+				}
+				if failures.len > 0 {
+					mut again := ''
+					_ := wipe_output() or {
+						again = err.msg()
+						''
+					}
+					assert again == '', '${failures.join('\n')}\n--- the wipe run again:\n${again}'
+				}
+			} $else {
+				assert failures.len == 0, failures.join('\n')
 			}
 			// Every entry went under one wipe or another; the lock files they made stay.
 			for root in [tools, inner] {
@@ -3445,6 +3468,34 @@ fn test_wipes_that_run_at_the_same_time_all_succeed() ! {
 			assert os.ls(os.getenv('V3CACHE'))!.len == 0
 		}
 	})!
+}
+
+// On Windows a folder is removed item by item, and every item is attempted: one that cannot go (a
+// file held open, which Windows does not delete) keeps the folder and is named, but not the items
+// after it.
+fn test_a_folder_removal_on_windows_attempts_every_item() ! {
+	$if !windows {
+		return
+	}
+	directory := toolcache_test_dir('wipe_remove_tree_every_item')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	folder := os.join_path(directory, 'x')
+	os.mkdir_all(os.join_path(folder, 'b', 'c'))!
+	os.write_file(os.join_path(folder, 'b', 'c', 'file'), 'x')!
+	os.write_file(os.join_path(folder, 'z'), 'x')!
+	held_path := os.join_path(folder, 'a')
+	os.write_file(held_path, 'held')!
+	mut held := os.open(held_path)!
+	dir := open_tool_cache_wipe_dir(directory)!
+	mut failure := ''
+	dir.remove_tree('x') or { failure = err.msg() }
+	held.close()
+	assert failure.starts_with('x${os.path_separator}a: '), failure
+	assert os.is_file(held_path), failure
+	assert !os.exists(os.join_path(folder, 'b')), failure
+	assert !os.exists(os.join_path(folder, 'z')), failure
 }
 
 // A tool cache folder that is a link is removed as a link; what it points to is not touched.

@@ -2964,7 +2964,10 @@ fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, 
 			os.rmdir(path) or { problem = err.msg() }
 		}
 		// A folder that is still the one opened, still there and still empty could not be removed.
-		if problem != '' && dir.is_at(path) && (dir.names() or { [''] }).len == 0 {
+		// Whether it is there is asked last, and by itself: on Windows `is_at` holds for any path,
+		// and a folder that another wipe removed lists as empty.
+		if problem != '' && dir.is_at(path) && (dir.names() or { [''] }).len == 0
+			&& (os.exists(path) || os.is_link(path)) {
 			return error('v wipe-cache: could not remove ${label} folder ${path}: ${problem}')
 		}
 	}
