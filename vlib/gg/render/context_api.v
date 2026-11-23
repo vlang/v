@@ -2,6 +2,13 @@ module render
 
 import sokol.gfx
 
+// set_backface_culling controls whether the CPU rasterizer skips triangles
+// whose screen winding is the opposite of the configured face_winding.
+pub fn (ctx &Context) set_backface_culling(enabled bool) {
+	mut st := ctx.st
+	st.cull_backfaces = enabled
+}
+
 pub fn (ctx &Context) defaults() {
 	mut st := ctx.st
 	st.u = 0.0
@@ -329,12 +336,36 @@ pub fn (ctx &Context) load_identity() {
 
 pub fn (ctx &Context) load_matrix(m []f32) {
 	mut st := ctx.st
+	if m.len < 16 {
+		st.error = .invalid_matrix
+		return
+	}
 	st.matrix_stack[st.cur_matrix_mode.value][st.matrix_tos[st.cur_matrix_mode.value]] = mat4_from_array(m)
+	st.matrix_dirty = true
+}
+
+// load_mat4 replaces the current matrix with m.
+pub fn (ctx &Context) load_mat4(m Mat4) {
+	mut st := ctx.st
+	st.matrix_stack[st.cur_matrix_mode.value][st.matrix_tos[st.cur_matrix_mode.value]] = m
+	st.matrix_dirty = true
+}
+
+// mult_mat4 multiplies the current matrix by m.
+pub fn (ctx &Context) mult_mat4(m Mat4) {
+	mut st := ctx.st
+	idx := st.cur_matrix_mode.value
+	cur := st.matrix_stack[idx][st.matrix_tos[idx]]
+	st.matrix_stack[idx][st.matrix_tos[idx]] = mat4_mul(cur, m)
 	st.matrix_dirty = true
 }
 
 pub fn (ctx &Context) load_transpose_matrix(m []f32) {
 	mut st := ctx.st
+	if m.len < 16 {
+		st.error = .invalid_matrix
+		return
+	}
 	mm := mat4_from_array(m)
 	mut t := Mat4{}
 	for c in 0 .. 4 {
@@ -346,6 +377,10 @@ pub fn (ctx &Context) load_transpose_matrix(m []f32) {
 
 pub fn (ctx &Context) mult_matrix(m []f32) {
 	mut st := ctx.st
+	if m.len < 16 {
+		st.error = .invalid_matrix
+		return
+	}
 	mm := mat4_from_array(m)
 	cur := &st.matrix_stack[st.cur_matrix_mode.value][st.matrix_tos[st.cur_matrix_mode.value]]
 	tmp := mat4_mul(*cur, mm)
@@ -355,6 +390,10 @@ pub fn (ctx &Context) mult_matrix(m []f32) {
 
 pub fn (ctx &Context) mult_transpose_matrix(m []f32) {
 	mut st := ctx.st
+	if m.len < 16 {
+		st.error = .invalid_matrix
+		return
+	}
 	mm := mat4_from_array(m)
 	mut t := Mat4{}
 	for c in 0 .. 4 {
@@ -456,6 +495,14 @@ pub fn (ctx &Context) texture(img gfx.Image, smp gfx.Sampler) {
 	mut st := ctx.st
 	st.cur_img = img
 	st.cur_smp = smp
+	st.texturing_enabled = true
+}
+
+// set_image_id selects a texture by id without requiring GPU resources.
+// It is used by the headless CPU renderer, where images have no sokol handle.
+pub fn (ctx &Context) set_image_id(id u32) {
+	mut st := ctx.st
+	st.cur_img = gfx.Image{ id: id }
 	st.texturing_enabled = true
 }
 

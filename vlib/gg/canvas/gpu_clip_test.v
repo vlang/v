@@ -16,6 +16,22 @@ fn add_element(mut c ClipStack, e RawElement) {
 	c.add_element(e) or { panic(err) }
 }
 
+fn test_paint_uniform_fingerprint_matches_equality() {
+	// The hash-bucket index requires only one direction: uniforms that
+	// same_paint_uniforms calls equal must share a fingerprint. Collisions
+	// for unequal uniforms are safe because equality is rechecked.
+	base := PaintUniforms{ color: Color4f{1, 0, 0, 1} }
+	same := PaintUniforms{ color: Color4f{1, 0, 0, 1} }
+	other := PaintUniforms{ color: Color4f{0, 1, 0, 1} }
+	assert same_paint_uniforms(base, same)
+	assert paint_uniform_fingerprint(base) == paint_uniform_fingerprint(same)
+	assert !same_paint_uniforms(base, other)
+	assert paint_uniform_fingerprint(base) != paint_uniform_fingerprint(other)
+	clipped := PaintUniforms{ color: Color4f{1, 0, 0, 1}, clipped: true }
+	assert !same_paint_uniforms(base, clipped)
+	assert paint_uniform_fingerprint(base) != paint_uniform_fingerprint(clipped)
+}
+
 fn test_difference_elements_combine_like_graphite_save_records() {
 	mut c := new_clip_stack(64, 48)
 	// A rect covering the device empties the clip.

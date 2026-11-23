@@ -142,9 +142,12 @@ pub:
 	resized_fn FNEvent   = unsafe { nil } // Called once when the window has changed its size.
 	scroll_fn  FNEvent   = unsafe { nil } // Called while the user is scrolling. The direction of scrolling is indicated by either 1 or -1.
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen     bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
-	scale          f32 = 1.0
-	sample_count   int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
+	fullscreen   bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
+	scale        f32 = 1.0
+	sample_count int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
+	// depth enables a depth buffer for the default framebuffer. Required by 3D
+	// drawing (ctx.begin_3d/ctx.end_3d); 2D apps should leave it false.
+	depth          bool
 	texture_filter TextureFilter = .linear // default texture filter for newly created images; use `.nearest` for pixel art scaling
 	swap_interval  int           = 1       // 1 = 60fps, 2 = 30fps etc. Honored on Windows, macOS, Linux, iOS, and HTML5; Android support is not implemented yet.
 	// ved needs this
@@ -177,9 +180,12 @@ pub mut:
 	// font draws the text atlas: the same alpha blend as `alpha`, but with the
 	// font shader that reads the r8 atlas's red channel as coverage.
 	font render.Pipeline
+	// depth_alpha is the textured alpha pipeline with depth testing enabled,
+	// used by textured 3D meshes and billboards.
+	depth_alpha render.Pipeline
 }
 
-fn (mut container PipelineContainer) init_pipeline(r &render.Context) {
+fn (mut container PipelineContainer) init_pipeline(r &render.Context, depth bool) {
 	// FIXME(FireRedz): this looks kinda funny, find a better way to initialize pipeline.
 
 	// Alpha
@@ -250,6 +256,14 @@ fn (mut container PipelineContainer) init_pipeline(r &render.Context) {
 			}
 		}
 		container.font = r.make_pipeline_with_shader(font_pipdesc, render.make_font_shader())
+		if depth {
+			mut depth_alpha_desc := alpha_pipdesc
+			depth_alpha_desc.label = c'depth-alpha-pipeline'
+			depth_alpha_desc.depth.compare = .less_equal
+			depth_alpha_desc.depth.write_enabled = true
+			depth_alpha_desc.cull_mode = .back
+			container.depth_alpha = r.make_pipeline(depth_alpha_desc)
+		}
 	}
 }
 
@@ -257,6 +271,9 @@ fn (mut container PipelineContainer) init_pipeline(r &render.Context) {
 pub struct Context {
 mut:
 	render_text bool = true
+	// owned copy of the window title passed to sokol; freed in gg_cleanup_fn
+	// (sokol itself only copies the string into a fixed buffer)
+	window_title_c &char = unsafe { nil }
 	// a cache with all images created by the user. used for sokol image init and to save space
 	// (so that the user can store image ids, not entire Image objects)
 	image_cache                 []Image
@@ -303,6 +320,15 @@ pub mut:
 	// *before* the current event was different
 	fps         FPSConfig
 	has_started bool
+	// Stable ids for images used by the headless CPU renderer. GPU image ids
+	// are all zero there, so they cannot key the CPU rasterizer's cache.
+	cpu_image_ids  map[string]int
+	cpu_image_next int = 1
+	// Camera stored by set_camera(), used by begin_3d() and all 3D helpers
+	// that need a view direction (fog, billboards, picking).
+	camera Camera3D
+	// Optional shadow map applied while shading material meshes.
+	shadow_map ?&ShadowMap3D = none
 }
 
 fn gg_init_sokol_window(user_data voidptr) {
@@ -326,14 +352,19 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 	*/
 	gfx.setup(&desc)
-	ctx.r = render.new_context(render.Desc{
+	mut render_desc := render.Desc{
 		max_vertices: 1 << 17
 		max_commands: 1 << 15
 		face_winding: .ccw
 		// Pipelines have to match the window framebuffer's sample count, or
 		// sg_apply_pipeline rejects every draw of the default pass.
 		sample_count: if ctx.config.sample_count > 0 { ctx.config.sample_count } else { 1 }
-	})
+	}
+	if ctx.config.depth {
+		render_desc.depth_format = sapp.glue_swapchain().depth_format
+		render_desc.depth_test = true
+	}
+	ctx.r = render.new_context(render_desc)
 	ctx.r.defaults()
 	ctx.set_scale()
 	if !ctx.config.resizable {
@@ -382,7 +413,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 
 	// Pipeline
 	ctx.pipeline = &PipelineContainer{}
-	ctx.pipeline.init_pipeline(ctx.r)
+	ctx.pipeline.init_pipeline(ctx.r, ctx.config.depth)
 
 	ctx.timer = time.new_stopwatch()
 	ctx.update_timer = time.new_stopwatch()
@@ -544,7 +575,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	ctx.scroll_y = int(e.scroll_y)
 	ctx.key_modifiers = unsafe { Modifier(e.modifiers) }
 	ctx.key_repeat = e.key_repeat
-	if e.typ in [.key_down, .key_up] {
+	if e.typ == .key_down || e.typ == .key_up {
 		key_idx := int(e.key_code) % key_code_max
 		prev := ctx.pressed_keys[key_idx]
 		next := e.typ == .key_down
@@ -662,6 +693,10 @@ fn gg_cleanup_fn(user_data voidptr) {
 	}
 	gfx.shutdown()
 	gg_release_gfx_render_owner(.legacy_context, user_data)
+	if ctx.window_title_c != unsafe { nil } {
+		unsafe { C.free(ctx.window_title_c) }
+		ctx.window_title_c = unsafe { nil }
+	}
 }
 
 fn gg_fail_fn(msg &char, user_data voidptr) {
@@ -688,7 +723,10 @@ pub fn start(cfg Config) {
 
 // new_context returns an initialized `Context` allocated on the heap.
 pub fn new_context(cfg Config) &Context {
+	window_title_c := unsafe { C.strdup(&char(cfg.window_title.str)) }
 	mut ctx := &Context{
+		camera:           Camera3D{}
+		window_title_c:   window_title_c
 		user_data:        cfg.user_data
 		width:            cfg.width
 		height:           cfg.height
@@ -702,7 +740,7 @@ pub fn new_context(cfg Config) &Context {
 			event_userdata_cb:            gg_event_fn
 			// fail_userdata_cb: gg_fail_fn
 			cleanup_userdata_cb:          gg_cleanup_fn
-			window_title:                 &char(cfg.window_title.str)
+			window_title:                 window_title_c
 			icon:                         cfg.icon
 			html5:                        sapp.Html5Desc{
 				canvas_selector: &char(cfg.html5_canvas_name.str)
@@ -846,6 +884,8 @@ pub fn (mut ctx Context) refresh_ui() {
 // begin prepares the context for drawing.
 pub fn (ctx &Context) begin() {
 	ctx.r.defaults()
+	// A forgotten end_3d() must not leak depth testing into the next 2D frame.
+	ctx.r.set_depth_test(false)
 	ctx.r.matrix_mode_projection()
 	ctx.r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 	if ctx.bg_color.a < 255 && ctx.last_bg_overlay_frame != ctx.frame {
@@ -964,7 +1004,7 @@ pub fn (ctx &Context) end(options EndOptions) {
 }
 
 fn (mut ctx Context) prepare_end_pass(options EndOptions, swapchain gfx.Swapchain) {
-	action := match options.how {
+	mut action := match options.how {
 		.clear {
 			if ctx.bg_color.a < 255 {
 				if ctx.translucent_bg_seed_pending {
@@ -979,6 +1019,24 @@ fn (mut ctx Context) prepare_end_pass(options EndOptions, swapchain gfx.Swapchai
 		}
 		.passthru {
 			dontcare_pass
+		}
+	}
+	if ctx.config.depth {
+		// A clearing pass starts from the far plane and stores depth, so a
+		// later passthru pass can load it and keep occluding correctly.
+		// Colour actions are unchanged by this PR (passthru keeps its
+		// existing dontcare action).
+		action.depth = if options.how == .passthru {
+			gfx.DepthAttachmentAction{
+				load_action:  .load
+				store_action: .store
+			}
+		} else {
+			gfx.DepthAttachmentAction{
+				load_action:  .clear
+				store_action: .store
+				clear_value:  1.0
+			}
 		}
 	}
 	ctx.frame_pass = gfx.Pass{ action: action, swapchain: swapchain }
@@ -1010,6 +1068,9 @@ pub fn (ctx &Context) show_fps() {
 		return
 	}
 	frame_duration := sapp.frame_duration()
+	if frame_duration <= 0 {
+		return
+	}
 	ctx.r.defaults()
 	ctx.r.matrix_mode_projection()
 	ctx.r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
@@ -1038,18 +1099,17 @@ fn (mut ctx Context) set_scale() {
 		h := ctx.config.height
 		dw := sapp.width()
 		dh := sapp.height()
-		if dw <= dh {
-			if w <= 0 {
-				s = 1.0
-			} else {
-				s = f32(dw) / w
-			}
-		} else {
-			if h <= 0 {
-				s = 1.0
-			} else {
-				s = f32(dh) / h
-			}
+		mut sx := sapp.dpi_scale()
+		mut sy := sapp.dpi_scale()
+		if w > 0 {
+			sx = f32(dw) / f32(w)
+		}
+		if h > 0 {
+			sy = f32(dh) / f32(h)
+		}
+		s = if sx < sy { sx } else { sy }
+		if s < 0.1 {
+			s = 1.0
 		}
 	}
 	// Note: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
@@ -1191,7 +1251,7 @@ fn (mut ctx Context) memory_trace_frame() {
 	frame_tag_size := 61 // uneven, and easy to spot in heaptrack histograms as well
 	unsafe {
 		frame_tag := &u8(vcalloc(frame_tag_size))
-		C.snprintf(frame_tag, frame_tag_size, c'@@ gg_memory_trace_frame: %06d ', ctx.frame)
+		C.snprintf(frame_tag, frame_tag_size, c'@@ gg_memory_trace_frame: %06llu ', u64(ctx.frame))
 		frame_tag[frame_tag_size - 2] = `@`
 		frame_tag[frame_tag_size - 1] = `@`
 		free(frame_tag)

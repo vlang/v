@@ -1266,6 +1266,9 @@ pub fn (mut s GpuSurface) flush() ! {
 	mut instances := []u8{}
 	mut offsets := []int{cap: keys.len}
 	mut batch_uniforms := [][]PaintUniforms{len: batches.len - 1}
+	// Bucket candidate slots by paint fingerprint so the common case does not
+	// scan every uniform in a batch. same_paint_uniforms still decides equality.
+	mut uniform_slots := []map[u64][]int{len: batches.len - 1}
 	mut storage_uniforms := []f32{}
 	for b in 0 .. batches.len - 1 {
 		first_draw := s.draws[keys[batches[b]].draw]
@@ -1287,10 +1290,13 @@ pub fn (mut s GpuSurface) flush() ! {
 			start := instances.len
 			instances << draw.instance
 			mut slot := -1
-			for j, u in batch_uniforms[b] {
-				if same_paint_uniforms(u, draw.uniforms) {
-					slot = j
-					break
+			fp := paint_uniform_fingerprint(draw.uniforms)
+			if candidates := uniform_slots[b][fp] {
+				for j in candidates {
+					if same_paint_uniforms(batch_uniforms[b][j], draw.uniforms) {
+						slot = j
+						break
+					}
 				}
 			}
 			if slot < 0 {
@@ -1301,6 +1307,7 @@ pub fn (mut s GpuSurface) flush() ! {
 					return error('gg.canvas: batch exceeds the shader uniform block')
 				}
 				batch_uniforms[b] << draw.uniforms
+				uniform_slots[b][fp] << slot
 			}
 			stride := instance_stride(draw.step)
 			ssbo_offset := match draw.step {

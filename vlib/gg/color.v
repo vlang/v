@@ -136,6 +136,9 @@ pub fn hex(color u32) Color {
 // frgb builds a Color instance from the given floating point values (between 0.0 and 1.0) r, g, b
 @[inline]
 pub fn frgb[T](r T, g T, b T) Color {
+	$if T !is $float {
+		$compile_error('frgb requires a float type')
+	}
 	return frgba(r, g, b, 1.0)
 }
 
@@ -160,6 +163,9 @@ fn clamp01[T](x T) f64 {
 // Inputs outside [0.0, 1.0] are clamped to the nearest bound, and NaN is treated as 0.0.
 @[inline]
 pub fn frgba[T](r T, g T, b T, a T) Color {
+	$if T !is $float {
+		$compile_error('frgba requires a float type')
+	}
 	return Color{
 		r: u8(clamp01(r) * 255.0)
 		g: u8(clamp01(g) * 255.0)
@@ -313,7 +319,8 @@ pub fn (c Color) str() string {
 	return 'Color{${c.r}, ${c.g}, ${c.b}, ${c.a}}'
 }
 
-// rgba8 converts a color value to an 32bit int in the RGBA8 order.
+// rgba8 converts a color value to a 32-bit int in the RGBA8 order.
+// The result is returned as i32 for C interop; values with the high bit set are negative.
 // see https://developer.apple.com/documentation/coreimage/ciformat
 // Note: the result keeps the raw bit pattern in a signed i32, so colors with
 // the high bit set (e.g. white) come back negative; convert with u32(x)
