@@ -194,6 +194,7 @@ Negative durations retain a single minus sign even at the minimum `i64` value:
 It renders the maximum `i64` duration as `2562047:47:16`, including `time.infinite`.
 The `time.infinite` constant still tells APIs that support it to wait forever; displaying it
 uses the same duration format as other finite `i64` values.
+`Duration.debug()` gives a signed day-to-nanosecond breakdown over the full `i64` range.
 
 Another very useful feature of the `time` module is the stop watch,
 for when you want to measure short time periods, elapsed while you
