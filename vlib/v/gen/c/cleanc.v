@@ -1297,6 +1297,9 @@ mut:
 	emitted_fn_ptr_typedefs         map[string]bool
 	c_extern_refs                   map[string]bool
 	c_extern_refs_ready             bool
+	// Prelude facts collected alongside C references, before body generation.
+	fn_prelude_scans       map[int]FnPreludeScan
+	fn_prelude_scans_ready bool
 	// Set on forks that read the master's complete, frozen c_extern_refs instead
 	// of a copy; they have nothing of their own to merge back.
 	c_extern_refs_shared            bool
@@ -4329,6 +4332,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.emitted_fn_ptr_typedefs.clear()
 	g.c_extern_refs.clear()
 	g.c_extern_refs_ready = false
+	g.fn_prelude_scans.clear()
+	g.fn_prelude_scans_ready = false
 	g.parallel_prepared = false
 	g.scoped_fn_items_scope = unsafe { nil }
 	g.scoped_fn_output_path = ''

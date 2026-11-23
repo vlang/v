@@ -5746,6 +5746,9 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	g.goto_label_count = 0
 	mut prelude_scan := if skip_prelude_scan {
 		FnPreludeScan{}
+	} else if g.fn_prelude_scans_ready && node_id != flat.empty_node {
+		// Every selected function was scanned; only nonempty results are stored.
+		g.fn_prelude_scans[int(node_id)] or { FnPreludeScan{} }
 	} else {
 		g.collect_fn_prelude_scan(node)
 	}
@@ -17880,66 +17883,40 @@ fn (mut g FlatGen) c_extern_referenced_symbols() map[string]bool {
 	if g.c_extern_refs_ready {
 		return g.c_extern_refs
 	}
-	mut refs := map[string]bool{}
+	mut scan := FnBodyScan{ collect_refs: true }
 	for item in g.ensure_fn_gen_items() {
-		g.collect_c_extern_referenced_symbols_from_node(item.node_id, mut refs)
-	}
-	if g.test_files.len == 0 && !g.has_entry_main() {
-		for stmt in g.top_level_stmts() {
-			g.collect_c_extern_referenced_symbols_from_node(stmt.id, mut refs)
+		idx := int(item.node_id)
+		if idx < 0 || idx >= g.a.nodes.len {
+			continue
+		}
+		// Retain prelude facts from the reference walk for body generation.
+		scan.prelude = FnPreludeScan{}
+		g.scan_fn_body(g.a.nodes[idx], mut scan)
+		if scan.prelude.defer_ids.len > 0 || scan.prelude.goto_label_lock_scopes.len > 0
+			|| scan.prelude.c_fn_calls.len > 0 {
+			g.fn_prelude_scans[idx] = scan.prelude
 		}
 	}
-	g.c_extern_refs = refs.move()
+	if g.test_files.len == 0 && !g.has_entry_main() {
+		scan.collect_prelude = false
+		for stmt in g.top_level_stmts() {
+			g.collect_body_scan_from(stmt.id, mut scan, false)
+		}
+	}
+	g.c_extern_refs = scan.c_extern_refs.move()
+	g.fn_prelude_scans_ready = true
 	g.c_extern_refs_ready = true
 	return g.c_extern_refs
 }
 
-@[inline]
 fn (g &FlatGen) collect_c_extern_referenced_symbols_from_node(id flat.NodeId, mut refs map[string]bool) {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return
+	mut scan := FnBodyScan{
+		c_extern_refs:   refs
+		collect_refs:    true
+		collect_prelude: false
 	}
-	// Symbol collection does not grow the AST, so recursive calls can borrow nodes.
-	node := unsafe { &g.a.nodes[int(id)] }
-	g.collect_c_extern_referenced_symbols_in(node, mut refs)
-}
-
-@[direct_array_access]
-fn (g &FlatGen) collect_c_extern_referenced_symbols_in(node &flat.Node, mut refs map[string]bool) {
-	if node.kind == .ident {
-		if node.value.len > 1 && node.value[0] == `C` && node.value[1] == `.` {
-			g.collect_c_extern_ref_from_node_into(node, mut refs)
-		}
-	} else if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
-		g.collect_c_extern_ref_from_node_into(node, mut refs)
-	}
-	if node.children_count <= 0 {
-		return
-	}
-	// Visit the children that `g.a.child` would return; out-of-range slots are empty there.
-	// The walk never grows the AST, so its arrays can be read through local headers.
-	children := g.a.children
-	nodes := g.a.nodes
-	mut start := int(node.children_start)
-	mut end := start + int(node.children_count)
-	if start < 0 {
-		start = 0
-	}
-	if end > children.len {
-		end = children.len
-	}
-	for i in start .. end {
-		child_id := int(children[i])
-		if child_id < 0 || child_id >= nodes.len {
-			continue
-		}
-		child := unsafe { &nodes[child_id] }
-		// A leaf that is not an identifier can neither name C nor reach a node that does.
-		if child.children_count <= 0 && child.kind != .ident {
-			continue
-		}
-		g.collect_c_extern_referenced_symbols_in(child, mut refs)
-	}
+	g.collect_body_scan_from(id, mut scan, false)
+	refs = scan.c_extern_refs.move()
 }
 
 fn (mut g FlatGen) collect_c_extern_ref_from_node(node &flat.Node) {

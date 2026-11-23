@@ -102,13 +102,58 @@ fn test_prelude_scan_preserves_nested_scope_boundaries_and_invalid_id_guards() {
 	assert scan.c_fn_calls['outer_call']
 	assert scan.c_fn_calls['selector_call']
 	assert scan.c_fn_calls['implicit_call']
+	mut combined := FnBodyScan{ collect_refs: true }
+	g.scan_fn_body(a.nodes[int(root)], mut combined)
+	assert combined.prelude == scan
+	mut standalone_refs := map[string]bool{}
+	g.collect_c_extern_referenced_symbols_from_node(root, mut standalone_refs)
+	assert combined.c_extern_refs == standalone_refs
 	assert a.nodes == nodes_before
 	assert a.children == children_before
-	mut empty_scan := new_fn_prelude_scan()
-	g.collect_prelude_scan_from(flat.NodeId(-1), mut empty_scan, true)
-	g.collect_prelude_scan_from(flat.NodeId(a.nodes.len), mut empty_scan, true)
-	assert empty_scan.defer_ids.len == 0
-	assert empty_scan.c_fn_calls.len == 0
+	mut empty_scan := FnBodyScan{}
+	g.collect_body_scan_from(flat.NodeId(-1), mut empty_scan, true)
+	g.collect_body_scan_from(flat.NodeId(a.nodes.len), mut empty_scan, true)
+	assert empty_scan.prelude.defer_ids.len == 0
+	assert empty_scan.prelude.c_fn_calls.len == 0
+}
+
+fn test_combined_scan_keeps_c_values_in_nested_and_deferred_bodies() {
+	mut a := flat.FlatAst.new()
+	outer_callee := a.add_val(.ident, 'C.outer_call')
+	outer_call := readonly_scan_test_node(mut a, .call, '', [outer_callee])
+	nested_callee := a.add_val(.ident, 'C.nested_call')
+	nested_call := readonly_scan_test_node(mut a, .call, '', [nested_callee])
+	callback := a.add_val(.ident, 'C.callback')
+	nested_defer := readonly_scan_test_node(mut a, .defer_stmt, 'function', [nested_call])
+	nested_fn := readonly_scan_test_node(mut a, .fn_literal, '', [callback, nested_defer])
+	c_namespace := a.add_val(.ident, 'C')
+	selector := readonly_scan_test_node(mut a, .selector, 'deferred_call', [c_namespace])
+	deferred_call := readonly_scan_test_node(mut a, .call, '', [selector])
+	deferred := readonly_scan_test_node(mut a, .defer_stmt, 'function', [deferred_call])
+	label := a.add_val(.label_stmt, 'locked')
+	lock_node := readonly_scan_test_node(mut a, .lock_expr, '', [label, outer_call])
+	root := readonly_scan_test_node(mut a, .fn_decl, 'main', [lock_node, nested_fn, deferred])
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	mut body_scan := FnBodyScan{ collect_refs: true }
+	g.scan_fn_body(a.nodes[int(root)], mut body_scan)
+	scan := body_scan.prelude
+	assert scan.defer_ids == [deferred]
+	assert scan.goto_label_lock_scopes['locked'] == [int(lock_node)]
+	assert scan.lock_scopes.len == 0
+	assert scan.c_fn_calls == {
+		'outer_call': true
+	}
+	for name in ['outer_call', 'nested_call', 'callback', 'deferred_call'] {
+		assert body_scan.c_extern_refs[name]
+		assert body_scan.c_extern_refs['C.${name}']
+	}
+	mut standalone_refs := map[string]bool{}
+	g.collect_c_extern_referenced_symbols_from_node(root, mut standalone_refs)
+	assert body_scan.c_extern_refs == standalone_refs
+	assert scan == g.collect_fn_prelude_scan(a.nodes[int(root)])
 }
 
 fn test_serial_gen_info_scan_preserves_metadata_and_incremental_counts() {

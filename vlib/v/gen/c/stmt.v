@@ -717,104 +717,127 @@ mut:
 	c_fn_calls             map[string]bool
 }
 
-fn new_fn_prelude_scan() FnPreludeScan {
-	return FnPreludeScan{
-		defer_ids:              []flat.NodeId{}
-		lock_scopes:            []int{}
-		goto_label_lock_scopes: map[string][]int{}
-		c_fn_calls:             map[string]bool{}
-	}
+// FnBodyScan keeps the optional C-reference collection in the same read-only walk.
+struct FnBodyScan {
+mut:
+	prelude         FnPreludeScan
+	c_extern_refs   map[string]bool
+	collect_refs    bool
+	collect_prelude bool = true
 }
 
 fn (g &FlatGen) collect_fn_prelude_scan(node flat.Node) FnPreludeScan {
-	mut scan := new_fn_prelude_scan()
-	start := node.children_start
-	end := start + int(node.children_count)
-	if start >= 0 && end <= g.a.children.len {
-		for i in start .. end {
-			// The child range is checked above; avoid per-child bounds checks in this hot walk.
-			g.collect_prelude_scan_from(unsafe { g.a.children[i] }, mut scan, true)
-		}
-	}
-	return scan
+	mut scan := FnBodyScan{}
+	g.scan_fn_body(node, mut scan)
+	return scan.prelude
+}
+
+fn (g &FlatGen) scan_fn_body(node flat.Node, mut scan FnBodyScan) {
+	g.collect_body_scan_from_children(&node, mut scan, true)
 }
 
 fn (g &FlatGen) collect_top_level_prelude_scan(stmts []TopLevelStmt) FnPreludeScan {
-	mut scan := new_fn_prelude_scan()
+	mut scan := FnBodyScan{}
 	for stmt in stmts {
-		g.collect_prelude_scan_from(stmt.id, mut scan, true)
+		g.collect_body_scan_from(stmt.id, mut scan, true)
 	}
-	return scan
+	return scan.prelude
 }
 
 @[inline]
-fn (g &FlatGen) collect_prelude_scan_from(id flat.NodeId, mut scan FnPreludeScan, collect_defers bool) {
+fn (g &FlatGen) collect_body_scan_from(id flat.NodeId, mut scan FnBodyScan, collect_defers bool) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return
 	}
-	// This traversal only records prelude facts and never grows the AST.
-	node := unsafe { &g.a.nodes[int(id)] }
-	if node.children_count == 0 && node.kind !in [.defer_stmt, .lock_expr, .label_stmt] {
-		return
-	}
-	g.collect_prelude_scan_node(id, node, mut scan, collect_defers)
+	// This traversal only records facts and never grows the AST.
+	g.collect_body_scan_node(id, unsafe { &g.a.nodes[int(id)] }, mut scan, collect_defers)
 }
 
 @[direct_array_access]
-fn (g &FlatGen) collect_prelude_scan_node(id flat.NodeId, node &flat.Node, mut scan FnPreludeScan, collect_defers bool) {
+fn (g &FlatGen) collect_body_scan_node(id flat.NodeId, node &flat.Node, mut scan FnBodyScan, collect_defers bool) {
+	if scan.collect_refs && node.kind in [.ident, .selector] {
+		g.collect_c_extern_ref_from_node_into(node, mut scan.c_extern_refs)
+	}
+	if node.children_count == 0 && node.kind !in [.defer_stmt, .lock_expr, .label_stmt] {
+		return
+	}
 	mut child_collect_defers := collect_defers
-	if collect_defers
-		&& (node.kind == .fn_decl || node.kind == .c_fn_decl || node.kind == .fn_literal) {
-		child_collect_defers = false
-	}
-	if collect_defers && node.kind == .defer_stmt && node.value == 'function' {
-		scan.defer_ids << id
-		child_collect_defers = false
-	}
 	mut pushed_lock := false
-	if node.kind == .lock_expr {
-		scan.lock_scopes << int(id)
-		pushed_lock = true
-	}
-	if node.kind == .label_stmt && node.value.len > 0 {
-		scan.goto_label_lock_scopes[node.value] = scan.lock_scopes.clone()
-	}
-	if collect_defers && node.kind == .call && node.children_count > 0 {
-		callee := g.a.child_node(node, 0)
-		if callee.kind == .ident && callee.value.starts_with('C.') {
-			scan.c_fn_calls[g.cname(callee.value)] = true
-		} else if callee.kind == .selector && callee.children_count > 0 {
-			base := g.a.child_node(callee, 0)
-			if (base.kind == .ident && base.value == 'C')
-				|| (base.kind == .empty && ('C.${callee.value}' in g.tc.fn_ret_types
-					|| 'C.${callee.value}' in g.tc.fn_param_types)) {
-				scan.c_fn_calls[g.cname('C.${callee.value}')] = true
+	if scan.collect_prelude {
+		if collect_defers && node.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
+			child_collect_defers = false
+		}
+		if collect_defers && node.kind == .defer_stmt && node.value == 'function' {
+			scan.prelude.defer_ids << id
+			child_collect_defers = false
+		}
+		if node.kind == .lock_expr {
+			scan.prelude.lock_scopes << int(id)
+			pushed_lock = true
+		}
+		if node.kind == .label_stmt && node.value.len > 0 {
+			scan.prelude.goto_label_lock_scopes[node.value] = scan.prelude.lock_scopes.clone()
+		}
+		if collect_defers && node.kind == .call && node.children_count > 0 {
+			callee := g.a.child_node(node, 0)
+			if callee.kind == .ident && callee.value.starts_with('C.') {
+				scan.prelude.c_fn_calls[g.cname(callee.value)] = true
+			} else if callee.kind == .selector && callee.children_count > 0 {
+				base := g.a.child_node(callee, 0)
+				if (base.kind == .ident && base.value == 'C')
+					|| (base.kind == .empty && ('C.${callee.value}' in g.tc.fn_ret_types
+						|| 'C.${callee.value}' in g.tc.fn_param_types)) {
+					scan.prelude.c_fn_calls[g.cname('C.${callee.value}')] = true
+				}
 			}
 		}
 	}
-	start := node.children_start
-	end := start + int(node.children_count)
-	// The walk never grows the AST, so its arrays can be read through local headers
-	// instead of being reloaded through `g.a` after every scan update.
-	children := g.a.children
-	if start >= 0 && end <= children.len {
-		nodes := g.a.nodes
-		for i in start .. end {
-			// The child range is checked above; avoid per-child bounds checks in this hot walk.
-			child_id := int(children[i])
-			if child_id < 0 || child_id >= nodes.len {
-				continue
-			}
-			child := unsafe { &nodes[child_id] }
-			if child.children_count == 0
-				&& child.kind !in [.defer_stmt, .lock_expr, .label_stmt] {
-				continue
-			}
-			g.collect_prelude_scan_node(flat.NodeId(child_id), child, mut scan, child_collect_defers)
-		}
-	}
+	g.collect_body_scan_from_children(node, mut scan, child_collect_defers)
 	if pushed_lock {
-		scan.lock_scopes.delete_last()
+		scan.prelude.lock_scopes.delete_last()
+	}
+}
+
+@[direct_array_access; inline]
+fn (g &FlatGen) collect_body_scan_from_children(node &flat.Node, mut scan FnBodyScan, collect_defers bool) {
+	// Read local array headers: the walk does not grow the AST.
+	children := g.a.children
+	nodes := g.a.nodes
+	mut start := int(node.children_start)
+	mut end := start + int(node.children_count)
+	valid_range := start >= 0 && end <= children.len
+	if !valid_range && !scan.collect_refs {
+		return
+	}
+	// Prelude facts require a complete range; C references use its valid slots.
+	parent_collect_prelude := scan.collect_prelude
+	if !valid_range {
+		scan.collect_prelude = false
+		if start < 0 {
+			start = 0
+		}
+		if end > children.len {
+			end = children.len
+		}
+	}
+	for i in start .. end {
+		child_id := int(children[i])
+		if child_id < 0 || child_id >= nodes.len {
+			continue
+		}
+		child := unsafe { &nodes[child_id] }
+		if child.children_count == 0 && child.kind !in [.defer_stmt, .lock_expr, .label_stmt] {
+			// Leaf C names contribute references without another recursive call.
+			if scan.collect_refs && child.kind == .ident && child.value.len > 1
+				&& child.value[0] == `C` && child.value[1] == `.` {
+				g.collect_c_extern_ref_from_node_into(child, mut scan.c_extern_refs)
+			}
+			continue
+		}
+		g.collect_body_scan_node(flat.NodeId(child_id), child, mut scan, collect_defers)
+	}
+	if !valid_range {
+		scan.collect_prelude = parent_collect_prelude
 	}
 }
 

@@ -1000,20 +1000,52 @@ fn test_scoped_c_extern_preseed_retains_selected_body_refs() {
 		children_start: i32(selector_start)
 		children_count: 1
 	})
+	call := parallel_worker_test_node(mut g.a, .call, '', [selector])
+	label := g.a.add_val(.label_stmt, 'locked')
+	lock_node := parallel_worker_test_node(mut g.a, .lock_expr, '', [label, call])
+	deferred := parallel_worker_test_node(mut g.a, .defer_stmt, 'function', [call])
 	body_start := g.a.children.len
-	g.a.children << selector
+	g.a.children << lock_node
+	g.a.children << deferred
 	body := g.a.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          'main'
 		children_start: i32(body_start)
-		children_count: 1
+		children_count: 2
 	})
-	g.fn_gen_items = [FlatFnGenItem{ node_id: body, c_name: 'main__main' }]
+	empty_fn := g.a.add_val(.fn_decl, 'empty')
+	g.fn_gen_items = [FlatFnGenItem{ node_id: body, c_name: 'main__main' },
+		FlatFnGenItem{ node_id: empty_fn, c_name: 'main__empty' }]
 	g.preseed_c_extern_fn_ptr_types_scoped()
 	assert g.c_extern_refs_ready
 	assert g.c_extern_refs['C.scoped_symbol']
 	assert g.c_extern_refs['scoped_symbol']
 	assert g.c_extern_referenced_symbols() == g.c_extern_refs
+	assert int(body) in g.fn_prelude_scans
+	assert int(empty_fn) !in g.fn_prelude_scans
+	assert g.fn_prelude_scans_ready
+	assert g.fn_prelude_scans[int(body)].defer_ids == [deferred]
+	assert g.fn_prelude_scans[int(body)].c_fn_calls == {
+		'scoped_symbol': true
+	}
+	assert g.fn_prelude_scans[int(body)].goto_label_lock_scopes['locked'] == [int(lock_node)]
+	assert g.fn_prelude_scans[int(body)] == g.collect_fn_prelude_scan(g.a.node(body))
+	worker := g.new_parallel_worker(1)
+	assert worker.fn_prelude_scans_ready
+	assert worker.fn_prelude_scans[int(body)] == g.fn_prelude_scans[int(body)]
+}
+
+fn parallel_worker_test_node(mut a flat.FlatAst, kind flat.NodeKind, value string, children []flat.NodeId) flat.NodeId {
+	start := a.begin_children()
+	for child in children {
+		a.add_child(child)
+	}
+	return a.add_node(flat.Node{
+		kind:           kind
+		value:          value
+		children_start: i32(start)
+		children_count: flat.child_count(children.len)
+	})
 }
 
 fn test_parallel_workers_preserve_global_shared_storage_presence() {

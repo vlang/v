@@ -3845,6 +3845,18 @@ fn (mut g FlatGen) publish_c_extern_type_discoveries(worker &FlatGen) {
 		// complete immutable result, including owned keys, for later consumers.
 		g.c_extern_refs = clone_cgen_string_bool_map(worker.c_extern_refs)
 		g.c_extern_refs_ready = true
+		g.fn_prelude_scans_ready = worker.fn_prelude_scans_ready
+		for id, scan in worker.fn_prelude_scans {
+			mut labels := map[string][]int{}
+			for name, scopes in scan.goto_label_lock_scopes {
+				labels[name.clone()] = scopes.clone()
+			}
+			g.fn_prelude_scans[id] = FnPreludeScan{
+				defer_ids:              scan.defer_ids.clone()
+				goto_label_lock_scopes: labels.move()
+				c_fn_calls:             clone_cgen_string_bool_map(scan.c_fn_calls)
+			}
+		}
 	}
 	for opt_name, val_type_id in worker.needed_optional_types.ids {
 		if !g.needed_optional_types.contains(opt_name) {
@@ -4210,6 +4222,12 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		c_extern_refs_ready:                g.c_extern_refs_ready
 		c_extern_refs_shared:               g.c_extern_refs_ready
+		fn_prelude_scans_ready:             g.fn_prelude_scans_ready
+		fn_prelude_scans:                   if g.c_extern_refs_ready {
+			g.fn_prelude_scans
+		} else {
+			map[int]FnPreludeScan{}
+		}
 		scope_parallel_workers:             g.scope_parallel_workers
 		c_name_cache:                       &CNameCache{
 			base: if !isnil(g.c_name_cache.base) { g.c_name_cache.base } else { g.c_name_cache }
