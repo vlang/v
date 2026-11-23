@@ -335,13 +335,13 @@ fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
 	}
 	clang := os.find_abs_path_of_executable('clang') or { return }
 	c_file := headerless_linux_bootstrap_c()!
-	// The macOS targets are spelled as Darwin versions with a minimum macOS version, which
-	// gives the same predefined macros: older clangs (the musl image's) reject `macos13`
-	// in a target triple.
+	// Darwin 22 and 21 already encode macOS 13 and 12 minimum deployment versions.
+	// Do not pass -mmacosx-version-min again: the musl image's older Clang rejects
+	// the explicit 13.0 flag before it can syntax-check the generated compiler C.
 	mut checks := [][]string{}
 	for target in ['x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu', 'aarch64-linux-android24',
-		'arm64-apple-darwin22 -mmacosx-version-min=13.0',
-		'x86_64-apple-darwin21 -mmacosx-version-min=12.0', 'x86_64-unknown-freebsd14',
+		'arm64-apple-darwin22',
+		'x86_64-apple-darwin21', 'x86_64-unknown-freebsd14',
 		'x86_64-unknown-openbsd7', 'x86_64-unknown-netbsd10', 'x86_64-unknown-dragonfly6'] {
 		mut args := [clang, '-target']
 		args << target.split(' ')
