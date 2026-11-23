@@ -186,6 +186,19 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 		&& raw_syntax.generic_app_base() in t.tc.interface_names {
 		return interface_type_application(raw_syntax.generic_app_base(), raw_syntax.generic_app_args(), true)
 	}
+	// A bare name in a module that declares a type of that name means that type
+	// (`Any` in toml is the sum `toml.Any`), not a program interface of the name.
+	if t.cur_module !in ['', 'main', 'builtin']
+		&& !flat.source_type_shape(raw_clean_source_id).has(.dotted) {
+		qualified := flat.source_type_id('${t.cur_module}.${flat.source_type_name(raw_clean_source_id)}')
+		if qualified in t.tc.interface_names {
+			return qualified
+		}
+		if t.tc.sum_types.contains(qualified) || qualified in t.tc.structs
+			|| qualified in t.tc.enum_names || t.tc.type_aliases.contains(qualified) {
+			return 0
+		}
+	}
 	if raw_clean_source_id in t.tc.interface_names {
 		return raw_clean_source_id
 	}
