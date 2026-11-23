@@ -1,0 +1,5 @@
+fn main() {
+	if 0 .. 10 {
+		println('hello')
+	}
+}

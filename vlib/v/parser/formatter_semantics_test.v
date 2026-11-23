@@ -93,6 +93,10 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 		'fn main() { println($res()) }':                                                             '`println` can not print void expressions'
 		'fn f(xs ...int, y int) {}':                                                                 'cannot use ...(variadic) with non-final parameter xs'
 		'fn f[T]() { $for field in T.unknown {} }':                                                  'unknown kind `unknown`, available are: `methods`, `fields`, `values`, `variants`, `attributes` or `params`'
+		'fn main() { for 0 .. 3 { println(1) } }':                                                   'range cannot be used as a condition, iterate with `for i in low .. high` instead'
+		'fn main() { for (0 .. 3) { println(1) } }':                                                 'range cannot be used as a condition, iterate with `for i in low .. high` instead'
+		'fn main() { if 0 .. 3 { println(1) } }':                                                    'range cannot be used as a condition, iterate with `for i in low .. high` instead'
+		'fn main() { assert 0 .. 3 }':                                                               'range cannot be used as a condition, iterate with `for i in low .. high` instead'
 	}
 	for source, expected in cases {
 		os.write_file(path, source + '\n')!

@@ -1,0 +1,8 @@
+fn main() {
+	for 0 .. 10 {
+		println('hello')
+	}
+	for (0 .. 10) {
+		println('hello')
+	}
+}

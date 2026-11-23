@@ -9590,6 +9590,7 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 		p.record_diagnostic_span('use `$if` instead of `if`', if_start, if_start + 2)
 	}
 	cond := p.control_header_expr(.lowest)
+	p.reject_range_condition_expr(cond)
 
 	// if-guard: if a, b := expr { ... } or if val := expr { ... }
 	mut guard_cond := cond
@@ -9811,6 +9812,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 			return p.record_formatter_for_span(p.for_comma_header(first_expr, true), for_start)
 		}
 		if p.tok == .lcbr {
+			p.reject_range_condition_expr(first_expr)
 			body_ids := p.parse_block_body()
 			init_empty := p.add(flat.NodeKind.empty)
 			post_empty := p.add(flat.NodeKind.empty)
@@ -9837,6 +9839,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 		} else {
 			p.expr(.lowest)
 		}
+		p.reject_range_condition_expr(cond)
 		if p.tok == .semicolon {
 			p.next()
 		}
@@ -9888,6 +9891,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 			// might be C-style: `for expr; cond; post`
 			p.next() // skip ;
 			cond := p.expr(.lowest)
+			p.reject_range_condition_expr(cond)
 			if p.tok == .semicolon {
 				p.next()
 			}
@@ -9923,6 +9927,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 
 	// condition-only: `for cond { ... }`
 	if p.tok == .lcbr {
+		p.reject_range_condition_expr(first_expr)
 		body_ids := p.parse_block_body()
 		init_empty := p.add(flat.NodeKind.empty)
 		post_empty := p.add(flat.NodeKind.empty)
@@ -9942,6 +9947,28 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 	}
 
 	return flat.empty_node
+}
+
+// reject_range_condition_expr reports a range written where a condition is expected.
+fn (mut p Parser) reject_range_condition_expr(expr_id flat.NodeId) {
+	if p.prefs.is_fmt || int(expr_id) < 0 {
+		return
+	}
+	mut node := p.a.node(expr_id)
+	for node.kind == .paren && node.children_count > 0 {
+		child_id := p.a.child(node, 0)
+		if int(child_id) < 0 {
+			return
+		}
+		node = p.a.node(child_id)
+	}
+	if node.kind != .range || node.children_count < 2 {
+		return
+	}
+	low := p.a.child_node(node, 0)
+	high := p.a.child_node(node, 1)
+	p.record_diagnostic_span('range cannot be used as a condition, iterate with `for i in low .. high` instead',
+		low.pos.offset, high.pos.end)
 }
 
 fn (mut p Parser) record_formatter_for_span(id flat.NodeId, start int) flat.NodeId {
@@ -11527,6 +11554,7 @@ fn (mut p Parser) assert_stmt() flat.NodeId {
 	assert_start := p.span_start()
 	p.next() // skip 'assert'
 	cond := p.expr(.lowest)
+	p.reject_range_condition_expr(cond)
 	mark := p.pending_children.len
 	defer {
 		p.pending_children.trim(mark)

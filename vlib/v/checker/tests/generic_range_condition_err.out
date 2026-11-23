@@ -1,0 +1,6 @@
+vlib/v/checker/tests/generic_range_condition_err.vv:2:6: error: range cannot be used as a condition, iterate with `for i in low .. high` instead
+    1 | fn f[T](x T) {
+    2 |     for 0 .. 3 {
+      |         ~~~~~~
+    3 |         println(x)
+    4 |     }
