@@ -7876,7 +7876,64 @@ fn (mut tc TypeChecker) ownership_commit_multi_assign_temp(temp_name string, lhs
 	}
 }
 
+// ownership_projection_root_name walks a selector/index chain down to the
+// identifier that roots it, e.g. `e.factor` -> `e`.
+fn (tc &TypeChecker) ownership_projection_root_name(id flat.NodeId) string {
+	mut cur := id
+	for tc.valid_node_id(cur) {
+		node := tc.a.nodes[int(cur)]
+		match node.kind {
+			.ident {
+				return node.value
+			}
+			.selector, .index, .paren, .expr_stmt, .cast_expr {
+				if node.children_count == 0 {
+					return ''
+				}
+				cur = tc.a.child(&node, 0)
+			}
+			else {
+				return ''
+			}
+		}
+	}
+	return ''
+}
+
+// ownership_field_copy_is_borrow reports whether an autofree assignment copies
+// a field of retained storage. The copy shares the source's allocations, so it
+// must not own and destroy them (#32453). Fresh aggregates, calls and explicit
+// clone() results are unaffected: their RHS is not a field projection.
+fn (tc &TypeChecker) ownership_field_copy_is_borrow(rhs_id flat.NodeId, lhs_name string) bool {
+	if !tc.autofree_mode || !tc.ownership_type_requires_destruction(tc.resolve_type(rhs_id)) {
+		return false
+	}
+	clean_id := tc.ownership_unwrap_expr(rhs_id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	node := tc.a.nodes[int(clean_id)]
+	if node.kind != .selector || node.children_count == 0 || node.value.len == 0 {
+		return false
+	}
+	root := tc.ownership_projection_root_name(clean_id)
+	return root.len > 0 && root != lhs_name
+}
+
 fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.NodeId, lhs_type Type, assign_id flat.NodeId) {
+	// Under -autofree, V keeps value-copy aliasing semantics: a struct copied out
+	// of retained storage shares its string/array buffers with the source. Marking
+	// that copy as a new owner makes its scope exit free buffers the source still
+	// uses (use-after-free / double free). Treat such a field projection as a
+	// non-owning view instead; the root storage remains the single owner. #32453.
+	if tc.autofree_mode && tc.ownership_field_copy_is_borrow(rhs_id, lhs_name) {
+		mut st := tc.ownership_state()
+		st.owned_vars.delete(lhs_name)
+		st.owned_var_types.delete(lhs_name)
+		st.moved_vars.delete(lhs_name)
+		tc.ownership_clear_descendant_state(lhs_name)
+		return
+	}
 	if source := tc.ownership_borrowed_alias_source(lhs_name, true) {
 		tc.ownership_consume_expr(rhs_id, source, assign_id)
 		return
