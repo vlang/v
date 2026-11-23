@@ -10,13 +10,16 @@ pub struct MimeType {
 // db_info layout, see build.vsh: ext_start << 16 | ext_count << 8 |
 // charset << 4 | source << 1 | compressible
 
-// returns a `MimeType` for the given MIME type
+// get_complete_mime_type returns a `MimeType` for the given MIME type.
 pub fn get_complete_mime_type(mt string) MimeType {
 	info := db_info[db_index(mt)]
 	start := int(info >> 16)
+	count := int((info >> 8) & 0xFF)
+	// Slicing a fixed array copies the entire table in uncached builds.
+	extensions := []string{len: count, init: db_exts[start + index]}
 	return MimeType{
 		source:       db_sources[(info >> 1) & 7]
-		extensions:   db_exts[start..start + int((info >> 8) & 0xFF)]
+		extensions:   extensions
 		compressible: info & 1 != 0
 		charset:      db_charsets[(info >> 4) & 0xF]
 	}
