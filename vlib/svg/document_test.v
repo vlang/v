@@ -37,6 +37,31 @@ fn test_parse_css_and_cascade() {
 	assert cascade_style(&el, r2.css).get('fill') == 'green'
 }
 
+fn test_gradient_midpoint_is_interpolated() {
+	mut g := Gradient{}
+	g.stops << Stop{ offset: 0, color: rgb(255, 0, 0) }
+	g.stops << Stop{ offset: 1, color: rgb(0, 0, 255) }
+	mid := gradient_color(g, 0.5)
+	assert mid.r > 100 && mid.r < 160
+	assert mid.b > 100 && mid.b < 160
+	assert mid.r == mid.b
+}
+
+fn test_group_clip_and_dash_are_inherited() {
+	doc := parse_svg('<svg><defs><clipPath id="c"><circle cx="50" cy="50" r="20"/></clipPath></defs><g clip-path="url(#c)"><line x1="0" y1="0" x2="100" y2="100" stroke-dasharray="20 10" stroke="black"/></g></svg>') or {
+		assert false
+		return
+	}
+	scene := flatten_document(&doc, FlattenOptions{}) or {
+		assert false
+		return
+	}
+	assert scene.items.len == 1
+	assert scene.items[0].clip_ids.len == 1
+	assert scene.items[0].clip_ids[0] == 'c'
+	assert scene.items[0].dash_array.len == 2
+}
+
 fn test_escape() {
 	assert escape_attr('a&b"c') == 'a&amp;b&quot;c'
 	assert escape_text('<x>') == '&lt;x&gt;'

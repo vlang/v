@@ -39,8 +39,9 @@ pub fn Transform.rotate(deg f64) Transform {
 // shear returns a skew transform in degrees (x around y axis, y around x axis).
 pub fn Transform.shear(x_deg f64, y_deg f64) Transform {
 	return Transform{
-		c: math.tan(y_deg * math.pi / 180)
-		b: math.tan(x_deg * math.pi / 180)
+		// SVG skewX changes x by tan(a)*y (matrix c); skewY changes y by tan(a)*x (matrix b).
+		c: math.tan(x_deg * math.pi / 180)
+		b: math.tan(y_deg * math.pi / 180)
 	}
 }
 

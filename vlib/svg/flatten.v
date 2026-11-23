@@ -95,6 +95,10 @@ struct WalkContext {
 	viewport  Rect
 	transform Transform = Transform.identity()
 	opacity   f64       = 1
+	// clip-path, mask and filter on a group apply to all its descendants.
+	clip_ids  []string
+	mask_id   string
+	filter_id string
 }
 
 fn document_viewport(doc &Document, opts FlattenOptions) Rect {
@@ -190,11 +194,25 @@ fn walk(e &Element, ctx &WalkContext, mut scene Scene, depth int) {
 	}
 	t := ctx.transform.then(style_transform(e, st) or { Transform.identity() })
 	op := ctx.opacity * st.number('opacity', 1)
+	mut child_clips := ctx.clip_ids.clone()
+	if st.get('clip-path') != '' {
+		for id in parse_refs(st.get('clip-path')) {
+			child_clips << id
+		}
+	}
+	mut child_mask := ctx.mask_id
+	if st.get('mask') != '' {
+		child_mask = parse_ref(st.get('mask'))
+	}
+	mut child_filter := ctx.filter_id
+	if st.get('filter') != '' {
+		child_filter = parse_ref(st.get('filter'))
+	}
 
 	if e.is_shape() {
 		p := shape_path(e, ctx.viewport, ctx.doc.css) or { Path{} }
 		if p.cmds.len > 0 {
-			scene.items << draw_item(p, st, t, op)
+			scene.items << draw_item(p, st, t, op, child_clips, child_mask, child_filter)
 		}
 		return
 	}
@@ -217,6 +235,9 @@ fn walk(e &Element, ctx &WalkContext, mut scene Scene, depth int) {
 					viewport:  ctx.viewport
 					transform: t
 					opacity:   op
+					clip_ids:  child_clips
+					mask_id:   child_mask
+					filter_id: child_filter
 				}, mut scene, depth + 1)
 			}
 		}
@@ -238,6 +259,9 @@ fn walk(e &Element, ctx &WalkContext, mut scene Scene, depth int) {
 					viewport:  ctx.viewport
 					transform: use_t
 					opacity:   op
+					clip_ids:  child_clips
+					mask_id:   child_mask
+					filter_id: child_filter
 				}, mut scene, depth + 1)
 			}
 		}
@@ -257,16 +281,19 @@ fn walk(e &Element, ctx &WalkContext, mut scene Scene, depth int) {
 			viewport:  ctx.viewport
 			transform: t
 			opacity:   op
+			clip_ids:  child_clips
+			mask_id:   child_mask
+			filter_id: child_filter
 		}, mut scene, depth + 1)
 	}
 }
 
-fn draw_item(p Path, st Style, t Transform, op f64) DrawItem {
+fn draw_item(p Path, st Style, t Transform, op f64, clip_ids []string, mask_id string, filter_id string) DrawItem {
 	rule := if st.get('fill-rule') == 'evenodd' { FillRule.even_odd } else { FillRule.nonzero }
 	mut dashes := []f64{}
 	dash := st.get('stroke-dasharray')
 	if dash != '' {
-		for part in dash.split(',') {
+		for part in dash.replace(',', ' ').split(' ') {
 			v := parse_number(part.trim_space()) or { continue }
 			dashes << v
 		}
@@ -284,9 +311,9 @@ fn draw_item(p Path, st Style, t Transform, op f64) DrawItem {
 		fill_opacity:    st.number('fill-opacity', 1)
 		stroke_opacity:  st.number('stroke-opacity', 1)
 		fill_rule:       rule
-		clip_ids:        parse_refs(st.get('clip-path'))
-		mask_id:         parse_ref(st.get('mask'))
-		filter_id:       parse_ref(st.get('filter'))
+		clip_ids:        clip_ids
+		mask_id:         mask_id
+		filter_id:       filter_id
 		transform:       t
 	}
 }

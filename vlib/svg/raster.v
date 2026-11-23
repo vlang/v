@@ -16,11 +16,16 @@ pub:
 
 // TextDrawFn is a pluggable text renderer. It receives the target image,
 // the text item, its position, font size and resolved color.
-pub type TextDrawFn = fn (mut image.RGBA, TextItem, Vec2, f32, Color)
+pub type TextDrawFn = fn (mut image.RGBA, TextItem, Vec2, f32, Color, Transform)
 
 // rasterize flattens and renders a document into an RGBA image.
 pub fn (doc Document) rasterize(opts RasterOptions) !image.RGBA {
-	scene := flatten_document(&doc, FlattenOptions{ dpi: opts.dpi }) or { return err }
+	// The requested raster size is the viewport: the document viewBox (if any)
+	// must be mapped into it, not into the SVG's intrinsic width/height.
+	mut sized := doc
+	sized.width = opts.width.str()
+	sized.height = opts.height.str()
+	scene := flatten_document(&sized, FlattenOptions{ dpi: opts.dpi }) or { return err }
 	return scene.rasterize(opts)
 }
 
@@ -70,7 +75,7 @@ pub fn (scene Scene) rasterize(opts RasterOptions) !image.RGBA {
 		if item.stroke.kind != .none && item.stroke_width > 0 {
 			clear_region(mut stroke_cov, w, stroke_prev)
 			stroke_prev = expand_bounds(fill_prev, int(item.stroke_width / 2) + 2, w, h)
-			add_stroke_polys(polys, f32(item.stroke_width / 2), w, h, samples, mut stroke_cov, mut scan)
+			add_stroke_polys(polys, f32(item.stroke_width / 2), item.dash_array, w, h, samples, mut stroke_cov, mut scan)
 			apply_clips(mut stroke_cov, item.clip_ids, clip_masks)
 			composite_paint(mut img, scene, item, polys, stroke_cov, w, h, stroke_prev, item.opacity * item.stroke_opacity, true)
 		}
@@ -87,9 +92,11 @@ pub fn (scene Scene) rasterize(opts RasterOptions) !image.RGBA {
 	if scene.texts.len > 0 {
 		renderer := opts.text_renderer or { default_text_renderer }
 		for t in scene.texts {
-			size := f32(t.style.length('font-size', 16, 300, 16))
+			user_size := f32(t.style.length('font-size', 16, 300, 16))
+			scale := f32(math.sqrt(math.max(t.transform.a * t.transform.a + t.transform.b * t.transform.b, 1e-12)))
+			size := user_size * scale
 			col := t.style.color('fill', rgb(0, 0, 0))
-			renderer(mut img, t, t.pos, size, col)
+			renderer(mut img, t, t.pos, size, col, t.transform)
 		}
 	}
 	return img
@@ -268,11 +275,13 @@ fn cross_compare(a &Crossing, b &Crossing) int {
 }
 
 fn add_path_polys(polys [][]Vec2, rule FillRule, w int, h int, samples int, mut cov []f32, mut scan ScanBuffers) {
+	// Build one edge set for all subpaths: fill-rule (even-odd / nonzero) is
+	// defined over the whole path, not per subpath.
+	scan.edges.clear()
 	for poly in polys {
 		if poly.len < 3 {
 			continue
 		}
-		scan.edges.clear()
 		for i in 0 .. poly.len {
 			a0 := poly[i]
 			a1 := poly[(i + 1) % poly.len]
@@ -287,8 +296,8 @@ fn add_path_polys(polys [][]Vec2, rule FillRule, w int, h int, samples int, mut 
 				dir: if a1.y > a0.y { 1 } else { -1 }
 			}
 		}
-		fill_polygon_edges(scan.edges, rule, w, h, samples, mut cov, mut scan)
 	}
+	fill_polygon_edges(scan.edges, rule, w, h, samples, mut cov, mut scan)
 }
 
 fn fill_polygon_edges(edges []Edge, rule FillRule, w int, h int, samples int, mut cov []f32, mut scan ScanBuffers) {
@@ -364,10 +373,71 @@ fn accumulate_span(xa f64, xb f64, py int, w int, samples int, mut cov []f32) {
 	}
 }
 
-fn add_stroke_polys(polys [][]Vec2, half f32, w int, h int, samples int, mut cov []f32, mut scan ScanBuffers) {
+fn add_stroke_polys(polys [][]Vec2, half f32, dashes []f64, w int, h int, samples int, mut cov []f32, mut scan ScanBuffers) {
+	mut pattern := []f64{}
+	for d in dashes {
+		if d > 0 {
+			pattern << d
+		}
+	}
+	if pattern.len % 2 == 1 {
+		pattern << pattern[pattern.len - 1]
+	}
+	mut period := 0.0
+	for d in pattern {
+		period += d
+	}
 	for sub in polys {
+		mut travelled := 0.0
 		for i in 1 .. sub.len {
-			add_stroke_segment(sub[i - 1], sub[i], half, w, h, samples, mut cov, mut scan)
+			a := sub[i - 1]
+			b := sub[i]
+			dx := f64(b.x - a.x)
+			dy := f64(b.y - a.y)
+			seg := math.sqrt(dx * dx + dy * dy)
+			if seg < 1e-9 {
+				continue
+			}
+			if pattern.len == 0 || period <= 0 {
+				add_stroke_segment(a, b, half, w, h, samples, mut cov, mut scan)
+				travelled += seg
+				continue
+			}
+			// Dash phase continues across adjacent segments of the subpath.
+			mut pos := math.fmod(travelled, period)
+			mut done := 0.0
+			for done < seg - 1e-9 {
+				mut idx := 0
+				mut acc := 0.0
+				for idx < pattern.len {
+					if pos < acc + pattern[idx] {
+						break
+					}
+					acc += pattern[idx]
+					idx++
+				}
+				if idx >= pattern.len {
+					idx = 0
+					acc = 0
+					pos = 0
+				}
+				available := acc + pattern[idx] - pos
+				if available < 1e-9 {
+					pos = math.fmod(pos + 1e-6, period)
+					continue
+				}
+				step := math.min(seg - done, available)
+				if idx % 2 == 0 {
+					t0 := done / seg
+					t1 := (done + step) / seg
+					pa := vec2(a.x + (b.x - a.x) * f32(t0), a.y + (b.y - a.y) * f32(t0))
+					pb := vec2(a.x + (b.x - a.x) * f32(t1), a.y + (b.y - a.y) * f32(t1))
+					add_stroke_segment(pa, pb, half, w, h, samples, mut cov, mut scan)
+				}
+				pos += step
+				done += step
+			}
+			travelled += seg
 		}
 	}
 }
@@ -521,17 +591,21 @@ fn sample_gradient(g Gradient, inv Transform, x f64, y f64, bounds Rect) Color {
 			t = ((f64(p.x) - g.x1) * dx + (f64(p.y) - g.y1) * dy) / len2
 		}
 	} else {
+		mut rx := math.max(g.r, 1e-6)
+		mut ry := rx
 		mut cx := g.cx
 		mut cy := g.cy
-		mut rr := math.max(g.r, 1e-6)
 		if g.units == .object_bbox {
+			// In objectBoundingBox space the radial gradient is a circle in
+			// normalized coordinates, which is an ellipse in user space.
 			cx = f64(bounds.x) + g.cx * f64(bounds.w)
 			cy = f64(bounds.y) + g.cy * f64(bounds.h)
-			rr = g.r * f64(math.max(bounds.w, bounds.h))
+			rx = math.max(g.r * f64(bounds.w), 1e-6)
+			ry = math.max(g.r * f64(bounds.h), 1e-6)
 		}
-		dx := x - cx
-		dy := y - cy
-		t = math.sqrt(dx * dx + dy * dy) / rr
+		dx := (x - cx) / rx
+		dy := (y - cy) / ry
+		t = math.sqrt(dx * dx + dy * dy)
 	}
 	return gradient_color(g, t)
 }

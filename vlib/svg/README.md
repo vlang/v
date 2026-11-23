@@ -139,7 +139,16 @@ In paired local measurements against the initial implementation, parsing
 of the benchmark scene dropped from about 1195 ms to 150 ms, and parsing
 50000 compact paths dropped from about 180 ms to 35 ms. The number scanner,
 single-declaration style fast path, preallocated attribute slices and
-reusable flatten buffers account for the gains. Stroke-only shapes skip fill
+reusable flatten buffers account for the gains.
+
+A local pixel-by-pixel comparison against headless Chrome on a 400x400
+corpus found and fixed several rendering defects: gradient interpolation,
+group-inherited clip paths, dashed strokes, even-odd fill across subpaths,
+skewed axes, anisotropic radial gradients and viewBox-to-output scaling.
+After those fixes, shapes, paths, fills, gradients, transforms, clips and
+dashes differ on under 1% of pixels. Real-world chart SVGs still differ
+mostly in text, because the built-in bitmap font is a placeholder rather
+than a vector font renderer. Stroke-only shapes skip fill
 coverage entirely, cutting their rasterization time by about a quarter.
 
 ## Design notes

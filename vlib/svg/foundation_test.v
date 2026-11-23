@@ -68,6 +68,18 @@ fn test_path_implicit() {
 	assert p.cmds[4].kind == .close
 }
 
+fn test_skew_axes_match_svg() {
+	// SVG skewX(45) maps (0,10) -> (10,10); skewY(45) maps (10,0) -> (10,10).
+	t := Transform.shear(45, 0)
+	p := t.apply(vec2(0, 10))
+	assert p.x > 9.9 && p.x < 10.1
+	assert p.y > 9.9 && p.y < 10.1
+	t2 := Transform.shear(0, 45)
+	p2 := t2.apply(vec2(10, 0))
+	assert p2.x > 9.9 && p2.x < 10.1
+	assert p2.y > 9.9 && p2.y < 10.1
+}
+
 fn test_path_close_trailing_token_terminates() {
 	// Regression: a token after Z used to be re-read forever.
 	if p := parse_path('M0 0 Z 10 10') {

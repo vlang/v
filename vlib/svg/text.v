@@ -61,18 +61,23 @@ pub fn text_bounds(text string, size f32) (f32, f32) {
 // default_text_renderer is a compact pure-V bitmap text renderer. It supports
 // ASCII uppercase letters, digits and common punctuation; other code points
 // are drawn as a replacement box.
-pub fn default_text_renderer(mut img image.RGBA, item TextItem, pos Vec2, size f32, color Color) {
+pub fn default_text_renderer(mut img image.RGBA, item TextItem, pos Vec2, size f32, color Color, transform Transform) {
 	scale := math.max(1, int(size / 5))
 	advance := 3 * scale + scale
-	x0 := int(pos.x)
-	y0 := int(pos.y)
+	angle := math.atan2(transform.b, transform.a)
+	co := f32(math.cos(angle))
+	si := f32(math.sin(angle))
 	for i in 0 .. item.text.len {
 		c := item.text[i..i + 1].to_upper()
 		pattern := if c in glyph_patterns { glyph_patterns[c] } else { '111101101101111' }
 		for row in 0 .. 5 {
 			for col in 0 .. 3 {
 				if pattern[row * 3 + col] == `1` {
-					fill_text_pixel(mut img, x0 + i * advance + col * scale, y0 + row * scale, scale, color)
+					lx := f32(i * advance + col * scale)
+					ly := f32(row * scale)
+					px := int(pos.x + lx * co - ly * si)
+					py := int(pos.y + lx * si + ly * co) - 4 * scale
+					fill_text_pixel(mut img, px, py, scale, color)
 				}
 			}
 		}

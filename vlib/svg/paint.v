@@ -207,7 +207,7 @@ pub fn gradient_color(g Gradient, t f64) Color {
 		b := g.stops[i]
 		if u <= b.offset {
 			span := b.offset - a.offset
-			f := if span < 1e-9 { 0 } else { (u - a.offset) / span }
+			f := if span < 1e-9 { 0.0 } else { (u - a.offset) / span }
 			return lerp_color(a.color, b.color, clamp_limits(f, 0, 1))
 		}
 	}

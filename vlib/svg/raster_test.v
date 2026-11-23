@@ -45,6 +45,36 @@ fn test_stroke_only() {
 	assert img.pix[center] == 0
 }
 
+fn test_evenodd_across_subpaths() {
+	doc := parse_svg('<svg width="100" height="100"><path d="M10 10 H90 V90 H10 Z M30 30 H70 V70 H30 Z" fill="#ff0000" fill-rule="evenodd"/></svg>') or {
+		assert false
+		return
+	}
+	img := doc.rasterize(RasterOptions{
+		width:  100
+		height: 100
+	}) or {
+		assert false
+		return
+	}
+	i := 50 * img.stride + 50 * 4
+	assert img.pix[i + 3] == 0
+}
+
+fn test_rasterize_uses_requested_viewport() {
+	doc := parse_svg('<svg width="900" height="600" viewBox="0 0 100 100"><rect width="100" height="100" fill="#00ff00"/></svg>') or {
+		assert false
+		return
+	}
+	img := doc.rasterize(RasterOptions{ width: 50, height: 50 }) or {
+		assert false
+		return
+	}
+	assert img.pix.len == 50 * 50 * 4
+	i := 25 * img.stride + 25 * 4 + 3
+	assert img.pix[i] > 250
+}
+
 fn test_gradient_sampling() {
 	mut g := Gradient{
 		id:    'g'
