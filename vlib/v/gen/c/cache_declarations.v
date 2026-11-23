@@ -97,6 +97,7 @@ fn (mut g FlatGen) cache_collect_declaration_refs(source string) {
 	}
 }
 
+@[direct_array_access]
 fn cache_c_skip_literal_or_comment(source string, start int) int {
 	mut i := start
 	if source[i] in [`"`, `'`] {
@@ -127,6 +128,7 @@ fn cache_c_skip_literal_or_comment(source string, start int) int {
 	return start
 }
 
+@[direct_array_access]
 fn cache_c_identifier_refs(source string) map[string]bool {
 	mut refs := map[string]bool{}
 	mut i := 0
@@ -168,6 +170,7 @@ struct CacheSupportDefinition {
 	end   int
 }
 
+@[direct_array_access]
 fn cache_collect_support_refs(source string, start int, end int, definitions map[string][]int, mut refs map[string]bool, mut pending []string) {
 	mut i := start
 	for i < end {
@@ -206,6 +209,7 @@ fn cache_collect_support_refs(source string, start int, end int, definitions map
 // cache_prune_generated_support keeps inline helpers and literal storage reached
 // by a warm program. TinyCC still tokenizes unused inline bodies, so omit
 // unreachable helpers and literal storage before sending C to the compiler.
+@[direct_array_access]
 fn cache_prune_generated_support(source string) string {
 	inline_prefix := 'static inline '
 	mut support := []CacheSupportDefinition{}

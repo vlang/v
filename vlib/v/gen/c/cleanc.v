@@ -5363,6 +5363,7 @@ fn runtime_init_targets_global(init string, cname string) bool {
 	return clean.starts_with('${cname} =') || clean.starts_with('${cname}.') || clean.starts_with('${cname}[') || clean.starts_with('memmove(${cname}')
 }
 
+@[direct_array_access]
 fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 	// This runs once per generated batch, while a batch refers to a handful of
 	// the literals: name a literal when the batch mentions it, not all of them
