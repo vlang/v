@@ -10665,6 +10665,13 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	mut current_no_parallel := no_parallel
+	$if macos && !cross ? {
+		if check_only && os.getenv('V_DIAGNOSTICS_SERVER') != '' {
+			// Prepare the server without worker threads so it can fork on Darwin.
+			current_no_parallel = true
+			os.setenv('VJOBS', '1', true)
+		}
+	}
 	if is_prof {
 		// Profile counters are assigned in function emission order and accumulated
 		// in one generator, just as they are in V1.

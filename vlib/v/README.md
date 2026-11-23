@@ -173,6 +173,15 @@ reported as without the option, in the same order and with the same exit code, a
 form stops after 20 of them. Output from the C toolchain remains text. V source diagnostics
 start with `{`.
 
+### Prepared editor checks
+
+Native compiler builds on Linux and macOS support persistent checks with
+`V_DIAGNOSTICS_SERVER=1 V_DIAGNOSTICS_PREPARE=1 v -no-memory-limit -check .`.
+The server prepares the standard library before accepting checks and editor queries.
+On macOS it uses one compiler worker so the parent can fork safely. Each check forks a
+fresh child from the prepared state. Shared check children and incremental body reuse
+are available on Linux.
+
 ## Profile-guided compiler build
 
 On macOS or Linux with Clang and a matching `llvm-profdata`, build an optimized standalone
