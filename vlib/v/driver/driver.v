@@ -172,6 +172,31 @@ const v3_inline_source_prefix = '.v3_inline_'
 const v3_stdin_source_prefix = '.v3_stdin_'
 const v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
 
+// v3_checker_notices_printed is v3_parser_diagnostics_printed for the checker's
+// warnings and notices: a restarted build must not print them a second time.
+fn v3_checker_notices_printed(value bool) bool {
+	unsafe {
+		mut static printed := false
+		if value {
+			printed = true
+		}
+		return printed
+	}
+}
+
+// v3_restart_diagnostics_flags names the diagnostics this process already printed, for
+// a restarted build whose arguments are `args`.
+fn v3_restart_diagnostics_flags(args []string) []string {
+	mut flags := []string{}
+	if v3_parser_diagnostics_printed(false) && v3_internal_parser_diagnostics_printed_flag !in args {
+		flags << v3_internal_parser_diagnostics_printed_flag
+	}
+	if v3_checker_notices_printed(false) && v3_internal_checker_notices_printed_flag !in args {
+		flags << v3_internal_checker_notices_printed_flag
+	}
+	return flags
+}
+
 fn v3_parser_diagnostics_printed(value bool) bool {
 	// The restart helpers are also called from cache preparation functions, so
 	// retain this process-local bit without threading it through every cache path.
@@ -10665,6 +10690,13 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	mut current_no_parallel := no_parallel
+	$if macos && !cross ? {
+		if check_only && os.getenv('V_DIAGNOSTICS_SERVER') != '' {
+			// Prepare the server without worker threads so it can fork on Darwin.
+			current_no_parallel = true
+			os.setenv('VJOBS', '1', true)
+		}
+	}
 	if is_prof {
 		// Profile counters are assigned in function emission order and accumulated
 		// in one generator, just as they are in V1.
@@ -12801,10 +12833,11 @@ pub fn run(args []string) {
 						'cgen'] {
 						b.step('${stage} (cached)')
 					}
-					if cached_program.diagnostics.len > 0 {
+					if cached_program.diagnostics.len > 0 && !checker_notices_already_printed {
 						cached_notices := restore_v3_type_diagnostics(mut a, cached_program.diagnostics)
 						print_type_diagnostics(a, cached_notices, []types.TypeError{}, false,
 							fatal_errors, false, message_limit, skip_notices)
+						v3_checker_notices_printed(true)
 					}
 					b.step(if cache_with_tcc { 'tcc (cached)' } else { 'cc (cached)' })
 					if should_run {
@@ -13786,7 +13819,7 @@ pub fn run(args []string) {
 			if !checker_notices_already_printed {
 				print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture,
 					fatal_errors, check_only, message_limit, skip_notices)
-				checker_notices_printed = true
+				checker_notices_printed = v3_checker_notices_printed(true)
 			}
 			for notice in pre_tc.notices {
 				if skip_notices && notice.severity in ['', 'notice:'] {
@@ -14256,7 +14289,7 @@ pub fn run(args []string) {
 			if !checker_notices_already_printed {
 				print_type_diagnostics(a, pre_tc.notices[transform_notices_start..], []types.TypeError{},
 					is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
-				checker_notices_printed = true
+				checker_notices_printed = v3_checker_notices_printed(true)
 			}
 			checker_warning_count += pre_tc.notices.len - transform_notices_start
 			pre_tc.notices.trim(transform_notices_start)
@@ -14315,8 +14348,12 @@ pub fn run(args []string) {
 		b.step('annotate types (cached)')
 		if !is_repl && cgen_cache_metadata.diagnostics.len > 0 {
 			cached_notices := restore_v3_type_diagnostics(mut a, cgen_cache_metadata.diagnostics)
-			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
-				check_only, message_limit, skip_notices)
+			// A build that starts again prints what it found once.
+			if !checker_notices_already_printed {
+				print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture,
+					fatal_errors, check_only, message_limit, skip_notices)
+				checker_notices_printed = v3_checker_notices_printed(true)
+			}
 			for notice in cached_notices {
 				if skip_notices && notice.severity in ['', 'notice:'] {
 					continue
@@ -14447,7 +14484,7 @@ pub fn run(args []string) {
 				|| (!checker_notices_already_printed && pre_tc.errors.len == 0) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture,
 					fatal_errors, check_only, message_limit, skip_notices)
-				checker_notices_printed = true
+				checker_notices_printed = v3_checker_notices_printed(true)
 			}
 			for notice in pre_tc.notices {
 				if skip_notices && notice.severity in ['', 'notice:'] {
@@ -16682,7 +16719,8 @@ pub fn run(args []string) {
 						}
 						eprintln('Suggestion: run `v wipe-cache`, then repeat your compilation.')
 					}
-					retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
+					mut retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
+					retry_args.prepend(v3_restart_diagnostics_flags(retry_args))
 					cleanup_c_build_dir(cc_dir)
 					// The retry is another process on every platform.
 					release_v3_cache_population_lock()
@@ -17429,12 +17467,8 @@ fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	cleanup_c_build_dir(cc_dir)
 	os.setenv(v3_cache_recovery_env, '1', true)
 	executable := os.executable()
-	mut restart_args := []string{}
-	// The parser warnings were already shown by this process.
-	if v3_parser_diagnostics_printed(false)
-		&& v3_internal_parser_diagnostics_printed_flag !in os.args {
-		restart_args << v3_internal_parser_diagnostics_printed_flag
-	}
+	// The parser and checker warnings were already shown by this process.
+	mut restart_args := v3_restart_diagnostics_flags(os.args)
 	restart_args << os.args[1..]
 	$if windows {
 		// `_execvp` would exit this process with status 0 before the retried
@@ -17512,10 +17546,7 @@ fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_
 		retry_args.insert(0, v3_internal_implicit_tcc_warning_prefix + v3_implicit_tcc_fallback_warning(fallback,
 			failure))
 	}
-	if v3_parser_diagnostics_printed(false)
-		&& v3_internal_parser_diagnostics_printed_flag !in retry_args {
-		retry_args.insert(0, v3_internal_parser_diagnostics_printed_flag)
-	}
+	retry_args.prepend(v3_restart_diagnostics_flags(retry_args))
 	cleanup_c_build_dir(cc_dir)
 	flush_stdout()
 	flush_stderr()
@@ -18975,10 +19006,7 @@ fn restart_v3_with_args(extra_args []string, build_dir string) {
 	cleanup_c_build_dir(build_dir)
 	executable := os.executable()
 	mut args := extra_args.clone()
-	if v3_parser_diagnostics_printed(false)
-		&& v3_internal_parser_diagnostics_printed_flag !in os.args {
-		args << v3_internal_parser_diagnostics_printed_flag
-	}
+	args << v3_restart_diagnostics_flags([...os.args, ...extra_args])
 	args << os.args[1..].filter(it != v3_internal_tcc_dylib_flag || '-nocache' !in extra_args)
 	os.setenv(v3_internal_restart_env, '1', true)
 	$if js || windows {

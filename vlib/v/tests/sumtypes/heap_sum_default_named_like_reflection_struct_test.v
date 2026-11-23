@@ -15,3 +15,17 @@ fn test_heap_sum_default_is_the_program_sum_type() {
 	value := Struct{}.make[&SumType]()
 	assert value is Struct
 }
+
+struct HeapSumArrayItem {
+	value int = 42
+}
+
+type HeapFixedSum = [2]HeapSumArrayItem | int
+
+fn test_heap_sum_fixed_array_variant_uses_brace_initializer() {
+	value := Struct{}.make[&HeapFixedSum]()
+	assert value is [2]HeapSumArrayItem
+	items := value as [2]HeapSumArrayItem
+	assert items[0].value == 42
+	assert items[1].value == 42
+}

@@ -374,7 +374,7 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavaila
 }
 
 fn test_cross_output_keeps_the_linux_calls_of_the_diagnostics_server_behind_linux_guards() {
-	// The snapshot bakes in diagserver_linux.c.v too, and is compiled on macOS,
+	// The snapshot bakes in diagserver_nix.c.v too, and is compiled on macOS,
 	// which has neither memfd_create nor prctl. Each of these calls has to stay
 	// behind a guard that holds on Linux alone, or the snapshot does not compile
 	// there.

@@ -28,6 +28,9 @@ mut:
 	tags        map[string][]string
 	retractions map[string][]string
 	candidates  map[string]Module
+	// checkouts holds the clones made to read a release's retractions, by candidate key,
+	// so that choosing that release as a candidate does not clone it again.
+	checkouts   map[string]string
 	exact_refs  map[string][]string
 	paths       []string
 	prefer_lock bool
@@ -154,9 +157,40 @@ fn (mut r Resolver) version_retractions(id string) ![]string {
 	if ranges := r.retractions[id] {
 		return ranges
 	}
-	ranges := latest_version_retractions(r.sources[id].url, r.version_tags(id)!)!
+	m := r.sources[id]
+	url := m.url
+	latest := select_version_tag(r.version_tags(id)!, '*') or {
+		r.retractions[id] = []string{}
+		return []string{}
+	}
+	// Clone the latest release where `candidate` would, since it is usually the
+	// release chosen next.
+	key := id + '\0' + latest + '\0'
+	if key in r.candidates {
+		// Its checkout already exists and belongs to that candidate.
+		ranges := latest_version_retractions(url, r.version_tags(id)!)!
+		r.retractions[id] = ranges
+		return ranges
+	}
+	path := r.candidate_path(key)!
+	r.paths << path
+	VCS.git.clone(url, latest, path) or {
+		rmdir_all(path) or {}
+		return err
+	}
+	r.checkouts[key] = path
+	ranges := checkout_retractions(path, url, latest)!
 	r.retractions[id] = ranges
 	return ranges
+}
+
+// candidate_path is the temporary checkout folder of one candidate key.
+fn (r &Resolver) candidate_path(key string) !string {
+	// The component is a digest of the candidate key, cut to a short prefix for
+	// the same reason as `version_tmp_name`: a full SHA-256 as one path
+	// component pushes the temp path over `MAX_PATH` on Windows. The 48 bits
+	// that remain separate the candidates of one resolution comfortably.
+	return get_tmp_path(settings.tmp_path, os.join_path(r.namespace, sha256.hexhash(key)[0..tmp_name_length]))
 }
 
 fn remote_version_tags(url string) ![]string {
@@ -210,20 +244,22 @@ fn (mut r Resolver) candidate(id string, version string, revision string) !Modul
 		return m
 	}
 	mut m := r.sources[id]
-	// The component is a digest of the candidate key, cut to a short prefix for
-	// the same reason as `version_tmp_name`: a full SHA-256 as one path
-	// component pushes the temp path over `MAX_PATH` on Windows. The 48 bits
-	// that remain separate the candidates of one resolution comfortably.
-	path := get_tmp_path(settings.tmp_path, os.join_path(r.namespace,
-		sha256.hexhash(key)[0..tmp_name_length]))!
-	r.paths << path
 	vcs := m.vcs or { settings.vcs }
 	clone_ref := if !is_git_commit_hash(version) && (revision == '' || (version != '' && version == r.sources[id].version)) {
 		version
 	} else {
 		''
 	}
-	vcs.clone(m.url, clone_ref, path)!
+	mut path := ''
+	if checkout := r.checkouts[key] {
+		// `version_retractions` already cloned this release (git, at the tag).
+		path = checkout
+		r.checkouts.delete(key)
+	} else {
+		path = r.candidate_path(key)!
+		r.paths << path
+		vcs.clone(m.url, clone_ref, path)!
+	}
 	if revision != '' || is_git_commit_hash(version) {
 		vcs.checkout(path, if revision == '' { version } else { revision })!
 	}

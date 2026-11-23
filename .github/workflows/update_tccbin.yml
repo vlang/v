@@ -430,7 +430,6 @@ jobs:
 
       - name: Bootstrap the contract-bound Phase A validator before staging
         shell: bash
-        env:
         run: |
           set -euo pipefail
           contract_input="$RUNNER_TEMP/tccbin-validator-contract-input"

@@ -3,31 +3,34 @@ module diagserver
 import crypto.sha256
 import hash
 import os
+import runtime
 import time
 // The requests carry tokens of their own.
 import v.token as vtoken
 import v.workers
 
-#include <errno.h>
-#include <signal.h>
-#include <sys/file.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
-// `-os cross` compiles this file into vc/v.c for every Unix, and only `$if`
-// guards reach the C preprocessor there: prctl and the memfd_create syscall are
-// Linux's.
-$if linux {
-	#include <sys/prctl.h>
-	#include <sys/syscall.h>
-	// v.workers links the shared syscall helpers.
+// The portable bootstrap supplies these libc declarations in its C prelude.
+$if !v3_headerless_bootstrap ? {
+	#include <errno.h>
+	#include <signal.h>
+	#include <sys/file.h>
+	#include <sys/wait.h>
+	#include <unistd.h>
 }
+
+// PROC_PIDLISTTHREADS from Darwin's proc_info.h. The portable C bootstrap
+// uses its own libc declarations, so it cannot include that SDK header.
+const darwin_proc_pidlistthreads = 6
+
+@[c_extern]
+fn C.proc_pidinfo(pid int, flavor int, arg u64, info voidptr, size int) int
 
 fn C.waitpid(pid int, status &int, options int) int
 fn C.dup2(oldfd int, newfd int) int
 fn C._exit(code int)
 fn C.kill(pid int, sig int) int
 
+// v.workers links the Linux syscall helpers.
 @[c_extern]
 fn C.v3_linux_parent_death_signal(signal_number int) int
 
@@ -151,10 +154,15 @@ mut:
 // Between requests the client changes the files on disk, and it only shows the
 // diagnostics of its own files: see V_CHECK_SELECTED_FILES_ONLY.
 pub fn serve() Request {
+	// A portable bootstrap remains a one-shot compiler.
+	$if cross ?|| (!linux && !macos) {
+		return Request{}
+	}
 	if os.getenv('V_DIAGNOSTICS_SERVER') == '' {
 		return Request{}
 	}
-	shares_children := os.getenv('V_DIAGNOSTICS_SHARED') != ''
+	// Shared checks fork again from a child that already has a watchdog thread.
+	shares_children := $if linux { os.getenv('V_DIAGNOSTICS_SHARED') != '' } $else { false }
 	// fork() keeps only the calling thread. The child gives the worker pools new
 	// threads, and no other thread may be running.
 	others := threads_besides_pool_workers()
@@ -242,8 +250,10 @@ pub fn serve() Request {
 		if pid == 0 {
 			// A test holds the child here, before it asks to end with the server,
 			// until something writes to the FIFO V_DIAGNOSTICS_CHILD_PAUSE names.
-			if pause := os.getenv_opt('V_DIAGNOSTICS_CHILD_PAUSE') {
-				os.read_file(pause) or {}
+			$if linux {
+				if pause := os.getenv_opt('V_DIAGNOSTICS_CHILD_PAUSE') {
+					os.read_file(pause) or {}
+				}
 			}
 			// The client reads a single stream: diagnostics go where the answer goes.
 			C.dup2(1, 2)
@@ -252,7 +262,7 @@ pub fn serve() Request {
 			// ends the child with the server only if the server is still there when
 			// the child asks: one that ended since the fork left the child to another
 			// parent, and the child ends at once.
-			$if linux {
+			$if linux && !cross ? {
 				if C.v3_linux_parent_death_signal(C.SIGKILL) != 0 {
 					eprintln('v-diagnostics-server: a child cannot follow the server')
 					exit(2)
@@ -271,7 +281,12 @@ pub fn serve() Request {
 			workers.note_fork()
 			// The server runs without the compiler's memory watchdog, which is a
 			// thread of its own; the child, which may start threads, keeps one.
-			spawn watch_memory(memory_limit_kb())
+			spawn watch_memory(memory_limit_kb(), server_pid)
+			$if macos {
+				if pause := os.getenv_opt('V_DIAGNOSTICS_CHILD_PAUSE') {
+					os.read_file(pause) or {}
+				}
+			}
 			return channel.child_request(question, work_dir, shares_children, token, record_fd)
 		}
 		if pid < 0 {
@@ -359,7 +374,7 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 		// child cannot write into an answer. It does not outlive it for long,
 		// and a child that ended since the fork leaves it to end at once, as
 		// serve's children do with the server.
-		$if linux {
+		$if linux && !cross ? {
 			if C.v3_linux_parent_death_signal(C.SIGKILL) != 0 {
 				C._exit(2)
 			}
@@ -372,7 +387,7 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 		os.fd_close(fd)
 		r.close_channel()
 		workers.note_fork()
-		spawn watch_memory(memory_limit_kb())
+		spawn watch_memory(memory_limit_kb(), child_pid)
 		return true
 	}
 	if pid < 0 {
@@ -398,7 +413,7 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 // memory_file makes a file that lives in memory and ends with its last
 // descriptor, and returns that descriptor, or -1 where it cannot be made.
 fn memory_file(name &char) int {
-	$if linux {
+	$if linux && !cross ? {
 		return C.v3_linux_memory_file(name)
 	} $else {
 		return -1
@@ -452,50 +467,55 @@ pub fn (mut r Request) print_diagnostics() int {
 // incremental_record returns what the last check of the program that recorded
 // something left for the next one (see keep_incremental_record), or ''.
 pub fn (r &Request) incremental_record() string {
-	if r.record_fd < 0 {
-		return ''
-	}
-	C.flock(r.record_fd, C.LOCK_SH)
-	mut out := []u8{}
-	mut chunk := []u8{len: 65536}
-	for {
-		got := C.pread(r.record_fd, unsafe { &u8(chunk.data) }, uint(chunk.len), i64(out.len))
-		if got < 0 && C.errno == C.EINTR {
-			continue
+	$if linux && !cross ? {
+		if r.record_fd < 0 {
+			return ''
 		}
-		if got <= 0 {
-			break
+		C.flock(r.record_fd, C.LOCK_SH)
+		mut out := []u8{}
+		mut chunk := []u8{len: 65536}
+		for {
+			got := C.pread(r.record_fd, unsafe { &u8(chunk.data) }, uint(chunk.len), i64(out.len))
+			if got < 0 && C.errno == C.EINTR {
+				continue
+			}
+			if got <= 0 {
+				break
+			}
+			out << chunk[..int(got)]
 		}
-		out << chunk[..int(got)]
+		C.flock(r.record_fd, C.LOCK_UN)
+		return out.bytestr()
 	}
-	C.flock(r.record_fd, C.LOCK_UN)
-	return out.bytestr()
+	return ''
 }
 
 // keep_incremental_record keeps `text` for the next check of the program, in
 // place of what an earlier check kept: a check that checks again only the
 // function bodies that changed reads it (see types.start_incremental_check).
 pub fn (r &Request) keep_incremental_record(text string) {
-	if r.record_fd < 0 || text == '' {
-		return
-	}
-	C.flock(r.record_fd, C.LOCK_EX)
-	C.ftruncate(r.record_fd, u64(0))
-	mut written := 0
-	for written < text.len {
-		wrote := C.pwrite(r.record_fd, unsafe { text.str + written }, uint(text.len - written),
-			i64(written))
-		if wrote < 0 && C.errno == C.EINTR {
-			continue
+	$if linux && !cross ? {
+		if r.record_fd < 0 || text == '' {
+			return
 		}
-		if wrote <= 0 {
-			// A record cut short reads as none.
-			C.ftruncate(r.record_fd, u64(0))
-			break
+		C.flock(r.record_fd, C.LOCK_EX)
+		C.ftruncate(r.record_fd, u64(0))
+		mut written := 0
+		for written < text.len {
+			wrote := C.pwrite(r.record_fd, unsafe { text.str + written }, uint(text.len - written),
+				i64(written))
+			if wrote < 0 && C.errno == C.EINTR {
+				continue
+			}
+			if wrote <= 0 {
+				// A record cut short reads as none.
+				C.ftruncate(r.record_fd, u64(0))
+				break
+			}
+			written += int(wrote)
 		}
-		written += int(wrote)
+		C.flock(r.record_fd, C.LOCK_UN)
 	}
-	C.flock(r.record_fd, C.LOCK_UN)
 }
 
 // exit_code_within waits `ms` milliseconds at most for the child `pid`, and
@@ -524,22 +544,25 @@ fn (mut r Request) close_channel() {
 
 // read_from_start reads the file open as `fd` from its start to its end.
 fn read_from_start(fd int) string {
-	if C.lseek(fd, 0, C.SEEK_SET) != 0 {
-		return ''
-	}
-	mut out := []u8{}
-	mut chunk := []u8{len: 65536}
-	for {
-		got := C.read(fd, unsafe { &u8(chunk.data) }, uint(chunk.len))
-		if got < 0 && C.errno == C.EINTR {
-			continue
+	$if linux && !cross ? {
+		if C.lseek(fd, 0, C.SEEK_SET) != 0 {
+			return ''
 		}
-		if got <= 0 {
-			break
+		mut out := []u8{}
+		mut chunk := []u8{len: 65536}
+		for {
+			got := C.read(fd, unsafe { &u8(chunk.data) }, uint(chunk.len))
+			if got < 0 && C.errno == C.EINTR {
+				continue
+			}
+			if got <= 0 {
+				break
+			}
+			out << chunk[..int(got)]
 		}
-		out << chunk[..int(got)]
+		return out.bytestr()
 	}
-	return out.bytestr()
+	return ''
 }
 
 // keep_inputs takes the files the check read, by absolute path, with the
@@ -651,7 +674,15 @@ fn retire_growth_kb() i64 {
 }
 
 fn resident_kb() i64 {
-	statm := os.read_file('/proc/self/statm') or { return 0 }
+	return read_resident_kb() or { 0 }
+}
+
+fn read_resident_kb() ?i64 {
+	$if macos {
+		bytes := runtime.used_memory() or { return none }
+		return i64(bytes / 1024)
+	}
+	statm := os.read_file('/proc/self/statm') or { return none }
 	fields := statm.fields()
 	if fields.len < 2 {
 		return 0
@@ -1075,8 +1106,16 @@ fn write_line(fd int, line string) {
 }
 
 // threads_besides_pool_workers counts this process's threads other than the
-// main one, which calls this, and the worker pool threads, named `v3-pool`.
+// main one, which calls this, and on Linux the worker pool threads.
 fn threads_besides_pool_workers() int {
+	$if macos && !cross ? {
+		// Resume the compiler after fork only from a single-threaded parent.
+		// Two slots let us distinguish a single thread from a truncated list.
+		mut threads := [2]u64{}
+		bytes := C.proc_pidinfo(os.getpid(), darwin_proc_pidlistthreads, 0, &threads,
+			int(sizeof(threads)))
+		return if bytes == int(sizeof(u64)) { 0 } else { 1 }
+	}
 	main_task := os.getpid().str()
 	mut others := 0
 	for task in os.ls('/proc/self/task') or { return 1 } {
@@ -1098,16 +1137,25 @@ fn memory_limit_kb() i64 {
 	return if mb > 0 { mb * 1024 } else { i64(10176) * 1024 }
 }
 
-// watch_memory stops the check once its resident memory passes `limit_kb`.
-fn watch_memory(limit_kb i64) {
-	page_kb := i64(os.page_size()) / 1024
+// watch_memory enforces the child's memory limit. On macOS it also ends the
+// child when its server disappears, since Darwin has no parent-death signal.
+fn watch_memory(limit_kb i64, parent_pid int) {
 	for {
-		statm := os.read_file('/proc/self/statm') or { return }
-		fields := statm.fields()
-		if fields.len > 1 && fields[1].i64() * page_kb > limit_kb {
-			eprintln('v-diagnostics-server: the check passed its memory limit of ${limit_kb / 1024} MB and was stopped')
-			flush_stderr()
-			C._exit(137)
+		$if macos {
+			if os.getppid() != parent_pid {
+				C._exit(2)
+			}
+		}
+		if kb := read_resident_kb() {
+			if kb > limit_kb {
+				eprintln('v-diagnostics-server: the check passed its memory limit of ${limit_kb / 1024} MB and was stopped')
+				flush_stderr()
+				C._exit(137)
+			}
+		} else {
+			$if linux {
+				return
+			}
 		}
 		time.sleep(50 * time.millisecond)
 	}

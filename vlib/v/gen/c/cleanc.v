@@ -6971,9 +6971,9 @@ fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source stri
 		}
 		'v/gen/c/output_nix.c.v' { return include_arg == '<sys/uio.h>' }
 		'v/gen/fastc/unit_compile_nix.c.v' { return include_arg == '<signal.h>' }
-		'v/diagserver/diagserver_linux.c.v' {
+		'v/diagserver/diagserver_nix.c.v' {
 			return include_arg in ['<errno.h>', '<signal.h>', '<sys/file.h>', '<sys/wait.h>',
-				'<unistd.h>', '<sys/prctl.h>', '<sys/syscall.h>']
+				'<unistd.h>']
 		}
 		'sync/sync_default.c.v' { return include_arg == '<semaphore.h>' }
 		'sync/sync_freebsd.c.v' {
@@ -27697,7 +27697,12 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	] {
 		if qname == 'max_len' && ct == 'int' {
 			g.writeln('enum { ${qname} = ${expr_str} };')
-		} else if ct == 'u8' || g.fixed_storage_consts[g.const_primary_name(name)] || g.name_collides_with_struct_field(qname) {
+		} else if g.fixed_storage_consts[g.const_primary_name(name)] {
+			// A constant whose address is taken has one definition, like a global: a
+			// program split into units (the cached program prefix and its TinyCC unit)
+			// declares it `extern` elsewhere, so `&foo` is the same in every unit.
+			g.writeln('${linkage_attr}const ${ct} ${qname} = ${expr_str};')
+		} else if ct == 'u8' || g.name_collides_with_struct_field(qname) {
 			// A `#define` whose name matches a struct field would wrongly expand every
 			// `.field` access. Byte constants are also passed by reference by generic
 			// binary I/O helpers, so they need addressable storage rather than a macro.
