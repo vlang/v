@@ -1,31 +1,44 @@
 // vtest ownership
 import os
+import v.tempname
 
 const drop_codegen_vexe = @VEXE
 const drop_codegen_tests_dir = os.dir(@FILE)
 const drop_codegen_v3_dir = os.dir(drop_codegen_tests_dir)
 const drop_codegen_vlib_dir = os.dir(drop_codegen_v3_dir)
 const drop_codegen_v3_src = os.join_path(drop_codegen_v3_dir, 'v.v')
+const drop_codegen_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_drop_codegen_compiler_${tempname.unique_token()}')
+
+fn testsuite_end() {
+	os.rmdir_all(drop_codegen_compiler_dir) or {}
+}
+
+fn drop_codegen_build_v3() string {
+	v3_bin := os.join_path(drop_codegen_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
+	os.mkdir_all(drop_codegen_compiler_dir) or { panic(err) }
+	build :=
+		os.exec([drop_codegen_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${drop_codegen_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, drop_codegen_v3_src])
+	assert build.exit_code == 0, build.output
+	return v3_bin
+}
 
 fn test_drop_codegen_covers_generic_natural_return_and_propagation_exits() {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_drop_codegen_${pid}')
+	v3_bin := drop_codegen_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_drop_codegen_${pid}.v')
 	out := os.join_path(os.temp_dir(), 'v3_drop_codegen_program_${pid}')
-	os.rm(v3_bin) or {}
 	os.rm(src) or {}
 	os.rm(out) or {}
 	os.rm(out + '.c') or {}
 	defer {
-		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
 		os.rm(out + '.c') or {}
 	}
-	build :=
-		os.exec([drop_codegen_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-			'${drop_codegen_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${drop_codegen_v3_src}'])
-	assert build.exit_code == 0, build.output
 	os.write_file(src, "module main
 
 struct Resource implements Drop {
@@ -321,23 +334,17 @@ fn main() {
 
 fn test_drop_codegen_recurses_through_owned_container_elements() {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_recursive_drop_codegen_${pid}')
+	v3_bin := drop_codegen_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_recursive_drop_codegen_${pid}.v')
 	out := os.join_path(os.temp_dir(), 'v3_recursive_drop_codegen_program_${pid}')
-	os.rm(v3_bin) or {}
 	os.rm(src) or {}
 	os.rm(out) or {}
 	os.rm(out + '.c') or {}
 	defer {
-		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
 		os.rm(out + '.c') or {}
 	}
-	build :=
-		os.exec([drop_codegen_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-			'${drop_codegen_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${drop_codegen_v3_src}'])
-	assert build.exit_code == 0, build.output
 	os.write_file(src, "module main
 
 struct Resource implements Drop {

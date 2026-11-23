@@ -1,7 +1,11 @@
-module c
+module main
 
 import os
 import v.cmdexec
+
+// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+// programs with, so use the MinGW gcc there.
+const global_symbol_cc = $if windows { 'gcc' } $else { 'clang' }
 
 fn run_global_symbol_project(name string, sources map[string]string) {
 	root := os.join_path(os.vtmp_dir(), 'global_symbol_${name}_${os.getpid()}')
@@ -12,7 +16,7 @@ fn run_global_symbol_project(name string, sources map[string]string) {
 		os.mkdir_all(os.dir(path)) or { panic(err) }
 		os.write_file(path, source) or { panic(err) }
 	}
-	result := cmdexec.run(@VEXE, ['-b', 'c', '-cc', 'clang', '-enable-globals', 'run',
+	result := cmdexec.run(@VEXE, ['-b', 'c', '-cc', global_symbol_cc, '-enable-globals', 'run',
 		os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, '${name}: ${result.output}'
 }
@@ -147,7 +151,8 @@ pub __global counter int
 pub fn result() int { return local.counter }
 ') or { panic(err) }
 		}
-		result := cmdexec.run(@VEXE, ['-b', 'c', '-cc', 'clang', '-enable-globals', 'run', main_file])
+		result := cmdexec.run(@VEXE, ['-b', 'c', '-cc', global_symbol_cc, '-enable-globals', 'run',
+			main_file])
 		assert result.exit_code == 0, '${fixture}: ${result.output}'
 	}
 }

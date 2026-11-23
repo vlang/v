@@ -110,6 +110,13 @@ jobs:
         if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           v retry -- git clone --depth 1 https://github.com/vlang/ved
+          # Remove this patch once https://github.com/vlang/ved/pull/217 is merged.
+          ved_patch="$GITHUB_WORKSPACE/.github/ved_current_v.patch"
+          if git -C ved apply --check "$ved_patch"; then
+            git -C ved apply "$ved_patch"
+          else
+            git -C ved apply --reverse --check "$ved_patch"
+          fi
           cd ved && v -o ved .
           echo "Build"
           v .

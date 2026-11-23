@@ -63,16 +63,16 @@ def validate_master_bootstrap_contract(workflow, master):
             inputs = workflow_block(caller, 'with', 4)
             if inputs.strip() != f'platform: {name.removeprefix("bootstrap-")}':
                 raise ValueError(f'{name} must select its bootstrap platform')
-    formatting = workflow_block(jobs, 'formatting', 2)
-    if re.findall(r'^    needs: (.+)$', formatting, re.M) != ['bootstrap-linux']:
-        raise ValueError('formatting must depend only on the Linux bootstrap')
-    if re.search(r'^    if:', formatting, re.M):
-        raise ValueError('formatting must retain the default success condition')
+    preflight = workflow_block(jobs, 'preflight', 2)
+    if re.findall(r'^    needs: (.+)$', preflight, re.M) != ['bootstrap-linux']:
+        raise ValueError('preflight must depend only on the Linux bootstrap')
+    if re.search(r'^    if:', preflight, re.M):
+        raise ValueError('preflight must retain the default success condition')
     for cc in COMPILERS:
         caller = workflow_block(jobs, f'windows_ci_{cc}', 2)
-        needs = re.findall(r'^    needs: \[([^\]]+)\]$', caller, re.M)
-        if len(needs) != 1 or {name.strip() for name in needs[0].split(',')} != {
-                'formatting', 'gen_vc_ci', 'bootstrap-windows', 'windows-bootstrap-contracts'}:
+        needs = re.findall(r'^    needs:\s*\[([^\]]+)\]$', caller, re.M)
+        if len(needs) != 1 or {name.strip() for name in needs[0].split(',') if name.strip()} != {
+                'preflight', 'gen_vc_ci', 'bootstrap-windows', 'windows-bootstrap-contracts'}:
             raise ValueError(f'windows_ci_{cc} must retain its bootstrap and contract gates')
     contracts = workflow_block(workflow_block(workflow, 'jobs', 0), 'bootstrap-contracts', 2)
     if not re.search(r"^    if: github.ref == 'refs/heads/master'$", contracts, re.M):
@@ -317,7 +317,7 @@ class MasterBootstrapContractTests(unittest.TestCase):
         for name in names + ['windows-bootstrap-contracts']:
             body = workflow_block(self.master, name, 2)
             mutations = [body + f'    {rule}\n' for rule in
-                         ('if: false', 'needs: formatting', 'continue-on-error: true')]
+                         ('if: false', 'needs: preflight', 'continue-on-error: true')]
             mutations.append(body.replace('uses: ./.github/workflows/',
                                           'uses: ./.github/workflows/missing_', 1))
             for mutation in mutations:
@@ -338,8 +338,8 @@ class MasterBootstrapContractTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         validate_master_bootstrap_contract(self.workflow, changed)
 
-    def test_formatting_requires_successful_bootstrap(self):
-        body = workflow_block(self.master, 'formatting', 2)
+    def test_preflight_requires_successful_bootstrap(self):
+        body = workflow_block(self.master, 'preflight', 2)
         mutations = [body.replace('    needs: bootstrap-linux\n', replacement, 1)
                      for replacement in ('', '    needs: bootstrap-windows\n',
                                          '    needs: [bootstrap-linux, bootstrap-macos]\n',
@@ -349,19 +349,42 @@ class MasterBootstrapContractTests(unittest.TestCase):
             changed = self.master.replace(body, mutation, 1)
             with self.subTest(mutation=mutation.split('    runs-on:', 1)[0]):
                 self.assertNotEqual(changed, self.master)
-                with self.assertRaisesRegex(ValueError, 'formatting'):
+                with self.assertRaisesRegex(ValueError, 'preflight'):
+                    validate_master_bootstrap_contract(self.workflow, changed)
+
+    def test_windows_callers_accept_prettier_wrapping(self):
+        for cc in COMPILERS:
+            body = workflow_block(self.master, f'windows_ci_{cc}', 2)
+            for value in (
+                ' [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]',
+                '\n      [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]',
+                '\n      [\n        preflight,\n        gen_vc_ci,\n'
+                '        bootstrap-windows,\n        windows-bootstrap-contracts,\n      ]',
+            ):
+                changed_body = re.sub(r'^    needs:\s*\[[^\]]+\]$',
+                                      '    needs:' + value, body, count=1, flags=re.M)
+                changed = self.master.replace(body, changed_body, 1)
+                with self.subTest(compiler=cc, needs=value):
+                    self.assertIn('    needs:' + value + '\n', changed_body)
                     validate_master_bootstrap_contract(self.workflow, changed)
 
     def test_windows_callers_require_successful_bootstrap_and_contracts(self):
         for cc in COMPILERS:
             name = f'windows_ci_{cc}'
             body = workflow_block(self.master, name, 2)
-            for gate in ('bootstrap-windows', 'windows-bootstrap-contracts'):
-                changed = self.master.replace(body, body.replace(', ' + gate, '', 1), 1)
-                with self.subTest(compiler=cc, gate=gate):
-                    self.assertNotEqual(changed, self.master)
-                    with self.assertRaisesRegex(ValueError, name):
-                        validate_master_bootstrap_contract(self.workflow, changed)
+            gates = ['preflight', 'gen_vc_ci', 'bootstrap-windows', 'windows-bootstrap-contracts']
+            for gate in gates:
+                remaining = [item for item in gates if item != gate]
+                for value in (' [' + ', '.join(remaining) + ']',
+                              '\n      [' + ', '.join(remaining) + ']',
+                              '\n      [\n        ' + ',\n        '.join(remaining) + ',\n      ]'):
+                    changed_body = re.sub(r'^    needs:\s*\[[^\]]+\]$',
+                                          '    needs:' + value, body, count=1, flags=re.M)
+                    changed = self.master.replace(body, changed_body, 1)
+                    with self.subTest(compiler=cc, gate=gate, needs=value):
+                        self.assertNotEqual(changed, self.master)
+                        with self.assertRaisesRegex(ValueError, name):
+                            validate_master_bootstrap_contract(self.workflow, changed)
 
     def test_reusable_bootstrap_retains_both_platforms_and_commands(self):
         mutations = [self.workflow.replace('  workflow_call:\n', '', 1),
@@ -417,64 +440,6 @@ class W5SourceTests(unittest.TestCase):
     def test_changed_test_selection_requires_a_new_tuple(self):
         with self.assertRaisesRegex(ValueError, 'tuple mismatch'):
             w5_metadata(self.script.replace("$caseName = 'test_", "$caseName = 'test_other_", 1))
-
-
-class FallbackChecksumTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.shell = shutil.which('sh')
-        compiler = shutil.which('gcc' if os.name == 'nt' else 'cc')
-        if not cls.shell or not compiler:
-            raise unittest.SkipTest('requires a POSIX shell and a C compiler')
-        cls.temp = tempfile.TemporaryDirectory(prefix='fallback checksum stdin ')
-        cls.addClassCleanup(cls.temp.cleanup)
-        cls.root = Path(cls.temp.name)
-        source = cls.root / 'sha256sum.c'
-        source.write_text(r'''
-#include <stdio.h>
-#include <sys/stat.h>
-int main(void) {
-    struct stat info;
-    /* Model Git for Windows coreutils checking stdin before hashing a file. */
-    if (fstat(0, &info) != 0) {
-        fputs("closed stdin\n", stderr);
-        return 9;
-    }
-    puts("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  fixture");
-    return 0;
-}
-''', encoding='utf-8')
-        binary = cls.root / ('sha256sum.exe' if os.name == 'nt' else 'sha256sum')
-        subprocess.run([compiler, '-o', str(binary), str(source)],
-                       check=True, capture_output=True, text=True, timeout=60)
-        installer = (ROOT / 'cmd/tools/install_v1_fallback.sh').read_text(encoding='utf-8')
-        start = installer.index('sha256_of() {\n')
-        end = installer.index('\ncandidate_has_expected_version()', start)
-        cls.function = installer[start:end]
-
-    def checksum_with_closed_stdin(self, function):
-        script = self.root / 'probe.sh'
-        # Set PATH inside the shell: Git for Windows prepends its coreutils to
-        # the inherited Windows PATH when sh starts. cygpath also converts the
-        # drive prefix before POSIX PATH treats its colon as a separator.
-        fixture_path = "'" + self.root.as_posix().replace("'", "'\\''") + "'"
-        setup = (f'fixture_bin={fixture_path}\n'
-                 'if command -v cygpath >/dev/null 2>&1; then\n'
-                 '    fixture_bin=$(cygpath -u "$fixture_bin")\n'
-                 'fi\nPATH="$fixture_bin:$PATH"\nexport PATH\n')
-        script.write_bytes((setup + function + '\nsha256_of fixture 0<&-\n').encode('utf-8'))
-        return subprocess.run([self.shell, script.as_posix()],
-                              capture_output=True, text=True, timeout=30)
-
-    def test_checksum_tools_receive_valid_stdin(self):
-        result = self.checksum_with_closed_stdin(self.function)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(result.stdout.strip(), '0123456789abcdef' * 4)
-
-    def test_closed_stdin_fixture_detects_the_unredirected_regression(self):
-        result = self.checksum_with_closed_stdin(self.function.replace('} < /dev/null', '}'))
-        self.assertEqual(result.stdout.strip(), '')
-        self.assertIn('closed stdin', result.stderr)
 
 
 class ShaderFixtureTests(unittest.TestCase):

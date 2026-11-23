@@ -1380,7 +1380,7 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		cache_trace_module_miss(module_name, 'object stamp is missing')
 		return none
 	}
-	if !object_stamp_valid_with_metadata_cache(object_stamp, expected, mut dependency_metadata) {
+	if !object_stamp_valid_with_metadata_cache(m.dir, object_stamp, expected, mut dependency_metadata) {
 		cache_trace_module_miss(module_name, 'object dependency changed')
 		return none
 	}
@@ -1482,7 +1482,7 @@ pub fn (m &Manager) valid_object(cache_name string, source_files []string) ?Entr
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
-	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
+	if !object_stamp_valid(m.dir, stamp, entry_stamp(m.salt, source_hash)) {
 		cache_trace_module_miss(cache_name, 'object source or dependency changed')
 		return none
 	}
@@ -1536,7 +1536,7 @@ fn (m &Manager) object_for_compile_signature(cache_name string, source_files []s
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
-	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
+	if !object_stamp_valid(m.dir, stamp, entry_stamp(m.salt, source_hash)) {
 		if trace {
 			cache_trace_module_miss(cache_name, 'object source or dependency changed')
 		}
@@ -1549,7 +1549,7 @@ fn (m &Manager) object_for_compile_signature(cache_name string, source_files []s
 		}
 		return none
 	}
-	if !object_stamp_dependencies_match(stamp, dependency_inputs) {
+	if !object_stamp_dependencies_match(m.dir, stamp, dependency_inputs) {
 		if trace {
 			cache_trace_module_miss(cache_name, 'object was built against other dependency interfaces')
 		}
@@ -1570,7 +1570,7 @@ pub fn (m &Manager) valid_cgen(source_files []string, generation_signature strin
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
-	expected := cgen_entry_stamp(m.salt, source_hash, dependency_inputs, generation_signature)
+	expected := cgen_entry_stamp(m.dir, m.salt, source_hash, dependency_inputs, generation_signature)
 	if stamp != expected {
 		return none
 	}
@@ -1601,7 +1601,7 @@ pub fn (m &Manager) cached_cgen_dependency_inputs(source_files []string, generat
 	stamp := os.read_file(entry.stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
 	expected_head := entry_stamp(m.salt, source_hash) + 'generation=${hash_text(generation_signature)}\n'
-	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies, restored_prefixes)
+	return cached_dependency_inputs_from_stamp(m.dir, stamp, expected_head, fixed_dependencies, restored_prefixes)
 }
 
 // cached_incremental_dependency_inputs restores dependency records from a
@@ -1621,10 +1621,10 @@ pub fn (m &Manager) cached_incremental_dependency_inputs(source_files []string, 
 		return none
 	}
 	expected_head := entry_stamp(m.salt, declaration_signature) + 'generation=${hash_text('incremental-v5\n${generation_signature}')}\n'
-	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies, restored_prefixes)
+	return cached_dependency_inputs_from_stamp(m.dir, stamp, expected_head, fixed_dependencies, restored_prefixes)
 }
 
-fn cached_dependency_inputs_from_stamp(stamp string, expected_head string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
+fn cached_dependency_inputs_from_stamp(dir string, stamp string, expected_head string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
 	if !stamp.starts_with(expected_head) {
 		trace_dependency_restore_miss('stamp header changed')
 		return none
@@ -1642,7 +1642,7 @@ fn cached_dependency_inputs_from_stamp(stamp string, expected_head string, fixed
 			trace_dependency_restore_miss('malformed dependency value')
 			return none
 		}
-		key := value[..tab]
+		key := stamp_dependency_path(dir, value[..tab])
 		signature := value[tab + 1..]
 		if key in restored || fixed_seen[key] {
 			trace_dependency_restore_miss('duplicate dependency ${key}')
@@ -1690,7 +1690,7 @@ pub fn (m &Manager) valid_generic_program(source_files []string, semantic_signat
 		return none
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
-	expected := cgen_entry_stamp(m.salt, semantic_signature, dependency_inputs, 'generic-v6\n${generation_signature}')
+	expected := cgen_entry_stamp(m.dir, m.salt, semantic_signature, dependency_inputs, 'generic-v6\n${generation_signature}')
 	if stamp != expected {
 		return none
 	}
@@ -1709,7 +1709,7 @@ pub fn (m &Manager) write_cgen(source_files []string, generation_signature strin
 	os.rm(entry.prepared_stamp) or {}
 	write_atomic(entry.source, source)!
 	write_atomic(entry.metadata, metadata)!
-	stamp := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, generation_signature)
+	stamp := cgen_entry_stamp(m.dir, m.salt, m.source_signature(source_files), dependency_inputs, generation_signature)
 	write_atomic(entry.stamp, stamp)!
 	return entry
 }
@@ -1729,7 +1729,7 @@ pub fn (m &Manager) write_generic_program(source_files []string, semantic_signat
 	write_atomic(entry.body, body)!
 	write_atomic(entry.literals, literals)!
 	write_atomic(entry.metadata, metadata)!
-	stamp := cgen_entry_stamp(m.salt, semantic_signature, dependency_inputs, 'generic-v6\n${generation_signature}')
+	stamp := cgen_entry_stamp(m.dir, m.salt, semantic_signature, dependency_inputs, 'generic-v6\n${generation_signature}')
 	write_atomic(entry.stamp, stamp)!
 	return entry
 }
@@ -1761,7 +1761,7 @@ pub fn (m &Manager) valid_incremental_program(source_files []string, declaration
 		trace_incremental_cache_miss('stamp cannot be read')
 		return none
 	}
-	expected := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs, 'incremental-v5\n${generation_signature}')
+	expected := cgen_entry_stamp(m.dir, m.salt, declaration_signature, dependency_inputs, 'incremental-v5\n${generation_signature}')
 	if stamp != expected {
 		if os.getenv('V3_CACHE_TRACE') != '' {
 			actual_lines := stamp.split_into_lines()
@@ -1803,7 +1803,7 @@ pub fn (m &Manager) write_incremental_program(source_files []string, declaration
 	write_atomic(entry.tcc_declarations, tcc_declarations)!
 	write_atomic(entry.objects, objects.join('\n'))!
 	write_atomic(entry.metadata, metadata)!
-	stamp := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs, 'incremental-v5\n${generation_signature}')
+	stamp := cgen_entry_stamp(m.dir, m.salt, declaration_signature, dependency_inputs, 'incremental-v5\n${generation_signature}')
 	write_atomic(entry.stamp, stamp)!
 	return entry
 }
@@ -1875,7 +1875,7 @@ fn (m &Manager) program_executable_slot(source_files []string) string {
 fn (m &Manager) program_executable_identity(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string) ?string {
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
 	return 'executable_format=${program_executable_format}\n' +
-		cgen_entry_stamp(m.salt, source_hash, dependency_inputs, generation_signature) +
+		cgen_entry_stamp(m.dir, m.salt, source_hash, dependency_inputs, generation_signature) +
 		'link=${hash_text(link_signature)}\n'
 }
 
@@ -2111,7 +2111,7 @@ fn program_executable_of_stamp(stamp string, slot string) string {
 pub fn (m &Manager) write_stamp(module_name string, source_files []string, dependency_inputs map[string]string, compile_signature string) ! {
 	entry := m.entry(module_name, source_files)
 	object_entry := m.object_entry(module_name, source_files, compile_signature)
-	stamp := object_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, compile_signature)
+	stamp := object_entry_stamp(m.dir, m.salt, m.source_signature(source_files), dependency_inputs, compile_signature)
 	write_atomic(object_entry.object_stamp, stamp)!
 	write_atomic(entry.object_stamp, stamp)!
 }
@@ -2170,36 +2170,59 @@ fn header_stamp_flags(stamp string, expected_entry string) ?HeaderStampFlags {
 	return none
 }
 
-fn object_entry_stamp(salt string, source_hash string, dependency_inputs map[string]string, compile_signature string) string {
+// cache_dir_dependency_prefix starts the name that a stamp records for a dependency inside
+// the cache directory, such as an imported module header. The rest of the name is relative
+// to the directory, so a copy of the cache at another path, or a copy restored to the same
+// path, is still valid: headers are checked by content once their metadata changes.
+const cache_dir_dependency_prefix = '@cache/'
+
+// stamp_dependency_name returns the name under which a stamp records `path`.
+fn stamp_dependency_name(dir string, path string) string {
+	if dir.len > 0 && path.len > dir.len + 1 && path.starts_with(dir)
+		&& (path[dir.len] == `/` || path[dir.len] == `\\`) {
+		return cache_dir_dependency_prefix + path[dir.len + 1..]
+	}
+	return path
+}
+
+// stamp_dependency_path returns the path of a dependency that a stamp records as `name`.
+fn stamp_dependency_path(dir string, name string) string {
+	if name.starts_with(cache_dir_dependency_prefix) {
+		return os.join_path(dir, name[cache_dir_dependency_prefix.len..])
+	}
+	return name
+}
+
+fn object_entry_stamp(dir string, salt string, source_hash string, dependency_inputs map[string]string, compile_signature string) string {
 	mut out := strings.new_builder(256 + dependency_inputs.len * 96)
 	out.write_string(entry_stamp(salt, source_hash))
 	out.writeln('compile=${hash_text(compile_signature)}')
 	mut paths := dependency_inputs.keys()
 	paths.sort()
 	for path in paths {
-		out.writeln('dependency=${path}\t${dependency_inputs[path]}\t${file_metadata_signature(path)}')
+		out.writeln('dependency=${stamp_dependency_name(dir, path)}\t${dependency_inputs[path]}\t${file_metadata_signature(path)}')
 	}
 	return out.str()
 }
 
-fn cgen_entry_stamp(salt string, source_hash string, dependency_inputs map[string]string, generation_signature string) string {
+fn cgen_entry_stamp(dir string, salt string, source_hash string, dependency_inputs map[string]string, generation_signature string) string {
 	mut out := strings.new_builder(256 + dependency_inputs.len * 96)
 	out.write_string(entry_stamp(salt, source_hash))
 	out.writeln('generation=${hash_text(generation_signature)}')
 	mut paths := dependency_inputs.keys()
 	paths.sort()
 	for path in paths {
-		out.writeln('dependency=${path}\t${dependency_inputs[path]}')
+		out.writeln('dependency=${stamp_dependency_name(dir, path)}\t${dependency_inputs[path]}')
 	}
 	return out.str()
 }
 
-fn object_stamp_valid(stamp string, expected_entry string) bool {
+fn object_stamp_valid(dir string, stamp string, expected_entry string) bool {
 	mut dependency_metadata := map[string]string{}
-	return object_stamp_valid_with_metadata_cache(stamp, expected_entry, mut dependency_metadata)
+	return object_stamp_valid_with_metadata_cache(dir, stamp, expected_entry, mut dependency_metadata)
 }
 
-fn object_stamp_valid_with_metadata_cache(stamp string, expected_entry string, mut dependency_metadata map[string]string) bool {
+fn object_stamp_valid_with_metadata_cache(dir string, stamp string, expected_entry string, mut dependency_metadata map[string]string) bool {
 	if !stamp.starts_with(expected_entry) {
 		return false
 	}
@@ -2218,7 +2241,7 @@ fn object_stamp_valid_with_metadata_cache(stamp string, expected_entry string, m
 		if !line.starts_with('dependency=') {
 			return false
 		}
-		dependency := parse_object_stamp_dependency(line) or { return false }
+		dependency := parse_object_stamp_dependency(dir, line) or { return false }
 		current_metadata := dependency_metadata[dependency.path] or {
 			metadata := file_metadata_signature(dependency.path)
 			dependency_metadata[dependency.path] = metadata
@@ -2252,7 +2275,7 @@ struct ObjectStampDependency {
 	metadata  string
 }
 
-fn parse_object_stamp_dependency(line string) ?ObjectStampDependency {
+fn parse_object_stamp_dependency(dir string, line string) ?ObjectStampDependency {
 	if !line.starts_with('dependency=') {
 		return none
 	}
@@ -2267,19 +2290,19 @@ fn parse_object_stamp_dependency(line string) ?ObjectStampDependency {
 		return none
 	}
 	return ObjectStampDependency{
-		path:      path_and_signature[..signature_tab]
+		path:      stamp_dependency_path(dir, path_and_signature[..signature_tab])
 		signature: path_and_signature[signature_tab + 1..]
 		metadata:  value[metadata_tab + 1..]
 	}
 }
 
-fn object_stamp_dependencies_match(stamp string, expected map[string]string) bool {
+fn object_stamp_dependencies_match(dir string, stamp string, expected map[string]string) bool {
 	mut actual := map[string]string{}
 	for line in stamp.split_into_lines() {
 		if !line.starts_with('dependency=') {
 			continue
 		}
-		dependency := parse_object_stamp_dependency(line) or { return false }
+		dependency := parse_object_stamp_dependency(dir, line) or { return false }
 		if dependency.path in actual {
 			return false
 		}
@@ -2303,24 +2326,15 @@ pub fn header_signature(header string) string {
 }
 
 // file_signature returns a stable content signature for a cache input file.
+@[direct_array_access]
 pub fn file_signature(path string) string {
-	mut file := os.open(path) or { return '' }
-	defer { file.close() }
+	// A build asks for the signatures of the same native headers once per cached
+	// object that depends on them, so this loop is on a hot path: one read, and no
+	// bounds checks in a loop that stays within `data`.
+	data := os.read_bytes(path) or { return '' }
 	mut hash := u64(1469598103934665603)
-	mut buffer := []u8{len: 64 * 1024}
-	for {
-		read := file.read(mut buffer) or {
-			if err is os.Eof {
-				break
-			}
-			return ''
-		}
-		if read == 0 {
-			break
-		}
-		for value in buffer[..read] {
-			hash = (hash ^ u64(value)) * u64(1099511628211)
-		}
+	for i in 0 .. data.len {
+		hash = (hash ^ u64(data[i])) * u64(1099511628211)
 	}
 	return hash.hex()
 }
@@ -2339,13 +2353,24 @@ fn sanitize_name(name string) string {
 }
 
 fn hash_text(value string) string {
-	return hash_bytes(u64(1469598103934665603), value.bytes()).hex()
+	return hash_string(u64(1469598103934665603), value).hex()
 }
 
 fn hash_bytes(initial u64, bytes []u8) u64 {
 	mut hash := initial
 	for c in bytes {
 		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
+	return hash
+}
+
+// hash_string is hash_bytes over the bytes of `value`, without copying them. Module
+// headers are hashed for every cached object that depends on them.
+@[direct_array_access]
+fn hash_string(initial u64, value string) u64 {
+	mut hash := initial
+	for i in 0 .. value.len {
+		hash = (hash ^ u64(value[i])) * u64(1099511628211)
 	}
 	return hash
 }
@@ -5500,6 +5525,10 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 	mut seen := map[string]bool{}
 	mut seen_types := map[u64]bool{}
 	mut selected_imports := map[string]bool{}
+	mut mapped_declarations := []string{}
+	// Built on the first declaration that names an anonymous struct or union.
+	mut anonymous_sources := map[string]string{}
+	mut anonymous_sources_ready := false
 	const_replacements, const_files := module_header_const_replacements(a, tc, module_name, file_ids, const_order)
 	for file_id in file_ids {
 		file_node := a.node(file_id)
@@ -5547,14 +5576,27 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 						effective_attrs << source_attr
 					}
 				}
+				raw_source := if source_embedded {
+					declaration_source_with_line(a, node, source_file, mut source_cache) or {
+						CachedDeclarationSource{}
+					}
+				} else {
+					CachedDeclarationSource{}
+				}
 				mut text := if source_embedded {
-					raw_source := declaration_source_with_line(a, node, source_file, mut source_cache) or { CachedDeclarationSource{} }
 					cached_embedded_declaration_source(raw_source.text, vroot, source_file, raw_source.line)
 				} else {
 					decl_text(a, tc, module_name, node, vroot, source_file, import_paths, effective_attrs, source_is_public)
 				}
 				if text.len == 0 {
 					continue
+				}
+				if !source_embedded && (text.contains('AnonStruct_') || text.contains('AnonUnion_')) {
+					if !anonymous_sources_ready {
+						anonymous_sources = anonymous_aggregate_sources(a, mut source_cache)
+						anonymous_sources_ready = true
+					}
+					text = spell_anonymous_aggregates(text, anonymous_sources)
 				}
 				// Prefer the declaration's source spelling. Attribute marker node ids are
 				// internal parser bookkeeping and can differ when a cache warmup replaces
@@ -5572,8 +5614,19 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 						'@[trusted]'
 					}
 				}
+				mut prefix_lines := 0
 				if attrs_text.len > 0 && (!source_embedded || !text.trim_space().starts_with('@[')) {
 					text = '${attrs_text}\n${text}'
+					prefix_lines = attrs_text.count('\n') + 1
+				}
+				// A panic in an embedded body reports its .v position, so map the body
+				// back to its source file. Only such bodies get a directive: the header
+				// is its dependents' signature, and line numbers make every edit above
+				// the declaration change it.
+				line_directive := if source_embedded && node_calls_panic(a, effective_id) {
+					cached_declaration_line_directive(a, node, raw_source.start, prefix_lines)
+				} else {
+					''
 				}
 				if type_key != 0 {
 					seen_types[type_key] = true
@@ -5584,8 +5637,14 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 					origin := cached_struct_sources[node.value] or { source_file }
 					out.writeln('${c_struct_source_marker}${node.value} ${escape_v_string(origin)}')
 				}
-				out.writeln(text)
-				out.writeln('')
+				if line_directive.len > 0 {
+					// A `#line` directive maps all the lines after it, so the mapped
+					// declarations go last, each after its own directive.
+					mapped_declarations << '${line_directive}\n${text}'
+				} else {
+					out.writeln(text)
+					out.writeln('')
+				}
 			}
 		}
 	}
@@ -5601,6 +5660,10 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 		}
 		text := header_import_text(a, node, import_paths, mut selected_imports)
 		seen[key] = true
+		out.writeln(text)
+		out.writeln('')
+	}
+	for text in mapped_declarations {
 		out.writeln(text)
 		out.writeln('')
 	}
@@ -5820,13 +5883,79 @@ fn declaration_node_source_is_embeddable(a &flat.FlatAst, id flat.NodeId) bool {
 }
 
 struct CachedDeclarationSource {
-	text string
-	line int
+	text  string
+	line  int
+	start int // byte offset of `text` in its source file
 }
 
 fn declaration_source_text(a &flat.FlatAst, node flat.Node, file_name string, mut source_cache map[string]string) ?string {
 	source := declaration_source_with_line(a, node, file_name, mut source_cache)?
 	return source.text
+}
+
+// anonymous_aggregate_sources maps the names that the parser made up for the
+// anonymous structs and unions of `a` to their source spelling, `struct { ... }`.
+// A header has no declaration for such a name, as the source has none: it spells
+// the type out, and parsing the header makes the anonymous type again.
+fn anonymous_aggregate_sources(a &flat.FlatAst, mut source_cache map[string]string) map[string]string {
+	mut sources := map[string]string{}
+	if a.synthesized_anon_struct_types.len == 0 {
+		return sources
+	}
+	for node in a.nodes {
+		if node.kind != .struct_decl
+			|| !(node.value.starts_with('AnonStruct_') || node.value.starts_with('AnonUnion_')) {
+			continue
+		}
+		if !a.synthesized_anon_struct_types[flat.source_type_id(node.value)] {
+			continue
+		}
+		if !node.pos.is_valid() || node.pos.offset < 0 || node.pos.end <= node.pos.offset {
+			continue
+		}
+		file := a.source_files[node.pos.id] or { continue }
+		source := source_cache[file.name] or {
+			loaded := os.read_file(file.name) or { continue }
+			source_cache[file.name] = loaded
+			loaded
+		}
+		if node.pos.end > source.len {
+			continue
+		}
+		text := source[node.pos.offset..node.pos.end].trim_space()
+		if text.starts_with('struct') || text.starts_with('union') {
+			sources[node.value] = text
+		}
+	}
+	return sources
+}
+
+// spell_anonymous_aggregates replaces each made-up anonymous type name in the
+// header text `text` by its source spelling from `sources`.
+fn spell_anonymous_aggregates(text string, sources map[string]string) string {
+	mut out := strings.new_builder(text.len)
+	mut i := 0
+	for i < text.len {
+		if text[i] == `A` && (i == 0 || !is_header_ident_char(text[i - 1]))
+			&& (text[i..].starts_with('AnonStruct_') || text[i..].starts_with('AnonUnion_')) {
+			mut end := i
+			for end < text.len && is_header_ident_char(text[end]) {
+				end++
+			}
+			if spelled := sources[text[i..end]] {
+				out.write_string(spelled)
+				i = end
+				continue
+			}
+		}
+		out.write_u8(text[i])
+		i++
+	}
+	return out.str()
+}
+
+fn is_header_ident_char(c u8) bool {
+	return c.is_letter() || c.is_digit() || c == `_`
 }
 
 fn declaration_source_with_line(a &flat.FlatAst, node flat.Node, file_name string, mut source_cache map[string]string) ?CachedDeclarationSource {
@@ -5851,8 +5980,9 @@ fn declaration_source_with_line(a &flat.FlatAst, node flat.Node, file_name strin
 	}
 	text := source[start..end]
 	return CachedDeclarationSource{
-		text: text
-		line: if text.contains('@LINE') || text.contains('@FILE_LINE') {
+		text:  text
+		start: start
+		line:  if text.contains('@LINE') || text.contains('@FILE_LINE') {
 			source[..start].count('\n') + 1
 		} else {
 			1
@@ -5864,6 +5994,48 @@ struct CachedSourcePathEdit {
 	start       int
 	end         int
 	replacement string
+}
+
+// node_calls_panic reports whether the declaration `id` calls `panic`. It matches
+// the callee by name, because the bodies of generic functions stay unresolved; a
+// function of that name of the module's own only costs a needless directive.
+fn node_calls_panic(a &flat.FlatAst, id flat.NodeId) bool {
+	mut pending := [id]
+	for pending.len > 0 {
+		current := pending.pop()
+		if int(current) < 0 || int(current) >= a.nodes.len {
+			continue
+		}
+		node := a.nodes[int(current)]
+		if node.kind == .call && node.children_count > 0 {
+			callee := a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value == 'panic' {
+				return true
+			}
+		}
+		for i in 0 .. node.children_count {
+			pending << a.child(&node, i)
+		}
+	}
+	return false
+}
+
+// cached_declaration_line_directive returns a `#line` directive that maps the
+// declaration source starting at byte `start` (preceded by `prefix_lines` extra
+// header lines) back to its logical source position.
+fn cached_declaration_line_directive(a &flat.FlatAst, node flat.Node, start int, prefix_lines int) string {
+	file := a.source_files[node.pos.id] or { return '' }
+	if start < 0 || start > file.size {
+		return ''
+	}
+	// A header that is cached again keeps the position its own directives give.
+	position := file.logical_position_at(start)
+	line := position.line - prefix_lines
+	if line < 1 || position.filename.len == 0 {
+		return ''
+	}
+	name := position.filename.replace('\\', '\\\\').replace('"', '\\"')
+	return '#line ${line} "${name}"'
 }
 
 fn cached_embedded_declaration_source(source string, vroot string, source_file string, source_line int) string {

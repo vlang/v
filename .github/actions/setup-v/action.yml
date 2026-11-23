@@ -30,6 +30,17 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Prefer Git Bash on Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $gitBin = Join-Path $env:ProgramFiles 'Git\bin'
+        if (-not (Test-Path -LiteralPath (Join-Path $gitBin 'bash.exe'))) {
+          throw "Git Bash was not found in $gitBin"
+        }
+        # WindowsApps can put the WSL bash shim ahead of Git Bash in PATH.
+        $gitBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
     - name: Select compiler for this checkout
       id: compiler
       shell: bash
@@ -165,9 +176,9 @@ runs:
         }
         & "$env:GITHUB_ACTION_PATH/../../workflows/prepare_v.ps1" -Prebuilt $env:V_CI_PREBUILT
         if ($LASTEXITCODE -ne 0) { throw "Optimized compiler setup failed (exit $LASTEXITCODE)" }
-        .\v.exe -new-compiler -gc none run cmd/tools/detect_tcc.v
+        .\v.exe -gc none run cmd/tools/detect_tcc.v
         if ($LASTEXITCODE -ne 0) { throw "TCC detection failed (exit $LASTEXITCODE)" }
-        .\v.exe -new-compiler -gc none run .github/problem-matchers/register_all.vsh
+        .\v.exe -gc none run .github/problem-matchers/register_all.vsh
         if ($LASTEXITCODE -ne 0) { throw "Problem matcher setup failed (exit $LASTEXITCODE)" }
         if ($env:RUN_SYMLINK -eq 'true') {
           .\v.exe symlink

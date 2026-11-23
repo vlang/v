@@ -9,24 +9,53 @@ struct MultiReturnTailParts {
 	values       []flat.NodeId
 }
 
+// Longer `else if` chains are emitted as a sequence of `if` statements that jump past
+// the rest of the chain. Each `else if` nests the remaining chain in the C grammar, and
+// MSVC fails with C1026 (parser stack overflow) after a few hundred nested arms, which
+// a dense lowered `match` reaches easily.
+const max_nested_else_if_arms = 128
+
+// if_chain_is_long reports whether the `else if` chain starting at node has more than
+// max_nested_else_if_arms links.
+fn (g &FlatGen) if_chain_is_long(node &flat.Node) bool {
+	mut cur := unsafe { node }
+	for _ in 0 .. max_nested_else_if_arms {
+		if cur.children_count <= 2 {
+			return false
+		}
+		cur = g.a.child_node(cur, 2)
+		if cur.kind != .if_expr {
+			return false
+		}
+	}
+	return cur.children_count > 2 && g.a.child_node(cur, 2).kind == .if_expr
+}
+
 // gen_if emits if output for c.
 @[direct_array_access]
 fn (mut g FlatGen) gen_if(node flat.Node) {
 	// Iterate the `else if` chain rather than recursing through gen_if/gen_if_else for
 	// each link. A lowered match can produce hundreds of chained `if_expr` nodes (one
-	// per arm); recursing once per arm overflows the stack on big matches. The emitted
-	// C is identical — only the generation is flattened into a loop.
+	// per arm); recursing once per arm overflows the stack on big matches.
 	mut cur := node
+	// A chain longer than max_nested_else_if_arms ends every taken arm with
+	// `goto chain_end;`, so the following arms are plain `if` statements, not `else if`.
+	mut chain_end := ''
+	if g.if_chain_is_long(&cur) && g.a.child_node(&cur, 0).kind != .decl_assign {
+		chain_end = '__v_if_chain_end_${g.tmp_count}'
+		g.tmp_count++
+	}
 	for {
 		if cur.children_count < 2 {
-			return
+			break
 		}
 		cond_id := g.a.child(&cur, 0)
 		if !g.valid_node_id(cond_id) {
-			return
+			break
 		}
 		cond := g.a.nodes[int(cond_id)]
 		if cond.kind == .decl_assign {
+			// Only the first arm reaches here: guard `else if` arms recurse below.
 			g.gen_if_guard(cur, cond)
 			return
 		}
@@ -55,7 +84,8 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 				then_scope_drops_consumed = true
 			}
 		}
-		if !g.stmt_tail_exits(then_id) {
+		then_exits := g.stmt_tail_exits(then_id)
+		if !then_exits {
 			g.gen_defers_from(defer_start)
 			if !cur.skip_ownership_drops() && !then_scope_drops_consumed {
 				g.gen_scope_ownership_drop_count(then_scope_drop_prefix_count)
@@ -67,18 +97,21 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 		}
 		g.trim_defers(defer_start)
 		g.leave_conditional_branch()
+		if chain_end.len > 0 && !then_exits {
+			g.writeln('goto ${chain_end};')
+		}
 		g.indent--
 		g.pop_scope()
 		// else handling — continue the loop for a plain `else if`, recurse only for the
 		// rare guard-else (`else if x := ...`).
 		if cur.children_count <= 2 {
 			g.writeln('}')
-			return
+			break
 		}
 		else_id := g.a.child(&cur, 2)
 		if !g.valid_node_id(else_id) {
 			g.writeln('}')
-			return
+			break
 		}
 		else_node := g.a.nodes[int(else_id)]
 		if else_node.kind == .if_expr {
@@ -96,9 +129,13 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 				g.indent--
 				g.pop_scope()
 				g.writeln('}')
-				return
+				break
 			}
-			g.write('} else ')
+			if chain_end.len > 0 {
+				g.writeln('}')
+			} else {
+				g.write('} else ')
+			}
 			cur = else_node
 			continue
 		} else if else_node.kind == .block {
@@ -127,11 +164,14 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			g.indent--
 			g.pop_scope()
 			g.writeln('}')
-			return
+			break
 		} else {
 			g.writeln('}')
-			return
+			break
 		}
+	}
+	if chain_end.len > 0 {
+		g.writeln('${chain_end}: {}')
 	}
 }
 
@@ -411,7 +451,8 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 			} else {
 				false
 			}
-			if else_cond_is_guard {
+			// A long chain is emitted as separate `if` statements, so it needs a block.
+			if else_cond_is_guard || g.if_chain_is_long(&else_node) {
 				g.writeln('} else {')
 				g.push_scope()
 				g.indent++

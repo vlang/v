@@ -1,4 +1,3 @@
-// vtest vflags: -new-compiler
 // Assigning `none` to a generic `mut` parameter whose concrete type is an Option must
 // clear the caller's value (and generate valid C).
 // See https://github.com/vlang/v/issues/28826

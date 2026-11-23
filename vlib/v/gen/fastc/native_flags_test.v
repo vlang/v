@@ -4,6 +4,13 @@ import os
 import v.cmdexec
 import v.pref
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 fn test_fastc_native_input_deduplication_preserves_link_order_and_option_operands() {
 	inputs := ['helper.c', 'helper.o', 'helper.obj', 'helper.m', 'helper.mm']
 	assert fastc_deduplicate_native_files([...inputs, ...inputs]) == inputs
@@ -291,8 +298,8 @@ fn main() {
 ') or { panic(err) }
 	for jobs in ['1', '2'] {
 		program := os.join_path(root, 'program_${jobs}')
-		build := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-b', 'fastc',
-			'-enable-globals', '-o', program, root], '', {
+		build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-enable-globals', '-o',
+			program, root], '', {
 			'VJOBS': jobs
 		})
 		assert build.exit_code == 0, '${jobs} jobs: ${build.output}'

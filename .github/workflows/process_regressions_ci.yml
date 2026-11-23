@@ -30,7 +30,6 @@ jobs:
     env:
       VFLAGS: -cc gcc
       VJOBS: '2'
-      V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -47,29 +46,29 @@ jobs:
           symlink: 'false'
       - name: Check executable resolution
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_resolve_program_test.v
+        run: ${{ matrix.v }} vlib/v/cmdexec/cmdexec_resolve_program_test.v
       - name: Check capture-only commands receive stdin EOF
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 3
-        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_stdin_test.v
+        run: ${{ matrix.v }} vlib/v/cmdexec/cmdexec_stdin_test.v
       - name: Test the compiler launcher
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler -silent test cmd/v/
+        run: ${{ matrix.v }} -silent test cmd/v/
       - name: Check deadlines and inherited output pipes
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_timeout_test.v
+        run: ${{ matrix.v }} vlib/v/cmdexec/cmdexec_timeout_test.v
       - name: Check unbounded commands with inherited output pipes
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_unbounded_test.v
+        run: ${{ matrix.v }} vlib/v/cmdexec/cmdexec_unbounded_test.v
       - name: Check existing compiler flag tokenization
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_test.v
+        run: ${{ matrix.v }} vlib/v/util/vflags/vflags_test.v
       - name: Check UTF-8 compiler flag tokenization
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_utf8_test.v
+        run: ${{ matrix.v }} vlib/v/util/vflags/vflags_utf8_test.v
       - name: Check adjacent quoted compiler flag fragments
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_quoted_parts_test.v
+        run: ${{ matrix.v }} vlib/v/util/vflags/vflags_quoted_parts_test.v
       - name: Check implicit output preserves source files
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler vlib/v/driver/implicit_output_test.v
+        run: ${{ matrix.v }} vlib/v/driver/implicit_output_test.v

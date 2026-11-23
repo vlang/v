@@ -7,6 +7,7 @@ on:
       - '.github/workflows/master_ci_regressions.yml'
       - '.github/workflows/build_on_ubuntu_25_ci.yml'
       - '.github/workflows/linux_ci.yml'
+      - '.github/workflows/macos_ci.yml'
       - '.github/workflows/other_ci.yml'
       - '.github/workflows/tools_ci.yml'
       - '.github/workflows/riscv64_linux_ci.yml'
@@ -47,6 +48,8 @@ jobs:
         run: bash .github/workflows/disable_azure_mirror_test.sh
       - name: Check CI task coverage and deadlines
         run: python3 .github/workflows/ci_timeout_contract_test.py
+      - name: Check optimized compiler artifact reuse
+        run: python3 .github/workflows/prepare_v_test.py
       - name: Build V
         uses: ./.github/actions/setup-v
         with:
@@ -63,7 +66,7 @@ jobs:
 
   windows:
     name: Windows regressions (${{ matrix.cc }})
-    runs-on: windows-2025
+    runs-on: ${{ matrix.cc == 'tcc' && 'windows-2022' || 'windows-2025' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -89,6 +92,32 @@ jobs:
         run: |
           .\makev.bat "-$env:V_CI_CCOMPILER"
           if ($LASTEXITCODE -ne 0) { throw "V bootstrap failed (exit $LASTEXITCODE)" }
+      # Check the original Windows path regression with an actual TCC/V
+      # bootstrap, rather than relying on a makev.bat string contract.
+      - name: Bootstrap TCC in a checkout with punctuation and spaces
+        if: matrix.cc == 'tcc'
+        timeout-minutes: 20
+        shell: pwsh
+        run: |
+          $caseDir = Join-Path $env:RUNNER_TEMP 'path with some $punctuation, and some spaces'
+          git clone --local . "$caseDir"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to clone into space-path fixture" }
+          Push-Location -LiteralPath $caseDir
+          try {
+            # Match paths_ci.yml: its native bootstrap does not set VFLAGS.
+            Remove-Item Env:VFLAGS -ErrorAction SilentlyContinue
+            .\makev.bat -tcc
+            if ($LASTEXITCODE -ne 0) { throw "Space-path TCC bootstrap failed (exit $LASTEXITCODE)" }
+            .\v.exe -prod -cc gcc self
+            if ($LASTEXITCODE -ne 0) { throw "Space-path V self build failed (exit $LASTEXITCODE)" }
+            .\v.exe test vlib/builtin vlib/os
+            if ($LASTEXITCODE -ne 0) { throw "Space-path V tests failed (exit $LASTEXITCODE)" }
+          } finally {
+            Pop-Location
+          }
+      - name: Check Windows TCC bootstrap path argument contract
+        if: matrix.cc == 'tcc'
+        run: python cmd/tools/makev_test.py
       - name: Prepare optimized V compiler
         id: build
         uses: ./.github/actions/setup-v
@@ -98,7 +127,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 5
         run: |
-          .\v.exe -new-compiler -cc $env:V_CI_CCOMPILER -no-retry-compilation vlib/v/compiler_tests/complex_header_identifier_test.v
+          .\v.exe -cc $env:V_CI_CCOMPILER -no-retry-compilation vlib/v/compiler_tests/complex_header_identifier_test.v
           if ($LASTEXITCODE -ne 0) { throw "Complex identifier regression failed (exit $LASTEXITCODE)" }
       - name: Check synthesized entry points and cleanup
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -109,5 +138,5 @@ jobs:
             'vlib/v/compiler_tests/executable_cleanup_test.v'
             'vlib/v/compiler_tests/mixed_lock_codegen_test.v'
           )
-          .\v.exe -new-compiler -cc $env:V_CI_CCOMPILER -no-retry-compilation test @tests
+          .\v.exe -cc $env:V_CI_CCOMPILER -no-retry-compilation test @tests
           if ($LASTEXITCODE -ne 0) { throw "Entry point regressions failed (exit $LASTEXITCODE)" }

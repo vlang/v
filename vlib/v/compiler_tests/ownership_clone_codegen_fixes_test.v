@@ -1,14 +1,23 @@
 import os
+import v.tempname
 
 const occf_vexe = @VEXE
 const occf_tests_dir = os.dir(@FILE)
 const occf_v3_dir = os.dir(occf_tests_dir)
 const occf_vlib_dir = os.dir(occf_v3_dir)
 const occf_v3_src = os.join_path(occf_v3_dir, 'v.v')
+const occf_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_ownership_clone_compiler_${tempname.unique_token()}')
 
-fn occf_build_v3(tag string) string {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_${tag}_${pid}')
+fn testsuite_end() {
+	os.rmdir_all(occf_compiler_dir) or {}
+}
+
+fn occf_build_v3() string {
+	v3_bin := os.join_path(occf_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
+	os.mkdir_all(occf_compiler_dir) or { panic(err) }
 	build :=
 		os.exec([occf_vexe, '-gc', 'none', '-d', 'ownership', '-path',
 			'${occf_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, occf_v3_src])
@@ -16,7 +25,8 @@ fn occf_build_v3(tag string) string {
 	return v3_bin
 }
 
-fn occf_compile_and_run(v3_bin string, tag string, source string) {
+fn occf_compile_and_run(tag string, source string) {
+	v3_bin := occf_build_v3()
 	pid := os.getpid()
 	src := os.join_path(os.temp_dir(), 'v3_${tag}_${pid}.v')
 	out := os.join_path(os.temp_dir(), 'v3_${tag}_prog_${pid}')
@@ -36,11 +46,7 @@ fn occf_compile_and_run(v3_bin string, tag string, source string) {
 // the optional storage type; the temp used to hold the (auto-wrapped) value must
 // be `__v_option_string`, not the unwrapped `string` smartcast.
 fn test_optional_drop_before_assign_keeps_optional_temp() {
-	v3_bin := occf_build_v3('opt_drop_assign')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'opt_drop_assign', 'module main
+	occf_compile_and_run('opt_drop_assign', 'module main
 
 fn f(input ?string) ?string {
 	mut preprocessor := ?string(none)
@@ -59,11 +65,7 @@ fn main() {
 // The final synthetic store in drop-before-assign lowering may be visited by
 // transform again. It must not destroy the same old field value a second time.
 fn test_owned_field_assignment_drops_replaced_value_once() {
-	v3_bin := occf_build_v3('field_assign_one_drop')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'field_assign_one_drop', 'module main
+	occf_compile_and_run('field_assign_one_drop', 'module main
 
 struct Owned implements Drop {
 	drops &int
@@ -98,11 +100,7 @@ fn main() {
 // `.clone()` on an array reached through a method that already returns a pointer
 // (`arc.Arc[[]T].get()` returns `&[]T`) must not take the address again.
 fn test_array_clone_on_pointer_returning_receiver() {
-	v3_bin := occf_build_v3('arc_get_clone')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'arc_get_clone', 'module main
+	occf_compile_and_run('arc_get_clone', 'module main
 
 import sync.arc
 
@@ -126,11 +124,7 @@ fn main() {
 // A concrete generic-interface application uses the base interface's runtime
 // box while retaining its specialized method parameter types.
 fn test_generic_interface_parameter_uses_base_runtime_box() {
-	v3_bin := occf_build_v3('generic_interface_parameter')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'generic_interface_parameter', 'module main
+	occf_compile_and_run('generic_interface_parameter', 'module main
 
 interface CaptureFinder[T] {
 	captures_at(mut caps T) bool
@@ -166,11 +160,7 @@ fn main() {
 // explicitly implements both markers can use the compiler's structural clone
 // as long as each ownership-bearing field is itself cloneable.
 fn test_default_clone_is_available_for_drop_type() {
-	v3_bin := occf_build_v3('clone_drop_type')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'clone_drop_type', 'module main
+	occf_compile_and_run('clone_drop_type', 'module main
 
 struct Owned implements IClone, Drop {
 mut:
@@ -196,11 +186,7 @@ fn main() {
 // structurally cloned before the loop body so dropping a binding cannot free
 // storage still owned by the source array.
 fn test_array_for_in_clones_ownership_bearing_elements() {
-	v3_bin := occf_build_v3('array_for_in_clone')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'array_for_in_clone', 'module main
+	occf_compile_and_run('array_for_in_clone', 'module main
 
 struct Record implements IClone {
 	name string
@@ -226,11 +212,7 @@ fn main() {
 // generic builtin methods can validate them against the specialized element
 // type instead of falling back to `fn (voidptr, voidptr)`.
 fn test_captured_sort_compare_keeps_parameter_types() {
-	v3_bin := occf_build_v3('captured_sort_compare')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'captured_sort_compare', 'module main
+	occf_compile_and_run('captured_sort_compare', 'module main
 
 struct Item {
 	value int
@@ -253,11 +235,7 @@ fn main() {
 // Generic specialization keeps the checker's implicit reference conversion
 // when a concrete value is passed to a borrowed interface parameter.
 fn test_generic_method_accepts_value_for_borrowed_interface_parameter() {
-	v3_bin := occf_build_v3('generic_borrowed_interface_arg')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'generic_borrowed_interface_arg', 'module main
+	occf_compile_and_run('generic_borrowed_interface_arg', 'module main
 
 interface Reader {
 	value() int
@@ -308,11 +286,7 @@ fn main() {
 // Consuming an aggregate call argument moves its base and owned descendants as
 // one value instead of treating the descendant metadata as a second use.
 fn test_call_consumes_owned_aggregate_and_descendants_once() {
-	v3_bin := occf_build_v3('call_owned_aggregate')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'call_owned_aggregate', 'module main
+	occf_compile_and_run('call_owned_aggregate', 'module main
 
 struct Owned implements Drop {
 mut:
@@ -353,11 +327,7 @@ fn main() {
 // declarations must keep their mutability there so chained generic receiver
 // calls are not diagnosed as calls on immutable values.
 fn test_chained_generic_mut_receiver_keeps_mutable_local() {
-	v3_bin := occf_build_v3('generic_mut_receiver')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'generic_mut_receiver', 'module main
+	occf_compile_and_run('generic_mut_receiver', 'module main
 
 struct Inner[T] {
 mut:
@@ -394,11 +364,7 @@ fn main() {
 // the old bits, which now belong to the move destination. The same rule applies
 // when the move destination is an optional.
 fn test_moved_aggregate_reassignment_skips_stale_drop() {
-	v3_bin := occf_build_v3('moved_reassign')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'moved_reassign', 'module main
+	occf_compile_and_run('moved_reassign', 'module main
 
 struct Owned implements Drop {
 mut:

@@ -99,7 +99,7 @@ fn main() {
 			} else {
 				'regular'
 			}}_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-			compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -cc clang -gc none ${ownership} ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+			compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -cc clang -gc none ${ownership} ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 			assert compile.exit_code == 0, '${ownership} ${mode}: ${compile.output}'
 			run := os.execute(os.quoted_path(output))
 			assert run.exit_code == 0, '${ownership} ${mode}: ${run.output}'
@@ -149,7 +149,7 @@ fn main() {
 ')!
 		for mode in ['-no-parallel', ''] {
 			// Rejection cases cannot own their backing allocation, so they are never run.
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
 			assert out.exit_code != 0, '${expression}: ${out.output}'
 			assert out.output.contains('cannot take an addressed string range from a temporary value'), '${expression}: ${out.output}'
 		}
@@ -189,7 +189,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 	}
 }

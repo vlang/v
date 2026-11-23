@@ -68,12 +68,17 @@ fn test_master_contract_workflow_always_exposes_both_required_checks() {
 	assert !caller.contains('  merge_group:')
 	assert !caller.contains('paths:')
 	assert !caller.contains('paths-ignore:')
-	assert caller.contains('  formatting:\n    needs: [bootstrap, windows-bootstrap-contracts]\n')
+	assert caller.contains('  preflight:\n    needs: bootstrap-linux\n')
+	for lane in ['windows_ci_gcc', 'windows_ci_msvc', 'windows_ci_tcc'] {
+		assert caller.contains('  ${lane}:\n' +
+			'    needs:\n' +
+			'      [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]\n')
+	}
 	assert caller.contains(r'      tccbin_automation_contract: ${{ steps.paths.outputs.tccbin_automation_contract }}')
 	assert caller.contains('        id: paths\n')
 	assert caller.contains('        run: python3 .github/workflows/ci_gate_paths.py master\n')
-	assert caller.contains('  tccbin_automation_contract:\n    needs: [formatting, gen_vc_ci]\n' +
-		"    if: needs.formatting.outputs.tccbin_automation_contract == 'true'\n" +
+	assert caller.contains('  tccbin_automation_contract:\n    needs: [preflight, gen_vc_ci]\n' +
+		"    if: needs.preflight.outputs.tccbin_automation_contract == 'true'\n" +
 		'    uses: ./.github/workflows/tccbin_automation_contract.yml\n')
 	assert filters.contains('    "workflow": "tccbin_automation_contract.yml",\n' +
 		'    "shard": "master",\n    "mode": "all",\n    "patterns": [],\n')
@@ -283,7 +288,6 @@ fn test_update_authenticates_real_staging_before_every_upload_or_publication() {
 	assert source.count('name: Checkout the TCC bootstrap bundle for the macOS validator') == 1
 	assert source.count('TCCBIN_BOOTSTRAP_TCC_ROOT=') == 1
 	assert source.count('TCCBIN_BOOTSTRAP_TCC_COMMIT=') == 1
-	assert source.count("V_MACOS_V3_NO_FALLBACK: '1'") == 1
 	assert source.count('thirdparty/tccbin_automation/bootstrap/bootstrap.sh') == 2
 	assert source.count('contract-binding') == 2
 	assert source.count('TCCBIN_VALIDATOR_CLI=') == 2

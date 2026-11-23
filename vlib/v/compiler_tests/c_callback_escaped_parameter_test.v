@@ -90,7 +90,7 @@ fn main() { wrapper.exercise() }
 	}
 	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
 	for flags in compiler_flags {
-		mut args := [@VEXE, '-new-compiler', '-no-retry-compilation']
+		mut args := [@VEXE, '-no-retry-compilation']
 		args << flags
 		args << ['-o', binary, root]
 		built := os.exec(args)

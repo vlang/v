@@ -5,6 +5,13 @@ import v.cmdexec
 import v.flat
 import v.pref
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 fn test_constant_file_results_only_publish_added_types() ! {
 	prefs := pref.new_preferences()
 	mut inherited := flat.TypeTextBindings{}

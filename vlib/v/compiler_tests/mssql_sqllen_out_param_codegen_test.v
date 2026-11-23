@@ -9,8 +9,8 @@ fn test_mssql_sqllen_out_parameters_preserve_native_storage() ! {
 	main_v := os.join_path(root, 'main.v')
 	out_c := os.join_path(root, 'out.c')
 	os.write_file(main_v, 'import db.mssql\n\nfn main() {\n\t_ = mssql.Connection{}\n}\n')!
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-no-skip-unused',
-		'-o', out_c, main_v])
+	generated := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-no-skip-unused', '-o',
+		out_c, main_v])
 	assert generated.exit_code == 0, generated.output
 	c_source := os.read_file(out_c)!
 	mut row_call := ''
@@ -79,8 +79,7 @@ static int mssql_sqllen_probe(void) {
 	os.write_file(os.join_path(root, 'native.h'), header)!
 	probe := os.join_path(root, 'probe.c.v')
 	os.write_file(probe, '#include "@DIR/native.h"\nfn C.mssql_sqllen_probe() i32\nfn main() { assert C.mssql_sqllen_probe() == 0 }\n')!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-cc', @CCOMPILER,
-		'run', probe])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-cc', @CCOMPILER, 'run', probe])
 	assert result.exit_code == 0, result.output
 	assert !row_call.contains('_cabi_out_val'), row_call
 	assert !attribute_call.contains('_cabi_out_val'), attribute_call

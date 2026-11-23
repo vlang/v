@@ -2361,36 +2361,6 @@ fn (mut f Fnv) b(v u8) {
 	f.h *= 0x100000001b3
 }
 
-// rune_str encodes r as UTF-8 the way Go's string(r) does, substituting
-// U+FFFD for a surrogate, which Go cannot encode.
-fn rune_str(r rune) string {
-	if r < 0 || r > 0x10FFFF {
-		return ''
-	}
-	mut rr := r
-	if rr >= 0xD800 && rr <= 0xDFFF {
-		rr = 0xFFFD
-	}
-	x := u32(rr)
-	mut a := []u8{}
-	if rr < 0x80 {
-		a << u8(x)
-	} else if rr < 0x800 {
-		a << u8(0xC0 | x >> 6)
-		a << u8(0x80 | x & 0x3F)
-	} else if rr < 0x10000 {
-		a << u8(0xE0 | x >> 12)
-		a << u8(0x80 | (x >> 6) & 0x3F)
-		a << u8(0x80 | x & 0x3F)
-	} else {
-		a << u8(0xF0 | x >> 18)
-		a << u8(0x80 | (x >> 12) & 0x3F)
-		a << u8(0x80 | (x >> 6) & 0x3F)
-		a << u8(0x80 | x & 0x3F)
-	}
-	return a.bytestr()
-}
-
 fn test_quote_matches_go() {
 	strs := corpus_strs()
 	assert strs.len == gold_quote.len
@@ -2480,8 +2450,12 @@ fn test_can_backquote_exhaustive() {
 	mut f := Fnv{
 		h: 0xcbf29ce484222325
 	}
+	mut utf8_buffer := [5]u8{}
 	for r in 0 .. 0x10FFFF + 1 {
-		f.b(if can_backquote(rune_str(r)) { u8(1) } else { u8(0) })
+		// The encoder replaces surrogates with U+FFFD, like Go's string(r).
+		// can_backquote reads the borrowed string before the buffer is reused.
+		input := unsafe { utf32_to_str_no_malloc(u32(r), mut &utf8_buffer[0]) }
+		f.b(if can_backquote(input) { u8(1) } else { u8(0) })
 	}
 	assert f.h == go_can_backquote_hash, 'can_backquote checksum mismatch'
 }

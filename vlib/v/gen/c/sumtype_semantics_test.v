@@ -1,39 +1,53 @@
-module c
+module main
 
 import os
 
 fn test_sumtype_rejects_infinite_layout_and_mutable_variant_conversion() {
-	sources := [
-		'type Tree = int | Branch
-struct Branch { child Tree }
-fn main() {}',
-		'type Tree = int | Branch
-struct Branch { children [2]Tree }
-fn main() {}',
-		'struct Item {}
-type Value = int | Item
-fn update(mut value Value) {}
-fn main() { mut item := Item{}
- update(mut item) }',
-		'struct Item {}
-type Value = int | Item
-struct Holder { values []&Value }
-fn main() { holder := Holder{values: [&Item{}]}
- println(holder.values.len) }',
-	]
-	expected := [
-		'cannot be defined recursively',
-		'cannot be defined recursively',
-		'sum type reference requires',
-		'invalid array element',
-	]
-	path := os.join_path(os.vtmp_dir(), 'sumtype_invalid_${os.getpid()}.v')
-	defer { os.rm(path) or {} }
-	for i, source in sources {
-		os.write_file(path, source)!
-		result := os.exec([@VEXE, '-new-compiler', '-check', path])
-		assert result.exit_code != 0, source
-		assert result.output.contains(expected[i]), result.output
+	root := os.join_path(os.vtmp_dir(), 'sumtype_invalid_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for name, source in {
+		'recursive.v':       'type DirectTree = int | DirectBranch
+struct DirectBranch { child DirectTree }
+'
+		'recursive_array.v': 'type ArrayTree = int | ArrayBranch
+struct ArrayBranch { children [2]ArrayTree }
+'
+		'mutable_variant.v': 'struct MutableItem {}
+type MutableValue = int | MutableItem
+fn update(mut value MutableValue) {}
+fn exercise_mutable_variant() {
+	mut item := MutableItem{}
+	update(mut item)
+}
+'
+		'array_element.v':   'struct ArrayItem {}
+type ArrayValue = int | ArrayItem
+struct Holder { values []&ArrayValue }
+fn exercise_array_element() {
+	holder := Holder{values: [&ArrayItem{}]}
+	println(holder.values.len)
+}
+'
+		'main.v':            'fn main() {
+	exercise_mutable_variant()
+	exercise_array_element()
+}
+'
+	} {
+		os.write_file(os.join_path(root, name), source)!
+	}
+	result := os.exec([@VEXE, '-nocolor', '-check', root])
+	assert result.exit_code != 0, result.output
+	diagnostics := result.output.split_into_lines()
+	for name, message in {
+		'recursive.v':       'cannot be defined recursively'
+		'recursive_array.v': 'cannot be defined recursively'
+		'mutable_variant.v': 'sum type reference requires'
+		'array_element.v':   'invalid array element'
+	} {
+		assert diagnostics.any(it.contains('${name}:') && it.contains('error:')
+			&& it.contains(message)), result.output
 	}
 }
 
@@ -51,7 +65,7 @@ type Value = int | Pair
 fn pack(x int) Value { return Pair{x, x + 1} }
 fn main() { println(pack(3)) }'
 	os.write_file(path, source)!
-	result := os.exec([@VEXE, '-new-compiler', '-o', output, path])
+	result := os.exec([@VEXE, '-o', output, path])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
 	body := sumtype_test_function_body(generated, 'pack')
@@ -85,7 +99,7 @@ fn main() {
 	os.write_file(os.join_path(dir, 'model', 'model.v'), model)!
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, program)!
-	result := os.exec([@VEXE, '-new-compiler', 'run', path])
+	result := os.exec([@VEXE, 'run', path])
 	assert result.exit_code == 0, result.output
 }
 
@@ -104,7 +118,7 @@ fn test_sumtype_pointer_variants_keep_references_and_escaping_local_storage() {
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
 	path := os.join_path(dir, 'main.v')
-	output := os.join_path(dir, 'main.c')
+	binary := os.join_path(dir, 'main')
 	source := '@[aligned: 64]
 struct Payload { mut: value int }
 type PointerPayload = int | &Payload
@@ -139,9 +153,10 @@ fn main() {
  } else { assert false }
 }'
 	os.write_file(path, source)!
-	generated_result := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', output, path])
-	assert generated_result.exit_code == 0, generated_result.output
-	generated := os.read_file(output)!
+	// An explicit C backend retains the translation unit used for the executable.
+	run := os.exec([@VEXE, '-nocache', '-b', 'c', '-o', binary, 'run', path])
+	assert run.exit_code == 0, run.output
+	generated := os.read_file('${binary}.c')!
 	local := sumtype_test_function_body(generated, 'from_local')
 	assert local.contains('v3_aligned_memdup('), local
 	assert local.contains(', 64)') || local.contains('__alignof__('), local
@@ -150,8 +165,6 @@ fn main() {
 		assert !body.contains('memdup'), body
 		assert !body.contains('._pointer_variant_is_owned = true'), body
 	}
-	run := os.exec([@VEXE, '-new-compiler', '-nocache', 'run', path])
-	assert run.exit_code == 0, run.output
 }
 
 fn test_sumtype_zero_reassignment_keeps_scalar_variant() {
@@ -183,7 +196,7 @@ fn main() {
  assert voidptr(null as &Item) == unsafe { nil }
 }')!
 	for flags in [['-nocache'], []string{}] {
-		result := os.exec([@VEXE, '-new-compiler', ...flags, '-no-closures', 'run', path])
+		result := os.exec([@VEXE, ...flags, '-no-closures', 'run', path])
 		assert result.exit_code == 0, result.output
 	}
 }

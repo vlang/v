@@ -1,4 +1,4 @@
-module c
+module main
 
 import os
 import v.cmdexec
@@ -70,8 +70,8 @@ fn compile_and_run_windows_header_macro_program(root string, include string) ! {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, windows_header_macro_program(include))!
 	executable := os.join_path(root, 'program' + $if windows { '.exe' } $else { '' })
-	compiled := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-no-retry-compilation', '-gc',
-		'none', '-o', executable, source])
+	compiled := cmdexec.run(@VEXE, ['-nocache', '-no-retry-compilation', '-gc', 'none', '-o',
+		executable, source])
 	assert compiled.exit_code == 0, compiled.output
 	executed := cmdexec.run(executable, [])
 	assert executed.exit_code == 0, executed.output
@@ -144,8 +144,8 @@ fn main() { _ := ordinary(7); _ := staging(7) }
 	c_source := os.join_path(root, 'generated.c')
 	// Pin the arch: on amd64 hosts the driver replaces `-cc tcc` with MinGW gcc for Windows targets,
 	// which never takes the TinyCC alloca path. No MinGW exists for arm64, so tcc is kept.
-	generated_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-no-retry-compilation',
-		'-os', 'windows', '-arch', 'arm64', '-cc', 'tcc', '-gc', 'none', '-o', c_source, source])
+	generated_result := cmdexec.run(@VEXE, ['-nocache', '-no-retry-compilation', '-os', 'windows',
+		'-arch', 'arm64', '-cc', 'tcc', '-gc', 'none', '-o', c_source, source])
 	assert generated_result.exit_code == 0, generated_result.output
 	generated := os.read_file(c_source)!
 	mut bodies := []string{}

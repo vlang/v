@@ -5,14 +5,22 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const ierror_match_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_ierror_match_compiler_${os.getpid()}')
+const v3_bin = os.join_path(ierror_match_compiler_dir, 'v3' + $if windows { '.exe' } $else { '' })
+
+fn testsuite_begin() {
+	os.rmdir_all(ierror_match_compiler_dir) or {}
+	os.mkdir_all(ierror_match_compiler_dir)!
+	build := os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}|@vlib|@vmodules', '-o', v3_bin,
+		v3_src])
+	assert build.exit_code == 0, build.output
+}
+
+fn testsuite_end() {
+	os.rmdir_all(ierror_match_compiler_dir) or {}
+}
 
 fn test_ierror_concrete_match_uses_type_ids() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	root := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_${os.getpid()}')
 	mod_dir := os.join_path(root, 'myerrs')
 	os.mkdir_all(mod_dir) or { panic(err) }
@@ -154,12 +162,6 @@ fn main() {
 }
 
 fn test_ierror_patterns_resolve_nested_alias_and_selective_imports() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	root := os.join_path(os.temp_dir(), 'v3_ierror_alias_match_codegen_${os.getpid()}')
 	alias_dir := os.join_path(root, 'nested', 'aliaserrs')
 	selective_dir := os.join_path(root, 'nested', 'selecterrs')
@@ -271,12 +273,6 @@ fn main() {
 }
 
 fn test_selective_imported_error_pattern_prefers_scoped_error() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	root := os.join_path(os.temp_dir(), 'v3_ierror_selective_error_pattern_${os.getpid()}')
 	mod_dir := os.join_path(root, 'fake')
 	os.mkdir_all(mod_dir) or { panic(err) }
@@ -344,12 +340,6 @@ fn main() {
 }
 
 fn test_scoped_error_pattern_does_not_fallback_to_builtin_error() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	root := os.join_path(os.temp_dir(), 'v3_ierror_scoped_error_no_fallback_${os.getpid()}')
 	mod_dir := os.join_path(root, 'fake')
 	os.mkdir_all(mod_dir) or { panic(err) }
@@ -390,12 +380,6 @@ fn main() {
 }
 
 fn test_local_error_pattern_does_not_fallback_to_builtin_error() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	root := os.join_path(os.temp_dir(), 'v3_ierror_local_error_no_fallback_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	src := os.join_path(root, 'main.v')
@@ -421,12 +405,6 @@ fn main() {
 }
 
 fn test_msg_only_struct_is_not_ierror_pattern() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	root := os.join_path(os.temp_dir(), 'v3_ierror_not_error_${os.getpid()}')
 	mod_dir := os.join_path(root, 'noterrs')
 	os.mkdir_all(mod_dir) or { panic(err) }
@@ -477,12 +455,6 @@ fn main() {
 }
 
 fn test_module_local_error_embeds_are_not_ierror_patterns() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	root := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_pattern_${os.getpid()}')
 	mod_dir := os.join_path(root, 'fake')
 	os.mkdir_all(mod_dir) or { panic(err) }
@@ -560,12 +532,6 @@ fn main() {
 }
 
 fn test_module_local_error_embeds_are_not_boxed_as_ierror() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	root := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_box_${os.getpid()}')
 	mod_dir := os.join_path(root, 'fakebox')
 	os.mkdir_all(mod_dir) or { panic(err) }

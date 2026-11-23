@@ -790,7 +790,10 @@ pub type VectoredExceptionHandler = fn (&ExceptionPointers) u32
 // duplicate definitions from displeasing the compiler
 // fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
 pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandler) {
-	C.AddVectoredExceptionHandler(u32(first), voidptr(handler))
+	// Pass the handler as `void*`: the V signature returns u32 where the header's
+	// PVECTORED_EXCEPTION_HANDLER returns LONG, and strict C rejects that pointer.
+	c_handler := voidptr(handler)
+	C.AddVectoredExceptionHandler(u32(first), c_handler)
 }
 
 // uname returns information about the platform on which the program is running.

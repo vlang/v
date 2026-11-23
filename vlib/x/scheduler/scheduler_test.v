@@ -1,9 +1,7 @@
 // scheduler_test.v - the scheduler decides correctly, and jobs actually run.
 //
-// Scheduling has two halves and they are tested separately: the due-date math
-// is pure (`is_due` over explicit unix times, no sleeping), and the loop is
-// covered by one short live run with a channel-counted job. Time literals are
-// built field-by-field so no test depends on the wall clock.
+// The due-date tests use explicit Unix times, and the live loop test waits for
+// two job signals with a timeout.
 module scheduler
 
 import time
@@ -111,25 +109,24 @@ fn test_due_jobs_run_sequentially_in_registration_order() {
 }
 
 fn test_a_live_loop_runs_an_interval_job() {
-	// The only test that sleeps: a 1s job over ~2.2s must run at least twice
-	// (once immediately, then on ticks). The channel, not a shared counter,
-	// records the runs.
-	ch := chan int{cap: 8}
+	runs := chan bool{cap: 2}
 	mut s := &Scheduler{}
-	s.every('tick', time.second, fn [ch] () {
-		ch <- 1
+	s.every('tick', time.second, fn [runs] () {
+		_ = runs.try_push(true)
 	})
 	s.start()
-	time.sleep(2200 * time.millisecond)
-	s.stop()
-	mut runs := 0
-	mut got := 0
-	for _ in 0 .. 8 {
-		if ch.try_pop(mut got) == .success {
-			runs++
-		} else {
-			break
+	defer { s.stop() }
+
+	sw := time.new_stopwatch()
+	for run in 1 .. 3 {
+		remaining := 2200 * time.millisecond - sw.elapsed()
+		assert remaining > 0, 'timed out waiting for scheduler run ${run}'
+		select {
+			_ := <-runs {
+			}
+			remaining {
+				assert false, 'timed out waiting for scheduler run ${run}'
+			}
 		}
 	}
-	assert runs >= 2, 'expected at least 2 runs in ~2.2s, got ${runs}'
 }

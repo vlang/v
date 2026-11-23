@@ -5,6 +5,14 @@ import v.flat
 import v.pref
 import v.types
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn test_cached_builtin_request_keeps_its_header_owned_declaration() {
 	mut a := flat.FlatAst.new()
 	header := '/cache/builtin.vh'
@@ -310,6 +318,18 @@ fn test_linux_family_system_libc_owns_itimerspec_and_semaphore_declarations() {
 			assert !g.should_emit_c_extern_decl(name), '${target_os}: ${name}'
 		}
 	}
+}
+
+fn test_pollfd_sdk_struct_ownership_keeps_headerless_user_layouts() {
+	for target_os in ['linux', 'macos', 'freebsd', 'openbsd'] {
+		for system_libc in [false, true] {
+			g := posix_declaration_filter_gen(target_os, system_libc)
+			assert g.skip_builtin_struct('C.pollfd') == system_libc, '${target_os}: system_libc=${system_libc}'
+		}
+	}
+	// The Windows SDK does not declare the POSIX pollfd tag.
+	windows := posix_declaration_filter_gen('windows', true)
+	assert !windows.skip_builtin_struct('C.pollfd')
 }
 
 fn test_headerless_linux_family_keeps_itimerspec_and_semaphore_declarations() {
@@ -639,8 +659,8 @@ fn test_target_libc_headers_own_generated_errno_declarations() ! {
 	// no Linux toolchain is needed, even when the host is Windows or macOS.
 	for freestanding in [false, true] {
 		for target_headers in [false, true] {
-			mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-nocache',
-				'-os', 'linux', '-arch', 'amd64']
+			mut args := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-nocache', '-os', 'linux',
+				'-arch', 'amd64']
 			if freestanding {
 				args << '-freestanding'
 			}
@@ -691,8 +711,8 @@ fn main() {
 	println("errno ok")
 }
 ')!
-	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-freestanding',
-		'-gc', 'none', '-cstrict', '-cc', cc, '-o', executable, source])
+	built := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-freestanding', '-gc', 'none',
+		'-cstrict', '-cc', cc, '-o', executable, source])
 	assert built.exit_code == 0, built.output
 	ran := os.exec([executable])
 	assert ran.exit_code == 0, ran.output

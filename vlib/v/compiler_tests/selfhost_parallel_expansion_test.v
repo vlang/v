@@ -12,8 +12,8 @@ fn test_selfhost_parallel_workers_grow_for_struct_defaults() {
 	}
 	v3_dir := os.dir(os.dir(@FILE))
 	compiler := os.join_path(root, 'compiler')
-	build := cmdexec.run(@VEXE, ['-gc', 'none', '-prealloc', '-path',
-		'${os.dir(v3_dir)}|@vlib|@vmodules', '-o', compiler, os.join_path(v3_dir, 'v.v')])
+	build := cmdexec.run(@VEXE, ['-gc', 'none', '-path', '${os.dir(v3_dir)}|@vlib|@vmodules', '-o',
+		compiler, os.join_path(v3_dir, 'v.v')])
 	assert build.exit_code == 0, build.output
 	mut source := strings.new_builder(64_000)
 	source.writeln('struct Entry {\nmut:\nvalue int = 7\n}')

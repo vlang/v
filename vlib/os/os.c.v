@@ -266,7 +266,7 @@ pub fn truncate(path string, len u64) ! {
 		fp := $if windows {
 			C._wopen(path.to_wide(), o_wronly | o_trunc, 0)
 		} $else {
-			C.open(&char(path.str), o_wronly | o_trunc, 0)
+			C.open(&char(path.str), o_wronly | o_trunc | C.O_CLOEXEC, 0)
 		}
 		if fp < 0 {
 			return error_posix()
@@ -372,12 +372,12 @@ pub fn cp(src string, dst string, config CopyParams) ! {
 		if is_dir(dst) {
 			w_dst = join_path_single(w_dst, file_name(src))
 		}
-		fp_from := C.open(&char(src.str), C.O_RDONLY, 0)
+		fp_from := C.open(&char(src.str), C.O_RDONLY | C.O_CLOEXEC, 0)
 		if fp_from < 0 { // Check if file opened
 			return error_with_code('cp: failed to open ${src} for reading', int(fp_from))
 		}
 		mode_flags := C.S_IWUSR | C.S_IRUSR
-		mut open_flags := C.O_WRONLY | C.O_CREAT | C.O_TRUNC
+		mut open_flags := C.O_WRONLY | C.O_CREAT | C.O_TRUNC | C.O_CLOEXEC
 		if config.fail_if_exists {
 			open_flags |= C.O_EXCL
 		}
@@ -420,6 +420,8 @@ pub fn cp(src string, dst string, config CopyParams) ! {
 // vfopen returns an opened C file, given its path and open mode.
 // Note: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
+// On Unix-like systems the file is close-on-exec: programs started later do not
+// inherit it.
 pub fn vfopen(path string, mode string) !&C.FILE {
 	if path == '' {
 		return error('vfopen called with ""')
@@ -443,6 +445,9 @@ pub fn vfopen(path string, mode string) !&C.FILE {
 		if isnil(voidptr(fp)) {
 			return error_posix(msg: 'failed to open file "${path}"')
 		}
+		// fopen cannot ask for O_CLOEXEC portably (macOS ignores mode "e"). Without
+		// it, a program spawned meanwhile by another thread inherits the file.
+		C.fcntl(C.fileno(fp), C.F_SETFD, C.FD_CLOEXEC)
 		return fp
 	}
 }
@@ -1522,6 +1527,9 @@ pub fn open_append(path string) !File {
 		cpath := path.str
 		file = File{
 			cfile: C.fopen(&char(cpath), c'ab')
+		}
+		if !isnil(file.cfile) {
+			C.fcntl(C.fileno(file.cfile), C.F_SETFD, C.FD_CLOEXEC)
 		}
 	}
 	if isnil(file.cfile) {

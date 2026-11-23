@@ -56,8 +56,7 @@ fn main() {
 	change_optional() or { panic("unexpected none") }
 }
 ')!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', @CCOMPILER, 'run',
-		source])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-cc', @CCOMPILER, 'run', source])
 	assert result.exit_code == 0, result.output
 }
 
@@ -76,7 +75,7 @@ fn main() {
 	${body}
 }
 ')!
-			result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-check', source])
+			result := os.exec([@VEXE, '-no-retry-compilation', '-check', source])
 			assert result.exit_code != 0, result.output
 			assert result.output.contains('flag enum method `${method.all_before('(')}` requires a mutable receiver'), result.output
 		}
@@ -87,7 +86,7 @@ fn change() ? {
 }
 fn main() { change() or {} }
 ')!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-check', source])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-check', source])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('flag enum method `set` requires a mutable receiver'), result.output
 }
@@ -114,7 +113,7 @@ fn main() {
 	unsafe { ${receiver}.${method} }
 }
 ')!
-			result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-check', root])
+			result := os.exec([@VEXE, '-no-retry-compilation', '-check', root])
 			assert result.exit_code != 0, result.output
 			assert result.output.contains('flag enum method `${method.all_before('(')}` requires a mutable receiver'), result.output
 		}
@@ -125,7 +124,7 @@ fn change() ? {
 }
 fn main() { change() or {} }
 ')!
-	optional_result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-check', root])
+	optional_result := os.exec([@VEXE, '-no-retry-compilation', '-check', root])
 	assert optional_result.exit_code != 0, optional_result.output
 	assert optional_result.output.contains('flag enum method `set` requires a mutable receiver'), optional_result.output
 	os.write_file(source, 'import flags as flaglib
@@ -139,7 +138,6 @@ fn main() {
 	assert flags.constant_flags.has(.b)
 }
 ')!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', @CCOMPILER, 'run',
-		root])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-cc', @CCOMPILER, 'run', root])
 	assert result.exit_code == 0, result.output
 }

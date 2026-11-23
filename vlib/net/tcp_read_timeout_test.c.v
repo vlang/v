@@ -79,9 +79,11 @@ fn test_tcp_read_deadline_wins_over_the_socket_timeout() ! {
 fn tcp_send_slow_bytes(address string) {
 	mut client := dial_tcp(address) or { return }
 	defer { client.close() or {} }
+	// The first byte goes out at once, so a sender thread that starts late on a loaded
+	// host still delivers one before the reader's 200 ms deadline.
 	for _ in 0 .. 12 {
-		time.sleep(50 * time.millisecond)
 		client.write_string('x') or { break }
+		time.sleep(50 * time.millisecond)
 	}
 }
 

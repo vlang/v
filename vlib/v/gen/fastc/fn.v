@@ -74,7 +74,7 @@ fn (mut g Parser) reset_lookup_memos() {
 	g.nonlocal_name_type_memo = flat.TypeTextBindings{}
 	g.resolved_name_memo = map[string]string{}
 	g.declared_type_key_memo = map[u32]FastcMemoEntry{}
-	g.type_memo = map[i64]u32{}
+	g.type_memo = map[i64]FastcTypeMemoEntry{}
 	g.method_key_memo = map[u32]map[string]string{}
 	g.field_memo = map[u32]map[string]&FastcStructField{}
 	g.last_field = unsafe { nil }
@@ -1302,7 +1302,9 @@ fn (mut g Parser) emit_export_wrapper(function_key string, c_name string, params
 	}
 	return_type := g.export_c_abi_type(abi.return_type)
 	c_params := if wrapper_params.len == 0 { 'void' } else { wrapper_params.join(', ') }
-	g.protos.writeln('${return_type} ${export_name}(${c_params});')
+	prototype := '${return_type} ${export_name}(${c_params});'
+	g.protos.writeln(prototype)
+	g.export_prototypes << prototype
 	g.write_line('${return_type} ${export_name}(${c_params}) {')
 	g.indent++
 	call := '${c_name}(${arguments.join(', ')})'

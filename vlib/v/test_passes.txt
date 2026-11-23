@@ -275,8 +275,8 @@ vlib/eventbus/eventbus_test.v
 vlib/fasthttp/fasthttp_test.v
 vlib/fasthttp/request_parser_test.v
 vlib/flag/cmd_exe_style_flags_test.v
-vlib/flag/default_flag_options_test.v
 vlib/flag/flag_autofree_test.v
+vlib/flag/flag_cli_test.v
 vlib/flag/flag_from_test.v
 vlib/flag/flag_parse_test.v
 vlib/flag/flag_test.v
@@ -291,7 +291,6 @@ vlib/flag/gnu_style_flags_test.v
 vlib/flag/go_flag_style_flags_test.v
 vlib/flag/posix_style_flags_test.v
 vlib/flag/quoted_xdoc_attr_test.v
-vlib/flag/usage_example_test.v
 vlib/flag/v_flag_parser_style_flags_test.v
 vlib/flag/v_style_flags_test.v
 vlib/gg/color_test.v

@@ -28,7 +28,7 @@ fn test_uncached_c_output_does_not_probe_native_headers() {
 	for serial in [false, true] {
 		for directive in ['include', 'insert', 'preinclude', 'postinclude'] {
 			os.write_file(source, 'module main\nimport crypto.sha3\n#${directive} "@DIR/native.h"\nfn main() { println(sha3.sum512([]u8{})) }\n')!
-			mut args := ['-new-compiler', '-nocache', '-cc', c_compiler, '-o', output]
+			mut args := ['-nocache', '-cc', c_compiler, '-o', output]
 			if serial {
 				args << '-no-parallel'
 			}
@@ -53,12 +53,17 @@ fn test_native_typedef_binding_is_explicit_in_cached_and_uncached_builds() {
 	source := os.join_path(root, 'main.c.v')
 	output := os.join_path(root, 'main')
 	mut compilers := [[]string{}]
-	if (os.find_abs_path_of_executable('clang') or { '' }) != '' { compilers << ['-cc', 'clang'] }
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	explicit_cc := $if windows { 'gcc' } $else { 'clang' }
+	if (os.find_abs_path_of_executable(explicit_cc) or { '' }) != '' {
+		compilers << ['-cc', explicit_cc]
+	}
 	for directive in ['include', 'insert'] {
 		os.write_file(source, 'module main\n#${directive} "@VMODROOT/foo.h"\n@[typedef]\nstruct C.Foo { x int }\nfn C.foo_get(f &C.Foo) int\nfn main() { f := C.Foo{x: 3}; println(C.foo_get(&f)) }\n')!
 		for uncached in [false, true] {
 			for cc_flags in compilers {
-				mut args := ['-new-compiler', '-o', output]
+				mut args := ['-o', output]
 				if uncached { args << '-nocache' }
 				args << cc_flags
 				args << source

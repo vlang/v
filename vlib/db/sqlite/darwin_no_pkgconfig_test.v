@@ -19,7 +19,6 @@ fn test_sqlite_system_library_without_pkgconfig() {
 		environment.delete('VEXE')
 		environment.delete('VFLAGS')
 		environment['PATH'] = dir + os.path_delimiter + os.getenv('PATH')
-		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 		mut compiler := os.new_process(@VEXE)
 		compiler.set_args(['-cc', 'clang', '-nocache', '-o', output, source])
 		compiler.set_environment(environment)

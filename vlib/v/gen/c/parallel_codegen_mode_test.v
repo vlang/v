@@ -135,14 +135,20 @@ fn cgen_mode_generate(path string, pool_mode CgenModePool, no_parallel bool) Cge
 	return result
 }
 
-fn test_empty_codegen_pool_preserves_serial_literals_and_scoped_bodies() {
+fn test_codegen_pool_states_match_serial_literals_and_scoped_bodies() {
 	previous_jobs := os.getenv_opt('VJOBS')
 	os.setenv('VJOBS', '4', true)
 	defer { cgen_mode_restore_env('VJOBS', previous_jobs) }
-	path := os.join_path(os.vtmp_dir(), 'cgen_empty_pool_${os.getpid()}.v')
+	path := os.join_path(os.vtmp_dir(), 'cgen_pool_states_${os.getpid()}.v')
 	os.write_file(path, cgen_mode_source()) or { panic(err) }
 	defer { os.rm(path) or {} }
 	serial := cgen_mode_generate(path, .empty, true)
+	check_codegen_with_empty_pool(path, serial)
+	check_codegen_after_pool_launch_failure(path, serial)
+	check_codegen_with_available_workers(path, serial)
+}
+
+fn check_codegen_with_empty_pool(path string, serial CgenModeOutput) {
 	default_mode := cgen_mode_generate(path, .empty, false)
 	assert default_mode.code == serial.code
 	assert default_mode.literals == serial.literals
@@ -177,14 +183,7 @@ fn test_empty_codegen_pool_preserves_serial_literals_and_scoped_bodies() {
 	}
 }
 
-fn test_codegen_pool_launch_failure_uses_the_same_serial_preparation() {
-	previous_jobs := os.getenv_opt('VJOBS')
-	os.setenv('VJOBS', '4', true)
-	defer { cgen_mode_restore_env('VJOBS', previous_jobs) }
-	path := os.join_path(os.vtmp_dir(), 'cgen_failed_pool_${os.getpid()}.v')
-	os.write_file(path, cgen_mode_source()) or { panic(err) }
-	defer { os.rm(path) or {} }
-	serial := cgen_mode_generate(path, .empty, true)
+fn check_codegen_after_pool_launch_failure(path string, serial CgenModeOutput) {
 	failed := cgen_mode_generate(path, .failed, false)
 	assert failed.code == serial.code
 	assert failed.literals == serial.literals
@@ -218,14 +217,7 @@ fn test_one_job_codegen_keeps_a_lazy_pool_and_matches_explicit_serial() {
 	assert default_mode.scoped
 }
 
-fn test_codegen_keeps_parallel_dispatch_when_workers_are_available() {
-	previous_jobs := os.getenv_opt('VJOBS')
-	os.setenv('VJOBS', '4', true)
-	defer { cgen_mode_restore_env('VJOBS', previous_jobs) }
-	path := os.join_path(os.vtmp_dir(), 'cgen_available_pool_${os.getpid()}.v')
-	os.write_file(path, cgen_mode_source()) or { panic(err) }
-	defer { os.rm(path) or {} }
-	serial := cgen_mode_generate(path, .empty, true)
+fn check_codegen_with_available_workers(path string, serial CgenModeOutput) {
 	available := cgen_mode_generate(path, .available, false)
 	assert available.code == serial.code
 	assert available.literals == serial.literals

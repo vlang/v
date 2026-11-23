@@ -233,6 +233,29 @@ fn (i &TypeInterner) probe_frozen_miss(t &Type) ?&Type {
 	return none
 }
 
+// probe_frozen_quiet is probe_frozen for many readers that probe side by side
+// for a long time: it does not publish what it finds in the recent slots, which
+// such readers would keep taking from each other, cache line by cache line.
+fn (i &TypeInterner) probe_frozen_quiet(t &Type) ?&Type {
+	entry := i.canonical_identity(t)
+	if !isnil(entry) {
+		return entry.typ
+	}
+	mut key := semantic_type_hash(t)
+	for {
+		id := i.buckets[key] or { return none }
+		if int(id) < 0 || int(id) >= i.types.len {
+			return none
+		}
+		candidate := i.entries[int(id)].typ
+		if semantic_types_equal(candidate, t) {
+			return candidate
+		}
+		key = type_hash_tag(key, 0x5bd1e995)
+	}
+	return none
+}
+
 fn (mut i TypeInterner) source_type_id(id TypeId) u32 {
 	i.lock.lock()
 	defer {

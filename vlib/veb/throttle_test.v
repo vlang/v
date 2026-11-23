@@ -29,19 +29,22 @@ fn (app &ThrottleApp) compressed(mut ctx ThrottleContext) Result {
 	return ctx.text('compressible content '.repeat(100))
 }
 
-// release_after releases `slot` after `after_ms`, from its own thread, so a
-// test can free a slot while another acquire is waiting on it. The store
-// travels as `mut ThrottleStore` taken from a `&ThrottleStore` variable, which
-// is the shape `spawn` shares rather than copies.
-fn release_after(mut store ThrottleStore, slot u64, after_ms i64) {
-	time.sleep(after_ms * time.millisecond)
-	store.release(slot)
+fn blocking_acquire(mut store ThrottleStore) u64 {
+	return store.acquire(throttle_now_ms(), 5000)
 }
 
-// blocking_acquire parks in `acquire` until a slot frees or `wait_ms` passes,
-// so a test can hold the backlog slot while asserting about a second waiter.
-fn blocking_acquire(mut store ThrottleStore, wait_ms i64) {
-	store.acquire(throttle_now_ms(), wait_ms)
+fn throttle_waiter_is_queued(mut store ThrottleStore) bool {
+	wait := time.new_stopwatch()
+	for wait.elapsed() < 2 * time.second {
+		store.mu.lock()
+		waiting := store.wait
+		store.mu.unlock()
+		if waiting == 1 {
+			return true
+		}
+		time.sleep(time.millisecond)
+	}
+	return false
 }
 
 fn throttle_render(mut app ThrottleApp, method http.Method, url string, header http.Header) &Context {
@@ -144,35 +147,32 @@ fn test_a_waiting_request_gets_a_released_slot() {
 	mut store := new_throttle_store(1, 5, time.minute)
 	slot := store.acquire(throttle_now_ms(), 0)
 	assert slot != 0
-	mut releaser := store
-	t := spawn release_after(mut releaser, slot, 50)
-	// Two seconds of patience for a slot that frees in fifty milliseconds.
-	assert store.acquire(throttle_now_ms(), 2000) != 0
-	t.wait()
+	mut waiter_store := store
+	waiter := spawn blocking_acquire(mut waiter_store)
+	queued := throttle_waiter_is_queued(mut store)
+	store.release(slot)
+	acquired := waiter.wait()
+	assert queued, 'the request never queued'
+	assert acquired != 0, 'the waiting request did not get the released slot'
 }
 
 fn test_waiting_past_the_backlog_is_refused() {
 	mut store := new_throttle_store(1, 1, time.minute)
 	slot := store.acquire(throttle_now_ms(), 0)
 	assert slot != 0
-	// Park one waiter in the single backlog slot, then confirm a second
-	// waiter is refused at once instead of queueing without bound. The waiter
-	// count is polled rather than slept past, so a slow machine cannot flake
-	// the setup.
 	mut waiter_store := store
-	w := spawn blocking_acquire(mut waiter_store, 5000)
-	for _ in 0 .. 200 {
-		store.mu.lock()
-		waiting := store.wait
-		store.mu.unlock()
-		if waiting == 1 {
-			break
-		}
-		time.sleep(10 * time.millisecond)
-	}
-	assert store.acquire(throttle_now_ms(), 0) == 0
+	waiter := spawn blocking_acquire(mut waiter_store)
+	queued := throttle_waiter_is_queued(mut store)
+	// Give the second request time to queue so this exercises the backlog cap.
+	wait := time.new_stopwatch()
+	rejected := store.acquire(throttle_now_ms(), 2000) == 0
+	elapsed := wait.elapsed()
 	store.release(slot)
-	w.wait()
+	acquired := waiter.wait()
+	assert queued, 'the first request never filled the backlog'
+	assert rejected, 'the second request was admitted over capacity'
+	assert elapsed < time.second, 'the second request waited with a full backlog'
+	assert acquired != 0, 'the first request did not get the released slot'
 }
 
 fn test_retry_after_is_whole_seconds() {

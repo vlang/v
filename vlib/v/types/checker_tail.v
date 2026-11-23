@@ -4913,7 +4913,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 		if callee.kind == .ident && callee.value !in tc.a.disabled_fns
-			&& tc.source_declares_bodyless_function(callee.value) {
+			&& tc.source_declares_bodyless_function(callee.value)
+			&& !tc.name_has_local_binding(callee.value) {
 			tc.record_error_at(.unknown_fn, 'cannot call a function that does not have a body', id, node.pos)
 			return
 		}
@@ -5505,6 +5506,9 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		if info.return_type !is Void && info.return_type !is Unknown {
 			tc.remember_expr_type(id, info.return_type)
+			if !semantic_types_equal(info0.return_type, info.return_type) {
+				tc.invalidate_body_resolved_type_chain(id)
+			}
 		}
 		tc.check_instantiated_comptime_method_args(id, node, info)
 		if tc.valid_resolution_fast {
@@ -9681,6 +9685,18 @@ fn (tc &TypeChecker) call_has_smartcast_receiver(node flat.Node) bool {
 	return tc.smartcast_type(tc.a.child(fn_node, 0)) != none
 }
 
+// name_has_local_binding reports whether `name` is bound in the current function's
+// scope: a local variable or parameter there shadows a function of that name.
+fn (tc &TypeChecker) name_has_local_binding(name string) bool {
+	if tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	if _ := tc.cur_scope.lookup(name) {
+		return true
+	}
+	return false
+}
+
 @[direct_array_access]
 fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Node) ?CallInfo {
 	if node.children_count == 0 {
@@ -9753,8 +9769,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		fn_id := tc.a.child(&node, 0)
 		mut binding_type := builtin_void_type
+		mut is_local_binding := false
 		if typ := tc.cur_scope.lookup(fn_node.value) {
 			binding_type = typ
+			is_local_binding = true
 		} else if typ := tc.file_scope.lookup(fn_node.value) {
 			binding_type = typ
 		} else if typ := tc.const_type_for_name(fn_node.value) {
@@ -9775,11 +9793,18 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			} else {
 				fn_typ
 			}
+			// A local function value shadows the functions of its name: only its own
+			// type says whether it is variadic, not a declaration found by the name.
+			is_variadic := if is_local_binding && !is_smartcasted {
+				selected.is_variadic || tc.current_binding_is_variadic_fn_value_local(fn_node.value)
+			} else {
+				tc.expr_is_variadic_fn_value(fn_id)
+			}
 			return CallInfo{
 				name:         ''
 				params:       selected.params.map(*it.typ)
 				return_type:  selected.return_type
-				is_variadic:  tc.expr_is_variadic_fn_value(fn_id)
+				is_variadic:  is_variadic
 				params_known: true
 			}
 		}
@@ -11290,6 +11315,16 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		return none
 	}
 	base_id := tc.a.child(&fn_node, 0)
+	// `callback[T]()` calls a local closure with explicit type arguments; the local
+	// shadows a function `callback` of the module, as it does for `callback()`.
+	local_base := tc.a.nodes[int(base_id)]
+	if local_base.kind == .ident && !local_base.value.contains('.') {
+		if local_type := tc.cur_scope.lookup(local_base.value) {
+			if _ := fn_type_from_type(local_type) {
+				return none
+			}
+		}
+	}
 	type_args_source_ids := tc.generic_call_type_arg_names(fn_node).clone()
 	if type_args_source_ids.len == 0 {
 		return none
@@ -12822,14 +12857,23 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 		return
 	}
 	tc.register_visible_mutation_fn_decl_keys(idx, module_name, qname, source_name, c_qname,
-		c_source_name, false)
-	tc.register_visible_mutation_fn_decl_keys(idx, module_name, qname, source_name, c_qname,
-		c_source_name, true)
+		c_source_name)
 }
 
-// register_visible_mutation_fn_decl_keys records one declaration under either its
-// module-less (`global`) or its module-qualified keys.
-fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string, global bool) {
+// register_visible_mutation_fn_decl_keys records one declaration under its
+// names. The first declaration of a name owns its module-less key; a later one
+// of another module is kept under its module-qualified key.
+fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string) {
+	if isnil(tc.visible_mutation_cache) {
+		return
+	}
+	mut cache := tc.visible_mutation_cache
+	cache.register_fn_decl_keys(idx, module_name, qname, source_name, c_qname, c_source_name)
+}
+
+// register_fn_decl_keys is register_visible_mutation_fn_decl_keys for the
+// index `cache`.
+fn (mut cache VisibleMutationCache) register_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string) {
 	decl_module := if module_name == '' { 'main' } else { module_name }
 	decl := VisibleMutationFnDecl{
 		idx: idx
@@ -12845,10 +12889,6 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 		candidates << c_qname
 		candidates << c_source_name
 	}
-	if isnil(tc.visible_mutation_cache) {
-		return
-	}
-	mut cache := tc.visible_mutation_cache
 	// An insert copies its key, so a short key is spelled in a stack buffer.
 	mut key_buf := [192]u8{}
 	for i, candidate in candidates {
@@ -12857,11 +12897,14 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 		if candidate in candidates[..i] {
 			continue
 		}
-		if global {
-			// The module-less key `\x01${candidate}` keeps `candidate` in global_decls.
-			if candidate !in cache.global_decls {
-				cache.global_decls[candidate] = decl
+		// The module-less key `\x01${candidate}` keeps `candidate` in global_decls.
+		if first := cache.global_decls[candidate] {
+			if first.mod == decl_module {
+				// The module's first declaration of the name is that one.
+				continue
 			}
+		} else {
+			cache.global_decls[candidate] = decl
 			continue
 		}
 		key_len := decl_module.len + 1 + candidate.len
@@ -12919,6 +12962,12 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 				}
 			} else if decl := cache.decls[cache_key] {
 				return decl
+			} else if decl := cache.global_decls[lookup_name] {
+				// A module's first declaration of a name has no module-qualified
+				// key when it is the first one of the program.
+				if decl.mod == fallback_mod {
+					return decl
+				}
 			}
 			if cache.decl_misses[cache_key] {
 				return none
@@ -23113,7 +23162,8 @@ fn (tc &TypeChecker) is_known_array_receiver_method(receiver &Type, method strin
 		return method in ['first', 'last', 'pop', 'pop_left', 'contains', 'join', 'index', 'last_index',
 			'repeat', 'repeat_to_depth', 'delete', 'delete_last', 'clear', 'insert', 'prepend',
 			'filter', 'map', 'any', 'all', 'count', 'sort_with_compare', 'sorted_with_compare',
-			'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals', 'bytestr', 'wait']
+			'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals', 'wait']
+			|| (method == 'bytestr' && is_byte_type(receiver.elem_type))
 	}
 	if receiver is ArrayFixed {
 		array_type := Type(Array{

@@ -45,8 +45,16 @@ fn test_accept_deadline_getter_agrees_with_wait_state() ! {
 	}
 }
 
-fn send_after_deadline_chunk_delay(addr string) {
-	time.sleep(50 * time.millisecond)
+fn send_deadline_probe(addr string, delay time.Duration, cancel chan bool) {
+	if delay > 0 {
+		select {
+			_ := <-cancel {
+				return
+			}
+			delay {
+			}
+		}
+	}
 	mut sender := dial_udp(addr) or { panic(err) }
 	defer {
 		sender.close() or {}
@@ -61,7 +69,8 @@ fn test_select_deadline_retries_chunks_and_preserves_unset_sentinels() ! {
 		defer {
 			listener.close() or {}
 		}
-		writer := spawn send_after_deadline_chunk_delay(listener.sock.address()!.str())
+		delay := if deadline == future { 50 * time.millisecond } else { time.Duration(0) }
+		writer := spawn send_deadline_probe(listener.sock.address()!.str(), delay, chan bool{cap: 1})
 		ready := select_deadline_chunked(listener.sock.handle, .read, deadline,
 			5 * time.millisecond)!
 		writer.wait()
@@ -77,12 +86,14 @@ fn test_select_deadline_chunks_still_expire_at_the_real_deadline() ! {
 	defer {
 		listener.close() or {}
 	}
-	writer := spawn send_after_deadline_chunk_delay(listener.sock.address()!.str())
+	cancel := chan bool{cap: 1}
+	writer := spawn send_deadline_probe(listener.sock.address()!.str(), 50 * time.millisecond, cancel)
 	ready := select_deadline_chunked(listener.sock.handle, .read,
 		time.now().add(20 * time.millisecond), 5 * time.millisecond) or {
 		assert err.code() == err_timed_out.code()
 		false
 	}
+	cancel <- true
 	writer.wait()
 	assert !ready, 'wait continued past its finite deadline until data arrived'
 }

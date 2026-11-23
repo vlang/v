@@ -49,11 +49,9 @@ fn main() {
 	program := os.join_path(root, 'program')
 	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-d', 'fastc_real_builtin',
 		'-nocache', '-gc', 'none', '-o', program, source], @VEXEROOT, {
-		'VEXE':                          @VEXE
-		'VFLAGS':                        ''
-		'VOSARGS':                       ''
-		'V_MACOS_V3_NO_FALLBACK':        '1'
-		'V_C_ERROR_BUG_REPORT_DISABLED': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])

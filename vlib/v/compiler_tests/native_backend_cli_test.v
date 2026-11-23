@@ -24,8 +24,7 @@ fn native_backend_cli_can_run() bool {
 
 fn run_native_backend_cli(args []string, root string, vflags string) os.Result {
 	return cmdexec.run_in_merged_with_env(@VEXE, args, root, {
-		'VFLAGS':                 vflags
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VFLAGS': vflags
 	})
 }
 

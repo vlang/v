@@ -23,7 +23,7 @@ fn test_annotation_walk_handles_deep_single_child_ast_iteratively() {
 	mut memo := &BodyResolveMemo{}
 	memo.begin(0, a.nodes.len - 1)
 	for i in 0 .. a.nodes.len {
-		memo.types[i] = Type(int_)
+		memo.types[i] = new_type_reference(Type(int_))
 		memo.filled[i] = 1
 	}
 	tc.body_resolve_memo = memo
@@ -54,7 +54,7 @@ fn test_annotation_walk_preserves_pending_siblings_after_call() {
 	mut memo := &BodyResolveMemo{}
 	memo.begin(0, a.nodes.len - 1)
 	for i in 0 .. a.nodes.len {
-		memo.types[i] = Type(int_)
+		memo.types[i] = new_type_reference(Type(int_))
 		memo.filled[i] = 1
 	}
 	tc.body_resolve_memo = memo

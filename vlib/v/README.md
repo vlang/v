@@ -137,31 +137,15 @@ compiled by the default compiler.
 compiler implementation is no longer kept in this repository. External tools are first compiled
 with the default compiler, and `test` is handled by the default compiler directly.
 
-`-new-compiler` remains accepted for command-line compatibility and normally selects the same
-in-process driver. The standard bootstrap does not build the sibling `v1_fallback`
-(`v1_fallback.exe` on Windows). When a compatibility fallback is needed and the sibling is
-missing, V reports that it is running `make v1`. That target reuses or downloads the complete
-0.5.2 release under the user cache; if its release binary cannot be used, `oldv` clones the 0.5.2
-V sources and their matching `vc` snapshot and builds the fallback there. Run `make v1` explicitly
-to prepare it ahead of time. Automatic provisioning keeps its launcher metadata in the user cache,
-so an older read-only sibling installation can remain untouched. The installer exposes
-`crypto.subtle` at its current public path in the fallback vlib, and fallback resolution reruns the
-installer when an older cached tree lacks that path. `-old-compiler` launches the fallback
-explicitly, and ordinary user builds and external tools retry through it after a compiler or C
-compilation failure.
-
-The installer supplements the cached fallback vlib with modules whose public paths moved after
-0.5.2. Fallback roots missing these compatibility modules are not used. If a fallback command exits
-unsuccessfully, V notes where the default compiler stopped and how to show its suppressed
-diagnostics. For a command that may have run user code, the note preserves the child's status
-without mislabeling it as a compiler failure. Re-run the command with `-new-compiler` to see the
-default-compiler diagnostics without a fallback retry.
+`-vls-mode` uses the current compiler's mini-VLS protocol. The file a query asks about may be
+incomplete where it is being written: as V1 did, the compiler parses it with a placeholder name
+after a dot that has none (`os.` at the end of a line, `println(p.)`), and with a call that is left
+open closed before the next statement or the end of its block. An editor may also insert a
+placeholder identifier itself. Completion after a module name lists only modules the file imports:
+their public functions, then types, then consts, in V1's order.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
-
-Explicit `-new-compiler` builds remain strict default-compiler operations and do not retry with
-V1.
 
 ## Machine-readable diagnostics
 
@@ -185,12 +169,9 @@ as one JSON object per line on stderr, instead of the text with a source excerpt
 
 A diagnostic without a source position has no location members. The same diagnostics are
 reported as without the option, in the same order and with the same exit code, and `-W` and
-`-message-limit` apply as usual. Two things differ: every error is printed, where the text
-form stops after 20 of them, and a failed build is not retried with the compatibility compiler.
-Messages that are not diagnostics of the V source, like the output of a failing C compiler, stay
-text: a line is a diagnostic when it starts with `{`. `-old-compiler`, and `-vls-mode` without
-`-new-compiler`, build with the compatibility compiler, which reads `-json-errors` in its own way
-and does not print this format.
+`-message-limit` apply as usual. Every error is printed, where the text
+form stops after 20 of them. Output from the C toolchain remains text. V source diagnostics
+start with `{`.
 
 ## Profile-guided compiler build
 
@@ -337,8 +318,7 @@ as it is after an edit that only changes function bodies. `V3_FASTC_NO_ZYGOTE=1`
 
 `-selfhost -b fastc -o v4 vlib/v/v.v` builds V3 using only the scanner-to-C path. The generated
 compiler uses the small `v.fastcdriver` entry point and can build further FastC generations without
-the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
-turn any attempted compatibility fallback into a hard failure.
+the flat AST or conventional C backend.
 
 Set `FASTC_BENCH=1` when running a standalone FastC self-host compiler to print generation time
 and generation-only `loc/s`. `FASTC_BENCH_REPEAT=N` reports the fastest generation of N child
@@ -533,6 +513,10 @@ Module caching is enabled by default for supported builds, including `-cc clang`
 and builds with bundled TinyCC on macOS and Linux. TinyCC builds and links its own module
 objects. Pass `-nocache` or `--no-cache` to disable caching. A first TinyCC build can be
 faster without the cache, while later builds reuse the cached modules and executable.
+For a large macOS development build that needs the TinyCC native bridge, V uses
+the platform C compiler for the whole program when the bridge lacks a cached
+builtin bundle. This bounds memory spent preparing the initial module cache.
+With `-no-retry-compilation`, the compiler reports an error in this case.
 The former `-usecache` flag is no longer accepted.
 The C backend rejects `-prod` with TinyCC, including compiler aliases and renamed copies.
 Use Clang or GCC for production builds. Help, formatter, and other tool commands remain available

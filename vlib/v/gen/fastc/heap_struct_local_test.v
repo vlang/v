@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // A local of a `@[heap]` struct lives on the heap, as in the C backend, so a callee
 // may keep `&local` or a `mut local` argument after the declaring frame returns.
 fn test_fastc_heap_struct_locals_outlive_their_frame() {

@@ -72,7 +72,7 @@ fn main() {
 			} else {
 				'regular'
 			}}_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-			compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -cc clang ${ownership} ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+			compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -cc clang ${ownership} ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 			assert compile.exit_code == 0, '${ownership} ${mode}: ${compile.output}'
 			run := os.execute(os.quoted_path(output))
 			assert run.exit_code == 0, '${ownership} ${mode}: ${run.output}'

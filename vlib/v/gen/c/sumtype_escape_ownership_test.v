@@ -1,17 +1,32 @@
-module c
+module main
 
 import os
+import v.cmdexec
 
 fn test_returned_pointer_sum_acquires_promoted_local_once() {
 	cc := os.find_abs_path_of_executable('clang') or { return }
 	dir := os.join_path(os.vtmp_dir(), 'sum_local_transfer_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
-	compiler := os.join_path(dir, 'v-ownership')
+	project := os.join_path(os.real_path(dir), 'compiler')
 	vlib := os.join_path(@VEXEROOT, 'vlib')
-	build := os.exec([@VEXE, '-new-compiler', '-b', 'c', '-cc', cc, '-gc', 'none', '-d', 'ownership',
-		'-path', vlib, '-o', compiler, os.join_path(vlib, 'v', 'v.v')])
+	// Optimize the driver reused for hundreds of compilations, keeping its assertions.
+	// Export first to release V's frontend before native compilation.
+	generate := os.exec([@VEXE, '-b', 'c', '-cc', cc, '-gc', 'none', '-prealloc', '-cflags',
+		'-O1 -fno-inline-functions', '-d', 'ownership', '-path', vlib, '-generate-c-project', project,
+		os.join_path(vlib, 'v', 'v.v')])
+	assert generate.exit_code == 0, generate.output
+	build := $if windows {
+		cmdexec.run_in_merged('cmd', ['/c', 'build.bat'], project)
+	} $else {
+		cmdexec.run_in_merged('sh', [os.join_path(project, 'build.sh')], project)
+	}
 	assert build.exit_code == 0, build.output
+	compiler := if os.is_file(os.join_path(project, 'v')) {
+		os.join_path(project, 'v')
+	} else {
+		os.join_path(project, 'v.exe')
+	}
 	header := os.join_path(dir, 'drops.h')
 	os.write_file(header, 'static int transfer_drops[35];
 static void transfer_record(int code) { transfer_drops[code]++; }
@@ -401,8 +416,8 @@ fn main() {
 		os.setenv('VJOBS', jobs, true)
 		for mode in ['-autofree', '-ownership'] {
 			for prealloc in [false, true] {
-				mut command := [compiler, '-new-compiler', '-nocache', '-no-closures', '-gc', 'none',
-					'-cc', cc, mode]
+				mut command := [compiler, '-nocache', '-no-closures', '-gc', 'none', '-cc', cc,
+					mode]
 				if prealloc { command << '-prealloc' }
 				command << ['run', path]
 				result := os.exec(command)
@@ -424,8 +439,7 @@ fn factory(flag bool, item &Item) Choice {
 }
 fn main() { item := Item{code: 8}; value := factory(true, &item); assert value is &Item }')!
 	for mode in ['-autofree', '-ownership'] {
-		result := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode, '-check',
-			invalid])
+		result := os.exec([compiler, '-no-closures', '-gc', 'none', mode, '-check', invalid])
 		assert result.exit_code != 0
 		assert result.output.contains('ambiguous local pointer source outside its scope'), result.output
 	}
@@ -582,8 +596,7 @@ fn factory() Holder {
 fn main() { value := factory(); assert value.value is &Item }'
 		os.write_file(invalid, source)!
 		for mode in ['-autofree', '-ownership'] {
-			result := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode,
-				'-check', invalid])
+			result := os.exec([compiler, '-no-closures', '-gc', 'none', mode, '-check', invalid])
 			assert result.exit_code != 0
 			assert result.output.contains('cannot return a sum field or element borrowing local storage'), result.output
 		}
@@ -678,8 +691,7 @@ fn main() { consume(true) }',
 	for source in aggregate_stores {
 		os.write_file(invalid, source)!
 		for mode in ['-autofree', '-ownership'] {
-			result := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode,
-				'-check', invalid])
+			result := os.exec([compiler, '-no-closures', '-gc', 'none', mode, '-check', invalid])
 			assert result.exit_code != 0
 			assert result.output.contains('shorter lifetime in aggregate storage'), result.output
 		}
@@ -788,7 +800,7 @@ fn flow_next(mut state FlowState) !bool { if state.ready { return error("absent"
 		os.write_file(invalid, source.replace(' local = Item{code: 3}\n', ''))!
 		for mode in ['-autofree', '-ownership'] {
 			for prealloc in [false, true] {
-				mut command := [compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode]
+				mut command := [compiler, '-no-closures', '-gc', 'none', mode]
 				if prealloc { command << '-prealloc' }
 				command << ['run', invalid]
 				control := os.exec(command)
@@ -800,7 +812,7 @@ fn flow_next(mut state FlowState) !bool { if state.ready { return error("absent"
 		os.write_file(invalid, source)!
 		for mode in ['-autofree', '-ownership'] {
 			for prealloc in [false, true] {
-				mut command := [compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode]
+				mut command := [compiler, '-no-closures', '-gc', 'none', mode]
 				if prealloc { command << '-prealloc' }
 				command << ['-check', invalid]
 				result := os.exec(command)
@@ -828,7 +840,7 @@ fn main() {
 			os.write_file(invalid, source)!
 			for mode in ['-autofree', '-ownership'] {
 				for prealloc in [false, true] {
-					mut command := [compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode]
+					mut command := [compiler, '-no-closures', '-gc', 'none', mode]
 					if prealloc { command << '-prealloc' }
 					command << ['-check', invalid]
 					result := os.exec(command)
@@ -842,8 +854,7 @@ fn main() {
 	for source, expected in unsupported {
 		os.write_file(invalid, source)!
 		for mode in ['-autofree', '-ownership'] {
-			result := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode,
-				'-check', invalid])
+			result := os.exec([compiler, '-no-closures', '-gc', 'none', mode, '-check', invalid])
 			assert result.exit_code != 0
 			assert result.output.contains(expected), result.output
 		}
@@ -862,19 +873,17 @@ fn main() {
  assert (source.value as &Item).code == 1
 }'
 	os.write_file(invalid, moved_source.replace(' assert (source.value as &Item).code == 1\n', ''))!
-	control := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', '-ownership',
-		'run', invalid])
+	control := os.exec([compiler, '-no-closures', '-gc', 'none', '-ownership', 'run', invalid])
 	assert control.exit_code == 0, control.output
 	os.write_file(invalid, moved_source)!
-	moved := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', '-ownership', '-check',
-		invalid])
+	moved := os.exec([compiler, '-no-closures', '-gc', 'none', '-ownership', '-check', invalid])
 	assert moved.exit_code != 0
 	assert moved.output.contains('use of moved value: `source.value`'), moved.output
 	assert moved.output.contains('ambiguous.v:12:'), moved.output
 	for source in mixed_sources {
 		os.write_file(invalid, source.replace('mut local :=', 'local :=').replace(' local = Item{code: 3}\n', '').replace(' assert alias is &Item', ' assert alias is &Item\n assert (value as &Item).code == 1'))!
 		for prealloc in [false, true] {
-			mut command := [compiler, '-new-compiler', '-no-closures', '-gc', 'none', '-ownership']
+			mut command := [compiler, '-no-closures', '-gc', 'none', '-ownership']
 			if prealloc { command << '-prealloc' }
 			command << ['-check', invalid]
 			mixed_moved := os.exec(command)
@@ -904,7 +913,7 @@ fn main() {
 	} {
 		source := storage_move.replace('SOURCE_INIT', initializer).replace('SOURCE_SLOT', slot)
 		for prealloc in [false, true] {
-			mut command := [compiler, '-new-compiler', '-no-closures', '-gc', 'none', '-ownership']
+			mut command := [compiler, '-no-closures', '-gc', 'none', '-ownership']
 			if prealloc { command << '-prealloc' }
 			os.write_file(invalid, source.replace(' assert (${slot} as &Item).code == 2\n', ''))!
 			mut control_command := command.clone()

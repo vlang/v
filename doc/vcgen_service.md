@@ -19,16 +19,17 @@ webhook for master. Requests that arrive while a run is pending coalesce into it
 2. Stops early when nothing has to be built:
    - neither master moved since the last run (`unchanged`);
    - vlang/vc already holds the snapshot of vlang/v master (`up_to_date`, push mode);
-   - every path that changed since the snapshot's source commit is ignored (`ignored`): `*.md`,
-     `*.vv`, `*.out`, `*.yml`, `cmd/tools/**` except `cmd/tools/builders/*.v`, `vc.lock`, and the
-     vc sha in `workflow_contract_test.v`. So a vc.lock update never causes a new snapshot;
+   - every path that changed since the snapshot's source commit is ignored (`ignored`).
+     Ignored paths include `*.md`, `*.vv`, `*.out`, `*.yml`, most of `cmd/tools/**`, `vc.lock`,
+     and the vc sha in `workflow_contract_test.v`. A vc.lock update never causes a new snapshot.
+     Changes to `cmd/tools/builders/*.v` or `cmd/tools/gen_vc/snapshot.v` trigger generation.
    - the last run for the same commits failed less than `--retry-failed-minutes` (60) ago.
      Polling during that delay keeps the retry pending until the delay expires.
 3. Refuses to build while MemAvailable plus SwapFree is below `--min-available-mib` (2048).
 4. Checks out vlang/v master at `--v-dir`, cleans it, and runs `make`.
 5. Generates `v.c` (`-cross`) and `v_win.c` (`-cross -os windows -cc msvc`) at the checkout root,
-   prepends `#define V_COMMIT_HASH "<sha>"`, and runs the snapshot checks of
-   `cmd/tools/gen_vc/snapshot.v`, which `gen_vc_ci.yml` uses too.
+   makes checkout-owned include paths relative and prepends `#define V_COMMIT_HASH "<sha>"`.
+   It runs the snapshot checks in `cmd/tools/gen_vc/snapshot.v`, which `gen_vc_ci.yml` uses too.
 6. Commits the snapshot on top of vlang/vc master as `[v:master] <sha> - <subject>` by
    `vlang-bot`, in a bare blobless clone (no checkout of the old snapshot).
 7. In push mode, checks that vlang/v master still is `<sha>`; otherwise the snapshot is `stale`
@@ -38,12 +39,13 @@ In dry-run mode, step 7 is skipped (`would_publish`). When vlang/vc already hold
 the same commit, a dry run builds anyway and compares the trees: `verified` means its snapshot is
 byte-identical to the published one, `differs` names the file that is not.
 
-The checkout path is embedded in the snapshot. GitHub's runners build at `/home/runner/work/v/v`,
-so the service uses the same `--v-dir` to produce the same bytes.
+The checkout path appears in generated string literals. GitHub's runners build at
+`/home/runner/work/v/v`, so the service uses the same `--v-dir` to produce the same bytes.
 
-During bootstrapping, the POSIX and Windows compatibility helpers relocate V-owned include
-directives to the current checkout. They preserve the downloaded snapshot and leave header
-processing to the C compiler.
+When compiling a downloaded C snapshot directly, pass `-I /path/to/v` with a checkout matching
+its `V_COMMIT_HASH`. The C compiler resolves nested includes and evaluates preprocessor guards.
+The bootstrap compatibility helpers already resolve V-owned include paths against the local
+checkout for both current and older snapshots.
 
 ## Endpoints
 

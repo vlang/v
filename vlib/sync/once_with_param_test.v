@@ -1,5 +1,5 @@
 import sync
-import time
+import sync.stdatomic
 
 // Note: this is the same test as `vlib/sync/once_test.v`, but
 // it uses an explicit passing of the voidptr parameter in
@@ -45,41 +45,39 @@ fn test_once() {
 
 struct OrderingState {
 pub mut:
-	value int
-	ready chan bool
+	value   u64
+	ready   chan bool
+	release chan bool
 }
 
-fn slow_init(p voidptr) {
+fn gated_init(p voidptr) {
+	// do_with_param passes the fixture state as an opaque pointer.
 	mut s := unsafe { &OrderingState(p) }
-	// Signal that we are inside f() — count has been stored (buggy) or not (fixed).
 	s.ready <- true
-	// Sleep long enough for the concurrent do_with_param call to observe the state.
-	time.sleep(50 * time.millisecond)
-	s.value = 99
+	_ := <-s.release
+	stdatomic.store_u64(&s.value, 99)
 }
 
-fn run_ordering(mut once sync.Once, s &OrderingState, c chan bool) {
-	once.do_with_param(slow_init, s)
-	c <- true
+fn run_ordering(mut once sync.Once, s &OrderingState) {
+	once.do_with_param(gated_init, s)
 }
 
 fn test_once_with_param_ordering() {
-	mut s := &OrderingState{
-		ready: chan bool{cap: 1}
+	s := &OrderingState{
+		ready:   chan bool{}
+		release: chan bool{}
 	}
 	mut once := sync.new_once()
-	c := chan bool{}
+	worker := spawn run_ordering(mut once, s)
 
-	spawn run_ordering(mut once, s, c)
-
-	// Wait until the goroutine is inside f() before letting the second
-	// caller proceed.  With the old buggy code count==1 is already visible
-	// here, so the second do_with_param returns immediately — before
-	// s.value is set.  With the fix, count is still 0, so the second
-	// caller blocks on the mutex and waits for f() to complete.
 	_ := <-s.ready
-	once.do_with_param(fn (p voidptr) {}, unsafe { nil })
-
-	assert s.value == 99, 'do_with_param must not return before f() completes'
-	_ := <-c
+	published := stdatomic.load_u64(&once.count)
+	s.release <- true
+	once.do_with_param(fn (_ voidptr) {
+		assert false, 'the second call must not execute another callback'
+	}, s)
+	value := stdatomic.load_u64(&s.value)
+	worker.wait()
+	assert published == 0, 'do_with_param must publish completion after the callback'
+	assert value == 99, 'do_with_param must not return before the callback completes'
 }

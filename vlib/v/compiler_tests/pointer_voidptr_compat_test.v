@@ -1,4 +1,5 @@
 import os
+import v.tempname
 
 const pointer_voidptr_vexe = @VEXE
 const pointer_voidptr_tests_dir = os.dir(@FILE)
@@ -6,50 +7,51 @@ const pointer_voidptr_v3_dir = os.dir(pointer_voidptr_tests_dir)
 const pointer_voidptr_vlib_dir = os.dir(pointer_voidptr_v3_dir)
 const pointer_voidptr_v3_src = os.join_path(pointer_voidptr_v3_dir, 'v.v')
 
-fn pointer_voidptr_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_pointer_voidptr_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+const pointer_voidptr_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_pointer_voidptr_fixtures_${tempname.unique_token()}')
+const pointer_voidptr_compiler = os.join_path(pointer_voidptr_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
+
+fn testsuite_begin() {
+	os.mkdir_all(pointer_voidptr_fixture_dir) or { panic(err) }
 	build :=
 		os.exec([pointer_voidptr_vexe, '-gc', 'none', '-path',
-			'${pointer_voidptr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${pointer_voidptr_vlib_dir}' + '|@vlib|@vmodules', '-o', pointer_voidptr_compiler,
 			'${pointer_voidptr_v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
 }
 
-fn pointer_voidptr_run_good(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+fn testsuite_end() {
+	os.rmdir_all(pointer_voidptr_fixture_dir) or {}
+}
+
+fn pointer_voidptr_run_good(name string, source string) string {
+	src := os.join_path(pointer_voidptr_fixture_dir, 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(pointer_voidptr_fixture_dir, 'v3_${name}')
+	compile := os.exec([pointer_voidptr_compiler, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
 
-fn pointer_voidptr_gen_c(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
-	os.write_file(src, source) or { panic(err) }
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.c')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
-	assert compile.exit_code == 0, compile.output
-	return os.read_file(c_path) or { panic(err) }
+fn pointer_voidptr_run_good_with_c(name string, source string) (string, string) {
+	out := pointer_voidptr_run_good(name, source)
+	c_source := os.read_file(os.join_path(pointer_voidptr_fixture_dir, 'v3_${name}.c')) or { panic(err) }
+	return out, c_source
 }
 
-fn pointer_voidptr_run_bad(v3_bin string, name string, source string, expected string) {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+fn pointer_voidptr_run_bad(name string, source string, expected string) {
+	src := os.join_path(pointer_voidptr_fixture_dir, 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(pointer_voidptr_fixture_dir, 'v3_${name}')
+	compile := os.exec([pointer_voidptr_compiler, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
 fn test_bare_value_pointer_returns_are_heap_lowered() {
-	v3_bin := pointer_voidptr_build_v3()
-	out := pointer_voidptr_run_good(v3_bin, 'bare_pointer_return', 'struct Item {
+	out := pointer_voidptr_run_good('bare_pointer_return', 'struct Item {
 	value int
 }
 
@@ -66,7 +68,7 @@ fn main() {
 }
 ')
 	assert out == '23'
-	optional_out := pointer_voidptr_run_good(v3_bin, 'bare_optional_pointer_return', 'struct Item {
+	optional_out := pointer_voidptr_run_good('bare_optional_pointer_return', 'struct Item {
 	value int
 }
 
@@ -86,7 +88,7 @@ fn main() {
 }
 ')
 	assert optional_out == '29'
-	result_out := pointer_voidptr_run_good(v3_bin, 'bare_result_pointer_return', 'struct Item {
+	result_out := pointer_voidptr_run_good('bare_result_pointer_return', 'struct Item {
 	value int
 }
 
@@ -106,7 +108,7 @@ fn main() {
 }
 ')
 	assert result_out == '31'
-	pointer_voidptr_run_bad(v3_bin, 'bare_interface_pointer_return', 'interface Reader {
+	pointer_voidptr_run_bad('bare_interface_pointer_return', 'interface Reader {
 	read() int
 }
 
@@ -124,7 +126,7 @@ fn make() &Reader {
 fn main() {}
 ',
 		'you are returning `File` instead')
-	pointer_voidptr_run_bad(v3_bin, 'bare_sum_pointer_return', 'struct A {}
+	pointer_voidptr_run_bad('bare_sum_pointer_return', 'struct A {}
 
 struct B {}
 
@@ -141,7 +143,6 @@ fn main() {}
 }
 
 fn test_optional_value_to_pointer_return_heap_copies_payload() {
-	v3_bin := pointer_voidptr_build_v3()
 	source := 'struct Item {
 	value int
 }
@@ -159,14 +160,12 @@ fn main() {
 	println(int_str(item.value))
 }
 '
-	out := pointer_voidptr_run_good(v3_bin, 'optional_value_to_pointer_return', source)
+	out, c_source := pointer_voidptr_run_good_with_c('optional_value_to_pointer_return', source)
 	assert out == '47'
-	c_source := pointer_voidptr_gen_c(v3_bin, 'optional_value_to_pointer_return_c', source)
 	assert c_source.contains('memdup(&maybe.value, sizeof(main__Item))'), c_source
 }
 
 fn test_wrapped_multi_return_bare_pointer_slots_are_heap_lowered() {
-	v3_bin := pointer_voidptr_build_v3()
 	source := 'struct Item {
 	value int
 }
@@ -197,17 +196,15 @@ fn main() {
 	println(int_str(result_n))
 }
 '
-	out := pointer_voidptr_run_good(v3_bin, 'wrapped_multi_return_bare_pointer_slots', source)
+	out, c_source := pointer_voidptr_run_good_with_c('wrapped_multi_return_bare_pointer_slots', source)
 	assert out == '31\n37\n41\n43'
-	c_source := pointer_voidptr_gen_c(v3_bin, 'wrapped_multi_return_bare_pointer_slots_c', source)
 	assert c_source.count('sizeof(main__Item)') >= 2, c_source
 }
 
 fn test_c_voidptr_struct_argument_passes_its_address() {
-	v3_bin := pointer_voidptr_build_v3()
-	header := os.join_path(os.temp_dir(), 'v3_c_voidptr_struct_${os.getpid()}.h')
-	source := os.join_path(os.temp_dir(), 'v3_c_voidptr_struct_${os.getpid()}.v')
-	bin := os.join_path(os.temp_dir(), 'v3_c_voidptr_struct_${os.getpid()}')
+	header := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_voidptr_struct.h')
+	source := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_voidptr_struct.v')
+	bin := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_voidptr_struct')
 	os.write_file(header, 'static int v3_read_cfg(void *ptr) { return *((int *)ptr); }\n') or {
 		panic(err)
 	}
@@ -228,7 +225,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, source, '-b', 'c', '-o', bin])
+	compile := os.exec([pointer_voidptr_compiler, source, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -236,10 +233,9 @@ fn main() {
 }
 
 fn test_c_pointer_to_voidptr_argument_accepts_allocated_buffer() {
-	v3_bin := pointer_voidptr_build_v3()
-	header := os.join_path(os.temp_dir(), 'v3_c_pointer_to_voidptr_${os.getpid()}.h')
-	source := os.join_path(os.temp_dir(), 'v3_c_pointer_to_voidptr_${os.getpid()}.v')
-	bin := os.join_path(os.temp_dir(), 'v3_c_pointer_to_voidptr_${os.getpid()}')
+	header := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_pointer_to_voidptr.h')
+	source := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_pointer_to_voidptr.v')
+	bin := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_pointer_to_voidptr')
 	os.write_file(header, 'static int v3_read_byte(void *ptr) { return *((unsigned char *)ptr); }\n') or {
 		panic(err)
 	}
@@ -260,7 +256,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, source, '-b', 'c', '-o', bin])
+	compile := os.exec([pointer_voidptr_compiler, source, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -268,7 +264,6 @@ fn main() {
 }
 
 fn test_pointer_to_voidptr_return_keeps_pointer_value() {
-	v3_bin := pointer_voidptr_build_v3()
 	source := 'fn make_values() voidptr {
 	unsafe {
 		values := &voidptr(malloc(64))
@@ -285,8 +280,7 @@ fn main() {
 	}
 }
 '
-	out := pointer_voidptr_run_good(v3_bin, 'pointer_to_voidptr_return', source)
+	out, c_source := pointer_voidptr_run_good_with_c('pointer_to_voidptr_return', source)
 	assert out == '17'
-	c_source := pointer_voidptr_gen_c(v3_bin, 'pointer_to_voidptr_return_c', source)
 	assert !c_source.contains('return *values;'), c_source
 }

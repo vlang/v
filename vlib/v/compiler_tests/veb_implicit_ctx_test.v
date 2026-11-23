@@ -1,12 +1,25 @@
 import os
+import v.tempname
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const veb_ctx_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_veb_ctx_fixtures_${tempname.unique_token()}')
+
+fn testsuite_begin() {
+	os.mkdir_all(veb_ctx_fixture_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(veb_ctx_fixture_dir) or {}
+}
 
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_veb_ctx_test')
+	v3_bin := os.join_path(veb_ctx_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
@@ -53,9 +66,9 @@ fn main() {
 	_ := app.index()
 }
 '
-	src_file := os.join_path(os.temp_dir(), 'v3_veb_ctx.v')
+	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_ctx.v')
 	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(os.temp_dir(), 'v3_veb_ctx.c')
+	c_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_ctx.c')
 	os.rm(c_out) or {}
 	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
@@ -72,7 +85,7 @@ fn main() {
 // declaration even when the source name shadows a runtime C type.
 fn test_veb_explicit_ctx_named_like_runtime_type_is_forwarded() {
 	v3_bin := build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_veb_renamed_ctx_${os.getpid()}')
+	root := os.join_path(veb_ctx_fixture_dir, 'v3_veb_renamed_ctx_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	defer {
@@ -145,9 +158,9 @@ fn main() {
 	veb.run_at[App, Context](mut app, port: 0) or { panic(err) }
 }
 '
-	src_file := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_unnamed_route.v')
+	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_implicit_ctx_unnamed_route.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_unnamed_route')
+	bin_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_implicit_ctx_unnamed_route')
 	os.rm(bin_out) or {}
 	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
@@ -159,7 +172,7 @@ fn main() {
 // implicit `ctx` use resolves.
 fn test_veb_imported_context_alias_param_still_gets_hidden_ctx() {
 	v3_bin := build_v3()
-	root := os.join_path(os.temp_dir(), 'v3_veb_imported_ctx_${os.getpid()}')
+	root := os.join_path(veb_ctx_fixture_dir, 'v3_veb_imported_ctx_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(os.join_path(root, 'other')) or { panic(err) }
 	defer {
@@ -229,9 +242,9 @@ fn main() {
 	veb.run_at[App, Context](mut app, port: 0) or { panic(err) }
 }
 '
-	src_file := os.join_path(os.temp_dir(), 'v3_veb_complete_context_receiver.v')
+	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_complete_context_receiver.v')
 	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(os.temp_dir(), 'v3_veb_complete_context_receiver.c')
+	c_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_complete_context_receiver.c')
 	os.rm(c_out) or {}
 	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
@@ -240,7 +253,7 @@ fn main() {
 	assert !c_code.contains('Context__before_request(&user_context->veb__Context)'), c_code
 	assert c_code.contains('AnonStruct_v3_inferred_'), c_code
 	assert !c_code.contains('v_struct'), c_code
-	bin_out := os.join_path(os.temp_dir(), 'v3_veb_complete_context_receiver')
+	bin_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_complete_context_receiver')
 	os.rm(bin_out) or {}
 	native_compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', bin_out])
 	assert native_compile.exit_code == 0, native_compile.output
@@ -287,9 +300,9 @@ fn main() {
 	dispatch(App{}, mut ctx, ["first", "second"])
 }
 '
-	src_file := os.join_path(os.temp_dir(), 'v3_veb_reflected_implicit_ctx.v')
+	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_reflected_implicit_ctx.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(os.temp_dir(), 'v3_veb_reflected_implicit_ctx')
+	bin_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_reflected_implicit_ctx')
 	os.rm(bin_out) or {}
 	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
@@ -338,9 +351,9 @@ fn main() {
 	dispatch(mut app, mut ctx)
 }
 '
-	src_file := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_no_spread.v')
+	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_implicit_ctx_no_spread.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_no_spread')
+	bin_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_implicit_ctx_no_spread')
 	os.rm(bin_out) or {}
 	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
@@ -388,9 +401,9 @@ fn main() {
 	dispatch(mut app, ctx)
 }
 '
-	src_file := os.join_path(os.temp_dir(), 'v3_veb_ctx_interface_arg.v')
+	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_ctx_interface_arg.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(os.temp_dir(), 'v3_veb_ctx_interface_arg')
+	bin_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_ctx_interface_arg')
 	os.rm(bin_out) or {}
 	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
@@ -432,9 +445,9 @@ fn main() {
 	dispatch(mut app, mut ctx)
 }
 '
-	src_file := os.join_path(os.temp_dir(), 'v3_veb_embedded_base_ctx.v')
+	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_embedded_base_ctx.v')
 	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(os.temp_dir(), 'v3_veb_embedded_base_ctx.c')
+	c_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_embedded_base_ctx.c')
 	os.rm(c_out) or {}
 	compile := os.exec([v3_bin, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
@@ -476,9 +489,9 @@ fn main() {
 	veb.run[App, Context](mut app, 8080)
 }
 '
-	src_file := os.join_path(os.temp_dir(), 'v3_veb_custom_context_generic_method.v')
+	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_custom_context_generic_method.v')
 	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(os.temp_dir(), 'v3_veb_custom_context_generic_method.c')
+	c_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_custom_context_generic_method.c')
 	os.rm(c_out) or {}
 	compile := os.exec([v3_bin, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output

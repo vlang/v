@@ -193,10 +193,12 @@ const test_cases = [
 		description: 'Go to variable definition from match expression condition'
 	},
 	// test_imported_enum() tests
+	// The cursor is on `a` of `s.PublicEnum1.a`. On `PublicEnum1`, col 25, the
+	// definition is the enum's, as for `LocalEnum` of `LocalEnum.first`.
 	TestCase{
 		name:        'imported_enum_value'
 		line:        129
-		col:         25
+		col:         29
 		expected:    '${mod1_text_file}:25:1'
 		description: 'Go to imported enum value definition'
 	},

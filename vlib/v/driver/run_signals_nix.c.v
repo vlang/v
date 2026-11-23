@@ -11,11 +11,26 @@ fn C.v3_run_signals_wait(code &i32, signal_number &i32) i32
 fn C.v3_run_signals_finish() i32
 
 fn wait_run_process(mut process os.Process) !int {
-	if C.v3_run_signals_begin() != 0 {
+	setup := C.v3_run_signals_begin()
+	if setup < 0 {
 		return error('could not install run signal handlers')
 	}
 	process.use_pgroup = true
-	process.run()
+	$if openbsd {
+		if setup > 0 {
+			// A background tty read on OpenBSD can fail even after SIGCONT
+			// if it began before the foreground handoff.
+			process.run_stopped() or {
+				process.close()
+				C.v3_run_signals_finish()
+				return err
+			}
+		} else {
+			process.run()
+		}
+	} $else {
+		process.run()
+	}
 	if process.pid <= 0 {
 		process.status = .aborted
 		process.close()
@@ -24,8 +39,14 @@ fn wait_run_process(mut process os.Process) !int {
 	}
 	mut code := i32(0)
 	mut signal_number := i32(0)
-	if C.v3_run_signals_set_pid(i32(process.pid)) != 0
-		|| C.v3_run_signals_wait(&code, &signal_number) != 0 {
+	mut failed := C.v3_run_signals_set_pid(i32(process.pid)) != 0
+	if !failed {
+		$if openbsd {
+			process.signal_continue()
+		}
+		failed = C.v3_run_signals_wait(&code, &signal_number) != 0
+	}
+	if failed {
 		C.v3_run_signals_kill(i32(process.pid))
 		process.wait()
 		C.v3_run_signals_finish()

@@ -10,7 +10,7 @@ fn C.fstat(fd i32, buf &C.stat) i32
 
 // fifo_open_nix opens an existing FIFO without creating or truncating regular files.
 fn fifo_open_nix(path string, flags int, mode &char) !File {
-	fd := C.open(&char(path.str), flags)
+	fd := C.open(&char(path.str), flags | C.O_CLOEXEC)
 	if fd == -1 { return error_posix() }
 	mut st := C.stat{}
 	if C.fstat(fd, &st) != 0 || u32(st.st_mode) & u32(C.S_IFMT) != u32(C.S_IFIFO) {

@@ -108,7 +108,7 @@ fn Sequence.parse(mut p Parser) !Sequence {
 	length := p.read_length()!
 	content := p.read_bytes(length)!
 
-	seq := Sequence.from_bytes(content)!
+	seq := Sequence.from_bytes(content, 1)!
 	return seq
 }
 
@@ -134,19 +134,22 @@ fn Sequence.decode_with_rule(bytes []u8, loc int, rule EncodingRule) !(Sequence,
 		unsafe { bytes[content_pos..content_pos + length] }
 	}
 	next := content_pos + length
-	seq := Sequence.from_bytes(payload)!
+	seq := Sequence.from_bytes(payload, 1)!
 	return seq, next
 }
 
 // bytes should seq.fields payload, not includes the tag
-fn Sequence.from_bytes(bytes []u8) !Sequence {
+fn Sequence.from_bytes(bytes []u8, nesting_depth int) !Sequence {
+	if nesting_depth > max_nesting_depth {
+		return error('exceeded the maximum nesting depth')
+	}
 	mut seq := Sequence{}
 	if bytes.len == 0 {
 		return seq
 	}
 	mut i := 0
 	for i < bytes.len {
-		el, pos := Element.decode_with_rule(bytes, i, .der)!
+		el, pos := Element.decode_with_rule_at_depth(bytes, i, .der, nesting_depth)!
 		i = pos
 		seq.add_element(el)!
 	}

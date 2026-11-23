@@ -454,6 +454,13 @@ int v3_run_signals_begin(void) {
         v3_run_terminal_fd = -1;
     }
     v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+#ifdef __OpenBSD__
+    /* A foreground child can start only after the terminal has been handed off. */
+    if (!result && v3_run_handoff_terminal
+        && v3_run_tcgetpgrp(v3_run_terminal_fd) == v3_run_owner_group) {
+        result = 1;
+    }
+#endif
     errno = saved_errno;
     return result;
 }

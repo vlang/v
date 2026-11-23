@@ -1,10 +1,81 @@
 import os
-
-$if !windows {
-	import time
-}
+import time
 
 const vwatch_stdin_vexe = @VEXE
+const vwatch_terminal_poll_interval = 20 * time.millisecond
+const vwatch_terminal_probe_dir = os.join_path(os.vtmp_dir(), 'vwatch_tty_probe_${os.getpid()}')
+const vwatch_terminal_probe_source = r'
+module main
+
+import os
+import v.util.vwatchtty
+
+#include <unistd.h>
+
+fn C.tcgetpgrp(fd int) int
+
+fn main() {
+	mode, target, marker := os.args[1], os.args[2], os.args[3]
+	match mode {
+		"handoff" {
+			mut child := os.new_process(target)
+			child.use_pgroup = true
+			child.set_args(["10"])
+			child.run()
+			watcher_pgid := vwatchtty.process_group()
+			handed_off := vwatchtty.set_foreground_process_group(child.pid, watcher_pgid)
+			worker_pgid := vwatchtty.process_group()
+			child.signal_term()
+			child.wait()
+			child.close()
+			os.write_file(marker, "${handed_off},${watcher_pgid},${worker_pgid},${child.pid}")!
+		}
+		"restore" {
+			before := C.tcgetpgrp(0)
+			manager_pgid := target.int()
+			vwatchtty.restore_foreground_process_group(manager_pgid)
+			after := C.tcgetpgrp(0)
+			os.write_file(marker, "${before},${after},${manager_pgid}")!
+		}
+		else { panic("unknown terminal probe mode: ${mode}") }
+	}
+}
+'
+
+fn testsuite_begin() {
+	os.rmdir_all(vwatch_terminal_probe_dir) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(vwatch_terminal_probe_dir) or {}
+}
+
+fn build_vwatch_terminal_probe() !string {
+	helper := os.join_path(vwatch_terminal_probe_dir, 'vwatch_terminal_probe')
+	if os.is_file(helper) {
+		return helper
+	}
+	os.mkdir_all(vwatch_terminal_probe_dir)!
+	source := os.join_path(vwatch_terminal_probe_dir, 'vwatch_terminal_probe.c.v')
+	os.write_file(source, vwatch_terminal_probe_source)!
+	result := os.exec([vwatch_stdin_vexe, '-o', helper, source])
+	assert result.exit_code == 0, result.output
+	return helper
+}
+
+fn finish_vwatch_terminal(mut process os.Process) string {
+	sw := time.new_stopwatch()
+	for process.is_alive() && sw.elapsed() < 5 * time.second {
+		time.sleep(vwatch_terminal_poll_interval)
+	}
+	if process.is_alive() {
+		process.signal_pgkill()
+	}
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	process.close()
+	return output
+}
 
 fn openbsd_script_args(stty_exe string, command string, ready_path string) []string {
 	// With redirected stdin, OpenBSD `script` initializes its pseudo-terminal
@@ -50,16 +121,11 @@ fn test_background_watch_does_not_take_terminal() {
 		defer {
 			os.rmdir_all(tmp_dir) or {}
 		}
-		source_path := os.join_path(tmp_dir, 'background_tty.v')
-		helper_path := os.join_path(tmp_dir, 'background_tty')
 		marker_path := os.join_path(tmp_dir, 'handed_off.txt')
 		shell_path := os.join_path(tmp_dir, 'run_background.sh')
 		sleep_exe := os.find_abs_path_of_executable('sleep') or { return }
-		os.write_file(source_path, "import os\nimport v.util.vwatchtty\n\nfn main() {\n\tmut child := os.new_process(os.args[1])\n\tchild.use_pgroup = true\n\tchild.set_args(['10'])\n\tchild.run()\n\twatcher_pgid := vwatchtty.process_group()\n\thanded_off := vwatchtty.set_foreground_process_group(child.pid, watcher_pgid)\n\tworker_pgid := vwatchtty.process_group()\n\tchild.signal_term()\n\tchild.wait()\n\tchild.close()\n\tos.write_file(os.args[2], '\${handed_off},\${watcher_pgid},\${worker_pgid},\${child.pid}')!\n}\n")!
-		build_result :=
-			os.exec([vwatch_stdin_vexe, '-o', helper_path, source_path])
-		assert build_result.exit_code == 0, build_result.output
-		os.write_file(shell_path, ['set -m', r'"$1" "$2" "$3" &', 'wait'].join('\n'))!
+		helper_path := build_vwatch_terminal_probe()!
+		os.write_file(shell_path, ['set -m', r'"$1" handoff "$2" "$3" &', 'wait'].join('\n'))!
 
 		mut process := os.new_process(script_exe)
 		process.set_redirect_stdio()
@@ -75,18 +141,7 @@ fn test_background_watch_does_not_take_terminal() {
 			process.set_args(['-q', '-c', command, '/dev/null'])
 		}
 		process.run()
-		for _ in 0 .. 50 {
-			if !process.is_alive() {
-				break
-			}
-			time.sleep(100 * time.millisecond)
-		}
-		if process.is_alive() {
-			process.signal_pgkill()
-		}
-		process.wait()
-		output := process.stdout_slurp() + process.stderr_slurp()
-		process.close()
+		output := finish_vwatch_terminal(mut process)
 		groups := (os.read_file(marker_path) or { '' }).split(',')
 		assert groups.len == 4, output
 		assert groups[0] == 'false', output
@@ -106,16 +161,12 @@ fn test_background_restore_does_not_reclaim_terminal() {
 		defer {
 			os.rmdir_all(tmp_dir) or {}
 		}
-		source_path := os.join_path(tmp_dir, 'restore_tty.c.v')
-		helper_path := os.join_path(tmp_dir, 'restore_tty')
 		marker_path := os.join_path(tmp_dir, 'terminal_groups.txt')
 		shell_path := os.join_path(tmp_dir, 'run_background_restore.sh')
-		os.write_file(source_path, "module main\n\nimport os\nimport v.util.vwatchtty\n\n#include <unistd.h>\n\nfn C.tcgetpgrp(fd int) int\n\nfn main() {\n\tbefore := C.tcgetpgrp(0)\n\tmanager_pgid := os.args[1].int()\n\tvwatchtty.restore_foreground_process_group(manager_pgid)\n\tafter := C.tcgetpgrp(0)\n\tos.write_file(os.args[2], '\${before},\${after},\${manager_pgid}')!\n}\n")!
-		build_result :=
-			os.exec([vwatch_stdin_vexe, '-o', helper_path, source_path])
-		assert build_result.exit_code == 0, build_result.output
-		os.write_file(shell_path, ['set -m', 'sleep 10 &', 'manager=$!', r'"$1" "$manager" "$2" &',
-			'worker=$!', 'wait "$worker"', 'kill "$manager"', 'wait "$manager" || true'].join('\n'))!
+		helper_path := build_vwatch_terminal_probe()!
+		os.write_file(shell_path, ['set -m', 'sleep 10 &', 'manager=$!',
+			r'"$1" restore "$manager" "$2" &', 'worker=$!', 'wait "$worker"', 'kill "$manager"',
+			'wait "$manager" || true'].join('\n'))!
 
 		mut process := os.new_process(script_exe)
 		process.set_redirect_stdio()
@@ -130,18 +181,7 @@ fn test_background_restore_does_not_reclaim_terminal() {
 			process.set_args(['-q', '-c', command, '/dev/null'])
 		}
 		process.run()
-		for _ in 0 .. 50 {
-			if !process.is_alive() {
-				break
-			}
-			time.sleep(100 * time.millisecond)
-		}
-		if process.is_alive() {
-			process.signal_pgkill()
-		}
-		process.wait()
-		output := process.stdout_slurp() + process.stderr_slurp()
-		process.close()
+		output := finish_vwatch_terminal(mut process)
 		groups := (os.read_file(marker_path) or { '' }).split(',')
 		assert groups.len == 3, output
 		assert groups[0] == groups[1], output
@@ -177,36 +217,34 @@ fn test_watch_run_forwards_terminal_input() {
 			process.set_args(['-q', '-c', command, '/dev/null'])
 		}
 		process.run()
-		mut pty_ready := true
-		mut prompt_ready := true
+		mut pty_ready := $if openbsd { false } $else { true }
+		mut prompt_ready := false
 		mut startup_output := ''
-		$if openbsd {
-			pty_ready = false
-			prompt_ready = false
-			// Cold Clang builds inside the OpenBSD VM may need longer to reach the prompt.
-			for _ in 0 .. 600 {
-				startup_output += process.stdout_read()
-				if os.exists(ready_path) {
-					pty_ready = true
-				}
-				if startup_output.contains('Enter name:') {
-					prompt_ready = true
-				}
-				if pty_ready && prompt_ready {
-					break
-				}
-				if !process.is_alive() {
-					startup_output += process.stdout_read()
-					break
-				}
-				time.sleep(100 * time.millisecond)
+		// Compiling the watched program can take longer on a busy runner.
+		// Wait for its prompt before typing or starting the response deadline.
+		startup := time.new_stopwatch()
+		for startup.elapsed() < time.minute {
+			startup_output += process.stdout_read()
+			$if openbsd {
+				pty_ready = os.exists(ready_path)
 			}
+			prompt_ready = startup_output.contains('Enter name:')
+			if pty_ready && prompt_ready {
+				break
+			}
+			if !process.is_alive() {
+				startup_output += process.stdout_read()
+				prompt_ready = startup_output.contains('Enter name:')
+				break
+			}
+			time.sleep(vwatch_terminal_poll_interval)
 		}
 		if pty_ready && prompt_ready && process.is_alive() {
 			process.stdin_write('Alice\n')
 		}
 		mut received_input := false
-		for _ in 0 .. 100 {
+		response := time.new_stopwatch()
+		for response.elapsed() < 10 * time.second {
 			if os.read_file(marker_path) or { '' } == 'Alice' {
 				received_input = true
 				break
@@ -214,23 +252,12 @@ fn test_watch_run_forwards_terminal_input() {
 			if !process.is_alive() {
 				break
 			}
-			time.sleep(100 * time.millisecond)
+			time.sleep(vwatch_terminal_poll_interval)
 		}
 		if process.is_alive() {
 			process.stdin_write('\x03')
 		}
-		for _ in 0 .. 50 {
-			if !process.is_alive() {
-				break
-			}
-			time.sleep(100 * time.millisecond)
-		}
-		if process.is_alive() {
-			process.signal_pgkill()
-		}
-		process.wait()
-		output := startup_output + process.stdout_slurp() + process.stderr_slurp()
-		process.close()
+		output := startup_output + finish_vwatch_terminal(mut process)
 		assert pty_ready, output
 		assert prompt_ready, output
 		assert received_input, output

@@ -38,7 +38,7 @@ fn main() {
 			@VEXE
 		}
 		for parallel in ['', '-no-parallel'] {
-			flags := '-new-compiler -no-memory-limit -nocache -gc none ${ownership} ${parallel}'
+			flags := '-no-memory-limit -nocache -gc none ${ownership} ${parallel}'
 			check := os.execute('${os.quoted_path(compiler)} ${flags} -check ${os.quoted_path(source)}')
 			assert check.exit_code == 0, '${flags}: ${check.output}'
 			output := os.join_path(root, 'program_${ownership.len}_${parallel.len}')
@@ -68,7 +68,7 @@ fn main() { _ = invalid(1) }
 			@VEXE
 		}
 		for parallel in ['', '-no-parallel'] {
-			flags := '-new-compiler -no-memory-limit -nocache -gc none ${ownership} ${parallel}'
+			flags := '-no-memory-limit -nocache -gc none ${ownership} ${parallel}'
 			check := os.execute('${os.quoted_path(compiler)} ${flags} -check ${os.quoted_path(source)}')
 			assert check.exit_code != 0, '${flags}: ${check.output}'
 			assert check.output.contains('unknown method or field:'), check.output

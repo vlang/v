@@ -49,7 +49,7 @@ fn main() {
 ")!
 	for mode in ['', '-nocache', '-no-parallel'] {
 		output := os.join_path(root, 'app')
-		mut args := [@VEXE, '-new-compiler', '-o', output]
+		mut args := [@VEXE, '-o', output]
 		if mode != '' {
 			args << mode
 		}

@@ -1,7 +1,7 @@
 import os
 
 const vexe = @VEXE
-const tfolder = os.join_path(os.vtmp_dir(), 'vbump')
+const tfolder = os.join_path(os.vtmp_dir(), 'vbump_${os.getpid()}')
 
 fn testsuite_begin() {
 	os.mkdir_all(tfolder) or {}
@@ -71,45 +71,30 @@ fn main() {
 	},
 ]
 
-fn run_individual_test(case BumpTestCase) ! {
-	test_file := os.join_path_single(tfolder, case.file_name)
-
-	os.rm(test_file) or {}
-	os.write_file(test_file, case.contents)!
-
-	os.exec_or_exit([vexe, 'bump', '--patch', test_file])
-	patch_lines := os.read_lines(test_file)!
-	assert patch_lines[case.line] == case.expected_patch
-
-	os.exec_or_exit([vexe, 'bump', '--minor', test_file])
-	minor_lines := os.read_lines(test_file)!
-	assert minor_lines[case.line] == case.expected_minor
-
-	os.exec_or_exit([vexe, 'bump', '--major', test_file])
-	major_lines := os.read_lines(test_file)!
-	assert major_lines[case.line] == case.expected_major
-
-	os.rm(test_file)!
-}
-
-fn test_all_bump_cases() {
-	for case in test_cases {
-		run_individual_test(case) or { panic(err) }
+fn run_bump_cases(cases []BumpTestCase, options []string) ! {
+	assert cases.len > 0
+	mut paths := []string{cap: cases.len}
+	for case in cases {
+		path := os.join_path_single(tfolder, case.file_name)
+		os.write_file(path, case.contents)!
+		paths << path
+	}
+	for increment_index, increment in ['--patch', '--minor', '--major'] {
+		os.exec_or_exit([vexe, 'bump', increment, ...options, ...paths])
+		for i, case in cases {
+			lines := os.read_lines(paths[i])!
+			expected := [case.expected_patch, case.expected_minor, case.expected_major]
+			assert lines[case.line] == expected[increment_index], '${increment} ${case.file_name}'
+		}
 	}
 }
 
-struct SkipTestCase {
-	file_name      string
-	contents       string
-	skip           string
-	line           int
-	expected_patch string
-	expected_minor string
-	expected_major string
+fn test_all_bump_cases() ! {
+	run_bump_cases(test_cases, [])!
 }
 
 const skip_test_cases = [
-	SkipTestCase{
+	BumpTestCase{
 		file_name:      'CITATION.cff'
 		contents:       'abstract: A sample CLI tool made in V that prints geometric shapes to the screen.
 authors:
@@ -126,36 +111,12 @@ url: https://github.com/hungrybluedev/geo
 version: 0.2.4
 '
 		line:           12
-		skip:           'cff-version'
 		expected_patch: 'version: 0.2.5'
 		expected_minor: 'version: 0.3.0'
 		expected_major: 'version: 1.0.0'
 	},
 ]
 
-fn run_skip_test(case SkipTestCase) ! {
-	test_file := os.join_path_single(tfolder, case.file_name)
-
-	os.rm(test_file) or {}
-	os.write_file(test_file, case.contents)!
-
-	os.exec_or_exit([vexe, 'bump', '--patch', '--skip=' + '${case.skip}', test_file])
-	patch_lines := os.read_lines(test_file)!
-	assert patch_lines[case.line] == case.expected_patch
-
-	os.exec_or_exit([vexe, 'bump', '--minor', '--skip=' + '${case.skip}', test_file])
-	minor_lines := os.read_lines(test_file)!
-	assert minor_lines[case.line] == case.expected_minor
-
-	os.exec_or_exit([vexe, 'bump', '--major', '--skip=' + '${case.skip}', test_file])
-	major_lines := os.read_lines(test_file)!
-	assert major_lines[case.line] == case.expected_major
-
-	os.rm(test_file)!
-}
-
 fn test_all_skip_bump_cases() ! {
-	for case in skip_test_cases {
-		run_skip_test(case) or { panic(err) }
-	}
+	run_bump_cases(skip_test_cases, ['--skip=cff-version'])!
 }

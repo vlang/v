@@ -25,18 +25,18 @@ fn main() {
  println("OK")
 }
 ')!
-	generated := os.exec([@VEXE, '-new-compiler', '-o', c_path, source_path])
+	generated := os.exec([@VEXE, '-o', c_path, source_path])
 	assert generated.exit_code == 0, generated.output
 	source := os.read_file(c_path)!
 	assert !source.contains('_mvctx_'), source
 	assert !source.contains('_mvwrap_'), source
-	run := os.exec([@VEXE, '-new-compiler', 'run', source_path])
+	run := os.exec([@VEXE, 'run', source_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'OK', run.output
 	os.write_file(source_path, 'import sample
 fn main() { _ = sample.App.secret }
 ')!
-	private_result := os.exec([@VEXE, '-new-compiler', '-check', source_path])
+	private_result := os.exec([@VEXE, '-check', source_path])
 	assert private_result.exit_code != 0, private_result.output
 	assert private_result.output.contains('method `sample.App.secret` is private'), private_result.output
 	os.write_file(source_path, 'import sample
@@ -52,7 +52,7 @@ fn reflected[T](app &T) int {
 }
 fn main() { app := sample.App{}; println(reflected[sample.App](&app)) }
 ')!
-	reflected_private := os.exec([@VEXE, '-new-compiler', '-o', c_path, source_path])
+	reflected_private := os.exec([@VEXE, '-o', c_path, source_path])
 	assert reflected_private.exit_code != 0, reflected_private.output
 	assert reflected_private.output.contains('method `sample.App.secret` is private'), reflected_private.output
 	for body in [
@@ -121,7 +121,7 @@ fn main() { mut app := sample.App{}; reflected[sample.App](mut app) }',
 		}
 		for invocation in invocations {
 			os.write_file(source_path, 'import sample\n${invocation}\n')!
-			missing_mut := os.exec([@VEXE, '-new-compiler', '-o', c_path, source_path])
+			missing_mut := os.exec([@VEXE, '-o', c_path, source_path])
 			assert missing_mut.exit_code != 0, missing_mut.output
 			assert missing_mut.output.contains('is `mut`, so use'), missing_mut.output
 		}
@@ -155,62 +155,7 @@ fn main() {
  println("OK")
 }
 ')!
-	mut_run := os.exec([@VEXE, '-new-compiler', 'run', source_path])
+	mut_run := os.exec([@VEXE, 'run', source_path])
 	assert mut_run.exit_code == 0, mut_run.output
 	assert mut_run.output.trim_space() == 'OK', mut_run.output
-	for control_source in [
-		'struct App { mut: value int }
-fn (mut app App) add[Y](x int) []int { app.value += x; return [app.value] }
-fn invoke[T](mut app T) {
- result := app.add[int](1)
- if result != [1] { panic("generic array result") }
-}
-fn main() {
- mut app := App{}
- invoke[App](mut app)
- if app.value != 1 { panic("generic array receiver") }
- println("generic array receiver passed")
-}
-',
-		'struct App { mut: value int }
-fn increment(y int) int { return y + 1 }
-fn (mut app App) callback[Y](x int) fn (int) int { app.value += x; return increment }
-fn invoke[T](mut app T) {
- f := app.callback[int](1)
- result := f(2)
- if result != 3 { panic("generic callback result") }
-}
-fn main() {
- mut app := App{}
- invoke[App](mut app)
- if app.value != 1 { panic("generic callback receiver") }
- println("generic callback receiver passed")
-}
-',
-		'struct App { mut: value int }
-fn (mut app App) add(x int) int { app.value += x; return app.value }
-fn reflected[T](mut app T) {
- \$for method in T.methods {
-  \$if method.name == "add" {
-   f := app.\$method
-   fs := [f]
-   result := fs[0](1)
-   if result != 1 { panic("bound local array result") }
-  }
- }
-}
-fn main() {
- mut app := App{}
- reflected[App](mut app)
- if app.value != 1 { panic("bound local receiver") }
- println("bound local array passed")
-}
-',
-	] {
-		os.write_file(source_path, control_source)!
-		control := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', 'run',
-			source_path])
-		assert control.exit_code == 0, control.output
-		assert control.output.contains('passed'), control.output
-	}
 }

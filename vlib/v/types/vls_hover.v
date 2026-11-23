@@ -168,7 +168,20 @@ fn (tc &TypeChecker) vls_call_target(call_id flat.NodeId, callee_id flat.NodeId)
 	if name_node.kind != .selector || name_node.children_count == 0 {
 		return none
 	}
-	return tc.vls_method_target(tc.a.child(name_node, 0), name_node.value)
+	receiver_id := tc.a.child(name_node, 0)
+	// A function of a module that the file imports, `mod.f(...)`, where the
+	// checker resolved no call: it checks no more of a body after an error
+	// there, which code being written has.
+	receiver := tc.a.node(receiver_id)
+	if receiver.kind == .ident && tc.vls_local_declaration(receiver_id) == none {
+		if module_name := tc.file_imports[file_import_key(tc.cur_file, receiver.value)] {
+			name := '${module_name}.${name_node.value}'
+			if name in tc.fn_type_files {
+				return name
+			}
+		}
+	}
+	return tc.vls_method_target(receiver_id, name_node.value)
 }
 
 // vls_method_target is the method `method` of the value `receiver_id`, called
@@ -1189,10 +1202,14 @@ fn (tc &TypeChecker) vls_enum_receiver(receiver &flat.Node) ?u32 {
 	if receiver.kind == .selector && receiver.children_count > 0 {
 		module_node := tc.a.child_node(receiver, 0)
 		if module_node.kind == .ident {
-			qualified := '${module_node.value}.${receiver.value}'
-			if name_id := flat.source_type_existing_id(qualified) {
-				if name_id in tc.enum_names {
-					return name_id
+			// `mod.Enum`, by the module's name or by the alias that the file
+			// imports it as: `s.Enum` after `import a.b as s`.
+			for qualified in ['${module_node.value}.${receiver.value}',
+				tc.vls_member_name(module_node.value, receiver.value)] {
+				if name_id := flat.source_type_existing_id(qualified) {
+					if name_id in tc.enum_names {
+						return name_id
+					}
 				}
 			}
 		}

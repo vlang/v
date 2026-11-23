@@ -75,13 +75,13 @@ fn test_suffix_is_backend_name_accepts_backends_and_rejects_architectures() {
 fn test_option_may_consume_value_lists_the_value_taking_options() {
 	for option in ['-wasm-stack-top', '-arch', '-e', '-subsystem', '-icon', '--icon', '-seticon',
 		'--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-prof', '-profile', '-cov',
-		'-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude', '-file-list',
-		'-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
-		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
-		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
-		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend', '-compile-backend',
-		'--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude', '-raw-vsh-tmp-prefix',
-		'-cmain', '-line-info', '-memory-limit', '--memory-limit'] {
+		'-coverage', '-profile-fns', '-run-only', '-exclude', '-file-list', '-test-runner',
+		'-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines', '-generate-c-project',
+		'-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags', '-d', '-define',
+		'-message-limit', '-thread-stack-size', '-cc', '-c++', '-checker-match-exhaustive-cutoff-limit',
+		'-o', '-output', '-b', '-backend', '-compile-backend', '--compile-backend', '-path',
+		'-bare-builtin-dir', '-custom-prelude', '-raw-vsh-tmp-prefix', '-cmain', '-line-info',
+		'-memory-limit', '--memory-limit'] {
 		assert option_may_consume_value(option), '`${option}` should consume a value'
 	}
 	for option in ['-prod', '-g', '-cg', '-silent', '-h', '-version', '', 'not-an-option', '-ccflags'] {

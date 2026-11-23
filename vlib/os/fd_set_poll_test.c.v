@@ -1,6 +1,6 @@
 module os
 
-$if !windows && !freestanding && !syscalls {
+$if !freestanding && !syscalls {
 	fn test_fd_is_pending_low_pipe_readiness() ! {
 		mut p := pipe()!
 		defer {
@@ -13,7 +13,9 @@ $if !windows && !freestanding && !syscalls {
 		assert n == 5
 		assert !fd_is_pending(p.read_fd)
 	}
+}
 
+$if !windows && !freestanding && !syscalls {
 	fn test_fd_is_pending_uses_poll_for_high_descriptors() ! {
 		mut p := pipe()!
 		mut duplicates := []int{}

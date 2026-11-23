@@ -6,66 +6,57 @@ import json2 as json
 import net
 import net.http
 import io
+import veb
 
-const sport = 13005
-const localserver = '127.0.0.1:${sport}'
-const exit_after_time = 12000
-// milliseconds
-const vexe = os.getenv('VEXE')
+const veb_server_probe = '--vtest-veb-server'
 const veb_logfile = os.getenv('VEB_LOGFILE')
-const vroot = os.dir(vexe)
-const serverexe = os.join_path(os.cache_dir(), 'veb_test_server.exe')
 const tcp_r_timeout = 10 * time.second
 const tcp_w_timeout = 10 * time.second
+const veb_fixture_timeout_seconds = 1
 
-// setup of veb webserver
-fn testsuite_begin() {
-	os.chdir(vroot) or {}
-	if os.exists(serverexe) {
-		os.rm(serverexe) or {}
-	}
+struct VebTestServer {
+mut:
+	process &os.Process = unsafe { nil }
+	address string
 }
 
-fn test_simple_veb_app_can_be_compiled() {
-	// did_server_compile := os.system('${os.quoted_path(vexe)} -g -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
-	did_server_compile :=
-		os.system_args([vexe, '-o', serverexe, 'vlib/veb/tests/veb_test_server.v'])
-	assert did_server_compile == 0
-	assert os.exists(serverexe)
+const veb_test_server = &VebTestServer{}
+
+fn testsuite_begin() {
+	if os.args.len == 3 && os.args[1] == veb_server_probe {
+		run_veb_test_server(os.args[2].int())
+		exit(0)
+	}
+	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := listener.addr()!.port()!
+	listener.close()!
+
+	mut child := os.new_process(os.executable())
+	child.set_args([veb_server_probe, port.str()])
+	if veb_logfile != '' {
+		// exec keeps the server in the tracked child process after redirecting its logs.
+		child = os.new_process('sh')
+		child.set_args(['-c', 'exec "$1" "$2" "$3" >> "$4" 2>&1', 'sh', os.executable(),
+			veb_server_probe, port.str(), veb_logfile])
+	}
+	child.run()
+	// The suite hooks share ownership of the child.
+	mut server := unsafe { veb_test_server }
+	server.address = '127.0.0.1:${port}'
+	server.process = child
 }
 
 fn test_a_simple_veb_app_runs_in_the_background() {
-	server_args := [serverexe, '${sport}', '${exit_after_time}']
-	$if debug_net_socket_client ? {
-		eprintln('running:\n${server_args}')
-	}
-	$if windows {
-		spawn os.system_args(server_args)
-	} $else {
-		// The shell starts the server in the background and returns at once.
-		script := if veb_logfile != '' {
-			'"\${1}" "\${2}" "\${3}" 2>> "\${4}" >> "\${4}" &'
-		} else {
-			'"\${1}" "\${2}" "\${3}" > /dev/null &'
-		}
-		res := os.system_args(['sh', '-c', script, 'v', ...server_args, veb_logfile])
-		assert res == 0
-	}
-	$if macos {
-		time.sleep(1000 * time.millisecond)
-	} $else {
-		time.sleep(100 * time.millisecond)
-	}
-	// A freshly built server can need much longer than the fixed pause to start
-	// listening on a slow or emulated machine; wait for its port to accept.
-	for _ in 0 .. 100 {
-		mut probe := net.dial_tcp(localserver) or {
-			time.sleep(100 * time.millisecond)
+	sw := time.new_stopwatch()
+	for sw.elapsed() < 10 * time.second {
+		mut probe := net.dial_tcp(veb_test_server.address) or {
+			time.sleep(10 * time.millisecond)
 			continue
 		}
 		probe.close() or {}
-		break
+		return
 	}
+	assert false, 'veb test server did not start listening on ${veb_test_server.address}'
 }
 
 // web client tests follow
@@ -108,20 +99,19 @@ fn test_a_simple_tcp_client_zero_content_length() {
 	assert watch.elapsed() < 1 * time.second
 }
 
-fn test_timeout_after_delayed_body() {
-	// content length is 10, but we don't send anything. The request should timeout,
-	// but not error.
-	watch := time.new_stopwatch(auto_start: true)
+fn test_timeout_after_delayed_body() ! {
+	// Send the headers and let the server time out waiting for the body.
+	watch := time.new_stopwatch()
 	res := simple_tcp_client(
 		path:       '/json_echo'
 		headers:    'Content-Length: 10\r\n\r\n'
 		method_str: 'POST'
-	) or {
-		assert err.msg() == ''
-		return
-	}
+	)!
 
+	assert res.starts_with('HTTP/1.1 408 Request Timeout\r\n')
 	assert res.ends_with('408 Request Timeout')
+	elapsed := watch.elapsed()
+	assert elapsed >= veb_fixture_timeout_seconds * time.second, '408 arrived after ${elapsed}'
 }
 
 fn test_a_simple_tcp_client_html_page() {
@@ -142,7 +132,7 @@ fn assert_common_http_headers(x http.Response) ! {
 }
 
 fn test_http_client_index() {
-	x := http.get('http://${localserver}/') or { panic(err) }
+	x := http.get('http://${veb_test_server.address}/') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.header.get(.content_type)? == 'text/plain'
 	assert x.body == 'Welcome to veb'
@@ -153,12 +143,12 @@ fn test_http_client_index() {
 	}
 	// Opting out of connection reuse restores the historical behavior
 	// end-to-end: the client sends `Connection: close` and veb honors it.
-	y := http.fetch(url: 'http://${localserver}/', disable_connection_reuse: true) or { panic(err) }
+	y := http.fetch(url: 'http://${veb_test_server.address}/', disable_connection_reuse: true) or { panic(err) }
 	assert y.header.get(.connection)? == 'close'
 }
 
 fn test_http_client_404() {
-	server := 'http://${localserver}'
+	server := 'http://${veb_test_server.address}'
 	url_404_list := [
 		'/zxcnbnm',
 		'/JHKAJA',
@@ -172,39 +162,39 @@ fn test_http_client_404() {
 }
 
 fn test_http_client_simple() {
-	x := http.get('http://${localserver}/simple') or { panic(err) }
+	x := http.get('http://${veb_test_server.address}/simple') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.header.get(.content_type)? == 'text/plain'
 	assert x.body == 'A simple result'
 }
 
 fn test_http_client_html_page() {
-	x := http.get('http://${localserver}/html_page') or { panic(err) }
+	x := http.get('http://${veb_test_server.address}/html_page') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.header.get(.content_type)? == 'text/html'
 	assert x.body == '<h1>ok</h1>'
 }
 
 fn test_http_client_settings_page() {
-	x := http.get('http://${localserver}/bilbo/settings') or { panic(err) }
+	x := http.get('http://${veb_test_server.address}/bilbo/settings') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.body == 'username: bilbo'
 
-	y := http.get('http://${localserver}/kent/settings') or { panic(err) }
+	y := http.get('http://${veb_test_server.address}/kent/settings') or { panic(err) }
 	assert_common_http_headers(y)!
 	assert y.body == 'username: kent'
 }
 
 fn test_http_client_user_repo_settings_page() {
-	x := http.get('http://${localserver}/bilbo/gostamp/settings') or { panic(err) }
+	x := http.get('http://${veb_test_server.address}/bilbo/gostamp/settings') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.body == 'username: bilbo | repository: gostamp'
 
-	y := http.get('http://${localserver}/kent/golang/settings') or { panic(err) }
+	y := http.get('http://${veb_test_server.address}/kent/golang/settings') or { panic(err) }
 	assert_common_http_headers(y)!
 	assert y.body == 'username: kent | repository: golang'
 
-	z := http.get('http://${localserver}/missing/golang/settings') or { panic(err) }
+	z := http.get('http://${veb_test_server.address}/missing/golang/settings') or { panic(err) }
 	assert z.status() == .not_found
 }
 
@@ -219,7 +209,7 @@ fn test_http_client_json_post() {
 		age:  123
 	}
 	json_for_ouser := json.encode(ouser)
-	mut x := http.post_json('http://${localserver}/json_echo', json_for_ouser) or { panic(err) }
+	mut x := http.post_json('http://${veb_test_server.address}/json_echo', json_for_ouser) or { panic(err) }
 	$if debug_net_socket_client ? {
 		eprintln('/json_echo endpoint response: ${x}')
 	}
@@ -228,7 +218,7 @@ fn test_http_client_json_post() {
 	nuser := json.decode[User](x.body) or { User{} }
 	assert '${ouser}' == '${nuser}'
 
-	x = http.post_json('http://${localserver}/json', json_for_ouser) or { panic(err) }
+	x = http.post_json('http://${veb_test_server.address}/json', json_for_ouser) or { panic(err) }
 	$if debug_net_socket_client ? {
 		eprintln('/json endpoint response: ${x}')
 	}
@@ -245,7 +235,7 @@ fn test_http_client_multipart_form_data() {
 		}
 	}
 
-	mut x := http.post_multipart_form('http://${localserver}/form_echo', form_config)!
+	mut x := http.post_multipart_form('http://${veb_test_server.address}/form_echo', form_config)!
 
 	$if debug_net_socket_client ? {
 		eprintln('/form_echo endpoint response: ${x}')
@@ -265,7 +255,7 @@ fn test_http_client_multipart_form_data() {
 		}
 	}
 
-	x = http.post_multipart_form('http://${localserver}/file_echo', form_config_files)!
+	x = http.post_multipart_form('http://${veb_test_server.address}/file_echo', form_config_files)!
 	$if debug_net_socket_client ? {
 		eprintln('/form_echo endpoint response: ${x}')
 	}
@@ -279,21 +269,21 @@ fn test_login_with_multipart_form_data_send_by_fetch() {
 			'password': 'mypassword123'
 		}
 	}
-	x := http.post_multipart_form('http://${localserver}/login', form_config)!
+	x := http.post_multipart_form('http://${veb_test_server.address}/login', form_config)!
 	assert x.status_code == 200
 	assert x.status_msg == 'OK'
 	assert x.body == 'username: xmyusernamex | password: xmypassword123x'
 }
 
 fn test_query_params_are_passed_as_arguments() {
-	x := http.get('http://${localserver}/query_echo?c=3&a="test"&b=20')!
+	x := http.get('http://${veb_test_server.address}/query_echo?c=3&a="test"&b=20')!
 	assert x.status() == .ok
 	assert x.body == 'a: x"test"x | b: x20x'
 }
 
 fn test_host() {
 	mut req := http.Request{
-		url:    'http://${localserver}/with_host'
+		url:    'http://${veb_test_server.address}/with_host'
 		method: .get
 	}
 
@@ -307,7 +297,7 @@ fn test_host() {
 
 fn test_empty_response_body_has_content_length() {
 	req := http.Request{
-		url:    'http://${localserver}/empty_response_body'
+		url:    'http://${veb_test_server.address}/empty_response_body'
 		method: .get
 	}
 
@@ -317,7 +307,7 @@ fn test_empty_response_body_has_content_length() {
 }
 
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
-	x := http.get('http://${localserver}/shutdown') or {
+	x := http.get('http://${veb_test_server.address}/shutdown') or {
 		assert err.msg() == ''
 		return
 	}
@@ -325,20 +315,31 @@ fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 }
 
 fn testsuite_end() {
-	// This test is guaranteed to be called last.
-	// It sends a request to the server to shutdown.
+	mut child := veb_test_server.process
+	defer {
+		child.signal_kill()
+		child.wait()
+		child.close()
+	}
+	// Run the authenticated shutdown check after the tests have used the server.
 	x := http.fetch(
-		url:     'http://${localserver}/shutdown'
+		url:     'http://${veb_test_server.address}/shutdown'
 		method:  .get
 		cookies: {
 			'skey': 'superman'
 		}
 	) or {
-		assert err.msg() == ''
+		assert false, 'could not shut down the fixture: ${err}'
 		return
 	}
 	assert x.status() == .ok
 	assert x.body == 'good bye'
+	sw := time.new_stopwatch()
+	for child.is_alive() && sw.elapsed() < 2 * time.second {
+		time.sleep(10 * time.millisecond)
+	}
+	assert child.status == .exited, 'veb test server did not exit after shutdown'
+	assert child.code == 0
 }
 
 // utility code:
@@ -358,7 +359,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 	for tries < config.retries {
 		tries++
 		eprintln('> client retries: ${tries}')
-		client = net.dial_tcp(localserver) or {
+		client = net.dial_tcp(veb_test_server.address) or {
 			eprintln('dial error: ${err.msg()}')
 			if tries > config.retries {
 				return err
@@ -369,7 +370,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 		break
 	}
 	if client == unsafe { nil } {
-		eprintln('could not create a tcp client connection to http://${localserver} after ${config.retries} retries')
+		eprintln('could not create a tcp client connection to http://${veb_test_server.address} after ${config.retries} retries')
 		exit(1)
 	}
 	client.set_read_timeout(tcp_r_timeout)
@@ -398,13 +399,13 @@ ${config.content}'
 // for issue 20476
 // phenomenon: parsing url error when querypath is `//`
 fn test_empty_querypath() {
-	mut x := http.get('http://${localserver}') or { panic(err) }
+	mut x := http.get('http://${veb_test_server.address}') or { panic(err) }
 	assert x.body == 'Welcome to veb'
-	x = http.get('http://${localserver}/') or { panic(err) }
+	x = http.get('http://${veb_test_server.address}/') or { panic(err) }
 	assert x.body == 'Welcome to veb'
-	x = http.get('http://${localserver}//') or { panic(err) }
+	x = http.get('http://${veb_test_server.address}//') or { panic(err) }
 	assert x.body == 'Welcome to veb'
-	x = http.get('http://${localserver}///') or { panic(err) }
+	x = http.get('http://${veb_test_server.address}///') or { panic(err) }
 	assert x.body == 'Welcome to veb'
 }
 
@@ -413,4 +414,175 @@ fn test_large_response() {
 	assert_common_headers(received)
 	assert received.ends_with('}]')
 	assert received.len == 830778
+}
+
+const known_users = ['bilbo', 'kent']
+
+struct ServerContext {
+	veb.Context
+}
+
+// not_found renders the custom 404 page.
+pub fn (mut ctx ServerContext) not_found() veb.Result {
+	ctx.res.set_status(.not_found)
+	return ctx.html('404 on "${ctx.req.url}"')
+}
+
+pub struct ServerApp {
+mut:
+	server        &veb.Server = unsafe { nil }
+	global_config Config
+}
+
+struct Config {
+	max_ping int
+}
+
+fn run_veb_test_server(port int) {
+	spawn fn () {
+		time.sleep(12 * time.second)
+		eprintln('veb test server timed out')
+		exit(1)
+	}()
+	mut app := &ServerApp{
+		global_config: Config{
+			max_ping: 50
+		}
+	}
+	veb.run_at[ServerApp, ServerContext](mut app,
+		host:               'localhost'
+		port:               port
+		family:             .ip
+		timeout_in_seconds: veb_fixture_timeout_seconds
+	) or { panic(err) }
+}
+
+// init_server stores the veb server handle when lifecycle control is available.
+pub fn (mut app ServerApp) init_server(server &veb.Server) {
+	app.server = server
+}
+
+// index returns the welcome message.
+pub fn (mut app ServerApp) index(mut ctx ServerContext) veb.Result {
+	assert app.global_config.max_ping == 50
+	return ctx.text('Welcome to veb')
+}
+
+// simple returns a plain-text response.
+pub fn (mut app ServerApp) simple(mut ctx ServerContext) veb.Result {
+	return ctx.text('A simple result')
+}
+
+// html_page returns the HTML fixture.
+pub fn (mut app ServerApp) html_page(mut ctx ServerContext) veb.Result {
+	return ctx.html('<h1>ok</h1>')
+}
+
+// the following serve custom routes
+// settings renders settings for a known user.
+@['/:user/settings']
+pub fn (mut app ServerApp) settings(mut ctx ServerContext, username string) veb.Result {
+	if username !in known_users {
+		return ctx.not_found()
+	}
+	return ctx.html('username: ${username}')
+}
+
+// user_repo_settings renders repository settings for a known user.
+@['/:user/:repo/settings']
+pub fn (mut app ServerApp) user_repo_settings(mut ctx ServerContext, username string, repository string) veb.Result {
+	if username !in known_users {
+		return ctx.not_found()
+	}
+	return ctx.html('username: ${username} | repository: ${repository}')
+}
+
+// json_echo returns the request body with its content type.
+@['/json_echo'; post]
+pub fn (mut app ServerApp) json_echo(mut ctx ServerContext) veb.Result {
+	ctx.set_content_type(ctx.req.header.get(.content_type) or { '' })
+	return ctx.ok(ctx.req.data)
+}
+
+// login_form echoes the parsed form fields.
+@['/login'; post]
+pub fn (mut app ServerApp) login_form(mut ctx ServerContext, username string, password string) veb.Result {
+	return ctx.html('username: x${username}x | password: x${password}x')
+}
+
+// form_echo echoes the form value with the request content type.
+@['/form_echo'; post]
+pub fn (mut app ServerApp) form_echo(mut ctx ServerContext) veb.Result {
+	ctx.set_content_type(ctx.req.header.get(.content_type) or { '' })
+	return ctx.ok(ctx.form['foo'])
+}
+
+// file_echo echoes the uploaded file.
+@['/file_echo'; post]
+pub fn (mut app ServerApp) file_echo(mut ctx ServerContext) veb.Result {
+	if 'file' !in ctx.files {
+		ctx.res.set_status(.internal_server_error)
+		return ctx.text('no file')
+	}
+
+	return ctx.text(ctx.files['file'][0].data)
+}
+
+// query_echo echoes the parsed query arguments.
+@['/query_echo']
+pub fn (mut app ServerApp) query_echo(mut ctx ServerContext, a string, b int) veb.Result {
+	return ctx.text('a: x${a}x | b: x${b}x')
+}
+
+// Make sure [post] works without the path
+// json echoes the request body from a route using only the post attribute.
+@[post]
+pub fn (mut app ServerApp) json(mut ctx ServerContext) veb.Result {
+	ctx.set_content_type(ctx.req.header.get(.content_type) or { '' })
+	return ctx.ok(ctx.req.data)
+}
+
+// with_host returns an empty response for the configured host.
+@[host: 'example.com']
+@['/with_host']
+pub fn (mut app ServerApp) with_host(mut ctx ServerContext) veb.Result {
+	return ctx.ok('')
+}
+
+// empty_response_body returns an empty successful response.
+@['/empty_response_body']
+pub fn (mut app ServerApp) empty_response_body(mut ctx ServerContext) veb.Result {
+	return ctx.ok('')
+}
+
+// shutdown stops the fixture gracefully after an authenticated request.
+pub fn (mut app ServerApp) shutdown(mut ctx ServerContext) veb.Result {
+	session_key := ctx.get_cookie('skey') or { return ctx.not_found() }
+	if session_key != 'superman' {
+		return ctx.not_found()
+	}
+	spawn app.exit_gracefully()
+	return ctx.ok('good bye')
+}
+
+fn (mut app ServerApp) exit_gracefully() {
+	eprintln('>> webserver: exit_gracefully')
+	app.server.shutdown(timeout: 2 * time.second) or { panic(err) }
+}
+
+// large_response returns the large JSON fixture.
+pub fn (mut app ServerApp) large_response(mut ctx ServerContext) veb.Result {
+	struct Tick {
+		date_time string
+		timestamp i64
+		value     f64
+	}
+
+	ticks := []Tick{len: 16000, init: Tick{
+		date_time: index.str()
+		timestamp: index
+		value:     index
+	}}
+
+	return ctx.json(ticks)
 }

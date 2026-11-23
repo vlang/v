@@ -3,6 +3,7 @@ import os
 import net
 import net.http
 import time
+import veb.tests.livereload_fixture
 
 // Tests veb's live reload (`-d veb_livereload`) through a real server:
 // the injected script tag, the Server-Sent Events stream, static file changes,
@@ -10,6 +11,7 @@ import time
 // cap, and that nothing is added without the define.
 
 const vexe = @VEXE
+const livereload_server_probe = '--vtest-veb-livereload-server'
 const tdir = os.join_path(os.vtmp_dir(), 'veb_livereload_test_${os.getpid()}')
 const static_dir = os.join_path(tdir, 'static')
 const status_path = os.join_path(tdir, 'status')
@@ -28,15 +30,24 @@ mut:
 const servers = &Servers{}
 
 fn testsuite_begin() {
+	if os.args.len == 4 && os.args[1] == livereload_server_probe {
+		livereload_fixture.run(os.args[2].int(), os.args[3]) or { panic(err) }
+		exit(0)
+	}
 	os.rmdir_all(tdir) or {}
 	os.mkdir_all(static_dir)!
 	os.write_file(os.join_path(static_dir, 'style.css'), 'body { color: black; }\n')!
 	os.write_file(os.join_path(static_dir, 'app.js'), 'console.log(1);\n')!
 	os.write_file(status_path, 'ok\n')!
-	start_server('sse', ['-d', 'veb_livereload'], sse_port, true)
-	start_server('polling', ['-d', 'veb_livereload', '-d', 'veb_livereload_polling', '-d',
-		'veb_livereload_max_streams=1'], polling_port, false)
-	start_server('plain', [], plain_port, false)
+	build_and_start_server('sse', ['-d', 'veb_livereload'], sse_port, true)
+	build_and_start_server('polling', ['-d', 'veb_livereload', '-d', 'veb_livereload_polling',
+		'-d', 'veb_livereload_max_streams=1'], polling_port, false)
+	$if veb_livereload ? {
+		build_and_start_server('plain', [], plain_port, false)
+	} $else {
+		// Reuse the suite's feature-disabled build for the plain server.
+		start_server('plain', os.executable(), [livereload_server_probe, plain_port.str(), static_dir], plain_port, false)
+	}
 }
 
 fn testsuite_end() {
@@ -49,12 +60,16 @@ fn testsuite_end() {
 	os.rmdir_all(tdir) or {}
 }
 
-fn start_server(name string, flags []string, port int, with_status bool) {
+fn build_and_start_server(name string, flags []string, port int, with_status bool) {
 	exe := os.join_path(tdir, 'livereload_${name}.exe')
 	res := os.exec([vexe, ...flags, '-o', exe, server_source])
 	assert res.exit_code == 0, res.output
+	start_server(name, exe, [port.str(), static_dir], port, with_status)
+}
+
+fn start_server(name string, exe string, args []string, port int, with_status bool) {
 	mut p := os.new_process(exe)
-	p.set_args([port.str(), static_dir])
+	p.set_args(args)
 	mut env := os.environ()
 	if with_status {
 		env['VEB_LIVERELOAD_STATUS'] = status_path
@@ -180,11 +195,13 @@ fn test_a_new_page_sees_a_failed_build() {
 	// The status is still `failed` from the previous test.
 	mut conn, head := open_stream(sse_port)
 	got := read_until(mut conn, 'error: second', head)
-	conn.close() or {}
 	assert got.contains('event: hello'), got
 	assert got.contains('event: status\ndata: failed\n'), got
 	write_status('ok\n')
-	time.sleep(200 * time.millisecond)
+	ok_event := 'event: status\ndata: ok\n'
+	recovery := read_until(mut conn, ok_event, '')
+	conn.close() or {}
+	assert recovery.contains(ok_event), recovery
 	mut conn2, head2 := open_stream(sse_port)
 	conn2.close() or {}
 	assert !head2.contains('event: status'), head2

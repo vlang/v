@@ -233,34 +233,19 @@ fn test_standalone_grpc_output_compiles() {
 // again. Compiling the output only proves the generated text parses; these prove
 // it agrees with the wire format, which is the part a compile check cannot see.
 
-fn test_generated_round_trips_scalars() ! {
+fn test_generated_demo_round_trips() ! {
+	// These cases use the same codec, so compile it once with all their tests.
 	res := generate_res(fixture('demo.proto'), 'demo')!
-	dir := write_roundtrip('scalars', res)
-	run_module_test(dir, 'round_trip_test.v', scalars_test_source)!
-}
-
-fn test_generated_round_trips_repeated() ! {
-	res := generate_res(fixture('demo.proto'), 'demo')!
-	dir := write_roundtrip('repeated', res)
-	run_module_test(dir, 'round_trip_test.v', repeated_test_source)!
-}
-
-fn test_generated_round_trips_map() ! {
-	res := generate_res(fixture('demo.proto'), 'demo')!
-	dir := write_roundtrip('map', res)
-	run_module_test(dir, 'round_trip_test.v', map_test_source)!
+	dir := write_roundtrip('demo', res)
+	source := 'module demo\n\nimport encoding.protobuf\n' + demo_scalar_cases +
+		demo_repeated_cases + demo_map_cases + demo_unknown_field_cases + demo_emit_defaults_cases
+	run_module_test(dir, 'round_trip_test.v', source)!
 }
 
 fn test_generated_round_trips_nested_message() ! {
 	res := generate_res(fixture('nested.proto'), 'demo')!
 	dir := write_roundtrip('nested', res)
 	run_module_test(dir, 'round_trip_test.v', nested_test_source)!
-}
-
-fn test_generated_skips_unknown_field_and_rejects_wrong_wire_type() ! {
-	res := generate_res(fixture('demo.proto'), 'demo')!
-	dir := write_roundtrip('unknown', res)
-	run_module_test(dir, 'round_trip_test.v', unknown_field_test_source)!
 }
 
 // The presence guards are asserted on the generated text above. This asserts the
@@ -398,10 +383,7 @@ fn built_exe(dir string, base string) ?string {
 // The test sources are written as constants rather than kept as fixture files so
 // that a reader can see the assertions next to the emitter change they guard.
 
-const scalars_test_source = "module demo
-
-import encoding.protobuf
-
+const demo_scalar_cases = "
 fn test_round_trip_scalars() ! {
 mut m := Demo{
 status: .active
@@ -431,10 +413,7 @@ assert int(.retired) == 7
 }
 "
 
-const repeated_test_source = "module demo
-
-import encoding.protobuf
-
+const demo_repeated_cases = "
 // `numbers` is packed and `tags` is not: both forms have to come back.
 fn test_round_trip_repeated() ! {
 back := decode_demo(Demo{
@@ -456,8 +435,7 @@ assert back.numbers == [7, 9]
 }
 "
 
-const map_test_source = "module demo
-
+const demo_map_cases = "
 fn test_round_trip_map() ! {
 mut m := Demo{}
 m.counts['x'] = 1
@@ -523,10 +501,7 @@ assert (decode_outer(data)!.inner or { Inner{} }).x == 42
 }
 '
 
-const unknown_field_test_source = "module demo
-
-import encoding.protobuf
-
+const demo_unknown_field_cases = "
 // A field number this build does not know, as a newer producer would send, has to
 // be skipped rather than rejected: that is what forward compatibility means.
 fn test_unknown_field_is_skipped() ! {
@@ -807,11 +782,14 @@ fn test_generated_files_survive_formatting() {
 	write_outputs(PbgenOptions{ codec_out: codec_path, grpc_out: grpc_path }, res)!
 	paths << codec_path
 	paths << grpc_path
+	mut originals := []string{cap: paths.len}
 	for path in paths {
-		before := os.read_file(path)!
-		formatted := os.exec([vexe, 'fmt', '-w', path])
-		assert formatted.exit_code == 0, formatted.output
-		assert os.read_file(path)! == before, '${path} changed after formatting'
+		originals << os.read_file(path)!
+	}
+	formatted := os.exec([vexe, 'fmt', '-w', ...paths])
+	assert formatted.exit_code == 0, formatted.output
+	for i, path in paths {
+		assert os.read_file(path)! == originals[i], '${path} changed after formatting'
 	}
 }
 
@@ -1201,22 +1179,13 @@ fn test_options_reach_nested_messages_and_map_entries() {
 	assert out.contains('mut entry := protobuf.new_packer(opts)')
 }
 
-fn test_emit_defaults_round_trips() ! {
-	res := generate_res(fixture('demo.proto'), 'demo')!
-	dir := write_roundtrip('emit_defaults', res)
-	run_module_test(dir, 'round_trip_test.v', emit_defaults_test_source)!
-}
-
 // `emit_defaults` is the flag that makes a codec keep explicit presence: a field
 // holding its default goes on the wire instead of being left off.
 //
 // The messages here are mostly `Inner` and not `Demo`, because a nested message
 // that is set is written whichever way the defaults go, and that would have made
 // every assertion in this file measure the nested field.
-const emit_defaults_test_source = "module demo
-
-import encoding.protobuf
-
+const demo_emit_defaults_cases = "
 fn test_encode_omits_defaults_by_default() ! {
 	assert Inner{
 		x:     0

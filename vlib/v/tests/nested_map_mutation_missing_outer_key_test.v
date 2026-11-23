@@ -510,6 +510,21 @@ fn test_nested_append_releases_staged_owned_rhs() {
 	assert rows['a']['b'] == [[3, 4], [5, 6]]
 }
 
+// An array literal appended as one element is moved into the destination, so the
+// staged literal must stay allocated (AddressSanitizer with `-gc none`).
+fn test_nested_append_keeps_array_literal_pushed_as_one_element() {
+	mut rows := map[string]map[string][][]int{}
+	rows['a']['b'] << [5, 6]
+	rows['a']['b'] << [7, 8]
+	assert rows['a']['b'] == [[5, 6], [7, 8]]
+	mut words := map[string]map[string][][]string{}
+	words['a']['b'] << ['x'.clone(), 'y'.clone()]
+	assert words['a']['b'] == [['x', 'y']]
+	mut deep := map[string]map[string]map[string][][]int{}
+	deep['a']['b']['c'] << [9, 10]
+	assert deep['a']['b']['c'] == [[9, 10]]
+}
+
 fn test_nested_compound_releases_staged_owned_string_rhs() {
 	mut words := map[string]map[string]string{}
 	words['a']['b'] += make_nested_compound_word()

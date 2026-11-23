@@ -76,8 +76,8 @@ fn main() {
 }
 '
 	os.write_file(source, fixture)!
-	generated := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-os', 'linux',
-		'-o', c_source, source])
+	generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-os', 'linux', '-o', c_source,
+		source])
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(c_source)!
 	feature_macro := code.index('#define _GNU_SOURCE') or { -1 }
@@ -95,7 +95,7 @@ fn main() {
 	// A private cache covers both its initial population and reuse, without
 	// relying on another test's cached modules.
 	for flags in [[]string{}, []string{}, ['-nocache']] {
-		mut args := ['V3CACHE=${os.join_path(root, 'cache')}', @VEXE, '-new-compiler', '-gc', 'none']
+		mut args := ['V3CACHE=${os.join_path(root, 'cache')}', @VEXE, '-gc', 'none']
 		args << flags
 		args << ['run', source]
 		ran := cmdexec.run('env', args)
@@ -107,8 +107,8 @@ fn main() {
 	explicit_c_sync := fixture.replace('fn sync(settings', 'fn C.sync()\n\nfn sync(settings')
 		.replace(' println("sync symbols OK")', ' native_sync := C.sync\n assert !isnil(native_sync)\n println("sync symbols OK")')
 	os.write_file(source, explicit_c_sync)!
-	explicit_generated := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-os',
-		'linux', '-o', c_source, source])
+	explicit_generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-os', 'linux', '-o',
+		c_source, source])
 	assert explicit_generated.exit_code == 0, explicit_generated.output
 	explicit_code := os.read_file(c_source)!
 	assert explicit_code.contains('= sync;')

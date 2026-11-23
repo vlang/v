@@ -28,16 +28,26 @@ class GatePathsTests(unittest.TestCase):
 
     @staticmethod
     def dependencies(job):
-        match = re.search(r"^    needs: (.+)$", job, re.M)
+        match = re.search(r"^    needs:\s*(\[[^\]]*\]|[^\n]+)$", job, re.M)
         if match is None:
             return None
-        return {name.strip() for name in match[1].strip("[]").split(",")}
+        return {name.strip() for name in match[1].strip("[]").split(",") if name.strip()}
+
+    def test_dependencies_accept_prettier_wrapping(self):
+        expected = {"preflight", "gen_vc_ci"}
+        for value in (
+            " [preflight, gen_vc_ci]",
+            "\n      [preflight, gen_vc_ci]",
+            "\n      [\n        preflight,\n        gen_vc_ci,\n      ]",
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(self.dependencies(f"    needs:{value}\n"), expected)
 
     def test_vc_generation_gates_every_downstream_job(self):
         jobs = self.caller_jobs()
         preflight = {
             "bootstrap-linux", "bootstrap-macos", "bootstrap-windows",
-            "bootstrap-termux", "windows-bootstrap-contracts", "formatting",
+            "bootstrap-termux", "windows-bootstrap-contracts", "preflight",
         }
         self.assertIn("gen_vc_ci", jobs)
         for name, body in jobs.items():
@@ -47,11 +57,11 @@ class GatePathsTests(unittest.TestCase):
                 needs = self.dependencies(body)
                 self.assertIsNotNone(needs)
                 if name == "gen_vc_ci":
-                    self.assertEqual(needs, {"formatting"})
+                    self.assertEqual(needs, {"preflight"})
                 else:
                     self.assertIn("gen_vc_ci", needs)
                     if name != "cleanup-vprod":
-                        self.assertIn("formatting", needs)
+                        self.assertIn("preflight", needs)
                 self.assertNotRegex(body, r"(?m)^    if:.*\b(always|failure|cancelled)\s*\(")
 
     def test_linux_preflight_does_not_wait_for_other_platforms(self):
@@ -62,12 +72,12 @@ class GatePathsTests(unittest.TestCase):
                 self.assertIn("uses: ./.github/workflows/bootstrapping_ci.yml", body)
                 self.assertIn(f"platform: {platform}", body)
                 self.assertIsNone(self.dependencies(body))
-        self.assertEqual(self.dependencies(jobs["formatting"]), {"bootstrap-linux"})
-        self.assertEqual(self.dependencies(jobs["gen_vc_ci"]), {"formatting"})
+        self.assertEqual(self.dependencies(jobs["preflight"]), {"bootstrap-linux"})
+        self.assertEqual(self.dependencies(jobs["gen_vc_ci"]), {"preflight"})
         for job in ("linux_ci", "compiler_ci", "tools_ci", "cross_ci", "release_ci"):
             with self.subTest(job=job):
                 self.assertEqual(
-                    self.dependencies(jobs[job]), {"formatting", "gen_vc_ci"}
+                    self.dependencies(jobs[job]), {"preflight", "gen_vc_ci"}
                 )
 
     def test_other_platforms_retain_bootstrap_gates(self):
@@ -109,6 +119,56 @@ class GatePathsTests(unittest.TestCase):
         self.assertIn("inputs.platform != 'termux'", source)
         self.assertIn("inputs.platform == 'all' || inputs.platform == 'termux'", source)
         self.assertIn("inputs.platform || 'all'", source)
+
+    def test_windows_bootstrap_reuses_tools_before_full_formatting_checks(self):
+        source = (gate.ROOT / "bootstrapping_ci.yml").read_text(encoding="utf-8")
+        bootstrap = source.split("\n  bootstrap-termux:", 1)[0]
+        steps = re.split(r"^      - ", bootstrap, flags=re.M)[1:]
+        commands = [
+            r".\.github\workflows\setup_windows_tool_cache.ps1",
+            "makev.bat",
+            "& ./.github/workflows/prepare_v.ps1",
+            r".\.github\workflows\setup_windows_tool_cache.ps1 -Verify",
+            "./v.exe -silent test-fmt",
+        ]
+        positions = []
+        for command in commands:
+            with self.subTest(command=command):
+                matches = [step for step in steps if re.search(
+                    rf"^        (?:run: |  ){re.escape(command)}$", step, re.M
+                )]
+                self.assertEqual(len(matches), 1)
+                step = matches[0]
+                self.assertIn("        if: runner.os == 'Windows'\n", step)
+                self.assertNotIn("continue-on-error:", step)
+                positions.append(bootstrap.index(command))
+        self.assertEqual(positions, sorted(positions))
+        self.assertLess(positions[-1], bootstrap.index("Copy-Item v.exe"))
+        self.assertIn(
+            "    timeout-minutes: ${{ matrix.platform == 'macos-x64' && 60 || 40 }}\n",
+            bootstrap,
+        )
+
+    def test_windows_bootstrap_isolates_vet_and_fmt_processes(self):
+        source = (gate.ROOT / "bootstrapping_ci.yml").read_text(encoding="utf-8")
+        bootstrap = source.split("\n  bootstrap-termux:", 1)[0]
+        steps = re.split(r"^      - ", bootstrap, flags=re.M)[1:]
+        command = "./v.exe -silent test-cleancode"
+        checks = [step for step in steps if command in step]
+        self.assertEqual(len(checks), 2)
+        for stage, step in zip(("vet", "fmt"), checks):
+            with self.subTest(stage=stage):
+                self.assertIn("        if: runner.os == 'Windows'\n", step)
+                self.assertRegex(step, rf"(?m)^          VTEST_CLEANCODE_STAGE: '?{stage}'?$")
+                self.assertEqual(step.count(command), 1)
+                self.assertIn(
+                    command + "\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+                    step,
+                )
+                self.assertNotIn("continue-on-error:", step)
+        self.assertIn(r".\.github\workflows\setup_windows_tool_cache.ps1 -Verify", checks[0])
+        self.assertIn("./v.exe -silent test-fmt", checks[1])
+        self.assertLess(bootstrap.index(checks[1]), bootstrap.index("Copy-Item v.exe"))
 
     def test_fastc_only_push_skips_platform_workflows(self):
         paths = ["vlib/v/gen/fastc/codegen.v"]

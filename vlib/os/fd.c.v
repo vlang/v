@@ -153,7 +153,7 @@ fn C.FD_SET(fd i32, fdset &C.fd_set)
 fn C.FD_ISSET(fd i32, fdset &C.fd_set) i32
 
 $if !windows && !freestanding && !syscalls {
-	#include "@VMODROOT/vlib/os/fd_poll.h"
+	#include "@DIR/fd_poll.h"
 	fn C.v_os_fd_poll_revents(fd i32, events i16) i16
 }
 

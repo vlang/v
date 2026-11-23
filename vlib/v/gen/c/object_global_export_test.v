@@ -1,4 +1,4 @@
-module c
+module main
 
 import os
 
@@ -19,10 +19,20 @@ fn test_exported_globals_link_from_native_object_consumers() {
 	root := os.join_path(os.vtmp_dir(), 'object_global_exports_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
+	mut previous_cc := ''
+	mut previous_version := ''
 	for compiler in ['clang', 'gcc'] {
 		cc := os.find_abs_path_of_executable(compiler) or { continue }
 		version := os.exec([cc, '--version'])
 		assert version.exit_code == 0, version.output
+		// Apple Clang can be installed under both names.
+		if previous_cc != '' && version.output == previous_version
+			&& (os.same_file(cc, previous_cc) or { false }) {
+			continue
+		}
+		previous_cc = cc
+		previous_version = version.output
+		is_clang := version.output.to_lower().contains('clang')
 		for export_last in [false, true] {
 			dir := os.join_path(root, '${compiler}_${export_last}')
 			os.mkdir_all(dir)!
@@ -156,15 +166,15 @@ int main(void) {
 }
 ')!
 			object := os.join_path(dir, 'lib.o')
-			compile := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none',
-				'-cc', cc, '-o', object, os.join_path(dir, 'lib.v')])
+			compile := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', cc, '-o',
+				object, os.join_path(dir, 'lib.v')])
 			assert compile.exit_code == 0, '${compiler}, export_last=${export_last}: ${compile.output}'
 			host := os.join_path(dir, 'host')
 			link := os.exec([cc, '-o', host, os.join_path(dir, 'host.c'), object, '-lm', '-lpthread'])
 			assert link.exit_code == 0, '${compiler}, export_last=${export_last}: ${link.output}'
 			run := os.exec([host])
 			assert run.exit_code == 0, '${compiler}, export_last=${export_last}: ${run.output}'
-			if version.output.to_lower().contains('clang') {
+			if is_clang {
 				// Clang's object-file scope must still hide ordinary V globals and
 				// function bodies, including after the final exported declaration.
 				symbols := os.exec(['nm', '-g', object])

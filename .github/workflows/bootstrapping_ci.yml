@@ -39,7 +39,8 @@ jobs:
           ) }}
       fail-fast: true
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    # Intel macOS reached formatting after 37 minutes of bootstrap and self checks.
+    timeout-minutes: ${{ matrix.platform == 'macos-x64' && 60 || 40 }}
     env:
       VFLAGS: ${{ matrix.vflags }}
       B_LFLAGS: -lm -lpthread
@@ -65,6 +66,9 @@ jobs:
           ./v_from_vc run examples/hello_world.v
           ./v_from_vc -o v_from_vc_produced_native_v cmd/v
           ./v_from_vc_produced_native_v run examples/hello_world.v
+          first_vc=$(mktemp "$RUNNER_TEMP/bootstrap-vc.XXXXXX")
+          trap 'rm -f "$first_vc"' EXIT
+          cp vc/v.c "$first_vc"
           ### the next make invocation will simulate building V from scratch
           make local=1
           ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
@@ -77,7 +81,11 @@ jobs:
           ./v_from_vc2 run examples/hello_world.v
           ./v_from_vc2 -o v_from_vc_produced_native_v2 cmd/v
           ./v_from_vc_produced_native_v2 run examples/hello_world.v
-          make local=1
+          # Both bootstrap chains run their own binaries. Rebuild with make
+          # again only when its generated C input changed.
+          if ! cmp -s "$first_vc" vc/v.c; then
+            make local=1
+          fi
           ls -la v vc/v.c
           ls -la v_from_vc v_from_vc_produced_native_v
           ls -la v_from_vc2 v_from_vc_produced_native_v2
@@ -163,8 +171,10 @@ jobs:
             echo "::error::temporary v up remote already exists: $vup_remote"
             exit 1
           fi
-          git init --bare "$vup_remote"
-          GIT_ALLOW_PROTOCOL=file git push "$vup_remote" "$tested_sha:refs/heads/master"
+          # The checkout lives for the entire test. Borrow its objects to
+          # avoid repacking and pushing the full master history locally.
+          GIT_ALLOW_PROTOCOL=file git clone --bare --shared --no-tags . "$vup_remote"
+          git -C "$vup_remote" update-ref refs/heads/master "$tested_sha"
           git -C "$vup_remote" symbolic-ref HEAD refs/heads/master
           bare_sha=$(git -C "$vup_remote" rev-parse 'HEAD^{commit}')
           if [ "$bare_sha" != "$tested_sha" ]; then
@@ -248,6 +258,12 @@ jobs:
           ./v run examples/hello_world.v
           ./v -o vprod-selfcheck cmd/v
           ./vprod-selfcheck run examples/hello_world.v
+      - name: Check code formatting
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          ./v -silent test-cleancode
+          ./v -silent test-fmt
       - name: Stage the compiler for this commit and platform
         if: runner.os != 'Windows'
         shell: bash
@@ -261,6 +277,10 @@ jobs:
           cp v "vprod-artifacts/$asset"
           cd vprod-artifacts
           shasum -a 256 "$asset" > "$asset.sha256"
+      - name: Prepare private Windows tool cache
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Build the Windows bootstrap compiler
         if: runner.os == 'Windows'
         shell: cmd
@@ -278,6 +298,27 @@ jobs:
           ./v.exe -o vprod-selfcheck.exe cmd/v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./vprod-selfcheck.exe run examples/hello_world.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # Release the vet runner's GC heap before starting the formatting session.
+      - name: Check code vetting on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VTEST_CLEANCODE_STAGE: vet
+        run: |
+          # Fail early if vet would rebuild for every input in test-cleancode.
+          .\.github\workflows\setup_windows_tool_cache.ps1 -Verify
+          ./v.exe -silent test-cleancode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check code formatting on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VTEST_CLEANCODE_STAGE: fmt
+        run: |
+          ./v.exe -silent test-cleancode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./v.exe -silent test-fmt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Stage the Windows compiler for this commit and platform
         if: runner.os == 'Windows'
@@ -357,6 +398,8 @@ jobs:
               ./v -cc clang run examples/hello_world.v
               ./v -cc clang -o vprod-selfcheck cmd/v
               ./vprod-selfcheck -cc clang run examples/hello_world.v
+              ./v -cc clang -silent test-cleancode
+              ./v -cc clang -silent test-fmt
               asset="$expected_sha-$expected_platform"
               cp v "/artifacts/$asset"
               cd /artifacts

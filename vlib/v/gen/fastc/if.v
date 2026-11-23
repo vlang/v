@@ -65,7 +65,11 @@ fn (g &Parser) optional_function_field_for_expression(tokens []FastcExpressionTo
 }
 
 fn (g &Parser) or_block_has_statements() bool {
-	return g.block_has_statements_from(g.tok, g.lit, g.s.offset)
+	return g.block_has_statements_from(g.tok, g.lit, g.s.offset, false)
+}
+
+fn (g &Parser) block_expression_has_statements() bool {
+	return g.block_has_statements_from(g.tok, g.lit, g.s.offset, true)
 }
 
 // unsafe_block_has_statements reports whether the `unsafe { ... }` starting at the
@@ -86,14 +90,14 @@ fn (g &Parser) unsafe_block_has_statements() bool {
 	if first in [.key_if, .key_match, .dollar] || (first == .name && probe.lit == 'panic') {
 		// These may be the block's whole value (`unsafe { if c { a } else { b } }`), which the
 		// transparent reader handles; only a statement before the value needs the block reader.
-		return g.block_scan_has_statements(first, probe.offset)
+		return g.block_scan_has_statements(first, probe.offset, false)
 	}
-	return g.block_has_statements_from(first, probe.lit, probe.offset)
+	return g.block_has_statements_from(first, probe.lit, probe.offset, false)
 }
 
 // block_has_statements_from reports whether the block body whose first token is `first_tok`
 // (with the source offset just past it) holds statements rather than a single value.
-fn (g &Parser) block_has_statements_from(first_tok token.Token, first_lit string, offset int) bool {
+fn (g &Parser) block_has_statements_from(first_tok token.Token, first_lit string, offset int, postfix_is_value bool) bool {
 	if first_tok == .string && fastc_string_literal_is_incomplete(first_lit) {
 		return false
 	}
@@ -107,12 +111,12 @@ fn (g &Parser) block_has_statements_from(first_tok token.Token, first_lit string
 		.key_break, .key_continue, .key_assert] {
 		return true
 	}
-	return g.block_scan_has_statements(first_tok, offset)
+	return g.block_scan_has_statements(first_tok, offset, postfix_is_value)
 }
 
 // block_scan_has_statements scans the block body from `first_tok` for a top-level
 // assignment, `return` or statement boundary before the block's closing `}`.
-fn (g &Parser) block_scan_has_statements(first_tok token.Token, offset int) bool {
+fn (g &Parser) block_scan_has_statements(first_tok token.Token, offset int, postfix_is_value bool) bool {
 	mut lookahead := scanner.new_scanner(g.prefs, .normal)
 	lookahead.init(g.s.current_file(), g.s.src)
 	lookahead.offset = offset
@@ -128,10 +132,23 @@ fn (g &Parser) block_scan_has_statements(first_tok token.Token, offset int) bool
 			depth--
 		} else if depth == 0 && tok == .key_return {
 			return true
-		} else if depth == 0 && (tok.is_assignment() || tok in [.inc, .dec]) {
-			// A top-level assignment or `++`/`--` makes the block a statement block
-			// (`or { x = '' }`), not a trailing value expression.
+		} else if depth == 0 && tok.is_assignment() {
 			return true
+		} else if depth == 0 && tok.is_postfix() {
+			if !postfix_is_value {
+				return true
+			}
+			// The scanner does not insert a semicolon after `++`/`--`. Match the
+			// expression reader's newline boundary before looking for another value.
+			postfix_end := lookahead.offset
+			tok = lookahead.scan()
+			if fastc_source_range_has_newline(g.s.src, postfix_end, lookahead.pos) {
+				for tok == .semicolon {
+					tok = lookahead.scan()
+				}
+				return tok != .rcbr
+			}
+			continue
 		} else if depth == 0 && tok == .semicolon {
 			next_token := lookahead.scan()
 			if fastc_token_continues_expression(next_token) || next_token in [.plus, .minus] {
@@ -747,11 +764,18 @@ fn (mut g Parser) parse_if() !bool {
 			c_return_type := fastc_output_c_type(flat.source_type_name(return_type))
 			name := fastc_c_value_identifier(guard_name)
 			g.write_line('${c_return_type} (*${name})(${parameters}) = (${c_return_type} (*)(${parameters}))(${guard_function_source});')
+			signature_key := g.callback_signature_key()
+			g.mono_functions[signature_key] = FastcFunctionSignature{
+				parameter_types: guard_function.fn_parameter_types
+				return_type:     return_type
+				option_type:     guard_function.fn_option_value_type
+			}
 			g.locals[guard_name] = FastcLocal{
 				is_mut:               guard_is_mut
 				typ:                  flat.source_type_voidptr
 				fn_return_type:       return_type
 				fn_option_value_type: guard_function.fn_option_value_type
+				fn_signature_key:     signature_key
 			}
 		} else if guard_erased_generic {
 			name := fastc_c_value_identifier(guard_name)
@@ -950,25 +974,7 @@ fn (mut g Parser) parse_if() !bool {
 			// variant, so narrow it to a value shadow scoped to the rest of the block,
 			// mirroring the positive `is` branch but in the fall-through path. Assignments
 			// to mutable subjects restore their boxed type and invalidate this view.
-			access := if flat.source_type_query(smartcast_boxed_type).has(.c_pointer_suffix) {
-				'->'
-			} else {
-				'.'
-			}
-			branch_cast := g.temporary_name('if_cast')
-			branch_type, branch_value, is_reference := g.smartcast_payload_binding(smartcast_type,
-				'${smartcast_storage}${access}_object', flat.source_type_query(smartcast_boxed_type).has(.c_pointer_suffix) || previous_smartcast.is_mut)
-			g.write_line('${fastc_output_c_type(flat.source_type_name(branch_type))} ${branch_cast} = ${branch_value};')
-			g.set_scoped_local(smartcast_name, FastcLocal{
-				is_mut:                        previous_smartcast.is_mut
-				is_reference:                  is_reference
-				typ:                           branch_type
-				c_name:                        branch_cast
-				smartcast_origin_type:         smartcast_boxed_type
-				smartcast_origin_is_reference: previous_smartcast.original_is_reference()
-				smartcast_copy_is_boxed:       previous_smartcast.smartcast_origin_type == 0 || previous_smartcast.smartcast_copy_is_boxed
-				smartcast_origin_source:       smartcast_storage
-			})
+			g.bind_fallthrough_type_test(smartcast_name, smartcast_type)
 		}
 		if then_terminates && smartcast_name == '' && !condition_has_top_level_and {
 			g.bind_negated_member_fallthrough(cond_tokens)
@@ -1062,6 +1068,32 @@ fn (mut g Parser) bind_else_type_test(name string, variant u32, boxed u32) {
 		smartcast_origin_is_reference: previous.original_is_reference()
 		smartcast_origin_source:       origin
 	}
+}
+
+fn (mut g Parser) bind_fallthrough_type_test(name string, variant u32) {
+	previous := g.locals[name] or { return }
+	mut boxed := fastc_normalize_inferred_type(previous.typ)
+	mut origin := g.local_c_name(name)
+	if previous.smartcast_origin_type != 0 {
+		boxed = previous.smartcast_origin_type
+		origin = previous.smartcast_origin_source
+	}
+	boxed_pointer := fastc_is_pointer_type(boxed)
+	access := if boxed_pointer { '->' } else { '.' }
+	binding := g.temporary_name('if_cast')
+	typ, value, is_reference := g.smartcast_payload_binding(variant, '${origin}${access}_object',
+		boxed_pointer || previous.is_mut)
+	g.write_line('${fastc_output_c_type(flat.source_type_name(typ))} ${binding} = ${value};')
+	g.set_scoped_local(name, FastcLocal{
+		is_mut:                        previous.is_mut
+		is_reference:                  is_reference
+		typ:                           typ
+		c_name:                        binding
+		smartcast_origin_type:         boxed
+		smartcast_origin_is_reference: previous.original_is_reference()
+		smartcast_copy_is_boxed:       previous.smartcast_origin_type == 0 || previous.smartcast_copy_is_boxed
+		smartcast_origin_source:       origin
+	})
 }
 
 // parse_if_multi_return_guard lowers `if a, b := opt_fn() { ... }`: the option's
@@ -1214,8 +1246,15 @@ fn (g &Parser) if_starts_final_block_expression() bool {
 	mut lookahead := scanner.new_scanner(g.prefs, .skip_interpolation)
 	lookahead.init(g.s.current_file(), g.s.src)
 	lookahead.offset = g.s.offset
+	is_comptime := g.tok == .dollar
 	mut prev := token.Token.unknown
 	mut tok := lookahead.scan()
+	if is_comptime {
+		if tok != .key_if {
+			return false
+		}
+		tok = lookahead.scan()
+	}
 	for {
 		// Scan to the block-opening `{`, skipping any `unsafe { … }` that appears in the
 		// condition itself (`if x != unsafe { nil } { … }`), and option fallback blocks,
@@ -1251,12 +1290,24 @@ fn (g &Parser) if_starts_final_block_expression() bool {
 		for tok == .semicolon {
 			tok = lookahead.scan()
 		}
+		if is_comptime {
+			if tok != .dollar {
+				return tok == .rcbr
+			}
+			tok = lookahead.scan()
+		}
 		if tok != .key_else {
 			return false
 		}
 		tok = lookahead.scan()
 		for tok == .semicolon {
 			tok = lookahead.scan()
+		}
+		if is_comptime && tok == .dollar {
+			tok = lookahead.scan()
+			if tok != .key_if {
+				return false
+			}
 		}
 		if tok == .key_if {
 			prev = .key_if

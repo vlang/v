@@ -1,4 +1,5 @@
 import os
+import v.cmdexec
 
 fn testsuite_begin() {
 	os.setenv('VCOLORS', 'never', true)
@@ -323,7 +324,7 @@ fn main() {
 	defer {
 		os.rm(source_path) or {}
 	}
-	res := vrun_ok('-new-compiler -gc none -no-builtin run', source_path)
+	res := vrun_ok('-gc none -no-builtin run', source_path)
 	assert res.trim_space() == '7 0 80 4 9 10 8 -1 81 -1 -1 7 -1 11'
 }
 
@@ -350,7 +351,7 @@ fn test_implicit_err_is_undefined_with_no_builtin() {
 		os.rm(output_path) or {}
 	}
 	res :=
-		os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-no-builtin', '-o', output_path, source_path])
+		os.exec([@VEXE, '-gc', 'none', '-no-builtin', '-o', output_path, source_path])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('undefined ident: `err`'), res.output
 }
@@ -467,53 +468,53 @@ fn test_sync_waitgroup_should_check_for_windows() {
 	_ = vrun_ok('-os windows -check', source_path)
 }
 
-fn test_usecache_build_module_sumtype_uses_canonical_type_id_helper() {
-	root := os.join_path(os.vtmp_dir(), 'usecache_sumtype_cross_module_${os.getpid()}')
-	cache_dir := os.join_path(root, '.cache')
-	vtmp_dir := os.join_path(root, '.vtmp')
-	os.rmdir_all(root) or {}
+fn test_cached_module_returns_a_sumtype_from_another_module() {
+	root := os.join_path(os.vtmp_dir(), 'cached_sumtype_cross_module_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'payload'))!
+	os.mkdir_all(os.join_path(root, 'maker'))!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	os.mkdir_all(os.join_path(root, 'payload'))!
-	os.mkdir_all(os.join_path(root, 'maker'))!
-	os.mkdir_all(vtmp_dir)!
-	write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'ucsmt'\n}\n")
+	write_file(os.join_path(root, 'v.mod'), "Module { name: 'ucsmt' }")
 	write_file(os.join_path(root, 'payload', 'payload.v'),
-		'module payload\n\npub struct Foo {\n\tpub:\n\t\tn int\n}\n\npub struct Bar {\n\tpub:\n\t\ts string\n}\n\npub type Value = Foo | Bar\n')
-	write_file(os.join_path(root, 'maker', 'maker.v'),
-		'module maker\n\nimport payload\n\npub fn make() payload.Value {\n\treturn payload.Value(payload.Foo{n: 42})\n}\n')
-	old_vcache := os.getenv_opt('VCACHE') or { '' }
-	old_vtmp := os.getenv_opt('VTMP') or { '' }
-	os.setenv('VCACHE', cache_dir, true)
-	os.setenv('VTMP', vtmp_dir, true)
-	defer {
-		if old_vcache.len == 0 {
-			os.unsetenv('VCACHE')
-		} else {
-			os.setenv('VCACHE', old_vcache, true)
-		}
-		if old_vtmp.len == 0 {
-			os.unsetenv('VTMP')
-		} else {
-			os.setenv('VTMP', old_vtmp, true)
-		}
+		'module payload
+
+pub struct Foo {
+pub:
+	n int
+}
+
+pub struct Bar {
+pub:
+	s string
+}
+
+pub type Value = Foo | Bar
+')
+	write_file(os.join_path(root, 'maker', 'maker.v'), 'module maker
+
+import payload
+
+pub fn make() payload.Value {
+	return payload.Foo{n: 42}
+}
+')
+	source := os.join_path(root, 'main.v')
+	write_file(source, 'import maker
+import payload
+
+fn main() {
+	value := maker.make()
+	assert value is payload.Foo
+	assert (value as payload.Foo).n == 42
+}
+')
+	mut environment := os.environ()
+	environment['V3CACHE'] = os.join_path(root, '.cache')
+	for _ in 0 .. 2 {
+		result := cmdexec.run_in_merged_with_env(@VEXE, ['run', source], root, environment)
+		assert result.exit_code == 0, result.output
 	}
-	mut p := os.new_process(@VEXE)
-	p.set_work_folder(root)
-	p.set_args(['-keepc', 'build-module', 'maker'])
-	p.set_redirect_stdio()
-	p.wait()
-	stdout := p.stdout_slurp()
-	stderr := p.stderr_slurp()
-	exit_code := p.code
-	p.close()
-	assert exit_code == 0, '${stdout}${stderr}'
-	generated_c_path := os.join_path(vtmp_dir, 'maker.tmp.c')
-	assert os.exists(generated_c_path)
-	generated_c := os.read_file(generated_c_path)!
-	assert generated_c.contains('payload__Foo_to_sumtype_payload__Value(payload__Foo* x, bool is_mut)')
-	assert generated_c.contains('._typ = _v_type_idx_payload__Foo()')
 }
 
 fn test_readline_raw_mode_methods_should_check_for_windows() {

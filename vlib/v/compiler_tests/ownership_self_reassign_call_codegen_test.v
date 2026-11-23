@@ -1,4 +1,5 @@
 import os
+import v.tempname
 
 // Regression test for the `x = f(mut x)` use-after-free.
 //
@@ -15,21 +16,27 @@ const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
-fn self_reassign_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_self_reassign_call_codegen_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+const self_reassign_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_self_reassign_fixtures_${tempname.unique_token()}')
+const self_reassign_compiler = os.join_path(self_reassign_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
+
+fn testsuite_begin() {
+	os.mkdir_all(self_reassign_fixture_dir) or { panic(err) }
 	build :=
 		os.exec([vexe, '-gc', 'none', '-d', 'ownership', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${v3_src}'])
+			'-o', self_reassign_compiler, '${v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
 }
 
-fn self_reassign_run_good(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+fn testsuite_end() {
+	os.rmdir_all(self_reassign_fixture_dir) or {}
+}
+
+fn self_reassign_run_good(name string, source string) string {
+	src := os.join_path(self_reassign_fixture_dir, 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-b', 'c', '-o', bin, src])
+	bin := os.join_path(self_reassign_fixture_dir, 'v3_${name}')
+	compile := os.exec([self_reassign_compiler, '-ownership', '-d', 'ownership', '-b', 'c', '-o',
+		bin, src])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -40,8 +47,7 @@ fn self_reassign_run_good(v3_bin string, name string, source string) string {
 // `acc = combine(mut acc, mut other)` where `combine` returns its mutated-by-ref
 // first argument. The heap array field must survive intact.
 fn test_self_reassign_via_mut_ref_call_preserves_owned_field() {
-	v3_bin := self_reassign_build_v3()
-	out := self_reassign_run_good(v3_bin, 'self_reassign_bag', 'struct Bag implements IClone {
+	out := self_reassign_run_good('self_reassign_bag', 'struct Bag implements IClone {
 mut:
 	items []int
 }
@@ -76,8 +82,7 @@ fn main() {
 // structs that each own a `[]u8`. `seq = grow(mut seq, ...)` must not free the
 // inner buffers early.
 fn test_self_reassign_preserves_nested_owned_arrays() {
-	v3_bin := self_reassign_build_v3()
-	out := self_reassign_run_good(v3_bin, 'self_reassign_nested', 'struct Lit implements IClone {
+	out := self_reassign_run_good('self_reassign_nested', 'struct Lit implements IClone {
 mut:
 	bytes []u8
 }

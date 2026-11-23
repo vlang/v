@@ -29,10 +29,10 @@ pub fn shutdown(handle int, config net.ShutdownConfig) int {
 
 // Select waits for an io operation (specified by parameter `test`) to be available
 fn select(handle int, test Select, timeout time.Duration) !bool {
+	if handle < 0 {
+		return error_with_code('net.unix: invalid socket handle for select', C.EINVAL)
+	}
 	$if !windows {
-		if handle < 0 {
-			return error_with_code('net.unix: invalid socket handle for select', C.EINVAL)
-		}
 		if handle >= C.FD_SETSIZE {
 			return error_with_code('net.unix: socket handle exceeds FD_SETSIZE', C.EINVAL)
 		}

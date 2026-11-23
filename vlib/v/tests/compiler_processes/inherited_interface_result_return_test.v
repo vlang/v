@@ -89,8 +89,7 @@ fn main() {
 	for i, program in programs {
 		source := os.join_path(root, 'case_${i}.v')
 		os.write_file(source, program)!
-		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', 'run',
-			source])
+		result := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', 'run', source])
 		assert result.exit_code == 0, 'case=${i}: ${result.output}'
 	}
 }
@@ -131,8 +130,8 @@ fn main() {
     _ := holder.forward()!
 }
 ")!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-o',
-		os.join_path(root, 'mismatch.c'), source])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-o', os.join_path(root, 'mismatch.c'),
+		source])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot use `![][]Value` as type `![][]bool` in return argument'), result.output
 }

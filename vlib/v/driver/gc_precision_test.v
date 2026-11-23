@@ -13,8 +13,8 @@ fn test_precise_boehm_counts_each_small_allocation_after_warmup() {
 	defer {
 		os.rmdir_all(root) or { panic(err) }
 	}
-	// Avoid inheriting flags from the runner, including a V1 fallback.
-	keys := ['VFLAGS', 'VOSARGS', 'V_MACOS_V3_NO_FALLBACK']
+	// Avoid inheriting flags from the runner.
+	keys := ['VFLAGS', 'VOSARGS']
 	mut old_values := map[string]string{}
 	for key in keys {
 		if value := os.getenv_opt(key) {
@@ -32,12 +32,7 @@ fn test_precise_boehm_counts_each_small_allocation_after_warmup() {
 	}
 	os.unsetenv('VFLAGS')
 	os.unsetenv('VOSARGS')
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(@VEXEROOT, 'v')
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	source := os.join_path(root, 'precise_gc.c.v')
 	os.write_file(source, 'module main
 #include <gc.h>
@@ -74,8 +69,8 @@ fn main() {
 	for production in [false, true] {
 		flags_path := os.join_path(root, 'flags_${production}.txt')
 		output := os.join_path(root, 'precise_${production}')
-		mut args := ['-new-compiler', '-no-retry-compilation', '-b', 'c', '-d',
-			'no_gc_thread_local_alloc', '-dump-c-flags', flags_path, '-o', output]
+		mut args := ['-no-retry-compilation', '-b', 'c', '-d', 'no_gc_thread_local_alloc',
+			'-dump-c-flags', flags_path, '-o', output]
 		if production {
 			args << '-prod'
 		}

@@ -43,8 +43,7 @@ fn veb_generic_context_project(name string, source string) !string {
 fn veb_generic_context_compile(root string) string {
 	program := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
 	source := os.join_path(root, 'main.v')
-	// An automatic retry with the compatibility compiler would hide this regression.
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', '${program}', source])
+	result := os.exec([@VEXE, '-nocache', '-o', '${program}', source])
 	assert result.exit_code == 0, result.output
 	assert os.is_file(program), result.output
 	return program

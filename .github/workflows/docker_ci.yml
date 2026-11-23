@@ -114,7 +114,25 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Add dependencies
-        run: apt install libsqlite3-dev
+        run: apt-get update && apt-get install -y libsqlite3-dev pkgconf
+      - name: Build musl-native SQLite for V database tests
+        run: |
+          set -eu
+          sqlite_version=3530400
+          archive="/tmp/sqlite-autoconf-${sqlite_version}.tar.gz"
+          wget -q "https://www.sqlite.org/2026/sqlite-autoconf-${sqlite_version}.tar.gz" -O "$archive"
+          echo "0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c  $archive" | sha256sum --check --strict
+          tar -C /tmp -xf "$archive"
+          cd "/tmp/sqlite-autoconf-${sqlite_version}"
+          CC=musl-gcc ./configure --prefix=/opt/musl-sqlite --disable-shared --enable-static --disable-readline
+          make -j4
+          make install
+          export PKG_CONFIG_PATH="/opt/musl-sqlite/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          test "$(pkg-config --variable=prefix sqlite3)" = /opt/musl-sqlite
+          printf '%s\n' '#include <sqlite3.h>' 'int main(void) { sqlite3 *db = 0; if (sqlite3_open(":memory:", &db) != SQLITE_OK) return 1; return sqlite3_close(db); }' > /tmp/musl-sqlite-smoke.c
+          musl-gcc -static $(pkg-config --cflags sqlite3) /tmp/musl-sqlite-smoke.c -o /tmp/musl-sqlite-smoke $(pkg-config --libs sqlite3) -lm
+          /tmp/musl-sqlite-smoke
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
       - name: Build musl-native OpenSSL
         run: |
           wget -q https://github.com/openssl/openssl/releases/download/openssl-3.5.4/openssl-3.5.4.tar.gz -O /tmp/openssl-3.5.4.tar.gz
@@ -124,6 +142,12 @@ jobs:
           CC=musl-gcc ./Configure linux-x86_64 no-shared no-tests no-secure-memory no-afalgeng --prefix=/usr/local --libdir=lib64 --openssldir=/usr/local/ssl
           make -j"$(nproc)"
           make install_sw
+          export PKG_CONFIG_PATH="/usr/local/lib64/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          test "$(pkg-config --variable=prefix openssl)" = /usr/local
+          printf '%s\n' '#include <openssl/ssl.h>' 'int main(void) { SSL_CTX *ctx = SSL_CTX_new(TLS_method()); if (!ctx || !OpenSSL_version_num()) return 1; SSL_CTX_free(ctx); return 0; }' > /tmp/musl-openssl-smoke.c
+          musl-gcc -static $(pkg-config --cflags openssl) /tmp/musl-openssl-smoke.c -o /tmp/musl-openssl-smoke $(pkg-config --libs --static openssl)
+          /tmp/musl-openssl-smoke
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
       - name: All code is formatted
         run: ./v -silent test-cleancode
       - name: Test V fixed tests

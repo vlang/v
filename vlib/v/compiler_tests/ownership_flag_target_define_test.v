@@ -31,7 +31,7 @@ $compile_error("ownership flag selected the non-ownership file")
 ')!
 	for flag in ['-ownership', '--ownership', '-autofree'] {
 		for mode in ['-no-parallel', ''] {
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -cc clang ${flag} ${mode} run ${os.quoted_path(root)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -cc clang ${flag} ${mode} run ${os.quoted_path(root)}')
 			assert out.exit_code == 0, '${flag} ${mode}: ${out.output}'
 			assert out.output.trim_space() == 'ok', out.output
 		}

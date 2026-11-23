@@ -11,16 +11,20 @@ fn test_repl_keeps_time_assignments_stable_across_reads() {
 	defer {
 		os.rmdir_all(temp_dir) or {}
 	}
-	input_file := os.join_path(temp_dir, 'input.txt')
+	clock_file := os.join_path(temp_dir, 'clock.txt')
+	initial_timestamp := '1700000000'
+	next_timestamp := '1700000001'
+	os.write_file(clock_file, initial_timestamp)!
+	// Changing the initializer's input makes a replay observable immediately.
 	input := [
+		'import os',
 		'import time',
-		'a := time.now()',
+		"a := time.unix(os.read_file('clock.txt')!.i64()).as_local()",
 		'a',
-		'time.sleep(1200 * time.millisecond)',
+		"  os.write_file('clock.txt', '${next_timestamp}')!",
 		'a',
 		'exit',
 	].join('\n')
-	os.write_file(input_file, input) or { panic(err) }
 	original_vexe := os.getenv_opt('VEXE')
 	os.setenv('VEXE', vexec, true)
 	defer {
@@ -44,6 +48,7 @@ fn test_repl_keeps_time_assignments_stable_across_reads() {
 	output := output_raw.replace_each(['\r', '', '>>> ', '', '>>>', '', '... ', '',
 		temp_dir + os.path_separator, '', os.dir(vexec) + os.path_separator, '']).trim_right('\n\r')
 	lines := output.split_into_lines()
+	assert os.read_file(clock_file)! == next_timestamp
 	assert lines.len == 2, 'expected 2 repl outputs, got ${lines.len}: ${lines}'
 	assert lines[0] == lines[1], 'expected the stored time to remain stable, got ${lines}'
 }

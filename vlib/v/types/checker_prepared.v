@@ -308,7 +308,11 @@ pub fn (mut tc TypeChecker) collect_continue(a &flat.FlatAst) bool {
 	// The user's code comes right after builtin in the logical order, so a
 	// loop that carries the module from file to file enters it from builtin.
 	start_module := 'builtin'
-	if tc.enclosing_generic_param_masks.len < n {
+	if tc.enclosing_generic_param_ranges.nodes > 0 {
+		if tc.enclosing_generic_param_ranges.nodes < n {
+			tc.enclosing_generic_param_ranges.nodes = n
+		}
+	} else if tc.enclosing_generic_param_masks.len < n {
 		tc.enclosing_generic_param_masks << []u32{len: n - tc.enclosing_generic_param_masks.len}
 	}
 	tc.index_enclosing_generic_params(a, new_entries)

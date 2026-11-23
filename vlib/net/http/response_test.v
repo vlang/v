@@ -400,15 +400,15 @@ fn test_response_decompression_layer_limit() {
 fn test_response_default_decompression_limit_boundary() {
 	assert default_max_total_decompressed_bytes == 16 * 1024 * 1024
 	boundary := 'a'.repeat(int(default_max_total_decompressed_bytes))
-	compressed := gzip.compress(boundary.bytes())!
-	wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n${compressed.bytestr()}'
+	// The fixtures expand to 16 MiB of 'a' and the same body plus one byte.
+	compressed := $embed_file('testdata/response_decompression_limit.gz').to_string()
+	wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n${compressed}'
 	resp := parse_response(wire)!
 	assert resp.body.len == boundary.len
 	assert resp.body == boundary
 
-	too_large := boundary + 'a'
-	compressed_large := gzip.compress(too_large.bytes())!
-	too_large_wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n${compressed_large.bytestr()}'
+	compressed_large := $embed_file('testdata/response_over_decompression_limit.gz').to_string()
+	too_large_wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n${compressed_large}'
 	parse_response(too_large_wire) or {
 		assert err is ResponseDecompressionLimitError, err.msg()
 		return

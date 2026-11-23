@@ -137,8 +137,8 @@ fn main() {
 	println(result + asmdata.value())
 }
 ')!
-		mut args := ['-new-compiler', '-no-retry-compilation', '-cc', cc, '-gc', 'none', '-show-timings',
-			'-o', executable]
+		mut args := ['-no-retry-compilation', '-cc', cc, '-gc', 'none', '-show-timings', '-o',
+			executable]
 		if mode in ['uncached', 'parallel'] {
 			args << '-nocache'
 		}

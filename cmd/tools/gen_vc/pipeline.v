@@ -45,9 +45,9 @@ struct Report {
 	key string
 }
 
-// path_is_ignored reports whether a change to `path` cannot change the snapshot. It follows the
-// paths-ignore list of gen_vc_ci.yml. vc.lock and the copies of its sha are listed so that a lock
-// update can never cause a new snapshot, which would leave the lock stale again.
+// path_is_ignored reports whether a change to `path` cannot change the snapshot.
+// The generator and its C builder can change the published output. A change to
+// vc.lock or a test that records its sha must never leave that lock stale again.
 fn path_is_ignored(path string) bool {
 	if path in ['thirdparty/tccbin_automation/bootstrap/vc.lock',
 		'thirdparty/tccbin_automation/tests/workflow_contract_test.v'] {
@@ -59,6 +59,7 @@ fn path_is_ignored(path string) bool {
 		}
 	}
 	return path.starts_with('cmd/tools/')
+		&& path != 'cmd/tools/gen_vc/snapshot.v'
 		&& !(path.starts_with('cmd/tools/builders/') && path.ends_with('.v'))
 }
 

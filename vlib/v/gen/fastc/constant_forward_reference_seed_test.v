@@ -3,6 +3,13 @@ module fastc
 import os
 import v.cmdexec
 
+// Nested FastC builds select their own C compiler; a GCC choice inherited from the
+// outer runner's VFLAGS (sanitizer and musl jobs) is not a FastC compiler.
+fn testsuite_begin() {
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+}
+
 // A struct default that reads a constant makes the constants phase seed their types in
 // order first. A file that reads another file's constant and also reads one of its own
 // constants before declaring it (`copied` above `later`) must keep the declared type of

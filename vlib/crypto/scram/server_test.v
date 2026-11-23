@@ -4,11 +4,17 @@ module scram
 
 import encoding.base64
 
+const pencil_salt = 'saltsaltsaltsalt'.bytes()
+const pencil_sha256_credentials = derive_credentials(.sha256, 'pencil', pencil_salt, 4096) or {
+	panic(err)
+}
+
 // pencil_credentials is the record a server would have stored for `user`.
 fn pencil_credentials(mechanism Mechanism) Credentials {
-	return derive_credentials(mechanism, 'pencil', 'saltsaltsaltsalt'.bytes(), 4096) or {
-		panic(err)
+	if mechanism == .sha256 {
+		return pencil_sha256_credentials
 	}
+	return derive_credentials(mechanism, 'pencil', pencil_salt, 4096) or { panic(err) }
 }
 
 // server_for builds a server that knows exactly one user.

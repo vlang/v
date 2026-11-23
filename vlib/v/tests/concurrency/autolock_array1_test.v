@@ -1,5 +1,3 @@
-import time
-
 const iterations_per_thread = 100000
 
 fn add_elements(shared foo []int, n int) {
@@ -11,28 +9,18 @@ fn add_elements(shared foo []int, n int) {
 
 fn test_autolocked_array() {
 	shared abc := &[0]
-	spawn add_elements(shared abc, 1)
-	spawn add_elements(shared abc, 3)
+	first := spawn add_elements(shared abc, 1)
+	second := spawn add_elements(shared abc, 3)
 	for _ in 0 .. iterations_per_thread {
 		abc << 0
 	}
-	// wait for coroutines to finish - that should really be
-	// done by channels, yield, semaphore...
-	for {
-		mut finished_threads := 0
-		rlock abc {
-			finished_threads = unsafe {
-				abc[0]
-			}
-		}
-		if finished_threads == 2 {
-			break
-		}
-		time.sleep(100 * time.millisecond)
-	}
+	first.wait()
+	second.wait()
 	// create histogram of results
 	mut result := [0, 0, 0, 0]
 	rlock abc {
+		finished_threads := unsafe { abc[0] }
+		assert finished_threads == 2
 		// automatic rlock for iteration is also not implemented, yet
 		for v in abc {
 			if v > 3 {

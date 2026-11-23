@@ -91,5 +91,8 @@ fn test_sibling_global_shared_identifier_bitwise_arguments_still_parse() {
 		assert used_parallel == parallel
 		assert p.diagnostics.len == 0, p.diagnostics.str()
 		assert p.a.nodes.filter(it.kind == .infix && it.op == .amp).len == 1
+		p.release_source_storage()
+		assert p.batch_source_buffers.len == 0
+		p.a.close_workers()
 	}
 }
