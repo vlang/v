@@ -8673,11 +8673,20 @@ fn record_v3_cached_source_digests(mut cache_state V3ModuleCacheState, source_di
 }
 
 fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Preferences, is_test_command bool, is_checker_fixture bool) bool {
-	if prefs.backend != 'c' || prefs.output_cross_c || prefs.target.os !in ['macos', 'linux', 'freebsd',
-		'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku', 'windows', 'android', 'termux', 'ios',
-		'qnx', 'serenity', 'wasm32_emscripten'] || is_test_command || is_checker_fixture
+	if prefs.backend !in ['c', 'arm64'] {
+		return false
+	}
+	if prefs.output_cross_c || prefs.target.os !in ['macos', 'linux', 'freebsd', 'openbsd', 'netbsd',
+		'dragonfly', 'solaris', 'haiku', 'windows', 'android', 'termux', 'ios', 'qnx', 'serenity',
+		'wasm32_emscripten'] || is_test_command || is_checker_fixture
 		|| !(input_file.ends_with('.v') || input_file.ends_with('.vv')) || !os.is_file(input_file)
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
+		return false
+	}
+	if prefs.backend == 'arm64' && (prefs.target.os !in ['macos', 'linux']
+		|| prefs.is_shared || prefs.is_livemain || prefs.is_liveshared || prefs.hot_fn.len > 0
+		|| prefs.user_defines.any(it in ['gcboehm', 'noprintln', 'noeprintln',
+			'builtin_print_use_fprintf', 'race', 'trace_calls', 'track_heap'])) {
 		return false
 	}
 	// The reduced builtin set assumes hosted I/O. VGC also needs the complete
@@ -11732,6 +11741,7 @@ pub fn run(args []string) {
 	// coverage build also needs the backtrace printer and what it calls.
 	minimal_literal_output := file_list.len == 0 && !is_prof && !is_trace_calls && !no_skip_unused
 		&& !is_debug && coverage_dir.len == 0
+		&& (backend != 'arm64' || (!is_o && !is_shared && !race))
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	mut noalloc_modes := []string{}
 	if ownership_mode || 'ownership' in prefs.user_defines {
@@ -12005,7 +12015,7 @@ pub fn run(args []string) {
 	if no_builtin {
 		builtin_files = []
 	}
-	if minimal_literal_output && target.os == 'macos' {
+	if minimal_literal_output && (target.os == 'macos' || backend == 'arm64') {
 		builtin_files = builtin_files.filter(is_minimal_literal_output_builtin_file(it))
 	}
 	bundle_sources := builtin_bundle_source_files(mut p.a, prefs, builtin_files)
@@ -12186,7 +12196,7 @@ pub fn run(args []string) {
 	if !prepared_imports.ready {
 		a.user_code_start = a.nodes.len
 	}
-	if minimal_literal_output && target.os == 'macos' {
+	if minimal_literal_output && (target.os == 'macos' || backend == 'arm64') {
 		suppress_minimal_literal_output_builtin_imports(mut a)
 	}
 
@@ -13120,8 +13130,8 @@ pub fn run(args []string) {
 			pre_tc.diagnostic_files = map[string]bool{}
 		}
 		set_diagnostic_files_judged(mut pre_tc, user_files, mut pre_tc_file_ownership)
-		// The C generator has a dedicated literal-output path. The SSA/native backend
-		// still builds ordinary builtin bodies, so it needs their full dependency set.
+		// C and eligible ARM64 builds have a dedicated literal-output path.
+		// Other native builds need the ordinary builtin dependency set.
 		// MSVC's regular runtime demangles backtraces with string slices, which only
 		// become `string.substr` calls after markused. Proven Windows ASCII output
 		// emits no runtime and can omit those dependencies too.
@@ -13132,7 +13142,8 @@ pub fn run(args []string) {
 		// serve every other program.
 		trivial_literal_output = !prefs.output_cross_c && !is_trace_calls && !no_skip_unused
 			&& !is_debug && coverage_dir.len == 0
-			&& backend !in ['arm64', 'amd64'] && test_files.len == 0 && !is_checker_fixture
+			&& backend != 'amd64' && (backend != 'arm64' || minimal_literal_output)
+			&& test_files.len == 0 && !is_checker_fixture
 			&& (effective_c_compiler != 'msvc' || (target.os == 'windows' && minimal_literal_output))
 			&& !cache_state.manager.enabled
 			&& is_trivial_literal_output_program_for_target(a, pre_tc.diagnostic_files, target)
@@ -14817,7 +14828,8 @@ pub fn run(args []string) {
 		// headers alone (`C.FIONREAD`, `C.KERN_SUCCESS`) need no system linker.
 		mut arm64_unknown_c_constants := []string{}
 		$if !skip_arm64 ? {
-			if target.os == 'macos' && !is_o && arm64_link_mode == .internal {
+			if target.os == 'macos' && !is_o && arm64_link_mode == .internal
+				&& !trivial_literal_output {
 				arm64_unknown_c_constants = arm64_c_constant_names(a).filter(!ssa.has_native_platform_constant(it,
 					ssa.TargetData{
 						os:   prefs.target.os
@@ -14885,6 +14897,7 @@ pub fn run(args []string) {
 			}
 			// SSA + ARM64 native backend
 			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				literal_output:       trivial_literal_output
 				track_uses:           false // optimize() rebuilds them
 				thread_stack_size:    prefs.thread_stack_size
 				test_files:           test_files
