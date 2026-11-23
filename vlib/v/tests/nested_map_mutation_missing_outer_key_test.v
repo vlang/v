@@ -421,6 +421,19 @@ fn delete_nested_owned_outer_key(mut m map[[2]string]map[string][]int, key [2]st
 	return 'k'
 }
 
+// The map's fixed-array key callback owns the cloned strings. Deletion must
+// destroy them exactly once, while also releasing the stored value.
+fn test_delete_fixed_array_string_key_with_owned_value() {
+	mut m := map[[2]string][]int{}
+	key := ['a', 'b']!
+	m[key] = [1, 2]
+	assert m[key] == [1, 2]
+	m.delete(key)
+	assert m.len == 0
+	m.delete(key)
+	assert m.len == 0
+}
+
 fn test_later_operand_deletes_owned_outer_key() {
 	mut m := map[[2]string]map[string][]int{}
 	key := ['a', 'b']!
