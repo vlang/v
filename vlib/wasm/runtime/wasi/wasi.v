@@ -49,18 +49,25 @@ fn fd_write(mut vm runtime.Instance, args []runtime.Value) ![]runtime.Value {
 
 fn fd_read(mut vm runtime.Instance, args []runtime.Value) ![]runtime.Value {
 	if args[0].as_i32() != 0 { return [runtime.Value.i32(8)] }
+	return read_input(mut vm, args, os.stdin())
+}
+
+fn read_input(mut vm runtime.Instance, args []runtime.Value, input os.File) ![]runtime.Value {
 	count := u32(args[2].bits)
 	if count > 0x1fffffff { return [runtime.Value.i32(21)] }
 	result := u32(args[3].bits)
 	vm.read_memory(result, 4)!
 	vectors := vm.read_memory(u32(args[1].bits), count * 8)!
-	input := os.stdin()
 	mut total := u32(0)
 	for i in 0 .. int(count) {
 		address := get_u32(vectors, i * 8)
 		length := get_u32(vectors, i * 8 + 4)
+		if length == 0 { continue }
 		mut data := vm.read_memory(address, length)!
-		n := input.read(mut data) or { return [runtime.Value.i32(29)] }
+		n := input.read(mut data) or {
+			if err is os.Eof { break }
+			return [runtime.Value.i32(29)]
+		}
 		vm.write_memory(address, data[..n])!
 		total += u32(n)
 		if n < data.len { break }

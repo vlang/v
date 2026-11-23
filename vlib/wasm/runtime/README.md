@@ -72,8 +72,9 @@ reentrant calls on the same instance return an error.
 
 `wasm.runtime.wasi.imports(argv)` supplies the runner's WASI Preview 1 subset:
 `fd_read`, `fd_write`, `proc_exit`, argument access, and an empty environment. It exposes
-stdin/stdout/stderr, without filesystem or network access. `proc_exit` returns a `wasi.Exit` error
-to an embedding application; it does not terminate the host process.
+stdin/stdout/stderr, without filesystem or network access. `fd_read` skips empty buffers and
+returns the bytes read so far on EOF, including zero if stdin is already exhausted. `proc_exit`
+returns a `wasi.Exit` error to an embedding application without terminating the host process.
 
 ## Execution and supported features
 

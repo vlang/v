@@ -1,5 +1,6 @@
 module wasi
 
+import os
 import wasm
 import wasm.runtime
 
@@ -47,4 +48,29 @@ fn test_wasi_arguments_environment_and_exit() ! {
 	}
 	assert exited
 	vm.call('args', [])!
+}
+
+fn test_wasi_read_skips_empty_buffers_and_reports_eof() ! {
+	path := os.join_path(os.vtmp_dir(), 'wasi_stdin_${os.getpid()}')
+	os.write_file(path, 'abc')!
+	defer { os.rm(path) or {} }
+	mut input := os.open(path)!
+	defer { input.close() }
+
+	mut m := wasm.Module{}
+	m.assign_memory('memory', true, 1, 1)
+	mut vm := runtime.instantiate(runtime.load(m.compile())!, [], runtime.Config{})!
+	// An empty iovec, a buffer that fits the input exactly, and a buffer that sees EOF.
+	put_u32(mut vm, 8, 64)!
+	put_u32(mut vm, 12, 3)!
+	put_u32(mut vm, 16, 67)!
+	put_u32(mut vm, 20, 2)!
+	args := [runtime.Value.i32(0), runtime.Value.i32(0), runtime.Value.i32(3), runtime.Value.i32(24)]
+	assert read_input(mut vm, args, input)![0].as_i32() == 0
+	assert get_u32(vm.read_memory(24, 4)!, 0) == 3
+	assert vm.read_memory(64, 5)! == [u8(`a`), `b`, `c`, 0, 0]
+
+	// A read that starts at EOF must still store a zero byte count.
+	assert read_input(mut vm, args, input)![0].as_i32() == 0
+	assert get_u32(vm.read_memory(24, 4)!, 0) == 0
 }
