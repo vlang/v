@@ -1,4 +1,4 @@
-// vtest build: !tinyc
+// vtest build: !msvc && !tinyc
 @[_naked]
 fn naked_fn() {
 	asm amd64 {
