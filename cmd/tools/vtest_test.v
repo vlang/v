@@ -30,7 +30,13 @@ fn testsuite_begin() {
 	os.setenv('VJOBS', '2', true)
 	os.setenv('VTEST_HIDE_OK', '0', true)
 	// The outer test selector has already selected the cases in this executable.
+	// The outer CI test runner may fail fast, but these nested fixture tests
+	// must enumerate both passing and deliberately failing files.
+	os.unsetenv('VTEST_FAIL_FAST')
 	os.unsetenv('VTEST_ONLY_FN')
+	// The fixtures check full-run summaries; a CI job's fail-fast setting would stop
+	// the nested runs at their first failing file.
+	os.unsetenv('VTEST_FAIL_FAST')
 	os.chdir(vroot)!
 	os.rmdir_all(tpath) or {}
 	os.mkdir_all(tpath)!

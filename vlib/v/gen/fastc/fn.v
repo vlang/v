@@ -398,10 +398,12 @@ fn fastc_pkgconfig_flags(raw string) ![]string {
 }
 
 // fastc_flag_is_native_input reports whether a flag is a native source or link input.
+// A `.def` file names DLL exports for Windows TinyCC to import (math's fma).
 pub fn fastc_flag_is_native_input(flag string) bool {
 	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.m') || flag.ends_with('.mm') || flag.ends_with('.o')
 		|| flag.ends_with('.a') || flag.ends_with('.obj') || flag.ends_with('.lib')
-		|| flag.ends_with('.dylib') || flag.ends_with('.so') || flag.contains('.so.'))
+		|| flag.ends_with('.def') || flag.ends_with('.dylib') || flag.ends_with('.so')
+		|| flag.contains('.so.'))
 }
 
 // fastc_deduplicate_native_files keeps shared helper definitions out of the link twice.

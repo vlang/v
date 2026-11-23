@@ -25,6 +25,7 @@ on:
       - 'ci/linux_ci_resume_test.sh'
       - 'makev.bat'
       - 'GNUmakefile'
+      - 'cmd/tools/vtest_test.v'
   workflow_dispatch:
 
 concurrency:
@@ -63,6 +64,16 @@ jobs:
           ./v -cc clang -silent vlib/v/tests/sumtypes/heap_sum_default_named_like_reflection_struct_test.v
           ./v -cc gcc -silent vlib/json2/tests/legacy_json_edge_cases_test.v
           ./v -cc clang -silent vlib/json2/tests/legacy_json_edge_cases_test.v
+      # Deliberately inherit the fail-fast setting used by tools_ci. The outer
+      # vtest self-test must still count its passing and failing child files.
+      - name: Run complete nested vtest fixture under outer fail-fast
+        timeout-minutes: 15
+        env:
+          VTEST_FAIL_FAST: '1'
+        run: |
+          ./v fmt -verify cmd/tools/vtest_test.v
+          ./v -cc gcc -silent cmd/tools/vtest_test.v
+          ./v -cc clang -silent cmd/tools/vtest_test.v
       - name: Verify AMD64 floating-point sign bits in debug and production modes
         timeout-minutes: 10
         run: |

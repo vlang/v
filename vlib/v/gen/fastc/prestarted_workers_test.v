@@ -20,21 +20,23 @@ fn test_discard_prestarted_workers_without_feeding_source() {
 // another thread created without FD_CLOEXEC: a reader of that pipe would wait
 // for EOF until the worker exits. `os.pipe` creates such a pipe, like os.Process.
 fn test_prestarted_worker_does_not_inherit_unrelated_descriptors() {
-	$if !macos {
-		return
+	// The helpers are defined only outside Windows (unit_compile_nix.c.v), so
+	// keep the body in the branch instead of returning early: an early return
+	// would still compile the calls.
+	$if macos {
+		mut unrelated := os.pipe() or { panic(err) }
+		defer {
+			unrelated.close()
+		}
+		script := 'if [ -e /dev/fd/${unrelated.write_fd} ]; then echo inherited; else echo closed; fi'
+		mut pid := 0
+		mut read_fd := -1
+		mut write_fd := -1
+		assert fastc_start_capture_input(['/bin/sh', '-c', script], &pid, &read_fd, &write_fd)
+		os.fd_close(write_fd)
+		output := os.fd_slurp(read_fd).join('').trim_space()
+		os.fd_close(read_fd)
+		assert fastc_wait_exit_code(pid) == 0
+		assert output == 'closed'
 	}
-	mut unrelated := os.pipe() or { panic(err) }
-	defer {
-		unrelated.close()
-	}
-	script := 'if [ -e /dev/fd/${unrelated.write_fd} ]; then echo inherited; else echo closed; fi'
-	mut pid := 0
-	mut read_fd := -1
-	mut write_fd := -1
-	assert fastc_start_capture_input(['/bin/sh', '-c', script], &pid, &read_fd, &write_fd)
-	os.fd_close(write_fd)
-	output := os.fd_slurp(read_fd).join('').trim_space()
-	os.fd_close(read_fd)
-	assert fastc_wait_exit_code(pid) == 0
-	assert output == 'closed'
 }
