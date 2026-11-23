@@ -1,0 +1,40 @@
+name: Headerless Darwin target regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/gen/c/headerless_program_test.v'
+      - '.github/workflows/headerless_darwin_target_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu-musl-headerless:
+    runs-on: ubuntu-24.04
+    container:
+      image: thevlang/vlang:ubuntu-build
+      env:
+        V_CI_UBUNTU_MUSL: '1'
+        VFLAGS: -cc musl-gcc -gc none -d use_bundled_libgc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V from source
+        run: make -j4 && ./v -prod -cg -o v cmd/v
+      - name: Verify original V test formatting
+        run: ./v fmt -verify vlib/v/gen/c/headerless_program_test.v
+      - name: Verify the Darwin triples retain macOS deployment-version macros
+        shell: bash
+        run: |
+          set -eu
+          for spec in 'arm64-apple-darwin22 130000' 'x86_64-apple-darwin21 120000'; do
+            set -- $spec
+            actual="$(clang -target "$1" -dM -E -x c /dev/null | sed -n 's/^#define __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ //p')"
+            test "$actual" = "$2" || { echo "$1: expected $2, got $actual" >&2; exit 1; }
+          done
+      - name: Execute full original headerless compiler target test with musl
+        run: ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/gen/c/headerless_program_test.v
