@@ -876,6 +876,9 @@ pub fn (integer Integer) radix_str(radix u32) string {
 	if integer.signum == 0 || radix == 0 {
 		return '0'
 	}
+	if radix == 10 {
+		return integer.decimal_str()
+	}
 	return integer.general_radix_str(int(radix))
 }
 
