@@ -52,6 +52,18 @@ the compiler produced by the first build. Native self-builds disable GC and incl
 backend; FastC is omitted by default because native linking does not include libtcc.
 A compiler built without the backend reports that for `-b arm64` and exits with an error.
 The native runtime initializes globals, runtime constants, and module state before `main`.
+Native channel `try_push` and `try_pop` call the same nonblocking runtime as the C backend,
+including full, empty, and closed states. A successful `try_pop` writes to its `mut` destination.
+Fixed-array channel elements retain their inline size and contents during sends, receives,
+and `select`, including the nonblocking methods.
+Assignments to mutable native function parameters update the caller's storage, including
+generic sum-type parameters whose active variant changes during JSON decoding.
+Map lengths read through references, mutable parameters, and pointer-valued struct fields
+use the map's element count.
+Native field accesses on indexed, returned, and dereferenced values keep their field semantics
+when a global constant has the same name.
+On macOS ARM64, the C compiler probes numeric constants and absolute pointer sentinels such as
+`C.SIG_ERR`. Constants that require a linker relocation are rejected by the raw-value probe.
 Native macOS executables use a 64 MiB main stack, matching the C backend's linker setting
 for recursive compiler passes.
 Native macOS `C.utsname` uses Darwin's five inline `char[256]` fields. Field expressions
