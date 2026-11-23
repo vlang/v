@@ -1,8 +1,7 @@
 module arrays
 
-// uniq filters the adjacent matching elements from the given array.
-// All adjacent matching elements, are merged to their first occurrence,
-// so the output will have no repeating elements.
+// uniq keeps the first element of each run of adjacent equal elements.
+// NaN values compare unequal, so each occurrence is kept.
 // Note: `uniq` does not detect repeats, unless they are adjacent.
 // You may want to call a.sorted() on your array, before passing the result to arrays.uniq().
 // See also arrays.distinct, which is essentially arrays.uniq(a.sorted()) .
@@ -11,18 +10,19 @@ module arrays
 // Example: assert arrays.uniq( [2, 1] ) == [2, 1]
 // Example: assert arrays.uniq( [5, 5, 1, 5, 2, 1, 1, 9] ) == [5, 1, 5, 2, 1, 9]
 pub fn uniq[T](a []T) []T {
-	mut res := []T{cap: a.len / 10}
-	mut j := -1
-	if a.len > 0 {
-		j = 0
-		res << a[0]
+	if a.len == 0 {
+		return []T{}
 	}
-	for idx, e in a {
-		if a[j] == e {
+	mut res := []T{cap: a.len / 10}
+	res << a[0]
+	mut last := 0
+	for i in 1 .. a.len {
+		value := a[i]
+		if a[last] == value {
 			continue
 		}
-		j = idx
-		res << e
+		res << value
+		last = i
 	}
 	return res
 }

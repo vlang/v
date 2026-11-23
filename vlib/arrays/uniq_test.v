@@ -1,4 +1,5 @@
 import arrays
+import math
 
 const a = [1, 5, 5, 1, 5, 2, 1, 1, 9, 2]
 
@@ -19,6 +20,19 @@ fn test_uniq() {
 	assert arrays.uniq(astrings) == ['b', 'a', 'b', 'z', 'a', 'd']
 	assert arrays.uniq(sstrings) == ['a', 'b', 'd', 'z']
 	assert arrays.uniq(many_repeats) == [1, 2, 5, 9, 1, 9, 5]
+}
+
+fn test_uniq_preserves_each_nan_once() {
+	nan := math.nan()
+	single := arrays.uniq([nan])
+	assert single.len == 1
+	assert math.is_nan(single[0])
+
+	mixed := arrays.uniq([nan, nan, 1.0, 1.0])
+	assert mixed.len == 3
+	assert math.is_nan(mixed[0])
+	assert math.is_nan(mixed[1])
+	assert mixed[2] == 1.0
 }
 
 fn test_uniq_only() {
