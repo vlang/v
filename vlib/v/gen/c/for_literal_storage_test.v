@@ -19,7 +19,7 @@ fn main() { assert sum_pair(12, 30) == 42 }'
 	os.write_file(path, source)!
 	// Name a GCC-style compiler: with `-cc msvc`, which the MSVC CI jobs pass in
 	// VFLAGS, the function is marked `__declspec(noinline)` instead.
-	result := os.exec([@VEXE, '-new-compiler', '-cc', 'gcc', '-o', output, path])
+	result := os.exec([@VEXE, '-cc', 'gcc', '-o', output, path])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
 	body := generated.all_after('__attribute__((noinline)) i64 sum_pair(')

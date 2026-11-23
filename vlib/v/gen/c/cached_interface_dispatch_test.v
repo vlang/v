@@ -6,8 +6,8 @@ fn test_cached_dependencies_preserve_dispatch_and_module_test_functions() ! {
 	$if !macos && !linux {
 		return
 	}
-	// The musl CI bundles a musl-linked static SQLite library. Nested cache tests
-	// must use its matching C toolchain rather than host Clang (glibc).
+	// The Ubuntu musl image links SQLite with musl-gcc. Nested cached V builds
+	// must use the same C runtime; other hosts retain Clang.
 	cc := if os.getenv('V_CI_UBUNTU_MUSL') != '' { 'musl-gcc' } else { 'clang' }
 	root := os.join_path(os.vtmp_dir(), 'v_cached_dispatch_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -25,8 +25,10 @@ fn test_cached_dependencies_preserve_dispatch_and_module_test_functions() ! {
 				'V3CACHE=' + cache, 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', @VEXE, '-cc', cc,
 				'-show-timings']
 			// Instrumented SQLite needs the same MemorySanitizer runtime at the final link.
+			// The job's VFLAGS do not reach this build, so also keep its `-gc none`:
+			// MemorySanitizer reports Boehm's partially initialized sigaction at GC_init.
 			if os.getenv('SANITIZER_GITHUB_JOB') == 'sanitize-memory-clang' {
-				command << ['-cflags', '-fsanitize=memory']
+				command << ['-gc', 'none', '-cflags', '-fsanitize=memory']
 			}
 			command << ['-o', binary, os.join_path(@VMODROOT, 'vlib', test_file)]
 			compiled := os.exec(command)

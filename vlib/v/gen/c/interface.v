@@ -357,7 +357,11 @@ fn (mut g FlatGen) precompute_sum_name_lookup() {
 	for registry_name_id, variants in g.tc.sum_types.ids {
 		name_id := registry_name_id
 		short_id := flat.source_type_syntax(name_id).unqualified()
-		if short_id != 0 && !g.tc.sum_types.contains(short_id) {
+		// A type the program declares with the short name (`interface Any {}` besides
+		// `json2.Any`) is what the short name means.
+		if short_id != 0 && !g.tc.sum_types.contains(short_id) && short_id != name_id
+			&& short_id !in g.tc.structs && !g.tc.interface_names[short_id]
+			&& short_id !in g.tc.enum_names && !g.tc.type_aliases.contains(short_id) {
 			g.sum_name_lookup[short_id] = if short_id in g.sum_name_lookup {
 				u32(0)
 			} else {
@@ -1893,6 +1897,13 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name_id u32, cn st
 			}
 			if concrete_id in g.tc.interface_names {
 				decl := g.interface_method_signature_key(concrete_id, method) or { continue }
+				// A method found through an embedded interface has a dispatcher of this
+				// interface only when it is one of its abstract methods. `IError.str` is
+				// a method of IError itself: `ESpeaker { IError }` has no `ESpeaker__str`.
+				if decl != '${concrete}.${method}'
+					&& method !in g.tc.interface_abstract_method_names(concrete_id) {
+					continue
+				}
 				if !g.interface_dispatch_target_is_emitted('${concrete}.${method}')
 					&& !g.interface_dispatch_target_is_emitted(decl) {
 					continue
@@ -2864,7 +2875,28 @@ fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string
 			continue
 		}
 		concrete_type := g.interface_concrete_type(concrete_id)
-		storage_ct := g.interface_concrete_storage_c_type(concrete_id)
+		// An interface value is never boxed in another interface (the checker rejects
+		// it), so such an implementer has no case to print. Expanding its own
+		// implementers here, and theirs below, made the expression of a program with
+		// several empty interfaces grow factorially (megabytes per `${value}`).
+		if g.interface_unaliased_type(concrete_type) is types.Interface {
+			continue
+		}
+		// The V declaration of a C struct names the fields that V code uses, not
+		// necessarily those of the platform's header (`C.dirent` has macOS's
+		// `d_seekoff`, which glibc lacks), so printing all of them may not compile.
+		// Such a value prints as the interface's fallback.
+		if flat.source_type_query(concrete_id).has(.c_prefix) {
+			continue
+		}
+		// The checker spells every option and result `__v_option`/`__v_result`, whose
+		// `value` is a placeholder; a boxed `?Named` is a `__v_option_Named`.
+		clean_concrete := g.interface_unaliased_type(concrete_type)
+		storage_ct := if clean_concrete is types.OptionType || clean_concrete is types.ResultType {
+			g.optional_type_name(clean_concrete)
+		} else {
+			g.interface_concrete_storage_c_type(concrete_id)
+		}
 		inner := g.interface_implicit_str_expr(concrete_type, '*(${storage_ct}*)${tmp}._object',
 			false, mut stack) or { continue }
 		body += ' case ${id}: ${out} = ${inner}; break;'

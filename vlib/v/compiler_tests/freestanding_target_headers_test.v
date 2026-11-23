@@ -27,7 +27,7 @@ fn main() {
 ')!
 	compiler := if @CCOMPILER in ['tinyc', 'tcc'] { 'cc' } else { @CCOMPILER }
 	executable := os.join_path(root, 'main')
-	build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-freestanding',
+	build := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-freestanding',
 		'-target-libc-headers', '-gc', 'none', '-cstrict', '-cc', compiler, '-o', executable, source])
 	assert build.exit_code == 0, build.output
 	run := os.exec([executable])

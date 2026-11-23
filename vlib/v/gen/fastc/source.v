@@ -34,7 +34,7 @@ fn fastc_preferences_for_entry_paths(paths []string, prefs &pref.Preferences) pr
 fn fastc_builtin_file_excluded(path string, prefs &pref.Preferences) bool {
 	name := os.file_name(path)
 	// V3 uses the pointer-sized map implementation selected by `v3_backend`.
-	// The legacy layout in map.v belongs to the compatibility compiler.
+	// The portable bootstrap still uses the layout in map.v.
 	if name == 'map.v' && 'v3_backend' in prefs.user_defines {
 		return true
 	}
@@ -1253,6 +1253,53 @@ fn fastc_store_resolve_memo(memo_path string, previous_text string, sources []Fa
 	os.mv(staged, memo_path) or {
 		os.rm(staged) or {}
 		return
+	}
+	fastc_prune_resolve_memos(memo_path, fastc_resolve_memo_limit)
+}
+
+// fastc_resolve_memo_limit is how many resolve memos a VTMP keeps. Each one names an entry set and
+// a build configuration, and its source blob is as large as the program's sources (~23 MB for the
+// compiler), so memos of builds that are not repeated would otherwise fill the disk.
+const fastc_resolve_memo_limit = 16
+
+struct FastcMemoFile {
+	path  string
+	mtime i64
+}
+
+// fastc_prune_resolve_memos removes the least recently written resolve memos beside `keep`, and
+// their source blobs, so that at most `limit` remain. A build that loses its memo meanwhile finds
+// no matching blob and resolves its sources again.
+fn fastc_prune_resolve_memos(keep string, limit int) {
+	dir := os.dir(keep)
+	mut memos := []FastcMemoFile{}
+	for name in os.ls(dir) or { return } {
+		if !name.starts_with('fastc_resolve_') || !name.ends_with('.memo') {
+			continue
+		}
+		path := os.join_path_single(dir, name)
+		if path != keep {
+			memos << FastcMemoFile{
+				path:  path
+				mtime: os.file_last_mod_unix(path)
+			}
+		}
+	}
+	if memos.len < limit {
+		return
+	}
+	memos.sort_with_compare(fn (a &FastcMemoFile, b &FastcMemoFile) int {
+		return if a.mtime > b.mtime {
+			-1
+		} else if a.mtime < b.mtime {
+			1
+		} else {
+			0
+		}
+	})
+	for memo in memos[int_max(limit - 1, 0)..] {
+		os.rm(memo.path) or {}
+		os.rm(fastc_memo_blob_path(memo.path)) or {}
 	}
 }
 

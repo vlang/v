@@ -82,7 +82,6 @@ if [ "$1" = doctor ]; then
 fi
 [ "$1" = run ] && [ "$2" = ci/linux_ci.vsh ] || exit 90
 [ "$CI" = true ] && [ "$GITHUB_ACTIONS" = true ] && [ "$RUNNER_OS" = Linux ] || exit 91
-[ "$V_MACOS_V3_NO_FALLBACK" = 1 ] || exit 92
 [ "${VTEST_FAIL_FAST:-}" = 1 ] && [ "${VJOBS:-}" = 8 ] || exit 93
 [ "${VTEST_SKIP_OWNERSHIP:-}" = 1 ] || exit 93
 [ -z "${VTEST_RESUME_OWNER:-}" ] || exit 99
@@ -112,7 +111,7 @@ run_ci() {
     status=0
     # Aggregate CI must select the workflow compiler without changing parallelism.
     (cd "$checkout" && VTEST_FAIL_FAST=0 VJOBS=8 VFLAGS='-cc inherited' \
-        VTEST_SKIP_OWNERSHIP=0 VTEST_RESUME_OWNER=inherited V_MACOS_V3_NO_FALLBACK=0 \
+        VTEST_SKIP_OWNERSHIP=0 VTEST_RESUME_OWNER=inherited \
         XDG_CACHE_HOME="$work/cache" \
         V_CI_VEXE="$fake_v" "$runner" "$@") > "$work/output" 2>&1 || status=$?
     [ "$status" -eq "$expected_status" ] || fail "exit $status, expected $expected_status"

@@ -5,7 +5,6 @@ import v.cmdexec
 import v.pref
 
 fn v3_parallel_cc_test_compiler() string {
-	// The V1-hosted CI test binary records v1_fallback as @VEXE; use the shared V3 compiler there.
 	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
 	if shared_v3.len > 0 {
 		return shared_v3

@@ -2134,25 +2134,32 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 }
 
 fn (mut t Transformer) clone_borrowed_array_append_value(source_id flat.NodeId, value flat.NodeId, elem_type_id u32) flat.NodeId {
-	if isnil(t.tc) || !t.expr_can_take_address(source_id) {
+	if !t.array_append_clones_borrowed_value(source_id, elem_type_id) {
 		return value
+	}
+	return t.make_compiler_default_borrowed_clone_value(value, elem_type_id, true)
+}
+
+// array_append_clones_borrowed_value reports whether a single-element append
+// clones its addressable RHS. Otherwise the element shares the RHS storage, so
+// callers that stage an owned RHS must not release it after the append.
+fn (t &Transformer) array_append_clones_borrowed_value(source_id flat.NodeId, elem_type_id u32) bool {
+	if isnil(t.tc) || !t.expr_can_take_address(source_id) {
+		return false
 	}
 	// Ordinary append copies the element value, including nested array headers,
 	// just like assignment and array literals. Independent storage is explicit.
 	$if !ownership ? {
 		if !t.tc.autofree_enabled() {
-			return value
+			return false
 		}
 	}
 	// Ownership transfers a moved RHS directly; cloning it would leave the
 	// source and destination owning the same storage during reinitialization.
 	if t.tc.ownership_expr_moves_storage(source_id, source_id) {
-		return value
+		return false
 	}
-	if !t.compiler_default_clone_type_needs_work(elem_type_id) {
-		return value
-	}
-	return t.make_compiler_default_borrowed_clone_value(value, elem_type_id, true)
+	return t.compiler_default_clone_type_needs_work(elem_type_id)
 }
 
 fn (mut t Transformer) clone_borrowed_array_append_many_value(source_id flat.NodeId, value flat.NodeId, array_type_id u32, elem_type_id u32) (flat.NodeId, bool) {

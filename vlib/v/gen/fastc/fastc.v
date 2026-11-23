@@ -462,6 +462,13 @@ extern char **environ;
 #if defined(__linux__) && defined(__GLIBC__)
 #include <sys/syscall.h>
 #endif
+#else
+/* The C backend preamble includes these CRT headers on Windows too: builtin and os
+ * declare `errno` codes, `signal` and wide calls such as `_wgetcwd` with `fn C.` and
+ * no header. */
+#include <errno.h>
+#include <signal.h>
+#include <wchar.h>
 #endif
 
 /* `C.__V_architecture` (pref.get_host_arch) resolves the host arch at C-compile time;
@@ -687,6 +694,13 @@ extern char **environ;
 #if defined(__linux__) && defined(__GLIBC__)
 #include <sys/syscall.h>
 #endif
+#else
+/* The C backend preamble includes these CRT headers on Windows too: builtin and os
+ * declare `errno` codes, `signal` and wide calls such as `_wgetcwd` with `fn C.` and
+ * no header. */
+#include <errno.h>
+#include <signal.h>
+#include <wchar.h>
 #endif
 '
 
@@ -1116,6 +1130,21 @@ mut:
 
 struct FastcRenderedExpression {
 	source string
+	typ    u32
+}
+
+// FastcComparisonMemoEntry is a memoized comparison render. The key holds the
+// address of `tokens`; holding the buffer as well keeps the collector from
+// handing that address to a later expression's tokens while the entry exists.
+struct FastcComparisonMemoEntry {
+	tokens voidptr
+	result FastcRenderedExpression
+}
+
+// FastcTypeMemoEntry is a memoized inferred type; `tokens` is kept for the same
+// reason as in FastcComparisonMemoEntry.
+struct FastcTypeMemoEntry {
+	tokens voidptr
 	typ    u32
 }
 
@@ -1753,10 +1782,10 @@ mut:
 	// of one top-level expression (see fastc_comparison_memo_key). The boolean
 	// operator scans in those handlers re-recurse over shared subranges;
 	// without the memo that search re-renders the same ranges combinatorially.
-	comparison_memo map[i64]FastcRenderedExpression
+	comparison_memo map[i64]FastcComparisonMemoEntry
 	// Inferred types memoized per token subrange the same way, and cleared
 	// whenever the locals or the registered functions change mid-expression.
-	type_memo map[i64]u32
+	type_memo map[i64]FastcTypeMemoEntry
 	// Generic return-source token queries share the Parser's scanner preferences.
 	generic_return_parameter_memo map[u64]bool
 	// Method keys memoized per receiver type and method name; the key only
@@ -1812,8 +1841,10 @@ struct FastcMonoRequest {
 // fastc_comparison_memo_key identifies a token subrange within the current
 // expression. Every recursive slice shares the top array's backing storage, so
 // the data pointer plus length is exact; `tag` separates the two comparison
-// handlers. Token arrays are 8-byte aligned and prealloc never reuses a
-// buffer while the memo is live (it is cleared per top-level expression).
+// handlers. Token arrays are 8-byte aligned. The memo is cleared per top-level
+// expression, but a garbage collector can still free an unreferenced token
+// buffer and reuse its address while the memo is live, so every entry keeps its
+// buffer referenced (FastcComparisonMemoEntry, FastcTypeMemoEntry).
 fn fastc_comparison_memo_key(tokens []FastcExpressionToken, tag i64) i64 {
 	if tokens.len >= 32768 {
 		return 0
@@ -2060,8 +2091,8 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		has_c_functions:               ctx.has_c_functions
 		numeric_ops_are_builtin:       ctx.numeric_ops_are_builtin
 		primitive_cmps_builtin:        ctx.primitive_cmps_builtin
-		comparison_memo:               map[i64]FastcRenderedExpression{}
-		type_memo:                     map[i64]u32{}
+		comparison_memo:               map[i64]FastcComparisonMemoEntry{}
+		type_memo:                     map[i64]FastcTypeMemoEntry{}
 		generic_return_parameter_memo: map[u64]bool{}
 		method_key_memo:               map[u32]map[string]string{}
 		field_memo:                    map[u32]map[string]&FastcStructField{}

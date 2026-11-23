@@ -1,9 +1,11 @@
 import os
+import time
 
 const child_source = r'
 module main
 
 import os
+import time
 
 struct Item {
 	value int
@@ -156,8 +158,7 @@ fn test_stack_overflow_prints_a_message() {
 }
 
 // Every hosted program links the handler, so it must build with the bundled TCC, whose
-// Linux arm64 runtime has no atomic helpers. A retry with the system C compiler, or with
-// the compatibility compiler, would hide a failure; the flags below disable both.
+// Linux arm64 runtime has no atomic helpers. Disable retrying with a system C compiler.
 fn test_handler_builds_with_tcc() {
 	$if !((linux || macos) && (amd64 || arm64)) {
 		return
@@ -170,8 +171,7 @@ fn test_handler_builds_with_tcc() {
 	source := os.join_path(work_dir, 'child.v')
 	binary := os.join_path(work_dir, 'child')
 	os.write_file(source, child_source)!
-	compile := os.exec([@VEXE, '-new-compiler', '-cc', 'tcc', '-no-retry-compilation', '-o', binary,
-		source])
+	compile := os.exec([@VEXE, '-cc', 'tcc', '-no-retry-compilation', '-o', binary, source])
 	assert compile.exit_code == 0, compile.output
 	// The fault is reported once: by the one-shot handler of the TCC `-bt` runtime, that
 	// V forwards it to, or by V, when there is no such handler (macOS).
@@ -283,4 +283,64 @@ fn main() {
 	assert persistent.exit_code == 0, persistent.output
 	assert persistent.output.count('previous SIGBUS handler') == 2, persistent.output
 	assert persistent.output.contains('survived'), persistent.output
+}
+
+// The SIGABRT handler of the TCC `-bt` runtime walks the frame pointer chain from inside
+// libc. With glibc 2.35 that register holds the thread id there, and once thread ids
+// pass 0x1000 the walk faults and the fault handler waits forever for the runtime's lock.
+// V restores the default action, so abort() ends a TCC-built program like any other.
+fn test_tcc_program_aborts_with_the_default_action() ! {
+	$if !(linux && (amd64 || arm64)) {
+		return
+	}
+	work_dir := os.join_path(os.vtmp_dir(), 'stack_overflow_tcc_abort_${os.getpid()}')
+	os.mkdir_all(work_dir)!
+	defer {
+		os.rmdir_all(work_dir) or {}
+	}
+	os.write_file(os.join_path(work_dir, 'abort_action.h'), r'
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int v_test_abort_action_is_default(void) {
+	struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
+	return sigaction(SIGABRT, NULL, &sa) == 0 && sa.sa_handler == SIG_DFL;
+}
+static void v_test_abort(void) { abort(); }
+')!
+	source := os.join_path(work_dir, 'child.c.v')
+	binary := os.join_path(work_dir, 'child')
+	os.write_file(source, r'
+module main
+#include "@DIR/abort_action.h"
+fn C.v_test_abort_action_is_default() int
+fn C.v_test_abort()
+fn main() {
+	println("default abort action: ${C.v_test_abort_action_is_default()}")
+	C.v_test_abort()
+	println("not reached")
+}
+')!
+	compile := os.exec([@VEXE, '-cc', 'tcc', '-no-retry-compilation', '-o', binary, source])
+	assert compile.exit_code == 0, compile.output
+	mut child := os.new_process(binary)
+	child.set_redirect_stdio()
+	child.run()
+	started := time.now()
+	for child.is_alive() {
+		if time.since(started) > 60 * time.second {
+			child.signal_kill()
+			child.wait()
+			assert false, 'abort() did not end the TCC-built program'
+		}
+		time.sleep(50 * time.millisecond)
+	}
+	child.wait()
+	output := child.stdout_slurp()
+	child.close()
+	assert child.code != 0, output
+	assert output.contains('default abort action: 1'), output
+	assert !output.contains('not reached'), output
 }

@@ -44,7 +44,7 @@ fn test_g_keeps_debug_information_and_symbols_with_gcc() {
 	source := os.join_path(root, 'crash.v')
 	program := os.join_path(root, 'crash')
 	os.write_file(source, debug_info_program)!
-	build := os.exec([@VEXE, '-new-compiler', '-g', '-cc', gcc, '-o', program, source])
+	build := os.exec([@VEXE, '-g', '-cc', gcc, '-o', program, source])
 	assert build.exit_code == 0, build.output
 	if readelf != '' {
 		sections := os.exec([readelf, '-S', '--wide', program])

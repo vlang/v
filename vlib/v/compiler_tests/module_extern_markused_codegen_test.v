@@ -13,7 +13,7 @@ pub fn anchor() int { return 7 }
 	os.write_file(source, 'import bindings\nfn main() { assert bindings.anchor() == 7 }\n')!
 	output := os.join_path(root, 'main.c')
 	for nocache in [true, false, false] {
-		mut args := [@VEXE, '-new-compiler', '-b', 'c', '-gc', 'none', '-o', output]
+		mut args := [@VEXE, '-b', 'c', '-gc', 'none', '-o', output]
 		if nocache {
 			args << '-nocache'
 		}

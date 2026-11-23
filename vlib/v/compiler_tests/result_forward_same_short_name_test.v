@@ -65,7 +65,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	res := os.execute('${os.quoted_path(vexe)} -new-compiler run ${os.quoted_path(dir)}')
+	res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(dir)}')
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().split_into_lines() == ['nether', 'no listener', 'nether'], res.output
 }

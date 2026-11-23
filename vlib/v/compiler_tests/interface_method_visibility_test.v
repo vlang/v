@@ -68,7 +68,7 @@ fn compile_interface_visibility_case(name string, source string, run bool) !os.R
 	file := os.join_path(root, 'main.v')
 	os.write_file(file, 'import holder\n' + source)!
 	mode := if run { 'run' } else { '-check' }
-	return cmdexec.run(@VEXE, ['-new-compiler', '-nocache', mode, file])
+	return cmdexec.run(@VEXE, ['-nocache', mode, file])
 }
 
 fn test_interface_methods_ignore_private_concrete_short_name_collisions() {

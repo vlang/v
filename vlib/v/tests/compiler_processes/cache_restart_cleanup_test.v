@@ -22,7 +22,6 @@ fn test_cache_restart_cleans_its_first_build_directory() ! {
 			environment.delete('VFLAGS')
 			environment.delete('VEXE')
 			environment['V3CACHE'] = cache
-			environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 			process.set_environment(environment)
 			process.set_redirect_stdio()
 			process.wait()

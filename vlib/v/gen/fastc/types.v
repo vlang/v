@@ -473,13 +473,16 @@ fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expres
 	memo_key := fastc_comparison_memo_range_key(tokens, expression_start, expression_end, 2)
 	if memo_key != 0 {
 		if cached := g.type_memo[memo_key] {
-			return cached
+			return cached.typ
 		}
 	}
 	inferred := g.infer_expression_type_range_impl(tokens, expression_start, expression_end)!
 	if memo_key != 0 {
 		mut w := unsafe { &Parser(g) }
-		w.type_memo[memo_key] = inferred
+		w.type_memo[memo_key] = FastcTypeMemoEntry{
+			tokens: tokens.data
+			typ:    inferred
+		}
 	}
 	return inferred
 }

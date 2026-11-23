@@ -19,7 +19,6 @@ fn test_cached_dependencies_keep_source_module_functions() ! {
 		'VFLAGS':                              ''
 		'V3CACHE':                             cache
 		'VTMP':                                vtmp
-		'V_MACOS_V3_NO_FALLBACK':              '1'
 		'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE': '1'
 		'V3_DISABLE_UNCHANGED_BUILD_CACHE':    '1'
 	}
@@ -28,9 +27,9 @@ fn test_cached_dependencies_keep_source_module_functions() ! {
 		program := os.join_path(root, phase)
 		// sync stays in the program unit while the cached time object calls its
 		// mutex helpers. Those calls are absent from time's declaration header.
-		compiled := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-no-retry-compilation',
-			'-cc', 'cc', '-show-timings', '-skip-running', '-run-only', 'test_waitgroup_reuse',
-			'-o', program, source], vroot, environment)
+		compiled := cmdexec.run_in_merged_with_env(@VEXE, ['-no-retry-compilation', '-cc', 'cc',
+			'-show-timings', '-skip-running', '-run-only', 'test_waitgroup_reuse', '-o', program,
+			source], vroot, environment)
 		assert compiled.exit_code == 0, '${phase}: ${compiled.output}'
 		if phase == 'cold' {
 			headers := os.walk_ext(cache, '.vh').filter(os.file_name(it).starts_with('time_'))

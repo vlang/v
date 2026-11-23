@@ -567,8 +567,7 @@ fn assert_eval_sizeof_matches_compiler(code string) {
 	source := os.join_path(dir, 'main.v')
 	executable := os.join_path(dir, 'layout')
 	os.write_file(source, code) or { panic(err) }
-	compiled := os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-cc', layout_c_compiler, '-o',
-		executable, source])
+	compiled := os.exec([@VEXE, '-gc', 'none', '-cc', layout_c_compiler, '-o', executable, source])
 	assert compiled.exit_code == 0, compiled.output
 	result := os.exec([executable])
 	assert result.exit_code == 0, result.output
@@ -702,8 +701,7 @@ fn main() {
 	}
 	os.write_file(main_file, compiled_main) or { panic(err) }
 	executable := os.join_path(dir, 'layout')
-	compiled := os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-cc', layout_c_compiler, '-o',
-		executable, dir])
+	compiled := os.exec([@VEXE, '-gc', 'none', '-cc', layout_c_compiler, '-o', executable, dir])
 	assert compiled.exit_code == 0, compiled.output
 	result := os.exec([executable])
 	assert result.exit_code == 0, result.output

@@ -89,7 +89,12 @@ struct VlsTarget {
 pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 	file_id := tc.vls_file_id(q.path) or { return '' }
 	file := tc.a.source_files[file_id] or { return '' }
-	source := os.read_file(file.name) or { return '' }
+	// The text that was parsed: a question's file is completed where it is
+	// being written (see vls_complete_source).
+	source := tc.vls_source(file_id)
+	if source == '' {
+		return ''
+	}
 	// Inlay hints are about the whole file, whatever position comes with them.
 	if q.method == .inlay_hints {
 		return tc.vls_inlay_hints(file_id, source)

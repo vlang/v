@@ -19229,6 +19229,15 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 		return id
 	}
 	target_shape := flat.source_type_shape(target_type_id)
+	// An alias of an option (`type MaybeNamed = ?Named`) takes its values as the
+	// option does: `&Record{}` is boxed in a `Named` before it is wrapped.
+	if int(id) >= 0 && target_type_id != u32(0) && !target_shape.has(.optional)
+		&& !target_shape.has(.result_type) {
+		normalized := t.normalize_type_alias(target_type_id)
+		if normalized != target_type_id && flat.source_type_shape(normalized).has(.optional) {
+			return t.transform_expr_for_type(id, normalized)
+		}
+	}
 	if t.assert_watch.active {
 		if result := t.transform_watched_assert_operand(id, target_type_id) {
 			return result
@@ -31713,8 +31722,15 @@ fn (t &Transformer) resolve_ident_expr_type(name string) u32 {
 				}
 			}
 		}
-		if name_source_id := t.const_type_name(name) {
-			return name_source_id
+		// Only a const this module can name bare: an unbound local `q` of `main` must
+		// not take the type of `crc32.q` through the unique-suffix table.
+		if key := t.const_type_key_in_context(name, t.cur_module, t.cur_file) {
+			owner := if key.contains('.') { key.all_before_last('.') } else { '' }
+			if owner in ['', 'builtin', t.cur_module] {
+				if name_source_id := t.const_type_name(key) {
+					return name_source_id
+				}
+			}
 		}
 	}
 	return u32(0)

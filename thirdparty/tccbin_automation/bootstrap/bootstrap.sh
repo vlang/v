@@ -406,7 +406,6 @@ export VJOBS=1
 export CFLAGS=
 export CPPFLAGS=
 export LDFLAGS=
-export V_MACOS_V3_NO_FALLBACK=1
 
 private_contract_root="$work_root/contract-source"
 clone_contract_checkout "$contract_root" "$private_contract_root" "$contract_repository_url" \
@@ -445,7 +444,7 @@ build_v_program() {
 	unset "flags[$(($# - 1))]"
 	case "$(uname -s)" in
 		MINGW* | MSYS* | CYGWIN*)
-			"$compiler" -new-compiler -no-parallel -nocache -cc "$cc_command" "${flags[@]}" -o "$output.c" "$package"
+			"$compiler" -no-parallel -nocache -cc "$cc_command" "${flags[@]}" -o "$output.c" "$package"
 			"$cc_command" -std=gnu11 -municode -w -fwrapv -o "$output" "$output.c" \
 				vlib/builtin/core_windows.c vlib/v/modulecache/file_metadata.c \
 				vlib/time/ticks_windows.c vlib/v/winthread_helper_windows.c \
@@ -455,7 +454,7 @@ build_v_program() {
 			rm -f -- "$output.c"
 			;;
 		*)
-			"$compiler" -new-compiler -no-parallel -nocache -cc "$cc_command" "${flags[@]}" ${v_link_flags[@]+"${v_link_flags[@]}"} -o "$output" "$package"
+			"$compiler" -no-parallel -nocache -cc "$cc_command" "${flags[@]}" ${v_link_flags[@]+"${v_link_flags[@]}"} -o "$output" "$package"
 			;;
 	esac
 }

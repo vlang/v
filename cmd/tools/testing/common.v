@@ -86,7 +86,6 @@ pub const separator = '-'.repeat(max_header_len) + '\n'
 
 pub const max_compilation_retries = get_max_compilation_retries()
 
-const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
 // Each worker compiles a separate test program, so bound automatic parallelism
 // by a memory budget per worker, and by the CPU count. Test builds of the
 // compiler's own modules peak at 0.4-1.5 GiB of RSS, a median of 0.6 GiB, and
@@ -432,6 +431,8 @@ mut:
 	benchmark_mu  &sync.Mutex = sync.new_mutex()
 	resume_dir    string
 	compiler_jobs int
+	// shared_v3_env holds the values that prepare_shared_v3 replaced.
+	shared_v3_env map[string]?string
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -694,7 +695,6 @@ fn add_automatic_execution_retry(mut details TestDetails, result os.Result) {
 }
 
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
-	os.setenv(c_error_bug_report_disabled_env, '1', true)
 	mut skip_files := []string{}
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -840,10 +840,15 @@ pub fn (mut ts TestSession) test() {
 	}
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
+	ts.prepare_shared_v3(remaining_files)
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
+	// Batching evaluates the `// vtest build:` constraints of the files.
+	ts.setup_build_environment(remaining_files)
+	// The pool works on units: a single file, or a batch of the tests of one module.
+	units := ts.test_units(remaining_files)
 	mut njobs := test_runner_jobs(ts.will_compile)
-	if remaining_files.len < njobs {
-		njobs = remaining_files.len
+	if units.len < njobs {
+		njobs = units.len
 	}
 	ts.compiler_jobs = test_compiler_jobs(test_runner_cpus(runtime.nr_cpus()), njobs,
 		runtime.nr_jobs())
@@ -859,10 +864,8 @@ pub fn (mut ts TestSession) test() {
 	pool_of_test_runners.set_shared_context(&ts)
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
 
-	ts.setup_build_environment(remaining_files)
-
 	// all the testing happens here:
-	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
+	pool_of_test_runners.work_on_pointers(unsafe { units.pointers() })
 
 	ts.benchmark_stop()
 	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: '-1' }) // send the sentinel
@@ -871,6 +874,20 @@ pub fn (mut ts TestSession) test() {
 	ts.reporter.divider()
 	ts.show_list_of_failed_tests()
 
+	for name, value in ts.shared_v3_env {
+		if previous := value {
+			os.setenv(name, previous, true)
+		} else {
+			os.unsetenv(name)
+		}
+	}
+	if ts.shared_v3_env.len > 0 {
+		for name in shared_v3_names {
+			shared_v3 := os.join_path(ts.vtmp_dir, name + $if windows { '.exe' } $else { '' })
+			os.rm(shared_v3) or {}
+			os.rm(shared_v3 + '.reused') or {}
+		}
+	}
 	// cleanup the session folder, if everything was ok:
 	if ts.benchmark.nfail == 0 {
 		if ts.rm_binaries {
@@ -878,7 +895,15 @@ pub fn (mut ts TestSession) test() {
 		}
 	}
 	os.rm(os.join_path(ts.vtmp_dir, '.v.mod.stop')) or {}
-	if os.ls(ts.vtmp_dir) or { [] }.len == 0 {
+	shared_objects := os.join_path(ts.vtmp_dir, session_shared_object_cache)
+	if os.is_link(shared_objects) {
+		os.rm(shared_objects) or {}
+	}
+	// A session left after failures is for the test artifacts in it. The compiler's own `v3_*`
+	// caches and probe results are not; unless VTEST_KEEP_SESSION=1 asked to keep the session,
+	// one holding only them goes as well.
+	entries := os.ls(ts.vtmp_dir) or { [] }
+	if entries.len == 0 || (ts.rm_binaries && entries.all(it.starts_with('v3_'))) {
 		os.rmdir_all(ts.vtmp_dir) or {}
 	}
 }
@@ -899,7 +924,17 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	tls_bench.no_cstep = true
 	tls_bench.njobs = ts.benchmark.njobs
-	abs_path := os.real_path(p.get_item[string](idx))
+	item := p.get_item[string](idx)
+	if item.contains('\n') {
+		return ts.run_test_batch(item.split('\n'), '${idx}_${thread_id}', thread_id, mut
+			tls_bench)
+	}
+	return ts.run_test_file(item, '${idx}_${thread_id}', thread_id, mut tls_bench)
+}
+
+// run_test_file compiles and runs one test file, in the folder `test_id` of the session.
+fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int, mut tls_bench benchmark.Benchmark) voidptr {
+	abs_path := os.real_path(item)
 	mut relative_file := abs_path
 	mut cmd_options := os.split_args(ts.vargs) or { panic(err) }
 	mut run_js := false
@@ -944,7 +979,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	// where an executable is not writable, if it is running).
 	// Note, that the common session temporary folder ts.vtmp_dir,
 	// will be removed after all tests are done.
-	test_id := '${idx}_${thread_id}'
 	mut test_folder_path := os.join_path(ts.vtmp_dir, test_id)
 	if ts.build_tools {
 		// `v build-tools`, produce all executables in the same session folder, so that they can be copied later:
@@ -1433,17 +1467,102 @@ pub fn h_divider() {
 	eprintln(term.h_divider('-')#[..max_header_len])
 }
 
+// The `v` launcher serves plain builds of the V3 source named by these variables with copies of
+// the compiler they name, and builds with `-d ownership` with copies of the ownership compiler
+// (cmd/v/shared_test_compiler.v); vlib/v/test_all.vsh sets the first two as well.
+const shared_v3_env = 'V3_TEST_UNIT_SHARED_V3'
+const shared_v3_src_env = 'V3_TEST_UNIT_V3_SRC'
+const shared_v3_ownership_env = 'V3_TEST_UNIT_SHARED_V3_OWNERSHIP'
+
+// shared_v3_names are the executables that prepare_shared_v3 builds in the session folder.
+const shared_v3_names = ['shared_v3', 'shared_v3_ownership']
+
+// prepare_shared_v3 builds the V3 compiler once, when at least two of `files` build it themselves
+// (as most compiler tests do), and lets the launcher serve their builds with copies of it; the
+// same for the `-d ownership` compiler of the ownership tests. Each build takes ~20 s of CPU.
+// A failed build only leaves the tests to build their own.
+fn (mut ts TestSession) prepare_shared_v3(files []string) {
+	if !ts.will_compile || os.getenv('VTEST_NO_SHARED_V3') == '1' {
+		return
+	}
+	v3_src := os.join_path(ts.vroot, 'vlib', 'v', 'v.v')
+	if !os.is_file(v3_src) {
+		return
+	}
+	// A compiler shared by an outer runner must be of the same source.
+	if configured := os.getenv_opt(shared_v3_src_env) {
+		if os.real_path(configured) != os.real_path(v3_src) {
+			return
+		}
+	}
+	vroot := os.real_path(ts.vroot) + os.path_separator
+	mut builders := 0
+	mut ownership_builders := 0
+	for file in files {
+		path := os.real_path(file)
+		if !path.starts_with(vroot) {
+			continue
+		}
+		source := os.read_file(path) or { continue }
+		if source.contains("'v.v'") {
+			builders++
+			if source.contains("'-d', 'ownership'") {
+				ownership_builders++
+			}
+		}
+	}
+	mut values := map[string]string{}
+	for i, env in [shared_v3_env, shared_v3_ownership_env] {
+		if os.getenv(env) != '' || (if i == 0 { builders } else { ownership_builders }) < 2 {
+			continue
+		}
+		shared_v3 := os.join_path(ts.vtmp_dir, shared_v3_names[i] + $if windows { '.exe' } $else { '' })
+		mut args := [ts.vexe, '-gc', 'none']
+		if i == 1 {
+			args << ['-d', 'ownership']
+		}
+		args << ['-path', os.join_path(ts.vroot, 'vlib'), '-o', shared_v3, v3_src]
+		build := os.exec(args)
+		if build.exit_code == 0 && os.is_executable(shared_v3) {
+			values[env] = shared_v3
+		}
+	}
+	if values.len == 0 {
+		return
+	}
+	values[shared_v3_src_env] = v3_src
+	for name, value in values {
+		ts.shared_v3_env[name] = os.getenv_opt(name)
+		os.setenv(name, value, true)
+	}
+}
+
+// session_shared_object_cache is the VTMP folder of cached native objects that a test session
+// shares with its parent VTMP.
+const session_shared_object_cache = 'v3_thirdparty_objs'
+
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
 // so that V programs/tests will write their temporary files to new location.
 // The new nested folder, and its contents, will get removed after all tests/programs succeed.
 pub fn setup_new_vtmp_folder(hash string) string {
 	// The V3 module cache defaults to VTMP. Keep it in the shared VTMP, so that each
 	// session does not rebuild every cached module, unless isolation was requested.
-	if os.getenv('V3CACHE') == '' && os.getenv('V3_TEST_ISOLATE_CACHE') != '1' {
+	isolate_cache := os.getenv('V3_TEST_ISOLATE_CACHE') == '1'
+	if os.getenv('V3CACHE') == '' && !isolate_cache {
 		os.setenv('V3CACHE', os.vtmp_dir(), true)
 	}
-	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${hash}')
+	parent_vtmp_dir := os.vtmp_dir()
+	new_vtmp_dir := os.join_path(parent_vtmp_dir, 'tsession_${hash}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
+	// The C objects of thirdparty code and native helpers are cached in VTMP too. Link the
+	// session's cache folder to one in the module cache root, which the driver accepts, so
+	// that each session does not compile them again (mbedtls alone is ~100 objects). Where
+	// links cannot be made, the session keeps its own folder, as before.
+	if !isolate_cache {
+		shared_objects := os.join_path(os.getenv('V3CACHE'), session_shared_object_cache)
+		os.mkdir_all(shared_objects) or {}
+		os.symlink(shared_objects, os.join_path(new_vtmp_dir, session_shared_object_cache)) or {}
+	}
 	// A test session must not inherit an unrelated `v.mod` from the shared temp
 	// directory, or from whatever contains it. The explicit project-boundary
 	// marker ends the upward search there.

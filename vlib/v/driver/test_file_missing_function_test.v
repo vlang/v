@@ -34,8 +34,8 @@ fn test_test_files_without_active_functions_report_located_errors() {
 				flags << '-no-parallel'
 			}
 			output := os.join_path(root, '${input.name}_${serial}')
-			result := os.exec([@VEXE, '-new-compiler', '-nocache', '-no-retry-compilation', '-nocolor',
-				...flags, '-o', output, path])
+			result := os.exec([@VEXE, '-nocache', '-no-retry-compilation', '-nocolor', ...flags,
+				'-o', output, path])
 			assert result.exit_code == 1, result.output
 			// Diagnostics name a file by its real path, with `/` separators on Windows too.
 			location := '${os.real_path(path).replace('\\', '/')}:${input.line}:1: error: '
@@ -89,8 +89,8 @@ fn test_result() ! {
 				defines << ['-d', 'missing_test_function_enabled']
 			}
 			output := os.join_path(root, '${os.file_name(path).all_before_last('.v')}_${serial}')
-			build := os.exec([@VEXE, '-new-compiler', '-nocache', '-no-retry-compilation', '-nocolor',
-				...flags, ...defines, '-o', output, path])
+			build := os.exec([@VEXE, '-nocache', '-no-retry-compilation', '-nocolor', ...flags,
+				...defines, '-o', output, path])
 			assert build.exit_code == 0, build.output
 			run := os.exec([output])
 			assert run.exit_code == 0, run.output
@@ -115,8 +115,7 @@ fn test_result() ! {
 		},
 	] {
 		os.write_file(invalid, input.source)!
-		result := os.exec([@VEXE, '-new-compiler', '-nocache', '-no-retry-compilation', '-nocolor',
-			'-check', invalid])
+		result := os.exec([@VEXE, '-nocache', '-no-retry-compilation', '-nocolor', '-check', invalid])
 		assert result.exit_code == 1, result.output
 		location := os.real_path(invalid).replace('\\', '/')
 		assert result.output.contains('${location}:3:1: error: invalid test signature: ${input.name}'), result.output

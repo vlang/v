@@ -559,8 +559,7 @@ fn main() {
 	}
 	for backend in ['c', 'fastc'] {
 		program := os.join_path(root, 'program_' + backend)
-		build := cmdexec.run(@VEXE, ['-new-compiler', '-b', backend, '-gc', 'none', '-nocache',
-			'-o', program, root])
+		build := cmdexec.run(@VEXE, ['-b', backend, '-gc', 'none', '-nocache', '-o', program, root])
 		assert build.exit_code == 0, '${backend}: ${build.output}'
 		run := cmdexec.run(program, [])
 		assert run.exit_code == 0, run.output

@@ -17,7 +17,6 @@ pub fn divide(hi u64, lo u64, y u64) u64 {
 ")!
 	generated := os.exec([
 		@VEXE,
-		'-new-compiler',
 		'-no-retry-compilation',
 		'-no-parallel',
 		'-nocache',

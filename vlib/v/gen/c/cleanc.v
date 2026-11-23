@@ -28652,11 +28652,21 @@ fn (g &FlatGen) shift_count_const_value(id flat.NodeId, seen []string) ?int {
 			return g.tc.const_int_value(node.value, seen)
 		}
 		.ident, .selector {
+			// A local is not a constant, and a bare name only names a constant of the
+			// current module or of builtin: the private `const shift` of math is not
+			// a local `shift` of main, whose shift then needs its guard.
+			if node.kind == .ident && g.selector_base_is_local_value(node.value) {
+				return none
+			}
 			name := g.const_ref_name_from_node(node)
 			if name.len == 0 || name in seen {
 				return none
 			}
 			module_name := g.const_modules[name] or { g.tc.cur_module }
+			if node.kind == .ident && module_name != g.tc.cur_module && module_name != 'builtin'
+				&& !(g.tc.cur_module in ['', 'main'] && module_name in ['', 'main']) {
+				return none
+			}
 			return g.tc.const_int_value_in_module(name, module_name, seen)
 		}
 		.paren {

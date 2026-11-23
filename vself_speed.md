@@ -410,7 +410,7 @@ for `./v -cc /usr/bin/clang -gc none self` and the production build:
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
-  VJOBS=4 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  VJOBS=4 SOURCE_DATE_EPOCH=0 \
   V_MACOS_V3_VHASH=f7e9ee96c22ca6db47b56d28332e7553715c659f \
   ./v -prod -cc /usr/bin/clang -gc none -no-memory-limit -prealloc \
   -compile-backend fastc -nocache -o ./v-perf cmd/v
@@ -420,7 +420,7 @@ Install each production binary as `./v` in the fixed fixture, then measure seria
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
-  VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  VJOBS=1 SOURCE_DATE_EPOCH=0 \
   V_MACOS_V3_VHASH=2d1367e589ed30c03325e586a8ddfd3bc96c8c3d \
   /usr/bin/time -l -o "$run_log" \
   ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
@@ -478,13 +478,13 @@ The fixed fixture, all 8,498 tracked file hashes, and the parsed inventory remai
 **559,990 physical lines in 562 parsed `.v` files**, with no parsed `.vh` files. Both roles run
 from the fixture directory using the same executable and output paths. The fixture executable is
 restored after measuring. A common `V_MACOS_V3_VHASH` controls only build metadata; both roles use
-`SOURCE_DATE_EPOCH=0`, `V_MACOS_V3_NO_FALLBACK=1`, and no inherited compiler overrides.
+`SOURCE_DATE_EPOCH=0` and no inherited compiler overrides.
 
 Both production builds use this recipe, outside the measured workload:
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
-  VJOBS=4 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  VJOBS=4 SOURCE_DATE_EPOCH=0 \
   ./v -prod -cc /usr/bin/clang -gc none -no-memory-limit -prealloc \
   -compile-backend fastc -nocache -o ./v-perf cmd/v
 ```
@@ -493,7 +493,7 @@ Each role is installed as `./v` in the fixed fixture directory, then measured se
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
-  VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  VJOBS=1 SOURCE_DATE_EPOCH=0 \
   V_MACOS_V3_VHASH=2d1367e589ed30c03325e586a8ddfd3bc96c8c3d \
   /usr/bin/time -l -o "$run_log" \
   ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
@@ -589,7 +589,7 @@ The measured command, from the fixed fixture directory, is:
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
-  VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  VJOBS=1 SOURCE_DATE_EPOCH=0 \
   /usr/bin/time -l -o "$run_log" \
   ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
   -o /Volumes/v-speed-7pct-20261023/fixed-self.c cmd/v
@@ -909,7 +909,7 @@ worker for the instruction comparison; validate default parallelism separately.
    outside measured runs with the same production command and C toolchain:
 
    ```sh
-   env -u VFLAGS -u VEXE SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+   env -u VFLAGS -u VEXE SOURCE_DATE_EPOCH=0 \
      ./v -prod -cc clang self
    ```
 
@@ -923,7 +923,6 @@ worker for the instruction comparison; validate default parallelism separately.
    ```sh
    benchmark_out=$(mktemp -d "${TMPDIR:-/tmp}/vself-speed.XXXXXX")
    env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
-     V_MACOS_V3_NO_FALLBACK=1 \
      ./v -nocache -gc none -prealloc -compile-backend fastc -building-v -v \
        -o "$benchmark_out/self.c" cmd/v \
      > "$benchmark_out/inventory.stdout" 2> "$benchmark_out/inventory.stderr"
@@ -937,7 +936,6 @@ worker for the instruction comparison; validate default parallelism separately.
 
    ```sh
    env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
-     V_MACOS_V3_NO_FALLBACK=1 \
      /usr/bin/time -l -o "$benchmark_out/time.txt" \
      ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
        -o "$benchmark_out/self.c" cmd/v \
@@ -949,7 +947,6 @@ worker for the instruction comparison; validate default parallelism separately.
 
    The measured input is a normal compiler build; `-prod` optimizes the compiler running the
    benchmark, not the input workload. `-nocache` disables V caches, not filesystem caches.
-   `V_MACOS_V3_NO_FALLBACK=1` prevents silent fallback to the legacy compiler.
    Reuse one output C path across all paired runs and keep distinct timing/stdout/stderr logs.
 5. Run one warmup per role, then ten measured pairs, alternating AB, BA, AB, BA, and so on.
    Run only one benchmark at a time. Do not wait for an idle host or pause unrelated work.
@@ -1160,7 +1157,7 @@ The same production self-build command was used in each checkout, outside measur
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 \
-  V_MACOS_V3_NO_FALLBACK=1 ./v -prod -cc /opt/homebrew/opt/llvm/bin/clang \
+  ./v -prod -cc /opt/homebrew/opt/llvm/bin/clang \
   -cflags '-mcpu=apple-m1' -o /absolute/path/to/role-v self
 ```
 
@@ -1288,7 +1285,7 @@ and equals-form `-cc=clang` options have the same last-option-wins behavior.
   Bundled TCC: `1d0ad0ecf70a91a1df64cebf215e683b1d5aedb5`; native support objects were warm.
 - Fixed executable and working directory: `/Users/alex/code/v3-self-speed-fixture/v` and its root.
 - Fixed output: `/Users/alex/code/v3-self-speed-artifacts/self.c`.
-- Environment: `SOURCE_DATE_EPOCH=0`, `V_MACOS_V3_NO_FALLBACK=1`;
+- Environment: `SOURCE_DATE_EPOCH=0`;
   `VFLAGS`, `VEXE`, and `LLVM_PROFILE_FILE` were unset.
   `VJOBS=1` for serial measurements and unset for default workers. `CC`, `CFLAGS`, and `LDFLAGS`
   were unset. Locale: `LANG=LC_ALL=C.UTF-8`; SDK: Command Line Tools `MacOSX.sdk`.

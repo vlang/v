@@ -373,19 +373,33 @@ fn run_v3_unit_tests(cfg Config) {
 			test_files.len
 		}
 		println('  Unit test batch ${start / unit_test_batch_size + 1}: ${start + 1}-${end}/${test_files.len}')
-		for path in test_files[start..end] {
-			relative_path := repo_relative_path(cfg, path)
-			run_only_arg := unit_test_run_only_arg(cfg, path)
-			cmd := '${q(cfg.vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${run_only_arg} ${q(path)}'
-			println('> ${cmd}')
+		for group in unit_test_groups(cfg, test_files[start..end]) {
+			if group.len == 1 {
+				if !run_unit_test_file(cfg, group[0]) {
+					failed << repo_relative_path(cfg, group[0])
+				}
+				continue
+			}
+			// `v test` builds the internal tests of one module into shared binaries
+			// (cmd/tools/testing/batch.v); it needs the files of the module together.
+			mut args := [cfg.vexe, '-gc', 'none', '-path', cfg.vlib_dir, '-enable-globals', '-silent',
+				'test']
+			args << group
+			println('> ${args.join(' ')}')
 			sw := time.new_stopwatch()
-			code := os.system_args(os.split_args(cmd) or { panic(err) })
+			code := os.system_args(args)
 			seconds := int(sw.elapsed().seconds())
+			relative_dir := repo_relative_path(cfg, os.dir(group[0]))
 			if code == 0 {
-				println('  ok     ${seconds:4} s  ${relative_path}')
-			} else {
-				println('  FAILED ${seconds:4} s  ${relative_path} (exit code ${code})')
-				failed << relative_path
+				println('  ok     ${seconds:4} s  ${relative_dir}/ (${group.len} files)')
+				continue
+			}
+			// Name the failing files: run each of them on its own.
+			println('  FAILED ${seconds:4} s  ${relative_dir}/ (${group.len} files, exit code ${code}); running them one by one')
+			for path in group {
+				if !run_unit_test_file(cfg, path) {
+					failed << repo_relative_path(cfg, path)
+				}
 			}
 		}
 		if os.exists(unit_cache) {
@@ -501,6 +515,68 @@ fn self_check_unit_shards() {
 
 fn shard_label(shard UnitShard) string {
 	return if shard.count > 1 { ' (shard ${shard.index}/${shard.count})' } else { '' }
+}
+
+// run_unit_test_file runs the unit test `path` on its own and reports whether it passed.
+fn run_unit_test_file(cfg Config, path string) bool {
+	relative_path := repo_relative_path(cfg, path)
+	run_only_arg := unit_test_run_only_arg(cfg, path)
+	cmd := '${q(cfg.vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${run_only_arg} ${q(path)}'
+	println('> ${cmd}')
+	sw := time.new_stopwatch()
+	code := os.system_args(os.split_args(cmd) or { panic(err) })
+	seconds := int(sw.elapsed().seconds())
+	if code == 0 {
+		println('  ok     ${seconds:4} s  ${relative_path}')
+		return true
+	}
+	println('  FAILED ${seconds:4} s  ${relative_path} (exit code ${code})')
+	return false
+}
+
+// unit_test_groups splits `paths` into runs of neighbouring files that one `v test` can
+// take together: internal tests (a module other than `main`) of one directory. Every other
+// file, and the selectively quarantined one, is a group of its own.
+fn unit_test_groups(cfg Config, paths []string) [][]string {
+	mut groups := [][]string{}
+	mut current := []string{}
+	mut current_dir := ''
+	for path in paths {
+		groupable := unit_test_is_internal(path)
+			&& repo_relative_path(cfg, path) != 'vlib/v/compiler_tests/c_directive_order_codegen_test.v'
+		dir := os.dir(path)
+		if current.len > 0 && (!groupable || dir != current_dir) {
+			groups << current
+			current = []string{}
+		}
+		if !groupable {
+			groups << [path]
+			continue
+		}
+		current << path
+		current_dir = dir
+	}
+	if current.len > 0 {
+		groups << current
+	}
+	return groups
+}
+
+// unit_test_is_internal reports whether the test file `path` declares a module other than
+// `main`, the files that `v test` can build together with others of their module.
+fn unit_test_is_internal(path string) bool {
+	source := os.read_file(path) or { return false }
+	for line in source.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed == '' || trimmed.starts_with('//') || trimmed.starts_with('@[') {
+			continue
+		}
+		if trimmed.starts_with('module ') {
+			return trimmed.all_after('module ').trim_space() !in ['', 'main']
+		}
+		return false
+	}
+	return false
 }
 
 fn unit_test_run_only_arg(cfg Config, path string) string {

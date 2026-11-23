@@ -67,8 +67,8 @@ fn main() {
 
 fn generate_darwin_x64_symbols_c(root string, target_os string) ![]string {
 	c_source := os.join_path(root, '${target_os}.c')
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-os', target_os, '-gc', 'none', '-o',
-		c_source, os.join_path(root, 'main.c.v')])
+	result := os.exec([@VEXE, '-nocache', '-os', target_os, '-gc', 'none', '-o', c_source,
+		os.join_path(root, 'main.c.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_lines(c_source)!
 }

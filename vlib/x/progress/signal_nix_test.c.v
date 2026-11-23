@@ -18,6 +18,9 @@ fn run_progress_signal_probe(mode string) {
 		os.signal_opt(sig, app_handler) or { panic(err) }
 	} else if mode.starts_with('ignore') {
 		os.signal_ignore(sig)
+	} else {
+		// A runner started in the background passes SIGINT on ignored; test the default.
+		C.signal(i32(sig), unsafe { nil })
 	}
 	mut mb := progress.MultiBar.new(force: true, delay: 5 * time.millisecond)
 	mut sp := mb.add_spinner(text: 'work')

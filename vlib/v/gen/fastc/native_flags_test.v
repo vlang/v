@@ -298,8 +298,8 @@ fn main() {
 ') or { panic(err) }
 	for jobs in ['1', '2'] {
 		program := os.join_path(root, 'program_${jobs}')
-		build := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-b', 'fastc',
-			'-enable-globals', '-o', program, root], '', {
+		build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-enable-globals', '-o',
+			program, root], '', {
 			'VJOBS': jobs
 		})
 		assert build.exit_code == 0, '${jobs} jobs: ${build.output}'

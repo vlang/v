@@ -125,7 +125,7 @@ fn test_strict_v3_flags_apply_only_to_top_level_test_compilation() {
 	}
 	tool := vtest_fixture_executable()
 	old_vflags := os.getenv_opt('VFLAGS')
-	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang', true)
+	os.setenv('VFLAGS', '-gc none -cc clang', true)
 	res := os.exec([tool, 'test', tpath_strict_v3])
 	if value := old_vflags {
 		os.setenv('VFLAGS', value, true)
@@ -137,12 +137,29 @@ fn test_strict_v3_flags_apply_only_to_top_level_test_compilation() {
 }
 
 fn test_with_several_test_files() {
+	old_no_batch := os.getenv_opt('VTEST_NO_BATCH')
+	defer {
+		if value := old_no_batch {
+			os.setenv('VTEST_NO_BATCH', value, true)
+		} else {
+			os.unsetenv('VTEST_NO_BATCH')
+		}
+	}
+	os.unsetenv('VTEST_NO_BATCH')
 	res := os.exec_or_exit([vtest_fixture_executable(), 'test', tpath_passing])
 	assert !res.output.contains('1 assert'), res.output
 	assert !res.output.contains('3 asserts'), res.output
 	assert res.output.contains('2 passed, 2 total'), res.output
 	assert res.output.count('OK') == 2, res.output
-	assert res.output.contains('on 2 parallel jobs'), res.output
+	// Both files of the module are compiled into one test binary, so one job runs them.
+	assert res.output.contains('on 1 job.'), res.output
+	// Without batching, each file is a unit of its own and VJOBS=2 runs them in parallel.
+	os.setenv('VTEST_NO_BATCH', '1', true)
+	unbatched := os.exec([vtest_fixture_executable(), 'test', tpath_passing])
+	assert unbatched.exit_code == 0, unbatched.output
+	assert unbatched.output.contains('2 passed, 2 total'), unbatched.output
+	assert unbatched.output.count('OK') == 2, unbatched.output
+	assert unbatched.output.contains('on 2 parallel jobs'), unbatched.output
 }
 
 fn test_with_stats_and_several_test_files() {
@@ -194,10 +211,9 @@ fn test_wimpure_v_warnings_are_shown_for_test_files() {
 	assert res.output.contains('warning: C code will not be allowed in pure .v files'), res.output
 }
 
-fn test_js_tests_are_skipped_without_strict_mode() {
-	// Exercise the ordinary runner, not its -new-compiler-only skip list.
+fn test_js_tests_are_skipped() {
 	tool := vtest_fixture_executable()
-	keys := ['VFLAGS', 'VOSARGS', 'V_MACOS_V3_NO_FALLBACK', 'VTEST_HIDE_SKIP']
+	keys := ['VFLAGS', 'VOSARGS', 'VTEST_HIDE_SKIP']
 	mut old_values := map[string]string{}
 	for key in keys {
 		if value := os.getenv_opt(key) {
@@ -288,7 +304,7 @@ fn test_both_defines() {
 	\$if vtest_command_define ? {} \$else { assert false, "missing command define" }
 }
 ')!
-	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang -d vtest_environment_define', true)
+	os.setenv('VFLAGS', '-gc none -cc clang -d vtest_environment_define', true)
 	result := os.exec([tool, '-d', 'vtest_command_define', 'test', path])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('1 passed, 1 total'), result.output
@@ -320,7 +336,7 @@ fn test_compilation_completed() {
 }
 ')!
 	cflags := '-I"${include_dir}"'
-	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang -g -cflags ${os.quoted_path(cflags)}', true)
+	os.setenv('VFLAGS', '-gc none -cc clang -g -cflags ${os.quoted_path(cflags)}', true)
 	for stats in [false, true] {
 		args := if stats { [vexe, '-stats', 'test', path] } else { [vexe, 'test', path] }
 		result := os.exec(args)

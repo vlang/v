@@ -295,7 +295,7 @@ fn test_self_c_keeps_only_the_compiler_owned_guard_include() {
 	assert_self_c_directory_bindings(native)
 	// Windows host C is not headerless: builtin_windows.c.v and other Windows modules
 	// include CRT and SDK headers (io.h, fcntl.h, windows.h, ...), even with
-	// `-d no_segfault_handler`. The portable snapshot below is checked on every host.
+	// `-d no_segfault_handler`.
 	$if !windows {
 		assert_self_c_compiler_owned_includes(native)
 	}
@@ -316,7 +316,12 @@ fn test_self_c_keeps_only_the_compiler_owned_guard_include() {
 	assert headerless.contains('#define CUSTOM_DEFINE_v3_headerless_bootstrap')
 	assert !headers.contains('#define CUSTOM_DEFINE_v3_headerless_bootstrap')
 	assert headers.contains('\n#include <stdint.h>\n')
-	assert_self_c_compiler_owned_includes(headerless)
+	// On a Windows host the portable snapshot targets Windows. Windows snapshots embed
+	// SDK-backed helpers (see `headerless_snapshot` in the driver), so they keep system
+	// `#include`s, each preceded by the TinyCC glibc feature probe.
+	$if !windows {
+		assert_self_c_compiler_owned_includes(headerless)
+	}
 }
 
 // vc/v.c is generated on Linux (gen_vc_ci.yml), and every non-Windows `make` compiles
@@ -330,11 +335,18 @@ fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
 	}
 	clang := os.find_abs_path_of_executable('clang') or { return }
 	c_file := headerless_linux_bootstrap_c()!
+	// The macOS targets are spelled as Darwin versions with a minimum macOS version, which
+	// gives the same predefined macros: older clangs (the musl image's) reject `macos13`
+	// in a target triple.
 	for target in ['x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu', 'aarch64-linux-android24',
-		'arm64-apple-macos13', 'x86_64-apple-macos12', 'x86_64-unknown-freebsd14',
+		'arm64-apple-darwin22 -mmacosx-version-min=13.0',
+		'x86_64-apple-darwin21 -mmacosx-version-min=12.0', 'x86_64-unknown-freebsd14',
 		'x86_64-unknown-openbsd7', 'x86_64-unknown-netbsd10', 'x86_64-unknown-dragonfly6'] {
-		checked := os.exec([clang, '-target', target, '-std=c99', '-fsyntax-only', '-Wno-everything',
-			'-Werror=implicit-function-declaration', '-DCUSTOM_DEFINE_v1_fallback', c_file])
+		mut args := ['-target']
+		args << target.split(' ')
+		args << ['-std=c99', '-fsyntax-only', '-Wno-everything', '-Werror=implicit-function-declaration',
+			'-DCUSTOM_DEFINE_v1_fallback', c_file]
+		checked := os.exec([clang, ...args])
 		assert checked.exit_code == 0, '${target}: ${checked.output}'
 	}
 	for target in ['armv7-unknown-linux-gnueabihf', 'i686-unknown-linux-gnu', 'x86_64-unknown-linux-gnu'] {

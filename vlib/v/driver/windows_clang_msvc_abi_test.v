@@ -67,15 +67,6 @@ fn test_user_c_flags_that_retarget_clang_are_trusted() {
 	}
 }
 
-// msvc_abi_test_compiler is the compiler under test: the one running this test, or the
-// V3 compiler beside a V1 fallback launcher.
-fn msvc_abi_test_compiler() string {
-	if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		return os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
-	}
-	return @VEXE
-}
-
 // write_msvc_clang_stub writes a fake clang whose default target is the MSVC ABI. Every
 // other invocation fails, so a build that reaches the C compiler fails there, visibly,
 // and never in the probe.
@@ -118,7 +109,7 @@ fn with_cflags(value string, callback fn ()) {
 const msvc_abi_message = 'targets the MSVC ABI'
 
 fn test_the_rejection_waits_for_the_c_build_and_honours_cflags() {
-	compiler := msvc_abi_test_compiler()
+	compiler := @VEXE
 	root := os.join_path(os.vtmp_dir(), 'v3_msvc_clang_abi_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
@@ -129,7 +120,7 @@ fn test_the_rejection_waits_for_the_c_build_and_honours_cflags() {
 	source := os.join_path(root, 'hello.v')
 	os.write_file(source, "fn main() {\n\tprintln('hi')\n}\n")!
 	output := os.join_path(root, 'hello.exe')
-	common := [compiler, '-new-compiler', '-os', 'windows', '-cc', clang]
+	common := [compiler, '-os', 'windows', '-cc', clang]
 	with_cflags('', fn [common, source, output] () {
 		// Source listings build nothing, so the compiler's ABI is irrelevant to them.
 		for listing in ['-print-v-files', '-print-watched-files'] {

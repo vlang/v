@@ -144,7 +144,7 @@ $if darwin {
 	fn C.v_multiwindow_appkit_prepare_application() int
 	fn C.v_multiwindow_appkit_create_metal_device() C.VMultiwindowNativePrimitive
 	fn C.v_multiwindow_appkit_release_metal_device(device voidptr) C.VMultiwindowNativePrimitive
-	fn C.v_multiwindow_appkit_create_window(device voidptr, title &char, width int, height int, min_width int, min_height int, resizable int, visible int, high_dpi int, borderless int, fullscreen int, out_width &int, out_height &int, out_framebuffer_width &int, out_framebuffer_height &int) C.VMultiwindowNativePrimitive
+	fn C.v_multiwindow_appkit_create_window(device voidptr, title &char, width int, height int, min_width int, min_height int, flags int, out_width &int, out_height &int, out_framebuffer_width &int, out_framebuffer_height &int) C.VMultiwindowNativePrimitive
 	fn C.v_multiwindow_appkit_configure_window_device(state voidptr, device voidptr) C.VMultiwindowNativePrimitive
 	fn C.v_multiwindow_appkit_destroy_window(state voidptr) C.VMultiwindowNativePrimitive
 	fn C.v_multiwindow_appkit_release_window(state voidptr) C.VMultiwindowNativePrimitive
@@ -1839,10 +1839,7 @@ fn (mut backend AppKitBackend) create_window(id WindowId, config WindowConfig) !
 		}
 		raw := C.v_multiwindow_appkit_create_window(backend.device, &char(config.title.str),
 			config.width, config.height, config.min_width, config.min_height,
-			appkit_bool_to_int(config.resizable), appkit_bool_to_int(config.visible),
-			appkit_bool_to_int(config.high_dpi), appkit_bool_to_int(config.borderless),
-			appkit_bool_to_int(config.fullscreen), &width, &height, &framebuffer_width,
-			&framebuffer_height)
+			appkit_window_flags(config), &width, &height, &framebuffer_width, &framebuffer_height)
 		state := native_pointer(raw.handle)
 		if state == unsafe { nil } {
 			if backend.native_operations.burn_lifetime_ticket(state_ticket) {
@@ -3453,4 +3450,26 @@ fn (mut backend AppKitBackend) accept_metal_identity_result(context NativeOperat
 
 fn appkit_bool_to_int(value bool) int {
 	return if value { 1 } else { 0 }
+}
+
+// appkit_window_flags packs the options of `config` for v_multiwindow_appkit_create_window,
+// whose 4-byte arguments must all fit in registers (see appkit_backend_helpers.h).
+fn appkit_window_flags(config WindowConfig) int {
+	mut flags := 0
+	if config.resizable {
+		flags |= 1
+	}
+	if config.visible {
+		flags |= 2
+	}
+	if config.high_dpi {
+		flags |= 4
+	}
+	if config.borderless {
+		flags |= 8
+	}
+	if config.fullscreen {
+		flags |= 16
+	}
+	return flags
 }

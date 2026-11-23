@@ -47,8 +47,8 @@ fn main() { byte = increment; println(byte(8)) }
 		os.write_file(v_file, source) or { panic(err) }
 		// This fixture links C directly and tests global initializers, independently
 		// of the native signal helper that ordinary V builds link automatically.
-		generated := cmdexec.run(@VEXE, ['-new-compiler', '-d', 'no_segfault_handler', '-gc', 'none',
-			'-enable-globals', '-cc', cc, '-o', c_file, v_file])
+		generated := cmdexec.run(@VEXE, ['-d', 'no_segfault_handler', '-gc', 'none', '-enable-globals',
+			'-cc', cc, '-o', c_file, v_file])
 		assert generated.exit_code == 0, generated.output
 		compiled := cmdexec.run(cc, ['-std=gnu11', ...municode, '-o', bin_file, c_file,
 			...native_sources, '-lm', '-lpthread'])

@@ -331,6 +331,18 @@ mut:
 // function-file tables only.
 fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode bool, cache_modules map[string]bool) MarkusedDeclScan {
 	has_cached_headers := tc.file_modules.keys().any(it.ends_with('.vh'))
+	// A cached module's object calls into the modules it imports, which the program AST
+	// does not show. When such a module is compiled from source instead of cached (a
+	// module's own tests cache only builtin), its functions are roots too; otherwise the
+	// cached object, linked into a dynamically looked up dylib, calls a pruned function.
+	mut cached_header_imports := map[string]bool{}
+	if cache_mode && has_cached_headers {
+		for key, imported in tc.file_imports {
+			if key.all_before('\n').ends_with('.vh') {
+				cached_header_imports[imported] = true
+			}
+		}
+	}
 	mut result := MarkusedDeclScan{
 		fn_decls:                   map[string]FnDeclInfo{}
 		fn_decl_lists:              map[string][]FnDeclInfo{}
@@ -484,8 +496,10 @@ fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode b
 			// even though their ordinary caller can live entirely in another cached
 			// object and therefore be invisible to the program AST.
 			cached_header_body := fn_decl_file.ends_with('.vh') && !node.is_mut
+			cached_dependency_body := cached_header_imports[fn_decl_module]
+				&& !fn_decl_file.ends_with('.vh')
 			if cache_mode && node.kind == .fn_decl && node.generic_params().len == 0
-				&& (cache_modules[fn_decl_module] || cached_header_body) {
+				&& (cache_modules[fn_decl_module] || cached_header_body || cached_dependency_body) {
 				result.cache_roots << qname
 			}
 			if qname != node.value {

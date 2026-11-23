@@ -4913,7 +4913,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 		if callee.kind == .ident && callee.value !in tc.a.disabled_fns
-			&& tc.source_declares_bodyless_function(callee.value) {
+			&& tc.source_declares_bodyless_function(callee.value)
+			&& !tc.name_has_local_binding(callee.value) {
 			tc.record_error_at(.unknown_fn, 'cannot call a function that does not have a body', id, node.pos)
 			return
 		}
@@ -9684,6 +9685,18 @@ fn (tc &TypeChecker) call_has_smartcast_receiver(node flat.Node) bool {
 	return tc.smartcast_type(tc.a.child(fn_node, 0)) != none
 }
 
+// name_has_local_binding reports whether `name` is bound in the current function's
+// scope: a local variable or parameter there shadows a function of that name.
+fn (tc &TypeChecker) name_has_local_binding(name string) bool {
+	if tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	if _ := tc.cur_scope.lookup(name) {
+		return true
+	}
+	return false
+}
+
 @[direct_array_access]
 fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Node) ?CallInfo {
 	if node.children_count == 0 {
@@ -9756,8 +9769,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		fn_id := tc.a.child(&node, 0)
 		mut binding_type := builtin_void_type
+		mut is_local_binding := false
 		if typ := tc.cur_scope.lookup(fn_node.value) {
 			binding_type = typ
+			is_local_binding = true
 		} else if typ := tc.file_scope.lookup(fn_node.value) {
 			binding_type = typ
 		} else if typ := tc.const_type_for_name(fn_node.value) {
@@ -9778,11 +9793,18 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			} else {
 				fn_typ
 			}
+			// A local function value shadows the functions of its name: only its own
+			// type says whether it is variadic, not a declaration found by the name.
+			is_variadic := if is_local_binding && !is_smartcasted {
+				selected.is_variadic || tc.current_binding_is_variadic_fn_value_local(fn_node.value)
+			} else {
+				tc.expr_is_variadic_fn_value(fn_id)
+			}
 			return CallInfo{
 				name:         ''
 				params:       selected.params.map(*it.typ)
 				return_type:  selected.return_type
-				is_variadic:  tc.expr_is_variadic_fn_value(fn_id)
+				is_variadic:  is_variadic
 				params_known: true
 			}
 		}
@@ -11293,6 +11315,16 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		return none
 	}
 	base_id := tc.a.child(&fn_node, 0)
+	// `callback[T]()` calls a local closure with explicit type arguments; the local
+	// shadows a function `callback` of the module, as it does for `callback()`.
+	local_base := tc.a.nodes[int(base_id)]
+	if local_base.kind == .ident && !local_base.value.contains('.') {
+		if local_type := tc.cur_scope.lookup(local_base.value) {
+			if _ := fn_type_from_type(local_type) {
+				return none
+			}
+		}
+	}
 	type_args_source_ids := tc.generic_call_type_arg_names(fn_node).clone()
 	if type_args_source_ids.len == 0 {
 		return none

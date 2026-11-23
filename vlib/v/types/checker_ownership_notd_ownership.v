@@ -43,6 +43,11 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_loop_iteration(_ string, _ in
 }
 
 // ownership_drop_entries_at_scope_exit returns no destructor entries when ownership checking is disabled.
+// records_scope_drops reports no scope destructor slots when ownership checking is disabled.
+pub fn (tc &TypeChecker) records_scope_drops() bool {
+	return false
+}
+
 pub fn (tc &TypeChecker) ownership_drop_entries_at_scope_exit(_ string, _ int) []OwnershipDropEntry {
 	return []OwnershipDropEntry{}
 }

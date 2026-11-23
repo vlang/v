@@ -47,10 +47,23 @@ fn test_builds_that_can_differ_from_the_shared_compiler_are_not_served() {
 fn test_a_served_build_gets_its_own_copy_of_the_shared_compiler() {
 	dir := os.join_path(os.vtmp_dir(), 'shared_test_compiler_${os.getpid()}')
 	os.mkdir_all(dir)!
+	// A test runner may share a compiler with this process; start without one.
+	old_compiler := os.getenv_opt(shared_test_compiler_env)
+	old_source := os.getenv_opt(shared_test_compiler_source_env)
+	os.unsetenv(shared_test_compiler_env)
+	os.unsetenv(shared_test_compiler_source_env)
 	defer {
 		os.rmdir_all(dir) or {}
-		os.unsetenv(shared_test_compiler_env)
-		os.unsetenv(shared_test_compiler_source_env)
+		if value := old_compiler {
+			os.setenv(shared_test_compiler_env, value, true)
+		} else {
+			os.unsetenv(shared_test_compiler_env)
+		}
+		if value := old_source {
+			os.setenv(shared_test_compiler_source_env, value, true)
+		} else {
+			os.unsetenv(shared_test_compiler_source_env)
+		}
 	}
 	shared_compiler := os.join_path(dir, 'shared_v3${shared_test_exe_ext}')
 	os.write_file(shared_compiler, 'shared compiler')!
@@ -70,4 +83,53 @@ fn test_a_served_build_gets_its_own_copy_of_the_shared_compiler() {
 	assert os.read_lines(shared_compiler + '.reused')! == [output]
 	assert !reuse_shared_test_compiler(['-gc', 'none', '-d', 'x', '-o', output, shared_test_source])
 	assert os.read_lines(shared_compiler + '.reused')! == [output]
+}
+
+fn test_ownership_builds_are_served_only_by_a_shared_ownership_compiler() {
+	plain, ownership := shared_test_compiler_variant(['-gc', 'none', '-d', 'ownership', '-o', 'v3',
+		'v.v'])
+	assert ownership
+	assert plain == ['-gc', 'none', '-o', 'v3', 'v.v']
+	_, twice := shared_test_compiler_variant(['-d', 'ownership', '-d', 'ownership', 'v.v'])
+	assert !twice
+	_, other := shared_test_compiler_variant(['-d', 'parallel', 'v.v'])
+	assert !other
+	dir := os.join_path(os.vtmp_dir(), 'shared_test_ownership_compiler_${os.getpid()}')
+	os.mkdir_all(dir)!
+	names := [shared_test_compiler_env, shared_test_ownership_compiler_env,
+		shared_test_compiler_source_env]
+	mut old_values := map[string]string{}
+	for name in names {
+		if value := os.getenv_opt(name) {
+			old_values[name] = value
+		}
+		os.unsetenv(name)
+	}
+	defer {
+		os.rmdir_all(dir) or {}
+		for name in names {
+			if value := old_values[name] {
+				os.setenv(name, value, true)
+			} else {
+				os.unsetenv(name)
+			}
+		}
+	}
+	plain_compiler := os.join_path(dir, 'shared_v3${shared_test_exe_ext}')
+	ownership_compiler := os.join_path(dir, 'shared_v3_ownership${shared_test_exe_ext}')
+	os.write_file(plain_compiler, 'plain compiler')!
+	os.write_file(ownership_compiler, 'ownership compiler')!
+	os.chmod(plain_compiler, 0o755)!
+	os.chmod(ownership_compiler, 0o755)!
+	output := os.join_path(dir, 'test_v3${shared_test_exe_ext}')
+	args := ['-gc', 'none', '-d', 'ownership', '-o', output, shared_test_source]
+	os.setenv(shared_test_compiler_env, plain_compiler, true)
+	os.setenv(shared_test_compiler_source_env, shared_test_source, true)
+	// The plain compiler never serves an ownership build.
+	assert !reuse_shared_test_compiler(args)
+	os.setenv(shared_test_ownership_compiler_env, ownership_compiler, true)
+	assert reuse_shared_test_compiler(args)
+	assert os.read_file(output)! == 'ownership compiler'
+	assert reuse_shared_test_compiler(['-gc', 'none', '-o', output, shared_test_source])
+	assert os.read_file(output)! == 'plain compiler'
 }

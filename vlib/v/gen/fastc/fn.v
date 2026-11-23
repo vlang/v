@@ -74,7 +74,7 @@ fn (mut g Parser) reset_lookup_memos() {
 	g.nonlocal_name_type_memo = flat.TypeTextBindings{}
 	g.resolved_name_memo = map[string]string{}
 	g.declared_type_key_memo = map[u32]FastcMemoEntry{}
-	g.type_memo = map[i64]u32{}
+	g.type_memo = map[i64]FastcTypeMemoEntry{}
 	g.method_key_memo = map[u32]map[string]string{}
 	g.field_memo = map[u32]map[string]&FastcStructField{}
 	g.last_field = unsafe { nil }

@@ -510,8 +510,7 @@ fn main() {}
 }
 
 fn run_owned_storage_summary(source string, mode string, command string) os.Result {
-	mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-ownership', '-d',
-		'ownership']
+	mut args := [@VEXE, '-no-retry-compilation', '-nocache', '-ownership', '-d', 'ownership']
 	if mode != '' { args << mode }
 	args << [command, source]
 	return os.exec(args)

@@ -242,8 +242,7 @@ mut:
 pub mut:
 	a &flat.FlatAst = unsafe { nil }
 	// no_source_digests leaves the SHA-256 of each parsed source out (see
-	// token.File.index_line_starts): the compiler driver sets it for a build
-	// that stages no fallback manifest, the only reader of those digests.
+	// token.File.index_line_starts). The driver enables this for ordinary builds.
 	no_source_digests bool
 	// quick_source_sums records the quick_sum of each parsed source instead of
 	// its SHA-256 (see token.File.index_lines_with_quick_sum).

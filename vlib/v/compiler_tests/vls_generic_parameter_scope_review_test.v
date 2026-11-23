@@ -5,8 +5,8 @@ const scope_review_program = 'module main\n\nstruct T {\n\tvalue int\n}\n\nfn id
 
 fn scope_review_query(path string, position string, method string) string {
 	query := '${path}:${position.all_before(':')}:${method}^${position.all_after(':')}'
-	result := cmdexec.run(@VEXE, ['-new-compiler', '-no-memory-limit', '-enable-globals', '-check',
-		'-vls-mode', '-line-info', query, path])
+	result := cmdexec.run(@VEXE, ['-no-memory-limit', '-enable-globals', '-check', '-vls-mode',
+		'-line-info', query, path])
 	assert result.exit_code == 0, result.output
 	return result.output.trim_space()
 }

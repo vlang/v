@@ -22,8 +22,7 @@ fn testsuite_end() {
 fn run_c_struct_fixture(source string, flags []string) !string {
 	binary := os.join_path(os.dir(source), 'main')
 	// An explicit C backend keeps the translation unit used for the executable.
-	result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-b', 'c', ...flags, '-o', binary,
-		'run', source])
+	result := cmdexec.run(@VEXE, ['-nocache', '-b', 'c', ...flags, '-o', binary, 'run', source])
 	if result.exit_code != 0 {
 		return error(result.output)
 	}

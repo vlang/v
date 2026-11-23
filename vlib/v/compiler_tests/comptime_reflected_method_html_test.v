@@ -8,7 +8,7 @@ fn test_reflected_method_can_call_html_parser() {
 	os.cp(@VEXEROOT + '/vlib/v/compiler_tests/testdata/reflected_method_html.vv', source)!
 	for mode in ['parallel', 'serial', 'cached'] {
 		output := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
-		mut args := [@VEXE, '-new-compiler', '-o', output]
+		mut args := [@VEXE, '-o', output]
 		if mode != 'cached' {
 			args << '-nocache'
 		}

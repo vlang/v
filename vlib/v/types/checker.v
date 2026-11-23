@@ -5216,9 +5216,16 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 				if node.generic_params().len > 0 {
 					param_ids := generic_param_ids(node.generic_params())
 					tc.struct_generic_params[qname_id] = param_ids
-					if qname_id != node.source_value_id() {
+					// The bare name is a module generic's alias, unless the program
+					// declares a struct of that name (`math.vec.Vec3[T]` and `struct Vec3`).
+					if qname_id != node.source_value_id()
+						&& (tc.struct_modules[node.source_value_id()] or { 'none' }) !in ['', 'main'] {
 						tc.struct_generic_params[node.source_value_id()] = param_ids.clone()
 					}
+				} else if qname_id == node.source_value_id() && tc.cur_module in ['', 'main'] {
+					// The program's own struct owns its bare name: an imported module's
+					// generic struct of that name registered earlier does not make it generic.
+					tc.struct_generic_params.delete(qname_id)
 				}
 				implements_types := struct_decl_implements_ids(node.typ)
 				if implements_types.len > 0 {

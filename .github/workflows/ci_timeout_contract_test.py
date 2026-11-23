@@ -105,7 +105,6 @@ def check_linux(workflow):
             f"{name} shard count must match the scheduled indices",
         )
         require("VTEST_ONLY" not in lane, f"{name} must retain the full suite selection")
-        require(field(lane, "V_MACOS_V3_NO_FALLBACK", 6) == "1", name)
         setup = "uses: ./.github/actions/setup-v"
         dependencies = f"v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_{compiler}"
         command_step(lane, dependencies)
@@ -150,7 +149,6 @@ def check_macos_self_tests(workflow):
         require(field(lane, "VTEST_SELF_SHARD_COUNT", 6) == "'5'", "macOS shard counts must match")
         require(field(lane, "VJOBS", 6) == "'3'", "macOS workers must fit the hosted runner")
         require(field(lane, "VFLAGS", 6) == "-cc clang", "macOS test compiler flags changed")
-        require(field(lane, "V_MACOS_V3_NO_FALLBACK", 6) == "1", "macOS must use V3")
         require(
             re.search(r"^      VTEST_ONLY(?:_FN)?:", lane, re.MULTILINE) is None,
             "macOS must retain the full self-test selection",
@@ -182,19 +180,39 @@ def check_macos(workflow):
     routed_command(lane, "./v -silent -W -cstrict test-self cmd", "matrix.suite == 'strict'")
 
 
-def check_riscv(workflow):
-    lane = job(workflow, "riscv64_linux")
-    require(field(lane, "timeout-minutes", 4) == "180", "RISC-V needs time for tests after bootstrap")
+def check_emulated(workflow, name, arch, timeout, tests):
+    """An emulated lane bootstraps and generates C natively, cross-compiles that C on
+    its x86 host, then installs the result natively before its tests."""
+    lane = job(workflow, name)
+    require(field(lane, "timeout-minutes", 4) == timeout, f"{arch} needs time for tests after bootstrap")
     commands = [
         "            make\n",
-        "            V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh\n",
-        "            ./v test vlib/builtin vlib/os vlib/encoding/binary\n",
-        "            ./v test vlib/v/slow_tests/assembly\n",
-        "            VTEST_ONLY=closure ./v test vlib/v/tests\n",
+        "            V_CI_SOURCE_BUILD=1 V_CI_VPROD_STAGE=generate sh .github/workflows/prepare_v.sh\n",
+        f"          sudo apt-get install -q -y gcc-{arch}-linux-gnu\n",
+        '          PATH="$RUNNER_TEMP/cross-gcc:$PATH" make --no-print-directory -C vprod.project\n',
+        "            V_CI_SOURCE_BUILD=1 V_CI_VPROD_STAGE=install sh .github/workflows/prepare_v.sh\n",
+        *[f"            {test}\n" for test in tests],
     ]
-    require(all(lane.count(command) == 1 for command in commands), "RISC-V coverage changed")
+    require(all(lane.count(command) == 1 for command in commands), f"{arch} coverage changed")
     positions = [lane.index(command) for command in commands]
-    require(positions == sorted(positions), "RISC-V native bootstrap and test order changed")
+    require(positions == sorted(positions), f"{arch} native bootstrap, cross compile and test order changed")
+    require(lane.count("uses: uraimo/run-on-arch-action@") == 2, f"{arch} must test in its emulated container")
+    require(lane.count(f"          arch: {arch}\n") == 2, f"{arch} container architecture changed")
+
+
+def check_riscv(workflow):
+    check_emulated(workflow, "riscv64_linux", "riscv64", "180", [
+        "./v test vlib/builtin vlib/os vlib/encoding/binary",
+        "./v test vlib/v/slow_tests/assembly",
+        "VTEST_ONLY=closure ./v test vlib/v/tests",
+    ])
+
+
+def check_s390x(workflow):
+    check_emulated(workflow, "s390x_linux", "s390x", "120", [
+        "./v test vlib/builtin vlib/os vlib/encoding/binary",
+        "./v test vlib/v/tests/fns/closure_test.v",
+    ])
 
 
 def check_openbsd(workflow):
@@ -252,7 +270,7 @@ def check_windows_gcc(workflow):
     require(order == sorted(order), "Windows GCC setup must complete before self tests")
     serial = job(workflow, "gcc-windows")
     require("steps.self_tests" not in serial, "Windows GCC still depends on the moved self-test step")
-    javascript = command_step(serial, "v -old-compiler -b js -o hi.js examples/js_hello_world.v && node hi.js")
+    javascript = command_step(serial, "v -b js -o hi.js examples/hello_world.v && node hi.js")
     require(
         "steps.test_pure_v_math_module.outcome == 'success'" in field(javascript, "if", 8),
         "Windows GCC remaining checks must still run after pure math",
@@ -350,5 +368,6 @@ if __name__ == "__main__":
     check_windows_msvc((ROOT / ".github/workflows/windows_ci_msvc.yml").read_text())
     check_sanitizer_shards((ROOT / ".github/workflows/sanitized_ci.yml").read_text())
     check_riscv((ROOT / ".github/workflows/riscv64_linux_ci.yml").read_text())
+    check_s390x((ROOT / ".github/workflows/s390x_linux_ci.yml").read_text())
     check_msvc((ROOT / ".github/workflows/sanitized_ci.yml").read_text())
     print("CI suite routing, complete shard coverage, and bootstrap prerequisites passed")

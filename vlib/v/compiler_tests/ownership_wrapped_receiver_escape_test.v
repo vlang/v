@@ -82,7 +82,7 @@ fn main() { mut drops := 0; ${call} }
 ')!
 		for mode in ['-no-parallel', ''] {
 			// Rejected fixtures are checked only: their returned pointers would be dangling.
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 			assert out.exit_code != 0, '${case.typ}: ${case.expression}: ${out.output}'
 			assert out.output.contains('cannot return a reference to local storage'), '${case.typ}: ${case.expression}: ${out.output}'
 		}
@@ -180,7 +180,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 	}
 }

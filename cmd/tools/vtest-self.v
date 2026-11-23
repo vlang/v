@@ -482,19 +482,12 @@ fn main() {
 	}
 	mut vargs := os.args[1..args_idx].clone()
 	requested_args := os.split_args(os.getenv('VFLAGS')) or { panic(err) }
-	mut all_requested_args := requested_args.clone()
-	all_requested_args << vargs
-	strict_v3 := ('-new-compiler' in all_requested_args && '-old-compiler' !in all_requested_args)
-		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
-	if strict_v3 {
-		// Apply environment flags to test compilation, without leaking a host C
-		// compiler choice into nested compiler invocations (for example FastC).
-		if vargs.len < requested_args.len || vargs[..requested_args.len] != requested_args {
-			vargs = requested_args.clone()
-			vargs << os.args[1..args_idx]
-		}
-		os.unsetenv('VFLAGS')
+	// Apply environment flags to test compilation without leaking them into nested builds.
+	if vargs.len < requested_args.len || vargs[..requested_args.len] != requested_args {
+		vargs = requested_args.clone()
+		vargs << os.args[1..args_idx]
 	}
+	os.unsetenv('VFLAGS')
 	targs := os.args#[args_idx + 1..]
 	cfg := Config.init(vargs, targs) or {
 		eprintln(err)

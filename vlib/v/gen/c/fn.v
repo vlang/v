@@ -12318,6 +12318,11 @@ fn (g &FlatGen) resolved_call_matches_target(resolved string, target string) boo
 		|| resolved_short == g.cname(target_short)
 }
 
+// cgen_runtime_macro_helpers are the array helpers that the C prelude defines as
+// macros (builtin_abi_decls in cleanc.v) for the calls that transform makes.
+const cgen_runtime_macro_helpers = ['array_new', 'array_push', 'array_push_many_ptr', 'array_get',
+	'array_set', 'array_slice', 'array_delete', 'array_ensure_cap']
+
 // normalize_call_key transforms normalize call key data for c.
 fn (g &FlatGen) normalize_call_key(name string) string {
 	if !isnil(g.normalize_call_cache) {
@@ -12365,6 +12370,12 @@ fn (g &FlatGen) normalize_call_key_uncached(name string) string {
 	qname := g.tc.qualify_fn_name(name)
 	if qname in g.tc.fn_param_types || qname in g.tc.fn_ret_types {
 		return qname
+	}
+	// The runtime helpers that transform calls by these names are C macros of the
+	// prelude, with no V declaration: an imported module's function of the same
+	// short name must not take their calls.
+	if name in cgen_runtime_macro_helpers {
+		return name
 	}
 	// Most names reaching this loop are found under no import. Probe each
 	// `module.name` spelling from a scratch buffer and copy only a hit.
@@ -19772,7 +19783,10 @@ fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_na
 			return *rt
 		}
 	}
-	if !node.value.contains('.') {
+	// For a function of the program, the bare name in that table can be another
+	// module's alias (`json2.decode_T_Array_int` is also `decode_T_Array_int`) until
+	// the function's own registration claims it; the checker's table below is its own.
+	if !node.value.contains('.') && module_name !in ['', 'main', 'builtin'] {
 		full_name := qualify_name_in_module(module_name, node.value)
 		if rt := g.fn_decl_ret_types[full_name] {
 			return *rt

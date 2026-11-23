@@ -213,8 +213,8 @@ fn test_pseudo_file_interpolation_text_remains_literal() {
 	second[0] = `D`
 	assert out == r'${if true {A} else {B}}'
 }")!
-	compile := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-		'-cc', @CCOMPILER, '-o', binary, source])
+	compile := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc', @CCOMPILER,
+		'-o', binary, source])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([binary])
 	assert run.exit_code == 0, run.output

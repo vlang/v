@@ -4,7 +4,7 @@ import os
 
 // full_compiler_is_required checks the selected target, not backends being compiled into V.
 fn full_compiler_is_required(args []string) bool {
-	match selected_backend(args, false) {
+	match selected_backend(args) {
 		'fastc' {
 			$if skip_fastc ? {
 				return true
