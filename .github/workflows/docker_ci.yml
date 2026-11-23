@@ -158,6 +158,6 @@ jobs:
       - name: All code is formatted
         run: ./v -silent test-cleancode
       - name: Verify cached interface dispatch against musl-native SQLite
-        run: ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/gen/c/cached_interface_dispatch_test.v
+        run: env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/gen/c/cached_interface_dispatch_test.v
       - name: Test V fixed tests
         run: ./v -silent test-self vlib
