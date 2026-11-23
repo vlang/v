@@ -30,6 +30,23 @@ pub fn (h &JSONHandler) enabled(level Level) bool {
 }
 
 pub fn (h &JSONHandler) handle(ctx context.Context, r Record) ! {
+	// ReplaceAttr is user code: run it before taking the handler lock so a
+	// callback that logs re-entrantly cannot deadlock.
+	cfg_fields := h.cfg.apply_replace(h.cfg.groups, h.cfg.attrs)
+	call_fields := h.cfg.apply_replace(r.groups, r.attrs)
+	mut fixed_fields := []Attr{cap: r.fixed.len}
+	for i in 0 .. r.fixed.len {
+		a := h.cfg.apply_one(r.groups, r.fixed.items[i])
+		if a.key != '' {
+			fixed_fields << a
+		}
+	}
+	line := h.render(r, cfg_fields, fixed_fields, call_fields)
+	mut s := h.cfg.st
+	s.writer.write(line) or {}
+}
+
+fn (h &JSONHandler) render(r Record, cfg_fields []Attr, fixed_fields []Attr, call_fields []Attr) []u8 {
 	mut s := h.cfg.st
 	s.mu.lock()
 	defer { s.mu.unlock() }
@@ -62,23 +79,21 @@ pub fn (h &JSONHandler) handle(ctx context.Context, r Record) ! {
 		}
 	}
 
-	for a in h.cfg.attrs {
+	for a in cfg_fields {
 		if is_reserved_key(a.key) {
 			continue
 		}
 		append_byte(mut s.buf, ',')
 		append_json_attr(mut s.buf, a.key, a.value)
 	}
-	for i in 0 .. r.fixed.len {
-		a := r.fixed.items[i]
+	for a in fixed_fields {
 		if is_reserved_key(a.key) {
 			continue
 		}
 		append_byte(mut s.buf, ',')
 		append_json_attr(mut s.buf, a.key, a.value)
 	}
-	fields := h.cfg.apply_replace(r.groups, r.attrs)
-	for a in fields {
+	for a in call_fields {
 		if is_reserved_key(a.key) {
 			continue
 		}
@@ -87,7 +102,7 @@ pub fn (h &JSONHandler) handle(ctx context.Context, r Record) ! {
 	}
 	append_byte(mut s.buf, '}')
 	append_byte(mut s.buf, '\n')
-	s.writer.write(s.buf) or {}
+	return s.buf.clone()
 }
 
 pub fn (h &JSONHandler) set_level(level Level) {
@@ -120,37 +135,97 @@ fn append_json_string(mut buf []u8, s string) {
 	buf << u8(34)
 }
 
+// utf8_seq_len returns the expected length of a UTF-8 sequence starting at i.
+fn utf8_seq_len(b []u8, i int) int {
+	c := b[i]
+	if c >= 0xc2 && c <= 0xdf {
+		return 2
+	}
+	if c >= 0xe0 && c <= 0xef {
+		return 3
+	}
+	if c >= 0xf0 && c <= 0xf4 {
+		return 4
+	}
+	return 0
+}
+
+// valid_utf8_seq checks continuation bytes and the overlong/surrogate limits.
+fn valid_utf8_seq(b []u8, i int, n int) bool {
+	if i + n > b.len {
+		return false
+	}
+	for j in 1 .. n {
+		if b[i + j] < 0x80 || b[i + j] > 0xbf {
+			return false
+		}
+	}
+	c := b[i]
+	if n == 2 {
+		return c >= 0xc2
+	}
+	if n == 3 {
+		if c == 0xe0 && b[i + 1] < 0xa0 {
+			return false
+		}
+		if c == 0xed && b[i + 1] >= 0xa0 {
+			return false
+		}
+	}
+	if n == 4 {
+		if c == 0xf0 && b[i + 1] < 0x90 {
+			return false
+		}
+		if c == 0xf4 && b[i + 1] >= 0x90 {
+			return false
+		}
+	}
+	return true
+}
+
 // append_escaped writes the escaped content of a JSON string without quotes.
+// Invalid UTF-8 is replaced with the standard U+FFFD escape so strict JSON
+// readers always accept the record.
 fn append_escaped(mut buf []u8, s string) {
-	for c in s.bytes() {
+	b := s.bytes()
+	mut i := 0
+	for i < b.len {
+		c := b[i]
 		match c {
 			u8(34) {
 				buf << u8(92)
 				buf << u8(34)
+				i++
 			}
 			u8(92) {
 				buf << u8(92)
 				buf << u8(92)
+				i++
 			}
 			8 {
 				buf << u8(92)
 				buf << u8(98)
+				i++
 			}
 			9 {
 				buf << u8(92)
 				buf << u8(116)
+				i++
 			}
 			10 {
 				buf << u8(92)
 				buf << u8(110)
+				i++
 			}
 			12 {
 				buf << u8(92)
 				buf << u8(102)
+				i++
 			}
 			13 {
 				buf << u8(92)
 				buf << u8(114)
+				i++
 			}
 			else {
 				if c < 0x20 {
@@ -160,8 +235,26 @@ fn append_escaped(mut buf []u8, s string) {
 					buf << u8(48)
 					buf << hex_digit(c >> 4)
 					buf << hex_digit(c & 0x0f)
-				} else {
+					i++
+				} else if c < 0x80 {
 					buf << c
+					i++
+				} else {
+					n := utf8_seq_len(b, i)
+					if n > 0 && valid_utf8_seq(b, i, n) {
+						for j in 0 .. n {
+							buf << b[i + j]
+						}
+						i += n
+					} else {
+						buf << u8(92)
+						buf << u8(117)
+						buf << u8(102)
+						buf << u8(102)
+						buf << u8(102)
+						buf << u8(100)
+						i++
+					}
 				}
 			}
 		}

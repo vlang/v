@@ -106,7 +106,7 @@ fn main() {
 	req_log.info('request started', log.int('port', 8080))
 	req_log.warn('slow response', log.float('seconds', 1.5))
 
-	// log.json returns newline delimited JSON with stable field order.
+	// a JSON handler writes newline delimited JSON with stable field order.
 	jh := log.new_json_handler(os.stderr(), log.HandlerOptions{})
 	log.new_logger(jh).info('done', log.bool('ok', true))
 }

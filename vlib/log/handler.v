@@ -10,7 +10,7 @@ import context
 import io
 import sync
 
-// level_mu guards LevelVar.level so runtime level changes are safe when
+// LevelVar.mu guards LevelVar.level so runtime level changes are safe when
 // several threads call enabled() at the same time.
 
 // ReplaceAttr can rewrite, filter (by returning Attr{}), or reorder an
@@ -149,6 +149,14 @@ fn (c HandlerConfig) enabled(level Level) bool {
 		return int(v.get()) >= int(level)
 	}
 	return int(s.level) >= int(level)
+}
+
+// apply_one runs the configured ReplaceAttr on a single attribute. Returning
+// an Attr with an empty key drops it. Callers must invoke this OUTSIDE the
+// handler mutex: the callback is user code and may log re-entrantly.
+fn (c HandlerConfig) apply_one(groups []string, a Attr) Attr {
+	replace := c.st.opts.replace_attr or { return a }
+	return replace(groups, a)
 }
 
 // apply_replace runs the configured ReplaceAttr over a list of attributes.

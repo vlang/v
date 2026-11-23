@@ -68,6 +68,7 @@ fn test_json_handler_record() {
 	l.info('hello', sattr('k', 'v'))
 	out := cap.text().trim_space()
 	decoded := json2.decode[map[string]string](out) or { panic('bad json: ${out} / ${err}') }
+	assert decoded['time'] != ''
 	assert decoded['level'] == 'info'
 	assert decoded['msg'] == 'hello'
 	assert decoded['k'] == 'v'
@@ -82,6 +83,13 @@ fn test_with_and_group() {
 	out := cap.text()
 	assert out.contains('"service":"api"')
 	assert out.contains('"status":200')
+
+	mut tcap := &Capture{}
+	th := new_text_handler(io.Writer(tcap), HandlerOptions{ color: false })
+	tl := new_logger(th).with(sattr('service', 'api')).with_group('http')
+	tl.info('done', iattr('status', 200))
+	assert tcap.text().contains('http.status=200')
+	assert tcap.text().contains('http.service=api')
 }
 
 fn test_level_filtering() {
@@ -100,6 +108,13 @@ fn test_attrs_builder() {
 	mut a := Attrs{}
 	a.add(sattr('a', '1')).add(iattr('b', 2))
 	assert a.values().len == 2
+	assert a.values()[0].key == 'a'
+	assert a.values()[1].key == 'b'
+	a.clear()
+	assert a.values().len == 0
+	a.add(sattr('c', '3'))
+	assert a.values().len == 1
+	assert a.values()[0].key == 'c'
 }
 
 fn test_context_logging() {
@@ -149,6 +164,13 @@ fn test_reserved_keys_are_ignored() {
 	decoded := json2.decode[map[string]string](out) or { panic('bad json: ${out}') }
 	assert decoded['msg'] == 'm'
 	assert decoded['level'] == 'info'
+
+	mut tcap := &Capture{}
+	th := new_text_handler(io.Writer(tcap), HandlerOptions{ color: false })
+	tl := new_logger(th).with(sattr('time', 'SPOOFED'))
+	f := fixed1(sattr('msg', 'SPOOFED'))
+	tl.log_fixed(.info, 'm', &f)
+	assert !tcap.text().contains('SPOOFED')
 }
 
 fn test_non_finite_float_is_null() {
@@ -156,9 +178,12 @@ fn test_non_finite_float_is_null() {
 	h := new_json_handler(io.Writer(cap), HandlerOptions{})
 	l := new_logger(h)
 	l.info('nan', Attr{ key: 'x', value: math.nan() })
+	l.info('inf', Attr{ key: 'y', value: math.inf(1) })
 	out := cap.text()
 	assert out.contains('"x":null')
-	assert json2.decode[map[string]string](out.split('\n')[0]) != none
+	assert out.contains('"y":null')
+	decoded := json2.decode[map[string]string](out.split('\n')[0]) or { panic('bad json') }
+	assert decoded['x'] == ''
 }
 
 fn test_attrs_grows_past_eight() {
@@ -167,6 +192,11 @@ fn test_attrs_grows_past_eight() {
 		a.add(iattr('k${i}', i))
 	}
 	assert a.values().len == 12
+	assert a.values()[11].key == 'k11'
+	mut cap := &Capture{}
+	h := new_text_handler(io.Writer(cap), HandlerOptions{ color: false })
+	new_logger(h).log_attrs(.info, 'built', &a)
+	assert cap.text().contains('k11=11')
 }
 
 fn test_set_level_updates_level_var() {
@@ -215,5 +245,56 @@ fn test_time_format_custom() {
 	h := new_text_handler(io.Writer(cap), opts)
 	l := new_logger(h)
 	l.info('x')
-	assert cap.text().contains(time.now().year.str())
+	assert cap.text().trim_space().starts_with('${time.now().year.str()} [')
+}
+
+fn test_replace_attr_applies_to_every_attribute_source() {
+	redact := fn (_ []string, a Attr) Attr {
+		if a.key == 'token' {
+			return Attr{}
+		}
+		return a
+	}
+	opts := HandlerOptions{ replace_attr: redact }
+	mut cap := &Capture{}
+	h := new_json_handler(io.Writer(cap), opts)
+	l := new_logger(h).with(sattr('token', 'CFG'))
+	f := fixed1(sattr('token', 'FIXED'))
+	l.info('call', sattr('token', 'CALL'))
+	l.log_fixed(.info, 'fixed', &f)
+	out := cap.text()
+	assert !out.contains('CFG')
+	assert !out.contains('FIXED')
+	assert !out.contains('CALL')
+}
+
+fn test_local_time_matches_legacy_for_plain_formats() {
+	mut tcap := &Capture{}
+	th := new_text_handler(io.Writer(tcap), HandlerOptions{
+		color:       false
+		local_time:  true
+		time_format: .tf_ss
+	})
+	new_logger(th).info('m')
+
+	mut ocap := &Capture{}
+	mut old := Log{}
+	old.set_output_stream(io.Writer(ocap))
+	old.set_local_time(true)
+	old.set_time_format(.tf_ss)
+	old.info('m')
+
+	new_line := tcap.text()
+	old_line := ocap.text()
+	assert new_line[0..19] == old_line[0..19], '${new_line} vs ${old_line}'
+}
+
+fn test_invalid_utf8_is_replaced() {
+	mut cap := &Capture{}
+	h := new_json_handler(io.Writer(cap), HandlerOptions{})
+	bad := [u8(0xc3), u8(0x28), u8(0x80)].bytestr()
+	new_logger(h).info('utf8', sattr('k', bad))
+	out := cap.text()
+	assert out.contains('\\ufffd')
+	_ = json2.decode[map[string]string](out.trim_space()) or { panic('bad json: ${out}') }
 }

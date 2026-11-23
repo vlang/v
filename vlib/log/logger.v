@@ -136,11 +136,19 @@ pub fn (l &RecordLogger) log_fixed(level Level, msg string, attrs &FixedAttrs) {
 	if !l.handler.enabled(level) {
 		return
 	}
+	// len is private, but a derived handler or internal caller could still
+	// produce an inconsistent list; clamp before handing it to the renderer.
+	mut f := FixedAttrs{}
+	n := if attrs.len < 4 { attrs.len } else { 4 }
+	for i in 0 .. n {
+		f.items[i] = attrs.items[i]
+	}
+	f.len = n
 	mut r := Record{
 		level:  level
 		msg:    msg
 		attrs:  l.empty
-		fixed:  attrs
+		fixed:  f
 		groups: l.groups
 		logger: l.name
 	}

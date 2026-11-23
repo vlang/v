@@ -31,6 +31,23 @@ pub fn (h &TextHandler) enabled(level Level) bool {
 }
 
 pub fn (h &TextHandler) handle(ctx context.Context, r Record) ! {
+	// Run user callbacks outside the handler lock: a ReplaceAttr callback may
+	// log through the same handler and would otherwise deadlock.
+	cfg_fields := h.cfg.apply_replace(h.cfg.groups, h.cfg.attrs)
+	call_fields := h.cfg.apply_replace(r.groups, r.attrs)
+	mut fixed_fields := []Attr{cap: r.fixed.len}
+	for i in 0 .. r.fixed.len {
+		a := h.cfg.apply_one(r.groups, r.fixed.items[i])
+		if a.key != '' {
+			fixed_fields << a
+		}
+	}
+	line := h.render(r, cfg_fields, fixed_fields, call_fields)
+	mut s := h.cfg.st
+	s.writer.write(line) or {}
+}
+
+fn (h &TextHandler) render(r Record, cfg_fields []Attr, fixed_fields []Attr, call_fields []Attr) []u8 {
 	mut s := h.cfg.st
 	s.mu.lock()
 	defer { s.mu.unlock() }
@@ -45,31 +62,32 @@ pub fn (h &TextHandler) handle(ctx context.Context, r Record) ! {
 	}
 	append_byte(mut s.buf, ' ')
 	append_byte(mut s.buf, '[')
-	append_str(mut s.buf, s.tags[int(r.level)])
+	mut idx := int(r.level)
+	if idx < 0 || idx >= s.tags.len {
+		idx = int(Level.info)
+	}
+	append_str(mut s.buf, s.tags[idx])
 	append_byte(mut s.buf, ']')
 	append_byte(mut s.buf, ' ')
 	append_str(mut s.buf, r.msg)
 
-	all := h.cfg.apply_replace(r.groups, r.attrs)
-	for a in h.cfg.attrs {
+	for a in cfg_fields {
 		if !is_reserved_key(a.key) {
 			append_attr(mut s.buf, h.cfg.groups, a)
 		}
 	}
-	for i in 0 .. r.fixed.len {
-		a := r.fixed.items[i]
+	for a in fixed_fields {
 		if !is_reserved_key(a.key) {
 			append_attr(mut s.buf, r.groups, a)
 		}
 	}
-	for a in all {
+	for a in call_fields {
 		if !is_reserved_key(a.key) {
 			append_attr(mut s.buf, r.groups, a)
 		}
 	}
 	append_byte(mut s.buf, '\n')
-
-	s.writer.write(s.buf) or {}
+	return s.buf.clone()
 }
 
 pub fn (h &TextHandler) set_level(level Level) {

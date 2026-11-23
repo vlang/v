@@ -4,8 +4,8 @@ module log
 import time
 
 // SourceLocation identifies the source position that emitted a log record.
-// It is populated when HandlerOptions.add_source is enabled (compiler support
-// for call site capture is required; see the `caller` helpers below).
+// It is populated when HandlerOptions.add_source is enabled; call site capture
+// requires compiler support that is not part of this module.
 pub struct SourceLocation {
 pub:
 	file string
