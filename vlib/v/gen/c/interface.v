@@ -2869,9 +2869,16 @@ fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string
 	out := g.interface_tmp('iface_str_out')
 	fallback := g.interface_str_lit('${iface_name.all_after_last('.')}{}')
 	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${fallback}; if (${tmp}._object != 0) { switch (${tmp}._typ) {'
+	// Printed inside another value (an interface field of an implementer), list only
+	// the types boxed in this interface: every implementer of an empty interface,
+	// each printed with its own interface fields, made one printer megabytes of C.
+	nested := stack.len > 1
 	for concrete_id in impls {
 		id := g.iface_type_id(iface_name_id, concrete_id)
 		if id == 0 {
+			continue
+		}
+		if nested && !g.interface_boxed_type_marked_for_dispatch(iface_name_id, concrete_id) {
 			continue
 		}
 		concrete_type := g.interface_concrete_type(concrete_id)
