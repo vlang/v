@@ -1974,6 +1974,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	// for the program's own, and dropped the tag and variant as unknown fields.
 	if clean_init_type is types.SumType {
 		sum_ct := g.value_c_type(clean_init_type)
+		sum_name := g.resolve_sum_name(clean_init_type.source_type_id())
 		g.write('(${sum_ct}*)memdup(&(${sum_ct}){')
 		for i in 0 .. node.children_count {
 			field := g.a.child_node(&node, i)
@@ -1981,7 +1982,8 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 				g.write(', ')
 			}
 			g.write('.${c_field_name(field.value)} = ')
-			g.gen_expr(g.a.child(field, 0))
+			// Fixed-array sum fields need a brace initializer, not a typed array literal.
+			g.gen_lowered_sum_field_value(sum_name, field)
 		}
 		g.write('}, sizeof(${sum_ct}))')
 		return
