@@ -21,6 +21,7 @@ mut:
 	output             Encoder
 	values_info        []ValueInfo
 	source_values_info []Json5SourceSpan
+	container_depth    int
 }
 
 fn json5_syntax_error(message string, line int, col int) &JsonScanError {
@@ -84,6 +85,14 @@ fn (mut p Json5Parser) parse_value() ! {
 	index := p.values_info.len
 	match p.tok.kind {
 		.lcbr, .lsbr {
+			if p.container_depth >= max_nesting_depth {
+				return json5_syntax_error('exceeded the maximum nesting depth', p.tok.pos.line,
+					p.tok.pos.col)
+			}
+			p.container_depth++
+			defer {
+				p.container_depth--
+			}
 			is_object := p.tok.kind == .lcbr
 			p.values_info << ValueInfo{
 				position:   start
@@ -415,16 +424,19 @@ fn parse_json5_float(text string) !f64 {
 }
 
 // parse parses JSON into a dynamic Any value. Set `json5: true` for JSON5 syntax.
+// Dynamic values deeper than 256 array/object levels return a JsonDecodeError.
 pub fn parse(text string, params DecoderOptions) !Any {
 	return decode[Any](text, params)
 }
 
-// parse_text parses a JSON or JSON5 document with path lookup.
+// parse_text parses a JSON or JSON5 document with path lookup. Dynamic values deeper
+// than 256 array/object levels return a JsonDecodeError.
 pub fn parse_text(text string, params DecoderOptions) !Doc {
 	return new_doc(parse(text, params)!, params)
 }
 
-// parse_file reads a JSON or JSON5 document with path lookup.
+// parse_file reads a JSON or JSON5 document with path lookup. Dynamic values deeper
+// than 256 array/object levels return a JsonDecodeError.
 @[manualfree]
 pub fn parse_file(path string, params DecoderOptions) !Doc {
 	text := os.read_file(path)!

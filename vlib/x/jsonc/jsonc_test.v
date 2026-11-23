@@ -31,6 +31,49 @@ fn test_is_valid_accepts_jsonc() {
 	assert is_valid('{"a": [1, {"b": null}]}')
 }
 
+fn test_dynamic_any_depth_returns_a_bounded_parse_error() {
+	// JSONC builds an Any tree, which has the same limit as json2's dynamic decoder.
+	at_limit := '['.repeat(256) + '0' + ']'.repeat(256)
+	assert is_valid(at_limit)
+	assert violation(at_limit) == none
+	assert parse_text(at_limit)!.root is []json2.Any
+
+	too_deep := '['.repeat(257) + '0' + ']'.repeat(257)
+	assert !is_valid(too_deep)
+	assert violation(too_deep) == none
+	parse_text(too_deep) or {
+		assert err is json2.JsonDecodeError
+		assert err.msg().contains('maximum nesting depth')
+		decode_error := err as json2.JsonDecodeError
+		assert decode_error.line == 1
+		assert decode_error.character == 257
+		return
+	}
+	assert false, 'expected JSONC Any nesting over the limit to return an error'
+}
+
+fn test_typed_decode_inherits_dynamic_any_validation_limit() {
+	too_deep_for_any := '['.repeat(257) + '0' + ']'.repeat(257)
+	if _ := decode[Server](too_deep_for_any) {
+		assert false, 'expected JSONC validation to reject the dynamic Any depth'
+	} else {
+		assert err is json2.JsonDecodeError
+		decode_error := err as json2.JsonDecodeError
+		assert decode_error.line == 1
+		assert decode_error.character == 257
+	}
+
+	too_deep_for_parser := '['.repeat(513) + '0' + ']'.repeat(513)
+	if _ := decode[Server](too_deep_for_parser) {
+		assert false, 'expected JSON5 parsing to reject depth beyond its parser limit'
+	} else {
+		assert err is json2.JsonScanError
+		scan_error := err as json2.JsonScanError
+		assert scan_error.line == 1
+		assert scan_error.character == 513
+	}
+}
+
 fn test_is_valid_rejects_json5_only_syntax() {
 	assert !is_valid("{'a': 1}")
 	assert !is_valid('{a: 1}')
