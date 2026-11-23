@@ -14642,6 +14642,7 @@ pub fn run(args []string) {
 				eprintln(err.msg())
 				exit(1)
 			}
+			wasm_existed_before := os.exists(output_file)
 			g.write(output_file) or {
 				eprintln('error writing ${output_file}')
 				exit(1)
@@ -14650,6 +14651,25 @@ pub fn run(args []string) {
 				eprintln('wasm: ${warning}')
 			}
 			b.step('wasm gen')
+			if should_run {
+				runner := os.getenv_opt('V3_PRIMARY_VEXE') or {
+					os.getenv_opt('VEXE') or {
+						os.join_path(prefs.vroot, if os.user_os() == 'windows' {
+							'v.exe'
+						} else {
+							'v'
+						})
+					}
+				}
+				mut wasm_args := ['wasm', output_file]
+				wasm_args << run_args
+				status := run_binary(runner, wasm_args, false)
+				if !explicit_output && !is_crun && !keep_c && !wasm_existed_before {
+					os.rm(output_file) or {}
+				}
+				if status != 0 { exit(status) }
+				b.step('run')
+			}
 			b.print_report()
 			return
 		} $else {
