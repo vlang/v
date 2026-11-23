@@ -8606,17 +8606,29 @@ fn test_a_dry_run_fails_on_a_lock_file_that_setting_its_mode_cannot_make_usable(
 		entry := tool_cache_test_entry(root, 'vfmt', 'c')!
 		lock_file := tool_cache_test_lock(root, 'vfmt')
 		os.write_file(lock_file, '')!
-		mut handle := voidptr(0)
-		$if windows {
-			handle = tool_cache_test_open_for_reading(lock_file)
+		// Another program opens the file and lets others read it only, until it is killed.
+		held_file := os.join_path(directory, 'held')
+		opened := lock_file.replace("'", "''")
+		told := held_file.replace("'", "''")
+		mut holder := os.new_process(os.join_path(os.getenv('SystemRoot'), 'System32', 'WindowsPowerShell',
+			'v1.0', 'powershell.exe'))
+		holder.set_args(['-NoProfile', '-NonInteractive', '-Command',
+			"\$file = [IO.File]::Open('${opened}', 'Open', 'Read', 'Read'); [IO.File]::WriteAllText('${told}', 'x'); Start-Sleep -Seconds 120; \$file.Close()"])
+		holder.set_redirect_stdio()
+		holder.run()
+		deadline := time.now().add(time.minute)
+		for !os.exists(held_file) && holder.is_alive() && time.now() < deadline {
+			time.sleep(10 * time.millisecond)
 		}
+		is_held := os.exists(held_file) && holder.is_alive()
 		mut dry_failure := ''
 		mut failure := ''
 		wipe_output('--tools', '--dry-run') or { dry_failure = err.msg() }
 		wipe_output('--tools') or { failure = err.msg() }
-		$if windows {
-			tool_cache_test_close(handle)
-		}
+		was_held := holder.is_alive()
+		holder.signal_kill()
+		said, _ := toolcache_test_finish(mut holder, time.minute)
+		assert is_held && was_held, said
 		assert failure.contains(lock_file), failure
 		assert dry_failure.contains(lock_file), dry_failure
 		assert os.is_dir(entry)

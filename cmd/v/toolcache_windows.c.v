@@ -474,19 +474,6 @@ fn tool_cache_wipe_full_path(path string) string {
 	return tool_cache_full_path(os.abs_path(path))
 }
 
-// tool_cache_test_open_for_reading opens the file at `path` for reading and lets no other handle
-// open it for writing until `tool_cache_test_close` closes it, as a program that holds a file open
-// that way does. Only the tests use it.
-fn tool_cache_test_open_for_reading(path string) voidptr {
-	return C.v_toolcache_create_file_w(path.to_wide(), u32(0x80000000), u32(1),
-		toolcache_windows_open_existing, toolcache_windows_file_attribute_normal)
-}
-
-// tool_cache_test_close closes a handle that `tool_cache_test_open_for_reading` gave.
-fn tool_cache_test_close(handle voidptr) {
-	C.v_toolcache_close_handle(handle)
-}
-
 // tool_cache_wipe_unreachable says why the path made of the folder at `folder` and `name`, a name
 // that the folder lists, does not reach that item, or gives '' when it does. Windows makes a path
 // into another before it acts on it (see `tool_cache_full_path`): it drops the dots and spaces at the
