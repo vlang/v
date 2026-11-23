@@ -680,7 +680,8 @@ fn (dir ToolCacheWipeDir) create_lock_file(name string, owner u32) ! {
 // follows a link, so the caller checks first that `name` is a regular file that nobody else can
 // swap (see `tool_cache_lock_is_repairable`).
 fn (dir ToolCacheWipeDir) repair_lock_file(name string) ! {
-	for access in [C.O_RDONLY, C.O_WRONLY] {
+	// FastC, which builds the compiler too, supports no loop over C constants without a type.
+	for access in [i32(C.O_RDONLY), i32(C.O_WRONLY)] {
 		fd := C.openat(dir.fd, &char(name.str), access | C.O_NOFOLLOW | C.O_NONBLOCK, 0)
 		if fd < 0 {
 			continue
