@@ -46,6 +46,11 @@ fn test_duration_debug() {
 	assert (-time.Duration(169 * time.hour + 5 * time.minute + 7 * time.second)).debug() == 'Duration: - 7days, 1h, 5m, 7s'
 }
 
+fn test_duration_debug_minimum() {
+	actual := time.Duration(min_i64).debug()
+	assert actual == 'Duration: - 106751days, 23h, 47m, 16s, 854ms, 775us, 808ns'
+}
+
 fn test_duration_times() {
 	assert time.second.times(2) == 2 * time.second
 	assert time.minute.times(0.5) == 30 * time.second

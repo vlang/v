@@ -68,6 +68,14 @@ fn duration_pad3(n u64) string {
 	return n.str()
 }
 
+fn duration_magnitude(d Duration) u64 {
+	if d < 0 {
+		// The minimum i64 magnitude fits in u64, but cannot be negated as i64.
+		return u64(-(i64(d) + 1)) + 1
+	}
+	return u64(d)
+}
+
 // str pretty prints the duration over the full i64 range, including infinite.
 //
 // ```
@@ -79,13 +87,8 @@ fn duration_pad3(n u64) string {
 // ns<ns>     // 234ns
 // ```
 pub fn (d Duration) str() string {
-	mut sign := ''
-	mut t := u64(d)
-	if d < 0 {
-		sign = '-'
-		// The minimum i64 magnitude fits in u64, but cannot be negated as i64.
-		t = u64(-(i64(d) + 1)) + 1
-	}
+	sign := if d < 0 { '-' } else { '' }
+	mut t := duration_magnitude(d)
 	hr := t / u64(hour)
 	t -= hr * u64(hour)
 	min := t / u64(minute)
@@ -116,16 +119,12 @@ pub fn (d Duration) str() string {
 	return sign + ns.str() + 'ns'
 }
 
-// debug returns a detailed breakdown of the Duration, as: 'Duration: - 50days, 4h, 3m, 7s, 541ms, 78us, 9ns'.
+// debug returns a signed day-to-nanosecond breakdown over the full i64 range.
 pub fn (d Duration) debug() string {
 	mut res := []string{}
-	mut x := i64(d)
-	mut sign := ''
-	if x < 0 {
-		sign = '- '
-		x = -x
-	}
-	for label, v in {
+	mut x := duration_magnitude(d)
+	sign := if d < 0 { '- ' } else { '' }
+	for label, unit in {
 		'days': 24 * hour
 		'h':    hour
 		'm':    minute
@@ -133,6 +132,7 @@ pub fn (d Duration) debug() string {
 		'ms':   millisecond
 		'us':   microsecond
 	} {
+		v := u64(unit)
 		if x > v {
 			xx := x / v
 			x = x % v
