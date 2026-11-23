@@ -20,8 +20,9 @@ fn test_discard_prestarted_workers_without_feeding_source() {
 // another thread created without FD_CLOEXEC: a reader of that pipe would wait
 // for EOF until the worker exits. `os.pipe` creates such a pipe, like os.Process.
 fn test_prestarted_worker_does_not_inherit_unrelated_descriptors() {
-	// The worker capture helpers only exist on macOS. A runtime early return
-	// still leaves their names visible to the checker on Windows.
+	// The helpers are defined only outside Windows (unit_compile_nix.c.v), so
+	// keep the body in the branch instead of returning early: an early return
+	// would still compile the calls.
 	$if macos {
 		mut unrelated := os.pipe() or { panic(err) }
 		defer {
