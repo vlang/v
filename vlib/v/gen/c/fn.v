@@ -8410,6 +8410,21 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 			g.write(')')
 			return
 		}
+		// `cb[T]()` calls a local closure with explicit type arguments: the arguments
+		// only typed the closure, so call the value itself (not `(cb[T])()`).
+		base_id := g.a.child(fn_node, 0)
+		base := g.a.nodes[int(base_id)]
+		if base.kind == .ident && !base.value.contains('.') {
+			if local_type := g.local_ident_type(base.value) {
+				if _ := fn_type_from(unalias_type(local_type)) {
+					g.gen_expr(base_id)
+					g.write('(')
+					g.gen_call_args_for_callee(fn_name, node, runtime_start, callee_name, callee_fn_value_params)
+					g.write(')')
+					return
+				}
+			}
+		}
 	}
 	if node.children_count == 2 && (call_name_is_isnil(fn_name, target_name)
 		|| call_name_is_isnil(resolved_target_name, '')) {
