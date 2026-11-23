@@ -62,9 +62,62 @@ pub fn (app &App) create_item(mut ctx Context) veb.Result {
 }
 ```
 
+Declare operation names next to a handler with `OpenApiSummary` and
+`OpenApiOperationId`. Both attributes are optional and retain the generated default when
+their value is empty:
+
+```v ignore
+@[
+    '/items'; post;
+    veb.OpenApiSummary('Create item');
+    veb.OpenApiOperationId('createItem')
+]
+pub fn (app &Items) create_item(mut ctx Context) veb.Result {
+    return ctx.text('created')
+}
+```
+
+The values apply to every HTTP method and mount of that handler. An explicitly supplied
+operation ID is not rewritten, so mounting the same handler at multiple paths, or exposing
+multiple methods from it, can produce duplicates. Rendering rejects duplicate IDs; use a
+central `doc.operation()` override when each mounted operation needs a distinct ID.
+
 ## Typed metadata beside handlers
 
-Link a handler to a typed metadata method with `veb.OpenApi('method_name')`. The companion method
+Use `@[veb.OpenApiMetadata]` on one controller-wide metadata method to share typed request
+and response declarations across many handlers:
+
+```v ignore
+struct Items {}
+
+@[veb.OpenApiMetadata]
+fn (app &Items) openapi_metadata(mut operation veb.OpenApiHandler) ! {
+    match operation.handler {
+        'create_item' {
+            operation.request[CreateItem]()!
+            operation.response[Item](status: 201)!
+            operation.response[ApiError](status: 422)!
+        }
+        'list_items' {
+            operation.operation(
+                summary: 'List items'
+                operation_id: 'listItems_' +
+                    operation.path.trim('/').replace('/', '_') + '_' +
+                    operation.method.str().to_lower()
+            )!
+        }
+        else {}
+    }
+}
+```
+
+The method receives every operation emitted by that controller, including each mounted path and
+HTTP method. `OpenApiHandler.handler`, `.path` and `.method` identify the current operation.
+DTO generic calls remain compile-time checked, and handlers without a matching branch retain
+the generic operation. A controller may declare only one such method.
+
+For metadata that applies to only one handler, link a typed companion with
+`veb.OpenApi('method_name')`. The companion method
 receives the operation already resolved to its mounted path and HTTP method:
 
 ```v ignore
@@ -96,6 +149,9 @@ successful responses. `raw_response` supports full custom envelopes. Registering
 reflected body or response; query fields with the same name are replaced. Handlers without an
 `OpenApi` attribute keep the existing defaults.
 Conditional compilation and nested controller mounting follow the dispatcher's route metadata.
+If shared and handler-specific metadata are both present, the shared method runs first and
+the handler-specific companion can apply a narrower override. Calls made directly on the
+document after `add_app()` still take final precedence.
 
 To migrate a centralized metadata block, move each route's `request` and `response` calls into
 its companion, remove their path and HTTP method arguments, and add the handler attribute.
@@ -207,3 +263,50 @@ Names must be nonempty and unique across `tags` and `tag_definitions`. Parents m
 parent chains cannot contain cycles. Rendering orders parents before descendants deterministically.
 OpenAPI 3.0.x accepts controller mappings and flat descriptions, but rejects parents and omits the
 3.2-only `summary` and `kind` fields. Use 3.2.x for native hierarchical tags.
+
+### Automatic route tag collection
+
+Register parent groups beside the route domain that owns them. Parent groups declare hierarchy
+but are not added to operation tags:
+
+```v ignore
+fn (mut app App) routes_base(mut ctx Context) {
+    app.openapi_tag_group(veb.OpenApiTagGroup{
+        name:        'base'
+        summary:     'Base data'
+        description: 'Currencies, languages and shared reference data.'
+    })
+    app.register_controller[Currency, Context]('/base/currency', mut currency, mut ctx)
+}
+```
+
+Annotate a mounted controller to map all of its operations to one leaf tag:
+
+```v ignore
+@[veb.OpenApiTag('base.currency', 'Currencies', 'base')]
+pub struct Currency {}
+```
+
+Use one `@[veb.OpenApiTags]` method when a controller needs multiple leaves:
+
+```v ignore
+@[veb.OpenApiTags]
+fn (app &Currency) openapi_tags() []veb.OpenApiTagConfig {
+    return [
+        veb.OpenApiTagConfig{
+            name:    'base.currency'
+            summary: 'Currencies'
+            parent:  'base'
+        },
+        veb.OpenApiTagConfig{
+            name: 'reference-data'
+        },
+    ]
+}
+```
+
+Automatic tags merge with explicit `tag_definitions`. Identical declarations are deduplicated,
+the same leaf used by multiple controllers merges their mappings, and conflicting metadata is
+rejected. Only controllers reachable from the current route dispatcher and its conditional build
+are collected. Repeated mounts do not duplicate controller mappings. Missing parents and cycles
+are validation errors, and deterministic rendering keeps parents before descendants.

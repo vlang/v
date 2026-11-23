@@ -16,17 +16,24 @@ mut:
 }
 
 interface ControllerInterface {
-	controllers []&ControllerPath
+	controllers        []&ControllerPath
+	openapi_tag_groups []OpenApiTagGroup
 }
 
 pub struct Controller {
 pub mut:
-	controllers []&ControllerPath
+	controllers        []&ControllerPath
+	openapi_tag_groups []OpenApiTagGroup
 }
 
 // register_controller adds a new Controller to your app
 pub fn (mut c Controller) register_controller[A, X](path string, mut global_app A) ! {
 	c.controllers << controller[A, X](path, mut global_app)!
+}
+
+// openapi_tag_group registers a parent tag declaration for automatic OpenAPI collection.
+pub fn (mut c Controller) openapi_tag_group(group OpenApiTagGroup) {
+	c.openapi_tag_groups << group
 }
 
 // controller generates a new Controller for the main app

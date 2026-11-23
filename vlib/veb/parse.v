@@ -59,6 +59,10 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string, string) {
 			x.delete(i)
 			continue
 		}
+		if attribute_name in ['OpenApiSummary', 'OpenApiOperationId'] {
+			x.delete(i)
+			continue
+		}
 		if attr.starts_with('host:') {
 			host = attr.all_after('host:').trim_space().trim('\'"')
 			x.delete(i)
