@@ -191,7 +191,7 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 	// declare or call is not part of the test binary.
 	source := test_code_text(os.read_file(real_file) or { return none })
 	for marker in test_batch_excluded_markers {
-		if source.contains(marker) {
+		if source_contains_marker(source, marker) {
 			return none
 		}
 	}
@@ -282,6 +282,21 @@ fn test_file_const_names(source string) []string {
 		}
 	}
 	return names
+}
+
+// source_contains_marker reports whether `marker` occurs in `source` where an
+// identifier can start: `exit(` and `arguments()` are calls, while a test named
+// `test_early_exit()` or `test_literal_arguments()` only ends with the same text.
+fn source_contains_marker(source string, marker string) bool {
+	mut start := 0
+	for {
+		idx := source.index_after(marker, start) or { return false }
+		if idx == 0 || !is_test_ident_char(source[idx - 1]) {
+			return true
+		}
+		start = idx + 1
+	}
+	return false
 }
 
 // source_mentions_word reports whether `word` occurs in `source` as a whole
