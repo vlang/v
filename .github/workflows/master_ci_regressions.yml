@@ -69,6 +69,12 @@ jobs:
           ./v fmt -verify vlib/v/gen/amd64/native_float_literal_test.v
           ./v -cc gcc -silent vlib/v/gen/amd64/native_float_literal_test.v
           ./v -cc clang -silent vlib/v/gen/amd64/native_float_literal_test.v
+      - name: Verify AMD64 floating-point sign bits with musl-gcc
+        timeout-minutes: 10
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq --no-install-recommends install musl-tools
+          ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/gen/amd64/native_float_literal_test.v
       - name: Check Linux task checkpoint and resume behavior
         run: sh ci/linux_ci_resume_test.sh
       - name: Check hosted apt dependencies
