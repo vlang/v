@@ -1,0 +1,6 @@
+vlib/v/checker/tests/shift_const_values/shifts.v:4:17: error: shift count for type `u8` too large (maximum: 7 bits)
+    2 |
+    3 | pub fn shift[T]() T {
+    4 |     return T(1) << 8
+      |                    ^
+    5 | }

@@ -1,0 +1,56 @@
+vlib/v/checker/tests/shift_negative_count.vv:8:15: error: invalid negative shift count
+    6 |     x := u64(1)
+    7 |     println(x << 0)
+    8 |     println(x << -1)
+      |                  ~~
+    9 |     println(x >> negative_one)
+   10 |     println(x >>> negative_one)
+vlib/v/checker/tests/shift_negative_count.vv:9:15: error: invalid negative shift count
+    7 |     println(x << 0)
+    8 |     println(x << -1)
+    9 |     println(x >> negative_one)
+      |                  ~~~~~~~~~~~~
+   10 |     println(x >>> negative_one)
+   11 |     println(x << (bits_8 - bits_16))
+vlib/v/checker/tests/shift_negative_count.vv:10:16: error: invalid negative shift count
+    8 |     println(x << -1)
+    9 |     println(x >> negative_one)
+   10 |     println(x >>> negative_one)
+      |                   ~~~~~~~~~~~~
+   11 |     println(x << (bits_8 - bits_16))
+   12 |     println(x << min_i64)
+vlib/v/checker/tests/shift_negative_count.vv:11:15: error: invalid negative shift count
+    9 |     println(x >> negative_one)
+   10 |     println(x >>> negative_one)
+   11 |     println(x << (bits_8 - bits_16))
+      |                  ~~~~~~~~~~~~~~~~~~
+   12 |     println(x << min_i64)
+   13 |     println(1 << -1)
+vlib/v/checker/tests/shift_negative_count.vv:12:15: error: invalid negative shift count
+   10 |     println(x >>> negative_one)
+   11 |     println(x << (bits_8 - bits_16))
+   12 |     println(x << min_i64)
+      |                  ~~~~~~~
+   13 |     println(1 << -1)
+   14 |     mut y := u32(1)
+vlib/v/checker/tests/shift_negative_count.vv:13:15: error: invalid negative shift count
+   11 |     println(x << (bits_8 - bits_16))
+   12 |     println(x << min_i64)
+   13 |     println(1 << -1)
+      |                  ~~
+   14 |     mut y := u32(1)
+   15 |     y <<= bits_8 - bits_16
+vlib/v/checker/tests/shift_negative_count.vv:15:8: error: invalid negative shift count
+   13 |     println(1 << -1)
+   14 |     mut y := u32(1)
+   15 |     y <<= bits_8 - bits_16
+      |           ~~~~~~~~~~~~~~~~
+   16 |     y >>= negative_one
+   17 |     println(y)
+vlib/v/checker/tests/shift_negative_count.vv:16:8: error: invalid negative shift count
+   14 |     mut y := u32(1)
+   15 |     y <<= bits_8 - bits_16
+   16 |     y >>= negative_one
+      |           ~~~~~~~~~~~~
+   17 |     println(y)
+   18 | }

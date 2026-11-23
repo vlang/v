@@ -1,0 +1,14 @@
+const large = u128(1) << 64
+const negative = i128(-1) << 64
+const narrowed = u8(large)
+const reduced = large >> 64
+
+fn main() {
+	println(u64(1) << large)
+	println(u64(1) >> negative)
+	println(u64(1) >>> u128(18446744073709551616))
+	println(u64(1) << narrowed)
+	println(u64(1) << reduced)
+	println(u128(1) << 127)
+	println(u128(1) << 128)
+}

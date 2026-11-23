@@ -452,7 +452,13 @@ fn test_wasm32_global_constant_initializers() {
 	tc.enable_globals = true
 	tc.collect(a)
 	_ = tc.check_semantics_opt(false)
-	assert tc.errors.len == 0, tc.errors.str()
+	// The checker rejects oversized constant counts. Keep lowering this AST to
+	// retain the SSA constant evaluator's boundary coverage as well.
+	assert tc.errors.map(it.msg) == [
+		'shift count for type `u64` too large (maximum: 63 bits)',
+		'shift count for type `u32` too large (maximum: 31 bits)',
+		'shift count for type `i8` too large (maximum: 7 bits)',
+	], tc.errors.str()
 	tc.annotate_types()
 	m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
 		target: TargetData{ ptr_size: 4 }

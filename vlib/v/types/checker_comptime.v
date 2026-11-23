@@ -9777,14 +9777,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		// left operand when a wider shift is intended; typed operands use their own width.
 		lhs_is_literal := lhs_node.kind == .int_literal
 		checked_bit_size := if lhs_is_literal { 64 } else { bit_size }
-		if !skip_inactive_compact_else && node.op != .right_shift_unsigned && bit_size > 0
-			&& rhs_node.kind == .int_literal {
-			if shift_count := v_int_literal_value(rhs_node.value) {
-				if shift_count >= checked_bit_size {
-					lhs_name := if lhs_is_literal { 'int literal' } else { lhs_type.name() }
-					tc.record_error_at(.assignment_mismatch, 'shift count for type `${lhs_name}` too large (maximum: ${checked_bit_size - 1} bits)', rhs_id, rhs_node.pos)
-				}
-			}
+		if !skip_inactive_compact_else && bit_size > 0 {
+			lhs_name := if lhs_is_literal { 'int literal' } else { lhs_type.name() }
+			tc.check_constant_shift_count(rhs_id, lhs_name, checked_bit_size)
 		}
 		if !skip_inactive_compact_else && node.op == .left_shift && lhs_node.kind == .ident
 			&& tc.ident_is_mutable_lvalue(lhs_node.value) && !type_is_unsigned_integer(lhs_type) {
@@ -10069,6 +10064,28 @@ fn is_voidptr_type(t Type) bool {
 fn voidptr_orders_with(t Type) bool {
 	return t is Pointer || t is Channel || t is Enum || ordered_integer(t)
 		|| (t is Primitive && t.props.has(.boolean))
+}
+
+// check_constant_shift_count reports a shift count known at compile time that is
+// negative, or not smaller than `bit_size`, the width of the shifted value.
+fn (mut tc TypeChecker) check_constant_shift_count(rhs_id flat.NodeId, type_name string, bit_size int) {
+	fn_id := flat.NodeId(tc.fn_context.node_id)
+	if tc.valid_node_id(fn_id) && tc.a.specialized_fn_nodes[int(fn_id)] {
+		return
+	}
+	shift_count := tc.constant_shift_count(rhs_id) or { return }
+	rhs_pos := tc.a.node(rhs_id).pos
+	if shift_count.negative {
+		tc.record_error_at(.assignment_mismatch, 'invalid negative shift count', rhs_id, rhs_pos)
+	} else if shift_count.bits >= u128(bit_size) {
+		tc.record_error_at(.assignment_mismatch, 'shift count for type `${type_name}` too large (maximum: ${bit_size - 1} bits)', rhs_id, rhs_pos)
+	}
+}
+
+// constant_shift_count returns a shift count that is known at compile time: an
+// integer literal, a constant, or an expression of those, like `-1` or `n * 2`.
+fn (tc &TypeChecker) constant_shift_count(id flat.NodeId) ?ShiftCountValue {
+	return tc.shift_count_value(id, 0, '')
 }
 
 fn (tc &TypeChecker) integer_shift_bit_size(typ Type) int {
@@ -22270,6 +22287,14 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 	}
 	if !lhs_supports && tc.assignment_types_compatible(rhs_id, rhs_type, lhs_type, op) {
 		return
+	}
+	if op in [.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign]
+		&& clean_lhs_type.is_integer() && rhs_is_integer
+		&& !tc.shift_is_in_inactive_compact_else(tc.direct_parent_id(lhs_id)) {
+		bit_size := tc.integer_shift_bit_size(lhs_type)
+		if bit_size > 0 {
+			tc.check_constant_shift_count(rhs_id, lhs_type.name(), bit_size)
+		}
 	}
 	rhs_supports := match op {
 		.plus_assign {

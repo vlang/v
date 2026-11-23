@@ -1,0 +1,7 @@
+vlib/v/checker/tests/shift_const_values/generic.v:8:17: error: shift count for type `u8` too large (maximum: 7 bits)
+    6 |
+    7 | pub fn (b Box[T]) calculated() T {
+    8 |     return T(1) << 8
+      |                    ^
+    9 | }
+   10 |

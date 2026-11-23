@@ -224,8 +224,10 @@ const assign_ops = ['+=', '-=', '*=', '/=', '%=', '**=', '&=', '|=', '^=', '<<='
 
 // The other operand of each operation: another value of the type, a literal,
 // or a value of a builtin type, named after the parameters of the functions.
-const right_operands = ['b', '1', '1.5', "'x'", 'true', '`a`', 'ki', 'kf', 'ks', 'kb', 'kr', 'kl',
-	'ku', 'kg']
+// Keep the character count below every integer width: this matrix compares
+// operator types, while fixture mode defers constrained-body value checks.
+const right_operands = ['b', '1', '1.5', "'x'", 'true', '`\\x01`', 'ki', 'kf', 'ks', 'kb', 'kr',
+	'kl', 'ku', 'kg']
 
 const left_operands = ['1', '1.5', "'x'", 'true', '`a`', 'ki', 'kf', 'ks', 'kb', 'kr', 'kl', 'ku',
 	'kg']

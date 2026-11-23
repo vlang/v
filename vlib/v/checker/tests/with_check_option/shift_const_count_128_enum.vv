@@ -1,0 +1,8 @@
+enum Count as u128 {
+	value = u128(1) << 64
+}
+
+fn main() {
+	println(u64(1) << u128(Count.value))
+	println(u64(1) << u8(Count.value))
+}

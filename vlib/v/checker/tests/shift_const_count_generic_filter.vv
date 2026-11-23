@@ -1,0 +1,26 @@
+struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) shifted() T {
+	return T(1) << 8
+}
+
+fn receiver_forwarder[T]() T {
+	return Box[T]{}.shifted()
+}
+
+struct Ops {}
+
+fn Ops.shifted[T]() T {
+	return T(1) << 8
+}
+
+fn static_forwarder[T]() T {
+	return Ops.shifted[T]()
+}
+
+fn main() {
+	println(receiver_forwarder[u8]())
+	println(static_forwarder[u8]())
+}

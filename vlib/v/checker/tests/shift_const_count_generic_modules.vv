@@ -1,0 +1,7 @@
+import v.checker.tests.shift_const_forwarder
+import v.checker.tests.shift_const_values
+
+fn main() {
+	println(shift_const_forwarder.first())
+	println(shift_const_values.forwarded[u8]())
+}

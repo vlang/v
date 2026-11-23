@@ -1,0 +1,27 @@
+vlib/v/checker/tests/shift_const_count_128.vv:7:20: error: shift count for type `u64` too large (maximum: 63 bits)
+    5 |
+    6 | fn main() {
+    7 |     println(u64(1) << large)
+      |                       ~~~~~
+    8 |     println(u64(1) >> negative)
+    9 |     println(u64(1) >>> u128(18446744073709551616))
+vlib/v/checker/tests/shift_const_count_128.vv:8:20: error: invalid negative shift count
+    6 | fn main() {
+    7 |     println(u64(1) << large)
+    8 |     println(u64(1) >> negative)
+      |                       ~~~~~~~~
+    9 |     println(u64(1) >>> u128(18446744073709551616))
+   10 |     println(u64(1) << narrowed)
+vlib/v/checker/tests/shift_const_count_128.vv:9:21: error: shift count for type `u64` too large (maximum: 63 bits)
+    7 |     println(u64(1) << large)
+    8 |     println(u64(1) >> negative)
+    9 |     println(u64(1) >>> u128(18446744073709551616))
+      |                        ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   10 |     println(u64(1) << narrowed)
+   11 |     println(u64(1) << reduced)
+vlib/v/checker/tests/shift_const_count_128.vv:13:21: error: shift count for type `u128` too large (maximum: 127 bits)
+   11 |     println(u64(1) << reduced)
+   12 |     println(u128(1) << 127)
+   13 |     println(u128(1) << 128)
+      |                        ~~~
+   14 | }

@@ -1,0 +1,56 @@
+vlib/v/checker/tests/shift_const_count_unsigned_large.vv:8:20: error: shift count for type `u64` too large (maximum: 63 bits)
+    6 |
+    7 | fn main() {
+    8 |     println(u64(1) << character_count)
+      |                       ~~~~~~~~~~~~~~~
+    9 |     println(u64(1) << large)
+   10 |     println(u64(1) >> quotient)
+vlib/v/checker/tests/shift_const_count_unsigned_large.vv:9:20: error: shift count for type `u64` too large (maximum: 63 bits)
+    7 | fn main() {
+    8 |     println(u64(1) << character_count)
+    9 |     println(u64(1) << large)
+      |                       ~~~~~
+   10 |     println(u64(1) >> quotient)
+   11 |     println(u64(1) >>> high_bit)
+vlib/v/checker/tests/shift_const_count_unsigned_large.vv:10:20: error: shift count for type `u64` too large (maximum: 63 bits)
+    8 |     println(u64(1) << character_count)
+    9 |     println(u64(1) << large)
+   10 |     println(u64(1) >> quotient)
+      |                       ~~~~~~~~
+   11 |     println(u64(1) >>> high_bit)
+   12 |     println(u64(1) << 18446744073709551615)
+vlib/v/checker/tests/shift_const_count_unsigned_large.vv:11:21: error: shift count for type `u64` too large (maximum: 63 bits)
+    9 |     println(u64(1) << large)
+   10 |     println(u64(1) >> quotient)
+   11 |     println(u64(1) >>> high_bit)
+      |                        ~~~~~~~~
+   12 |     println(u64(1) << 18446744073709551615)
+   13 |     mut n := u64(1)
+vlib/v/checker/tests/shift_const_count_unsigned_large.vv:12:20: error: shift count for type `u64` too large (maximum: 63 bits)
+   10 |     println(u64(1) >> quotient)
+   11 |     println(u64(1) >>> high_bit)
+   12 |     println(u64(1) << 18446744073709551615)
+      |                       ~~~~~~~~~~~~~~~~~~~~
+   13 |     mut n := u64(1)
+   14 |     n <<= large
+vlib/v/checker/tests/shift_const_count_unsigned_large.vv:14:8: error: shift count for type `u64` too large (maximum: 63 bits)
+   12 |     println(u64(1) << 18446744073709551615)
+   13 |     mut n := u64(1)
+   14 |     n <<= large
+      |           ~~~~~
+   15 |     n >>= quotient
+   16 |     n >>>= high_bit
+vlib/v/checker/tests/shift_const_count_unsigned_large.vv:15:8: error: shift count for type `u64` too large (maximum: 63 bits)
+   13 |     mut n := u64(1)
+   14 |     n <<= large
+   15 |     n >>= quotient
+      |           ~~~~~~~~
+   16 |     n >>>= high_bit
+   17 |     println(n)
+vlib/v/checker/tests/shift_const_count_unsigned_large.vv:16:9: error: shift count for type `u64` too large (maximum: 63 bits)
+   14 |     n <<= large
+   15 |     n >>= quotient
+   16 |     n >>>= high_bit
+      |            ~~~~~~~~
+   17 |     println(n)
+   18 | }

@@ -1,0 +1,20 @@
+type Count = u8
+
+const narrowed = Count(u16(256))
+const wrapped = u8(255) + u8(1)
+const remainder = max_u64 % u64(64)
+const unsigned_zero = max_u64 + 1
+const negative_shift = (i8(-2) >> 1) + 1
+
+fn main() {
+	println(u64(1) << narrowed)
+	println(u64(1) >> wrapped)
+	println(u64(1) >>> unsigned_zero)
+	println(u64(1) << remainder)
+	println(u64(1) << negative_shift)
+	mut n := u64(1)
+	n <<= narrowed
+	n >>= wrapped
+	n >>>= unsigned_zero
+	println(n)
+}

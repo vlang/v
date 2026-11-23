@@ -1262,10 +1262,12 @@ At runtime, integer arithmetic wraps on overflow, a shift by the bit width or mo
 and a cast to a smaller integer type keeps the low bits.
 String interpolation preserves that integer width before formatting a wrapped result.
 
-Known excessive literal counts for `<<` and `>>` are rejected at compile time. For a direct
-integer-literal left operand, these operators reject literal counts of 64 or more. Use a wider left
-operand, such as `u128(1) << 100`, when a 128-bit shift is intended. These compile-time checks are
-separate from the runtime behavior of shifts whose counts are not known until the program runs.
+Known excessive or negative counts for `<<`, `>>`, `>>>` and their compound forms like `<<=` are
+rejected at compile time, whether the count is a literal, a constant or an expression of those.
+For a direct integer-literal left operand, these operators reject counts of 64 or more. Use a
+wider left operand, such as `u128(1) << 100`, when a 128-bit shift is intended. These compile-time
+checks are separate from the runtime behavior of shifts whose counts are not known until the
+program runs.
 
 Two opt-in flags turn the runtime behaviors into panics:
 

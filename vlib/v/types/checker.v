@@ -1448,6 +1448,12 @@ pub mut:
 	diagnose_unknown_calls        bool
 	reject_unlowered_map_mutation bool
 	reject_unsupported_generics   bool
+	const_shift_generic_active    bool
+	const_shift_generic_pending   []GenericCompileErrorInstantiation
+	const_shift_generic_names     map[string][]flat.NodeId
+	const_shift_generic_index_len int
+	const_shift_generic_checked   map[string]bool // instances pending or completed by the shift count check
+	const_shift_generic_bodies    map[int]bool    // generic declarations, by node, with a shift that check follows
 	checker_fixture_mode          bool
 	is_test                       bool
 	checked_comptime_method_calls map[u64][]ComptimeMethodCallInstance
@@ -2103,6 +2109,11 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		notes_are_errors:                      tc.notes_are_errors
 		is_prod:                               tc.is_prod
 		suppress_dump_output:                  tc.suppress_dump_output
+		const_shift_generic_active:            tc.const_shift_generic_active
+		const_shift_generic_names:             tc.const_shift_generic_names
+		const_shift_generic_index_len:         tc.const_shift_generic_index_len
+		const_shift_generic_checked:           tc.const_shift_generic_checked.clone()
+		const_shift_generic_bodies:            tc.const_shift_generic_bodies.clone()
 		diagnostic_files:                      tc.diagnostic_files
 		shadow_diagnostic_root:                tc.shadow_diagnostic_root
 		shadow_explicit_roots:                 tc.shadow_explicit_roots
@@ -2413,6 +2424,13 @@ pub fn (mut tc TypeChecker) clone_transform_metadata_owned() {
 	tc.declared_type_scope_keys = tc.declared_type_scope_keys.clone()
 	tc.struct_error_embeds_shadow_builtin = tc.struct_error_embeds_shadow_builtin.clone()
 	tc.struct_generic_params = clone_owned_id_list_map(tc.struct_generic_params)
+	// Completed checks survive the stage; the declaration index can be rebuilt.
+	// The work queue is drained before transform metadata leaves its arena.
+	tc.const_shift_generic_checked = clone_owned_string_bool_map(tc.const_shift_generic_checked)
+	tc.const_shift_generic_bodies = map[int]bool{}
+	tc.const_shift_generic_names = map[string][]flat.NodeId{}
+	tc.const_shift_generic_index_len = 0
+	tc.const_shift_generic_pending = []GenericCompileErrorInstantiation{}
 	tc.struct_implements = tc.struct_implements.clone_owned()
 	tc.struct_shared_fields = clone_owned_type_owner_field_flags(tc.struct_shared_fields)
 	tc.struct_shared_element_fields = clone_owned_type_owner_field_flags(tc.struct_shared_element_fields)
