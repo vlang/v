@@ -22,8 +22,10 @@ fn test_cached_dependencies_preserve_dispatch_and_module_test_functions() ! {
 				'V3CACHE=' + cache, 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', @VEXE, '-cc', 'clang',
 				'-show-timings']
 			// Instrumented SQLite needs the same MemorySanitizer runtime at the final link.
+			// The job's VFLAGS do not reach this build, so also keep its `-gc none`:
+			// MemorySanitizer reports Boehm's partially initialized sigaction at GC_init.
 			if os.getenv('SANITIZER_GITHUB_JOB') == 'sanitize-memory-clang' {
-				command << ['-cflags', '-fsanitize=memory']
+				command << ['-gc', 'none', '-cflags', '-fsanitize=memory']
 			}
 			command << ['-o', binary, os.join_path(@VMODROOT, 'vlib', test_file)]
 			compiled := os.exec(command)
