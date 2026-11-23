@@ -5,6 +5,9 @@ Add `-prod` before `run` to enable SSA optimization and register allocation.
 The backend is experimental and currently uses no garbage collector.
 Debug builds include native backtrace helpers.
 
+Single-file programs that only print string literals use the shared native SSA reduced runtime.
+Debug, profiling, and object builds retain the ordinary runtime.
+
 Concrete generic sum types retain their variant tags and payload layouts, including recursive
 pointer variants such as `Tree[T] = Empty | &Node[T]`. The binary search tree regression exercises
 insertion, deletion, recursive methods, and floating-point values in normal, production, and

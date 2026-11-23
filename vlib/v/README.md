@@ -52,10 +52,10 @@ the compiler produced by the first build. Native self-builds disable GC and incl
 backend; FastC is omitted by default because native linking does not include libtcc.
 A compiler built without the backend reports that for `-b arm64` and exits with an error.
 The native runtime initializes globals, runtime constants, and module state before `main`.
-On macOS and Linux, ARM64 single-file programs that only print string literals use a reduced
-builtin set and emit libc output calls without the general V runtime. This preserves UTF-8,
-embedded NUL bytes, and stdout/stderr selection. Debug, profiling, shared/object, and explicit
-collector builds keep the ordinary runtime.
+Native single-file programs that only print string literals use a reduced builtin set and emit
+libc output calls without the general V runtime. The shared SSA path supports ARM64 on macOS and
+Linux and AMD64 on Linux. It preserves UTF-8, embedded NUL bytes, and stdout/stderr selection.
+Debug, profiling, shared/object, and explicit collector builds keep the ordinary runtime.
 Native channel `try_push` and `try_pop` call the same nonblocking runtime as the C backend,
 including full, empty, and closed states. A successful `try_pop` writes to its `mut` destination.
 Fixed-array channel elements retain their inline size and contents during sends, receives,
