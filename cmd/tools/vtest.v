@@ -80,12 +80,30 @@ fn main() {
 			exit(1)
 		}
 	}
+	// Overlapping arguments (`v test dir dir/sub`) name a file more than once. Run it once:
+	// a batch with the same file twice does not even compile.
+	ts.files = unique_test_files(ts.files)
 	ts.session_start('Testing...')
 	ts.test()
 	ts.session_stop('all V _test.v files')
 	if ts.has_failures() {
 		exit(1)
 	}
+}
+
+// unique_test_files keeps the first of the paths in `files` that name the same file.
+fn unique_test_files(files []string) []string {
+	mut seen := map[string]bool{}
+	mut result := []string{cap: files.len}
+	for file in files {
+		key := os.real_path(file)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result << file
+	}
+	return result
 }
 
 // test_backend selects the last requested backend while keeping option operands opaque.
