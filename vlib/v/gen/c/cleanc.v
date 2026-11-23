@@ -5412,11 +5412,23 @@ fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 			}
 			continue
 		}
-		if c_identifier_start(source[i]) {
+		c := source[i]
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` {
+			// The character tests are spelled out: this loop visits every byte of the
+			// unit, and TinyCC does not inline the helper functions.
 			start := i
 			i++
-			for i < source.len && c_identifier_continue(source[i]) {
-				i++
+			for i < source.len {
+				d := source[i]
+				if (d >= `a` && d <= `z`) || (d >= `A` && d <= `Z`) || d == `_`
+					|| (d >= `0` && d <= `9`) {
+					i++
+				} else {
+					break
+				}
+			}
+			if i - start <= 5 || c != `_` || source[start + 1] != `s` {
+				continue
 			}
 			identifier := unsafe { tos(source.str + start, i - start) }
 			if !cache_numbered_string_symbol(identifier) {
