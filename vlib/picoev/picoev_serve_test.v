@@ -3,7 +3,6 @@ import net
 import net.http
 import picoev
 import picohttpparser
-import time
 
 fn callback(_ voidptr, _ picohttpparser.Request, mut res picohttpparser.Response) {
 	res.http_ok()
@@ -25,8 +24,8 @@ fn free_port() int {
 fn serves_requests(family net.AddrFamily, host string) {
 	port := free_port()
 	mut pv := picoev.new(port: port, family: family, cb: callback) or { panic(err) }
+	// new has already opened the listening socket, so requests can queue immediately.
 	spawn pv.serve()
-	time.sleep(100 * time.millisecond)
 	for _ in 0 .. 3 {
 		res := http.get('http://${host}:${port}/') or { panic(err) }
 		assert res.status_code == 200

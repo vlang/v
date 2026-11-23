@@ -8,7 +8,7 @@ fn build(name string, modules map[string]string, main_source string) (int, strin
 	return compile(name, 'run', modules, main_source)
 }
 
-// compile runs `v -new-compiler <command>` on a project laid out like build's.
+// compile runs `v <command>` on a project laid out like build's.
 fn compile(name string, command string, modules map[string]string, main_source string) (int, string) {
 	dir := os.join_path(os.vtmp_dir(), 'v3_noreturn_${name}_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -21,7 +21,7 @@ fn compile(name string, command string, modules map[string]string, main_source s
 	}
 	os.write_file(os.join_path(dir, 'v.mod'), "Module{ name: '${name}' }\n") or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), main_source) or { panic(err) }
-	res := os.exec([vexe, '-new-compiler', '${command}', dir])
+	res := os.exec([vexe, '${command}', dir])
 	return res.exit_code, res.output
 }
 

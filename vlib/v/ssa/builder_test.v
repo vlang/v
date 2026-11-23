@@ -7,6 +7,30 @@ import v.pref
 import v.transform
 import v.types
 
+fn test_qualified_selector_names_require_an_identifier_root() {
+	mut a := flat.FlatAst.new()
+	mut b := Builder{ a: &a }
+	for kind in [flat.NodeKind.ident, .index, .call, .prefix, .paren] {
+		root := a.add_node(flat.Node{ kind: kind, value: 'root' })
+		start := a.children.len
+		a.children << root
+		field := a.add_node(flat.Node{ kind: .selector, value: 'field', children_start: start, children_count: 1 })
+		nested_start := a.children.len
+		a.children << field
+		nested := a.add_node(flat.Node{ kind: .selector, value: 'nested', children_start: nested_start, children_count: 1 })
+		assert b.selector_qualified_name(a.nodes[field]) == if kind == .ident {
+			'root.field'
+		} else {
+			''
+		}
+		assert b.selector_qualified_name(a.nodes[nested]) == if kind == .ident {
+			'root.field.nested'
+		} else {
+			''
+		}
+	}
+}
+
 fn test_native_noreturn_calls_terminate_only_their_control_flow_edges() {
 	m := native_thread_test_module('noreturn', 'module main
 fn C.exit(int)
@@ -757,6 +781,31 @@ fn test_used_function_names_preserve_method_receivers() ! {
 	assert m.funcs.any(it.name == 'os.File.close' && it.blocks.len > 0)
 	assert m.funcs.any(it.name == 'os.copy_file' && it.blocks.len > 0)
 	assert !m.funcs.any(it.name == 'os.CommandArgs.close')
+}
+
+fn test_used_main_function_does_not_retain_same_named_module_function() {
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_text('library.v', 'module library\nfn parse() { unreachable_generic_call() }\n')
+	p.parse_text('main.v', 'module main\nfn parse() int { return 17 }\nfn main() { parse() }\n')
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	for library_used in [false, true] {
+		mut used := {
+			'parse': true
+		}
+		if library_used {
+			used['library.parse'] = true
+		}
+		mut b := Builder{ used_fns: used, a: p.a }
+		b.prepare_used_fn_lookups()
+		b.collect_export_fn_shadows()
+		assert b.source_fn_is_used('parse', 'main')
+		assert b.source_fn_is_used('parse', 'library') == library_used
+	}
+	m := build_with_used(p.a, {
+		'parse': true
+	}, unsafe { nil })
+	assert m.funcs.any(it.name == 'parse' && it.blocks.len > 0)
+	assert !m.funcs.any(it.name == 'library.parse')
 }
 
 fn test_enum_lookup_keeps_exact_keyword_members_before_fallback() {

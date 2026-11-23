@@ -17,7 +17,7 @@ fn test_string_bytes_lowering_preserves_snapshots_and_effects() {
 	source := os.join_path(root, 'main.v')
 	os.cp(os.join_path(os.dir(@FILE), 'testdata', 'string_bytes_lowering.vv'), source)!
 	generated := os.join_path(root, 'main.c')
-	codegen := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', generated, source])
+	codegen := os.exec([@VEXE, '-nocache', '-o', generated, source])
 	assert codegen.exit_code == 0, codegen.output
 	c := os.read_file(generated)!
 	for name in ['byte_sum', 'byte_find', 'byte_control', 'literal_loop', 'small_set', 'large_set',
@@ -37,7 +37,7 @@ fn test_string_bytes_lowering_preserves_snapshots_and_effects() {
 		} else {
 			@CCOMPILER
 		}
-		mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-cc', compiler]
+		mut args := [@VEXE, '-no-retry-compilation', '-nocache', '-cc', compiler]
 		if mode != '' { args << mode }
 		args << ['-o', binary, source]
 		compiled := os.exec(args)

@@ -137,7 +137,7 @@ fn compiler_input_path(args []string) string {
 			return ''
 		}
 		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			option_value_follows = profile_option_consumes_value(args, i)
 			continue
 		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {

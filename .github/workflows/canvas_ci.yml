@@ -35,7 +35,6 @@ jobs:
       LIBGL_ALWAYS_SOFTWARE: 'true'
       EGL_PLATFORM: surfaceless
       VTEST_FAIL_FAST: '1'
-      V_MACOS_V3_NO_FALLBACK: '1'
       V_CANVAS_REQUIRE_GLSLANG: '1'
     steps:
       - uses: actions/checkout@v7

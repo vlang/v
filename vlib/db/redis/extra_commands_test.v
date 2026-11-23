@@ -281,12 +281,20 @@ fn test_server_admin_and_acl_commands() {
 	}
 }
 
-fn shutdown_peer(mut connection net.TcpConn, response string, delay time.Duration) {
+fn shutdown_peer(mut connection net.TcpConn, response string, release chan bool) {
 	defer { connection.close() or {} }
 	mut command := []u8{len: 4096}
 	connection.read(mut command) or { return }
-	if delay > 0 {
-		time.sleep(delay)
+	if response == 'timeout' {
+		// Keep the connection open until the client finishes. If the read
+		// deadline is broken, the fallback EOF produces a clean shutdown.
+		select {
+			_ := <-release {
+			}
+			time.second {
+			}
+		}
+		return
 	}
 	if response.len > 0 {
 		connection.write_string(response) or {}
@@ -307,8 +315,8 @@ fn test_shutdown_distinguishes_clean_close_error_and_timeout() {
 		listener.close()!
 		mut db := redis.DB{ conn: client, version: 2 }
 		defer { db.close() or {} }
-		delay := if response == 'timeout' { 100 * time.millisecond } else { time.Duration(0) }
-		peer := spawn shutdown_peer(mut server, if response == 'timeout' { '' } else { response }, delay)
+		release := chan bool{cap: 1}
+		peer := spawn shutdown_peer(mut server, response, release)
 		mut failed := false
 		db.shutdown('NOSAVE') or {
 			failed = true
@@ -325,6 +333,7 @@ fn test_shutdown_distinguishes_clean_close_error_and_timeout() {
 			}
 		}
 		assert failed == (response != '')
+		release <- true
 		peer.wait()
 		if response == '' {
 			mut closed := false

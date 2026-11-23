@@ -87,6 +87,25 @@ fn test_translated_enum_arithmetic_with_overflow_checks() {
 	assert result.exit_code == 0, result.output
 }
 
+fn check_scalar_diagnostics(root string, header string, cases [][]string, modes [][]string) ! {
+	mut lines := header.split_into_lines()
+	first_case_line := lines.len + 1
+	for i, test_case in cases {
+		lines << 'fn check_${i}() { ${test_case[0]} }'
+	}
+	os.write_file(os.join_path(root, 'main.v'), lines.join('\n') + '\n')!
+	for flags in modes {
+		result := os.exec([@VEXE, ...flags, '-check', root])
+		assert result.exit_code != 0, result.output
+		diagnostics := result.output.split_into_lines()
+		for i, test_case in cases {
+			location := 'main.v:${first_case_line + i}:'
+			assert diagnostics.any(it.contains(location) && it.contains(': error: ')
+				&& it.contains(test_case[1])), '${test_case[0]}\n${result.output}'
+		}
+	}
+}
+
 fn test_translated_promotions_do_not_leak_into_ordinary_files() {
 	root := os.join_path(os.vtmp_dir(), 'v3_translated_promotions_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -103,14 +122,8 @@ fn test_translated_promotions_do_not_leak_into_ordinary_files() {
 		['value := 0xffff_ffff; _ = value', 'overflow in implicit type'],
 		['value := 4294967295; _ = value', 'overflow in implicit type'],
 	]
-	for case in cases {
-		os.write_file(os.join_path(root, 'main.v'), 'module main\nfn main() { ${case[0]}; translated() }\n')!
-		for flags in ['', '-no-parallel'] {
-			result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
-			assert result.exit_code != 0, result.output
-			assert result.output.contains(case[1]), result.output
-		}
-	}
+	check_scalar_diagnostics(root, 'module main\nfn main() { translated() }', cases,
+		[[]string{}, ['-no-parallel']])!
 }
 
 fn test_translated_indices_and_shifts_still_reject_invalid_operands() {
@@ -125,12 +138,7 @@ fn test_translated_indices_and_shifts_still_reject_invalid_operands() {
 		['value := f64(2.5); _ = ~value', 'can only be used with integer types'],
 		['flag := false; _ = if flag { true } else { "text" }', 'mismatched types'],
 	]
-	for case in cases {
-		os.write_file(os.join_path(root, 'main.v'), '@[translated]\nmodule main\nfn main() { ${case[0]} }\n')!
-		result := os.exec([@VEXE, '-check', root])
-		assert result.exit_code != 0, result.output
-		assert result.output.contains(case[1]), result.output
-	}
+	check_scalar_diagnostics(root, '@[translated]\nmodule main\nfn main() {}', cases, [[]string{}])!
 }
 
 fn test_translated_int_alias_shift_count_uses_c_width() {
@@ -164,11 +172,27 @@ fn test_ordinary_int_casts_keep_the_native_width() {
 	assert result.exit_code == 0, result.output
 }
 
+fn build_translated_overflow_cases(root string, declarations string, cases []string) !string {
+	path := os.join_path(root, 'main.v')
+	exe := os.join_path(root, 'cases' + $if windows { '.exe' } $else { '' })
+	mut lines := ['@[translated]', 'module main', 'import os', declarations, 'fn main() {',
+		'\tmatch os.args[1] {']
+	for i, body in cases {
+		lines << '\t\t"${i}" { ${body} }'
+	}
+	lines << '\t\telse { panic("unknown test case") }'
+	lines << '\t}'
+	lines << '}'
+	os.write_file(path, lines.join('\n') + '\n')!
+	result := os.exec([@VEXE, '-check-overflow', '-o', exe, path])
+	assert result.exit_code == 0, result.output
+	return exe
+}
+
 fn test_translated_compound_arithmetic_respects_overflow_checks() {
 	root := os.join_path(os.vtmp_dir(), 'v3_translated_compound_overflow_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	path := os.join_path(root, 'main.v')
 	cases := [
 		'mut value := i64(9223372036854775807); value += i64(1)',
 		'mut value := i64(-9223372036854775807); value -= i64(2)',
@@ -176,14 +200,14 @@ fn test_translated_compound_arithmetic_respects_overflow_checks() {
 		'mut value := int(2147483647); value += int(1)',
 		'mut values := [i64(9223372036854775807)]!; values[0] += i64(1)',
 	]
-	for body in cases {
-		os.write_file(path, '@[translated]\nmodule main\nfn main() { ${body} }\n')!
-		result := os.exec([@VEXE, '-check-overflow', 'run', path])
-		assert result.exit_code != 0, result.output
-		assert result.output.contains('overflow'), result.output
+	non_overflowing := 'mut value := int(-1); value += u32(0); assert value == -1; mut narrow := u8(255); narrow += u8(1); assert narrow == 0'
+	exe := build_translated_overflow_cases(root, '', [...cases, non_overflowing])!
+	for i, body in cases {
+		result := os.exec([exe, i.str()])
+		assert result.exit_code != 0, body + '\n' + result.output
+		assert result.output.contains('with overflow('), body + '\n' + result.output
 	}
-	os.write_file(path, '@[translated]\nmodule main\nfn main() { mut value := int(-1); value += u32(0); assert value == -1; mut narrow := u8(255); narrow += u8(1); assert narrow == 0 }\n')!
-	result := os.exec([@VEXE, '-check-overflow', 'run', path])
+	result := os.exec([exe, cases.len.str()])
 	assert result.exit_code == 0, result.output
 }
 
@@ -192,15 +216,17 @@ fn test_translated_postfix_uses_c_int_overflow_width() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'main.v')
-	for body in [
+	cases := [
 		'mut value := int(2147483647); value++',
 		'mut value := IntAlias(-2147483648); value--',
 		'mut value := Holder{2147483647}; value.number++',
 		'mut values := [int(-2147483648)]!; values[0]--',
 		'mut values := {"a": int(2147483647)}; values["a"]++',
-	] {
-		os.write_file(path, '@[translated]\nmodule main\ntype IntAlias = int\nstruct Holder { mut: number int }\nfn main() { ${body} }\n')!
-		result := os.exec([@VEXE, '-check-overflow', 'run', path])
+	]
+	exe := build_translated_overflow_cases(root, 'type IntAlias = int\nstruct Holder { mut: number int }',
+		cases)!
+	for i, body in cases {
+		result := os.exec([exe, i.str()])
 		assert result.exit_code != 0, body + '\n' + result.output
 		assert result.output.contains('overflow(i32('), body + '\n' + result.output
 	}

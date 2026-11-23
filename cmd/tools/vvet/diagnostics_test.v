@@ -1,19 +1,21 @@
+module main
+
 import os
 
-// The Windows tools shard runs other tools concurrently. An executable that
-// another process still has open cannot be replaced there; let each `v vet`
-// invocation compile in its private temporary directory rather than updating
-// the shared `cmd/tools/vvet/vvet.exe`.
+const vet_exe = os.executable()
+
 fn testsuite_begin() {
-	$if windows {
-		os.setenv('VTOOLS_NO_CACHE', '1', true)
+	// Use the vet entry point already compiled into this test binary. Each
+	// invocation still gets its own process, including its own exit status.
+	if os.args.len > 1 && os.args[1] == 'vet' {
+		main()
+		exit(0)
 	}
 }
 
 // Regression for #28692: diagnostics from earlier files must survive parsing
 // later files, including result-returning functions with escaped newlines.
 fn test_vet_multifile_diagnostics() {
-	vexe := os.getenv('VEXE')
 	// Vet ignores paths inside VTMP, so use the system temporary directory.
 	tmp := os.join_path(os.temp_dir(), 'vvet_multifile_${os.getpid()}')
 	os.rmdir_all(tmp) or {}
@@ -37,25 +39,26 @@ fn test_vet_multifile_diagnostics() {
 		if paths.len !in [2, 64] {
 			continue
 		}
-		for j, file in paths[..2] {
-			res := os.exec([vexe, 'vet', '-nocolor', file])
-			assert res.exit_code == 0, res.output
-			assert_vet_diagnostics(res.output, [warnings[j]])
+		if paths.len == 2 {
+			for j, file in paths {
+				res := os.exec([vet_exe, 'vet', '-nocolor', file])
+				assert res.exit_code == 0, res.output
+				assert_vet_diagnostics(res.output, [warnings[j]])
+			}
 		}
-		res := os.exec([vexe, 'vet', '-nocolor', '${tmp}'])
+		res := os.exec([vet_exe, 'vet', '-nocolor', tmp])
 		assert res.exit_code == 0, res.output
 		assert_vet_diagnostics(res.output, warnings)
-		werror := os.exec([vexe, 'vet', '-nocolor', '-W', '${tmp}'])
+		werror := os.exec([vet_exe, 'vet', '-nocolor', '-W', tmp])
 		assert werror.exit_code == 1, werror.output
 		assert_vet_diagnostics(werror.output, errors)
-		hidden := os.exec([vexe, 'vet', '-nocolor', '-hide-warnings', '${tmp}'])
+		hidden := os.exec([vet_exe, 'vet', '-nocolor', '-hide-warnings', tmp])
 		assert hidden.exit_code == 0, hidden.output
 		assert hidden.output.trim_space() == '', hidden.output
 	}
 }
 
 fn test_vet_multifile_notices_and_errors() {
-	vexe := os.getenv('VEXE')
 	tmp := os.join_path(os.temp_dir(), 'vvet_multifile_mixed_${os.getpid()}')
 	os.rmdir_all(tmp) or {}
 	os.mkdir_all(tmp)!
@@ -71,13 +74,12 @@ fn test_vet_multifile_notices_and_errors() {
 		expected << "${path}:4: notice: Use `s == ''` instead of `s.len == 0`"
 		expected << '${path}:4: error: Looks like you have trailing whitespace.'
 	}
-	res := os.exec([vexe, 'vet', '-nocolor', '${tmp}'])
+	res := os.exec([vet_exe, 'vet', '-nocolor', tmp])
 	assert res.exit_code == 1, res.output
 	assert_vet_diagnostics(res.output, expected)
 }
 
 fn test_vet_multifile_analysis_diagnostics() {
-	vexe := os.getenv('VEXE')
 	tmp := os.join_path(os.temp_dir(), 'vvet_multifile_analysis_${os.getpid()}')
 	os.rmdir_all(tmp) or {}
 	os.mkdir_all(tmp)!
@@ -95,7 +97,7 @@ fn test_vet_multifile_analysis_diagnostics() {
 		source += '}\n'
 		os.write_file(path, source)!
 	}
-	res := os.exec([vexe, 'vet', '-nocolor', '-r', '-I', '${tmp}'])
+	res := os.exec([vet_exe, 'vet', '-nocolor', '-r', '-I', tmp])
 	assert res.exit_code == 0, res.output
 	assert_vet_diagnostics(res.output, expected)
 }

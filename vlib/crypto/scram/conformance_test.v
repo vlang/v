@@ -42,10 +42,8 @@ fn client_for(v Vector) !&Client {
 	)
 }
 
-// credentials_for rebuilds the server side record of a vector's user.
-fn credentials_for(v Vector) !Credentials {
-	salt := base64.decode(v.server_first.all_after(',s=').all_before(',i='))
-	return derive_credentials(v.mechanism, v.password, salt, v.iterations)!
+fn (v Vector) salt() []u8 {
+	return base64.decode(v.server_first.all_after(',s=').all_before(',i='))
 }
 
 fn test_client_reproduces_the_reference_messages() {
@@ -60,7 +58,13 @@ fn test_client_reproduces_the_reference_messages() {
 
 fn test_server_reproduces_the_reference_messages() {
 	for v in vectors {
-		creds := credentials_for(v)!
+		creds := Credentials{
+			mechanism:  v.mechanism
+			salt:       v.salt()
+			iterations: v.iterations
+			stored_key: hex.decode(v.stored_hex)!
+			server_key: hex.decode(v.server_hex)!
+		}
 		mut binding := ChannelBinding{}
 		if v.cbind_name != '' {
 			binding = ChannelBinding{
@@ -91,7 +95,7 @@ fn test_server_reproduces_the_reference_messages() {
 
 fn test_derive_credentials_matches_the_reference_keys() {
 	for v in vectors {
-		creds := credentials_for(v)!
+		creds := derive_credentials(v.mechanism, v.password, v.salt(), v.iterations)!
 		assert creds.stored_key.hex() == v.stored_hex, v.name
 		assert creds.server_key.hex() == v.server_hex, v.name
 		assert creds.iterations == v.iterations, v.name
@@ -101,28 +105,30 @@ fn test_derive_credentials_matches_the_reference_keys() {
 
 fn test_hi_matches_the_reference_salted_passwords() {
 	for v in vectors {
-		salt := base64.decode(v.server_first.all_after(',s=').all_before(',i='))
-		salted := v.mechanism.hi(v.password.bytes(), salt, v.iterations)
+		salted := v.mechanism.hi(v.password.bytes(), v.salt(), v.iterations)
 		assert salted.hex() == v.salted_hex, v.name
 		assert salted.len == v.mechanism.size(), v.name
 	}
 }
 
-// naive_hi is `Hi()` of RFC 5802 §2.2 written directly as a loop over the
-// one-shot `hmac.new`. It is an independent reference for `Mechanism.hi`,
-// which uses `crypto.pbkdf2`.
-fn naive_hi(m Mechanism, password []u8, salt []u8, iterations int) []u8 {
+// assert_hi_matches_naive_loop checks Hi() against the RFC 5802 §2.2 loop over
+// one-shot HMAC. Reuse the reference state at each successive iteration count.
+fn assert_hi_matches_naive_loop(m Mechanism, password []u8, salt []u8) {
 	mut block := salt.clone()
 	block << [u8(0), 0, 0, 1]
 	mut u := m.hmac(password, block)
 	mut result := u.clone()
-	for _ in 1 .. iterations {
-		u = m.hmac(password, u)
-		for i in 0 .. result.len {
-			result[i] ^= u[i]
+	mut completed := 1
+	for iterations in [1, 2, 1000, 4096] {
+		for _ in completed .. iterations {
+			u = m.hmac(password, u)
+			for i in 0 .. result.len {
+				result[i] ^= u[i]
+			}
 		}
+		assert m.hi(password, salt, iterations) == result, '${m.name()} password.len=${password.len} iterations=${iterations}'
+		completed = iterations
 	}
-	return result
 }
 
 fn test_hi_agrees_with_a_naive_hmac_loop() {
@@ -130,9 +136,7 @@ fn test_hi_agrees_with_a_naive_hmac_loop() {
 	for m in [Mechanism.sha1, .sha256, .sha512] {
 		// passwords shorter and longer than the HMAC block size
 		for password in ['pencil'.bytes(), []u8{len: 200, init: u8(index)}] {
-			for iterations in [1, 2, 1000, 4096] {
-				assert m.hi(password, salt, iterations) == naive_hi(m, password, salt, iterations), '${m.name()} password.len=${password.len} iterations=${iterations}'
-			}
+			assert_hi_matches_naive_loop(m, password, salt)
 		}
 	}
 }

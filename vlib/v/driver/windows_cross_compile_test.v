@@ -22,10 +22,7 @@ fn run_windows_cross_build(args []string) os.Result {
 			os.setenv('VFLAGS', value, true)
 		}
 	}
-	mut vexe := @VEXE
-	if os.base(vexe) in ['v1_fallback', 'v1_fallback.exe'] {
-		vexe = os.join_path(os.dir(vexe), 'v' + $if windows { '.exe' } $else { '' })
-	}
+	vexe := @VEXE
 	return cmdexec.run(vexe, args)
 }
 

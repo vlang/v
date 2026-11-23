@@ -3,20 +3,41 @@
 import os
 
 const tfolder = os.join_path(os.vtmp_dir(), 'os_execute_legacy_${os.getpid()}')
-const utf16le_stdout_source_code = '
-module main
+const output_exe = os.join_path(tfolder, $if windows { 'stream output.exe' } $else { 'stream output' })
+const output_probe_arg = '--vtest-execute-output'
 
-import os
-
-fn main() {
-	payload := [u8(`O`), 0, `K`, 0, u8(10), 0]
-	mut out := os.stdout()
-	out.write(payload) or { panic(err) }
+fn emit_probe_output(mode string) {
+	match mode {
+		'nul' {
+			mut out := os.stdout()
+			out.write('start\x00MIDDLE\x00finish\nxx'.bytes()) or { panic(err) }
+		}
+		'streams' {
+			println('stdout')
+			eprintln('stderr')
+		}
+		'vfmt-input' {
+			println('fn main(){println(1)}')
+		}
+		'utf16le' {
+			payload := [u8(`O`), 0, `K`, 0, u8(10), 0]
+			mut out := os.stdout()
+			out.write(payload) or { panic(err) }
+		}
+		else {
+			exit(2)
+		}
+	}
 }
-'
 
 fn testsuite_begin() {
+	if os.args.len == 3 && os.args[1] == output_probe_arg {
+		emit_probe_output(os.args[2])
+		exit(0)
+	}
 	os.mkdir_all(tfolder) or { panic(err) }
+	// Reuse the test binary while exercising a quoted executable path with spaces.
+	os.cp(os.executable(), output_exe)!
 	os.chdir(tfolder) or { panic(err) }
 }
 
@@ -25,21 +46,16 @@ fn testsuite_end() {
 	os.rmdir_all(tfolder) or { panic(err) }
 }
 
+fn output_probe_command(mode string) string {
+	return '${os.quoted_path(output_exe)} ${output_probe_arg} ${mode}'
+}
+
 fn test_execute() {
-	print0script := os.join_path_single(tfolder, 'print0.v')
 	// The output of the next command contains a 0 byte in the middle.
 	// Nevertheless, the execute function *should* return a string that
 	// contains it.
-	os.write_file(print0script, 'C.printf(c"start%cMIDDLE%cfinish\nxx", 0, 0)\n')!
-	defer {
-		os.rm(print0script) or {}
-	}
-	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(print0script)}')
+	result := os.execute(output_probe_command('nul'))
 	hexresult := result.output.hex()
-	// println('exit_code: ${result.exit_code}')
-	// println('output: |${result.output}|')
-	// println('output.len: ${result.output.len}')
-	// println('output hexresult: ${hexresult}')
 	assert result.exit_code == 0
 	assert hexresult.contains('7374617274004d4944444c450066696e697368')
 	assert hexresult.ends_with('0a7878')
@@ -59,12 +75,7 @@ fn test_execute_with_stderr_redirection() {
 }
 
 fn test_execute_preserves_explicit_stream_redirections() {
-	source := os.join_path(tfolder, 'stream output.v')
-	binary := os.join_path(tfolder, $if windows { 'stream output.exe' } $else { 'stream output' })
-	os.write_file(source, 'fn main() { println("stdout"); eprintln("stderr") }\n')!
-	build := os.exec([@VEXE, '-o', binary, source])
-	assert build.exit_code == 0, build.output
-	command := os.quoted_path(binary)
+	command := output_probe_command('streams')
 	stdout_path := os.join_path(tfolder, 'stdout output.txt')
 	stderr_path := os.join_path(tfolder, 'stderr output.txt')
 
@@ -135,13 +146,7 @@ fn test_execute_with_semicolon_inside_quoted_string_on_windows() {
 }
 
 fn test_execute_pipe_into_vfmt() {
-	producer_script := os.join_path_single(tfolder, 'pipe_into_vfmt.v')
-	os.write_file(producer_script, "fn main() {\n\tprint('fn main(){println(1)}\\n')\n}\n")!
-	defer {
-		os.rm(producer_script) or {}
-	}
-	result :=
-		os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(producer_script)} | ${os.quoted_path(@VEXE)} fmt')
+	result := os.execute('${output_probe_command('vfmt-input')} | ${os.quoted_path(@VEXE)} fmt')
 	assert result.exit_code == 0, result.output
 	assert result.output.replace('\r\n', '\n') == 'fn main() { println(1) }\n'
 }
@@ -159,12 +164,7 @@ fn test_execute_decodes_utf16le_output() {
 	if os.user_os() != 'windows' {
 		return
 	}
-	source_path := os.join_path_single(tfolder, 'utf16le_stdout.v')
-	os.write_file(source_path, utf16le_stdout_source_code)!
-	defer {
-		os.rm(source_path) or {}
-	}
-	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(source_path)}')
+	result := os.execute(output_probe_command('utf16le'))
 	assert result.exit_code == 0, result.output
 	assert result.output == 'OK\n', result.output
 }

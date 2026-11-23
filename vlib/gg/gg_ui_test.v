@@ -1,3 +1,4 @@
+// vtest build: !musl? && !self_ubuntu_musl_ci? // gg needs host X11/GL headers
 module gg
 
 fn test_pixel_scissor_preserves_empty_clips_at_fractional_origins() {

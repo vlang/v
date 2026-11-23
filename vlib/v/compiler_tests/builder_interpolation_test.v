@@ -19,6 +19,12 @@ fn test_builder_interpolation_codegen_and_runtime() {
 	for flags in [[]string{}, ['-gc', 'none'], ['-prod'], ['-autofree']] {
 		mut args := [@VEXE, '-nocache']
 		args << flags
+		$if tinyc {
+			if '-prod' in flags {
+				// TinyCC rejects production builds; retain the production case with GCC.
+				args << ['-cc', 'gcc']
+			}
+		}
 		args << ['run', source]
 		result := os.exec(args)
 		assert result.exit_code == 0, '${args}: ${result.output}'

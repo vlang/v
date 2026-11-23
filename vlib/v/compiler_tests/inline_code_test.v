@@ -3,7 +3,7 @@ import time
 
 fn test_inline_code_separate_and_equals_arguments() {
 	for eval_args in [['-e', 'println(1)'], ['-e=println(1)']] {
-		mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache']
+		mut args := [@VEXE, '-no-retry-compilation', '-nocache']
 		args << eval_args
 		result := os.exec(args)
 		assert result.exit_code == 0, result.output
@@ -12,34 +12,34 @@ fn test_inline_code_separate_and_equals_arguments() {
 }
 
 fn test_inline_code_forwards_arguments_and_exit_status() {
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-e',
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-e',
 		'import os; println(os.args[1..]); exit(7)', '--custom', 'with spaces'])
 	assert result.exit_code == 7, result.output
 	assert result.output.trim_space() == "['--custom', 'with spaces']"
 }
 
 fn test_inline_code_reports_missing_source() {
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-e'])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-e'])
 	assert result.exit_code != 0
 	assert result.output.contains('option `-e` requires a value')
 }
 
 fn test_http_shortcut_accepts_the_option() {
 	// Syntax checking validates the shortcut without leaving a server running.
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-check-syntax',
-		'-http', 'doc', 'version', '--help', '-e', '-old-compiler'])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-check-syntax', '-http', 'doc',
+		'version', '--help', '-e', '-old-compiler'])
 	assert result.exit_code == 0, result.output
 	assert !result.output.contains('unknown option')
 }
 
 fn test_inline_code_forwards_recognized_commands_and_flags() {
 	argument_sets := [['version', '--version'], ['doc'], ['--help', '-h'],
-		['-http', '-e', '-e=println(2)'], ['-old-compiler', '-new-compiler', '-vls-mode', '-autofree',
-			'-ownership', '-race', '-json-errors', 'with spaces']]
+		['-http', '-e', '-e=println(2)'], ['-old-compiler', '-vls-mode', '-autofree', '-ownership',
+			'-race', '-json-errors', 'with spaces']]
 	for eval_args in [['-e', 'import os; println(os.args[1..])'],
 		['-e=import os; println(os.args[1..])']] {
 		for program_args in argument_sets {
-			mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache']
+			mut args := [@VEXE, '-no-retry-compilation', '-nocache']
 			args << eval_args
 			args << program_args
 			result := os.exec(args)
@@ -55,7 +55,7 @@ fn assert_inline_interrupt_cleanup(eval_args []string, ready_message string, sig
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	mut args := ['-new-compiler', '-no-retry-compilation', '-nocache']
+	mut args := ['-no-retry-compilation', '-nocache']
 	args << eval_args
 	mut process := os.new_process(@VEXE)
 	process.use_pgroup = true

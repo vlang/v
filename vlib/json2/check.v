@@ -238,13 +238,13 @@ fn (mut checker Decoder) check_nested_value(message string) ! {
 	}
 }
 
-// max_nesting_depth guards the recursion of check_array/check_object:
-// V's C/WASM backends run on fixed-size stacks, which the checker's
-// recursion can exhaust at a few thousand nesting levels (measured ~2,600
-// on an 8 MiB main-thread stack; Go has no comparable bound because
-// goroutine stacks grow). A bounded parsing error is preferable to the
-// process abort that unchecked recursion produces.
+// max_nesting_depth bounds recursive JSON parsing. V's C/WASM backends run on
+// fixed-size stacks, so reject deeper input before unchecked recursion exhausts them.
 const max_nesting_depth = 512
+
+// Pure dynamic Any at depth 256 passed on a 2 MiB TCC worker. This counts only Any
+// containers; surrounding typed recursion also contributes to total stack depth.
+const max_any_nesting_depth = 256
 
 @[markused]
 fn (mut checker Decoder) check_array() ! {

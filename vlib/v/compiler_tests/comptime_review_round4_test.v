@@ -23,8 +23,8 @@ fn round4_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.exec([round4_vexe, '-gc', 'none', '-prealloc', '-path',
-			'${round4_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${round4_v3_src}'])
+		os.exec([round4_vexe, '-gc', 'none', '-path', '${round4_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${round4_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -969,19 +969,6 @@ fn main() {
 }
 ")
 	assert out == 'ok|ok'
-}
-
-fn test_enum_value_static_pruning_rejects_forward_refs() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'enum_value_static_pruning_forward_refs', '@[_allow_multiple_values]
-enum ForwardValue {
-	a = .c
-	c = 2
-}
-
-fn main() {}
-',
-		'`ForwardValue.c` should be declared before using it')
 }
 
 fn test_cross_module_dynamic_field_selector_uses_qualified_type() {

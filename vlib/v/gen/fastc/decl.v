@@ -866,8 +866,8 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			fastc_prefixed_c_names:       fastc_prefixed_c_names
 			declaration_initializer_mode: true
 			has_c_functions:              helper_has_c_functions
-			comparison_memo:              map[i64]FastcRenderedExpression{}
-			type_memo:                    map[i64]u32{}
+			comparison_memo:              map[i64]FastcComparisonMemoEntry{}
+			type_memo:                    map[i64]FastcTypeMemoEntry{}
 			method_key_memo:              map[u32]map[string]string{}
 			field_memo:                   map[u32]map[string]&FastcStructField{}
 			spawn_typedefs:               map[string]string{}
@@ -1145,6 +1145,12 @@ fn (mut g Parser) parse_one_global_declaration(attributes FastcDeclarationAttrib
 			initializers.writeln('\t${c_name} = ${initializer};')
 		}
 		g.global_types.set_id(key, typ)
+		if typ == fastc_type_option {
+			payload := g.option_value_type_for_expression(g.last_expression)
+			if payload != 0 {
+				g.global_option_types.set_id(key, payload)
+			}
+		}
 		g.skip_semicolons()
 		return
 	}
@@ -1480,8 +1486,8 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				fastc_prefixed_c_names:       fastc_prefixed_c_names
 				declaration_initializer_mode: true
 				has_c_functions:              helper_has_c_functions
-				comparison_memo:              map[i64]FastcRenderedExpression{}
-				type_memo:                    map[i64]u32{}
+				comparison_memo:              map[i64]FastcComparisonMemoEntry{}
+				type_memo:                    map[i64]FastcTypeMemoEntry{}
 				method_key_memo:              map[u32]map[string]string{}
 				field_memo:                   map[u32]map[string]&FastcStructField{}
 				spawn_typedefs:               map[string]string{}
@@ -1670,8 +1676,8 @@ fn fastc_parse_constant_file_unscoped(ctx &FastcConstantGenContext, source_file 
 		fastc_prefixed_c_names:       ctx.fastc_prefixed_c_names
 		declaration_initializer_mode: true
 		has_c_functions:              ctx.has_c_functions
-		comparison_memo:              map[i64]FastcRenderedExpression{}
-		type_memo:                    map[i64]u32{}
+		comparison_memo:              map[i64]FastcComparisonMemoEntry{}
+		type_memo:                    map[i64]FastcTypeMemoEntry{}
 		method_key_memo:              map[u32]map[string]string{}
 		field_memo:                   map[u32]map[string]&FastcStructField{}
 		spawn_typedefs:               map[string]string{}

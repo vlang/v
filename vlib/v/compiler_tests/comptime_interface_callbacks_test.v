@@ -17,8 +17,6 @@ fn test_comptime_interface_callbacks_without_direct_call_warmup() {
 	eprintln('[interface callbacks] compiler: ${interface_callbacks_vexe}')
 	eprintln('[interface callbacks] fixtures and logs: ${work_dir}')
 	// Use the compiler running this test, rather than silently rebuilding it.
-	// -new-compiler disables the launcher's compatibility fallback, so an old
-	// compiler cannot hide a failure of the reflected callback.
 	cases := [
 		InterfaceCallbackCase{
 			name:     'auto_str'
@@ -44,7 +42,7 @@ fn test_comptime_interface_callbacks_without_direct_call_warmup() {
 		main_file := os.join_path(project, 'main.v')
 		os.write_file(main_file, case.source) or { panic(err) }
 		for mode in ['serial', 'default'] {
-			mut args := ['-new-compiler', '-nocache']
+			mut args := ['-nocache']
 			if mode == 'serial' {
 				args << '-no-parallel'
 			}

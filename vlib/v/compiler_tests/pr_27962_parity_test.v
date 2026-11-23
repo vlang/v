@@ -9,8 +9,8 @@ const pr_27962_v3_src = os.join_path(pr_27962_v3_dir, 'v.v')
 fn pr_27962_build_v3(root string) string {
 	v3_bin := os.join_path(root, 'v3')
 	build :=
-		os.exec([pr_27962_vexe, '-gc', 'none', '-prealloc', '-path',
-			'${pr_27962_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${pr_27962_v3_src}'])
+		os.exec([pr_27962_vexe, '-gc', 'none', '-path', '${pr_27962_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${pr_27962_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

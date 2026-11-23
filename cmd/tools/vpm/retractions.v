@@ -12,6 +12,11 @@ fn latest_version_retractions(url string, tags []string) ![]string {
 	path := get_tmp_path(settings.tmp_path, 'retractions-' + rand.ulid())!
 	defer { os.rmdir_all(path) or {} }
 	VCS.git.clone(url, latest, path)!
+	return checkout_retractions(path, url, latest)
+}
+
+// checkout_retractions reads the `retracted` ranges of the release checked out in `path`.
+fn checkout_retractions(path string, url string, latest string) ![]string {
 	manifest_path := os.join_path(path, 'v.mod')
 	if !os.is_file(manifest_path) {
 		return []string{}

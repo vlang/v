@@ -6,13 +6,23 @@ const enum_match_v3_dir = os.dir(enum_match_tests_dir)
 const enum_match_vlib_dir = os.dir(enum_match_v3_dir)
 const enum_match_v3_src = os.join_path(enum_match_v3_dir, 'v.v')
 
-fn enum_match_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_enum_match_return_checker_test')
+// One compiler serves the whole suite; each case used to build its own.
+const enum_match_build_v3_path = os.join_path(os.temp_dir(), 'v3_enum_match_return_checker_test_${os.getpid()}')
+
+fn testsuite_begin() {
+	v3_bin := enum_match_build_v3_path
 	build :=
 		os.exec([enum_match_vexe, '-gc', 'none', '-path',
 			'${enum_match_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${enum_match_v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rm(enum_match_build_v3_path) or {}
+}
+
+fn enum_match_build_v3() string {
+	return enum_match_build_v3_path
 }
 
 fn enum_match_run_to_c(v3_bin string, name string, src string) os.Result {

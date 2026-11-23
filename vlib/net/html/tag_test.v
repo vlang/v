@@ -166,26 +166,30 @@ fn test_tag_walkers_handle_deep_caller_built_tree() {
 	assert small_root.str() == '<root><leaf>x</leaf></root>'
 
 	depth := 150_000
-	mut root := &Tag{
-		name:    'root'
-		content: 'r'
+	// The interior tags share empty attributes and class sets.
+	node := Tag{ name: 'node', content: 'x' }
+	mut tags := []Tag{len: depth, init: node}
+	tags[depth - 1] = Tag{
+		name:       'leaf'
+		content:    'x'
+		attributes: {
+			'id': 'target'
+		}
 	}
-	mut current := root
-	for index in 0 .. depth {
-		mut child := &Tag{
-			name:    'node'
-			content: 'x'
-		}
-		if index == depth - 1 {
-			child.name = 'leaf'
-			child.attributes['id'] = 'target'
-			child.class_set.add('target')
-		}
-		current.children << child
-		current = child
+	tags[depth - 1].class_set.add('target')
+	// The tag array never grows, so its element addresses stay valid.
+	children := unsafe { []&Tag{len: depth, init: &tags[index]} }
+	for i in 0 .. depth - 1 {
+		tags[i].children = children[i + 1..i + 2]
+	}
+	root := &Tag{
+		name:     'root'
+		content:  'r'
+		children: children[..1]
 	}
 	assert root.get_tags('node').len == depth - 1
-	assert root.get_tag('leaf')?.name == 'leaf'
+	leaf := root.get_tag('leaf')?
+	assert leaf.name == 'leaf'
 	assert root.get_tag_by_attribute('id')?.name == 'leaf'
 	assert root.get_tags_by_attribute('id').len == 1
 	assert root.get_tag_by_attribute_value('id', 'target')?.name == 'leaf'
@@ -193,7 +197,6 @@ fn test_tag_walkers_handle_deep_caller_built_tree() {
 	assert root.get_tag_by_class_name('target')?.name == 'leaf'
 	assert root.get_tags_by_class_name('target').len == 1
 	assert root.text().len == depth + 1
-	leaf := root.get_tag('leaf')?
 	assert leaf.str() == '<leaf id="target">x</leaf>'
 	serialized := root.str()
 	leaf_index := serialized.index('<leaf id="target">') or { -1 }

@@ -62,7 +62,8 @@ fn (mut g FlatGen) emit_cache_owned_const(name string, val_id flat.NodeId, owner
 	mut scalar_macro := ''
 	if needs_scalar_storage && !had_storage && ct != 'u8'
 		&& !g.name_collides_with_struct_field(cname)
-		&& definition.starts_with('static const ${ct} ${cname} = ') {
+		&& (definition.starts_with('static const ${ct} ${cname} = ')
+			|| definition.starts_with('const ${ct} ${cname} = ')) {
 		value := definition.trim_space().all_after(' = ').all_before_last(';')
 		scalar_macro = '#define ${cname} (${value})'
 		g.writeln(scalar_macro)

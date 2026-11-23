@@ -42,8 +42,8 @@ fn main() {
 	for name in ['gcc', 'clang'] {
 		compiler := os.find_abs_path_of_executable(name) or { continue }
 		c_file := os.join_path(test_dir, '${name}.c')
-		generated := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-cc', compiler,
-			'-o', c_file, v_file])
+		generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-cc', compiler, '-o', c_file,
+			v_file])
 		assert generated.exit_code == 0, generated.output
 		compiled := cmdexec.run(compiler, ['-std=gnu11', '-fsyntax-only', c_file])
 		assert compiled.exit_code == 0, '${name}: ${compiled.output}'

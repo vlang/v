@@ -30,7 +30,7 @@ fn test_single_job_selfhost_keeps_transform_scratch_bounded() {
 	c_file := os.join_path(output_dir, 'compiler.c')
 	// The one-job fallback used to retain temporary state for every function,
 	// pushing this self-host build past the normal compiler memory guard.
-	result := cmdexec.run(@VEXE, ['-new-compiler', '-no-retry-compilation', '-nocache', '-o', c_file,
+	result := cmdexec.run(@VEXE, ['-no-retry-compilation', '-nocache', '-o', c_file,
 		os.join_path(root, 'cmd', 'v')])
 	assert result.exit_code == 0, result.output
 	assert os.file_size(c_file) > 0

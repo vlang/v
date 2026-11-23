@@ -10,16 +10,10 @@ const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
 const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
-const macos_v3_caller_no_fallback_env = 'V_MACOS_V3_CALLER_NO_FALLBACK'
-const macos_v3_caller_no_fallback_present_env = 'V_MACOS_V3_CALLER_NO_FALLBACK_PRESENT'
 const macos_v3_private_environment_names = [
-	'V_MACOS_V3_FALLBACK_FILE',
-	'V_MACOS_V3_C_ERROR_DIR',
-	'V_MACOS_V3_SOURCE_MANIFEST',
 	'V_MACOS_V3_VHASH',
 	'V_MACOS_V3_VCURRENT_HASH',
 	'V_MACOS_V3_EMBEDDED',
-	'V_MACOS_V3_RETRY',
 	'V3_CRUN_BUILD_IDENTITY',
 	'V3_INTERNAL_RESTART',
 	'V3_INTERNAL_CACHE_RECOVERY',
@@ -28,8 +22,6 @@ const macos_v3_private_environment_names = [
 	macos_v3_caller_vexe_present_env,
 	macos_v3_caller_vchild_env,
 	macos_v3_caller_vchild_present_env,
-	macos_v3_caller_no_fallback_env,
-	macos_v3_caller_no_fallback_present_env,
 ]
 
 // Subsystem selects the Windows executable subsystem.
@@ -280,10 +272,10 @@ pub fn new_preferences() &Preferences {
 pub fn option_may_consume_value(option string) bool {
 	return option in ['-wasm-stack-top', '-arch', '-assert', '-e', '-subsystem', '-icon', '--icon',
 		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-prof', '-profile',
-		'-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude', '-file-list',
-		'-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
-		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
-		'-d', '-define', '-message-limit', '-thread-stack-size', '-hot-fn', '-cc', '-c++',
+		'-cov', '-coverage', '-profile-fns', '-run-only', '-exclude', '-file-list', '-test-runner',
+		'-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines', '-generate-c-project',
+		'-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags', '-d', '-define',
+		'-message-limit', '-thread-stack-size', '-hot-fn', '-cc', '-c++',
 		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend', '-compile-backend',
 		'--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude', '-raw-vsh-tmp-prefix',
 		'-cmain', '-line-info', '-memory-limit', '--memory-limit']
@@ -325,14 +317,6 @@ pub fn macos_v3_caller_env_value(name string) string {
 			''
 		}
 	}
-	if name == 'V_MACOS_V3_NO_FALLBACK'
-		&& os.getenv(macos_v3_caller_no_fallback_present_env) in ['0', '1'] {
-		return if os.getenv(macos_v3_caller_no_fallback_present_env) == '1' {
-			os.getenv(macos_v3_caller_no_fallback_env)
-		} else {
-			''
-		}
-	}
 	return os.getenv(name)
 }
 
@@ -342,9 +326,6 @@ pub fn macos_v3_caller_environment() map[string]string {
 	if has_macos_v3_caller_environment() {
 		restore_macos_v3_caller_environment_value(mut environment, 'VEXE', macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
 		restore_macos_v3_caller_environment_value(mut environment, 'VCHILD', macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
-	}
-	if os.getenv(macos_v3_caller_no_fallback_present_env) in ['0', '1'] {
-		restore_macos_v3_caller_environment_value(mut environment, 'V_MACOS_V3_NO_FALLBACK', macos_v3_caller_no_fallback_env, macos_v3_caller_no_fallback_present_env)
 	}
 	for name in macos_v3_private_environment_names {
 		environment.delete(name)
@@ -1791,9 +1772,8 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	if name == 'test' && name !in p.compile_values {
 		return false
 	}
-	// Builtin spells its native backend check `$if native ?`, because the V1
-	// compatibility compiler, which still checks some fixtures, knows `native`
-	// only as a define. Here it also names the backend, as in `$if native`.
+	// Builtin spells its native backend check `$if native ?`, because the portable
+	// bootstrap knows `native` only as a define. Here it also names the backend, as in `$if native`.
 	if name == 'native' {
 		return comptime_flag_value(p, name) || name in p.user_defines
 	}

@@ -13,15 +13,17 @@ import test_utils { cmd_fail_args, cmd_ok_args }
 // here pushes that total past `MAX_PATH` and git cannot stat its own object
 // files. The long form of this name was the difference between red and green.
 const test_path = os.join_path(os.vtmp_dir(), 'vpl_${rand.ulid()}')
-const v_exe = os.join_path(test_path, if os.user_os() == 'windows' { 'vpm.exe' } else { 'vpm' })
+const v_exe = os.executable()
 
 fn testsuite_begin() {
+	// Run the CLI in the child before changing its fixture environment.
+	if os.args.len > 1 && parse_vpm_command(os.args[1..]) != '' {
+		main()
+		exit(0)
+	}
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path)!
 	os.setenv('VEXE', @VEXE, true)
-	// Compile once so each isolated store tests the same VPM binary.
-	cmd_ok_args(@LOCATION, [@VEXE, '-cc', @CCOMPILER, '-gc', 'none', '-o', v_exe,
-		os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
 }
 
 fn testsuite_end() {

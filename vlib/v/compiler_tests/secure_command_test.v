@@ -7,12 +7,21 @@ const secure_v3_dir = os.dir(secure_tests_dir)
 const secure_vlib_dir = os.dir(secure_v3_dir)
 const secure_v3_src = os.join_path(secure_v3_dir, 'v.v')
 
-fn build_secure_command_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_secure_command_${os.getpid()}_${rand.ulid()}')
+// One compiler serves the whole suite; each case used to build its own.
+const secure_v3_bin = os.join_path(os.temp_dir(), 'v3_secure_command_${os.getpid()}_${rand.ulid()}') + $if windows { '.exe' } $else { '' }
+
+fn testsuite_begin() {
 	result := cmdexec.run(@VEXE, ['-gc', 'none', '-path', '${secure_vlib_dir}|@vlib|@vmodules',
-		'-o', v3_bin, secure_v3_src])
+		'-o', secure_v3_bin, secure_v3_src])
 	assert result.exit_code == 0, result.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rm(secure_v3_bin) or {}
+}
+
+fn build_secure_command_v3() string {
+	return secure_v3_bin
 }
 
 fn secure_temp_path(name string) string {
@@ -84,7 +93,6 @@ fn test_split_linker_path_is_not_passed_to_object_compile() {
 	os.mkdir_all(lib_dir) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
-		os.rm(v3_bin) or {}
 	}
 	os.write_file(os.join_path(root, 'helper.c'), 'int split_link_answer(void) { return 42; }\n') or {
 		panic(err)
@@ -247,7 +255,6 @@ fn test_c_object_cache_bypasses_failed_dependency_scan() {
 	defer {
 		os.unsetenv('V3_CACHE_TRACE')
 		os.rmdir_all(root) or {}
-		os.rm(v3_bin) or {}
 	}
 	compiler := os.join_path(root, 'cc_without_dependencies')
 	os.write_file(compiler, '#!/bin/sh
@@ -305,7 +312,6 @@ fn test_c_object_cache_falls_back_when_dependency_marker_is_missing() {
 	defer {
 		os.unsetenv('V3_CACHE_TRACE')
 		os.rmdir_all(root) or {}
-		os.rm(v3_bin) or {}
 	}
 	// On `-M` this wrapper succeeds but prints unrelated text with no `v3cache:`
 	// marker; every other invocation delegates to the real `cc`.
@@ -366,7 +372,6 @@ fn test_c_object_cache_detects_input_change_during_compile() {
 	defer {
 		os.unsetenv('V3_CACHE_TRACE')
 		os.rmdir_all(root) or {}
-		os.rm(v3_bin) or {}
 	}
 	header := os.join_path(root, 'value.h')
 	c_source := os.join_path(root, 'helper.c')

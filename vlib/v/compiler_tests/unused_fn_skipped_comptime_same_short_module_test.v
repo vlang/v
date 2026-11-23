@@ -50,8 +50,7 @@ fn main() {
 }
 ')!
 	out := os.join_path(dir, 'app.exe')
-	// `-new-compiler` keeps a V 0.5.2 fallback retry from answering for V3.
-	res := os.exec([vexe, '-new-compiler', '-nocache', '-o', '${out}', dir])
+	res := os.exec([vexe, '-nocache', '-o', '${out}', dir])
 	assert res.exit_code == 0, res.output
 	for m in ['xa', 'xb'] {
 		assert res.output.contains('unused function: `unused_${m}`'), res.output

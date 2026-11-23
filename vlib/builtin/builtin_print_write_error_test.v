@@ -1,10 +1,18 @@
 import os
 import time
 
-const broken_stdout_child_source = r'
-import os
+const broken_stdout_probe_arg = '--vtest-broken-stdout'
 
-fn main() {
+fn testsuite_begin() {
+	$if !windows {
+		if os.args.len == 2 && os.args[1] == broken_stdout_probe_arg {
+			print_to_broken_stdout()
+			exit(0)
+		}
+	}
+}
+
+fn print_to_broken_stdout() {
 	mut broken := os.pipe() or { panic(err) }
 	saved_stdout := os.fd_dup(1)
 	defer {
@@ -12,29 +20,20 @@ fn main() {
 		os.fd_close(saved_stdout)
 		broken.close()
 	}
-	assert os.fd_dup2(broken.read_fd, 1) != -1
+	if os.fd_dup2(broken.read_fd, 1) == -1 {
+		panic('could not replace stdout with the read end of the pipe')
+	}
 	os.fd_close(broken.read_fd)
 	broken.read_fd = -1
-	println("broken stdout should not hang")
+	println('broken stdout should not hang')
 }
-'
 
 fn test_println_does_not_hang_on_failed_stdout_write() {
 	$if windows {
 		return
 	}
-	stamp := time.now().unix_milli()
-	child_source_path := os.join_path(os.vtmp_dir(), 'broken_stdout_child_${stamp}.v')
-	child_binary_path := os.join_path(os.vtmp_dir(), 'broken_stdout_child_${stamp}.bin')
-	os.write_file(child_source_path, broken_stdout_child_source)!
-	defer {
-		os.rm(child_source_path) or {}
-		os.rm(child_binary_path) or {}
-	}
-	compile_cmd := '${os.quoted_path(@VEXE)} -o ${os.quoted_path(child_binary_path)} ${os.quoted_path(child_source_path)}'
-	compile_result := os.exec([@VEXE, '-o', child_binary_path, child_source_path])
-	assert compile_result.exit_code == 0, 'child compilation failed\ncommand: ${compile_cmd}\noutput:\n${compile_result.output}'
-	mut p := os.new_process(child_binary_path)
+	mut p := os.new_process(os.executable())
+	p.set_args([broken_stdout_probe_arg])
 	p.set_redirect_stdio()
 	p.run()
 	defer {

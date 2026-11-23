@@ -9,6 +9,11 @@ const tsource_dir = os.join_path(tdir, 'src')
 const toutput_dir = os.join_path(tdir, 'out')
 // `v watch` may first rebuild vwatch; four concurrent musl builds can take more than 30 seconds.
 const watch_ready_timeout = 2 * time.minute
+// The first build of the veb app starts with cold caches: it compiles about 60
+// modules into the module cache, and about 120 native C objects (mostly mbedtls)
+// one at a time. With clang on a 4 CPU CI runner shared with 3 other tests, that
+// took from 80 seconds to more than 2 minutes.
+const veb_first_build_timeout = 5 * time.minute
 const watch_poll_interval = 100 * time.millisecond
 
 fn testsuite_begin() {
@@ -73,9 +78,6 @@ fn test_watch_run_reloads_on_source_change() {
 	first_run_error := wait_for_marker(marker_path, 'V1', 'initial V1 run', mut process)
 	mut reload_error := ''
 	if first_run_error == '' {
-		// os.file_last_mod_unix has a 1 second resolution, so make sure the edit lands in a later second,
-		// otherwise the change detection loop can not notice that the source file was modified at all:
-		time.sleep(1500 * time.millisecond)
 		write_versioned_source(source_path, 'V2')!
 
 		// the watcher should detect the change, recompile, and rerun, updating the marker to V2:
@@ -106,8 +108,7 @@ fn test_watch_run_keeps_the_windows_manifest_after_reload() ! {
 	process.set_args(['watch', '-cc', 'tcc', 'run', source, marker])
 	mut errors := []string{}
 	for version in ['V1', 'V2'] {
-		if version == 'V2' { time.sleep(1500 * time.millisecond) }
-		os.write_file(source, "module main
+		write_watched_source(source, "module main
 import os
 fn main() {
 	manifest := os.read_file(os.executable() + '.manifest') or { panic(err) }
@@ -151,11 +152,10 @@ fn test_watch_builds_veb_app_first_and_stops_it_on_sigterm() {
 	mut log := []string{}
 
 	mut errors := []string{}
-	if !wait_for_http(base + '/', 'version V1', mut process, mut log) {
-		errors << 'the first build never served `version V1`'
+	if !wait_for_http(base + '/', 'version V1', veb_first_build_timeout, mut process, mut log) {
+		errors << 'the first build never served `version V1` within ${veb_first_build_timeout}'
 	} else {
 		// A broken build must leave the old version serving, and say so:
-		time.sleep(1500 * time.millisecond)
 		write_veb_app(app_dir, port, 'V2', false)!
 		if !wait_for_log('build failed; the previous version keeps running', mut process, mut
 			log)
@@ -169,9 +169,8 @@ fn test_watch_builds_veb_app_first_and_stops_it_on_sigterm() {
 			errors << 'the build status was not `failed`: `${get_text(base + '/status')}`'
 		}
 		// Fixing it swaps in the new version:
-		time.sleep(1500 * time.millisecond)
 		write_veb_app(app_dir, port, 'V3', true)!
-		if !wait_for_http(base + '/', 'version V3', mut process, mut log) {
+		if !wait_for_http(base + '/', 'version V3', watch_ready_timeout, mut process, mut log) {
 			errors << 'the fixed build never served `version V3`'
 		}
 		if get_text(base + '/status') != 'ok\n' {
@@ -198,7 +197,7 @@ fn test_watch_builds_veb_app_first_and_stops_it_on_sigterm() {
 
 fn write_veb_app(app_dir string, port int, version string, valid bool) ! {
 	broken := if valid { '' } else { '\n\tthis does not compile' }
-	os.write_file(os.join_path(app_dir, 'main.v'), "module main
+	write_watched_source(os.join_path(app_dir, 'main.v'), "module main
 
 import os
 import veb
@@ -239,9 +238,9 @@ fn drain_process_output(mut process os.Process, mut log []string) {
 	}
 }
 
-fn wait_for_http(url string, expected string, mut process os.Process, mut log []string) bool {
+fn wait_for_http(url string, expected string, timeout time.Duration, mut process os.Process, mut log []string) bool {
 	stopwatch := time.new_stopwatch()
-	for stopwatch.elapsed() < watch_ready_timeout {
+	for stopwatch.elapsed() < timeout {
 		drain_process_output(mut process, mut log)
 		if get_text(url) == expected {
 			return true
@@ -269,8 +268,18 @@ fn wait_for_log(text string, mut process os.Process, mut log []string) bool {
 	return false
 }
 
+fn write_watched_source(path string, contents string) ! {
+	previous := os.file_last_mod_unix(path)
+	os.write_file(path, contents)!
+	// vwatch compares whole-second modification times.
+	if os.file_last_mod_unix(path) == previous {
+		modified := previous + 1
+		os.utime(path, modified, modified)!
+	}
+}
+
 fn write_versioned_source(source_path string, version string) ! {
-	os.write_file(source_path,
+	write_watched_source(source_path,
 		"import os\nfn main() {\n\tos.write_file(os.args[1], '${version}') or { panic(err) }\n}\n")!
 }
 

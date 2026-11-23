@@ -334,7 +334,6 @@ fn test_https_proxy_requests_do_not_leak_sockets() ! {
 	}
 	_ = <-target_done
 	_ = <-proxy_done
-	time.sleep(100 * time.millisecond)
 	final_fds := count_open_file_descriptors()
 	assert final_fds <= baseline_fds + 3
 }

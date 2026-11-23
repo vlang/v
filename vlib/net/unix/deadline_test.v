@@ -26,15 +26,17 @@ fn test_a_read_deadline_wins_over_the_timeout() ! {
 	defer {
 		server.close() or {}
 	}
-	server.set_read_timeout(100 * time.millisecond)
-	server.set_read_deadline(time.now().add(400 * time.millisecond))
+	server.set_read_timeout(10 * time.millisecond)
 	sw := time.new_stopwatch()
-	server.wait_for_read() or {}
-	assert sw.elapsed() >= 350 * time.millisecond, 'returned after ${sw.elapsed()}'
+	server.set_read_deadline(time.now().add(60 * time.millisecond))
+	mut timed_out := false
+	server.wait_for_read() or { timed_out = err.code() == net.err_timed_out_code }
+	assert timed_out, 'expected the read deadline to expire'
+	assert sw.elapsed() >= 40 * time.millisecond, 'returned after ${sw.elapsed()}'
 }
 
 fn unix_connect_after_deadline_delay(path string) {
-	time.sleep(100 * time.millisecond)
+	time.sleep(20 * time.millisecond)
 	mut client := unix.connect_stream(path) or { panic(err) }
 	client.close() or { panic(err) }
 }
@@ -49,14 +51,16 @@ fn test_epoch_subsecond_accept_deadlines_are_due() ! {
 			os.rm(path) or {}
 		}
 		listener.set_accept_deadline(time.unix_nanosecond(0, nanosecond))
-		// Wake an incorrectly infinite wait so a regression fails without hanging.
-		connector := spawn unix_connect_after_deadline_delay(path)
+		// Queue a connection so an incorrectly infinite wait returns immediately.
+		mut client := unix.connect_stream(path)!
+		defer {
+			client.close() or {}
+		}
 		mut timed_out := false
 		listener.wait_for_accept() or {
 			assert err.code() == net.err_timed_out.code()
 			timed_out = true
 		}
-		connector.wait()
 		assert timed_out, 'expired deadline waited for a connection'
 	}
 }
@@ -78,14 +82,24 @@ fn test_unset_accept_deadlines_allow_waiting_without_a_timeout() ! {
 	}
 }
 
-fn unix_write_after_deadline_delay(path string) {
-	time.sleep(100 * time.millisecond)
-	mut client := unix.connect_stream(path) or { panic(err) }
+const unix_deadline_fallback_timeout = 20 * time.millisecond
+const unix_deadline_probe_delay = 2 * unix_deadline_fallback_timeout
+
+fn unix_write_after_deadline_delay(path string, read_ready chan bool) ! {
+	time.sleep(unix_deadline_probe_delay)
+	mut client := unix.connect_stream(path)!
 	defer {
 		client.close() or {}
 	}
-	time.sleep(100 * time.millisecond)
-	client.write_string('future') or { panic(err) }
+	select {
+		_ := <-read_ready {
+		}
+		2 * time.second {
+			return error('Unix stream reader did not become ready')
+		}
+	}
+	time.sleep(unix_deadline_probe_delay)
+	client.write_string('future')!
 }
 
 fn test_far_future_unix_deadlines_allow_delayed_readiness() ! {
@@ -97,20 +111,22 @@ fn test_far_future_unix_deadlines_allow_delayed_readiness() ! {
 		listener.close() or {}
 		os.rm(path) or {}
 	}
-	listener.set_accept_timeout(20 * time.millisecond)
+	listener.set_accept_timeout(unix_deadline_fallback_timeout)
 	listener.set_accept_deadline(deadline)
-	writer := spawn unix_write_after_deadline_delay(path)
+	read_ready := chan bool{cap: 1}
+	writer := spawn unix_write_after_deadline_delay(path, read_ready)
 	listener.wait_for_accept()!
 	mut server := listener.accept()!
 	defer {
 		server.close() or {}
 	}
-	server.set_read_timeout(20 * time.millisecond)
+	server.set_read_timeout(unix_deadline_fallback_timeout)
 	server.set_read_deadline(deadline)
+	read_ready <- true
 	server.wait_for_read()!
 	mut buf := []u8{len: 16}
 	read := server.read(mut buf)!
-	writer.wait()
+	writer.wait()!
 	assert buf[..read].bytestr() == 'future'
 	assert listener.accept_deadline()! == deadline
 	assert server.read_deadline()! == deadline

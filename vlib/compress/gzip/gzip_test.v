@@ -78,8 +78,9 @@ fn valid_streams() ![][]u8 {
 		assert decompress(streams.last())! == plain
 	}
 	// the empty input, short ones, and more than one callback chunk
+	data := 'abcdefghij'.repeat(4_000).bytes()
 	for size in [0, 1, 12, 40_000] {
-		streams << compress('abcdefghij'.repeat(4_000)[..size].bytes())!
+		streams << compress(data[..size])!
 	}
 	for name in ['known.gz', 'readme_level_1.gz', 'readme_level_9.gz'] {
 		streams << os.read_bytes(s(name))!
@@ -93,16 +94,17 @@ fn valid_streams() ![][]u8 {
 
 // assert_trailer_field_error checks that flipping any single bit of the 4 trailer bytes at
 // `offset_from_end`, with the payload intact, is reported as `reason`.
-fn assert_trailer_field_error(offset_from_end int, reason string) ! {
-	for good in valid_streams()! {
-		start := good.len - offset_from_end
-		for i in start .. start + 4 {
-			for bit in 0 .. 8 {
-				mut bad := good.clone()
-				bad[i] ^= u8(1) << bit
-				assert decompress_error(bad) == reason
-				assert callback_error(bad) == reason
-			}
+fn assert_trailer_field_error(mut stream []u8, offset_from_end int, reason string) {
+	start := stream.len - offset_from_end
+	for i in start .. start + 4 {
+		original := stream[i]
+		for bit in 0 .. 8 {
+			stream[i] = original ^ (u8(1) << bit)
+			decoded_error := decompress_error(stream)
+			chunked_error := callback_error(stream)
+			stream[i] = original
+			assert decoded_error == reason
+			assert chunked_error == reason
 		}
 	}
 }
@@ -219,12 +221,12 @@ fn test_gzip_with_invalid_length() {
 	assert_decompress_error(compressed, 'invalid gzip stream: size mismatch')!
 }
 
-fn test_gzip_wrong_crc32_alone_is_a_crc32_mismatch() {
-	assert_trailer_field_error(8, 'invalid gzip stream: crc32 mismatch')!
-}
-
-fn test_gzip_wrong_isize_alone_is_a_size_mismatch() {
-	assert_trailer_field_error(4, 'invalid gzip stream: size mismatch')!
+fn test_gzip_wrong_trailer_field_reports_its_mismatch() {
+	for good in valid_streams()! {
+		mut stream := good.clone()
+		assert_trailer_field_error(mut stream, 8, 'invalid gzip stream: crc32 mismatch')
+		assert_trailer_field_error(mut stream, 4, 'invalid gzip stream: size mismatch')
+	}
 }
 
 fn test_gzip_damaged_payload_is_reported_as_such_whatever_the_trailer() {

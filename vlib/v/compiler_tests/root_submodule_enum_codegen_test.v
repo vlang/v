@@ -22,8 +22,8 @@ fn build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.exec([@VEXE, '-gc', 'none', '-prealloc', '-path',
-			'${root_submodule_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, root_submodule_v3_src])
+		os.exec([@VEXE, '-gc', 'none', '-path', '${root_submodule_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, root_submodule_v3_src])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

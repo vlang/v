@@ -85,18 +85,19 @@ fn test_inline_asm() {
 	}
 	assert l == 7
 
-	// same as above
-	n := [i32(5), 9, 0, 4]
+	// The last element is a canary: a 64-bit memory write to an i32 element
+	// would carry into it when adding 2 to -1.
+	n := [i32(5), 9, 0, -1, 0x12345678]
 	asm amd64 {
 		loop_start2:
-		addq [in_data + rcx * 4 + 0], 2
+		addl [in_data + rcx * 4 + 0], 2
 		loop loop_start2
-		addq [in_data + rcx * 4 + 0], 2
-		; ; c (n.len - 1) // c is counter (loop) register
+		addl [in_data + rcx * 4 + 0], 2
+		; ; c (n.len - 2) // c is counter (loop) register; exclude the canary
 		  r (n.data) as in_data
 		; memory
 	}
-	assert n == [7, 11, 2, 6]
+	assert n == [7, 11, 2, 1, 0x12345678]
 
 	assert util.add(8, 9, 34, 7) == 58 // test .amd64.v imported files
 

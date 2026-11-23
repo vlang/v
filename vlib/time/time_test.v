@@ -24,20 +24,26 @@ const utc_time_to_test = time.new(
 	is_local:   false
 )
 
-fn assert_new_panics(expr string, expected string) {
-	source_path := os.join_path(os.temp_dir(), 'time_new_invalid_prog.v')
-	source := 'import time
+const invalid_time_probe_arg = '--vtest-invalid-time'
 
-fn main() {
-	println(${expr})
-}
-'
-	os.write_file(source_path, source) or { panic(err) }
-	defer {
-		os.rm(source_path) or {}
+fn testsuite_begin() {
+	if os.args.len != 3 || os.args[1] != invalid_time_probe_arg {
+		return
 	}
-	res := os.exec([@VEXE, 'run', source_path])
-	assert res.exit_code != 0, 'expected `${expr}` to fail'
+	value := match os.args[2] {
+		'year' { time.new(year: 10000) }
+		'month' { time.new(year: 2024, month: 13) }
+		'day' { time.new(year: 2024, month: 2, day: 30) }
+		'hour' { time.new(year: 2024, hour: 24) }
+		else { exit(2) }
+	}
+	println(value)
+	exit(0)
+}
+
+fn assert_new_panics(field string, expected string) {
+	res := os.exec([os.executable(), invalid_time_probe_arg, field])
+	assert res.exit_code != 0, 'expected time.new to reject the invalid ${field}'
 	assert res.output.contains(expected), 'expected `${expected}` in `${res.output}`'
 }
 
@@ -78,13 +84,10 @@ fn test_new_defaults_missing_month_and_day() {
 }
 
 fn test_new_rejects_invalid_values() {
-	assert_new_panics('time.new(year: 10000)', 'invalid time: year must be between -9999 and 9999')
-	assert_new_panics('time.new(year: 2024, month: 13)',
-		'invalid time: month must be between 1 and 12')
-	assert_new_panics('time.new(year: 2024, month: 2, day: 30)',
-		'invalid time: day must be between 1 and 29 for year 2024, month 2')
-	assert_new_panics('time.new(year: 2024, hour: 24)',
-		'invalid time: hour must be between 0 and 23')
+	assert_new_panics('year', 'invalid time: year must be between -9999 and 9999')
+	assert_new_panics('month', 'invalid time: month must be between 1 and 12')
+	assert_new_panics('day', 'invalid time: day must be between 1 and 29 for year 2024, month 2')
+	assert_new_panics('hour', 'invalid time: hour must be between 0 and 23')
 }
 
 fn test_unix() {

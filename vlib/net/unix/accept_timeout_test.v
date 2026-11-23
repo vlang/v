@@ -1,5 +1,6 @@
 import os
 import time
+import net
 import net.unix
 
 fn testsuite_begin() {
@@ -7,46 +8,56 @@ fn testsuite_begin() {
 	os.chdir(os.vtmp_dir()) or { panic(err) }
 }
 
-// unblock_accept_later connects a client after a delay, so that a broken accept() that ignores
-// its timeout returns instead of hanging the whole test run.
-fn unblock_accept_later(path string) {
-	time.sleep(3 * time.second)
+fn unblock_accept_if_stuck(path string, done chan bool) {
+	// Release accept if it ignored the configured timeout or deadline.
+	select {
+		_ := <-done {
+			return
+		}
+		3 * time.second {
+		}
+	}
 	mut client := unix.connect_stream(path) or { return }
 	client.close() or {}
 }
 
 fn test_accept_honours_the_accept_timeout() ! {
-	path := 'v_unix_accept_timeout_${os.getpid()}.sock'
-	os.rm(path) or {}
-	mut l := unix.listen_stream(path)!
-	defer {
-		l.close() or {}
-		os.rm(path) or {}
-	}
-	l.set_accept_timeout(200 * time.millisecond)
-	spawn unblock_accept_later(path)
-	sw := time.new_stopwatch()
-	mut accepted := true
-	l.accept() or { accepted = false }
-	elapsed := sw.elapsed()
-	assert !accepted, 'accept() returned a connection, but no client was connecting'
-	assert elapsed < 2 * time.second, 'accept() returned after ${elapsed}, expected about 200ms'
+	check_accept_timeout(false)!
 }
 
 fn test_accept_honours_the_accept_deadline() ! {
-	path := 'v_unix_accept_deadline_${os.getpid()}.sock'
+	check_accept_timeout(true)!
+}
+
+fn check_accept_timeout(use_deadline bool) ! {
+	path := 'v_unix_accept_${use_deadline}_${os.getpid()}.sock'
 	os.rm(path) or {}
 	mut l := unix.listen_stream(path)!
 	defer {
 		l.close() or {}
 		os.rm(path) or {}
 	}
-	l.set_accept_deadline(time.now().add(200 * time.millisecond))
-	spawn unblock_accept_later(path)
+	done := chan bool{cap: 1}
+	watchdog := spawn unblock_accept_if_stuck(path, done)
+	timeout := 25 * time.millisecond
 	sw := time.new_stopwatch()
-	mut accepted := true
-	l.accept() or { accepted = false }
+	if use_deadline {
+		l.set_accept_deadline(time.now().add(timeout))
+	} else {
+		l.set_accept_timeout(timeout)
+	}
+	timed_out := if mut conn := l.accept() {
+		conn.close() or {}
+		false
+	} else {
+		err.code() == net.err_timed_out_code
+	}
 	elapsed := sw.elapsed()
-	assert !accepted, 'accept() returned a connection, but no client was connecting'
-	assert elapsed < 2 * time.second, 'accept() returned after ${elapsed}, expected about 200ms'
+	done <- true
+	watchdog.wait()
+	assert timed_out, 'expected accept() to time out'
+	// Windows timers tick about every 15.6 ms, so a wait may end up to one tick early
+	// (a 25 ms timeout returned after 18 ms on CI).
+	min_elapsed := $if windows { timeout - 16 * time.millisecond } $else { 20 * time.millisecond }
+	assert elapsed >= min_elapsed && elapsed < 2 * time.second, 'accept() returned after ${elapsed}, expected about ${timeout}'
 }

@@ -31,8 +31,6 @@ fn selfqual_write_module(name string, module_lines []string, test_lines []string
 // disabled while the fixture is built: a failed build would otherwise be retried with the
 // fallback compiler, which hides the defect this test exists to catch.
 fn selfqual_disable_fallback() {
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
 }
 
 // A file can qualify a symbol with the name of its own module (`m.greeting` written inside

@@ -96,18 +96,29 @@ fn test_transactions_and_optimistic_locking() {
 	}
 }
 
-fn advanced_delayed_publish(channel string) {
-	time.sleep(100 * time.millisecond)
-	mut publisher := connect(password: os.getenv('VREDIS_PASSWORD')) or { panic(err) }
+fn advanced_publish_when_subscribed(channel string) ! {
+	mut publisher := connect(
+		password:     os.getenv('VREDIS_PASSWORD')
+		read_timeout: 2 * time.second
+	)!
 	defer { publisher.close() or {} }
-	publisher.publish(channel, 'callback') or { panic(err) }
+	wait := time.new_stopwatch()
+	for wait.elapsed() < 2 * time.second {
+		// PUBLISH returns the number of subscribers that received the message.
+		if publisher.publish(channel, 'callback')! == 1 {
+			return
+		}
+		time.sleep(time.millisecond)
+	}
+	return error('no subscriber for ${channel}')
 }
 
 fn test_dedicated_pubsub_binary_and_callbacks() {
 	for version in [2, 3] {
 		mut publisher := advanced_connection(version)!
 		mut sub := connect_pubsub(
-			password: os.getenv('VREDIS_PASSWORD')
+			password:     os.getenv('VREDIS_PASSWORD')
+			read_timeout: 3 * time.second
 		)!
 		sub.db.cmd('HELLO', version.str())!
 		sub.db.version = version
@@ -140,11 +151,12 @@ fn test_dedicated_pubsub_binary_and_callbacks() {
 		assert pattern_message.pattern == '${channel}*'
 		sub.punsubscribe()!
 		assert publisher.publish(channel, 'nobody')! == 0
-		spawn advanced_delayed_publish(channel)
+		sender := spawn advanced_publish_when_subscribed(channel)
 		sub.subscribe_with_callback([channel], fn (msg PubSubMessage) bool {
 			assert msg.payload.bytestr() == 'callback'
 			return false
 		})!
+		sender.wait()!
 		sub.unsubscribe(channel)!
 		mut unsubscribed := false
 		sub.next_message() or {

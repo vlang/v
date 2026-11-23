@@ -27,8 +27,11 @@ fn test_tcc_dependency_scan_tracks_native_helper_headers() {
 	os.write_file(source, '#include "helper.h"\nint helper(void) { return HELPER_VALUE; }\n')!
 	deps := c_object_dependencies(tcc, [], source)
 	assert !deps.used_fallback
-	assert source in deps.files
-	assert header in deps.files
+	// TinyCC on Windows names a quoted include by the directory of its includer
+	// with `/` separators (`D:/dir/helper.h`), so compare real paths.
+	files := deps.files.map(os.real_path(it))
+	assert os.real_path(source) in files, deps.files.str()
+	assert os.real_path(header) in files, deps.files.str()
 }
 
 fn test_macos_tcc_accepts_generated_c_objects_but_rejects_foreign_objects() {
@@ -119,6 +122,10 @@ fn test_parallel_c_generation_keeps_stateless_poll_interface() {
 	assert safe
 	assert header.contains('#include "${helper}"')
 	assert !header.contains('v_os_fd_poll_revents')
+	// A Windows path can separate its parts with `\`, as `D:\v\vlib\os/fd_poll.h`.
+	windows_spelling := prefix.replace(helper, helper.replace('/', '\\'))
+	_, windows_safe := v3_parallel_c_declaration_header(windows_spelling, @VEXEROOT)
+	assert windows_safe
 }
 
 fn test_parallel_c_generation_keeps_shipped_headers_opaque() {
@@ -314,7 +321,9 @@ fn test_incremental_program_keeps_one_owner_for_cached_and_new_literals() ! {
 		source := os.join_path(root, 'main.c')
 		binary := os.join_path(root, 'main')
 		os.write_file(source, combined)!
-		compiled := cmdexec.run('cc', ['-std=c11', '-Werror', '-o', binary, source])
+		// A Windows host has no `cc`; its C compiler is the MinGW gcc.
+		compiled := cmdexec.run($if windows { 'gcc' } $else { 'cc' }, ['-std=c11', '-Werror', '-o',
+			binary, source])
 		assert compiled.exit_code == 0, compiled.output
 		assert cmdexec.run(binary, []string{}).exit_code == 0
 	}

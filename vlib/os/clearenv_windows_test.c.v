@@ -6,8 +6,8 @@ fn test_clearenv_windows_with_tinyc() {
 		return
 	}
 	// Compile the shared clearenv cases with TCC, without retrying another compiler.
-	result := exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-cc', compiler,
-		'-gc', 'none', join_path(@VEXEROOT, 'vlib', 'os', 'clearenv_test.v')])
+	result := exec([@VEXE, '-no-retry-compilation', '-nocache', '-cc', compiler, '-gc', 'none',
+		join_path(@VEXEROOT, 'vlib', 'os', 'clearenv_test.v')])
 	assert result.exit_code == 0, result.output
 }
 

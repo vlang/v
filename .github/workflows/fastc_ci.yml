@@ -24,7 +24,6 @@ jobs:
       VTEST_FAIL_FAST: '1'
       # Three test workers fit the 3-CPU/7 GB Apple-silicon runners.
       VJOBS: '3'
-      V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
         with:

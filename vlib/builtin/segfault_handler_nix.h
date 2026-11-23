@@ -392,6 +392,25 @@ static void v_segfault_install_signal(int sig) {
 // builtin_init. `main_argv` is the argv of C's main, which the startup code
 // places above the frames of main on the initial stack.
 V_SEGFAULT_HANDLER_SCOPE void v_install_segfault_handler(void* fallback, void* main_argv) {
+#if defined(__TINYC__) && defined(__linux__)
+	// TCC's `-bt` runtime also catches SIGABRT, and walks the frame pointer chain from
+	// where abort() raised it: inside libc, which keeps other values in that register
+	// (glibc 2.35 keeps the thread id there). Once that value is not a small number, the
+	// walk faults while the runtime holds its lock, and the handler of the fault then
+	// waits for that lock forever, so the program hangs instead of aborting. Restore the
+	// default action, which the program also gets without TCC.
+	{
+		struct sigaction abort_action;
+		memset(&abort_action, 0, sizeof(abort_action));
+		if (sigaction(SIGABRT, NULL, &abort_action) == 0 && abort_action.sa_handler != SIG_DFL
+			&& abort_action.sa_handler != SIG_IGN) {
+			memset(&abort_action, 0, sizeof(abort_action));
+			abort_action.sa_handler = SIG_DFL;
+			sigemptyset(&abort_action.sa_mask);
+			sigaction(SIGABRT, &abort_action, NULL);
+		}
+	}
+#endif
 	// Sanitizers report stack overflows themselves; they are excluded at compile time.
 	int install_segv = v_segfault_save_previous(SIGSEGV, &v_segfault_previous[0]);
 	int install_bus = v_segfault_save_previous(SIGBUS, &v_segfault_previous[1]);

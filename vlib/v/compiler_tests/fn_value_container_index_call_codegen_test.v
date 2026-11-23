@@ -1,4 +1,5 @@
 import os
+import v.tempname
 
 const fn_index_vexe = @VEXE
 const fn_index_tests_dir = os.dir(@FILE)
@@ -6,18 +7,23 @@ const fn_index_v3_dir = os.dir(fn_index_tests_dir)
 const fn_index_vlib_dir = os.dir(fn_index_v3_dir)
 const fn_index_v3_src = os.join_path(fn_index_v3_dir, 'v.v')
 
-fn fn_index_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fn_index_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+const fn_index_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_fn_index_fixtures_${tempname.unique_token()}')
+const fn_index_compiler = os.join_path(fn_index_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
+
+fn testsuite_begin() {
+	os.mkdir_all(fn_index_fixture_dir) or { panic(err) }
 	build :=
 		os.exec([fn_index_vexe, '-gc', 'none', '-path', '${fn_index_vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${fn_index_v3_src}'])
+			'-o', fn_index_compiler, '${fn_index_v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rmdir_all(fn_index_fixture_dir) or {}
 }
 
 fn fn_index_write_source(name string, source string) string {
-	path := os.join_path(os.temp_dir(), 'v3_fn_index_${name}_${os.getpid()}.v')
+	path := os.join_path(fn_index_fixture_dir, 'v3_fn_index_${name}.v')
 	os.write_file(path, source) or { panic(err) }
 	return path
 }
@@ -27,7 +33,6 @@ fn fn_index_write_source(name string, source string) string {
 // rejected the index variable as an unknown type and the C backend emitted a call
 // to a nonexistent `Recv__field` method.
 fn test_fn_value_stored_in_container_field_is_called_through_the_index() {
-	v3_bin := fn_index_build_v3()
 	source := fn_index_write_source('container_field', 'module main
 
 struct Registry {
@@ -67,8 +72,8 @@ fn main() {
 	println(total)
 }
 ')
-	out := os.join_path(os.temp_dir(), 'v3_fn_index_container_field_${os.getpid()}')
-	compile := os.exec([v3_bin, source, '-b', 'c', '-o', '${out}'])
+	out := os.join_path(fn_index_fixture_dir, 'v3_fn_index_container_field')
+	compile := os.exec([fn_index_compiler, source, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
@@ -84,7 +89,6 @@ fn main() {
 // Collapsing `&tmp` to the bare function value made `array_push` copy the element
 // bytes out of the function's own code, so the later call crashed.
 fn test_fn_value_pushed_into_a_local_container_is_callable() {
-	v3_bin := fn_index_build_v3()
 	source := fn_index_write_source('local_container', 'module main
 
 fn shout() {
@@ -105,8 +109,8 @@ fn main() {
 	m[key]()
 }
 ')
-	out := os.join_path(os.temp_dir(), 'v3_fn_index_local_container_${os.getpid()}')
-	compile := os.exec([v3_bin, source, '-b', 'c', '-o', '${out}'])
+	out := os.join_path(fn_index_fixture_dir, 'v3_fn_index_local_container')
+	compile := os.exec([fn_index_compiler, source, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
@@ -117,7 +121,6 @@ fn main() {
 
 // The container guards above must not swallow a real `recv.method[T]()` call.
 fn test_explicit_generic_method_call_still_resolves() {
-	v3_bin := fn_index_build_v3()
 	source := fn_index_write_source('explicit_generic', 'module main
 
 struct Box[T] {
@@ -145,8 +148,8 @@ fn main() {
 	println(apply[int](double, 21))
 }
 ')
-	out := os.join_path(os.temp_dir(), 'v3_fn_index_explicit_generic_${os.getpid()}')
-	compile := os.exec([v3_bin, source, '-b', 'c', '-o', '${out}'])
+	out := os.join_path(fn_index_fixture_dir, 'v3_fn_index_explicit_generic')
+	compile := os.exec([fn_index_compiler, source, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

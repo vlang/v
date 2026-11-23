@@ -5,7 +5,31 @@ const parallel_tests_dir = os.dir(@FILE)
 const parallel_v3_dir = os.dir(parallel_tests_dir)
 const parallel_vlib_dir = os.dir(parallel_v3_dir)
 const parallel_v3_src = os.join_path(parallel_v3_dir, 'v.v')
+const parallel_exe_suffix = $if windows { '.exe' } $else { '' }
 const parallel_entry_point = $if windows { 'int wmain(' } $else { 'int main(' }
+
+fn parallel_v3_path() string {
+	return os.join_path(os.vtmp_dir(), 'v3_parallel_cgen_test_${os.getpid()}' + parallel_exe_suffix)
+}
+
+fn parallel_prod_v3_path() string {
+	return os.join_path(os.vtmp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}' + parallel_exe_suffix)
+}
+
+fn cleanup_parallel_v3_compilers() {
+	for executable in [parallel_v3_path(), parallel_prod_v3_path()] {
+		os.rm(executable) or {}
+		os.rm(executable + '.c') or {}
+	}
+}
+
+fn testsuite_begin() {
+	cleanup_parallel_v3_compilers()
+}
+
+fn testsuite_end() {
+	cleanup_parallel_v3_compilers()
+}
 
 fn setup_parallel_v3_cache() {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_parallel_cgen_cache_${os.getpid()}')
@@ -16,39 +40,46 @@ fn setup_parallel_v3_cache() {
 	os.setenv('V3CACHE', cache_dir, true)
 }
 
-// build_parallel_v3 builds parallel v3 data for v3 tests.
+// build_parallel_v3 builds the plain driver once for this test process.
 fn build_parallel_v3() string {
 	setup_parallel_v3_cache()
-	vexe := @VEXE
-	v3_bin := os.join_path(os.vtmp_dir(), 'v3_parallel_cgen_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	v3_bin := parallel_v3_path()
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o',
+		os.exec([@VEXE, '-gc', 'none', '-path', '${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o',
 			v3_bin, '${parallel_v3_src}'])
+	if build.exit_code != 0 {
+		os.rm(v3_bin) or {}
+	}
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
 
 fn build_parallel_prod_v3() string {
 	setup_parallel_v3_cache()
-	vexe := @VEXE
-	v3_bin := os.join_path(os.vtmp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	// Compiler builds enable parallel support by default. The preallocation
+	// and self-host tests can use the same optimized driver.
+	v3_bin := parallel_prod_v3_path()
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
+	// The unit-test runner with V3_TEST_PROD_COMPILER=1 shares a production build of this
+	// compiler; a copy of it saves a second one.
+	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	if os.getenv('V3_TEST_PROD_COMPILER') == '1' && os.is_executable(shared_v3)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(parallel_v3_src) {
+		os.cp(shared_v3, v3_bin) or { panic(err) }
+		os.chmod(v3_bin, 0o755) or { panic(err) }
+		return v3_bin
+	}
 	build :=
-		os.exec([vexe, '-gc', 'none', '-prealloc', '-prod', '-path',
+		os.exec([@VEXE, '-gc', 'none', '-prealloc', '-prod', '-path',
 			'${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${parallel_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn build_parallel_prealloc_prod_v3() string {
-	setup_parallel_v3_cache()
-	vexe := @VEXE
-	v3_bin := os.join_path(os.vtmp_dir(), 'v3_parallel_prealloc_prod_cgen_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-prod', '-prealloc', '-d', 'parallel', '-path',
-			'${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${parallel_v3_src}'])
+	if build.exit_code != 0 {
+		os.rm(v3_bin) or {}
+	}
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -444,7 +475,7 @@ fn test_parallel_transform_lowers_top_level_stmts_without_main_once() {
 }
 
 fn test_prealloc_keeps_parallel_transform_enabled() {
-	v3_bin := build_parallel_prealloc_prod_v3()
+	v3_bin := build_parallel_prod_v3()
 	main_path := write_parallel_module_init_project('parallel_prealloc_cgen_${os.getpid()}')
 	c_out := os.join_path(os.vtmp_dir(), 'v3_parallel_prealloc_transform_${os.getpid()}.c')
 	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', '-enable-globals', '-nocache',
@@ -505,7 +536,7 @@ fn test_no_parallel_directory_selfhost_retains_parallel_support() {
 	assert compile.output.contains('\n  cgen '), compile.output
 	assert !compile.output.contains('transform (parallel)'), compile.output
 	assert !compile.output.contains('cgen (parallel)'), compile.output
-	assert os.exists(bin_out), compile.output
+	assert os.is_file(bin_out + parallel_exe_suffix), compile.output
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
 	assert c_code.contains('flat_cgen_chunk_thread'), c_code
 	assert c_code.contains('flat_cgen_job_count'), c_code

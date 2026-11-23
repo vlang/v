@@ -12,8 +12,9 @@ struct VlsDetail {
 
 // vls_completion answers a completion request for the member being written
 // after a dot: the fields and methods of the value before it, or the public
-// functions, types and consts of the module it names. The code has to parse:
-// a client asking right after the dot writes a placeholder name there first.
+// functions, types and consts of the module it names. A dot with no name after
+// it gets one before the file is parsed (see vls_complete_source); a client may
+// write a placeholder name there itself.
 fn (mut tc TypeChecker) vls_completion(file_id int, offset int, source string) string {
 	selector_id := tc.vls_selector_at(file_id, offset, source) or {
 		return tc.vls_call_name_completion(file_id, offset, source)
@@ -29,8 +30,13 @@ fn (mut tc TypeChecker) vls_completion(file_id int, offset int, source string) s
 	if types := tc.vls_constraint_set_types(receiver_id) {
 		details = tc.vls_common_details(types)
 	} else if receiver.kind == .ident && tc.vls_expr_type(receiver_id) == none {
-		module_name := tc.imports[receiver.value] or { receiver.value }
-		details = tc.vls_module_details(module_name)
+		// Only a module that the file imports has members to offer: V1 listed
+		// none for `strings.` in a file without `import strings`.
+		module_name := tc.file_imports[file_import_key(tc.cur_file, receiver.value)] or {
+			return ''
+		}
+		// In the order V1 listed them, which vls_module_details keeps.
+		return vls_details_json(tc.vls_module_details(module_name, source))
 	} else {
 		typ := tc.vls_expr_type(receiver_id) or { return '' }
 		details = tc.vls_type_details(typ)
@@ -104,8 +110,10 @@ fn vls_details_json(details []VlsDetail) string {
 }
 
 // vls_selector_at returns the selector of `file_id` whose member the byte
-// `offset` is on, or just past.
+// `offset` is on, or just past, or else the one whose dot `offset` is just
+// past: `x.` at the end of a line, whose member the next line names.
 fn (tc &TypeChecker) vls_selector_at(file_id int, offset int, source string) ?flat.NodeId {
+	mut after_dot := -1
 	for idx in tc.a.user_code_start .. tc.a.nodes.len {
 		node := tc.a.nodes[idx]
 		if node.kind != .selector || node.pos.id != file_id {
@@ -115,8 +123,18 @@ fn (tc &TypeChecker) vls_selector_at(file_id int, offset int, source string) ?fl
 		if offset >= start && offset <= end {
 			return flat.NodeId(idx)
 		}
+		if after_dot < 0 && node.children_count > 0 && offset > 0 && offset <= source.len
+			&& source[offset - 1] == `.` {
+			receiver := tc.a.child_node(&node, 0)
+			if int(receiver.pos.end) == offset - 1 {
+				after_dot = idx
+			}
+		}
 	}
-	return none
+	if after_dot < 0 {
+		return none
+	}
+	return flat.NodeId(after_dot)
 }
 
 // vls_type_details lists the members of a value of type `typ`: the fields and
@@ -236,11 +254,20 @@ fn (tc &TypeChecker) vls_return_detail(name string, ret Type) string {
 	return tc.vls_type_text(ret)
 }
 
-// vls_module_details lists what the module `module_name` makes public: its
-// functions, types and consts.
-fn (tc &TypeChecker) vls_module_details(module_name string) []VlsDetail {
+// VlsRankedDetail is a completion item, and where it comes among the others.
+struct VlsRankedDetail {
+	rank   int
+	detail VlsDetail
+}
+
+// vls_module_details lists what the module `module_name` makes public, as V1
+// listed it: its functions, then its types, then its consts, each in the order
+// of their declarations, but for the types that `source`, the file being
+// completed, names: those come first, in the order that it names them first,
+// where V1 registered them.
+fn (tc &TypeChecker) vls_module_details(module_name string, source string) []VlsDetail {
 	prefix := '${module_name}.'
-	mut details := []VlsDetail{}
+	mut fns := []VlsRankedDetail{}
 	for key, owner_module in tc.fn_type_modules {
 		if owner_module != module_name || !key.starts_with(prefix) {
 			continue
@@ -250,39 +277,100 @@ fn (tc &TypeChecker) vls_module_details(module_name string) []VlsDetail {
 			continue
 		}
 		ret := tc.fn_ret_types[key] or { Type(void_) }
-		details << VlsDetail{
-			kind:        3
-			label:       name
-			detail:      tc.vls_return_detail(key, ret)
-			declaration: tc.vls_fn_signature(key) or { '' }
+		fns << VlsRankedDetail{
+			rank:   if decl_id := tc.vls_fn_decl_id(key) { int(decl_id) } else { max_int }
+			detail: VlsDetail{
+				kind:        3
+				label:       name
+				detail:      tc.vls_return_detail(key, ret)
+				declaration: tc.vls_fn_signature(key) or { '' }
+			}
 		}
 	}
+	named := tc.vls_module_members_named(source, module_name)
+	mut types := []VlsRankedDetail{}
 	for key_id, index in tc.first_type_declaration_ids {
 		key := flat.source_type_name(key_id)
 		if !key.starts_with(prefix) || key[prefix.len..].contains('.') || !tc.vls_visible(key) {
 			continue
 		}
-		kind := match tc.a.nodes[index].kind {
+		decl := tc.a.nodes[index]
+		// V1 offered no function type, `type Callback = fn (int)`.
+		if decl.kind == .type_decl && vls_is_fn_type_text(decl.typ_text()) {
+			continue
+		}
+		kind := match decl.kind {
 			.struct_decl { 22 }
 			.enum_decl { 13 }
 			.interface_decl { 8 }
 			else { 7 }
 		}
-		details << VlsDetail{
-			kind:  kind
-			label: key[prefix.len..]
+		label := key[prefix.len..]
+		types << VlsRankedDetail{
+			rank:   named[label] or { named.len + index }
+			detail: VlsDetail{
+				kind:  kind
+				label: label
+			}
 		}
 	}
+	mut consts := []VlsRankedDetail{}
 	for key, _ in tc.const_types {
 		if !key.starts_with(prefix) || key[prefix.len..].contains('.') || !tc.vls_visible(key) {
 			continue
 		}
-		details << VlsDetail{
-			kind:  21
-			label: key[prefix.len..]
+		consts << VlsRankedDetail{
+			rank:   if expr_id := tc.const_exprs[key] { int(expr_id) } else { max_int }
+			detail: VlsDetail{
+				kind:  21
+				label: key[prefix.len..]
+			}
 		}
 	}
+	mut details := []VlsDetail{cap: fns.len + types.len + consts.len}
+	vls_add_ranked_details(mut details, mut fns)
+	vls_add_ranked_details(mut details, mut types)
+	vls_add_ranked_details(mut details, mut consts)
 	return details
+}
+
+// vls_add_ranked_details adds the items `ranked` to `details`, by their rank.
+fn vls_add_ranked_details(mut details []VlsDetail, mut ranked []VlsRankedDetail) {
+	ranked.sort_with_compare(fn (a &VlsRankedDetail, b &VlsRankedDetail) int {
+		if a.rank != b.rank {
+			return if a.rank < b.rank { -1 } else { 1 }
+		}
+		return compare_strings(a.detail.label, b.detail.label)
+	})
+	for item in ranked {
+		details << item.detail
+	}
+}
+
+// vls_module_members_named returns the names that `source`, a file of the
+// program, gives members of the module `module_name`, `Name` of `mod.Name`, by
+// the order in which it first names them.
+fn (tc &TypeChecker) vls_module_members_named(source string, module_name string) map[string]int {
+	tokens := vls_source_tokens(source)
+	mut named := map[string]int{}
+	for i := 0; i + 2 < tokens.len; i++ {
+		if tokens[i].kind != .name || tokens[i + 1].kind != .dot || tokens[i + 2].kind != .name
+			|| (i > 0 && tokens[i - 1].kind == .dot) {
+			continue
+		}
+		imported := tc.file_imports[file_import_key(tc.cur_file, tokens[i].lit)] or { continue }
+		member := tokens[i + 2].lit
+		if imported == module_name && member !in named {
+			named[member] = named.len
+		}
+	}
+	return named
+}
+
+// vls_is_fn_type_text reports whether the type written `text` is a function
+// type, `fn (int) string`.
+fn vls_is_fn_type_text(text string) bool {
+	return text.starts_with('fn') && (text.len == 2 || !vls_is_name_byte(text[2]))
 }
 
 // vls_visible reports whether the file being completed may use `name`: a

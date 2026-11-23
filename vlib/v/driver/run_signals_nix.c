@@ -454,6 +454,13 @@ int v3_run_signals_begin(void) {
         v3_run_terminal_fd = -1;
     }
     v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+#ifdef __OpenBSD__
+    /* A foreground child can start only after the terminal has been handed off. */
+    if (!result && v3_run_handoff_terminal
+        && v3_run_tcgetpgrp(v3_run_terminal_fd) == v3_run_owner_group) {
+        result = 1;
+    }
+#endif
     errno = saved_errno;
     return result;
 }
@@ -529,6 +536,11 @@ static int v3_run_suspend_owner(int stop_signal, int forwarded_stop) {
     }
     int result = v3_run_foreground_child();
     if (!result) result = v3_run_signal_child(V3_RUN_CONT);
+    /* The mask above covers only this thread. Another compiler thread can run the
+     * handler meanwhile and forward a stop to the still stopped app, which the
+     * SIGCONT then discards. Forward such a stop again, now that the app runs. */
+    int late_stop = v3_run_forwarded_stop;
+    if (!result && late_stop) v3_run_signal_child(late_stop);
     int saved_errno = errno;
     v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
     errno = saved_errno;

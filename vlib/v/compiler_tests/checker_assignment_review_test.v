@@ -1,17 +1,26 @@
 import os
+import v.tempname
 
 const checker_assignment_vexe = @VEXE
 const checker_assignment_tests_dir = os.dir(@FILE)
 const checker_assignment_v3_dir = os.dir(checker_assignment_tests_dir)
 const checker_assignment_vlib_dir = os.dir(checker_assignment_v3_dir)
 const checker_assignment_v3_src = os.join_path(checker_assignment_v3_dir, 'v.v')
+const checker_assignment_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_checker_assignment_${tempname.unique_token()}')
 
-fn checker_assignment_build_v3(name string) string {
-	// Keep each test's compiler separate: Windows can still hold the previous
-	// executable open when the next test starts building its compiler.
-	suffix := $if windows { '.exe' } $else { '' }
-	v3_bin := os.join_path(os.temp_dir(), 'v3_checker_assignment_${name}_${os.getpid()}${suffix}')
-	os.rm(v3_bin) or {}
+fn testsuite_begin() {
+	os.mkdir_all(checker_assignment_compiler_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(checker_assignment_compiler_dir) or {}
+}
+
+fn checker_assignment_build_v3() string {
+	v3_bin := os.join_path(checker_assignment_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([checker_assignment_vexe, '-gc', 'none', '-path',
 			'${checker_assignment_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
@@ -47,8 +56,7 @@ fn checker_assignment_run_good(v3_bin string, name string, source string) string
 }
 
 fn test_assignment_invalidates_written_lhs_smartcast() {
-	v3_bin := checker_assignment_build_v3(@FN)
-	defer { os.rm(v3_bin) or {} }
+	v3_bin := checker_assignment_build_v3()
 	checker_assignment_run_bad(v3_bin, 'bad_assignment_stale_smartcast', 'struct Foo {
 	foo int
 }
@@ -71,8 +79,7 @@ fn main() {
 }
 
 fn test_optional_assignment_keeps_wrapper_and_qualified_optional_cast_is_known() {
-	v3_bin := checker_assignment_build_v3(@FN)
-	defer { os.rm(v3_bin) or {} }
+	v3_bin := checker_assignment_build_v3()
 	out := checker_assignment_run_good(v3_bin, 'optional_assignment_and_qualified_cast', 'import time
 
 type Values = []int
@@ -111,8 +118,7 @@ fn main() {
 }
 
 fn test_enum_alias_cast_contextualizes_short_enum_value() {
-	v3_bin := checker_assignment_build_v3(@FN)
-	defer { os.rm(v3_bin) or {} }
+	v3_bin := checker_assignment_build_v3()
 	out := checker_assignment_run_good(v3_bin, 'enum_alias_short_value_cast', 'enum Number {
 	one = 1
 	two
@@ -130,8 +136,7 @@ fn main() {
 }
 
 fn test_container_stored_capturing_fn_literals() {
-	v3_bin := checker_assignment_build_v3(@FN)
-	defer { os.rm(v3_bin) or {} }
+	v3_bin := checker_assignment_build_v3()
 	alias_out := checker_assignment_run_good(v3_bin, 'append_alias_capturing_fn_literal', 'fn main() {
 	x := 1
 	f := fn [x] () int {
@@ -156,8 +161,7 @@ fn test_container_stored_capturing_fn_literals() {
 }
 
 fn test_nonlocal_assigned_capturing_fn_literals() {
-	v3_bin := checker_assignment_build_v3(@FN)
-	defer { os.rm(v3_bin) or {} }
+	v3_bin := checker_assignment_build_v3()
 	direct_out := checker_assignment_run_good(v3_bin, 'field_assign_direct_capturing_fn_literal', 'struct Holder {
 mut:
 	cb fn () int
@@ -220,8 +224,7 @@ fn main() {
 // A local cannot be redefined in a nested block, so the same name is bound in
 // sibling blocks instead: each use must resolve to the binding of its own block.
 fn test_capturing_fn_literal_marker_uses_nearest_binding() {
-	v3_bin := checker_assignment_build_v3(@FN)
-	defer { os.rm(v3_bin) or {} }
+	v3_bin := checker_assignment_build_v3()
 	out := checker_assignment_run_good(v3_bin, 'capturing_fn_literal_then_plain_fn', 'fn plain() int {
 	return 2
 }

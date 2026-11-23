@@ -175,7 +175,7 @@ fn main() {
  _ := holds_packed_only()
 }"
 	os.write_file(path, source)!
-	result := os.exec([@VEXE, '-new-compiler', '-o', output, path])
+	result := os.exec([@VEXE, '-o', output, path])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
 	for payload in ['main__Node', 'main__Box_string', 'main__SharedCounter', 'chan', 'Words',

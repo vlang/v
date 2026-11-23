@@ -7,20 +7,18 @@ import v.vmod
 
 const joint_root = os.join_path(os.temp_dir(), 'vpm_joint_${rand.ulid()}')
 const joint_original_dir = os.getwd()
-const joint_vexe = @VEXE
-const joint_tool = os.join_path(joint_root, if os.user_os() == 'windows' {
-	'vpm.exe'
-} else {
-	'vpm'
-})
+const joint_tool = os.executable()
 
 fn testsuite_begin() {
+	// Run the CLI in the child before changing its fixture environment.
+	if os.args.len > 1 && parse_vpm_command(os.args[1..]) != '' {
+		main()
+		exit(0)
+	}
 	os.mkdir_all(joint_root)!
 	test_utils.set_test_env(os.join_path(joint_root, 'build'))
-	os.setenv('VEXE', joint_vexe, true)
+	os.setenv('VEXE', @VEXE, true)
 	os.unsetenv('CI')
-	cmd_ok_args(@LOCATION, [joint_vexe, '-cc', @CCOMPILER, '-gc', 'none', '-o', joint_tool,
-		os.dir(@FILE)])
 }
 
 fn testsuite_end() {

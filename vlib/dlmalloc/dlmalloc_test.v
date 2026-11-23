@@ -197,6 +197,21 @@ fn check(b Block, n uint) {
 	}
 }
 
+const calloc_zero_chunk = []u8{len: 4096}
+
+fn check_calloc_zeroed(b Block) {
+	chunk_size := uint(calloc_zero_chunk.len)
+	for offset := uint(0); offset < b.size; offset += chunk_size {
+		remaining := b.size - offset
+		len := int(if remaining < chunk_size { remaining } else { chunk_size })
+		// The caller has checked that b.ptr points to a live b.size-byte block.
+		actual := unsafe { (b.ptr + offset).vbytes(len) }
+		if actual != calloc_zero_chunk[..len] {
+			assert false, 'calloc returned nonzero data in a ${b.size}-byte block in the chunk starting at ${offset}'
+		}
+	}
+}
+
 fn check_new_block(blocks []Block, idx int, b Block, align uint) {
 	assert !isnil(b.ptr), 'allocation of ${b.size} bytes failed'
 	assert uint(b.ptr) % align == 0
@@ -229,9 +244,6 @@ fn stress(mut dl Dlmalloc, rounds int, seed u32, max_huge uint) {
 			unsafe {
 				if op == 0 {
 					b.ptr = dl.calloc(b.size)
-					for i in 0 .. b.size {
-						assert b.ptr[i] == 0
-					}
 				} else if op == 1 {
 					align = uint(32) << (rng.next() % 8)
 					b.ptr = dl.memalign(align, b.size)
@@ -240,6 +252,9 @@ fn stress(mut dl Dlmalloc, rounds int, seed u32, max_huge uint) {
 				}
 			}
 			check_new_block(blocks, idx, b, align)
+			if op == 0 {
+				check_calloc_zeroed(b)
+			}
 			fill(b)
 		} else if op < 3 {
 			check(b, b.size)

@@ -35,6 +35,10 @@ $includePattern = '(?m)^(?<prefix>[ \t]*#[ \t]*include[ \t]+")(?<path>[^"\r\n]+)
 $text = [regex]::Replace($text, $includePattern, {
     param($includeMatch)
     $includePath = $includeMatch.Groups['path'].Value.Replace('\', '/')
+    if ($includePath -match '^(?:vlib|thirdparty|cmd)/') {
+        return $includeMatch.Groups['prefix'].Value + $bootstrapRootBytes + '/' +
+            $includePath + $includeMatch.Groups['suffix'].Value
+    }
     $ownedPath = [regex]::Match($includePath, '/(?:vlib|thirdparty|cmd)/')
     if ($includePath -match '^(?:/|[A-Za-z]:/)' -and $ownedPath.Success) {
         return $includeMatch.Groups['prefix'].Value + $bootstrapRootBytes +

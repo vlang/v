@@ -38,7 +38,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		assert out.output.trim_space() == 'ok', out.output
 	}
@@ -56,7 +56,7 @@ fn main() {
 	println(value)
 }
 ')!
-	out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
+	out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
 	assert out.exit_code != 0, out.output
 	assert out.output.contains('use of moved value: `value`'), out.output
 }
@@ -98,7 +98,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		assert out.output.trim_space() == 'ok', out.output
 	}
@@ -117,7 +117,7 @@ fn test_ownership_returned_string_fallback_moves_owned_argument() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 		assert out.exit_code != 0, out.output
 		assert out.output.contains('use of moved value: `fallback`'), out.output
 	}
@@ -145,7 +145,7 @@ fn test_ownership_returned_string_fallback_copies_nonowning_arguments() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		assert out.output.trim_space() == 'ok', out.output
 	}

@@ -13,22 +13,27 @@ struct GracefulShutdownContext {
 
 struct GracefulShutdownApp {
 mut:
-	server       &veb.Server = unsafe { nil }
-	slow_started chan bool   = chan bool{cap: 1}
+	server_ready chan &veb.Server = chan &veb.Server{cap: 1}
+	slow_started chan bool        = chan bool{cap: 1}
+	slow_release chan bool        = chan bool{cap: 1}
 }
 
+// init_server publishes the lifecycle handle before the server starts listening.
 pub fn (mut app GracefulShutdownApp) init_server(server &veb.Server) {
-	app.server = server
+	app.server_ready <- server
 }
 
-pub fn (mut app GracefulShutdownApp) index(mut ctx GracefulShutdownContext) veb.Result {
-	return ctx.text('ready')
-}
-
+// slow holds the response until the test releases the in-flight request.
 @['/slow']
 pub fn (mut app GracefulShutdownApp) slow(mut ctx GracefulShutdownContext) veb.Result {
 	app.slow_started <- true
-	time.sleep(300 * time.millisecond)
+	select {
+		_ := <-app.slow_release {
+		}
+		graceful_shutdown_wait_timeout {
+			panic('slow request was never released')
+		}
+	}
 	return ctx.text('slow done')
 }
 
@@ -47,7 +52,7 @@ fn send_slow_request(port int, responses chan http.Response) {
 }
 
 fn shutdown_graceful_server(server &veb.Server, done chan string) {
-	server.shutdown(timeout: 5 * time.second) or {
+	server.shutdown(timeout: 5 * time.second, retry_period_ms: 1) or {
 		done <- err.msg()
 		return
 	}
@@ -91,19 +96,27 @@ fn wait_for_shutdown(done chan string) ! {
 	}
 }
 
-fn wait_for_server(port int) ! {
-	url := 'http://${graceful_shutdown_host}:${port}/'
-	for _ in 0 .. 100 {
-		response := http.get(url) or {
-			time.sleep(20 * time.millisecond)
-			continue
+fn wait_for_graceful_server(ready chan &veb.Server) !&veb.Server {
+	select {
+		server := <-ready {
+			server.wait_till_running(max_retries: 2000, retry_period_ms: 1)!
+			return server
 		}
-		if response.status() == .ok && response.body == 'ready' {
-			return
+		graceful_shutdown_wait_timeout {
 		}
-		time.sleep(20 * time.millisecond)
 	}
-	return error('server did not start listening in time')
+	return error('veb server was not initialized')
+}
+
+fn wait_for_listener_to_close(port int) ! {
+	addr := '${graceful_shutdown_host}:${port}'
+	timer := time.new_stopwatch()
+	for timer.elapsed() < graceful_shutdown_wait_timeout {
+		mut conn := net.dial_tcp(addr) or { return }
+		conn.close() or {}
+		time.sleep(time.millisecond)
+	}
+	return error('server did not stop accepting connections in time')
 }
 
 fn test_veb_graceful_shutdown_waits_for_in_flight_requests() {
@@ -112,12 +125,10 @@ fn test_veb_graceful_shutdown_waits_for_in_flight_requests() {
 	listener.close() or {}
 
 	mut app := &GracefulShutdownApp{}
+	defer { app.slow_release.close() }
 	server_thread := spawn run_graceful_shutdown_app(mut app, int(port))
 
-	wait_for_server(int(port)) or {
-		assert false, err.msg()
-		return
-	}
+	server := wait_for_graceful_server(app.server_ready)!
 
 	slow_responses := chan http.Response{cap: 1}
 	spawn send_slow_request(int(port), slow_responses)
@@ -126,13 +137,18 @@ fn test_veb_graceful_shutdown_waits_for_in_flight_requests() {
 		return
 	}
 
-	mut server := app.server
-	if server == unsafe { nil } {
-		assert false, 'veb server was not initialized'
-		return
-	}
 	shutdown_done := chan string{cap: 1}
 	spawn shutdown_graceful_server(server, shutdown_done)
+	wait_for_listener_to_close(int(port))!
+	select {
+		shutdown_error := <-shutdown_done {
+			assert false, 'shutdown returned while the request was still in flight: ${shutdown_error}'
+			return
+		}
+		else {
+		}
+	}
+	app.slow_release <- true
 
 	slow_response := wait_for_slow_response(slow_responses) or {
 		assert false, err.msg()

@@ -57,6 +57,8 @@ static void string__free(string* value) {
 }
 static void release_box(void* value) { box_frees++; free(value); }
 static void v_free(void* value) { release_box(value); }
+// Windows targets release owned pointer variants with the _aligned_malloc counterpart.
+static void v3_aligned_free(void* value) { release_box(value); }
 #define free release_box
 ${helpers}
 #undef free

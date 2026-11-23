@@ -29,6 +29,17 @@ fn replace(mut buffer &u8, replacement &u8) {
     buffer = replacement
 }
 fn increment(mut value int) { value++ }
+struct Item {
+mut:
+    value int
+}
+fn rebind(mut current Item, replacement &Item) {
+    current = replacement
+    current.value = 99
+}
+fn overwrite(mut current Item, replacement Item) {
+    current = replacement
+}
 fn main() {
     mut first := [8]u8{}
     mut second := [8]u8{}
@@ -42,6 +53,13 @@ fn main() {
     mut value := 9
     increment(mut value)
     if value != 10 { C.exit(6) }
+
+    mut original := Item{value: 1}
+    mut replacement := Item{value: 2}
+    rebind(mut original, &replacement)
+    if original.value != 1 || replacement.value != 99 { C.exit(7) }
+    overwrite(mut original, Item{value: 3})
+    if original.value != 3 { C.exit(8) }
 }
 '
 		path := os.join_path(os.vtmp_dir(), 'arm64_mut_pointer_${os.getpid()}.v')

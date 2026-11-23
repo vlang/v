@@ -88,7 +88,6 @@ fn test_channel_send_close_buffered() {
 }
 
 fn test_channel_send_close_unbuffered() {
-	time.sleep(1 * time.second)
 	ch := chan int{}
 	t := spawn fn (ch chan int) {
 		mut x := 31

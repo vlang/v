@@ -87,6 +87,13 @@ const shared_piece_batch_cost = 40_000
 const shared_piece_discard_bytes = 8 * 1024 * 1024
 // The lookup caches of the helper a thread is running stay mapped for its next one.
 const shared_piece_cache_keep_bytes = 2 * 1024 * 1024
+// Lowering resolves about one call per twelve source nodes on appended nodes
+// (159 thousand for the 1.93 million nodes of a compiler build); the sparse
+// call-name map is sized for one per ten.
+const shared_sparse_call_names_per_base_nodes = 10
+// The helpers of a compiler build log 710 thousand rewritten base nodes, a bit
+// more than one in three; the master's log is sized for one in two.
+const shared_owned_base_log_per_base_nodes = 2
 const scoped_monomorph_batch_specs = 512
 const scoped_monomorph_node_threshold = 1_000_000
 // Every non-empty batch uses the memory-bounded scoped path; see
@@ -415,6 +422,55 @@ fn transform_pre_scan_index_thread(arg voidptr) voidptr {
 	t.rebuild_variadic_suffix_index()
 	transform_worker_scope_leave(scope)
 	return scope
+}
+
+// ReceiverSuffixIndexBuild is the receiver-method suffix index a helper thread
+// builds while prepare() goes on.
+@[heap]
+struct ReceiverSuffixIndexBuild {
+	t voidptr // &Transformer, whose signature tables are only read
+mut:
+	index  map[string]string
+	scope  voidptr
+	handle thread
+}
+
+// receiver_suffix_index_thread builds the index in an arena of its own, which is
+// kept with the pre-scan arenas: the index and the names in it are read until
+// the transform has finished.
+fn receiver_suffix_index_thread(mut build ReceiverSuffixIndexBuild) {
+	t := unsafe { &Transformer(build.t) }
+	scope := transform_worker_scope_begin(t.retain_prescan_scopes)
+	build.index = t.receiver_method_suffix_index_of_signatures()
+	transform_worker_scope_leave(scope)
+	build.scope = scope
+}
+
+// start_receiver_suffix_index builds the receiver-method suffix index: at once,
+// or for a compiler build on a helper thread that only reads the signature
+// tables, which the caller must not change before finish_receiver_suffix_index.
+fn (mut t Transformer) start_receiver_suffix_index() &ReceiverSuffixIndexBuild {
+	if !t.receiver_suffix_index_beside_prepare {
+		t.rebuild_receiver_method_suffix_index()
+		return unsafe { nil }
+	}
+	t.ensure_private_signature_maps()
+	mut build := &ReceiverSuffixIndexBuild{
+		t: voidptr(t)
+	}
+	build.handle = spawn receiver_suffix_index_thread(mut build)
+	return build
+}
+
+// finish_receiver_suffix_index installs the index a helper thread built.
+fn (mut t Transformer) finish_receiver_suffix_index(started &ReceiverSuffixIndexBuild) {
+	if isnil(started) {
+		return
+	}
+	mut build := unsafe { started }
+	build.handle.wait()
+	t.receiver_method_suffix_index = build.index.move()
+	t.add_prescan_scope(build.scope)
 }
 
 // transform_const_fixed_scan_thread classifies array-literal constants on a
@@ -933,6 +989,70 @@ fn scopes_address_range(scopes []voidptr) (uint, uint) {
 		}
 	}
 	return lo, hi
+}
+
+// A whole-tree text scan streams every node once: it is bound by memory, so a
+// few threads share a large tree.
+const node_text_scan_threads = 4
+const node_text_scan_min_nodes = 262144
+
+// NodeTextScanArgs is one thread's node range of nodes_have_text_in_scopes.
+struct NodeTextScanArgs {
+	a      &flat.FlatAst = unsafe { nil }
+	scopes []voidptr
+	lo     uint
+	hi     uint
+	start  int
+	end    int
+}
+
+// node_text_scan_range reports whether a node of the range has a text or payload
+// in one of the arenas. It only reads the tree and allocates nothing.
+fn node_text_scan_range(args NodeTextScanArgs) bool {
+	for idx in args.start .. args.end {
+		node := unsafe { &args.a.nodes[idx] }
+		if node_has_any_scoped_text(node, args.scopes, args.lo, args.hi) {
+			return true
+		}
+	}
+	return false
+}
+
+// nodes_have_text_in_scopes reports whether any node text or payload lives in
+// one of `scopes`. It only reads the tree, on the calling thread and a few
+// threads of its own, so it can run beside a stage that does not write the tree.
+pub fn nodes_have_text_in_scopes(a &flat.FlatAst, scopes []voidptr) bool {
+	lo, hi := scopes_address_range(scopes)
+	if hi <= lo {
+		return false
+	}
+	n := a.nodes.len
+	jobs := int_max(1, int_min(node_text_scan_threads, n / node_text_scan_min_nodes))
+	mut threads := []thread bool{cap: jobs - 1}
+	for ji in 1 .. jobs {
+		threads << spawn node_text_scan_range(NodeTextScanArgs{
+			a:      a
+			scopes: scopes
+			lo:     lo
+			hi:     hi
+			start:  int(i64(n) * ji / jobs)
+			end:    int(i64(n) * (ji + 1) / jobs)
+		})
+	}
+	mut found := node_text_scan_range(NodeTextScanArgs{
+		a:      a
+		scopes: scopes
+		lo:     lo
+		hi:     hi
+		start:  0
+		end:    n / jobs
+	})
+	for th in threads {
+		if th.wait() {
+			found = true
+		}
+	}
+	return found
 }
 
 // scoped_text_scan_thread flags this worker's node range. Pure reads plus
@@ -3653,6 +3773,19 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		return false
 	}
 	t.tc.freeze_type_cache_for_forks()
+	// Worker call resolutions for appended nodes land in the master's sparse
+	// call-name map as each helper is merged, most of them while the pool is
+	// still running. Size it before the first merge: grown through every
+	// doubling, it left several times its final size behind in the stage arena.
+	if t.tc.parallel_check_sparse {
+		t.tc.sparse_resolved_call_names.reserve(u32(t.tc.sparse_resolved_call_names.len +
+			base_nodes / shared_sparse_call_names_per_base_nodes))
+	}
+	// The same holds for the log of rewritten base nodes that every merge extends.
+	if t.scope_parallel_workers && t.retain_worker_results {
+		t.scoped_owned_base_log.ensure_cap(t.scoped_owned_base_log.len +
+			base_nodes / shared_owned_base_log_per_base_nodes)
+	}
 	// The chunk partition, its cost tables and the helper forks below are
 	// only read until the join; keep them out of the retained stage arena.
 	setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
@@ -3987,10 +4120,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	t.used_fns_helper_snapshot = unsafe { nil }
 	t.flush_deferred_base_writes()
 	if t.ignored_comptime_for_log.len > 0 {
-		if t.ignored_comptime_for_nodes.len < t.a.nodes.len {
-			t.ignored_comptime_for_nodes.ensure_cap(t.a.nodes.cap)
-			t.ignored_comptime_for_nodes << []bool{len: t.a.nodes.len - t.ignored_comptime_for_nodes.len}
-		}
+		t.grow_ignored_comptime_for_nodes()
 		for idx in t.ignored_comptime_for_log {
 			if idx >= 0 && idx < t.ignored_comptime_for_nodes.len {
 				t.ignored_comptime_for_nodes[idx] = true
@@ -4012,34 +4142,55 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 // The borrow-summary body analyses of a compiler-sized program take most of
 // the transform preparation. Below this many candidates a serial pass is cheap.
 const min_borrow_prescan_candidates = 512
-// Preparation overlaps markused, whose workers keep most cores busy.
-const max_borrow_prescan_jobs = 6
+// The preparation thread has to finish before markused does, and by the time
+// it gets here the pool phase of markused has ended: the helpers have most of
+// the cores to themselves, and they pull their work from one queue.
+const max_borrow_prescan_jobs = 12
+// The helper threads pull declarations in blocks of this many from one queue, so
+// no thread is left with a long share when the others have finished.
+const borrow_prescan_block_items = 32
 
 // BorrowPrescanArgs is the payload of one borrow-summary prescan thread.
 struct BorrowPrescanArgs {
 	worker     voidptr // &Transformer
 	candidates voidptr // &[]BorrowCandidate
+	items      voidptr // &[]BorrowDeclItem
 	results    voidptr // &[]BorrowBodyResult
-	start      int
-	end        int
+	provenance voidptr // &[][]bool
+	queue      chan int
 mut:
 	scope voidptr
 }
 
-// borrow_prescan_thread analyses one contiguous range of borrow candidates on
-// a private transformer. The results stay in the thread's arena until the
-// fixed point has read them (see BorrowPrescan.free).
+// borrow_prescan_thread summarises queued blocks of declarations on a private
+// transformer: the borrow analysis of every candidate parameter and the
+// call-provenance summary. The results stay in the thread's arena until the
+// fixed point has read them (see BorrowPrescan.release).
 fn borrow_prescan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &BorrowPrescanArgs(arg) }
 	mut w := unsafe { &Transformer(a.worker) }
 	candidates := unsafe { &[]BorrowCandidate(a.candidates) }
+	items := unsafe { &[]BorrowDeclItem(a.items) }
 	mut results := unsafe { &[]BorrowBodyResult(a.results) }
+	mut provenance := unsafe { &[][]bool(a.provenance) }
 	scope := transform_worker_scope_begin(true)
 	w.borrow_param_mentions = &BorrowParamMentions{}
-	for i in a.start .. a.end {
-		result := w.prescan_fixed_array_borrow_body(unsafe { (*candidates)[i] })
-		unsafe {
-			(*results)[i] = result
+	for {
+		block := <-a.queue or { break }
+		start := block * borrow_prescan_block_items
+		end := int_min(items.len, start + borrow_prescan_block_items)
+		for i in start .. end {
+			item := unsafe { &(*items)[i] }
+			for ci in item.cand_start .. item.cand_end {
+				result := w.prescan_fixed_array_borrow_body(unsafe { (*candidates)[ci] })
+				unsafe {
+					(*results)[ci] = result
+				}
+			}
+			summary := w.call_provenance_decl_summary(*item)
+			unsafe {
+				(*provenance)[i] = summary
+			}
 		}
 	}
 	transform_worker_scope_leave(scope)
@@ -4047,52 +4198,31 @@ fn borrow_prescan_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-// prescan_fixed_array_borrow_bodies analyses the candidates' bodies on helper
-// threads before the serial fixed point, with no summary proven. While none of
-// the summaries an analysis read is proven, the serial analysis would take the
-// same path, so the fixed point reuses the result (see BorrowBodyResult).
-fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCandidate) BorrowPrescan {
+// prescan_fixed_array_borrow_bodies summarises the declarations on helper
+// threads before the serial fixed point, with no borrow summary proven: the
+// fixed point reads off each body analysis what the serial one would find (see
+// BorrowBodyResult), and a call-provenance summary reads no other summary.
+fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCandidate, items []BorrowDeclItem) BorrowPrescan {
 	n_jobs := int_min(runtime.nr_jobs(), max_borrow_prescan_jobs)
 	if n_jobs < 2 || candidates.len < min_borrow_prescan_candidates || isnil(t.tc)
 		|| !t.parallel_enabled || t.var_types.len > 0 || t.smartcast_stack.len > 0 {
 		return BorrowPrescan{}
 	}
-	// A body costs about the node span of its declaration, and is walked once
-	// per pointer parameter.
-	mut decls := []int{cap: candidates.len}
-	for c in candidates {
-		decls << c.decl
-	}
-	decls.sort()
-	mut spans := map[int]i64{}
-	mut previous := 0
-	for decl in decls {
-		if decl in spans {
-			continue
-		}
-		spans[decl] = i64(int_max(1, decl - previous))
-		previous = decl
-	}
-	mut total := i64(0)
-	for c in candidates {
-		total += spans[c.decl]
-	}
-	mut bounds := []int{cap: n_jobs + 1}
-	bounds << 0
-	mut acc := i64(0)
-	for i, c in candidates {
-		acc += spans[c.decl]
-		if bounds.len < n_jobs && acc >= total * i64(bounds.len) / i64(n_jobs) {
-			bounds << i + 1
-		}
-	}
-	for bounds.len < n_jobs + 1 {
-		bounds << candidates.len
-	}
-	mut results := []BorrowBodyResult{len: candidates.len}
 	t.tc.freeze_type_cache_for_forks()
+	// The result arrays, the queue and the helper forks are read until the fixed
+	// point has finished: they live in an arena that is released with the
+	// helpers' own (see BorrowPrescan.release), not in the caller's.
+	master_scope := transform_worker_scope_begin(true)
+	mut results := []BorrowBodyResult{len: candidates.len}
+	mut provenance := [][]bool{len: items.len}
+	n_blocks := (items.len + borrow_prescan_block_items - 1) / borrow_prescan_block_items
+	queue := chan int{cap: n_blocks}
+	for block in 0 .. n_blocks {
+		queue <- block
+	}
+	queue.close()
 	mut args := []BorrowPrescanArgs{cap: n_jobs}
-	for ci in 0 .. n_jobs {
+	for _ in 0 .. n_jobs {
 		wtc := t.tc.fork_for_parallel_transform(t.a)
 		mut w := t.fork_scan_worker(wtc)
 		// The analysis reads the transformer's current declaration context.
@@ -4114,9 +4244,10 @@ fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCand
 		args << BorrowPrescanArgs{
 			worker:     voidptr(w)
 			candidates: unsafe { voidptr(&candidates) }
+			items:      unsafe { voidptr(&items) }
 			results:    unsafe { voidptr(&results) }
-			start:      bounds[ci]
-			end:        bounds[ci + 1]
+			provenance: unsafe { voidptr(&provenance) }
+			queue:      queue
 		}
 	}
 	// The self-host preparation gives the master the closure-return scan instead
@@ -4128,23 +4259,32 @@ fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCand
 	for ci in first_helper .. n_jobs {
 		threads << spawn borrow_prescan_thread(unsafe { voidptr(&args[ci]) })
 	}
+	// What the caller builds from here on outlives the prescan.
+	transform_worker_scope_leave(master_scope)
 	if scan_closures {
+		sw := time.new_stopwatch()
 		t.exclusive_closure_return_fns = map[string]bool{}
 		t.collect_exclusive_closure_return_fns()
+		t.prepare_times.closure_scans = f64(sw.elapsed().microseconds()) / 1000.0
 	} else {
 		borrow_prescan_thread(unsafe { voidptr(&args[0]) })
 	}
 	threads.wait()
 	t.tc.unfreeze_type_cache_after_forks()
-	mut scopes := []voidptr{cap: n_jobs}
+	mut scopes := []voidptr{cap: n_jobs + 1}
 	for arg in args {
 		if arg.scope != unsafe { nil } {
 			scopes << arg.scope
 		}
 	}
+	// Last: the helpers' arenas are listed in an array of this one.
+	if master_scope != unsafe { nil } {
+		scopes << master_scope
+	}
 	return BorrowPrescan{
-		results: results
-		scopes:  scopes
+		results:    results
+		provenance: provenance
+		scopes:     scopes
 	}
 }
 
@@ -4374,16 +4514,23 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 			tc:                          param_tc
 			prefix_param_scan:           t.prefix_param_scan
 			retain_prescan_scopes:       t.retain_prescan_scopes
+			lists_borrow_decl_items:     true
 			call_param_types_decl_cache: map[int][]types.Type{}
 			call_param_types_decl_index: map[string]FnParamDeclRef{}
 		}
 		param_thread := spawn transform_param_prep_thread(voidptr(param_w))
 		t.defer_pre_scan_indexes = true
 		t.defer_fixed_array_borrow_prep = true
+		t.receiver_suffix_index_beside_prepare = t.building_v
 		index_thread := spawn transform_pre_scan_index_thread(voidptr(t))
+		mut sw := time.new_stopwatch()
 		t.prepare()
+		t.receiver_suffix_index_beside_prepare = false
+		t.prepare_times.indexes = f64(sw.elapsed().microseconds()) / 1000.0
+		sw.restart()
 		t.add_prescan_scope(param_thread.wait())
 		t.add_prescan_scope(index_thread.wait())
+		t.prepare_times.joins = f64(sw.elapsed().microseconds()) / 1000.0
 		t.call_param_types_recent = unsafe { nil }
 		t.clear_fn_return_name_cache()
 		t.call_param_types_decl_cache = param_w.call_param_types_decl_cache.move()
@@ -4391,6 +4538,10 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		t.call_param_types_decl_index = param_w.call_param_types_decl_index.move()
 		t.call_param_types_index_ready = param_w.call_param_types_index_ready
 		t.call_param_types_prepared = param_w.call_param_types_prepared
+		t.borrow_decl_items_listed = param_w.borrow_decl_items_listed
+		t.listed_borrow_candidates = param_w.listed_borrow_candidates
+		t.listed_borrow_decl_items = param_w.listed_borrow_decl_items
+		t.unresolved_borrow_decls = param_w.unresolved_borrow_decls
 		t.defer_fixed_array_borrow_prep = false
 		t.prepare_fixed_array_borrow_params()
 	} else {

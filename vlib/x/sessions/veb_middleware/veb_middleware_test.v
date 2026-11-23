@@ -167,14 +167,21 @@ fn test_create_with_a_valid_id_reads_whatever_the_store_holds() {
 }
 
 fn test_create_ignores_an_expired_store_entry() {
-	mut s := sessions.Sessions[User]{
-		store:   sessions.MemoryStore[User]{}
-		secret:  test_secret
-		max_age: time.second
-	}
+	max_age := time.second
 	sid, signed := sessions.new_session_id(test_secret)
-	s.store.set(sid, default_user)!
-	time.sleep(2 * time.second)
+	mut s := sessions.Sessions[User]{
+		store:   sessions.MemoryStore[User]{
+			data: {
+				sid: sessions.MemoryStoreSessions[User]{
+					created_at: time.now().add(-2 * max_age)
+					data:       default_user
+				}
+			}
+		}
+		secret:  test_secret
+		max_age: max_age
+	}
+	assert s.store.get(sid, 0)! == default_user
 	mw := create_options(mut s)
 	mut ctx := Context{}
 	with_request_cookie(mut ctx, 'sid', signed)

@@ -1,4 +1,5 @@
 import os
+import v.tempname
 
 // The runtime's own `array` struct is typed into C under that name, and a local that
 // takes the name for itself hides the type from the rest of the function it is in, and the generated code still spells the type: slicing a field of
@@ -13,10 +14,18 @@ const local_shadow_tests_dir = os.dir(@FILE)
 const local_shadow_v3_dir = os.dir(local_shadow_tests_dir)
 const local_shadow_vlib_dir = os.dir(local_shadow_v3_dir)
 const local_shadow_v3_src = os.join_path(local_shadow_v3_dir, 'v.v')
+const local_shadow_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_local_shadow_compiler_${tempname.unique_token()}')
+
+fn testsuite_end() {
+	os.rmdir_all(local_shadow_compiler_dir) or {}
+}
 
 fn local_shadow_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_local_shadow_compiler_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(local_shadow_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
+	os.mkdir_all(local_shadow_compiler_dir) or { panic(err) }
 	build := os.exec([local_shadow_vexe, '-gc', 'none', '-path',
 		'${local_shadow_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${local_shadow_v3_src}'])
 	assert build.exit_code == 0, build.output

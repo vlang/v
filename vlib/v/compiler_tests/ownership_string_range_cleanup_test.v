@@ -94,7 +94,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-retry-compilation -no-memory-limit -nocache -ownership -gc none -cc clang -d trace_free ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -no-retry-compilation -no-memory-limit -nocache -ownership -gc none -cc clang -d trace_free ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		for region, expected in {
 			'loops':        3
@@ -135,7 +135,7 @@ fn main() {
 }
 ')!
 		for mode in ['-no-parallel', ''] {
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-retry-compilation -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -no-retry-compilation -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
 			assert out.exit_code != 0, '${creation} ${mode}: ${out.output}'
 			assert out.output.contains('use of moved value: `slice`'), '${creation} ${mode}: ${out.output}'
 		}

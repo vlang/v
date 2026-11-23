@@ -6,12 +6,21 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
-fn build_v3_test_file_cli_runner() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_test_file_cli_runner')
+// One compiler serves the whole suite; each case used to build its own.
+const test_file_cli_runner = os.join_path(os.temp_dir(), 'v3_test_file_cli_runner_${os.getpid()}') + $if windows { '.exe' } $else { '' }
+
+fn testsuite_begin() {
 	build :=
-		os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
+		os.exec([vexe, '-gc', 'none', '-o', test_file_cli_runner, '${v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rm(test_file_cli_runner) or {}
+}
+
+fn build_v3_test_file_cli_runner() string {
+	return test_file_cli_runner
 }
 
 // test_direct_test_file_run_executes_harness validates `v3 foo_test.v` behavior.

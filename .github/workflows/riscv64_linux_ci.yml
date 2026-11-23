@@ -17,7 +17,7 @@ jobs:
     if: github.ref == 'refs/heads/master'
     # The host should always be Linux
     runs-on: ubuntu-24.04
-    # The native bootstrap takes about 100 minutes under QEMU; leave time for
+    # The native bootstrap takes about 50 minutes under QEMU; leave time for
     # the builtin/os/binary, assembly and closure tests that follow it.
     timeout-minutes: 180
     name: Build on ubuntu-24.04 riscv64
@@ -26,8 +26,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: uraimo/run-on-arch-action@1e2c619f81e6d8609845ea1d2f443a778df1ac68 # v3
-        name: Run commands
-        id: runcmd
+        name: Bootstrap and generate the optimized compiler
         with:
           arch: riscv64
           distro: ubuntu24.04
@@ -68,10 +67,40 @@ jobs:
             fi
             # -gc none is only for bootstrap, before the collector is available.
             export VFLAGS="-no-retry-compilation -cc cc"
-            V_CI_SOURCE_BUILD=1 sh .github/workflows/prepare_v.sh
+            V_CI_SOURCE_BUILD=1 V_CI_VPROD_STAGE=generate sh .github/workflows/prepare_v.sh
+      # The native `gcc -O2` of the generated C takes about 70 minutes under QEMU.
+      # Ubuntu's cross compiler on the x86 host is the same gcc release with the
+      # same glibc as the riscv64 container, and finishes in a few minutes.
+      - name: Compile the optimized compiler with a cross compiler
+        run: |
+          set -euo pipefail
+          sudo chown -R "$(id -u):$(id -g)" .
+          sudo apt-get update -q -y
+          sudo apt-get install -q -y gcc-riscv64-linux-gnu
+          mkdir -p "$RUNNER_TEMP/cross-gcc"
+          ln -sf "$(command -v riscv64-linux-gnu-gcc)" "$RUNNER_TEMP/cross-gcc/gcc"
+          PATH="$RUNNER_TEMP/cross-gcc:$PATH" make --no-print-directory -C vprod.project
+          file vprod.project/v
+      - uses: uraimo/run-on-arch-action@1e2c619f81e6d8609845ea1d2f443a778df1ac68 # v3
+        name: Install the optimized compiler and run tests
+        with:
+          arch: riscv64
+          distro: ubuntu24.04
+          base_image: --platform=linux/riscv64 riscv64/ubuntu:24.04
+          githubToken: ${{ github.token }}
+          shell: /bin/bash
+          install: |
+            apt-get update -q -y
+            apt-get install -q -y make gcc git file coreutils binutils
+          run: |
+            set -euo pipefail
+            git config --global --add safe.directory "$(pwd -P)"
+            export LDFLAGS="-latomic"
+            export VFLAGS="-no-retry-compilation -cc cc"
+            # Installing runs the compiler on riscv64 first (`v -version`).
+            V_CI_SOURCE_BUILD=1 V_CI_VPROD_STAGE=install sh .github/workflows/prepare_v.sh
             # V3 is the default compiler on Linux. Keep bootstrap fallback-compatible,
             # then make ordinary test compilation fail instead of silently retrying V1.
-            export V_MACOS_V3_NO_FALLBACK=1
             ./v test vlib/builtin vlib/os vlib/encoding/binary
             ./v test vlib/v/slow_tests/assembly
             VTEST_ONLY=closure ./v test vlib/v/tests
