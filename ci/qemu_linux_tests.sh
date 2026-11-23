@@ -37,7 +37,7 @@ Examples:
   ci/qemu_linux_tests.sh -- -cc clang test vlib/v/
   V_QEMU_CC=gcc V_QEMU_VFLAGS='-cc gcc -no-memory-limit' \
     ci/qemu_linux_tests.sh -- -cc gcc test vlib/v/
-  V_QEMU_NO_FALLBACK=0 ci/qemu_linux_tests.sh -- test-all
+  ci/qemu_linux_tests.sh -- test-all
 EOF
 }
 

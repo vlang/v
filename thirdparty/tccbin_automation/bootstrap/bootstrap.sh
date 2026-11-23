@@ -406,7 +406,6 @@ export VJOBS=1
 export CFLAGS=
 export CPPFLAGS=
 export LDFLAGS=
-export V_MACOS_V3_NO_FALLBACK=1
 
 private_contract_root="$work_root/contract-source"
 clone_contract_checkout "$contract_root" "$private_contract_root" "$contract_repository_url" \

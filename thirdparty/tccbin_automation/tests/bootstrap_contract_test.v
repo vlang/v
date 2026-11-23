@@ -112,7 +112,6 @@ fn test_bootstrap_script_is_syntax_valid_network_free_and_ordered() {
 	assert source.contains(r'-d "tccbin_contract_sha=${contract_sha}"')
 	// build_v_program holds one direct invocation per branch; every cmd/v build goes through it.
 	assert source.count('-no-parallel -nocache -cc "$cc_command"') == 2
-	assert source.count('export V_MACOS_V3_NO_FALLBACK=1') == 1
 	assert source.count(r'sh "$vc_compat" "$vc_source" "$cc_command" -std=c99') == 1
 	assert source.contains(r'vc_compat="$private_contract_root/cmd/tools/vc_compat.sh"')
 	assert source.contains('powershell -NoProfile -ExecutionPolicy Bypass')

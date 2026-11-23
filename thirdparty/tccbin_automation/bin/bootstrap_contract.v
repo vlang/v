@@ -140,7 +140,6 @@ pub fn validate_vc_bootstrap_contract(automation_root string) !VcBootstrapLock {
 		r'-d "tccbin_contract_repository=${contract_repository}"',
 		r'-d "tccbin_contract_sha=${contract_sha}"',
 		'contract-binding',
-		'export V_MACOS_V3_NO_FALLBACK=1',
 		'vc_compat="$private_contract_root/cmd/tools/vc_compat.sh"',
 		'cmd/tools/openbsd_vc_compat.c',
 	] {
