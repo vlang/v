@@ -117,6 +117,19 @@ fn test_external_tool_build_args_drop_non_binary_modes() {
 	]
 }
 
+fn test_vfmt_build_args_leave_module_paths_to_the_tool() {
+	// vfmt reads `-path` from VFLAGS at run time; it is no reason to rebuild the tool.
+	assert external_tool_build_args('vfmt', ['-path', '/tmp/mods|@vlib', '-cc', 'clang']) == [
+		'-cc',
+		'clang',
+	]
+	assert external_tool_build_args('vfmt', ['-cflags', '-path', '-path', '@vlib']) == [
+		'-cflags',
+		'-path',
+	]
+	assert external_tool_build_args('vvet', ['-path', '@vlib']) == ['-path', '@vlib']
+}
+
 fn test_diagnostic_external_tool_build_args_disable_gc() {
 	for tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 		assert external_tool_compile_args(tool_name, ['-prod']) == ['-prod', '-g', '-gc', 'none']

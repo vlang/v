@@ -661,6 +661,11 @@ fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 		_, native_args := split_tool_backend_args(compile_args)
 		compile_args = external_tool_args_without_target(native_args)
 	}
+	if tool_name == 'vfmt' {
+		// vfmt reads `-path` from VFLAGS itself, to find the modules a file imports.
+		// Building it with them only made a new build of the tool for every `-path`.
+		compile_args = external_tool_args_without_path(compile_args)
+	}
 	if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 		compile_args = external_tool_args_without_gc(compile_args)
 		if '-g' !in compile_args {
@@ -715,6 +720,35 @@ fn external_tool_args_without_target(args []string) []string {
 			continue
 		}
 		if arg == '-cross' || arg.starts_with('-os=') || arg.starts_with('-arch=') {
+			continue
+		}
+		result << arg
+		value_follows = if arg in ['-prof', '-profile'] {
+			profile_option_consumes_value(args, i)
+		} else {
+			arg == '-cf' || pref.option_may_consume_value(arg)
+		}
+	}
+	return result
+}
+
+// external_tool_args_without_path removes `-path` and its value.
+fn external_tool_args_without_path(args []string) []string {
+	mut result := []string{cap: args.len}
+	mut skip_path_value := false
+	mut value_follows := false
+	for i, arg in args {
+		if skip_path_value {
+			skip_path_value = false
+			continue
+		}
+		if value_follows {
+			result << arg
+			value_follows = false
+			continue
+		}
+		if arg == '-path' {
+			skip_path_value = true
 			continue
 		}
 		result << arg
