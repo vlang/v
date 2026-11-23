@@ -57,7 +57,10 @@ fn (c Control) branch_types() []ValueType {
 }
 
 fn (mut r Reader) block_type(types []Signature) !Signature {
+	start := r.pos
 	x := i64(r.leb(33, true)!)
+	// Negative block types are single-byte value types, not signed type indices.
+	if x < 0 && r.pos != start + 1 { return error('invalid block type') }
 	if x == -64 { return Signature{} }
 	if x < 0 { return Signature{ results: [value_type(u8(x & 0x7f))!] } }
 	if x >= types.len { return error('invalid block type') }
@@ -79,10 +82,10 @@ fn numeric_signature(op u16) !(int, int, int) {
 	if op >= 0xa7 && op <= 0xc4 {
 		inputs := [0x7e, 0x7d, 0x7d, 0x7c, 0x7c, 0x7f, 0x7f, 0x7d, 0x7d, 0x7c, 0x7c, 0x7f, 0x7f,
 			0x7e, 0x7e, 0x7c, 0x7f, 0x7f, 0x7e, 0x7e, 0x7d, 0x7d, 0x7c, 0x7f, 0x7e, 0x7f, 0x7f,
-			0x7e, 0x7e, 0x7e]
+			0x7e, 0x7e, 0x7e]!
 		outputs := [0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7d, 0x7d,
 			0x7d, 0x7d, 0x7d, 0x7c, 0x7c, 0x7c, 0x7c, 0x7c, 0x7f, 0x7e, 0x7d, 0x7c, 0x7f, 0x7f,
-			0x7e, 0x7e, 0x7e]
+			0x7e, 0x7e, 0x7e]!
 		return inputs[int(op - 0xa7)], outputs[int(op - 0xa7)], 1
 	}
 	if op >= 0x100 && op <= 0x107 {
@@ -93,13 +96,13 @@ fn numeric_signature(op u16) !(int, int, int) {
 }
 
 fn memory_shape(op u16) (int, int) {
-	widths := [4, 8, 4, 8, 1, 1, 2, 2, 1, 1, 2, 2, 4, 4, 4, 8, 4, 8, 1, 2, 1, 2, 4]
+	widths := [4, 8, 4, 8, 1, 1, 2, 2, 1, 1, 2, 2, 4, 4, 4, 8, 4, 8, 1, 2, 1, 2, 4]!
 	types := [0x7f, 0x7e, 0x7d, 0x7c, 0x7f, 0x7f, 0x7f, 0x7f, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e,
-		0x7f, 0x7e, 0x7d, 0x7c, 0x7f, 0x7f, 0x7e, 0x7e, 0x7e]
+		0x7f, 0x7e, 0x7d, 0x7c, 0x7f, 0x7f, 0x7e, 0x7e, 0x7e]!
 	return widths[int(op - 0x28)], types[int(op - 0x28)]
 }
 
-fn (mut mod Module) decode_function(index int, mut r Reader) ! {
+fn (mut mod Module) decode_function(index int, mut r Reader, declared_refs []bool) ! {
 	mut f := mod.functions[index]
 	sig := mod.types[f.typ]
 	mut v := Validator{ controls: [Control{ op: 0xff, results: sig.results }] }
@@ -274,7 +277,9 @@ fn (mut mod Module) decode_function(index int, mut r Reader) ! {
 				v.push(0x7f)
 			}
 			0xd2 {
-				value = u64(r.index(mod.functions.len)! + 1)
+				referenced := r.index(mod.functions.len)!
+				if !declared_refs[referenced] { return error('undeclared function reference') }
+				value = u64(referenced + 1)
 				v.push(0x70)
 			}
 			0x108...0x111 {

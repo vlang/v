@@ -1,6 +1,7 @@
 module runtime
 
 import encoding.leb128
+import wasm
 
 fn encode_section(id u8, data []u8) []u8 {
 	mut bytes := [id]
@@ -54,12 +55,28 @@ fn test_reject_malformed_modules_and_instructions() {
 		[u8(0x41), 0, 0x28, 2, 0, 0x0b], // missing memory
 		[u8(0x05), 0x0b], // misplaced else
 		[u8(0xfd), 0, 0x0b], // unsupported SIMD
+		[u8(2), 0xff, 0x7e, 0x41, 42, 0x0b, 0x0b], // -129 is not an i32 block type
+		[u8(2), 0xff, 0x7f, 0x41, 42, 0x0b, 0x0b], // value block types cannot be padded
+		[u8(2), 0xc0, 0x7f, 1, 0x0b, 0x41, 42, 0x0b], // nor can the empty block type
 	] {
 		reject(raw_module([], [u8(0x7f)], body))
 	}
 	mut duplicate := valid.clone()
 	duplicate << encode_section(1, [u8(0)])
 	reject(duplicate)
+}
+
+fn test_function_references_require_a_declaration() ! {
+	mut m := wasm.Module{}
+	hidden := m.new_function('hidden', [], [])
+	m.commit(hidden, false)
+	mut probe := m.new_function('probe', [], [.funcref_t])
+	probe.ref_func('hidden')
+	m.commit(probe, true)
+	reject(m.compile())
+	m.new_declarative_element(['hidden'])
+	mut vm := instantiate(load(m.compile())!, [], Config{})!
+	assert vm.call('probe', [])![0].bits == 1
 }
 
 fn test_multivalue_branches_and_typed_loop_parameters() ! {

@@ -128,7 +128,9 @@ fn (mut r Reader) constant(expected ValueType, functions int) !u64 {
 
 // load decodes and validates a core WebAssembly binary, rejecting unsupported extensions.
 pub fn load(bytes []u8) !&Module {
-	if bytes.len > 64 * 1024 * 1024 { return error('WebAssembly binary exceeds 64 MiB loader limit') }
+	if bytes.len > 64 * 1024 * 1024 {
+		return error('WebAssembly binary exceeds 64 MiB loader limit')
+	}
 	mut r := Reader{ bytes: bytes }
 	if r.take(8)! != [u8(0), 0x61, 0x73, 0x6d, 1, 0, 0, 0] {
 		return error('invalid WebAssembly magic or version')
@@ -138,6 +140,7 @@ pub fn load(bytes []u8) !&Module {
 	mut last_section := 0
 	mut code_count := 0
 	mut total_locals := 0
+	mut declared_refs := []bool{}
 	for r.pos < bytes.len {
 		section := r.byte()!
 		mut s := Reader{ bytes: r.take(r.uint()!)! }
@@ -171,12 +174,14 @@ pub fn load(bytes []u8) !&Module {
 						return error('only function imports are currently supported')
 					}
 					mod.functions << Function{ typ: s.index(mod.types.len)!, module: namespace, name: name }
+					declared_refs << false
 				}
 				mod.import_count = mod.functions.len
 			}
 			3 {
 				for _ in 0 .. s.count()! {
 					mod.functions << Function{ typ: s.index(mod.types.len)! }
+					declared_refs << false
 				}
 			}
 			4 {
@@ -197,7 +202,9 @@ pub fn load(bytes []u8) !&Module {
 					typ := value_type(s.byte()!)!
 					mutable := s.byte()!
 					if mutable > 1 { return error('invalid global mutability') }
-					mod.globals << Global{typ, mutable == 1, s.constant(typ, mod.functions.len)!}
+					value := s.constant(typ, mod.functions.len)!
+					if typ == .funcref && value != 0 { declared_refs[int(value - 1)] = true }
+					mod.globals << Global{typ, mutable == 1, value}
 				}
 			}
 			7 {
@@ -218,7 +225,9 @@ pub fn load(bytes []u8) !&Module {
 						3 { mod.globals.len }
 						else { return error('invalid export kind') }
 					}
-					exports << Export{name, kind, s.index(length)!}
+					index := s.index(length)!
+					if kind == 0 { declared_refs[index] = true }
+					exports << Export{name, kind, index}
 				}
 			}
 			8 {
@@ -254,6 +263,9 @@ pub fn load(bytes []u8) !&Module {
 							s.constant(.funcref, mod.functions.len)!
 						}
 					}
+					for ref in elements {
+						if ref != 0 { declared_refs[int(ref - 1)] = true }
+					}
 					if flags & 3 == 3 { elements.clear() }
 					mod.elements << Segment{ passive: !active, offset: offset, elements: elements }
 				}
@@ -278,7 +290,7 @@ pub fn load(bytes []u8) !&Module {
 						for _ in 0 .. int(n) { locals << typ }
 					}
 					mod.functions[i].locals = locals
-					mod.decode_function(i, mut body)!
+					mod.decode_function(i, mut body, declared_refs)!
 				}
 			}
 			11 {

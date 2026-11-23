@@ -20,6 +20,7 @@ Run the output with V's own WebAssembly interpreter, without an external Wasm en
 ```sh
 ./v run hello.wasm
 ./v -b wasm run examples/hello_world.v
+./v run examples/wasm_codegen/add.v > add.wasm
 ./v wasm --invoke add add.wasm 20 22
 ```
 

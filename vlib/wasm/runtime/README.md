@@ -11,7 +11,7 @@ dependency on Node.js, Wasmer, Wasmtime, or a native WebAssembly library.
 ./v hello.wasm
 ./v -b wasm run examples/hello_world.v
 
-./v -b wasm -o add.wasm examples/wasm/add.v
+./v run examples/wasm_codegen/add.v > add.wasm
 ./v wasm --invoke add add.wasm 20 22
 ```
 

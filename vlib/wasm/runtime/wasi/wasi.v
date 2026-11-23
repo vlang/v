@@ -98,25 +98,25 @@ fn host(name string, parameters []runtime.ValueType, results []runtime.ValueType
 // imports supplies stdio, process exit, arguments, and an empty environment.
 // No filesystem or network access is provided. Include argv[0] in args.
 pub fn imports(args []string) []runtime.HostFunction {
-	arguments := args.clone()
+	guest_args := args.clone()
 	return [
 		host('fd_write', [.i32, .i32, .i32, .i32], [.i32], fd_write),
 		host('fd_read', [.i32, .i32, .i32, .i32], [.i32], fd_read),
 		host('proc_exit', [.i32], [], proc_exit),
 		host('environ_sizes_get', [.i32, .i32], [.i32], empty_sizes),
 		host('environ_get', [.i32, .i32], [.i32], empty_get),
-		host('args_sizes_get', [.i32, .i32], [.i32], fn [arguments] (mut vm runtime.Instance, values []runtime.Value) ![]runtime.Value {
+		host('args_sizes_get', [.i32, .i32], [.i32], fn [guest_args] (mut vm runtime.Instance, values []runtime.Value) ![]runtime.Value {
 			mut size := u64(0)
-			for arg in arguments { size += u64(arg.len) + 1 }
+			for arg in guest_args { size += u64(arg.len) + 1 }
 			if size > 0xffffffff { return error('WASI arguments too large') }
-			put_u32(mut vm, u32(values[0].bits), u32(arguments.len))!
+			put_u32(mut vm, u32(values[0].bits), u32(guest_args.len))!
 			put_u32(mut vm, u32(values[1].bits), u32(size))!
 			return [runtime.Value.i32(0)]
 		}),
-		host('args_get', [.i32, .i32], [.i32], fn [arguments] (mut vm runtime.Instance, values []runtime.Value) ![]runtime.Value {
+		host('args_get', [.i32, .i32], [.i32], fn [guest_args] (mut vm runtime.Instance, values []runtime.Value) ![]runtime.Value {
 			mut pointers := u64(u32(values[0].bits))
 			mut address := u64(u32(values[1].bits))
-			for arg in arguments {
+			for arg in guest_args {
 				if pointers + 4 > 0x100000000 || address + u64(arg.len) + 1 > 0x100000000 {
 					return error('WASI arguments out of bounds')
 				}
