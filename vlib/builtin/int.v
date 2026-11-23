@@ -172,6 +172,9 @@ pub fn (nn int) hex_full() string {
 pub fn (n int) str() string {
 	$if new_int ? {
 		return impl_i64_to_string(n)
+	} $else $if native ? {
+		// The native backends lower `int` to 64 bits but leave `new_int` off.
+		return impl_i64_to_string(i64(n))
 	} $else {
 		return n.str_l(11)
 	}

@@ -47,6 +47,17 @@ fn test_string_int_uses_target_width() {
 	}
 }
 
+fn test_string_int_formats_at_target_width() {
+	if sizeof(int) == sizeof(i64) {
+		for value in ['3000000000', '-3000000000', '9223372036854775807', '-9223372036854775808'] {
+			assert value.int().str() == value
+		}
+	} else {
+		assert '3000000000'.int().str() == '2147483647'
+		assert '-3000000000'.int().str() == '-2147483648'
+	}
+}
+
 fn test_unsigned_cast() {
 	// tests for u16
 
