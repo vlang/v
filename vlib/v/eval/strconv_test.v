@@ -64,3 +64,15 @@ fn main() {
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'parsed'
 }
+
+fn test_eval_string_int_uses_target_width() ! {
+	source := os.read_file(os.join_path(@VROOT, 'vlib', 'builtin', 'string_int_test.v'))!
+	result := run_eval_strconv_program(source + '
+fn main() {
+	test_string_int_uses_target_width()
+	println("parsed")
+}
+')!
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == 'parsed'
+}
