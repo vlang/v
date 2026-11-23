@@ -5366,15 +5366,20 @@ fn runtime_init_targets_global(init string, cname string) bool {
 fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 	// This runs once per generated batch, while a batch refers to a handful of
 	// the literals: name a literal when the batch mentions it, not all of them
-	// for every batch.
+	// for every batch. The result is always a new string, which callers own (they
+	// free `source`); it is copied in runs between the renamed symbols, or whole.
+	if !source.contains('_str_') {
+		return source.clone()
+	}
 	mut symbols := []string{len: g.str_lits.len}
-	user_c_symbols := g.cache_user_c_string_symbols()
-	mut out := strings.new_builder(source.len + g.str_lits.len * 8)
+	mut user_c_symbols := map[string]bool{}
+	mut user_c_symbols_ready := false
+	mut out := strings.new_builder(0)
+	mut copied := 0
 	mut i := 0
 	for i < source.len {
 		if source[i] in [`"`, `'`] {
 			quote := source[i]
-			start := i
 			i++
 			for i < source.len {
 				if source[i] == `\\` && i + 1 < source.len {
@@ -5386,20 +5391,16 @@ fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 					break
 				}
 			}
-			out.write_string(source[start..i])
 			continue
 		}
 		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
-			start := i
 			i += 2
 			for i < source.len && source[i] != `\n` {
 				i++
 			}
-			out.write_string(source[start..i])
 			continue
 		}
 		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
-			start := i
 			i += 2
 			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
 				i++
@@ -5409,7 +5410,6 @@ fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 			} else {
 				i = source.len
 			}
-			out.write_string(source[start..i])
 			continue
 		}
 		if c_identifier_start(source[i]) {
@@ -5418,26 +5418,40 @@ fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 			for i < source.len && c_identifier_continue(source[i]) {
 				i++
 			}
-			identifier := source[start..i]
-			if cache_numbered_string_symbol(identifier) && !user_c_symbols[identifier] {
-				mut id := 0
-				for digit in identifier[5..].bytes() {
-					id = id * 10 + int(digit - `0`)
-				}
-				if id >= 0 && id < symbols.len {
-					if symbols[id].len == 0 {
-						symbols[id] = cache_string_symbol(g.str_lits[id])
-					}
-					out.write_string(symbols[id])
-					continue
-				}
+			identifier := unsafe { tos(source.str + start, i - start) }
+			if !cache_numbered_string_symbol(identifier) {
+				continue
 			}
-			out.write_string(identifier)
+			if !user_c_symbols_ready {
+				user_c_symbols = g.cache_user_c_string_symbols()
+				user_c_symbols_ready = true
+			}
+			if user_c_symbols[identifier] {
+				continue
+			}
+			mut id := 0
+			for digit in identifier[5..].bytes() {
+				id = id * 10 + int(digit - `0`)
+			}
+			if id >= 0 && id < symbols.len {
+				if symbols[id].len == 0 {
+					symbols[id] = cache_string_symbol(g.str_lits[id])
+				}
+				if copied == 0 {
+					out = strings.new_builder(source.len + 256)
+				}
+				out.write_string(source[copied..start])
+				out.write_string(symbols[id])
+				copied = i
+			}
 			continue
 		}
-		out.write_u8(source[i])
 		i++
 	}
+	if copied == 0 {
+		return source.clone()
+	}
+	out.write_string(source[copied..])
 	return out.str()
 }
 
