@@ -8379,13 +8379,14 @@ fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ &Type, op f
 		else { op }
 	}
 	key := raw.source_type_id()
+	// `seen` holds every type visited, not just the current path: the question is
+	// whether any reachable type overloads the operator, and a type explored once
+	// answers it. Forgetting types on the way back explored a type once per path,
+	// exponential with empty interfaces, whose implementers are every type.
 	if seen[key] {
 		return false
 	}
 	seen[key] = true
-	defer {
-		seen.delete(key)
-	}
 	if (raw is Struct || raw is Alias) && tc.type_has_infix_operator_method(raw, semantic_op) {
 		return true
 	}
