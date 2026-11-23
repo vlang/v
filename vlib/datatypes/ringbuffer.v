@@ -27,15 +27,18 @@ pub fn (mut rb RingBuffer[T]) push(element T) ! {
 	}
 }
 
-// pop returns the oldest element in the buffer.
+// pop removes and returns the oldest element in the buffer, or an error if empty.
+// The backing slot is cleared as part of the removal.
 pub fn (mut rb RingBuffer[T]) pop() !T {
-	mut v := rb.content[rb.reader]
 	if rb.is_empty() {
 		return error('Buffer is empty')
-	} else {
-		rb.move_reader()
 	}
-	return v
+	value := rb.content[rb.reader]
+	// Clear references in the vacated slot without allocating a new T.
+	empty := [1]T{}
+	rb.content[rb.reader] = empty[0]
+	rb.move_reader()
+	return value
 }
 
 // push_many pushes an array to the buffer.
