@@ -27,6 +27,23 @@ fn test_push_and_pop_preserve_fifo_order() {
 	assert rb.remaining() == rb.capacity()
 }
 
+struct RingBufferPayload {
+	value int
+}
+
+fn test_pop_clears_the_consumed_slot() {
+	mut rb := new_ringbuffer[&RingBufferPayload](2)
+	rb.push(&RingBufferPayload{ value: 42 })!
+	rb.push(&RingBufferPayload{ value: 7 })!
+	first := rb.pop()!
+	assert first.value == 42
+	assert isnil(rb.content[0])
+	second := rb.pop()!
+	assert second.value == 7
+	assert isnil(rb.content[1])
+	assert rb.is_empty()
+}
+
 fn test_push_past_the_capacity_reports_an_overflow() ! {
 	mut rb := new_ringbuffer[int](2)
 	rb.push(1) or { panic(err) }
