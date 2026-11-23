@@ -3,13 +3,17 @@
 // driver assembles and links, and the generated C only names that object. The
 // array form stays for `-d no_incbin` and for generated C output.
 import os
-import crypto.sha256
 
 const incbin_vexe = @VEXE
 const incbin_workspace = os.join_path(os.vtmp_dir(), 'embed_file_incbin_${os.getpid()}')
 const incbin_payload_len = 200_000
 
 fn testsuite_begin() {
+	// The TCC that a job selects through VFLAGS cannot build `-prod`; let these builds
+	// use the default compiler. The TCC refusal is checked below with an explicit `-cc tcc`.
+	if os.getenv('VFLAGS').contains('tcc') {
+		os.unsetenv('VFLAGS')
+	}
 	os.rmdir_all(incbin_workspace) or {}
 	os.mkdir_all(incbin_workspace) or { panic(err) }
 	// longer than one C object is required to hold, so the array form would be
@@ -23,11 +27,9 @@ fn testsuite_begin() {
 		payload[i] = u8(state)
 	}
 	os.write_file_array(os.join_path(incbin_workspace, 'data.bin'), payload) or { panic(err) }
-	os.write_file(os.join_path(incbin_workspace, 'main.v'), "import crypto.sha256
-
-fn main() {
+	os.write_file(os.join_path(incbin_workspace, 'main.v'), "fn main() {
 	data := \$embed_file('data.bin')
-	println('\${data.len} \${sha256.hexhash(data.to_string())}')
+	println('\${data.len} \${data.to_string().hex()}')
 }
 ") or { panic(err) }
 }
@@ -38,14 +40,13 @@ fn testsuite_end() {
 
 fn expected_output() string {
 	data := os.read_bytes(os.join_path(incbin_workspace, 'data.bin')) or { panic(err) }
-	return '${data.len} ${sha256.hexhash(data.bytestr())}'
+	return '${data.len} ${data.hex()}'
 }
 
 // retained_c_file names the C source kept next to the `-o` output of a `-b c` build.
-// V derives it from the output name verbatim and appends `.exe` to that name on
-// Windows, so the file is `app_retained.c` elsewhere and `app_retained.exe.c` there.
+// V uses the requested output name before adding the executable suffix.
 fn retained_c_file(name string) string {
-	return os.join_path(incbin_workspace, name + $if windows { '.exe' } $else { '' } + '.c')
+	return os.join_path(incbin_workspace, name + '.c')
 }
 
 fn build_and_run(name string, flags string) (os.Result, string) {
@@ -60,21 +61,6 @@ fn build_and_run(name string, flags string) (os.Result, string) {
 	run := os.exec([exe + $if windows { '.exe' } $else { '' }])
 	assert run.exit_code == 0, run.output
 	return build, run.output.trim_space()
-}
-
-fn test_prod_build_assembles_the_payload_and_links_it() {
-	build, output := build_and_run('app', '')
-	assert output == expected_output()
-	// the assembler ran on the generated source of the payload; the array form
-	// has no such step
-	assert build.output.contains('_v_embed_blob_') && build.output.contains('.S'), build.output
-	entries := os.ls(incbin_workspace) or { panic(err) }
-	assert !entries.any(it.starts_with('.app.v3cc.')), 'the incbin build directory was retained'
-}
-
-fn test_a_second_build_with_a_warm_module_cache_links_the_payload_again() {
-	_, output := build_and_run('app_again', '')
-	assert output == expected_output()
 }
 
 fn test_the_array_form_is_kept_with_no_incbin() {
@@ -115,8 +101,14 @@ fn test_keepc_and_dumped_flags_do_not_use_temporary_incbin_objects() {
 	assert !flags.contains('_v_embed_blob_'), flags
 }
 
-fn test_dump_flags_after_cached_incbin_build_uses_arrays() {
-	cache_dir := os.join_path(os.vtmp_dir(), 'embed_file_incbin_cache_${os.getpid()}')
+fn test_prod_incbin_build_with_a_cold_and_warm_cache() {
+	$if msvc {
+		// MSVC cannot assemble the payload; it keeps the array form.
+		return
+	}
+	// A short name: the module cache nests long temporary names below it, and on
+	// Windows the whole path has to stay under MAX_PATH.
+	cache_dir := os.join_path(os.vtmp_dir(), 'eic_${os.getpid()}')
 	os.rmdir_all(cache_dir) or {}
 	old_cache := os.getenv_opt('V3CACHE')
 	old_trace := os.getenv_opt('V3_CACHE_TRACE')
@@ -135,9 +127,12 @@ fn test_dump_flags_after_cached_incbin_build_uses_arrays() {
 		}
 		os.rmdir_all(cache_dir) or {}
 	}
-	seed_build, seed_output := build_and_run('app_cache_seed', '')
-	assert seed_output == expected_output()
+	expected := expected_output()
+	seed_build, seed_output := build_and_run('app', '')
+	assert seed_output == expected
 	assert seed_build.output.contains('_v_embed_blob_') && seed_build.output.contains('.S'), seed_build.output
+	entries := os.ls(incbin_workspace) or { panic(err) }
+	assert !entries.any(it.starts_with('.app.v3cc.')), 'the incbin build directory was retained'
 	mut cached_incbin_plan := false
 	for path in os.walk_ext(cache_dir, '.c') {
 		if os.base(path).starts_with('program_') {
@@ -153,10 +148,12 @@ fn test_dump_flags_after_cached_incbin_build_uses_arrays() {
 	// leaves no plan to reuse. Any other seed build caches its incbin plan.
 	uncached := seed_build.output.contains('external C inputs cannot be assigned to cache units')
 	assert cached_incbin_plan != uncached, 'the seed build neither cached its incbin C plan nor bypassed the cache:\n${seed_build.output}'
+	_, warm_output := build_and_run('app_again', '')
+	assert warm_output == expected
 	flags_file := os.join_path(incbin_workspace, 'cached_flags.txt')
 	dump_build, dump_output := build_and_run('app_cache_dump',
 		'-dump-c-flags ${os.quoted_path(flags_file)}')
-	assert dump_output == expected_output()
+	assert dump_output == expected
 	assert !dump_build.output.contains('.S -o'), dump_build.output
 	flags := os.read_file(flags_file) or { panic(err) }
 	assert !flags.contains('_v_embed_blob_'), flags

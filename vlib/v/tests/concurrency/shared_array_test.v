@@ -1,5 +1,3 @@
-import time
-
 fn incr(shared foo []int, index int) {
 	for _ in 0 .. 100000 {
 		lock foo {
@@ -13,27 +11,19 @@ fn incr(shared foo []int, index int) {
 
 fn test_shared_array() {
 	shared foo := &[10, 20, 0]
-	spawn incr(shared foo, 0)
-	spawn incr(shared foo, 1)
-	spawn incr(shared foo, 0)
-	spawn incr(shared foo, 1)
+	mut workers := []thread{cap: 4}
+	for index in [0, 1, 0, 1] {
+		workers << spawn incr(shared foo, index)
+	}
 	for _ in 0 .. 50000 {
 		lock foo {
 			foo[0] -= 2
 			foo[1] += 3
 		}
 	}
-	mut finished_threads := 0
-	for {
-		rlock foo {
-			finished_threads = foo[2]
-		}
-		if finished_threads == 4 {
-			break
-		}
-		time.sleep(100 * time.millisecond)
-	}
+	workers.wait()
 	rlock foo {
+		assert foo[2] == 4
 		f0 := foo[0]
 		f1 := foo[1]
 		assert f0 == 100010

@@ -18,7 +18,7 @@ fn ownership_value_semantics_cleanup(source string) {
 }
 
 fn ownership_value_semantics_v(mode string, args []string) os.Result {
-	mut cmd := [@VEXE, '-new-compiler', '-nocache', '-ownership']
+	mut cmd := [@VEXE, '-nocache', '-ownership']
 	if mode != '' {
 		cmd << mode
 	}

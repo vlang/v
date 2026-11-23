@@ -1,13 +1,26 @@
 import os
+import v.tempname
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const fn_value_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_fn_value_${tempname.unique_token()}')
+
+fn testsuite_begin() {
+	os.mkdir_all(fn_value_fixture_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(fn_value_fixture_dir) or {}
+}
 
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fn_value_decl_type_test')
+	v3_bin := os.join_path(fn_value_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${v3_src}'])
@@ -16,9 +29,9 @@ fn build_v3() string {
 }
 
 fn run_good(v3_bin string, name string, src string) string {
-	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	good_src := os.join_path(fn_value_fixture_dir, 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	good_bin := os.join_path(fn_value_fixture_dir, 'v3_${name}')
 	compile := os.exec([v3_bin, '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
@@ -28,9 +41,9 @@ fn run_good(v3_bin string, name string, src string) string {
 }
 
 fn run_bad(v3_bin string, name string, src string) string {
-	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	bad_src := os.join_path(fn_value_fixture_dir, 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	bad_bin := os.join_path(fn_value_fixture_dir, 'v3_${name}')
 	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: reached C compiler: ${compile.output}'
@@ -38,9 +51,9 @@ fn run_bad(v3_bin string, name string, src string) string {
 }
 
 fn gen_c(v3_bin string, name string, src string) string {
-	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	src_path := os.join_path(fn_value_fixture_dir, 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	c_path := os.join_path(fn_value_fixture_dir, 'v3_${name}.c')
 	os.rm(c_path) or {}
 	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
@@ -55,7 +68,7 @@ fn write_project_file(root string, rel string, src string) {
 }
 
 fn write_project(name string, files map[string]string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	root := os.join_path(fn_value_fixture_dir, 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -68,7 +81,7 @@ fn write_project(name string, files map[string]string) string {
 
 fn run_project_good(v3_bin string, name string, files map[string]string) string {
 	root := write_project(name, files)
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	good_bin := os.join_path(fn_value_fixture_dir, 'v3_${name}')
 	main_path := os.join_path(root, 'main.v')
 	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
@@ -80,7 +93,7 @@ fn run_project_good(v3_bin string, name string, files map[string]string) string 
 
 fn run_project_bad(v3_bin string, name string, files map[string]string) string {
 	root := write_project(name, files)
-	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	bad_bin := os.join_path(fn_value_fixture_dir, 'v3_${name}')
 	main_path := os.join_path(root, 'main.v')
 	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
@@ -90,7 +103,7 @@ fn run_project_bad(v3_bin string, name string, files map[string]string) string {
 
 fn gen_project_c(v3_bin string, name string, files map[string]string) string {
 	root := write_project(name, files)
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	c_path := os.join_path(fn_value_fixture_dir, 'v3_${name}.c')
 	os.rm(c_path) or {}
 	main_path := os.join_path(root, 'main.v')
 	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', c_path])

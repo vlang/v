@@ -106,9 +106,12 @@ legacy_uint && !native_uint {
 	sub(/^[^"]*"/, "", path)
 	sub(/".*/, "", path)
 	gsub(/\\/, "/", path)
-	if (path ~ /^(\/|[A-Za-z]:\/)/ && match(path, /\/(vlib|thirdparty|cmd)\//)) {
-		root = ENVIRON["V_BOOTSTRAP_VROOT"]
-		gsub(/\\/, "/", root)
+	root = ENVIRON["V_BOOTSTRAP_VROOT"]
+	gsub(/\\/, "/", root)
+	if (path ~ /^(vlib|thirdparty|cmd)\//) {
+		quote = index($0, "\"")
+		$0 = substr($0, 1, quote) root "/" path substr($0, quote + length(path) + 1)
+	} else if (path ~ /^(\/|[A-Za-z]:\/)/ && match(path, /\/(vlib|thirdparty|cmd)\//)) {
 		$0 = substr($0, 1, index($0, "\"")) root "/" substr(path, RSTART + 1) "\""
 	}
 }

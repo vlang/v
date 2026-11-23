@@ -13,8 +13,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn test_parallel_signature_checks_merge_the_diagnostics_they_replace() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_scoped_signature_${os.getpid()}_${rand.ulid()}') +
 		$if windows { '.exe' } $else { '' }
-	build := os.exec([vexe, '-gc', 'none', '-prealloc', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
-		'-o', v3_bin, '${v3_src}'])
+	build := os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+		'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	defer {
 		os.rm(v3_bin) or {}

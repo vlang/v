@@ -11,6 +11,48 @@ fn testsuite_begin() {
 	os.unsetenv('VOSARGS')
 }
 
+fn test_fastc_rejects_deprecated_integer_types_in_every_type_position() {
+	mut prefs := pref.new_preferences()
+	// Match the regular FastC compiler's language mode, including `_` assignments.
+	prefs.building_v = true
+	for spelling, replacement in {
+		'isize': 'int'
+		'usize': 'uint'
+	} {
+		for name, template in {
+			'cast':             'fn main() { _ = Legacy(1) }\n'
+			'parameter':        'fn f(x Legacy) {}\nfn main() { f(1) }\n'
+			'return':           'fn f() Legacy { return 1 }\nfn main() { f() }\n'
+			'field':            'struct S { x Legacy }\nfn main() { _ = S{} }\n'
+			'array':            'fn main() { _ = []Legacy{} }\n'
+			'generic':          'struct B[T] { v T }\nfn main() { _ = B[Legacy]{v: 1} }\n'
+			'generic_fn':       'fn identity[T](v T) T { return v }\nfn main() { _ = identity[Legacy](1) }\n'
+			'selected_fn':      'fn identity[T](v T) T { return v }\nfn main() { $if false {} $else $if true { _ = identity[Legacy](1) } }\n'
+			'selected_type':    'struct B[T] { v T }\nfn main() { $if true { _ = B[Legacy]{v: 1} } }\n'
+			'shadowed_fn':      'fn identity[T](v T) T { return v }\nfn main() { Legacy := 0\n_ = identity[uint](uint(7))\n_ = identity[Legacy](1) }\n'
+			'shadowed_type':    'struct B[T] { v T }\nfn main() { Legacy := 0\n_ = B[uint]{v: 7}\n_ = B[Legacy]{v: 1} }\n'
+			'shadowed_method':  'struct Holder {}\nfn (h Holder) identity[T](v T) T { return v }\nfn main() { Legacy := 0\nh := Holder{}\n_ = h.identity[Legacy](1) }\n'
+			'generic_field':    'struct H[T] { mark int }\nstruct Values { value H[Legacy] }\nfn main() { _ = Values{} }\n'
+			'generic_callback': 'struct H[T] { mark int }\nstruct Values { value H[fn(Legacy)] }\nfn main() { _ = Values{} }\n'
+			'generic_multi':    'struct B[A, B] { first A; second B }\nfn main() { _ = B[int, Legacy]{first: 1, second: 2} }\n'
+			'interpolation':    "fn main() { println('a \${Legacy(1)} b') }\n"
+			'alias':            'type Alias = Legacy\nfn main() {}\n'
+			'map':              'fn main() { _ = map[Legacy]int{} }\n'
+			'option':           'fn f() ?Legacy { return none }\nfn main() { _ = f() }\n'
+			'function':         'fn f(callback fn(Legacy)) {}\nfn main() {}\n'
+			'fixed_array':      'fn main() { _ = [Legacy(2)]int{} }\n'
+			'enum':             'enum Value as Legacy { one }\nfn main() {}\n'
+		} {
+			source := template.replace('Legacy', spelling)
+			_ := generate(source, '${name}.v', prefs) or {
+				assert err.msg().contains('type `${spelling}`; use `${replacement}` instead'), '${spelling} ${name}: ${err.msg()}'
+				continue
+			}
+			assert false, '${spelling} ${name}: expected FastC to reject ${source}'
+		}
+	}
+}
+
 fn test_removed_integer_callback_parameters_keep_the_replacement_diagnostic() {
 	for selfhost in [false, true] {
 		mut prefs := pref.new_preferences()

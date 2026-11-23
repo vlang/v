@@ -171,8 +171,13 @@ fn test_headerless_cmdexec_poll_uses_bionic_nfds_type() ! {
 		'\n_Static_assert(__builtin_types_compatible_p(v_cmdexec_nfds_t, unsigned int), "Bionic nfds_t");\n' +
 		'_Static_assert(__builtin_types_compatible_p(__typeof__(&v_cmdexec_poll_sys), int (*)(struct v_cmdexec_pollfd*, unsigned int, int)), "Bionic poll prototype");\n')!
 	// Validate the emitted declaration without claiming execution on an Android device.
-	checked := cmdexec.run(cc, ['-std=gnu11', '-D__ANDROID__', '-U__APPLE__', '-Werror', '-fsyntax-only',
-		source])
+	// A Windows clang predefines `_WIN32`, which hides the whole declaration.
+	mut args := ['-std=gnu11', '-D__ANDROID__', '-U__APPLE__', '-Werror', '-fsyntax-only']
+	$if windows {
+		args << '-U_WIN32'
+	}
+	args << source
+	checked := cmdexec.run(cc, args)
 	assert checked.exit_code == 0, checked.output
 }
 

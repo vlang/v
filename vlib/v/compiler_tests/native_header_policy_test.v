@@ -18,14 +18,15 @@ fn test_header_alias_cycles_are_left_to_the_c_preprocessor() ! {
 	os.write_file(source, 'module main\n#include "@DIR/native.h"\nfn C.header_policy_answer() int\nfn main() { println(C.header_policy_answer()) }\n')!
 	c_output := os.join_path(root, 'main.c')
 	for cross in [false, true] {
-		mut args := ['-new-compiler', '-memory-limit', '512M', '-gc', 'none', '-o', c_output]
+		mut args := ['-memory-limit', '512M', '-gc', 'none', '-o', c_output]
 		if cross { args << '-cross' }
 		args << source
 		generated := cmdexec.run(@VEXE, args)
 		assert generated.exit_code == 0, generated.output
 		text := os.read_file(c_output)!
-		assert text.contains('#include "${header.replace('\\', '/')}"')
-			|| text.contains('#include "${os.real_path(header).replace('\\', '/')}"')
+		include_text := text.replace(r'\\', '/').replace('\\', '/')
+		assert include_text.contains('#include "${header.replace('\\', '/')}"')
+			|| include_text.contains('#include "${os.real_path(header).replace('\\', '/')}"')
 		assert !text.contains('HEADER_POLICY_SENTINEL')
 		assert !text.contains(recursive_include)
 	}
@@ -34,8 +35,8 @@ fn test_header_alias_cycles_are_left_to_the_c_preprocessor() ! {
 	binary := os.join_path(root, 'program')
 	for value in [41, 42] {
 		os.write_file(inner, '#define HEADER_POLICY_SENTINEL ${value}\n')!
-		built := cmdexec.run(@VEXE, ['-new-compiler', '-memory-limit', '512M', '-gc', 'none', '-cc',
-			'cc', '-parallel-cc', '-o', binary, source])
+		built := cmdexec.run(@VEXE, ['-memory-limit', '512M', '-gc', 'none', '-cc', 'cc', '-parallel-cc',
+			'-o', binary, source])
 		assert built.exit_code == 0, built.output
 		run := cmdexec.run(binary, []string{})
 		assert run.exit_code == 0, run.output

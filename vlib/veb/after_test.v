@@ -5,14 +5,61 @@ import net.http
 import time
 import fasthttp
 
-struct AfterApp {}
+const after_test_delay_ms = 40
+const after_minimum_delay = $if windows {
+	// Windows Sleep can round down by one system clock tick.
+	24 * time.millisecond
+} $else {
+	after_test_delay_ms * time.millisecond
+}
+
+struct AfterApp {
+	gate_callback bool
+}
 
 struct AfterContext {
 	Context
 }
 
+struct AfterTimerProbe {
+	marks    chan u64  = chan u64{cap: 4}
+	released chan bool = chan bool{cap: 1}
+}
+
+const after_live_probe = &AfterTimerProbe{}
+const after_chain_probe = &AfterTimerProbe{}
+
+fn (probe &AfterTimerProbe) mark() {
+	probe.marks <- time.sys_mono_now()
+}
+
+fn (probe &AfterTimerProbe) wait_for_dispatch() {
+	select {
+		_ := <-probe.released {
+		}
+		3 * time.second {
+			panic('request dispatch did not return before the timer callback')
+		}
+	}
+}
+
+fn (probe &AfterTimerProbe) check_delay() {
+	mut armed := u64(0)
+	mut fired := u64(0)
+	assert probe.marks.try_pop(mut armed) == .success
+	assert probe.marks.try_pop(mut fired) == .success
+	elapsed := time.Duration(fired - armed)
+	assert elapsed >= after_minimum_delay, 'timer fired after only ${elapsed}'
+}
+
 fn after_answer(mut ctx Context, arg u64) {
 	ctx.text('late:${arg}')
+}
+
+fn after_live_answer(mut ctx Context, arg u64) {
+	after_live_probe.mark()
+	after_live_probe.wait_for_dispatch()
+	after_answer(mut ctx, arg)
 }
 
 fn after_chain(mut ctx Context, arg u64) {
@@ -25,12 +72,17 @@ fn after_chain(mut ctx Context, arg u64) {
 
 @['/delay']
 fn (mut app AfterApp) delay(mut ctx AfterContext) Result {
-	return ctx.after(400, after_answer, 7)
+	if app.gate_callback {
+		after_live_probe.mark()
+		return ctx.after(after_test_delay_ms, after_live_answer, 7)
+	}
+	return ctx.after(after_test_delay_ms, after_answer, 7)
 }
 
 @['/chain']
 fn (mut app AfterApp) chain(mut ctx AfterContext) Result {
-	return ctx.after(150, after_chain_live, 0)
+	after_chain_probe.mark()
+	return ctx.after(after_test_delay_ms, after_chain_live, 0)
 }
 
 @['/immediate']
@@ -39,8 +91,11 @@ fn (mut app AfterApp) immediate(mut ctx AfterContext) Result {
 }
 
 fn after_chain_live(mut ctx Context, arg u64) {
+	after_chain_probe.mark()
 	if arg == 0 {
-		ctx.after(150, after_chain_live, 1)
+		after_chain_probe.wait_for_dispatch()
+		after_chain_probe.mark()
+		ctx.after(after_test_delay_ms, after_chain_live, 1)
 		return
 	}
 	ctx.text('chained:${arg}')
@@ -73,10 +128,10 @@ fn test_after_without_transport_answers_inline() {
 
 fn test_after_without_transport_waits_at_least_ms() {
 	mut ctx := after_inline_ctx()
-	start := time.ticks()
-	ctx.after(150, after_answer, 1)
-	elapsed := time.ticks() - start
-	assert elapsed >= 120, 'deferred response answered after ${elapsed}ms, want >= 120ms'
+	timer := time.new_stopwatch()
+	ctx.after(after_test_delay_ms, after_answer, 1)
+	elapsed := timer.elapsed()
+	assert elapsed >= after_minimum_delay, 'deferred response answered after ${elapsed}'
 	assert ctx.res.body == 'late:1'
 }
 
@@ -115,7 +170,9 @@ fn after_live_pair() !(int, &net.TcpConn, &net.TcpListener) {
 }
 
 fn after_live_request(fd int) &Context {
-	mut app := &AfterApp{}
+	mut app := &AfterApp{
+		gate_callback: true
+	}
 	routes := generate_routes[AfterApp, AfterContext](app) or { panic(err) }
 	params := RequestParams{
 		routes: &routes
@@ -154,24 +211,21 @@ fn test_after_live_transport_returns_immediately_and_answers_late() {
 		cli.close() or {}
 	}
 	cli.set_read_timeout(10 * time.second)
-	start := time.ticks()
 	completed := after_live_request(fd)
-	returned_in := time.ticks() - start
-	assert returned_in < 250, 'handler held the worker for ${returned_in}ms'
 	assert completed.takeover_mode == .manual
 
-	read_start := time.ticks()
+	// The callback can send its reply only after the dispatcher has returned.
+	after_live_probe.released <- true
 	resp := after_read_until(mut cli, 'late:7')
-	waited := time.ticks() - read_start
-	assert waited >= 350, 'deferred response arrived after ${waited}ms, want >= 350ms'
 	assert resp.contains('late:7'), 'unexpected deferred response: ${resp}'
+	after_live_probe.check_delay()
 
 	// The timer closes the connection after the single deferred response.
-	eof_start := time.ticks()
+	eof_timer := time.new_stopwatch()
 	mut eof_buf := []u8{len: 64}
 	n := cli.read(mut eof_buf) or { 0 }
 	assert n == 0, 'connection should be closed after the deferred response'
-	assert time.ticks() - eof_start < 2000, 'EOF took too long: the connection was not closed'
+	assert eof_timer.elapsed() < 2 * time.second, 'EOF took too long: the connection was not closed'
 }
 
 fn test_after_live_transport_supports_rearming() {
@@ -186,7 +240,6 @@ fn test_after_live_transport_supports_rearming() {
 	params := RequestParams{
 		routes: &routes
 	}
-	start := time.ticks()
 	completed := handle_request_and_route[AfterApp, AfterContext](mut app, http.Request{
 		method: .get
 		url:    '/chain'
@@ -194,12 +247,13 @@ fn test_after_live_transport_supports_rearming() {
 			http.CommonHeader.host: '127.0.0.1'
 		})
 	}, fd, params)
-	assert time.ticks() - start < 250, 'handler held the worker'
 	assert completed.takeover_mode == .manual
 
+	after_chain_probe.released <- true
 	resp := after_read_until(mut cli, 'chained:1')
-	assert time.ticks() - start >= 250, 're-armed response arrived too early'
 	assert resp.contains('chained:1'), 'unexpected re-armed response: ${resp}'
+	after_chain_probe.check_delay()
+	after_chain_probe.check_delay()
 }
 
 fn test_after_append_handler_zero_delay_rearming_owns_request_arena() {
@@ -256,6 +310,9 @@ fn test_after_deferred_context_survives_writer_slot_reuse() {
 		http.Request{ url: '/immediate' }, 0, params, &state.context)
 	assert next.res.body == 'chained:1'
 	assert deferred.req.url == '/delay'
+	assert deferred.deferred_ms == after_test_delay_ms
+	// The slot has already been reused. Start the saved callback on the next timer turn.
+	deferred.deferred_ms = 0
 	gc_collect()
 	worker := spawn after_timer(mut deferred, unsafe { nil })
 	response := after_read_until(mut cli, 'late:7')

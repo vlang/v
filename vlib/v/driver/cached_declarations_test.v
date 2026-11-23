@@ -222,13 +222,6 @@ fn test_functions_that_a_build_missed_are_kept_by_the_next_one() {
 	assert v3_kept_cached_functions(&manager) == ['first', 'second', 'third']
 }
 
-// stage_literal_words returns the words that the stages of the compiler spell in
-// their string literals.
-fn stage_literal_words() map[string]bool {
-	words, _ := stage_literal_words_and_names()
-	return words
-}
-
 // Keep offsets and literals intact while excluding quotes in comments and runes.
 fn stage_source_for_literals(source string) string {
 	mut files := token.FileSet.new()
@@ -271,69 +264,55 @@ fn test_stage_source_for_literals_excludes_comments_and_runes() {
 	assert clean.contains('"kept.name"')
 }
 
-// stage_literal_words_and_names returns the words that the stages of the compiler
-// spell in their string literals, and the names with dots among them, as
-// `dl.interface_export_find`.
-fn stage_literal_words_and_names() (map[string]bool, map[string]bool) {
-	mut words := map[string]bool{}
-	mut names := map[string]bool{}
-	for dir in ['gen/c', 'transform', 'markused', 'types'] {
-		stage_dir := os.join_path(@VMODROOT, 'vlib', 'v', dir)
-		for file in os.ls(stage_dir) or { []string{} } {
-			if !file.ends_with('.v') || file.ends_with('_test.v') {
-				continue
-			}
-			source := stage_source_for_literals(os.read_file(os.join_path_single(stage_dir,
-				file)) or { continue })
-			mut i := 0
-			for i < source.len {
-				quote := source[i]
-				i++
-				if quote !in [`'`, `"`] {
-					continue
-				}
-				mut word := []u8{}
-				mut name := []u8{}
-				for i < source.len && source[i] != quote && source[i] != `\n` {
-					c := source[i]
-					if c == `\\` {
-						// An escape ends a word, and is none of its letters.
-						i += 2
-						if word.len > 0 {
-							words[word.bytestr()] = true
-							word.clear()
-						}
-						if name.len > 0 {
-							names[name.bytestr()] = true
-							name.clear()
-						}
-						continue
-					}
-					if c.is_letter() || c.is_digit() || c == `_` {
-						word << c
-					} else if word.len > 0 {
-						words[word.bytestr()] = true
-						word.clear()
-					}
-					if c.is_letter() || c.is_digit() || c in [`_`, `.`] {
-						name << c
-					} else if name.len > 0 {
-						names[name.bytestr()] = true
-						name.clear()
-					}
-					i++
-				}
+// collect_stage_literal_words_and_names tracks literal words and qualified names,
+// such as `dl.interface_export_find`.
+fn collect_stage_literal_words_and_names(source string, mut words map[string]bool, mut names map[string]bool) {
+	mut i := 0
+	for i < source.len {
+		quote := source[i]
+		i++
+		if quote !in [`'`, `"`] {
+			continue
+		}
+		mut word := []u8{}
+		mut name := []u8{}
+		for i < source.len && source[i] != quote && source[i] != `\n` {
+			c := source[i]
+			if c == `\\` {
+				// An escape ends a word, and is none of its letters.
+				i += 2
 				if word.len > 0 {
 					words[word.bytestr()] = true
+					word.clear()
 				}
 				if name.len > 0 {
 					names[name.bytestr()] = true
+					name.clear()
 				}
-				i++
+				continue
 			}
+			if c.is_letter() || c.is_digit() || c == `_` {
+				word << c
+			} else if word.len > 0 {
+				words[word.bytestr()] = true
+				word.clear()
+			}
+			if c.is_letter() || c.is_digit() || c in [`_`, `.`] {
+				name << c
+			} else if name.len > 0 {
+				names[name.bytestr()] = true
+				name.clear()
+			}
+			i++
 		}
+		if word.len > 0 {
+			words[word.bytestr()] = true
+		}
+		if name.len > 0 {
+			names[name.bytestr()] = true
+		}
+		i++
 	}
-	return words, names
 }
 
 const always_loaded_module_dirs = ['builtin', 'builtin/closure', 'strconv', 'strings', 'hash',
@@ -409,7 +388,8 @@ fn library_plain_functions() []V3LibraryFunctions {
 	}
 	mut modules := []V3LibraryFunctions{}
 	for dir, _ in dirs {
-		relative := dir[vlib.len + 1..]
+		// Module directories are compared and turned into module names with `/`.
+		relative := dir[vlib.len + 1..].replace(os.path_separator, '/')
 		if relative.contains('tests') || relative.contains('testdata')
 			|| (relative == 'v' || relative.starts_with('v/'))
 				&& !runtime_modules_of_the_compiler.any(relative == it || relative.starts_with(it + '/')) {
@@ -427,10 +407,9 @@ fn library_plain_functions() []V3LibraryFunctions {
 // module_functions_that_stages_name returns the plain functions of the other
 // modules of vlib that a stage spells with the name of their module, as
 // `module.function` or as the C name `module__function`.
-fn module_functions_that_stages_name() []string {
-	words, names := stage_literal_words_and_names()
+fn module_functions_that_stages_name(words map[string]bool, names map[string]bool, libraries []V3LibraryFunctions) []string {
 	mut found := map[string]bool{}
-	for library in library_plain_functions() {
+	for library in libraries {
 		if library.dir in always_loaded_module_dirs {
 			continue
 		}
@@ -449,8 +428,7 @@ fn module_functions_that_stages_name() []string {
 	return sorted
 }
 
-fn test_runtime_function_names_cover_what_the_stages_spell() {
-	words := stage_literal_words()
+fn check_runtime_function_names_cover_what_the_stages_spell(words map[string]bool) {
 	assert words.len > 1000
 	assert words['gc_runtime_init'] && words['tos2']
 	functions := always_loaded_plain_functions()
@@ -467,8 +445,8 @@ fn test_runtime_function_names_cover_what_the_stages_spell() {
 	assert missing == [], 'runtime functions that a stage names: ${missing}'
 }
 
-fn test_module_function_names_cover_what_the_stages_spell() {
-	functions := module_functions_that_stages_name()
+fn check_module_function_names_cover_what_the_stages_spell(words map[string]bool, names map[string]bool, libraries []V3LibraryFunctions) {
+	functions := module_functions_that_stages_name(words, names, libraries)
 	assert 'dl.interface_export_find' in functions
 	mut missing := []string{}
 	for name in functions {
@@ -530,11 +508,90 @@ fn built_name_is_specific(pattern string) bool {
 	return weight >= 3
 }
 
-// stage_built_name_patterns returns the names that the stages of the compiler put
-// together when they run, as far as a string literal shows it: a literal that is a
-// name with interpolations in it, or a name that is joined to something with `+`.
-// `*` stands for what is filled in.
-fn stage_built_name_patterns() []string {
+// collect_stage_built_name_patterns tracks names built with interpolation or
+// concatenation. `*` stands for what is filled in.
+fn collect_stage_built_name_patterns(source string, mut patterns map[string]bool) {
+	mut i := 0
+	for i < source.len {
+		quote := source[i]
+		if quote !in [`'`, `"`] {
+			i++
+			continue
+		}
+		start := i
+		i++
+		mut pattern := []u8{}
+		mut is_name := true
+		mut interpolated := false
+		for i < source.len && source[i] != quote && source[i] != `\n` {
+			c := source[i]
+			if c == `\\` {
+				is_name = false
+				i += 2
+				continue
+			}
+			if c == `$` && i + 1 < source.len && source[i + 1] == `{` {
+				mut depth := 1
+				i += 2
+				for i < source.len && depth > 0 && source[i] != `\n` {
+					if source[i] == `{` {
+						depth++
+					} else if source[i] == `}` {
+						depth--
+					}
+					i++
+				}
+				interpolated = true
+				if pattern.len == 0 || pattern.last() != `*` {
+					pattern << `*`
+				}
+				continue
+			}
+			if c.is_letter() || c.is_digit() || c in [`_`, `.`] {
+				pattern << c
+			} else {
+				is_name = false
+			}
+			i++
+		}
+		end := i
+		i++
+		if !is_name || pattern.len == 0 {
+			continue
+		}
+		mut text := pattern.bytestr()
+		if !interpolated {
+			mut before := start - 1
+			for before >= 0 && source[before] in [` `, `\t`, `\n`] {
+				before--
+			}
+			mut after := end + 1
+			for after < source.len && source[after] in [` `, `\t`, `\n`] {
+				after++
+			}
+			joined_before := before >= 0 && source[before] == `+`
+			joined_after := after + 1 < source.len && source[after] == `+`
+				&& source[after + 1] != `=`
+			if !joined_before && !joined_after {
+				continue
+			}
+			if joined_before {
+				text = '*' + text
+			}
+			if joined_after {
+				text += '*'
+			}
+		}
+		if built_name_is_specific(text) {
+			patterns[text] = true
+		}
+	}
+}
+
+// stage_function_names reads and prepares each compiler source once for both scans.
+fn stage_function_names() (map[string]bool, map[string]bool, []string) {
+	mut words := map[string]bool{}
+	mut names := map[string]bool{}
 	mut patterns := map[string]bool{}
 	for dir in ['gen/c', 'transform', 'markused', 'types'] {
 		stage_dir := os.join_path(@VMODROOT, 'vlib', 'v', dir)
@@ -544,95 +601,21 @@ fn stage_built_name_patterns() []string {
 			}
 			source := stage_source_for_literals(os.read_file(os.join_path_single(stage_dir,
 				file)) or { continue })
-			mut i := 0
-			for i < source.len {
-				quote := source[i]
-				if quote !in [`'`, `"`] {
-					i++
-					continue
-				}
-				start := i
-				i++
-				mut pattern := []u8{}
-				mut is_name := true
-				mut interpolated := false
-				for i < source.len && source[i] != quote && source[i] != `\n` {
-					c := source[i]
-					if c == `\\` {
-						is_name = false
-						i += 2
-						continue
-					}
-					if c == `$` && i + 1 < source.len && source[i + 1] == `{` {
-						mut depth := 1
-						i += 2
-						for i < source.len && depth > 0 && source[i] != `\n` {
-							if source[i] == `{` {
-								depth++
-							} else if source[i] == `}` {
-								depth--
-							}
-							i++
-						}
-						interpolated = true
-						if pattern.len == 0 || pattern.last() != `*` {
-							pattern << `*`
-						}
-						continue
-					}
-					if c.is_letter() || c.is_digit() || c in [`_`, `.`] {
-						pattern << c
-					} else {
-						is_name = false
-					}
-					i++
-				}
-				end := i
-				i++
-				if !is_name || pattern.len == 0 {
-					continue
-				}
-				mut text := pattern.bytestr()
-				if !interpolated {
-					mut before := start - 1
-					for before >= 0 && source[before] in [` `, `\t`, `\n`] {
-						before--
-					}
-					mut after := end + 1
-					for after < source.len && source[after] in [` `, `\t`, `\n`] {
-						after++
-					}
-					joined_before := before >= 0 && source[before] == `+`
-					joined_after := after + 1 < source.len && source[after] == `+`
-						&& source[after + 1] != `=`
-					if !joined_before && !joined_after {
-						continue
-					}
-					if joined_before {
-						text = '*' + text
-					}
-					if joined_after {
-						text += '*'
-					}
-				}
-				if built_name_is_specific(text) {
-					patterns[text] = true
-				}
-			}
+			collect_stage_literal_words_and_names(source, mut words, mut names)
+			collect_stage_built_name_patterns(source, mut patterns)
 		}
 	}
 	mut sorted := patterns.keys()
 	sorted.sort()
-	return sorted
+	return words, names, sorted
 }
 
 // stage_built_function_name_patterns returns the names that the stages put
 // together and that a plain function of a library module has: the others are
 // names of something else.
-fn stage_built_function_name_patterns() []string {
-	libraries := library_plain_functions()
+fn stage_built_function_name_patterns(built []string, libraries []V3LibraryFunctions) []string {
 	mut fitting := []string{}
-	for text in stage_built_name_patterns() {
+	for text in built {
 		pattern := v3_name_pattern(text)
 		for library in libraries {
 			module_name := library.module_name.all_after_last('.')
@@ -681,8 +664,15 @@ fn test_built_patterns_still_require_every_matching_function_to_be_kept() {
 	])
 }
 
-fn test_function_name_patterns_cover_what_the_stages_build() {
-	built := stage_built_name_patterns()
+fn test_cached_function_names_cover_what_the_compiler_stages_generate() {
+	words, names, built := stage_function_names()
+	libraries := library_plain_functions()
+	check_runtime_function_names_cover_what_the_stages_spell(words)
+	check_module_function_names_cover_what_the_stages_spell(words, names, libraries)
+	check_function_name_patterns_cover_what_the_stages_build(built, libraries)
+}
+
+fn check_function_name_patterns_cover_what_the_stages_build(built []string, libraries []V3LibraryFunctions) {
 	assert built.len > 50
 	// `'${name}_str'`, `'map_hash_int_${size}'`: names with a part of their own.
 	assert '*_str' in built
@@ -692,10 +682,9 @@ fn test_function_name_patterns_cover_what_the_stages_build() {
 	assert built_name_is_specific('*_free') && built_name_is_specific('overflow.*_checked')
 	assert !built_name_is_specific('*.*') && !built_name_is_specific('builtin__*')
 	assert !built_name_is_specific('math.bits.*') && !built_name_is_specific('*_*')
-	patterns := stage_built_function_name_patterns()
+	patterns := stage_built_function_name_patterns(built, libraries)
 	assert patterns.len > 10 && patterns.len < built.len
 	assert '*_str' in patterns && 'map_hash_int_*' in patterns
-	libraries := library_plain_functions()
 	mut missing := []string{}
 	for pattern in patterns {
 		if pattern !in cached_function_name_patterns

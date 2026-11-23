@@ -76,13 +76,13 @@ fn update_pair(object &Object, delta &Delta) {
 }
 ')!
 	for flags in [[]string{}, ['-no-parallel', '-nocache']] {
-		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-translated', '-gc',
-			'none', '-cc', @CCOMPILER, ...flags, 'run', root])
+		result := os.exec([@VEXE, '-no-retry-compilation', '-translated', '-gc', 'none', '-cc',
+			@CCOMPILER, ...flags, 'run', root])
 		assert result.exit_code == 0, result.output
 	}
 	c_path := os.join_path(root, 'callbacks.c')
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-translated', '-gc',
-		'none', '-o', c_path, root])
+	generated := os.exec([@VEXE, '-no-retry-compilation', '-translated', '-gc', 'none', '-o', c_path,
+		root])
 	assert generated.exit_code == 0, generated.output
 	c_source := os.read_file(c_path)!
 	// GCC and TCC can accept the incompatible initializer as a warning. Check

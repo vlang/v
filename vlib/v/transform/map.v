@@ -1534,8 +1534,14 @@ fn (mut t Transformer) fn_span_map_expansion_estimate_uncached(lo int, hi int) i
 			continue
 		}
 		node := t.a.nodes[idx]
-		estimate += t.comptime_zero_value_expansion_estimate(flat.NodeId(idx), node)
-		estimate += t.forwarded_fixed_array_return_expansion_estimate(node, fn_return_type)
+		// The helpers below take the node by value; test its kind before calling them, so this
+		// scan of every node does not copy each one into every helper.
+		if node.kind == .string_literal {
+			estimate += t.comptime_zero_value_expansion_estimate(flat.NodeId(idx), node)
+		}
+		if node.kind == .return_stmt {
+			estimate += t.forwarded_fixed_array_return_expansion_estimate(node, fn_return_type)
+		}
 		if node.kind == .comptime_for {
 			_, kind := comptime_for_parts(node.value)
 			if kind in ['fields', 'values', 'variants', 'methods', 'params', 'attributes'] {
@@ -1574,17 +1580,17 @@ fn (mut t Transformer) fn_span_map_expansion_estimate_uncached(lo int, hi int) i
 			// is not represented by the parsed expression's physical children.
 			estimate += deferred_map_expansion_threshold + 1
 		}
-		if t.interface_cast_expands_from_type_metadata(node) {
+		if node.kind == .cast_expr && t.interface_cast_expands_from_type_metadata(node) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
-		if t.external_equality_expands_from_type_metadata(node) {
+		if node.kind == .infix && t.external_equality_expands_from_type_metadata(node) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
 		if node.kind in [.is_expr, .as_expr]
 			|| (node.kind == .selector && t.external_selector_expands_from_type_metadata(node)) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
-		if t.ownership_method_value_clone_expands(flat.NodeId(idx), node) {
+		if node.kind == .selector && t.ownership_method_value_clone_expands(flat.NodeId(idx), node) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
 		if node.kind == .call {
@@ -1598,14 +1604,15 @@ fn (mut t Transformer) fn_span_map_expansion_estimate_uncached(lo int, hi int) i
 			estimate +=
 				t.disabled_struct_operator_zero_value_expansion_estimate(flat.NodeId(idx), node)
 		}
-		if t.ownership_for_in_binding_clone_expands(node) {
+		if node.kind == .for_in_stmt && t.ownership_for_in_binding_clone_expands(node) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
-		if t.ownership_for_in_map_snapshot_clone_expands(node)
-			|| t.ownership_map_assignment_clone_expands(node) {
+		if (node.kind == .for_in_stmt && t.ownership_for_in_map_snapshot_clone_expands(node))
+			|| (node.kind in [.assign, .selector_assign, .index_assign]
+				&& t.ownership_map_assignment_clone_expands(node)) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
-		if t.ownership_array_append_expands(node) {
+		if node.kind == .infix && t.ownership_array_append_expands(node) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
 		// Map index lowering replaces a constant identifier with its initializer
@@ -3575,10 +3582,10 @@ fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapInde
 	if staged_rhs_is_owned && t.a.nodes[int(append)].value != 'push_many' {
 		array_type := t.clean_array_append_lhs_type(info.value_type)
 		if flat.source_type_shape(array_type).has(.array_type) {
+			// A single-element append that does not clone moves the staged value
+			// into the destination, which then owns its storage.
 			elem_type := flat.source_type_syntax(array_type).raw_base()
-			staged_scalar_was_cloned = t.expr_can_take_address(append_rhs)
-				&& !t.tc.ownership_expr_moves_storage(append_rhs, append_rhs)
-				&& t.compiler_default_clone_type_needs_work(elem_type)
+			staged_scalar_was_cloned = t.array_append_clones_borrowed_value(append_rhs, elem_type)
 		}
 	}
 	if lowered := t.try_lower_array_append_stmt(append) {

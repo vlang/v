@@ -54,7 +54,7 @@ pub fn decode_unused(raw string) {
 }
 ')!
 	for flags in [[]string{}, ['-no-parallel']] {
-		mut args := ['-new-compiler', '-w']
+		mut args := ['-w']
 		args << flags
 		args << ['-o', '-', source]
 		result := os.exec([vexe, ...args])
@@ -85,7 +85,7 @@ pub fn unused() string {
 }
 ')!
 	for flags in [[]string{}, ['-no-skip-unused']] {
-		mut args := ['-new-compiler', '-w']
+		mut args := ['-w']
 		args << flags
 		args << ['-o', '-', source]
 		result := os.exec([vexe, ...args])
@@ -94,7 +94,7 @@ pub fn unused() string {
 		assert result.output.contains('route__unused(') == (flags.len > 0), result.output
 		assert result.output.contains('route__identity_T_string(') == (flags.len > 0), result.output
 	}
-	run := os.exec([vexe, '-new-compiler', '-w', 'run', source])
+	run := os.exec([vexe, '-w', 'run', source])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42', run.output
 }

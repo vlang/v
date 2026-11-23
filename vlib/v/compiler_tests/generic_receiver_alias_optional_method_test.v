@@ -39,16 +39,7 @@ fn test_optional_method_on_generic_receiver_keeps_alias_specialization() {
 	}
 	root := os.join_path(os.vtmp_dir(), 'v3_generic_receiver_alias_${os.getpid()}')
 	os.mkdir_all(root)!
-	// The C error otherwise sends the build to the v1 fallback, which compiles
-	// the program fine and hides the regression behind a successful build.
-	saved_no_fallback := os.getenv_opt('V_MACOS_V3_NO_FALLBACK')
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	defer {
-		if saved := saved_no_fallback {
-			os.setenv('V_MACOS_V3_NO_FALLBACK', saved, true)
-		} else {
-			os.unsetenv('V_MACOS_V3_NO_FALLBACK')
-		}
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'program.v')

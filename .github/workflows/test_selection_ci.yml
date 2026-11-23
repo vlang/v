@@ -33,7 +33,6 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
       VJOBS: '2'
-      V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -43,4 +42,4 @@ jobs:
         with:
           symlink: 'false'
       - name: Check explicit and recursive test selection
-        run: ${{ matrix.v }} -new-compiler -gc none cmd/tools/vtest_selection_test.v
+        run: ${{ matrix.v }} -gc none cmd/tools/vtest_selection_test.v

@@ -2503,18 +2503,22 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	mut expression_tokens := []FastcExpressionToken{cap: 16}
 	if prefix.len > 0 {
 		mut prefix_name := prefix
-		if g.selfhost && prefix in g.generic_method_names && g.tok == .lpar {
+		if g.selfhost && g.tok in [.lpar, .lsbr] && prefix in g.generic_method_names {
 			// Simple statements consumed their first name before entering this
 			// reader. Queue that call just as the ordinary name-token path does.
 			saved_scan := g.s
 			g.s.offset = g.s.pos
-			if mono := g.queue_expression_monomorphization([FastcExpressionToken{
+			specialized := g.queue_expression_monomorphization([FastcExpressionToken{
 				tok: .name
 				lit: prefix
-			}]) {
-				prefix_name = mono
-			}
+			}])
 			g.s = saved_scan
+			if mono := specialized {
+				prefix_name = mono
+				if g.tok == .lsbr {
+					g.skip_balanced(.lsbr, .rsbr)!
+				}
+			}
 		}
 		mut prefix_source := g.resolved_expression_name(prefix_name, .unknown)
 		if g.tok in [.inc, .dec] {
@@ -2962,7 +2966,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			operand := expression_tokens[operand_start..].clone()
 			operand_type := g.infer_expression_type(operand) or { u32(0) }
 			if (operand_type in [fastc_type_option, fastc_type_result]
-				|| (previous_token == .rsbr && g.render_array_lookup_option_expression(operand) != none))
+				|| (previous_token == .rsbr
+					&& (g.render_array_lookup_option_expression(operand) != none
+						|| g.render_map_lookup_option_expression(operand) != none)))
 				&& g.option_value_type_for_expression(operand) != fastc_type_multi_return {
 				if propagated := g.render_option_propagation(operand) {
 					expression_tokens = expression_tokens[..operand_start].clone()
@@ -3940,6 +3946,10 @@ fn (g &Parser) streaming_call_argument_type(tokens []FastcExpressionToken) u32 {
 	}
 	arg_index := fastc_call_argument_index(tokens, open)
 	name := tokens[open - 1].lit
+	if key := g.static_function_key_for_call(tokens, open - 1) {
+		signature := g.functions[key]
+		return signature.parameter_types.ids[arg_index] or { u32(0) }
+	}
 	if open >= 2 && tokens[open - 2].tok == .dot
 		&& !(open >= 3 && tokens[open - 3].tok == .name && tokens[open - 3].lit in g.imports
 			&& tokens[open - 3].lit !in g.locals && (open < 4 || tokens[open - 4].tok != .dot)) {
@@ -3957,7 +3967,11 @@ fn (g &Parser) streaming_call_argument_type(tokens []FastcExpressionToken) u32 {
 		}
 	}
 	function_key := g.function_key_for_call(tokens, open - 1)
-	signature := g.functions[function_key] or { return u32(0) }
+	signature := if (open == 1 || tokens[open - 2].tok != .dot) && name in g.locals {
+		g.callable_signature_for_expression(tokens[open - 1..open]) or { return u32(0) }
+	} else {
+		g.functions[function_key] or { return u32(0) }
+	}
 	return if arg_index < signature.parameter_types.ids.len {
 		signature.parameter_types.ids[arg_index]
 	} else {
@@ -4356,7 +4370,12 @@ fn (g &Parser) expected_call_argument_type(tokens []FastcExpressionToken) u32 {
 		function_key = '${flat.source_type_name(g.semantic_type_key(receiver_type))}.${tokens[name_index].lit}'
 		argument_offset = 1
 	}
-	signature := g.functions[function_key] or { return u32(0) }
+	signature := if (name_index == 0 || tokens[name_index - 1].tok != .dot)
+		&& tokens[name_index].lit in g.locals {
+		g.callable_signature_for_expression(tokens[name_index..open_index]) or { return u32(0) }
+	} else {
+		g.functions[function_key] or { return u32(0) }
+	}
 	mut argument_index := 0
 	mut nested := 0
 	for i in open_index + 1 .. tokens.len - 1 {
@@ -5896,8 +5915,16 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 					marker := '{.init='
 					marker_index := rendered_expression.index(marker) or { return none }
 					value := rendered_expression[marker_index + marker.len..rendered_expression.len - 1]
+					source := if !g.c_global_static_initializer
+						&& !g.global_initializer_is_constant(value, false) {
+						// Clang cannot emit C range designators with runtime values.
+						fastc_fixed_array_fill_source(array_type, length, value)
+					} else {
+						rendered_expression[..marker_index] +
+							'{.data={ [0 ... ${length} - 1] = ${value}}}'
+					}
 					return FastcRenderedExpression{
-						source: rendered_expression[..marker_index] + '{.data={ [0 ... ${length} -\n\t\t\t\t\t\t\t1] = ' + value + '}}'
+						source: source
 						typ:    array_type
 					}
 				}

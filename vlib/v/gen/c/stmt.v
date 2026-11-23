@@ -8700,7 +8700,9 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 						should_infer_fn_value = true
 					}
 				}
-				if should_infer_fn_value {
+				// A parameter or local (`show := callback` with `callback fn (T) string`)
+				// keeps its own type: a function of the same name has another one.
+				if should_infer_fn_value && !g.selector_base_is_local_value(rhs.value) {
 					if fn_typ := g.fn_value_type_for_ident(rhs.value) {
 						v_type = fn_typ
 					}

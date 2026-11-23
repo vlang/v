@@ -67,15 +67,34 @@ pub fn scan_scoped_text_flags_parallel_multi(_ &flat.FlatAst, _ []voidptr, mut _
 	return false
 }
 
+// nodes_have_text_in_scopes leaves the helper arenas alone in no-parallel builds:
+// they are released after code generation.
+pub fn nodes_have_text_in_scopes(_ &flat.FlatAst, _ []voidptr) bool {
+	return true
+}
+
 fn free_worker_scopes_parallel(_ &flat.FlatAst, _ []voidptr) bool {
 	return false
 }
 
 // prescan_fixed_array_borrow_bodies leaves every borrow-summary body analysis to
 // the serial fixed point when v3 is built with the internal `v3_no_parallel` define.
-fn (mut _ Transformer) prescan_fixed_array_borrow_bodies(_ []BorrowCandidate) BorrowPrescan {
+fn (mut _ Transformer) prescan_fixed_array_borrow_bodies(_ []BorrowCandidate, _ []BorrowDeclItem) BorrowPrescan {
 	return BorrowPrescan{}
 }
+
+// ReceiverSuffixIndexBuild has no helper thread in no-parallel builds.
+struct ReceiverSuffixIndexBuild {}
+
+// start_receiver_suffix_index builds the receiver-method suffix index at once
+// when v3 is built with the internal `v3_no_parallel` define.
+fn (mut t Transformer) start_receiver_suffix_index() &ReceiverSuffixIndexBuild {
+	t.rebuild_receiver_method_suffix_index()
+	return unsafe { nil }
+}
+
+// finish_receiver_suffix_index has nothing to install in no-parallel builds.
+fn (mut _ Transformer) finish_receiver_suffix_index(_ &ReceiverSuffixIndexBuild) {}
 
 // prepare_with_pre_scans keeps preparation serial when v3 is built with the
 // internal `v3_no_parallel` define.

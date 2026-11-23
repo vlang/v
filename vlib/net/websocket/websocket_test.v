@@ -5,11 +5,15 @@ import net.websocket
 import time
 
 @[heap]
-struct WebsocketTestResults {
+struct WebsocketCloseCount {
 pub mut:
-	nr_messages      int
-	nr_pong_received int
-	nr_closes        int
+	nr_closes int
+}
+
+@[heap]
+struct WebsocketEchoEvents {
+	echoes chan bool
+	pongs  chan bool
 }
 
 // Do not run these tests every time, since they are flaky.
@@ -99,16 +103,17 @@ fn close_cb(mut client websocket.Client, err string) ! {
 	assert false
 }
 
-fn message_cb(mut client websocket.Client, msg &websocket.Message, mut res WebsocketTestResults) ! {
+fn message_cb(mut client websocket.Client, msg &websocket.Message, events &WebsocketEchoEvents) ! {
 	println('client got type: ${msg.opcode} payload:\n${msg.payload}')
 	if msg.opcode == .text_frame {
 		smessage := msg.payload.bytestr()
 		match smessage {
 			'pong' {
-				res.nr_pong_received++
+				events.pongs.try_push(true)
 			}
 			'a' {
-				res.nr_messages++
+				status := events.echoes.try_push(true)
+				assert status == .success, 'received extra echoes'
 			}
 			else {
 				assert false
@@ -123,57 +128,78 @@ fn message_cb(mut client websocket.Client, msg &websocket.Message, mut res Webso
 fn ws_test(family net.AddrFamily, uri string) ! {
 	eprintln('connecting to ${uri} ...')
 
-	mut test_results := WebsocketTestResults{}
+	events := &WebsocketEchoEvents{
+		echoes: chan bool{cap: 2}
+		pongs:  chan bool{cap: 2}
+	}
 	mut client := websocket.new_client(uri)!
 	client.on_open(open_cb)
 	client.on_error(close_cb)
-	client.on_message_ref(message_cb, &test_results)
+	client.on_message_ref(message_cb, events)
 	client.connect()!
-	spawn client.listen()
-
-	text := ['a'].repeat(2)
-	for msg in text {
-		client.write(msg.bytes(), .text_frame) or {
-			panic('fail to write to websocket, err: ${err}')
+	defer {
+		if client.get_state() == .open {
+			client.close(1000, 'done') or {}
 		}
-		// sleep to give time to receive response before send a new one
-		time.sleep(100 * time.millisecond)
 	}
-	// sleep to give time to receive response before asserts
-	time.sleep(1500 * time.millisecond)
-	// We expect at least 2 pongs, one sent directly and one indirectly
-	assert test_results.nr_pong_received >= 2
-	assert test_results.nr_messages == 2
+	done := start_ws_listener(mut client)
+	for _ in 0 .. 2 {
+		client.write_string('a')!
+		wait_for_ws_event(events.echoes, 'a message echo')!
+	}
+	// Expect a response to the client's initial pong and to the pong sent
+	// automatically in response to the server's periodic ping.
+	for _ in 0 .. 2 {
+		wait_for_ws_event(events.pongs, 'a pong response')!
+	}
+	client.close(1000, 'done')!
+	wait_for_ws_event(done, 'the client listener to exit')!
+	assert events.echoes.len == 0, 'received extra echoes'
 }
 
-fn on_message_cb_2(mut cli websocket.Client, msg &websocket.Message) ! {
-	if msg.opcode == .text_frame {
-		cli.close(1000, 'closing connection')!
-	}
-}
-
-fn on_close_cb_2(mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
+fn count_close(mut cli websocket.Client, code int, reason string, mut res WebsocketCloseCount) ! {
 	res.nr_closes++
+}
+
+fn wait_for_ws_event(events chan bool, description string) ! {
+	select {
+		_ := <-events {
+		}
+		5 * time.second {
+			return error('timed out waiting for ${description}')
+		}
+	}
+}
+
+fn start_ws_listener(mut client websocket.Client) chan bool {
+	done := chan bool{cap: 1}
+	spawn fn [mut client, done] () {
+		client.listen() or {}
+		done <- true
+	}()
+	return done
 }
 
 fn test_on_close_when_server_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30003, '')
-	ws.on_message(on_message_cb_2)
-	mut test_results := WebsocketTestResults{}
-	ws.on_close_ref(on_close_cb_2, &test_results)
+	closed := chan bool{cap: 1}
+	ws.on_message(fn [closed] (mut cli websocket.Client, msg &websocket.Message) ! {
+		if msg.opcode == .text_frame {
+			cli.close(1000, 'closing connection')!
+			closed <- true
+		}
+	})
+	mut test_results := WebsocketCloseCount{}
+	ws.on_close_ref(count_close, &test_results)
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
 
 	mut client := websocket.new_client('ws://localhost:30003')!
 	client.connect()!
-	spawn client.listen()
-	time.sleep(1000 * time.millisecond)
+	done := start_ws_listener(mut client)
 	client.write_string('a message')!
-	time.sleep(1000 * time.millisecond)
+	wait_for_ws_event(closed, 'the server close')!
+	wait_for_ws_event(done, 'the client listener to exit')!
 	assert test_results.nr_closes == 1
-}
-
-fn on_close_cb_3(mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
-	res.nr_closes++
 }
 
 fn test_close_unconnected_client_returns_error() ! {
@@ -187,16 +213,25 @@ fn test_close_unconnected_client_returns_error() ! {
 
 fn test_on_close_when_client_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30004, '')
+	ws.on_attached(fn (mut sc websocket.ServerClient) ! {
+		sc.client.write_string('ready')!
+	})
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
 
 	mut client := websocket.new_client('ws://localhost:30004')!
-	mut test_results := WebsocketTestResults{}
-	client.on_close_ref(on_close_cb_3, &test_results)
+	mut test_results := WebsocketCloseCount{}
+	client.on_close_ref(count_close, &test_results)
+	ready := chan bool{cap: 1}
+	client.on_message(fn [ready] (mut cli websocket.Client, msg &websocket.Message) ! {
+		if msg.opcode == .text_frame && msg.payload.bytestr() == 'ready' {
+			ready <- true
+		}
+	})
 	client.connect()!
-	spawn client.listen()
-	time.sleep(1000 * time.millisecond)
+	done := start_ws_listener(mut client)
+	wait_for_ws_event(ready, 'the client listener to receive the first message')!
 	client.close(1000, 'closing connection')!
-	time.sleep(1000 * time.millisecond)
+	wait_for_ws_event(done, 'the client listener to exit')!
 	assert test_results.nr_closes == 1
 }
 
@@ -214,8 +249,9 @@ fn test_on_attached_error_does_not_leak_client() ! {
 	mut client := websocket.new_client('ws://localhost:30005')!
 	client.on_close(client_close_ignore_cb)
 	client.connect()!
-	spawn client.listen()
-	time.sleep(500 * time.millisecond)
+	done := start_ws_listener(mut client)
+	// The server removes the client before closing its socket.
+	wait_for_ws_event(done, 'the rejected client listener to exit')!
 
 	client_count := rlock ws.server_state {
 		ws.server_state.clients.len

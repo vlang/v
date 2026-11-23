@@ -1,0 +1,37 @@
+name: Terminal signal reset regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/term/cursor_exit_nix_test.c.v'
+      - '.github/workflows/term_cursor_signal_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terminal-signal-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cursor-signal:
+    name: Linux GCC, Clang, and TCC cursor signal reset
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      VJOBS: '2'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify V formatting
+        run: ./v fmt -verify vlib/term/cursor_exit_nix_test.c.v
+      - name: Execute original cursor-exit regression on GCC, Clang and strict TCC
+        run: |
+          ./v -cc gcc -W -cstrict -silent vlib/term/cursor_exit_nix_test.c.v
+          ./v -cc clang -W -cstrict -silent vlib/term/cursor_exit_nix_test.c.v
+          ./v -cc tcc -no-retry-compilation -W -cstrict -silent vlib/term/cursor_exit_nix_test.c.v

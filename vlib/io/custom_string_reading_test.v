@@ -1,41 +1,30 @@
 import io
 
 struct StringReader {
-	text string
+	data []u8
 mut:
 	place int
-}
-
-fn imin(a int, b int) int {
-	return if a < b { a } else { b }
 }
 
 fn (mut s StringReader) read(mut buf []u8) !int {
 	$if debug {
 		eprintln('>>>> StringReader.read output buf.len: ${buf.len}')
 	}
-	if s.place > s.text.len + 1 {
-		return io.Eof{}
-	}
-	mut howmany := imin(buf.len, s.text.len - s.place)
-	xxx := s.text[s.place..s.place + howmany].bytes()
-	read := copy(mut buf, xxx)
+	// An exhausted input returns zero bytes to exercise the buffered reader's retries.
+	read := copy(mut buf, s.data[s.place..])
 	s.place += read
 	return read
 }
 
-fn read_from_string(text string, capacity int) []u8 {
-	mut str := StringReader{
-		text: text
-	}
-	mut stream := io.new_buffered_reader(reader: str, cap: capacity)
+fn read_one_byte_at_a_time(data []u8, capacity int) []u8 {
+	mut stream := io.new_buffered_reader(reader: StringReader{ data: data }, cap: capacity)
 
 	mut buf := []u8{len: 1}
-	mut res := []u8{}
+	mut res := []u8{cap: data.len}
 	mut i := 0
 	for {
 		z := stream.read(mut buf) or { break }
-		res << buf
+		res << buf[0]
 		$if debug {
 			println('capacity: ${capacity}, i: ${i}, buf: ${buf} | z: ${z}')
 		}
@@ -44,25 +33,21 @@ fn read_from_string(text string, capacity int) []u8 {
 	return res
 }
 
+// test_reading_from_a_string checks byte-by-byte reads across a range of buffer capacities.
 pub fn test_reading_from_a_string() {
+	inputs := ['a', 'ab', 'abc', 'abcde', 'x'.repeat(1000)].map(it.bytes())
 	for capacity in 1 .. 1000 {
-		assert read_from_string('a', capacity) == [u8(`a`)]
-		assert read_from_string('ab', capacity) == [u8(`a`), `b`]
-		assert read_from_string('abc', capacity) == [u8(`a`), `b`, `c`]
-		assert read_from_string('abcde', capacity) == [u8(`a`), `b`, `c`, `d`, `e`]
-		large_string_bytes := []u8{len: 1000, init: `x`}
-		large_string := large_string_bytes.bytestr()
-		assert read_from_string(large_string, capacity) == large_string_bytes
+		for input in inputs {
+			assert read_one_byte_at_a_time(input, capacity) == input, 'capacity ${capacity}, input of ${input.len} bytes'
+		}
 	}
 }
 
+// test_buffered_reader_readline checks line splitting and end of input with a custom reader.
 pub fn test_buffered_reader_readline() {
 	text := 'hello\nworld'
 	want := text.split_into_lines()
-	mut str := StringReader{
-		text: text
-	}
-	mut stream := io.new_buffered_reader(reader: str)
+	mut stream := io.new_buffered_reader(reader: StringReader{ data: text.bytes() })
 	mut i := 0
 	for {
 		line := stream.read_line() or {

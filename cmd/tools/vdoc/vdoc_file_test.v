@@ -2,38 +2,63 @@
 import os
 import rand
 import term
+import v.cmdexec
 import v.util.vtest
 import v.util.diff
 
 const vexe_path = @VEXE
-const vexe = os.quoted_path(vexe_path)
 const vroot = os.dir(vexe_path)
 const should_autofix = os.getenv('VAUTOFIX') != ''
+
+// Resolve the launcher-selected binary once for the golden fixtures.
+fn vdoc_golden_command() []string {
+	launcher := [vexe_path, 'doc']
+	if os.getenv('VTOOLS_NO_CACHE').trim_space().to_lower() in ['1', 'true', 'yes', 'on'] {
+		return launcher
+	}
+	probe := cmdexec.run_in_merged_with_env(vexe_path, ['doc', '--help'], vroot, {
+		'VTOOLS_CACHE_VERBOSE': '1'
+	})
+	assert probe.exit_code == 0, probe.output
+	for line in probe.output.split_into_lines() {
+		for prefix in ['> reusing the cached `vdoc` at `',
+			'> recompiling `vdoc`, because there is no cached binary at `'] {
+			if line.starts_with(prefix) && line.ends_with('`') && line.len > prefix.len + 1 {
+				binary := line[prefix.len..line.len - 1]
+				if os.is_executable(binary) {
+					return [binary, 'doc']
+				}
+			}
+		}
+	}
+	return launcher
+}
 
 fn test_output() {
 	os.setenv('VCOLORS', 'never', true)
 	os.chdir(vroot)!
+	command := vdoc_golden_command()
 	mut total_fails := 0
 	test_files := vtest.filter_vtest_only(os.walk_ext('cmd/tools/vdoc/testdata', '.v'),
 		basepath: vroot
 	)
 	for path in test_files {
 		mut fails := 0
-		qpath := os.quoted_path(path)
 		path_no_ext := path.all_before_last('.')
 		print(path + ' ')
-		fails += check_output('${vexe} doc ${qpath}', path_no_ext + '.out')
-		fails += check_output('${vexe} doc -comments ${qpath}', '${path_no_ext}.unsorted.out',
+		fails += check_output(command, [path], path_no_ext + '.out')
+		fails += check_output(command, ['-comments', path], '${path_no_ext}.unsorted.out',
 			should_sort: false
 		)
-		fails += check_output('${vexe} doc -comments ${qpath}', '${path_no_ext}.comments.out')
-		fails += check_output('${vexe} doc -readme -comments ${qpath}', '${path_no_ext}.readme.comments.out')
+		fails += check_output(command, ['-comments', path], '${path_no_ext}.comments.out')
+		fails += check_output(command, ['-readme', '-comments', path], '${path_no_ext}.readme.comments.out')
 		// test the main 3 different formats:
-		program_dir := os.quoted_path(if os.is_dir(path) { path } else { os.dir(path) })
+		program_dir := if os.is_dir(path) { path } else { os.dir(path) }
 		for fmt in ['html', 'ansi', 'text'] {
-			fails += check_output('${vexe} doc -no-timestamp -f ${fmt} -o - -html-only-contents -readme -comments ${program_dir}', '${path_no_ext}.${fmt}')
+			fails += check_output(command, ['-no-timestamp', '-f', fmt, '-o', '-', '-html-only-contents',
+				'-readme', '-comments', program_dir], '${path_no_ext}.${fmt}')
 		}
-		fails += check_output('${vexe} doc -no-timestamp -f md -o - ${program_dir}', '${path_no_ext}.md')
+		fails += check_output(command, ['-no-timestamp', '-f', 'md', '-o', '-', program_dir], '${path_no_ext}.md')
 		if fails == 0 {
 			println(term.green('OK'))
 		} else {
@@ -117,16 +142,17 @@ struct CheckOutputParams {
 	should_sort bool = true
 }
 
-fn check_output(cmd string, out_path string, opts CheckOutputParams) int {
+fn check_output(command []string, args []string, out_path string, opts CheckOutputParams) int {
 	if !os.exists(out_path) {
 		return 0
 	}
 	mut fails := 0
 	os.setenv('VDOC_SORT', opts.should_sort.str(), true)
 	expected := os.read_file(out_path) or { panic(err) }.replace('\r\n', '\n').trim_space()
-	res := os.exec_opt(os.split_args(cmd) or { panic(err) }) or { panic(err) }
+	res := os.exec_opt([...command, ...args]) or { panic(err) }
 	found := res.output.replace('\r\n', '\n').trim_space()
 	if expected != found {
+		cmd := cmdexec.display(vexe_path, ['doc', ...args])
 		print_compare(expected, found)
 		eprintln('>>>           cmd: VDOC_SORT=${opts.should_sort} ${cmd}')
 		eprintln('>>> out_file_path: `${out_path}`')

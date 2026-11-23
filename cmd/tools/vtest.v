@@ -21,7 +21,7 @@ fn main() {
 		return
 	}
 	args_to_executable := args[1..]
-	mut args_before := cmdline.options_before(args_to_executable, ['test'])
+	args_before := cmdline.options_before(args_to_executable, ['test'])
 	mut args_after := cmdline.options_after(args_to_executable, ['test'])
 	mut ctx := Context{}
 	ctx.fail_fast = extract_flag_bool('-fail-fast', mut args_after, testing.fail_fast)
@@ -38,19 +38,13 @@ fn main() {
 	all_requested_args << args_before
 	backend := test_backend(all_requested_args)
 	ctx.target_arch = test_target_arch(all_requested_args)
-	strict_v3 := ('-new-compiler' in all_requested_args && '-old-compiler' !in all_requested_args)
-		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
+	// The launcher forwards VFLAGS as a complete prefix. Standalone vtest
+	// also accepts environment flags, preserving option/value pairs and order.
 	mut session_args := args_before.clone()
-	if strict_v3 {
-		// The launcher forwards VFLAGS as a complete prefix. A standalone vtest
-		// still needs the environment flags; preserve option/value pairs and order.
-		if args_before.len < requested_args.len
-			|| args_before[..requested_args.len] != requested_args {
-			session_args = requested_args.clone()
-			session_args << args_before
-		}
-		os.unsetenv('VFLAGS')
+	if args_before.len < requested_args.len || args_before[..requested_args.len] != requested_args {
+		session_args = all_requested_args.clone()
 	}
+	os.unsetenv('VFLAGS')
 	session_vargs := session_args.map(test_session_argument(it)).join(' ')
 
 	mut ts := testing.new_test_session(session_vargs, true)
@@ -84,13 +78,6 @@ fn main() {
 			eprintln('\nUnrecognized test file `${targ}`.\n `v test` can only be used with folders and/or _test.v files.\n')
 			show_usage()
 			exit(1)
-		}
-	}
-	if strict_v3 {
-		for file in ts.files {
-			if file.ends_with('.js.v') {
-				ts.skip_files << os.real_path(file)
-			}
 		}
 	}
 	ts.session_start('Testing...')

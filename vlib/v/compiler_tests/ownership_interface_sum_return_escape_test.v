@@ -85,7 +85,7 @@ fn main() {}
 ')!
 		for mode in ['-no-parallel', ''] {
 			// These returned references would be dangling, so rejection cases are never run.
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
 			assert out.exit_code != 0, '${case.typ}: ${case.expression}: ${out.output}'
 			assert out.output.contains('cannot return a reference to local storage `local`'), '${case.typ}: ${case.expression}: ${out.output}'
 		}
@@ -149,7 +149,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 	}
 }

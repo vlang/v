@@ -44,6 +44,106 @@ fn test_parse_empty_object_and_array() {
 	assert (arr as []Any).len == 0
 }
 
+fn assert_json5_parser_accepts_typed_input(text string) {
+	if _ := decode[int](text, json5: true) {
+		assert false, 'container input must not decode as a number'
+	} else {
+		assert err is JsonDecodeError
+		assert !err.msg().contains('maximum nesting depth')
+	}
+}
+
+fn test_json5_nesting_at_max_depth_is_accepted() {
+	arrays := '['.repeat(max_nesting_depth) + '0' + ']'.repeat(max_nesting_depth)
+	assert_json5_parser_accepts_typed_input(arrays)
+
+	objects := '{key:'.repeat(max_nesting_depth) + '0' + '}'.repeat(max_nesting_depth)
+	assert_json5_parser_accepts_typed_input(objects)
+	assert_json5_parser_accepts_typed_input(mixed_json5_nested_value(max_nesting_depth))
+}
+
+fn mixed_json5_nested_value(levels int) string {
+	mut parts := []string{cap: levels * 2 + 1}
+	for i in 0 .. levels {
+		parts << if i % 2 == 0 { '[' } else { '{key:' }
+	}
+	parts << '0'
+	for i := levels - 1; i >= 0; i-- {
+		parts << if i % 2 == 0 { ']' } else { '}' }
+	}
+	return parts.join('')
+}
+
+fn commented_json5_nested_array(levels int) string {
+	mut parts := []string{cap: levels * 2 + 1}
+	for _ in 0 .. levels {
+		parts << '['
+		parts << '/* nested */'
+	}
+	parts << '0'
+	for _ in 0 .. levels {
+		parts << ',]'
+	}
+	return parts.join('')
+}
+
+fn assert_json5_parser_depth_error(text string, character int) {
+	if _ := decode[int](text, json5: true) {
+		assert false, 'expected JSON5 nesting over the limit to return an error'
+	} else {
+		assert err is JsonScanError
+		scan_error := err as JsonScanError
+		assert scan_error.msg().contains('maximum nesting depth')
+		assert scan_error.line == 1
+		assert scan_error.character == character
+	}
+}
+
+fn test_json5_nesting_over_max_depth_returns_error() {
+	arrays := '['.repeat(max_nesting_depth + 1) + '0' + ']'.repeat(max_nesting_depth + 1)
+	objects := '{key:'.repeat(max_nesting_depth + 1) + '0' + '}'.repeat(max_nesting_depth + 1)
+	assert_json5_parser_depth_error(arrays, max_nesting_depth + 1)
+	assert_json5_parser_depth_error(objects, max_nesting_depth * '{key:'.len + 1)
+	mixed_error_character := max_nesting_depth / 2 * ('['.len + '{key:'.len) + 1
+	assert_json5_parser_depth_error(mixed_json5_nested_value(max_nesting_depth + 1), mixed_error_character)
+	commented_error_character := max_nesting_depth * ('['.len + '/* nested */'.len) + 1
+	assert_json5_parser_depth_error(commented_json5_nested_array(max_nesting_depth + 1), commented_error_character)
+}
+
+fn test_json5_typed_decode_rejects_over_parser_limit() {
+	text := '['.repeat(max_nesting_depth + 1) + '0' + ']'.repeat(max_nesting_depth + 1)
+	assert_json5_parser_depth_error(text, max_nesting_depth + 1)
+}
+
+fn test_json5_nesting_guard_covers_typed_and_reused_decoding() {
+	text := '{key:'.repeat(max_nesting_depth + 1) + '0' + '}'.repeat(max_nesting_depth + 1)
+	if _ := decode[int](text, json5: true) {
+		assert false, 'expected typed JSON5 decoding to reject over-limit nesting'
+	} else {
+		assert err.msg().contains('maximum nesting depth')
+	}
+	mut buffer := DecodeBuffer{}
+	decode_reuse[int](text, mut buffer, json5: true) or {
+		assert err.msg().contains('maximum nesting depth')
+		value := decode_reuse[Any]('{key: [1]}', mut buffer, json5: true)!
+		assert value is map[string]Any
+		return
+	}
+	assert false, 'expected JSON5 decode_reuse to reject over-limit nesting'
+}
+
+fn test_json5_nesting_counts_tokens_not_delimiter_text() {
+	text := "['" + '['.repeat(max_nesting_depth + 1) + "']"
+	value := decode[Any](text, json5: true) or { panic('string delimiters are not nesting: ${err.msg()}') }
+	assert value is []Any
+	assert (value as []Any)[0].str() == '['.repeat(max_nesting_depth + 1)
+}
+
+fn test_json5_nesting_guard_unwinds_between_sibling_containers() {
+	sub := '['.repeat(max_nesting_depth - 1) + '0' + ']'.repeat(max_nesting_depth - 1)
+	assert_json5_parser_accepts_typed_input('[${sub}, ${sub}]')
+}
+
 fn test_parse_nested_object() {
 	doc := parse_json5_doc_test('{ a: { b: { c: 1 } } }')!
 	assert doc.value('a.b.c').int() == 1

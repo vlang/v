@@ -10,7 +10,7 @@ VC_BOOTSTRAP_DEFINE = -DCUSTOM_DEFINE_v1_fallback
 
 all: download_vc v
 
-.PHONY: all check download_vc install v v1
+.PHONY: all check download_vc install v
 
 download_vc:
 	@set -e; \
@@ -145,68 +145,16 @@ v:
 	set -- "$$@" cmd/v; \
 	"$$@"; \
 	rm -rf v1 v2; \
-	./v -new-compiler run ./cmd/tools/detect_tcc.v; \
+	./v run ./cmd/tools/detect_tcc.v; \
 	echo "V has been successfully built"; \
 	./v version; \
-	./v -new-compiler run .github/problem-matchers/register_all.vsh; \
+	./v run .github/problem-matchers/register_all.vsh; \
 	cache_gcflags=; \
 	if [ ! -f thirdparty/tcc/lib/libgc.a ] && [ ! -f thirdparty/tcc/lib/libgc.dylib ]; then \
 		cache_gcflags='-gc none'; \
 	fi; \
-	./v $$cache_gcflags $(VFLAGS) -new-compiler run cmd/tools/cache_basic_modules.v; \
-	./v $$cache_gcflags $(VFLAGS) -new-compiler cmd/tools/cache_basic_modules_test.v
-
-v1:
-	@set -e; \
-	sys=`uname -s 2>/dev/null || echo unknown`; \
-	arch=`uname -m 2>/dev/null || echo unknown`; \
-	if [ "`getconf LONG_BIT 2>/dev/null`" = 32 ]; then \
-		case "$$arch" in \
-			aarch64|arm64|armv8*) arch=armv7l;; \
-			x86_64|amd64) arch=i686;; \
-		esac; \
-	fi; \
-	set -- $(CFLAGS); \
-	bootstrap_ccflags=; \
-	unsafe_o=0; \
-	for arg do \
-		case "$$arg" in \
-			-O|-O0|-O1) bootstrap_ccflags="$$bootstrap_ccflags $$arg";; \
-			-O*) bootstrap_ccflags="$$bootstrap_ccflags $$arg"; unsafe_o=1;; \
-			*) bootstrap_ccflags="$$bootstrap_ccflags $$arg";; \
-		esac; \
-	done; \
-	bootstrap_ccflags=$${bootstrap_ccflags# }; \
-	set -- $(LDFLAGS); \
-	ldflags=; \
-	for arg do ldflags="$$ldflags $$arg"; done; \
-	ldflags=$${ldflags# }; \
-	case "$$sys" in \
-		Linux) case "$$arch" in arm*) ldflags="$$ldflags -latomic";; esac;; \
-		FreeBSD|NetBSD|OpenBSD) ldflags="$$ldflags -lexecinfo";; \
-	esac; \
-	ldflags=$${ldflags# }; \
-	if [ "$$sys" = Linux ]; then \
-		case "$$arch" in \
-			arm64|aarch64) \
-				if [ $$unsafe_o -eq 1 ]; then \
-					set -- $$bootstrap_ccflags; \
-					bootstrap_ccflags=; \
-					for arg do \
-						case "$$arg" in \
-							-O|-O0|-O1) bootstrap_ccflags="$$bootstrap_ccflags $$arg";; \
-							-O*) bootstrap_ccflags="$$bootstrap_ccflags -O1";; \
-							*) bootstrap_ccflags="$$bootstrap_ccflags $$arg";; \
-						esac; \
-					done; \
-					bootstrap_ccflags=$${bootstrap_ccflags# }; \
-				fi;; \
-		esac; \
-	fi; \
-	CC='$(CC)' OLDV_CCOPTIONS='$(CPPFLAGS) '"$$bootstrap_ccflags" \
-		OLDV_LDFLAGS="$$ldflags" \
-		cmd/tools/install_v1_fallback.sh '$(VEXE)' './v1_fallback'; \
-	echo "Built V1 compatibility compiler: ./v1_fallback"
+	./v $$cache_gcflags $(VFLAGS) run cmd/tools/cache_basic_modules.v; \
+	./v $$cache_gcflags $(VFLAGS) cmd/tools/cache_basic_modules_test.v
 
 check:
 	./v test-all

@@ -17,25 +17,21 @@ fn (mut b Buf) read(mut buf []u8) !int {
 }
 
 fn test_read_all() {
-	buf := Buf{
-		bytes: '123'.repeat(10).bytes()
-	}
-	res := read_all(reader: buf) or {
+	data := '123'.repeat(10).bytes()
+	res := read_all(reader: Buf{ bytes: data }) or {
 		assert false
 		''.bytes()
 	}
-	assert res == '123'.repeat(10).bytes()
+	assert res == data
 }
 
 fn test_read_all_huge() {
-	buf := Buf{
-		bytes: '123'.repeat(100000).bytes()
-	}
-	res := read_all(reader: buf) or {
+	data := '123'.repeat(100000).bytes()
+	res := read_all(reader: Buf{ bytes: data }) or {
 		assert false
 		''.bytes()
 	}
-	assert res == '123'.repeat(100000).bytes()
+	assert res == data
 }
 
 struct ZeroReadAfterDataReader {
@@ -69,26 +65,9 @@ fn test_read_all_stops_on_zero_length_read_after_partial_data() {
 	assert reader.call_count == 2
 }
 
-struct StringReaderTest {
-	text string
-mut:
-	place int
-}
-
-fn (mut s StringReaderTest) read(mut buf []u8) !int {
-	if s.place >= s.text.len {
-		return Eof{}
-	}
-	read := copy_bytes(mut buf, s.text[s.place..].bytes())
-	s.place += read
-	return read
-}
-
 struct ZeroThenDataReader {
-pub:
-	text string
 mut:
-	place       int
+	source      Buf
 	empty_reads int
 }
 
@@ -100,47 +79,21 @@ fn (mut s ZeroThenDataReader) read(mut buf []u8) !int {
 		s.empty_reads++
 		return 0
 	}
-	if s.place >= s.text.len {
-		return Eof{}
-	}
-	read := copy_bytes(mut buf, s.text[s.place..].bytes())
-	s.place += read
-	return read
+	return s.source.read(mut buf)
 }
 
 const newline_count = 100000
 
 fn test_stringreadertest() {
-	text := '12345\n'.repeat(newline_count)
-	mut s := StringReaderTest{
-		text: text
-	}
-	mut r := new_buffered_reader(reader: s)
-	for i := 0; true; i++ {
-		if _ := r.read_line() {
-		} else {
-			assert i == newline_count
-			break
-		}
-	}
-	if _ := r.read_line() {
-		assert false
-	}
-	leftover := read_all(reader: r) or {
-		assert false
-		panic('bad')
-	}
-	if leftover.len > 0 {
-		assert false
-	}
+	check_all_lines('12345\n'.repeat(newline_count))
 }
 
 fn test_stringreadertest2() {
-	text := '12345\r\n'.repeat(newline_count)
-	mut s := StringReaderTest{
-		text: text
-	}
-	mut r := new_buffered_reader(reader: s)
+	check_all_lines('12345\r\n'.repeat(newline_count))
+}
+
+fn check_all_lines(text string) {
+	mut r := new_buffered_reader(reader: Buf{ bytes: text.bytes() })
 	for i := 0; true; i++ {
 		if _ := r.read_line() {
 		} else {
@@ -162,10 +115,7 @@ fn test_stringreadertest2() {
 
 fn test_leftover() {
 	text := 'This is a test\r\nNice try!'
-	mut s := StringReaderTest{
-		text: text
-	}
-	mut r := new_buffered_reader(reader: s)
+	mut r := new_buffered_reader(reader: Buf{ bytes: text.bytes() })
 	_ := r.read_line() or {
 		assert false
 		panic('bad')
@@ -184,10 +134,7 @@ fn test_leftover() {
 
 fn test_read_line_strips_crlf_across_buffer_fills() {
 	text := '12345\r\n67890\r\n'
-	mut s := StringReaderTest{
-		text: text
-	}
-	mut r := new_buffered_reader(reader: s, cap: 2)
+	mut r := new_buffered_reader(reader: Buf{ bytes: text.bytes() }, cap: 2)
 	assert r.read_line()! == '12345'
 	assert r.read_line()! == '67890'
 	if _ := r.read_line() {
@@ -198,10 +145,7 @@ fn test_read_line_strips_crlf_across_buffer_fills() {
 
 fn test_totalread_read() {
 	text := 'Some testing text'
-	mut s := StringReaderTest{
-		text: text
-	}
-	mut r := new_buffered_reader(reader: s)
+	mut r := new_buffered_reader(reader: Buf{ bytes: text.bytes() })
 
 	mut buf := []u8{len: text.len}
 	total := r.read(mut buf) or {
@@ -213,19 +157,19 @@ fn test_totalread_read() {
 }
 
 fn test_buffered_reader_retries_zero_length_reads() {
-	text := 'Some testing text'
-	mut s := ZeroThenDataReader{
-		text: text
+	data := 'Some testing text'.bytes()
+	s := ZeroThenDataReader{
+		source: Buf{ bytes: data }
 	}
 	mut r := new_buffered_reader(reader: s, retries: 2)
-	mut buf := []u8{len: text.len}
+	mut buf := []u8{len: data.len}
 	total := r.read(mut buf) or {
 		assert false
 		panic('bad')
 	}
 
-	assert total == text.len
-	assert buf[..total] == text.bytes()
+	assert total == data.len
+	assert buf[..total] == data
 	assert r.total_read == total
 }
 
@@ -261,10 +205,7 @@ fn test_read_any_errors_on_negative_read_count() {
 
 fn test_totalread_readline() {
 	text := 'Some testing text\nmore_enters'
-	mut s := StringReaderTest{
-		text: text
-	}
-	mut r := new_buffered_reader(reader: s)
+	mut r := new_buffered_reader(reader: Buf{ bytes: text.bytes() })
 
 	_ := r.read_line() or {
 		assert false
@@ -280,10 +221,7 @@ fn test_totalread_readline() {
 
 fn test_read_line_until_zero_terminated() {
 	text := 'This is a test\0Nice try!\0'
-	mut s := StringReaderTest{
-		text: text
-	}
-	mut r := new_buffered_reader(reader: s)
+	mut r := new_buffered_reader(reader: Buf{ bytes: text.bytes() })
 	line1 := r.read_line(delim: `\0`) or {
 		assert false
 		panic('bad')

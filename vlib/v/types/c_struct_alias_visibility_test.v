@@ -71,8 +71,7 @@ fn main() {
 	assert reexport.value == 15
 }
 ')!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', @CCOMPILER, 'run',
-		root])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-cc', @CCOMPILER, 'run', root])
 	assert result.exit_code == 0, result.output
 }
 
@@ -82,7 +81,7 @@ fn test_c_struct_alias_visibility_preserves_private_v_fields() {
 	for body in ['_ = bridge.PublicV{secret: 1}', 'value := bridge.PublicV{}; _ = value.secret',
 		'_ = bridge.PublicVAlias{secret: 1}', 'value := bridge.PublicVAlias{}; _ = value.secret'] {
 		os.write_file(os.join_path(root, 'main.v'), 'import bridge\nfn main() { ${body} }\n')!
-		result := os.exec([@VEXE, '-new-compiler', '-check', root])
+		result := os.exec([@VEXE, '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('secret')
 			&& (result.output.contains('private') || result.output.contains('not public')), result.output
@@ -104,7 +103,7 @@ fn main() {
 	_ = ${type_name}{value: 1}
 }
 ')!
-		result := os.exec([@VEXE, '-new-compiler', '-check', root])
+		result := os.exec([@VEXE, '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('type `${private_name}` is private'), result.output
 	}
@@ -121,7 +120,7 @@ fn main() {
 	_ = LocalValue{value: 1}
 }
 ')!
-		result := os.exec([@VEXE, '-new-compiler', '-check', root])
+		result := os.exec([@VEXE, '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('type `${target}` is private'), result.output
 	}

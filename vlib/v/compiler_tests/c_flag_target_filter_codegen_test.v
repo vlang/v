@@ -6,6 +6,29 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const v3_module_path = '${vlib_dir}|@vlib|@vmodules'
+const c_flag_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_c_flag_compiler_${os.getpid()}')
+
+fn testsuite_begin() {
+	os.rmdir_all(c_flag_compiler_dir) or {}
+	os.mkdir_all(c_flag_compiler_dir)!
+}
+
+fn testsuite_end() {
+	os.rmdir_all(c_flag_compiler_dir) or {}
+}
+
+fn c_flag_v3_compiler() string {
+	bin := os.join_path(c_flag_compiler_dir, 'v3' + $if windows { '.exe' } $else { '' })
+	if !os.is_file(bin) {
+		build := os.exec([vexe, '-gc', 'none', '-path', v3_module_path, '-o', bin, v3_src])
+		if build.exit_code != 0 {
+			os.rm(bin) or {}
+		}
+		assert build.exit_code == 0, build.output
+	}
+	return bin
+}
 
 fn test_c_backend_only_runs_generic_and_c_backend_test_files() {
 	assert pref.is_test_file_for_backend('/tmp/basic_test.v', 'c')
@@ -22,12 +45,7 @@ fn test_c_flag_target_filter_keeps_host_linux_and_drops_wasm() {
 		return
 	}
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_flag_target_filter_test_${pid}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
+	v3_bin := c_flag_v3_compiler()
 
 	src := os.join_path(os.temp_dir(), 'v3_c_flag_target_filter_input_${pid}.v')
 	os.write_file(src,
@@ -59,12 +77,7 @@ fn test_c_flag_target_filter_drops_termux_off_termux() {
 		return
 	}
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_flag_termux_filter_test_${pid}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
+	v3_bin := c_flag_v3_compiler()
 
 	src := os.join_path(os.temp_dir(), 'v3_c_flag_termux_filter_input_${pid}.v')
 	os.write_file(src,
@@ -88,12 +101,8 @@ fn test_objective_c_flags_are_applied_to_standalone_build() {
 		return
 	}
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_objective_c_flag_test_${pid}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-prealloc', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
+	// Compiler builds default to -prealloc, so the shared compiler is that build.
+	v3_bin := c_flag_v3_compiler()
 
 	src := os.join_path(os.temp_dir(), 'v3_objective_c_flag_input_${pid}.v')
 	os.write_file(src,
@@ -128,11 +137,7 @@ fn test_direct_objective_c_source_flag_skips_tcc() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := os.join_path(root, 'v3_direct_objective_c_driver')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
+	v3_bin := c_flag_v3_compiler()
 	os.write_file(os.join_path(root, 'shim.m'), '@interface V3DirectObjectiveC
 + (int)answer;
 @end

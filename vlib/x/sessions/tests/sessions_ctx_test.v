@@ -280,16 +280,22 @@ fn test_get_reports_a_missing_store_entry() {
 }
 
 fn test_get_of_an_expired_session_errors_and_destroys_it() {
-	mut s := sessions.Sessions[User]{
-		store:   sessions.MemoryStore[User]{}
-		secret:  test_secret
-		max_age: time.second
-	}
+	max_age := time.second
 	sid, _ := sessions.new_session_id(test_secret)
-	s.store.set(sid, default_user)!
+	mut s := sessions.Sessions[User]{
+		store:   sessions.MemoryStore[User]{
+			data: {
+				sid: sessions.MemoryStoreSessions[User]{
+					created_at: time.now().add(-2 * max_age)
+					data:       default_user
+				}
+			}
+		}
+		secret:  test_secret
+		max_age: max_age
+	}
 	mut ctx := Context{}
 	ctx.session_id = sid
-	time.sleep(2 * time.second)
 	if _ := s.get(ctx) {
 		assert false, 'the session should have expired'
 	} else {

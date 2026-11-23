@@ -86,10 +86,9 @@ fn main() {
 	baseline := os.join_path(root, 'baseline')
 	baseline_build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'c', '-gc', 'none', '-o', baseline,
 		source_path], @VEXEROOT, {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	assert baseline_build.exit_code == 0, baseline_build.output
 	baseline_run := cmdexec.run(baseline, [])

@@ -44,28 +44,26 @@ fn test_memory_limit_cli_validation_and_guard() {
 	output := os.join_path(root, 'main.c')
 	os.write_file(source, 'fn main() {}\n')!
 	for option in ['-memory-limit', '--memory-limit'] {
-		missing := cmdexec.run(@VEXE, ['-new-compiler', option])
+		missing := cmdexec.run(@VEXE, [option])
 		assert missing.exit_code != 0, missing.output
 		assert missing.output.contains('requires a value'), missing.output
 		for value in ['', 'nonsense', '-1', '17592186044416G', '9223372036854775807G'] {
-			invalid := cmdexec.run(@VEXE, ['-new-compiler', option, value, '-o', output, source])
+			invalid := cmdexec.run(@VEXE, [option, value, '-o', output, source])
 			assert invalid.exit_code != 0, invalid.output
 			assert !invalid.output.contains('V panic'), invalid.output
 			assert invalid.output.contains('requires a value')
 				|| invalid.output.contains('invalid value'), invalid.output
 		}
 		for value in ['1', '1M'] {
-			limited := cmdexec.run(@VEXE, ['-new-compiler', '-silent', option, value, '-o', output,
-				source])
+			limited := cmdexec.run(@VEXE, ['-silent', option, value, '-o', output, source])
 			assert limited.exit_code != 0, limited.output
 			assert limited.output.contains('limit: 1 MiB'), limited.output
 		}
 		for value in ['0', '0K'] {
-			unlimited := cmdexec.run(@VEXE, ['-new-compiler', '-silent', option, value, '-o', output,
-				source])
+			unlimited := cmdexec.run(@VEXE, ['-silent', option, value, '-o', output, source])
 			assert unlimited.exit_code == 0, unlimited.output
 		}
-		formatted := cmdexec.run(@VEXE, ['-new-compiler', option, '1G', 'fmt', '-verify', source])
+		formatted := cmdexec.run(@VEXE, [option, '1G', 'fmt', '-verify', source])
 		assert formatted.exit_code == 0, formatted.output
 	}
 }

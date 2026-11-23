@@ -256,7 +256,6 @@ const skip_with_fsanitize_undefined = [
 ]
 const skip_on_ubuntu_musl = [
 	'do_not_remove',
-	'cmd/tools/fast/bench_test.v', // parsing-only test compiles fast's main package, pulling db.sqlite and the host glibc .pc/header (sys/cdefs.h)
 	'vlib/arrays/parallel/parallel_test.v',
 	'vlib/builtin/js/array_test.js.v',
 	// crypto.ecdsa (and net.quic, which imports it -- added for
@@ -301,6 +300,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/net/quic/version_negotiation_test.v',
 	'vlib/db/pg_sqlite_consistency_test.v', // pg + sqlite dev headers pull in glibc-only sys/cdefs.h on musl-gcc
 	'vlib/db/sqlite/sqlite_test.v',
+	'vlib/v/gen/c/cached_interface_dispatch_test.v', // builds orm/row_mapping_conversion_test.v with clang, against the musl-only static sqlite
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_comptime_field_test.v',
 	'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
@@ -313,7 +313,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v',
 	'vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v',
 	'vlib/x/multiwindow/service_native_win32_no_flag_test.v',
-	'vlib/sokol/gfx/metal_private_hook_contract_test.v',
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
@@ -340,7 +339,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_func_test.v',
 	'vlib/orm/orm_module_table_prefix/orm_module_table_prefix_test.v',
 	'vlib/orm/orm_where_in_test.v',
-	'vlib/sokol/gfx/gfx_test.v', // sokol_app.h needs GL/gl.h, not installed in the musl Docker image
 	'vlib/v/tests/concurrency/shared_nested_lock_runtime_test.v', // nested shared lock times out on the musl image
 	'vlib/v/tests/orm_bulk_insert_update_test.v',
 	'vlib/v/tests/orm_enum_test.v',
@@ -379,8 +377,17 @@ const skip_on_ubuntu_musl = [
 // Docker image has neither for musl-gcc (`EGL/egl.h: No such file or directory`), so
 // none of the module's tests can compile there.
 const skip_dirs_on_ubuntu_musl = [
+	'vlib/sokol/audio', // requires musl-native ALSA headers
+	'vlib/sokol/gfx', // sokol_app.h requires musl-native OpenGL and X11 headers
+	'vlib/sokol/sapp', // the sapp module includes sokol_app.h, which needs X11/Xlib.h
 	'vlib/gg/canvas',
 ]
+
+// FastC's tests compile and link its C output with direct `cc`/`clang` calls and
+// POSIX-only assumptions (no `-municode` for its `wmain`, `/` paths, ...). Until they
+// are ported, they are not run on Windows; fastc_ci.yml still checks that FastC builds
+// and runs a program there.
+const skip_dirs_on_windows = ['v/gen/fastc']
 
 fn Config.init(vargs []string, targs []string) !Config {
 	mut cfg := Config{}
@@ -445,9 +452,9 @@ fn Config.init(vargs []string, targs []string) !Config {
 	return cfg
 }
 
-fn self_test_matches_filename(path string) bool {
+fn self_test_matches_filename(path string, node_present bool) bool {
 	if path.ends_with('_test.v') || path.ends_with('_test.c.v')
-		|| (testing.is_node_present && path.ends_with('_test.js.v')) {
+		|| (node_present && path.ends_with('_test.js.v')) {
 		return true
 	}
 	name := os.file_name(path)
@@ -482,19 +489,12 @@ fn main() {
 	}
 	mut vargs := os.args[1..args_idx].clone()
 	requested_args := os.split_args(os.getenv('VFLAGS')) or { panic(err) }
-	mut all_requested_args := requested_args.clone()
-	all_requested_args << vargs
-	strict_v3 := ('-new-compiler' in all_requested_args && '-old-compiler' !in all_requested_args)
-		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
-	if strict_v3 {
-		// Apply environment flags to test compilation, without leaking a host C
-		// compiler choice into nested compiler invocations (for example FastC).
-		if vargs.len < requested_args.len || vargs[..requested_args.len] != requested_args {
-			vargs = requested_args.clone()
-			vargs << os.args[1..args_idx]
-		}
-		os.unsetenv('VFLAGS')
+	// Apply environment flags to test compilation without leaking them into nested builds.
+	if vargs.len < requested_args.len || vargs[..requested_args.len] != requested_args {
+		vargs = requested_args.clone()
+		vargs << os.args[1..args_idx]
 	}
+	os.unsetenv('VFLAGS')
 	targs := os.args#[args_idx + 1..]
 	cfg := Config.init(vargs, targs) or {
 		eprintln(err)
@@ -507,9 +507,10 @@ fn main() {
 	}
 	mut tpaths := map[string]bool{}
 	mut tpaths_ref := &tpaths
+	node_present := testing.is_node_present()
 	for dir in cfg.test_dirs {
-		os.walk(os.join_path(vroot, dir), fn [mut tpaths_ref] (p string) {
-			if self_test_matches_filename(p) {
+		os.walk(os.join_path(vroot, dir), fn [mut tpaths_ref, node_present] (p string) {
+			if self_test_matches_filename(p, node_present) {
 				unsafe {
 					tpaths_ref[p] = true
 				}
@@ -526,8 +527,17 @@ fn main() {
 		&& (shard.count == 1 || self_test_shard_for_file(it, shard.count) == shard.index))
 	// The compiler tests have their own driver, so they are excluded from `v test-self`.
 	for test_dir in temporarily_disabled_self_test_vlib_dirs {
-		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
+		// `test_dir` is written with `/`; the test paths use the platform separator.
+		test_path := test_dir.replace('/', os.path_separator)
+		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_path}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
+	}
+	$if windows {
+		for test_dir in skip_dirs_on_windows {
+			test_path := test_dir.replace('/', os.path_separator)
+			dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_path}${os.path_separator}'
+			tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
+		}
 	}
 	if vtest.skip_ownership_autofree_tests() {
 		tsession.skip_files << tsession.files.filter(vtest.is_ownership_autofree_test(it))

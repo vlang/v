@@ -172,6 +172,23 @@ fn test_keyword_enum_selector_inserts_semicolon() {
 	}
 }
 
+fn test_leading_dot_float_inserts_semicolon() {
+	source := '.5\n.25'
+	mut files := token.FileSet.new()
+	mut file := files.add_file('leading_dot_float.v', source.len)
+	file.index_lines(source)
+	mut scanner := new_scanner(&pref.Preferences{}, .normal)
+	scanner.init(file, source)
+
+	assert scanner.scan() == .number
+	assert scanner.lit == '.5'
+	assert scanner.scan() == .semicolon
+	assert scanner.scan() == .number
+	assert scanner.lit == '.25'
+	assert scanner.scan() == .semicolon
+	assert scanner.scan() == .eof
+}
+
 fn char_literal_diagnostics(source string) []string {
 	mut files := token.FileSet.new()
 	mut file := files.add_file('char_literal.v', source.len)

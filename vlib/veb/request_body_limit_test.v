@@ -2,6 +2,7 @@ module veb
 
 import io
 import net.http
+import strings
 
 fn test_request_head_byte_limit_maps_to_431() {
 	assert request_read_error_response(http.RequestHeaderLimitError{}).status_code == 431
@@ -12,10 +13,14 @@ struct BodyFragmentReader {
 	step        int = 2
 	zero_at_end bool
 mut:
-	pos int
+	pos                    int
+	max_read_buffer_length int
 }
 
 fn (mut source BodyFragmentReader) read(mut buf []u8) !int {
+	if buf.len > source.max_read_buffer_length {
+		source.max_read_buffer_length = buf.len
+	}
 	if source.pos == source.bytes.len {
 		if source.zero_at_end { return 0 }
 		return io.Eof{}
@@ -47,6 +52,34 @@ fn test_content_length_requires_complete_decimal_and_int_range() {
 	}
 	assert parse_request_content_length('0003')! == 3
 	assert parse_request_content_length(max_int.str())! == max_int
+}
+
+fn test_request_body_reads_use_a_bounded_temporary_buffer() {
+	body_text := 'abcde'.repeat(request_body_read_buffer_size)
+	mut source := BodyFragmentReader{
+		bytes: body_text.bytes()
+		step:  request_body_read_buffer_size / 2
+	}
+	mut body := strings.new_builder(0)
+	mut read_buffer := []u8{}
+	read_request_body_bytes(mut source, body_text.len, mut body, mut read_buffer)!
+	assert body.str() == body_text
+	assert source.max_read_buffer_length <= request_body_read_buffer_size
+
+	mut incomplete_source := BodyFragmentReader{
+		bytes: 'short'.bytes()
+		step:  2
+	}
+	mut incomplete_body := strings.new_builder(0)
+	mut incomplete_buffer := []u8{}
+	read_request_body_bytes(mut incomplete_source, 1024 * 1024, mut incomplete_body,
+		mut incomplete_buffer) or {
+		assert err.msg() == 'unexpected end of request body'
+		assert incomplete_source.max_read_buffer_length == request_body_read_buffer_size
+		assert incomplete_body.len == 0
+		return
+	}
+	assert false, 'accepted a truncated body'
 }
 
 fn test_content_length_limit_before_body_read_and_exact_fragmented_boundary() {

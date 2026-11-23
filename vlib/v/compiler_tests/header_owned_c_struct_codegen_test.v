@@ -176,7 +176,7 @@ fn main() {
 ')!
 		v3_bin := header_owned_build_v3()
 		out := os.join_path(root, 'out')
-		compile := os.exec([v3_bin, '-new-compiler', '-nocache', '--no-parallel', '-cc', 'clang',
+		compile := os.exec([v3_bin, '-nocache', '--no-parallel', '-cc', 'clang',
 			os.join_path(root, 'main.v'), '-b', 'c', '-o', '${out}'])
 		assert compile.exit_code == 0, compile.output
 		run := os.exec([out])

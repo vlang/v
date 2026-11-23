@@ -7,6 +7,14 @@ import os
 import rand
 import test_utils
 
+fn testsuite_begin() {
+	// Run the CLI in the child with the environment supplied by the fixture.
+	if os.args.len > 1 && parse_vpm_command(os.args[1..]) != '' {
+		main()
+		exit(0)
+	}
+}
+
 struct BinaryFixture {}
 
 fn (_ BinaryFixture) handle(request http.Request) http.Response {
@@ -245,9 +253,7 @@ fn test_vpm_install_fetches_binary_assets_and_keeps_locked_source_hash_stable() 
 	binary_test_git(module_path, ['init', '--quiet'])
 	source_without_assets := binary_test_commit(module_path, 'without assets')
 	hash_without_assets := dir_sha256(module_path)!
-	executable := os.join_path(root, 'vpm' + $if windows { '.exe' } $else { '' })
-	compiled := os.exec([@VEXE, '-b', 'c', '-memory-limit', '10G', '-o', executable, os.dir(@FILE)])
-	assert compiled.exit_code == 0, compiled.output
+	executable := os.executable()
 	project := os.join_path(root, 'project')
 	os.mkdir_all(project)!
 	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'client' dependencies: ['${module_path.replace('\\', '/')}'] }")!

@@ -70,15 +70,15 @@ fn main() {
 }
 ")!
 	c_file := os.join_path(dir, 'windows.c')
-	generated := cmdexec.run(@VEXE, ['-new-compiler', '-no-retry-compilation', '-os', 'windows',
-		'-cc', 'msvc', '-o', c_file, source])
+	generated := cmdexec.run(@VEXE, ['-no-retry-compilation', '-os', 'windows', '-cc', 'msvc',
+		'-o', c_file, source])
 	assert generated.exit_code == 0, generated.output
 	c_source := os.read_file(c_file)!
 	assert validate.utf8_string(c_source)
 	assert c_source.contains('\\3777')
 	binary := os.join_path(dir, 'program' + $if windows { '.exe' } $else { '' })
-	compiled := cmdexec.run(@VEXE, ['-new-compiler', '-no-retry-compilation', '-nocache', '-gc',
-		'none', '-cc', @CCOMPILER, '-o', binary, source])
+	compiled := cmdexec.run(@VEXE, ['-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		@CCOMPILER, '-o', binary, source])
 	assert compiled.exit_code == 0, compiled.output
 	ran := cmdexec.run(binary, [])
 	assert ran.exit_code == 0, ran.output

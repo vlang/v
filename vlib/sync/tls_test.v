@@ -1,5 +1,4 @@
 import sync
-import time
 
 // Testing basic data types
 fn test_basic_tls() {
@@ -206,13 +205,13 @@ fn test_pointer_tls() {
 }
 
 // Thread worker function
-fn thread_worker(tls &sync.ThreadLocalStorage[u64], thread_id u64) {
+fn thread_worker(tls &sync.ThreadLocalStorage[u64], thread_id u64, mut values_set sync.Barrier) {
 	mut mut_tls := unsafe { tls }
 	// Each thread sets a unique value
 	mut_tls.set(thread_id * 100) or { panic(err) }
 
-	// Simulate work with a delay
-	time.sleep(10 * time.millisecond)
+	// Check isolation after every worker has set its own value.
+	values_set.wait()
 
 	// Retrieve and verify thread-private value
 	val := mut_tls.get() or { panic(err) }
@@ -229,9 +228,11 @@ fn test_thread_isolation() {
 	defer { tls.destroy() or { panic(err) } }
 
 	// Create multiple threads
-	mut threads := []thread{}
-	for i in 1 .. 5 {
-		threads << spawn thread_worker(&tls, u64(i))
+	workers := 4
+	mut values_set := sync.new_barrier(workers)
+	mut threads := []thread{cap: workers}
+	for i in 1 .. workers + 1 {
+		threads << spawn thread_worker(&tls, u64(i), mut values_set)
 	}
 
 	// Wait for all threads to complete

@@ -16,10 +16,9 @@ fn fastc_build_program(name string, source string, output string) (string, strin
 	program := os.join_path(root, output)
 	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root],
 		os.real_path(os.join_path(@DIR, '../../../..')), {
-			'VEXE':                   @VEXE
-			'VFLAGS':                 ''
-			'VOSARGS':                ''
-			'V_MACOS_V3_NO_FALLBACK': '1'
+			'VEXE':    @VEXE
+			'VFLAGS':  ''
+			'VOSARGS': ''
 		})
 	assert build.exit_code == 0, build.output
 	return root, program
@@ -264,10 +263,9 @@ fn test_fastc_result_pointer_payload_returns_runtime() {
 	fixture := os.real_path(os.join_path(@DIR, '../../tests/options/result_pointer_error_payload_test.v'))
 	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-gc', 'none', '-nocache', '-o',
 		program, fixture], os.real_path(os.join_path(@DIR, '../../../..')), {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])

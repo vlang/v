@@ -3830,6 +3830,10 @@ fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Nod
 	if params := t.implicit_veb_call_param_types(call_name) {
 		return params
 	}
+	// A local function value shadows a function of the same name.
+	if fn_type := t.local_fn_value_callee_type(node) {
+		return fn_type.params.map(*it.typ)
+	}
 	if params := t.call_param_types_from_decl(call_name) {
 		return params
 	}
@@ -3886,6 +3890,27 @@ fn (t &Transformer) implicit_veb_call_param_types(call_name string) ?[]types.Typ
 			if params := t.tc.fn_param_types[name] {
 				return params
 			}
+		}
+	}
+	return none
+}
+
+// local_fn_value_callee_type returns the function type of the local variable or
+// parameter that the call `node` calls by its bare name.
+fn (t &Transformer) local_fn_value_callee_type(node flat.Node) ?types.FnType {
+	if node.children_count == 0 || isnil(t.tc) {
+		return none
+	}
+	fn_node := t.a.node(t.a.child(&node, 0))
+	if fn_node.kind != .ident || fn_node.value.contains('.') {
+		return none
+	}
+	for local_type in [t.raw_var_type(fn_node.value), t.var_type(fn_node.value)] {
+		if local_type == 0 {
+			continue
+		}
+		if fn_type := transform_fn_type(t.tc.parse_type(local_type)) {
+			return fn_type
 		}
 	}
 	return none
@@ -4128,6 +4153,15 @@ fn (mut t Transformer) prepare_parallel_call_param_types() {
 		return
 	}
 	t.ensure_call_param_types_decl_index()
+	// The borrow summaries walk the declarations of this index in the same order
+	// and need the same parameter types. The pre-scan helper whose caller makes
+	// them next lists their work items on the way, and the declarations whose
+	// parameter types it could not resolve, which have no item (see
+	// prepare_fixed_array_borrow_params).
+	lists_borrow_items := t.lists_borrow_decl_items && t.call_param_types_decl_cache.len == 0
+	mut candidates := []BorrowCandidate{}
+	mut items := []BorrowDeclItem{}
+	mut unresolved := []BorrowDeclItem{}
 	mut seen := map[int]bool{}
 	for name, decl in t.call_param_types_decl_index {
 		// A cached declaration needs no work: call_param_types_from_decl would only
@@ -4137,7 +4171,24 @@ fn (mut t Transformer) prepare_parallel_call_param_types() {
 			continue
 		}
 		seen[decl.idx] = true
-		_ = t.call_param_types_from_decl(name) or { continue }
+		params := t.call_param_types_from_decl(name) or {
+			if lists_borrow_items {
+				unresolved << BorrowDeclItem{
+					name: name
+					decl: decl
+				}
+			}
+			continue
+		}
+		if lists_borrow_items {
+			t.list_borrow_decl_item(name, decl, params, mut candidates, mut items)
+		}
+	}
+	t.borrow_decl_items_listed = lists_borrow_items
+	if lists_borrow_items {
+		t.listed_borrow_candidates = candidates
+		t.listed_borrow_decl_items = items
+		t.unresolved_borrow_decls = unresolved
 	}
 	t.call_param_types_prepared = true
 	t.call_param_types_decl_shared = true
@@ -4304,6 +4355,11 @@ fn (t &Transformer) decl_fn_type_param_in_scope(param u32, module_name string, f
 fn (t &Transformer) call_is_variadic_for_node(call_name string, node flat.Node) bool {
 	if (node.flags & flat.node_flag_variadic_call) != 0 {
 		return true
+	}
+	// Only the type of a local function value says whether a call of it is
+	// variadic, not a function declared with the same name.
+	if fn_type := t.local_fn_value_callee_type(node) {
+		return fn_type.is_variadic
 	}
 	if t.call_is_variadic(call_name) {
 		return true

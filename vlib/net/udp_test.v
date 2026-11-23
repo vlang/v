@@ -54,14 +54,12 @@ fn test_udp() {
 	echo(server_addr.str()) or { panic('could not echo: ${err}') }
 }
 
-fn udp_write_after_delay(addr string, delay time.Duration, payload string, done chan bool) {
-	time.sleep(delay)
-	mut conn := net.dial_udp(addr) or { panic(err) }
+fn send_udp_packet(addr string, payload string) ! {
+	mut conn := net.dial_udp(addr)!
 	defer {
 		conn.close() or {}
 	}
-	conn.write_string(payload) or { panic(err) }
-	done <- true
+	conn.write_string(payload)!
 }
 
 fn test_udp_read_timeout_is_honored_for_blocking_reads() ! {
@@ -70,22 +68,32 @@ fn test_udp_read_timeout_is_honored_for_blocking_reads() ! {
 		listener.close() or {}
 	}
 	addr := listener.sock.address()!.str()
-	delay := 200 * time.millisecond
 	timeout := 20 * time.millisecond
 	payload := 'late udp packet'
-	done := chan bool{cap: 1}
+	send := chan bool{cap: 1}
 
-	spawn udp_write_after_delay(addr, delay, payload, done)
+	sender := spawn fn (addr string, payload string, send chan bool) ! {
+		// If read ignores its timeout, send anyway so the test fails instead of hanging.
+		select {
+			_ := <-send {
+			}
+			2 * time.second {
+			}
+		}
+		send_udp_packet(addr, payload)!
+	}(addr, payload, send)
 	listener.set_read_timeout(timeout)
 
 	mut buf := []u8{len: payload.len}
-	if _, _ := listener.read(mut buf) {
-		assert false, 'expected udp read timeout before delayed packet arrived'
+	timed_out := if _, _ := listener.read(mut buf) {
+		false
 	} else {
-		assert err.code() == net.err_timed_out_code
+		err.code() == net.err_timed_out_code
 	}
+	send <- true
+	sender.wait()!
+	assert timed_out, 'expected udp read timeout before the packet arrived'
 
-	_ = <-done
 	listener.set_read_timeout(time.second)
 	read, _ := listener.read(mut buf)!
 	assert read == payload.len
@@ -120,14 +128,16 @@ fn test_udp_empty_datagram_arriving_during_the_read_is_zero_bytes() ! {
 		listener.close() or {}
 	}
 	addr := listener.sock.address()!.str()
-	done := chan bool{cap: 1}
 	// sent once the read is waiting, so a non-blocking socket takes its EAGAIN retry
-	spawn udp_write_after_delay(addr, 50 * time.millisecond, '', done)
+	sender := spawn fn (addr string) ! {
+		time.sleep(50 * time.millisecond)
+		send_udp_packet(addr, '')!
+	}(addr)
 	listener.set_read_timeout(time.second)
 	mut buf := []u8{len: 16}
 	n, _ := listener.read(mut buf)!
 	assert n == 0
-	_ = <-done
+	sender.wait()!
 }
 
 fn test_udp_multicast_ipv4_socket_options() ! {
@@ -178,13 +188,13 @@ fn test_udp_read_deadline_wins_over_the_default_timeout() ! {
 		listener.close() or {}
 	}
 	// the default read timeout is 100 ms; a later deadline is what the read waits for
-	listener.set_read_deadline(time.now().add(400 * time.millisecond))
 	mut buf := []u8{len: 8}
 	sw := time.new_stopwatch()
+	listener.set_read_deadline(time.now().add(200 * time.millisecond))
 	if _, _ := listener.read(mut buf) {
 		assert false, 'nothing was sent'
 	} else {
 		assert err.code() == net.err_timed_out_code
 	}
-	assert sw.elapsed() >= 350 * time.millisecond, 'returned after ${sw.elapsed()}'
+	assert sw.elapsed() >= 170 * time.millisecond, 'returned after ${sw.elapsed()}'
 }

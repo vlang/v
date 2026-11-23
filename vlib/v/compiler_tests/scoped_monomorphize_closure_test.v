@@ -31,6 +31,15 @@ fn scoped_monomorph_v3_bin() string {
 	if os.exists(bin) {
 		return bin
 	}
+	// The unit-test runner with V3_TEST_PROD_COMPILER=1 shares a production build of this
+	// compiler made with clang, which preallocates like every compiler build; copy it.
+	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	if os.getenv('V3_TEST_PROD_COMPILER') == '1' && os.is_executable(shared_v3)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(scoped_monomorph_v3_src) {
+		os.cp(shared_v3, bin) or { panic(err) }
+		os.chmod(bin, 0o755) or { panic(err) }
+		return bin
+	}
 	// `-prealloc` is what enables `scope_parallel_workers` and the scoped
 	// monomorphize path, matching how the distributed compiler is built.
 	build := os.exec([scoped_monomorph_vexe, '-gc', 'none', '-cc', scoped_monomorph_cc(), '-prealloc',
@@ -129,8 +138,8 @@ fn main() {
 	out := os.join_path(dir, 'app${scoped_monomorph_bin_suffix}')
 	// Run V3 directly without C-compiler retries, so a failed scoped merge
 	// cannot be hidden by a successful retry with another compiler.
-	compile := os.exec([v3_bin, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-		scoped_monomorph_cc(), '-nocache', '-o', '${out}', dir])
+	compile := os.exec([v3_bin, '-no-retry-compilation', '-gc', 'none', '-cc', scoped_monomorph_cc(),
+		'-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert os.is_file(out), 'the compile produced no binary'

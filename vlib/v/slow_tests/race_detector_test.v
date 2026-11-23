@@ -129,11 +129,13 @@ mut:
 	a [4]int
 }
 
-fn writer(mut c Cell) {
+fn writer(mut c Cell, ready chan bool, finish chan bool) {
+	ready <- true
 	for i in 0 .. 1000 {
 		c.s = i.str()
 		c.a[1] = i
 	}
+	_ = <-finish
 }
 
 fn read_mut_param(mut c Cell) {
@@ -146,7 +148,10 @@ fn read_mut_param_in_parens(mut a [4]int) {
 
 fn main() {
 	mut c := &Cell{}
-	t := spawn writer(mut c)
+	ready := chan bool{}
+	finish := chan bool{}
+	t := spawn writer(mut c, ready, finish)
+	_ = <-ready
 	read := \$d("read", "string")
 	for _ in 0 .. 1000 {
 		match read {
@@ -158,6 +163,7 @@ fn main() {
 			else { read_mut_param_in_parens(mut c.a) }
 		}
 	}
+	finish <- true
 	t.wait()
 	println("done")
 }
@@ -445,8 +451,13 @@ fn main() {
 			ch.push(&i)
 		}
 	}
-	t := spawn fn (mut c Cell, ch &sync.Channel, mode string) {
+	// Keep both access loops between the same start and finish handshakes. Neither
+	// loop happens before the other, even if one thread runs its entire loop first.
+	ready := chan bool{}
+	finish := chan bool{}
+	t := spawn fn (mut c Cell, ch &sync.Channel, mode string, ready chan bool, finish chan bool) {
 		mut ch_ := unsafe { ch }
+		ready <- true
 		for _ in 0 .. 1000 {
 			match mode {
 				"pop" {
@@ -465,7 +476,9 @@ fn main() {
 				}
 			}
 		}
-	}(mut c, ch, mode)
+		_ = <-finish
+	}(mut c, ch, mode, ready, finish)
+	_ = <-ready
 	mut s := 0
 	for i in 0 .. 1000 {
 		if mode == "push" {
@@ -474,6 +487,7 @@ fn main() {
 			s += c.v
 		}
 	}
+	finish <- true
 	t.wait()
 	// Consume the reads so optimizing C compilers must keep the racy accesses.
 	println("\${mode} done \${s}")
@@ -692,7 +706,10 @@ fn test_race_blank_reads_are_reads() {
 			flags << '-prod'
 		}
 		exe := build_race_program('blank_read_${read}', blank_read_source, ...flags)
-		res := os.exec(['env', 'VRACE=exitcode=7', exe])
+		// With the default trace history, ThreadSanitizer sometimes cannot restore the stack
+		// of the earlier access of the 1000 racing iterations, drops that report and never
+		// reports the address again (about 1 run in 200 on macOS). A longer history keeps it.
+		res := os.exec(['env', 'VRACE=exitcode=7 history_size=7', exe])
 		assert res.exit_code == 7, '${read}: ${res.output}'
 		assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${read}: ${res.output}'
 	}

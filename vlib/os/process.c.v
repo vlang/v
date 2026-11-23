@@ -59,7 +59,7 @@ pub fn (mut p Process) signal_continue() {
 // process is finished.
 pub fn (mut p Process) wait() {
 	if p.status == .not_started {
-		p._spawn()
+		p._spawn(false)
 	}
 	if p.status !in [.running, .stopped, .aborted] || p.reaped {
 		return
@@ -99,10 +99,10 @@ pub fn (mut p Process) free() {
 	}
 }
 
-// _spawn should not be called directly, but only by p.run()/p.wait().
+// _spawn is the shared implementation of run, run_stopped and wait.
 // It encapsulates the fork/execve mechanism that allows the
 // asynchronous starting of the new child process.
-fn (mut p Process) _spawn() int {
+fn (mut p Process) _spawn(start_stopped bool) int {
 	if !p.env_is_custom {
 		p.env = []string{}
 		current_environment := environ()
@@ -114,7 +114,7 @@ fn (mut p Process) _spawn() int {
 	$if windows {
 		pid = p.win_spawn_process()
 	} $else {
-		pid = p.unix_spawn_process()
+		pid = p.unix_spawn_process(start_stopped)
 	}
 	p.pid = pid
 	p.status = .running
@@ -358,7 +358,7 @@ pub fn (mut p Process) run() {
 	if p.status != .not_started {
 		return
 	}
-	p._spawn()
+	p._spawn(false)
 }
 
 // system_args runs a program with literal arguments and inherited standard streams.

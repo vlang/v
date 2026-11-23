@@ -764,11 +764,18 @@ fn (mut g Parser) parse_if() !bool {
 			c_return_type := fastc_output_c_type(flat.source_type_name(return_type))
 			name := fastc_c_value_identifier(guard_name)
 			g.write_line('${c_return_type} (*${name})(${parameters}) = (${c_return_type} (*)(${parameters}))(${guard_function_source});')
+			signature_key := g.callback_signature_key()
+			g.mono_functions[signature_key] = FastcFunctionSignature{
+				parameter_types: guard_function.fn_parameter_types
+				return_type:     return_type
+				option_type:     guard_function.fn_option_value_type
+			}
 			g.locals[guard_name] = FastcLocal{
 				is_mut:               guard_is_mut
 				typ:                  flat.source_type_voidptr
 				fn_return_type:       return_type
 				fn_option_value_type: guard_function.fn_option_value_type
+				fn_signature_key:     signature_key
 			}
 		} else if guard_erased_generic {
 			name := fastc_c_value_identifier(guard_name)
@@ -967,25 +974,7 @@ fn (mut g Parser) parse_if() !bool {
 			// variant, so narrow it to a value shadow scoped to the rest of the block,
 			// mirroring the positive `is` branch but in the fall-through path. Assignments
 			// to mutable subjects restore their boxed type and invalidate this view.
-			access := if flat.source_type_query(smartcast_boxed_type).has(.c_pointer_suffix) {
-				'->'
-			} else {
-				'.'
-			}
-			branch_cast := g.temporary_name('if_cast')
-			branch_type, branch_value, is_reference := g.smartcast_payload_binding(smartcast_type,
-				'${smartcast_storage}${access}_object', flat.source_type_query(smartcast_boxed_type).has(.c_pointer_suffix) || previous_smartcast.is_mut)
-			g.write_line('${fastc_output_c_type(flat.source_type_name(branch_type))} ${branch_cast} = ${branch_value};')
-			g.set_scoped_local(smartcast_name, FastcLocal{
-				is_mut:                        previous_smartcast.is_mut
-				is_reference:                  is_reference
-				typ:                           branch_type
-				c_name:                        branch_cast
-				smartcast_origin_type:         smartcast_boxed_type
-				smartcast_origin_is_reference: previous_smartcast.original_is_reference()
-				smartcast_copy_is_boxed:       previous_smartcast.smartcast_origin_type == 0 || previous_smartcast.smartcast_copy_is_boxed
-				smartcast_origin_source:       smartcast_storage
-			})
+			g.bind_fallthrough_type_test(smartcast_name, smartcast_type)
 		}
 		if then_terminates && smartcast_name == '' && !condition_has_top_level_and {
 			g.bind_negated_member_fallthrough(cond_tokens)
@@ -1079,6 +1068,32 @@ fn (mut g Parser) bind_else_type_test(name string, variant u32, boxed u32) {
 		smartcast_origin_is_reference: previous.original_is_reference()
 		smartcast_origin_source:       origin
 	}
+}
+
+fn (mut g Parser) bind_fallthrough_type_test(name string, variant u32) {
+	previous := g.locals[name] or { return }
+	mut boxed := fastc_normalize_inferred_type(previous.typ)
+	mut origin := g.local_c_name(name)
+	if previous.smartcast_origin_type != 0 {
+		boxed = previous.smartcast_origin_type
+		origin = previous.smartcast_origin_source
+	}
+	boxed_pointer := fastc_is_pointer_type(boxed)
+	access := if boxed_pointer { '->' } else { '.' }
+	binding := g.temporary_name('if_cast')
+	typ, value, is_reference := g.smartcast_payload_binding(variant, '${origin}${access}_object',
+		boxed_pointer || previous.is_mut)
+	g.write_line('${fastc_output_c_type(flat.source_type_name(typ))} ${binding} = ${value};')
+	g.set_scoped_local(name, FastcLocal{
+		is_mut:                        previous.is_mut
+		is_reference:                  is_reference
+		typ:                           typ
+		c_name:                        binding
+		smartcast_origin_type:         boxed
+		smartcast_origin_is_reference: previous.original_is_reference()
+		smartcast_copy_is_boxed:       previous.smartcast_origin_type == 0 || previous.smartcast_copy_is_boxed
+		smartcast_origin_source:       origin
+	})
 }
 
 // parse_if_multi_return_guard lowers `if a, b := opt_fn() { ... }`: the option's

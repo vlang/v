@@ -1,4 +1,4 @@
-import json2 { Any, decode }
+// A comptime field selector needs a type guard before assigning an int.
 
 struct Income {
 mut:
@@ -6,9 +6,9 @@ mut:
 	code  int
 }
 
-pub fn structuring[T](res Any) T {
+pub fn structuring[T](res_map map[string]int) T {
 	mut typ := T{}
-	res_map := res.as_map()
+	// Populate fields whose names occur in the map.
 
 	$for field in T.fields {
 		if field.name in res_map {
@@ -22,10 +22,5 @@ pub fn structuring[T](res Any) T {
 }
 
 fn main() {
-	res := decode[Any]('{
-        "email": ["sdvsdv", "sds"],
-        "code": 12
-    }')!.as_map()
-
-	structuring[Income](res)
+	structuring[Income]({'email': 1, 'code': 12})
 }

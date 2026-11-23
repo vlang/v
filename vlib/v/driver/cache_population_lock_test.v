@@ -44,19 +44,10 @@ fn run_population_lock_helper() {
 			if acquire_v3_cache_population_lock(dir) != .acquired {
 				exit(31)
 			}
-			marker := os.join_path(dir, 'fallback-marker')
-			os.setenv(macos_v3_fallback_file_env, marker, true)
-			if !stage_macos_v3_compiler_error_fallback(marker, 'child handoff test')
-				|| !os.is_file(marker) {
-				exit(32)
-			}
 			os.setenv(population_helper_mode_env, 'handoff-child', true)
 			exit_with_child_build(os.executable(), []string{})
 		}
 		'handoff-child' {
-			if os.exists(os.join_path(dir, 'fallback-marker')) {
-				exit(33)
-			}
 			if acquire_v3_cache_population_lock(dir) != .acquired {
 				exit(34)
 			}
@@ -132,6 +123,16 @@ fn test_large_cache_population_of_compiler_modules() ! {
 	// Nothing to publish: no lock is needed.
 	assert v3_large_cache_population(true, warm, limit - 1) == .populate
 	assert !os.exists(os.join_path(warm.manager.dir, v3_cache_population_lock_name))
+
+	// A native bridge with no builtin bundle uses the bounded whole-program path.
+	mut bridge := population_test_state(root, ['builtin', 'small'], sources)
+	bridge.native_bridge = true
+	assert v3_large_cache_population(false, bridge, large) == .bypass
+	assert !os.exists(os.join_path(bridge.manager.dir, v3_cache_population_lock_name))
+	bridge.bundle_valid = true
+	bridge.parsed_from_source.delete('builtin')
+	assert v3_large_cache_population(false, bridge, large) == .populate
+	release_v3_cache_population_lock()
 
 	cold := population_test_state(root, ['small'], sources)
 	assert v3_large_cache_population(false, cold, large) == .bypass
@@ -232,7 +233,7 @@ fn test_one_build_at_a_time_holds_the_population_lock() {
 	assert acquire_v3_cache_population_lock(dir) == .acquired
 }
 
-fn test_child_build_releases_the_population_lock_and_fallback_marker() ! {
+fn test_child_build_releases_the_population_lock() ! {
 	root := os.join_path(os.vtmp_dir(), 'v3_population_child_handoff_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!

@@ -41,62 +41,43 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Distribute the same test corpus across runners.
+        name: [undefined-clang, undefined-gcc, address-gcc]
+        shard: [0, 1, 2, 3]
         include:
           - name: undefined-clang
             cc: clang
             sanitizer: undefined
             gc: default
-            timeout: 120
+            timeout: 150
+            shard_count: 4
             vflags: -cc clang -cflags -fno-omit-frame-pointer
             ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
           - name: undefined-gcc
-            # The serial suite was still progressing after 135 minutes. Shard
-            # across runners while retaining the sanitizer's single-worker mode.
-            shard: 0
             cc: gcc
             sanitizer: undefined
             gc: default
-            timeout: 150
+            # One shard finished self tests just before the old cutoff, leaving
+            # too little time to build examples. The other shards were still testing.
+            timeout: 210
+            shard_count: 4
             vflags: -cc gcc -cflags -fno-omit-frame-pointer
             ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
-          - name: undefined-gcc
-            shard: 1
+          - name: address-gcc
             cc: gcc
-            sanitizer: undefined
+            sanitizer: address
             gc: default
-            timeout: 150
+            timeout: 240
+            shard_count: 4
             vflags: -cc gcc -cflags -fno-omit-frame-pointer
-            ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
-          - name: undefined-gcc
-            shard: 2
-            cc: gcc
-            sanitizer: undefined
-            gc: default
-            timeout: 150
-            vflags: -cc gcc -cflags -fno-omit-frame-pointer
-            ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
-          - name: undefined-gcc
-            shard: 3
-            cc: gcc
-            sanitizer: undefined
-            gc: default
-            timeout: 150
-            vflags: -cc gcc -cflags -fno-omit-frame-pointer
-            ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+            asan_options: detect_leaks=1
+            lsan_options: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
           - name: address-clang
             cc: clang
             sanitizer: address
             gc: default
             timeout: 300
             vflags: -cc clang -cflags -fno-omit-frame-pointer
-            asan_options: detect_leaks=1
-            lsan_options: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
-          - name: address-gcc
-            cc: gcc
-            sanitizer: address
-            gc: default
-            timeout: 300
-            vflags: -cc gcc -cflags -fno-omit-frame-pointer
             asan_options: detect_leaks=1
             lsan_options: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
           - name: memory-clang
@@ -123,7 +104,7 @@ jobs:
             timeout: 300
             vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
             lsan_options: detect_leaks=0
-    name: sanitize-${{ matrix.name }}${{ matrix.name == 'undefined-gcc' && format(' (shard {0})', matrix.shard) || '' }}
+    name: sanitize-${{ matrix.name }}${{ matrix.shard_count && format(' (shard {0})', matrix.shard) || '' }}
     env:
       # Stop a failing test session at its first failure instead of
       # running the whole suite to completion; the remaining files
@@ -131,9 +112,11 @@ jobs:
       VTEST_FAIL_FAST: '1'
       SANITIZER_GITHUB_JOB: sanitize-${{ matrix.name }}
       VFLAGS: ${{ matrix.vflags }}
-      VJOBS: 1
+      # Use two test workers per shard on four-CPU runners. Keep headroom
+      # for instrumented builds and tests that spawn compilers.
+      VJOBS: ${{ matrix.shard_count && 2 || 1 }}
       VTEST_SELF_SHARD_INDEX: ${{ matrix.shard || 0 }}
-      VTEST_SELF_SHARD_COUNT: ${{ matrix.name == 'undefined-gcc' && '4' || '1' }}
+      VTEST_SELF_SHARD_COUNT: ${{ matrix.shard_count || 1 }}
       UBSAN_OPTIONS: ${{ matrix.ubsan_options }}
       ASAN_OPTIONS: ${{ matrix.asan_options }}
       LSAN_OPTIONS: ${{ matrix.lsan_options }}
@@ -158,16 +141,15 @@ jobs:
         if: ${{ matrix.name != 'memory-clang-compiler' }}
         run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v doctor
       - name: Ensure code is well formatted
-        if: ${{ matrix.name != 'memory-clang-compiler' }}
+        if: ${{ matrix.name != 'memory-clang-compiler' && (!matrix.shard_count || matrix.shard == 0) }}
         run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v -silent test-cleancode
       - name: Install dependencies
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
-          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
+          ./v retry -- sudo apt install --quiet -y \
+            $SANITIZER_BASE_PACKAGES $SANITIZER_GRAPHICS_PACKAGES $SANITIZER_CLANG_PACKAGES
       - name: Build instrumented libpq for MemorySanitizer
         if: ${{ matrix.name == 'memory-clang' }}
         run: |
@@ -203,7 +185,7 @@ jobs:
           ./v -prod -cflags -fsanitize=undefined -o v2 cmd/v
           ./v2 -cflags -fsanitize=undefined -silent test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
-        if: ${{ matrix.sanitizer == 'undefined' && (matrix.name != 'undefined-gcc' || matrix.shard == 0) }}
+        if: ${{ matrix.sanitizer == 'undefined' && matrix.shard == 0 }}
         run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v2 -silent build-examples
       - name: Self tests (-fsanitize=address)
         if: ${{ matrix.sanitizer == 'address' && matrix.name != 'memory-clang-compiler' && matrix.name != 'memory-clang' }}
@@ -228,7 +210,7 @@ jobs:
             ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
           fi
       - name: Build examples (V compiled with -fsanitize=address)
-        if: ${{ matrix.name == 'address-clang' || matrix.name == 'address-gcc' }}
+        if: ${{ matrix.name == 'address-clang' || (matrix.name == 'address-gcc' && matrix.shard == 0) }}
         run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v -silent build-examples
       - name: Self tests (-fsanitize=memory)
         if: ${{ matrix.name == 'memory-clang' }}
@@ -245,7 +227,7 @@ jobs:
   sanitize-address-msvc:
     if: github.ref == 'refs/heads/master'
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -269,16 +251,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Build
-        run: |
-          echo %VFLAGS%
-          echo $VFLAGS
-          .\makev.bat -msvc
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .\v.exe -prod -cc msvc self
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: V doctor
-        run: .\v.exe doctor
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+          doctor: 'true'
+      - name: Verify vet tool cache
+        if: matrix.stage == 'vet'
+        run: .\.github\workflows\setup_windows_tool_cache.ps1 -Verify
       - name: Check code (${{ matrix.stage }})
         run: .\v.exe -silent test-cleancode
         # - name: Install dependencies

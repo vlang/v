@@ -228,7 +228,7 @@ fn test_direct_member32_preserves_explicit_old_precedence() {
 	imported_type := Parser{
 		...g
 		// A fresh declaration context cannot keep expression/name memo entries.
-		type_memo:                 map[i64]u32{}
+		type_memo:                 map[i64]FastcTypeMemoEntry{}
 		declared_type_key_memo:    map[u32]FastcMemoEntry{}
 		declared_types:            imported_types
 		declared_type_c_names:     fastc_declared_type_c_names(imported_types)

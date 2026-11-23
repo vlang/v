@@ -1,4 +1,5 @@
 import os
+import v.tempname
 
 // A dotted import binds its last segment in the importing file, so `import
 // x.bench` makes `bench` mean `x.bench` there. When the same file also reaches
@@ -11,14 +12,22 @@ const alias_shadow_tests_dir = os.dir(@FILE)
 const alias_shadow_v3_dir = os.dir(alias_shadow_tests_dir)
 const alias_shadow_vlib_dir = os.dir(alias_shadow_v3_dir)
 const alias_shadow_v3_src = os.join_path(alias_shadow_v3_dir, 'v.v')
+const alias_shadow_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_alias_shadow_compiler_${tempname.unique_token()}')
+
+fn testsuite_end() {
+	os.rmdir_all(alias_shadow_compiler_dir) or {}
+}
 
 // The fixtures have to be compiled by the V3 compiler built from this checkout.
 // Building `vlib/v/v.v` is also what lets the suite's unit-test wrapper hand
 // back its shared V3 binary; any other invocation is forwarded to the host
 // compiler instead, which would not exercise this code path at all.
 fn alias_shadow_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_alias_shadow_compiler_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(alias_shadow_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
+	os.mkdir_all(alias_shadow_compiler_dir) or { panic(err) }
 	build := os.exec([alias_shadow_vexe, '-gc', 'none', '-path',
 		'${alias_shadow_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${alias_shadow_v3_src}'])
 	assert build.exit_code == 0, build.output

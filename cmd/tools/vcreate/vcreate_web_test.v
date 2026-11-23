@@ -1,9 +1,7 @@
 module main
 
-import net.http
 import os
-import veb
-import x.sessions
+import v.cmdexec
 
 const web_test_path = os.join_path(os.vtmp_dir(), 'test_vcreate_web')
 
@@ -40,82 +38,13 @@ fn test_web_template_uses_veb() {
 	assert main_v.contains('app.sessions.resave'), 'login must rotate the session id with resave'
 	template_html := os.read_file(os.join_path(project_path, 'templates', 'index.html'))!
 	assert template_html.contains('veb starter')
+	// Build the generated app with the login probe so both checks share its web stack.
+	os.write_file(os.join_path(project_path, 'login_probe.v'), $embed_file('tests/web_login_rotation.vv').to_string())!
 	os.chdir(project_path)!
-	res := os.exec([@VEXE, '.'])
+	binary := os.join_path(project_path, 'web_login_probe' + $if windows { '.exe' } $else { '' })
+	res := os.exec([@VEXE, '-o', binary, '.'])
 	assert res.exit_code == 0, res.output
-}
-
-struct WebLoginUser {
-pub mut:
-	name string
-}
-
-struct WebLoginContext {
-	veb.Context
-	sessions.CurrentSession[WebLoginUser]
-}
-
-fn web_login_cookie_value(ctx &WebLoginContext) string {
-	for cookie in ctx.res.cookies() {
-		if cookie.name == 'sid' {
-			return cookie.value
-		}
-	}
-	return ''
-}
-
-fn test_web_template_login_rotates_session_id() {
-	secret := 'web-login-rotation-test-secret'.bytes()
-	mut s := sessions.Sessions[WebLoginUser]{
-		store:  sessions.MemoryStore[WebLoginUser]{}
-		secret: secret
-	}
-	// First login issues a cookie, like POST /login without one.
-	mut first_ctx := WebLoginContext{}
-	s.resave(mut first_ctx, WebLoginUser{
-		name: 'alice'
-	})!
-	first_cookie := web_login_cookie_value(&first_ctx)
-	assert first_cookie != ''
-	first_sid, first_valid := sessions.verify_session_id(first_cookie, secret)
-	assert first_valid
-	// A second login presenting the first cookie must rotate the cookie.
-	mut second_ctx := WebLoginContext{}
-	second_ctx.req.add_cookie(http.Cookie{
-		name:  'sid'
-		value: first_cookie
-	})
-	s.resave(mut second_ctx, WebLoginUser{
-		name: 'bob'
-	})!
-	second_cookie := web_login_cookie_value(&second_ctx)
-	assert second_cookie != ''
-	assert second_cookie != first_cookie
-	second_sid, second_valid := sessions.verify_session_id(second_cookie, secret)
-	assert second_valid
-	assert second_sid != first_sid
-	// The old session is destroyed.
-	if _ := s.store.get(first_sid, 0) {
-		assert false, 'old session must be destroyed on re-login'
-	}
-	assert s.store.get(second_sid, 0)! == WebLoginUser{
-		name: 'bob'
-	}
-	// The previous cookie no longer accesses the new session.
-	mut stale_ctx := WebLoginContext{}
-	stale_ctx.req.add_cookie(http.Cookie{
-		name:  'sid'
-		value: first_cookie
-	})
-	if _ := s.get(stale_ctx) {
-		assert false, 'previous cookie must not access the new session'
-	}
-	mut fresh_ctx := WebLoginContext{}
-	fresh_ctx.req.add_cookie(http.Cookie{
-		name:  'sid'
-		value: second_cookie
-	})
-	assert s.get(fresh_ctx)! == WebLoginUser{
-		name: 'bob'
-	}
+	probe := cmdexec.run_with_timeout(binary, ['--check-web-login'], 5_000)
+	assert probe.exit_code == 0, probe.output
+	assert probe.output.trim_space() == 'web login rotation verified', probe.output
 }

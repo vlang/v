@@ -1,3 +1,4 @@
+// vtest build: !musl? && !self_ubuntu_musl_ci? // render imports Sokol, which needs X11/GL headers
 module render
 
 fn test_vertex_size() {

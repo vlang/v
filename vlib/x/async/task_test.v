@@ -2,11 +2,29 @@ import context
 import time
 import x.async as xasync
 
-fn test_task_returns_value() {
-	mut task := xasync.run[int](fn (mut ctx context.Context) !int {
-		_ = ctx
+fn test_task_publishes_value_before_wait() {
+	started := chan chan int{cap: 1}
+	mut task := xasync.run[int](fn [started] (mut ctx context.Context) !int {
+		started <- ctx.done()
 		return 42
 	})!
+	select {
+		done := <-started {
+			// The task cancels its context after it publishes the result.
+			select {
+				_ := <-done {
+				}
+				1 * time.second {
+					assert false, 'task could not publish its result before wait()'
+					return
+				}
+			}
+		}
+		1 * time.second {
+			assert false, 'task did not start'
+			return
+		}
+	}
 	assert task.wait()! == 42
 }
 
@@ -162,15 +180,16 @@ fn test_task_observes_context_done() {
 	}
 }
 
-fn test_task_ignores_cancellation_but_result_publication_is_buffered() {
+fn test_task_returns_value_after_parent_cancellation() {
 	parent_ctx, cancel := xasync.with_cancel()
-	mut task := xasync.run_with_context[int](parent_ctx, fn (mut ctx context.Context) !int {
+	release := chan bool{cap: 1}
+	mut task := xasync.run_with_context[int](parent_ctx, fn [release] (mut ctx context.Context) !int {
 		_ = ctx
-		time.sleep(20 * time.millisecond)
+		_ = <-release
 		return 9
 	})!
 	cancel()
-	time.sleep(60 * time.millisecond)
+	release <- true
 	assert task.wait()! == 9
 }
 

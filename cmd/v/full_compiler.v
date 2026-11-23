@@ -4,7 +4,7 @@ import os
 
 // full_compiler_is_required checks the selected target, not backends being compiled into V.
 fn full_compiler_is_required(args []string) bool {
-	match selected_backend(args, false) {
+	match selected_backend(args) {
 		'fastc' {
 			$if skip_fastc ? {
 				return true
@@ -45,15 +45,7 @@ fn launch_full_compiler(args []string) {
 			exit(1)
 		}
 	}
-	backend := selected_backend(args, false)
-	mut build_args := if backend in ['x64', 'amd64', 'x86_64', 'x86-64'] {
-		// x64 SSA construction creates many short-lived per-function objects.
-		// Keep them collectible instead of retaining the whole build in a
-		// process-lifetime prealloc arena.
-		['-all-backends', '-gc', 'vgc', '-no-prealloc', '-nocache']
-	} else {
-		['-all-backends', '-gc', 'none', '-prealloc', '-nocache']
-	}
+	mut build_args := ['-all-backends', '-gc', 'none', '-prealloc', '-nocache']
 	// Keep both capabilities together instead of bouncing between helper compilers.
 	if ownership_checker_is_compiled() || ownership_compiler_is_required(compiler_args_before_program(args)) {
 		build_args << ['-d', 'ownership']

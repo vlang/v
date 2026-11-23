@@ -1,5 +1,3 @@
-import time
-
 struct St {
 mut:
 	a int
@@ -28,7 +26,7 @@ fn test_shared_receiver_lock() {
 	shared z := &St{
 		a: 1
 	}
-	spawn x.f(shared y, shared z)
+	worker := spawn x.f(shared y, shared z)
 	for _ in 0 .. 100 {
 		lock x, y {
 			tmp := x.a
@@ -36,15 +34,9 @@ fn test_shared_receiver_lock() {
 			y.a = tmp
 		}
 	}
-	// the following would be a good application for a channel
-	for finished := false; true; {
-		rlock z {
-			finished = z.a == 0
-		}
-		if finished {
-			break
-		}
-		time.sleep(100 * time.millisecond)
+	worker.wait()
+	rlock z {
+		assert z.a == 0
 	}
 	rlock x, y {
 		assert x.a == 7 && y.a == 5

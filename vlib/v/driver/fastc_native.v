@@ -200,9 +200,48 @@ $if !skip_fastc ? {
 			// Match the resolved include paths used by the program-side filter.
 			sources << os.real_path(header)
 		}
+		// The prototypes, constants and globals after `native_owner_end` follow every
+		// native directive, so no native source can name them. They change with ordinary
+		// edits of V code, and the owner must not: only the exported V functions among
+		// them are declared for the bindings below. A directive after them that can
+		// open a file or change a macro (a conditional include) keeps the whole head.
+		mut owner_end := generation.units.native_owner_end
+		if owner_end <= 0 || owner_end > generation.units.head_end {
+			owner_end = generation.units.head_end
+		}
+		for i in owner_end .. generation.units.head_end {
+			piece := generation.c_pieces[i]
+			if piece.contains('#') && (piece.contains('#include') || piece.contains('#import')
+				|| piece.contains('#define') || piece.contains('#undef') || piece.contains('#pragma')) {
+				owner_end = generation.units.head_end
+				break
+			}
+		}
+		// The constants and types of the V program sit between the native headers and
+		// the native sources. See v3_fastc_native_lean_bridge.
+		decl_start := generation.units.native_decl_start
+		decl_end := generation.units.native_decl_end
+		sliceable := owner_end < generation.units.head_end && decl_start > 0 && decl_start < decl_end
+			&& decl_end <= owner_end
+		mut before := []string{}
+		mut region := []string{}
+		mut after := []string{}
 		for i in 0 .. generation.units.head_end {
 			piece := externs[i] or { generation.c_pieces[i] }
-			head << piece
+			// An embedded file is declared under a name made from its path, which
+			// only generated code knows.
+			if i < owner_end && !generation.c_pieces[i].starts_with('const u8 __vf_embed_') {
+				head << piece
+				if sliceable {
+					if i < decl_start {
+						before << piece
+					} else if i < decl_end {
+						region << piece
+					} else {
+						after << piece
+					}
+				}
+			}
 			if !piece.contains('#include') && !piece.contains('#import') {
 				continue
 			}
@@ -214,6 +253,10 @@ $if !skip_fastc ? {
 					}
 				}
 			}
+		}
+		if owner_end < generation.units.head_end {
+			head << generation.units.native_exports
+			after << generation.units.native_exports
 		}
 		mut functions := map[string]bool{}
 		for name, _ in generation.native_declarations {
@@ -233,6 +276,135 @@ $if !skip_fastc ? {
 			adapter_sides.write_string(adapter.native_side())
 		}
 		adapter_text := adapter_sides.str()
+		parts := V3FastcNativeOwnerParts{
+			dir:          dir
+			functions:    functions.keys()
+			adapters:     adapters
+			sources:      sources
+			bindings:     bindings
+			adapter_text: adapter_text
+		}
+		if bench_phases {
+			eprintln('fastc-phase native.parts ${sw.elapsed().microseconds()}us')
+		}
+		mut full_marker := ''
+		if sliceable && region.len > 0 {
+			lean := v3_fastc_native_lean_bridge(prefs, flags, sdk, &parts, before, region, after, mut validation)
+			if lean.built {
+				return lean.bridge
+			}
+			full_marker = lean.full_marker
+		}
+		bridge := v3_fastc_native_bridge_head(prefs, flags, sdk, &parts, head, mut validation)!
+		if full_marker != '' {
+			// Clang needs declarations that the lean owner could not name: remember to
+			// give this program all of them.
+			os.write_file(full_marker, 'full\n') or {}
+		}
+		return bridge
+	}
+
+	// V3FastcNativeOwnerParts are the inputs of a native owner other than the V
+	// declarations at its head.
+	struct V3FastcNativeOwnerParts {
+		dir          string
+		functions    []string
+		adapters     []fastc.FastcNativeArgsAdapter
+		sources      []string
+		bindings     string
+		adapter_text string
+	}
+
+	struct V3FastcNativeLeanResult {
+		bridge V3FastcNativeBridge
+		built  bool
+		// full_marker names the file to write once the full head compiles: Clang
+		// rejected the lean owner for a reason no declaration of the program resolves.
+		full_marker string
+	}
+
+	// v3_fastc_native_lean_bridge builds the owner with only the V types that the
+	// generated bindings mention, and those an earlier Clang run reported missing.
+	// A native source can name any type of the program, but V cannot know which
+	// without reading it; an owner with all of them is recompiled after every edit of
+	// an unrelated struct. Clang is the judge instead: it rejects a native source that
+	// names a declaration the lean owner lacks, the missing names are added, and a
+	// program whose native code needs more than that keeps the full head. The names
+	// are a hint kept beside the cache for the program's native sources and flags, so a
+	// new C binding does not lose them; a wrong hint only costs a rejected compilation.
+	// Every constant of the program stays, as a macro: a native source that tests one
+	// with `#ifdef` compiles without it too. A changed constant is settled by the text
+	// Clang preprocesses the owner to, like any other macro.
+	fn v3_fastc_native_lean_bridge(prefs &pref.Preferences, flags []string, sdk string, parts &V3FastcNativeOwnerParts, before []string, region []string, after []string, mut validation V3FastcNativeValidation) V3FastcNativeLeanResult {
+		mut key := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-lean-v2'.bytes())
+		key = v3_fastc_hash_pieces(before, key)
+		key = v3_fastc_hash_pieces(after, key)
+		key = contenthash.sum64_string(parts.bindings, key)
+		key = contenthash.sum64_string(parts.adapter_text, key)
+		key = c_hash_bytes(key, flags.join('\x00').bytes())
+		full_marker := os.join_path(parts.dir, 'lean_full_${key.hex()}')
+		if os.exists(full_marker) {
+			return V3FastcNativeLeanResult{}
+		}
+		mut names_key := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-lean-names-v1'.bytes())
+		names_key = c_hash_bytes(names_key, parts.sources.join('\x00').bytes())
+		names_key = c_hash_bytes(names_key, flags.join('\x00').bytes())
+		names_path := os.join_path(parts.dir, 'lean_names_${names_key.hex()}')
+		region_hash := v3_fastc_hash_pieces(region, key)
+		for _ in 0 .. 4 {
+			names_text := os.read_file(names_path) or { '' }
+			names := names_text.split_into_lines()
+			slice_path := os.join_path(parts.dir, 'lean_${contenthash.sum64_string(names_text, region_hash).hex()}.h')
+			slice := os.read_file(slice_path) or {
+				computed := v3_fastc_native_lean_declarations(region.join(''), [
+					after.join(''),
+					parts.bindings,
+					parts.adapter_text,
+				], names)
+				staged := slice_path + '.tmp.' + tempname.unique_token()
+				os.write_file(staged, computed) or {}
+				os.mv(staged, slice_path) or { os.rm(staged) or {} }
+				computed
+			}
+			mut head := before.clone()
+			head << slice
+			head << after
+			bridge := v3_fastc_native_bridge_head(prefs, flags, sdk, parts, head, mut validation) or {
+				// Only a compiler diagnostic can name a missing declaration.
+				if !err.msg().contains('error:') {
+					return V3FastcNativeLeanResult{}
+				}
+				missing := v3_fastc_native_missing_declarations(err.msg(), region.join(''), names)
+				if missing.len == 0 {
+					return V3FastcNativeLeanResult{ full_marker: full_marker }
+				}
+				mut extended := names.clone()
+				extended << missing
+				staged := names_path + '.tmp.' + tempname.unique_token()
+				os.write_file(staged, extended.join('\n') + '\n') or {
+					return V3FastcNativeLeanResult{}
+				}
+				os.mv(staged, names_path) or {
+					os.rm(staged) or {}
+					return V3FastcNativeLeanResult{}
+				}
+				continue
+			}
+			return V3FastcNativeLeanResult{ bridge: bridge, built: true }
+		}
+		return V3FastcNativeLeanResult{ full_marker: full_marker }
+	}
+
+	// v3_fastc_native_bridge_head returns the native library of an owner whose V
+	// declarations are `head`, compiling it when no cached library matches.
+	fn v3_fastc_native_bridge_head(prefs &pref.Preferences, flags []string, sdk string, parts &V3FastcNativeOwnerParts, head []string, mut validation V3FastcNativeValidation) !V3FastcNativeBridge {
+		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
+		sw := time.new_stopwatch()
+		dir := parts.dir
+		bindings := parts.bindings
+		adapter_text := parts.adapter_text
+		adapters := parts.adapters
+		sources := parts.sources
 		// The owner is the head's declarations plus the bindings and adapters, keyed
 		// below by its content hash. A reused head finds that hash beside its cached
 		// declarations, so the owner is only assembled when its source is missing.
@@ -295,34 +467,65 @@ $if !skip_fastc ? {
 				if bench_phases {
 					eprintln('fastc-phase native.validated ${sw.elapsed().microseconds()}us dependencies=${cached.dependencies.len} overlapped=${validation.overlap}')
 				}
-				return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: cached.dependencies, library: cached.library }
+				return V3FastcNativeBridge{ functions: parts.functions, adapters: adapters, sources: sources, dependencies: cached.dependencies, library: cached.library }
 			}
 		}
 		// V macros such as @BUILD_TIMESTAMP can change without affecting native code.
 		// Only Clang may establish that equivalence: headers remain opaque to V.
 		preprocessed := v3_fastc_native_preprocessed_source(dir, path, args, archives, '/usr/bin/clang', mut validation.stats)!
+		if bench_phases {
+			eprintln('fastc-phase native.preprocessed ${sw.elapsed().microseconds()}us')
+		}
 		preprocessed_manifest := c_object_manifest_path(dir, preprocessed.path, '/usr/bin/clang', prepared, prefs.target, mut validation.stats)
 		if cached := v3_fastc_native_cached_library(preprocessed_manifest, fastc.fastc_tcc_job_count(prefs)) {
 			if bench_phases {
 				eprintln('fastc-phase native.preprocessed_reuse ${sw.elapsed().microseconds()}us')
 			}
-			return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: cached.dependencies, library: cached.library }
+			// This owner expands to the text of the library with the inputs just
+			// validated. Record that under the owner as well: the next build of the same
+			// program then finds the library without asking Clang to preprocess it again.
+			if text := os.read_file(preprocessed_manifest) {
+				staged_manifest := manifest + '.tmp.' + tempname.unique_token()
+				os.write_file(staged_manifest, text) or {}
+				os.mv(staged_manifest, manifest) or { os.rm(staged_manifest) or {} }
+			}
+			return V3FastcNativeBridge{ functions: parts.functions, adapters: adapters, sources: sources, dependencies: cached.dependencies, library: cached.library }
 		}
 		mut dependencies := preprocessed.dependencies.clone()
 		dependencies << preprocessed.path
-		for archive in archives {
-			if archive !in dependencies { dependencies << archive }
+		mut listed := map[string]bool{}
+		for dependency in dependencies {
+			listed[dependency] = true
 		}
+		for archive in archives {
+			if !listed[archive] {
+				listed[archive] = true
+				dependencies << archive
+			}
+		}
+		// A program can link a hundred C sources (mbedtls). Each has its own headers,
+		// so ask Clang for them side by side; the list keeps the order of the flags.
+		source_inputs := prepared.filter(c_flag_is_existing_file(it) && c_flag_is_c_source_file(it))
+		source_headers := v3_fastc_native_source_dependencies(source_inputs, c_object_compile_flags(prepared),
+			fastc.fastc_tcc_job_count(prefs))
+		mut source_index := 0
 		for input in prepared {
 			if !c_flag_is_existing_file(input) { continue }
-			if input !in dependencies { dependencies << input }
+			if !listed[input] {
+				listed[input] = true
+				dependencies << input
+			}
 			if c_flag_is_c_source_file(input) {
-				inputs := c_object_dependencies('/usr/bin/clang', c_object_compile_flags(prepared), input)
+				inputs := source_headers[source_index]
+				source_index++
 				if inputs.used_fallback {
 					return error('FastC native dependency manifest is unavailable: ' + input)
 				}
 				for dependency in inputs.files {
-					if dependency !in dependencies { dependencies << dependency }
+					if !listed[dependency] {
+						listed[dependency] = true
+						dependencies << dependency
+					}
 				}
 			}
 		}
@@ -340,6 +543,9 @@ $if !skip_fastc ? {
 			hash = c_hash_bytes(hash, (dependency + '\x00' + signature).bytes())
 		}
 		hash = c_hash_bytes(hash, v3_shared_c_compiler_identity('/usr/bin/clang').bytes())
+		if bench_phases {
+			eprintln('fastc-phase native.signed ${sw.elapsed().microseconds()}us dependencies=${dependencies.len}')
+		}
 		library := os.join_path(dir, hash.hex() + '.dylib')
 		staged := library + '.tmp.' + tempname.unique_token()
 		defer { os.rm(staged) or {} }
@@ -352,9 +558,32 @@ $if !skip_fastc ? {
 			args << link_flags
 			result := cmdexec.run('/usr/bin/clang', args)
 			if result.exit_code != 0 { return error(result.output) }
+			if bench_phases {
+				eprintln('fastc-phase native.compiled ${sw.elapsed().microseconds()}us')
+			}
 		}
 		v3_fastc_native_publish_library(staged, library, [manifest, preprocessed_manifest], dependencies, signatures, mut validation.stats)!
-		return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: dependencies, library: library }
+		return V3FastcNativeBridge{ functions: parts.functions, adapters: adapters, sources: sources, dependencies: dependencies, library: library }
+	}
+
+	// v3_fastc_native_source_dependencies returns the files Clang opens for each
+	// source, in the order of `sources`, running up to `jobs` Clang processes at a time.
+	fn v3_fastc_native_source_dependencies(sources []string, compile_flags []string, jobs int) []CObjectDependencies {
+		mut results := []CObjectDependencies{cap: sources.len}
+		batch := if jobs < 1 { 1 } else { jobs }
+		mut start := 0
+		for start < sources.len {
+			end := if start + batch < sources.len { start + batch } else { sources.len }
+			mut workers := []thread CObjectDependencies{cap: end - start}
+			for source in sources[start..end] {
+				workers << spawn c_object_dependencies('/usr/bin/clang', compile_flags, source)
+			}
+			for worker in workers {
+				results << worker.wait()
+			}
+			start = end
+		}
+		return results
 	}
 
 	struct V3FastcNativePreprocessedSource {
@@ -432,16 +661,47 @@ $if !skip_fastc ? {
 			return error('FastC native dependencies changed during preprocessing: ' + source)
 		}
 		v3_fastc_native_validate_inputs(before.files, signatures, 'preprocessing', mut stats)!
+		// Clang leaves up to eight empty lines where directives stood, so a macro that
+		// nothing uses would still change the text by one line. Without line markers
+		// (`-P`) the empty lines carry nothing.
+		expanded := os.read_file(staged)!
+		compact := v3_fastc_native_without_empty_lines(expanded)
+		if compact.len != expanded.len {
+			os.write_file(staged, compact)!
+		}
 		signature := v3_fastc_native_file_signature(staged, false, mut stats)
 		if signature == '' { return error('cannot sign preprocessed native input: ' + source) }
 		canonical_source := os.real_path(source)
-		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-preprocessed-v2'.bytes())
+		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-preprocessed-v3'.bytes())
 		hash = c_hash_bytes(hash, signature.bytes())
 		hash = c_hash_bytes(hash, deps.files.filter(it != source && it != canonical_source).join('\x00').bytes())
 		hash = c_hash_bytes(hash, archives.join('\x00').bytes())
 		path := os.join_path(dir, 'preprocessed_' + hash.hex() + '.mi')
 		if !os.is_file(path) { publish_native_c_object(staged, path)! }
 		return V3FastcNativePreprocessedSource{ path: path, dependencies: before.files, signatures: signatures }
+	}
+
+	// v3_fastc_native_without_empty_lines drops the lines of preprocessed text that
+	// hold nothing but spaces.
+	fn v3_fastc_native_without_empty_lines(text string) string {
+		mut out := strings.new_builder(text.len)
+		mut start := 0
+		for start < text.len {
+			mut end := start
+			mut empty := true
+			for end < text.len && text[end] != `\n` {
+				if text[end] !in [` `, `\t`, `\r`] {
+					empty = false
+				}
+				end++
+			}
+			if !empty {
+				out.write_string(text[start..end])
+				out.write_u8(`\n`)
+			}
+			start = end + 1
+		}
+		return out.str()
 	}
 
 	// v3_fastc_native_declarations derives the native owner's declarations from the program
@@ -616,21 +876,12 @@ $if !skip_fastc ? {
 		dir := os.join_path(os.vtmp_dir(), 'v3_fastc_native')
 		path := os.join_path(dir, 'consumer_v2_' + v3_fastc_hash_pieces(head, u64(1469598103934665603)).hex() + '.c')
 		// The directives key is a function of the consumer text, which its path names.
-		// It is kept beside the text, so a reused head is neither joined nor scanned.
+		// It is kept under that name, so a reused head is neither joined nor scanned.
 		// Rename the file when v3_fastc_preprocessor_lines changes.
-		directives_path := path + '.directives-v1'
-		mut directives_key := ''
-		if os.is_file(path) {
-			directives_key = os.read_file(directives_path) or { '' }
-		}
+		directives_path := path + '.directives-v2'
+		mut directives_key := os.read_file(directives_path) or { '' }
 		if directives_key == '' {
-			text := head.join('')
-			if !os.is_file(path) {
-				staged := path + '.tmp.' + tempname.unique_token()
-				os.write_file(staged, text)!
-				publish_native_c_object(staged, path)!
-			}
-			directives_key = c_hash_bytes(u64(1469598103934665603), v3_fastc_preprocessor_lines(text).bytes()).hex()
+			directives_key = c_hash_bytes(u64(1469598103934665603), v3_fastc_preprocessor_lines(head.join('')).bytes()).hex()
 			staged_key := directives_path + '.tmp.' + tempname.unique_token()
 			os.write_file(staged_key, directives_key) or {}
 			os.mv(staged_key, directives_path) or { os.rm(staged_key) or {} }
@@ -641,14 +892,19 @@ $if !skip_fastc ? {
 		// compiler's previous answer for the same directives, compiler and flags while
 		// every listed header keeps its content.
 		manifest := c_object_manifest_path(dir, os.join_path(dir, 'consumer_directives_' + directives_key + '.c'), '/usr/bin/clang', args, target, mut validation.stats)
-		canonical_path := os.real_path(path)
 		if cached := v3_fastc_read_program_dependencies(manifest) {
 			if validation.add(cached.dependencies, cached.signatures, cached.reported, jobs) {
-				mut dependencies := cached.dependencies.clone()
-				dependencies << canonical_path
-				return dependencies
+				return cached.dependencies
 			}
 		}
+		// Only Clang reads the consumer text, and only for directives it has not seen:
+		// a head that differs in its declarations alone is not written.
+		if !os.is_file(path) {
+			staged := path + '.tmp.' + tempname.unique_token()
+			os.write_file(staged, head.join(''))!
+			publish_native_c_object(staged, path)!
+		}
+		canonical_path := os.real_path(path)
 		dependencies := v3_tcc_dylib_program_dependencies('/usr/bin/clang', args, path, '-std=gnu11')!
 		// The TinyCC framework include directory contains symlinks to SDK Headers.
 		// Canonical manifest paths retain their owning .framework for link selection.
@@ -719,20 +975,52 @@ $if !skip_fastc ? {
 
 	// v3_fastc_preprocessor_lines keeps the lines of generated C that can change what
 	// the preprocessor opens: directives (also after a comment, or spelled `%:`), comment
-	// delimiters, and continued lines. The other lines are ordinary declarations.
+	// delimiters, and continued lines. The other lines are ordinary declarations. Nothing
+	// is opened after the last line that can include a file, so the lines after it (the
+	// constants of the program, as macros) are left out as well.
 	fn v3_fastc_preprocessor_lines(text string) string {
 		mut out := strings.new_builder(text.len / 8)
 		mut start := 0
 		mut continued := false
+		mut include_end := 0
 		for start < text.len {
 			mut end := start
 			mut keep := continued
+			mut includes := false
+			// A line that begins with another directive holds no include: the `#` of
+			// a macro body is text. A comment that ends on the line can hide that start.
+			mut first := true
+			mut other_directive := false
+			mut closes_comment := false
 			for end < text.len && text[end] != `\n` {
 				c := text[end]
-				if c == `#` || (c == `%` && end + 1 < text.len && text[end + 1] == `:`)
-					|| (c == `/` && end + 1 < text.len && text[end + 1] == `*`)
-					|| (c == `*` && end + 1 < text.len && text[end + 1] == `/`) {
+				is_directive := c == `#` || (c == `%` && end + 1 < text.len && text[end + 1] == `:`)
+				if is_directive || (c == `/` && end + 1 < text.len && text[end + 1] == `*`) {
 					keep = true
+				}
+				if c == `*` && end + 1 < text.len && text[end + 1] == `/` {
+					keep = true
+					closes_comment = true
+				}
+				if is_directive {
+					// `#include`, `#import`, a comment before either, or a spliced line.
+					mut word := if c == `#` { end + 1 } else { end + 2 }
+					for word < text.len && text[word] in [` `, `\t`] {
+						word++
+					}
+					rest := text[word..if word + 8 < text.len { word + 8 } else { text.len }]
+					if rest.starts_with('include') || rest.starts_with('import') || rest.starts_with('/*')
+						|| rest.starts_with('\\') || rest.len == 0 || rest[0] in [
+						`\n`,
+						`\r`,
+					] {
+						includes = true
+					} else if first {
+						other_directive = true
+					}
+				}
+				if c !in [` `, `\t`] {
+					first = false
 				}
 				end++
 			}
@@ -740,14 +1028,21 @@ $if !skip_fastc ? {
 			if last >= start && text[last] == `\r` {
 				last--
 			}
+			if other_directive && !closes_comment {
+				includes = false
+			}
+			includes = includes || continued
 			continued = last >= start && text[last] == `\\`
 			if keep || continued {
 				out.write_string(text[start..end])
 				out.write_u8(`\n`)
+				if includes || continued {
+					include_end = out.len
+				}
 			}
 			start = end + 1
 		}
-		return out.str()
+		return out.str()[..include_end]
 	}
 
 	fn v3_fastc_native_program_pieces(generation &fastc.GenerationResult, bridge &V3FastcNativeBridge) []string {

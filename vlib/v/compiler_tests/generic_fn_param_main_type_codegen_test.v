@@ -1,15 +1,26 @@
 import os
+import v.tempname
 
 const gfp_vexe = @VEXE
 const gfp_tests_dir = os.dir(@FILE)
 const gfp_v3_dir = os.dir(gfp_tests_dir)
 const gfp_vlib_dir = os.dir(gfp_v3_dir)
 const gfp_v3_src = os.join_path(gfp_v3_dir, 'v.v')
+const gfp_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_gfp_fixtures_${tempname.unique_token()}')
+
+fn testsuite_begin() {
+	os.mkdir_all(gfp_fixture_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(gfp_fixture_dir) or {}
+}
 
 fn gfp_build_v3() string {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_fn_param_main_type_test_${pid}')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(gfp_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([gfp_vexe, '-gc', 'none', '-path', '${gfp_vlib_dir}' + '|@vlib|@vmodules', '-o',
 			v3_bin, '${gfp_v3_src}'])
@@ -25,14 +36,14 @@ fn gfp_write_file(root string, rel string, source string) {
 
 fn gfp_run_project(v3_bin string, name string, files map[string]string) string {
 	pid := os.getpid()
-	root := os.join_path(os.temp_dir(), 'v3_${name}_${pid}_project')
+	root := os.join_path(gfp_fixture_dir, 'v3_${name}_${pid}_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: '${name}' }\n") or { panic(err) }
 	for rel, source in files {
 		gfp_write_file(root, rel, source)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${pid}')
+	bin := os.join_path(gfp_fixture_dir, 'v3_${name}_${pid}')
 	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
