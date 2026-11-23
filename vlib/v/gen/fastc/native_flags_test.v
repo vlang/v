@@ -42,6 +42,23 @@ fn test_fastc_native_inputs_shared_by_imports_are_emitted_once() ! {
 	assert generation.c_flags.filter(it == native_helper).len == 1, generation.c_flags.str()
 }
 
+// math links a module-definition file for Windows TinyCC (`#flag windows ... .def`),
+// which TinyCC takes as a link input like a library.
+fn test_fastc_windows_module_definition_file_is_a_link_input() ! {
+	root := os.join_path(os.vtmp_dir(), 'fastc_def_input_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'imports.def'), 'LIBRARY ucrtbase.dll\nEXPORTS\nfma\n')!
+	source_file := os.join_path(root, 'main.v')
+	os.write_file(source_file, '#flag windows @DIR/imports.def\nfn main() {}\n')!
+	mut prefs := pref.new_preferences()
+	prefs.vroot = @VEXEROOT
+	prefs.ccompiler = 'tinyc'
+	prefs.target = pref.target_from('windows', 'amd64')!
+	generation := generate_files_with_source_paths([source_file], prefs)!
+	assert generation.c_flags.any(os.file_name(it) == 'imports.def'), generation.c_flags.str()
+}
+
 fn test_fastc_native_flags_select_existing_paths() {
 	root := os.join_path(os.vtmp_dir(), 'fastc native flags ${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
