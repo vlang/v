@@ -6971,9 +6971,9 @@ fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source stri
 		}
 		'v/gen/c/output_nix.c.v' { return include_arg == '<sys/uio.h>' }
 		'v/gen/fastc/unit_compile_nix.c.v' { return include_arg == '<signal.h>' }
-		'v/diagserver/diagserver_linux.c.v' {
+		'v/diagserver/diagserver_nix.c.v' {
 			return include_arg in ['<errno.h>', '<signal.h>', '<sys/file.h>', '<sys/wait.h>',
-				'<unistd.h>', '<sys/prctl.h>', '<sys/syscall.h>']
+				'<unistd.h>']
 		}
 		'sync/sync_default.c.v' { return include_arg == '<semaphore.h>' }
 		'sync/sync_freebsd.c.v' {
