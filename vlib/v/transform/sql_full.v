@@ -7,6 +7,10 @@ import strconv
 // single flat SELECT; this file lowers the richer forms (subqueries, CTEs,
 // grouping, set operations) into calls that build an orm.SqlQuery plan.
 
+// sql_full_max_depth bounds recursive lowering (nested subqueries and boolean
+// expressions) so pathological source cannot overflow the compiler stack.
+const sql_full_max_depth = 64
+
 fn sql_has_full_feature(tokens []string) bool {
 	for i, tok in tokens {
 		// A `select` after index 0 normally marks a subquery. `dynamic select`
@@ -114,11 +118,14 @@ struct FullCTE {
 	query flat.NodeId
 }
 
-fn sql_full_parse_select(mut t Transformer, tokens []string, nested bool) ?flat.NodeId {
-	return sql_full_parse_select_ctes(mut t, tokens, nested, [])
+fn sql_full_parse_select(mut t Transformer, tokens []string, nested bool, depth int) ?flat.NodeId {
+	return sql_full_parse_select_ctes(mut t, tokens, nested, [], depth)
 }
 
-fn sql_full_parse_select_ctes(mut t Transformer, tokens []string, nested bool, ctes []FullCTE) ?flat.NodeId {
+fn sql_full_parse_select_ctes(mut t Transformer, tokens []string, nested bool, ctes []FullCTE, depth int) ?flat.NodeId {
+	if depth > sql_full_max_depth {
+		return none
+	}
 	mut i := 0
 	mut fields := []string{}
 	mut is_distinct := false
@@ -174,7 +181,7 @@ fn sql_full_parse_select_ctes(mut t Transformer, tokens []string, nested bool, c
 					return none
 				}
 				close := sql_matching_pair(tokens, i + 1, '(', ')') or { return none }
-				sub := sql_full_parse_select(mut t, tokens[i + 3..close], true) or { return none }
+				sub := sql_full_parse_select(mut t, tokens[i + 3..close], true, depth + 1) or { return none }
 				mut alias := ''
 				mut j := close + 1
 				if j + 1 < tokens.len && tokens[j] == 'as' {
@@ -189,7 +196,7 @@ fn sql_full_parse_select_ctes(mut t Transformer, tokens []string, nested bool, c
 					if on_end <= j + 1 {
 						return none
 					}
-					on_expr = sql_full_parse_expr(mut t, tokens[j + 1..on_end]) or { return none }
+					on_expr = sql_full_parse_expr(mut t, tokens[j + 1..on_end], depth + 1) or { return none }
 					j = on_end
 				}
 				if on_expr == 0 {
@@ -262,7 +269,7 @@ fn sql_full_parse_select_ctes(mut t Transformer, tokens []string, nested bool, c
 	}
 
 	if where_tokens.len > 0 {
-		expr := sql_full_parse_expr(mut t, where_tokens) or { return none }
+		expr := sql_full_parse_expr(mut t, where_tokens, depth + 1) or { return none }
 		plan = sql_full_method(mut t, plan, 'where_expr', [expr])
 	}
 	for g in group_tokens {
@@ -279,7 +286,7 @@ fn sql_full_parse_select_ctes(mut t Transformer, tokens []string, nested bool, c
 		}
 	}
 	if having_tokens.len > 0 {
-		expr := sql_full_parse_expr(mut t, having_tokens) or { return none }
+		expr := sql_full_parse_expr(mut t, having_tokens, depth + 1) or { return none }
 		plan = sql_full_method(mut t, plan, 'having_expr', [expr])
 	}
 	for key in order_keys {
@@ -295,7 +302,7 @@ fn sql_full_parse_select_ctes(mut t Transformer, tokens []string, nested bool, c
 		plan = sql_full_method(mut t, plan, 'skip', [t.sql_int_expr_from_token(offset_token)])
 	}
 	if set_op != '' && set_tokens.len > 2 && set_tokens[0] == 'select' {
-		right := sql_full_parse_select(mut t, set_tokens[1..], true) or { return none }
+		right := sql_full_parse_select(mut t, set_tokens[1..], true, depth + 1) or { return none }
 		method := match set_op {
 			'union' { 'union' }
 			'intersect' { 'intersect' }
@@ -341,8 +348,8 @@ fn sql_full_clause_end(tokens []string, start int) int {
 // sql_full_parse_expr parses a boolean expression of predicates, mirroring the
 // legacy sql_where_condition. It recurses on AND/OR at paren depth zero so a
 // compound WHERE/HAVING/ON is not silently truncated to its first predicate.
-fn sql_full_parse_expr(mut t Transformer, tokens []string) ?flat.NodeId {
-	return sql_full_parse_or(mut t, tokens)
+fn sql_full_parse_expr(mut t Transformer, tokens []string, depth int) ?flat.NodeId {
+	return sql_full_parse_or(mut t, tokens, depth)
 }
 
 struct SqlBoolSplit {
@@ -375,33 +382,45 @@ fn sql_full_split_bool(tokens []string, ops []string) ?SqlBoolSplit {
 	return none
 }
 
-fn sql_full_parse_or(mut t Transformer, tokens []string) ?flat.NodeId {
+fn sql_full_parse_or(mut t Transformer, tokens []string, depth int) ?flat.NodeId {
+	if depth > sql_full_max_depth {
+		return none
+	}
 	if s := sql_full_split_bool(tokens, ['||', 'or']) {
-		left := sql_full_parse_and(mut t, s.left) or { return none }
-		right := sql_full_parse_or(mut t, s.right) or { return none }
+		left := sql_full_parse_and(mut t, s.left, depth + 1) or { return none }
+		right := sql_full_parse_or(mut t, s.right, depth + 1) or { return none }
 		return sql_full_static_call(mut t, 'sql_or', [left, right])
 	}
-	return sql_full_parse_and(mut t, tokens)
+	return sql_full_parse_and(mut t, tokens, depth + 1)
 }
 
-fn sql_full_parse_and(mut t Transformer, tokens []string) ?flat.NodeId {
+fn sql_full_parse_and(mut t Transformer, tokens []string, depth int) ?flat.NodeId {
+	if depth > sql_full_max_depth {
+		return none
+	}
 	if s := sql_full_split_bool(tokens, ['&&', 'and']) {
-		left := sql_full_parse_not(mut t, s.left) or { return none }
-		right := sql_full_parse_and(mut t, s.right) or { return none }
+		left := sql_full_parse_not(mut t, s.left, depth + 1) or { return none }
+		right := sql_full_parse_and(mut t, s.right, depth + 1) or { return none }
 		return sql_full_static_call(mut t, 'sql_and', [left, right])
 	}
-	return sql_full_parse_not(mut t, tokens)
+	return sql_full_parse_not(mut t, tokens, depth + 1)
 }
 
-fn sql_full_parse_not(mut t Transformer, tokens []string) ?flat.NodeId {
+fn sql_full_parse_not(mut t Transformer, tokens []string, depth int) ?flat.NodeId {
+	if depth > sql_full_max_depth {
+		return none
+	}
 	if tokens.len > 0 && (tokens[0] == 'not' || tokens[0] == '!') {
-		inner := sql_full_parse_not(mut t, tokens[1..]) or { return none }
+		inner := sql_full_parse_not(mut t, tokens[1..], depth + 1) or { return none }
 		return sql_full_static_call(mut t, 'sql_not', [inner])
 	}
-	return sql_full_parse_primary(mut t, tokens)
+	return sql_full_parse_primary(mut t, tokens, depth + 1)
 }
 
-fn sql_full_parse_primary(mut t Transformer, tokens []string) ?flat.NodeId {
+fn sql_full_parse_primary(mut t Transformer, tokens []string, depth int) ?flat.NodeId {
+	if depth > sql_full_max_depth {
+		return none
+	}
 	if tokens.len == 0 {
 		return none
 	}
@@ -409,7 +428,7 @@ fn sql_full_parse_primary(mut t Transformer, tokens []string) ?flat.NodeId {
 	if tokens[0] == '(' && tokens[tokens.len - 1] == ')' {
 		close := sql_matching_pair(tokens, 0, '(', ')') or { return none }
 		if close == tokens.len - 1 && close > 1 {
-			return sql_full_parse_or(mut t, tokens[1..close])
+			return sql_full_parse_or(mut t, tokens[1..close], depth + 1)
 		}
 	}
 	if tokens.len < 3 {
@@ -417,7 +436,7 @@ fn sql_full_parse_primary(mut t Transformer, tokens []string) ?flat.NodeId {
 	}
 	if tokens[0] == 'exists' && tokens[1] == '(' && tokens[2] == 'select'
 		&& tokens[tokens.len - 1] == ')' {
-		inner := sql_full_parse_select(mut t, tokens[3..tokens.len - 1], true) or { return none }
+		inner := sql_full_parse_select(mut t, tokens[3..tokens.len - 1], true, depth + 1) or { return none }
 		return sql_full_static_call(mut t, 'sql_exists', [inner])
 	}
 	field := tokens[0]
@@ -425,13 +444,13 @@ fn sql_full_parse_primary(mut t Transformer, tokens []string) ?flat.NodeId {
 	if op == 'in' || op == 'not_in' || op == '!in' {
 		if tokens.len >= 5 && tokens[2] == '(' && tokens[3] == 'select' {
 			inner_tokens := tokens[4..tokens.len - 1]
-			inner := sql_full_parse_select(mut t, inner_tokens, true) or { return none }
+			inner := sql_full_parse_select(mut t, inner_tokens, true, depth + 1) or { return none }
 			name := if op == 'in' { 'sql_in_query' } else { 'sql_not_in_query' }
 			return sql_full_static_call(mut t, name, [t.make_string_literal(field), inner])
 		}
 	}
 	if op == '=' && tokens.len >= 5 && tokens[2] == '(' && tokens[3] == 'select' {
-		inner := sql_full_parse_select(mut t, tokens[4..tokens.len - 1], true) or { return none }
+		inner := sql_full_parse_select(mut t, tokens[4..tokens.len - 1], true, depth + 1) or { return none }
 		return sql_full_static_call(mut t, 'sql_eq_query', [
 			t.make_string_literal(field),
 			inner,
@@ -461,7 +480,7 @@ fn sql_full_parse_primary(mut t Transformer, tokens []string) ?flat.NodeId {
 
 // sql_full_ctes parses leading `with name as (select ...)` clauses and returns
 // the CTE expressions plus the index of the main select token.
-fn sql_full_ctes(mut t Transformer, tokens []string) ?([]FullCTE, int) {
+fn sql_full_ctes(mut t Transformer, tokens []string, depth int) ?([]FullCTE, int) {
 	mut ctes := []FullCTE{}
 	mut i := 0
 	if tokens.len == 0 || tokens[0] != 'with' {
@@ -480,7 +499,7 @@ fn sql_full_ctes(mut t Transformer, tokens []string) ?([]FullCTE, int) {
 		// Skip the nested `select` keyword; the parser expects tokens after it.
 		start := if i + 3 < close && tokens[i + 3] == 'select' { i + 4 } else { i + 3 }
 		inner := tokens[start..close]
-		query := sql_full_parse_select(mut t, inner, true) or { return none }
+		query := sql_full_parse_select(mut t, inner, true, depth + 1) or { return none }
 		ctes << FullCTE{ name: name, query: query }
 		i = close + 1
 		if i < tokens.len && tokens[i] == ',' {
@@ -505,7 +524,7 @@ fn (mut t Transformer) try_full_sql_tokens(tokens []string, db_expr flat.NodeId)
 	if tokens.len > 0 && tokens[0] == 'dynamic' {
 		return none
 	}
-	_, select_idx := sql_full_ctes(mut t, tokens) or { return none }
+	_, select_idx := sql_full_ctes(mut t, tokens, 0) or { return none }
 	if select_idx >= tokens.len {
 		return none
 	}
@@ -559,11 +578,11 @@ fn (mut t Transformer) try_full_sql_select(tokens []string, stmt SqlTransformStm
 	if tokens.len > 0 && tokens[0] == 'dynamic' {
 		return none
 	}
-	ctes, select_idx := sql_full_ctes(mut t, tokens) or { return none }
+	ctes, select_idx := sql_full_ctes(mut t, tokens, 0) or { return none }
 	if select_idx >= tokens.len {
 		return none
 	}
-	plan := sql_full_parse_select_ctes(mut t, tokens[select_idx + 1..], false, ctes) or { return none }
+	plan := sql_full_parse_select_ctes(mut t, tokens[select_idx + 1..], false, ctes, 0) or { return none }
 	mut qb := t.sql_new_query_call(stmt.table.name, db_expr)
 	// Preserve the result type metadata used by map_row.
 	qb = t.sql_query_builder_method_call(qb, 'v_sql_select_fields', [
