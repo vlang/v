@@ -89,18 +89,19 @@ fn main() {
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
 	// Keep caller-relative cache locations stable for wipe-cache after entering the checkout.
+	start := os.getwd()
 	vcache := os.getenv_opt('VCACHE') or { os.join_path(os.vmodules_dir(), '.cache') }
 	if vcache.trim_space() != '' {
-		os.setenv('VCACHE', os.abs_path(vcache), true)
+		os.setenv('VCACHE', caller_path('VCACHE', vcache, start), true)
 	}
-	for name in ['V3CACHE', 'VTOOLS_CACHE_DIR'] {
+	for name in ['V3CACHE', 'VTOOLS_CACHE_DIR', 'VTMP'] {
 		if cache := os.getenv_opt(name) {
 			if cache.trim_space() != '' {
-				os.setenv(name, os.abs_path(cache), true)
+				os.setenv(name, caller_path(name, cache, start), true)
 			}
 		}
 	}
-	os.setenv('VTMP', os.abs_path(os.vtmp_dir()), true)
+	os.setenv('VTMP', caller_path('VTMP', os.vtmp_dir(), start), true)
 	os.chdir(app.vroot)!
 	println('Updating V...')
 	app.update_from_master()
@@ -153,6 +154,42 @@ fn main() {
 		exit(1)
 	}
 	app.finish_update()
+}
+
+// caller_path makes the cache folder `path`, which the setting `name` holds, absolute from the
+// folder `start` that `v up` was started from, before `v up` enters the checkout. A `..` in it is
+// left for the system to take, as the folder above the one the path has led to so far, through any
+// link on the way: that is how builds and `v wipe-cache` take it, while `os.abs_path` takes it as
+// text. Windows takes `..` as text too, and it takes `C:cache` from the folder that is current on
+// drive `C:`, and `\cache` from the root of the drive `v up` was started on, which `os.abs_path` and
+// `os.is_abs_path` do not; those are made absolute here as well, as the wipe makes them. When
+// `start` has no name (it was removed, or a folder above it may not be read), a relative path names
+// no folder that can be told, and `v up` stops.
+fn caller_path(name string, path string, start string) string {
+	$if windows {
+		if path.len >= 2 && path[1] == `:` && (path.len == 2 || path[2] !in [`\\`, `/`]) {
+			// The folder current on that drive, as Windows keeps it for this process.
+			return os.join_path_single(os.real_path(path[..2] + '.'), path[2..])
+		}
+		if path.len >= 1 && path[0] in [`\\`, `/`] && !(path.len >= 2 && path[1] in [
+			`\\`,
+			`/`,
+		])
+			&& start.len >= 2 && start[1] == `:` {
+			return start[..2] + path
+		}
+	}
+	if os.is_abs_path(path) {
+		return path
+	}
+	$if windows {
+		return os.abs_path(path)
+	}
+	if start == '' {
+		eprintln('v up: ${name} holds the relative path `${path}`, and the folder `v up` was started from has no name (it was removed, or a folder above it may not be read), so there is no telling which folder that is.')
+		exit(1)
+	}
+	return start.trim_right(os.path_separator) + os.path_separator + path
 }
 
 // finish_update lets the Windows launcher clean caches after this executable exits.

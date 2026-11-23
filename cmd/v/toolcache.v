@@ -1465,15 +1465,17 @@ locked right now (a build in progress) stay, and the output names the tool. Lock
 so the folder stays after a wipe. A lock file that cannot be opened is repaired, so that it can
 be locked again, unless another account could swap it for a link: then it is left as it is, the
 entries of its tool are kept, and the wipe fails. So it does when a lock file cannot be made, or
-is no regular file; a dry run assumes it can be made. A folder V builds tools in stays even when
-the wipe leaves it empty, since a build may have just made it. A name the wipe cannot look at
-stays, and the wipe fails. A VTOOLS_CACHE_DIR that is a symbolic link is left as it is, however
-it is written, and the wipe does not follow it: set VTOOLS_CACHE_DIR to the folder it leads to,
-to have that folder wiped.
+is no regular file, or cannot be repaired; a dry run assumes it can be made. A folder V builds
+tools in stays even when the wipe leaves it empty, since a build may have just made it. A name
+the wipe cannot look at stays, and the wipe fails. A VTOOLS_CACHE_DIR that is a symbolic link is
+left as it is, however it is written, and the wipe does not follow it: set VTOOLS_CACHE_DIR to
+the folder it leads to, to have that folder wiped.
 
-In a tool cache folder that another account can write to, only what you own is removed. In one
-that is yours alone, everything is, whoever owns it, except lock files. Run as root, the wipe
-takes each entry under the build lock of the user who built it.
+In a folder the wipe goes through that another account can write to, only what you own is
+removed: what another account owns there stays, whatever its name, and does not fail the wipe.
+In a folder that is yours alone, everything is, whoever owns it, except lock files. Run as root,
+the wipe removes what any user owns, and takes each entry under the build lock of the user who
+built it. On Windows every folder counts as yours alone.
 
 A folder V moved aside as <folder>.untrusted-<seconds>-<pid> is wiped the same way; once nothing
 in it is kept, the lock files the wipe holds and then the folder itself are removed too. Any
@@ -1562,10 +1564,11 @@ fn parse_wipe_cache_options(prefix_args []string, command_args []string) !WipeCa
 }
 
 // append_unique_wipe_target adds the tool cache folder at `path`, in the form that
-// `tool_cache_wipe_place` gives, unless one of `targets` lies at the same place already. `path`
-// is never empty (see `tool_cache_wipe_targets`).
+// `tool_cache_wipe_place` gives, unless `targets` holds that spelling already. Two spellings of one
+// place both stay: a link on the way of one can go during the wipe, and the other then still leads
+// there (see `wipe_tool_places`). `path` is never empty (see `tool_cache_wipe_targets`).
 fn append_unique_wipe_target(path string, mut targets []string, mut seen map[string]bool) {
-	key := tool_cache_location(path)
+	key := path
 	if seen[key] {
 		return
 	}
@@ -1582,16 +1585,28 @@ fn append_untrusted_tool_cache_siblings(candidate string, mut targets []string, 
 	mut entries := os.ls(parent) or { return }
 	entries.sort()
 	for entry in entries {
-		if entry.starts_with(prefix) {
-			append_unique_wipe_target(os.join_path(parent, entry), mut targets, mut seen)
+		if !entry.starts_with(prefix) {
+			continue
 		}
+		path := os.join_path(parent, entry)
+		$if windows {
+			if tool_cache_wipe_unreachable(parent, entry) != '' {
+				// No path reaches it, and its one form would name another item: it is kept as it is
+				// listed, for the tools pass to name it (see `wipe_tool_places`).
+				if path !in targets {
+					targets << path
+				}
+				continue
+			}
+		}
+		append_unique_wipe_target(path, mut targets, mut seen)
 	}
 }
 
 // tool_cache_wipe_targets returns every configured and default tool cache folder, together with
 // any `*.untrusted-*` folders moved aside by `prepare_default_tool_cache_root`, each in the form
-// that `tool_cache_wipe_place` gives, and once however often it is named. It makes none of them
-// (see `tool_cache_wipe_default_candidates`).
+// that `tool_cache_wipe_place` gives, and each spelling once however often it is named. It makes
+// none of them (see `tool_cache_wipe_default_candidates`).
 fn tool_cache_wipe_targets() []string {
 	mut named := []string{}
 	if configured := os.getenv_opt(tool_cache_dir_env) {
@@ -1652,10 +1667,21 @@ fn inspect_tool_cache_candidates() []string {
 			}
 		}
 		if !status.starts_with('rejected:') {
+			// What a build does with such a folder (see `prepare_default_tool_cache_root`): outside
+			// Windows it moves the folder aside, and on Windows it refuses the folder and tries the
+			// next one (see `tool_cache_dir`).
 			if os.is_link(candidate) {
-				status = 'untrusted symbolic link (will be moved aside on next tool build)'
+				status = $if windows {
+					'rejected: it is a symbolic link'
+				} $else {
+					'untrusted symbolic link (will be moved aside on next tool build)'
+				}
 			} else if os.is_dir(candidate) && !tool_cache_root_can_stage(candidate) {
-				status = 'untrusted (${tool_cache_root_problem(candidate)}; will be moved aside on next tool build)'
+				status = $if windows {
+					'rejected: ${tool_cache_root_problem(candidate)}'
+				} $else {
+					'untrusted (${tool_cache_root_problem(candidate)}; will be moved aside on next tool build)'
+				}
 			} else if os.is_dir(candidate) {
 				status = 'usable (exists)'
 			}
@@ -1692,12 +1718,15 @@ enum ToolCacheWipeKind {
 	unknown
 }
 
-// ToolCacheWipeItem describes one name in a folder being wiped: what it is, who owns it, and how
-// many names the file has.
+// ToolCacheWipeItem describes one name in a folder being wiped: what it is, who owns it, how many
+// names the file has, and whether its mode keeps its owner from opening it to write.
 struct ToolCacheWipeItem {
 	kind  ToolCacheWipeKind
 	owner u32
 	links u64
+	// shut_by_mode: its permission bits let its owner not both read and write it; on Windows, it is
+	// read-only. Setting it to mode 0600 changes that (see `repair_lock_file`).
+	shut_by_mode bool
 }
 
 // ToolCacheWipeLockState says what came of a wipe's attempt to take a build lock.
@@ -1892,6 +1921,9 @@ mut:
 	// no build, and fails the wipe (see `wipe_open_root`).
 	problems    map[string]string
 	first_error string
+	// before_acting is for tests: it is the run's (see `ToolCacheWipeRun.acting_on`), and is called
+	// with the step 'repair' before a lock file is set to mode 0600.
+	before_acting fn (path string, step string) = unsafe { nil }
 }
 
 // probe takes the build lock of `tool` for the user `uid`, unless it was probed already, and
@@ -1911,9 +1943,18 @@ fn (mut locks ToolCacheWipeLocks) probe(dir ToolCacheWipeDir, tool string, uid u
 		if state == .unopenable
 			&& tool_cache_lock_is_repairable(locks.me, locks.folder_owner, locks.folder_mode, dir.item(name)) {
 			if locks.dry {
-				// A dry run reports what a real run does, and that one repairs the file and locks it.
-				state = .held
+				// A dry run reports what a real run does: that one sets the mode and locks the file,
+				// which works when the mode was what kept it shut. Anything else, such as another
+				// program that holds the file open on Windows, keeps it shut after that too.
+				if dir.item(name).shut_by_mode {
+					state = .held
+				}
 			} else {
+				$if test {
+					if locks.before_acting != unsafe { nil } {
+						locks.before_acting(os.join_path(locks.root, name), 'repair')
+					}
+				}
 				dir.repair_lock_file(name) or {
 					if locks.first_error == '' {
 						locks.first_error = 'cannot repair the lock file ${os.join_path(locks.root, name)}: ${err.msg()}'
@@ -2035,30 +2076,37 @@ struct ToolCacheWipeRun {
 	// places holds the tool cache folders the tools pass goes through, in the form that
 	// `tool_cache_wipe_place` gives (see `tool_cache_wipe_targets`).
 	places []string
-	// targets holds the tool cache folders this wipe knows, each by where it lies (see
-	// `tool_cache_location`): the one `VTOOLS_CACHE_DIR` names, the default ones, and the
-	// `.untrusted-*` folders next to them. When `VTOOLS_CACHE_DIR` is a link, the folder it leads to
-	// is one more, since builds use that folder (see `tool_cache_dir`).
-	targets []string
-	// configured is where the folder that `VTOOLS_CACHE_DIR` names lies, or '' without one. A link
-	// there is the user's, and the wipe leaves it alone: it neither removes the link nor follows it
-	// (see `wipe_known`).
-	configured string
-	// builds holds the folders that builds make and use: where the one `VTOOLS_CACHE_DIR` names and
-	// the default ones lie, and the folder a `VTOOLS_CACHE_DIR` link leads to. The wipe never removes
-	// one of them, even emptied: a build makes such a folder some steps before it makes its lock
-	// file there.
-	builds []string
+	// setting is the folder `VTOOLS_CACHE_DIR` names, made absolute from the folder the wipe was
+	// started from (see `tool_cache_wipe_absolute`) and given the form that `tool_cache_wipe_place`
+	// gives it when the run starts, or '' without one.
+	setting string
+	// defaults holds the default tool cache folders, in the same form.
+	defaults []string
 mut:
-	// wiped holds the real paths of the tool cache folders this run has wiped, so that a folder
-	// which another wiped folder holds is wiped once.
-	wiped []string
+	// done holds where the tool cache folders this run has dealt with lie (see
+	// `tool_cache_location`): one it wiped, one where it found a link, a file or nothing, and one a
+	// build made anew while the run removed what was there. A real folder that a later pass finds at
+	// one of them is either one wiped already, which another wiped folder holds, or one a build made
+	// during the wipe; it stays as it is.
+	done []string
 	// gone holds what a dry run would remove at a path the wipe knows, each by where it lies (see
 	// `tool_cache_location`): a tool cache folder that goes once it is empty, and what is no folder
 	// at the path of one. A dry run removes nothing, so what it would do is read from here (see
 	// `still_there`), and the summary of the folder around does not list it as kept. A real run
 	// looks at what is there instead.
 	gone []string
+	// seen holds every place where a tool cache folder this run knows lay at some moment of the run
+	// (see `known`): when the run started, and whenever a pass dealt with one (see `mark_done`).
+	seen ToolCacheKnown
+	// others lists what another account owns that the passes of the cache folders left in the
+	// folders they cleared (see `clear_around_tool_roots`), for the summary of each cache folder.
+	others []string
+	// made_anew holds where the cache folders lie that a build made anew while their pass removed
+	// what was there (see `wipe_stand_in`), each as `tool_cache_location` spells it. The rest of the
+	// wipe leaves each of them as it is, with all that is in it: they are in `done` too, so a pass of
+	// a folder that holds one comes to it as to a tool cache folder dealt with, and a pass of a
+	// folder inside one leaves that folder (see `wipe_folder_around_tool_roots`).
+	made_anew []string
 	// before_acting is for tests: see `acting_on`.
 	before_acting fn (path string, step string) = unsafe { nil }
 	// user is for tests: see `wipe_user`.
@@ -2066,9 +2114,11 @@ mut:
 }
 
 // acting_on runs `before_acting` with `path` just before the wipe acts on `path`, and with the step
-// it takes: 'open' (open it to wipe it), 'remove' (remove it, or make it again) or 'unlink' (remove
-// what was found to be no folder). A test can then do there what a build may do at that moment.
-// Outside tests it does nothing.
+// it takes: 'open' (open it to wipe it), 'look' (look at what refused to be opened), 'remove'
+// (remove it, or make it again), 'unlink' (remove what was found to be no folder), 'claim' (take
+// the build lock of an entry), 'repair' (set a lock file to mode 0600), 'rmdir' (remove an emptied
+// folder) or 'mkdir' (make a cache folder again). A test can then do there what a build or another
+// wipe may do at that moment. Outside tests it does nothing.
 fn (run ToolCacheWipeRun) acting_on(path string, step string) {
 	$if test {
 		if run.before_acting != unsafe { nil } {
@@ -2088,64 +2138,212 @@ fn (run ToolCacheWipeRun) wipe_user() u32 {
 	return u32(os.getuid())
 }
 
-// new_tool_cache_wipe_run starts a run with the tool cache folders the environment names now. Each
-// is known by where it lies, not only by the folder it leads to now: a build replaces a link at a
-// tool cache folder's path by a real folder (see `prepare_default_tool_cache_root`), at any time
-// during the wipe, and builds in that one.
+// new_tool_cache_wipe_run starts a run with the tool cache folders the environment names now, each
+// in the form that `tool_cache_wipe_place` gives it now: a `..` in a setting names the folder it names
+// when the wipe starts, also once the link before it is gone. Where each of them lies is worked out
+// again each time a pass needs it, and every place where one lay stays known (see `known`).
 fn new_tool_cache_wipe_run() ToolCacheWipeRun {
-	places := tool_cache_wipe_targets()
-	mut targets := []string{}
-	for place in places {
-		known := tool_cache_location(place)
-		if known !in targets {
-			targets << known
-		}
-	}
-	mut configured := ''
-	mut builds := []string{}
 	setting := (os.getenv_opt(tool_cache_dir_env) or { '' }).trim_space()
-	// An empty setting names no folder; it is checked here too, and not only by
-	// `tool_cache_wipe_place`, since taken as a path it would be the working folder.
-	place := if setting != '' { tool_cache_wipe_place(setting) } else { '' }
-	if place != '' {
-		configured = tool_cache_location(place)
-		builds << configured
+	mut run := ToolCacheWipeRun{
+		places:   tool_cache_wipe_targets()
+		setting:  tool_cache_wipe_place(tool_cache_wipe_absolute(setting))
+		defaults: tool_cache_wipe_default_candidates().map(tool_cache_wipe_place(tool_cache_wipe_absolute(it)))
+	}
+	run.seen = run.known()
+	return run
+}
+
+// tool_cache_wipe_absolute makes `path` absolute from the working folder, without taking `..` as
+// text: the system takes it as the folder above the one the path has led to so far, through any
+// link on the way (see `tool_cache_wipe_place`), and links change during a wipe. On Windows the
+// system takes `..` as text, and it is Windows that makes the path absolute (see
+// `tool_cache_full_path`): `C:cache` lies in the folder that is current on drive `C:`, which
+// `os.abs_path` would put after the working folder. An empty path stays empty: it names no folder.
+fn tool_cache_wipe_absolute(path string) string {
+	if path == '' || os.is_abs_path(path) {
+		return path
+	}
+	$if windows {
+		return tool_cache_wipe_full_path(path)
+	}
+	return os.getwd().trim_right(os.path_separator) + os.path_separator + path
+}
+
+// ToolCacheKnown says where the tool cache folders a wipe knows lie at one moment (see `known`),
+// each as `tool_cache_location` spells it.
+struct ToolCacheKnown {
+	// targets holds the tool cache folders: the one `VTOOLS_CACHE_DIR` names, the default ones, and
+	// the `.untrusted-*` folders next to them. When `VTOOLS_CACHE_DIR` is a link, the folder it leads
+	// to is one more, since builds use that folder (see `tool_cache_dir`).
+	targets []string
+	// configured holds where the folder that `VTOOLS_CACHE_DIR` names lies, and lay earlier in the run
+	// when a link on the way to it changed; it is empty without one. A link at such a place is the
+	// user's, and the wipe leaves it alone: it neither removes the link nor follows it (see
+	// `wipe_known`).
+	configured []string
+	// builds holds the folders that builds make and use: the one `VTOOLS_CACHE_DIR` names, the
+	// default ones, and the folder a `VTOOLS_CACHE_DIR` link leads to. The wipe never removes one of
+	// them, even emptied: a build makes such a folder some steps before it makes its lock file there.
+	builds []string
+}
+
+// known gives where the tool cache folders this wipe knows lie now, and every place where one of them
+// lay earlier in this run (see `seen`), and the tool cache folders this run dealt with (see `done`).
+// Where they lie now is worked out at each call: a build replaces a link on the way to one of them by
+// a real folder (see `prepare_default_tool_cache_root`) at any moment, which puts every tool cache
+// folder behind that link somewhere else, and so does the wipe when it removes such a link itself.
+// Builds that went through the link before still work in the folder it led to, which stays known.
+// A build that makes a new folder between this call and what the pass does next is not seen.
+fn (run ToolCacheWipeRun) known() ToolCacheKnown {
+	mut targets := []string{}
+	mut builds := []string{}
+	mut configured := []string{}
+	if run.setting != '' {
+		location := tool_cache_location(run.setting)
+		configured << location
+		targets << location
+		builds << location
+		place := tool_cache_wipe_place(run.setting)
 		if os.is_link(place) {
-			// Builds use the folder the link leads to. The wipe does not follow the link, but it
-			// knows that folder: inside a cache folder being wiped it is wiped as the tool cache
-			// folder it is, entry by entry, and it stays. Knowing a folder never makes the wipe
-			// remove more than it would otherwise, whoever made the link.
+			// Builds use the folder the link leads to. The wipe does not follow the link, but it knows
+			// that folder: inside a cache folder being wiped it is wiped as the tool cache folder it
+			// is, entry by entry, and it stays. Knowing a folder never makes the wipe remove more than
+			// it would otherwise, whoever made the link.
 			leads_to := tool_cache_real_path(place)
-			if leads_to != configured {
+			if leads_to != location {
 				builds << leads_to
-				if leads_to !in targets {
-					targets << leads_to
-				}
+				targets << leads_to
 			}
 		}
 	}
-	for candidate in tool_cache_wipe_default_candidates() {
-		builds << tool_cache_location(candidate)
+	for candidate in run.defaults {
+		location := tool_cache_location(candidate)
+		builds << location
+		if location !in targets {
+			targets << location
+		}
 	}
-	return ToolCacheWipeRun{
-		places:     places
+	for place in run.places {
+		location := tool_cache_location(place)
+		if location !in targets {
+			targets << location
+		}
+	}
+	for location in run.done {
+		if location !in targets {
+			targets << location
+		}
+	}
+	return run.seen.with(ToolCacheKnown{
 		targets:    targets
 		configured: configured
 		builds:     builds
+	})
+}
+
+// with gives the places that `known` or `other` holds, each once, those of `known` first.
+fn (known ToolCacheKnown) with(other ToolCacheKnown) ToolCacheKnown {
+	return ToolCacheKnown{
+		targets:    tool_cache_union(known.targets, other.targets)
+		configured: tool_cache_union(known.configured, other.configured)
+		builds:     tool_cache_union(known.builds, other.builds)
 	}
 }
 
-// builds_in reports whether the tool cache folder at `path` is one that builds make and use (see
-// `builds`), or holds one, which makes it a folder on the way to that one.
-fn (run ToolCacheWipeRun) builds_in(path string) bool {
-	location := tool_cache_location(path)
-	return run.builds.any(path_holds(location, it))
+// tool_cache_union gives the paths in `first` or `second`, each once, those of `first` first.
+fn tool_cache_union(first []string, second []string) []string {
+	mut all := first.clone()
+	for path in second {
+		if path !in all {
+			all << path
+		}
+	}
+	return all
 }
 
-// is_user_link reports whether `path` is the place that `VTOOLS_CACHE_DIR` names. The caller has
-// found a link there. Without a `VTOOLS_CACHE_DIR`, `configured` is '', which no place is.
+// leaves_to_owner reports whether the tools pass leaves what is at `path`, one of the places it goes
+// through, to the account that owns it, by the one rule of the wipe for what is whose (see
+// `tool_cache_wipe_takes`): outside Windows, what another account owns, a link not followed, in a
+// folder that is not the wipe's own alone. Such an account may have put it there, and in a folder
+// others can write to only it can remove it. The superuser takes everything.
+fn (run ToolCacheWipeRun) leaves_to_owner(path string) bool {
+	information := os.lstat(path) or { return false }
+	around := os.stat(os.dir(path)) or { return false }
+	return !tool_cache_wipe_takes(run.wipe_user(), around.uid, around.mode, information.uid)
+}
+
+// others_in lists the names in the folder at `path` that the wipe leaves to the account that owns
+// them (see `tool_cache_wipe_takes`), for what a wipe of the folder says it does.
+fn (run ToolCacheWipeRun) others_in(path string) []string {
+	$if windows {
+		return []string{}
+	}
+	dir := open_tool_cache_wipe_dir(path) or { return []string{} }
+	defer {
+		dir.close()
+	}
+	me := run.wipe_user()
+	folder_owner, folder_mode := dir.owner_and_mode()
+	names := dir.names() or { return []string{} }
+	return names.filter(tool_cache_wipe_leaves(me, folder_owner, folder_mode, dir.item(it)))
+}
+
+// names_and_others lists the folder at `path`, sorted, and the names in it that the wipe leaves to
+// the account that owns them (see `tool_cache_wipe_leaves`), both through one opening of the
+// folder. A link on the way to it and at its end is followed, as builds follow it: `path` is a
+// setting such as `VTMP`, whose folder builds use. A folder that is gone lists nothing.
+fn (run ToolCacheWipeRun) names_and_others(path string) !([]string, []string) {
+	dir := open_tool_cache_wipe_dir(tool_cache_real_path(path)) or {
+		if err.code() == tool_cache_wipe_gone {
+			return []string{}, []string{}
+		}
+		return err
+	}
+	defer {
+		dir.close()
+	}
+	mut names := dir.names()!
+	names.sort()
+	$if windows {
+		return names, []string{}
+	}
+	me := run.wipe_user()
+	folder_owner, folder_mode := dir.owner_and_mode()
+	return names, names.filter(tool_cache_wipe_leaves(me, folder_owner, folder_mode, dir.item(it)))
+}
+
+// tool_cache_wipe_leaves reports whether the wipe leaves `item`, in a folder that `folder_owner` owns
+// with the permission bits `folder_mode`, to the account that owns it (see `tool_cache_wipe_takes`).
+// What is gone or cannot be looked at is not left this way: the wipe decides on it otherwise.
+fn tool_cache_wipe_leaves(me u32, folder_owner u32, folder_mode u32, item ToolCacheWipeItem) bool {
+	if item.kind == .gone || item.kind == .unknown {
+		return false
+	}
+	return !tool_cache_wipe_takes(me, folder_owner, folder_mode, item.owner)
+}
+
+// mark_done records that this run has dealt with the tool cache folder at `path` (see `done`), and
+// where the tool cache folders it knows lie at this moment (see `seen`).
+fn (mut run ToolCacheWipeRun) mark_done(path string) {
+	location := tool_cache_location(path)
+	if location !in run.done {
+		run.done << location
+	}
+	run.seen = run.known()
+}
+
+// builds_in reports whether the tool cache folder at `path` is one that builds make and use (see
+// `ToolCacheKnown.builds`), or holds one, which makes it a folder on the way to that one.
+fn (run ToolCacheWipeRun) builds_in(path string) bool {
+	location := tool_cache_location(path)
+	return run.known().builds.any(path_holds(location, it))
+}
+
+// is_user_link reports whether `path` is the place that `VTOOLS_CACHE_DIR` names, or named earlier in
+// this run (see `known`). The caller has found a link there. Without a `VTOOLS_CACHE_DIR`,
+// `configured` is empty.
 fn (run ToolCacheWipeRun) is_user_link(path string) bool {
-	return tool_cache_location(path) == run.configured
+	return tool_cache_location(path) in run.known().configured
 }
 
 // is_moved_aside reports whether `path` is a tool cache folder that V moved aside, in which nothing
@@ -2186,7 +2384,10 @@ fn tool_cache_wipe_place(path string) string {
 			text = if rest == '' { resolved } else { resolved + '/' + rest }
 		}
 	}
-	absolute := os.abs_path(text)
+	// On Windows a path names what Windows makes of it before it acts on it (see
+	// `tool_cache_wipe_full_path`), so that `tools.` names `tools`, as it does for every other
+	// program, and `C:cache` the folder `cache` in the one current on drive `C:`.
+	absolute := $if windows { tool_cache_wipe_full_path(text) } $else { os.abs_path(text) }
 	name := os.file_name(absolute)
 	if name == '' {
 		return absolute
@@ -2210,7 +2411,8 @@ fn tool_cache_location(path string) string {
 }
 
 // tool_cache_real_path resolves the links in `path` as far as `path` exists, and keeps the rest as
-// it is written, so that a tool cache folder which is not there yet has one spelling too.
+// it is written, so that a tool cache folder which is not there yet has one spelling too. The part
+// that exists is spelled as the folders on disk list it (see `tool_cache_spelled_on_disk`).
 fn tool_cache_real_path(path string) string {
 	mut existing := os.abs_path(path)
 	mut rest := []string{}
@@ -2222,11 +2424,43 @@ fn tool_cache_real_path(path string) string {
 		rest.insert(0, os.file_name(existing))
 		existing = parent
 	}
-	mut real := os.real_path(existing)
+	mut real := tool_cache_spelled_on_disk(os.real_path(existing))
 	for part in rest {
 		real = os.join_path(real, part)
 	}
 	return real
+}
+
+// tool_cache_spelled_on_disk spells each part of `real`, a path `os.real_path` gave, as its folder
+// lists it. On Windows `os.real_path` does so already. Elsewhere it keeps the case a part is written
+// in, and on a file system that ignores case (as macOS does by default, and WSL on a Windows drive)
+// one folder would then have as many spellings as there are ways to write it. A folder's listing is
+// read only for a part that the same file answers to in another case, which a file system that
+// tells case apart never does.
+fn tool_cache_spelled_on_disk(real string) string {
+	$if windows {
+		return real
+	} $else {
+		if !real.starts_with('/') {
+			return real
+		}
+		mut current := '/'
+		for part in real.split('/').filter(it != '') {
+			mut spelled := part
+			other := if part.to_lower() != part { part.to_lower() } else { part.to_upper() }
+			if other != part {
+				if wanted := os.lstat(os.join_path_single(current, part)) {
+					if seen := os.lstat(os.join_path_single(current, other)) {
+						if seen.dev == wanted.dev && seen.inode == wanted.inode {
+							spelled = tool_cache_spelled_as_listed(current, part)
+						}
+					}
+				}
+			}
+			current = os.join_path_single(current, spelled)
+		}
+		return current
+	}
 }
 
 // path_holds reports whether `path` is `folder` or lies inside it.
@@ -2240,7 +2474,7 @@ fn path_holds(folder string, path string) bool {
 fn (run ToolCacheWipeRun) roots_below(path string) []string {
 	real := tool_cache_real_path(path)
 	mut below := []string{}
-	for target in run.targets {
+	for target in run.known().targets {
 		if !path_holds(real, target) {
 			continue
 		}
@@ -2254,11 +2488,12 @@ fn (run ToolCacheWipeRun) roots_below(path string) []string {
 
 // tool_cache_spelled_as_listed respells `relative`, a path below `folder`, the way the folders on
 // disk list its parts, as far as they exist. On a filesystem that ignores case, a path reaches a
-// folder in any spelling, and on Windows also by its short name, such as `TOOLCA~1`. The wipe must
-// not depend on `os.real_path` giving the listed name, which it does on Windows only. There, a part
-// that is no link is respelled as `os.real_path` gives it, when that name is listed. Otherwise a
-// part is respelled only when a listed name differs from it in case alone and is the same file by
-// device and inode; V reports no inode on Windows, where the name decides.
+// folder in any spelling, and on Windows also by its short name, such as `TOOLCA~1`. On Windows a
+// part is respelled as its folder lists what it reaches (see `tool_cache_listed_name`), a link
+// included, unless no path reaches that listed name (see `tool_cache_wipe_unreachable`): the part
+// then stays as it is written, which does reach it. Otherwise a part is respelled only when a
+// listed name differs from it in case alone and
+// is the same file by device and inode; V reports no inode on Windows, where the name decides.
 fn tool_cache_spelled_as_listed(folder string, relative string) string {
 	if relative == '' {
 		return relative
@@ -2270,11 +2505,11 @@ fn tool_cache_spelled_as_listed(folder string, relative string) string {
 		names := os.ls(current) or { []string{} }
 		$if windows {
 			if part !in names {
-				// `os.real_path` follows a link, so it gives a link's name only through the link.
-				candidate := os.join_path(current, part)
-				if !os.is_link(candidate) && os.exists(candidate) {
-					listed := os.file_name(os.real_path(candidate))
-					if listed in names {
+				if listed := tool_cache_listed_name(os.join_path(current, part)) {
+					// A short name stays as it is written when no path reaches the item by its long
+					// name, such as `dotted.`, which reaches `dotted` instead (see
+					// `tool_cache_wipe_unreachable`).
+					if listed in names && tool_cache_wipe_unreachable(current, listed) == '' {
 						spelled = listed
 					}
 				}
@@ -2407,7 +2642,7 @@ const tool_cache_wipe_unseen = 3
 // tried once more, since a build may have made it between the open and the look at what refused it.
 // A spot that cannot be looked at is an error with the code `tool_cache_wipe_unseen`; any other
 // error is that of a real folder that cannot be opened.
-fn (spot ToolCacheSpot) look() !ToolCacheLook {
+fn (run ToolCacheWipeRun) look(spot ToolCacheSpot) !ToolCacheLook {
 	mut problem := ''
 	for _ in 0 .. 2 {
 		dir := spot.open() or {
@@ -2417,6 +2652,7 @@ fn (spot ToolCacheSpot) look() !ToolCacheLook {
 				}
 			}
 			problem = err.msg()
+			run.acting_on(spot.path, 'look')
 			kind := spot.kind()
 			if kind == .unknown {
 				return error_with_code('could not look at ${spot.path}', tool_cache_wipe_unseen)
@@ -2466,6 +2702,14 @@ fn (mut run ToolCacheWipeRun) wipe_child(dir ToolCacheWipeDir, path string, name
 		// Ordinary content goes whole.
 		details << if opts.dry_run { '  would remove ${full}' } else { '  removing ${full}' }
 		if opts.dry_run {
+			$if windows {
+				// The removal fails on a name that no path reaches (see `remove_tree`), and so does a
+				// dry run.
+				unreachable := tool_cache_wipe_first_unreachable(dir.path, name)
+				if unreachable != '' {
+					return error('${path}${os.path_separator}${unreachable}')
+				}
+			}
 			return false
 		}
 		run.acting_on(full, 'remove')
@@ -2502,7 +2746,7 @@ fn (mut run ToolCacheWipeRun) wipe_child(dir ToolCacheWipeDir, path string, name
 // third, where the user's link is left as it is, wherever it leads.
 fn (mut run ToolCacheWipeRun) wipe_known(spot ToolCacheSpot, opts WipeCacheOptions, mut details []string, mut lines []string) !bool {
 	run.acting_on(spot.path, 'open')
-	seen := spot.look() or {
+	seen := run.look(spot) or {
 		if err.code() == tool_cache_wipe_unseen {
 			if spot.inside {
 				return err
@@ -2513,6 +2757,10 @@ fn (mut run ToolCacheWipeRun) wipe_known(spot ToolCacheSpot, opts WipeCacheOptio
 			return error('could not open ${spot.path}: ${err.msg()}')
 		}
 		return error('v wipe-cache: could not open ${spot.label} folder ${spot.path}: ${err.msg()}')
+	}
+	if seen.found != .folder && '' in spot.below {
+		// A tool cache folder that a build makes here from now on is left to it (see `done`).
+		run.mark_done(spot.path)
 	}
 	if seen.found == .gone {
 		if !spot.outer {
@@ -2548,9 +2796,17 @@ fn (mut run ToolCacheWipeRun) wipe_known(spot ToolCacheSpot, opts WipeCacheOptio
 		child.close()
 	}
 	if '' in spot.below {
+		// A tool cache folder that an earlier pass dealt with stays as it is (see `done`).
+		earlier := tool_cache_location(spot.path) in run.done
 		run.wipe_open_root(child, spot.path, spot.recreate, opts, mut lines)!
 		if spot.outer {
-			lines << if opts.dry_run {
+			lines << if earlier {
+				if opts.dry_run {
+					'Would leave ${spot.label} folder ${spot.path} as it is: it is a tool cache folder too, which an earlier pass of this wipe dealt with.'
+				} else {
+					'${spot.label} folder ${spot.path} was left as it is: it is a tool cache folder too, which an earlier pass of this wipe dealt with.'
+				}
+			} else if opts.dry_run {
 				'Would wipe ${spot.label} folder ${spot.path}, which is a tool cache folder too.'
 			} else {
 				'${spot.label} folder ${spot.path} was wiped, as the tool cache folder it also is.'
@@ -2560,9 +2816,12 @@ fn (mut run ToolCacheWipeRun) wipe_known(spot ToolCacheSpot, opts WipeCacheOptio
 	}
 	mut inner := []string{}
 	mut problem := ''
+	others_before := run.others.len
 	run.clear_around_tool_roots(child, spot.path, spot.below, opts, mut inner, mut lines) or {
 		problem = err.msg()
 	}
+	left := run.others[others_before..].clone()
+	others := wipe_except_text([], [], left.len)
 	if !spot.outer {
 		details << inner
 		if problem != '' {
@@ -2577,14 +2836,15 @@ fn (mut run ToolCacheWipeRun) wipe_known(spot ToolCacheSpot, opts WipeCacheOptio
 		}
 		return error('v wipe-cache: could not remove ${spot.label} folder ${spot.path}: ${problem}')
 	}
+	// A tool cache folder another account owns is counted with what it owns (see `others`).
 	kept := spot.below.map(os.join_path(spot.path, it)).filter((os.exists(it) || os.is_link(it))
-		&& tool_cache_location(it) !in run.gone)
+		&& tool_cache_location(it) !in run.gone && it !in left)
 	kept_text := kept.join(', ')
 	if opts.dry_run {
 		lines << if kept.len > 0 {
-			'Would wipe ${spot.label} folder ${spot.path}, except ${kept_text}.'
+			'Would wipe ${spot.label} folder ${spot.path}, except ${kept_text}${others}.'
 		} else {
-			'Would wipe ${spot.label} folder ${spot.path}.'
+			'Would wipe ${spot.label} folder ${spot.path}${others}.'
 		}
 		if opts.verbose {
 			lines << inner
@@ -2594,11 +2854,18 @@ fn (mut run ToolCacheWipeRun) wipe_known(spot ToolCacheSpot, opts WipeCacheOptio
 	if opts.verbose {
 		lines << inner
 	}
-	lines << if kept.len > 0 {
-		'${spot.label} folder ${spot.path} was wiped, except the tool cache folders in it: ${kept_text}.'
-	} else {
-		'${spot.label} folder ${spot.path} was wiped.'
+	// A folder that a build made anew during the wipe is no tool cache folder (see `made_anew`).
+	made := kept.filter(tool_cache_location(it) in run.made_anew)
+	tool_roots := kept.filter(it !in made)
+	mut except := []string{}
+	if tool_roots.len > 0 {
+		except << 'the tool cache folders in it: ${tool_roots.join(', ')}'
 	}
+	if made.len > 0 {
+		except << 'the folders a build made anew in it during the wipe: ${made.join(', ')}'
+	}
+	except_text := if except.len > 0 { ', except ' + except.join(', and except ') } else { '' }
+	lines << '${spot.label} folder ${spot.path} was wiped${except_text}${others}.'
 	return true
 }
 
@@ -2652,6 +2919,12 @@ fn (mut run ToolCacheWipeRun) wipe_stand_in(spot ToolCacheSpot, opts WipeCacheOp
 	if now == .folder {
 		// A build made a folder here since the look, with its work in it.
 		if !spot.inside {
+			if spot.outer && '' !in spot.below {
+				// The rest of the wipe leaves this cache folder as it is too (see `made_anew`). A tool
+				// cache folder is in `done` already (see `wipe_known`), and stays a tool cache folder.
+				run.made_anew << tool_cache_location(path)
+				run.mark_done(path)
+			}
 			lines << '${label} folder ${path} was made anew during the wipe; the new folder was not touched.'
 		}
 		return true
@@ -2663,7 +2936,7 @@ fn (mut run ToolCacheWipeRun) wipe_stand_in(spot ToolCacheSpot, opts WipeCacheOp
 		return error('v wipe-cache: could not remove ${label} folder ${path}: something else was put there meanwhile')
 	}
 	if spot.recreate {
-		make_cache_folder_again(path, label)!
+		run.make_cache_folder_again(path, label)!
 	}
 	if !spot.inside {
 		lines << '${label} folder ${path} was wiped.'
@@ -2678,8 +2951,17 @@ fn (mut run ToolCacheWipeRun) wipe_stand_in(spot ToolCacheSpot, opts WipeCacheOp
 // item is attempted, and the first failure is reported afterwards.
 fn (mut run ToolCacheWipeRun) clear_around_tool_roots(dir ToolCacheWipeDir, path string, below []string, opts WipeCacheOptions, mut details []string, mut lines []string) ! {
 	names := dir.names() or { return error('could not list ${path}: ${err.msg()}') }
+	me := run.wipe_user()
+	folder_owner, folder_mode := dir.owner_and_mode()
 	mut first_error := ''
 	for name in names {
+		if tool_cache_wipe_leaves(me, folder_owner, folder_mode, dir.item(name)) {
+			// What another account owns stays, whatever its name (see `tool_cache_wipe_takes`).
+			full := os.join_path(path, name)
+			run.others << full
+			details << if opts.dry_run { '  would keep ${full}' } else { '  keeping ${full}' }
+			continue
+		}
 		run.wipe_child(dir, path, name, below, opts, mut details, mut lines) or {
 			if first_error == '' {
 				first_error = err.msg()
@@ -2735,11 +3017,10 @@ fn (mut run ToolCacheWipeRun) wipe_open_tool_cache_directory(dir ToolCacheWipeDi
 //
 // Every item is attempted, and the first failure is reported afterwards, as `os.rmdir_all` does.
 fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, stays bool, opts WipeCacheOptions, mut lines []string) ! {
-	real := tool_cache_real_path(path)
-	if real in run.wiped {
+	if tool_cache_location(path) in run.done {
 		return
 	}
-	run.wiped << real
+	run.mark_done(path)
 	label := tool_cache_wipe_label(path)
 	moved_aside := run.is_moved_aside(path)
 	me := run.wipe_user()
@@ -2747,11 +3028,12 @@ fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, 
 	folder_owner, folder_mode := dir.owner_and_mode()
 	below := run.roots_below(path).filter(it != '')
 	mut locks := ToolCacheWipeLocks{
-		dry:          opts.dry_run
-		root:         path
-		me:           me
-		folder_owner: folder_owner
-		folder_mode:  folder_mode
+		dry:           opts.dry_run
+		root:          path
+		me:            me
+		folder_owner:  folder_owner
+		folder_mode:   folder_mode
+		before_acting: run.before_acting
 	}
 	defer {
 		locks.release()
@@ -2839,7 +3121,13 @@ fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, 
 			// guards it: in a folder that is the wipe's alone it goes like any other content.
 			guarded = false
 		}
+		run.acting_on(full, 'claim')
 		if guarded && !locks.claim(dir, entry.tool, guard) {
+			if dir.item(name).kind == .gone {
+				// Another wipe removed the entry since it was looked at, and maybe the folder with it,
+				// in which no lock file can then be made: nothing stays.
+				continue
+			}
 			kept << full
 			// The entry stays for a build that holds the lock, or else for no build: then the wipe
 			// fails, and says why.
@@ -2961,6 +3249,7 @@ fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, 
 		remaining := dir.names() or { [''] }
 		mut problem := ''
 		if remaining.len == 0 {
+			run.acting_on(path, 'rmdir')
 			os.rmdir(path) or { problem = err.msg() }
 		}
 		// A folder that is still the one opened, still there and still empty could not be removed.
@@ -2976,23 +3265,32 @@ fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, 
 
 // remove_cache_folder removes the folder at `path` and all that is in it, as `os.rmdir_all` does,
 // except that whatever is gone already counts as removed: another wipe can be at work in the same
-// folder. Every item is attempted, and the first failure is returned afterwards.
-fn remove_cache_folder(path string) ! {
+// folder. What another account owns in it stays, whatever its name (see `tool_cache_wipe_takes`),
+// and so does the folder then; it returns how many such items stayed. Every item is attempted, and
+// the first failure is returned afterwards.
+fn (run ToolCacheWipeRun) remove_cache_folder(path string) !int {
 	dir := open_tool_cache_wipe_dir(path) or {
 		if err.code() == tool_cache_wipe_gone {
-			return
+			return 0
 		}
 		return err
 	}
 	defer {
 		dir.close()
 	}
+	me := run.wipe_user()
+	folder_owner, folder_mode := dir.owner_and_mode()
 	mut first_error := ''
+	mut others := 0
 	names := dir.names() or {
 		first_error = err.msg()
 		[]string{}
 	}
 	for name in names {
+		if tool_cache_wipe_leaves(me, folder_owner, folder_mode, dir.item(name)) {
+			others++
+			continue
+		}
 		dir.remove_tree(name) or {
 			if first_error == '' {
 				first_error = os.join_path(path, err.msg())
@@ -3002,26 +3300,46 @@ fn remove_cache_folder(path string) ! {
 	if first_error != '' {
 		return error(first_error)
 	}
+	if others > 0 {
+		return others
+	}
 	// Another wipe can remove the folder first, and make it anew at once. So a removal that fails is
 	// tried again: it then finds the folder gone, or removes the new and empty one, as that wipe
 	// would. Only a folder that is still the one opened here, and still there, is a failure.
 	mut problem := ''
 	for _ in 0 .. 3 {
 		problem = ''
+		run.acting_on(path, 'rmdir')
 		os.rmdir(path) or { problem = err.msg() }
 		if problem == '' || !dir.is_at(path) || (!os.exists(path) && !os.is_link(path)) {
-			return
+			return 0
 		}
 	}
 	return error(problem)
 }
 
-fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCacheOptions, mut lines []string) ! {
+// wipe_cache_directory wipes a cache folder that holds no tool cache folder this wipe knows: it is
+// removed whole, and made again when it has to be there afterwards (`recreate`). What another account
+// owns in it stays, and so does the folder then (see `remove_cache_folder`).
+fn (run ToolCacheWipeRun) wipe_cache_directory(path string, label string, recreate bool, opts WipeCacheOptions, mut lines []string) ! {
 	if opts.dry_run {
 		if os.is_link(path) {
 			lines << 'Would wipe ${label} folder ${path} (symbolic link).'
 		} else if os.is_dir(path) {
-			lines << 'Would wipe ${label} folder ${path}.'
+			$if windows {
+				// The removal fails on a name that no path reaches (see `remove_cache_folder`), and so
+				// does a dry run.
+				mut listed := os.ls(path) or { []string{} }
+				listed.sort()
+				for entry in listed {
+					unreachable := tool_cache_wipe_first_unreachable(path, entry)
+					if unreachable != '' {
+						return error('v wipe-cache: could not remove ${label} folder ${path}: ${os.join_path(path, unreachable)}')
+					}
+				}
+			}
+			others := run.others_in(path)
+			lines << 'Would wipe ${label} folder ${path}${wipe_except_text([], [], others.len)}.'
 			if opts.verbose {
 				mut entries := os.ls(path) or {
 					// A folder that a wipe removed meanwhile has nothing left to list.
@@ -3032,7 +3350,11 @@ fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCache
 				}
 				entries.sort()
 				for entry in entries {
-					lines << '  would remove ${os.join_path(path, entry)}'
+					lines << if entry in others {
+						'  would keep ${os.join_path(path, entry)}'
+					} else {
+						'  would remove ${os.join_path(path, entry)}'
+					}
 				}
 			}
 		} else if os.exists(path) {
@@ -3042,6 +3364,7 @@ fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCache
 		}
 		return
 	}
+	mut others := 0
 	if os.is_link(path) {
 		if opts.verbose {
 			lines << '  removing symbolic link ${path}'
@@ -3062,11 +3385,16 @@ fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCache
 				[]string{}
 			}
 			entries.sort()
+			kept := run.others_in(path)
 			for entry in entries {
-				lines << '  removing ${os.join_path(path, entry)}'
+				lines << if entry in kept {
+					'  keeping ${os.join_path(path, entry)}'
+				} else {
+					'  removing ${os.join_path(path, entry)}'
+				}
 			}
 		}
-		remove_cache_folder(path) or {
+		others = run.remove_cache_folder(path) or {
 			return error('v wipe-cache: could not remove ${label} folder ${path}: ${err}')
 		}
 	} else if os.exists(path) {
@@ -3079,20 +3407,21 @@ fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCache
 		lines << '  ${path} does not exist'
 	}
 	if recreate {
-		make_cache_folder_again(path, label)!
+		run.make_cache_folder_again(path, label)!
 	}
-	lines << '${label} folder ${path} was wiped.'
+	lines << '${label} folder ${path} was wiped${wipe_except_text([], [], others)}.'
 }
 
 // make_cache_folder_again makes the cache folder at `path` after it was wiped. Another wipe can
-// remove or make the folder in the same moment, which fails one attempt and not the next. A folder
-// that cannot be made fails every time.
-fn make_cache_folder_again(path string, label string) ! {
+// remove or make the folder in the same moment, which fails one attempt and not the next; a folder
+// that is there by the next attempt is taken as made. A folder that cannot be made fails every time.
+fn (run ToolCacheWipeRun) make_cache_folder_again(path string, label string) ! {
 	mut problem := ''
 	for _ in 0 .. 5 {
 		problem = ''
+		run.acting_on(path, 'mkdir')
 		os.mkdir_all(path) or { problem = err.msg() }
-		if problem == '' || os.is_dir(path) {
+		if problem == '' {
 			return
 		}
 	}
@@ -3106,12 +3435,19 @@ fn make_cache_folder_again(path string, label string) ! {
 // cache folder. A failure does not stop the rest: everything is attempted, and the first failure is
 // reported.
 fn (mut run ToolCacheWipeRun) wipe_folder_around_tool_roots(path string, label string, recreate bool, opts WipeCacheOptions, mut lines []string) ! {
+	if path != '' && run.made_anew.len > 0 {
+		real := tool_cache_real_path(path)
+		if run.made_anew.any(path_holds(it, real)) {
+			lines << '${label} folder ${path} was left as it is: it lies in a folder that a build made anew during the wipe, which the wipe leaves to it.'
+			return
+		}
+	}
 	// An empty path, from an empty setting, holds no tool cache folder: `roots_below` would take it
 	// as the working folder.
 	below := if path == '' { []string{} } else { run.roots_below(path) }
 	if below.len == 0 {
 		run.acting_on(path, 'remove')
-		return wipe_cache_directory(path, label, recreate, opts, mut lines)
+		return run.wipe_cache_directory(path, label, recreate, opts, mut lines)
 	}
 	mut details := []string{}
 	run.wipe_known(ToolCacheSpot{
@@ -3121,6 +3457,63 @@ fn (mut run ToolCacheWipeRun) wipe_folder_around_tool_roots(path string, label s
 		outer:    true
 		recreate: recreate
 	}, opts, mut details, mut lines)!
+}
+
+// wipe_tool_places is the tools pass: it wipes each tool cache folder this wipe knows by its path
+// (see `places`), and reports whether anything was at one of them. What another account owns there
+// (see `leaves_to_owner`) is left as it is, whatever its name.
+fn (mut run ToolCacheWipeRun) wipe_tool_places(opts WipeCacheOptions, mut lines []string) !bool {
+	mut wiped_any := false
+	// A place spelled two ways, one through a link, is gone through once. Where a spelling lies is
+	// taken once the pass is done with it: a link on its way can go meanwhile (another wipe removes
+	// it, as the pass of a cache folder does), and the place it led to before then still has its
+	// turn under another spelling.
+	mut visited := []string{}
+	for target in run.places {
+		$if windows {
+			// A name that no path reaches stays, and the wipe fails, also in a dry run: a path would
+			// name another item, or nothing (see `append_untrusted_tool_cache_siblings`). Its place
+			// is that of the item a path reaches, so this comes before the check below.
+			unreachable := tool_cache_wipe_unreachable(os.dir(target), os.file_name(target))
+			if unreachable != '' {
+				return error('v wipe-cache: could not look at ${tool_cache_wipe_label(target)} folder ${target}: ${unreachable}')
+			}
+		}
+		if tool_cache_location(target) in visited {
+			continue
+		}
+		if run.wipe_tool_place(target, opts, mut lines)! {
+			wiped_any = true
+		}
+		visited << tool_cache_location(target)
+	}
+	return wiped_any
+}
+
+// wipe_tool_place wipes the tool cache folder at `target`, one of the places the tools pass goes
+// through, and reports whether anything was there. What is there, a link included, is for
+// `wipe_known` to decide; what another account owns there is left as it is.
+fn (mut run ToolCacheWipeRun) wipe_tool_place(target string, opts WipeCacheOptions, mut lines []string) !bool {
+	if os.exists(target) || os.is_link(target) {
+		if run.leaves_to_owner(target) {
+			label := tool_cache_wipe_label(target)
+			reason := 'it belongs to another account, in a folder others can write to'
+			lines << if opts.dry_run {
+				'Would leave ${label} folder ${target} as it is: ${reason}.'
+			} else {
+				'${label} folder ${target} was left as it is: ${reason}.'
+			}
+			return true
+		}
+		run.wipe_tool_cache_directory(target, opts, mut lines)!
+		return true
+	}
+	// A tool cache folder that a build makes here from now on is left to it (see `done`).
+	run.mark_done(target)
+	if opts.verbose {
+		lines << '${tool_cache_wipe_label(target)} folder ${target} does not exist, skipping.'
+	}
+	return false
 }
 
 // tool_cache_wipe_check_settings fails when a setting the wipe reads is a relative path while the
@@ -3146,14 +3539,20 @@ fn tool_cache_wipe_check_settings() ! {
 }
 
 // wipe_caches returns cleanup output, stopping at the first filesystem error.
+fn wipe_caches(opts WipeCacheOptions) ![]string {
+	tool_cache_wipe_check_settings()!
+	mut run := new_tool_cache_wipe_run()
+	return run.wipe_passes(opts)
+}
+
+// wipe_passes runs the passes that `opts` asks for, and returns what they print, stopping at the
+// first filesystem error.
 //
 // Every setting is read, and given its one form (see `tool_cache_wipe_place`), before the wipe
 // starts, while it is still in the folder it was started from. It then works from `/` (see
 // `tool_cache_wipe_leave_working_folder`), and comes back when it is done.
-fn wipe_caches(opts WipeCacheOptions) ![]string {
+fn (mut run ToolCacheWipeRun) wipe_passes(opts WipeCacheOptions) ![]string {
 	mut lines := []string{}
-	tool_cache_wipe_check_settings()!
-	mut run := new_tool_cache_wipe_run()
 	cache_path := if opts.vcache {
 		tool_cache_wipe_place(os.getenv_opt('VCACHE') or {
 			os.join_path(os.vmodules_dir(), '.cache')
@@ -3177,20 +3576,11 @@ fn wipe_caches(opts WipeCacheOptions) ![]string {
 	defer {
 		tool_cache_wipe_come_back(back)
 	}
-	if opts.vcache {
-		run.wipe_folder_around_tool_roots(cache_path, 'V cache', true, opts, mut lines)!
-	}
+	// The tools pass comes first, before any other pass has removed a link on the way to a tool
+	// cache folder or made a cache folder again: what it then finds is what builds find. Its lines
+	// come last all the same.
 	if opts.tools {
-		mut wiped_any_tool_cache := false
-		for target in run.places {
-			// What is at each of them, a link included, is for `wipe_known` to decide.
-			if os.exists(target) || os.is_link(target) {
-				wiped_any_tool_cache = true
-				run.wipe_tool_cache_directory(target, opts, mut tool_lines)!
-			} else if opts.verbose {
-				tool_lines << '${tool_cache_wipe_label(target)} folder ${target} does not exist, skipping.'
-			}
-		}
+		wiped_any_tool_cache := run.wipe_tool_places(opts, mut tool_lines)!
 		if opts.explicit_selector && !opts.vcache && !opts.vtmp && !opts.v3cache
 			&& !wiped_any_tool_cache && !opts.verbose {
 			if opts.dry_run {
@@ -3200,6 +3590,9 @@ fn wipe_caches(opts WipeCacheOptions) ![]string {
 			}
 		}
 	}
+	if opts.vcache {
+		run.wipe_folder_around_tool_roots(cache_path, 'V cache', true, opts, mut lines)!
+	}
 	if opts.vtmp {
 		run.wipe_folder_around_tool_roots(vtmp_path, 'V tmp.c and tests', true, opts, mut lines)!
 	}
@@ -3207,38 +3600,66 @@ fn wipe_caches(opts WipeCacheOptions) ![]string {
 		if v3_apart {
 			run.wipe_folder_around_tool_roots(configured_v3, 'V3 cache', true, opts, mut lines)!
 		} else if !opts.vtmp {
-			mut v3_dirs := []string{}
-			if os.is_dir(vtmp_path) {
-				mut entries := os.ls(vtmp_path) or {
-					// A folder that another wipe removed meanwhile has nothing left to list.
-					if os.exists(vtmp_path) {
-						return error('v wipe-cache: could not list V3 cache folders in ${vtmp_path}: ${err}')
-					}
-					[]string{}
-				}
-				entries.sort()
-				for entry in entries {
-					if is_v3_cache_subdir(entry) {
-						candidate := os.join_path(vtmp_path, entry)
-						if os.is_dir(candidate) || os.is_link(candidate) {
-							v3_dirs << candidate
-						}
-					}
-				}
-			}
-			if v3_dirs.len > 0 {
-				for dir in v3_dirs {
-					run.wipe_folder_around_tool_roots(dir, 'V3 cache', false, opts, mut lines)!
-				}
-			} else if opts.dry_run {
-				lines << 'Would wipe V3 cache folders in ${vtmp_path} (none exist).'
-			} else {
-				lines << 'V3 cache folders in ${vtmp_path} were already clean.'
-			}
+			run.wipe_v3_folders_in(vtmp_path, opts, mut lines)!
 		}
 	}
 	lines << tool_lines
 	return lines
+}
+
+// wipe_v3_folders_in wipes the V3 cache folders that VTMP, at `vtmp_path`, holds (see
+// `is_v3_cache_subdir`), when V3CACHE names no folder of its own. One that another account owns is
+// left as it is, as in every other pass (see `tool_cache_wipe_takes`). VTMP is listed, and who owns
+// what in it told, through one opening of the folder it names, a link on the way and at its end
+// followed as builds follow them (see `names_and_others`). Every V3 cache folder is attempted, and
+// the first failure is reported afterwards.
+fn (mut run ToolCacheWipeRun) wipe_v3_folders_in(vtmp_path string, opts WipeCacheOptions, mut lines []string) ! {
+	mut v3_dirs := []string{}
+	mut left_any := false
+	if os.is_dir(vtmp_path) {
+		// A folder that another wipe removed meanwhile has nothing left to list.
+		entries, others := run.names_and_others(vtmp_path) or {
+			return error('v wipe-cache: could not list V3 cache folders in ${vtmp_path}: ${err}')
+		}
+		for entry in entries {
+			if !is_v3_cache_subdir(entry) {
+				continue
+			}
+			candidate := os.join_path(vtmp_path, entry)
+			if entry in others {
+				left_any = true
+				reason := 'it belongs to another account, in a folder others can write to'
+				lines << if opts.dry_run {
+					'Would leave V3 cache folder ${candidate} as it is: ${reason}.'
+				} else {
+					'V3 cache folder ${candidate} was left as it is: ${reason}.'
+				}
+				continue
+			}
+			if os.is_dir(candidate) || os.is_link(candidate) {
+				v3_dirs << candidate
+			}
+		}
+	}
+	mut first_error := ''
+	for dir in v3_dirs {
+		run.wipe_folder_around_tool_roots(dir, 'V3 cache', false, opts, mut lines) or {
+			if first_error == '' {
+				first_error = err.msg()
+			}
+		}
+	}
+	if first_error != '' {
+		return error(first_error)
+	}
+	if v3_dirs.len > 0 || left_any {
+		return
+	}
+	lines << if opts.dry_run {
+		'Would wipe V3 cache folders in ${vtmp_path} (none exist).'
+	} else {
+		'V3 cache folders in ${vtmp_path} were already clean.'
+	}
 }
 
 fn run_wipe_cache(args []string, command_index int) {

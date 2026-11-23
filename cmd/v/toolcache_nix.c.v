@@ -452,9 +452,10 @@ fn tool_cache_wipe_item_from(information &C.stat) ToolCacheWipeItem {
 		else { ToolCacheWipeKind.other }
 	}
 	return ToolCacheWipeItem{
-		kind:  kind
-		owner: u32(information.st_uid)
-		links: u64(information.st_nlink)
+		kind:         kind
+		owner:        u32(information.st_uid)
+		links:        u64(information.st_nlink)
+		shut_by_mode: u32(information.st_mode) & 0o600 != 0o600
 	}
 }
 
