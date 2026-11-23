@@ -815,19 +815,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	// A generic `T{}` can specialize to `&Struct`. The literal must then escape
 	// on the heap; `(Struct*){...}` is neither valid C nor durable storage.
 	if flat.source_type_shape(init_value).has(.pointer) {
-		pointer_type := g.tc.parse_type(init_value)
-		if pointer_type is types.Pointer && node.children_count == 0 {
-			base_type := unalias_type(pointer_type.base_type)
-			// The default value of a pointer to a scalar is nil. Pointer-to-struct
-			// defaults retain V's heap-initialized `T{}` behavior below.
-			if base_type is types.Primitive || base_type is types.String || base_type is types.Enum {
-				g.write('NULL')
-				return
-			}
-		}
-		mut heap_node := node
-		heap_node.set_source_value_id(flat.source_type_syntax(init_value).raw_base())
-		g.gen_heap_struct_init(heap_node)
+		g.gen_pointer_struct_init(node, init_value)
 		return
 	}
 	init_semantic_type := g.tc.parse_type(init_value)
@@ -1954,6 +1942,26 @@ fn channel_init_field(node flat.Node, a &flat.FlatAst, name string) ?flat.NodeId
 	return none
 }
 
+// gen_pointer_struct_init emits the value of a struct literal `node` whose type
+// `init_value` is a pointer `&U`: nil for a pointer to a scalar, otherwise a heap
+// copy of `U{}`. For `&&U` and deeper that is a chain of heap slots, each pointing
+// to the next, ending in `U{}`.
+fn (mut g FlatGen) gen_pointer_struct_init(node flat.Node, init_value u32) {
+	pointer_type := g.tc.parse_type(init_value)
+	if pointer_type is types.Pointer && node.children_count == 0 {
+		base_type := unalias_type(pointer_type.base_type)
+		// The default value of a pointer to a scalar is nil. Pointer-to-struct
+		// defaults retain V's heap-initialized `T{}` behavior below.
+		if base_type is types.Primitive || base_type is types.String || base_type is types.Enum {
+			g.write('NULL')
+			return
+		}
+	}
+	mut heap_node := node
+	heap_node.set_source_value_id(flat.source_type_syntax(init_value).raw_base())
+	g.gen_heap_struct_init(heap_node)
+}
+
 // gen_heap_struct_init emits heap struct init output for c.
 fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	cpp_start := g.sb.len
@@ -1967,6 +1975,17 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	}
 	init_module := g.tc.cur_module
 	parsed_init_type := g.tc.parse_type(node.source_value_id())
+	// A literal of pointer type `&U` (a generic `T{}` with `T = &&U`, or `&T{}` with
+	// `T = &U`) is itself a pointer value, so its heap copy is one more pointer slot,
+	// holding the literal's own value. Unwrapping every pointer below allocated `U`
+	// and returned a `U*` where a `U**` was expected.
+	if parsed_init_type is types.Pointer {
+		slot_ct := g.struct_init_c_type_name(node.source_value_id())
+		g.write('(${slot_ct}*)memdup(&(${slot_ct}){')
+		g.gen_pointer_struct_init(node, node.source_value_id())
+		g.write('}, sizeof(${slot_ct}))')
+		return
+	}
 	clean_init_type := unalias_type(types.unwrap_all_pointers(parsed_init_type))
 	// A heap sum literal (a generic `T{}` with `T = &Sum` lowers to the sum's tag and
 	// variant fields) is written with the sum's own C type. Looked up by name as a
