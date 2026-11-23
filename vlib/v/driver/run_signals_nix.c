@@ -536,6 +536,11 @@ static int v3_run_suspend_owner(int stop_signal, int forwarded_stop) {
     }
     int result = v3_run_foreground_child();
     if (!result) result = v3_run_signal_child(V3_RUN_CONT);
+    /* The mask above covers only this thread. Another compiler thread can run the
+     * handler meanwhile and forward a stop to the still stopped app, which the
+     * SIGCONT then discards. Forward such a stop again, now that the app runs. */
+    int late_stop = v3_run_forwarded_stop;
+    if (!result && late_stop) v3_run_signal_child(late_stop);
     int saved_errno = errno;
     v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
     errno = saved_errno;
