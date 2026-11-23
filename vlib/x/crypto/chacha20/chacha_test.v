@@ -42,9 +42,11 @@ fn test_xchacha20_cipher_with_64_counter() ! {
 	xnonce := rand.bytes(24)!
 	mut c := chacha20.new_cipher(key, xnonce, use_64bit_counter: true)!
 
-	// set counter value above 32-bit limit, to mark it support for 64-bit
-	c.set_counter(max_u32 + 1)
-	assert c.counter() == max_u32 + 1
+	// set counter value above 32-bit limit, to mark it support for 64-bit.
+	// `max_u32 + 1` is a `u32` sum that wraps to 0, so widen before adding.
+	above_32bit_limit := u64(max_u32) + 1
+	c.set_counter(above_32bit_limit)
+	assert c.counter() == above_32bit_limit
 
 	c.set_counter(max_u64 - 2)
 	assert c.counter() == max_u64 - 2
