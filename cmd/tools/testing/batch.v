@@ -178,9 +178,10 @@ fn (ts &TestSession) test_units(files []string) []string {
 // top-level names of `file`, when it can share a binary with other tests.
 fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) ?TestBatchCandidate {
 	name := os.file_name(file)
-	// `.c.v`/`.js.v` tests select a backend, and `global` in a name enables globals.
-	if !name.ends_with('_test.v') || name.all_before_last('_test.v').contains('.')
-		|| name.contains('global') {
+	// `.js.v` and other suffixes select another backend or architecture. A `.c.v` test
+	// runs with `-b c`, which is the backend of every batch (can_batch_tests).
+	if !(name.ends_with('_test.v') || name.ends_with('_test.c.v'))
+		|| name.all_before_last('_test.').contains('.') {
 		return none
 	}
 	real_file := os.real_path(file)
@@ -199,7 +200,20 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 			source[cleanup.end..]
 		hook = cleanup.text
 	}
+	// A file that sets environment variables can share a binary with others that do,
+	// when it restores them the way these tests do (a saved `os.getenv_opt` and a
+	// `defer`): a test of one file then finds the environment as the file before left it.
+	restores_env := test_restores_environment(source)
+	// The same for the working directory: it saves `os.getwd()` and has a `defer`.
+	restores_cwd := source_contains_marker(source, 'os.chdir(')
+		&& source_contains_marker(source, 'os.getwd(') && source_mentions_word(source, 'defer')
 	for marker in test_batch_excluded_markers {
+		if restores_env && marker in test_batch_environment_markers {
+			continue
+		}
+		if restores_cwd && marker == 'os.chdir(' {
+			continue
+		}
 		if source_contains_marker(source, marker) {
 			return none
 		}
@@ -224,11 +238,55 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 	// another file (`struct T` and `fn f[T]()`), which then names the type.
 	words << names.filter(it.len == 1 && it[0].is_capital())
 	return TestBatchCandidate{
-		key:    os.dir(real_file) + '\n' + module_name + if hook != '' { '\n' + hook } else { '' }
+		key:    os.dir(real_file) + '\n' + module_name + if hook != '' { '\n' + hook } else { '' } +
+			'\nvflags ' + test_file_vflags(source) + if restores_env { '\nenvironment' } else { '' } +
+			if test_path_enables_globals(real_file) { '\nglobals' } else { '' } +
+			if test_file_retries(source) { '\nretry' } else { '' } +
+			if restores_cwd { '\nworking directory' } else { '' }
 		names:  names
 		consts: words
 		source: source
 	}
+}
+
+// test_file_retries reports whether `source` has a `// vtest retry:` line. Such tests failed
+// now and then (most for a C toolchain race on Windows); a batch keeps them apart from the
+// other files, so that a failure sends only them back to running one by one.
+fn test_file_retries(source string) bool {
+	return source.split_into_lines().any(it.starts_with('// vtest retry:'))
+}
+
+// test_path_enables_globals reports whether run_test_file compiles the file at the real
+// path `path` with `-enable-globals`: when `global` is anywhere in that path.
+fn test_path_enables_globals(path string) bool {
+	return path.contains('global')
+}
+
+// test_batch_environment_markers are the excluded markers that test_restores_environment
+// admits.
+const test_batch_environment_markers = ['os.setenv(', 'os.unsetenv(']
+
+// test_restores_environment reports whether the code text `source` changes environment
+// variables and saves them to restore them: it reads them (`os.getenv_opt(` or `os.getenv(`)
+// and has a `defer`.
+fn test_restores_environment(source string) bool {
+	if !test_batch_environment_markers.any(source_contains_marker(source, it)) {
+		return false
+	}
+	return (source_contains_marker(source, 'os.getenv_opt(')
+		|| source_contains_marker(source, 'os.getenv(')) && source_mentions_word(source, 'defer')
+}
+
+// test_file_vflags returns the flags of the last `// vtest vflags:` line of `source`, which
+// get_test_details applies to a file that runs on its own.
+fn test_file_vflags(source string) string {
+	mut vflags := ''
+	for line in source.split_into_lines() {
+		if line.starts_with('// vtest vflags:') {
+			vflags = line.all_after(':').trim_space()
+		}
+	}
+	return vflags
 }
 
 struct TestEnvCleanupHook {
@@ -276,16 +334,28 @@ fn test_env_cleanup_hook(code string, original string) ?TestEnvCleanupHook {
 }
 
 // test_batch_directives_allow reports whether the `// vtest` directives of `source`
-// let it share a binary. Only `// vtest build:` does, when its constraint holds: it
+// let it share a binary. `// vtest build:` does, when its constraint holds: it
 // decides whether the file runs, not how. One that does not hold leaves the file to
-// run, and be skipped, on its own. `retry:` and `flaky:` mark tests that fail now and
-// then, which would send their whole batch back to running file by file.
+// run, and be skipped, on its own. `// vtest vflags:` does too: the batch key holds
+// the flags (test_file_vflags), so a batch only has files compiled with the same ones.
+// `retry:` files share batches only with each other; `flaky:` marks tests that fail
+// now and then, which would send their whole batch back to running file by file.
 fn (ts &TestSession) test_batch_directives_allow(source string) bool {
 	if !source.contains('// vtest') {
 		return true
 	}
 	for line in source.split_into_lines() {
 		if !line.contains('// vtest') {
+			continue
+		}
+		// `// vtest ownership` only decides whether the file runs at all, like `build:`.
+		if line.starts_with('// vtest vflags:') || line == '// vtest ownership'
+			|| line.starts_with('// vtest ownership ') || line.starts_with('// vtest ownership\t') {
+			continue
+		}
+		// A `retry:` file batches only with other such files (test_file_retries), which
+		// run one by one, with their retries, when their batch fails.
+		if line.starts_with('// vtest retry:') {
 			continue
 		}
 		if !line.starts_with('// vtest build:') {
@@ -612,6 +682,14 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 		mut argv := ['-skip-running']
 		vargs := (os.split_args(ts.vargs) or { []string{} }).filter(it != '-silent')
 		argv << vargs
+		// The files of a batch have the same `// vtest vflags:` (see test_file_vflags).
+		if test_path_enables_globals(abs_files[0]) {
+			argv << '-enable-globals'
+		}
+		batch_vflags := get_test_details(abs_files[0]).vflags
+		if batch_vflags != '' {
+			argv << os.split_args(batch_vflags) or { []string{} }
+		}
 		if !vargs.any(it in ['-memory-limit', '-no-memory-limit']) {
 			argv << ['-memory-limit', test_batch_memory_limit_mib().str()]
 		}
