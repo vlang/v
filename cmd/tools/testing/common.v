@@ -420,6 +420,7 @@ pub mut:
 	nmessages     chan LogMessage // many publishers, single consumer/printer
 	nmessage_idx  int             // currently printed message index
 	failed_cmds   shared []string
+	failed_files  shared []string // the test files of failed_cmds, for VTEST_FAILED_LIST
 	reporter      Reporter = Reporter(NormalReporter{})
 	hash          string // used as part of the name of the temporary directory created for tests, to ease cleanup
 
@@ -438,6 +439,29 @@ mut:
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
 	lock ts.failed_cmds {
 		ts.failed_cmds << cmd
+	}
+}
+
+// add_failed_test records that the test file `file` failed, with the command `cmd` that
+// reproduces the failure.
+pub fn (mut ts TestSession) add_failed_test(file string, cmd string) {
+	ts.add_failed_cmd(cmd)
+	lock ts.failed_files {
+		ts.failed_files << file
+	}
+}
+
+// write_failed_files_list writes the failed test files, one per line, to `path` (the value
+// of VTEST_FAILED_LIST, which vtest takes out of the environment of the tests it runs).
+// vlib/v/test_all.vsh reads it to tell the files of a group apart.
+pub fn (mut ts TestSession) write_failed_files_list(path string) {
+	if path == '' {
+		return
+	}
+	rlock ts.failed_files {
+		os.write_file(path, ts.failed_files.map(it + '\n').join('')) or {
+			eprintln('cannot write VTEST_FAILED_LIST ${path}: ${err}')
+		}
 	}
 }
 
@@ -1074,7 +1098,7 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 		os.mkdir_all(test_folder_path) or {
 			ts.benchmark_fail()
 			tls_bench.fail()
-			ts.add_failed_cmd(reproduce_cmd)
+			ts.add_failed_test(file, reproduce_cmd)
 			ts.append_message(.fail, tls_bench.step_message_with_label(benchmark.b_fail,
 				'${normalised_relative_file}\n>> could not create test folder ${test_folder_path}: ${err}'),
 				mtc)
@@ -1148,7 +1172,7 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 			}
 			ts.benchmark_fail()
 			tls_bench.fail()
-			ts.add_failed_cmd(reproduce_cmd)
+			ts.add_failed_test(file, reproduce_cmd)
 			return pool.no_result
 		}
 	} else {
@@ -1176,7 +1200,7 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 				cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
-			ts.add_failed_cmd(reproduce_cmd)
+			ts.add_failed_test(file, reproduce_cmd)
 			return pool.no_result
 		}
 		tls_bench.step_restart()
@@ -1247,7 +1271,7 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 				'${normalised_relative_file}\n${full_failure_output}', cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
-			ts.add_failed_cmd(reproduce_cmd)
+			ts.add_failed_test(file, reproduce_cmd)
 			return pool.no_result
 		}
 	}

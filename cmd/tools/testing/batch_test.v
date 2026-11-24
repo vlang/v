@@ -84,6 +84,33 @@ fn test_units_keep_environment_changing_files_apart() ! {
 	assert ts.test_units(paths) == [paths[0], '${paths[1]}\n${paths[2]}', paths[3]]
 }
 
+fn test_units_batch_files_that_restore_the_working_directory_apart() ! {
+	root := batch_test_root('cwd')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	restored := 'module util\nfn test_NAME() {\n\told := os.getwd()\n\tos.chdir(os.temp_dir()) or {}\n\tdefer {\n\t\tos.chdir(old) or {}\n\t}\n}\n'
+	files := {
+		'a_test.v': 'module util\nfn test_a() {}\n'
+		'b_test.v': restored.replace('NAME', 'b')
+		'c_test.v': restored.replace('NAME', 'c')
+		'd_test.v': 'module util\nfn test_d() {\n\tos.chdir(os.temp_dir()) or {}\n}\n'
+	}
+	mut paths := []string{}
+	for name, source in files {
+		path := os.join_path(root, name)
+		os.write_file(path, source)!
+		paths << path
+	}
+	mut ts := TestSession{
+		vexe:              os.executable()
+		will_compile:      true
+		exec_mode:         .compile_and_run
+		build_environment: build_constraint.new_environment(['macos'], [])
+	}
+	assert ts.test_units(paths) == [paths[0], '${paths[1]}\n${paths[2]}', paths[3]]
+}
+
 fn test_units_group_files_by_vflags_and_accept_ownership_markers() ! {
 	root := batch_test_root('vflags')!
 	defer {
@@ -196,14 +223,15 @@ fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 	}
 	units := ts.test_units(paths)
 	// `k_test.v` declares a constant `it`, which `l_test.v` uses as a local.
-	batch := '${paths[0]}\n${paths[1]}\n${paths[11]}\n${paths[15]}\n${paths[17]}\n${paths[18]}'
+	// `g_test.c.v` is a C backend test, which a batch is too.
+	batch := '${paths[0]}\n${paths[1]}\n${paths[6]}\n${paths[11]}\n${paths[15]}\n${paths[17]}\n${paths[18]}'
 	// `main` tests share batches of their own; one with a `module main` clause is
 	// compiled with its directory's other `main` sources, so it does not join those
 	// without a clause. A file with C flags builds alone.
 	main_batch := '${paths[4]}\n${paths[13]}\n${paths[14]}'
 	// `c_test.v` clashes with `a_test.v` and starts a second batch of its own.
 	assert units == [batch, '${paths[2]}\n${paths[12]}\n${paths[19]}', paths[3], main_batch, paths[5],
-		paths[6], paths[7], paths[8], paths[9], paths[10], paths[16]]
+		paths[7], paths[8], paths[9], paths[10], paths[16]]
 	ts.exec_mode = .compile
 	assert ts.test_units(paths) == paths
 	ts.exec_mode = .compile_and_run

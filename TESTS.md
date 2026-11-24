@@ -82,23 +82,30 @@ the module cache root, unless `V3_TEST_ISOLATE_CACHE=1`.
 A module's internal tests (`_test.v` files that declare the module of their directory) spend most
 of their time compiling that module, and small `main` tests the fixed cost of a whole program.
 `v test` builds up to 16 test files of one directory and module into one binary and runs it once:
-the compiler accepts several distinct `_test.v` files of one directory as its inputs,
-`v -skip-running -o bin a_test.v b_test.v`, and adds the module's other sources once. Files whose
-top-level names collide go to different batches; text in string literals does not count, and test
-functions may share a name (the compiler renames them in a batch). A file
-with `// vtest` directives (other than a `// vtest build:` constraint that holds) or suite
-hooks, or one that changes or reads process state (its environment, working directory,
-arguments or exit), is run on its own, as is a `main` test with C flags, headers, exported or
-global symbols. When a batch fails to
-compile or to run, its files run again one by one, so failures are reported as without batching.
-`VTEST_BATCH_SIZE` sets the largest batch; `VTEST_NO_BATCH=1` runs every file on its own.
-A batch compiles with a memory limit of 4096 MiB (`VTEST_BATCH_MEMORY_LIMIT`), since several
-programs built as one can need far more memory than each alone; over the limit, its files run
-one by one. With `VTEST_SHOW_CMD=1` the runner names the files of a failed batch and why it
+the compiler accepts several distinct `_test.v` and `_test.c.v` files of one directory as its
+inputs, `v -skip-running -o bin a_test.v b_test.v`, and adds the module's other sources once.
+Files whose top-level names collide go to different batches; text in string literals does not
+count, and test functions may share a name (the compiler renames them in a batch).
+
+Files that need something of their own share batches only with files that need the same: the
+same `// vtest vflags:`, `-enable-globals` (`global` in the path), a `testsuite_begin` that only
+unsets environment variables, `// vtest retry:`, or changes to environment variables or to the
+working directory that the file saves and restores (`os.getenv_opt`/`os.getwd()` and a `defer`).
+`// vtest build:` constraints that hold and `// vtest ownership` do not keep a file out. Any other
+`// vtest` directive, other suite hooks, process state the file changes without restoring it, its
+arguments or `exit`, and a `main` test with C flags, headers, exported or global symbols run the
+file on its own.
+
+When a batch fails to compile or to run, its files run again one by one, so failures are reported
+as without batching. `VTEST_BATCH_SIZE` sets the largest batch; `VTEST_NO_BATCH=1` runs every file
+on its own. A batch compiles with a memory limit of 4096 MiB (`VTEST_BATCH_MEMORY_LIMIT`), since
+several programs built as one can need far more memory than each alone; over the limit, its files
+run one by one. With `VTEST_SHOW_CMD=1` the runner names the files of a failed batch and why it
 failed: a batch that fails only together points to a compiler bug or to shared state.
 Batching applies only to plain `v test` runs, without `-stats`, `-b` or `VTEST_RESUME_DIR`.
-`vlib/v/test_all.vsh` passes neighbouring internal tests of one directory to one `v test`, and
-runs the files of a failing group again one by one to name the failures.
+`vlib/v/test_all.vsh` passes neighbouring test files of one directory to one `v test`. With
+`VTEST_FAILED_LIST=path`, `v test` writes the files that failed to `path`, one per line; the script
+records those, and runs the files of a failing group again one by one only when the list is empty.
 
 `cmd/tools/test_if_v_test_system_works.v` checks direct and nested test invocations,
 including expected failures. It streams child output to stderr while retaining that output

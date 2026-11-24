@@ -160,6 +160,7 @@ const libc_collisions = {
 	'clock':        true
 	'connect':      true
 	'cos':          true
+	// <stdlib.h>, which Windows units reach through <immintrin.h>.
 	'div':          true
 	'drem':         true
 	'dup2':         true

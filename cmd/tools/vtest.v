@@ -45,6 +45,9 @@ fn main() {
 		session_args = all_requested_args.clone()
 	}
 	os.unsetenv('VFLAGS')
+	// Only this session writes the list; a `v test` that a test runs must not.
+	failed_list := os.getenv('VTEST_FAILED_LIST')
+	os.unsetenv('VTEST_FAILED_LIST')
 	session_vargs := session_args.map(test_session_argument(it)).join(' ')
 
 	mut ts := testing.new_test_session(session_vargs, true)
@@ -86,6 +89,7 @@ fn main() {
 	ts.session_start('Testing...')
 	ts.test()
 	ts.session_stop('all V _test.v files')
+	ts.write_failed_files_list(failed_list)
 	if ts.has_failures() {
 		exit(1)
 	}
