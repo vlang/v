@@ -341,7 +341,7 @@ fn test_option_only_link_preparation_does_not_probe_or_compile() {
 			mut stats := CObjectCacheStats{}
 			prepared := prepare_c_flags_for_link(flags, [], [], [], false, false, '', [],
 				pref.host_target(),
-				'v_c_link_flags_nonexistent_compiler', false, '', mut stats)!
+				'v_c_link_flags_nonexistent_compiler', false, '', @VEXEROOT, mut stats)!
 			assert prepared == flags, flags.str()
 			assert stats.requests == 0, flags.str()
 			assert stats.compiler_versions.len == 0, flags.str()
@@ -352,7 +352,7 @@ fn test_option_only_link_preparation_does_not_probe_or_compile() {
 		mut stats := CObjectCacheStats{}
 		assert prepare_c_flags_for_link([flag], [], [], [], false, false, '', [],
 			pref.host_target(),
-			'v_c_link_flags_nonexistent_compiler', false, '', mut stats)! == [flag]
+			'v_c_link_flags_nonexistent_compiler', false, '', @VEXEROOT, mut stats)! == [flag]
 		assert stats.requests == 0
 		assert stats.compiler_versions.len == 0
 	}
@@ -389,7 +389,7 @@ fn test_link_plan_tracks_objects_not_object_named_option_operands() {
 	// A file used only as an option operand must not become a required object.
 	os.rm(operand)!
 	assert valid_c_link_plan(manifest, mut read_stats) != none
-	os.write_file(manifest, payload.replace('v3-c-link-plan-v5', 'v3-c-link-plan-v4'))!
+	os.write_file(manifest, payload.replace('v3-c-link-plan-v6', 'v3-c-link-plan-v5'))!
 	assert valid_c_link_plan(manifest, mut read_stats) == none
 	os.write_file(manifest, payload)!
 	os.rm(object)!
@@ -419,13 +419,17 @@ fn test_link_preparation_preserves_option_pairs_beside_real_objects() {
 		primary_compiler: compiler
 		common_flags:     c_object_compile_support_flags(flags)
 	}
-	manifest := c_link_plan_path(cache_dir, flags, &object_flags, false, false, '', [],
-		target, compiler, false, mut stats)
+	user_flags := CObjectFlagPlan{
+		primary_compiler: compiler
+		common_flags:     c_object_compile_support_flags(flags)
+	}
+	manifest := c_link_plan_path(cache_dir, flags, &object_flags, &user_flags, false, false,
+		'', [], target, compiler, false, mut stats)
 	defer {
 		os.rm(manifest) or {}
 	}
 	prepared := prepare_c_flags_for_link(flags, [], [], [], false, false, '', [], target,
-		compiler, false, root, mut stats)!
+		compiler, false, root, @VEXEROOT, mut stats)!
 	assert prepared == flags
 	assert stats.requests == 1
 	assert stats.direct_objects == 1
@@ -465,7 +469,7 @@ fn test_c_source_language_flags_preserve_filename_case_and_explicit_languages() 
 	assert !c_link_flags_use_cpp_language(['-x', 'c', 'source.C'])
 	mut stats := CObjectCacheStats{}
 	prepared := prepare_c_flags_for_link(flags.filter(it != 'native.o'), [], [], [], false, false, '', [],
-		pref.host_target(), 'missing-compiler', false, '', mut stats)!
+		pref.host_target(), 'missing-compiler', false, '', @VEXEROOT, mut stats)!
 	mut prepared_expected := expected.filter(it != 'native.o')
 	prepared_expected << cpp_runtime_link_flag(pref.host_target())
 	assert prepared == prepared_expected

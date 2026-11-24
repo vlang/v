@@ -577,6 +577,7 @@ struct Arm64LinkInputs {
 	target             pref.Target
 	c99                bool
 	no_std             bool
+	vroot              string
 }
 
 // Arm64PreparedLink is the result of preparing the link inputs on a thread.
@@ -600,7 +601,7 @@ fn arm64_prepare_link_inputs(side Arm64CSide, inputs Arm64LinkInputs) Arm64Prepa
 	mut stats := CObjectCacheStats{}
 	link_flags = prepare_c_flags_for_link(link_flags, inputs.environment_cflags, []string{},
 		inputs.optimization_flags, inputs.c99, inputs.no_std, '', side.target_args, inputs.target,
-		side.compiler, false, os.vtmp_dir(), mut stats) or {
+		side.compiler, false, os.vtmp_dir(), inputs.vroot, mut stats) or {
 		return Arm64PreparedLink{
 			error: err.msg()
 		}

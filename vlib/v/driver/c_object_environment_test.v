@@ -12,7 +12,7 @@ fn native_environment_keys(compiler string) []string {
 	return [
 		identity,
 		c_object_manifest_path('/cache', '/probe.o', compiler, [], target, mut stats),
-		c_link_plan_path('/cache', [], &flags, false, false, '', [], target, compiler, false, mut stats),
+		c_link_plan_path('/cache', [], &flags, &flags, false, false, '', [], target, compiler, false, mut stats),
 		c_object_cache_name('/probe.o', compiler, [], [], target, false, mut stats),
 		v3_cached_object_compile_signature(V3CachedObjectCompiler{}, 'c11', '', '', '', [], false, ''),
 	]
