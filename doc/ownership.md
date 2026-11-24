@@ -411,6 +411,8 @@ An `arc.Mutex[T]` instead grants exclusive ownership of the value during an upda
 Its clones can cross a thread boundary when `T` can be transferred. Pass an
 update function that receives `T` and returns a `MutexUpdate[T, R]` with the
 replacement value and result.
+`update_with` also moves a caller-provided value into the callback. Use
+`update_pair` to update two distinct mutexes while holding both locks.
 For example, a worker can take ownership of a `cell.RefCell[int]`. Its
 unsynchronized borrow state prevents sharing it through an `Arc`.
 An interface value or function value with an unknown implementation or capture

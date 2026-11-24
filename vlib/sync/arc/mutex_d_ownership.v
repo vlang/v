@@ -52,24 +52,72 @@ pub fn (mut m Mutex[T]) drop() {
 	m.inner.drop()
 }
 
-// update calls work with ownership of the protected value while holding the lock.
-// Work returns the replacement value and a result. It must not acquire the same lock.
-pub fn (m &Mutex[T]) update[R](work fn (T) MutexUpdate[T, R]) R {
-	mut data := unsafe { m.inner.get() }
-	data.mutex.lock()
-	defer {
-		data.mutex.unlock()
-	}
+fn (mut data MutexValue[T]) take_value() T {
 	mut old := ?MutexPayload[T](none)
-	// Move the optional payload to local storage without dropping it.
-	// The empty option replaces it before the callback can access the value.
+	// Move the optional payload to local storage while the mutex is held.
 	unsafe {
 		empty := ?MutexPayload[T](none)
 		vmemcpy(&old, &data.value, sizeof(?MutexPayload[T]))
 		vmemcpy(&data.value, &empty, sizeof(?MutexPayload[T]))
 	}
 	payload := old or { panic('arc.Mutex has no protected value') }
-	updated := work(payload.value)
-	data.value = MutexPayload[T]{ value: updated.value }
-	return updated.result
+	return payload.value
+}
+
+// update calls work with ownership of the protected value while holding the lock.
+// Work returns the replacement value and a result. It must not acquire the same lock.
+pub fn (m &Mutex[T]) update[R](work fn (T) MutexUpdate[T, R]) R {
+	mut data := unsafe { m.inner.get() }
+	data.mutex.lock()
+	defer { data.mutex.unlock() }
+	next := work(data.take_value())
+	data.value = MutexPayload[T]{ value: next.value }
+	return next.result
+}
+
+// update_with moves context into a protected update and returns the result.
+// Work receives the value and context while the lock is held.
+pub fn (m &Mutex[T]) update_with[C, R](context C, work fn (T, C) MutexUpdate[T, R]) R {
+	mut data := unsafe { m.inner.get() }
+	data.mutex.lock()
+	defer { data.mutex.unlock() }
+	next := work(data.take_value(), context)
+	data.value = MutexPayload[T]{ value: next.value }
+	return next.result
+}
+
+// MutexPairUpdate supplies both replacement values and a result.
+pub struct MutexPairUpdate[T, R] {
+pub:
+	first  T
+	second T
+	result R
+}
+
+// update_pair moves two protected values into one update while holding both locks.
+// The mutexes must be distinct. Work must not acquire either lock again.
+pub fn (m &Mutex[T]) update_pair[R](other &Mutex[T], work fn (T, T) MutexPairUpdate[T, R]) R {
+	mut first := unsafe { m.inner.get() }
+	mut second := unsafe { other.inner.get() }
+	first_address := u64(voidptr(first))
+	second_address := u64(voidptr(second))
+	if first_address == second_address {
+		panic('arc.Mutex.update_pair requires distinct mutexes')
+	}
+	// All callers use the same acquisition order, including reversed pairs.
+	if first_address < second_address {
+		first.mutex.lock()
+		second.mutex.lock()
+	} else {
+		second.mutex.lock()
+		first.mutex.lock()
+	}
+	defer {
+		first.mutex.unlock()
+		second.mutex.unlock()
+	}
+	next := work(first.take_value(), second.take_value())
+	first.value = MutexPayload[T]{ value: next.first }
+	second.value = MutexPayload[T]{ value: next.second }
+	return next.result
 }

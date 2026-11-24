@@ -56,3 +56,42 @@ fn test_mutex_can_store_an_optional_value() {
 	assert mutex.update(rotate_mutex_option) == 0
 	assert mutex.update(rotate_mutex_option) == 5
 }
+
+fn append_mutex_log_label(log MutexLog, label string) MutexUpdate[MutexLog, int] {
+	mut next := log
+	next.entries << label
+	return MutexUpdate[MutexLog, int]{ value: next }
+}
+
+fn swap_mutex_logs(first MutexLog, second MutexLog) MutexPairUpdate[MutexLog, bool] {
+	return MutexPairUpdate[MutexLog, bool]{
+		first:  second
+		second: first
+		result: true
+	}
+}
+
+fn swap_mutex_logs_repeatedly(first Mutex[MutexLog], second Mutex[MutexLog]) {
+	for _ in 0 .. 200 {
+		assert first.update_pair(&second, swap_mutex_logs)
+	}
+}
+
+fn test_mutex_pair_updates_acquire_locks_in_the_same_order() {
+	released := chan int{cap: 4}
+	mut first := new_mutex(MutexLog{ released: released })
+	mut second := new_mutex(MutexLog{ released: released })
+	first.update_with('one'.to_owned(), append_mutex_log_label)
+	second.update_with('two'.to_owned(), append_mutex_log_label)
+	second.update_with('three'.to_owned(), append_mutex_log_label)
+
+	left := spawn swap_mutex_logs_repeatedly(first.clone(), second.clone())
+	right := spawn swap_mutex_logs_repeatedly(second.clone(), first.clone())
+	left.wait()
+	right.wait()
+
+	first.drop()
+	second.drop()
+	assert <-released == 1
+	assert <-released == 2
+}
