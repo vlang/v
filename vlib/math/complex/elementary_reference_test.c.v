@@ -3,10 +3,12 @@ module complex
 import math
 import strconv
 
-#flag linux -lm
-#include "@VMODROOT/vlib/math/complex/testdata/elementary_reference.h"
+$if !tinyc && !msvc && !freestanding {
+	#flag linux -lm
+	#include "@VMODROOT/vlib/math/complex/testdata/elementary_reference.h"
 
-fn C.v_complex_reference(int, f64, f64, f64, f64, &f64, &f64)
+	fn C.v_complex_reference(int, f64, f64, f64, f64, &f64, &f64)
+}
 
 fn reference_oracles() map[string]Complex {
 	mut oracles := map[string]Complex{}
@@ -76,7 +78,11 @@ fn compare_reference(z Complex, operation int, power Complex, oracles map[string
 		rr = expected.re
 		ri = expected.im
 	} else {
-		C.v_complex_reference(operation, z.re, z.im, power.re, power.im, &rr, &ri)
+		$if !tinyc && !msvc && !freestanding {
+			C.v_complex_reference(operation, z.re, z.im, power.re, power.im, &rr, &ri)
+		} $else {
+			return
+		}
 	}
 	actual := elementary_operation(z, operation, power)
 	// Annex G permits different infinity signs for several nonfinite

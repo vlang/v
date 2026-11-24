@@ -10,6 +10,7 @@ an overflowing or underflowing squared magnitude and retains product residuals n
 unit circle. Inverse functions use the Hull, Fairgrieve and Tang algorithm to avoid
 cancellation near their cuts. Complex powers use the principal logarithm and a scaled
 exponential; their phase is rounded to binary64 before evaluating sine and cosine.
+For positive real bases and finite real exponents, `pow` and `cpow` use real `math.pow`.
 The power exponent calculation scales overflowing sums of finite products, preserving
 zero or infinite results instead of introducing NaNs through the roundoff calculation.
 
@@ -30,4 +31,4 @@ recorded separately in `testdata/elementary_special.tsv`, following
 [ISO C Annex G](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n3220.pdf) and its
 [clarifications](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1867.htm).
 The differential tests prefer these independent fixtures when available and use host
-libm for other inputs, retaining the same inputs and component tolerances on every platform.
+libm for other inputs on compilers with C99 complex support. TinyCC and MSVC use the fixtures.
