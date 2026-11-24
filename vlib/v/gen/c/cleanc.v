@@ -20688,6 +20688,10 @@ fn (g &FlatGen) fixed_array_literal_index_type(base_id flat.NodeId, node flat.No
 }
 
 fn char_escape_codepoint(s string) ?int {
+	// The `\e` (ESC) escape is a GNU C extension; MSVC reads `'\e'` as `'e'`.
+	if s == '\\e' {
+		return 27
+	}
 	if s.starts_with('\\x') && s.len > 2 {
 		return parse_hex_codepoint(s[2..])
 	}
@@ -27674,6 +27678,11 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		return
 	}
 	mut is_static_const := g.is_const_expr(val_id) && !g.const_expr_needs_runtime_storage(expr_str)
+	// MSVC rejects a string's compound literal as a file-scope initializer, also when the
+	// value is not a plain literal (`$d('name', 'default')`).
+	if g.ccompiler == 'msvc' && unalias_type(v_type) is types.String {
+		is_static_const = false
+	}
 	// Aggregate constants that reference another aggregate constant cannot use the
 	// referenced C object as a file-scope initializer. Initialize them in _vinit,
 	// after their dependency has been constructed.
