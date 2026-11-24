@@ -16863,6 +16863,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				tc.check_node(check_arg_id)
 			}
 		}
+		$if ownership ? {
+			if info.name == 'chan.close' && tc.ownership_checks_thread_boundary() {
+				tc.ownership_check_channel_close_error(check_arg_id)
+			}
+		}
 		multi_arg_type := if !info.is_variadic {
 			tc.cached_expr_type(check_arg_id) or { tc.resolve_type(check_arg_id) }
 		} else {
