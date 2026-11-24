@@ -428,17 +428,24 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 // vcalloc checks for negative values given in `n`.
 @[inline]
 pub fn vcalloc(n int) &u8 {
+	return vcalloc_impl(n, true)
+}
+
+// vcalloc_impl shares V's zeroed allocation path with explicit heap allocators.
+// use_arena is a constant at each call site; opting out never changes thread-local state.
+@[inline]
+fn vcalloc_impl(n int, use_arena bool) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc %6d total %10d\n', n, total_m)
 	}
 	if n < 0 {
-		_memory_panic(@FN, n)
+		_memory_panic('vcalloc', n)
 	} else if n == 0 {
 		return &u8(unsafe { nil })
 	}
 	$if !prealloc && !no_builtin_arena ? {
-		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
+		if use_arena && _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			arena_ptr := g_arena_alloc_hook(n, 0)
 			if arena_ptr != 0 {
 				// Reset arenas reuse their memory, so it is not zeroed.
