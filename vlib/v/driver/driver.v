@@ -15712,7 +15712,7 @@ pub fn run(args []string) {
 			// The executable is linked as out.exe in a private build directory, which
 			// is removed after publishing it. Keep its PDB at the final executable path.
 			name := os.file_name(bin_file)
-			pdb_name := name.trim_suffix(os.file_ext(name)) + '.pdb'
+			pdb_name := name.trim_string_right(os.file_ext(name)) + '.pdb'
 			pdb_path := os.join_path_single(v3_output_dir(bin_file), pdb_name)
 			// Put the default before explicit linker flags, so -ldflags can override it.
 			shared_link_ld_flags.prepend(['-Xlinker', '/PDB:${pdb_path}'])
