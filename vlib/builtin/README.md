@@ -156,3 +156,26 @@ Release ordinary-heap allocations with unsafe `vfree_heap(ptr)`. It follows the 
 GC/manual release policy while bypassing preallocation's free no-op, preserves scoped allocator
 state, and accepts nil. Pass each live heap allocation at most once. As with `free`, ordinary
 Boehm mode leaves reclamation to the collector; this does not make the allocation uncollectable.
+
+### Collector weak references
+
+Unsafe `gc_weak_reference(target)` returns `?GCWeakReference` for an ordinary collectable
+Boehm object base. Keep `target` strongly alive during construction. Nil, non-GC/interior
+pointers, allocation or registration failure, non-Boehm modes, `boehm_leak`, and runtime
+leak-finding mode return `none`. A base-address check cannot establish that an object is still
+live or collectable; those remain caller preconditions. Arena payloads and uncollectable
+allocations are outside the contract. Do not explicitly free a target after creating a weak
+reference, including through autofree: Boehm does not guarantee clearing its links on manual free.
+The collector's configured OOM handler keeps its own behavior; `none` is returned when allocation
+or registration reports failure.
+
+Handles can be copied or stored in growing arrays. They share a stable collector-owned atomic
+cell, which bypasses scoped arenas and does not retain the target. There is no explicit release
+operation. A zero handle is empty. `reference.get()` acquires the collector allocation lock and
+returns either nil or a strong target pointer. Keep that returned pointer reachable while using
+it. Use one `get()` to acquire a target, rather than checking for liveness and then fetching it
+again. Expiration can occur between those operations.
+
+Ordinary `boehm` and optimized `boehm_full_opt` / `boehm_incr_opt` modes are supported. An
+unsupported mode never substitutes a strong reference. This API provides collector weakness,
+independently of arena lifetime-token checks.

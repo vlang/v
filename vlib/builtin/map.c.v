@@ -179,51 +179,73 @@ fn map_enum_fn(kind int, esize int) voidptr {
 	return unsafe { nil }
 }
 
-// Move all zeros to the end of the array and resize array
-fn (mut d DenseArray) zeros_to_end() {
-	// TODO: alloca?
-	mut tmp_value := unsafe { malloc(d.value_bytes) }
-	mut tmp_key := unsafe { malloc(d.key_bytes) }
-	mut count := 0
+// Build a compact dense table before committing a deletion. Keys and values
+// are moved by bytes, so resident objects retain identity and keys are not cloned.
+fn (d &DenseArray) compacted_without(removed int) DenseArray {
+	count := d.len - int(d.deletes) - 1
+	capacity := int_max(8, count)
+	mut result := DenseArray{
+		...*d
+		cap:         capacity
+		len:         0
+		deletes:     0
+		keys:        unsafe { nil }
+		values:      unsafe { nil }
+		all_deleted: unsafe { nil }
+	}
+	mut published := false
+	defer {
+		if !published { unsafe { result.free_storage() } }
+	}
+	$if v3_backend ? {
+		result.keys = dense_array_allocate(u64(capacity) * u64(d.key_bytes), d.key_alignment)
+		result.values = dense_array_allocate(u64(capacity) * u64(d.value_bytes), d.value_alignment)
+	} $else {
+		result.keys = unsafe { malloc(__at_least_one(u64(capacity) * u64(d.key_bytes))) }
+		result.values = unsafe { malloc(__at_least_one(u64(capacity) * u64(d.value_bytes))) }
+	}
 	for i in 0 .. d.len {
-		if d.has_index(i) {
-			// swap (TODO: optimize)
-			unsafe {
-				if count != i {
-					// Swap keys
-					C.memcpy(tmp_key, d.key(count), d.key_bytes)
-					C.memcpy(d.key(count), d.key(i), d.key_bytes)
-					C.memcpy(d.key(i), tmp_key, d.key_bytes)
-					// Swap values
-					if d.value_bytes != 0 {
-						C.memcpy(tmp_value, d.value(count), d.value_bytes)
-						C.memcpy(d.value(count), d.value(i), d.value_bytes)
-						C.memcpy(d.value(i), tmp_value, d.value_bytes)
-					}
-				}
-			}
-			count++
+		if i == removed || !d.has_index(i) { continue }
+		unsafe {
+			vmemcpy(result.key(result.len), d.key(i), d.key_bytes)
+			if d.value_bytes != 0 { vmemcpy(result.value(result.len), d.value(i), d.value_bytes) }
+		}
+		result.len++
+	}
+	published = true
+	return result
+}
+
+// Free backing buffers without freeing the keys or values moved into another table.
+@[unsafe]
+fn (d &DenseArray) free_storage() {
+	$if v3_backend ? {
+		unsafe {
+			if d.keys != nil { dense_array_free(d.keys, d.key_alignment) }
+			if d.values != nil { dense_array_free(d.values, d.value_alignment) }
+		}
+	} $else {
+		unsafe {
+			free(d.keys)
+			free(d.values)
 		}
 	}
-	unsafe {
-		free(tmp_value)
-		free(tmp_key)
-		d.deletes = 0
-		// TODO: reallocate instead as more deletes are likely
-		free(d.all_deleted)
-		d.all_deleted = nil
-	}
-	d.len = count
-	old_cap := d.cap
-	if count < 8 {
-		d.cap = 8
+	unsafe { free(d.all_deleted) }
+}
+
+@[inline]
+fn (d &DenseArray) compacts_after_delete(index int) bool {
+	if d.len <= 32 || int(d.deletes) + 1 < (d.len >> 1) { return false }
+	mut length := d.len
+	mut deleted := int(d.deletes)
+	if index == length - 1 {
+		length--
+		for length > 0 && !d.has_index(length - 1) {
+			length--
+			deleted--
+		}
 	} else {
-		d.cap = count
+		deleted++
 	}
-	unsafe {
-		if d.value_bytes != 0 {
-			d.values = realloc_data(d.values, d.value_bytes * old_cap, d.value_bytes * d.cap)
-		}
-		d.keys = realloc_data(d.keys, d.key_bytes * old_cap, d.key_bytes * d.cap)
-	}
+	return length > 32 && deleted >= (length >> 1)
 }

@@ -150,25 +150,27 @@ fn (mut d DenseArray) reserve(n int) {
 	old_cap := d.cap
 	old_key_size := d.key_bytes * old_cap
 	old_value_size := d.value_bytes * old_cap
-	d.cap = n
 	unsafe {
-		d.keys = dense_array_resize(d.keys, old_key_size, d.key_bytes * d.cap, d.key_alignment)
+		d.keys = dense_array_resize(d.keys, old_key_size, d.key_bytes * n, d.key_alignment)
 		// Zero-sized values retain their initial one-byte allocation across growth.
-		if d.value_bytes != 0 {
-			d.values = dense_array_resize(d.values, old_value_size, d.value_bytes * d.cap, d.value_alignment)
+		if d.value_bytes != 0 || d.values == nil {
+			d.values = dense_array_resize(d.values, old_value_size, d.value_bytes * n, d.value_alignment)
 		}
 		if d.deletes != 0 {
-			d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
-			vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)
+			d.all_deleted = realloc_data(d.all_deleted, old_cap, n)
+			vmemset(voidptr(d.all_deleted + d.len), 0, n - d.len)
 		}
 	}
+	// A failed later resize can leave an earlier buffer larger. The committed
+	// capacity must stay within every buffer until all of them have grown.
+	d.cap = n
 }
 
 // Make space to append an element and return index
 // Preallocated arenas retain old buffers, so doubling bounds their cumulative
 // storage and copying. Other allocators use the compact 1.125 growth factor.
 @[inline]
-fn (mut d DenseArray) expand() int {
+fn (mut d DenseArray) reserve_slot() {
 	if d.cap == d.len {
 		mut growth := d.cap >> 3
 		$if prealloc {
@@ -176,6 +178,11 @@ fn (mut d DenseArray) expand() int {
 		}
 		d.reserve(d.cap + int_max(1, growth))
 	}
+}
+
+@[inline]
+fn (mut d DenseArray) expand() int {
+	d.reserve_slot()
 	push_index := d.len
 	unsafe {
 		if d.deletes != 0 {
@@ -663,33 +670,61 @@ fn (mut m VMapData) meta_greater(_index u32, _metas u32, kvi u32) {
 }
 
 fn (mut m VMapData) ensure_extra_metas_grow() {
-	size_of_u32 := sizeof(u32)
-	old_mem_size := (m.even_index + 2 + m.extra_metas)
-	m.extra_metas += extra_metas_inc
-	mem_size := (m.even_index + 2 + m.extra_metas)
+	old_words := m.even_index + 2 + m.extra_metas
+	new_words := old_words + extra_metas_inc
 	unsafe {
-		x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
-		m.metas = &u32(x)
-		vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
+		m.metas = &u32(realloc_data(byteptr(m.metas), int(sizeof(u32) * old_words), int(sizeof(u32) * new_words)))
+		vmemset(&m.metas[old_words], 0, int(sizeof(u32) * extra_metas_inc))
 	}
+	m.extra_metas += extra_metas_inc
 }
 
 @[inline]
 fn (mut m VMapData) ensure_extra_metas(probe_count u32) {
 	if (probe_count << 1) == m.extra_metas {
-		size_of_u32 := sizeof(u32)
-		old_mem_size := (m.even_index + 2 + m.extra_metas)
-		m.extra_metas += extra_metas_inc
-		mem_size := (m.even_index + 2 + m.extra_metas)
-		unsafe {
-			x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
-			m.metas = &u32(x)
-			vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
-		}
-		// Should almost never happen
 		if probe_count == 252 {
 			panic('Probe overflow')
 		}
+		m.ensure_extra_metas_grow()
+	}
+}
+
+// When a caller can recover, acquire any space needed by the Robin Hood
+// displacement chain before changing an occupied bucket. Most inserts land
+// directly in an empty slot. Rehash builds an unpublished table.
+fn (mut m VMapData) reserve_insert_metas(start u32, initial u32) {
+	mut index := start
+	mut meta := initial
+	for unsafe { m.metas[index] } != 0 {
+		resident := unsafe { m.metas[index] }
+		if meta > resident {
+			meta = resident
+		}
+		index += 2
+		meta += probe_inc
+		if index + 2 >= m.even_index + 2 + m.extra_metas {
+			m.ensure_extra_metas_grow()
+		}
+	}
+	m.ensure_extra_metas((meta >> hashbits) - 1)
+}
+
+// The metadata table contains only integers. Treat a nil backing allocation as
+// a recoverable memory failure before the new table can be published or used.
+fn map_allocate_metas(bytes int) &u32 {
+	$if gcboehm_opt ? {
+		// malloc_noscan checks the collector result before we clear the block.
+		unsafe {
+			p := malloc_noscan(bytes)
+			vmemset(p, 0, bytes)
+			return &u32(p)
+		}
+	} $else {
+		p := unsafe { vcalloc_noscan(bytes) }
+		if p == unsafe { nil } {
+			_memory_panic(@FN, bytes)
+		}
+		return unsafe { &u32(p) }
 	}
 }
 
@@ -719,8 +754,8 @@ fn (mut m VMapData) set_general(key voidptr, value voidptr) {
 	if m.metas == unsafe { nil } {
 		// Most compiler bookkeeping maps remain empty. Allocate backing storage
 		// only on the first insertion or an explicit reservation.
-		m.key_values = new_dense_array(m.key_bytes, m.value_bytes, m.key_values.key_alignment, m.key_values.value_alignment)
-		m.metas = unsafe { &u32(vcalloc_noscan(sizeof(u32) * (m.even_index + 2 + m.extra_metas))) }
+		m.key_values.reserve(8)
+		m.metas = map_allocate_metas(int(sizeof(u32) * (m.even_index + 2 + m.extra_metas)))
 	}
 	// Integer-based load factor check: equivalent to (2*len)/even_index > 0.8
 	// which simplifies to 5*len > 2*even_index (avoids float ops broken in ARM64 backend)
@@ -743,7 +778,11 @@ fn (mut m VMapData) set_general(key voidptr, value voidptr) {
 		index += 2
 		meta += probe_inc
 	}
-	kv_index := m.key_values.expand()
+	if g_panic_state.top != unsafe { nil } {
+		m.reserve_insert_metas(index, meta)
+	}
+	m.key_values.reserve_slot()
+	kv_index := m.key_values.len
 	unsafe {
 		pkey := m.key_values.key(kv_index)
 		pvalue := m.key_values.value(kv_index)
@@ -752,22 +791,47 @@ fn (mut m VMapData) set_general(key voidptr, value voidptr) {
 		vmemcpy(pvalue, value, m.value_bytes)
 	}
 	m.meta_greater(index, meta, u32(kv_index))
+	if m.key_values.deletes != 0 {
+		unsafe { m.key_values.all_deleted[kv_index] = 0 }
+	}
+	m.key_values.len++
 	m.count++
 }
 
 // Doubles the size of the hashmap
 fn (mut m VMapData) expand() {
 	old_cap := m.even_index
-	m.even_index = ((m.even_index + 2) << 1) - 2
-	// Check if any hashbits are left
-	if m.cached_hashbits == 0 {
-		m.shift += max_cached_hashbits
-		m.cached_hashbits = max_cached_hashbits
-		m.rehash()
-	} else {
-		m.cached_rehash(old_cap)
-		m.cached_hashbits--
+	old_metas := m.metas
+	old_extra := m.extra_metas
+	mut grown := VMapData{
+		...m
+		even_index: ((old_cap + 2) << 1) - 2
+		metas:      unsafe { nil }
 	}
+	mut installed := false
+	defer {
+		if !installed {
+			unsafe { free(grown.metas) }
+		}
+	}
+	if grown.cached_hashbits == 0 {
+		grown.shift += max_cached_hashbits
+		grown.cached_hashbits = max_cached_hashbits
+		grown.rehash()
+	} else {
+		grown.cached_rehash(old_metas, old_cap, old_extra)
+		grown.cached_hashbits--
+	}
+	m.even_index = grown.even_index
+	m.shift = grown.shift
+	m.cached_hashbits = grown.cached_hashbits
+	m.extra_metas = grown.extra_metas
+	m.metas = grown.metas
+	installed = true
+	$if prealloc {
+		unsafe { prealloc_discard_pages(old_metas, uint(sizeof(u32)) * uint(old_cap + 2 + old_extra)) }
+	}
+	unsafe { free(old_metas) }
 }
 
 // rehash reconstructs the hash table.
@@ -781,11 +845,19 @@ fn (mut m VMapData) rehash() {
 }
 
 fn (mut m VMapData) reserve_metas(meta_bytes u32) {
-	unsafe {
-		// TODO: use realloc_data here too
-		x := v_realloc(byteptr(m.metas), int(meta_bytes))
-		m.metas = &u32(x)
-		vmemset(m.metas, 0, int(meta_bytes))
+	if isnil(m.metas) {
+		fresh := unsafe { malloc_noscan(int(meta_bytes)) }
+		if isnil(fresh) { _memory_panic(@FN, int(meta_bytes)) }
+		unsafe {
+			vmemset(fresh, 0, int(meta_bytes))
+			m.metas = &u32(fresh)
+		}
+	} else {
+		unsafe {
+			x := v_realloc(byteptr(m.metas), int(meta_bytes))
+			m.metas = &u32(x)
+			vmemset(m.metas, 0, int(meta_bytes))
+		}
 	}
 	for i := 0; i < m.key_values.len; i++ {
 		if !m.key_values.has_index(i) {
@@ -805,23 +877,29 @@ pub fn (mut m map) reserve(n u32) {
 
 fn (mut m VMapData) reserve(n u32) {
 	if m.count == 0 {
-		old_index := m.even_index
-		for u64(n) * 5 > u64(m.even_index) * 2 {
-			m.even_index = ((m.even_index + 2) << 1) - 2
-			if m.cached_hashbits == 0 {
-				m.shift += max_cached_hashbits
-				m.cached_hashbits = max_cached_hashbits
+		mut index := m.even_index
+		mut cached := m.cached_hashbits
+		mut shift := m.shift
+		for u64(n) * 5 > u64(index) * 2 {
+			index = ((index + 2) << 1) - 2
+			if cached == 0 {
+				shift += max_cached_hashbits
+				cached = max_cached_hashbits
 			} else {
-				m.cached_hashbits--
+				cached--
 			}
 		}
-		if m.even_index != old_index || (n > 0 && m.metas == unsafe { nil }) {
+		if index != m.even_index || (n > 0 && m.metas == unsafe { nil }) {
 			// Empty maps have no entries to rehash. Allocate the final metadata
 			// table once instead of zeroing every intermediate doubled table.
-			meta_bytes := sizeof(u32) * (m.even_index + 2 + m.extra_metas)
+			meta_bytes := sizeof(u32) * (index + 2 + m.extra_metas)
 			unsafe {
+				replacement := map_allocate_metas(int(meta_bytes))
 				free(m.metas)
-				m.metas = &u32(vcalloc_noscan(meta_bytes))
+				m.metas = replacement
+				m.even_index = index
+				m.shift = shift
+				m.cached_hashbits = cached
 			}
 		}
 	} else {
@@ -838,11 +916,9 @@ fn (mut m VMapData) reserve(n u32) {
 
 // cached_rehashd works like rehash. However, instead of rehashing the
 // key completely, it uses the bits cached in `metas`.
-fn (mut m VMapData) cached_rehash(old_cap u32) {
-	old_metas := m.metas
+fn (mut m VMapData) cached_rehash(old_metas &u32, old_cap u32, old_extra_metas u32) {
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
-	m.metas = unsafe { &u32(vcalloc(metasize)) }
-	old_extra_metas := m.extra_metas
+	m.metas = map_allocate_metas(metasize)
 	for i := u32(0); i <= old_cap + old_extra_metas; i += 2 {
 		if unsafe { old_metas[i] } == 0 {
 			continue
@@ -856,10 +932,6 @@ fn (mut m VMapData) cached_rehash(old_cap u32) {
 		index, meta = m.meta_less(index, meta)
 		m.meta_greater(index, meta, kv_index)
 	}
-	$if prealloc {
-		unsafe { prealloc_discard_pages(old_metas, uint(sizeof(u32)) * uint(old_cap + 2 + old_extra_metas)) }
-	}
-	unsafe { free(old_metas) }
 }
 
 // get_and_set is used for assignment operators. If the argument-key
@@ -1122,7 +1194,11 @@ fn (mut d DenseArray) delete(i int) {
 		return
 	}
 	if d.deletes == 0 {
-		d.all_deleted = vcalloc(d.cap) // sets to 0
+		bitmap := vcalloc(d.cap)
+		if isnil(bitmap) {
+			_memory_panic('map.delete', d.cap)
+		}
+		d.all_deleted = bitmap
 	}
 	d.deletes++
 	unsafe {
@@ -1130,7 +1206,8 @@ fn (mut d DenseArray) delete(i int) {
 	}
 }
 
-// delete removes the mapping of a particular key from the map.
+// delete removes the mapping of a particular key from the map. Compaction
+// prepares replacement storage before removing the key.
 @[unsafe]
 pub fn (mut m map) delete(key voidptr) {
 	unsafe { m.data.delete(key) }
@@ -1152,6 +1229,13 @@ fn (mut m VMapData) delete(key voidptr) {
 		kv_index := int(unsafe { m.metas[index + 1] })
 		pkey := unsafe { m.key_values.key(kv_index) }
 		if m.keys_equal(key, pkey) {
+			if m.key_values.compacts_after_delete(kv_index) {
+				m.delete_compacted(kv_index)
+				return
+			}
+			// The first interior deletion can allocate its bitmap. Commit the dense
+			// deletion before changing the sparse table or the public count.
+			m.key_values.delete(kv_index)
 			for (unsafe { m.metas[index + 2] } >> hashbits) > 1 {
 				unsafe {
 					m.metas[index] = m.metas[index + 2] - probe_inc
@@ -1160,7 +1244,6 @@ fn (mut m VMapData) delete(key voidptr) {
 				index += 2
 			}
 			m.count--
-			m.key_values.delete(kv_index)
 			unsafe {
 				m.metas[index] = 0
 				m.free_fn(pkey)
@@ -1168,14 +1251,6 @@ fn (mut m VMapData) delete(key voidptr) {
 				vmemset(pkey, 0, m.key_bytes)
 				// Deleted values must not keep their former pointees reachable by the GC.
 				vmemset(m.key_values.value(kv_index), 0, m.value_bytes)
-			}
-			if m.key_values.len <= 32 {
-				return
-			}
-			// Clean up key_values if too many have been deleted
-			if m.key_values.deletes >= (m.key_values.len >> 1) {
-				m.key_values.zeros_to_end()
-				m.rehash()
 			}
 			return
 		}
@@ -1206,13 +1281,13 @@ fn dense_array_free(data &u8, alignment u8) {
 
 @[inline; unsafe]
 fn dense_array_resize(data &u8, previous int, requested int, alignment u8) &u8 {
+	if data == unsafe { nil } {
+		return dense_array_allocate(u64(requested), alignment)
+	}
 	if alignment == 0 {
 		return unsafe { realloc_data(data, previous, requested) }
 	}
 	result := dense_array_allocate(u64(requested), alignment)
-	if data == unsafe { nil } {
-		return result
-	}
 	count := if previous < requested { previous } else { requested }
 	if count > 0 {
 		unsafe { vmemcpy(result, data, count) }
@@ -1557,5 +1632,34 @@ fn (m &VMapData) free() {
 		m.string_length_bits = 0
 		m.string_first_bits = 0
 		m.count = 0
+	}
+}
+
+// Reserve every replacement before removing the key. A denied compaction
+// leaves both lookup and insertion order unchanged and may be retried.
+fn (mut m VMapData) delete_compacted(index int) {
+	storage := m.key_values.compacted_without(index)
+	mut staged := VMapData{ ...m, key_values: storage, metas: unsafe { nil } }
+	mut committed := false
+	defer {
+		if !committed {
+			unsafe {
+				staged.key_values.free_storage()
+				free(staged.metas)
+			}
+		}
+	}
+	staged.rehash()
+	old_storage := m.key_values
+	old_metas := m.metas
+	m.key_values = staged.key_values
+	m.metas = staged.metas
+	m.extra_metas = staged.extra_metas
+	m.count--
+	committed = true
+	unsafe {
+		m.free_fn(old_storage.key(index))
+		old_storage.free_storage()
+		free(old_metas)
 	}
 }

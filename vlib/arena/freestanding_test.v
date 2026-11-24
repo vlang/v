@@ -52,7 +52,7 @@ fn test_freestanding_arena_backing_allocation_failure() ! {
 		assert compiled.exit_code == 0, compiled.output
 		result := os.exec([program])
 		assert result.exit_code == 1, result.output
-		assert result.output.starts_with('could not allocate '), result.output
-		assert result.output.trim_space().ends_with(' bytes'), result.output
+		// Arena OOM now uses the nonallocating memory-panic path.
+		assert result.output.trim_space() == 'arena_grow(size)\nmemory allocation failure', result.output
 	}
 }

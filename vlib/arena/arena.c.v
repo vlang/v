@@ -12,6 +12,7 @@ pub:
 	// chunk_size is the size of the first chunk in bytes. Later chunks double
 	// in size, up to 4MB (or `chunk_size`, when it is bigger).
 	chunk_size int = 64 * 1024
+	limits ?ChunkLimits
 }
 
 // Arena is a scoped, per-thread bump allocator. While it is pushed on a
@@ -28,14 +29,43 @@ mut:
 // new creates an arena. It does not allocate any arena memory before its
 // first use. Release it with `free` when it is no longer needed.
 pub fn new(config Config) Arena {
+	check_supported()
+	if config.limits != none {
+		return try_new(config) or { v_arena_budget_oom() }
+	}
+	return Arena{
+		handle: unsafe { v_arena_new(config.chunk_size) }
+	}
+}
+
+// try_new creates an arena, or returns none if its initial control block cannot be allocated.
+// Like new, it allocates the first chunk lazily.
+pub fn try_new(config Config) ?Arena {
+	check_supported()
+	handle := unsafe { v_arena_try_new(config.chunk_size) }
+	if isnil(handle) {
+		return none
+	}
+	if limits := config.limits {
+		live := limits.max_live_bytes or { ~u64(0) }
+		total := limits.max_total_bytes or { ~u64(0) }
+		if !unsafe { v_arena_try_set_budget(handle, live, total) } {
+			unsafe { v_arena_free(handle) }
+			return none
+		}
+	}
+	return Arena{
+		handle: handle
+	}
+}
+
+@[inline]
+fn check_supported() {
 	$if prealloc {
 		$compile_error('module `arena` does not support `-prealloc`; use `prealloc_scope_begin()` instead')
 	}
 	$if vgc ? {
 		$compile_error('module `arena` supports `-gc none` and the default Boehm GC, not `-gc vgc`')
-	}
-	return Arena{
-		handle: unsafe { v_arena_new(int(config.chunk_size)) }
 	}
 }
 

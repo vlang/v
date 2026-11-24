@@ -146,39 +146,28 @@ fn (mut d DenseArray) reserve(n int) {
 	old_cap := d.cap
 	old_key_size := d.key_bytes * old_cap
 	old_value_size := d.value_bytes * old_cap
-	d.cap = n
 	unsafe {
-		d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
+		d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * n)
 		// Zero-sized values keep the initial one-byte allocation across growth.
 		if d.value_bytes != 0 {
-			d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+			d.values = realloc_data(d.values, old_value_size, d.value_bytes * n)
 		}
 		if d.deletes != 0 {
-			d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
-			vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)
+			d.all_deleted = realloc_data(d.all_deleted, old_cap, n)
+			vmemset(voidptr(d.all_deleted + d.len), 0, n - d.len)
 		}
 	}
+	// A failed later resize can leave an earlier buffer larger. The committed
+	// capacity must stay within every buffer until all of them have grown.
+	d.cap = n
 }
 
 // Make space to append an element and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 @[inline]
 fn (mut d DenseArray) expand() int {
-	old_cap := d.cap
-	old_key_size := d.key_bytes * old_cap
-	old_value_size := d.value_bytes * old_cap
 	if d.cap == d.len {
-		d.cap += d.cap >> 3
-		unsafe {
-			d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
-			if d.value_bytes != 0 {
-				d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
-			}
-			if d.deletes != 0 {
-				d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
-				vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)
-			}
-		}
+		d.reserve(d.cap + (d.cap >> 3))
 	}
 	push_index := d.len
 	unsafe {
@@ -634,11 +623,19 @@ fn (mut m map) rehash() {
 }
 
 fn (mut m map) reserve_metas(meta_bytes u32) {
-	unsafe {
-		// TODO: use realloc_data here too
-		x := v_realloc(byteptr(m.metas), int(meta_bytes))
-		m.metas = &u32(x)
-		vmemset(m.metas, 0, int(meta_bytes))
+	if isnil(m.metas) {
+		fresh := unsafe { malloc_noscan(int(meta_bytes)) }
+		if isnil(fresh) { _memory_panic(@FN, int(meta_bytes)) }
+		unsafe {
+			vmemset(fresh, 0, int(meta_bytes))
+			m.metas = &u32(fresh)
+		}
+	} else {
+		unsafe {
+			x := v_realloc(byteptr(m.metas), int(meta_bytes))
+			m.metas = &u32(x)
+			vmemset(m.metas, 0, int(meta_bytes))
+		}
 	}
 	for i := 0; i < m.key_values.len; i++ {
 		if !m.key_values.has_index(i) {
@@ -940,7 +937,11 @@ fn (mut d DenseArray) delete(i int) {
 		return
 	}
 	if d.deletes == 0 {
-		d.all_deleted = vcalloc(d.cap) // sets to 0
+		bitmap := vcalloc(d.cap)
+		if isnil(bitmap) {
+			_memory_panic('map.delete', d.cap)
+		}
+		d.all_deleted = bitmap
 	}
 	d.deletes++
 	unsafe {
@@ -948,7 +949,8 @@ fn (mut d DenseArray) delete(i int) {
 	}
 }
 
-// delete removes the mapping of a particular key from the map.
+// delete removes the mapping of a particular key from the map. Compaction
+// prepares replacement storage before removing the key.
 @[unsafe]
 pub fn (mut m map) delete(key voidptr) {
 	if m.len == 0 {
@@ -961,6 +963,13 @@ pub fn (mut m map) delete(key voidptr) {
 		kv_index := int(unsafe { m.metas[index + 1] })
 		pkey := unsafe { m.key_values.key(kv_index) }
 		if m.keys_equal(key, pkey) {
+			if m.key_values.compacts_after_delete(kv_index) {
+				m.delete_compacted(kv_index)
+				return
+			}
+			// The first interior deletion can allocate its bitmap. Commit the dense
+			// deletion before changing the sparse table or the public count.
+			m.key_values.delete(kv_index)
 			for (unsafe { m.metas[index + 2] } >> hashbits) > 1 {
 				unsafe {
 					m.metas[index] = m.metas[index + 2] - probe_inc
@@ -969,7 +978,6 @@ pub fn (mut m map) delete(key voidptr) {
 				index += 2
 			}
 			m.len--
-			m.key_values.delete(kv_index)
 			unsafe {
 				m.metas[index] = 0
 				m.free_fn(pkey)
@@ -977,14 +985,6 @@ pub fn (mut m map) delete(key voidptr) {
 				vmemset(pkey, 0, m.key_bytes)
 				// Deleted values must not keep their former pointees reachable by the GC.
 				vmemset(m.key_values.value(kv_index), 0, m.value_bytes)
-			}
-			if m.key_values.len <= 32 {
-				return
-			}
-			// Clean up key_values if too many have been deleted
-			if m.key_values.deletes >= (m.key_values.len >> 1) {
-				m.key_values.zeros_to_end()
-				m.rehash()
 			}
 			return
 		}
@@ -1173,5 +1173,34 @@ pub fn (m &map) free() {
 		m.extra_metas = 0
 		m.has_string_keys = false
 		m.len = 0
+	}
+}
+
+// Reserve every replacement before removing the key. A denied compaction
+// leaves both lookup and insertion order unchanged and may be retried.
+fn (mut m map) delete_compacted(index int) {
+	storage := m.key_values.compacted_without(index)
+	mut staged := map{ ...m, key_values: storage, metas: unsafe { nil } }
+	mut committed := false
+	defer {
+		if !committed {
+			unsafe {
+				staged.key_values.free_storage()
+				free(staged.metas)
+			}
+		}
+	}
+	staged.rehash()
+	old_storage := m.key_values
+	old_metas := m.metas
+	m.key_values = staged.key_values
+	m.metas = staged.metas
+	m.extra_metas = staged.extra_metas
+	m.len--
+	committed = true
+	unsafe {
+		m.free_fn(old_storage.key(index))
+		old_storage.free_storage()
+		free(old_metas)
 	}
 }
