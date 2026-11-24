@@ -782,7 +782,7 @@ fn test_closure_lifetime_gc_none_reuses_disposed_state_bookkeeping() {
 	}
 	header_path := os.join_path(tmp_dir, 'track_heap_hooks.h')
 	os.write_file(header_path, [
-		'void vheap_alloc(void* p, unsigned long long n) { (void)p; (void)n; }',
+		'void vheap_alloc(void* p, uint64_t n) { (void)p; (void)n; }',
 		'void vheap_free(void* p) { (void)p; }',
 	].join('\n')) or { panic(err) }
 	res := run_program_with_track_heap(tmp_dir, 'closure_lifetime_gc_none_state', gc_none_lifetime_bookkeeping_track_heap_source(header_path))

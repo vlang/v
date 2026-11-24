@@ -62,12 +62,13 @@ pub fn prealloc_discard_pages(start voidptr, size uint) {
 // trading higher memory usage for a compiler (or any single threaded batch
 // mode program), for a ~8-10% speed increase.
 
-// size of the process/thread preallocated chunk
-const prealloc_block_size = 16 * 1024 * 1024
+// Block sizes can be tuned at compile time with
+// -d prealloc_block_size=<bytes> and -d prealloc_scope_block_size=<bytes>.
+// Larger base blocks trade memory for fewer mmap calls; larger scope blocks
+// reduce refill churn in request-scoped arenas.
+const prealloc_block_size = $d('prealloc_block_size', 16 * 1024 * 1024)
 
-// size of the first chunk for a scoped prealloc arena. Request-scoped arenas
-// should not force a 16MB libc allocation for every request.
-const prealloc_scope_block_size = 256 * 1024
+const prealloc_scope_block_size = $d('prealloc_scope_block_size', 256 * 1024)
 
 // `malloc` has to return memory suitably aligned for any V value. Keep the
 // default at the common max alignment used by libc malloc on current targets.
@@ -76,6 +77,16 @@ const prealloc_default_align = sizeof(voidptr) * 2
 __global g_memory_block &VMemoryBlock
 __global g_prealloc_allocation_count i64
 __global g_prealloc_allocated_bytes i64
+// Live (not cumulative) instrumented totals, maintained only with
+// `-d prealloc_stats`. `used_bytes` is rewound on scope reentry and
+// decremented on block release; `mapped_bytes` counts storage still backed
+// by the OS, including blocks parked in the recycle pool.
+__global g_prealloc_mapped_bytes i64
+__global g_prealloc_used_bytes i64
+__global g_prealloc_block_count i64
+// Set with `-d prealloc_limits`; 0 means unlimited. Only block growth
+// consults it, so allocations fitting in the current block still succeed.
+__global g_prealloc_limit_bytes i64
 __global g_prealloc_keep_at_exit bool
 // Read by every thread that frees a block, through the `_i32` atomics.
 __global g_prealloc_keep_freed i32
@@ -90,24 +101,39 @@ __global g_prealloc_keep_freed i32
 // Pooled blocks are dirty, exactly like libc malloc memory; prealloc_calloc
 // already memsets its result and nothing else may rely on the incidental
 // zero-fill of fresh mmaps.
-const prealloc_block_pool_slots = 256
-const prealloc_block_pool_max_bytes = i64(256) * 1024 * 1024
-const prealloc_block_pool_max_block = 16 * 1024 * 1024
+const prealloc_pool_bins = 16
+const prealloc_pool_bin_slots = 32
+const prealloc_pool_min_block = 64 * 1024
+const prealloc_block_pool_max_bytes = i64(512) * 1024 * 1024
+const prealloc_block_pool_max_block = 256 * 1024 * 1024
 
 struct VPreallocBlockPool {
 mut:
-	lock  i32
-	count int
-	bytes i64
-	// max_bytes bounds `bytes` instead of prealloc_block_pool_max_bytes once
-	// has_max_bytes is set (see prealloc_block_pool_set_limit).
+mut:
+	lock          i32
+	bytes         i64
 	max_bytes     i64
 	has_max_bytes bool
-	starts        [prealloc_block_pool_slots]voidptr
-	sizes         [prealloc_block_pool_slots]int
+	counts        [prealloc_pool_bins]int
+	starts        [prealloc_pool_bins * prealloc_pool_bin_slots]voidptr
+	sizes         [prealloc_pool_bins * prealloc_pool_bin_slots]int
 }
 
 __global g_prealloc_block_pool VPreallocBlockPool
+
+// prealloc_pool_bin maps a block size to a power-of-two size class. Small
+// classes are checked first by take(), so common sizes need no scan of larger
+// bins at all.
+@[inline]
+fn prealloc_pool_bin(size int) int {
+	mut bin := 0
+	mut limit := prealloc_pool_min_block
+	for bin < prealloc_pool_bins - 1 && size > limit {
+		limit <<= 1
+		bin++
+	}
+	return bin
+}
 
 // The critical sections are a scan of at most 256 entries, and block
 // allocation and release happen a few thousand times per compile, so a spin
@@ -130,23 +156,26 @@ fn prealloc_block_pool_put(start voidptr, size int) bool {
 	if size <= 0 || size > prealloc_block_pool_max_block {
 		return false
 	}
+	bin := prealloc_pool_bin(size)
 	prealloc_block_pool_lock()
+	count := g_prealloc_block_pool.counts[bin]
 	max_bytes := if g_prealloc_block_pool.has_max_bytes {
 		g_prealloc_block_pool.max_bytes
 	} else {
 		prealloc_block_pool_max_bytes
 	}
-	if g_prealloc_block_pool.count >= prealloc_block_pool_slots
+	if count >= prealloc_pool_bin_slots
 		|| g_prealloc_block_pool.bytes + i64(size) > max_bytes {
 		prealloc_block_pool_unlock()
 		return false
 	}
+	idx := bin * prealloc_pool_bin_slots + count
 	unsafe {
-		g_prealloc_block_pool.starts[g_prealloc_block_pool.count] = start
-		g_prealloc_block_pool.sizes[g_prealloc_block_pool.count] = size
+		g_prealloc_block_pool.starts[idx] = start
+		g_prealloc_block_pool.sizes[idx] = size
 	}
 	g_prealloc_block_pool.bytes += i64(size)
-	g_prealloc_block_pool.count++
+	g_prealloc_block_pool.counts[bin] = count + 1
 	prealloc_block_pool_unlock()
 	return true
 }
@@ -157,38 +186,51 @@ fn prealloc_block_pool_put(start voidptr, size int) bool {
 // compilers heap-allocate it, recursively entering the arena being initialized.
 @[unsafe]
 fn prealloc_block_pool_take(size int) (voidptr, int) {
-	// The count is only read under the lock: another thread may be freeing a
-	// block into the pool right now.
+	// Counts and slots are read only under the lock.
 	prealloc_block_pool_lock()
-	mut best := -1
-	for i := 0; i < g_prealloc_block_pool.count; i++ {
-		candidate := unsafe { g_prealloc_block_pool.sizes[i] }
-		if candidate < size {
-			continue
-		}
-		if best < 0 || candidate < unsafe { g_prealloc_block_pool.sizes[best] } {
-			best = i
-			if candidate == size {
-				break
+	mut best_bin := -1
+	mut best_slot := -1
+	mut best_size := 0
+	first_bin := prealloc_pool_bin(size)
+	for bin := first_bin; bin < prealloc_pool_bins; bin++ {
+		count := g_prealloc_block_pool.counts[bin]
+		for slot := 0; slot < count; slot++ {
+			idx := bin * prealloc_pool_bin_slots + slot
+			sz := unsafe { g_prealloc_block_pool.sizes[idx] }
+			if sz < size {
+				continue
+			}
+			if best_bin < 0 || sz < best_size {
+				best_bin = bin
+				best_slot = slot
+				best_size = sz
+				if sz == size {
+					break
+				}
 			}
 		}
+		if best_size == size {
+			break
+		}
 	}
-	if best < 0 {
+	if best_bin < 0 {
 		prealloc_block_pool_unlock()
 		return unsafe { nil }, 0
 	}
+	base := best_bin * prealloc_pool_bin_slots
 	mut start := unsafe { nil }
-	mut taken_size := 0
 	unsafe {
-		start = g_prealloc_block_pool.starts[best]
-		taken_size = g_prealloc_block_pool.sizes[best]
-		g_prealloc_block_pool.bytes -= i64(g_prealloc_block_pool.sizes[best])
-		g_prealloc_block_pool.count--
-		g_prealloc_block_pool.starts[best] = g_prealloc_block_pool.starts[g_prealloc_block_pool.count]
-		g_prealloc_block_pool.sizes[best] = g_prealloc_block_pool.sizes[g_prealloc_block_pool.count]
+		start = g_prealloc_block_pool.starts[base + best_slot]
+		last := g_prealloc_block_pool.counts[best_bin] - 1
+		if best_slot != last {
+			g_prealloc_block_pool.starts[base + best_slot] = g_prealloc_block_pool.starts[base + last]
+			g_prealloc_block_pool.sizes[base + best_slot] = g_prealloc_block_pool.sizes[base + last]
+		}
+		g_prealloc_block_pool.counts[best_bin] = last
 	}
+	g_prealloc_block_pool.bytes -= i64(best_size)
 	prealloc_block_pool_unlock()
-	return start, taken_size
+	return start, best_size
 }
 
 // prealloc_block_pool_release returns pooled blocks to the OS until at most
@@ -200,14 +242,19 @@ fn prealloc_block_pool_release(keep i64) {
 			mut start := unsafe { nil }
 			mut size := 0
 			prealloc_block_pool_lock()
-			if g_prealloc_block_pool.count > 0 && g_prealloc_block_pool.bytes > keep {
-				unsafe {
-					start = g_prealloc_block_pool.starts[0]
-					size = g_prealloc_block_pool.sizes[0]
-					g_prealloc_block_pool.count--
-					g_prealloc_block_pool.bytes -= i64(size)
-					g_prealloc_block_pool.starts[0] = g_prealloc_block_pool.starts[g_prealloc_block_pool.count]
-					g_prealloc_block_pool.sizes[0] = g_prealloc_block_pool.sizes[g_prealloc_block_pool.count]
+			if g_prealloc_block_pool.bytes > keep {
+				outer: for bin := 0; bin < prealloc_pool_bins; bin++ {
+					if g_prealloc_block_pool.counts[bin] > 0 {
+						slot := g_prealloc_block_pool.counts[bin] - 1
+						idx := bin * prealloc_pool_bin_slots + slot
+						unsafe {
+							start = g_prealloc_block_pool.starts[idx]
+							size = g_prealloc_block_pool.sizes[idx]
+						}
+						g_prealloc_block_pool.counts[bin] = slot
+						g_prealloc_block_pool.bytes -= i64(size)
+						break
+					}
 				}
 			}
 			prealloc_block_pool_unlock()
@@ -220,12 +267,6 @@ fn prealloc_block_pool_release(keep i64) {
 	}
 }
 
-// prealloc_block_pool_set_limit bounds the freed arena blocks that stay mapped
-// for reuse to `bytes` in total, from now on and on every thread, and returns
-// what is kept beyond that to the OS. Kept blocks save the next arena its page
-// faults, but they are resident memory that nothing uses meanwhile: a program
-// lowers the limit before the part of its work in which its memory peaks.
-// Without a call the limit is 256 MiB.
 @[unsafe]
 pub fn prealloc_block_pool_set_limit(bytes i64) {
 	$if prealloc {
@@ -256,13 +297,85 @@ fn prealloc_block_pool_free() {
 	$if !windows && !freestanding && !vinix {
 		prealloc_block_pool_lock()
 		unsafe {
-			for i := 0; i < g_prealloc_block_pool.count; i++ {
-				C.munmap(g_prealloc_block_pool.starts[i], uint(g_prealloc_block_pool.sizes[i]))
+			for bin := 0; bin < prealloc_pool_bins; bin++ {
+				base := bin * prealloc_pool_bin_slots
+				for slot := 0; slot < g_prealloc_block_pool.counts[bin]; slot++ {
+					C.munmap(g_prealloc_block_pool.starts[base + slot], uint(g_prealloc_block_pool.sizes[base + slot]))
+				}
 			}
 		}
-		g_prealloc_block_pool.count = 0
+		prealloc_stats_add_mapped(-g_prealloc_block_pool.bytes)
+		for bin := 0; bin < prealloc_pool_bins; bin++ {
+			g_prealloc_block_pool.counts[bin] = 0
+		}
 		g_prealloc_block_pool.bytes = 0
 		prealloc_block_pool_unlock()
+	}
+}
+
+// prealloc_stats_add_mapped adds `delta` to the live mapped-storage counter.
+// It is inlined to nothing unless -d prealloc_stats or -d prealloc_limits is
+// set, so default builds pay no atomic cost on block map/unmap.
+@[inline]
+fn prealloc_stats_add_mapped(delta i64) {
+	$if prealloc_stats ? {
+		C.v_prealloc_atomic_add_i64(&g_prealloc_mapped_bytes, delta)
+	} $else $if prealloc_limits ? {
+		C.v_prealloc_atomic_add_i64(&g_prealloc_mapped_bytes, delta)
+	}
+}
+
+// prealloc_stats_add_used adds `delta` to the live bumped-bytes counter.
+// It is a no-op unless `-d prealloc_stats` is set.
+@[if prealloc_stats ?]
+fn prealloc_stats_add_used(delta i64) {
+	C.v_prealloc_atomic_add_i64(&g_prealloc_used_bytes, delta)
+}
+
+// prealloc_stats_add_block adds `delta` to the live block counter. It is
+// inlined to nothing unless -d prealloc_stats is set.
+@[inline]
+fn prealloc_stats_add_block(delta i64) {
+	$if prealloc_stats ? {
+		C.v_prealloc_atomic_add_i64(&g_prealloc_block_count, delta)
+	}
+}
+
+// prealloc_limit_allows reports whether mapping `additional` more bytes would
+// stay within the configured cap. Pool reuse does not call this: pooled blocks
+// are already counted in mapped_bytes, so they must not be rejected by a cap
+// that only limits newly mapped storage.
+@[inline]
+fn prealloc_limit_allows(additional i64) bool {
+	$if prealloc_limits ? {
+		limit := C.v_prealloc_atomic_load_i64(&g_prealloc_limit_bytes)
+		if limit > 0 && C.v_prealloc_atomic_load_i64(&g_prealloc_mapped_bytes) + additional > limit {
+			return false
+		}
+	}
+	return true
+}
+
+// prealloc_set_limit caps the mapped arena storage at `bytes`. Zero removes
+// the cap. The limit is checked only when a new block must be mapped, matching
+// bumpalo semantics: shrinking it does not invalidate the current block.
+// Call this before starting other threads; concurrent setters are not ordered.
+@[unsafe]
+pub fn prealloc_set_limit(bytes i64) {
+	$if prealloc_limits ? {
+		clamped := if bytes < 0 { i64(0) } else { bytes }
+		current := C.v_prealloc_atomic_load_i64(&g_prealloc_limit_bytes)
+		C.v_prealloc_atomic_add_i64(&g_prealloc_limit_bytes, clamped - current)
+	}
+}
+
+// prealloc_limit returns the current mapped-storage cap, or zero when
+// unlimited or when the program was built without `-d prealloc_limits`.
+pub fn prealloc_limit() i64 {
+	$if prealloc_limits ? {
+		return C.v_prealloc_atomic_load_i64(&g_prealloc_limit_bytes)
+	} $else {
+		return 0
 	}
 }
 
@@ -271,8 +384,11 @@ fn prealloc_block_pool_free() {
 pub struct PreallocStats {
 pub:
 	enabled          bool
-	allocation_count u64
-	allocated_bytes  u64
+	allocation_count u64 // cumulative malloc calls, as before
+	allocated_bytes  u64 // cumulative bytes requested, as before
+	mapped_bytes     u64 // storage still backed by the OS, incl. the recycle pool
+	used_bytes       u64 // bytes bumped into live blocks (approximate with threads)
+	block_count      u64 // live VMemoryBlock structs
 }
 
 // prealloc_stats_snapshot returns allocation totals across every prealloc
@@ -283,6 +399,9 @@ pub fn prealloc_stats_snapshot() PreallocStats {
 			enabled:          true
 			allocation_count: u64(C.v_prealloc_atomic_load_i64(&g_prealloc_allocation_count))
 			allocated_bytes:  u64(C.v_prealloc_atomic_load_i64(&g_prealloc_allocated_bytes))
+			mapped_bytes:     u64(C.v_prealloc_atomic_load_i64(&g_prealloc_mapped_bytes))
+			used_bytes:       u64(C.v_prealloc_atomic_load_i64(&g_prealloc_used_bytes))
+			block_count:      u64(C.v_prealloc_atomic_load_i64(&g_prealloc_block_count))
 		}
 	} $else {
 		return PreallocStats{}
@@ -292,9 +411,12 @@ pub fn prealloc_stats_snapshot() PreallocStats {
 @[heap]
 struct VMemoryBlock {
 mut:
-	current        &u8             = 0 // 8
-	stop           &u8             = 0 // 8
-	start          &u8             = 0 // 8
+	current &u8 = 0 // 8
+	stop    &u8 = 0 // 8
+	start   &u8 = 0 // 8
+	// zero_until is the end of the region known to be zero (fresh mmap pages).
+	// Calloc-sized bumps inside it need no memset.
+	zero_until     &u8             = 0 // 8
 	previous       &VMemoryBlock   = 0 // 8
 	next           &VMemoryBlock   = 0 // 8
 	scope          &VPreallocScope = 0
@@ -312,11 +434,22 @@ mut:
 	stop  uint
 }
 
+// VCleanupEntry holds an explicit destructor registered on a prealloc scope.
+// Entries come from libc malloc so they survive while the arena is torn down.
+struct VCleanupEntry {
+mut:
+	cb   fn (voidptr)
+	arg  voidptr
+	next &VCleanupEntry = 0
+}
+
 @[heap]
 struct VPreallocScope {
 mut:
 	previous &VMemoryBlock = 0
 	first    &VMemoryBlock = 0
+	// cleanup_head is LIFO; see prealloc_scope_on_cleanup.
+	cleanup_head &VCleanupEntry = 0
 	// saved_next holds the blocks that followed `previous` when this scope was
 	// linked after it: a reentered parent scope keeps rewound blocks there.
 	// Unlinking the scope restores them instead of dropping them from the chain.
@@ -463,7 +596,11 @@ fn prealloc_trace_scope(action &char, scope &VPreallocScope) {
 
 @[unsafe]
 fn vmemory_block_new(prev &VMemoryBlock, at_least int, align int) &VMemoryBlock {
-	return unsafe { vmemory_block_new_sized(prev, at_least, align, int(prealloc_block_size)) }
+	mb := unsafe { vmemory_block_new_sized(prev, at_least, align, int(prealloc_block_size)) }
+	if mb == unsafe { nil } {
+		panic('prealloc allocation limit exceeded')
+	}
+	return mb
 }
 
 @[unsafe]
@@ -505,7 +642,15 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 	}
 
 	fixed_align := if align <= 1 { 1 } else { align }
+	// A pooled block is already counted in mapped_bytes; only fresh storage
+	// obtained from the OS adds to the live mapped total.
+	mut from_pool := false
+	mut fresh_mmap := false
 	$if windows {
+		if !prealloc_limit_allows(i64(block_size)) {
+			C.free(v)
+			return unsafe { nil }
+		}
 		v.start = unsafe { C._aligned_malloc(block_size, fixed_align) }
 	} $else {
 		$if !freestanding && !vinix {
@@ -517,6 +662,7 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 						// cost nothing and the block returns to the pool whole.
 						v.start = unsafe { &u8(pooled) }
 						v.mmap_allocated = true
+						from_pool = true
 						block_size = pooled_size
 						$if prealloc_memset ? {
 							unsafe { C.memset(v.start, int($d('prealloc_memset_value', 0)), block_size) }
@@ -524,6 +670,10 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 					}
 				}
 				if unsafe { v.start == 0 } {
+					if !prealloc_limit_allows(i64(block_size)) {
+						C.free(v)
+						return unsafe { nil }
+					}
 					mut mmap_ptr := unsafe {
 						C.mmap(0, uint(block_size), C.PROT_READ | C.PROT_WRITE, C.MAP_ANONYMOUS | C.MAP_PRIVATE, -1, 0)
 					}
@@ -541,11 +691,23 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 					if mmap_ptr != C.MAP_FAILED {
 						v.start = &u8(mmap_ptr)
 						v.mmap_allocated = true
+						fresh_mmap = true
+						$if linux {
+							// MADV_HUGEPAGE (14) cuts TLB misses on large arenas.
+							// The hint is advisory; failure is harmless.
+							if block_size >= 2 * 1024 * 1024 {
+								C.madvise(v.start, uint(block_size), 14)
+							}
+						}
 					}
 				}
 			}
 		}
 		if unsafe { v.start == 0 } {
+			if !prealloc_limit_allows(i64(block_size)) {
+				C.free(v)
+				return unsafe { nil }
+			}
 			if fixed_align == 1 {
 				v.start = unsafe { C.malloc(block_size) }
 			} else {
@@ -554,11 +716,23 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 		}
 	}
 	vmemory_abort_on_nil(v.start, block_size)
+	// With -d track_heap, report the block as one live allocation. The hook is
+	// a no-op when the flag is off.
+	_ht_alloc(v.start, block_size)
 	$if prealloc_memset ? {
 		unsafe { C.memset(v.start, int($d('prealloc_memset_value', 0)), block_size) }
 	}
 	v.stop = unsafe { &u8(i64(v.start) + block_size) }
 	v.current = v.start
+	v.zero_until = if fresh_mmap { v.stop } else { v.start }
+	$if prealloc_memset ? {
+		// The debug memset may fill with a non-zero pattern.
+		v.zero_until = v.start
+	}
+	if !from_pool {
+		prealloc_stats_add_mapped(i64(block_size))
+	}
+	prealloc_stats_add_block(1)
 	$if trace_prealloc ? {
 		if v.is_scope {
 			C.fprintf(C.stderr, c'[trace_prealloc] block alloc block=%p previous=%p id=%d size=%lld at_least=%lld align=%lld start=%p stop=%p\n', v, prev, v.id, block_size, at_least, align, v.start, v.stop)
@@ -591,7 +765,7 @@ fn vmemory_block_init_thread() &VMemoryBlock {
 }
 
 @[noinline; unsafe]
-fn vmemory_block_grow(previous &VMemoryBlock, n int, align int) &VMemoryBlock {
+fn vmemory_block_grow(previous &VMemoryBlock, n int, align int) ?&VMemoryBlock {
 	unsafe {
 		was_scope := previous.is_scope
 		scope := previous.scope
@@ -622,6 +796,9 @@ fn vmemory_block_grow(previous &VMemoryBlock, n int, align int) &VMemoryBlock {
 			min_block_size *= 2
 		}
 		mut mb := vmemory_block_new_sized(previous, n, align, min_block_size)
+		if mb == unsafe { nil } {
+			return none
+		}
 		mb.is_scope = was_scope
 		mb.scope = scope
 		// Keep any reusable blocks after the new one: the scope frees its chain.
@@ -657,7 +834,10 @@ fn vmemory_block_malloc_aligned(n int, align int) &u8 {
 		mut current := vmemory_align_up(mb.current, align)
 		remaining := i64(mb.stop) - i64(current)
 		if _unlikely_(remaining < n) {
-			mb = vmemory_block_grow(mb, n, align)
+			mb = vmemory_block_grow(mb, n, align) or {
+				panic('prealloc allocation limit exceeded')
+				return unsafe { nil }
+			}
 			current = vmemory_align_up(mb.current, align)
 		}
 		res := &u8(current)
@@ -667,6 +847,7 @@ fn vmemory_block_malloc_aligned(n int, align int) &u8 {
 			mb.mallocs++
 			C.v_prealloc_atomic_add_i64(&g_prealloc_allocation_count, 1)
 			C.v_prealloc_atomic_add_i64(&g_prealloc_allocated_bytes, i64(n))
+			prealloc_stats_add_used(i64(n))
 		} $else {
 			$if trace_prealloc ? {
 				mb.mallocs++
@@ -700,6 +881,7 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 	$if windows {
 		// Warning! On windows, we always use _aligned_free to free memory.
 		C._aligned_free(mb.start)
+		_ht_free(mb.start)
 	} $else {
 		$if !freestanding && !vinix {
 			if mb.mmap_allocated {
@@ -713,14 +895,25 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 						C.fprintf(C.stderr, c'[recycle-miss] size=%lld\n', size)
 					}
 					C.munmap(mb.start, uint(size))
+					// Recycled blocks stay mapped, so they remain counted until
+					// prealloc_block_pool_free releases them.
+					prealloc_stats_add_mapped(-size)
 				}
+				// The tracker sees the block freed on reuse or on unmap.
+				_ht_free(mb.start)
 			} else {
 				C.free(mb.start)
+				prealloc_stats_add_mapped(-i64(vmemory_block_size(mb)))
+				_ht_free(mb.start)
 			}
 		} $else {
 			C.free(mb.start)
+			prealloc_stats_add_mapped(-i64(vmemory_block_size(mb)))
+			_ht_free(mb.start)
 		}
 	}
+	prealloc_stats_add_used(-i64(vmemory_block_used(mb)))
+	prealloc_stats_add_block(-1)
 	C.free(mb)
 }
 
@@ -881,6 +1074,10 @@ pub fn prealloc_scope_begin() voidptr {
 		scope.previous = vmemory_block_current_or_new()
 		scope.saved_next = scope.previous.next
 		scope.first = vmemory_block_new_sized(scope.previous, int(prealloc_scope_block_size), 0, int(prealloc_scope_block_size))
+		if scope.first == unsafe { nil } {
+			C.free(scope)
+			panic('prealloc allocation limit exceeded')
+		}
 		scope.first.is_scope = true
 		scope.first.scope = scope
 		scope.min_address = uint(scope.first.start)
@@ -920,12 +1117,64 @@ pub fn prealloc_scope_checkpoint(label &char) {
 	}
 }
 
+// prealloc_scope_on_cleanup registers `cb(arg)` to run when `scope_ptr` is
+// finally freed (end / free_after / last release). Callbacks run LIFO and
+// must not allocate from the scope being torn down. Reentering a scope drops
+// registered callbacks without running them, since their arguments are
+// invalidated. Abandoning a scope also drops them without running. Callbacks
+// registered from inside a destructor are dropped (freed, not run) to keep the
+// teardown finite. Without the define the registration call is a no-op.
+@[if prealloc_cleanup ?]
+pub fn prealloc_scope_on_cleanup(scope_ptr voidptr, cb fn (voidptr), arg voidptr) {
+	$if prealloc {
+		if scope_ptr == unsafe { nil } {
+			return
+		}
+		unsafe {
+			scope := &VPreallocScope(scope_ptr)
+			entry := &VCleanupEntry(C.malloc(sizeof(VCleanupEntry)))
+			vmemory_abort_on_nil(entry, sizeof(VCleanupEntry))
+			entry.cb = cb
+			entry.arg = arg
+			entry.next = scope.cleanup_head
+			scope.cleanup_head = entry
+		}
+	}
+}
+
+@[unsafe]
+fn prealloc_scope_run_cleanup(scope &VPreallocScope) {
+	mut entry := scope.cleanup_head
+	scope.cleanup_head = unsafe { nil }
+	for entry != unsafe { nil } {
+		next := entry.next
+		entry.cb(entry.arg)
+		C.free(entry)
+		entry = next
+	}
+	// A callback may have registered another one; drop it without running so
+	// teardown stays finite and no entry is leaked.
+	prealloc_scope_clear_cleanup(scope)
+}
+
+@[unsafe]
+fn prealloc_scope_clear_cleanup(scope &VPreallocScope) {
+	mut entry := scope.cleanup_head
+	scope.cleanup_head = unsafe { nil }
+	for entry != unsafe { nil } {
+		next := entry.next
+		C.free(entry)
+		entry = next
+	}
+}
+
 @[unsafe]
 fn prealloc_scope_free_blocks(scope &VPreallocScope) {
 	if scope == unsafe { nil } {
 		return
 	}
 	unsafe {
+		prealloc_scope_run_cleanup(scope)
 		if scope.previous != 0 {
 			prealloc_scope_unlink(scope)
 		}
@@ -964,6 +1213,10 @@ fn prealloc_scope_finish_if_ready(scope &VPreallocScope) {
 		}
 		if C.v_prealloc_atomic_load_i32(&scope.abandoned) == 0 {
 			prealloc_scope_free_blocks(scope)
+		} else {
+			// Ownership was transferred to user code; callbacks would destroy
+			// values the new owner still needs.
+			prealloc_scope_clear_cleanup(scope)
 		}
 		C.free(scope.ranges)
 		C.free(scope)
@@ -1097,6 +1350,9 @@ pub fn prealloc_scope_reenter(scope_ptr voidptr, keep_bytes int) bool {
 				return false
 			}
 			parent := vmemory_block_current_or_new()
+			// Pointers from the previous batch are invalid after rewind, so any
+			// registered callbacks would reference dead values.
+			prealloc_scope_clear_cleanup(scope)
 			// Keep the first blocks, up to `keep_bytes`, for reuse; free the rest.
 			mut kept := int(0)
 			mut last_kept := &VMemoryBlock(nil)
@@ -1106,7 +1362,10 @@ pub fn prealloc_scope_reenter(scope_ptr voidptr, keep_bytes int) bool {
 				if last_kept != 0 && kept + size > keep_bytes {
 					break
 				}
+				prealloc_stats_add_used(-i64(vmemory_block_used(mb)))
 				mb.current = mb.start
+				// Rewound storage may be dirty, so calloc must zero it again.
+				mb.zero_until = mb.start
 				kept += size
 				last_kept = mb
 				mb = mb.next
@@ -1326,6 +1585,7 @@ fn prealloc_realloc(old_data &u8, old_size int, new_size int) &u8 {
 					mb.mallocs++
 					C.v_prealloc_atomic_add_i64(&g_prealloc_allocation_count, 1)
 					C.v_prealloc_atomic_add_i64(&g_prealloc_allocated_bytes, i64(new_size))
+					prealloc_stats_add_used(i64(new_size - old_size))
 				} $else {
 					$if trace_prealloc ? {
 						mb.mallocs++
@@ -1352,11 +1612,161 @@ fn prealloc_realloc(old_data &u8, old_size int, new_size int) &u8 {
 @[inline; unsafe]
 fn prealloc_calloc(n int) &u8 {
 	new_ptr := unsafe { vmemory_block_malloc(n, 0) }
-	unsafe { C.memset(new_ptr, 0, n) }
+	unsafe {
+		mb := g_memory_block
+		// Fresh mmap pages are already zero; only recycled or rewound storage
+		// needs a memset.
+		if i64(new_ptr) + i64(n) > i64(mb.zero_until) {
+			C.memset(new_ptr, 0, n)
+		}
+	}
 	return new_ptr
 }
 
 @[unsafe]
 fn prealloc_malloc_align(n int, align int) &u8 {
 	return unsafe { vmemory_block_malloc(n, align) }
+}
+
+// vmemory_block_try_malloc_aligned mirrors the bump fast path but returns
+// none instead of aborting when the limit prevents a new block.
+@[inline; unsafe]
+fn vmemory_block_try_malloc_aligned(n int, align int) ?&u8 {
+	unsafe {
+		mut mb := vmemory_block_current_or_new()
+		$if prealloc_trace_malloc ? {
+			C.fprintf(C.stderr, c'vmemory_block_try_malloc g_memory_block.id: %d, n: %lld align: %d\n', mb.id, n, align)
+		}
+		mut current := vmemory_align_up(mb.current, align)
+		remaining := i64(mb.stop) - i64(current)
+		if remaining < n {
+			mb = vmemory_block_grow(mb, n, align) or { return none }
+			current = vmemory_align_up(mb.current, align)
+		}
+		res := &u8(current)
+		mb.current = current
+		mb.current += n
+		$if prealloc_stats ? {
+			mb.mallocs++
+			C.v_prealloc_atomic_add_i64(&g_prealloc_allocation_count, 1)
+			C.v_prealloc_atomic_add_i64(&g_prealloc_allocated_bytes, i64(n))
+			prealloc_stats_add_used(i64(n))
+		} $else {
+			$if trace_prealloc ? {
+				mb.mallocs++
+			}
+		}
+		return res
+	}
+}
+
+// prealloc_try_malloc allocates `n` bytes from the current arena, or returns
+// none when `-d prealloc_limits` is set and a new block would exceed the cap.
+// A zero-length request also returns none. The ordinary `malloc` keeps
+// aborting on exhaustion; this is the recoverable variant.
+@[unsafe]
+pub fn prealloc_try_malloc(n int) ?&u8 {
+	$if prealloc {
+		if n <= 0 {
+			return none
+		}
+		return unsafe { vmemory_block_try_malloc_aligned(n, vmemory_effective_align(0)) }
+	} $else {
+		return none
+	}
+}
+
+// prealloc_try_calloc is the zeroing variant of prealloc_try_malloc.
+@[unsafe]
+pub fn prealloc_try_calloc(n int) ?&u8 {
+	ptr := unsafe { prealloc_try_malloc(n) } or { return none }
+	unsafe {
+		mb := g_memory_block
+		if i64(ptr) + i64(n) > i64(mb.zero_until) {
+			C.memset(ptr, 0, n)
+		}
+	}
+	return ptr
+}
+
+// PreallocChunk describes one allocation block owned by a prealloc scope.
+pub struct PreallocChunk {
+pub:
+	start    voidptr
+	used     u64
+	capacity u64
+}
+
+// PreallocChunkIter walks the blocks of a settled prealloc scope without
+// allocating. Do not mutate the scope while the iterator is in use.
+pub struct PreallocChunkIter {
+mut:
+	scope   voidptr
+	current voidptr
+}
+
+// prealloc_scope_chunk_iter returns an iterator over the blocks of `scope_ptr`.
+// The scope must be settled: no thread may add or remove blocks during iteration.
+@[unsafe]
+pub fn prealloc_scope_chunk_iter(scope_ptr voidptr) PreallocChunkIter {
+	$if prealloc {
+		if scope_ptr == unsafe { nil } {
+			return PreallocChunkIter{}
+		}
+		unsafe {
+			scope := &VPreallocScope(scope_ptr)
+			return PreallocChunkIter{
+				scope:   scope_ptr
+				current: scope.first
+			}
+		}
+	} $else {
+		return PreallocChunkIter{}
+	}
+}
+
+// next returns the next block of the scope, or none when the walk is done.
+@[unsafe]
+pub fn (mut it PreallocChunkIter) next() ?PreallocChunk {
+	$if prealloc {
+		if it.current == unsafe { nil } {
+			return none
+		}
+		unsafe {
+			scope := &VPreallocScope(it.scope)
+			mut mb := &VMemoryBlock(it.current)
+			for mb != 0 && (!mb.is_scope || mb.scope != scope) {
+				mb = mb.next
+			}
+			if mb == 0 {
+				it.current = unsafe { nil }
+				return none
+			}
+			chunk := PreallocChunk{
+				start:    mb.start
+				used:     u64(vmemory_block_used(mb))
+				capacity: u64(vmemory_block_size(mb))
+			}
+			it.current = mb.next
+			return chunk
+		}
+	} $else {
+		return none
+	}
+}
+
+// prealloc_current_chunk_capacity returns the free bytes in the calling
+// thread's current allocation block, or zero when no block is initialized.
+pub fn prealloc_current_chunk_capacity() u64 {
+	$if prealloc {
+		unsafe {
+			mb := g_memory_block
+			if mb == unsafe { nil } {
+				return 0
+			}
+			return u64(i64(mb.stop) - i64(mb.current))
+		}
+	} $else {
+		return 0
+	}
 }

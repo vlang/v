@@ -2916,6 +2916,63 @@ fn (mut tc TypeChecker) record_null_constant_return_errors(node flat.Node, expec
 		payload)
 }
 
+fn scope_lint_name_matches(name string, short string) bool {
+	return name == short || name.ends_with('.${short}')
+}
+
+// track_prealloc_scope_decl records locals that hold a scope handle or that
+// were allocated from malloc while a scope was open. It feeds the escape
+// warning emitted at return/global-store sites.
+fn (mut tc TypeChecker) track_prealloc_scope_decl(lhs_name string, rhs_id flat.NodeId) {
+	if lhs_name.len == 0 || lhs_name == '_' {
+		return
+	}
+	rhs := tc.a.node(rhs_id)
+	if rhs.kind != .call {
+		return
+	}
+	name := tc.resolved_call_name(rhs_id) or { return }
+	if scope_lint_name_matches(name, 'prealloc_scope_begin')
+		|| name == 'arena.new' || name == 'arena.Arena.new' {
+		tc.fn_context.scope_handle_locals[lhs_name] = true
+		tc.fn_context.scope_open = true
+		return
+	}
+	if !tc.fn_context.scope_open {
+		return
+	}
+	for malloc_name in ['malloc', 'malloc_noscan', 'vcalloc', 'vcalloc_noscan'] {
+		if scope_lint_name_matches(name, malloc_name) {
+			tc.fn_context.scope_alloc_locals[lhs_name] = true
+			return
+		}
+	}
+}
+
+// track_prealloc_scope_call closes the current scope when it is ended, freed
+// or rewound. Leaving a scope does not invalidate its allocations, so it is
+// deliberately not treated as a close here.
+fn (mut tc TypeChecker) track_prealloc_scope_call(name string) {
+	for close_name in ['prealloc_scope_end', 'prealloc_scope_free_after', 'arena.Arena.reset',
+		'arena.Arena.free'] {
+		if scope_lint_name_matches(name, close_name) {
+			tc.fn_context.scope_open = false
+			return
+		}
+	}
+}
+
+// warn_prealloc_scope_escape emits the shared diagnostic for a scope-derived
+// value that is about to outlive its function.
+fn (mut tc TypeChecker) warn_prealloc_scope_escape(kind TypeErrorKind, name string, id flat.NodeId, pos token.Pos) {
+	if !tc.should_diagnose(id) {
+		return
+	}
+	if name in tc.fn_context.scope_handle_locals || name in tc.fn_context.scope_alloc_locals {
+		tc.record_warning_at(kind, '`${name}` was allocated in a prealloc/arena scope and may outlive it; clone/copy it before the scope ends', id, pos)
+	}
+}
+
 // check_return validates check return state for types.
 @[direct_array_access]
 fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
@@ -3136,6 +3193,17 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 				tc.check_node(child_id)
 				tc.record_error_at(.return_mismatch, '`${child.value}` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider declaring `${clean_base.name().all_after_last('.')}` as `@[heap]`.', child_id, child.pos)
 				return
+			}
+		}
+		if child.kind == .ident && tc.unsafe_depth == 0 {
+			tc.warn_prealloc_scope_escape(.return_mismatch, child.value, child_id, child.pos)
+		}
+		if child.kind == .prefix && child.op == .amp && child.children_count > 0
+			&& tc.unsafe_depth == 0 {
+			value_id := tc.a.child(child, 0)
+			value := tc.a.node(value_id)
+			if value.kind == .ident {
+				tc.warn_prealloc_scope_escape(.return_mismatch, value.value, value_id, value.pos)
 			}
 		}
 		raw_child_type := tc.resolve_type(child_id)
@@ -5503,6 +5571,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		tc.record_chained_bare_generic_struct_method_inference_error(id, node, info)
 		if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
 			tc.remember_resolved_call(id, info.name)
+			tc.track_prealloc_scope_call(info.name)
 		}
 		if info.return_type !is Void && info.return_type !is Unknown {
 			tc.remember_expr_type(id, info.return_type)
