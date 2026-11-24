@@ -50,6 +50,12 @@ const max_server_name_len = 253
 // so the cap is enforced only while dial() is handshaking (deadline_ms != 0).
 const max_handshake_recv_buf_len = 2 * max_ciphertext_record_len + record_header_len + recv_read_size
 
+// max_post_handshake_recv_buf_len caps unconsumed framed bytes after the handshake,
+// so a peer dribbling partial records cannot grow recv_buf without bound. Larger
+// than the handshake bound because multiple records may legitimately buffer
+// post-handshake (§5.2).
+const max_post_handshake_recv_buf_len = 4 * max_ciphertext_record_len + record_header_len + recv_read_size
+
 // max_handshake_flight_records bounds every record do_handshake consumes. A
 // compliant flight stays far below it; a peer flooding state-neutral but
 // decryptable records meets a deterministic cap instead of only the monotonic
@@ -702,6 +708,11 @@ fn (mut c Conn) read_raw_record() !Record {
 				// buffer without bound while no record completes.
 				c.fail_alert = .unexpected_message
 				return error('record: ${avail} unconsumed bytes exceed the handshake framing bound ${max_handshake_recv_buf_len}')
+			} else if c.deadline_ms == 0 && avail > max_post_handshake_recv_buf_len {
+				// Post-handshake: bound recv_buf growth too, so a peer dribbling
+				// partial records cannot exhaust memory.
+				c.fail_alert = .record_overflow
+				return error('record: ${avail} unconsumed bytes exceed the post-handshake framing bound ${max_post_handshake_recv_buf_len} (record_overflow)')
 			}
 		}
 		if c.sock_closed {
@@ -928,6 +939,9 @@ fn (mut c Conn) write_records(recs []Record) ! {
 		total += record_header_len + rec.payload.len
 	}
 	mut batched := []u8{cap: total}
+	defer {
+		zero_bytes(mut batched)
+	}
 	for rec in recs {
 		rec.serialize_into(mut batched)
 	}
@@ -1004,8 +1018,10 @@ fn (mut c Conn) write_application_data_inner(data []u8) !int {
 // and then swaps in the next write generation (RFC 8446 §4.6.3/§5.5) — the record facade
 // builds the notice and completes the rekey on either side of this socket write, so the
 // notice is always the last record of the generation it retires. Both the §5.5 write-path
-// trigger and the answer to a peer's request_update come through here. The caller must
-// already hold guard.
+// trigger and the answer to a peer's request_update come through here. Completing the
+// response clears record_layer's wait_ku_response latch, so a peer that has been answered
+// may re-request; §4.6.3 requires the update_not_requested response, not an
+// acknowledgement of it. The caller must already hold guard.
 fn (mut c Conn) send_key_update() ! {
 	notice := c.rec.build_key_update_notice()!
 	c.write_records([notice])!
@@ -1077,6 +1093,16 @@ fn (mut c Conn) destroy_all() ! {
 	// reader (§7.5 spirit: no decrypted or framed bytes left behind in freed memory).
 	c.wipe_app_buf()
 	c.rec.wipe_post_hsk_buf()
+	// Scrub stored NewSessionTicket tokens and nonces before dropping them (§7.5).
+	for i in 0 .. c.session_tickets.len {
+		c.session_tickets[i] = c.session_tickets[i].wipe()
+	}
+	c.session_tickets = []handshake.NewSessionTicket{}
+	// Zero the socket staging and framing buffers: they hold ciphertext/framed bytes
+	// that must not survive in freed memory (§7.5 spirit).
+	zero_bytes(mut c.sock_buf)
+	zero_bytes(mut c.recv_buf)
+	c.recv_pos = 0
 }
 
 // send_failure_alert emits the fatal alert for a dead handshake (RFC 8446 §6),
@@ -1094,6 +1120,7 @@ fn (mut c Conn) send_failure_alert() {
 	desc := c.fail_alert or { c.hs.failure_alert() }
 	payload := handshake.new_alert(desc).encode()
 	// A protection state is initialized exactly when its IV is the full nonce base.
+	// Only send encrypted alerts: RFC 8446 §6 forbids plaintext alerts post-handshake.
 	if c.rec.c_app_protection.iv.len == aead_nonce_len {
 		enc := c.rec.c_app_protection.encrypt_record(.alert, payload) or { return }
 		c.write_records([enc]) or {}
@@ -1104,7 +1131,8 @@ fn (mut c Conn) send_failure_alert() {
 		c.write_records([enc]) or {}
 		return
 	}
-	c.write_records([new_record(.alert, payload)]) or {}
+	// No protection state is installed yet: suppress the alert rather than send it
+	// plaintext (§6). The sticky fatal_error already surfaces the failure.
 }
 
 // finish_parked_read is called by a reader under guard once it stops parking in

@@ -138,9 +138,42 @@ fn test_read_record_rejects_invalid_content_type() ! {
 
 // test_read_record_rejects_oversized_length: a declared length above
 // max_ciphertext_record_len (RFC 8446 §5.2) is refused before any allocation.
+// 0x5000 = 20480 > max_ciphertext_record_len 16640
 fn test_read_record_rejects_oversized_length() ! {
-	// length field 0x5000 = 20480 > max_ciphertext_record_len 17408
 	mut r := wire.new_reader([u8(0x17), 0x03, 0x03, 0x50, 0x00])
+	read_record(mut r) or {
+		assert err.msg().contains('exceeds maximum')
+		return
+	}
+	assert false
+}
+
+// test_read_record_accepts_max_ciphertext: a declared length of exactly
+// max_ciphertext_record_len (16640) with enough trailing bytes is accepted,
+// since §5.2 permits ciphertext up to 2^14 + 256.
+fn test_read_record_accepts_max_ciphertext() ! {
+	mut payload := []u8{len: max_ciphertext_record_len}
+	mut hdr := []u8{len: record_header_len}
+	hdr[0] = 0x17 // ContentType.application_data
+	hdr[1] = u8(0x03)
+	hdr[2] = u8(0x03)
+	hdr[3] = u8((max_ciphertext_record_len >> 8) & 0xff)
+	hdr[4] = u8(max_ciphertext_record_len & 0xff)
+	mut frame := []u8{cap: record_header_len + max_ciphertext_record_len}
+	frame << hdr
+	frame << payload
+	mut r := wire.new_reader(frame)
+	rec := read_record(mut r) or {
+		assert false, 'a record at exactly the §5.2 ciphertext bound must be accepted'
+	}
+	assert rec.payload.len == max_ciphertext_record_len
+}
+
+// test_read_record_rejects_one_over_max_ciphertext: a declared length of
+// max_ciphertext_record_len + 1 (16641) exceeds §5.2 and is refused as
+// record_overflow.
+fn test_read_record_rejects_one_over_max_ciphertext() ! {
+	mut r := wire.new_reader([u8(0x17), 0x03, 0x03, 0x41, 0x01])
 	read_record(mut r) or {
 		assert err.msg().contains('exceeds maximum')
 		return

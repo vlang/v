@@ -412,6 +412,10 @@ pub fn (h &HandshakeCore) traffic_keys() !TrafficKeys {
 // (transcript) and the server certificate chain are also scrubbed: they survive
 // failure otherwise and would leak SNI/ALPN/certificate material on the heap.
 pub fn (mut h HandshakeCore) fail_and_zeroize_secrets() {
+	// If the failure lands after .connected, application traffic secrets are live
+	// and must be scrubbed too — destroy_all() will call this again (not
+	// zeroize_traffic_secrets) once state is .failed, so this is the only chance.
+	was_connected := h.state == .connected
 	h.wipe_key_schedule_secrets()
 	// Scrub plaintext handshake history: every message exchanged so far, plus the
 	// running digest state (its partial block can hold recent plaintext bytes).
@@ -428,6 +432,10 @@ pub fn (mut h HandshakeCore) fail_and_zeroize_secrets() {
 	h.server_certs = []pki.Certificate{}
 	h.reassembly = []u8{}
 	h.state = .failed
+	if was_connected {
+		wipe_secret(mut h.c_app_tsec)
+		wipe_secret(mut h.s_app_tsec)
+	}
 }
 
 // wipe_key_schedule_secrets destroys the key-schedule intermediate, both

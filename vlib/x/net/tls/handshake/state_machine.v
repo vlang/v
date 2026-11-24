@@ -600,6 +600,8 @@ pub fn (mut h HandshakeCore) zeroize_traffic_secrets() ! {
 	if h.state != .connected {
 		return error('handshake: zeroizing traffic secrets is only valid once the handshake reaches .connected (state: ${h.state()})')
 	}
+	wipe_secret(mut h.handshake_secret)
+	h.release_ephemeral_keys()
 	wipe_secret(mut h.c_hsk_tsec)
 	wipe_secret(mut h.s_hsk_tsec)
 	wipe_secret(mut h.c_app_tsec)

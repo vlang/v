@@ -32,10 +32,11 @@ pub fn build_key_update(request_update bool) []u8 {
 // until resumption gives them one.
 @[noinit]
 pub struct NewSessionTicket {
-	ticket_lifetime u32  // seconds the ticket may be used after issuance; 0 means no support
-	ticket_age_add  u32  // random value for obfuscating ticket age in early_data (§4.6.1)
-	ticket_nonce    []u8 // ties the ticket to this connection's resumption master secret
-	ticket          []u8 // opaque resumption token to present in a future ClientHello
+	ticket_lifetime u32 // seconds the ticket may be used after issuance; 0 means no support
+	ticket_age_add  u32 // random value for obfuscating ticket age in early_data (§4.6.1)
+mut:
+	ticket_nonce []u8 // ties the ticket to this connection's resumption master secret
+	ticket       []u8 // opaque resumption token to present in a future ClientHello
 }
 
 // lifetime returns the ticket_lifetime in seconds.
@@ -46,6 +47,23 @@ pub fn (t &NewSessionTicket) lifetime() u32 {
 // bytes returns the opaque ticket (the resumption token) to store for a future ClientHello.
 pub fn (t &NewSessionTicket) bytes() []u8 {
 	return t.ticket
+}
+
+// wipe zeroes the ticket's byte fields before it is dropped (§7.5 spirit). Called by
+// the record adapter's destroy_all() when a connection closes. Element zeroing works on
+// a value receiver because []u8 elements share their backing array; the returned handle
+// has its slice fields reassigned so no element handle survives, and the caller assigns
+// it back via index.
+pub fn (mut t NewSessionTicket) wipe() NewSessionTicket {
+	for i in 0 .. t.ticket_nonce.len {
+		t.ticket_nonce[i] = 0
+	}
+	t.ticket_nonce = []u8{}
+	for i in 0 .. t.ticket.len {
+		t.ticket[i] = 0
+	}
+	t.ticket = []u8{}
+	return t
 }
 
 // parse_new_session_ticket decodes NewSessionTicket (RFC 8446 §4.6.1); ticket

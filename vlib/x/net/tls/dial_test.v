@@ -197,6 +197,88 @@ fn key_update_pair_script(mut c net.TcpConn) ! {
 	}
 }
 
+// key_update_request_script is the standard flight plus two consecutive peer
+// KeyUpdate(update_requested) messages. The script ratchets only its own write leg
+// (server_app_secret() supplies it) and never reads the client's update_not_requested
+// answers; each answer is a buffered response the client must send before the next
+// request arrives. The first update retires generation 0, the second retires
+// generation 1, and the tail record rides generation 2 — the client must rekey its
+// read leg twice to open it, and each request must be answered and cleared before
+// the next request is accepted (§4.6.3).
+fn key_update_request_script(mut c net.TcpConn) ! {
+	ch_rec := scripted_read_record(mut c)!
+	if ch_rec.content_type != .handshake {
+		return error('expected a handshake record first, got ${ch_rec.content_type}')
+	}
+	_ := scripted_read_record(mut c)! // client dummy CCS
+
+	mut srv := fakeserver.new_server() or {
+		return error('fakeserver: ${err.msg()}')
+	}
+	fl := srv.handle_client_hello(ch_rec.payload) or {
+		return error('fakeserver CH: ${err.msg()}')
+	}
+	c.write(new_record(.handshake, fl.server_hello).serialize()) or { return err }
+	c.write(change_cipher_spec().serialize()) or { return err }
+
+	skey, siv := srv.server_handshake_keys() or { return error('fakeserver keys: ${err.msg()}') }
+	saead := handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, skey) or { return err }
+	mut senc := new_tls_protection(saead, siv)!
+	nst := srv.new_session_ticket() or { return error('fakeserver NST: ${err.msg()}') }
+	for m in fl.rest {
+		c.write(senc.encrypt_record(.handshake, m)!.serialize()) or { return err }
+	}
+
+	cfin_rec := scripted_read_record(mut c)!
+	ckey, civ := srv.client_handshake_keys() or { return error('fakeserver keys: ${err.msg()}') }
+	caead := handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, ckey) or { return err }
+	mut cdec := new_tls_protection(caead, civ)!
+	dec := cdec.decrypt_record(cfin_rec)!
+	srv.handle_client_finished(dec.plaintext) or { return error('fakeserver Finished: ${err.msg()}') }
+
+	akey, aiv := srv.server_app_keys() or { return error('fakeserver keys: ${err.msg()}') }
+	aaead := handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, akey) or { return err }
+	mut aenc := new_tls_protection(aaead, aiv)! // generation 0 (server write)
+	c.write(aenc.encrypt_record(.handshake, nst)!.serialize()) or { return err }
+	c.write(aenc.encrypt_record(.application_data, 'hello from fakeserver'.bytes())!.serialize()) or {
+		return err
+	}
+
+	// First KeyUpdate(update_requested) retires generation 0, sent under generation 0 keys.
+	c.write(aenc.encrypt_record(.handshake, handshake.build_key_update(true))!.serialize()) or {
+		return err
+	}
+	// Drain the client's update_not_requested answer: the client writes it while
+	// processing this request, so the peer's read end must stay open (a close here
+	// would surface EPIPE on the response write).
+	_ = scripted_read_record(mut c)!
+
+	// Derive generation 1 server-write keys from generation 0.
+	hash := handshake.suite_hash_algo(.tls_aes_128_gcm_sha256)
+	g1_secret := handshake.hkdf_expand_label(hash, srv.server_app_secret()!, 'traffic upd', []u8{}, hash.hash_len())!
+	g1_key := handshake.hkdf_expand_label(hash, g1_secret, 'key', []u8{}, handshake.suite_key_len(.tls_aes_128_gcm_sha256))!
+	g1_iv := handshake.hkdf_expand_label(hash, g1_secret, 'iv', []u8{}, 12)!
+	mut g1_enc := new_tls_protection(handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, g1_key)!, g1_iv)! // generation 1
+
+	// Second KeyUpdate(update_requested) retires generation 1, sent under generation 1 keys.
+	c.write(g1_enc.encrypt_record(.handshake, handshake.build_key_update(true))!.serialize()) or {
+		return err
+	}
+	// Drain the client's second answer for the same reason.
+	_ = scripted_read_record(mut c)!
+
+	// Derive generation 2 from generation 1.
+	g2_secret := handshake.hkdf_expand_label(hash, g1_secret, 'traffic upd', []u8{}, hash.hash_len())!
+	g2_key := handshake.hkdf_expand_label(hash, g2_secret, 'key', []u8{}, handshake.suite_key_len(.tls_aes_128_gcm_sha256))!
+	g2_iv := handshake.hkdf_expand_label(hash, g2_secret, 'iv', []u8{}, 12)!
+	mut g2_enc := new_tls_protection(handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, g2_key)!, g2_iv)! // generation 2
+
+	// Tail application data under generation 2 — only decryptable after both rekeys.
+	c.write(g2_enc.encrypt_record(.application_data, 'two requests then data'.bytes())!.serialize()) or {
+		return err
+	}
+}
+
 // silent_peer_script accepts and immediately closes: the client must fail on its
 // own oversized ClientHello before any byte reaches the peer.
 fn silent_peer_script(mut c net.TcpConn) ! {
@@ -401,6 +483,37 @@ fn test_dial_accepts_consecutive_key_update() ! {
 
 	n = conn.read(mut buf)! // two KeyUpdates rekey read to gen 2, then gen-2 app data
 	assert buf[..n] == 'two updates then data'.bytes()
+
+	conn.close() or {}
+	res := <-res_ch
+	assert res == 'OK'
+}
+
+// test_dial_accepts_consecutive_key_update_requests covers request → completed
+// response → subsequent request: the peer sends KeyUpdate(update_requested), the
+// client answers with update_not_requested (clearing the wait_ku_response latch once
+// the response completes), and the peer's next update_requested must be accepted.
+// RFC 8446 §4.6.3 requires the update_not_requested response and does not require the
+// peer to acknowledge it, so a second request after a completed response must not be
+// rejected as unexpected_message.
+fn test_dial_accepts_consecutive_key_update_requests() ! {
+	addr, res_ch := start_scripted_server(key_update_request_script)
+	if addr.starts_with('ERR') {
+		return error(addr)
+	}
+	ts := fakeserver.test_trust_store()!
+	mut conn := dial(addr,
+		server_name: fakeserver.server_name
+		root_cas:    ts
+		timeout:     10 * time.second
+	)!
+
+	mut buf := []u8{len: 64}
+	mut n := conn.read(mut buf)! // NST + gen-0 app data
+	assert buf[..n] == 'hello from fakeserver'.bytes()
+
+	n = conn.read(mut buf)! // two update_requested cycles then gen-2 app data
+	assert buf[..n] == 'two requests then data'.bytes()
 
 	conn.close() or {}
 	res := <-res_ch
@@ -974,7 +1087,9 @@ fn test_dial_sends_bad_record_mac_on_undecryptable_flight() ! {
 }
 
 // alert_back_pre_sh_script answers the ClientHello with a malformed ServerHello
-// body that fails before any keys are derived, then reads the plaintext alert.
+// body that fails before any keys are derived. RFC 8446 §6 requires alerts to be
+// encrypted, so with no keys installed the client cannot alert back — it simply
+// fails the handshake and closes.
 fn alert_back_pre_sh_script(mut c net.TcpConn) ! {
 	ch_rec := scripted_read_record(mut c)!
 	if ch_rec.content_type != .handshake {
@@ -984,25 +1099,20 @@ fn alert_back_pre_sh_script(mut c net.TcpConn) ! {
 	// A complete ServerHello header with an empty body: the client fails in parse,
 	// before installing keys.
 	c.write(new_record(.handshake, [u8(0x02), 0x00, 0x00, 0x00]).serialize()) or { return err }
-
-	alert_rec := scripted_read_record(mut c)!
-	if alert_rec.content_type != .alert {
-		return error('client pre-SH alert has type ${alert_rec.content_type}, expected plaintext alert')
-	}
-	peer_alert := handshake.parse_alert(alert_rec.payload)!
-	if peer_alert.level != .fatal {
-		return error('client alert level is ${peer_alert.level}, expected fatal')
-	}
+	// No alert is sent back (no protection state installed yet). Just close.
 }
 
 // test_dial_sends_plaintext_fatal_alert_before_server_hello checks that a
-// malformed ServerHello yields a plaintext fatal alert.
+// malformed ServerHello yields a dial failure before any keys are derived:
+// RFC 8446 §6 forbids plaintext alerts, so none is sent — the connection simply
+// fails and closes.
 fn test_dial_sends_plaintext_fatal_alert_before_server_hello() ! {
 	addr, res_ch := start_scripted_server(alert_back_pre_sh_script)
 	if addr.starts_with('ERR') {
 		return error(addr)
 	}
-	// A malformed ServerHello fails before classification: the surfaced message is the parse error.
+	// No protection state exists yet, so no alert can be sent. The dial fails
+	// with a connection-closed error instead.
 	expect_dial_failure(addr, 'unexpected EOF', res_ch)!
 }
 

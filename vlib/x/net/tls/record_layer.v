@@ -21,11 +21,14 @@ mut:
 	// Decrypted handshake bytes staged when a post-handshake message spans records;
 	// the incomplete tail waits for the next record (RFC 8446 §5.2).
 	post_hsk_buf []u8
-	// Set when the peer sends KeyUpdate(update_requested) and we have answered with our
-	// own KeyUpdate(update_not_requested) but have not yet seen the peer acknowledge our
-	// response (a KeyUpdate(update_not_requested) from them). A second update_requested
-	// before that acknowledgment is a sender-side MUST-NOT violation (RFC 8446 §4.6.3)
-	// and a receiver-side DoS vector, so it is rejected with unexpected_message.
+	// Set when the peer sends KeyUpdate(update_requested) and we must answer with our
+	// own KeyUpdate(update_not_requested). Cleared once that response completes
+	// (build_key_update_notice, then the socket write, then complete_key_update), so a
+	// subsequent peer update_requested is accepted after we have answered: RFC 8446
+	// §4.6.3 requires the update_not_requested response and does not require the peer
+	// to acknowledge it. A second update_requested before we have answered is a
+	// sender-side MUST-NOT violation (§4.6.3) and a receiver-side DoS vector, so it is
+	// rejected with unexpected_message.
 	wait_ku_response bool
 }
 
@@ -89,9 +92,13 @@ fn (mut r RecordLayer) build_key_update_notice() !Record {
 }
 
 // complete_key_update ratchets the write leg in the core and installs the next key
-// material over it (RFC 8446 §4.6.3/§7.2).
+// material over it (RFC 8446 §4.6.3/§7.2). It completes a KeyUpdate response to a
+// peer request, so it clears the wait_ku_response latch: once we have answered with
+// update_not_requested the peer may re-request, and §4.6.3 does not require it to
+// acknowledge our response.
 fn (mut r RecordLayer) complete_key_update(mut h handshake.HandshakeCore) ! {
 	r.swap_application_leg(mut h, false)!
+	r.wait_ku_response = false
 }
 
 // receive_key_update applies a peer KeyUpdate body (RFC 8446 §4.6.3): it advances the
