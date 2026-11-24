@@ -144,3 +144,46 @@ fn test_freestanding_process_environment_ownership_and_mutation() ! {
 	run_environment_matrix(false)!
 	run_environment_matrix(true)!
 }
+
+fn test_freestanding_embedded_environment_without_process_arguments() ! {
+	$if !linux || (!amd64 && !arm64) {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(@VMODROOT, 'vlib/os/testdata/freestanding_environment')
+	work := os.join_path(os.vtmp_dir(), 'embedded_environment_${os.getpid()}')
+	os.mkdir_all(work)!
+	defer { os.rmdir_all(work) or {} }
+	launcher := os.join_path(work, 'launcher')
+	compiled_launcher := os.exec([clang, '-Wall', '-Wextra', '-Werror', os.join_path(root, 'launch.c'),
+		'-o', launcher])
+	assert compiled_launcher.exit_code == 0, compiled_launcher.output
+	for object in [false, true] {
+		for autofree in [false, true] {
+			library := os.join_path(work, if object { 'environment.o' } else { 'libenvironment.so' })
+			mut command := [@VEXE, '-nocache', '-new-compiler', '-no-retry-compilation', '-freestanding',
+				'-gc', 'none', '-cc', clang, '-o', library]
+			if autofree { command << '-autofree' }
+			if object {
+				command << ['-is_o', '-d', 'no_main']
+			} else {
+				command << '-shared'
+			}
+			command << os.join_path(root, 'embedded/library.v')
+			built := os.exec(command)
+			assert built.exit_code == 0, built.output
+			host := os.join_path(work, 'host')
+			mut host_command := [clang, '-Wall', '-Wextra', '-Werror',
+				os.join_path(root, 'embedded/host.c'), '-o', host]
+			if object {
+				host_command << ['-DENV_OBJECT', library, '-lm', '-lpthread']
+			} else {
+				host_command << '-ldl'
+			}
+			linked := os.exec(host_command)
+			assert linked.exit_code == 0, linked.output
+			ran := run_environment_fixture([launcher, host, library])
+			assert ran.exit_code == 0 && ran.output == 'embedded environment passed\n', ran.output
+		}
+	}
+}

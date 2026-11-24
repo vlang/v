@@ -68,5 +68,5 @@ fn test_elementary_independent_mpc_oracles() {
 		assert oracle_close(actual.im, expected.im), 'row ${count} op ${operation} (${z.re},${z.im}) imag ${actual.im} != ${expected.im}'
 		count++
 	}
-	assert count == 1718
+	assert count == 2547
 }

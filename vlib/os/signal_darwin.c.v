@@ -30,11 +30,20 @@ fn C.sigaddset(set &u32, signum i32) i32
 fn C.sigemptyset(set &u32)
 fn C.sigprocmask(how i32, set &u32, oldset &u32) i32
 
+$if macos && freestanding && amd64 && !native {
+	fn C.v_macos_kernel_bsd_call6(u32, u64, u64, u64, u64, u64, u64, &u64) i32
+}
+
 fn signal_ignore_internal(args ...Signal) {
 	mask1 := u32(0)
 	C.sigemptyset(&mask1)
 	for arg in args {
 		C.sigaddset(&mask1, int(arg))
 	}
-	C.sigprocmask(C.SIG_BLOCK, &mask1, unsafe { nil })
+	$if macos && freestanding && amd64 && !native {
+		// BSD329 changes only the calling thread's mask, including raw V workers.
+		C.v_macos_kernel_bsd_call6(329, C.SIG_BLOCK, u64(&mask1), 0, 0, 0, 0, unsafe { nil })
+	} $else {
+		C.sigprocmask(C.SIG_BLOCK, &mask1, unsafe { nil })
+	}
 }

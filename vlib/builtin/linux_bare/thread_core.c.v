@@ -1,5 +1,6 @@
 module builtin
 
+// Shared by hosted vlibc and freestanding builds. Only the latter owns ELF TLS.
 $if !i386 {
 	// bare_cas_u32 compares and exchanges a word with acquire/release ordering.
 	@[inline]

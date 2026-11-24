@@ -5,11 +5,18 @@ module builtin
 // by name. Only `-freestanding` and `-syscalls` builds reach them.
 $if freestanding || syscalls {
 	// bf_startup_environment returns the borrowed, NUL-terminated startup
-	// environment vector. Its storage lasts for the process lifetime. It is not
-	// a snapshot of subsequent os.setenv/unsetenv changes; use os for those.
+	// environment vector. Standalone storage lasts for the process lifetime;
+	// Linux libraries borrow their host's vector when argv is unavailable.
+	// It does not track os.setenv/unsetenv changes; use os for those.
 	@[inline]
 	pub fn bf_startup_environment() &&u8 {
-		if g_main_argv == unsafe { nil } { return unsafe { nil } }
+		if g_main_argv == unsafe { nil } {
+			$if linux && !native && (v_bare_no_startup ?|| no_main ?) {
+				// The host initializes libraries/exports without process arguments.
+				return unsafe { &&u8(C.environ) }
+			}
+			return unsafe { nil }
+		}
 		return unsafe { &&u8(g_main_argv) + g_main_argc + 1 }
 	}
 

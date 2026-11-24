@@ -3,6 +3,8 @@
  *            /tmp/complex_oracle > elementary.tsv
  * MPC is needed only to regenerate the checked-in fixture, never by V tests.
  * Every expected binary64 component must agree at 512 and 1024 bit precision.
+ * Run from this directory; elementary_regressions.tsv supplies host-libm
+ * regression inputs whose expected results are calculated only by MPC.
  */
 #include <mpc.h>
 #include <stdint.h>
@@ -116,6 +118,29 @@ int main(void) {
             row(re, im, 0, 0, op);
         }
     }
+    FILE *regressions = fopen("elementary_regressions.tsv", "r");
+    if (!regressions) {
+        perror("elementary_regressions.tsv");
+        return 1;
+    }
+    char line[256];
+    while (fgets(line, sizeof line, regressions)) {
+        if (line[0] == '#') continue;
+        int op;
+        unsigned long long re, im;
+        if (sscanf(line, "%d %llx %llx", &op, &re, &im) != 3 || op < 0 || op >= 15) {
+            fprintf(stderr, "invalid regression input: %s", line);
+            fclose(regressions);
+            return 1;
+        }
+        row(number((uint64_t)re), number((uint64_t)im), 0, 0, op);
+    }
+    if (ferror(regressions)) {
+        perror("reading elementary_regressions.tsv");
+        fclose(regressions);
+        return 1;
+    }
+    fclose(regressions);
     mpfr_free_cache();
     return 0;
 }

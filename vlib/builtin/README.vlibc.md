@@ -38,6 +38,12 @@ Run `./v vlib/v/tests/vlibc_linux_test.v` on Linux or
 Use `./v vlib/v/tests/vlibc_solaris_test.v` on Solaris for files, descriptors, and sockets.
 Cross-compilation can check generated assembly but does not validate the target kernel ABI.
 
+Linux freestanding C libraries and `no_main` exports inherit their host's environment even
+when initialized without process arguments. V environment changes still use the private
+`os.setenv`, `os.unsetenv`, and `os.clearenv` store.
+Standalone Darwin/amd64 `os.signal_ignore` uses raw kernel signal masking for worker threads;
+the main thread retains its signal-handler behavior.
+
 ## Calendar and elapsed clocks
 
 Freestanding C builds on Linux amd64/arm64 and macOS amd64 provide these helpers:
@@ -174,6 +180,8 @@ available; `sys_write` and `bf_write` still use raw syscalls.
 Linux C-backend freestanding builds also provide POSIX `read`, `clock_gettime`,
 `nanosleep`, and `isatty` for V modules and external C callers. These exports use
 the system headers' native types and the runtime's existing kernel syscall layer.
+The native shims require platform C headers at build time, including in builds without
+`-target-libc-headers`. Their headers also supply the generated C's errno declarations.
 Successful calls preserve native `errno`; failures set it to the kernel error.
 Interrupted reads and sleeps report `EINTR` directly, allowing the caller to choose
 whether to retry. An interrupted `nanosleep` reports the remaining duration when

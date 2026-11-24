@@ -1,5 +1,7 @@
 module main
 
+import os
+
 #flag @DIR/../policy.c
 
 fn C.v_macos_signal_policy_probe() i32
@@ -73,6 +75,35 @@ fn require_restarted_read_on_worker() {
 	require_signal(code == 0, 'restart read: ${code}')
 }
 
+fn ignore_on_worker() {
+	require_signal(!os.is_main_thread(), 'signal_ignore worker identity')
+	mut original := u32(0)
+	require_signal(C.v_macos_kernel_bsd_call6(329, 3, 0, u64(&original), 0, 0, 0, unsafe { nil }) == 0,
+		'read original worker mask')
+	os.signal_ignore(.pipe, .urg)
+	mut current := u32(0)
+	require_signal(C.v_macos_kernel_bsd_call6(329, 3, 0, u64(&current), 0, 0, 0, unsafe { nil }) == 0,
+		'read ignored worker mask')
+	expected := original | (u32(1) << (u32(os.Signal.pipe) - 1)) | (u32(1) << (u32(os.Signal.urg) - 1))
+	require_signal(current == expected, 'signal_ignore did not block worker signals')
+}
+
+fn require_public_signal_ignore() {
+	require_signal(os.is_main_thread(), 'signal_ignore main identity')
+	os.signal_ignore(.pipe)
+	require_signal(C.v_macos_kernel_bsd_call6(37, u64(os.getpid()), u64(os.Signal.pipe), 0,
+		0, 0, 0, unsafe { nil }) == 0, 'deliver ignored SIGPIPE to main')
+	mut original := u32(0)
+	require_signal(C.v_macos_kernel_bsd_call6(329, 3, 0, u64(&original), 0, 0, 0, unsafe { nil }) == 0,
+		'read main mask')
+	task := spawn ignore_on_worker()
+	task.wait()
+	mut current := u32(0)
+	require_signal(C.v_macos_kernel_bsd_call6(329, 3, 0, u64(&current), 0, 0, 0, unsafe { nil }) == 0,
+		'read main mask after worker')
+	require_signal(current == original, 'signal_ignore changed the main thread mask')
+}
+
 fn main() {
 	require_signal(bf_close(-1) == 9, 'seed BF errno')
 	policy := C.v_macos_signal_policy_probe()
@@ -82,5 +113,6 @@ fn main() {
 	require_signal(delivery == 0, 'signal delivery: ${delivery}')
 	require_signal(bf_last_errno() == 9, 'BF errno after delivery')
 	require_restarted_read_on_worker()
+	require_public_signal_ignore()
 	println('V Darwin signal delivery and C ABI ok')
 }
