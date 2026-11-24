@@ -15016,7 +15016,7 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	match name {
 		'copy' {
 			if t.is_builtin_copy_call(_id) {
-				return t.try_lower_copy_call(node)
+				return t.try_lower_copy_call(_id, node)
 			}
 			return none
 		}
@@ -15441,7 +15441,7 @@ fn (t &Transformer) pointer_str_receiver_type(id flat.NodeId) ?u32 {
 // which moves the elements bit by bit. Fixed size arrays and strings are passed as array
 // views of their storage, so the elements are written in place. With ownership, elements
 // that need destruction are copied one by one instead, see `lower_owned_copy_call`.
-fn (mut t Transformer) try_lower_copy_call(node flat.Node) ?flat.NodeId {
+fn (mut t Transformer) try_lower_copy_call(call_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count != 3 {
 		return none
 	}
@@ -15457,8 +15457,10 @@ fn (mut t Transformer) try_lower_copy_call(node flat.Node) ?flat.NodeId {
 		flat.source_type_u8
 	})
 	array_type := flat.source_type_composition_one(.array, elem_type)
-	dst := if t.is_range_index_expr(dst_id) || t.is_fixed_array_type(dst_type_source_id) {
-		view := if t.is_range_index_expr(dst_id) {
+	dst_is_range := t.is_range_index_expr(dst_id)
+	dst_is_view := dst_is_range || t.is_fixed_array_type(dst_type_source_id)
+	dst := if dst_is_view {
+		view := if dst_is_range {
 			t.fixed_array_range_view(dst_id, array_type) or { t.transform_expr(dst_id) }
 		} else {
 			t.fixed_array_value_to_array_no_alloc(dst_id, dst_type_source_id, array_type)
@@ -15473,7 +15475,18 @@ fn (mut t Transformer) try_lower_copy_call(node flat.Node) ?flat.NodeId {
 	} else {
 		t.make_prefix(.amp, t.transform_expr(dst_id))
 	}
-	src := t.copy_source_array(src_arg_id, array_type)
+	mut borrowed_source := flat.empty_node
+	if range := t.immediate_string_slice(src_arg_id) {
+		// A staged destination view or a plain lvalue leaves no user code between
+		// taking the string view and consuming it. copy handles overlapping bytes.
+		if (dst_is_view || t.expr_is_plain_lvalue(dst_id))
+			&& t.immediate_string_slice_context(call_id) {
+			borrowed_source = t.lower_immediate_string_slice(range)
+		}
+	}
+	src_value := t.copy_source_array_value(src_arg_id, array_type, borrowed_source)
+	// Keep the source type even when the runtime copy signature names []u8.
+	src := t.stable_transformed_expr_for_reuse(src_value, array_type, 'copy_src')
 	if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
 		return t.lower_owned_copy_call(dst, src, t.copy_source_is_temporary(src_arg_id),
 			elem_type, array_type)
@@ -15996,20 +16009,18 @@ fn (mut t Transformer) fixed_array_range_view_for_arg(id flat.NodeId, array_type
 	return t.transform_expr(slice_id)
 }
 
-// copy_source_array lowers a `copy` source to an array. It is kept in a typed temp, since
-// the runtime `copy` declares a `[]u8` source that would otherwise retype array literals.
-fn (mut t Transformer) copy_source_array(id flat.NodeId, array_type_id u32) flat.NodeId {
-	return t.stable_transformed_expr_for_reuse(t.copy_source_array_value(id, array_type_id),
-		array_type_id, 'copy_src')
-}
-
 // copy_source_array_value views strings and local fixed size arrays in place, and converts
 // other fixed size arrays to a new array.
-fn (mut t Transformer) copy_source_array_value(id flat.NodeId, array_type_id u32) flat.NodeId {
+fn (mut t Transformer) copy_source_array_value(id flat.NodeId, array_type_id u32, borrowed_source flat.NodeId) flat.NodeId {
 	src_type_source_id := t.unaliased_value_type(id)
 
 	if src_type_source_id == flat.source_type_string {
-		src := t.stable_transformed_expr_for_reuse(t.transform_expr(id), flat.source_type_string, 'copy_src')
+		value := if borrowed_source != flat.empty_node {
+			borrowed_source
+		} else {
+			t.transform_expr(id)
+		}
+		src := t.stable_transformed_expr_for_reuse(value, flat.source_type_string, 'copy_src')
 		t.mark_fn_used('new_array_from_c_array_no_alloc')
 		return t.make_array_storage_call('new_array_from_c_array_no_alloc', [
 			t.make_selector(src, 'len', flat.source_type_int),
