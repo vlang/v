@@ -56,7 +56,6 @@ fn write_msvc_inline_asm_source(name string) string {
 fn test_c_output_for_msvc_keeps_the_inline_asm_block() {
 	// Text output is not compiled by V, and a portable snapshot resolves `$if msvc` only when
 	// the C compiler runs, so only builds that V hands to `cl` are rejected.
-	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
 	path := write_msvc_inline_asm_source('c_output')
 	c_path := path.all_before_last('.v') + '.c'
 	defer {
@@ -77,7 +76,6 @@ fn test_a_build_for_cl_stops_with_a_located_error() {
 		return
 	}
 	os.find_abs_path_of_executable('cl') or { return }
-	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
 	path := write_msvc_inline_asm_source('build')
 	exe_path := path.all_before_last('.v') + '.exe'
 	defer {
@@ -216,7 +214,6 @@ fn test_a_build_for_clang_cl_reaches_the_c_compiler_with_inline_asm() ! {
 	result := cmdexec.run_in_merged_with_env(os.join_path(@VMODROOT, 'v'), ['-nocache', '-os',
 		'windows', '-arch', 'amd64', '-cc', compiler, '-o', os.join_path(root, 'main.exe'), source],
 		'', {
-			'V_MACOS_V3_NO_FALLBACK': '1'
 		})
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('CLANG_CL_REACHED'), result.output

@@ -43,18 +43,18 @@ fn test_script_statements_after_import_semicolons_are_checked() {
 	] {
 		os.write_file(script, source)!
 		for flags in ['', '-no-parallel -nocache'] {
-			result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation',
+			result := os.exec([@VEXE, '-no-retry-compilation',
 				...(os.split_args(flags) or { panic(err) }), '-gc', 'none', 'run', script])
 			assert result.exit_code == 0, result.output
 			assert result.output.trim_space() == '1.25', result.output
 		}
 	}
 	os.write_file(script, 'import values; value := values.answer(); println(value.missing())\n')!
-	invalid := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-check', script])
+	invalid := os.exec([@VEXE, '-no-retry-compilation', '-check', script])
 	assert invalid.exit_code != 0, invalid.output
 	assert invalid.output.contains('missing'), invalid.output
 	os.write_file(script, 'import values values\n')!
-	malformed_import := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-check', script])
+	malformed_import := os.exec([@VEXE, '-no-retry-compilation', '-check', script])
 	assert malformed_import.exit_code != 0, malformed_import.output
 	assert malformed_import.output.contains('cannot import multiple modules at a time'), malformed_import.output
 	assert !malformed_import.output.contains('unknown ident'), malformed_import.output

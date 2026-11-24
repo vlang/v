@@ -93,11 +93,7 @@ fn test_failed_implicit_tcc_build_reports_the_fallback() {
 	$if !windows {
 		return
 	}
-	vexe := if os.base(@VEXE) == 'v1_fallback.exe' {
-		os.join_path(os.dir(@VEXE), 'v.exe')
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	vroot := os.dir(vexe)
 	kernel32_def := os.join_path(vroot, 'thirdparty', 'tcc', 'lib', 'kernel32.def')
 	if !os.is_file(kernel32_def) {
@@ -153,11 +149,7 @@ fn test_failed_implicit_tcc_build_reports_the_fallback() {
 // toolchain update can never make this one skip, so it stays as coverage of
 // the driver's own call site (and the -silent guard on it) on every platform.
 fn test_forced_implicit_tcc_failure_reports_the_fallback() {
-	vexe := if os.base(@VEXE) == 'v1_fallback.exe' {
-		os.join_path(os.dir(@VEXE), 'v.exe')
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	vroot := os.dir(vexe)
 	bundled_tcc := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	mut has_tcc := os.is_file(bundled_tcc)
@@ -203,7 +195,7 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 			os.unsetenv('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE')
 		}
 	}
-	build := cmdexec.run(vexe, ['-new-compiler', '-v', '-nocache', '-o', exe, source])
+	build := cmdexec.run(vexe, ['-v', '-nocache', '-o', exe, source])
 	assert build.exit_code == 0, build.output
 	assert build.output.contains('warning: implicit tcc could not be used for this build (tcc: error: injected for test coverage)'), build.output
 	assert build.output.count('=== V compiler benchmark ===') == 1, build.output
@@ -212,7 +204,7 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 	// -silent builds keep their output clean even for an injected failure.
-	quiet := cmdexec.run(vexe, ['-new-compiler', '-silent', '-nocache', '-o', exe, source])
+	quiet := cmdexec.run(vexe, ['-silent', '-nocache', '-o', exe, source])
 	assert quiet.exit_code == 0, quiet.output
 	assert !quiet.output.contains('implicit tcc could not be used'), quiet.output
 	// An explicit request bypasses preflight; disabling retries reports TCC's failure.
@@ -224,8 +216,8 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 	} else {
 		os.find_abs_path_of_executable('tcc')!
 	}
-	explicit := cmdexec.run(vexe, ['-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-		explicit_tcc, '-nocache', '-o', exe, source])
+	explicit := cmdexec.run(vexe, ['-no-retry-compilation', '-gc', 'none', '-cc', explicit_tcc,
+		'-nocache', '-o', exe, source])
 	assert explicit.exit_code != 0, explicit.output
 	assert explicit.output.contains('V3ExplicitTccMissingLibrary'), explicit.output
 	assert !explicit.output.contains('implicit tcc could not be used'), explicit.output

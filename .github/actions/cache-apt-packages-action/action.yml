@@ -22,6 +22,19 @@ runs:
     - name: Configure apt mirrors and download retries
       shell: bash
       run: bash .github/workflows/disable_azure_mirror.sh
+    # The cache action only refreshes the package lists under `act`. With the runner
+    # image's stale lists, a cache miss fetched superseded versions, got 404s for some,
+    # and saved an entry with no packages, which every later job restored as a hit.
+    - name: Refresh apt package lists
+      shell: bash
+      run: |
+        set -euo pipefail
+        for attempt in 1 2 3; do
+          sudo apt-get update -q && exit 0
+          echo "apt-get update failed (attempt $attempt)" >&2
+          sleep $((attempt * 10))
+        done
+        exit 1
     - name: Select apt package profile
       id: package-profile
       shell: bash
@@ -58,9 +71,24 @@ runs:
         esac
         echo "packages=$packages" >> "$GITHUB_OUTPUT"
     - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+      id: apt-cache
       with:
-        version: 1.0-${{ inputs.profile }}
+        # 1.1 replaces the empty 1.0 entries that stale package lists produced.
+        version: 1.1-${{ inputs.profile }}
         packages: ${{ steps.package-profile.outputs.packages }}
+    # A cache entry that was saved without its package archives restores nothing, and
+    # its missing manifest leaves the list of installed packages empty. Install the
+    # profile from the apt repositories then, instead of running without it.
+    - name: Install the packages that the cache did not restore
+      if: steps.apt-cache.outputs.all-package-version-list == ''
+      shell: bash
+      env:
+        PACKAGES: ${{ steps.package-profile.outputs.packages }}
+      run: |
+        set -euo pipefail
+        echo "The apt cache restored no packages; installing: $PACKAGES"
+        sudo apt-get update
+        sudo apt-get install -y $PACKAGES
     - name: Install common packages
       run: echo "done installing ${{ inputs.profile }} apt packages"
       shell: bash

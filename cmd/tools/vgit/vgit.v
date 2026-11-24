@@ -235,7 +235,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	// compiling the C sources with a C compiler:
 	mut command_for_building_v_from_c_source := ''
 	mut command_for_selfbuilding := ''
-	mut c_flags := '-std=gnu11 -I ./thirdparty/stdatomic/nix -w'
+	mut c_flags := '-std=gnu11 -I . -I ./thirdparty/stdatomic/nix -w'
 	mut c_ldflags := '-lm -lpthread'
 	mut vc_source_file_location := os.join_path_single(vgit_context.path_vc, 'v.c')
 	mut vc_v_cpermissive_flags := '${vgit_context.cc_options} -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration -Wno-error=int-conversion -fpermissive'
@@ -250,7 +250,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	scripting.verbose_trace(@FN, 'vgit_context.commit_v__ts: ${vgit_context.commit_v__ts}')
 
 	if 'windows' == os.user_os() {
-		c_flags = '-std=c99 -I ./thirdparty/stdatomic/win -w'
+		c_flags = '-std=c99 -I . -I ./thirdparty/stdatomic/win -w'
 		c_ldflags = ''
 		v_win_c_location := os.join_path_single(vgit_context.path_vc, 'v_win.c')
 		if os.exists(v_win_c_location) {

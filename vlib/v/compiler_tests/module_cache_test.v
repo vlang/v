@@ -61,13 +61,15 @@ fn create_module_cache_vroot(root string) {
 // The fixtures use the default C backend and the system compiler (`-cc cc`).
 // Native-cache fixtures must live in the shipped tree. User-supplied native
 // headers deliberately bypass the cache because their dependencies are opaque.
+// Windows limits paths to 260 characters, and the cache adds up to about 150 to the
+// project directory, so the tree uses short names and a short hash of `name`.
 fn create_module_cache_shipped_project(name string) string {
-	vroot := os.join_path(module_cache_vtmp_path(), 'shipped_vroot')
+	vroot := os.join_path(module_cache_vtmp_path(), 'vroot')
 	if !os.is_dir(os.join_path(vroot, 'vlib', 'builtin')) {
 		create_module_cache_vroot(vroot)
 	}
 	// Keep each project's cache and any headers in its parent directory private.
-	project := os.join_path(vroot, 'vlib', 'fixtures', name, 'cachefixture')
+	project := os.join_path(vroot, 'vlib', 'fixtures', 'f${u32(name.hash()):08x}', 'cachefixture')
 	os.rmdir_all(os.dir(project)) or {}
 	os.mkdir_all(project) or { panic(err) }
 	return project
@@ -769,6 +771,12 @@ fn module_cache_artifact(cache_dir string, prefix string, extension string) stri
 	return ''
 }
 
+// module_cache_v_string_text spells `text` as a single-quoted V string literal of a
+// cached header does: the backslashes of a Windows path are escaped too.
+fn module_cache_v_string_text(text string) string {
+	return text.replace('\\', '\\\\').replace("'", "\\'")
+}
+
 // module_cache_metric_paths reads the file list of a `-v` metric line. The report
 // shortens paths below HOME to `~`, which CI's temporary directories are.
 fn module_cache_metric_paths(line string) []string {
@@ -1217,9 +1225,8 @@ fn main() {
 		output := os.join_path(root, phase)
 		compiled := os.exec(['env', 'V3CACHE=${cache_dir}', 'VFLAGS=', 'VOSARGS=', 'CFLAGS=', 'LDFLAGS=',
 			'V3_INTERNAL_CACHE_FORCE_SOURCE=', 'V3_CACHE_FORCE_SOURCE=',
-			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', 'V_MACOS_V3_NO_FALLBACK=1', v3_bin, '-new-compiler',
-			'-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-show-timings', '-o', output,
-			source])
+			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', v3_bin, '-no-retry-compilation', '-cc', 'cc',
+			'-gc', 'none', '-show-timings', '-o', output, source])
 		assert compiled.exit_code == 0, '${phase}: ${compiled.output}'
 		object := module_cache_artifact(cache_dir, 'callbackprobe_', '.o')
 		assert object.len > 0, '${phase}: no cached callback module'
@@ -1279,9 +1286,8 @@ fn main() {
 		output := os.join_path(project, phase)
 		compiled := os.exec(['env', 'V3CACHE=${cache_dir}', 'VFLAGS=', 'VOSARGS=', 'CFLAGS=', 'LDFLAGS=',
 			'V3_INTERNAL_CACHE_FORCE_SOURCE=', 'V3_CACHE_FORCE_SOURCE=',
-			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', 'V_MACOS_V3_NO_FALLBACK=1', v3_bin, '-new-compiler',
-			'-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-show-timings', '-o', output,
-			source])
+			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', v3_bin, '-no-retry-compilation', '-cc', 'cc',
+			'-gc', 'none', '-show-timings', '-o', output, source])
 		assert compiled.exit_code == 0, '${phase}: ${compiled.output}'
 		object := module_cache_artifact(cache_dir, 'symlinkprobe_', '.o')
 		assert object.len > 0, '${phase}: no cached module object'
@@ -2509,6 +2515,11 @@ fn main() {
 }
 
 fn test_native_source_fallback_keeps_foreign_declaration() {
+	// The `.m` source makes the program Objective-C, which the Windows C compilers
+	// (MinGW GCC, MSVC) do not compile.
+	$if windows {
+		return
+	}
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_module_cache_native_fallback_${os.getpid()}')
 	defer {
@@ -2914,8 +2925,8 @@ fn main() {
 	stderr_file := os.join_path(root, 'stderr.txt')
 	// Exercise the current driver's stderr without the launcher's compatibility retry.
 	result :=
-		cache_capture_files([v3_bin, '-new-compiler', '-cc', 'cc', '-show-timings', '-enable-globals',
-			'-o', second_output, main_file], stdout_file, stderr_file, {
+		cache_capture_files([v3_bin, '-cc', 'cc', '-show-timings', '-enable-globals', '-o',
+			second_output, main_file], stdout_file, stderr_file, {
 			'V3CACHE': cache_dir
 		})
 	assert result.exit_code != 0
@@ -2927,9 +2938,9 @@ fn main() {
 	assert !stdout.contains('C compilation failed:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
 }
 
-fn test_module_cache_restart_preserves_macos_fallback_transport() {
+fn test_module_cache_restart_propagates_run_exit_code() {
 	v3_bin := module_cache_compiler()
-	root := os.join_path(os.temp_dir(), 'v3_module_cache_restart_fallback_${os.getpid()}')
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_restart_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	defer {
@@ -2957,7 +2968,7 @@ fn main() {
 	// Adding a C flag changes the cached compile signature and restarts V3 after parsing.
 	write_module_cache_file(root, 'main.v', "module main
 
-#flag -DV3_CACHE_RESTART_FALLBACK_PROBE
+#flag -DV3_CACHE_RESTART_PROBE
 
 import os
 import wrapper
@@ -2970,19 +2981,11 @@ fn main() {
 	exit(23)
 }
 ")
-	fallback_file := os.join_path(root, 'fallback')
-	report_dir := os.join_path(root, 'c_error')
 	side_effect_file := os.join_path(root, 'side_effects')
 	mut environment := os.environ()
 	environment['V3CACHE'] = cache_dir
-	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
-	environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
-	// The manifest costs a digest of every parsed source: a caller asks for it.
-	environment['V_MACOS_V3_SOURCE_MANIFEST'] = '1'
 	mut process := os.new_process(v3_bin)
-	// Keep the caller's transport paths instead of letting the launcher replace them.
-	process.set_args(['-new-compiler', '-silent', '-no-memory-limit', 'run', main_file,
-		side_effect_file])
+	process.set_args(['-silent', '-no-memory-limit', 'run', main_file, side_effect_file])
 	process.set_environment(environment)
 	process.set_redirect_stdio()
 	process.run()
@@ -2993,12 +2996,6 @@ fn main() {
 	assert exit_code == 23, output
 	assert output == '41\n', output
 	assert os.read_lines(side_effect_file)! == ['run']
-	assert !os.exists(fallback_file), 'cache restart left a stale fallback marker'
-	// A standalone V3 process retains the parser digest manifest for its caller to
-	// consume. A successful restart must not turn that manifest into an error report.
-	mut staged_files := os.ls(report_dir)!
-	staged_files.sort()
-	assert staged_files == ['v_source_digests', 'v_sources'], staged_files.str()
 }
 
 fn test_forced_include_flags_bypass_object_cache() {
@@ -4419,7 +4416,7 @@ fn main() {
 	header_path := module_cache_artifact(cache_dir, 'assets_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains(os.real_path(payload_path)), header
+	assert header.contains(module_cache_v_string_text(os.real_path(payload_path))), header
 	assert !header.contains('$embed_file("payload.txt")'), header
 
 	second_output := os.join_path(root, 'second')
@@ -4462,7 +4459,7 @@ fn main() {
 	header_path := module_cache_artifact(cache_dir, 'assets_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	escaped_payload_path := os.real_path(payload_path).replace("'", "\\'")
+	escaped_payload_path := module_cache_v_string_text(os.real_path(payload_path))
 	assert header.contains(escaped_payload_path), header
 	assert !header.contains(embed_expr), header
 
@@ -4505,7 +4502,7 @@ fn main() {
 	header_path := module_cache_artifact(cache_dir, 'origin_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains(os.real_path(source_file)), header
+	assert header.contains(module_cache_v_string_text(os.real_path(source_file))), header
 	assert !header.contains('@FILE'), header
 	assert !header.contains('@DIR'), header
 	assert !header.contains('@LINE'), header
@@ -4550,7 +4547,7 @@ fn main() {
 	header_path := module_cache_artifact(cache_dir, 'origin_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains(os.real_path(root)), header
+	assert header.contains(module_cache_v_string_text(os.real_path(root))), header
 	assert header.contains('cache_vmod_body'), header
 	assert !header.contains('@VMODROOT'), header
 	assert !header.contains('@VMOD_FILE'), header
@@ -4593,7 +4590,7 @@ fn main() {
 	header_path := module_cache_artifact(cache_dir, 'origin_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains(os.real_path(source_dir)), header
+	assert header.contains(module_cache_v_string_text(os.real_path(source_dir))), header
 	assert !header.contains('@VMODROOT'), header
 
 	second_output := os.join_path(root, 'second')
@@ -6469,7 +6466,7 @@ fn main() {
 		reject := word == 'second'
 		compiled := os.exec(['env', 'VFLAGS=', 'V3CACHE=${cache_dir}', 'V3_CACHE_TRACE=1',
 			'V3_CACHE_DISABLE_INCREMENTAL=', 'V3_TEST_REJECT_RESTORED_BODY=${int(reject)}', v3_bin,
-			'-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc', cc_wrapper, '-show-timings',
+			'-no-retry-compilation', '-gc', 'none', '-cc', cc_wrapper, '-show-timings',
 			'-enable-globals', '-o', output, main_file])
 		assert compiled.exit_code == 0, compiled.output
 		assert compiled.output.count('the C compiler rejected the program main restored by the incremental cache') == int(reject), compiled.output

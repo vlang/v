@@ -51,8 +51,8 @@ fn main() {
 		variations << ['-cflags', '-D_Bool=char']
 	}
 	for flags in variations {
-		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-			@CCOMPILER, ...flags, 'run', source])
+		result := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', @CCOMPILER, ...flags,
+			'run', source])
 		assert result.exit_code == 0, result.output
 		assert result.output.trim_space() == 'passed', result.output
 	}
@@ -86,8 +86,8 @@ fn main() {
 }
 ')!
 	for flags in [[]string{}, ['-no-parallel']] {
-		built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-			@CCOMPILER, ...flags, '-o', program, source])
+		built := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', @CCOMPILER, ...flags,
+			'-o', program, source])
 		assert built.exit_code == 0, built.output
 		for condition in ['if', 'integer', 'float', 'enum', 'pointer', 'callback', 'pointer_if',
 			'callback_if', 'pointer_match', 'callback_match'] {
@@ -125,8 +125,8 @@ fn main() {
 }
 ')!
 	for flags in [[]string{}, ['-no-parallel']] {
-		built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-			@CCOMPILER, '-d', 'v3_no_native_int128', ...flags, '-o', program, source])
+		built := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', @CCOMPILER, '-d',
+			'v3_no_native_int128', ...flags, '-o', program, source])
 		assert built.exit_code == 0, built.output
 		passed := os.exec([program, 'pass'])
 		assert passed.exit_code == 0, passed.output
@@ -162,15 +162,14 @@ fn optional_flag() ?bool { return true }
 		for body in cases {
 			os.write_file(source, prefix + declarations + 'fn main() { translated_marker(); ${body} }\n')!
 			for flags in [[]string{}, ['-no-parallel']] {
-				result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', ...flags, '-check',
-					root])
+				result := os.exec([@VEXE, '-no-retry-compilation', ...flags, '-check', root])
 				assert result.exit_code != 0, '${body}: ${result.output}'
 				assert result.output.contains('assert can be used only with `bool` expressions'), '${body}: ${result.output}'
 			}
 		}
 	}
 	os.write_file(source, '@[translated]\nmodule main\nfn main() { assert 1, 42 }\n')!
-	message := os.exec([@VEXE, '-new-compiler', '-check', root])
+	message := os.exec([@VEXE, '-check', root])
 	assert message.exit_code != 0, message.output
 	assert message.output.contains('assert allows only a single string'), message.output
 }

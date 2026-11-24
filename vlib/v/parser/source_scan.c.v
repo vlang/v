@@ -2,6 +2,13 @@ module parser
 
 import v.token
 
+fn C.mlock(addr voidptr, len uint) int
+
+fn C.munlock(addr voidptr, len uint) int
+
+// merge_prefault_piece is the memory that merge_prefault_thread maps per request.
+const merge_prefault_piece = 1048576
+
 // source_index_u8 returns the index of the first byte `c` of `src` at or after
 // `start`, or -1 without one. The parser asks a few questions of a whole source
 // before it parses it; this answers them at the speed of the C library's scan
@@ -96,6 +103,25 @@ fn (b &BatchSources) source_at(idx int) ?string {
 fn (b &BatchSources) source_of(path string) ?string {
 	idx := b.index[path] or { return none }
 	return b.source_at(idx)
+}
+
+// keep_text reports whether `text` is the whole source of one of the files at
+// [start, end) of the batch. Such a buffer is not copied for the table of kept
+// source texts: the batch hands it over and no longer frees it, like a text
+// that it only borrowed. Tasks ask for the files of distinct chunks, so each
+// writes only its own slots.
+@[direct_array_access]
+fn (mut b BatchSources) keep_text(text string, start int, end int) bool {
+	if text.len == 0 || start < 0 || end > b.sources.len {
+		return false
+	}
+	for i in start .. end {
+		if b.sources[i].str == text.str && b.sources[i].len == text.len {
+			b.borrowed[i] = true
+			return true
+		}
+	}
+	return false
 }
 
 // release frees the sources of the files at [start, end) of the batch. Only
@@ -206,4 +232,49 @@ pub fn read_batch_source(path string) string {
 			return tos(buf, int(size))
 		}
 	}
+}
+
+// MergePrefaultArgs is the task of merge_prefault_thread: the memory
+// [start, end) to make resident.
+struct MergePrefaultArgs {
+	start voidptr
+	end   voidptr
+}
+
+// merge_prefault_thread makes the unused capacity [start, end) of the caller's
+// node and children arrays resident before the merge of a parallel parse fills
+// it. The merge copies the nodes of every chunk there side by side, and each
+// first write to a page then waits for the kernel to map it: those faults of
+// one mapping do not run side by side, so most of the copy was that wait. Here
+// one pool thread takes them while the others still parse.
+// The caller may append to the arrays meanwhile, so the task must not write to
+// them: it asks the kernel to wire the whole pages inside the range and lets
+// them go again at once, which maps them and leaves every byte as it is.
+// A system that refuses (a locked-memory limit) only loses the head start.
+fn merge_prefault_thread(arg voidptr) voidptr {
+	task := unsafe { &MergePrefaultArgs(arg) }
+	$if macos || linux {
+		// sysconf only reads a constant of the system.
+		page_bytes := unsafe { C.sysconf(C._SC_PAGESIZE) }
+		if page_bytes <= 0 {
+			return unsafe { nil }
+		}
+		page := u64(page_bytes)
+		mut addr := (u64(task.start) + page - 1) / page * page
+		end := u64(task.end) / page * page
+		// A piece at a time: other threads map their own pages in between.
+		for addr < end {
+			piece := if end - addr > merge_prefault_piece {
+				u64(merge_prefault_piece)
+			} else {
+				end - addr
+			}
+			if C.mlock(voidptr(addr), uint(piece)) != 0 {
+				break
+			}
+			C.munlock(voidptr(addr), uint(piece))
+			addr += piece
+		}
+	}
+	return unsafe { nil }
 }

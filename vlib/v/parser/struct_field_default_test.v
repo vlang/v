@@ -106,12 +106,11 @@ fn test_nested_struct_field_defaults_compile_and_run() {
 	defer { os.rm(path) or {} }
 	os.write_file(path, 'struct Defaults {\n grouped bool = (1\n in [1])\n argument bool = identity(1\n in [1])\n callback fn () int = fn () int {\n value := optional_value()\n or { return 0 }\n return value\n }\n in int\n matched int = match true { true { 3 } else { 0 } }\n or int\n}\nfn identity(value bool) bool { return value }\nfn optional_value() ?int { return 42 }\nfn main() {\n value := Defaults{in: 7, or: 8}\n assert value.grouped\n assert value.argument\n assert value.callback() == 42\n assert value.matched == 3\n assert value.in == 7\n assert value.or == 8\n}\n')!
 	mut child := os.new_process(@VEXE)
-	child.set_args(['-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none', 'run',
-		path])
+	cc := $if windows { 'gcc' } $else { 'clang' }
+	child.set_args(['-no-retry-compilation', '-cc', cc, '-gc', 'none', 'run', path])
 	mut environment := os.environ()
 	environment.delete('VFLAGS')
 	environment.delete('VOSARGS')
-	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	child.set_environment(environment)
 	child.set_redirect_stdio_merged()
 	child.run()

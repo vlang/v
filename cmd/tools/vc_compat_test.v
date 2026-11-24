@@ -547,7 +547,7 @@ fn test_vc_compat_relocates_native_includes_without_expanding_headers() ! {
 	output := os.join_path(root, 'stream.c')
 	compiler := os.join_path(root, 'compiler.sh')
 	os.write_file(compiler, '#!/bin/sh\ncat > "$1"\n')!
-	text := '#include "/home/runner/work/v/v/vlib/builtin/track_heap_checks.h"\n#include "C:\\runner\\v\\thirdparty\\stdatomic\\win\\atomic.h"\n#include "/opt/sdk/vendor.h"\n#include "local.h"\nconst char *literal = "vlib/builtin/track_heap_checks.h";\n'
+	text := '#include "/home/runner/work/v/v/vlib/builtin/track_heap_checks.h"\n#include "C:\\runner\\v\\thirdparty\\stdatomic\\win\\atomic.h"\n#include "vlib/v/driver/native_object_cache.h" // helper\n#include "/opt/sdk/vendor.h"\n#include "local.h"\nconst char *literal = "vlib/builtin/track_heap_checks.h";\n'
 	os.write_file(source, text)!
 	script := os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh')
 	filtered := os.exec(['sh', script, source, 'sh', compiler, output])
@@ -556,6 +556,7 @@ fn test_vc_compat_relocates_native_includes_without_expanding_headers() ! {
 	vroot := os.real_path(@VEXEROOT).replace('\\', '/')
 	assert stream.contains('#include "${vroot}/vlib/builtin/track_heap_checks.h"')
 	assert stream.contains('#include "${vroot}/thirdparty/stdatomic/win/atomic.h"')
+	assert stream.contains('#include "${vroot}/vlib/v/driver/native_object_cache.h" // helper')
 	assert stream.contains('#include "/opt/sdk/vendor.h"\n#include "local.h"')
 	assert stream.contains('const char *literal = "vlib/builtin/track_heap_checks.h";')
 	assert os.read_file(source)! == text
@@ -580,7 +581,8 @@ fn test_windows_vc_compat_relocates_includes_and_preserves_snapshot_bytes() ! {
 	windows_header := r'C:\runner\v\thirdparty\stdatomic\win\atomic.h'
 	cmd_header := '/generator/v/cmd/tools/helper.h'
 	binary := [u8(0xff), u8(0xfe)].bytestr()
-	text := '#include "${unix_header}" // keep this comment\n#include "${windows_header}"\n#include "${cmd_header}"\n#include "/opt/sdk/vendor.h"\n#include "local.h"\n#include <stdio.h>\nconst char *literal = "vlib/builtin/core_windows.h";\nconst char *binary = "${binary}";\n'
+	relative_header := 'vlib/v/driver/native_object_cache.h'
+	text := '#include "${unix_header}" // keep this comment\n#include "${windows_header}"\n#include "${cmd_header}"\n#include "${relative_header}" // helper\n#include "/opt/sdk/vendor.h"\n#include "local.h"\n#include <stdio.h>\nconst char *literal = "vlib/builtin/core_windows.h";\nconst char *binary = "${binary}";\n'
 	os.write_file(source, text)!
 	filtered := os.exec([powershell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
 		'-Source', source, '-Destination', output])
@@ -589,6 +591,7 @@ fn test_windows_vc_compat_relocates_includes_and_preserves_snapshot_bytes() ! {
 	expected := text.replace(unix_header, '${vroot}/vlib/builtin/core_windows.h')
 		.replace(windows_header, '${vroot}/thirdparty/stdatomic/win/atomic.h')
 		.replace(cmd_header, '${vroot}/cmd/tools/helper.h')
+		.replace(relative_header, '${vroot}/${relative_header}')
 	assert os.read_file(output)! == expected
 	assert os.read_file(source)! == text
 }

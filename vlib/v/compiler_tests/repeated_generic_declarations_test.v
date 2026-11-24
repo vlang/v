@@ -19,8 +19,7 @@ fn test_repeated_generic_declarations_stay_within_memory_limit() {
 			}
 			source.writeln('fn main() {}')
 			os.write_file(path, source.str())!
-			result := os.exec([@VEXE, '-new-compiler', '-nocache', '-check', '-memory-limit', '512M',
-				path])
+			result := os.exec([@VEXE, '-nocache', '-check', '-memory-limit', '512M', path])
 			assert result.exit_code == 0, '${typ}, parameters=${parameters}: ${result.output}'
 		}
 	}

@@ -1,5 +1,6 @@
 module types
 
+import math.bits
 import v.flat
 
 // warn_unhandled_result_calls warns about the calls that return a Result whose
@@ -11,32 +12,55 @@ import v.flat
 // block handles it, as does `if x := call() {`.
 pub fn (mut tc TypeChecker) warn_unhandled_result_calls() {
 	saved_file := tc.cur_file
-	for idx in tc.a.user_code_start .. tc.a.nodes.len {
-		node := tc.a.node(flat.NodeId(idx))
-		if node.kind != .call {
-			continue
+	prepared := tc.prepared_result_calls()
+	if !isnil(prepared) {
+		// A parallel check has marked the nodes that can be such a call: the
+		// others have a type that is no Result, or none.
+		for word_idx, word in prepared.result_calls {
+			mut rest := word
+			for rest != 0 {
+				idx := word_idx * 64 + bits.trailing_zeros_64(rest)
+				rest &= rest - 1
+				if idx >= tc.a.user_code_start {
+					tc.warn_unhandled_result_call(idx)
+				}
+			}
 		}
-		id := flat.NodeId(idx)
-		typ := tc.expr_type(id) or { continue }
-		if unalias_type(typ) !is ResultType {
-			continue
+	} else {
+		for idx in tc.a.user_code_start .. tc.a.nodes.len {
+			tc.warn_unhandled_result_call(idx)
 		}
-		unhandled, deferred := tc.unhandled_result_spot(id, node)
-		if !unhandled || tc.declaration_contains_error(node) {
-			continue
-		}
-		file := tc.a.source_files[node.pos.id] or { continue }
-		tc.cur_file = file.name
-		hint := if deferred {
-			// `!` cannot pass an error out of a `defer`
-			'so it should have an `or {}` block at the end'
-		} else {
-			'so it should have either an `or {}` block, or `!` at the end'
-		}
-		tc.record_warning_at(.call_arg_mismatch, '${tc.call_display_name(node)}() returns `${typ.name()}`, ${hint}',
-			id, tc.wrapped_operand_diagnostic_pos(id))
 	}
+	tc.release_check_tail()
 	tc.cur_file = saved_file
+}
+
+// warn_unhandled_result_call warns about the node `idx` when it is a call that
+// returns a Result whose error nothing handles (see warn_unhandled_result_calls).
+fn (mut tc TypeChecker) warn_unhandled_result_call(idx int) {
+	node := tc.a.node(flat.NodeId(idx))
+	if node.kind != .call {
+		return
+	}
+	id := flat.NodeId(idx)
+	typ := tc.expr_type(id) or { return }
+	if unalias_type(typ) !is ResultType {
+		return
+	}
+	unhandled, deferred := tc.unhandled_result_spot(id, node)
+	if !unhandled || tc.declaration_contains_error(node) {
+		return
+	}
+	file := tc.a.source_files[node.pos.id] or { return }
+	tc.cur_file = file.name
+	hint := if deferred {
+		// `!` cannot pass an error out of a `defer`
+		'so it should have an `or {}` block at the end'
+	} else {
+		'so it should have either an `or {}` block, or `!` at the end'
+	}
+	tc.record_warning_at(.call_arg_mismatch, '${tc.call_display_name(node)}() returns `${typ.name()}`, ${hint}',
+		id, tc.wrapped_operand_diagnostic_pos(id))
 }
 
 // unhandled_result_spot tells whether the call `id`, which returns a Result, is

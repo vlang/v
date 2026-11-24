@@ -34,8 +34,7 @@ fn main() {
 	assert int(items[1].kind) == 5
 }
 ') or { panic(err) }
-	compile := os.exec([@VEXE, '-new-compiler', '-path', '${root}' + '|@vlib|@vmodules', '-o',
-		output_path, main_path])
+	compile := os.exec([@VEXE, '-path', '${root}' + '|@vlib|@vmodules', '-o', output_path, main_path])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([output_path])
 	assert run.exit_code == 0, run.output
@@ -77,8 +76,7 @@ fn main() {
 	assert int(items[1].kind) == 11
 }
 ') or { panic(err) }
-	compile := os.exec([@VEXE, '-new-compiler', '-path', '${root}' + '|@vlib|@vmodules', '-o',
-		output_path, main_path])
+	compile := os.exec([@VEXE, '-path', '${root}' + '|@vlib|@vmodules', '-o', output_path, main_path])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([output_path])
 	assert run.exit_code == 0, run.output

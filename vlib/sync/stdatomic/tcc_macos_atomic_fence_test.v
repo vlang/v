@@ -32,8 +32,8 @@ fn main() {
 	compiler_variants := [([]string{}), ['-cc', 'tcc']]
 	for compiler_args in compiler_variants {
 		for gc_mode in ['none', 'boehm'] {
-			mut args := ['-new-compiler', '-nocache', '-no-retry-compilation', '-gc', gc_mode,
-				...compiler_args, '-o', exe, source]
+			mut args := ['-nocache', '-no-retry-compilation', '-gc', gc_mode, ...compiler_args,
+				'-o', exe, source]
 			$if arm64 {
 				// macOS TCC's preprocessor exposes __arm64__ without __aarch64__.
 				args.insert(0, ['-cflags', '-U__aarch64__'])

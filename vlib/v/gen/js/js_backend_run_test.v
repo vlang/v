@@ -28,7 +28,6 @@ fn js_child_environment() map[string]string {
 	mut environment := os.environ()
 	environment.delete('VFLAGS')
 	environment.delete('VOSARGS')
-	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	return environment
 }
 

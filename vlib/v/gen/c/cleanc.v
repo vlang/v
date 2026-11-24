@@ -346,6 +346,30 @@ fn cgen_worker_scope_leave(scope voidptr) {
 	}
 }
 
+// cgen_worker_scope_owns reports whether `ptr` points into the arena `scope`.
+@[inline]
+fn cgen_worker_scope_owns(scope voidptr, ptr voidptr) bool {
+	$if prealloc {
+		return unsafe { prealloc_scope_owns(scope, ptr) }
+	}
+	return false
+}
+
+// cgen_worker_scope_suspend makes the parent of the current nested arena
+// `scope` current until cgen_worker_scope_resume gets the returned state.
+fn cgen_worker_scope_suspend(scope voidptr) voidptr {
+	$if prealloc {
+		return unsafe { prealloc_scope_suspend(scope) }
+	}
+	return unsafe { nil }
+}
+
+fn cgen_worker_scope_resume(scope voidptr, state voidptr) {
+	$if prealloc {
+		unsafe { prealloc_scope_resume(scope, state) }
+	}
+}
+
 fn cgen_worker_scope_free(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -514,6 +538,18 @@ struct CStructRefsHandoff {
 mut:
 	ids   map[u32]bool
 	ready bool
+}
+
+// EarlyInterfaceImpls holds the checker's implementer queries that a helper
+// thread answered ahead of collect_interface_impls (see start_iface_impls_lane):
+// ierror_impl_names, and interface_impl_names and interface_type_ids by
+// interface.
+@[heap]
+struct EarlyInterfaceImpls {
+mut:
+	ierror   []u32
+	names    map[u32][]u32
+	type_ids map[u32]map[u32]int
 }
 
 // PreseedTypeSeen deduplicates type walks during C generation. It is part of
@@ -864,7 +900,8 @@ mut:
 	ast_string_literals_parsed     int  // how many leading ast_string_literals come from parsed nodes
 	referenced_c_struct_ids        map[u32]bool
 	referenced_c_struct_ids_ready  bool
-	c_struct_refs_handoff          &CStructRefsHandoff = unsafe { nil } // set on a parallel interface scan worker
+	c_struct_refs_handoff          &CStructRefsHandoff  = unsafe { nil } // set on a parallel interface scan worker
+	early_iface_impls              &EarlyInterfaceImpls = unsafe { nil } // the implementer lane's answers, for collect_interface_impls
 	embed_payload_node_ids         []i32 // `$embed_file` payload nodes, in AST order
 	embed_payload_nodes_ready      bool
 	fn_segs                        []string
@@ -1244,6 +1281,8 @@ mut:
 	import_type_cache               &ImportTypeCache              = unsafe { nil }
 	embedded_fields_by_type         map[u32][]types.StructField // source type ID -> its embedded fields (usually empty)
 	embedded_fields_lane            voidptr                     // helper thread building embedded_fields_by_type, see start_embedded_fields_lane
+	collect_overlap_done            bool                        // see apply_fn_signature_registrations: the post-collect tables and the literal numbering are built
+	iface_impls_lane                voidptr                     // helper thread answering the checker's implementer queries, see start_iface_impls_lane
 	param_types_by_short            map[string][]types.Type     // method short-name suffix -> param types (fallback index)
 	generic_method_candidates       map[u32]map[string][]GenericMethodCandidate
 	spawn_wrapper_names             map[string]string
@@ -3120,7 +3159,11 @@ fn native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_m
 	mut need_cpp := false
 	mut cur_file := ''
 	mut cur_module := 'main'
-	for node_idx in 0 .. a.nodes.len {
+	// With an index of the nodes that this scan reads, visit only those.
+	scan_ids := a.directive_scan_index()
+	scan_len := if scan_ids.len > 0 { scan_ids.len } else { a.nodes.len }
+	for scan_idx in 0 .. scan_len {
+		node_idx := if scan_ids.len > 0 { int(scan_ids[scan_idx]) } else { scan_idx }
 		// The scan only reads the AST; borrow each node instead of copying it.
 		node := unsafe { &a.nodes[node_idx] }
 		if node.kind == .file {
@@ -3866,9 +3909,16 @@ fn (mut g FlatGen) flush_and_restart_scoped_output(path string, append bool, sco
 fn (mut g FlatGen) release_scoped_fn_items() {
 	if g.object_file_mode {
 		// Export wrappers are emitted after the object-local linkage pragma is
-		// popped, so retain their function metadata until final output.
+		// popped, so retain their function metadata until final output, which
+		// frees it with free_scoped_fn_items once the wrappers are written.
 		return
 	}
+	g.free_scoped_fn_items()
+}
+
+// free_scoped_fn_items frees the arena of the function items selected for the
+// parallel generation, once nothing reads them any more.
+fn (mut g FlatGen) free_scoped_fn_items() {
 	if g.scoped_fn_items_scope == unsafe { nil } {
 		return
 	}
@@ -4036,6 +4086,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
 	g.ast_string_literals_interned = false
+	g.collect_overlap_done = false
+	g.iface_impls_lane = unsafe { nil }
+	g.early_iface_impls = unsafe { nil }
 	g.ast_string_literals_parsed = 0
 	g.referenced_c_struct_ids = map[u32]bool{}
 	g.referenced_c_struct_ids_ready = false
@@ -4324,15 +4377,16 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
+	// The interface scan below is mostly the checker's implementer lists, which
+	// only depend on the checked declarations: start them now.
+	g.start_iface_impls_lane(effective_no_parallel)
 	g.collect_gen_info(effective_no_parallel)
 	if g.target_libc_headers {
 		g.precompute_thread_type_usage()
 	}
-	g.precompute_qualified_struct_c_types()
-	g.precompute_const_short_index()
-	g.precompute_local_global_suffix_names()
-	g.precompute_c_typedef_shadow_names()
-	g.precompute_local_name_exceptions()
+	if !g.collect_overlap_done {
+		g.precompute_post_collect_tables()
+	}
 	// Interface workers must share the same referenced C layouts as declaration emission.
 	// A parallel interface scan starts first and takes the set when the master has it.
 	mut defer_c_struct_refs := false
@@ -4378,8 +4432,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.precompute_embedded_fields()
 			$if !v3_no_parallel ? {
 				// The scan's checker reads the master's type cache as its base while
-				// the master resolves the referenced C structs below.
-				g.tc.freeze_type_cache_for_forks()
+				// the master resolves the referenced C structs below. A started
+				// implementer lane froze the cache already.
+				if !g.finish_iface_impls_lane() {
+					g.tc.freeze_type_cache_for_forks()
+				}
 				mut c_struct_refs := &CStructRefsHandoff{
 					ch: chan bool{cap: 1}
 				}
@@ -4406,7 +4463,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// Struct field defaults are emitted from their declarations when an otherwise
 		// unrelated function initializes the struct. Parallel function pre-scanning only
 		// visits that function body, so seed literals from defaults before workers fork.
-		g.preseed_struct_default_string_literals()
+		if !g.collect_overlap_done {
+			g.preseed_struct_default_string_literals()
+		}
 		g.precompute_shared_param_index()
 		if !g.skip_generics {
 			if !g.trace_calls {
@@ -4414,7 +4473,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			}
 			g.precompute_generic_fn_key_index()
 		}
-		if parallel_iface_scan {
+		if parallel_iface_scan && !g.ast_string_literals_interned {
 			$if !v3_no_parallel ? {
 				// The master would only wait for the interface scan now. Number the
 				// AST literals meanwhile: prepare_pre_dispatch_master does it next,
@@ -4812,6 +4871,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.object_file_mode {
 		g.emit_object_file_internal_linkage(false)
 		g.emit_object_file_export_wrappers()
+		g.free_scoped_fn_items()
 	}
 	if g.cache_split {
 		g.writeln('/* V3CACHE_BODY_END */')
@@ -5303,18 +5363,24 @@ fn runtime_init_targets_global(init string, cname string) bool {
 	return clean.starts_with('${cname} =') || clean.starts_with('${cname}.') || clean.starts_with('${cname}[') || clean.starts_with('memmove(${cname}')
 }
 
+@[direct_array_access]
 fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 	// This runs once per generated batch, while a batch refers to a handful of
 	// the literals: name a literal when the batch mentions it, not all of them
-	// for every batch.
+	// for every batch. The result is always a new string, which callers own (they
+	// free `source`); it is copied in runs between the renamed symbols, or whole.
+	if !source.contains('_str_') {
+		return source.clone()
+	}
 	mut symbols := []string{len: g.str_lits.len}
-	user_c_symbols := g.cache_user_c_string_symbols()
-	mut out := strings.new_builder(source.len + g.str_lits.len * 8)
+	mut user_c_symbols := map[string]bool{}
+	mut user_c_symbols_ready := false
+	mut out := strings.new_builder(0)
+	mut copied := 0
 	mut i := 0
 	for i < source.len {
 		if source[i] in [`"`, `'`] {
 			quote := source[i]
-			start := i
 			i++
 			for i < source.len {
 				if source[i] == `\\` && i + 1 < source.len {
@@ -5326,20 +5392,16 @@ fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 					break
 				}
 			}
-			out.write_string(source[start..i])
 			continue
 		}
 		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
-			start := i
 			i += 2
 			for i < source.len && source[i] != `\n` {
 				i++
 			}
-			out.write_string(source[start..i])
 			continue
 		}
 		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
-			start := i
 			i += 2
 			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
 				i++
@@ -5349,35 +5411,60 @@ fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 			} else {
 				i = source.len
 			}
-			out.write_string(source[start..i])
 			continue
 		}
-		if c_identifier_start(source[i]) {
+		c := source[i]
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` {
+			// The character tests are spelled out: this loop visits every byte of the
+			// unit, and TinyCC does not inline the helper functions.
 			start := i
 			i++
-			for i < source.len && c_identifier_continue(source[i]) {
-				i++
-			}
-			identifier := source[start..i]
-			if cache_numbered_string_symbol(identifier) && !user_c_symbols[identifier] {
-				mut id := 0
-				for digit in identifier[5..].bytes() {
-					id = id * 10 + int(digit - `0`)
-				}
-				if id >= 0 && id < symbols.len {
-					if symbols[id].len == 0 {
-						symbols[id] = cache_string_symbol(g.str_lits[id])
-					}
-					out.write_string(symbols[id])
-					continue
+			for i < source.len {
+				d := source[i]
+				if (d >= `a` && d <= `z`) || (d >= `A` && d <= `Z`) || d == `_`
+					|| (d >= `0` && d <= `9`) {
+					i++
+				} else {
+					break
 				}
 			}
-			out.write_string(identifier)
+			if i - start <= 5 || c != `_` || source[start + 1] != `s` {
+				continue
+			}
+			identifier := unsafe { tos(source.str + start, i - start) }
+			if !cache_numbered_string_symbol(identifier) {
+				continue
+			}
+			if !user_c_symbols_ready {
+				user_c_symbols = g.cache_user_c_string_symbols()
+				user_c_symbols_ready = true
+			}
+			if user_c_symbols[identifier] {
+				continue
+			}
+			mut id := 0
+			for digit in identifier[5..].bytes() {
+				id = id * 10 + int(digit - `0`)
+			}
+			if id >= 0 && id < symbols.len {
+				if symbols[id].len == 0 {
+					symbols[id] = cache_string_symbol(g.str_lits[id])
+				}
+				if copied == 0 {
+					out = strings.new_builder(source.len + 256)
+				}
+				out.write_string(source[copied..start])
+				out.write_string(symbols[id])
+				copied = i
+			}
 			continue
 		}
-		out.write_u8(source[i])
 		i++
 	}
+	if copied == 0 {
+		return source.clone()
+	}
+	out.write_string(source[copied..])
 	return out.str()
 }
 
@@ -5534,6 +5621,10 @@ struct CollectGenFnPreps {
 mut:
 	ready bool
 	jobs  []CollectGenFnPrepJob
+	// The arenas of the jobs' lists and registration spellings. Nothing reads
+	// them once the signatures are registered; the registered parameter and
+	// return types live in other arenas, until cgen is done.
+	list_scopes []voidptr
 }
 
 // moved_collect_gen_fn_prep returns `prep`; pushing a call result does not
@@ -5544,14 +5635,15 @@ fn moved_collect_gen_fn_prep(prep CollectGenFnPrep) CollectGenFnPrep {
 }
 
 struct FnSignatureRegistration {
-	module_key    string
-	short_name    string
-	aliases       [6]string
-	alias_count   u8
+	module_key  string
+	short_name  string
+	aliases     [6]string
+	alias_count u8
+	is_variadic bool
+	is_mut      bool
+mut:
 	ptypes        []types.Type
 	shared_params []bool
-	is_variadic   bool
-	is_mut        bool
 	return_type   &types.Type = types.empty_type
 }
 
@@ -5764,6 +5856,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut cisub_sw := time.new_stopwatch()
 	g.finish_type_indexes(type_index_args, type_index_threads)
 	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel, defer_fn_signature_registrations)
+	// The loop below changes the checker (globals enter its file scope): a
+	// started implementer lane, which reads the checker, has to be done by then.
+	g.join_iface_impls_lane()
 	has_parallel_fn_preps := fn_preps.ready
 	// The prepared declarations are consumed in top-level order.
 	mut prep_job := 0
@@ -6128,6 +6223,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			g.register_fn_decl_nodes(fn_node_regs, which)
 		}
 	}
+	// The prepared lists and the registration spellings are spent.
+	for scope in fn_preps.list_scopes {
+		cgen_worker_scope_free(scope)
+	}
 	if profile {
 		g.timing_profile('  [ttime]   ci apply sigs    ${f64(cisub_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cisub_sw.restart()
@@ -6160,12 +6259,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			}
 		}
 	}
-	g.modules['strings'] = 'strings'
-	g.restore_core_header_directives_for_system_libc()
-	g.materialize_objective_cpp_sources()
-	g.add_macos_shared_export_linker_flags()
 	ccio_sw := time.new_stopwatch()
-	g.collect_const_init_order_from_files()
+	if !g.collect_overlap_done {
+		g.finish_collect_gen_info_tail()
+	}
 	if profile {
 		ci_total_ms := f64(cisw.elapsed().microseconds()) / 1000.0
 		ci_fn_ms := f64(ci_fn_ns) / 1e6
@@ -6179,6 +6276,26 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			g.timing_profile('  [ttime]   ci fns total ${ci_total_ms:7.2f} ms, const order ${ccio_ms:7.2f} ms')
 		}
 	}
+}
+
+// finish_collect_gen_info_tail is the end of collect_gen_info that reads none of
+// the function signature maps.
+fn (mut g FlatGen) finish_collect_gen_info_tail() {
+	g.modules['strings'] = 'strings'
+	g.restore_core_header_directives_for_system_libc()
+	g.materialize_objective_cpp_sources()
+	g.add_macos_shared_export_linker_flags()
+	g.collect_const_init_order_from_files()
+}
+
+// precompute_post_collect_tables builds the lookup tables that only depend on
+// the type, const and global declarations collect_gen_info registered.
+fn (mut g FlatGen) precompute_post_collect_tables() {
+	g.precompute_qualified_struct_c_types()
+	g.precompute_const_short_index()
+	g.precompute_local_global_suffix_names()
+	g.precompute_c_typedef_shadow_names()
+	g.precompute_local_name_exceptions()
 }
 
 fn (mut g FlatGen) add_macos_shared_export_linker_flags() {
@@ -6665,10 +6782,16 @@ pub fn cache_directive_flags_with_project(a &flat.FlatAst, vroot string, target 
 // parsing. Deferred type/metadata conditions are left for the checked, transformed AST.
 pub fn preflight_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
 	mut deferred := map[int]bool{}
-	for node in a.nodes {
+	// With an index of the nodes that this scan reads, visit only those.
+	scan_ids := a.directive_scan_index()
+	scan_len := if scan_ids.len > 0 { scan_ids.len } else { a.nodes.len }
+	for scan_idx in 0 .. scan_len {
+		node_idx := if scan_ids.len > 0 { int(scan_ids[scan_idx]) } else { scan_idx }
+		// The scan only reads the AST; borrow each node instead of copying it.
+		node := unsafe { &a.nodes[node_idx] }
 		if node.kind in [.comptime_if, .comptime_for] {
 			for i in 0 .. node.children_count {
-				mark_preflight_deferred_directives(a, a.child(&node, i), mut deferred)
+				mark_preflight_deferred_directives(a, a.child(node, i), mut deferred)
 			}
 		}
 	}
@@ -6694,7 +6817,13 @@ fn cache_directive_flag_groups(a &flat.FlatAst, vroot string, target pref.Target
 	mut groups := []CFlagDirectiveGroup{}
 	mut cur_file := ''
 	mut cur_module := ''
-	for node_idx, node in a.nodes {
+	// With an index of the nodes that this scan reads, visit only those.
+	scan_ids := a.directive_scan_index()
+	scan_len := if scan_ids.len > 0 { scan_ids.len } else { a.nodes.len }
+	for scan_idx in 0 .. scan_len {
+		node_idx := if scan_ids.len > 0 { int(scan_ids[scan_idx]) } else { scan_idx }
+		// The scan only reads the AST; borrow each node instead of copying it.
+		node := unsafe { &a.nodes[node_idx] }
 		if node.kind == .file {
 			cur_file = node.value
 			cur_module = ''
@@ -6742,7 +6871,50 @@ fn (g &FlatGen) c_source_file_is_in_vlib(source_file string) bool {
 	} else {
 		g.a.cached_header_sources[source_file] or { source_file }
 	}
-	return source.replace('\\', '/').starts_with('${root}/vlib/')
+	return vlib_relative_source_path(root, source) != none
+}
+
+// vlib_relative_source_path returns the path of `source` inside `root`'s vlib
+// folder, or none when `source` is not one of its files. `root` uses `/`.
+// A vlib can be assembled from links, like a staged runtime that links the
+// library's module folders. Source paths then reach the generator spelled
+// either through the link or as its target, so a path under another
+// `/vlib/` folder also counts when it names the same file below `root`.
+fn vlib_relative_source_path(root string, source string) ?string {
+	if root.len == 0 {
+		return none
+	}
+	path := source.replace('\\', '/')
+	prefix := root + '/vlib/'
+	if path.starts_with(prefix) {
+		return path[prefix.len..]
+	}
+	mut real_source := ''
+	mut idx := path.index_after_('/vlib/', 0)
+	for idx >= 0 {
+		relative := path[idx + 6..]
+		// Only a plain module path names a file below the root's vlib; `.` or `..`
+		// components could resolve both spellings to the same file outside it.
+		if relative.len > 0 && vlib_relative_path_is_plain(relative) {
+			if real_source.len == 0 {
+				real_source = os.real_path(path)
+			}
+			if os.real_path(prefix + relative) == real_source {
+				return relative
+			}
+		}
+		idx = path.index_after_('/vlib/', idx + 1)
+	}
+	return none
+}
+
+fn vlib_relative_path_is_plain(relative string) bool {
+	for part in relative.split('/') {
+		if part.len == 0 || part == '.' || part == '..' {
+			return false
+		}
+	}
+	return true
 }
 
 // core_native_header_is_redeclared matches shipped bindings whose complete storage
@@ -6776,11 +6948,7 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 // core_native_source_header_is_redeclared is core_native_header_is_redeclared for
 // an include in the V source file `source`.
 fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source string, include_arg string) bool {
-	path := source.replace('\\', '/')
-	if root.len == 0 || !path.starts_with(root + '/vlib/') {
-		return false
-	}
-	relative := path[root.len + 6..]
+	relative := vlib_relative_source_path(root, source) or { return false }
 	if relative.starts_with('term/termios/termios_') && relative.ends_with('.c.v') {
 		return include_arg in ['<termios.h>', '<sys/ioctl.h>']
 	}
@@ -6830,9 +6998,9 @@ fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source stri
 		}
 		'v/gen/c/output_nix.c.v' { return include_arg == '<sys/uio.h>' }
 		'v/gen/fastc/unit_compile_nix.c.v' { return include_arg == '<signal.h>' }
-		'v/diagserver/diagserver_linux.c.v' {
+		'v/diagserver/diagserver_nix.c.v' {
 			return include_arg in ['<errno.h>', '<signal.h>', '<sys/file.h>', '<sys/wait.h>',
-				'<unistd.h>', '<sys/prctl.h>', '<sys/syscall.h>']
+				'<unistd.h>']
 		}
 		'sync/sync_default.c.v' { return include_arg == '<semaphore.h>' }
 		'sync/sync_freebsd.c.v' {
@@ -15948,6 +16116,23 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 	return ''
 }
 
+// address_operand_may_be_const_ref reports whether
+// const_ref_name_from_node_cached_for_collect can name a const for the operand
+// of an address-of expression. It is that function's own early tests: every
+// operand rejected here gets the empty name there, before any other work.
+@[direct_array_access]
+fn (g &FlatGen) address_operand_may_be_const_ref(id flat.NodeId, unique_index map[string]string) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return true
+	}
+	node := unsafe { &g.a.nodes[int(id)] }
+	return match node.kind {
+		.paren { true }
+		.ident, .selector { cgen_name_may_be_const_ref(node.value, unique_index, g.const_vals) }
+		else { false }
+	}
+}
+
 fn (g &FlatGen) fixed_storage_candidate_short_name(name string) string {
 	if dot := name.last_index('.') {
 		return unsafe { name.substr_unsafe(dot + 1, name.len) }
@@ -16002,6 +16187,8 @@ struct FixedStorageNodeScanArgs {
 	fixed_candidate_shorts map[string]bool
 	ident_filter           &FixedStorageCandidateNameFilter
 	short_filter           &FixedStorageCandidateNameFilter
+	// The frozen const short-name index, for address_operand_may_be_const_ref.
+	unique_const_ref_names map[string]string
 mut:
 	address_items    []FixedStorageConstRefItem
 	ref_items        []FixedStorageConstRefItem
@@ -16148,9 +16335,14 @@ fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs)
 		match node.kind {
 			.prefix {
 				if node.op == .amp && node.children_count > 0 {
-					scan.address_items << FixedStorageConstRefItem{
-						id: g.a.child(node, 0)
-						at: idx
+					operand_id := g.a.child(node, 0)
+					// Nearly every operand is a local: keep the ones the replay can
+					// resolve to a const.
+					if g.address_operand_may_be_const_ref(operand_id, scan.unique_const_ref_names) {
+						scan.address_items << FixedStorageConstRefItem{
+							id: operand_id
+							at: idx
+						}
 					}
 				}
 			}
@@ -16289,6 +16481,7 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 			fixed_candidate_shorts: fixed_candidate_shorts
 			ident_filter:           &fixed_candidate_ident_filter
 			short_filter:           &fixed_candidate_short_filter
+			unique_const_ref_names: unique_const_ref_names
 			fixed_safe_refs:        map[int]bool{}
 		}
 	}
@@ -18033,6 +18226,18 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.expected_enum = old_expected_enum
 				return
 			}
+			// Source code cannot offset a `voidptr`, but the lowering of a translated
+			// `m[k] += n` can; standard C (and MSVC) has no `void*` arithmetic.
+			if node.op in [.plus, .minus] && type_is_void_pointer(lhs_type)
+				&& translated_integer_scalar_type(rhs_type) {
+				g.write('((${g.value_c_type(lhs_type)})((u8*)(')
+				g.gen_expr(lhs_id)
+				g.write(') ${g.op_str(node.op)} (')
+				g.gen_expr(rhs_id)
+				g.write(')))')
+				g.expected_enum = old_expected_enum
+				return
+			}
 			lhs_node := g.a.nodes[int(lhs_id)]
 			rhs_node := g.a.nodes[int(rhs_id)]
 			if node.op in [.eq, .ne] && g.expr_is_in_translated_file(id)
@@ -19331,6 +19536,13 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write(')')
 			} else if g.gen_checked_integer_cast(id, target_type, cast_arg_id, cast_arg_type, ct) {
 				return
+			} else if semantic_target is types.Struct && g.tc.c_type(cast_arg_type) == ct {
+				// The value already has the target's C type (`Alias(value)` of a C struct).
+				// C only casts to scalar types: GCC and Clang accept a struct cast to its
+				// own type as an extension, MSVC rejects it (C2440).
+				g.write('(')
+				g.gen_cast_value_operand(cast_arg_id, target_type)
+				g.write(')')
 			} else {
 				g.write('(${ct})(')
 				g.gen_cast_value_operand(cast_arg_id, target_type)
@@ -26225,9 +26437,9 @@ fn (mut g FlatGen) emit_global_inits() {
 		g.in_global_array_pointer_init = old_array_pointer_init
 	}
 	// The closure runtime can be imported for syntax that only might need it. Its state
-	// is set up for `closure_init`, and without it the map runtime its fields default to
-	// may not be emitted at all.
-	skip_closure_runtime_globals := !g.needs_closure_runtime_init()
+	// is set up only for a program that enters the runtime; without it the map runtime
+	// its fields default to may not be emitted at all.
+	skip_closure_runtime_globals := !g.needs_closure_runtime_state()
 	for qname in g.global_init_order {
 		g.in_global_array_pointer_init = false
 		if qname in g.c_extern_global_names {
@@ -27531,7 +27743,12 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	] {
 		if qname == 'max_len' && ct == 'int' {
 			g.writeln('enum { ${qname} = ${expr_str} };')
-		} else if ct == 'u8' || g.fixed_storage_consts[g.const_primary_name(name)] || g.name_collides_with_struct_field(qname) {
+		} else if g.fixed_storage_consts[g.const_primary_name(name)] {
+			// A constant whose address is taken has one definition, like a global: a
+			// program split into units (the cached program prefix and its TinyCC unit)
+			// declares it `extern` elsewhere, so `&foo` is the same in every unit.
+			g.writeln('${linkage_attr}const ${ct} ${qname} = ${expr_str};')
+		} else if ct == 'u8' || g.name_collides_with_struct_field(qname) {
 			// A `#define` whose name matches a struct field would wrongly expand every
 			// `.field` access. Byte constants are also passed by reference by generic
 			// binary I/O helpers, so they need addressable storage rather than a macro.
@@ -28486,11 +28703,21 @@ fn (g &FlatGen) shift_count_const_value(id flat.NodeId, seen []string) ?int {
 			return g.tc.const_int_value(node.value, seen)
 		}
 		.ident, .selector {
+			// A local is not a constant, and a bare name only names a constant of the
+			// current module or of builtin: the private `const shift` of math is not
+			// a local `shift` of main, whose shift then needs its guard.
+			if node.kind == .ident && g.selector_base_is_local_value(node.value) {
+				return none
+			}
 			name := g.const_ref_name_from_node(node)
 			if name.len == 0 || name in seen {
 				return none
 			}
 			module_name := g.const_modules[name] or { g.tc.cur_module }
+			if node.kind == .ident && module_name != g.tc.cur_module && module_name != 'builtin'
+				&& !(g.tc.cur_module in ['', 'main'] && module_name in ['', 'main']) {
+				return none
+			}
 			return g.tc.const_int_value_in_module(name, module_name, seen)
 		}
 		.paren {

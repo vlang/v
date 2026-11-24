@@ -93,6 +93,6 @@ fn (r TestResume) save() ! {
 
 fn (mut ts TestSession) fail_test_resume(err IError, cmd string, mtc MessageThreadContext) {
 	ts.benchmark_fail()
-	ts.add_failed_cmd(cmd)
+	ts.add_failed_test(mtc.file, cmd)
 	ts.append_message(.fail, 'Could not update test progress for ${mtc.file}: ${err}', mtc)
 }

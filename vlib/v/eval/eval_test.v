@@ -4179,10 +4179,13 @@ fn main() {
 }
 
 fn test_eval_os_exec_accepts_literal_argument_arrays() {
+	// Escape the backslashes of a Windows path (`D:\a\v\v.exe`): unescaped, the
+	// evaluated string literal reads them as `\a` and `\v` escapes.
+	vexe_literal := vexe.replace('\\', '\\\\')
 	mut e := create()
 	e.run_text('import os
 fn main() {
- result := os.exec(["${vexe}", "version"])
+ result := os.exec(["${vexe_literal}", "version"])
  println(result.exit_code)
  println(result.output.starts_with("V "))
 }

@@ -13,10 +13,10 @@ fn spread_promoted_project(name string, files map[string]string, run bool) os.Re
 		os.write_file(path, source) or { panic(err) }
 	}
 	if !run {
-		return os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-check', root])
+		return os.exec([@VEXE, '-no-retry-compilation', '-check', root])
 	}
 	binary := os.join_path(root, if os.user_os() == 'windows' { 'probe.exe' } else { 'probe' })
-	compile := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-o', binary, root])
+	compile := os.exec([@VEXE, '-no-retry-compilation', '-o', binary, root])
 	if compile.exit_code != 0 {
 		return compile
 	}

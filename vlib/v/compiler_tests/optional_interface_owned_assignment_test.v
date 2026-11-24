@@ -54,7 +54,6 @@ fn main() {
 	assert cleared.slot == none
 }
 ')!
-	result := os.exec([@VEXE, '-new-compiler', '-ownership', '-gc', 'none', '-cstrict', '-cc',
-		'clang', 'run', source])
+	result := os.exec([@VEXE, '-ownership', '-gc', 'none', '-cstrict', '-cc', 'clang', 'run', source])
 	assert result.exit_code == 0, result.output
 }

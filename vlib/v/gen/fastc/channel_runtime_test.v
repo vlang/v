@@ -152,9 +152,8 @@ fn fastc_channel_runtime_build_run(root string, vroot string, expected string) {
 	program := os.join_path(root, 'program')
 	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-gc', 'none', '-o',
 		program, root], vroot, {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':   @VEXE
+		'VFLAGS': ''
 	})
 	assert build.exit_code == 0, '${root}: ${build.output}'
 	run := cmdexec.run(program, [])

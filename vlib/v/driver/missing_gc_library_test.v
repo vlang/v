@@ -66,15 +66,15 @@ fn test_missing_bundled_gc_library_reports_setup_failure() {
 	assert result.output.contains('-gc none'), result.output
 	assert !result.output.contains('This is a V compiler bug'), result.output
 	assert !result.output.contains('retrying with'), result.output
-	without_gc := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-cc', 'cc', '-gc', 'none',
+	without_gc := cmdexec.run_in(compiler, ['-nocache', '-cc', 'cc', '-gc', 'none',
 		'-no-retry-compilation', 'run', source], root)
 	assert without_gc.exit_code == 0, without_gc.output
 	assert without_gc.output.trim_space() == 'hello', without_gc.output
-	generated_c := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-gc', 'boehm', '-o',
+	generated_c := cmdexec.run_in(compiler, ['-nocache', '-gc', 'boehm', '-o',
 		os.join_path(root, 'main.c'), source], root)
 	assert generated_c.exit_code == 0, generated_c.output
-	object := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-gc', 'boehm', '-cc', 'cc',
-		'-o', os.join_path(root, 'main.o'), source], root)
+	object := cmdexec.run_in(compiler, ['-nocache', '-gc', 'boehm', '-cc', 'cc', '-o',
+		os.join_path(root, 'main.o'), source], root)
 	assert object.exit_code == 0, object.output
 	assert os.is_file(os.join_path(root, 'main.c'))
 	assert os.is_file(os.join_path(root, 'main.o'))
@@ -82,7 +82,7 @@ fn test_missing_bundled_gc_library_reports_setup_failure() {
 	literal_source := os.join_path(root, 'literal.v')
 	os.write_file(literal_source, "fn main() { println('hello') }\n")!
 	assert !os.exists(os.join_path(root, 'thirdparty', 'tcc', 'lib', 'libgc.a'))
-	literal := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-cc', 'cc', '-gc', 'boehm',
+	literal := cmdexec.run_in(compiler, ['-nocache', '-cc', 'cc', '-gc', 'boehm',
 		'-no-retry-compilation', 'run', literal_source], root)
 	assert literal.exit_code == 0, literal.output
 	assert literal.output == 'hello\n', literal.output

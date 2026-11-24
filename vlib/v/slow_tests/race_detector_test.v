@@ -706,7 +706,10 @@ fn test_race_blank_reads_are_reads() {
 			flags << '-prod'
 		}
 		exe := build_race_program('blank_read_${read}', blank_read_source, ...flags)
-		res := os.exec(['env', 'VRACE=exitcode=7', exe])
+		// With the default trace history, ThreadSanitizer sometimes cannot restore the stack
+		// of the earlier access of the 1000 racing iterations, drops that report and never
+		// reports the address again (about 1 run in 200 on macOS). A longer history keeps it.
+		res := os.exec(['env', 'VRACE=exitcode=7 history_size=7', exe])
 		assert res.exit_code == 7, '${read}: ${res.output}'
 		assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${read}: ${res.output}'
 	}
@@ -807,7 +810,9 @@ fn test_race_channel_values_are_the_caller_memory() {
 			if optimized { flags << '-prod' }
 			exe := build_race_program('channel_value_${mode}_${optimized}', channel_value_source,
 				...flags)
-			res := os.exec(['env', 'VRACE=exitcode=7', exe])
+			// Like the blank-read fixtures: 1000 racing iterations can outlive the default
+			// trace history, and ThreadSanitizer then drops the report for that address.
+			res := os.exec(['env', 'VRACE=exitcode=7 history_size=7', exe])
 			assert res.exit_code == 7, '${mode}, optimized=${optimized}: ${res.output}'
 			assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${mode}, optimized=${optimized}: ${res.output}'
 			assert res.output.contains('${mode} done '), res.output

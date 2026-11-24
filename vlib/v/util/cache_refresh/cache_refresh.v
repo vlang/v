@@ -586,7 +586,6 @@ pub fn refresh(vexe string, all_requests []Request, options RefreshOptions) ! {
 	environment['VEXE'] = vexe
 	environment['V3_CACHE_REFRESH'] = '1'
 	environment['V_SKIP_VVMRC'] = '1'
-	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	mut failures := []string{}
 	mut refreshed_entries := map[string]bool{}
 	mut migrated_headers := map[string]string{}

@@ -88,6 +88,7 @@ pub fn (d Doc) str() string {
 //
 // Input that is not well formed JSON has no violation to report, because the
 // JSON5 parser owns it; parse_text returns that error instead.
+// A document that exceeds the dynamic Any depth limit also has no violation.
 pub fn violation(text string) ?ParseError {
 	return violation_opts(text, ParseOpts{})
 }
@@ -130,7 +131,8 @@ fn as_value(e &ParseError) ParseError {
 	}
 }
 
-// is_valid reports whether `text` is valid JSONC.
+// is_valid reports whether `text` is valid JSONC and can be parsed into the
+// dynamic Any tree used for validation, up to 256 nested containers.
 //
 // A document that is not well formed JSON is not valid JSONC either, so this
 // answers the question rather than reporting why. Use parse_text when the
@@ -150,7 +152,9 @@ pub fn is_valid_opts(text string, opts ParseOpts) bool {
 	return validate(text, opts) == nil
 }
 
-// parse_text parses the JSONC document in `text` and returns a `Doc`.
+// parse_text parses the JSONC document in `text` and returns a `Doc`. Validation
+// builds a dynamic Any tree: depths 257 through 512 return JsonDecodeError, and
+// deeper input returns JsonScanError from the JSON5 parser.
 pub fn parse_text(text string) !Doc {
 	return parse_text_opts(text, ParseOpts{})
 }
@@ -192,7 +196,9 @@ pub fn parse_opts(text string, opts ParseOpts) !Any {
 //
 // The target rules are json2's: structs, embedded structs, enums, maps, arrays,
 // options and scalar types. Fields use `@[json: 'name']` for renaming.
-// Missing keys retain their defaults. Dialect validation precedes decoding.
+// Missing keys retain their defaults. Dialect validation precedes decoding and
+// builds a dynamic Any tree, so the 256-container limit applies to every target.
+// Depths 257 through 512 return JsonDecodeError; deeper input returns JsonScanError.
 pub fn decode[T](text string) !T {
 	// Validate the dialect before decoding the original text, preserving integers
 	// beyond the precision of the dynamic tree's f64 values.

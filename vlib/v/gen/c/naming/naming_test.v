@@ -89,6 +89,13 @@ fn test_basename_libc_collision_under_gnu_source() {
 	assert c_name('C.basename') == 'basename'
 }
 
+// <stdlib.h> declares `div_t div(int, int)`; Windows units include it through
+// <immintrin.h>, so a plain V `fn div(...)` needs a disjoint C name too.
+fn test_div_libc_collision() {
+	assert is_libc_collision('div')
+	assert c_name('C.div') == 'div'
+}
+
 fn test_file_function_names_do_not_collide_with_libc() {
 	assert c_name('mktemp') == '${internal_symbol_c_prefix}libc_mktemp'
 	assert c_name('truncate') == '${internal_symbol_c_prefix}libc_truncate'

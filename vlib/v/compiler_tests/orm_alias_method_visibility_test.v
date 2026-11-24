@@ -222,8 +222,7 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 	}
 	executable := os.join_path(dir, 'main.exe')
 	flags := if check_only { '-check' } else { '' }
-	result := os.exec([@VEXE, '-new-compiler', ...(os.split_args(flags) or { panic(err) }), '-o',
-		executable, source])
+	result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-o', executable, source])
 	if result.exit_code != 0 || check_only {
 		return result
 	}

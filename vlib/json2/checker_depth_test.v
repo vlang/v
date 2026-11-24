@@ -5,34 +5,40 @@ module json2
 // whole process (`V panic: stack overflow`) at a few thousand `[`/`{` in a
 // row instead of returning an error.
 
+fn assert_parser_accepts_typed_input(text string) {
+	if _ := decode[int](text, DecoderOptions{}) {
+		assert false, 'container input must not decode as a number'
+	} else {
+		assert err is JsonDecodeError
+		assert !err.msg().contains('maximum nesting depth')
+	}
+}
+
+fn assert_standard_parser_depth_error(text string, character int) {
+	if _ := decode[int](text, DecoderOptions{}) {
+		assert false, 'expected standard JSON over the parser limit to return an error'
+	} else {
+		assert err is JsonDecodeError
+		decode_error := err as JsonDecodeError
+		assert decode_error.line == 1
+		assert decode_error.character == character
+	}
+}
+
 fn test_nesting_at_max_nesting_depth_still_parses() {
 	arr := '['.repeat(max_nesting_depth) + ']'.repeat(max_nesting_depth)
-	a := parse(arr, DecoderOptions{}) or {
-		panic('an array nested exactly max_nesting_depth deep must parse, got: ${err.msg()}')
-	}
-	assert a.str().len > 0
+	assert_parser_accepts_typed_input(arr)
 
 	obj := '{"a":'.repeat(max_nesting_depth) + '0' + '}'.repeat(max_nesting_depth)
-	o := parse(obj, DecoderOptions{}) or {
-		panic('an object nested exactly max_nesting_depth deep must parse, got: ${err.msg()}')
-	}
-	assert o.str().len > 0
+	assert_parser_accepts_typed_input(obj)
 }
 
 fn test_nesting_over_max_nesting_depth_errors_instead_of_crashing() {
 	arr_bad := '['.repeat(max_nesting_depth + 1) + ']'.repeat(max_nesting_depth + 1)
-	if a := parse(arr_bad, DecoderOptions{}) {
-		// a successful parse here would mean the nesting guard regressed
-		// into a potential stack-overflow again
-		println('over-limit array parsed: ${a.str().len} chars')
-		assert false
-	} else {
-		assert err.msg().contains('maximum nesting depth')
-	}
+	assert_standard_parser_depth_error(arr_bad, max_nesting_depth + 1)
 
 	obj_bad := '{"a":'.repeat(max_nesting_depth + 1) + '0' + '}'.repeat(max_nesting_depth + 1)
-	if a := parse(obj_bad, DecoderOptions{}) {
-		println('over-limit object parsed: ${a.str().len} chars')
+	if _ := decode[int](obj_bad, DecoderOptions{}) {
 		assert false
 	} else {
 		assert err.msg().contains('maximum nesting depth')
@@ -45,8 +51,7 @@ fn test_deeply_nested_value_inside_a_document_is_rejected() {
 	suffix := ', 3]}'
 	body := '['.repeat(max_nesting_depth + 1) + ']'.repeat(max_nesting_depth + 1)
 	doc := prefix + body + suffix
-	if a := parse(doc, DecoderOptions{}) {
-		println('deep nested document parsed: ${a.str().len} chars')
+	if _ := decode[int](doc, DecoderOptions{}) {
 		assert false
 	} else {
 		assert err.msg().contains('maximum nesting depth')
@@ -71,13 +76,9 @@ fn mixed_nesting_string(levels int) string {
 }
 
 fn test_mixed_array_and_object_nesting_at_both_boundaries() {
-	at_limit := parse(mixed_nesting_string(max_nesting_depth), DecoderOptions{}) or {
-		panic('mixed array/object nesting exactly at the limit must parse: ${err.msg()}')
-	}
-	assert at_limit.str().len > 0
+	assert_parser_accepts_typed_input(mixed_nesting_string(max_nesting_depth))
 
-	if a := parse(mixed_nesting_string(max_nesting_depth + 1), DecoderOptions{}) {
-		println('over-limit mixed nesting parsed: ${a.str().len} chars')
+	if _ := decode[int](mixed_nesting_string(max_nesting_depth + 1), DecoderOptions{}) {
 		assert false
 	} else {
 		assert err.msg().contains('maximum nesting depth')
@@ -89,18 +90,14 @@ fn test_mixed_array_and_object_nesting_at_both_boundaries() {
 // rejected. Each of the three reaches exactly max_nesting_depth.
 fn test_sibling_containers_do_not_accumulate_depth() {
 	sub := '['.repeat(max_nesting_depth - 1) + '0' + ']'.repeat(max_nesting_depth - 1)
-	a := parse('[${sub},${sub},${sub}]', DecoderOptions{}) or {
-		panic('three maximal siblings must parse without depth accumulation: ${err.msg()}')
-	}
-	assert a.str().len > 0
+	assert_parser_accepts_typed_input('[${sub},${sub},${sub}]')
 }
 
 // a bounded nesting error must not poison the reused buffer of decode_reuse
 fn test_decode_reuse_recovers_after_a_depth_error() {
 	mut buffer := DecodeBuffer{}
 	over := mixed_nesting_string(max_nesting_depth + 1)
-	if v := decode_reuse[Any](over, mut buffer, DecoderOptions{}) {
-		println('over-limit reuse input parsed: ${v.str().len} chars')
+	if _ := decode_reuse[int](over, mut buffer, DecoderOptions{}) {
 		assert false
 	} else {
 		assert err.msg().contains('maximum nesting depth')

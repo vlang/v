@@ -22,7 +22,7 @@ fn main() {
 ')!
 	// V1-hosted unit tests get a shared V3 compiler from their runner.
 	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
-	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
+	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE] }
 	args << ['-gc', 'none', '-o', c_path, path]
 	compiled := os.exec(args)
 	assert compiled.exit_code == 0, compiled.output
@@ -59,7 +59,10 @@ fn main() {
 	println("no panic")
 }
 ')!
-	compiled := os.exec([@VEXE, '-cc', 'clang', '-gc', 'none', '-no-retry-compilation', '-o', binary,
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := $if windows { 'gcc' } $else { 'clang' }
+	compiled := os.exec([@VEXE, '-cc', cc, '-gc', 'none', '-no-retry-compilation', '-o', binary,
 		source])
 	assert compiled.exit_code == 0, compiled.output
 	for case_name in ['past_end', 'negative', 'wide_signed', 'wide_unsigned'] {
@@ -70,7 +73,7 @@ fn main() {
 	}
 
 	os.write_file(source, 'fn main() { s := "abc"; i := 3; assert s[i] == 0 }')!
-	result := os.exec([@VEXE, '-cc', 'clang', '-gc', 'none', '-no-bounds-checking',
-		'-no-retry-compilation', 'run', source])
+	result := os.exec([@VEXE, '-cc', cc, '-gc', 'none', '-no-bounds-checking', '-no-retry-compilation',
+		'run', source])
 	assert result.exit_code == 0, result.output
 }

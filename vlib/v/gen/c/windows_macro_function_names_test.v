@@ -3,7 +3,9 @@ module c
 import os
 
 fn test_main_functions_compile_with_windows_header_macros() {
-	cc := os.find_abs_path_of_executable('clang') or { return }
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or { return }
 	dir := os.join_path(os.vtmp_dir(), 'windows_macro_functions_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
@@ -42,7 +44,7 @@ fn main() {
 	println("ok")
 }
 ')!
-	compiled := os.exec([@VEXE, '-new-compiler', '-nocache', '-gc', 'none', '-cc', cc, '-cflags',
+	compiled := os.exec([@VEXE, '-nocache', '-gc', 'none', '-cc', cc, '-cflags',
 		'-Dnear= -Dfar= -Dpascal=__stdcall -Dcdecl=', '-o', binary, source])
 	assert compiled.exit_code == 0, compiled.output
 	ran := os.exec([binary])

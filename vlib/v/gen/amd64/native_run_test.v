@@ -10,8 +10,8 @@ fn testsuite_end() {
 
 fn amd64_test_compiler_path() string {
 	if !os.exists(amd64_test_compiler) {
-		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-d',
-			'skip_fastc', '-compile-backend', 'amd64', '-o', amd64_test_compiler,
+		result := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-d', 'skip_fastc',
+			'-compile-backend', 'amd64', '-o', amd64_test_compiler,
 			os.join_path(@VEXEROOT, 'cmd', 'v')])
 		assert result.exit_code == 0, result.output
 	}
@@ -29,8 +29,8 @@ fn test_amd64_backend_compiles_and_runs_a_program() {
 			os.rmdir_all(root) or {}
 		}
 		os.write_file(source, "fn main() {\n\tprintln('amd64 backend works')\n}\n")!
-		compiled := os.exec([compiler, '-new-compiler', '-no-retry-compilation', '-gc', 'none',
-			'-b', 'amd64', '-o', output, source])
+		compiled := os.exec([compiler, '-no-retry-compilation', '-gc', 'none', '-b', 'amd64', '-o',
+			output, source])
 		assert compiled.exit_code == 0, compiled.output
 		ran := os.exec([output])
 		assert ran.exit_code == 0, ran.output
@@ -53,8 +53,8 @@ fn test_amd64_hello_world_is_linux_elf() {
 		object := os.join_path(root, 'hello.o')
 		os.write_file(source, "fn main() {\n\tprintln('Hello, world!')\n}\n")!
 
-		built := os.exec([compiler, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-b',
-			'amd64', '-o', executable, source])
+		built := os.exec([compiler, '-no-retry-compilation', '-gc', 'none', '-b', 'amd64', '-o',
+			executable, source])
 		assert built.exit_code == 0, built.output
 		bytes := os.read_bytes(executable)!
 		assert bytes.len >= 64
@@ -68,8 +68,8 @@ fn test_amd64_hello_world_is_linux_elf() {
 		assert result.exit_code == 0, result.output
 		assert result.output == 'Hello, world!\n', result.output
 
-		built_object := os.exec([compiler, '-new-compiler', '-no-retry-compilation', '-gc', 'none',
-			'-b', 'amd64', '-o', object, source])
+		built_object := os.exec([compiler, '-no-retry-compilation', '-gc', 'none', '-b', 'amd64',
+			'-o', object, source])
 		assert built_object.exit_code == 0, built_object.output
 		object_bytes := os.read_bytes(object)!
 		assert object_bytes.len >= 64
@@ -86,8 +86,8 @@ fn test_amd64_hello_world_is_linux_elf() {
 		assert object_run.exit_code == 0, object_run.output
 		assert object_run.output == 'Hello, world!\n', object_run.output
 
-		compat := os.exec([compiler, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-b',
-			'x64', '-o', executable, source])
+		compat := os.exec([compiler, '-no-retry-compilation', '-gc', 'none', '-b', 'x64', '-o',
+			executable, source])
 		assert compat.exit_code == 0, compat.output
 		compat_run := os.exec([executable])
 		assert compat_run.exit_code == 0, compat_run.output
@@ -117,8 +117,8 @@ fn test_amd64_inline_assembly_accepts_canonical_and_legacy_backend_names() {
 }
 ')!
 		for backend in ['amd64', 'x64'] {
-			compiled := os.exec([compiler, '-new-compiler', '-no-retry-compilation', '-gc', 'none',
-				'-b', backend, '-o', output, source])
+			compiled := os.exec([compiler, '-no-retry-compilation', '-gc', 'none', '-b', backend,
+				'-o', output, source])
 			assert compiled.exit_code == 0, compiled.output
 			result := os.exec([output])
 			assert result.exit_code == 0, result.output

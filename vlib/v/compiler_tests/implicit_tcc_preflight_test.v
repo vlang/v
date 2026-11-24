@@ -56,15 +56,14 @@ fn check_implicit_tcc_preflight_selects_platform_quietly_for_macos_objects() ! {
 	exe := os.join_path(dir, 'main')
 	for object in [pending, existing] {
 		os.write_file(source, '#flag "${object}"\nfn C.preflight_answer() int\nfn identity[T](value T) T { return value }\nfn main() {\n \$if tinyc { println(identity(0)) } \$else { println(identity(C.preflight_answer())) }\n}\n')!
-		build := cmdexec.run(vexe, ['-new-compiler', '-gc', 'none', '-nocache', '-o', exe, source])
+		build := cmdexec.run(vexe, ['-gc', 'none', '-nocache', '-o', exe, source])
 		assert build.exit_code == 0, build.output
 		assert build.output.trim_space() == '', build.output
 		run := cmdexec.run(exe, [])
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == '42'
 	}
-	verbose := cmdexec.run(vexe, ['-new-compiler', '-gc', 'none', '-v', '-nocache', '-o', exe,
-		source])
+	verbose := cmdexec.run(vexe, ['-gc', 'none', '-v', '-nocache', '-o', exe, source])
 	assert verbose.exit_code == 0, verbose.output
 	assert verbose.output.contains('native inputs require linking external objects on macOS'), verbose.output
 	assert verbose.output.count('=== V compiler benchmark ===') == 1, verbose.output
@@ -79,7 +78,7 @@ fn check_implicit_tcc_preflight_preserves_semantic_errors() ! {
 		return
 	}
 	fixture := 'vlib/v/parser/tests/register_imported_enum.vv'
-	registered := cmdexec.run_in(vexe, ['-new-compiler', '-nocolor', fixture], vroot)
+	registered := cmdexec.run_in(vexe, ['-nocolor', fixture], vroot)
 	assert registered.exit_code != 0, registered.output
 	expected := os.read_file(os.join_path(vroot, fixture.replace('.vv', '.out')))!
 	actual := registered.output.replace('\r\n', '\n').trim_space()
@@ -91,7 +90,7 @@ fn check_implicit_tcc_preflight_preserves_semantic_errors() ! {
 	}
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, '#flag -lV3InvalidSourceMustNotLink\nfn main() { println(v3_missing_value) }\n')!
-	invalid := cmdexec.run(vexe, ['-new-compiler', '-gc', 'none', '-nocache', source])
+	invalid := cmdexec.run(vexe, ['-gc', 'none', '-nocache', source])
 	assert invalid.exit_code != 0, invalid.output
 	assert invalid.output.contains('v3_missing_value'), invalid.output
 	assert !invalid.output.contains('implicit tcc could not be used'), invalid.output
@@ -105,7 +104,7 @@ fn check_implicit_tcc_preflight_preserves_semantic_errors() ! {
 		}
 	}
 	os.write_file(source, 'fn read_value[T](value T) { println(value.v3_missing_field) }\nfn main() { read_value(1) }\n')!
-	forced := cmdexec.run(vexe, ['-new-compiler', '-gc', 'none', '-nocache', source])
+	forced := cmdexec.run(vexe, ['-gc', 'none', '-nocache', source])
 	assert forced.exit_code != 0, forced.output
 	assert forced.output.contains('v3_missing_field'), forced.output
 	assert !forced.output.contains('implicit tcc could not be used'), forced.output
@@ -113,7 +112,7 @@ fn check_implicit_tcc_preflight_preserves_semantic_errors() ! {
 	os.find_abs_path_of_executable(fallback) or { return }
 	os.write_file(source, 'fn main() { \$if tinyc { println(v3_invalid_tinyc_value) } \$else { answer := 40 + 2; println(answer) } }\n')!
 	exe := os.join_path(dir, 'valid.exe')
-	valid := cmdexec.run(vexe, ['-new-compiler', '-v', '-gc', 'none', '-nocache', '-o', exe, source])
+	valid := cmdexec.run(vexe, ['-v', '-gc', 'none', '-nocache', '-o', exe, source])
 	assert valid.exit_code == 0, valid.output
 	assert valid.output.count('warning: implicit tcc could not be used') == 1, valid.output
 	assert valid.output.count('=== V compiler benchmark ===') == 1, valid.output
@@ -138,8 +137,22 @@ fn with_implicit_tcc_environment(check fn () !) {
 	check() or { panic(err) }
 }
 
+// pipeline_stage_count counts the timing lines of `stage` in a `-v` report. The report
+// shares the captured output with stderr diagnostics, and `eprintln` writes its newline
+// separately, so a timing line can follow a diagnostic on the same line.
 fn pipeline_stage_count(output string, stage string) int {
-	return output.split_into_lines().filter(it.trim_space().starts_with('${stage} ')).len
+	mut count := 0
+	for line in output.split_into_lines() {
+		if line.trim_space().starts_with('${stage} ') {
+			count++
+		} else if line.contains('  ${stage} ') {
+			timing := line.all_after('  ${stage} ').trim_space()
+			if timing.len > 0 && timing[0].is_digit() && timing.contains(' ms') {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 fn check_implicit_tcc_preflight_selects_platform_before_transform() ! {
@@ -162,10 +175,10 @@ fn check_implicit_tcc_preflight_selects_platform_before_transform() ! {
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, '#flag "${native}"\nfn C.preflight_value() int\nfn identity[T](value T) T { return value }\nfn main() {\n\t\$if tinyc { println(identity(0)) } \$else { println(identity(C.preflight_value())) }\n}\n')!
 	exe := os.join_path(dir, 'main')
-	quiet := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-o', exe, source])
+	quiet := cmdexec.run(vexe, ['-nocache', '-o', exe, source])
 	assert quiet.exit_code == 0, quiet.output
 	assert !quiet.output.contains('implicit tcc could not be used'), quiet.output
-	build := cmdexec.run(vexe, ['-new-compiler', '-v', '-nocache', '-o', exe, source])
+	build := cmdexec.run(vexe, ['-v', '-nocache', '-o', exe, source])
 	assert build.exit_code == 0, build.output
 	assert build.output.contains('implicit tcc could not be used'), build.output
 	assert build.output.count('=== V compiler benchmark ===') == 1, build.output
@@ -190,7 +203,7 @@ fn check_implicit_tcc_preflight_ignores_inactive_and_deferred_directives() ! {
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, '\$if !tinyc {\n #flag -lV3MustNotBeProbed\n}\nfn main() {\n \$if tinyc { println(42) } \$else { println(0) }\n}\n')!
 	exe := os.join_path(dir, 'main.exe')
-	build := cmdexec.run(vexe, ['-new-compiler', '-v', '-nocache', '-o', exe, source])
+	build := cmdexec.run(vexe, ['-v', '-nocache', '-o', exe, source])
 	assert build.exit_code == 0, build.output
 	assert !build.output.contains('implicit tcc could not be used'), build.output
 	assert build.output.count('=== V compiler benchmark ===') == 1, build.output
@@ -212,8 +225,7 @@ fn check_implicit_tcc_preflight_probes_missing_libraries() ! {
 	}
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, "#flag -lV3PreflightLibraryThatDoesNotExist\nfn identity[T](value T) T { return value }\nfn main() { println(identity('ok')) }\n")!
-	build := cmdexec.run(vexe, ['-new-compiler', '-v', '-nocache', '-o', os.join_path(dir, 'main.exe'),
-		source])
+	build := cmdexec.run(vexe, ['-v', '-nocache', '-o', os.join_path(dir, 'main.exe'), source])
 	assert build.exit_code != 0, build.output
 	assert build.output.contains('implicit tcc could not be used'), build.output
 	assert build.output.contains('V3PreflightLibraryThatDoesNotExist'), build.output
@@ -240,7 +252,7 @@ fn check_implicit_tcc_preflight_accepts_native_c_and_available_libraries() ! {
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, '#flag "${native}"\n#flag -lm\nfn C.preflight_answer() int\nfn main() {\n \$if tinyc { println(C.preflight_answer()) } \$else { println(0) }\n}\n')!
 	exe := os.join_path(dir, 'main')
-	build := cmdexec.run(vexe, ['-new-compiler', '-gc', 'none', '-v', '-nocache', '-o', exe, source])
+	build := cmdexec.run(vexe, ['-gc', 'none', '-v', '-nocache', '-o', exe, source])
 	assert build.exit_code == 0, build.output
 	assert !build.output.contains('implicit tcc could not be used'), build.output
 	run := cmdexec.run(exe, [])
@@ -263,7 +275,7 @@ fn check_implicit_tcc_preflight_does_not_link_c_or_object_output() ! {
 	os.write_file(source, "#flag -lV3OutputOnlyMustNotBeLinked\nfn main() { println('ok') }\n")!
 	for extension in ['c', 'o'] {
 		output := os.join_path(dir, 'main.${extension}')
-		build := cmdexec.run(vexe, ['-new-compiler', '-gc', 'none', '-nocache', '-o', output, source])
+		build := cmdexec.run(vexe, ['-gc', 'none', '-nocache', '-o', output, source])
 		assert build.exit_code == 0, build.output
 		assert !build.output.contains('implicit tcc could not be used'), build.output
 		assert os.is_file(output)

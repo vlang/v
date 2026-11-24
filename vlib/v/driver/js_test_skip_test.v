@@ -54,7 +54,7 @@ fn test_direct_js_test_commands_skip_before_parsing() {
 	}
 	source := os.join_path(root, 'int_test.js.v')
 	os.write_file(source, 'this is deliberately invalid V source\n')!
-	keys := ['VFLAGS', 'VOSARGS', 'V_MACOS_V3_NO_FALLBACK', 'V_C_ERROR_BUG_REPORT_DISABLED']
+	keys := ['VFLAGS', 'VOSARGS']
 	mut old_values := map[string]string{}
 	for key in keys {
 		if value := os.getenv_opt(key) {
@@ -72,20 +72,13 @@ fn test_direct_js_test_commands_skip_before_parsing() {
 	}
 	os.unsetenv('VFLAGS')
 	os.unsetenv('VOSARGS')
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	cc := $if windows { 'gcc' } $else { 'cc' }
 	for backend in ['c', 'js'] {
 		// The explicit JS backend returns before the normal backend test filter.
 		// `test` is covered by vtest_test.v, since the launcher dispatches it to vtest.
 		for command in ['', 'run'] {
-			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', cc, '-b',
-				backend]
+			mut args := ['-no-retry-compilation', '-nocache', '-cc', cc, '-b', backend]
 			if command.len > 0 {
 				args << command
 			}
@@ -94,15 +87,15 @@ fn test_direct_js_test_commands_skip_before_parsing() {
 			assert result.exit_code == 0, result.output
 			assert result.output.trim_space() == 'SKIP ${source}', result.output
 		}
-		quiet := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-silent',
-			'-cc', cc, '-b', backend, source], 120_000)
+		quiet := cmdexec.run_with_timeout(vexe, ['-no-retry-compilation', '-silent', '-cc', cc,
+			'-b', backend, source], 120_000)
 		assert quiet.exit_code == 0, quiet.output
 		assert quiet.output == '', quiet.output
 	}
 	// Match the command emitted by testing.TestSession, including an output path.
 	output := os.join_path(root, 'unexpected.js')
-	result := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-skip-running',
-		'-b', 'js', '-o', output, source], 120_000)
+	result := cmdexec.run_with_timeout(vexe, ['-no-retry-compilation', '-skip-running', '-b', 'js',
+		'-o', output, source], 120_000)
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'SKIP ${source}', result.output
 	assert !os.exists(output)
@@ -111,8 +104,8 @@ fn test_direct_js_test_commands_skip_before_parsing() {
 	// Do not disable the limited compatibility generator for non-test programs.
 	program := os.join_path(root, 'literal.v')
 	os.write_file(program, "fn main() { println('still supported') }\n")!
-	compiled := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-b',
-		'js', '-o', output, program], 120_000)
+	compiled := cmdexec.run_with_timeout(vexe, ['-no-retry-compilation', '-b', 'js', '-o', output,
+		program], 120_000)
 	assert compiled.exit_code == 0, compiled.output
 	assert os.read_file(output)!.contains('console.log(')
 }

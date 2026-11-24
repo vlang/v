@@ -67,7 +67,9 @@ fn main() {
 	assert compatible.contains('const my_ctx_t minmod__empty = {0};')
 	assert compatible.contains('my_ctx_t local = (my_ctx_t){.id = 0x00020002};')
 	// Native runtime coverage also checks that the brace form keeps aggregate values intact.
-	compiler := os.find_abs_path_of_executable('clang') or {
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	compiler := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or {
 		os.find_abs_path_of_executable('gcc') or { return }
 	}
 	executed := cmdexec.run(@VEXE, ['-gc', 'none', '-cc', compiler, 'run', v_file])

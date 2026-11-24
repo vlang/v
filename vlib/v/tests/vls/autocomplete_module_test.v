@@ -10,8 +10,6 @@ const vexe = os.quoted_path(@VEXE)
 const vroot = os.real_path(@VMODROOT)
 const tmp_dir = os.real_path(os.temp_dir())
 const text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
-// note: windows path separator will cause json decode fail
-const json_errors_text_file = os.to_slash(text_file)
 const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1', 'sample.v')
 
 const autocomplete_info_for_mod_sample_mod1 = '{"details": [
@@ -33,10 +31,11 @@ const autocomplete_info_for_mod_sample_mod2 = '{"details": [
 {"kind":21,"label":"public_const2","detail":"","declaration":"","documentation":""}
 ]}'
 
+// The members of a value come by their labels.
 const autocomplete_info_for_mod_struct = '{"details": [
 {"kind":5,"label":"a","detail":"int","declaration":"","documentation":""},
-{"kind":5,"label":"b","detail":"string","declaration":"","documentation":""},
-{"kind":2,"label":"add","detail":"void","declaration":"","documentation":""}
+{"kind":2,"label":"add","detail":"void","declaration":"","documentation":""},
+{"kind":5,"label":"b","detail":"string","declaration":"","documentation":""}
 ]}'
 
 const hover_info_for_public_fn1 = '{"contents":{"kind":"markdown","value":"```v\\nfn public_fn1(val int) string\\n```"}}'
@@ -77,6 +76,9 @@ struct TestData {
 	output string
 }
 
+// A completion and a signature help are compared as JSON, whatever their layout;
+// the other answers as text. A check of the whole file reports its diagnostics
+// as JSON, one object per line (see check_incomplete_file_diagnostics).
 const test_data = [
 	TestData{
 		method: .completion
@@ -159,130 +161,30 @@ const test_data = [
 		output: '${mod1_text_file}:50:7'
 	},
 	TestData{
+		// `sample_text.vv` is being written: its diagnostics, not an answer.
 		method: .did_change
 		cmd:    '${vexe} -w -vls-mode -check -json-errors ${os.quoted_path(text_file)}'
-		output: '[
-{
-"path":"${json_errors_text_file}",
-"message":"unexpected token `:=`, expecting `)`",
-"line_nr":26,
-"col":4,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"unexpected token `:=`, expecting `)`",
-"line_nr":29,
-"col":4,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"undefined ident: ``",
-"line_nr":19,
-"col":3,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"undefined ident: ``",
-"line_nr":20,
-"col":13,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"type `main.MyS` has no field named `s`.\\n2 possibilities: `a`, `b`.",
-"line_nr":23,
-"col":2,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"undefined ident: `j`",
-"line_nr":26,
-"col":2,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"`j` (no value) used as value in argument 1 to `string.all_before_last`",
-"line_nr":26,
-"col":2,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"undefined ident: ``",
-"line_nr":26,
-"col":28,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"undefined ident: `strings`",
-"line_nr":27,
-"col":2,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"`strings` does not return a value",
-"line_nr":28,
-"col":2,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"`strings.builtin` does not return a value",
-"line_nr":29,
-"col":2,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"expected 1 argument, but got 2",
-"line_nr":27,
-"col":2,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"unknown type `main.NotExistStruct`",
-"line_nr":38,
-"col":11,
-"len":0
-}
-]
-'
+		output: ''
 	},
 ]
 
-// copy from `vls`
-struct JsonError {
-	path    string
-	message string
-	line_nr int
-	col     int
-	len     int
+// JsonDiagnostic is a diagnostic as `-json-errors` prints it.
+struct JsonDiagnostic {
+	file     string
+	line     int
+	col      int
+	end_line int
+	end_col  int
+	severity string
+	message  string
 }
 
+// copy from `vls`
 struct Detail {
 	kind               int    // The type of item (e.g., Method, Function, Field)
 	label              string // The name of the completion item
 	detail             string // Additional info like the function signature or return type
+	declaration        string // The full declaration of a function
 	documentation      string // The documentation for the item
 	insert_text        ?string @[json: 'insertText']
 	insert_text_format ?int    @[json: 'insertTextFormat'] // 1 for PlainText, 2 for Snippet
@@ -317,7 +219,20 @@ fn test_main() {
 			panic(res.output)
 		}
 		res_output := $if windows { res.output.replace('\r\n', '\n') } $else { res.output }
-		if t.output.trim_space() != res_output.trim_space() {
+		if t.method == .did_change {
+			check_incomplete_file_diagnostics(res_output) or {
+				println('${term.red('FAIL')} ${t.cmd}')
+				println(err)
+				println(term.header('found:', '-'))
+				println(res_output)
+				println(term.h_divider('-'))
+				total_errors++
+				continue
+			}
+			println('${term.green('OK  ')} ${t.cmd}')
+			continue
+		}
+		if !same_answer(t, res_output) {
 			println('${term.red('FAIL')} ${t.cmd}')
 			if diff_ := diff.compare_text(t.output, res_output) {
 				println(term.header('difference:', '-'))
@@ -343,9 +258,6 @@ fn test_main() {
 				}
 				.completion {
 					check_valid_auto_completion(t.output)!
-				}
-				.did_change {
-					check_valid_json_errors(t.output)!
 				}
 				.signature_help {
 					check_valid_fn_signature(t.output)!
@@ -391,23 +303,73 @@ fn check_valid_auto_completion(message string) ! {
 	}
 }
 
-fn check_valid_json_errors(message string) ! {
-	results := json2.decode[[]JsonError](message) or {
-		return error('json_errors: fail to json decode')
+// same_answer reports whether `found` is the answer that `t` expects: the same
+// JSON for a completion and a signature help, else the same text.
+fn same_answer(t TestData, found string) bool {
+	expected := t.output.trim_space()
+	got := found.trim_space()
+	if expected == '' || t.method !in [.completion, .signature_help] {
+		return expected == got
 	}
-	for result in results {
-		if result.path.len == 0 {
-			return error('json_errors: path.len should > 0')
+	if t.method == .completion {
+		want := json2.decode[JsonVarAC](expected) or { return false }
+		have := json2.decode[JsonVarAC](got) or { return false }
+		return want.details.map(detail_text(it)) == have.details.map(detail_text(it))
+	}
+	want := json2.decode[SignatureHelp](expected) or { return false }
+	have := json2.decode[SignatureHelp](got) or { return false }
+	return signature_help_text(want) == signature_help_text(have)
+}
+
+fn detail_text(d Detail) string {
+	return '${d.kind} ${d.label} `${d.detail}` `${d.declaration}` `${d.documentation}`'
+}
+
+fn signature_help_text(h SignatureHelp) string {
+	mut parts := ['${h.active_signature} ${h.active_parameter}']
+	for signature in h.signatures {
+		mut params := []string{}
+		for param in signature.parameters {
+			params << param.label
 		}
-		if result.message.len == 0 {
-			return error('json_errors: message.len should > 0')
+		parts << '${signature.label}: ${params.join(', ')}'
+	}
+	return parts.join('; ')
+}
+
+// check_incomplete_file_diagnostics checks what `-json-errors` reports for
+// `sample_text.vv`, whose code is being written: a JSON object for each
+// diagnostic of the file, on a line of its own, the first of them the parse
+// error at the `}` that ends `main`, before which the calls of lines 25 and 26
+// are not closed.
+fn check_incomplete_file_diagnostics(output string) ! {
+	mut diagnostics := []JsonDiagnostic{}
+	for line in output.split_into_lines() {
+		if line.trim_space() == '' {
+			continue
 		}
-		if result.line_nr <= 0 {
-			return error('json_errors: line_nr should > 0')
+		diagnostics << json2.decode[JsonDiagnostic](line) or {
+			return error('json_errors: not a JSON diagnostic: ${line}')
 		}
-		if result.col <= 0 {
-			return error('json_errors: col should > 0')
+	}
+	if diagnostics.len == 0 {
+		return error('json_errors: no diagnostic')
+	}
+	for d in diagnostics {
+		if !os.to_slash(d.file).ends_with('vlib/v/tests/vls/sample_text.vv') {
+			return error('json_errors: a diagnostic of another file: ${d.file}')
 		}
+		if d.line <= 0 || d.col <= 0 || d.end_line < d.line {
+			return error('json_errors: wrong position ${d.line}:${d.col}-${d.end_line}:${d.end_col}')
+		}
+		if d.severity !in ['error', 'warning', 'notice'] || d.message.len == 0 {
+			return error('json_errors: wrong severity or message: ${d}')
+		}
+	}
+	first := diagnostics[0]
+	if first.severity != 'error' || first.line != 35 || first.col != 1
+		|| !first.message.contains('unexpected token') {
+		return error('json_errors: the first diagnostic is not the parse error at 35:1: ${first}')
 	}
 }
 

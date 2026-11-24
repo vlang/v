@@ -47,14 +47,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	old_no_fallback := os.getenv_opt('V_MACOS_V3_NO_FALLBACK')
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	compile := os.exec([v3_bin, '-o', output_path, source_path])
-	if value := old_no_fallback {
-		os.setenv('V_MACOS_V3_NO_FALLBACK', value, true)
-	} else {
-		os.unsetenv('V_MACOS_V3_NO_FALLBACK')
-	}
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([output_path])
 	assert run.exit_code == 0, run.output

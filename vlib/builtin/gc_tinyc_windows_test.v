@@ -29,9 +29,8 @@ fn main() {
 ')!
 	flags_file := os.join_path(dir, 'flags.txt')
 	program := os.join_path(dir, 'precise.exe')
-	compiled := cmdexec.run(@VEXE, ['-new-compiler', '-no-retry-compilation', '-cc', compiler,
-		'-gc', 'boehm', '-d', 'no_gc_thread_local_alloc', '-dump-c-flags', flags_file, '-o', program,
-		source])
+	compiled := cmdexec.run(@VEXE, ['-no-retry-compilation', '-cc', compiler, '-gc', 'boehm', '-d',
+		'no_gc_thread_local_alloc', '-dump-c-flags', flags_file, '-o', program, source])
 	assert compiled.exit_code == 0, compiled.output
 	flags := os.read_file(flags_file)!
 	assert flags.contains('gc_tinyc_windows_o_'), flags

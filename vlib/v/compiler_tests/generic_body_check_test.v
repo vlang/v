@@ -33,7 +33,7 @@ fn check_form(name string, source string) []string {
 	dir := os.join_path(work_dir, name)
 	os.mkdir_all(dir) or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
-	res := cmdexec.run_in(@VEXE, ['-new-compiler', '-check', '-nocolor', '.'], dir)
+	res := cmdexec.run_in(@VEXE, ['-check', '-nocolor', '.'], dir)
 	return res.output.split_into_lines().filter(it.starts_with('main.v:')
 		&& (it.contains(': error: ') || it.contains(': warning: ')))
 }
@@ -43,7 +43,7 @@ fn check_fixture_form(name string, source string) []string {
 	dir := os.join_path(work_dir, name)
 	os.mkdir_all(dir) or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
-	res := cmdexec.run_in(@VEXE, ['-new-compiler', '-checker-fixture', '-check', '-nocolor', '.'], dir)
+	res := cmdexec.run_in(@VEXE, ['-checker-fixture', '-check', '-nocolor', '.'], dir)
 	return res.output.split_into_lines().filter(it.starts_with('main.v:')
 		&& (it.contains(': error: ') || it.contains(': warning: ')))
 }
@@ -60,7 +60,7 @@ fn build_form(name string, source string) []string {
 	dir := os.join_path(work_dir, name)
 	os.mkdir_all(dir) or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
-	res := cmdexec.run_in(@VEXE, ['-new-compiler', '-nocolor', '-o', 'prog', '.'], dir)
+	res := cmdexec.run_in(@VEXE, ['-nocolor', '-o', 'prog', '.'], dir)
 	return res.output.split_into_lines().filter(it.starts_with('main.v:')
 		&& it.contains(': error: '))
 }

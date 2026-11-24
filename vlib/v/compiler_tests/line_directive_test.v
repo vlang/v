@@ -41,7 +41,7 @@ fn test_runtime_locations_follow_line_directives() {
 	root, source := write_generated_program('line_directive_run')!
 	defer { os.rmdir_all(root) or {} }
 	executable := os.join_path(root, 'program')
-	build := os.exec([@VEXE, '-new-compiler', '-o', executable, source])
+	build := os.exec([@VEXE, '-o', executable, source])
 	assert build.exit_code == 0, build.output
 	run := os.exec([executable])
 	assert run.exit_code != 0
@@ -53,7 +53,7 @@ fn test_debug_panic_location_follows_line_directives() {
 	root, source := write_generated_program('line_directive_panic')!
 	defer { os.rmdir_all(root) or {} }
 	executable := os.join_path(root, 'program')
-	build := os.exec([@VEXE, '-new-compiler', '-g', '-o', executable, source])
+	build := os.exec([@VEXE, '-g', '-o', executable, source])
 	assert build.exit_code == 0, build.output
 	run := os.exec([executable, 'panic'])
 	assert run.exit_code != 0
@@ -66,7 +66,7 @@ fn test_debug_line_directives_in_c_follow_line_directives() {
 	defer { os.rmdir_all(root) or {} }
 	output := os.join_path(root, 'main.c')
 	for flags in [['-g'], ['-g', '-no-parallel']] {
-		build := os.exec([@VEXE, '-new-compiler', ...flags, '-o', output, source])
+		build := os.exec([@VEXE, ...flags, '-o', output, source])
 		assert build.exit_code == 0, build.output
 		generated := os.read_file(output)!
 		path := os.real_path(source).replace('\\', '/').replace('"', '\\"')
@@ -89,7 +89,7 @@ fn test_compiler_messages_follow_line_directives() {
 	logical := os.join_path(root, 'app.zbr')
 	os.write_file(logical, 'a = 1\nprint(b)\n')!
 	os.write_file(source, 'fn main() {\n#line 2 "${logical}"\n\tprintln(b)\n}\n\nfn f() {\n#line 9 "missing.zbr"\n\tprintln(c)\n}\n')!
-	result := os.exec([@VEXE, '-new-compiler', '-nocolor', source])
+	result := os.exec([@VEXE, '-nocolor', source])
 	assert result.exit_code != 0
 	// The excerpt comes from the logical file when it can be read...
 	assert result.output.contains('app.zbr:2:10: error: undefined ident: `b`'), result.output
@@ -98,7 +98,7 @@ fn test_compiler_messages_follow_line_directives() {
 	assert result.output.contains('missing.zbr:9:10: error: undefined ident: `c`'), result.output
 	assert result.output.contains('    9 |     println(c)\n'), result.output
 	// `-json-errors` reports the same locations.
-	json := os.exec([@VEXE, '-new-compiler', '-json-errors', source])
+	json := os.exec([@VEXE, '-json-errors', source])
 	assert json.exit_code != 0
 	assert json.output.contains('app.zbr","line":2,"col":10,'), json.output
 	assert json.output.contains('{"file":"missing.zbr","line":9,"col":10,'), json.output

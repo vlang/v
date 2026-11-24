@@ -56,5 +56,8 @@ fn check_accept_timeout(use_deadline bool) ! {
 	done <- true
 	watchdog.wait()
 	assert timed_out, 'expected accept() to time out'
-	assert elapsed >= 20 * time.millisecond && elapsed < 2 * time.second, 'accept() returned after ${elapsed}, expected about ${timeout}'
+	// Windows timers tick about every 15.6 ms, so a wait may end up to one tick early
+	// (a 25 ms timeout returned after 18 ms on CI).
+	min_elapsed := $if windows { timeout - 16 * time.millisecond } $else { 20 * time.millisecond }
+	assert elapsed >= min_elapsed && elapsed < 2 * time.second, 'accept() returned after ${elapsed}, expected about ${timeout}'
 }

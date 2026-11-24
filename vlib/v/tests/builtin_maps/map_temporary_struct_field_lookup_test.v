@@ -1,5 +1,3 @@
-// vtest vflags: -new-compiler
-
 struct TemporaryMapValue {
 	values []int
 }

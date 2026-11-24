@@ -1,4 +1,9 @@
+// vtest build: !sanitize-address-gcc && !sanitize-address-clang
 // vtest vflags: -gc none -enable-globals
+// `-gc none` (without `-autofree`) frees nothing implicitly: the dropped maps, keys and
+// buffers below, the key copies of the equality loop, and old array storage all leak, so
+// LeakSanitizer fails the test. The `sanitize-address-clang-without-gc` job still runs it
+// under ASan with leak detection off, which catches a use-after-free of the map key.
 
 struct MapEqualityMutation {
 	value int

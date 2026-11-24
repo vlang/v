@@ -15,12 +15,12 @@ fn test_subdir_test_files_include_root_and_sibling_sources() {
 		os.write_file(test_file, 'module widget\nfn test_whole_module() { assert root_fn() + part_fn() == 42 }\n')!
 		other_test := os.join_path(source_root, 'parts', 'unselected_test.v')
 		os.write_file(other_test, 'module widget\nfn test_unselected() { assert false }\n')!
-		for args in [['-new-compiler', test_file], ['-new-compiler', 'test', test_file]] {
+		for args in [[test_file], ['test', test_file]] {
 			result := cmdexec.run(@VEXE, args)
 			assert result.exit_code == 0, result.output
 		}
 		os.rm(other_test)!
-		all_tests := cmdexec.run(@VEXE, ['-new-compiler', 'test', root])
+		all_tests := cmdexec.run(@VEXE, ['test', root])
 		assert all_tests.exit_code == 0, all_tests.output
 	}
 }
