@@ -384,12 +384,12 @@ fn rewrite_power_of_two(mut m ssa.Module, val_id ssa.ValueID, instr ssa.Instruct
 	if constant.kind != .constant || constant.name == 'undef' {
 		return false
 	}
-	value := integer_constant_value(m, constant) or { return false }
+	value := u64(integer_constant_value(m, constant) or { return false })
 	if value <= 1 || value & (value - 1) != 0 {
 		return false
 	}
 	mut shift := 0
-	for (i64(1) << shift) != value {
+	for (u64(1) << shift) != value {
 		shift++
 	}
 	typ := m.values[val_id].typ
