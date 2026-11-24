@@ -28,6 +28,13 @@ pub:
 	max_request_body_size int = default_max_request_body_size
 }
 
+// TlsCertificateReloadApp receives a reload callback for each OpenSSL
+// listener. The returned function unregisters the callback on listener exit.
+pub interface TlsCertificateReloadApp {
+mut:
+	register_tls_certificate_reload(address string, reload fn () !) fn ()
+}
+
 fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
 	routes := generate_routes[A, X](global_app)!
 	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
@@ -41,6 +48,13 @@ fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
 	defer {
 		ssl_listener.shutdown() or {}
 	}
+	mut unregister := fn () {}
+	$if A is TlsCertificateReloadApp {
+		unregister = global_app.register_tls_certificate_reload(listen_addr(params), fn [mut ssl_listener] () ! {
+			ssl_listener.reload_certificate()!
+		})
+	}
+	defer { unregister() }
 	ssl_params := &SslRequestParams{
 		global_app:                unsafe { voidptr(&global_app) }
 		controllers_sorted:        controllers_sorted
