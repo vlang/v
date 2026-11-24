@@ -5,6 +5,52 @@
 If you got here looking for methods available on the `string` struct, those
 methods are found in the `builtin` module.
 
+## Owning string buffer
+
+On the C backend, `Buffer` accumulates bytes and transfers its allocation to a string with
+`take_string()`. The transfer does not copy or shrink the accumulated bytes. It reserves a
+trailing NUL byte separately, so the result is NUL-terminated even at exact payload capacity.
+Embedded NUL bytes, UTF-8, and arbitrary byte sequences are preserved.
+
+```v
+import strings
+
+mut buffer := strings.new_buffer(64)
+buffer.write_string('hello')
+buffer.write_u8(` `)
+buffer.write_string('world')
+text := buffer.take_string()
+assert text == 'hello world'
+assert buffer.len() == 0
+assert buffer.capacity() == 0
+```
+
+`new_buffer(0)` and `Buffer{}` allocate nothing until a write or a positive reservation.
+`reserve(additional)` ensures space for that many bytes after the current content without
+changing its length. `write(data)` implements `io.Writer`; `write_string` and `write_u8`
+append strings and individual bytes. `set_byte(index, value)` replaces an initialized byte
+and panics outside the live range. Negative capacities/counts and overflowing lengths panic.
+
+An active buffer owns its allocation exclusively and is marked `nocopy`. Pass it by mutable
+reference and do not copy it. It exposes no borrowed strings or byte slices; growing it can
+move its allocation.
+`write_ptr` and `set_byte_unchecked` are unsafe operations with documented source and index
+requirements. In particular, `write_ptr` must not borrow the buffer's own allocation.
+
+After `take_string()`, the returned string owns the original base allocation and may retain
+spare capacity. The empty buffer can be reused or freed without affecting previous results.
+Under manual memory management, free returned strings and any allocation still held by a
+buffer independently. `unsafe { buffer.free() }` releases only its current allocation and
+leaves it empty and reusable. The copying `Builder.str()` API remains available when keeping
+and reusing the builder's capacity is preferable.
+
+Allocation follows V's current allocator. When using `arena`, a transferred string keeps the
+allocation's arena lifetime: it remains valid after `pop()`, but not after `reset()` or `free()`.
+Use `clone()` outside that arena when a string must outlive it. `take_string()` does not promote
+arena memory to the heap.
+
+## Other string utilities
+
 `pad_left(s, width, pad)`, `pad_right(s, width, pad)`, and `center(s, width, pad)` extend a
 string to the requested rune count. They repeat multi-rune padding and truncate it on the right
 without splitting UTF-8 sequences. Empty padding, nonpositive widths, and widths no greater
