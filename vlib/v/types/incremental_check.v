@@ -352,6 +352,10 @@ fn (tc &TypeChecker) incremental_declarations(own map[string]bool) (u64, string)
 			b.write_string(attribute)
 			b.write_u8(0)
 		}
+		if kinds := tc.declaration_attribute_kinds[idx] {
+			b.write_string(flat.source_type_name(kinds))
+			b.write_u8(0)
+		}
 		sum = hash.wyhash_c(b.data, u64(b.len), sum)
 	}
 	return sum, files.str()

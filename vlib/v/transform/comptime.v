@@ -74,6 +74,7 @@ struct FieldMeta {
 	is_pub              bool
 	attr_kinds          u32
 	attribute_module_id u32
+	attribute_file_id   int
 	attrs               []string
 	indirections        int
 }
@@ -86,13 +87,15 @@ struct EnumValueMeta {
 	attrs               []string
 	enum_name           u32
 	attribute_module_id u32
+	attribute_file_id   int
 }
 
 // raw_attribute_data decodes field attribute kinds only for a reflection consumer.
 fn (fm &FieldMeta) raw_attribute_data() RawAttributeData {
 	return RawAttributeData{
-		attrs: fm.attrs
-		kinds: comptime_attribute_kinds(fm.attr_kinds, fm.attrs.len)
+		attrs:   fm.attrs
+		kinds:   comptime_attribute_kinds(fm.attr_kinds, fm.attrs.len)
+		file_id: fm.attribute_file_id
 	}
 }
 
@@ -105,8 +108,9 @@ fn (fm &FieldMeta) attribute_metas() []AttributeMeta {
 // raw_attribute_data decodes enum attribute kinds only for a reflection consumer.
 fn (item &EnumValueMeta) raw_attribute_data() RawAttributeData {
 	return RawAttributeData{
-		attrs: item.attrs
-		kinds: comptime_attribute_kinds(item.attr_kinds, item.attrs.len)
+		attrs:   item.attrs
+		kinds:   comptime_attribute_kinds(item.attr_kinds, item.attrs.len)
+		file_id: item.attribute_file_id
 	}
 }
 
@@ -222,11 +226,13 @@ mut:
 }
 
 struct RawAttributeData {
-	attrs []string
-	kinds []int
+	attrs   []string
+	kinds   []int
+	file_id int
 }
 
 struct EnumDeclFieldValue {
+	file_id    int
 	name       string
 	expr_id    flat.NodeId
 	attrs      []string
@@ -725,7 +731,7 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source string, body_stmts []flat.NodeId, loop_id flat.NodeId) []flat.NodeId {
 	mut out := []flat.NodeId{}
 	schemas := t.comptime_attribute_schemas()
-	for attr in t.comptime_attribute_instances(source, loop_id, schemas) {
+	for attr in t.comptime_decl_attribute_instances(source, loop_id, schemas) {
 		mut cloned := []flat.NodeId{cap: body_stmts.len}
 		for sid in body_stmts {
 			cloned << t.clone_attribute_subst(sid, var_name, attr, schemas)
@@ -755,7 +761,7 @@ fn comptime_reflected_attributes_loop_var(node flat.Node, var_name string) strin
 fn (mut t Transformer) unroll_reflected_attributes_loop(loop_id flat.NodeId, attr_var string, data RawAttributeData, decl_module string, inner_vars []string) flat.NodeId {
 	t.ignore_comptime_for_subtree(loop_id)
 	schemas := t.comptime_attribute_schemas()
-	attrs := comptime_attribute_instances_from_raw(data, decl_module, schemas)
+	attrs := t.comptime_attribute_instances(data, decl_module, schemas)
 	loop := t.a.nodes[int(loop_id)]
 	body := t.a.nodes[int(t.a.child(&loop, 0))]
 	body_stmts := t.a.children_of(&body).clone()
@@ -927,67 +933,54 @@ fn comptime_attribute_piece_named(raw string, name string) bool {
 	return true
 }
 
-// comptime_attribute_instances groups the reflected declaration's raw pieces
+// comptime_decl_attribute_instances groups the reflected declaration's raw pieces
 // into one instance per attribute use. A piece group whose base resolves to a
 // registered schema becomes that schema struct; every other piece keeps the
 // legacy `VAttribute` view. With no schemas registered the result matches
 // `comptime_attribute_metas` exactly.
-fn (mut t Transformer) comptime_attribute_instances(source string, loop_id flat.NodeId, schemas []AttributeSchemaInfo) []AttributeMeta {
+fn (mut t Transformer) comptime_decl_attribute_instances(source string, loop_id flat.NodeId, schemas []AttributeSchemaInfo) []AttributeMeta {
 	decl_idx, decl_module := t.comptime_attribute_decl(source, loop_id) or {
 		return []AttributeMeta{}
 	}
 	data := t.comptime_node_raw_attribute_data(decl_idx)
-	return comptime_attribute_instances_from_raw(data, decl_module, schemas)
+	return t.comptime_attribute_instances(data, decl_module, schemas)
 }
 
-// comptime_attribute_instances_from_raw materializes declaration, field, and enum-value
+// comptime_attribute_instances materializes declaration, field, and enum-value
 // attributes in the module where they were written, preserving their exact raw kinds.
-fn comptime_attribute_instances_from_raw(data RawAttributeData, decl_module string, schemas []AttributeSchemaInfo) []AttributeMeta {
+fn (t &Transformer) comptime_attribute_instances(data RawAttributeData, decl_module string, schemas []AttributeSchemaInfo) []AttributeMeta {
 	if schemas.len == 0 {
 		return comptime_attribute_metas_from_raw(data.attrs, data.kinds)
 	}
 	mut out := []AttributeMeta{}
-	mut consumed := []bool{len: data.attrs.len}
-	for i in 0 .. data.attrs.len {
-		if consumed[i] {
-			continue
-		}
+	mut i := 0
+	for i < data.attrs.len {
 		base := data.attrs[i].all_before(':').trim_space()
-		whole_string := i < data.kinds.len && data.kinds[i] >= 0
-			&& data.kinds[i] & flat.attribute_kind_no_arg != 0
-		if schema := comptime_attribute_use_schema(base, decl_module, schemas) {
-			if whole_string {
-				consumed[i] = true
-				out << comptime_attribute_metas_from_raw([data.attrs[i]], [data.kinds[i]])
-				continue
+		kind := if i < data.kinds.len { data.kinds[i] } else { -1 }
+		whole_string := kind >= 0 && kind & flat.attribute_kind_no_arg != 0
+		if !whole_string && flat.attribute_schema_name_candidate(base) {
+			resolved := if base.contains('.') && !isnil(t.tc) {
+				file := t.a.source_files[data.file_id] or { &token.File{} }
+				flat.source_type_name(t.tc.resolve_imported_type_text_in_file(flat.source_type_id(base), file.name))
+			} else {
+				base
 			}
-			mut use_idx := []int{}
-			for j in i .. data.attrs.len {
-				if consumed[j] || (j < data.kinds.len && data.kinds[j] >= 0
-					&& data.kinds[j] & flat.attribute_kind_no_arg != 0) {
+			if schema := comptime_attribute_use_schema(resolved, decl_module, schemas) {
+				end := flat.attribute_use_end(data.kinds, i)
+				mut indices := []int{cap: end - i}
+				for j in i .. end {
+					indices << j
+				}
+				if instance := comptime_attribute_schema_instance(base, schema, data, indices) {
+					out << instance
+					i = end
 					continue
 				}
-				piece_base := data.attrs[j].all_before(':').trim_space()
-				if piece_base == base || piece_base.starts_with(base + '_') {
-					use_idx << j
-				}
+				// The checker reports an invalid schema use. Keep its legacy metadata.
 			}
-			if inst := comptime_attribute_schema_instance(base, schema, data, use_idx) {
-				for j in use_idx {
-					consumed[j] = true
-				}
-				out << inst
-				continue
-			}
-			// A use the checker rejects (unknown field, arity) stays legacy:
-			// the checker reports it; the transform must not crash on it.
 		}
-		consumed[i] = true
-		single_attrs := [data.attrs[i]]
-		single_kinds := if i < data.kinds.len { [data.kinds[i]] } else { []int{} }
-		for meta in comptime_attribute_metas_from_raw(single_attrs, single_kinds) {
-			out << meta
-		}
+		out << comptime_attribute_metas_from_raw([data.attrs[i]], [kind])
+		i++
 	}
 	return out
 }
@@ -1443,8 +1436,9 @@ fn (mut t Transformer) comptime_node_raw_attribute_data(node_id int) RawAttribut
 	attribute_id := t.comptime_raw_attribute_nodes[node_id] or { return RawAttributeData{} }
 	node := t.a.node(flat.NodeId(attribute_id))
 	return RawAttributeData{
-		attrs: node.generic_params().clone()
-		kinds: if node.typ != 0 {
+		attrs:   node.generic_params().clone()
+		file_id: t.a.nodes[node_id].pos.id
+		kinds:   if node.typ != 0 {
 			node.typ_text().split(',').map(it.int())
 		} else {
 			[]int{}
@@ -1740,41 +1734,10 @@ fn (t &Transformer) comptime_attribute_is_test_value(rhs string, attr AttributeM
 			return none
 		}
 	}
-	short := clean.all_after_last('.')
-	qualifier := if clean.contains('.') { clean.all_before_last('.') } else { '' }
-	mut target_module := ''
-	mut known := false
-	for schema in schemas {
-		if schema.name != short {
-			continue
-		}
-		if qualifier.len > 0 {
-			if schema.module == qualifier {
-				known = true
-				target_module = schema.module
-			}
-			continue
-		}
-		if comptime_attribute_modules_compatible(schema.module, t.cur_module) {
-			known = true
-			if target_module == '' {
-				target_module = schema.module
-			}
-		}
-	}
-	if !known {
-		return none
-	}
-	if isnil(attr.schema) {
-		return false
-	}
-	if attr.schema.name != short {
-		return false
-	}
-	if qualifier.len > 0 {
-		return attr.schema.module == target_module
-	}
-	return comptime_attribute_modules_compatible(attr.schema.module, t.cur_module)
+	resolved := flat.source_type_name(t.resolve_type_text_import_aliases(flat.source_type_id(clean)))
+	schema := comptime_attribute_use_schema(resolved, t.cur_module, schemas) or { return none }
+	return !isnil(attr.schema) && attr.schema.name == schema.name
+		&& comptime_attribute_modules_compatible(attr.schema.module, schema.module)
 }
 
 // clone_attribute_schema_field lowers `attr.field` for a grouped schema use to
@@ -3721,6 +3684,7 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 				expr_id:    expr_id
 				attrs:      f.generic_params().clone()
 				attr_kinds: f.attribute_kinds_id()
+				file_id:    f.pos.id
 			}
 			if int(expr_id) >= 0 {
 				field_exprs[f.value] = expr_id
@@ -3770,6 +3734,7 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 				}
 				attrs:               f.attrs.clone()
 				attr_kinds:          f.attr_kinds
+				attribute_file_id:   f.file_id
 				attribute_module_id: if f.attrs.len > 0 {
 					flat.source_type_id(cur_mod)
 				} else {
@@ -5035,6 +5000,7 @@ struct FieldDeclMeta {
 	is_pub     bool
 	attr_kinds u32 // see flat.Node.attribute_kinds_id
 	attrs      []string
+	file_id    int
 }
 
 // comptime_field_metas derives FieldData for every field of the concrete struct type.
@@ -5215,6 +5181,7 @@ fn field_decl_meta(field flat.Node) FieldDeclMeta {
 		is_pub:     flags.contains('p')
 		attrs:      params[1..].clone()
 		attr_kinds: field.attribute_kinds_id()
+		file_id:    field.pos.id
 	}
 }
 
@@ -5375,6 +5342,7 @@ fn (t &Transformer) field_meta_for(name string, ftyp_id u32, resolved_typ_id u32
 		is_pub:              extra.is_pub
 		attrs:               extra.attrs
 		attr_kinds:          extra.attr_kinds
+		attribute_file_id:   extra.file_id
 		attribute_module_id: if extra.attrs.len > 0 {
 			flat.source_type_id(decl_module)
 		} else {

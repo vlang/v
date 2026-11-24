@@ -14,6 +14,7 @@ fn test_cached_struct_fields_preserve_named_types_embeds_and_attributes() ! {
 pub struct Base { value int }
 pub struct Fields {
 	Base
+	tagged int @[Tag("first", active: true); Tag("second", active: false)]
 pub mut:
 	i64 i64 @[json: "number"]
 	string string @[deprecated: "use text"]
@@ -40,7 +41,7 @@ struct Private { string string }
 			fields << node
 		}
 	}
-	assert fields.len == 13
+	assert fields.len == 14
 	header := os.join_path(root, 'cached.vh')
 	os.write_file(header, 'module fields\n' + headers.join('\n'))!
 	mut cached_parser := parser.Parser.new(pref.new_preferences())
@@ -53,6 +54,7 @@ struct Private { string string }
 		assert node.value == original.value
 		assert node.typ == original.typ
 		assert node.generic_params() == original.generic_params()
+		assert node.attribute_kinds_id() == original.attribute_kinds_id()
 		index++
 	}
 	assert index == fields.len

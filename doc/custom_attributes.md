@@ -4,6 +4,28 @@ A struct marked with `@[attribute]` declares a metadata schema. Schemas cannot b
 embedded, or supplied as generic type arguments. This restriction covers generic types,
 function and method calls, and generic functions taken as values.
 
+## Repeatable attributes
+
+Add `repeatable` to a schema declaration to allow more than one use on the same target.
+Each use binds and checks its own arguments. Compile-time reflection visits the uses
+in source order.
+
+```v
+@[attribute: 'fn'; repeatable]
+struct Flag {
+	param         string
+	default_value bool
+}
+
+@[Flag(param: 'first', default_value: true)]
+@[Flag(param: 'second', default_value: false)]
+fn run(first bool, second bool) {}
+```
+
+The two calls can also go in a single `@[...]` group with a semicolon between them.
+Without `repeatable`, a schema can appear once per target. Two import aliases for the
+same schema count as the same type.
+
 ## Unknown attribute names
 
 An attribute that is neither a builtin nor a registered schema warns (warn-first migration,

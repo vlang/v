@@ -786,6 +786,20 @@ fn test_formatter_keeps_module_qualified_attribute_names() {
 	assert vfmt('module_qualified_attribute_names_twice', out) == out
 }
 
+fn test_formatter_keeps_repeatable_attribute_order() {
+	source := "@[left.Flag(param: 'first', default_value: true)]
+@[inline]
+@[right.Flag(param: 'second', default_value: false)]
+fn separate() {}
+
+@[Flag(param: 'first', default_value: true); inline; Flag(param: 'second', default_value: false)]
+fn combined() {}
+"
+	formatted := vfmt('repeatable_attribute_order', source)
+	assert formatted == source, formatted
+	assert vfmt('repeatable_attribute_order_twice', formatted) == formatted
+}
+
 fn test_formatter_keeps_comptime_branch_and_selective_import_comments_inside() {
 	source := "import sample {\n\tOne,\n\tTwo,\n\t// trailing import\n}\n\n\$if linux {\n\tprintln('first')\n\t// trailing first\n} \$else \$if windows {\n\t// comment-only second\n} \$else {\n\tprintln('last')\n\t// trailing last\n}\n"
 	out := vfmt('comptime_branch_selective_import_comments', source)

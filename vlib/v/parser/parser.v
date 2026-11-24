@@ -4641,7 +4641,9 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 			piece_end := p.tok_end
 			is_name_piece := p.tok == .name || p.tok == .key_pub
 			piece_name := attr_unquote(p.lit).all_before(':').trim_space()
+			// Only a resolved schema can opt in to repeated uses.
 			if !p.prefs.is_fmt && piece_name.len > 0
+				&& !(is_name_piece && flat.attribute_schema_name_candidate(piece_name))
 				&& (attrs.any(it.all_before(':').trim_space() == piece_name)
 					|| (check_pending_decl_attrs
 						&& p.pending_decl_attrs.any(it.all_before(':').trim_space() == piece_name))) {
@@ -4655,14 +4657,19 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 			// (vlang/rfcs#35). Only a name followed by `.` and another name
 			// merges; every other token sequence keeps the legacy pieces.
 			if is_name_piece && p.tok == .dot && (p.peek() == .name || p.peek() == .key_pub) {
+				qualifier := piece
 				p.next()
 				piece += '.' + p.lit
 				p.next()
 				if !p.prefs.is_fmt {
 					merged_name := piece.trim_space()
-					if attrs.any(it.all_before(':').trim_space() == merged_name)
-						|| (check_pending_decl_attrs
-							&& p.pending_decl_attrs.any(it.all_before(':').trim_space() == merged_name)) {
+					can_resolve_schema := flat.attribute_schema_name_candidate(merged_name)
+						&& (qualifier == p.cur_module || qualifier in p.imported_module_names
+							|| (qualifier == 'main' && p.cur_module.len == 0))
+					if !can_resolve_schema
+						&& (attrs.any(it.all_before(':').trim_space() == merged_name)
+							|| (check_pending_decl_attrs
+								&& p.pending_decl_attrs.any(it.all_before(':').trim_space() == merged_name))) {
 						p.record_diagnostic_span('duplicate attribute `${merged_name}`',
 							piece_start, p.prev_tok_end)
 					}
@@ -4670,6 +4677,8 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 			}
 			if p.tok == .lpar {
 				attr_name := piece
+				track_call := is_name_piece && (flat.attribute_schema_name_candidate(attr_name)
+					|| attr_name == 'repeatable')
 				call_attrs_start := attrs.len
 				mut has_base_arg := false
 				mut base_attr := attr_name
@@ -4717,7 +4726,16 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 				}
 				p.check(.rpar)
 				attrs.insert(call_attrs_start, base_attr)
-				kinds.insert(call_attrs_start, base_kind)
+				if track_call {
+					for i in call_attrs_start .. kinds.len {
+						kinds[i] |= flat.attribute_kind_call_arg
+					}
+				}
+				kinds.insert(call_attrs_start, if track_call {
+					base_kind | flat.attribute_kind_call
+				} else {
+					base_kind
+				})
 				continue
 			}
 			mut kind := piece_kind

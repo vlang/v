@@ -1,3 +1,6 @@
+import attrscomposition as left
+import attrscomposition as right
+
 // Typed custom attribute materialization (vlang/rfcs#35): a use whose name
 // matches a registered `@[attribute]` schema exposes its fields in
 // `$for attr in X.attributes` when narrowed by `$if attr is Schema`.
@@ -6,6 +9,53 @@ struct TestRoute {
 	path   string
 	count  int
 	active bool
+}
+
+@[attribute: 'fn'; repeatable]
+struct LocalFlag {
+	param         string
+	default_value bool
+}
+
+@[LocalFlag(param: 'first', default_value: true)]
+@[inline]
+@[LocalFlag(param: 'second', default_value: false)]
+fn flags_in_separate_groups() {}
+
+@[LocalFlag(param: 'first', default_value: true); inline; LocalFlag(param: 'second', default_value: false)]
+fn flags_in_one_group() {}
+
+@[left.Flag(param: 'first', default_value: true); inline; right.Flag(param: 'second', default_value: false)]
+fn flags_through_aliases() {}
+
+fn test_repeatable_schema_preserves_argument_binding_and_order() {
+	mut separate := []string{}
+	$for attr in flags_in_separate_groups.attributes {
+		$if attr is LocalFlag {
+			separate << '${attr.param}/${attr.default_value}'
+		} $else {
+			separate << attr.name
+		}
+	}
+	mut combined := []string{}
+	$for attr in flags_in_one_group.attributes {
+		$if attr is LocalFlag {
+			combined << '${attr.param}/${attr.default_value}'
+		} $else {
+			combined << attr.name
+		}
+	}
+	mut aliased := []string{}
+	$for attr in flags_through_aliases.attributes {
+		$if attr is right.Flag {
+			aliased << '${attr.param}/${attr.default_value}'
+		} $else {
+			aliased << attr.name
+		}
+	}
+	assert separate == ['first/true', 'inline', 'second/false']
+	assert combined == separate
+	assert aliased == separate
 }
 
 @[TestRoute('/index', count: 3, active: true)]

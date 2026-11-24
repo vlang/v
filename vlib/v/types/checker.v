@@ -19192,17 +19192,11 @@ struct AttributeSchemaField {
 // is empty when the schema may sit on any declaration.
 struct AttributeSchema {
 mut:
-	name    string
-	module  string
-	fields  []AttributeSchemaField
-	targets []string
-}
-
-// AttributeUse is one schema applied through an attribute, with the piece name
-// that applied it (`Route` or `mod.Route`), which is what diagnostics quote.
-struct AttributeUse {
-	schema AttributeSchema
-	base   string
+	name       string
+	module     string
+	fields     []AttributeSchemaField
+	targets    []string
+	repeatable bool
 }
 
 // AttributeFieldKind classifies schema field types and attribute argument
@@ -19518,6 +19512,20 @@ fn (tc &TypeChecker) attribute_enum_has_value(decl_id flat.NodeId, name string) 
 	return false
 }
 
+// has_repeatable_attribute_marker recognizes the bare schema modifier.
+fn (tc &TypeChecker) has_repeatable_attribute_marker(node_id flat.NodeId) bool {
+	kinds_id := tc.declaration_attribute_kinds[int(node_id)]
+	for i, raw in tc.declaration_attributes[int(node_id)] {
+		if raw == 'repeatable' {
+			kinds := flat.source_type_name(kinds_id).split(',')
+			if i < kinds.len && kinds[i] == '0' {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // collect_attribute_schemas registers every struct marked with `@[attribute]`
 // by short name. Several modules may declare the same name; uses resolve
 // V-strict in check_custom_attribute_uses.
@@ -19547,8 +19555,9 @@ fn (mut tc TypeChecker) collect_attribute_schemas() {
 					cur_module
 				}
 				mut schema := AttributeSchema{
-					name:   short
-					module: module
+					name:       short
+					module:     module
+					repeatable: tc.has_repeatable_attribute_marker(node_id)
 				}
 				for j in 0 .. node.children_count {
 					field := tc.a.child_node(&node, j)
@@ -19698,13 +19707,13 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 				cur_module = node.value
 				tc.enter_module(node.value)
 				lo, hi := attribute_use_window(node)
-				tc.check_sql_insert_only_attribute_use(flat.NodeId(i), node,
-					tc.declaration_attributes[i], lo, hi)
+				tc.check_attribute_use_pieces(flat.NodeId(i), node, cur_module,
+					tc.declaration_attributes[i], lo, hi, mut warning_heads)
 			}
 			.const_decl, .global_decl, .c_fn_decl {
 				lo, hi := attribute_use_window(node)
-				tc.check_sql_insert_only_attribute_use(flat.NodeId(i), node,
-					tc.declaration_attributes[i], lo, hi)
+				tc.check_attribute_use_pieces(flat.NodeId(i), node, cur_module,
+					tc.declaration_attributes[i], lo, hi, mut warning_heads)
 			}
 			.fn_decl, .struct_decl, .enum_decl, .type_decl, .interface_decl {
 				node_id := flat.NodeId(i)
@@ -19794,32 +19803,75 @@ fn (mut tc TypeChecker) check_sql_insert_only_attribute_use(node_id flat.NodeId,
 // `hi` bound the source range the attributes of this node occupy.
 fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int, mut warning_heads map[string][]AttributeWarningHead) {
 	tc.check_sql_insert_only_attribute_use(node_id, node, pieces, lo, hi)
-	// Schema interpretation needs the parser's no-argument identity: the legacy
-	// strings alone make @['Schema'] indistinguishable from @[Schema].
+	if pieces.len == 0 {
+		return
+	}
 	mut kinds_id := node.attribute_kinds_id()
 	if node.kind !in [.field_decl, .enum_field] {
 		kinds_id = tc.declaration_attribute_kinds[int(node_id)]
 	}
-	kinds := if kinds_id != 0 { flat.source_type_name(kinds_id).split(',') } else { []string{} }
-	mut schema_pieces := []string{cap: pieces.len}
-	for i, piece in pieces {
-		if i < kinds.len && kinds[i].int() >= 0
-			&& kinds[i].int() & flat.attribute_kind_no_arg != 0 {
+	kinds := if kinds_id != 0 {
+		flat.source_type_name(kinds_id).split(',').map(it.int())
+	} else {
+		[]int{}
+	}
+	file := tc.a.source_files[node.pos.id] or { &token.File{} }
+	check_schema := node.kind !in [.module_decl, .const_decl, .global_decl, .c_fn_decl]
+	mut spellings := map[string]int{}
+	mut quoted := map[string]bool{}
+	mut seen_schemas := map[string]bool{}
+	mut matched := map[string]bool{}
+	mut duplicate_unknown := false
+	mut i := 0
+	for i < pieces.len {
+		start := i
+		i = flat.attribute_use_end(kinds, i)
+		base := pieces[start].all_before(':').trim_space()
+		if start < kinds.len && kinds[start] & flat.attribute_kind_no_arg != 0 {
+			if flat.attribute_schema_name_candidate(base) {
+				quoted[base] = true
+			}
 			continue
 		}
-		schema_pieces << piece
-	}
-	uses := tc.attribute_use_schemas(schema_pieces, module)
-	for use in uses {
-		pos := tc.attribute_use_pos(node, use.base, lo, hi)
-		if use.schema.targets.len > 0
-			&& attribute_target_kind_word(node.kind) !in use.schema.targets {
-			tc.record_error_at(.assignment_mismatch, 'attribute `${use.base}` cannot be applied to `${attribute_target_kind_word(node.kind)}`', node_id, pos)
+		if base == 'repeatable' && node.kind == .struct_decl && start < kinds.len
+			&& kinds[start] == 0 && tc.declaration_has_attribute(node_id, 'attribute') {
+			matched[base] = true
 			continue
 		}
-		tc.check_attribute_use_args(node_id, use.schema, use.base, schema_pieces, pos, module)
+		if !flat.attribute_schema_name_candidate(base) {
+			continue
+		}
+		occurrence := spellings[base]
+		spellings[base] = occurrence + 1
+		schema_use := if check_schema && !quoted[base] {
+			tc.attribute_use_schema(base, module, file.name)
+		} else {
+			?AttributeSchema(none)
+		}
+		if schema := schema_use {
+			matched[base] = true
+			pos := tc.attribute_occurrence_pos(node, file.name, base, occurrence, lo, hi, mut warning_heads)
+			key := '${schema.module}.${schema.name}'
+			if seen_schemas[key] && !schema.repeatable {
+				tc.record_error_at(.assignment_mismatch, 'duplicate attribute `${base}`', node_id, pos)
+				continue
+			}
+			seen_schemas[key] = true
+			target := attribute_target_kind_word(node.kind)
+			if schema.targets.len > 0 && target !in schema.targets {
+				tc.record_error_at(.assignment_mismatch, 'attribute `${base}` cannot be applied to `${target}`', node_id, pos)
+				continue
+			}
+			tc.check_attribute_use_args(node_id, schema, base, pieces[start..i], pos, module)
+		} else if occurrence > 0 || quoted[base] {
+			pos := tc.attribute_occurrence_pos(node, file.name, base, occurrence, lo, hi, mut warning_heads)
+			tc.record_error_at(.assignment_mismatch, 'duplicate attribute `${base}`', node_id, pos)
+			duplicate_unknown = true
+		}
 	}
-	tc.warn_unknown_attribute_names(node_id, node, pieces, module, uses, mut warning_heads)
+	if check_schema && !duplicate_unknown {
+		tc.warn_unknown_attribute_names(node_id, node, pieces, module, matched, mut warning_heads)
+	}
 }
 
 // AttributeWarningHead retains a real, unquoted source name, rather than a
@@ -20009,14 +20061,30 @@ fn (tc &TypeChecker) attribute_warning_head_owns_node(head AttributeWarningHead,
 	return true
 }
 
+// attribute_occurrence_pos uses the same source index as unknown-attribute diagnostics.
+fn (tc &TypeChecker) attribute_occurrence_pos(node flat.Node, file string, base string, occurrence int, lo int, hi int, mut heads_by_file map[string][]AttributeWarningHead) token.Pos {
+	if file !in heads_by_file {
+		if source := tc.source_texts_by_file[file] {
+			heads_by_file[file] = attribute_warning_heads(source)
+		}
+	}
+	mut ordinal := 0
+	heads := heads_by_file[file] or { []AttributeWarningHead{} }
+	for head in heads {
+		if head.name == base && tc.attribute_warning_head_owns_node(head, node) {
+			if ordinal == occurrence {
+				return token.new_span(node.pos.id, head.offset, head.offset + base.len)
+			}
+			ordinal++
+		}
+	}
+	return tc.attribute_use_pos(node, base, lo, hi)
+}
+
 // warn_unknown_attribute_names warns once per real attribute name. Whole-string
 // metadata and flattened call arguments are not names, while independently
 // written Name and Name_key attributes both remain eligible for warnings.
-fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node flat.Node, pieces []string, module string, uses []AttributeUse, mut warning_heads map[string][]AttributeWarningHead) {
-	mut matched := map[string]bool{}
-	for use in uses {
-		matched[use.base] = true
-	}
+fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node flat.Node, pieces []string, module string, matched map[string]bool, mut warning_heads map[string][]AttributeWarningHead) {
 	mut warned := map[string]bool{}
 	for raw in pieces {
 		name := raw.all_before(':').trim_space()
@@ -20104,44 +20172,18 @@ fn (tc &TypeChecker) attribute_unknown_hint(name string, module string) string {
 	return ''
 }
 
-// attribute_use_schemas finds the schemas `pieces` uses, V-strict (RFC
-// vlang/rfcs#35, "Name resolution across modules"): a bare `Name` sees the
-// current module only, and a dotted `mod.Name` sees the schema `Name` of the
-// module `mod`. Resolution is registry-driven rather than a name heuristic,
-// so `Name_key` pieces attach to `Name` and a schema whose own name contains
-// `_` resolves like any other.
-fn (tc &TypeChecker) attribute_use_schemas(pieces []string, module string) []AttributeUse {
-	mut names := []string{}
-	for raw in pieces {
-		name := raw.all_before(':').trim_space()
-		if name.len > 0 && name !in names {
-			names << name
+// attribute_use_schema resolves a schema in the scope where its name was written.
+fn (tc &TypeChecker) attribute_use_schema(name string, module string, file string) ?AttributeSchema {
+	resolved := flat.source_type_name(tc.resolve_imported_type_text_in_file(flat.source_type_id(name), file))
+	short := resolved.all_after_last('.')
+	qualifier := if resolved.contains('.') { resolved.all_before_last('.') } else { '' }
+	for schema in tc.attribute_schemas[short] or { []AttributeSchema{} } {
+		if (qualifier != '' && qualifier == schema.module)
+			|| (qualifier == '' && attribute_modules_compatible(schema.module, module)) {
+			return schema
 		}
 	}
-	mut uses := []AttributeUse{}
-	for name in names {
-		mut qualifier := ''
-		mut short := name
-		if idx := name.last_index('.') {
-			qualifier = name[..idx]
-			short = name[idx + 1..]
-		}
-		for schema in tc.attribute_schemas[short] or { []AttributeSchema{} } {
-			resolved := if qualifier.len > 0 {
-				schema.module == qualifier
-			} else {
-				attribute_modules_compatible(schema.module, module)
-			}
-			if resolved {
-				uses << AttributeUse{
-					schema: schema
-					base:   name
-				}
-				break
-			}
-		}
-	}
-	return uses
+	return none
 }
 
 // check_attribute_use_args reconstructs one schema call from its flattened
@@ -23739,49 +23781,31 @@ fn (tc &TypeChecker) comptime_static_attribute_cases(source string) ComptimeStat
 			params := candidate.generic_params()
 			mut cases := []ComptimeStaticValueCase{cap: params.len}
 			kinds := if candidate.typ != 0 {
-				candidate.typ_text().split(',')
+				candidate.typ_text().split(',').map(it.int())
 			} else {
-				[]string{}
+				[]int{}
 			}
-			mut consumed := []bool{len: params.len}
-			for idx, raw in params {
-				if consumed[idx] {
-					continue
-				}
-				item := comptime_static_attribute_case(raw, if idx < kinds.len {
-					kinds[idx].int()
-				} else {
-					0
-				})
-				if item.name.len == 0 {
-					continue
-				}
+			decl := tc.a.nodes[decl_id]
+			file := tc.a.source_files[decl.pos.id] or { &token.File{} }
+			mut i := 0
+			for i < params.len {
+				kind := if i < kinds.len { kinds[i] } else { 0 }
+				item := comptime_static_attribute_case(params[i], kind)
 				mut schema_name := ''
-				whole_string := item.attr_kind >= 0
-					&& item.attr_kind & flat.attribute_kind_no_arg != 0
-				if !whole_string {
-					uses := tc.attribute_use_schemas([item.name], wanted.module_name)
-					if uses.len > 0 {
-						schema := uses[0].schema
+				if item.name.len > 0 && kind & flat.attribute_kind_no_arg == 0
+					&& flat.attribute_schema_name_candidate(item.name) {
+					if schema := tc.attribute_use_schema(item.name, wanted.module_name, file.name) {
 						schema_name = '${schema.module}.${schema.name}'
-						// Validated named/positional pieces belong to this one instance,
-						// matching the transform's forward grouping and whole-string exclusion.
-						for j in idx .. params.len {
-							if consumed[j] || (j < kinds.len && kinds[j].int() >= 0
-								&& kinds[j].int() & flat.attribute_kind_no_arg != 0) {
-								continue
-							}
-							base := params[j].all_before(':').trim_space()
-							if base == item.name || base.starts_with(item.name + '_') {
-								consumed[j] = true
-							}
-						}
+						i = flat.attribute_use_end(kinds, i) - 1
 					}
 				}
-				cases << ComptimeStaticValueCase{
-					...item
-					attr_schema_id: flat.source_type_id(schema_name)
+				if item.name.len > 0 {
+					cases << ComptimeStaticValueCase{
+						...item
+						attr_schema_id: flat.source_type_id(schema_name)
+					}
 				}
+				i++
 			}
 			return ComptimeStaticValueCases{
 				known: true
@@ -25095,15 +25119,8 @@ fn (tc &TypeChecker) comptime_attribute_narrow_from_condition(cond string, var_n
 			return none
 		}
 	}
-	short := name.all_after_last('.')
-	qualifier := if name.contains('.') { name.all_before_last('.') } else { '' }
-	for schema in tc.attribute_schemas[short] or { []AttributeSchema{} } {
-		if (qualifier != '' && schema.module == qualifier)
-			|| (qualifier == '' && attribute_modules_compatible(schema.module, tc.cur_module)) {
-			return '${schema.module}.${schema.name}', !is_neg
-		}
-	}
-	return none
+	schema := tc.attribute_use_schema(name, tc.cur_module, tc.cur_file) or { return none }
+	return '${schema.module}.${schema.name}', !is_neg
 }
 
 fn comptime_static_deferred_type(typ_id u32) string {

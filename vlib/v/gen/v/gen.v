@@ -5622,14 +5622,28 @@ fn (mut g Gen) emit_attrs(id flat.NodeId) {
 	if source := g.attr_sources[int(id)] {
 		groups := formatter_attribute_groups(source)
 		if groups.len > 0 {
+			parts_by_group := groups.map(formatter_attribute_parts(it))
+			mut schema_names := map[string]bool{}
+			mut has_repeated_schema := false
+			for parts in parts_by_group {
+				for part in parts {
+					name := part.all_before('(').all_before(':').trim_space()
+					if name.len == 0 || name[0] in [`'`, `"`]
+						|| !flat.attribute_schema_name_candidate(name) {
+						continue
+					}
+					short := name.all_after_last('.')
+					has_repeated_schema = has_repeated_schema || schema_names[short]
+					schema_names[short] = true
+				}
+			}
 			mut argument_groups := []string{}
 			mut bare_attrs := []string{}
-			for group in groups {
-				parts := formatter_attribute_parts(group)
+			for parts in parts_by_group {
 				if parts.len == 0 {
 					continue
 				}
-				if parts.all(is_bare_formatter_attribute(it)) {
+				if !has_repeated_schema && parts.all(is_bare_formatter_attribute(it)) {
 					bare_attrs << parts
 				} else {
 					argument_groups << parts.join('; ')
