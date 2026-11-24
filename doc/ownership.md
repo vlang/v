@@ -410,7 +410,9 @@ unsynchronized borrow state prevents sharing it through an `Arc`.
 An interface value or function value with an unknown implementation or capture
 list needs an explicit
 `unsafe` boundary. Use `unsafe` only when you can guarantee the lifetime and
-synchronization of the data passed across the boundary.
+synchronization of the data passed across the boundary. A result type
+also needs this boundary because its error payload can hold an arbitrary
+`IError` implementation.
 
 A worker can borrow a local immutable scalar when its handle is bound directly
 and the following statement is a lexical `defer` containing only that

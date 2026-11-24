@@ -4363,3 +4363,33 @@ fn main() {
 ')
 	assert res.exit_code == 0, res.output
 }
+
+fn test_ownership_rejects_unchecked_lambda_captures_in_spawn() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'thread_lambda_capture', r'
+fn main() {
+	value := 42
+	ptr := &value
+	worker := spawn (|| *ptr)()
+	assert worker.wait() == 42
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('whose captures are unknown'), res.output
+}
+
+fn test_ownership_rejects_unchecked_thread_error_payloads() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'thread_unchecked_error', r'
+fn work() !int {
+	return error("failed")
+}
+
+fn main() {
+	worker := spawn work()
+	_ := worker.wait() or { 0 }
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('the result can contain an error whose type does not guarantee thread-safe implementations'), res.output
+}
