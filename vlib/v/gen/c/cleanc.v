@@ -21131,21 +21131,31 @@ fn (mut g FlatGen) panic_recovery_preamble() {
 	if !g.uses_recover {
 		return
 	}
-	g.writeln('#include <setjmp.h>')
+	bare := 'freestanding' in g.compile_defines
+	if bare {
+		g.writeln($embed_file('freestanding_panic_jump.h').to_string())
+		if g.needs_thread_runtime && !g.global_is_thread_local('g_panic_state') {
+			g.writeln('#error "freestanding panic recovery with threads requires native TLS"')
+		}
+	} else {
+		g.writeln('#include <setjmp.h>')
+	}
 	g.writeln('typedef struct v_unwind_frame {')
 	g.writeln('\tstruct v_unwind_frame* prev;')
 	g.writeln('\tvoid* owner;')
 	g.writeln('\tvoid (*jump)(void*);')
-	g.writeln('\tjmp_buf buf;')
+	g.writeln(if bare { '\tv_bare_unwind_buf buf;' } else { '\tjmp_buf buf;' })
 	g.writeln('} v_unwind_frame;')
-	// `_setjmp` does not save the signal mask, which takes a system call.
-	g.writeln('#if defined(_WIN32)')
-	g.writeln('#define v_unwind_setjmp(buf) setjmp(buf)')
-	g.writeln('#define v_unwind_longjmp(buf) longjmp(buf, 1)')
-	g.writeln('#else')
-	g.writeln('#define v_unwind_setjmp(buf) _setjmp(buf)')
-	g.writeln('#define v_unwind_longjmp(buf) _longjmp(buf, 1)')
-	g.writeln('#endif')
+	if !bare {
+		// `_setjmp` does not save the signal mask, which takes a system call.
+		g.writeln('#if defined(_WIN32)')
+		g.writeln('#define v_unwind_setjmp(buf) setjmp(buf)')
+		g.writeln('#define v_unwind_longjmp(buf) longjmp(buf, 1)')
+		g.writeln('#else')
+		g.writeln('#define v_unwind_setjmp(buf) _setjmp(buf)')
+		g.writeln('#define v_unwind_longjmp(buf) _longjmp(buf, 1)')
+		g.writeln('#endif')
+	}
 	// A landing pad reads locals after the longjmp(). An optimizing compiler may
 	// keep a local in a register that the longjmp() restores to its value at the
 	// setjmp(), so the locals a deferred block reads get their address escaped:
@@ -25893,7 +25903,11 @@ fn (g &FlatGen) is_builtin_panic_state(name string) bool {
 // Only then does a `defer` link a panic frame, so other programs pay nothing.
 @[direct_array_access]
 fn (g &FlatGen) program_uses_recover() bool {
-	if g.target_libc_headers || g.target.os == 'vinix' || 'freestanding' in g.compile_defines {
+	if 'freestanding' in g.compile_defines {
+		if g.target.os !in ['linux', 'macos', 'darwin'] || g.target.arch !in ['amd64', 'arm64'] {
+			return false
+		}
+	} else if g.target_libc_headers || g.target.os == 'vinix' {
 		return false
 	}
 	if g.program_recover_known {
