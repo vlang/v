@@ -196,14 +196,15 @@ fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 	}
 	units := ts.test_units(paths)
 	// `k_test.v` declares a constant `it`, which `l_test.v` uses as a local.
-	batch := '${paths[0]}\n${paths[1]}\n${paths[11]}\n${paths[15]}\n${paths[17]}\n${paths[18]}'
+	// `g_test.c.v` is a C backend test, which a batch is too.
+	batch := '${paths[0]}\n${paths[1]}\n${paths[6]}\n${paths[11]}\n${paths[15]}\n${paths[17]}\n${paths[18]}'
 	// `main` tests share batches of their own; one with a `module main` clause is
 	// compiled with its directory's other `main` sources, so it does not join those
 	// without a clause. A file with C flags builds alone.
 	main_batch := '${paths[4]}\n${paths[13]}\n${paths[14]}'
 	// `c_test.v` clashes with `a_test.v` and starts a second batch of its own.
 	assert units == [batch, '${paths[2]}\n${paths[12]}\n${paths[19]}', paths[3], main_batch, paths[5],
-		paths[6], paths[7], paths[8], paths[9], paths[10], paths[16]]
+		paths[7], paths[8], paths[9], paths[10], paths[16]]
 	ts.exec_mode = .compile
 	assert ts.test_units(paths) == paths
 	ts.exec_mode = .compile_and_run

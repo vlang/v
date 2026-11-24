@@ -178,8 +178,10 @@ fn (ts &TestSession) test_units(files []string) []string {
 // top-level names of `file`, when it can share a binary with other tests.
 fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) ?TestBatchCandidate {
 	name := os.file_name(file)
-	// `.c.v`/`.js.v` tests select a backend.
-	if !name.ends_with('_test.v') || name.all_before_last('_test.v').contains('.') {
+	// `.js.v` and other suffixes select another backend or architecture. A `.c.v` test
+	// runs with `-b c`, which is the backend of every batch (can_batch_tests).
+	if !(name.ends_with('_test.v') || name.ends_with('_test.c.v'))
+		|| name.all_before_last('_test.').contains('.') {
 		return none
 	}
 	real_file := os.real_path(file)
