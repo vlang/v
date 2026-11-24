@@ -79,7 +79,7 @@ fn test_inline_asm() {
 	l := 5
 	m := &l
 	asm amd64 {
-		movl [m], 7 // l is i32; a 64-bit write corrupts adjacent stack storage
+		movq [m], 7 // have to specify size with q
 		; ; r (m)
 		; memory
 	}
@@ -147,10 +147,13 @@ fn test_rip_relative_label() {
 }
 
 $if !macos {
+	// RIP-relative reads require readable data, including on execute-only OpenBSD.
 	asm amd64 {
+		.data
 		.global one_two_three
 		one_two_three:
 		.quad 48321074923
+		.text
 	}
 }
 
@@ -169,10 +172,13 @@ fn test_rip_relative_label_u8() {
 }
 
 $if !macos {
+	// RIP-relative reads require readable data, including on execute-only OpenBSD.
 	asm amd64 {
+		.data
 		.global byte_sequence
 		byte_sequence:
 		.byte 0x27, 0x35, 0x0f, 0x48
+		.text
 	}
 }
 
