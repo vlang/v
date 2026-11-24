@@ -149,10 +149,12 @@ pub fn atan2(y f64, x f64) f64 {
 	// Call atan and determine the quadrant.
 	q := atan(y / x)
 	if x < 0 {
-		if q <= 0 {
-			return q + pi
+		// y/x can underflow to signed zero. Select the branch from y,
+		// not a comparison with the rounded quotient, to retain the cut.
+		if signbit(y) {
+			return q - pi
 		}
-		return q - pi
+		return q + pi
 	}
 	return q
 }

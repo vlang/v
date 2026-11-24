@@ -1,0 +1,48 @@
+module math
+
+struct FmaBitsCase {
+	x    u64
+	y    u64
+	z    u64
+	want u64
+}
+
+// Exact binary64 vectors cover cancellation, overflow, subnormals and signed zero.
+fn test_software_fma_exact_rounding_vectors() {
+	cases := [
+		FmaBitsCase{0x3ff0000002000000, 0x3feffffffc000000, 0xbff0000000000000, 0xbc90000000000000},
+		FmaBitsCase{0x7fefffffffffffff, 0x4000000000000000, 0xffefffffffffffff, 0x7fefffffffffffff},
+		FmaBitsCase{0x0000000000000001, 0x3fe0000000000000, 0x0000000000000001, 0x0000000000000002},
+		FmaBitsCase{0x8000000000000001, 0x3fe0000000000000, 0x0000000000000000, 0x8000000000000000},
+		FmaBitsCase{0x0000000000000001, 0x3fe0000000000000, 0x8000000000000001, 0x8000000000000000},
+		FmaBitsCase{0x0000000000000001, 0x4012000000000000, 0x8000000000000004, 0x0000000000000000},
+		FmaBitsCase{0x0000000000000001, 0x401c000000000000, 0x8000000000000007, 0x0000000000000000},
+		FmaBitsCase{0x0000000000000001, 0x3fe0000000000001, 0x8000000000000001, 0x8000000000000000},
+		FmaBitsCase{0x0010000000000000, 0x3ff0000000000000, 0x0000000000000001, 0x0010000000000001},
+		FmaBitsCase{0x3ff0000000000001, 0x3ff0000000000001, 0xbff0000000000000, 0x3cc0000000000000},
+		FmaBitsCase{0xc000000000800001, 0x00000020000fffff, 0x80000010000003ff, 0x80000050002005fd},
+		FmaBitsCase{0x8000000100400000, 0xffe5f5ab6b91271c, 0xbfd07fffffffe000, 0xbfd07ff5026b74ca},
+		FmaBitsCase{0x002ed9300341fb2f, 0x3fe351d4d84c81e4, 0x801ffff7fffffff7, 0x00053fb6e5b28dc1},
+		FmaBitsCase{0x001c0915326698ca, 0xbfef83ffffffffff, 0x001bfffffeffffff, 0x0000638dfebcb4c6},
+		FmaBitsCase{0x3fc6c1e02a707b7a, 0xc0400000800fffff, 0xbcafffffdf7fffff, 0xc016c1e0e0963ead},
+		FmaBitsCase{0x0000000000000000, 0x4000000000000000, 0x8000000000000000, 0x0000000000000000},
+		FmaBitsCase{0x8000000000000000, 0x4000000000000000, 0x8000000000000000, 0x8000000000000000},
+		FmaBitsCase{0x8000000000000000, 0x4000000000000000, 0x0000000000000000, 0x0000000000000000},
+		FmaBitsCase{0x3ff0000000000000, 0x3ff0000000000000, 0xbff0000000000000, 0x0000000000000000},
+		FmaBitsCase{0x7fefffffffffffff, 0x7fefffffffffffff, 0xfff0000000000000, 0xfff0000000000000},
+		FmaBitsCase{0x7ff0000000000000, 0x4000000000000000, 0x7ff0000000000000, 0x7ff0000000000000},
+		FmaBitsCase{0xfff0000000000000, 0x4000000000000000, 0xfff0000000000000, 0xfff0000000000000},
+	]
+	for entry in cases {
+		got := fma_software(f64_from_bits(entry.x), f64_from_bits(entry.y), f64_from_bits(entry.z))
+		assert f64_bits(got) == entry.want, '${entry}: got ${f64_bits(got).hex()}'
+	}
+}
+
+fn test_software_fma_nonfinite_inputs() {
+	assert is_nan(fma_software(0.0, inf(1), 1.0))
+	assert is_nan(fma_software(inf(1), 2.0, inf(-1)))
+	assert is_nan(fma_software(nan(), 2.0, 1.0))
+	assert is_nan(fma_software(1.0, nan(), 1.0))
+	assert is_nan(fma_software(1.0, 2.0, nan()))
+}
