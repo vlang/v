@@ -238,9 +238,9 @@ the report is the same as without batching; `VTEST_NO_BATCH=1` runs one command 
 
 * `v test-fmt`
 
-This tests that all .v files in the current folder are already formatted.
-It is useful for adding to CI jobs, to guarantee, that future contributions
-will keep the existing source nice and clean.
+This tests that `v fmt` can format all .v files in the current folder, and lists the ones that
+need formatting. It runs `v fmt -inprocess -l` over up to 64 files per command, like
+`v test-cleancode`.
 
 ## Markdown/documentation checks:
 
