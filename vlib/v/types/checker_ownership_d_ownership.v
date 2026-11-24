@@ -12720,6 +12720,18 @@ fn (mut tc TypeChecker) ownership_can_move_var(name string, target string, pos f
 			return false
 		}
 	}
+	for _ in 0 .. 128 {
+		conflict := tc.ownership_borrow_conflict(name) or { return true }
+		if !tc.ownership_release_borrow_if_dead(conflict, pos) {
+			msg := if conflict.name == name {
+				'cannot move `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
+			} else {
+				'cannot move `${name}` because `${conflict.name}` is borrowed by `${conflict.borrow.borrower}`'
+			}
+			tc.record_error(.assignment_mismatch, msg, pos)
+			return false
+		}
+	}
 	if conflict := tc.ownership_borrow_conflict(name) {
 		msg := if conflict.name == name {
 			'cannot move `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
@@ -13478,6 +13490,18 @@ fn (mut tc TypeChecker) ownership_report_moved(name string, info MovedVar, id fl
 }
 
 fn (mut tc TypeChecker) ownership_check_reassign(name string, pos flat.NodeId) {
+	for _ in 0 .. 128 {
+		conflict := tc.ownership_borrow_conflict(name) or { return }
+		if !tc.ownership_release_borrow_if_dead(conflict, pos) {
+			msg := if conflict.name == name {
+				'cannot assign to `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
+			} else {
+				'cannot assign to `${name}` because `${conflict.name}` is borrowed by `${conflict.borrow.borrower}`'
+			}
+			tc.record_error(.assignment_mismatch, msg, pos)
+			return
+		}
+	}
 	if conflict := tc.ownership_borrow_conflict(name) {
 		msg := if conflict.name == name {
 			'cannot assign to `${name}` because it is borrowed by `${conflict.borrow.borrower}`'
@@ -13486,6 +13510,280 @@ fn (mut tc TypeChecker) ownership_check_reassign(name string, pos flat.NodeId) {
 		}
 		tc.record_error(.assignment_mismatch, msg, pos)
 	}
+}
+
+// ownership_borrower_base returns the root identifier of a borrower storage key
+// (`s` for `s`, `s.c`, or `s[0].name`). An empty string means no usable root.
+fn ownership_borrower_base(borrower string) string {
+	for i in 0 .. borrower.len {
+		if borrower[i] == `.` || borrower[i] == `[` {
+			return borrower[..i]
+		}
+	}
+	return borrower
+}
+
+// ownership_pos_inside_call_of reports whether `id` is an argument or descendant
+// of a call whose callee is `name`. An explicit borrow passed to a call stays
+// live until the call completes, even if its textual use precedes `id`.
+fn (tc &TypeChecker) ownership_pos_inside_call_of(id flat.NodeId, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	mut cur := id
+	for _ in 0 .. 128 {
+		if !tc.valid_node_id(cur) {
+			return false
+		}
+		n := tc.a.node(cur)
+		if n.kind == .call && n.children_count > 0 {
+			callee := tc.a.child(n, 0)
+			if tc.a.node(callee).value == name || tc.ownership_expr_ident_name(callee) == name {
+				return true
+			}
+		}
+		cur = tc.direct_parent_id(cur)
+	}
+	return false
+}
+
+// ownership_borrower_needs_destruction reports whether the borrower root is a
+// live local with a Drop implementation. Its destructor may read the borrowed
+// field at scope exit, after the last explicit source reference.
+fn (tc &TypeChecker) ownership_borrower_needs_destruction(base string) bool {
+	if base == '' {
+		return false
+	}
+	if root_type := tc.cur_scope.lookup(base) {
+		id := unalias_type(root_type).source_type_id()
+		if id != 0 && tc.ownership_type_has_explicit_drop(id) {
+			return true
+		}
+	}
+	st := tc.ownership
+	if isnil(st) || base !in st.owned_vars {
+		return false
+	}
+	type_id := st.owned_var_types.type_id(base) or { return false }
+	return type_id != 0 && tc.ownership_type_has_explicit_drop(type_id)
+}
+
+// ownership_release_borrow_if_dead implements NLL-lite for reassign conflicts
+// (see #32455): a loan whose borrower is never read after the conflicting
+// statement in the same straight-line block is dead, so release just that loan
+// instead of reporting an error. Returns true when a loan was released.
+// Anything ambiguous (branches, loops, deferred/spawned code, nested functions,
+// pointer aliases, unknown parents) keeps the error.
+fn (mut tc TypeChecker) ownership_release_borrow_if_dead(conflict OwnershipBorrowConflict, pos flat.NodeId) bool {
+	if conflict.borrow.borrower == '' {
+		return false
+	}
+	base := ownership_borrower_base(conflict.borrow.borrower)
+	if base == '' {
+		return false
+	}
+	// A loan created for an argument of a still-open call is live until the
+	// call returns, regardless of where the callee name appears textually.
+	if tc.ownership_pos_inside_call_of(pos, base) {
+		return false
+	}
+	// A borrower with a Drop implementation reads its fields at scope exit.
+	if tc.ownership_borrower_needs_destruction(base) {
+		return false
+	}
+	mut st := tc.ownership_state()
+	// A borrower that also flows through a raw pointer alias is not tracked
+	// textually below; keep the error.
+	for _, target in st.pointer_index_aliases {
+		if ownership_borrower_base(target) == base {
+			return false
+		}
+	}
+	// Walk up to the innermost block that holds `pos`. Crossing any branching,
+	// looping, deferred, spawned, or nested-function node means the borrow may
+	// be live on another path: keep the error. `$if` containers are
+	// transparent: only one branch survives compilation.
+	mut child := pos
+	mut block := flat.empty_node
+	mut stmt := flat.empty_node
+	mut cur := tc.direct_parent_id(child)
+	for _ in 0 .. 128 {
+		if !tc.valid_node_id(cur) {
+			return false
+		}
+		kind := tc.a.node(cur).kind
+		if kind == .fn_decl {
+			// Function bodies hold their statements directly: there is no
+			// intermediate block node between them and the declaration.
+			block = cur
+			stmt = child
+			break
+		}
+		if kind == .block {
+			parent := tc.direct_parent_id(cur)
+			if !tc.valid_node_id(parent) {
+				return false
+			}
+			parent_kind := tc.a.node(parent).kind
+			if parent_kind == .fn_decl {
+				block = cur
+				stmt = child
+				break
+			}
+			if parent_kind in [.comptime_if, .if_expr, .match_stmt, .match_branch, .select_stmt,
+				.select_branch, .or_expr, .sql_expr] {
+				child = cur
+				cur = parent
+				continue
+			}
+			return false
+		}
+		if kind in [.for_stmt, .for_in_stmt, .defer_stmt, .lock_expr, .fn_literal, .lambda_expr,
+			.spawn_expr, .comptime_for, .asm_stmt] {
+			return false
+		}
+		child = cur
+		cur = tc.direct_parent_id(child)
+	}
+	if !tc.valid_node_id(block) {
+		return false
+	}
+	// Deferred, spawned, or escaping (closure) uses, backward jumps, inline
+	// assembly, and unsafe address-taking elsewhere in the body keep the loan
+	// alive even when they never read the borrower after `pos` textually.
+	if tc.ownership_body_has_escaping_use(block, base) {
+		return false
+	}
+	if stmt != pos && tc.ownership_branch_has_use_after(stmt, pos, base) {
+		return false
+	}
+	block_node := tc.a.node(block)
+	mut seen_stmt := false
+	for i in 0 .. block_node.children_count {
+		stmt_id := tc.a.child(block_node, i)
+		if !seen_stmt {
+			if stmt_id == stmt {
+				seen_stmt = true
+				// A use inside the conflicting statement itself (for example
+				// on its right-hand side) keeps the loan alive. For a nested
+				// branch this is handled by ownership_branch_has_use_after;
+				// the whole subtree also contains reads before `pos`.
+				if stmt == pos && tc.ownership_subtree_uses_base(stmt_id, base) {
+					return false
+				}
+			}
+			continue
+		}
+		if tc.ownership_subtree_uses_base(stmt_id, base) {
+			return false
+		}
+	}
+	if !seen_stmt {
+		return false
+	}
+	tc.ownership_release_borrow(conflict.name, conflict.borrow.borrower)
+	return true
+}
+
+// ownership_subtree_uses_base reports whether the subtree rooted at `root`
+// mentions the identifier `base`. Any mention counts as a use: this scan only
+// ever keeps an error, never creates one.
+fn (tc &TypeChecker) ownership_subtree_uses_base(root flat.NodeId, base string) bool {
+	if base == '' || !tc.valid_node_id(root) {
+		return false
+	}
+	mut pending := [root]
+	for pending.len > 0 {
+		cur := pending.pop()
+		node := tc.a.node(cur)
+		if node.kind == .ident && node.value == base {
+			return true
+		}
+		pending << tc.a.children_of(node)
+	}
+	return false
+}
+
+// ownership_subtree_contains_node reports whether `target` is inside `root`.
+fn (tc &TypeChecker) ownership_subtree_contains_node(root flat.NodeId, target flat.NodeId) bool {
+	if !tc.valid_node_id(root) {
+		return false
+	}
+	mut pending := [root]
+	for pending.len > 0 {
+		cur := pending.pop()
+		if cur == target {
+			return true
+		}
+		pending << tc.a.children_of(tc.a.node(cur))
+	}
+	return false
+}
+
+// ownership_branch_has_use_after reports whether a branch rooted at `root`
+// reads `base` at or after `target` in source order. Flat AST children are
+// ordered, so every sibling after the one containing `target` is a later read,
+// including the other arm of an if/else or match. A read inside `target` itself
+// also keeps the loan alive.
+fn (tc &TypeChecker) ownership_branch_has_use_after(root flat.NodeId, target flat.NodeId, base string) bool {
+	if base == '' || !tc.valid_node_id(root) {
+		return false
+	}
+	mut current := root
+	for tc.valid_node_id(current) {
+		if current == target {
+			return tc.ownership_subtree_uses_base(current, base)
+		}
+		node := tc.a.node(current)
+		mut target_child := flat.empty_node
+		for i in 0 .. node.children_count {
+			child := tc.a.child(node, i)
+			if target_child == flat.empty_node && tc.ownership_subtree_contains_node(child, target) {
+				target_child = child
+				continue
+			}
+			if target_child != flat.empty_node && tc.ownership_subtree_uses_base(child, base) {
+				return true
+			}
+		}
+		if target_child == flat.empty_node {
+			return false
+		}
+		current = target_child
+	}
+	return false
+}
+
+// ownership_body_has_escaping_use reports whether the function body rooted at
+// `root` can read `base` outside straight-line order: deferred or spawned
+// code, escaping closures, backward jumps, inline assembly, or unsafe
+// address-taking. Any such shape keeps the loan alive.
+fn (tc &TypeChecker) ownership_body_has_escaping_use(root flat.NodeId, base string) bool {
+	if base == '' || !tc.valid_node_id(root) {
+		return false
+	}
+	mut pending := [root]
+	for pending.len > 0 {
+		cur := pending.pop()
+		node := tc.a.node(cur)
+		if node.kind in [.defer_stmt, .spawn_expr, .fn_literal, .lambda_expr] {
+			if tc.ownership_subtree_uses_base(cur, base) {
+				return true
+			}
+			continue
+		}
+		if node.kind in [.goto_stmt, .label_stmt, .asm_stmt] {
+			return true
+		}
+		if node.kind == .block && node.value == 'unsafe' {
+			if tc.ownership_subtree_uses_base(cur, base) {
+				return true
+			}
+			continue
+		}
+		pending << tc.a.children_of(node)
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) ownership_borrow_conflict(name string) ?OwnershipBorrowConflict {
