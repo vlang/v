@@ -50,6 +50,12 @@ fn test_one() {}
 	assert !source_mentions_word('item := 1', 'it')
 }
 
+fn test_vflags_are_part_of_the_batch_key() {
+	assert test_file_vflags('fn test_a() {}\n') == ''
+	assert test_file_vflags('// vtest vflags: -w\nfn test_a() {}\n') == '-w'
+	assert test_file_vflags('// vtest vflags: -d a\n// vtest vflags:  -d b \nfn test_a() {}\n') == '-d b'
+}
+
 fn test_env_cleanup_hook_accepts_only_unsetenv_lines() {
 	cleanup := "import os\n\nfn testsuite_begin() {\n\tos.unsetenv('VFLAGS')\n\tos.unsetenv('VOSARGS')\n}\n\nfn test_a() {}\n"
 	hook := test_env_cleanup_hook(test_code_text(cleanup), cleanup) or { panic('no hook') }

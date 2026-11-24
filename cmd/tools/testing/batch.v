@@ -224,11 +224,24 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 	// another file (`struct T` and `fn f[T]()`), which then names the type.
 	words << names.filter(it.len == 1 && it[0].is_capital())
 	return TestBatchCandidate{
-		key:    os.dir(real_file) + '\n' + module_name + if hook != '' { '\n' + hook } else { '' }
+		key:    os.dir(real_file) + '\n' + module_name + if hook != '' { '\n' + hook } else { '' } +
+			'\nvflags ' + test_file_vflags(source)
 		names:  names
 		consts: words
 		source: source
 	}
+}
+
+// test_file_vflags returns the flags of the last `// vtest vflags:` line of `source`, which
+// get_test_details applies to a file that runs on its own.
+fn test_file_vflags(source string) string {
+	mut vflags := ''
+	for line in source.split_into_lines() {
+		if line.starts_with('// vtest vflags:') {
+			vflags = line.all_after(':').trim_space()
+		}
+	}
+	return vflags
 }
 
 struct TestEnvCleanupHook {
@@ -276,16 +289,21 @@ fn test_env_cleanup_hook(code string, original string) ?TestEnvCleanupHook {
 }
 
 // test_batch_directives_allow reports whether the `// vtest` directives of `source`
-// let it share a binary. Only `// vtest build:` does, when its constraint holds: it
+// let it share a binary. `// vtest build:` does, when its constraint holds: it
 // decides whether the file runs, not how. One that does not hold leaves the file to
-// run, and be skipped, on its own. `retry:` and `flaky:` mark tests that fail now and
-// then, which would send their whole batch back to running file by file.
+// run, and be skipped, on its own. `// vtest vflags:` does too: the batch key holds
+// the flags (test_file_vflags), so a batch only has files compiled with the same ones.
+// `retry:` and `flaky:` mark tests that fail now and then, which would send their whole
+// batch back to running file by file.
 fn (ts &TestSession) test_batch_directives_allow(source string) bool {
 	if !source.contains('// vtest') {
 		return true
 	}
 	for line in source.split_into_lines() {
 		if !line.contains('// vtest') {
+			continue
+		}
+		if line.starts_with('// vtest vflags:') {
 			continue
 		}
 		if !line.starts_with('// vtest build:') {
@@ -612,6 +630,11 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 		mut argv := ['-skip-running']
 		vargs := (os.split_args(ts.vargs) or { []string{} }).filter(it != '-silent')
 		argv << vargs
+		// The files of a batch have the same `// vtest vflags:` (see test_file_vflags).
+		batch_vflags := get_test_details(abs_files[0]).vflags
+		if batch_vflags != '' {
+			argv << os.split_args(batch_vflags) or { []string{} }
+		}
 		if !vargs.any(it in ['-memory-limit', '-no-memory-limit']) {
 			argv << ['-memory-limit', test_batch_memory_limit_mib().str()]
 		}
