@@ -950,6 +950,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.njobs = ts.benchmark.njobs
 	item := p.get_item[string](idx)
 	if item.contains('\n') {
+		if ts.can_batch_tool_runs() {
+			return ts.run_tool_batch(item.split('\n'), '${idx}_${thread_id}', thread_id, mut
+				tls_bench)
+		}
 		return ts.run_test_batch(item.split('\n'), '${idx}_${thread_id}', thread_id, mut
 			tls_bench)
 	}

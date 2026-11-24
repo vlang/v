@@ -117,6 +117,9 @@ fn (ts &TestSession) can_batch_tests() bool {
 // either a single file, or the files of one batch joined with newlines. A batch
 // takes the place of its first file in the order of `files`.
 fn (ts &TestSession) test_units(files []string) []string {
+	if ts.can_batch_tool_runs() {
+		return ts.tool_units(files)
+	}
 	if !ts.can_batch_tests() {
 		return files.clone()
 	}
@@ -753,6 +756,105 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 				ts.test_label(file), run_share,
 				preparation: compile_share
 			), run_share, mtc)
+		}
+	}
+	return pool.no_result
+}
+
+// `v vet` and `v fmt -verify` check every file they are given and name the ones they reject, so
+// a session of either passes up to tool_batch_size files to one command instead of starting
+// one (two, with the tool's own process) per file. A batch that fails runs again file by file.
+const tool_batch_size = 64
+
+// can_batch_tool_runs reports whether the session runs `v vet` or `v fmt -verify` over its files.
+fn (ts &TestSession) can_batch_tool_runs() bool {
+	if os.getenv(test_batch_disable_env) !in ['', '0'] || ts.show_stats || ts.build_tools
+		|| ts.resume_dir != '' {
+		return false
+	}
+	vargs := os.split_args(ts.vargs) or { return false }
+	return 'vet' in vargs || ('fmt' in vargs && '-verify' in vargs && '-w' !in vargs)
+}
+
+// tool_units groups `files` for can_batch_tool_runs sessions. The files of a group get the same
+// options from run_test_file: `vet` checks a file whose path has `global` with `-enable-globals`,
+// and with its `// vtest vflags:`.
+fn (ts &TestSession) tool_units(files []string) []string {
+	is_fmt := ts.vargs.contains('fmt')
+	mut groups := [][]string{}
+	mut open_group := map[string]int{}
+	mut unit_groups := []int{cap: files.len}
+	for file in files {
+		key := if is_fmt {
+			''
+		} else {
+			real_file := os.real_path(file)
+			'${test_path_enables_globals(real_file)} ${get_test_details(real_file).vflags}'
+		}
+		gi := open_group[key] or { -1 }
+		if gi >= 0 && groups[gi].len < tool_batch_size {
+			groups[gi] << file
+			continue
+		}
+		open_group[key] = groups.len
+		unit_groups << groups.len
+		groups << [file]
+	}
+	return unit_groups.map(groups[it].join('\n'))
+}
+
+// run_tool_batch runs the tool of a can_batch_tool_runs session over `files` with one command.
+// When it fails, every file is run on its own, so that the failures are reported as without
+// batching.
+fn (mut ts TestSession) run_tool_batch(files []string, test_id string, thread_id int, mut tls_bench benchmark.Benchmark) voidptr {
+	abs_files := files.map(os.real_path(it))
+	mtc := MessageThreadContext{
+		file:    abs_files[0]
+		flow_id: thread_id.str()
+	}
+	mut argv := [ts.vexe, '-skip-running']
+	argv << (os.split_args(ts.vargs) or { []string{} }).filter(it != '-silent')
+	if !ts.vargs.contains('fmt') {
+		if test_path_enables_globals(abs_files[0]) {
+			argv << '-enable-globals'
+		}
+		vflags := get_test_details(abs_files[0]).vflags
+		if vflags != '' {
+			argv << os.split_args(vflags) or { []string{} }
+		}
+	}
+	argv << abs_files
+	ts.append_message(.compile_begin, cmdexec.display(ts.vexe, argv[1..]), mtc)
+	sw := time.new_stopwatch()
+	res := ts.exec_compiler(argv, mtc)
+	duration := sw.elapsed()
+	if res.exit_code != 0 {
+		// The files run again one by one and print their own output.
+		ts.append_message_with_duration(.compile_end, '', duration, mtc)
+		if show_cmd {
+			ts.append_message(.info, '> the batch of ${files.len} files failed; running them one by one\n> ${test_batch_output_head(res.output)}',
+				mtc)
+		}
+		for k, file in files {
+			if ts.fail_fast && ts.has_failures() {
+				break
+			}
+			ts.run_test_file(file, '${test_id}_${k}', thread_id, mut tls_bench)
+		}
+		return pool.no_result
+	}
+	ts.append_message_with_duration(.compile_end, res.output, duration, mtc)
+	share := time.Duration(i64(duration) / files.len)
+	for file in abs_files {
+		ts.benchmark_step()
+		tls_bench.step()
+		ts.benchmark_ok()
+		tls_bench.ok()
+		if !hide_oks {
+			ts.append_message_with_duration(.ok, tls_bench.step_message_with_label_and_duration(benchmark.b_ok,
+				ts.test_label(file), 0,
+				preparation: share
+			), 0, mtc)
 		}
 	}
 	return pool.no_result
