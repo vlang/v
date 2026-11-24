@@ -1,5 +1,100 @@
 import os
 
+fn run_ownership_regression(source string) {
+	for mode in [['-no-parallel'], []string{}] {
+		mut args := [@VEXE, '-nocache', '-ownership', '-gc', 'none', '-cc', 'clang']
+		args << mode
+		args << ['run', source]
+		result := os.exec(args)
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
+}
+
+fn test_ownership_arc_literal_transfers_nested_fields_once() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_arc_literal_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'import sync.arc
+
+struct Value implements IClone {
+	text string
+}
+
+struct Pair implements IClone {
+	left Value
+	right Value
+}
+
+struct Holder implements IClone {
+	inner arc.Arc[Pair]
+}
+
+fn hold(left Value, right Value) Holder {
+	return Holder{
+		inner: arc.new(Pair{left: left, right: right})
+	}
+}
+
+fn main() {
+	holder := hold(Value{"left".to_owned()}, Value{"right".to_owned()})
+	assert holder.inner.get().left.text == "left"
+	assert holder.inner.get().right.text == "right"
+}
+')!
+	run_ownership_regression(source)
+}
+
+fn test_ownership_replacing_arc_field_can_return_receiver_reference() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_arc_receiver_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'import sync.arc
+
+struct Value implements IClone {
+	text string
+}
+
+struct Holder {
+mut:
+	inner arc.Arc[Value]
+}
+
+fn (mut holder Holder) replace(value Value) &Holder {
+	holder.inner = arc.new(value)
+	return holder
+}
+
+fn main() {
+	mut holder := Holder{arc.new(Value{"old".to_owned()})}
+	updated := holder.replace(Value{"new".to_owned()})
+	assert updated.inner.get().text == "new"
+}
+')!
+	run_ownership_regression(source)
+}
+
+fn test_ownership_chained_call_can_consume_argument_once() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_chained_call_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn normalize(value string) string {
+	return value.trim_space()
+}
+
+fn split(value string) []string {
+	return normalize(value).split("/")
+}
+
+fn main() {
+	assert split(" a/b ".to_owned()) == ["a", "b"]
+}
+')!
+	run_ownership_regression(source)
+}
+
 fn test_ownership_local_receiver_cannot_escape_in_wrapped_or_aggregate_returns() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_wrapped_receiver_${os.getpid()}')
 	os.mkdir_all(root)!

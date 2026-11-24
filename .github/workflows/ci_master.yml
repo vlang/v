@@ -4,9 +4,14 @@ on:
   push:
     branches: [master]
 
+# One master run at a time: a push while one runs waits, and a later push replaces the
+# waiting one, so the queue holds at most the newest commit. Each run covers every commit
+# up to its own, because preflight selects suites from the changes since the newest finished
+# run that recorded its suites as started; a run per commit (~245 jobs) outgrew the
+# organization's runners.
 concurrency:
-  group: ci-master-${{ github.sha }}
-  cancel-in-progress: true
+  group: ci-master
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -82,6 +87,10 @@ jobs:
     needs: bootstrap-linux
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      # Reads earlier master runs and their record-tested-commit marks.
+      actions: read
     outputs:
       benchmark_footprint_json_decode: ${{ steps.paths.outputs.benchmark_footprint_json_decode }}
       benchmark_footprint_json_encode: ${{ steps.paths.outputs.benchmark_footprint_json_encode }}
@@ -153,9 +162,23 @@ jobs:
       - name: Select suites using the original push path filters
         id: paths
         env:
-          CI_BEFORE: ${{ github.event.before }}
           CI_AFTER: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: python3 .github/workflows/ci_gate_paths.py master
+
+  # Marks a run whose suites started; the next run selects its suites from this commit on.
+  record-tested-commit:
+    needs: [preflight, gen_vc_ci]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Write the tested commit
+        run: echo "${{ github.sha }}" > ci-tested-commit.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ci-tested-commit
+          path: ci-tested-commit.txt
+          retention-days: 30
 
   # Regenerate the bootstrap C sources before starting any other suites.
   gen_vc_ci:

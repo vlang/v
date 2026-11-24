@@ -16,7 +16,7 @@ fn main() {
 fn v_test_formatting(vargs string) {
 	all_v_files := v_files()
 	testing.eheader('Run "v fmt" over all .v files')
-	mut vfmt_test_session := testing.new_test_session('${vargs} fmt -worker', false)
+	mut vfmt_test_session := testing.new_test_session('${vargs} fmt -inprocess -l', false)
 	exceptions := known_failing_exceptions.map(os.abs_path)
 	vfmt_test_session.files << all_v_files.filter(os.abs_path(it) !in exceptions)
 	vfmt_test_session.test()

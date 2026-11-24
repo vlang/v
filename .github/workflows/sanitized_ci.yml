@@ -112,9 +112,10 @@ jobs:
       VTEST_FAIL_FAST: '1'
       SANITIZER_GITHUB_JOB: sanitize-${{ matrix.name }}
       VFLAGS: ${{ matrix.vflags }}
-      # Use two test workers per shard on four-CPU runners. Keep headroom
-      # for instrumented builds and tests that spawn compilers.
-      VJOBS: ${{ matrix.shard_count && 2 || 1 }}
+      # Use two test workers on the four-CPU runners, in shards and in the
+      # suites that run whole: one worker kept them at 3-4 hours. Keep
+      # headroom for instrumented builds and tests that spawn compilers.
+      VJOBS: '2'
       VTEST_SELF_SHARD_INDEX: ${{ matrix.shard || 0 }}
       VTEST_SELF_SHARD_COUNT: ${{ matrix.shard_count || 1 }}
       UBSAN_OPTIONS: ${{ matrix.ubsan_options }}
@@ -140,9 +141,6 @@ jobs:
       - name: V doctor
         if: ${{ matrix.name != 'memory-clang-compiler' }}
         run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v doctor
-      - name: Ensure code is well formatted
-        if: ${{ matrix.name != 'memory-clang-compiler' && (!matrix.shard_count || matrix.shard == 0) }}
-        run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v -silent test-cleancode
       - name: Install dependencies
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
@@ -170,7 +168,11 @@ jobs:
           prefix="$RUNNER_TEMP/v-msan-freetype"
           bash .github/workflows/build_msan_freetype.sh "$prefix"
           echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+      # The setup compiler is the optimized one for this commit. Building V again with
+      # -cstrict and the suite's C compiler is a check of the generated C, which the first
+      # shard of a sharded suite does for all of them.
       - name: Recompile optimized V with -cstrict
+        if: ${{ !matrix.shard_count || matrix.shard == 0 }}
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           if [ "${{ matrix.sanitizer }}" = "memory" ]; then

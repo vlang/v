@@ -3,7 +3,10 @@
 
 GitHub's workflow_call trigger cannot have a paths filter. The manifests store
 the original, ordered on.push paths/paths-ignore patterns. The caller runs this
-script against the push's exact before/after commits after Linux bootstrap and fmt.
+script after Linux bootstrap and fmt. It selects suites from the changes since the
+newest finished master run whose suites started, not since the push's own base: one
+master run is queued at a time and a newer push replaces the waiting one, so the
+commits of a replaced or cancelled run are tested only by a later run.
 No external Python packages are required.
 """
 import argparse
@@ -13,6 +16,8 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 ROOT = Path(".github/workflows")
 MANIFEST_DIR = ROOT / "ci_gate_filters"
@@ -23,6 +28,11 @@ SHARED_COMPILER_FILES = {
     ".github/workflows/prepare_v.ps1",
     "cmd/tools/build_vprod.sh",
 }
+# Uploaded by the record-tested-commit job once vc generation let a run's suites start.
+TESTED_MARK = "ci-tested-commit"
+# Conclusions of runs whose started suites all ran to the end.
+FINISHED = {"success", "failure"}
+MAX_RUNS = 50
 
 
 def glob_pattern(pattern):
@@ -144,7 +154,7 @@ def validate(entries):
 
 def changed_paths(before, after):
     if not before or not after or set(before) == {"0"}:
-        print("No usable push base; conservatively run all suites", file=sys.stderr)
+        print("No tested base commit; conservatively run all suites", file=sys.stderr)
         return None
     try:
         result = subprocess.run(
@@ -165,6 +175,74 @@ def changed_paths(before, after):
         return None
 
 
+class GitHubAPI:
+    def __init__(self, token, repository):
+        if not token or not repository:
+            raise ValueError("GH_TOKEN and GITHUB_REPOSITORY are required")
+        self.token = token
+        self.repository = repository
+
+    def get(self, path):
+        request = Request(
+            f"https://api.github.com/repos/{self.repository}/{path}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self.token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "vlang-ci-gate-paths",
+            },
+        )
+        last_error = None
+        for _ in range(3):
+            try:
+                with urlopen(request, timeout=30) as response:
+                    return json.load(response)
+            except (HTTPError, URLError, OSError, ValueError) as error:
+                last_error = error
+        raise RuntimeError(f"GitHub API GET {path} failed: {last_error}")
+
+
+def is_ancestor(commit, after):
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", commit, after], capture_output=True,
+    ).returncode == 0
+
+
+def tested_base(api, after, run_id, ancestor=is_ancestor):
+    """Return the head of the newest finished master run that marked its suites as started."""
+    runs = api.get(
+        "actions/workflows/ci_master.yml/runs"
+        f"?branch=master&event=push&status=completed&per_page={MAX_RUNS}"
+    ).get("workflow_runs")
+    if not isinstance(runs, list):
+        raise ValueError("invalid workflow run listing")
+    for run in runs:
+        sha = run.get("head_sha")
+        if (run.get("id") == run_id or run.get("conclusion") not in FINISHED
+                or not isinstance(sha, str) or sha == after or not ancestor(sha, after)):
+            continue
+        artifacts = api.get(
+            f"actions/runs/{run['id']}/artifacts?name={TESTED_MARK}"
+        ).get("artifacts")
+        if any(a.get("name") == TESTED_MARK and not a.get("expired")
+               for a in artifacts or []):
+            print(f"Selecting suites from changes since run {run['id']} at {sha}",
+                  file=sys.stderr)
+            return sha
+    print(f"No finished run among the newest {MAX_RUNS} marked its suites as started",
+          file=sys.stderr)
+    return None
+
+
+def main_base(after):
+    try:
+        api = GitHubAPI(os.environ.get("GH_TOKEN"), os.environ.get("GITHUB_REPOSITORY"))
+        return tested_base(api, after, int(os.environ.get("GITHUB_RUN_ID") or 0))
+    except (RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
+        print(f"Cannot find the last tested commit ({exc})", file=sys.stderr)
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("shard", choices=("master", "validate"))
@@ -174,7 +252,8 @@ def main():
     if args.shard == "validate":
         print(f"Validated {len(entries)} gated push suites")
         return
-    changed = changed_paths(os.environ.get("CI_BEFORE"), os.environ.get("CI_AFTER"))
+    after = os.environ.get("CI_AFTER")
+    changed = changed_paths(main_base(after) if after else None, after)
     selected = entries
     output_path = os.environ.get("GITHUB_OUTPUT")
     lines = []

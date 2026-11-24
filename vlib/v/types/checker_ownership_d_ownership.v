@@ -7535,7 +7535,8 @@ fn (mut tc TypeChecker) ownership_check_expr(id flat.NodeId) {
 		// again by the enclosing call. If this identifier is still inside the
 		// exact enclosing expression that recorded its move, this is the same AST
 		// use being revisited, not a second source-level use.
-		if tc.ownership_move_site_contains(moved.info.move_pos, id) {
+		if (moved.name == name && moved.info.is_fn_call && moved.info.move_pos == id)
+			|| tc.ownership_move_site_contains(moved.info.move_pos, id) {
 			return
 		}
 		tc.ownership_report_moved(moved.name, moved.info, id)
@@ -10700,6 +10701,14 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 				tc.ownership_borrowed_name(expr_id)
 			}
 		}
+		// A reference to caller storage does not transfer ownership of its fields.
+		if name.len > 0 && tc.current_fn_can_return_borrowed_mut_receiver(name) {
+			return_type := unalias_type(tc.fn_context.return_type)
+			payload := contextual_payload_type(return_type) or { return_type }
+			if unalias_type(payload) is Pointer {
+				continue
+			}
+		}
 		if fn_value := tc.ownership_fn_value_name_from_expr(expr_id) {
 			tc.ownership_note_fn_return_fn_value(st.cur_fn, fn_value)
 		} else if fn_value := tc.ownership_fn_return_fn_value_from_call(expr_id) {
@@ -11149,7 +11158,7 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_descendant(target_name 
 			return true
 		}
 		if arg_name.len == 0 {
-			return tc.ownership_mark_storage_from_expr(target_name, arg_id, tc.resolve_type(arg_id), pos)
+			return tc.ownership_mark_from_return_param_source_expr(target_name, arg_id, fn_name, pos)
 		}
 		if arg_name in tc.ownership_state().owned_vars {
 			tc.ownership_mark_owned(target_name, tc.ownership_type_for_name(arg_name, tc.resolve_type(arg_id)), pos)
@@ -11262,9 +11271,15 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_source_expr(target_name
 	if tc.ownership_mark_from_call(target_name, id, pos) {
 		return true
 	}
+	typ := tc.resolve_type(id)
+	// A returned literal passed by value has already transferred its fields into
+	// the call argument. The result owns the aggregate as a whole.
+	node := tc.a.node(id)
 	if tc.ownership_expr_creates_owned_value(id) || tc.ownership_expr_is_owned_clone_call(id)
-		|| tc.ownership_type_is_owned(tc.resolve_type(id)) {
-		tc.ownership_mark_owned(target_name, tc.resolve_type(id), pos)
+		|| tc.ownership_type_is_owned(typ)
+		|| (node.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init]
+			&& tc.ownership_type_requires_destruction(typ)) {
+		tc.ownership_mark_owned(target_name, typ, pos)
 		return true
 	}
 	return false
@@ -14092,6 +14107,8 @@ fn (tc &TypeChecker) ownership_standard_string_arg_is_borrowed(fn_name string, p
 		standard_module = 'strconv'
 	} else if fn_name in ['strings.Builder.write_string', 'strings.Builder.write_string2'] {
 		standard_module = 'strings'
+	} else if fn_name == 'utf8.validate_str' {
+		standard_module = 'encoding/utf8'
 	}
 	if standard_module == '' {
 		return false
@@ -14101,7 +14118,7 @@ fn (tc &TypeChecker) ownership_standard_string_arg_is_borrowed(fn_name string, p
 	return normalized.starts_with('vlib/${standard_module}/')
 		|| normalized.contains('/vlib/${standard_module}/')
 		|| (normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
-			&& normalized.all_after_last('/').starts_with('${standard_module}_'))
+			&& normalized.all_after_last('/').starts_with('${standard_module.replace('/', '_')}_'))
 }
 
 // type_name_text resolves the indexed source type spelling.

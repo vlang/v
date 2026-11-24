@@ -1,0 +1,59 @@
+name: AMD64 assembly data labels regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/slow_tests/assembly/asm_test.amd64.v'
+      - '.github/workflows/asm_readable_data_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+      - run: ./v fmt -verify vlib/v/slow_tests/assembly/asm_test.amd64.v
+      - name: Original amd64 assembly test
+        run: ./v -cc ${{ matrix.cc }} -keepc vlib/v/slow_tests/assembly/asm_test.amd64.v
+      - name: Assembly suite
+        run: ./v -cc ${{ matrix.cc }} -silent test vlib/v/slow_tests/assembly
+
+  openbsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Start OpenBSD VM
+        uses: cross-platform-actions/action@82668f1fbd89d9c99487604f822cbf6716f124d3
+        with:
+          operating_system: openbsd
+          version: '7.8'
+          memory: 8G
+          cpu_count: 2
+          sync_files: runner-to-vm
+      - name: Build V and execute original assembly regression
+        shell: cpa.sh {0}
+        run: |
+          set -eu
+          sudo pkg_add git sqlite3 gmake boehm-gc libiconv openssl
+          sudo hostname -s openbsd-ci
+          git config --global --add safe.directory .
+          ulimit -d 6291456
+          gmake
+          env VFLAGS= ./v -prod -cc cc -parallel-cc self
+          ./v fmt -verify vlib/v/slow_tests/assembly/asm_test.amd64.v
+          ./v -cc clang -keepc vlib/v/slow_tests/assembly/asm_test.amd64.v
+          export VFLAGS='-cc clang'
+          ./v run ci/openbsd_ci.vsh test_inline_assembly

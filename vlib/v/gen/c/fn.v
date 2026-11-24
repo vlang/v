@@ -1768,7 +1768,7 @@ fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?
 		return '__v3_internal_symbol_libc_${name[5..]}'
 	}
 	// Windows headers define these names as macros. Keep main__near etc. available to V.
-	if name in ['main.near', 'main.far', 'main.pascal', 'main.cdecl'] {
+	if name in ['main.near', 'main.far', 'main.pascal', 'main.cdecl', 'main.small', 'main.hyper'] {
 		return '__v3_internal_symbol_macro_${name[5..]}'
 	}
 	if module_name !in ['', 'main'] || name.starts_with('C.') {
@@ -1777,7 +1777,7 @@ fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?
 	if name in ['sync', 'syncfs'] {
 		return '__v3_internal_symbol_libc_${name}'
 	}
-	if name in ['near', 'far', 'pascal', 'cdecl'] {
+	if name in ['near', 'far', 'pascal', 'cdecl', 'small', 'hyper'] {
 		return '__v3_internal_symbol_macro_${name}'
 	}
 	mut c_type_name := false
@@ -6096,7 +6096,11 @@ fn (g &FlatGen) exported_symbol_attribute() string {
 	if !g.is_shared {
 		return ''
 	}
-	if g.ccompiler == 'msvc' {
+	// MSVC, and TinyCC for Windows targets, export only `dllexport` symbols from a DLL.
+	// MinGW's linker exports every symbol of a DLL that marks none, so GCC and Clang keep
+	// the visibility attribute there and their DLLs keep exporting all functions.
+	if g.ccompiler == 'msvc' || (g.target.os == 'windows' && (g.ccompiler == 'tinyc'
+		|| g.ccompiler.to_lower().contains('tcc'))) {
 		return '__declspec(dllexport) '
 	}
 	return '__attribute__((visibility("default"))) '

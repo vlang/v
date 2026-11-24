@@ -2,11 +2,10 @@ name: Docker CI
 
 on:
   workflow_call:
-  # Run the exact Ubuntu musl cold/warm regression on PR changes too; the
-  # master-only caller cannot validate this patch before it is merged.
   pull_request:
     paths:
       - '.github/workflows/docker_ci.yml'
+      - '.github/workflows/headerless_darwin_target_ci.yml'
       - 'vlib/v/gen/c/cached_interface_dispatch_test.v'
       - 'cmd/tools/vtest-self.v'
 
@@ -161,3 +160,8 @@ jobs:
         run: env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/gen/c/cached_interface_dispatch_test.v
       - name: Test V fixed tests
         run: ./v -silent test-self vlib
+
+  # Preserve the legacy image and its full suite; exercise Darwin targets with
+  # the modern Clang gate that supports their TLS and deployment macros.
+  ubuntu-musl-headerless:
+    uses: ./.github/workflows/headerless_darwin_target_ci.yml

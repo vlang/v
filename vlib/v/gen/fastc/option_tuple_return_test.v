@@ -64,7 +64,7 @@ fn main() {
 	c_path := os.join_path(root, 'main.c')
 	program := os.join_path(root, 'program')
 	os.write_file(c_path, c_source) or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-O2', '-o', program, c_path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-O2', '-o', program, c_path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
