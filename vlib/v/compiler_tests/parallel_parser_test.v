@@ -20,10 +20,14 @@ fn testsuite_end() {
 }
 
 // parallel_parse_input_files gathers enough real compiler sources to cross the
-// parallel-parse thresholds (min file count and total byte size).
+// parallel-parse thresholds (min file count and total byte size) many times
+// over: about 1.6 MB in 37 files. `types` and `transform` would add 10 MB and
+// grow the heap past 1 GB, where Boehm's black-listing can refuse every fresh
+// block for the parser's arrays and abort with "Too many retries in
+// GC_alloc_large".
 fn parallel_parse_input_files() []string {
 	mut files := []string{}
-	for sub in ['types', 'transform', 'parser', 'markused', 'flat'] {
+	for sub in ['parser', 'markused', 'flat'] {
 		dir := os.join_path(pp_v3_dir, sub)
 		mut names := os.ls(dir) or { continue }
 		names.sort()

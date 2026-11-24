@@ -8,7 +8,7 @@ fn check_anonymous_union_source(name string, source string) os.Result {
 	}
 	file := os.join_path(dir, 'main.v')
 	os.write_file(file, source) or { panic(err) }
-	return os.exec([@VEXE, '-new-compiler', '-o', os.join_path(dir, 'main.c'), file])
+	return os.exec([@VEXE, '-o', os.join_path(dir, 'main.c'), file])
 }
 
 fn test_anonymous_union_literal_rejects_multiple_active_members() {

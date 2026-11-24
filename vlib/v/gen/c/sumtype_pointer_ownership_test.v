@@ -11,8 +11,8 @@ fn test_sumtype_pointer_owners_move_once_and_borrows_remain_copyable() {
 	project := os.join_path(os.real_path(dir), 'compiler')
 	vlib := os.join_path(@VEXEROOT, 'vlib')
 	// Release V's frontend before Clang compiles the driver.
-	generate := os.exec([@VEXE, '-new-compiler', '-b', 'c', '-cc', cc, '-gc', 'none', '-d', 'ownership',
-		'-path', vlib, '-generate-c-project', project, os.join_path(vlib, 'v', 'v.v')])
+	generate := os.exec([@VEXE, '-b', 'c', '-cc', cc, '-gc', 'none', '-d', 'ownership', '-path',
+		vlib, '-generate-c-project', project, os.join_path(vlib, 'v', 'v.v')])
 	assert generate.exit_code == 0, generate.output
 	build := $if windows {
 		cmdexec.run_in_merged('cmd', ['/c', 'build.bat'], project)
@@ -474,8 +474,8 @@ fn main() {
 		for mode in ['-autofree', '-ownership'] {
 			for prealloc in [false, true] {
 				for program in [source, ordinary_source, or_source] {
-					mut command := [compiler, '-new-compiler', '-nocache', '-no-closures', '-gc',
-						'none', '-cc', cc, mode]
+					mut command := [compiler, '-nocache', '-no-closures', '-gc', 'none', '-cc',
+						cc, mode]
 					if prealloc { command << '-prealloc' }
 					command << ['run', program]
 					result := os.exec(command)

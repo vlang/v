@@ -55,9 +55,9 @@ struct CmdOutput {
 }
 
 fn run(fpath string, compiler_opts string, label string) CmdOutput {
-	cmd := '${os.quoted_path(vexe)} -new-compiler ${compiler_opts} -no-skip-unused -trace-calls run ${os.quoted_path(fpath)}'
-	res := os.exec([vexe, '-new-compiler', ...(os.split_args(compiler_opts) or { panic(err) }),
-		'-no-skip-unused', '-trace-calls', 'run', fpath])
+	cmd := '${os.quoted_path(vexe)} ${compiler_opts} -no-skip-unused -trace-calls run ${os.quoted_path(fpath)}'
+	res := os.exec([vexe, ...(os.split_args(compiler_opts) or { panic(err) }), '-no-skip-unused',
+		'-trace-calls', 'run', fpath])
 	if res.exit_code != 0 {
 		eprintln('> ${label} compilation output:\n${res.output}')
 		assert res.exit_code == 0, 'compilation of ${fpath} failed'
@@ -95,7 +95,7 @@ fn run_single_program(fpath string, should_match_fpath string, compiler_opts str
 }
 
 // Exercise the normal mark-used path, not just the compatibility fixture mode
-// above. -new-compiler prevents a fallback from hiding missing instrumentation.
+// above.
 fn test_new_compiler_trace_calls_preserves_output_and_stack_base() {
 	os.chdir(@VEXEROOT)!
 	dir := os.join_path(os.temp_dir(), 'v_trace_calls_${os.getpid()}')
@@ -112,8 +112,8 @@ fn test_new_compiler_trace_calls_preserves_output_and_stack_base() {
 fn main() { visit(2) println("traced output") }
 ')!
 	for flags in ['', '-no-parallel', '-prod', '-profile ${os.quoted_path(profile_file)}'] {
-		build := os.exec([vexe, '-new-compiler', ...(os.split_args(flags) or { panic(err) }),
-			'-trace-calls', '-o', binary, source])
+		build := os.exec([vexe, ...(os.split_args(flags) or { panic(err) }), '-trace-calls', '-o',
+			binary, source])
 		assert build.exit_code == 0, build.output
 		result := trace_capture_files([binary], stdout_file, stderr_file, map[string]string{})
 		assert result.exit_code == 0, result.output
@@ -146,21 +146,20 @@ fn main() { visit(2) println("traced output") }
 		}
 	}
 	assert os.read_file(profile_file)!.contains('visit')
-	plain := os.exec([vexe, '-new-compiler', 'run', source])
+	plain := os.exec([vexe, 'run', source])
 	assert plain.exit_code == 0, plain.output
 	assert plain.output.trim_space() == 'traced output'
 }
 
 fn test_trace_fns_requires_an_argument() {
-	result := os.exec([vexe, '-new-compiler', '-trace-calls', '-trace-fns'])
+	result := os.exec([vexe, '-trace-calls', '-trace-fns'])
 	assert result.exit_code != 0
 	assert result.output.contains('option `-trace-fns` requires a value')
 }
 
 fn test_trace_calls_rejects_unsupported_backends() {
 	for backend in ['arm64', 'wasm', 'eval', 'fastc'] {
-		result := os.exec([vexe, '-new-compiler', '-b', '${backend}', '-trace-calls',
-			'examples/hello_world.v'])
+		result := os.exec([vexe, '-b', '${backend}', '-trace-calls', 'examples/hello_world.v'])
 		assert result.exit_code != 0
 		assert result.output.contains('option `-trace-calls` is only supported by the C backend')
 	}
@@ -176,8 +175,8 @@ fn test_trace_calls_preserves_implicit_embed_imports() {
 	os.write_file(os.join_path(dir, 'message.txt'), 'embedded output')!
 	os.write_file(source, 'fn main() { println(\$embed_file("message.txt").to_string()) }')!
 	for flags in ['', '-no-parallel'] {
-		result := os.exec([vexe, '-new-compiler', ...(os.split_args(flags) or { panic(err) }),
-			'-trace-calls', '-trace-fns', 'main.main', 'run', source])
+		result := os.exec([vexe, ...(os.split_args(flags) or { panic(err) }), '-trace-calls',
+			'-trace-fns', 'main.main', 'run', source])
 		assert result.exit_code == 0, result.output
 		assert result.output.contains('main main.main/0')
 		assert result.output.contains('embedded output')

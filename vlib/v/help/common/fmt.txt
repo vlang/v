@@ -50,7 +50,8 @@ Options:
   -inprocess     Do everything in the same process. More prone to crashes in
                  case of parser bugs for invalid source files, and it needs
                  more memory, but it is faster for thousands of files, since
-                 it avoids the interprocess communication overhead.
+                 it avoids the interprocess communication overhead. Used with
+                 -verify or -l.
 
   -new_int       Forcefully cast the `int` type in @[translated] modules or
                  in the definition of `C.func` to the `i32` type.

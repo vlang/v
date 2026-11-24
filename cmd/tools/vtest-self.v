@@ -300,6 +300,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/net/quic/version_negotiation_test.v',
 	'vlib/db/pg_sqlite_consistency_test.v', // pg + sqlite dev headers pull in glibc-only sys/cdefs.h on musl-gcc
 	'vlib/db/sqlite/sqlite_test.v',
+	'vlib/v/gen/c/cached_interface_dispatch_test.v', // builds orm/row_mapping_conversion_test.v with clang, against the musl-only static sqlite
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_comptime_field_test.v',
 	'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
@@ -381,6 +382,12 @@ const skip_dirs_on_ubuntu_musl = [
 	'vlib/sokol/sapp', // the sapp module includes sokol_app.h, which needs X11/Xlib.h
 	'vlib/gg/canvas',
 ]
+
+// FastC's tests compile and link its C output with direct `cc`/`clang` calls and
+// POSIX-only assumptions (no `-municode` for its `wmain`, `/` paths, ...). Until they
+// are ported, they are not run on Windows; fastc_ci.yml still checks that FastC builds
+// and runs a program there.
+const skip_dirs_on_windows = ['v/gen/fastc']
 
 fn Config.init(vargs []string, targs []string) !Config {
 	mut cfg := Config{}
@@ -482,19 +489,12 @@ fn main() {
 	}
 	mut vargs := os.args[1..args_idx].clone()
 	requested_args := os.split_args(os.getenv('VFLAGS')) or { panic(err) }
-	mut all_requested_args := requested_args.clone()
-	all_requested_args << vargs
-	strict_v3 := ('-new-compiler' in all_requested_args && '-old-compiler' !in all_requested_args)
-		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
-	if strict_v3 {
-		// Apply environment flags to test compilation, without leaking a host C
-		// compiler choice into nested compiler invocations (for example FastC).
-		if vargs.len < requested_args.len || vargs[..requested_args.len] != requested_args {
-			vargs = requested_args.clone()
-			vargs << os.args[1..args_idx]
-		}
-		os.unsetenv('VFLAGS')
+	// Apply environment flags to test compilation without leaking them into nested builds.
+	if vargs.len < requested_args.len || vargs[..requested_args.len] != requested_args {
+		vargs = requested_args.clone()
+		vargs << os.args[1..args_idx]
 	}
+	os.unsetenv('VFLAGS')
 	targs := os.args#[args_idx + 1..]
 	cfg := Config.init(vargs, targs) or {
 		eprintln(err)
@@ -531,6 +531,13 @@ fn main() {
 		test_path := test_dir.replace('/', os.path_separator)
 		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_path}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
+	}
+	$if windows {
+		for test_dir in skip_dirs_on_windows {
+			test_path := test_dir.replace('/', os.path_separator)
+			dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_path}${os.path_separator}'
+			tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
+		}
 	}
 	if vtest.skip_ownership_autofree_tests() {
 		tsession.skip_files << tsession.files.filter(vtest.is_ownership_autofree_test(it))

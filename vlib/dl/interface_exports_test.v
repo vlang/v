@@ -45,6 +45,21 @@ pub fn read_value() int {
 		}
 		arguments << ['-cc', compiler]
 	}
+	$if musl ? {
+		// The libraries are loaded into this process, so they must use its C library. On a
+		// glibc host this test is built through musl-gcc, while the default C compiler
+		// links against glibc, and loading then fails on `ld-linux-x86-64.so.2`.
+		if musl_gcc := os.find_abs_path_of_executable('musl-gcc') {
+			arguments << ['-cc', musl_gcc]
+			// The system collector is built for glibc as well; use the test's collector.
+			$if !gcboehm ? {
+				arguments << ['-gc', 'none']
+			}
+			$if use_bundled_libgc ? {
+				arguments << ['-d', 'use_bundled_libgc']
+			}
+		}
+	}
 	arguments << ['-shared', '-o', library, source]
 	result := os.exec(arguments)
 	if result.exit_code != 0 {

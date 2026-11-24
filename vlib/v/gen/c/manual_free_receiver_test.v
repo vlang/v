@@ -169,8 +169,8 @@ fn main() {
 	println("${mode}")
 }
 ')!
-		mut args := ['-new-compiler', '-no-retry-compilation', '-cc', cc, '-gc', 'none', '-show-timings',
-			'-o', executable]
+		mut args := ['-no-retry-compilation', '-cc', cc, '-gc', 'none', '-show-timings', '-o',
+			executable]
 		if mode == 'uncached' {
 			args << '-nocache'
 		}

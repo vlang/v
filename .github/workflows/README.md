@@ -95,6 +95,9 @@ locally. The setup action also supports `use-prebuilt: false` for jobs that requ
 build. Shell-only jobs can call `prepare_v.sh`; set `V_CI_SOURCE_BUILD=1` to ignore a supplied
 prebuilt compiler and optionally `V_CI_CC` to choose the optimizing C compiler.
 `prepare_v.ps1` provides the corresponding Windows build/install step.
+`V_CI_VPROD_STAGE=generate` (with `V_CI_SOURCE_BUILD=1`) stops after writing the optimized
+compiler's C project to `vprod.project`; after `make -C vprod.project` has built `vprod.project/v`,
+`V_CI_VPROD_STAGE=install` installs it like a source build.
 
 Termux artifacts use the platform names `termux-arm64` and `termux-x64`. Install their binary
 as `v` in a checkout of the matching commit after verifying its `.sha256` checksum, and restore
@@ -104,7 +107,10 @@ Bionic libc and are separate from the glibc Linux compiler. The setup helper det
 before considering Linux artifacts and only reuses them for a verified 64-bit userland.
 The dedicated Termux test workflow still builds from source.
 
-Alpine/musl, non-Termux Android, BSD and other CPU architectures build natively. Bootstrap, update,
+Alpine/musl, non-Termux Android, BSD and other CPU architectures build natively. The QEMU
+riscv64 and s390x jobs bootstrap and generate the optimized compiler's C in their container, then
+compile that C on the x86 host with Ubuntu's cross gcc (the same gcc and glibc releases as the
+container): a native `gcc -O2` of it takes 45-70 minutes under emulation. Bootstrap, update,
 prebuilt-release and compiler-under-test checks retain their specific build recipes;
 ordinary tests use the optimized driver. Instrumented compiler builds retain their sanitizer
 flags and add `-prod`. Compiler self-build checks use separate executables or restore the
@@ -357,6 +363,11 @@ Available profiles:
 When migrating a workflow, keep the job's explicit install step until CI proves the
 profile is sufficient. The cache action speeds up installs; it should not hide which
 packages the workflow actually needs.
+
+The action refreshes the apt package lists before the cache lookup. On a miss, the
+underlying cache action installs from whatever lists the runner has, and with a stale
+image it saved entries without packages; every later job then restored nothing and
+installed the whole profile from apt. If that ever recurs, bump `version` in the action.
 
 ## MemorySanitizer dependencies
 

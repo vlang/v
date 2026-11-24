@@ -325,7 +325,6 @@ function Invoke-W5A1BoundedProcess {
     $startInfo.Environment['VJOBS'] = '1'
     $startInfo.Environment['VTEST_RETRY_MAX'] = '0'
     $startInfo.Environment['VTEST_FAIL_FAST'] = '1'
-    $startInfo.Environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
     $startInfo.Environment['VCOLORS'] = 'never'
     $startInfo.Environment['NO_COLOR'] = '1'
     $startInfo.Environment['TEMP'] = $TempDirectory

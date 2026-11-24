@@ -13,9 +13,6 @@ fn test_linux_gg_wayland_uses_the_new_compiler_and_32_bit_pipe_descriptors() {
 	root := os.join_path(os.vtmp_dir(), 'sokol_wayland_codegen_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	saved_fallback := os.getenv('V_MACOS_V3_NO_FALLBACK')
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	defer { os.setenv('V_MACOS_V3_NO_FALLBACK', saved_fallback, true) }
 	// The X11 control generates C only; it must not depend on the host session.
 	saved_display := os.getenv('DISPLAY')
 	os.setenv('DISPLAY', ':codegen', true)

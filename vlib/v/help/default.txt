@@ -8,6 +8,8 @@ Examples:
                                `hello` or `hello.exe`.
   v run hello.v                Same as above but also run the produced
                                executable immediately after compilation.
+  v run hello.wasm             Run WebAssembly using V's built-in runtime.
+  v -b wasm run hello.v        Compile to WebAssembly and run it in V.
   v -g run hello.v             Same as above but makes debugging easier
                                (Useful in case your program crashes).
                                (see `v help build` and `v help build-c` 
@@ -36,6 +38,8 @@ V supports the following commands:
 * Commonly Used Utilities:
   run                          Compile and run a V program. Delete the
                                executable if V created it for this run.
+  wasm                         Run a WebAssembly binary, or call an export with
+                               `v wasm --invoke NAME file.wasm [ARGS...]`.
   crun                         Compile and run a V program, keeping the
                                executable for reuse.
                                If you run the same program a second time,

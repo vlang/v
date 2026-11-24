@@ -14,13 +14,21 @@ fn test_native_const_map_membership_and_value_addresses_use_typed_storage() {
 		source := 'module main
 fn C.exit(int)
 struct Profile { first i64 second i64 }
+struct Reply { reply bool }
 const reserved = {"i8": true, "array": true, "available": false}
 const profile = Profile{first: 17, second: 23}
 const number = i64(71)
+const suffix = "constant"
+const reply = "unrelated \${suffix}"
 fn contains(name string) bool { return name in reserved }
 fn total(value &Profile) i64 { return value.first + value.second }
 fn make_profile() Profile { return Profile{first: 31, second: 37} }
+fn make_reply() Reply { return Reply{reply: true} }
 fn main() {
+    replies := [Reply{reply: true}, Reply{reply: false}]
+    if !replies[0].reply || replies[1].reply { C.exit(12) }
+    if !make_reply().reply || (&replies[1]).reply { C.exit(13) }
+    if reply != "unrelated constant" { C.exit(14) }
     for i := 0; i < 100; i++ {
         if !contains("i8") || !contains("array") || !contains("available") { C.exit(1) }
         if contains("missing") || "missing" in reserved { C.exit(2) }

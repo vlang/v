@@ -36,8 +36,7 @@ fn test_msan_unpoison_links_to_a_runtime_without_dynamic_exports() ! {
 	result := cmdexec.run_in_merged_with_env(@VEXE, ['-cc', compiler, '-nocache', '-gc', 'none',
 		'-cflags', '-D__has_feature(x)=x -Dmemory_sanitizer=1 -Wno-builtin-macro-redefined', 'run',
 		source], @VEXEROOT, {
-		'VFLAGS':                 ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VFLAGS': ''
 	})
 	assert result.exit_code == 0, result.output
 }

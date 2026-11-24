@@ -146,14 +146,22 @@ fn test_rip_relative_label() {
 	}
 }
 
-$if !macos {
-	// RIP-relative reads require readable data, including on execute-only OpenBSD.
+// OpenBSD links amd64 code execute-only, and on CPUs with protection keys (PKU)
+// a load from it faults, so the data read by the rip-relative tests goes in
+// .rodata. GNU as for COFF has no .pushsection, and Windows code is readable.
+$if windows {
 	asm amd64 {
-		.data
 		.global one_two_three
 		one_two_three:
 		.quad 48321074923
-		.text
+	}
+} $else $if !macos {
+	asm amd64 {
+		.pushsection .rodata
+		.global one_two_three
+		one_two_three:
+		.quad 48321074923
+		.popsection
 	}
 }
 
@@ -171,14 +179,19 @@ fn test_rip_relative_label_u8() {
 	}
 }
 
-$if !macos {
-	// RIP-relative reads require readable data, including on execute-only OpenBSD.
+$if windows {
 	asm amd64 {
-		.data
 		.global byte_sequence
 		byte_sequence:
 		.byte 0x27, 0x35, 0x0f, 0x48
-		.text
+	}
+} $else $if !macos {
+	asm amd64 {
+		.pushsection .rodata
+		.global byte_sequence
+		byte_sequence:
+		.byte 0x27, 0x35, 0x0f, 0x48
+		.popsection
 	}
 }
 

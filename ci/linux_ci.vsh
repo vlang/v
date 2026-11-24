@@ -22,9 +22,6 @@ fn test_pure_v_math_module() {
 }
 
 fn self_tests() {
-	// Never select the V1 compatibility compiler here. It is a separate V 0.5.2
-	// installation, so `test-self vlib` would resolve `vlib` under *its* VROOT and
-	// test the release's own standard library instead of this repository's.
 	if common.is_github_job {
 		exec_args(['v', '-W', '-silent', 'test-self', 'vlib'])
 	} else {
@@ -324,17 +321,7 @@ fn v_self_compilation_parallel_cc_gcc() {
 }
 
 fn build_modules_gcc() {
-	exec_args(['v', 'build-module', 'vlib/os'])
-	exec_args(['v', 'build-module', 'vlib/builtin'])
-	exec_args(['v', 'build-module', 'vlib/strconv'])
-	exec_args(['v', 'build-module', 'vlib/time'])
-	exec_args(['v', 'build-module', 'vlib/term'])
-	exec_args(['v', 'build-module', 'vlib/math'])
-	exec_args(['v', 'build-module', 'vlib/strings'])
-	exec_args(['v', 'build-module', 'vlib/v/token'])
-	exec_args(['v', 'build-module', 'vlib/v/parser'])
-	exec_args(['v', 'build-module', 'vlib/v/gen/c'])
-	exec_args(['v', 'build-module', 'vlib/os/cmdline'])
+	exec_args(['v', 'run', 'cmd/tools/cache_basic_modules.v'])
 }
 
 fn compile_vdoctor_prod_gcc() {
@@ -440,17 +427,7 @@ fn build_examples_autofree_clang() {
 }
 
 fn build_modules_clang() {
-	exec_args(['v', 'build-module', 'vlib/os'])
-	exec_args(['v', 'build-module', 'vlib/builtin'])
-	exec_args(['v', 'build-module', 'vlib/strconv'])
-	exec_args(['v', 'build-module', 'vlib/time'])
-	exec_args(['v', 'build-module', 'vlib/term'])
-	exec_args(['v', 'build-module', 'vlib/math'])
-	exec_args(['v', 'build-module', 'vlib/strings'])
-	exec_args(['v', 'build-module', 'vlib/v/token'])
-	exec_args(['v', 'build-module', 'vlib/v/parser'])
-	exec_args(['v', 'build-module', 'vlib/v/gen/c'])
-	exec_args(['v', 'build-module', 'vlib/os/cmdline'])
+	exec_args(['v', 'run', 'cmd/tools/cache_basic_modules.v'])
 }
 
 fn test_inline_assembly() {
@@ -586,7 +563,6 @@ fn run_ci_tasks(reset bool) ! {
 	os.setenv('CI', 'true', true)
 	os.setenv('GITHUB_ACTIONS', 'true', true)
 	os.setenv('RUNNER_OS', 'Linux', true)
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	// Stop test/build sessions promptly while retaining Linux CI's normal worker count.
 	os.setenv('VTEST_FAIL_FAST', '1', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_RUNTIME', '3', true)
@@ -676,7 +652,7 @@ const all_tasks = {
 	'build_blog_autofree_gcc':                           Task{build_blog_autofree_gcc, 'Build blog tutorial with -autofree (gcc)'}
 	'build_option_test_autofree_gcc':                    Task{build_option_test_autofree_gcc, 'Build option_test.c.v with -autofree (gcc)'}
 	'v_self_compilation_parallel_cc_gcc':                Task{v_self_compilation_parallel_cc_gcc, 'V self compilation with -parallel-cc (gcc)'}
-	'build_modules_gcc':                                 Task{build_modules_gcc, 'Build modules (gcc)'}
+	'build_modules_gcc':                                 Task{build_modules_gcc, 'Warm the standard library module cache (gcc)'}
 	'compile_vdoctor_prod_gcc':                          Task{compile_vdoctor_prod_gcc, 'compile vdoctor with -prod (gcc)'}
 	'compile_vup_prod_gcc':                              Task{compile_vup_prod_gcc, 'compile vup with -prod (gcc)'}
 	// clang tasks
@@ -694,7 +670,7 @@ const all_tasks = {
 	'self_tests_cstrict_clang':                          Task{self_tests_cstrict_clang, 'Self tests (-cstrict) (clang)'}
 	'build_examples_clang':                              Task{build_examples_clang, 'Build examples (clang)'}
 	'build_examples_autofree_clang':                     Task{build_examples_autofree_clang, 'Build examples with -autofree (clang)'}
-	'build_modules_clang':                               Task{build_modules_clang, 'Build modules (clang)'}
+	'build_modules_clang':                               Task{build_modules_clang, 'Warm the standard library module cache (clang)'}
 	'test_inline_assembly':                              Task{test_inline_assembly, 'Test inline assembly'}
 }
 

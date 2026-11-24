@@ -258,11 +258,13 @@ fn test_fastc_directory_entry_filters_sources_and_reports_empty_directory() {
 }
 
 fn test_fastc_shared_library_source_flags_keep_relative_paths() {
+	// The source path is resolved like any other one; on Windows that adds the drive.
+	project := os.dir(os.real_path('/tmp/project/source.v'))
 	for library in ['libexample.dylib', 'libexample.so', 'libexample.so.1', 'native.c'] {
 		assert fastc_flag_is_skippable('./lib/${library}')
 		args := fastc_c_flag_args('./lib/${library}', @VEXEROOT, '/tmp/project/source.v') or {
 			panic(err)
 		}
-		assert args == ['/tmp/project/lib/${library}'], args.str()
+		assert args == [os.join_path(project, 'lib', library)], args.str()
 	}
 }

@@ -75,8 +75,11 @@ fn test_environment() {
 		assert os.getenv('VJOBS') == '3'
 	}
 	// A formatting/tool session must also keep the original compiler environment.
+	// With VTEST_SHOW_CMD=1 the command is logged first: the channel needs room,
+	// as nothing reads it here.
 	mut session := TestSession{
 		compiler_jobs: 1
+		nmessages:     chan LogMessage{cap: 100}
 	}
 	result := session.exec_compiler([@VEXE, os.join_path(root, 'budget_true_test.v')],
 		MessageThreadContext{})

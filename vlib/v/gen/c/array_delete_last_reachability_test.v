@@ -11,7 +11,7 @@ fn run_array_delete_last_source(name string, source string) os.Result {
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'main.v')
 	os.write_file(path, source) or { panic(err) }
-	compiled := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-no-retry-compilation', '-o',
+	compiled := cmdexec.run(@VEXE, ['-nocache', '-no-retry-compilation', '-o',
 		os.join_path(root, 'program'), path])
 	assert compiled.exit_code == 0, compiled.output
 	return cmdexec.run(os.join_path(root, 'program'), []string{})

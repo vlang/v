@@ -26,6 +26,11 @@ fn (mut tc TypeChecker) vls_add_skipped_branches(file_id int) bool {
 	mut prefs := *tc.vls_prefs
 	prefs.preserve_comptime_conditionals = true
 	mut p := parser.Parser.new(&prefs)
+	// The text the check parsed, which may be completed where it is being
+	// written (see vls_complete_source), not the file as it is on the disk.
+	if source := tc.source_texts_by_file[file.name] {
+		p.preload_source(file.name, source)
+	}
 	reparsed := p.parse_file(file.name)
 	mut parsed_id := -1
 	for id, parsed_file in reparsed.source_files {

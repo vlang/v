@@ -66,7 +66,7 @@ fn main() {
 			} else {
 				'ordinary'
 			}}')
-			compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -cc clang ${mode} ${ownership} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+			compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -cc clang ${mode} ${ownership} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 			assert compile.exit_code == 0, '${mode} ${ownership}: ${compile.output}'
 			run := os.execute(os.quoted_path(output))
 			assert run.exit_code == 0, '${mode} ${ownership}: ${run.output}'

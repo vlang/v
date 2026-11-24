@@ -558,10 +558,17 @@ fn test_fresh_aligned_fixed_array_addresses_promote_storage_but_existing_values_
 				result = t.transform_builtin_addr_call(t.a.nodes[int(call)]) or { panic('missing addr intrinsic') }
 			}
 			result_node := t.a.nodes[int(result)]
-			if type_name == '[2]int' {
+			if type_name == '[2]int' && entry == 'builtin_addr' {
 				// Ordinary alignment keeps the existing temporary-address lowering.
 				assert result_node.kind == .prefix && result_node.op == .amp
 				assert t.a.child_node(&result_node, 0).kind == .ident
+			} else if type_name == '[2]int' {
+				// Like `&[1, 2]` and `&T{}`, `&[1, 2]!` allocates: an outer variable, a
+				// field or an array can keep the pointer after the block ends.
+				assert result_node.kind == .cast_expr, '${entry}: ${type_name}'
+				allocation := t.a.child_node(&result_node, 0)
+				assert allocation.kind == .call
+				assert t.a.child_node(allocation, 0).value == 'memdup'
 			} else {
 				assert result_node.kind == .cast_expr, '${entry}: ${type_name}'
 				expected_pointer := t.normalize_type_alias(flat.source_type_id('&${type_name}'))

@@ -5526,6 +5526,9 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 	mut seen_types := map[u64]bool{}
 	mut selected_imports := map[string]bool{}
 	mut mapped_declarations := []string{}
+	// Built on the first declaration that names an anonymous struct or union.
+	mut anonymous_sources := map[string]string{}
+	mut anonymous_sources_ready := false
 	const_replacements, const_files := module_header_const_replacements(a, tc, module_name, file_ids, const_order)
 	for file_id in file_ids {
 		file_node := a.node(file_id)
@@ -5587,6 +5590,13 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 				}
 				if text.len == 0 {
 					continue
+				}
+				if !source_embedded && (text.contains('AnonStruct_') || text.contains('AnonUnion_')) {
+					if !anonymous_sources_ready {
+						anonymous_sources = anonymous_aggregate_sources(a, mut source_cache)
+						anonymous_sources_ready = true
+					}
+					text = spell_anonymous_aggregates(text, anonymous_sources)
 				}
 				// Prefer the declaration's source spelling. Attribute marker node ids are
 				// internal parser bookkeeping and can differ when a cache warmup replaces
@@ -5881,6 +5891,71 @@ struct CachedDeclarationSource {
 fn declaration_source_text(a &flat.FlatAst, node flat.Node, file_name string, mut source_cache map[string]string) ?string {
 	source := declaration_source_with_line(a, node, file_name, mut source_cache)?
 	return source.text
+}
+
+// anonymous_aggregate_sources maps the names that the parser made up for the
+// anonymous structs and unions of `a` to their source spelling, `struct { ... }`.
+// A header has no declaration for such a name, as the source has none: it spells
+// the type out, and parsing the header makes the anonymous type again.
+fn anonymous_aggregate_sources(a &flat.FlatAst, mut source_cache map[string]string) map[string]string {
+	mut sources := map[string]string{}
+	if a.synthesized_anon_struct_types.len == 0 {
+		return sources
+	}
+	for node in a.nodes {
+		if node.kind != .struct_decl
+			|| !(node.value.starts_with('AnonStruct_') || node.value.starts_with('AnonUnion_')) {
+			continue
+		}
+		if !a.synthesized_anon_struct_types[flat.source_type_id(node.value)] {
+			continue
+		}
+		if !node.pos.is_valid() || node.pos.offset < 0 || node.pos.end <= node.pos.offset {
+			continue
+		}
+		file := a.source_files[node.pos.id] or { continue }
+		source := source_cache[file.name] or {
+			loaded := os.read_file(file.name) or { continue }
+			source_cache[file.name] = loaded
+			loaded
+		}
+		if node.pos.end > source.len {
+			continue
+		}
+		text := source[node.pos.offset..node.pos.end].trim_space()
+		if text.starts_with('struct') || text.starts_with('union') {
+			sources[node.value] = text
+		}
+	}
+	return sources
+}
+
+// spell_anonymous_aggregates replaces each made-up anonymous type name in the
+// header text `text` by its source spelling from `sources`.
+fn spell_anonymous_aggregates(text string, sources map[string]string) string {
+	mut out := strings.new_builder(text.len)
+	mut i := 0
+	for i < text.len {
+		if text[i] == `A` && (i == 0 || !is_header_ident_char(text[i - 1]))
+			&& (text[i..].starts_with('AnonStruct_') || text[i..].starts_with('AnonUnion_')) {
+			mut end := i
+			for end < text.len && is_header_ident_char(text[end]) {
+				end++
+			}
+			if spelled := sources[text[i..end]] {
+				out.write_string(spelled)
+				i = end
+				continue
+			}
+		}
+		out.write_u8(text[i])
+		i++
+	}
+	return out.str()
+}
+
+fn is_header_ident_char(c u8) bool {
+	return c.is_letter() || c.is_digit() || c == `_`
 }
 
 fn declaration_source_with_line(a &flat.FlatAst, node flat.Node, file_name string, mut source_cache map[string]string) ?CachedDeclarationSource {

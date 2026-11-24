@@ -104,8 +104,7 @@ pub fn z_of_new_point(z i32) i32 {
 	parent_vmodules := os.getenv_opt('VMODULES')
 	mut process := os.new_process(@VEXE)
 	defer { process.close() }
-	process.set_args(['-new-compiler', '-no-retry-compilation', 'test',
-		os.join_path(root, 'outer', 'outer_test.v')])
+	process.set_args(['-no-retry-compilation', 'test', os.join_path(root, 'outer', 'outer_test.v')])
 	mut environment := os.environ()
 	environment['VMODULES'] = root
 	process.set_environment(environment)

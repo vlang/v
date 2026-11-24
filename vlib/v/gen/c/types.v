@@ -86,6 +86,67 @@ fn (g &FlatGen) wide_enum_signature_c_type(t &types.Type) ?string {
 	return none
 }
 
+// PlainEnumMember is the C name and value expression of a plain enum member.
+struct PlainEnumMember {
+	cfield     string
+	value_expr string
+}
+
+// msvc_wide_plain_enum_members returns the members of a plain (not backed, not flag)
+// enum when one of them can hold a value outside C `int`, and none otherwise.
+// MSVC gives every enumerator the type `int` and truncates wider values, while GCC,
+// Clang and TinyCC widen the enumeration. V's `int` has 64 bits, so `a = 2 ** 40`
+// must stay a 64 bit constant. A value V cannot fold (`int(C.one) + 2 ** 40`) can be
+// wide as well.
+fn (mut g FlatGen) msvc_wide_plain_enum_members(node_ref &flat.Node, cur_module string, enum_name u32, cn string, field_names map[string]bool, field_exprs map[string]flat.NodeId) ?[]PlainEnumMember {
+	mut members := []PlainEnumMember{cap: int(node_ref.children_count)}
+	mut has_wide := false
+	mut field_values := map[string]i64{}
+	mut next_value := i64(0)
+	mut next_value_known := true
+	mut next_value_expr := '0'
+	for i in 0 .. node_ref.children_count {
+		f := g.a.child_node(node_ref, i)
+		mut value := next_value
+		mut value_known := next_value_known
+		mut value_expr := if next_value_known { value.str() } else { next_value_expr }
+		if f.children_count > 0 {
+			expr_id := g.a.child(f, 0)
+			mut resolving := map[string]bool{}
+			if enum_val := g.enum_field_expr_value_with_enum(expr_id, cur_module, enum_name, mut field_values, field_exprs, mut resolving) {
+				value = enum_val
+				value_known = true
+				value_expr = enum_val.str()
+			} else {
+				value_known = false
+				value_expr = g.enum_field_expr_to_string_with_enum(expr_id, cur_module, enum_name, cn, field_names) or {
+					g.expr_to_string(expr_id)
+				}
+			}
+		}
+		if value_known {
+			field_values[f.value] = value
+			if value < i64(min_i32) || value > i64(max_i32) {
+				has_wide = true
+			}
+			next_value = value + 1
+			next_value_expr = next_value.str()
+		} else {
+			has_wide = true
+			next_value_expr = '(${value_expr}) + 1'
+		}
+		next_value_known = value_known
+		members << PlainEnumMember{
+			cfield:     g.cname(f.value)
+			value_expr: value_expr
+		}
+	}
+	if !has_wide {
+		return none
+	}
+	return members
+}
+
 fn (g &FlatGen) enum_value_c_type(enum_type types.Enum) string {
 	if info := g.enum_backing_info(enum_type.source_type_id()) {
 		return info.c_name
@@ -2129,7 +2190,6 @@ fn (mut g FlatGen) enum_decls() {
 					g.writeln('')
 					continue
 				}
-				g.writeln('typedef enum {')
 				mut field_values := map[string]i64{}
 				mut field_exprs := map[string]flat.NodeId{}
 				mut field_names := map[string]bool{}
@@ -2140,6 +2200,18 @@ fn (mut g FlatGen) enum_decls() {
 						field_exprs[f.value] = g.a.child(f, 0)
 					}
 				}
+				if !is_flag && g.ccompiler == 'msvc' {
+					if members := g.msvc_wide_plain_enum_members(node_ref, cur_module, enum_name, cn, field_names, field_exprs) {
+						// MSVC keeps these values only outside a C enumeration.
+						g.writeln('typedef i64 ${type_cn};')
+						for member in members {
+							g.writeln('#define ${cn}__${member.cfield} ((${type_cn})(${member.value_expr}))')
+						}
+						g.writeln('')
+						continue
+					}
+				}
+				g.writeln('typedef enum {')
 				if is_flag {
 					mut val := 0
 					for i in 0 .. node.children_count {

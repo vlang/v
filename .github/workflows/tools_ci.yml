@@ -19,7 +19,6 @@ jobs:
     env:
       VFLAGS: -cc gcc
       VJOBS: '2'
-      V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -32,7 +31,7 @@ jobs:
         with:
           symlink: false
       - name: Check BSD tool job failure propagation
-        run: ./v -new-compiler cmd/tools/tools_ci_test.v
+        run: ./v cmd/tools/tools_ci_test.v
       - name: Check shell regression test formatting
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ./v fmt -verify cmd/tools/tools_ci_test.v
@@ -316,7 +315,9 @@ jobs:
         with:
           operating_system: freebsd
           version: '15.1'
-          memory: 8G
+          # GCC peaks at about 2 GiB compiling the cmd/v tests, which build the whole
+          # compiler; three of them ran out of memory in 8 GiB. The host has 16 GiB.
+          memory: ${{ matrix.cc == 'gcc' && '12G' || '8G' }}
           # The four-vCPU host leaves one CPU for the runner. Three test
           # workers fit the compiler test runner's memory budget in 8 GiB.
           cpu_count: 3

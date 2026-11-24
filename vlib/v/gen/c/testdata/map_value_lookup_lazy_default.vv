@@ -1,4 +1,3 @@
-// vtest vflags: -old-compiler
 
 fn read_present(values map[string]map[string]int) int {
 	return values['present'].len

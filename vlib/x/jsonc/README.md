@@ -49,6 +49,12 @@ fn main() {
 that overflow `f64`, such as `1e400`, remain signed infinity in the dynamic tree and render as
 `1e999` or `-1e999`, so the rendered document can be parsed again without losing the overflow.
 
+JSONC text entry points validate by building a dynamic `Any` tree and accept up to
+256 nested arrays or objects. This also limits `decode[T]`, even when `T` has no
+`Any` fields. Depths 257 through 512 return `json2.JsonDecodeError`; deeper input
+returns `json2.JsonScanError`. `is_valid` returns `false`, and `violation` reports
+no dialect violation when parsing or dynamic decoding fails.
+
 ## Validate
 `is_valid` answers whether a document is JSONC, and `violation` returns the first
 reason it is not.
@@ -66,7 +72,10 @@ fn main() {
 ```
 
 ## Decode into V types
-`decode` reads a document into a struct. The rules are the ones
+`decode` reads a document into a struct. It first validates by parsing a dynamic
+`Any` tree, so the 256-container limit applies even when the target type has no
+`Any` fields. Depths 257 through 512 return `json2.JsonDecodeError`; parser depth
+above 512 returns `json2.JsonScanError`. The decoding rules are the ones
 [`json2`](https://github.com/vlang/v/tree/master/vlib/json2) uses, because
 the same decoder does the work: structs with embedded structs flattened into the
 parent, enums by name or by value, `map[string]T`, arrays, options, and every
@@ -226,9 +235,10 @@ Dialect violations and malformed input use different error types.
 A `ParseError`, prefixed `jsonc:`, is well formed JSON5 that is not valid JSONC.
 It is the `ParseError` above, with a position.
 
-Anything else is malformed input, and the error comes from the JSON5 parser
-as a `json2.JsonScanError`. That happens before the dialect is considered, so
-a syntax error is never reported as a dialect problem.
+Malformed syntax and nesting beyond 512 are rejected by the JSON5 parser as
+`json2.JsonScanError`. A valid document with 257 through 512 containers exceeds
+JSONC's dynamic `Any` validation limit and returns `json2.JsonDecodeError`,
+including from `decode[T]` regardless of `T`.
 Raw LF and CR inside a quoted string are syntax errors in the shared JSON5 parser.
 
 Decoding errors come from `json2` and describe the value that does not fit the target type.

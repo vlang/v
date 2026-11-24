@@ -22,7 +22,7 @@ fn test_explicit_tcc_fallback_reports_original_diagnostics() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() { answer := 40 + 2; println(answer) }\n')!
 	output := os.join_path(root, 'program')
-	args := ['-new-compiler', '-nocache', '-gc', 'none', '-cc', fake_tcc, '-o', output, source]
+	args := ['-nocache', '-gc', 'none', '-cc', fake_tcc, '-o', output, source]
 	build := cmdexec.run(@VEXE, args)
 	assert build.exit_code == 0, build.output
 	assert build.output.contains("warning: tcc compilation failed (src.c:2: error: unresolved reference to 'v_issue_29374'), falling back to "), build.output

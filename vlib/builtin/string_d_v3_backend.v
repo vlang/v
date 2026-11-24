@@ -4,8 +4,7 @@
 module builtin
 
 // The 128-bit integer types exist only in V3. V3 always selects this file for
-// builtin, with its internal `v3_backend` define. The compatibility compiler, which
-// still checks some legacy fixtures against this vlib, does not know these types.
+// builtin with its internal `v3_backend` define. The portable bootstrap omits this file.
 
 // u128 returns the value of the string as a `u128`, reading decimal digits.
 // A string that is not a decimal number gives `u128(0)`, the same as `string.u64()`.

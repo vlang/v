@@ -68,6 +68,18 @@ fn test_find_abs_path_of_executable() {
 	assert find_and_check('mylink') == none
 }
 
+fn test_find_abs_path_of_executable_adds_only_existing_suffixes_to_absolute_names() {
+	missing := os.join_path(tfolder, 'missing', 'tool')
+	assert os.find_abs_path_of_executable(missing)! == missing
+	$if windows {
+		dir := os.join_path(tfolder, 'absolute')
+		os.mkdir_all(dir)!
+		exe := os.join_path(dir, 'tool.exe')
+		os.write_file(exe, '')!
+		assert os.find_abs_path_of_executable(os.join_path(dir, 'tool'))! == exe
+	}
+}
+
 fn find_and_check(executable string) ?string {
 	fpath := os.find_abs_path_of_executable(executable) or { return none }
 

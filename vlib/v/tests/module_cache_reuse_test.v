@@ -382,7 +382,7 @@ fn main() {
 ')!
 	for i, flags in [([]string{}), ['-cc', 'cc']] {
 		os.setenv('V3CACHE', os.join_path(root, 'cache${i}'), true)
-		for caller in [SavedEnv{ name: 'V3_CACHE_FORCE_SOURCE' },
+		for ci, caller in [SavedEnv{ name: 'V3_CACHE_FORCE_SOURCE' },
 			SavedEnv{ name: 'V3_CACHE_FORCE_SOURCE', present: true },
 			SavedEnv{ name: 'V3_CACHE_FORCE_SOURCE', present: true, value: 'caller-value' },
 			SavedEnv{ name: 'V3_CACHE_FORCE_SOURCE', present: true, value: '1' }] {
@@ -392,16 +392,20 @@ fn main() {
 			} else {
 				'unset'
 			}
-			mut uncached_args := [@VEXE]
-			uncached_args << flags
-			uncached_args << ['-nocache', 'run', main_file, 'program-argument']
-			uncached := os.exec(uncached_args)
-			assert uncached.exit_code == 0, uncached.output
-			assert uncached.output.trim_space() == expected, uncached.output
+			// The uncached reference does not touch the module cache, so one C
+			// compiler is enough to confirm `expected` for each environment.
+			if i == 0 {
+				uncached := os.exec([@VEXE, '-nocache', 'run', main_file, 'program-argument'])
+				assert uncached.exit_code == 0, uncached.output
+				assert uncached.output.trim_space() == expected, uncached.output
+			}
 			mut cached_args := [@VEXE]
 			cached_args << flags
 			cached_args << ['run', main_file, 'program-argument']
-			for _ in 0 .. 2 {
+			// Both compilers keep one cache across the environments: the first one
+			// builds it cold and then warm; each later one builds warm right after
+			// the environment changed.
+			for _ in 0 .. (if ci == 0 { 2 } else { 1 }) {
 				cached := os.exec(cached_args)
 				assert cached.exit_code == 0, cached.output
 				assert cached.output.trim_space() == expected, cached.output

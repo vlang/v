@@ -32,8 +32,7 @@ fn test_bootstrap_preserves_the_legacy_x64_skip_define() {
 		['-all-backends'],
 	] {
 		result := cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', '-check', ...flags, source], root, {
-			'VFLAGS':                 ''
-			'V_MACOS_V3_NO_FALLBACK': '1'
+			'VFLAGS': ''
 		})
 		assert result.exit_code == 0, '${flags}: ${result.output}'
 	}

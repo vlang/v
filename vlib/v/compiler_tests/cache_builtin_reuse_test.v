@@ -34,7 +34,7 @@ fn test_error_dispatch() {
 }
 ')!
 		result := cmdexec.run_in('env', ['-u', 'VEXE', '-u', 'VFLAGS', 'V3_CACHE_TRACE=1',
-			'V3CACHE=${root}/cache', @VEXE, '-new-compiler', '-v', source], root)
+			'V3CACHE=${root}/cache', @VEXE, '-v', source], root)
 		assert result.exit_code == 0, result.output
 		if index == 0 {
 			assert result.output.contains('Caching module builtin...'), result.output
@@ -81,7 +81,7 @@ fn test_builtin_error_dispatch() {
 }
 ')!
 		result := cmdexec.run_in('env', ['-u', 'VEXE', '-u', 'VFLAGS', 'V3CACHE=${root}/cache',
-			@VEXE, '-new-compiler', '-v', source], root)
+			@VEXE, '-v', source], root)
 		assert result.exit_code == 0, result.output
 		assert result.output.contains('Caching module builtin...'), result.output
 	}

@@ -185,7 +185,6 @@ pub fn run(args []string) ! {
 		os.setenv(key, value, true)
 	}
 	os.setenv('VTEST_FAIL_FAST', '1', true)
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	os.setenv('CI', 'true', true)
 	os.setenv('GITHUB_ACTIONS', 'true', true)
 	os.setenv('GITHUB_JOB', '${job.compiler}-windows', true)

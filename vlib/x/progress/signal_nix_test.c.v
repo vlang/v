@@ -18,6 +18,10 @@ fn run_progress_signal_probe(mode string) {
 		os.signal_opt(sig, app_handler) or { panic(err) }
 	} else if mode.starts_with('ignore') {
 		os.signal_ignore(sig)
+	} else {
+		// A runner started in the background passes SIGINT on ignored; test the default.
+		// C.signal changes process-wide signal handling and must be called in unsafe.
+		unsafe { C.signal(i32(sig), nil) }
 	}
 	mut mb := progress.MultiBar.new(force: true, delay: 5 * time.millisecond)
 	mut sp := mb.add_spinner(text: 'work')
@@ -45,6 +49,14 @@ fn test_cursor_is_restored_and_application_signal_handling_is_preserved() {
 	show := '\x1b[?25h'
 	for mode in ['default-int', 'default-term', 'handler-int', 'handler-term', 'ignore-int',
 		'ignore-term'] {
+		$if self_sanitize_memory ? {
+			// MemorySanitizer's signal() interceptor returns the previous real handler,
+			// its own wrapper, instead of the application's. Putting that back, as the
+			// display does for an application handler, makes the wrapper call itself.
+			if mode.starts_with('handler') {
+				continue
+			}
+		}
 		result := os.exec([binary, progress_signal_probe, mode])
 		assert result.output.contains(hide), '${mode}: ${result.output}'
 		assert result.output.contains(show), '${mode}: ${result.output}'

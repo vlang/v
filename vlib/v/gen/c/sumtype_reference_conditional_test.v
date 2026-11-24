@@ -95,7 +95,7 @@ fn main() {
     println('borrowed-reference conditionals ok')
 }
 ")!
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', 'run', path])
+	result := os.exec([@VEXE, '-nocache', 'run', path])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('borrowed-reference conditionals ok'), result.output
 }
