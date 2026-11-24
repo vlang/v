@@ -15,6 +15,8 @@ import rand
 const empty_bytearr = []u8{}
 
 pub struct ClientState {
+mut:
+	transport_closed bool
 pub mut:
 	state State = .closed // current state of connection
 }
@@ -36,7 +38,6 @@ pub struct Client {
 	is_server bool
 mut:
 	transport         ?ServerTransport
-	transport_closed  bool
 	read_buffer       [8192]u8
 	read_start        int
 	read_end          int

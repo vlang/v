@@ -4,8 +4,12 @@ import net
 import net.http
 
 fn (ws &Client) has_socket() bool {
-	return (ws.transport != none && !ws.transport_closed)
-		|| (!isnil(ws.conn) && ws.conn.sock.handle > 1)
+	if ws.transport != none {
+		return rlock ws.client_state {
+			!ws.client_state.transport_closed
+		}
+	}
+	return !isnil(ws.conn) && ws.conn.sock.handle > 1
 }
 
 // socket_read reads from socket into the provided buffer
@@ -76,10 +80,14 @@ fn (mut ws Client) socket_write(bytes []u8) !int {
 fn (mut ws Client) shutdown_socket() ! {
 	ws.debug_log('shutting down socket')
 	if mut transport := ws.transport {
-		if ws.transport_closed {
+		already_closed := lock ws.client_state {
+			closed := ws.client_state.transport_closed
+			ws.client_state.transport_closed = true
+			closed
+		}
+		if already_closed {
 			return
 		}
-		ws.transport_closed = true
 		transport.close()!
 	} else if ws.is_ssl {
 		ws.ssl_conn.shutdown()!
