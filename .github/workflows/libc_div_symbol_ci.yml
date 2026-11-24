@@ -55,6 +55,11 @@ jobs:
             ./v -cc "$cc" -silent vlib/v/gen/c/naming/naming_test.v
             ./v -cc "$cc" -no-retry-compilation -silent vlib/v/tests/fns/variadic_sumtype_test.v
           done
+      - name: Install compiler suite native dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev libgl-dev libegl-dev libgl1-mesa-dri
       - name: Compiler errors and compiler suite
         run: |
           ./v -silent vlib/v/compiler_errors_test.v
