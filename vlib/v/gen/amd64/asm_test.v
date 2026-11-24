@@ -171,3 +171,43 @@ fn test_amd64_inline_asm_immediate_widths() {
 		0xff,
 	]
 }
+
+fn test_amd64_narrow_left_shift_canonicalizes_its_result() {
+	for unsigned in [false, true] {
+		mut m := ssa.Module.new()
+		typ := if unsigned { m.type_store.get_uint(8) } else { m.type_store.get_int(8) }
+		lhs := m.add_value(.argument, typ, 'value', 0)
+		rhs := m.add_value(.argument, m.type_store.get_int(64), 'count', 1)
+		result := m.add_value(.instruction, typ, '', 0)
+		mut g := Gen.new(m)
+		g.reg_map[lhs] = int(rdi)
+		g.reg_map[rhs] = int(rsi)
+		g.reg_map[result] = int(rax)
+
+		g.gen_integer_shift(.shl, lhs, rhs, result)
+
+		// The in-range path left-shifts, then sign- or zero-extends AL.
+		data := g.elf.text_data
+		code := data[data.len - 14..data.len - 7]
+		extend := if unsigned { u8(0xb6) } else { u8(0xbe) }
+		assert code == [u8(0x48), 0xd3, 0xe0, 0x48, 0x0f, extend, 0xc0]
+	}
+}
+
+fn test_amd64_out_of_range_arithmetic_shift_returns_zero() {
+	mut m := ssa.Module.new()
+	typ := m.type_store.get_int(64)
+	lhs := m.add_value(.argument, typ, 'value', 0)
+	rhs := m.add_value(.argument, typ, 'count', 1)
+	result := m.add_value(.instruction, typ, '', 0)
+	mut g := Gen.new(m)
+	g.reg_map[lhs] = int(rdi)
+	g.reg_map[rhs] = int(rsi)
+	g.reg_map[result] = int(rax)
+
+	g.gen_integer_shift(.ashr, lhs, rhs, result)
+
+	data := g.elf.text_data
+	// The out-of-range path ends by clearing EAX.
+	assert data[data.len - 2..] == [u8(0x31), 0xc0]
+}
