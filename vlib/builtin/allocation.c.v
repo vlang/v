@@ -454,7 +454,7 @@ pub fn vcalloc(n int) &u8 {
 // use_arena is a constant at each call site; opting out never changes thread-local state.
 @[inline]
 fn vcalloc_impl(n int, use_arena bool) &u8 {
-	return vcalloc_scoped_impl(n, use_arena, true)
+	return vcalloc_scoped_impl(n, use_arena, true, false)
 }
 
 // vcalloc_heap allocates zeroed, scanned memory through the configured GC or
@@ -463,11 +463,11 @@ fn vcalloc_impl(n int, use_arena bool) &u8 {
 // Keep a live reference while using it. Zero returns nil; negative sizes panic.
 @[inline]
 pub fn vcalloc_heap(n int) &u8 {
-	return vcalloc_scoped_impl(n, false, false)
+	return vcalloc_scoped_impl(n, false, false, false)
 }
 
 @[inline]
-fn vcalloc_scoped_impl(n int, use_arena bool, use_prealloc bool) &u8 {
+fn vcalloc_scoped_impl(n int, use_arena bool, use_prealloc bool, can_fail bool) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc %6d total %10d\n', n, total_m)
@@ -492,32 +492,37 @@ fn vcalloc_scoped_impl(n int, use_arena bool, use_prealloc bool) &u8 {
 			return unsafe { prealloc_calloc(n) }
 		}
 	}
+	mut ptr := &u8(unsafe { nil })
 	$if vgc ? {
-		return checked_zero_allocation(unsafe { vgc_calloc(uint(n)) }, n)
+		ptr = unsafe { &u8(vgc_calloc(uint(n))) }
 	} $else $if gcboehm ? {
-		return checked_zero_allocation(unsafe { C.GC_MALLOC(n) }, n)
+		ptr = unsafe { C.GC_MALLOC(n) }
 	} $else {
 		$if windows {
 			// Warning! On windows, we always use _aligned_malloc to allocate memory.
 			// This ensures that we can later free the memory with _aligned_free
 			// without needing to track whether the memory was originally allocated
 			// by malloc or _aligned_malloc/_aligned_realloc/_aligned_recalloc.
-			ptr := checked_zero_allocation(unsafe { C._aligned_malloc(n, 1) }, n)
-			unsafe { C.memset(ptr, 0, n) }
-			_ht_alloc(ptr, n)
-			return ptr
+			ptr = unsafe { C._aligned_malloc(n, 1) }
 		} $else $if freestanding {
 			// route through the freestanding runtime instead of the libc calloc
-			r := checked_zero_allocation(unsafe { __calloc(1, uint(n)) }, n)
-			_ht_alloc(r, n)
-			return &u8(r)
+			ptr = unsafe { &u8(__calloc(1, uint(n))) }
 		} $else {
-			r := checked_zero_allocation(unsafe { C.calloc(1, n) }, n)
-			_ht_alloc(r, n)
-			return r
+			ptr = unsafe { C.calloc(1, n) }
 		}
 	}
-	return &u8(unsafe { nil }) // not reached, TODO: remove when V's checker is improved
+	// Fallible callers must see nil before zeroing or reporting a live allocation.
+	if _unlikely_(isnil(ptr)) {
+		if !can_fail { _memory_panic('vcalloc', n) }
+		return unsafe { nil }
+	}
+	$if !vgc ?&& !gcboehm ? {
+		$if windows {
+			unsafe { C.memset(ptr, 0, n) }
+		}
+		_ht_alloc(ptr, n)
+	}
+	return ptr
 }
 
 // special versions of the above that allocate memory which is not scanned

@@ -21,7 +21,10 @@ fn test_fallible_allocator_rolls_back_each_allocation_failure() {
 			for scenario in ['heap', 'chunk', 'registry-first', 'registry-grow', 'existing-chunk',
 				'existing-registry'] {
 				result := os.exec([binary, scenario])
-				assert result.exit_code == 0 && result.output == 'fallible arena fault rollback passed\n', '${optimized}/${tracked}/${scenario}: ${result.output}'
+				// The heap case also verifies that infallible allocation still reports OOM.
+				expected := if scenario == 'heap' { 'vcalloc(0x8)\n' } else { '' } +
+					'fallible arena fault rollback passed\n'
+				assert result.exit_code == 0 && result.output == expected, '${optimized}/${tracked}/${scenario}: ${result.output}'
 			}
 		}
 	}

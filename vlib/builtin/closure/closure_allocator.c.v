@@ -6,7 +6,7 @@ module closure
 // is unsupported with -prealloc, and no prealloc compatibility is added here.
 @[inline]
 fn closure_allocator_begin() voidptr {
-	$if builtin_arena ? {
+	$if !prealloc && !no_builtin_arena ? {
 		return unsafe { v_arena_suspend() }
 	}
 	return unsafe { nil }
@@ -14,7 +14,7 @@ fn closure_allocator_begin() voidptr {
 
 @[inline]
 fn closure_allocator_end(previous voidptr) {
-	$if builtin_arena ? {
+	$if !prealloc && !no_builtin_arena ? {
 		unsafe { v_arena_resume(previous) }
 	}
 }

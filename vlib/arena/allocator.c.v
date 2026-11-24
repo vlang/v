@@ -53,6 +53,7 @@ pub fn (allocator Allocator) calloc(size int) &u8 {
 // concurrent arena access still panics. Supports -gc none and Boehm GC.
 @[unsafe]
 pub fn (allocator Allocator) try_calloc(size int) ?&u8 {
+	check_supported()
 	return unsafe { v_arena_try_calloc_in(allocator.handle, size) }
 }
 

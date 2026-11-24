@@ -869,15 +869,12 @@ pub fn v_arena_calloc_in(handle voidptr, size int) &u8 {
 // arena to a different allocator. Use arena.Allocator.try_calloc instead.
 @[unsafe]
 pub fn v_arena_try_calloc_in(handle voidptr, size int) ?&u8 {
-	$if prealloc || vgc ? {
-		$compile_error('arena: fallible explicit allocation requires -gc none or Boehm GC')
-	}
 	if size < 0 || uint(size) > (~uint(0) >> 1) - uint(arena_align() + arena_chunk_header_size()) {
 		return none
 	}
 	if size == 0 { return unsafe { &u8(nil) } }
 	if handle == unsafe { nil } {
-		result := vcalloc_impl(size, false)
+		result := vcalloc_scoped_impl(size, false, false, true)
 		if result == unsafe { nil } { return none }
 		return result
 	}

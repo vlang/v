@@ -82,6 +82,20 @@ fn run_failure(allocator arena.Allocator, fail_after int, size int) FaultState {
 	return fault
 }
 
+fn infallible_heap_allocation() bool {
+	defer {
+		if message := recover() {
+			fault.armed = false
+			require(message == 'memory allocation failure', 'unexpected heap panic')
+		}
+	}
+	fault = FaultState{ armed: true }
+	pointer := unsafe { arena.heap_allocator().calloc(8) }
+	fault.armed = false
+	unsafe { free(pointer) }
+	return true
+}
+
 fn check_reusable(mut storage arena.Arena) {
 	pointer := allocate(storage.allocator(), 8) or { panic('arena left unusable') }
 	require(storage.owns(pointer), 'allocation fell back to heap')
@@ -99,10 +113,19 @@ fn main() {
 	mut storage := arena.new(chunk_size: 128)
 	match os.args[1] {
 		'heap' {
+			storage.push()
 			state := run_failure(arena.heap_allocator(), 0, 8)
 			require(state.calls == 1 && state.successes == 0, 'heap failure allocated additional storage')
 			pointer := allocate(arena.heap_allocator(), 32) or { panic('heap recovery failed') }
+			require(storage.is_current(), 'heap allocation changed the current arena')
+			require(storage.used() == 0 && storage.capacity() == 0, 'heap allocation used the current arena')
+			unsafe {
+				for i in 0 .. 32 { require(pointer[i] == 0, 'heap storage not zeroed') }
+			}
+			storage.pop()
 			unsafe { free(pointer) }
+			require(!infallible_heap_allocation(), 'infallible heap allocation did not panic')
+			require(C.allocation_failure_hooks_clean() == 1, 'failed infallible allocation was reported live')
 		}
 		'chunk' {
 			state := run_failure(storage.allocator(), 0, 8)

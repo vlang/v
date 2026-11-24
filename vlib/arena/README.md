@@ -119,6 +119,8 @@ or heap allocations. A handle does not initialize typed V values or keep their p
 `unsafe { allocator.try_calloc(size) }` returns an optional raw pointer. Negative or
 unsupported sizes and allocation failure return `none`, without constructing an error.
 A zero-size request succeeds with a nil pointer and consumes no storage.
+Heap handles use the configured GC or manual heap and return `none` on backing allocation failure,
+even while an arena is pushed.
 
 Failed arena growth releases unpublished storage and preserves existing chunks, data,
 used bytes and the next regular chunk size. It releases the registry/access locks before
