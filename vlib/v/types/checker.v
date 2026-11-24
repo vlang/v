@@ -845,20 +845,24 @@ mut:
 	pointer_alias_backward_goto_targets      map[string]bool
 	closure_forbidden_captures               map[string]bool
 	local_decl_rhs_by_name                   map[string][]LocalDeclRhs
-	local_decl_rhs_indexed                   bool
-	local_decl_rhs_pending                   bool
-	local_decl_rhs_range_lo                  int = -1
-	local_decl_rhs_range_hi                  int = -1
-	bool_condition_exprs                     map[string]flat.NodeId
-	preflight_option_layers                  map[flat.NodeId]PreflightOptionLayer
-	has_goto_nodes                           bool
-	closure_scope                            &Scope = unsafe { nil }
-	lambda_no_captures                       bool
-	generic_params                           []u32
-	return_type                              Type = builtin_void_type
-	undefined_variable_context_depth         int
-	continue_after_unknown_ident             bool
-	mut_local_owners_shared                  bool
+	// prealloc/arena scope escape lint state
+	scope_handle_locals              map[string]bool
+	scope_alloc_locals               map[string]bool
+	scope_open                       bool
+	local_decl_rhs_indexed           bool
+	local_decl_rhs_pending           bool
+	local_decl_rhs_range_lo          int = -1
+	local_decl_rhs_range_hi          int = -1
+	bool_condition_exprs             map[string]flat.NodeId
+	preflight_option_layers          map[flat.NodeId]PreflightOptionLayer
+	has_goto_nodes                   bool
+	closure_scope                    &Scope = unsafe { nil }
+	lambda_no_captures               bool
+	generic_params                   []u32
+	return_type                      Type = builtin_void_type
+	undefined_variable_context_depth int
+	continue_after_unknown_ident     bool
+	mut_local_owners_shared          bool
 	// Branch snapshots may share the map until the next binding update.
 	pointer_binding_values_shared bool
 	unsafe_alias_owners_shared    bool
@@ -913,6 +917,9 @@ fn (mut ctx FunctionCheckContext) reset_for_sibling_check() {
 	ctx.pointer_alias_backward_goto_targets.clear()
 	ctx.closure_forbidden_captures.clear()
 	ctx.local_decl_rhs_by_name.clear()
+	ctx.scope_handle_locals.clear()
+	ctx.scope_alloc_locals.clear()
+	ctx.scope_open = false
 	ctx.bool_condition_exprs.clear()
 	ctx.preflight_option_layers.clear()
 	// Nested snapshots and declaration generic parameters can share backing
@@ -970,6 +977,9 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		pointer_alias_backward_goto_targets:      src.pointer_alias_backward_goto_targets.clone()
 		closure_forbidden_captures:               src.closure_forbidden_captures.clone()
 		local_decl_rhs_by_name:                   src.local_decl_rhs_by_name.clone()
+		scope_handle_locals:                      src.scope_handle_locals.clone()
+		scope_alloc_locals:                       src.scope_alloc_locals.clone()
+		scope_open:                               src.scope_open
 		local_decl_rhs_indexed:                   src.local_decl_rhs_indexed
 		local_decl_rhs_pending:                   src.local_decl_rhs_pending
 		local_decl_rhs_range_lo:                  src.local_decl_rhs_range_lo

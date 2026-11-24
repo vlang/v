@@ -15,85 +15,35 @@
 
 // ============================================================
 // Atomic operations
+// The canonical cross-compiler implementation lives in
+// vlib/builtin/v_atomics.h. Keep every vgc_* name as an alias so the rest of
+// VGC (and the V `C.vgc_*` bindings) is unchanged. alloc_fastpaths.h supplies
+// the hugepage hint used by vgc_os_alloc_heap below.
 // ============================================================
-#if defined(__TINYC__)
-  // TCC does not implement the legacy __sync_* family: those degrade into
-  // plain function calls and then fail at link time with
-  // "unresolved reference to '__sync_add_and_fetch'" etc.
-  // Use the __atomic_* builtins instead, which lower to fixed-width helper
-  // functions provided by libtcc1.a (same approach as vlib/builtin/prealloc_atomics.h).
-  extern uint32_t __atomic_load_4(uint32_t* ptr, int order);
-  extern uint64_t __atomic_load_8(uint64_t* ptr, int order);
-  extern void __atomic_store_4(uint32_t* ptr, uint32_t val, int order);
-  extern void __atomic_store_8(uint64_t* ptr, uint64_t val, int order);
-  extern uint32_t __atomic_exchange_4(uint32_t* ptr, uint32_t val, int order);
-  extern _Bool __atomic_compare_exchange_4(uint32_t* ptr, uint32_t* expected, uint32_t desired, int success_order, int failure_order);
-  #define vgc_atomic_load_u32(ptr) ((uint32_t)__atomic_load_4((uint32_t*)(ptr), 5))
-  #define vgc_atomic_store_u32(ptr, val) __atomic_store_4((uint32_t*)(ptr), (uint32_t)(val), 5)
-  #define vgc_atomic_load_u64(ptr) ((uint64_t)__atomic_load_8((uint64_t*)(ptr), 5))
-  #define vgc_atomic_store_u64(ptr, val) __atomic_store_8((uint64_t*)(ptr), (uint64_t)(val), 5)
-  #define vgc_atomic_add_u64(ptr, val) __atomic_add_fetch((volatile uint64_t*)(ptr), (uint64_t)(val), 5)
-  #define vgc_atomic_sub_u64(ptr, val) __atomic_sub_fetch((volatile uint64_t*)(ptr), (uint64_t)(val), 5)
-  #define vgc_atomic_add_u32(ptr, val) __atomic_add_fetch((volatile uint32_t*)(ptr), (uint32_t)(val), 5)
-  #define vgc_atomic_cas_u32(ptr, expected, desired) __atomic_compare_exchange_4((uint32_t*)(ptr), (uint32_t*)(expected), (uint32_t)(desired), 5, 5)
-  #define vgc_atomic_exchange_u32(ptr, val) ((uint32_t)__atomic_exchange_4((uint32_t*)(ptr), (uint32_t)(val), 5))
-  #if defined(__x86_64__) || defined(__i386__)
-    #define vgc_atomic_fence() __asm__ __volatile__("mfence" ::: "memory")
-  #elif defined(__aarch64__)
-    #define vgc_atomic_fence() __asm__ __volatile__("dmb ish" ::: "memory")
-  #elif defined(__arm__)
-    #define vgc_atomic_fence() __asm__ __volatile__("dmb ish" ::: "memory")
-  #elif defined(__riscv)
-    #define vgc_atomic_fence() __asm__ __volatile__("fence rw,rw" ::: "memory")
-  #else
-    #define vgc_atomic_fence() __asm__ __volatile__("" ::: "memory")
-  #endif
-#elif defined(_MSC_VER)
-  #include <intrin.h>
-  #pragma intrinsic(_InterlockedCompareExchange, _InterlockedExchange, _InterlockedExchangeAdd64)
-  static inline uint32_t vgc_atomic_load_u32_fn(volatile uint32_t* p) { uint32_t v = *p; _ReadBarrier(); return v; }
-  static inline void vgc_atomic_store_u32_fn(volatile uint32_t* p, uint32_t v) { _WriteBarrier(); *p = v; }
-  static inline uint64_t vgc_atomic_load_u64_fn(volatile uint64_t* p) { uint64_t v = *p; _ReadBarrier(); return v; }
-  static inline void vgc_atomic_store_u64_fn(volatile uint64_t* p, uint64_t v) { _WriteBarrier(); *p = v; }
-  #define vgc_atomic_load_u32(ptr) vgc_atomic_load_u32_fn((volatile uint32_t*)(ptr))
-  #define vgc_atomic_store_u32(ptr, val) vgc_atomic_store_u32_fn((volatile uint32_t*)(ptr), (val))
-  #define vgc_atomic_load_u64(ptr) vgc_atomic_load_u64_fn((volatile uint64_t*)(ptr))
-  #define vgc_atomic_store_u64(ptr, val) vgc_atomic_store_u64_fn((volatile uint64_t*)(ptr), (val))
-  #define vgc_atomic_add_u64(ptr, val) _InterlockedExchangeAdd64((volatile int64_t*)(ptr), (int64_t)(val))
-  #define vgc_atomic_sub_u64(ptr, val) _InterlockedExchangeAdd64((volatile int64_t*)(ptr), -(int64_t)(val))
-  #define vgc_atomic_add_u32(ptr, val) _InterlockedExchangeAdd((volatile long*)(ptr), (long)(val))
-  #define vgc_atomic_cas_u32(ptr, expected, desired) (_InterlockedCompareExchange((volatile long*)(ptr), (long)(desired), (long)*(expected)) == (long)*(expected))
-  #define vgc_atomic_exchange_u32(ptr, val) (uint32_t)_InterlockedExchange((volatile long*)(ptr), (long)(val))
-  #define vgc_atomic_fence() _ReadWriteBarrier()
-#else
-  // GCC/Clang
-  #define vgc_atomic_load_u32(ptr) __atomic_load_n((volatile uint32_t*)(ptr), __ATOMIC_ACQUIRE)
-  #define vgc_atomic_store_u32(ptr, val) __atomic_store_n((volatile uint32_t*)(ptr), (val), __ATOMIC_RELEASE)
-  #define vgc_atomic_load_u64(ptr) __atomic_load_n((volatile uint64_t*)(ptr), __ATOMIC_ACQUIRE)
-  #define vgc_atomic_store_u64(ptr, val) __atomic_store_n((volatile uint64_t*)(ptr), (val), __ATOMIC_RELEASE)
-  #define vgc_atomic_add_u64(ptr, val) __atomic_add_fetch((volatile uint64_t*)(ptr), (uint64_t)(val), __ATOMIC_ACQ_REL)
-  #define vgc_atomic_sub_u64(ptr, val) __atomic_sub_fetch((volatile uint64_t*)(ptr), (uint64_t)(val), __ATOMIC_ACQ_REL)
-  #define vgc_atomic_add_u32(ptr, val) __atomic_add_fetch((volatile uint32_t*)(ptr), (uint32_t)(val), __ATOMIC_ACQ_REL)
-  #define vgc_atomic_cas_u32(ptr, expected, desired) __atomic_compare_exchange_n((volatile uint32_t*)(ptr), (uint32_t*)(expected), (uint32_t)(desired), 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)
-  #define vgc_atomic_exchange_u32(ptr, val) __atomic_exchange_n((volatile uint32_t*)(ptr), (uint32_t)(val), __ATOMIC_ACQ_REL)
-  #define vgc_atomic_fence() __atomic_thread_fence(__ATOMIC_SEQ_CST)
-#endif
+#include "../../vlib/builtin/v_atomics.h"
+#include "../../vlib/builtin/alloc_fastpaths.h"
+
+#define vgc_atomic_load_u32(ptr) v_atomic_load_u32((volatile uint32_t*)(ptr))
+#define vgc_atomic_store_u32(ptr, val) v_atomic_store_u32((volatile uint32_t*)(ptr), (uint32_t)(val))
+#define vgc_atomic_load_u64(ptr) v_atomic_load_u64((volatile uint64_t*)(ptr))
+#define vgc_atomic_store_u64(ptr, val) v_atomic_store_u64((volatile uint64_t*)(ptr), (uint64_t)(val))
+#define vgc_atomic_add_u64(ptr, val) v_atomic_add_u64((volatile uint64_t*)(ptr), (uint64_t)(val))
+#define vgc_atomic_sub_u64(ptr, val) v_atomic_sub_u64((volatile uint64_t*)(ptr), (uint64_t)(val))
+#define vgc_atomic_add_u32(ptr, val) v_atomic_add_u32((volatile uint32_t*)(ptr), (uint32_t)(val))
+#define vgc_atomic_cas_u32(ptr, expected, desired) v_atomic_cas_u32((volatile uint32_t*)(ptr), (uint32_t*)(expected), (uint32_t)(desired))
+#define vgc_atomic_exchange_u32(ptr, val) v_atomic_exchange_u32((volatile uint32_t*)(ptr), (uint32_t)(val))
+#define vgc_atomic_fence() v_atomic_fence()
 
 // ============================================================
 // Per-thread counters
-// Only the thread that owns a counter adds to it, and any thread reads it. The add needs no
-// atomic read-modify-write then, only a load and a store that do not tear: on a 64-bit target
-// a volatile access to an aligned 8-byte word is one load or one store (like the Linux kernel's
-// READ_ONCE and WRITE_ONCE). They are macros, so that counting an allocation costs no call, even
-// without optimization.
+// Owner-thread counters use v_counter_add_owner/load_owner (plain, non-tearing
+// volatile access on 64-bit, atomic on 32-bit). Shared mark-phase counters use
+// v_counter_add_shared, always an atomic read-modify-write. The implementations
+// live in v_atomics.h; these aliases keep the VGC names stable.
 // ============================================================
-#if UINTPTR_MAX > 0xFFFFFFFFu
-  #define vgc_counter_load(ptr) (*(volatile uint64_t*)(ptr))
-  #define vgc_counter_add(ptr, val) ((void)(*(volatile uint64_t*)(ptr) += (uint64_t)(val)))
-#else
-  #define vgc_counter_load(ptr) vgc_atomic_load_u64(ptr)
-  #define vgc_counter_add(ptr, val) ((void)vgc_atomic_add_u64(ptr, val))
-#endif
+#define vgc_counter_load(ptr) v_counter_load_owner((volatile uint64_t*)(ptr))
+#define vgc_counter_add(ptr, val) v_counter_add_owner((volatile uint64_t*)(ptr), (uint64_t)(val))
+#define vgc_counter_add_atomic(ptr, val) v_counter_add_shared((volatile uint64_t*)(ptr), (uint64_t)(val))
 // Counts an object of size bytes, allocated for a request of n bytes, in the counters of a
 // thread's cache slot.
 #define vgc_count_alloc(live_ptr, alloc_ptr, size, n) (vgc_counter_add(live_ptr, size), vgc_counter_add(alloc_ptr, n))
@@ -260,11 +210,16 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
       uintptr_t next = (uintptr_t)p > hint ? (uintptr_t)p : hint;
       next = (next + size + VGC_HEAP_HINT_ALIGN - 1) & ~(VGC_HEAP_HINT_ALIGN - 1);
       vgc_heap_hint = next < VGC_HEAP_HINT_LIMIT ? next : VGC_HEAP_HINT_BASE;
+      v_os_hugepage_hint(p, size);
       return p;
   }
 #else
   // The memory of an arena, for objects (see the Windows version).
-  static inline void* vgc_os_alloc_heap(size_t size) { return vgc_os_alloc(size); }
+  static inline void* vgc_os_alloc_heap(size_t size) {
+      void* p = vgc_os_alloc(size);
+      v_os_hugepage_hint(p, size);
+      return p;
+  }
 #endif
   static inline void vgc_os_free(void* ptr, size_t size) {
       munmap(ptr, size);

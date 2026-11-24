@@ -99,8 +99,10 @@ or heap allocations. A handle does not initialize typed V values or keep their p
 * `-gc none`: the main use case.
 * The default Boehm GC: arena chunks are allocated as uncollectable, but scanned memory, so
   GC objects that are only referenced from arena memory stay alive.
-* `-prealloc` and `-gc vgc` are not supported, and using `arena` with them is a compile
-  time error. `-prealloc` has its own scopes (`prealloc_scope_begin()`).
+* `-prealloc`: supported. A pushed arena is backed by a `prealloc_scope_*` arena; `reset()`
+  rewinds it and `free()` ends it. The lower-level scope API remains available for cross-thread
+  handoff and explicit retention, which `arena` does not expose.
+* `-gc vgc` is not supported; using `arena` with it is a compile time error.
 
 The allocator hooks are part of builtin in every program. Until a program creates its first
 arena, they cost one atomic check per allocation and `free()`.

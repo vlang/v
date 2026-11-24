@@ -1,6 +1,8 @@
 @[has_globals]
 module builtin
 
+#insert "@VEXEROOT/vlib/builtin/track_heap_decls.h"
+
 // v_memory_panic will be true, *only* when a call to malloc/realloc/vcalloc etc could not succeed.
 // In that situation, functions that are registered with at_exit(), should be able to limit their
 // activity accordingly, by checking this flag.
@@ -35,21 +37,23 @@ __global total_m = i64(0)
 // them to observe live allocations at runtime. The `@[if track_heap ?]` attribute
 // compiles the hooks to no-ops (zero cost) when the flag is off.
 //
-// track_heap models *manual* memory management (`-gc none`): the free hook only
-// fires on the manual-free path, so under a GC the collector reclaims blocks with
-// no matching hook and they would be reported as permanently live. Reject that
-// combination at C compile time rather than emit misleading stats. The guard is
-// emitted as C preprocessor code so `-cross` can still preserve conditional C.
+// With -prealloc the hooks are reported at *block* granularity instead:
+// vheap_alloc fires when an arena block is mapped (or taken from the recycle
+// pool) and vheap_free when it is returned or recycled. Individual bump
+// allocations inside the block are not reported, so trackers should treat a
+// block as one live allocation.
+//
+// The free hook only fires on the manual-free path, so under a GC the
+// collector reclaims blocks with no matching hook and they would be reported
+// as permanently live. Reject that combination at C compile time rather than
+// emit misleading stats. The guard is emitted as C preprocessor code so
+// `-cross` can still preserve conditional C.
 #if defined(CUSTOM_DEFINE_track_heap) && (defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm))
 #error "-d track_heap requires manual memory management; rebuild with -gc none"
 #endif
 
 #if defined(CUSTOM_DEFINE_track_heap) && defined(CUSTOM_DEFINE_vgc)
 #error "-d track_heap requires manual memory management; rebuild with -gc none"
-#endif
-
-#if defined(CUSTOM_DEFINE_track_heap) && (defined(_VPREALLOC) || defined(CUSTOM_DEFINE_prealloc))
-#error "-d track_heap requires manual memory management; rebuild with -gc none (not -prealloc)"
 #endif
 
 fn C.vheap_alloc(p voidptr, n u64)
@@ -83,7 +87,8 @@ pub fn malloc(n int) &u8 {
 	mut res := &u8(unsafe { nil })
 	$if !prealloc && !no_builtin_arena ? {
 		// A scoped arena of the current thread (see arena_notd_no_builtin_arena.c.v)
-		// serves first.
+		// serves first. Under -prealloc the arena's scope already is the
+		// current block, so the direct prealloc path below is the same hop.
 		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			res = g_arena_alloc_hook(n, 0)
 			if res != 0 {
@@ -202,6 +207,20 @@ fn malloc_string_buffer(n int) &u8 {
 	return unsafe { malloc_noscan(n) }
 }
 
+// For string builders that overwrite every byte (including the terminator) of
+// the n-byte buffer. Under VGC the buffer lives on a noscan span, so leftover
+// bytes are never traced; other backends keep the zeroing allocator.
+@[inline; unsafe]
+fn malloc_string_buffer_uninit(n int) &u8 {
+	$if prealloc && !trace_malloc ? {
+		if n < 0 {
+			_memory_panic('malloc_noscan_uninit', n)
+		}
+		return unsafe { vmemory_block_malloc_aligned(n, 1) }
+	}
+	return unsafe { malloc_noscan_uninit(n) }
+}
+
 @[inline; unsafe]
 fn malloc_uninit(n int) &u8 {
 	if n < 0 {
@@ -316,11 +335,14 @@ pub fn v_realloc(b &u8, n int) &u8 {
 		}
 	}
 	$if prealloc {
-		unsafe {
-			new_ptr = malloc(n)
-			C.memcpy(new_ptr, b, n)
+		if b == unsafe { nil } {
+			return unsafe { malloc(n) }
 		}
-		return new_ptr
+		// The old block size is unknown here (unlike realloc_data), so copying
+		// `n` bytes would over-read the old block when growing. The only
+		// in-tree users rebuild contents anyway and no longer use this path.
+		// Fail loudly instead of silent UB, so callers migrate to realloc_data.
+		panic('v_realloc with -prealloc requires known old size; use realloc_data')
 	} $else $if vgc ? {
 		new_ptr = unsafe { &u8(vgc_realloc(b, uint(n))) }
 	} $else $if gcboehm ? {
@@ -500,7 +522,7 @@ pub fn vcalloc_noscan(n int) &u8 {
 		if n < 0 {
 			_memory_panic(@FN, n)
 		}
-		return unsafe { &u8(vgc_calloc(uint(n))) }
+		return unsafe { &u8(vgc_calloc_noscan(uint(n))) }
 	} $else $if gcboehm ? {
 		if n < 0 {
 			_memory_panic(@FN, n)

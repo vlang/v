@@ -7133,7 +7133,7 @@ Replace the generated `assert true` with a meaningful assertion before using the
 V avoids doing unnecessary allocations in the first place by using value types,
 string buffers, promoting a simple abstraction-free code style.
 
-There are 4 ways to manage memory in V.
+V has four main memory-management approaches, with additional allocator backends and scoped arenas that compose with some of them.
 
 The default is a minimal and a well performing tracing GC.
 
@@ -7142,8 +7142,20 @@ allocation, so allocation counters also observe warmed small-object allocations.
 platform C compiler unless `-cc` selects one explicitly. This option preserves compiler selection
 when GC is disabled or `-d dynamic_boehm` is enabled; an empty define value does not enable a flag.
 
-The second way is autofree, it can be enabled with `-autofree`. It takes care of most objects
-(~90-100%): the compiler inserts necessary free calls automatically during compilation.
+For programs whose live heap keeps growing, `-d gc_proportional_growth` makes the Boehm runtime
+grow the heap in proportion to its size when free space runs low. This avoids one full collection
+per 8 MiB of growth, at the cost of using up to about twice the live heap.
+
+With `-gc vgc`, `-d vgc_parallel_mark` enables helper threads for the mark phase (up to four).
+Mark bits are updated with 32-bit atomic compare-and-swap; only the shared work queue is locked,
+so this is opt-in because queue contention can cost more than it saves on small heaps. The
+GreenTea span queue (`-d vgc_greentea`) remains single-threaded. Pointer-free backing
+storage, such as arrays and maps whose elements contain no pointers, is allocated in noscan
+spans, so the marker does not trace it. VGC remains opt-in; Boehm stays the default.
+
+The second way is autofree, enabled with `-autofree`. For values whose lifetime the compiler
+can prove, it inserts the necessary `free()` calls at compile time; the exact share of
+allocations handled this way is workload-dependent and is not measured here.
 Remaining small percentage of objects is freed via GC. The developer doesn't need to change
 anything in their code. "It just works", like in Python, Go, or Java, except there's no
 heavy GC tracing everything or expensive RC for each object.
@@ -7151,13 +7163,22 @@ heavy GC tracing everything or expensive RC for each object.
 For developers willing to have more low-level control, memory can be managed manually with
 `-gc none`.
 
-Arena allocation is available via a `-prealloc` flag. Note: currently this mode is only
-suitable to speed up short lived, single-threaded, batch-like programs (like compilers).
+Arena allocation is available via a `-prealloc` flag. It uses thread-local
+bump arenas (16MB base blocks, 256KB scope blocks) plus a process-wide block
+pool, and suits batch-like programs (like compilers) best: `free()` is a
+no-op and memory is reclaimed in bulk at scope end or process exit.
+Request-scoped work should use `prealloc_scope_begin()` /
+`prealloc_scope_end()` (see `vlib/builtin/README.md`); that scope API is
+`unsafe` because a rewound or freed scope invalidates its pointers.
+`-prealloc` needs `_Thread_local` (bundled tcc is excluded on some CI jobs)
+and macOS support is partial.
 
-For scoped arenas, use the `arena` module: while an arena is pushed on a thread, all V
-allocations on that thread (strings, arrays, maps, ...) come from it, and they are released
-together by `reset()` or `free()`. This keeps memory bounded in long-running, multi-threaded
-programs built with `-gc none`. It also works with the default GC, but not with `-prealloc`.
+For scoped arenas, use the `arena` module: while an arena is pushed on a
+thread, all V allocations on that thread (strings, arrays, maps, ...) come
+from it, and they are released together by `reset()` or `free()`. This keeps
+memory bounded in long-running, multi-threaded programs built with `-gc none`.
+It also works with the default GC and with `-prealloc`, where a pushed arena
+is backed by a `prealloc_scope_*` arena.
 
 ```v
 import arena
@@ -7174,6 +7195,15 @@ for i in 0 .. 3 {
 a.free()
 println(results)
 ```
+
+### Incompatible flag combinations
+
+`-gc vgc` and `-prealloc` cannot be combined. The driver rejects the pair with a
+diagnostic because the two allocator states are internally inconsistent: most
+allocations under `-prealloc` live in arenas that are never collected, while typed
+and `memdup` allocations and all GC accounting still route to VGC. The `arena`
+module is also a compile-time error under `-gc vgc`; it is supported with
+`-gc none`, the default GC, and `-prealloc`.
 
 ### Control
 
@@ -7208,6 +7238,8 @@ memory manually. (See [attributes](#attributes)).
 > Autofree is still WIP. Until it stabilises and becomes the default, please
 > avoid using it. Right now allocations are handled by a minimal and well performing GC
 > until V's autofree engine is production ready.
+>
+> The intended semantics are recorded in `doc/autofree-semantics.md`.
 
 **Examples**
 

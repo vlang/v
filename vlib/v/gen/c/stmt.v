@@ -1025,6 +1025,27 @@ fn (mut g FlatGen) gen_scope_ownership_drops() {
 	g.gen_ownership_drops(g.take_scope_ownership_drops())
 }
 
+fn (mut g FlatGen) gen_scope_ownership_drops_for(block_id flat.NodeId) {
+	entries := g.take_scope_ownership_drops()
+	if !g.valid_node_id(block_id) {
+		g.gen_ownership_drops(entries)
+		return
+	}
+	block := g.a.node(block_id)
+	if !block.value.starts_with('__v3_drop_names:') {
+		g.gen_ownership_drops(entries)
+		return
+	}
+	allowed := block.value.all_after(':').split(',')
+	mut filtered := []types.OwnershipDropEntry{}
+	for entry in entries {
+		if entry.name in allowed {
+			filtered << entry
+		}
+	}
+	g.gen_ownership_drops(filtered)
+}
+
 fn (mut g FlatGen) gen_scope_ownership_drop_count(count int) {
 	for _ in 0 .. count {
 		g.gen_scope_ownership_drops()
@@ -1642,7 +1663,13 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				elem_ct := g.value_c_type(typ.elem_type)
 				g.writeln('for (int _drop_i${idx} = 0; _drop_i${idx} < (${expr}).len; _drop_i${idx}++) {')
 				g.indent++
-				g.gen_ownership_drop_value_inner(typ.elem_type, '*((${elem_ct}*)array_get(${expr}, _drop_i${idx}))', depth + 1, mut expanding)
+				// The index is inside [0, len), so address the element directly
+				// instead of emitting a bounds-checked array_get call per field.
+				// Bind the pointer once: destructible struct fields would
+				// otherwise re-evaluate the same address expression repeatedly.
+				elem_ptr := '_drop_elem${idx}'
+				g.writeln('${elem_ct}* ${elem_ptr} = (${elem_ct}*)((u8*)(${expr}).data + (u64)_drop_i${idx} * (u64)(${expr}).element_size);')
+				g.gen_ownership_drop_value_inner(typ.elem_type, '*${elem_ptr}', depth + 1, mut expanding)
 				g.indent--
 				g.writeln('}')
 			}

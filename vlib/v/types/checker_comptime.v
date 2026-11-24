@@ -16533,7 +16533,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 	$if ownership ? {
 		tc.ownership_begin_loop_branch_group()
 		if node.op != .amp {
-			tc.ownership_bind_for_in_vars(key_id, val_id, container_id, has_val)
+			tc.ownership_bind_for_in_vars(key_id, val_id, container_id, has_val, node, header)
 		} else {
 			tc.ownership_bind_mut_for_in_var(key_id, val_id, container_id, has_val)
 		}
@@ -17201,6 +17201,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		} $else {
 			tc.check_node(rhs_id)
 		}
+		tc.track_prealloc_scope_decl(lhs_node.value, rhs_id)
 		tc.fn_context.undefined_variable_context_depth--
 		tc.mut_binding_value_id = saved_mut_binding_value_id
 		tc.expected_expr_id = saved_expected_expr_id
@@ -20824,6 +20825,12 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
 		lhs_node := tc.a.nodes[int(lhs_id)]
+		if tc.ident_is_global_binding(lhs_node.value) {
+			rhs_node := tc.a.nodes[int(rhs_id)]
+			if rhs_node.kind == .ident {
+				tc.warn_prealloc_scope_escape(.assignment_mismatch, rhs_node.value, rhs_id, rhs_node.pos)
+			}
+		}
 		effective_lhs_id := tc.unwrap_paren_expr_id(lhs_id)
 		effective_lhs_node := tc.a.node(effective_lhs_id)
 		if tc.record_invalid_literal_assign_lhs(lhs_id, node.op) {

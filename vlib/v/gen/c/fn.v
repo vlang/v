@@ -8413,6 +8413,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	}
 	if node.children_count == 2 && resolved_target_name.len == 0
 		&& target_name == '__v3_clone_owned_ierror' {
+		if g.tc.autofree_mode {
+			// Autofree shares IError values (borrowed copy, field owner frees).
+			g.gen_expr(g.a.child(node, 1))
+			return
+		}
 		g.gen_ownership_clone_ierror(g.a.child(node, 1))
 		return
 	}

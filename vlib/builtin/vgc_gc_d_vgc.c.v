@@ -10,9 +10,23 @@ module builtin
 fn C.v3_vgc_mark_global_arrays()
 fn C.vgc_data_ranges(lo &uint, hi &uint, max int) int
 fn C.vgc_read_candidate(address voidptr) uint
+fn C.vgc_ctz64(mask u64) u8
 fn C.vgc_current_fake_stack() voidptr
 fn C.vgc_real_stack_address(fake_stack voidptr, address uint) uint
 fn C.vgc_fake_frame_range(fake_stack voidptr, address uint, begin &uint, end &uint) uint
+
+// GC statistics are diagnostic only: no collection decision reads them. The
+// default marker has a single writer, so a plain owner counter is enough and
+// avoids a locked read-modify-write per grey object. Parallel mark keeps the
+// atomic add for its multiple workers.
+@[inline]
+fn vgc_gc_stat_add(ptr &u64) {
+	$if vgc_parallel_mark ? {
+		C.vgc_counter_add_atomic(ptr, u64(1))
+	} $else {
+		C.vgc_counter_add(ptr, u64(1))
+	}
+}
 
 // ============================================================
 // GC Orchestration (translated from Go's runtime.gcStart, gcMarkDone, gcMarkTermination)
@@ -187,6 +201,21 @@ fn vgc_clear_mark_bits() {
 			bitmap_size := (span.nelems + 7) / 8
 			unsafe { C.memset(span.mark_bits, 0, bitmap_size) }
 		}
+		scanned := unsafe { span.scanned_bits }
+		if scanned != unsafe { nil } {
+			bitmap_size := (span.nelems + 7) / 8
+			unsafe { C.memset(scanned, 0, bitmap_size) }
+			unsafe {
+				(&VGC_Span(span)).queued = false
+				(&VGC_Span(span)).hit = false
+				(&VGC_Span(span)).rep_addr = 0
+			}
+		}
+	}
+	$if vgc_greentea ? {
+		// A previous cycle may have left spans on the queue if a collection
+		// aborted. Reset it; mark bits above were cleared for all spans.
+		vgc_spanq_reset()
 	}
 	C.vgc_mutex_unlock(&vgc_heap.lock)
 }
@@ -272,12 +301,28 @@ fn vgc_scan_range(lo uint, hi uint) {
 	// Align to word boundaries
 	start := (lo + sizeof(uint) - 1) & ~(uint(sizeof(uint)) - 1)
 	mut addr := start
-	for addr + sizeof(uint) <= hi {
+	word := sizeof(uint)
+	// Fetch eight words per iteration. Shading still validates each candidate,
+	// but the loads are adjacent so gcc/clang can keep them in flight, which is
+	// the portable form of the GreenTea "scan a range in order" idea.
+	chunk := word * 8
+	for addr + chunk <= hi {
+		vgc_shade(C.vgc_read_candidate(voidptr(addr)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 2)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 3)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 4)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 5)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 6)))
+		vgc_shade(C.vgc_read_candidate(voidptr(addr + word * 7)))
+		addr += chunk
+	}
+	for addr + word <= hi {
 		val := C.vgc_read_candidate(voidptr(addr))
 		if val != 0 {
 			vgc_shade(val)
 		}
-		addr += sizeof(uint)
+		addr += word
 	}
 }
 
@@ -327,54 +372,116 @@ fn vgc_shade(addr uint) {
 	if span.alloc_bits == unsafe { nil } || C.vgc_bitmap_get(span.alloc_bits, obj_idx) == 0 {
 		return
 	}
-	// Mark it (grey -> will be scanned)
+	// Mark it (grey -> will be scanned). Parallel workers use a 32-bit
+	// compare-and-swap on the mark bitmap; the single-worker path keeps the
+	// cheaper plain byte read-modify-write.
 	if span.mark_bits != unsafe { nil } {
-		if C.vgc_bitmap_test_and_set(span.mark_bits, obj_idx) == 0 {
-			// Newly marked - add to work queue for scanning (only if it may contain pointers)
-			if !span.noscan {
-				obj_addr := span.base + uint(obj_idx) * uint(span.elem_size)
+		obj_addr := span.base + uint(obj_idx) * uint(span.elem_size)
+		parallel := vgc_heap.gc_nworkers > 1
+		mut newly := false
+		if parallel {
+			newly = C.vgc_bitmap_atomic_test_set(span.mark_bits, obj_idx) == 0
+		} else {
+			newly = C.vgc_bitmap_test_and_set(span.mark_bits, obj_idx) == 0
+		}
+		if newly && !span.noscan {
+			$if vgc_greentea ? {
+				vgc_spanq_add(span, obj_addr)
+			} $else {
 				vgc_work_put(obj_addr)
 			}
 		}
 	}
 }
 
-// Mark the heap. Currently single-threaded on purpose.
-//
-// Parallel marking (spawning helper threads that all run vgc_drain_mark_work) is
-// NOT correct yet: vgc_bitmap_test_and_set() on mark_bits is a plain non-atomic
-// read-modify-write, so two workers marking objects whose mark bits live in the same
-// byte can lose a mark and let a live object be swept. Until the mark bitmap uses
-// atomic ops (and the rest of the parallel path is audited), force a single worker.
-// This keeps marking race-free and makes the unlocked arena reads in vgc_find_span
-// safe (no concurrent readers, and the sole mutator is blocked inside gc_start).
+// vgc_mark_worker drains shared mark work until the main thread signals
+// that it has drained its own queue and the queue is empty. Mark bits are
+// set atomically; only the shared work queue needs work_lock.
+fn vgc_mark_worker() {
+	mut round := 0
+	for {
+		obj_addr := vgc_work_get()
+		if obj_addr == 0 {
+			if C.vgc_atomic_load_u32(&vgc_heap.gc_mark_done) != 0 {
+				break
+			}
+			round++
+			C.vgc_backoff(round)
+			continue
+		}
+		round = 0
+		vgc_gc_stat_add(&vgc_heap.gc_work_gets)
+		vgc_scan_work_obj(obj_addr)
+	}
+	C.vgc_atomic_add_u32(&vgc_heap.gc_workers_done, 1)
+}
+
+// vgc_parallel_mark starts helper workers when built with
+// -d vgc_parallel_mark. The default stays single-threaded: helper threads
+// contend on the shared work queue, which is only a win for large
+// pointer-rich heaps. vgc_greentea also stays single-threaded, since its
+// span queue is not yet protected by work_lock.
 fn vgc_parallel_mark() {
-	vgc_heap.gc_nworkers = 1
+	mut nworkers := 1
+	$if vgc_parallel_mark ? {
+		$if !vgc_greentea ? {
+			nworkers = C.vgc_num_cpus()
+			if nworkers < 2 {
+				nworkers = 2
+			} else if nworkers > 4 {
+				nworkers = 4
+			}
+		}
+	}
+	vgc_heap.gc_nworkers = nworkers
 	C.vgc_atomic_store_u32(&vgc_heap.gc_workers_done, 0)
+	C.vgc_atomic_store_u32(&vgc_heap.gc_mark_done, 0)
+	if nworkers > 1 {
+		for _ in 1 .. nworkers {
+			C.vgc_start_thread(vgc_mark_worker)
+		}
+	}
 	vgc_drain_mark_work()
+	C.vgc_atomic_store_u32(&vgc_heap.gc_mark_done, 1)
+	if nworkers > 1 {
+		mut round := 0
+		for C.vgc_atomic_load_u32(&vgc_heap.gc_workers_done) < u32(nworkers - 1) {
+			round++
+			C.vgc_backoff(round)
+		}
+	}
+}
+
+// vgc_scan_work_obj scans one grey object and shades its referents.
+fn vgc_scan_work_obj(obj_addr uint) {
+	span := vgc_find_span(voidptr(obj_addr))
+	if span == unsafe { nil } || span.noscan {
+		return
+	}
+	vgc_gc_stat_add(&vgc_heap.gc_spans_visited)
+	vgc_gc_stat_add(&vgc_heap.gc_objs_scanned)
+	if span.has_ptrmap {
+		vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
+	} else {
+		vgc_scan_range(obj_addr, obj_addr + uint(span.elem_size))
+	}
 }
 
 // Drain the mark work queue - scan grey objects and mark their referents.
 // Uses precise pointer maps when available (from vgc_malloc_typed),
 // falls back to conservative scanning otherwise.
 fn vgc_drain_mark_work() {
+	$if vgc_greentea ? {
+		vgc_drain_spanq()
+		return
+	}
 	for {
 		obj_addr := vgc_work_get()
 		if obj_addr == 0 {
 			break
 		}
-		span := vgc_find_span(voidptr(obj_addr))
-		if span == unsafe { nil } || span.noscan {
-			continue // noscan objects don't contain pointers
-		}
-		if span.has_ptrmap {
-			// Precise scanning: only check known pointer word offsets
-			vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
-		} else {
-			// Conservative fallback: scan every word
-			obj_size := uint(span.elem_size)
-			vgc_scan_range(obj_addr, obj_addr + obj_size)
-		}
+		vgc_gc_stat_add(&vgc_heap.gc_work_gets)
+		vgc_scan_work_obj(obj_addr)
 	}
 }
 
@@ -383,42 +490,148 @@ fn vgc_drain_mark_work() {
 fn vgc_scan_precise(obj_addr uint, ptrmap u64, ptr_words u8) {
 	mut mask := ptrmap
 	word_size := sizeof(uint)
+	// One count-trailing-zeros per pointer word, rather than a six-step
+	// binary search. vgc_ctz64 lowers to a single instruction on gcc/clang
+	// and MSVC x64; the portable fallback is a short shift loop for tcc.
 	for mask != 0 {
-		// Find lowest set bit (next pointer offset)
-		mut bit := u8(0)
-		mut m := mask
-		// Count trailing zeros to find the bit position
-		if m & 0xFFFFFFFF == 0 {
-			bit += 32
-			m >>= 32
-		}
-		if m & 0xFFFF == 0 {
-			bit += 16
-			m >>= 16
-		}
-		if m & 0xFF == 0 {
-			bit += 8
-			m >>= 8
-		}
-		if m & 0xF == 0 {
-			bit += 4
-			m >>= 4
-		}
-		if m & 0x3 == 0 {
-			bit += 2
-			m >>= 2
-		}
-		if m & 0x1 == 0 {
-			bit += 1
-		}
-		// Read the pointer at this offset
+		bit := C.vgc_ctz64(mask)
 		ptr_addr := obj_addr + uint(bit) * word_size
 		val := C.vgc_read_candidate(voidptr(ptr_addr))
 		if val != 0 {
 			vgc_shade(val)
 		}
-		// Clear this bit and continue
 		mask &= mask - 1
+	}
+}
+
+// ============================================================
+// GreenTea span work queue (behind -d vgc_greentea)
+// ============================================================
+
+// vgc_spanq_reset empties the span queue at the start of a cycle.
+fn vgc_spanq_reset() {
+	unsafe {
+		vgc_heap.spanq_head = unsafe { nil }
+		vgc_heap.spanq_tail = unsafe { nil }
+	}
+	vgc_heap.spanq_len = 0
+}
+
+// vgc_spanq_add records a newly seen object in its span and enqueues the
+// span at most once (FIFO). While the span waits, more objects are seen;
+// one dequeue then scans them all in address order. `next` is the queue
+// link only while `queued` is set.
+fn vgc_spanq_add(span &VGC_Span, obj_addr uint) {
+	if obj_addr < span.base {
+		return
+	}
+	obj_idx := u32((obj_addr - span.base) / uint(span.elem_size))
+	if obj_idx >= span.nelems {
+		return
+	}
+	vgc_gc_stat_add(&vgc_heap.gc_work_puts)
+	mut mspan := unsafe { &VGC_Span(span) }
+	if span.queued {
+		// A second object was seen while the span waited. Go's `hit` flag:
+		// with two or more objects the full bitmap pass is worth it.
+		mspan.hit = true
+		return
+	}
+	mspan.queued = true
+	mspan.hit = false
+	mspan.rep_addr = obj_addr
+	unsafe {
+		if vgc_heap.spanq_tail != unsafe { nil } {
+			vgc_heap.spanq_tail.next = span
+		} else {
+			vgc_heap.spanq_head = span
+		}
+		vgc_heap.spanq_tail = span
+		span.next = unsafe { nil }
+	}
+	vgc_heap.spanq_len++
+	vgc_gc_stat_add(&vgc_heap.gc_span_enqueues)
+}
+
+// vgc_spanq_take dequeues the oldest span (FIFO).
+fn vgc_spanq_take() &VGC_Span {
+	span := unsafe { vgc_heap.spanq_head }
+	if span == unsafe { nil } {
+		return unsafe { nil }
+	}
+	unsafe {
+		vgc_heap.spanq_head = span.next
+		if vgc_heap.spanq_head == unsafe { nil } {
+			vgc_heap.spanq_tail = unsafe { nil }
+		}
+		(&VGC_Span(span)).queued = false
+		span.next = unsafe { nil }
+	}
+	vgc_heap.spanq_len--
+	vgc_gc_stat_add(&vgc_heap.gc_span_dequeues)
+	return span
+}
+
+// vgc_scan_obj scans one object using its span's precise map or conservative fallback.
+fn vgc_scan_obj(span &VGC_Span, obj_addr uint) {
+	if span.noscan {
+		return
+	}
+	vgc_gc_stat_add(&vgc_heap.gc_spans_visited)
+	vgc_gc_stat_add(&vgc_heap.gc_objs_scanned)
+	if span.has_ptrmap {
+		vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
+	} else {
+		vgc_scan_range(obj_addr, obj_addr + uint(span.elem_size))
+	}
+}
+
+// vgc_drain_spanq drains the span queue, scanning each pending object once in
+// ascending address order. A span whose `hit` is false has a single pending
+// object, so the representative is scanned directly (Go's single-object fast path).
+fn vgc_drain_spanq() {
+	for {
+		span := vgc_spanq_take()
+		if span == unsafe { nil } {
+			break
+		}
+		vgc_gc_stat_add(&vgc_heap.gc_work_gets)
+		scanned := unsafe { span.scanned_bits }
+		if scanned == unsafe { nil } {
+			continue
+		}
+		if !span.hit && span.rep_addr != 0 {
+			// Single pending object: skip the bitmap pass. Save the
+			// representative before scanning: scanning can shade a
+			// same-span child and re-enqueue this span, replacing
+			// rep_addr. Mark the original scanned before its
+			// references are shaded so the child keeps its own entry.
+			orig := span.rep_addr
+			orig_idx := u32((orig - span.base) / uint(span.elem_size))
+			unsafe {
+				C.vgc_bitmap_set(scanned, orig_idx)
+			}
+			vgc_scan_obj(span, orig)
+			vgc_gc_stat_add(&vgc_heap.gc_single_obj_spans)
+			continue
+		}
+		seen := unsafe { span.mark_bits }
+		nobjs := span.nelems
+		nobjs_scanned := u32(0)
+		for idx in 0 .. nobjs {
+			if seen == unsafe { nil } || C.vgc_bitmap_get(seen, idx) == 0
+				|| C.vgc_bitmap_get(scanned, idx) != 0 {
+				continue
+			}
+			C.vgc_bitmap_set(scanned, idx)
+			nobjs_scanned++
+			vgc_scan_obj(span, span.base + uint(idx) * uint(span.elem_size))
+		}
+		if nobjs_scanned > 1 {
+			vgc_gc_stat_add(&vgc_heap.gc_multi_obj_spans)
+		} else if nobjs_scanned == 1 {
+			vgc_gc_stat_add(&vgc_heap.gc_single_obj_spans)
+		}
 	}
 }
 
@@ -429,6 +642,34 @@ fn vgc_scan_precise(obj_addr uint, ptrmap u64, ptr_words u8) {
 @[inline]
 fn vgc_can_use_work_fastpath() bool {
 	return vgc_heap.ncaches <= 1 && vgc_heap.gc_nworkers <= 1
+}
+
+// vgc_work_put_locked queues an object with work_lock already held. The
+// caller holds the queue lock; mark bits are now updated atomically.
+fn vgc_work_put_locked(addr uint) {
+	mut buf := vgc_heap.work_full
+	if buf == unsafe { nil } || buf.nobj >= 256 {
+		mut new_buf := vgc_heap.work_empty
+		if new_buf != unsafe { nil } {
+			unsafe { vgc_heap.work_empty = new_buf.next }
+		} else {
+			new_buf = unsafe { &VGC_WorkBuf(C.vgc_os_alloc(uint(sizeof(VGC_WorkBuf)))) }
+			if new_buf == unsafe { nil } {
+				return
+			}
+		}
+		unsafe {
+			new_buf.nobj = 0
+			new_buf.next = vgc_heap.work_full
+			vgc_heap.work_full = new_buf
+		}
+		buf = new_buf
+	}
+	unsafe {
+		buf.obj[buf.nobj] = addr
+		buf.nobj++
+	}
+	vgc_gc_stat_add(&vgc_heap.gc_work_puts)
 }
 
 // Add a pointer to the mark work queue
@@ -458,39 +699,12 @@ fn vgc_work_put(addr uint) {
 			buf.obj[buf.nobj] = addr
 			buf.nobj++
 		}
+		vgc_gc_stat_add(&vgc_heap.gc_work_puts)
 		return
 	}
 
 	C.vgc_mutex_lock(&vgc_heap.work_lock)
-
-	// Get or create a work buffer
-	mut buf := vgc_heap.work_full
-	if buf == unsafe { nil } || buf.nobj >= 256 {
-		// Need a new buffer
-		mut new_buf := vgc_heap.work_empty
-		if new_buf != unsafe { nil } {
-			unsafe {
-				vgc_heap.work_empty = new_buf.next
-			}
-		} else {
-			new_buf = unsafe { &VGC_WorkBuf(C.vgc_os_alloc(uint(sizeof(VGC_WorkBuf)))) }
-			if new_buf == unsafe { nil } {
-				C.vgc_mutex_unlock(&vgc_heap.work_lock)
-				return
-			}
-		}
-		unsafe {
-			new_buf.nobj = 0
-			new_buf.next = vgc_heap.work_full
-			vgc_heap.work_full = new_buf
-		}
-		buf = new_buf
-	}
-
-	unsafe {
-		buf.obj[buf.nobj] = addr
-		buf.nobj++
-	}
+	vgc_work_put_locked(addr)
 	C.vgc_mutex_unlock(&vgc_heap.work_lock)
 }
 
@@ -752,4 +966,37 @@ fn vgc_memory_use() uint {
 	used := C.vgc_atomic_load_u64(&vgc_heap.arena_used)
 	unmapped := C.vgc_atomic_load_u64(&vgc_heap.unmapped_bytes)
 	return if used > unmapped { uint(used - unmapped) } else { uint(0) }
+}
+
+// VGCMarkStats holds GreenTea baseline metrics for the object-queue marker.
+// It is the P0 density proxy: with the current object queue, spans_visited
+// counts span visits (one per dequeued scanable object), so objs_scanned /
+// spans_visited is ~1. A span queue (P1) should push it above 1 on
+// high-fanout heaps.
+pub struct VGCMarkStats {
+pub:
+	work_puts     u64 // objects enqueued for scanning
+	work_gets     u64 // objects dequeued for scanning
+	spans_visited u64 // dequeued objects whose span was scanable
+	objs_scanned  u64 // objects actually scanned
+	gc_cycles     u64 // completed GC cycles
+	span_enqueues u64 // spans enqueued (GreenTea)
+	span_dequeues u64 // spans dequeued (GreenTea)
+	multi_spans   u64 // spans scanned with more than one object
+	single_spans  u64 // spans scanned via the representative fast path
+}
+
+// vgc_mark_stats returns the current GreenTea baseline counters.
+pub fn vgc_mark_stats() VGCMarkStats {
+	return VGCMarkStats{
+		work_puts:     C.vgc_counter_load(&vgc_heap.gc_work_puts)
+		work_gets:     C.vgc_counter_load(&vgc_heap.gc_work_gets)
+		spans_visited: C.vgc_counter_load(&vgc_heap.gc_spans_visited)
+		objs_scanned:  C.vgc_counter_load(&vgc_heap.gc_objs_scanned)
+		gc_cycles:     C.vgc_atomic_load_u64(&vgc_heap.gc_cycle)
+		span_enqueues: C.vgc_counter_load(&vgc_heap.gc_span_enqueues)
+		span_dequeues: C.vgc_counter_load(&vgc_heap.gc_span_dequeues)
+		multi_spans:   C.vgc_counter_load(&vgc_heap.gc_multi_obj_spans)
+		single_spans:  C.vgc_counter_load(&vgc_heap.gc_single_obj_spans)
+	}
 }

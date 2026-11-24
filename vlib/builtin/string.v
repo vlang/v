@@ -347,7 +347,8 @@ pub fn (a string) clone() string {
 		return ''
 	}
 	mut b := string{
-		str: unsafe { malloc_string_buffer(a.len + 1) }
+		// Uninit: every byte is overwritten below, then NUL-terminated.
+		str: unsafe { malloc_noscan_uninit(a.len + 1) }
 		len: a.len
 	}
 	unsafe {
@@ -943,7 +944,7 @@ fn string_concat_pair(s string, a string) string {
 	alen := if a.len > 0 { a.len } else { 0 }
 	new_len := alen + slen
 	mut res := string{
-		str: unsafe { malloc_string_buffer(new_len + 1) }
+		str: unsafe { malloc_string_buffer_uninit(new_len + 1) }
 		len: new_len
 	}
 	unsafe {
@@ -980,7 +981,7 @@ fn string_plus_many_general(data_len int, input_base &string) string {
 		new_len += if part.len > 0 { part.len } else { 0 }
 	}
 	mut res := string{
-		str: unsafe { malloc_string_buffer(new_len + 1) }
+		str: unsafe { malloc_string_buffer_uninit(new_len + 1) }
 		len: new_len
 	}
 	mut offset := 0
@@ -1006,7 +1007,7 @@ fn (s string) plus_two(a string, b string) string {
 	blen := if b.len > 0 { b.len } else { 0 }
 	new_len := alen + blen + slen
 	mut res := string{
-		str: unsafe { malloc_string_buffer(new_len + 1) }
+		str: unsafe { malloc_string_buffer_uninit(new_len + 1) }
 		len: new_len
 	}
 	unsafe {
@@ -1411,7 +1412,7 @@ pub fn (s string) substr(start int, _end int) string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc_string_buffer(len + 1) }
+		str: unsafe { malloc_string_buffer_uninit(len + 1) }
 		len: len
 	}
 	unsafe {
@@ -1483,7 +1484,7 @@ pub fn (s string) substr_with_check(start int, _end int) !string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc_string_buffer(len + 1) }
+		str: unsafe { malloc_string_buffer_uninit(len + 1) }
 		len: len
 	}
 	unsafe {
@@ -1527,7 +1528,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 
 	// string copy
 	mut res := string{
-		str: unsafe { malloc_string_buffer(len + 1) }
+		str: unsafe { malloc_string_buffer_uninit(len + 1) }
 		len: len
 	}
 	unsafe {
@@ -2791,7 +2792,7 @@ pub fn (a []string) join(sep string) string {
 	len -= sep.len
 	// Allocate enough memory
 	mut res := string{
-		str: unsafe { malloc_string_buffer(len + 1) }
+		str: unsafe { malloc_string_buffer_uninit(len + 1) }
 		len: len
 	}
 	mut idx := 0
@@ -2828,7 +2829,7 @@ pub fn (s string) reverse() string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc_string_buffer(s.len + 1) }
+		str: unsafe { malloc_string_buffer_uninit(s.len + 1) }
 		len: s.len
 	}
 	for i := s.len - 1; i >= 0; i-- {
@@ -2892,7 +2893,7 @@ pub fn (s string) repeat(count int) string {
 	} else if count == 1 {
 		return s.clone()
 	}
-	mut ret := unsafe { malloc_string_buffer(s.len * count + 1) }
+	mut ret := unsafe { malloc_string_buffer_uninit(s.len * count + 1) }
 	for i in 0 .. count {
 		unsafe {
 			vmemcpy(ret + i * s.len, s.str, s.len)
