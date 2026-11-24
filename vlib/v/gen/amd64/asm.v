@@ -248,6 +248,14 @@ fn asm_shr_rax_cl(mut g Gen) {
 	g.emit(0xE8)
 }
 
+// Shift RAX by an immediate using the appropriate Group 2 opcode extension.
+fn asm_shift_rax_imm(mut g Gen, modrm u8, count u8) {
+	g.emit(0x48)
+	g.emit(0xc1)
+	g.emit(modrm)
+	g.emit(count)
+}
+
 // shl rcx, 3 (for GEP: index * 8)
 fn asm_shl_rcx_3(mut g Gen) {
 	g.emit(0x48)

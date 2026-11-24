@@ -2,6 +2,30 @@ module amd64
 
 import v.ssa
 
+fn test_amd64_known_shift_counts_skip_runtime_guard() {
+	for i, op in [ssa.OpCode.shl, .ashr, .lshr] {
+		for count in ['17', '63', '-1', '64', '9223372036854775808'] {
+			mut m := ssa.Module.new()
+			typ := m.type_store.get_int(64)
+			lhs := m.add_value(.argument, typ, 'value', 0)
+			rhs := m.get_or_add_const(typ, count)
+			result := m.add_value(.instruction, typ, '', 0)
+			mut g := Gen.new(m)
+			g.reg_map[lhs] = int(rdi)
+			g.reg_map[result] = int(rax)
+
+			g.gen_integer_shift(op, lhs, rhs, result)
+
+			if count in ['17', '63'] {
+				modrm := [u8(0xe0), 0xf8, 0xe8][i]
+				assert g.elf.text_data == [u8(0x48), 0x89, 0xf8, 0x48, 0xc1, modrm, u8(count.int())]
+			} else {
+				assert g.elf.text_data == [u8(0x31), 0xc0]
+			}
+		}
+	}
+}
+
 fn test_amd64_prologue_and_stack_encodings() {
 	mut g := Gen.new(ssa.Module.new())
 	asm_endbr64(mut g)
