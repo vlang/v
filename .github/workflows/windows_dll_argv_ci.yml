@@ -53,3 +53,19 @@ jobs:
             Write-Host "Exports from $($_.FullName)"
             dumpbin /exports $_.FullName
           }
+  linux-cross-export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify the exact cross-target export regression
+        run: |
+          ./v fmt -w vlib/v/gen/c/windows_dll_export_attribute_test.v
+          git diff --exit-code
+          ./v fmt -verify vlib/v/gen/c/windows_dll_export_attribute_test.v
+          ./v -cc gcc -silent vlib/v/gen/c/windows_dll_export_attribute_test.v
+          ./v -cc clang -silent vlib/v/gen/c/windows_dll_export_attribute_test.v
