@@ -121,3 +121,23 @@ jobs:
           grep -nE 'v_os_exec_capture_start\(|v_os_exec_capture_input_start\(|waitpid\(' "$RUNNER_TEMP/capture_abi.c" | sed -n '1,80p'
           ./v -cc gcc -gc none -keepc -showcc -show-c-output -silent vlib/v/gen/fastc/capture_abi_nix_test.c.v
           ./v -cc clang -gc none -keepc -showcc -show-c-output -silent vlib/v/gen/fastc/capture_abi_nix_test.c.v
+
+  compiler_regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Install compiler test dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev libgl-dev libegl-dev libgl1-mesa-dri
+      - name: Compiler errors
+        run: ./v -silent vlib/v/compiler_errors_test.v
+      - name: Full compiler suite
+        run: ./v -silent test vlib/v/
