@@ -181,10 +181,15 @@ fn test_native_asm_secondary_outputs_and_div_lower() {
 	os.write_file(source, native_asm_program)!
 	exe := os.join_path(root, 'main')
 	build := os.exec([vexe, '-nocache', '-b', 'amd64', '-o', exe, source])
-	assert build.exit_code == 0, build.output
-	run := os.exec([exe])
-	assert run.exit_code == 0, run.output
-	assert run.output == '121fa00ad77d7423 236d88fe5618ceff 14 2\n', run.output
+	$if linux {
+		assert build.exit_code == 0, build.output
+		run := os.exec([exe])
+		assert run.exit_code == 0, run.output
+		assert run.output == '121fa00ad77d7423 236d88fe5618ceff 14 2\n', run.output
+	} $else {
+		assert build.exit_code != 0, build.output
+		assert build.output.contains('the amd64 backend currently supports only linux/amd64'), build.output
+	}
 }
 
 // test_syscalls_path_and_ioctl checks the `..` resolution and the fd_is_pending ioctl
