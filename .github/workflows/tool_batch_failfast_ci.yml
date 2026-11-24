@@ -1,0 +1,64 @@
+name: Tool batch fail-fast contracts
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/tools/testing/**'
+      - '.github/workflows/tool_batch_failfast_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  batch-contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, cc: gcc }
+          - { os: ubuntu-22.04, cc: clang }
+          - { os: macos-15, cc: clang }
+          - { os: windows-2025, cc: gcc }
+          - { os: windows-2025, cc: tcc }
+          - { os: windows-2025, cc: msvc }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare Windows tool cache
+        if: runner.os == 'Windows'
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify formatting and both outer fail-fast environments
+        shell: bash
+        run: |
+          ./v fmt -w cmd/tools/testing/batch_test.v
+          git diff --exit-code
+          ./v fmt -verify cmd/tools/testing/batch_test.v
+          VTEST_FAIL_FAST=1 ./v -cc ${{ matrix.cc }} -silent cmd/tools/testing/batch_test.v
+          VTEST_FAIL_FAST=0 ./v -cc ${{ matrix.cc }} -silent cmd/tools/testing/batch_test.v
+      - name: Original strict tool shard
+        if: matrix.cc != 'tcc'
+        shell: bash
+        env:
+          VTEST_FAIL_FAST: '1'
+          VFLAGS: -cc ${{ matrix.cc }}
+          VTEST_SELF_SHARD_INDEX: ${{ runner.os == 'Windows' && '0' || '1' }}
+          VTEST_SELF_SHARD_COUNT: ${{ runner.os == 'Windows' && '3' || '2' }}
+        run: ./v -silent -W -cstrict test-self cmd
+      - name: Original default tool shard
+        shell: bash
+        env:
+          VTEST_FAIL_FAST: '1'
+          VFLAGS: -cc ${{ matrix.cc }}
+          VTEST_SELF_SHARD_INDEX: ${{ runner.os == 'Windows' && '0' || '1' }}
+          VTEST_SELF_SHARD_COUNT: ${{ runner.os == 'Windows' && '3' || '2' }}
+        run: ./v -silent test-self cmd

@@ -285,14 +285,20 @@ fn test_tool_batch_that_fails_names_only_the_rejected_file() ! {
 		os.write_file(path, source)!
 		paths << path
 	}
-	mut ts := new_test_session('-silent fmt -inprocess -verify', false)
-	ts.vexe = @VEXE
-	ts.files << paths
-	ts.test()
-	assert ts.benchmark.nok == 2
-	assert ts.benchmark.nfail == 1
-	rlock ts.failed_files {
-		assert ts.failed_files == [os.real_path(paths[1])]
+	// Exercise both policies explicitly, independent of the outer CI session.
+	for stop_early in [false, true] {
+		mut ts := new_test_session('-silent fmt -inprocess -verify', false)
+		ts.fail_fast = stop_early
+		ts.vexe = @VEXE
+		ts.files << paths
+		assert ts.tool_units(paths) == [paths.join('\n')]
+		ts.test()
+		expected_ok := if stop_early { 1 } else { 2 }
+		assert ts.benchmark.nok == expected_ok
+		assert ts.benchmark.nfail == 1
+		rlock ts.failed_files {
+			assert ts.failed_files == [os.real_path(paths[1])]
+		}
 	}
 }
 
@@ -312,13 +318,19 @@ fn test_fmt_list_batch_fails_only_the_file_that_cannot_be_formatted() ! {
 		os.write_file(path, source)!
 		paths << path
 	}
-	mut ts := new_test_session('-silent fmt -inprocess -l', false)
-	ts.vexe = @VEXE
-	ts.files << paths
-	ts.test()
-	assert ts.benchmark.nok == 2
-	assert ts.benchmark.nfail == 1
-	rlock ts.failed_files {
-		assert ts.failed_files == [os.real_path(paths[1])]
+	// Exercise both policies explicitly, independent of the outer CI session.
+	for stop_early in [false, true] {
+		mut ts := new_test_session('-silent fmt -inprocess -l', false)
+		ts.fail_fast = stop_early
+		ts.vexe = @VEXE
+		ts.files << paths
+		assert ts.tool_units(paths) == [paths.join('\n')]
+		ts.test()
+		expected_ok := if stop_early { 1 } else { 2 }
+		assert ts.benchmark.nok == expected_ok
+		assert ts.benchmark.nfail == 1
+		rlock ts.failed_files {
+			assert ts.failed_files == [os.real_path(paths[1])]
+		}
 	}
 }
