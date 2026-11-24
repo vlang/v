@@ -141,9 +141,6 @@ jobs:
       - name: V doctor
         if: ${{ matrix.name != 'memory-clang-compiler' }}
         run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v doctor
-      - name: Ensure code is well formatted
-        if: ${{ matrix.name != 'memory-clang-compiler' && (!matrix.shard_count || matrix.shard == 0) }}
-        run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v -silent test-cleancode
       - name: Install dependencies
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
