@@ -444,8 +444,9 @@ fn decoder_for_text(val string, params DecoderOptions) !Decoder {
 // By default, decoding is lenient. Use `strict: true` for strict type conversion
 // and `json5: true` to accept JSON5 syntax.
 // Use decode_standard to avoid generating JSON5 decoding code for the target type.
-// Input nested deeper than 512 array/object levels errors. Recursive Any values are
-// additionally limited to 256 containers.
+// Input nested deeper than 512 array/object levels errors; the limit applies to
+// standard JSON only, the separate JSON5 parser is not covered by it.
+// Recursive Any values are additionally limited to 256 containers.
 @[manualfree]
 pub fn decode[T](val string, params DecoderOptions) !T {
 	if params.json5 {
@@ -509,6 +510,7 @@ pub fn decode_reuse[T](val string, mut buffer DecodeBuffer, params DecoderOption
 	return decoder.decode_root[T]()
 }
 
+@[inline]
 fn (mut decoder Decoder) decode_root[T]() !T {
 	mut result := T{}
 	$if T.unaliased_typ is $array_dynamic {
