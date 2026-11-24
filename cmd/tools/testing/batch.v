@@ -303,7 +303,9 @@ fn (ts &TestSession) test_batch_directives_allow(source string) bool {
 		if !line.contains('// vtest') {
 			continue
 		}
-		if line.starts_with('// vtest vflags:') {
+		// `// vtest ownership` only decides whether the file runs at all, like `build:`.
+		if line.starts_with('// vtest vflags:') || line == '// vtest ownership'
+			|| line.starts_with('// vtest ownership ') || line.starts_with('// vtest ownership\t') {
 			continue
 		}
 		if !line.starts_with('// vtest build:') {

@@ -50,6 +50,33 @@ fn test_one() {}
 	assert !source_mentions_word('item := 1', 'it')
 }
 
+fn test_units_group_files_by_vflags_and_accept_ownership_markers() ! {
+	root := batch_test_root('vflags')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	files := {
+		'a_test.v': 'module util\nfn test_a() {}\n'
+		'b_test.v': 'module util\n// vtest ownership\nfn test_b() {}\n'
+		'c_test.v': 'module util\n// vtest vflags: -w\nfn test_c() {}\n'
+		'd_test.v': 'module util\n// vtest vflags: -w\nfn test_d() {}\n'
+		'e_test.v': 'module util\n// vtest vflags: -d x\nfn test_e() {}\n'
+	}
+	mut paths := []string{}
+	for name, source in files {
+		path := os.join_path(root, name)
+		os.write_file(path, source)!
+		paths << path
+	}
+	mut ts := TestSession{
+		vexe:              os.executable()
+		will_compile:      true
+		exec_mode:         .compile_and_run
+		build_environment: build_constraint.new_environment(['macos'], [])
+	}
+	assert ts.test_units(paths) == ['${paths[0]}\n${paths[1]}', '${paths[2]}\n${paths[3]}', paths[4]]
+}
+
 fn test_vflags_are_part_of_the_batch_key() {
 	assert test_file_vflags('fn test_a() {}\n') == ''
 	assert test_file_vflags('// vtest vflags: -w\nfn test_a() {}\n') == '-w'
