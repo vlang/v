@@ -4303,3 +4303,43 @@ fn main() {
 	assert res.output.contains('cannot use `value` until scoped thread `worker` has joined'), res.output
 	assert res.output.contains('cannot use scoped thread handle `worker` outside its deferred wait'), res.output
 }
+
+fn test_ownership_distinguishes_moving_and_sharing_a_ref_cell() {
+	v3_bin := ownership_build_v3()
+	moved := run_ownership_check(v3_bin, 'thread_move_ref_cell', r'
+import cell
+
+fn worker(value cell.RefCell[int]) int {
+	return value.try_borrow() or { -1 }
+}
+
+fn main() {
+	handle := spawn worker(cell.RefCell[int]{})
+	assert handle.wait() == 0
+}
+')
+	assert moved.exit_code == 0, moved.output
+	shared_cell := run_ownership_check(v3_bin, 'thread_share_ref_cell', r'
+import cell
+import sync.arc
+
+struct Job {
+	local cell.RefCell[int]
+	shared_cell arc.Arc[cell.RefCell[int]]
+}
+
+fn worker(job Job) u64 {
+	return job.shared_cell.strong_count()
+}
+
+fn main() {
+	handle := spawn worker(Job{
+		local: cell.RefCell[int]{}
+		shared_cell: arc.new(cell.RefCell[int]{})
+	})
+	handle.wait()
+}
+')
+	assert shared_cell.exit_code != 0, shared_cell.output
+	assert shared_cell.output.contains('field `shared_cell`: cell.RefCell has unsynchronized borrow state'), shared_cell.output
+}
