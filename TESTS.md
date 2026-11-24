@@ -218,6 +218,9 @@ The macOS tray example is built as a project on macOS and excluded on other host
 
 When `VFLAGS` selects TinyCC, `v build-vbinaries` uses an installed GCC or Clang for its
 production variants. Debug variants retain TinyCC. Other compiler selections are preserved.
+The five builds run side by side, up to `VJOBS`, while their estimated memory (8 GB for a
+production build with debug information, 4 GB without, 2 GB for a debug build) stays within three
+quarters of the physical memory; on a 16 GB machine two production builds overlap.
 
 ## Formatting tests
 
