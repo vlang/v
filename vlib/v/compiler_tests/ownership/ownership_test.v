@@ -4243,3 +4243,51 @@ fn main() {
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('the result can contain an error whose type does not guarantee thread-safe implementations'), res.output
 }
+
+fn test_ownership_checks_channel_close_error_payloads() {
+	v3_bin := ownership_build_v3()
+	borrowed := run_ownership_check(v3_bin, 'close_borrowed_error', r'
+struct BorrowedError {
+	data &int
+}
+
+fn (e BorrowedError) msg() string {
+	return e.data.str()
+}
+
+fn (_ BorrowedError) code() int {
+	return 1
+}
+
+fn main() {
+	value := 1
+	ch := chan int{cap: 1}
+	ch.close(BorrowedError{data: &value})
+}
+')
+	assert borrowed.exit_code != 0, borrowed.output
+	assert borrowed.output.contains('as channel close error: field `data`: references cannot be transferred'), borrowed.output
+	owned := run_ownership_check(v3_bin, 'close_owned_error', r'
+struct StatusError {
+	status int
+}
+
+fn (e StatusError) msg() string {
+	return e.status.str()
+}
+
+fn (e StatusError) code() int {
+	return e.status
+}
+
+fn main() {
+	ch := chan int{cap: 1}
+	ch.close(StatusError{status: 42})
+	assert (<-ch or { err.code() }) == 42
+	messages := chan int{cap: 1}
+	messages.close(error("failed"))
+	assert (<-messages or { err.msg().len }) == 6
+}
+')
+	assert owned.exit_code == 0, owned.output
+}

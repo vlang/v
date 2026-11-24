@@ -82,6 +82,24 @@ fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected
 	}
 }
 
+fn (mut tc TypeChecker) ownership_check_channel_close_error(id flat.NodeId) {
+	clean_id := tc.ownership_unwrap_expr(id)
+	node := tc.a.node(clean_id)
+	if node.kind == .call && node.children_count > 0 {
+		callee := tc.a.child_node(node, 0)
+		if callee.kind == .ident && !tc.ident_resolves_to_value(callee.value)
+			&& tc.ownership_call_is_builtin_error_ctor(clean_id, tc.cur_module) {
+			return
+		}
+	}
+	if (node.kind != .ident || !tc.ident_resolves_to_value(node.value))
+		&& (tc.ownership_expr_reads_message_error_const(clean_id)
+			|| tc.ownership_expr_reads_error_sentinel(clean_id)) {
+		return
+	}
+	_ = tc.ownership_check_thread_transfer(tc.resolve_type(id), id, 'channel close error')
+}
+
 fn (mut tc TypeChecker) ownership_check_thread_transfer(typ Type, id flat.NodeId, role string) bool {
 	if reason := tc.ownership_thread_transfer_problem(typ, .transfer, 0, mut map[u64]bool{}) {
 		tc.record_error(.thread_transfer,
