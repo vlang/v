@@ -1,0 +1,56 @@
+name: Foreign generic argument identity
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/tests/generics/generic_foreign_argument_identity_test.v'
+      - '.github/workflows/foreign_generic_identity_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Original regression with each Windows compiler
+        shell: pwsh
+        run: |
+          gcc -dumpmachine
+          if ($LASTEXITCODE -ne 0) { throw "MinGW GCC unavailable" }
+          $test = 'vlib/v/tests/generics/generic_foreign_argument_identity_test.v'
+          .\v.exe fmt -verify $test
+          if ($LASTEXITCODE -ne 0) { throw "Format verification failed" }
+          foreach ($cc in @('gcc', 'msvc', 'tcc')) {
+            .\v.exe -cc $cc -no-retry-compilation -silent $test
+            if ($LASTEXITCODE -ne 0) { throw "$cc generic identity regression failed" }
+          }
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Preserve Clang coverage
+        run: |
+          ./v fmt -w vlib/v/tests/generics/generic_foreign_argument_identity_test.v
+          git diff --exit-code
+          ./v fmt -verify vlib/v/tests/generics/generic_foreign_argument_identity_test.v
+          ./v -cc clang -silent vlib/v/tests/generics/generic_foreign_argument_identity_test.v
