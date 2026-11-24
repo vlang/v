@@ -35,6 +35,26 @@ fn main() {
 }
 ```
 
+Use `arena.try_new()` to handle allocation failure when creating an arena. It returns
+`?arena.Arena`. The first chunk is allocated separately on first use.
+
+## Chunk limits
+
+Pass `limits: arena.ChunkLimits{max_live_bytes: ..., max_total_bytes: ...}` when
+creating an arena to bound its combined backing chunk allocations. Live bytes
+count chunks still held, including the chunk retained by `reset()`. Total bytes
+count every successful chunk allocation over the lifetime of the budget.
+An omitted limit is unlimited. Zero forbids the first chunk. Growth uses a
+smaller chunk when the usual size exceeds the remaining budget and the request
+still fits. Implicit allocation panics when a requested chunk cannot fit.
+
+An arena created while a bounded arena is pushed shares its budget, even when
+it is later used on another thread. Configuring limits on the child additionally
+enforces those limits on its descendants. `chunk_usage()` reports the nearest
+budget's live, peak live, and cumulative bytes, including chunk headers. Arena
+control blocks, allocator registry metadata, and allocations performed outside
+these arenas are outside the counters.
+
 ## Rules
 
 * `push()` makes an arena the allocator of the current thread, `pop()` restores the previous
@@ -94,6 +114,72 @@ allocations and payload access, and never use an arena handle after that arena i
 Memory allocated through a handle has the same lifetime and free behavior as ordinary arena
 or heap allocations. A handle does not initialize typed V values or keep their pointers alive.
 
+## Fallible explicit allocation
+
+`unsafe { allocator.try_calloc(size) }` returns an optional raw pointer. Negative or
+unsupported sizes and allocation failure return `none`, without constructing an error.
+A zero-size request succeeds with a nil pointer and consumes no storage.
+
+Failed arena growth releases unpublished storage and preserves existing chunks, data,
+used bytes and the next regular chunk size. It releases the registry/access locks before
+returning; the arena remains usable. A selected arena never falls back to the current
+allocator or heap. The lifetime, alignment and thread-access rules of `calloc` still apply;
+invalid handles and concurrent access remain programming errors.
+
+```v
+import arena
+
+fn main() {
+	mut storage := arena.new()
+	defer { storage.free() }
+	pointer := unsafe { storage.allocator().try_calloc(1024) } or {
+		return
+	}
+	assert storage.owns(pointer)
+}
+```
+
+Heap allocation uses V's configured manual or Boehm allocator. Failed heap requests do not
+create allocation records in opt-in heap tracking. Arena creation and implicit V allocations
+retain their existing failure behavior. Callers must check this optional result before using
+its storage; this API provides no automatic OOM unwinding or container transaction.
+
+## Running code with an explicit allocator
+
+`unsafe { allocator.run(mut context, work) }` selects the allocator for a synchronous
+callback's implicit V allocations and restores the caller's allocator afterward, including
+when a panic unwinds the call. The mutable context and a noncapturing function avoid a
+mandatory closure allocation. The context itself is not copied into the selected arena.
+
+The target may be the heap, an inactive arena, the current arena, or an ancestor in the
+current allocator stack. An arena active outside that stack is rejected. Nested selections
+restore in call order. Work must pop any arenas it pushes and balance nested selections.
+All involved arenas must remain alive; the handle does not extend any allocation lifetime.
+The selected arena's budget also applies to arenas created by the callback.
+
+```v
+import arena
+
+struct Message {
+mut:
+	number int
+	text   string
+}
+
+fn build_message(mut message Message) {
+	message.text = 'selected ${message.number}'
+}
+
+fn main() {
+	mut storage := arena.new()
+	defer { storage.free() }
+	mut message := Message{ number: 42 }
+	unsafe { storage.allocator().run(mut message, build_message) }
+	assert storage.owns(message.text.str)
+	assert message.text == 'selected 42'
+}
+```
+
 ## Supported builds
 
 * `-gc none`: the main use case.
@@ -111,3 +197,18 @@ or heap allocations. A handle does not initialize typed V values or keep their p
 The allocator hooks are part of builtin in every program. Until a program creates its first
 arena, they cost one atomic check per allocation and `free()`.
 The first arena publishes all allocator hooks together, including when another thread is allocating.
+
+## Runtime bookkeeping
+
+The unsafe builtin hooks `v_arena_suspend()` and `v_arena_resume(token)` are for
+runtime bookkeeping that must use the configured ordinary allocator. They leave
+all pushed arenas active, temporarily select no arena on this thread, and restore
+the previous selection. Pair them on the same thread in strict nested order.
+Restore the selection before invoking user callbacks; a suspended arena must
+remain alive. Prefer the ordinary `arena` API for application allocation.
+
+Closure runtime registries, trampoline-page descriptors and lifetime bookkeeping
+use this scope. It does not copy closure captures or extend their lifetimes.
+Reclaim or dispose callbacks while every referenced arena is still alive.
+The separate scoped `-prealloc` mechanism is unchanged by these hooks; module
+`arena` does not support `-prealloc`.

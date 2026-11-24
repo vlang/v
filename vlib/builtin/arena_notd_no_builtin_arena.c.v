@@ -35,10 +35,13 @@ mut:
 
 // VArena is the control block of an arena. It uses the ordinary heap directly,
 // so it is neither part of another arena nor collected by the GC.
+// Use voidptr comparisons for arena identity: struct equality may read another
+// thread's mutable control state before the access check.
 struct VArena {
 mut:
-	magic u32
-	epoch u64
+	magic  u32
+	budget &VArenaBudget = unsafe { nil }
+	epoch  u64
 	// 0: idle, 1: pushed on a thread's allocator stack, 2: being reset or freed.
 	// Accessed through the C `_i32` atomics.
 	state          i32
@@ -47,6 +50,15 @@ mut:
 	below          &VArena      = unsafe { nil } // next arena down the thread's stack
 	chunk_size     int // size of the next regular chunk
 	max_chunk_size int
+}
+
+// VArenaSelection is the opaque stack state paired by arena.Allocator.run.
+// Its fields are private so applications cannot assemble a restoration token.
+@[noinit]
+pub struct VArenaSelection {
+	previous voidptr
+	selected voidptr
+	pushed   bool
 }
 
 struct VArenaRange {
@@ -211,16 +223,35 @@ fn arena_registry_upper(reg &VArenaRegistry, len int, addr uint) int {
 }
 
 @[unsafe]
-fn arena_registry_add(owner &VArena, chunk &VArenaChunk) {
+fn arena_registry_try_add(owner &VArena, chunk &VArenaChunk, mut failure_size int) bool {
 	arena_registry_begin_write()
 	unsafe {
 		len := int(g_arena_ranges_len)
+		if u64(len) == u64(max_u32) {
+			failure_size = max_int
+			arena_registry_end_write()
+			return false
+		}
 		mut reg := g_arena_registry
 		if reg == nil || len == reg.cap {
+			if reg != nil && reg.cap > max_int / 2 {
+				failure_size = max_int
+				arena_registry_end_write()
+				return false
+			}
 			new_cap := if reg == nil { 16 } else { reg.cap * 2 }
+			if uint(new_cap) > (~uint(0) - sizeof(VArenaRegistry)) / sizeof(VArenaRange) {
+				failure_size = max_int
+				arena_registry_end_write()
+				return false
+			}
 			bytes := sizeof(VArenaRegistry) + uint(new_cap) * sizeof(VArenaRange)
 			mut grown := &VArenaRegistry(arena_raw_malloc(bytes))
-			vmemory_abort_on_nil(grown, int(bytes))
+			if grown == nil {
+				failure_size = int(bytes)
+				arena_registry_end_write()
+				return false
+			}
 			grown.cap = new_cap
 			grown.ranges = &VArenaRange(&u8(grown) + sizeof(VArenaRegistry))
 			if len > 0 {
@@ -245,6 +276,7 @@ fn arena_registry_add(owner &VArena, chunk &VArenaChunk) {
 		C.atomic_store_u32(&g_arena_ranges_len, u32(len + 1))
 	}
 	arena_registry_end_write()
+	return true
 }
 
 @[unsafe]
@@ -361,34 +393,70 @@ fn arena_chunk_release(chunk &VArenaChunk) {
 // arena_grow adds a chunk with room for at least `need` bytes.
 @[noinline; unsafe]
 fn arena_grow(mut a VArena, need int) &VArenaChunk {
+	mut failure_size := 0
+	result := unsafe { arena_try_grow(mut a, need, mut failure_size) }
+	if isnil(result) {
+		if failure_size == -1 { panic_allocation_failure(arena_chunk_limit_message) }
+		_memory_panic(@FN, failure_size)
+	}
+	return result
+}
+
+// Commit chunk policy and linkage only after both the chunk and its registry
+// entry exist. Failure releases the unpublished chunk and leaves a unchanged.
+@[noinline; unsafe]
+fn arena_try_grow(mut a VArena, need int, mut failure_size int) &VArenaChunk {
 	mut size := a.chunk_size
+	mut next_size := a.chunk_size
 	if need > size {
 		size = need
-	} else if a.chunk_size < a.max_chunk_size {
-		a.chunk_size *= 2
-		if a.chunk_size > a.max_chunk_size {
-			a.chunk_size = a.max_chunk_size
-		}
+	} else if next_size < a.max_chunk_size {
+		next_size = if next_size > a.max_chunk_size / 2 { a.max_chunk_size } else { next_size * 2 }
 	}
 	header := arena_chunk_header_size()
-	total := header + size
+	if size <= 0 || uint(size) > (~uint(0) >> 1) - uint(header) {
+		failure_size = size
+		return unsafe { nil }
+	}
+	mut total := header + size
+	if !isnil(a.budget) {
+		total = arena_reserve_budget(a.budget, need + header, total)
+		if total == 0 {
+			failure_size = -1
+			return unsafe { nil }
+		}
+		size = total - header
+	}
 	mut mem := voidptr(unsafe { nil })
 	$if gcboehm ? {
-		// Uncollectable chunks are still scanned, so GC objects that are only
-		// referenced from arena memory stay alive.
+		// Keep GC objects referenced only by arena memory alive.
 		mem = C.GC_MALLOC_UNCOLLECTABLE(uint(total))
 	} $else {
 		mem = unsafe { arena_raw_malloc(uint(total)) }
 	}
-	vmemory_abort_on_nil(mem, total)
+	if mem == unsafe { nil } {
+		if !isnil(a.budget) { arena_finish_budget(a.budget, total, false) }
+		failure_size = total
+		return unsafe { nil }
+	}
 	unsafe {
 		mut c := &VArenaChunk(mem)
 		c.prev = a.chunk
 		c.start = &u8(mem) + header
 		c.cursor = c.start
 		c.stop = c.start + size
+		if !arena_registry_try_add(a, c, mut failure_size) {
+			$if gcboehm ? {
+				C.GC_FREE(mem)
+			} $else {
+				arena_raw_free(mem)
+			}
+			if !isnil(a.budget) { arena_finish_budget(a.budget, total, false) }
+			return nil
+		}
+		if !isnil(a.budget) { arena_finish_budget(a.budget, total, true) }
+		a.chunk_size = next_size
 		a.chunk = c
-		arena_registry_add(a, c)
 		return c
 	}
 }
@@ -410,6 +478,32 @@ fn arena_alloc(mut a VArena, n int, align int) &u8 {
 		}
 		if c == nil || i64(c.stop) - i64(p) < i64(n) {
 			c = arena_grow(mut a, n + fixed_align)
+			p = vmemory_align_up(c.cursor, fixed_align)
+		}
+		c.cursor = p + n
+		a.last = p
+		return p
+	}
+}
+
+// The explicit fallible path shares chunk/registry management with the normal
+// allocator. Keeping the normal bump path separate adds no per-allocation test
+// for an allocation-failure policy to implicit V allocation.
+@[unsafe]
+fn arena_try_alloc(mut a VArena, n int, align int) &u8 {
+	default_align := arena_align()
+	fixed_align := if align > default_align { align } else { default_align }
+	if n < 0 || uint(n) > (~uint(0) >> 1) - uint(fixed_align + arena_chunk_header_size()) {
+		return unsafe { nil }
+	}
+	unsafe {
+		mut c := a.chunk
+		mut p := &u8(nil)
+		if c != nil { p = vmemory_align_up(c.cursor, fixed_align) }
+		if c == nil || i64(c.stop) - i64(p) < i64(n) {
+			mut failure_size := 0
+			c = arena_try_grow(mut a, n + fixed_align, mut failure_size)
+			if c == nil { return nil }
 			p = vmemory_align_up(c.cursor, fixed_align)
 		}
 		c.cursor = p + n
@@ -449,7 +543,7 @@ fn arena_realloc(old_data &u8, old_size int, new_size int) &u8 {
 			return old_data
 		}
 		mut top := g_arena_top
-		if top == owner && top.last == old_data {
+		if voidptr(top) == voidptr(owner) && top.last == old_data {
 			mut c := top.chunk
 			if i64(c.stop) - i64(old_data) >= i64(new_size) {
 				c.cursor = old_data + new_size
@@ -497,8 +591,10 @@ fn arena_release_chunks(mut a VArena, keep_one bool) {
 		mut c := a.chunk
 		for c != nil {
 			prev := c.prev
-			if c != keep {
+			if voidptr(c) != voidptr(keep) {
+				bytes := int(c.stop - c.start) + arena_chunk_header_size()
 				arena_chunk_release(c)
+				if !isnil(a.budget) { arena_release_budget(a.budget, bytes) }
 			}
 			c = prev
 		}
@@ -530,6 +626,14 @@ fn arena_checked(handle voidptr) &VArena {
 // selects 64KB). It is the low-level hook behind `arena.new()`; use that.
 @[unsafe]
 pub fn v_arena_new(chunk_size int) voidptr {
+	handle := unsafe { v_arena_try_new(chunk_size) }
+	if isnil(handle) { _memory_panic(@FN, int(sizeof(VArena))) }
+	return handle
+}
+
+// v_arena_try_new creates an arena control block, returning nil on allocation failure.
+@[unsafe]
+pub fn v_arena_try_new(chunk_size int) voidptr {
 	$if prealloc || vgc ?|| vinix {
 		panic('arena: scoped arenas are not supported with -prealloc, -gc vgc or on Vinix')
 	}
@@ -539,7 +643,10 @@ pub fn v_arena_new(chunk_size int) voidptr {
 		}
 	}
 	mut a := unsafe { &VArena(arena_raw_calloc(sizeof(VArena))) }
-	vmemory_abort_on_nil(a, int(sizeof(VArena)))
+	if isnil(a) {
+		return unsafe { nil }
+	}
+	a.budget = arena_inherit_budget()
 	a.magic = arena_magic
 	a.chunk_size = if chunk_size > 0 { chunk_size } else { arena_default_chunk_size }
 	a.max_chunk_size = if a.chunk_size > arena_max_chunk_size {
@@ -582,12 +689,79 @@ pub fn v_arena_pop(handle voidptr) {
 	if top == unsafe { nil } {
 		panic('arena: pop() without an active arena on this thread')
 	}
-	if top != a {
+	if voidptr(top) != voidptr(a) {
 		panic('arena: pop() of an arena that is not the innermost active arena of this thread')
 	}
 	g_arena_top = a.below
 	a.below = unsafe { nil }
 	C.v_prealloc_atomic_cas_i32(&a.state, 1, 0)
+}
+
+// v_arena_suspend temporarily selects the ordinary allocator for runtime
+// bookkeeping, without popping or releasing any arena. This is a low-level
+// runtime hook: pair it with v_arena_resume on the same thread in LIFO order,
+// before invoking user callbacks. The returned arena must remain alive.
+@[inline; unsafe]
+pub fn v_arena_suspend() voidptr {
+	previous := voidptr(g_arena_top)
+	g_arena_top = unsafe { nil }
+	return previous
+}
+
+// v_arena_resume restores an allocator suspended by v_arena_suspend. No arena
+// may remain pushed inside the suspended scope. A nil token is valid for a
+// nested suspension or a thread that had no current arena.
+@[inline; unsafe]
+pub fn v_arena_resume(previous voidptr) {
+	if voidptr(g_arena_top) != unsafe { nil } {
+		panic('arena: resume() with an active inner arena')
+	}
+	g_arena_top = unsafe { &VArena(previous) }
+}
+
+// v_arena_scope_enter selects an allocator for arena.Allocator.run. The returned
+// state must be restored on this thread in nested order by v_arena_scope_leave.
+// Unlike suspend/resume, this can select an inactive arena or a current ancestor.
+// The caller keeps the selected and hidden arenas alive throughout the scope.
+@[unsafe]
+pub fn v_arena_scope_enter(handle voidptr) VArenaSelection {
+	previous := voidptr(g_arena_top)
+	if handle == unsafe { nil } {
+		g_arena_top = unsafe { nil }
+		return VArenaSelection{ previous: previous }
+	}
+	mut a := arena_checked(handle)
+	mut cursor := g_arena_top
+	mut active_here := false
+	for cursor != unsafe { nil } {
+		if voidptr(cursor) == handle {
+			active_here = true
+			break
+		}
+		cursor = cursor.below
+	}
+	if !active_here {
+		if C.v_prealloc_atomic_cas_i32(&a.state, 0, 1) == 0 {
+			panic('arena: selected allocator is active outside the current allocator stack')
+		}
+		a.below = g_arena_top
+	}
+	g_arena_top = a
+	return VArenaSelection{ previous: previous, selected: handle, pushed: !active_here }
+}
+
+// v_arena_scope_leave restores the matching arena.Allocator.run scope. The work
+// must have popped its inner arenas and restored its own nested selections.
+@[unsafe]
+pub fn v_arena_scope_leave(selection &VArenaSelection) {
+	if voidptr(g_arena_top) != selection.selected {
+		panic('arena: selected allocator scope ended with another allocator active')
+	}
+	if selection.pushed {
+		v_arena_pop(selection.selected)
+	} else {
+		g_arena_top = unsafe { &VArena(selection.previous) }
+	}
 }
 
 // v_arena_reset releases the memory of an inactive arena for reuse. It is
@@ -636,6 +810,7 @@ pub fn v_arena_free(handle voidptr) {
 	}
 	unsafe {
 		arena_release_chunks(mut a, false)
+		arena_drop_budget(a.budget)
 		a.magic = 0
 		arena_raw_free(a)
 	}
@@ -669,7 +844,7 @@ pub fn v_arena_calloc_in(handle voidptr, size int) &u8 {
 	mut cursor := g_arena_top
 	mut active_here := false
 	for cursor != unsafe { nil } {
-		if cursor == a {
+		if voidptr(cursor) == voidptr(a) {
 			active_here = true
 			break
 		}
@@ -678,11 +853,53 @@ pub fn v_arena_calloc_in(handle voidptr, size int) &u8 {
 	if !active_here && C.v_prealloc_atomic_cas_i32(&a.state, 0, 2) == 0 {
 		panic('arena: allocation in an arena active on another thread or being modified')
 	}
+	if active_here {
+		result := unsafe { arena_alloc(mut a, size, 0) }
+		unsafe { C.memset(result, 0, size) }
+		return result
+	}
+	defer { C.v_prealloc_atomic_cas_i32(&a.state, 2, 0) }
 	result := unsafe { arena_alloc(mut a, size, 0) }
 	unsafe { C.memset(result, 0, size) }
-	if !active_here {
-		C.v_prealloc_atomic_cas_i32(&a.state, 2, 0)
+	return result
+}
+
+// v_arena_try_calloc_in is the fallible explicit allocation hook. It returns
+// none without allocating an error object, and never falls back from a selected
+// arena to a different allocator. Use arena.Allocator.try_calloc instead.
+@[unsafe]
+pub fn v_arena_try_calloc_in(handle voidptr, size int) ?&u8 {
+	$if prealloc || vgc ? {
+		$compile_error('arena: fallible explicit allocation requires -gc none or Boehm GC')
 	}
+	if size < 0 || uint(size) > (~uint(0) >> 1) - uint(arena_align() + arena_chunk_header_size()) {
+		return none
+	}
+	if size == 0 { return unsafe { &u8(nil) } }
+	if handle == unsafe { nil } {
+		result := vcalloc_impl(size, false)
+		if result == unsafe { nil } { return none }
+		return result
+	}
+	mut a := arena_checked(handle)
+	mut cursor := g_arena_top
+	mut active_here := false
+	for cursor != unsafe { nil } {
+		if voidptr(cursor) == voidptr(a) {
+			active_here = true
+			break
+		}
+		cursor = cursor.below
+	}
+	if !active_here && C.v_prealloc_atomic_cas_i32(&a.state, 0, 2) == 0 {
+		panic('arena: allocation in an arena active on another thread or being modified')
+	}
+	defer {
+		if !active_here { C.v_prealloc_atomic_cas_i32(&a.state, 2, 0) }
+	}
+	result := unsafe { arena_try_alloc(mut a, size, 0) }
+	if result == unsafe { nil } { return none }
+	unsafe { C.memset(result, 0, size) }
 	return result
 }
 

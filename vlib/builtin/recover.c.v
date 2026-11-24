@@ -53,6 +53,11 @@ mut:
 	records &PanicRecord = unsafe { nil }
 	len     int
 	cap     int
+	// The control record and message for an allocation failure must be available
+	// even when libc cannot grow the record stack or copy a diagnostic.
+	memory_record        PanicRecord
+	memory_record_index  int
+	memory_record_active bool
 }
 
 // V3 cgen emits this as thread-local storage: each thread unwinds its own stack.
@@ -125,6 +130,12 @@ fn panic_frame_relink(frame voidptr) {
 
 @[inline]
 fn panic_record(i int) &PanicRecord {
+	if g_panic_state.memory_record_active && i >= g_panic_state.memory_record_index {
+		if i == g_panic_state.memory_record_index {
+			return &g_panic_state.memory_record
+		}
+		return unsafe { &g_panic_state.records[i - 1] }
+	}
 	return unsafe { &g_panic_state.records[i] }
 }
 
@@ -140,6 +151,9 @@ fn panic_recover_frame(frame voidptr) ?string {
 		return none
 	}
 	rec.recovered = true
+	if g_panic_state.memory_record_active && g_panic_state.memory_record_index == g_panic_state.len - 1 {
+		return rec.msg
+	}
 	return rec.msg.clone()
 }
 
@@ -170,10 +184,12 @@ fn panic_frame_done(frame voidptr) {
 fn panic_record_drop() {
 	g_panic_state.len--
 	mut rec := panic_record(g_panic_state.len)
-	unsafe {
-		C.free(rec.msg.str)
-		*rec = PanicRecord{}
+	if g_panic_state.memory_record_active && g_panic_state.memory_record_index == g_panic_state.len {
+		g_panic_state.memory_record_active = false
+	} else {
+		unsafe { C.free(rec.msg.str) }
 	}
+	unsafe { *rec = PanicRecord{} }
 	// Nothing frees the records when their thread ends, so they go with the
 	// last panic in flight.
 	if g_panic_state.len == 0 {
@@ -194,10 +210,24 @@ fn panic_frames_reset() {
 	}
 }
 
+// Unwind a quota or allocator failure using a literal message and a reserved
+// per-thread record. Other panics from cleanup can still nest normally.
+@[noreturn]
+fn panic_allocation_failure(message string) {
+	if g_panic_state.top == unsafe { nil } || g_panic_state.memory_record_active {
+		panic(message)
+	}
+	g_panic_state.memory_record = PanicRecord{ msg: message }
+	g_panic_state.memory_record_index = g_panic_state.len
+	g_panic_state.memory_record_active = true
+	g_panic_state.len++
+	panic_jump_next()
+}
+
 // panic_unwind starts unwinding the stack for a panic, when there are frames.
 @[noreturn]
 fn panic_unwind(msg string, debug PanicDebugInfo) {
-	if g_panic_state.len == g_panic_state.cap {
+	if g_panic_state.len - int(g_panic_state.memory_record_active) == g_panic_state.cap {
 		new_cap := if g_panic_state.cap == 0 { 4 } else { g_panic_state.cap * 2 }
 		records := unsafe {
 			&PanicRecord(C.realloc(g_panic_state.records, uint(new_cap) * uint(sizeof(PanicRecord))))
@@ -259,6 +289,18 @@ fn panic_jump_next() {
 // interrupted before it.
 @[noreturn]
 fn panic_fatal() {
+	if g_panic_state.memory_record_active {
+		// Formatting a combined backtrace message would allocate again.
+		for i in 0 .. g_panic_state.len {
+			if i != g_panic_state.memory_record_index {
+				eprint('panic: ')
+				eprintln(panic_record(i).msg)
+			}
+		}
+		message := g_panic_state.memory_record.msg
+		panic_frames_reset()
+		panic(message)
+	}
 	mut msg := ''
 	for i in 0 .. g_panic_state.len {
 		rec := panic_record(i)

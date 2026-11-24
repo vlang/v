@@ -380,6 +380,8 @@ fn closure_write_template(destination &u8) {
 }
 
 fn closure_register_page(exec_page_start voidptr) {
+	previous_allocator := closure_allocator_begin()
+	defer { closure_allocator_end(previous_allocator) }
 	unsafe {
 		node := &ClosurePage(malloc(int(sizeof(ClosurePage))))
 		*node = ClosurePage{
@@ -408,6 +410,8 @@ fn closure_is_managed(exec_ptr voidptr) bool {
 }
 
 fn closure_live_set(exec_ptr voidptr, data voidptr, owns_data bool, drop_data voidptr) {
+	previous_allocator := closure_allocator_begin()
+	defer { closure_allocator_end(previous_allocator) }
 	g_closure.next_generation++
 	g_closure.live[exec_ptr] = ClosureLiveInfo{
 		ctx:        data
@@ -418,6 +422,8 @@ fn closure_live_set(exec_ptr voidptr, data voidptr, owns_data bool, drop_data vo
 }
 
 fn closure_live_delete(exec_ptr voidptr) ClosureLiveInfo {
+	previous_allocator := closure_allocator_begin()
+	defer { closure_allocator_end(previous_allocator) }
 	if info := g_closure.live[exec_ptr] {
 		g_closure.live[exec_ptr] = ClosureLiveInfo{}
 		g_closure.live.delete(exec_ptr)
@@ -427,6 +433,8 @@ fn closure_live_delete(exec_ptr voidptr) ClosureLiveInfo {
 }
 
 fn new_closure_lifetime_state_no_lock() &ClosureLifetimeState {
+	previous_allocator := closure_allocator_begin()
+	defer { closure_allocator_end(previous_allocator) }
 	mut state := g_closure.free_lifetime_states
 	if !isnil(state) {
 		g_closure.free_lifetime_states = state.next_free
@@ -454,6 +462,8 @@ fn new_closure_lifetime_state() &ClosureLifetimeState {
 }
 
 fn closure_lifetime_recycle_state_no_lock(mut state &ClosureLifetimeState) {
+	previous_allocator := closure_allocator_begin()
+	defer { closure_allocator_end(previous_allocator) }
 	state.disposed = true
 	state.active = false
 	state.suspended = 0
@@ -500,7 +510,15 @@ fn (mut lifetime Lifetime) ensure_state() !&ClosureLifetimeState {
 	return state
 }
 
+fn closure_active_lifetime_set_no_lock(thread_id u64, state &ClosureLifetimeState) {
+	previous_allocator := closure_allocator_begin()
+	defer { closure_allocator_end(previous_allocator) }
+	g_closure.active_lifetimes[thread_id] = state
+}
+
 fn closure_lifetime_track_no_lock(exec_ptr voidptr) {
+	previous_allocator := closure_allocator_begin()
+	defer { closure_allocator_end(previous_allocator) }
 	thread_id := closure_current_thread_id_platform()
 	mut state := g_closure.active_lifetimes[thread_id] or { return }
 	if state.suspended > 0 {
@@ -587,6 +605,12 @@ fn closure_lifetime_reclaim_no_lock(mut state ClosureLifetimeState, retain int) 
 		closure_lifetime_release_records_no_lock(state.records, frame.start, frame.end)
 		cutoff = frame.end
 	}
+	closure_lifetime_compact_no_lock(mut state, reclaim_count, cutoff)
+}
+
+fn closure_lifetime_compact_no_lock(mut state ClosureLifetimeState, reclaim_count int, cutoff int) {
+	previous_allocator := closure_allocator_begin()
+	defer { closure_allocator_end(previous_allocator) }
 	state.frames.delete_many(0, reclaim_count)
 	if cutoff > 0 {
 		state.records.delete_many(0, cutoff)
@@ -610,6 +634,8 @@ fn closure_ensure_initialized() {
 }
 
 // new_lifetime creates a lifetime object for tracking closure callbacks created inside frames.
+// Its bookkeeping is independent of the current arena. Callback data and captures
+// retain their original allocation lifetimes; reclaim them before their arenas end.
 pub fn new_lifetime() Lifetime {
 	closure_ensure_initialized()
 	state := new_closure_lifetime_state()
@@ -655,7 +681,7 @@ fn (mut lifetime Lifetime) begin_frame() !FrameToken {
 	state.active = true
 	state.frame_start = state.records.len
 	state.frame_gen = state.frame_generation
-	g_closure.active_lifetimes[thread_id] = state
+	closure_active_lifetime_set_no_lock(thread_id, state)
 	closure_mtx_unlock_platform()
 	return FrameToken{
 		state:            state
@@ -681,6 +707,8 @@ fn (mut lifetime Lifetime) end_frame(token FrameToken) ! {
 		closure_mtx_unlock_platform()
 		return error('invalid closure lifetime frame token')
 	}
+	previous_allocator := closure_allocator_begin()
+	defer { closure_allocator_end(previous_allocator) }
 	state.frames << ClosureLifetimeFrame{
 		start: state.frame_start
 		end:   state.records.len

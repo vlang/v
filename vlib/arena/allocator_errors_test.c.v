@@ -8,6 +8,28 @@ fn allocate_on_other_thread(allocator arena.Allocator) {
 	_ = unsafe { allocator.calloc(16) }
 }
 
+fn try_allocate_on_other_thread(allocator arena.Allocator) {
+	pointer := unsafe { allocator.try_calloc(16) } or { return }
+	_ = pointer
+}
+
+fn allocate_with_current_arena(allocator arena.Allocator) {
+	mut local := arena.new()
+	local.push()
+	_ = unsafe { allocator.calloc(16) }
+	local.pop()
+	local.free()
+}
+
+fn try_allocate_with_current_arena(allocator arena.Allocator) {
+	mut local := arena.new()
+	local.push()
+	pointer := unsafe { allocator.try_calloc(16) } or { return }
+	_ = pointer
+	local.pop()
+	local.free()
+}
+
 fn main() {
 	mut storage := arena.new()
 	match os.args[1] {
@@ -21,6 +43,27 @@ fn main() {
 			allocator := storage.allocator()
 			storage.push()
 			worker := spawn allocate_on_other_thread(allocator)
+			worker.wait()
+			storage.pop()
+		}
+		"fallible_active_elsewhere" {
+			allocator := storage.allocator()
+			storage.push()
+			worker := spawn try_allocate_on_other_thread(allocator)
+			worker.wait()
+			storage.pop()
+		}
+		"active_elsewhere_current" {
+			allocator := storage.allocator()
+			storage.push()
+			worker := spawn allocate_with_current_arena(allocator)
+			worker.wait()
+			storage.pop()
+		}
+		"fallible_active_elsewhere_current" {
+			allocator := storage.allocator()
+			storage.push()
+			worker := spawn try_allocate_with_current_arena(allocator)
 			worker.wait()
 			storage.pop()
 		}
@@ -39,10 +82,13 @@ fn test_explicit_allocator_rejects_invalid_uses() ! {
 	compile := os.exec([@VEXE, '-gc', 'none', '-o', binary, source])
 	assert compile.exit_code == 0, compile.output
 	for case_name, message in {
-		'negative_heap':    'negative allocation size'
-		'negative_arena':   'negative allocation size'
-		'freed_arena':      'allocator() of a freed arena'
-		'active_elsewhere': 'allocation in an arena active on another thread or being modified'
+		'negative_heap':                     'negative allocation size'
+		'negative_arena':                    'negative allocation size'
+		'freed_arena':                       'allocator() of a freed arena'
+		'active_elsewhere':                  'allocation in an arena active on another thread or being modified'
+		'fallible_active_elsewhere':         'allocation in an arena active on another thread or being modified'
+		'active_elsewhere_current':          'allocation in an arena active on another thread or being modified'
+		'fallible_active_elsewhere_current': 'allocation in an arena active on another thread or being modified'
 	} {
 		result := os.exec([binary, case_name])
 		assert result.exit_code != 0, '${case_name}: ${result.output}'
