@@ -13490,8 +13490,11 @@ pub fn run(args []string) {
 			run_program_instance_check_child(mut a, mut pre_tc, is_checker_fixture, fatal_errors,
 				message_limit, skip_notices)
 		}
+		// Thread transfers in generic functions can only be validated with their concrete types.
+		ownership_requires_instance_checks := ownership_checker_compiled()
+			&& 'ownership' in prefs.user_defines && 'autofree' !in prefs.user_defines
 		if !check_only && !is_checker_fixture && !prefs.building_v && pre_tc.errors.len == 0
-			&& os.getenv('V_CHECK_INSTANCES_IN_BUILD') != '0'
+			&& (ownership_requires_instance_checks || os.getenv('V_CHECK_INSTANCES_IN_BUILD') != '0')
 			&& (pre_tc.diagnosed_files_declare_generics() || (program_instance_check_includes_library_instances()
 				&& pre_tc.diagnosed_files_call_library_generics())) {
 			// A build checks each instance of the program's generics as a check
