@@ -144,3 +144,15 @@ is true, while digit-only or punctuation-only strings return false.
 `rsplit`, `rsplit_nth`, and `rsplit_once` recognize nonempty delimiters at the end of a string.
 Splitting at an end delimiter gives `rsplit` and `rsplit_nth` an empty first array element.
 Substring matches are selected from right to left without overlapping.
+
+`vcalloc_heap(n)` allocates zeroed, scanned memory through the configured GC or manual heap,
+bypassing scoped arenas and preallocation without changing the current allocator. Zero returns
+nil and negative sizes panic. The caller must keep the pointer reachable for as long as it is
+used; this function does not create a GC root. It is useful for persistent metadata that must
+survive a scoped allocator. The existing `vcalloc` and explicit arena allocation APIs retain
+their current allocator selection.
+
+Release ordinary-heap allocations with unsafe `vfree_heap(ptr)`. It follows the configured
+GC/manual release policy while bypassing preallocation's free no-op, preserves scoped allocator
+state, and accepts nil. Pass each live heap allocation at most once. As with `free`, ordinary
+Boehm mode leaves reclamation to the collector; this does not make the allocation uncollectable.

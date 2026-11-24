@@ -1871,6 +1871,16 @@ fn acquire_native_object_cache_lock(manifest_path string) (filelock.FileLock, bo
 	return file_lock, true
 }
 
+// v3_freestanding_c_compile_flags applies equally to generated units and native
+// helpers. Native objects must not acquire stack-protector/libc dependencies.
+fn v3_freestanding_c_compile_flags(target_os string, is_tcc bool) []string {
+	mut flags := ['-ffreestanding', '-fno-stack-protector']
+	if target_os == 'linux' && !is_tcc {
+		flags << ['-ffunction-sections', '-fdata-sections']
+	}
+	return flags
+}
+
 // V3NativeObjectMode is how a build compiles a native source to an object of its
 // own (c_source_object_command): what prepare_c_flags_for_link hands to
 // compile_cached_c_source_object besides the source.
@@ -1890,6 +1900,7 @@ struct V3NativeObjectMode {
 // The receipt of an unchanged build scans the source with the same arguments.
 fn c_source_object_command(source_file string, source_language string, mode &V3NativeObjectMode) (string, []string) {
 	target := mode.target
+
 	language := c_source_language(source_file, source_language)
 	is_cpp := language in ['c++', 'objective-c++']
 	std_flag := if is_cpp {
@@ -4366,10 +4377,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		}
 	}
 	if options.is_freestanding {
-		before_inputs << ['-ffreestanding', '-fno-stack-protector']
-		if options.target_os == 'linux' && !options.is_tcc {
-			before_inputs << ['-ffunction-sections', '-fdata-sections']
-		}
+		before_inputs << v3_freestanding_c_compile_flags(options.target_os, options.is_tcc)
 	}
 	before_inputs << options.warn_args
 	if '-Wno-int-conversion' !in before_inputs {
@@ -12266,6 +12274,10 @@ pub fn run(args []string) {
 		}
 	}
 	// Freestanding programs have no libc collector. Native builds also omit it.
+	if 'freestanding' in user_defines && (is_shared || is_o) {
+		// A library/object is initialized by its host and has no process entry.
+		record_user_define(mut user_defines, mut compile_values, 'v_bare_no_startup')
+	}
 	disable_gc := 'freestanding' in user_defines
 		|| v3_gc_is_disabled(building_v, cross_output, target_os, target_arch, backend, gc_mode)
 	apply_v3_gc_mode(gc_mode, disable_gc, mut user_defines, mut compile_values) or {
@@ -12697,10 +12709,11 @@ pub fn run(args []string) {
 	bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	host_os := os.user_os()
 	host_target := pref.host_target()
-	// TinyCC has inline assembly only for x86, and the freestanding runtime makes
-	// its syscalls and `_start` with it.
+	// Bare startup and thread creation initialize real C TLS. TinyCC's hosted
+	// pthread-key fallback cannot provide it without a libc runtime.
 	bare_needs_platform_cc := 'freestanding' in user_defines
-		&& target.arch !in ['amd64', 'i386']
+		&& (target.arch !in ['amd64', 'i386']
+			|| (backend == 'c' && target.os in ['linux', 'macos', 'darwin']))
 	selection := v3_select_c_compiler(prefs.vroot, V3BundledTccProbeOptions{
 		backend:             backend
 		c_only:              c_only
@@ -12720,6 +12733,11 @@ pub fn run(args []string) {
 		bundled_tcc:         bundled_tcc
 		prefer_platform_cc:  v3_gc_prefers_platform_cc(user_defines) || bare_needs_platform_cc
 	})
+	if bare_needs_platform_cc && backend == 'c'
+		&& selection.effective_c_compiler == 'tinyc' {
+		eprintln('v: -freestanding requires a C compiler with native TLS support; use -cc clang or -cc gcc')
+		exit(1)
+	}
 	bundled_tcc_available := selection.bundled_tcc_available
 	implicit_tcc := selection.implicit_tcc
 	c_compiler = selection.c_compiler
@@ -17174,9 +17192,18 @@ pub fn run(args []string) {
 			v3_require_c_link_libraries([environment_c_flags], macos_v3_fallback_file, cc_dir, effective_c_compiler == 'msvc')
 		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
-			object_optimization_flags := v3_shared_object_compile_flags(v3_prod_c_object_optimization_flags(is_prod,
+			mut object_optimization_flags := v3_shared_object_compile_flags(v3_prod_c_object_optimization_flags(is_prod,
 				no_prod_options, is_shared, parallel_cc, effective_tcc, c_opt_level), prefs.normalized_target_os(),
 				is_shared, is_liveshared)
+			if 'freestanding' in prefs.user_defines {
+				object_optimization_flags << v3_freestanding_c_compile_flags(prefs.normalized_target_os(), effective_tcc)
+				// Native helpers share the generated unit's runtime capabilities.
+				// These flags participate in the existing object/cache manifest key.
+				object_optimization_flags << '-DCUSTOM_DEFINE_freestanding'
+				if is_shared || is_o {
+					object_optimization_flags << '-DCUSTOM_DEFINE_v_bare_no_startup'
+				}
+			}
 			mut primary_object_compiler_flags := []string{}
 			if effective_tcc {
 				object_tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
@@ -17273,6 +17300,17 @@ pub fn run(args []string) {
 			// objects. V never opens headers to search for these macros.
 			for macro_name in v3_time_macro_names {
 				cached_object_c_flags << '-D' + macro_name + r'=_Pragma("GCC error \"native cache cannot expand date/time macros\"")'
+			}
+		}
+		if 'freestanding' in prefs.user_defines && !c_only && !is_o && !is_shared
+			&& !effective_tcc && prefs.normalized_target_os() != 'macos' {
+			// Native inputs are resolved above. -nostdlib also drops arithmetic
+			// helpers, so retain the toolchain archive as a tracked dependency.
+			if runtime_library := v3_freestanding_compiler_runtime(c_compiler,
+				environment_c_flags, target_args, resolved_c_flags, link_ld_flags) {
+				if runtime_library !in resolved_c_flags {
+					resolved_c_flags << runtime_library
+				}
 			}
 		}
 		if !c_only && !is_o {

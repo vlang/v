@@ -33,7 +33,6 @@ $if !i386 {
 		const vlibc_sys_nr_rt_sigaction = u64(134)
 		const vlibc_sys_nr_rt_sigprocmask = u64(135)
 		const vlibc_sys_nr_sigaltstack = u64(132)
-		const vlibc_sys_nr_futex = u64(98)
 		const vlibc_sys_nr_set_tid_address = u64(96)
 		const vlibc_sys_nr_clone = u64(220)
 		const vlibc_sys_nr_exit = u64(93)
@@ -89,7 +88,6 @@ $if !i386 {
 		const vlibc_sys_nr_rt_sigaction = u64(13)
 		const vlibc_sys_nr_rt_sigprocmask = u64(14)
 		const vlibc_sys_nr_sigaltstack = u64(131)
-		const vlibc_sys_nr_futex = u64(202)
 		const vlibc_sys_nr_set_tid_address = u64(218)
 		const vlibc_sys_nr_clone = u64(56)
 		const vlibc_sys_nr_exit = u64(60)
@@ -293,7 +291,7 @@ $if !i386 {
 
 	// vlibc_sys_futex performs a native futex operation and returns the raw result.
 	pub fn vlibc_sys_futex(uaddr voidptr, op int, val u32, timeout voidptr, uaddr2 voidptr, val3 u32) i64 {
-		return i64(sys_call6(vlibc_sys_nr_futex, u64(uaddr), u64(op), u64(val), u64(timeout), u64(uaddr2), u64(val3)))
+		return bf_futex_raw(uaddr, op, val, timeout, uaddr2, val3)
 	}
 
 	// vlibc_sys_set_tid_address sets the address the kernel clears when the calling thread exits.
@@ -312,7 +310,7 @@ $if !i386 {
 		}
 	}
 
-	// vlibc_sys_exit terminates the calling process with the given exit code.
+	// vlibc_sys_exit terminates only the calling thread with the given exit code.
 	pub fn vlibc_sys_exit(code int) {
 		sys_call1(vlibc_sys_nr_exit, u64(code))
 		for {}

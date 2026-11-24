@@ -1,0 +1,4 @@
+#ifndef V_TEST_FREESTANDING_POSIX_CHECK_H
+#define V_TEST_FREESTANDING_POSIX_CHECK_H
+int v_freestanding_posix_check(void);
+#endif

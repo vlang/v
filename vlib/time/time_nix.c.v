@@ -73,10 +73,14 @@ pub fn (t Time) local() Time {
 	if t.is_local {
 		return t
 	}
-	loc_tm := C.tm{}
-	t_ := t.unix()
-	C.localtime_r(voidptr(&t_), &loc_tm)
-	return convert_ctime_with_unix(loc_tm, t.nanosecond, t_ + c_local_epoch_offset(t_, loc_tm))
+	$if freestanding && linux && !native && !i386 {
+		return bare_local_from_unix(t.unix(), t.nanosecond)
+	} $else {
+		loc_tm := C.tm{}
+		t_ := t.unix()
+		C.localtime_r(voidptr(&t_), &loc_tm)
+		return convert_ctime_with_unix(loc_tm, t.nanosecond, t_ + c_local_epoch_offset(t_, loc_tm))
+	}
 }
 
 // in most systems, these are __quad_t, which is an i64
@@ -117,14 +121,19 @@ fn vpc_now() u64 {
 // this should be implemented properly with support for leap seconds.
 // It uses the realtime clock to get and converts it to local time
 fn linux_now() Time {
-	// get the high precision time as UTC realtime clock
-	// and use the nanoseconds part
-	mut ts := C.timespec{}
-	C.clock_gettime(C.CLOCK_REALTIME, &ts)
-	loc_tm := C.tm{}
-	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
-	return convert_ctime_with_unix(loc_tm, int(ts.tv_nsec), i64(ts.tv_sec) + c_local_epoch_offset(i64(ts.tv_sec),
-		loc_tm))
+	$if freestanding && linux && !native && !i386 {
+		sec, nanos := bare_realtime_parts()
+		return bare_local_from_unix(sec, nanos)
+	} $else {
+		// get the high precision time as UTC realtime clock
+		// and use the nanoseconds part
+		mut ts := C.timespec{}
+		C.clock_gettime(C.CLOCK_REALTIME, &ts)
+		loc_tm := C.tm{}
+		C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
+		return convert_ctime_with_unix(loc_tm, int(ts.tv_nsec), i64(ts.tv_sec) + c_local_epoch_offset(i64(ts.tv_sec),
+			loc_tm))
+	}
 }
 
 fn linux_utc() Time {

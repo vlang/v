@@ -33,8 +33,8 @@ mut:
 	stop   &u8          = unsafe { nil }
 }
 
-// VArena is the control block of an arena. It is allocated with C.calloc, so
-// it is neither part of another arena nor collected by the GC.
+// VArena is the control block of an arena. It uses the ordinary heap directly,
+// so it is neither part of another arena nor collected by the GC.
 struct VArena {
 mut:
 	magic u32
@@ -93,6 +93,36 @@ __global g_arena_seq u32
 __global g_arena_registry &VArenaRegistry
 __global g_arena_ranges_len u32
 __global g_arena_epoch u64
+
+// Arena control blocks and registry storage must bypass scoped allocation.
+// Freestanding builds use the selected bare runtime's canonical heap; hosted
+// builds use libc directly so these allocations cannot belong to another arena.
+@[inline; unsafe]
+fn arena_raw_malloc(size uint) voidptr {
+	$if freestanding {
+		return unsafe { __malloc(size) }
+	} $else {
+		return unsafe { C.malloc(size) }
+	}
+}
+
+@[inline; unsafe]
+fn arena_raw_calloc(size uint) voidptr {
+	$if freestanding {
+		return unsafe { __calloc(1, size) }
+	} $else {
+		return unsafe { C.calloc(1, size) }
+	}
+}
+
+@[inline; unsafe]
+fn arena_raw_free(ptr voidptr) {
+	$if freestanding {
+		unsafe { __free(ptr) }
+	} $else {
+		unsafe { C.free(ptr) }
+	}
+}
 
 // arena_next_epoch is called with the registry writer lock held.
 fn arena_next_epoch() u64 {
@@ -189,7 +219,7 @@ fn arena_registry_add(owner &VArena, chunk &VArenaChunk) {
 		if reg == nil || len == reg.cap {
 			new_cap := if reg == nil { 16 } else { reg.cap * 2 }
 			bytes := sizeof(VArenaRegistry) + uint(new_cap) * sizeof(VArenaRange)
-			mut grown := &VArenaRegistry(C.malloc(bytes))
+			mut grown := &VArenaRegistry(arena_raw_malloc(bytes))
 			vmemory_abort_on_nil(grown, int(bytes))
 			grown.cap = new_cap
 			grown.ranges = &VArenaRange(&u8(grown) + sizeof(VArenaRegistry))
@@ -323,7 +353,7 @@ fn arena_chunk_release(chunk &VArenaChunk) {
 		$if gcboehm ? {
 			C.GC_FREE(chunk)
 		} $else {
-			C.free(chunk)
+			arena_raw_free(chunk)
 		}
 	}
 }
@@ -348,7 +378,7 @@ fn arena_grow(mut a VArena, need int) &VArenaChunk {
 		// referenced from arena memory stay alive.
 		mem = C.GC_MALLOC_UNCOLLECTABLE(uint(total))
 	} $else {
-		mem = C.malloc(uint(total))
+		mem = unsafe { arena_raw_malloc(uint(total)) }
 	}
 	vmemory_abort_on_nil(mem, total)
 	unsafe {
@@ -500,10 +530,15 @@ fn arena_checked(handle voidptr) &VArena {
 // selects 64KB). It is the low-level hook behind `arena.new()`; use that.
 @[unsafe]
 pub fn v_arena_new(chunk_size int) voidptr {
-	$if prealloc || vgc ?|| freestanding || vinix {
-		panic('arena: scoped arenas are not supported with -prealloc, -gc vgc, -freestanding or on Vinix')
+	$if prealloc || vgc ?|| vinix {
+		panic('arena: scoped arenas are not supported with -prealloc, -gc vgc or on Vinix')
 	}
-	mut a := unsafe { &VArena(C.calloc(1, sizeof(VArena))) }
+	$if freestanding {
+		$if native || !(linux || macos) || !(amd64 || arm64) {
+			panic('arena: freestanding arenas require the Linux or macOS amd64/arm64 C TLS runtime')
+		}
+	}
+	mut a := unsafe { &VArena(arena_raw_calloc(sizeof(VArena))) }
 	vmemory_abort_on_nil(a, int(sizeof(VArena)))
 	a.magic = arena_magic
 	a.chunk_size = if chunk_size > 0 { chunk_size } else { arena_default_chunk_size }
@@ -602,7 +637,7 @@ pub fn v_arena_free(handle voidptr) {
 	unsafe {
 		arena_release_chunks(mut a, false)
 		a.magic = 0
-		C.free(a)
+		arena_raw_free(a)
 	}
 }
 

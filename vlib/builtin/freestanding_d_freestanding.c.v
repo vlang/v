@@ -13,6 +13,8 @@ module builtin
 $if freestanding && native && linux {
 	$if amd64 {
 		const bare_sys_nr_read = u64(0)
+		const bare_sys_nr_fcntl = u64(72)
+		const bare_sys_nr_clock_gettime = u64(228)
 		const bare_sys_nr_write = u64(1)
 		const bare_sys_nr_mmap = u64(9)
 		const bare_sys_nr_munmap = u64(11)
@@ -42,6 +44,8 @@ $if freestanding && native && linux {
 		const bare_sys_nr_statfs = u64(137)
 	} $else $if arm64 {
 		const bare_sys_nr_read = u64(63)
+		const bare_sys_nr_fcntl = u64(25)
+		const bare_sys_nr_clock_gettime = u64(113)
 		const bare_sys_nr_write = u64(64)
 		const bare_sys_nr_mmap = u64(222)
 		const bare_sys_nr_munmap = u64(215)
@@ -474,6 +478,14 @@ $if freestanding && native && linux {
 
 	pub fn bf_last_errno() int {
 		return bf_last_errno_cell
+	}
+
+	fn bf_descriptor_control(fd int, command int, value int) (int, int) {
+		return bf_split_int(bsys_call3(bare_sys_nr_fcntl, u64(fd), u64(command), u64(value)))
+	}
+
+	fn bf_clock_tai(stamp &FSysTaiTimespec) int {
+		return bf_errno_of(bsys_call2(bare_sys_nr_clock_gettime, 11, u64(stamp)))
 	}
 
 	pub fn bf_openat(path &u8, flags u64, mode u64) (int, int) {
