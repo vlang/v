@@ -1382,8 +1382,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 		name := queue[qi]
 		qi++
-		if reachable_runtime_helpers && name in ['closure.closure_init', 'closure__closure_init']
-			&& !reachable_helper_scan.closure_globals_scanned {
+		// The runtime state is needed by every entry point of the closure runtime, not only
+		// by `closure_init`: the `closure.Lifetime` API reaches it without any closure.
+		if reachable_runtime_helpers && !reachable_helper_scan.closure_globals_scanned
+			&& name in ['closure.closure_init', 'closure__closure_init',
+				'closure.closure_ensure_initialized', 'closure__closure_ensure_initialized'] {
 			reachable_helper_scan.closure_globals_scanned = true
 			if reachable_helper_scan.deferred_closure_nodes.len > 0 {
 				reachable_helper_scan.enqueue_nodes(a, tc, reachable_helper_scan.deferred_closure_nodes,

@@ -15,6 +15,20 @@ Compile a program with:
 ./v -prod -b wasm -o hello.wasm examples/hello_world.v
 ```
 
+Run the output with V's own WebAssembly interpreter, without an external Wasm engine:
+
+```sh
+./v run hello.wasm
+./v -b wasm run examples/hello_world.v
+./v run examples/wasm_codegen/add.v > add.wasm
+./v wasm --invoke add add.wasm 20 22
+```
+
+`v file.wasm` also runs the binary. The default entry point is `_start`; use `--invoke` for a
+named export. The [`wasm.runtime` module](../vlib/wasm/runtime/README.md) provides the same runtime
+to V applications, including typed host callbacks, memory access, and configurable execution
+limits. Its WASI host supplies stdio, arguments, an empty environment, and process exit.
+
 A standalone compiler built from `vlib/v/v.v` needs `-compile-backend wasm` or `-all-backends`
 when it is compiled. `-d skip_wasm` excludes WebAssembly from a compiler build.
 
