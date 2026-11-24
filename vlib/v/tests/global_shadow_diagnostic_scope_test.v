@@ -356,6 +356,20 @@ fn test_dependency_shadow_alone_still_builds() {
 	assert !res.output.contains('shadows a global variable'), res.output
 }
 
+// A dependency may name a local like a module global of the project, and the local
+// keeps its own value: `point` here is not the `__global point` of `state`.
+fn test_dependency_local_named_like_project_module_global_keeps_its_value() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'state', 'state.v'), '@[has_globals]\nmodule state\n\npub struct Point {\npub:\n\tx u64\n}\n\n__global point Point\n\npub fn x() u64 {\n\treturn point.x\n}\n')
+	write_file(os.join_path(sibling_modules_dir, 'shadowdep', 'shadowdep.v'), "module shadowdep\n\npub fn compute(text string) string {\n\tpoint := text.len - 2\n\treturn text[..point] + '.' + text[point..] + (point + 1).str()\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), "module main\n\nimport shadowdep\nimport state\n\nfn main() {\n\tprintln(state.x())\n\tprintln(shadowdep.compute('12345'))\n}\n")
+	os.setenv('VMODULES', sibling_modules_dir, true)
+	res := os.exec([vexe, '-enable-globals', 'run', app_dir])
+	assert res.exit_code == 0, res.output
+	assert res.output.split_into_lines() == ['0', '123.454'], res.output
+}
+
 // The module root inside the project root is the case plain containment gets
 // wrong: the dependency passes the prefix check and is read as project code.
 fn test_nested_module_root_dependency_is_not_reported() {
