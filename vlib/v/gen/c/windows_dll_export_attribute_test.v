@@ -26,13 +26,20 @@ pub fn answer() int {
 	return 42
 }
 ') or { panic(err) }
+	// On non-Windows hosts the driver maps a Windows amd64 TCC request to MinGW.
+	// Native Windows still tests TinyCC's actual export attribute.
+	tcc_attribute := $if windows {
+		'__declspec(dllexport) int answer(void)'
+	} $else {
+		'__attribute__((visibility("default"))) int answer(void)'
+	}
 	for cc, attribute in {
-		'tcc':  '__declspec(dllexport) int answer(void)'
+		'tcc':  tcc_attribute
 		'gcc':  '__attribute__((visibility("default"))) int answer(void)'
 		'msvc': '__declspec(dllexport) int answer(void)'
 	} {
 		c_file := os.join_path(root, 'lib_${cc}.c')
-		res := cmdexec.run(@VEXE, ['-os', 'windows', '-cc', cc, '-shared', '-o', c_file, source])
+		res := cmdexec.run(@VEXE, ['-os', 'windows', '-arch', 'amd64', '-cc', cc, '-shared', '-o', c_file, source])
 		assert res.exit_code == 0, '${cc}: ${res.output}'
 		code := os.read_file(c_file) or { panic(err) }
 		assert code.contains(attribute), cc
