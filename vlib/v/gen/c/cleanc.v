@@ -26418,9 +26418,9 @@ fn (mut g FlatGen) emit_global_inits() {
 		g.in_global_array_pointer_init = old_array_pointer_init
 	}
 	// The closure runtime can be imported for syntax that only might need it. Its state
-	// is set up for `closure_init`, and without it the map runtime its fields default to
-	// may not be emitted at all.
-	skip_closure_runtime_globals := !g.needs_closure_runtime_init()
+	// is set up only for a program that enters the runtime; without it the map runtime
+	// its fields default to may not be emitted at all.
+	skip_closure_runtime_globals := !g.needs_closure_runtime_state()
 	for qname in g.global_init_order {
 		g.in_global_array_pointer_init = false
 		if qname in g.c_extern_global_names {
