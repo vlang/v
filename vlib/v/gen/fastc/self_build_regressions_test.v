@@ -28,7 +28,7 @@ fn fastc_self_build_regression_program(name string, main_source string, files ma
 		program := os.join_path(root, 'program')
 		os.write_file(c_path, source) or { panic(err) }
 		sources << source
-		build := cmdexec.run('cc', ['-std=gnu11', '-w', '-Werror=incompatible-pointer-types',
+		build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-w', '-Werror=incompatible-pointer-types',
 			'-Werror=int-conversion', '-o', program, c_path])
 		assert build.exit_code == 0, 'target headers ${target_headers}: ${build.output}'
 		run := cmdexec.run(program, [])

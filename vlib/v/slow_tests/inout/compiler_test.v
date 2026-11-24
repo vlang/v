@@ -6,6 +6,7 @@ import os
 import rand
 import runtime
 import term
+import v.fixturetest
 import v.util.diff
 import v.util.vtest
 
@@ -177,6 +178,9 @@ fn run_inout_program(path string, vexe string, vroot string) InoutResult {
 		}
 	}
 	mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
+	$if windows {
+		found = fixturetest.slash_diagnostic_paths(found)
+	}
 	expected_path := if program.ends_with('.v3.v') {
 		program.trim_string_right('.v3.v') + '.out'
 	} else {

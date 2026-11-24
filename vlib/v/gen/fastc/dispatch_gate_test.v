@@ -160,7 +160,7 @@ fn main() {
 	os.write_file(c_path, c_source) or { panic(err) }
 	// The Windows entry is `wmain`, which V links with -municode (see fastc_c_main_name).
 	municode := $if windows { ['-municode'] } $else { []string{} }
-	build := cmdexec.run('cc', ['-std=gnu11', '-O2', ...municode, '-o', program, c_path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-O2', ...municode, '-o', program, c_path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
