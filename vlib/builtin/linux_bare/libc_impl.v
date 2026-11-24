@@ -24,10 +24,34 @@ pub fn memcpy(dest voidptr, const_src voidptr, n uint) voidptr {
 @[export: 'malloc']
 @[unsafe]
 fn __malloc(n uint) voidptr {
+	bare_heap_lock()
 	if !global_allocator_ready {
 		init_global_allocator()
 	}
-	return unsafe { global_allocator.malloc(n) }
+	result := unsafe { global_allocator.malloc(n) }
+	bare_heap_unlock()
+	return result
+}
+
+// __malloc_align returns a normal bare-heap allocation with the requested
+// power-of-two alignment. Invalid requests and unrepresentable sizes return nil.
+// dlmalloc owns the aligned block, so __free and realloc accept its base pointer.
+@[markused; unsafe]
+fn __malloc_align(size uint, alignment uint) voidptr {
+	if alignment == 0 || alignment & (alignment - 1) != 0
+		|| alignment > uint(max_int) || size > uint(max_int) - alignment {
+		return unsafe { nil }
+	}
+	if alignment <= 2 * sizeof(uint) {
+		return unsafe { __malloc(size) }
+	}
+	bare_heap_lock()
+	if !global_allocator_ready {
+		init_global_allocator()
+	}
+	result := unsafe { global_allocator.memalign(alignment, size) }
+	bare_heap_unlock()
+	return result
 }
 
 @[export: 'strlen']
@@ -50,7 +74,10 @@ fn realloc(old_area voidptr, new_size uint) voidptr {
 		unsafe { __free(old_area) }
 		return 0
 	}
-	return unsafe { global_allocator.realloc(old_area, new_size) }
+	bare_heap_lock()
+	result := unsafe { global_allocator.realloc(old_area, new_size) }
+	bare_heap_unlock()
+	return result
 }
 
 @[export: 'memset']
@@ -91,6 +118,9 @@ fn memmove(dest voidptr, const_src voidptr, n uint) voidptr {
 @[export: 'calloc']
 @[unsafe]
 fn __calloc(nmemb uint, size uint) voidptr {
+	if size != 0 && nmemb > ~uint(0) / size {
+		return unsafe { nil }
+	}
 	new_area := unsafe { __malloc(nmemb * size) }
 	if new_area != 0 {
 		unsafe { memset(new_area, 0, nmemb * size) }
@@ -124,9 +154,9 @@ fn __free(ptr voidptr) {
 	if ptr == 0 {
 		return
 	}
-	unsafe {
-		global_allocator.free_(ptr)
-	}
+	bare_heap_lock()
+	unsafe { global_allocator.free_(ptr) }
+	bare_heap_unlock()
 }
 
 fn vsprintf(str &char, format &char, ap &u8) int {
@@ -148,11 +178,6 @@ pub fn bare_print(buf &u8, len u64) {
 
 fn bare_eprint(buf &u8, len u64) {
 	sys_write(2, buf, len)
-}
-
-pub fn write(fd i64, buf &u8, count u64) i64 {
-	x, _ := sys_write(fd, buf, count)
-	return x
 }
 
 @[noreturn]

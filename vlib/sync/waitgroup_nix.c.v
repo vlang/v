@@ -2,7 +2,7 @@ module sync
 
 #flag @VEXEROOT/vlib/sync/thread_helper.o
 
-fn C.v_sync_thread_create_detached_with_stack(voidptr, voidptr, uint) int
+fn C.v_sync_thread_create_detached_with_stack(voidptr, voidptr, uint) i32
 
 fn waitgroup_thread_entry(args_ptr voidptr) voidptr {
 	args := unsafe { &WaitGroupThreadArgs(args_ptr) }

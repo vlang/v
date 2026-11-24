@@ -21,10 +21,11 @@ pub fn remainder(x f64, y f64) f64 {
 	return if signbit(x) { -r } else { r }
 }
 
-// fma returns x*y + z. The C backend overrides this with a single-rounded
-// math-library operation; other backends retain two ordinary rounded steps.
+// fma returns x*y + z with one rounding, including intermediate product overflow.
+// The C backend normally uses its math library; portable builds use exact
+// multiword arithmetic without allocating.
 pub fn fma(x f64, y f64, z f64) f64 {
-	return x * y + z
+	return fma_software(x, y, z)
 }
 
 // floor_mod returns x mod y floored toward negative infinity, so the result

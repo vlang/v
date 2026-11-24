@@ -8772,7 +8772,7 @@ fn (mut p Parser) parse_embed_file_expr(embed_start int) flat.NodeId {
 		p.embed_file_field('apath', p.add_val_id(5, apath)),
 		p.embed_file_field('len', p.add_val_id(1, len.str())),
 	]
-	if payload := p.embed_file_uncompressed_data(apath) {
+	if payload := p.embed_file_uncompressed_data(apath, embed_start) {
 		field_ids << p.embed_file_field('uncompressed', p.embed_file_payload_cast(payload, flat.source_type_id('&u8')))
 	}
 	if compression_type !in ['none', 'zlib'] {
@@ -8798,11 +8798,14 @@ fn (mut p Parser) parse_embed_file_expr(embed_start int) flat.NodeId {
 // Portable `-os cross` output cannot do that: `apath` names a directory on the machine
 // that generated the snapshot, and the snapshot is compiled and run somewhere else. That
 // is how `vc/v.c` bootstraps V, so a portable snapshot always embeds the bytes.
+// Freestanding programs have no runtime file reload either, so they always
+// carry their payloads, including in development builds.
 // A build of the compiler embeds them too. The files it embeds are the C headers that it
 // copies into every program, and its source tree changes under it: after a `git pull`,
 // the executable that has to rebuild V would otherwise generate C from the new headers.
-fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
+fn (mut p Parser) embed_file_uncompressed_data(apath string, source_start int) ?flat.NodeId {
 	mut embed := p.prefs.is_prod || p.prefs.output_cross_c || p.prefs.building_v
+		|| 'freestanding' in p.prefs.user_defines
 	if p.prefs.target.os == 'android' {
 		// An Android app cannot read the compile-time file system: `path` and
 		// `apath` name locations on the machine that compiled the program, and
@@ -8814,9 +8817,13 @@ fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
 		return none
 	}
 	if apath.len == 0 || !os.is_file(apath) {
+		p.record_diagnostic_span('cannot embed file "${apath}": not a regular file', source_start, p.prev_tok_end)
 		return none
 	}
-	bytes := os.read_bytes(apath) or { return none }
+	bytes := os.read_bytes(apath) or {
+		p.record_diagnostic_span('cannot embed file "${apath}": ${err.msg()}', source_start, p.prev_tok_end)
+		return none
+	}
 	// Flagged, so that the literal table skips it: only the embed codegen reads
 	// this node, and an interned copy would repeat the payload verbatim.
 	return p.add_node(flat.Node{

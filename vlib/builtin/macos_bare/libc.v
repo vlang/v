@@ -2,15 +2,14 @@ module builtin
 
 import dlmalloc
 
-// macOS bare libc: memory functions, allocator wiring and process exit.
-// Pure V; no libc. Threads/sync use libSystem pthread (required on macOS:
-// every process starts via dyld, which links libSystem).
+// macOS freestanding: V memory helpers, allocator wiring and process exit.
+// libSystem owns the C memory/string and POSIX I/O symbols, as well as threads.
+// macOS starts every process via dyld and requires libSystem.
 
 __global global_allocator dlmalloc.Dlmalloc
 __global global_allocator_ready bool
 
 // memcpy copies n bytes from const_src into dest and returns dest.
-@[export: 'memcpy']
 @[unsafe]
 pub fn memcpy(dest voidptr, const_src voidptr, n uint) voidptr {
 	dest_ := unsafe { &u8(dest) }
@@ -23,7 +22,6 @@ pub fn memcpy(dest voidptr, const_src voidptr, n uint) voidptr {
 	return unsafe { dest }
 }
 
-@[export: 'strlen']
 @[unsafe]
 fn strlen(const_s voidptr) uint {
 	s := unsafe { &u8(const_s) }
@@ -43,11 +41,13 @@ fn realloc(old_area voidptr, new_size uint) voidptr {
 		unsafe { __free(old_area) }
 		return 0
 	}
-	return unsafe { global_allocator.realloc(old_area, new_size) }
+	bare_heap_lock()
+	result := unsafe { global_allocator.realloc(old_area, new_size) }
+	bare_heap_unlock()
+	return result
 }
 
 // memset fills n bytes at s with c and returns s.
-@[export: 'memset']
 @[unsafe]
 pub fn memset(s voidptr, c int, n uint) voidptr {
 	mut s_ := unsafe { &char(s) }
@@ -59,7 +59,6 @@ pub fn memset(s voidptr, c int, n uint) voidptr {
 	return unsafe { s }
 }
 
-@[export: 'memmove']
 @[unsafe]
 fn memmove(dest voidptr, const_src voidptr, n uint) voidptr {
 	dest_ := unsafe { &u8(dest) }
@@ -83,6 +82,9 @@ fn memmove(dest voidptr, const_src voidptr, n uint) voidptr {
 @[export: 'calloc']
 @[unsafe]
 fn __calloc(nmemb uint, size uint) voidptr {
+	if size != 0 && nmemb > ~uint(0) / size {
+		return unsafe { nil }
+	}
 	new_area := unsafe { __malloc(nmemb * size) }
 	if new_area != 0 {
 		unsafe { memset(new_area, 0, nmemb * size) }
@@ -96,7 +98,6 @@ fn getchar() int {
 	return int(x)
 }
 
-@[export: 'memcmp']
 fn memcmp(const_a voidptr, const_b voidptr, n uint) int {
 	a_ := unsafe { &u8(const_a) }
 	b_ := unsafe { &u8(const_b) }
@@ -116,9 +117,9 @@ fn __free(ptr voidptr) {
 	if ptr == 0 {
 		return
 	}
-	unsafe {
-		global_allocator.free_(ptr)
-	}
+	bare_heap_lock()
+	unsafe { global_allocator.free_(ptr) }
+	bare_heap_unlock()
 }
 
 fn vsprintf(str &char, format &char, ap &u8) int {
@@ -138,12 +139,6 @@ fn bare_eprint(buf &u8, len u64) {
 	sys_write(2, buf, len)
 }
 
-// write writes up to count bytes to fd and returns the number written.
-pub fn write(fd i64, buf &u8, count u64) i64 {
-	x, _ := sys_write(fd, buf, count)
-	return x
-}
-
 @[noreturn]
 fn bare_panic(msg string) {
 	eprintln('V panic: ' + msg)
@@ -157,10 +152,34 @@ fn bare_backtrace() string {
 @[export: 'malloc']
 @[unsafe]
 fn __malloc(n uint) voidptr {
+	bare_heap_lock()
 	if !global_allocator_ready {
 		init_global_allocator()
 	}
-	return unsafe { global_allocator.malloc(n) }
+	result := unsafe { global_allocator.malloc(n) }
+	bare_heap_unlock()
+	return result
+}
+
+// __malloc_align returns a normal bare-heap allocation with the requested
+// power-of-two alignment. Invalid requests and unrepresentable sizes return nil.
+// dlmalloc owns the aligned block, so __free and realloc accept its base pointer.
+@[markused; unsafe]
+fn __malloc_align(size uint, alignment uint) voidptr {
+	if alignment == 0 || alignment & (alignment - 1) != 0
+		|| alignment > uint(max_int) || size > uint(max_int) - alignment {
+		return unsafe { nil }
+	}
+	if alignment <= 2 * sizeof(uint) {
+		return unsafe { __malloc(size) }
+	}
+	bare_heap_lock()
+	if !global_allocator_ready {
+		init_global_allocator()
+	}
+	result := unsafe { global_allocator.memalign(alignment, size) }
+	bare_heap_unlock()
+	return result
 }
 
 @[export: 'exit']

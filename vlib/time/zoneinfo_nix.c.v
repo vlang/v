@@ -20,6 +20,9 @@ fn local_location() !&Location {
 					}
 				}
 			}
+			$if freestanding && linux && !native && !i386 {
+				return fixed_local_location()
+			}
 		} else if tz != 'Local' {
 			return load_location(tz) or {
 				if rule := parse_posix_zone_rule(tz) {
@@ -45,12 +48,16 @@ fn local_location() !&Location {
 }
 
 fn fixed_local_location() &Location {
-	return &Location{
-		name:  'Local'
-		zones: [Zone{
-			name:   'Local'
-			offset: offset()
-		}]
+	$if freestanding && linux && !native && !i386 {
+		return load_location('UTC') or { panic(err) }
+	} $else {
+		return &Location{
+			name:  'Local'
+			zones: [Zone{
+				name:   'Local'
+				offset: offset()
+			}]
+		}
 	}
 }
 

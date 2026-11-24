@@ -9332,9 +9332,9 @@ Paths could also use the compile time pseudo variables `@VEXEROOT`,
 logo := $embed_file('@VEXEROOT/examples/assets/logo.png')
 ```
 
-The whole content of the file is embedded only in `-prod` builds (and in portable
-`-os cross` C output). A normal development build stores just the file's path and
-the file is loaded from that path *the first time* your program calls
+The whole content of the file is embedded in `-prod` and `-freestanding` builds
+and in portable `-os cross` C output. A normal hosted development build stores just the
+file's path and the file is loaded from that path *the first time* your program calls
 `embedded_file.data()` at runtime. This keeps rebuilds cheap and lets you change
 the file in an external editor without recompiling your program.
 `embedded_file.len` is the size of the file when the program was compiled, until
@@ -9347,8 +9347,9 @@ anything you distribute.
 
 Embedding a file inside your executable, will increase its size, but
 it will make it more self contained and thus easier to distribute.
-When that happens (with `-prod`), `embedded_file.data()` will cause *no IO*,
+When that happens (with `-prod` or `-freestanding`), `embedded_file.data()` will cause *no IO*,
 and it will always return the same data.
+If a build requires embedding the bytes, a missing or unreadable file is a compile-time error.
 
 With `-prod`, a large embedded file is stored through the assembler's `.incbin`
 directive: V writes the bytes to a file, assembles a small `.S` source that

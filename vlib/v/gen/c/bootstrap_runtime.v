@@ -101,7 +101,15 @@ static inline i64 v3_bench_peak_rss_kb(void) {
 '
 
 const headerless_compiler_detached_thread_helpers = r'
-#ifdef _WIN32
+#if defined(CUSTOM_DEFINE_freestanding) && defined(__linux__) && !defined(CUSTOM_DEFINE_v_bare_no_startup)
+void* v_bare_thread_create(void* (*)(void*), void*, size_t, int, int*);
+static inline int v_sync_thread_create_detached_with_stack(void* start, void* arg,
+	size_t stack_size) {
+	int error = 0;
+	v_bare_thread_create((void* (*)(void*))start, arg, stack_size, 1, &error);
+	return error;
+}
+#elif defined(_WIN32)
 #ifndef ERROR_NOT_ENOUGH_MEMORY
 #define ERROR_NOT_ENOUGH_MEMORY 8
 #endif

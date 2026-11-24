@@ -103,13 +103,19 @@ pub mut:
 	hot_fn string
 }
 
-// without_excluded returns files, minus the ones matched by a `-exclude` pattern.
+// without_excluded returns files minus explicit exclusions and hosted math
+// overrides that a Linux freestanding C build cannot link.
 pub fn (p &Preferences) without_excluded(files []string) []string {
-	if p.exclude.len == 0 {
+	pure_math := p.backend == 'c' && p.target.os == 'linux' && 'freestanding' in p.user_defines
+	if p.exclude.len == 0 && !pure_math {
 		return files
 	}
+	math_dir := if pure_math { os.join_path(p.vroot, 'vlib', 'math') } else { '' }
 	mut kept := []string{cap: files.len}
 	for file in files {
+		if pure_math && file.ends_with('.c.v') && os.dir(file) == math_dir {
+			continue
+		}
 		mut is_excluded := false
 		for pattern in p.exclude {
 			if file.match_glob(pattern) {

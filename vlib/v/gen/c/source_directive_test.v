@@ -343,6 +343,16 @@ fn test_headerless_linux_family_keeps_itimerspec_and_semaphore_declarations() {
 	}
 }
 
+fn test_linux_family_target_headers_own_itimerspec_in_freestanding_builds() {
+	for target_os in ['linux', 'android', 'termux'] {
+		mut g := posix_declaration_filter_gen(target_os, false)
+		g.set_target_libc_headers(true)
+		g.compile_defines = ['freestanding']
+		assert !g.c_directives_use_system_libc()
+		assert g.skip_builtin_struct('C.itimerspec'), target_os
+	}
+}
+
 fn test_bsd_semaphore_declarations_follow_system_headers() {
 	for target_os in ['freebsd', 'openbsd'] {
 		for system_libc in [false, true] {
@@ -671,16 +681,19 @@ fn test_target_libc_headers_own_generated_errno_declarations() ! {
 			result := os.exec(args)
 			assert result.exit_code == 0, result.output
 			generated := os.read_file(output)!
-			assert generated.contains('#include <errno.h>') == target_headers
+			// The bare runtime's native POSIX shims request platform headers too.
+			headers_own_errno := target_headers || freestanding
+			assert generated.contains('#include <errno.h>') == headers_own_errno
+			assert generated.contains('libc_posix.h') == freestanding
 			// The bare runtime owns this definition. Header ownership suppresses C
 			// binding declarations, but must not remove the V-provided implementation.
 			expected_bodies := if freestanding { 1 } else { 0 }
 			assert generated.count('i32* __errno_location(void) {') == expected_bodies
 			for name in ['__error', '__errno', '__errno_location', '___errno', '_errno', '_errnop',
 				'__get_errno_ptr'] {
-				expected := !target_headers || (freestanding && name == '__errno_location')
+				expected := !headers_own_errno || (freestanding && name == '__errno_location')
 				assert generated.contains('i32* ' + name + '(') == expected, '${freestanding}/${target_headers}: ${name}'
-				if target_headers {
+				if headers_own_errno {
 					expected_count := if expected { 1 } else { 0 }
 					assert generated.count(' ${name}(void);') == expected_count, '${freestanding}/${target_headers}: ${name}'
 				}

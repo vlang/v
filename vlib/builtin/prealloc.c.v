@@ -397,7 +397,25 @@ fn prealloc_scope_remove_block(scope &VPreallocScope, block &VMemoryBlock) {
 
 fn vmemory_abort_on_nil(p voidptr, bytes int) {
 	if unsafe { p == 0 } {
-		C.fprintf(C.stderr, c'could not allocate %td bytes\n', bytes)
+		$if freestanding {
+			// This path must not allocate or depend on libc's stdio buffers.
+			v_memory_panic = true
+			eprint('could not allocate ')
+			mut digits := [24]u8{}
+			mut position := digits.len
+			mut magnitude := if bytes < 0 { uint(0) - uint(bytes) } else { uint(bytes) }
+			for {
+				position--
+				digits[position] = u8(magnitude % 10) + `0`
+				magnitude /= 10
+				if magnitude == 0 { break }
+			}
+			if bytes < 0 { eprint('-') }
+			bare_eprint(&digits[position], u64(digits.len - position))
+			eprint(' bytes\n')
+		} $else {
+			C.fprintf(C.stderr, c'could not allocate %td bytes\n', bytes)
+		}
 		exit(1)
 	}
 }

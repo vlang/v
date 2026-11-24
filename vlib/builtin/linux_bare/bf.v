@@ -18,6 +18,8 @@ $if (freestanding || syscalls) && !i386 {
 	// which the functions below select with $if arm64.
 	$if arm64 {
 		const bf_nr_read = u64(63)
+		const bf_nr_fcntl = u64(25)
+		const bf_nr_clock_gettime = u64(113)
 		const bf_nr_write = u64(64)
 		const bf_nr_close = u64(57)
 		const bf_nr_lseek = u64(62)
@@ -43,6 +45,8 @@ $if (freestanding || syscalls) && !i386 {
 		const bf_nr_wait4 = u64(260)
 	} $else {
 		const bf_nr_read = u64(0)
+		const bf_nr_fcntl = u64(72)
+		const bf_nr_clock_gettime = u64(228)
 		const bf_nr_write = u64(1)
 		const bf_nr_close = u64(3)
 		const bf_nr_lseek = u64(8)
@@ -72,6 +76,38 @@ $if (freestanding || syscalls) && !i386 {
 	const bf_at_fdcwd = u32(4294967196) // -100 as u32, seen by the kernel register
 	const bf_at_removedir = u64(0x200) // AT_REMOVEDIR, for unlinkat on arm64
 
+	// bf_futex_wait blocks while an aligned word equals expected. timeout_ns is
+	// relative; negative values wait indefinitely. The word must remain alive
+	// until every waiter returns. The wait is process-private and may return
+	// spuriously. Publish changes with atomic accesses before waking waiters.
+	// Its normalized error is 0, EINTR(4), EAGAIN(11), ETIMEDOUT(110),
+	// or another kernel error. It does not change either errno state.
+	pub fn bf_futex_wait(word &u32, expected u32, timeout_ns i64) int {
+		mut duration := [i64(0), i64(0)]!
+		mut timeout := unsafe { nil }
+		if timeout_ns >= 0 {
+			duration[0] = timeout_ns / 1_000_000_000
+			duration[1] = timeout_ns % 1_000_000_000
+			timeout = voidptr(&duration[0])
+		}
+		rc := bf_futex_raw(word, 128, expected, timeout, unsafe { nil }, 0)
+		return if rc < 0 { int(-rc) } else { 0 }
+	}
+
+	// bf_futex_wake wakes at most count process-private waiters on an aligned
+	// word, returning the number woken and a normalized error. It does not change
+	// either errno state. Pass a positive count; the word must remain alive.
+	pub fn bf_futex_wake(word &u32, count int) (int, int) {
+		if count <= 0 || count > 0x7fffffff {
+			return -1, 22
+		}
+		rc := bf_futex_raw(word, 129, u32(count), unsafe { nil }, unsafe { nil }, 0)
+		if rc < 0 {
+			return -1, int(-rc)
+		}
+		return int(rc), 0
+	}
+
 	// The idea here is to ride linux_bare: sys_callN are this build's asm
 	// trampolines. Their errno returns in kernel form; bf_ semantics accept both
 	// so that the os routes never open the errno question again.
@@ -87,63 +123,6 @@ $if (freestanding || syscalls) && !i386 {
 	// the freestanding reading for os.last_error and the SSA errno access.
 	__global bf_last_errno_cell = int(0)
 
-	// The C-backend float formatter reaches for libc's fabs/floor/pow; carry
-	// pure forms so a bare build resolves them (same shapes the fallbacks in
-	// freestanding_math.c.v use).
-	fn bf_ln(x f64) f64 {
-		// atanh series on (0,2]
-		if x == 0 {
-			return f64(-1) / 0
-		}
-		if x < 0 {
-			return f64(0) / 0
-		}
-		mut k := x
-		mut scale := 0
-		for k >= 2 {
-			k = k / 2
-			scale++
-		}
-		for k < 0.5 {
-			k = k * 2
-			scale--
-		}
-		m := (k - 1) / (k + 1)
-		m2 := m * m
-		mut acc := m
-		mut term := m
-		for n in 1 .. 24 {
-			term *= m2
-			acc += term / f64(2 * n + 1)
-		}
-		return 2 * acc + f64(scale) * 0.6931471805599453
-	}
-
-	fn bf_exp(x f64) f64 {
-		if x < -745 {
-			return 0
-		}
-		k := int(x / 0.6931471805599453)
-		mut r := x - f64(k) * 0.6931471805599453
-		mut term := 1.0
-		mut acc := 1.0
-		for n in 1 .. 18 {
-			term *= r / f64(n)
-			acc += term
-		}
-		mut power := 1.0
-		mut kk := k
-		for kk > 0 {
-			power *= 2
-			kk--
-		}
-		for kk < 0 {
-			power = power / 2
-			kk++
-		}
-		return acc * power
-	}
-
 	pub fn bf_last_errno() int {
 		return bf_last_errno_cell
 	}
@@ -152,6 +131,14 @@ $if (freestanding || syscalls) && !i386 {
 		e := if v < 0 { int(-v) } else { 0 }
 		bf_last_errno_cell = e
 		return e
+	}
+
+	fn bf_descriptor_control(fd int, command int, value int) (int, int) {
+		return bf_split_int(sys_call3(bf_nr_fcntl, u64(fd), u64(command), u64(value)))
+	}
+
+	fn bf_clock_tai(stamp &FSysTaiTimespec) int {
+		return bf_errno_of(sys_call2(bf_nr_clock_gettime, 11, u64(stamp)))
 	}
 
 	pub fn bf_openat(path &u8, flags u64, mode u64) (int, int) {

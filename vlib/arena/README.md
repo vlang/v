@@ -97,10 +97,16 @@ or heap allocations. A handle does not initialize typed V values or keep their p
 ## Supported builds
 
 * `-gc none`: the main use case.
+* `-freestanding` with the C backend on Linux or macOS amd64/arm64. The selected
+  runtime supplies its normal heap and real thread-local arena stacks. Individual
+  frees remain no-ops for arena storage; reset/free release backing chunks through
+  that runtime's heap. Use a native TLS-capable C compiler such as Clang or GCC.
 * The default Boehm GC: arena chunks are allocated as uncollectable, but scanned memory, so
   GC objects that are only referenced from arena memory stay alive.
 * `-prealloc` and `-gc vgc` are not supported, and using `arena` with them is a compile
   time error. `-prealloc` has its own scopes (`prealloc_scope_begin()`).
+* Other freestanding targets/backends and Vinix do not yet supply the required
+  per-thread runtime. Creating a scoped arena there reports that restriction.
 
 The allocator hooks are part of builtin in every program. Until a program creates its first
 arena, they cost one atomic check per allocation and `free()`.
