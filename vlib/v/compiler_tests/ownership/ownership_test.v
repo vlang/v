@@ -4134,3 +4134,42 @@ fn main() {
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('cannot transfer `&int` as thread argument'), res.output
 }
+
+fn test_ownership_spawn_checks_explicit_generic_method_receivers() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'thread_generic_method', r'
+struct Job {
+	value int
+}
+
+fn (job Job) run[T](choice T) int {
+	assert choice == choice
+	return job.value
+}
+
+fn main() {
+	job := Job{value: 7}
+	task := spawn job.run[int](1)
+	assert task.wait() == 7
+}
+')
+	assert res.exit_code == 0, res.output
+	borrowed := run_ownership_check(v3_bin, 'thread_generic_borrowed_receiver', r'
+struct Job {
+	value int
+}
+
+fn (job &Job) run[T](choice T) int {
+	assert choice == choice
+	return job.value
+}
+
+fn main() {
+	job := Job{value: 7}
+	task := spawn job.run[int](1)
+	assert task.wait() == 7
+}
+')
+	assert borrowed.exit_code != 0, borrowed.output
+	assert borrowed.output.contains('cannot transfer `&Job` as thread receiver'), borrowed.output
+}

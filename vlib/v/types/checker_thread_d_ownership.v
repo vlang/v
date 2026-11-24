@@ -9,7 +9,11 @@ fn (tc &TypeChecker) ownership_checks_thread_boundary() bool {
 fn (mut tc TypeChecker) ownership_check_spawn_transfer(call_id flat.NodeId, call flat.Node) {
 	info := tc.resolve_call_info(call_id, call) or { return }
 	callee_id := tc.a.child(&call, 0)
-	callee := tc.a.node(callee_id)
+	mut callee := tc.a.node(callee_id)
+	if info.has_receiver && callee.kind == .index && callee.children_count > 0 {
+		// The index supplies explicit type arguments to the method selector.
+		callee = tc.a.child_node(callee, 0)
+	}
 	if info.has_receiver && callee.kind == .selector && callee.children_count > 0 {
 		receiver_id := tc.a.child(callee, 0)
 		expected := info.params[0] or { tc.resolve_type(receiver_id) }
