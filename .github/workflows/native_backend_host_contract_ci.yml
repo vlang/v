@@ -43,6 +43,8 @@ jobs:
           symlink: 'false'
       - name: Preserve original native execution and syscall regressions
         run: |
+          ./v fmt -w vlib/v/tests/freestanding_regressions_test.v vlib/v/tests/syscalls_os_test.v
+          git diff --exit-code
           ./v fmt -verify vlib/v/tests/freestanding_regressions_test.v
           ./v fmt -verify vlib/v/tests/syscalls_os_test.v
           ./v -cc gcc -silent vlib/v/tests/freestanding_regressions_test.v
