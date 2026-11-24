@@ -399,7 +399,7 @@ fn main() {
 
 An ownership build checks the arguments and result of a `spawn` or `go` call. The
 check follows fields, sum variants and container elements. A value containing a
-raw reference cannot cross a thread boundary. This also applies to values sent
+raw reference needs a scoped join. Raw references cannot be sent
 through channels with `<-` or `.try_push()`.
 
 Pass independent owned values to a worker, or use a typed channel or a `shared`
@@ -408,6 +408,27 @@ a thread boundary when its payload can do so. An interface value or function
 value with an unknown implementation or capture list needs an explicit
 `unsafe` boundary. Use `unsafe` only when you can guarantee the lifetime and
 synchronization of the data passed across the boundary.
+
+A worker can borrow a local immutable scalar when its handle is bound directly
+and the following statement is a lexical `defer` containing only that
+handle's `.wait()`. The defer joins on normal exit and on early return. Use
+the handle only in the defer. Access the borrowed scalar again after the scope
+has ended.
+
+```v okfmt
+fn read_number(number &int) {
+	assert *number == 42
+}
+
+fn main() {
+	number := 42
+	{
+		worker := spawn read_number(&number)
+		defer { worker.wait() }
+	}
+	assert number == 42
+}
+```
 
 ## Full example
 

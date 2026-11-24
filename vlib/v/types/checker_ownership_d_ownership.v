@@ -49,6 +49,8 @@ struct BorrowInfo {
 	borrower string
 	pos      flat.NodeId
 	is_mut   bool
+	// The receiver of the lexical defer that joins a borrow-carrying thread.
+	thread_join_site flat.NodeId = flat.NodeId(-1)
 }
 
 struct OwnershipBorrowConflict {
@@ -226,6 +228,7 @@ mut:
 	owned_var_types                  flat.TypeTextBindings
 	moved_vars                       map[string]MovedVar
 	borrowed_vars                    map[string][]BorrowInfo
+	scoped_thread_loans_seen        bool
 	ownership_fns                    map[string]bool
 	ownership_fn_params              map[string]bool
 	ownership_fn_returns_param       map[string][]int
@@ -5744,6 +5747,9 @@ fn (mut tc TypeChecker) ownership_consume_fn_literal_captures(node flat.Node, fn
 
 fn (mut tc TypeChecker) ownership_consume_fn_literal_capture(name string, fn_name string, pos flat.NodeId) []OwnershipCaptureBinding {
 	mut captures := []OwnershipCaptureBinding{}
+	if tc.ownership_reject_scoped_thread_access(name, pos) {
+		return captures
+	}
 	st := tc.ownership_state()
 	source_type := tc.resolve_type(pos)
 	owned_root := name in st.owned_vars || name in st.moved_vars
@@ -7527,7 +7533,7 @@ fn (mut tc TypeChecker) ownership_check_expr(id flat.NodeId) {
 		return
 	}
 	name := tc.ownership_expr_ident_name(id)
-	if name.len == 0 {
+	if name.len == 0 || tc.ownership_reject_scoped_thread_access(name, id) {
 		return
 	}
 	if moved := tc.ownership_moved_conflict(name) {
@@ -7601,6 +7607,7 @@ fn (mut tc TypeChecker) ownership_after_decl_assign(lhs_id flat.NodeId, rhs_id f
 	}
 	tc.ownership_assign_to_name(lhs_name, rhs_id, lhs_type, assign_id)
 	tc.ownership_track_fn_value_binding(lhs_name, rhs_id)
+	tc.ownership_record_scoped_thread_borrows(lhs_name, rhs_id)
 }
 
 fn (mut tc TypeChecker) ownership_after_multi_return_decl_assign(lhs_ids []flat.NodeId, rhs_id flat.NodeId, rhs_type MultiReturn, assign_id flat.NodeId) {
@@ -13564,6 +13571,15 @@ fn ownership_storage_keys_dynamic_overlap(pattern string, key string) bool {
 }
 
 fn (mut tc TypeChecker) ownership_add_borrow(var_name string, borrower string, pos flat.NodeId, is_mut bool) {
+	tc.ownership_add_borrow_info(var_name, BorrowInfo{
+		borrower: borrower
+		pos:      pos
+		is_mut:   is_mut
+	})
+}
+
+fn (mut tc TypeChecker) ownership_add_borrow_info(var_name string, info BorrowInfo) {
+	borrower, pos, is_mut := info.borrower, info.pos, info.is_mut
 	if conflict := tc.ownership_overlapping_borrow_conflict(var_name, is_mut) {
 		if is_mut {
 			msg := if conflict.borrow.is_mut {
@@ -13598,21 +13614,11 @@ fn (mut tc TypeChecker) ownership_add_borrow(var_name string, borrower string, p
 			}
 		}
 		mut updated := existing.clone()
-		updated << BorrowInfo{
-			borrower: borrower
-			pos:      pos
-			is_mut:   is_mut
-		}
+		updated << info
 		st.borrowed_vars[var_name] = updated
 		return
 	}
-	st.borrowed_vars[var_name] = [
-		BorrowInfo{
-			borrower: borrower
-			pos:      pos
-			is_mut:   is_mut
-		},
-	]
+	st.borrowed_vars[var_name] = [info]
 }
 
 fn (mut tc TypeChecker) ownership_overlapping_borrow_conflict(var_name string, is_mut bool) ?OwnershipBorrowConflict {

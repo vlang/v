@@ -6,8 +6,9 @@ fn (tc &TypeChecker) ownership_checks_thread_boundary() bool {
 	return !tc.autofree_mode && tc.unsafe_depth == 0 && !tc.ownership_effects_disabled()
 }
 
-fn (mut tc TypeChecker) ownership_check_spawn_transfer(call_id flat.NodeId, call flat.Node) {
+fn (mut tc TypeChecker) ownership_check_spawn_transfer(spawn_id flat.NodeId, call_id flat.NodeId, call flat.Node) {
 	info := tc.resolve_call_info(call_id, call) or { return }
+	join_site := tc.ownership_scoped_thread_join_site(spawn_id) or { flat.empty_node }
 	callee_id := tc.a.child(&call, 0)
 	mut callee := tc.a.node(callee_id)
 	if info.has_receiver && callee.kind == .index && callee.children_count > 0 {
@@ -17,7 +18,7 @@ fn (mut tc TypeChecker) ownership_check_spawn_transfer(call_id flat.NodeId, call
 	if info.has_receiver && callee.kind == .selector && callee.children_count > 0 {
 		receiver_id := tc.a.child(callee, 0)
 		expected := info.params[0] or { tc.resolve_type(receiver_id) }
-		tc.ownership_check_thread_argument(receiver_id, expected, info, 0, 'thread receiver')
+		tc.ownership_check_thread_argument(receiver_id, expected, info, 0, 'thread receiver', join_site)
 	} else if tc.ownership_thread_uses_function_value(callee_id) {
 		tc.record_error(.thread_transfer,
 			'cannot start a thread with a function value whose captures are unknown', callee_id)
@@ -29,7 +30,7 @@ fn (mut tc TypeChecker) ownership_check_spawn_transfer(call_id flat.NodeId, call
 			tc.ownership_call_arg_shift(call, info)
 		elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, param_idx, value_id)
 		expected := tc.ownership_call_arg_expected_type(info, param_idx, elem_idx)
-		tc.ownership_check_thread_argument(arg_id, expected, info, param_idx, 'thread argument')
+		tc.ownership_check_thread_argument(arg_id, expected, info, param_idx, 'thread argument', join_site)
 	}
 	tc.ownership_check_thread_transfer(info.return_type, callee_id, 'thread result')
 }
@@ -55,7 +56,7 @@ fn (tc &TypeChecker) ownership_thread_uses_function_value(id flat.NodeId) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected Type, info CallInfo, index int, role string) {
+fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected Type, info CallInfo, index int, role string, join_site flat.NodeId) {
 	if call_param_is_shared(info, index) && tc.expr_is_shared_arg(id) {
 		tc.ownership_check_thread_transfer(unwrap_pointer(unalias_type(expected)), id, role)
 		return
@@ -67,6 +68,9 @@ fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected
 		return
 	}
 	if unalias_type(expected) is Pointer {
+		if tc.valid_node_id(join_site) && tc.ownership_scoped_thread_source(id) != none {
+			return
+		}
 		tc.ownership_check_thread_transfer(expected, id, role)
 		return
 	}

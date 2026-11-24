@@ -4173,3 +4173,111 @@ fn main() {
 	assert borrowed.exit_code != 0, borrowed.output
 	assert borrowed.output.contains('cannot transfer `&Job` as thread receiver'), borrowed.output
 }
+
+fn test_ownership_scoped_thread_joins_before_leaving_scope() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'scoped_thread_join', r'
+fn read_value(value &int, results chan int) {
+	results <- *value
+}
+
+fn launch(results chan int, early bool) {
+	value := 42
+	{
+		worker := spawn read_value(&value, results)
+		defer { worker.wait() }
+		if early {
+			return
+		}
+	}
+	assert value == 42
+}
+
+fn main() {
+	results := chan int{cap: 2}
+	launch(results, true)
+	launch(results, false)
+	assert <-results == 42
+	assert <-results == 42
+	for i in 1 .. 3 {
+		value := i
+		worker := spawn read_value(&value, results)
+		defer { worker.wait() }
+		if i == 1 {
+			continue
+		}
+		break
+	}
+	assert <-results == 1
+	assert <-results == 2
+}
+')
+	assert res.exit_code == 0, res.output
+}
+
+fn test_ownership_scoped_thread_reserves_storage_until_join() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'scoped_thread_access', r'
+fn read_value(value &int) int {
+	return *value
+}
+
+fn main() {
+	value := 42
+	worker := spawn read_value(&value)
+	defer { worker.wait() }
+	println(value)
+	worker.wait()
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('cannot use `value` until scoped thread `worker` has joined'), res.output
+	assert res.output.contains('cannot use scoped thread handle `worker` outside its deferred wait'), res.output
+}
+
+fn test_ownership_scoped_thread_cannot_return_or_capture_the_handle() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'scoped_thread_handle_escape', r'
+fn read_value(value &int) int {
+	return *value
+}
+
+fn launch() thread int {
+	value := 42
+	worker := spawn read_value(&value)
+	defer { worker.wait() }
+	callback := fn [worker] () { worker.wait() }
+	callback()
+	return worker
+}
+
+fn main() {
+	_ := launch()
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.count('cannot use scoped thread handle `worker` outside its deferred wait') == 2, res.output
+}
+
+fn test_ownership_scoped_thread_requires_an_unconditional_lexical_join() {
+	v3_bin := ownership_build_v3()
+	for cleanup in ['defer(fn) { worker.wait() }', 'if flag { defer { worker.wait() } }'] {
+		res := run_ownership_check(v3_bin, 'scoped_thread_invalid_join', '
+fn read_value(value &int) int {
+	return *value
+}
+
+fn launch(flag bool) {
+	value := 42
+	worker := spawn read_value(&value)
+	${cleanup}
+}
+
+fn main() {
+	launch(true)
+}
+')
+		assert res.exit_code != 0, res.output
+		assert res.output.contains('cannot transfer `&int` as thread argument'), res.output
+	}
+}
