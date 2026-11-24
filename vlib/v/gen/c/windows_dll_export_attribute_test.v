@@ -39,7 +39,8 @@ pub fn answer() int {
 		'msvc': '__declspec(dllexport) int answer(void)'
 	} {
 		c_file := os.join_path(root, 'lib_${cc}.c')
-		res := cmdexec.run(@VEXE, ['-os', 'windows', '-arch', 'amd64', '-cc', cc, '-shared', '-o', c_file, source])
+		res := cmdexec.run(@VEXE, ['-os', 'windows', '-arch', 'amd64', '-cc', cc, '-shared', '-o',
+			c_file, source])
 		assert res.exit_code == 0, '${cc}: ${res.output}'
 		code := os.read_file(c_file) or { panic(err) }
 		assert code.contains(attribute), cc
