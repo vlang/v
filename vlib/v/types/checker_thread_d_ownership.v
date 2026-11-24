@@ -48,7 +48,7 @@ fn (tc &TypeChecker) ownership_thread_uses_function_value(id flat.NodeId) bool {
 			return callee.children_count > 0
 				&& tc.ownership_thread_uses_function_value(tc.a.child(callee, 0))
 		}
-		.call, .cast_expr, .if_expr, .match_stmt, .or_expr { return true }
+		.call, .cast_expr, .if_expr, .lambda_expr, .match_stmt, .or_expr { return true }
 		.selector {
 			if callee.children_count > 0 {
 				base := tc.a.child_node(callee, 0)
@@ -108,8 +108,14 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability Thre
 		Alias {
 			return tc.ownership_thread_transfer_problem(typ.base_type, capability, depth + 1, mut seen)
 		}
-		OptionType, ResultType {
+		OptionType {
 			return tc.ownership_thread_transfer_problem(typ.base_type, capability, depth + 1, mut seen)
+		}
+		ResultType {
+			if reason := tc.ownership_thread_transfer_problem(typ.base_type, capability, depth + 1, mut seen) {
+				return reason
+			}
+			return 'the result can contain an error whose type does not guarantee thread-safe implementations'
 		}
 		Array, ArrayFixed {
 			return tc.ownership_thread_transfer_problem(typ.elem_type, capability, depth + 1, mut seen)
