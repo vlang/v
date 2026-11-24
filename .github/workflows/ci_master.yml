@@ -4,9 +4,12 @@ on:
   push:
     branches: [master]
 
+# One master run at a time: a push while one runs waits, and a later push replaces the
+# waiting one, so the queue holds at most the newest commit. Each run covers every commit
+# up to its own; a run per commit (~245 jobs) outgrew the organization's runners.
 concurrency:
-  group: ci-master-${{ github.sha }}
-  cancel-in-progress: true
+  group: ci-master
+  cancel-in-progress: false
 
 permissions:
   contents: read

@@ -19536,6 +19536,13 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write(')')
 			} else if g.gen_checked_integer_cast(id, target_type, cast_arg_id, cast_arg_type, ct) {
 				return
+			} else if semantic_target is types.Struct && g.tc.c_type(cast_arg_type) == ct {
+				// The value already has the target's C type (`Alias(value)` of a C struct).
+				// C only casts to scalar types: GCC and Clang accept a struct cast to its
+				// own type as an extension, MSVC rejects it (C2440).
+				g.write('(')
+				g.gen_cast_value_operand(cast_arg_id, target_type)
+				g.write(')')
 			} else {
 				g.write('(${ct})(')
 				g.gen_cast_value_operand(cast_arg_id, target_type)

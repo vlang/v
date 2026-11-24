@@ -170,7 +170,10 @@ fn test_syscalls_is_rejected_where_it_is_not_supported() {
 	exe := os.join_path(root, 'main')
 	native := os.exec([vexe, '-nocache', '-b', 'x64', '-syscalls', '-o', exe, source])
 	assert native.exit_code != 0
-	assert native.output.contains('only supported by the C backend'), native.output
+	// The amd64 backend rejects any host but linux/amd64 before it looks at -syscalls.
+	$if linux {
+		assert native.output.contains('only supported by the C backend'), native.output
+	}
 	both := os.exec([vexe, '-nocache', '-syscalls', '-freestanding', '-o', exe, source])
 	assert both.exit_code != 0
 	assert both.output.contains('separate runtimes'), both.output
