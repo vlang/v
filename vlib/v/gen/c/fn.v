@@ -838,6 +838,26 @@ fn (g &FlatGen) needs_closure_runtime_init() bool {
 	if !g.used_fn_contains('closure.closure_init') && !g.used_fn_contains('closure__closure_init') {
 		return false
 	}
+	return g.has_closure_module()
+}
+
+// needs_closure_runtime_state reports whether the program reaches the state of the
+// closure runtime, `g_closure`, whose maps only its initializer in `_vinit` creates.
+// Every runtime entry point, `closure_init` as well as the public `closure.Lifetime`
+// API, goes through `closure_ensure_initialized`, but a program that uses lifetimes
+// without creating a closure never calls `closure_init`.
+fn (g &FlatGen) needs_closure_runtime_state() bool {
+	if g.needs_closure_runtime_init() {
+		return true
+	}
+	if !g.used_fn_contains('closure.closure_ensure_initialized')
+		&& !g.used_fn_contains('closure__closure_ensure_initialized') {
+		return false
+	}
+	return g.has_closure_module()
+}
+
+fn (g &FlatGen) has_closure_module() bool {
 	for _, module_name in g.tc.file_modules {
 		if module_name == 'closure' {
 			return true

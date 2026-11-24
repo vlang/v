@@ -189,9 +189,18 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 	}
 	// Programs that a test writes out or compiles are string literals: what they
 	// declare or call is not part of the test binary.
-	source := test_code_text(os.read_file(real_file) or { return none })
+	original := os.read_file(real_file) or { return none }
+	mut source := test_code_text(original)
+	// A `testsuite_begin` that only unsets environment variables does the same when it
+	// runs once for a whole batch of files that all have it (see test_env_cleanup_hook).
+	mut hook := ''
+	if cleanup := test_env_cleanup_hook(source, original) {
+		source = source[..cleanup.start] + ' '.repeat(cleanup.end - cleanup.start) +
+			source[cleanup.end..]
+		hook = cleanup.text
+	}
 	for marker in test_batch_excluded_markers {
-		if source.contains(marker) {
+		if source_contains_marker(source, marker) {
 			return none
 		}
 	}
@@ -215,10 +224,54 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 	// another file (`struct T` and `fn f[T]()`), which then names the type.
 	words << names.filter(it.len == 1 && it[0].is_capital())
 	return TestBatchCandidate{
-		key:    os.dir(real_file) + '\n' + module_name
+		key:    os.dir(real_file) + '\n' + module_name + if hook != '' { '\n' + hook } else { '' }
 		names:  names
 		consts: words
 		source: source
+	}
+}
+
+struct TestEnvCleanupHook {
+	start int
+	end   int
+	text  string
+}
+
+// test_env_cleanup_hook finds a `fn testsuite_begin` whose body only has lines like
+// `os.unsetenv('VFLAGS')`, in the code text `code` of the file `original`. Files with the
+// same such hook share a batch; the driver keeps the first file's hook for the binary
+// (V3_INTERNAL_BATCH_SHARED_SUITE_HOOKS), which unsets the same variables before any test.
+fn test_env_cleanup_hook(code string, original string) ?TestEnvCleanupHook {
+	head := 'fn testsuite_begin() {\n'
+	start := if code.starts_with(head) {
+		0
+	} else {
+		(code.index('\n' + head) or { return none }) + 1
+	}
+	body_start := start + head.len
+	body_end := code.index_after('\n}', body_start - 1) or { return none }
+	mut lines := []string{}
+	for line in original[body_start..body_end].split_into_lines() {
+		text := line.trim_space()
+		if text == '' {
+			continue
+		}
+		if !text.starts_with("os.unsetenv('") || !text.ends_with("')") {
+			return none
+		}
+		name := text["os.unsetenv('".len..text.len - 2]
+		if name == '' || !name.bytes().all(it.is_letter() || it.is_digit() || it == `_`) {
+			return none
+		}
+		lines << text
+	}
+	if lines.len == 0 {
+		return none
+	}
+	return TestEnvCleanupHook{
+		start: start
+		end:   body_end + 2
+		text:  lines.join('\n')
 	}
 }
 
@@ -282,6 +335,21 @@ fn test_file_const_names(source string) []string {
 		}
 	}
 	return names
+}
+
+// source_contains_marker reports whether `marker` occurs in `source` where an
+// identifier can start: `exit(` and `arguments()` are calls, while a test named
+// `test_early_exit()` or `test_literal_arguments()` only ends with the same text.
+fn source_contains_marker(source string, marker string) bool {
+	mut start := 0
+	for {
+		idx := source.index_after(marker, start) or { return false }
+		if idx == 0 || !is_test_ident_char(source[idx - 1]) {
+			return true
+		}
+		start = idx + 1
+	}
+	return false
 }
 
 // source_mentions_word reports whether `word` occurs in `source` as a whole
@@ -551,6 +619,8 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 		argv << abs_files
 		ts.append_message(.compile_begin, cmdexec.display(ts.vexe, argv), mtc)
 		mut env := map[string]string{}
+		// The files of a batch have the same cleanup hook or none (test_env_cleanup_hook).
+		env['V3_INTERNAL_BATCH_SHARED_SUITE_HOOKS'] = '1'
 		if ts.compiler_jobs > 0 && ts.compiler_jobs != runtime.nr_jobs() {
 			env['VJOBS'] = ts.compiler_jobs.str()
 		}

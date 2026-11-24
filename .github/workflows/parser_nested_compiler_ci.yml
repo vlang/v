@@ -1,0 +1,58 @@
+name: Parser nested Windows compiler regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/parser/for_in_newline_test.v'
+      - 'vlib/v/parser/struct_field_default_test.v'
+      - '.github/workflows/parser_nested_compiler_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Run original parser tests with each Windows compiler
+        shell: pwsh
+        run: |
+          gcc -dumpmachine
+          if ($LASTEXITCODE -ne 0) { throw "MinGW GCC unavailable" }
+          foreach ($test in @('vlib/v/parser/for_in_newline_test.v', 'vlib/v/parser/struct_field_default_test.v')) {
+            .\v.exe fmt -verify $test
+            if ($LASTEXITCODE -ne 0) { throw "Format verification failed" }
+            foreach ($cc in @('gcc', 'msvc', 'tcc')) {
+              .\v.exe -cc $cc -no-retry-compilation -silent $test
+              if ($LASTEXITCODE -ne 0) { throw "$cc parser regression failed: $test" }
+            }
+          }
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Preserve native Clang parser tests
+        run: |
+          ./v fmt -verify vlib/v/parser/for_in_newline_test.v
+          ./v fmt -verify vlib/v/parser/struct_field_default_test.v
+          ./v -cc clang -silent vlib/v/parser/for_in_newline_test.v
+          ./v -cc clang -silent vlib/v/parser/struct_field_default_test.v

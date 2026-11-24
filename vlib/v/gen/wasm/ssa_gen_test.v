@@ -14,6 +14,32 @@ fn ssa_wasm_test_dir(name string) string {
 	return dir
 }
 
+fn test_ssa_wasm_reserves_host_allocator_export() {
+	m, config := ssa_wasm_emit('allocator_export', '
+@[export: "__v_alloc"]
+pub fn collision(size int) int { return size }
+', false)
+	mut g := SSAGen.new(m)
+	g.configure(config.exports, config.init_fns, config.main_fn)
+	g.gen() or { panic(err) }
+	assert g.warnings_list() == [
+		'not exporting collision: export name `__v_alloc` is already in use',
+	]
+	dir := ssa_wasm_test_dir('allocator_export')
+	defer { os.rmdir_all(dir) or {} }
+	path := os.join_path(dir, 'allocator.wasm')
+	g.write(path) or { panic(err) }
+	assert_ssa_wasm_execution(path, '
+const p = e.__v_alloc(1) >>> 0;
+assert.ok(p >= 1048576);
+assert.equal(p % 16, 0);
+const q = e.__v_alloc(0) >>> 0;
+assert.equal(q, p + 16);
+assert.equal(e.__v_alloc(16) >>> 0, q);
+assert.equal(e.__v_alloc(1) >>> 0, q + 16);
+')
+}
+
 fn assert_ssa_wasm_execution(path string, checks string) {
 	bytes := os.read_bytes(path) or { panic(err) }
 	assert bytes.len > 8

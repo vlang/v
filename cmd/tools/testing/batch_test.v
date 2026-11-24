@@ -50,6 +50,28 @@ fn test_one() {}
 	assert !source_mentions_word('item := 1', 'it')
 }
 
+fn test_env_cleanup_hook_accepts_only_unsetenv_lines() {
+	cleanup := "import os\n\nfn testsuite_begin() {\n\tos.unsetenv('VFLAGS')\n\tos.unsetenv('VOSARGS')\n}\n\nfn test_a() {}\n"
+	hook := test_env_cleanup_hook(test_code_text(cleanup), cleanup) or { panic('no hook') }
+	assert hook.text == "os.unsetenv('VFLAGS')\nos.unsetenv('VOSARGS')"
+	assert cleanup[hook.start..hook.end].starts_with('fn testsuite_begin() {')
+	assert cleanup[hook.start..hook.end].ends_with('\n}')
+	for body in ["\tos.setenv('VFLAGS', '', true)", '\tos.unsetenv(name)', '\tos.mkdir_all(root) or {}',
+		''] {
+		other := 'import os\n\nfn testsuite_begin() {\n${body}\n}\n'
+		assert test_env_cleanup_hook(test_code_text(other), other) == none, body
+	}
+}
+
+fn test_excluded_markers_are_calls_not_name_endings() {
+	assert source_contains_marker('fn f() {\n\texit(1)\n}', 'exit(')
+	assert source_contains_marker('fn f() {\n\tos.exit(1)\n}', 'exit(')
+	assert source_contains_marker('println(arguments())', 'arguments()')
+	assert !source_contains_marker('fn test_defer_early_exit() {}', 'exit(')
+	assert !source_contains_marker('fn test_literal_arguments() {}', 'arguments()')
+	assert !source_contains_marker('fn test_x() {\n\tmy_os.args_len()\n}', 'os.args')
+}
+
 fn test_code_text_blanks_string_literals_but_keeps_code() {
 	source := 'fn a() {\n\tprogram := \'\nfn main() {\n\texit(1)\n}\n\'\n\tb := "x\${it.name}y"\n\tr := r\'\\\'\n\tq := `\'`\n\t// it\'s a comment\n}\nfn c() {}\n'
 	code := test_code_text(source)

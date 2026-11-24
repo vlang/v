@@ -14642,6 +14642,7 @@ pub fn run(args []string) {
 				eprintln(err.msg())
 				exit(1)
 			}
+			wasm_existed_before := os.exists(output_file)
 			g.write(output_file) or {
 				eprintln('error writing ${output_file}')
 				exit(1)
@@ -14650,6 +14651,25 @@ pub fn run(args []string) {
 				eprintln('wasm: ${warning}')
 			}
 			b.step('wasm gen')
+			if should_run {
+				runner := os.getenv_opt('V3_PRIMARY_VEXE') or {
+					os.getenv_opt('VEXE') or {
+						os.join_path(prefs.vroot, if os.user_os() == 'windows' {
+							'v.exe'
+						} else {
+							'v'
+						})
+					}
+				}
+				mut wasm_args := ['wasm', output_file]
+				wasm_args << run_args
+				status := run_binary(runner, wasm_args, false)
+				if !explicit_output && !is_crun && !keep_c && !wasm_existed_before {
+					os.rm(output_file) or {}
+				}
+				if status != 0 { exit(status) }
+				b.step('run')
+			}
 			b.print_report()
 			return
 		} $else {
@@ -18163,21 +18183,28 @@ fn prune_cache_only_function_prototypes(source string, cache_used_fns &map[strin
 	return out.str()
 }
 
+// cache_function_reference_counts counts, up to 2, the identifiers of `source` that are
+// `candidates`. It visits every byte of a C unit: bytes are read directly, and a token is
+// looked up through a view of `source`.
+@[direct_array_access]
 fn cache_function_reference_counts(source string, candidates map[string]bool) map[string]u8 {
 	mut counts := map[string]u8{}
 	mut start := -1
 	for i := 0; i <= source.len; i++ {
-		is_identifier := i < source.len && (source[i].is_alnum() || source[i] == `_`)
-		if is_identifier {
-			if start < 0 {
-				start = i
+		if i < source.len {
+			c := source[i]
+			if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
+				|| c == `_` {
+				if start < 0 {
+					start = i
+				}
+				continue
 			}
-			continue
 		}
 		if start < 0 {
 			continue
 		}
-		token := unsafe { source[start..i] }
+		token := unsafe { tos(source.str + start, i - start) }
 		if candidates[token] && counts[token] < 2 {
 			counts[token]++
 		}
@@ -21725,6 +21752,8 @@ fn collect_test_harness_decl_ids(a &flat.FlatAst, node &flat.Node, mut ids []fla
 // own: files of one module may each declare `fn test_main()`. A later file's test
 // function of a name that an earlier file of its module already declared is
 // renamed. A batch that fails runs again file by file, under the original names.
+// With V3_INTERNAL_BATCH_SHARED_SUITE_HOOKS=1 (set by the runner, whose batches then
+// share one environment-only `testsuite_begin`), later copies of that hook are renamed too.
 fn rename_colliding_batch_test_fns(mut a flat.FlatAst, test_files []string) {
 	mut selected := map[string]bool{}
 	for file in test_files {
@@ -21732,6 +21761,7 @@ fn rename_colliding_batch_test_fns(mut a flat.FlatAst, test_files []string) {
 	}
 	mut seen := map[string]bool{}
 	mut file_number := 0
+	shared_suite_hooks := os.getenv('V3_INTERNAL_BATCH_SHARED_SUITE_HOOKS') == '1'
 	for file_idx in a.user_code_start .. a.nodes.len {
 		file_node := a.nodes[file_idx]
 		if !is_user_test_file_node(a, file_idx, file_node, selected) {
@@ -21747,6 +21777,17 @@ fn rename_colliding_batch_test_fns(mut a flat.FlatAst, test_files []string) {
 		collect_test_harness_decl_ids(a, &file_node, mut decl_ids)
 		for id in decl_ids {
 			name := a.nodes[int(id)].value
+			if name == 'testsuite_begin' && shared_suite_hooks {
+				// The runner batches files only with the same `testsuite_begin`, which only
+				// unsets environment variables: the first file's runs for the whole binary.
+				key := '${module_name}.${name}'
+				if key in seen {
+					a.nodes[int(id)].value = 'batch_shared_testsuite_begin_${file_number}'
+				} else {
+					seen[key] = true
+				}
+				continue
+			}
 			if !name.starts_with('test_') || name.contains('.')
 				|| test_harness_fn_param_count(a, &a.nodes[int(id)]) != 0 {
 				continue
