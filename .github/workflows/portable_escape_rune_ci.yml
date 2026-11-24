@@ -1,9 +1,14 @@
-name: Portable escape rune code generation
+name: Portable MSVC constant initialization
 
 on:
   pull_request:
     paths:
       - 'vlib/v/gen/c/cleanc.v'
+      - 'vlib/v/tests/options/option_generic_param_test.v'
+      - 'vlib/v/tests/comptime/comptime_value_d_default_test.v'
+      - 'vlib/v/gen/c/msvc_const_init_test.v'
+      - 'vlib/v/gen/c/msvc_compat_test.v'
+      - 'vlib/v/gen/c/msvc_compat.v'
       - 'vlib/v/tests/consts/const_control_char_rune_test.v'
       - '.github/workflows/portable_escape_rune_ci.yml'
   workflow_dispatch:
@@ -37,6 +42,17 @@ jobs:
             .\v.exe -cc $cc -no-retry-compilation -silent vlib/v/tests/consts/const_control_char_rune_test.v
             if ($LASTEXITCODE -ne 0) { throw "$cc escape rune regression failed" }
           }
+      - name: Verify the original MSVC constant initialization regressions
+        shell: pwsh
+        run: |
+          .\v.exe -cc msvc -no-retry-compilation -silent -w vlib/v/tests/options/option_generic_param_test.v
+          if ($LASTEXITCODE -ne 0) { throw "MSVC option constant regression failed" }
+          .\v.exe -cc msvc -no-retry-compilation -silent vlib/v/tests/comptime/comptime_value_d_default_test.v
+          if ($LASTEXITCODE -ne 0) { throw "MSVC comptime string constant regression failed" }
+          .\v.exe -cc msvc -silent vlib/v/gen/c/msvc_const_init_test.v
+          if ($LASTEXITCODE -ne 0) { throw "MSVC generated C constant regression failed" }
+          .\v.exe -cc msvc -silent vlib/v/gen/c/msvc_compat_test.v
+          if ($LASTEXITCODE -ne 0) { throw "MSVC compatibility rewrite regression failed" }
   linux:
     runs-on: ubuntu-24.04
     steps:
@@ -54,3 +70,11 @@ jobs:
           ./v fmt -verify vlib/v/gen/c/cleanc.v vlib/v/tests/consts/const_control_char_rune_test.v
           ./v -cc gcc -silent vlib/v/tests/consts/const_control_char_rune_test.v
           ./v -cc clang -silent vlib/v/tests/consts/const_control_char_rune_test.v
+          ./v -cc gcc -silent vlib/v/tests/options/option_generic_param_test.v
+          ./v -cc clang -silent vlib/v/tests/options/option_generic_param_test.v
+          ./v -cc gcc -silent vlib/v/tests/comptime/comptime_value_d_default_test.v
+          ./v -cc clang -silent vlib/v/tests/comptime/comptime_value_d_default_test.v
+          ./v -cc gcc -silent vlib/v/gen/c/msvc_const_init_test.v
+          ./v -cc clang -silent vlib/v/gen/c/msvc_const_init_test.v
+          ./v -cc gcc -silent vlib/v/gen/c/msvc_compat_test.v
+          ./v -cc clang -silent vlib/v/gen/c/msvc_compat_test.v
