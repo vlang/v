@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'vlib/v/tests/create_dll/**'
+      - 'vlib/v/gen/c/fn.v'
+      - 'vlib/v/gen/c/exported_symbol_attribute_test.v'
       - '.github/workflows/windows_dll_argv_ci.yml'
   workflow_dispatch:
 
@@ -31,11 +33,27 @@ jobs:
         run: |
           .\v.exe fmt -verify vlib/v/tests/create_dll/create_win_dll_test.v
           if ($LASTEXITCODE -ne 0) { throw "Format verification failed" }
+          .\v.exe fmt -verify vlib/v/gen/c/fn.v vlib/v/gen/c/exported_symbol_attribute_test.v
+          if ($LASTEXITCODE -ne 0) { throw "Compiler format verification failed" }
+          .\v.exe -cc gcc -silent vlib/v/gen/c/exported_symbol_attribute_test.v
+          if ($LASTEXITCODE -ne 0) { throw "Export attribute regression failed" }
           foreach ($cc in @('gcc', 'msvc', 'tcc')) {
             Write-Host "Running original DLL test with $cc"
             .\v.exe -cc $cc -no-retry-compilation -silent vlib/v/tests/create_dll/create_win_dll_test.v
             if ($LASTEXITCODE -ne 0) { throw "$cc DLL regression failed" }
             Write-Host "$cc DLL regression passed"
+            $exports = dumpbin /exports "vlib/v/tests/create_dll/create_win_${cc}64.dll"
+            if ($LASTEXITCODE -ne 0 -or -not ($exports -match '\bTatltuae\s*
+          }
+      - name: Inspect DLL export tables after a failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem vlib/v/tests/create_dll -Filter 'create_win_*.dll' | ForEach-Object {
+            Write-Host "Exports from $($_.FullName)"
+            dumpbin /exports $_.FullName
+          }
+)) { throw "$cc DLL missing Tatltuae export" }
           }
       - name: Inspect DLL export tables after a failure
         if: failure()
