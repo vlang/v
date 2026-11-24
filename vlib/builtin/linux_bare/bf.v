@@ -43,6 +43,11 @@ $if (freestanding || syscalls) && !i386 {
 		const bf_nr_clone = u64(220) // arm64 has no fork: clone(SIGCHLD, 0, 0, 0, 0)
 		const bf_nr_execve = u64(221)
 		const bf_nr_wait4 = u64(260)
+		const bf_nr_pipe2 = u64(59)
+		const bf_nr_dup3 = u64(24)
+		const bf_nr_kill = u64(129)
+		const bf_nr_setpgid = u64(154)
+		const bf_nr_exit_group = u64(94)
 	} $else {
 		const bf_nr_read = u64(0)
 		const bf_nr_fcntl = u64(72)
@@ -71,6 +76,11 @@ $if (freestanding || syscalls) && !i386 {
 		const bf_nr_fork = u64(57)
 		const bf_nr_execve = u64(59)
 		const bf_nr_wait4 = u64(61)
+		const bf_nr_pipe2 = u64(293)
+		const bf_nr_dup3 = u64(292)
+		const bf_nr_kill = u64(62)
+		const bf_nr_setpgid = u64(109)
+		const bf_nr_exit_group = u64(231)
 	}
 
 	const bf_at_fdcwd = u32(4294967196) // -100 as u32, seen by the kernel register
@@ -111,6 +121,7 @@ $if (freestanding || syscalls) && !i386 {
 	// The idea here is to ride linux_bare: sys_callN are this build's asm
 	// trampolines. Their errno returns in kernel form; bf_ semantics accept both
 	// so that the os routes never open the errno question again.
+	@[no_profile; no_trace]
 	fn bf_split_int(rc u64) (int, int) {
 		v := i64(rc)
 		if v < 0 {
@@ -126,6 +137,7 @@ $if (freestanding || syscalls) && !i386 {
 	pub fn bf_last_errno() int {
 		return bf_last_errno_cell
 	}
+	@[no_profile; no_trace]
 	fn bf_errno_of(rc u64) int {
 		v := i64(rc)
 		e := if v < 0 { int(-v) } else { 0 }
@@ -133,6 +145,7 @@ $if (freestanding || syscalls) && !i386 {
 		return e
 	}
 
+	@[no_profile; no_trace]
 	fn bf_descriptor_control(fd int, command int, value int) (int, int) {
 		return bf_split_int(sys_call3(bf_nr_fcntl, u64(fd), u64(command), u64(value)))
 	}
@@ -141,6 +154,7 @@ $if (freestanding || syscalls) && !i386 {
 		return bf_errno_of(sys_call2(bf_nr_clock_gettime, 11, u64(stamp)))
 	}
 
+	@[no_profile; no_trace]
 	pub fn bf_openat(path &u8, flags u64, mode u64) (int, int) {
 		rc := sys_call4(bf_nr_openat, u64(bf_at_fdcwd), u64(path), flags, mode)
 		return bf_split_int(rc)
@@ -167,6 +181,7 @@ $if (freestanding || syscalls) && !i386 {
 		}
 	}
 
+	@[no_profile; no_trace]
 	pub fn bf_write(fd int, buf &u8, count int) (int, int) {
 		for {
 			nw, e := bf_split_int(sys_call3(bf_nr_write, u64(fd), u64(buf), u64(count)))
@@ -177,6 +192,7 @@ $if (freestanding || syscalls) && !i386 {
 		}
 	}
 
+	@[no_profile; no_trace]
 	pub fn bf_close(fd int) int {
 		return bf_errno_of(sys_call1(bf_nr_close, u64(fd)))
 	}
@@ -195,6 +211,7 @@ $if (freestanding || syscalls) && !i386 {
 		return bf_split_int(rc)
 	}
 
+	@[no_profile; no_trace]
 	pub fn bf_chdir(path string) int {
 		return bf_errno_of(sys_call1(bf_nr_chdir, u64(path.str)))
 	}
@@ -286,6 +303,7 @@ $if (freestanding || syscalls) && !i386 {
 		return sys_getpid()
 	}
 
+	@[no_profile; no_trace]
 	pub fn bf_gettid() u64 {
 		return sys_call0(bf_nr_thr_self)
 	}
@@ -312,24 +330,111 @@ $if (freestanding || syscalls) && !i386 {
 	// bf_fork forks the process: the child's pid in the parent, 0 in the child,
 	// -1 with the errno cell set on failure.
 	pub fn bf_fork() int {
+		pid, err := bf_fork_result()
+		if err != 0 {
+			bf_last_errno_cell = err
+			return -1
+		}
+		return pid
+	}
+
+	// bf_fork_result forks without sharing its error through the errno cell.
+	// It returns the child pid in the parent, zero in the child, or (-1, errno).
+	@[no_profile; no_trace]
+	pub fn bf_fork_result() (int, int) {
 		$if arm64 {
-			return bf_ret_int(sys_call5(bf_nr_clone, 17, 0, 0, 0, 0)) // SIGCHLD
+			return bf_split_int(sys_call5(bf_nr_clone, 17, 0, 0, 0, 0)) // SIGCHLD
 		} $else {
-			return bf_ret_int(sys_call0(bf_nr_fork))
+			return bf_split_int(sys_call0(bf_nr_fork))
 		}
 	}
 
 	// bf_execve replaces the process image; it only returns on failure (-1).
 	pub fn bf_execve(path &char, argv voidptr, envp voidptr) int {
-		return bf_ret_int(sys_call3(bf_nr_execve, u64(path), u64(argv), u64(envp)))
+		result, err := bf_execve_result(path, argv, envp)
+		if err != 0 {
+			bf_last_errno_cell = err
+			return -1
+		}
+		return result
+	}
+
+	// bf_execve_result replaces the process image, returning (-1, errno) only
+	// on failure. argv and envp must point to NUL-terminated pointer vectors.
+	@[no_profile; no_trace]
+	pub fn bf_execve_result(path &char, argv voidptr, envp voidptr) (int, int) {
+		return bf_split_int(sys_call3(bf_nr_execve, u64(path), u64(argv), u64(envp)))
 	}
 
 	// bf_wait4 waits for child `pid`, storing its wait status and, when `rusage`
 	// is not nil, its resource usage. `options` takes the Linux W* values, passed
 	// through unchanged as the libc wait4 of a hosted build does.
 	pub fn bf_wait4(pid int, status &int, options int, rusage voidptr) int {
-		return bf_ret_int(sys_call4(bf_nr_wait4, u64(i64(pid)), u64(status), u64(i64(options)),
-			u64(rusage)))
+		// The kernel writes a C int, while the public V status remains a V int.
+		mut kernel_status := i32(0)
+		result, err := bf_wait4_result(pid, &kernel_status, options, rusage)
+		if err != 0 {
+			bf_last_errno_cell = err
+			return -1
+		}
+		if result > 0 && status != unsafe { nil } {
+			unsafe { *status = int(kernel_status) }
+		}
+		return result
+	}
+
+	// bf_wait4_result waits with exact 32-bit kernel status storage and returns
+	// (pid, errno). WNOHANG may return (0, 0). It does not change the errno cell.
+	@[no_profile; no_trace]
+	pub fn bf_wait4_result(pid int, status &i32, options int, rusage voidptr) (int, int) {
+		return bf_split_int(sys_call4(bf_nr_wait4, u64(i64(pid)), u64(status),
+			u64(i64(options)), u64(rusage)))
+	}
+
+	// bf_pipe_cloexec creates a pipe in two C-int slots with CLOEXEC set atomically.
+	// It returns zero or a normalized errno without changing the errno cell.
+	pub fn bf_pipe_cloexec(fds &i32) int {
+		_, err := bf_split_int(sys_call2(bf_nr_pipe2, u64(fds), 0x80000))
+		return err
+	}
+
+	// bf_dup_cloexec duplicates fd into the lowest free descriptor >= minimum.
+	// The new descriptor has CLOEXEC set atomically; errors are returned directly.
+	pub fn bf_dup_cloexec(fd int, minimum int) (int, int) {
+		return bf_descriptor_control_retry(fd, 1030, minimum) // F_DUPFD_CLOEXEC
+	}
+
+	// bf_dup2 duplicates oldfd to newfd, clearing CLOEXEC unless both are equal.
+	// It returns zero or errno; equal descriptors are still checked for validity.
+	@[no_profile; no_trace]
+	pub fn bf_dup2(oldfd int, newfd int) int {
+		if oldfd == newfd {
+			_, err := bf_descriptor_control_retry(oldfd, 1, 0) // F_GETFD
+			return err
+		}
+		_, err := bf_split_int(sys_call3(bf_nr_dup3, u64(oldfd), u64(newfd), 0))
+		return err
+	}
+
+	// bf_setpgid changes the process group and returns zero or a normalized errno.
+	@[no_profile; no_trace]
+	pub fn bf_setpgid(pid int, pgid int) int {
+		_, err := bf_split_int(sys_call2(bf_nr_setpgid, u64(i64(pid)), u64(i64(pgid))))
+		return err
+	}
+
+	// bf_kill sends a signal to a process or group and returns zero or errno.
+	@[no_profile; no_trace]
+	pub fn bf_kill(pid int, signal int) int {
+		_, err := bf_split_int(sys_call2(bf_nr_kill, u64(i64(pid)), u64(signal)))
+		return err
+	}
+
+	// bf_exit terminates immediately, without running allocator or exit callbacks.
+	@[no_profile; no_trace; noreturn]
+	pub fn bf_exit(status int) {
+		sys_call1(bf_nr_exit_group, u64(i64(status)))
+		for {}
 	}
 
 	// bf_uname fills the linux utsname layout: six NUL-gapped char fields of
@@ -503,7 +608,7 @@ $if (freestanding || syscalls) && !i386 {
 					break
 				}
 			}
-			if eq == key.len && eq >= 0 {
+			if eq == key.len && eq > 0 {
 				mut ok := true
 				for k in 0 .. key.len {
 					if unsafe { entry[k] } != u8(key[k]) {
@@ -557,7 +662,7 @@ $if (freestanding || syscalls) && !i386 {
 					break
 				}
 			}
-			if eq > 0 && (n - (eq + 1)) > 0 {
+			if eq > 0 {
 				key_part := unsafe { tos(entry, eq) }
 				val := unsafe { tos(entry + eq + 1, n - (eq + 1)) }
 				res[key_part.clone()] = val.clone()

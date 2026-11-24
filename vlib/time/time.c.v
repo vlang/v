@@ -96,7 +96,7 @@ fn time_fields_to_unix(t Time) i64 {
 // the natural choice for second-resolution caches, timeouts and TTL checks.
 // Linux freestanding uses the realtime clock syscall.
 pub fn unix_now() i64 {
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		sec, _ := bare_realtime_parts()
 		return sec
 	} $else {
@@ -108,7 +108,7 @@ pub fn unix_now() i64 {
 // On Windows ticks returns the number of milliseconds elapsed since system start.
 // Its 64-bit uptime counter does not wrap after 49.7 days.
 pub fn ticks() i64 {
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		sec, nanos := bare_realtime_parts()
 		return sec * 1000 + i64(nanos / 1_000_000)
 	} $else $if windows {

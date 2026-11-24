@@ -1,7 +1,7 @@
 @[has_globals]
 module closure
 
-$if (!freestanding || macos) && !vinix {
+$if (!freestanding || (macos && !amd64)) && !vinix {
 	@[typedef]
 	struct C.pthread_mutex_t {}
 
@@ -32,7 +32,9 @@ fn closure_alloc_platform() &u8 {
 		if isnil(p) {
 			panic('closure: could not map executable page storage')
 		}
-	} $else $if freestanding && macos && (amd64 || arm64) {
+	} $else $if freestanding && macos && amd64 {
+		p = closure_bare_map_static_templates()
+	} $else $if freestanding && macos && arm64 {
 		p = unsafe { &u8(C.v_closure_map_static_templates(uint(g_closure.v_page_size))) }
 		if isnil(p) {
 			panic('closure: could not map signed trampoline templates')
@@ -91,7 +93,13 @@ fn get_page_size_platform() int {
 		if page_size <= 0 || page_size > 65536 || (page_size & (page_size - 1)) != 0 {
 			panic('closure: unsupported kernel page size')
 		}
-	} $else $if !freestanding || macos {
+	} $else $if freestanding && macos && amd64 {
+		size, code := bf_page_size()
+		if code != 0 || size == 0 || size > 16384 || (size & (size - 1)) != 0 {
+			panic('closure: unsupported kernel page size')
+		}
+		page_size = int(size)
+	} $else $if !freestanding || (macos && !amd64) {
 		page_size = unsafe { int(C.sysconf(C._SC_PAGESIZE)) }
 		$if freestanding {
 			if page_size <= 0 { panic('closure: could not determine kernel page size') }
@@ -104,9 +112,9 @@ fn get_page_size_platform() int {
 
 @[inline]
 fn closure_mtx_lock_init_platform() {
-	$if freestanding && linux && !native && (amd64 || arm64) {
+	$if freestanding && ((linux && !native && (amd64 || arm64)) || (macos && amd64)) {
 		closure_bare_lock_init()
-	} $else $if !freestanding || macos || vinix {
+	} $else $if !freestanding || (macos && !amd64) || vinix {
 		C.pthread_mutex_init(closure_mtx_ptr_platform(), 0)
 	}
 }
@@ -119,18 +127,18 @@ fn closure_mtx_lock_platform() {
 		// hiding races between them, and reused closure slots would look like races.
 		racedisable()
 	}
-	$if freestanding && linux && !native && (amd64 || arm64) {
+	$if freestanding && ((linux && !native && (amd64 || arm64)) || (macos && amd64)) {
 		closure_bare_lock()
-	} $else $if !freestanding || macos || vinix {
+	} $else $if !freestanding || (macos && !amd64) || vinix {
 		C.pthread_mutex_lock(closure_mtx_ptr_platform())
 	}
 }
 
 @[inline]
 fn closure_mtx_unlock_platform() {
-	$if freestanding && linux && !native && (amd64 || arm64) {
+	$if freestanding && ((linux && !native && (amd64 || arm64)) || (macos && amd64)) {
 		closure_bare_unlock()
-	} $else $if !freestanding || macos || vinix {
+	} $else $if !freestanding || (macos && !amd64) || vinix {
 		C.pthread_mutex_unlock(closure_mtx_ptr_platform())
 	}
 	$if race ? {
@@ -140,9 +148,9 @@ fn closure_mtx_unlock_platform() {
 
 @[inline]
 fn closure_current_thread_id_platform() u64 {
-	$if freestanding && linux && !native && (amd64 || arm64) {
+	$if freestanding && ((linux && !native && (amd64 || arm64)) || (macos && amd64)) {
 		return bf_gettid()
-	} $else $if !freestanding || macos {
+	} $else $if !freestanding || (macos && !amd64) {
 		return u64(C.pthread_self())
 	}
 	return u64(0)
@@ -150,7 +158,7 @@ fn closure_current_thread_id_platform() u64 {
 
 @[inline]
 fn closure_init_once_platform() {
-	$if freestanding && linux && !native && (amd64 || arm64) {
+	$if freestanding && ((linux && !native && (amd64 || arm64)) || (macos && amd64)) {
 		closure_bare_init_once()
 	} $else $if (freestanding && !macos) || vinix {
 		if isnil(g_closure.closure_ptr) {

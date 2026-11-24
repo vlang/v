@@ -163,7 +163,7 @@ fn main() {
 		executable, source])
 	assert compiled.exit_code == 0, compiled.output
 	assert cached_export_objects(cache).len > 0, 'no cached export module in ${cache}'
-	signature := '__attribute__((naked)) void naked_probe(void) {'
+	signature := '__attribute__((naked)) void (naked_probe)(void) {'
 	mut inspected := false
 	for path in os.walk_ext(root, '.c', hidden: true) {
 		c_source := os.read_file(path)!

@@ -23,7 +23,7 @@ pub fn answer() int {
 	return 42
 }
 ') or { panic(err) }
-	dllexport := '__declspec(dllexport) int answer(void)'
+	dllexport := '__declspec(dllexport) int (answer)(void)'
 	for cc in ['tcc', 'gcc', 'msvc'] {
 		c_file := os.join_path(root, 'lib_${cc}.c')
 		res := cmdexec.run(@VEXE, ['-os', 'windows', '-arch', 'amd64', '-cc', cc, '-shared', '-o',

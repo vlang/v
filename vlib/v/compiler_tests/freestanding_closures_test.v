@@ -22,6 +22,30 @@ fn test_freestanding_captured_functions_pool_lifetimes_and_context_cancel() ! {
 	}
 }
 
+fn test_macos_amd64_freestanding_closure_pages_enforce_write_and_execute_permissions() ! {
+	$if macos && amd64 {
+		work := os.join_path(os.vtmp_dir(), 'freestanding_closure_protection_${os.getpid()}')
+		os.mkdir_all(work)!
+		defer { os.rmdir_all(work) or {} }
+		source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_closures')
+		for probe in ['closure_write_code', 'closure_execute_metadata'] {
+			program := os.join_path(work, probe)
+			compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding',
+				'-gc', 'none', '-enable-globals', '-d', probe, '-o', program, source])
+			assert compiled.exit_code == 0, compiled.output
+			code, output := run_freestanding_closure_probe(program, [])
+			assert output.contains(if probe == 'closure_write_code' {
+				'closure code write probe reached'
+			} else {
+				'closure metadata execute probe reached'
+			}), output
+			// Darwin reports denied memory access as SIGBUS or SIGSEGV. Exit93
+			// means the forbidden access succeeded and is explicitly rejected.
+			assert code in [-10, -11, 138, 139], '${probe}: ${code}: ${output}'
+		}
+	}
+}
+
 fn test_macos_immutable_closure_templates_link_from_multiple_c_translation_units() ! {
 	$if macos && (amd64 || arm64) {
 		work := os.join_path(os.vtmp_dir(), 'freestanding_closure_tables_${os.getpid()}')
@@ -38,6 +62,56 @@ fn test_macos_immutable_closure_templates_link_from_multiple_c_translation_units
 			result := os.exec([program])
 			assert result.exit_code == 0, result.output
 			assert result.output.trim_space() == 'Mach closure tables from multiple translation units passed'
+		}
+	}
+}
+
+fn test_macos_amd64_raw_signed_closure_tables_without_dynamic_libraries() ! {
+	$if macos && amd64 {
+		work := os.join_path(os.vtmp_dir(), 'freestanding_closure_raw_tables_${os.getpid()}')
+		os.mkdir_all(work)!
+		defer { os.rmdir_all(work) or {} }
+		fixtures := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata')
+		for optimization in ['-O0', '-O2'] {
+			for probe in ['', 'PROBE_WRITE_CODE', 'PROBE_EXEC_METADATA'] {
+				program := os.join_path(work, 'tables')
+				mut command := ['cc', '-arch', 'x86_64', optimization, '-std=c11', '-ffreestanding',
+					'-fno-builtin', '-fno-stack-protector', '-nostdlib', '-static', '-Wl,-e,_start',
+					'-Wl,-no_pie', '-Wall', '-Wextra', '-Werror', '-I',
+					os.join_path(@VEXEROOT, 'vlib', 'builtin', 'closure')]
+				if probe != '' { command << '-D${probe}' }
+				command << [
+					os.join_path(fixtures, 'macos_kernel_services', 'kernel_services_oracle.c'),
+					os.join_path(fixtures, 'freestanding_closures', 'table_a.c'),
+					os.join_path(fixtures, 'freestanding_closures', 'table_b.c'),
+					os.join_path(fixtures, 'freestanding_closures', 'raw_tables.c'),
+					os.join_path(fixtures, 'macos_kernel_services', 'standalone.c'),
+					os.join_path(fixtures, 'macos_kernel_services', 'standalone.s'),
+					'-o',
+					program,
+				]
+				compiled := os.exec(command)
+				assert compiled.exit_code == 0, compiled.output
+				loads := os.exec(['otool', '-l', program])
+				assert loads.exit_code == 0, loads.output
+				for dependency in ['LC_LOAD_DYLIB', 'LC_LOAD_WEAK_DYLIB', 'LC_REEXPORT_DYLIB',
+					'LC_LOAD_UPWARD_DYLIB', 'LC_LAZY_LOAD_DYLIB'] {
+					assert !loads.output.contains('cmd ${dependency}'), loads.output
+				}
+				undefined := os.exec(['nm', '-u', program])
+				assert undefined.exit_code == 0 && undefined.output.trim_space() == '', undefined.output
+				code, output := run_freestanding_closure_probe(program, [])
+				if probe == '' {
+					assert code == 0, '${optimization}: ${code}: ${output}'
+				} else {
+					assert output.contains(if probe == 'PROBE_WRITE_CODE' {
+						'closure code write probe reached'
+					} else {
+						'closure metadata execute probe reached'
+					}), output
+					assert code in [-10, -11, 138, 139], '${probe}: ${code}: ${output}'
+				}
+			}
 		}
 	}
 }

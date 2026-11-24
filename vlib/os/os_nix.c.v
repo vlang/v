@@ -471,8 +471,10 @@ pub fn exec(args []string) Result {
 		}
 	}
 	mut cargs := []&char{cap: args.len + 1}
-	for arg in args {
-		cargs << &char(arg.str)
+	// Borrow the caller's strings until capture_start consumes argv. Under
+	// autofree, a foreach value is a temporary clone released each iteration.
+	for i in 0 .. args.len {
+		cargs << &char(args[i].str)
 	}
 	cargs << &char(unsafe { nil })
 	$if freestanding || syscalls {

@@ -1,4 +1,4 @@
-// vtest build: false // TODO: it sometimes blocks, investigate why
+// vtest build: amd64 || arm64
 import context
 import time
 

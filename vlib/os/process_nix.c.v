@@ -110,9 +110,19 @@ fn (p &Process) unix_prepare_spawn() UnixSpawnPlan {
 
 // unix_child_write writes an already built message to the child's stderr.
 // It is used between fork() and execve(), so it must not allocate.
+@[manualfree; no_profile; no_trace]
 fn unix_child_write(s string) {
 	if s.len > 0 {
-		unsafe { C.write(2, s.str, uint(s.len)) }
+		unix_child_write_bytes(s.str, s.len)
+	}
+}
+
+@[manualfree; no_profile; no_trace]
+fn unix_child_write_bytes(data &u8, count int) {
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		fsys_process_write_error(data, count)
+	} $else {
+		unsafe { C.write(2, data, uint(count)) }
 	}
 }
 
@@ -126,9 +136,14 @@ fn unix_child_write(s string) {
 // number instead; the C library's text for it is one `errno 13` lookup away,
 // and a terse message is much better than a child that hangs while producing a
 // nicer one.
-@[direct_array_access]
+@[manualfree; no_profile; no_trace]
 fn unix_child_report_errno(prefix string) {
-	code := C.errno
+	unix_child_report_code(prefix, C.errno)
+}
+
+// unix_child_report_code formats only into stack storage after fork.
+@[direct_array_access; manualfree; no_profile; no_trace]
+fn unix_child_report_code(prefix string, code int) {
 	unix_child_write(prefix)
 	mut buf := [32]u8{}
 	mut n := 0
@@ -155,7 +170,7 @@ fn unix_child_report_errno(prefix string) {
 	}
 	buf[n] = `\n`
 	n++
-	unsafe { C.write(2, &buf[0], uint(n)) }
+	unix_child_write_bytes(&buf[0], n)
 }
 
 // unix_try_posix_spawn starts the child with posix_spawn and returns its pid, or -1 when the
@@ -251,6 +266,14 @@ fn unix_process_pipe(fds &i32) i32 {
 }
 
 fn (mut p Process) unix_spawn_process(start_stopped bool) int {
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		return p.fsys_spawn_process(start_stopped)
+	} $else {
+		return p.unix_spawn_process_libc(start_stopped)
+	}
+}
+
+fn (mut p Process) unix_spawn_process_libc(start_stopped bool) int {
 	// Each `C.pipe` writes two C `int` file descriptors; back them with `i32` so the
 	// buffer matches the C ABI (a V `[6]int` is six 64-bit slots now that `int` is
 	// 64-bit, so `pipe` would write out of bounds). The fds convert back to `int`
@@ -280,7 +303,9 @@ fn (mut p Process) unix_spawn_process(start_stopped bool) int {
 	$if linux {
 		// Only hosted Linux has the posix_spawn object (see unix_try_posix_spawn, which
 		// is -1 everywhere else); other targets do not make the call at all.
-		pid = p.unix_try_posix_spawn(plan, pipeset)
+		if !start_stopped {
+			pid = p.unix_try_posix_spawn(plan, pipeset)
+		}
 	}
 	if pid < 0 {
 		pid = fork()
@@ -385,23 +410,43 @@ fn (mut p Process) unix_spawn_process(start_stopped bool) int {
 }
 
 fn (mut p Process) unix_stop_process() {
-	C.kill(p.pid, C.SIGSTOP)
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		p.fsys_process_signal($if macos { 17 } $else { 19 }, false)
+	} $else {
+		C.kill(p.pid, C.SIGSTOP)
+	}
 }
 
 fn (mut p Process) unix_resume_process() {
-	C.kill(p.pid, C.SIGCONT)
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		p.fsys_process_signal($if macos { 19 } $else { 18 }, false)
+	} $else {
+		C.kill(p.pid, C.SIGCONT)
+	}
 }
 
 fn (mut p Process) unix_term_process() {
-	C.kill(p.pid, C.SIGTERM)
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		p.fsys_process_signal(15, false)
+	} $else {
+		C.kill(p.pid, C.SIGTERM)
+	}
 }
 
 fn (mut p Process) unix_kill_process() {
-	C.kill(p.pid, C.SIGKILL)
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		p.fsys_process_signal(9, false)
+	} $else {
+		C.kill(p.pid, C.SIGKILL)
+	}
 }
 
 fn (mut p Process) unix_kill_pgroup() {
-	C.kill(-p.pid, C.SIGKILL)
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		p.fsys_process_signal(9, true)
+	} $else {
+		C.kill(-p.pid, C.SIGKILL)
+	}
 }
 
 fn (mut p Process) unix_wait() {
@@ -432,10 +477,22 @@ pub fn (mut p Process) run_stopped() ! {
 }
 
 fn (mut p Process) unix_is_alive() bool {
-	return p.impl_check_pid_status(true, C.WNOHANG)
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		return p.impl_check_pid_status(true, 1) // WNOHANG on Linux and Darwin
+	} $else {
+		return p.impl_check_pid_status(true, C.WNOHANG)
+	}
 }
 
 fn (mut p Process) impl_check_pid_status(exit_early_on_ret0 bool, waitpid_options int) bool {
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		return p.fsys_check_pid_status(exit_early_on_ret0, waitpid_options)
+	} $else {
+		return p.impl_check_pid_status_libc(exit_early_on_ret0, waitpid_options)
+	}
+}
+
+fn (mut p Process) impl_check_pid_status_libc(exit_early_on_ret0 bool, waitpid_options int) bool {
 	// waitpid(2) stores a C int. An i32 status matches both the builtin
 	// declaration and a program's own `fn C.waitpid(i32, &i32, i32) i32`.
 	mut cstatus := i32(0)

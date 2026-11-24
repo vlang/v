@@ -8099,6 +8099,16 @@ module in the module search path. That is the same trust that `v install` alread
 places in a module you chose to install, but it is worth knowing before running a
 name you did not install yourself.
 
+### Call tracing
+
+Use `v -trace-calls run file.v` to print function entries to standard error.
+`-trace-fns 'main.*'` restricts tracing to matching functions or modules.
+Mark a function or method with `@[no_trace]` to omit its entry even when explicitly selected.
+The attribute takes no arguments and does not change tracing of its callees, profiling, or coverage.
+Low-level functions called by the tracing runtime must also exclude tracing to avoid recursion.
+The runtime suppresses recursive entries while formatting its own output on targets with native
+thread-local support, and preserves native errno across trace output, including write failures.
+
 ### Profiling
 
 V has good support for profiling your programs: `v -profile profile.txt run file.v`.
@@ -8115,8 +8125,15 @@ The compiler supports profiling with its C backend. Other backends reject
 - `-profile-no-inline` omits functions marked `@[inline]` from the report.
 - `-d no_profile_startup` excludes calls made during module initialization.
 
-Use the selection options together with `-profile`. The generated profile file
-has lines with 5 columns:
+Use the selection options together with `-profile`.
+
+Mark a function or method with `@[no_profile]` to omit its profiling instrumentation.
+This also applies when `-profile-fns` names the function explicitly. Its callees retain their
+normal profiling behavior: the attribute is not transitive. Low-level clock helpers used by the
+profiler must all carry this attribute to avoid recursively reading the profiling clock.
+The attribute takes no arguments and has no effect when profiling is disabled.
+
+The generated profile file has lines with 5 columns:
 
 1. How many times a function was called.
 2. How much time in total a function took (in ms).
@@ -11632,6 +11649,12 @@ fn foo() {
 }
 ```
 
+When the same module declares a matching `C.` function, the C backend uses that declaration
+for the export wrapper's ABI. A declaration in the exported V function's source file takes
+precedence over declarations in other files, regardless of declaration order. Otherwise the
+first matching declaration in that module is used. This lets an export state its exact native
+ABI beside its implementation while other files retain broader C-call declarations.
+
 The same `@[export]` attribute exposes a `__global` variable from a shared library,
 including builds that hide other symbols by default.
 
@@ -12023,6 +12046,11 @@ explicitly with `%k`, `%w` and related modifiers.
 The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
 does not support this form of inline assembly on 64-bit targets, and individual instructions or
 constraints can still depend on the selected C compiler and target architecture.
+
+With the C backend, an `@[_naked]` function owns its complete machine ABI in inline
+assembly, including its prologue, epilogue, and return register. Such a function can return
+an integer or pointer through assembly without a V `return` statement. Clang requires a naked
+body to contain only assembly; ordinary V functions still require a V return path.
 
 When V builds a binary with `-cc msvc`, it stops with an error at the first inline assembly block
 that the program uses. Guard such a block with `$if !msvc`.

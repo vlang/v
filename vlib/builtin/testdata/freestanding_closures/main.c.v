@@ -120,7 +120,7 @@ fn main() {
 		check_linux_permissions(callback)
 	}
 	$if macos {
-		require_closure(C.v_closure_test_permissions(unsafe { voidptr(callback) }) == 1)
+		check_macos_permissions(callback)
 		for i, byte in closure.closure_thunk {
 			require_closure(unsafe { &u8(voidptr(callback))[i] } == byte)
 		}

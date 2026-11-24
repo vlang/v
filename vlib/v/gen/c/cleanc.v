@@ -4824,6 +4824,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	} else {
 		g.forward_decls()
 	}
+	// Raw reports call ordinary V helpers. Their prototypes must precede the
+	// report body, while counters and TLS still precede the instrumented bodies.
+	if g.profile_uses_v_report() { g.gen_profile_support() }
 	if g.parallel_support_decls.len > 0 {
 		g.sb.write_string(g.parallel_support_decls)
 		unsafe { g.parallel_support_decls.free() }
@@ -5113,7 +5116,7 @@ fn (mut g FlatGen) gen_global_declaration_block() {
 	g.test_failure_helpers()
 	g.global_decls()
 	g.emit_cache_const_init_declarations()
-	g.gen_profile_support()
+	if !g.profile_uses_v_report() { g.gen_profile_support() }
 	g.emit_coverage_support()
 	// Objective-C implementation files commonly use complete V structs in their
 	// function signatures and bodies. Their framework imports are lifted above
@@ -5264,7 +5267,9 @@ fn (mut g FlatGen) gen_vinit() {
 	for mod in startup_modules {
 		g.emit_runtime_inits_for_module(mod, mut emitted_const, mut emitted_runtime)
 		if init_fn := init_fns[mod] {
-			g.writeln('\t${init_fn}();')
+			g.write('\t')
+			g.write_macro_safe_v_function_name(init_fn)
+			g.writeln('();')
 		}
 	}
 	g.emit_remaining_runtime_inits(mut emitted_const, mut emitted_runtime)
@@ -5293,7 +5298,9 @@ fn (mut g FlatGen) gen_vcleanup() {
 	g.gen_trace_call('_vcleanup', '', '_vcleanup')
 	cleanup_fns := g.ordered_module_cleanup_fns()
 	for i := cleanup_fns.len - 1; i >= 0; i-- {
-		g.writeln('\t${cleanup_fns[i]}();')
+		g.write('\t')
+		g.write_macro_safe_v_function_name(cleanup_fns[i])
+		g.writeln('();')
 	}
 	g.writeln('}')
 	g.writeln('')
@@ -21439,9 +21446,10 @@ fn (mut g FlatGen) headerless_execinfo_declarations() {
 	g.writeln('#endif')
 }
 
-fn (g &FlatGen) uses_linux_bare_threads() bool {
+fn (g &FlatGen) uses_bare_threads() bool {
 	return 'freestanding' in g.compile_defines && 'v_bare_no_startup' !in g.compile_defines
-		&& g.target.os == 'linux' && g.target.arch in ['amd64', 'arm64']
+		&& ((g.target.os == 'linux' && g.target.arch in ['amd64', 'arm64'])
+			|| (g.target.os in ['macos', 'darwin'] && g.target.arch == 'amd64'))
 }
 
 fn (g &FlatGen) unsupported_freestanding_threads() bool {
@@ -21459,9 +21467,9 @@ fn (mut g FlatGen) unsupported_freestanding_thread_runtime() {
 	g.thread_signal_stack_runtime()
 }
 
-// linux_bare_thread_runtime connects V's thread lowering to its own raw-clone
-// runtime. The runtime owns mappings and TLS; no pthread ABI is impersonated.
-fn (mut g FlatGen) linux_bare_thread_runtime() {
+// bare_thread_runtime connects V's thread lowering to the selected kernel runtime.
+// The runtime owns mappings and TLS; no pthread ABI is impersonated.
+fn (mut g FlatGen) bare_thread_runtime() {
 	g.writeln('typedef struct { void* handle; } __v_thread;')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
 	g.writeln('void* v_bare_thread_create(__v_thread_start_fn, void*, size_t, int, int*);')
@@ -21481,8 +21489,8 @@ fn (mut g FlatGen) linux_bare_thread_runtime() {
 }
 
 fn (mut g FlatGen) system_libc_preamble() {
-	if g.uses_linux_bare_threads() {
-		g.linux_bare_thread_runtime()
+	if g.uses_bare_threads() {
+		g.bare_thread_runtime()
 		return
 	}
 	if g.unsupported_freestanding_threads() {
@@ -21875,8 +21883,8 @@ fn (mut g FlatGen) target_libc_thread_runtime() {
 		g.unsupported_freestanding_thread_runtime()
 		return
 	}
-	if g.uses_linux_bare_threads() {
-		g.linux_bare_thread_runtime()
+	if g.uses_bare_threads() {
+		g.bare_thread_runtime()
 		return
 	}
 	if g.target.os == 'vinix' {
@@ -22343,8 +22351,8 @@ fn (mut g FlatGen) headerless_thread_runtime() {
 		g.unsupported_freestanding_thread_runtime()
 		return
 	}
-	if g.uses_linux_bare_threads() {
-		g.linux_bare_thread_runtime()
+	if g.uses_bare_threads() {
+		g.bare_thread_runtime()
 		return
 	}
 	// Both thread runtimes below allocate their contexts through these helpers.
@@ -25856,7 +25864,12 @@ fn (g &FlatGen) global_is_thread_local(name string) bool {
 	}
 	return name.contains('__anon_fn_') || g.is_builtin_autostr_addr_state(name)
 		|| g.is_builtin_panic_state(name) || g.is_builtin_arena_top(name)
-		|| g.is_builtin_errno_state(name)
+		|| g.is_builtin_errno_state(name) || g.is_trace_hook_state(name)
+}
+
+fn (g &FlatGen) is_trace_hook_state(name string) bool {
+	return (name == 'g_trace_in_hook' || name.ends_with('.g_trace_in_hook'))
+		&& (g.global_modules[name] or { '' }) == g.trace_runtime_module_name()
 }
 
 fn (g &FlatGen) is_builtin_errno_state(name string) bool {

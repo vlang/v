@@ -34,8 +34,19 @@ fn test_detached_spawn_error_uses_v_allocator_free() ! {
 	runtime := generated.split_into_lines().filter(it.starts_with('static DWORD WINAPI __v_windows_detached_thread_start')).first()
 	assert runtime.contains('__v_thread_free(raw_context)'), runtime
 	assert runtime.contains('__v_thread_free(result)'), runtime
-	allocator_free := generated.all_after('void v_free(void* ptr) {').all_before('\nu64')
-	assert allocator_free.contains('_aligned_free(ptr)'), allocator_free
+	allocator_free := detached_cleanup_function_body(generated, 'v_free')
+	assert allocator_free.contains('free_impl(ptr, true)'), allocator_free
+	manual_free := detached_cleanup_function_body(generated, 'free_impl')
+	assert manual_free.contains('_aligned_free(ptr)'), manual_free
+}
+
+fn detached_cleanup_function_body(generated string, name string) string {
+	for line in generated.split_into_lines() {
+		if line.contains('${name}(') && line.ends_with(' {') {
+			return generated.all_after(line).all_before('\n}')
+		}
+	}
+	panic('missing generated function ${name}')
 }
 
 fn test_detached_spawn_nested_error_cleanup_compiles_as_c11() ! {

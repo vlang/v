@@ -104,9 +104,9 @@ pub mut:
 }
 
 // without_excluded returns files minus explicit exclusions and hosted math
-// overrides that a Linux freestanding C build cannot link.
+// overrides that a syscall-only freestanding C build cannot link.
 pub fn (p &Preferences) without_excluded(files []string) []string {
-	pure_math := p.backend == 'c' && p.target.os == 'linux' && 'freestanding' in p.user_defines
+	pure_math := p.backend == 'c' && (p.target.os == 'linux' || (p.target.os == 'macos' && p.target.arch == 'amd64')) && 'freestanding' in p.user_defines
 	if p.exclude.len == 0 && !pure_math {
 		return files
 	}

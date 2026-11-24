@@ -24,7 +24,6 @@ struct CauseContext {
 	deadline time.Time
 mut:
 	cancel_ctx CancelContext
-	cause      IError = none
 }
 
 // with_cancel_cause behaves like with_cancel but returns a CancelCauseFunc
@@ -49,14 +48,7 @@ pub fn with_cancel_cause(mut parent Context) (Context, CancelCauseFunc) {
 	}
 	propagate_cancel(mut parent, mut ctx)
 	cancel_fn := fn [mut ctx] (cause IError) {
-		if cause !is none {
-			ctx.cancel_ctx.mutex.lock()
-			if ctx.cause is none {
-				ctx.cause = cause
-			}
-			ctx.cancel_ctx.mutex.unlock()
-		}
-		ctx.cancel_ctx.cancel(true, canceled)
+		ctx.cancel_with_cause(true, canceled, cause)
 	}
 	return Context(ctx), CancelCauseFunc(cancel_fn)
 }
@@ -81,26 +73,17 @@ pub fn with_deadline_cause(mut parent Context, d time.Time, deadline_cause IErro
 	dur := d - time.now()
 	if dur.nanoseconds() <= 0 {
 		// deadline already passed
-		ctx.cause = deadline_cause
-		ctx.cancel_ctx.cancel(false, deadline_exceeded)
+		ctx.cancel_with_cause(true, deadline_exceeded, deadline_cause)
 		cancel_fn := fn [mut ctx] () {
-			ctx.cancel_ctx.cancel(true, canceled)
+			ctx.cancel_with_cause(true, canceled, canceled)
 		}
 		return Context(ctx), CancelFn(cancel_fn)
 	}
-	spawn fn (mut ctx CauseContext, dur time.Duration, deadline_cause IError) {
-		time.sleep(dur)
-		ctx.cancel_ctx.mutex.lock()
-		// Only record deadline cause if the context wasn't already canceled,
-		// so that the first cancellation's cause (manual or from parent) wins.
-		if ctx.cancel_ctx.err is none {
-			ctx.cause = deadline_cause
-		}
-		ctx.cancel_ctx.mutex.unlock()
-		ctx.cancel_ctx.cancel(true, deadline_exceeded)
-	}(mut ctx, dur, deadline_cause)
+	if ctx.err() is none {
+		start_deadline_wait(ctx, dur, deadline_cause)
+	}
 	cancel_fn := fn [mut ctx] () {
-		ctx.cancel_ctx.cancel(true, canceled)
+		ctx.cancel_with_cause(true, canceled, canceled)
 	}
 	return Context(ctx), CancelFn(cancel_fn)
 }
@@ -112,20 +95,18 @@ pub fn with_timeout_cause(mut parent Context, timeout time.Duration, deadline_ca
 }
 
 // cause returns the cause of the context's cancellation.
-// If ctx was canceled via CancelCauseFunc with a non-none cause, that cause is
-// returned. Otherwise, cause returns ctx.err() (i.e. canceled or
-// deadline_exceeded).
+// The first cancellation determines the cause. Children inherit a parent's
+// cause unless they were canceled first. Canceling without an explicit cause
+// records canceled or deadline_exceeded. A context not yet canceled returns none.
 pub fn cause(ctx Context) IError {
 	mut mctx := ctx
-	if val := mctx.value(cause_context_key) {
+	if val := mctx.value(cancel_context_key) {
 		match val {
-			CauseContext {
-				val.cancel_ctx.mutex.lock()
+			CancelContext {
+				val.mutex.lock()
 				c := val.cause
-				val.cancel_ctx.mutex.unlock()
-				if c !is none {
-					return c
-				}
+				val.mutex.unlock()
+				return c
 			}
 			else {}
 		}
@@ -170,33 +151,11 @@ pub fn (ctx &CauseContext) str() string {
 // cancel cancels the context. If remove_from_parent is true, it also removes
 // this context from its parent's children list. The err is recorded as the cause.
 pub fn (mut ctx CauseContext) cancel(remove_from_parent bool, err IError) {
-	// If being canceled with the generic 'context canceled' error and we
-	// have a parent, propagate the parent's cause so children can retrieve it.
-	// We walk the value chain directly instead of calling cause(): cause()
-	// would fall through to err() on a parent CancelContext, which would
-	// deadlock here because this cancel is typically invoked from within a
-	// parent's cancel() while that parent's mutex is held. The cause field
-	// on a CauseContext is always assigned before its cancel propagates, so
-	// reading it without locking is safe along this downward path.
-	if err.str() == 'context canceled' {
-		match ctx.cancel_ctx.context {
-			EmptyContext {}
-			else {
-				mut parent := ctx.cancel_ctx.context
-				if val := parent.value(cause_context_key) {
-					match val {
-						CauseContext {
-							if val.cause !is none {
-								ctx.cause = val.cause
-							}
-						}
-						else {}
-					}
-				}
-			}
-		}
-	}
-	ctx.cancel_ctx.cancel(false, err)
+	ctx.cancel_with_cause(remove_from_parent, err, err)
+}
+
+fn (mut ctx CauseContext) cancel_with_cause(remove_from_parent bool, err IError, cancellation_cause IError) {
+	ctx.cancel_ctx.cancel_with_cause(false, err, cancellation_cause)
 	if remove_from_parent {
 		mut cc := &ctx.cancel_ctx.context
 		remove_child(mut cc, ctx)

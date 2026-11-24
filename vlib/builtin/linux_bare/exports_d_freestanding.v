@@ -17,7 +17,8 @@ $if freestanding && !i386 {
 	@[export: 'fabs']
 	@[markused]
 	fn bf_fabs(x f64) f64 {
-		return math.abs(x)
+		// Clear the sign of every IEEE value without changing a NaN payload.
+		return math.copysign(x, 1)
 	}
 
 	@[export: 'floor']

@@ -13,7 +13,7 @@
 #define V_THREAD_STACK_SIZE 0
 #endif
 
-#if defined(CUSTOM_DEFINE_freestanding) && defined(__linux__) && !defined(CUSTOM_DEFINE_v_bare_no_startup)
+#if defined(CUSTOM_DEFINE_freestanding) && (defined(__linux__) || (defined(__APPLE__) && defined(__x86_64__))) && !defined(CUSTOM_DEFINE_v_bare_no_startup)
 /* Both V spawn and detached sync timers use the canonical bare runtime. */
 void *v_bare_thread_create(void *(*)(void *), void *, size_t, int, int *);
 V_SYNC_THREAD_SCOPE int v_sync_thread_create_detached_with_stack(void *start, void *arg, size_t stack_size) {

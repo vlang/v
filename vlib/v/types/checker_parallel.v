@@ -5072,7 +5072,8 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 		// return: `T` is no `void`.
 		return_type_is_open_generic := generic_params.len > 0
 			&& tc.fn_context.return_type is Unknown && type_id_names_any(node.typ, generic_params)
-		if has_body
+		// A naked function supplies its ABI return in assembly.
+		if has_body && !tc.declaration_has_attribute(flat.NodeId(fn_idx), '_naked')
 			&& (tc.fn_context.return_type !is Unknown || return_type_is_open_generic)
 			&& !type_allows_implicit_return(tc.fn_context.return_type)
 			&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub

@@ -20,7 +20,7 @@ fn local_location() !&Location {
 					}
 				}
 			}
-			$if freestanding && linux && !native && !i386 {
+			$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 				return fixed_local_location()
 			}
 		} else if tz != 'Local' {
@@ -48,7 +48,7 @@ fn local_location() !&Location {
 }
 
 fn fixed_local_location() &Location {
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		return load_location('UTC') or { panic(err) }
 	} $else {
 		return &Location{

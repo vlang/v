@@ -103,3 +103,28 @@ fn test_private_typedef_c_struct_names_keep_the_typedef_name() {
 	})
 	assert tc.c_type(typedef_type) == '_Foo'
 }
+
+fn test_tagged_c_unions_keep_the_union_keyword() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	for name in ['C.__ReplyUnion__demo_subsystem', 'C.payload', 'C.payload_s'] {
+		id := flat.source_type_id(name)
+		tc.unions[id] = true
+		typ := Type(Struct{ name_id: id })
+		assert tc.c_type(typ) == 'union ${name[2..]}'
+		assert tc.c_type(Type(Pointer{ base_type: &typ })) == 'union ${name[2..]}*'
+		// Exercise the cached representation as well as the first lookup.
+		assert tc.c_type(typ) == 'union ${name[2..]}'
+	}
+}
+
+fn test_typedef_c_unions_keep_the_typedef_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	id := flat.source_type_id('C.__ReplyAlias_t')
+	tc.unions[id] = true
+	tc.c_typedef_structs[id] = true
+	typ := Type(Struct{ name_id: id })
+	assert tc.c_type(typ) == '__ReplyAlias_t'
+	assert tc.c_type(Type(Pointer{ base_type: &typ })) == '__ReplyAlias_t*'
+}

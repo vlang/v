@@ -4807,7 +4807,7 @@ fn (mut tc TypeChecker) check_valid_call_preamble(id flat.NodeId, node flat.Node
 }
 
 // call_callee_indexes_container reports whether a call's `x[i]` callee indexes an
-// array or map value. Such a call invokes the function stored at `i`, so the
+// array, map, or raw pointer value. Such a call invokes the function stored at `i`, so the
 // brackets are an index and not explicit generic type arguments.
 fn (mut tc TypeChecker) call_callee_indexes_container(callee &flat.Node) bool {
 	if callee.children_count == 0 || callee.value == 'range' {
@@ -4819,8 +4819,8 @@ fn (mut tc TypeChecker) call_callee_indexes_container(callee &flat.Node) bool {
 		// A bare generic function name such as `apply` in `apply[int](v)`.
 		return false
 	}
-	base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(base_id))
-	return base_type is Array || base_type is ArrayFixed || base_type is Map
+	base_type := unalias_type(tc.resolve_type(base_id))
+	return base_type is Pointer || base_type is Array || base_type is ArrayFixed || base_type is Map
 }
 
 // check_call validates check call state for types.
@@ -20267,8 +20267,8 @@ fn (tc &TypeChecker) call_callee_index_is_value(index flat.Node) bool {
 	if index.kind != .index || index.children_count == 0 || index.value == 'range' {
 		return false
 	}
-	base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&index, 0)))
-	return base_type is Array || base_type is ArrayFixed || base_type is Map || base_type is String
+	base_type := unalias_type(tc.resolve_type(tc.a.child(&index, 0)))
+	return base_type is Pointer || base_type is Array || base_type is ArrayFixed || base_type is Map || base_type is String
 }
 
 fn generic_variadic_elem_param_text(param_id u32) u32 {

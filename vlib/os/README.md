@@ -14,6 +14,14 @@ application data.
 On Windows, `os.environ()` walks UTF-16 environment entries without losing non-ASCII names or
 values. If the operating system cannot provide an environment block, it returns an empty map.
 
+With the C backend, freestanding Linux AMD64/ARM64 and macOS AMD64 support live
+`setenv`, `unsetenv`, `clearenv`, `getenv_opt` and `environ` operations without libc.
+Empty inherited values remain distinct from absent variables. Updates use process-owned
+storage, even inside a scoped arena; getter results and environment maps belong to the
+caller's allocator and survive later updates. These syscall-only environment operations are
+serialized across V threads. Ignored or unchanged updates do not allocate, and a failed
+allocation leaves the old value intact. macOS ARM64 uses libSystem's environment services.
+
 ### Console input
 
 `os.get_raw_stdin()` reads to EOF and returns all input bytes, including newlines and NUL bytes.
@@ -239,6 +247,15 @@ Repeated waits preserve the exit status already collected by `wait()` or `is_ali
 On Unix, `process.run_stopped()` waits for the child to stop before executing its program.
 Call `process.signal_continue()` after completing any parent-side setup.
 
+The C backend supports `Process` with `-freestanding` and `-syscalls` on Linux
+AMD64/ARM64 and macOS AMD64. Executable lookup, arguments, and environment vectors
+are prepared before `fork`; the child uses typed syscalls without allocating.
+Pipe and fork failures set `status` to `.aborted`, `pid` and `code` to `-1`, and
+record the error in `err`. Child setup or exec failures exit with code 1 and
+report a numeric errno on the child's stderr. Closing a Process releases its
+pipe descriptors; call `wait()` to collect a child that was successfully forked.
+macOS ARM64 continues to use its libSystem Process implementation.
+
 On Windows, `Result.exit_code` and `Process.code` interpret the child's 32-bit exit
 status as a signed value: `0x80000000` becomes `-2147483648` and `0xFFFFFFFF` becomes
 `-1`. Check `Process.status` to distinguish a completed child returning `-1` from
@@ -434,10 +451,13 @@ emulated with `waitid` and fills only the approximate times in `rusage`.
 New files created by `create`, `write_file`, or `write_bytes` use mode `0666`, filtered by the
 process umask. Writing an existing file preserves its permission bits.
 
-Two purity notes: `real_path` makes a path absolute and resolves `.` and `..` lexically,
-without chasing symbolic links (there is no `realpath` syscall); and `setenv`/`unsetenv`
-return -1, because the startup environment snapshot in the kernel is immutable and a
-freestanding process has no saved envp block to rewrite. Operations that need libc (for
+`real_path` resolves components and symbolic links in filesystem order, using the
+freestanding stat/readlink surface without requiring procfs. As in hosted POSIX builds,
+it returns a copy of the original input when resolution fails (including missing files,
+non-directory components, and symlink loops). macOS ARM64 retains its libSystem resolver.
+
+`setenv`/`unsetenv` return -1, because the startup environment snapshot in the kernel is immutable
+and a freestanding process has no saved envp block to rewrite. Operations that need libc (for
 example `system`, `exec`, `mmap`, threads) pull libc symbols at link time, which
 `-nostdlib` then reports as missing-symbol errors; A freestanding build stops supporting
 such functions when they are used.

@@ -1,6 +1,6 @@
 module sync
 
-$if linux && !native && !i386 {
+$if (linux || (macos && amd64)) && !native && !i386 {
 	fn C.atomic_load_u32(voidptr) u32
 	fn C.atomic_store_u32(voidptr, u32)
 	fn C.atomic_compare_exchange_strong_u32(voidptr, voidptr, u32) bool
@@ -9,7 +9,7 @@ $if linux && !native && !i386 {
 	fn C.atomic_fetch_sub_u32(voidptr, u32) u32
 
 	// Zero-value locks and semaphores are usable. A contended operation parks
-	// through a process-private kernel futex; no pthread object is constructed.
+	// through a private kernel futex or ULock; no pthread object is constructed.
 	@[heap]
 	pub struct Mutex {
 	mut:
@@ -37,17 +37,31 @@ $if linux && !native && !i386 {
 		waiters u32
 	}
 
-	fn futex_wait_word(word &u32, expected u32) {
-		code := bf_futex_wait(word, expected, -1)
+	fn wait_word_error(word &u32, expected u32, timeout i64) int {
+		$if macos {
+			// XNU's ULock copyin may fail on an untouched anonymous page.
+			// The atomic predicate read also avoids parking after a state change.
+			if C.atomic_load_u32(word) != expected { return 11 }
+			return bf_wait_u32(word, expected, timeout)
+		} $else {
+			return bf_futex_wait(word, expected, timeout)
+		}
+	}
+
+	fn wait_word(word &u32, expected u32) {
+		code := wait_word_error(word, expected, -1)
 		if code !in [0, 4, 11] { // success, interrupted, value changed
 			cpanic(code)
 		}
 	}
 
-	fn futex_wake_word(word &u32, count int) {
-		_, code := bf_futex_wake(word, count)
-		if code != 0 {
-			cpanic(code)
+	fn wake_word(word &u32, count int) {
+		$if macos {
+			code := bf_wake_u32(word, count > 1)
+			if code != 0 { cpanic(code) }
+		} $else {
+			_, code := bf_futex_wake(word, count)
+			if code != 0 { cpanic(code) }
 		}
 	}
 
@@ -67,7 +81,7 @@ $if linux && !native && !i386 {
 			return
 		}
 		for C.atomic_exchange_u32(&m.state, 2) != 0 {
-			futex_wait_word(&m.state, 2)
+			wait_word(&m.state, 2)
 		}
 	}
 
@@ -80,7 +94,7 @@ $if linux && !native && !i386 {
 	// unlock releases the mutex and wakes a waiter when it was contended.
 	pub fn (mut m Mutex) unlock() {
 		if C.atomic_exchange_u32(&m.state, 0) == 2 {
-			futex_wake_word(&m.state, 1)
+			wake_word(&m.state, 1)
 		}
 	}
 
@@ -114,7 +128,7 @@ $if linux && !native && !i386 {
 			m.waiting_readers++
 			for m.writer || m.waiting_writers != 0 {
 				m.gate.unlock()
-				futex_wait_word(&m.read_blocked, 1)
+				wait_word(&m.read_blocked, 1)
 				m.gate.lock()
 			}
 			m.waiting_readers--
@@ -137,7 +151,7 @@ $if linux && !native && !i386 {
 		C.atomic_store_u32(&m.read_blocked, 1)
 		for m.writer || m.readers != 0 {
 			m.gate.unlock()
-			futex_wait_word(&m.write_blocked, 1)
+			wait_word(&m.write_blocked, 1)
 			m.gate.lock()
 		}
 		m.waiting_writers--
@@ -191,7 +205,7 @@ $if linux && !native && !i386 {
 		}
 		m.gate.unlock()
 		if wake_writer {
-			futex_wake_word(&m.write_blocked, 1)
+			wake_word(&m.write_blocked, 1)
 		}
 	}
 
@@ -211,9 +225,9 @@ $if linux && !native && !i386 {
 		}
 		m.gate.unlock()
 		if wake_writer {
-			futex_wake_word(&m.write_blocked, 1)
+			wake_word(&m.write_blocked, 1)
 		} else if wake_readers {
-			futex_wake_word(&m.read_blocked, 0x7fffffff)
+			wake_word(&m.read_blocked, 0x7fffffff)
 		}
 	}
 
@@ -258,7 +272,7 @@ $if linux && !native && !i386 {
 		// Each post may release a different waiter even when an earlier permit
 		// has not been consumed yet. Waking only on 0 -> 1 loses those wakeups.
 		if C.atomic_load_u32(&sem.waiters) != 0 {
-			futex_wake_word(&sem.count, 1)
+			wake_word(&sem.count, 1)
 		}
 	}
 
@@ -281,7 +295,7 @@ $if linux && !native && !i386 {
 		C.atomic_fetch_add_u32(&sem.waiters, 1)
 		defer { C.atomic_fetch_sub_u32(&sem.waiters, 1) }
 		for !sem.try_wait() {
-			futex_wait_word(&sem.count, 0)
+			wait_word(&sem.count, 0)
 		}
 	}
 
@@ -305,7 +319,7 @@ $if linux && !native && !i386 {
 			if elapsed >= timeout {
 				return false
 			}
-			code := bf_futex_wait(&sem.count, 0, timeout - elapsed)
+			code := wait_word_error(&sem.count, 0, timeout - elapsed)
 			if code == 110 {
 				return false
 			}

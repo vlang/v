@@ -67,7 +67,8 @@ const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
 // the bf_* layer and the kernel syscall layer. The rest of a bare directory provides
 // libc symbols (libc_impl, libc, exports) or the freestanding entry point, which a
 // libc-linked build must not carry.
-const syscalls_bare_file_names = ['bf.v', 'syscalls.v', 'linux_syscalls.v', 'linux_syscalls.i386.v']
+const syscalls_bare_file_names = ['bf.v', 'syscalls.v', 'linux_syscalls.v', 'linux_syscalls.i386.v',
+	'kernel_services.c.v', 'kernel_services_abi.c.v', 'kernel_services_impl.c.v']
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
@@ -4407,10 +4408,14 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	if '-Wno-int-conversion' !in before_inputs {
 		before_inputs << '-Wno-int-conversion'
 	}
-	if options.target_os == 'macos' && !options.is_shared && !options.is_tcc {
+	if options.target_os == 'macos' && !options.is_shared && !options.is_tcc
+		&& !(options.is_freestanding && options.target_arch == 'amd64') {
+		// With LC_UNIXTHREAD this sets a custom initial stack pointer, rather
+		// than an LC_MAIN stack size. Let XNU allocate the standalone stack.
 		before_inputs << '-Wl,-stack_size,0x4000000'
 	}
-	if options.is_c_debug && options.target_os == 'macos' && !options.is_shared && !options.is_tcc {
+	if options.is_c_debug && options.target_os == 'macos' && !options.is_shared && !options.is_tcc
+		&& !(options.is_freestanding && options.target_arch == 'amd64') {
 		before_inputs << '-Wl,-export_dynamic'
 	}
 	if options.is_shared {
@@ -4445,11 +4450,15 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		// The program brings its own `_start`, syscalls and allocator (see
 		// vlib/builtin/linux_bare), so it links nothing from the host.
 		if !options.is_o && !options.is_shared {
-			if options.target_os == 'macos' {
-				// macOS cannot link static binaries and always starts via dyld,
-				// so a freestanding macOS program still links libSystem (which
-				// also provides pthread_create for vlibc threads).
-				after_inputs << ['-lSystem']
+			if options.target_os == 'macos' && options.target_arch == 'amd64' {
+				// XNU permits static Intel executables with LC_UNIXTHREAD.
+				// The bare entry point owns TLS, initializers, main and exit.
+				after_inputs << ['-static', '-nostdlib', '-Wl,-e,_start', '-Wl,-no_pie',
+					'-Wl,-dead_strip']
+			} else if options.target_os == 'macos' {
+				// Production XNU rejects static ARM64 executables. This target
+				// retains its libSystem startup and platform services.
+				after_inputs << '-lSystem'
 			} else {
 				after_inputs << ['-static', '-nostdlib']
 				if options.target_os == 'linux' && !options.is_tcc {
@@ -17120,7 +17129,8 @@ pub fn run(args []string) {
 			}
 		}
 		if 'freestanding' in prefs.user_defines && !c_only && !is_o && !is_shared
-			&& !effective_tcc && prefs.normalized_target_os() != 'macos' {
+			&& !effective_tcc
+			&& (prefs.normalized_target_os() != 'macos' || prefs.target.arch == 'amd64') {
 			// Native inputs are resolved above. -nostdlib also drops arithmetic
 			// helpers, so retain the toolchain archive as a tracked dependency.
 			if runtime_library := v3_freestanding_compiler_runtime(c_compiler,

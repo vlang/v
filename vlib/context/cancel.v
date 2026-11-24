@@ -27,6 +27,7 @@ mut:
 	done     chan int
 	children map[string]Canceler
 	err      IError = none
+	cause    IError = none
 }
 
 // with_cancel returns a copy of parent with a new done channel. The returned
@@ -92,6 +93,10 @@ pub fn (ctx &CancelContext) str() string {
 }
 
 fn (mut ctx CancelContext) cancel(remove_from_parent bool, err IError) {
+	ctx.cancel_with_cause(remove_from_parent, err, err)
+}
+
+fn (mut ctx CancelContext) cancel_with_cause(remove_from_parent bool, err IError, cancellation_cause IError) {
 	if err is none {
 		panic('context: internal error: missing cancel error')
 	}
@@ -104,19 +109,21 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err IError) {
 	}
 
 	ctx.err = err
+	ctx.cause = if cancellation_cause is none { err } else { cancellation_cause }
 
 	if !ctx.done.closed {
 		ctx.done <- 0
 		ctx.done.close()
 	}
 
-	for _, child in ctx.children {
+	for _, mut child in ctx.children {
 		// NOTE: acquiring the child's lock while holding parent's lock.
-		mut c := child
-		c.cancel(false, err)
+		cancel_canceler(mut child, false, err, ctx.cause)
 	}
 
-	ctx.children = map[string]Canceler{}
+	// The private map has no aliases, and cancellation prevents future inserts.
+	// Release its values too, so a live canceled parent does not retain children.
+	unsafe { ctx.children.free() }
 	ctx.mutex.unlock()
 
 	if remove_from_parent {
@@ -125,39 +132,95 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err IError) {
 	}
 }
 
-fn propagate_cancel(mut parent Context, mut child Canceler) {
-	done := parent.done()
-	select {
-		_ := <-done {
-			// parent is already canceled
-			child.cancel(false, parent.err())
-			return
-		}
-		else {
+// Only wrappers owned by this module are safe to unwrap. An external context
+// can override done() even when it embeds one of these parent implementations.
+fn parent_never_cancels(parent Context) bool {
+	mut current := parent
+	for {
+		match current {
+			BackgroundContext, TodoContext, EmptyContext { return true }
+			ValueContext { current = current.context }
+			else { return false }
 		}
 	}
+	return false
+}
+
+// Keep the public Canceler interface unchanged while passing the winning cause
+// through the concrete implementations without relocking a canceled parent.
+fn cancel_canceler(mut child Canceler, remove_from_parent bool, err IError, cancellation_cause IError) {
+	match mut child {
+		CancelContext { child.cancel_with_cause(remove_from_parent, err, cancellation_cause) }
+		TimerContext { child.cancel_with_cause(remove_from_parent, err, cancellation_cause) }
+		CauseContext { child.cancel_with_cause(remove_from_parent, err, cancellation_cause) }
+		else { child.cancel(remove_from_parent, err) }
+	}
+}
+
+fn propagate_cancel(mut parent Context, mut child Canceler) {
+	if parent_never_cancels(parent) { return }
+	done := parent.done()
+	// A non-blocking V select skips already-closed receive channels. Context
+	// cancellation is a close notification, so check that state directly.
+	if done.closed {
+		cancel_canceler(mut child, false, parent.err(), cause(parent))
+		return
+	}
 	mut p := parent_cancel_context(mut parent) or {
-		// Pre-extract the parent done channel and pass it by value into the
-		// spawn. The goroutine may outlive the caller's stack frame, so
-		// dereferencing `parent` inside the spawn (e.g. via parent.done())
-		// reads freed stack memory once the caller returns and reuses that
-		// region — observed as a consistent segfault in vlib/context/cause_test.v
-		// on Linux x86_64. Mirrors the fix in onecontext.run_two_contexts.
-		spawn fn (pdone chan int, mut parent Context, mut child Canceler) {
-			select {
-				_ := <-pdone {
-					child.cancel(false, parent.err())
-				}
-			}
-		}(done, mut parent, mut child)
+		child_done := child.done()
+		// Copy interface containers into the worker. Their headers may belong to
+		// a caller's stack, and the caller can also rebind its parent variable.
+		spawn wait_for_parent(parent, child, done, child_done)
 		return
 	}
 
+	p.mutex.lock()
 	if p.err is none {
 		p.children[child.id] = child
 	} else {
-		// parent has already been canceled
-		child.cancel(false, p.err)
+		cancel_canceler(mut child, false, p.err, p.cause)
+	}
+	p.mutex.unlock()
+}
+
+struct CancellationWorker {
+mut:
+	parent Context
+	child  Canceler
+}
+
+// These waits run first in fresh context workers, before any user method can
+// allocate values that escape. Their channel-select storage is wholly local.
+@[inline]
+fn release_wait_storage() {
+	$if prealloc {
+		unsafe { prealloc_thread_cleanup() }
+	}
+}
+
+fn wait_for_parent_signal(parent_done chan int, child_done chan int) bool {
+	// Release select storage before parent methods can create escaping errors.
+	defer { release_wait_storage() }
+	select {
+		_ := <-parent_done {
+			return true
+		}
+		_ := <-child_done {
+			return false
+		}
+	}
+	return false
+}
+
+fn wait_for_parent(parent_value Context, child_value Canceler, parent_done chan int, child_done chan int) {
+	// A mutable local interface can be implicitly heap-boxed by the compiler.
+	// Own these headers explicitly, independent of a worker's prealloc arena.
+	mut worker := unsafe { &CancellationWorker(vcalloc_heap(int(sizeof(CancellationWorker)))) }
+	defer { unsafe { vfree_heap(worker) } }
+	worker.parent = parent_value
+	worker.child = child_value
+	if wait_for_parent_signal(parent_done, child_done) {
+		cancel_canceler(mut worker.child, false, worker.parent.err(), cause(worker.parent))
 	}
 }
 
@@ -169,9 +232,6 @@ fn propagate_cancel(mut parent Context, mut child Canceler) {
 // different done channel, in which case we should not bypass it.)
 fn parent_cancel_context(mut parent Context) ?&CancelContext {
 	done := parent.done()
-	if done.closed {
-		return none
-	}
 	mut p := parent.value(cancel_context_key)?
 	match mut p {
 		CancelContext {
@@ -189,5 +249,7 @@ fn parent_cancel_context(mut parent Context) ?&CancelContext {
 // remove_child removes a context from its parent.
 fn remove_child(mut parent Context, child Canceler) {
 	mut p := parent_cancel_context(mut parent) or { return }
+	p.mutex.lock()
 	p.children.delete(child.id)
+	p.mutex.unlock()
 }

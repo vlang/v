@@ -147,7 +147,7 @@ pub fn answer() int {
 	no_main_c := os.read_file(no_main_c_path)!
 	assert no_main_c.contains('static void _vno_main_init_caller(void) {'), no_main_c
 	// The export presents the C ABI: V's 64-bit `int` stays C `int` there.
-	assert no_main_c.contains('int exported_answer(void)'), no_main_c
+	assert no_main_c.contains('int (exported_answer)(void)'), no_main_c
 	assert_cleanup_registered_after_init(no_main_c)
 
 	// A natural-name export (export name equal to the C symbol) whose C ABI matches
@@ -181,11 +181,11 @@ pub fn start_wide() i64 {
 		direct_export_source])
 	assert generate_direct.exit_code == 0, generate_direct.output
 	direct_export_c := os.read_file(direct_export_c_path)!
-	assert direct_export_c.contains('int start(void) {'), direct_export_c
-	direct_start_body := direct_export_c.all_after('int start(void) {').all_before('}')
+	assert direct_export_c.contains('int (start)(void) {'), direct_export_c
+	direct_start_body := direct_export_c.all_after('int (start)(void) {').all_before('}')
 	assert direct_start_body.contains('_vno_main_init_caller();'), direct_export_c
-	assert direct_export_c.contains('i64 start_wide(void) {'), direct_export_c
-	direct_wide_body := direct_export_c.all_after('i64 start_wide(void) {').all_before('}')
+	assert direct_export_c.contains('i64 (start_wide)(void) {'), direct_export_c
+	direct_wide_body := direct_export_c.all_after('i64 (start_wide)(void) {').all_before('}')
 	assert direct_wide_body.contains('_vno_main_init_caller();'), direct_export_c
 	assert !direct_export_c.contains('main__start_wide'), direct_export_c
 

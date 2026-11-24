@@ -834,6 +834,13 @@ fn (g &FlatGen) needs_no_main_runtime_init_caller() bool {
 		&& (g.a.export_fn_names.len > 0 || g.is_shared)
 }
 
+fn (g &FlatGen) export_needs_no_main_runtime_init(module_name string) bool {
+	// Builtin exports implement the runtime itself: allocation and startup can
+	// reach them before initialization is possible, or from inside _vinit.
+	// Application/module exports remain native entry points that initialize V.
+	return module_name != 'builtin' && g.needs_no_main_runtime_init_caller()
+}
+
 fn (g &FlatGen) needs_closure_runtime_init() bool {
 	if !g.used_fn_contains('closure.closure_init') && !g.used_fn_contains('closure__closure_init') {
 		return false
@@ -1511,6 +1518,9 @@ fn export_c_abi_lookup_key(module_name string, export_name string) string {
 fn (mut g FlatGen) precompute_export_lookups() {
 	g.export_c_abi_decls.clear()
 	g.main_export_owners.clear()
+	if g.a.export_fn_names.len == 0 {
+		return
+	}
 	for qname, export_name in g.a.export_fn_names {
 		mut owners := g.main_export_owners[export_name] or { []string{} }
 		if qname !in owners {
@@ -1522,11 +1532,15 @@ fn (mut g FlatGen) precompute_export_lookups() {
 	old_tc_module := if isnil(g.tc) { '' } else { g.tc.cur_module }
 	mut cur_file := ''
 	mut cur_module := ''
+	mut file_c_abi_decls := map[string]flat.NodeId{}
+	mut file_exports := map[string]bool{}
 	for idx in g.top_level_nodes() {
 		node := g.a.nodes[idx]
 		if node.kind == .file {
 			cur_file = node.value
 			cur_module = ''
+			file_c_abi_decls.clear()
+			file_exports.clear()
 			continue
 		}
 		if node.kind == .module_decl {
@@ -1534,6 +1548,15 @@ fn (mut g FlatGen) precompute_export_lookups() {
 			continue
 		}
 		if node.kind == .fn_decl {
+			if g.a.export_fn_names.len > 0 {
+				if export_name := g.export_fn_name_in_module(cur_module, node.value) {
+					key := export_c_abi_lookup_key(cur_module, export_name)
+					file_exports[key] = true
+					if local_decl := file_c_abi_decls[key] {
+						g.export_c_abi_decls[key] = local_decl
+					}
+				}
+			}
 			if g.a.export_fn_names.len > 0 && cur_module in ['', 'main'] && !isnil(g.tc) {
 				g.tc.cur_file = cur_file
 				g.tc.cur_module = if cur_module.len == 0 { 'main' } else { cur_module }
@@ -1544,9 +1567,19 @@ fn (mut g FlatGen) precompute_export_lookups() {
 		if node.kind != .c_fn_decl {
 			continue
 		}
-		key := export_c_abi_lookup_key(cur_module, node.value.trim_string_left('C.'))
+		export_name := node.value.trim_string_left('C.')
+		key := export_c_abi_lookup_key(cur_module, export_name)
 		if key !in g.export_c_abi_decls {
 			g.export_c_abi_decls[key] = flat.NodeId(idx)
+		}
+		if export_name in g.main_export_owners && key !in file_c_abi_decls {
+			// A declaration next to the V definition is its explicit ABI contract.
+			// Keep the first such declaration regardless of whether it precedes
+			// or follows the definition; other files retain first-decl fallback.
+			file_c_abi_decls[key] = flat.NodeId(idx)
+			if file_exports[key] {
+				g.export_c_abi_decls[key] = flat.NodeId(idx)
+			}
 		}
 	}
 	if !isnil(g.tc) {
@@ -2721,17 +2754,17 @@ fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_na
 		if fn_node.children_count > 0 {
 			receiver_type := concrete_receiver_type(g.usable_expr_type(g.a.child(fn_node, 0)))
 			if receiver_type is types.Enum {
-				g.write(g.direct_call_name(call_name))
+				g.write_macro_safe_v_function_name(g.direct_call_name(call_name))
 				return
 			}
 			if receiver_type !is types.Unknown && receiver_type !is types.Void {
-				g.write(g.cname(call_name))
+				g.write_macro_safe_v_function_name(g.cname(call_name))
 				return
 			}
 		}
 	}
 	// Keep the name-based fallback for synthetic or partially typed calls.
-	g.write(g.direct_call_name(call_name))
+	g.write_macro_safe_v_function_name(g.direct_call_name(call_name))
 }
 
 fn (mut g FlatGen) gen_channel_close_call(base_id flat.NodeId, node flat.Node) {
@@ -3133,7 +3166,7 @@ fn (g &FlatGen) concrete_generic_method_name_from_call_receiver(node flat.Node, 
 }
 
 // index_callee_is_local_value reports whether the callee `name[i]` indexes a local
-// container of functions; such a local shadows a generic function `name`.
+// array, map, or raw pointer of functions; such a local shadows a generic function `name`.
 fn (g &FlatGen) index_callee_is_local_value(fn_node &flat.Node) bool {
 	if fn_node.children_count == 0 {
 		return false
@@ -3149,11 +3182,9 @@ fn (g &FlatGen) index_callee_is_local_value(fn_node &flat.Node) bool {
 // cgen_type_is_indexable_container reports whether `typ` is a container value that
 // `x[i]` indexes into. A selector of such a type cannot be a generic method name.
 fn cgen_type_is_indexable_container(typ &types.Type) bool {
-	mut cur := unalias_type(typ)
-	for cur is types.Pointer {
-		cur = unalias_type(cur.base_type)
-	}
-	return cur is types.Array || cur is types.ArrayFixed || cur is types.Map
+	cur := unalias_type(typ)
+	// A pointer is itself indexed; stripping it loses pointer-to-function tables.
+	return cur is types.Pointer || cur is types.Array || cur is types.ArrayFixed || cur is types.Map
 }
 
 fn (g &FlatGen) is_explicit_generic_method_call_selector(fn_node &flat.Node, resolved_target_name string, target_name string) bool {
@@ -5927,6 +5958,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	// already resolves that through fn_decl_attributes's source-position
 	// fallback -- reusing its result keeps this check exactly as accurate.
 	mut is_naked_fn := false
+	object_export_linkage := g.begin_object_export_linkage(generated_fn_name)
 	g.write_fn_line_directive(node)
 	if is_entry_main {
 		force_main_console := g.tc.declaration_has_attribute(node_id, 'console')
@@ -5958,9 +5990,9 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		if export_name := g.export_fn_name_in_module(module_name, node.value) {
 			if export_name == generated_fn_name {
 				g.write(g.exported_symbol_attribute())
-				// A natural-name export is called under its own symbol; no wrapper is
-				// generated, so this body itself must run the guarded initializer.
-				is_direct_no_main_export = g.needs_no_main_runtime_init_caller()
+				// Natural-name application exports have no wrapper to run the
+				// guarded initializer, so insert it into their bodies instead.
+				is_direct_no_main_export = g.export_needs_no_main_runtime_init(module_name)
 			}
 		}
 		g.write(g.fn_decl_noreturn_prefix(node_id))
@@ -5973,8 +6005,10 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		if g.is_live_function(node_id, module_name) {
 			if 'sharedlive' in g.compile_defines { g.write(g.exported_symbol_attribute()) }
 			g.write(if 'livemain' in g.compile_defines { 'no_impl_' } else { 'impl_live_' })
+			g.write(generated_fn_name)
+		} else {
+			g.write_macro_safe_v_function_name(generated_fn_name)
 		}
-		g.write(generated_fn_name)
 		g.write('(')
 		g.write_fn_node_params(node)
 		g.writeln(') {')
@@ -6006,11 +6040,28 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	// and those must not keep leaking a PRECEDING function's profiled state
 	// into a later naked function's explicit `return` (handled independently
 	// by `gen_return_cleanup` in stmt.v, via `gen_profile_fn_exit`).
-	if !is_naked_fn {
+	// Query instrumentation-only attributes only when the mode is enabled. Keep the
+	// begin call for excluded functions too: it resets the previous body's state.
+	mut profile_inline := false
+	mut skip_profile := is_naked_fn
+	mut skip_trace := is_naked_fn
+	if g.profile_file.len > 0 || g.is_trace_calls {
+		// Specializations inherit the original declaration's attributes through
+		// fn_decl_attributes, just as inline/naked C declarators do.
+		for raw_attr in g.fn_decl_attributes(node_id) {
+			match cgen_attr_name_view(raw_attr) {
+				'inline' { profile_inline = true }
+				'no_profile' { skip_profile = true }
+				'no_trace' { skip_trace = true }
+				else {}
+			}
+		}
+	}
+	if !skip_trace {
 		g.gen_trace_fn_begin(node, module_name)
 	}
-	g.gen_profile_fn_begin(generated_fn_name, module_name, node.value,
-		g.tc.declaration_has_attribute(node_id, 'inline'), is_naked_fn)
+	g.gen_profile_fn_begin(generated_fn_name, module_name, node.value, profile_inline,
+		skip_profile)
 
 	for i in 0 .. node.children_count {
 		id := g.a.child(&node, i)
@@ -6044,6 +6095,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	if !is_entry_main && !g.object_file_mode {
 		g.gen_export_wrapper_for_fn(node, module_name)
 	}
+	g.end_object_export_linkage(object_export_linkage)
 	g.loop_depth = 0
 	g.pending_loop_label = ''
 	g.pop_scope()
@@ -6061,14 +6113,19 @@ fn (mut g FlatGen) gen_export_wrapper_for_fn(node flat.Node, module_name string)
 	g.write(g.exported_symbol_attribute())
 	g.write(ret_ct)
 	g.write(' ')
-	g.write(export_name)
+	g.write_macro_safe_v_function_name(export_name)
 	g.write('(')
 	g.write_export_wrapper_params(node, module_name)
 	g.writeln(') {')
 	g.indent++
-	args := g.export_wrapper_arg_names(node)
-	call := '${canonical_name}(${args.join(', ')})'
-	if g.needs_no_main_runtime_init_caller() {
+	args := g.export_wrapper_call_args(node, module_name)
+	call_name := if canonical_name in g.main_export_owners {
+		'(${canonical_name})'
+	} else {
+		canonical_name
+	}
+	call := '${call_name}(${args.join(', ')})'
+	if g.export_needs_no_main_runtime_init(module_name) {
 		g.writeln('_vno_main_init_caller();')
 	}
 	if ret_type is types.Void {
@@ -6095,15 +6152,15 @@ fn (mut g FlatGen) emit_object_file_export_wrappers() {
 				g.write(g.exported_symbol_attribute())
 				g.write(g.export_wrapper_return_c_type(node, item.module, ret_type))
 				g.write(' ')
-				g.write(export_name)
+				g.write_macro_safe_v_function_name(export_name)
 				g.write('(')
 				g.write_export_wrapper_params(node, item.module)
 				g.writeln(') {')
 				g.indent++
-				if g.needs_no_main_runtime_init_caller() {
+				if g.export_needs_no_main_runtime_init(item.module) {
 					g.writeln('_vno_main_init_caller();')
 				}
-				call := '${canonical_name}(${g.export_wrapper_arg_names(node).join(', ')})'
+				call := '${canonical_name}(${g.export_wrapper_call_args(node, item.module).join(', ')})'
 				if ret_type is types.Void {
 					g.writeln('${call};')
 				} else {
@@ -6129,12 +6186,17 @@ fn (mut g FlatGen) emit_object_file_export_wrappers() {
 		ret_type := g.fn_node_return_type(node, item.module)
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
-		g.write(export_name)
+		g.write_macro_safe_v_function_name(export_name)
 		g.write('(')
 		g.write_fn_node_params(node)
 		g.writeln(') {')
 		g.indent++
-		call := '${item.c_name}(${g.export_wrapper_arg_names(node).join(', ')})'
+		call_name := if item.c_name in g.main_export_owners {
+			'(${item.c_name})'
+		} else {
+			item.c_name
+		}
+		call := '${call_name}(${g.export_wrapper_arg_names(node).join(', ')})'
 		if ret_type is types.Void {
 			g.writeln('${call};')
 		} else {
@@ -6144,6 +6206,40 @@ fn (mut g FlatGen) emit_object_file_export_wrappers() {
 		g.writeln('}')
 		g.writeln('')
 	}
+}
+
+// Parenthesized C function names are immune to function-like SDK macros.
+// Keep symbol lookup keys unchanged and apply this only when writing V symbols;
+// explicit C calls must retain the SDK's macro semantics.
+@[inline]
+fn (mut g FlatGen) write_macro_safe_v_function_name(name string) {
+	if g.main_export_owners.len > 0 && name in g.main_export_owners {
+		g.write('(')
+		g.write(name)
+		g.write(')')
+	} else {
+		g.write(name)
+	}
+}
+
+// Object output keeps implementation functions private with a Clang pragma.
+// A natural export is its public C definition, so both its first declaration
+// and body must be outside that scope, just like separately emitted wrappers.
+fn (mut g FlatGen) begin_object_export_linkage(name string) bool {
+	if !g.object_file_mode || g.main_export_owners.len == 0 || name !in g.main_export_owners {
+		return false
+	}
+	g.writeln('#if defined(__clang__)')
+	g.writeln('#pragma clang attribute pop')
+	g.writeln('#endif')
+	return true
+}
+
+fn (mut g FlatGen) end_object_export_linkage(suspended bool) {
+	if !suspended { return }
+	g.writeln('#if defined(__clang__)')
+	g.writeln('#pragma clang attribute push(__attribute__((internal_linkage)), apply_to = function)')
+	g.writeln('#endif')
 }
 
 fn (g &FlatGen) exported_symbol_attribute() string {
@@ -6185,6 +6281,57 @@ fn (mut g FlatGen) export_wrapper_arg_names(node flat.Node) []string {
 	}
 	if needs_implicit_ctx && !implicit_ctx_written {
 		args << 'ctx'
+	}
+	return args
+}
+
+// C prototypes can qualify pointer targets through const_ parameters, while
+// V pointer parameters have no equivalent qualifier. Adapt that declared ABI
+// explicitly when forwarding into the V implementation; keep the public C type.
+fn (mut g FlatGen) export_wrapper_call_args(node flat.Node, module_name string) []string {
+	mut args := g.export_wrapper_arg_names(node)
+	abi_decl := g.export_fn_c_abi_decl(module_name, node.value) or { return args }
+	mut parameters := []types.Type{}
+	mut parameters_ready := false
+	mut index := 0
+	for i in 0 .. abi_decl.children_count {
+		param := g.a.child_node(&abi_decl, i)
+		if param.kind != .param { continue }
+		if index >= args.len { break }
+		if !param.value.starts_with('const_') {
+			index++
+			continue
+		}
+		raw_type_id := if param.typ != 0 { param.typ } else { param.source_value_id() }
+		raw_type := flat.source_type_name(raw_type_id)
+		abi_type := g.tc.parse_type(raw_type_id)
+		if c_extern_param_needs_const_prefix(param.value, raw_type, abi_type) {
+			// Ordinary exports need no extra parameter array or signature lookup.
+			if !parameters_ready {
+				typed := g.fn_node_param_types(node, module_name)
+				mut effective := []types.Type{cap: typed.len}
+				mut parameter := 0
+				for j in 0 .. node.children_count {
+					value_param := g.a.child_node(&node, j)
+					if value_param.kind != .param { continue }
+					if parameter >= typed.len { break }
+					effective << g.fn_node_effective_param_type(value_param, typed[parameter])
+					parameter++
+				}
+				parameters = g.fn_param_types_with_implicit_veb_ctx(node, effective)
+				parameters_ready = true
+			}
+			if index < parameters.len && unalias_type(parameters[index]) is types.Pointer {
+				ct := g.tc.c_type(parameters[index])
+				abi_ct := g.c_extern_interop_type_name(abi_type) or {
+					g.c_extern_param_c_type(abi_type)
+				}
+				// Do not cast away a real pointee ABI mismatch, such as C int*
+				// versus V int* on a target where the latter stores 64-bit values.
+				if ct == abi_ct { args[index] = '(${ct})${args[index]}' }
+			}
+		}
+		index++
 	}
 	return args
 }
@@ -8480,7 +8627,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 			}
 		}
 		if specialized_name.len > 0 {
-			g.write(g.direct_call_name(specialized_name))
+			g.write_macro_safe_v_function_name(g.direct_call_name(specialized_name))
 			g.write('(')
 			g.gen_call_args_for_callee(specialized_name, node, runtime_start, callee_name, callee_fn_value_params)
 			g.write(')')
@@ -8651,7 +8798,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	}
 	if const_target := g.const_fn_call_target_name(fn_node) {
 		emitted_target := g.direct_call_name_for_call(id, const_target)
-		g.write(emitted_target)
+		g.write_macro_safe_v_function_name(emitted_target)
 		g.write('(')
 		g.gen_call_args_for_callee(emitted_target, node, 1, callee_name, callee_fn_value_params)
 		g.write(')')
@@ -8664,7 +8811,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 			resolved_module_call
 		}
 		emitted_name := g.direct_call_name_for_call_node(id, node, call_args_name)
-		g.write(emitted_name)
+		g.write_macro_safe_v_function_name(emitted_name)
 		g.write('(')
 		g.gen_call_args_for_callee(call_args_name, node, g.selector_module_call_arg_start(fn_node, node), callee_name, callee_fn_value_params)
 		g.write(')')
@@ -8677,7 +8824,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 			resolved_module_call
 		}
 		emitted_name := g.direct_call_name_for_call_node(id, node, call_args_name)
-		g.write(emitted_name)
+		g.write_macro_safe_v_function_name(emitted_name)
 		g.write('(')
 		g.gen_call_args_for_callee(call_args_name, node, g.target_module_call_arg_start(target_name, node), callee_name, callee_fn_value_params)
 		g.write(')')
@@ -8688,7 +8835,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	// (`Bar`) must not replace an explicit alias specialization (`BarAlias`).
 	if fn_node.kind == .ident && fn_name in g.tc.specialized_generic_fns && !callee_is_fn_value {
 		emitted_name := g.direct_call_name_for_call_node(id, node, fn_name)
-		g.write(emitted_name)
+		g.write_macro_safe_v_function_name(emitted_name)
 		g.write('(')
 		g.gen_call_args_for_callee(fn_name, node, 1, callee_name, callee_fn_value_params)
 		g.write(')')
@@ -8697,7 +8844,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	if resolved := checker_resolved_name {
 		if arg_start := g.resolved_selector_module_arg_start(resolved, node) {
 			emitted_resolved := g.direct_call_name_for_call_node(id, node, resolved)
-			g.write(emitted_resolved)
+			g.write_macro_safe_v_function_name(emitted_resolved)
 			g.write('(')
 			g.gen_call_args_for_callee(resolved, node, arg_start, callee_name, callee_fn_value_params)
 			g.write(')')
@@ -8717,7 +8864,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				resolved
 			}
 			emitted_resolved := g.direct_call_name_for_call_node(id, node, resolved_for_call)
-			g.write(emitted_resolved)
+			g.write_macro_safe_v_function_name(emitted_resolved)
 			g.write('(')
 			g.gen_call_args_for_callee(resolved_for_call, node, 1, callee_name, callee_fn_value_params)
 			g.write(')')
@@ -8801,7 +8948,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 			} else {
 				g.direct_call_name_for_call_node(id, node, fn_name)
 			}
-			g.write(call_name)
+			g.write_macro_safe_v_function_name(call_name)
 			g.write('(')
 			g.gen_call_args_for_callee(call_args_name, node, 1, callee_name, callee_fn_value_params)
 			g.write(')')
@@ -8884,7 +9031,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 						}
 						return
 					}
-					g.write(g.cname(full_name))
+					g.write_macro_safe_v_function_name(g.cname(full_name))
 					g.write('(')
 					g.gen_call_args_for_callee(full_name, node, 1, callee_name, callee_fn_value_params)
 					g.write(')')
@@ -8895,7 +9042,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 					// imported) type, not a value — e.g. `Animation.load(path)` inside
 					// the type's own module. Resolve to the module-qualified static fn.
 					static_fn := g.static_method_fn_name(base.source_value_id(), fn_node.value) or { '' }
-					g.write(g.direct_call_name(static_fn))
+					g.write_macro_safe_v_function_name(g.direct_call_name(static_fn))
 					g.write('(')
 					// Lower the arguments through the ordinary call path so a static method
 					// parameter that needs coercion — option/result wrapping, fn-pointer alias
@@ -8922,9 +9069,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 								fn_node.value)
 							{
 								full_name = static_fn
-								g.write(g.direct_call_name(static_fn))
+								g.write_macro_safe_v_function_name(g.direct_call_name(static_fn))
 							} else {
-								g.write(g.cname(full_name))
+								g.write_macro_safe_v_function_name(g.cname(full_name))
 							}
 							g.write('(')
 							g.gen_call_args_for_callee(full_name, node, 1, callee_name, callee_fn_value_params)
@@ -9213,7 +9360,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 						base_node_s := g.a.child_node(fn_node, 0)
 						if base_node_s.kind == .ident {
 							if static_fn := g.static_method_fn_name(base_node_s.source_value_id(), fn_node.value) {
-								g.write(g.direct_call_name(static_fn))
+								g.write_macro_safe_v_function_name(g.direct_call_name(static_fn))
 								g.write('(')
 								for i in 1 .. node.children_count {
 									if i > 1 {
@@ -9310,24 +9457,24 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 					}) != none {
 						global_name := g.global_name_for_ident(fn_ident.value) or { fn_ident.value }
 						emitted_callee_name = g.global_c_name(global_name)
-						g.write(emitted_callee_name)
+						g.write_macro_safe_v_function_name(emitted_callee_name)
 					} else if looked_up !is types.Void && fn_type_from(looked_up) != none {
 						emitted_callee_name = g.local_decl_cname(fn_ident.value)
-						g.write(emitted_callee_name)
+						g.write_macro_safe_v_function_name(emitted_callee_name)
 					} else if specialized := g.specialized_generic_plain_fn_name_for_call(id, node, fn_ident.value) {
 						emitted_callee_name = g.direct_call_name_for_call_node(id, node, specialized)
-						g.write(emitted_callee_name)
+						g.write_macro_safe_v_function_name(emitted_callee_name)
 					} else if g.resolved_name_is_generic_plain(call_key)
 						&& g.plain_concrete_fn_name_shadows_generic(fn_ident.value) {
 						emitted_callee_name = g.cname(fn_ident.value)
-						g.write(emitted_callee_name)
+						g.write_macro_safe_v_function_name(emitted_callee_name)
 					} else if call_key in g.tc.fn_ret_types || call_key in g.tc.fn_param_types {
 						emitted_callee_name = g.direct_call_name_for_call_node(id, node, call_key)
-						g.write(emitted_callee_name)
+						g.write_macro_safe_v_function_name(emitted_callee_name)
 					} else if specialized := g.specialized_generic_method_name_for_call_with_arg_count(id, fn_ident.value, -1) {
 						emitted_param_name = specialized
 						emitted_callee_name = g.cname(specialized)
-						g.write(emitted_callee_name)
+						g.write_macro_safe_v_function_name(emitted_callee_name)
 					} else {
 						local_name := if g.tc.cur_module !in ['', 'main', 'builtin'] {
 							'${g.tc.cur_module}.${fn_ident.value}'
@@ -9340,7 +9487,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 						} else {
 							g.direct_call_name_for_call(id, fn_ident.value)
 						}
-						g.write(emitted_callee_name)
+						g.write_macro_safe_v_function_name(emitted_callee_name)
 					}
 				} else {
 					if explicit, receiver_id, explicit_method := g.explicit_generic_method_callee_from_index(fn_ident) {
@@ -9348,7 +9495,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 						base_id = receiver_id
 						method_name = explicit_method
 						emitted_callee_name = g.cname(explicit)
-						g.write(emitted_callee_name)
+						g.write_macro_safe_v_function_name(emitted_callee_name)
 					} else {
 						needs_callee_parens := fn_ident.kind !in [.ident, .selector]
 						if needs_callee_parens {
@@ -12318,7 +12465,7 @@ fn (mut g FlatGen) gen_lowered_enum_autostr_pointer_call(id flat.NodeId, node fl
 	if fn_node.value != '${g.enum_autostr_c_name(enum_type.source_type_id())}__autostr' {
 		return false
 	}
-	g.write(g.direct_call_name_for_call(id, fn_node.value))
+	g.write_macro_safe_v_function_name(g.direct_call_name_for_call(id, fn_node.value))
 	g.write('(*(')
 	g.gen_expr(arg_id)
 	g.write('))')
@@ -16597,7 +16744,7 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 			return true
 		}
 	}
-	g.write(emitted_name)
+	g.write_macro_safe_v_function_name(emitted_name)
 	g.write('(')
 	if receiver_wants_ptr && receiver_declares_method
 		&& g.gen_stack_value_free_receiver(receiver_id, fn_node.value) {
@@ -17642,6 +17789,7 @@ fn (mut g FlatGen) forward_decl_items(items []FlatFnGenItem, mut forwarded_expor
 		g.tc.cur_file = item.file
 		g.tc.cur_module = item.module
 		ret_type := g.fn_node_return_type(node, item.module)
+		object_export_linkage := g.begin_object_export_linkage(qfn)
 		if export_name := g.export_fn_name_in_module(item.module, node.value) {
 			if export_name == qfn {
 				g.write(g.exported_symbol_attribute())
@@ -17649,10 +17797,11 @@ fn (mut g FlatGen) forward_decl_items(items []FlatFnGenItem, mut forwarded_expor
 		}
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
-		g.write(qfn)
+		g.write_macro_safe_v_function_name(qfn)
 		g.write('(')
 		g.write_fn_node_params(node)
 		g.writeln(');')
+		g.end_object_export_linkage(object_export_linkage)
 		if !g.object_file_mode {
 			if export_name := g.export_fn_name_in_module(item.module, node.value) {
 				if export_name != qfn && export_name !in forwarded_exports {
@@ -17660,7 +17809,7 @@ fn (mut g FlatGen) forward_decl_items(items []FlatFnGenItem, mut forwarded_expor
 					g.write(g.exported_symbol_attribute())
 					g.write(g.export_wrapper_return_c_type(node, item.module, ret_type))
 					g.write(' ')
-					g.write(export_name)
+					g.write_macro_safe_v_function_name(export_name)
 					g.write('(')
 					g.write_export_wrapper_params(node, item.module)
 					g.writeln(');')
@@ -17722,12 +17871,14 @@ fn (mut g FlatGen) cached_header_forward_decls() {
 		g.tc.cur_file = item.file
 		g.tc.cur_module = item.module
 		ret_type := g.fn_node_return_type(node, item.module)
+		object_export_linkage := g.begin_object_export_linkage(qfn)
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
-		g.write(qfn)
+		g.write_macro_safe_v_function_name(qfn)
 		g.write('(')
 		g.write_fn_node_params(node)
 		g.writeln(');')
+		g.end_object_export_linkage(object_export_linkage)
 	}
 	if forwarded.len > 0 {
 		g.writeln('')
@@ -19093,6 +19244,9 @@ const c_extern_exact_decls = {
 
 fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
 	if exact := c_extern_exact_decls[cfn] {
+		if g.main_export_owners.len > 0 && cfn in g.main_export_owners {
+			return exact.replace_once('${cfn}(', '(${cfn})(')
+		}
 		return exact
 	}
 	mut sb := strings.new_builder(96)
@@ -19112,7 +19266,10 @@ fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
 		sb.write_string(call_conv)
 		sb.write_u8(` `)
 	}
+	protect_name := g.main_export_owners.len > 0 && cfn in g.main_export_owners
+	if protect_name { sb.write_u8(`(`) }
 	sb.write_string(cfn)
+	if protect_name { sb.write_u8(`)`) }
 	sb.write_u8(`(`)
 	sb.write_string(g.c_extern_decl_params(node))
 	sb.write_u8(`)`)
@@ -20756,7 +20913,10 @@ fn (mut g FlatGen) fn_ptr_signature_type(typ types.Type) ?string {
 		return g.fixed_array_c_type(typ)
 	}
 	if typ is types.Pointer {
-		return g.fn_ptr_signature_type(typ.base_type)? + '*'
+		inner := g.fn_ptr_signature_type(typ.base_type)?
+		// Resolve the callable before adding pointer indirection. Appending `*` to
+		// its encoded signature instead changes the final parameter type.
+		return (if inner.starts_with('fn_ptr:') { g.resolve_fn_ptr_type(inner) } else { inner }) + '*'
 	}
 	if typ is types.Alias {
 		return g.fn_ptr_signature_type(typ.base_type)

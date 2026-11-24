@@ -38,6 +38,28 @@ Run `./v vlib/v/tests/vlibc_linux_test.v` on Linux or
 Use `./v vlib/v/tests/vlibc_solaris_test.v` on Solaris for files, descriptors, and sockets.
 Cross-compilation can check generated assembly but does not validate the target kernel ABI.
 
+Linux freestanding C libraries and `no_main` exports inherit their host's environment even
+when initialized without process arguments. V environment changes still use the private
+`os.setenv`, `os.unsetenv`, and `os.clearenv` store.
+Standalone Darwin/amd64 `os.signal_ignore` uses raw kernel signal masking for worker threads;
+the main thread retains its signal-handler behavior.
+
+## Calendar and elapsed clocks
+
+Freestanding C builds on Linux amd64/arm64 and macOS amd64 provide these helpers:
+
+- `bf_realtime_now()` returns Unix seconds, nanoseconds, and normalized errno.
+- `bf_monotonic_now()` returns awake-time monotonic nanoseconds and normalized errno.
+  Its origin is unspecified; suspend time is excluded.
+- `bf_sleep_ns(duration)` waits for a nonnegative relative interval, retrying interruptions
+  with the remaining duration. Zero succeeds immediately and a negative interval returns EINVAL.
+
+These helpers preserve both the native and BF errno cells. The macOS backend uses raw kernel
+clocks and Mach deadlines; its POSIX `clock_gettime`, `gettimeofday`, `time`, and `nanosleep`
+exports use SDK ABI declarations and update native errno only on failure. In
+`-d v_bare_no_startup` host embedding, the host retains its native errno accessor.
+The macOS arm64 runtime retains libSystem and its existing clock implementation.
+
 ## Bare heap allocation
 
 The bare libc adapters share one dlmalloc heap. Initialization and heap mutations

@@ -85,10 +85,10 @@ fn helper_unused() int {
 	// declarations and the successful calls above prove they were rooted and linked.
 	// The function keeps V's 64-bit `int`; its export presents the C ABI's `int`.
 	assert c_code.contains('i64 expmod__exported_answer(void);'), c_code
-	assert c_code.contains('int raw_exported_answer(void);'), c_code
+	assert c_code.contains('int (raw_exported_answer)(void);'), c_code
 	assert c_code.contains('raw_exported_answer()'), c_code
 	assert c_code.contains('take_callback(expmod__exported_answer)'), c_code
-	assert c_code.contains('int raw_enabled_export(void) {'), c_code
+	assert c_code.contains('int (raw_enabled_export)(void) {'), c_code
 	assert !c_code.contains('raw_disabled_export'), c_code
 }
 
@@ -144,21 +144,21 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '3000000001\n42\n3000000002\n1\n2', run.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.count('double natural_name(double value) {') == 1, c_code
+	assert c_code.count('double (natural_name)(double value) {') == 1, c_code
 	assert !c_code.contains('main__natural_name'), c_code
 
 	// An export presents the C ABI whether or not it is renamed: C callers pass and
 	// read C `int`. V callers keep the 64-bit function under an internal name.
-	assert c_code.contains('int renamed_add_export(int left, int right) {'), c_code
-	natural_add_wrapper := 'int natural_add(int left, int right) {'
+	assert c_code.contains('int (renamed_add_export)(int left, int right) {'), c_code
+	natural_add_wrapper := 'int (natural_add)(int left, int right) {'
 	assert c_code.count(natural_add_wrapper) == 1, c_code
 	assert c_code.contains('i64 main__natural_add(i64 left, i64 right) {'), c_code
 	assert c_code.all_after(natural_add_wrapper).all_before('\n}').contains('return main__natural_add(left, right);'), c_code
 	assert c_code.contains('take(main__natural_add)'), c_code
-	assert !c_code.contains('i64 natural_add('), c_code
+	assert !c_code.contains('i64 (natural_add)('), c_code
 
 	// Prefix the main-module function when an export owns its natural C symbol.
-	rint_wrapper := 'int v_rint(void) {'
+	rint_wrapper := 'int (v_rint)(void) {'
 	assert c_code.count(rint_wrapper) == 1, c_code
 	assert c_code.all_after(rint_wrapper).all_before('\n}').contains('return exported_rint_collision();'), c_code
 }
@@ -444,26 +444,27 @@ fn main() {}
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
 	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void);'), c_code
-	assert c_code.contains('_v_ret_Array_fixed_i64_3 raw_numbers(void);'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_i64_3 (raw_numbers)(void);'), c_code
 	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void) {'), c_code
-	numbers_wrapper := '_v_ret_Array_fixed_i64_3 raw_numbers(void) {'
+	numbers_wrapper := '_v_ret_Array_fixed_i64_3 (raw_numbers)(void) {'
 	assert c_code.contains(numbers_wrapper), c_code
 	assert c_code.all_after(numbers_wrapper).all_before('\n}').contains('return numbers();'), c_code
-	assert !c_code.contains('\nArray_fixed_i64_3 raw_numbers(void)'), c_code
+	assert !c_code.contains('\nArray_fixed_i64_3 (raw_numbers)(void)'), c_code
 
 	for name, return_type in {
 		'callback':     'i64'
 		'raw_callback': 'int'
 	} {
-		before_prototype, _ := c_code.split_once(' ${name}(void);') or {
+		decl := if name == 'raw_callback' { '(${name})' } else { name }
+		before_prototype, _ := c_code.split_once(' ${decl}(void);') or {
 			panic('missing C prototype for ${name}')
 		}
 		typedef_name := before_prototype.all_after_last('\n')
 		assert typedef_name.starts_with('_fn_ptr_'), typedef_name
 		assert c_code.contains('typedef ${return_type} (*${typedef_name})(void);'), c_code
-		assert c_code.contains('${typedef_name} ${name}(void) {'), c_code
+		assert c_code.contains('${typedef_name} ${decl}(void) {'), c_code
 	}
-	assert c_code.all_after(' raw_callback(void) {').all_before('\n}').contains('return callback();'), c_code
+	assert c_code.all_after(' (raw_callback)(void) {').all_before('\n}').contains('return callback();'), c_code
 	assert !c_code.contains('fn_ptr:'), c_code
 }
 
@@ -504,7 +505,7 @@ fn main() {}
 		'show':            'id'
 		'show_underscore': '_2'
 	} {
-		signature := 'veb__Result raw_${method}(main__App* app, main__Context* ctx, int ${param})'
+		signature := 'veb__Result (raw_${method})(main__App* app, main__Context* ctx, int ${param})'
 		assert c_code.contains('${signature};'), c_code
 		assert c_code.contains('${signature} {'), c_code
 		body := c_code.all_after('${signature} {').all_before('\n}')

@@ -8,10 +8,9 @@ module builtin
 // - No openat, clock_gettime, nanosleep, getcwd or uname syscalls: open(5),
 //   stat64(338)/fstat64(339), gettimeofday(116), select(93), sysctl(202) and
 //   fcntl F_GETPATH(50) are used instead.
-// - Threads and their sync use libSystem pthread (like Go's runtime does):
-//   a macOS process always starts via dyld, which links libSystem anyway,
-//   so there is no such thing as a libSystem-free macOS binary in practice.
-//   Everything else stays raw-syscall pure.
+// - Standalone AMD64 threads reuse V's raw kernel thread/TLS runtime.
+//   ARM64 and host-managed thread modes keep libSystem pthreads. The legacy
+//   vlibc mutex/condition wrappers below still require host pthread services.
 
 $if !i386 {
 	struct VlibcTimespec {
@@ -977,17 +976,24 @@ $if !i386 {
 		}
 	}
 
-	// ---- threads via libSystem pthread ----
+	// Standalone AMD64 uses V's kernel thread/TLS runtime. Host-managed builds
+	// retain pthreads, including ARM64's libSystem route.
 	type VlibcThreadFn = fn (u64)
 
 	struct MacThreadStart {
-		fn_ptr VlibcThreadFn
-		arg    u64
-		done   u32
+		fn_ptr    VlibcThreadFn
+		arg       u64
+		done      u32
+		thread_id u64
+		started   u32
 	}
 
 	fn macos_thread_entry(raw voidptr) voidptr {
-		s := &MacThreadStart(raw)
+		s := unsafe { &MacThreadStart(raw) }
+		$if freestanding && !native && amd64 && !v_bare_no_startup ? {
+			s.thread_id = bf_gettid()
+			vlibc_store_u32(&s.started, 1)
+		}
 		s.fn_ptr(s.arg)
 		vlibc_store_u32(&s.done, 1)
 		return unsafe { nil }
@@ -997,41 +1003,58 @@ $if !i386 {
 	pub:
 		fn_ptr VlibcThreadFn
 		arg    u64
-		start  &MacThreadStart
+		start  &MacThreadStart = unsafe { nil }
 		thread voidptr
 		tid    i64
 		done   u32
 	}
 
-	// vlibc_thread_spawn starts a worker with its own argument and stack state.
+	// vlibc_thread_spawn starts a worker with independent argument and TLS state.
+	// Its callback context uses the ordinary heap, even inside a scoped arena.
 	pub fn vlibc_thread_spawn(fn_ptr VlibcThreadFn, arg u64) (VlibcThread, VlibcErrno) {
-		mut t := VlibcThread{}
-		t.fn_ptr = fn_ptr
-		t.arg = arg
-		ctx := &MacThreadStart(malloc(sizeof(MacThreadStart)))
+		mut t := VlibcThread{ fn_ptr: fn_ptr, arg: arg }
+		if fn_ptr == unsafe { nil } { return t, .einval }
+		ctx := unsafe { &MacThreadStart(vcalloc_heap(sizeof(MacThreadStart))) }
+		if ctx == unsafe { nil } { return t, .enomem }
 		ctx.fn_ptr = fn_ptr
 		ctx.arg = arg
-		ctx.done = 0
 		t.start = ctx
-		t.done = 0
-		t.thread = unsafe { nil }
-		rc := C.pthread_create(&t.thread, unsafe { nil }, voidptr(macos_thread_entry), voidptr(ctx))
+		mut rc := i32(0)
+		$if freestanding && !native && amd64 && !v_bare_no_startup ? {
+			t.thread = bare_thread_create(macos_thread_entry, ctx, 0, 0, &rc)
+		} $else {
+			rc = i32(C.pthread_create(&t.thread, unsafe { nil }, voidptr(macos_thread_entry), ctx))
+		}
 		if rc != 0 {
-			free(ctx)
+			unsafe { vfree_heap(ctx) }
+			t.start = unsafe { nil }
+			t.thread = unsafe { nil }
 			return t, unsafe { VlibcErrno(rc) }
 		}
-		// No pthread_threadid call here: the pthread handle identifies the thread.
+		// This is a join handle, rather than a native numeric thread ID.
 		t.tid = i64(t.thread)
-		return t, VlibcErrno.enoerror
+		return t, .enoerror
 	}
 
-	// vlibc_thread_join waits for kernel thread exit before releasing its stack.
+	// vlibc_thread_join waits for kernel exit before releasing callback storage.
+	// Failure leaves the join handle owned by the caller; success consumes it.
 	pub fn vlibc_thread_join(mut t VlibcThread) VlibcErrno {
-		rc := C.pthread_join(t.thread, unsafe { nil })
-		if rc != 0 { return unsafe { VlibcErrno(rc) } }
-		free(t.start)
+		if t.thread == unsafe { nil } { return .esrch }
+		$if freestanding && !native && amd64 && !v_bare_no_startup ? {
+			if vlibc_load_u32(&t.start.started) != 0 {
+				id := bf_gettid()
+				if id != 0 && id == t.start.thread_id { return .edeadlk }
+			}
+			bare_thread_join(t.thread)
+		} $else {
+			rc := C.pthread_join(t.thread, unsafe { nil })
+			if rc != 0 { return unsafe { VlibcErrno(rc) } }
+		}
+		unsafe { vfree_heap(t.start) }
 		t.start = unsafe { nil }
-		return VlibcErrno.enoerror
+		t.thread = unsafe { nil }
+		t.done = 1
+		return .enoerror
 	}
 
 	// ---- mutex/cond via libSystem pthread ----
