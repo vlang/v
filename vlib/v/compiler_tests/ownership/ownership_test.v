@@ -4343,3 +4343,23 @@ fn main() {
 	assert shared_cell.exit_code != 0, shared_cell.output
 	assert shared_cell.output.contains('field `shared_cell`: cell.RefCell has unsynchronized borrow state'), shared_cell.output
 }
+
+fn test_ownership_scoped_thread_accepts_repeated_arguments_to_one_worker() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'scoped_thread_repeated_arguments', r'
+fn sum(left &int, right &int, results chan int) {
+	results <- *left + *right
+}
+
+fn main() {
+	value := 21
+	results := chan int{cap: 1}
+	{
+		worker := spawn sum(&value, &value, results)
+		defer { worker.wait() }
+	}
+	assert <-results == 42
+}
+')
+	assert res.exit_code == 0, res.output
+}

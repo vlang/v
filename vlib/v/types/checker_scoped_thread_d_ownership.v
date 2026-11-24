@@ -121,7 +121,15 @@ fn (mut tc TypeChecker) ownership_record_scoped_thread_borrow(arg flat.NodeId, i
 		return
 	}
 	source := tc.ownership_scoped_thread_source(arg) or { return }
-	tc.ownership_state().scoped_thread_loans_seen = true
+	mut state := tc.ownership_state()
+	if borrows := state.borrowed_vars[source] {
+		for borrow in borrows {
+			if borrow.thread_join_site == join_site && borrow.borrower == handle {
+				return
+			}
+		}
+	}
+	state.scoped_thread_loans_seen = true
 	tc.ownership_add_borrow_info(source, BorrowInfo{
 		borrower:         handle
 		pos:              arg
