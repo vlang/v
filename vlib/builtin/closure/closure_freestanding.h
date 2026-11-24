@@ -14,8 +14,10 @@ static inline void v_closure_flush_code(void *base, size_t size) {
 #endif
 
 #if defined(__APPLE__) && (defined(__aarch64__) || defined(__x86_64__))
+#if defined(__aarch64__)
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
+#endif
 
 /* V's existing thunk ABI reads mutable metadata exactly 16 KiB behind
  * its program counter. Remap an immutable page from our signed text beside a
@@ -60,6 +62,7 @@ __asm__(
  * include this header, while retaining a supported symbol-based Mach relocation. */
 extern const unsigned char v_closure_static_templates[] __attribute__((visibility("hidden")));
 
+#if defined(__aarch64__)
 static inline void *v_closure_map_static_templates(size_t page_size) {
 	if (page_size != 16384) return NULL;
 	mach_vm_address_t base = 0;
@@ -79,5 +82,6 @@ static inline void *v_closure_map_static_templates(size_t page_size) {
 	}
 	return (void *)base;
 }
+#endif /* __aarch64__ libSystem-backed mapping */
 #endif
 #endif

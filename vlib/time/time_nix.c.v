@@ -73,7 +73,7 @@ pub fn (t Time) local() Time {
 	if t.is_local {
 		return t
 	}
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		return bare_local_from_unix(t.unix(), t.nanosecond)
 	} $else {
 		loc_tm := C.tm{}
@@ -121,7 +121,7 @@ fn vpc_now() u64 {
 // this should be implemented properly with support for leap seconds.
 // It uses the realtime clock to get and converts it to local time
 fn linux_now() Time {
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		sec, nanos := bare_realtime_parts()
 		return bare_local_from_unix(sec, nanos)
 	} $else {
@@ -171,14 +171,18 @@ pub fn (d Duration) timespec() C.timespec {
 
 // sleep suspends the execution of the calling thread for a given duration (in nanoseconds).
 pub fn sleep(duration Duration) {
-	mut req := C.timespec{duration / second, duration % second}
-	rem := C.timespec{}
-	for C.nanosleep(&req, &rem) < 0 {
-		if C.errno == C.EINTR {
-			// Interrupted by a signal handler
-			req = rem
-		} else {
-			break
+	$if freestanding && macos && amd64 {
+		if duration > 0 { bf_sleep_ns(i64(duration)) }
+	} $else {
+		mut req := C.timespec{duration / second, duration % second}
+		rem := C.timespec{}
+		for C.nanosleep(&req, &rem) < 0 {
+			if C.errno == C.EINTR {
+				// Interrupted by a signal handler
+				req = rem
+			} else {
+				break
+			}
 		}
 	}
 }

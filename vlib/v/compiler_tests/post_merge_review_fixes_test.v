@@ -10237,9 +10237,8 @@ fn main() {
 // `gen_profile_fn_begin` is the only place that resets `profile_fn_active` and
 // `profile_fn_restore_enabled`; skipping the whole call for a naked function (as
 // above) left both fields holding whatever the PRECEDING profiled function left
-// them at. A non-void naked function still needs an explicit V `return` to
-// satisfy the checker's tail-return analysis (its own `asm` `ret` is invisible to
-// it), and that `return` goes through `gen_return_cleanup` in stmt.v, which calls
+// them at. An explicit V `return`, retained here to exercise this code-generation
+// path, goes through `gen_return_cleanup` in stmt.v, which calls
 // `gen_profile_fn_exit()` unconditionally -- not gated on naked-ness at all. With
 // a stale `profile_fn_active == true`, that emits cleanup referencing
 // `_PROF_FN_START`/`_PROF_PREV_MEASURED_TIME`, undeclared in this body because

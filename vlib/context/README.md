@@ -12,7 +12,9 @@ derived from it are also canceled.
 The with_cancel, with_deadline, and with_timeout functions take a Context (the parent)
 and return a derived Context (the child). Calling the cancel function
 cancels the child and its children, removes the parent's reference to the child,
-and stops any associated timers.
+and stops any associated deadline waits. Internal propagation and deadline workers stop when
+that child is canceled; they do not wait for the parent's cancellation or the original deadline.
+Background and TODO contexts, including value-only wrappers around them, need no propagation worker.
 
 Programs that use Contexts should follow these rules to keep interfaces consistent
 across different modules.
@@ -64,7 +66,9 @@ fn main() {
 
 The cause is propagated through the context tree. If a parent context is
 canceled with a cause, all derived contexts inherit the same cause.
-If multiple ancestors are canceled, the first cause encountered is returned.
+The first cancellation of each context fixes its error and cause. A child canceled before its
+parent keeps its own cause; a parent canceled first passes its cause to its children. Canceling
+with `none` records the generic cancellation error and cannot be replaced by a later cause.
 
 ### Convenience variants
 

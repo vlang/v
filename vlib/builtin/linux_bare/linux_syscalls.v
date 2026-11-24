@@ -392,6 +392,7 @@ $if !i386 {
 	// memory through its arguments, hence `memory` and `volatile`. On arm64 the
 	// arguments go through x0-x5 and the number through x8; inputs cannot be
 	// allocated to clobbered registers, so moving them there in order is safe.
+	@[no_profile; no_trace]
 	fn sys_call0(scn u64) u64 {
 		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
@@ -418,6 +419,7 @@ $if !i386 {
 		return res
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call1(scn u64, arg1 u64) u64 {
 		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
@@ -447,6 +449,7 @@ $if !i386 {
 		return res
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call2(scn u64, arg1 u64, arg2 u64) u64 {
 		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
@@ -480,6 +483,7 @@ $if !i386 {
 		return res
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call3(scn u64, arg1 u64, arg2 u64, arg3 u64) u64 {
 		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
@@ -517,6 +521,7 @@ $if !i386 {
 		return res
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call4(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64) u64 {
 		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
@@ -560,6 +565,7 @@ $if !i386 {
 		return res
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call5(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64) u64 {
 		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
@@ -609,6 +615,7 @@ $if !i386 {
 		return res
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 i64, arg6 u64) u64 {
 		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {

@@ -84,7 +84,9 @@ fn (mut g FlatGen) gen_live_wrapper(node flat.Node, module_name string, name str
 	ret := g.fn_return_type_name(g.fn_node_return_type(node, module_name))
 	params := g.live_function_parameters(node)
 	args := g.export_wrapper_arg_names(node).join(', ')
-	g.writeln('${ret} ${name}(${params}) {')
+	g.write('${ret} ')
+	g.write_macro_safe_v_function_name(name)
+	g.writeln('(${params}) {')
 	g.writeln('v_live_lock();')
 	if ret == 'void' {
 		g.writeln('impl_live_${name}(${args});')

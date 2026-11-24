@@ -1041,38 +1041,42 @@ fn test_arm32_output_undefines_tinycc_identifier_macros() {
 	assert checked.exit_code == 0, checked.output
 }
 
-fn test_freestanding_linux_threads_use_canonical_clone_runtime() {
-	for preamble in ['system', 'headerless', 'target'] {
-		mut g := FlatGen.new()
-		g.target = pref.target_from('linux', 'amd64') or { panic(err) }
-		g.compile_defines = ['freestanding']
-		g.needs_thread_runtime = true
-		match preamble {
-			'system' { g.system_libc_preamble() }
-			'headerless' { g.headerless_thread_runtime() }
-			else { g.target_libc_thread_runtime() }
+fn test_freestanding_threads_use_canonical_kernel_runtime() {
+	for target in ['linux:amd64', 'linux:arm64', 'macos:amd64'] {
+		for preamble in ['system', 'headerless', 'target'] {
+			mut g := FlatGen.new()
+			parts := target.split(':')
+			g.target = pref.target_from(parts[0], parts[1]) or { panic(err) }
+			g.compile_defines = ['freestanding']
+			g.needs_thread_runtime = true
+			match preamble {
+				'system' { g.system_libc_preamble() }
+				'headerless' { g.headerless_thread_runtime() }
+				else { g.target_libc_thread_runtime() }
+			}
+			code := g.sb.str()
+			assert code.contains('v_bare_thread_create(start, arg,'), preamble
+			assert code.contains('v_bare_thread_join(thread.handle)'), preamble
+			assert code.contains('v_bare_thread_detach(thread.handle)'), preamble
+			assert !code.contains('pthread_create'), preamble
+			assert !code.contains('return (void*)0;'), preamble
 		}
-		code := g.sb.str()
-		assert code.contains('v_bare_thread_create(start, arg,'), preamble
-		assert code.contains('v_bare_thread_join(thread.handle)'), preamble
-		assert code.contains('v_bare_thread_detach(thread.handle)'), preamble
-		assert !code.contains('pthread_create'), preamble
-		assert !code.contains('return (void*)0;'), preamble
 	}
 }
 
-fn test_freestanding_macos_and_linux_shared_host_keep_real_pthreads() {
-	for target_os in ['macos', 'linux'] {
+fn test_freestanding_macos_arm_and_shared_host_keep_real_pthreads() {
+	for target in ['macos:amd64:shared', 'linux:amd64:shared', 'macos:arm64:standalone'] {
+		parts := target.split(':')
 		mut g := FlatGen.new()
-		g.target = pref.target_from(target_os, 'amd64') or { panic(err) }
+		g.target = pref.target_from(parts[0], parts[1]) or { panic(err) }
 		g.compile_defines = ['freestanding']
-		if target_os == 'linux' { g.compile_defines << 'v_bare_no_startup' }
+		if parts[2] == 'shared' { g.compile_defines << 'v_bare_no_startup' }
 		g.needs_thread_runtime = true
 		g.system_libc_preamble()
 		code := g.sb.str()
-		assert code.contains('pthread_create(&result.handle,'), target_os
-		assert code.contains('pthread_join(thread.handle,'), target_os
-		assert !code.contains('v_bare_thread_create'), target_os
+		assert code.contains('pthread_create(&result.handle,'), target
+		assert code.contains('pthread_join(thread.handle,'), target
+		assert !code.contains('v_bare_thread_create'), target
 	}
 }
 

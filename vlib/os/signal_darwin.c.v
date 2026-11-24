@@ -1,18 +1,29 @@
 @[has_globals]
 module os
 
-#flag -lpthread
+$if !(macos && freestanding && amd64 && !native) {
+	#flag -lpthread
 
-fn C.pthread_self() voidptr
+	fn C.pthread_self() voidptr
+}
 
 // g_main_thread_id and is_main_thread can be used to determine if the current thread is the main thread.
 // if need to get the tid of the main thread, can use the global variable g_main_thread_id
 // instead of using thread_id() every time.
-__global g_main_thread_id = u64(C.pthread_self())
+__global g_main_thread_id = signal_thread_id()
+
+@[inline]
+fn signal_thread_id() u64 {
+	$if macos && freestanding && amd64 && !native {
+		return bf_gettid()
+	} $else {
+		return u64(C.pthread_self())
+	}
+}
 
 // is_main_thread returns whether the current thread is the main thread.
 pub fn is_main_thread() bool {
-	return g_main_thread_id == u64(C.pthread_self())
+	return g_main_thread_id == signal_thread_id()
 }
 
 fn C.sigaddset(set &u32, signum i32) i32

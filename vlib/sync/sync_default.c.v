@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module sync
 
-$if !(freestanding && linux && !native && !i386) {
+$if !(freestanding && (linux || (macos && amd64)) && !native && !i386) {
 	// There's no additional linking (-lpthread) needed for Android.
 	// See https://stackoverflow.com/a/31277163/1904615
 	$if !android {

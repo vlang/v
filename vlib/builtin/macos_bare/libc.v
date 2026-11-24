@@ -3,14 +3,14 @@ module builtin
 import dlmalloc
 
 // macOS freestanding: V memory helpers, allocator wiring and process exit.
-// libSystem owns the C memory/string and POSIX I/O symbols, as well as threads.
-// macOS starts every process via dyld and requires libSystem.
+// AMD64 C ABI memory exports reuse these V operations. Its standalone runtime
+// owns startup and syscalls; ARM64 retains its system loader and libSystem.
 
 __global global_allocator dlmalloc.Dlmalloc
 __global global_allocator_ready bool
 
 // memcpy copies n bytes from const_src into dest and returns dest.
-@[unsafe]
+@[no_profile; no_trace; unsafe]
 pub fn memcpy(dest voidptr, const_src voidptr, n uint) voidptr {
 	dest_ := unsafe { &u8(dest) }
 	src_ := unsafe { &u8(const_src) }
@@ -22,7 +22,7 @@ pub fn memcpy(dest voidptr, const_src voidptr, n uint) voidptr {
 	return unsafe { dest }
 }
 
-@[unsafe]
+@[no_profile; no_trace; unsafe]
 fn strlen(const_s voidptr) uint {
 	s := unsafe { &u8(const_s) }
 	mut i := 0
@@ -48,7 +48,7 @@ fn realloc(old_area voidptr, new_size uint) voidptr {
 }
 
 // memset fills n bytes at s with c and returns s.
-@[unsafe]
+@[no_profile; no_trace; unsafe]
 pub fn memset(s voidptr, c int, n uint) voidptr {
 	mut s_ := unsafe { &char(s) }
 	for i in 0 .. int(n) {
@@ -59,7 +59,7 @@ pub fn memset(s voidptr, c int, n uint) voidptr {
 	return unsafe { s }
 }
 
-@[unsafe]
+@[no_profile; no_trace; unsafe]
 fn memmove(dest voidptr, const_src voidptr, n uint) voidptr {
 	dest_ := unsafe { &u8(dest) }
 	src_ := unsafe { &u8(const_src) }
@@ -98,6 +98,7 @@ fn getchar() int {
 	return int(x)
 }
 
+@[no_profile; no_trace]
 fn memcmp(const_a voidptr, const_b voidptr, n uint) int {
 	a_ := unsafe { &u8(const_a) }
 	b_ := unsafe { &u8(const_b) }
@@ -183,9 +184,13 @@ fn __malloc_align(size uint, alignment uint) voidptr {
 }
 
 @[export: 'exit']
-@[noreturn]
+@[no_profile; no_trace; noreturn]
 fn __exit(code int) {
-	sys_exit(code)
+	$if amd64 && !native && !v_bare_no_startup ? {
+		bare_macos_normal_exit(i32(code))
+	} $else {
+		sys_exit(code)
+	}
 }
 
 @[export: 'qsort']

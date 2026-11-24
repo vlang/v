@@ -13,6 +13,8 @@ module os
 // it also handles sizeless /proc and /sys files that a size-based read would
 // truncate.
 $if freestanding || syscalls {
+	const fsys_darwin_path_max = 1024
+
 	fn fsys_read_file(path string) ![]u8 {
 		fd, e := bf_openat(path.str, u64(o_rdonly), u64(0))
 		if e != 0 {
@@ -98,14 +100,13 @@ $if freestanding || syscalls {
 		return bf_truncate(path, len)
 	}
 
-	// fsys_getenv returns the value and whether the variable named `key` is
-	// present in the process environment. Linux rides the kernel's
-	// /proc/self/environ snapshot (a NUL-separated `KEY=VALUE` block) through
-	// the plain file-read route, which the C and native backends lower with
-	// the same syscalls — no pointer-chain walk of the envp block, which the
-	// native backend lowers differently than the C backend. The other
-	// platforms keep the bf walk.
+	// fsys_getenv reads the live V environment on the supported freestanding C
+	// targets. Other Linux backends retain their /proc startup snapshot because
+	// the experimental native backend lowers argv pointer walks differently.
 	fn fsys_getenv(key string) (string, bool) {
+		$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
+			return fsys_environment_get(key)
+		}
 		$if linux {
 			return fsys_proc_env_find(key)
 		}
@@ -130,7 +131,7 @@ $if freestanding || syscalls {
 				}
 				n++
 			}
-			if eq >= 0 && (eq - i) == key.len && n > (eq + 1) {
+			if eq > i && (eq - i) == key.len {
 				mut same := true
 				for k in 0 .. key.len {
 					if content[i + k] != key[k] {
@@ -164,7 +165,7 @@ $if freestanding || syscalls {
 				}
 				n++
 			}
-			if eq >= 0 && eq > i && n > (eq + 1) {
+			if eq > i {
 				key := text[i..eq].clone()
 				val := text[eq + 1..n].clone()
 				res[key] = val
@@ -241,37 +242,148 @@ $if freestanding || syscalls {
 		}
 	}
 
-	// fsys_real_path makes `fpath` absolute and resolves `.` and `..` lexically.
-	// It does not chase symlinks: there is no realpath syscall, and Zig's
-	// O_PATH-open + /proc/self/fd read depends on procfs, which is not portable.
+	// fsys_real_path preserves the public real_path failure contract: the caller
+	// owns a copy of the original spelling when any component cannot be resolved.
+	@[manualfree]
 	fn fsys_real_path(fpath string) string {
-		if fpath.len == 0 {
-			return '.'
+		return fsys_resolve_path(fpath) or { fpath.clone() }
+	}
+
+	// Resolve components in filesystem order. In particular, a symlink's target
+	// must be read before processing a following `..`; abs_path is only lexical.
+	// Each kernel path is NUL terminated in `path`. `pending` owns the unresolved
+	// suffix, so replacing it during symlink expansion cannot borrow freed data.
+	@[manualfree]
+	fn fsys_resolve_path(fpath string) ?string {
+		// Match the C-string API used by hosted real_path, including embedded NUL.
+		mut input_len := fpath.len
+		for i in 0 .. fpath.len {
+			if fpath[i] == 0 {
+				input_len = i
+				break
+			}
 		}
-		mut comps := []string{cap: 24}
-		if !fpath.starts_with('/') {
-			for p in getwd().split('/') {
-				if p != '' {
-					comps << p
+		if input_len == 0 {
+			return none
+		}
+		$if macos {
+			// Darwin's realpath bounds the unresolved spelling, before folding dots.
+			initial_separator := if fpath[0] == `/` { 1 } else { 0 }
+			if input_len - initial_separator >= fsys_darwin_path_max { return none }
+		}
+		mut path := [max_path_buffer_size]u8{}
+		path[0] = `/`
+		mut length := 1
+		if fpath[0] != `/` {
+			cwd := getwd()
+			defer { unsafe { cwd.free() } }
+			if cwd.len == 0 || cwd[0] != `/` || cwd.len >= path.len {
+				return none
+			}
+			// The checked length fits the fixed buffer, including its terminator.
+			unsafe { vmemcpy(&path[0], cwd.str, cwd.len) }
+			length = cwd.len
+		}
+		mut pending := []u8{len: input_len}
+		unsafe { vmemcpy(pending.data, fpath.str, input_len) }
+		defer { unsafe { pending.free() } }
+		mut target := [max_path_buffer_size]u8{}
+		mut cursor := 0
+		mut links := 0
+		// Hosted resolution permits 40 traversals on Linux and 33 on Darwin.
+		// A limit also bounds cycles whose spellings keep growing (link -> dir/link).
+		link_limit := $if macos { 33 } $else { 40 }
+		for cursor < pending.len {
+			if pending[cursor] == `/` {
+				cursor++
+				continue
+			}
+			start := cursor
+			for cursor < pending.len && pending[cursor] != `/` {
+				cursor++
+			}
+			component_len := cursor - start
+			parent_len := length
+			is_dot := pending[start] == `.` && (component_len == 1
+				|| (component_len == 2 && pending[start + 1] == `.`))
+			$if macos {
+				// Darwin validates named entries, then folds dots even after a file.
+				if is_dot {
+					if component_len == 2 {
+						for length > 1 && path[length - 1] != `/` { length-- }
+						if length > 1 { length-- }
+					}
+					continue
+				}
+			}
+			separator := if length == 1 { 0 } else { 1 }
+			if component_len >= path.len - length - separator {
+				return none
+			}
+			if separator != 0 {
+				path[length] = `/`
+				length++
+			}
+			// Both source and destination ranges are bounded above. A view of this
+			// buffer is borrowed only for the synchronous stat/readlink syscalls.
+			unsafe { vmemcpy(&path[length], &u8(pending.data) + start, component_len) }
+			length += component_len
+			path[length] = 0
+			candidate := unsafe { tos(&path[0], length) }
+			mut st := FSysStat{}
+			for {
+				current, code := bf_stat(candidate, false)
+				if code == 4 { continue } // EINTR
+				if code != 0 { return none }
+				st = current
+				break
+			}
+			if st.mode & s_ifmt == s_iflnk {
+				links++
+				if links > link_limit { return none }
+				mut count := 0
+				for {
+					n, code := bf_readlink(candidate, &target[0], target.len)
+					if code == 4 { continue }
+					if code != 0 || n <= 0 || n >= target.len { return none }
+					count = n
+					break
+				}
+				remaining := pending.len - cursor
+				if count > max_int - remaining { return none }
+				$if macos {
+					if count + remaining >= fsys_darwin_path_max { return none }
+				}
+				mut next := []u8{len: count + remaining}
+				unsafe {
+					vmemcpy(next.data, &target[0], count)
+					vmemcpy(&u8(next.data) + count, &u8(pending.data) + cursor, remaining)
+					pending.free()
+					// Transfer ownership; next is not retained or freed separately.
+					pending = next
+				}
+				cursor = 0
+				length = if target[0] == `/` { 1 } else { parent_len }
+				continue
+			}
+			$if !macos {
+				if cursor < pending.len && st.mode & s_ifmt != s_ifdir {
+					return none
+				}
+				// Stat dots before removing them, so a missing, non-directory or
+				// unsearchable predecessor cannot disappear through normalization.
+				if is_dot {
+					length = parent_len
+					if component_len == 2 {
+						for length > 1 && path[length - 1] != `/` { length-- }
+						if length > 1 { length-- }
+					}
 				}
 			}
 		}
-		for p in fpath.split('/') {
-			if p == '' || p == '.' {
-				continue
-			}
-			if p == '..' {
-				if comps.len > 0 {
-					comps.pop()
-				}
-				continue
-			}
-			comps << p
-		}
-		if comps.len == 0 {
-			return '/'
-		}
-		return '/' + comps.join('/')
+		// This is the sole escaping allocation. Neither stack storage nor the
+		// pending buffer is retained by the returned string.
+		return unsafe { tos(&path[0], length).clone() }
 	}
 
 	// fsys_ioctl issues `request` on `fd` (FIONREAD) through the bf surface.

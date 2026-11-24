@@ -1,0 +1,34 @@
+module main
+
+struct Worker {}
+
+fn observed_child() int {
+	return 21
+}
+
+@[no_profile]
+fn ignored() int {
+	return observed_child() * 2
+}
+
+@[no_profile]
+fn (w Worker) ignored_method() int {
+	return 7
+}
+
+@[no_profile]
+fn ignored_generic[T](value T) T {
+	return value
+}
+
+fn observed_after() int {
+	return 5
+}
+
+fn main() {
+	callback := ignored
+	assert callback() == 42
+	assert Worker{}.ignored_method() == 7
+	assert ignored_generic(13) == 13
+	assert observed_after() == 5
+}

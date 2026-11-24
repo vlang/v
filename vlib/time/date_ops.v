@@ -55,7 +55,7 @@ pub fn (t Time) add_date(years int, months int, days int) Time {
 		instant := location_calendar_instant(loc, wall, input_offset)
 		return loc.unix_nanosecond_to_local(instant, t.nanosecond) or { panic(err.msg()) }
 	}
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		if t.is_local {
 			loc := bare_local_clock_location()
 			input_offset := if t.local_offset_known {

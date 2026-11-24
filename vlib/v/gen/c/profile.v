@@ -25,6 +25,32 @@ fn (g &FlatGen) profile_timer_c_name() string {
 	return if g.target.os == 'macos' { 'time__vpc_now_darwin' } else { 'time__vpc_now' }
 }
 
+fn (g &FlatGen) profile_uses_v_report() bool {
+	return g.target.os == 'macos' && g.target.arch == 'amd64'
+		&& 'freestanding' in g.compile_values
+}
+
+fn (mut g FlatGen) gen_profile_v_report() {
+	runtime := g.profile_runtime_module_name()
+	begin := g.fn_c_name_in_module(runtime, 'begin_report')
+	write_row := g.fn_c_name_in_module(runtime, 'write_report_row')
+	end := g.fn_c_name_in_module(runtime, 'end_report')
+	if g.is_trace_calls {
+		guard := g.global_c_name('${g.trace_runtime_module_name()}.g_trace_in_hook')
+		g.writeln('bool _v_profile_previous_trace = ${guard};')
+		g.writeln('${guard} = true;')
+	}
+	g.writeln('${g.cname('${runtime}.Report')} _v_profile_report = ${begin}((string){(u8*)"${c_escape(g.profile_file)}", ${g.profile_file.len}, 1});')
+	for pc in g.profile_counters {
+		g.writeln('if (${pc.calls_name}) ${write_row}(&_v_profile_report, ${pc.calls_name}, ${pc.counter_name}, ${pc.counter_name}_only_current, (string){(u8*)"${c_escape(pc.fn_name)}", ${pc.fn_name.len}, 1});')
+	}
+	g.writeln('${end}(&_v_profile_report);')
+	if g.is_trace_calls {
+		guard := g.global_c_name('${g.trace_runtime_module_name()}.g_trace_in_hook')
+		g.writeln('${guard} = _v_profile_previous_trace;')
+	}
+}
+
 fn profile_v1_fn_name(cfn_name string, module_name string, fn_name string) string {
 	// An operator overload is labelled without the internal C namespace of its name:
 	// `Vec.+` is `main__Vec__plus`, as in V 0.5.2. gen_profile_fn_begin adds
@@ -146,7 +172,8 @@ fn (mut g FlatGen) gen_profile_startup_enable() {
 }
 
 fn (mut g FlatGen) gen_profile_native_declarations() {
-	if g.profile_file.len == 0 || g.target.os != 'macos' {
+	if g.profile_file.len == 0 || g.target.os != 'macos'
+		|| (g.target.arch == 'amd64' && 'freestanding' in g.compile_values) {
 		return
 	}
 	// The profiling timer is forced into the used-function set even when user
@@ -191,27 +218,31 @@ fn (mut g FlatGen) gen_profile_support() {
 	g.writeln('#endif')
 	g.writeln('void vprint_profile_stats(void) {')
 	g.indent++
-	g.writeln('double f = 1.0;')
-	if g.target.os == 'windows' {
-		// QueryPerformanceCounter() / QueryPerformanceFrequency()
-		// https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps
-		g.writeln('u64 freq_time = 0;')
-		g.writeln('QueryPerformanceFrequency((void*)(&freq_time));')
-		g.writeln('f = (double)1000000000.0 / (double)freq_time;')
-	}
-	fstring := '"%14llu %14.3fms %14.3fms %14.0fns %s \\n"'
-	if g.profile_file == '-' {
-		for pc in g.profile_counters {
-			g.writeln('if (${pc.calls_name}) printf(${fstring}, ${pc.calls_name}, (${pc.counter_name} * f) / 1000000.0, (${pc.counter_name}_only_current * f) / 1000000.0, (${pc.counter_name} * f) / ${pc.calls_name}, "${c_escape(pc.fn_name)}");')
-		}
+	if g.profile_uses_v_report() {
+		g.gen_profile_v_report()
 	} else {
-		g.writeln('FILE* fp;')
-		g.writeln('fp = fopen("${c_escape(g.profile_file)}", "w+");')
-		g.writeln('if (fp == NULL) { return; }')
-		for pc in g.profile_counters {
-			g.writeln('if (${pc.calls_name}) fprintf(fp, ${fstring}, ${pc.calls_name}, (${pc.counter_name} * f) / 1000000.0, (${pc.counter_name}_only_current * f) / 1000000.0, (${pc.counter_name} * f) / ${pc.calls_name}, "${c_escape(pc.fn_name)}");')
+		g.writeln('double f = 1.0;')
+		if g.target.os == 'windows' {
+			// QueryPerformanceCounter() / QueryPerformanceFrequency()
+			// https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps
+			g.writeln('u64 freq_time = 0;')
+			g.writeln('QueryPerformanceFrequency((void*)(&freq_time));')
+			g.writeln('f = (double)1000000000.0 / (double)freq_time;')
 		}
-		g.writeln('fclose(fp);')
+		fstring := '"%14llu %14.3fms %14.3fms %14.0fns %s \\n"'
+		if g.profile_file == '-' {
+			for pc in g.profile_counters {
+				g.writeln('if (${pc.calls_name}) printf(${fstring}, ${pc.calls_name}, (${pc.counter_name} * f) / 1000000.0, (${pc.counter_name}_only_current * f) / 1000000.0, (${pc.counter_name} * f) / ${pc.calls_name}, "${c_escape(pc.fn_name)}");')
+			}
+		} else {
+			g.writeln('FILE* fp;')
+			g.writeln('fp = fopen("${c_escape(g.profile_file)}", "w+");')
+			g.writeln('if (fp == NULL) { return; }')
+			for pc in g.profile_counters {
+				g.writeln('if (${pc.calls_name}) fprintf(fp, ${fstring}, ${pc.calls_name}, (${pc.counter_name} * f) / 1000000.0, (${pc.counter_name}_only_current * f) / 1000000.0, (${pc.counter_name} * f) / ${pc.calls_name}, "${c_escape(pc.fn_name)}");')
+			}
+			g.writeln('fclose(fp);')
+		}
 	}
 	g.indent--
 	g.writeln('}')

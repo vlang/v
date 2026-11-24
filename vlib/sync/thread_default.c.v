@@ -15,7 +15,7 @@ $if macos {
 // or when the thread has terminated.
 
 pub fn thread_id() u64 {
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		return bf_gettid()
 	} $else {
 		return u64(C.pthread_self())

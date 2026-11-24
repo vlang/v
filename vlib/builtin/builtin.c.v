@@ -28,7 +28,7 @@ fn C._vinit(argc i32, argv &&char)
 
 fn C._vcleanup()
 
-// exit terminates execution immediately and returns exit `code` to the shell.
+// exit terminates execution and returns exit `code` to the shell.
 @[noreturn]
 pub fn exit(code int) {
 	$if freestanding && (linux || macos) {
@@ -49,13 +49,13 @@ pub fn exit(code int) {
 // The same fn may be registered multiple times.
 // Each callback fn will called once for each registration.
 pub fn at_exit(cb FnExitCb) ! {
-	$if freestanding {
-		return error('at_exit not implemented with -freestanding')
-	} $else {
+	$if !freestanding || (macos && amd64 && !native && !v_bare_no_startup ?) {
 		res := C.atexit(cb)
 		if res != 0 {
 			return error_with_code('at_exit failed', res)
 		}
+	} $else {
+		return error('at_exit not implemented with -freestanding')
 	}
 }
 

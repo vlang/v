@@ -1,12 +1,21 @@
 module builtin
 
-// The argv-block environment walkers shared by the ELF bare runtimes (FreeBSD,
+// The argv-block environment walkers shared by the bare runtimes (FreeBSD,
 // OpenBSD, NetBSD, macOS, Solaris): the bf_environ/bf_getenv of each OS call them
 // by name. Only `-freestanding` and `-syscalls` builds reach them.
 $if freestanding || syscalls {
+	// bf_startup_environment returns the borrowed, NUL-terminated startup
+	// environment vector. Its storage lasts for the process lifetime. It is not
+	// a snapshot of subsequent os.setenv/unsetenv changes; use os for those.
+	@[inline]
+	pub fn bf_startup_environment() &&u8 {
+		if g_main_argv == unsafe { nil } { return unsafe { nil } }
+		return unsafe { &&u8(g_main_argv) + g_main_argc + 1 }
+	}
+
 	// env_walk helpers walk the argv-block environment: envp starts at
 	// argv + (argc + 1) slots (see linux_bare/bf.v for the layout note). Every
-	// ELF target's kernel lays this out the same way, so the walkers are shared
+	// supported startup ABI supplies this layout, so the walkers are shared
 	// by name across the bf files.
 	fn env_walk_find(key string) (string, bool) {
 		unsafe {
@@ -32,7 +41,7 @@ $if freestanding || syscalls {
 					}
 					eq++
 				}
-				if eq == key.len && eq >= 0 {
+				if eq == key.len && eq > 0 && entry[eq] == `=` {
 					mut ok := true
 					for k in 0 .. key.len {
 						if entry[k] != u8(key[k]) {
@@ -79,7 +88,7 @@ $if freestanding || syscalls {
 					}
 					eq++
 				}
-				if eq > 0 {
+				if eq > 0 && entry[eq] == `=` {
 					key := (&u8(entry)).vstring_with_len(eq)
 					mut vl := 0
 					for entry[eq + 1 + vl] != 0 {

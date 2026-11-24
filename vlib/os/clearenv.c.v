@@ -12,31 +12,35 @@ fn C.SetEnvironmentVariableW(name &u16, value &u16) i32
 // clearenv removes all environment variables from the current process.
 // It is safe to call repeatedly, including when the environment is already empty.
 pub fn clearenv() {
-	$if windows {
-		block := C.GetEnvironmentStringsW()
-		if block == unsafe { nil } {
-			return
-		}
-		environment := clearenv_windows_environment(block)
-		C.FreeEnvironmentStringsW(block)
-		// Initialize and snapshot the CRT table before unsetenv can reallocate it.
-		getenv('PATH')
-		crt_environment := unsafe { &&u16(voidptr(C._wenviron)) }
-		for name in clearenv_windows_crt_names(crt_environment) {
-			unsetenv(name)
-		}
-		for name, _ in environment {
-			// Win32 also contains hidden names and names absent from the CRT cache.
-			wide_name := name.to_wide()
-			C.SetEnvironmentVariableW(wide_name, unsafe { nil })
-			unsafe { free(voidptr(wide_name)) }
-		}
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
+		fsys_environment_clear()
 	} $else {
-		if unsafe { voidptr(C.environ) } == unsafe { nil } {
-			return
-		}
-		for key, _ in environ() {
-			unsetenv(key)
+		$if windows {
+			block := C.GetEnvironmentStringsW()
+			if block == unsafe { nil } {
+				return
+			}
+			environment := clearenv_windows_environment(block)
+			C.FreeEnvironmentStringsW(block)
+			// Initialize and snapshot the CRT table before unsetenv can reallocate it.
+			getenv('PATH')
+			crt_environment := unsafe { &&u16(voidptr(C._wenviron)) }
+			for name in clearenv_windows_crt_names(crt_environment) {
+				unsetenv(name)
+			}
+			for name, _ in environment {
+				// Win32 also contains hidden names and names absent from the CRT cache.
+				wide_name := name.to_wide()
+				C.SetEnvironmentVariableW(wide_name, unsafe { nil })
+				unsafe { free(voidptr(wide_name)) }
+			}
+		} $else {
+			if unsafe { voidptr(C.environ) } == unsafe { nil } {
+				return
+			}
+			for key, _ in environ() {
+				unsetenv(key)
+			}
 		}
 	}
 }
