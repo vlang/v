@@ -6,10 +6,21 @@
 // prebuilt libgc linked on Windows with tcc does not recognise interior pointers
 // by default, so a collection freed array blocks that a heap object still used,
 // and the next free() of one aborted with "Invalid pointer passed to free()".
+// The generated C does not include gc.h, so request the prototypes: units that use
+// system headers (Windows MSVC, MinGW gcc and TinyCC) otherwise get none, and MSVC
+// (C4013) and gcc 14 reject the implicit declarations.
+@[c_extern]
 fn C.GC_base(voidptr) voidptr
+
+@[c_extern]
 fn C.GC_size(voidptr) uint
+
 fn C.GC_gcollect()
+
+@[c_extern]
 fn C.GC_noop1(u64)
+
+@[c_extern]
 fn C.GC_get_all_interior_pointers() int
 
 const block_ints = 2048

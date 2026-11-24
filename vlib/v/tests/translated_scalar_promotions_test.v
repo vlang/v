@@ -193,6 +193,42 @@ fn test_translated_boolean_indices_and_pointer_offsets() {
 	assert raw == voidptr(ptr)
 }
 
+struct TranslatedVoidptrHolder {
+mut:
+	p voidptr
+}
+
+fn translated_offset_holder(mut holder TranslatedVoidptrHolder) {
+	holder.p += 3
+	holder.p -= u8(1)
+}
+
+fn test_translated_voidptr_offsets_in_fields_and_elements() {
+	bytes := [u8(0), 1, 2, 3, 4, 5, 6, 7]!
+	start := unsafe { voidptr(&bytes[0]) }
+	mut holder := TranslatedVoidptrHolder{
+		p: start
+	}
+	translated_offset_holder(mut holder)
+	assert holder.p == unsafe { voidptr(&bytes[2]) }
+	mut values := [start]
+	values[0] += 4
+	assert values[0] == unsafe { voidptr(&bytes[4]) }
+	mut fixed := [start, start]!
+	fixed[1] += true
+	assert fixed[1] == unsafe { voidptr(&bytes[1]) }
+	mut slots := {
+		'a': start
+	}
+	slots['a'] += 5
+	assert unsafe { slots['a'] } == unsafe { voidptr(&bytes[5]) }
+	slot := unsafe { &fixed[0] }
+	unsafe {
+		slot[0] += 6
+	}
+	assert fixed[0] == unsafe { voidptr(&bytes[6]) }
+}
+
 enum TranslatedPointerOffset {
 	one = 1
 }

@@ -39,7 +39,25 @@ fn test_fastc_native_inputs_shared_by_imports_are_emitted_once() ! {
 	mut prefs := pref.new_preferences()
 	prefs.vroot = @VEXEROOT
 	generation := generate_files_with_source_paths([main], prefs)!
-	assert generation.c_flags.filter(it == native_helper).len == 1, generation.c_flags.str()
+	// `@VMODROOT/shared.o` keeps its `/` after the root, which uses `\` on Windows.
+	assert generation.c_flags.filter(it.replace('\\', '/') == native_helper.replace('\\', '/')).len == 1, generation.c_flags.str()
+}
+
+// math links a module-definition file for Windows TinyCC (`#flag windows ... .def`),
+// which TinyCC takes as a link input like a library.
+fn test_fastc_windows_module_definition_file_is_a_link_input() ! {
+	root := os.join_path(os.vtmp_dir(), 'fastc_def_input_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'imports.def'), 'LIBRARY ucrtbase.dll\nEXPORTS\nfma\n')!
+	source_file := os.join_path(root, 'main.v')
+	os.write_file(source_file, '#flag windows @DIR/imports.def\nfn main() {}\n')!
+	mut prefs := pref.new_preferences()
+	prefs.vroot = @VEXEROOT
+	prefs.ccompiler = 'tinyc'
+	prefs.target = pref.target_from('windows', 'amd64')!
+	generation := generate_files_with_source_paths([source_file], prefs)!
+	assert generation.c_flags.any(os.file_name(it) == 'imports.def'), generation.c_flags.str()
 }
 
 fn test_fastc_native_flags_select_existing_paths() {
@@ -103,7 +121,7 @@ fn test_fastc_linux_atomic_library_directives() {
 		prefs.target = pref.target_from('linux', arch) or { panic(err) }
 		prefs.user_defines << 'v3_backend'
 		generation := generate_files_with_source_paths([root], prefs) or { panic(err) }
-		assert generation.source_paths.any(it.ends_with('sync/stdatomic/1.declarations.c.v'))
+		assert generation.source_paths.any(it.replace('\\', '/').ends_with('sync/stdatomic/1.declarations.c.v'))
 		assert !generation.c_flags.any(it.contains(r'$when_first_existing'))
 		assert generation.c_source().contains('int main(')
 	}
@@ -129,7 +147,7 @@ fn test_fastc_linux_gc_atomic_support_without_sync_import() {
 			for _ in 0 .. 2 {
 				generation := generate_files_with_source_paths([root], prefs) or { panic(err) }
 				assert generation.source_paths.any(it.ends_with('builtin_d_gcboehm.c.v'))
-				has_stdatomic := generation.source_paths.any(it.ends_with('sync/stdatomic/1.declarations.c.v'))
+				has_stdatomic := generation.source_paths.any(it.replace('\\', '/').ends_with('sync/stdatomic/1.declarations.c.v'))
 				assert has_stdatomic == !(libc == 'musl' && arch == 'amd64'), '${libc}/${arch}'
 				assert !generation.c_flags.any(it.ends_with('atomic.S')), generation.c_flags.str()
 				assert generation.c_source().contains('int main(')
@@ -298,8 +316,8 @@ fn main() {
 ') or { panic(err) }
 	for jobs in ['1', '2'] {
 		program := os.join_path(root, 'program_${jobs}')
-		build := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-b', 'fastc',
-			'-enable-globals', '-o', program, root], '', {
+		build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-enable-globals', '-o',
+			program, root], '', {
 			'VJOBS': jobs
 		})
 		assert build.exit_code == 0, '${jobs} jobs: ${build.output}'
@@ -338,10 +356,12 @@ fn test_fastc_existing_path_macros_preserve_quoted_commas() {
 	os.write_file(path, '') or { panic(err) }
 	selected, enabled := fastc_expand_existing_path_macros('PRE\$first_existing("@DIR/missing", "@DIR/native, helper.a")POST', root, os.join_path(root, 'main.v')) or { panic(err) }
 	assert enabled
-	assert selected == 'PRE' + os.quoted_path(path) + 'POST'
+	// `@DIR/native, helper.a` keeps its `/` after the directory, which uses `\` on Windows.
+	expanded := '${root}/native, helper.a'
+	assert selected == 'PRE' + os.quoted_path(expanded) + 'POST'
 	optional, optional_enabled := fastc_expand_existing_path_macros(r"-L$when_first_existing('@DIR/native, helper.a', '@DIR/missing')", root, os.join_path(root, 'main.v')) or { panic(err) }
 	assert optional_enabled
-	assert optional == '-L' + os.quoted_path(path)
+	assert optional == '-L' + os.quoted_path(expanded)
 }
 
 fn test_fastc_linux_prealloc_without_spawn_requires_pthread_linking() {
@@ -487,7 +507,8 @@ fn test_fastc_os_execute_capture_flags_match_target_and_freestanding_mode() ! {
 			}
 			_, _, flags := generate_source_files(sources, map[string]string{}, prefs)!
 			expected := if target_os != 'windows' && !freestanding { [helper] } else { []string{} }
-			assert flags == expected, '${target_os}, freestanding=${freestanding}: ${flags}'
+			// `@VEXEROOT/vlib/os/...` keeps its `/` after the root, which uses `\` on Windows.
+			assert flags.map(it.replace('\\', '/')) == expected.map(it.replace('\\', '/')), '${target_os}, freestanding=${freestanding}: ${flags}'
 		}
 	}
 }

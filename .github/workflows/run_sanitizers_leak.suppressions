@@ -14,3 +14,29 @@ leak:string__plus
 leak:malloc_uncollectable
 leak:new_array_from_c_array
 leak:_vinit
+
+# -prealloc keeps the base arena of a spawned thread until the process exits:
+# values that the thread allocated can outlive it (results read by `wait()`,
+# channel messages). Only the thread-local block pointer refers to the arena's
+# header, so LeakSanitizer reports the header once the thread has ended, and
+# gcc 11's LeakSanitizer also the headers of the blocks that the arena grew
+# into. A grown block header is always linked from the first block of its arena
+# or scope, which stays reported when that arena or scope is lost.
+leak:vmemory_block_init_thread
+leak:vmemory_block_grow
+
+# A parallel parse reads each source into memory of the C allocator, and the
+# buffer of a source whose text the compiler keeps goes to the table of kept
+# source texts (flat.FlatAst.source_texts), which keeps it until the process
+# exits. That table is in -prealloc arena memory, which is mapped with mmap and
+# not scanned by LeakSanitizer, so each kept buffer is reported as a direct leak.
+leak:parser__read_batch_source
+
+# The goroutines runtime allocates the ucontext buffer of each goroutine, and of
+# the scheduler context of each worker thread, with C calloc. It keeps the buffer
+# until the process exits: a finished goroutine goes to a free list and its
+# buffer is reused by the next goroutine. The only pointer to a buffer is in its
+# Goroutine, which -gc boehm allocates on the GC heap. LeakSanitizer does not
+# scan that heap, so it reports each buffer as a direct leak (with -gc none, the
+# Goroutines are C memory that it scans, and nothing is reported).
+leak:goroutines_context_alloc

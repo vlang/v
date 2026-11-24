@@ -9,6 +9,11 @@ const incbin_workspace = os.join_path(os.vtmp_dir(), 'embed_file_incbin_${os.get
 const incbin_payload_len = 200_000
 
 fn testsuite_begin() {
+	// The TCC that a job selects through VFLAGS cannot build `-prod`; let these builds
+	// use the default compiler. The TCC refusal is checked below with an explicit `-cc tcc`.
+	if os.getenv('VFLAGS').contains('tcc') {
+		os.unsetenv('VFLAGS')
+	}
 	os.rmdir_all(incbin_workspace) or {}
 	os.mkdir_all(incbin_workspace) or { panic(err) }
 	// longer than one C object is required to hold, so the array form would be

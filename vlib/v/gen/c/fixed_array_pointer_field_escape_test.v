@@ -2,6 +2,14 @@ module main
 
 import os
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn test_fixed_array_pointer_field_does_not_heap_promote_value_receiver() {
 	root := os.join_path(os.vtmp_dir(), 'fixed_array_pointer_field_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -31,7 +39,7 @@ fn main() {
 ')!
 	// V1-hosted unit tests get a shared V3 compiler from their runner.
 	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
-	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
+	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE] }
 	args << ['-gc', 'none', '-os', 'linux', '-arch', 'amd64', '-o', c_path, path]
 	compiled := os.exec(args)
 	assert compiled.exit_code == 0, compiled.output

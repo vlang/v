@@ -10,11 +10,7 @@ fn test_detect_vroot_follows_the_installed_executable_before_its_build_checkout(
 		os.rmdir_all(root) or {}
 	}
 	exe_ext := $if windows { '.exe' } $else { '' }
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(@VMODROOT, 'v${exe_ext}')
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	// VTMP can itself live in a checkout. Put the standalone executable beyond
 	// that checkout's bounded ancestor search so this case exercises the fallback.
 	mut standalone_dir := root
@@ -29,7 +25,7 @@ fn test_detect_vroot_follows_the_installed_executable_before_its_build_checkout(
 	source := os.join_path(root, 'probe.v')
 	standalone := os.join_path(standalone_dir, 'probe${exe_ext}')
 	os.write_file(source, 'import v.pref\nfn main() { println(pref.new_preferences().vroot) }\n')!
-	build := cmdexec.run(vexe, ['-new-compiler', '-gc', 'none', '-o', standalone, source])
+	build := cmdexec.run(vexe, ['-gc', 'none', '-o', standalone, source])
 	assert build.exit_code == 0, build.output
 	outside := os.join_path(root, 'unrelated project')
 	os.mkdir_all(outside)!

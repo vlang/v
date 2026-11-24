@@ -39,6 +39,10 @@ fn (mut g FlatGen) finish_embedded_fields_lane() bool {
 	return false
 }
 
+fn (mut g FlatGen) start_iface_impls_lane(_ bool) {}
+
+fn (mut g FlatGen) join_iface_impls_lane() {}
+
 fn (mut g FlatGen) apply_fn_signature_registrations(registration_lists [][]FnSignatureRegistration, node_regs []FnDeclNodeReg) {
 	for group in 0 .. fn_signature_registration_groups {
 		g.apply_fn_signature_registration_groups(registration_lists, group)

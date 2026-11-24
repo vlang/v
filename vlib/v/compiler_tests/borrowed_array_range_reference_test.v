@@ -104,7 +104,7 @@ fn main() {
 ')!
 	for mode in ['-no-parallel', ''] {
 		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, '${mode}: ${run.output}'
@@ -156,7 +156,7 @@ fn escaped[^a](values []Resource) &^a []Resource { return &values[1..] }',
 	for code in cases {
 		os.write_file(source, code + '\nfn main() {}\n')!
 		for mode in ['-no-parallel', ''] {
-			compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership ${mode} -check ${os.quoted_path(source)}')
+			compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership ${mode} -check ${os.quoted_path(source)}')
 			assert compile.exit_code != 0, '${mode}: ${code}: ${compile.output}'
 			assert compile.output.contains('cannot return a reference to local storage'), '${mode}: ${code}: ${compile.output}'
 		}
@@ -211,7 +211,7 @@ fn test_borrowed_string_range_headers_survive_returns_and_loop_iterations() {
  ')!
 	for mode in ['-no-parallel', ''] {
 		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, '${mode}: ${run.output}'
@@ -232,7 +232,7 @@ fn main() {
 }
 ')!
 		for mode in ['-no-parallel', ''] {
-			compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership ${mode} -check ${os.quoted_path(source)}')
+			compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership ${mode} -check ${os.quoted_path(source)}')
 			assert compile.exit_code != 0, '${mode}: ${mutation}: ${compile.output}'
 			assert compile.output.contains('borrow'), '${mode}: ${mutation}: ${compile.output}'
 		}
@@ -255,7 +255,7 @@ fn main() {
 ')!
 	for mode in ['-no-parallel', ''] {
 		output := os.join_path(root, 'bounds_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
 		for bounds in [[-1, 2], [0, 5], [3, 2], [5, 5], [0, -1]] {
 			start, end := bounds[0], bounds[1]
@@ -277,7 +277,7 @@ fn main() { view := &(*source())[start()..end()]; assert calls == 3; assert *vie
 ')!
 	for mode in ['-no-parallel', ''] {
 		output := os.join_path(root, 'ordered_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, '${mode}: ${run.output}'
@@ -337,7 +337,7 @@ fn main() {
 ')!
 	for mode in ['-no-parallel', ''] {
 		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, '${mode}: ${run.output}'
@@ -363,7 +363,7 @@ fn main() {
 }
 ')!
 			for mode in ['-no-parallel', ''] {
-				compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership ${mode} -check ${os.quoted_path(source)}')
+				compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership ${mode} -check ${os.quoted_path(source)}')
 				assert compile.exit_code != 0, '${mode}: ${argument}: ${mutation}: ${compile.output}'
 				assert compile.output.contains('borrowed by `result`'), '${mode}: ${argument}: ${mutation}: ${compile.output}'
 			}

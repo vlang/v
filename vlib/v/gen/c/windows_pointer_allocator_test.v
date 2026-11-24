@@ -2,6 +2,15 @@ module main
 
 import os
 
+fn testsuite_begin() {
+	// The mock runtimes compile generated Windows functions with clang and expect the
+	// GCC-style C, not the `__declspec` spellings that `-cc msvc`, the VFLAGS of the
+	// MSVC CI jobs, writes; let these generations use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn allocator_test_c_function(generated string, signature string) string {
 	assert generated.contains(signature), signature
 	return signature + generated.all_after(signature).all_before('\n}') + '\n}\n'
@@ -123,8 +132,8 @@ fn main() {
 	release_c(foreign)
 }
 ')!
-	generated_result := os.exec([@VEXE, '-new-compiler', '-nocache', '-os', 'windows', '-gc', 'none',
-		'-manualfree', '-o', c_source, source])
+	generated_result := os.exec([@VEXE, '-nocache', '-os', 'windows', '-gc', 'none', '-manualfree',
+		'-o', c_source, source])
 	assert generated_result.exit_code == 0, generated_result.output
 	generated := os.read_file(c_source)!
 	allocate := allocator_test_c_function(generated, 'u8* v_malloc(i64 n) {')
@@ -240,8 +249,8 @@ fn main() { implicit_aligned()
  implicit_generic_borrowed_wrapper(&seed) }
 ')!
 	// The launcher resolves -autofree through its shared ownership compiler.
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-os', 'windows', '-gc', 'none', '-autofree',
-		'-no-closures', '-o', c_source, source])
+	result := os.exec([@VEXE, '-nocache', '-os', 'windows', '-gc', 'none', '-autofree', '-no-closures',
+		'-o', c_source, source])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(c_source)!
 	root_helpers := ['AlignedValue', 'NaturalValue', 'AlignedValue', 'GenericAlignedValue_AlignedCell',

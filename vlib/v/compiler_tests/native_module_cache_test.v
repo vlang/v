@@ -38,7 +38,7 @@ fn build_native_cache_program_twice(name string, source string, expected_output 
 	for env_name in env_names[2..] {
 		os.unsetenv(env_name)
 	}
-	mut flags := ['-new-compiler', '-no-retry-compilation', '-cc', 'cc']
+	mut flags := ['-no-retry-compilation', '-cc', 'cc']
 	if verify_reuse {
 		flags << '-show-timings'
 	}

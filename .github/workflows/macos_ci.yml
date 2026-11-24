@@ -12,7 +12,7 @@ jobs:
     if: github.ref == 'refs/heads/master'
     strategy:
       matrix:
-        # V3 (vlib/v, `-new-compiler`) is the default compiler on macOS, so
+        # V3 (vlib/v) is the default compiler on macOS, so
         # exercise it on every arm64 (Apple-silicon) runner image, not just one.
         os: [macos-15, macos-26]
       fail-fast: false
@@ -32,7 +32,6 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
       # Keep every command on V3; the canary below also proves which compiler ran.
-      V_MACOS_V3_NO_FALLBACK: 1
       # Temporarily disable x.multiwindow coverage while it is brought up on V3.
       V_MACOS_MULTIWINDOW_TESTS: '0'
     steps:
@@ -48,8 +47,6 @@ jobs:
             brew-${{ matrix.os }}-
       - name: Build V
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
-        env:
-          V_MACOS_V3_NO_FALLBACK: 1
         uses: ./.github/actions/setup-v
         with:
           use-prebuilt: 'true'
@@ -57,12 +54,11 @@ jobs:
         run: |
           set -uo pipefail
           printf 'fn main() { println(6 * 7) }\n' > "$RUNNER_TEMP/v3_canary.v"
-          V_MACOS_V3_NO_FALLBACK=1 ./v -v run "$RUNNER_TEMP/v3_canary.v" > "$RUNNER_TEMP/v3_canary.out" 2>&1 || true
+          ./v -v run "$RUNNER_TEMP/v3_canary.v" > "$RUNNER_TEMP/v3_canary.out" 2>&1 || true
           cat "$RUNNER_TEMP/v3_canary.out"
           grep -q '=== V compiler benchmark ===' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the default compiler was not dispatched on macOS'; exit 1; }
           grep -qx '42' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the V-compiled canary did not build/run correctly'; exit 1; }
-          if grep -qiE 'retrying with .-old-compiler|compatibility fallback|used the stable compiler' "$RUNNER_TEMP/v3_canary.out"; then echo '::error::the default compiler silently fell back to V1'; exit 1; fi
-          echo 'OK: V compiled and ran this program in-process on macOS, with the fallback disabled'
+          echo 'OK: V compiled and ran this program in-process on macOS'
       - name: FastC ARM64 condition regressions
         run: ./v -d arm64 -silent test vlib/v/gen/fastc/if_condition_arm64_test.v
       - name: Legacy gg import multiwindow isolation
@@ -144,7 +140,6 @@ jobs:
       - name: Native operation proof (strict default-compiler gate)
         if: env.V_MACOS_MULTIWINDOW_TESTS == '1'
         env:
-          V_MACOS_V3_NO_FALLBACK: '1'
           VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
           VGG_MULTIWINDOW_RUNTIME_BACKEND: appkit
           VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: appkit
@@ -172,10 +167,7 @@ jobs:
             echo "native operation default-compiler gate source test count mismatch" >&2
             exit 1
           fi
-          if [[ -n "${V_MACOS_V3_RETRY:-}" \
-            || -n "${V_MACOS_V3_FALLBACK_FILE:-}" \
-            || -n "${V_MACOS_V3_C_ERROR_DIR:-}" \
-            || -n "${VTEST_ONLY:-}" \
+          if [[ -n "${VTEST_ONLY:-}" \
             || -n "${VTEST_ONLY_FN:-}" \
             || -n "${VTEST_RUNNER:-}" \
             || -n "${V_MULTIWINDOW_NATIVE_PROOF_EGL_BAD_DISPLAY_CHILD:-}" \
@@ -193,7 +185,6 @@ jobs:
         if: env.V_MACOS_MULTIWINDOW_TESTS == '1'
         # Keep the multiwindow runtime probes on V3 too.
         env:
-          V_MACOS_V3_NO_FALLBACK: 1
           VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
           VGG_MULTIWINDOW_RUNTIME_BACKEND: appkit
           VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: appkit
@@ -332,7 +323,6 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-      V_MACOS_V3_NO_FALLBACK: 1
       V_MACOS_MULTIWINDOW_TESTS: '0'
     steps:
       - uses: actions/checkout@v7

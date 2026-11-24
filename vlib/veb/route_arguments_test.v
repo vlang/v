@@ -1,4 +1,3 @@
-// vtest vflags: -new-compiler
 module veb
 
 import net.http

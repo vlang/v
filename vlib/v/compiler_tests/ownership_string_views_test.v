@@ -102,7 +102,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		assert out.output.trim_space() == 'ok', out.output
 	}
@@ -124,7 +124,7 @@ fn main() {
 	println(owned)
 }
 ')!
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
 		assert out.exit_code != 0, '${creation}: ${out.output}'
 		assert out.output.contains('use of moved value: `owned`'), '${creation}: ${out.output}'
 	}
@@ -153,7 +153,7 @@ fn main() {
 	assert view.len > 0
 }
 ')!
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
 			assert out.exit_code != 0, '${expr}: ${out.output}'
 			assert out.output.contains(expected), '${expr}: ${out.output}'
 		}
@@ -243,7 +243,7 @@ fn main() {
 			''
 		}).replace('OWNED_CALLS_END', if first { '' } else { owned_calls }))!
 		for mode in ['-no-parallel', ''] {
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 			assert out.exit_code == 0, '${mode}: ${out.output}'
 			assert out.output.trim_space() == 'ok', out.output
 		}
@@ -268,7 +268,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 		assert out.exit_code != 0, '${mode}: ${out.output}'
 		assert out.output.contains('use of moved value: `result`'), '${mode}: ${out.output}'
 	}
@@ -289,7 +289,7 @@ fn main() {
 }
 ')!
 			for mode in ['-no-parallel', ''] {
-				out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+				out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 				assert out.exit_code != 0, '${mode}: ${out.output}'
 				assert out.output.contains('use of moved value: `owned`'), '${mode}: ${out.output}'
 			}
@@ -310,7 +310,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 		assert out.exit_code != 0, '${mode}: ${out.output}'
 		assert out.output.contains('use of moved value: `owned`'), '${mode}: ${out.output}'
 	}
@@ -331,7 +331,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 		assert out.exit_code != 0, '${mode}: ${out.output}'
 		assert out.output.contains('use of moved value: `result`'), '${mode}: ${out.output}'
 	}
@@ -358,7 +358,7 @@ fn main() {
 }
 ')!
 			for mode in ['-no-parallel', ''] {
-				out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+				out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 				assert out.exit_code != 0, out.output
 				assert out.output.contains(diagnostic), out.output
 			}
@@ -381,7 +381,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 		assert out.exit_code != 0, out.output
 		assert out.output.contains('use of moved value: `result`'), out.output
 	}
@@ -409,7 +409,7 @@ fn main() {
 ')!
 		for mode in ['-no-parallel', ''] {
 			command := if last_use.starts_with('consume') { '-check' } else { '-cc clang run' }
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} ${command} ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} ${command} ${os.quoted_path(source)}')
 			assert !out.output.contains('cannot assign to `original`'), out.output
 			if last_use.starts_with('consume') {
 				assert out.exit_code != 0, out.output

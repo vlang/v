@@ -143,9 +143,11 @@ fn main() {
 	$if bsd || linux {
 		modes << ['-nocache', '-parallel-cc']
 	}
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := $if windows { 'gcc' } $else { 'clang' }
 	for mode in modes {
-		mut args := ['-new-compiler', '-gc', 'none', '-cc', 'clang', '-no-retry-compilation', '-showcc',
-			'-o', binary]
+		mut args := ['-gc', 'none', '-cc', cc, '-no-retry-compilation', '-showcc', '-o', binary]
 		args << mode
 		args << source
 		compiled := cmdexec.run(@VEXE, args)

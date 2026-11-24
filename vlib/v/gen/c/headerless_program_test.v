@@ -17,6 +17,11 @@ fn headerless_linux_bootstrap_path() string {
 
 fn testsuite_begin() {
 	os.rm(headerless_linux_bootstrap_path()) or {}
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux or
+	// FreeBSD, which some of these builds do; let them use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
 }
 
 fn testsuite_end() {
@@ -288,7 +293,12 @@ fn test_self_c_keeps_only_the_compiler_owned_guard_include() {
 	generate_headerless_self_c(c_file, ['-gc', 'none', '-prealloc', '-compile-backend', 'fastc'])!
 	native := os.read_file(c_file)!
 	assert_self_c_directory_bindings(native)
-	assert_self_c_compiler_owned_includes(native)
+	// Windows host C is not headerless: builtin_windows.c.v and other Windows modules
+	// include CRT and SDK headers (io.h, fcntl.h, windows.h, ...), even with
+	// `-d no_segfault_handler`.
+	$if !windows {
+		assert_self_c_compiler_owned_includes(native)
+	}
 
 	// The literal-output suite already exercises both spellings of portable C.
 	// On Linux the compiler snapshot is also used by the target syntax checks.
@@ -306,7 +316,12 @@ fn test_self_c_keeps_only_the_compiler_owned_guard_include() {
 	assert headerless.contains('#define CUSTOM_DEFINE_v3_headerless_bootstrap')
 	assert !headers.contains('#define CUSTOM_DEFINE_v3_headerless_bootstrap')
 	assert headers.contains('\n#include <stdint.h>\n')
-	assert_self_c_compiler_owned_includes(headerless)
+	// On a Windows host the portable snapshot targets Windows. Windows snapshots embed
+	// SDK-backed helpers (see `headerless_snapshot` in the driver), so they keep system
+	// `#include`s, each preceded by the TinyCC glibc feature probe.
+	$if !windows {
+		assert_self_c_compiler_owned_includes(headerless)
+	}
 }
 
 // vc/v.c is generated on Linux (gen_vc_ci.yml), and every non-Windows `make` compiles
@@ -320,19 +335,63 @@ fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
 	}
 	clang := os.find_abs_path_of_executable('clang') or { return }
 	c_file := headerless_linux_bootstrap_c()!
+	// The macOS targets are spelled as Darwin versions with a minimum macOS version, which
+	// gives the same predefined macros: older clangs (the musl image's) reject `macos13`
+	// in a target triple.
+	// Older clangs reject a minimum macOS version they do not know ("invalid version
+	// number in '-mmacosx-version-min=13.0'"), and without one they assume a macOS
+	// too old for thread-local storage. Use the newest minimum this clang accepts with
+	// _Thread_local, and leave the Darwin targets out if it accepts none.
+	probe := os.join_path(os.vtmp_dir(), 'macos_min_version_probe_${os.getpid()}.c')
+	os.write_file(probe, '_Thread_local int v_probe;\n')!
+	mut macos_min := ''
+	for version in ['13.0', '10.15'] {
+		if os.exec([clang, '-target', 'arm64-apple-darwin22', '-mmacosx-version-min=${version}',
+			'-std=c99', '-Wno-everything', '-fsyntax-only', probe]).exit_code == 0 {
+			macos_min = version
+			break
+		}
+	}
+	os.rm(probe) or {}
+	mut checks := [][]string{}
 	for target in ['x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu', 'aarch64-linux-android24',
-		'arm64-apple-macos13', 'x86_64-apple-macos12', 'x86_64-unknown-freebsd14',
+		'arm64-apple-darwin22 -mmacosx-version-min=13.0',
+		'x86_64-apple-darwin21 -mmacosx-version-min=12.0', 'x86_64-unknown-freebsd14',
 		'x86_64-unknown-openbsd7', 'x86_64-unknown-netbsd10', 'x86_64-unknown-dragonfly6'] {
-		checked := os.exec([clang, '-target', target, '-std=c99', '-fsyntax-only', '-Wno-everything',
-			'-Werror=implicit-function-declaration', '-DCUSTOM_DEFINE_v1_fallback', c_file])
-		assert checked.exit_code == 0, '${target}: ${checked.output}'
+		mut args := [clang, '-target']
+		if target.contains('-apple-') {
+			if macos_min == '' {
+				continue
+			}
+			args << if macos_min == '13.0' {
+				target.split(' ')
+			} else {
+				[target.all_before(' '), '-mmacosx-version-min=${macos_min}']
+			}
+		} else {
+			args << target.split(' ')
+		}
+		args << ['-std=c99', '-fsyntax-only', '-Wno-everything', '-Werror=implicit-function-declaration',
+			'-DCUSTOM_DEFINE_v1_fallback', c_file]
+		checks << args
 	}
 	for target in ['armv7-unknown-linux-gnueabihf', 'i686-unknown-linux-gnu', 'x86_64-unknown-linux-gnu'] {
-		checked := os.exec([clang, '-target', target, '-std=c99', '-fsyntax-only', '-Wno-everything',
+		checks << [clang, '-target', target, '-std=c99', '-fsyntax-only', '-Wno-everything',
 			'-Werror=implicit-function-declaration', '-Werror=incompatible-pointer-types',
 			'-Wno-error=incompatible-pointer-types-discards-qualifiers', '-Werror=int-conversion',
-			'-D${headerless_libc_macro}=1', '-DCUSTOM_DEFINE_v1_fallback', c_file])
-		assert checked.exit_code == 0, '${target}: ${checked.output}'
+			'-D${headerless_libc_macro}=1', '-DCUSTOM_DEFINE_v1_fallback', c_file]
+	}
+	// The checks are independent, and each parses the whole compiler (~2 s, ~300 MB):
+	// run a few at a time.
+	for start := 0; start < checks.len; start += 4 {
+		wave := checks[start..if start + 4 < checks.len { start + 4 } else { checks.len }]
+		mut running := []thread os.Result{}
+		for args in wave {
+			running << spawn os.exec(args)
+		}
+		for i, checked in running.wait() {
+			assert checked.exit_code == 0, '${wave[i][2..wave[i].len - 1].join(' ')}: ${checked.output}'
+		}
 	}
 }
 

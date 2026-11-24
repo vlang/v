@@ -10,7 +10,7 @@ fn accept(value Deep) {}
 fn main() {}
 ')!
 	defer { os.rm(path) or {} }
-	result := os.exec([@VEXE, '-new-compiler', '-no-parallel', '-check', path])
+	result := os.exec([@VEXE, '-no-parallel', '-check', path])
 	assert result.exit_code == 0, result.output
 }
 

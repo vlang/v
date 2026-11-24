@@ -11,7 +11,7 @@ fn test_unused_for_loop_variables_in_check_modes() {
 	os.write_file(source, os.read_file(fixture)!)!
 	unused := ['j', 'k', 'array_value', 'array_index', 'unused_value', 'map_key', 'map_value',
 		'iterator_value', 'reused']
-	for flags in [[]string{}, ['-new-compiler'], ['-no-parallel', '-nocache']] {
+	for flags in [[]string{}, ['-no-parallel', '-nocache']] {
 		for warnings_as_errors in [false, true] {
 			mut args := [@VEXE, ...flags, '-check']
 			if warnings_as_errors {

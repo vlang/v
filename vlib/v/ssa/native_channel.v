@@ -13,8 +13,8 @@ fn (mut b Builder) channel_function_ref(name string) ?ValueID {
 }
 
 // channel_operand evaluates a channel expression, through any pointers around it,
-// and returns its value with its element type.
-fn (mut b Builder) channel_operand(id flat.NodeId) ?(ValueID, TypeID) {
+// and returns its value with the element's storage type and source type.
+fn (mut b Builder) channel_operand(id flat.NodeId) ?(ValueID, TypeID, u32) {
 	mut type_id := b.checked_expr_type_name(id)
 	if type_id == 0 || type_id == flat.source_type_unknown {
 		return none
@@ -32,7 +32,8 @@ fn (mut b Builder) channel_operand(id flat.NodeId) ?(ValueID, TypeID) {
 	for _ in 0 .. depth {
 		value = b.emit1(.load, channel_type, value)
 	}
-	return value, b.resolve_type(flat.source_type_syntax(type_id).raw_base())
+	element_name := flat.source_type_syntax(type_id).raw_base()
+	return value, b.resolve_struct_storage_type(element_name, b.cur_module), element_name
 }
 
 // build_channel_property lowers `channel.closed`, `.len` and `.cap`.
@@ -45,7 +46,7 @@ fn (mut b Builder) build_channel_property(node flat.Node) ?ValueID {
 	if type_id == 0 || !flat.source_type_shape(type_id).has(.channel_type) {
 		return none
 	}
-	channel, _ := b.channel_operand(base_id)?
+	channel, _, _ := b.channel_operand(base_id)?
 	field := node.value_text()
 	if field == 'cap' {
 		typed := b.emit1(.bitcast, b.resolve_type(flat.source_type_id('&sync.Channel')), channel)
@@ -67,10 +68,25 @@ fn (mut b Builder) as_byte_pointer(value ValueID) ValueID {
 	return b.emit1(.bitcast, b.m.type_store.get_ptr(b.i8_type), value)
 }
 
+// build_channel_payload converts a send expression to its inline element value.
+fn (mut b Builder) build_channel_payload(id flat.NodeId, element TypeID, element_name u32) ValueID {
+	value := b.build_expr(id)
+	value_type := b.value_type(value)
+	if b.is_pointer_type(element) && b.is_pointer_type(value_type)
+		&& (element_name == flat.source_type_voidptr
+			|| b.type_alias_target(element_name) or { u32(0) } == flat.source_type_voidptr) {
+		// A voidptr channel sends the address itself, even for a pointer to a pointer.
+		return if value_type == element { value } else { b.emit1(.bitcast, element, value) }
+	}
+	// Fixed arrays can be represented by their storage pointer, including when
+	// a nested array's pointee type differs from the inline element type.
+	return b.coerce_store_value(b.fixed_array_value(value, element), element)
+}
+
 // build_channel_init lowers `chan T{cap: n}`.
 fn (mut b Builder) build_channel_init(node flat.Node) ?ValueID {
 	create := b.channel_function_ref('sync.new_channel_st')?
-	element := b.resolve_type(flat.source_type_syntax(node.source_value_id()).raw_base())
+	element := b.resolve_struct_storage_type(flat.source_type_syntax(node.source_value_id()).raw_base(), b.cur_module)
 	mut capacity := b.m.get_or_add_const(b.u32_type, '0')
 	for i in 0 .. node.children_count {
 		field := b.a.child_node(&node, i)
@@ -87,19 +103,55 @@ fn (mut b Builder) build_channel_init(node flat.Node) ?ValueID {
 // as it does in C.
 fn (mut b Builder) build_channel_receive(channel_id flat.NodeId) ?ValueID {
 	pop := b.channel_function_ref('sync.Channel.pop')?
-	channel, element := b.channel_operand(channel_id)?
+	channel, element, element_name := b.channel_operand(channel_id)?
 	slot := b.channel_slot(element, b.default_value_for_type(element))
 	b.emit3(.call, b.i1_type, pop, channel, b.as_byte_pointer(slot))
+	if b.m.type_store.types[element].kind == .array_t {
+		// Fixed-array locals keep a pointer to the received array's storage.
+		return b.emit1(.bitcast, b.resolve_type(element_name), slot)
+	}
 	return b.emit1(.load, element, slot)
 }
 
 // build_channel_send lowers `channel <- value`.
 fn (mut b Builder) build_channel_send(channel_id flat.NodeId, value_id flat.NodeId) bool {
 	push := b.channel_function_ref('sync.Channel.push') or { return false }
-	channel, element := b.channel_operand(channel_id) or { return false }
-	value := b.coerce_value_for_type(b.build_expr(value_id), element)
+	channel, element, element_name := b.channel_operand(channel_id) or { return false }
+	value := b.build_channel_payload(value_id, element, element_name)
 	b.emit3(.call, b.void_type, push, channel, b.as_byte_pointer(b.channel_slot(element, value)))
 	return true
+}
+
+// build_channel_try_call lowers nonblocking channel methods to the sync runtime,
+// passing element storage rather than a value through its opaque pointer argument.
+fn (mut b Builder) build_channel_try_call(node flat.Node, callee flat.Node) ?ValueID {
+	if callee.children_count == 0 || node.children_count != 2 {
+		return none
+	}
+	channel, element, element_name := b.channel_operand(b.a.child(&callee, 0))?
+	method := b.channel_function_ref('sync.Channel.${callee.value_text()}') or {
+		panic('ssa: missing channel runtime method `${callee.value_text()}`')
+	}
+	mut arg_id := b.a.child(&node, 1)
+	arg := b.a.nodes[int(arg_id)]
+	if arg.kind == .cast_expr && arg.children_count > 0 && !arg.pos.is_valid()
+		&& arg.source_value_id() == flat.source_type_voidptr {
+		address := b.a.child_node(&arg, 0)
+		if address.kind == .prefix && address.op == .amp && address.children_count > 0 {
+			// Transform may have adapted a value to the runtime's voidptr parameter.
+			// Recover that value before selecting its channel element storage.
+			arg_id = b.a.child(address, 0)
+		}
+	}
+	storage := if callee.value_text() == 'try_push' {
+		value := b.build_channel_payload(arg_id, element, element_name)
+		b.channel_slot(element, value)
+	} else if flat.source_type_shape(b.checked_expr_type_name(arg_id)).has(.pointer) {
+		b.build_expr(arg_id)
+	} else {
+		b.build_lvalue_addr(arg_id)
+	}
+	return b.emit3(.call, b.i32_type, method, channel, b.as_byte_pointer(storage))
 }
 
 struct NativeSelectCase {
@@ -198,9 +250,9 @@ fn (mut b Builder) build_channel_select(node flat.Node, is_expr bool) ?ValueID {
 	mut directions := []ValueID{cap: cases.len}
 	mut objects := []ValueID{cap: cases.len}
 	for select_case in cases {
-		channel, element := b.channel_operand(select_case.channel_id)?
+		channel, element, element_name := b.channel_operand(select_case.channel_id)?
 		value := if select_case.is_push {
-			b.coerce_value_for_type(b.build_expr(select_case.value_id), element)
+			b.build_channel_payload(select_case.value_id, element, element_name)
 		} else {
 			b.default_value_for_type(element)
 		}

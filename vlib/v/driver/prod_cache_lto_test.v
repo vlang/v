@@ -15,7 +15,6 @@ fn test_production_module_cache_contains_native_objects() ! {
 		mut environment := os.environ()
 		environment.delete('VFLAGS')
 		environment['V3CACHE'] = cache
-		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 		mut process := os.new_process(@VEXE)
 		process.set_environment(environment)
 		process.set_args(['-showcc', '-prod', '-cc', cc, '-gc', 'none', '-o', executable, source])

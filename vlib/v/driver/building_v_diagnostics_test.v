@@ -30,17 +30,17 @@ fn test_ordinary_v_v_file_has_the_same_checker_errors_as_app_v() {
 	os.write_file(v_file, source)!
 	compiler := os.quoted_path(@VEXE)
 	for mode in ['-check', '-o ${os.quoted_path(os.join_path(dir, 'invalid'))}'] {
-		app := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor',
-			...(os.split_args(mode) or { panic(err) }), app_file])
-		v := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor',
-			...(os.split_args(mode) or { panic(err) }), v_file])
+		app := os.exec([@VEXE, '-nocache', '-nocolor', ...(os.split_args(mode) or { panic(err) }),
+			app_file])
+		v := os.exec([@VEXE, '-nocache', '-nocolor', ...(os.split_args(mode) or { panic(err) }),
+			v_file])
 		assert app.exit_code != 0, app.output
 		assert v.exit_code != 0, v.output
 		assert app.output.contains('field `name` of struct `Foo` is immutable'), app.output
 		assert app.output.contains('`f` is immutable'), app.output
 		assert diagnostics_without_input_path(app.output, app_file) == diagnostics_without_input_path(v.output,
 			v_file), v.output
-		forced := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor', '-building-v',
+		forced := os.exec([@VEXE, '-nocache', '-nocolor', '-building-v',
 			...(os.split_args(mode) or { panic(err) }), v_file])
 		assert forced.exit_code != 0, forced.output
 		assert forced.output.contains('field `name` of struct `Foo` is immutable'), forced.output
@@ -58,8 +58,8 @@ fn test_cmd_v_build_reports_errors_from_an_isolated_source_file() {
 	compiler_source := os.join_path(@VEXEROOT, 'cmd', 'v')
 	compiler := os.quoted_path(@VEXE)
 	for mode in ['-check', '-o ${os.quoted_path(os.join_path(dir, 'invalid_compiler'))}'] {
-		result := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor',
-			...(os.split_args(mode) or { panic(err) }), '-file-list', '${probe}', compiler_source])
+		result := os.exec([@VEXE, '-nocache', '-nocolor', ...(os.split_args(mode) or { panic(err) }),
+			'-file-list', '${probe}', compiler_source])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('`zz_probe` is immutable'), result.output
 		assert result.output.contains('cannot assign to `zz_probe`: expected `string`, not `int literal`'), result.output
@@ -80,7 +80,7 @@ fn test_building_v_reports_reachable_dependency_errors() {
 	os.write_file(entry, 'import dep\nfn main() { println(dep.value()) }\n')!
 	for mode in [['-check'], ['-o', os.join_path(root, 'invalid')]] {
 		mut process := os.new_process(@VEXE)
-		mut arguments := ['-new-compiler', '-nocache', '-nocolor', '-building-v']
+		mut arguments := ['-nocache', '-nocolor', '-building-v']
 		arguments << mode
 		arguments << entry
 		process.set_args(arguments)

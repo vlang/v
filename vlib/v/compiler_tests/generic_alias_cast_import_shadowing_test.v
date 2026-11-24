@@ -88,8 +88,8 @@ fn main() {
 }
 ')!
 	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
-	build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-no-parallel', '-cc',
-		@CCOMPILER, '-gc', 'none', '-o', output, source])
+	build := os.exec([@VEXE, '-no-retry-compilation', '-no-parallel', '-cc', @CCOMPILER, '-gc',
+		'none', '-o', output, source])
 	assert build.exit_code == 0, build.output
 	run := os.exec([output])
 	assert run.exit_code == 0, run.output

@@ -129,12 +129,40 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 }
 
+fn test_minimal_literal_output_arm64_eligibility() {
+	root := literal_output_gc_test_root()!
+	defer { remove_literal_output_gc_test_root(root) }
+	source := os.join_path(root, 'hello.v')
+	os.write_file(source, "fn main() { println('hello') }\n")!
+	mut prefs := pref.new_preferences()
+	prefs.backend = 'arm64'
+	for target in ['macos', 'linux'] {
+		prefs.target = pref.target_from(target, 'arm64')!
+		assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	}
+	prefs.target = pref.target_from('macos', 'arm64')!
+	for define in ['gcboehm', 'vgc', 'freestanding', 'noprintln', 'noeprintln',
+		'builtin_print_use_fprintf', 'race', 'trace_calls', 'track_heap'] {
+		prefs.user_defines = [define]
+		assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false), define
+	}
+	prefs.user_defines = []
+	prefs.is_shared = true
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.is_shared = false
+	prefs.hot_fn = 'main'
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.hot_fn = ''
+	prefs.target = pref.target_from('ios', 'arm64')!
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+}
+
 fn test_literal_output_keeps_linux_backtrace_array_iteration_runtime() {
 	root := literal_output_gc_test_root()!
 	defer {
 		remove_literal_output_gc_test_root(root)
 	}
-	keys := ['VFLAGS', 'VOSARGS', 'V_C_ERROR_BUG_REPORT_DISABLED']
+	keys := ['VFLAGS', 'VOSARGS']
 	mut old_values := map[string]string{}
 	for key in keys {
 		if value := os.getenv_opt(key) {
@@ -152,15 +180,10 @@ fn test_literal_output_keeps_linux_backtrace_array_iteration_runtime() {
 	}
 	os.unsetenv('VFLAGS')
 	os.unsetenv('VOSARGS')
-	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	source := os.join_path(root, 'hello.v')
 	os.write_file(source, "fn main() { message := 'Hello, World!'; println(message) }\n")!
-	flags := ['-new-compiler', '-no-retry-compilation', '-nocache', '-show-timings']
+	flags := ['-no-retry-compilation', '-nocache', '-show-timings']
 	for arch in ['amd64', 'arm64'] {
 		c_path := os.join_path(root, 'hello_${arch}.c')
 		mut c_args := flags.clone()
@@ -191,9 +214,8 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 	defer {
 		remove_literal_output_gc_test_root(root)
 	}
-	// Keep the subprocess independent of the test runner's flags, and make a
-	// V3 failure fail the test instead of accepting output from a V1 fallback.
-	keys := ['VFLAGS', 'VOSARGS', 'V_MACOS_V3_NO_FALLBACK', 'V_C_ERROR_BUG_REPORT_DISABLED', 'VTMP']
+	// Keep the subprocess independent of the test runner's flags.
+	keys := ['VFLAGS', 'VOSARGS', 'VTMP']
 	mut old_values := map[string]string{}
 	for key in keys {
 		if value := os.getenv_opt(key) {
@@ -211,18 +233,12 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 	}
 	os.unsetenv('VFLAGS')
 	os.unsetenv('VOSARGS')
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
 	// Keep the generated source in the test's own directory for inspection.
 	os.setenv('VTMP', root, true)
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(os.dir(@VEXE), 'v')
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	for mode in ['', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt', 'boehm_leak',
 		'none'] {
-		mut compiler_args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang']
+		mut compiler_args := ['-no-retry-compilation', '-nocache', '-cc', 'clang']
 		if mode.len > 0 {
 			compiler_args << ['-gc', mode]
 		}

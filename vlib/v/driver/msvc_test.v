@@ -34,6 +34,30 @@ fn test_msvc_cl_args_keep_cpp_sources_out_of_c11_mode() {
 	assert args.contains('x.cpp')
 }
 
+fn test_msvc_cl_args_name_the_language_of_forced_sources() {
+	args := msvc_cl_args(['-o', 'out.exe', 'src.c', '-x', 'c', 'C:/tmp/helper', '-x', 'none', '-xc',
+		'C:/tmp/joined', 'C:/tmp/plain.c', 'C:/tmp/helper.o', '-xnone', 'C:/tmp/archive'],
+		'windows')
+	inputs := args[args.index('src.c')..args.index('kernel32.lib')]
+	assert inputs == ['src.c', '/TcC:/tmp/helper', '/TcC:/tmp/joined', 'C:/tmp/plain.c',
+		'C:/tmp/helper.o', 'C:/tmp/archive']
+	assert '/std:c11' in args
+	cpp := msvc_cl_args(['-o', 'out.exe', 'src.c', '-x', 'c++', 'C:/tmp/impl.c', 'C:/tmp/impl.cpp',
+		'-x', 'none'], 'windows')
+	assert cpp.contains('/TpC:/tmp/impl.c')
+	assert cpp.contains('C:/tmp/impl.cpp')
+	assert '/std:c11' !in cpp
+}
+
+fn test_msvc_cl_args_link_objects_named_in_linker_options() {
+	args := msvc_cl_args(['-o', 'out.exe', 'src.c', '-Wl,C:/tmp/helper.o,--as-needed', '-Xlinker',
+		'C:/tmp/extra.lib', '-Wl,-rpath,C:/tmp/lib,/STACK:1024,C:/tmp/exports.def'],
+		'windows')
+	assert args[args.index('src.c')..args.index('kernel32.lib')] == ['src.c', 'C:/tmp/helper.o',
+		'C:/tmp/extra.lib']
+	assert args[args.index('/link') + 1..] == ['/STACK:1024', '/DEF:C:/tmp/exports.def']
+}
+
 fn test_v3_msvc_link_flags() {
 	assert v3_msvc_link_flags('windows', false, false, .auto, false) == ['-Wl,/STACK:33554432']
 	assert v3_msvc_link_flags('windows', false, false, .auto, true) == [

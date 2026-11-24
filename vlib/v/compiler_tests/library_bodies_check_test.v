@@ -31,7 +31,7 @@ fn build_program_with_flags(source string, output string, mode string, flags []s
 	} else {
 		os.setenv('V_CHECK_LIBRARY_BODIES', mode, true)
 	}
-	mut args := ['-new-compiler', '-no-retry-compilation', '-v', '-nocache']
+	mut args := ['-no-retry-compilation', '-v', '-nocache']
 	args << flags
 	args << ['-o', output, source]
 	return cmdexec.run_with_timeout(vexe, args, 120_000)

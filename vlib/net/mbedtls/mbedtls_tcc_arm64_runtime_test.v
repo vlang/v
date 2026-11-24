@@ -34,11 +34,11 @@ fn main() {
 	println("zeroed globals and PSA keys")
 }
 ')!
-	// A fresh cache and disabled compiler fallback keep the test on the actual
+	// A fresh cache keeps the test on the actual
 	// TinyCC link path. Test the default signer regardless of the caller's env.
 	build := os.exec(['env', '-u', 'VFLAGS', '-u', 'VOSARGS', '-u', 'V3_TCC_APPLE_CODESIGN',
-		'V_MACOS_V3_NO_FALLBACK=1', 'VCACHE=${os.join_path(dir, 'cache')}', @VEXE, '-cc', 'tcc',
-		'-nocache', '-no-retry-compilation', '-gc', 'none', '-o', executable, source])
+		'VCACHE=${os.join_path(dir, 'cache')}', @VEXE, '-cc', 'tcc', '-nocache', '-no-retry-compilation',
+		'-gc', 'none', '-o', executable, source])
 	assert build.exit_code == 0, build.output
 	verify := os.exec(['codesign', '--verify', '--strict', executable])
 	assert verify.exit_code == 0, verify.output

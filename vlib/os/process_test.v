@@ -169,16 +169,32 @@ fn test_set_work_folder() {
 	assert new_parent_work_folder != child_work_folder
 }
 
+// with_sanitizer_options adds the sanitizer runtime options of this process to
+// `env`, a replacement environment for a copy of this suite binary. In
+// sanitized builds the copy is instrumented too; without them, e.g. an ASan
+// `-gc none` build on Linux loses `LSAN_OPTIONS=detect_leaks=0`, reports its
+// leaks at exit and exits with 1.
+fn with_sanitizer_options(env map[string]string) map[string]string {
+	mut result := env.clone()
+	for name in ['ASAN_OPTIONS', 'LSAN_OPTIONS', 'MSAN_OPTIONS', 'TSAN_OPTIONS', 'UBSAN_OPTIONS'] {
+		value := os.getenv(name)
+		if value != '' {
+			result[name] = value
+		}
+	}
+	return result
+}
+
 fn test_set_environment() {
 	eprintln(@FN)
 	mut p := os.new_process(test_os_process)
 	p.set_args(['-show_env', '-target', 'stdout'])
-	p.set_environment({
+	p.set_environment(with_sanitizer_options({
 		'V_OS_TEST_PORT': '1234567890'
-	})
+	}))
 	p.set_redirect_stdio()
 	p.wait()
-	assert p.code == 0
+	assert p.code == 0, p.stderr_slurp()
 	output := p.stdout_slurp().trim_space()
 	p.close()
 	$if trace_process_output ? {
@@ -203,9 +219,9 @@ fn test_new_process_uses_exact_executable_path_when_folder_contains_spaces() {
 
 	mut p := os.new_process(spaced_exe)
 	p.set_args(['-show_env', '-target', 'stdout'])
-	p.set_environment({
+	p.set_environment(with_sanitizer_options({
 		'V_OS_TEST_PORT': 'exact_path'
-	})
+	}))
 	p.set_redirect_stdio()
 	p.wait()
 	assert p.code == 0

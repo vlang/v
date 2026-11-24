@@ -12,12 +12,11 @@ fn test_unused_compiler_entry_and_worker_helpers_leave_generated_c() ! {
 	output := os.join_path(root, 'main.c')
 	binary := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
 	environment := {
-		'VFLAGS':                 ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VFLAGS': ''
 	}
 	os.write_file(source, 'import v.driver\nfn main() { println(driver.project_backend_flag) }\n')!
-	compiled := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-no-retry-compilation',
-		'-nocache', '-o', output, source], @VEXEROOT, environment)
+	compiled := cmdexec.run_in_merged_with_env(@VEXE, ['-no-retry-compilation', '-nocache', '-o',
+		output, source], @VEXEROOT, environment)
 	assert compiled.exit_code == 0, compiled.output
 	generated := os.read_file(output)!
 	// The program uses a compiler constant, so it must not carry the dispatcher
@@ -28,8 +27,8 @@ fn test_unused_compiler_entry_and_worker_helpers_leave_generated_c() ! {
 		declaration := 'void ${naming.c_name(name)}('
 		assert !generated.contains(declaration), declaration
 	}
-	built := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-no-retry-compilation', '-nocache',
-		'-o', binary, source], @VEXEROOT, environment)
+	built := cmdexec.run_in_merged_with_env(@VEXE, ['-no-retry-compilation', '-nocache', '-o',
+		binary, source], @VEXEROOT, environment)
 	assert built.exit_code == 0, built.output
 	executed := cmdexec.run(binary, [])
 	assert executed.exit_code == 0, executed.output

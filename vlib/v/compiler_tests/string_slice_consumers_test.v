@@ -16,7 +16,7 @@ fn test_immediate_string_slice_consumers() {
 	source := os.join_path(root, 'main.v')
 	os.cp(os.join_path(os.dir(@FILE), 'testdata', 'string_slice_consumers.vv'), source)!
 	generated := os.join_path(root, 'main.c')
-	codegen := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', generated, source])
+	codegen := os.exec([@VEXE, '-nocache', '-o', generated, source])
 	assert codegen.exit_code == 0, codegen.output
 	c := os.read_file(generated)!
 	for name in ['slice_equal', 'slice_reversed', 'slice_unequal', 'slice_open', 'slice_empty',
@@ -40,7 +40,7 @@ fn test_immediate_string_slice_consumers() {
 		} else {
 			@CCOMPILER
 		}
-		mut args := [@VEXE, '-new-compiler', '-nocache', '-no-retry-compilation', '-cc', compiler]
+		mut args := [@VEXE, '-nocache', '-no-retry-compilation', '-cc', compiler]
 		if mode != '' { args << mode.split(' ') }
 		args << ['-o', binary, source]
 		built := os.exec(args)
@@ -64,7 +64,7 @@ fn test_immediate_string_slice_consumers() {
 		compiler := if @CCOMPILER in ['tinyc', 'tcc'] { 'cc' } else { @CCOMPILER }
 		binary := os.join_path(root, 'cached')
 		for _ in 0 .. 2 {
-			built := os.exec(['env', 'V3CACHE=${os.join_path(root, 'cache')}', @VEXE, '-new-compiler',
+			built := os.exec(['env', 'V3CACHE=${os.join_path(root, 'cache')}', @VEXE,
 				'-no-retry-compilation', '-cc', compiler, '-o', binary, source])
 			assert built.exit_code == 0, built.output
 			ran := os.exec([binary])

@@ -6,8 +6,8 @@ fn test_sql_insert_only_diagnostics_in_compile_and_check_modes() {
 	for fixture in ['attribute', 'update', 'dynamic'] {
 		path := os.join_path(os.dir(@VEXE), 'vlib', 'v', 'checker', 'tests',
 			'orm_sql_insert_only_${fixture}.vv')
-		normal := os.exec([@VEXE, '-new-compiler', '-nocolor', path])
-		checked := os.exec([@VEXE, '-new-compiler', '-nocolor', '-check', path])
+		normal := os.exec([@VEXE, '-nocolor', path])
+		checked := os.exec([@VEXE, '-nocolor', '-check', path])
 		assert normal.exit_code == 1, normal.output
 		assert checked.exit_code == 1, checked.output
 		assert normal.output == checked.output
@@ -53,7 +53,7 @@ fn main() {
 }
 ")!
 	for flags in [[]string{}, ['-check']] {
-		result := os.exec([@VEXE, '-new-compiler', '-nocolor', ...flags, path])
+		result := os.exec([@VEXE, '-nocolor', ...flags, path])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -83,7 +83,7 @@ fn main() {
 }
 ")!
 		for flags in [[]string{}, ['-check']] {
-			result := os.exec([@VEXE, '-new-compiler', '-nocolor', ...flags, path])
+			result := os.exec([@VEXE, '-nocolor', ...flags, path])
 			assert result.exit_code == 1, result.output
 			assert result.output.contains('cannot update insert-only field `InsertOnlyUser.creator`'), result.output
 		}
@@ -106,7 +106,7 @@ fn main() {
 }
 ")!
 	for flags in [[]string{}, ['-check']] {
-		result := os.exec([@VEXE, '-new-compiler', '-nocolor', ...flags, path])
+		result := os.exec([@VEXE, '-nocolor', ...flags, path])
 		assert result.exit_code == 0, result.output
 	}
 }

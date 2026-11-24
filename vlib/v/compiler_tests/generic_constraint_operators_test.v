@@ -295,7 +295,7 @@ fn operator_program(typ string, constrained bool) (string, map[int]OperatorCase)
 
 // rejected_lines are the lines of `path` that the check reports an error on.
 fn rejected_lines(path string) map[int]bool {
-	res := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', '-checker-fixture', path])
+	res := os.exec([@VEXE, '-check', '-nocolor', '-checker-fixture', path])
 	assert !res.output.contains(' more errors'), res.output
 	mut lines := map[int]bool{}
 	for line in res.output.split_into_lines() {

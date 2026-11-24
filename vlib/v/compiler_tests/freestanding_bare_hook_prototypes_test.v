@@ -28,8 +28,8 @@ fn main() {
 	c_file := os.join_path(root, 'main.c')
 	// The assertion inspects generated Linux C, even on a Windows MSVC runner.
 	// Do not inherit `-cc msvc` from VFLAGS: MSVC rejects a Linux target before Cgen.
-	res := os.exec([bare_hook_vexe, '-cc', 'gcc', '-gc', 'none', '-freestanding', '-no-std',
-		'-os', 'linux', '-o', c_file, '${src}'])
+	res := os.exec([bare_hook_vexe, '-cc', 'gcc', '-gc', 'none', '-freestanding', '-no-std', '-os',
+		'linux', '-o', c_file, '${src}'])
 	assert res.exit_code == 0, res.output
 	c_source := os.read_file(c_file) or { panic(err) }
 	for hook, prototype in {

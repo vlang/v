@@ -13,7 +13,7 @@ fn test_generic_reflection_compile_error_has_position_without_unknown_function()
 		}
 		condition := if member == 'methods' { 'item.args.len != 2' } else { 'item.typ is int' }
 		os.write_file(source, 'module main\n${declaration}\nfn check[T]() {\n\t\$for item in T.${member} {\n\t\t\$if ${condition} {\n\t\t\t\$compile_error("invalid reflected member")\n\t\t}\n\t}\n}\nfn main() { check[App]() }')!
-		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-o',
+		result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-o',
 			os.join_path(root, 'output.c'), source])
 		assert result.exit_code != 0
 		expected_line := if member == 'methods' { 7 } else { 6 }
@@ -30,7 +30,7 @@ fn test_compile_error_rejects_non_literal_message_explicitly() {
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'message.v')
 	os.write_file(source, 'fn main() { \$compile_error("name " + "handler") }')!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-o',
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-o',
 		os.join_path(root, 'output.c'), source])
 	assert result.exit_code != 0
 	assert result.output.contains('`\$compile_error` expects a string literal'), result.output

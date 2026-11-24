@@ -1024,7 +1024,11 @@ fn (mut t Transformer) lower_scalar_select(node flat.Node, select_type u32) flat
 		t.pending_stmts.clear()
 	}
 	t.pending_stmts = outer_pending
-	if branch_stmts[0].len == 0 && branch_stmts[1].len == 0 {
+	// The checker gave each branch block of the source if-expression a scope destructor slot,
+	// which the C backend consumes only for blocks it emits as statements. A conditional
+	// expression emits none, so the later scopes would take the wrong slots.
+	keeps_scope_slots := !isnil(t.tc) && t.tc.records_scope_drops()
+	if branch_stmts[0].len == 0 && branch_stmts[1].len == 0 && !keeps_scope_slots {
 		// Conditional branches have no typed assignment to load pointer-backed
 		// scalar bindings, such as mutable array iterators. Make that load explicit.
 		for i, value in values {

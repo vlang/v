@@ -79,8 +79,8 @@ fn run_bad_with_flags(v3_bin string, name string, flags string, src string, expe
 	bad_src := os.join_path(review_transform_fixture_dir, 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(review_transform_fixture_dir, 'v3_${name}')
-	result := os.exec([v3_bin, '-nocache', ...(os.split_args(flags) or { panic(err) }), '${bad_src}',
-		'-b', 'c', '-o', bad_bin])
+	result := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), '${bad_src}', '-b',
+		'c', '-o', bad_bin])
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
@@ -90,7 +90,7 @@ fn run_bad_backend(v3_bin string, name string, backend string, src string, expec
 	bad_src := os.join_path(review_transform_fixture_dir, 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(review_transform_fixture_dir, 'v3_${name}')
-	result := os.exec([v3_bin, '-nocache', '-b', '${backend}', '${bad_src}', '-o', bad_bin])
+	result := os.exec([v3_bin, '-b', '${backend}', '${bad_src}', '-o', bad_bin])
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('build_expr: unsupported expr kind'), '${name}: reached SSA lowering\n${result.output}'
@@ -117,8 +117,8 @@ fn compile_good_source(v3_bin string, name string, flags string, src string) str
 	good_src := os.join_path(review_transform_fixture_dir, 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(review_transform_fixture_dir, 'v3_${name}')
-	compile := os.exec([v3_bin, '-nocache', ...(os.split_args(flags) or { panic(err) }), '${good_src}',
-		'-b', 'c', '-o', good_bin])
+	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), '${good_src}', '-b',
+		'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	return good_bin
@@ -139,7 +139,7 @@ fn run_good_with_env_and_flags(v3_bin string, name string, env string, flags str
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(review_transform_fixture_dir, 'v3_${name}')
 	// `env` holds `NAME=value` assignments for the compiler process, not a program.
-	compile := os.exec(['env', ...(os.split_args(env) or { panic(err) }), v3_bin, '-nocache',
+	compile := os.exec(['env', ...(os.split_args(env) or { panic(err) }), v3_bin,
 		...(os.split_args(flags) or { panic(err) }), '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'

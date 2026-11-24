@@ -109,11 +109,14 @@ const prealloc_block_pool_max_block = 256 * 1024 * 1024
 
 struct VPreallocBlockPool {
 mut:
-	lock   i32
-	bytes  i64
-	counts [prealloc_pool_bins]int
-	starts [prealloc_pool_bins * prealloc_pool_bin_slots]voidptr
-	sizes  [prealloc_pool_bins * prealloc_pool_bin_slots]int
+mut:
+	lock          i32
+	bytes         i64
+	max_bytes     i64
+	has_max_bytes bool
+	counts        [prealloc_pool_bins]int
+	starts        [prealloc_pool_bins * prealloc_pool_bin_slots]voidptr
+	sizes         [prealloc_pool_bins * prealloc_pool_bin_slots]int
 }
 
 __global g_prealloc_block_pool VPreallocBlockPool
@@ -156,8 +159,13 @@ fn prealloc_block_pool_put(start voidptr, size int) bool {
 	bin := prealloc_pool_bin(size)
 	prealloc_block_pool_lock()
 	count := g_prealloc_block_pool.counts[bin]
+	max_bytes := if g_prealloc_block_pool.has_max_bytes {
+		g_prealloc_block_pool.max_bytes
+	} else {
+		prealloc_block_pool_max_bytes
+	}
 	if count >= prealloc_pool_bin_slots
-		|| g_prealloc_block_pool.bytes + i64(size) > prealloc_block_pool_max_bytes {
+		|| g_prealloc_block_pool.bytes + i64(size) > max_bytes {
 		prealloc_block_pool_unlock()
 		return false
 	}
@@ -223,6 +231,64 @@ fn prealloc_block_pool_take(size int) (voidptr, int) {
 	g_prealloc_block_pool.bytes -= i64(best_size)
 	prealloc_block_pool_unlock()
 	return start, best_size
+}
+
+// prealloc_block_pool_release returns pooled blocks to the OS until at most
+// `keep` bytes of them are left.
+@[unsafe]
+fn prealloc_block_pool_release(keep i64) {
+	$if !windows && !freestanding && !vinix {
+		for {
+			mut start := unsafe { nil }
+			mut size := 0
+			prealloc_block_pool_lock()
+			if g_prealloc_block_pool.bytes > keep {
+				outer: for bin := 0; bin < prealloc_pool_bins; bin++ {
+					if g_prealloc_block_pool.counts[bin] > 0 {
+						slot := g_prealloc_block_pool.counts[bin] - 1
+						idx := bin * prealloc_pool_bin_slots + slot
+						unsafe {
+							start = g_prealloc_block_pool.starts[idx]
+							size = g_prealloc_block_pool.sizes[idx]
+						}
+						g_prealloc_block_pool.counts[bin] = slot
+						g_prealloc_block_pool.bytes -= i64(size)
+						break
+					}
+				}
+			}
+			prealloc_block_pool_unlock()
+			if start == unsafe { nil } {
+				break
+			}
+			// Unmapped outside the lock: other threads keep taking and putting blocks.
+			unsafe { C.munmap(start, uint(size)) }
+		}
+	}
+}
+
+@[unsafe]
+pub fn prealloc_block_pool_set_limit(bytes i64) {
+	$if prealloc {
+		limit := if bytes < 0 { i64(0) } else { bytes }
+		prealloc_block_pool_lock()
+		g_prealloc_block_pool.max_bytes = limit
+		g_prealloc_block_pool.has_max_bytes = true
+		prealloc_block_pool_unlock()
+		unsafe { prealloc_block_pool_release(limit) }
+	}
+}
+
+// prealloc_block_pool_idle_bytes returns the bytes of freed arena blocks that
+// are kept mapped for reuse at the moment.
+pub fn prealloc_block_pool_idle_bytes() i64 {
+	mut bytes := i64(0)
+	$if prealloc {
+		prealloc_block_pool_lock()
+		bytes = g_prealloc_block_pool.bytes
+		prealloc_block_pool_unlock()
+	}
+	return bytes
 }
 
 // prealloc_block_pool_free returns every pooled block to the OS.
@@ -801,7 +867,10 @@ fn vmemory_block_malloc_aligned(n int, align int) &u8 {
 @[unsafe]
 fn vmemory_block_free(mb &VMemoryBlock) {
 	if C.v_prealloc_atomic_load_i32(&g_prealloc_keep_freed) != 0 {
-		// The process is about to end (see prealloc_keep_freed_memory).
+		// The process is about to end (see prealloc_keep_freed_memory): keep the
+		// block mapped. Its header is still released: nothing refers to it once
+		// its scope is freed, and LeakSanitizer reports it as a leak otherwise.
+		C.free(mb)
 		return
 	}
 	$if trace_prealloc ? {

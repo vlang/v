@@ -23,7 +23,7 @@ fn main() {
  println(Bad{a: Item{value: 42}})
 }
 ')!
-	result := os.exec([@VEXE, '-new-compiler', '-o', c_path, source_path])
+	result := os.exec([@VEXE, '-o', c_path, source_path])
 	assert result.exit_code == 0, result.output
 	source := os.read_file(c_path)!
 	for function in ['make_value(double number) {', 'make_heap(double number) {'] {

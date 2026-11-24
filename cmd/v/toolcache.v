@@ -574,7 +574,7 @@ fn recorded_input_contents_changed(manifest string, manifest_path string) string
 // unbuildable_tool_failure returns the compiler output of a previous, already recorded,
 // failed build of the tool, but only while that failure still applies to the current sources.
 // Without the second half of that condition a single broken intermediate state of some vlib
-// module would permanently pin the tool to the compatibility compiler.
+// module would prevent the tool from rebuilding after the source error was fixed.
 fn unbuildable_tool_failure(entry ToolCacheEntry) ?string {
 	details := os.read_file(entry.unbuildable) or { return none }
 	if recorded_inputs_changed(entry.unbuildable_manifest) != '' {
@@ -1239,15 +1239,37 @@ fn create_tool_cache_stage_dir(parent string) !string {
 	return error('cannot create a private temporary directory for the tool cache')
 }
 
+// remove_tool_stage_dir removes a private build folder of the launcher. On Windows an
+// executable that has just exited can stay locked for a moment, for example while a virus
+// scanner still reads the new file, so the removal is retried for up to about 2 seconds.
+fn remove_tool_stage_dir(path string) {
+	for _ in 0 .. 20 {
+		os.rmdir_all(path) or {}
+		$if !windows {
+			return
+		}
+		if !os.exists(path) {
+			return
+		}
+		time.sleep(100 * time.millisecond)
+	}
+}
+
 fn unique_cache_path_token(attempt int) string {
 	return '${os.getpid()}-${time.now().unix_nano()}-${attempt}'
 }
+
+// tool_cache_build_lock_wait bounds the wait for another process building the same tool.
+const tool_cache_build_lock_wait = 30 * time.minute
 
 // build_tool_binary compiles the tool into its cache slot and records its source closure.
 // It returns the compiler output when the build failed.
 fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	mut build_lock := tool_cache_lock(entry)!
-	if !build_lock.wait_acquire(5 * time.minute) {
+	// The lock is shared by every cache key of the tool, because pruning removes the other
+	// keys' unfinished entries. Several checkouts or flag sets each building a large tool
+	// (`v3_full`) queue behind one another, so the wait covers a queue of builds, not one.
+	if !build_lock.wait_acquire(tool_cache_build_lock_wait) {
 		return error('timed out waiting to build the cached `${entry.name}` tool')
 	}
 	defer {
@@ -1270,7 +1292,7 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	stage_entry := open_tool_cache_entry_dir(stage_dir)!
 	defer {
 		stage_entry.close()
-		os.rmdir_all(stage_dir) or {}
+		remove_tool_stage_dir(stage_dir)
 	}
 	staged := staged_tool_binary_path(stage_dir, entry.binary)
 	dumped := os.join_path(stage_dir, 'sources')
@@ -1278,10 +1300,6 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	mut build_args := entry.build_args.clone()
 	build_args << ['-dump-files', dumped, '-o', staged, entry.source]
 	mut environment := os.environ()
-	// The build must either succeed with the current compiler, or fail loudly. Letting the
-	// child silently retry with the compatibility compiler would cache a binary that does
-	// not correspond to this V executable at all.
-	environment[v3_no_fallback_env] = '1'
 	// `build_args` already carries everything `VFLAGS` contributed to this invocation.
 	// Leaving the variable set would make the child prepend all of it a second time.
 	environment['VFLAGS'] = ''

@@ -695,6 +695,12 @@ fn test_lifetime_public_api_without_captured_closure() {
 		assert_run_succeeds_or_missing_boehm(tmp_dir, 'no_captured_lifetime', source, mode)
 	}
 	assert_boehm_leak_compile_or_missing_lib(tmp_dir, 'no_captured_lifetime', source)
+	// Without the module cache, the closure runtime is part of the program's own C
+	// unit, and its state (`g_closure` and its maps) must be initialized there too,
+	// although the program never calls `closure_init`.
+	source_path := write_program(tmp_dir, 'no_captured_lifetime_nocache', source)
+	res := os.exec([vexe, '-gc', 'none', '-nocache', 'run', source_path])
+	assert res.exit_code == 0, res.output
 }
 
 fn test_closure_lifetime_runtime_api_contract() {

@@ -430,9 +430,6 @@ jobs:
 
       - name: Bootstrap the contract-bound Phase A validator before staging
         shell: bash
-        env:
-          ## A compile failure must stop here, not retry with the 0.5.2 release.
-          V_MACOS_V3_NO_FALLBACK: '1'
         run: |
           set -euo pipefail
           contract_input="$RUNNER_TEMP/tccbin-validator-contract-input"

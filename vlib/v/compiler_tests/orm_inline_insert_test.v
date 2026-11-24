@@ -18,7 +18,7 @@ fn main() {
 ")!
 	for mode in ['', '-no-parallel'] {
 		for check_mode in ['-check', '-o'] {
-			mut args := [@VEXE, '-new-compiler', '-nocache']
+			mut args := [@VEXE, '-nocache']
 			if mode != '' {
 				args << mode
 			}
@@ -34,7 +34,7 @@ fn main() {
 	}
 	variable_source := os.read_file(source)!
 	os.write_file(source, variable_source.replace("sql db { insert Product{name: 'b'} into Product }!", "product := Product{name: 'b'}\n\tsql db { insert product into Product }!\n\trows := sql db { select from Product }!\n\tassert rows.len == 1\n\tassert rows[0].name == 'b'"))!
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-gc', 'none', 'run', source])
+	result := os.exec([@VEXE, '-nocache', '-gc', 'none', 'run', source])
 	assert result.exit_code == 0, result.output
 }
 
@@ -61,7 +61,7 @@ fn main() {
 ")!
 	for mode in ['', '-no-parallel'] {
 		for check_mode in ['-check', '-o'] {
-			mut args := [@VEXE, '-new-compiler', '-nocache']
+			mut args := [@VEXE, '-nocache']
 			if mode != '' {
 				args << mode
 			}
@@ -77,6 +77,6 @@ fn main() {
 	}
 	variable_source := os.read_file(source)!
 	os.write_file(source, variable_source.replace("sql db { insert into.Product{name: 'b'} into into.Product }!", "product := into.Product{name: 'b'}\n sql db { insert product into into.Product }!\n rows := sql db { select from into.Product }!\n assert rows.len == 1\n assert rows[0].name == 'b'"))!
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-gc', 'none', 'run', source])
+	result := os.exec([@VEXE, '-nocache', '-gc', 'none', 'run', source])
 	assert result.exit_code == 0, result.output
 }

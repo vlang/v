@@ -15,8 +15,7 @@ fn fixed_array_borrow_body(source string, function string) string {
 fn build_fixed_array_borrow_fixture(root string, flags []string) !(string, string) {
 	source_path := os.join_path(root, 'main.v')
 	binary := os.join_path(root, 'fixed_array_borrow_${tempname.unique_token()}') + $if windows { '.exe' } $else { '' }
-	compiled := os.exec([@VEXE, '-new-compiler', '-gc', 'none', ...flags, '-keepc', '-o', binary,
-		source_path])
+	compiled := os.exec([@VEXE, '-gc', 'none', ...flags, '-keepc', '-o', binary, source_path])
 	tmp := os.vtmp_dir()
 	prefix := os.file_name(binary) + '.'
 	retained := os.ls(tmp)!.filter(it.starts_with(prefix) && it.ends_with('.tmp.c'))
@@ -94,7 +93,7 @@ fn main() {
 		assert body.contains('memdup('), body
 	}
 	run_fixed_array_borrow_fixture(binary)
-	warnings := os.exec([@VEXE, '-new-compiler', '-warn-about-allocs', '-o', c_path, source_path])
+	warnings := os.exec([@VEXE, '-warn-about-allocs', '-o', c_path, source_path])
 	assert warnings.exit_code == 0, warnings.output
 	assert warnings.output.contains('local moved to the heap: its fixed array storage may escape'), warnings.output
 }

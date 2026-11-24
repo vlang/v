@@ -53,7 +53,7 @@ fn test_sort_calls_the_less_than_of_an_alias() {
 	src := os.join_path(dir, 'main.v')
 	os.write_file(src, sort_program) or { panic(err) }
 	exe := os.join_path(dir, 'main.exe')
-	build := os.exec([vexe, '-new-compiler', '-o', exe, src])
+	build := os.exec([vexe, '-o', exe, src])
 	assert build.exit_code == 0, build.output
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
