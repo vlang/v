@@ -112,9 +112,10 @@ jobs:
       VTEST_FAIL_FAST: '1'
       SANITIZER_GITHUB_JOB: sanitize-${{ matrix.name }}
       VFLAGS: ${{ matrix.vflags }}
-      # Use two test workers per shard on four-CPU runners. Keep headroom
-      # for instrumented builds and tests that spawn compilers.
-      VJOBS: ${{ matrix.shard_count && 2 || 1 }}
+      # Use two test workers on the four-CPU runners, in shards and in the
+      # suites that run whole: one worker kept them at 3-4 hours. Keep
+      # headroom for instrumented builds and tests that spawn compilers.
+      VJOBS: '2'
       VTEST_SELF_SHARD_INDEX: ${{ matrix.shard || 0 }}
       VTEST_SELF_SHARD_COUNT: ${{ matrix.shard_count || 1 }}
       UBSAN_OPTIONS: ${{ matrix.ubsan_options }}
