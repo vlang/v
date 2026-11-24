@@ -20688,6 +20688,10 @@ fn (g &FlatGen) fixed_array_literal_index_type(base_id flat.NodeId, node flat.No
 }
 
 fn char_escape_codepoint(s string) ?int {
+	// V accepts the escape character; C's \\e is not portable to MSVC.
+	if s == '\\e' {
+		return 27
+	}
 	if s.starts_with('\\x') && s.len > 2 {
 		return parse_hex_codepoint(s[2..])
 	}
