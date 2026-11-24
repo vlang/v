@@ -218,6 +218,45 @@ class GatePathsTests(unittest.TestCase):
         self.assertFalse(gate.should_run([], self.entries["wasm_backend_ci.yml"]))
         self.assertFalse(gate.should_run([], self.entries["linux_ci.yml"]))
 
+    class FakeAPI:
+        def __init__(self, runs, marked):
+            self.runs = runs
+            self.marked = marked
+            self.paths = []
+
+        def get(self, path):
+            self.paths.append(path)
+            if path.startswith("actions/workflows/ci_master.yml/runs?"):
+                return {"workflow_runs": self.runs}
+            run_id = int(path.split("/")[2])
+            names = [gate.TESTED_MARK] if run_id in self.marked else []
+            return {"artifacts": [{"name": name, "expired": False} for name in names]}
+
+    def test_base_is_the_newest_finished_run_with_started_suites(self):
+        runs = [
+            {"id": 9, "head_sha": "after", "conclusion": "success"},
+            {"id": 8, "head_sha": "c8", "conclusion": "cancelled"},
+            {"id": 7, "head_sha": "c7", "conclusion": "success"},
+            {"id": 6, "head_sha": "c6", "conclusion": "failure"},
+            {"id": 5, "head_sha": "c5", "conclusion": "success"},
+        ]
+        api = self.FakeAPI(runs, marked={8, 6, 5})
+        # Run 8 was cancelled and run 7 never started its suites, so their commits
+        # are tested again from run 6 on.
+        self.assertEqual(gate.tested_base(api, "after", 10, lambda c, a: True), "c6")
+        self.assertIn("status=completed", api.paths[0])
+        self.assertNotIn("actions/runs/8/artifacts?name=ci-tested-commit", api.paths)
+
+    def test_base_skips_the_current_run_and_unrelated_history(self):
+        runs = [
+            {"id": 10, "head_sha": "c10", "conclusion": "success"},
+            {"id": 4, "head_sha": "rewritten", "conclusion": "success"},
+            {"id": 3, "head_sha": "c3", "conclusion": "timed_out"},
+        ]
+        api = self.FakeAPI(runs, marked={10, 4, 3})
+        ancestor = lambda commit, after: commit != "rewritten"
+        self.assertIsNone(gate.tested_base(api, "after", 10, ancestor))
+
     def test_failure_to_compute_diff_runs_all(self):
         self.assertTrue(all(gate.should_run(None, e) for e in self.entries.values()))
 
