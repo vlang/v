@@ -20,7 +20,6 @@ $if (freestanding || syscalls) && !i386 {
 		const bf_nr_read = u64(63)
 		const bf_nr_fcntl = u64(25)
 		const bf_nr_clock_gettime = u64(113)
-		const bf_nr_futex = u64(98)
 		const bf_nr_write = u64(64)
 		const bf_nr_close = u64(57)
 		const bf_nr_lseek = u64(62)
@@ -48,7 +47,6 @@ $if (freestanding || syscalls) && !i386 {
 		const bf_nr_read = u64(0)
 		const bf_nr_fcntl = u64(72)
 		const bf_nr_clock_gettime = u64(228)
-		const bf_nr_futex = u64(202)
 		const bf_nr_write = u64(1)
 		const bf_nr_close = u64(3)
 		const bf_nr_lseek = u64(8)
@@ -77,11 +75,6 @@ $if (freestanding || syscalls) && !i386 {
 
 	const bf_at_fdcwd = u32(4294967196) // -100 as u32, seen by the kernel register
 	const bf_at_removedir = u64(0x200) // AT_REMOVEDIR, for unlinkat on arm64
-
-	fn bf_futex_raw(address voidptr, operation int, value u32, timeout voidptr, second voidptr, third u32) i64 {
-		return i64(sys_call6(bf_nr_futex, u64(address), u64(operation), u64(value),
-			u64(timeout), u64(second), u64(third)))
-	}
 
 	// bf_futex_wait blocks while an aligned word equals expected. timeout_ns is
 	// relative; negative values wait indefinitely. The word must remain alive

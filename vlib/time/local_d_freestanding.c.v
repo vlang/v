@@ -24,7 +24,7 @@ $if linux && !native && !i386 {
 		$if prealloc {
 			return false
 		} $else {
-			$if builtin_arena ? {
+			$if !no_builtin_arena ? {
 				return v_arena_current() == unsafe { nil }
 			}
 			return true

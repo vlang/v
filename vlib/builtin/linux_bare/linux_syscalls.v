@@ -238,6 +238,7 @@ $if arm64 {
 	const sys_nr_madvise = u64(233)
 	const sys_nr_getpid = u64(172)
 	const sys_nr_clone = u64(220)
+	const sys_nr_futex = u64(98)
 	const sys_nr_dup3 = u64(24)
 	const sys_nr_execve = u64(221)
 	const sys_nr_exit_group = u64(94)
@@ -255,6 +256,7 @@ $if arm64 {
 	const sys_nr_sched_yield = u64(24)
 	const sys_nr_madvise = u64(28)
 	const sys_nr_getpid = u64(39)
+	const sys_nr_futex = u64(202)
 	const sys_nr_fork = u64(57)
 	const sys_nr_vfork = u64(58)
 	const sys_nr_dup2 = u64(33)
@@ -265,6 +267,12 @@ $if arm64 {
 }
 
 $if !i386 {
+	// All runtime modes share the raw futex ABI, including hosted vlibc.
+	fn bf_futex_raw(address voidptr, operation int, value u32, timeout voidptr, second voidptr, third u32) i64 {
+		return i64(sys_call6(sys_nr_futex, u64(address), u64(operation), u64(value),
+			u64(timeout), u64(second), u64(third)))
+	}
+
 	fn split_int_errno(rc_in u64) (i64, Errno) {
 		rc := i64(rc_in)
 		if rc < 0 {

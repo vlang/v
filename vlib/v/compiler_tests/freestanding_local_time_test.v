@@ -115,7 +115,7 @@ fn test_linux_freestanding_local_timezone() ! {
 					'registry' { 'timezone registry ok' }
 					else { '${name} local time ok' }
 				}
-				assert ran.exit_code == 0 && ran.output.trim_space() == expected, ran.output
+				assert ran.exit_code == 0 && ran.output.trim_space() == expected, '${name} prod=${prod} exit=${ran.exit_code}: ${ran.output}'
 			}
 		}
 	}

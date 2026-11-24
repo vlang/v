@@ -11173,9 +11173,9 @@ fn append_hosted_vlibc_files(prefs &pref.Preferences, builtin_dir string, builti
 	}
 	vlibc_dir := os.join_path(builtin_dir, candidate)
 	if os.is_dir(vlibc_dir) {
-		// Include the syscall layer (numbers + sys_callN). The file name varies
-		// by platform: linux uses linux_syscalls.v, others use syscalls.v.
-		for scn_name in ['syscalls.v', 'linux_syscalls.v'] {
+		// Include the syscall layer and Linux's shared thread core. Hosted vlibc
+		// needs its atomic helpers and thread types without freestanding startup.
+		for scn_name in ['syscalls.v', 'linux_syscalls.v', 'thread_core.c.v'] {
 			scn_path := os.join_path(vlibc_dir, scn_name)
 			if os.is_file(scn_path) {
 				builtin_files << prefs.without_excluded([scn_path])

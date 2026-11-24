@@ -6917,7 +6917,7 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 			return true
 		}
 		if name == 'C.itimerspec' && g.target.os in ['linux', 'android', 'termux']
-			&& g.c_directives_use_system_libc() {
+			&& (g.target_libc_headers || g.c_directives_use_system_libc()) {
 			return true
 		}
 		if name[2..] in c_system_header_struct_names && g.c_directives_use_system_libc() {
