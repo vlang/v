@@ -286,6 +286,8 @@ fn test_tool_batch_that_fails_names_only_the_rejected_file() ! {
 		paths << path
 	}
 	mut ts := new_test_session('-silent fmt -inprocess -verify', false)
+	// CI sets VTEST_FAIL_FAST=1; the counts below need every file of the session to run.
+	ts.fail_fast = false
 	ts.vexe = @VEXE
 	ts.files << paths
 	ts.test()
@@ -313,6 +315,8 @@ fn test_fmt_list_batch_fails_only_the_file_that_cannot_be_formatted() ! {
 		paths << path
 	}
 	mut ts := new_test_session('-silent fmt -inprocess -l', false)
+	// CI sets VTEST_FAIL_FAST=1; the counts below need every file of the session to run.
+	ts.fail_fast = false
 	ts.vexe = @VEXE
 	ts.files << paths
 	ts.test()
