@@ -175,13 +175,13 @@ fn test_syscalls_is_rejected_where_it_is_not_supported() {
 	} $else {
 		// Target and host validation precede runtime selection on non-Linux hosts.
 		assert native.output.contains('the amd64 backend currently supports only linux/amd64'), native.output
-		linux_target := os.exec([vexe, '-nocache', '-os', 'linux', '-b', 'x64', '-syscalls', '-o', exe,
-			source])
+		linux_args := [vexe, '-nocache', '-os', 'linux', '-b', 'x64', '-syscalls', '-o', exe, source]
+		linux_target := os.exec(linux_args)
 		assert linux_target.exit_code != 0, linux_target.output
 		assert linux_target.output.contains('the amd64 backend currently requires a linux/amd64 host'), linux_target.output
 	}
-	both := os.exec([vexe, '-nocache', '-os', 'linux', '-syscalls', '-freestanding', '-o', exe,
-		source])
+	both_args := [vexe, '-nocache', '-os', 'linux', '-syscalls', '-freestanding', '-o', exe, source]
+	both := os.exec(both_args)
 	assert both.exit_code != 0
 	assert both.output.contains('separate runtimes'), both.output
 	for flag in ['-syscalls', '-freestanding'] {
