@@ -4079,3 +4079,36 @@ fn main() {
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('cannot return a reference to local storage `items`'), res.output
 }
+
+fn test_ownership_retains_all_branch_loans_for_a_projected_pointer() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'borrowed_pointer_projection_branches', r'
+struct Item {
+mut:
+	text string
+}
+
+fn check(pick_right bool) {
+	mut left := [Item{text: "left".to_owned()}]
+	mut right := [Item{text: "right".to_owned()}]
+	mut bytes := unsafe { &u8(nil) }
+	unsafe {
+		mut item := &left[0]
+		if pick_right {
+			item = &right[0]
+		}
+		bytes = item.text.str
+	}
+	left[0].text = "changed".to_owned()
+	right[0].text = "changed".to_owned()
+	unsafe { println(bytes[0]) }
+}
+
+fn main() {
+	check(false)
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('because `left[0].text.str` is borrowed by `bytes`'), res.output
+	assert res.output.contains('because `right[0].text.str` is borrowed by `bytes`'), res.output
+}

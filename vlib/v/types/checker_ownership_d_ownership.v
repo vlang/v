@@ -7921,19 +7921,11 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		}
 		return
 	}
-	if tc.ownership_alias_borrower(lhs_name, rhs_name, assign_id) {
+	pointer_projection := rhs_name.contains_any('.[') && unalias_type(lhs_type) is Pointer
+		&& !lhs_name.contains_any('.[') && tc.name_has_local_binding(lhs_name)
+		&& !tc.ident_is_global_binding(lhs_name) && unalias_type(tc.resolve_type(rhs_id)) is Pointer
+	if tc.ownership_alias_storage(lhs_name, rhs_name, assign_id, pointer_projection) {
 		return
-	}
-	if unalias_type(lhs_type) is Pointer && !lhs_name.contains_any('.[')
-		&& tc.name_has_local_binding(lhs_name) && !tc.ident_is_global_binding(lhs_name)
-		&& unalias_type(tc.resolve_type(rhs_id)) is Pointer {
-		if source := tc.ownership_borrowed_alias_source(rhs_name, false) {
-			// A pointer projected from a loan remains tied to the source storage.
-			tc.ownership_add_borrow(source, lhs_name, assign_id, false)
-			st.owned_vars.delete(lhs_name)
-			st.owned_var_types.delete(lhs_name)
-			return
-		}
 	}
 	if tc.ownership_mark_borrow_from_call_return(lhs_name, rhs_id, assign_id) {
 		return
@@ -9301,6 +9293,10 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 }
 
 fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name string, pos flat.NodeId) bool {
+	return tc.ownership_alias_storage(lhs_name, rhs_name, pos, false)
+}
+
+fn (mut tc TypeChecker) ownership_alias_storage(lhs_name string, rhs_name string, pos flat.NodeId, pointer_projection bool) bool {
 	if lhs_name == '' || rhs_name == '' {
 		return false
 	}
@@ -9316,6 +9312,14 @@ fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name strin
 		for borrow in borrows {
 			if borrow.borrower == rhs_name {
 				has_direct_alias = true
+			} else if pointer_projection && ownership_storage_key_is_descendant(rhs_name, borrow.borrower) {
+				// A projected pointer can inherit loans from several branches.
+				has_direct_alias = true
+				aliases << OwnershipBorrowerSnapshot{
+					var_name: var_name + rhs_name[borrow.borrower.len..]
+					borrow:   BorrowInfo{ borrower: rhs_name, pos: borrow.pos }
+				}
+				continue
 			} else if ownership_storage_key_is_descendant(borrow.borrower, rhs_name) {
 				projected := tc.returned_receiver_projection_type(source_type, borrow.borrower[rhs_name.len..]) or { continue }
 				if !tc.sum_escape_has_pointer_variant(projected) { continue }
