@@ -1,0 +1,43 @@
+name: Cached UTF8 ownership declarations
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/driver/cached_declarations.v'
+      - 'vlib/v/driver/cached_declarations_test.v'
+      - 'vlib/v/types/checker_ownership_d_ownership.v'
+      - 'vlib/v/compiler_tests/ownership_stdlib_string_borrows_test.v'
+      - '.github/workflows/cached_utf8_ownership_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Rebuild and verify original cache declaration invariant
+        run: |
+          ./v self
+          ./v fmt -w vlib/v/driver/cached_declarations.v
+          git diff --exit-code
+          ./v fmt -verify vlib/v/driver/cached_declarations.v
+          ./v -cc gcc -silent vlib/v/driver/cached_declarations_test.v
+          ./v -cc clang -silent vlib/v/driver/cached_declarations_test.v
+          ./v -cc clang -silent vlib/v/compiler_tests/ownership_stdlib_string_borrows_test.v
+      - name: Install native compiler-test dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install -y gobjc libobjc-14-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev libgl-dev libegl-dev libgl1-mesa-dri
+      - name: Full compiler validation
+        run: |
+          ./v -silent vlib/v/compiler_errors_test.v
+          ./v -silent test vlib/v/
