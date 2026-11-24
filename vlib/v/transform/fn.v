@@ -9303,7 +9303,7 @@ fn (mut t Transformer) runtime_type_metadata_call_expands(id flat.NodeId, node f
 	if node.kind != .call {
 		return false
 	}
-	if _ := t.enum_from_string_info(id) {
+	if _ := t.enum_from_info(id) {
 		return true
 	}
 	if node.children_count != 1 {
@@ -14968,7 +14968,7 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 		} else {
 			u32(0)
 		})
-		if enum_call := t.try_lower_enum_from_string_call(_id, node) {
+		if enum_call := t.try_lower_enum_from_call(_id, node) {
 			return enum_call
 		}
 		if specialized_enum_type != 0 {
@@ -15120,7 +15120,7 @@ fn (t &Transformer) builtin_enum_from_type(call_id flat.NodeId, node flat.Node) 
 	}
 	callee := t.a.child_node(&node, 0)
 	if callee.kind != .selector || callee.value != 'from' || callee.children_count == 0
-		|| t.enum_from_string_call_uses_user_method(call_id) {
+		|| t.enum_from_call_uses_user_method(call_id) {
 		return none
 	}
 	enum_id := t.a.child(callee, 0)
