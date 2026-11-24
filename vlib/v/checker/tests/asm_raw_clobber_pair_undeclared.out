@@ -1,18 +1,18 @@
-vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:8:5: error: `mull` writes a register of the `rax`:`rdx` pair in this raw assembly template, but the `A` constraint binds the 32-bit operand `r` to only one of them; bind a 64-bit operand, or use `a` or `d` and add the other register to the clobbers
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:8:5: error: `mull` writes `eax` in this raw assembly template, but the `+A` constraint on the 32-bit operand `r` does not reserve both `eax` and `edx`
     6 |     asm x86 raw {
     7 |         "mull %[y]"
     8 |         ; "+A" (r)
       |           ~~~~~~~~
     9 |         ; [y] "r" (y)
    10 |         ; cc
-vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:19:5: error: `mulq` writes a register of the `rax`:`rdx` pair in this raw assembly template, but the `A` constraint binds the 64-bit operand `r` to only one of them; use `a` or `d` and add the other register to the clobbers
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:19:5: error: `mulq` writes `rax` in this raw assembly template, but the `+A` constraint on the 64-bit operand `r` does not reserve both `rax` and `rdx`
    17 |     asm amd64 raw {
    18 |         "mulq %[y]"
    19 |         ; "+A" (r)
       |           ~~~~~~~~
    20 |         ; [y] "r" (y)
    21 |         ; cc
-vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:29:15: error: `movl` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:29:15: error: `movl` writes `ecx` in this raw assembly template, but `ecx` is neither an output operand nor in the clobber list; add `ecx` to the clobbers
    27 |     mut r := x
    28 |     asm x86 raw {
    29 |         "movl %[y], %%ecx\n\t"
@@ -26,45 +26,164 @@ vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:41:4: error: `mull` sets
       |          ~~~~
    42 |         ; "+A" (r)
    43 |         ; [y] "r" (y)
-vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:51:4: error: `mull` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
-   49 |     mut out := u32(0)
-   50 |     asm x86 raw {
-   51 |         "mull %[y]\n\t"
-      |          ~~~~
-   52 |         "movl %%edx, %[out]"
-   53 |         ; [out] "=r" (out)
-vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:51:4: error: `mull` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
-   49 |     mut out := u32(0)
-   50 |     asm x86 raw {
-   51 |         "mull %[y]\n\t"
-      |          ~~~~
-   52 |         "movl %%edx, %[out]"
-   53 |         ; [out] "=r" (out)
-vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:70:5: error: `mull` writes a register of the `rax`:`rdx` pair in this raw assembly template, but the `A` constraint binds the 32-bit operand `h.lo` to only one of them; bind a 64-bit operand, or use `a` or `d` and add the other register to the clobbers
-   68 |     asm x86 raw {
-   69 |         "mull %[y]"
-   70 |         ; "+A" (h.lo)
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:56:5: error: `mull` writes `eax` in this raw assembly template, but the `A` constraint on the 32-bit operand `x` does not reserve both `eax` and `edx`
+   54 |         "movl %%edx, %[out]"
+   55 |         ; [out] "=r" (out)
+   56 |         ; "A" (x)
+      |           ~~~~~~~
+   57 |           [y] "r" (y)
+   58 |         ; cc
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:70:5: error: `notq` writes `rax` in this raw assembly template, but the `A` constraint on the 64-bit operand `x` does not reserve both `rax` and `rdx`
+   68 |         "movq %%rax, %[out]"
+   69 |         ; [out] "=&r" (out)
+   70 |         ; "A" (x)
+      |           ~~~~~~~
+   71 |     }
+   72 |     return out
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:78:16: error: `movq` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+   76 |     mut out := u64(0)
+   77 |     asm amd64 raw {
+   78 |         "movq %%rax, %%rcx\n\t"
+      |                      ~~~~~
+   79 |         "movq %%rcx, %[out]"
+   80 |         ; [out] "=&r" (out)
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:95:5: error: `mull` writes `eax` in this raw assembly template, but the `+A` constraint on the 32-bit operand `h.lo` does not reserve both `eax` and `edx`
+   93 |     asm x86 raw {
+   94 |         "mull %[y]"
+   95 |         ; "+A" (h.lo)
       |           ~~~~~~~~~~~
-   71 |         ; [y] "r" (y)
-   72 |         ; cc
-vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:82:5: error: `movl` writes a register of the `rax`:`rdx` pair in this raw assembly template, but the `A` constraint binds the 32-bit operand `r` to only one of them; bind a 64-bit operand, or use `a` or `d` and add the other register to the clobbers
-   80 |         "movl $1, %%eax\n\t"
-   81 |         "movl $2, %%edx"
-   82 |         ; "+A" (r)
+   96 |         ; [y] "r" (y)
+   97 |         ; cc
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:107:5: error: `movl` writes `eax` in this raw assembly template, but the `+A` constraint on the 32-bit operand `r` does not reserve both `eax` and `edx`
+  105 |         "movl $1, %%eax\n\t"
+  106 |         "movl $2, %%edx"
+  107 |         ; "+A" (r)
       |           ~~~~~~~~
-   83 |         ;
-   84 |         ;
-vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:94:15: error: `movq` operates on 64-bit operands here, but `%[low]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
-   92 |     asm x86 raw {
-   93 |         "mull %[y]\n\t"
-   94 |         "movq %[r], %[low]"
+  108 |         ;
+  109 |         ;
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:119:15: error: `movq` operates on 64-bit operands here, but `%[low]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
+  117 |     asm x86 raw {
+  118 |         "mull %[y]\n\t"
+  119 |         "movq %[r], %[low]"
       |                     ~~~~~~
-   95 |         ; [r] "+A" (r)
-   96 |           [low] "=r" (low)
-vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:94:9: error: `movq` operates on 64-bit operands here, but `%[r]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
-   92 |     asm x86 raw {
-   93 |         "mull %[y]\n\t"
-   94 |         "movq %[r], %[low]"
-      |               ~~~~
-   95 |         ; [r] "+A" (r)
-   96 |           [low] "=r" (low)
+  120 |         ; [r] "+A" (r)
+  121 |           [low] "=r" (low)
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:133:5: error: `movl` writes `eax` in this raw assembly template, but the `+A` constraint on the 32-bit operand `al` does not reserve both `eax` and `edx`
+  131 |     asm x86 raw {
+  132 |         "movl $1, %%eax"
+  133 |         ; [al] "+A" (out)
+      |           ~~~~~~~~~~~~~~~
+  134 |     }
+  135 |     return out
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:142:5: error: `movq` writes `rax` in this raw assembly template, but the `A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+  140 |         "movq $5, %%rax"
+  141 |         ;
+  142 |         ; "A" (x)
+      |           ~~~~~~~
+  143 |         ;
+  144 |     }
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:153:5: error: `mull` writes `rax` in this raw assembly template, but the `A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+  151 |         "movl %%edx, %[out]"
+  152 |         ; [out] "=r" (out)
+  153 |         ; [x] "A" (x)
+      |           ~~~~~~~~~~~
+  154 |           [y] "r" (y)
+  155 |         ; cc
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:166:5: error: `movl` writes `rdx` in this raw assembly template, but the `A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+  164 |         "movl %%eax, %[out]"
+  165 |         ; [out] "=r" (out)
+  166 |         ; [x] "A" (x)
+      |           ~~~~~~~~~~~
+  167 |     }
+  168 |     return out
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:178:5: error: `cltd` writes `rdx` in this raw assembly template, but the `A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+  176 |         "xorl %%eax, %%eax"
+  177 |         ; [out] "=r" (out)
+  178 |         ; [x] "A" (x)
+      |           ~~~~~~~~~~~
+  179 |         ; cc
+  180 |     }
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:193:5: error: `xorl` writes `rax` in this raw assembly template, but the `A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+  191 |         "movl %%edx, %[out]"
+  192 |         ; [out] "=c" (out)
+  193 |         ; [x] "A" (x)
+      |           ~~~~~~~~~~~
+  194 |         ; cc
+  195 |     }
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:204:5: error: `addl` writes `rdx` in this raw assembly template, but the `=A` constraint on the 32-bit operand `y` does not reserve both `rax` and `rdx`
+  202 |     asm amd64 raw {
+  203 |         "addl $1, %%edx"
+  204 |         ; [y] "=A" (y)
+      |           ~~~~~~~~~~~~
+  205 |           [c] "=@cca" (c)
+  206 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:216:5: error: `movl` writes `rdx` in this raw assembly template, but the `=A` constraint on the 32-bit operand `y` does not reserve both `rax` and `rdx`
+  214 |     asm amd64 raw {
+  215 |         "movl %[z], %%edx"
+  216 |         ; [y] "=A" (y)
+      |           ~~~~~~~~~~~~
+  217 |         ; [z] "{rdi}" (x)
+  218 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:230:5: error: `cltd` writes `rdx` in this raw assembly template, but the `A` constraint on the 32-bit operand `foo` does not reserve both `rax` and `rdx`
+  228 |         "movl %%edx, %[out]"
+  229 |         ; [out] "=r" (out)
+  230 |         ; [foo] "A" (y)
+      |           ~~~~~~~~~~~~~
+  231 |         ; 
+  232 |     }
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:242:5: error: `movl` writes `rax` in this raw assembly template, but the `=Ar` constraint on the 32-bit operand `z` does not reserve both `rax` and `rdx`
+  240 |     asm amd64 raw {
+  241 |         "movl $1, %%eax"
+  242 |         ; [z] "=Ar" (y)
+      |           ~~~~~~~~~~~~~
+  243 |     }
+  244 |     return y
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:254:5: error: `xorl` writes `rdx` in this raw assembly template, but the `Ar` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+  252 |         "xorl %%edx, %%edx"
+  253 |         ; [out] "=r" (out)
+  254 |         ; [x] "Ar" (x)
+      |           ~~~~~~~~~~~~
+  255 |         ; cc
+  256 |     }
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:265:5: error: `movl` writes `rax` in this raw assembly template, but the `=&A` constraint on the 32-bit operand `z` does not reserve both `rax` and `rdx`
+  263 |     asm amd64 raw {
+  264 |         "movl $1, %%eax"
+  265 |         ; [z] "=&A" (y)
+      |           ~~~~~~~~~~~~~
+  266 |     }
+  267 |     return y
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:276:5: error: `xorl` writes `rdx` in this raw assembly template, but the `%A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+  274 |         "xorl %%edx, %%edx"
+  275 |         ; [out] "=r" (out)
+  276 |         ; [x] "%A" (x)
+      |           ~~~~~~~~~~~~
+  277 |           [w] "r" (x)
+  278 |         ; cc
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:288:5: error: `movl` writes `rax` in this raw assembly template, but the `=Ad` constraint on the 32-bit operand `z` does not reserve both `rax` and `rdx`
+  286 |     asm amd64 raw {
+  287 |         "movl $1, %%eax"
+  288 |         ; [z] "=Ad" (y)
+      |           ~~~~~~~~~~~~~
+  289 |     }
+  290 |     return y
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:299:5: error: `xorl` writes `rdx` in this raw assembly template, but the `0A` constraint on the 32-bit operand `z` does not reserve both `rax` and `rdx`
+  297 |         "xorl %%edx, %%edx"
+  298 |         ; [out] "=c" (out)
+  299 |         ; [z] "0A" (x)
+      |           ~~~~~~~~~~~~
+  300 |         ; cc
+  301 |     }
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:310:5: error: `movl` writes `rax` in this raw assembly template, but the `=?A` constraint on the 32-bit operand `z` does not reserve both `rax` and `rdx`
+  308 |     asm amd64 raw {
+  309 |         "movl $1, %%eax"
+  310 |         ; [z] "=?A" (y)
+      |           ~~~~~~~~~~~~~
+  311 |     }
+  312 |     return y
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:321:5: error: `mull` writes `rdx` in this raw assembly template, but the `=Aa` constraint on the 32-bit operand `z` does not reserve both `rax` and `rdx`
+  319 |     asm amd64 raw {
+  320 |         "mull %[x]"
+  321 |         ; [z] "=Aa" (y)
+      |           ~~~~~~~~~~~~~
+  322 |         ; [x] "r" (x)
+  323 |         ; cc

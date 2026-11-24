@@ -1,0 +1,21 @@
+vlib/v/checker/tests/asm_raw_att_width_enum_modules.vv:15:9: error: `movq` operates on 64-bit operands here, but `%[p]` is 8-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
+   13 | fn raw_qualified_enum_uses_its_own_module(p sha3.Padding) {
+   14 |     asm amd64 raw {
+   15 |         "movq %[p], %%rax"
+      |               ~~~~
+   16 |         ;
+   17 |         ; [p] "r" (p)
+vlib/v/checker/tests/asm_raw_att_width_enum_modules.vv:24:9: error: `movq` operates on 64-bit operands here, but `%[b]` is 8-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
+   22 | fn raw_enum_named_like_a_struct_of_another_module(b Builder) {
+   23 |     asm amd64 raw {
+   24 |         "movq %[b], %%rax"
+      |               ~~~~
+   25 |         ;
+   26 |         ; [b] "r" (b)
+vlib/v/checker/tests/asm_raw_att_width_enum_modules.vv:33:9: error: `movb` operates on 8-bit operands here, but `%[p]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 8-bit register
+   31 | fn raw_local_enum_named_like_one_of_another_module(p Padding) {
+   32 |     asm amd64 raw {
+   33 |         "movb %[p], %%al"
+      |               ~~~~
+   34 |         ;
+   35 |         ; [p] "r" (p)

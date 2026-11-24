@@ -289,13 +289,978 @@ fn raw_label_and_prefix_keep_the_check(x u64) u64 {
 	asm amd64 raw {
 		"1:\n\t"
 		"lock addq $1, %%r15\n\t"
-		"rex.w xorq %%r14, %%r14\n\t"
+		"xorq %%r14, %%r14\n\t"
 		"movq $42, %[value]"
 		; [value] "=&d" (value)
 		; [x] "c" (x)
 		; cc
 	}
 	return value
+}
+
+// One mnemonic and one register view each, so that every family stays pinned.
+fn raw_family_rbx(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"movq $1, %%rbx"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_rsi(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"movq $1, %%rsi"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_rdi(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"movq $1, %%rdi"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_rbp(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"movq $1, %%rbp"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_r8d(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"movl $1, %%r8d"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_r9w(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"movw $1, %%r9w"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_r10b(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"movb $1, %%r10b"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_pop(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"popq %%r11"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_div(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"divq %[o]"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_idiv(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"idivq %[o]"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_imul_one(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"imulq %[o]"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_cqto(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"cqto"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_cdq(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"cdq"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_cltd(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"cltd"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_repne(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"repne scasb"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_sub(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"subq $1, %%r12"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_and(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"andq $1, %%r12"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_or(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"orq $1, %%r12"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_xor(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"xorq $1, %%r12"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_inc(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"incq %%r12"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_dec(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"decq %%r12"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_neg(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"negq %%r12"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_not(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"notq %%r12"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_shl(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"shlq $1, %%r12"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_shr(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"shrq $1, %%r12"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_sar(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"sarq $1, %%r12"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_lea(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"leaq (%%rax), %%r13"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_cmp(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"cmpq $1, %[o]"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+// A flag output's `@ccz` is not the fixed-register letter `c`.
+fn raw_flag_output_does_not_bind_rcx() bool {
+	mut z := false
+	asm amd64 raw {
+		"movq $1, %%rcx"
+		; [z] "=@ccz" (z)
+		;
+		;
+	}
+	return z
+}
+
+fn raw_two_operand_imul_writes_its_destination(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"imulq %[o], %%r14"
+		; [o] "+r" (o)
+		;
+		; cc
+	}
+	return o
+}
+
+fn raw_write_before_the_save() u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"movq $5, %%rbx\n"
+		"pushq %%rbx\n"
+		"movq %%rbx, %[out]\n"
+		"popq %%rbx"
+		; [out] "=d" (out)
+		;
+		;
+	}
+	return out
+}
+
+fn raw_write_after_the_restore() u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"pushq %%rbx\n"
+		"popq %%rbx\n"
+		"movq $5, %%rbx\n"
+		"movq %%rbx, %[out]"
+		; [out] "=d" (out)
+		;
+		;
+	}
+	return out
+}
+
+fn raw_pop_of_another_register_restores_nothing() u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"pushq %%rbx\n"
+		"movq $5, %%rbx\n"
+		"movq %%rbx, %[out]\n"
+		"popq %%r12"
+		; [out] "=r" (out)
+		;
+		;
+	}
+	return out
+}
+
+fn raw_push_without_pop_restores_nothing() u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"pushq %%rbx\n"
+		"movq $5, %%rbx\n"
+		"movq %%rbx, %[out]"
+		; [out] "=r" (out)
+		;
+		; cc
+	}
+	return out
+}
+
+fn raw_inner_push_is_not_the_saved_register() u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"pushq %%rbx\n"
+		"pushq %%r12\n"
+		"movq $5, %%rbx\n"
+		"movq %%rbx, %[out]\n"
+		"popq %%rbx\n"
+		"popq %%r12"
+		; [out] "=r" (out)
+		;
+		;
+	}
+	return out
+}
+
+fn raw_flags_set_after_the_restore() u64 {
+	mut out := u64(1)
+	asm amd64 raw {
+		"pushfq\n"
+		"popfq\n"
+		"addq $1, %[out]"
+		; [out] "+r" (out)
+		;
+		;
+	}
+	return out
+}
+
+fn raw_operand_alias_named_like_a_register_saves_nothing(x u64) u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"pushq %[rbx]\n"
+		"movq $5, %%rbx\n"
+		"movq %%rbx, %[out]\n"
+		"popq %[rbx]"
+		; [out] "=r" (out)
+		; [rbx] "r" (x)
+		;
+	}
+	return out
+}
+
+fn raw_rep_on_its_own_statement(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"rep; stosb"
+		; [y] "+r" (y)
+		; 
+		; rdi memory
+	}
+	return y
+}
+
+fn raw_upper_case_rep_prefix(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"REP STOSB"
+		; [y] "+r" (y)
+		; 
+		; rdi memory
+	}
+	return y
+}
+
+fn raw_upper_case_register_write(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"movq %[y], %%RBX"
+		; [y] "+r" (y)
+		; 
+		; 
+	}
+	return y
+}
+
+fn raw_write_after_a_call(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"pushq %%rbx\n\t"
+		"popq %%rbx\n\t"
+		"call abort\n\t"
+		"movq $1, %%rsi\n\t"
+		"addq %%rsi, %[y]"
+		; [y] "+b" (y)
+		; 
+		; rax rcx rdx rdi r8 r9 r10 r11 cc memory
+	}
+	return y
+}
+
+fn raw_write_beside_nested_frames(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"pushq %%rbp\n\t"
+		"movq %%rsp, %%rbp\n\t"
+		"pushq %%rbp\n\t"
+		"movq %%rsp, %%rbp\n\t"
+		"movq $1, %%r8\n\t"
+		"leave\n\t"
+		"leave"
+		; [y] "+c" (y)
+		; 
+		; 
+	}
+	return y
+}
+
+fn raw_write_beside_a_frame_ended_by_mov_and_pop(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"pushq %%rbp\n\t"
+		"movq %%rsp, %%rbp\n\t"
+		"pushq %%rbx\n\t"
+		"movq $1, %%r8\n\t"
+		"movq %%rbp, %%rsp\n\t"
+		"popq %%rbp"
+		; [y] "+c" (y)
+		; 
+		; 
+	}
+	return y
+}
+
+fn raw_rep_before_a_directive_that_emits_nothing(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"rep\n\t"
+		".globl raw_rep_symbol\n\t"
+		"stosq"
+		; [y] "+r" (y)
+		; 
+		; rdi memory
+	}
+	return y
+}
+
+fn raw_family_cwd(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"cwd"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_family_cwtd(x u64) u64 {
+	mut o := x
+	asm amd64 raw {
+		"cwtd"
+		; [o] "+r" (o)
+		;
+		;
+	}
+	return o
+}
+
+fn raw_call_to_a_quoted_plain_label_is_not_checked() u64 {
+	mut pc := u64(0)
+	asm amd64 raw {
+		"pushq %%rbx\n\t"
+		"call \"raw_get_pc\"\n"
+		"\"raw_get_pc\": popq %%rbx\n\t"
+		"movq %%rbx, %[pc]\n\t"
+		"popq %%rbx"
+		; [pc] "=r" (pc)
+	}
+	return pc
+}
+
+fn raw_i386_call_after_a_balanced_push_is_checked() {
+	asm i386 raw {
+		"push %%ebx\n\t"
+		"pop %%ebx\n\t"
+		"call abort\n\t"
+		"movl $1, %%esi"
+		; 
+		; 
+		; memory
+	}
+}
+
+fn raw_every_register_spelling_is_a_write() {
+	asm amd64 raw {
+		"movq $1, %%rax"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movl $1, %%eax"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movw $1, %%ax"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movb $1, %%al"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movb $1, %%ah"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movq $1, %%rbx"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movl $1, %%ebx"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movw $1, %%bx"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movb $1, %%bl"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movb $1, %%bh"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movq $1, %%rcx"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movl $1, %%ecx"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movw $1, %%cx"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movb $1, %%cl"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movb $1, %%ch"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movq $1, %%rdx"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movl $1, %%edx"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movw $1, %%dx"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movb $1, %%dl"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movb $1, %%dh"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movq $1, %%rsi"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movl $1, %%esi"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movw $1, %%si"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movb $1, %%sil"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movq $1, %%rdi"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movl $1, %%edi"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movw $1, %%di"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movb $1, %%dil"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movq $1, %%rbp"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movl $1, %%ebp"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movw $1, %%bp"
+		; 
+		; 
+		; 
+	}
+	asm amd64 raw {
+		"movb $1, %%bpl"
+		; 
+		; 
+		; 
+	}
+}
+
+fn raw_braced_rdi_does_not_declare_rdx(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"movq $1, %%rdi\n\t"
+		"movq $2, %%rdx"
+		; [y] "={rdi}" (y)
+		; 
+		; 
+	}
+	return y
+}
+
+fn raw_call_to_a_quoted_plain_symbol_is_followed() {
+	asm amd64 raw {
+		"call \"abort\"\n\t"
+		"movq $1, %%rsi"
+		; 
+		; 
+		; memory
+	}
+}
+
+fn raw_call_to_symbols_with_punctuation_is_followed() {
+	asm amd64 raw {
+		"call raw_fn_a\n\t"
+		"call raw.fn\n\t"
+		"call raw$fn\n\t"
+		"call memcpy@PLT\n\t"
+		"movq $1, %%rsi"
+		; 
+		; 
+		; memory
+	}
+}
+
+fn raw_cfi_directive_naming_rsp_is_skipped() {
+	asm amd64 raw {
+		".cfi_def_cfa %%rsp, 16\n\t"
+		"movq $1, %%rsi"
+		; 
+		; 
+		; 
+	}
+}
+
+fn raw_frame_ended_by_mov_and_pop_is_closed() {
+	asm amd64 raw {
+		"pushq %%rbp\n\t"
+		"movq %%rsp, %%rbp\n\t"
+		"movq %%rbp, %%rsp\n\t"
+		"popq %%rbp\n\t"
+		"movq %%rbp, %%rsi"
+		; 
+		; 
+		; 
+	}
+}
+
+fn raw_frame_ended_by_leaveq_or_leavel_is_closed() {
+	asm amd64 raw {
+		"pushq %%rbp\n\t"
+		"movq %%rsp, %%rbp\n\t"
+		"leaveq\n\t"
+		"movq %%rbp, %%rsi"
+		; 
+		; 
+		; 
+	}
+	asm i386 raw {
+		"pushl %%ebp\n\t"
+		"movl %%esp, %%ebp\n\t"
+		"leavel\n\t"
+		"movl %%ebp, %%esi"
+		; 
+		; 
+		; 
+	}
+}
+
+fn raw_suffixed_mul_and_div_of_memory_write_rdx() {
+	asm amd64 raw {
+		"mulw (%%rbx)\n\t"
+		"mull (%%rbx)\n\t"
+		"imull (%%rbx)\n\t"
+		"divl (%%rbx)\n\t"
+		"idivl (%%rbx)"
+		; 
+		; 
+		; cc memory
+	}
+}
+
+fn raw_rep_prefix_spellings_write_rcx() {
+	asm amd64 raw {
+		"repe cmpsb\n\t"
+		"repz scasb\n\t"
+		"repnz scasb\n\t"
+		"repne scasb"
+		; 
+		; 
+		; cc memory
+	}
+}
+
+fn raw_rep_on_its_own_line_reaches_past_a_label() {
+	asm amd64 raw {
+		"rep\n\t"
+		"1:\n\t"
+		"movsb"
+		; 
+		; 
+		; memory
+	}
+}
+
+fn raw_pop_into_rbp_outside_a_frame_is_checked() {
+	asm amd64 raw {
+		"pushq %%rbx\n\t"
+		"popq %%rbp\n\t"
+		"movq $1, %%rsi"
+		; 
+		; 
+		; 
+	}
+}
+
+fn raw_rep_movsd_without_operands_writes_rcx() {
+	asm amd64 raw {
+		"rep movsd"
+		; 
+		; 
+		; rsi rdi memory
+	}
+}
+
+fn raw_repe_cmpsd_without_operands_writes_rcx() {
+	asm amd64 raw {
+		"repe cmpsd"
+		; 
+		; 
+		; rsi rdi cc memory
+	}
+}
+
+fn raw_wait_on_a_line_of_its_own_is_checked() {
+	asm amd64 raw {
+		"wait\n\t"
+		"movq $1, %%rbx"
+		; 
+		; 
+		; 
+	}
+}
+
+fn raw_rep_smovb_writes_rcx() {
+	asm amd64 raw {
+		"rep smovb"
+		; 
+		; 
+		; rsi rdi memory
+	}
+}
+
+fn raw_rep_sstoq_writes_rcx() {
+	asm amd64 raw {
+		"rep sstoq"
+		; 
+		; 
+		; rdi memory
+	}
+}
+
+fn raw_rep_slodb_writes_rcx() {
+	asm amd64 raw {
+		"rep slodb"
+		;
+		;
+		; rax rsi memory
+	}
+}
+
+fn raw_repz_scmpb_writes_rcx() {
+	asm amd64 raw {
+		"repz scmpb"
+		;
+		;
+		; rsi rdi cc memory
+	}
+}
+
+fn raw_repz_sscab_writes_rcx() {
+	asm amd64 raw {
+		"repz sscab"
+		;
+		;
+		; rdi cc memory
+	}
 }
 
 fn main() {
@@ -323,4 +1288,781 @@ fn main() {
 	println(raw_inert_directive_19_keeps_the_check())
 	println(raw_inert_directive_20_keeps_the_check())
 	println(raw_label_and_prefix_keep_the_check(1))
+	println(raw_family_rbx(1))
+	println(raw_family_rsi(1))
+	println(raw_family_rdi(1))
+	println(raw_family_rbp(1))
+	println(raw_family_r8d(1))
+	println(raw_family_r9w(1))
+	println(raw_family_r10b(1))
+	println(raw_family_pop(1))
+	println(raw_family_div(1))
+	println(raw_family_idiv(1))
+	println(raw_family_imul_one(1))
+	println(raw_family_cqto(1))
+	println(raw_family_cdq(1))
+	println(raw_family_cltd(1))
+	println(raw_family_repne(1))
+	println(raw_family_sub(1))
+	println(raw_family_and(1))
+	println(raw_family_or(1))
+	println(raw_family_xor(1))
+	println(raw_family_inc(1))
+	println(raw_family_dec(1))
+	println(raw_family_neg(1))
+	println(raw_family_not(1))
+	println(raw_family_shl(1))
+	println(raw_family_shr(1))
+	println(raw_family_sar(1))
+	println(raw_family_lea(1))
+	println(raw_family_cmp(1))
+	println(raw_flag_output_does_not_bind_rcx())
+	println(raw_two_operand_imul_writes_its_destination(1))
+	println(raw_write_before_the_save())
+	println(raw_write_after_the_restore())
+	println(raw_pop_of_another_register_restores_nothing())
+	println(raw_push_without_pop_restores_nothing())
+	println(raw_inner_push_is_not_the_saved_register())
+	println(raw_flags_set_after_the_restore())
+	println(raw_operand_alias_named_like_a_register_saves_nothing(1))
+	println(raw_rep_on_its_own_statement(1))
+	println(raw_upper_case_rep_prefix(1))
+	println(raw_upper_case_register_write(1))
+	println(raw_write_after_a_call(1))
+	println(raw_write_beside_nested_frames(1))
+	println(raw_write_beside_a_frame_ended_by_mov_and_pop(1))
+	println(raw_rep_before_a_directive_that_emits_nothing(1))
+	println(raw_family_cwd(1))
+	println(raw_family_cwtd(1))
+	println(raw_call_to_a_quoted_plain_label_is_not_checked())
+	raw_i386_call_after_a_balanced_push_is_checked()
+	raw_every_register_spelling_is_a_write()
+	println(raw_braced_rdi_does_not_declare_rdx(1))
+	raw_call_to_a_quoted_plain_symbol_is_followed()
+	raw_call_to_symbols_with_punctuation_is_followed()
+	raw_cfi_directive_naming_rsp_is_skipped()
+	raw_frame_ended_by_mov_and_pop_is_closed()
+	raw_frame_ended_by_leaveq_or_leavel_is_closed()
+	raw_suffixed_mul_and_div_of_memory_write_rdx()
+	raw_rep_prefix_spellings_write_rcx()
+	raw_rep_on_its_own_line_reaches_past_a_label()
+	raw_pop_into_rbp_outside_a_frame_is_checked()
+	raw_rep_movsd_without_operands_writes_rcx()
+	raw_repe_cmpsd_without_operands_writes_rcx()
+	raw_wait_on_a_line_of_its_own_is_checked()
+	raw_rep_smovb_writes_rcx()
+	raw_rep_sstoq_writes_rcx()
+	raw_rep_slodb_writes_rcx()
+	raw_rep_wait_movsb_on_one_line_writes_rcx()
+	raw_repz_scmpb_writes_rcx()
+	raw_repz_sscab_writes_rcx()
+	raw_rep_lodsb_writes_rcx()
+	raw_rep_insb_writes_rcx()
+	raw_rep_outsb_writes_rcx()
+	raw_call_to_a_symbol_ending_in_b_is_followed()
+	raw_pop_into_another_register_inside_a_frame_is_checked()
+	raw_pop_inside_a_frame_keeps_the_frame()
+	println(raw_unsuffixed_mul_of_u16_writes_rdx(1, 2))
+	println(raw_unsuffixed_mul_of_u32_writes_rdx(1, 2))
+	println(raw_idiv_with_the_accumulator_named_writes_rdx(7, 2))
+	println(raw_div_with_the_accumulator_named_writes_rdx(7, 2))
+}
+
+fn raw_rep_lodsb_writes_rcx() {
+	asm amd64 raw {
+		"rep lodsb"
+		;
+		;
+		; rax rsi
+	}
+}
+
+fn raw_rep_insb_writes_rcx() {
+	asm amd64 raw {
+		"rep insb"
+		;
+		;
+		; rdi rdx
+	}
+}
+
+fn raw_rep_outsb_writes_rcx() {
+	asm amd64 raw {
+		"rep outsb"
+		;
+		;
+		; rsi rdx
+	}
+}
+
+fn raw_call_to_a_symbol_ending_in_b_is_followed() {
+	asm amd64 raw {
+		"call stub\n\t"
+		"movq $1, %%rax"
+		;
+		;
+		; memory
+	}
+}
+
+fn raw_pop_into_another_register_inside_a_frame_is_checked() {
+	asm amd64 raw {
+		"pushq %%rbp\n\t"
+		"movq %%rsp, %%rbp\n\t"
+		"pushq %%rbx\n\t"
+		"popq %%rcx\n\t"
+		"movq $1, %%rax\n\t"
+		"popq %%rbp"
+		;
+		;
+		; rcx
+	}
+}
+
+fn raw_pop_inside_a_frame_keeps_the_frame() {
+	asm amd64 raw {
+		"pushq %%rbp\n\t"
+		"movq %%rsp, %%rbp\n\t"
+		"pushq %%rbx\n\t"
+		"popq %%rbx\n\t"
+		"movq $1, %%rax\n\t"
+		"movq %%rbp, %%rsp\n\t"
+		"popq %%rbp"
+		;
+		;
+		;
+	}
+}
+
+fn raw_unsuffixed_mul_of_u16_writes_rdx(x u16, z u16) u16 {
+	mut y := x
+	asm amd64 raw {
+		"mul %[w]"
+		; [y] "+a" (y)
+		; [w] "r" (z)
+		; cc
+	}
+	return y
+}
+
+fn raw_unsuffixed_mul_of_u32_writes_rdx(x u32, z u32) u32 {
+	mut y := x
+	asm amd64 raw {
+		"mul %[w]"
+		; [y] "+a" (y)
+		; [w] "r" (z)
+		; cc
+	}
+	return y
+}
+
+fn raw_idiv_with_the_accumulator_named_writes_rdx(x u32, d u32) u32 {
+	mut q := x
+	asm amd64 raw {
+		"idivl %[d], %%eax"
+		; [q] "+a" (q)
+		; [d] "r" (d)
+		; cc
+	}
+	return q
+}
+
+fn raw_div_with_the_accumulator_named_writes_rdx(x u32, d u32) u32 {
+	mut q := x
+	asm amd64 raw {
+		"divl %[d], %%eax"
+		; [q] "+a" (q)
+		; [d] "r" (d)
+		; cc
+	}
+	return q
+}
+
+// GNU as moves a `wait` in front of the other prefixes, so `rep wait movsb` repeats the `movsb`.
+fn raw_rep_wait_movsb_on_one_line_writes_rcx() {
+	asm amd64 raw {
+		"rep wait movsb"
+		;
+		;
+		; rsi rdi memory
+	}
+}
+
+// GNU as reads a lone `wait rep` as `fwait` and a `rep` for the next instruction.
+fn raw_lone_wait_rep_repeats_movsb() {
+	asm amd64 raw {
+		"wait rep\n\t"
+		"movsb"
+		;
+		;
+		; rsi rdi memory
+	}
+}
+
+// An alignment directive with an empty fill (`.p2align 4,,15`) pads with `nop`, and the check goes on.
+fn raw_alignment_without_a_fill_is_checked() {
+	asm amd64 raw {
+		".p2align 4,,15\n\t"
+		"movl $1, %%eax"
+		;
+		;
+		; memory
+	}
+}
+
+// A 64-bit operand pushed around a write keeps the stack in step, and the write is checked.
+fn raw_push_of_a_64_bit_operand_is_followed(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"push %[y]\n\t"
+		"movq $1, %%rcx\n\t"
+		"pop %[y]"
+		; [y] "+r" (y)
+	}
+	return y
+}
+
+// A call to a one-letter function is a call to a symbol, not to a numeric local label.
+fn raw_call_to_a_one_letter_function_is_checked() {
+	asm amd64 raw {
+		"call f\n\t"
+		"movq $1, %%rsi"
+		;
+		;
+		; memory
+	}
+}
+
+// A label alone between `push %%rbp` and `mov %%rsp, %%rbp` does not end the frame.
+fn raw_label_inside_the_frame_setup_is_checked() {
+	asm amd64 raw {
+		"push %%rbp\n\t"
+		".Lf%=:\n\t"
+		"movq %%rsp, %%rbp\n\t"
+		"movq $1, %%rcx\n\t"
+		"leave"
+		;
+		;
+		; memory
+	}
+}
+
+// Operand references pushed or popped after the first instruction keep their width.
+fn raw_operand_push_after_the_first_instruction_is_checked(x u64, y u64) (u64, u64) {
+	mut a := x
+	mut b := y
+	asm amd64 raw {
+		"nop\n\t"
+		"push %[a]\n\t"
+		"movq $1, %%rcx\n\t"
+		"pop %[b]"
+		; [a] "+r" (a)
+		  [b] "+r" (b)
+	}
+	return a, b
+}
+
+// In an i386 block a 64-bit clobber name does not declare the register: clang ignores it.
+fn raw_i386_64_bit_clobber_name_does_not_declare() {
+	asm i386 raw {
+		"movl $1, %%esi"
+		;
+		;
+		; rsi
+	}
+}
+
+// A lone `lock` prefixes the next instruction only, so a later `rep movsb` still writes `rcx`.
+fn raw_lone_lock_before_another_instruction_does_not_reach_rep() {
+	asm amd64 raw {
+		"lock\n\t"
+		"addq $1, (%%rdi)\n\t"
+		"rep movsb"
+		;
+		;
+		; rsi rdi memory cc
+	}
+}
+
+// No 64-bit clobber name declares a register in an i386 block.
+fn raw_i386_64_bit_clobber_names_do_not_declare() {
+	asm i386 raw {
+		"movl $1, %%eax\n\t"
+		"movl $1, %%ebx\n\t"
+		"movl $1, %%ecx\n\t"
+		"movl $1, %%edx\n\t"
+		"movl $1, %%edi"
+		;
+		;
+		; rax rbx rcx rdx rdi
+	}
+}
+
+fn raw_i386_rbp_clobber_does_not_declare_ebp() {
+	asm i386 raw {
+		"movl $1, %%ebp"
+		;
+		;
+		; rbp
+	}
+}
+
+// A one-operand `imul` writes `rax` and `rdx`.
+fn raw_one_operand_imul_without_the_pair() {
+	asm amd64 raw {
+		"imulq %%rcx"
+		;
+		;
+		; cc
+	}
+}
+
+// A copy back that is narrower than the register, from another place, or before the copy, does not
+// restore it.
+fn raw_narrow_mov_copy_back_is_reported() {
+	asm amd64 raw {
+		"movq %%rbx, %%r11\n\t"
+		"movq $5, %%rbx\n\t"
+		"movl %%r11d, %%ebx"
+		;
+		;
+		; r11
+	}
+}
+
+fn raw_mov_copy_back_from_another_place_is_reported() {
+	asm amd64 raw {
+		"movq %%rbx, %%r11\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %%r10, %%rbx"
+		;
+		;
+		; r10 r11
+	}
+}
+
+fn raw_mov_copy_back_before_the_copy_is_reported() {
+	asm amd64 raw {
+		"movq %%r11, %%rbx\n\t"
+		"movq %%rbx, %%r11"
+		;
+		;
+		; r11
+	}
+}
+
+// A copy to the register itself saves nothing, in any letter case.
+fn raw_mov_to_itself_is_not_a_save() {
+	asm amd64 raw {
+		"movq %%rbx, %%rbx\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %%rbx, %%rbx"
+		;
+		;
+		; cc
+	}
+}
+
+fn raw_mov_to_itself_in_another_case_is_not_a_save() {
+	asm amd64 raw {
+		"movq %%rbx, %%RBX\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %%RBX, %%rbx"
+		;
+		;
+		; cc
+	}
+}
+
+// A copy back from a place that holds another register's value does not restore.
+fn raw_mov_copy_back_of_another_register_is_reported() {
+	asm amd64 raw {
+		"movq %%rcx, %%r11\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %%r11, %%rbx"
+		;
+		;
+		; r11
+	}
+}
+
+// A narrower save does not keep the whole register.
+fn raw_narrow_mov_save_is_reported() {
+	asm amd64 raw {
+		"movl %%ebx, %%r11d\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %%r11, %%rbx"
+		;
+		;
+		; r11
+	}
+}
+
+// A save to memory written in the template, to an `xmm` register and to an operand spelled another
+// way are not followed.
+fn raw_mov_save_to_memory_is_reported(p &u64) {
+	asm amd64 raw {
+		"movq %%rbx, (%[p])\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq (%[p]), %%rbx"
+		;
+		; [p] "r" (p)
+		; memory
+	}
+}
+
+fn raw_mov_operand_place_by_number_and_name_is_reported() {
+	mut slot := u64(0)
+	asm amd64 raw {
+		"movq %%rbx, %0\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %[slot], %%rbx"
+		; [slot] "=m" (slot)
+	}
+}
+
+fn raw_mov_operand_place_with_and_without_modifier_is_reported() {
+	mut slot := u64(0)
+	asm amd64 raw {
+		"movq %%rbx, %q[slot]\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %[slot], %%rbx"
+		; [slot] "=r" (slot)
+	}
+}
+
+fn raw_mov_to_an_xmm_register_is_reported() {
+	asm amd64 raw {
+		"movq %%rbx, %%xmm0\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %%xmm0, %%rbx"
+		;
+		;
+		; xmm0
+	}
+}
+
+// A save and restore keeps a register only when no operand can sit in it. GCC may give an `=r`
+// output the saved register, and the `pop` then overwrites it, so the writes are reported.
+fn raw_push_pop_save_with_a_free_output_is_reported() u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"pushq %%rbx\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %%rbx, %[out]\n\t"
+		"popq %%rbx"
+		; [out] "=r" (out)
+	}
+	return out
+}
+
+// The same holds for a frame pointer saved with `mov`: GCC may place an `=r` output in `rbp`.
+fn raw_mov_saved_frame_pointer_with_a_free_output_is_reported() u64 {
+	mut result := u64(0)
+	asm amd64 raw {
+		"movq %%rbp, %%r11\n\t"
+		"movq $42, %%rbp\n\t"
+		"movq %%rbp, %[result]\n\t"
+		"movq %%r11, %%rbp"
+		; [result] "=r" (result)
+		;
+		; r11
+	}
+	return result
+}
+
+// A memory operand is not pinned either: its address may use the saved register.
+fn raw_save_to_a_memory_operand_is_reported() u64 {
+	mut slot := u64(0)
+	asm amd64 raw {
+		"movq %%rbx, %[slot]\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %[slot], %%rbx"
+		; [slot] "=m" (slot)
+	}
+	return slot
+}
+
+// An input the compiler places is not pinned, even when the template reads it before the write.
+fn raw_push_pop_save_with_a_free_input_is_reported(x u64) u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"movq %[x], %%rax\n\t"
+		"pushq %%rbx\n\t"
+		"movq $5, %%rbx\n\t"
+		"popq %%rbx"
+		; [out] "=a" (out)
+		; [x] "g" (x)
+	}
+	return out
+}
+
+// Every operand of a section is looked at, so a free operand before or after a pinned one cancels
+// the save as well.
+fn raw_save_with_a_free_first_output_is_reported() (u64, u64) {
+	mut loose := u64(0)
+	mut fixed := u64(0)
+	asm amd64 raw {
+		"pushq %%rbx\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %%rbx, %[loose]\n\t"
+		"movq %%rbx, %[fixed]\n\t"
+		"popq %%rbx"
+		; [loose] "=r" (loose)
+		  [fixed] "=d" (fixed)
+	}
+	return loose, fixed
+}
+
+fn raw_save_with_a_free_last_output_is_reported() (u64, u64) {
+	mut fixed := u64(0)
+	mut loose := u64(0)
+	asm amd64 raw {
+		"pushq %%rbx\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %%rbx, %[fixed]\n\t"
+		"movq %%rbx, %[loose]\n\t"
+		"popq %%rbx"
+		; [fixed] "=d" (fixed)
+		  [loose] "=r" (loose)
+	}
+	return fixed, loose
+}
+
+// A narrow `A` operand may sit in `eax`, so a save of `rax` cannot keep it, and the write is
+// reported as without the save.
+fn raw_save_beside_a_narrow_a_input_is_reported(v u32) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		"pushq %%rax\n\t"
+		"movq $5, %%rax\n\t"
+		"movl %[v], %[out]\n\t"
+		"popq %%rax"
+		; [out] "=S" (out)
+		; [v] "A" (v)
+	}
+	return out
+}
+
+// The same holds for a narrow `=A` output and a save of `rdx`.
+fn raw_save_beside_a_narrow_a_output_is_reported() u32 {
+	mut x := u32(0)
+	asm amd64 raw {
+		"pushq %%rdx\n\t"
+		"movq $5, %%rdx\n\t"
+		"movl $7, %[x]\n\t"
+		"popq %%rdx"
+		; [x] "=A" (x)
+	}
+	return x
+}
+
+// When the template saves both `rax` and `rdx`, neither can hold the operand, so the report
+// suggests another fixed register.
+fn raw_save_of_both_pair_registers_beside_a_narrow_a_output_is_reported() u32 {
+	mut x := u32(0)
+	asm amd64 raw {
+		"pushq %%rax\n\t"
+		"pushq %%rdx\n\t"
+		"movq $5, %%rax\n\t"
+		"movl $7, %[x]\n\t"
+		"popq %%rdx\n\t"
+		"popq %%rax"
+		; [x] "=A" (x)
+	}
+	return x
+}
+
+// A save of `rax` beside a narrow `=A` output: the report suggests `d`.
+fn raw_save_of_rax_beside_a_narrow_a_output_is_reported() u32 {
+	mut x := u32(0)
+	asm amd64 raw {
+		"pushq %%rax\n\t"
+		"movq $5, %%rax\n\t"
+		"movl $7, %[x]\n\t"
+		"popq %%rax"
+		; [x] "=A" (x)
+	}
+	return x
+}
+
+// A `mov` save counts like a `push` and `pop` when the report picks the register to suggest.
+fn raw_mov_save_of_rdx_beside_a_narrow_a_output_is_reported() u32 {
+	mut x := u32(0)
+	asm amd64 raw {
+		"movq %%rdx, %%r11\n\t"
+		"movq $5, %%rdx\n\t"
+		"movl $7, %[x]\n\t"
+		"movq %%r11, %%rdx"
+		; [x] "=A" (x)
+		;
+		; r11
+	}
+	return x
+}
+
+fn raw_mov_save_of_rax_beside_a_narrow_a_output_is_reported() u32 {
+	mut x := u32(0)
+	asm amd64 raw {
+		"movq %%rax, %%r11\n\t"
+		"movq $5, %%rax\n\t"
+		"movl $7, %[x]\n\t"
+		"movq %%r11, %%rax"
+		; [x] "=A" (x)
+		;
+		; r11
+	}
+	return x
+}
+
+// One `xchg` alone restores nothing, so the write after it is reported.
+fn raw_single_xchg_is_reported() {
+	asm amd64 raw {
+		"xchgq %%rbx, %%r11\n\t"
+		"movq $5, %%rbx"
+		;
+		;
+		; r11
+	}
+}
+
+// With neither register declared, `r12` keeps the 7 after the second `xchg`.
+fn raw_xchg_save_in_an_undeclared_register_is_reported() u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"xchgq %%rbx, %%r12\n\t"
+		"movq $7, %%rbx\n\t"
+		"movq %%rbx, %[out]\n\t"
+		"xchgq %%r12, %%rbx"
+		; [out] "=d" (out)
+	}
+	return out
+}
+
+fn raw_xchg_with_another_place_is_reported() {
+	asm amd64 raw {
+		"xchgq %%rbx, %%r11\n\t"
+		"movq $5, %%rbx\n\t"
+		"xchgq %%rbx, %%r10"
+		;
+		;
+		; r10 r11
+	}
+}
+
+fn raw_narrow_xchg_is_reported() {
+	asm amd64 raw {
+		"xchgl %%ebx, %%r11d\n\t"
+		"movq $5, %%rbx\n\t"
+		"xchgl %%ebx, %%r11d"
+		;
+		;
+		; r11
+	}
+}
+
+// The compiler may place the output in `rbx`, where the second `xchg` overwrites it.
+fn raw_xchg_save_with_a_free_output_is_reported() u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"xchgq %%rbx, %%r11\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %%rbx, %[out]\n\t"
+		"xchgq %%rbx, %%r11"
+		; [out] "=r" (out)
+		;
+		; r11
+	}
+	return out
+}
+
+fn raw_xchg_save_of_rdx_beside_a_narrow_a_output_is_reported() u32 {
+	mut x := u32(0)
+	asm amd64 raw {
+		"xchgq %%rdx, %%r11\n\t"
+		"movq $5, %%rdx\n\t"
+		"movl $7, %[x]\n\t"
+		"xchgq %%rdx, %%r11"
+		; [x] "=A" (x)
+		;
+		; r11
+	}
+	return x
+}
+
+// Only `cc` and `flags` declare the flags; another clobber word does not.
+fn raw_flags_with_another_clobber_are_reported(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"addq $1, %%rcx"
+		; "+c" (y)
+		;
+		; memory
+	}
+	return y
+}
+
+// An operand named like a register is not the register: the `push` saves `rcx`, not `rbx`.
+fn raw_push_of_an_operand_named_rbx_is_reported(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"pushq %[rbx]\n\t"
+		"movq $1, %%rbx\n\t"
+		"popq %[rbx]"
+		; [rbx] "+c" (y)
+		;
+		; memory
+	}
+	return y
+}
+
+// A segment register pushes a whole stack slot, so the template is still checked.
+fn raw_write_between_segment_push_and_pop_is_reported() {
+	asm amd64 raw {
+		"pushq %%fs\n\t"
+		"movq $1, %%rbx\n\t"
+		"popq %%fs"
+		;
+		;
+		; memory
+	}
+}
+
+// The compiler keeps using an input after the block, so it is no place for a save: the template
+// leaves 5 in `rcx`.
+fn raw_xchg_save_in_an_input_register_is_reported(s u64) u64 {
+	asm amd64 raw {
+		"xchgq %%rbx, %%rcx\n\t"
+		"movq $5, %%rbx\n\t"
+		"xchgq %%rbx, %%rcx"
+		;
+		; "c" (s)
+	}
+	return s
+}
+
+fn raw_mov_save_in_an_input_operand_is_reported(s u64) u64 {
+	asm amd64 raw {
+		"movq %%rbx, %[s]\n\t"
+		"movq $5, %%rbx\n\t"
+		"movq %[s], %%rbx"
+		;
+		; [s] "c" (s)
+	}
+	return s
+}
+
+// V binds an operand without a constraint with `+r`, so the compiler may place it in `rbx`.
+fn raw_save_beside_an_output_without_a_constraint_is_reported() u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"pushq %%rbx\n\t"
+		"movq $42, %%rbx\n\t"
+		"movq %%rbx, %[out]\n\t"
+		"popq %%rbx"
+		; (out)
+		;
+		; memory
+	}
+	return out
 }

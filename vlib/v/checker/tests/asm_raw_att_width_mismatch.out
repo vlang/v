@@ -75,13 +75,13 @@ vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:36:9: error: `movw` operates 
       |               ~~~~~~~
    37 |         "movl %%eax, %[out]"
    38 |         ; [out] "=r" (out)
-vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:53:9: error: `movl` operates on 32-bit operands here, but `%1` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:53:9: error: `movl` operates on 32-bit operands here, but `%[a]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
    51 |     mut out := u32(0)
    52 |     asm amd64 raw {
-   53 |         "movl %1, %0"
-      |               ~~
-   54 |         ; "=r" (out)
-   55 |         ; "r" (answer)
+   53 |         "movl %[a], %[out]"
+      |               ~~~~
+   54 |         ; [out] "=r" (out)
+   55 |         ; [a] "r" (answer)
 vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:66:9: error: `movl` operates on 32-bit operands here, but `%[wide]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
    64 |     asm amd64 raw {
    65 |         ".p2align 4\n\t"
@@ -89,3 +89,115 @@ vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:66:9: error: `movl` operates 
       |               ~~~~~~~
    67 |         ; [out] "=r" (out)
    68 |         ; [wide] "r" (wide)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:80:9: error: `movl` operates on 32-bit operands here, but `%[flag]` is 8-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+   78 |     mut out := u32(0)
+   79 |     asm amd64 raw {
+   80 |         "movl %[flag], %[out]"
+      |               ~~~~~~~
+   81 |         ; [out] "=r" (out)
+   82 |         ; [flag] "r" (flag)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:91:9: error: `cmpl` operates on 32-bit operands here, but `%[y]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+   89 |     mut y := x
+   90 |     asm amd64 raw {
+   91 |         "cmpl %[y], %%ecx"
+      |               ~~~~
+   92 |         ; 
+   93 |         ; [y] "q" (y)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:97:9: error: `cmpl` operates on 32-bit operands here, but `%[y]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+   95 |     }
+   96 |     asm amd64 raw {
+   97 |         "cmpl %[y], %%ecx"
+      |               ~~~~
+   98 |         ; 
+   99 |         ; [y] "Q" (y)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:103:9: error: `cmpl` operates on 32-bit operands here, but `%[y]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  101 |     }
+  102 |     asm amd64 raw {
+  103 |         "cmpl %[y], %%ecx"
+      |               ~~~~
+  104 |         ; 
+  105 |         ; [y] "R" (y)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:109:9: error: `cmpl` operates on 32-bit operands here, but `%[y]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  107 |     }
+  108 |     asm amd64 raw {
+  109 |         "cmpl %[y], %%ecx"
+      |               ~~~~
+  110 |         ; 
+  111 |         ; [y] "a" (y)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:115:9: error: `cmpl` operates on 32-bit operands here, but `%[y]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  113 |     }
+  114 |     asm amd64 raw {
+  115 |         "cmpl %[y], %%ecx"
+      |               ~~~~
+  116 |         ; 
+  117 |         ; [y] "b" (y)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:121:9: error: `cmpl` operates on 32-bit operands here, but `%[y]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  119 |     }
+  120 |     asm amd64 raw {
+  121 |         "cmpl %[y], %%ecx"
+      |               ~~~~
+  122 |         ; 
+  123 |         ; [y] "c" (y)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:127:9: error: `cmpl` operates on 32-bit operands here, but `%[y]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  125 |     }
+  126 |     asm amd64 raw {
+  127 |         "cmpl %[y], %%ecx"
+      |               ~~~~
+  128 |         ; 
+  129 |         ; [y] "d" (y)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:133:9: error: `cmpl` operates on 32-bit operands here, but `%[y]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  131 |     }
+  132 |     asm amd64 raw {
+  133 |         "cmpl %[y], %%ecx"
+      |               ~~~~
+  134 |         ; 
+  135 |         ; [y] "S" (y)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:139:9: error: `cmpl` operates on 32-bit operands here, but `%[y]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  137 |     }
+  138 |     asm amd64 raw {
+  139 |         "cmpl %[y], %%ecx"
+      |               ~~~~
+  140 |         ; 
+  141 |         ; [y] "D" (y)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:163:9: error: `movl` operates on 32-bit operands here, but `%[x]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  161 |     asm amd64 raw {
+  162 |         "ud2\n\t"
+  163 |         "movl %[x], %%eax"
+      |               ~~~~
+  164 |         ;
+  165 |         ; [x] "r" (x)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:173:9: error: `movl` operates on 32-bit operands here, but `%[x]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  171 |     asm amd64 raw {
+  172 |         "movl.s %%ecx, %%edx\n\t"
+  173 |         "movl %[x], %%eax"
+      |               ~~~~
+  174 |         ;
+  175 |         ; [x] "r" (x)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:183:13: error: `shll` operates on 32-bit operands here, but `%[r]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  181 |     mut r := y
+  182 |     asm amd64 raw {
+  183 |         "shll $1, %[r]"
+      |                   ~~~~
+  184 |         ; [r] "+r" (r)
+  185 |         ;
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:194:9: error: `MOVL` operates on 32-bit operands here, but `%[x]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  192 | fn raw_width_checked_in_upper_case(x u64) {
+  193 |     asm amd64 raw {
+  194 |         "MOVL %[x], %%eax"
+      |               ~~~~
+  195 |         ;
+  196 |         ; [x] "r" (x)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:206:9: error: `movl` operates on 32-bit operands here, but `%[x]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  204 |     asm amd64 raw {
+  205 |         "wait\n\t"
+  206 |         "movl %[x], %%eax"
+      |               ~~~~
+  207 |         ;
+  208 |         ; [x] "r" (x)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:215:16: error: `addl` operates on 32-bit operands here, but `%[x]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+  213 | fn raw_width_checked_after_a_prefix_and_a_semicolon(x u64) {
+  214 |     asm amd64 raw {
+  215 |         "lock ; addl %[x], %%eax"
+      |                      ~~~~
+  216 |         ;
+  217 |         ; [x] "r" (x)

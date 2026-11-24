@@ -11813,14 +11813,113 @@ asm volatile ppc raw {
 }
 ```
 
-In x86 raw blocks, the compiler also checks that a size suffix such as `movl` or `incq` matches the
-width of the register or named operand it acts on, and reports an error for a mismatch, as the
-GNU assembler does. Use an operand modifier such as `%k[name]` to select a narrower view of a
-named operand, or change the suffix.
+In x86 raw blocks that use AT&T syntax, the compiler also checks that the size suffix of a common
+instruction, such as `movl` or `incq`, matches the width of a register or of a variable named with
+`%[name]`, and reports an error for a mismatch, as the GNU assembler does. It does not check an
+instruction with a prefix in the same statement, such as `lock addl` or `wait movl`, or with an
+encoding suffix such as the `.s` of `movl.s`, or an operand given by position, such as `%1`, or a
+named operand bound to a constant, a literal or another expression, such as a field `s.x` or an
+element `a[0]`. It does not check an operand bound with `A` either: clang prints a narrow one as
+`eax` in an i386 block and as `rax` in an amd64 block, where GCC prints a register of the operand's
+own width. Use an operand modifier such as `%k[name]` to select a narrower view of a named operand,
+or change the suffix. A prefix on a line of its own, or before a `;`, is a statement of its own, and
+the instruction after it is checked.
 
-In x86 raw blocks, the compiler also reports a general-purpose register that the template writes,
-such as `%%rax` or the `rdx` written by `mul`, unless an output operand binds it or the clobbers
-list it. It reports a flag-setting instruction such as `addq` when the clobbers omit `cc`.
+Inside a function, a block with at least one `;` section is also checked for undeclared writes. A
+block with no sections is emitted as basic asm, which cannot declare anything. The compiler knows
+the destination of common instructions such as `mov`, `add` and `pop`, and the registers that `mul`,
+`div` and `cqo` write implicitly, and the count in `rcx` that a `rep` prefix uses with a string
+instruction such as `movsb`. It reports such a write to a general-purpose register from `rax` to
+`r15` other than `rsp`, unless an operand binds the register or the clobbers list it. An operand
+with several register letters, such as `=cS`, counts as binding each of them, although the compiler
+picks one. A write to one of the APX registers `r16` to `r31` is not reported. In an i386 block a
+64-bit clobber name such as `rax` does not count: clang ignores it there, and so does the check. An
+operand narrower than the `rax`:`rdx` pair whose constraint holds `A`, such as `=A`, `=Ar` or `0A`,
+does not reserve both registers, and the check does not know which one, if either, holds it. When no
+other operand's constraint names `rax` or `rdx` (`a`, `d`, `A` or a braced register name) and the
+clobbers name neither, a write to either register is reported for such an output, and for such an
+input bound to a variable; otherwise both registers count as declared. The report names no fix, as
+the right register depends on what the template reads, such as `eax` for `cltd` or `mul`. The check
+counts an `a` or `d` beside the `A`, as in `=Ad`, as declaring that register, although the compiler
+may place the operand in the other one. Counting registers as declared does not prove that they are:
+a compiler may place two narrow `A` outputs, or an `A` input and an `a` or `d` input with the same
+value, in one register. The compiler reports a common flag-setting instruction such as `addq`,
+unless the clobbers list `cc` or `flags`, or a flag output such as `"=@ccz"` declares the flags.
+Other instructions, such as `xchg` or `adc`, and the `rsi` and `rdi` pointers that a string
+instruction moves, are not checked, so no report does not prove that a template declares everything.
+This check reads the template in order, without knowing that a template never returns, and a
+template with a jump or a loop is not checked.
+
+A write between a `push` of a whole register and the `pop` that restores it is not reported, nor one
+between `push %%rbp`, `mov %%rsp, %%rbp` and the `leave`, or `mov %%rbp, %%rsp` and `pop %%rbp`,
+that end the frame, nor a flag-setting instruction between `pushf` and `popf`, or the i386 `pushfd`
+and `popfd` that LLVM accepts. Frames may nest, pushes and pops of other whole-width operands move
+the stack, and a `call` to a function named by a plain symbol leaves it as it was, when nothing the
+template pushed is still on the stack. A template that touches the stack in any other way is not
+checked for writes or flags at all: a push or pop of another width, or of an operand reference whose
+width the check does not know, such as one bound to a field, a pop into `%%rsp` or a stack address,
+any other instruction that names `%%rsp`, or `%%rbp` inside a frame, `enter`, `pusha`, `popa`, a
+16-bit `leavew`, a `leave` outside a frame, any form of `ret`, a far jump, call or return, `iret`,
+`sysenter`, `sysret`, `sysexit`, `xbegin`, a 16-bit `callw`, a `call` to a label of the template, as
+in `call 1f; 1: pop %%rbx` or `call getpc@PLT; getpc:`, or to a target that is not a plain symbol
+name, such as `*%%rcx` or `.+5`, and a `call` while a value the template pushed is still on the
+stack, as the function owns the slots above its return address and may change them, or pop them with
+`ret $n`. A register that the template copies whole with `mov`, in any letter case, to another
+register from `rax` to `r15` other than `rsp`, or to an operand reference such as `%[slot]`, and
+later copies back whole from that same place, is not checked for writes at all, also when the copy
+goes through several such places or a `push` and a `pop`: the check does not follow whether the
+place changes in between, nor writes after the copy back. An operand is compared as written, so `%0`
+and `%[slot]`, `%q[slot]` and `%[slot]`, or `%[Slot]` and `%[slot]`, are different places, and an
+operand named `%[rbx]` is not the register. A copy to memory written in the template, such as
+`(%[p])` or `slot(%%rip)`, to an `mm`, `xmm`, control or debug register written in it, or to the
+register itself is not a save, and a narrower copy back, such as `movl %%r11d, %%ebp`, one from
+another place, and a save or copy back made with `cmov` do not count. An `xchg` of two such whole
+operands is a copy each way, so it counts as a save and as a copy back, alone or together with
+`mov`; one `xchg` alone restores nothing. What the template writes to the register between two
+`xchg` ends up on the other side, so a register place of an `xchg` must be in the clobbers or be
+bound by an output. A template must keep the value of an input, so for both `mov` and `xchg` an
+input operand, or a register that only inputs bind, is not a place, even when the template also
+restores the input. An input may change when its constraint only matches outputs, by number or by
+name as in `[out]`, or names fixed registers that are all outputs or clobbers. Neither a `push` and
+`pop` nor a `mov` or `xchg` copy keeps a general-purpose register, and its writes are reported, when
+the compiler may place an operand of the block, input or output, in that register, or its address,
+as `r`, `q`, `g` and `m` allow for every register: the restore then overwrites an output, and an
+input or a memory address read after the write has changed. A fixed register (`a`, `b`, `c`, `d`,
+`S`, `D` or a braced name such as `{rdx}`), a match to an output, a constant, the flags, and a
+vector (`x`, `v` or `Yz`), MMX (`y`), mask (`k`) or x87 register allow no other register. `Q` allows
+`rax` to `rdx`, `R` those and `rsi`, `rdi` and `rbp`, `U` the registers a call may change, and `A`
+`rax` and `rdx`. Any other constraint counts as allowing every register. V binds an operand without
+a constraint with `r` or `+r`, so no save counts beside it. A function that keeps a frame pointer
+cannot list `rbp` in its clobbers, as GCC refuses it there, so for `rbp` the report asks for a `mov`
+copy to a register in the clobbers and back with every operand bound to a fixed register or a
+constant. It does not suggest `push`: in an amd64 block a `push` may overwrite values the function
+keeps in the red zone below the stack pointer. The check still counts a `push` and `pop` as a save,
+and does not report that hazard. A lone `rep` is not counted for a string instruction after an
+alignment directive such as `.p2align`, as the prefix reaches that instruction only when the
+directive emits no padding. A `rep` that meets a `lock`, in the same statement or across lines that
+hold only prefixes, and a lone `rep wait`, are not counted either: a string instruction with both
+prefixes faults, GNU as refuses the other spellings, and LLVM's assembler, which clang uses, does
+not always put the `rep` on the string instruction. The `rcx` write of such a string instruction is
+not reported. The check reads past only the `lock`, `wait`, `rep`, `repe`, `repz`, `repne` and
+`repnz` prefixes. A template with any other prefix, such as `data16`, which changes the operand
+size, a segment override such as `ss`, a REX prefix such as `rex.b` or `rexz`, which changes the
+registers of the instruction after it, `addr32`, `notrack`, `xacquire` or a pseudo prefix such as
+`{load}`, is not checked either, and neither is a template with one of the encoding suffixes `.s`,
+`.d8` or `.d32`, such as the `.s` of `movq.s`, which choose the encoding as those pseudo prefixes
+do. The check skips `@[_naked]` functions, anonymous functions outside a function body, such as in
+the initializer of a constant or a global or in a field's default value, and a block with a clobber
+given by number. An instruction that cannot change its destination, such as `movq %%rbx, %%rbx`,
+`orq %%rbx, %%rbx`, `leaq 0(%%rsi), %%rsi` or `addq $0, %%rbx`, is not a write, though it may set
+the flags. A 32-bit one in an amd64 block is a write, as it clears the upper half. A value changed
+and changed back, as by two `notq`, is reported.
+
+Both checks read only plain instructions, labels, comments, and the `.cfi_` directives and the
+alignment and symbol directives `.align`, `.p2align`, `.balign`, `.globl`, `.global`, `.weak`,
+`.hidden`, `.local`, `.type` and `.size`. Any other directive, such as `.if`, `.macro`,
+`.intel_syntax`, `.set` or a data directive, and an alignment directive with a fill byte, such as
+`.p2align 1, 0x41`, whose fill can be a prefix of the next instruction, stop both checks for that
+template, and so does a `{`, as in a `{att|intel}` alternative, or a `//` comment. Neither check
+runs in a generic function in a normal build.
 
 For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
 the pointer inside the template, and decrement the count until it reaches zero:
@@ -11841,7 +11940,7 @@ asm amd64 raw {
       [len] "+r" (len)
     ;
     ; memory
-    ; cc
+      cc
 }
 ```
 

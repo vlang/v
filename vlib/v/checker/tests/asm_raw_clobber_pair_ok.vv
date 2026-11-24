@@ -1,6 +1,9 @@
-// Raw x86 templates whose `mul` and `div` results are bound through the `A` constraint, the
-// `eax`:`edx` register pair on 32-bit x86, so neither register needs a clobber.
-fn raw_mul_pair_output_declares_both(x u64, y u32) u64 {
+// Raw x86 templates whose writes to the `eax`:`edx` register pair on 32-bit x86, or `rax`:`rdx`
+// on amd64, the check counts as declared, through the `A` constraint, a fixed register or a
+// clobber, so none is reported.
+const pair_input_const = u64(1)
+
+fn raw_double_word_mul_pair_output_is_not_reported(x u64, y u32) u64 {
 	mut r := x
 	asm x86 raw {
 		"mull %[y]"
@@ -11,7 +14,7 @@ fn raw_mul_pair_output_declares_both(x u64, y u32) u64 {
 	return r
 }
 
-fn raw_div_pair_output_declares_both(x u64, y u32) u64 {
+fn raw_double_word_div_pair_output_is_not_reported(x u64, y u32) u64 {
 	mut r := x
 	asm x86 raw {
 		"divl %[y]"
@@ -22,7 +25,7 @@ fn raw_div_pair_output_declares_both(x u64, y u32) u64 {
 	return r
 }
 
-fn raw_pair_output_with_alias(x u64, y u32) u64 {
+fn raw_pair_output_with_alias_is_not_reported(x u64, y u32) u64 {
 	mut r := x
 	asm x86 raw {
 		"mull %[y]"
@@ -34,8 +37,8 @@ fn raw_pair_output_with_alias(x u64, y u32) u64 {
 	return r
 }
 
-fn raw_single_word_pair_output_beside_d(x u32, y u32) u32 {
-	// `=d` takes `edx`, so the 32-bit `A` operand can only occupy `eax`; both are declared.
+fn raw_single_word_pair_output_beside_d_is_not_reported(x u32, y u32) u32 {
+	// `=d` names `edx`, so the check counts both registers of the pair as declared.
 	mut r := x
 	mut hi := u32(0)
 	asm x86 raw {
@@ -48,20 +51,20 @@ fn raw_single_word_pair_output_beside_d(x u32, y u32) u32 {
 	return r + hi
 }
 
-fn raw_single_word_pair_output_beside_rdx_clobber(x u32, y u32) u32 {
+fn raw_single_word_pair_output_beside_edx_clobber_is_not_reported(x u32, y u32) u32 {
 	mut r := x
 	asm x86 raw {
 		"mull %[y]"
 		; "+A" (r)
 		; [y] "r" (y)
-		; rdx
+		; edx
 		  cc
 	}
 	return r
 }
 
-fn raw_two_single_word_pair_outputs_fill_the_pair(x u32, y u32) u32 {
-	// Two outputs never share a register, so `lo` and `hi` take `eax` and `edx` between them.
+fn raw_two_single_word_pair_outputs_are_not_reported(x u32, y u32) u32 {
+	// A second operand that names the pair makes the check count both registers as declared.
 	mut lo := x
 	mut hi := u32(0)
 	asm x86 raw {
@@ -74,7 +77,7 @@ fn raw_two_single_word_pair_outputs_fill_the_pair(x u32, y u32) u32 {
 	return lo + hi
 }
 
-fn raw_single_word_pair_output_beside_explicit_register(x u32, y u32) u32 {
+fn raw_single_word_pair_output_beside_explicit_register_is_not_reported(x u32, y u32) u32 {
 	mut r := x
 	mut hi := u32(0)
 	asm x86 raw {
@@ -87,7 +90,7 @@ fn raw_single_word_pair_output_beside_explicit_register(x u32, y u32) u32 {
 	return r + hi
 }
 
-fn raw_single_word_pair_output_beside_early_clobber(x u32, y u32) u32 {
+fn raw_single_word_pair_output_beside_early_clobber_is_not_reported(x u32, y u32) u32 {
 	mut r := x
 	mut lo := u32(0)
 	asm x86 raw {
@@ -100,8 +103,8 @@ fn raw_single_word_pair_output_beside_early_clobber(x u32, y u32) u32 {
 	return r + lo
 }
 
-fn raw_pair_operand_reference_has_the_low_register_width(x u64, y u32) u32 {
-	// `%[r]` of a 64-bit `A` operand prints its low 32-bit register, so `movl` fits it.
+fn raw_pair_operand_reference_with_movl_is_not_reported(x u64, y u32) u32 {
+	// `movl %[r]` on a 64-bit `A` operand is not reported.
 	mut r := x
 	mut low := u32(0)
 	asm x86 raw {
@@ -115,14 +118,269 @@ fn raw_pair_operand_reference_has_the_low_register_width(x u64, y u32) u32 {
 	return low
 }
 
+// A double-word input binds both registers of the pair, and a template may restore them; GCC
+// refuses a clobber of either.
+fn raw_restored_double_pair_input_is_not_reported(input u128) u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"notq %%rax\n\t"
+		"notq %%rax\n\t"
+		"movq %%rax, %[out]"
+		; [out] "=&r" (out)
+		; [input] "A" (input)
+	}
+	return out
+}
+
+fn raw_double_pair_input_after_another_input_is_not_reported(input u64, y u32) u32 {
+	mut out := u32(0)
+	asm x86 raw {
+		"notl %%edx\n\t"
+		"notl %%edx\n\t"
+		"movl %%eax, %[out]"
+		; [out] "=&r" (out)
+		; [y] "r" (y)
+		  "A" (input)
+	}
+	return out
+}
+
+// The width of a constant or an expression is not known here, so the check counts both registers
+// of the pair as declared.
+fn raw_constant_pair_input_is_not_reported() u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"notq %%rax\n\t"
+		"notq %%rax\n\t"
+		"movq %%rax, %[out]"
+		; [out] "=&r" (out)
+		; "A" (pair_input_const)
+	}
+	return out
+}
+
+// Another operand names `edx`, so the check counts both registers of the pair as declared for
+// the single-word `A` input.
+fn raw_narrow_pair_input_beside_fixed_d_is_not_reported(x u32, y u32) u32 {
+	mut o := u32(0)
+	asm x86 raw {
+		"notl %%eax\n\t"
+		"notl %%eax\n\t"
+		"movl %%eax, %[o]"
+		; [o] "=&r" (o)
+		; "A" (x)
+		  "d" (y)
+	}
+	return o
+}
+
+fn raw_narrow_pair_input_beside_clobber_is_not_reported(x u32) u32 {
+	mut o := u32(0)
+	asm x86 raw {
+		"notl %%eax\n\t"
+		"notl %%eax\n\t"
+		"movl %%eax, %[o]"
+		; [o] "=&r" (o)
+		; "A" (x)
+		; edx
+	}
+	return o
+}
+
+fn raw_expression_pair_input_is_not_reported(x u64) u64 {
+	mut o := u64(0)
+	asm amd64 raw {
+		"notq %%rax\n\t"
+		"notq %%rax\n\t"
+		"movq %%rax, %[o]"
+		; [o] "=&r" (o)
+		; "A" (x + 1)
+	}
+	return o
+}
+
+// A float has no integer width, so the check counts a pair output of one as declaring the pair.
+fn raw_float_pair_output_is_not_reported() f64 {
+	mut f := f64(0)
+	asm amd64 raw {
+		"movq $1, %%rax"
+		; "=A" (f)
+	}
+	return f
+}
+
+fn raw_two_narrow_pair_inputs_are_not_reported(x u32, y u32) {
+	asm amd64 raw {
+		"movq $5, %%rax\n"
+		"movq $6, %%rdx"
+		;
+		; "A" (x)
+		  "A" (y)
+		;
+	}
+}
+
+fn raw_early_clobber_a_output_beside_a_pair_input_is_not_reported(x u32) u32 {
+	mut y := x
+	asm amd64 raw {
+		"movl $0, %%edx"
+		; [y] "=&a" (y)
+		; [n] "A" (x)
+		; 
+	}
+	return y
+}
+
+fn raw_early_clobber_pair_output_beside_a_fixed_input_is_not_reported(x u32) u32 {
+	mut y := x
+	asm amd64 raw {
+		"movl %%eax, %%edx\n\t"
+		"addl $1, %%edx"
+		; [y] "=&A" (y)
+		; [x] "a" (x)
+		; cc
+	}
+	return y
+}
+
+fn raw_fixed_output_beside_a_pair_input_is_not_reported(x u32) u32 {
+	mut y := x
+	asm amd64 raw {
+		"movl $0, %%edx\n\t"
+		"movl %[n], %%eax"
+		; [y] "=a" (y)
+		; [n] "A" (x)
+		; 
+	}
+	return y
+}
+
+fn raw_pair_output_beside_a_fixed_input_is_not_reported(x u32) u32 {
+	mut y := x
+	asm amd64 raw {
+		"movl $0, %%edx\n\t"
+		"movl %%eax, %[y]"
+		; [y] "=A" (y)
+		; [x] "a" (x)
+		; 
+	}
+	return y
+}
+
+fn raw_read_write_pair_output_beside_a_fixed_input_is_not_reported(r0 u32, x u32) u32 {
+	mut r := r0
+	asm amd64 raw {
+		"addl %%eax, %%edx"
+		; [r] "+A" (r)
+		; [x] "a" (x)
+		; cc
+	}
+	return r
+}
+
+fn raw_read_write_pair_output_beside_a_pair_input_is_not_reported(r0 u32, x u32) u32 {
+	mut r := r0
+	asm amd64 raw {
+		"notl %%eax\n\t"
+		"notl %%eax\n\t"
+		"notl %%edx\n\t"
+		"notl %%edx"
+		; [r] "+A" (r)
+		; [x] "A" (x)
+		; cc
+	}
+	return r
+}
+
+fn raw_early_clobber_pair_output_beside_a_pair_input_is_not_reported(r0 u32, x u32) u32 {
+	mut r := r0
+	asm amd64 raw {
+		"notl %%eax\n\t"
+		"notl %%eax\n\t"
+		"notl %%edx\n\t"
+		"notl %%edx"
+		; [r] "=&A" (r)
+		; [x] "A" (x)
+		; cc
+	}
+	return r
+}
+
+fn raw_fixed_read_write_output_with_an_rdx_clobber_is_not_reported(x u32, y u32) u32 {
+	mut low := x
+	mut out := u32(0)
+	asm amd64 raw {
+		"mull %[y]\n\t"
+		"movl %%edx, %[out]"
+		; [out] "=r" (out)
+		  [low] "+a" (low)
+		; [y] "r" (y)
+		; rdx
+		  cc
+	}
+	return out + low
+}
+
+fn raw_narrow_pair_output_beside_a_rax_clobber_is_not_reported(x u32) u32 {
+	mut y := x
+	asm amd64 raw {
+		"movl $1, %%edx"
+		; [y] "=A" (y)
+		; 
+		; rax
+	}
+	return y
+}
+
+fn raw_narrow_pair_output_beside_a_braced_rax_input_is_not_reported(x u32) u32 {
+	mut y := x
+	asm amd64 raw {
+		"movl %[z], %%edx"
+		; [y] "=A" (y)
+		; [z] "{rax}" (x)
+		; 
+	}
+	return y
+}
+
+// The check counts the `d` of an `=Ad` constraint as declaring `rdx`, so a write to `edx` is not
+// reported, although GCC may place the operand in `eax`.
+fn raw_ad_pair_output_with_an_edx_write_is_not_reported() u32 {
+	mut y := u32(0)
+	asm amd64 raw {
+		"movl $1, %%edx"
+		; [z] "=Ad" (y)
+	}
+	return y
+}
+
 fn main() {
-	println(raw_mul_pair_output_declares_both(6, 7))
-	println(raw_div_pair_output_declares_both(42, 7))
-	println(raw_single_word_pair_output_beside_d(6, 7))
-	println(raw_single_word_pair_output_beside_rdx_clobber(6, 7))
-	println(raw_two_single_word_pair_outputs_fill_the_pair(6, 7))
-	println(raw_single_word_pair_output_beside_explicit_register(6, 7))
-	println(raw_single_word_pair_output_beside_early_clobber(6, 7))
-	println(raw_pair_operand_reference_has_the_low_register_width(6, 7))
-	println(raw_pair_output_with_alias(6, 7) + undefined_total)
+	println(raw_double_word_mul_pair_output_is_not_reported(6, 7))
+	println(raw_double_word_div_pair_output_is_not_reported(42, 7))
+	println(raw_single_word_pair_output_beside_d_is_not_reported(6, 7))
+	println(raw_single_word_pair_output_beside_edx_clobber_is_not_reported(6, 7))
+	println(raw_two_single_word_pair_outputs_are_not_reported(6, 7))
+	println(raw_single_word_pair_output_beside_explicit_register_is_not_reported(6, 7))
+	println(raw_single_word_pair_output_beside_early_clobber_is_not_reported(6, 7))
+	println(raw_pair_operand_reference_with_movl_is_not_reported(6, 7))
+	println(raw_pair_output_with_alias_is_not_reported(6, 7) + undefined_total)
+	println(raw_restored_double_pair_input_is_not_reported(u128(42)))
+	println(raw_double_pair_input_after_another_input_is_not_reported(1, 2))
+	println(raw_constant_pair_input_is_not_reported())
+	println(raw_narrow_pair_input_beside_fixed_d_is_not_reported(1, 2))
+	println(raw_narrow_pair_input_beside_clobber_is_not_reported(1))
+	println(raw_expression_pair_input_is_not_reported(1))
+	println(raw_float_pair_output_is_not_reported())
+	raw_two_narrow_pair_inputs_are_not_reported(1, 2)
+	println(raw_early_clobber_a_output_beside_a_pair_input_is_not_reported(1))
+	println(raw_early_clobber_pair_output_beside_a_fixed_input_is_not_reported(1))
+	println(raw_fixed_output_beside_a_pair_input_is_not_reported(1))
+	println(raw_pair_output_beside_a_fixed_input_is_not_reported(1))
+	println(raw_read_write_pair_output_beside_a_fixed_input_is_not_reported(1, 2))
+	println(raw_read_write_pair_output_beside_a_pair_input_is_not_reported(1, 2))
+	println(raw_early_clobber_pair_output_beside_a_pair_input_is_not_reported(1, 2))
+	println(raw_fixed_read_write_output_with_an_rdx_clobber_is_not_reported(1, 2))
+	println(raw_narrow_pair_output_beside_a_rax_clobber_is_not_reported(1))
+	println(raw_narrow_pair_output_beside_a_braced_rax_input_is_not_reported(1))
+	println(raw_ad_pair_output_with_an_edx_write_is_not_reported())
 }

@@ -50,9 +50,9 @@ fn shadowed_const_is_a_variable() u32 {
 	answer := u64(5)
 	mut out := u32(0)
 	asm amd64 raw {
-		"movl %1, %0"
-		; "=r" (out)
-		; "r" (answer)
+		"movl %[a], %[out]"
+		; [out] "=r" (out)
+		; [a] "r" (answer)
 		;
 	}
 	return out
@@ -71,9 +71,150 @@ fn inert_directive_keeps_the_width_check(wide u64) u32 {
 	return out
 }
 
+// A variable keeps its width, also where a literal of the same type would not.
+@[noinline]
+fn bool_variable_is_width_checked() u32 {
+	flag := true
+	mut out := u32(0)
+	asm amd64 raw {
+		"movl %[flag], %[out]"
+		; [out] "=r" (out)
+		; [flag] "r" (flag)
+		;
+	}
+	return out
+}
+
+fn raw_every_register_constraint_is_width_checked(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"cmpl %[y], %%ecx"
+		; 
+		; [y] "q" (y)
+		; cc
+	}
+	asm amd64 raw {
+		"cmpl %[y], %%ecx"
+		; 
+		; [y] "Q" (y)
+		; cc
+	}
+	asm amd64 raw {
+		"cmpl %[y], %%ecx"
+		; 
+		; [y] "R" (y)
+		; cc
+	}
+	asm amd64 raw {
+		"cmpl %[y], %%ecx"
+		; 
+		; [y] "a" (y)
+		; cc
+	}
+	asm amd64 raw {
+		"cmpl %[y], %%ecx"
+		; 
+		; [y] "b" (y)
+		; cc
+	}
+	asm amd64 raw {
+		"cmpl %[y], %%ecx"
+		; 
+		; [y] "c" (y)
+		; cc
+	}
+	asm amd64 raw {
+		"cmpl %[y], %%ecx"
+		; 
+		; [y] "d" (y)
+		; cc
+	}
+	asm amd64 raw {
+		"cmpl %[y], %%ecx"
+		; 
+		; [y] "S" (y)
+		; cc
+	}
+	asm amd64 raw {
+		"cmpl %[y], %%ecx"
+		; 
+		; [y] "D" (y)
+		; cc
+	}
+	return y
+}
+
 fn main() {
 	println(widths(1, 2, 3))
 	println(narrow_widths(4, 5))
 	println(shadowed_const_is_a_variable())
 	println(inert_directive_keeps_the_width_check(6))
+	println(bool_variable_is_width_checked())
+	println(raw_every_register_constraint_is_width_checked(1))
+	raw_width_checked_beside_a_mnemonic_with_a_digit(1)
+	raw_width_checked_beside_a_mnemonic_with_a_dot(1)
+	raw_width_checked_in_upper_case(1)
+	raw_shift_destination_is_width_checked(1)
+}
+
+fn raw_width_checked_beside_a_mnemonic_with_a_digit(x u64) {
+	asm amd64 raw {
+		"ud2\n\t"
+		"movl %[x], %%eax"
+		;
+		; [x] "r" (x)
+		; rax
+	}
+}
+
+fn raw_width_checked_beside_a_mnemonic_with_a_dot(x u64) {
+	asm amd64 raw {
+		"movl.s %%ecx, %%edx\n\t"
+		"movl %[x], %%eax"
+		;
+		; [x] "r" (x)
+		; rax rdx
+	}
+}
+
+fn raw_shift_destination_is_width_checked(y u64) u64 {
+	mut r := y
+	asm amd64 raw {
+		"shll $1, %[r]"
+		; [r] "+r" (r)
+		;
+		; cc
+	}
+	return r
+}
+
+// The width check reads a mnemonic in any letter case.
+fn raw_width_checked_in_upper_case(x u64) {
+	asm amd64 raw {
+		"MOVL %[x], %%eax"
+		;
+		; [x] "r" (x)
+		; rax
+	}
+}
+
+// A prefix on a line of its own, or before a `;`, is a statement of its own, and the instruction
+// after it is width checked.
+fn raw_width_checked_after_a_prefix_on_its_own_line(x u64) {
+	asm amd64 raw {
+		"wait\n\t"
+		"movl %[x], %%eax"
+		;
+		; [x] "r" (x)
+		; rax
+	}
+}
+
+fn raw_width_checked_after_a_prefix_and_a_semicolon(x u64) {
+	asm amd64 raw {
+		"lock ; addl %[x], %%eax"
+		;
+		; [x] "r" (x)
+		; rax cc
+	}
 }
