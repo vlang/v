@@ -1,0 +1,69 @@
+name: MSVC parallel debug binaries
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/driver/msvc.v'
+      - 'vlib/v/driver/msvc_test.v'
+      - 'cmd/tools/testing/common.v'
+      - 'cmd/tools/vbuild-vbinaries.v'
+      - '.github/workflows/msvc_debug_pdb_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      VFLAGS: -cc msvc
+      VJOBS: '4'
+      VTEST_FAIL_FAST: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+      - name: Build with MSVC
+        shell: pwsh
+        run: |
+          .\makev.bat -msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'false'
+          symlink: 'false'
+      - name: Verify debug argument translation
+        shell: pwsh
+        run: |
+          .\v.exe fmt -verify vlib/v/driver/msvc.v vlib/v/driver/msvc_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe -cc msvc -silent vlib/v/driver/msvc_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build all five original compiler binaries in parallel
+        shell: pwsh
+        run: |
+          .\v.exe build-vbinaries
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check linked debug symbols and executable
+        shell: pwsh
+        run: |
+          foreach ($name in @('v_g', 'v_prod_g')) {
+            $exe = Get-Item -LiteralPath "$name.exe" -ErrorAction Stop
+            $pdb = Get-Item -LiteralPath "$name.pdb" -ErrorAction Stop
+            if ($pdb.Length -eq 0) { throw "Empty PDB for $name" }
+            $headers = dumpbin.exe /headers $exe.FullName | Out-String
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Write-Host $headers
+            if ($headers -notmatch 'RSDS' -or $headers -notmatch [regex]::Escape("$name.pdb")) {
+              throw "No matching CodeView PDB reference in $name.exe"
+            }
+            & $exe.FullName version
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
