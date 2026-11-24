@@ -114,3 +114,13 @@ initialization. The initializer must not reenter `get()` on the same LazyLock.
 Construct these cells with their factory functions and share the returned pointers.
 The locks protect initialization and retrieval; a returned pointer, map, or array may
 alias the stored data. Synchronize any later mutation of shared returned data separately.
+
+## Reference-counted atomics
+
+With ownership checking enabled, `sync.arc.new_atomic(value)` creates an
+`arc.Atomic[T]` whose clones share the same atomic storage. Move a clone to
+each worker. Each owner releases its reference when it is dropped.
+
+The methods support the same operations and value types as
+`stdatomic.AtomicVal[T]`. Ownership checking validates the type of the stored
+value at thread boundaries.

@@ -74,25 +74,22 @@ pub struct AtomicVal[T] {
 	val T
 }
 
-// new_atomic creates a new atomic value of `T` type
+// atomic_value initializes an atomic value for storage inside another owner.
 @[inline]
-pub fn new_atomic[T](val T) &AtomicVal[T] {
-	$if T is $int {
-		return &AtomicVal[T]{
-			val: val
-		}
-	} $else $if T is bool {
-		return &AtomicVal[T]{
-			val: val
-		}
-	} $else $if T is voidptr {
-		return &AtomicVal[T]{
-			val: val
-		}
+pub fn atomic_value[T](val T) AtomicVal[T] {
+	$if T is $int || T is bool || T is voidptr {
+		return AtomicVal[T]{ val: val }
 	} $else {
 		$compile_error('atomic: only support number, bool, and voidptr types')
 	}
-	return unsafe { nil }
+	return AtomicVal[T]{}
+}
+
+// new_atomic creates a new atomic value of `T` type.
+@[inline]
+pub fn new_atomic[T](val T) &AtomicVal[T] {
+	value := atomic_value(val)
+	return &AtomicVal[T]{ val: value.val }
 }
 
 // load returns current value of the atomic value
