@@ -32,7 +32,8 @@ pub fn check() {
     assert mapping.value["key"]!.name == "caller"
 }
 ')!
-	result := os.exec([@VEXE, '-cc', 'clang', '-gc', 'none', '-no-retry-compilation', 'run',
+	cc := $if windows { 'gcc' } $else { 'clang' }
+	result := os.exec([@VEXE, '-cc', cc, '-gc', 'none', '-no-retry-compilation', 'run',
 		os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 }
