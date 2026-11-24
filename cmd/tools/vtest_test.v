@@ -210,6 +210,18 @@ fn test_partial_failure() {
 	assert res.output.contains('To reproduce just failure'), res.output
 }
 
+fn test_failed_list_names_only_the_failing_files() {
+	list := os.join_path(tpath, 'failed_list.txt')
+	os.rm(list) or {}
+	os.setenv('VTEST_FAILED_LIST', list, true)
+	res := os.exec([vtest_fixture_executable(), 'test', tpath_partial])
+	os.unsetenv('VTEST_FAILED_LIST')
+	assert res.exit_code == 1, res.output
+	assert os.read_file(list)!.split_into_lines() == [
+		os.real_path(os.join_path(tpath_partial, 'failing_test.v')),
+	]
+}
+
 fn test_run_only_reports_filtered_failures() {
 	failing_test_path := os.join_path(tpath_partial, 'failing_test.v')
 	res :=
