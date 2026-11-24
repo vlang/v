@@ -135,48 +135,49 @@ fn test_spsc_mode() {
 	println('SPSC performance: ${duration} for 100k items')
 }
 
+fn push_ring_values(mut rb lockfree.RingBuffer[int], start int, count int) {
+	for i in 0 .. count {
+		rb.push(start + i)
+	}
+}
+
+fn pop_ring_values(mut rb lockfree.RingBuffer[int], count int) []int {
+	mut values := []int{len: count}
+	for i in 0 .. count {
+		values[i] = rb.pop()
+	}
+	return values
+}
+
+fn assert_ring_values(chunks [][]int, total int) {
+	// With exactly `total` items, uniqueness and range prove full coverage.
+	mut seen := []bool{len: total}
+	mut count := 0
+	for chunk in chunks {
+		count += chunk.len
+		for value in chunk {
+			assert value >= 0 && value < total && !seen[value], 'unexpected or duplicate item ${value}'
+			seen[value] = true
+		}
+	}
+	assert count == total
+}
+
 // Test single producer multiple consumers mode
 fn test_spmc_mode() {
 	println('===== Testing SPMC Mode =====')
 	mut rb := lockfree.new_ringbuffer[int](1024, mode: .spmc)
-	mut wg := sync.new_waitgroup()
 	consumers := 4
 	items_per_consumer := 25000
 	total_items := consumers * items_per_consumer
 
-	// Producer thread
-	spawn fn (mut rb lockfree.RingBuffer[int], total int) {
-		for i in 0 .. total {
-			rb.push(i)
-		}
-	}(mut rb, total_items)
-
-	// Consumer threads
-	shared results := []int{cap: total_items}
-
-	for i in 0 .. consumers {
-		wg.add(1)
-		spawn fn (id int, mut rb lockfree.RingBuffer[int], shared results []int, count int, mut wg sync.WaitGroup) {
-			for _ in 0 .. count {
-				item := rb.pop()
-				lock results {
-					results << item
-				}
-			}
-			wg.done()
-		}(i, mut rb, shared results, items_per_consumer, mut wg)
+	producer := spawn push_ring_values(mut rb, 0, total_items)
+	mut readers := []thread []int{cap: consumers}
+	for _ in 0 .. consumers {
+		readers << spawn pop_ring_values(mut rb, items_per_consumer)
 	}
-
-	wg.wait()
-
-	// Result validation
-	lock results {
-		assert results.len == total_items
-		results.sort()
-		for i in 0 .. total_items {
-			assert results[i] == i
-		}
-	}
+	producer.wait()
+	assert_ring_values(readers.wait(), total_items)
 	println('SPMC test passed with ${consumers} consumers')
 }
 
@@ -184,45 +185,17 @@ fn test_spmc_mode() {
 fn test_mpsc_mode() {
 	println('===== Testing MPSC Mode =====')
 	mut rb := lockfree.new_ringbuffer[int](1024, mode: .mpsc)
-	mut wg := sync.new_waitgroup()
 	producers := 4
 	items_per_producer := 25000
 	total_items := producers * items_per_producer
 
-	// Consumer thread
-	wg.add(1)
-	shared results := []int{cap: total_items}
-	spawn fn (mut rb lockfree.RingBuffer[int], shared results []int, total int, mut wg sync.WaitGroup) {
-		for _ in 0 .. total {
-			item := rb.pop()
-			lock results {
-				results << item
-			}
-		}
-		wg.done()
-	}(mut rb, shared results, total_items, mut wg)
-
-	// Producer threads
+	consumer := spawn pop_ring_values(mut rb, total_items)
+	mut writers := []thread{cap: producers}
 	for i in 0 .. producers {
-		wg.add(1)
-		spawn fn (mut rb lockfree.RingBuffer[int], start int, count int, mut wg sync.WaitGroup) {
-			for j in 0 .. count {
-				rb.push(start + j)
-			}
-			wg.done()
-		}(mut rb, i * items_per_producer, items_per_producer, mut wg)
+		writers << spawn push_ring_values(mut rb, i * items_per_producer, items_per_producer)
 	}
-
-	wg.wait()
-
-	// Result validation
-	lock results {
-		assert results.len == total_items
-		results.sort()
-		for i in 0 .. total_items {
-			assert results[i] == i
-		}
-	}
+	writers.wait()
+	assert_ring_values([consumer.wait()], total_items)
 	println('MPSC test passed with ${producers} producers')
 }
 
@@ -230,50 +203,21 @@ fn test_mpsc_mode() {
 fn test_mpmc_mode() {
 	println('===== Testing MPMC Mode =====')
 	mut rb := lockfree.new_ringbuffer[int](1024, mode: .mpmc)
-	mut wg := sync.new_waitgroup()
 	producers := 4
 	consumers := 4
 	items_per_producer := 10000
 	total_items := producers * items_per_producer
 
-	// Result collection
-	shared results := []int{cap: total_items}
-
-	// Producer threads
+	mut writers := []thread{cap: producers}
 	for i in 0 .. producers {
-		wg.add(1)
-		spawn fn (mut rb lockfree.RingBuffer[int], start int, count int, mut wg sync.WaitGroup) {
-			for j in 0 .. count {
-				rb.push(start + j)
-			}
-			wg.done()
-		}(mut rb, i * items_per_producer, items_per_producer, mut wg)
+		writers << spawn push_ring_values(mut rb, i * items_per_producer, items_per_producer)
 	}
-
-	// Consumer threads
-	for i in 0 .. consumers {
-		wg.add(1)
-		spawn fn (mut rb lockfree.RingBuffer[int], shared results []int, count int, mut wg sync.WaitGroup) {
-			for _ in 0 .. count {
-				item := rb.pop()
-				lock results {
-					results << item
-				}
-			}
-			wg.done()
-		}(mut rb, shared results, items_per_producer, mut wg)
+	mut readers := []thread []int{cap: consumers}
+	for _ in 0 .. consumers {
+		readers << spawn pop_ring_values(mut rb, items_per_producer)
 	}
-
-	wg.wait()
-
-	// Result validation
-	lock results {
-		assert results.len == total_items
-		results.sort()
-		for i in 0 .. total_items {
-			assert results[i] == i
-		}
-	}
+	writers.wait()
+	assert_ring_values(readers.wait(), total_items)
 	println('MPMC test passed with ${producers} producers and ${consumers} consumers')
 }
 

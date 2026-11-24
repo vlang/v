@@ -95,6 +95,9 @@ locally. The setup action also supports `use-prebuilt: false` for jobs that requ
 build. Shell-only jobs can call `prepare_v.sh`; set `V_CI_SOURCE_BUILD=1` to ignore a supplied
 prebuilt compiler and optionally `V_CI_CC` to choose the optimizing C compiler.
 `prepare_v.ps1` provides the corresponding Windows build/install step.
+`V_CI_VPROD_STAGE=generate` (with `V_CI_SOURCE_BUILD=1`) stops after writing the optimized
+compiler's C project to `vprod.project`; after `make -C vprod.project` has built `vprod.project/v`,
+`V_CI_VPROD_STAGE=install` installs it like a source build.
 
 Termux artifacts use the platform names `termux-arm64` and `termux-x64`. Install their binary
 as `v` in a checkout of the matching commit after verifying its `.sha256` checksum, and restore
@@ -104,7 +107,10 @@ Bionic libc and are separate from the glibc Linux compiler. The setup helper det
 before considering Linux artifacts and only reuses them for a verified 64-bit userland.
 The dedicated Termux test workflow still builds from source.
 
-Alpine/musl, non-Termux Android, BSD and other CPU architectures build natively. Bootstrap, update,
+Alpine/musl, non-Termux Android, BSD and other CPU architectures build natively. The QEMU
+riscv64 and s390x jobs bootstrap and generate the optimized compiler's C in their container, then
+compile that C on the x86 host with Ubuntu's cross gcc (the same gcc and glibc releases as the
+container): a native `gcc -O2` of it takes 45-70 minutes under emulation. Bootstrap, update,
 prebuilt-release and compiler-under-test checks retain their specific build recipes;
 ordinary tests use the optimized driver. Instrumented compiler builds retain their sanitizer
 flags and add `-prod`. Compiler self-build checks use separate executables or restore the
@@ -113,8 +119,11 @@ optimized driver afterward. Setup still provisions TCC, libgc and bootstrap sour
 Compiler CI also sets `V3_TEST_PROD_COMPILER=1` so `test_all.vsh` optimizes the separate
 V3 drivers it creates for unit tests and examples. Plain nested compiler builds share that
 optimized driver; requests with custom build options still build their own compiler. The unit
-job builds it once before starting its shards, which each receive a private copy. Local runs
-can select another optimizing C compiler with `V3_TEST_PROD_COMPILER_CC`.
+job builds it once before starting its shards, which each receive a private copy. It also builds
+the modules that nearly every unit test compiles, builtin first, once with
+`test_all.vsh --prepare-unit-cache`; `V3_TEST_UNIT_CACHE` hands that module cache to the shards,
+and every batch starts from a copy of it. Local runs can select another optimizing C compiler with
+`V3_TEST_PROD_COMPILER_CC`.
 
 Changes to shared compiler setup or the bootstrap workflow select all master suites, even
 when a suite's normal path filter would skip them. Local setup regression checks are
@@ -354,6 +363,11 @@ Available profiles:
 When migrating a workflow, keep the job's explicit install step until CI proves the
 profile is sufficient. The cache action speeds up installs; it should not hide which
 packages the workflow actually needs.
+
+The action refreshes the apt package lists before the cache lookup. On a miss, the
+underlying cache action installs from whatever lists the runner has, and with a stale
+image it saved entries without packages; every later job then restored nothing and
+installed the whole profile from apt. If that ever recurs, bump `version` in the action.
 
 ## MemorySanitizer dependencies
 

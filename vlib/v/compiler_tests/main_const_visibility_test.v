@@ -37,7 +37,7 @@ fn test_another_module_does_not_see_the_consts_of_main() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	res := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', dir])
+	res := os.exec([@VEXE, '-check', '-nocolor', dir])
 	assert res.exit_code == 1, res.output
 	errors := error_lines(res.output)
 	assert errors.len == 3, res.output
@@ -53,7 +53,7 @@ fn test_another_module_sees_a_builtin_const_that_main_shadows() {
 		os.rmdir_all(dir) or {}
 	}
 	exe := os.join_path(dir, 'shadow')
-	res := os.exec([@VEXE, '-new-compiler', '-nocolor', '-o', exe, dir])
+	res := os.exec([@VEXE, '-nocolor', '-o', exe, dir])
 	assert res.exit_code == 0, res.output
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output

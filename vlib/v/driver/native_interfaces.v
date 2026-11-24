@@ -19,30 +19,67 @@ fn v3_web_native_interface(path string, vroot string) bool {
 		os.real_path(os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_helpers.h')),
 		os.real_path(os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_threading.h')),
 		os.real_path(os.join_path(root, 'vlib', 'os', 'fd_poll.h')),
+		os.real_path(os.join_path(root, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h')),
 	]
+}
+
+// The Windows runtime interfaces contain declarations and helpers without
+// shared native storage. Require their reviewed bytes and a compiler manifest.
+const windows_native_interface_digests = {
+	'vlib/builtin/core_windows.h':             'fc10573182f1bcb809b79a3e3296e36a6e83450228ab363bdf6fd093b74e645f'
+	'vlib/builtin/segfault_handler_windows.h': '7dd1bc51f0aa88168a366b163ea3eb11f4b81751f96e5e806b1ce6895dd2c4ce'
+	'vlib/time/ticks_windows_api.h':           '25ad27919b46ef25ca2bf40a0a4d538335f33b6f43e8ec0ccf26b02ca924211c'
+	'vlib/time/zoneinfo_windows.h':            '31da4392386db279350c4973b0ab42ae0434968ed23f78ace514296ba4731379'
+}
+
+fn v3_windows_native_interface(path string, vroot string) bool {
+	prefix := os.real_path(vroot) + os.path_separator
+	if !path.starts_with(prefix) { return false }
+	relative := path[prefix.len..].replace('\\', '/')
+	expected := windows_native_interface_digests[relative] or { return false }
+	return (v3_file_sha256_hex(path) or { return false }) == expected
 }
 
 // A TinyCC build cannot reliably diagnose date/time macros. Its interface
 // contract is limited to this audited bundled snapshot, hashed as opaque bytes.
-// Audited against master 8b3c052fc74eb10434bdcb1a97d6409bc1e08cc3 (100 files),
-// plus the stateless fd_poll.h interface at 645f534631f9a4b2eb69071116e79c039ebcec11.
-// Changing the snapshot requires reviewing its ownership and determinism again.
+// Audited against master 8b3c052fc74eb10434bdcb1a97d6409bc1e08cc3 (98 files).
+// The two stateless poll interfaces have independently reviewed content pins;
+// changing any of the 100 inputs requires an ownership and determinism review.
 fn v3_pinned_web_native_interfaces(vroot string) bool {
+	mut digests := map[string]string{}
+	return v3_pinned_web_native_interfaces_digests(vroot, mut digests)
+}
+
+// v3_pinned_web_native_interfaces_digests is v3_pinned_web_native_interfaces that also
+// records the digest of every file it hashes in `digests`.
+fn v3_pinned_web_native_interfaces_digests(vroot string, mut digests map[string]string) bool {
 	root := os.real_path(vroot)
 	mut paths := os.walk_ext(os.join_path(root, 'thirdparty', 'mbedtls', 'include'), '',
 		hidden: true
 	)
 	paths << [os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_helpers.h'),
-		os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_threading.h'),
-		os.join_path(root, 'vlib', 'os', 'fd_poll.h')]
+		os.join_path(root, 'vlib', 'net', 'mbedtls', 'mbedtls_threading.h')]
 	paths.sort()
 	mut parts := []string{cap: paths.len}
 	for path in paths {
 		digest := v3_file_sha256_hex(path) or { return false }
+		digests[path] = digest
 		name := path[root.len + 1..].replace('\\', '/')
 		parts << name + '\x00' + digest
 	}
-	return sha256.hexhash(parts.join('\n')) == '098217945ff40c6779f5c5a4f6167e63107e04c17426c34c0ea2c0eb6d4efe84'
+	if sha256.hexhash(parts.join('\n')) != 'a28e5f94cc8104ea9ff30a79e0901da3daed25aa3f1d58530d1db81669c0f11f' {
+		return false
+	}
+	poll_path := os.join_path(root, 'vlib', 'os', 'fd_poll.h')
+	poll := v3_file_sha256_hex(poll_path) or { return false }
+	digests[poll_path] = poll
+	if poll != 'e28d43dfd4e168608ab643d8e997599ff1d3f4096e1a72639b5f5e65baf307a5' {
+		return false
+	}
+	cmdexec_poll_path := os.join_path(root, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h')
+	cmdexec_poll := v3_file_sha256_hex(cmdexec_poll_path) or { return false }
+	digests[cmdexec_poll_path] = cmdexec_poll
+	return cmdexec_poll == '84e10482377fb00a9b9e7705dea55d3797a07d2f7df459be2886b7933ab31e90'
 }
 
 fn v3_native_interface_configuration_override(value string) bool {
@@ -85,11 +122,14 @@ fn v3_native_interface_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	mut result := v3_native_input_closure(native_inputs)
 	if result.unassignable == '' { return result }
 	tinycc := pref.ccompiler_is_tinycc(compiler)
-	if tinycc && !v3_pinned_web_native_interfaces(prefs.vroot) { return result }
+	if tinycc && !v3_pinned_web_native_interfaces_digests(prefs.vroot, mut result.digests) {
+		return result
+	}
 	for paths in native_inputs.module_inputs.values() {
 		for path in paths {
 			if native_inputs.macro_paths[path]
-				|| (native_inputs.native_paths[path] && !v3_web_native_interface(path, prefs.vroot)) {
+				|| (native_inputs.native_paths[path] && !v3_web_native_interface(path, prefs.vroot)
+					&& (tinycc || !v3_windows_native_interface(path, prefs.vroot))) {
 				return result
 			}
 		}
@@ -125,7 +165,21 @@ fn v3_native_interface_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		'#pragma GCC poison __DATE__ __TIME__ __TIMESTAMP__\n' + probe
 	}
 	os.write_file(path, checked_probe) or { return result }
-	args := c_object_compile_flags(flags)
+	mut args := c_object_compile_flags(flags)
+	if tinycc {
+		// Match the resource include paths used to compile native objects.
+		// Otherwise a system header may fail to find stddef.h during -M.
+		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		// Match the SDK chosen for the actual macOS TCC object build.
+		// Without it, -M can resolve a different system header tree.
+		sdk_root := if prefs.normalized_target_os() == 'macos' && os.user_os() == 'macos' {
+			macos_sdk_root()
+		} else {
+			''
+		}
+		args << v3_tcc_object_compile_flags(prefs.vroot, compiler, bundled_tcc,
+			os.is_file(bundled_tcc), prefs.normalized_target_os(), sdk_root)
+	}
 	// -M does not expand macros in ordinary code. Let the selected C
 	// preprocessor validate them too, discarding its output without inspecting it.
 	if !tinycc {

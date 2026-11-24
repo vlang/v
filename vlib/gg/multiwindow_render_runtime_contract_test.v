@@ -216,16 +216,6 @@ fn test_multiwindow_render_runtime_consumer_compiles_enabled_and_disabled() {
 	}
 }
 
-fn test_multiwindow_render_runtime_disposable_consumer_probes_compile() {
-	for probe in render_runtime_disposable_probe_paths() {
-		output := render_runtime_temp_binary('gg_${os.file_name(probe).all_before_last('.')}')
-		defer {
-			os.rm(output) or {}
-		}
-		render_runtime_compile_program(probe, output, true)
-	}
-}
-
 fn test_multiwindow_render_runtime_checked_in_example_compiles() {
 	example := os.join_path(os.dir(os.dir(@DIR)), 'examples', 'gg', 'multiwindow_render_runtime.v')
 	output := render_runtime_temp_binary('gg_multiwindow_render_runtime_example')
@@ -344,23 +334,26 @@ fn assert_watchdog_descendant_cleanup(executable string, mode string, timeout ti
 	assert multiwindow_probe_watchdog.wait_until_process_gone(descendant_pid, 2 * time.second), 'watchdog descendant ${descendant_pid} remains alive'
 }
 
-fn test_multiwindow_render_runtime_disposable_consumer_probes_run_when_requested() {
-	if os.getenv('VGG_MULTIWINDOW_RUNTIME_PROBES') != '1' {
-		eprintln('multi-window runtime probes are not closure proof unless CI forces VGG_MULTIWINDOW_RUNTIME_PROBES=1; this invocation did not run them')
-		return
-	}
+fn test_multiwindow_render_runtime_disposable_consumer_probes() {
+	run_probes := os.getenv('VGG_MULTIWINDOW_RUNTIME_PROBES') == '1'
 	backend := os.getenv('VGG_MULTIWINDOW_RUNTIME_BACKEND')
-	assert backend in ['x11', 'wayland', 'appkit', 'win32'], 'VGG_MULTIWINDOW_RUNTIME_BACKEND must select x11, wayland, appkit, or win32'
+	if run_probes {
+		assert backend in ['x11', 'wayland', 'appkit', 'win32'], 'VGG_MULTIWINDOW_RUNTIME_BACKEND must select x11, wayland, appkit, or win32'
+	} else {
+		eprintln('multi-window runtime probes are not closure proof unless CI forces VGG_MULTIWINDOW_RUNTIME_PROBES=1; this invocation did not run them')
+	}
 
 	for probe in render_runtime_disposable_probe_paths() {
-		output := render_runtime_temp_binary('gg_run_${os.file_name(probe).all_before_last('.')}')
-		gate_path :=
-			render_runtime_temp_binary('gg_run_${os.file_name(probe).all_before_last('.')}_gate')
-		defer {
-			os.rm(output) or {}
-			os.rm(gate_path) or {}
-		}
+		label := os.file_name(probe).all_before_last('.')
+		output := render_runtime_temp_binary('gg_${label}')
+		defer { os.rm(output) or {} }
 		render_runtime_compile_program(probe, output, true)
+		if !run_probes {
+			continue
+		}
+
+		gate_path := render_runtime_temp_binary('gg_${label}_gate')
+		defer { os.rm(gate_path) or {} }
 		result := multiwindow_probe_watchdog.run(
 			executable:  output
 			timeout:     render_runtime_probe_timeout

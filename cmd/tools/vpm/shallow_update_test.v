@@ -6,17 +6,17 @@ import test_utils { cmd_ok_args }
 
 const shallow_root = os.join_path(os.vtmp_dir(), 'vpu_${rand.hex(12)}')
 const shallow_original_dir = os.getwd()
-const shallow_tool = os.join_path(shallow_root, if os.user_os() == 'windows' {
-	'vpm.exe'
-} else {
-	'vpm'
-})
+const shallow_tool = os.executable()
 
 fn testsuite_begin() {
+	// Run the CLI in the child before changing its fixture environment.
+	if os.args.len > 1 && parse_vpm_command(os.args[1..]) != '' {
+		main()
+		exit(0)
+	}
 	os.mkdir_all(shallow_root)!
 	test_utils.set_test_env(os.join_path(shallow_root, 'build'))
 	os.setenv('VEXE', @VEXE, true)
-	cmd_ok_args(@LOCATION, [@VEXE, '-cc', @CCOMPILER, '-gc', 'none', '-o', shallow_tool, os.dir(@FILE)])
 }
 
 fn testsuite_end() {

@@ -385,44 +385,52 @@ fn test_parse_request_with_too_many_header_fields_fails() {
 	}
 }
 
-fn test_get_does_not_wait_for_timeout_when_content_length_is_complete() {
+// serve_keep_alive answers one request with `response`, then keeps the
+// connection open until `done` receives, so that only the framing of the body
+// can tell the client that the response is complete.
+fn serve_keep_alive(mut listener net.TcpListener, response string, done chan bool) {
+	mut conn := listener.accept() or {
+		listener.close() or {}
+		return
+	}
+	defer {
+		conn.close() or {}
+		listener.close() or {}
+	}
+	mut request_buf := []u8{len: 2048}
+	_ = conn.read(mut request_buf) or { return }
+	conn.write(response.bytes()) or { return }
+	_ := <-done
+}
+
+// assert_get_does_not_wait_for_timeout checks that a GET returns as soon as
+// the body of `response` is complete, well before the read timeout, while the
+// server still holds the connection open.
+fn assert_get_does_not_wait_for_timeout(response string) ! {
 	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
 	port := listener.addr()!.port()!
-	t := spawn fn (mut listener net.TcpListener) {
-		mut conn := listener.accept() or {
-			listener.close() or {}
-			return
-		}
-		defer {
-			conn.close() or {}
-			listener.close() or {}
-		}
-
-		mut request_buf := []u8{len: 2048}
-		_ = conn.read(mut request_buf) or { return }
-		response := 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok'
-		conn.write(response.bytes()) or { return }
-
-		conn.set_read_timeout(5 * time.second)
-		mut drain_buf := []u8{len: 128}
-		for {
-			n := conn.read(mut drain_buf) or { break }
-			if n <= 0 {
-				break
-			}
-		}
-	}(mut listener)
+	done := chan bool{cap: 1}
+	t := spawn serve_keep_alive(mut listener, response, done)
 
 	mut req := http.new_request(.get, 'http://127.0.0.1:${port}', '')
 	req.read_timeout = 2 * time.second
 	start := time.now()
-	res := req.do()!
+	res := req.do() or {
+		done <- true
+		t.wait()
+		return err
+	}
 	elapsed := time.since(start)
+	done <- true
 	t.wait()
 
 	assert res.status() == .ok
 	assert res.body == 'ok'
 	assert elapsed < time.second
+}
+
+fn test_get_does_not_wait_for_timeout_when_content_length_is_complete() {
+	assert_get_does_not_wait_for_timeout('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok')!
 }
 
 fn test_http2_requires_explicit_client_opt_in() {
@@ -445,41 +453,5 @@ fn test_prepare_uses_fetch_config_timeouts() {
 }
 
 fn test_get_does_not_wait_for_timeout_when_chunked_body_is_complete() {
-	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
-	port := listener.addr()!.port()!
-	t := spawn fn (mut listener net.TcpListener) {
-		mut conn := listener.accept() or {
-			listener.close() or {}
-			return
-		}
-		defer {
-			conn.close() or {}
-			listener.close() or {}
-		}
-
-		mut request_buf := []u8{len: 2048}
-		_ = conn.read(mut request_buf) or { return }
-		response := 'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n2\r\nok\r\n0\r\n\r\n'
-		conn.write(response.bytes()) or { return }
-
-		conn.set_read_timeout(5 * time.second)
-		mut drain_buf := []u8{len: 128}
-		for {
-			n := conn.read(mut drain_buf) or { break }
-			if n <= 0 {
-				break
-			}
-		}
-	}(mut listener)
-
-	mut req := http.new_request(.get, 'http://127.0.0.1:${port}', '')
-	req.read_timeout = 2 * time.second
-	start := time.now()
-	res := req.do()!
-	elapsed := time.since(start)
-	t.wait()
-
-	assert res.status() == .ok
-	assert res.body == 'ok'
-	assert elapsed < time.second
+	assert_get_does_not_wait_for_timeout('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n2\r\nok\r\n0\r\n\r\n')!
 }

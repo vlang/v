@@ -1,4 +1,5 @@
 import os
+import v.tempname
 
 // A builtin that builds a new collection is not a window onto the one it was called
 // on. The alias analysis could not read those declarations -- they live in `builtin`
@@ -11,10 +12,18 @@ const fresh_builtin_tests_dir = os.dir(@FILE)
 const fresh_builtin_v3_dir = os.dir(fresh_builtin_tests_dir)
 const fresh_builtin_vlib_dir = os.dir(fresh_builtin_v3_dir)
 const fresh_builtin_v3_src = os.join_path(fresh_builtin_v3_dir, 'v.v')
+const fresh_builtin_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_compiler_${tempname.unique_token()}')
+
+fn testsuite_end() {
+	os.rmdir_all(fresh_builtin_compiler_dir) or {}
+}
 
 fn fresh_builtin_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fresh_builtin_compiler_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(fresh_builtin_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
+	os.mkdir_all(fresh_builtin_compiler_dir) or { panic(err) }
 	build := os.exec([fresh_builtin_vexe, '-gc', 'none', '-path',
 		'${fresh_builtin_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${fresh_builtin_v3_src}'])
 	assert build.exit_code == 0, build.output

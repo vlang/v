@@ -14,7 +14,7 @@ dependencies installed, run a compiler's validation sequence or a single step:
 Use `gcc` or `msvc` in place of `tcc` for the other compiler lanes. MSVC requires
 a developer shell with `cl.exe` and the Windows SDK on PATH. The runner reads each
 step's commands and environment directly from `.github/workflows/windows_ci_*.yml`.
-It uses this checkout's compiler, disables compatibility fallback, sets fail-fast,
+It uses this checkout's compiler, sets fail-fast,
 and preserves an explicitly set `VJOBS` for smaller VMs. It also runs the workflow's
 private cache setup and imports `GITHUB_ENV` and `GITHUB_PATH` changes between steps.
 
@@ -59,7 +59,7 @@ links also search that compiler's C++ runtime directory, including Debian's
 versioned GCC library directory.
 The command selects each lane explicitly (`-cc tcc -no-retry-compilation` for TCC,
 `-cc gcc` for GCC, and `-cc clang` for Clang), sets the
-corresponding `GITHUB_JOB`, and disables the compatibility compiler fallback.
+corresponding `GITHUB_JOB`.
 Explicit GCC selection prevents the installed TinyCC from becoming the GCC lane's default.
 
 The ARM64 fixtures using `cmp` or raw SIMD run with GCC or Clang; TCC's assembler
@@ -124,7 +124,7 @@ From the repository root, run:
 ```
 
 On macOS, every invocation first runs `vlib/v/util/machosign/macho_sign_test.v`
-with the workflow's compiler flags and compatibility fallback disabled. This fresh
+with the workflow's compiler flags. This fresh
 check runs even when resuming past `self_tests`, ignores test file/function filters,
 and does not reuse successful test records. It requires an executable TinyCC in the
 compiler checkout; run `make` to install it if missing. A signing failure stops CI

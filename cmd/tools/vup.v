@@ -112,8 +112,7 @@ fn main() {
 		exit(1)
 	}
 	current_v_hash := app.current_v_hash() or {
-		// A fallback-built tool can restore a missing primary compiler at its own
-		// revision. An existing compiler with an unknown revision must rebuild.
+		// Rebuild an existing compiler with an unknown revision.
 		if !os.exists(app.current_vexe_path()) { @VCURRENTHASH } else { '' }
 	}
 	current_hash_from_filesystem := version.githash(vroot) or { '' }
@@ -552,17 +551,6 @@ fn (app App) current_vbackup_name() string {
 }
 
 fn (app App) current_vexe_path() string {
-	// The V3 dispatcher delegates building `vup` to `v1_fallback`. In that case
-	// @VEXE identifies the fallback, but `v up` must inspect and rebuild the main
-	// compiler next to it.
-	if os.file_name(app.vexe) in ['v1_fallback', 'v1_fallback.exe'] {
-		primary_vexe := os.join_path_single(app.vroot, if os.user_os() == 'windows' {
-			'v.exe'
-		} else {
-			'v'
-		})
-		return primary_vexe
-	}
 	if os.exists(app.vexe) {
 		return app.vexe
 	}

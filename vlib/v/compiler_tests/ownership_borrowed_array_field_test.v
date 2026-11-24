@@ -33,7 +33,7 @@ fn main() {
 ')!
 
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${borrowed_array_field_vexe} -new-compiler -nocache -cc clang -ownership ${mode} run ${source}')
+		out := os.execute('${borrowed_array_field_vexe} -nocache -cc clang -ownership ${mode} run ${source}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		assert out.output.ends_with('ok\n'), out.output
 	}

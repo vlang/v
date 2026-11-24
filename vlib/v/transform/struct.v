@@ -149,8 +149,13 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 
 			sum_field_type_source_id := t.struct_field_sum_type(field_type, info.module)
 
-			enum_field_type_source_id := t.enum_type_name_for_expected(field_type, info.module)
-			fixed_to_dynamic := flat.source_type_shape(field_type).has(.array_type) && t.is_fixed_array_type(value_type_source_id)
+			enum_field_type_source_id := if val_node.kind == .enum_val {
+				t.enum_type_name_for_expected(field_type, info.module)
+			} else {
+				u32(0)
+			}
+			field_shape := flat.source_type_shape(field_type)
+			fixed_to_dynamic := field_shape.has(.array_type) && t.is_fixed_array_type(value_type_source_id)
 			shared_interface_source := !isnil(t.tc) && t.is_interface_type(field_type)
 				&& t.tc.struct_field_is_shared(node.source_value_id(), target_field_name)
 				&& t.expr_is_shared_value(val_id)
@@ -165,8 +170,21 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				t.fixed_array_value_to_field_array(val_id, value_type_source_id, field_type)
 			} else if sum_field_type_source_id != 0 {
 				t.wrap_sum_value(val_id, sum_field_type_source_id)
-			} else if flat.source_type_shape(field_type).has(.pointer) {
-				t.transform_expr_for_type(val_id, field_type)
+			} else if field_shape.has(.pointer) {
+				value := t.transform_expr_for_type(val_id, field_type)
+				if field_type != value_type_source_id
+					&& !(val_node.kind == .prefix && val_node.op == .amp) {
+					// These inspections do not append nodes, so borrow the header.
+					address := &t.a.nodes[int(value)]
+					if address.kind == .prefix && address.op == .amp
+						&& t.a.child_node(address, 0).kind == .ident
+						&& !t.expr_can_take_address(val_id) {
+						// A field can outlive the branch that materialized this implicit
+						// reference. Give its temporary durable storage before retaining it.
+						t.a.nodes[int(value)].flags |= flat.node_flag_retained_reference
+					}
+				}
+				value
 			} else if numeric_field {
 				// Resolve generic calls before checking their concrete result, while
 				// retaining its source type before the numeric field conversion.

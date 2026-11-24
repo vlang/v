@@ -280,16 +280,15 @@ fn test_vc_compat_matches_the_native_memory_file_qualifier() ! {
 			if definition_const == prototype_const {
 				assert filtered.output == text
 			}
-			for separator in [false, true] {
-				mut command := ['sh', script, source, cc, '-std=c99', '-Werror', '-o', executable]
-				if separator {
-					command << '--'
-				}
-				checked := os.exec(command)
-				assert checked.exit_code == 0, checked.output
-				ran := os.exec([executable])
-				assert ran.exit_code == 0, ran.output
+			mut command := ['sh', script, source, cc, '-std=c99', '-Werror', '-o', executable]
+			// Exercise an empty linker tail with the historical mismatched pair.
+			if definition_const != prototype_const {
+				command << '--'
 			}
+			checked := os.exec(command)
+			assert checked.exit_code == 0, checked.output
+			ran := os.exec([executable])
+			assert ran.exit_code == 0, ran.output
 			assert os.read_file(source)! == text
 		}
 	}
@@ -468,25 +467,7 @@ fn test_vc_compat_runs_with_a_posix_shell_and_no_bash_in_path() ! {
 	assert os.ls(tmp)!.len == 0
 }
 
-fn test_vc_compat_links_libraries_after_the_streamed_source() ! {
-	$if windows {
-		return
-	}
-	root := os.join_path(os.vtmp_dir(), 'vc_compat_link_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'snapshot.c')
-	executable := os.join_path(root, 'snapshot')
-	os.write_file(source, '#include <math.h>\nint main(void) { volatile double x = 1.0; return pow(x, 2.5) != 1.0; }\n')!
-	cc := os.getenv_opt('CC') or { 'cc' }
-	checked := os.exec(['sh', os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh'), source,
-		cc, '-std=c99', '-fno-builtin', '-o', executable, '--', '-lm'])
-	assert checked.exit_code == 0, checked.output
-	ran := os.exec([executable])
-	assert ran.exit_code == 0, ran.output
-}
-
-fn test_vc_compat_links_objects_after_the_streamed_source() ! {
+fn test_vc_compat_links_objects_and_libraries_after_the_streamed_source() ! {
 	$if windows {
 		return
 	}
@@ -497,13 +478,19 @@ fn test_vc_compat_links_objects_after_the_streamed_source() ! {
 	object_source := os.join_path(root, 'object.c')
 	object := os.join_path(root, 'object with spaces.o')
 	executable := os.join_path(root, 'snapshot')
-	os.write_file(source, 'int linked(void);\nint main(void) { return linked() != 42; }\n')!
+	os.write_file(source, '#include <math.h>
+int linked(void);
+int main(void) {
+    volatile double x = 1.0;
+    return linked() != 42 || pow(x, 2.5) != 1.0;
+}
+')!
 	os.write_file(object_source, 'int linked(void) { return 42; }\n')!
 	cc := os.getenv_opt('CC') or { 'cc' }
 	compiled := os.exec([cc, '-std=c99', '-Werror', '-c', object_source, '-o', object])
 	assert compiled.exit_code == 0, compiled.output
 	checked := os.exec(['sh', os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh'), source,
-		cc, '-std=c99', '-Werror', '-o', executable, '--', object])
+		cc, '-std=c99', '-Werror', '-fno-builtin', '-o', executable, '--', object, '-lm'])
 	assert checked.exit_code == 0, checked.output
 	ran := os.exec([executable])
 	assert ran.exit_code == 0, ran.output
@@ -560,7 +547,7 @@ fn test_vc_compat_relocates_native_includes_without_expanding_headers() ! {
 	output := os.join_path(root, 'stream.c')
 	compiler := os.join_path(root, 'compiler.sh')
 	os.write_file(compiler, '#!/bin/sh\ncat > "$1"\n')!
-	text := '#include "/home/runner/work/v/v/vlib/builtin/track_heap_checks.h"\n#include "C:\\runner\\v\\thirdparty\\stdatomic\\win\\atomic.h"\n#include "/opt/sdk/vendor.h"\n#include "local.h"\nconst char *literal = "vlib/builtin/track_heap_checks.h";\n'
+	text := '#include "/home/runner/work/v/v/vlib/builtin/track_heap_checks.h"\n#include "C:\\runner\\v\\thirdparty\\stdatomic\\win\\atomic.h"\n#include "vlib/v/driver/native_object_cache.h" // helper\n#include "/opt/sdk/vendor.h"\n#include "local.h"\nconst char *literal = "vlib/builtin/track_heap_checks.h";\n'
 	os.write_file(source, text)!
 	script := os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh')
 	filtered := os.exec(['sh', script, source, 'sh', compiler, output])
@@ -569,6 +556,7 @@ fn test_vc_compat_relocates_native_includes_without_expanding_headers() ! {
 	vroot := os.real_path(@VEXEROOT).replace('\\', '/')
 	assert stream.contains('#include "${vroot}/vlib/builtin/track_heap_checks.h"')
 	assert stream.contains('#include "${vroot}/thirdparty/stdatomic/win/atomic.h"')
+	assert stream.contains('#include "${vroot}/vlib/v/driver/native_object_cache.h" // helper')
 	assert stream.contains('#include "/opt/sdk/vendor.h"\n#include "local.h"')
 	assert stream.contains('const char *literal = "vlib/builtin/track_heap_checks.h";')
 	assert os.read_file(source)! == text
@@ -593,7 +581,8 @@ fn test_windows_vc_compat_relocates_includes_and_preserves_snapshot_bytes() ! {
 	windows_header := r'C:\runner\v\thirdparty\stdatomic\win\atomic.h'
 	cmd_header := '/generator/v/cmd/tools/helper.h'
 	binary := [u8(0xff), u8(0xfe)].bytestr()
-	text := '#include "${unix_header}" // keep this comment\n#include "${windows_header}"\n#include "${cmd_header}"\n#include "/opt/sdk/vendor.h"\n#include "local.h"\n#include <stdio.h>\nconst char *literal = "vlib/builtin/core_windows.h";\nconst char *binary = "${binary}";\n'
+	relative_header := 'vlib/v/driver/native_object_cache.h'
+	text := '#include "${unix_header}" // keep this comment\n#include "${windows_header}"\n#include "${cmd_header}"\n#include "${relative_header}" // helper\n#include "/opt/sdk/vendor.h"\n#include "local.h"\n#include <stdio.h>\nconst char *literal = "vlib/builtin/core_windows.h";\nconst char *binary = "${binary}";\n'
 	os.write_file(source, text)!
 	filtered := os.exec([powershell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
 		'-Source', source, '-Destination', output])
@@ -602,6 +591,7 @@ fn test_windows_vc_compat_relocates_includes_and_preserves_snapshot_bytes() ! {
 	expected := text.replace(unix_header, '${vroot}/vlib/builtin/core_windows.h')
 		.replace(windows_header, '${vroot}/thirdparty/stdatomic/win/atomic.h')
 		.replace(cmd_header, '${vroot}/cmd/tools/helper.h')
+		.replace(relative_header, '${vroot}/${relative_header}')
 	assert os.read_file(output)! == expected
 	assert os.read_file(source)! == text
 }

@@ -1,6 +1,7 @@
 module cmdexec
 
 import os
+import os.filelock
 import time
 
 #include <stdlib.h>
@@ -30,18 +31,19 @@ fn testsuite_begin() {
 	if os.args.len < 2 || os.args[1] != unbounded_pipe_probe {
 		return
 	}
-	if os.args.len != 6 {
+	if os.args.len != 7 {
 		exit(2)
 	}
 	mode := os.args[2]
 	entry := os.args[3]
 	code := os.args[4].int()
 	work_folder := os.args[5]
+	lock_path := os.args[6]
 	if mode == 'collect' {
 		$if !windows {
 			os.setenv(unbounded_group_env, C.getpgrp().str(), true)
 		}
-		args := [unbounded_pipe_probe, 'leader', entry, code.str(), work_folder]
+		args := [unbounded_pipe_probe, 'leader', entry, code.str(), work_folder, lock_path]
 		result := match entry {
 			'run' { run(os.executable(), args) }
 			'run_in' { run_in(os.executable(), args, work_folder) }
@@ -84,17 +86,22 @@ fn testsuite_begin() {
 		}
 	}
 	if mode == 'leader' {
+		// The OS releases this lock when the leader exits.
+		mut lifetime := filelock.new_file(lock_path)
+		lifetime.acquire() or { panic(err) }
 		mut writer := os.new_process(os.executable())
-		writer.set_args([unbounded_pipe_probe, 'writer', entry, code.str(), work_folder])
+		writer.set_args([unbounded_pipe_probe, 'writer', entry, code.str(), work_folder, lock_path])
 		// Keep both pipes inherited, but let this direct child exit immediately.
 		writer.run()
 		exit(code)
 	}
 	if mode == 'writer' {
 		spawn unbounded_writer_watchdog()
-		// Let the leader exit before filling stderr. The old collector switches
-		// to stdout_slurp at that point, while this writer still owns stdout.
-		time.sleep(100 * time.millisecond)
+		// Wait for the leader's exit before filling stderr. The old collector
+		// switches to stdout_slurp while this writer still owns stdout.
+		mut lifetime := filelock.new_file(lock_path)
+		lifetime.acquire() or { panic(err) }
+		lifetime.release()
 		eprint('e'.repeat(unbounded_pipe_bytes))
 		flush_stderr()
 		print('o'.repeat(unbounded_pipe_bytes))
@@ -118,13 +125,15 @@ fn test_unbounded_runs_drain_both_pipes_after_the_leader_exits() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
+	lock_path := os.join_path(root, 'leader.lock')
+	os.write_file(lock_path, '')!
 	for entry in ['run', 'run_in', 'zero', 'negative', 'merged'] {
 		work_folder := if entry in ['run_in', 'merged'] { root } else { os.getwd() }
 		for code in [0, 7] {
 			// Only the outer collector is bounded. The command under test must
 			// use the public unbounded entry point, not the already-fixed timeout.
 			result := run_with_timeout(os.executable(), [unbounded_pipe_probe, 'collect', entry,
-				code.str(), work_folder], 20_000)
+				code.str(), work_folder, lock_path], 20_000)
 			assert result.exit_code == 0, '${entry}, leader exit ${code}: ${result.output}'
 			assert result.output.trim_space() == 'unbounded-pipe-probe-ok', result.output
 		}
@@ -134,7 +143,7 @@ fn test_unbounded_runs_drain_both_pipes_after_the_leader_exits() {
 fn test_unbounded_runs_wait_for_quiet_children_and_children_that_closed_their_pipes() {
 	for mode in ['quiet', 'closed'] {
 		sw := time.new_stopwatch()
-		result := run(os.executable(), [unbounded_pipe_probe, mode, '', '23', ''])
+		result := run(os.executable(), [unbounded_pipe_probe, mode, '', '23', '', ''])
 		assert result.exit_code == 23, result.output
 		assert result.output == ''
 		assert sw.elapsed().milliseconds() >= 100, 'returned before the child exited'

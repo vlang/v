@@ -78,9 +78,14 @@ fn test_store_session_expired() {
 		db.close() or {}
 	}
 	mut store := sessions.DBStore.create[User](db)!
-	store.set('c', default_user)!
-
-	time.sleep(2 * max_age)
+	record := sessions.DBStoreSessions{
+		session_id: 'c'
+		created_at: time.now().add(-2 * max_age)
+		data:       default_user_encoded
+	}
+	sql db {
+		insert record into sessions.DBStoreSessions
+	}!
 
 	if _ := store.get('c', max_age) {
 		assert false, 'session should be expired!'

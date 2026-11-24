@@ -1,34 +1,75 @@
 import os
 
-// run_doctor_with_main compiles a copy of the doctor tool, that has `test_main` in place of
-// its `main` function, and runs it. `test_main` can check everything that the tool declares.
-fn run_doctor_with_main(name string, test_main string) ! {
-	root := os.join_path(os.vtmp_dir(), 'vdoctor_${name}_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.read_file(os.join_path(@VMODROOT, 'cmd', 'tools', 'vdoctor.v'))!
-	assert source.count('fn main() {') == 1
-	path := os.join_path(root, 'doctor_${name}.v')
-	os.write_file(path, source.replace('fn main() {', 'fn doctor_main() {') + test_main)!
-	tool := os.join_path(root, 'doctor_${name}' + $if windows { '.exe' } $else { '' })
-	build := os.exec([@VEXE, '-o', tool, path])
-	assert build.exit_code == 0, build.output
-	result := os.exec([tool])
+const doctor_fixture_dir = os.join_path(os.vtmp_dir(), 'vdoctor_fixture_${os.getpid()}')
+const doctor_git_name = 'git' + $if windows { '.exe' } $else { '' }
+
+fn testsuite_begin() {
+	marker := os.getenv('DOCTOR_FETCH_TEST_MARKER')
+	if marker != '' && os.file_name(os.executable()) == doctor_git_name {
+		args := os.args[1..]
+		if args == ['rev-parse', '--is-inside-work-tree'] {
+			println('true')
+		} else if args == ['-C', '.', 'describe', '--abbrev=8', '--dirty', '--always', '--tags'] {
+			println('fixture')
+		} else if 'fetch' in args {
+			if args != ['-C', '.', 'fetch', 'V_REPO'] {
+				eprintln('Unexpected Git fetch arguments: ${args}')
+				exit(1)
+			}
+			os.write_file(marker, 'fetched') or { panic(err) }
+		}
+		exit(0)
+	}
+	os.rmdir_all(doctor_fixture_dir) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(doctor_fixture_dir) or {}
+}
+
+// Build the doctor and its test entry point together so each case can call the
+// same internal functions in a fresh process.
+fn run_doctor_case(name string) ! {
+	tool := os.join_path(doctor_fixture_dir, 'doctor_fixture' + $if windows { '.exe' } $else { '' })
+	if !os.is_file(tool) {
+		os.mkdir_all(doctor_fixture_dir)!
+		source := os.read_file(os.join_path(@VMODROOT, 'cmd', 'tools', 'vdoctor.v'))!
+		assert source.count('fn main() {') == 1
+		path := os.join_path(doctor_fixture_dir, 'doctor_fixture.v')
+		os.write_file(path, source.replace('fn main() {', 'fn doctor_main() {') +
+			doctor_fixture_main + doctor_command_output_case + doctor_vlib_report_case +
+			doctor_fetch_case)!
+		build := os.exec([@VEXE, '-o', tool, path])
+		if build.exit_code != 0 {
+			os.rm(tool) or {}
+			return error(build.output)
+		}
+	}
+	result := os.exec([tool, name])
 	assert result.exit_code == 0, result.output
 }
 
-fn test_vdoctor_reports_unavailable_commands_without_hiding_tool_failures() {
-	run_doctor_with_main('command_output', '
+const doctor_fixture_main = '
 fn main() {
-	if "success" in os.args {
-		println("test tool version")
-		println("second line")
-		return
+	match os.args[1] {
+		"success" {
+			println("test tool version")
+			println("second line")
+		}
+		"failure" {
+			println("test tool failure")
+			exit(2)
+		}
+		"command_output" { check_doctor_command_output() }
+		"vlib_report" { check_doctor_vlib_report() }
+		"fetch" { check_doctor_fetch()! }
+		else { panic("unknown doctor fixture case") }
 	}
-	if "failure" in os.args {
-		println("test tool failure")
-		exit(2)
-	}
+}
+'
+
+const doctor_command_output_case = '
+fn check_doctor_command_output() {
 	for code in [2, 3] {
 		missing := os.Result{
 			exit_code: code
@@ -50,12 +91,14 @@ fn main() {
 	assert app.cmd(command: [os.executable(), "success"], line: -1).replace("\\r\\n", "\\n") == "test tool version\\nsecond line\\n"
 	assert app.cmd(command: [os.executable(), "failure"]).replace("\\r\\n", "\\n") == "Error: test tool failure\\n"
 }
-')!
+'
+
+fn test_vdoctor_reports_unavailable_commands_without_hiding_tool_failures() {
+	run_doctor_case('command_output')!
 }
 
-fn test_vdoctor_reports_a_vlib_that_does_not_match_the_compiler() {
-	run_doctor_with_main('vlib_report', '
-fn main() {
+const doctor_vlib_report_case = '
+fn check_doctor_vlib_report() {
 	// The root that the compiler resolved for this program, holds the modules it is made of.
 	assert os.is_dir(os.join_path(compiled_vroot, "vlib", "builtin"))
 
@@ -122,40 +165,14 @@ fn main() {
 	assert other_checkout.report_lines[1].starts_with("|cwd vlib commit "), other_checkout.report_lines[1]
 	assert other_checkout.report_lines[1].contains("MISMATCH: V was built from commit 9e70451, but this vlib is at commit cd7a898"), other_checkout.report_lines[1]
 }
-')!
+'
+
+fn test_vdoctor_reports_a_vlib_that_does_not_match_the_compiler() {
+	run_doctor_case('vlib_report')!
 }
 
-fn test_doctor_fetch_reaches_git_through_timeout() {
-	root := os.join_path(os.vtmp_dir(), 'doctor_fetch_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	stub_source := os.join_path(root, 'git.v')
-	os.write_file(stub_source, '
-import os
-fn main() {
-	args := os.args[1..]
-	if args == ["rev-parse", "--is-inside-work-tree"] {
-		println("true")
-	} else if args == ["-C", ".", "describe", "--abbrev=8", "--dirty", "--always", "--tags"] {
-		println("fixture")
-	} else if "fetch" in args {
-		assert args == ["-C", ".", "fetch", "V_REPO"], args.str()
-		os.write_file(os.getenv("DOCTOR_FETCH_TEST_MARKER"), "fetched")!
-	}
-}
-')!
-	stub := os.join_path(root, 'git' + $if windows { '.exe' } $else { '' })
-	build := os.exec([@VEXE, '-o', stub, stub_source])
-	assert build.exit_code == 0, build.output
-	marker := os.join_path(root, 'fetch.marker')
-	os.setenv('DOCTOR_FETCH_TEST_MARKER', marker, true)
-	os.setenv('DOCTOR_FETCH_TEST_DIR', root, true)
-	defer {
-		os.unsetenv('DOCTOR_FETCH_TEST_MARKER')
-		os.unsetenv('DOCTOR_FETCH_TEST_DIR')
-	}
-	run_doctor_with_main('fetch', '
-fn main() {
+const doctor_fetch_case = '
+fn check_doctor_fetch() ! {
 	// Build/cache the real timeout tool before putting the git fixture on PATH.
 	warmup := os.exec([@VEXE, "timeout", "5.1", "--", @VEXE, "version"])
 	assert warmup.exit_code == 0, warmup.output
@@ -166,5 +183,19 @@ fn main() {
 	assert app.git_info() == "fixture"
 	assert os.read_file(os.getenv("DOCTOR_FETCH_TEST_MARKER"))! == "fetched"
 }
-')!
+'
+
+fn test_doctor_fetch_reaches_git_through_timeout() {
+	root := os.join_path(os.vtmp_dir(), 'doctor_fetch_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.cp(os.executable(), os.join_path(root, doctor_git_name))!
+	marker := os.join_path(root, 'fetch.marker')
+	os.setenv('DOCTOR_FETCH_TEST_MARKER', marker, true)
+	os.setenv('DOCTOR_FETCH_TEST_DIR', root, true)
+	defer {
+		os.unsetenv('DOCTOR_FETCH_TEST_MARKER')
+		os.unsetenv('DOCTOR_FETCH_TEST_DIR')
+	}
+	run_doctor_case('fetch')!
 }

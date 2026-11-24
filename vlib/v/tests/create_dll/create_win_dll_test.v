@@ -4,20 +4,23 @@ import os
 type Func = fn () int
 
 fn run_test(cc_used string) {
-	cc_flag := match cc_used {
-		'tcc64' { '-cc tcc' }
-		'gcc64' { '-cc gcc' }
-		'clang64' { '-cc clang' }
-		'msvc64' { '-cc msvc' }
-		'tcc32' { '-cc tcc -m32 -d no_backtrace' }
-		'gcc32' { '-cc gcc -m32' }
-		'clang32' { '-cc clang -m32' }
-		'msvc32' { '-cc msvc -m32' }
-		else { '' }
+	// os.system_args passes each element as one argument, so every option and its
+	// value is a separate element.
+	cc_flags := match cc_used {
+		'tcc64' { ['-cc', 'tcc'] }
+		'gcc64' { ['-cc', 'gcc'] }
+		'clang64' { ['-cc', 'clang'] }
+		'msvc64' { ['-cc', 'msvc'] }
+		'tcc32' { ['-cc', 'tcc', '-m32', '-d', 'no_backtrace'] }
+		'gcc32' { ['-cc', 'gcc', '-m32'] }
+		'clang32' { ['-cc', 'clang', '-m32'] }
+		'msvc32' { ['-cc', 'msvc', '-m32'] }
+		else { []string{} }
 	}
-
-	assert os.system_args([@VEXE, cc_flag, '-o', 'create_win_' + '${cc_used}' + '.dll', '-shared',
-		'create_win_dll.c.v']) == 0
+	mut args := [@VEXE]
+	args << cc_flags
+	args << ['-o', 'create_win_' + '${cc_used}' + '.dll', '-shared', 'create_win_dll.c.v']
+	assert os.system_args(args) == 0
 	assert os.exists('create_win_${cc_used}.dll')
 	handle := dl.open('create_win_${cc_used}.dll', 0)
 	assert handle != 0

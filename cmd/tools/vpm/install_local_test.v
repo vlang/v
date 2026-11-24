@@ -6,7 +6,7 @@ import v.vmod
 import test_utils { cmd_fail_args, cmd_ok_args }
 
 const test_path = os.join_path(os.temp_dir(), 'vpm_local_${rand.ulid()}')
-const local_vpm = os.join_path(test_path, if os.user_os() == 'windows' { 'vpm.exe' } else { 'vpm' })
+const local_vpm = os.executable()
 
 struct LocalInstallCase {
 	args        []string
@@ -15,12 +15,14 @@ struct LocalInstallCase {
 }
 
 fn testsuite_begin() {
+	// Run the CLI in the child before changing its fixture environment.
+	if os.args.len > 1 && parse_vpm_command(os.args[1..]) != '' {
+		main()
+		exit(0)
+	}
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path) or { panic(err) }
 	os.setenv('VEXE', @VEXE, true)
-	// VMODULES is part of the tool cache key. Compile once so each isolated
-	// module store exercises the same VPM binary without rebuilding it.
-	cmd_ok_args(@LOCATION, [@VEXE, '-cc', @CCOMPILER, '-o', local_vpm, os.dir(@FILE)])
 }
 
 fn testsuite_end() {

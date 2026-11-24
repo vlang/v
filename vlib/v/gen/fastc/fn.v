@@ -74,7 +74,7 @@ fn (mut g Parser) reset_lookup_memos() {
 	g.nonlocal_name_type_memo = flat.TypeTextBindings{}
 	g.resolved_name_memo = map[string]string{}
 	g.declared_type_key_memo = map[u32]FastcMemoEntry{}
-	g.type_memo = map[i64]u32{}
+	g.type_memo = map[i64]FastcTypeMemoEntry{}
 	g.method_key_memo = map[u32]map[string]string{}
 	g.field_memo = map[u32]map[string]&FastcStructField{}
 	g.last_field = unsafe { nil }
@@ -398,10 +398,12 @@ fn fastc_pkgconfig_flags(raw string) ![]string {
 }
 
 // fastc_flag_is_native_input reports whether a flag is a native source or link input.
+// A `.def` file names DLL exports for Windows TinyCC to import (math's fma).
 pub fn fastc_flag_is_native_input(flag string) bool {
 	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.m') || flag.ends_with('.mm') || flag.ends_with('.o')
 		|| flag.ends_with('.a') || flag.ends_with('.obj') || flag.ends_with('.lib')
-		|| flag.ends_with('.dylib') || flag.ends_with('.so') || flag.contains('.so.'))
+		|| flag.ends_with('.def') || flag.ends_with('.dylib') || flag.ends_with('.so')
+		|| flag.contains('.so.'))
 }
 
 // fastc_deduplicate_native_files keeps shared helper definitions out of the link twice.
@@ -1311,7 +1313,9 @@ fn (mut g Parser) emit_export_wrapper(function_key string, c_name string, params
 	}
 	return_type := g.export_c_abi_type(abi.return_type)
 	c_params := if wrapper_params.len == 0 { 'void' } else { wrapper_params.join(', ') }
-	g.protos.writeln('${return_type} ${export_name}(${c_params});')
+	prototype := '${return_type} ${export_name}(${c_params});'
+	g.protos.writeln(prototype)
+	g.export_prototypes << prototype
 	g.write_line('${return_type} ${export_name}(${c_params}) {')
 	g.indent++
 	call := '${c_name}(${arguments.join(', ')})'

@@ -129,7 +129,6 @@ class GatePathsTests(unittest.TestCase):
             "makev.bat",
             "& ./.github/workflows/prepare_v.ps1",
             r".\.github\workflows\setup_windows_tool_cache.ps1 -Verify",
-            "./v.exe -silent test-cleancode",
             "./v.exe -silent test-fmt",
         ]
         positions = []
@@ -145,8 +144,31 @@ class GatePathsTests(unittest.TestCase):
                 positions.append(bootstrap.index(command))
         self.assertEqual(positions, sorted(positions))
         self.assertLess(positions[-1], bootstrap.index("Copy-Item v.exe"))
-        self.assertLessEqual(int(re.search(r"^    timeout-minutes: (\d+)$",
-                                          bootstrap, re.M)[1]), 40)
+        self.assertIn(
+            "    timeout-minutes: ${{ matrix.platform == 'macos-x64' && 60 || 40 }}\n",
+            bootstrap,
+        )
+
+    def test_windows_bootstrap_isolates_vet_and_fmt_processes(self):
+        source = (gate.ROOT / "bootstrapping_ci.yml").read_text(encoding="utf-8")
+        bootstrap = source.split("\n  bootstrap-termux:", 1)[0]
+        steps = re.split(r"^      - ", bootstrap, flags=re.M)[1:]
+        command = "./v.exe -silent test-cleancode"
+        checks = [step for step in steps if command in step]
+        self.assertEqual(len(checks), 2)
+        for stage, step in zip(("vet", "fmt"), checks):
+            with self.subTest(stage=stage):
+                self.assertIn("        if: runner.os == 'Windows'\n", step)
+                self.assertRegex(step, rf"(?m)^          VTEST_CLEANCODE_STAGE: '?{stage}'?$")
+                self.assertEqual(step.count(command), 1)
+                self.assertIn(
+                    command + "\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+                    step,
+                )
+                self.assertNotIn("continue-on-error:", step)
+        self.assertIn(r".\.github\workflows\setup_windows_tool_cache.ps1 -Verify", checks[0])
+        self.assertIn("./v.exe -silent test-fmt", checks[1])
+        self.assertLess(bootstrap.index(checks[1]), bootstrap.index("Copy-Item v.exe"))
 
     def test_fastc_only_push_skips_platform_workflows(self):
         paths = ["vlib/v/gen/fastc/codegen.v"]

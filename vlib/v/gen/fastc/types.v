@@ -473,13 +473,16 @@ fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expres
 	memo_key := fastc_comparison_memo_range_key(tokens, expression_start, expression_end, 2)
 	if memo_key != 0 {
 		if cached := g.type_memo[memo_key] {
-			return cached
+			return cached.typ
 		}
 	}
 	inferred := g.infer_expression_type_range_impl(tokens, expression_start, expression_end)!
 	if memo_key != 0 {
 		mut w := unsafe { &Parser(g) }
-		w.type_memo[memo_key] = inferred
+		w.type_memo[memo_key] = FastcTypeMemoEntry{
+			tokens: tokens.data
+			typ:    inferred
+		}
 	}
 	return inferred
 }
@@ -1031,6 +1034,12 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 		if signature := g.functions[function_key] {
 			return g.specialized_method_return_type(method_receiver_type, function_key, signature)
+		}
+		// A generic method call names its specialization (`d.step_mono_int(...)`), which
+		// is registered only as a mono signature. Without its type, `or { return err }`
+		// after a `!` method would not bind `err`.
+		if signature := g.mono_functions[function_key] {
+			return signature.return_type
 		}
 		if field := g.struct_field_metadata(receiver_type, tokens[i].lit) {
 			if field.is_function && field.fn_return_type != 0 {

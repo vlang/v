@@ -56,38 +56,29 @@ fn decompress_chunked(data []u8) ![]u8 {
 	return out
 }
 
-// decode_errors returns the error message of decompress() and of decompress_with_callback()
-// for `data`; '' stands for no error.
-fn decode_errors(data []u8) []string {
-	mut res := []string{}
-	if _ := decompress(data) {
-		res << ''
-	} else {
-		res << err.msg()
-	}
-	if _ := decompress_chunked(data) {
-		res << ''
-	} else {
-		res << err.msg()
-	}
-	return res
-}
-
-// bit_flips returns one copy of `data` per bit of the 4 bytes at `start`, with that bit flipped.
-fn bit_flips(data []u8, start int) [][]u8 {
-	mut res := [][]u8{cap: 32}
+// assert_trailer_errors checks each single-bit change in the four bytes at start.
+fn assert_trailer_errors(data []u8, start int, reason string) {
+	mut bad := data.clone()
 	for i in start .. start + 4 {
+		original := data[i]
 		for bit in 0 .. 8 {
-			mut bad := data.clone()
-			bad[i] ^= u8(1) << bit
-			res << bad
+			bad[i] = original ^ (u8(1) << bit)
+			decoded_error := if _ := decompress(bad) { '' } else { err.msg() }
+			callback_error := if _ := decompress_with_callback(bad, fn (chunk []u8, _ voidptr) int {
+				return chunk.len
+			}, voidptr(0)) {
+				''
+			} else {
+				err.msg()
+			}
+			assert decoded_error == reason
+			assert callback_error == reason
 		}
+		bad[i] = original
 	}
-	return res
 }
 
-// assert_checksum_errors checks that, with the payload intact, a wrong adler32, crc32 or int
-// is reported as exactly that, by the one-shot and by the callback decoder.
+// assert_checksum_errors checks the Adler-32, CRC32 and size errors of both decoders.
 fn assert_checksum_errors(payload []u8, plain []u8) ! {
 	z := zlib_stream(payload, plain)
 	gz := gzip_stream(payload, plain)
@@ -95,15 +86,9 @@ fn assert_checksum_errors(payload []u8, plain []u8) ! {
 	assert decompress(gz)! == plain
 	assert decompress_chunked(z)! == plain
 	assert decompress_chunked(gz)! == plain
-	for bad in bit_flips(z, z.len - 4) {
-		assert decode_errors(bad) == ['invalid zlib stream: adler32 mismatch'].repeat(2)
-	}
-	for bad in bit_flips(gz, gz.len - 8) {
-		assert decode_errors(bad) == ['invalid gzip stream: crc32 mismatch'].repeat(2)
-	}
-	for bad in bit_flips(gz, gz.len - 4) {
-		assert decode_errors(bad) == ['invalid gzip stream: size mismatch'].repeat(2)
-	}
+	assert_trailer_errors(z, z.len - 4, 'invalid zlib stream: adler32 mismatch')
+	assert_trailer_errors(gz, gz.len - 8, 'invalid gzip stream: crc32 mismatch')
+	assert_trailer_errors(gz, gz.len - 4, 'invalid gzip stream: size mismatch')
 }
 
 fn test_zlib_roundtrip() {

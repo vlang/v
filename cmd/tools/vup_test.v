@@ -3,6 +3,62 @@ import v.skills
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
+const vup_test_tools_dir = os.join_path(os.abs_path(os.vtmp_dir()), 'vup_test_tools_${os.getpid()}')
+
+fn testsuite_begin() {
+	os.rmdir_all(vup_test_tools_dir) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(vup_test_tools_dir) or {}
+}
+
+fn vup_test_tool(name string) !string {
+	tool := os.join_path(vup_test_tools_dir, name)
+	if !os.is_executable(tool) {
+		os.mkdir_all(vup_test_tools_dir)!
+		build := os.exec([vexe, '-o', tool, os.join_path(vroot, 'cmd', 'tools', name + '.v')])
+		if build.exit_code != 0 {
+			os.rm(tool) or {}
+			return error('could not build ${name}: ${build.output}')
+		}
+	}
+	return tool
+}
+
+fn vup_host_fixture() !string {
+	tool := os.join_path(vup_test_tools_dir, 'vup_host_fixture')
+	if os.is_executable(tool) {
+		return tool
+	}
+	os.mkdir_all(vup_test_tools_dir)!
+	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
+	deferred := 'defer_cleanup := $if windows {'
+	arm64 := '$if windows && arm64 {'
+	assert source.count(deferred) == 1
+	assert source.count(arm64) == 3
+	assert source.count('@VCURRENTHASH') == 1
+	// Simulate the platforms per invocation and match the fallback fixture's revision.
+	file := '${tool}.v'
+	os.write_file(file, source.replace_each([
+		deferred,
+		'defer_cleanup := if os.getenv("VUP_TEST_HOST") == "windows" {',
+		'$else {\n\t\tfalse',
+		'else {\n\t\tfalse',
+		arm64,
+		'if os.getenv("VUP_TEST_HOST") == "windows-arm64" {',
+		'$else {\n\t\tcommand = if',
+		'else {\n\t\tcommand = if',
+		'@VCURRENTHASH',
+		"'abcdef0'",
+	]))!
+	build := os.exec([vexe, '-o', tool, file])
+	if build.exit_code != 0 {
+		os.rm(tool) or {}
+		return error('could not build the vup host fixture: ${build.output}')
+	}
+	return tool
+}
 
 // held_back_line and held_back_hint are what `v up` says about the skills it
 // leaves alone, whether they were edited or have no install record.
@@ -105,10 +161,7 @@ fn vup_report_fixture() !(string, string, string, string) {
 		'\n  echo "alpha: updated 2 file(s)"\n  echo "beta was edited" >&2\n  exit 1\nfi\n' +
 		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
 
-	tool := os.join_path(root, 'vup')
-	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vup.v')])
-	assert build.exit_code == 0, build.output
-	return root, home, tool, bin_dir
+	return root, home, vup_test_tool('vup')!, bin_dir
 }
 
 // run_vup runs the built tool with only the stand-ins on PATH and `home` as the
@@ -128,9 +181,7 @@ fn test_vup_preserves_caches_without_updates_and_wipes_after_rebuilds() ! {
 		os.rmdir_all(root) or {}
 	}
 	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
-	wipe_tool := os.join_path(root, 'vwipe-cache')
-	build := os.exec([vexe, '-o', wipe_tool, os.join_path(vroot, 'cmd', 'tools', 'vwipe-cache.v')])
-	assert build.exit_code == 0, build.output
+	wipe_tool := vup_test_tool('vwipe-cache')!
 	log := os.join_path(root, 'compiler_calls.log')
 	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
 		'printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n' +
@@ -286,9 +337,7 @@ fn test_vup_reports_real_cache_filesystem_failures() ! {
 		os.chmod(locked, 0o700) or {}
 		os.rmdir_all(root) or {}
 	}
-	wipe_tool := os.join_path(root, 'vwipe-cache')
-	build := os.exec([vexe, '-o', wipe_tool, os.join_path(vroot, 'cmd', 'tools', 'vwipe-cache.v')])
-	assert build.exit_code == 0, build.output
+	wipe_tool := vup_test_tool('vwipe-cache')!
 	// Exercise both the compiler's built-in command and the standalone tool.
 	for cleanup in [vexe, wipe_tool] {
 		write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
@@ -331,23 +380,15 @@ fn test_vup_requests_deferred_windows_cleanup_only_after_success() ! {
 	}
 	root, home, _, bin_dir := vup_report_fixture()!
 	defer { os.rmdir_all(root) or {} }
-	// Exercise the Windows finish path on this host; the cross-generation test
-	// separately checks that the unmodified Windows source compiles.
-	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
-	assert source.count('defer_cleanup := $if windows {') == 1
-	modified := source.replace('defer_cleanup := $if windows {', 'defer_cleanup := $if !windows {')
-	file := os.join_path(root, 'vup_deferred.v')
-	os.write_file(file, modified)!
-	tool := os.join_path(root, 'vup_deferred')
-	build := os.exec([vexe, '-o', tool, file])
-	assert build.exit_code == 0, build.output
+	tool := vup_host_fixture()!
+	command := ['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
+		'VUP_TEST_HOST=windows', 'VUP_DEFER_CACHE_WIPE=1', tool]
 	install(root, os.join_path(home, '.agents', 'skills'), 'alpha')!
 	rebundle(root, 'alpha')!
 	log := os.join_path(root, 'calls.log')
 	for options in [[]string{}, ['-skip_current'], ['-prod'], ['-h'], ['--unknown']] {
 		os.write_file(log, '')!
-		result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
-			'VUP_DEFER_CACHE_WIPE=1', tool, ...options])
+		result := os.exec([...command, ...options])
 		expected := if options.len == 0 || '-h' in options {
 			0
 		} else if '--unknown' in options {
@@ -369,8 +410,7 @@ fn test_vup_requests_deferred_windows_cleanup_only_after_success() ! {
 	for make_name in ['make', 'gmake'] {
 		write_executable(os.join_path(bin_dir, make_name), '#!/bin/sh\nexit 9\n')!
 	}
-	failed := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
-		'VUP_DEFER_CACHE_WIPE=1', tool])
+	failed := os.exec(command)
 	assert failed.exit_code == 1, failed.output
 	assert !failed.output.contains('Current V version:') || failed.output.contains('Updating TCC *failed*.'), failed.output
 }
@@ -488,20 +528,14 @@ fn test_vup_preserves_native_windows_arm64_on_bootstrap_rebuild() ! {
 	}
 	root, home, _, bin_dir := vup_report_fixture()!
 	defer { os.rmdir_all(root) or {} }
-	// Exercise the ARM64 command path with process fixtures on this host. The
-	// Windows C-generation test also checks the unmodified target-specific code.
-	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
-	assert source.count('$if windows && arm64 {') == 3
-	file := os.join_path(root, 'vup_arm64.v')
-	os.write_file(file, source.replace('$if windows && arm64 {', '$if !windows {'))!
-	tool := os.join_path(root, 'vup_arm64')
-	build := os.exec([vexe, '-o', tool, file])
-	assert build.exit_code == 0, build.output
+	tool := vup_host_fixture()!
+	command := ['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
+		'VUP_TEST_HOST=windows-arm64', tool, '-skip_v_self']
 	bootstrap_log := os.join_path(root, 'bootstrap.log')
 	bootstrap := os.join_path(root, 'cmd', 'tools', 'builders', 'windows_arm64_release.ps1')
 	write_executable(os.join_path(bin_dir, 'pwsh'), '#!/bin/sh\n' +
 		'printf "%s\\n" "\$@" > ' + os.quoted_path(bootstrap_log) + '\nexit 0\n')!
-	result := run_vup(root, home, tool, bin_dir, '-skip_v_self')!
+	result := os.exec(command)
 	assert result.exit_code == 0, result.output
 	assert os.read_file(bootstrap_log)!.split_into_lines() == ['-NoProfile', '-ExecutionPolicy',
 		'Bypass', '-File', bootstrap]
@@ -509,7 +543,7 @@ fn test_vup_preserves_native_windows_arm64_on_bootstrap_rebuild() ! {
 	assert !calls.contains('make'), calls
 	assert !calls.contains('latest_tcc'), calls
 	write_executable(os.join_path(bin_dir, 'pwsh'), '#!/bin/sh\necho "ARM64 bootstrap failed"\nexit 9\n')!
-	failed := run_vup(root, home, tool, bin_dir, '-skip_v_self')!
+	failed := os.exec(command)
 	assert failed.exit_code != 0, failed.output
 	assert failed.output.contains('ARM64 bootstrap failed'), failed.output
 	assert failed.output.contains('Recompiling V *failed*.'), failed.output
@@ -652,27 +686,19 @@ fn test_vup_generates_windows_c_without_handle_type_errors() ! {
 	defer {
 		os.rmdir_all(test_root) or {}
 	}
-	// A test compiled by the compatibility compiler must still exercise the
-	// default compiler, which checks C macros as integers.
-	compiler := if os.base(vexe) == 'v1_fallback.exe' {
-		os.join_path(vroot, 'v.exe')
-	} else if os.base(vexe) == 'v1_fallback' {
-		os.join_path(vroot, 'v')
-	} else {
-		vexe
-	}
+	compiler := vexe
 	source := os.join_path(vroot, 'cmd', 'tools', 'vup.v')
 	for cc in ['msvc', 'gcc', 'tcc'] {
 		c_file := os.join_path(test_root, 'vup_${cc}.c')
 		// Generating C exercises the Windows checker without needing a Windows SDK.
-		result := os.exec([compiler, '-new-compiler', '-g', '-gc', 'none', '-nocache', '-os', 'windows',
-			'-arch', 'amd64', '-cc', cc, '-o', c_file, source])
+		result := os.exec([compiler, '-g', '-gc', 'none', '-nocache', '-os', 'windows', '-arch',
+			'amd64', '-cc', cc, '-o', c_file, source])
 		assert result.exit_code == 0, result.output
 		assert os.is_file(c_file)
 	}
 	arm64 := os.join_path(test_root, 'vup_arm64.c')
-	arm64_result := os.exec([compiler, '-new-compiler', '-g', '-gc', 'none', '-nocache', '-os',
-		'windows', '-arch', 'arm64', '-cc', 'msvc', '-o', arm64, source])
+	arm64_result := os.exec([compiler, '-g', '-gc', 'none', '-nocache', '-os', 'windows', '-arch',
+		'arm64', '-cc', 'msvc', '-o', arm64, source])
 	assert arm64_result.exit_code == 0, arm64_result.output
 	assert os.is_file(arm64)
 }
@@ -680,109 +706,6 @@ fn test_vup_generates_windows_c_without_handle_type_errors() ! {
 fn write_executable(path string, content string) ! {
 	os.write_file(path, content)!
 	os.chmod(path, 0o755)!
-}
-
-fn test_vup_checks_primary_compiler_when_built_by_v1_fallback() ! {
-	$if windows {
-		return
-	}
-	test_root := os.join_path(os.vtmp_dir(), 'vup_primary_compiler_${os.getpid()}')
-	os.rmdir_all(test_root) or {}
-	os.mkdir_all(test_root)!
-	defer {
-		os.rmdir_all(test_root) or {}
-	}
-
-	tool := os.join_path(test_root, 'vup')
-	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vup.v')])
-	assert build.exit_code == 0, build.output
-
-	git_refs := os.join_path(test_root, '.git', 'refs', 'heads')
-	os.mkdir_all(git_refs)!
-	os.write_file(os.join_path(test_root, '.git', 'HEAD'), 'ref: refs/heads/master\n')!
-	os.write_file(os.join_path(git_refs, 'master'), 'abcdef0123456789abcdef0123456789abcdef01\n')!
-	os.mkdir_all(os.join_path(test_root, 'thirdparty', 'tcc', '.git'))!
-
-	bin_dir := os.join_path(test_root, 'bin')
-	os.mkdir_all(bin_dir)!
-	log_file := os.join_path(test_root, 'compiler.log')
-	write_executable(os.join_path(test_root, 'v'), '#!/bin/sh\n' + 'printf "%s\\n" "\$*" >> ${os.quoted_path(log_file)}\n' + 'if [ "\$1" = "wipe-cache" ]; then exit 0; fi\nif [ "\$1" = "version" ]; then\n' + '  echo "V 0.5.2 abcdef0"\n' + '  exit 0\n' + 'fi\n' + 'exit 1\n')!
-	write_executable(os.join_path(test_root, 'v1_fallback'), '#!/bin/sh\n' + 'printf "fallback %s\\n" "\$*" >> ${os.quoted_path(log_file)}\n' + 'exit 1\n')!
-	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' +
-		'if [ "\$1" = "-C" ]; then\n  echo "1111111111111111111111111111111111111111"\n' +
-		'elif [ "\$1" = "pull" ]; then\n  echo "Already up to date."\nfi\nexit 0\n')!
-	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nexit 0\n')!
-	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\nexit 0\n')!
-
-	path := '${bin_dir}:${os.getenv('PATH')}'
-	result := os.exec(['env', 'PATH=' + '${path}',
-		'VEXE=' + '${os.join_path(test_root, 'v1_fallback')}', '${tool}'])
-	assert result.exit_code == 0, result.output
-	assert result.output.contains('V is already updated.'), result.output
-	compiler_calls := os.read_file(log_file)!
-	assert !compiler_calls.contains('fallback'), compiler_calls
-	assert compiler_calls.trim_space().split_into_lines() == ['version', 'version'], compiler_calls
-}
-
-fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
-	$if windows {
-		return
-	}
-	test_root := os.join_path(os.vtmp_dir(), 'vup_missing_primary_compiler_${os.getpid()}')
-	os.rmdir_all(test_root) or {}
-	os.mkdir_all(test_root)!
-	defer {
-		os.rmdir_all(test_root) or {}
-	}
-
-	// Give the test tool a known embedded hash so the fallback and checkout can
-	// appear current while the primary compiler is missing.
-	vup_source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
-	assert vup_source.count('@VCURRENTHASH') == 1
-	test_source := os.join_path(test_root, 'vup.v')
-	os.write_file(test_source, vup_source.replace('@VCURRENTHASH', "'abcdef0'"))!
-	tool := os.join_path(test_root, 'vup')
-	build := os.exec([vexe, '-o', '${tool}', test_source])
-	assert build.exit_code == 0, build.output
-
-	git_refs := os.join_path(test_root, '.git', 'refs', 'heads')
-	os.mkdir_all(git_refs)!
-	os.write_file(os.join_path(test_root, '.git', 'HEAD'), 'ref: refs/heads/master\n')!
-	os.write_file(os.join_path(git_refs, 'master'), 'abcdef0123456789abcdef0123456789abcdef01\n')!
-
-	bin_dir := os.join_path(test_root, 'bin')
-	os.mkdir_all(bin_dir)!
-	make_log := os.join_path(test_root, 'make.log')
-	fallback_log := os.join_path(test_root, 'fallback.log')
-	compiler_log := os.join_path(test_root, 'compiler.log')
-	restored_v := os.join_path(test_root, 'restored_v')
-	write_executable(restored_v, '#!/bin/sh\n' +
-		'printf "%s\\n" "\$*" >> ' + os.quoted_path(compiler_log) + '\n' +
-		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
-	write_executable(os.join_path(test_root, 'v1_fallback'), '#!/bin/sh\n' + 'printf "%s\\n" "\$*" >> ${os.quoted_path(fallback_log)}\n' + 'if [ "\$1" = "version" ]; then\n' + '  echo "V 0.5.2 abcdef0"\n' + '  exit 0\n' + 'fi\n' + 'exit 1\n')!
-	os.mkdir_all(os.join_path(test_root, 'thirdparty', 'tcc', '.git'))!
-	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' +
-		'if [ "\$1" = "-C" ]; then\n  echo "1111111111111111111111111111111111111111"\n' +
-		'elif [ "\$1" = "pull" ]; then\n  echo "Already up to date."\nfi\nexit 0\n')!
-	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\n' +
-		'printf "make:%s\\n" "\$*" >> ${os.quoted_path(make_log)}\n' +
-		'if [ "\$#" = "0" ]; then\n' +
-		'  cp ' + os.quoted_path(restored_v) + ' ' +
-		os.quoted_path(os.join_path(test_root, 'v')) + '\n' +
-		'  chmod +x ' + os.quoted_path(os.join_path(test_root, 'v')) + '\nfi\nexit 0\n')!
-	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\n' + 'printf "gmake:%s\\n" "\$*" >> ${os.quoted_path(make_log)}\n' + 'exit 0\n')!
-
-	path := '${bin_dir}:${os.getenv('PATH')}'
-	primary_vexe := os.join_path(os.real_path(test_root), 'v')
-	result := os.exec(['env', 'PATH=' + '${path}',
-		'VEXE=' + '${os.join_path(test_root, 'v1_fallback')}', '${tool}'])
-	assert result.exit_code == 0, result.output
-	assert result.output.contains('`${primary_vexe}` is missing, trying `make` to restore it...'), result.output
-	make_calls := os.read_file(make_log)!
-	tcc_make_call := $if freebsd || openbsd || netbsd || dragonfly || solaris { 'gmake:latest_tcc' } $else { 'make:latest_tcc' }
-	assert make_calls.trim_space().split_into_lines() == [tcc_make_call, 'make:'], make_calls
-	assert !os.exists(fallback_log), os.read_file(fallback_log) or { '' }
-	assert os.read_file(compiler_log)!.contains('wipe-cache\n')
 }
 
 fn test_vup_help_lists_the_flags_without_touching_anything() ! {

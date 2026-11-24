@@ -30,6 +30,7 @@ fn conn_source(mut src ConnSource) fn () !&pool.ConnectionPoolable {
 
 @[heap]
 struct PooledConn {
+	validated ?chan bool
 mut:
 	healthy    bool = true
 	close_flag bool
@@ -40,6 +41,9 @@ mut:
 }
 
 fn (mut c PooledConn) validate() !bool {
+	if validated := c.validated {
+		_ = validated.try_push(true)
+	}
 	return c.healthy
 }
 
@@ -276,8 +280,12 @@ fn test_update_config_grows_the_idle_connection_count() {
 }
 
 fn test_update_config_shrinking_max_conns_keeps_the_pool_usable() {
-	mut src := &ConnSource{}
-	factory := conn_source(mut src)
+	validated := chan bool{cap: 1}
+	factory := fn [validated] () !&pool.ConnectionPoolable {
+		return &PooledConn{
+			validated: validated
+		}
+	}
 	mut p := pool.new_connection_pool(factory, pool.ConnectionPoolConfig{
 		max_conns:      5
 		min_idle_conns: 3
@@ -287,19 +295,26 @@ fn test_update_config_shrinking_max_conns_keeps_the_pool_usable() {
 		p.close()
 	}
 	assert p.stats().total_conns == 3
+	// Discard the validation signal from pool construction.
+	mut initial_validation := false
+	_ = validated.try_pop(mut initial_validation)
 
-	// NOTE: max_conns is lowered to exactly the number of tracked connections.
-	// Lowering it below that makes available_slots negative in prune_connections
-	// (vlib/pool/connection.v:619), and the loop at connection.v:637 then runs
-	// `for i in -1 .. 0` and panics on new_conns[-1]. The change is signalled on
-	// eviction_ch, so give the maintenance thread time to consume it.
+	// Wait for the configuration change to trigger a validation pass over the idle pool.
 	p.update_config(pool.ConnectionPoolConfig{
 		max_conns:      3
 		min_idle_conns: 1
 		idle_timeout:   time.minute
 	})!
-	time.sleep(100 * time.millisecond)
+	select {
+		_ := <-validated {
+		}
+		2 * time.second {
+			assert false, 'maintenance did not validate the idle connections after the update'
+			return
+		}
+	}
 
+	assert p.stats().total_conns == 3
 	c := p.get()!
 	assert p.stats().active_conns == 1
 	p.put(c)!

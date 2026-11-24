@@ -73,7 +73,7 @@ fn test_vmodules_callback_errors_are_reported_before_codegen() {
 	main := os.join_path(app, 'main.v')
 	os.write_file(main, 'import dep\nfn apply(f fn (dep.Item) dep.Item) dep.Item { return f(dep.Item{}) }\nfn main() { println(apply(dep.rename)) }\n')!
 	mut process := os.new_process(@VEXE)
-	process.set_args(['-new-compiler', '-nocache', '-check', main])
+	process.set_args(['-nocache', '-check', main])
 	mut environment := os.environ()
 	environment['VMODULES'] = modules
 	process.set_environment(environment)

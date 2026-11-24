@@ -144,7 +144,6 @@ fn test_unknown_project_backend_is_reported_with_its_manifest() {
 fn run_launcher_in(dir string, args []string, stdin_path string) os.Result {
 	mut environment := os.environ()
 	environment['VFLAGS'] = ''
-	environment[v3_no_fallback_env] = '1'
 	mut process := os.new_process(@VEXE)
 	process.set_args(args)
 	process.set_work_folder(dir)

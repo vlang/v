@@ -39,11 +39,10 @@ fn test_c_only_compiler_builds_and_reuses_full_backend_compiler() {
 		}
 	}
 	mut environment := {
-		'VFLAGS':                 ''
-		'VTOOLS_CACHE_DIR':       cache
-		'VTOOLS_NO_CACHE':        ''
-		'VTOOLS_CACHE_VERBOSE':   '1'
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_DIR':     cache
+		'VTOOLS_NO_CACHE':      ''
+		'VTOOLS_CACHE_VERBOSE': '1'
 	}
 	// Keep this regression valid when the test runner itself includes optional backends.
 	compiler := os.join_path(root, 'v_c_only' + $if windows { '.exe' } $else { '' })

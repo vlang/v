@@ -51,20 +51,24 @@ pub fn run() int {
 	v_file := os.join_path(test_dir, 'main.v')
 	os.write_file(v_file, source.str()) or { panic(err) }
 	for jobs in ['1', '2', '8'] {
-		c_file := os.join_path(test_dir, 'main_${jobs}.c')
-		generated := cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', '-o', c_file, v_file],
-			test_dir, {
-				'VJOBS': jobs
-			})
-		assert generated.exit_code == 0, 'VJOBS=${jobs}: ${generated.output}'
+		binary := os.join_path(test_dir, 'main_${jobs}')
+		c_file := '${binary}.c'
+		// The executable build retains C for the eight-worker storage check.
+		args := if jobs == '8' {
+			['-nocache', '-b', 'c', '-o', binary, 'run', v_file]
+		} else {
+			['-nocache', '-o', c_file, v_file]
+		}
+		built := cmdexec.run_in_merged_with_env(@VEXE, args, test_dir, {
+			'VJOBS': jobs
+		})
+		assert built.exit_code == 0, 'VJOBS=${jobs}: ${built.output}'
+		if jobs == '8' {
+			assert built.output.trim_space().split_into_lines() == ['2', '3139'], built.output
+		}
 		code := os.read_file(c_file) or { panic(err) }
 		assert code.contains('const string main__names[3] = '), 'VJOBS=${jobs}: `names` lost its fixed storage'
 		assert !code.contains('Array main__names;'), 'VJOBS=${jobs}'
 		assert code.contains('main__names[v_fixed_index('), 'VJOBS=${jobs}'
 	}
-	ran := cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', 'run', v_file], test_dir, {
-		'VJOBS': '8'
-	})
-	assert ran.exit_code == 0, ran.output
-	assert ran.output.trim_space().split_into_lines() == ['2', '3139']
 }

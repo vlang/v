@@ -30,7 +30,9 @@ fn new_bmp(tf &ttf.TTF_File, w int, h int) ttf.BitMap {
 	scale := f32(font_size * device_dpi) / f32(72 * int(tf.units_per_em))
 	return ttf.BitMap{
 		tf:       unsafe { tf }
-		buf:      unsafe { malloc(w * h * 4) }
+		// The checks count inked pixels, so the buffer must start blank: malloc only
+		// returns zeroed memory when the GC allocates it, not with `-gc none`.
+		buf:      unsafe { vcalloc(w * h * 4) }
 		buf_size: w * h * 4
 		scale:    scale
 		width:    w

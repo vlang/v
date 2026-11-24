@@ -28,8 +28,8 @@ fn test_macos_tcc_stats_keeps_native_bridge_on_cold_and_warm_builds() ! {
 		os.write_file(source, '#flag darwin -framework Foundation\n#flag darwin -Wl,-dead_strip\n#include "@DIR/native.m"\nfn C.stats_native_answer() int\nfn main() { assert C.stats_native_answer() == 42; println(@CCOMPILER); println(${attempt}) }\n')!
 		args := ['-u', 'VFLAGS', '-u', 'VEXE', '-u', 'CFLAGS', '-u', 'LDFLAGS',
 			'V3CACHE=' + os.join_path(root, 'cache'), 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1',
-			'V3_DISABLE_UNCHANGED_BUILD_CACHE=1', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-cc', 'tcc',
-			'-stats', '-show-timings', '-showcc', '-no-retry-compilation', '-o', exe, source]
+			'V3_DISABLE_UNCHANGED_BUILD_CACHE=1', @VEXE, '-cc', 'tcc', '-stats', '-show-timings',
+			'-showcc', '-no-retry-compilation', '-o', exe, source]
 		build := cmdexec.run('env', args)
 		assert build.exit_code == 0, '${attempt}: ${build.output}'
 		assert build.output.contains('checker summary: 0 V errors'), build.output
@@ -56,8 +56,8 @@ fn test_macos_tcc_unsupported_bridge_respects_no_retry() ! {
 	source := os.join_path(root, 'main.c.v')
 	os.write_file(source, '#include "@DIR/first.m"\n#include "@DIR/second.mm"\nfn C.first() int\nfn C.second() int\nfn main() { assert C.first() + C.second() == 3; println(@CCOMPILER) }\n')!
 	exe := os.join_path(root, 'program')
-	args := ['-u', 'VFLAGS', '-u', 'VEXE', 'V3CACHE=' + os.join_path(root, 'cache'),
-		'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none', '-cc', 'tcc', '-o', exe, source]
+	args := ['-u', 'VFLAGS', '-u', 'VEXE', 'V3CACHE=' + os.join_path(root, 'cache'), @VEXE, '-gc',
+		'none', '-cc', 'tcc', '-o', exe, source]
 	mut strict_args := args.clone()
 	strict_args.insert(strict_args.len - 3, '-no-retry-compilation')
 	strict := cmdexec.run('env', strict_args)
@@ -200,8 +200,7 @@ fn test_macos_tcc_cached_native_interfaces_preserve_native_compiler_abi() ! {
 			exe := os.join_path(project, 'program')
 			mut args := ['-u', 'VFLAGS', '-u', 'VEXE', 'V3CACHE=' + os.join_path(project, 'cache'),
 				'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', 'V3_DISABLE_UNCHANGED_BUILD_CACHE=1',
-				'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none', '-showcc', '-show-c-output',
-				'-no-retry-compilation', '-cc']
+				@VEXE, '-gc', 'none', '-showcc', '-show-c-output', '-no-retry-compilation', '-cc']
 			if attempt == 0 { args << ['clang', '-nocache'] } else { args << 'tcc' }
 			args << ['-o', exe, source]
 			build := cmdexec.run('env', args)
@@ -291,8 +290,8 @@ fn test_macos_tcc_links_cached_objc_dependencies_and_invalidates_nested_headers(
 			43
 		}}\n-7\ntrue', run.output
 	}
-	uncached := cmdexec.run('env', ['V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-cc', 'tcc', '-nocache',
-		'-no-retry-compilation', '-o', os.join_path(root, 'uncached'), source])
+	uncached := cmdexec.run('env', [@VEXE, '-cc', 'tcc', '-nocache', '-no-retry-compilation', '-o',
+		os.join_path(root, 'uncached'), source])
 	assert uncached.exit_code != 0, uncached.output
 }
 
@@ -357,9 +356,9 @@ fn test_macos_tcc_cached_external_module_invalidates_embedded_resource_metadata(
 		if attempt == 2 { os.write_file(payload, 'abcdefghijkl')! }
 		exe := os.join_path(project, 'program')
 		build := cmdexec.run('env', ['-u', 'VFLAGS', '-u', 'VEXE',
-			'V3CACHE=' + os.join_path(root, 'cache'), 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc',
-			'none', '-cc', 'tcc', '-no-retry-compilation', '-showcc', '-show-c-output', '-path',
-			'@vlib|${dependency_root}', '-o', exe, source])
+			'V3CACHE=' + os.join_path(root, 'cache'), @VEXE, '-gc', 'none', '-cc', 'tcc',
+			'-no-retry-compilation', '-showcc', '-show-c-output', '-path', '@vlib|${dependency_root}',
+			'-o', exe, source])
 		assert build.exit_code == 0, build.output
 		commands := build.output.split_into_lines().filter(it.trim_space().starts_with('> '))
 		assert commands.len > 0 && commands.last().contains('tcc.exe'), build.output
@@ -384,8 +383,8 @@ fn test_macos_tcc_native_owner_rejects_time_sensitive_cached_inputs() ! {
 	source := os.join_path(root, 'main.c.v')
 	os.write_file(source, '#include "@DIR/native.m"\nfn C.bridge_time() &char\nfn main() { assert !isnil(C.bridge_time()) }\n')!
 	build := cmdexec.run('env', ['-u', 'VFLAGS', '-u', 'VEXE',
-		'V3CACHE=' + os.join_path(root, 'cache'), 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
-		'-cc', 'tcc', '-no-retry-compilation', '-o', os.join_path(root, 'program'), source])
+		'V3CACHE=' + os.join_path(root, 'cache'), @VEXE, '-gc', 'none', '-cc', 'tcc',
+		'-no-retry-compilation', '-o', os.join_path(root, 'program'), source])
 	assert build.exit_code != 0, build.output
 	assert build.output.contains('native cache cannot expand date/time macros'), build.output
 }

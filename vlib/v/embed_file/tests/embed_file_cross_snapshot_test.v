@@ -16,6 +16,13 @@
 // they hold whichever backend generated it.
 import os
 
+fn testsuite_begin() {
+	// The snapshots are portable C, which the tests build with the host's `cc`. A C compiler
+	// that a job selects through VFLAGS, like the musl job's `musl-gcc`, would make them
+	// musl C, whose backtrace shims conflict with the glibc headers of that `cc`.
+	os.unsetenv('VFLAGS')
+}
+
 // c_min_logical_source_line is the shortest logical source line a conforming C
 // implementation may refuse to go past (C99 5.2.4.1). MSVC stops at 16384, so
 // staying under this covers it too.

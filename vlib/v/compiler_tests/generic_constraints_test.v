@@ -57,7 +57,7 @@ fn check_program_form(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, constraint_prelude + source) or { panic(err) }
-	return os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
+	return os.exec([@VEXE, '-check', '-nocolor', path])
 }
 
 // check_fixture checks `source` after the prelude as the checker fixtures are
@@ -77,7 +77,7 @@ fn check_fixture_form(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, constraint_prelude + source) or { panic(err) }
-	return os.exec([@VEXE, '-new-compiler', '-checker-fixture', '-check', '-nocolor', path])
+	return os.exec([@VEXE, '-checker-fixture', '-check', '-nocolor', path])
 }
 
 // same_with_methods checks, with `check`, the method form of `source`: its generic
@@ -113,7 +113,7 @@ fn check_whole_form(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, source) or { panic(err) }
-	return os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
+	return os.exec([@VEXE, '-check', '-nocolor', path])
 }
 
 // run_program builds and runs `source`, a whole program without the prelude,
@@ -135,7 +135,7 @@ fn run_program_form(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, source) or { panic(err) }
-	return os.exec([@VEXE, '-new-compiler', 'run', path])
+	return os.exec([@VEXE, 'run', path])
 }
 
 // error_lines returns `line:col: message` for every error of a check output,
@@ -984,7 +984,7 @@ fn main() {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, constraint_prelude + source) or { panic(err) }
-	run := os.exec([@VEXE, '-new-compiler', 'run', path])
+	run := os.exec([@VEXE, 'run', path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '1', run.output
 }
@@ -2096,7 +2096,7 @@ fn main() {
 		panic(err)
 	}
 	// Several parser workers, as a machine with more cores runs it.
-	return cmdexec.run_in('env', ['VJOBS=4', @VEXE, '-new-compiler', '-check', '-nocolor', '.'], dir)
+	return cmdexec.run_in('env', ['VJOBS=4', @VEXE, '-check', '-nocolor', '.'], dir)
 }
 
 fn test_a_constraint_from_another_module_is_checked_at_the_call() {

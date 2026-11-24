@@ -78,38 +78,30 @@ fn test_protect() {
 	assert valid == true
 }
 
-fn test_timeout() {
-	timeout := 1
-	short_time_config := &csrf.CsrfConfig{
-		secret:         'my-256bit-secret'
-		allowed_hosts:  ['*']
-		session_cookie: session_id_cookie_name
-		max_age:        timeout
+fn test_protect_rejects_expired_token() {
+	// Issue a signed token whose expiration time is already in the past.
+	expired_config := csrf.CsrfConfig{
+		...*csrf_config
+		max_age: -1
 	}
 
 	mut ctx := veb.Context{}
-
-	token := csrf.set_token(mut ctx, short_time_config)
-
-	// after 2 seconds the cookie should expire (maxage)
-	time.sleep(2 * time.second)
-	mut cookie := ctx.res.header.get(.set_cookie) or { '' }
-	// get cookie value from "name=value;"
-	cookie = cookie.split(' ')[0].all_after('=').replace(';', '')
+	token := csrf.set_token(mut ctx, &expired_config)
+	cookies := ctx.res.cookies()
+	assert cookies.len == 1
+	assert cookies[0].name == csrf_config.cookie_name
 
 	ctx = veb.Context{
 		form: {
-			short_time_config.token_name: token
+			csrf_config.token_name: token
 		}
 		req:  http.Request{
 			method: .post
 		}
 	}
-	ctx.req.add_cookie(name: short_time_config.cookie_name, value: cookie)
+	ctx.req.add_cookie(cookies[0])
 
-	valid := csrf.protect(mut ctx, short_time_config)
-
-	assert valid == false
+	assert !csrf.protect(mut ctx, csrf_config)
 }
 
 fn test_valid_origin() {

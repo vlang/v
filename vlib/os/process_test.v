@@ -1,138 +1,131 @@
+import io
 import os
+import os.cmdline
 import time
 
-const vexe = os.getenv('VEXE')
-const vroot = os.dir(vexe)
-const tfolder = os.join_path(os.vtmp_dir(), 'os_process_tests')
+const tfolder = os.join_path(os.vtmp_dir(), 'os_process_tests_${os.getpid()}')
 const test_os_process = os.join_path(tfolder, 'test_os_process.exe')
-const test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
-const echo_process_exe_filename = os.join_path(tfolder, 'echo.exe')
-const echo_process_source_filename = os.join_path(tfolder, 'echo.v')
 const delayed_output_exe_filename = os.join_path(tfolder, 'delayed_output.exe')
-const delayed_output_source_filename = os.join_path(tfolder, 'delayed_output.v')
+const pipe_output_exe_filename = os.join_path(tfolder, 'pipe_output.exe')
+const echo_process_exe_filename = os.join_path(tfolder, 'echo.exe')
 const utf16le_output_exe_filename = os.join_path(tfolder, 'utf16le_output.exe')
-const utf16le_output_source_filename = os.join_path(tfolder, 'utf16le_output.v')
 const stdin_exit_exe_filename = os.join_path(tfolder, 'stdin_exit.exe')
-const stdin_exit_source_filename = os.join_path(tfolder, 'stdin_exit.v')
 const stdin_copy_exe_filename = os.join_path(tfolder, 'stdin_copy.exe')
-const stdin_copy_source_filename = os.join_path(tfolder, 'stdin_copy.v')
 const argv_echo_exe_filename = os.join_path(tfolder, 'argv_echo.exe')
-const argv_echo_source_filename = os.join_path(tfolder, 'argv_echo.v')
-const echo_process_source_code = '
-module main
-import io
-import os
 
-fn main() {
-	unbuffer_stdout()
-	mut reader := io.new_buffered_reader(reader: os.stdin(), cap: 1)
-	for {
-		line := reader.read_line()!
-		println(line)
-		eprintln(line)
-	}
-}
-'
-
-const delayed_output_source_code = '
-module main
-import time
-
-fn main() {
-	unbuffer_stdout()
-	time.sleep(500 * time.millisecond)
-	println("late")
-	time.sleep(300 * time.millisecond)
-}
-'
-
-const utf16le_output_source_code = '
-module main
-import os
-
-fn main() {
-	payload := [u8(`O`), 0, `K`, 0, u8(10), 0]
-	mut out := os.stdout()
-	out.write(payload) or { panic(err) }
-}
-'
-
-const stdin_exit_source_code = '
-module main
-import os
-
-fn main() {
+fn wait_for_stdin() {
+	// Bound the wait even if the parent is stuck reading from stdout.
+	spawn fn () {
+		time.sleep(5 * time.second)
+		exit(2)
+	}()
 	_ = os.get_raw_line()
-	exit(7)
 }
-'
 
-const stdin_copy_source_code = '
-module main
-import io
-import os
-
-fn main() {
-	payload := io.read_all(reader: os.stdin()) or { panic(err) }
-	if os.args.len > 1 {
-		os.write_file_array(os.args[1], payload) or { panic(err) }
-		return
+fn run_process_io_fixture(name string) bool {
+	match name {
+		'echo.exe' {
+			unbuffer_stdout()
+			mut reader := io.new_buffered_reader(reader: os.stdin(), cap: 1)
+			for {
+				line := reader.read_line() or { panic(err) }
+				println(line)
+				eprintln(line)
+			}
+		}
+		'utf16le_output.exe' {
+			payload := [u8(`O`), 0, `K`, 0, u8(10), 0]
+			mut out := os.stdout()
+			out.write(payload) or { panic(err) }
+		}
+		'stdin_exit.exe' {
+			_ = os.get_raw_line()
+			exit(7)
+		}
+		'stdin_copy.exe' {
+			payload := io.read_all(reader: os.stdin()) or { panic(err) }
+			if os.args.len > 1 {
+				os.write_file_array(os.args[1], payload) or { panic(err) }
+			} else {
+				mut out := os.stdout()
+				out.write(payload) or { panic(err) }
+			}
+		}
+		'argv_echo.exe' {
+			for arg in os.args[1..] {
+				println(arg)
+			}
+		}
+		'delayed_output.exe' {
+			if os.args[1..] == ['--wait-for-stdin'] {
+				wait_for_stdin()
+				println('late')
+			}
+		}
+		'pipe_output.exe' {
+			unbuffer_stdout()
+			println('stdout, start')
+			eprintln('stderr, start')
+			for i in 1 .. 5 {
+				println('stdout, ' + i.str())
+				eprintln('stderr, ' + i.str())
+			}
+			if os.args[1..] == ['--wait-for-stdin'] {
+				wait_for_stdin()
+			}
+		}
+		'test_os_process.exe', 'test os process.exe', 'process_from_path.exe', 'preferred_tool.exe',
+		'exact_tool.exe', 'pathext_tool.com' {
+			args := os.args[1..]
+			if '-show_wd' in args {
+				println('stdout, WORK_DIR=${os.getwd()}')
+			}
+			if '-show_env' in args {
+				for key, value in os.environ() {
+					println('stdout, ${key}=${value}')
+				}
+			}
+			exit(cmdline.option(args, '-exitcode', '0').int())
+		}
+		'exact_tool.exe.exe', 'pathext_tool.exe', 'where.exe' {
+			// The executable lookup tests expect these decoys to exit with 0.
+		}
+		'spawn.exe' {
+			println('stale-prefix-exe')
+		}
+		else {
+			return false
+		}
 	}
-	mut out := os.stdout()
-	out.write(payload) or { panic(err) }
+	return true
 }
-'
-
-const argv_echo_source_code = '
-module main
-import os
-
-fn main() {
-	for arg in os.args[1..] {
-		println(arg)
-	}
-}
-'
 
 const echo_wait_timeout = 5 // seconds
 
 fn testsuite_begin() {
+	// Copies of the test binary use the filename to select an I/O fixture
+	// before normal suite setup, leaving each fixture's arguments intact.
+	if run_process_io_fixture(os.file_name(os.executable())) {
+		exit(0)
+	}
 	os.rmdir_all(tfolder) or {}
 	os.mkdir_all(tfolder)!
-	if os.getenv('WINE_TEST_OS_PROCESS_EXE') != '' {
+	prebuilt := os.getenv('WINE_TEST_OS_PROCESS_EXE')
+	if prebuilt != '' {
 		// Make it easier to run the test under wine emulation, by just
 		// prebuilding the executable with:
 		//   v -os windows -o x.exe cmd/tools/test_os_process.v
 		//   WINE_TEST_OS_PROCESS_EXE=x.exe ./v -os windows vlib/os/process_test.v
-		os.cp(os.getenv('WINE_TEST_OS_PROCESS_EXE'), test_os_process)!
+		os.cp(prebuilt, test_os_process)!
 	} else {
-		os.system_args([vexe, '-o', '${test_os_process}', test_os_process_source])
+		os.cp(os.executable(), test_os_process)!
 	}
-	assert os.exists(test_os_process)
 
-	os.write_file(echo_process_source_filename, echo_process_source_code)!
-	os.system_args([vexe, '-o', echo_process_exe_filename, echo_process_source_filename])
-	assert os.exists(echo_process_exe_filename)
-
-	os.write_file(delayed_output_source_filename, delayed_output_source_code)!
-	os.system_args([vexe, '-o', delayed_output_exe_filename, delayed_output_source_filename])
-	assert os.exists(delayed_output_exe_filename)
-
-	os.write_file(utf16le_output_source_filename, utf16le_output_source_code)!
-	os.system_args([vexe, '-o', utf16le_output_exe_filename, utf16le_output_source_filename])
-	assert os.exists(utf16le_output_exe_filename)
-
-	os.write_file(stdin_exit_source_filename, stdin_exit_source_code)!
-	os.system_args([vexe, '-o', stdin_exit_exe_filename, stdin_exit_source_filename])
-	assert os.exists(stdin_exit_exe_filename)
-
-	os.write_file(stdin_copy_source_filename, stdin_copy_source_code)!
-	os.system_args([vexe, '-o', stdin_copy_exe_filename, stdin_copy_source_filename])
-	assert os.exists(stdin_copy_exe_filename)
-
-	os.write_file(argv_echo_source_filename, argv_echo_source_code)!
-	os.system_args([vexe, '-o', argv_echo_exe_filename, argv_echo_source_filename])
-	assert os.exists(argv_echo_exe_filename)
+	for fixture in [echo_process_exe_filename, utf16le_output_exe_filename, stdin_exit_exe_filename,
+		stdin_copy_exe_filename, argv_echo_exe_filename, delayed_output_exe_filename,
+		pipe_output_exe_filename] {
+		os.cp(os.executable(), fixture)!
+	}
 }
 
 fn testsuite_end() {
@@ -162,7 +155,7 @@ fn test_set_work_folder() {
 	p.set_redirect_stdio()
 	p.wait()
 	assert p.code == 0
-	output := p.stdout_slurp().trim_space()
+	output := p.stdout_slurp()
 	p.close()
 	$if trace_process_output ? {
 		eprintln('p output: "${output}"')
@@ -176,16 +169,32 @@ fn test_set_work_folder() {
 	assert new_parent_work_folder != child_work_folder
 }
 
+// with_sanitizer_options adds the sanitizer runtime options of this process to
+// `env`, a replacement environment for a copy of this suite binary. In
+// sanitized builds the copy is instrumented too; without them, e.g. an ASan
+// `-gc none` build on Linux loses `LSAN_OPTIONS=detect_leaks=0`, reports its
+// leaks at exit and exits with 1.
+fn with_sanitizer_options(env map[string]string) map[string]string {
+	mut result := env.clone()
+	for name in ['ASAN_OPTIONS', 'LSAN_OPTIONS', 'MSAN_OPTIONS', 'TSAN_OPTIONS', 'UBSAN_OPTIONS'] {
+		value := os.getenv(name)
+		if value != '' {
+			result[name] = value
+		}
+	}
+	return result
+}
+
 fn test_set_environment() {
 	eprintln(@FN)
 	mut p := os.new_process(test_os_process)
 	p.set_args(['-show_env', '-target', 'stdout'])
-	p.set_environment({
+	p.set_environment(with_sanitizer_options({
 		'V_OS_TEST_PORT': '1234567890'
-	})
+	}))
 	p.set_redirect_stdio()
 	p.wait()
-	assert p.code == 0
+	assert p.code == 0, p.stderr_slurp()
 	output := p.stdout_slurp().trim_space()
 	p.close()
 	$if trace_process_output ? {
@@ -205,16 +214,14 @@ fn test_new_process_uses_exact_executable_path_when_folder_contains_spaces() {
 	spaced_exe := os.join_path(spaced_dir, 'test os process.exe')
 	os.cp(test_os_process, spaced_exe)!
 
-	stale_source := os.join_path(tfolder, 'spawn.v')
 	stale_exe := os.join_path(tfolder, 'spawn.exe')
-	os.write_file(stale_source, 'fn main() {\n\tprintln("stale-prefix-exe")\n}\n')!
-	assert os.system_args([vexe, '-o', stale_exe, stale_source]) == 0
+	os.cp(os.executable(), stale_exe)!
 
 	mut p := os.new_process(spaced_exe)
 	p.set_args(['-show_env', '-target', 'stdout'])
-	p.set_environment({
+	p.set_environment(with_sanitizer_options({
 		'V_OS_TEST_PORT': 'exact_path'
-	})
+	}))
 	p.set_redirect_stdio()
 	p.wait()
 	assert p.code == 0
@@ -434,31 +441,31 @@ fn test_new_process_tries_the_suffixes_in_pathext_order_on_windows() {
 
 fn test_run() {
 	eprintln(@FN)
-	mut p := os.new_process(test_os_process)
-	p.set_args(['-timeout_ms', '150', '-period_ms', '50'])
+	mut p := os.new_process(delayed_output_exe_filename)
+	p.set_args(['--wait-for-stdin'])
+	p.set_redirect_stdio()
 	p.run()
+	defer {
+		p.close()
+	}
 	assert p.status == .running
 	assert p.pid > 0
 	assert p.pid != os.getpid()
-	mut i := 0
-	for {
-		if !p.is_alive() {
-			break
-		}
+	assert p.is_alive()
+
+	p.stdin_write('continue\n')
+	sw := time.new_stopwatch()
+	for p.is_alive() && sw.elapsed() < echo_wait_timeout * time.second {
 		$if trace_process_output ? {
 			os.system_args(['ps', '-opid=', '-oppid=', '-ouser=', '-onice=', '-of=', '-ovsz=',
 				'-orss=', '-otime=', '-oargs=', '-p', '${p.pid}'])
 		}
-		time.sleep(50 * time.millisecond)
-		i++
+		time.sleep(time.millisecond)
 	}
+	assert !p.is_alive(), 'child should exit after receiving stdin'
 	p.wait()
 	assert p.code == 0
 	assert p.status == .exited
-
-	eprintln('polling iterations: ${i}')
-	assert i < 50
-	p.close()
 }
 
 fn test_wait() {
@@ -474,8 +481,7 @@ fn test_wait() {
 
 fn test_slurping_output() {
 	eprintln(@FN)
-	mut p := os.new_process(test_os_process)
-	p.set_args(['-timeout_ms', '600', '-period_ms', '50'])
+	mut p := os.new_process(pipe_output_exe_filename)
 	p.set_redirect_stdio()
 	assert p.status != .exited
 	p.wait()
@@ -585,6 +591,7 @@ fn test_close_before_wait_preserves_exit_code() {
 fn test_stdout_read_returns_immediately_when_no_data_is_pending() {
 	eprintln(@FN)
 	mut p := os.new_process(delayed_output_exe_filename)
+	p.set_args(['--wait-for-stdin'])
 	p.set_redirect_stdio()
 	p.run()
 	defer {
@@ -598,16 +605,19 @@ fn test_stdout_read_returns_immediately_when_no_data_is_pending() {
 	elapsed_ms := sw.elapsed().milliseconds()
 	assert output == ''
 	assert elapsed_ms < 300, 'stdout_read blocked for ${elapsed_ms}ms'
+	p.stdin_write('continue\n')
 	p.wait()
+	assert p.code == 0
 	assert p.stdout_slurp().contains('late')
 }
 
 fn test_pipe_read_while_process_is_alive() {
 	eprintln(@FN)
-	mut p := os.new_process(test_os_process)
-	p.set_args(['-timeout_ms', '600', '-period_ms', '50'])
+	mut p := os.new_process(pipe_output_exe_filename)
+	p.set_args(['--wait-for-stdin'])
 	p.set_redirect_stdio()
 	p.run()
+	defer { p.close() }
 	mut stdout_output := ''
 	mut stderr_output := ''
 	mut timeout := 0
@@ -624,16 +634,17 @@ fn test_pipe_read_while_process_is_alive() {
 		time.sleep(20 * time.millisecond)
 		timeout++
 	}
-	p.wait()
-	p.close()
+	assert p.is_alive(), 'child must stay alive until the pipe reads finish'
 	assert stdout_output.contains('stdout, start'), stdout_output
 	assert stderr_output.contains('stderr, start'), stderr_output
+	p.stdin_write('continue\n')
+	p.wait()
+	assert p.code == 0
 }
 
 fn test_pipe_read_returns_none_after_eof() {
 	eprintln(@FN)
-	mut p := os.new_process(test_os_process)
-	p.set_args(['-timeout_ms', '120', '-period_ms', '50'])
+	mut p := os.new_process(pipe_output_exe_filename)
 	p.set_redirect_stdio()
 	p.wait()
 	assert p.code == 0
@@ -671,7 +682,7 @@ fn concurrent_spawn_worker(id int, spawns int) int {
 	for i in 0 .. spawns {
 		expected := (id + i) % 5
 		mut p := os.new_process(test_os_process)
-		p.set_args(['-exitcode', '${expected}', '-timeout_ms', '50', '-period_ms', '200'])
+		p.set_args(['-exitcode', '${expected}', '-timeout_ms', '0'])
 		p.set_redirect_stdio()
 		p.wait()
 		_ = p.stdout_slurp()

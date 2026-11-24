@@ -25,8 +25,7 @@ fn test_detached_spawn_error_uses_v_allocator_free() ! {
 	source := os.join_path(dir, 'main.v')
 	c_source := os.join_path(dir, 'main.c')
 	os.write_file(source, "fn work() ! { return error('closed') }\nfn main() { spawn work() }\n")!
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-os', 'windows', '-gc', 'none', '-o',
-		c_source, source])
+	result := os.exec([@VEXE, '-nocache', '-os', 'windows', '-gc', 'none', '-o', c_source, source])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(c_source)!
 	wrapper := generated.all_after('static void* work_thread_wrapper_detached(void* arg) {').all_before('return NULL; }')
@@ -40,6 +39,11 @@ fn test_detached_spawn_error_uses_v_allocator_free() ! {
 }
 
 fn test_detached_spawn_nested_error_cleanup_compiles_as_c11() ! {
+	// This checks a Clang diagnostic. A Windows `clang` usually targets the MSVC
+	// ABI, which V cannot build Windows programs with.
+	$if windows {
+		return
+	}
 	cc := os.find_abs_path_of_executable('clang') or { return }
 	dir := os.join_path(os.vtmp_dir(), 'detached_error_cleanup_${os.getpid()}')
 	os.mkdir_all(dir)!

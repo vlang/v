@@ -5,6 +5,19 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 const hello_src = os.join_path(tests_dir, 'testdata', 'hello.v')
+const prod_flag_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_prod_flag_${os.getpid()}')
+const v3_bin = os.join_path(prod_flag_fixture_dir, 'v3' + $if windows { '.exe' } $else { '' })
+
+fn testsuite_begin() {
+	os.rmdir_all(prod_flag_fixture_dir) or {}
+	os.mkdir_all(prod_flag_fixture_dir)!
+	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, v3_src])
+	assert build.exit_code == 0, build.output
+}
+
+fn testsuite_end() {
+	os.rmdir_all(prod_flag_fixture_dir) or {}
+}
 
 fn has_non_runtime_include(c_code string) bool {
 	for line in c_code.split_into_lines() {
@@ -20,10 +33,6 @@ fn has_non_runtime_include(c_code string) bool {
 
 // test_prod_flag_before_input_uses_optimized_c_compile validates this v3 regression case.
 fn test_prod_flag_before_input_uses_optimized_c_compile() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_prod_flag_test')
-	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	out_bin := os.join_path(os.temp_dir(), 'v3_prod_hello')
 	compile := os.exec([v3_bin, '-prod', '-showcc', '${hello_src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
@@ -39,10 +48,6 @@ fn test_prod_flag_before_input_uses_optimized_c_compile() {
 
 // test_c99_flag_uses_c99_c_compile_mode validates this v3 regression case.
 fn test_c99_flag_uses_c99_c_compile_mode() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_flag_test')
-	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	out_bin := os.join_path(os.temp_dir(), 'v3_c99_hello')
 	compile := os.exec([v3_bin, '-prod', '-c99', '-showcc', '${hello_src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
@@ -59,10 +64,6 @@ fn test_c99_flag_uses_c99_c_compile_mode() {
 
 // test_c99_flag_emits_linux_feature_macros_in_headerless_preamble validates this v3 regression case.
 fn test_c99_flag_emits_linux_feature_macros_in_headerless_preamble() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_test')
-	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	out_c := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_hello.c')
 	src := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_hello_${os.getpid()}.v')
 	os.write_file(src, "fn main() { message := 'hello world'; println(message) }\n")!
@@ -85,10 +86,6 @@ fn test_c99_flag_emits_linux_feature_macros_in_headerless_preamble() {
 
 // test_c99_flag_uses_headerless_stdatomic_fallback validates this v3 regression case.
 fn test_c99_flag_uses_headerless_stdatomic_fallback() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_stdatomic_test')
-	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	src := os.join_path(os.temp_dir(), 'v3_c99_stdatomic_swap.v')
 	os.write_file(src,
 		"import sync.stdatomic\n\nfn main() {\n\tmut b := u8(1)\n\told_b_add := C.atomic_fetch_add_byte(voidptr(&b), u8(2))\n\tassert old_b_add == u8(1)\n\tassert b == u8(3)\n\told_b_sub := C.atomic_fetch_sub_byte(voidptr(&b), u8(1))\n\tassert old_b_sub == u8(3)\n\tassert b == u8(2)\n\n\tmut h := u16(10)\n\told_h_add := C.atomic_fetch_add_u16(voidptr(&h), u16(4))\n\tassert old_h_add == u16(10)\n\told_h_sub := C.atomic_fetch_sub_u16(voidptr(&h), u16(3))\n\tassert old_h_sub == u16(14)\n\tassert h == u16(11)\n\n\tmut w := u32(20)\n\told_w_sub := C.atomic_fetch_sub_u32(voidptr(&w), u32(5))\n\tassert old_w_sub == u32(20)\n\tassert w == u32(15)\n\n\tmut x := u64(1)\n\told := C.atomic_exchange_u64(voidptr(&x), u64(7))\n\tassert old == u64(1)\n\tassert x == u64(7)\n\tmut expected := u64(7)\n\tassert C.atomic_compare_exchange_strong_u64(voidptr(&x), &expected, u64(9))\n\tassert x == u64(9)\n\tprintln('atomic helpers ok')\n}\n") or {
@@ -108,10 +105,6 @@ fn test_c99_flag_uses_headerless_stdatomic_fallback() {
 // test_c99_flag_system_stdatomic_include_keeps_the_header validates this v3 regression case.
 // An explicit system header stays in the C output and owns its declarations.
 fn test_c99_flag_system_stdatomic_include_keeps_the_header() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic_test')
-	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	src := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic.v')
 	os.write_file(src,
 		"#include <stdatomic.h>\n\nfn main() {\n\tprintln('system stdatomic ok')\n}\n") or {

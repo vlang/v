@@ -14,22 +14,6 @@ const k_string = 'k:string'
 const k_counter = 'k:counter'
 const r_k_map = 'r:k:map'
 const r_k_set = 'r:k:set'
-const r_k_pubch = 'r:k:pubch'
-
-// Helper publisher used by the pub/sub test. This helper swallows errors and logs
-// them locally so it can be spawned safely without propagating results.
-fn publish_after_delay() {
-	// small delay to ensure subscriber is ready
-	time.sleep(50 * time.millisecond)
-	mut conn := redis.connect(password: redis_password, database: redis_test_database) or {
-		eprintln('publish_after_delay: connect failed: ${err}')
-		return
-	}
-	defer { conn.close() or { eprintln('publish_after_delay: close failed: ${err}') } }
-	conn.cmd('PUBLISH', r_k_pubch, 'hello') or {
-		eprintln('publish_after_delay: publish failed: ${err}')
-	}
-}
 
 // -------------------- FAST / BASIC TESTS --------------------
 
@@ -70,12 +54,22 @@ fn test_redis_basic() {
 	assert db.hget[string]('map', 'c')! == '3'
 	assert db.hgetall[string]('map')! == m
 
-	// test expire
-	assert db.expire('int', 1)!
-	time.sleep(2 * time.second)
-	db.get[i64]('int') or {
-		// tolerate server-specific message wording; ensure some message exists
-		assert err.msg().len > 0
+	// Verify EXPIRE sets a seconds-based TTL, then use a short millisecond TTL
+	// to exercise the transition to a missing key.
+	assert db.expire('int', 120)!
+	assert db.ttl('int')! in 1 .. 121
+	assert db.pexpire('int', 20)!
+	expiry_wait := time.new_stopwatch()
+	for expiry_wait.elapsed() < 2 * time.second {
+		if db.exists('int')! == 0 {
+			break
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	if _ := db.get[i64]('int') {
+		assert false, 'the key did not expire'
+	} else {
+		assert err is redis.NilError
 	}
 
 	// test del
@@ -323,10 +317,22 @@ fn test_resp3_pubsub_fast() {
 	if sub.version != 3 {
 		return
 	}
-	spawn publish_after_delay()
-	sub.cmd('SUBSCRIBE', r_k_pubch) or { eprintln('SUBSCRIBE failed: ${err}') }
-	time.sleep(200 * time.millisecond)
-	sub.cmd('PING') or { eprintln('PING (pubsub) failed: ${err}') }
+	channel := 'r:k:pubch:${rand.uuid_v4()}'
+	// The subscription acknowledgment guarantees the publisher can reach the subscriber.
+	ack := sub.cmd('SUBSCRIBE', channel)! as redis.RedisPush
+	assert ack.elements.len == 3
+	assert ack.elements[2] as i64 == 1
+
+	mut publisher := redis.connect(password: redis_password, database: redis_test_database)!
+	defer { publisher.close() or {} }
+	assert publisher.cmd('PUBLISH', channel, 'hello')! as i64 == 1
+
+	// The published push is queued ahead of the PING reply.
+	message := sub.cmd('PING')! as redis.RedisPush
+	assert message.elements.len == 3
+	assert (message.elements[0] as []u8).bytestr() == 'message'
+	assert (message.elements[1] as []u8).bytestr() == channel
+	assert (message.elements[2] as []u8).bytestr() == 'hello'
 }
 
 // -------------------- SLOW / HEAVY TESTS --------------------

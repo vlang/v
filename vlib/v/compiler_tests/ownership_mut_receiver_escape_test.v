@@ -34,7 +34,7 @@ ${binding}\treturn ${expression}
 
 fn main() { mut drops := 0; _ = escaped(&drops) }
 ')!
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
+		result := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
 		assert result.exit_code != 0, '${expression}: ${result.output}'
 		assert result.output.contains('cannot return a reference to local storage'), result.output
 	}
@@ -52,7 +52,7 @@ fn (mut builder Builder) reference() &Builder {
 }
 fn main() { mut builder := Builder{}; _ = builder.reference() }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
+	result := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('redefinition of `builder`'), result.output
 }
@@ -112,7 +112,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		result := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
 }
@@ -137,7 +137,7 @@ fn reference() &Builder {
 fn main() { assert reference().value == 42 }
 ')!
 		for mode in ['-no-parallel', ''] {
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 			if binding.contains('&Builder') {
 				assert out.exit_code == 0, out.output
 			} else {

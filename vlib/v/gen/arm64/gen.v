@@ -57,8 +57,8 @@ mut:
 	// export_entries holds the C names whose C-convention entry
 	// gen_export_entries emitted (see export_abi.v).
 	export_entries map[string]bool
-	// prune_unused emits only the functions reachable from main (freestanding
-	// objects, whose runtime registers helpers the program may never call).
+	// prune_unused emits only the functions reachable from main and exports
+	// (freestanding objects register helpers the program may never call).
 pub mut:
 	prune_unused bool
 	// freestanding links the program's own runtime definitions of libc-named
@@ -382,13 +382,13 @@ fn arm64_max_int(a int, b int) int {
 	return if a > b { a } else { b }
 }
 
-// reachable_functions marks the functions reachable from main through function
-// references in the instructions of each reachable body.
+// reachable_functions starts from main and exported functions, which linked C
+// code can call, then follows function references in each reachable body.
 fn (g &Gen) reachable_functions() []bool {
 	mut reach := []bool{len: g.m.funcs.len}
 	mut work := []int{}
 	for i, f in g.m.funcs {
-		if f.name == 'main' {
+		if f.name == 'main' || f.name in g.m.export_aliases {
 			reach[i] = true
 			work << i
 		}
@@ -2124,6 +2124,11 @@ fn (g &Gen) call_stack_arg_size(instr ssa.Instruction) int {
 }
 
 fn (g &Gen) c_variadic_start(instr ssa.Instruction) ?int {
+	// Darwin places unnamed arguments on the stack; Linux uses the usual
+	// AAPCS64 integer and floating-point argument registers first.
+	if g.m.target.is_linux() {
+		return none
+	}
 	if instr.operands.len == 0 {
 		return none
 	}

@@ -85,18 +85,19 @@ fn test_inline_asm() {
 	}
 	assert l == 7
 
-	// same as above
-	n := [i32(5), 9, 0, 4]
+	// The last element is a canary: a 64-bit memory write to an i32 element
+	// would carry into it when adding 2 to -1.
+	n := [i32(5), 9, 0, -1, 0x12345678]
 	asm amd64 {
 		loop_start2:
-		addq [in_data + rcx * 4 + 0], 2
+		addl [in_data + rcx * 4 + 0], 2
 		loop loop_start2
-		addq [in_data + rcx * 4 + 0], 2
-		; ; c (n.len - 1) // c is counter (loop) register
+		addl [in_data + rcx * 4 + 0], 2
+		; ; c (n.len - 2) // c is counter (loop) register; exclude the canary
 		  r (n.data) as in_data
 		; memory
 	}
-	assert n == [7, 11, 2, 6]
+	assert n == [7, 11, 2, 1, 0x12345678]
 
 	assert util.add(8, 9, 34, 7) == 58 // test .amd64.v imported files
 
@@ -145,11 +146,22 @@ fn test_rip_relative_label() {
 	}
 }
 
-$if !macos {
+// OpenBSD links amd64 code execute-only, and on CPUs with protection keys (PKU)
+// a load from it faults, so the data read by the rip-relative tests goes in
+// .rodata. GNU as for COFF has no .pushsection, and Windows code is readable.
+$if windows {
 	asm amd64 {
 		.global one_two_three
 		one_two_three:
 		.quad 48321074923
+	}
+} $else $if !macos {
+	asm amd64 {
+		.pushsection .rodata
+		.global one_two_three
+		one_two_three:
+		.quad 48321074923
+		.popsection
 	}
 }
 
@@ -167,11 +179,19 @@ fn test_rip_relative_label_u8() {
 	}
 }
 
-$if !macos {
+$if windows {
 	asm amd64 {
 		.global byte_sequence
 		byte_sequence:
 		.byte 0x27, 0x35, 0x0f, 0x48
+	}
+} $else $if !macos {
+	asm amd64 {
+		.pushsection .rodata
+		.global byte_sequence
+		byte_sequence:
+		.byte 0x27, 0x35, 0x0f, 0x48
+		.popsection
 	}
 }
 

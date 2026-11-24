@@ -15,8 +15,8 @@ fn test_option_rejects_error_state_and_implicit_err() {
 	defer { os.rm(path) or {} }
 	for i, source in sources {
 		os.write_file(path, source)!
-		command := '${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}'
-		result := os.exec([@VEXE, '-new-compiler', '-check', path])
+		command := '${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}'
+		result := os.exec([@VEXE, '-check', path])
 		assert result.exit_code != 0, source
 		assert result.output.contains(expected[i]), result.output
 	}

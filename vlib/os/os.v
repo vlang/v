@@ -722,7 +722,13 @@ fn find_abs_path_of_executable_in_path_env(exe_name string, env_path string) !st
 	for suffix in executable_suffixes_for(exe_name) {
 		fexepath := exe_name + suffix
 		if is_abs_path(fexepath) {
-			return fexepath
+			// An absolute name is not searched for. A suffix is only added when it names
+			// a file (Windows `C:/tcc/tcc` is `C:/tcc/tcc.exe`, not a missing `tcc.com`);
+			// otherwise the name is returned as it was given.
+			if suffix == '' || is_file(fexepath) {
+				return fexepath
+			}
+			continue
 		}
 		if fexepath.contains(path_separator) {
 			if is_file(fexepath) && is_executable(fexepath) {

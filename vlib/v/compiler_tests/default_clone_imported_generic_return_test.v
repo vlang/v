@@ -62,10 +62,10 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		check := os.execute('${os.quoted_path(compiler)} -new-compiler -no-memory-limit -nocache -gc none -ownership ${mode} -check ${os.quoted_path(source)}')
+		check := os.execute('${os.quoted_path(compiler)} -no-memory-limit -nocache -gc none -ownership ${mode} -check ${os.quoted_path(source)}')
 		assert check.exit_code == 0, '${mode}: ${check.output}'
 		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(compiler)} -new-compiler -no-memory-limit -nocache -gc none -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+		compile := os.execute('${os.quoted_path(compiler)} -no-memory-limit -nocache -gc none -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, '${mode}: ${run.output}'
@@ -83,7 +83,7 @@ fn invalid[T](sink &model.Sink[T]) int { return sink.stats().missing_method() }
 fn main() { owner := model.new_sink(7); _ = invalid(&owner) }
 ')!
 	for mode in ['-no-parallel', ''] {
-		check := os.execute('${os.quoted_path(compiler)} -new-compiler -no-memory-limit -nocache -gc none -ownership ${mode} -check ${os.quoted_path(source)}')
+		check := os.execute('${os.quoted_path(compiler)} -no-memory-limit -nocache -gc none -ownership ${mode} -check ${os.quoted_path(source)}')
 		assert check.exit_code != 0, '${mode}: ${check.output}'
 		assert check.output.contains('unknown method or field:'), check.output
 		assert check.output.contains('.missing_method`'), check.output
@@ -105,7 +105,7 @@ fn invalid[T](sink &model.Sink[T]) int {
 fn main() { _ = Stats{}; owner := model.new_sink(7); _ = invalid(&owner) }
 ')!
 	for mode in ['-no-parallel', ''] {
-		check := os.execute('${os.quoted_path(compiler)} -new-compiler -no-memory-limit -nocache -gc none -ownership ${mode} -check ${os.quoted_path(source)}')
+		check := os.execute('${os.quoted_path(compiler)} -no-memory-limit -nocache -gc none -ownership ${mode} -check ${os.quoted_path(source)}')
 		assert check.exit_code != 0, '${mode}: ${check.output}'
 		assert check.output.contains('unknown method or field:'), check.output
 		assert check.output.contains('.clone`'), check.output
@@ -127,7 +127,7 @@ fn main() {
 	for ownership in ['', '-ownership'] {
 		compiler := if ownership.len > 0 { imported_stats_fixture_vexe() } else { @VEXE }
 		for mode in ['-no-parallel', ''] {
-			flags := '-new-compiler -no-memory-limit -nocache -gc none ${ownership} ${mode}'
+			flags := '-no-memory-limit -nocache -gc none ${ownership} ${mode}'
 			check := os.execute('${os.quoted_path(compiler)} ${flags} -check ${os.quoted_path(source)}')
 			assert check.exit_code == 0, '${flags}: ${check.output}'
 			output := os.join_path(root, 'program_${ownership.len}_${mode.len}')

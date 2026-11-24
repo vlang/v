@@ -8,7 +8,6 @@
 module mcp
 
 import net.http
-import time
 
 // meta_params builds a 2026-07-28 `_meta` object. The schema requires
 // `io.modelcontextprotocol/protocolVersion` and
@@ -189,12 +188,7 @@ fn test_2026_unsupported_version_error_shape() {
 }
 
 fn test_2026_header_mismatch_error_shape() {
-	mut server_value := new_server(name: 's', version: '0')
-	mut server := &server_value
-	server_thread := spawn server.serve_http('127.0.0.1:0')
-	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
-	time.sleep(20 * time.millisecond)
-	url := 'http://${server.http_server.addr}/mcp'
+	mut server := new_server(name: 's', version: '0')
 
 	mut header := http.new_header(http.HeaderConfig{
 		key:   .content_type
@@ -206,29 +200,21 @@ fn test_2026_header_mismatch_error_shape() {
 	// The header names one revision while `_meta` names another.
 	header.set_custom(mcp_protocol_version_header, protocol_version_2025_11_25)!
 	header.set_custom(mcp_method_header, 'tools/list')!
-	response := http.fetch(
+	response := server.handle_http_request(http.Request{
 		method: .post
-		url:    url
+		url:    '/mcp'
 		data:   request_2026(1, 'tools/list', '')
 		header: header
-	)!
+	})
 	assert response.status_code == 400
 	body := decode_response(response.body)!
 	assert body.error.code == header_mismatch.code
 	assert body.error.code == -32020
 	assert body.jsonrpc == '2.0'
-
-	server.close()
-	server_thread.wait() or {}
 }
 
 fn test_2026_missing_client_capabilities_is_invalid_request() {
-	mut server_value := new_server(name: 's', version: '0')
-	mut server := &server_value
-	server_thread := spawn server.serve_http('127.0.0.1:0')
-	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
-	time.sleep(20 * time.millisecond)
-	url := 'http://${server.http_server.addr}/mcp'
+	mut server := new_server(name: 's', version: '0')
 
 	// `RequestMetaObject` requires the protocol version AND the client
 	// capabilities; a request naming only the version is malformed.
@@ -237,18 +223,15 @@ fn test_2026_missing_client_capabilities_is_invalid_request() {
 		method: 'tools/list'
 		params: '{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}'
 	}.encode()
-	response := http.fetch(
+	response := server.handle_http_request(http.Request{
 		method: .post
-		url:    url
+		url:    '/mcp'
 		data:   body
 		header: post_2026_header('tools/list')
-	)!
+	})
 	assert response.status_code == 400
 	// A malformed request, not a header/body contradiction.
 	assert decode_response(response.body)!.error.code == -32600
-
-	server.close()
-	server_thread.wait() or {}
 }
 
 fn test_2026_listen_acknowledgement_is_tagged_with_subscription_id() {

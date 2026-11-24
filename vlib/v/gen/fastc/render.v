@@ -3417,10 +3417,10 @@ fn (g &Parser) render_struct_comparison_expression(tokens []FastcExpressionToken
 	memo_key := fastc_comparison_memo_key(tokens, 0)
 	if memo_key != 0 {
 		if cached := g.comparison_memo[memo_key] {
-			if cached.source == '' {
+			if cached.result.source == '' {
 				return none
 			}
-			return cached
+			return cached.result
 		}
 	}
 	mut result := FastcRenderedExpression{}
@@ -3429,7 +3429,10 @@ fn (g &Parser) render_struct_comparison_expression(tokens []FastcExpressionToken
 	}
 	if memo_key != 0 {
 		mut w := unsafe { &Parser(g) }
-		w.comparison_memo[memo_key] = result
+		w.comparison_memo[memo_key] = FastcComparisonMemoEntry{
+			tokens: tokens.data
+			result: result
+		}
 	}
 	if result.source == '' {
 		return none
@@ -3935,7 +3938,7 @@ fn (g &Parser) render_as_cast_expression_with_reference(tokens []FastcExpression
 	target_c := g.type_from_expression_tokens(tokens[as_index + 1..]) or { return none }
 	inferred_left := g.infer_expression_type(left_tokens) or { return none }
 	left_type := fastc_normalize_inferred_type(inferred_left)
-	if fastc_trim_pointer_type(left_type) == target_c {
+	if !fastc_is_pointer_type(target_c) && g.semantic_type_key(left_type) == g.semantic_type_key(target_c) {
 		if g.member_smartcasts.len > 0 {
 			if path := fastc_indexed_member_chain_path(left_tokens) {
 				if cast := g.member_smartcasts[path] {
@@ -4318,10 +4321,10 @@ fn (g &Parser) render_mixed_integer_comparison_expression(tokens []FastcExpressi
 	memo_key := fastc_comparison_memo_key(tokens, 1)
 	if memo_key != 0 {
 		if cached := g.comparison_memo[memo_key] {
-			if cached.source == '' {
+			if cached.result.source == '' {
 				return none
 			}
-			return cached
+			return cached.result
 		}
 	}
 	mut result := FastcRenderedExpression{}
@@ -4330,7 +4333,10 @@ fn (g &Parser) render_mixed_integer_comparison_expression(tokens []FastcExpressi
 	}
 	if memo_key != 0 {
 		mut w := unsafe { &Parser(g) }
-		w.comparison_memo[memo_key] = result
+		w.comparison_memo[memo_key] = FastcComparisonMemoEntry{
+			tokens: tokens.data
+			result: result
+		}
 	}
 	if result.source == '' {
 		return none
@@ -5083,6 +5089,12 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 	}
 	if g.selfhost && tokens.len > 1 && tokens[0].tok == .amp && !tokens[0].is_mut_argument {
 		operand := fastc_strip_paren_tokens(tokens[1..])
+		if operand.len == 1 && operand[0].has_source() && !operand[0].is_storage
+			&& operand[0].source_text().starts_with('({') && operand[0].typ != 0 {
+			// A lowered fallback is a computed value even when its last C operand
+			// is a dereference. Give an explicit borrow backing storage.
+			return g.value_address_expression(operand[0].typ, operand[0].source_text(), operand)
+		}
 		if operand.len == 1 && operand[0].tok == .name && !operand[0].has_source() {
 			if local := g.locals[operand[0].lit] {
 				if local.is_reference && (tokens.len == 2 || local.is_heap_value) {
@@ -5490,11 +5502,14 @@ fn (g &Parser) render_function_value_expression(tokens []FastcExpressionToken) ?
 	if function_key !in g.functions && function_key !in g.mono_functions {
 		return none
 	}
-	if tokens.len == 1 && !function_key.contains('.')
-		&& (tokens[0].lit in g.constants || tokens[0].lit in g.globals) {
-		// A main-module constant or global that shares its name with a function is
-		// the value of that name outside a call.
-		return none
+	if tokens.len == 1 {
+		name := tokens[0].lit
+		if fastc_constant_key(g.module_name, name) in g.constants
+			|| fastc_global_key(g.module_name, name) in g.globals {
+			// A constant or global that shares its name with a function is the
+			// value of that name outside a call.
+			return none
+		}
 	}
 	name := g.c_function_name_for_key(function_key)
 	if function_key.starts_with('C.') && name == 'v3_native_bridge_' + function_key[2..] {
@@ -6526,6 +6541,7 @@ fn (g &Parser) render_option_propagation(inner_tokens []FastcExpressionToken) ?F
 	}
 	inner_raw := g.render_raw_expression_tokens(inner_tokens) or { return none }
 	mut inner_source := inner_raw
+	mut lookup_error := ''
 	if call_member := g.render_call_result_member_expression(inner_tokens) {
 		inner_source = call_member.source
 	} else if defaulted_call := g.render_missing_call_arguments(inner_tokens) {
@@ -6542,8 +6558,10 @@ fn (g &Parser) render_option_propagation(inner_tokens []FastcExpressionToken) ?F
 		inner_source = method_expression.source
 	} else if map_lookup := g.render_map_lookup_option_expression(inner_tokens) {
 		inner_source = map_lookup.source
+		lookup_error = 'builtin__error(_S("map key does not exist"))'
 	} else if array_lookup := g.render_array_lookup_option_expression(inner_tokens) {
 		inner_source = array_lookup.source
+		lookup_error = 'builtin__error(_S(""))'
 	} else if array_expression := g.render_array_access_expression(inner_tokens) {
 		inner_source = array_expression.source
 	} else if defaulted_call := g.render_missing_call_arguments(inner_tokens) {
@@ -6562,6 +6580,10 @@ fn (g &Parser) render_option_propagation(inner_tokens []FastcExpressionToken) ?F
 			'_S("none")'
 		}
 		'${deferred} builtin__panic_result_not_set(${message});'
+	} else if g.return_type == fastc_type_result && lookup_error != '' {
+		// Checked indexing is represented by an Option lookup, but `!` reports
+		// a missing key or index as an error from a Result-returning function.
+		'${g.deferred_scopes_source()} return (__v_result){.err=${lookup_error}, .state=1};'
 	} else if g.return_type in [fastc_type_option, fastc_type_result] {
 		'return ${temporary};'
 	} else if g.prefs.is_test {
@@ -7474,6 +7496,10 @@ fn (g &Parser) render_fixed_array_value(tokens []FastcExpressionToken) ?string {
 		}
 	}
 	value := g.render_call_argument_expression(body[2..], element_type) or { return none }
+	return fastc_fixed_array_fill_source(typ, length, value)
+}
+
+fn fastc_fixed_array_fill_source(typ u32, length string, value string) string {
 	return '({ ${flat.source_type_name(typ)} __vf_fixed_value; for (int __vf_fixed_index = 0; __vf_fixed_index < ${length}; __vf_fixed_index++) { __vf_fixed_value.data[__vf_fixed_index] = (${value}); } __vf_fixed_value; })'
 }
 

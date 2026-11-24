@@ -1,4 +1,3 @@
-import time
 import sync
 import sync.pool
 
@@ -16,17 +15,13 @@ mut:
 	seen  []int
 }
 
-fn worker_s(mut p pool.PoolProcessor, idx int, worker_id int) &SResult {
+fn worker_s(mut p pool.PoolProcessor, idx int, _ int) &SResult {
 	item := p.get_item[string](idx)
-	println('worker_s worker_id: ${worker_id} | idx: ${idx} | item: ${item}')
-	time.sleep(3 * time.millisecond)
 	return &SResult{'${item} ${item}'}
 }
 
-fn worker_i(mut p pool.PoolProcessor, idx int, worker_id int) &IResult {
+fn worker_i(mut p pool.PoolProcessor, idx int, _ int) &IResult {
 	item := p.get_item[int](idx)
-	println('worker_i worker_id: ${worker_id} | idx: ${idx} | item: ${item}')
-	time.sleep(5 * time.millisecond)
 	return &IResult{item * 1000}
 }
 
@@ -45,16 +40,11 @@ fn test_work_on_strings() {
 		maxjobs:  8
 	)
 
-	pool_s.work_on_items(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])
-	for x in pool_s.get_results[SResult]() {
-		println(x.s)
-		assert x.s.len > 1
-	}
-	println('---------- pool_s.get_results_ref: --------------')
-	for x in pool_s.get_results_ref[SResult]() {
-		println(x.s)
-		assert x.s.len > 1
-	}
+	items := ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
+	expected := items.map('${it} ${it}')
+	pool_s.work_on_items(items)
+	assert pool_s.get_results[SResult]().map(it.s) == expected
+	assert pool_s.get_results_ref[SResult]().map(it.s) == expected
 }
 
 fn test_work_on_ints() {
@@ -65,16 +55,11 @@ fn test_work_on_ints() {
 		callback: worker_i
 	)
 
-	pool_i.work_on_items([1, 2, 3, 4, 5, 6, 7, 8])
-	for x in pool_i.get_results[IResult]() {
-		println(x.i)
-		assert x.i > 100
-	}
-	println('---------- pool_i.get_results_ref: --------------')
-	for x in pool_i.get_results_ref[IResult]() {
-		println(x.i)
-		assert x.i > 100
-	}
+	items := [1, 2, 3, 4, 5, 6, 7, 8]
+	expected := items.map(it * 1000)
+	pool_i.work_on_items(items)
+	assert pool_i.get_results[IResult]().map(it.i) == expected
+	assert pool_i.get_results_ref[IResult]().map(it.i) == expected
 }
 
 fn test_pool_can_be_reused() {

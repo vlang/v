@@ -195,8 +195,8 @@ class PrepareVTests(unittest.TestCase):
         ])
         compiler_args = [event["args"] for event in self.events("compiler")]
         self.assertFalse(any("self" in args for args in compiler_args))
-        self.assertIn(["-new-compiler", "-gc", "none", "run", "cmd/tools/detect_tcc.v"], compiler_args)
-        self.assertIn(["-new-compiler", "-gc", "none", "run", ".github/problem-matchers/register_all.vsh"], compiler_args)
+        self.assertIn(["-gc", "none", "run", "cmd/tools/detect_tcc.v"], compiler_args)
+        self.assertIn(["-gc", "none", "run", ".github/problem-matchers/register_all.vsh"], compiler_args)
 
     def test_artifact_reuse_does_not_bootstrap_a_missing_compiler(self):
         (self.repo / "v").unlink()
@@ -326,6 +326,53 @@ class PrepareVTests(unittest.TestCase):
         self.assertIn("V_CI_SOURCE_BUILD must be 0 or 1", result.stderr)
         self.assertEqual((self.repo / "v").read_bytes(), self.original)
         self.assertEqual(self.events(), [])
+
+    def test_generate_stage_only_writes_the_c_project(self):
+        result = self.run_prepare(V_CI_SOURCE_BUILD="1", V_CI_VPROD_STAGE="generate")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((self.repo / "vprod.project" / "generated").is_file())
+        self.assertEqual((self.repo / "v").read_bytes(), self.original)
+        builds = [event for event in self.events("compiler") if "self" in event["args"]]
+        self.assertEqual(len(builds), 1)
+        self.assertIn("-prod", builds[0]["args"])
+        for name in ISOLATED:
+            self.assertIsNone(builds[0]["env"][name], name)
+        # Neither the native C compile, the version check nor the caches run here.
+        self.assertEqual([event for event in self.events("make") if "-C" in event["args"]], [])
+        self.assertNotIn(["-version"], [event["args"] for event in self.events("compiler")])
+        self.assertFalse(any("cache-basic-modules" in event["args"] for event in self.events("make")))
+
+    def test_install_stage_installs_the_compiled_project(self):
+        project = self.repo / "vprod.project"
+        project.mkdir()
+        shutil.copyfile(self.production, project / "v")
+        result = self.run_prepare("-j2", V_CI_SOURCE_BUILD="1", V_CI_VPROD_STAGE="install")
+        self.assert_success(result)
+        self.assertFalse(project.exists())
+        self.assertEqual([event for event in self.events("compiler") if "self" in event["args"]], [])
+        self.assertEqual([event for event in self.events("make") if "-C" in event["args"]], [])
+        caches = [event for event in self.events("make") if "cache-basic-modules" in event["args"]]
+        self.assertEqual(caches[0]["args"], ["-j2", "cache-basic-modules"])
+
+    def test_install_stage_without_a_compiled_project_preserves_compiler(self):
+        (self.repo / "vprod.project").mkdir()
+        result = self.run_prepare(V_CI_SOURCE_BUILD="1", V_CI_VPROD_STAGE="install")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("No compiled compiler", result.stderr)
+        self.assertEqual((self.repo / "v").read_bytes(), self.original)
+        self.assertEqual(self.events("make") + self.events("compiler"), [])
+
+    def test_invalid_vprod_stage_options_fail_before_modifying_checkout(self):
+        for env, message in [
+            ({"V_CI_SOURCE_BUILD": "1", "V_CI_VPROD_STAGE": "compile"}, "must be generate or install"),
+            ({"V_CI_VPROD_STAGE": "generate"}, "needs V_CI_SOURCE_BUILD=1"),
+        ]:
+            with self.subTest(env=env):
+                result = self.run_prepare(**env)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertEqual((self.repo / "v").read_bytes(), self.original)
+                self.assertEqual(self.events(), [])
 
     def test_empty_checkout_bootstraps_before_optimized_build(self):
         (self.repo / "v").unlink()

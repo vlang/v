@@ -9,8 +9,25 @@ const driver_cli_vlib_dir = os.dir(os.dir(os.dir(@FILE)))
 const driver_cli_v3_dir = os.dir(os.dir(@FILE))
 const driver_cli_v3_src = os.join_path(driver_cli_v3_dir, 'v.v')
 
-fn build_driver_cli_v3(root string) string {
-	return build_driver_cli_v3_with_flags(root, [])
+fn driver_cli_compilers_dir() string {
+	return os.join_path(os.vtmp_dir(), 'v3_driver_cli_compilers_${os.getpid()}')
+}
+
+fn testsuite_begin() {
+	os.rmdir_all(driver_cli_compilers_dir()) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(driver_cli_compilers_dir()) or {}
+}
+
+fn build_driver_cli_v3() string {
+	return build_driver_cli_v3_with_flags(os.join_path(driver_cli_compilers_dir(), 'plain'), [])
+}
+
+fn build_driver_cli_prealloc_v3() string {
+	return build_driver_cli_v3_with_flags(os.join_path(driver_cli_compilers_dir(), 'prealloc'),
+		['-prealloc'])
 }
 
 fn build_driver_cli_v3_with_flags(root string, flags []string) string {
@@ -20,6 +37,10 @@ fn build_driver_cli_v3_with_flags(root string, flags []string) string {
 	$if windows {
 		bin += '.exe'
 	}
+	if os.is_executable(bin) {
+		return bin
+	}
+	os.mkdir_all(root) or { panic(err) }
 	mut args := ['-gc', 'none']
 	args << flags
 	args << ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', bin, driver_cli_v3_src]
@@ -31,8 +52,34 @@ fn build_driver_cli_v3_with_flags(root string, flags []string) string {
 	} $else {
 		result = cmdexec.run(@VEXE, args)
 	}
+	if result.exit_code != 0 {
+		os.rm(bin) or {}
+	}
 	assert result.exit_code == 0, result.output
 	return bin
+}
+
+// driver_cli_executable is the executable that the driver writes for `path`, which
+// gets the `.exe` suffix on Windows.
+fn driver_cli_executable(path string) string {
+	$if windows {
+		return path + '.exe'
+	}
+	return path
+}
+
+// driver_cli_module_cache_args prepends to `args` a C compiler that builds through
+// the module cache. A Windows `-prod` build that names no `-cc` takes MSVC when a
+// Developer Command Prompt is set up, as in the MSVC CI job, and the module cache
+// does not compile with MSVC (only with TinyCC, Clang, GCC and MinGW), so a test of
+// that cache names the MinGW GCC there.
+fn driver_cli_module_cache_args(args []string) []string {
+	mut result := []string{cap: args.len + 2}
+	$if windows {
+		result << ['-cc', 'gcc']
+	}
+	result << args
+	return result
 }
 
 fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
@@ -56,7 +103,7 @@ fn test_driver_n_hides_notices() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source_dir := os.join_path(root, 'input')
 	os.mkdir_all(source_dir)!
 	source := os.join_path(source_dir, 'main.v')
@@ -142,7 +189,7 @@ fn test_driver_v1_compatible_profile_options() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 
 	api_source := os.join_path(root, 'profile_api.v')
 	os.write_file(api_source, '@[has_globals]
@@ -389,7 +436,7 @@ fn test_driver_only_monomorphizes_when_generics_are_used() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	hello_source := os.join_path(root, 'hello.v')
 	os.write_file(hello_source, "fn main() { println('ok') }\n") or { panic(err) }
 	hello_output := os.join_path(root, 'hello.c')
@@ -455,7 +502,7 @@ fn test_v3_garbage_collector_modes() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'gc_mode.v')
 	os.write_file(source, 'fn main() {
 	mut values := []string{}
@@ -539,7 +586,7 @@ fn test_standard_v3_excludes_ownership_checker() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, "fn main() {
 	println('no ownership')
@@ -572,7 +619,7 @@ fn test_explicit_arm64_import_unskips_ssa_dependencies() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'module main
 
@@ -592,7 +639,7 @@ fn test_driver_cflags_include_dir_is_visible_to_c_compiler() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	include_dir := os.join_path(root, 'headers with spaces')
 	os.mkdir_all(include_dir) or { panic(err) }
 	os.write_file(os.join_path(include_dir, 'cli_header.h'), 'typedef struct CliHeaderValue {
@@ -672,7 +719,7 @@ fn test_driver_finalizes_binaries_from_suffixing_c_compilers_on_windows() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() {\n\tprintln(41 + 1)\n}\n') or { panic(err) }
 	// The driver compiles to an extension-less `out` inside its build directory;
@@ -694,7 +741,7 @@ fn test_driver_ldflags_are_appended_to_the_link_command() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	// `make LDFLAGS=...` bootstraps V with `-ldflags`, so the driver has to accept
 	// the option instead of rejecting it as unknown.
 	library_dir := os.join_path(root, 'link libs')
@@ -796,7 +843,7 @@ fn test_driver_persistent_macos_output_survives_cache_removal() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3_with_flags(root, ['-prealloc'])
+	v3_bin := build_driver_cli_prealloc_v3()
 	source := os.join_path(root, 'persistent.v')
 	os.write_file(source, "fn main() {
 	println('persistent-output-ok')
@@ -833,7 +880,7 @@ fn test_driver_macos_wrapv_and_cg_link_flags() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3_with_flags(root, ['-prealloc'])
+	v3_bin := build_driver_cli_prealloc_v3()
 	source := os.join_path(root, 'signed_overflow.v')
 	// `int` is 64-bit on a 64-bit target, so the overflow point is spelled with the
 	// fixed-width types: each one must wrap (`-fwrapv`) instead of being folded away
@@ -942,7 +989,8 @@ fn test_driver_c_project_and_dump_include_effective_dependency_flags() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
+	cc := $if windows { 'gcc' } $else { 'cc' }
 	native_source := os.join_path(root, 'native_dependency.c')
 	os.write_file(native_source, '#ifndef V3_REVIEW_DEPENDENCY_FLAG
 #error missing generated dependency flag
@@ -965,49 +1013,55 @@ fn main() {
 ')!
 	project_dir := os.join_path(root, r'project $with spaces')
 	project_dump := os.join_path(root, 'project_flags.txt')
-	generate := cmdexec.run(v3_bin, ['-silent', '-prod', '-dump-c-flags', project_dump,
+	generate := cmdexec.run(v3_bin, ['-silent', '-cc', cc, '-prod', '-dump-c-flags', project_dump,
 		'-generate-c-project', project_dir, source])
 	assert generate.exit_code == 0, generate.output
 	build_command := os.read_file(os.join_path(project_dir, 'build_command.txt'))!
 	project_flags := os.read_lines(project_dump)!
-	for expected in ['-std=gnu11', '-O3', '-flto', '-DV3_REVIEW_DEPENDENCY_FLAG=1',
-		resolved_native_source] {
+	for expected in ['-std=gnu11', '-O3', '-flto', '-DV3_REVIEW_DEPENDENCY_FLAG=1'] {
 		assert build_command.contains(expected), build_command
 		assert expected in project_flags, project_flags.str()
 	}
-	assert !build_command.contains(resolved_native_source.all_before_last('.c') + '.o'), build_command
+	assert project_flags.any(it.ends_with('native_dependency.c')
+		&& os.real_path(it) == resolved_native_source), project_flags.str()
+	assert build_command.replace('\\', '/').contains(resolved_native_source.replace('\\', '/')), build_command
+	assert !build_command.contains('native_dependency.o'), build_command
 	batch_command := os.read_file(os.join_path(project_dir, 'build.bat'))!
-	assert batch_command.contains('"${project_dir}'), batch_command
+	assert batch_command.replace('\\', '/').contains('"${project_dir.replace('\\', '/')}'), batch_command
 	assert !batch_command.contains("'${project_dir}"), batch_command
 	makefile := os.read_file(os.join_path(project_dir, 'Makefile'))!
 	assert makefile.contains(r'project $$with spaces'), makefile
-	make_build := cmdexec.run('make', ['-C', project_dir])
-	assert make_build.exit_code == 0, make_build.output
-	project_build := cmdexec.run('sh', [os.join_path(project_dir, 'build.sh')])
-	assert project_build.exit_code == 0, project_build.output
+	$if windows {
+		batch_build := cmdexec.run(os.join_path(project_dir, 'build.bat'), [])
+		assert batch_build.exit_code == 0, batch_build.output
+	} $else {
+		make_build := cmdexec.run('make', ['-C', project_dir])
+		assert make_build.exit_code == 0, make_build.output
+		project_build := cmdexec.run('sh', [os.join_path(project_dir, 'build.sh')])
+		assert project_build.exit_code == 0, project_build.output
+		backslash_project_dir := os.join_path(root, r'project\backslash')
+		backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project',
+			backslash_project_dir, source])
+		assert backslash_generate.exit_code == 0, backslash_generate.output
+		backslash_build := cmdexec.run('sh', [
+			os.join_path(backslash_project_dir, 'build.sh'),
+		])
+		assert backslash_build.exit_code == 0, backslash_build.output
+		backslash_make := cmdexec.run('make', ['-C', backslash_project_dir])
+		assert backslash_make.exit_code == 0, backslash_make.output
+	}
 	project_run := cmdexec.run(os.join_path(project_dir, 'effective_flags'), [])
 	assert project_run.exit_code == 0, project_run.output
 	assert project_run.output == '42\n', project_run.output
 
-	backslash_project_dir := os.join_path(root, r'project\backslash')
-	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project', backslash_project_dir,
-		source])
-	assert backslash_generate.exit_code == 0, backslash_generate.output
-	backslash_build := cmdexec.run('sh', [
-		os.join_path(backslash_project_dir, 'build.sh'),
-	])
-	assert backslash_build.exit_code == 0, backslash_build.output
-	backslash_make := cmdexec.run('make', ['-C', backslash_project_dir])
-	assert backslash_make.exit_code == 0, backslash_make.output
-
 	bin_output := os.join_path(root, 'effective_flags')
 	bin_dump := os.join_path(root, 'binary_flags.txt')
-	compile := cmdexec.run(v3_bin, ['-silent', '-prod', '-showcc', '-dump-c-flags', bin_dump, '-o',
-		bin_output, source])
+	compile := cmdexec.run(v3_bin, ['-silent', '-cc', cc, '-prod', '-showcc', '-dump-c-flags',
+		bin_dump, '-o', bin_output, source])
 	assert compile.exit_code == 0, compile.output
 	bin_flags := os.read_lines(bin_dump)!
 	for expected in ['-std=gnu11', '-O3', '-flto', '-w', '-Wno-int-conversion',
-		'-DV3_REVIEW_DEPENDENCY_FLAG=1', '-lm'] {
+		'-DV3_REVIEW_DEPENDENCY_FLAG=1', $if windows { '-municode' } $else { '-lm' }] {
 		assert expected in bin_flags, bin_flags.str()
 		assert compile.output.contains(expected), compile.output
 	}
@@ -1024,7 +1078,7 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'app.v')
 	os.write_file(source, "fn main() { println('option-value-doc') }\n")!
 	for define_option in ['-d', '-define'] {
@@ -1068,7 +1122,7 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	dump_result := run_driver_in_work_folder(v3_bin, ['-silent', '-dump-c-flags', 'doc', '-o',
 		dump_output, source], dump_case)
 	assert dump_result.exit_code == 0, dump_result.output
-	assert os.is_file(dump_output)
+	assert os.is_file(dump_output + $if windows { '.exe' } $else { '' })
 	assert os.is_file(os.join_path(dump_case, 'doc'))
 
 	// `-message-limit` takes a number (156d46a47f), so `doc` is an invalid limit; it is
@@ -1088,7 +1142,7 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'main.v')
 	os.mkdir_all(os.join_path(root, 'cached'))!
 	os.write_file(os.join_path(root, 'cached', 'cached.v'), 'module cached\n\npub fn value() int { return 40 }\n')!
@@ -1098,20 +1152,20 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 
 	cold_output := os.join_path(root, 'cold')
-	cold := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', cold_output,
-		source], environment)
+	cold := run_driver_with_environment(v3_bin, driver_cli_module_cache_args(['-v', '-prod',
+		'-no-parallel', '-o', cold_output, source]), environment)
 	assert cold.exit_code == 0, cold.output
 	assert !cold.output.contains('(cached)'), cold.output
 
 	warm_output := os.join_path(root, 'warm')
-	warm := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', warm_output,
-		source], environment)
+	warm := run_driver_with_environment(v3_bin, driver_cli_module_cache_args(['-v', '-prod',
+		'-no-parallel', '-o', warm_output, source]), environment)
 	assert warm.exit_code == 0, warm.output
 	assert warm.output.contains('cgen (cached)'), warm.output
 
 	no_skip_output := os.join_path(root, 'no_skip')
-	no_skip := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-no-skip-unused',
-		'-o', no_skip_output, source], environment)
+	no_skip := run_driver_with_environment(v3_bin, driver_cli_module_cache_args(['-v', '-prod',
+		'-no-parallel', '-no-skip-unused', '-o', no_skip_output, source]), environment)
 	assert no_skip.exit_code == 0, no_skip.output
 	assert !no_skip.output.contains('(cached)'), no_skip.output
 	no_skip_run := cmdexec.run(no_skip_output, [])
@@ -1147,7 +1201,7 @@ fn test_driver_user_native_header_bypasses_cgen_cache() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	mut environment := os.environ()
 	environment['VTMP'] = os.join_path(root, 'vtmp')
 	environment['V3CACHE'] = os.join_path(root, 'cache')
@@ -1158,8 +1212,9 @@ fn test_driver_user_native_header_bypasses_cgen_cache() {
 	system_source := os.join_path(root, 'system.v')
 	os.write_file(system_source, 'module main\n\n#include <stddef.h>\n\nfn main() { println(42) }\n')!
 	for attempt in 0 .. 2 {
-		system := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o',
-			os.join_path(root, 'system_${attempt}'), system_source], environment)
+		system_args := driver_cli_module_cache_args(['-v', '-prod', '-no-parallel', '-o',
+			os.join_path(root, 'system_${attempt}'), system_source])
+		system := run_driver_with_environment(v3_bin, system_args, environment)
 		assert system.exit_code == 0, system.output
 		assert !system.output.contains(bypass), system.output
 		assert attempt == 0 || system.output.contains('cgen (cached)'), system.output
@@ -1172,8 +1227,8 @@ fn test_driver_user_native_header_bypasses_cgen_cache() {
 	for value in [41, 42] {
 		os.write_file(header, 'static inline int native_value(void) { return ${value}; }\n')!
 		output := os.join_path(root, 'user_${value}')
-		user := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', output,
-			user_source], environment)
+		user := run_driver_with_environment(v3_bin, driver_cli_module_cache_args(['-v', '-prod',
+			'-no-parallel', '-o', output, user_source]), environment)
 		assert user.exit_code == 0, user.output
 		assert user.output.contains(bypass), user.output
 		assert !user.output.contains('(cached)'), user.output
@@ -1190,7 +1245,7 @@ fn test_driver_valued_define_activates_optional_flag_and_source_suffix() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	project := os.join_path(root, 'project')
 	os.mkdir_all(project)!
 	os.write_file(os.join_path(project, 'main.v'), "module main
@@ -1235,7 +1290,7 @@ fn test_driver_explicit_silent_define_is_distinct_from_internal_quiet_mode() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, "@[if silent ?]\nfn print_silent_attribute() {\n\tprintln('attribute silent')\n}\n\nfn main() {\n\t\$if silent ? {\n\t\tprintln('silent')\n\t} \$else {\n\t\tprintln('not silent')\n\t}\n\tprint_silent_attribute()\n}\n")!
 
@@ -1252,15 +1307,15 @@ fn test_driver_explicit_silent_define_is_distinct_from_internal_quiet_mode() {
 	}
 }
 
-fn test_driver_compiles_inline_assembly_without_compatibility() {
+fn test_driver_compiles_inline_assembly() {
 	$if amd64 || arm64 {
-		root := os.join_path(os.vtmp_dir(), 'v3_driver_inline_asm_fallback_${os.getpid()}')
+		root := os.join_path(os.vtmp_dir(), 'v3_driver_inline_asm_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root) or { panic(err) }
 		defer {
 			os.rmdir_all(root) or {}
 		}
-		v3_bin := build_driver_cli_v3(root)
+		v3_bin := build_driver_cli_v3()
 		source := os.join_path(root, 'inline_asm.v')
 		arch := pref.host_arch()
 		os.write_file(source, 'fn main() {
@@ -1269,34 +1324,11 @@ fn test_driver_compiles_inline_assembly_without_compatibility() {
 	}
 }
 ')!
-		fallback_file := os.join_path(root, 'fallback')
-		mut environment := os.environ()
-		// Keep the marker available to prove that supported assembly does not request
-		// a compatibility retry.
-		environment.delete('V_MACOS_V3_NO_FALLBACK')
-		environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 		output := os.join_path(root, 'inline_asm_program')
-		result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-o', output,
-			source], environment)
+		result := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-o', output, source])
 		assert result.exit_code == 0, result.output
-		assert !os.exists(fallback_file)
 		run := cmdexec.run(output, [])
 		assert run.exit_code == 0, run.output
-		environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
-		environment_source := os.join_path(root, 'fallback_environment.v')
-		os.write_file(environment_source, "import os
-
-const compile_fallback = \$env('V_MACOS_V3_FALLBACK_FILE')
-
-fn main() {
-	println(compile_fallback + '|' + os.getenv('V_MACOS_V3_FALLBACK_FILE'))
-}
-")!
-		environment_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel',
-			'-no-memory-limit', 'run', environment_source], environment)
-		assert environment_run.exit_code == 0, environment_run.output
-		assert environment_run.output == '|\n', environment_run.output
-		assert !os.exists(fallback_file)
 	}
 }
 
@@ -1329,14 +1361,14 @@ fn main() {
 	}
 }
 
-fn test_driver_compiles_chained_generic_calls_without_compatibility() {
-	root := os.join_path(os.vtmp_dir(), 'v3_driver_language_fallback_${os.getpid()}')
+fn test_driver_compiles_chained_generic_calls() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_generic_chain_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'generic_fn_call.v')
 	os.write_file(source, 'struct Opt[T] {
 	val T
@@ -1362,17 +1394,10 @@ fn main() {
 	assert result.some && result.val == 5
 }
 ')!
-	fallback_file := os.join_path(root, 'fallback')
-	mut environment := os.environ()
-	// Keep the marker available to prove that the valid generic chain does not
-	// request a compatibility retry.
-	environment.delete('V_MACOS_V3_NO_FALLBACK')
-	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 	output := os.join_path(root, 'generic_fn_call')
-	result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
-		'-no-memory-limit', '-o', output, source], environment)
+	result := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-nocache', '-no-memory-limit', '-o',
+		output, source])
 	assert result.exit_code == 0, result.output
-	assert !os.exists(fallback_file)
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 
@@ -1381,20 +1406,19 @@ fn main() {
 	exit(23)
 }
 ')!
-	nonzero_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
-		'-no-memory-limit', 'run', nonzero_source], environment)
+	nonzero_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-nocache', '-no-memory-limit',
+		'run', nonzero_source])
 	assert nonzero_run.exit_code == 23, nonzero_run.output
-	assert !os.exists(fallback_file)
 }
 
-fn test_driver_requests_macos_compatibility_for_c_compilation_errors() {
-	root := os.join_path(os.vtmp_dir(), 'v3_driver_c_error_fallback_${os.getpid()}')
+fn test_driver_reports_c_compilation_errors_directly() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_c_error_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'missing_symbol.c.v')
 	os.write_file(source, 'fn C.v3_missing_symbol()
 
@@ -1402,25 +1426,12 @@ fn main() {
 	C.v3_missing_symbol()
 }
 ')!
-	fallback_file := os.join_path(root, 'fallback')
-	report_dir := os.join_path(root, 'c_error')
-	mut environment := os.environ()
-	// Exercises the fallback transport, so clear CI's job-level no-fallback guard.
-	environment.delete('V_MACOS_V3_NO_FALLBACK')
-	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
-	environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
-	result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
-		'-no-memory-limit', source], environment)
-	assert result.exit_code != 0
-	assert result.output == '', result.output
-	assert os.read_file(fallback_file)! == 'c_compilation_error'
-	assert os.read_file(os.join_path(report_dir, 'compiler'))!.trim_space() != ''
-	assert os.read_file(os.join_path(report_dir, 'output'))!.to_lower().contains('v3_missing_symbol')
-	source_name := os.read_file(os.join_path(report_dir, 'source_name'))!.trim_space()
-	assert source_name == 'src.c'
-	assert os.is_file(os.join_path(report_dir, source_name))
-	v_sources := os.read_file(os.join_path(report_dir, 'v_sources'))!.split('\x00')
-	assert os.real_path(source) in v_sources
+	compiler := $if windows { 'gcc' } $else { 'cc' }
+	result := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-nocache', '-gc', 'none',
+		'-no-memory-limit', '-cc', compiler, source])
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('C compilation'), result.output
+	assert result.output.contains('v3_missing_symbol'), result.output
 }
 
 fn test_driver_cg_selects_debug_module_files() {
@@ -1430,7 +1441,7 @@ fn test_driver_cg_selects_debug_module_files() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	project := os.join_path(root, 'project')
 	variant_dir := os.join_path(project, 'variant')
 	os.mkdir_all(variant_dir) or { panic(err) }
@@ -1475,7 +1486,7 @@ fn test_driver_propagates_default_compiler_and_hash_pseudos() {
 		defer {
 			os.rmdir_all(root) or {}
 		}
-		v3_bin := build_driver_cli_v3(root)
+		v3_bin := build_driver_cli_v3()
 		project := os.join_path(root, 'project')
 		module_dir := os.join_path(project, 'compilerinfo')
 		os.mkdir_all(module_dir) or { panic(err) }
@@ -1560,15 +1571,13 @@ fn test_driver_preserves_macos_launcher_caller_environment() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'caller_environment.v')
 	os.write_file(source, "import os
 
 const compile_vexe = \$env('VEXE')
 const compile_vchild = \$env('VCHILD')
-const compile_no_fallback = \$env('V_MACOS_V3_NO_FALLBACK')
 const compile_private = \$env('V_MACOS_V3_CALLER_VEXE')
-const compile_c_error_dir = \$env('V_MACOS_V3_C_ERROR_DIR')
 const compile_crun_identity = \$env('V3_CRUN_BUILD_IDENTITY')
 const compile_internal_restart = \$env('V3_INTERNAL_RESTART')
 
@@ -1578,11 +1587,9 @@ fn env_value(name string) string {
 
 fn main() {
 	println('compile:' + compile_vexe + '|' + compile_vchild)
-	println('no-fallback:' + compile_no_fallback + '|' + env_value('V_MACOS_V3_NO_FALLBACK'))
 	println('runtime:' + env_value('VEXE') + '|' + env_value('VCHILD'))
 	println('private:' + compile_private + '|' + env_value('V_MACOS_V3_CALLER_VEXE') + '|' +
 		env_value('V_MACOS_V3_CALLER_VCHILD'))
-	println('c-error-dir:' + compile_c_error_dir + '|' + env_value('V_MACOS_V3_C_ERROR_DIR'))
 	println('crun-private:' + compile_crun_identity + '|' + compile_internal_restart + '|' +
 		env_value('V3_CRUN_BUILD_IDENTITY') + '|' + env_value('V3_INTERNAL_RESTART'))
 }
@@ -1595,10 +1602,6 @@ fn main() {
 	unset_environment['V_MACOS_V3_CALLER_VEXE_PRESENT'] = '0'
 	unset_environment['V_MACOS_V3_CALLER_VCHILD'] = ''
 	unset_environment['V_MACOS_V3_CALLER_VCHILD_PRESENT'] = '0'
-	unset_environment['V_MACOS_V3_NO_FALLBACK'] = '1'
-	unset_environment['V_MACOS_V3_CALLER_NO_FALLBACK'] = ''
-	unset_environment['V_MACOS_V3_CALLER_NO_FALLBACK_PRESENT'] = '0'
-	unset_environment['V_MACOS_V3_C_ERROR_DIR'] = os.join_path(root, 'private-c-error')
 	unset_environment['V3_CRUN_BUILD_IDENTITY'] = 'private-crun-identity'
 	unset_environment['V3_INTERNAL_RESTART'] = '1'
 	unset_environment['V3CACHE'] = cache_dir
@@ -1606,20 +1609,18 @@ fn main() {
 	unset_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
 		'-o', unset_output, 'run', source], unset_environment)
 	assert unset_run.exit_code == 0, unset_run.output
-	assert unset_run.output == 'compile:|\nno-fallback:|<unset>\nruntime:<unset>|<unset>\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\ncrun-private:||<unset>|<unset>\n', unset_run.output
+	assert unset_run.output == 'compile:|\nruntime:<unset>|<unset>\nprivate:|<unset>|<unset>\ncrun-private:||<unset>|<unset>\n', unset_run.output
 
 	mut set_environment := unset_environment.clone()
 	set_environment['V_MACOS_V3_CALLER_VEXE'] = 'caller-vexe'
 	set_environment['V_MACOS_V3_CALLER_VEXE_PRESENT'] = '1'
 	set_environment['V_MACOS_V3_CALLER_VCHILD'] = 'caller-vchild'
 	set_environment['V_MACOS_V3_CALLER_VCHILD_PRESENT'] = '1'
-	set_environment['V_MACOS_V3_CALLER_NO_FALLBACK'] = 'caller-no-fallback'
-	set_environment['V_MACOS_V3_CALLER_NO_FALLBACK_PRESENT'] = '1'
 	set_output := os.join_path(root, 'caller_set')
 	set_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
 		'-o', set_output, 'run', source], set_environment)
 	assert set_run.exit_code == 0, set_run.output
-	assert set_run.output == 'compile:caller-vexe|caller-vchild\nno-fallback:caller-no-fallback|caller-no-fallback\nruntime:caller-vexe|caller-vchild\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\ncrun-private:||<unset>|<unset>\n', set_run.output
+	assert set_run.output == 'compile:caller-vexe|caller-vchild\nruntime:caller-vexe|caller-vchild\nprivate:|<unset>|<unset>\ncrun-private:||<unset>|<unset>\n', set_run.output
 }
 
 fn test_driver_resolves_boolean_d_and_documented_pseudos() {
@@ -1629,7 +1630,7 @@ fn test_driver_resolves_boolean_d_and_documented_pseudos() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	project := os.join_path(root, 'project')
 	git_refs := os.join_path(project, '.git', 'refs', 'heads')
 	os.mkdir_all(git_refs) or { panic(err) }
@@ -1704,7 +1705,7 @@ fn test_driver_finds_parent_vmod_and_git_from_relative_input() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'parent_vmod' }\n")!
 	os.write_file(os.join_path(project, '.git', 'HEAD'), 'ref: refs/heads/main\n')!
 	os.write_file(os.join_path(git_refs, 'main'), '0123456789abcdef0123456789abcdef01234567\n')!
@@ -1745,7 +1746,7 @@ fn test_delegated_driver_preserves_invoking_vroot() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	other_checkout := os.join_path(root, 'other_checkout')
 	os.mkdir_all(os.join_path(other_checkout, 'vlib', 'builtin')) or { panic(err) }
 	source := os.join_path(other_checkout, 'main.v')
@@ -1780,7 +1781,7 @@ fn test_driver_run_preserves_stdin() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'stdin_program.v')
 	output := os.join_path(root, 'stdin_program')
 	input_file := os.join_path(root, 'input.txt')
@@ -1798,7 +1799,7 @@ fn test_explicit_c_backend_retains_complete_cached_translation_unit() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	module_dir := os.join_path(root, 'retainedmod')
 	os.mkdir_all(module_dir) or { panic(err) }
 	os.write_file(os.join_path(module_dir, 'retainedmod.v'), "module retainedmod\n\npub fn message() string {\n\treturn 'complete cached translation unit'\n}\n")!
@@ -1841,7 +1842,7 @@ fn test_cached_module_keeps_synthesized_default_clone_helper() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	module_dir := os.join_path(root, 'cachedclone')
 	os.mkdir_all(module_dir) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'cached_default_clone' }\n")!
@@ -1905,7 +1906,7 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3_with_flags(root, ['-prealloc'])
+	v3_bin := build_driver_cli_prealloc_v3()
 	program := os.join_path(root, 'dispatcher_build.v')
 	binary := os.join_path(root, 'dispatcher_build')
 	os.write_file(program, "println('built')")!
@@ -1917,8 +1918,12 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	assert built.exit_code == 0, built.output
 	assert built.output == 'built\n', built.output
 	implicit_program := os.join_path(root, 'implicit_build.v')
-	implicit_binary := os.join_path(root, 'implicit_build')
-	implicit_c := implicit_binary + '.c'
+	implicit_binary_base := os.join_path(root, 'implicit_build')
+	mut implicit_binary := implicit_binary_base
+	$if windows {
+		implicit_binary += '.exe'
+	}
+	implicit_c := implicit_binary_base + '.c'
 	os.write_file(implicit_program, "println('implicit')")!
 	os.write_file(implicit_c, 'existing C source')!
 	implicit_build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', implicit_program])
@@ -1979,7 +1984,7 @@ fn main() {
 	implicit_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', 'run', run_program])
 	assert implicit_run.exit_code == 0, implicit_run.output
 	assert implicit_run.output == 'ran once\n', implicit_run.output
-	assert !os.exists(run_binary)
+	assert !os.exists(run_binary + $if windows { '.exe' } $else { '' })
 	assert !os.exists(run_binary + '.c')
 	$if !windows {
 		interrupted_program := os.join_path(root, 'interrupted_run.v')
@@ -2091,25 +2096,25 @@ println(os.args[1..].join('|'))
 	run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'one', '--two'])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'false\ncached module\none|--two\n', run.output
-	script_binary := source.all_before_last('.vsh')
+	script_binary := driver_cli_executable(source.all_before_last('.vsh'))
 	assert os.is_file(script_binary)
 	assert !os.exists(source.all_before_last('.vsh') + '.c')
 	warm_cache_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'warm'])
 	assert warm_cache_run.exit_code == 0, warm_cache_run.output
 	assert warm_cache_run.output == 'false\ncached module\nwarm\n', warm_cache_run.output
-	compat_source := os.join_path(root, 'compat_script_binary.v')
-	os.write_file(compat_source, "fn main() {
-	println('compatibility binary')
+	other_source := os.join_path(root, 'different_script_binary.v')
+	os.write_file(other_source, "fn main() {
+	println('different binary')
 }
 ")!
-	compat_build := cmdexec.run(@VEXE, ['-old-compiler', '-o', script_binary, compat_source])
-	assert compat_build.exit_code == 0, compat_build.output
-	compat_run := cmdexec.run(script_binary, [])
-	assert compat_run.exit_code == 0, compat_run.output
-	assert compat_run.output == 'compatibility binary\n', compat_run.output
-	rebound_v3_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'after-compatibility'])
+	other_build := cmdexec.run(v3_bin, ['-o', script_binary, other_source])
+	assert other_build.exit_code == 0, other_build.output
+	other_run := cmdexec.run(script_binary, [])
+	assert other_run.exit_code == 0, other_run.output
+	assert other_run.output == 'different binary\n', other_run.output
+	rebound_v3_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'after-replacement'])
 	assert rebound_v3_run.exit_code == 0, rebound_v3_run.output
-	assert rebound_v3_run.output == 'false\ncached module\nafter-compatibility\n', rebound_v3_run.output
+	assert rebound_v3_run.output == 'false\ncached module\nafter-replacement\n', rebound_v3_run.output
 	cache_stamp := os.file_last_mod_unix(script_binary) + 3600
 	os.utime(script_binary, cache_stamp, cache_stamp)!
 	cached_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'cached'])
@@ -2127,14 +2132,14 @@ pub fn message() string {
 	assert rebuilt_run.output == 'false\nrebuilt module\nnew\n', rebuilt_run.output
 	assert os.file_last_mod_unix(script_binary) != cache_stamp
 	explicit_run_source := os.join_path(root, 'explicit_run_script.vsh')
-	explicit_run_binary := explicit_run_source.all_before_last('.vsh')
+	explicit_run_binary := driver_cli_executable(explicit_run_source.all_before_last('.vsh'))
 	os.write_file(explicit_run_source, "println('explicit run')")!
 	explicit_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', 'run', explicit_run_source])
 	assert explicit_run.exit_code == 0, explicit_run.output
 	assert explicit_run.output == 'explicit run\n', explicit_run.output
 	assert !os.exists(explicit_run_binary)
 	compile_only_source := os.join_path(root, 'compile_only.vsh')
-	compile_only_binary := compile_only_source.all_before_last('.vsh')
+	compile_only_binary := driver_cli_executable(compile_only_source.all_before_last('.vsh'))
 	run_marker := os.join_path(root, 'compile_only_ran')
 	os.write_file(compile_only_source, "import os
 
@@ -2164,7 +2169,7 @@ fn test_driver_platform_pseudo_uses_selected_target_arch() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'platform.v')
 	os.write_file(source, "fn main() {
 	platform := @PLATFORM
@@ -2243,7 +2248,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'hello.v')
 	os.write_file(source, "fn main() { message := 'ok'; println(message) }\n") or { panic(err) }
 
@@ -2251,7 +2256,14 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	path_compile := cmdexec.run(v3_bin, ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o',
 		path_output, source])
 	assert path_compile.exit_code == 0, path_compile.output
-	assert os.is_file(path_output)
+	mut expected_path_output := path_output
+	$if windows {
+		expected_path_output += '.exe'
+	}
+	assert os.is_file(expected_path_output)
+	path_run := cmdexec.run(expected_path_output, [])
+	assert path_run.exit_code == 0, path_run.output
+	assert path_run.output == 'ok\n', path_run.output
 
 	help := cmdexec.run(v3_bin, ['--help'])
 	assert help.exit_code == 0
@@ -2264,7 +2276,9 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	assert c_compile.output == '', c_compile.output
 	c_source := os.read_file(c_output)!
 	assert c_source.len > 100
-	assert c_source.contains('typedef signed char i8;')
+	// The Windows builtin includes <io.h> and <fcntl.h>, so C for Windows takes the system
+	// libc preamble, which names the fixed-width types of <stdint.h> (see cgen `preamble`).
+	assert c_source.contains($if windows { 'typedef int8_t i8;' } $else { 'typedef signed char i8;' })
 	internal_define_source := os.join_path(root, 'internal_define.v')
 	os.write_file(internal_define_source, "fn main() {\n\tmessage := 'runtime'\n\tprintln(message)\n\t\$if v3_backend ? {\n\t\tprintln('v3_backend_leaked_to_user')\n\t} \$else {\n\t\tprintln('v3_backend_stays_internal')\n\t}\n}\n")!
 	internal_define_c := os.join_path(root, 'internal_define.c')
@@ -2272,7 +2286,10 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 		internal_define_source])
 	assert internal_define_compile.exit_code == 0, internal_define_compile.output
 	internal_define_output := os.read_file(internal_define_c)!
-	assert internal_define_output.contains('prealloc_vinit();')
+	// builtin_init starts the arena under `prealloc && v3_backend`, except on Windows, whose
+	// builtin_init does not: there the arena takes its first block on the first allocation.
+	arena_start := $if windows { 'return prealloc_malloc(' } $else { 'prealloc_vinit();' }
+	assert internal_define_output.contains(arena_start)
 	assert internal_define_output.contains('v3_backend_stays_internal')
 	assert !internal_define_output.contains('v3_backend_leaked_to_user')
 	verbose_output := os.join_path(root, 'hello_verbose.c')
@@ -2284,7 +2301,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	compat_compile := cmdexec.run(v3_bin, ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
 		'-g', '-cflags', '-w', '-enable-globals', '-o', compat_output, source])
 	assert compat_compile.exit_code == 0, compat_compile.output
-	assert os.is_file(compat_output)
+	assert os.is_file(driver_cli_executable(compat_output))
 	assert !os.exists(compat_output + '.c')
 	new_kept_files := kept_c_files(os.vtmp_dir()).filter(it !in kept_before
 		&& os.file_name(it).starts_with('hello_compat.'))
@@ -2459,10 +2476,10 @@ pub fn value() int {
 
 	compile := cmdexec.run_in(v3_bin, [project], work_dir)
 	assert compile.exit_code == 0, compile.output
-	output := os.join_path(project, 'project.with.dots')
+	output := driver_cli_executable(os.join_path(project, 'project.with.dots'))
 	assert os.exists(output)
-	assert !os.exists(os.join_path(work_dir, 'project.with.dots'))
-	assert !os.exists(os.join_path(work_dir, 'project'))
+	assert !os.exists(driver_cli_executable(os.join_path(work_dir, 'project.with.dots')))
+	assert !os.exists(driver_cli_executable(os.join_path(work_dir, 'project')))
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0
 	assert run.output.trim_space() == '42'

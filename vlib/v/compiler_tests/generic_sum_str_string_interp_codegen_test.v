@@ -6,15 +6,25 @@ const generic_sum_str_v3_dir = os.dir(generic_sum_str_tests_dir)
 const generic_sum_str_vlib_dir = os.dir(generic_sum_str_v3_dir)
 const generic_sum_str_v3_src = os.join_path(generic_sum_str_v3_dir, 'v.v')
 
-fn generic_sum_str_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_sum_str_test_${os.getpid()}')
+// One compiler serves the whole suite; each case used to build its own.
+const generic_sum_str_build_v3_path = os.join_path(os.temp_dir(), 'v3_generic_sum_str_test_${os.getpid()}')
+
+fn testsuite_begin() {
+	v3_bin := generic_sum_str_build_v3_path
 	os.rm(v3_bin) or {}
 	build :=
 		os.exec([generic_sum_str_vexe, '-gc', 'none', '-path',
 			'${generic_sum_str_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${generic_sum_str_v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rm(generic_sum_str_build_v3_path) or {}
+}
+
+fn generic_sum_str_build_v3() string {
+	return generic_sum_str_build_v3_path
 }
 
 fn test_generic_sum_str_is_used_for_string_interpolation() {

@@ -137,7 +137,7 @@ fn main() {
 		output := os.join_path(dir, 'main_${jobs}.c')
 		// Configure only the child; the surrounding test session keeps its own job count.
 		mut command := os.new_process(@VEXE)
-		command.set_args(['-new-compiler', '-nocache', '-o', output, path])
+		command.set_args(['-nocache', '-o', output, path])
 		mut environment := os.environ()
 		environment['VJOBS'] = jobs
 		command.set_environment(environment)
@@ -151,27 +151,39 @@ fn main() {
 		generated := os.read_file(output)!
 		assert generated.contains('void* _ptr__2Node;')
 		assert generated.contains('__attribute__((may_alias))')
-		for autofree in [false, true] {
-			mut args := [@VEXE, '-new-compiler', '-nocache', '-prod', '-cc', 'clang']
-			if autofree { args << ['-gc', 'none', '-autofree'] }
-			args << ['run', path]
-			result := os.exec(args)
-			assert result.exit_code == 0, 'autofree=${autofree}: ${result.output}'
-			assert result.output.contains('fixed-array pointer sums ok'), result.output
-		}
+	}
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := $if windows { 'gcc' } $else { 'clang' }
+	for autofree in [false, true] {
+		mut args := [@VEXE, '-nocache', '-prod', '-cc', cc]
+		if autofree { args << ['-gc', 'none', '-autofree'] }
+		args << ['run', path]
+		result := os.exec(args)
+		assert result.exit_code == 0, 'autofree=${autofree}: ${result.output}'
+		assert result.output.contains('fixed-array pointer sums ok'), result.output
 	}
 }
 
 fn test_owned_aligned_fixed_array_sum_drops_elements_once() {
-	cc := os.find_abs_path_of_executable('clang') or { return }
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or { return }
 	dir := os.join_path(os.vtmp_dir(), 'sum_fixed_pointer_owner_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
-	compiler := os.join_path(dir, 'v-ownership')
-	vlib := os.join_path(@VEXEROOT, 'vlib')
-	build := os.exec([@VEXE, '-new-compiler', '-b', 'c', '-cc', cc, '-gc', 'none', '-d', 'ownership',
-		'-path', vlib, '-o', compiler, os.join_path(vlib, 'v', 'v.v')])
-	assert build.exit_code == 0, build.output
+	compiler := if os.getenv('VTOOLS_NO_CACHE').trim_space().to_lower() in ['1', 'true', 'yes',
+		'on'] {
+		// Build one private compiler for the suite when tool caching is disabled.
+		private_compiler := os.join_path(dir, 'v-ownership' + $if windows { '.exe' } $else { '' })
+		vlib := os.join_path(@VEXEROOT, 'vlib')
+		build := os.exec([@VEXE, '-b', 'c', '-cc', cc, '-gc', 'none', '-d', 'ownership', '-path',
+			vlib, '-o', private_compiler, os.join_path(vlib, 'v', 'v.v')])
+		assert build.exit_code == 0, build.output
+		private_compiler
+	} else {
+		@VEXE
+	}
 	source_dir := os.join_path(@VMODROOT, 'vlib', 'v', 'gen', 'c', 'testdata', 'sumtype_fixed_array_pointer')
 	for prealloc in [false, true] {
 		for source_name in ['aligned_owner.c.v', 'borrowed_slot_rebind.c.v', 'owning_sum_replace.c.v'] {
@@ -181,8 +193,7 @@ fn test_owned_aligned_fixed_array_sum_drops_elements_once() {
 				['autofree', 'ownership']
 			}
 			for mode in modes {
-				mut args := ['-new-compiler', '-nocache', '-no-closures', '-gc', 'none', '-cc',
-					cc, '-${mode}']
+				mut args := ['-nocache', '-no-closures', '-gc', 'none', '-cc', cc, '-${mode}']
 				if prealloc { args << '-prealloc' }
 				args << ['run', os.join_path(source_dir, source_name)]
 				result := os.exec([compiler, ...args])
@@ -190,7 +201,7 @@ fn test_owned_aligned_fixed_array_sum_drops_elements_once() {
 			}
 		}
 		for mode in ['autofree', 'ownership'] {
-			mut args := ['-new-compiler', '-nocache', '-no-closures', '-gc', 'none', '-${mode}']
+			mut args := ['-nocache', '-no-closures', '-gc', 'none', '-${mode}']
 			if prealloc { args << '-prealloc' }
 			args << ['-check', os.join_path(source_dir, 'owning_slot_rebind_err.c.v')]
 			rejected := os.exec([compiler, ...args])

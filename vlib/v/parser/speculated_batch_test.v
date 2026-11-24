@@ -12,10 +12,10 @@ fn speculated_batch_test_root(name string) string {
 	return root
 }
 
-// speculated_batch_source is a module of `fns` functions; a `$if` over
-// `guard_const`, when given, picks one of two more, and `declares` adds a const.
-fn speculated_batch_source(mod string, tag string, fns int, declares string, guard_const string) string {
-	mut src := strings.new_builder(fns * 64)
+// speculated_batch_source places functions on both sides of a comment sized for
+// the chunk splitter. Optional declarations exercise the const prepasses.
+fn speculated_batch_source(mod string, tag string, padding_bytes int, declares string, guard_const string) string {
+	mut src := strings.new_builder(padding_bytes + 256)
 	src.writeln('module ${mod}')
 	src.writeln('')
 	if declares.len > 0 {
@@ -30,9 +30,9 @@ fn speculated_batch_source(mod string, tag string, fns int, declares string, gua
 		src.writeln('}')
 		src.writeln('')
 	}
-	for i in 0 .. fns {
-		src.writeln('fn ${tag}_padding_${i}(x int) int { return x + ${i} }')
-	}
+	src.writeln('fn ${tag}_padding_0(x int) int { return x + 0 }')
+	src.writeln('/*' + ' '.repeat(padding_bytes) + '*/')
+	src.writeln('fn ${tag}_padding_1(x int) int { return x + 1 }')
 	return src.str()
 }
 
@@ -52,8 +52,8 @@ fn write_speculated_batch_files(root string, continues_module bool) SpeculatedBa
 		path := os.join_path(root, 'first_${i}.v')
 		declares := if i == 1 { 'batch_width' } else { '' }
 		// One file is much larger than the others, like a real batch.
-		fns := if i == 3 { 2400 } else { 500 }
-		os.write_file(path, speculated_batch_source('alpha', 'first_${i}', fns, declares,
+		padding_bytes := (if i == 3 { 120 } else { 24 }) * 1024
+		os.write_file(path, speculated_batch_source('alpha', 'first_${i}', padding_bytes, declares,
 			'')) or { panic(err) }
 		first << path
 	}
@@ -67,8 +67,8 @@ fn write_speculated_batch_files(root string, continues_module bool) SpeculatedBa
 			guard = 'batch_width'
 		}
 		// The large file is a chunk of its own, after the one of the const.
-		fns := if i == 2 { 1800 } else { 400 }
-		os.write_file(path, speculated_batch_source(mod, 'second_${i}', fns, declares,
+		padding_bytes := (if i == 2 { 96 } else { 20 }) * 1024
+		os.write_file(path, speculated_batch_source(mod, 'second_${i}', padding_bytes, declares,
 			guard)) or { panic(err) }
 		second << path
 	}
@@ -105,8 +105,17 @@ fn speculated_batch_shape(p &Parser, starts [][]int) string {
 	return out.str()
 }
 
+// The test owns the parser's C-allocated parallel batch sources and worker pool.
+fn close_speculated_batch_test_parser(mut p Parser) {
+	p.discard_speculated_batch()
+	p.release_source_storage()
+	assert p.batch_source_buffers.len == 0
+	p.a.close_workers()
+}
+
 fn parse_two_batches(files SpeculatedBatchFiles, speculate []string) (string, bool, bool) {
 	mut p := Parser.new(pref.new_preferences())
+	defer { close_speculated_batch_test_parser(mut p) }
 	p.a.worker_pool = workers.new(3)
 	if speculate.len > 0 {
 		p.speculate_next_batch(speculate)
@@ -151,6 +160,7 @@ fn test_a_batch_that_continues_a_module_is_parsed_in_its_turn() {
 	assert was_ahead
 	assert ahead == plain
 	mut p := Parser.new(pref.new_preferences())
+	defer { close_speculated_batch_test_parser(mut p) }
 	p.a.worker_pool = workers.new(3)
 	p.speculate_next_batch(files.second)
 	p.parse_files_dispatch(files.first, true)
@@ -166,6 +176,7 @@ fn test_a_batch_parsed_ahead_is_not_read_again() {
 	}
 	files := write_speculated_batch_files(root, false)
 	mut p := Parser.new(pref.new_preferences())
+	defer { close_speculated_batch_test_parser(mut p) }
 	p.a.worker_pool = workers.new(3)
 	p.speculate_next_batch(files.second)
 	p.parse_files_dispatch(files.first, true)
@@ -207,6 +218,7 @@ fn test_a_changed_const_state_drops_the_parse_ahead() {
 	mut shapes := []string{}
 	for speculate in [false, true] {
 		mut p := Parser.new(pref.new_preferences())
+		defer { close_speculated_batch_test_parser(mut p) }
 		p.a.worker_pool = workers.new(3)
 		if speculate {
 			p.speculate_next_batch(files.second)
@@ -234,6 +246,7 @@ fn test_a_parse_ahead_can_be_discarded() {
 	}
 	files := write_speculated_batch_files(root, false)
 	mut p := Parser.new(pref.new_preferences())
+	defer { close_speculated_batch_test_parser(mut p) }
 	p.a.worker_pool = workers.new(3)
 	p.speculate_next_batch(files.second)
 	p.parse_files_dispatch(files.first, true)
@@ -252,6 +265,7 @@ fn test_a_serial_batch_ignores_the_files_ahead() {
 	}
 	files := write_speculated_batch_files(root, false)
 	mut p := Parser.new(pref.new_preferences())
+	defer { close_speculated_batch_test_parser(mut p) }
 	p.speculate_next_batch(files.second)
 	_, was_parallel := p.parse_files_dispatch(files.first, false)
 	assert !was_parallel

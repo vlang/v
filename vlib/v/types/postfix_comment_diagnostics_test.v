@@ -17,7 +17,7 @@ fn test_postfix_value_diagnostics_skip_complete_nested_comments() {
 	os.write_file(source, program)!
 	for flags in ['', '-no-parallel -nocache'] {
 		for mode in ['', '-prod', '-W'] {
-			result := os.exec([@VEXE, '-new-compiler', ...(os.split_args(flags) or { panic(err) }),
+			result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }),
 				...(os.split_args(mode) or { panic(err) }), '-check', source])
 			assert (result.exit_code != 0) == (mode == '-W'), result.output
 			for op in ['++', '--'] {
@@ -43,8 +43,8 @@ fn main() {
 }
 ')!
 	for flags in ['', '-no-parallel -nocache'] {
-		result := os.exec([@VEXE, '-new-compiler', ...(os.split_args(flags) or { panic(err) }),
-			'-W', '-check', source])
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-W', '-check',
+			source])
 		assert result.exit_code == 0, result.output
 		assert !result.output.contains('operator can only be used as a statement'), result.output
 	}

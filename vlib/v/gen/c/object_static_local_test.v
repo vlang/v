@@ -1,4 +1,4 @@
-module c
+module main
 
 import os
 
@@ -15,8 +15,8 @@ fn test_profiled_darwin_objects_keep_native_clock_linkage() {
 	// Profiling must supply its native timer dependencies without an explicit
 	// time import. Generate Darwin C on Linux and macOS hosts that have Clang.
 	os.write_file(source, "@[export: 'clock_value']\nfn clock_value() int { return 42 }\n")!
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-		'-os', 'macos', '-is_o', '-profile', os.join_path(root, 'profile'), '-o', output, source])
+	generated := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-os', 'macos',
+		'-is_o', '-profile', os.join_path(root, 'profile'), '-o', output, source])
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(output)!
 	// Preserve the emitted native declarations and linkage scopes. Compile this
@@ -105,8 +105,8 @@ fn next() i32 {
 }
 ")!
 			object := os.join_path(dir, '${name}.o')
-			mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-				'-cc', cc, '-o', object]
+			mut args := [@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc', cc,
+				'-o', object]
 			if profile {
 				args << ['-profile', os.join_path(dir, '${name}.profile')]
 			}

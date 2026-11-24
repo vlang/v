@@ -1,13 +1,23 @@
+module main
+
 import os
 import rand
 import test_utils
 
-const vexe = os.quoted_path(@VEXE)
+// The test executable doubles as the VPM CLI, so the fixture environment does
+// not make the launcher rebuild the tool.
+const vpm_exe = os.quoted_path(os.executable())
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_link_test_${rand.ulid()}')
 
 fn testsuite_begin() {
+	// Run the CLI in the child before changing its fixture environment.
+	if os.args.len > 1 && parse_vpm_command(os.args[1..]) != '' {
+		main()
+		exit(0)
+	}
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path) or {}
+	os.setenv('VEXE', @VEXE, true)
 }
 
 fn testsuite_end() {
@@ -42,7 +52,7 @@ fn test_link_and_unlink_current_project() {
 	}
 	link_path := os.join_path(test_path, 'author', 'coollib')
 
-	link_res := execute_in_dir(project_subdir, '${vexe} link')
+	link_res := execute_in_dir(project_subdir, '${vpm_exe} link')
 	if link_res.exit_code != 0 && is_symlink_privilege_error(link_res.output) {
 		eprintln('Skipping symlink test due to missing privileges.')
 		return
@@ -52,12 +62,12 @@ fn test_link_and_unlink_current_project() {
 	assert os.real_path(link_path) == os.real_path(project_path)
 	assert link_res.output.contains('Linked `${module_name}`'), link_res.output
 
-	link_again_res := execute_in_dir(project_path, '${vexe} link')
+	link_again_res := execute_in_dir(project_path, '${vpm_exe} link')
 	assert link_again_res.exit_code == 0, link_again_res.output
 	assert link_again_res.output.contains('already linked')
 		|| link_again_res.output.contains('already available'), link_again_res.output
 
-	unlink_res := execute_in_dir(project_subdir, '${vexe} unlink')
+	unlink_res := execute_in_dir(project_subdir, '${vpm_exe} unlink')
 	assert unlink_res.exit_code == 0, unlink_res.output
 	assert !os.exists(link_path) && !os.is_link(link_path)
 	assert !os.exists(os.join_path(test_path, 'author'))
@@ -92,11 +102,11 @@ fn test_link_and_unlink_reject_the_local_flag() {
 		return
 	}
 
-	link_res := execute_in_dir(project_path, '${vexe} link --local')
+	link_res := execute_in_dir(project_path, '${vpm_exe} link --local')
 	assert link_res.exit_code == 2, link_res.output
 	assert link_res.output.contains('`link` does not accept `--local`'), link_res.output
 
-	unlink_res := execute_in_dir(project_path, '${vexe} unlink --local')
+	unlink_res := execute_in_dir(project_path, '${vpm_exe} unlink --local')
 	assert unlink_res.exit_code == 2, unlink_res.output
 	assert unlink_res.output.contains('`unlink` does not accept `--local`'), unlink_res.output
 	assert os.is_link(linked_own_module), "expected the project's own symlink to survive"
@@ -109,7 +119,7 @@ fn test_link_without_vmod() {
 		assert false, err.msg()
 		return
 	}
-	res := execute_in_dir(path, '${vexe} link')
+	res := execute_in_dir(path, '${vpm_exe} link')
 	assert res.exit_code == 1, res.output
 	assert res.output.contains('no `v.mod` file found'), res.output
 }

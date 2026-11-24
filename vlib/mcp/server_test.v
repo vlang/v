@@ -161,7 +161,6 @@ fn test_server_http_sessions_and_delete() {
 
 	server_thread := spawn server.serve_http('127.0.0.1:0')
 	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
-	time.sleep(20 * time.millisecond)
 	addr := server.http_server.addr
 	url := 'http://${addr}/mcp'
 
@@ -287,7 +286,6 @@ fn test_http_rejects_disallowed_origin() {
 	mut server := &server_value
 	server_thread := spawn server.serve_http('127.0.0.1:0')
 	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
-	time.sleep(20 * time.millisecond)
 	url := 'http://${server.http_server.addr}/mcp'
 
 	mut header := http.new_header(http.HeaderConfig{
@@ -333,7 +331,6 @@ fn test_http_rejects_unsupported_protocol_version_header() {
 
 	server_thread := spawn server.serve_http('127.0.0.1:0')
 	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
-	time.sleep(20 * time.millisecond)
 	url := 'http://${server.http_server.addr}/mcp'
 
 	session_id, mut header := http_initialize(url)!
@@ -359,7 +356,6 @@ fn test_http_rejects_unacceptable_accept_header() {
 	mut server := &server_value
 	server_thread := spawn server.serve_http('127.0.0.1:0')
 	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
-	time.sleep(20 * time.millisecond)
 	url := 'http://${server.http_server.addr}/mcp'
 
 	mut header := http.new_header(http.HeaderConfig{
@@ -729,7 +725,6 @@ fn test_http_get_streams_queued_notifications_with_event_ids() {
 
 	server_thread := spawn server.serve_http('127.0.0.1:0')
 	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
-	time.sleep(20 * time.millisecond)
 	url := 'http://${server.http_server.addr}/mcp'
 
 	session_id, mut header := http_initialize(url)!
@@ -889,7 +884,6 @@ fn test_http_get_resume_drains_queue_before_replay() {
 	mut server := &server_value
 	server_thread := spawn server.serve_http('127.0.0.1:0')
 	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
-	time.sleep(20 * time.millisecond)
 	url := 'http://${server.http_server.addr}/mcp'
 
 	session_id, mut header := http_initialize(url)!
@@ -941,7 +935,6 @@ fn test_http_returns_json_when_accept_lists_both() {
 	mut server := &server_value
 	server_thread := spawn server.serve_http('127.0.0.1:0')
 	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
-	time.sleep(20 * time.millisecond)
 	url := 'http://${server.http_server.addr}/mcp'
 
 	session_id, mut header := http_initialize(url)!
@@ -1164,7 +1157,7 @@ fn stateless_http_header(method string, name string) http.Header {
 	return build_stateless_header(protocol_version_2026_07_28, method, name)
 }
 
-fn spawn_stateless_server() !(&Server, string) {
+fn new_stateless_test_server() !&Server {
 	mut server_value := new_server(
 		name:           'stateless-server'
 		version:        '2.0.0'
@@ -1189,9 +1182,13 @@ fn spawn_stateless_server() !(&Server, string) {
 			]
 		}
 	})!
-	server_thread := spawn server.serve_http('127.0.0.1:0')
+	return server
+}
+
+fn spawn_stateless_server() !(&Server, string) {
+	mut server := new_stateless_test_server()!
+	spawn server.serve_http('127.0.0.1:0')
 	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
-	time.sleep(20 * time.millisecond)
 	return server, 'http://${server.http_server.addr}/mcp'
 }
 
@@ -1221,33 +1218,31 @@ fn test_http_stateless_tools_list_needs_no_session() {
 }
 
 fn test_http_stateless_rejects_version_mismatch() {
-	mut server, url := spawn_stateless_server()!
+	mut server := new_stateless_test_server()!
 
 	// `_meta` says 2026-07-28, the header says 2025-11-25.
-	mut response := http.fetch(
+	mut response := server.handle_http_request(http.Request{
 		method: .post
-		url:    url
+		url:    '/mcp'
 		data:   stateless_request(1, 'tools/list', '', '', '')
 		header: build_stateless_header(protocol_version_2025_11_25, 'tools/list', '')
-	)!
+	})
 	assert response.status_code == 400
 	assert decode_response(response.body)!.error.code == header_mismatch.code
 
 	// A missing header is a mismatch too.
-	response = http.fetch(
+	response = server.handle_http_request(http.Request{
 		method: .post
-		url:    url
+		url:    '/mcp'
 		data:   stateless_request(2, 'tools/list', '', '', '')
 		header: build_stateless_header('', 'tools/list', '')
-	)!
+	})
 	assert response.status_code == 400
 	assert decode_response(response.body)!.error.code == header_mismatch.code
-
-	server.close()
 }
 
 fn test_http_stateless_rejects_unsupported_version() {
-	mut server, url := spawn_stateless_server()!
+	mut server := new_stateless_test_server()!
 
 	mut header := stateless_http_header('tools/list', '')
 	header.set_custom(mcp_protocol_version_header, '1999-01-01')!
@@ -1256,14 +1251,12 @@ fn test_http_stateless_rejects_unsupported_version() {
 		method: 'tools/list'
 		params: '{"_meta":{"${meta_protocol_version_key}":"1999-01-01"}}'
 	}.encode()
-	response := http.fetch(method: .post, url: url, data: body, header: header)!
+	response := server.handle_http_request(http.Request{ method: .post, url: '/mcp', data: body, header: header })
 	assert response.status_code == 400
 	err := decode_response(response.body)!.error
 	assert err.code == unsupported_protocol_version.code
 	assert err.data.contains('"supported":["2025-11-25","2026-07-28"]')
 	assert err.data.contains('"requested":"1999-01-01"')
-
-	server.close()
 }
 
 fn test_http_stateless_requires_matching_mcp_headers() {
@@ -1313,31 +1306,29 @@ fn test_http_stateless_requires_matching_mcp_headers() {
 }
 
 fn test_http_stateless_rejects_removed_methods() {
-	mut server, url := spawn_stateless_server()!
+	mut server := new_stateless_test_server()!
 
 	for method in ['ping', 'resources/subscribe'] {
-		response := http.fetch(
+		response := server.handle_http_request(http.Request{
 			method: .post
-			url:    url
+			url:    '/mcp'
 			data:   stateless_request(1, method, '', '', '')
 			header: stateless_http_header(method, '')
-		)!
+		})
 		assert response.status_code == 200
 		assert decode_response(response.body)!.error.code == method_not_found.code
 	}
-
-	server.close()
 }
 
 fn test_http_stateless_tools_call_sees_request_state() {
-	mut server, url := spawn_stateless_server()!
+	mut server := new_stateless_test_server()!
 
-	response := http.fetch(
+	response := server.handle_http_request(http.Request{
 		method: .post
-		url:    url
+		url:    '/mcp'
 		data:   stateless_request(1, 'tools/call', 'shout', '', 'wire-client')
 		header: stateless_http_header('tools/call', 'shout')
-	)!
+	})
 	assert response.status_code == 200
 	assert response.body.contains('"resultType":"complete"')
 	// The handler sees the request's own version and `_meta` clientInfo.
@@ -1345,25 +1336,21 @@ fn test_http_stateless_tools_call_sees_request_state() {
 	// A non-cacheable method carries no cache hints.
 	assert !response.body.contains('"ttlMs"')
 	assert !response.body.contains('"cacheScope"')
-
-	server.close()
 }
 
 fn test_http_stateless_resources_read_is_cacheable() {
-	mut server, url := spawn_stateless_server()!
+	mut server := new_stateless_test_server()!
 
-	response := http.fetch(
+	response := server.handle_http_request(http.Request{
 		method: .post
-		url:    url
+		url:    '/mcp'
 		data:   stateless_request(1, 'resources/read', 'resource://note', '', '')
 		header: stateless_http_header('resources/read', 'resource://note')
-	)!
+	})
 	assert response.status_code == 200
 	assert response.body.contains('"resultType":"complete"')
 	assert response.body.contains('"ttlMs":300000')
 	assert response.body.contains('"cacheScope":"private"')
-
-	server.close()
 }
 
 fn test_http_stateless_logs_need_a_requested_log_level() {

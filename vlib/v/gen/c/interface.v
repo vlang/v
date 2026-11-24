@@ -357,7 +357,11 @@ fn (mut g FlatGen) precompute_sum_name_lookup() {
 	for registry_name_id, variants in g.tc.sum_types.ids {
 		name_id := registry_name_id
 		short_id := flat.source_type_syntax(name_id).unqualified()
-		if short_id != 0 && !g.tc.sum_types.contains(short_id) {
+		// A type the program declares with the short name (`interface Any {}` besides
+		// `json2.Any`) is what the short name means.
+		if short_id != 0 && !g.tc.sum_types.contains(short_id) && short_id != name_id
+			&& short_id !in g.tc.structs && !g.tc.interface_names[short_id]
+			&& short_id !in g.tc.enum_names && !g.tc.type_aliases.contains(short_id) {
 			g.sum_name_lookup[short_id] = if short_id in g.sum_name_lookup {
 				u32(0)
 			} else {
@@ -471,7 +475,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 		// memoize it while the master still collects those.
 		for iface_id in iface_names {
 			if g.is_ierror_type_name(iface_id) {
-				_ = g.tc.ierror_impl_names()
+				_ = g.ierror_impl_names_for_dispatch()
 				break
 			}
 		}
@@ -485,12 +489,12 @@ fn (mut g FlatGen) collect_interface_impls() {
 		mut impls := []u32{}
 		mut base_impls := []u32{}
 		if g.is_ierror_type_name(iface_id) {
-			impls = g.tc.ierror_impl_names()
+			impls = g.ierror_impl_names_for_dispatch()
 		} else {
 			// Structs plus type aliases with their own implementing methods; ids
 			// must come from tc.interface_impl_names so the transform's `is`
 			// checks agree with the dispatch ids assigned here.
-			impls = g.tc.interface_impl_names(iface_id)
+			impls = g.interface_impl_names_for_dispatch(iface_id)
 			base_impls = impls.clone()
 			mut concrete_types := boxed_concrete_types[iface_id] or { []u32{} }
 			concrete_types.sort_with_compare(compare_interface_source_type_ids)
@@ -506,7 +510,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 		} else if impls.len > base_impls.len {
 			types.stable_interface_type_ids_preserving_prefix(base_impls, impls)
 		} else {
-			g.tc.interface_type_ids(iface_id)
+			g.interface_type_ids_for_dispatch(iface_id)
 		}
 		// Keep checker-assigned IDs stable while omitting unused C dispatch layouts.
 		impls = impls.filter(!flat.source_type_query(it).has(.c_prefix)
@@ -520,6 +524,37 @@ fn (mut g FlatGen) collect_interface_impls() {
 		}
 	}
 	g.tc.end_interface_impl_queries(memo_opened)
+}
+
+// ierror_impl_names_for_dispatch is the checker's ierror_impl_names, from the
+// implementer lane when it ran (see start_iface_impls_lane).
+fn (g &FlatGen) ierror_impl_names_for_dispatch() []u32 {
+	if !isnil(g.early_iface_impls) {
+		return g.early_iface_impls.ierror.clone()
+	}
+	return g.tc.ierror_impl_names()
+}
+
+// interface_impl_names_for_dispatch is the checker's interface_impl_names, from
+// the implementer lane when it ran.
+fn (g &FlatGen) interface_impl_names_for_dispatch(iface_id u32) []u32 {
+	if !isnil(g.early_iface_impls) {
+		if names := g.early_iface_impls.names[iface_id] {
+			return names.clone()
+		}
+	}
+	return g.tc.interface_impl_names(iface_id)
+}
+
+// interface_type_ids_for_dispatch is the checker's interface_type_ids, from the
+// implementer lane when it ran.
+fn (g &FlatGen) interface_type_ids_for_dispatch(iface_id u32) map[u32]int {
+	if !isnil(g.early_iface_impls) {
+		if type_ids := g.early_iface_impls.type_ids[iface_id] {
+			return type_ids.clone()
+		}
+	}
+	return g.tc.interface_type_ids(iface_id)
 }
 
 fn compare_interface_source_type_ids(a &u32, b &u32) int {
@@ -1862,6 +1897,13 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name_id u32, cn st
 			}
 			if concrete_id in g.tc.interface_names {
 				decl := g.interface_method_signature_key(concrete_id, method) or { continue }
+				// A method found through an embedded interface has a dispatcher of this
+				// interface only when it is one of its abstract methods. `IError.str` is
+				// a method of IError itself: `ESpeaker { IError }` has no `ESpeaker__str`.
+				if decl != '${concrete}.${method}'
+					&& method !in g.tc.interface_abstract_method_names(concrete_id) {
+					continue
+				}
 				if !g.interface_dispatch_target_is_emitted('${concrete}.${method}')
 					&& !g.interface_dispatch_target_is_emitted(decl) {
 					continue
@@ -2372,6 +2414,13 @@ fn (g &FlatGen) interface_concrete_storage_c_type(concrete_id u32) string {
 }
 
 fn (g &FlatGen) interface_storage_c_type(typ &types.Type) string {
+	// A backed enum (`enum E as u8`), or an alias of one, is boxed in the enum's
+	// emitted typedef, while `TypeChecker.c_type` spells every enum `int`. Reading
+	// the box as an `int` reads past a 1 byte box, or truncates an `as i64` value.
+	clean := cgen_unalias_type(typ)
+	if clean is types.Enum {
+		return g.enum_value_c_type(clean)
+	}
 	ct := g.tc.c_type(typ)
 	if ct.starts_with('fn_ptr:') {
 		return naming.fn_ptr_type_name(ct)
@@ -2820,13 +2869,41 @@ fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string
 	out := g.interface_tmp('iface_str_out')
 	fallback := g.interface_str_lit('${iface_name.all_after_last('.')}{}')
 	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${fallback}; if (${tmp}._object != 0) { switch (${tmp}._typ) {'
+	// Printed inside another value (an interface field of an implementer), list only
+	// the types boxed in this interface: every implementer of an empty interface,
+	// each printed with its own interface fields, made one printer megabytes of C.
+	nested := stack.len > 1
 	for concrete_id in impls {
 		id := g.iface_type_id(iface_name_id, concrete_id)
 		if id == 0 {
 			continue
 		}
+		if nested && !g.interface_boxed_type_marked_for_dispatch(iface_name_id, concrete_id) {
+			continue
+		}
 		concrete_type := g.interface_concrete_type(concrete_id)
-		storage_ct := g.interface_concrete_storage_c_type(concrete_id)
+		// An interface value is never boxed in another interface (the checker rejects
+		// it), so such an implementer has no case to print. Expanding its own
+		// implementers here, and theirs below, made the expression of a program with
+		// several empty interfaces grow factorially (megabytes per `${value}`).
+		if g.interface_unaliased_type(concrete_type) is types.Interface {
+			continue
+		}
+		// The V declaration of a C struct names the fields that V code uses, not
+		// necessarily those of the platform's header (`C.dirent` has macOS's
+		// `d_seekoff`, which glibc lacks), so printing all of them may not compile.
+		// Such a value prints as the interface's fallback.
+		if flat.source_type_query(concrete_id).has(.c_prefix) {
+			continue
+		}
+		// The checker spells every option and result `__v_option`/`__v_result`, whose
+		// `value` is a placeholder; a boxed `?Named` is a `__v_option_Named`.
+		clean_concrete := g.interface_unaliased_type(concrete_type)
+		storage_ct := if clean_concrete is types.OptionType || clean_concrete is types.ResultType {
+			g.optional_type_name(clean_concrete)
+		} else {
+			g.interface_concrete_storage_c_type(concrete_id)
+		}
 		inner := g.interface_implicit_str_expr(concrete_type, '*(${storage_ct}*)${tmp}._object',
 			false, mut stack) or { continue }
 		body += ' case ${id}: ${out} = ${inner}; break;'

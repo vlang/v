@@ -36,8 +36,7 @@ fn main() {
 ')!
 		for serial in [false, true] {
 			executable := os.join_path(root, 'program_${serial}')
-			mut args := ['-new-compiler', '-autofree', '-nocache', '-gc', 'none', '-cc', @CCOMPILER,
-				'-o', executable]
+			mut args := ['-autofree', '-nocache', '-gc', 'none', '-cc', @CCOMPILER, '-o', executable]
 			if serial { args << '-no-parallel' }
 			args << source
 			build := cmdexec.run(@VEXE, args)

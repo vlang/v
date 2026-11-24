@@ -5,36 +5,27 @@ mut:
 	b string
 }
 
-const run_time = time.millisecond * 500 // must be big enough to ensure threads have started
-
-const sleep_time = time.millisecond * 2000
-
 fn test_return_lock() {
-	start := time.now()
 	shared s := AA{'3'}
-	spawn printer(shared s, start)
-	spawn fn (shared s AA, start time.Time) {
-		for {
-			reader(shared s)
-			if time.now() - start > run_time {
-				eprintln('> ${@FN} exited')
-				exit(0)
-			}
+	done := chan string{cap: 1}
+	spawn fn (shared s AA, done chan string) {
+		reader(shared s)
+		verifier := spawn read_value(shared s)
+		done <- verifier.wait()
+	}(shared s, done)
+	select {
+		value := <-done {
+			assert value == '5'
 		}
-	}(shared s, start)
-	time.sleep(sleep_time)
-	assert false
+		2 * time.second {
+			assert false, 'another thread could not acquire the lock after break'
+		}
+	}
 }
 
-fn printer(shared s AA, start time.Time) {
-	for {
-		lock s {
-			assert s.b in ['0', '1', '2', '3', '4', '5']
-		}
-		if time.now() - start > run_time {
-			eprintln('> ${@FN} exited')
-			exit(0)
-		}
+fn read_value(shared s AA) string {
+	return lock s {
+		s.b
 	}
 }
 

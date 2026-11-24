@@ -6,22 +6,30 @@ const shared_flag_vexe = @VEXE
 const shared_flag_tests_dir = os.dir(@FILE)
 const shared_flag_v3_dir = os.dir(shared_flag_tests_dir)
 const shared_flag_v3_src = os.join_path(shared_flag_v3_dir, 'v.v')
+const shared_flag_compiler_dir = os.join_path(os.abs_path(os.vtmp_dir()),
+	'v3_shared_flag_compiler_${os.getpid()}')
+const v3_bin = os.join_path(shared_flag_compiler_dir, 'v3' + $if windows { '.exe' } $else { '' })
 
 type SharedFlagGcParallelFn = fn () int
 
+fn testsuite_begin() {
+	os.rmdir_all(shared_flag_compiler_dir) or {}
+	os.mkdir_all(shared_flag_compiler_dir)!
+	build := os.exec([shared_flag_vexe, '-gc', 'none', '-o', v3_bin, shared_flag_v3_src])
+	assert build.exit_code == 0, build.output
+}
+
+fn testsuite_end() {
+	os.rmdir_all(shared_flag_compiler_dir) or {}
+}
+
 // test_shared_flag_builds_no_main_module validates this v3 regression case.
 fn test_shared_flag_builds_no_main_module() {
-	v3_bin := os.join_path(os.vtmp_dir(), 'v3_shared_flag_test_${os.getpid()}')
-	build :=
-		os.exec([shared_flag_vexe, '-gc', 'none', '-o', v3_bin, '${shared_flag_v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v3_shared_flag_module_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir)!
 	defer {
 		os.rmdir_all(tmp_dir) or {}
-		os.rm(v3_bin) or {}
 	}
 
 	os.write_file(os.join_path(tmp_dir, 'v.mod'), 'Module { name: "shared_flag_module" }\n')!
@@ -145,17 +153,11 @@ fn test_shared_flag_builds_object_dependencies_as_pic() {
 		return
 	}
 	pid := os.getpid()
-	v3_bin := os.join_path(os.vtmp_dir(), 'v3_shared_flag_pic_test_${pid}')
-	build :=
-		os.exec([shared_flag_vexe, '-gc', 'none', '-o', v3_bin, '${shared_flag_v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v3_shared_flag_pic_${pid}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir)!
 	defer {
 		os.rmdir_all(tmp_dir) or {}
-		os.rm(v3_bin) or {}
 	}
 
 	native_dir := os.join_path(tmp_dir, 'native')
@@ -224,11 +226,6 @@ fn test_relative_c_object_cache_rebuilds_when_header_changes() {
 		return
 	}
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_object_header_test_${pid}')
-	build :=
-		os.exec([shared_flag_vexe, '-gc', 'none', '-o', v3_bin, '${shared_flag_v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	project_dir := os.join_path(os.temp_dir(), 'v3_c_object_header_${pid}')
 	os.rmdir_all(project_dir) or {}
 	os.mkdir_all(project_dir)!
@@ -240,7 +237,6 @@ fn test_relative_c_object_cache_rebuilds_when_header_changes() {
 		shared_flag_remove_cached_objects(object_name)
 		shared_flag_remove_cached_objects(object_path)
 		os.rmdir_all(project_dir) or {}
-		os.rm(v3_bin) or {}
 	}
 
 	header_path := os.join_path(project_dir, 'value.h')
@@ -287,11 +283,6 @@ fn test_relative_c_object_caches_use_resolved_source_path() {
 		return
 	}
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_object_path_test_${pid}')
-	build :=
-		os.exec([shared_flag_vexe, '-gc', 'none', '-o', v3_bin, '${shared_flag_v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	root := os.join_path(os.temp_dir(), 'v3_c_object_path_${pid}')
 	os.rmdir_all(root) or {}
 	first_project := os.join_path(root, 'first')
@@ -309,7 +300,6 @@ fn test_relative_c_object_caches_use_resolved_source_path() {
 		shared_flag_remove_cached_objects(first_object)
 		shared_flag_remove_cached_objects(second_object)
 		os.rmdir_all(root) or {}
-		os.rm(v3_bin) or {}
 	}
 
 	for project, value in {

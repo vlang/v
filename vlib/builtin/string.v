@@ -2151,7 +2151,7 @@ pub fn (s string) trim_indexes(cutset string) (int, int) {
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
-	for pos_left <= s.len && pos_right >= -1 && cs_match {
+	for pos_left < s.len && pos_right >= 0 && cs_match {
 		cs_match = false
 		for cs in cutset {
 			if s[pos_left] == cs {
@@ -2185,7 +2185,7 @@ fn (s string) trim_chars(cutset string, mode TrimMode) string {
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
-	for pos_left <= s.len && pos_right >= -1 && cs_match {
+	for pos_left < s.len && pos_right >= 0 && cs_match {
 		cs_match = false
 		if mode in [.trim_left, .trim_both] {
 			for cs in cutset {
@@ -2219,7 +2219,7 @@ fn (s string) trim_runes(cutset string, mode TrimMode) string {
 	mut pos_left := 0
 	mut pos_right := s_runes.len - 1
 	mut cs_match := true
-	for pos_left <= s_runes.len && pos_right >= -1 && cs_match {
+	for pos_left < s_runes.len && pos_right >= 0 && cs_match {
 		cs_match = false
 		if mode in [.trim_left, .trim_both] {
 			for cs in cs_runes {

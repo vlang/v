@@ -39,51 +39,57 @@ fn (t &Transformer) has_consumable_scalar_result(id flat.NodeId) bool {
 // An aggregate producer may return aliases: its caller still tracks that result.
 // A narrow scalar Result can discard them only after handling its error locally.
 // Storage-only borrow summaries cannot certify aliases held inside a value.
-fn (mut t Transformer) prepare_call_provenance_borrow_params(summarised int) {
+fn (mut t Transformer) prepare_call_provenance_borrow_params(summarised int, items []BorrowDeclItem, prescanned [][]bool) {
 	if summarised > 0 {
 		for decl, summary in t.tc.transform_call_provenance_borrow_params {
 			t.call_provenance_borrow_params[decl] = summary
 		}
 	}
-	mut seen := map[int]bool{}
-	for name, decl in t.call_param_types_decl_index {
-		if decl.idx < summarised || seen[decl.idx] {
+	for i, item in items {
+		// A summary reads nothing but its own declaration, so the helper threads
+		// of the borrow prescan have made it already when they ran.
+		t.call_provenance_borrow_params[item.decl.idx] = if i < prescanned.len {
+			prescanned[i].clone()
+		} else {
+			t.call_provenance_decl_summary(item)
+		}
+	}
+}
+
+// call_provenance_decl_summary is the summary of one declaration: for each
+// parameter, whether its provenance cannot be retained through an effect.
+fn (mut t Transformer) call_provenance_decl_summary(item BorrowDeclItem) []bool {
+	fn_node := t.a.node(flat.NodeId(item.decl.idx))
+	ret := t.parse_decl_param_type(fn_node.typ, item.decl.module, item.decl.file)
+	returns_aliases := !scalar_result_is_narrow(ret)
+	mut summary := []bool{len: item.nparams}
+	mut index := 0
+	for i in 0 .. fn_node.children_count {
+		param := t.a.child_node(fn_node, i)
+		if param.kind != .param {
 			continue
 		}
-		seen[decl.idx] = true
-		fn_node := t.a.node(flat.NodeId(decl.idx))
-		ret := t.parse_decl_param_type(fn_node.typ, decl.module, decl.file)
-		returns_aliases := !scalar_result_is_narrow(ret)
-		params := t.call_param_types_from_decl(name) or { continue }
-		mut summary := []bool{len: params.len}
-		mut index := 0
-		for i in 0 .. fn_node.children_count {
-			param := t.a.child_node(fn_node, i)
-			if param.kind != .param {
+		if index >= summary.len {
+			break
+		}
+		t.begin_borrow_param_mentions(BorrowCandidate{ decl: item.decl.idx, index: index, nparams: item.nparams, name: param.value }, fn_node)
+		mut has_body := false
+		mut proven := true
+		for j in 0 .. fn_node.children_count {
+			body := t.a.child(fn_node, j)
+			if t.a.node(body).kind == .param {
 				continue
 			}
-			if index >= summary.len {
+			has_body = true
+			if !t.scalar_result_param_consumed(body, param.value, false, returns_aliases) {
+				proven = false
 				break
 			}
-			t.begin_borrow_param_mentions(BorrowCandidate{ decl: decl.idx, index: index, nparams: params.len, name: param.value }, fn_node)
-			mut has_body := false
-			mut proven := true
-			for j in 0 .. fn_node.children_count {
-				body := t.a.child(fn_node, j)
-				if t.a.node(body).kind == .param {
-					continue
-				}
-				has_body = true
-				if !t.scalar_result_param_consumed(body, param.value, false, returns_aliases) {
-					proven = false
-					break
-				}
-			}
-			summary[index] = has_body && proven
-			index++
 		}
-		t.call_provenance_borrow_params[decl.idx] = summary
+		summary[index] = has_body && proven
+		index++
 	}
+	return summary
 }
 
 fn scalar_result_is_narrow(typ types.Type) bool {

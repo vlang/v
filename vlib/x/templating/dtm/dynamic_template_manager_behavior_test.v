@@ -2,7 +2,6 @@
 module dtm
 
 import os
-import time
 
 const behavior_temp_dtm_dir = 'dynamic_template_manager_behavior_test'
 const behavior_temp_cache_dir = 'vcache_dtm'
@@ -270,7 +269,6 @@ fn test_expand_with_cache_updates_when_template_file_changes() {
 	}
 
 	first := dtmi.expand(template_path, placeholders: &placeholders)
-	time.sleep(1100 * time.millisecond)
 	os.write_file(template_path, '<section>@title</section>')!
 	second := dtmi.expand(template_path, placeholders: &placeholders)
 

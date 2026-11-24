@@ -116,13 +116,9 @@ fn test_imported_library_resolves_symbols_from_later_native_object() {
 	source := os.join_path(root, 'main.v')
 	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
 	os.write_file(source, 'import archive\nimport consumer\nfn main() {\n assert archive.marker() == 41\n assert consumer.answer() == 42\n}\n')!
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(@VEXEROOT, 'v' + $if windows { '.exe' } $else { '' })
-	} else {
-		@VEXE
-	}
-	built := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-gc', 'none', '-cc', compiler, '-showcc',
-		'-o', output, source])
+	vexe := @VEXE
+	built := cmdexec.run(vexe, ['-nocache', '-gc', 'none', '-cc', compiler, '-showcc', '-o', output,
+		source])
 	assert built.exit_code == 0, built.output
 	// Native inputs use canonical paths, including through macOS /tmp symlinks.
 	// Normalize Windows separators too, since #flag joins @DIR with `/`.
@@ -135,6 +131,16 @@ fn test_imported_library_resolves_symbols_from_later_native_object() {
 	assert ran.exit_code == 0, ran.output
 }
 
+// link_test_compiles_cpp reports whether `compiler` can compile C++. A C compiler driver
+// such as gcc runs a separately installed C++ front end (cc1plus), which an image may lack.
+fn link_test_compiles_cpp(compiler string, root string) bool {
+	probe := os.join_path(root, 'cpp_probe.cpp')
+	os.write_file(probe, 'template<int N> int probe() { return N; }\nint value() { return probe<0>(); }\n') or {
+		return false
+	}
+	return cmdexec.run(compiler, ['-fsyntax-only', '-x', 'c++', probe]).exit_code == 0
+}
+
 fn test_reordered_native_sources_keep_joined_and_reset_languages() {
 	compiler := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'cc' }) or {
 		return
@@ -143,6 +149,9 @@ fn test_reordered_native_sources_keep_joined_and_reset_languages() {
 	os.mkdir_all(root)!
 	defer {
 		os.rmdir_all(root) or { panic(err) }
+	}
+	if !link_test_compiles_cpp(compiler, root) {
+		return
 	}
 	cpp_source := os.join_path(root, 'template.c')
 	c_source := os.join_path(root, 'plain.c')
@@ -221,6 +230,9 @@ fn test_trailing_native_language_reaches_sources_passed_through_ldflags() {
 	defer {
 		os.rmdir_all(root) or { panic(err) }
 	}
+	if !link_test_compiles_cpp(compiler, root) {
+		return
+	}
 	source := os.join_path(root, 'main.v')
 	cpp_source := os.join_path(root, 'template.c')
 	c_source := os.join_path(root, 'plain.c')
@@ -228,16 +240,11 @@ fn test_trailing_native_language_reaches_sources_passed_through_ldflags() {
 	os.write_file(source, 'fn main() {}\n')!
 	os.write_file(cpp_source, 'template<int N> int answer() { return N; }\nextern "C" int template_answer(void) { return answer<42>(); }\n')!
 	os.write_file(c_source, 'int class(void) { return 42; }\n')!
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(@VEXEROOT, 'v' + $if windows { '.exe' } $else { '' })
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	for flags in [['-x c++', cpp_source], ['-xc++', cpp_source], ['-x c++ -x none', c_source],
 		['-xc++ -xnone', c_source]] {
-		built := cmdexec.run(vexe, ['-new-compiler', '-no-std', '-nocache', '-gc', 'none', '-cc',
-			compiler, '-cflags', flags[0], '-ldflags', os.quoted_path(flags[1]), '-o', output,
-			source])
+		built := cmdexec.run(vexe, ['-no-std', '-nocache', '-gc', 'none', '-cc', compiler, '-cflags',
+			flags[0], '-ldflags', os.quoted_path(flags[1]), '-o', output, source])
 		assert built.exit_code == 0, built.output
 		ran := cmdexec.run(output, [])
 		assert ran.exit_code == 0, ran.output

@@ -103,10 +103,9 @@ fn fastc_build_program(name string, source string, output string) (string, strin
 	program := os.join_path(root, output)
 	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root],
 		os.real_path(os.join_path(@DIR, '../../../..')), {
-			'VEXE':                   @VEXE
-			'VFLAGS':                 ''
-			'VOSARGS':                ''
-			'V_MACOS_V3_NO_FALLBACK': '1'
+			'VEXE':    @VEXE
+			'VFLAGS':  ''
+			'VOSARGS': ''
 		})
 	assert build.exit_code == 0, build.output
 	return root, program
@@ -210,10 +209,9 @@ fn test_fastc_builds_a_test_file_inside_builtin() {
 	vroot := os.real_path(os.join_path(@DIR, '../../../..'))
 	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-o', program,
 		os.join_path(vroot, 'vlib', 'builtin', 'hex_test.v')], vroot, {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])

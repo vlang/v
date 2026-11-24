@@ -26,7 +26,7 @@ fn check_program(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	return os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
+	return os.exec([@VEXE, '-check', '-nocolor', path])
 }
 
 // error_lines returns `line:col: message` for every error of a check output.
@@ -199,7 +199,7 @@ fn check_with_modules_env(name string, env string, files map[string]string, modu
 			}
 		}
 	}
-	res := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', os.join_path(program, 'main.v')])
+	res := os.exec([@VEXE, '-check', '-nocolor', os.join_path(program, 'main.v')])
 	prefix := 'v-diagnostics-server: instances: '
 	lines := (os.read_file(trace) or { '' }).split_into_lines().filter(it.starts_with(prefix)).map(it[prefix.len..])
 	return LibraryCheck{
@@ -402,9 +402,9 @@ fn build_program_with_env(name string, source string, env []string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	mut cmd := ['env', 'V_MACOS_V3_NO_FALLBACK=1']
+	mut cmd := ['env']
 	cmd << env
-	cmd << [@VEXE, '-new-compiler', '-nocolor', '-o', os.join_path(dir, 'main'), path]
+	cmd << [@VEXE, '-nocolor', '-o', os.join_path(dir, 'main'), path]
 	return os.exec(cmd)
 }
 
@@ -572,7 +572,7 @@ fn test_an_instance_error_is_reported_at_its_line_directive() {
 		'fn valid[T](x T) bool {\n#line 3 "view.txt"\n\treturn x.name\n}\n\nfn main() {\n\tprintln(valid(User{}))\n}\n') or {
 		panic(err)
 	}
-	res := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
+	res := os.exec([@VEXE, '-check', '-nocolor', path])
 	assert res.exit_code == 1, res.output
 	assert res.output.contains('view.txt:3:9: error: cannot use `string` as type `bool` in return argument'), res.output
 }
@@ -1267,8 +1267,7 @@ fn test_a_map_type_cast_to_the_same_elements_builds() {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	res := os.exec(['env', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler', '-nocolor', 'run',
-		path])
+	res := os.exec(['env', @VEXE, '-nocolor', 'run', path])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == "{'a': 7}", res.output
 }
@@ -1303,8 +1302,7 @@ fn test_the_instances_of_a_comptime_for_body_with_the_expected_types_build() {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	res := os.exec(['env', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler', '-nocolor', 'run',
-		path])
+	res := os.exec(['env', @VEXE, '-nocolor', 'run', path])
 	assert res.exit_code == 0, res.output
 	assert res.output.split_into_lines() == ['[Bar{', '    b: 1', '}]', '1'], res.output
 }
@@ -1388,10 +1386,9 @@ fn build_with_modules_env(name string, files map[string]string, modules map[stri
 			os.write_file(path, content) or { panic(err) }
 		}
 	}
-	mut cmd := ['env', 'V_MACOS_V3_NO_FALLBACK=1', 'VMODULES=${modules_dir}']
+	mut cmd := ['env', 'VMODULES=${modules_dir}']
 	cmd << env
-	cmd << [@VEXE, '-new-compiler', '-nocolor', '-o', os.join_path(dir, 'main'),
-		os.join_path(program, 'main.v')]
+	cmd << [@VEXE, '-nocolor', '-o', os.join_path(dir, 'main'), os.join_path(program, 'main.v')]
 	return os.exec(cmd)
 }
 

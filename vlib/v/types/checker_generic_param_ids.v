@@ -106,6 +106,94 @@ fn sort_generic_param_ids(mut ids []u32) {
 	})
 }
 
+// generic_param_mask_ranges_min_nodes is the size from which an AST records
+// the generic parameter letters of its nodes as ranges instead of per node.
+const generic_param_mask_ranges_min_nodes = 65536
+
+// GenericParamMaskRanges records, for the nodes of generic function
+// declarations, the mask of one-letter generic parameters of the declaration
+// that encloses them (see generic_param_letter_mask). Few declarations are
+// generic, so it keeps their node ranges in place of a mask for every node.
+struct GenericParamMaskRanges {
+mut:
+	// The nodes [0, nodes) are covered: one outside every range has no
+	// parameter. Zero while the checker keeps a mask per node instead.
+	nodes  int
+	starts []i32 // ascending
+	ends   []i32 // exclusive
+	masks  []u32
+	// Two ranges overlap, so a node takes the masks of all that hold it.
+	overlapping bool
+}
+
+// add gives the nodes [start, end) the parameter letters of `mask` too.
+fn (mut r GenericParamMaskRanges) add(start int, end int, mask u32) {
+	if mask == 0 || end <= start {
+		return
+	}
+	n := r.starts.len
+	if n == 0 || start >= int(r.ends[n - 1]) {
+		r.starts << i32(start)
+		r.ends << i32(end)
+		r.masks << mask
+		return
+	}
+	// The first range that does not start before this one.
+	mut lo := 0
+	mut hi := n
+	for lo < hi {
+		mid := (lo + hi) >> 1
+		if int(r.starts[mid]) < start {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo < n && int(r.starts[lo]) == start && int(r.ends[lo]) == end {
+		r.masks[lo] |= mask
+		return
+	}
+	if (lo > 0 && int(r.ends[lo - 1]) > start) || (lo < n && int(r.starts[lo]) < end) {
+		r.overlapping = true
+	}
+	r.starts.insert(lo, i32(start))
+	r.ends.insert(lo, i32(end))
+	r.masks.insert(lo, mask)
+}
+
+// mask_at returns the parameter letters of the declaration enclosing node `idx`.
+@[direct_array_access]
+fn (r &GenericParamMaskRanges) mask_at(idx int) u32 {
+	n := r.starts.len
+	if n == 0 {
+		return 0
+	}
+	if r.overlapping {
+		mut mask := u32(0)
+		for i in 0 .. n {
+			if idx >= int(r.starts[i]) && idx < int(r.ends[i]) {
+				mask |= r.masks[i]
+			}
+		}
+		return mask
+	}
+	// The last range that starts at or before the node.
+	mut lo := 0
+	mut hi := n
+	for lo < hi {
+		mid := (lo + hi) >> 1
+		if int(r.starts[mid]) <= idx {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo > 0 && idx < int(r.ends[lo - 1]) {
+		return r.masks[lo - 1]
+	}
+	return 0
+}
+
 // generic_param_letter_mask returns the enclosing-parameter mask bit of a one
 // capital letter type parameter, `T`, or 0 for any other spelling. The bit is
 // the letter's own, so the mask needs the spelling's text.

@@ -16,7 +16,7 @@ fn ownership_ierror_const_cleanup(source string) {
 }
 
 fn ownership_ierror_const_compile(flags string, source string) os.Result {
-	return os.exec([@VEXE, '-new-compiler', '-nocache', ...flags.split(' '), source])
+	return os.exec([@VEXE, '-nocache', ...flags.split(' '), source])
 }
 
 fn test_returned_error_constants_give_the_caller_its_own_copy() {

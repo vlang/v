@@ -1,13 +1,18 @@
 import os
 
-fn v3_binary_for(dir string) string {
-	v3_bin := os.join_path(dir, 'v3')
+// One compiler serves the whole suite; each case used to build its own.
+const linked_extern_v3_bin = os.join_path(os.vtmp_dir(), 'v3_linked_extern_prototype_compiler_${os.getpid()}')
+
+fn testsuite_begin() {
 	v3_dir := os.dir(os.dir(@FILE))
 	vlib_dir := os.dir(v3_dir)
 	build := os.exec([@VEXE, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o',
-		v3_bin, os.join_path(v3_dir, 'v.v')])
+		linked_extern_v3_bin, os.join_path(v3_dir, 'v.v')])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rm(linked_extern_v3_bin) or {}
 }
 
 // A `fn C.` declaration that no header can declare keeps its generated prototype:
@@ -18,7 +23,7 @@ fn test_linked_source_and_library_declarations_keep_their_prototype() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_linked_extern_prototype_codegen')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'libonly')) or { panic(err) }
-	v3_bin := v3_binary_for(dir)
+	v3_bin := linked_extern_v3_bin
 	os.write_file(os.join_path(dir, 'v.mod'), "Module { name: 'linked_extern_prototype' }\n") or {
 		panic(err)
 	}
@@ -53,7 +58,7 @@ fn test_target_inactive_include_keeps_the_linked_source_prototype() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_inactive_include_prototype_codegen')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
-	v3_bin := v3_binary_for(dir)
+	v3_bin := linked_extern_v3_bin
 	inactive_target := if os.user_os() == 'windows' { 'linux' } else { 'windows' }
 	os.write_file(os.join_path(dir, 'v.mod'), "Module { name: 'inactive_include_prototype' }\n") or {
 		panic(err)
@@ -77,7 +82,7 @@ fn test_postinclude_keeps_its_prototype() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_postinclude_prototype_codegen')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'postmod')) or { panic(err) }
-	v3_bin := v3_binary_for(dir)
+	v3_bin := linked_extern_v3_bin
 	os.write_file(os.join_path(dir, 'v.mod'), "Module { name: 'postinclude_prototype' }\n") or {
 		panic(err)
 	}

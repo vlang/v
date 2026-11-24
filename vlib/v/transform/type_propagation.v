@@ -2410,8 +2410,12 @@ fn (t &Transformer) array_map_callback_return_type_name(map_expr_id flat.NodeId)
 		} else if ret_type_source_id := t.fn_value_return_type_name(map_expr_id) {
 			return ret_type_source_id
 		}
-	} else if ret_type_source_id := t.fn_value_return_type_name(map_expr_id) {
-		return ret_type_source_id
+	} else if !t.array_map_is_dsl_bound_method(map_expr) {
+		// A bound method value such as `it.hex` is the mapped element itself, as the
+		// checker types it, not a callback that is called on each element.
+		if ret_type_source_id := t.fn_value_return_type_name(map_expr_id) {
+			return ret_type_source_id
+		}
 	}
 	return none
 }

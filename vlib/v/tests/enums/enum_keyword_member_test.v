@@ -70,7 +70,7 @@ fn test_escaped_and_plain_enum_members_have_distinct_match_coverage() {
 	path := os.join_path(os.vtmp_dir(), 'v3_distinct_enum_coverage_${os.getpid()}.v')
 	os.write_file(path, 'enum Choice { none @none }\nfn f(e Choice) int { match e { .@none { return 1 } } }\nfn main() {}\n')!
 	defer { os.rm(path) or {} }
-	result := os.exec([@VEXE, '-new-compiler', '-check', path])
+	result := os.exec([@VEXE, '-check', path])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('missing return'), result.output
 }

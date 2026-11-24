@@ -520,32 +520,24 @@ const monte_cases = [
 
 fn test_monte_messages() {
 	mut msg_seed := hex.decode(seed)!
+	digest_size := msg_seed.len
+	last_digest := 2 * digest_size
+	mut message := []u8{len: 3 * digest_size}
 
 	for c in monte_cases {
-		mut md0 := msg_seed.clone()
-		mut md1 := msg_seed.clone()
-		mut md2 := msg_seed.clone()
-		mut md3 := msg_seed.clone()
-
-		mut mi := []u8{len: 0, cap: 64}
+		copy(mut message[..digest_size], msg_seed)
+		copy(mut message[digest_size..last_digest], msg_seed)
+		copy(mut message[last_digest..], msg_seed)
 
 		for _ in 0 .. 1000 {
-			mi.clear()
-			mi << md0
-			mi << md1
-			mi << md2
-
-			md3 = sha512.sum512_256(mi)
-
-			md0 = md1.clone()
-			md1 = md2.clone()
-			md2 = md3.clone()
+			msg_seed = sha512.sum512_256(message)
+			// Keep the newest three digests in order for the next sum.
+			copy(mut message, message[digest_size..])
+			copy(mut message[last_digest..], msg_seed)
 		}
-
-		msg_seed = md3.clone()
 
 		expected_result := hex.decode(c.digest)!
 
-		assert md3 == expected_result, 'failed ${c.name}'
+		assert msg_seed == expected_result, 'failed ${c.name}'
 	}
 }

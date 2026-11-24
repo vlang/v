@@ -10,7 +10,7 @@ fn filelock_helpers_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_filelock_helpers_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.exec([filelock_helpers_vexe, '-gc', 'none', '-d', 'parallel', '-path',
+		os.exec([filelock_helpers_vexe, '-gc', 'none', '-path',
 			'${filelock_helpers_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, filelock_helpers_v3_src])
 	assert build.exit_code == 0, build.output
 	return v3_bin

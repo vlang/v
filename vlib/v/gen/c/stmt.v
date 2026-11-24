@@ -8700,7 +8700,9 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 						should_infer_fn_value = true
 					}
 				}
-				if should_infer_fn_value {
+				// A parameter or local (`show := callback` with `callback fn (T) string`)
+				// keeps its own type: a function of the same name has another one.
+				if should_infer_fn_value && !g.selector_base_is_local_value(rhs.value) {
 					if fn_typ := g.fn_value_type_for_ident(rhs.value) {
 						v_type = fn_typ
 					}
@@ -10242,6 +10244,12 @@ fn (g &FlatGen) translated_numeric_compound_operator(lhs_id flat.NodeId, lhs_typ
 	}
 	lhs_clean := unalias_type(lhs_type)
 	rhs_clean := unalias_type(rhs_type)
+	if op in [.plus_assign, .minus_assign] && type_is_void_pointer(lhs_clean)
+		&& translated_integer_scalar_type(rhs_clean) {
+		// C translated to V offsets a `void*` by bytes; the value is written as
+		// `u8*` arithmetic, since standard C (and MSVC) has none on `void*`.
+		return if op == .plus_assign { '+' } else { '-' }
+	}
 	if !(translated_integer_scalar_type(lhs_clean) || lhs_clean.is_float())
 		|| !(translated_integer_scalar_type(rhs_clean) || rhs_clean.is_float()) {
 		return none
@@ -10259,6 +10267,12 @@ fn (g &FlatGen) translated_numeric_compound_operator(lhs_id flat.NodeId, lhs_typ
 }
 
 fn (mut g FlatGen) gen_translated_numeric_compound_value(lhs_text string, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, operator string) {
+	if type_is_void_pointer(lhs_type) {
+		g.write('((${g.value_c_type(lhs_type)})((u8*)(${lhs_text}) ${operator} (')
+		g.gen_expr(rhs_id)
+		g.write(')))')
+		return
+	}
 	lhs_ct := g.translated_numeric_c_type(lhs_id, lhs_type)
 	rhs_ct := g.translated_numeric_c_type(rhs_id, rhs_type)
 	normalize_bool := g.translated_bool_destination(lhs_id, lhs_type)

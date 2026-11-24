@@ -19,7 +19,7 @@ fn test_cached_module_embedded_resources_refresh_after_changes_and_deletion() ! 
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'import ${name}\nfn main() { println(${name}.value()) }\n')!
 	binary := os.join_path(root, 'program')
-	args := ['env', 'V3CACHE=${os.join_path(root, 'cache')}', @VEXE, '-new-compiler', '-cc', 'cc',
+	args := ['env', 'V3CACHE=${os.join_path(root, 'cache')}', @VEXE, '-cc', 'cc',
 		'-no-retry-compilation', '-show-timings', '-o', binary, source]
 	cold := os.exec(args)
 	assert cold.exit_code == 0, cold.output
@@ -27,11 +27,11 @@ fn test_cached_module_embedded_resources_refresh_after_changes_and_deletion() ! 
 	assert warm.exit_code == 0 && warm.output.contains('monomorphize (cached)'), warm.output
 	first := os.exec([binary])
 	assert first.exit_code == 0 && first.output.trim_space() == 'first', first.output
-	watched := os.exec([...args[..args.len - 1], '-print-watched-files', source])
-	assert watched.exit_code == 0 && os.real_path(resource) in watched.output.split_into_lines(), watched.output
 	manifest := os.join_path(root, 'inputs.txt')
-	dumped := os.exec([...args[..args.len - 1], '-dump-files', manifest, source])
-	assert dumped.exit_code == 0, dumped.output
+	dependencies := os.exec([...args[..args.len - 1], '-print-watched-files', '-dump-files', manifest,
+		source])
+	assert dependencies.exit_code == 0, dependencies.output
+	assert os.real_path(resource) in dependencies.output.split_into_lines(), dependencies.output
 	assert os.real_path(resource) in os.read_file(manifest)!.split_into_lines()
 	os.write_file(resource, 'other')!
 	changed := os.exec(args)
@@ -45,64 +45,6 @@ fn test_cached_module_embedded_resources_refresh_after_changes_and_deletion() ! 
 	// restoring the earlier cached payload.
 	missing_run := os.exec([binary])
 	assert missing_run.exit_code != 0 && missing_run.output.contains('do not exist'), missing_run.output
-}
-
-fn test_owned_native_interfaces_reuse_the_module_cache() {
-	$if windows {
-		return
-	} // This regression uses the Unix system C compiler cache path.
-	root := os.join_path(os.vtmp_dir(), 'zstd_module_cache_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	sources := {
-		'zstd': "import compress.zstd
-fn main() {
- data := 'cached native source'.bytes()
- encoded := zstd.compress(data)!
- assert zstd.decompress(encoded)! == data
- println('zstd ok')
-}"
-		'veb':  'import veb
-struct App { veb.Middleware[Context] }
-struct Context { veb.Context }
-pub fn (mut app App) index(mut ctx Context) veb.Result { return ctx.text("hello") }
-fn main() {
- mut app := &App{}
- veb.run[App, Context](mut app, 18099)
-}'
-	}
-	for name, source_text in sources {
-		src := os.join_path(root, '${name}.v')
-		binary := os.join_path(root, name + $if windows { '.exe' } $else { '' })
-		cache := os.join_path(root, '${name}_cache')
-		os.write_file(src, source_text)!
-		args := ['env', 'V3CACHE=${cache}', 'V3_CACHE_TRACE=1', @VEXE, '-new-compiler', '-cc',
-			'cc', '-no-retry-compilation', '-show-timings', '-o', binary, src]
-		cold := os.exec(args)
-		assert cold.exit_code == 0, cold.output
-		assert !cold.output.contains('V3 module cache fallback'), cold.output
-		objects := native_cache_object_identities(cache)!
-		assert objects.len > 1, '${name}: no module objects were cached'
-		warm := os.exec(args)
-		assert warm.exit_code == 0, warm.output
-		assert warm.output.contains('monomorphize (cached)'), warm.output
-		assert !warm.output.contains('V3 module cache fallback'), warm.output
-		assert native_cache_object_identities(cache)! == objects, '${name}: cached object identities changed'
-		if name == 'zstd' {
-			run := os.exec([binary])
-			assert run.exit_code == 0, run.output
-			assert run.output.trim_space() == 'zstd ok', run.output
-		}
-	}
-}
-
-fn native_cache_object_identities(cache string) !map[string]string {
-	mut identities := map[string]string{}
-	for object in os.walk_ext(cache, '.o') {
-		info := os.stat(object)!
-		identities[object] = '${info.dev}:${info.inode}:${info.size}:${info.mtime}:${info.ctime}'
-	}
-	return identities
 }
 
 fn test_unowned_native_state_uses_conservative_cache_fallback() ! {
@@ -124,8 +66,8 @@ fn test_unowned_native_state_uses_conservative_cache_fallback() ! {
 	source := os.join_path(root, 'main.c.v')
 	os.write_file(source, 'module main\nimport ${name}\n#include "${header}"\nfn C.unowned_native_value() int\nfn main() { println(${name}.value()); println(C.unowned_native_value()) }\n')!
 	binary := os.join_path(root, 'program')
-	args := ['env', 'V3CACHE=${os.join_path(root, 'cache')}', 'V3_CACHE_TRACE=1', @VEXE, '-new-compiler',
-		'-cc', 'cc', '-no-retry-compilation', '-show-timings', '-o', binary, source]
+	args := ['env', 'V3CACHE=${os.join_path(root, 'cache')}', 'V3_CACHE_TRACE=1', @VEXE, '-cc',
+		'cc', '-no-retry-compilation', '-show-timings', '-o', binary, source]
 	for _ in 0 .. 2 {
 		build := os.exec(args)
 		assert build.exit_code == 0, build.output

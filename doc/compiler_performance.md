@@ -16,7 +16,7 @@ Generate C to measure V's parsing, checking, transformation, and code generation
 from the native C compiler and application execution:
 
 ```sh
-env -u VFLAGS -u VEXE -u VJOBS SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+env -u VFLAGS -u VEXE -u VJOBS SOURCE_DATE_EPOCH=0 \
   /usr/bin/time -l -o /tmp/vox-time.txt \
   ./v -w -n -enable-globals -nocache -o /tmp/vox.c /path/to/vox
 ```
@@ -57,7 +57,6 @@ Both production compilers use Apple Clang 21 on an Apple M5 Max, with no PGO:
 
 ```sh
 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=4 SOURCE_DATE_EPOCH=0 \
-  V_MACOS_V3_NO_FALLBACK=1 \
   ./v -prod -cc clang -gc none -prealloc -nocache -o /path/to/compiler cmd/v
 ```
 

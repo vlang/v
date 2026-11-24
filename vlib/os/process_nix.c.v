@@ -153,8 +153,8 @@ fn unix_child_report_errno(prefix string) {
 }
 
 // unix_process_pipe keeps a later child from inheriting another Process's pipes.
-// Set CLOEXEC atomically on hosted Linux: pipe() followed by fcntl() leaves a
-// window in which another thread can fork/exec with the descriptors still open.
+// Set CLOEXEC atomically on hosted Linux. Elsewhere pipe() is followed at once by
+// fcntl(), under the lock unix_spawn_process holds until it forks.
 // dup2() clears CLOEXEC on the intended child's standard streams below.
 fn unix_process_pipe(fds &i32) i32 {
 	$if linux {
@@ -168,15 +168,30 @@ fn unix_process_pipe(fds &i32) i32 {
 			}
 		}
 	}
-	return C.pipe(fds)
+	result := C.pipe(fds)
+	if result == 0 {
+		// Without pipe2, mark both ends at once. Otherwise every program this
+		// process spawns later, from any thread, inherits the ends it keeps.
+		unsafe {
+			C.fcntl(fds[0], C.F_SETFD, C.FD_CLOEXEC)
+			C.fcntl(fds[1], C.F_SETFD, C.FD_CLOEXEC)
+		}
+	}
+	return result
 }
 
-fn (mut p Process) unix_spawn_process() int {
+fn (mut p Process) unix_spawn_process(start_stopped bool) int {
 	// Each `C.pipe` writes two C `int` file descriptors; back them with `i32` so the
 	// buffer matches the C ABI (a V `[6]int` is six 64-bit slots now that `int` is
 	// 64-bit, so `pipe` would write out of bounds). The fds convert back to `int`
 	// implicitly where they are stored/closed.
 	mut pipeset := [6]i32{}
+	// Without pipe2 a pipe gets CLOEXEC only after pipe() returns. Hold the lock
+	// os.execute takes around its own pipes and spawn, from creating these pipes
+	// until the fork, so that no other V spawn forks in between.
+	$if !linux {
+		v_os_execute_lock()
+	}
 	if p.use_stdio_ctl {
 		mut dont_care := 0
 		if !p.has_stdin_path {
@@ -193,6 +208,9 @@ fn (mut p Process) unix_spawn_process() int {
 	plan := p.unix_prepare_spawn()
 	pid := fork()
 	if pid != 0 {
+		$if !linux {
+			v_os_execute_unlock()
+		}
 		// This is the parent process after the fork.
 		// Note: pid contains the process ID of the child process
 		if p.use_stdio_ctl {
@@ -225,6 +243,9 @@ fn (mut p Process) unix_spawn_process() int {
 	//
 	if p.use_pgroup {
 		C.setpgid(0, 0)
+	}
+	if start_stopped {
+		C.kill(C.getpid(), C.SIGSTOP)
 	}
 	mut stdin_fd := -1
 	if p.has_stdin_path {
@@ -309,15 +330,45 @@ fn (mut p Process) unix_wait() {
 	p.impl_check_pid_status(false, 0)
 }
 
+// run_stopped starts a Unix child and waits for it to stop before exec.
+// Use signal_continue to let it execute once parent-side setup is complete.
+pub fn (mut p Process) run_stopped() ! {
+	if p.status != .not_started {
+		return error('process already started')
+	}
+	p._spawn(true)
+	if p.pid <= 0 {
+		p.status = .aborted
+		return error('could not start stopped process')
+	}
+	// Native WUNTRACED values also used by the portable C run-signal helper.
+	wait_untraced := $if solaris || qnx { 4 } $else { 2 }
+	if p.impl_check_pid_status(false, wait_untraced) {
+		return
+	}
+	if !p.reaped {
+		p.signal_kill()
+		p.wait()
+	}
+	return error('process did not stop before exec')
+}
+
 fn (mut p Process) unix_is_alive() bool {
 	return p.impl_check_pid_status(true, C.WNOHANG)
 }
 
 fn (mut p Process) impl_check_pid_status(exit_early_on_ret0 bool, waitpid_options int) bool {
-	mut cstatus := 0
+	// waitpid(2) stores a C int. An i32 status matches both the builtin
+	// declaration and a program's own `fn C.waitpid(i32, &i32, i32) i32`.
+	mut cstatus := i32(0)
 	mut ret := -1
 	$if !emscripten ? {
-		ret = C.waitpid(p.pid, &cstatus, waitpid_options)
+		for {
+			ret = C.waitpid(p.pid, &cstatus, waitpid_options)
+			if ret >= 0 || C.errno != C.EINTR {
+				break
+			}
+		}
 	}
 	p.code = ret
 	if ret == -1 {
@@ -327,8 +378,13 @@ fn (mut p Process) impl_check_pid_status(exit_early_on_ret0 bool, waitpid_option
 	if exit_early_on_ret0 && ret == 0 {
 		return true
 	}
+	// The low status byte is 0x7f for a stopped Unix child.
+	if cstatus & 0xff == 0x7f {
+		p.status = .stopped
+		return true
+	}
 	p.reaped = true
-	mut pret, is_signaled := posix_wait4_to_exit_status(cstatus)
+	mut pret, is_signaled := posix_wait4_to_exit_status(int(cstatus))
 	if is_signaled {
 		p.status = .aborted
 		p.err = 'Terminated by signal ${pret:2d} (${sigint_to_signal_name(pret)})'

@@ -307,10 +307,19 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			idx:    i
 		})
 	}
-	keys = g.sorted_fn_gen_item_keys(keys)
-	unsorted := items.clone()
-	for i, key in keys {
+	sorted_keys := g.sorted_fn_gen_item_keys(keys)
+	mut unsorted := items.clone()
+	for i, key in sorted_keys {
 		items[i] = unsorted[key.idx]
+	}
+	// The candidate list, the unsorted copy and the key lists are spent, but the
+	// arena they are in can stay until cgen is done: give their pages back.
+	unsafe {
+		candidates.free()
+		unsorted.free()
+		keys.free()
+		preferred_fns.free()
+		candidate_preferred.free()
 	}
 	return items
 }
@@ -829,6 +838,26 @@ fn (g &FlatGen) needs_closure_runtime_init() bool {
 	if !g.used_fn_contains('closure.closure_init') && !g.used_fn_contains('closure__closure_init') {
 		return false
 	}
+	return g.has_closure_module()
+}
+
+// needs_closure_runtime_state reports whether the program reaches the state of the
+// closure runtime, `g_closure`, whose maps only its initializer in `_vinit` creates.
+// Every runtime entry point, `closure_init` as well as the public `closure.Lifetime`
+// API, goes through `closure_ensure_initialized`, but a program that uses lifetimes
+// without creating a closure never calls `closure_init`.
+fn (g &FlatGen) needs_closure_runtime_state() bool {
+	if g.needs_closure_runtime_init() {
+		return true
+	}
+	if !g.used_fn_contains('closure.closure_ensure_initialized')
+		&& !g.used_fn_contains('closure__closure_ensure_initialized') {
+		return false
+	}
+	return g.has_closure_module()
+}
+
+fn (g &FlatGen) has_closure_module() bool {
 	for _, module_name in g.tc.file_modules {
 		if module_name == 'closure' {
 			return true
@@ -6067,7 +6096,11 @@ fn (g &FlatGen) exported_symbol_attribute() string {
 	if !g.is_shared {
 		return ''
 	}
-	if g.ccompiler == 'msvc' {
+	// MSVC, and TinyCC for Windows targets, export only `dllexport` symbols from a DLL.
+	// MinGW's linker exports every symbol of a DLL that marks none, so GCC and Clang keep
+	// the visibility attribute there and their DLLs keep exporting all functions.
+	if g.ccompiler == 'msvc' || (g.target.os == 'windows' && (g.ccompiler == 'tinyc'
+		|| g.ccompiler.to_lower().contains('tcc'))) {
 		return '__declspec(dllexport) '
 	}
 	return '__attribute__((visibility("default"))) '
@@ -8046,16 +8079,30 @@ fn (mut g FlatGen) c_call_is_int_array_data_arg(arg_id flat.NodeId, arg_idx int,
 	return is_native_variadic
 }
 
-fn (mut g FlatGen) gen_builtin_panic_call(node flat.Node) {
+// panic_call_reports_position reports whether a `panic()` call passes its V source
+// position to the runtime. `-g` builds report every call. Other non-prod builds report
+// calls outside the compiler's vlib (and vlib's own `_test.v` files), so that a panic
+// names the user's .v line without debug info; `-prod` binaries keep no source paths.
+fn (g &FlatGen) panic_call_reports_position(filename string) bool {
 	if g.is_debug {
+		return true
+	}
+	return filename.ends_with('_test.v') || !g.c_source_file_is_in_vlib(filename)
+}
+
+fn (mut g FlatGen) gen_builtin_panic_call(node flat.Node) {
+	mut reported := false
+	if g.is_debug || !g.is_prod {
 		if position := g.a.source_position(node.pos) {
-			module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
-			fn_name := g.cur_fn_name.all_after_last('.')
-			g.write('panic_debug(${position.line}, _S("${c_escape(position.filename.replace('\\', '/'))}"), _S("${c_escape(module_name)}"), _S("${c_escape(fn_name)}"), ')
-		} else {
-			g.write('v_panic(')
+			if g.panic_call_reports_position(position.filename) {
+				module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+				fn_name := g.cur_fn_name.all_after_last('.')
+				g.write('panic_debug(${position.line}, _S("${c_escape(position.filename.replace('\\', '/'))}"), _S("${c_escape(module_name)}"), _S("${c_escape(fn_name)}"), ')
+				reported = true
+			}
 		}
-	} else {
+	}
+	if !reported {
 		g.write('v_panic(')
 	}
 	if node.children_count > 1 {
@@ -8386,6 +8433,21 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 			g.gen_call_args_for_callee(specialized_name, node, runtime_start, callee_name, callee_fn_value_params)
 			g.write(')')
 			return
+		}
+		// `cb[T]()` calls a local closure with explicit type arguments: the arguments
+		// only typed the closure, so call the value itself (not `(cb[T])()`).
+		base_id := g.a.child(fn_node, 0)
+		base := g.a.nodes[int(base_id)]
+		if base.kind == .ident && !base.value.contains('.') {
+			if local_type := g.local_ident_type(base.value) {
+				if _ := fn_type_from(unalias_type(local_type)) {
+					g.gen_expr(base_id)
+					g.write('(')
+					g.gen_call_args_for_callee(fn_name, node, runtime_start, callee_name, callee_fn_value_params)
+					g.write(')')
+					return
+				}
+			}
 		}
 	}
 	if node.children_count == 2 && (call_name_is_isnil(fn_name, target_name)
@@ -12295,6 +12357,11 @@ fn (g &FlatGen) resolved_call_matches_target(resolved string, target string) boo
 		|| resolved_short == g.cname(target_short)
 }
 
+// cgen_runtime_macro_helpers are the array helpers that the C prelude defines as
+// macros (builtin_abi_decls in cleanc.v) for the calls that transform makes.
+const cgen_runtime_macro_helpers = ['array_new', 'array_push', 'array_push_many_ptr', 'array_get',
+	'array_set', 'array_slice', 'array_delete', 'array_ensure_cap']
+
 // normalize_call_key transforms normalize call key data for c.
 fn (g &FlatGen) normalize_call_key(name string) string {
 	if !isnil(g.normalize_call_cache) {
@@ -12342,6 +12409,12 @@ fn (g &FlatGen) normalize_call_key_uncached(name string) string {
 	qname := g.tc.qualify_fn_name(name)
 	if qname in g.tc.fn_param_types || qname in g.tc.fn_ret_types {
 		return qname
+	}
+	// The runtime helpers that transform calls by these names are C macros of the
+	// prelude, with no V declaration: an imported module's function of the same
+	// short name must not take their calls.
+	if name in cgen_runtime_macro_helpers {
+		return name
 	}
 	// Most names reaching this loop are found under no import. Probe each
 	// `module.name` spelling from a scratch buffer and copy only a hit.
@@ -13112,6 +13185,9 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, 
 			g.write(wrapper)
 			return true
 		}
+	} else if expected_c_abi.len == 0
+		&& g.gen_callback_closure_abi_adapter(arg_id, expected, false, true) {
+		return true
 	}
 	actual_fn := fn_type_from(g.usable_expr_type(arg_id)) or { return false }
 	if g.callback_fn_types_direct_compatible(actual_fn, expected_fn, expected_c_abi) {
@@ -13212,15 +13288,24 @@ fn (g &FlatGen) callback_closure_target(id flat.NodeId) ?CallbackClosureTarget {
 // while replacing its generated target with a C-ABI adapter. The executable closure
 // still carries the original context; only its jump target changes.
 fn (mut g FlatGen) gen_c_callback_closure_abi_adapter(arg_id flat.NodeId, expected types.Type, emit_cast bool) bool {
+	return g.gen_callback_closure_abi_adapter(arg_id, expected, true, emit_cast)
+}
+
+// gen_callback_closure_abi_adapter is gen_c_callback_closure_abi_adapter for a V
+// callback type when `c_abi` is false: a capturing literal that returns nothing,
+// passed where `fn (...) !` is expected, must be called through an adapter that
+// returns the result. A bare cast lets the caller read a result the literal never
+// wrote, and on x86-64 the caller's hidden result pointer becomes the first argument.
+fn (mut g FlatGen) gen_callback_closure_abi_adapter(arg_id flat.NodeId, expected types.Type, c_abi bool, emit_cast bool) bool {
 	expected_fn := fn_type_from(expected) or { return false }
 	target := g.callback_closure_target(arg_id) or { return false }
 	actual_fn := g.callback_fn_value_type(target.name) or { return false }
-	encoded := g.c_extern_fn_ptr_encoded_for_type(expected, expected_fn)
+	encoded := if c_abi { g.c_extern_fn_ptr_encoded_for_type(expected, expected_fn) } else { '' }
 	wrapper := g.ensure_callback_userdata_wrapper(target.name, actual_fn, expected_fn, encoded) or {
 		return false
 	}
 	if emit_cast {
-		mut expected_ct := encoded
+		mut expected_ct := if c_abi { encoded } else { g.tc.c_type(expected) }
 		if expected_ct.starts_with('fn_ptr:') {
 			expected_ct = g.resolve_fn_ptr_type(expected_ct)
 		}
@@ -18396,11 +18481,8 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 		}
 	}
 	if g.target.os == 'vinix' {
-		normalized_file := source_file.replace('\\', '/')
 		normalized_root := g.compiler_vroot.replace('\\', '/').trim_right('/')
-		is_vlib_file := normalized_root.len > 0
-			&& normalized_file.starts_with('${normalized_root}/vlib/')
-		if !is_vlib_file {
+		if vlib_relative_source_path(normalized_root, source_file) == none {
 			if cfn.starts_with('__builtin_') {
 				return false
 			}
@@ -19740,7 +19822,10 @@ fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_na
 			return *rt
 		}
 	}
-	if !node.value.contains('.') {
+	// For a function of the program, the bare name in that table can be another
+	// module's alias (`json2.decode_T_Array_int` is also `decode_T_Array_int`) until
+	// the function's own registration claims it; the checker's table below is its own.
+	if !node.value.contains('.') && module_name !in ['', 'main', 'builtin'] {
 		full_name := qualify_name_in_module(module_name, node.value)
 		if rt := g.fn_decl_ret_types[full_name] {
 			return *rt
