@@ -30,10 +30,10 @@ pub:
 	external_docs map[string]json2.Any
 }
 
-// OpenApiTag maps one mounted controller to an automatic public OpenAPI tag.
-// Declare additional controller tags with an `OpenApiTags` metadata method.
+// OpenApiControllerTag maps one mounted controller to an automatic public OpenAPI tag.
+// Declare additional controller tags with an `OpenApiTagProvider` metadata method.
 @[attribute]
-pub struct OpenApiTag {
+pub struct OpenApiControllerTag {
 pub:
 	name    string
 	summary string
@@ -54,13 +54,13 @@ pub:
 	value string
 }
 
-// OpenApiMetadata marks the single shared typed metadata method on a controller.
+// OpenApiControllerMetadata marks the single shared typed metadata method on a controller.
 @[attribute]
-pub struct OpenApiMetadata {}
+pub struct OpenApiControllerMetadata {}
 
-// OpenApiTags marks a controller method that returns multiple public tags.
+// OpenApiTagProvider marks a controller method that returns multiple public tags.
 @[attribute]
-pub struct OpenApiTags {}
+pub struct OpenApiTagProvider {}
 
 // OpenApiConfig configures an additive, typed OpenAPI document.
 @[params]
@@ -134,12 +134,12 @@ pub:
 
 // OpenApiHandler supplies the mounted operation to a handler's typed metadata method.
 // Link it with `@[veb.OpenApi('method_name')]` on one handler, or mark one controller-wide
-// metadata method with `@[veb.OpenApiMetadata]`.
+// metadata method with `@[veb.OpenApiControllerMetadata]`.
 pub struct OpenApiHandler {
 pub:
-	path    string
-	method  http.Method
-	handler string
+	path         string
+	method       http.Method
+	handler_name string
 mut:
 	doc &OpenApiDocument = unsafe { nil }
 }
@@ -208,8 +208,8 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 		}
 	}
 	for route in routes {
-		if route.openapi_tags_method_count > 1 {
-			return error('controller ${route.controller} declares multiple OpenAPI tag metadata methods')
+		if route.openapi_tag_provider_method_count > 1 {
+			return error('controller ${route.controller} declares multiple OpenAPI tag provider methods')
 		}
 		for group in route.openapi_tag_groups {
 			doc.collect_automatic_tag_group(group)!
@@ -319,8 +319,8 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 			}
 			item[verb] = operation
 			doc.paths[path] = item
-			if route.openapi_controller_metadata_count > 1 {
-				return error('controller ${route.controller} declares multiple OpenAPI metadata methods')
+			if route.openapi_controller_metadata_method_count > 1 {
+				return error('controller ${route.controller} declares multiple controller-level OpenAPI metadata methods')
 			}
 			if route.openapi_controller_metadata_name != '' {
 				if route.openapi_controller_metadata == unsafe { nil } {
@@ -328,11 +328,11 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 				}
 				route.openapi_controller_metadata(mut doc, path, method, route.name)!
 			}
-			if route.openapi_metadata_name != '' {
-				if route.openapi_metadata == unsafe { nil } {
-					return error('unknown OpenAPI metadata method `${route.openapi_metadata_name}` for ${route.controller}.${route.name}; expected fn (app &Controller) metadata(mut handler veb.OpenApiHandler) !')
+			if route.openapi_handler_metadata_name != '' {
+				if route.openapi_handler_metadata == unsafe { nil } {
+					return error('unknown handler-level OpenAPI metadata method `${route.openapi_handler_metadata_name}` for ${route.controller}.${route.name}; expected fn (app &Controller) metadata(mut handler veb.OpenApiHandler) !')
 				}
-				route.openapi_metadata(mut doc, path, method, route.name)!
+				route.openapi_handler_metadata(mut doc, path, method, route.name)!
 			}
 		}
 	}

@@ -1122,7 +1122,7 @@ fn test_handler_metadata_rejects_unknown_or_invalid_callbacks() {
 	if _ := doc.add_app[MissingHandlerMetadata, TypedApiContext](app) {
 		assert false, 'an unknown metadata method must be rejected'
 	} else {
-		assert err.msg().contains('unknown OpenAPI metadata method `missing`')
+		assert err.msg().contains('unknown handler-level OpenAPI metadata method `missing`')
 	}
 	if _, _, _ := parse_attrs('x', ['/x', 'post', "OpenApi: ''"]) {
 		assert false, 'an empty metadata method name must be rejected'
@@ -1132,7 +1132,7 @@ fn test_handler_metadata_rejects_unknown_or_invalid_callbacks() {
 	}
 }
 
-fn test_openapi_metadata_named_attribute_parsing() {
+fn test_openapi_handler_metadata_named_attribute_parsing() {
 	methods, path, host := parse_attrs('x', ['/x', 'post', 'veb.OpenApi',
 		"veb.OpenApi_handler: 'schema'"])!
 	assert methods == [http.Method.post]

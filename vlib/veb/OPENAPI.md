@@ -84,15 +84,15 @@ central `doc.operation()` override when each mounted operation needs a distinct 
 
 ## Typed metadata beside handlers
 
-Use `@[veb.OpenApiMetadata]` on one controller-wide metadata method to share typed request
+Use `@[veb.OpenApiControllerMetadata]` on one controller-wide metadata method to share typed request
 and response declarations across many handlers:
 
 ```v ignore
 struct Items {}
 
-@[veb.OpenApiMetadata]
+@[veb.OpenApiControllerMetadata]
 fn (app &Items) openapi_metadata(mut operation veb.OpenApiHandler) ! {
-    match operation.handler {
+    match operation.handler_name {
         'create_item' {
             operation.request[CreateItem]()!
             operation.response[Item](status: 201)!
@@ -112,7 +112,7 @@ fn (app &Items) openapi_metadata(mut operation veb.OpenApiHandler) ! {
 ```
 
 The method receives every operation emitted by that controller, including each mounted path and
-HTTP method. `OpenApiHandler.handler`, `.path` and `.method` identify the current operation.
+HTTP method. `OpenApiHandler.handler_name`, `.path` and `.method` identify the current operation.
 DTO generic calls remain compile-time checked, and handlers without a matching branch retain
 the generic operation. A controller may declare only one such method.
 
@@ -271,7 +271,7 @@ but are not added to operation tags:
 
 ```v ignore
 fn (mut app App) routes_base(mut ctx Context) {
-    app.openapi_tag_group(veb.OpenApiTagGroup{
+    app.register_openapi_tag_group(veb.OpenApiTagGroup{
         name:        'base'
         summary:     'Base data'
         description: 'Currencies, languages and shared reference data.'
@@ -283,14 +283,14 @@ fn (mut app App) routes_base(mut ctx Context) {
 Annotate a mounted controller to map all of its operations to one leaf tag:
 
 ```v ignore
-@[veb.OpenApiTag('base.currency', 'Currencies', 'base')]
+@[veb.OpenApiControllerTag('base.currency', 'Currencies', 'base')]
 pub struct Currency {}
 ```
 
-Use one `@[veb.OpenApiTags]` method when a controller needs multiple leaves:
+Use one `@[veb.OpenApiTagProvider]` method when a controller needs multiple leaves:
 
 ```v ignore
-@[veb.OpenApiTags]
+@[veb.OpenApiTagProvider]
 fn (app &Currency) openapi_tags() []veb.OpenApiTagConfig {
     return [
         veb.OpenApiTagConfig{

@@ -14,17 +14,17 @@ struct DeclarativeTagDomain {
 	Controller
 }
 
-@[OpenApiTag('base.currency', 'Currencies', 'base')]
+@[OpenApiControllerTag('base.currency', 'Currencies', 'base')]
 struct DeclarativeCurrency {}
 
 struct DeclarativeLanguage {}
 
-@[OpenApiTag('shared', '', '')]
+@[OpenApiControllerTag('shared', '', '')]
 struct DeclarativeSharedTags {}
 
 struct DeclarativeUnannotated {}
 
-@[OpenApiTag('ignored', '', '')]
+@[OpenApiControllerTag('ignored', '', '')]
 struct DeclarativeUnregistered {}
 
 @['/currencies'; get]
@@ -44,7 +44,7 @@ fn (app &DeclarativeLanguage) languages(mut ctx DeclarativeTagContext) Result {
 	return ctx.text('languages')
 }
 
-@[OpenApiTags]
+@[OpenApiTagProvider]
 fn (app &DeclarativeLanguage) openapi_tags() []OpenApiTagConfig {
 	return [
 		OpenApiTagConfig{
@@ -76,16 +76,16 @@ fn (app &DeclarativeUnregistered) ignored(mut ctx DeclarativeTagContext) Result 
 fn declarative_tag_app() !&DeclarativeTagRoot {
 	mut app := &DeclarativeTagRoot{}
 	mut domain := &DeclarativeTagDomain{}
-	domain.openapi_tag_group(OpenApiTagGroup{
+	domain.register_openapi_tag_group(OpenApiTagGroup{
 		name:        'base'
 		summary:     'Base data'
 		description: 'Currencies and languages.'
 	})
-	app.openapi_tag_group(OpenApiTagGroup{
+	app.register_openapi_tag_group(OpenApiTagGroup{
 		name:    'empty'
 		summary: 'Reserved for future controllers'
 	})
-	app.openapi_tag_group(OpenApiTagGroup{
+	app.register_openapi_tag_group(OpenApiTagGroup{
 		name:    'empty'
 		summary: 'Reserved for future controllers'
 	})
@@ -184,10 +184,10 @@ struct DeclarativeConflictRoot {
 	Controller
 }
 
-@[OpenApiTag('same', 'First', '')]
+@[OpenApiControllerTag('same', 'First', '')]
 struct DeclarativeConflictFirst {}
 
-@[OpenApiTag('same', 'Second', '')]
+@[OpenApiControllerTag('same', 'Second', '')]
 struct DeclarativeConflictSecond {}
 
 @['/first'; get]
@@ -214,7 +214,7 @@ fn test_openapi_automatic_tag_validation() {
 	}
 
 	mut missing_parent := &DeclarativeTagRoot{}
-	missing_parent.openapi_tag_group(OpenApiTagGroup{
+	missing_parent.register_openapi_tag_group(OpenApiTagGroup{
 		name:   'child'
 		parent: 'missing'
 	})
@@ -224,11 +224,11 @@ fn test_openapi_automatic_tag_validation() {
 	}
 
 	mut cycle := &DeclarativeTagRoot{}
-	cycle.openapi_tag_group(OpenApiTagGroup{
+	cycle.register_openapi_tag_group(OpenApiTagGroup{
 		name:   'a'
 		parent: 'b'
 	})
-	cycle.openapi_tag_group(OpenApiTagGroup{
+	cycle.register_openapi_tag_group(OpenApiTagGroup{
 		name:   'b'
 		parent: 'a'
 	})
@@ -257,9 +257,9 @@ struct DeclarativeMetadataRoot {
 
 struct DeclarativeMetadataController {}
 
-@[OpenApiMetadata]
+@[OpenApiControllerMetadata]
 fn (app &DeclarativeMetadataController) openapi_metadata(mut operation OpenApiHandler) ! {
-	match operation.handler {
+	match operation.handler_name {
 		'create_item' {
 			operation.request[DeclarativeMetadataRequest]()!
 			operation.response[DeclarativeMetadataResponse](status: 201)!
@@ -402,14 +402,14 @@ fn test_openapi_declarative_operation_ids_are_validated_at_render_time() {
 
 struct DeclarativeMultipleMetadataController {}
 
-@[OpenApiMetadata]
+@[OpenApiControllerMetadata]
 fn (app &DeclarativeMultipleMetadataController) first_metadata(mut operation OpenApiHandler) ! {
-	_ = operation.handler
+	_ = operation.handler_name
 }
 
-@[OpenApiMetadata]
+@[OpenApiControllerMetadata]
 fn (app &DeclarativeMultipleMetadataController) second_metadata(mut operation OpenApiHandler) ! {
-	_ = operation.handler
+	_ = operation.handler_name
 }
 
 @['/multiple'; get]

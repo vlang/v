@@ -7,16 +7,16 @@ type OpenApiHandlerCallback = fn (mut OpenApiDocument, string, http.Method, stri
 
 // RouteInfo describes a dispatched route, including its mounted controller path.
 pub struct RouteInfo {
-	openapi_metadata_name             string
-	openapi_metadata                  OpenApiHandlerCallback = unsafe { nil }
-	openapi_controller_metadata_name  string
-	openapi_controller_metadata       OpenApiHandlerCallback = unsafe { nil }
-	openapi_controller_metadata_count int
-	openapi_summary                   string
-	openapi_operation_id              string
-	openapi_tags                      []OpenApiTagConfig
-	openapi_tag_groups                []OpenApiTagGroup
-	openapi_tags_method_count         int
+	openapi_handler_metadata_name            string
+	openapi_handler_metadata                 OpenApiHandlerCallback = unsafe { nil }
+	openapi_controller_metadata_name         string
+	openapi_controller_metadata              OpenApiHandlerCallback = unsafe { nil }
+	openapi_controller_metadata_method_count int
+	openapi_summary                          string
+	openapi_operation_id                     string
+	openapi_tags                             []OpenApiTagConfig
+	openapi_tag_groups                       []OpenApiTagGroup
+	openapi_tag_provider_method_count        int
 pub:
 	name               string
 	controller         string
@@ -80,14 +80,14 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 		}
 	}
 	mut metadata_callbacks := map[string]OpenApiHandlerCallback{}
-	mut metadata_names := map[string]string{}
+	mut handler_metadata_names := map[string]string{}
 	mut controller_metadata_names := []string{}
 	$for method in A.methods {
 		$for attr in method.attributes {
 			$if attr is OpenApi {
-				metadata_names[method.name] = attr.handler
+				handler_metadata_names[method.name] = attr.handler
 			}
-			$if attr is OpenApiMetadata {
+			$if attr is OpenApiControllerMetadata {
 				controller_metadata_names << method.name
 			}
 		}
@@ -96,10 +96,10 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 				$if param.typ is &OpenApiHandler {
 					metadata_callbacks[method.name] = fn [method, app] [A](mut doc OpenApiDocument, path string, verb http.Method, handler_name string) ! {
 						mut handler := OpenApiHandler{
-							doc:     &doc
-							path:    path
-							method:  verb
-							handler: handler_name
+							doc:          &doc
+							path:         path
+							method:       verb
+							handler_name: handler_name
 						}
 						app.$method(mut handler)!
 					}
@@ -109,7 +109,7 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 	}
 	mut controller_tags := []OpenApiTagConfig{}
 	$for attr in A.attributes {
-		$if attr is OpenApiTag {
+		$if attr is OpenApiControllerTag {
 			controller_tags << OpenApiTagConfig{
 				name:    attr.name
 				summary: attr.summary
@@ -117,22 +117,22 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 			}
 		}
 	}
-	mut controller_tags_methods := []string{}
+	mut tag_provider_methods := []string{}
 	$for method in A.methods {
 		$for attr in method.attributes {
-			$if attr is OpenApiTags {
-				controller_tags_methods << method.name
+			$if attr is OpenApiTagProvider {
+				tag_provider_methods << method.name
 			}
 		}
 	}
-	controller_tags_method := if controller_tags_methods.len > 0 {
-		controller_tags_methods[0]
+	tag_provider_method := if tag_provider_methods.len > 0 {
+		tag_provider_methods[0]
 	} else {
 		''
 	}
-	if controller_tags_method != '' {
+	if tag_provider_method != '' {
 		$for method in A.methods {
-			if method.name == controller_tags_method {
+			if method.name == tag_provider_method {
 				controller_tags << app.$method()
 			}
 		}
@@ -163,28 +163,30 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 			// Preserve the dispatcher's missing-value policy independently of schema widths.
 			required << kind in [.integer, .boolean]
 		}
-		metadata_name := metadata_names[name]
+		handler_metadata_name := handler_metadata_names[name]
 		info := RouteInfo{
-			name:                              name
-			controller:                        typeof(app).name.trim_left('&')
-			path:                              openapi_join_path('', route.path)
-			methods:                           route.methods
-			host:                              route.host
-			description:                       route_description(route.attrs)
-			parameter_names:                   route.parameter_names
-			parameter_types:                   kinds
-			parameter_schemas:                 schemas
-			parameter_required:                required
-			openapi_metadata_name:             metadata_name
-			openapi_metadata:                  metadata_callbacks[metadata_name] or { OpenApiHandlerCallback(unsafe { nil }) }
-			openapi_controller_metadata_name:  controller_metadata_name
-			openapi_controller_metadata:       controller_metadata
-			openapi_controller_metadata_count: controller_metadata_names.len
-			openapi_summary:                   summaries[name]
-			openapi_operation_id:              operation_ids[name]
-			openapi_tags:                      controller_tags.clone()
-			openapi_tag_groups:                controller_tag_groups.clone()
-			openapi_tags_method_count:         controller_tags_methods.len
+			name:                                     name
+			controller:                               typeof(app).name.trim_left('&')
+			path:                                     openapi_join_path('', route.path)
+			methods:                                  route.methods
+			host:                                     route.host
+			description:                              route_description(route.attrs)
+			parameter_names:                          route.parameter_names
+			parameter_types:                          kinds
+			parameter_schemas:                        schemas
+			parameter_required:                       required
+			openapi_handler_metadata_name:            handler_metadata_name
+			openapi_handler_metadata:                 metadata_callbacks[handler_metadata_name] or {
+				OpenApiHandlerCallback(unsafe { nil })
+			}
+			openapi_controller_metadata_name:         controller_metadata_name
+			openapi_controller_metadata:              controller_metadata
+			openapi_controller_metadata_method_count: controller_metadata_names.len
+			openapi_summary:                          summaries[name]
+			openapi_operation_id:                     operation_ids[name]
+			openapi_tags:                             controller_tags.clone()
+			openapi_tag_groups:                       controller_tag_groups.clone()
+			openapi_tag_provider_method_count:        tag_provider_methods.len
 		}
 		result << info
 		if name == 'index' && route.path == '/index' {
