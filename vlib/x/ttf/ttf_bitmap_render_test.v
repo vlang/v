@@ -30,7 +30,7 @@ fn new_bmp(tf &ttf.TTF_File, w int, h int) ttf.BitMap {
 	scale := f32(font_size * device_dpi) / f32(72 * int(tf.units_per_em))
 	return ttf.BitMap{
 		tf:       unsafe { tf }
-		buf:      unsafe { malloc(w * h * 4) }
+		buf:      vcalloc(w * h * 4)
 		buf_size: w * h * 4
 		scale:    scale
 		width:    w
@@ -114,6 +114,14 @@ fn test_bit_map_defaults() {
 // ---------------------------------------------------------------------
 // clear and plot
 // ---------------------------------------------------------------------
+
+fn test_new_bitmap_starts_with_zero_coverage() {
+	tf := load_font()
+	bmp := new_bmp(&tf, 8, 4)
+	for i in 0 .. bmp.buf_size {
+		assert unsafe { *(bmp.buf + i) } == 0
+	}
+}
 
 fn test_clear_zeroes_the_whole_buffer() {
 	tf := load_font()
