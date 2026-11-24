@@ -32,6 +32,16 @@ jobs:
           .\v.exe fmt -verify vlib/v/tests/create_dll/create_win_dll_test.v
           if ($LASTEXITCODE -ne 0) { throw "Format verification failed" }
           foreach ($cc in @('gcc', 'msvc', 'tcc')) {
+            Write-Host "Running original DLL test with $cc"
             .\v.exe -cc $cc -no-retry-compilation -silent vlib/v/tests/create_dll/create_win_dll_test.v
             if ($LASTEXITCODE -ne 0) { throw "$cc DLL regression failed" }
+            Write-Host "$cc DLL regression passed"
+          }
+      - name: Inspect DLL export tables after a failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem vlib/v/tests/create_dll -Filter 'create_win_*.dll' | ForEach-Object {
+            Write-Host "Exports from $($_.FullName)"
+            dumpbin /exports $_.FullName
           }

@@ -4,6 +4,8 @@ import os
 type Func = fn () int
 
 fn run_test(cc_used string) {
+	// os.system_args passes each element as one argument, so every option and its
+	// value is a separate element.
 	cc_flags := match cc_used {
 		'tcc64' { ['-cc', 'tcc'] }
 		'gcc64' { ['-cc', 'gcc'] }
@@ -15,10 +17,9 @@ fn run_test(cc_used string) {
 		'msvc32' { ['-cc', 'msvc', '-m32'] }
 		else { []string{} }
 	}
-
 	mut args := [@VEXE]
 	args << cc_flags
-	args << ['-o', 'create_win_${cc_used}.dll', '-shared', 'create_win_dll.c.v']
+	args << ['-o', 'create_win_' + '${cc_used}' + '.dll', '-shared', 'create_win_dll.c.v']
 	assert os.system_args(args) == 0
 	assert os.exists('create_win_${cc_used}.dll')
 	handle := dl.open('create_win_${cc_used}.dll', 0)

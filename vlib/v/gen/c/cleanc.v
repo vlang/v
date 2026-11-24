@@ -18226,6 +18226,18 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.expected_enum = old_expected_enum
 				return
 			}
+			// Source code cannot offset a `voidptr`, but the lowering of a translated
+			// `m[k] += n` can; standard C (and MSVC) has no `void*` arithmetic.
+			if node.op in [.plus, .minus] && type_is_void_pointer(lhs_type)
+				&& translated_integer_scalar_type(rhs_type) {
+				g.write('((${g.value_c_type(lhs_type)})((u8*)(')
+				g.gen_expr(lhs_id)
+				g.write(') ${g.op_str(node.op)} (')
+				g.gen_expr(rhs_id)
+				g.write(')))')
+				g.expected_enum = old_expected_enum
+				return
+			}
 			lhs_node := g.a.nodes[int(lhs_id)]
 			rhs_node := g.a.nodes[int(rhs_id)]
 			if node.op in [.eq, .ne] && g.expr_is_in_translated_file(id)
@@ -26418,9 +26430,9 @@ fn (mut g FlatGen) emit_global_inits() {
 		g.in_global_array_pointer_init = old_array_pointer_init
 	}
 	// The closure runtime can be imported for syntax that only might need it. Its state
-	// is set up for `closure_init`, and without it the map runtime its fields default to
-	// may not be emitted at all.
-	skip_closure_runtime_globals := !g.needs_closure_runtime_init()
+	// is set up only for a program that enters the runtime; without it the map runtime
+	// its fields default to may not be emitted at all.
+	skip_closure_runtime_globals := !g.needs_closure_runtime_state()
 	for qname in g.global_init_order {
 		g.in_global_array_pointer_init = false
 		if qname in g.c_extern_global_names {
