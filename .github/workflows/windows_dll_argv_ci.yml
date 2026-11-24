@@ -43,17 +43,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "$cc DLL regression failed" }
             Write-Host "$cc DLL regression passed"
             $exports = dumpbin /exports "vlib/v/tests/create_dll/create_win_${cc}64.dll"
-            if ($LASTEXITCODE -ne 0 -or -not ($exports -match '\bTatltuae\s*
-          }
-      - name: Inspect DLL export tables after a failure
-        if: failure()
-        shell: pwsh
-        run: |
-          Get-ChildItem vlib/v/tests/create_dll -Filter 'create_win_*.dll' | ForEach-Object {
-            Write-Host "Exports from $($_.FullName)"
-            dumpbin /exports $_.FullName
-          }
-)) { throw "$cc DLL missing Tatltuae export" }
+            if ($LASTEXITCODE -ne 0 -or -not ($exports -match '\bTatltuae\s*$')) { throw "$cc DLL missing Tatltuae export" }
           }
       - name: Inspect DLL export tables after a failure
         if: failure()
