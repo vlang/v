@@ -256,6 +256,16 @@ fn bstep_message(mut bench benchmark.Benchmark, label string, msg string, sdurat
 	return bench.step_message_with_label_and_duration(label, msg, sduration)
 }
 
+// fixture_compiler_jobs is how many worker threads each fixture compiler gets, while `fixture_jobs`
+// fixtures compile at once on `available_cpus`, and at most the `configured_jobs` of VJOBS.
+fn fixture_compiler_jobs(available_cpus int, fixture_jobs int, configured_jobs int) int {
+	mut jobs := available_cpus / if fixture_jobs < 1 { 1 } else { fixture_jobs }
+	if jobs > configured_jobs {
+		jobs = configured_jobs
+	}
+	return if jobs < 1 { 1 } else { jobs }
+}
+
 // process an array of tasks in parallel, using no more than vjobs worker threads
 fn (mut tasks Tasks) run() {
 	if tasks.all.len == 0 {
@@ -263,6 +273,19 @@ fn (mut tasks Tasks) run() {
 	}
 	tasks.show_cmd = show_cmd
 	vjobs := if tasks.parallel_jobs > 0 { tasks.parallel_jobs } else { runtime.nr_jobs() }
+	// The fixture compilers share the CPUs with each other, like the compilers of `v test`:
+	// with every core busy running fixtures, the worker threads of each one only add
+	// overhead (one thread each retires about 12% fewer instructions).
+	previous_vjobs := os.getenv_opt('VJOBS')
+	os.setenv('VJOBS', fixture_compiler_jobs(runtime.nr_cpus(), vjobs, runtime.nr_jobs()).str(),
+		true)
+	defer {
+		if value := previous_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
 	mut bench := benchmark.new_benchmark()
 	bench.set_total_expected_steps(tasks.all.len)
 	mut work := chan TaskDescription{cap: tasks.all.len}
@@ -523,4 +546,11 @@ fn get_tests_in_dir(dir string, is_module bool) []string {
 
 fn get_max_ntries() int {
 	return if v_ci_musl { 3 } else { 1 }
+}
+
+fn test_fixture_compilers_share_the_cpus_within_vjobs() {
+	assert fixture_compiler_jobs(18, 18, 18) == 1
+	assert fixture_compiler_jobs(16, 4, 16) == 4
+	assert fixture_compiler_jobs(16, 1, 4) == 4
+	assert fixture_compiler_jobs(2, 8, 8) == 1
 }

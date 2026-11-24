@@ -32,7 +32,10 @@ pub fn check() {
     assert mapping.value["key"]!.name == "caller"
 }
 ')!
-	result := os.exec([@VEXE, '-cc', 'clang', '-gc', 'none', '-no-retry-compilation', 'run',
+	// The clang of the Windows runners targets the MSVC ABI, which V rejects, so Windows
+	// builds the program with its default C compiler.
+	cc_args := $if windows { []string{} } $else { ['-cc', 'clang'] }
+	result := os.exec([@VEXE, ...cc_args, '-gc', 'none', '-no-retry-compilation', 'run',
 		os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 }
