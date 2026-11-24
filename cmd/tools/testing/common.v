@@ -950,6 +950,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.njobs = ts.benchmark.njobs
 	item := p.get_item[string](idx)
 	if item.contains('\n') {
+		if ts.can_batch_tool_runs() {
+			return ts.run_tool_batch(item.split('\n'), '${idx}_${thread_id}', thread_id, mut
+				tls_bench)
+		}
 		return ts.run_test_batch(item.split('\n'), '${idx}_${thread_id}', thread_id, mut
 			tls_bench)
 	}
@@ -1453,14 +1457,17 @@ pub fn building_any_v_binaries_failed() bool {
 	if production_cc != '' {
 		eprintln('Using ${production_cc} for production V binaries')
 	}
+	// The builds run side by side, as far as their memory allows: each production build spends
+	// minutes in one C compiler process, using one core. They come first, alternating with and
+	// without debug information, so that two of them fit in the memory of a 16 GB CI runner.
 	v_build_options := [
-		['-o', 'v_g', '-g'],
 		['-o', 'v_prod_g', '-prod', '-g'],
-		['-o', 'v_cg', '-cg'],
-		['-o', 'v_prod_cg', '-prod', '-cg'],
 		['-o', 'v_prod', '-prod'],
+		['-o', 'v_prod_cg', '-prod', '-cg'],
+		['-o', 'v_g', '-g'],
+		['-o', 'v_cg', '-cg'],
 	]
-	mut bmark := benchmark.new_benchmark()
+	mut builds := []&VBinaryBuild{}
 	for options in v_build_options {
 		mut args := [vexe]
 		args << options
@@ -1468,24 +1475,128 @@ pub fn building_any_v_binaries_failed() bool {
 			args << ['-cc', production_cc]
 		}
 		args << 'cmd/v'
-		cmd := args.map(os.quoted_path(it)).join(' ')
+		builds << &VBinaryBuild{
+			args:   args
+			cmd:    args.map(os.quoted_path(it)).join(' ')
+			memory: v_binary_build_memory(options)
+		}
+	}
+	mut bmark := benchmark.new_benchmark()
+	mut workers := runtime.nr_jobs()
+	if workers > builds.len {
+		workers = builds.len
+	}
+	mut budget := &VBinaryMemoryBudget{
+		limit: v_binaries_memory_limit()
+	}
+	mut builders := pool.new_pool_processor(
+		maxjobs:  if workers < 1 { 1 } else { workers }
+		callback: build_v_binary
+	)
+	builders.set_shared_context(budget)
+	builders.work_on_items(builds)
+	for build in builds {
 		bmark.step()
-		if build_v_args_failed(args) {
+		if build.failed {
 			bmark.fail()
 			failed = true
-			eprintln(bmark.step_message_fail('command: ${cmd} . See details above ^^^^^^^'))
+			if build.output != '' {
+				eprintln('')
+				eprintln(build.output)
+			}
+			eprintln(bmark.step_message_with_label_and_duration(benchmark.b_fail, 'command: ${build.cmd} . See details above ^^^^^^^',
+				build.duration))
 			eprintln('')
 			continue
 		}
 		bmark.ok()
 		if !hide_oks {
-			eprintln(bmark.step_message_ok('command: ${cmd}'))
+			eprintln(bmark.step_message_with_label_and_duration(benchmark.b_ok, 'command: ${build.cmd}',
+				build.duration))
 		}
 	}
 	bmark.stop()
 	h_divider()
 	eprintln(bmark.total_message('building v binaries'))
 	return failed
+}
+
+// VBinaryBuild is one build of cmd/v by building_any_v_binaries_failed.
+struct VBinaryBuild {
+	args   []string
+	cmd    string
+	memory u64 // the most memory the build is expected to use
+mut:
+	failed   bool
+	output   string
+	duration time.Duration
+}
+
+const gib = u64(1) << 30
+
+// v_binary_build_memory estimates the peak memory of a build of cmd/v with `options`. A production
+// build is one C compilation unit: Clang -O3 peaked at 4 GB, and at 8 GB with debug information.
+fn v_binary_build_memory(options []string) u64 {
+	if '-prod' !in options {
+		return 2 * gib
+	}
+	if '-g' in options || '-cg' in options {
+		return 8 * gib
+	}
+	return 4 * gib
+}
+
+// v_binaries_memory_limit is how much memory the builds of building_any_v_binaries_failed may use
+// at once: three quarters of the physical memory, or 0 (one build at a time) when it is unknown.
+fn v_binaries_memory_limit() u64 {
+	total := u64(runtime.total_memory() or { 0 })
+	return total / 4 * 3
+}
+
+// VBinaryMemoryBudget lets builds start only while their estimated memory fits in `limit`. A build
+// always starts when no other runs, so a small or unknown limit runs them one by one.
+@[heap]
+struct VBinaryMemoryBudget {
+	limit u64
+mut:
+	mu     &sync.Mutex = sync.new_mutex()
+	in_use u64
+}
+
+fn (mut b VBinaryMemoryBudget) acquire(amount u64) {
+	for {
+		b.mu.lock()
+		if b.in_use == 0 || b.in_use + amount <= b.limit {
+			b.in_use += amount
+			b.mu.unlock()
+			return
+		}
+		b.mu.unlock()
+		time.sleep(200 * time.millisecond)
+	}
+}
+
+fn (mut b VBinaryMemoryBudget) release(amount u64) {
+	b.mu.lock()
+	b.in_use -= amount
+	b.mu.unlock()
+}
+
+fn build_v_binary(mut p pool.PoolProcessor, idx int, _ int) voidptr {
+	mut build := p.get_item[&VBinaryBuild](idx)
+	mut budget := unsafe { &VBinaryMemoryBudget(p.get_shared_context()) }
+	budget.acquire(build.memory)
+	sw := time.new_stopwatch()
+	res := os.exec(build.args)
+	build.duration = sw.elapsed()
+	budget.release(build.memory)
+	if res.exit_code != 0 {
+		build.failed = true
+		if res.exit_code > 0 {
+			build.output = res.output
+		}
+	}
+	return pool.no_result
 }
 
 pub fn h_divider() {

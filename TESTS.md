@@ -218,6 +218,9 @@ The macOS tray example is built as a project on macOS and excluded on other host
 
 When `VFLAGS` selects TinyCC, `v build-vbinaries` uses an installed GCC or Clang for its
 production variants. Debug variants retain TinyCC. Other compiler selections are preserved.
+The five builds run side by side, up to `VJOBS`, while their estimated memory (8 GB for a
+production build with debug information, 4 GB without, 2 GB for a debug build) stays within three
+quarters of the physical memory; on a 16 GB machine two production builds overlap.
 
 ## Formatting tests
 
@@ -229,11 +232,15 @@ flat-AST-to-V formatting and round trips.
 
 Check that most .v files, are invariant of `v fmt` runs.
 
+It runs `v vet` and `v fmt -verify` over up to 64 files per command, since both check every file
+they are given and name the ones they reject. A command that fails runs again file by file, so
+the report is the same as without batching; `VTEST_NO_BATCH=1` runs one command per file.
+
 * `v test-fmt`
 
-This tests that all .v files in the current folder are already formatted.
-It is useful for adding to CI jobs, to guarantee, that future contributions
-will keep the existing source nice and clean.
+This tests that `v fmt` can format all .v files in the current folder, and lists the ones that
+need formatting. It runs `v fmt -inprocess -l` over up to 64 files per command, like
+`v test-cleancode`.
 
 ## Markdown/documentation checks:
 
