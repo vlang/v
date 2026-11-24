@@ -148,11 +148,10 @@ fn remove_replaced_phi(mut m ssa.Module, val_id int) {
 	m.values[val_id] = dead
 }
 
-// --- Critical edge splitting ---
-// Inserts an empty block on every edge whose source has multiple successors and
-// whose target has multiple predecessors, so phi-elimination copies have a unique
-// home. Operands here are raw block ids (v3 convention).
-fn split_critical_edges(mut m ssa.Module) {
+// split_critical_phi_edges gives phi-elimination copies their own block on
+// edges from a multi-successor block into a multi-predecessor phi block.
+fn split_critical_phi_edges(mut m ssa.Module) {
+	block_count := m.blocks.len
 	for fi in 0 .. m.funcs.len {
 		mut edges_to_split := [][]int{}
 		func := m.funcs[fi]
@@ -165,7 +164,13 @@ fn split_critical_edges(mut m ssa.Module) {
 					if succ_id < 0 || succ_id >= m.blocks.len {
 						continue
 					}
-					if m.blocks[succ_id].preds.len > 1 {
+					succ := m.blocks[succ_id]
+					if succ.preds.len < 2 || succ.instrs.len == 0 {
+						continue
+					}
+					// Phi instructions precede ordinary instructions in an SSA block.
+					first := m.values[succ.instrs[0]]
+					if first.kind == .instruction && m.instrs[first.index].op == .phi {
 						edges_to_split << [int(blk_id), int(succ_id)]
 					}
 				}
@@ -216,13 +221,15 @@ fn split_critical_edges(mut m ssa.Module) {
 			}
 		}
 	}
-	build_cfg(mut m)
+	if m.blocks.len != block_count {
+		build_cfg(mut m)
+	}
 }
 
 // eliminate_phi_nodes lowers phis to `assign` copies placed in predecessor blocks,
 // sequencing the per-predecessor parallel copies (Briggs) to respect dependencies.
 fn eliminate_phi_nodes(mut m ssa.Module) {
-	split_critical_edges(mut m)
+	split_critical_phi_edges(mut m)
 
 	n_blocks := m.blocks.len
 	mut pred_copy_dests := [][]int{len: n_blocks}
