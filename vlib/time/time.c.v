@@ -94,15 +94,24 @@ fn time_fields_to_unix(t Time) i64 {
 // calendar conversion, no allocation). It is the cheapest wall-clock read
 // available — a plain `time()` call, served from the vDSO on Linux — and is
 // the natural choice for second-resolution caches, timeouts and TTL checks.
+// Linux freestanding uses the realtime clock syscall.
 pub fn unix_now() i64 {
-	return i64(C.time(0))
+	$if freestanding && linux && !native && !i386 {
+		sec, _ := bare_realtime_parts()
+		return sec
+	} $else {
+		return i64(C.time(0))
+	}
 }
 
 // ticks returns the number of milliseconds since the UNIX epoch.
 // On Windows ticks returns the number of milliseconds elapsed since system start.
 // Its 64-bit uptime counter does not wrap after 49.7 days.
 pub fn ticks() i64 {
-	$if windows {
+	$if freestanding && linux && !native && !i386 {
+		sec, nanos := bare_realtime_parts()
+		return sec * 1000 + i64(nanos / 1_000_000)
+	} $else $if windows {
 		return i64(C.v_time_ticks_ms())
 	} $else {
 		ts := C.timeval{}

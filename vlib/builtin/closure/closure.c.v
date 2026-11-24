@@ -342,7 +342,41 @@ fn closure_return_ptr(exec_ptr voidptr) voidptr {
 
 @[inline]
 fn closure_slot_meta(exec_ptr voidptr) &voidptr {
+	$if freestanding && linux && !native && arm64 {
+		return unsafe { &voidptr(&u8(exec_ptr) - g_closure.v_page_size) }
+	}
 	return unsafe { &voidptr(&u8(exec_ptr) - assumed_page_size) }
+}
+
+@[inline]
+fn closure_has_static_templates() bool {
+	$if freestanding && macos && (amd64 || arm64) {
+		return true
+	}
+	return false
+}
+
+@[inline]
+fn closure_arm64_template_word(page_size int, instruction int) u32 {
+	// PC-relative loads address metadata before the current executable page.
+	// The second instruction is four bytes later and loads the second pointer.
+	offset := u32(-page_size / 4 + instruction) & 0x7ffff
+	opcode := if instruction == 0 { u32(0x5c000011) } else { u32(0x58000010) }
+	return opcode | (offset << 5)
+}
+
+// Only unpublished pages are written; existing callbacks keep executing RX code.
+fn closure_write_template(destination &u8) {
+	unsafe {
+		vmemcpy(destination, &closure_thunk[0], closure_thunk.len)
+		$if freestanding && linux && !native && arm64 {
+			// LDR literal has a signed 19-bit displacement in instruction words.
+			// ARM64 Linux also supports 64 KiB pages, unlike the fixed 16 KiB ABI.
+			mut words := &u32(destination)
+			words[0] = closure_arm64_template_word(g_closure.v_page_size, 0)
+			words[1] = closure_arm64_template_word(g_closure.v_page_size, 1)
+		}
+	}
 }
 
 fn closure_register_page(exec_page_start voidptr) {
@@ -770,15 +804,26 @@ fn closure_alloc() {
 	g_closure.closure_ptr = x // Current allocation pointer
 	g_closure.closure_cap = remaining // Remaining slot count
 
-	// Fill page with closure templates
-	for remaining > 0 {
-		unsafe { vmemcpy(x, &closure_thunk[0], closure_thunk.len) } // Copy template
-		remaining--
-		unsafe {
-			x += closure_size // Move to next slot
+	if closure_has_static_templates() {
+		// Every signed table reserves its first slot for the data accessor.
+		g_closure.closure_ptr = unsafe { x + closure_size }
+		g_closure.closure_cap--
+	} else {
+		for remaining > 0 {
+			closure_write_template(x)
+			remaining--
+			unsafe { x += closure_size }
+		}
+		closure_memory_protect_platform(g_closure.closure_ptr, g_closure.v_page_size, .read_exec)
+		$if freestanding && (linux || macos) && !native && (amd64 || arm64) {
+			// Managed-slot validation reserves slot zero on every page. Keep later
+			// pages consistent so lifetime reclamation can reuse all published slots.
+			if g_closure.pages.next != unsafe { nil } {
+				g_closure.closure_ptr = unsafe { &u8(g_closure.closure_ptr) + closure_size }
+				g_closure.closure_cap--
+			}
 		}
 	}
-	closure_memory_protect_platform(g_closure.closure_ptr, g_closure.v_page_size, .read_exec)
 }
 
 // closure_init initializes global closure subsystem(INTERNAL COMPILER USE ONLY).
@@ -801,14 +846,20 @@ fn closure_init_body() {
 	// Initial memory allocation
 	closure_alloc()
 
-	// Install closure handler template
-	unsafe {
-		// Temporarily enable write access to executable memory
-		closure_memory_protect_platform(g_closure.closure_ptr, page_size, .read_write)
-		// Copy closure entry stub code
-		vmemcpy(g_closure.closure_ptr, &closure_get_data_bytes[0], closure_get_data_bytes.len)
-		// Re-normalize execution protection
-		closure_memory_protect_platform(g_closure.closure_ptr, page_size, .read_exec)
+	// The signed table already contains the accessor; writable pages install it
+	// before global initialization publishes any executable callback.
+	mut accessor := g_closure.closure_ptr
+	if closure_has_static_templates() {
+		accessor = unsafe { &u8(accessor) - closure_size }
+	} else {
+		unsafe {
+			// Temporarily enable write access to executable memory
+			closure_memory_protect_platform(g_closure.closure_ptr, page_size, .read_write)
+			// Copy closure entry stub code
+			vmemcpy(g_closure.closure_ptr, &closure_get_data_bytes[0], closure_get_data_bytes.len)
+			// Re-normalize execution protection
+			closure_memory_protect_platform(g_closure.closure_ptr, page_size, .read_exec)
+		}
 	}
 	// Setup global closure handler pointer
 	if is_ppc64() {
@@ -819,14 +870,13 @@ fn closure_init_body() {
 		}
 		g_closure.closure_get_data = unsafe { ClosureGetDataFn(desc) }
 	} else {
-		g_closure.closure_get_data = unsafe { ClosureGetDataFn(g_closure.closure_ptr) }
+		g_closure.closure_get_data = unsafe { ClosureGetDataFn(accessor) }
 	}
 
-	// Advance allocation pointer past header
-	unsafe {
-		g_closure.closure_ptr = &u8(g_closure.closure_ptr) + closure_size
+	if !closure_has_static_templates() {
+		unsafe { g_closure.closure_ptr = &u8(g_closure.closure_ptr) + closure_size }
+		g_closure.closure_cap--
 	}
-	g_closure.closure_cap-- // Account for header slot
 }
 
 // closure_create creates closure objects at compile-time(INTERNAL COMPILER USE ONLY).

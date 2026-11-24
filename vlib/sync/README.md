@@ -2,6 +2,15 @@
 
 `sync` provides cross platform handling of concurrency primitives.
 
+Linux amd64 and arm64 C builds with `-freestanding` use process-private futexes for
+`Mutex`, `RwMutex`, and `Semaphore`, including without `-d vlibc`. Their zero values
+are usable. Contended waits park in the kernel; semaphore timed waits retain a
+monotonic deadline across signals and spurious wakes. Reader/writer locks give
+queued writers priority over new readers. Semaphore counts range from zero through
+`u32`'s maximum; posting beyond that maximum panics without wrapping the count.
+`sync.thread_id()` uses the kernel thread ID on these targets. Other targets keep
+their existing native synchronization backends.
+
 On FreeBSD, mutexes store native `pthread_mutex_t` and `pthread_rwlock_t` values.
 
 On macOS and default pthread platforms, zero-value `RwMutex` try locks initialize the native lock

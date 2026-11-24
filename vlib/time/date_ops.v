@@ -52,18 +52,36 @@ pub fn (t Time) add_date(years int, months int, days int) Time {
 	if loc := t.location() {
 		wall := calendar.local_unix()
 		input_offset := loc.offset_at(t.unix()) or { panic(err.msg()) }
-		mut instant := wall - i64(input_offset)
-		target_offset := loc.offset_at(instant) or { panic(err.msg()) }
-		if target_offset != input_offset {
-			adjusted := wall - i64(target_offset)
-			// Keep the input offset in a gap, where neither candidate matches.
-			if (loc.offset_at(adjusted) or { panic(err.msg()) }) == target_offset {
-				instant = adjusted
-			}
-		}
+		instant := location_calendar_instant(loc, wall, input_offset)
 		return loc.unix_nanosecond_to_local(instant, t.nanosecond) or { panic(err.msg()) }
 	}
+	$if freestanding && linux && !native && !i386 {
+		if t.is_local {
+			loc := bare_local_clock_location()
+			input_offset := if t.local_offset_known {
+				int(t.local_offset_seconds)
+			} else {
+				int(t.local_unix() - bare_local_wall_to_unix(t, loc))
+			}
+			instant := location_calendar_instant(loc, calendar.local_unix(), input_offset)
+			return bare_local_from_unix_at_location(instant, t.nanosecond, loc)
+		}
+	}
 	return calendar
+}
+
+@[inline]
+fn location_calendar_instant(loc &Location, wall i64, input_offset int) i64 {
+	mut instant := wall - i64(input_offset)
+	target_offset := loc.offset_at(instant) or { panic(err.msg()) }
+	if target_offset != input_offset {
+		adjusted := wall - i64(target_offset)
+		// Keep the input offset in a gap, where neither candidate matches.
+		if (loc.offset_at(adjusted) or { panic(err.msg()) }) == target_offset {
+			instant = adjusted
+		}
+	}
+	return instant
 }
 
 // clock returns a monotonic clock reading in milliseconds.

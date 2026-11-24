@@ -21207,23 +21207,54 @@ fn (mut g FlatGen) headerless_execinfo_declarations() {
 	g.writeln('#endif')
 }
 
+fn (g &FlatGen) uses_linux_bare_threads() bool {
+	return 'freestanding' in g.compile_defines && 'v_bare_no_startup' !in g.compile_defines
+		&& g.target.os == 'linux' && g.target.arch in ['amd64', 'arm64']
+}
+
+fn (g &FlatGen) unsupported_freestanding_threads() bool {
+	return 'freestanding' in g.compile_defines
+		&& g.target.os !in ['macos', 'darwin', 'vinix']
+		&& !(g.target.os == 'linux' && g.target.arch in ['amd64', 'arm64'])
+}
+
+fn (mut g FlatGen) unsupported_freestanding_thread_runtime() {
+	g.writeln('typedef struct { void* handle; } __v_thread;')
+	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+	if g.needs_thread_runtime {
+		g.writeln('#error "V spawn is unsupported by this freestanding target runtime"')
+	}
+	g.thread_signal_stack_runtime()
+}
+
+// linux_bare_thread_runtime connects V's thread lowering to its own raw-clone
+// runtime. The runtime owns mappings and TLS; no pthread ABI is impersonated.
+fn (mut g FlatGen) linux_bare_thread_runtime() {
+	g.writeln('typedef struct { void* handle; } __v_thread;')
+	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+	g.writeln('void* v_bare_thread_create(__v_thread_start_fn, void*, size_t, int, int*);')
+	g.writeln('void* v_bare_thread_join(void*);')
+	g.writeln('void v_bare_thread_detach(void*);')
+	g.writeln('void v_bare_thread_fail(void);')
+	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
+	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
+	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) v_bare_thread_fail(); return p; }')
+	g.writeln('static void __v_thread_free(void* p) { free(p); }')
+	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) { int error = 0; void* handle = v_bare_thread_create(start, arg, __v_thread_stack_size, 0, &error); if (error) { if (cleanup) cleanup(arg); v_bare_thread_fail(); } return (__v_thread){.handle = handle}; }')
+	g.writeln('static void* __v_thread_join(__v_thread thread) { return v_bare_thread_join(thread.handle); }')
+	g.writeln('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) { int error = 0; v_bare_thread_create(start, arg, __v_thread_stack_size, 1, &error); if (error) { if (cleanup) cleanup(arg); v_bare_thread_fail(); } return (__v_thread){0}; }')
+	g.writeln('static __v_thread __v_thread_spawn_comparable(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) { return __v_thread_spawn(start, arg, cleanup); }')
+	g.writeln('static void __v_thread_release_comparable(__v_thread thread) { v_bare_thread_detach(thread.handle); }')
+	g.thread_signal_stack_runtime()
+}
+
 fn (mut g FlatGen) system_libc_preamble() {
-	if 'freestanding' in g.compile_defines {
-		// A freestanding program links no pthread and no stdio; emit only the
-		// data shape and stubs that stay linkable with -nostdlib. The spawn
-		// stub never runs: freestanding programs do not create threads.
-		g.writeln('typedef struct { void* handle; } __v_thread;')
-		g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
-		g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
-		g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
-		g.writeln('static void* __v_thread_alloc(size_t size) { return malloc(size); }')
-		g.writeln('static void __v_thread_free(void* ptr) { free(ptr); }')
-		g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
-		g.writeln('\tif (cleanup) { cleanup(arg); }')
-		g.writeln('\treturn (__v_thread){0};')
-		g.writeln('}')
-		g.writeln('static void* __v_thread_join(__v_thread thread) { (void)thread; return (void*)0; }')
-		g.thread_signal_stack_runtime()
+	if g.uses_linux_bare_threads() {
+		g.linux_bare_thread_runtime()
+		return
+	}
+	if g.unsupported_freestanding_threads() {
+		g.unsupported_freestanding_thread_runtime()
 		return
 	}
 	g.writeln('#ifndef _WIN32')
@@ -21608,6 +21639,14 @@ fn (mut g FlatGen) pthread_detached_thread_runtime() {
 // supplies its own libc headers is not Windows, so only this half is needed, and
 // it is written without the guard. It needs <pthread.h>, which that path includes.
 fn (mut g FlatGen) target_libc_thread_runtime() {
+	if g.unsupported_freestanding_threads() {
+		g.unsupported_freestanding_thread_runtime()
+		return
+	}
+	if g.uses_linux_bare_threads() {
+		g.linux_bare_thread_runtime()
+		return
+	}
 	if g.target.os == 'vinix' {
 		g.target_libc_vinix_thread_runtime()
 		return
@@ -21988,9 +22027,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		'pthread_setspecific', 'pthread_once', 'pthread_attr_init', 'pthread_attr_destroy',
 		'pthread_attr_setstacksize', 'pthread_attr_setdetachstate', 'pthread_create', 'pthread_join',
 		'pthread_detach'])
-	if 'freestanding' in g.compile_defines && !g.needs_thread_runtime {
-		// There are no threads without libc, so a freestanding program that does
-		// not `spawn` gets only the type. gcc -O0 compiles even an unused static
+	if 'freestanding' in g.compile_defines && !g.needs_thread_runtime
+		&& g.target.os !in ['linux', 'macos', 'darwin'] {
+		// A freestanding program that does not `spawn` needs only the type. gcc -O0 compiles even an unused static
 		// runtime, which calls pthreads and stdio that the link cannot find.
 		g.target_libc_thread_type()
 		g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
@@ -22068,6 +22107,14 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 // headerless_thread_runtime writes the `__v_thread` type and the runtime that starts,
 // joins and detaches threads with the Win32 API or pthreads.
 fn (mut g FlatGen) headerless_thread_runtime() {
+	if g.unsupported_freestanding_threads() {
+		g.unsupported_freestanding_thread_runtime()
+		return
+	}
+	if g.uses_linux_bare_threads() {
+		g.linux_bare_thread_runtime()
+		return
+	}
 	// Both thread runtimes below allocate their contexts through these helpers.
 	g.thread_allocation_helpers()
 	g.writeln('#ifdef _WIN32')
@@ -24394,7 +24441,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('void* memdup_align(void* src, ${memdup_aligned_size_ct} sz, ${memdup_align_ct} alignment);')
 	g.writeln('void v_free(void* p);')
 	g.writeln('static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')
-	g.writeln('#if defined(CUSTOM_DEFINE_prealloc) || defined(CUSTOM_DEFINE_vgc) || defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
+	g.writeln('#if defined(CUSTOM_DEFINE_freestanding) || defined(CUSTOM_DEFINE_prealloc) || defined(CUSTOM_DEFINE_vgc) || defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
 	g.writeln('return memdup_align(src, sz, (ptrdiff_t)alignment);')
 	g.writeln('#else')
 	g.writeln('void* p = NULL; if (alignment < sizeof(void*)) alignment = sizeof(void*);')
@@ -24407,7 +24454,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#endif')
 	g.writeln('}')
 	g.writeln('static inline void v3_aligned_free(void* p) {')
-	g.writeln('#if defined(CUSTOM_DEFINE_prealloc) || defined(CUSTOM_DEFINE_vgc) || defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
+	g.writeln('#if defined(CUSTOM_DEFINE_freestanding) || defined(CUSTOM_DEFINE_prealloc) || defined(CUSTOM_DEFINE_vgc) || defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
 	g.writeln('v_free(p);')
 	g.writeln('#elif defined(_WIN32)')
 	g.writeln('_aligned_free(p);')
@@ -25565,14 +25612,24 @@ fn (g &FlatGen) is_builtin_autostr_addr_state(name string) bool {
 // Vinix is a freestanding kernel target and does not provide the ELF TLS ABI.
 // Its scheduler owns per-CPU/per-thread state explicitly, so emitting STT_TLS
 // globals would require a PT_TLS segment and thread-pointer setup that do not
-// exist during early boot. A `-freestanding` program has no libc to set up the
-// thread pointer either: its own `_start` calls `main` directly.
+// exist during early boot. Supported freestanding user-space runtimes initialize
+// real C TLS before main: Linux's bare _start and macOS's loader do that.
 fn (g &FlatGen) global_is_thread_local(name string) bool {
-	if g.target.os == 'vinix' || 'freestanding' in g.compile_defines {
+	if g.target.os == 'vinix' {
+		return false
+	}
+	if 'freestanding' in g.compile_defines
+		&& (g.target.os !in ['linux', 'macos', 'darwin'] || g.target.arch !in ['amd64', 'arm64']) {
 		return false
 	}
 	return name.contains('__anon_fn_') || g.is_builtin_autostr_addr_state(name)
 		|| g.is_builtin_panic_state(name) || g.is_builtin_arena_top(name)
+		|| g.is_builtin_errno_state(name)
+}
+
+fn (g &FlatGen) is_builtin_errno_state(name string) bool {
+	return name in ['bf_native_errno_cell', 'bf_last_errno_cell']
+		&& (g.global_modules[name] or { '' }) == 'builtin'
 }
 
 // Each thread has its own stack of scoped arenas (see
@@ -25610,6 +25667,10 @@ fn (g &FlatGen) program_uses_recover() bool {
 }
 
 fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string, dims string) {
+	g.emit_tinyc_windows_thread_local_slot_initialized(cname, ct, dims, '')
+}
+
+fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot_initialized(cname string, ct string, dims string, initialize string) {
 	g.writeln('#if defined(__TINYC__) && defined(_WIN32)')
 	// TinyCC's bundled import library does not expose the Fls* symbols. Resolve
 	// them at runtime so Windows can still release each slot at thread exit.
@@ -25656,9 +25717,9 @@ fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string,
 	g.writeln('}')
 	g.writeln('#undef ${cname}_key_is_ready')
 	if dims.len > 0 {
-		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { ${cname}_key_init(); void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_key) : TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); if (${cname}_fls_set) ${cname}_fls_set(${cname}_key, p); else TlsSetValue(${cname}_key, p); } return p; }')
+		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { ${cname}_key_init(); void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_key) : TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); ${initialize}if (${cname}_fls_set) ${cname}_fls_set(${cname}_key, p); else TlsSetValue(${cname}_key, p); } return p; }')
 	} else {
-		g.writeln('static ${ct}* ${cname}_slot(void) { ${cname}_key_init(); void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_key) : TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); if (${cname}_fls_set) ${cname}_fls_set(${cname}_key, p); else TlsSetValue(${cname}_key, p); } return (${ct}*)p; }')
+		g.writeln('static ${ct}* ${cname}_slot(void) { ${cname}_key_init(); void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_key) : TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); ${initialize}if (${cname}_fls_set) ${cname}_fls_set(${cname}_key, p); else TlsSetValue(${cname}_key, p); } return (${ct}*)p; }')
 	}
 	g.writeln('#define ${cname} (*${cname}_slot())')
 	g.writeln('#elif defined(__TINYC__)')
@@ -25683,11 +25744,15 @@ fn (mut g FlatGen) emit_tinyc_pthread_slot_key(cname string) {
 // value of type `ct` (with `dims` set for a fixed array), stored in its own
 // pthread key and allocated per thread on first access.
 fn (mut g FlatGen) emit_tinyc_pthread_value_slot(cname string, ct string, dims string) {
+	g.emit_tinyc_pthread_value_slot_initialized(cname, ct, dims, '')
+}
+
+fn (mut g FlatGen) emit_tinyc_pthread_value_slot_initialized(cname string, ct string, dims string, initialize string) {
 	g.emit_tinyc_pthread_slot_key(cname)
 	if dims.len > 0 {
-		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { ${cname}_key_init(); void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); pthread_setspecific(${cname}_key, p); } return p; }')
+		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { ${cname}_key_init(); void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); ${initialize}pthread_setspecific(${cname}_key, p); } return p; }')
 	} else {
-		g.writeln('static ${ct}* ${cname}_slot(void) { ${cname}_key_init(); void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); pthread_setspecific(${cname}_key, p); } return (${ct}*)p; }')
+		g.writeln('static ${ct}* ${cname}_slot(void) { ${cname}_key_init(); void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); ${initialize}pthread_setspecific(${cname}_key, p); } return (${ct}*)p; }')
 	}
 	g.writeln('#define ${cname} (*${cname}_slot())')
 }
@@ -25852,6 +25917,36 @@ fn (mut g FlatGen) global_initializer_is_static(id flat.NodeId, typ types.Type) 
 	return g.global_fixed_array_is_static(id, typ)
 }
 
+fn (mut g FlatGen) global_c_static_initializer_text(id flat.NodeId, typ types.Type) string {
+	old_sb := g.sb
+	old_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	g.line_start = false
+	g.gen_c_static_initializer(id, typ)
+	text := g.sb.str()
+	unsafe { g.sb.free() }
+	g.sb = old_sb
+	g.line_start = old_line_start
+	return text
+}
+
+// emit_thread_local_storage keeps declaration and initializer together for every
+// native TLS form. TinyCC initializes each newly allocated key slot from the
+// same constant image, instead of silently replacing nonzero values with zero.
+fn (mut g FlatGen) emit_thread_local_storage(cname string, ct string, dims string, initializer string, prefix string) {
+	mut initialize := ''
+	if initializer != '' && initializer !in ['0', '{0}'] {
+		g.writeln('#if defined(__TINYC__)')
+		g.writeln('static const ${ct} ${cname}_initial_value${dims} = ${initializer};')
+		g.writeln('#endif')
+		initialize = 'if (p) memcpy(p, &${cname}_initial_value, sizeof(${cname}_initial_value)); '
+	}
+	g.emit_tinyc_windows_thread_local_slot_initialized(cname, ct, dims, initialize)
+	g.emit_tinyc_pthread_value_slot_initialized(cname, ct, dims, initialize)
+	init := if initializer == '' { '' } else { ' = ${initializer}' }
+	g.emit_thread_local_decl_after_tinyc('${prefix}${ct} ${cname}${dims}${init};')
+}
+
 fn (mut g FlatGen) global_decls() {
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
@@ -25881,7 +25976,11 @@ fn (mut g FlatGen) global_decls() {
 			if inner := shared_inner_type_text(raw) {
 				qualified := g.shared_qualify_type_text(inner, g.tc.cur_module)
 				wrapper := g.shared_wrapper_c_name(qualified)
-				g.writeln('${linkage_attr}${wrapper}* ${g.global_c_name(name)};')
+				if is_thread_local {
+					g.emit_thread_local_storage(g.global_c_name(name), '${wrapper}*', '', '', linkage_attr)
+				} else {
+					g.writeln('${linkage_attr}${wrapper}* ${g.global_c_name(name)};')
+				}
 				continue
 			}
 		}
@@ -25896,18 +25995,23 @@ fn (mut g FlatGen) global_decls() {
 			}
 			if val_id := g.global_inits[name] {
 				if name in g.global_cinit_names || g.global_fixed_array_is_static(val_id, decl_typ) {
-					g.write('${section_prefix}${vq}${c_elem} ${g.global_c_name(name)}${dims} = ')
-					g.gen_c_static_initializer(val_id, decl_typ)
-					g.writeln(';')
+					if is_thread_local {
+						initializer := g.global_c_static_initializer_text(val_id, decl_typ)
+						g.emit_thread_local_storage(g.global_c_name(name), c_elem, dims, initializer, section_prefix + vq)
+						unsafe { initializer.free() }
+					} else {
+						g.write('${section_prefix}${vq}${c_elem} ${g.global_c_name(name)}${dims} = ')
+						g.gen_c_static_initializer(val_id, decl_typ)
+						g.writeln(';')
+					}
 					continue
 				}
 			}
 			init := if g.has_zero_sized_leading_init_slot(fixed) { '' } else { ' = {0}' }
 			if is_thread_local {
 				cname := g.global_c_name(name)
-				g.emit_tinyc_windows_thread_local_slot(cname, c_elem, dims)
-				g.emit_tinyc_pthread_value_slot(cname, c_elem, dims)
-				g.emit_thread_local_decl_after_tinyc('${linkage_attr}${c_elem} ${cname}${dims}${init};')
+				initializer := if init == '' { '' } else { '{0}' }
+				g.emit_thread_local_storage(cname, c_elem, dims, initializer, section_prefix + vq)
 			} else {
 				g.writeln('${section_prefix}${vq}${c_elem} ${g.global_c_name(name)}${dims}${init};')
 			}
@@ -25937,15 +26041,25 @@ fn (mut g FlatGen) global_decls() {
 		}
 		if name in g.global_cinit_names {
 			if val_id := g.global_inits[name] {
-				g.write('${section_prefix}${vq}${ct} ${g.global_c_name(name)} = ')
-				g.gen_c_static_initializer(val_id, decl_typ)
-				g.writeln(';')
+				if is_thread_local {
+					initializer := g.global_c_static_initializer_text(val_id, decl_typ)
+					g.emit_thread_local_storage(g.global_c_name(name), ct, '', initializer, section_prefix + vq)
+					unsafe { initializer.free() }
+				} else {
+					g.write('${section_prefix}${vq}${ct} ${g.global_c_name(name)} = ')
+					g.gen_c_static_initializer(val_id, decl_typ)
+					g.writeln(';')
+				}
 				continue
 			}
 		}
 		if val_id := g.global_inits[name] {
 			if static_init := g.global_scalar_static_initializer(val_id, decl_typ) {
-				g.writeln('${section_prefix}${vq}${ct} ${g.global_c_name(name)} = ${static_init};')
+				if is_thread_local {
+					g.emit_thread_local_storage(g.global_c_name(name), ct, '', static_init, section_prefix + vq)
+				} else {
+					g.writeln('${section_prefix}${vq}${ct} ${g.global_c_name(name)} = ${static_init};')
+				}
 				continue
 			}
 		}
@@ -25957,14 +26071,11 @@ fn (mut g FlatGen) global_decls() {
 		if is_thread_local {
 			cname := g.global_c_name(name)
 			if shared_ct := g.fn_capture_shared_global_c_type(name) {
-				g.emit_tinyc_windows_thread_local_slot(cname, shared_ct, '')
-				g.emit_tinyc_pthread_value_slot(cname, shared_ct, '')
-				g.emit_thread_local_decl_after_tinyc('${linkage_attr}${shared_ct} ${cname};')
+				g.emit_thread_local_storage(cname, shared_ct, '', '', section_prefix + vq)
 				continue
 			}
-			g.emit_tinyc_windows_thread_local_slot(cname, ct, '')
-			g.emit_tinyc_pthread_value_slot(cname, ct, '')
-			g.emit_thread_local_decl_after_tinyc('${linkage_attr}${ct} ${cname}${init};')
+			initializer := if init == '' { '' } else { '{0}' }
+			g.emit_thread_local_storage(cname, ct, '', initializer, section_prefix + vq)
 			continue
 		}
 		// With -prealloc the arena base block is per-thread; a shared pointer

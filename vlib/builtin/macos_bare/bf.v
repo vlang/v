@@ -264,6 +264,9 @@ $if (freestanding || syscalls) && !i386 {
 		if linux_flags & u64(0o4010000) != 0 {
 			out |= u64(0x80)
 		}
+		if linux_flags & u64(0o2000000) != 0 {
+			out |= u64(0x01000000) // O_CLOEXEC, atomically set at open
+		}
 		return out
 	}
 
@@ -272,6 +275,11 @@ $if (freestanding || syscalls) && !i386 {
 			return -1, bf_err_of(rc, er)
 		}
 		return int(rc), 0
+	}
+
+	fn bf_descriptor_control(fd int, command int, value int) (int, int) {
+		rc, er := sys_call3(bf_nr_fcntl, u64(fd), u64(command), u64(value))
+		return bf_split_int(rc, er)
 	}
 
 	// bf_openat has no *at syscall on darwin; the path given is used directly

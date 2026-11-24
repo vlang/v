@@ -1,6 +1,10 @@
 #ifndef V_SYNC_THREAD_HELPER_H
 #define V_SYNC_THREAD_HELPER_H
 
+#ifndef V_FASTC_NO_HEADERS
+#include <stddef.h>
+#endif
+
 #ifndef V_SYNC_THREAD_SCOPE
 #define V_SYNC_THREAD_SCOPE static inline
 #endif
@@ -9,7 +13,15 @@
 #define V_THREAD_STACK_SIZE 0
 #endif
 
-#ifdef _WIN32
+#if defined(CUSTOM_DEFINE_freestanding) && defined(__linux__) && !defined(CUSTOM_DEFINE_v_bare_no_startup)
+/* Both V spawn and detached sync timers use the canonical bare runtime. */
+void *v_bare_thread_create(void *(*)(void *), void *, size_t, int, int *);
+V_SYNC_THREAD_SCOPE int v_sync_thread_create_detached_with_stack(void *start, void *arg, size_t stack_size) {
+	int error = 0;
+	v_bare_thread_create((void *(*)(void *))start, arg, stack_size, 1, &error);
+	return error;
+}
+#elif defined(_WIN32)
 #include <windows.h>
 
 /* Boehm only scans threads it created or registered. gc.h redirects CreateThread to

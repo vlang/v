@@ -359,6 +359,29 @@ fn test_arena_stack_top_is_thread_local_only_in_builtin() {
 	assert !g.global_is_thread_local('g_arena_top')
 }
 
+fn test_supported_freestanding_runtimes_keep_thread_local_globals() {
+	for target_os in ['linux', 'macos'] {
+		for arch in ['amd64', 'arm64'] {
+			mut g := FlatGen.new()
+			g.target = pref.target_from(target_os, arch) or { panic(err) }
+			g.compile_defines = ['freestanding']
+			for name in ['g_arena_top', 'g_autostr_addr_state', 'g_panic_state', 'bf_native_errno_cell',
+				'bf_last_errno_cell'] {
+				g.global_modules[name] = 'builtin'
+				assert g.global_is_thread_local(name)
+				g.global_modules[name] = 'main'
+				assert !g.global_is_thread_local(name)
+			}
+			assert g.global_is_thread_local('__anon_fn_1_capture')
+		}
+	}
+	mut unsupported := FlatGen.new()
+	unsupported.target = pref.target_from('freebsd', 'amd64') or { panic(err) }
+	unsupported.compile_defines = ['freestanding']
+	unsupported.global_modules['g_arena_top'] = 'builtin'
+	assert !unsupported.global_is_thread_local('g_arena_top')
+}
+
 fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
 	headers := manual_stdlib_c_headers()
 	for name in ['memcpy', 'memmove', 'memset'] {
@@ -1016,4 +1039,62 @@ fn test_arm32_output_undefines_tinycc_identifier_macros() {
 	checked := os.exec([clang, '-target', 'armv7-unknown-linux-gnueabihf', '-std=c99', '-fsyntax-only',
 		'-Wno-everything', '-Darm=1', '-Darm_elf=1', c_file])
 	assert checked.exit_code == 0, checked.output
+}
+
+fn test_freestanding_linux_threads_use_canonical_clone_runtime() {
+	for preamble in ['system', 'headerless', 'target'] {
+		mut g := FlatGen.new()
+		g.target = pref.target_from('linux', 'amd64') or { panic(err) }
+		g.compile_defines = ['freestanding']
+		g.needs_thread_runtime = true
+		match preamble {
+			'system' { g.system_libc_preamble() }
+			'headerless' { g.headerless_thread_runtime() }
+			else { g.target_libc_thread_runtime() }
+		}
+		code := g.sb.str()
+		assert code.contains('v_bare_thread_create(start, arg,'), preamble
+		assert code.contains('v_bare_thread_join(thread.handle)'), preamble
+		assert code.contains('v_bare_thread_detach(thread.handle)'), preamble
+		assert !code.contains('pthread_create'), preamble
+		assert !code.contains('return (void*)0;'), preamble
+	}
+}
+
+fn test_freestanding_macos_and_linux_shared_host_keep_real_pthreads() {
+	for target_os in ['macos', 'linux'] {
+		mut g := FlatGen.new()
+		g.target = pref.target_from(target_os, 'amd64') or { panic(err) }
+		g.compile_defines = ['freestanding']
+		if target_os == 'linux' { g.compile_defines << 'v_bare_no_startup' }
+		g.needs_thread_runtime = true
+		g.system_libc_preamble()
+		code := g.sb.str()
+		assert code.contains('pthread_create(&result.handle,'), target_os
+		assert code.contains('pthread_join(thread.handle,'), target_os
+		assert !code.contains('v_bare_thread_create'), target_os
+	}
+}
+
+fn test_unsupported_freestanding_thread_runtime_is_consistent_and_keeps_vinix() {
+	for preamble in ['system', 'headerless', 'target'] {
+		for target in ['freebsd', 'linux'] {
+			mut g := FlatGen.new()
+			g.target = pref.target_from(target, if target == 'linux' { 'riscv64' } else { 'amd64' }) or { panic(err) }
+			g.compile_defines = ['freestanding']
+			g.needs_thread_runtime = true
+			match preamble {
+				'system' { g.system_libc_preamble() }
+				'headerless' { g.headerless_thread_runtime() }
+				else { g.target_libc_thread_runtime() }
+			}
+			code := g.sb.str()
+			assert code.contains('#error "V spawn is unsupported'), '${target}: ${preamble}'
+			assert !code.contains('pthread_create'), '${target}: ${preamble}'
+		}
+	}
+	mut kernel := FlatGen.new()
+	kernel.target = pref.target_from('vinix', 'amd64') or { panic(err) }
+	kernel.compile_defines = ['freestanding']
+	assert !kernel.unsupported_freestanding_threads()
 }
