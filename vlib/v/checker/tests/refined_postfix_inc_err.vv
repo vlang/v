@@ -1,0 +1,18 @@
+@[range: '1..10']
+type Port = u16
+
+fn Port.from(value u16) !Port {
+	if value < 1 || value > 10 {
+		return error('bad port')
+	}
+	return Port(value)
+}
+
+fn main() {
+	mut p := Port(10)
+	p++
+	println(u16(p))
+	mut q := Port(2)
+	q--
+	println(u16(q))
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/refined_nonzero_negzero_err.vv:12:7: error: value `-0` is out of range for type `Nonzero` (allowed range: nonzero)
+   10 | 
+   11 | fn main() {
+   12 |     x := Nonzero(-0)
+      |          ~~~~~~~~~~~
+   13 |     println(int(x))
+   14 | }
