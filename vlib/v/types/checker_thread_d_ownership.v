@@ -10,13 +10,7 @@ fn (mut tc TypeChecker) ownership_check_spawn_transfer(spawn_id flat.NodeId, cal
 	info := tc.resolve_call_info(call_id, call) or { return }
 	join_site := tc.ownership_scoped_thread_join_site(spawn_id) or { flat.empty_node }
 	callee_id := tc.a.child(&call, 0)
-	mut callee := tc.a.node(callee_id)
-	if info.has_receiver && callee.kind == .index && callee.children_count > 0 {
-		// The index supplies explicit type arguments to the method selector.
-		callee = tc.a.child_node(callee, 0)
-	}
-	if info.has_receiver && callee.kind == .selector && callee.children_count > 0 {
-		receiver_id := tc.a.child(callee, 0)
+	if receiver_id := tc.ownership_thread_receiver(callee_id, info) {
 		expected := info.params[0] or { tc.resolve_type(receiver_id) }
 		tc.ownership_check_thread_argument(receiver_id, expected, info, 0, 'thread receiver', join_site)
 	} else if tc.ownership_thread_uses_function_value(callee_id) {
@@ -33,6 +27,21 @@ fn (mut tc TypeChecker) ownership_check_spawn_transfer(spawn_id flat.NodeId, cal
 		tc.ownership_check_thread_argument(arg_id, expected, info, param_idx, 'thread argument', join_site)
 	}
 	tc.ownership_check_thread_transfer(info.return_type, callee_id, 'thread result')
+}
+
+fn (tc &TypeChecker) ownership_thread_receiver(callee_id flat.NodeId, info CallInfo) ?flat.NodeId {
+	if !info.has_receiver {
+		return none
+	}
+	mut callee := tc.a.node(callee_id)
+	if callee.kind == .index && callee.children_count > 0 {
+		// The index supplies explicit type arguments to the method selector.
+		callee = tc.a.child_node(callee, 0)
+	}
+	if callee.kind == .selector && callee.children_count > 0 {
+		return tc.a.child(callee, 0)
+	}
+	return none
 }
 
 fn (tc &TypeChecker) ownership_thread_uses_function_value(id flat.NodeId) bool {

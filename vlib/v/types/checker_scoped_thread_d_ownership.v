@@ -101,27 +101,35 @@ fn (mut tc TypeChecker) ownership_record_scoped_thread_borrows(handle string, rh
 		return
 	}
 	info := tc.resolve_call_info(call_id, *call) or { return }
+	if recv := tc.ownership_thread_receiver(tc.a.child(call, 0), info) {
+		expected := info.params[0] or { tc.resolve_type(recv) }
+		tc.ownership_record_scoped_thread_borrow(recv, info, 0, expected, handle, join_site)
+	}
 	for i in 1 .. call.children_count {
-		arg := tc.call_arg_value(tc.a.child(call, i))
+		value_id := tc.call_arg_value(tc.a.child(call, i))
+		arg := tc.spread_arg_value(value_id) or { value_id }
 		param_idx := tc.ownership_call_arg_decl_param_idx(info, i) +
 			tc.ownership_call_arg_shift(*call, info)
-		elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, param_idx, arg)
+		elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, param_idx, value_id)
 		expected := tc.ownership_call_arg_expected_type(info, param_idx, elem_idx)
-		if unalias_type(expected) !is Pointer || tc.call_param_is_mut(info, param_idx) {
-			continue
-		}
-		if source := tc.ownership_scoped_thread_source(arg) {
-			tc.ownership_state().scoped_thread_loans_seen = true
-			tc.ownership_add_borrow_info(source, BorrowInfo{
-				borrower:         handle
-				pos:              arg
-				// Even an immutable pointer can be used by an atomic API. Reserve
-				// the scalar for the worker until its defer has joined.
-				is_mut:           true
-				thread_join_site: join_site
-			})
-		}
+		tc.ownership_record_scoped_thread_borrow(arg, info, param_idx, expected, handle, join_site)
 	}
+}
+
+fn (mut tc TypeChecker) ownership_record_scoped_thread_borrow(arg flat.NodeId, info CallInfo, param_idx int, expected Type, handle string, join_site flat.NodeId) {
+	if unalias_type(expected) !is Pointer || tc.call_param_is_mut(info, param_idx) {
+		return
+	}
+	source := tc.ownership_scoped_thread_source(arg) or { return }
+	tc.ownership_state().scoped_thread_loans_seen = true
+	tc.ownership_add_borrow_info(source, BorrowInfo{
+		borrower:         handle
+		pos:              arg
+		// Even an immutable pointer can be used by an atomic API. Reserve
+		// the scalar for the worker until its defer has joined.
+		is_mut:           true
+		thread_join_site: join_site
+	})
 }
 
 fn (mut tc TypeChecker) ownership_reject_scoped_thread_access(name string, id flat.NodeId) bool {

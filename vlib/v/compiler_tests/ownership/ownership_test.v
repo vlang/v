@@ -4281,3 +4281,25 @@ fn main() {
 		assert res.output.contains('cannot transfer `&int` as thread argument'), res.output
 	}
 }
+
+fn test_ownership_scoped_thread_reserves_method_receiver() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'scoped_thread_receiver', r'
+type Number = int
+
+fn (number &Number) read() int {
+	return int(*number)
+}
+
+fn main() {
+	value := Number(42)
+	worker := spawn (&value).read()
+	defer { worker.wait() }
+	assert value == Number(42)
+	worker.wait()
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('cannot use `value` until scoped thread `worker` has joined'), res.output
+	assert res.output.contains('cannot use scoped thread handle `worker` outside its deferred wait'), res.output
+}
