@@ -181,9 +181,11 @@ jobs:
             echo "::error::temporary v up remote has $bare_sha instead of $tested_sha"
             exit 1
           fi
-          # Build oldv at recent_good_commit.
-          ./v run cmd/tools/oldv.v -v "$recent_good_commit"
-          cd "$HOME/.cache/oldv/v_at_$recent_good_commit"
+          # Build the seed using the V and VC repositories already on the runner.
+          oldv_workdir=$(mktemp -d "$RUNNER_TEMP/oldv.XXXXXX")
+          ./v run cmd/tools/oldv.v -v --cache=false --workdir "$oldv_workdir" \
+            --vrepo "$vup_remote" --vcrepo "$PWD/vc" "$recent_good_commit"
+          cd "$oldv_workdir/v_at_$recent_good_commit"
           seed_sha=$(git rev-parse 'HEAD^{commit}')
           if [ "$seed_sha" != "$recent_good_commit" ]; then
             echo "::error::oldv checkout has $seed_sha instead of $recent_good_commit"
