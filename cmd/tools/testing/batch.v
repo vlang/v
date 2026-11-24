@@ -204,8 +204,14 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 	// when it restores them the way these tests do (a saved `os.getenv_opt` and a
 	// `defer`): a test of one file then finds the environment as the file before left it.
 	restores_env := test_restores_environment(source)
+	// The same for the working directory: it saves `os.getwd()` and has a `defer`.
+	restores_cwd := source_contains_marker(source, 'os.chdir(')
+		&& source_contains_marker(source, 'os.getwd(') && source_mentions_word(source, 'defer')
 	for marker in test_batch_excluded_markers {
 		if restores_env && marker in test_batch_environment_markers {
+			continue
+		}
+		if restores_cwd && marker == 'os.chdir(' {
 			continue
 		}
 		if source_contains_marker(source, marker) {
@@ -235,7 +241,8 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 		key:    os.dir(real_file) + '\n' + module_name + if hook != '' { '\n' + hook } else { '' } +
 			'\nvflags ' + test_file_vflags(source) + if restores_env { '\nenvironment' } else { '' } +
 			if test_path_enables_globals(real_file) { '\nglobals' } else { '' } +
-			if test_file_retries(source) { '\nretry' } else { '' }
+			if test_file_retries(source) { '\nretry' } else { '' } +
+			if restores_cwd { '\nworking directory' } else { '' }
 		names:  names
 		consts: words
 		source: source

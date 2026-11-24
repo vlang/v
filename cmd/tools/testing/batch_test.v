@@ -84,6 +84,33 @@ fn test_units_keep_environment_changing_files_apart() ! {
 	assert ts.test_units(paths) == [paths[0], '${paths[1]}\n${paths[2]}', paths[3]]
 }
 
+fn test_units_batch_files_that_restore_the_working_directory_apart() ! {
+	root := batch_test_root('cwd')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	restored := 'module util\nfn test_NAME() {\n\told := os.getwd()\n\tos.chdir(os.temp_dir()) or {}\n\tdefer {\n\t\tos.chdir(old) or {}\n\t}\n}\n'
+	files := {
+		'a_test.v': 'module util\nfn test_a() {}\n'
+		'b_test.v': restored.replace('NAME', 'b')
+		'c_test.v': restored.replace('NAME', 'c')
+		'd_test.v': 'module util\nfn test_d() {\n\tos.chdir(os.temp_dir()) or {}\n}\n'
+	}
+	mut paths := []string{}
+	for name, source in files {
+		path := os.join_path(root, name)
+		os.write_file(path, source)!
+		paths << path
+	}
+	mut ts := TestSession{
+		vexe:              os.executable()
+		will_compile:      true
+		exec_mode:         .compile_and_run
+		build_environment: build_constraint.new_environment(['macos'], [])
+	}
+	assert ts.test_units(paths) == [paths[0], '${paths[1]}\n${paths[2]}', paths[3]]
+}
+
 fn test_units_group_files_by_vflags_and_accept_ownership_markers() ! {
 	root := batch_test_root('vflags')!
 	defer {
