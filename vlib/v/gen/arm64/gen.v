@@ -987,6 +987,26 @@ fn (g &Gen) stack_alloca_remaining(ptr_id int) ?int {
 	return none
 }
 
+fn (mut g Gen) gen_constant_shift(op ssa.OpCode, lhs_id int, count u64, width int, result_id int) {
+	if count >= u64(width) {
+		g.emit_mov_imm(8, 0)
+	} else {
+		lhs := Reg(g.load_val(lhs_id, 8))
+		amount := u32(count)
+		inst := match op {
+			.shl { asm_lsl_imm(8, lhs, amount) }
+			.ashr { asm_asr_imm(8, lhs, amount) }
+			.lshr { asm_lsr_imm(8, lhs, amount) }
+			else { panic('arm64: invalid integer shift ${op}') }
+		}
+		g.emit32(inst)
+		if op == .shl {
+			g.emit_wrap_to_width(8, g.m.values[result_id].typ)
+		}
+	}
+	g.store_val(8, result_id)
+}
+
 // gen_instr emits instr output for arm64.
 fn (mut g Gen) gen_instr(val_id int) {
 	g.current_instr_start = g.text_words.len
@@ -1152,14 +1172,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 				count := g.m.values[instr.operands[1]]
 				if count.kind == .constant {
-					if u64(parse_arm64_int(count.name)) >= u64(shift_width) {
-						g.emit_mov_imm(8, 0)
-						g.store_val(8, val_id)
-						return
-					}
-				} else {
-					check_shift_count = true
+					g.gen_constant_shift(instr.op, instr.operands[0],
+						u64(parse_arm64_int(count.name)), shift_width, val_id)
+					return
 				}
+				check_shift_count = true
 			}
 			lhs_reg := g.load_val(instr.operands[0], 8)
 			rhs_reg := g.load_val(instr.operands[1], 9)

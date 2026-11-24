@@ -169,6 +169,18 @@ fn asm_lsrv(rd Reg, rn Reg, rm Reg) u32 {
 	return 0x9AC02400 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
 }
 
+// lsl xd, xn, #shift (alias for UBFM)
+fn asm_lsl_imm(rd Reg, rn Reg, shift u32) u32 {
+	immr := (64 - shift) & 0x3f
+	imms := 63 - shift
+	return 0xD3400000 | (immr << 16) | (imms << 10) | (u32(rn) << 5) | u32(rd)
+}
+
+// asr xd, xn, #shift (alias for SBFM)
+fn asm_asr_imm(rd Reg, rn Reg, shift u32) u32 {
+	return 0x9340FC00 | (shift << 16) | (u32(rn) << 5) | u32(rd)
+}
+
 // lsr xd, xn, #shift (logical shift right immediate, 64-bit)
 // Alias for UBFM Xd, Xn, #shift, #63
 fn asm_lsr_imm(rd Reg, rn Reg, shift u32) u32 {
