@@ -26,13 +26,19 @@ pub fn answer() int {
 	return 42
 }
 ') or { panic(err) }
+	dllexport := '__declspec(dllexport) int answer(void)'
+	visibility := '__attribute__((visibility("default"))) int answer(void)'
+	// Another host builds a Windows amd64 program with the MinGW-w64 GCC instead of TinyCC
+	// (see v3_windows_cross_c_compiler), so only a Windows host generates TinyCC's attribute.
+	tcc_attribute := $if windows { dllexport } $else { visibility }
 	for cc, attribute in {
-		'tcc':  '__declspec(dllexport) int answer(void)'
-		'gcc':  '__attribute__((visibility("default"))) int answer(void)'
-		'msvc': '__declspec(dllexport) int answer(void)'
+		'tcc':  tcc_attribute
+		'gcc':  visibility
+		'msvc': dllexport
 	} {
 		c_file := os.join_path(root, 'lib_${cc}.c')
-		res := cmdexec.run(@VEXE, ['-os', 'windows', '-cc', cc, '-shared', '-o', c_file, source])
+		res := cmdexec.run(@VEXE, ['-os', 'windows', '-arch', 'amd64', '-cc', cc, '-shared', '-o',
+			c_file, source])
 		assert res.exit_code == 0, '${cc}: ${res.output}'
 		code := os.read_file(c_file) or { panic(err) }
 		assert code.contains(attribute), cc
