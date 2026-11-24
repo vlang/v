@@ -17793,6 +17793,11 @@ fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_i
 				aliases = aliases || tc.fn_context.immutable_reference_aliases[root.value]
 			}
 		}
+		$if ownership ? {
+			if aliases && tc.ownership_map_field_has_moved_owner(base_id) {
+				aliases = false
+			}
+		}
 		if aliases && !tc.mutable_alias_has_fresh_map_storage(base_id)
 			&& !tc.map_field_has_fresh_storage(base_id) && !tc.lvalue_is_inline_fixed_array(base_id) {
 			tc.record_error_at(.assignment_mismatch, '`${tc.source_text_for_node(base_id)}` aliases mutable data from an immutable value, clone it first (or use `unsafe`)', base_id, if base.kind in [

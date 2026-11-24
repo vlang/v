@@ -176,6 +176,13 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability Thre
 				// last owner can also destroy it on another thread.
 				return tc.ownership_thread_transfer_problem(payload, .share, depth + 1, mut seen)
 			}
+			if payload := tc.ownership_thread_library_payload(name_id, 'sync/arc', [
+				'sync.arc.Mutex',
+				'arc.Mutex',
+			]) {
+				// The mutex gives each updated value one owner at a time.
+				return tc.ownership_thread_transfer_problem(payload, .transfer, depth + 1, mut seen)
+			}
 			if capability == .share
 				&& tc.ownership_thread_library_payload(name_id, 'cell', ['cell.RefCell']) != none {
 				return 'cell.RefCell has unsynchronized borrow state'
