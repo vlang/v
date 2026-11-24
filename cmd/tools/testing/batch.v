@@ -761,19 +761,26 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 	return pool.no_result
 }
 
-// `v vet` and `v fmt -verify` check every file they are given and name the ones they reject, so
-// a session of either passes up to tool_batch_size files to one command instead of starting
-// one (two, with the tool's own process) per file. A batch that fails runs again file by file.
+// `v vet`, `v fmt -verify` and `v fmt -inprocess -l` check every file they are given and name
+// the ones they reject, so a session of one of them passes up to tool_batch_size files to one
+// command instead of starting one (two, with the tool's own process) per file. A batch that
+// fails runs again file by file.
 const tool_batch_size = 64
 
-// can_batch_tool_runs reports whether the session runs `v vet` or `v fmt -verify` over its files.
+// can_batch_tool_runs reports whether the session runs `v vet`, `v fmt -verify` or
+// `v fmt -inprocess -l` over its files.
 fn (ts &TestSession) can_batch_tool_runs() bool {
 	if os.getenv(test_batch_disable_env) !in ['', '0'] || ts.show_stats || ts.build_tools
 		|| ts.resume_dir != '' {
 		return false
 	}
 	vargs := os.split_args(ts.vargs) or { return false }
-	return 'vet' in vargs || ('fmt' in vargs && '-verify' in vargs && '-w' !in vargs)
+	if 'vet' in vargs {
+		return true
+	}
+	// `v test-fmt` runs `fmt -inprocess -l`.
+	return 'fmt' in vargs && '-w' !in vargs
+		&& ('-verify' in vargs || ('-inprocess' in vargs && '-l' in vargs))
 }
 
 // tool_units groups `files` for can_batch_tool_runs sessions. The files of a group get the same

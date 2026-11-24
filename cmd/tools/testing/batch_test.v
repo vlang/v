@@ -261,6 +261,9 @@ fn test_tool_units_group_files_that_get_the_same_vet_options() ! {
 	}
 	assert fmt.can_batch_tool_runs()
 	assert fmt.tool_units(paths) == [paths.join('\n')]
+	assert TestSession{
+		vargs: 'fmt -inprocess -l'
+	}.can_batch_tool_runs()
 	assert !TestSession{
 		vargs: 'fmt -w'
 	}.can_batch_tool_runs()
@@ -283,6 +286,33 @@ fn test_tool_batch_that_fails_names_only_the_rejected_file() ! {
 		paths << path
 	}
 	mut ts := new_test_session('-silent fmt -inprocess -verify', false)
+	ts.vexe = @VEXE
+	ts.files << paths
+	ts.test()
+	assert ts.benchmark.nok == 2
+	assert ts.benchmark.nfail == 1
+	rlock ts.failed_files {
+		assert ts.failed_files == [os.real_path(paths[1])]
+	}
+}
+
+// `v test-fmt` fails only the files that cannot be formatted; one that formats differently passes.
+fn test_fmt_list_batch_fails_only_the_file_that_cannot_be_formatted() ! {
+	root := batch_test_root('fmt-list-batch')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	mut paths := []string{}
+	for name, source in {
+		'a.v': 'module main\n\nfn main() {\n\tprintln(1)\n}\n'
+		'b.v': 'module main\nfn main( {\n'
+		'c.v': 'module main\nfn main() {\n  x:=1\n println(x)\n}\n'
+	} {
+		path := os.join_path(root, name)
+		os.write_file(path, source)!
+		paths << path
+	}
+	mut ts := new_test_session('-silent fmt -inprocess -l', false)
 	ts.vexe = @VEXE
 	ts.files << paths
 	ts.test()
