@@ -53,7 +53,9 @@ fn power_product_sum(a f64, b f64, c f64, d f64) f64 {
 	if math.is_nan(p) || math.is_nan(q) {
 		return p + q
 	}
-	if math.is_inf(p, 0) || math.is_inf(q, 0) || math.abs(p) < 4.008336720017946e-292 || math.abs(q) < 4.008336720017946e-292 {
+	// two_sum also needs a finite sum; otherwise its residual becomes NaN.
+	if math.is_inf(p, 0) || math.is_inf(q, 0) || math.is_inf(p + q, 0)
+		|| math.abs(p) < 4.008336720017946e-292 || math.abs(q) < 4.008336720017946e-292 {
 		if math.is_inf(a, 0) || math.is_inf(b, 0) || math.is_inf(c, 0) || math.is_inf(d, 0) {
 			return p + q
 		}

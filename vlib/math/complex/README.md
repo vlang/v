@@ -10,6 +10,8 @@ an overflowing or underflowing squared magnitude and retains product residuals n
 unit circle. Inverse functions use the Hull, Fairgrieve and Tang algorithm to avoid
 cancellation near their cuts. Complex powers use the principal logarithm and a scaled
 exponential; their phase is rounded to binary64 before evaluating sine and cosine.
+The power exponent calculation scales overflowing sums of finite products, preserving
+zero or infinite results instead of introducing NaNs through the roundoff calculation.
 
 The portable implementations work with hosted and freestanding builds. They preserve
 nonfinite values and branch-cut signs but do not explicitly set floating-point status flags.
@@ -17,7 +19,15 @@ The kernels are adapted from [FreeBSD msun](https://github.com/freebsd/freebsd-s
 the original license notices are retained in the source files.
 
 The tests include signed-zero and exceptional-value checks, a hosted C libm differential
-test, and 1,718 independent GNU MPC oracle rows. Regeneration instructions are in
+test, and 2,547 independent GNU MPC oracle rows. Regeneration instructions are in
 `testdata/generate_elementary.c`; generating the fixture requires MPC, MPFR and GMP.
 Ordinary tests have no dependency on these libraries. The generator checks every expected
 rounded binary64 component at both 512 and 1,024 bits of precision.
+
+`testdata/elementary_regressions.tsv` records finite inputs where macOS binary64 libm
+comparisons disagreed; MPC supplies their expected results. Nonfinite expectations are
+recorded separately in `testdata/elementary_special.tsv`, following
+[ISO C Annex G](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n3220.pdf) and its
+[clarifications](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1867.htm).
+The differential tests prefer these independent fixtures when available and use host
+libm for other inputs, retaining the same inputs and component tolerances on every platform.

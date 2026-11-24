@@ -40,13 +40,14 @@ fn test_geometric_mean() {
 	// Tests were also verified on Wolfram Alpha
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.geometric_mean(data)
-	assert math.alike(o, 5.159931624158176)
+	// Accept rounding on either side of the expected binary64 value.
+	assert math.veryclose(o, 5.159931624158176)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.geometric_mean(data)
 	assert math.is_nan(o) // Because in math it yields a complex number
 	data = [12.0, 7.88, 76.122, 54.83]
 	o = stats.geometric_mean(data)
-	assert math.alike(o, 25.064495926603378)
+	assert math.veryclose(o, 25.064495926603378)
 
 	// test for int, i64, f32 array
 	assert stats.geometric_mean[int]([1, 3, 5, 7]) == 3

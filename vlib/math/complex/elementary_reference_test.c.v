@@ -1,11 +1,32 @@
 module complex
 
 import math
+import strconv
 
 #flag linux -lm
 #include "@VMODROOT/vlib/math/complex/testdata/elementary_reference.h"
 
 fn C.v_complex_reference(int, f64, f64, f64, f64, &f64, &f64)
+
+fn reference_oracles() map[string]Complex {
+	mut oracles := map[string]Complex{}
+	fixtures := $embed_file('testdata/elementary.tsv').to_string() + '\n' +
+		$embed_file('testdata/elementary_special.tsv').to_string()
+	for row in fixtures.split_into_lines() {
+		if row.len == 0 || row[0] == `#` {
+			continue
+		}
+		fields := row.split('\t')
+		assert fields.len == 7
+		if fields[0] == '15' {
+			continue
+		}
+		re := strconv.parse_uint(fields[5], 16, 64) or { panic(err) }
+		im := strconv.parse_uint(fields[6], 16, 64) or { panic(err) }
+		oracles['${fields[0]}:${fields[1]}:${fields[2]}'] = Complex{math.f64_from_bits(re), math.f64_from_bits(im)}
+	}
+	return oracles
+}
 
 fn elementary_operation(z Complex, operation int, power Complex) Complex {
 	return match operation {
@@ -44,10 +65,19 @@ fn reference_close(actual f64, expected f64) bool {
 	return math.abs(actual - expected) <= math.max(math.abs(expected) * 4e-13, math.f64_from_bits(8))
 }
 
-fn compare_reference(z Complex, operation int, power Complex) {
+fn compare_reference(z Complex, operation int, power Complex, oracles map[string]Complex) {
 	mut rr := 0.0
 	mut ri := 0.0
-	C.v_complex_reference(operation, z.re, z.im, power.re, power.im, &rr, &ri)
+	key := '${operation}:${math.f64_bits(z.re):016x}:${math.f64_bits(z.im):016x}'
+	if key in oracles {
+		// Prefer independent MPC results and ISO C Annex G expectations where
+		// available. Host libms can lose components or disagree at singularities.
+		expected := oracles[key]
+		rr = expected.re
+		ri = expected.im
+	} else {
+		C.v_complex_reference(operation, z.re, z.im, power.re, power.im, &rr, &ri)
+	}
 	actual := elementary_operation(z, operation, power)
 	// Annex G permits different infinity signs for several nonfinite
 	// argument combinations. Finite-input overflow signs remain checked.
@@ -71,13 +101,14 @@ fn compare_reference(z Complex, operation int, power Complex) {
 
 fn test_elementary_special_values_against_host_libm() {
 	$if !freestanding {
+		oracles := reference_oracles()
 		values := [0.0, math.copysign(0, -1), 1.0, -1.0, 0.5, -0.5, math.f64_from_bits(1),
 			-math.f64_from_bits(1), 1e-150, -1e-150, 1e150, -1e150, math.max_f64, -math.max_f64,
 			math.inf(1), math.inf(-1), math.nan()]
 		for re in values {
 			for im in values {
 				for operation in 0 .. 15 {
-					compare_reference(Complex{re, im}, operation, Complex{})
+					compare_reference(Complex{re, im}, operation, Complex{}, oracles)
 				}
 			}
 		}
@@ -96,12 +127,13 @@ fn (mut r ElementaryRandom) sample() f64 {
 
 fn test_elementary_finite_values_against_host_libm() {
 	$if !freestanding {
+		oracles := reference_oracles()
 		mut r := ElementaryRandom{ state: 0x76696c655f6d6174 }
 		for _ in 0 .. 4000 {
 			z := Complex{(r.sample() - 0.5) * 40, (r.sample() - 0.5) * 40}
 			power := Complex{(r.sample() - 0.5) * 4, (r.sample() - 0.5) * 4}
 			for operation in 0 .. 16 {
-				compare_reference(z, operation, power)
+				compare_reference(z, operation, power, oracles)
 			}
 		}
 	}
@@ -109,6 +141,7 @@ fn test_elementary_finite_values_against_host_libm() {
 
 fn test_elementary_scaled_and_branch_neighbors_against_host_libm() {
 	$if !freestanding {
+		oracles := reference_oracles()
 		values := [math.f64_from_bits(1), 1e-200, 1e-20, 0.9999999999999999, 1.0, 1.0000000000000002,
 			21.999999999999996, 22.0, 709.0, 710.0, 710.4758600739439, 745.0, 1000.0, 1454.0, 1455.0,
 			4503599627370496.0]
@@ -117,7 +150,7 @@ fn test_elementary_scaled_and_branch_neighbors_against_host_libm() {
 				for sr in [-1.0, 1.0] {
 					for si in [-1.0, 1.0] {
 						for operation in 0 .. 15 {
-							compare_reference(Complex{sr * re, si * im}, operation, Complex{})
+							compare_reference(Complex{sr * re, si * im}, operation, Complex{}, oracles)
 						}
 					}
 				}
