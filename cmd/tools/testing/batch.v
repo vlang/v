@@ -199,7 +199,14 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 			source[cleanup.end..]
 		hook = cleanup.text
 	}
+	// A file that sets environment variables can share a binary with others that do,
+	// when it restores them the way these tests do (a saved `os.getenv_opt` and a
+	// `defer`): a test of one file then finds the environment as the file before left it.
+	restores_env := test_restores_environment(source)
 	for marker in test_batch_excluded_markers {
+		if restores_env && marker in test_batch_environment_markers {
+			continue
+		}
 		if source_contains_marker(source, marker) {
 			return none
 		}
@@ -225,11 +232,26 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 	words << names.filter(it.len == 1 && it[0].is_capital())
 	return TestBatchCandidate{
 		key:    os.dir(real_file) + '\n' + module_name + if hook != '' { '\n' + hook } else { '' } +
-			'\nvflags ' + test_file_vflags(source)
+			'\nvflags ' + test_file_vflags(source) + if restores_env { '\nenvironment' } else { '' }
 		names:  names
 		consts: words
 		source: source
 	}
+}
+
+// test_batch_environment_markers are the excluded markers that test_restores_environment
+// admits.
+const test_batch_environment_markers = ['os.setenv(', 'os.unsetenv(']
+
+// test_restores_environment reports whether the code text `source` changes environment
+// variables and saves them to restore them: it reads them (`os.getenv_opt(` or `os.getenv(`)
+// and has a `defer`.
+fn test_restores_environment(source string) bool {
+	if !test_batch_environment_markers.any(source_contains_marker(source, it)) {
+		return false
+	}
+	return (source_contains_marker(source, 'os.getenv_opt(')
+		|| source_contains_marker(source, 'os.getenv(')) && source_mentions_word(source, 'defer')
 }
 
 // test_file_vflags returns the flags of the last `// vtest vflags:` line of `source`, which

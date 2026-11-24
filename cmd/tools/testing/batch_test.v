@@ -50,6 +50,40 @@ fn test_one() {}
 	assert !source_mentions_word('item := 1', 'it')
 }
 
+fn test_environment_changes_batch_only_when_they_are_restored() {
+	restored := "fn test_a() {\n\told := os.getenv_opt('X')\n\tos.setenv('X', '1', true)\n\tdefer {\n\t\tif v := old { os.setenv('X', v, true) } else { os.unsetenv('X') }\n\t}\n}\n"
+	assert test_restores_environment(restored)
+	assert !test_restores_environment("fn test_a() {\n\tos.setenv('X', '1', true)\n}\n")
+	assert !test_restores_environment('fn test_a() {\n\tdefer {}\n\tassert os.getenv_opt("X") == none\n}\n')
+}
+
+fn test_units_keep_environment_changing_files_apart() ! {
+	root := batch_test_root('environment')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	restored := "module util\nfn test_NAME() {\n\told := os.getenv_opt('X')\n\tos.setenv('X', '1', true)\n\tdefer {\n\t\tif v := old { os.setenv('X', v, true) } else { os.unsetenv('X') }\n\t}\n}\n"
+	files := {
+		'a_test.v': 'module util\nfn test_a() {}\n'
+		'b_test.v': restored.replace('NAME', 'b')
+		'c_test.v': restored.replace('NAME', 'c')
+		'd_test.v': "module util\nfn test_d() {\n\tos.setenv('X', '1', true)\n}\n"
+	}
+	mut paths := []string{}
+	for name, source in files {
+		path := os.join_path(root, name)
+		os.write_file(path, source)!
+		paths << path
+	}
+	mut ts := TestSession{
+		vexe:              os.executable()
+		will_compile:      true
+		exec_mode:         .compile_and_run
+		build_environment: build_constraint.new_environment(['macos'], [])
+	}
+	assert ts.test_units(paths) == [paths[0], '${paths[1]}\n${paths[2]}', paths[3]]
+}
+
 fn test_units_group_files_by_vflags_and_accept_ownership_markers() ! {
 	root := batch_test_root('vflags')!
 	defer {
