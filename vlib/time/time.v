@@ -150,7 +150,7 @@ fn new_checked(t Time) !Time {
 // Time.new returns a time struct with the calculated Unix time.
 pub fn Time.new(t Time) Time {
 	normalized := normalize_new_time(t)
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		if !normalized.has_location() {
 			wall := time_fields_to_unix(normalized)
 			if normalized.unix != wall {
@@ -238,7 +238,7 @@ pub fn (t Time) unix_nano() i64 {
 
 // add returns a new time with the given duration added.
 pub fn (t Time) add(duration_in_nanosecond Duration) Time {
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		if t.is_local && !t.has_location() {
 			loc := bare_local_clock_location()
 			instant := if t.local_offset_known { t.unix() } else { bare_local_wall_to_unix(t, loc) }
@@ -524,7 +524,7 @@ pub fn (t Time) debug() string {
 
 // offset returns time zone UTC offset in seconds.
 pub fn offset() int {
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		loc := bare_local_clock_location()
 		return loc.offset_at(utc().unix) or { panic(err) }
 	} $else {
@@ -543,7 +543,7 @@ pub fn (t Time) local_to_utc() Time {
 	if !t.is_local {
 		return t
 	}
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		if t.local_offset_known {
 			return unix_nanosecond(time_with_unix(t).unix - i64(t.local_offset_seconds), t.nanosecond)
 		}
@@ -565,7 +565,7 @@ pub fn (u Time) utc_to_local() Time {
 	if u.is_local {
 		return u
 	}
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		return u.local()
 	} $else {
 		return Time{

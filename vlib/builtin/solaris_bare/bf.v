@@ -230,9 +230,10 @@ $if (freestanding || syscalls) && amd64 {
 			bf_err_of(rc, er)
 			return -1
 		}
-		code := unsafe { *(&int(voidptr(&info[4]))) }
-		child := unsafe { *(&int(voidptr(&info[16]))) }
-		cst := unsafe { *(&int(voidptr(&info[32]))) }
+		// siginfo's code, pid and status fields are C ints, not V ints.
+		code := int(unsafe { *(&i32(voidptr(&info[4]))) })
+		child := int(unsafe { *(&i32(voidptr(&info[16]))) })
+		cst := int(unsafe { *(&i32(voidptr(&info[32]))) })
 		if options & 0x40 != 0 && child == 0 {
 			return 0 // WNOHANG and no child changed state
 		}

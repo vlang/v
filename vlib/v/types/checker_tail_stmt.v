@@ -22996,7 +22996,7 @@ fn (tc &TypeChecker) c_type_uncached(t &Type) string {
 			}
 			// Winsock exposes WSAData only as a struct tag; its typedef is WSADATA.
 			if raw == 'WSAData' || raw.starts_with('_') {
-				return 'struct ${raw}'
+				return tc.c_tagged_aggregate_type_name(name_id, raw)
 			}
 			if raw.starts_with('builtin__closure__') {
 				closure_name := 'closure.${raw['builtin__closure__'.len..]}'
@@ -23008,7 +23008,7 @@ fn (tc &TypeChecker) c_type_uncached(t &Type) string {
 			}
 			if raw.ends_with('_s')
 				|| (raw.len > 0 && raw[0] >= `a` && raw[0] <= `z` && !raw.ends_with('_t')) {
-				return 'struct ${raw}'
+				return tc.c_tagged_aggregate_type_name(name_id, raw)
 			}
 			return raw
 		}
@@ -23094,6 +23094,15 @@ fn (tc &TypeChecker) c_type_uncached(t &Type) string {
 		return 'multi_return_${parts.join('_')}'
 	}
 	return 'int'
+}
+
+// Foreign struct and union declarations share the semantic Struct type. The
+// declaration registry retains the C tag kind, including header-owned unions.
+fn (tc &TypeChecker) c_tagged_aggregate_type_name(name_id u32, raw string) string {
+	if name_id in tc.unions {
+		return 'union ${raw}'
+	}
+	return 'struct ${raw}'
 }
 
 fn (tc &TypeChecker) c_struct_type_name(name_id u32) string {

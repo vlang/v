@@ -226,11 +226,8 @@ fn (t &Transformer) fn_value_call_return_type(node flat.Node) ?u32 {
 			}
 		}
 	}
-	if !isnil(t.tc) {
-		mut callee_type := t.tc.expr_type(callee_id) or { t.tc.resolve_type(callee_id) }
-		if fn_type := fn_type_from_type(callee_type) {
-			return t.semantic_type_name(fn_type.return_type)
-		}
+	if fn_type := t.call_callee_fn_type(callee_id) {
+		return t.semantic_type_name(fn_type.return_type)
 	}
 	callee_type_name_source_id := t.node_type(callee_id)
 
@@ -1821,12 +1818,12 @@ fn (t &Transformer) index_call_resolved_to_fn(base_id flat.NodeId, name string) 
 }
 
 fn (t &Transformer) type_name_is_indexable(name_id u32) bool {
-	mut clean := t.normalize_type_alias(name_id)
+	clean := t.normalize_type_alias(name_id)
 	if clean == 0 {
 		return false
 	}
 	if flat.source_type_shape(clean).has(.pointer) {
-		clean = t.normalize_type_alias(flat.source_type_syntax(clean).raw_base())
+		return true
 	}
 	return clean == flat.source_type_string || flat.source_type_shape(clean).has(.array_type) || flat.source_type_shape(clean).has(.map_type)
 		|| t.is_fixed_array_type(clean)
@@ -1834,13 +1831,10 @@ fn (t &Transformer) type_name_is_indexable(name_id u32) bool {
 
 fn transform_type_is_indexable(typ types.Type) bool {
 	match typ {
-		types.Array, types.ArrayFixed, types.Map, types.String {
+		types.Array, types.ArrayFixed, types.Map, types.String, types.Pointer {
 			return true
 		}
 		types.Alias {
-			return transform_type_is_indexable(typ.base_type)
-		}
-		types.Pointer {
 			return transform_type_is_indexable(typ.base_type)
 		}
 		else {
@@ -3914,6 +3908,17 @@ fn (t &Transformer) call_callee_fn_type(fn_id flat.NodeId) ?types.FnType {
 				continue
 			}
 			if fn_type := transform_fn_type(t.tc.parse_type(local_type)) {
+				return fn_type
+			}
+		}
+	}
+	if node.kind == .index && t.index_callee_is_value_index(node) {
+		// Re-resolving after the checker scope is gone can mistake `local[i]`
+		// for a same-named generic function specialized with a type named `i`.
+		// The transformer's current container binding owns the element type.
+		element := t.resolve_index_elem_type(node)
+		if element != 0 && element != flat.source_type_unknown {
+			if fn_type := transform_fn_type(t.tc.parse_type(element)) {
 				return fn_type
 			}
 		}

@@ -33,6 +33,7 @@ $if (freestanding || syscalls) && !i386 && !windows && !openbsd {
 		return bytes, read_error
 	}
 
+	@[no_profile; no_trace]
 	fn bf_descriptor_control_retry(fd int, command int, value int) (int, int) {
 		for {
 			result, err := bf_descriptor_control(fd, command, value)

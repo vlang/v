@@ -11,7 +11,7 @@ pub fn (t1 Time) == (t2 Time) bool {
 	if t1_has_location {
 		return t1.nanosecond == t2.nanosecond && t1.unix() == t2.unix()
 	}
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		if t1.is_local || t2.is_local {
 			return t1.nanosecond == t2.nanosecond && t1.is_local == t2.is_local
 				&& t1.unix() == t2.unix()

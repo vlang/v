@@ -117,6 +117,14 @@ fn (mut p Process) _spawn() int {
 		pid = p.unix_spawn_process()
 	}
 	p.pid = pid
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		if pid < 0 {
+			p.status = .aborted
+			p.code = -1
+			p.reaped = true
+			return -1
+		}
+	}
 	p.status = .running
 	return 0
 }

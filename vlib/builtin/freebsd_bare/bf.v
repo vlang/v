@@ -180,11 +180,21 @@ $if (freestanding || syscalls) && !i386 {
 	// is not nil, its resource usage. `options` takes this kernel's own W* values,
 	// passed through unchanged as the libc wait4 of a hosted build does.
 	pub fn bf_wait4(pid int, status &int, options int, rusage voidptr) int {
-		rc, er := sys_call4(bf_nr_wait4, u64(i64(pid)), u64(status), u64(i64(options)),
+		mut kernel_status := i32(0)
+		kernel_pointer := if status == unsafe { nil } {
+			&i32(unsafe { nil })
+		} else {
+			&kernel_status
+		}
+		rc, er := sys_call4(bf_nr_wait4, u64(i64(pid)), u64(kernel_pointer), u64(i64(options)),
 			u64(rusage))
 		if er != 0 {
 			bf_err_of(rc, er)
 			return -1
+		}
+		if rc > 0 && status != unsafe { nil } {
+			// The kernel writes a C int; widen only a returned child status.
+			unsafe { *status = int(kernel_status) }
 		}
 		return int(rc)
 	}

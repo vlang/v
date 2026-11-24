@@ -9,7 +9,9 @@ kernel page size, including 64 KiB pages, when encoding the displacement to call
 
 On macOS, freestanding programs remap immutable trampoline templates from the executable's
 signed text beside writable metadata using Mach VM APIs. The trampoline code is never writable, and
-this path needs no JIT entitlement on Intel Macs or Apple silicon.
+this path needs no JIT entitlement on Intel Macs or Apple silicon. On amd64 the freestanding
+runtime issues Mach requests directly and uses kernel-backed locks and thread identities.
+The arm64 macOS path continues to use libSystem.
 The freestanding runtime uses real locks and thread identities for callback allocation and lifetime
 tracking. Hosted paths retain their existing behavior.
 

@@ -1,7 +1,7 @@
 @[has_globals]
 module time
 
-$if !(freestanding && linux && !native && !i386) {
+$if !(freestanding && (linux || (macos && amd64)) && !native && !i386) {
 	// The time zone data is read with the C library directly, rather than through
 	// `os`: every program that imports `time` would otherwise have to compile `os`,
 	// and the modules it imports, too.

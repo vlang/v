@@ -104,6 +104,9 @@ fn (g &FlatGen) enum_storage_c_type(enum_type types.Enum) string {
 fn (mut g FlatGen) optional_type_name(t &types.Type) string {
 	clean_type := unalias_type(t)
 	if clean_type is types.Pointer {
+		if fn_type_from(clean_type.base_type) != none {
+			return g.value_c_type(t)
+		}
 		if clean_type.base_type is types.OptionType || clean_type.base_type is types.ResultType {
 			return g.optional_type_name(clean_type.base_type) + '*'
 		}
@@ -192,11 +195,11 @@ fn (mut g FlatGen) value_c_type(t &types.Type) string {
 		if clean_type.base_type is types.OptionType || clean_type.base_type is types.ResultType {
 			return g.optional_type_name(clean_type.base_type) + '*'
 		}
-		if fn_type := fn_type_from(clean_type.base_type) {
+		if fn_type_from(clean_type.base_type) != none {
 			// `fn_ptr:void|void*` is ambiguous: it can mean `&fn ()` or
 			// `fn (voidptr)`. Resolve the function itself first, then add the
 			// pointer declarator explicitly.
-			return g.resolve_fn_ptr_type(g.fn_ptr_type_key(fn_type)) + '*'
+			return g.value_c_type(clean_type.base_type) + '*'
 		}
 	}
 	if clean_type is types.MultiReturn {

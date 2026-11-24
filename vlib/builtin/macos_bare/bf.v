@@ -44,10 +44,19 @@ $if (freestanding || syscalls) && !i386 {
 		return bf_last_errno_cell
 	}
 
+	@[no_profile; no_trace]
 	fn bf_norm_errno(e VlibcErrno) int {
+		n := bf_errno_code(e)
+		bf_last_errno_cell = n
+		return n
+	}
+
+	// bf_errno_code normalizes an error without changing the thread's errno state.
+	@[no_profile; no_trace]
+	fn bf_errno_code(e VlibcErrno) int {
 		// values normalized to the Linux numbers for the os message tables; an
 		// errno with no Linux counterpart reads as EIO, never as success
-		n := match e {
+		return match e {
 			.enoerror { 0 }
 			.eperm { 1 }
 			.enoent { 2 }
@@ -121,12 +130,12 @@ $if (freestanding || syscalls) && !i386 {
 			.eremote { 66 }
 			.enolck { 37 }
 			.enosys { 38 }
+			.eoverflow { 75 }
 			else { 5 }
 		}
-		bf_last_errno_cell = n
-		return n
 	}
 
+	@[no_profile; no_trace]
 	fn bf_err_of(rc u64, er u64) int {
 		if er == 0 {
 			return 0
@@ -149,37 +158,139 @@ $if (freestanding || syscalls) && !i386 {
 	const bf_nr_fork = u64(0x2000002)
 	const bf_nr_execve = u64(0x200003b)
 	const bf_nr_wait4 = u64(0x2000007)
+	const bf_nr_pipe = u64(0x200002a)
+	const bf_nr_dup2 = u64(0x200005a)
+	const bf_nr_kill = u64(0x2000025)
+	const bf_nr_setpgid = u64(0x2000052)
+	const bf_nr_exit = u64(0x2000001)
 
 	// bf_fork forks the process: the child's pid in the parent, 0 in the child,
 	// -1 with the errno cell set on failure. The kernel marks the child with 1
 	// in the second result register; the first one is not 0 there.
 	pub fn bf_fork() int {
-		first, second, er := mac_sys_call0_pair(bf_nr_fork)
-		if er != 0 {
-			bf_err_of(first, er)
+		pid, err := bf_fork_result()
+		if err != 0 {
+			bf_last_errno_cell = err
 			return -1
 		}
-		return if second != 0 { 0 } else { int(first) }
+		return pid
+	}
+
+	// bf_fork_result forks without sharing its error through the errno cell.
+	// Darwin marks the child in the second result register, not the first one.
+	@[no_profile; no_trace]
+	pub fn bf_fork_result() (int, int) {
+		first, second, er := mac_sys_call0_pair(bf_nr_fork)
+		if er != 0 {
+			return -1, bf_errno_code(unsafe { VlibcErrno(er) })
+		}
+		return if second != 0 { 0 } else { int(first) }, 0
 	}
 
 	// bf_execve replaces the process image; it only returns on failure (-1).
 	pub fn bf_execve(path &char, argv voidptr, envp voidptr) int {
-		rc, er := sys_call3(bf_nr_execve, u64(path), u64(argv), u64(envp))
-		bf_err_of(rc, er)
+		_, err := bf_execve_result(path, argv, envp)
+		if err != 0 { bf_last_errno_cell = err }
 		return -1
+	}
+
+	// bf_execve_result replaces the process image, returning (-1, errno) only
+	// on failure. argv and envp must point to NUL-terminated pointer vectors.
+	@[no_profile; no_trace]
+	pub fn bf_execve_result(path &char, argv voidptr, envp voidptr) (int, int) {
+		rc, er := sys_call3(bf_nr_execve, u64(path), u64(argv), u64(envp))
+		if er != 0 { return -1, bf_errno_code(unsafe { VlibcErrno(er) }) }
+		return int(rc), 0
 	}
 
 	// bf_wait4 waits for child `pid`, storing its wait status and, when `rusage`
 	// is not nil, its resource usage. `options` takes this kernel's own W* values,
 	// passed through unchanged as the libc wait4 of a hosted build does.
 	pub fn bf_wait4(pid int, status &int, options int, rusage voidptr) int {
-		rc, er := sys_call4(bf_nr_wait4, u64(i64(pid)), u64(status), u64(i64(options)),
-			u64(rusage))
-		if er != 0 {
-			bf_err_of(rc, er)
+		// The kernel writes a C int, while the public V status remains a V int.
+		mut kernel_status := i32(0)
+		result, err := bf_wait4_result(pid, &kernel_status, options, rusage)
+		if err != 0 {
+			bf_last_errno_cell = err
 			return -1
 		}
-		return int(rc)
+		if result > 0 && status != unsafe { nil } {
+			unsafe { *status = int(kernel_status) }
+		}
+		return result
+	}
+
+	// bf_wait4_result waits with exact 32-bit kernel status storage and returns
+	// (pid, errno). WNOHANG may return (0, 0). It does not change the errno cell.
+	@[no_profile; no_trace]
+	pub fn bf_wait4_result(pid int, status &i32, options int, rusage voidptr) (int, int) {
+		rc, er := sys_call4(bf_nr_wait4, u64(i64(pid)), u64(status), u64(i64(options)),
+			u64(rusage))
+		if er != 0 { return -1, bf_errno_code(unsafe { VlibcErrno(er) }) }
+		return int(rc), 0
+	}
+
+	// bf_pipe_cloexec creates a pipe in two C-int slots and sets CLOEXEC.
+	// Darwin returns the descriptors in two registers. Forking callers must
+	// serialize creation with forks because Darwin has no atomic pipe2.
+	pub fn bf_pipe_cloexec(fds &i32) int {
+		first, second, er := mac_sys_call0_pair(bf_nr_pipe)
+		if er != 0 { return bf_errno_code(unsafe { VlibcErrno(er) }) }
+		mut err := 0
+		for fd in [int(first), int(second)]! {
+			_, flag_error := bf_descriptor_control_retry(fd, 2, 1) // F_SETFD, FD_CLOEXEC
+			if flag_error != 0 {
+				err = flag_error
+				break
+			}
+		}
+		if err != 0 {
+			bf_close(int(first))
+			bf_close(int(second))
+			return err
+		}
+		// The caller supplies two live i32 output slots, published only on success.
+		unsafe {
+			fds[0] = i32(first)
+			fds[1] = i32(second)
+		}
+		return 0
+	}
+
+	// bf_dup_cloexec duplicates fd into the lowest free descriptor >= minimum.
+	// The new descriptor has CLOEXEC set atomically; errors are returned directly.
+	pub fn bf_dup_cloexec(fd int, minimum int) (int, int) {
+		return bf_descriptor_control_retry(fd, 67, minimum) // F_DUPFD_CLOEXEC
+	}
+
+	// bf_dup2 duplicates oldfd to newfd, clearing CLOEXEC unless both are equal.
+	// It returns zero or a normalized errno.
+	@[no_profile; no_trace]
+	pub fn bf_dup2(oldfd int, newfd int) int {
+		_, er := sys_call2(bf_nr_dup2, u64(oldfd), u64(newfd))
+		if er != 0 { return bf_errno_code(unsafe { VlibcErrno(er) }) }
+		return 0
+	}
+
+	// bf_setpgid changes the process group and returns zero or a normalized errno.
+	@[no_profile; no_trace]
+	pub fn bf_setpgid(pid int, pgid int) int {
+		_, er := sys_call2(bf_nr_setpgid, u64(i64(pid)), u64(i64(pgid)))
+		return if er != 0 { bf_errno_code(unsafe { VlibcErrno(er) }) } else { 0 }
+	}
+
+	// bf_kill sends a signal to a process or group and returns zero or errno.
+	@[no_profile; no_trace]
+	pub fn bf_kill(pid int, signal int) int {
+		_, er := sys_call2(bf_nr_kill, u64(i64(pid)), u64(signal))
+		return if er != 0 { bf_errno_code(unsafe { VlibcErrno(er) }) } else { 0 }
+	}
+
+	// bf_exit terminates immediately, without running allocator or exit callbacks.
+	@[no_profile; no_trace; noreturn]
+	pub fn bf_exit(status int) {
+		sys_call1(bf_nr_exit, u64(i64(status)))
+		for {}
 	}
 
 	// bf_uname_field copies the sysctl string at [top, leaf] into one 65-byte
@@ -241,6 +352,7 @@ $if (freestanding || syscalls) && !i386 {
 	// EXCL 0x80->0x800; APPEND 0o2000->0x8; NONBLOCK 0o4000->0x4; SYNC
 	// 0o4010000->0x80 (0x401000 carries sync); NOCTTY 0o400 not provided by
 	// darwin (ignored); O_DIRECTORY is only used by bf_openat_dir.
+	@[no_profile; no_trace]
 	pub fn bf_flags(linux_flags u64) u64 {
 		mut out := linux_flags & u64(0x3)
 		if linux_flags & u64(0o100) != 0 {
@@ -270,6 +382,7 @@ $if (freestanding || syscalls) && !i386 {
 		return out
 	}
 
+	@[no_profile; no_trace]
 	fn bf_split_int(rc u64, er u64) (int, int) {
 		if er != 0 {
 			return -1, bf_err_of(rc, er)
@@ -277,6 +390,7 @@ $if (freestanding || syscalls) && !i386 {
 		return int(rc), 0
 	}
 
+	@[no_profile; no_trace]
 	fn bf_descriptor_control(fd int, command int, value int) (int, int) {
 		rc, er := sys_call3(bf_nr_fcntl, u64(fd), u64(command), u64(value))
 		return bf_split_int(rc, er)
@@ -284,6 +398,7 @@ $if (freestanding || syscalls) && !i386 {
 
 	// bf_openat has no *at syscall on darwin; the path given is used directly
 	// with O_* flags (relative paths resolve against the cwd, like open/1).
+	@[no_profile; no_trace]
 	pub fn bf_openat(path &u8, flags_raw u64, mode u64) (int, int) {
 		flags := bf_flags(flags_raw)
 		rc, er := sys_call3(bf_nr_open, u64(path), flags, mode)
@@ -308,6 +423,7 @@ $if (freestanding || syscalls) && !i386 {
 		}
 	}
 
+	@[no_profile; no_trace]
 	pub fn bf_write(fd int, buf &u8, count int) (int, int) {
 		for {
 			nw, er := sys_call3(bf_nr_write, u64(fd), u64(buf), u64(count))
@@ -322,6 +438,7 @@ $if (freestanding || syscalls) && !i386 {
 		}
 	}
 
+	@[no_profile; no_trace]
 	pub fn bf_close(fd int) int {
 		rc, er := sys_call1(bf_nr_close, u64(fd))
 		return bf_err_of(rc, er)
@@ -349,6 +466,7 @@ $if (freestanding || syscalls) && !i386 {
 		return bf_split_int(rc, er)
 	}
 
+	@[no_profile; no_trace]
 	pub fn bf_chdir(path string) int {
 		rc, er := sys_call1(bf_nr_chdir, u64(path.str))
 		return bf_err_of(rc, er)
@@ -400,22 +518,32 @@ $if (freestanding || syscalls) && !i386 {
 		tv_nsec i64
 	}
 
-	// bf_nanosleep sleeps `ms` milliseconds. With no semaphores and a relative timeout,
-	// __semwait_signal just waits, and it fails with ETIMEDOUT once the time has passed.
-	// XNU returns no remainder, so an interrupted wait restarts with the full interval.
+	// bf_nanosleep sleeps `ms` milliseconds, restarting interrupted waits.
+	// Syscall-only AMD64 uses the canonical Mach deadline clock; libSystem
+	// configurations retain the existing relative semaphore-wait route.
 	pub fn bf_nanosleep(ms i64) int {
-		sec := u64(ms / 1000)
-		nsec := u64(1_000_000 * (ms % 1000))
-		for {
-			_, er := sys_call6(bf_nr_semwait_signal, 0, 0, 1, 1, sec, nsec)
-			if er == 0 || er == 60 { // ETIMEDOUT: the interval has passed
-				return 0
+		$if freestanding && amd64 && !native {
+			if ms < 0 {
+				bf_last_errno_cell = 22
+				return 22
 			}
-			if er == 4 { // EINTR
-				continue
+			code := bf_sleep_stamp(FSysClockStamp{
+				seconds:     ms / 1000
+				nanoseconds: (ms % 1000) * 1_000_000
+			})
+			if code != 0 { bf_last_errno_cell = code }
+			return code
+		} $else {
+			sec := u64(ms / 1000)
+			nsec := u64(1_000_000 * (ms % 1000))
+			for {
+				_, er := sys_call6(bf_nr_semwait_signal, 0, 0, 1, 1, sec, nsec)
+				if er == 0 || er == 60 { return 0 }
+				if er == 4 { continue }
+				return bf_err_of(0, er)
 			}
-			return bf_err_of(0, er)
 		}
+		return 0
 	}
 
 	pub fn bf_getpid() int {
@@ -424,10 +552,12 @@ $if (freestanding || syscalls) && !i386 {
 		return int(rc)
 	}
 
+	// bf_gettid returns the kernel's thread ID, or zero if the syscall fails.
+	// It does not change the native or BF errno cells.
+	@[no_profile; no_trace]
 	pub fn bf_gettid() u64 {
-		// darwin exposes the TID through the libSystem surface; keep the process
-		// identity for the signal globals until pthread_threadid_np gets ported.
-		return u64(bf_getpid())
+		id, er := sys_call0(u64(0x2000174)) // XNU thread_selfid, BSD syscall 372
+		return if er == 0 { id } else { u64(0) }
 	}
 
 	// FSysStatRaw matches darwin `struct stat` (one layout for amd64 and arm64,

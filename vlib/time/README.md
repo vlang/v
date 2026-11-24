@@ -288,7 +288,7 @@ for _ in 0 .. 3 {
 }
 ```
 
-Linux C freestanding uses the same TZif and POSIX timezone rule engine as
+Linux and AMD64 macOS C freestanding use the same TZif and POSIX timezone rule engine as
 `load_location`, with kernel filesystem, environment, clock, and locking services.
 `now()` and `Time.local()` retain their local calendar fields and epoch precision,
 including both occurrences of a repeated DST hour. Unresolved local literals choose

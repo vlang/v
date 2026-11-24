@@ -1,6 +1,6 @@
 #ifndef V_CLOSURE_TEST_PERMISSIONS_H
 #define V_CLOSURE_TEST_PERMISSIONS_H
-#if defined(__APPLE__)
+#if defined(__APPLE__) && defined(__aarch64__)
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 static int v_closure_test_region(void *pointer, vm_prot_t expected) {

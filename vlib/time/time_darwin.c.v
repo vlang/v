@@ -2,7 +2,7 @@ module time
 
 // A portable snapshot can be generated on Darwin and compiled on another OS.
 // Its clocks use the POSIX API instead of retaining Darwin-only initializers.
-$if !cross ? {
+$if !(freestanding && amd64 && !native) && !cross ? {
 	// start_time is needed on Darwin and Windows because of potential overflows
 	const start_time = C.mach_absolute_time()
 	const time_base = init_time_base()
@@ -36,7 +36,11 @@ $if !cross ? {
 }
 
 fn sys_mono_now_darwin() u64 {
-	$if cross ? {
+	$if freestanding && amd64 && !native {
+		nanos, code := bf_monotonic_now()
+		if code != 0 { panic('time: monotonic clock failed (${code})') }
+		return nanos
+	} $else $if cross ? {
 		ts := C.timespec{}
 		C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
 		return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
@@ -52,10 +56,13 @@ fn sys_mono_now_darwin() u64 {
 }
 
 // Note: vpc_now_darwin is used by `v -profile` .
-// It should NOT call *any other v function*, just C functions and casts.
-@[inline]
+// Every V helper it calls must also be excluded from profiling.
+@[inline; no_profile; no_trace]
 fn vpc_now_darwin() u64 {
-	$if cross ? {
+	$if freestanding && amd64 && !native {
+		nanos, _ := bf_monotonic_now()
+		return nanos
+	} $else $if cross ? {
 		ts := C.timespec{}
 		C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
 		return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
@@ -72,7 +79,10 @@ fn vpc_now_darwin() u64 {
 
 // darwin_now returns a better precision current time for macos
 fn darwin_now() Time {
-	$if cross ? {
+	$if freestanding && amd64 && !native {
+		seconds, nanos := bare_realtime_parts()
+		return bare_local_from_unix(seconds, nanos)
+	} $else $if cross ? {
 		return linux_now()
 	} $else {
 		// Use clock_gettime_nsec_np to avoid field-address lowering on C.timespec.
@@ -87,7 +97,10 @@ fn darwin_now() Time {
 
 // darwin_utc returns a better precision current time for macos
 fn darwin_utc() Time {
-	$if cross ? {
+	$if freestanding && amd64 && !native {
+		seconds, nanos := bare_realtime_parts()
+		return unix_nanosecond(seconds, nanos)
+	} $else $if cross ? {
 		return linux_utc()
 	} $else {
 		epoch_ns := i64(C.clock_gettime_nsec_np(C.CLOCK_REALTIME))

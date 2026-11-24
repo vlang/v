@@ -1,9 +1,7 @@
 @[has_globals]
 module time
 
-$if linux && !native && !i386 {
-	#include <errno.h>
-
+$if (linux || (macos && amd64)) && !native && !i386 {
 	const bare_min_epoch = i64(-9223372036854775807) - 1
 	const bare_max_epoch = i64(9223372036854775807)
 
@@ -13,11 +11,26 @@ $if linux && !native && !i386 {
 	__global bare_local_loading_tid u64
 
 	fn bare_realtime_parts() (i64, int) {
-		mut stamp := C.timespec{}
-		if C.clock_gettime(C.CLOCK_REALTIME, &stamp) != 0 {
-			panic('time: realtime clock failed (${C.errno})')
+		seconds, nanos, code := bf_realtime_now()
+		if code != 0 { panic('time: realtime clock failed (${code})') }
+		return seconds, int(nanos)
+	}
+
+	fn bare_timezone_wait() int {
+		$if macos {
+			return bf_wait_u32(&bare_local_loading, 1, -1)
+		} $else {
+			return bf_futex_wait(&bare_local_loading, 1, -1)
 		}
-		return stamp.tv_sec, int(stamp.tv_nsec)
+	}
+
+	fn bare_timezone_wake() int {
+		$if macos {
+			return bf_wake_u32(&bare_local_loading, true)
+		} $else {
+			_, code := bf_futex_wake(&bare_local_loading, 0x7fffffff)
+			return code
+		}
 	}
 
 	fn bare_local_cache_can_persist() bool {
@@ -50,7 +63,7 @@ $if linux && !native && !i386 {
 					panic('time: recursive local timezone loader; use utc() inside a loader')
 				}
 				zoneinfo_loaders_unlock()
-				code := bf_futex_wait(&bare_local_loading, 1, -1)
+				code := bare_timezone_wait()
 				if code !in [0, 4, 11] {
 					panic('time: timezone wait failed (${code})')
 				}
@@ -70,7 +83,7 @@ $if linux && !native && !i386 {
 			bare_local_loading_tid = 0
 			C.atomic_store_u32(&bare_local_loading, 0)
 			zoneinfo_loaders_unlock()
-			_, code := bf_futex_wake(&bare_local_loading, 0x7fffffff)
+			code := bare_timezone_wake()
 			if code != 0 {
 				panic('time: timezone wake failed (${code})')
 			}

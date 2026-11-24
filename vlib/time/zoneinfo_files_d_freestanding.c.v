@@ -1,10 +1,8 @@
 @[has_globals]
 module time
 
-import sync
-
-$if linux && !native && !i386 {
-	#include <fcntl.h>
+$if (linux || (macos && amd64)) && !native && !i386 {
+	import sync
 
 	const zoneinfo_vroot_zip = @VEXEROOT + '/vlib/time/tzdata/zoneinfo.zip'
 
@@ -68,9 +66,10 @@ $if linux && !native && !i386 {
 		if !zoneinfo_is_file(path) {
 			return error('time: "${path}" is not a regular file')
 		}
+		// BF uses Linux-normalized flags on both platforms: O_CLOEXEC | O_NONBLOCK.
 		// Nonblocking open also prevents a concurrent replacement with a FIFO
 		// from hanging a timezone lookup. Regular-file reads remain synchronous.
-		fd, opened := bf_openat(path.str, u64(C.O_RDONLY | C.O_CLOEXEC | C.O_NONBLOCK), 0)
+		fd, opened := bf_openat(path.str, u64(0o2004000), 0)
 		if opened != 0 {
 			return error('time: failed to open "${path}" (${opened})')
 		}

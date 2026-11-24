@@ -2,7 +2,7 @@ module sync
 
 @[noreturn]
 fn cpanic(res int) {
-	$if freestanding && linux && !native && !i386 {
+	$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 		panic('sync: operating system error ${res}')
 	} $else {
 		panic(unsafe { tos_clone(&u8(C.strerror(res))) })

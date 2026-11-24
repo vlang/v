@@ -22,7 +22,7 @@ fn test_freestanding_v_spawn_wait_results_detach_and_context_deadline() ! {
 }
 
 fn test_freestanding_raw_thread_failure_join_and_late_detach() ! {
-	$if linux && (amd64 || arm64) {
+	$if (linux && (amd64 || arm64)) || (macos && amd64) {
 		work := os.join_path(os.vtmp_dir(), 'freestanding_raw_threads_${os.getpid()}')
 		os.mkdir_all(work)!
 		defer { os.rmdir_all(work) or {} }
@@ -135,5 +135,37 @@ fn test_freestanding_sync_native_thread_helper_and_waitgroup() ! {
 			assert code == 0, '${role}: ${output}'
 			assert output.trim_space() == 'freestanding sync thread helper passed'
 		}
+	}
+}
+
+fn test_freestanding_macos_v_thread_signal_tls_and_teardown() ! {
+	$if macos && amd64 {
+		work := os.join_path(os.vtmp_dir(), 'macos_v_thread_signals_${os.getpid()}')
+		os.mkdir_all(work)!
+		defer { os.rmdir_all(work) or {} }
+		source := os.join_path(@VEXEROOT, 'vlib/builtin/testdata/macos_v_threads/signals.c.v')
+		for prod in [false, true] {
+			program := os.join_path(work, 'signals_${prod}')
+			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-gc',
+				'none', '-enable-globals', '-cc', 'clang']
+			if prod { command << '-prod' }
+			command << ['-o', program, source]
+			built := os.exec(command)
+			assert built.exit_code == 0, built.output
+			check_freestanding_macos_thread_imports(program)
+			code, output := run_freestanding_thread_probe(program, [])
+			assert code == 0 && output.trim_space() == 'macOS V thread signal teardown passed', output
+		}
+	}
+}
+
+fn check_freestanding_macos_thread_imports(program string) {
+	$if macos && amd64 {
+		undefined := os.exec(['xcrun', 'nm', '-u', program])
+		assert undefined.exit_code == 0 && undefined.output.trim_space() == '', undefined.output
+		commands := os.exec(['xcrun', 'otool', '-l', program])
+		assert commands.exit_code == 0 && commands.output.contains('LC_UNIXTHREAD'), commands.output
+		assert !commands.output.contains('LC_LOAD_DYLIB')
+		assert !commands.output.contains('LC_LOAD_DYLINKER')
 	}
 }

@@ -20,14 +20,11 @@ pub fn getenv(key string) string {
 // Returns `none` if the environment variable does not exist.
 @[manualfree]
 pub fn getenv_opt(key string) ?string {
-	$if freestanding || syscalls {
-		// There is neither a saved envp block nor a libc environ table in a
-		// freestanding process, so the kernel snapshot in
-		// /proc/self/environ is scanned instead.
+	$if (freestanding || syscalls) && !(macos && arm64) {
+		// Syscall-only runtimes supply their own environment storage.
 		v, found := fsys_getenv(key)
 		return if found { v } else { none }
-	}
-	$if !freestanding && !syscalls {
+	} $else {
 		unsafe {
 			$if windows {
 				kw := key.to_wide()
@@ -53,13 +50,13 @@ pub fn getenv_opt(key string) ?string {
 
 // setenv sets the value of an environment variable with `name` to `value`.
 pub fn setenv(name string, value string, overwrite bool) int {
-	$if freestanding || syscalls {
-		// A freestanding process cannot change the kernel's startup snapshot;
-		// modifications would need a rebuilt env block for exec, which is what
-		// Zig's process/Environ.createPosixBlock does. Not implemented here.
-		return -1
-	}
-	$if !freestanding && !syscalls {
+	$if (freestanding || syscalls) && !(macos && arm64) {
+		$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
+			return fsys_environment_set(name, value, overwrite)
+		} $else {
+			return -1
+		}
+	} $else {
 		$if windows {
 			format := '${name}=${value}'.to_wide()
 			defer {
@@ -87,13 +84,13 @@ pub fn setenv(name string, value string, overwrite bool) int {
 
 // unsetenv clears an environment variable with `name`.
 pub fn unsetenv(name string) int {
-	$if freestanding || syscalls {
-		// See setenv: the startup environment block is immutable, so nothing
-		// can be removed persistently. Zig 0.17 does not expose setenv or
-		// unsetenv at all when it does not link libc.
-		return -1
-	}
-	$if !freestanding && !syscalls {
+	$if (freestanding || syscalls) && !(macos && arm64) {
+		$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
+			return fsys_environment_unset(name)
+		} $else {
+			return -1
+		}
+	} $else {
 		$if windows {
 			format := '${name}='.to_wide()
 			defer {
@@ -113,14 +110,16 @@ pub fn unsetenv(name string) int {
 pub fn environ() map[string]string {
 	// TODO how to declare Virtual C globals?
 	// const C.environ &&char
-	mut res := map[string]string{}
-	$if freestanding || syscalls {
+	$if (freestanding || syscalls) && !(macos && arm64) {
+		$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
+			return fsys_environment_all()
+		}
 		$if linux {
 			return fsys_proc_environ_map()
 		}
 		return bf_environ()
-	}
-	$if !freestanding && !syscalls {
+	} $else {
+		mut res := map[string]string{}
 		$if windows {
 			estrings := C.GetEnvironmentStringsW()
 			res = environ_from_wide_block(estrings)
@@ -144,8 +143,8 @@ pub fn environ() map[string]string {
 				i++
 			}
 		}
+		return res
 	}
-	return res
 }
 
 // environ_from_wide_block reads a NUL-separated Windows UTF-16 environment block.

@@ -1542,6 +1542,58 @@ fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
 	}
 }
 
+fn test_v3_macos_freestanding_flag_plan_uses_raw_static_entry() {
+	for production in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			is_prod:         production
+			is_c_debug:      true
+			is_freestanding: true
+			target_os:       'macos'
+			target_arch:     'amd64'
+			c_compiler:      'clang'
+		})
+		assert '-ffreestanding' in plan.before_inputs
+		assert '-fno-stack-protector' in plan.before_inputs
+		assert '-flto' !in plan.before_inputs
+		assert '-Wl,-export_dynamic' !in plan.before_inputs
+		assert '-Wl,-stack_size,0x4000000' !in plan.before_inputs
+		for required in ['-static', '-nostdlib', '-Wl,-e,_start', '-Wl,-no_pie', '-Wl,-dead_strip'] {
+			assert required in plan.after_inputs, required
+		}
+		for hosted in ['-lSystem', '-lm', '-lpthread'] {
+			assert hosted !in plan.after_inputs, hosted
+		}
+	}
+}
+
+fn test_v3_hosted_macos_retains_stack_size_override() {
+	for arch in ['amd64', 'arm64'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:   'macos'
+			target_arch: arch
+			c_compiler:  'clang'
+		})
+		assert '-Wl,-stack_size,0x4000000' in plan.before_inputs, arch
+	}
+}
+
+fn test_v3_macos_arm64_freestanding_retains_libsystem() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_prod:         true
+		is_c_debug:      true
+		is_freestanding: true
+		target_os:       'macos'
+		target_arch:     'arm64'
+		c_compiler:      'clang'
+	})
+	assert '-lSystem' in plan.after_inputs
+	assert '-Wl,-export_dynamic' in plan.before_inputs
+	assert '-Wl,-stack_size,0x4000000' in plan.before_inputs
+	for raw in ['-static', '-nostdlib', '-Wl,-e,_start', '-Wl,-no_pie', '-Wl,-dead_strip'] {
+		assert raw !in plan.after_inputs, raw
+	}
+}
+
 fn test_v3_linux_shared_flag_plan_hides_static_archive_symbols() {
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
 		is_shared:  true

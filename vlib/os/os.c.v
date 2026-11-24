@@ -25,7 +25,7 @@ fn C.getline(voidptr, voidptr, voidptr) i32
 
 fn C.sigaction(i32, voidptr, i32) i32
 
-fn C.wait4(pid i32, status &int, options i32, rusage &C.rusage) i32
+fn C.wait4(pid i32, status &i32, options i32, rusage &C.rusage) i32
 
 struct C.rusage {}
 
@@ -1292,13 +1292,13 @@ fn relative_path_from_cwd(fpath string, buf voidptr, size int) int {
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // On Windows, extended-length path prefixes like `\\?\` and `\\?\UNC\` are normalized back
 // to standard DOS and UNC paths.
+// On POSIX, resolution failures return a copy of fpath.
 // Note: this particular rabbit hole is *deep* ...
 @[manualfree]
 pub fn real_path(fpath string) string {
-	$if freestanding || syscalls {
+	$if (freestanding || syscalls) && !(macos && arm64) {
 		return fsys_real_path(fpath)
-	}
-	$if !freestanding && !syscalls {
+	} $else {
 		mut fullpath := [max_path_buffer_size]u8{}
 		mut res := ''
 		$if windows {
@@ -1437,7 +1437,18 @@ pub fn wait4(pid int, status &int, options int, rusage voidptr) int {
 	} $else $if windows {
 		panic('os.wait4 not supported on windows')
 	} $else {
-		return C.wait4(pid, status, options, unsafe { &C.rusage(rusage) })
+		mut kernel_status := i32(0)
+		kernel_pointer := if status == unsafe { nil } {
+			&i32(unsafe { nil })
+		} else {
+			&kernel_status
+		}
+		result := C.wait4(pid, kernel_pointer, options, unsafe { &C.rusage(rusage) })
+		if result > 0 && status != unsafe { nil } {
+			// wait4 writes a C int; preserve the public V int output contract.
+			unsafe { *status = int(kernel_status) }
+		}
+		return result
 	}
 }
 

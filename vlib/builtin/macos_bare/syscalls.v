@@ -82,6 +82,7 @@ $if !i386 {
 		eremote         = 71
 		enolck          = 77
 		enosys          = 78
+		eoverflow       = 84
 	}
 
 	// The x86_64 syscall class is stripped by the arm64 syscall helpers.
@@ -155,6 +156,7 @@ $if !i386 {
 
 	const mac_f_getpath = u64(50)
 
+	@[no_profile; no_trace]
 	fn bsd_split(rc_in u64, er_in u64) (i64, VlibcErrno) {
 		if er_in != 0 {
 			return i64(-1), unsafe { VlibcErrno(er_in) }
@@ -167,6 +169,7 @@ $if !i386 {
 	// that keeps x0, the errno, only on failure: the trampolines need neither a
 	// logical immediate nor a branch, which keeps them in the subset the native
 	// arm64 backend lowers as well as the C backend.
+	@[no_profile; no_trace]
 	fn sys_call0(scn u64) (u64, u64) {
 		mut res := u64(0)
 		mut err := u64(0)
@@ -211,6 +214,7 @@ $if !i386 {
 		return res, err
 	}
 
+	@[no_profile; no_trace]
 	fn mac_sys_call0_pair(scn u64) (u64, u64, u64) {
 		mut first := u64(0)
 		mut second := u64(0)
@@ -260,6 +264,7 @@ $if !i386 {
 		return first, second, err
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call1(scn u64, arg1 u64) (u64, u64) {
 		mut res := u64(0)
 		mut err := u64(0)
@@ -307,6 +312,7 @@ $if !i386 {
 		return res, err
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call2(scn u64, arg1 u64, arg2 u64) (u64, u64) {
 		mut res := u64(0)
 		mut err := u64(0)
@@ -357,6 +363,7 @@ $if !i386 {
 		return res, err
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call3(scn u64, arg1 u64, arg2 u64, arg3 u64) (u64, u64) {
 		mut res := u64(0)
 		mut err := u64(0)
@@ -412,6 +419,7 @@ $if !i386 {
 		return res, err
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call4(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64) (u64, u64) {
 		mut res := u64(0)
 		mut err := u64(0)
@@ -473,6 +481,7 @@ $if !i386 {
 		return res, err
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call5(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64) (u64, u64) {
 		mut res := u64(0)
 		mut err := u64(0)
@@ -540,6 +549,7 @@ $if !i386 {
 		return res, err
 	}
 
+	@[no_profile; no_trace]
 	fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64, arg6 u64) (u64, u64) {
 		mut res := u64(0)
 		mut err := u64(0)

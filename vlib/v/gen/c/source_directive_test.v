@@ -673,22 +673,30 @@ fn test_target_libc_headers_own_generated_errno_declarations() ! {
 			result := os.exec(args)
 			assert result.exit_code == 0, result.output
 			generated := os.read_file(output)!
-			// The bare runtime's native POSIX shims request platform headers too.
-			headers_own_errno := target_headers || freestanding
-			assert generated.contains('#include <errno.h>') == headers_own_errno
+			// Bare native facade headers also select SDK declaration ownership.
+			headers_own_libc := target_headers || freestanding
+			assert generated.contains('#include <errno.h>') == headers_own_libc
 			assert generated.contains('libc_posix.h') == freestanding
-			// The bare runtime owns this definition. Header ownership suppresses C
-			// binding declarations, but must not remove the V-provided implementation.
+			// The local V export remains defined with a macro-safe declarator.
 			expected_bodies := if freestanding { 1 } else { 0 }
-			assert generated.count('i32* __errno_location(void) {') == expected_bodies
+			assert generated.count('i32* (__errno_location)(void) {') == expected_bodies
+			assert !generated.contains('i32* __errno_location(void) {')
 			for name in ['__error', '__errno', '__errno_location', '___errno', '_errno', '_errnop',
 				'__get_errno_ptr'] {
-				expected := !headers_own_errno || (freestanding && name == '__errno_location')
-				assert generated.contains('i32* ' + name + '(') == expected, '${freestanding}/${target_headers}: ${name}'
-				if headers_own_errno {
-					expected_count := if expected { 1 } else { 0 }
-					assert generated.count(' ${name}(void);') == expected_count, '${freestanding}/${target_headers}: ${name}'
+				local_export := freestanding && name == '__errno_location'
+				declaration := if local_export {
+					'i32* (${name})(void);'
+				} else {
+					'i32* ${name}(void);'
 				}
+				expected_count := if !headers_own_libc || local_export { 1 } else { 0 }
+				assert generated.count(declaration) == expected_count, '${freestanding}/${target_headers}: ${name}'
+				other_declaration := if local_export {
+					'i32* ${name}(void);'
+				} else {
+					'i32* (${name})(void);'
+				}
+				assert !generated.contains(other_declaration), '${freestanding}/${target_headers}: ${name}'
 			}
 		}
 	}

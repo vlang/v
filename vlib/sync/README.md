@@ -123,3 +123,8 @@ initialization. The initializer must not reenter `get()` on the same LazyLock.
 Construct these cells with their factory functions and share the returned pointers.
 The locks protect initialization and retrieval; a returned pointer, map, or array may
 alias the stored data. Synchronize any later mutation of shared returned data separately.
+
+AMD64 macOS C freestanding uses the same zero-value mutex, semaphore and reader-writer
+lock algorithms as Linux freestanding, parking with XNU ULock word waits instead
+of pthreads. Timed waits retain their original monotonic deadline across signals
+and spurious wakes. Hosted builds and ARM64 macOS retain their native synchronization backend.
