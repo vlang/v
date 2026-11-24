@@ -21752,6 +21752,8 @@ fn collect_test_harness_decl_ids(a &flat.FlatAst, node &flat.Node, mut ids []fla
 // own: files of one module may each declare `fn test_main()`. A later file's test
 // function of a name that an earlier file of its module already declared is
 // renamed. A batch that fails runs again file by file, under the original names.
+// With V3_INTERNAL_BATCH_SHARED_SUITE_HOOKS=1 (set by the runner, whose batches then
+// share one environment-only `testsuite_begin`), later copies of that hook are renamed too.
 fn rename_colliding_batch_test_fns(mut a flat.FlatAst, test_files []string) {
 	mut selected := map[string]bool{}
 	for file in test_files {
@@ -21759,6 +21761,7 @@ fn rename_colliding_batch_test_fns(mut a flat.FlatAst, test_files []string) {
 	}
 	mut seen := map[string]bool{}
 	mut file_number := 0
+	shared_suite_hooks := os.getenv('V3_INTERNAL_BATCH_SHARED_SUITE_HOOKS') == '1'
 	for file_idx in a.user_code_start .. a.nodes.len {
 		file_node := a.nodes[file_idx]
 		if !is_user_test_file_node(a, file_idx, file_node, selected) {
@@ -21774,6 +21777,17 @@ fn rename_colliding_batch_test_fns(mut a flat.FlatAst, test_files []string) {
 		collect_test_harness_decl_ids(a, &file_node, mut decl_ids)
 		for id in decl_ids {
 			name := a.nodes[int(id)].value
+			if name == 'testsuite_begin' && shared_suite_hooks {
+				// The runner batches files only with the same `testsuite_begin`, which only
+				// unsets environment variables: the first file's runs for the whole binary.
+				key := '${module_name}.${name}'
+				if key in seen {
+					a.nodes[int(id)].value = 'batch_shared_testsuite_begin_${file_number}'
+				} else {
+					seen[key] = true
+				}
+				continue
+			}
 			if !name.starts_with('test_') || name.contains('.')
 				|| test_harness_fn_param_count(a, &a.nodes[int(id)]) != 0 {
 				continue
