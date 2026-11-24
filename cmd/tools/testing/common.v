@@ -957,6 +957,7 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 		}
 	}
 
+	// test_path_enables_globals in batch.v applies the same rule to batches.
 	if relative_file.contains('global') && !is_fmt {
 		cmd_options << '-enable-globals'
 	}

@@ -178,9 +178,8 @@ fn (ts &TestSession) test_units(files []string) []string {
 // top-level names of `file`, when it can share a binary with other tests.
 fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) ?TestBatchCandidate {
 	name := os.file_name(file)
-	// `.c.v`/`.js.v` tests select a backend, and `global` in a name enables globals.
-	if !name.ends_with('_test.v') || name.all_before_last('_test.v').contains('.')
-		|| name.contains('global') {
+	// `.c.v`/`.js.v` tests select a backend.
+	if !name.ends_with('_test.v') || name.all_before_last('_test.v').contains('.') {
 		return none
 	}
 	real_file := os.real_path(file)
@@ -232,11 +231,18 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 	words << names.filter(it.len == 1 && it[0].is_capital())
 	return TestBatchCandidate{
 		key:    os.dir(real_file) + '\n' + module_name + if hook != '' { '\n' + hook } else { '' } +
-			'\nvflags ' + test_file_vflags(source) + if restores_env { '\nenvironment' } else { '' }
+			'\nvflags ' + test_file_vflags(source) + if restores_env { '\nenvironment' } else { '' } +
+			if test_path_enables_globals(real_file) { '\nglobals' } else { '' }
 		names:  names
 		consts: words
 		source: source
 	}
+}
+
+// test_path_enables_globals reports whether run_test_file compiles the file at the real
+// path `path` with `-enable-globals`: when `global` is anywhere in that path.
+fn test_path_enables_globals(path string) bool {
+	return path.contains('global')
 }
 
 // test_batch_environment_markers are the excluded markers that test_restores_environment
@@ -655,6 +661,9 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 		vargs := (os.split_args(ts.vargs) or { []string{} }).filter(it != '-silent')
 		argv << vargs
 		// The files of a batch have the same `// vtest vflags:` (see test_file_vflags).
+		if test_path_enables_globals(abs_files[0]) {
+			argv << '-enable-globals'
+		}
 		batch_vflags := get_test_details(abs_files[0]).vflags
 		if batch_vflags != '' {
 			argv << os.split_args(batch_vflags) or { []string{} }
