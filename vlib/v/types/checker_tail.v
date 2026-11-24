@@ -17109,6 +17109,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			expected_push := unalias_type(expected)
 			if expected_push is Pointer {
 				expected_base := *expected_push.base_type
+				$if ownership ? {
+					if tc.ownership_checks_thread_boundary() {
+						tc.ownership_check_thread_transfer(expected_base, arg_id, 'channel send')
+					}
+				}
 				actual_base := if tc.type_compatible(actual_push, expected_base) {
 					actual_push
 				} else if actual_push is Pointer {
