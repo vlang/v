@@ -46,9 +46,7 @@ on every backend. Portable builds use exact multiword arithmetic without allocat
 Windows TinyCC imports `fma` from the Universal CRT (`ucrtbase.dll`), included in Windows 10
 and later. Older Windows systems require the Universal CRT update or redistributable.
 The hosted C backend uses its math library for both operations. Other backends and pure V builds
-use portable implementations. Linux freestanding C builds select pure math automatically;
-they do not need `-exclude` flags or a separate math library.
-Their C ABI exports for `fabs`, `floor` and `pow` use these same portable functions.
+use portable implementations.
 Portable `pow` evaluates integer powers by scaled successive squaring with product residuals;
 its work grows logarithmically with the exponent. Scaling also preserves representable tiny
 reciprocals when the corresponding positive power would overflow.

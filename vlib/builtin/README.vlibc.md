@@ -180,6 +180,8 @@ available; `sys_write` and `bf_write` still use raw syscalls.
 Linux C-backend freestanding builds also provide POSIX `read`, `clock_gettime`,
 `nanosleep`, and `isatty` for V modules and external C callers. These exports use
 the system headers' native types and the runtime's existing kernel syscall layer.
+The native shims require platform C headers at build time, including in builds without
+`-target-libc-headers`. Their headers also supply the generated C's errno declarations.
 Successful calls preserve native `errno`; failures set it to the kernel error.
 Interrupted reads and sleeps report `EINTR` directly, allowing the caller to choose
 whether to retry. An interrupted `nanosleep` reports the remaining duration when

@@ -335,6 +335,16 @@ fn test_headerless_linux_family_keeps_itimerspec_and_semaphore_declarations() {
 	}
 }
 
+fn test_linux_family_target_headers_own_itimerspec_in_freestanding_builds() {
+	for target_os in ['linux', 'android', 'termux'] {
+		mut g := posix_declaration_filter_gen(target_os, false)
+		g.set_target_libc_headers(true)
+		g.compile_defines = ['freestanding']
+		assert !g.c_directives_use_system_libc()
+		assert g.skip_builtin_struct('C.itimerspec'), target_os
+	}
+}
+
 fn test_bsd_semaphore_declarations_follow_system_headers() {
 	for target_os in ['freebsd', 'openbsd'] {
 		for system_libc in [false, true] {
@@ -666,6 +676,7 @@ fn test_target_libc_headers_own_generated_errno_declarations() ! {
 			// Bare native facade headers also select SDK declaration ownership.
 			headers_own_libc := target_headers || freestanding
 			assert generated.contains('#include <errno.h>') == headers_own_libc
+			assert generated.contains('libc_posix.h') == freestanding
 			// The local V export remains defined with a macro-safe declarator.
 			expected_bodies := if freestanding { 1 } else { 0 }
 			assert generated.count('i32* (__errno_location)(void) {') == expected_bodies

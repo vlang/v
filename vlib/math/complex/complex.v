@@ -104,15 +104,16 @@ pub fn (c Complex) mulinv() Complex {
 	return Complex{c.re / (c.re * c.re + c.im * c.im), -c.im / (c.re * c.re + c.im * c.im)}
 }
 
-// Complex Power
-// Based on
-// https://www.khanacademy.org/math/precalculus/imaginary-and-complex-numbers/multiplying-and-dividing-complex-numbers-in-polar-form/a/complex-number-polar-form-review
+// pow raises c to the real exponent n using the principal value.
 pub fn (c Complex) pow(n f64) Complex {
 	if n == 0 {
 		return Complex{1, 0}
 	}
 	if n == 1 {
 		return c
+	}
+	if c.re > 0 && c.im == 0 && math.is_finite(n) {
+		return Complex{math.pow(c.re, n), n * c.im}
 	}
 	if c.re == 0 && c.im == 0 {
 		if n > 0 {

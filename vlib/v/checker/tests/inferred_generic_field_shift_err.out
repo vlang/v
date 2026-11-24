@@ -4,9 +4,9 @@ vlib/v/checker/tests/inferred_generic_field_shift_err.vv:10:10: error: invalid o
    10 |     println(shift_operand('abc').value << 1)
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~
    11 | }
-vlib/v/checker/tests/inferred_generic_field_shift_err.vv:10:2: error: `println` can not print void expressions
+vlib/v/checker/tests/inferred_generic_field_shift_err.vv:10:10: error: `shift_operand('abc').value << 1` (no value) used as value in argument 1 to `println`
     8 |
     9 | fn main() {
    10 |     println(shift_operand('abc').value << 1)
-      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    11 | }
