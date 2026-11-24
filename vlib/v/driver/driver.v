@@ -13504,13 +13504,14 @@ pub fn run(args []string) {
 			program_instance_check = start_program_instance_check(mut a, mut pre_tc, args,
 				is_checker_fixture, fatal_errors, message_limit, skip_notices)
 		}
-		if pre_tc.has_noalloc_contracts() {
+		if pre_tc.has_noalloc_contracts() || pre_tc.has_nosuspend_contracts() {
 			if cache_state.manager.enabled && !cache_state.force_source {
 				// Allocation contracts inspect V callee bodies, which cache headers omit.
 				trace_v3_cache_fallback('allocation contracts need the original function bodies')
 				restart_v3_with_args([v3_internal_force_cache_source_flag], '')
 			}
 			pre_tc.check_noalloc_contracts(false, noalloc_unsupported_modes)
+			pre_tc.check_nosuspend_contracts(false, noalloc_unsupported_modes)
 			if pre_tc.errors.len > 0 {
 				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
 					&pruned_declarations, checker_notices_printed)
@@ -13540,6 +13541,8 @@ pub fn run(args []string) {
 				}
 			}
 			pre_tc.check_noalloc_contracts(true, noalloc_unsupported_modes)
+			pre_tc.check_nosuspend_contracts(true, noalloc_unsupported_modes)
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if pre_tc.errors.len > 0 {
 				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
 					&pruned_declarations, checker_notices_printed)
@@ -14574,8 +14577,9 @@ pub fn run(args []string) {
 	// Function-local smartcasts are not backend metadata. Their empty backing
 	// map may have been replaced inside a transform or specialization arena.
 	pre_tc.reset_codegen_smartcasts()
-	if pre_tc.has_noalloc_contracts() {
+	if pre_tc.has_noalloc_contracts() || pre_tc.has_nosuspend_contracts() {
 		pre_tc.check_noalloc_contracts(true, noalloc_unsupported_modes)
+		pre_tc.check_nosuspend_contracts(true, noalloc_unsupported_modes)
 		if pre_tc.errors.len > 0 {
 			restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
 				&pruned_declarations, checker_notices_printed)
