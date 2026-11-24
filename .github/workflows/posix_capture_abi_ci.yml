@@ -6,6 +6,8 @@ on:
     paths:
       - 'vlib/os/os_nix.c.v'
       - 'vlib/os/process_waitpid_abi_nix_test.c.v'
+      - 'vlib/v/gen/fastc/unit_compile_nix.c.v'
+      - 'vlib/v/gen/fastc/capture_abi_nix_test.c.v'
       - '.github/workflows/posix_capture_abi_ci.yml'
 
 concurrency:
@@ -81,6 +83,7 @@ jobs:
             ./v fmt -verify vlib/os/os_nix.c.v vlib/os/process_waitpid_abi_nix_test.c.v
             ./v -silent vlib/os/exec_helpers_test.v
             ./v -silent vlib/os/process_waitpid_abi_nix_test.c.v
+            ./v -silent vlib/v/gen/fastc/capture_abi_nix_test.c.v
             ./v test vlib/builtin vlib/os vlib/encoding/binary
             ./v test vlib/v/tests/fns/closure_test.v
 
@@ -95,10 +98,26 @@ jobs:
           symlink: 'false'
       - name: Verify format and run capture and Process tests
         run: |
-          ./v fmt -w vlib/os/os_nix.c.v vlib/os/process_waitpid_abi_nix_test.c.v
+          ./v fmt -w vlib/os/os_nix.c.v vlib/os/process_waitpid_abi_nix_test.c.v vlib/v/gen/fastc/unit_compile_nix.c.v vlib/v/gen/fastc/capture_abi_nix_test.c.v
           git diff --exit-code
           for cc in gcc clang; do
             ./v -cc "$cc" -silent vlib/os/exec_helpers_test.v
             ./v -cc "$cc" -silent vlib/os/process_waitpid_abi_nix_test.c.v
             ./v -cc "$cc" -silent vlib/os/execute_legacy_test.v
+            ./v -cc "$cc" -silent vlib/v/gen/fastc/capture_abi_nix_test.c.v
           done
+
+  bootstrap_capture:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the initial compiler without the optimized self-build wrapper
+        run: make -j4
+      - name: Capture generated C and verify both bindings before v self
+        run: |
+          ./v -cc gcc -gc none -o "$RUNNER_TEMP/capture_abi.c" vlib/v/gen/fastc/capture_abi_nix_test.c.v
+          grep -nE 'v_os_exec_capture_start\(|v_os_exec_capture_input_start\(|waitpid\(' "$RUNNER_TEMP/capture_abi.c" | sed -n '1,80p'
+          ./v -cc gcc -gc none -keepc -showcc -show-c-output -silent vlib/v/gen/fastc/capture_abi_nix_test.c.v
+          ./v -cc clang -gc none -keepc -showcc -show-c-output -silent vlib/v/gen/fastc/capture_abi_nix_test.c.v
