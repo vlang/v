@@ -68,6 +68,11 @@ fn (mut r BufferedReader) copy_unread(mut buf []u8) !int {
 	return read
 }
 
+// buffered returns the number of bytes that can be read without reading the source.
+pub fn (r &BufferedReader) buffered() int {
+	return r.len - r.offset
+}
+
 // read fufills the Reader interface.
 pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 	r.can_unread_byte = false

@@ -79,6 +79,21 @@ fn test_peek_does_not_advance_offset() {
 	}
 }
 
+fn test_buffered_counts_only_unread_bytes_already_in_memory() {
+	mut reader := new_array_buffered_reader('abcdef'.bytes(), 4)
+	defer { reader.free() }
+	assert reader.buffered() == 0
+	assert reader.peek(2)!.bytestr() == 'ab'
+	assert reader.buffered() == 4
+	mut buf := []u8{len: 2}
+	assert reader.read(mut buf)! == 2
+	assert reader.buffered() == 2
+	assert reader.read(mut buf)! == 2
+	assert reader.buffered() == 0
+	assert reader.read(mut buf)! == 2
+	assert buf.bytestr() == 'ef'
+}
+
 fn test_peek_refill_buffer() {
 	data := rand.bytes(16)!
 	mut br := new_array_buffered_reader(data, 6)

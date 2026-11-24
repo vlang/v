@@ -3,6 +3,11 @@ module websocket
 import net
 import net.http
 
+fn (ws &Client) has_socket() bool {
+	return (ws.transport != none && !ws.transport_closed)
+		|| (!isnil(ws.conn) && ws.conn.sock.handle > 1)
+}
+
 // socket_read reads from socket into the provided buffer
 fn (mut ws Client) socket_read(mut buffer []u8) !int {
 	return ws.socket_read_ptr(buffer.data, buffer.len)
@@ -11,7 +16,7 @@ fn (mut ws Client) socket_read(mut buffer []u8) !int {
 // socket_read_ptr reads ahead, retaining unused bytes for the next frame field.
 // Like the frame parser, the buffer belongs to the connection's single reader.
 fn (mut ws Client) socket_read_ptr(buf_ptr &u8, len int) !int {
-	if ws.get_state() in [.closed, .closing] || ws.conn.sock.handle <= 1 {
+	if ws.get_state() in [.closed, .closing] || !ws.has_socket() {
 		return error('socket_read_ptr: trying to read a closed socket')
 	}
 	if len <= 0 {
@@ -38,6 +43,10 @@ fn (mut ws Client) socket_read_ptr(buf_ptr &u8, len int) !int {
 }
 
 fn (mut ws Client) socket_read_unbuffered(buf_ptr &u8, len int) !int {
+	if mut transport := ws.transport {
+		mut buf := unsafe { buf_ptr.vbytes(len) }
+		return transport.read(mut buf)
+	}
 	if ws.is_ssl {
 		return ws.ssl_conn.socket_read_into_ptr(buf_ptr, len)
 	}
@@ -48,8 +57,11 @@ fn (mut ws Client) socket_read_unbuffered(buf_ptr &u8, len int) !int {
 fn (mut ws Client) socket_write(bytes []u8) !int {
 	// Serialize complete frames/batches, including control frames from listen().
 	lock ws.write_lock {
-		if ws.get_state() == .closed || ws.conn.sock.handle <= 1 {
+		if ws.get_state() == .closed || !ws.has_socket() {
 			return error('socket_write: trying to write on a closed socket')
+		}
+		if mut transport := ws.transport {
+			return transport.write(bytes)
 		}
 		if ws.is_ssl {
 			return ws.ssl_conn.write(bytes)
@@ -63,7 +75,13 @@ fn (mut ws Client) socket_write(bytes []u8) !int {
 // shutdown_socket shuts down the socket properly when connection is closed
 fn (mut ws Client) shutdown_socket() ! {
 	ws.debug_log('shutting down socket')
-	if ws.is_ssl {
+	if mut transport := ws.transport {
+		if ws.transport_closed {
+			return
+		}
+		ws.transport_closed = true
+		transport.close()!
+	} else if ws.is_ssl {
 		ws.ssl_conn.shutdown()!
 	} else {
 		ws.conn.close()!

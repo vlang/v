@@ -52,6 +52,7 @@ mut:
 	// controls whether veb should automatically send the response or whether the handler
 	// takes over response writing.
 	takeover_mode ContextTakeoverMode
+	tls_takeover  ?&TlsTakeover
 	return_file   string
 	// Keep the clone alive until handoff, so address reuse cannot fake ownership.
 	owned_response_body   &u8                = unsafe { nil }
@@ -707,7 +708,7 @@ pub fn (mut ctx Context) set_content_type(mime string) {
 // In takeover mode if you call a Context method the response will be directly
 // send over the connection and you can send multiple responses.
 // This function is useful when you want to keep the connection alive and/or
-// send multiple responses. Like with the SSE.
+// send multiple responses. Like with the SSE. Use takeover_tls_conn for HTTPS.
 pub fn (mut ctx Context) takeover_conn() {
 	ctx.takeover_mode = .manual
 	ctx.prepare_takeover_conn()

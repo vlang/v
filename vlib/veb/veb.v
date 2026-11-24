@@ -402,7 +402,7 @@ fn read_exact_bytes(mut reader io.Reader, mut buf []u8) ! {
 	}
 }
 
-fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Context {
+fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams, takeover ?&TlsTakeover) ?&Context {
 	mut global_app := unsafe { &A(params.global_app) }
 	$if A is RequestActivityApp {
 		global_app.before_handle_request(req)
@@ -431,6 +431,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 		query:          query
 		form:           form
 		files:          files
+		tls_takeover:   takeover
 	}
 	ctx.client_wants_to_close = request_has_connection_close(req)
 	mut user_context := X{

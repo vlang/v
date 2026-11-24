@@ -1,10 +1,7 @@
 module veb
 
-import io
 import net
-import net.http
 import net.openssl
-import os
 import sync
 import time
 
@@ -70,90 +67,16 @@ fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
 			continue
 		}
 		ssl_conn.duration = params.timeout_in_seconds * time.second
-		spawn handle_ssl_connection[A, X](mut ssl_conn, ssl_params, mut handshake_limit)
+		spawn handshake_ssl_connection[A, X](mut ssl_conn, ssl_params, mut handshake_limit)
 	}
 }
 
-fn handle_ssl_connection[A, X](mut ssl_conn openssl.SSLConn, params &SslRequestParams, mut handshake_limit sync.Semaphore) {
-	mut handshake_slot_held := true
-	defer {
-		if handshake_slot_held {
-			handshake_limit.post()
-		}
+fn handshake_ssl_connection[A, X](mut ssl_conn openssl.SSLConn, params &SslRequestParams, mut handshake_limit sync.Semaphore) {
+	ssl_conn.accept_handshake() or {
+		handshake_limit.post()
 		ssl_conn.shutdown() or {}
+		return
 	}
-	ssl_conn.accept_handshake() or { return }
 	handshake_limit.post()
-	handshake_slot_held = false
-	mut reader := io.new_buffered_reader(
-		reader: &ssl_conn
-		cap:    params.max_request_buffer_size
-	)
-	defer {
-		unsafe {
-			reader.free()
-		}
-	}
-	for {
-		req := read_request_from_buffered_reader_with_timeout(mut reader, params.max_request_body_size,
-			mut ssl_conn, params.read_header_timeout) or {
-			if err !is io.Eof {
-				write_ssl_response(mut ssl_conn, request_read_error_response(err)) or {}
-			}
-			return
-		}
-		completed_context := handle_ssl_request[A, X](req, params) or {
-			write_ssl_response(mut ssl_conn, http_400) or {}
-			return
-		}
-		if completed_context.takeover_mode != .none {
-			eprintln('[veb] HTTPS connections do not support takeover connections yet; closing the connection after this response.')
-		}
-		write_ssl_context_response(mut ssl_conn, completed_context) or {
-			eprintln('[veb] error sending HTTPS response: ${err}')
-			return
-		}
-		if completed_context.takeover_mode != .none
-			|| should_close_connection(completed_context.req, completed_context.res, completed_context.client_wants_to_close) {
-			return
-		}
-	}
-}
-
-fn write_ssl_context_response(mut ssl_conn openssl.SSLConn, completed_context &Context) ! {
-	if !completed_context.done && completed_context.return_type == .normal {
-		return error('context did not send a response')
-	}
-	match completed_context.return_type {
-		.normal {
-			write_ssl_response(mut ssl_conn, completed_context.res)!
-		}
-		.file {
-			write_ssl_response(mut ssl_conn, completed_context.res)!
-			if completed_context.return_file == '' {
-				return error('missing file response path')
-			}
-			mut file := os.open(completed_context.return_file)!
-			defer {
-				file.close()
-			}
-			mut buf := []u8{len: max_read}
-			for {
-				n := file.read(mut buf) or {
-					if err is io.Eof {
-						break
-					}
-					return err
-				}
-				if n <= 0 {
-					break
-				}
-				ssl_conn.write(buf[..n])!
-			}
-		}
-	}
-}
-
-fn write_ssl_response(mut ssl_conn openssl.SSLConn, resp http.Response) ! {
-	ssl_conn.write(resp.bytes())!
+	handle_ssl_connection[A, X](mut ssl_conn, params)
 }

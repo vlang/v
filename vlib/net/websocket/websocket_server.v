@@ -144,12 +144,25 @@ fn (mut s Server) serve_client(mut c Client) ! {
 
 // handle_handshake use an existing connection to respond to the handshake for a given key
 pub fn (mut s Server) handle_handshake(mut conn net.TcpConn, key string) !&ServerClient {
+	return s.handle_accepted_connection(conn, none, false, key)
+}
+
+// handle_transport_handshake upgrades an already parsed HTTP request on an
+// owned transport and serves WebSocket frames until the connection ends.
+// The server closes the transport on both success and error. The transport
+// must support read, write, and close calls from the server's independent tasks.
+pub fn (mut s Server) handle_transport_handshake(transport ServerTransport, is_ssl bool, key string) !&ServerClient {
+	return s.handle_accepted_connection(unsafe { nil }, transport, is_ssl, key)
+}
+
+fn (mut s Server) handle_accepted_connection(conn &net.TcpConn, transport ?ServerTransport, is_ssl bool, key string) !&ServerClient {
 	mut logger := &log.Log{}
 	logger.set_level(.debug)
 	mut c := &Client{
 		is_server:         true
 		conn:              conn
-		is_ssl:            false
+		transport:         transport
+		is_ssl:            is_ssl
 		logger:            logger
 		max_message_bytes: s.max_message_bytes
 		client_state:      ClientState{
@@ -157,6 +170,11 @@ pub fn (mut s Server) handle_handshake(mut conn net.TcpConn, key string) !&Serve
 		}
 		last_pong_ut:      time.now().unix()
 		id:                rand.uuid_v4()
+	}
+	defer {
+		if transport != none {
+			c.shutdown_socket() or {}
+		}
 	}
 	mut server_client := &ServerClient{
 		resource_name: 'GET'
@@ -167,6 +185,9 @@ pub fn (mut s Server) handle_handshake(mut conn net.TcpConn, key string) !&Serve
 	digest := create_key_challenge_response(key)!
 	handshake_response := 'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${digest}\r\n\r\n'
 	s.attach_client(mut server_client, handshake_response)!
+	if transport != none && !c.has_socket() {
+		return server_client
+	}
 	spawn s.handle_ping()
 	c.listen() or {
 		s.logger.error(err.msg())

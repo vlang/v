@@ -174,7 +174,7 @@ fn test_tls_json_parsing_uses_the_existing_bad_request_policy() ! {
 			url:    '/echo'
 			header: http.new_header(key: .content_type, value: 'application/json')
 			data:   body
-		}, params) {
+		}, params, none) {
 			assert false, 'TLS must select its 400 response for ${body}'
 		}
 	}
@@ -183,7 +183,7 @@ fn test_tls_json_parsing_uses_the_existing_bad_request_policy() ! {
 		url:    '/echo'
 		header: http.new_header(key: .content_type, value: 'Application/JSON; charset=utf-8')
 		data:   '{"name":"x"}'
-	}, params) or { panic('TLS rejected a JSON object') }
+	}, params, none) or { panic('TLS rejected a JSON object') }
 	assert ctx.res.status_code == int(http.Status.ok)
 	assert ctx.form == {
 		'name': 'x'

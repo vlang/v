@@ -1559,8 +1559,9 @@ error with a message.
 If a handler panics, veb logs the panic and responds with HTTP 500 and the plain-text
 body `Internal Server Error`. This replaces any prepared body or file response and
 its content, framing, and cache metadata. After-middleware is skipped. A connection
-taken over with `ctx.takeover_conn()` or `ctx.takeover_conn_reusable()` remains under
-the handler's control; recovery does not write another response to it.
+taken over with `ctx.takeover_conn()`, `ctx.takeover_conn_reusable()`, or
+`ctx.takeover_tls_conn()` remains under the handler's control. Recovery leaves the
+wire response to the handler.
 
 ## Handlers that return `!veb.Result`
 
@@ -1610,6 +1611,30 @@ you want to keep the connection open. You can call `ctx.takeover_conn`.
 When this function is called you are free to do anything you want with the TCP
 connection and veb will not interfere. This means that we are responsible for
 sending a response over the connection and closing it.
+
+### HTTPS connection takeover
+
+For a WebSocket upgrade on an HTTPS listener, validate the upgrade request and call
+`ctx.takeover_tls_conn()` during the route handler. It returns a `&veb.TlsConn` with the
+negotiated TLS session and any unread bytes already buffered by the HTTP parser.
+
+Write the full `101 Switching Protocols` response using the returned connection, return
+`veb.no_result()`, and use the connection's `read` and `write` methods for subsequent frames.
+You can pass it to a worker after taking it over. Serialize all calls on the connection,
+including `close`. After a successful takeover, the caller is responsible for closing it.
+
+To use `net.websocket` for the upgrade and frame processing, pass a transport
+adapter around the connection to `Server.handle_transport_handshake`. The adapter
+must serialize calls on the TLS connection and allow pending writes to progress.
+The WebSocket server owns the adapter once it is passed to the handshake method.
+
+If takeover fails, handle the error through the ordinary HTTP response path. The same API
+works with mbedTLS and OpenSSL. Use `ctx.takeover_conn()` for plain TCP.
+
+`TlsConn.read_with_timeout` reads parser lookahead first and allows a later read after a
+timeout. If the route needs to notify the transport to shut down, obtain the socket handle
+with `ctx.tls_socket_handle()` before takeover. TLS I/O and connection cleanup belong to
+the owner of the `TlsConn`.
 
 ### Empty Result
 
@@ -1709,9 +1734,8 @@ Boundaries, compared with a plain handler:
 * The timer closes the connection after the response and advertises
   `Connection: close`, so do not pipeline another request behind a
   deferred one. After-middleware is skipped for deferred responses.
-* Without a live client transport (unit tests, `render_request`, the SSL
-  path, which has no takeover support) `after` answers inline instead:
-  the response and its timing stay correct, on the caller's thread.
+* For HTTPS, unit tests and `render_request`, `after` waits and invokes the callback
+  inline on the caller's thread.
 
 ## Conditional static responses and ranges
 
