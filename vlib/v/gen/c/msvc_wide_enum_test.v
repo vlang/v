@@ -55,7 +55,7 @@ fn test_plain_enum_values_wider_than_c_int_keep_64_bits_for_msvc() {
 	assert msvc.exit_code == 0, msvc.output
 	msvc_c := os.read_file(msvc_file) or { panic(err) }
 	wide_decl := 'typedef i64 main__Wide;
-#define Wide__small ((main__Wide)(1))
+#define Wide____v3_internal_symbol_macro_small ((main__Wide)(1))
 #define Wide__big ((main__Wide)(1099511627776))
 #define Wide__after ((main__Wide)(1099511627777))
 '
