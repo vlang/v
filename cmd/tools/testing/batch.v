@@ -234,11 +234,19 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 	return TestBatchCandidate{
 		key:    os.dir(real_file) + '\n' + module_name + if hook != '' { '\n' + hook } else { '' } +
 			'\nvflags ' + test_file_vflags(source) + if restores_env { '\nenvironment' } else { '' } +
-			if test_path_enables_globals(real_file) { '\nglobals' } else { '' }
+			if test_path_enables_globals(real_file) { '\nglobals' } else { '' } +
+			if test_file_retries(source) { '\nretry' } else { '' }
 		names:  names
 		consts: words
 		source: source
 	}
+}
+
+// test_file_retries reports whether `source` has a `// vtest retry:` line. Such tests failed
+// now and then (most for a C toolchain race on Windows); a batch keeps them apart from the
+// other files, so that a failure sends only them back to running one by one.
+fn test_file_retries(source string) bool {
+	return source.split_into_lines().any(it.starts_with('// vtest retry:'))
 }
 
 // test_path_enables_globals reports whether run_test_file compiles the file at the real
@@ -323,8 +331,8 @@ fn test_env_cleanup_hook(code string, original string) ?TestEnvCleanupHook {
 // decides whether the file runs, not how. One that does not hold leaves the file to
 // run, and be skipped, on its own. `// vtest vflags:` does too: the batch key holds
 // the flags (test_file_vflags), so a batch only has files compiled with the same ones.
-// `retry:` and `flaky:` mark tests that fail now and then, which would send their whole
-// batch back to running file by file.
+// `retry:` files share batches only with each other; `flaky:` marks tests that fail
+// now and then, which would send their whole batch back to running file by file.
 fn (ts &TestSession) test_batch_directives_allow(source string) bool {
 	if !source.contains('// vtest') {
 		return true
@@ -336,6 +344,11 @@ fn (ts &TestSession) test_batch_directives_allow(source string) bool {
 		// `// vtest ownership` only decides whether the file runs at all, like `build:`.
 		if line.starts_with('// vtest vflags:') || line == '// vtest ownership'
 			|| line.starts_with('// vtest ownership ') || line.starts_with('// vtest ownership\t') {
+			continue
+		}
+		// A `retry:` file batches only with other such files (test_file_retries), which
+		// run one by one, with their retries, when their batch fails.
+		if line.starts_with('// vtest retry:') {
 			continue
 		}
 		if !line.starts_with('// vtest build:') {
