@@ -33,8 +33,6 @@ const private_modules_dir = os.join_path(tmp_root, 'private_modules')
 // conditions selected, so that the type part decides whether the branch is checked.
 const host_target_condition = if os.user_os() == 'windows' { 'windows' } else { '!windows' }
 
-// Diagnostics spell paths with `/` on every OS, so the expected paths do too.
-
 fn write_file(path string, content string) {
 	os.mkdir_all(os.dir(path)) or { panic(err) }
 	os.write_file(path, content) or { panic(err) }
@@ -82,7 +80,7 @@ fn test_project_module_shadow_is_reported() {
 	res := compile_app(sibling_modules_dir)
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
-	assert res.output.contains('helpers/helpers.v'), res.output
+	assert res.output.contains(os.join_path('helpers', 'helpers.v')), res.output
 }
 
 // Imports resolve from the nearest `v.mod`, even when the explicit entry is a
@@ -95,7 +93,7 @@ fn test_vmod_root_owns_sibling_module_of_nested_entry() {
 	os.rm(main_file) or { panic(err) }
 	res := compile_project_with_path(nested_entry_dir, sibling_modules_dir, '')
 	assert res.exit_code != 0, res.output
-	assert res.output.contains('helpers/helpers.v'), res.output
+	assert res.output.contains(os.join_path('helpers', 'helpers.v')), res.output
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 	assert !res.output.contains('shadowdep.v'), res.output
 }
@@ -339,7 +337,7 @@ fn test_warm_owned_module_cache_reports_new_global_shadow() {
 	second := os.exec(['env', 'V3CACHE=' + '${cache_dir}', vexe, '-prod', '-gc', 'none',
 		'-enable-globals', '-o', second_output, app_dir])
 	assert second.exit_code != 0, second.output
-	assert second.output.contains('helpers/helpers.v'), second.output
+	assert second.output.contains(os.join_path('helpers', 'helpers.v')), second.output
 	assert second.output.contains('variable `counter` shadows a global variable'), second.output
 }
 
@@ -385,7 +383,7 @@ fn test_nested_module_root_still_reports_the_project() {
 	write_project(nested_modules_dir, true)
 	res := compile_app(nested_modules_dir)
 	assert res.exit_code != 0, res.output
-	assert res.output.contains('helpers/helpers.v'), res.output
+	assert res.output.contains(os.join_path('helpers', 'helpers.v')), res.output
 	assert !res.output.contains('shadowdep.v'), res.output
 }
 
@@ -395,7 +393,7 @@ fn test_project_inside_module_root_still_reports_the_project() {
 	write_project_at(installed_app_dir, sibling_modules_dir, true)
 	res := compile_project_with_path(installed_app_dir, sibling_modules_dir, '')
 	assert res.exit_code != 0, res.output
-	assert res.output.contains('helpers/helpers.v'), res.output
+	assert res.output.contains(os.join_path('helpers', 'helpers.v')), res.output
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 	assert !res.output.contains('shadowdep.v'), res.output
 }
@@ -411,7 +409,7 @@ fn test_private_path_module_is_reported() {
 	module_path := '${private_modules_dir}|@vlib|@vmodules'
 	res := compile_app_with_path(sibling_modules_dir, module_path)
 	assert res.exit_code != 0, res.output
-	assert res.output.contains('privatehelper/privatehelper.v'), res.output
+	assert res.output.contains(os.join_path('privatehelper', 'privatehelper.v')), res.output
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 	assert !res.output.contains('shadowdep.v'), res.output
 }

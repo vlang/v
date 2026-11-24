@@ -26,11 +26,16 @@ fn test_relative_error_path_honors_absolute_path_requests() {
 		}
 	}
 	path := os.join_path(os.getwd(), 'vlib', 'v', 'errors', 'format.v')
-	absolute_path := os.real_path(path).replace('\\', '/')
 	os.setenv('VERROR_PATHS', 'absolute', true)
-	assert relative_error_path(path) == absolute_path
+	assert relative_error_path(path) == os.real_path(path)
 	os.unsetenv('VERROR_PATHS')
-	assert relative_error_path(path) == 'vlib/v/errors/format.v'
+	assert relative_error_path(path) == os.join_path('vlib', 'v', 'errors', 'format.v')
+}
+
+fn test_reported_paths_use_the_separator_of_the_host() {
+	assert host_separators('vlib/v/errors/format.v', true) == 'vlib\\v\\errors\\format.v'
+	assert host_separators('C:/v/main.v', true) == 'C:\\v\\main.v'
+	assert host_separators('vlib/v/errors/format.v', false) == 'vlib/v/errors/format.v'
 }
 
 fn test_template_call_stack_includes_every_parent() {
