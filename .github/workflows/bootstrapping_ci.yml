@@ -89,6 +89,8 @@ jobs:
           ls -la v vc/v.c
           ls -la v_from_vc v_from_vc_produced_native_v
           ls -la v_from_vc2 v_from_vc_produced_native_v2
+          # oldv copies this checkout before switching to a historical VC commit.
+          git -C vc restore -- v.c
       - name: Ensure V master is available
         if: runner.os != 'Windows' && github.ref_name != 'master'
         shell: bash
