@@ -382,6 +382,12 @@ const skip_dirs_on_ubuntu_musl = [
 	'vlib/gg/canvas',
 ]
 
+// FastC's tests compile and link its C output with direct `cc`/`clang` calls and
+// POSIX-only assumptions (no `-municode` for its `wmain`, `/` paths, ...). Until they
+// are ported, they are not run on Windows; fastc_ci.yml still checks that FastC builds
+// and runs a program there.
+const skip_dirs_on_windows = ['v/gen/fastc']
+
 fn Config.init(vargs []string, targs []string) !Config {
 	mut cfg := Config{}
 	for arg in vargs {
@@ -524,6 +530,13 @@ fn main() {
 		test_path := test_dir.replace('/', os.path_separator)
 		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_path}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
+	}
+	$if windows {
+		for test_dir in skip_dirs_on_windows {
+			test_path := test_dir.replace('/', os.path_separator)
+			dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_path}${os.path_separator}'
+			tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
+		}
 	}
 	if vtest.skip_ownership_autofree_tests() {
 		tsession.skip_files << tsession.files.filter(vtest.is_ownership_autofree_test(it))

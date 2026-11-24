@@ -54,11 +54,14 @@ such as `"1"` means the character `1`; empty and multi-character keys are reject
 
 ## Nesting depth limit
 
-Standard decoding accepts container nesting up to 512 array/object levels in a
-document. Deeper `parse`, `decode[T]` or `decode_reuse[T]` input returns a bounded
-error instead of recursing to a stack overflow. The limit is implemented for
-standard JSON only: the `json5: true` option uses its own parser
-(`vlib/json2/json5_decode.v`), whose depth handling is not covered by this limit.
+JSON and JSON5 accept up to 512 nested arrays or objects. Exceeding the parser
+limit returns `JsonDecodeError` for standard JSON and `JsonScanError` for JSON5.
+Decoding text into dynamic `Any` values has an additional 256-container limit
+because building the tree uses several decoder frames per level. This applies to
+`parse`, `parse_text`, and `Any` fields or elements; exceeding it returns a
+positioned `JsonDecodeError`. Typed decoding without `Any` retains the 512-level
+parser limit. The Any limit counts only dynamic containers; nested typed recursion
+also consumes the runtime stack.
 
 ## JSON5
 

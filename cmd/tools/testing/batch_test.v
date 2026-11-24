@@ -50,6 +50,61 @@ fn test_one() {}
 	assert !source_mentions_word('item := 1', 'it')
 }
 
+fn test_units_group_files_by_vflags_and_accept_ownership_markers() ! {
+	root := batch_test_root('vflags')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	files := {
+		'a_test.v': 'module util\nfn test_a() {}\n'
+		'b_test.v': 'module util\n// vtest ownership\nfn test_b() {}\n'
+		'c_test.v': 'module util\n// vtest vflags: -w\nfn test_c() {}\n'
+		'd_test.v': 'module util\n// vtest vflags: -w\nfn test_d() {}\n'
+		'e_test.v': 'module util\n// vtest vflags: -d x\nfn test_e() {}\n'
+	}
+	mut paths := []string{}
+	for name, source in files {
+		path := os.join_path(root, name)
+		os.write_file(path, source)!
+		paths << path
+	}
+	mut ts := TestSession{
+		vexe:              os.executable()
+		will_compile:      true
+		exec_mode:         .compile_and_run
+		build_environment: build_constraint.new_environment(['macos'], [])
+	}
+	assert ts.test_units(paths) == ['${paths[0]}\n${paths[1]}', '${paths[2]}\n${paths[3]}', paths[4]]
+}
+
+fn test_vflags_are_part_of_the_batch_key() {
+	assert test_file_vflags('fn test_a() {}\n') == ''
+	assert test_file_vflags('// vtest vflags: -w\nfn test_a() {}\n') == '-w'
+	assert test_file_vflags('// vtest vflags: -d a\n// vtest vflags:  -d b \nfn test_a() {}\n') == '-d b'
+}
+
+fn test_env_cleanup_hook_accepts_only_unsetenv_lines() {
+	cleanup := "import os\n\nfn testsuite_begin() {\n\tos.unsetenv('VFLAGS')\n\tos.unsetenv('VOSARGS')\n}\n\nfn test_a() {}\n"
+	hook := test_env_cleanup_hook(test_code_text(cleanup), cleanup) or { panic('no hook') }
+	assert hook.text == "os.unsetenv('VFLAGS')\nos.unsetenv('VOSARGS')"
+	assert cleanup[hook.start..hook.end].starts_with('fn testsuite_begin() {')
+	assert cleanup[hook.start..hook.end].ends_with('\n}')
+	for body in ["\tos.setenv('VFLAGS', '', true)", '\tos.unsetenv(name)', '\tos.mkdir_all(root) or {}',
+		''] {
+		other := 'import os\n\nfn testsuite_begin() {\n${body}\n}\n'
+		assert test_env_cleanup_hook(test_code_text(other), other) == none, body
+	}
+}
+
+fn test_excluded_markers_are_calls_not_name_endings() {
+	assert source_contains_marker('fn f() {\n\texit(1)\n}', 'exit(')
+	assert source_contains_marker('fn f() {\n\tos.exit(1)\n}', 'exit(')
+	assert source_contains_marker('println(arguments())', 'arguments()')
+	assert !source_contains_marker('fn test_defer_early_exit() {}', 'exit(')
+	assert !source_contains_marker('fn test_literal_arguments() {}', 'arguments()')
+	assert !source_contains_marker('fn test_x() {\n\tmy_os.args_len()\n}', 'os.args')
+}
+
 fn test_code_text_blanks_string_literals_but_keeps_code() {
 	source := 'fn a() {\n\tprogram := \'\nfn main() {\n\texit(1)\n}\n\'\n\tb := "x\${it.name}y"\n\tr := r\'\\\'\n\tq := `\'`\n\t// it\'s a comment\n}\nfn c() {}\n'
 	code := test_code_text(source)

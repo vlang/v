@@ -189,9 +189,18 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 	}
 	// Programs that a test writes out or compiles are string literals: what they
 	// declare or call is not part of the test binary.
-	source := test_code_text(os.read_file(real_file) or { return none })
+	original := os.read_file(real_file) or { return none }
+	mut source := test_code_text(original)
+	// A `testsuite_begin` that only unsets environment variables does the same when it
+	// runs once for a whole batch of files that all have it (see test_env_cleanup_hook).
+	mut hook := ''
+	if cleanup := test_env_cleanup_hook(source, original) {
+		source = source[..cleanup.start] + ' '.repeat(cleanup.end - cleanup.start) +
+			source[cleanup.end..]
+		hook = cleanup.text
+	}
 	for marker in test_batch_excluded_markers {
-		if source.contains(marker) {
+		if source_contains_marker(source, marker) {
 			return none
 		}
 	}
@@ -215,24 +224,88 @@ fn (ts &TestSession) test_batch_candidate(file string, skipped map[string]bool) 
 	// another file (`struct T` and `fn f[T]()`), which then names the type.
 	words << names.filter(it.len == 1 && it[0].is_capital())
 	return TestBatchCandidate{
-		key:    os.dir(real_file) + '\n' + module_name
+		key:    os.dir(real_file) + '\n' + module_name + if hook != '' { '\n' + hook } else { '' } +
+			'\nvflags ' + test_file_vflags(source)
 		names:  names
 		consts: words
 		source: source
 	}
 }
 
+// test_file_vflags returns the flags of the last `// vtest vflags:` line of `source`, which
+// get_test_details applies to a file that runs on its own.
+fn test_file_vflags(source string) string {
+	mut vflags := ''
+	for line in source.split_into_lines() {
+		if line.starts_with('// vtest vflags:') {
+			vflags = line.all_after(':').trim_space()
+		}
+	}
+	return vflags
+}
+
+struct TestEnvCleanupHook {
+	start int
+	end   int
+	text  string
+}
+
+// test_env_cleanup_hook finds a `fn testsuite_begin` whose body only has lines like
+// `os.unsetenv('VFLAGS')`, in the code text `code` of the file `original`. Files with the
+// same such hook share a batch; the driver keeps the first file's hook for the binary
+// (V3_INTERNAL_BATCH_SHARED_SUITE_HOOKS), which unsets the same variables before any test.
+fn test_env_cleanup_hook(code string, original string) ?TestEnvCleanupHook {
+	head := 'fn testsuite_begin() {\n'
+	start := if code.starts_with(head) {
+		0
+	} else {
+		(code.index('\n' + head) or { return none }) + 1
+	}
+	body_start := start + head.len
+	body_end := code.index_after('\n}', body_start - 1) or { return none }
+	mut lines := []string{}
+	for line in original[body_start..body_end].split_into_lines() {
+		text := line.trim_space()
+		if text == '' {
+			continue
+		}
+		if !text.starts_with("os.unsetenv('") || !text.ends_with("')") {
+			return none
+		}
+		name := text["os.unsetenv('".len..text.len - 2]
+		if name == '' || !name.bytes().all(it.is_letter() || it.is_digit() || it == `_`) {
+			return none
+		}
+		lines << text
+	}
+	if lines.len == 0 {
+		return none
+	}
+	return TestEnvCleanupHook{
+		start: start
+		end:   body_end + 2
+		text:  lines.join('\n')
+	}
+}
+
 // test_batch_directives_allow reports whether the `// vtest` directives of `source`
-// let it share a binary. Only `// vtest build:` does, when its constraint holds: it
+// let it share a binary. `// vtest build:` does, when its constraint holds: it
 // decides whether the file runs, not how. One that does not hold leaves the file to
-// run, and be skipped, on its own. `retry:` and `flaky:` mark tests that fail now and
-// then, which would send their whole batch back to running file by file.
+// run, and be skipped, on its own. `// vtest vflags:` does too: the batch key holds
+// the flags (test_file_vflags), so a batch only has files compiled with the same ones.
+// `retry:` and `flaky:` mark tests that fail now and then, which would send their whole
+// batch back to running file by file.
 fn (ts &TestSession) test_batch_directives_allow(source string) bool {
 	if !source.contains('// vtest') {
 		return true
 	}
 	for line in source.split_into_lines() {
 		if !line.contains('// vtest') {
+			continue
+		}
+		// `// vtest ownership` only decides whether the file runs at all, like `build:`.
+		if line.starts_with('// vtest vflags:') || line == '// vtest ownership'
+			|| line.starts_with('// vtest ownership ') || line.starts_with('// vtest ownership\t') {
 			continue
 		}
 		if !line.starts_with('// vtest build:') {
@@ -282,6 +355,21 @@ fn test_file_const_names(source string) []string {
 		}
 	}
 	return names
+}
+
+// source_contains_marker reports whether `marker` occurs in `source` where an
+// identifier can start: `exit(` and `arguments()` are calls, while a test named
+// `test_early_exit()` or `test_literal_arguments()` only ends with the same text.
+fn source_contains_marker(source string, marker string) bool {
+	mut start := 0
+	for {
+		idx := source.index_after(marker, start) or { return false }
+		if idx == 0 || !is_test_ident_char(source[idx - 1]) {
+			return true
+		}
+		start = idx + 1
+	}
+	return false
 }
 
 // source_mentions_word reports whether `word` occurs in `source` as a whole
@@ -544,6 +632,11 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 		mut argv := ['-skip-running']
 		vargs := (os.split_args(ts.vargs) or { []string{} }).filter(it != '-silent')
 		argv << vargs
+		// The files of a batch have the same `// vtest vflags:` (see test_file_vflags).
+		batch_vflags := get_test_details(abs_files[0]).vflags
+		if batch_vflags != '' {
+			argv << os.split_args(batch_vflags) or { []string{} }
+		}
 		if !vargs.any(it in ['-memory-limit', '-no-memory-limit']) {
 			argv << ['-memory-limit', test_batch_memory_limit_mib().str()]
 		}
@@ -551,6 +644,8 @@ fn (mut ts TestSession) run_test_batch(files []string, test_id string, thread_id
 		argv << abs_files
 		ts.append_message(.compile_begin, cmdexec.display(ts.vexe, argv), mtc)
 		mut env := map[string]string{}
+		// The files of a batch have the same cleanup hook or none (test_env_cleanup_hook).
+		env['V3_INTERNAL_BATCH_SHARED_SUITE_HOOKS'] = '1'
 		if ts.compiler_jobs > 0 && ts.compiler_jobs != runtime.nr_jobs() {
 			env['VJOBS'] = ts.compiler_jobs.str()
 		}

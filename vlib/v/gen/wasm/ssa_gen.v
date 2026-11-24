@@ -140,9 +140,13 @@ pub fn (mut g SSAGen) gen() ! {
 		g.emit_function(fid)!
 	}
 	g.mod.add_export('memory', export_mem, 0)
+	// Hosts reserve buffers through the same allocator as generated code, so
+	// their storage cannot overlap the stack, literals, or runtime allocations.
+	g.mod.add_export('__v_alloc', export_func, g.alloc_index)
 	mut used_exports := map[string]bool{}
 	used_exports['memory'] = true
 	used_exports['_start'] = true
+	used_exports['__v_alloc'] = true
 	for fid in functions {
 		f := g.m.funcs[fid]
 		if g.configured && f.name !in g.exports {
@@ -1203,6 +1207,16 @@ fn (mut g SSAGen) emit_allocator() {
 	// malloc(size): align the bump pointer, grow memory, and zero the allocation.
 	c.global_get(g.heap_global)
 	c.local_set(1)
+	// Check before adding or rounding: a wrapped size must never allocate a
+	// smaller buffer than the caller requested. Keep room for alignment too.
+	c.local_get(0)
+	c.i32_const(-16)
+	c.local_get(1)
+	c.raw(0x6b)
+	c.raw(0x4b)
+	c.if_void()
+	c.raw(0x00)
+	c.end()
 	c.local_get(1)
 	c.local_get(0)
 	c.raw(0x6a)
@@ -1210,27 +1224,27 @@ fn (mut g SSAGen) emit_allocator() {
 	c.raw(0x6a)
 	c.i32_const(-16)
 	c.raw(0x71)
-	c.local_tee(2)
-	c.local_get(1)
-	c.raw(0x49)
-	c.if_void()
-	c.raw(0x00)
-	c.end()
+	c.local_set(2)
+	// ceil(end / 65536), without overflowing near the wasm32 address limit.
 	c.local_get(2)
-	c.i32_const(65535)
-	c.raw(0x6a)
+	c.i32_const(1)
+	c.raw(0x6b)
 	c.i32_const(16)
 	c.raw(0x76)
+	c.i32_const(1)
+	c.raw(0x6a)
 	c.raw(0x3f)
 	c.raw(0x00)
 	c.local_tee(3)
 	c.raw(0x4b)
 	c.if_void()
 	c.local_get(2)
-	c.i32_const(65535)
-	c.raw(0x6a)
+	c.i32_const(1)
+	c.raw(0x6b)
 	c.i32_const(16)
 	c.raw(0x76)
+	c.i32_const(1)
+	c.raw(0x6a)
 	c.local_get(3)
 	c.raw(0x6b)
 	c.raw(0x40)

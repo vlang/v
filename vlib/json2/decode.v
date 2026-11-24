@@ -130,6 +130,8 @@ mut:
 	// checker_depth is the nesting depth reached by the current check_array/
 	// check_object call chain; see max_nesting_depth in check.v.
 	checker_depth int
+	// any_container_depth is the nesting depth of dynamic Any containers being built.
+	any_container_depth int
 }
 
 // no_value_idx is the index of a value that is not there, such as the `_type` of an
@@ -442,8 +444,8 @@ fn decoder_for_text(val string, params DecoderOptions) !Decoder {
 // By default, decoding is lenient. Use `strict: true` for strict type conversion
 // and `json5: true` to accept JSON5 syntax.
 // Use decode_standard to avoid generating JSON5 decoding code for the target type.
-// Input nested deeper than 512 array/object levels errors; the limit applies to
-// standard JSON only, the separate JSON5 parser is not covered by it.
+// Input nested deeper than 512 array/object levels errors. Recursive Any values are
+// additionally limited to 256 containers.
 @[manualfree]
 pub fn decode[T](val string, params DecoderOptions) !T {
 	if params.json5 {
@@ -459,7 +461,8 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 // decode_standard decodes standard JSON into a specified type without generating
 // JSON5 decoding code. It is lenient by default; use `strict: true` for strict
 // type conversion. The `json5` option is ignored; JSON5 syntax is always rejected.
-// Input nested deeper than 512 array/object levels errors.
+// Input nested deeper than 512 array/object levels errors. Recursive Any values are
+// additionally limited to 256 containers.
 @[manualfree]
 pub fn decode_standard[T](val string, params DecoderOptions) !T {
 	mut decoder := decoder_for_text(val, params)!
@@ -477,8 +480,8 @@ pub fn decode_standard[T](val string, params DecoderOptions) !T {
 // buffer's token allocation and growing it during validation instead of counting
 // values in a separate pass. Returned values remain valid when buffer is reused,
 // including after an error. The caller must provide exclusive access to buffer.
-// Input nested deeper than 512 array/object levels errors; the limit applies to
-// standard JSON only, the separate JSON5 parser is not covered by it.
+// Input nested deeper than 512 array/object levels errors. Recursive Any values are
+// additionally limited to 256 containers.
 @[manualfree]
 pub fn decode_reuse[T](val string, mut buffer DecodeBuffer, params DecoderOptions) !T {
 	if params.json5 {

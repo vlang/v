@@ -1,8 +1,7 @@
 // A build with `-freestanding` links no libc: vlib/builtin/linux_bare supplies
 // its `_start` and syscalls, and vlib/os supplies its own syscall wrappers
 // (`$if freestanding && linux` in vlib/os/freestanding.c.v), so the os file,
-// env and cwd paths here run without glibc. The `_linux` file name keeps this
-// test to Linux hosts.
+// env and cwd paths here run without glibc.
 import os
 
 const vexe = @VEXE
@@ -56,6 +55,10 @@ fn main() {
 fn test_freestanding_os_program_runs_without_libc() {
 	// linux_bare makes syscalls only on these.
 	$if !amd64 && !arm64 {
+		return
+	}
+	// `-freestanding` has no Windows runtime yet (see vlib/builtin/README.vlibc.md).
+	$if windows {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'freestanding_os_linux_${os.getpid()}')

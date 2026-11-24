@@ -15,6 +15,9 @@ or executed in memory.
 
 Examples are present in `examples/wasm_codegen`.
 
+To load and execute an existing binary, use the pure V
+[`wasm.runtime`](runtime/README.md) module or `v run file.wasm`.
+
 ```v
 import wasm
 import os

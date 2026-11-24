@@ -1,43 +1,30 @@
-This command compiles the given target, along with their dependencies,
-into an executable using the WebAssembly code generation backend.
-The backend emits a binary from V's SSA intermediate representation. `-prod`
-optimizes SSA before code generation. See doc/wasm.md for supported features.
-
-The standard C-only compiler automatically builds and runs a cached full compiler for this
-backend. Use `v -compile-backend wasm self` to include it in the main executable, or
-`-all-backends` to include every backend. A standalone compiler build needs
-`-compile-backend wasm` or `-all-backends`.
+Compile V directly to a WebAssembly binary through the SSA backend. No C compiler,
+Emscripten, or external assembler is needed to emit the module. -prod optimizes SSA.
+See doc/wasm.md for the supported features, host ABI, and embedding examples.
 
 Usage:
-  v -b wasm [-options] ['run'] <target.v|target_directory> [run options]
+  v -b wasm [-options] <target.v|target_directory>
 
+The default output is <target>.wasm. An explicit -o path is used exactly.
+The same binary works in Wasmer and browser/Node.js WebAssembly hosts; no separate
+wasmer backend is needed. Pure functions need no imports. Printing and process exit
+request WASI preview1 imports, which the instantiating host must provide.
 
-For more general build help, see also `v help build`.
+Example:
+  v -b wasm -o add.wasm examples/wasm/add.v
+  node examples/wasm/add.mjs add.wasm
+  wasmer run add.wasm --invoke add 20 22
 
-# Interfacing WebAssembly code generation, passing options to it:
-   -wasm-validate
-      After compiling the WebAssembly module, execute wasm-validate to validate the module.
-      Useful for debugging the compiler.
+Main-module scalar functions are exported by name; @[export: 'name'] overrides it.
+Programs with main export the WASI entry point _start. Modules without main can be
+instantiated as libraries. memory and __v_alloc are exported for host-owned buffers.
+Declare host callbacks with @[wasm_import_namespace: 'host'] in a .wasm.v file.
+Only called imports are emitted. The -os browser and -os wasi aliases select the
+same wasm32 ABI; they do not supply host services or remove imports.
 
-   -wasm-stack-top
-      Overrides the default stack_top value used by the WebAssembly compiler.
-      Useful for some platforms with unusual memory requirements.
+The standard C-only compiler automatically builds and runs a cached full compiler
+for this backend. Use v -compile-backend wasm self to include it in the main
+executable, or -all-backends to include every backend. A standalone compiler build
+needs -compile-backend wasm or -all-backends.
 
-   -d no_imports
-      Removes the default imports from the builtins. Useful for embedded targets where
-      you can't control the imports.
-
-   -os <browser|wasi>, -target-os <browser|wasi>
-      Change the target WebAssembly execution environment that V compiles for.
-
-      The `wasi` target is the default execution environment.
-        When targeting WASI, the generated WebAssembly module can be run in a variety
-		of environments that support the WASI specification.
-        WASI provides a standardized interface to interact with the host operating system,
-		allowing WebAssembly modules to perform tasks like file I/O, networking, and more.
-        The specific version of the WASI specification targeted by V is 'wasi_snapshot_preview1'.
-
-      The `browser` target is an experimental environment that compiles for a stripped down
-	    builtin, for use in browsers. The produced WebAssembly module will have functions
-		exported that are `pub` and inside the `module main`. See `examples/wasm/mandelbrot`
-		for an example.
+For more general build help, see v help build.

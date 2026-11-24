@@ -1,9 +1,9 @@
 import os
 
 const copy_ownership_vexe = @VEXE
-const copy_ownership_vroot = os.dir(os.dir(os.dir(os.dir(@FILE))))
 const copy_ownership_tmp_dir = os.join_path(os.vtmp_dir(), 'copy_ownership_${os.getpid()}')
-const copy_ownership_v3 = os.join_path(copy_ownership_tmp_dir, 'v3_ownership')
+// `v -ownership` runs the launcher's cached ownership compiler, built from this tree.
+const copy_ownership_v3 = @VEXE
 
 const copy_ownership_drop_decls = 'interface Drop {
 mut:
@@ -25,11 +25,6 @@ fn (r &Res) clone() Res {
 
 fn testsuite_begin() {
 	os.mkdir_all(copy_ownership_tmp_dir) or { panic(err) }
-	cmd_v := os.join_path(copy_ownership_vroot, 'cmd', 'v')
-	vlib := os.join_path(copy_ownership_vroot, 'vlib')
-	build := os.exec([copy_ownership_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-		'${vlib}' + '|@vlib|@vmodules', '-o', '${copy_ownership_v3}', '${cmd_v}'])
-	assert build.exit_code == 0, build.output
 }
 
 fn testsuite_end() {
