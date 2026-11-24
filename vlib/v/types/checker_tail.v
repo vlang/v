@@ -2494,7 +2494,7 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_source(id flat.NodeId, s
 		if tc.ownership_borrowed_alias_source(name, false) != none {
 			return tc.returned_receiver_local_storage_name(name)
 		}
-		projected_type := tc.returned_receiver_projection_type(tc.resolve_type(id), suffix) or {
+		projected_type := tc.returned_receiver_projection_type_with_boundary(tc.resolve_type(id), suffix, true) or {
 			return tc.returned_receiver_local_storage_name(name)
 		}
 		if projected_type is Pointer {
@@ -2843,6 +2843,10 @@ fn (tc &TypeChecker) returned_binding_history_has_no_local_sources_scoped(id fla
 }
 
 fn (tc &TypeChecker) returned_receiver_projection_type(typ Type, suffix string) ?Type {
+	return tc.returned_receiver_projection_type_with_boundary(typ, suffix, false)
+}
+
+fn (tc &TypeChecker) returned_receiver_projection_type_with_boundary(typ Type, suffix string, stop_at_pointer bool) ?Type {
 	$if ownership ? {
 		mut clean := unalias_type(typ)
 		for clean is OptionType || clean is ResultType {
@@ -2852,7 +2856,9 @@ fn (tc &TypeChecker) returned_receiver_projection_type(typ Type, suffix string) 
 				unalias_type((clean as ResultType).base_type)
 			}
 		}
-		if suffix.len == 0 {
+		// Storage beyond a pointer field belongs to the pointee. Borrowed aliases of
+		// local storage are checked before resolving the types along this path.
+		if suffix.len == 0 || (stop_at_pointer && clean is Pointer) {
 			return clean
 		}
 		if suffix.starts_with('.') {
@@ -2860,17 +2866,19 @@ fn (tc &TypeChecker) returned_receiver_projection_type(typ Type, suffix string) 
 			base := unwrap_all_pointers(clean)
 			if base is Struct {
 				field_type := tc.struct_field_type(base.source_type_id(), field) or { return none }
-				return tc.returned_receiver_projection_type(field_type, rest)
+				// A custom destructor can own the storage behind a pointer field.
+				stop := stop_at_pointer && !tc.ownership_type_has_explicit_drop(base.source_type_id())
+				return tc.returned_receiver_projection_type_with_boundary(field_type, rest, stop)
 			}
 			if base is Interface {
 				field_type := tc.interface_field_type(base.source_type_id(), field) or { return none }
-				return tc.returned_receiver_projection_type(field_type, rest)
+				return tc.returned_receiver_projection_type_with_boundary(field_type, rest, stop_at_pointer)
 			}
 			if base is SumType {
 				field_type := tc.sum_shared_field_type(base, field) or {
 					tc.sum_unique_variant_field_type(base, field) or { return none }
 				}
-				return tc.returned_receiver_projection_type(field_type, rest)
+				return tc.returned_receiver_projection_type_with_boundary(field_type, rest, stop_at_pointer)
 			}
 			return none
 		}
@@ -2880,15 +2888,15 @@ fn (tc &TypeChecker) returned_receiver_projection_type(typ Type, suffix string) 
 		}
 		if clean is Array || clean is ArrayFixed {
 			elem := if clean is Array { clean.elem_type } else { (clean as ArrayFixed).elem_type }
-			return tc.returned_receiver_projection_type(elem, rest)
+			return tc.returned_receiver_projection_type_with_boundary(elem, rest, stop_at_pointer)
 		}
 		if clean is Map {
-			return tc.returned_receiver_projection_type(clean.value_type, rest)
+			return tc.returned_receiver_projection_type_with_boundary(clean.value_type, rest, stop_at_pointer)
 		}
 		if clean is MultiReturn {
 			slot := ownership_index_segment_int(index) or { return none }
 			if slot >= 0 && slot < clean.types.len {
-				return tc.returned_receiver_projection_type(clean.types[slot], rest)
+				return tc.returned_receiver_projection_type_with_boundary(clean.types[slot], rest, stop_at_pointer)
 			}
 		}
 	}
