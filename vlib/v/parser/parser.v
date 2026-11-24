@@ -9967,7 +9967,7 @@ fn (mut p Parser) reject_range_condition_expr(expr_id flat.NodeId) {
 	}
 	low := p.a.child_node(node, 0)
 	high := p.a.child_node(node, 1)
-	p.record_diagnostic_span('range cannot be used as a condition, iterate with `for i in low .. high` instead',
+	p.record_diagnostic_span('range cannot be used as a condition, iterate with `for i in ${low} .. ${high}` instead',
 		low.pos.offset, high.pos.end)
 }
 
