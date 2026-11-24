@@ -17,7 +17,12 @@ pub fn sinh(x_ f64) f64 {
 		neg = true
 	}
 	mut temp := 0.0
-	if x > 21 {
+	if x > 709 {
+		// exp(x) may overflow while exp(x)/2 is still representable.
+		// Halving x is exact and keeps both exponential evaluations finite.
+		w := exp(x * 0.5)
+		temp = (0.5 * w) * w
+	} else if x > 21 {
 		temp = exp(x) * 0.5
 	} else if x > 0.5 {
 		ex := exp(x)
@@ -41,6 +46,10 @@ pub fn sinh(x_ f64) f64 {
 // - `cosh(nan) = nan`
 pub fn cosh(x f64) f64 {
 	abs_x := abs(x)
+	if abs_x > 709 {
+		w := exp(abs_x * 0.5)
+		return (0.5 * w) * w
+	}
 	if abs_x > 21 {
 		return exp(abs_x) * 0.5
 	}

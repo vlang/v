@@ -104,13 +104,27 @@ pub fn (c Complex) mulinv() Complex {
 	return Complex{c.re / (c.re * c.re + c.im * c.im), -c.im / (c.re * c.re + c.im * c.im)}
 }
 
-// Complex Power
-// Based on
-// https://www.khanacademy.org/math/precalculus/imaginary-and-complex-numbers/multiplying-and-dividing-complex-numbers-in-polar-form/a/complex-number-polar-form-review
+// pow raises c to the real exponent n using the principal value.
 pub fn (c Complex) pow(n f64) Complex {
-	r := math.pow(c.abs(), n)
-	angle := c.angle()
-	return Complex{r * math.cos(n * angle), r * math.sin(n * angle)}
+	if n == 0 {
+		return Complex{1, 0}
+	}
+	if n == 1 {
+		return c
+	}
+	if c.re > 0 && c.im == 0 && math.is_finite(n) {
+		return Complex{math.pow(c.re, n), n * c.im}
+	}
+	if c.re == 0 && c.im == 0 {
+		if n > 0 {
+			return Complex{0, 0}
+		}
+		if n < 0 {
+			return Complex{math.inf(1), 0}
+		}
+	}
+	w := logarithm(c)
+	return exponential(Complex{n * w.re, n * w.im})
 }
 
 // Complex nth root
@@ -123,15 +137,14 @@ pub fn (c Complex) root(n f64) Complex {
 // Based on
 // https://www.math.wisc.edu/~angenent/Free-Lecture-Notes/freecomplexnumbers.pdf
 pub fn (c Complex) exp() Complex {
-	a := math.exp(c.re)
-	return Complex{a * math.cos(c.im), a * math.sin(c.im)}
+	return exponential(c)
 }
 
 // Complex Natural Logarithm
 // Based on
 // http://www.chemistrylearning.com/logarithm-of-complex-number/
 pub fn (c Complex) ln() Complex {
-	return Complex{math.log(c.abs()), c.angle()}
+	return logarithm(c)
 }
 
 // Complex Log Base Complex
@@ -150,36 +163,34 @@ pub fn (c Complex) arg() f64 {
 
 // cpow raises c to the complex power p. A real exponent uses the same result as pow.
 pub fn (c Complex) cpow(p Complex) Complex {
-	if p.im == 0.0 {
+	if p.im == 0 {
 		return c.pow(p.re)
 	}
-	// See http://mathworld.wolfram.com/ComplexExponentiation.html for the formula.
-	a := c.arg()
-	b := math.pow(c.re, 2) + math.pow(c.im, 2)
-	d := p.re * a + (1.0 / 2) * p.im * math.log(b)
-	t1 := math.pow(b, p.re / 2) * math.exp(-p.im * a)
-	return Complex{t1 * math.cos(d), t1 * math.sin(d)}
+	w := logarithm(c)
+	return exponential(Complex{power_product_sum(p.re, w.re, -p.im, w.im), power_product_sum(p.re, w.im, p.im, w.re)})
 }
 
 // Complex Sin
 // Based on
 // http://www.milefoot.com/math/complex/functionsofi.htm
 pub fn (c Complex) sin() Complex {
-	return Complex{math.sin(c.re) * math.cosh(c.im), math.cos(c.re) * math.sinh(c.im)}
+	w := hyperbolic_sine(Complex{c.im, c.re})
+	return Complex{w.im, w.re}
 }
 
 // Complex Cosine
 // Based on
 // http://www.milefoot.com/math/complex/functionsofi.htm
 pub fn (c Complex) cos() Complex {
-	return Complex{math.cos(c.re) * math.cosh(c.im), -(math.sin(c.re) * math.sinh(c.im))}
+	return hyperbolic_cosine(Complex{-c.im, c.re})
 }
 
 // Complex Tangent
 // Based on
 // http://www.milefoot.com/math/complex/functionsofi.htm
 pub fn (c Complex) tan() Complex {
-	return c.sin().divide(c.cos())
+	w := hyperbolic_tangent(Complex{c.im, c.re})
+	return Complex{w.im, w.re}
 }
 
 // Complex Cotangent
@@ -207,22 +218,23 @@ pub fn (c Complex) csc() Complex {
 // Based on
 // http://www.milefoot.com/math/complex/summaryops.htm
 pub fn (c Complex) asin() Complex {
-	return complex(0, -1).multiply(complex(0, 1).multiply(c).add(complex(1, 0).subtract(c.pow(2)).root(2)).ln())
+	w := inverse_hyperbolic_sine(Complex{c.im, c.re})
+	return Complex{w.im, w.re}
 }
 
 // Complex Arc Consine / Consine Inverse
 // Based on
 // http://www.milefoot.com/math/complex/summaryops.htm
 pub fn (c Complex) acos() Complex {
-	return complex(0, -1).multiply(c.add(complex(0, 1).multiply(complex(1, 0).subtract(c.pow(2)).root(2))).ln())
+	return inverse_cosine(c)
 }
 
 // Complex Arc Tangent / Tangent Inverse
 // Based on
 // http://www.milefoot.com/math/complex/summaryops.htm
 pub fn (c Complex) atan() Complex {
-	i := complex(0, 1)
-	return complex(0, 1.0 / 2).multiply(i.add(c).divide(i.subtract(c)).ln())
+	w := inverse_hyperbolic_tangent(Complex{c.im, c.re})
+	return Complex{w.im, w.re}
 }
 
 // Complex Arc Cotangent / Cotangent Inverse
@@ -250,21 +262,21 @@ pub fn (c Complex) acsc() Complex {
 // Based on
 // http://www.milefoot.com/math/complex/functionsofi.htm
 pub fn (c Complex) sinh() Complex {
-	return Complex{math.cos(c.im) * math.sinh(c.re), math.sin(c.im) * math.cosh(c.re)}
+	return hyperbolic_sine(c)
 }
 
 // Complex Hyperbolic Cosine
 // Based on
 // http://www.milefoot.com/math/complex/functionsofi.htm
 pub fn (c Complex) cosh() Complex {
-	return Complex{math.cos(c.im) * math.cosh(c.re), math.sin(c.im) * math.sinh(c.re)}
+	return hyperbolic_cosine(c)
 }
 
 // Complex Hyperbolic Tangent
 // Based on
 // http://www.milefoot.com/math/complex/functionsofi.htm
 pub fn (c Complex) tanh() Complex {
-	return c.sinh().divide(c.cosh())
+	return hyperbolic_tangent(c)
 }
 
 // Complex Hyperbolic Cotangent
@@ -292,31 +304,32 @@ pub fn (c Complex) csch() Complex {
 // Based on
 // http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
 pub fn (c Complex) asinh() Complex {
-	return c.add(c.pow(2).add(complex(1, 0)).root(2)).ln()
+	return inverse_hyperbolic_sine(c)
 }
 
 // Complex Hyperbolic Arc Consine / Consine Inverse
 // Based on
 // http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
 pub fn (c Complex) acosh() Complex {
-	if c.re > 1 {
-		return c.add(c.pow(2).subtract(complex(1, 0)).root(2)).ln()
-	} else {
-		one := complex(1, 0)
-		return c.add(c.add(one).root(2).multiply(c.subtract(one).root(2))).ln()
+	w := inverse_cosine(c)
+	if math.is_nan(w.re) && math.is_nan(w.im) {
+		return Complex{w.im, w.re}
 	}
+	if math.is_nan(w.re) {
+		return Complex{math.abs(w.im), w.re}
+	}
+	if math.is_nan(w.im) {
+		// ISO C's principal-value convention for acosh(0 + i*NaN).
+		return Complex{w.im, math.copysign(w.re, c.im)}
+	}
+	return Complex{math.abs(w.im), math.copysign(w.re, c.im)}
 }
 
 // Complex Hyperbolic Arc Tangent / Tangent Inverse
 // Based on
 // http://www.suitcaseofdreams.net/Inverse__Hyperbolic_Functions.htm
 pub fn (c Complex) atanh() Complex {
-	one := complex(1, 0)
-	if c.re < 1 {
-		return complex(1.0 / 2, 0).multiply(one.add(c).divide(one.subtract(c)).ln())
-	} else {
-		return complex(1.0 / 2, 0).multiply(one.add(c).ln().subtract(one.subtract(c).ln()))
-	}
+	return inverse_hyperbolic_tangent(c)
 }
 
 // Complex Hyperbolic Arc Cotangent / Cotangent Inverse

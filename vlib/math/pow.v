@@ -71,14 +71,33 @@ pub fn powi(a i64, b i64) i64 {
 }
 
 fn is_odd_int(x f64) bool {
+	// Every binary64 integer at or above 2^53 is even. Bound the cast as
+	// well: converting a larger finite value to i64 is undefined in C.
+	if abs(x) >= 9007199254740992.0 {
+		return false
+	}
 	xi, xf := modf(x)
 	return xf == 0 && (i64(xi) & 1) == 1
+}
+
+// pow_multiply keeps the product roundoff while accumulating normalized
+// powers. A single-word product loses accuracy when a base close to one is
+// squared many times and its early roundoff is amplified by a large exponent.
+fn pow_multiply(ah f64, al f64, bh f64, bl f64) (f64, f64) {
+	p := ah * bh
+	roundoff := fma(ah, bh, -p) + (ah * bl + al * bh) + al * bl
+	h := p + roundoff
+	return h, roundoff - (h - p)
 }
 
 // pow returns the base x, raised to the provided power y. (float64)
 //
 // todo(playXE): make this function work on JS backend, probably problem of JS codegen that it does not work.
 pub fn pow(x f64, y f64) f64 {
+	return pow_software(x, y)
+}
+
+fn pow_software(x f64, y f64) f64 {
 	if y == 0 || x == 1 {
 		return 1
 	} else if y == 1 {
@@ -111,7 +130,7 @@ pub fn pow(x f64, y f64) f64 {
 		}
 	} else if is_inf(x, 0) {
 		if is_inf(x, -1) {
-			return pow(1 / x, -y)
+			return pow_software(1 / x, -y)
 		}
 
 		if y < 0 {
@@ -142,20 +161,11 @@ pub fn pow(x f64, y f64) f64 {
 		}
 	}
 
-	if yf == 0.0 {
-		mut result := x
-		for _ in 1 .. i64(yi) {
-			result *= x
-		}
-		if y > 0 {
-			return result
-		}
-		return 1 / result
-	}
-
 	// ans = a1 * 2**ae (= 1 for now).
 	mut a1 := 1.0
+	mut a1_low := 0.0
 	mut ae := 0
+	mut x1, mut xe := frexp(x)
 
 	// ans *= x**yf
 	if yf != 0 {
@@ -164,14 +174,25 @@ pub fn pow(x f64, y f64) f64 {
 			yi++
 		}
 
-		a1 = exp(yf * log(x))
+		// Reduce the fractional power before taking log. Rounding log(x)
+		// first would lose low bits of a large binary exponent, which exp
+		// then amplifies even for a small fractional power.
+		scale_up := x1 < sqrt2 / 2
+		fraction := if scale_up { x1 * 2 } else { x1 }
+		exponent := if scale_up { xe - 1 } else { xe }
+		scale := yf * f64(exponent)
+		scale_error := fma(yf, f64(exponent), -scale)
+		scale_integer, scale_fraction := modf(scale)
+		ae = int(scale_integer)
+		a1, a1_low = pow_multiply(exp(yf * log(fraction)), 0,
+			exp2(scale_fraction + scale_error), 0)
 	}
 
 	// ans *= x**yi
 	// by multiplying in successive squarings
 	// of x according to bits of yi.
 	// accumulate powers of two into exp.
-	mut x1, mut xe := frexp(x)
+	mut x1_low := 0.0
 
 	for i := i64(yi); i != 0; i >>= 1 {
 		// Negate a positive shift so the lower bound stays negative for any int width.
@@ -185,13 +206,14 @@ pub fn pow(x f64, y f64) f64 {
 			break
 		}
 		if i & 1 == 1 {
-			a1 *= x1
+			a1, a1_low = pow_multiply(a1, a1_low, x1, x1_low)
 			ae += xe
 		}
-		x1 *= x1
-		xe <<= 1
+		x1, x1_low = pow_multiply(x1, x1_low, x1, x1_low)
+		xe *= 2
 		if x1 < .5 {
 			x1 += x1
+			x1_low += x1_low
 			xe--
 		}
 	}
@@ -200,8 +222,11 @@ pub fn pow(x f64, y f64) f64 {
 	// if y < 0 { ans = 1 / ans }
 	// but in the opposite order
 	if y < 0 {
-		a1 = 1 / a1
+		r := 1 / a1
+		correction := (fma(-r, a1, 1) - r * a1_low) / a1
+		a1 = r
+		a1_low = correction
 		ae = -ae
 	}
-	return ldexp(a1, ae)
+	return ldexp(a1 + a1_low, ae)
 }
