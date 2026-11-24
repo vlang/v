@@ -1259,3 +1259,16 @@ return values[1] }
 	}
 	assert runtime_call_found
 }
+
+fn test_used_bare_name_does_not_materialize_unlowered_imported_body() {
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_text('library.v', 'module library\nfn run() { unreachable_generic_call() }\n')
+	p.parse_text('main.v', 'module main\nfn main() {}\n')
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	m := build_with_used(p.a, {
+		'main': true
+		'run':  true
+	}, unsafe { nil })
+	assert m.funcs.any(it.name == 'main' && it.blocks.len > 0)
+	assert !m.funcs.any(it.name == 'library.run')
+}
