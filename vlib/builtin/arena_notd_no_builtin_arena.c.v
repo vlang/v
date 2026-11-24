@@ -38,6 +38,7 @@ mut:
 struct VArena {
 mut:
 	magic u32
+	epoch u64
 	// 0: idle, 1: pushed on a thread's allocator stack, 2: being reset or freed.
 	// Accessed through the C `_i32` atomics.
 	state          i32
@@ -53,6 +54,9 @@ mut:
 	start uint
 	stop  uint
 	owner &VArena = unsafe { nil }
+	// Split into atomic u32 loads so readers also work on 32-bit targets.
+	epoch_low  u32
+	epoch_high u32
 }
 
 // VArenaRegistry lists the live chunks of all arenas, sorted by start address.
@@ -88,6 +92,16 @@ __global g_arena_lock i32
 __global g_arena_seq u32
 __global g_arena_registry &VArenaRegistry
 __global g_arena_ranges_len u32
+__global g_arena_epoch u64
+
+// arena_next_epoch is called with the registry writer lock held.
+fn arena_next_epoch() u64 {
+	g_arena_epoch++
+	if g_arena_epoch == 0 {
+		panic('arena: lifetime token space exhausted')
+	}
+	return g_arena_epoch
+}
 
 // arena_align is the alignment of arena allocations without an explicit one:
 // that of malloc, which is 16 bytes on 32-bit targets too.
@@ -145,6 +159,8 @@ fn arena_range_set(mut r VArenaRange, value VArenaRange) {
 	C.atomic_store_ptr(&r.start, voidptr(value.start))
 	C.atomic_store_ptr(&r.stop, voidptr(value.stop))
 	C.atomic_store_ptr(&r.owner, value.owner)
+	C.atomic_store_u32(&r.epoch_low, value.epoch_low)
+	C.atomic_store_u32(&r.epoch_high, value.epoch_high)
 }
 
 // arena_registry_upper returns the index of the first of the `len` ranges of
@@ -190,9 +206,11 @@ fn arena_registry_add(owner &VArena, chunk &VArenaChunk) {
 			arena_range_set(mut reg.ranges[j], reg.ranges[j - 1])
 		}
 		arena_range_set(mut reg.ranges[i], VArenaRange{
-			start: start
-			stop:  uint(chunk.stop)
-			owner: owner
+			start:      start
+			stop:       uint(chunk.stop)
+			owner:      owner
+			epoch_low:  u32(owner.epoch)
+			epoch_high: u32(owner.epoch >> 32)
 		})
 		C.atomic_store_u32(&g_arena_ranges_len, u32(len + 1))
 	}
@@ -217,13 +235,13 @@ fn arena_registry_remove(chunk &VArenaChunk) {
 	arena_registry_end_write()
 }
 
-// arena_registry_find returns the arena that owns `addr` (nil for any other
-// memory) and the end of the chunk that contains it. It takes no lock, so
+// arena_registry_lookup returns the arena that owns `addr` (nil for any other
+// memory), the end of its chunk, and optionally its lifetime epoch. It takes no lock, so
 // free() on many threads does not serialize: a search that overlapped a change
 // of the registry is repeated. Its loads stay inside the registry it searches,
 // whatever a writer does meanwhile.
-@[direct_array_access; unsafe]
-fn arena_registry_find(addr uint) (&VArena, uint) {
+@[direct_array_access; inline; unsafe]
+fn arena_registry_lookup(addr uint, with_epoch bool) (&VArena, uint, u64) {
 	for {
 		seq := C.atomic_load_u32(&g_arena_seq)
 		if seq & 1 != 0 {
@@ -232,6 +250,7 @@ fn arena_registry_find(addr uint) (&VArena, uint) {
 		reg := &VArenaRegistry(C.atomic_load_ptr(&g_arena_registry))
 		mut owner := &VArena(nil)
 		mut stop := uint(0)
+		mut epoch := u64(0)
 		if reg != nil {
 			mut len := int(C.atomic_load_u32(&g_arena_ranges_len))
 			if len > reg.cap {
@@ -244,14 +263,24 @@ fn arena_registry_find(addr uint) (&VArena, uint) {
 				if addr < chunk_stop {
 					owner = &VArena(C.atomic_load_ptr(&reg.ranges[i].owner))
 					stop = chunk_stop
+					if with_epoch {
+						epoch = u64(C.atomic_load_u32(&reg.ranges[i].epoch_low)) |
+							(u64(C.atomic_load_u32(&reg.ranges[i].epoch_high)) << 32)
+					}
 				}
 			}
 		}
 		if C.atomic_load_u32(&g_arena_seq) == seq {
-			return owner, stop
+			return owner, stop, epoch
 		}
 	}
-	return nil, 0
+	return nil, 0, 0
+}
+
+@[inline; unsafe]
+fn arena_registry_find(addr uint) (&VArena, uint) {
+	owner, stop, _ := unsafe { arena_registry_lookup(addr, false) }
+	return owner, stop
 }
 
 // arena_owner returns the arena that owns `ptr` (nil for any other memory) and
@@ -486,6 +515,7 @@ pub fn v_arena_new(chunk_size int) voidptr {
 	// The lock orders the installation with the one of other threads, and the
 	// atomic ready flag publishes the immutable hooks to lock-free readers.
 	arena_lock()
+	a.epoch = arena_next_epoch()
 	if C.atomic_load_u32(&g_arena_hooks_ready) == 0 {
 		g_arena_realloc_hook = arena_realloc
 		g_arena_owns_hook = arena_owns_ptr
@@ -534,7 +564,31 @@ pub fn v_arena_reset(handle voidptr) {
 		panic('arena: reset() of an active arena; pop() it first')
 	}
 	unsafe { arena_release_chunks(mut a, true) }
+	arena_registry_begin_write()
+	a.epoch = arena_next_epoch()
+	// reset keeps one chunk. Invalidate tokens for it even if its address is
+	// reused by the very next allocation. Never query a freed control block.
+	if a.chunk != unsafe { nil } {
+		unsafe {
+			reg := g_arena_registry
+			i := arena_registry_upper(reg, int(g_arena_ranges_len), uint(a.chunk.start)) - 1
+			C.atomic_store_u32(&reg.ranges[i].epoch_low, u32(a.epoch))
+			C.atomic_store_u32(&reg.ranges[i].epoch_high, u32(a.epoch >> 32))
+		}
+	}
+	arena_registry_end_write()
 	C.v_prealloc_atomic_cas_i32(&a.state, 2, 0)
+}
+
+// v_arena_lifetime_token returns the lifetime epoch for a live arena chunk,
+// or zero for other addresses. This is the low-level hook behind
+// arena.lifetime_token; use that. It never dereferences ptr or its former owner.
+pub fn v_arena_lifetime_token(ptr voidptr) u64 {
+	if C.atomic_load_u32(&g_arena_hooks_ready) == 0 {
+		return 0
+	}
+	_, _, epoch := unsafe { arena_registry_lookup(uint(ptr), true) }
+	return epoch
 }
 
 // v_arena_free releases an inactive arena and all of its memory. It is the
@@ -558,6 +612,43 @@ pub fn v_arena_current() voidptr {
 		return unsafe { nil }
 	}
 	return g_arena_top
+}
+
+// v_arena_calloc_in allocates in a selected arena or V's ordinary allocator.
+// It is the low-level hook behind arena.Allocator.calloc; use that. The caller
+// keeps the arena alive and synchronizes reset/free with use of the allocation.
+@[unsafe]
+pub fn v_arena_calloc_in(handle voidptr, size int) &u8 {
+	if size < 0 {
+		panic('arena: negative allocation size')
+	}
+	if size == 0 {
+		return unsafe { nil }
+	}
+	if handle == unsafe { nil } {
+		// Reuse the canonical allocation path, including GC, tracking and tracing.
+		// In particular, never clear the thread's current arena temporarily.
+		return vcalloc_impl(size, false)
+	}
+	mut a := unsafe { arena_checked(handle) }
+	mut cursor := g_arena_top
+	mut active_here := false
+	for cursor != unsafe { nil } {
+		if cursor == a {
+			active_here = true
+			break
+		}
+		cursor = cursor.below
+	}
+	if !active_here && C.v_prealloc_atomic_cas_i32(&a.state, 0, 2) == 0 {
+		panic('arena: allocation in an arena active on another thread or being modified')
+	}
+	result := unsafe { arena_alloc(mut a, size, 0) }
+	unsafe { C.memset(result, 0, size) }
+	if !active_here {
+		C.v_prealloc_atomic_cas_i32(&a.state, 2, 0)
+	}
+	return result
 }
 
 // v_arena_stats returns the bytes handed out by an arena since its last

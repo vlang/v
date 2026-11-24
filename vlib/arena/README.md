@@ -60,6 +60,40 @@ fn main() {
   panics. Do not use a copy of an `Arena` after the original was freed.
 * Pop every arena before its thread ends.
 
+## Lifetime tokens
+
+`lifetime_token(ptr)` returns an optional `LifetimeToken` for an address in a live arena chunk.
+It returns `none` for non-arena addresses. `token.matches(ptr)` checks whether the address still
+belongs to that arena lifetime. Popping an arena preserves its tokens. Resetting or freeing it
+invalidates every existing token, including when a retained chunk reuses the same address.
+
+Tokens are copyable values and do not retain an arena or its memory. The queries read allocator
+metadata without dereferencing the supplied address or its former arena control block. They can
+therefore check a saved address after release, including from another thread.
+
+A token identifies an arena lifetime, rather than an individual allocation: addresses anywhere
+in the same live chunk share it. It does not establish that a payload was initialized and does
+not pin memory. Synchronize reset/free with payload access; a successful query cannot prevent
+another thread from releasing the memory immediately afterward.
+
+## Explicit allocators
+
+`current_allocator()` captures the current thread's allocator, `a.allocator()` selects a
+particular arena, and `heap_allocator()` selects V's ordinary allocator. These copyable
+`Allocator` handles do not change the current arena. `allocator.is_current()` reports whether
+a handle selects the allocator currently serving the thread.
+
+`unsafe { allocator.calloc(size) }` returns zeroed raw storage with V's ordinary allocation
+alignment. Zero returns `nil` without allocating; negative sizes panic. An arena may be inactive
+or an active ancestor on the calling thread. An arena active on another thread, or already
+being modified, rejects allocation. Explicit heap allocation uses V's configured GC or manual
+allocator and its existing allocation hooks.
+
+Handles do not retain their arenas. Keep the original arena alive, synchronize reset/free with
+allocations and payload access, and never use an arena handle after that arena is freed.
+Memory allocated through a handle has the same lifetime and free behavior as ordinary arena
+or heap allocations. A handle does not initialize typed V values or keep their pointers alive.
+
 ## Supported builds
 
 * `-gc none`: the main use case.
