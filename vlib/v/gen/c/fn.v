@@ -6096,7 +6096,8 @@ fn (g &FlatGen) exported_symbol_attribute() string {
 	if !g.is_shared {
 		return ''
 	}
-	if g.ccompiler == 'msvc' {
+	// PE exports require dllexport; ELF visibility is not sufficient for TCC.
+	if g.ccompiler == 'msvc' || g.target.os == 'windows' {
 		return '__declspec(dllexport) '
 	}
 	return '__attribute__((visibility("default"))) '
