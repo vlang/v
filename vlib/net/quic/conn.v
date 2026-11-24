@@ -1588,8 +1588,13 @@ fn (mut c QuicConn) drain_pending_stream_writes(now u64, mut result PollResult) 
 		mut stream := c.streams.get(stream_id) or { continue }
 		offset := stream.send.offset
 		stream_frame := encode_stream_frame(stream_id, offset, pending.data, pending.fin, true)!
-		datagram := c.build_one_rtt_packet(stream_frame, true, now)!
-		result.outgoing << datagram
+		result.outgoing << c.send_frames(.application_data, [
+			&SentFrame{
+				bytes: stream_frame
+				kind:  .stream
+				id:    stream_id
+			},
+		], now)!
 		send_window.consume(needed)!
 		c.conn_send_window.consume(needed)!
 		stream.send.mark_data_queued()
@@ -1610,8 +1615,11 @@ fn (mut c QuicConn) drain_pending_stream_resets(now u64, mut result PollResult) 
 	for stream_id, error_code in c.pending_stream_reset {
 		stream := c.streams.get(stream_id) or { continue }
 		reset_frame := encode_reset_stream_frame(stream_id, error_code, stream.send.offset)!
-		datagram := c.build_one_rtt_packet(reset_frame, true, now)!
-		result.outgoing << datagram
+		result.outgoing << c.send_frames(.application_data, [
+			&SentFrame{
+				bytes: reset_frame
+			},
+		], now)!
 		c.pending_stream_reset.delete(stream_id)
 	}
 }
@@ -1845,13 +1853,47 @@ fn (mut c QuicConn) send_frames(space QuicPacketNumberSpace, frames []&SentFrame
 	return datagram
 }
 
+// is_obsolete reports whether `frame` need not be sent again although it was
+// not acknowledged (RFC 9000 §13.3): data of a stream that was reset, a limit
+// that was raised since or that its stream no longer needs, and a blocked
+// frame for a limit the peer has raised.
+fn (c &QuicConn) is_obsolete(frame &SentFrame) bool {
+	match frame.kind {
+		.other {
+			return false
+		}
+		.stream {
+			stream := c.streams.get(frame.id) or { return true }
+			return stream.send.state == .reset_sent
+		}
+		.max_data {
+			return frame.limit != c.conn_recv_window.advertised_limit()
+		}
+		.max_stream_data {
+			window := c.stream_recv_windows[frame.id] or { return true }
+			stream := c.streams.get(frame.id) or { return true }
+			return stream.recv.state != .recv || frame.limit != window.advertised_limit()
+		}
+		.streams_blocked_bidi {
+			return frame.limit != c.peer_max_streams_bidi
+		}
+		.streams_blocked_uni {
+			return frame.limit != c.peer_max_streams_uni
+		}
+	}
+}
+
 // drain_lost_frames sends `space`'s lost frames again, in as few packets as
-// fit. A CRYPTO frame keeps the size it was first sent with.
+// fit, but those that are obsolete. A CRYPTO or STREAM frame keeps the size it
+// was first sent with.
 fn (mut c QuicConn) drain_lost_frames(space QuicPacketNumberSpace, now u64, mut result PollResult) ! {
 	mut sent := c.sent_frames(space)
 	mut packet := []&SentFrame{}
 	mut size := 0
 	for frame in sent.take_lost() {
+		if c.is_obsolete(frame) {
+			continue
+		}
 		if packet.len > 0 && size + frame.bytes.len > max_control_frame_payload {
 			result.outgoing << c.send_frames(space, packet, now)!
 			packet = []&SentFrame{}
@@ -1875,8 +1917,17 @@ fn (mut c QuicConn) drain_pending_streams_blocked(now u64, mut result PollResult
 			c.peer_max_streams_uni
 		}
 		blocked_frame := encode_streams_blocked_frame(direction, limit)!
-		datagram := c.build_one_rtt_packet(blocked_frame, true, now)!
-		result.outgoing << datagram
+		result.outgoing << c.send_frames(.application_data, [
+			&SentFrame{
+				bytes: blocked_frame
+				kind:  if direction == .bidirectional {
+					.streams_blocked_bidi
+				} else {
+					.streams_blocked_uni
+				}
+				limit: limit
+			},
+		], now)!
 	}
 	c.pending_streams_blocked = []StreamDirection{}
 }
@@ -1889,16 +1940,27 @@ fn (mut c QuicConn) drain_flow_control_raises(now u64, mut result PollResult) ! 
 	if c.conn_recv_window.should_advertise_more() {
 		new_limit := c.conn_recv_window.next_advertised_limit()
 		max_data_frame := encode_max_data_frame(new_limit)!
-		datagram := c.build_one_rtt_packet(max_data_frame, true, now)!
-		result.outgoing << datagram
+		result.outgoing << c.send_frames(.application_data, [
+			&SentFrame{
+				bytes: max_data_frame
+				kind:  .max_data
+				limit: new_limit
+			},
+		], now)!
 		c.conn_recv_window.mark_advertised(new_limit)
 	}
 	for stream_id, mut recv_window in c.stream_recv_windows {
 		if recv_window.should_advertise_more() {
 			new_limit := recv_window.next_advertised_limit()
 			msd_frame := encode_max_stream_data_frame(stream_id, new_limit)!
-			datagram := c.build_one_rtt_packet(msd_frame, true, now)!
-			result.outgoing << datagram
+			result.outgoing << c.send_frames(.application_data, [
+				&SentFrame{
+					bytes: msd_frame
+					kind:  .max_stream_data
+					id:    stream_id
+					limit: new_limit
+				},
+			], now)!
 			recv_window.mark_advertised(new_limit)
 		}
 	}
@@ -2087,7 +2149,15 @@ fn (mut c QuicConn) send_pto_probe(space QuicPacketNumberSpace, now u64, mut res
 		}
 	}
 
-	frames := c.sent_frames(space).oldest_unacked()
+	mut sent := c.sent_frames(space)
+	for _, mut in_packet in sent.in_flight {
+		for mut frame in in_packet {
+			if c.is_obsolete(frame) {
+				frame.acked = true
+			}
+		}
+	}
+	frames := sent.oldest_unacked()
 	if frames.len > 0 {
 		result.outgoing << c.send_frames(space, frames, now)!
 		return

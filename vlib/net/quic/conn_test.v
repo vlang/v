@@ -1639,9 +1639,10 @@ fn test_ack_ranges_are_kept_until_the_ack_carrying_them_is_acknowledged() {
 	}], 'packets 0 and 1 must still be acknowledged: no ACK carrying them was acknowledged'
 
 	// One peer ACK acknowledges both carriers, of ACK [0, 1] and ACK [0, 2];
-	// the larger Largest Acknowledged, 2, is what may be forgotten.
+	// the larger Largest Acknowledged, 2, is what may be forgotten. It covers the
+	// stream packets too, so none of them is lost and sent again.
 	mut payload := encode_ack_frame([AckRange{
-		smallest: first_carrier
+		smallest: 0
 		largest:  second_carrier
 	}], 0, none)!
 	payload << ack_test_ping
@@ -2509,7 +2510,19 @@ fn event_test_frames(mut c QuicConn, space QuicPacketNumberSpace, result PollRes
 				RetireConnectionIdFrame { shown << '${where}RETIRE ${f.sequence_number}' }
 				PingFrame { shown << '${where}PING' }
 				PathResponseFrame { shown << '${where}PATH_RESPONSE' }
-				StreamFrame { shown << '${where}STREAM' }
+				StreamFrame {
+					shown << '${where}STREAM ${f.stream_id} ${f.offset} ${f.data.bytestr()} ${f.fin}'
+				}
+				ResetStreamFrame {
+					shown << '${where}RESET ${f.stream_id} ${f.error_code} ${f.final_size}'
+				}
+				MaxDataFrame { shown << '${where}MAX_DATA ${f.maximum_data}' }
+				MaxStreamDataFrame {
+					shown << '${where}MAX_STREAM_DATA ${f.stream_id} ${f.maximum_stream_data}'
+				}
+				StreamsBlockedFrame {
+					shown << '${where}STREAMS_BLOCKED ${f.direction} ${f.maximum_streams}'
+				}
 				else {}
 			}
 		}
@@ -2678,7 +2691,8 @@ fn test_lost_frame_is_sent_before_new_stream_data() {
 	stream_id := c.open_stream(true)!
 	c.write_stream(stream_id, 'new'.bytes(), true)!
 	result := c.poll(none, now)!
-	assert event_test_frames(mut c, .application_data, result)! == [want, 'STREAM']
+	assert event_test_frames(mut c, .application_data, result)! == [want,
+		'STREAM ${stream_id} 0 new true']
 }
 
 // RFC 9002 §6.2.4: the PTO probe carries the unacknowledged ClientHello, on
@@ -2812,4 +2826,251 @@ fn test_lost_frames_are_packed_into_packets() {
 	}
 	assert retire_test_seqs(mut c, result)! == want
 	assert c.sent_frames(.application_data).lost.len == 0
+}
+
+const stream_test_kinds = ['STREAM', 'RESET', 'MAX_DATA', 'MAX_STREAM_DATA', 'STREAMS_BLOCKED bidi',
+	'STREAMS_BLOCKED uni']
+
+// stream_test_start returns a connection with one frame of `kind` in flight,
+// its packet number, the frame as event_test_frames shows it, its stream (0
+// if it has none) and the time.
+fn stream_test_start(kind string) !(&QuicConn, u64, string, u64, u64) {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	id := c.open_stream(true)!
+	match kind {
+		'STREAM' {
+			c.write_stream(id, 'hello'.bytes(), true)!
+		}
+		'RESET' {
+			c.handle_stop_sending_frame(StopSendingFrame{
+				stream_id:  id
+				error_code: 7
+			})
+		}
+		'MAX_DATA' {
+			stream_test_read(mut c.conn_recv_window)!
+		}
+		'MAX_STREAM_DATA' {
+			stream_test_read(mut c.stream_recv_windows[id] or { return error('no window') })!
+		}
+		'STREAMS_BLOCKED bidi' {
+			c.peer_max_streams_bidi = c.streams.next_local_bidi
+			c.open_stream(true) or {}
+		}
+		else {
+			c.peer_max_streams_uni = c.streams.next_local_uni
+			c.open_stream(false) or {}
+		}
+	}
+
+	shown := event_test_frames(mut c, .application_data, c.poll(none, now)!)!
+	assert shown.len == 1, '${kind}: ${shown}'
+	assert shown[0].starts_with(kind.all_before(' ')), '${kind}: ${shown}'
+	return c, ack_test_largest_sent_pn(c), shown[0], id, now
+}
+
+// stream_test_read makes `window` due for a raise.
+fn stream_test_read(mut window ReceiveWindow) ! {
+	window.note_received(window.advertised)!
+	window.note_read((window.advertised + 1) / 2)
+}
+
+// Every frame that carries stream data or a limit is sent again once when it
+// is lost, by acknowledgment or by timer, spending no more credit, and a probe
+// repeats it. An acknowledgment of either copy ends it.
+fn test_stream_frames_are_sent_again_on_every_event() {
+	for kind in stream_test_kinds {
+		for event in ['acknowledged', 'lost by ACK', 'lost by timer', 'probe'] {
+			mut c, pn, want, id, now := stream_test_start(kind)!
+			defer {
+				c.handshake.free()
+			}
+			name := '${kind} ${event}'
+			credit := c.conn_send_window.available()
+			mut sent := PollResult{}
+			mut expected := [want]
+			match event {
+				'acknowledged' {
+					resend_test_ack(mut c, .application_data, pn, pn, now)
+					c.send_pto_probe(.application_data, now, mut sent)!
+					expected = ['PING']
+				}
+				'lost by ACK' {
+					event_test_lose(mut c, .application_data, pn, now)!
+					sent = c.poll(none, now)!
+				}
+				'lost by timer' {
+					resend_test_pings(mut c, .application_data, 1, now)!
+					resend_test_ack(mut c, .application_data, pn + 1, pn + 1, now + 1000)
+					assert event_test_frames(mut c, .application_data, c.poll(none, now + 1000)!)! == [], name
+					sent = c.process_timeouts(now + 2 * u64(time.second))!
+				}
+				else {
+					c.send_pto_probe(.application_data, now, mut sent)!
+				}
+			}
+
+			assert event_test_frames(mut c, .application_data, sent)! == expected, name
+			assert c.conn_send_window.available() == credit, name
+			if kind == 'STREAM' {
+				stream := c.streams.get(id) or { panic('no stream') }
+				assert stream.send.offset == 5, name
+			}
+			last := ack_test_largest_sent_pn(c)
+			resend_test_pings(mut c, .application_data, 3, now)!
+			resend_test_ack(mut c, .application_data, last, last + 3, now)
+			assert c.sent_frames(.application_data).in_flight.len == 0, name
+			assert event_test_frames(mut c, .application_data, c.poll(none, now)!)! == [], name
+		}
+	}
+}
+
+// stream_test_makes_obsolete has `c` need the frame of `kind` no longer, and
+// returns what it sends by that.
+fn stream_test_makes_obsolete(mut c QuicConn, kind string, id u64, now u64) ![]string {
+	match kind {
+		'STREAM' {
+			c.handle_stop_sending_frame(StopSendingFrame{
+				stream_id:  id
+				error_code: 7
+			})
+		}
+		'MAX_DATA' {
+			stream_test_read(mut c.conn_recv_window)!
+		}
+		'MAX_STREAM_DATA' {
+			stream_test_read(mut c.stream_recv_windows[id] or { return error('no window') })!
+		}
+		'MAX_STREAM_DATA size known' {
+			mut stream := c.streams.get(id) or { return error('no stream') }
+			stream.recv.state = .size_known
+		}
+		'MAX_STREAM_DATA reset' {
+			mut stream := c.streams.get(id) or { return error('no stream') }
+			stream.recv.mark_reset_recvd(1, 0)!
+		}
+		'STREAMS_BLOCKED bidi' {
+			c.peer_max_streams_bidi++
+		}
+		else {
+			c.peer_max_streams_uni++
+		}
+	}
+
+	return event_test_frames(mut c, .application_data, c.poll(none, now)!)!
+}
+
+// RFC 9000 §13.3: data of a reset stream, a limit that was raised since, a
+// stream's limit once its size is known, and a blocked frame once the limit
+// moved are not sent again, when lost or by a probe. What replaced the frame
+// is, and only that.
+fn test_obsolete_stream_frames_are_not_sent_again() {
+	for kind in ['STREAM', 'MAX_DATA', 'MAX_STREAM_DATA', 'MAX_STREAM_DATA size known',
+		'MAX_STREAM_DATA reset', 'STREAMS_BLOCKED bidi', 'STREAMS_BLOCKED uni'] {
+		for event in ['lost', 'probe', 'queued'] {
+			base := if kind.starts_with('MAX_STREAM') { 'MAX_STREAM_DATA' } else { kind }
+			mut c, pn, old, id, now := stream_test_start(base)!
+			defer {
+				c.handshake.free()
+			}
+			name := '${kind} ${event}'
+			if event == 'queued' {
+				event_test_lose(mut c, .application_data, pn, now)!
+				sent := stream_test_makes_obsolete(mut c, kind, id, now)!
+				// A limit is sent before the raise that this poll is due.
+				assert (old in sent) == (kind in ['MAX_DATA', 'MAX_STREAM_DATA']), name
+				continue
+			}
+			replaced := stream_test_makes_obsolete(mut c, kind, id, now)!
+			if event == 'probe' {
+				want := if replaced.len > 0 { replaced } else { ['PING'] }
+				assert event_test_probe(mut c, .application_data, now)! == want, name
+				continue
+			}
+			last := ack_test_largest_sent_pn(c)
+			resend_test_pings(mut c, .application_data, 3, now)!
+			resend_test_ack(mut c, .application_data, last + 1, last + 3, now)
+			assert event_test_frames(mut c, .application_data, c.poll(none, now)!)! == replaced, name
+		}
+	}
+}
+
+// A draining connection sends no stream frame again (RFC 9000 §10.2.2).
+fn test_draining_connection_sends_no_stream_frame_again() {
+	for kind in stream_test_kinds {
+		mut c, pn, _, _, now := stream_test_start(kind)!
+		defer {
+			c.handshake.free()
+		}
+		event_test_lose(mut c, .application_data, pn, now)!
+		c.enter_draining(now)
+		assert c.poll(none, now)!.outgoing.len == 0, kind
+		assert c.process_timeouts(now)!.outgoing.len == 0, kind
+	}
+}
+
+// A frame lost before a key update is sent again under the new keys.
+fn test_stream_frames_survive_a_key_update() {
+	for kind in stream_test_kinds {
+		mut c, pn, want, _, now := stream_test_start(kind)!
+		defer {
+			c.handshake.free()
+		}
+		event_test_lose(mut c, .application_data, pn, now)!
+		server_keys := c.app_read_keys or { panic('no keys') }
+		secret := derive_updated_secret(server_keys.current_secret)!
+		keys := derive_updated_packet_protection_keys(secret, server_keys.current_keys.hp)!
+		packet := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), ack_test_ping, keys, true)!
+		result := c.poll(packet.bytes, now)!
+		assert c.app_write_generation == 1, kind
+		assert want in event_test_frames(mut c, .application_data, result)!, kind
+	}
+}
+
+// A probe leaves out each obsolete frame of a packet that carries several.
+fn test_probe_leaves_out_every_obsolete_frame_of_a_packet() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut ids := []u64{}
+	for text in ['a', 'b', 'c'] {
+		id := c.open_stream(true)!
+		c.write_stream(id, text.bytes(), true)!
+		ids << id
+	}
+	c.poll(none, now)!
+	last := ack_test_largest_sent_pn(c)
+	resend_test_pings(mut c, .application_data, 3, now)!
+	resend_test_ack(mut c, .application_data, last + 1, last + 3, now)
+	resent := c.poll(none, now)!
+	assert resent.outgoing.len == 1
+	shown := event_test_frames(mut c, .application_data, resent)!
+	assert shown.len == 3, shown.str()
+	for id in [ids[0], ids[2]] {
+		c.handle_stop_sending_frame(StopSendingFrame{
+			stream_id:  id
+			error_code: 7
+		})
+	}
+	assert event_test_probe(mut c, .application_data, now)! == ['STREAM ${ids[1]} 0 b true']
+}
+
+// Both directions can be blocked in one poll, and each is sent again.
+fn test_both_streams_blocked_frames_are_sent_again() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	c.peer_max_streams_bidi = c.streams.next_local_bidi
+	c.peer_max_streams_uni = c.streams.next_local_uni
+	c.open_stream(true) or {}
+	c.open_stream(false) or {}
+	sent := event_test_frames(mut c, .application_data, c.poll(none, now)!)!
+	assert sent.len == 2, sent.str()
+	assert sent[0].contains('bidirectional') && sent[1].contains('unidirectional'), sent.str()
+	last := ack_test_largest_sent_pn(c)
+	resend_test_pings(mut c, .application_data, 3, now)!
+	resend_test_ack(mut c, .application_data, last + 1, last + 3, now)
+	assert event_test_frames(mut c, .application_data, c.poll(none, now)!)! == sent
 }

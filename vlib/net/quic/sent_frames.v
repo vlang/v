@@ -1,11 +1,25 @@
 module quic
 
+// SentFrameKind tells the frames that can become obsolete (see
+// QuicConn.is_obsolete) from the others.
+enum SentFrameKind {
+	other
+	stream
+	max_data
+	max_stream_data
+	streams_blocked_bidi
+	streams_blocked_uni
+}
+
 // SentFrame is one encoded frame whose information is sent again when it is
 // lost (RFC 9000 §13.3). Every packet carrying a copy shares the same
 // SentFrame, so acknowledging any one of them ends them all.
 @[heap]
 struct SentFrame {
 	bytes []u8
+	kind  SentFrameKind
+	id    u64 // the stream of a .stream or .max_stream_data frame
+	limit u64 // the limit a .max_* or .streams_blocked_* frame carries
 mut:
 	acked  bool
 	copies int // packets in flight carrying this frame
