@@ -9413,7 +9413,7 @@ fn (mut tc TypeChecker) ownership_collect_conditional_result(lhs_name string, if
 				return false
 			}
 			if (node.children_count < 2 || node.value in ['!', '?'])
-				&& !tc.sum_escape_has_pointer_variant(lhs_type) {
+				&& !tc.sum_escape_has_pointer_variant(lhs_type) && unalias_type(lhs_type) !is Struct {
 				return false
 			}
 			mut marked := tc.ownership_collect_expr_result(lhs_name, tc.a.child(&node, 0), lhs_type, pos, mut moved_sources)
@@ -9439,6 +9439,18 @@ fn (mut tc TypeChecker) ownership_collect_expr_result(lhs_name string, expr_id f
 	// has a plain scalar result even though the call's intermediate `!T` value
 	// requires destruction.
 	if !tc.ownership_type_is_owned(lhs_type) && !tc.ownership_type_requires_destruction(lhs_type) {
+		if unalias_type(lhs_type) is Struct {
+			id := tc.ownership_sum_wrapped_value(expr_id, lhs_type)
+			if tc.valid_node_id(id) {
+				node := tc.a.nodes[int(id)]
+				if node.kind == .call {
+					_ = tc.ownership_mark_return_param_descendants_from_call(lhs_name, id, node,
+						tc.ownership_call_name(id), 0, pos)
+				} else if node.kind in [.if_expr, .match_stmt, .or_expr] {
+					_ = tc.ownership_collect_conditional_result(lhs_name, id, lhs_type, pos, mut moved_sources)
+				}
+			}
+		}
 		return false
 	}
 	id := tc.ownership_sum_wrapped_value(expr_id, lhs_type)
@@ -11156,6 +11168,18 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_descendant(target_name 
 	source := tc.ownership_call_arg_for_return_param_source(call_id, node, desc.param_idx, desc.source_suffix) or { return false }
 	arg_id := source.arg_id
 	source_suffix := source.source_suffix
+	if desc.target_suffix.len > 0 && !tc.ownership_call_param_is_mut(fn_name, desc.param_idx) {
+		result_type := sum_escape_success_type(tc.resolve_type(call_id))
+		// Owning handles can manage an independent reference using a custom destructor.
+		if !tc.ownership_type_requires_destruction(result_type) {
+			if projected_type := tc.returned_receiver_projection_type(result_type, desc.target_suffix) {
+				if projected_type is Pointer && tc.returned_receiver_call_source_borrows_storage(call_id, arg_id)
+					&& tc.ownership_mark_return_argument_loan(target_name, arg_id, source_suffix, pos, false) {
+					return false
+				}
+			}
+		}
+	}
 	arg_name := tc.ownership_expr_ident_name(arg_id)
 	if source_suffix.len == 0 {
 		if tc.ownership_mark_cloned_return_source(target_name, arg_id, pos) {
