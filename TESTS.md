@@ -232,6 +232,10 @@ flat-AST-to-V formatting and round trips.
 
 Check that most .v files, are invariant of `v fmt` runs.
 
+It runs `v vet` and `v fmt -verify` over up to 64 files per command, since both check every file
+they are given and name the ones they reject. A command that fails runs again file by file, so
+the report is the same as without batching; `VTEST_NO_BATCH=1` runs one command per file.
+
 * `v test-fmt`
 
 This tests that all .v files in the current folder are already formatted.
