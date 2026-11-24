@@ -2,6 +2,11 @@ module types
 
 import v.flat
 
+enum ThreadCapability {
+	transfer
+	share
+}
+
 fn (tc &TypeChecker) ownership_checks_thread_boundary() bool {
 	return !tc.autofree_mode && tc.unsafe_depth == 0 && !tc.ownership_effects_disabled()
 }
@@ -78,7 +83,7 @@ fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected
 }
 
 fn (mut tc TypeChecker) ownership_check_thread_transfer(typ Type, id flat.NodeId, role string) bool {
-	if reason := tc.ownership_thread_transfer_problem(typ, 0, mut map[u32]bool{}) {
+	if reason := tc.ownership_thread_transfer_problem(typ, .transfer, 0, mut map[u64]bool{}) {
 		tc.record_error(.thread_transfer,
 			'cannot transfer `${typ.name()}` as ${role}: ${reason}', id)
 		return false
@@ -86,7 +91,7 @@ fn (mut tc TypeChecker) ownership_check_thread_transfer(typ Type, id flat.NodeId
 	return true
 }
 
-fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, depth int, mut seen map[u32]bool) ?string {
+fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability ThreadCapability, depth int, mut seen map[u64]bool) ?string {
 	if depth > 64 {
 		return 'cannot prove thread safety of this recursive type'
 	}
@@ -101,58 +106,81 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, depth int, mut 
 			return 'the interface type does not guarantee thread-safe implementations'
 		}
 		Alias {
-			return tc.ownership_thread_transfer_problem(typ.base_type, depth + 1, mut seen)
+			return tc.ownership_thread_transfer_problem(typ.base_type, capability, depth + 1, mut seen)
 		}
 		OptionType, ResultType {
-			return tc.ownership_thread_transfer_problem(typ.base_type, depth + 1, mut seen)
+			return tc.ownership_thread_transfer_problem(typ.base_type, capability, depth + 1, mut seen)
 		}
-		Array, ArrayFixed, Channel {
-			return tc.ownership_thread_transfer_problem(typ.elem_type, depth + 1, mut seen)
+		Array, ArrayFixed {
+			return tc.ownership_thread_transfer_problem(typ.elem_type, capability, depth + 1, mut seen)
+		}
+		Channel {
+			// The channel synchronizes access to transferred elements.
+			return tc.ownership_thread_transfer_problem(typ.elem_type, .transfer, depth + 1, mut seen)
 		}
 		Map {
-			if reason := tc.ownership_thread_transfer_problem(typ.key_type, depth + 1, mut seen) {
+			if reason := tc.ownership_thread_transfer_problem(typ.key_type, capability, depth + 1, mut seen) {
 				return reason
 			}
-			return tc.ownership_thread_transfer_problem(typ.value_type, depth + 1, mut seen)
+			return tc.ownership_thread_transfer_problem(typ.value_type, capability, depth + 1, mut seen)
 		}
 		MultiReturn {
 			for part in typ.types {
-				if reason := tc.ownership_thread_transfer_problem(part, depth + 1, mut seen) {
+				if reason := tc.ownership_thread_transfer_problem(part, capability, depth + 1, mut seen) {
 					return reason
 				}
 			}
 		}
 		Struct {
 			name_id := typ.name_id
-			if seen[name_id] { return none }
-			seen[name_id] = true
+			visit_key := (u64(name_id) << 1) | u64(capability)
+			if seen[visit_key] { return none }
+			seen[visit_key] = true
 			if flat.source_type_query(name_id).has(.c_prefix) {
 				return 'the C type has no V ownership information'
 			}
 			if payload := tc.thread_wait_return_type(typ) {
-				return tc.ownership_thread_transfer_problem(payload, depth + 1, mut seen)
+				return tc.ownership_thread_transfer_problem(payload, .transfer, depth + 1, mut seen)
 			}
-			if payload := tc.ownership_thread_arc_payload(name_id) {
-				return tc.ownership_thread_transfer_problem(payload, depth + 1, mut seen)
+			if payload := tc.ownership_thread_library_payload(name_id, 'sync/arc', [
+				'sync.arc.Arc',
+				'sync.arc.Weak',
+				'arc.Arc',
+				'arc.Weak',
+			]) {
+				// Sending an owner can share the payload with another owner. The
+				// last owner can also destroy it on another thread.
+				return tc.ownership_thread_transfer_problem(payload, .share, depth + 1, mut seen)
+			}
+			if capability == .share
+				&& tc.ownership_thread_library_payload(name_id, 'cell', ['cell.RefCell']) != none {
+				return 'cell.RefCell has unsynchronized borrow state'
 			}
 			for field in tc.struct_fields_for_type(name_id) {
-				field_type := if tc.struct_field_is_shared(name_id, field.name) {
+				field_is_shared := tc.struct_field_is_shared(name_id, field.name)
+				field_type := if field_is_shared {
 					unwrap_pointer(unalias_type(field.typ))
 				} else {
 					field.typ
 				}
-				if reason := tc.ownership_thread_transfer_problem(field_type, depth + 1, mut seen) {
+				field_capability := if field_is_shared {
+					ThreadCapability.transfer
+				} else {
+					capability
+				}
+				if reason := tc.ownership_thread_transfer_problem(field_type, field_capability, depth + 1, mut seen) {
 					return 'field `${field.name}`: ${reason}'
 				}
 			}
 		}
 		SumType {
 			name_id := typ.name_id
-			if seen[name_id] { return none }
-			seen[name_id] = true
+			visit_key := (u64(name_id) << 1) | u64(capability)
+			if seen[visit_key] { return none }
+			seen[visit_key] = true
 			for variant in tc.sum_types.type_ids(tc.sum_base_name(name_id)) or { []u32{} } {
 				concrete := tc.parse_type(tc.concrete_sum_variant_name(name_id, variant))
-				if reason := tc.ownership_thread_transfer_problem(concrete, depth + 1, mut seen) {
+				if reason := tc.ownership_thread_transfer_problem(concrete, capability, depth + 1, mut seen) {
 					return 'variant `${concrete.name()}`: ${reason}'
 				}
 			}
@@ -162,12 +190,12 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, depth int, mut 
 	return none
 }
 
-// Arc and Weak manage their internal pointers with atomic reference counts. Check the
-// declaration's provenance before relying on that guarantee for the generic payload.
-fn (tc &TypeChecker) ownership_thread_arc_payload(name_id u32) ?Type {
+// Check declaration provenance before relying on a standard-library type's
+// synchronization or interior mutability.
+fn (tc &TypeChecker) ownership_thread_library_payload(name_id u32, module_path string, supported_names []string) ?Type {
 	syntax := flat.source_type_syntax(name_id)
 	base := flat.source_type_name(syntax.generic_base())
-	if base !in ['sync.arc.Arc', 'sync.arc.Weak', 'arc.Arc', 'arc.Weak'] {
+	if base !in supported_names {
 		return none
 	}
 	args := syntax.generic_app_args()
@@ -179,7 +207,7 @@ fn (tc &TypeChecker) ownership_thread_arc_payload(name_id u32) ?Type {
 	source := tc.a.cached_header_sources[file] or { file }
 	file_path := tc.a.real_source_path(source).replace('\\', '/')
 	root := tc.memo_real_path(tc.compiler_vroot).replace('\\', '/').trim_right('/')
-	if !file_path.starts_with(root + '/vlib/sync/arc/') {
+	if !file_path.starts_with('${root}/vlib/${module_path}/') {
 		return none
 	}
 	return *tc.parse_type(args[0])
