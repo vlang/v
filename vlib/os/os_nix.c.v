@@ -360,6 +360,13 @@ pub fn ls(path string) ![]string {
 	if path == '' {
 		return error('ls() expects a folder, not an empty string')
 	}
+	$if vlibc ? {
+		names, e := vlibc_list_dir(path)
+		if e != .enoerror {
+			return error_with_code('ls failed: ${e}', int(e))
+		}
+		return names
+	}
 	$if freestanding || syscalls {
 		return fsys_ls(path)
 	}
@@ -396,6 +403,13 @@ pub fn mkdir(path string, params MkdirParams) ! {
 		return
 	}
 	apath := real_path(path)
+	$if vlibc ? {
+		e := vlibc_mkdir(apath, u32(params.mode))
+		if e != .enoerror {
+			return error_with_code('mkdir failed: ${e}', int(e))
+		}
+		return
+	}
 	$if freestanding || syscalls {
 		e := bf_mkdir(apath, u64(params.mode))
 		if e != 0 {
