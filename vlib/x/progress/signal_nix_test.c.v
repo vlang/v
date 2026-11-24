@@ -49,14 +49,6 @@ fn test_cursor_is_restored_and_application_signal_handling_is_preserved() {
 	show := '\x1b[?25h'
 	for mode in ['default-int', 'default-term', 'handler-int', 'handler-term', 'ignore-int',
 		'ignore-term'] {
-		$if self_sanitize_memory ? {
-			// MemorySanitizer's signal() interceptor returns the previous real handler,
-			// its own wrapper, instead of the application's. Putting that back, as the
-			// display does for an application handler, makes the wrapper call itself.
-			if mode.starts_with('handler') {
-				continue
-			}
-		}
 		result := os.exec([binary, progress_signal_probe, mode])
 		assert result.output.contains(hide), '${mode}: ${result.output}'
 		assert result.output.contains(show), '${mode}: ${result.output}'

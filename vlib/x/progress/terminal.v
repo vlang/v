@@ -56,14 +56,18 @@ fn on_terminating_signal(sig os.Signal) {
 }
 
 // hook_signal makes `sig` restore the cursor and exit, unless the application
-// already has its own disposition for it (a handler, or "ignore"). Like the
-// standard library's term.show_cursor_on_exit, that is left alone: we put it
-// back and rely on the at-exit hook, which still restores the cursor if the
-// application's handler ends the program with exit().
+// already has its own disposition for it (a handler, or "ignore"). Rely on
+// the at-exit hook when the application's handler exits normally.
 fn hook_signal(sig os.Signal) {
-	prev := os.signal_opt(sig, on_terminating_signal) or { return }
-	if voidptr(prev) != unsafe { nil } {
-		os.signal_opt(sig, prev) or {}
+	$if windows {
+		prev := os.signal_opt(sig, on_terminating_signal) or { return }
+		if voidptr(prev) != unsafe { nil } {
+			os.signal_opt(sig, prev) or {}
+		}
+	} $else {
+		if signal_is_default(sig) {
+			os.signal_opt(sig, on_terminating_signal) or {}
+		}
 	}
 }
 
