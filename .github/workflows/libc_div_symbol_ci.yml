@@ -1,0 +1,61 @@
+name: libc div symbol regression
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/libc_div_symbol_ci.yml'
+      - 'vlib/v/gen/c/naming/**'
+      - 'vlib/v/tests/fns/variadic_sumtype_test.v'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare private Windows tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify formatting and original test
+        shell: pwsh
+        run: |
+          .\v.exe fmt -verify vlib/v/gen/c/naming/naming.v vlib/v/gen/c/naming/naming_test.v
+          if ($LASTEXITCODE -ne 0) { throw 'Format failed' }
+          foreach ($cc in @('gcc', 'msvc')) {
+            .\v.exe -cc $cc -no-retry-compilation -silent vlib/v/tests/fns/variadic_sumtype_test.v
+            if ($LASTEXITCODE -ne 0) { throw "$cc original fixture failed" }
+            .\v.exe -cc $cc -silent vlib/v/gen/c/naming/naming_test.v
+            if ($LASTEXITCODE -ne 0) { throw "$cc naming regression failed" }
+          }
+          .\v.exe -cc gcc -nocache -no-retry-compilation -silent vlib/v/tests/fns/variadic_sumtype_test.v
+          if ($LASTEXITCODE -ne 0) { throw 'Uncached GCC fixture failed' }
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Rebuild and verify naming and original test
+        run: |
+          ./v -cc clang self
+          ./v fmt -verify vlib/v/gen/c/naming/naming.v vlib/v/gen/c/naming/naming_test.v
+          for cc in gcc clang; do
+            ./v -cc "$cc" -silent vlib/v/gen/c/naming/naming_test.v
+            ./v -cc "$cc" -no-retry-compilation -silent vlib/v/tests/fns/variadic_sumtype_test.v
+          done
+      - name: Compiler errors and compiler suite
+        run: |
+          ./v -silent vlib/v/compiler_errors_test.v
+          ./v -silent test vlib/v/
