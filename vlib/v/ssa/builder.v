@@ -14075,6 +14075,13 @@ fn (mut b Builder) build_cast_expr(node flat.Node) ValueID {
 			}
 			return b.emit1(.sext, target_type, value)
 		}
+		if to_width == 64 && from_width == to_width {
+			constant := b.m.values[value]
+			if constant.kind == .constant && constant.name != 'undef' {
+				// A signedness change preserves the entire 64-bit pattern.
+				return b.m.get_or_add_const(target_type, constant.name)
+			}
+		}
 		return b.emit1(.bitcast, target_type, value)
 	}
 	if b.is_float_type(from_type) && b.is_int_type(target_type) {
