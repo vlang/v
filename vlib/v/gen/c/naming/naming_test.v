@@ -188,3 +188,12 @@ fn test_plain_name_filter_admits_every_reserved_word_and_libc_collision() {
 	}
 	assert passed > 0
 }
+
+fn test_div_libc_collision() {
+	assert is_libc_collision('div')
+	assert plain_name_may_be_reserved('div')
+	assert c_name('div') == '${internal_symbol_c_prefix}libc_div'
+	assert c_name('div') != c_name('v_div')
+	assert c_name('div') != c_name(c_name('div'))
+	assert c_name('C.div') == 'div'
+}
