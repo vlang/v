@@ -1,6 +1,9 @@
 name: Bootstrapping CI
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/bootstrapping_ci.yml'
   workflow_dispatch:
     inputs:
       platform:
@@ -25,7 +28,7 @@ permissions:
 
 jobs:
   bootstrap-v:
-    if: github.ref == 'refs/heads/master' && inputs.platform != 'termux'
+    if: (github.ref == 'refs/heads/master' || (github.event_name == 'pull_request' && github.workflow == 'Bootstrapping CI')) && inputs.platform != 'termux'
     strategy:
       # Select runners before scheduling the matrix; a step-level condition
       # would still reserve macOS/Windows runners for Linux-only bootstrap.
@@ -35,6 +38,7 @@ jobs:
             inputs.platform == 'linux' && '[{"os":"ubuntu-22.04","platform":"linux-x64","vflags":"-no-parallel"}]' ||
             inputs.platform == 'macos' && '[{"os":"macos-15","platform":"macos-arm64","vflags":"-no-parallel"},{"os":"macos-15-intel","platform":"macos-x64","vflags":"-no-parallel"}]' ||
             inputs.platform == 'windows' && '[{"os":"windows-2022","platform":"windows-x64","vflags":""}]' ||
+            github.event_name == 'pull_request' && '[{"os":"ubuntu-22.04","platform":"linux-x64","vflags":"-no-parallel"},{"os":"macos-15","platform":"macos-arm64","vflags":"-no-parallel"},{"os":"macos-15-intel","platform":"macos-x64","vflags":"-no-parallel"}]' ||
             '[{"os":"ubuntu-22.04","platform":"linux-x64","vflags":"-no-parallel"},{"os":"macos-15","platform":"macos-arm64","vflags":"-no-parallel"},{"os":"macos-15-intel","platform":"macos-x64","vflags":"-no-parallel"},{"os":"windows-2022","platform":"windows-x64","vflags":""}]'
           ) }}
       fail-fast: true
@@ -181,10 +185,21 @@ jobs:
             echo "::error::temporary v up remote has $bare_sha instead of $tested_sha"
             exit 1
           fi
-          # Build the seed using the V and VC repositories already on the runner.
+          # The cross-bootstrap checks deliberately overwrite vc/v.c. oldv
+          # copies partial clones with rsync, including their dirty worktrees.
+          # Restore the committed C input in a private copy, not the checkout
+          # used by the preceding bootstrap checks.
           oldv_workdir=$(mktemp -d "$RUNNER_TEMP/oldv.XXXXXX")
+          vc_seed="$oldv_workdir/vc-seed"
+          rsync -a "$PWD/vc/" "$vc_seed/"
+          git -C "$vc_seed" restore --source=HEAD --worktree -- v.c
+          if [ -n "$(git -C "$vc_seed" status --porcelain=v1)" ]; then
+            echo "::error::VC seed contains unexpected worktree changes"
+            git -C "$vc_seed" status --short
+            exit 1
+          fi
           ./v run cmd/tools/oldv.v -v --cache=false --workdir "$oldv_workdir" \
-            --vrepo "$vup_remote" --vcrepo "$PWD/vc" "$recent_good_commit"
+            --vrepo "$vup_remote" --vcrepo "$vc_seed" "$recent_good_commit"
           cd "$oldv_workdir/v_at_$recent_good_commit"
           seed_sha=$(git rev-parse 'HEAD^{commit}')
           if [ "$seed_sha" != "$recent_good_commit" ]; then
