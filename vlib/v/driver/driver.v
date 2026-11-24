@@ -20330,7 +20330,9 @@ If you want to split one module across subdirectories after moving the root file
 // directory can: their module sources are added once, and the test harness runs
 // the tests of every file.
 fn v_test_batch_input_allowed(input_file string, extra []string, path string) bool {
-	if !input_file.ends_with('_test.v') || !path.ends_with('_test.v') {
+	// `_test.c.v` files are C backend tests, which the C backend batches like the others.
+	if !(input_file.ends_with('_test.v') || input_file.ends_with('_test.c.v'))
+		|| !(path.ends_with('_test.v') || path.ends_with('_test.c.v')) {
 		return false
 	}
 	if !os.is_file(input_file) || !os.is_file(path) {
