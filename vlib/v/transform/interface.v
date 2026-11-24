@@ -1099,12 +1099,22 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 			source_type = transformed_type
 		}
 	}
-	mut source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
 	normalized_source_type_source_id := t.normalize_type_alias(source_type)
 	source_is_pointer := flat.source_type_shape(source_type).has(.pointer)
 	source_is_pointer_alias := !source_is_pointer
 		&& flat.source_type_shape(normalized_source_type_source_id).has(.pointer)
 	source_has_pointer_storage := source_is_pointer || source_is_pointer_alias
+	mut source := source_expr
+	mut box_array_element := false
+	if !t.is_stable_expr_for_reuse(source_expr) {
+		box_array_element = !source_has_pointer_storage && !share_source
+			&& t.interface_box_can_copy_array_element(source_expr, normalized_source_type_source_id)
+		if !box_array_element {
+			tmp_name := t.new_temp('iface_src')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, source_type)
+			source = t.make_ident(tmp_name)
+		}
+	}
 	alias_implements_interface := source_is_pointer_alias && !isnil(t.tc)
 		&& t.tc.type_text_implements_interface(source_type, iface_name_id)
 	if source_is_pointer_alias && !share_source
@@ -1124,7 +1134,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	} else {
 		source_type
 	})
-	if !is_ptr && !share_source {
+	if !is_ptr && !share_source && !box_array_element {
 		source = t.clone_owned_array_storage_value(source, source_type, t.array_storage_source_is_mut_param(source_id))
 	}
 	t.mark_interface_boxed_type(iface_name_id, concrete_type)
@@ -1133,7 +1143,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 			t.mark_interface_boxed_type(iface_name_id, impl_name_source_id)
 		}
 	}
-	if !is_ptr && !t.expr_can_take_address(source) {
+	if !is_ptr && !box_array_element && !t.expr_can_take_address(source) {
 		tmp_name := t.new_temp('iface_src')
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, source_type)
 		source = t.make_ident(tmp_name)
@@ -1146,11 +1156,12 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	// call args) where the box must alias the original value.
 	// The pointer is typed (`&Concrete`) so codegen can recover the concrete
 	// type and emit the matching `_typ` dispatch id.
-	object_expr := if is_ptr {
+	object_type := flat.source_type_composition_one(.pointer, concrete_type)
+	mut object_expr := if is_ptr {
 		source
 	} else if share_source_storage && !source_is_pointer_alias && t.expr_can_take_address(source) {
 		addr := t.make_prefix(.amp, source)
-		t.set_node_typ(int(addr), flat.source_type_composition_one(.pointer, concrete_type))
+		t.set_node_typ(int(addr), object_type)
 		addr
 	} else {
 		// A pointer alias needs its own boxed slot, even when its pointee is shared.
@@ -1159,20 +1170,28 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		size := t.make_sizeof_type(concrete_type)
 		dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], flat.source_type_voidptr)
 		if t.interface_box_object_cast_needs_raw_call(concrete_type) {
-			t.set_node_typ(int(dup), flat.source_type_composition_one(.pointer, concrete_type))
+			t.set_node_typ(int(dup), object_type)
 			dup
 		} else {
-			t.make_cast(flat.source_type_composition_one(.pointer, concrete_type), dup, flat.source_type_composition_one(.pointer, concrete_type))
+			t.make_cast(object_type, dup, object_type)
 		}
 	}
-	field_base := if is_ptr {
-		base := t.make_prefix(.mul, source)
+	if box_array_element {
+		// Snapshot at the original temporary's evaluation point. Read interface
+		// fields from the resulting box so the index is evaluated only once.
+		tmp_name := t.new_temp('iface_object')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, object_expr, object_type)
+		object_expr = t.make_ident(tmp_name)
+		t.set_node_typ(int(object_expr), object_type)
+	}
+	field_base := if is_ptr || box_array_element {
+		base := t.make_prefix(.mul, object_expr)
 		t.set_node_typ(int(base), concrete_type)
 		base
 	} else {
 		source
 	}
-	mut field_ids := []flat.NodeId{cap: fields.len + 2}
+	mut field_ids := []flat.NodeId{cap: fields.len + if box_array_element { 3 } else { 2 }}
 	type_id := t.interface_impl_type_id(iface_name_id, concrete_type) or {
 		if interface_pattern_is_collapsed_container_type(concrete_type) {
 			t.interface_container_cast_type_id(iface_name_id, concrete_type) or { 0 }
@@ -1183,7 +1202,11 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	if type_id != 0 {
 		field_ids << t.make_sum_literal_field('_typ', t.make_int_literal(type_id), flat.source_type_int)
 	}
-	field_ids << t.make_sum_literal_field('_object', object_expr, flat.source_type_composition_one(.pointer, concrete_type))
+	field_ids << t.make_sum_literal_field('_object', object_expr, object_type)
+	if box_array_element {
+		field_ids << t.make_sum_literal_field('_object_is_boxed', t.make_bool_literal(true),
+			flat.source_type_bool)
+	}
 	for field in fields {
 		field_type_source_id := t.normalize_type_alias(field.typ.source_type_id())
 
@@ -1208,6 +1231,20 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		source_value:   iface_name_id
 		typ:            iface_name_id
 	})
+}
+
+// interface_box_can_copy_array_element reports whether an indexed struct can
+// be copied directly from array storage into an interface box.
+fn (t &Transformer) interface_box_can_copy_array_element(id flat.NodeId, concrete_type u32) bool {
+	node := t.a.node(id)
+	if node.kind != .index || node.value == 'range' || node.children_count < 2 || isnil(t.tc) {
+		return false
+	}
+	base := t.a.child(node, 0)
+	base_type := t.normalize_type_alias(t.trim_pointer_type(t.normalize_type_alias(t.node_type(base))))
+	return (t.is_array_type(base_type) || t.is_fixed_array_type(base_type))
+		&& t.expr_can_take_address(id)
+		&& t.tc.parse_canonical_type_cached(concrete_type) is types.Struct
 }
 
 fn (t &Transformer) interface_box_object_cast_needs_raw_call(concrete_type_id u32) bool {
