@@ -24,6 +24,11 @@ fn _memory_panic(fname string, size int) {
 		eprint(' < 0')
 	}
 	eprintln(')')
+	$if freestanding {
+		// Panic formatting can allocate and fail recursively during OOM.
+		eprintln('memory allocation failure')
+		exit(1)
+	}
 	panic('memory allocation failure')
 }
 
@@ -435,6 +440,20 @@ pub fn vcalloc(n int) &u8 {
 // use_arena is a constant at each call site; opting out never changes thread-local state.
 @[inline]
 fn vcalloc_impl(n int, use_arena bool) &u8 {
+	return vcalloc_scoped_impl(n, use_arena, true)
+}
+
+// vcalloc_heap allocates zeroed, scanned memory through the configured GC or
+// manual heap, bypassing scoped arenas and preallocation. It does not change
+// the current allocator and does not root the returned pointer for the caller.
+// Keep a live reference while using it. Zero returns nil; negative sizes panic.
+@[inline]
+pub fn vcalloc_heap(n int) &u8 {
+	return vcalloc_scoped_impl(n, false, false)
+}
+
+@[inline]
+fn vcalloc_scoped_impl(n int, use_arena bool, use_prealloc bool) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc %6d total %10d\n', n, total_m)
@@ -455,8 +474,11 @@ fn vcalloc_impl(n int, use_arena bool) &u8 {
 		}
 	}
 	$if prealloc {
-		return unsafe { prealloc_calloc(n) }
-	} $else $if vgc ? {
+		if use_prealloc {
+			return unsafe { prealloc_calloc(n) }
+		}
+	}
+	$if vgc ? {
 		return unsafe { &u8(vgc_calloc(uint(n))) }
 	} $else $if gcboehm ? {
 		return unsafe { &u8(C.GC_MALLOC(n)) }
@@ -531,6 +553,20 @@ pub fn vcalloc_noscan(n int) &u8 {
 // free allows for manually freeing memory allocated at the address `ptr`.
 @[unsafe]
 pub fn free(ptr voidptr) {
+	unsafe { free_impl(ptr, true) }
+}
+
+// vfree_heap releases memory from vcalloc_heap using the configured GC/manual
+// release policy, bypassing preallocation's free no-op. It does not change the
+// current allocator. Only pass a live ordinary-heap allocation, once; nil is valid.
+// GC modes retain their normal free policy, and arenas still own their storage.
+@[unsafe]
+pub fn vfree_heap(ptr voidptr) {
+	unsafe { free_impl(ptr, false) }
+}
+
+@[inline; unsafe]
+fn free_impl(ptr voidptr, use_prealloc bool) {
 	$if trace_free ? {
 		C.fprintf(C.stderr, c'free ptr: %p\n', ptr)
 	}
@@ -563,8 +599,9 @@ pub fn free(ptr voidptr) {
 		return
 	}
 	$if prealloc {
-		return
-	} $else $if vgc ? {
+		if use_prealloc { return }
+	}
+	$if vgc ? {
 		// VGC: explicit free is optional (GC will collect unreachable objects).
 		// But hint the allocator for faster reuse.
 		vgc_free(ptr)
@@ -583,10 +620,6 @@ pub fn free(ptr voidptr) {
 			}
 			unsafe { C.GC_FREE(ptr) }
 		}
-	} $else $if freestanding {
-		// route through the freestanding runtime instead of the libc free
-		unsafe { __free(ptr) }
-		return
 	} $else {
 		$if !no_builtin_arena ? {
 			// Arena memory is released in bulk by its arena.
@@ -598,7 +631,9 @@ pub fn free(ptr voidptr) {
 		// the block to the C allocator, and it mirrors where _ht_alloc fires, so
 		// report the free here (after the nil / none__ / nop / GC guards above).
 		_ht_free(ptr)
-		$if windows {
+		$if freestanding {
+			unsafe { __free(ptr) }
+		} $else $if windows {
 			// Warning! On windows, we always use _aligned_free to free memory.
 			unsafe { C._aligned_free(ptr) }
 		} $else {
@@ -732,10 +767,11 @@ pub fn memdup_align(src voidptr, sz int, align int) voidptr {
 		// builds, which Vinix does not use, call this.
 		panic('memdup_align is not implemented on Vinix')
 	} $else $if freestanding {
-		// todo: is this safe to call malloc there? We export __malloc as malloc and it uses dlmalloc behind the scenes
-		// so theoretically it is safe
-		panic('memdup_align is not implemented with -freestanding')
-		res = unsafe { __malloc(uint(n)) }
+		$if native && linux {
+			res = unsafe { bmem_aligned_alloc(u64(n), u64(align)) }
+		} $else {
+			res = unsafe { __malloc_align(uint(n), uint(align)) }
+		}
 	} $else {
 		$if windows {
 			// Warning! On windows, we always use _aligned_malloc to allocate memory.

@@ -12,14 +12,32 @@ const max_posix_transition_seconds = 167 * seconds_per_hour + 59 * seconds_per_m
 
 // The loaders are guarded by a lock of this module rather than declared `shared`:
 // a shared global makes every program that imports `time` compile `sync` too.
-__global zoneinfo_loaders = []ZoneinfoLoaderFn{}
+struct ZoneinfoLoaderNode {
+mut:
+	loader ZoneinfoLoaderFn @[required]
+	next   &ZoneinfoLoaderNode = unsafe { nil }
+}
+
+__global zoneinfo_loaders_head &ZoneinfoLoaderNode
+__global zoneinfo_loaders_tail &ZoneinfoLoaderNode
+__global zoneinfo_loaders_count int
 
 // register_zoneinfo_loader registers a fallback loader for IANA time zone data.
 // Registered loaders are used after ZONEINFO, system zoneinfo paths, and V's
 // installed zoneinfo.zip have been tried.
 pub fn register_zoneinfo_loader(loader ZoneinfoLoaderFn) {
 	zoneinfo_loaders_lock()
-	zoneinfo_loaders << loader
+	// Registry entries outlive the registering thread and its scoped allocator.
+	// Scanned heap storage also keeps captured GC pointers in function values live.
+	mut node := unsafe { &ZoneinfoLoaderNode(vcalloc_heap(int(sizeof(ZoneinfoLoaderNode)))) }
+	node.loader = loader
+	if zoneinfo_loaders_tail == unsafe { nil } {
+		zoneinfo_loaders_head = node
+	} else {
+		zoneinfo_loaders_tail.next = node
+	}
+	zoneinfo_loaders_tail = node
+	zoneinfo_loaders_count++
 	zoneinfo_loaders_unlock()
 }
 
@@ -176,7 +194,12 @@ fn load_zoneinfo_location(name string) !&Location {
 
 fn zoneinfo_loaders_snapshot() []ZoneinfoLoaderFn {
 	zoneinfo_loaders_lock()
-	loaders := zoneinfo_loaders.clone()
+	mut loaders := []ZoneinfoLoaderFn{cap: zoneinfo_loaders_count}
+	mut cursor := zoneinfo_loaders_head
+	for cursor != unsafe { nil } {
+		loaders << cursor.loader
+		cursor = cursor.next
+	}
 	zoneinfo_loaders_unlock()
 	return loaders
 }

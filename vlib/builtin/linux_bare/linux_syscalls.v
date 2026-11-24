@@ -238,9 +238,10 @@ $if arm64 {
 	const sys_nr_madvise = u64(233)
 	const sys_nr_getpid = u64(172)
 	const sys_nr_clone = u64(220)
+	const sys_nr_futex = u64(98)
 	const sys_nr_dup3 = u64(24)
 	const sys_nr_execve = u64(221)
-	const sys_nr_exit = u64(93)
+	const sys_nr_exit_group = u64(94)
 	const sys_nr_getuid = u64(174)
 	const sys_nr_waitid = u64(95)
 } $else {
@@ -255,16 +256,23 @@ $if arm64 {
 	const sys_nr_sched_yield = u64(24)
 	const sys_nr_madvise = u64(28)
 	const sys_nr_getpid = u64(39)
+	const sys_nr_futex = u64(202)
 	const sys_nr_fork = u64(57)
 	const sys_nr_vfork = u64(58)
 	const sys_nr_dup2 = u64(33)
 	const sys_nr_execve = u64(59)
-	const sys_nr_exit = u64(60)
+	const sys_nr_exit_group = u64(231)
 	const sys_nr_getuid = u64(102)
 	const sys_nr_waitid = u64(247)
 }
 
 $if !i386 {
+	// All runtime modes share the raw futex ABI, including hosted vlibc.
+	fn bf_futex_raw(address voidptr, operation int, value u32, timeout voidptr, second voidptr, third u32) i64 {
+		return i64(sys_call6(sys_nr_futex, u64(address), u64(operation), u64(value),
+			u64(timeout), u64(second), u64(third)))
+	}
+
 	fn split_int_errno(rc_in u64) (i64, Errno) {
 		rc := i64(rc_in)
 		if rc < 0 {
@@ -367,7 +375,7 @@ $if !i386 {
 
 	@[noreturn]
 	fn sys_exit(ec int) {
-		sys_call1(sys_nr_exit, u64(ec))
+		sys_call1(sys_nr_exit_group, u64(ec))
 		for {}
 	}
 
@@ -664,7 +672,7 @@ $if !i386 {
 		return res
 	}
 
-	$if freestanding {
+	$if freestanding && !v_bare_no_startup ? {
 		// _start is the process entry point: the kernel leaves argc at the stack
 		// pointer, followed by the argv array. It calls `main(argc, argv)` and exits
 		// with its result. A top-level asm block lands in whatever section the C
@@ -676,11 +684,19 @@ $if !i386 {
 				.globl _start
 				_start:
 				xor rbp, rbp
-				mov rdi, [rsp]
-				lea rsi, [rsp + 8]
+					mov r12, rsp
+					mov rdi, rsp
+					call v_bare_tls_init
+					mov rdi, [r12]
+					lea rsi, [r12 + 8]
+					call v_bare_run_initializers
+					mov rdi, [r12]
+					lea rsi, [r12 + 8]
 				call main
-				mov rdi, rax
-				mov rax, 60
+				mov r12, rax
+				call v_bare_run_finalizers
+				mov rdi, r12
+				mov rax, 231
 				syscall
 				.popsection
 			}
@@ -691,10 +707,19 @@ $if !i386 {
 				_start:
 				mov x29, 0
 				mov x30, 0
-				ldr x0, [sp]
-				add x1, sp, 8
+					mov x19, sp
+					mov x0, sp
+					bl v_bare_tls_init
+					ldr x0, [x19]
+					add x1, x19, 8
+					bl v_bare_run_initializers
+					ldr x0, [x19]
+					add x1, x19, 8
 				bl main
-				mov x8, 93
+				mov x19, x0
+				bl v_bare_run_finalizers
+				mov x0, x19
+				mov x8, 94
 				svc 0
 				.popsection
 			}

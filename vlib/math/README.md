@@ -40,20 +40,24 @@ with multiword arithmetic before evaluation, including inputs near a multiple of
 values up to `math.max_f64`. Infinite angles produce NaN.
 
 `lgamma` aliases `log_gamma`. `remainder(x, y)` uses the IEEE nearest-integer,
-ties-to-even remainder and preserves the dividend's sign on zero. On the C backend,
-`fma(x, y, z)` computes one rounded multiply-add, including intermediate product overflow.
+ties-to-even remainder and preserves the dividend's sign on zero.
+`fma(x, y, z)` computes one rounded multiply-add, including intermediate product overflow,
+on every backend. Portable builds use exact multiword arithmetic without allocating.
 Windows TinyCC imports `fma` from the Universal CRT (`ucrtbase.dll`), included in Windows 10
 and later. Older Windows systems require the Universal CRT update or redistributable.
-The C backend uses its math library for both operations. Other backends and pure V builds
-that exclude `math/*.c.v` use portable remainder and a two-round multiply-add fallback.
+The hosted C backend uses its math library for both operations. Other backends and pure V builds
+use portable implementations.
+Portable `pow` evaluates integer powers by scaled successive squaring with product residuals;
+its work grows logarithmically with the exponent. Scaling also preserves representable tiny
+reciprocals when the corresponding positive power would overflow.
 `floor_mod(x, y)` instead follows the divisor's sign, including zero.
 `to_degrees` and `to_radians` convert angle units.
 `is_power_of_two` and `next_power_of_two` operate on `u64`; the latter returns zero when the
 next power cannot fit. `classify` distinguishes NaN, infinite, normal, subnormal and zero.
 
 To run the pure V math tests, use `v -d pure_v_math -exclude '@vlib/math/*.c.v' test vlib/math/`.
-The define selects the portable fallback's test expectations; normal C builds also test
-the math library's single-round `fma` behavior.
+The define selects the portable implementations for tests that exercise both source families.
+Both families test the same single-round `fma` behavior.
 
 `wrapping(value)` and `saturating(value)` create integer arithmetic wrappers for
 `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, and `int`.

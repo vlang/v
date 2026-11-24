@@ -287,3 +287,21 @@ for _ in 0 .. 3 {
 	println(<-ticker.c)
 }
 ```
+
+Linux C freestanding uses the same TZif and POSIX timezone rule engine as
+`load_location`, with kernel filesystem, environment, clock, and locking services.
+`now()` and `Time.local()` retain their local calendar fields and epoch precision,
+including both occurrences of a repeated DST hour. Unresolved local literals choose
+the earlier occurrence of a repeated hour; nonexistent wall times normalize forward
+by the clock jump. Elapsed additions cross transitions by their actual duration;
+`add_date` preserves the calendar and its existing offset preference.
+
+The local-clock configuration is a snapshot of the startup `TZ` and `ZONEINFO`
+environment. Missing or invalid configured data falls back to UTC. Successful data
+is cached only on stable heap storage; registering a timezone loader invalidates
+that cache. Explicit `load_location('Local')` performs a fresh lookup. Local `Time`
+values retain an offset snapshot rather than a location pointer, so they remain
+valid after a scoped arena or preallocation scope is released. As elsewhere, an
+explicit IANA-zoned `Time` retains its `Location` and shares that object's lifetime.
+Fallback loaders run outside the registry lock. Use `utc()` for clocks inside a
+loader; recursive local-clock loading is rejected rather than waiting on itself.

@@ -12,6 +12,7 @@
 #include "thread_helper.h"
 
 #ifndef _WIN32
+#include <pthread.h>
 #include <stdint.h>
 #include <string.h>
 

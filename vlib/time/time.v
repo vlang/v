@@ -50,6 +50,11 @@ pub:
 	second     int
 	nanosecond int
 	is_local   bool // used to make time.now().local().local() == time.now().local()
+mut:
+	// A resolved local value needs its original offset to distinguish the two
+	// instants in a repeated DST hour without retaining allocator-owned pointers.
+	local_offset_known   bool @[json: '-']
+	local_offset_seconds i32  @[json: '-']
 }
 
 @[inline]
@@ -144,7 +149,21 @@ fn new_checked(t Time) !Time {
 
 // Time.new returns a time struct with the calculated Unix time.
 pub fn Time.new(t Time) Time {
-	return time_with_unix(normalize_new_time(t))
+	normalized := normalize_new_time(t)
+	$if freestanding && linux && !native && !i386 {
+		if !normalized.has_location() {
+			wall := time_fields_to_unix(normalized)
+			if normalized.unix != wall {
+				return Time{
+					...normalized
+					unix:                 wall
+					local_offset_known:   false
+					local_offset_seconds: 0
+				}
+			}
+		}
+	}
+	return time_with_unix(normalized)
 }
 
 // new returns a time struct with the calculated Unix time.
@@ -219,6 +238,14 @@ pub fn (t Time) unix_nano() i64 {
 
 // add returns a new time with the given duration added.
 pub fn (t Time) add(duration_in_nanosecond Duration) Time {
+	$if freestanding && linux && !native && !i386 {
+		if t.is_local && !t.has_location() {
+			loc := bare_local_clock_location()
+			instant := if t.local_offset_known { t.unix() } else { bare_local_wall_to_unix(t, loc) }
+			utc_time := unix_nanosecond(instant, t.nanosecond).add(duration_in_nanosecond)
+			return bare_local_from_unix_at_location(utc_time.unix, utc_time.nanosecond, loc)
+		}
+	}
 	// This expression overflows i64 for big years (and we do not have i128 yet):
 	// nanos := t.unix * 1_000_000_000 + i64(t.nanosecond) <-
 	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
@@ -497,9 +524,14 @@ pub fn (t Time) debug() string {
 
 // offset returns time zone UTC offset in seconds.
 pub fn offset() int {
-	t := utc()
-	local := t.local()
-	return int(local.unix - t.unix)
+	$if freestanding && linux && !native && !i386 {
+		loc := bare_local_clock_location()
+		return loc.offset_at(utc().unix) or { panic(err) }
+	} $else {
+		t := utc()
+		local := t.local()
+		return int(local.unix - t.unix)
+	}
 }
 
 // local_to_utc converts the receiver `t` to the corresponding UTC time, if it contains local time.
@@ -511,9 +543,16 @@ pub fn (t Time) local_to_utc() Time {
 	if !t.is_local {
 		return t
 	}
-	return Time{
-		...t.add(i64(-offset()) * second)
-		is_local: false
+	$if freestanding && linux && !native && !i386 {
+		if t.local_offset_known {
+			return unix_nanosecond(time_with_unix(t).unix - i64(t.local_offset_seconds), t.nanosecond)
+		}
+		return unix_nanosecond(bare_local_wall_to_unix(t, bare_local_clock_location()), t.nanosecond)
+	} $else {
+		return Time{
+			...t.add(i64(-offset()) * second)
+			is_local: false
+		}
 	}
 }
 
@@ -526,9 +565,13 @@ pub fn (u Time) utc_to_local() Time {
 	if u.is_local {
 		return u
 	}
-	return Time{
-		...u.add(i64(offset()) * second)
-		is_local: true
+	$if freestanding && linux && !native && !i386 {
+		return u.local()
+	} $else {
+		return Time{
+			...u.add(i64(offset()) * second)
+			is_local: true
+		}
 	}
 }
 

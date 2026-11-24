@@ -306,6 +306,7 @@ fn test_cinit_global_keeps_linker_section_and_static_initializer() {
 	response voidptr
 }
 
+
 @[_linker_section: '.requests']
 @[cinit]
 @[export: 'boot_request']
@@ -355,4 +356,52 @@ fn main() {
 		'box', 'Box')
 	assert c_code.contains('box = (main__Box){0};'), c_code
 	assert !c_code.contains('box = {0};')
+}
+
+fn test_initialized_thread_local_globals_keep_storage_and_constant_values() {
+	c_code := gen_c_for_source('initialized_thread_locals', 'struct TlsPair {
+	first i32
+	second i32
+}
+__global test__anon_fn_tls_zero = i32(0)
+__global test__anon_fn_tls_scalar = i32(17)
+__global test__anon_fn_tls_fixed = [i32(19), 23, 29]!
+@[cinit]
+__global test__anon_fn_tls_pair = TlsPair{first: 31, second: 37}
+@[cinit]
+__global test__anon_fn_tls_cinit_fixed = [i32(41), 43]!
+__global test__anon_fn_tls_uninitialized [3]i32
+fn main() {
+	_ = test__anon_fn_tls_zero
+	_ = test__anon_fn_tls_scalar
+	_ = test__anon_fn_tls_fixed
+	_ = test__anon_fn_tls_pair
+	_ = test__anon_fn_tls_cinit_fixed
+	_ = test__anon_fn_tls_uninitialized
+}
+')
+	for name, values in {
+		'test__anon_fn_tls_zero':          ['0']
+		'test__anon_fn_tls_scalar':        ['17']
+		'test__anon_fn_tls_fixed':         ['19', '23', '29']
+		'test__anon_fn_tls_pair':          ['31', '37']
+		'test__anon_fn_tls_cinit_fixed':   ['41', '43']
+		'test__anon_fn_tls_uninitialized': ['{0}']
+	} {
+		mut found := false
+		for line in c_code.split_into_lines() {
+			if line.starts_with('_Thread_local ') && line.contains(name) {
+				found = true
+				for value in values {
+					assert line.contains(value), line
+				}
+			}
+		}
+		assert found, '${name}: ${c_code}'
+	}
+	// The hosted TinyCC fallback must initialize a fresh thread's slot too.
+	assert c_code.contains('test__anon_fn_tls_scalar_initial_value')
+	assert c_code.contains('test__anon_fn_tls_fixed_initial_value')
+	assert c_code.contains('test__anon_fn_tls_pair_initial_value')
+	assert c_code.contains('if (p) memcpy(p, &')
 }
