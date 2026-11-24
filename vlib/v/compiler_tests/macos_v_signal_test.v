@@ -6,7 +6,7 @@ fn test_macos_signal_backend_selection_and_instrumentation_boundary() ! {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn main() { println(42) }\n')!
+	os.write_file(source, 'import os\nfn main() { os.signal_ignore(.pipe) }\n')!
 	for role in ['raw', 'arm64', 'hosted'] {
 		output := os.join_path(root, '${role}.c')
 		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-os',
@@ -18,6 +18,16 @@ fn test_macos_signal_backend_selection_and_instrumentation_boundary() ! {
 		assert build.exit_code == 0, build.output
 		code := os.read_file(output)!
 		assert code.contains('bare_macos_signal(') == (role == 'raw'), role
+		mut found_mask := false
+		for line in code.split_into_lines() {
+			if line.contains(' os__signal_ignore_internal(') && line.ends_with(' {') {
+				found_mask = true
+				body := code.all_after(line).all_before('\n}')
+				assert body.contains('v_macos_kernel_bsd_call6(') == (role == 'raw'), body
+				assert body.contains('sigprocmask(') == (role != 'raw'), body
+			}
+		}
+		assert found_mask, role
 		if role == 'raw' {
 			mut found := false
 			for line in code.split_into_lines() {
