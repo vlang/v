@@ -227,6 +227,32 @@ fn test_build_v_args_failed_accepts_literal_arguments() {
 	assert build_v_args_failed([]string{})
 }
 
+// Two production builds of cmd/v, one with and one without debug information, must fit in the
+// memory budget of a 16 GB CI runner, but two with debug information must not.
+fn test_v_binaries_run_side_by_side_within_the_memory_budget() {
+	prod_g := v_binary_build_memory(['-o', 'v_prod_g', '-prod', '-g'])
+	prod := v_binary_build_memory(['-o', 'v_prod', '-prod'])
+	prod_cg := v_binary_build_memory(['-o', 'v_prod_cg', '-prod', '-cg'])
+	debug := v_binary_build_memory(['-o', 'v_g', '-g'])
+	limit := 16 * gib / 4 * 3
+	assert prod_g + prod <= limit
+	assert prod_g + prod_cg > limit
+	assert prod_g + debug + debug <= limit
+	mut budget := &VBinaryMemoryBudget{
+		limit: limit
+	}
+	budget.acquire(prod_g)
+	budget.acquire(prod)
+	assert budget.in_use == prod_g + prod
+	budget.release(prod_g)
+	budget.release(prod)
+	assert budget.in_use == 0
+	// A build bigger than the whole budget still starts when nothing else runs.
+	mut small := &VBinaryMemoryBudget{}
+	small.acquire(prod_g)
+	assert small.in_use == prod_g
+}
+
 fn test_find_started_redis_on_default_port_accepts_an_unrewritten_process_title() {
 	// `set-proc-title no` keeps the original command line, which does not show the port.
 	lines := [
