@@ -3,6 +3,7 @@ name: MSVC parallel debug binaries
 on:
   pull_request:
     paths:
+      - 'vlib/v/driver/driver.v'
       - 'vlib/v/driver/msvc.v'
       - 'vlib/v/driver/msvc_test.v'
       - 'cmd/tools/testing/common.v'
@@ -42,10 +43,28 @@ jobs:
       - name: Verify debug argument translation
         shell: pwsh
         run: |
-          .\v.exe fmt -verify vlib/v/driver/msvc.v vlib/v/driver/msvc_test.v
+          .\v.exe fmt -verify vlib/v/driver/driver.v vlib/v/driver/msvc.v vlib/v/driver/msvc_test.v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe -cc msvc -silent vlib/v/driver/msvc_test.v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check debug artifact in an output directory with spaces
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'debug output'
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          $src = Join-Path $dir 'hello.v'
+          Set-Content -LiteralPath $src -Value "fn main() { println('debug artifact') }"
+          $exe = Join-Path $dir 'hello.exe'
+          $pdb = Join-Path $dir 'hello.pdb'
+          .\v.exe -cc msvc -g -showcc -o $exe $src
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-Item -LiteralPath $pdb -ErrorAction Stop).Length -eq 0) { throw 'Empty PDB' }
+          $headers = dumpbin.exe /headers $exe | Out-String
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host $headers
+          if ($headers -notmatch 'RSDS' -or $headers -notmatch [regex]::Escape('hello.pdb')) { throw 'Wrong CodeView reference' }
+          $output = & $exe
+          if ($LASTEXITCODE -ne 0 -or $output -ne 'debug artifact') { throw 'Debug executable failed' }
       - name: Build all five original compiler binaries in parallel
         shell: pwsh
         run: |
