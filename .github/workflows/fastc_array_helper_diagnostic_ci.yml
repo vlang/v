@@ -29,7 +29,7 @@ jobs:
           mkdir -p "$root"
           failed=0
           for cc in gcc tcc; do
-            for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v; do
+            for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v vlib/v/gen/fastc/vox_constructs_test.v; do
               label="$cc-$(basename "$test" .v)"
               rc=0
               ./v -cc "$cc" -no-retry-compilation -silent "$test" >"$root/$label.log" 2>&1 || rc=$?
@@ -52,22 +52,22 @@ jobs:
           from pathlib import Path
           p = Path("vlib/v/gen/fastc/fastc.v")
           s = p.read_text()
-          old = "text := fastc_render_c_unit(pieces, units, g, first_unit, end_unit)\n\tfile.write_string(text) or {"
-          new = """text := fastc_render_c_unit(pieces, units, g, first_unit, end_unit)
+          start = s.index("fn fastc_render_c_unit(")
+          end = s.index("// fastc_mono_unit_bytes", start)
+          section = s[start:end]
+          old = "\treturn fastc_take_string(mut out)"
+          new = """\ttext := fastc_take_string(mut out)
           \tcapture := os.getenv('FASTC_DIAGNOSTIC_CAPTURE')
           \tif capture != '' {
-          \t\tcapture_name := os.file_name(os.dir(path)) + '-' + os.file_name(path)
-          \t\tos.write_file(os.join_path(capture, capture_name), text) or {
-          \t\t\tfile.close()
-          \t\t\treturn 'diagnostic capture failed: ${err.msg()}'
-          \t\t}
+          \t\tos.write_file(os.join_path(capture, '\${os.getpid()}-\${g}.c'), text) or { panic(err) }
           \t}
-          \tfile.write_string(text) or {""".replace("\\t", "\t").replace("\\${", "${")
-          assert s.count(old) == 1, "unexpected split-unit writer"
-          p.write_text(s.replace(old, new))
+          \treturn text""".replace("\\\${", "\${")
+          assert section.count(old) == 1, "unexpected split-unit renderer"
+          s = s[:start] + section.replace(old, new) + s[end:]
+          p.write_text(s)
           PY
           git diff -- vlib/v/gen/fastc/fastc.v | tee "$root/diagnostic-compiler.patch"
-          ./v -prod -cg -o v-diagnostic cmd/v
+          ./v -prod -cg -compile-backend fastc -o v-diagnostic cmd/v
           git restore -- vlib/v/gen/fastc/fastc.v
           git diff --exit-code
       - name: Capture minimal original cases and compare declarations
@@ -96,10 +96,13 @@ jobs:
           failed=0
           for source in "$root"/cases/*.v; do
             label=$(basename "$source" .v)
+            case_dir="$root/cases/$label"
+            mkdir -p "$case_dir"
+            { printf "module main\n"; cat "$source"; } >"$case_dir/main.v"
             for attempt in 1 2 3; do
               out="$root/$label-$attempt"
               rc=0
-              ./v-diagnostic -b fastc -nocache -gc none -keepc -showcc -o "$out" "$source" >"$out.build.log" 2>&1 || rc=$?
+              ./v-diagnostic -b fastc -nocache -gc none -keepc -showcc -o "$out" "$case_dir" >"$out.build.log" 2>&1 || rc=$?
               cat "$out.build.log"
               printf '%s %s %s\n' "$label" "$attempt" "$rc" >>"$root/probe-status.txt"
               if [ "$rc" -eq 0 ]; then
@@ -109,7 +112,7 @@ jobs:
               fi
             done
           done
-          for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v; do
+          for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v vlib/v/gen/fastc/vox_constructs_test.v; do
             rc=0
             label=$(basename "$test" .v)
             ./v-diagnostic -silent "$test" >"$root/$label.instrumented.log" 2>&1 || rc=$?
@@ -117,6 +120,10 @@ jobs:
             printf '%s %s\n' "$label" "$rc" >>"$root/instrumented-status.txt"
             if [ "$rc" -ne 0 ]; then failed=1; fi
           done
+          if ! find "$root/split" -name '*.c' -type f | grep -q .; then
+            echo "No split units captured; diagnostic is incomplete" >&2
+            failed=1
+          fi
           python3 - "$root" <<'PY'
           import pathlib, re, sys
           root = pathlib.Path(sys.argv[1])
