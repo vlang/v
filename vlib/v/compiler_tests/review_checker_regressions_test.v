@@ -994,20 +994,14 @@ fn test_receiver_method_tail_multi_return_arguments_are_expanded() {
 }
 
 fn test_power_requires_numeric_operands_or_an_overload() {
-	run_bad(v3_bin, 'bad_bool_power', 'fn main() {\n\t_ := true ** 2\n}\n',
-		'operator `**` requires numeric operands; got `bool` and `int`')
-	run_bad(v3_bin, 'bad_array_power', 'fn main() {\n\t_ := [1] ** 2\n}\n',
-		'operator `**` requires numeric operands; got `[]int` and `int`')
-	run_bad(v3_bin, 'bad_string_power', "fn main() {\n\t_ := 'x' ** 2\n}\n",
-		'operator `**` requires numeric operands; got `string` and `int`')
-	run_bad(v3_bin, 'bad_bool_power_assign', 'fn main() {\n\tmut ok := true\n\tok **= false\n}\n',
-		'operator `**=` requires numeric operands; got `bool` and `bool`')
-	run_bad(v3_bin, 'bad_array_power_assign',
-		'fn main() {\n\tmut values := [1]\n\tvalues **= [2]\n}\n',
-		'operator `**=` requires numeric operands; got `[]int` and `[]int`')
-	run_bad(v3_bin, 'bad_string_power_assign',
-		"fn main() {\n\tmut value := 'x'\n\tvalue **= 'y'\n}\n",
-		'operator `**=` requires numeric operands; got `string` and `string`')
+	check_review_rejections('power_operands', [
+		ReviewFixture{'bad_bool_power', 'fn main() {\n\t_ := true ** 2\n}\n', 'operator `**` requires numeric operands; got `bool` and `int`'},
+		ReviewFixture{'bad_array_power', 'fn main() {\n\t_ := [1] ** 2\n}\n', 'operator `**` requires numeric operands; got `[]int` and `int`'},
+		ReviewFixture{'bad_string_power', "fn main() {\n\t_ := 'x' ** 2\n}\n", 'operator `**` requires numeric operands; got `string` and `int`'},
+		ReviewFixture{'bad_bool_power_assign', 'fn main() {\n\tmut ok := true\n\tok **= false\n}\n', 'operator `**=` requires numeric operands; got `bool` and `bool`'},
+		ReviewFixture{'bad_array_power_assign', 'fn main() {\n\tmut values := [1]\n\tvalues **= [2]\n}\n', 'operator `**=` requires numeric operands; got `[]int` and `[]int`'},
+		ReviewFixture{'bad_string_power_assign', "fn main() {\n\tmut value := 'x'\n\tvalue **= 'y'\n}\n", 'operator `**=` requires numeric operands; got `string` and `string`'},
+	])
 	out := run_good(v3_bin, 'good_overloaded_power', 'struct Exponent {
 	value int
 }
@@ -1089,12 +1083,10 @@ fn test_rune_receiver_methods_resolve() {
 }
 
 fn test_numeric_alias_returns_preserve_integer_float_direction() {
-	run_bad(v3_bin, 'bad_int_alias_float_variable_return',
-		'type Id = int\n\nfn f(x f64) Id {\n\treturn x\n}\n\nfn main() {}\n',
-		'cannot use `f64` as type `Id` in return argument')
-	run_bad(v3_bin, 'bad_int_alias_float_expression_return',
-		'type Id = int\n\nfn f(x f64) Id {\n\treturn x + 1.0\n}\n\nfn main() {}\n',
-		'cannot use `f64` as type `Id` in return argument')
+	check_review_rejections('numeric_alias_returns', [
+		ReviewFixture{'bad_int_alias_float_variable_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_variable_return.Id` in return argument'},
+		ReviewFixture{'bad_int_alias_float_expression_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x + 1.0\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_expression_return.Id` in return argument'},
+	])
 	out := run_good(v3_bin, 'good_float_alias_int_return',
 		'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n')
 	assert out == '1.0'
@@ -1210,19 +1202,14 @@ fn main() {
 }
 
 fn test_restrict_synthetic_hex_fallback_receivers() {
-	run_bad(v3_bin, 'bad_struct_hex_method', 'struct S {}\nfn main() {\n\t_ := S{}.hex()\n}\n',
-		'unknown function')
-	run_bad(v3_bin, 'bad_int_array_hex_method', 'fn main() {\n\t_ := [1, 2].hex()\n}\n',
-		'unknown function')
-	run_bad(v3_bin, 'bad_map_hex_method',
-		'fn main() {\n\tm := map[string]int{}\n\t_ := m.hex()\n}\n', 'unknown function')
-	run_bad(v3_bin, 'bad_float_hex_method', 'fn main() {\n\t_ := f32(1.5).hex()\n}\n',
-		'unknown function')
-	run_bad(v3_bin, 'bad_pointer_hex_method',
-		'fn main() {\n\tx := 1\n\tp := &x\n\t_ := p.hex()\n}\n', 'unknown function')
-	run_bad(v3_bin, 'bad_numeric_hex_arg',
-		'fn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := u8(1).hex(side_effect())\n}\n',
-		'expected 0 arguments, but got 1')
+	check_review_rejections('hex_receivers', [
+		ReviewFixture{'bad_struct_hex_method', 'struct S {}\nfn main() {\n\t_ := S{}.hex()\n}\n', 'unknown function'},
+		ReviewFixture{'bad_int_array_hex_method', 'fn main() {\n\t_ := [1, 2].hex()\n}\n', 'unknown function'},
+		ReviewFixture{'bad_map_hex_method', 'fn main() {\n\tm := map[string]int{}\n\t_ := m.hex()\n}\n', 'unknown function'},
+		ReviewFixture{'bad_float_hex_method', 'fn main() {\n\t_ := f32(1.5).hex()\n}\n', 'unknown function'},
+		ReviewFixture{'bad_pointer_hex_method', 'fn main() {\n\tx := 1\n\tp := &x\n\t_ := p.hex()\n}\n', 'unknown function'},
+		ReviewFixture{'bad_numeric_hex_arg', 'fn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := u8(1).hex(side_effect())\n}\n', 'expected 0 arguments, but got 1'},
+	])
 	out := run_good(v3_bin, 'supported_hex_methods',
 		"fn main() {\n\tprintln(u8(15).hex())\n\tprintln(i64(255).hex())\n\tprintln([u8(1), 15, 255].hex())\n\tprintln(char(65).hex())\n\tprintln(`A`.hex())\n\tprintln('abc'.hex())\n}\n")
 	assert out == '0f\nff\n010fff\n41\n41\n616263'
@@ -1241,12 +1228,10 @@ fn test_pointer_hex_receiver_methods_are_allowed() {
 }
 
 fn test_map_keys_and_values_reject_arguments() {
-	run_bad(v3_bin, 'bad_map_keys_arg',
-		'fn main() {\n\tm := map[string]int{}\n\t_ := m.keys(123)\n}\n',
-		'`.keys()` does not have any arguments')
-	run_bad(v3_bin, 'bad_map_values_arg',
-		"fn main() {\n\tm := map[string]int{}\n\t_ := m.values('x')\n}\n",
-		'`.values()` does not have any arguments')
+	check_review_rejections('map_method_arguments', [
+		ReviewFixture{'bad_map_keys_arg', 'fn main() {\n\tm := map[string]int{}\n\t_ := m.keys(123)\n}\n', '`.keys()` does not have any arguments'},
+		ReviewFixture{'bad_map_values_arg', "fn main() {\n\tm := map[string]int{}\n\t_ := m.values('x')\n}\n", '`.values()` does not have any arguments'},
+	])
 }
 
 fn test_array_to_void_array_is_not_implicitly_compatible() {
