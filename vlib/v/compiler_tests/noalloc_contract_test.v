@@ -561,8 +561,9 @@ fn main() { mut out := []u8{}; handler(mut out, 1) }
 	// Custom flags can change module lookup or limit the diagnostics in a batch.
 	individual_cases := if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] {
 		// Generic diagnostics may need later compiler stages. C declarations share a global name.
-		batched := cases.filter(!it.accepted && !it.isolated && !it.source.contains('fn C.'))
-		check_noalloc_rejection_batch(root, batched, modes, compiler_env)
+		batched := cases.filter(!it.isolated && !it.source.contains('fn C.'))
+		check_noalloc_acceptance_batch(root, batched.filter(it.accepted), modes, compiler_env)
+		check_noalloc_rejection_batch(root, batched.filter(!it.accepted), modes, compiler_env)
 		batched_names := batched.map(it.name)
 		cases.filter(it.name !in batched_names)
 	} else {
@@ -594,21 +595,50 @@ fn main() { mut out := []u8{}; handler(mut out, 1) }
 	}
 }
 
-fn check_noalloc_rejection_batch(root string, cases []NoallocCase, modes []string, compiler_env map[string]string) {
-	project := os.join_path(root, 'rejections')
+fn write_noalloc_batch(project string, cases []NoallocCase) {
 	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
 	for case in cases {
 		name := 'case_${case.name}'
 		dir := os.join_path(project, name)
 		os.mkdir_all(dir) or { panic(err) }
-		os.write_file(os.join_path(dir, '${name}.c.v'), 'module ${name}\n\n' + case.source) or {
+		fixture := if case.accepted {
+			// Keep the original entry point reachable so its calls are generated.
+			imports << 'import ${name}'
+			calls << '\t${name}.exercise()\n'
+			case.source.replace_once('\nfn main()', '\npub fn exercise()')
+		} else {
+			imports << 'import ${name} as _'
+			case.source
+		}
+		os.write_file(os.join_path(dir, '${name}.c.v'), 'module ${name}\n\n' + fixture) or {
 			panic(err)
 		}
-		imports << 'import ${name} as _'
 	}
-	os.write_file(os.join_path(project, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n') or {
+	os.write_file(os.join_path(project, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('')}}\n') or {
 		panic(err)
 	}
+}
+
+fn check_noalloc_acceptance_batch(root string, cases []NoallocCase, modes []string, compiler_env map[string]string) {
+	project := os.join_path(root, 'accepted')
+	c_path := os.join_path(root, 'accepted.c')
+	write_noalloc_batch(project, cases)
+	for mode in modes {
+		result := run_noalloc_fixture(project, c_path, mode, compiler_env)
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
+	generated_c := os.read_file(c_path) or { panic(err) }
+	for case in cases {
+		entry := 'case_${case.name}__exercise'
+		assert generated_c.contains('void ${entry}(void) {'), '${case.name}: missing generated entry point'
+		assert generated_c.contains('${entry}();'), '${case.name}: missing call to entry point'
+	}
+}
+
+fn check_noalloc_rejection_batch(root string, cases []NoallocCase, modes []string, compiler_env map[string]string) {
+	project := os.join_path(root, 'rejections')
+	write_noalloc_batch(project, cases)
 	for mode in modes {
 		result := run_noalloc_fixture(project, os.join_path(root, 'rejections.c'), mode,
 			compiler_env, '-json-errors')
