@@ -2719,6 +2719,13 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 					}
 					continue
 				}
+				if source.boxed_borrow && source.target_suffix == ''
+					&& tc.returned_receiver_call_source_borrows_storage(id, source.arg_id) {
+					if local := tc.returned_receiver_local_storage_source(source.arg_id, source.source_suffix, ancestors, local_sources) {
+						return local
+					}
+					continue
+				}
 				projected_type := tc.returned_receiver_projection_type(typ, source.target_suffix) or {
 					// A boxed interface or sum may hide the concrete payload field. Its recorded
 					// return alias still needs to outlive the caller's local storage.

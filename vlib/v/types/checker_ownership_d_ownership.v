@@ -4117,6 +4117,15 @@ fn (mut tc TypeChecker) ownership_prescan_return_param_sources(fn_name string, e
 		return
 	}
 	info := tc.ownership_prescan_call_info(node, local_types) or { return }
+	for source in tc.ownership_interface_return_loans(info) {
+		if source.boxed_borrow {
+			tc.ownership_prescan_add_return_param_descendant_from_call_arg(fn_name, node, info,
+				source, slot_idx, param_names)
+		} else {
+			tc.ownership_prescan_add_return_param_from_call_arg(fn_name, node, info, source.param_idx,
+				slot_idx, param_names)
+		}
+	}
 	param_slots := tc.ownership_state().ownership_fn_return_params[info.name] or {
 		[]OwnershipReturnParamSlot{}
 	}
@@ -4350,7 +4359,7 @@ fn (mut tc TypeChecker) ownership_add_fn_return_descendant(fn_name string, slot_
 
 fn (mut tc TypeChecker) ownership_add_fn_return_param_descendant(fn_name string, param_idx int, slot_idx int, source_suffix string, target_suffix string, source_is_prefix bool, boxed_borrow bool, via []string) {
 	if fn_name == '' || param_idx < 0 || slot_idx < 0
-		|| (source_suffix == '' && target_suffix == '' && !source_is_prefix) {
+		|| (source_suffix == '' && target_suffix == '' && !source_is_prefix && !boxed_borrow) {
 		return
 	}
 	mut st := tc.ownership_state()
@@ -11322,6 +11331,15 @@ fn (mut tc TypeChecker) ownership_mark_return_param_descendants_from_call(lhs_na
 	if lhs_name == '' || fn_name == '' || slot_idx < 0 {
 		return false
 	}
+	if slot_idx == 0 && unalias_type(sum_escape_success_type(tc.resolve_type(call_id))) is Interface {
+		if info := tc.resolve_call_info(call_id, node) {
+			for source in tc.ownership_interface_return_loans(info) {
+				if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, source.param_idx) {
+					tc.ownership_retain_boxed_borrow(lhs_name, arg_id, '', pos)
+				}
+			}
+		}
+	}
 	descs := tc.ownership_state().ownership_fn_return_param_descs[fn_name] or {
 		[]OwnershipReturnParamDescendant{}
 	}
@@ -11959,6 +11977,11 @@ fn (mut tc TypeChecker) ownership_return_loan_sources(call_name string, info Cal
 	for param_idx in st.ownership_fn_returns_param[call_name] {
 		sources << OwnershipReturnParamDescendant{ param_idx: param_idx }
 	}
+	for source in tc.ownership_interface_return_loans(info) {
+		if !source.boxed_borrow && source !in sources {
+			sources << source
+		}
+	}
 	for source in st.ownership_fn_return_param_descs[call_name] {
 		if source.slot_idx != 0 || source.target_suffix != '' || source.source_is_prefix {
 			continue
@@ -11969,6 +11992,34 @@ fn (mut tc TypeChecker) ownership_return_loan_sources(call_name string, info Cal
 		}
 	}
 	return sources
+}
+
+// An abstract method can return a reference into any of its reference arguments,
+// including in the concrete payload of an interface result.
+fn (tc &TypeChecker) ownership_interface_return_loans(info CallInfo) []OwnershipReturnParamDescendant {
+	if !info.has_receiver || info.params.len < 2 {
+		return []
+	}
+	payload := unalias_type(sum_escape_success_type(info.return_type))
+	boxed := payload is Interface
+	if !boxed && payload !is Pointer {
+		return []
+	}
+	receiver := unalias_type(unwrap_pointer(unalias_type(info.params[0])))
+	if receiver !is Interface {
+		return []
+	}
+	method := info.name.all_after_last('.')
+	if method !in tc.interface_abstract_method_names(receiver.name_id) {
+		return []
+	}
+	mut result := []OwnershipReturnParamDescendant{}
+	for i in 1 .. info.params.len {
+		if unalias_type(info.params[i]) is Pointer {
+			result << OwnershipReturnParamDescendant{ param_idx: i, boxed_borrow: boxed }
+		}
+	}
+	return result
 }
 
 // The success value of an Option or Result can borrow the same origin.
@@ -12576,6 +12627,11 @@ pub fn (mut tc TypeChecker) ownership_call_result_sources(id flat.NodeId) []Owne
 	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(call_id) }
 	is_multi_return := tc.resolve_type(call_id) is MultiReturn
 	mut result := []OwnershipCallResultSource{}
+	for source in tc.ownership_interface_return_loans(info) {
+		if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, source.param_idx) {
+			result << OwnershipCallResultSource{ arg_id: arg_id, boxed_borrow: source.boxed_borrow }
+		}
+	}
 	for param_idx in tc.ownership_state().ownership_fn_returns_param[call_name] {
 		if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, param_idx) {
 			if tc.ownership_call_returns_detached_array_header(call_name, param_idx, arg_id) {
@@ -12611,6 +12667,7 @@ pub fn (mut tc TypeChecker) ownership_call_result_sources(id flat.NodeId) []Owne
 			source_suffix:    source.source_suffix
 			target_suffix:    slot_prefix + desc.target_suffix
 			source_is_prefix: desc.source_is_prefix
+			boxed_borrow:     desc.boxed_borrow
 		}
 		if candidate !in result {
 			result << candidate
@@ -12623,11 +12680,14 @@ pub fn (mut tc TypeChecker) ownership_call_result_sources(id flat.NodeId) []Owne
 fn (mut tc TypeChecker) ownership_call_result_projection_sources(id flat.NodeId, suffix string) []OwnershipCallResultSource {
 	mut result := []OwnershipCallResultSource{}
 	for source in tc.ownership_call_result_sources(id) {
-		if ownership_storage_suffix_contains(source.target_suffix, suffix) {
+		if source.boxed_borrow && source.target_suffix == '' {
+			result << source
+		} else if ownership_storage_suffix_contains(source.target_suffix, suffix) {
 			result << OwnershipCallResultSource{
 				arg_id:           source.arg_id
 				source_suffix:    source.source_suffix + suffix[source.target_suffix.len..]
 				source_is_prefix: source.source_is_prefix
+				boxed_borrow:     source.boxed_borrow
 			}
 		} else if ownership_storage_suffix_contains(suffix, source.target_suffix) {
 			result << OwnershipCallResultSource{
@@ -12635,6 +12695,7 @@ fn (mut tc TypeChecker) ownership_call_result_projection_sources(id flat.NodeId,
 				source_suffix:    source.source_suffix
 				target_suffix:    source.target_suffix[suffix.len..]
 				source_is_prefix: source.source_is_prefix
+				boxed_borrow:     source.boxed_borrow
 			}
 		}
 	}

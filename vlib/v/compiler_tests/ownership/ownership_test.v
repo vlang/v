@@ -5272,3 +5272,148 @@ fn main() {
 ')
 	assert result.exit_code == 0, result.output
 }
+
+const interface_reference_argument_source = r'
+struct LoanValue {
+	text string
+}
+
+interface Borrower {
+	borrow[^a](value &^a LoanValue) &^a LoanValue
+}
+
+struct PassThrough {}
+
+fn (_ PassThrough) borrow[^a](value &^a LoanValue) &^a LoanValue {
+	return value
+}
+
+fn forward(borrower Borrower, value &LoanValue) &LoanValue {
+	return borrower.borrow(value)
+}
+'
+
+fn test_ownership_interface_reference_argument_cannot_escape() {
+	v3_bin := ownership_build_v3()
+	for expr in ['borrower.borrow(&value)', 'forward(borrower, &value)'] {
+		result := run_ownership_check(v3_bin, 'interface_reference_argument_escape',
+			interface_reference_argument_source + "
+fn escape(borrower Borrower) &LoanValue {
+	value := LoanValue{text: 'local'.clone()}
+	return ${expr}
+}
+
+fn main() {
+	value := escape(Borrower(PassThrough{}))
+	assert value.text == 'local'
+}
+")
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot return a reference to local storage `value`'), result.output
+	}
+}
+
+fn test_ownership_interface_reference_argument_stays_borrowed() {
+	v3_bin := ownership_build_v3()
+	for body in [
+		"view := borrower.borrow(&value); value = LoanValue{text: 'updated'.clone()}; assert view.text == 'local'",
+		"{ view := borrower.borrow(&value); assert view.text == 'local' }; value = LoanValue{text: 'updated'.clone()}; assert value.text == 'updated'",
+	] {
+		result := run_ownership_check(v3_bin, 'interface_reference_argument_live',
+			interface_reference_argument_source + "
+fn main() {
+	borrower := Borrower(PassThrough{})
+	mut value := LoanValue{text: 'local'.clone()}
+	${body}
+}
+")
+		if body.starts_with('view') {
+			assert result.exit_code != 0, result.output
+			assert result.output.contains('cannot assign to `value` because it is borrowed by `view`'), result.output
+		} else {
+			assert result.exit_code == 0, result.output
+		}
+	}
+}
+
+const interface_box_factory_source = r'
+@[heap]
+struct Resource {
+	text string
+}
+
+interface Visitor {
+	read() int
+}
+
+struct Reader {
+	resource &Resource
+}
+
+fn (v &Reader) read() int {
+	return v.resource.text.len
+}
+
+interface Factory {
+	create(resource &Resource) Visitor
+}
+
+struct Builder {}
+
+fn (_ Builder) create(resource &Resource) Visitor {
+	return Visitor(Reader{resource: resource})
+}
+
+fn forward(factory Factory, resource &Resource) Visitor {
+	return factory.create(resource)
+}
+'
+
+fn test_ownership_interface_box_from_dispatched_factory_cannot_escape() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'dispatched_box_escape', interface_box_factory_source + r'
+fn escape(factory Factory) Visitor {
+	resource := Resource{text: "local".clone()}
+	return forward(factory, &resource)
+}
+
+fn main() {
+	visitor := escape(Factory(Builder{}))
+	assert visitor.read() == 5
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot return a reference to local storage `resource`'), result.output
+}
+
+fn test_ownership_interface_box_from_dispatched_factory_retains_argument() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'dispatched_box_mutation', interface_box_factory_source + r'
+fn main() {
+	mut resource := Resource{text: "local".clone()}
+	factory := Factory(Builder{})
+	visitor := forward(factory, &resource)
+	resource = Resource{text: "updated".clone()}
+	assert visitor.read() == 5
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot assign to `resource` because it is borrowed by `visitor`'), result.output
+}
+
+fn test_ownership_interface_box_from_dispatched_factory_can_drop_before_argument() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'dispatched_box_live', interface_box_factory_source + r'
+fn main() {
+	mut resource := Resource{text: "local".clone()}
+	{
+		factory := Factory(Builder{})
+		visitor := forward(factory, &resource)
+		assert visitor.read() == 5
+	}
+	resource = Resource{text: "updated".clone()}
+	assert resource.text == "updated"
+}
+')
+	assert result.exit_code == 0, result.output
+}

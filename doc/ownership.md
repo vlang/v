@@ -401,6 +401,11 @@ fn main() {
 ```
 
 References returned by a method can keep a field of the receiver borrowed.
+
+An abstract interface method can return a reference borrowed from any of its
+reference arguments. The same rule covers references inside a returned
+interface box and through functions that directly forward either result.
+Keep the arguments alive and unchanged while the result is live.
 An outstanding field reference prevents moving the receiver. Disjoint fields
 remain available for mutation.
 
