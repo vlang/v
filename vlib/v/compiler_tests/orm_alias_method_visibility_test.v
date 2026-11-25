@@ -326,11 +326,8 @@ fn test_pointer_alias_methods_keep_alias_resolution_in_sql_values() {
 		import_name:     'renamed'
 		method_receiver: '&aliases.WrappedNames'
 	}
-	check_sql_alias_clone_cases(cases, 'pointer_clone', [true, false])!
-}
 
-fn test_multiple_pointer_alias_methods_keep_resolution_and_visibility_in_sql_values() {
-	mut cases := ['aliases.make_ptr_ptr().clone()[0].name', 'ptr_ptr_values.clone()[0].name',
+	cases << ['aliases.make_ptr_ptr().clone()[0].name', 'ptr_ptr_values.clone()[0].name',
 		'(ptr_ptr_values).clone()[0].name'].map(SqlAliasCloneCase{
 		expression:      it
 		method_receiver: '&&aliases.WrappedNames'
@@ -340,11 +337,8 @@ fn test_multiple_pointer_alias_methods_keep_resolution_and_visibility_in_sql_val
 		import_name:     'renamed'
 		method_receiver: '&&aliases.WrappedNames'
 	}
-	check_sql_alias_clone_cases(cases, 'multiple_pointer_clone', [true, false])!
-}
 
-fn test_hidden_pointer_alias_methods_keep_resolution_and_visibility_in_sql_values() {
-	mut cases := ['aliases.make_refs().clone()[0].name', 'ref_values.clone()[0].name',
+	cases << ['aliases.make_refs().clone()[0].name', 'ref_values.clone()[0].name',
 		'(ref_values).clone()[0].name'].map(SqlAliasCloneCase{
 		expression:      it
 		method_receiver: 'aliases.MoreWrappedRefs'
@@ -354,7 +348,7 @@ fn test_hidden_pointer_alias_methods_keep_resolution_and_visibility_in_sql_value
 		import_name:     'renamed'
 		method_receiver: 'aliases.MoreWrappedRefs'
 	}
-	check_sql_alias_clone_cases(cases, 'hidden_pointer_clone', [true, false])!
+	check_sql_alias_clone_cases(cases, 'pointer_clone', [true, false])!
 }
 
 // Since #29221 a `mut` receiver method needs mutable storage even when it is declared in
