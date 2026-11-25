@@ -1,6 +1,7 @@
 module testing
 
 import os
+import v.build_constraint
 
 fn test_shared_v3_builder_counts_excludes_skipped_files() {
 	root := os.join_path(os.vtmp_dir(), 'shared_v3_builders_${os.getpid()}')
@@ -24,6 +25,34 @@ fn test_shared_v3_builder_counts_excludes_skipped_files() {
 	runnable, runnable_ownership := session.shared_v3_builder_counts(files)
 	assert runnable == 1
 	assert runnable_ownership == 0
+}
+
+fn test_shared_v3_builder_counts_respects_build_constraints() {
+	root := os.join_path(os.vtmp_dir(), 'shared_v3_constraints_${os.getpid()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut files := []string{}
+	for name, constraints in {
+		'optional':  '// vtest build: false\n// vtest build: sharing_enabled?'
+		'disabled':  '// vtest build: sharing_enabled?\n// vtest build: false'
+		'malformed': '// vtest build: ('
+		'cleared':   '// vtest build: false\n// vtest build:'
+	} {
+		path := os.join_path(root, '${name}_test.v')
+		os.write_file(path, "${constraints}\nconst compiler_args = ['-gc', 'none', '-d', 'ownership', 'v.v']\n")!
+		files << path
+	}
+	mut session := TestSession{
+		vroot:             root
+		build_environment: build_constraint.new_environment([], [])
+	}
+	default_builders, default_ownership := session.shared_v3_builder_counts(files)
+	assert default_builders == 1
+	assert default_ownership == 1
+	session.build_environment = build_constraint.new_environment([], ['sharing_enabled'])
+	enabled_builders, enabled_ownership := session.shared_v3_builder_counts(files)
+	assert enabled_builders == 2
+	assert enabled_ownership == 2
 }
 
 fn test_should_retry_execution() {

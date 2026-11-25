@@ -864,10 +864,10 @@ pub fn (mut ts TestSession) test() {
 	}
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
-	ts.prepare_shared_v3(remaining_files)
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	// Batching evaluates the `// vtest build:` constraints of the files.
+	// Shared compiler preparation and batching evaluate `// vtest build:` constraints.
 	ts.setup_build_environment(remaining_files)
+	ts.prepare_shared_v3(remaining_files)
 	// The pool works on units: a single file, or a batch of the tests of one module.
 	units := ts.test_units(remaining_files)
 	mut njobs := test_runner_jobs(ts.will_compile)
@@ -1627,11 +1627,18 @@ fn (ts &TestSession) shared_v3_builder_counts(files []string) (int, int) {
 			continue
 		}
 		source := os.read_file(path) or { continue }
-		if source.contains("'v.v'") {
-			builders++
-			if source.contains("'-d', 'ownership'") {
-				ownership_builders++
+		if !source.contains("'v.v'") {
+			continue
+		}
+		if source.contains('// vtest build:') {
+			details := test_details_from_lines(source.split_into_lines())
+			if details.vbuild != '' && !(ts.build_environment.eval(details.vbuild) or { false }) {
+				continue
 			}
+		}
+		builders++
+		if source.contains("'-d', 'ownership'") {
+			ownership_builders++
 		}
 	}
 	return builders, ownership_builders
@@ -1725,12 +1732,17 @@ pub mut:
 	vflags       string // custom compilation flags for the test (enables for example: `// vtest vflags: -w`, for tests that have known warnings, but should still pass with -W)
 }
 
+// get_test_details reads the vtest directives in file.
 pub fn get_test_details(file string) TestDetails {
-	mut res := TestDetails{}
 	if !os.is_file(file) {
-		return res
+		return TestDetails{}
 	}
 	lines := os.read_lines(file) or { [] }
+	return test_details_from_lines(lines)
+}
+
+fn test_details_from_lines(lines []string) TestDetails {
+	mut res := TestDetails{}
 	for idx, line in lines {
 		if line.starts_with('// vtest retry:') {
 			res.retry = line.all_after(':').trim_space().int()
