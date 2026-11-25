@@ -273,25 +273,16 @@ fn check_sql_alias_clone_cases(cases []SqlAliasCloneCase, label string, public_m
 	}
 }
 
-fn test_imported_alias_conversions_obey_type_and_method_visibility_in_sql_values() {
+fn test_imported_alias_conversions_reject_private_types_in_sql_values() {
+	cases := ['aliases', 'renamed'].map(SqlAliasQueryCase{
+		expression:  '${it}.WrappedNames(values).clone()[0].name'
+		import_name: it
+		diagnostic:  'type `aliases.WrappedNames` is private'
+	})
 	for is_method_public in [false, true] {
-		for is_type_public in [false, true] {
-			diagnostic := if !is_type_public {
-				'type `aliases.WrappedNames` is private'
-			} else if !is_method_public {
-				'method `aliases.WrappedNames.clone` is private'
-			} else {
-				''
-			}
-			cases := ['aliases', 'renamed'].map(SqlAliasQueryCase{
-				expression:  '${it}.WrappedNames(values).clone()[0].name'
-				import_name: it
-				diagnostic:  diagnostic
-			})
-			check_sql_alias_query_batch(cases, 'conversion_${is_method_public}_${is_type_public}',
-				sql_alias_visibility_queries(diagnostic == ''), sql_alias_compile_and_check,
-				sql_alias_visibility_module_source(is_method_public, is_type_public))!
-		}
+		check_sql_alias_query_batch(cases, 'conversion_${is_method_public}_false',
+			sql_alias_visibility_queries(false), sql_alias_compile_and_check,
+			sql_alias_visibility_module_source(is_method_public, false))!
 	}
 }
 
@@ -501,6 +492,10 @@ fn test_inherited_alias_methods_keep_resolution_and_visibility_in_sql_values() {
 		'aliases.WrappedNames(values).clone()[0].name'].map(SqlAliasCloneCase{
 		expression: it
 	})
+	cases << SqlAliasCloneCase{
+		expression:  'renamed.WrappedNames(values).clone()[0].name'
+		import_name: 'renamed'
+	}
 	for import_name in ['aliases', 'renamed'] {
 		for expression in [
 			'(${import_name}.load_names(true) or { values }).clone()[0].name',
