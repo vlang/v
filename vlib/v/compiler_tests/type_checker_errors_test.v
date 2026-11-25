@@ -531,12 +531,12 @@ fn test_vv_input_with_comma_in_decl_assign_is_rejected_without_overwrite() {
 
 fn test_interface_container_as_cast_requirements() {
 	run_bad(v3_bin, 'bad_nonempty_interface_as_array_pattern', 'interface Speaker {\n\tspeak()\n}\nfn check(x Speaker) []int {\n\treturn x as []int\n}\nfn main() {}\n', '`[]int` is not compatible with interface `Speaker`')
-	empty_interface_as_out := run_good(v3_bin, 'empty_interface_as_array_pattern', 'interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\txs := values(Any([1, 2]))\n\tprintln(xs[0] + xs[1])\n}\n')
-	assert empty_interface_as_out == '3'
+	run_good_module_batch(v3_bin, 'interface_container_casts', [
+		TypeCheckerRuntimeCase{'empty_interface_as_array_pattern', 'interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\txs := values(Any([1, 2]))\n\tprintln(xs[0] + xs[1])\n}\n', '3'},
+		TypeCheckerRuntimeCase{'empty_interface_as_map_pattern', "interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\tm := values(Any({'answer': 42}))\n\tprintln(m['answer'])\n}\n", '42'},
+	])
 	run_runtime_bad(v3_bin, 'empty_interface_as_array_non_array_payload', "interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\t_ := values(Any('not an array'))\n}\n", 'as cast: cannot cast interface value to `[]int`')
 	run_runtime_bad(v3_bin, 'empty_interface_as_array_wrong_element_payload', "interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\t_ := values(Any(['wrong element type']))\n}\n", 'as cast: cannot cast interface value to `[]int`')
-	empty_interface_map_as_out := run_good(v3_bin, 'empty_interface_as_map_pattern', "interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\tm := values(Any({'answer': 42}))\n\tprintln(m['answer'])\n}\n")
-	assert empty_interface_map_as_out == '42'
 	run_runtime_bad(v3_bin, 'empty_interface_as_map_wrong_value_payload', "interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\t_ := values(Any({'answer': 'wrong value type'}))\n}\n", 'as cast: cannot cast interface value to `map[string]int`')
 }
 
@@ -1222,8 +1222,10 @@ fn test_pr_review_struct_sum_scope_and_gated_regressions() {
 		TypeCheckerRejection{'bad_nested_pointer_struct_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\nfn read_box[T](b &&Box[T]) T {\n\treturn b.v\n}\n\nfn main() {\n\t_ := read_box(v: 7)\n}\n', 'cannot use `key: value` arguments as `&&bad_nested_pointer_struct_field_args.Box[int]` in call to `read_box`'},
 		TypeCheckerRejection{'bad_nested_pointer_struct_alias_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\ntype BoxRef = &&Box[int]\n\nfn read_box_alias(b BoxRef) {}\n\nfn main() {\n\tread_box_alias(v: 7)\n}\n', 'cannot use `key: value` arguments as `bad_nested_pointer_struct_alias_field_args.BoxRef` in call to `read_box_alias`'},
 	])
-	variadic_struct := run_good(v3_bin, 'good_variadic_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points ...Point) int {\n\treturn points[0].x + points[0].y\n}\n\nfn main() {\n\tprintln(int_str(total(x: 3, y: 4)))\n}\n')
-	assert variadic_struct == '7'
+	run_good_module_batch(v3_bin, 'variadic_struct_and_gated_indexes', [
+		TypeCheckerRuntimeCase{'good_variadic_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points ...Point) int {\n\treturn points[0].x + points[0].y\n}\n\nfn main() {\n\tprintln(int_str(total(x: 3, y: 4)))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_gated_scalar_and_fixed_array_indexes', 'struct Box {\n\titems [10]int\n}\n\nfn main() {\n\ta := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\n\tprintln(int_str(a#[-1]))\n\tprintln(int_str(a#[-11] or { 42 }))\n\tprintln(a#[-2..].str())\n\tprintln("0123456789"#[-1].ascii_str())\n\tfixed := [10]int{init: index}\n\tprintln(int_str(fixed#[-1]))\n\tprintln(fixed#[-2..].str())\n\tbox := Box{\n\t\titems: fixed\n\t}\n\tprintln(int_str(box.items#[-1]))\n}\n', '9\n42\n[8, 9]\n9\n9\n[8, 9]\n9'},
+	])
 	run_bad_project(v3_bin, 'bad_module_type_does_not_bind_main_type', {
 		'v.mod':  "Module { name: 'module_unknown_scope' }\n"
 		'main.v': 'module main\n\nimport m\n\nstruct Foo {}\n\nfn main() {\n\t_ = m.consume(Foo{})\n}\n'
@@ -1236,8 +1238,6 @@ fn test_pr_review_struct_sum_scope_and_gated_regressions() {
 		'sub/tast/tast.v': 'module tast\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Alpha | Beta\n\npub fn make_beta() Value {\n\treturn Beta{\n\t\tn: 9\n\t}\n}\n'
 	}, 'main.v')
 	assert aliased_sum == '9'
-	gated := run_good(v3_bin, 'good_gated_scalar_and_fixed_array_indexes', 'struct Box {\n\titems [10]int\n}\n\nfn main() {\n\ta := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\n\tprintln(int_str(a#[-1]))\n\tprintln(int_str(a#[-11] or { 42 }))\n\tprintln(a#[-2..].str())\n\tprintln("0123456789"#[-1].ascii_str())\n\tfixed := [10]int{init: index}\n\tprintln(int_str(fixed#[-1]))\n\tprintln(fixed#[-2..].str())\n\tbox := Box{\n\t\titems: fixed\n\t}\n\tprintln(int_str(box.items#[-1]))\n}\n')
-	assert gated == '9\n42\n[8, 9]\n9\n9\n[8, 9]\n9'
 }
 
 fn test_collapsed_struct_fields_use_positional_target() {
@@ -1473,12 +1473,11 @@ fn main() {
 }
 
 fn test_local_type_names_include_nested_block_scope() {
-	block_rows := run_good(v3_bin, 'good_local_struct_sibling_block_scope', 'fn main() {\n\tmut total := 0\n\tif true {\n\t\tstruct Row {\n\t\t\ta int\n\t\t}\n\t\tr := Row{\n\t\t\ta: 1\n\t\t}\n\t\ttotal += r.a\n\t}\n\tif true {\n\t\tstruct Row {\n\t\t\tb int\n\t\t}\n\t\tr := Row{\n\t\t\tb: 2\n\t\t}\n\t\ttotal += r.b\n\t}\n\tprintln(int_str(total))\n}\n')
-	assert block_rows == '3'
-	embedded_local := run_good(v3_bin, 'good_local_embedded_struct_field', 'fn main() {\n\tstruct Inner {\n\t\tn int\n\t}\n\tstruct Outer {\n\t\tInner\n\t}\n\touter := Outer{\n\t\tInner{\n\t\t\tn: 12\n\t\t}\n\t}\n\tprintln(int_str(outer.n))\n}\n')
-	assert embedded_local == '12'
-	local_generic_arg := run_good(v3_bin, 'good_local_generic_struct_init_local_arg', "fn main() {\n\tstruct Inner {}\n\tstruct Box[T] {}\n\t_ := Box[Inner]{}\n\tprintln('ok')\n}\n")
-	assert local_generic_arg == 'ok'
+	run_good_module_batch(v3_bin, 'local_type_scopes', [
+		TypeCheckerRuntimeCase{'good_local_struct_sibling_block_scope', 'fn main() {\n\tmut total := 0\n\tif true {\n\t\tstruct Row {\n\t\t\ta int\n\t\t}\n\t\tr := Row{\n\t\t\ta: 1\n\t\t}\n\t\ttotal += r.a\n\t}\n\tif true {\n\t\tstruct Row {\n\t\t\tb int\n\t\t}\n\t\tr := Row{\n\t\t\tb: 2\n\t\t}\n\t\ttotal += r.b\n\t}\n\tprintln(int_str(total))\n}\n', '3'},
+		TypeCheckerRuntimeCase{'good_local_embedded_struct_field', 'fn main() {\n\tstruct Inner {\n\t\tn int\n\t}\n\tstruct Outer {\n\t\tInner\n\t}\n\touter := Outer{\n\t\tInner{\n\t\t\tn: 12\n\t\t}\n\t}\n\tprintln(int_str(outer.n))\n}\n', '12'},
+		TypeCheckerRuntimeCase{'good_local_generic_struct_init_local_arg', "fn main() {\n\tstruct Inner {}\n\tstruct Box[T] {}\n\t_ := Box[Inner]{}\n\tprintln('ok')\n}\n", 'ok'},
+	])
 }
 
 fn test_module_local_error_type_shadows_builtin_error() {
@@ -1490,10 +1489,10 @@ fn test_module_local_error_type_shadows_builtin_error() {
 }
 
 fn test_bool_match_single_branch_is_exhaustive() {
-	out := run_good(v3_bin, 'good_bool_match_single_branch_exhaustive', 'fn f(b bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n')
-	assert out == '2'
-	alias_out := run_good(v3_bin, 'good_bool_alias_match_single_branch_exhaustive', 'type Flag = bool\nfn f(b Flag) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n')
-	assert alias_out == '2'
+	run_good_module_batch(v3_bin, 'exhaustive_bool_matches', [
+		TypeCheckerRuntimeCase{'good_bool_match_single_branch_exhaustive', 'fn f(b bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n', '2'},
+		TypeCheckerRuntimeCase{'good_bool_alias_match_single_branch_exhaustive', 'type Flag = bool\nfn f(b Flag) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n', '2'},
+	])
 	run_bad(v3_bin, 'bad_bool_pointer_match_not_exhaustive', 'fn f(b &bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut b := true\n\tprintln(int_str(f(&b)))\n}\n', 'missing return')
 }
 
