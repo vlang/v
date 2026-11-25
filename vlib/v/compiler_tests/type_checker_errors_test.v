@@ -1509,11 +1509,13 @@ fn test_bool_match_single_branch_is_exhaustive() {
 }
 
 fn test_voidptr_variadic_spread_requires_voidptr_array() {
-	run_bad(v3_bin, 'bad_voidptr_variadic_int_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\txs := [1, 2]\n\tprintln(int_str(sink(...xs)))\n}\n', 'cannot use `...int` as `...voidptr` in argument 1 to `sink`')
-	run_bad(v3_bin, 'bad_voidptr_variadic_void_arg', 'fn side() {}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(side())))\n}\n', 'cannot use `void`')
-	run_bad(v3_bin, 'bad_voidptr_variadic_none_arg', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(none)))\n}\n', 'cannot use `?void`')
-	run_bad(v3_bin, 'bad_voidptr_variadic_multi_return_arg', 'fn pair() (int, int) {\n\treturn 1, 2\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(pair())))\n}\n', 'cannot use `(int, int)`')
-	run_bad(v3_bin, 'bad_voidptr_variadic_enum_shorthand_arg', 'enum Color {\n\tred\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(.red)))\n}\n', 'cannot use `int`')
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_voidptr_variadic_int_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\txs := [1, 2]\n\tprintln(int_str(sink(...xs)))\n}\n', 'cannot use `...int` as `...voidptr` in argument 1 to `bad_voidptr_variadic_int_spread.sink`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_void_arg', 'fn side() {}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(side())))\n}\n', 'cannot use `void`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_none_arg', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(none)))\n}\n', 'cannot use `?void`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_multi_return_arg', 'fn pair() (int, int) {\n\treturn 1, 2\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(pair())))\n}\n', 'cannot use `(int, int)`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_enum_shorthand_arg', 'enum Color {\n\tred\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(.red)))\n}\n', 'cannot use `int`'},
+	])
 	good := run_good(v3_bin, 'good_voidptr_variadic_voidptr_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tx := 7\n\txs := [voidptr(&x)]\n\tprintln(int_str(sink(...xs)))\n\tprintln(int_str(sink(1)))\n}\n')
 	assert good == '1\n1'
 }
@@ -2105,18 +2107,22 @@ fn test_defer_result_review_regressions() {
 	assert valid == '9\n9'
 	indexed := run_good(v3_bin, 'good_indexed_defer_result_value', 'fn f() (int, int) {\n\tdefer {\n\t\tprintln(int_str($res(1)))\n\t}\n\treturn 4, 5\n}\nfn main() {\n\ta, b := f()\n\tprintln(int_str(a) + "," + int_str(b))\n}\n')
 	assert indexed == '5\n4,5'
-	run_bad(v3_bin, 'bad_void_defer_result', 'fn f() {\n\tdefer {\n\t\t_ := $res()\n\t}\n}\nfn main() {\n\tf()\n}\n', '`res` can only be used in functions that returns something')
-	run_bad(v3_bin, 'bad_result_defer_result', 'fn f() !int {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f() or { 0 }\n}\n', '`res` cannot be used in functions that returns a Result')
-	run_bad(v3_bin, 'bad_unindexed_multi_return_defer_result', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', '`res` requires an index of the returned value')
-	run_bad(v3_bin, 'bad_out_of_range_multi_return_defer_result', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(2)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', 'index 2 out of range of 2 return types')
-	run_bad(v3_bin, 'bad_indexed_scalar_defer_result', 'fn f() int {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n', '`res` index can only be used with multi-return functions')
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_void_defer_result', 'fn f() {\n\tdefer {\n\t\t_ := $res()\n\t}\n}\nfn main() {\n\tf()\n}\n', '`res` can only be used in functions that returns something'},
+		TypeCheckerRejection{'bad_result_defer_result', 'fn f() !int {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f() or { 0 }\n}\n', '`res` cannot be used in functions that returns a Result'},
+		TypeCheckerRejection{'bad_unindexed_multi_return_defer_result', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', '`res` requires an index of the returned value'},
+		TypeCheckerRejection{'bad_out_of_range_multi_return_defer_result', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(2)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', 'index 2 out of range of 2 return types'},
+		TypeCheckerRejection{'bad_indexed_scalar_defer_result', 'fn f() int {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n', '`res` index can only be used with multi-return functions'},
+	])
 	run_bad(v3_bin, 'bad_defer_result_trailing_argument_tokens', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', 'expected `)` immediately after the `$res` index')
 	run_bad(v3_bin, 'bad_bare_defer_result', 'fn f() int {\n\tdefer {\n\t\t_ := $res\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n', 'expected `(` after `$res`')
 }
 
 fn test_defer_result_requires_function_exit_defer() {
-	run_bad(v3_bin, 'bad_nested_block_defer_result', 'fn f() int {\n\t{\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '`res` can only be used in function-exit defer blocks')
-	run_bad(v3_bin, 'bad_loop_defer_result', 'fn f() int {\n\tfor _ in 0 .. 1 {\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '`res` can only be used in function-exit defer blocks')
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_nested_block_defer_result', 'fn f() int {\n\t{\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '`res` can only be used in function-exit defer blocks'},
+		TypeCheckerRejection{'bad_loop_defer_result', 'fn f() int {\n\tfor _ in 0 .. 1 {\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '`res` can only be used in function-exit defer blocks'},
+	])
 }
 
 fn test_recursive_alias_review_regressions() {
@@ -2192,31 +2198,27 @@ fn test_bool_condition_alias_rejects_pointer_pointee_writes() {
 // element-copy loop between unrelated C types - the build then failed inside the
 // generated C instead of naming the offending return.
 fn test_generic_specialization_rejects_incompatible_array_element_return() {
-	run_bad(v3_bin, 'bad_generic_array_elem_return_mismatch', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tv int\n}\n\nfn take[T](items []T) []Bar {\n\treturn items\n}\n\nfn main() {\n\t_ := take([Foo{\n\t\tv: 1\n\t}])\n}\n',
-		generic_array_return_error('[]Foo', '[]Bar'))
-	run_bad(v3_bin, 'bad_generic_array_elem_return_unrelated_scalar', 'fn take[T](items []T) []string {\n\treturn items\n}\n\nfn main() {\n\t_ := take([1, 2])\n}\n',
-		generic_array_return_error('[]int', '[]string'))
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_generic_array_elem_return_mismatch', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tv int\n}\n\nfn take[T](items []T) []Bar {\n\treturn items\n}\n\nfn main() {\n\t_ := take([Foo{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]bad_generic_array_elem_return_mismatch.Foo', '[]bad_generic_array_elem_return_mismatch.Bar')},
+		TypeCheckerRejection{'bad_generic_array_elem_return_unrelated_scalar', 'fn take[T](items []T) []string {\n\treturn items\n}\n\nfn main() {\n\t_ := take([1, 2])\n}\n', generic_array_return_error('[]int', '[]string')},
+		// Elements of another number or enum type are not converted either: the array
+		// would be read with the wrong element size, so a specialization is rejected as
+		// `fn f(items []int) []f64 { return items }` is, an integer array also for a
+		// `@[flag]` enum array.
+		TypeCheckerRejection{'bad_generic_array_elem_int_to_float', 'fn take[T](items []T) []f64 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1, 2, 3])[0] + 0.5)\n}\n', generic_array_return_error('[]int', '[]f64')},
+		TypeCheckerRejection{'bad_generic_array_elem_float_to_float', 'fn take[T](items []T) []f32 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1.5, 2.5])[0])\n}\n', generic_array_return_error('[]f64', '[]f32')},
+		TypeCheckerRejection{'bad_generic_array_elem_int_to_flag_enum', '@[flag]\nenum Access {\n\tread\n\twrite\n}\n\nfn take[T](items []T) []Access {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([1, 2]).len))\n}\n', generic_array_return_error('[]int', '[]bad_generic_array_elem_int_to_flag_enum.Access')},
+		TypeCheckerRejection{'bad_generic_array_elem_int_to_enum', 'enum Color {\n\tred\n\tgreen\n}\n\nfn take[T](items []T) []Color {\n\treturn items\n}\n\nfn main() {\n\t_ := take([0, 1])\n}\n', generic_array_return_error('[]int', '[]bad_generic_array_elem_int_to_enum.Color')},
+		// Having a lowering is not the same as being legal: the element copy boxes
+		// any struct into an interface, so an element that does not implement the
+		// target has to be rejected here rather than at `.id = src.id` in the C.
+		TypeCheckerRejection{'bad_generic_array_elem_unimplemented_interface', 'interface HasId {\n\tid int\n}\n\nstruct NoId {\n\tv int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\t_ := take([NoId{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]bad_generic_array_elem_unimplemented_interface.NoId', '[]bad_generic_array_elem_unimplemented_interface.HasId')},
+	])
 	// Elements that only differ in spelling (a registered alias next to its base
 	// type, one level down) are storage-identical, so the same slot must keep
 	// compiling.
 	rows := run_good(v3_bin, 'good_generic_array_elem_alias_return', 'type NodeId = int\n\nfn take[T](rows [][]T) [][]NodeId {\n\treturn rows\n}\n\nfn main() {\n\trows := take([[1, 2], [3]])\n\tprintln(int_str(rows.len + rows[0].len))\n}\n')
 	assert rows == '4'
-	// Elements of another number or enum type are not converted either: the array
-	// would be read with the wrong element size, so a specialization is rejected as
-	// `fn f(items []int) []f64 { return items }` is, an integer array also for a
-	// `@[flag]` enum array.
-	run_bad(v3_bin, 'bad_generic_array_elem_int_to_float', 'fn take[T](items []T) []f64 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1, 2, 3])[0] + 0.5)\n}\n',
-		generic_array_return_error('[]int', '[]f64'))
-	run_bad(v3_bin, 'bad_generic_array_elem_float_to_float', 'fn take[T](items []T) []f32 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1.5, 2.5])[0])\n}\n',
-		generic_array_return_error('[]f64', '[]f32'))
-	run_bad(v3_bin, 'bad_generic_array_elem_int_to_flag_enum', '@[flag]\nenum Access {\n\tread\n\twrite\n}\n\nfn take[T](items []T) []Access {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([1, 2]).len))\n}\n',
-		generic_array_return_error('[]int', '[]Access'))
-	run_bad(v3_bin, 'bad_generic_array_elem_int_to_enum', 'enum Color {\n\tred\n\tgreen\n}\n\nfn take[T](items []T) []Color {\n\treturn items\n}\n\nfn main() {\n\t_ := take([0, 1])\n}\n',
-		generic_array_return_error('[]int', '[]Color'))
-	// Having a lowering is not the same as being legal: the element copy boxes
-	// any struct into an interface, so an element that does not implement the
-	// target has to be rejected here rather than at `.id = src.id` in the C.
-	run_bad(v3_bin, 'bad_generic_array_elem_unimplemented_interface', 'interface HasId {\n\tid int\n}\n\nstruct NoId {\n\tv int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\t_ := take([NoId{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]NoId', '[]HasId'))
 	boxed := run_good(v3_bin, 'good_generic_array_elem_interface_field', 'interface HasId {\n\tid int\n}\n\nstruct WithId {\n\tid int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([WithId{\n\t\tid: 7\n\t}])[0].id))\n}\n')
 	assert boxed == '7'
 	spoken := run_good(v3_bin, 'good_generic_array_elem_interface_method', "interface Speaker {\n\tspeak() string\n}\n\nstruct Dog {}\n\nfn (d Dog) speak() string {\n\treturn 'woof'\n}\n\nfn take[T](items []T) []Speaker {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([Dog{}])[0].speak())\n}\n")
