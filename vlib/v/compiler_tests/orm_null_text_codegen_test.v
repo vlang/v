@@ -67,15 +67,45 @@ fn main() {
 	assert c_code.contains('_SL(${symbol}, "", 0);'), c_code
 }
 
-fn test_orm_module_local_select_uses_qualified_row_type() {
-	c_code := orm_null_text_gen_c_project('orm_module_local_select', {
-		'v.mod':         "Module { name: 'orm_module_local_select' }\n"
-		'main.v':        'module main\n\nimport model\n\nfn main() {\n\tmodel.load()\n}\n'
+fn test_orm_select_and_multi_statement_codegen() {
+	c_code := orm_null_text_gen_c_project('orm_select_and_multi_statement_codegen', {
+		'v.mod':         "Module { name: 'orm_select_and_multi_statement_codegen' }\n"
+		'main.v':        "module main
+
+import db.sqlite
+import model
+
+struct User {
+	id int @[primary]
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+	first := User{1}
+	second := User{2}
+	sql db {
+		insert first into User
+		insert second into User
+	}!
+	model.load()
+}
+"
 		'model/model.v': 'module model\n\nimport db.sqlite\n\nstruct User {\n\tid int\n\tname string\n}\n\npub fn load() {\n\tmut db := sqlite.connect(":memory:") or { panic(err) }\n\trows := sql db {\n\t\tselect from User\n\t}!\n\t_ = rows\n}\n'
 	})
 	assert c_code.contains('sizeof(model__User)'), c_code
 	assert c_code.contains('model__User '), c_code
 	assert !c_code.contains('sizeof(User)'), c_code
+	mut found_stable_db := false
+	for line in c_code.split_into_lines() {
+		assert !(line.contains('sqlite__DB* __sql_db_') && line.contains(' = *db;')), line
+		if line.contains('sqlite__DB __sql_db_') && line.contains(' = *db;') {
+			found_stable_db = true
+		}
+	}
+	assert found_stable_db, c_code
 }
 
 fn test_orm_sqlite_unsupported_queries_use_fallback() {
@@ -165,36 +195,6 @@ fn main() {
 ')
 	assert !c_code.contains('sqlite3_prepare_v2'), c_code
 	assert !c_code.contains('SELECT "id", "name" FROM "User"'), c_code
-}
-
-fn test_multi_statement_sql_keeps_heap_promoted_db_pointer() {
-	c_code := orm_null_text_gen_c('orm_heap_promoted_multi_statement_db', "import db.sqlite
-
-struct User {
-	id int @[primary]
-}
-
-fn main() {
-	mut db := sqlite.connect(':memory:') or { panic(err) }
-	defer {
-		db.close() or {}
-	}
-	first := User{1}
-	second := User{2}
-	sql db {
-		insert first into User
-		insert second into User
-	}!
-}
-")
-	mut found_stable_db := false
-	for line in c_code.split_into_lines() {
-		assert !(line.contains('sqlite__DB* __sql_db_') && line.contains(' = *db;')), line
-		if line.contains('sqlite__DB __sql_db_') && line.contains(' = *db;') {
-			found_stable_db = true
-		}
-	}
-	assert found_stable_db, c_code
 }
 
 fn test_orm_insert_requires_qualified_value_type_match() {
