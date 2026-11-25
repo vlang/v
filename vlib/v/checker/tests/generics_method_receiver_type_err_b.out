@@ -5,6 +5,13 @@ vlib/v/checker/tests/generics_method_receiver_type_err_b.vv:9:12: error: generic
       |            ~~~~~~~~~~~~~~~~~~~~
    10 |     return cr.total_resources
    11 | }
+vlib/v/checker/tests/generics_method_receiver_type_err_b.vv:16:5: error: missing return at end of function `new_foo`
+   14 | struct Foo[T] {}
+   15 | 
+   16 | pub fn new_foo[F](arg F) !Foo[F] {
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   17 | }
+   18 | 
 vlib/v/checker/tests/generics_method_receiver_type_err_b.vv:19:11: error: generic struct `Foo` in fn declaration must specify the generic type names, e.g. Foo[T]
    17 | }
    18 | 
