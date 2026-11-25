@@ -80,6 +80,20 @@ struct TypedApiExamples {
 	optional_omitted ?string      @[omitempty]
 }
 
+struct TypedApiDataEnvelopeDetail {
+	code string
+}
+
+struct TypedApiDataEnvelopeItem {
+	detail TypedApiDataEnvelopeDetail
+}
+
+@[OpenApiDataEnvelope]
+struct TypedApiDataEnvelopeResponse {
+	value string
+	items []TypedApiDataEnvelopeItem
+}
+
 fn typed_api() !&TypedApiRoot {
 	mut app := &TypedApiRoot{}
 	mut group := &TypedApiGroup{}
@@ -93,6 +107,33 @@ fn api_at(value json2.Any, keys ...string) json2.Any {
 	mut result := value
 	for key in keys { result = result.as_map()[key] or { json2.Any(json2.Null{}) } }
 	return result
+}
+
+fn test_openapi_data_envelope_attribute_wraps_successful_responses() {
+	mut app := typed_api()!
+	mut doc := new_openapi()!
+	doc.add_app[TypedApiRoot, TypedApiContext](app)!
+	doc.response[TypedApiDataEnvelopeResponse]('/', .get)!
+	doc.response[TypedApiDataEnvelopeResponse]('/', .get, status: 422)!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	mut success := api_at(raw, 'paths', '/', 'get', 'responses', '200', 'content', 'application/json',
+		'schema')
+	assert api_at(success, 'properties', 'data', '$ref').str().ends_with('TypedApiDataEnvelopeResponse')
+	envelope := api_at(raw, 'components', 'schemas', 'veb.TypedApiDataEnvelopeResponse')
+	item_ref := api_at(envelope, 'properties', 'items', 'items', '$ref')
+	assert item_ref.str().ends_with('TypedApiDataEnvelopeItem'), 'unexpected envelope schema: ${envelope}'
+	detail_ref := api_at(raw, 'components', 'schemas', 'veb.TypedApiDataEnvelopeItem', 'properties',
+		'detail', '$ref')
+	assert detail_ref.str().ends_with('TypedApiDataEnvelopeDetail'), 'unexpected detail ref: ${detail_ref}'
+	failure := api_at(raw, 'paths', '/', 'get', 'responses', '422', 'content',
+		'application/json', 'schema')
+	assert api_at(failure, '$ref').str().ends_with('TypedApiDataEnvelopeResponse')
+
+	doc.response[TypedApiDataEnvelopeResponse]('/', .get, envelope: '')!
+	unwrapped := json2.decode[json2.Any](doc.json(false)!)!
+	success = api_at(unwrapped, 'paths', '/', 'get', 'responses', '200', 'content',
+		'application/json', 'schema')
+	assert api_at(success, '$ref').str().ends_with('TypedApiDataEnvelopeResponse')
 }
 
 fn typed_document() !OpenApiDocument {

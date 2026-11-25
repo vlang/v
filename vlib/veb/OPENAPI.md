@@ -205,6 +205,9 @@ constraints and project-specific envelopes do not require new generator APIs.
 `response[T]` accepts a status, description, media type and optional envelope field.
 A non-200 success replaces the generated default 200 response. `success_field` wraps only
 2xx responses; errors remain direct by default. Set `envelope: ''` to disable a wrapper.
+Mark a response DTO with `@[veb.OpenApiDataEnvelope]` to wrap its successful responses in a
+top-level `data` field without configuring the document or passing `envelope`. An explicit
+`envelope` option takes precedence over the attribute.
 For envelopes with additional fields, headers, or empty 204 responses, supply a complete
 Response Object through `raw_response`. `error_responses` configures shared response
 objects; default 400 and 500 descriptions can be disabled with `default_errors: false`.

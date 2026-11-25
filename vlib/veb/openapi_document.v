@@ -54,6 +54,10 @@ pub:
 	value string
 }
 
+// OpenApiDataEnvelope marks a response DTO that is wrapped in a top-level data field.
+@[attribute]
+pub struct OpenApiDataEnvelope {}
+
 // OpenApiControllerMetadata marks the single shared typed metadata method on a controller.
 @[attribute]
 pub struct OpenApiControllerMetadata {}
@@ -490,14 +494,22 @@ pub fn (mut doc OpenApiDocument) request[T](path string, method http.Method, opt
 }
 
 // response adds a typed response; only successful responses inherit success_field wrapping.
+// A 2xx response DTO marked with OpenApiDataEnvelope is automatically wrapped in data.
 pub fn (mut doc OpenApiDocument) response[T](path string, method http.Method, options OpenApiResponse) ! {
 	mut schema := doc.schema[T]()
-	field := options.envelope or {
-		if options.status >= 200 && options.status < 300 {
-			doc.config.success_field
-		} else {
-			''
+	successful := options.status >= 200 && options.status < 300
+	mut field := if successful { doc.config.success_field } else { '' }
+	$if T is $struct {
+		$for attr in T.attributes {
+			$if attr is OpenApiDataEnvelope {
+				if successful {
+					field = 'data'
+				}
+			}
 		}
+	}
+	if envelope := options.envelope {
+		field = envelope
 	}
 	if field != '' {
 		schema = {
