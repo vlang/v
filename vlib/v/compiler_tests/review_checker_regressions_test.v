@@ -30,19 +30,19 @@ fn run_bad(compiler string, name string, src string, expected string) {
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
 }
 
-struct ReceiverFixture {
+struct ReviewFixture {
 	name     string
 	source   string
 	expected string
 }
 
-struct ReceiverDiagnostic {
+struct ReviewDiagnostic {
 	file     string
 	severity string
 	message  string
 }
 
-fn write_receiver_batch(name string, cases []ReceiverFixture, runnable bool) string {
+fn write_review_batch(name string, cases []ReviewFixture, runnable bool) string {
 	root := os.join_path(review_checker_fixture_dir, name)
 	mut imports := []string{cap: cases.len}
 	mut calls := []string{cap: cases.len}
@@ -71,8 +71,8 @@ fn write_receiver_batch(name string, cases []ReceiverFixture, runnable bool) str
 	return root
 }
 
-fn check_receiver_rejections(cases []ReceiverFixture) {
-	root := write_receiver_batch('receiver_rejections', cases, false)
+fn check_review_rejections(name string, cases []ReviewFixture) {
+	root := write_review_batch(name, cases, false)
 	result := run_review_checker(v3_bin, [root, '-json-errors', '-b', 'c', '-o',
 		os.join_path(root, 'program')])
 	assert result.exit_code != 0, result.output
@@ -82,7 +82,7 @@ fn check_receiver_rejections(cases []ReceiverFixture) {
 		if !line.starts_with('{') {
 			continue
 		}
-		diagnostic := json2.decode[ReceiverDiagnostic](line) or { panic(err) }
+		diagnostic := json2.decode[ReviewDiagnostic](line) or { panic(err) }
 		if diagnostic.severity == 'error' {
 			errors[os.file_name(diagnostic.file)] << diagnostic.message
 		}
@@ -92,8 +92,8 @@ fn check_receiver_rejections(cases []ReceiverFixture) {
 	}
 }
 
-fn check_receiver_runtime(cases []ReceiverFixture) {
-	root := write_receiver_batch('receiver_runtime', cases, true)
+fn check_receiver_runtime(cases []ReviewFixture) {
+	root := write_review_batch('receiver_runtime', cases, true)
 	bin_path := os.join_path(root, 'program')
 	compile := run_review_checker(v3_bin, ['-enable-globals', root, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
@@ -753,24 +753,18 @@ fn test_reject_pointer_expressions_for_value_returns() {
 }
 
 fn test_reject_fixed_array_decay_to_pointer() {
-	run_bad(v3_bin, 'bad_fixed_array_pointer_argument',
-		'fn consume(value &int) {}\n\nfn main() {\n\tconsume([1, 2]!)\n}\n',
-		'cannot use `[2]int` as `&int` in argument 1 to `consume`')
-	run_bad(v3_bin, 'bad_fixed_array_pointer_return',
-		'fn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
-		'you are returning `[2]int` instead')
+	check_review_rejections('fixed_array_pointer', [
+		ReviewFixture{'bad_fixed_array_pointer_argument', 'fn consume(value &int) {}\n\nfn main() {\n\tconsume([1, 2]!)\n}\n', 'cannot use `[2]int` as `&int` in argument 1 to `bad_fixed_array_pointer_argument.consume`'},
+		ReviewFixture{'bad_fixed_array_pointer_return', 'fn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n', 'you are returning `[2]int` instead'},
+		ReviewFixture{'bad_addressed_fixed_u8_array_pointer_argument', 'fn consume(value &u8) {}\n\nfn main() {\n\tbuf := [u8(1), 2]!\n\tconsume(&buf)\n}\n', 'cannot use `&[2]u8`'},
+		ReviewFixture{'bad_fixed_i32_array_byte_pointer_assignment', 'fn main() {\n\tbuf := [i32(1), 2]!\n\tbyte := u8(0)\n\tmut ptr := &byte\n\tptr = &buf\n}\n', 'cannot reference fixed array `buf` outside `unsafe` blocks as it is supposed to be stored on stack'},
+	])
 	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_return',
 		'@[translated]\nmodule main\n\nfn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
 		'you are returning `[2]int` instead')
 	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_element_assignment',
 		'@[translated]\nmodule main\n\nfn main() {\n\tmut ptr := &int(0)\n\tptr = [u16(1), 2]!\n}\n',
 		'mismatched types `&int` and `[2]u16`')
-	run_bad(v3_bin, 'bad_addressed_fixed_u8_array_pointer_argument',
-		'fn consume(value &u8) {}\n\nfn main() {\n\tbuf := [u8(1), 2]!\n\tconsume(&buf)\n}\n',
-		'cannot use `&[2]u8`')
-	run_bad(v3_bin, 'bad_fixed_i32_array_byte_pointer_assignment',
-		'fn main() {\n\tbuf := [i32(1), 2]!\n\tbyte := u8(0)\n\tmut ptr := &byte\n\tptr = &buf\n}\n',
-		'cannot reference fixed array `buf` outside `unsafe` blocks as it is supposed to be stored on stack')
 	byte_out := run_good(v3_bin, 'good_fixed_array_pointer_inside_unsafe',
 		'type Fixed = [2]u8\n\nfn main() {\n\tbuf := Fixed([u8(65), 66]!)\n\tptr := unsafe { &buf }\n\tprintln(int_str(int((*ptr)[0])))\n}\n')
 	assert byte_out == '65'
@@ -1166,25 +1160,25 @@ fn test_voidptr_params_reject_non_pointer_values() {
 }
 
 fn test_shared_receiver_and_arg_require_shared_bindings() {
-	check_receiver_rejections([
-		ReceiverFixture{'bad_mut_receiver_immutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\ts.bump()\n}\n', '`s` is immutable, declare it with `mut` to make it mutable'},
-		ReceiverFixture{'bad_generic_mut_receiver_immutable_value', 'struct Box[T] {\nmut:\n\tvalue T\n}\n\nfn (mut b Box[T]) set(value T) {\n\tb.value = value\n}\n\nfn main() {\n\tb := Box[int]{\n\t\tvalue: 1\n\t}\n\tb.set(2)\n}\n', '`b` is immutable, declare it with `mut` to make it mutable'},
-		ReceiverFixture{'bad_mut_receiver_address_of_immutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\t(&s).bump()\n}\n', 'cannot pass expression as `mut`'},
-		ReceiverFixture{'bad_shared_receiver_plain_value', 'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n', 'cannot use shared method `f` as `s` is not a shared var'},
-		ReceiverFixture{'bad_shared_arg_shadowed_local', 'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\tshared s := St{}\n\tif true {\n\t\ts := St{}\n\t\ttake(s)\n\t}\n}\n', 'parameter `s` is `shared`, so use `shared s` instead'},
-		ReceiverFixture{'bad_explicit_shared_arg_plain_local', 'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\ts := St{}\n\ttake(shared s)\n}\n', 'cannot use non-shared `bad_explicit_shared_arg_plain_local.St` as argument 1'},
+	check_review_rejections('receiver_rejections', [
+		ReviewFixture{'bad_mut_receiver_immutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\ts.bump()\n}\n', '`s` is immutable, declare it with `mut` to make it mutable'},
+		ReviewFixture{'bad_generic_mut_receiver_immutable_value', 'struct Box[T] {\nmut:\n\tvalue T\n}\n\nfn (mut b Box[T]) set(value T) {\n\tb.value = value\n}\n\nfn main() {\n\tb := Box[int]{\n\t\tvalue: 1\n\t}\n\tb.set(2)\n}\n', '`b` is immutable, declare it with `mut` to make it mutable'},
+		ReviewFixture{'bad_mut_receiver_address_of_immutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\t(&s).bump()\n}\n', 'cannot pass expression as `mut`'},
+		ReviewFixture{'bad_shared_receiver_plain_value', 'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n', 'cannot use shared method `f` as `s` is not a shared var'},
+		ReviewFixture{'bad_shared_arg_shadowed_local', 'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\tshared s := St{}\n\tif true {\n\t\ts := St{}\n\t\ttake(s)\n\t}\n}\n', 'parameter `s` is `shared`, so use `shared s` instead'},
+		ReviewFixture{'bad_explicit_shared_arg_plain_local', 'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\ts := St{}\n\ttake(shared s)\n}\n', 'cannot use non-shared `bad_explicit_shared_arg_plain_local.St` as argument 1'},
 	])
 	check_receiver_runtime([
-		ReceiverFixture{'good_mut_receiver_immutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
-		ReceiverFixture{'good_shared_arg_and_receiver', 'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(shared s) + s.f()))\n}\n', '3'},
-		ReceiverFixture{'good_mut_receiver_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
-		ReceiverFixture{'good_mut_receiver_address_of_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\t(&s).bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
-		ReceiverFixture{'good_mut_receiver_mutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tmut p := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
-		ReceiverFixture{'good_mut_receiver_global_pointer', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\n__global global_st = &St{}\n\nfn main() {\n\tglobal_st.bump()\n\tprintln(int_str(global_st.value))\n}\n', '1'},
-		ReceiverFixture{'good_mut_receiver_pointer_field', 'struct St {\nmut:\n\tvalue int\n}\n\nstruct Holder {\n\tst &St\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tholder := Holder{\n\t\tst: &s\n\t}\n\tholder.st.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
-		ReceiverFixture{'good_mut_receiver_if_guard_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn get() ?St {\n\treturn St{}\n}\n\nfn main() {\n\tif mut s := get() {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}\n}\n', '1'},
-		ReceiverFixture{'good_mut_receiver_explicit_mut_capture', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tfn [mut s] () {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}()\n}\n', '1'},
-		ReceiverFixture{'good_pointer_receiver_immutable_value', 'struct St {\n\tvalue int\n}\n\nfn (s &St) get() int {\n\treturn s.value\n}\n\nfn main() {\n\ts := St{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(s.get()))\n}\n', '2'},
+		ReviewFixture{'good_mut_receiver_immutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReviewFixture{'good_shared_arg_and_receiver', 'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(shared s) + s.f()))\n}\n', '3'},
+		ReviewFixture{'good_mut_receiver_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_address_of_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\t(&s).bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_mutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tmut p := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_global_pointer', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\n__global global_st = &St{}\n\nfn main() {\n\tglobal_st.bump()\n\tprintln(int_str(global_st.value))\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_pointer_field', 'struct St {\nmut:\n\tvalue int\n}\n\nstruct Holder {\n\tst &St\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tholder := Holder{\n\t\tst: &s\n\t}\n\tholder.st.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_if_guard_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn get() ?St {\n\treturn St{}\n}\n\nfn main() {\n\tif mut s := get() {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_explicit_mut_capture', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tfn [mut s] () {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}()\n}\n', '1'},
+		ReviewFixture{'good_pointer_receiver_immutable_value', 'struct St {\n\tvalue int\n}\n\nfn (s &St) get() int {\n\treturn s.value\n}\n\nfn main() {\n\ts := St{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(s.get()))\n}\n', '2'},
 	])
 }
 
@@ -1295,33 +1289,17 @@ fn test_array_to_void_array_is_not_implicitly_compatible() {
 }
 
 fn test_array_insert_and_prepend_reject_wrong_arity() {
-	run_bad(v3_bin, 'bad_array_prepend_missing_arg',
-		'fn main() {\n\tmut a := [1, 2]\n\ta.prepend()\n}\n',
-		'`array.prepend()` should have 1 argument')
-	run_bad(v3_bin, 'bad_array_prepend_extra_arg',
-		'fn side_effect() int {\n\treturn 3\n}\nfn main() {\n\tmut a := [1, 2]\n\ta.prepend(0, side_effect())\n}\n',
-		'`array.prepend()` should have 1 argument')
-	run_bad(v3_bin, 'bad_array_insert_missing_arg',
-		'fn main() {\n\tmut a := [1, 2]\n\ta.insert(0)\n}\n',
-		'`array.insert()` should have 2 arguments')
-	run_bad(v3_bin, 'bad_array_insert_extra_arg',
-		'fn side_effect() int {\n\treturn 3\n}\nfn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 1, side_effect())\n}\n',
-		'`array.insert()` should have 2 arguments')
-	run_bad(v3_bin, 'bad_array_prepend_arg_type',
-		"fn main() {\n\tmut a := [1, 2]\n\ta.prepend('x')\n}\n",
-		'cannot prepend `string` to `[]int`')
-	run_bad(v3_bin, 'bad_array_insert_index_type',
-		"fn main() {\n\tmut a := [1, 2]\n\ta.insert('0', 3)\n}\n",
-		'the first argument of `array.insert()` should be integer')
-	run_bad(v3_bin, 'bad_array_insert_value_type',
-		"fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 'x')\n}\n",
-		'cannot insert `string` to `[]int`')
-	run_bad(v3_bin, 'bad_array_prepend_many_arg_type',
-		"fn main() {\n\tmut a := [1, 2]\n\ta.prepend(['x'])\n}\n",
-		'cannot prepend `[]string` to `[]int`')
-	run_bad(v3_bin, 'bad_array_insert_many_arg_type',
-		"fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, ['x'])\n}\n",
-		'cannot insert `[]string` to `[]int`')
+	check_review_rejections('array_insert_prepend', [
+		ReviewFixture{'bad_array_prepend_missing_arg', 'fn main() {\n\tmut a := [1, 2]\n\ta.prepend()\n}\n', '`array.prepend()` should have 1 argument'},
+		ReviewFixture{'bad_array_prepend_extra_arg', 'fn side_effect() int {\n\treturn 3\n}\nfn main() {\n\tmut a := [1, 2]\n\ta.prepend(0, side_effect())\n}\n', '`array.prepend()` should have 1 argument'},
+		ReviewFixture{'bad_array_insert_missing_arg', 'fn main() {\n\tmut a := [1, 2]\n\ta.insert(0)\n}\n', '`array.insert()` should have 2 arguments'},
+		ReviewFixture{'bad_array_insert_extra_arg', 'fn side_effect() int {\n\treturn 3\n}\nfn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 1, side_effect())\n}\n', '`array.insert()` should have 2 arguments'},
+		ReviewFixture{'bad_array_prepend_arg_type', "fn main() {\n\tmut a := [1, 2]\n\ta.prepend('x')\n}\n", 'cannot prepend `string` to `[]int`'},
+		ReviewFixture{'bad_array_insert_index_type', "fn main() {\n\tmut a := [1, 2]\n\ta.insert('0', 3)\n}\n", 'the first argument of `array.insert()` should be integer'},
+		ReviewFixture{'bad_array_insert_value_type', "fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 'x')\n}\n", 'cannot insert `string` to `[]int`'},
+		ReviewFixture{'bad_array_prepend_many_arg_type', "fn main() {\n\tmut a := [1, 2]\n\ta.prepend(['x'])\n}\n", 'cannot prepend `[]string` to `[]int`'},
+		ReviewFixture{'bad_array_insert_many_arg_type', "fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, ['x'])\n}\n", 'cannot insert `[]string` to `[]int`'},
+	])
 }
 
 fn test_array_insert_and_prepend_accept_many_operands() {
