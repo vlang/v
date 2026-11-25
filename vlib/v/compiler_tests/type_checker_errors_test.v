@@ -1,3 +1,4 @@
+import json2
 import os
 import rand
 import strings
@@ -34,6 +35,46 @@ fn error_index(output string, needle string) int {
 // run_bad supports run bad handling for v3 tests.
 fn run_bad(compiler string, name string, src string, expected string) {
 	run_bad_with_flags(compiler, name, src, expected, '')
+}
+
+struct TypeCheckerRejection {
+	name     string
+	source   string
+	expected string
+}
+
+struct TypeCheckerDiagnostic {
+	file     string
+	severity string
+	message  string
+}
+
+fn run_bad_module_batch(compiler string, cases []TypeCheckerRejection) {
+	root := unique_temp_path('rejections')
+	mut imports := []string{cap: cases.len}
+	for case in cases {
+		name := case.name
+		write_project_file(root, '${name}/${name}.v', 'module ${name}\n\n' + case.source)
+		imports << 'import ${name} as _'
+	}
+	write_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')
+	result := run_type_checker_compiler(compiler, ['-nocache', root, '-json-errors', '-b', 'c',
+		'-o', unique_temp_path('rejected_program')])
+	assert result.exit_code != 0, 'expected compile failure, got success: ${result.output}'
+	assert !result.output.contains('C compilation failed'), result.output
+	mut diagnostics := map[string][]string{}
+	for line in result.output.split_into_lines() {
+		if !line.starts_with('{') {
+			continue
+		}
+		diagnostic := json2.decode[TypeCheckerDiagnostic](line) or { panic(err) }
+		if diagnostic.severity == 'error' {
+			diagnostics[os.file_name(diagnostic.file)] << diagnostic.message
+		}
+	}
+	for case in cases {
+		assert diagnostics['${case.name}.v'].any(it.contains(case.expected)), '${case.name}: expected ${case.expected} in ${result.output}'
+	}
 }
 
 fn run_bad_selfhost(compiler string, name string, src string, expected string) {
@@ -317,26 +358,28 @@ fn main() {
 
 // test_type_checker_reports_core_semantic_errors validates this v3 regression case.
 fn test_type_checker_reports_core_semantic_errors() {
-	run_bad(v3_bin, 'bad_assignment', "fn main() {\n\tmut x := 1\n\tx = 'bad'\n}\n", 'cannot assign to `x`: expected `int`, not `string`')
-	run_bad(v3_bin, 'bad_return', "fn f() int {\n\treturn 'bad'\n}\nfn main() {}\n", 'cannot use `string` as type `int` in return argument')
-	run_bad(v3_bin, 'bad_call_arg', "fn takes_int(x int) {}\nfn main() {\n\ttakes_int('bad')\n}\n", 'cannot use `string` as `int` in argument 1 to `takes_int`')
-	run_bad(v3_bin, 'bad_field', 'struct Foo {\n\tx int\n}\nfn main() {\n\tf := Foo{}\n\t_ := f.y\n}\n', 'type `Foo` has no field named `y`')
-	run_bad(v3_bin, 'bad_index', 'fn main() {\n\tx := 1\n\t_ := x[0]\n}\n', 'type `int` does not support indexing')
-	run_bad(v3_bin, 'bad_comma_index', 'fn main() {\n\txs := [1]\n\t_ := xs[0, 0]\n}\n', 'index expression accepts one index')
-	run_bad(v3_bin, 'bad_condition', "fn main() {\n\tif 'bad' {}\n}\n", 'non-bool type `string` used as if condition')
-	run_bad(v3_bin, 'bad_zero_arg_call', 'fn f() {}\nfn main() {\n\tf(1)\n}\n', 'expected 0 arguments, but got 1')
-	run_bad(v3_bin, 'bad_int_condition', "fn main() {\n\tif 1 {\n\t\tprintln('bad')\n\t}\n}\n", 'non-bool type `int literal` used as if condition')
-	run_bad(v3_bin, 'bad_missing_return', 'fn f(x bool) int {\n\tif x {\n\t\treturn 1\n\t}\n}\nfn main() {}\n', 'missing return at end of function `f`')
-	run_bad(v3_bin, 'bad_interface_method_set', 'interface Speaker {\n\tspeak() string\n}\nstruct Person {}\nfn takes_speaker(s Speaker) {}\nfn main() {\n\ttakes_speaker(Person{})\n}\n', "`Person` doesn't implement method `speak` of interface `Speaker`")
-	run_bad(v3_bin, 'bad_fn_value_call', "fn add(a int, b int) int {\n\treturn a + b\n}\nfn main() {\n\tf := add\n\t_ := f('bad', 4)\n}\n", 'cannot use `string` as `int` in argument 1 to `f`')
-	run_bad(v3_bin, 'bad_struct_default', "struct Foo {\n\tx int = 'bad'\n}\nfn main() {}\n", 'cannot initialize field `x` with `string`; expected `int`')
-	run_bad(v3_bin, 'bad_enum_value', "enum Color {\n\tred = 'bad'\n}\nfn main() {}\n", 'the default value for an enum has to be an integer')
-	run_bad(v3_bin, 'bad_enum_shorthand', 'enum Color {\n\tred\n}\nfn paint(c Color) {}\nfn main() {\n\tpaint(.blue)\n}\n', 'unknown enum field `blue` for `Color`')
-	run_bad(v3_bin, 'bad_interface_field', 'interface Named {\n\tname string\n}\nstruct Person {}\nfn takes_named(n Named) {}\nfn main() {\n\ttakes_named(Person{})\n}\n', "`Person` doesn't implement field `name` of interface `Named`")
-	run_bad(v3_bin, 'bad_interface_match_unrelated_sum_variant', 'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nstruct Other {\n\tx int\n}\ntype Unrelated = Other\nfn describe(s Shape) int {\n\treturn match s {\n\t\tOther { 1 }\n\t\telse { s.area() }\n\t}\n}\nfn main() {}\n', "`Other` doesn't implement method `area` of interface `Shape`")
-	run_bad(v3_bin, 'bad_interface_is_unrelated_sum_variant', 'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nstruct Other {\n\tx int\n}\ntype Unrelated = Other\nfn check(s Shape) bool {\n\treturn s is Other\n}\nfn main() {}\n', "`Other` doesn't implement method `area` of interface `Shape`")
-	run_bad(v3_bin, 'bad_interface_match_unresolved_pattern', 'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn describe(s Shape) int {\n\treturn match s {\n\t\tMissingType { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {}\n', 'unknown type `MissingType`')
-	run_bad(v3_bin, 'bad_interface_is_unresolved_pattern', 'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn check(s Shape) bool {\n\treturn s is MissingType\n}\nfn main() {}\n', 'unknown type `MissingType`')
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_assignment', "fn main() {\n\tmut x := 1\n\tx = 'bad'\n}\n", 'cannot assign to `x`: expected `int`, not `string`'},
+		TypeCheckerRejection{'bad_return', "fn f() int {\n\treturn 'bad'\n}\nfn main() {}\n", 'cannot use `string` as type `int` in return argument'},
+		TypeCheckerRejection{'bad_call_arg', "fn takes_int(x int) {}\nfn main() {\n\ttakes_int('bad')\n}\n", 'cannot use `string` as `int` in argument 1 to `bad_call_arg.takes_int`'},
+		TypeCheckerRejection{'bad_field', 'struct Foo {\n\tx int\n}\nfn main() {\n\tf := Foo{}\n\t_ := f.y\n}\n', 'type `bad_field.Foo` has no field named `y`'},
+		TypeCheckerRejection{'bad_index', 'fn main() {\n\tx := 1\n\t_ := x[0]\n}\n', 'type `int` does not support indexing'},
+		TypeCheckerRejection{'bad_comma_index', 'fn main() {\n\txs := [1]\n\t_ := xs[0, 0]\n}\n', 'index expression accepts one index'},
+		TypeCheckerRejection{'bad_condition', "fn main() {\n\tif 'bad' {}\n}\n", 'non-bool type `string` used as if condition'},
+		TypeCheckerRejection{'bad_zero_arg_call', 'fn f() {}\nfn main() {\n\tf(1)\n}\n', 'expected 0 arguments, but got 1'},
+		TypeCheckerRejection{'bad_int_condition', "fn main() {\n\tif 1 {\n\t\tprintln('bad')\n\t}\n}\n", 'non-bool type `int literal` used as if condition'},
+		TypeCheckerRejection{'bad_missing_return', 'fn f(x bool) int {\n\tif x {\n\t\treturn 1\n\t}\n}\nfn main() {}\n', 'missing return at end of function `f`'},
+		TypeCheckerRejection{'bad_interface_method_set', 'interface Speaker {\n\tspeak() string\n}\nstruct Person {}\nfn takes_speaker(s Speaker) {}\nfn main() {\n\ttakes_speaker(Person{})\n}\n', "`Person` doesn't implement method `speak` of interface `Speaker`"},
+		TypeCheckerRejection{'bad_fn_value_call', "fn add(a int, b int) int {\n\treturn a + b\n}\nfn main() {\n\tf := add\n\t_ := f('bad', 4)\n}\n", 'cannot use `string` as `int` in argument 1 to `f`'},
+		TypeCheckerRejection{'bad_struct_default', "struct Foo {\n\tx int = 'bad'\n}\nfn main() {}\n", 'cannot initialize field `x` with `string`; expected `int`'},
+		TypeCheckerRejection{'bad_enum_value', "enum Color {\n\tred = 'bad'\n}\nfn main() {}\n", 'the default value for an enum has to be an integer'},
+		TypeCheckerRejection{'bad_enum_shorthand', 'enum Color {\n\tred\n}\nfn paint(c Color) {}\nfn main() {\n\tpaint(.blue)\n}\n', 'unknown enum field `blue` for `bad_enum_shorthand.Color`'},
+		TypeCheckerRejection{'bad_interface_field', 'interface Named {\n\tname string\n}\nstruct Person {}\nfn takes_named(n Named) {}\nfn main() {\n\ttakes_named(Person{})\n}\n', "`Person` doesn't implement field `name` of interface `Named`"},
+		TypeCheckerRejection{'bad_interface_match_unrelated_sum_variant', 'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nstruct Other {\n\tx int\n}\ntype Unrelated = Other\nfn describe(s Shape) int {\n\treturn match s {\n\t\tOther { 1 }\n\t\telse { s.area() }\n\t}\n}\nfn main() {}\n', "`Other` doesn't implement method `area` of interface `Shape`"},
+		TypeCheckerRejection{'bad_interface_is_unrelated_sum_variant', 'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nstruct Other {\n\tx int\n}\ntype Unrelated = Other\nfn check(s Shape) bool {\n\treturn s is Other\n}\nfn main() {}\n', "`Other` doesn't implement method `area` of interface `Shape`"},
+		TypeCheckerRejection{'bad_interface_match_unresolved_pattern', 'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn describe(s Shape) int {\n\treturn match s {\n\t\tMissingType { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {}\n', 'unknown type `MissingType`'},
+		TypeCheckerRejection{'bad_interface_is_unresolved_pattern', 'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn check(s Shape) bool {\n\treturn s is MissingType\n}\nfn main() {}\n', 'unknown type `MissingType`'},
+	])
 	container_patterns := run_good(v3_bin, 'good_empty_interface_container_patterns', "interface Any {}\nfn main() {\n\tarr := Any([1, 2])\n\tprintln(arr is []int)\n\tprintln(arr is []string)\n\tm := Any({\n\t\t'a': 1\n\t})\n\tprintln(m is map[string]int)\n\tprintln(m is map[string]string)\n\tprintln(match arr {\n\t\t[]int { 1 }\n\t\telse { 0 }\n\t})\n}\n")
 	assert container_patterns == 'true\nfalse\ntrue\nfalse\n1'
 	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface', "type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
