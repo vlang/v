@@ -379,16 +379,25 @@ fn test_type_checker_reports_core_semantic_errors() {
 		TypeCheckerRejection{'bad_interface_is_unrelated_sum_variant', 'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nstruct Other {\n\tx int\n}\ntype Unrelated = Other\nfn check(s Shape) bool {\n\treturn s is Other\n}\nfn main() {}\n', "`Other` doesn't implement method `area` of interface `Shape`"},
 		TypeCheckerRejection{'bad_interface_match_unresolved_pattern', 'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn describe(s Shape) int {\n\treturn match s {\n\t\tMissingType { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {}\n', 'unknown type `MissingType`'},
 		TypeCheckerRejection{'bad_interface_is_unresolved_pattern', 'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn check(s Shape) bool {\n\treturn s is MissingType\n}\nfn main() {}\n', 'unknown type `MissingType`'},
+		TypeCheckerRejection{'bad_sum_missing_shared_field', 'struct A {\n\tid int\n}\nstruct B {\n\tname string\n}\ntype Node = A | B\nfn main() {\n\tn := Node(A{\n\t\tid: 1\n\t})\n\t_ := n.id\n}\n', 'field `id` does not exist or have the same type in these sumtype `bad_sum_missing_shared_field.Node` variants'},
+		TypeCheckerRejection{'bad_sum_and_smartcast_rhs', 'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tif a is Cat && a.tricks == 2 {}\n}\n', 'type `bad_sum_and_smartcast_rhs.Cat` has no field named `tricks`'},
+		TypeCheckerRejection{'bad_sum_is_variant', 'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tif a is Bird {}\n}\n', '`bad_sum_is_variant.Animal` has no variant `bad_sum_is_variant.Bird`'},
+		TypeCheckerRejection{'bad_stale_bool_smartcast_after_mutation', 'struct Cat {\n\tage int\n}\nstruct Dog {}\ntype Animal = Cat | Dog\nfn main() {\n\tmut animal := Animal(Cat{\n\t\tage: 2\n\t})\n\tis_cat := animal is Cat\n\tanimal = Animal(Dog{})\n\tif is_cat {\n\t\tprintln(animal.age)\n\t}\n}\n', 'field `age` does not exist or have the same type in these sumtype `bad_stale_bool_smartcast_after_mutation.Animal` variants'},
+		TypeCheckerRejection{'bad_sum_match_variant', 'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tmatch a {\n\t\tBird {}\n\t\telse {}\n\t}\n}\n', '`bad_sum_match_variant.Animal` has no variant `Bird`'},
+		TypeCheckerRejection{'bad_unknown_decl_type', 'fn f(x Missing) {}\nfn main() {}\n', 'unknown type `Missing`'},
+		TypeCheckerRejection{'bad_unknown_generic_application_base', 'fn f(x Missing[int]) {}\nfn main() {}\n', 'unknown type `Missing`'},
+		TypeCheckerRejection{'bad_unknown_generic_application_arg', 'struct Box[T] {\n\tvalue T\n}\nfn f(x Box[Missing]) {}\nfn main() {}\n', 'unknown type `Missing`'},
+		TypeCheckerRejection{'bad_single_letter_struct_arg', 'struct A {}\nfn takes_a(a A) {}\nfn main() {\n\ttakes_a(1)\n}\n', 'cannot use `int literal` as `bad_single_letter_struct_arg.A` in argument 1 to `bad_single_letter_struct_arg.takes_a`'},
+		TypeCheckerRejection{'bad_unknown_single_letter_type', 'fn f(x Z) {}\nfn main() {}\n', 'unknown type `Z`'},
+		TypeCheckerRejection{'bad_repeated_unknown_single_letter_type', 'fn f(x Z) Z {\n\treturn x\n}\nfn main() {}\n', 'unknown type `Z`'},
+		TypeCheckerRejection{'bad_undeclared_generic_fn_param', 'fn f[T](x T, y Z) {}\nfn main() {}\n', 'generic type name `Z` is not mentioned in fn `f[T]`'},
+		TypeCheckerRejection{'bad_undeclared_generic_struct_field', 'struct Box[T] {\n\tother U\n}\nfn main() {}\n', 'generic type name `U` is not mentioned in struct `Box[T]`'},
+		TypeCheckerRejection{'required_options_param', "struct Options {\n\tlimit int\n}\n\nfn connect(url string, opts Options) int {\n\treturn opts.limit\n}\n\nfn main() {\n\t_ := connect('db')\n}\n", 'expected 2 arguments, but got 1'},
 	])
 	container_patterns := run_good(v3_bin, 'good_empty_interface_container_patterns', "interface Any {}\nfn main() {\n\tarr := Any([1, 2])\n\tprintln(arr is []int)\n\tprintln(arr is []string)\n\tm := Any({\n\t\t'a': 1\n\t})\n\tprintln(m is map[string]int)\n\tprintln(m is map[string]string)\n\tprintln(match arr {\n\t\t[]int { 1 }\n\t\telse { 0 }\n\t})\n}\n")
 	assert container_patterns == 'true\nfalse\ntrue\nfalse\n1'
 	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface', "type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
 	assert alias_interface_out == 'test\nhehe'
-	run_bad(v3_bin, 'bad_sum_missing_shared_field', 'struct A {\n\tid int\n}\nstruct B {\n\tname string\n}\ntype Node = A | B\nfn main() {\n\tn := Node(A{\n\t\tid: 1\n\t})\n\t_ := n.id\n}\n', 'field `id` does not exist or have the same type in these sumtype `Node` variants')
-	run_bad(v3_bin, 'bad_sum_and_smartcast_rhs', 'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tif a is Cat && a.tricks == 2 {}\n}\n', 'type `Cat` has no field named `tricks`')
-	run_bad(v3_bin, 'bad_sum_is_variant', 'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tif a is Bird {}\n}\n', '`Animal` has no variant `Bird`')
-	run_bad(v3_bin, 'bad_stale_bool_smartcast_after_mutation', 'struct Cat {\n\tage int\n}\nstruct Dog {}\ntype Animal = Cat | Dog\nfn main() {\n\tmut animal := Animal(Cat{\n\t\tage: 2\n\t})\n\tis_cat := animal is Cat\n\tanimal = Animal(Dog{})\n\tif is_cat {\n\t\tprintln(animal.age)\n\t}\n}\n', 'field `age` does not exist or have the same type in these sumtype `Animal` variants')
-	run_bad(v3_bin, 'bad_sum_match_variant', 'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tmatch a {\n\t\tBird {}\n\t\telse {}\n\t}\n}\n', '`Animal` has no variant `Bird`')
 	run_bad(v3_bin, 'bad_sum_constructor_extra_arg', 'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n', 'unexpected `,`')
 	run_bad(v3_bin, 'bad_sum_constructor_extra_arg_as_call_arg', 'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn use(t Tree[int]) {}\nfn main() {\n\tuse(Tree[int](Empty{}, side_effect()))\n}\n', 'invalid expression: unexpected token `)`')
 	run_bad_project(v3_bin, 'bad_imported_sum_constructor_extra_arg', {
@@ -399,14 +408,6 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
 		'main.v':        'import trees as tr\n\nfn main() {\n\t_ := tr.Tree[int](tr.Empty{}, tr.side_effect())\n}\n'
 	}, 'main.v', 'unexpected `,`')
-	run_bad(v3_bin, 'bad_unknown_decl_type', 'fn f(x Missing) {}\nfn main() {}\n', 'unknown type `Missing`')
-	run_bad(v3_bin, 'bad_unknown_generic_application_base', 'fn f(x Missing[int]) {}\nfn main() {}\n', 'unknown type `Missing`')
-	run_bad(v3_bin, 'bad_unknown_generic_application_arg', 'struct Box[T] {\n\tvalue T\n}\nfn f(x Box[Missing]) {}\nfn main() {}\n', 'unknown type `Missing`')
-	run_bad(v3_bin, 'bad_single_letter_struct_arg', 'struct A {}\nfn takes_a(a A) {}\nfn main() {\n\ttakes_a(1)\n}\n', 'cannot use `int literal` as `A` in argument 1 to `takes_a`')
-	run_bad(v3_bin, 'bad_unknown_single_letter_type', 'fn f(x Z) {}\nfn main() {}\n', 'unknown type `Z`')
-	run_bad(v3_bin, 'bad_repeated_unknown_single_letter_type', 'fn f(x Z) Z {\n\treturn x\n}\nfn main() {}\n', 'unknown type `Z`')
-	run_bad(v3_bin, 'bad_undeclared_generic_fn_param', 'fn f[T](x T, y Z) {}\nfn main() {}\n', 'generic type name `Z` is not mentioned in fn `f[T]`')
-	run_bad(v3_bin, 'bad_undeclared_generic_struct_field', 'struct Box[T] {\n\tother U\n}\nfn main() {}\n', 'generic type name `U` is not mentioned in struct `Box[T]`')
 	run_bad_selfhost(v3_bin, 'bad_generic_param', 'fn id[T](x T) T {\n\treturn x\n}\nfn main() {\n\t_ := id(1)\n}\n', 'unsupported generic type parameter `T`')
 	run_bad_selfhost(v3_bin, 'bad_generic_type_application', 'fn takes_box(x Box[int]) {}\nfn main() {}\n', 'unsupported generic type application `Box[int]`')
 	run_bad_project(v3_bin, 'bad_bare_imported_call', {
@@ -424,7 +425,6 @@ fn test_type_checker_reports_core_semantic_errors() {
 	assert err_local_out == '3'
 	args_contains_out := run_good(v3_bin, 'local_args_contains', "fn main() {\n\targs := [1, 2]\n\tif args.contains(2) {\n\t\tprintln('ok')\n\t}\n}\n")
 	assert args_contains_out == 'ok'
-	run_bad(v3_bin, 'required_options_param', "struct Options {\n\tlimit int\n}\n\nfn connect(url string, opts Options) int {\n\treturn opts.limit\n}\n\nfn main() {\n\t_ := connect('db')\n}\n", 'expected 2 arguments, but got 1')
 	custom_codec_out := run_good(v3_bin, 'custom_codec_methods', 'struct Codec {}\n\nfn (c Codec) decode() int {\n\treturn 7\n}\n\nfn (c Codec) encode() int {\n\treturn 8\n}\n\nfn (c Codec) use(x int) int {\n\treturn x + 1\n}\n\nfn (c Codec) run_at(x int) int {\n\treturn x + 2\n}\n\nfn main() {\n\tc := Codec{}\n\tprintln(int_str(c.decode()))\n\tprintln(int_str(c.encode()))\n\tprintln(int_str(c.use(9)))\n\tprintln(int_str(c.run_at(5)))\n}\n')
 	assert custom_codec_out == '7\n8\n10\n7'
 	item_with_user_out := run_good(v3_bin, 'item_with_user_initializer', 'struct ItemWithUserFoo {\n\titem int\n}\n\nfn main() {\n\tx := ItemWithUserFoo{\n\t\titem: 7\n\t}\n\tprintln(int_str(x.item))\n}\n')
