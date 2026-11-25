@@ -96,8 +96,22 @@ pub fn atomic_value[T](val T) AtomicVal[T] {
 // new_atomic creates a new atomic value of `T` type.
 @[inline]
 pub fn new_atomic[T](val T) &AtomicVal[T] {
-	value := atomic_value(val)
-	return &AtomicVal[T]{ val: value.val }
+	$if T is $int {
+		return &AtomicVal[T]{
+			val: val
+		}
+	} $else $if T is bool {
+		return &AtomicVal[T]{
+			val: val
+		}
+	} $else $if T is voidptr {
+		return &AtomicVal[T]{
+			val: val
+		}
+	} $else {
+		$compile_error('atomic: only support number, bool, and voidptr types')
+	}
+	return unsafe { nil }
 }
 
 // load returns current value of the atomic value

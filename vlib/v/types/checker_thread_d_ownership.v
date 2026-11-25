@@ -3,7 +3,7 @@ module types
 import v.flat
 
 fn (tc &TypeChecker) ownership_checks_thread_boundary() bool {
-	return !tc.autofree_mode && tc.unsafe_depth == 0 && !tc.ownership_effects_disabled()
+	return tc.unsafe_depth == 0 && !tc.ownership_effects_disabled()
 }
 
 fn (mut tc TypeChecker) ownership_check_spawn_transfer(call_id flat.NodeId, call flat.Node) {
