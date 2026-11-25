@@ -1415,6 +1415,7 @@ fn fastc_join_c_pieces(pieces []string) string {
 
 struct FastcGlobalDeclarations {
 	option_types        flat.TypeTextBindings
+	channel_elements    flat.TypeTextBindings
 	uses_pthread_tls    bool
 	declarations        string
 	module_initializers map[string]string
@@ -1492,6 +1493,7 @@ struct FastcDeclarationAttribute {
 }
 
 struct FastcEnumInfo {
+	key    string
 	c_name string
 	name   u32
 	fields []string
@@ -1508,9 +1510,10 @@ struct FastcTypeDeclarations {
 	// typedefs) and declarations follows them (the type bodies).
 	declarations_head string
 	declarations      string
-	// The enum `str`/print helpers, one piece each (parallel lists).
+	// Generated enum helpers, one piece each (parallel lists).
 	enum_helper_names []string
 	enum_helper_texts []string
+	enum_from_types   flat.TypeTextBindings
 	alias_base_types  flat.TypeTextBindings
 	// Return type (C spelling) declared by each `type Name = fn (...) Ret` alias,
 	// keyed by the alias C name. Lets a call through such a value infer its result.
@@ -1715,6 +1718,7 @@ mut:
 	interface_method_names_memo   map[u32][]string
 	interface_implementation_memo map[u64]bool
 	global_option_types           flat.TypeTextBindings
+	global_channel_elements       flat.TypeTextBindings
 	global_types                  flat.TypeTextBindings
 	return_type                   u32
 	return_type_is_function       bool
@@ -1993,6 +1997,7 @@ struct FastcFileGenContext {
 	function_c_names          map[string]string
 	constant_types            flat.TypeTextBindings
 	global_option_types       flat.TypeTextBindings
+	global_channel_elements   flat.TypeTextBindings
 	global_types              flat.TypeTextBindings
 	fixed_array_types         flat.TypeTextBindings
 	composite_types           map[string]bool
@@ -2147,6 +2152,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		function_id_table:             ctx.function_ids
 		constant_types:                ctx.constant_types
 		global_option_types:           ctx.global_option_types
+		global_channel_elements:       ctx.global_channel_elements
 		global_types:                  ctx.global_types
 		// These maps are per-file registration deltas. The stitch pass already owns
 		// the declarations collected before file generation, so copying that shared
@@ -2454,6 +2460,17 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		composite_types[name] = true
 	}
 	type_output := type_result.output
+	for type_key, enum_type in type_output.enum_from_types.ids {
+		key := '${type_key}.from'
+		if key in functions { continue }
+		functions[key] = FastcFunctionSignature{
+			parameter_types: flat.TypeTextList{ ids: [flat.source_type_u64] }
+			return_type:     fastc_type_result
+			option_type:     enum_type
+			is_public:       true
+		}
+		function_c_names[key] = 'v_fastc_enum_from_${flat.source_type_name(enum_type)}'
+	}
 	struct_fields := type_result.struct_fields.move()
 	mut struct_field_info := type_result.struct_field_info.move()
 	timer.mark('type_declarations')
@@ -2536,6 +2553,9 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, global_output.early_initializers, module_init_calls, function_c_names)!
 	timer.mark('startup_initializers')
 	mut used_function_names := fastc_wait_referenced_function_names(mut pending_references)
+	if 'from' in used_function_names && type_output.enum_from_types.ids.len > 0 {
+		used_function_names['error'] = true
+	}
 	for key, signature in functions {
 		if fastc_function_is_native_root(key, signature) {
 			used_function_names[key.all_after_last('.')] = true
@@ -2620,6 +2640,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		function_c_names:          function_c_names
 		constant_types:            constant_types
 		global_option_types:       global_output.option_types
+		global_channel_elements:   global_output.channel_elements
 		global_types:              global_types
 		fixed_array_types:         fixed_array_types
 		composite_types:           composite_types
@@ -5145,7 +5166,9 @@ fn fastc_function_id_table(functions map[string]FastcFunctionSignature, function
 			continue
 		}
 		c_name := fastc_c_declared_type_name(flat.source_type_name(type_key))
-		for helper in ['v_fastc_enum_str_${c_name}', 'v_fastc_print_enum_${c_name}'] {
+		for helper in ['v_fastc_enum_str_${c_name}', 'v_fastc_print_enum_${c_name}',
+			'${c_name}__from_string', 'v_fastc_enum_from_${c_name}',
+			'v_fastc_enum_from_text_${c_name}'] {
 			if helper !in ids {
 				ids[helper] = ids.len
 			}

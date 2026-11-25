@@ -699,7 +699,9 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				cast_type := cast_type_source_id
 
 				close := fastc_matching_rpar_before(tokens, open, end) or { break }
-				if flat.source_type_query(cast_type).has(.c_array_prefix) && close == end - 1 {
+				if close == end - 1 && (flat.source_type_query(cast_type).has(.c_array_prefix)
+					|| (fastc_is_pointer_type(cast_type)
+						&& fastc_typed_option_payload(fastc_trim_pointer_type(cast_type)) != none)) {
 					return cast_type
 				}
 			}
