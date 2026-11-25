@@ -1,33 +1,14 @@
 import os
 import v.tempname
 
-const paren_type_vexe = @VEXE
-const paren_type_tests_dir = os.dir(@FILE)
-const paren_type_v3_dir = os.dir(paren_type_tests_dir)
-const paren_type_vlib_dir = os.dir(paren_type_v3_dir)
-const paren_type_v3_src = os.join_path(paren_type_v3_dir, 'v.v')
-
-const paren_type_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_paren_type_fixtures_${tempname.unique_token()}')
-const paren_type_compiler = os.join_path(paren_type_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
-
-fn testsuite_begin() {
-	os.mkdir_all(paren_type_fixture_dir) or { panic(err) }
-	build :=
-		os.exec([paren_type_vexe, '-gc', 'none', '-path',
-			'${paren_type_vlib_dir}' + '|@vlib|@vmodules', '-o', paren_type_compiler,
-			'${paren_type_v3_src}'])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rmdir_all(paren_type_fixture_dir) or {}
-}
-
 fn paren_type_run_good(name string, source string) string {
-	src := os.join_path(paren_type_fixture_dir, 'v3_${name}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_${name}')
+	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(paren_type_fixture_dir, 'v3_${name}')
-	compile := os.exec([paren_type_compiler, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
