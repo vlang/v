@@ -326,26 +326,7 @@ fn test_pointer_alias_methods_keep_alias_resolution_in_sql_values() {
 	check_sql_alias_clone_cases(cases, 'pointer_clone', [true, false])!
 }
 
-// Since #29221 a `mut` receiver method needs mutable storage even when it is declared in
-// another module and only changes private state (`inspect`).
-fn test_mut_alias_methods_require_mutable_storage_in_sql_values() {
-	check_sql_alias_mutability(['values.mutate()[0].name', '(values).mutate()[0].name',
-		'aliases.make().mutate()[0].name', 'aliases.WrappedNames(values).mutate()[0].name',
-		'renamed.MoreWrappedRefs(ref_values).mutate()[0].name',
-		'(aliases.load_names(true) or { values }).mutate()[0].name',
-		'(renamed.find_names(false) or { values }).mutate()[0].name',
-		'(optional_none_values or { values }).mutate()[0].name', 'values.inspect()[0].name',
-		'renamed.make().inspect()[0].name'], false)!
-}
-
-fn test_mut_alias_methods_keep_ordinary_storage_exceptions_in_sql_values() {
-	check_sql_alias_mutability(['mutable_values.mutate()[0].name', 'ptr_values.mutate()[0].name',
-		'aliases.make_ptr().mutate()[0].name', 'renamed.make_ptr_ptr().mutate()[0].name',
-		'aliases.make_refs().mutate()[0].name',
-		'(mutable_optional_values or { values }).mutate()[0].name'], true)!
-}
-
-fn check_sql_alias_mutability(expressions []string, valid bool) ! {
+fn sql_alias_mutability_cases(expressions []string, valid bool) []SqlAliasQueryCase {
 	mut cases := []SqlAliasQueryCase{cap: expressions.len}
 	for expression in expressions {
 		import_name := if expression.contains('renamed.') { 'renamed' } else { 'aliases' }
@@ -362,8 +343,7 @@ fn check_sql_alias_mutability(expressions []string, valid bool) ! {
 			diagnostic:  diagnostic
 		}
 	}
-	check_sql_alias_query_batch(cases, 'mutability_${valid}', sql_alias_visibility_queries(valid),
-		sql_alias_compile_and_check, sql_alias_public_module)!
+	return cases
 }
 
 struct SqlAliasQueryCase {
@@ -456,7 +436,7 @@ fn sql_alias_lock_cases(lock_receivers []string, imports_by_method map[string]st
 	return cases
 }
 
-fn check_sql_alias_lock_cases(label string, cases []SqlAliasQueryCase) ! {
+fn check_sql_alias_storage_cases(label string, cases []SqlAliasQueryCase) ! {
 	check_sql_alias_query_batch(cases.filter(it.diagnostic == ''), '${label}_accepted',
 		sql_alias_visibility_queries(true), sql_alias_compile_and_check, sql_alias_public_module)!
 	check_sql_alias_query_batch(cases.filter(it.diagnostic != ''), '${label}_rejected',
@@ -471,11 +451,24 @@ fn test_alias_methods_keep_shared_element_and_captured_array_lock_keys_in_sql_va
 		'mutate': 'aliases'
 		'clone':  'renamed'
 	}, false)
-	check_sql_alias_lock_cases('shared_element_and_captured_array_locks', cases)!
+	check_sql_alias_storage_cases('shared_element_and_captured_array_locks', cases)!
 }
 
-fn test_alias_methods_require_ordinary_and_whole_array_locks_in_sql_values() {
-	mut cases := sql_alias_lock_cases(['shared_values'], {
+fn test_mut_alias_methods_require_mutable_storage_and_locks_in_sql_values() {
+	// Since #29221 a `mut` receiver method needs mutable storage even when it is declared in
+	// another module and only changes private state (`inspect`).
+	mut cases := sql_alias_mutability_cases(['values.mutate()[0].name', '(values).mutate()[0].name',
+		'aliases.make().mutate()[0].name', 'aliases.WrappedNames(values).mutate()[0].name',
+		'renamed.MoreWrappedRefs(ref_values).mutate()[0].name',
+		'(aliases.load_names(true) or { values }).mutate()[0].name',
+		'(renamed.find_names(false) or { values }).mutate()[0].name',
+		'(optional_none_values or { values }).mutate()[0].name', 'values.inspect()[0].name',
+		'renamed.make().inspect()[0].name'], false)
+	cases << sql_alias_mutability_cases(['mutable_values.mutate()[0].name',
+		'ptr_values.mutate()[0].name', 'aliases.make_ptr().mutate()[0].name',
+		'renamed.make_ptr_ptr().mutate()[0].name', 'aliases.make_refs().mutate()[0].name',
+		'(mutable_optional_values or { values }).mutate()[0].name'], true)
+	cases << sql_alias_lock_cases(['shared_values'], {
 		'mutate':  'aliases'
 		'inspect': 'renamed'
 		'clone':   'aliases'
@@ -484,7 +477,7 @@ fn test_alias_methods_require_ordinary_and_whole_array_locks_in_sql_values() {
 		'mutate': 'aliases'
 		'clone':  'aliases'
 	}, true)
-	check_sql_alias_lock_cases('ordinary_and_whole_array_locks', cases)!
+	check_sql_alias_storage_cases('mutability_and_locks', cases)!
 }
 
 fn test_inherited_alias_methods_keep_resolution_and_visibility_in_sql_values() {
