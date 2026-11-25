@@ -8,7 +8,11 @@ fn (tc &TypeChecker) ownership_checks_thread_boundary() bool {
 
 fn (mut tc TypeChecker) ownership_check_spawn_transfer(spawn_id flat.NodeId, call_id flat.NodeId, call flat.Node) {
 	declared := tc.resolve_call_info(call_id, call) or { return }
-	join_site := tc.ownership_scoped_thread_join_site(spawn_id) or { flat.empty_node }
+	group := tc.ownership_scoped_thread_group(spawn_id)
+	join_site := tc.ownership_scoped_thread_join_site(spawn_id) or {
+		if group_info := group { group_info.wait_site } else { flat.empty_node }
+	}
+	error_count := tc.errors.len
 	info := if tc.valid_node_id(join_site) {
 		tc.specialized_plain_generic_call_info(call, declared)
 	} else {
@@ -17,7 +21,7 @@ fn (mut tc TypeChecker) ownership_check_spawn_transfer(spawn_id flat.NodeId, cal
 	callee_id := tc.a.child(&call, 0)
 	if receiver_id := tc.ownership_thread_receiver(callee_id, info) {
 		expected := info.params[0] or { tc.resolve_type(receiver_id) }
-		tc.ownership_check_thread_argument(receiver_id, expected, info, 0, 'thread receiver', join_site)
+		tc.ownership_check_thread_argument(receiver_id, expected, info, 0, 'thread receiver', join_site, group)
 	} else if tc.ownership_thread_uses_function_value(callee_id) {
 		tc.record_error(.thread_transfer,
 			'cannot start a thread with a function value whose captures are unknown', callee_id)
@@ -29,9 +33,14 @@ fn (mut tc TypeChecker) ownership_check_spawn_transfer(spawn_id flat.NodeId, cal
 			tc.ownership_call_arg_shift(call, info)
 		elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, param_idx, value_id)
 		expected := tc.ownership_call_arg_expected_type(info, param_idx, elem_idx)
-		tc.ownership_check_thread_argument(arg_id, expected, info, param_idx, 'thread argument', join_site)
+		tc.ownership_check_thread_argument(arg_id, expected, info, param_idx, 'thread argument', join_site, group)
 	}
 	tc.ownership_check_thread_transfer(info.return_type, callee_id, 'thread result')
+	if tc.errors.len == error_count {
+		if group_info := group {
+			tc.ownership_record_scoped_thread_call(call, info, group_info.name, group_info.wait_site)
+		}
+	}
 }
 
 fn (tc &TypeChecker) ownership_thread_receiver(callee_id flat.NodeId, info CallInfo) ?flat.NodeId {
@@ -70,7 +79,7 @@ fn (tc &TypeChecker) ownership_thread_uses_function_value(id flat.NodeId) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected Type, info CallInfo, index int, role string, join_site flat.NodeId) {
+fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected Type, info CallInfo, index int, role string, join_site flat.NodeId, group ?ScopedThreadGroup) {
 	if call_param_is_shared(info, index) && tc.expr_is_shared_arg(id) {
 		tc.ownership_check_thread_transfer(unwrap_pointer(unalias_type(expected)), id, role)
 		return
@@ -83,6 +92,15 @@ fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected
 	}
 	if tc.valid_node_id(join_site) {
 		if borrows := tc.ownership_scoped_thread_argument_borrows(id, expected) {
+			if group_info := group {
+				for borrow in borrows {
+					if !tc.ownership_scoped_thread_group_source_outlives(borrow.source, group_info) {
+						tc.record_error(.thread_transfer,
+							'scoped thread group `${group_info.name}` outlives borrowed scalar `${borrow.source}`', borrow.pos)
+						return
+					}
+				}
+			}
 			if !tc.ownership_scoped_thread_reads_parameter(info, index, expected, borrows) {
 				tc.record_error(.thread_transfer,
 					'cannot prove that the scoped thread borrow is read without escaping', id)

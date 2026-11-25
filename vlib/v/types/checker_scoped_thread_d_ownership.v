@@ -178,14 +178,14 @@ fn (tc &TypeChecker) ownership_scoped_thread_reads_parameter(info CallInfo, inde
 	for i in 0 .. fn_node.children_count {
 		child := tc.a.child(fn_node, i)
 		if tc.a.node(child).kind != .param
-			&& !tc.ownership_scoped_thread_only_reads(child, parameter.value, fields, 0) {
+			&& !tc.ownership_scoped_thread_only_reads(child, parameter.value, fields, false, 0) {
 			return false
 		}
 	}
 	return true
 }
 
-fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name string, fields map[string]bool, depth int) bool {
+fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name string, fields map[string]bool, inside_callable bool, depth int) bool {
 	if depth > 128 {
 		return false
 	}
@@ -194,6 +194,9 @@ fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name str
 		return false
 	}
 	if node.kind in [.ident, .param] && node.value == name {
+		if inside_callable {
+			return false
+		}
 		if fields.len == 0 {
 			return tc.ownership_scoped_thread_scalar_read(id)
 		}
@@ -209,8 +212,9 @@ fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name str
 		}
 		return !borrowed || tc.ownership_scoped_thread_scalar_read(field_id)
 	}
+	nested := inside_callable || node.kind in [.fn_literal, .lambda_expr]
 	for i in 0 .. node.children_count {
-		if !tc.ownership_scoped_thread_only_reads(tc.a.child(node, i), name, fields, depth + 1) {
+		if !tc.ownership_scoped_thread_only_reads(tc.a.child(node, i), name, fields, nested, depth + 1) {
 			return false
 		}
 	}
@@ -220,19 +224,12 @@ fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name str
 // Allow only dereferences used to compute a scalar value. A bare reference
 // or a dereference passed by reference could outlive the worker's join.
 fn (tc &TypeChecker) ownership_scoped_thread_scalar_read(id flat.NodeId) bool {
-	mut parent_id := tc.direct_parent_id(id)
-	for tc.a.node(parent_id).kind == .paren {
-		parent_id = tc.direct_parent_id(parent_id)
-	}
-	deref := tc.a.node(parent_id)
+	deref_id := tc.ownership_scoped_thread_use_parent(id)
+	deref := tc.a.node(deref_id)
 	if deref.kind != .prefix || deref.op != .mul {
 		return false
 	}
-	parent_id = tc.direct_parent_id(parent_id)
-	for tc.a.node(parent_id).kind == .paren {
-		parent_id = tc.direct_parent_id(parent_id)
-	}
-	parent := tc.a.node(parent_id)
+	parent := tc.a.node(tc.ownership_scoped_thread_use_parent(deref_id))
 	return match parent.kind {
 		.assert_stmt, .decl_assign, .return_stmt, .string_interp { true }
 		.infix {
@@ -265,15 +262,19 @@ fn (mut tc TypeChecker) ownership_record_scoped_thread_borrows(handle string, rh
 	}
 	declared := tc.resolve_call_info(call_id, *call) or { return }
 	info := tc.specialized_plain_generic_call_info(*call, declared)
-	if recv := tc.ownership_thread_receiver(tc.a.child(call, 0), info) {
+	tc.ownership_record_scoped_thread_call(*call, info, handle, join_site)
+}
+
+fn (mut tc TypeChecker) ownership_record_scoped_thread_call(call flat.Node, info CallInfo, handle string, join_site flat.NodeId) {
+	if recv := tc.ownership_thread_receiver(tc.a.child(&call, 0), info) {
 		expected := info.params[0] or { tc.resolve_type(recv) }
 		tc.ownership_record_scoped_thread_borrow(recv, info, 0, expected, handle, join_site)
 	}
 	for i in 1 .. call.children_count {
-		value_id := tc.call_arg_value(tc.a.child(call, i))
+		value_id := tc.call_arg_value(tc.a.child(&call, i))
 		arg := tc.spread_arg_value(value_id) or { value_id }
 		param_idx := tc.ownership_call_arg_decl_param_idx(info, i) +
-			tc.ownership_call_arg_shift(*call, info)
+			tc.ownership_call_arg_shift(call, info)
 		elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, param_idx, value_id)
 		expected := tc.ownership_call_arg_expected_type(info, param_idx, elem_idx)
 		tc.ownership_record_scoped_thread_borrow(arg, info, param_idx, expected, handle, join_site)
@@ -303,6 +304,39 @@ fn (mut tc TypeChecker) ownership_record_scoped_thread_borrow(arg flat.NodeId, i
 	}
 }
 
+fn (tc &TypeChecker) ownership_scoped_thread_use_parent(id flat.NodeId) flat.NodeId {
+	mut parent := tc.direct_parent_id(id)
+	for tc.a.node(parent).kind == .paren {
+		parent = tc.direct_parent_id(parent)
+	}
+	return parent
+}
+
+// A further scoped worker can borrow the same scalar as a direct argument or
+// through an inline initializer. The spawn check certifies its use of the
+// borrow. The arguments of an ordinary helper call remain outside this rule.
+fn (tc &TypeChecker) ownership_scoped_thread_reborrows(id flat.NodeId) bool {
+	addr_id := tc.ownership_scoped_thread_use_parent(id)
+	addr := tc.a.node(addr_id)
+	if addr.kind != .prefix || addr.op != .amp {
+		return false
+	}
+	mut call_id := tc.ownership_scoped_thread_use_parent(addr_id)
+	if tc.a.node(call_id).kind == .field_init {
+		literal_id := tc.ownership_scoped_thread_use_parent(call_id)
+		if tc.a.node(literal_id).kind != .struct_init {
+			return false
+		}
+		call_id = tc.ownership_scoped_thread_use_parent(literal_id)
+	}
+	if tc.a.node(call_id).kind != .call {
+		return false
+	}
+	spawn_id := tc.ownership_scoped_thread_use_parent(call_id)
+	return tc.a.node(spawn_id).kind == .spawn_expr
+		&& (tc.ownership_scoped_thread_join_site(spawn_id) != none || tc.ownership_scoped_thread_group(spawn_id) != none)
+}
+
 fn (mut tc TypeChecker) ownership_reject_scoped_thread_access(name string, id flat.NodeId) bool {
 	state := tc.ownership_state()
 	if !state.scoped_thread_loans_seen {
@@ -314,12 +348,16 @@ fn (mut tc TypeChecker) ownership_reject_scoped_thread_access(name string, id fl
 				continue
 			}
 			if source == name {
+				if tc.ownership_scoped_thread_reborrows(id) {
+					continue
+				}
 				tc.record_error(.thread_transfer,
 					'cannot use `${name}` until scoped thread `${borrow.borrower}` has joined', id)
 				return true
 			}
 			if (borrow.borrower == name || ownership_storage_key_is_descendant(name, borrow.borrower))
-				&& id != borrow.thread_join_site && id != tc.direct_parent_id(borrow.thread_join_site) {
+				&& id != borrow.thread_join_site && id != tc.direct_parent_id(borrow.thread_join_site)
+				&& !tc.ownership_scoped_thread_group_append(id) {
 				tc.record_error(.thread_transfer,
 					'cannot use scoped thread handle `${borrow.borrower}` outside its deferred wait', id)
 				return true

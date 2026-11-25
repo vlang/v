@@ -4721,9 +4721,10 @@ fn main() {
 fn test_ownership_scoped_worker_cannot_retain_borrowed_addresses() {
 	v3_bin := ownership_build_v3()
 	for statement in ['escaped = value', 'escaped = &(*value)', 'retain(value)', 'retain(*value)',
-		'_ := fn [value] () int { return *value }'] {
+		'_ := fn [value] () int { return *value }', 'saved = (|| *value + 1)'] {
 		result := run_ownership_check_with_flags(v3_bin, 'scoped_ref_escape', '
 __global escaped &int
+__global saved fn () int
 
 fn retain(value &int) {
 	escaped = value
@@ -4901,4 +4902,180 @@ fn main() {
 }
 ')
 	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_scoped_workers_share_an_immutable_scalar() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_shared_scalar', r'
+struct Job {
+	weight &int
+	number int
+}
+
+fn multiply(job Job, start chan bool, out chan int) {
+	_ = <-start
+	out <- *job.weight * job.number
+}
+
+fn read(weight &int, start chan bool, out chan int) {
+	_ = <-start
+	out <- *weight
+}
+
+fn main() {
+	weight := 7
+	start := chan bool{cap: 2}
+	out := chan int{cap: 2}
+	{
+		first := spawn multiply(Job{weight: &weight, number: 2}, start, out)
+		defer { first.wait() }
+		second := spawn read(&weight, start, out)
+		defer { second.wait() }
+		start <- true
+		start <- true
+	}
+	assert <-out + <-out == 21
+	assert weight == 7
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_scoped_shared_scalar_rejects_ordinary_aliases() {
+	v3_bin := ownership_build_v3()
+	for stmt in ['_ := &weight', 'third := spawn read(&weight); third.wait()',
+		'third := spawn read(forward(&weight)); defer { third.wait() }'] {
+		result := run_ownership_check(v3_bin, 'scoped_shared_bad_alias', '
+fn read(weight &int) int {
+	return *weight
+}
+
+fn forward(weight &int) &int {
+	return weight
+}
+
+fn main() {
+	weight := 7
+	first := spawn read(&weight)
+	defer { first.wait() }
+	{
+		second := spawn read(&weight)
+		defer { second.wait() }
+	}
+	${stmt}
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot use `weight` until scoped thread `first` has joined'), result.output
+	}
+}
+
+fn test_ownership_scoped_thread_array_joins_all_borrowers() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_thread_array', r'
+struct Job {
+	weight &int
+	factor int
+}
+
+fn work(job Job, ready chan bool, results chan int) bool {
+	_ = <-ready
+	results <- *job.weight * job.factor
+	return true
+}
+
+fn main() {
+	weight := 7
+	ready := chan bool{cap: 3}
+	results := chan int{cap: 3}
+	{
+		mut workers := []thread bool{}
+		defer { workers.wait() }
+		for factor in 1 .. 4 {
+			workers << spawn work(Job{weight: &weight, factor: factor}, ready, results)
+		}
+		for _ in 0 .. 3 {
+			ready <- true
+		}
+	}
+	assert <-results + <-results + <-results == 42
+	assert weight == 7
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_scoped_thread_array_keeps_caller_loans_across_branches() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_thread_array_caller_loan', r'
+fn work(weight &int) {
+	assert *weight == 7
+}
+
+fn run(launch bool) {
+	weight := 7
+	mut workers := []thread{}
+	defer { workers.wait() }
+	for i in 0 .. 2 {
+		if launch {
+			workers << spawn work(&weight)
+			if i == 0 {
+				continue
+			}
+			break
+		}
+	}
+	assert weight == 7
+}
+
+fn main() {
+	run(true)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot use `weight` until scoped thread `workers` has joined'), result.output
+}
+
+fn test_ownership_scoped_thread_array_rejects_shorter_lived_storage() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_thread_array_local_escape', r'
+fn work(weight &int) {
+	assert *weight == 7
+}
+
+fn main() {
+	mut workers := []thread{}
+	defer { workers.wait() }
+	for factor in 0 .. 3 {
+		weight := factor + 7
+		workers << spawn work(&weight)
+	}
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('scoped thread group `workers` outlives borrowed scalar `weight`'), result.output
+}
+
+fn test_ownership_scoped_thread_array_rejects_extra_handle_uses() {
+	v3_bin := ownership_build_v3()
+	for statement in ['copy := workers; assert copy.len == 1', 'workers.wait()',
+		'defer(fn) { workers << spawn work(&weight) }'] {
+		result := run_ownership_check(v3_bin, 'scoped_thread_array_handle_escape', '
+fn work(weight &int) {
+	assert *weight == 7
+}
+
+fn main() {
+	weight := 7
+	{
+		mut workers := []thread{}
+		defer { workers.wait() }
+		workers << spawn work(&weight)
+		${statement}
+	}
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('references cannot be transferred between threads'), result.output
+	}
 }
