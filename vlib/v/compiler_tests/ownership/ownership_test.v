@@ -4439,3 +4439,349 @@ fn main() {}
 	assert forward.exit_code != 0, forward.output
 	assert forward.output.contains('needs `T` to satisfy `thread.Shareable`'), forward.output
 }
+
+fn test_ownership_retains_destructors_for_explicit_generic_drops() {
+	v3_bin := ownership_build_v3()
+	name := 'explicit_generic_drop'
+	res := run_ownership_check(v3_bin, name, r'
+struct Tracked implements Drop {
+	text string
+	released chan int
+}
+
+fn report_drop(released chan int, length int) {
+	released <- length
+}
+
+fn (mut tracked Tracked) drop() {
+	report_drop(tracked.released, tracked.text.len)
+	drop_owned(tracked.text)
+}
+
+fn destroy[T](address voidptr) {
+	payload := unsafe { &T(address) }
+	drop_owned(*payload)
+	unsafe { free(payload) }
+}
+
+fn main() {
+	released := chan int{cap: 2}
+	address := unsafe { memdup(&Tracked{text: "drop".to_owned(), released: released}, int(sizeof(Tracked))) }
+	destroy[Tracked](address)
+	assert <-released == 4
+	mut extra := 0
+	assert released.try_pop(mut extra) == .not_ready
+}
+')
+	assert res.exit_code == 0, res.output
+	binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_initializes_a_shared_cell_once() {
+	v3_bin := ownership_build_v3()
+	name := 'arc_once_initialization'
+	result := run_ownership_check(v3_bin, name, r'
+import sync.arc
+
+struct Item implements Drop {
+	text string
+	released chan int
+}
+
+fn (mut item Item) drop() {
+	item.released <- item.text.len
+	drop_owned(item.text)
+}
+
+fn use_once(cell arc.Once[Item], initialized chan bool, released chan int) int {
+	value := cell.get_or_init(fn [initialized, released] () Item {
+		initialized <- true
+		return Item{text: "shared".to_owned(), released: released}
+	})
+	return value.text.len
+}
+
+fn main() {
+	initialized := chan bool{cap: 4}
+	released := chan int{cap: 4}
+	{
+		cell := arc.new_once[Item]()
+		assert cell.get() == none
+		first := spawn use_once(cell.clone(), initialized, released)
+		second := spawn use_once(cell.clone(), initialized, released)
+		assert first.wait() == 6
+		assert second.wait() == 6
+		assert (cell.get() or { panic("missing value") }).text == "shared"
+		assert <-initialized
+		mut more := false
+		assert initialized.try_pop(mut more) == .not_ready
+	}
+	assert <-released == 6
+	mut more := 0
+	assert released.try_pop(mut more) == .not_ready
+
+	with_value := arc.new_once_with(42)
+	assert *(with_value.get() or { panic("missing value") }) == 42
+}
+')
+	assert result.exit_code == 0, result.output
+	binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_rejects_sharing_a_cell_with_unshareable_values() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'arc_once_unshareable_value', r'
+import cell
+import sync.arc
+
+fn worker(value arc.Once[cell.RefCell[int]]) {}
+
+fn main() {
+	value := arc.new_once[cell.RefCell[int]]()
+	_ := spawn worker(value)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cell.RefCell has unsynchronized borrow state'), result.output
+}
+
+fn test_ownership_keeps_receiver_field_loans_from_returned_references() {
+	v3_bin := ownership_build_v3()
+	borrow_generic_mut := run_ownership_check(v3_bin, 'borrow_generic_mut', r'
+struct Value[T] {
+mut:
+	item T
+}
+fn (mut b ^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+fn escape() &int {
+	mut b := Value[int]{item: 7}
+	return b.view()
+}
+fn main() {
+	println(*escape())
+}
+')
+	assert borrow_generic_mut.exit_code != 0, borrow_generic_mut.output
+	assert borrow_generic_mut.output.contains('cannot return a reference to local storage `b`'), borrow_generic_mut.output
+
+	borrow_generic_read := run_ownership_check(v3_bin, 'borrow_generic_read', r'
+struct Value[T] {
+mut:
+	item T
+}
+fn (b &^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+fn escape() &int {
+	b := Value[int]{item: 7}
+	return b.view()
+}
+fn main() {
+	println(*escape())
+}
+')
+	assert borrow_generic_read.exit_code != 0, borrow_generic_read.output
+	assert borrow_generic_read.output.contains('cannot return a reference to local storage `b`'), borrow_generic_read.output
+
+	borrow_moved_owner := run_ownership_check(v3_bin, 'borrow_moved_owner', r'
+struct Value[T] implements Drop {
+mut:
+	item T
+}
+fn (mut b Value[T]) drop() {
+	drop_owned(b.item)
+}
+fn (mut b ^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+fn consume(value Value[string]) {}
+fn main() {
+	mut b := Value[string]{item: "retained".to_owned()}
+	item := b.view()
+	consume(b)
+	println(*item)
+}
+')
+	assert borrow_moved_owner.exit_code != 0, borrow_moved_owner.output
+	assert borrow_moved_owner.output.contains('cannot move `b` because `b.item` is borrowed by `item`'), borrow_moved_owner.output
+
+	valid := run_ownership_check(v3_bin, 'borrow_sibling', r'
+struct Value[T] implements Drop {
+mut:
+	item T
+	other int
+}
+fn (mut b Value[T]) drop() {
+	drop_owned(b.item)
+}
+fn (mut b ^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+
+fn main() {
+	mut b := Value[string]{item: "retained".to_owned()}
+	item := b.view()
+	b.other = 2
+	assert *item == "retained"
+	assert b.other == 2
+}
+')
+	assert valid.exit_code == 0, valid.output
+}
+
+fn test_ownership_keeps_returned_readonly_references_readonly() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'readonly_returned_loan', r'
+import sync.arc
+
+struct Counter {
+mut:
+	value int
+}
+
+fn (mut c Counter) advance() {
+	c.value++
+}
+
+fn advance(mut c Counter) {
+	c.value++
+}
+
+fn main() {
+	mut owner := arc.new(Counter{})
+	mut borrowed := owner.get()
+	borrowed.advance()
+	advance(mut borrowed)
+	borrowed.value++
+	owner.get().advance()
+	mut alias := borrowed
+	alias.advance()
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.count('cannot modify through an immutable borrow') == 5, result.output
+
+	valid := run_ownership_check(v3_bin, 'writable_returned_loan', r'
+struct Counter {
+mut:
+	value int
+}
+
+struct Holder implements Drop {
+mut:
+	counter Counter
+}
+
+fn (mut holder Holder) drop() {}
+
+fn (mut holder ^a Holder) get[^a]() &^a Counter {
+	return &holder.counter
+}
+
+fn (mut c Counter) advance() {
+	c.value++
+}
+
+fn main() {
+	mut holder := Holder{}
+	{
+		mut counter := holder.get()
+		counter.advance()
+		counter.value++
+	}
+	mut direct := &holder.counter
+	direct.advance()
+	assert direct.value == 3
+}
+')
+	assert valid.exit_code == 0, valid.output
+}
+
+fn test_ownership_rejects_mutating_an_immutable_pointer_alias() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'readonly_pointer_alias', r'
+@[heap]
+struct Counter {
+mut:
+	value int
+}
+
+fn (mut c Counter) advance() {
+	c.value++
+}
+
+fn read(counter &Counter) {
+	mut alias := counter
+	alias.advance()
+}
+
+fn main() {
+	counter := Counter{}
+	read(&counter)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot modify through an immutable borrow'), result.output
+}
+
+fn test_ownership_keeps_optional_returned_borrows_readonly() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'readonly_optional_loan', r'
+struct Counter {
+mut:
+	value int
+}
+struct Owner implements Drop {
+	counter Counter
+}
+fn (mut owner Owner) drop() {}
+fn (owner &^a Owner) get[^a]() ?&^a Counter {
+	return &owner.counter
+}
+fn (mut counter Counter) advance() {
+	counter.value++
+}
+fn main() {
+	mut owner := Owner{}
+	mut from_or := owner.get() or { panic("missing") }
+	from_or.advance()
+	if mut from_guard := owner.get() {
+		from_guard.advance()
+	}
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.count('cannot modify through an immutable borrow') == 2, result.output
+}
+
+fn test_ownership_once_cell_borrows_are_immutable() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'arc_once_immutable', r'
+import sync.arc
+
+struct Counter {
+mut:
+	value int
+}
+
+fn (mut c Counter) advance() {
+	c.value++
+}
+
+fn main() {
+	mut cell := arc.new_once_with(Counter{})
+	mut x := cell.get_or_init(fn () Counter { return Counter{} })
+	x.advance()
+	mut y := cell.get() or { panic("missing") }
+	y.advance()
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.count('cannot modify through an immutable borrow') == 2, result.output
+}

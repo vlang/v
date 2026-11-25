@@ -395,6 +395,14 @@ fn main() {
 }
 ```
 
+References returned by a method can keep a field of the receiver borrowed.
+An outstanding field reference prevents moving the receiver. Disjoint fields
+remain available for mutation.
+
+A returned reference retains the access of its source borrow. A mutable binding
+can be rebound, but it does not make an immutable borrow writable. A mutable
+call or a field assignment through that reference requires a mutable loan.
+
 ## Thread transfers
 
 An ownership build checks the arguments and result of a `spawn` or `go` call. The
@@ -405,8 +413,10 @@ A channel can carry a concrete error with transferable fields or a message
 error from builtin `error()` or `error_with_code()`.
 
 Pass independent owned values to a worker, or use a typed channel or a `shared`
-binding for synchronized access. The standard library's `arc.Arc[T]` can cross
-a thread boundary when its payload can be transferred and shared safely.
+binding for synchronized access. The standard library's `arc.Arc[T]` and
+`arc.Once[T]` can cross a thread boundary when their payloads can be
+transferred and shared safely. Clones of an `arc.Once` share the same cell.
+`get_or_init` initializes that cell once and borrows the resulting value.
 An `arc.Mutex[T]` instead grants exclusive ownership of the value during an update.
 Its clones can cross a thread boundary when `T` can be transferred. Pass an
 update function that receives `T` and returns a `MutexUpdate[T, R]` with the
