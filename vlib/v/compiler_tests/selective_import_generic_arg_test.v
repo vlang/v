@@ -1,29 +1,5 @@
 import os
-
-const selective_arg_vexe = @VEXE
-const selective_arg_tests_dir = os.dir(@FILE)
-const selective_arg_v3_dir = os.dir(selective_arg_tests_dir)
-const selective_arg_vlib_dir = os.dir(selective_arg_v3_dir)
-const selective_arg_v3_src = os.join_path(selective_arg_v3_dir, 'v.v')
-
-fn selective_arg_v3_bin() string {
-	bin := selective_arg_v3_bin_path()
-	if os.exists(bin) {
-		return bin
-	}
-	build := os.exec([selective_arg_vexe, '-gc', 'none', '-path',
-		'${selective_arg_vlib_dir}' + '|@vlib|@vmodules', '-o', bin, '${selective_arg_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return bin
-}
-
-fn selective_arg_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_selective_import_generic_arg_test')
-}
-
-fn testsuite_begin() {
-	os.rm(selective_arg_v3_bin_path()) or {}
-}
+import v.tempname
 
 // A generic call resolves its type arguments in the file that writes the call.
 // A bare `Token` there means the selectively imported `iam.Token`, not another
@@ -31,14 +7,13 @@ fn testsuite_begin() {
 // specialization disagreed, V3 reported bogus `unknown function` diagnostics
 // (vlang/v#28489) or failed to link.
 fn test_selective_import_bare_type_arg_wins_over_imported_homonym() {
-	v3_bin := selective_arg_v3_bin()
-	dir := os.join_path(os.temp_dir(), 'v3_selective_import_generic_arg')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'json2')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'iam')) or { panic(err) }
+	dir := os.join_path(os.vtmp_dir(), 'v3_selective_import_generic_arg_${tempname.unique_token()}')
+	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
+	os.mkdir_all(os.join_path(dir, 'json2')) or { panic(err) }
+	os.mkdir_all(os.join_path(dir, 'iam')) or { panic(err) }
 	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "selective_arg"\n}\n') or {
 		panic(err)
 	}
@@ -84,7 +59,7 @@ fn main() {
 }
 ") or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
+	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])
@@ -97,14 +72,13 @@ fn main() {
 // imported module declares a same-named Token with different fields. The call
 // used to be rewritten with the homonym, leaving the specialization undefined.
 fn test_selective_import_bare_literal_arg_wins_over_imported_homonym() {
-	v3_bin := selective_arg_v3_bin()
-	dir := os.join_path(os.temp_dir(), 'v3_selective_import_literal_arg')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'aaa')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'bbb')) or { panic(err) }
+	dir := os.join_path(os.vtmp_dir(), 'v3_selective_import_literal_arg_${tempname.unique_token()}')
+	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
+	os.mkdir_all(os.join_path(dir, 'aaa')) or { panic(err) }
+	os.mkdir_all(os.join_path(dir, 'bbb')) or { panic(err) }
 	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "selective_literal"\n}\n') or {
 		panic(err)
 	}
@@ -139,7 +113,7 @@ fn main() {
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
+	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])
@@ -155,13 +129,12 @@ fn main() {
 // failed the C compilation with `incompatible type for argument 2 of
 // 'string__plus'` (the veb/orm RuoQi build hit this through vlib's toml parser).
 fn test_path_import_alias_enum_autostr_uses_declaring_module() {
-	v3_bin := selective_arg_v3_bin()
-	dir := os.join_path(os.temp_dir(), 'v3_alias_enum_autostr')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'token')) or { panic(err) }
+	dir := os.join_path(os.vtmp_dir(), 'v3_alias_enum_autostr_${tempname.unique_token()}')
+	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
+	os.mkdir_all(os.join_path(dir, 'token')) or { panic(err) }
 	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "alias_enum"\n}\n') or {
 		panic(err)
 	}
@@ -186,7 +159,7 @@ fn main() {
 }
 ") or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
+	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])
@@ -199,14 +172,13 @@ fn main() {
 // be formatted by module a's helper even though this file spells module b as `a`. A
 // parameter declared as `[]a.Kind` in the same file still means module b's enum.
 fn test_resolved_enum_type_is_not_retargeted_by_file_import_alias() {
-	v3_bin := selective_arg_v3_bin()
-	dir := os.join_path(os.temp_dir(), 'v3_resolved_enum_import_alias')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'a')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'b')) or { panic(err) }
+	dir := os.join_path(os.vtmp_dir(), 'v3_resolved_enum_import_alias_${tempname.unique_token()}')
+	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
+	os.mkdir_all(os.join_path(dir, 'a')) or { panic(err) }
+	os.mkdir_all(os.join_path(dir, 'b')) or { panic(err) }
 	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "resolved_enum_alias"\n}\n') or {
 		panic(err)
 	}
@@ -244,7 +216,7 @@ fn main() {
 		panic(err)
 	}
 	out := os.join_path(dir, 'app')
-	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
+	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])
@@ -256,14 +228,13 @@ fn main() {
 // `import iam { Token }` next to another imported `Token`) is one specialization,
 // `maybe.Maybe[iam.Token]`, in parameter types, casts and variant literals alike.
 fn test_selective_import_generic_sum_arg_wins_over_imported_homonym() {
-	v3_bin := selective_arg_v3_bin()
-	dir := os.join_path(os.temp_dir(), 'v3_selective_import_generic_sum')
-	os.rmdir_all(dir) or {}
-	for sub in ['iam', 'other', 'maybe'] {
-		os.mkdir_all(os.join_path(dir, sub)) or { panic(err) }
-	}
+	dir := os.join_path(os.vtmp_dir(), 'v3_selective_import_generic_sum_${tempname.unique_token()}')
+	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
+	}
+	for sub in ['iam', 'other', 'maybe'] {
+		os.mkdir_all(os.join_path(dir, sub)) or { panic(err) }
 	}
 	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "selective_generic_sum"\n}\n') or {
 		panic(err)
@@ -319,7 +290,7 @@ fn main() {
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
+	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])
@@ -331,14 +302,13 @@ fn main() {
 // `Alias{}` and the type argument in `take_id[Alias]` then mean `iam.Real`, not a
 // same-named struct in another imported module.
 fn test_selective_import_struct_alias_wins_over_imported_homonym() {
-	v3_bin := selective_arg_v3_bin()
-	dir := os.join_path(os.temp_dir(), 'v3_selective_alias_struct')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'aaa')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'iam')) or { panic(err) }
+	dir := os.join_path(os.vtmp_dir(), 'v3_selective_alias_struct_${tempname.unique_token()}')
+	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
+	os.mkdir_all(os.join_path(dir, 'aaa')) or { panic(err) }
+	os.mkdir_all(os.join_path(dir, 'iam')) or { panic(err) }
 	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "selective_alias"\n}\n') or {
 		panic(err)
 	}
@@ -377,7 +347,7 @@ fn main() {
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
+	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])
@@ -392,13 +362,12 @@ fn main() {
 // that used to request a specialization of `inner` for `pkg.T` and fail the C
 // compilation on the generic addition.
 fn test_generic_parameter_wins_over_same_named_selective_import() {
-	v3_bin := selective_arg_v3_bin()
-	dir := os.join_path(os.temp_dir(), 'v3_generic_param_shadow')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'pkg')) or { panic(err) }
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_param_shadow_${tempname.unique_token()}')
+	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
+	os.mkdir_all(os.join_path(dir, 'pkg')) or { panic(err) }
 	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "generic_param_shadow"\n}\n') or {
 		panic(err)
 	}
@@ -426,7 +395,7 @@ fn main() {
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
+	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])
@@ -438,13 +407,12 @@ fn main() {
 // captured inside a generic function: the argument must stay the parameter so
 // the clone substitutes the caller's type, not the selectively imported type.
 fn test_generic_parameter_wins_over_same_named_selective_import_fn_value() {
-	v3_bin := selective_arg_v3_bin()
-	dir := os.join_path(os.temp_dir(), 'v3_generic_param_shadow_fn_value')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'pkg')) or { panic(err) }
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_param_shadow_fn_value_${tempname.unique_token()}')
+	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
+	os.mkdir_all(os.join_path(dir, 'pkg')) or { panic(err) }
 	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "generic_param_fn_value"\n}\n') or {
 		panic(err)
 	}
@@ -473,7 +441,7 @@ fn main() {
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
+	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])
