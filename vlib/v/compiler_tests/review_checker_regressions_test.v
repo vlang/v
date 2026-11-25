@@ -211,7 +211,8 @@ fn main() {
 }
 
 fn test_forwarded_mut_sum_parameter_invalidates_smartcast() {
-	run_bad(v3_bin, 'forwarded_mut_sum_argument_invalidates_smartcast', 'struct First {
+	check_review_rejections('mut_sum_smartcasts', [
+		ReviewFixture{'forwarded_mut_sum_argument_invalidates_smartcast', 'struct First {
 	value int
 }
 
@@ -236,9 +237,8 @@ fn main() {
 		println(expr.value)
 	}
 }
-',
-		'field `value` does not exist')
-	run_bad(v3_bin, 'forwarded_mut_sum_receiver_invalidates_smartcast', 'struct First {
+', 'field `value` does not exist'},
+		ReviewFixture{'forwarded_mut_sum_receiver_invalidates_smartcast', 'struct First {
 	value int
 }
 
@@ -263,8 +263,8 @@ fn main() {
 		println(expr.value)
 	}
 }
-',
-		'field `value` does not exist')
+', 'field `value` does not exist'},
+	])
 }
 
 fn test_mut_index_alias_updates_original_storage() {
@@ -1617,7 +1617,8 @@ fn main() {
 }
 
 fn test_pr_review_parser_and_checker_safety_batch() {
-	run_bad(v3_bin, 'bad_shared_parameter_missing_marker', 'struct State {}
+	check_review_rejections('review_safety', [
+		ReviewFixture{'bad_shared_parameter_missing_marker', 'struct State {}
 
 fn take(shared state State) {}
 
@@ -1625,9 +1626,8 @@ fn main() {
 	shared state := State{}
 	take(state)
 }
-',
-		'function `take` parameter `state` is `shared`, so use `shared state` instead')
-	run_bad(v3_bin, 'bad_shared_parameter_forwarded_unlocked', 'struct State {
+', 'function `take` parameter `state` is `shared`, so use `shared state` instead'},
+		ReviewFixture{'bad_shared_parameter_forwarded_unlocked', 'struct State {
 	value int
 }
 
@@ -1640,9 +1640,8 @@ fn forward(shared state State) int {
 }
 
 fn main() {}
-',
-		'`state` is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument')
-	run_bad(v3_bin, 'bad_interface_option_alias_return', 'type MyInt = int
+', '`state` is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument'},
+		ReviewFixture{'bad_interface_option_alias_return', 'type MyInt = int
 
 interface Provider {
 	value() ?MyInt
@@ -1657,9 +1656,8 @@ fn (_ IntProvider) value() ?int {
 fn main() {
 	_ := Provider(IntProvider{})
 }
-',
-		'expected return type `?MyInt`')
-	run_bad(v3_bin, 'bad_interface_result_alias_return', 'type MyInt = int
+', 'expected return type `?bad_interface_option_alias_return.MyInt`'},
+		ReviewFixture{'bad_interface_result_alias_return', 'type MyInt = int
 
 interface Provider {
 	value() !MyInt
@@ -1674,9 +1672,8 @@ fn (_ IntProvider) value() !int {
 fn main() {
 	_ := Provider(IntProvider{})
 }
-',
-		'expected return type `!MyInt`')
-	run_bad(v3_bin, 'bad_operator_if_attribute_return', 'struct Value {
+', 'expected return type `!bad_interface_result_alias_return.MyInt`'},
+		ReviewFixture{'bad_operator_if_attribute_return', 'struct Value {
 	n int
 }
 
@@ -1688,15 +1685,14 @@ fn (a Value) +(b Value) Value {
 }
 
 fn main() {}
-',
-		'only functions that do NOT return values can have `@[if debug]` tags')
-	run_bad(v3_bin, 'bad_pointer_cast_to_map_alias', 'type FooMap = map[string]int
+', 'only functions that do NOT return values can have `@[if debug]` tags'},
+		ReviewFixture{'bad_pointer_cast_to_map_alias', 'type FooMap = map[string]int
 
 fn main() {
 	_ := &FooMap(map[string]int{})
 }
-',
-		'cannot cast to alias pointer `&FooMap` because `map[string]int` is a value')
+', 'cannot cast to alias pointer `&FooMap` because `map[string]int` is a value'},
+	])
 }
 
 fn test_vexeroot_insert_and_generated_function_name_exemptions() {
@@ -1726,16 +1722,16 @@ fn main() {
 }
 
 fn test_forwarded_variadic_arrays_must_be_final() {
-	run_bad(v3_bin, 'bad_forwarded_variadic_function_trailing_arg', 'fn take(values ...int) {}
+	check_review_rejections('forwarded_variadic_arguments', [
+		ReviewFixture{'bad_forwarded_variadic_function_trailing_arg', 'fn take(values ...int) {}
 
 fn forward(values ...int) {
 	take(...values, 2)
 }
 
 fn main() {}
-',
-		'when forwarding a variadic variable, it must be the final argument')
-	run_bad(v3_bin, 'bad_forwarded_variadic_method_trailing_arg', 'struct Receiver {}
+', 'when forwarding a variadic variable, it must be the final argument'},
+		ReviewFixture{'bad_forwarded_variadic_method_trailing_arg', 'struct Receiver {}
 
 fn (receiver Receiver) take(values ...int) {}
 
@@ -1744,8 +1740,8 @@ fn (receiver Receiver) forward(values ...int) {
 }
 
 fn main() {}
-',
-		'when forwarding a variadic variable, it must be the final argument')
+', 'when forwarding a variadic variable, it must be the final argument'},
+	])
 }
 
 fn test_mut_pointer_local_after_mut_pointer_loop_keeps_pointer_type() {
