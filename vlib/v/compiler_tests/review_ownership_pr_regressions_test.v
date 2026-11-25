@@ -1,21 +1,11 @@
 import os
+import v.cmdexec
 import v.tempname
 
-const review_pr_vexe = @VEXE
-const review_pr_tests_dir = os.dir(@FILE)
-const review_pr_v3_dir = os.dir(review_pr_tests_dir)
-const review_pr_vlib_dir = os.dir(review_pr_v3_dir)
-const review_pr_v3_src = os.join_path(review_pr_v3_dir, 'v.v')
-
 const review_pr_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_review_pr_fixtures_${tempname.unique_token()}')
-const review_pr_compiler = os.join_path(review_pr_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
 
 fn testsuite_begin() {
 	os.mkdir_all(review_pr_fixture_dir) or { panic(err) }
-	build :=
-		os.exec([review_pr_vexe, '-gc', 'none', '-path', '${review_pr_vlib_dir}' + '|@vlib|@vmodules',
-			'-o', review_pr_compiler, '${review_pr_v3_src}'])
-	assert build.exit_code == 0, build.output
 }
 
 fn testsuite_end() {
@@ -36,7 +26,10 @@ fn review_pr_run_project(name string, files map[string]string) string {
 		review_pr_write_file(root, rel, source)
 	}
 	bin := os.join_path(review_pr_fixture_dir, 'v3_${name}')
-	compile := os.exec([review_pr_compiler, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
+	compile := cmdexec.run_in_merged_with_env(@VEXE, [os.join_path(root, 'main.v'), '-b', 'c',
+		'-o', bin], '', {
+		'VFLAGS': ''
+	})
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
