@@ -81,8 +81,16 @@ fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected
 			'cannot transfer mutable borrow of `${actual.name()}` as ${role}', id)
 		return
 	}
-	if unalias_type(expected) is Pointer {
-		if tc.valid_node_id(join_site) && tc.ownership_scoped_thread_source(id) != none {
+	expected_pointer := unalias_type(expected)
+	if expected_pointer is Pointer {
+		actual_pointer := unalias_type(actual)
+		if tc.valid_node_id(join_site) && actual_pointer is Pointer
+			&& semantic_types_equal(unalias_type(*actual_pointer.base_type), unalias_type(*expected_pointer.base_type))
+			&& tc.ownership_scoped_thread_source(id) != none {
+			if !tc.ownership_scoped_thread_reads_parameter(info, index) {
+				tc.record_error(.thread_transfer,
+					'cannot prove that the scoped thread borrow is read without escaping', id)
+			}
 			return
 		}
 		tc.ownership_check_thread_transfer(expected, id, role)

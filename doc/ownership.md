@@ -420,7 +420,8 @@ A worker can borrow a local immutable scalar when its handle is bound directly
 and the following statement is a lexical `defer` containing only that
 handle's `.wait()`. The defer joins on normal exit and on early return. Use
 the handle only in the defer. Access the borrowed scalar again after the scope
-has ended.
+has ended. The worker must read the scalar as a value. To pass it to a helper,
+bind the dereferenced scalar to a local variable and pass that copy.
 
 ```v okfmt
 fn read_number(number &int) {

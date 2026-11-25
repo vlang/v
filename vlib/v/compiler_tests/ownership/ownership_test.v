@@ -4441,3 +4441,54 @@ fn main() {
 ')
 	assert owned.exit_code == 0, owned.output
 }
+
+fn test_ownership_scoped_worker_cannot_retain_borrowed_addresses() {
+	v3_bin := ownership_build_v3()
+	for statement in ['escaped = value', 'escaped = &(*value)', 'retain(value)', 'retain(*value)',
+		'_ := fn [value] () int { return *value }'] {
+		result := run_ownership_check_with_flags(v3_bin, 'scoped_ref_escape', '
+__global escaped &int
+
+fn retain(value &int) {
+	escaped = value
+}
+
+fn worker(value &int) {
+	${statement}
+}
+
+fn main() {
+	value := 42
+	handle := spawn worker(&value)
+	defer { handle.wait() }
+}
+', ['-ownership', '-enable-globals'])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('scoped thread borrow is read without escaping'), result.output
+	}
+}
+
+fn test_ownership_scoped_worker_can_pass_a_scalar_copy() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_copy', r'
+fn double(value int) int {
+	return value * 2
+}
+
+fn worker(value &int, results chan int) {
+	copy := *value
+	results <- double(copy)
+}
+
+fn main() {
+	results := chan int{cap: 1}
+	value := 21
+	{
+		handle := spawn worker(&value, results)
+		defer { handle.wait() }
+	}
+	assert <-results == value * 2
+}
+')
+	assert result.exit_code == 0, result.output
+}
