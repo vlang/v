@@ -544,6 +544,10 @@ ctx.flow()
 
 // test_end_to_end replays the session at the bottom of spec.vsh.
 fn test_end_to_end() {
+	$if windows {
+		// The session runs POSIX tools, and the app it builds and runs is a `#!/bin/sh` script.
+		return
+	}
 	sandbox('e2e')
 	os.mkdir_all('src')!
 	os.write_file('src/app.sh', '#!/bin/sh\necho running\n')!

@@ -1,34 +1,12 @@
 import os
 import v.tempname
 
-const fixed_array_global_for_vexe = @VEXE
-const fixed_array_global_for_tests_dir = os.dir(@FILE)
-const fixed_array_global_for_v3_dir = os.dir(fixed_array_global_for_tests_dir)
-const fixed_array_global_for_vlib_dir = os.dir(fixed_array_global_for_v3_dir)
-const fixed_array_global_for_v3_src = os.join_path(fixed_array_global_for_v3_dir, 'v.v')
-const fixed_array_global_for_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_fixed_array_global_for_compiler_${tempname.unique_token()}')
-
-fn testsuite_end() {
-	os.rmdir_all(fixed_array_global_for_compiler_dir) or {}
-}
-
-fn fixed_array_global_for_build_v3() string {
-	v3_bin := os.join_path(fixed_array_global_for_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	os.mkdir_all(fixed_array_global_for_compiler_dir) or { panic(err) }
-	build :=
-		os.exec([fixed_array_global_for_vexe, '-gc', 'none', '-path',
-			'${fixed_array_global_for_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${fixed_array_global_for_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
 fn test_fixed_array_global_for_in_uses_fixed_array_indexing() {
-	v3_bin := fixed_array_global_for_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_fixed_array_global_for_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_global_for_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_fixed_array_global_for')
+	src := bin + '.v'
 	os.write_file(src, 'module main
 
 __global gnums = [6, 7, 8]!
@@ -47,8 +25,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_global_for_${os.getpid()}')
-	compile := os.exec([v3_bin, '-enable-globals', '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-enable-globals', src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -65,10 +42,10 @@ fn main() {
 }
 
 fn test_imported_fixed_array_global_init_uses_imported_module_context() {
-	v3_bin := fixed_array_global_for_build_v3()
-	root := os.join_path(os.temp_dir(), 'v3_fixed_array_imported_global_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(os.join_path(root, 'm')) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_imported_global_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.mkdir(os.join_path(root, 'm'))!
 	os.write_file(os.join_path(root, 'main.v'), 'module main
 
 import m
@@ -92,7 +69,7 @@ pub fn sum() int {
 	}
 	bin := os.join_path(root, 'app')
 	compile :=
-		os.exec([v3_bin, '-enable-globals', os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
+		os.exec([@VEXE, '-enable-globals', os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

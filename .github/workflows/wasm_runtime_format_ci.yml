@@ -1,0 +1,30 @@
+name: Wasm runtime formatting regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/wasm/runtime/runtime.v'
+      - '.github/workflows/wasm_runtime_format_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify formatter output
+        run: |
+          ./v fmt -w vlib/wasm/runtime/runtime.v
+          git diff --exit-code -- vlib/wasm/runtime/runtime.v
+          ./v fmt -inprocess -verify vlib/wasm/runtime/runtime.v
+      - name: Test native Wasm runtime
+        run: ./v -silent test vlib/wasm/runtime/

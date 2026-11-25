@@ -3,14 +3,8 @@
 // `err` is an undefined identifier, unless the program declares something with
 // that name. V3 used to accept `err` everywhere as an `IError`: the program
 // passed `v -check` and then failed in the C compiler, where no `err` exists.
+import json2
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const err_scope_v3_bin = os.join_path(os.temp_dir(), 'v3_err_scope_test_${os.getpid()}')
 
 const prelude = "module main
 
@@ -31,6 +25,16 @@ struct Case {
 	body string // the body of main; «err» marks the use that is checked
 	ok   bool   // whether `err` is defined at the marked use
 }
+
+struct ErrScopeDiagnostic {
+	file     string
+	line     int
+	col      int
+	severity string
+	message  string
+}
+
+const undefined_err_messages = ['undefined ident: `err`', 'undefined variable: `err`']
 
 const cases = [
 	// outside any `or {}` block or guard `else`: an undefined identifier
@@ -70,19 +74,6 @@ const cases = [
 	Case{'const_named_err', 'const err = 5\n', 'println(«err» + 1)', true},
 ]
 
-fn build_v3() string {
-	if !os.is_executable(err_scope_v3_bin) {
-		res := os.exec([vexe, '-gc', 'none', '-path', '${'${vlib_dir}|@vlib|@vmodules'}', '-o',
-			err_scope_v3_bin, '${v3_src}'])
-		assert res.exit_code == 0, res.output
-	}
-	return err_scope_v3_bin
-}
-
-fn testsuite_end() {
-	os.rm(err_scope_v3_bin) or {}
-}
-
 fn unmarked(text string) string {
 	return text.replace('«', '').replace('»', '')
 }
@@ -102,30 +93,81 @@ fn marked_position(c Case) (int, int) {
 	return lines.len, lines.last().runes().len + 1
 }
 
-// check_output runs `v -check` on the program of `c` and returns its output.
-fn check_output(v3 string, c Case) string {
+// check_program runs `v -check` on the program of `c`.
+fn check_program(c Case) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_err_scope_${c.name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
 		os.rmdir_all(dir) or {}
 	}
 	os.write_file(os.join_path(dir, 'main.v'), program(c)) or { panic(err) }
-	return os.exec(['${v3}', '-nocache', '-gc', 'none', '-nocolor', '-check',
-		os.join_path(dir, 'main.v')]).output
+	return check_err_scope_source(os.join_path(dir, 'main.v'))
+}
+
+fn check_err_scope_source(path string, flags ...string) os.Result {
+	return os.exec([@VEXE, '-nocache', '-gc', 'none', '-nocolor', '-check', ...flags, path])
+}
+
+fn check_err_scope_batch(name string, batch []Case, expected_exit int) {
+	dir := os.join_path(os.vtmp_dir(), 'v3_err_scope_batch_${name}_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	mut imports := []string{cap: batch.len}
+	mut calls := []string{cap: batch.len}
+	for c in batch {
+		module_name := 'err_scope_${c.name}'
+		module_dir := os.join_path(dir, module_name)
+		os.mkdir(module_dir) or { panic(err) }
+		// Keep the original entry point reachable and the marked use at its original location.
+		source := program(c).replace_once('module main\n', 'module ${module_name}\n').replace_once('\nfn main()',
+			'\npub fn exercise()')
+		os.write_file(os.join_path(module_dir, '${module_name}.v'), source) or { panic(err) }
+		imports << 'import ${module_name}'
+		calls << '\t${module_name}.exercise()'
+	}
+	main_path := os.join_path(dir, 'main.v')
+	os.write_file(main_path, 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
+		panic(err)
+	}
+	result := check_err_scope_source(main_path, '-json-errors')
+	assert result.exit_code == expected_exit, result.output
+	mut errors := map[string][]ErrScopeDiagnostic{}
+	for line in result.output.split_into_lines() {
+		if !line.starts_with('{') {
+			continue
+		}
+		diagnostic := json2.decode[ErrScopeDiagnostic](line) or { panic(err) }
+		if diagnostic.severity == 'error' {
+			errors[os.file_name(diagnostic.file)] << diagnostic
+		}
+	}
+	if expected_exit == 0 {
+		assert errors.len == 0, result.output
+		return
+	}
+	for c in batch {
+		line, col := marked_position(c)
+		assert errors['err_scope_${c.name}.v'].any(it.line == line && it.col == col
+			&& it.message.all_before('\n') in undefined_err_messages), '${c.name}: expected undefined `err` at ${line}:${col}\n${result.output}'
+	}
 }
 
 fn test_err_exists_only_where_an_error_is_handled() {
-	v3 := build_v3()
+	// Custom flags can affect module lookup or limit diagnostics for the batch.
+	if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] {
+		check_err_scope_batch('accepted', cases.filter(it.ok), 0)
+		check_err_scope_batch('rejected', cases.filter(!it.ok), 1)
+		return
+	}
 	mut wrong := []string{}
 	for c in cases {
-		output := check_output(v3, c)
-		errors := output.split_into_lines().filter(it.contains(': error: '))
+		result := check_program(c)
+		errors := result.output.split_into_lines().filter(it.contains(': error: '))
 		line, col := marked_position(c)
 		position := 'main.v:${line}:${col}: error: '
-		undefined_messages := ['undefined ident: `err`', 'undefined variable: `err`']
-		undefined := errors.any(it.contains(position) && it.all_after(position) in undefined_messages)
-		if c.ok && errors.len > 0 {
-			wrong << '${c.name}: `err` is defined there, but: ${errors}'
+		undefined := errors.any(it.contains(position) && it.all_after(position) in undefined_err_messages)
+		if c.ok && (result.exit_code != 0 || errors.len > 0) {
+			wrong << '${c.name}: expected a successful check\n${result.output}'
 		} else if !c.ok && !undefined {
 			wrong << '${c.name}: expected `undefined ident: \\`err\\`` at ${line}:${col}, got: ${errors}'
 		}
@@ -133,18 +175,16 @@ fn test_err_exists_only_where_an_error_is_handled() {
 	assert wrong.len == 0, wrong.join('\n')
 }
 
-// build_output builds `source` as `main.v` with `v3` and returns what it printed:
-// a check leaves the bodies of generic functions out, a build checks each
-// instance of them.
-fn build_output(v3 string, name string, source string) string {
+// build_program compiles `source` as `main.v` to check instantiated generic function bodies.
+fn build_program(name string, source string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_err_scope_build_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
 		os.rmdir_all(dir) or {}
 	}
 	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
-	return os.exec(['${v3}', '-nocache', '-gc', 'none', '-nocolor', '-o', os.join_path(dir, 'main'),
-		os.join_path(dir, 'main.v')]).output
+	return os.exec([@VEXE, '-nocache', '-gc', 'none', '-nocolor', '-o', os.join_path(dir, 'main'),
+		os.join_path(dir, 'main.v')])
 }
 
 const generic_or_block = "module main
@@ -187,7 +227,7 @@ fn main() {
 "
 
 fn test_err_in_the_or_block_of_an_instance_of_a_generic_function() {
-	v3 := build_v3()
-	output := build_output(v3, 'generic_or', generic_or_block)
-	assert !output.contains(': error: '), output
+	result := build_program('generic_or', generic_or_block)
+	assert result.exit_code == 0, result.output
+	assert !result.output.contains(': error: '), result.output
 }

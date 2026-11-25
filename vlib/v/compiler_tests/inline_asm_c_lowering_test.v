@@ -1,4 +1,6 @@
 import os
+import v.cmdexec
+import v.tempname
 
 const inline_asm_vexe = @VEXE
 const inline_asm_tests_dir = os.dir(@FILE)
@@ -7,19 +9,28 @@ const inline_asm_vlib_dir = os.dir(inline_asm_v3_dir)
 const inline_asm_v3_source = os.join_path(inline_asm_v3_dir, 'v.v')
 
 fn inline_asm_tmp_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_inline_asm_${name}_${os.getpid()}')
+	return os.join_path(os.vtmp_dir(), 'v3_inline_asm_${name}_${os.getpid()}')
 }
 
-fn build_v3_inline_asm() string {
-	v3_bin := inline_asm_tmp_path('compiler') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
+// The bare driver can check WASM source without building optional backends.
+fn inline_asm_wasm_checker(workspace string) string {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	if os.getenv('VFLAGS') == '' && os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(inline_asm_v3_source) {
+		return os.real_path(shared)
 	}
+	v3_bin := os.join_path(workspace, 'compiler') + $if windows { '.exe' } $else { '' }
 	build :=
 		os.exec([inline_asm_vexe, '-gc', 'none', '-path',
 			'${inline_asm_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, inline_asm_v3_source])
 	assert build.exit_code == 0, build.output
 	return v3_bin
+}
+
+fn run_inline_asm_c(args []string) os.Result {
+	return cmdexec.run_in_merged_with_env(inline_asm_vexe, args, '', {
+		'VFLAGS': ''
+	})
 }
 
 fn inline_asm_runtime_source() string {
@@ -214,12 +225,16 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	if source.len == 0 {
 		return
 	}
-	v3_bin := build_v3_inline_asm()
 	source_path := '${inline_asm_tmp_path('program')}.v'
 	c_path := '${inline_asm_tmp_path('program')}.c'
 	bin_path := inline_asm_tmp_path('program')
+	defer {
+		os.rm(source_path) or {}
+		os.rm(c_path) or {}
+		os.rm(bin_path + $if windows { '.exe' } $else { '' }) or {}
+	}
 	os.write_file(source_path, source) or { panic(err) }
-	generate := os.exec([v3_bin, '-enable-globals', '-cc', 'clang', '-o', c_path, source_path])
+	generate := run_inline_asm_c(['-enable-globals', '-cc', 'clang', '-o', c_path, source_path])
 	assert generate.exit_code == 0, generate.output
 	assert !generate.output.contains('inline assembly is not supported'), generate.output
 	c_source := os.read_file(c_path) or { panic(err) }
@@ -263,7 +278,7 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	}
 	assert compilers.len > 0, 'inline asm requires GCC or a compatible Clang'
 	for compiler in compilers {
-		compile := os.exec([v3_bin, '-enable-globals', '-cc', compiler, '-o', bin_path, source_path])
+		compile := run_inline_asm_c(['-enable-globals', '-cc', compiler, '-o', bin_path, source_path])
 		assert compile.exit_code == 0, compile.output
 		run := os.exec([bin_path])
 		assert run.exit_code == 0, run.output
@@ -276,33 +291,22 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 }
 
 fn test_i386_inline_asm_reaches_c_lowering() {
-	v3_bin := build_v3_inline_asm()
-	source_path := '${inline_asm_tmp_path('i386_program')}.v'
-	c_path := '${inline_asm_tmp_path('i386_program')}.c'
-	os.write_file(source_path, 'fn main() {
+	generate, c_source := generate_inline_asm_c_for_arch('i386_program', 'fn main() {
 	asm i386 {
 		mov eax, ebx
 		.byte 0x27, 0x35
 	}
 }
-') or {
-		panic(err)
-	}
-	generate := os.exec([v3_bin, '-os', 'linux', '-arch', 'i386', '-cc', 'clang', '-o', c_path,
-		source_path])
+', 'i386')
 	assert generate.exit_code == 0, generate.output
 	assert !generate.output.contains('inline assembly is not supported'), generate.output
-	c_source := os.read_file(c_path) or { panic(err) }
 	assert c_source.contains('"mov %ebx, %eax\\n\\t"'), c_source
 	assert c_source.contains('".byte 0x27, 0x35\\n\\t"'), c_source
 	assert !c_source.contains('.byte \\\$0x27'), c_source
 }
 
 fn test_x86_inline_asm_segment_address_reaches_c_lowering() {
-	v3_bin := build_v3_inline_asm()
-	source_path := '${inline_asm_tmp_path('segment_program')}.v'
-	c_path := '${inline_asm_tmp_path('segment_program')}.c'
-	os.write_file(source_path, 'fn main() {
+	generate, c_source := generate_inline_asm_c_for_arch('segment_program', 'fn main() {
 	mut value := u64(0)
 	asm amd64 {
 		mov value, fs:[value]
@@ -310,13 +314,8 @@ fn test_x86_inline_asm_segment_address_reaches_c_lowering() {
 	}
 }
 
-') or {
-		panic(err)
-	}
-	generate := os.exec([v3_bin, '-os', 'linux', '-arch', 'amd64', '-cc', 'clang', '-o', c_path,
-		source_path])
+', 'amd64')
 	assert generate.exit_code == 0, generate.output
-	c_source := os.read_file(c_path) or { panic(err) }
 	assert c_source.contains('"mov %%fs:(%[value]), %[value]\\n\\t"'), c_source
 }
 
@@ -600,11 +599,14 @@ fn generate_inline_asm_c(name string, source string) (os.Result, string) {
 }
 
 fn generate_inline_asm_c_for_arch(name string, source string, arch string) (os.Result, string) {
-	v3_bin := build_v3_inline_asm()
 	source_path := '${inline_asm_tmp_path(name)}.v'
 	c_path := '${inline_asm_tmp_path(name)}.c'
+	defer {
+		os.rm(source_path) or {}
+		os.rm(c_path) or {}
+	}
 	os.write_file(source_path, source) or { panic(err) }
-	result := os.exec([v3_bin, '-os', 'linux', '-arch', '${arch}', '-cc', 'clang', '-o', c_path,
+	result := run_inline_asm_c(['-os', 'linux', '-arch', '${arch}', '-cc', 'clang', '-o', c_path,
 		source_path])
 	c_source := os.read_file(c_path) or { '' }
 	return result, c_source
@@ -1164,8 +1166,11 @@ fn test_asm_for_another_arch_is_skipped_under_its_guard() {
 }
 
 fn test_asm_on_a_backend_without_lowering_names_the_backend() {
-	v3_bin := build_v3_inline_asm()
-	source_path := '${inline_asm_tmp_path('wasm_backend_program')}.v'
+	workspace := os.join_path(os.vtmp_dir(), 'v3_inline_asm_wasm_${tempname.unique_token()}')
+	os.mkdir(workspace)!
+	defer { os.rmdir_all(workspace) or {} }
+	v3_bin := inline_asm_wasm_checker(workspace)
+	source_path := os.join_path(workspace, 'wasm_backend_program.v')
 	os.write_file(source_path, 'fn main() {
 	asm arm64 {
 		nop

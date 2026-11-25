@@ -838,6 +838,26 @@ fn (g &FlatGen) needs_closure_runtime_init() bool {
 	if !g.used_fn_contains('closure.closure_init') && !g.used_fn_contains('closure__closure_init') {
 		return false
 	}
+	return g.has_closure_module()
+}
+
+// needs_closure_runtime_state reports whether the program reaches the state of the
+// closure runtime, `g_closure`, whose maps only its initializer in `_vinit` creates.
+// Every runtime entry point, `closure_init` as well as the public `closure.Lifetime`
+// API, goes through `closure_ensure_initialized`, but a program that uses lifetimes
+// without creating a closure never calls `closure_init`.
+fn (g &FlatGen) needs_closure_runtime_state() bool {
+	if g.needs_closure_runtime_init() {
+		return true
+	}
+	if !g.used_fn_contains('closure.closure_ensure_initialized')
+		&& !g.used_fn_contains('closure__closure_ensure_initialized') {
+		return false
+	}
+	return g.has_closure_module()
+}
+
+fn (g &FlatGen) has_closure_module() bool {
 	for _, module_name in g.tc.file_modules {
 		if module_name == 'closure' {
 			return true
@@ -1748,7 +1768,7 @@ fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?
 		return '__v3_internal_symbol_libc_${name[5..]}'
 	}
 	// Windows headers define these names as macros. Keep main__near etc. available to V.
-	if name in ['main.near', 'main.far', 'main.pascal', 'main.cdecl'] {
+	if name in ['main.near', 'main.far', 'main.pascal', 'main.cdecl', 'main.small', 'main.hyper'] {
 		return '__v3_internal_symbol_macro_${name[5..]}'
 	}
 	if module_name !in ['', 'main'] || name.starts_with('C.') {
@@ -1757,7 +1777,7 @@ fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?
 	if name in ['sync', 'syncfs'] {
 		return '__v3_internal_symbol_libc_${name}'
 	}
-	if name in ['near', 'far', 'pascal', 'cdecl'] {
+	if name in ['near', 'far', 'pascal', 'cdecl', 'small', 'hyper'] {
 		return '__v3_internal_symbol_macro_${name}'
 	}
 	mut c_type_name := false
@@ -6076,7 +6096,11 @@ fn (g &FlatGen) exported_symbol_attribute() string {
 	if !g.is_shared {
 		return ''
 	}
-	if g.ccompiler == 'msvc' {
+	// MSVC, and TinyCC for Windows targets, export only `dllexport` symbols from a DLL.
+	// MinGW's linker exports every symbol of a DLL that marks none, so GCC and Clang keep
+	// the visibility attribute there and their DLLs keep exporting all functions.
+	if g.ccompiler == 'msvc' || (g.target.os == 'windows' && (g.ccompiler == 'tinyc'
+		|| g.ccompiler.to_lower().contains('tcc'))) {
 		return '__declspec(dllexport) '
 	}
 	return '__attribute__((visibility("default"))) '

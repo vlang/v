@@ -1,21 +1,5 @@
 import os
-
-const gqc_vexe = @VEXE
-const gqc_tests_dir = os.dir(@FILE)
-const gqc_v3_dir = os.dir(gqc_tests_dir)
-const gqc_vlib_dir = os.dir(gqc_v3_dir)
-const gqc_v3_src = os.join_path(gqc_v3_dir, 'v.v')
-
-fn gqc_build_v3() string {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_qualified_container_test_${pid}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([gqc_vexe, '-gc', 'none', '-path', '${gqc_vlib_dir}' + '|@vlib|@vmodules', '-o',
-			v3_bin, '${gqc_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn gqc_write_file(root string, rel string, source string) {
 	path := os.join_path(root, rel)
@@ -23,17 +7,16 @@ fn gqc_write_file(root string, rel string, source string) {
 	os.write_file(path, source) or { panic(err) }
 }
 
-fn gqc_run_project(v3_bin string, name string, files map[string]string) string {
-	pid := os.getpid()
-	root := os.join_path(os.temp_dir(), 'v3_${name}_${pid}_project')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn gqc_run_project(name string, files map[string]string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: '${name}' }\n") or { panic(err) }
 	for rel, source in files {
 		gqc_write_file(root, rel, source)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${pid}')
-	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -49,8 +32,7 @@ fn gqc_run_project(v3_bin string, name string, files map[string]string) string {
 // decomposition of the bare value: otherwise the map is built with the callee module's homonym
 // `Context` (wrong element size/fields) and the C compiler rejects storing the program value.
 fn test_qualified_map_container_locks_nested_main_value() {
-	v3_bin := gqc_build_v3()
-	out := gqc_run_project(v3_bin, 'generic_qualified_map_main_type', {
+	out := gqc_run_project('generic_qualified_map_main_type', {
 		'other/other.v': 'module other\n\npub type Key = string\n\npub struct Box[T] {\npub mut:\n\tv T\n}\n'
 		'mid/mid.v':     'module mid\n\nimport other\n\npub struct Context {\npub:\n\tid int\n}\n\npub fn make_box[T](k other.Key, val T) T {\n\tmut b := other.Box[map[other.Key]T]{}\n\tb.v[k] = val\n\treturn b.v[k]\n}\n'
 		'main.v':        "module main\n\nimport mid\nimport other\n\nstruct Context {\npub:\n\tname string\n}\n\nfn main() {\n\tk := other.Key('a')\n\tgot := mid.make_box[Context](k, Context{\n\t\tname: 'hello'\n\t})\n\tprintln('got: ' + got.name)\n}\n"

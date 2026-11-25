@@ -1,24 +1,28 @@
 // vtest ownership
 import os
-
-const borrowed_array_clone_vexe = @VEXE
-const borrowed_array_clone_tests_dir = os.dir(@FILE)
-const borrowed_array_clone_v3_dir = os.dir(borrowed_array_clone_tests_dir)
-const borrowed_array_clone_vlib_dir = os.dir(borrowed_array_clone_v3_dir)
-const borrowed_array_clone_v3_src = os.join_path(borrowed_array_clone_v3_dir, 'v.v')
+import v.cmdexec
+import v.tempname
 
 fn test_clone_of_array_returned_by_borrow_does_not_address_pointer_rvalue() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_borrowed_array_clone_test')
-	build :=
-		os.exec([borrowed_array_clone_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-			'${borrowed_array_clone_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${borrowed_array_clone_v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	source := os.join_path(os.temp_dir(), 'v3_borrowed_array_clone_input.v')
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	v3_src := os.join_path(os.dir(@FILE), '../v.v')
+	compiler := if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		os.real_path(shared)
+	} else {
+		@VEXE
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_borrowed_array_clone_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'v3_borrowed_array_clone_input.v')
 	os.write_file(source,
 		"import sync.arc\n\nstruct Holder {\n\tvalues []string\n}\n\nfn (holder &^a Holder) get[^a]() &^a []string {\n\treturn &holder.values\n}\n\nfn main() {\n\tholder := Holder{values: ['one', 'two']}\n\tcloned := holder.get().clone()\n\tassert cloned == ['one', 'two']\n\towner := arc.new(['three', 'four'])\n\tshared_clone := owner.get().clone()\n\tassert shared_clone == ['three', 'four']\n\tprintln('ok')\n}\n")!
-	out := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-no-parallel', 'run', source])
+	out := cmdexec.run_in_merged_with_env(compiler, ['-ownership', '-d', 'ownership', '-no-parallel',
+		'run', source], '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
 	assert out.exit_code == 0, out.output
 	assert out.output.trim_space() == 'ok', out.output
 }

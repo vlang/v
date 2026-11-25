@@ -1328,11 +1328,13 @@ fn fastc_render_mapped_generic_instance(source_file FastcSourceFile, generic Fas
 			if replacement := substitutions[s.lit] {
 				mut look := s
 				option_cast := look.scan() == .lpar
+					&& previous !in [.amp, .and]
 					&& fastc_typed_option_payload(flat.source_type_id(replacement)) != none
 				edits << FastcSourceEdit{
 					start:       s.pos
 					end:         s.offset
-					// `F(none)` with an option `F` is the option cast `?Payload(none)`.
+					// `F(none)` constructs an option. `&F(ptr)` casts an address to
+					// a pointer to its storage, which needs the concrete option type.
 					replacement: if option_cast {
 						fastc_c_type_display_name(flat.source_type_id(replacement))
 					} else {

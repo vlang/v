@@ -45,6 +45,9 @@ fn main() {
 		session_args = all_requested_args.clone()
 	}
 	os.unsetenv('VFLAGS')
+	// Only this session writes the list; a `v test` that a test runs must not.
+	failed_list := os.getenv('VTEST_FAILED_LIST')
+	os.unsetenv('VTEST_FAILED_LIST')
 	session_vargs := session_args.map(test_session_argument(it)).join(' ')
 
 	mut ts := testing.new_test_session(session_vargs, true)
@@ -80,12 +83,31 @@ fn main() {
 			exit(1)
 		}
 	}
+	// Overlapping arguments (`v test dir dir/sub`) name a file more than once. Run it once:
+	// a batch with the same file twice does not even compile.
+	ts.files = unique_test_files(ts.files)
 	ts.session_start('Testing...')
 	ts.test()
 	ts.session_stop('all V _test.v files')
+	ts.write_failed_files_list(failed_list)
 	if ts.has_failures() {
 		exit(1)
 	}
+}
+
+// unique_test_files keeps the first of the paths in `files` that name the same file.
+fn unique_test_files(files []string) []string {
+	mut seen := map[string]bool{}
+	mut result := []string{cap: files.len}
+	for file in files {
+		key := os.real_path(file)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result << file
+	}
+	return result
 }
 
 // test_backend selects the last requested backend while keeping option operands opaque.

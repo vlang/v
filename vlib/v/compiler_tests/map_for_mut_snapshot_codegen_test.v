@@ -1,30 +1,14 @@
 import os
+import v.tempname
 
-const map_for_mut_vexe = @VEXE
-const map_for_mut_tests_dir = os.dir(@FILE)
-const map_for_mut_v3_dir = os.dir(map_for_mut_tests_dir)
-const map_for_mut_vlib_dir = os.dir(map_for_mut_v3_dir)
-const map_for_mut_v3_src = os.join_path(map_for_mut_v3_dir, 'v.v')
-
-fn map_for_mut_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_map_for_mut_snapshot_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([map_for_mut_vexe, '-gc', 'none', '-path',
-			'${map_for_mut_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${map_for_mut_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn map_for_mut_run_good(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+fn map_for_mut_run_good(name string, source string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_${name}')
+	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '-enable-globals', '-b', 'c', '-o', bin, '${src}'])
+	compile := os.exec([@VEXE, '-enable-globals', '-b', 'c', '-o', bin, src])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -33,8 +17,7 @@ fn map_for_mut_run_good(v3_bin string, name string, source string) string {
 }
 
 fn test_mut_map_iteration_snapshot_updates_original_values() {
-	v3_bin := map_for_mut_build_v3()
-	out := map_for_mut_run_good(v3_bin, 'map_for_mut_snapshot_updates_original', 'fn main() {
+	out := map_for_mut_run_good('map_for_mut_snapshot_updates_original', 'fn main() {
 	mut m := map[string]int{}
 	m["a"] = 1
 	m["b"] = 1
@@ -55,8 +38,7 @@ fn test_mut_map_iteration_snapshot_updates_original_values() {
 }
 
 fn test_mut_pointer_map_iteration_replaces_stored_pointer() {
-	v3_bin := map_for_mut_build_v3()
-	out := map_for_mut_run_good(v3_bin, 'map_for_mut_pointer_replaces_slot', 'struct Item {
+	out := map_for_mut_run_good('map_for_mut_pointer_replaces_slot', 'struct Item {
 	value int
 }
 
@@ -80,8 +62,7 @@ fn main() {
 }
 
 fn test_mut_map_iteration_delete_current_key_preserves_deletion() {
-	v3_bin := map_for_mut_build_v3()
-	out := map_for_mut_run_good(v3_bin, 'map_for_mut_delete_current_key', 'fn main() {
+	out := map_for_mut_run_good('map_for_mut_delete_current_key', 'fn main() {
 		mut m := map[string][2]int{}
 		m["a"] = [1, 0]!
 		m["b"] = [2, 0]!
@@ -97,8 +78,7 @@ fn test_mut_map_iteration_delete_current_key_preserves_deletion() {
 }
 
 fn test_mut_map_iteration_delete_reinsert_equal_value_is_not_clobbered() {
-	v3_bin := map_for_mut_build_v3()
-	out := map_for_mut_run_good(v3_bin, 'map_for_mut_delete_reinsert_equal_value', 'fn main() {
+	out := map_for_mut_run_good('map_for_mut_delete_reinsert_equal_value', 'fn main() {
 		mut m := map[string][2]int{}
 		m["a"] = [1, 0]!
 		for key, mut v in m {
@@ -114,8 +94,7 @@ fn test_mut_map_iteration_delete_reinsert_equal_value_is_not_clobbered() {
 }
 
 fn test_mut_map_iteration_explicit_update_is_not_clobbered() {
-	v3_bin := map_for_mut_build_v3()
-	out := map_for_mut_run_good(v3_bin, 'map_for_mut_explicit_update_not_clobbered', 'fn main() {
+	out := map_for_mut_run_good('map_for_mut_explicit_update_not_clobbered', 'fn main() {
 		mut m := map[string][2]int{}
 		m["a"] = [1, 0]!
 		m["b"] = [2, 0]!
@@ -134,8 +113,7 @@ fn test_mut_map_iteration_explicit_update_is_not_clobbered() {
 }
 
 fn test_mut_map_fixed_array_value_copyback_runs_before_continue() {
-	v3_bin := map_for_mut_build_v3()
-	out := map_for_mut_run_good(v3_bin, 'map_for_mut_fixed_array_continue_copyback', 'fn main() {
+	out := map_for_mut_run_good('map_for_mut_fixed_array_continue_copyback', 'fn main() {
 	mut m := map[string][2]int{}
 	m["a"] = [1, 0]!
 	m["b"] = [2, 0]!
@@ -158,8 +136,7 @@ fn test_mut_map_fixed_array_value_copyback_runs_before_continue() {
 }
 
 fn test_mut_map_fixed_array_value_copyback_runs_before_return() {
-	v3_bin := map_for_mut_build_v3()
-	out := map_for_mut_run_good(v3_bin, 'map_for_mut_fixed_array_return_copyback', '__global values map[string][2]int
+	out := map_for_mut_run_good('map_for_mut_fixed_array_return_copyback', '__global values map[string][2]int
 
 fn update_void() {
 	for _, mut v in values {
@@ -196,8 +173,7 @@ fn main() {
 }
 
 fn test_mut_map_scalar_return_reads_updated_value() {
-	v3_bin := map_for_mut_build_v3()
-	out := map_for_mut_run_good(v3_bin, 'map_for_mut_scalar_return_reads_update', '__global values map[string]int
+	out := map_for_mut_run_good('map_for_mut_scalar_return_reads_update', '__global values map[string]int
 
 fn return_int_from_map() int {
 	for _, mut v in values {
@@ -217,8 +193,7 @@ fn main() {
 }
 
 fn test_mut_map_fixed_array_return_reads_copied_back_value() {
-	v3_bin := map_for_mut_build_v3()
-	out := map_for_mut_run_good(v3_bin, 'map_for_mut_fixed_array_return_reads_copyback', '__global values map[string][2]int
+	out := map_for_mut_run_good('map_for_mut_fixed_array_return_reads_copyback', '__global values map[string][2]int
 
 fn return_array_from_map() [2]int {
 	for _, mut v in values {

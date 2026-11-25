@@ -4,6 +4,39 @@ import os
 import rand
 import time
 
+fn test_shared_v3_preparation_excludes_matching_resume_records() ! {
+	root := os.join_path(os.temp_dir(), 'vtest-resume-shared-${rand.ulid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	const_source := "const compiler_args = ['-gc', 'none', '-d', 'ownership', 'v.v']\n"
+	mut files := []string{}
+	for name in ['a_test.v', 'b_test.v', 'c_test.v'] {
+		file := os.join_path(root, name)
+		os.write_file(file, const_source)!
+		files << os.real_path(file)
+	}
+	ts := TestSession{
+		vexe:         os.executable()
+		vroot:        root
+		will_compile: true
+		exec_mode:    .compile_and_run
+		resume_dir:   os.join_path(root, 'progress')
+	}
+	initial_plain, initial_ownership := ts.shared_v3_compilers_to_build(files, true, true)
+	assert initial_plain && initial_ownership
+	assert !os.exists(ts.resume_dir)
+	for file in files[..2] {
+		resume := ts.test_resume(file)!
+		resume.save()!
+	}
+	resumed_plain, resumed_ownership := ts.shared_v3_compilers_to_build(files, true, true)
+	assert !resumed_plain && !resumed_ownership
+
+	os.write_file(files[0], const_source + '// edited since the success record was saved\n')!
+	edited_plain, edited_ownership := ts.shared_v3_compilers_to_build(files, true, true)
+	assert edited_plain && edited_ownership
+}
+
 fn test_resume_records_only_matching_files_and_options() ! {
 	root := os.join_path(os.temp_dir(), 'vtest-resume-${rand.ulid()}')
 	os.mkdir_all(root)!

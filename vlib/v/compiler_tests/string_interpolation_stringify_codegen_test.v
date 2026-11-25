@@ -1,31 +1,18 @@
 import os
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn string_interp_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_string_interpolation_stringify_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn compile_v3_input(v3_bin string, name string, source string, bin string) os.Result {
-	src := os.join_path(os.temp_dir(), '${name}_${os.getpid()}.v')
+fn compile_string_interp_input(source string, bin string) os.Result {
+	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	return os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	return os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 }
 
 fn test_typed_string_interpolation_stringifies_maps_arrays_and_generic_indexes() {
-	v3_bin := string_interp_build_v3()
+	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	src := 'fn generic_first[T](xs []T) string {
 	return \'\${xs[0]}\'
 }
@@ -67,8 +54,8 @@ fn main() {
 	println(\'ok\')
 }
 '
-	bin := os.join_path(os.temp_dir(), 'v3_string_interpolation_stringify_positive_${os.getpid()}')
-	compile := compile_v3_input(v3_bin, 'v3_string_interpolation_stringify_positive', src, bin)
+	bin := os.join_path(dir, 'v3_string_interpolation_stringify_positive')
+	compile := compile_string_interp_input(src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -77,7 +64,11 @@ fn main() {
 }
 
 fn test_string_interpolation_method_call_marks_callee_used() {
-	v3_bin := string_interp_build_v3()
+	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	src := 'struct Begin {
 	value int
 }
@@ -103,8 +94,8 @@ fn main() {
 	println(msg.to_json())
 }
 '
-	bin := os.join_path(os.temp_dir(), 'v3_string_interp_method_markused_${os.getpid()}')
-	compile := compile_v3_input(v3_bin, 'v3_string_interp_method_markused', src, bin)
+	bin := os.join_path(dir, 'v3_string_interp_method_markused')
+	compile := compile_string_interp_input(src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -113,7 +104,11 @@ fn main() {
 }
 
 fn test_string_interpolation_discovered_str_method_emits_helpers() {
-	v3_bin := string_interp_build_v3()
+	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	src := "struct Wrap {}
 
 fn str_helper() string {
@@ -129,8 +124,8 @@ fn main() {
 	println('\${Wrap{}}')
 }
 "
-	bin := os.join_path(os.temp_dir(), 'v3_string_interp_str_helper_${os.getpid()}')
-	compile := compile_v3_input(v3_bin, 'v3_string_interp_str_helper', src, bin)
+	bin := os.join_path(dir, 'v3_string_interp_str_helper')
+	compile := compile_string_interp_input(src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -139,7 +134,11 @@ fn main() {
 }
 
 fn test_defer_string_interpolation_with_generic_type_arguments() {
-	v3_bin := string_interp_build_v3()
+	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	src := "struct Box[T] {
 	value T
 }
@@ -190,8 +189,8 @@ fn main() {
 	show_value(9)
 }
 "
-	bin := os.join_path(os.temp_dir(), 'v3_defer_generic_string_interp_${os.getpid()}')
-	compile := compile_v3_input(v3_bin, 'v3_defer_generic_string_interp', src, bin)
+	bin := os.join_path(dir, 'v3_defer_generic_string_interp')
+	compile := compile_string_interp_input(src, bin)
 	// A `-b c` build of a `map[string]PlainBox[T]` interpolation calls prelude helpers
 	// (`v3_map_str_piece`, `v3_f64_array_str`) that need `f64__str`; before #30850 it was not
 	// kept and the link failed. The module cache hid it by linking the cached builtin object.
@@ -217,7 +216,11 @@ value 9"
 }
 
 fn test_string_plus_accepts_string_aliases() {
-	v3_bin := string_interp_build_v3()
+	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	src := "type MyString = string
 
 fn main() {
@@ -227,8 +230,8 @@ fn main() {
 	println('ok')
 }
 "
-	bin := os.join_path(os.temp_dir(), 'v3_string_alias_plus_positive_${os.getpid()}')
-	compile := compile_v3_input(v3_bin, 'v3_string_alias_plus_positive', src, bin)
+	bin := os.join_path(dir, 'v3_string_alias_plus_positive')
+	compile := compile_string_interp_input(src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -237,7 +240,11 @@ fn main() {
 }
 
 fn test_primitive_alias_chains_stringify_without_alias_wrapper() {
-	v3_bin := string_interp_build_v3()
+	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	src := "type A = string
 type B = A
 type I = int
@@ -251,8 +258,8 @@ fn main() {
 	println(Toggle(true))
 }
 "
-	bin := os.join_path(os.temp_dir(), 'v3_primitive_alias_chain_str_${os.getpid()}')
-	compile := compile_v3_input(v3_bin, 'v3_primitive_alias_chain_str', src, bin)
+	bin := os.join_path(dir, 'v3_primitive_alias_chain_str')
+	compile := compile_string_interp_input(src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -261,7 +268,11 @@ fn main() {
 }
 
 fn test_generic_fn_alias_custom_str_survives_call_return_and_struct_field_lowering() {
-	v3_bin := string_interp_build_v3()
+	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	src := "type Parser[T] = fn (string) T
 
 struct ParserHolder {
@@ -289,8 +300,8 @@ fn main() {
 	println('ok')
 }
 "
-	bin := os.join_path(os.temp_dir(), 'v3_generic_fn_alias_custom_str_${os.getpid()}')
-	compile := compile_v3_input(v3_bin, 'v3_generic_fn_alias_custom_str', src, bin)
+	bin := os.join_path(dir, 'v3_generic_fn_alias_custom_str')
+	compile := compile_string_interp_input(src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -299,9 +310,13 @@ fn main() {
 }
 
 fn test_string_plus_does_not_stringify_non_strings() {
-	v3_bin := string_interp_build_v3()
-	int_bin := os.join_path(os.temp_dir(), 'v3_string_plus_int_negative_${os.getpid()}')
-	int_result := compile_v3_input(v3_bin, 'v3_string_plus_int_negative', "fn main() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	int_bin := os.join_path(dir, 'v3_string_plus_int_negative')
+	int_result := compile_string_interp_input("fn main() {
 	_ := 'x' + 1
 }
 ",
@@ -311,8 +326,8 @@ fn test_string_plus_does_not_stringify_non_strings() {
 	assert int_result.output.contains('infix expr: cannot use `int literal` (right expression) as `string`'), int_result.output
 	assert !int_result.output.contains('C compilation failed'), int_result.output
 
-	map_bin := os.join_path(os.temp_dir(), 'v3_string_plus_map_negative_${os.getpid()}')
-	map_result := compile_v3_input(v3_bin, 'v3_string_plus_map_negative', "fn main() {
+	map_bin := os.join_path(dir, 'v3_string_plus_map_negative')
+	map_result := compile_string_interp_input("fn main() {
 	_ := 'x' + map[string]int{}
 }
 ",
@@ -323,7 +338,11 @@ fn test_string_plus_does_not_stringify_non_strings() {
 }
 
 fn test_joined_interpolation_preserves_order_and_formatted_parts() {
-	v3_bin := string_interp_build_v3()
+	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	src := "const prefix = 'hello'
 const greeting = '\${prefix} world!'
 
@@ -377,8 +396,8 @@ fn main() {
 	println('ok')
 }
 "
-	bin := os.join_path(os.temp_dir(), 'v3_string_join_order_${os.getpid()}')
-	compile := compile_v3_input(v3_bin, 'v3_string_join_order', src, bin)
+	bin := os.join_path(dir, 'v3_string_join_order')
+	compile := compile_string_interp_input(src, bin)
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

@@ -1,41 +1,19 @@
 import os
+import v.tempname
 
-const global_decl_vexe = @VEXE
-const global_decl_tests_dir = os.dir(@FILE)
-const global_decl_v3_dir = os.dir(global_decl_tests_dir)
-const global_decl_vlib_dir = os.dir(global_decl_v3_dir)
-const global_decl_v3_src = os.join_path(global_decl_v3_dir, 'v.v')
-
-fn global_decl_temp_dir() string {
-	return os.join_path(os.temp_dir(), 'v3_global_decl_codegen_${os.getpid()}')
+fn global_decl_fixture_dir() string {
+	root := os.join_path(os.vtmp_dir(), 'v3_global_decl_codegen_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	return root
 }
 
-fn testsuite_begin() {
-	os.rmdir_all(global_decl_temp_dir()) or {}
-	os.mkdir_all(global_decl_temp_dir()) or { panic(err) }
-}
-
-fn testsuite_end() {
-	os.rmdir_all(global_decl_temp_dir()) or {}
-}
-
-fn global_decl_build_v3() string {
-	v3_bin := os.join_path(global_decl_temp_dir(), 'v3_global_decl_codegen_test') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([global_decl_vexe, '-gc', 'none', '-path',
-			'${global_decl_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${global_decl_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn global_decl_run_good(v3_bin string, name string, source string) string {
-	src := os.join_path(global_decl_temp_dir(), 'v3_${name}.v')
+fn global_decl_run_good(name string, source string) string {
+	root := global_decl_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(global_decl_temp_dir(), 'v3_${name}')
-	compile := os.exec([v3_bin, '-enable-globals', '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_${name}')
+	compile := os.exec([@VEXE, '-enable-globals', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -43,54 +21,49 @@ fn global_decl_run_good(v3_bin string, name string, source string) string {
 	return run.output.trim_space()
 }
 
-fn global_decl_generate_c(v3_bin string, name string, source string) string {
-	src := os.join_path(global_decl_temp_dir(), 'v3_${name}.v')
-	c_path := os.join_path(global_decl_temp_dir(), 'v3_${name}.c')
+fn global_decl_generate_c(name string, source string) string {
+	root := global_decl_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_${name}.v')
+	c_path := os.join_path(root, 'v3_${name}.c')
 	os.write_file(src, source) or { panic(err) }
-	generate := os.exec([v3_bin, '-enable-globals', '-cc', 'clang', '-o', c_path, '${src}'])
+	generate := os.exec([@VEXE, '-enable-globals', '-cc', 'clang', '-o', c_path, '${src}'])
 	assert generate.exit_code == 0, generate.output
 	return os.read_file(c_path) or { panic(err) }
 }
 
 fn test_typed_global_initializers_in_group_keep_type_and_value() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'typed_global_initializers_in_group', 'import sync.stdatomic\n\n__global (\n\tfirst_flag &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)\n\tsecond_flag &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)\n)\n\nfn main() {\n\tfirst_flag.store(true)\n\tprintln(first_flag.load())\n\tprintln(second_flag.load())\n\tsecond_flag.store(true)\n\tprintln(second_flag.load())\n}\n')
+	out := global_decl_run_good('typed_global_initializers_in_group', 'import sync.stdatomic\n\n__global (\n\tfirst_flag &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)\n\tsecond_flag &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)\n)\n\nfn main() {\n\tfirst_flag.store(true)\n\tprintln(first_flag.load())\n\tprintln(second_flag.load())\n\tsecond_flag.store(true)\n\tprintln(second_flag.load())\n}\n')
 	assert out == 'true\nfalse\ntrue'
 }
 
 fn test_implicit_global_dynamic_array_is_initialized_before_append() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'implicit_global_dynamic_array', "struct Entry {\n\tname string\n}\n\n__global entries []Entry\n\nfn main() {\n\tentries << Entry{name: 'ok'}\n\tprintln(entries[0].name)\n}\n")
+	out := global_decl_run_good('implicit_global_dynamic_array', "struct Entry {\n\tname string\n}\n\n__global entries []Entry\n\nfn main() {\n\tentries << Entry{name: 'ok'}\n\tprintln(entries[0].name)\n}\n")
 	assert out == 'ok'
 }
 
 fn test_implicit_global_containers_keep_synthesized_runtime_helpers() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'implicit_global_container_helpers', "__global names []string\n__global lookup map[string]int\n\nfn main() {\n\tprintln('ok')\n}\n")
+	out := global_decl_run_good('implicit_global_container_helpers', "__global names []string\n__global lookup map[string]int\n\nfn main() {\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
 }
 
 fn test_global_runtime_initializers_preserve_channels_arrays_and_fn_values() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'global_runtime_initializers', "__global (\n\tch chan int\n\tvalues = []int{len: 3, init: 7}\n\tcallback = fn (n int) int {\n\t\treturn n + 1\n\t}\n)\n\nfn send_value() {\n\tch <- 9\n}\n\nfn main() {\n\tt := spawn send_value()\n\tgot := <-ch\n\tt.wait()\n\tprintln(int_str(got))\n\tprintln(int_str(values.len) + ':' + int_str(values[2]))\n\tprintln(int_str(callback(4)))\n}\n")
+	out := global_decl_run_good('global_runtime_initializers', "__global (\n\tch chan int\n\tvalues = []int{len: 3, init: 7}\n\tcallback = fn (n int) int {\n\t\treturn n + 1\n\t}\n)\n\nfn send_value() {\n\tch <- 9\n}\n\nfn main() {\n\tt := spawn send_value()\n\tgot := <-ch\n\tt.wait()\n\tprintln(int_str(got))\n\tprintln(int_str(values.len) + ':' + int_str(values[2]))\n\tprintln(int_str(callback(4)))\n}\n")
 	assert out == '9\n3:7\n5'
 }
 
 fn test_explicit_shared_and_fixed_array_global_initializers() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'shared_and_fixed_array_global_initializers', "struct Counter {\n\tvalue int\n}\n\n__global counter shared Counter = Counter{value: 7}\n__global fixed_values shared [2]int = [3, 4]!\n__global values = [][2]int{len: 1, init: [1, 2]!}\n\nfn main() {\n\tvalue := rlock counter {\n\t\tcounter.value\n\t}\n\tfixed_value := rlock fixed_values {\n\t\tfixed_values[0] * 10 + fixed_values[1]\n\t}\n\tprintln(int_str(value))\n\tprintln(int_str(fixed_value))\n\tprintln(int_str(values[0][0]) + ':' + int_str(values[0][1]))\n}\n")
+	out := global_decl_run_good('shared_and_fixed_array_global_initializers', "struct Counter {\n\tvalue int\n}\n\n__global counter shared Counter = Counter{value: 7}\n__global fixed_values shared [2]int = [3, 4]!\n__global values = [][2]int{len: 1, init: [1, 2]!}\n\nfn main() {\n\tvalue := rlock counter {\n\t\tcounter.value\n\t}\n\tfixed_value := rlock fixed_values {\n\t\tfixed_values[0] * 10 + fixed_values[1]\n\t}\n\tprintln(int_str(value))\n\tprintln(int_str(fixed_value))\n\tprintln(int_str(values[0][0]) + ':' + int_str(values[0][1]))\n}\n")
 	assert out == '7\n34\n1:2'
 }
 
 fn test_aliased_fixed_array_global_initializer_uses_copy() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'aliased_fixed_array_global_initializer', 'type Pair = [2]int\n\n__global pair Pair = [2]int{init: 7}\n\nfn main() {\n\tprintln(int_str(pair[0]) + ":" + int_str(pair[1]))\n}\n')
+	out := global_decl_run_good('aliased_fixed_array_global_initializer', 'type Pair = [2]int\n\n__global pair Pair = [2]int{init: 7}\n\nfn main() {\n\tprintln(int_str(pair[0]) + ":" + int_str(pair[1]))\n}\n')
 	assert out == '7:7'
 }
 
 fn test_explicit_shared_array_constructor_preserves_length_capacity_and_initializer() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'shared_array_constructor_initializer', "__global values shared []int = []int{len: 2, cap: 4, init: 7}
+	out := global_decl_run_good('shared_array_constructor_initializer', "__global values shared []int = []int{len: 2, cap: 4, init: 7}
 
 fn main() {
 	summary := rlock values {
@@ -103,7 +76,6 @@ fn main() {
 }
 
 fn test_shared_array_literal_preserves_left_to_right_evaluation() {
-	v3_bin := global_decl_build_v3()
 	source := '__global sequence int
 __global values shared []int = [next(1), next(2)]
 
@@ -119,16 +91,15 @@ fn main() {
 	println(summary + ":" + int_str(sequence))
 }
 '
-	c_source := global_decl_generate_c(v3_bin, 'shared_array_literal_eval_order', source)
+	c_source := global_decl_generate_c('shared_array_literal_eval_order', source)
 	assert c_source.contains('array_get(values->val, 0)) = next(1);'), c_source
 	assert c_source.contains('array_get(values->val, 1)) = next(2);'), c_source
-	out := global_decl_run_good(v3_bin, 'shared_array_literal_eval_order', source)
+	out := global_decl_run_good('shared_array_literal_eval_order', source)
 	assert out == '1:12:12'
 }
 
 fn test_implicit_shared_fixed_array_container_elements_are_initialized() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'implicit_shared_fixed_array_containers', "struct Config {
+	out := global_decl_run_good('implicit_shared_fixed_array_containers', "struct Config {
 	value int = 7
 }
 
@@ -159,26 +130,22 @@ fn main() {
 }
 
 fn test_global_array_initializers_fill_runtime_defaults() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'global_array_runtime_defaults', "struct Config {\nmut:\n\tretries int = 7\n\tnames []string\n\tscores map[string]int\n}\n\n__global configs = []Config{len: 2}\n__global nested = [][]int{len: 2}\n__global lookups = []map[string]int{len: 2}\n\nfn main() {\n\tconfigs[0].names << 'ok'\n\tconfigs[0].scores['x'] = 5\n\tnested[0] << 9\n\tlookups[0]['x'] = 11\n\tprintln(int_str(configs[0].retries))\n\tprintln(configs[0].names[0])\n\tprintln(int_str(configs[0].scores['x']))\n\tprintln(int_str(nested[0][0]))\n\tprintln(int_str(lookups[0]['x']))\n\tprintln(int_str(configs[1].names.len) + ':' + int_str(configs[1].scores.len) + ':' + int_str(nested[1].len) + ':' + int_str(lookups[1].len))\n}\n")
+	out := global_decl_run_good('global_array_runtime_defaults', "struct Config {\nmut:\n\tretries int = 7\n\tnames []string\n\tscores map[string]int\n}\n\n__global configs = []Config{len: 2}\n__global nested = [][]int{len: 2}\n__global lookups = []map[string]int{len: 2}\n\nfn main() {\n\tconfigs[0].names << 'ok'\n\tconfigs[0].scores['x'] = 5\n\tnested[0] << 9\n\tlookups[0]['x'] = 11\n\tprintln(int_str(configs[0].retries))\n\tprintln(configs[0].names[0])\n\tprintln(int_str(configs[0].scores['x']))\n\tprintln(int_str(nested[0][0]))\n\tprintln(int_str(lookups[0]['x']))\n\tprintln(int_str(configs[1].names.len) + ':' + int_str(configs[1].scores.len) + ':' + int_str(nested[1].len) + ':' + int_str(lookups[1].len))\n}\n")
 	assert out == '7\nok\n5\n9\n11\n0:0:0:0'
 }
 
 fn test_global_arrays_fill_nested_fixed_array_defaults() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'global_nested_fixed_array_defaults', "struct Config {\nmut:\n\tretries int = 7\n\tnames []string\n\tscores map[string]int\n}\n\n__global rows = [][2]map[string]int{len: 1}\n__global config_rows = [][2]Config{len: 1}\n__global grids = [][2][2]map[string]int{len: 1}\n\nfn main() {\n\trows[0][0]['x'] = 13\n\tconfig_rows[0][0].names << 'fixed'\n\tconfig_rows[0][0].scores['x'] = 17\n\tgrids[0][1][1]['x'] = 19\n\tprintln(int_str(rows[0][0]['x']))\n\tprintln(int_str(config_rows[0][0].retries) + ':' + config_rows[0][0].names[0] + ':' + int_str(config_rows[0][0].scores['x']))\n\tprintln(int_str(grids[0][1][1]['x']))\n\tprintln(int_str(rows[0][1].len) + ':' + int_str(config_rows[0][1].retries) + ':' + int_str(grids[0][0][0].len))\n}\n")
+	out := global_decl_run_good('global_nested_fixed_array_defaults', "struct Config {\nmut:\n\tretries int = 7\n\tnames []string\n\tscores map[string]int\n}\n\n__global rows = [][2]map[string]int{len: 1}\n__global config_rows = [][2]Config{len: 1}\n__global grids = [][2][2]map[string]int{len: 1}\n\nfn main() {\n\trows[0][0]['x'] = 13\n\tconfig_rows[0][0].names << 'fixed'\n\tconfig_rows[0][0].scores['x'] = 17\n\tgrids[0][1][1]['x'] = 19\n\tprintln(int_str(rows[0][0]['x']))\n\tprintln(int_str(config_rows[0][0].retries) + ':' + config_rows[0][0].names[0] + ':' + int_str(config_rows[0][0].scores['x']))\n\tprintln(int_str(grids[0][1][1]['x']))\n\tprintln(int_str(rows[0][1].len) + ':' + int_str(config_rows[0][1].retries) + ':' + int_str(grids[0][0][0].len))\n}\n")
 	assert out == '13\n7:fixed:17\n19\n0:7:0'
 }
 
 fn test_global_array_initializer_call_preserves_fixed_array_elements() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'global_fixed_array_elements_from_call', "fn make_rows() [][2]int {\n\treturn [[1, 2]!, [3, 4]!]\n}\n\n__global rows = make_rows()\n\nfn main() {\n\tprintln(int_str(rows[0][0]) + ':' + int_str(rows[0][1]))\n\tprintln(int_str(rows[1][0]) + ':' + int_str(rows[1][1]))\n}\n")
+	out := global_decl_run_good('global_fixed_array_elements_from_call', "fn make_rows() [][2]int {\n\treturn [[1, 2]!, [3, 4]!]\n}\n\n__global rows = make_rows()\n\nfn main() {\n\tprintln(int_str(rows[0][0]) + ':' + int_str(rows[0][1]))\n\tprintln(int_str(rows[1][0]) + ':' + int_str(rows[1][1]))\n}\n")
 	assert out == '1:2\n3:4'
 }
 
 fn test_global_channel_containers_are_initialized() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'global_channel_containers', '__global channels = []chan int{len: 1}
+	out := global_decl_run_good('global_channel_containers', '__global channels = []chan int{len: 1}
 __global events shared chan int
 
 fn send_value_to(channel chan int, value int) {
@@ -203,8 +170,7 @@ fn main() {
 }
 
 fn test_global_enum_and_sum_values_use_v_defaults() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'global_enum_and_sum_defaults', "enum Mode {
+	out := global_decl_run_good('global_enum_and_sum_defaults', "enum Mode {
 	ready = 7
 	waiting
 }
@@ -243,27 +209,24 @@ fn main() {
 }
 
 fn test_inferred_generic_atomic_globals_keep_concrete_types() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'inferred_generic_atomic_globals', 'import sync.stdatomic\n\n__global flag = stdatomic.new_atomic(false)\n__global number = stdatomic.new_atomic(7)\n\nfn main() {\n\tprintln(int_str(number.load()))\n\tprintln(flag.load())\n}\n')
+	out := global_decl_run_good('inferred_generic_atomic_globals', 'import sync.stdatomic\n\n__global flag = stdatomic.new_atomic(false)\n__global number = stdatomic.new_atomic(7)\n\nfn main() {\n\tprintln(int_str(number.load()))\n\tprintln(flag.load())\n}\n')
 	assert out == '7\nfalse'
 }
 
 fn test_volatile_global_keeps_its_name_and_qualifier() {
-	v3_bin := global_decl_build_v3()
 	// `volatile` is a qualifier on the global, not its name. The parser used to
 	// read it as the name and the real name as the type, so every use of the
 	// global reported an undefined identifier.
 	source := 'struct Rev {\npub mut:\n\trevision u64\n}\n\n__global (\n\tvolatile base_revision = Rev{\n\t\trevision: 2\n\t}\n)\n\nfn main() {\n\tif base_revision.revision != 0 {\n\t\tprintln(u64__str(base_revision.revision))\n\t}\n}\n'
-	out := global_decl_run_good(v3_bin, 'volatile_global_name', source)
+	out := global_decl_run_good('volatile_global_name', source)
 	assert out == '2'
 	// A kernel writes these where the hardware or the bootloader can see them,
 	// so the qualifier has to reach the C declaration too.
-	c_code := global_decl_generate_c(v3_bin, 'volatile_global_name_c', source)
+	c_code := global_decl_generate_c('volatile_global_name_c', source)
 	assert c_code.contains('volatile main__Rev base_revision'), c_code
 }
 
 fn test_volatile_global_in_ungrouped_declaration_resolves() {
-	v3_bin := global_decl_build_v3()
-	out := global_decl_run_good(v3_bin, 'volatile_global_ungrouped', '__global volatile ticks = u64(3)\n\nfn main() {\n\tticks = ticks + 1\n\tprintln(u64__str(ticks))\n}\n')
+	out := global_decl_run_good('volatile_global_ungrouped', '__global volatile ticks = u64(3)\n\nfn main() {\n\tticks = ticks + 1\n\tprintln(u64__str(ticks))\n}\n')
 	assert out == '4'
 }

@@ -1,29 +1,22 @@
 // vtest ownership
 import os
-
-const interface_pointer_forward_vexe = @VEXE
-const interface_pointer_forward_tests_dir = os.dir(@FILE)
-const interface_pointer_forward_v3_dir = os.dir(interface_pointer_forward_tests_dir)
-const interface_pointer_forward_vlib_dir = os.dir(interface_pointer_forward_v3_dir)
-const interface_pointer_forward_v3_src = os.join_path(interface_pointer_forward_v3_dir, 'v.v')
+import v.cmdexec
+import v.tempname
 
 fn test_concrete_pointer_forwarded_to_interface_pointer_is_boxed_once() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_interface_pointer_forward_${pid}')
-	project := os.join_path(os.temp_dir(), 'v3_interface_pointer_forward_project_${pid}')
-	output := os.join_path(os.temp_dir(), 'v3_interface_pointer_forward_program_${pid}')
-	defer {
-		os.rm(v3_bin) or {}
-		os.rmdir_all(project) or {}
-		os.rm(output) or {}
-		os.rm(output + '.c') or {}
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	v3_src := os.join_path(os.dir(@FILE), '../v.v')
+	compiler := if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		os.real_path(shared)
+	} else {
+		@VEXE
 	}
-	build :=
-		os.exec([interface_pointer_forward_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-			'${interface_pointer_forward_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${interface_pointer_forward_v3_src}'])
-	assert build.exit_code == 0, build.output
-	os.rmdir_all(project) or {}
+	root := os.join_path(os.vtmp_dir(), 'v3_interface_pointer_forward_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	project := os.join_path(root, 'v3_interface_pointer_forward_project')
+	output := os.join_path(root, 'v3_interface_pointer_forward_program')
 	os.mkdir_all(os.join_path(project, 'matcher')) or { panic(err) }
 	os.mkdir_all(os.join_path(project, 'printer')) or { panic(err) }
 	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'interface_pointer_forward' }\n") or {
@@ -73,8 +66,11 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-nocache', '-no-parallel', '-o',
-		output, os.join_path(project, 'main.v')])
+	compile := cmdexec.run_in_merged_with_env(compiler, ['-ownership', '-d', 'ownership', '-nocache',
+		'-no-parallel', '-o', output, os.join_path(project, 'main.v')], '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([output])
 	assert run.exit_code == 0, run.output

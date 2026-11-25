@@ -1,10 +1,31 @@
 // vtest ownership
 import os
+import v.cmdexec
 
 const interface_pointer_args_vexe = @VEXE
 const interface_pointer_args_v_dir = os.dir(os.dir(@FILE))
 const interface_pointer_args_vlib_dir = os.dir(interface_pointer_args_v_dir)
 const interface_pointer_args_v_src = os.join_path(interface_pointer_args_v_dir, 'v.v')
+
+fn interface_pointer_args_compiler(work_dir string) string {
+	if os.getenv('VFLAGS') == '' {
+		shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+		if os.is_file(shared) && os.is_executable(shared)
+			&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(interface_pointer_args_v_src) {
+			return os.real_path(shared)
+		}
+		// Uncached dispatch would build the ownership compiler for each fixture.
+		if os.getenv('VTOOLS_NO_CACHE').trim_space().to_lower() !in ['1', 'true', 'yes', 'on'] {
+			return interface_pointer_args_vexe
+		}
+	}
+	v3_bin := os.join_path(work_dir, 'v3') + $if windows { '.exe' } $else { '' }
+	build := os.exec([interface_pointer_args_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+		'${interface_pointer_args_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+		interface_pointer_args_v_src])
+	assert build.exit_code == 0, build.output
+	return v3_bin
+}
 
 fn test_interface_pointer_arguments_preserve_value_and_storage_types() {
 	work_dir := os.join_path(os.temp_dir(), 'v3_interface_pointer_args_${os.getpid()}')
@@ -12,12 +33,7 @@ fn test_interface_pointer_arguments_preserve_value_and_storage_types() {
 	defer {
 		os.rmdir_all(work_dir) or {}
 	}
-	v3_bin := os.join_path(work_dir, 'v3')
-	// Invoke the new compiler directly so a fallback cannot hide these regressions.
-	build := os.exec([interface_pointer_args_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-		'${interface_pointer_args_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-		'${interface_pointer_args_v_src}'])
-	assert build.exit_code == 0, build.output
+	v3_bin := interface_pointer_args_compiler(work_dir)
 
 	// #28734: a value cast passed to &Iface must not gain an extra address-of.
 	interface_pointer_args_run(v3_bin, work_dir, 'value_cast', "interface Widget {
@@ -192,8 +208,10 @@ fn interface_pointer_args_run(v3_bin string, work_dir string, name string, sourc
 	main_file := os.join_path(project, 'main.v')
 	os.write_file(main_file, source) or { panic(err) }
 	output := os.join_path(project, 'program')
-	compile := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-nocache', '-no-parallel', '-o',
-		output, main_file])
+	compile := cmdexec.run_in_merged_with_env(v3_bin, ['-ownership', '-d', 'ownership', '-nocache',
+		'-no-parallel', '-o', output, main_file], '', {
+		'VFLAGS': ''
+	})
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	run := os.exec([output])
 	assert run.exit_code == 0, '${name}: ${run.output}'

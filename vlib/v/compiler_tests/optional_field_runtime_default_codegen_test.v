@@ -1,11 +1,7 @@
 // vtest ownership
 import os
-
-const opt_default_vexe = @VEXE
-const opt_default_tests_dir = os.dir(@FILE)
-const opt_default_v3_dir = os.dir(opt_default_tests_dir)
-const opt_default_vlib_dir = os.dir(opt_default_v3_dir)
-const opt_default_v3_src = os.join_path(opt_default_v3_dir, 'v.v')
+import v.cmdexec
+import v.tempname
 
 // An `?T` field (T in another module) must not be expanded into a runtime
 // default of its base struct when generating the default element of a
@@ -13,19 +9,19 @@ const opt_default_v3_src = os.join_path(opt_default_v3_dir, 'v.v')
 // the `?`, emitting `(__v_option_ig__IErr){<IErr fields>}` — invalid C, since the
 // optional wrapper has fields `ok`/`err`/`value`, not the base struct's fields.
 fn test_optional_field_runtime_default_is_none_cross_module() {
-	pid := os.getpid()
-	root := os.join_path(os.temp_dir(), 'v3_opt_default_${pid}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(os.join_path(root, 'ig')) or { panic(err) }
-	v3_bin := os.join_path(root, 'v3_opt_default_driver')
-	out := os.join_path(root, 'program')
-	defer {
-		os.rmdir_all(root) or {}
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	v3_src := os.join_path(os.dir(@FILE), '../v.v')
+	compiler := if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		os.real_path(shared)
+	} else {
+		@VEXE
 	}
-	build :=
-		os.exec([opt_default_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-			'${opt_default_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${opt_default_v3_src}'])
-	assert build.exit_code == 0, build.output
+	root := os.join_path(os.vtmp_dir(), 'v3_opt_default_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.mkdir(os.join_path(root, 'ig'))!
+	out := os.join_path(root, 'program')
 
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'v3optdefault' }\n") or {
 		panic(err)
@@ -65,8 +61,11 @@ fn main() {
 		panic(err)
 	}
 
-	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-d', 'ownership', '-b', 'c', '-o',
-		'${out}'])
+	compile := cmdexec.run_in_merged_with_env(compiler, [os.join_path(root, 'main.v'), '-d', 'ownership',
+		'-b', 'c', '-o', out], '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

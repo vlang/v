@@ -81,6 +81,7 @@ const external_commands = [
 	'vendor',
 	'vet',
 	'vlib-docs',
+	'wasm',
 	'watch',
 	'where',
 	'why',
@@ -171,6 +172,14 @@ fn main() {
 		run_external_tool(args, command_index, command)
 		return
 	}
+	if input := wasm_input(args) {
+		prefix_end := if input > 0 && args[input - 1] == 'run' { input - 1 } else { input }
+		mut runner_args := args[..prefix_end].clone()
+		runner_args << 'wasm'
+		runner_args << args[input..]
+		run_external_tool(runner_args, prefix_end, 'wasm')
+		return
+	}
 	args = with_project_backend(args)
 	if full_compiler_is_required(compiler_args_before_program(args)) {
 		launch_full_compiler(args)
@@ -227,7 +236,7 @@ fn compiler_option_index(args []string, option string) int {
 		if !input_seen && !runs_input && arg in ['build', 'test'] {
 			continue
 		}
-		if runs_input || arg.ends_with('.vsh') {
+		if runs_input || arg.ends_with('.vsh') || arg.ends_with('.wasm') {
 			return -1
 		}
 		input_seen = true
@@ -507,7 +516,7 @@ fn export_vtest_build_environment(vroot string, prefix_args []string) {
 fn external_tool_runtime_args(command string, prefix_args []string, command_args []string) []string {
 	// These tools consume the same argv as their standalone executable. The launcher owns
 	// the subcommand name, so remove it here without guessing from user arguments.
-	if command in ['cover', 'diff', 'download', 'gret', 'repeat', 'retry', 'time', 'timeout'] {
+	if command in ['cover', 'diff', 'download', 'gret', 'repeat', 'retry', 'time', 'timeout', 'wasm'] {
 		return command_args[1..].clone()
 	}
 	mut tool_args := []string{}
@@ -881,7 +890,7 @@ fn compiler_args_before_program(args []string) []string {
 			continue
 		}
 		if !arg.starts_with('-') || arg == '-' {
-			if runs_input || arg.ends_with('.vsh') {
+			if runs_input || arg.ends_with('.vsh') || arg.ends_with('.wasm') {
 				return args[..i + 1]
 			}
 			break

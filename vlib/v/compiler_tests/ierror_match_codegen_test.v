@@ -1,27 +1,10 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const ierror_match_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_ierror_match_compiler_${os.getpid()}')
-const v3_bin = os.join_path(ierror_match_compiler_dir, 'v3' + $if windows { '.exe' } $else { '' })
-
-fn testsuite_begin() {
-	os.rmdir_all(ierror_match_compiler_dir) or {}
-	os.mkdir_all(ierror_match_compiler_dir)!
-	build := os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}|@vlib|@vmodules', '-o', v3_bin,
-		v3_src])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rmdir_all(ierror_match_compiler_dir) or {}
-}
+import v.tempname
 
 fn test_ierror_concrete_match_uses_type_ids() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_match_codegen_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'myerrs')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'myerrs.v'), "module myerrs
@@ -144,8 +127,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_match_codegen_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -162,7 +145,9 @@ fn main() {
 }
 
 fn test_ierror_patterns_resolve_nested_alias_and_selective_imports() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_alias_match_codegen_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_alias_match_codegen_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	alias_dir := os.join_path(root, 'nested', 'aliaserrs')
 	selective_dir := os.join_path(root, 'nested', 'selecterrs')
 	os.mkdir_all(alias_dir) or { panic(err) }
@@ -262,8 +247,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_alias_match_codegen_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_alias_match_codegen_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -273,7 +258,9 @@ fn main() {
 }
 
 fn test_selective_imported_error_pattern_prefers_scoped_error() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_selective_error_pattern_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_selective_error_pattern_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'fake')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'fake.v'), "module fake
@@ -329,8 +316,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_selective_error_pattern_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_selective_error_pattern_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -340,7 +327,9 @@ fn main() {
 }
 
 fn test_scoped_error_pattern_does_not_fallback_to_builtin_error() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_scoped_error_no_fallback_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_scoped_error_no_fallback_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'fake')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'fake.v'), 'module fake
@@ -371,8 +360,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_scoped_error_no_fallback_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_scoped_error_no_fallback_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('fake.Error') || compile.output.contains('Error'), compile.output
 	assert compile.output.contains('IError') || compile.output.contains('cannot return'), compile.output
@@ -380,8 +369,9 @@ fn main() {
 }
 
 fn test_local_error_pattern_does_not_fallback_to_builtin_error() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_local_error_no_fallback_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_local_error_no_fallback_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, 'struct Error {}
 
@@ -397,15 +387,17 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_local_error_no_fallback_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_local_error_no_fallback_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('Error') && compile.output.contains('IError'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
 fn test_msg_only_struct_is_not_ierror_pattern() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_not_error_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_not_error_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'noterrs')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'noterrs.v'), "module noterrs
@@ -446,8 +438,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_not_error_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_not_error_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('noterrs.NotError') && compile.output.contains('IError'), compile.output
 
@@ -455,7 +447,9 @@ fn main() {
 }
 
 fn test_module_local_error_embeds_are_not_ierror_patterns() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_pattern_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_fake_error_pattern_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'fake')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'fake.v'), "module fake
@@ -521,8 +515,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_pattern_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_fake_error_pattern_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('fake.FalseError') && compile.output.contains('IError'), compile.output
 
@@ -532,7 +526,9 @@ fn main() {
 }
 
 fn test_module_local_error_embeds_are_not_boxed_as_ierror() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_box_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_fake_error_box_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'fakebox')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	mod_src := os.join_path(mod_dir, 'fakebox.v')
@@ -589,8 +585,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_box_input')
-	compile := os.exec([v3_bin, '${mod_src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_fake_error_box_input')
+	compile := os.exec([@VEXE, '${mod_src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot use `&fakebox.FalseError` as type `!int`'), compile.output
 	assert compile.output.contains('fakebox.FalseError')

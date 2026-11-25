@@ -8,9 +8,14 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 REPOSITORY = "vlang/v"
-WORKFLOW = ".github/workflows/ci_master.yml"
 PLATFORMS = {
     "linux-x64", "macos-arm64", "macos-x64", "windows-x64", "termux-arm64", "termux-x64",
+}
+WORKFLOWS = {
+    ".github/workflows/ci_master.yml": ("CI master", {"linux-x64"}),
+    ".github/workflows/ci_master_portability.yml": (
+        "CI master portability", PLATFORMS - {"linux-x64"},
+    ),
 }
 ARTIFACT_NAME = re.compile(
     r"vprod-(linux-x64|macos-arm64|macos-x64|windows-x64|termux-arm64|termux-x64)-([0-9a-f]{40})"
@@ -78,13 +83,15 @@ def trusted_run(run):
     head_repository = run.get("head_repository") or {}
     if not isinstance(repository, dict) or not isinstance(head_repository, dict):
         return False
+    path = run.get("path")
+    lane = WORKFLOWS.get(path) if isinstance(path, str) else None
     return (
         repository.get("full_name") == REPOSITORY
         and head_repository.get("full_name") == REPOSITORY
         and positive_id(repository.get("id"))
         and positive_id(head_repository.get("id"))
-        and run.get("path") == WORKFLOW
-        and run.get("name") == "CI master"
+        and lane is not None
+        and run.get("name") == lane[0]
         and run.get("event") == "push"
         and run.get("head_branch") == "master"
         and positive_id(run.get("id"))
@@ -118,13 +125,14 @@ def compiler_artifact(artifact, run):
 
 def require_replacement(api, current):
     artifacts = list_artifacts(api, f"{API_ROOT}/runs/{current['id']}/artifacts")
+    expected = WORKFLOWS[current["path"]][1]
     platforms = []
     for artifact in artifacts:
         platform = compiler_artifact(artifact, current)
         if platform and artifact.get("expired") is False and positive_id(artifact.get("size_in_bytes")):
             platforms.append(platform)
-    if len(platforms) != len(PLATFORMS) or set(platforms) != PLATFORMS:
-        raise ValueError("Current run has no complete compiler set; keeping old artifacts")
+    if len(platforms) != len(expected) or set(platforms) != expected:
+        raise ValueError("Current run has no complete compiler set for its lane; keeping old artifacts")
 
 
 def older_completed_run(run, current):
@@ -132,6 +140,7 @@ def older_completed_run(run, current):
         trusted_run(run)
         and run["repository"]["id"] == current["repository"]["id"]
         and run["head_repository"]["id"] == current["head_repository"]["id"]
+        and run["path"] == current["path"]
         and run["workflow_id"] == current["workflow_id"]
         and run["id"] != current["id"]
         # run_number stays unchanged when an old workflow is rerun. Its later
@@ -146,6 +155,7 @@ def cleanup(api, run_id, sha):
     if not trusted_run(current) or current["id"] != run_id or current["head_sha"] != sha:
         raise ValueError("Cleanup requires the exact trusted CI master push run")
     require_replacement(api, current)
+    platforms = WORKFLOWS[current["path"]][1]
 
     # Enumerate retained artifacts, not the workflow's entire run history.
     # Only runs owning an exactly named compiler artifact need metadata lookups.
@@ -164,7 +174,7 @@ def cleanup(api, run_id, sha):
         if owner_id not in runs:
             runs[owner_id] = api.request("GET", f"{API_ROOT}/runs/{owner_id}")
         run = runs[owner_id]
-        if older_completed_run(run, current) and compiler_artifact(artifact, run):
+        if older_completed_run(run, current) and compiler_artifact(artifact, run) in platforms:
             candidates.setdefault(owner_id, {})[artifact["id"]] = artifact
 
     # All pagination and initial metadata reads have succeeded before any delete.
@@ -176,7 +186,7 @@ def cleanup(api, run_id, sha):
         if not older_completed_run(run, current):
             continue
         for artifact in group.values():
-            if not compiler_artifact(artifact, run):
+            if compiler_artifact(artifact, run) not in platforms:
                 continue
             try:
                 api.request("DELETE", f"{API_ROOT}/artifacts/{artifact['id']}")
@@ -192,7 +202,7 @@ def cleanup(api, run_id, sha):
 def main():
     if (
         os.environ.get("GITHUB_REPOSITORY") != REPOSITORY
-        or os.environ.get("GITHUB_WORKFLOW") != "CI master"
+        or os.environ.get("GITHUB_WORKFLOW") not in {lane[0] for lane in WORKFLOWS.values()}
         or os.environ.get("GITHUB_EVENT_NAME") != "push"
         or os.environ.get("GITHUB_REF") != "refs/heads/master"
     ):

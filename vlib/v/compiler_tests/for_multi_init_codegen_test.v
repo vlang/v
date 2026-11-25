@@ -1,50 +1,40 @@
 import os
+import v.tempname
 
-const for_multi_init_vexe = @VEXE
-const for_multi_init_tests_dir = os.dir(@FILE)
-const for_multi_init_v3_dir = os.dir(for_multi_init_tests_dir)
-const for_multi_init_vlib_dir = os.dir(for_multi_init_v3_dir)
-const for_multi_init_v3_src = os.join_path(for_multi_init_v3_dir, 'v.v')
-
-fn for_multi_init_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([for_multi_init_vexe, '-gc', 'none', '-path',
-			'${for_multi_init_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${for_multi_init_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn for_multi_init_fixture_dir() string {
+	root := os.join_path(os.vtmp_dir(), 'v3_for_multi_init_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	return root
 }
 
-fn for_multi_init_run_bad(v3_bin string, name string, source string, expected string) {
-	src := os.join_path(os.temp_dir(), 'v3_for_multi_init_${name}_${os.getpid()}.v')
+fn for_multi_init_run_bad(name string, source string, expected string) {
+	root := for_multi_init_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_for_multi_init_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_${name}_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	result := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_for_multi_init_${name}')
+	result := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains(expected), result.output
 	assert !result.output.contains('C compilation failed'), result.output
 }
 
-fn for_multi_init_gen_c(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_for_multi_init_${name}_${os.getpid()}.v')
+fn for_multi_init_gen_c(name string, source string) string {
+	root := for_multi_init_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_for_multi_init_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	c_path := os.join_path(os.temp_dir(), 'v3_for_multi_init_${name}_${os.getpid()}.c')
-	os.rm(c_path) or {}
-	result := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
+	c_path := os.join_path(root, 'v3_for_multi_init_${name}.c')
+	result := os.exec([@VEXE, '${src}', '-b', 'c', '-o', c_path])
 	assert result.exit_code == 0, result.output
 	assert os.exists(c_path), result.output
 	return os.read_file(c_path) or { panic(err) }
 }
 
 fn test_c_style_for_multi_init_does_not_swallow_following_fn() {
-	v3_bin := for_multi_init_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_for_multi_init_input_${os.getpid()}.v')
+	root := for_multi_init_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_for_multi_init_input.v')
 	os.write_file(src, "struct Iter {
 	label string
 }
@@ -94,10 +84,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_input_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_for_multi_init_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -107,8 +95,9 @@ fn main() {
 }
 
 fn test_unsigned_inclusive_for_bound_evaluates_once_per_iteration() {
-	v3_bin := for_multi_init_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_for_unsigned_inclusive_bound_${os.getpid()}.v')
+	root := for_multi_init_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_for_unsigned_inclusive_bound.v')
 	os.write_file(src, 'struct Calls {
 mut:
 	value int
@@ -133,10 +122,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_for_unsigned_inclusive_bound_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_for_unsigned_inclusive_bound')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -146,8 +133,9 @@ fn main() {
 }
 
 fn test_unsigned_inclusive_for_mutable_bound_keeps_post_semantics() {
-	v3_bin := for_multi_init_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_for_unsigned_mutable_bound_${os.getpid()}.v')
+	root := for_multi_init_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_for_unsigned_mutable_bound.v')
 	os.write_file(src, 'fn main() {
 	mut hi := u8(1)
 	mut i := u8(0)
@@ -186,10 +174,8 @@ fn test_unsigned_inclusive_for_mutable_bound_keeps_post_semantics() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_for_unsigned_mutable_bound_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_for_unsigned_mutable_bound')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -199,8 +185,9 @@ fn test_unsigned_inclusive_for_mutable_bound_keeps_post_semantics() {
 }
 
 fn test_labeled_c_style_for_multi_init_flow_targets_named_loop() {
-	v3_bin := for_multi_init_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_for_multi_init_labeled_${os.getpid()}.v')
+	root := for_multi_init_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_for_multi_init_labeled.v')
 	os.write_file(src, 'fn main() {
 	mut out := ""
 	outer: for x, stop := 0, 3; x < stop; x++ {
@@ -238,10 +225,8 @@ fn test_labeled_c_style_for_multi_init_flow_targets_named_loop() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_labeled_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_for_multi_init_labeled')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -250,9 +235,10 @@ fn test_labeled_c_style_for_multi_init_flow_targets_named_loop() {
 	assert run.output.trim_space() == '0:0;0:1;0:2;2:0;'
 }
 
-fn test_c_style_for_post_labeled_continue_runs_post_once_for_same_loop() {
-	v3_bin := for_multi_init_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_for_post_labeled_continue_${os.getpid()}.v')
+fn test_c_style_for_post_respects_labeled_continue_target() {
+	root := for_multi_init_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_for_post_labeled_continue.v')
 	os.write_file(src, 'struct Posts {
 mut:
 	value int
@@ -263,7 +249,7 @@ fn step(mut posts Posts, a int, b int) (int, int) {
 	return a + 1, b + 1
 }
 
-fn main() {
+fn continue_same_loop() {
 	mut posts := Posts{}
 	mut a := 0
 	mut b := 0
@@ -278,38 +264,9 @@ fn main() {
 	assert b == 3
 	assert hits == 3
 	assert posts.value == 3
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_for_post_labeled_continue_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
 }
 
-fn test_c_style_for_post_labeled_continue_to_outer_skips_inner_post() {
-	v3_bin := for_multi_init_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_for_post_outer_labeled_continue_${os.getpid()}.v')
-	os.write_file(src, 'struct Posts {
-mut:
-	value int
-}
-
-fn step(mut posts Posts, a int, b int) (int, int) {
-	posts.value++
-	return a + 1, b + 1
-}
-
-fn main() {
+fn continue_outer_loop() {
 	mut inner_posts := Posts{}
 	mut outer := 0
 	mut hits := 0
@@ -324,16 +281,19 @@ fn main() {
 	assert outer == 2
 	assert hits == 2
 	assert inner_posts.value == 0
+}
+
+fn main() {
+	continue_same_loop()
+	continue_outer_loop()
 	println("ok")
 }
 ') or {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_for_post_outer_labeled_continue_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_for_post_labeled_continue')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -343,8 +303,7 @@ fn main() {
 }
 
 fn test_c_style_for_multi_init_rejects_extra_rhs() {
-	v3_bin := for_multi_init_build_v3()
-	for_multi_init_run_bad(v3_bin, 'extra_rhs', 'fn bump(n int) int {
+	for_multi_init_run_bad('extra_rhs', 'fn bump(n int) int {
 	println(n.str())
 	return n
 }
@@ -360,8 +319,9 @@ fn main() {
 }
 
 fn test_c_style_for_multi_init_allows_multi_return_call() {
-	v3_bin := for_multi_init_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_for_multi_init_pair_${os.getpid()}.v')
+	root := for_multi_init_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_for_multi_init_pair.v')
 	os.write_file(src, 'fn pair() (int, int) {
 	return 1, 2
 }
@@ -379,10 +339,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_pair_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_for_multi_init_pair')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -392,8 +350,9 @@ fn main() {
 }
 
 fn test_c_style_for_post_allows_multi_return_call() {
-	v3_bin := for_multi_init_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_for_post_pair_${os.getpid()}.v')
+	root := for_multi_init_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_for_post_pair.v')
 	os.write_file(src, 'fn step(a int, b int) (int, int) {
 	return a + 1, b + 2
 }
@@ -416,10 +375,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_for_post_pair_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_for_post_pair')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -428,14 +385,15 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_c_style_for_post_runs_before_match_branch_continue() {
-	v3_bin := for_multi_init_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_for_post_match_continue_${os.getpid()}.v')
+fn test_c_style_for_post_runs_before_match_and_select_branch_continue() {
+	root := for_multi_init_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_for_post_branch_continue.v')
 	os.write_file(src, 'fn step(a int, b int) (int, int) {
 	return a + 1, b + 1
 }
 
-fn main() {
+fn continue_in_match() {
 	mut a := 0
 	mut b := 0
 	mut guard := 0
@@ -454,32 +412,9 @@ fn main() {
 	assert a == 3
 	assert b == 3
 	assert guard == 3
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_for_post_match_continue_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
 }
 
-fn test_c_style_for_post_runs_before_select_branch_continue() {
-	v3_bin := for_multi_init_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_for_post_select_continue_${os.getpid()}.v')
-	os.write_file(src, 'fn step(a int, b int) (int, int) {
-	return a + 1, b + 1
-}
-
-fn main() {
+fn continue_in_select() {
 	mut a := 0
 	mut b := 0
 	mut guard := 0
@@ -497,16 +432,19 @@ fn main() {
 	assert a == 3
 	assert b == 3
 	assert guard == 3
+}
+
+fn main() {
+	continue_in_match()
+	continue_in_select()
 	println("ok")
 }
 ') or {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_for_post_select_continue_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_for_post_branch_continue')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -516,8 +454,7 @@ fn main() {
 }
 
 fn test_c_style_for_post_continue_in_lock_runs_post_after_unlock() {
-	v3_bin := for_multi_init_build_v3()
-	c_source := for_multi_init_gen_c(v3_bin, 'post_continue_lock_cleanup', 'struct Box {
+	c_source := for_multi_init_gen_c('post_continue_lock_cleanup', 'struct Box {
 mut:
 	x shared int
 }
@@ -565,8 +502,7 @@ fn main() {
 }
 
 fn test_c_style_for_post_rejects_extra_rhs() {
-	v3_bin := for_multi_init_build_v3()
-	for_multi_init_run_bad(v3_bin, 'post_extra_rhs', 'fn bump(n int) int {
+	for_multi_init_run_bad('post_extra_rhs', 'fn bump(n int) int {
 	println(n.str())
 	return n
 }
@@ -582,8 +518,7 @@ fn main() {
 }
 
 fn test_c_style_for_post_rejects_scalar_rhs_for_multi_assign() {
-	v3_bin := for_multi_init_build_v3()
-	for_multi_init_run_bad(v3_bin, 'post_scalar_rhs', 'fn main() {
+	for_multi_init_run_bad('post_scalar_rhs', 'fn main() {
 	mut a := 0
 	mut b := 0
 	for ; a < 1; a, b = 1 {
@@ -596,8 +531,7 @@ fn test_c_style_for_post_rejects_scalar_rhs_for_multi_assign() {
 }
 
 fn test_c_style_for_post_does_not_use_condition_smartcast() {
-	v3_bin := for_multi_init_build_v3()
-	for_multi_init_run_bad(v3_bin, 'post_stale_condition_smartcast', 'struct Foo {
+	for_multi_init_run_bad('post_stale_condition_smartcast', 'struct Foo {
 	foo int
 }
 
@@ -618,8 +552,9 @@ fn main() {
 }
 
 fn test_c_style_for_multi_init_allows_selector_lhs_after_comma() {
-	v3_bin := for_multi_init_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_for_multi_init_selector_lhs_${os.getpid()}.v')
+	root := for_multi_init_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_for_multi_init_selector_lhs.v')
 	os.write_file(src, 'struct Pair {
 mut:
 	x int
@@ -643,10 +578,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_selector_lhs_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_for_multi_init_selector_lhs')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -656,8 +589,7 @@ fn main() {
 }
 
 fn test_c_style_for_multi_init_rejects_missing_rhs() {
-	v3_bin := for_multi_init_build_v3()
-	for_multi_init_run_bad(v3_bin, 'missing_rhs', 'fn main() {
+	for_multi_init_run_bad('missing_rhs', 'fn main() {
 	for a, b := 1; false; {
 		println(a)
 		println(b)
@@ -668,8 +600,7 @@ fn test_c_style_for_multi_init_rejects_missing_rhs() {
 }
 
 fn test_for_in_rejects_selector_value_var_after_comma() {
-	v3_bin := for_multi_init_build_v3()
-	for_multi_init_run_bad(v3_bin, 'for_in_selector_value', 'struct Box {
+	for_multi_init_run_bad('for_in_selector_value', 'struct Box {
 mut:
 	x int
 }

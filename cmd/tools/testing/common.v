@@ -420,6 +420,7 @@ pub mut:
 	nmessages     chan LogMessage // many publishers, single consumer/printer
 	nmessage_idx  int             // currently printed message index
 	failed_cmds   shared []string
+	failed_files  shared []string // the test files of failed_cmds, for VTEST_FAILED_LIST
 	reporter      Reporter = Reporter(NormalReporter{})
 	hash          string // used as part of the name of the temporary directory created for tests, to ease cleanup
 
@@ -438,6 +439,29 @@ mut:
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
 	lock ts.failed_cmds {
 		ts.failed_cmds << cmd
+	}
+}
+
+// add_failed_test records that the test file `file` failed, with the command `cmd` that
+// reproduces the failure.
+pub fn (mut ts TestSession) add_failed_test(file string, cmd string) {
+	ts.add_failed_cmd(cmd)
+	lock ts.failed_files {
+		ts.failed_files << file
+	}
+}
+
+// write_failed_files_list writes the failed test files, one per line, to `path` (the value
+// of VTEST_FAILED_LIST, which vtest takes out of the environment of the tests it runs).
+// vlib/v/test_all.vsh reads it to tell the files of a group apart.
+pub fn (mut ts TestSession) write_failed_files_list(path string) {
+	if path == '' {
+		return
+	}
+	rlock ts.failed_files {
+		os.write_file(path, ts.failed_files.map(it + '\n').join('')) or {
+			eprintln('cannot write VTEST_FAILED_LIST ${path}: ${err}')
+		}
 	}
 }
 
@@ -840,10 +864,10 @@ pub fn (mut ts TestSession) test() {
 	}
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
-	ts.prepare_shared_v3(remaining_files)
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	// Batching evaluates the `// vtest build:` constraints of the files.
+	// Shared compiler preparation and batching evaluate `// vtest build:` constraints.
 	ts.setup_build_environment(remaining_files)
+	ts.prepare_shared_v3(remaining_files)
 	// The pool works on units: a single file, or a batch of the tests of one module.
 	units := ts.test_units(remaining_files)
 	mut njobs := test_runner_jobs(ts.will_compile)
@@ -926,6 +950,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.njobs = ts.benchmark.njobs
 	item := p.get_item[string](idx)
 	if item.contains('\n') {
+		if ts.can_batch_tool_runs() {
+			return ts.run_tool_batch(item.split('\n'), '${idx}_${thread_id}', thread_id, mut
+				tls_bench)
+		}
 		return ts.run_test_batch(item.split('\n'), '${idx}_${thread_id}', thread_id, mut
 			tls_bench)
 	}
@@ -957,6 +985,7 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 		}
 	}
 
+	// test_path_enables_globals in batch.v applies the same rule to batches.
 	if relative_file.contains('global') && !is_fmt {
 		cmd_options << '-enable-globals'
 	}
@@ -1073,7 +1102,7 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 		os.mkdir_all(test_folder_path) or {
 			ts.benchmark_fail()
 			tls_bench.fail()
-			ts.add_failed_cmd(reproduce_cmd)
+			ts.add_failed_test(file, reproduce_cmd)
 			ts.append_message(.fail, tls_bench.step_message_with_label(benchmark.b_fail,
 				'${normalised_relative_file}\n>> could not create test folder ${test_folder_path}: ${err}'),
 				mtc)
@@ -1147,7 +1176,7 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 			}
 			ts.benchmark_fail()
 			tls_bench.fail()
-			ts.add_failed_cmd(reproduce_cmd)
+			ts.add_failed_test(file, reproduce_cmd)
 			return pool.no_result
 		}
 	} else {
@@ -1175,7 +1204,7 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 				cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
-			ts.add_failed_cmd(reproduce_cmd)
+			ts.add_failed_test(file, reproduce_cmd)
 			return pool.no_result
 		}
 		tls_bench.step_restart()
@@ -1246,7 +1275,7 @@ fn (mut ts TestSession) run_test_file(item string, test_id string, thread_id int
 				'${normalised_relative_file}\n${full_failure_output}', cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
-			ts.add_failed_cmd(reproduce_cmd)
+			ts.add_failed_test(file, reproduce_cmd)
 			return pool.no_result
 		}
 	}
@@ -1428,14 +1457,17 @@ pub fn building_any_v_binaries_failed() bool {
 	if production_cc != '' {
 		eprintln('Using ${production_cc} for production V binaries')
 	}
+	// The builds run side by side, as far as their memory allows: each production build spends
+	// minutes in one C compiler process, using one core. They come first, alternating with and
+	// without debug information, so that two of them fit in the memory of a 16 GB CI runner.
 	v_build_options := [
-		['-o', 'v_g', '-g'],
 		['-o', 'v_prod_g', '-prod', '-g'],
-		['-o', 'v_cg', '-cg'],
-		['-o', 'v_prod_cg', '-prod', '-cg'],
 		['-o', 'v_prod', '-prod'],
+		['-o', 'v_prod_cg', '-prod', '-cg'],
+		['-o', 'v_g', '-g'],
+		['-o', 'v_cg', '-cg'],
 	]
-	mut bmark := benchmark.new_benchmark()
+	mut builds := []&VBinaryBuild{}
 	for options in v_build_options {
 		mut args := [vexe]
 		args << options
@@ -1443,24 +1475,128 @@ pub fn building_any_v_binaries_failed() bool {
 			args << ['-cc', production_cc]
 		}
 		args << 'cmd/v'
-		cmd := args.map(os.quoted_path(it)).join(' ')
+		builds << &VBinaryBuild{
+			args:   args
+			cmd:    args.map(os.quoted_path(it)).join(' ')
+			memory: v_binary_build_memory(options)
+		}
+	}
+	mut bmark := benchmark.new_benchmark()
+	mut workers := runtime.nr_jobs()
+	if workers > builds.len {
+		workers = builds.len
+	}
+	mut budget := &VBinaryMemoryBudget{
+		limit: v_binaries_memory_limit()
+	}
+	mut builders := pool.new_pool_processor(
+		maxjobs:  if workers < 1 { 1 } else { workers }
+		callback: build_v_binary
+	)
+	builders.set_shared_context(budget)
+	builders.work_on_items(builds)
+	for build in builds {
 		bmark.step()
-		if build_v_args_failed(args) {
+		if build.failed {
 			bmark.fail()
 			failed = true
-			eprintln(bmark.step_message_fail('command: ${cmd} . See details above ^^^^^^^'))
+			if build.output != '' {
+				eprintln('')
+				eprintln(build.output)
+			}
+			eprintln(bmark.step_message_with_label_and_duration(benchmark.b_fail, 'command: ${build.cmd} . See details above ^^^^^^^',
+				build.duration))
 			eprintln('')
 			continue
 		}
 		bmark.ok()
 		if !hide_oks {
-			eprintln(bmark.step_message_ok('command: ${cmd}'))
+			eprintln(bmark.step_message_with_label_and_duration(benchmark.b_ok, 'command: ${build.cmd}',
+				build.duration))
 		}
 	}
 	bmark.stop()
 	h_divider()
 	eprintln(bmark.total_message('building v binaries'))
 	return failed
+}
+
+// VBinaryBuild is one build of cmd/v by building_any_v_binaries_failed.
+struct VBinaryBuild {
+	args   []string
+	cmd    string
+	memory u64 // the most memory the build is expected to use
+mut:
+	failed   bool
+	output   string
+	duration time.Duration
+}
+
+const gib = u64(1) << 30
+
+// v_binary_build_memory estimates the peak memory of a build of cmd/v with `options`. A production
+// build is one C compilation unit: Clang -O3 peaked at 4 GB, and at 8 GB with debug information.
+fn v_binary_build_memory(options []string) u64 {
+	if '-prod' !in options {
+		return 2 * gib
+	}
+	if '-g' in options || '-cg' in options {
+		return 8 * gib
+	}
+	return 4 * gib
+}
+
+// v_binaries_memory_limit is how much memory the builds of building_any_v_binaries_failed may use
+// at once: three quarters of the physical memory, or 0 (one build at a time) when it is unknown.
+fn v_binaries_memory_limit() u64 {
+	total := u64(runtime.total_memory() or { 0 })
+	return total / 4 * 3
+}
+
+// VBinaryMemoryBudget lets builds start only while their estimated memory fits in `limit`. A build
+// always starts when no other runs, so a small or unknown limit runs them one by one.
+@[heap]
+struct VBinaryMemoryBudget {
+	limit u64
+mut:
+	mu     &sync.Mutex = sync.new_mutex()
+	in_use u64
+}
+
+fn (mut b VBinaryMemoryBudget) acquire(amount u64) {
+	for {
+		b.mu.lock()
+		if b.in_use == 0 || b.in_use + amount <= b.limit {
+			b.in_use += amount
+			b.mu.unlock()
+			return
+		}
+		b.mu.unlock()
+		time.sleep(200 * time.millisecond)
+	}
+}
+
+fn (mut b VBinaryMemoryBudget) release(amount u64) {
+	b.mu.lock()
+	b.in_use -= amount
+	b.mu.unlock()
+}
+
+fn build_v_binary(mut p pool.PoolProcessor, idx int, _ int) voidptr {
+	mut build := p.get_item[&VBinaryBuild](idx)
+	mut budget := unsafe { &VBinaryMemoryBudget(p.get_shared_context()) }
+	budget.acquire(build.memory)
+	sw := time.new_stopwatch()
+	res := os.exec(build.args)
+	build.duration = sw.elapsed()
+	budget.release(build.memory)
+	if res.exit_code != 0 {
+		build.failed = true
+		if res.exit_code > 0 {
+			build.output = res.output
+		}
+	}
+	return pool.no_result
 }
 
 pub fn h_divider() {
@@ -1473,16 +1609,67 @@ pub fn h_divider() {
 const shared_v3_env = 'V3_TEST_UNIT_SHARED_V3'
 const shared_v3_src_env = 'V3_TEST_UNIT_V3_SRC'
 const shared_v3_ownership_env = 'V3_TEST_UNIT_SHARED_V3_OWNERSHIP'
+const shared_v3_min_builders = 2
 
 // shared_v3_names are the executables that prepare_shared_v3 builds in the session folder.
 const shared_v3_names = ['shared_v3', 'shared_v3_ownership']
 
-// prepare_shared_v3 builds the V3 compiler once, when at least two of `files` build it themselves
-// (as most compiler tests do), and lets the launcher serve their builds with copies of it; the
-// same for the `-d ownership` compiler of the ownership tests. Each build takes ~20 s of CPU.
-// A failed build only leaves the tests to build their own.
+fn (ts &TestSession) shared_v3_compilers_to_build(files []string, need_plain bool, need_ownership bool) (bool, bool) {
+	vroot := os.real_path(ts.vroot) + os.path_separator
+	mut skipped := map[string]bool{}
+	for path in ts.skip_files {
+		skipped[path] = true
+	}
+	mut plain_remaining := if need_plain { shared_v3_min_builders } else { 0 }
+	mut ownership_remaining := if need_ownership { shared_v3_min_builders } else { 0 }
+	for file in files {
+		if plain_remaining == 0 && ownership_remaining == 0 {
+			break
+		}
+		path := os.real_path(file)
+		if !path.starts_with(vroot) || path in skipped {
+			continue
+		}
+		source := os.read_file(path) or { continue }
+		if !source.contains("'v.v'") {
+			continue
+		}
+		ownership_builder := ownership_remaining > 0 && source.contains("'-d', 'ownership'")
+		if plain_remaining == 0 && !ownership_builder {
+			continue
+		}
+		if source.contains('// vtest build:') {
+			details := test_details_from_lines(source.split_into_lines())
+			if details.vbuild != '' && !(ts.build_environment.eval(details.vbuild) or { false }) {
+				continue
+			}
+		}
+		if ts.can_resume_file(path) {
+			// The worker still checks progress records and reports any read errors.
+			resume := ts.read_test_resume(path, source) or { TestResume{} }
+			if resume.passed {
+				continue
+			}
+		}
+		if plain_remaining > 0 {
+			plain_remaining--
+		}
+		if ownership_builder {
+			ownership_remaining--
+		}
+	}
+	return need_plain && plain_remaining == 0, need_ownership && ownership_remaining == 0
+}
+
+// prepare_shared_v3 prepares a compiler variant when at least two runnable files may use it.
+// If preparation fails, tests can still build the compiler themselves.
 fn (mut ts TestSession) prepare_shared_v3(files []string) {
 	if !ts.will_compile || os.getenv('VTEST_NO_SHARED_V3') == '1' {
+		return
+	}
+	need_plain := os.getenv(shared_v3_env) == ''
+	need_ownership := os.getenv(shared_v3_ownership_env) == ''
+	if !need_plain && !need_ownership {
 		return
 	}
 	v3_src := os.join_path(ts.vroot, 'vlib', 'v', 'v.v')
@@ -1495,25 +1682,10 @@ fn (mut ts TestSession) prepare_shared_v3(files []string) {
 			return
 		}
 	}
-	vroot := os.real_path(ts.vroot) + os.path_separator
-	mut builders := 0
-	mut ownership_builders := 0
-	for file in files {
-		path := os.real_path(file)
-		if !path.starts_with(vroot) {
-			continue
-		}
-		source := os.read_file(path) or { continue }
-		if source.contains("'v.v'") {
-			builders++
-			if source.contains("'-d', 'ownership'") {
-				ownership_builders++
-			}
-		}
-	}
+	build_plain, build_ownership := ts.shared_v3_compilers_to_build(files, need_plain, need_ownership)
 	mut values := map[string]string{}
-	for i, env in [shared_v3_env, shared_v3_ownership_env] {
-		if os.getenv(env) != '' || (if i == 0 { builders } else { ownership_builders }) < 2 {
+	for i, should_build in [build_plain, build_ownership] {
+		if !should_build {
 			continue
 		}
 		shared_v3 := os.join_path(ts.vtmp_dir, shared_v3_names[i] + $if windows { '.exe' } $else { '' })
@@ -1524,6 +1696,7 @@ fn (mut ts TestSession) prepare_shared_v3(files []string) {
 		args << ['-path', os.join_path(ts.vroot, 'vlib'), '-o', shared_v3, v3_src]
 		build := os.exec(args)
 		if build.exit_code == 0 && os.is_executable(shared_v3) {
+			env := if i == 0 { shared_v3_env } else { shared_v3_ownership_env }
 			values[env] = shared_v3
 		}
 	}
@@ -1582,12 +1755,17 @@ pub mut:
 	vflags       string // custom compilation flags for the test (enables for example: `// vtest vflags: -w`, for tests that have known warnings, but should still pass with -W)
 }
 
+// get_test_details reads the vtest directives in file.
 pub fn get_test_details(file string) TestDetails {
-	mut res := TestDetails{}
 	if !os.is_file(file) {
-		return res
+		return TestDetails{}
 	}
 	lines := os.read_lines(file) or { [] }
+	return test_details_from_lines(lines)
+}
+
+fn test_details_from_lines(lines []string) TestDetails {
+	mut res := TestDetails{}
 	for idx, line in lines {
 		if line.starts_with('// vtest retry:') {
 			res.retry = line.all_after(':').trim_space().int()

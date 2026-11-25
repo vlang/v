@@ -1,31 +1,18 @@
 import os
-
-const dump_expr_vexe = @VEXE
-const dump_expr_tests_dir = os.dir(@FILE)
-const dump_expr_v3_dir = os.dir(dump_expr_tests_dir)
-const dump_expr_vlib_dir = os.dir(dump_expr_v3_dir)
-const dump_expr_v3_src = os.join_path(dump_expr_v3_dir, 'v.v')
-
-fn dump_expr_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([dump_expr_vexe, '-gc', 'none', '-path', '${dump_expr_vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${dump_expr_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn dump_expr_compact_c(s string) string {
 	return s.replace('\t', '').replace(' ', '').replace('\n', '')
 }
 
 fn test_dump_expr_is_transparent_for_c_oracle_output() {
-	v3_bin := dump_expr_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_dump_expr_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_dump_expr_codegen')
+	src := bin + '.v'
 	source := [
 		'module main',
 		'',
@@ -54,8 +41,7 @@ fn test_dump_expr_is_transparent_for_c_oracle_output() {
 		'}',
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_${os.getpid()}')
-	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
+	compile := os.exec([@VEXE, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, src])
 	assert compile.exit_code == 0, compile.output
 	mut process := os.new_process(bin)
 	process.set_redirect_stdio()
@@ -82,8 +68,13 @@ fn test_dump_expr_is_transparent_for_c_oracle_output() {
 }
 
 fn test_dump_expr_writes_to_stderr() {
-	v3_bin := dump_expr_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_dump_expr_stderr_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_dump_expr_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_dump_expr_stderr')
+	src := bin + '.v'
 	source := [
 		'module main',
 		'',
@@ -93,8 +84,7 @@ fn test_dump_expr_writes_to_stderr() {
 		'}',
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_stderr_${os.getpid()}')
-	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
+	compile := os.exec([@VEXE, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, src])
 	assert compile.exit_code == 0, compile.output
 
 	mut process := os.new_process(bin)
@@ -118,8 +108,13 @@ fn test_dump_expr_writes_to_stderr() {
 }
 
 fn test_dump_expr_respects_nop_dump_and_preserves_evaluation() {
-	v3_bin := dump_expr_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_dump_expr_nop_dump_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_dump_expr_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_dump_expr_nop_dump')
+	src := bin + '.v'
 	source := [
 		'module main',
 		'',
@@ -135,9 +130,8 @@ fn test_dump_expr_respects_nop_dump_and_preserves_evaluation() {
 		'}',
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_nop_dump_${os.getpid()}')
-	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-d', 'nop_dump', '-b', 'c', '-o',
-		bin, '${src}'])
+	compile := os.exec([@VEXE, '-no-parallel', '-nocache', '-d', 'nop_dump', '-b', 'c', '-o', bin,
+		src])
 	assert compile.exit_code == 0, compile.output
 
 	mut process := os.new_process(bin)
@@ -157,8 +151,13 @@ fn test_dump_expr_respects_nop_dump_and_preserves_evaluation() {
 }
 
 fn test_dump_expr_preserves_pointer_values() {
-	v3_bin := dump_expr_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_dump_expr_pointer_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_dump_expr_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_dump_expr_pointer')
+	src := bin + '.v'
 	source := [
 		'module main',
 		'',
@@ -174,8 +173,7 @@ fn test_dump_expr_preserves_pointer_values() {
 		'}',
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_pointer_${os.getpid()}')
-	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
+	compile := os.exec([@VEXE, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, src])
 	assert compile.exit_code == 0, compile.output
 
 	mut process := os.new_process(bin)

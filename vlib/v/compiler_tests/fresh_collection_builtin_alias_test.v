@@ -7,36 +7,11 @@ import v.tempname
 // an array built by `map` out of an immutable struct's field was reported as aliasing
 // that field and writing to it was rejected.
 
-const fresh_builtin_vexe = @VEXE
-const fresh_builtin_tests_dir = os.dir(@FILE)
-const fresh_builtin_v3_dir = os.dir(fresh_builtin_tests_dir)
-const fresh_builtin_vlib_dir = os.dir(fresh_builtin_v3_dir)
-const fresh_builtin_v3_src = os.join_path(fresh_builtin_v3_dir, 'v.v')
-const fresh_builtin_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_compiler_${tempname.unique_token()}')
-
-fn testsuite_end() {
-	os.rmdir_all(fresh_builtin_compiler_dir) or {}
-}
-
-fn fresh_builtin_build_v3() string {
-	v3_bin := os.join_path(fresh_builtin_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	os.mkdir_all(fresh_builtin_compiler_dir) or { panic(err) }
-	build := os.exec([fresh_builtin_vexe, '-gc', 'none', '-path',
-		'${fresh_builtin_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${fresh_builtin_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn fresh_builtin_compile(v3_bin string, root string, source string) os.Result {
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn fresh_builtin_compile(root string, source string) os.Result {
 	main_v := os.join_path(root, 'main.v')
 	os.write_file(main_v, source) or { panic(err) }
 	exe := os.join_path(root, 'prog')
-	compile := os.exec([v3_bin, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
+	compile := os.exec([@VEXE, '-nocache', main_v, '-b', 'c', '-o', exe])
 	if compile.exit_code != 0 {
 		return compile
 	}
@@ -44,12 +19,12 @@ fn fresh_builtin_compile(v3_bin string, root string, source string) os.Result {
 }
 
 fn test_an_array_built_by_a_builtin_is_not_an_alias_of_its_source() {
-	v3_bin := fresh_builtin_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	res := fresh_builtin_compile(v3_bin, root, 'struct Table {
+	res := fresh_builtin_compile(root, 'struct Table {
 	widths []int
 }
 
@@ -94,12 +69,12 @@ fn main() {
 // The real thing is still caught: a function that hands back the field itself gives
 // out a window onto it, and writing through that writes into the immutable value.
 fn test_returning_the_field_itself_is_still_an_alias() {
-	v3_bin := fresh_builtin_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_real_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_real_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	res := fresh_builtin_compile(v3_bin, root, 'struct Table {
+	res := fresh_builtin_compile(root, 'struct Table {
 	widths []int
 }
 
@@ -125,12 +100,12 @@ fn main() {
 // method of one's own called `clone` is read like any other, so handing back the
 // receiver's own array through it is still a window onto an immutable value.
 fn test_a_method_of_ones_own_named_like_a_builtin_is_not_exempt() {
-	v3_bin := fresh_builtin_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_shadow_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_shadow_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	res := fresh_builtin_compile(v3_bin, root, 'struct Table {
+	res := fresh_builtin_compile(root, 'struct Table {
 	widths []int
 }
 
@@ -161,12 +136,12 @@ fn main() {
 // there are fewer than two elements to turn around, so what it returns can be a
 // window onto an immutable value and has to stay in the analysis.
 fn test_reverse_is_not_treated_as_fresh() {
-	v3_bin := fresh_builtin_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_reverse_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_reverse_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	res := fresh_builtin_compile(v3_bin, root, 'struct Table {
+	res := fresh_builtin_compile(root, 'struct Table {
 	widths []int
 }
 
@@ -190,12 +165,12 @@ fn main() {
 // array's header, and the two then share the data behind it. So the new outer array
 // is fresh while what is reachable through its elements is not.
 fn test_a_copied_collection_of_structs_is_not_fresh_underneath() {
-	v3_bin := fresh_builtin_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_nested_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_nested_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	res := fresh_builtin_compile(v3_bin, root, 'struct Row {
+	res := fresh_builtin_compile(root, 'struct Row {
 mut:
 	cells []int
 }
@@ -222,12 +197,12 @@ fn main() {
 // The exemption still holds where the elements really do carry nothing shareable.
 // A string is copied whole and shares nothing that can be written through it.
 fn test_a_copied_collection_of_flat_elements_is_still_fresh() {
-	v3_bin := fresh_builtin_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_flat_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_flat_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	res := fresh_builtin_compile(v3_bin, root, 'enum Colour {
+	res := fresh_builtin_compile(root, 'enum Colour {
 	red
 	green
 }
@@ -263,12 +238,12 @@ fn main() {
 // so what that callback makes is what decides. Counting the cells of every row hands
 // back numbers, which carry nothing, however much the rows themselves carry.
 fn test_map_is_judged_by_what_its_callback_makes() {
-	v3_bin := fresh_builtin_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_map_result_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_map_result_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	res := fresh_builtin_compile(v3_bin, root, 'struct Row {
+	res := fresh_builtin_compile(root, 'struct Row {
 mut:
 	cells []int
 }
@@ -296,12 +271,12 @@ fn main() {
 // The same callback handing the element straight back does carry what the element
 // carries, and that is still a window onto the rows it was called on.
 fn test_map_handing_the_element_back_still_shares() {
-	v3_bin := fresh_builtin_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_map_identity_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_map_identity_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	res := fresh_builtin_compile(v3_bin, root, 'struct Row {
+	res := fresh_builtin_compile(root, 'struct Row {
 mut:
 	cells []int
 }
@@ -328,12 +303,12 @@ fn main() {
 // `keys` hands back one side of a map, so only that side is in what comes out: the
 // arrays on the other side never appear in it.
 fn test_map_keys_is_judged_by_its_keys_alone() {
-	v3_bin := fresh_builtin_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_keys_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_keys_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	res := fresh_builtin_compile(v3_bin, root, 'struct Holder {
+	res := fresh_builtin_compile(root, 'struct Holder {
 	m map[string][]int
 }
 
@@ -360,12 +335,12 @@ fn main() {
 // the argument itself answers `fn (int) int` for the latter two, which carries no
 // useful answer about the elements, so the callback has to be read for its result.
 fn test_map_reads_every_form_of_callback_for_its_result() {
-	v3_bin := fresh_builtin_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_callbacks_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_callbacks_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	res := fresh_builtin_compile(v3_bin, root, 'struct Table {
+	res := fresh_builtin_compile(root, 'struct Table {
 	widths []int
 }
 
