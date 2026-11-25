@@ -45,10 +45,10 @@ fn orm_join_sql_attr_run_batch(cases map[string]string) {
 	for name, source in cases {
 		module_name := 'fixture_${imports.len}'
 		imports << 'import ${module_name}'
-		calls << "\t\t'${name}' { ${module_name}.exercise() }"
+		calls << "\t\t'${name}' { ${module_name}.exercise()! }"
 		fixture := 'module ${module_name}\n\n' + source
 		orm_join_sql_attr_write_project_file(root, '${module_name}/${name}.v', fixture.replace_once('\nfn main()',
-			'\npub fn exercise()'))
+			'\npub fn exercise() !'))
 	}
 	orm_join_sql_attr_write_project_file(root, 'main.v', "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n")
 	bin_path := os.join_path(root, 'program')
@@ -1153,7 +1153,8 @@ fn main() {
 "
 	})
 
-	optional_relation_where_out := orm_join_sql_attr_run('orm_optional_relation_where', 'import db.sqlite
+	mut runtime_cases := map[string]string{}
+	runtime_cases['orm_optional_relation_where'] = 'import db.sqlite
 
 struct OptionalRelationAuthor {
 	id int @[primary]
@@ -1211,10 +1212,9 @@ fn main() {
 	}!
 	assert dynamic_none_count == 1
 }
-')
-	assert optional_relation_where_out == ''
+'
 
-	dynamic_update_empty_out := orm_join_sql_attr_run('orm_dynamic_update_empty_data', "import db.sqlite
+	runtime_cases['orm_dynamic_update_empty_data'] = "import db.sqlite
 
 struct DynamicEmptyUpdateUser {
 	id int @[primary]
@@ -1274,8 +1274,7 @@ fn main() {
 	}
 	assert empty_where_failed
 }
-")
-	assert dynamic_update_empty_out == ''
+"
 
 	invalid_dynamic_set_compile := orm_join_sql_attr_compile('orm_dynamic_invalid_set_operator', "import db.sqlite
 
@@ -1302,7 +1301,7 @@ fn main() {
 	assert invalid_dynamic_set_compile.exit_code != 0
 	assert invalid_dynamic_set_compile.output.contains('unsupported dynamic SQL SET operator `>`')
 
-	dynamic_final_type_out := orm_join_sql_attr_run('orm_dynamic_final_result_type', "import db.sqlite
+	runtime_cases['orm_dynamic_final_result_type'] = "import db.sqlite
 
 struct DynamicFinalUser {
 	id int @[primary]
@@ -1353,8 +1352,7 @@ fn main() {
 	assert updated == 0
 	assert db.q_string('select name from DynamicFinalUser where id = 2')! == 'Bobby'
 }
-")
-	assert dynamic_final_type_out == ''
+"
 
 	orm_join_sql_attr_run_batch({
 		'orm_dynamic_guard_after_failure':    "import db.sqlite
@@ -1700,7 +1698,7 @@ fn main() {
 ")
 	assert bad_batch_update.exit_code != 0, bad_batch_update.output
 
-	ambiguous_join_out := orm_join_sql_attr_run('orm_join_qualifies_default_fields', "import db.sqlite
+	runtime_cases['orm_join_qualifies_default_fields'] = "import db.sqlite
 
 struct JoinDepartment {
 	id int @[primary]
@@ -1810,8 +1808,7 @@ fn main() {
 	assert dynamic_department_users[0].id == 2
 	assert dynamic_department_users[0].name == 'Bob'
 }
-")
-	assert ambiguous_join_out == ''
+"
 
 	qualified_attrs_out := orm_join_sql_attr_run_project('orm_qualified_table_attributes', {
 		'foo/foo.v': "module foo
@@ -1947,7 +1944,7 @@ fn main() {
 	})
 	assert import_alias_out == ''
 
-	join_out := orm_join_sql_attr_run('orm_join_sql_attr', "import db.sqlite
+	runtime_cases['orm_join_sql_attr'] = "import db.sqlite
 
 struct RenamedDepartment {
 	dept_id int @[primary; sql: 'id']
@@ -2002,6 +1999,6 @@ fn main() {
 	assert reversed_users.len == 1
 	assert reversed_users[0].user_name == 'Alice'
 }
-")
-	assert join_out == ''
+"
+	orm_join_sql_attr_run_batch(runtime_cases)
 }
