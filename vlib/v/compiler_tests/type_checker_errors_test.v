@@ -1554,24 +1554,41 @@ fn test_const_expr_fixed_array_field_and_spacing() {
 
 // Regression tests for the second PR-review batch (vlang/v#27557).
 fn test_pr_review_codegen_batch_two() {
-	// or-block binds `err` (IError) only inside the or-body; an outer `err` keeps its
-	// type afterwards (was emitted as `err.message` on an int).
-	or_err := run_good(v3_bin, 'good_or_block_err_scope', 'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\terr := 7\n\t_ := maybe() or { 0 }\n\tprintln(int_str(err))\n}\n')
-	assert or_err == '7'
-	// Generic receiver params are substituted by declared name: `Pair[L, R].right()`
-	// returns `R` (int), not the first arg `L` (string).
-	pair := run_good(v3_bin, 'good_generic_receiver_param_by_name', "struct Pair[L, R] {\n\tleft  L\n\tright R\n}\nfn (p Pair[L, R]) right_val() R {\n\treturn p.right\n}\nfn main() {\n\tp := Pair[string, int]{\n\t\tleft:  'hi'\n\t\tright: 42\n\t}\n\tprintln(int_str(p.right_val()))\n}\n")
-	assert pair == '42'
-	// `[flag]` enum stringification renders combined values as `Enum{.a | .b}`.
-	flag := run_good(v3_bin, 'good_flag_enum_str', '@[flag]\nenum Perm {\n\tread\n\twrite\n\texec\n}\nfn main() {\n\ta := Perm.read | Perm.write\n\tprintln(a.str())\n\tb := Perm.read\n\tprintln(b.str())\n}\n')
-	assert flag == 'Perm{.read | .write}\nPerm{.read}'
-	// spawn of an option-returning fn stores/reads the `__v_option_T` ABI layout.
-	spawn_opt := run_good(v3_bin, 'good_spawn_option_return', "fn work() ?string {\n\treturn 'hello'\n}\nfn main() {\n\tmut ts := []thread ?string{}\n\tts << spawn work()\n\trs := ts.wait() or { []string{} }\n\tx := rs[0] or { 'none' }\n\tprintln(x)\n}\n")
-	assert spawn_opt == 'hello'
-	// A global V function passed to a method `fn ()` param keeps the function-pointer
-	// typedef (not `(void*)`).
-	cb := run_good(v3_bin, 'good_method_fn_ptr_arg', "struct S {\n\tn int\n}\nfn (s S) run(cb fn ()) {\n\tcb()\n}\nfn greet() {\n\tprintln('hi')\n}\nfn main() {\n\ts := S{\n\t\tn: 1\n\t}\n\ts.run(greet)\n}\n")
-	assert cb == 'hi'
+	run_good_module_batch(v3_bin, 'or_generic_enum_and_callback_runtime', [
+		// or-block binds `err` (IError) only inside the or-body; an outer `err` keeps its
+		// type afterwards (was emitted as `err.message` on an int).
+		TypeCheckerRuntimeCase{
+			name:     'good_or_block_err_scope'
+			source:   'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\terr := 7\n\t_ := maybe() or { 0 }\n\tprintln(int_str(err))\n}\n'
+			expected: '7'
+		},
+		// Generic receiver params are substituted by declared name: `Pair[L, R].right()`
+		// returns `R` (int), not the first arg `L` (string).
+		TypeCheckerRuntimeCase{
+			name:     'good_generic_receiver_param_by_name'
+			source:   "struct Pair[L, R] {\n\tleft  L\n\tright R\n}\nfn (p Pair[L, R]) right_val() R {\n\treturn p.right\n}\nfn main() {\n\tp := Pair[string, int]{\n\t\tleft:  'hi'\n\t\tright: 42\n\t}\n\tprintln(int_str(p.right_val()))\n}\n"
+			expected: '42'
+		},
+		// `[flag]` enum stringification renders combined values as `Enum{.a | .b}`.
+		TypeCheckerRuntimeCase{
+			name:     'good_flag_enum_str'
+			source:   '@[flag]\nenum Perm {\n\tread\n\twrite\n\texec\n}\nfn main() {\n\ta := Perm.read | Perm.write\n\tprintln(a.str())\n\tb := Perm.read\n\tprintln(b.str())\n}\n'
+			expected: 'Perm{.read | .write}\nPerm{.read}'
+		},
+		// spawn of an option-returning fn stores/reads the `__v_option_T` ABI layout.
+		TypeCheckerRuntimeCase{
+			name:     'good_spawn_option_return'
+			source:   "fn work() ?string {\n\treturn 'hello'\n}\nfn main() {\n\tmut ts := []thread ?string{}\n\tts << spawn work()\n\trs := ts.wait() or { []string{} }\n\tx := rs[0] or { 'none' }\n\tprintln(x)\n}\n"
+			expected: 'hello'
+		},
+		// A global V function passed to a method `fn ()` param keeps the function-pointer
+		// typedef (not `(void*)`).
+		TypeCheckerRuntimeCase{
+			name:     'good_method_fn_ptr_arg'
+			source:   "struct S {\n\tn int\n}\nfn (s S) run(cb fn ()) {\n\tcb()\n}\nfn greet() {\n\tprintln('hi')\n}\nfn main() {\n\ts := S{\n\t\tn: 1\n\t}\n\ts.run(greet)\n}\n"
+			expected: 'hi'
+		},
+	])
 }
 
 // Regression tests for the third PR-review batch (vlang/v#27557).
@@ -1639,37 +1656,56 @@ fn test_pr_review_codegen_batch_six() {
 	// instance; a wrong positional type is a definite mismatch, not a silent adoption
 	// that codegen would init an `int` field from a string.
 	run_bad(v3_bin, 'bad_positional_generic_literal_field_mismatch', "struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{'str'}\n}\nfn main() {\n\t_ := make()\n}\n", 'cannot use `Box[string]` as type `Box[int]` in return argument')
-	// A positional bare generic literal whose value matches the concrete field type is
-	// accepted and round-trips.
-	pos_good := run_good(v3_bin, 'good_positional_generic_literal', 'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{5}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
-	assert pos_good == '5'
-	// A function returning a nested fixed array (`[2][3]int`, whose element is itself a
-	// fixed array) must get a C return wrapper (functions cannot return raw arrays) and
-	// the caller must type the result as the full nested array (`int[3][2]` round-trips
-	// through parse_type), so the values survive the wrapper memcpy.
-	nested_ret := run_good(v3_bin, 'good_nested_fixed_array_return', 'fn make() [2][3]int {\n\tmut m := [2][3]int{}\n\tm[0][0] = 1\n\tm[0][1] = 2\n\tm[0][2] = 3\n\tm[1][0] = 4\n\tm[1][1] = 5\n\tm[1][2] = 6\n\treturn m\n}\nfn main() {\n\tr := make()\n\tprintln(int_str(r[0][0] + r[0][1] + r[0][2] + r[1][0] + r[1][1] + r[1][2]))\n}\n')
-	assert nested_ret == '21'
+	run_good_module_batch(v3_bin, 'positional_generic_and_nested_array_runtime', [
+		// A positional bare generic literal whose value matches the concrete field type is
+		// accepted and round-trips.
+		TypeCheckerRuntimeCase{
+			name:     'good_positional_generic_literal'
+			source:   'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{5}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n'
+			expected: '5'
+		},
+		// A function returning a nested fixed array (`[2][3]int`, whose element is itself a
+		// fixed array) must get a C return wrapper (functions cannot return raw arrays) and
+		// the caller must type the result as the full nested array (`int[3][2]` round-trips
+		// through parse_type), so the values survive the wrapper memcpy.
+		TypeCheckerRuntimeCase{
+			name:     'good_nested_fixed_array_return'
+			source:   'fn make() [2][3]int {\n\tmut m := [2][3]int{}\n\tm[0][0] = 1\n\tm[0][1] = 2\n\tm[0][2] = 3\n\tm[1][0] = 4\n\tm[1][1] = 5\n\tm[1][2] = 6\n\treturn m\n}\nfn main() {\n\tr := make()\n\tprintln(int_str(r[0][0] + r[0][1] + r[0][2] + r[1][0] + r[1][1] + r[1][2]))\n}\n'
+			expected: '21'
+		},
+	])
 }
 
 // Regression tests for the seventh PR-review batch (vlang/v#27557).
 fn test_pr_review_codegen_batch_seven() {
-	// A parenthesized const fixed-array length must fold by ignoring operators inside the
-	// parentheses: `2 * (segs + 1)` is 10 (not split at the inner `+`), `(segs + 2) / 2`
-	// is 5, so the array dimensions are real numbers, not mangled raw text.
-	paren := run_good(v3_bin, 'good_paren_const_fixed_array_len', 'const segs = 4\nfn main() {\n\ta := [2 * (segs + 1)]int{}\n\tb := [(segs + 2) / 2]int{}\n\tprintln(int_str(a.len + b.len))\n}\n')
-	// 10 + 3 = 13
-	assert paren == '13'
-	// A generic method whose signature mentions the receiver type (`Box[T].clone() Box[T]`)
-	// must resolve, on `Box[int]`, to the concrete `Box[int]` return (not the bare `Box`
-	// the collapsed open signature would yield), so the caller types and codegens correctly.
-	clone := run_good(v3_bin, 'good_generic_method_returns_receiver', 'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) clone() Box[T] {\n\treturn Box[T]{\n\t\tv: b.v\n\t}\n}\nfn (b Box[T]) get() T {\n\treturn b.v\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 9\n\t}\n\tc := b.clone()\n\tprintln(int_str(c.get()))\n}\n')
-	assert clone == '9'
-	// An operator overload on a generic struct is specialized only for instances whose
-	// operator is actually used: `Box[NoPlus]` is merely stored (its `+` is never applied),
-	// so the unused `Box[NoPlus].+` body — which would do `NoPlus + NoPlus` — is not
-	// emitted, while `Box[int] + Box[int]` is.
-	op_gate := run_good(v3_bin, 'good_operator_specialization_gated', "struct Box[T] {\n\tv T\n}\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\nstruct NoPlus {\n\tname string\n}\nfn main() {\n\tx := Box[int]{\n\t\tv: 1\n\t}\n\ty := Box[int]{\n\t\tv: 2\n\t}\n\tz := x + y\n\tprintln(int_str(z.v))\n\tw := Box[NoPlus]{\n\t\tv: NoPlus{\n\t\t\tname: 'hi'\n\t\t}\n\t}\n\tprintln(w.v.name)\n}\n")
-	assert op_gate == '3\nhi'
+	run_good_module_batch(v3_bin, 'array_lengths_and_generic_operators', [
+		// A parenthesized const fixed-array length must fold by ignoring operators inside the
+		// parentheses: `2 * (segs + 1)` is 10 (not split at the inner `+`), `(segs + 2) / 2`
+		// is 5, so the array dimensions are real numbers, not mangled raw text.
+		// 10 + 3 = 13
+		TypeCheckerRuntimeCase{
+			name:     'good_paren_const_fixed_array_len'
+			source:   'const segs = 4\nfn main() {\n\ta := [2 * (segs + 1)]int{}\n\tb := [(segs + 2) / 2]int{}\n\tprintln(int_str(a.len + b.len))\n}\n'
+			expected: '13'
+		},
+		// A generic method whose signature mentions the receiver type (`Box[T].clone() Box[T]`)
+		// must resolve, on `Box[int]`, to the concrete `Box[int]` return (not the bare `Box`
+		// the collapsed open signature would yield), so the caller types and codegens correctly.
+		TypeCheckerRuntimeCase{
+			name:     'good_generic_method_returns_receiver'
+			source:   'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) clone() Box[T] {\n\treturn Box[T]{\n\t\tv: b.v\n\t}\n}\nfn (b Box[T]) get() T {\n\treturn b.v\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 9\n\t}\n\tc := b.clone()\n\tprintln(int_str(c.get()))\n}\n'
+			expected: '9'
+		},
+		// An operator overload on a generic struct is specialized only for instances whose
+		// operator is actually used: `Box[NoPlus]` is merely stored (its `+` is never applied),
+		// so the unused `Box[NoPlus].+` body — which would do `NoPlus + NoPlus` — is not
+		// emitted, while `Box[int] + Box[int]` is.
+		TypeCheckerRuntimeCase{
+			name:     'good_operator_specialization_gated'
+			source:   "struct Box[T] {\n\tv T\n}\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\nstruct NoPlus {\n\tname string\n}\nfn main() {\n\tx := Box[int]{\n\t\tv: 1\n\t}\n\ty := Box[int]{\n\t\tv: 2\n\t}\n\tz := x + y\n\tprintln(int_str(z.v))\n\tw := Box[NoPlus]{\n\t\tv: NoPlus{\n\t\t\tname: 'hi'\n\t\t}\n\t}\n\tprintln(w.v.name)\n}\n"
+			expected: '3\nhi'
+		},
+	])
 }
 
 // Regression tests for the eighth PR-review batch (vlang/v#27557).
@@ -1874,48 +1910,79 @@ fn test_pr_review_codegen_batch_twenty() {
 }
 
 fn test_pr_review_codegen_batch_twentyone() {
-	// An escaping pointer returned through a copy (`p := &v; q := p; return q`) must still move
-	// `v` to the heap, so a mutation after the alias is seen by the caller (not a dangling stack
-	// pointer). The pointer-alias chain is followed when deciding what escapes.
-	alias := run_good(v3_bin, 'good_returned_pointer_alias_heap', 'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tq := p\n\tv.x = 2\n\treturn q\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n')
-	assert alias == '2'
-	// An interface method returning a fixed array gets its dispatch stub declared with the
-	// `_v_ret_*` wrapper, not a bare `Array_fixed_*` (a C function cannot return an array). This
-	// holds both when only the concrete implementer is called and through a real interface call.
-	iface_concrete := run_good(v3_bin, 'good_iface_fixed_array_concrete_only', 'interface Maker {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [1, 2, 3]!\n}\nfn main() {\n\ts := S{}\n\ta := s.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n')
-	assert iface_concrete == '6'
-	iface_dispatch := run_good(v3_bin, 'good_iface_fixed_array_dispatch', 'interface Maker {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [4, 5, 6]!\n}\nfn use_iface(i Maker) int {\n\ta := i.make()\n\treturn a[0] + a[1] + a[2]\n}\nfn main() {\n\ts := S{}\n\tprintln(int_str(use_iface(s)))\n}\n')
-	assert iface_dispatch == '15'
-	// A pointer-receiver method value taken on an rvalue base (`Foo{..}.tick`) copies the receiver
-	// into durable static storage instead of capturing `&(temporary)` that dies before the
-	// callback runs.
-	mv_rvalue := run_good(v3_bin, 'good_ptr_receiver_method_value_rvalue', 'struct Foo {\nmut:\n\tn int\n}\nfn (f &Foo) tick() int {\n\treturn f.n\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(run(Foo{\n\t\tn: 5\n\t}.tick)))\n}\n')
-	assert mv_rvalue == '5'
+	run_good_module_batch(v3_bin, 'pointer_escape_and_interface_dispatch', [
+		// An escaping pointer returned through a copy (`p := &v; q := p; return q`) must still move
+		// `v` to the heap, so a mutation after the alias is seen by the caller (not a dangling stack
+		// pointer). The pointer-alias chain is followed when deciding what escapes.
+		TypeCheckerRuntimeCase{
+			name:     'good_returned_pointer_alias_heap'
+			source:   'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tq := p\n\tv.x = 2\n\treturn q\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n'
+			expected: '2'
+		},
+		// An interface method returning a fixed array gets its dispatch stub declared with the
+		// `_v_ret_*` wrapper, not a bare `Array_fixed_*` (a C function cannot return an array). This
+		// holds both when only the concrete implementer is called and through a real interface call.
+		TypeCheckerRuntimeCase{
+			name:     'good_iface_fixed_array_concrete_only'
+			source:   'interface Maker {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [1, 2, 3]!\n}\nfn main() {\n\ts := S{}\n\ta := s.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n'
+			expected: '6'
+		},
+		TypeCheckerRuntimeCase{
+			name:     'good_iface_fixed_array_dispatch'
+			source:   'interface Maker {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [4, 5, 6]!\n}\nfn use_iface(i Maker) int {\n\ta := i.make()\n\treturn a[0] + a[1] + a[2]\n}\nfn main() {\n\ts := S{}\n\tprintln(int_str(use_iface(s)))\n}\n'
+			expected: '15'
+		},
+		// A pointer-receiver method value taken on an rvalue base (`Foo{..}.tick`) copies the receiver
+		// into durable static storage instead of capturing `&(temporary)` that dies before the
+		// callback runs.
+		TypeCheckerRuntimeCase{
+			name:     'good_ptr_receiver_method_value_rvalue'
+			source:   'struct Foo {\nmut:\n\tn int\n}\nfn (f &Foo) tick() int {\n\treturn f.n\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(run(Foo{\n\t\tn: 5\n\t}.tick)))\n}\n'
+			expected: '5'
+		},
+	])
 }
 
 fn test_pr_review_codegen_batch_twentytwo() {
-	// A bare generic literal retargeted to a concrete instance must run the fixed-array-field
-	// detection against that concrete key (the bare `Box` field table is dropped by
-	// monomorphization), so a `[N]T` field is filled by memcpy instead of the invalid C
-	// `(Box_int){.data = a}` (a C array member cannot be initialized from another array object).
-	fa := run_good(v3_bin, 'good_concrete_generic_fixed_array_field', 'struct Box[T] {\n\tdata [2]T\n}\nfn f(a [2]int) Box[int] {\n\treturn Box{\n\t\tdata: a\n\t}\n}\nfn main() {\n\tarr := [10, 20]!\n\tb := f(arr)\n\tprintln(int_str(b.data[0] + b.data[1]))\n}\n')
-	assert fa == '30'
-	// A generic method value used only in an unreachable function must not drive a concrete
-	// specialization: `Box[Pair].doubled` (here `Pair + Pair`) would emit an invalid body and
-	// fail C compilation. Only the reachable `Box[int].doubled` is specialized.
-	dead := run_good(v3_bin, 'good_dead_generic_method_value_not_specialized', 'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) doubled() T {\n\treturn b.v + b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_int(cb fn () int) int {\n\treturn cb()\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn dead_fn() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 1\n\t\t}\n\t}\n\t_ := run_pair(p.doubled)\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 5\n\t}\n\tprintln(int_str(run_int(b.doubled)))\n}\n')
-	assert dead == '10'
-	// An unused interface must not force every structurally matching generic receiver method to
-	// specialize: `Box[NoPlus].run` satisfies `Runner.run`, but no value is boxed as `Runner` and
-	// the method body is invalid for `NoPlus`.
-	unused_iface := run_good(v3_bin, 'good_unused_interface_no_generic_method_specialization', "interface Runner {\n\trun() int\n}\nstruct Box[T] {\n\tv T\n}\nfn (b Box[T]) run() int {\n\treturn b.v + b.v\n}\nstruct NoPlus {\n\tvalue int\n}\nfn main() {\n\tb := Box[NoPlus]{\n\t\tv: NoPlus{\n\t\t\tvalue: 1\n\t\t}\n\t}\n\t_ = b\n\tprintln('ok')\n}\n")
-	assert unused_iface == 'ok'
-	// A reachable generic method value of any instance still specializes correctly.
-	live := run_good(v3_bin, 'good_reachable_generic_method_value_specialized', 'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) first() T {\n\treturn b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn main() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 7\n\t\t}\n\t}\n\tr := run_pair(p.first)\n\tprintln(int_str(r.a))\n}\n')
-	assert live == '7'
-	// Discarding a method value with `_ =` stores nothing, so it is not an escape.
-	blank := run_good(v3_bin, 'good_method_value_blank_discard', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tcb := c.report\n\t_ = cb\n\tprintln(int_str(c.report()))\n}\n')
-	assert blank == '5'
+	run_good_module_batch(v3_bin, 'generic_specializations_and_method_values', [
+		// A bare generic literal retargeted to a concrete instance must run the fixed-array-field
+		// detection against that concrete key (the bare `Box` field table is dropped by
+		// monomorphization), so a `[N]T` field is filled by memcpy instead of the invalid C
+		// `(Box_int){.data = a}` (a C array member cannot be initialized from another array object).
+		TypeCheckerRuntimeCase{
+			name:     'good_concrete_generic_fixed_array_field'
+			source:   'struct Box[T] {\n\tdata [2]T\n}\nfn f(a [2]int) Box[int] {\n\treturn Box{\n\t\tdata: a\n\t}\n}\nfn main() {\n\tarr := [10, 20]!\n\tb := f(arr)\n\tprintln(int_str(b.data[0] + b.data[1]))\n}\n'
+			expected: '30'
+		},
+		// A generic method value used only in an unreachable function must not drive a concrete
+		// specialization: `Box[Pair].doubled` (here `Pair + Pair`) would emit an invalid body and
+		// fail C compilation. Only the reachable `Box[int].doubled` is specialized.
+		TypeCheckerRuntimeCase{
+			name:     'good_dead_generic_method_value_not_specialized'
+			source:   'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) doubled() T {\n\treturn b.v + b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_int(cb fn () int) int {\n\treturn cb()\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn dead_fn() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 1\n\t\t}\n\t}\n\t_ := run_pair(p.doubled)\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 5\n\t}\n\tprintln(int_str(run_int(b.doubled)))\n}\n'
+			expected: '10'
+		},
+		// An unused interface must not force every structurally matching generic receiver method to
+		// specialize: `Box[NoPlus].run` satisfies `Runner.run`, but no value is boxed as `Runner` and
+		// the method body is invalid for `NoPlus`.
+		TypeCheckerRuntimeCase{
+			name:     'good_unused_interface_no_generic_method_specialization'
+			source:   "interface Runner {\n\trun() int\n}\nstruct Box[T] {\n\tv T\n}\nfn (b Box[T]) run() int {\n\treturn b.v + b.v\n}\nstruct NoPlus {\n\tvalue int\n}\nfn main() {\n\tb := Box[NoPlus]{\n\t\tv: NoPlus{\n\t\t\tvalue: 1\n\t\t}\n\t}\n\t_ = b\n\tprintln('ok')\n}\n"
+			expected: 'ok'
+		},
+		// A reachable generic method value of any instance still specializes correctly.
+		TypeCheckerRuntimeCase{
+			name:     'good_reachable_generic_method_value_specialized'
+			source:   'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) first() T {\n\treturn b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn main() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 7\n\t\t}\n\t}\n\tr := run_pair(p.first)\n\tprintln(int_str(r.a))\n}\n'
+			expected: '7'
+		},
+		// Discarding a method value with `_ =` stores nothing, so it is not an escape.
+		TypeCheckerRuntimeCase{
+			name:     'good_method_value_blank_discard'
+			source:   'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tcb := c.report\n\t_ = cb\n\tprintln(int_str(c.report()))\n}\n'
+			expected: '5'
+		},
+	])
 }
 
 fn test_pr_review_codegen_batch_twentythree() {
