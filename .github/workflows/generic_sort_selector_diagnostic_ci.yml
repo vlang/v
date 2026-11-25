@@ -1,0 +1,132 @@
+name: Generic sort selector diagnostics
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/generic_sort_selector_diagnostic_ci.yml'
+      - 'vlib/v/transform/array.v'
+      - 'vlib/v/gen/c/**'
+      - 'vlib/json2/encode.v'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reduced:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Reduce generic sort and JSON Any map independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sort-diagnostic"
+          cd "$RUNNER_TEMP/sort-diagnostic"
+          cat > generic_sort.v <<'V'
+          struct SortKey[K] {
+              name string
+              key K
+          }
+
+          fn sort_keys[K](mut keys []SortKey[K]) {
+              keys.sort(a.name < b.name)
+          }
+
+          fn main() {
+              mut keys := [SortKey[int]{name: 'z', key: 1},
+                  SortKey[int]{name: 'a', key: 2},
+                  SortKey[int]{name: 'a', key: 3}]
+              sort_keys(mut keys)
+              assert keys[0].key == 2
+              assert keys[1].key == 3
+              assert keys[2].key == 1
+          }
+          V
+          cat > any_map.v <<'V'
+          import json2
+
+          fn main() {
+              val := json2.Any({'b': json2.Any(1), 'a': json2.Any(2)})
+              assert json2.encode(val) == '{"a":2,"b":1}'
+          }
+          V
+          v="$GITHUB_WORKSPACE/v"
+          "$v" fmt -w generic_sort.v any_map.v
+          failed=0
+          for source in generic_sort any_map; do
+            for cc in gcc clang; do
+              if "$v" -cc "$cc" -no-retry-compilation -no-parallel -o "$source-$cc.c" "$source.v" > "$source-$cc.emit.log" 2>&1; then
+                echo "Generated C for $source with $cc"
+              else
+                failed=1
+              fi
+              if "$v" -cc "$cc" -no-retry-compilation -no-parallel -keepc -showcc -o "$source-$cc" "$source.v" > "$source-$cc.build.log" 2>&1; then
+                if ! "./$source-$cc" > "$source-$cc.run.log" 2>&1; then
+                  failed=1
+                fi
+              else
+                failed=1
+              fi
+              cat "$source-$cc.emit.log" "$source-$cc.build.log"
+            done
+          done
+          exit "$failed"
+      - name: Original JSON ordering suite
+        if: always()
+        run: |
+          ./v -cc gcc -no-retry-compilation -no-parallel vlib/json2/encode_map_order_test.v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reduced-sort-generated-c
+          path: ${{ runner.temp }}/sort-diagnostic
+  original:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      VFLAGS: -no-parallel
+      VJOBS: 1
+      VSL_CI_REVISION: d60f9c36df5e9d3ef73e4c6876d83474b6e2953b
+      VTL_CI_REVISION: 7ba41eb7ecb3fa206ff3ae0ed7b88350d45bdce9
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+      - name: Install original dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          v retry -- sudo apt -qq update
+          v retry -- sudo apt -qq install libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev
+          vtl_dir="$HOME/.vmodules/vtl"
+          git init "$vtl_dir"
+          git -C "$vtl_dir" remote add origin https://github.com/vlang/vtl.git
+          v retry -- git -C "$vtl_dir" fetch --depth=1 origin "$VTL_CI_REVISION:refs/remotes/origin/ci-pinned"
+          git -C "$vtl_dir" checkout --detach "$VTL_CI_REVISION"
+          v retry -- git -C "$vtl_dir" submodule update --init --recursive --depth=1
+          (cd "$vtl_dir" && v retry -- v install)
+          vsl_dir="$HOME/.vmodules/vsl"
+          v retry -- git -C "$vsl_dir" fetch --depth=1 origin "$VSL_CI_REVISION:refs/remotes/origin/ci-pinned"
+          git -C "$vsl_dir" checkout --detach "$VSL_CI_REVISION"
+          v retry -- git -C "$vsl_dir" submodule update --init --recursive --depth=1
+      - name: Capture generated C and repeat the exact failing example
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/vtl-sort-diagnostic"
+          example="$HOME/.vmodules/vtl/examples/vtl_basic_usage/main.v"
+          ./v -d cblas -no-parallel -o "$RUNNER_TEMP/vtl-sort-diagnostic/original.c" "$example"
+          ./v -d cblas -no-parallel -o "$example.bin" "$example"
+          "$example.bin"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: original-vtl-generated-c
+          path: ${{ runner.temp }}/vtl-sort-diagnostic
