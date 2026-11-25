@@ -427,40 +427,40 @@ fn test_hidden_pointer_alias_methods_keep_resolution_and_visibility_in_sql_value
 // Since #29221 a `mut` receiver method needs mutable storage even when it is declared in
 // another module and only changes private state (`inspect`).
 fn test_mut_alias_methods_require_mutable_storage_in_sql_values() {
-	for i, expression in ['values.mutate()[0].name', '(values).mutate()[0].name',
+	check_sql_alias_mutability(['values.mutate()[0].name', '(values).mutate()[0].name',
 		'aliases.make().mutate()[0].name', 'aliases.WrappedNames(values).mutate()[0].name',
 		'renamed.MoreWrappedRefs(ref_values).mutate()[0].name',
 		'(aliases.load_names(true) or { values }).mutate()[0].name',
 		'(renamed.find_names(false) or { values }).mutate()[0].name',
 		'(optional_none_values or { values }).mutate()[0].name', 'values.inspect()[0].name',
-		'renamed.make().inspect()[0].name'] {
-		import_name := if expression.contains('renamed.') { 'renamed' } else { 'aliases' }
-		for query in [SqlAliasVisibilityQuery.selection, .update] {
-			for check_only in [false, true] {
-				result := sql_alias_visibility_result('immutable_${i}_${query}_${check_only}',
-					true, expression, query, check_only, true, import_name)
-				assert result.exit_code != 0, result.output
-				if expression.starts_with('values.') {
-					assert result.output.contains('`values` is immutable'), result.output
-				} else {
-					assert result.output.contains('cannot pass expression as `mut`'), result.output
-				}
-			}
-		}
-	}
+		'renamed.make().inspect()[0].name'], false)!
 }
 
 fn test_mut_alias_methods_keep_ordinary_storage_exceptions_in_sql_values() {
-	for i, expression in ['mutable_values.mutate()[0].name', 'ptr_values.mutate()[0].name',
+	check_sql_alias_mutability(['mutable_values.mutate()[0].name', 'ptr_values.mutate()[0].name',
 		'aliases.make_ptr().mutate()[0].name', 'renamed.make_ptr_ptr().mutate()[0].name',
 		'aliases.make_refs().mutate()[0].name',
-		'(mutable_optional_values or { values }).mutate()[0].name'] {
+		'(mutable_optional_values or { values }).mutate()[0].name'], true)!
+}
+
+fn check_sql_alias_mutability(expressions []string, valid bool) ! {
+	mut cases_by_import := map[string][]SqlAliasQueryCase{}
+	for expression in expressions {
 		import_name := if expression.contains('renamed.') { 'renamed' } else { 'aliases' }
-		for check_only in [false, true] {
-			result := sql_alias_visibility_result('mutable_${i}_both_${check_only}',
-				true, expression, .both, check_only, true, import_name)
-			assert result.exit_code == 0, result.output
+		diagnostic := if valid {
+			''
+		} else if expression.starts_with('values.') {
+			'`values` is immutable'
+		} else {
+			'cannot pass expression as `mut`'
 		}
+		cases_by_import[import_name] << SqlAliasQueryCase{
+			expression: expression
+			diagnostic: diagnostic
+		}
+	}
+	for import_name, cases in cases_by_import {
+		check_sql_alias_query_batch(cases, 'mutability', import_name, valid)!
 	}
 }
 
@@ -471,15 +471,16 @@ fn test_alias_methods_require_ordinary_shared_locks_in_sql_values() {
 	}
 }
 
-struct SqlAliasLockCase {
+struct SqlAliasQueryCase {
 	expression    string
 	lock_receiver string
 	wrapper       string
 	diagnostic    string
 }
 
-fn check_sql_alias_lock_batch(cases []SqlAliasLockCase, method string, import_name string, valid bool) ! {
-	dir := os.join_path(os.vtmp_dir(), 'v3_sql_alias_lock_${method}_${valid}_${os.getpid()}')
+fn check_sql_alias_query_batch(cases []SqlAliasQueryCase, label string, import_name string, valid bool) ! {
+	dir := os.join_path(os.vtmp_dir(),
+		'v3_sql_alias_query_${label}_${import_name}_${valid}_${os.getpid()}')
 	os.mkdir_all(os.join_path(dir, 'aliases'))!
 	defer { os.rmdir_all(dir) or {} }
 	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'),
@@ -525,7 +526,7 @@ fn check_sql_alias_lock_batch(cases []SqlAliasLockCase, method string, import_na
 }
 
 fn check_sql_alias_lock_matrix(lock_receivers []string, method string, import_name string, lock_whole_array bool) ! {
-	mut cases := []SqlAliasLockCase{}
+	mut cases := []SqlAliasQueryCase{}
 	for lock_receiver in lock_receivers {
 		receiver := if lock_whole_array { '${lock_receiver}[0]' } else { lock_receiver }
 		for wrapper in ['', 'rlock', 'lock'] {
@@ -538,7 +539,7 @@ fn check_sql_alias_lock_matrix(lock_receivers []string, method string, import_na
 			} else {
 				'is `shared` and must be `lock`ed'
 			}
-			cases << SqlAliasLockCase{
+			cases << SqlAliasQueryCase{
 				expression:    '${receiver}.${method}()[0].name'
 				lock_receiver: lock_receiver
 				wrapper:       wrapper
@@ -546,8 +547,8 @@ fn check_sql_alias_lock_matrix(lock_receivers []string, method string, import_na
 			}
 		}
 	}
-	check_sql_alias_lock_batch(cases.filter(it.diagnostic == ''), method, import_name, true)!
-	check_sql_alias_lock_batch(cases.filter(it.diagnostic != ''), method, import_name, false)!
+	check_sql_alias_query_batch(cases.filter(it.diagnostic == ''), method, import_name, true)!
+	check_sql_alias_query_batch(cases.filter(it.diagnostic != ''), method, import_name, false)!
 }
 
 fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_values() {
