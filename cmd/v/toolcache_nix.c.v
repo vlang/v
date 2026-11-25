@@ -396,18 +396,30 @@ fn (dir ToolCacheWipeDir) owner_and_mode() (u32, u32) {
 	return u32(information.st_uid), u32(information.st_mode) & 0o7777
 }
 
-// is_at reports whether `path` still names this folder.
-fn (dir ToolCacheWipeDir) is_at(path string) bool {
+// is_at reports whether `path` still names this folder, and fails when either of them cannot be
+// looked at.
+fn (dir ToolCacheWipeDir) is_at(path string) !bool {
 	mut information := C.stat{}
 	if C.fstat(dir.fd, &information) != 0 {
-		return false
+		return error(os.posix_get_error_msg(C.errno))
 	}
-	there := os.lstat(path) or { return false }
+	there := os.lstat(path) or {
+		if err.code() in [os.error_code_noent, os.error_code_notdir] {
+			return false
+		}
+		return err
+	}
 	return there.dev == u64(information.st_dev) && there.inode == u64(information.st_ino)
 }
 
+// stays_at reports whether this folder, which could not be removed, is still at `path`. It is when
+// that cannot be told.
+fn (dir ToolCacheWipeDir) stays_at(path string) bool {
+	return dir.is_at(path) or { true }
+}
+
 // names lists the folder, sorted, without `.` and `..`. A folder that was removed meanwhile, by
-// another wipe for example, has nothing in it.
+// another wipe for example, has nothing in it. A listing that ends with an error fails.
 fn (dir ToolCacheWipeDir) names() ![]string {
 	// Opened anew through the folder for each listing: a duplicate of `dir.fd` would share its
 	// position, which an earlier listing left at the end.
@@ -429,8 +441,14 @@ fn (dir ToolCacheWipeDir) names() ![]string {
 	}
 	mut names := []string{}
 	for {
+		// `readdir` returns nothing at the end and when it fails, and only the error code tells which.
+		C.errno = 0
 		directory_entry := C.readdir(directory)
 		if isnil(directory_entry) {
+			code := C.errno
+			if code != 0 && code != C.ENOENT {
+				return error(os.posix_get_error_msg(code))
+			}
 			break
 		}
 		// readdir owns and may reuse the d_name buffer on its next call, so clone its bytes now.
@@ -599,6 +617,9 @@ fn (dir ToolCacheWipeDir) remove_tree(name string) ! {
 // ToolCacheWipeLock is a build lock that a wipe tried to take.
 struct ToolCacheWipeLock {
 	state ToolCacheWipeLockState
+	// problem says what the system does not let the wipe do with the lock file, for a lock file that
+	// cannot be opened and for an attempt that failed.
+	problem string
 mut:
 	fd int = -1
 }
@@ -611,6 +632,22 @@ fn (mut held ToolCacheWipeLock) release() {
 	}
 }
 
+// tool_cache_refused_lock is what came of a lock that `fcntl` refused with the error `code`. POSIX has
+// `EACCES` and `EAGAIN` mean that another process holds a lock on the file, and lets a system use
+// either. Any other code says that the lock was not tried to the end, as `ENOLCK` does where the
+// system has no locks left or a remote file system's locks fail, and nothing of other processes.
+fn tool_cache_refused_lock(code int) ToolCacheWipeLock {
+	if code == C.EACCES || code == C.EAGAIN {
+		return ToolCacheWipeLock{
+			state: .busy
+		}
+	}
+	return ToolCacheWipeLock{
+		state:   .failed
+		problem: 'cannot be locked: ${os.posix_get_error_msg(code)}'
+	}
+}
+
 // try_lock takes the build lock `name` in the folder without waiting, with the kind of lock
 // `os.filelock` takes for a build. The file is opened through the folder, without following a link
 // and without waiting on a FIFO. A process loses such a lock when it closes any descriptor of the
@@ -618,7 +655,9 @@ fn (mut held ToolCacheWipeLock) release() {
 fn (dir ToolCacheWipeDir) try_lock(name string) ToolCacheWipeLock {
 	fd := C.openat(dir.fd, &char(name.str), C.O_RDWR | C.O_NOFOLLOW | C.O_NONBLOCK, 0)
 	if fd < 0 {
-		if C.errno == C.ENOENT {
+		// Read before another call sets it.
+		code := C.errno
+		if code == C.ENOENT {
 			return ToolCacheWipeLock{
 				state: .absent
 			}
@@ -626,25 +665,35 @@ fn (dir ToolCacheWipeDir) try_lock(name string) ToolCacheWipeLock {
 		// What is there decides: a regular file that cannot be opened for writing is a lock file no
 		// build can lock either; anything else is not a lock file.
 		return ToolCacheWipeLock{
-			state: match dir.item(name).kind {
+			state:   match dir.item(name).kind {
 				.file { ToolCacheWipeLockState.unopenable }
 				.gone { ToolCacheWipeLockState.absent }
+				.unknown { ToolCacheWipeLockState.failed }
 				else { ToolCacheWipeLockState.unsafe_name }
 			}
+			problem: 'cannot be opened: ${os.posix_get_error_msg(code)}'
 		}
 	}
 	mut information := C.stat{}
-	if C.fstat(fd, &information) != 0 || u32(information.st_mode) & 0o170000 != 0o100000 {
+	if C.fstat(fd, &information) != 0 {
+		code := C.errno
+		C.close(fd)
+		return ToolCacheWipeLock{
+			state:   .failed
+			problem: 'cannot be looked at: ${os.posix_get_error_msg(code)}'
+		}
+	}
+	if u32(information.st_mode) & 0o170000 != 0o100000 {
 		C.close(fd)
 		return ToolCacheWipeLock{
 			state: .unsafe_name
 		}
 	}
 	if C.v_filelock_lock(fd, 1, 1, 0, 0) != 0 {
+		// Read before the close can set it.
+		code := C.errno
 		C.close(fd)
-		return ToolCacheWipeLock{
-			state: .busy
-		}
+		return tool_cache_refused_lock(code)
 	}
 	return ToolCacheWipeLock{
 		state: .held
@@ -688,7 +737,9 @@ fn (dir ToolCacheWipeDir) repair_lock_file(name string) ! {
 		}
 		mut information := C.stat{}
 		mut problem := ''
-		if C.fstat(fd, &information) != 0 || u32(information.st_mode) & 0o170000 != 0o100000 {
+		if C.fstat(fd, &information) != 0 {
+			problem = os.posix_get_error_msg(C.errno)
+		} else if u32(information.st_mode) & 0o170000 != 0o100000 {
 			problem = 'it is no regular file'
 		} else if C.fchmod(fd, 0o600) != 0 {
 			problem = os.posix_get_error_msg(C.errno)

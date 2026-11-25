@@ -3210,7 +3210,7 @@ fn test_a_lock_file_with_a_second_name_is_left_as_it_is() ! {
 		os.link(lock_path, os.join_path(directory, 'second-name'))!
 		for arguments in [['--tools', '--dry-run'], ['--tools']] {
 			message := wipe_failure(...arguments)
-			assert message == 'v wipe-cache: could not remove V tool cache folder ${tools}: the entries of vfmt stay: the lock file ${lock_path} cannot be opened', message
+			assert message == 'v wipe-cache: could not remove V tool cache folder ${tools}: the entries of vfmt stay: the lock file ${lock_path} cannot be opened: ${os.posix_get_error_msg(13)}', message
 			assert os.is_dir(entry), message
 			assert !os.is_writable(lock_path), message
 		}
@@ -3601,7 +3601,7 @@ fn test_a_folder_is_listed_inspected_and_cleared_through_its_handle() ! {
 	}
 	// Looking at a name leaves the working folder where it was.
 	assert os.getwd() == working_folder
-	assert dir.is_at(folder)
+	assert dir.is_at(folder)!
 	// A tree goes with all that is in it; a link in it is removed, and never followed.
 	dir.remove_tree('sub')!
 	assert !os.exists(os.join_path(folder, 'sub'))
@@ -3635,14 +3635,39 @@ fn test_a_folder_is_listed_inspected_and_cleared_through_its_handle() ! {
 		}
 		// A folder that was renamed is still the folder that was opened.
 		os.rename(folder, folder + '-moved')!
-		assert !dir.is_at(folder)
-		assert dir.is_at(folder + '-moved')
+		assert !dir.is_at(folder)!
+		assert dir.is_at(folder + '-moved')!
 		assert dir.names()! == []string{}
 		// A folder that is removed while it is held open lists nothing, and holds nothing.
 		os.rmdir(folder + '-moved')!
 		assert dir.names()! == []string{}
 		assert dir.item('file').kind == .gone
-		assert !dir.is_at(folder + '-moved')
+		assert !dir.is_at(folder + '-moved')!
+		// A path below something that is no folder names no folder.
+		os.write_file(folder, 'x')!
+		assert !dir.is_at(os.join_path(folder, 'below'))!
+		// What cannot be looked at is not told apart from another folder.
+		lost := ToolCacheWipeDir{
+			fd: -1
+		}
+		if _ := lost.is_at(directory) {
+			assert false, 'a folder that cannot be looked at was compared'
+		} else {
+			assert err.msg() == os.posix_get_error_msg(9)
+		}
+		if os.geteuid() != 0 {
+			closed := os.join_path(directory, 'closed')
+			os.mkdir_all(os.join_path(closed, 'folder'))!
+			os.chmod(closed, 0)!
+			defer {
+				os.chmod(closed, 0o700) or {}
+			}
+			if _ := dir.is_at(os.join_path(closed, 'folder')) {
+				assert false, 'a path that cannot be looked at was compared'
+			} else {
+				assert err.msg().contains(os.posix_get_error_msg(13)), err.msg()
+			}
+		}
 	}
 }
 
@@ -3755,7 +3780,23 @@ fn test_a_build_lock_is_taken_through_the_open_folder() ! {
 	assert dir.item(name).kind == .file
 	mut held := dir.try_lock(name)
 	assert held.state == .held
-	held.release()
+	$if windows {
+		// Nothing shares the lock, and nothing of it is left open once it is let go: `filelock.new`
+		// opens the file, and removes it, only when no one else has it open. (On POSIX a process
+		// loses a lock when it opens and closes the file again.)
+		mut sharer := filelock.new_file(os.join_path(folder, name), mode: .shared)
+		assert !sharer.try_acquire()
+		// The file can be renamed meanwhile, as one that a build has locked can.
+		os.rename(os.join_path(folder, name), os.join_path(folder, 'renamed'))!
+		os.rename(os.join_path(folder, 'renamed'), os.join_path(folder, name))!
+		held.release()
+		mut alone := filelock.new(os.join_path(folder, name))
+		assert alone.try_acquire()
+		alone.release()
+		assert toolcache_test_made(dir, name, u32(os.getuid()))
+	} $else {
+		held.release()
+	}
 	// What a build holds is busy, and free again once the build lets go.
 	mut holder := start_tool_cache_lock_holder(os.join_path(folder, name), release_path)!
 	mut busy := dir.try_lock(name)
@@ -3783,6 +3824,13 @@ fn test_a_build_lock_is_taken_through_the_open_folder() ! {
 		fifo := cmdexec.run('mkfifo', [os.join_path(folder, piped)])
 		assert fifo.exit_code == 0, fifo.output
 		assert dir.try_lock(piped).state == .unsafe_name
+		// When neither the file nor the name can be looked at, that is the reason, and not what has
+		// the name.
+		lost := ToolCacheWipeDir{
+			fd: -1
+		}.try_lock(name)
+		assert lost.state == .failed
+		assert lost.problem == 'cannot be opened: ${os.posix_get_error_msg(9)}'
 		if os.geteuid() != 0 {
 			// A lock file that cannot be handed to the user it is made for is not left behind.
 			foreign := tool_cache_lock_name('vother', u32(os.getuid()) + 1)
@@ -4837,7 +4885,7 @@ fn test_a_moved_aside_folder_keeps_its_lock_files_while_one_of_them_is_not_the_w
 		if stuck_is_unopenable {
 			for arguments in [['--tools', '--dry-run'], ['--tools']] {
 				message := wipe_failure(...arguments)
-				assert message == 'v wipe-cache: could not remove Moved-aside V tool cache folder ${stuck_aside}: the lock file ${stuck_lock} cannot be opened', '${arguments}: ${message}'
+				assert message == 'v wipe-cache: could not remove Moved-aside V tool cache folder ${stuck_aside}: the lock file ${stuck_lock} cannot be opened: ${os.posix_get_error_msg(13)}', '${arguments}: ${message}'
 				assert os.is_file(stuck_lock), message
 				assert os.is_file(beside_stuck), message
 			}
@@ -5791,6 +5839,352 @@ fn test_a_dry_run_summary_matches_the_real_run() ! {
 			assert toolcache_test_kept(real, vtmp) == expected, context
 			assert !os.is_link(link), context
 			assert !os.exists(aside), context
+		}
+	})!
+}
+
+// toolcache_test_fault_source is a library that makes one call fail: the one named by
+// TOOLCACHE_TEST_FAULT, when it is made for the TOOLCACHE_TEST_FAULT_AT-th time on the file or folder
+// TOOLCACHE_TEST_FAULT_PATH. It fails with the error code TOOLCACHE_TEST_FAULT_CODE, and the file
+// TOOLCACHE_TEST_FAULT_HIT says that it did.
+const toolcache_test_fault_source = '#define _GNU_SOURCE
+#include <dirent.h>
+#include <dlfcn.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+static int fails(const char *call, int fd) {
+	static int calls;
+	char link[64];
+	char path[4096];
+	const char *wanted = getenv("TOOLCACHE_TEST_FAULT");
+	int before = errno;
+	if (wanted == NULL || strcmp(wanted, call) != 0) {
+		return 0;
+	}
+	snprintf(link, sizeof(link), "/proc/self/fd/%d", fd);
+	ssize_t length = readlink(link, path, sizeof(path) - 1);
+	errno = before;
+	if (length <= 0) {
+		return 0;
+	}
+	path[length] = 0;
+	if (strcmp(path, getenv("TOOLCACHE_TEST_FAULT_PATH")) != 0
+		|| ++calls != atoi(getenv("TOOLCACHE_TEST_FAULT_AT"))) {
+		return 0;
+	}
+	FILE *hit = fopen(getenv("TOOLCACHE_TEST_FAULT_HIT"), "w");
+	if (hit != NULL) {
+		fclose(hit);
+	}
+	errno = atoi(getenv("TOOLCACHE_TEST_FAULT_CODE"));
+	return 1;
+}
+
+static void *real(const char *name) {
+	return dlsym(RTLD_NEXT, name);
+}
+
+DIR *fdopendir(int fd) {
+	return fails("fdopendir", fd) ? NULL : ((DIR *(*)(int))real("fdopendir"))(fd);
+}
+
+struct dirent *readdir(DIR *directory) {
+	return fails("readdir", dirfd(directory)) ? NULL
+		: ((struct dirent *(*)(DIR *))real("readdir"))(directory);
+}
+
+int fstat(int fd, struct stat *information) {
+	return fails("fstat", fd) ? -1
+		: ((int (*)(int, struct stat *))real("fstat"))(fd, information);
+}
+
+int fcntl(int fd, int command, ...) {
+	va_list arguments;
+	va_start(arguments, command);
+	void *argument = va_arg(arguments, void *);
+	va_end(arguments);
+	return command == F_SETLK && fails("fcntl", fd) ? -1
+		: ((int (*)(int, int, ...))real("fcntl"))(fd, command, argument);
+}
+
+#ifdef __GLIBC__
+struct dirent64 *readdir64(DIR *directory) {
+	return fails("readdir", dirfd(directory)) ? NULL
+		: ((struct dirent64 *(*)(DIR *))real("readdir64"))(directory);
+}
+
+int fstat64(int fd, struct stat64 *information) {
+	return fails("fstat", fd) ? -1
+		: ((int (*)(int, struct stat64 *))real("fstat64"))(fd, information);
+}
+
+int fcntl64(int fd, int command, ...) {
+	va_list arguments;
+	va_start(arguments, command);
+	void *argument = va_arg(arguments, void *);
+	va_end(arguments);
+	return command == F_SETLK && fails("fcntl", fd) ? -1
+		: ((int (*)(int, int, ...))real("fcntl64"))(fd, command, argument);
+}
+#endif
+'
+
+// ToolcacheTestFault names the call that a wipe finds failing (see `toolcache_test_fault_source`).
+struct ToolcacheTestFault {
+	call string
+	path string
+	at   int = 1
+	code int
+}
+
+// toolcache_test_fault_library builds the library in `directory`, and gives its path, or '' on a
+// system that the tests of failing calls do not cover.
+fn toolcache_test_fault_library(directory string) string {
+	$if !linux {
+		return ''
+	}
+	compiler := os.find_abs_path_of_executable('cc') or { return '' }
+	source := os.join_path(directory, 'fault.c')
+	library := os.join_path(directory, 'fault.so')
+	os.write_file(source, toolcache_test_fault_source) or { panic(err) }
+	build := os.exec([compiler, '-shared', '-fPIC', '-o', library, source, '-ldl'])
+	assert build.exit_code == 0, build.output
+	return library
+}
+
+// toolcache_test_faulty_wipe runs `v wipe-cache` in a process that `fault` happens in, and returns
+// what it printed, its exit status, and whether the call was made to fail: a test that is linked
+// statically takes no such library.
+fn toolcache_test_faulty_wipe(directory string, library string, fault ToolcacheTestFault) !(string, int, bool) {
+	start := os.join_path(directory, 'fault_start')
+	hit := os.join_path(directory, 'fault_hit')
+	os.rm(hit) or {}
+	os.write_file(start, '')!
+	mut env := os.environ()
+	env[toolcache_wipe_child_env] = start
+	env['LD_PRELOAD'] = library
+	env['TOOLCACHE_TEST_FAULT'] = fault.call
+	env['TOOLCACHE_TEST_FAULT_PATH'] = fault.path
+	env['TOOLCACHE_TEST_FAULT_AT'] = fault.at.str()
+	env['TOOLCACHE_TEST_FAULT_CODE'] = fault.code.str()
+	env['TOOLCACHE_TEST_FAULT_HIT'] = hit
+	mut child := os.new_process(os.executable())
+	child.set_environment(env)
+	child.set_redirect_stdio()
+	child.run()
+	output, code := toolcache_test_finish(mut child, time.minute)
+	return output, code, os.exists(hit)
+}
+
+// A listing that ends with an error is not the whole folder: the wipe fails and gives the system's
+// reason, instead of leaving what it did not see and saying that the folder was wiped. A library
+// that the wipe is started with makes the listing fail, which only Linux is asked for here.
+fn test_a_listing_that_ends_with_an_error_fails_the_wipe() ! {
+	directory := toolcache_test_dir('wipe_cache_failing_listing')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	library := toolcache_test_fault_library(directory)
+	if library == '' {
+		return
+	}
+	with_wipe_test_caches(directory, fn [directory, library] (cache_v_dir string) ! {
+		tools := os.join_path(cache_v_dir, 'tools')
+		tool_cache_test_root(tools)!
+		entries := [tool_cache_test_entry(tools, 'vdoc', 'a')!, tool_cache_test_entry(tools, 'vfmt',
+			'b')!, tool_cache_test_entry(tools, 'vvet', 'c')!]
+		output, code, hit := toolcache_test_faulty_wipe(directory, library,
+			call: 'readdir'
+			path: os.real_path(tools)
+			at:   3
+			code: 5
+		)!
+		if !hit {
+			return
+		}
+		left := entries.filter(os.exists(it))
+		assert left.len > 0, output
+		assert code == 1, '${left}: ${output}'
+		assert output.contains('could not list V tool cache folder ${tools}: ${os.posix_get_error_msg(5)}'), output
+	})!
+}
+
+// A folder that V moved aside is listed once more before it is removed. Each listing that fails
+// fails the wipe, which says that the folder was wiped only when it is gone.
+fn test_each_listing_of_a_moved_aside_folder_that_fails_fails_the_wipe() ! {
+	directory := toolcache_test_dir('wipe_cache_failing_last_listing')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	library := toolcache_test_fault_library(directory)
+	if library == '' {
+		return
+	}
+	with_wipe_test_caches(directory, fn [directory, library] (cache_v_dir string) ! {
+		aside := os.join_path(cache_v_dir, 'tools.untrusted-1700000000-42')
+		mut hits := 0
+		for at in 1 .. 6 {
+			tool_cache_test_root(aside)!
+			tool_cache_test_entry(aside, 'vfmt', 'a')!
+			os.write_file(tool_cache_test_lock(aside, 'vfmt'), '')!
+			output, code, hit := toolcache_test_faulty_wipe(directory, library,
+				call: 'fdopendir'
+				path: os.real_path(aside)
+				at:   at
+				code: 5
+			)!
+			if !hit {
+				assert code == 0, '${at}: ${output}'
+				assert !os.exists(aside), '${at}: ${output}'
+				break
+			}
+			hits++
+			assert code == 1, '${at}: ${output}'
+			assert output.contains(os.posix_get_error_msg(5)), '${at}: ${output}'
+			assert output.contains(aside), '${at}: ${output}'
+			assert os.exists(aside), '${at}: ${output}'
+		}
+		assert hits in [0, 2], hits.str()
+	})!
+}
+
+// The wipe reads the system's reason where a call on a lock file fails. Only a lock that is said to
+// be held reads as a build; after any other failure, of any of the calls, the entries stay and the
+// wipe fails with that reason.
+fn test_each_call_on_a_lock_file_that_fails_gives_its_own_reason() ! {
+	directory := toolcache_test_dir('wipe_cache_failing_lock')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	library := toolcache_test_fault_library(directory)
+	if library == '' {
+		return
+	}
+	with_wipe_test_caches(directory, fn [directory, library] (cache_v_dir string) ! {
+		tools := os.join_path(cache_v_dir, 'tools')
+		tool_cache_test_root(tools)!
+		lock_path := tool_cache_test_lock(tools, 'vfmt')
+		for code in toolcache_test_contention_codes() {
+			os.write_file(lock_path, '')!
+			entry := tool_cache_test_entry(tools, 'vfmt', 'a')!
+			output, status, hit := toolcache_test_faulty_wipe(directory, library,
+				call: 'fcntl'
+				path: os.real_path(lock_path)
+				code: code
+			)!
+			if !hit {
+				return
+			}
+			assert status == 0, '${code}: ${output}'
+			assert output.contains('except for the tools another process has locked right now: vfmt.'), '${code}: ${output}'
+			assert os.is_dir(entry), '${code}: ${output}'
+		}
+		// `ENOLCK`, `EINTR` and `EIO`, and the error codes of Linux.
+		for code in [37, 4, 5] {
+			entry := tool_cache_test_entry(tools, 'vfmt', 'a')!
+			output, status, _ := toolcache_test_faulty_wipe(directory, library,
+				call: 'fcntl'
+				path: os.real_path(lock_path)
+				code: code
+			)!
+			assert status == 1, '${code}: ${output}'
+			assert output.contains('the entries of vfmt stay: the lock file ${lock_path} cannot be locked: ${os.posix_get_error_msg(code)}'), '${code}: ${output}'
+			assert !output.contains('another process'), '${code}: ${output}'
+			assert os.is_dir(entry), '${code}: ${output}'
+		}
+		output, status, hit := toolcache_test_faulty_wipe(directory, library,
+			call: 'fstat'
+			path: os.real_path(lock_path)
+			code: 5
+		)!
+		if !hit {
+			return
+		}
+		assert status == 1, output
+		assert output.contains('the entries of vfmt stay: the lock file ${lock_path} cannot be looked at: ${os.posix_get_error_msg(5)}'), output
+		if os.geteuid() == 0 {
+			// The superuser opens a file of any mode.
+			return
+		}
+		// A lock file that has to be repaired first is looked at for that, too.
+		os.rmdir_all(tool_cache_test_entry(tools, 'vfmt', 'a')!)!
+		os.chmod(lock_path, 0o400)!
+		repaired, repaired_status, _ := toolcache_test_faulty_wipe(directory, library,
+			call: 'fstat'
+			path: os.real_path(lock_path)
+			code: 5
+		)!
+		assert repaired_status == 1, repaired
+		assert repaired.contains('cannot repair the lock file ${lock_path}: ${os.posix_get_error_msg(5)}'), repaired
+	})!
+}
+
+// When the wipe may no longer look at the place a folder has, it does not know whether the folder is
+// still there. It does not say then that the folder is gone or was moved aside: it fails.
+fn test_a_wipe_that_cannot_look_at_the_place_of_a_folder_fails() ! {
+	$if windows {
+		return
+	}
+	if os.geteuid() == 0 {
+		// The superuser may look everywhere.
+		return
+	}
+	directory := toolcache_test_dir('wipe_cache_shut_place')
+	defer {
+		toolcache_test_unlock_tree(directory)
+		os.rmdir_all(directory) or {}
+	}
+	with_wipe_test_caches(directory, fn (cache_v_dir string) ! {
+		tools := os.join_path(cache_v_dir, 'tools')
+		aside := tools + '.untrusted-1700000000-42'
+		cache := os.join_path(cache_v_dir, 'cache')
+		unlisted := tools + '.untrusted-1700000000-43'
+		for path, step in {
+			tools:    'claim'
+			aside:    'rmdir'
+			cache:    'rmdir'
+			unlisted: 'rmdir'
+		} {
+			tool_cache_test_root(path)!
+			if path != cache {
+				tool_cache_test_entry(path, 'vfmt', 'a')!
+			}
+			mut run := new_tool_cache_wipe_run()
+			run.before_acting = fn [cache_v_dir, step, path, unlisted] (_ string, at string) {
+				if at != step {
+					return
+				}
+				if path == unlisted {
+					// Its place can be looked at, and the folder itself cannot be listed.
+					os.chmod(path, 0) or { panic(err) }
+					os.chmod(cache_v_dir, 0o500) or { panic(err) }
+				} else {
+					os.chmod(cache_v_dir, 0) or { panic(err) }
+				}
+			}
+			mut lines := []string{}
+			mut failure := ''
+			if path == cache {
+				run.remove_cache_folder(path) or { failure = err.msg() }
+			} else {
+				run.wipe_tool_cache_directory(path, parse_wipe_cache_options([], ['--tools'])!, mut
+					lines) or { failure = err.msg() }
+			}
+			os.chmod(cache_v_dir, 0o700)!
+			assert os.is_dir(path), '${path}: ${failure} ${lines}'
+			assert failure.contains(os.posix_get_error_msg(13)), '${path}: ${failure} ${lines}'
+			if path == tools {
+				assert failure.starts_with('v wipe-cache: could not look at V tool cache folder ${tools}: '), failure
+			} else if path != cache {
+				assert failure.starts_with('v wipe-cache: could not remove Moved-aside V tool cache folder ${path}: '), failure
+			}
 		}
 	})!
 }
@@ -7031,7 +7425,7 @@ fn test_lock_files_no_build_can_use_in_a_moved_aside_folder_fail_the_wipe_on_the
 		mut failure := ''
 		run.wipe_tool_cache_directory(aside, parse_wipe_cache_options([], ['--tools'])!, mut
 			lines) or { failure = err.msg() }
-		assert failure.ends_with(': the lock file ${lock_paths[0]} cannot be opened'), failure
+		assert failure.ends_with(': the lock file ${lock_paths[0]} cannot be opened: ${os.posix_get_error_msg(13)}'), failure
 		for lock_path in lock_paths {
 			assert os.is_file(lock_path), failure
 		}
@@ -7301,18 +7695,6 @@ fn test_the_folder_search_counts_only_the_name_asked_for() ! {
 		}
 		found := tool_cache_searched_name(os.join_path(directory, 'PROJECTS'), 'PROJECTS') or { '' }
 		assert found == 'projects'
-	}
-}
-
-// `tool_cache_full_path` gives the path that Windows makes, and a path that Windows makes none of,
-// such as one longer than the 32767 characters a path can have, as it is.
-fn test_the_full_path_is_the_one_windows_makes_or_the_path_itself() {
-	// The function exists on Windows alone, so the whole test is in a block that only Windows builds.
-	$if windows {
-		assert tool_cache_full_path('C:\\x\\tools.') == 'C:\\x\\tools'
-		assert tool_cache_full_path('C:\\x\\nul') == '\\\\.\\nul'
-		long := 'C:\\' + 'a'.repeat(40000)
-		assert tool_cache_full_path(long) == long
 	}
 }
 
@@ -8040,6 +8422,194 @@ fn test_a_lock_file_that_cannot_be_opened_and_guards_nothing_does_not_fail_the_w
 			assert output.contains('except for the tools whose lock file cannot be opened and was left as it is: vfmt.'), '${arguments}: ${output}'
 			assert os.is_file(lock_path), output
 		}
+	})!
+}
+
+// toolcache_test_contention_codes lists the error codes with which a system says that another process
+// holds the lock, and toolcache_test_refusal_codes the ones the manuals name for other failures of
+// the call, which say nothing of other processes. `EAGAIN` and `EDEADLK` have each other's number on
+// Linux and on the others.
+fn toolcache_test_contention_codes() []int {
+	$if windows {
+		// ERROR_LOCK_VIOLATION
+		return [33]
+	} $else $if linux {
+		// EAGAIN, EACCES
+		return [11, 13]
+	} $else {
+		return [35, 13]
+	}
+}
+
+fn toolcache_test_refusal_codes() []int {
+	$if windows {
+		// ERROR_INVALID_FUNCTION (a share of WSL), ERROR_ACCESS_DENIED, ERROR_INVALID_HANDLE,
+		// ERROR_SHARING_VIOLATION, ERROR_NOT_SUPPORTED, ERROR_IO_PENDING
+		return [1, 5, 6, 32, 50, 997]
+	} $else $if linux {
+		// EINTR, EIO, EBADF, EFAULT, EINVAL, EDEADLK, ENOLCK, EOVERFLOW, EOPNOTSUPP
+		return [4, 5, 9, 14, 22, 35, 37, 75, 95]
+	} $else {
+		// EINTR, EIO, EBADF, EDEADLK, EFAULT, EINVAL, ENOLCK
+		return [4, 5, 9, 11, 14, 22, 77]
+	}
+}
+
+// Only the codes that say so mean that another process holds a build lock. After any other code the
+// wipe does not know, and has the system's reason to give.
+fn test_only_a_code_that_says_so_means_that_a_build_lock_is_held() {
+	for code in toolcache_test_contention_codes() {
+		refused := tool_cache_refused_lock(code)
+		assert refused.state == .busy, code.str()
+		assert refused.problem == '', code.str()
+	}
+	for code in toolcache_test_refusal_codes() {
+		refused := tool_cache_refused_lock(code)
+		assert refused.state == .failed, code.str()
+		assert refused.problem.starts_with('cannot be locked: '), refused.problem
+		assert refused.problem.trim_space().len > 'cannot be locked: '.len, refused.problem
+	}
+	$if linux {
+		assert tool_cache_refused_lock(37).problem == 'cannot be locked: No locks available'
+	}
+	$if windows {
+		// A message of Windows ends in a line end, which must not break the line it becomes a part of.
+		assert !tool_cache_refused_lock(1).problem.contains_any('\r\n')
+	}
+}
+
+// When the system refuses to lock a tool's lock file, the entries of the tool stay, for no build that
+// is known of: the wipe fails and gives the system's reason, and a dry run says the same. So it does
+// when the tool has no lock file, and the one the wipe makes is refused. The other tools' entries go
+// all the same. A lock that another process holds does not fail the wipe.
+fn test_a_lock_the_system_refuses_fails_the_wipe_and_names_the_reason() ! {
+	directory := toolcache_test_dir('wipe_cache_refused_lock')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_wipe_test_caches(directory, fn [directory] (cache_v_dir string) ! {
+		tools := os.join_path(cache_v_dir, 'tools')
+		tool_cache_test_root(tools)!
+		lock_path := tool_cache_test_lock(tools, 'vfmt')
+		for has_lock_file in [true, false] {
+			for code in [toolcache_test_contention_codes()[0], toolcache_test_refusal_codes()[0],
+				toolcache_test_refusal_codes().last()] {
+				os.rm(lock_path) or {}
+				entry := tool_cache_test_entry(tools, 'vfmt', 'a')!
+				if has_lock_file {
+					os.write_file(lock_path, '')!
+				}
+				for arguments in [['--tools', '--dry-run'], ['--tools']] {
+					if !has_lock_file && arguments.len == 2 {
+						// A dry run assumes that a lock file can be made, and used.
+						continue
+					}
+					idle_entry := tool_cache_test_entry(tools, 'vdoc', 'b')!
+					mut run := new_tool_cache_wipe_run()
+					run.lock_error = fn [lock_path, code] (path string) int {
+						return if path == lock_path && os.exists(lock_path) { code } else { 0 }
+					}
+					mut lines := []string{}
+					mut failure := ''
+					run.wipe_tool_cache_directory(tools, parse_wipe_cache_options([], arguments)!, mut
+						lines) or { failure = err.msg() }
+					context := '${has_lock_file} ${code} ${arguments}: ${failure} ${lines}'
+					assert os.is_dir(entry), context
+					assert os.is_file(lock_path), context
+					assert os.exists(idle_entry) == (arguments.len == 2), context
+					if code in toolcache_test_contention_codes() {
+						assert failure == '', context
+						assert lines.join('\n').contains('except for the tools another process has locked right now: vfmt.'), context
+					} else {
+						assert failure.starts_with('v wipe-cache: could not remove V tool cache folder ${tools}: the entries of vfmt stay: the lock file ${lock_path} cannot be locked: '), context
+						assert !failure.contains('another process'), context
+					}
+				}
+				os.rmdir_all(entry)!
+			}
+		}
+		// Without an entry of the tool nothing stays that should go: the wipe names the tool only.
+		os.write_file(lock_path, '')!
+		for arguments in [['--tools', '--dry-run'], ['--tools']] {
+			mut run := new_tool_cache_wipe_run()
+			run.lock_error = fn [lock_path] (path string) int {
+				return if path == lock_path { toolcache_test_refusal_codes()[0] } else { 0 }
+			}
+			mut lines := []string{}
+			run.wipe_tool_cache_directory(tools, parse_wipe_cache_options([], arguments)!, mut lines)!
+			assert lines.join('\n').contains(', except for the tools whose lock file cannot be locked: vfmt.'), lines.str()
+			assert os.is_file(lock_path), lines.str()
+		}
+		// A tool with lock files of two users is named once.
+		dir := open_tool_cache_wipe_dir(tools)!
+		defer {
+			dir.close()
+		}
+		mut locks := ToolCacheWipeLocks{
+			root:       tools
+			lock_error: fn (_ string) int {
+				return toolcache_test_refusal_codes()[0]
+			}
+		}
+		for uid in [u32(1), 2] {
+			assert locks.probe(dir, 'vfmt', uid) == .failed
+		}
+		assert locks.failed == ['vfmt']
+		assert locks.problems.len == 2, locks.problems.str()
+	})!
+}
+
+// A folder V moved aside stays while a lock file in it cannot be locked, for no build that is known
+// of: the wipe fails and names the lock file with the system's reason, and the folder goes once the
+// lock can be taken.
+fn test_a_moved_aside_folder_stays_while_a_lock_in_it_is_refused() ! {
+	directory := toolcache_test_dir('wipe_cache_refused_aside')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_wipe_test_caches(directory, fn (cache_v_dir string) ! {
+		aside := os.join_path(cache_v_dir, 'tools.untrusted-1700000000-42')
+		tool_cache_test_root(aside)!
+		refused := tool_cache_test_lock(aside, 'vtest')
+		beside := tool_cache_test_lock(aside, 'vfmt')
+		os.write_file(refused, '')!
+		os.write_file(beside, '')!
+		for arguments in [['--tools', '--dry-run'], ['--tools']] {
+			mut run := new_tool_cache_wipe_run()
+			run.lock_error = fn [refused] (path string) int {
+				return if path == refused { toolcache_test_refusal_codes()[0] } else { 0 }
+			}
+			mut lines := []string{}
+			mut failure := ''
+			run.wipe_tool_cache_directory(aside, parse_wipe_cache_options([], arguments)!, mut
+				lines) or { failure = err.msg() }
+			assert failure.starts_with('v wipe-cache: could not remove Moved-aside V tool cache folder ${aside}: the lock file ${refused} cannot be locked: '), failure
+			assert os.is_file(refused), failure
+			assert os.is_file(beside), failure
+		}
+		// A folder that stays for a build anyway is not kept by the lock file alone: the wipe then only
+		// names the tool.
+		kept := tool_cache_test_entry(aside, 'vfmt', 'a')!
+		for arguments in [['--tools', '--dry-run'], ['--tools']] {
+			mut run := new_tool_cache_wipe_run()
+			run.lock_error = fn [refused, beside] (path string) int {
+				return if path == refused {
+					toolcache_test_refusal_codes()[0]
+				} else if path == beside {
+					toolcache_test_contention_codes()[0]
+				} else {
+					0
+				}
+			}
+			mut lines := []string{}
+			run.wipe_tool_cache_directory(aside, parse_wipe_cache_options([], arguments)!, mut lines)!
+			assert lines.join('\n').contains(', except for the tools another process has locked right now: vfmt, except for the tools whose lock file cannot be locked: vtest.'), lines.str()
+			assert os.is_dir(kept), lines.str()
+		}
+		mut run := new_tool_cache_wipe_run()
+		mut lines := []string{}
+		run.wipe_tool_cache_directory(aside, parse_wipe_cache_options([], ['--tools'])!, mut lines)!
+		assert !os.exists(aside), lines.str()
 	})!
 }
 

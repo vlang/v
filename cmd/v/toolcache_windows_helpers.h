@@ -171,14 +171,6 @@ V_TOOLCACHE_WINDOWS_SCOPE int v_toolcache_listed_name(const unsigned short *path
 	return 1;
 }
 
-/* Writes the path that Windows makes of `path` before it acts on it into `buffer`, which holds
- * `size` characters, and returns its length; 0 when Windows makes none, and `size` or more when the
- * buffer is too small. */
-V_TOOLCACHE_WINDOWS_SCOPE int v_toolcache_full_path_name(const unsigned short *path,
-	unsigned short *buffer, int size) {
-	return (int)GetFullPathNameW((LPCWSTR)path, (DWORD)size, (LPWSTR)buffer, NULL);
-}
-
 static int v_toolcache_sid_can_write(PSID sid, PSID owner) {
 	return EqualSid(sid, owner)
 		|| IsWellKnownSid(sid, WinCreatorOwnerSid)

@@ -4,7 +4,7 @@
 module main
 
 import os
-import os.filelock
+import v.util.winpath
 
 #flag windows -l advapi32
 
@@ -27,7 +27,10 @@ fn C.v_toolcache_root_is_private(const_path &u16) int
 
 fn C.v_toolcache_listed_name(const_path &u16, const_want &u16, name &u16, size int) int
 
-fn C.v_toolcache_full_path_name(const_path &u16, buffer &u16, size int) int
+// The helpers `os.filelock` locks a file with, so that a wipe takes the very lock a build takes.
+fn C.v_filelock_lock(voidptr, int, int, u64, u64) int
+
+fn C.v_filelock_unlock(voidptr, u64, u64) int
 
 struct WindowsToolCacheFileInformation {
 	file_attributes       u32
@@ -52,6 +55,7 @@ const movefile_replace_existing = u32(0x00000001)
 const toolcache_windows_file_share_all = u32(0x00000001 | 0x00000002 | 0x00000004)
 const toolcache_windows_file_share_read_write = u32(0x00000001 | 0x00000002)
 const toolcache_windows_generic_read = u32(0x80000000)
+const toolcache_windows_generic_write = u32(0x40000000)
 const toolcache_windows_create_new = u32(1)
 const toolcache_windows_open_existing = u32(3)
 const toolcache_windows_file_attribute_normal = u32(0x00000080)
@@ -372,8 +376,14 @@ fn (dir ToolCacheWipeDir) owner_and_mode() (u32, u32) {
 }
 
 // is_at reports whether `path` still names this folder, which it always does on Windows.
-fn (dir ToolCacheWipeDir) is_at(_ string) bool {
+fn (dir ToolCacheWipeDir) is_at(_ string) !bool {
 	return true
+}
+
+// stays_at reports whether something is still at `path`, the path of this folder, which could not be
+// removed.
+fn (dir ToolCacheWipeDir) stays_at(path string) bool {
+	return os.exists(path) || os.is_link(path)
 }
 
 // names lists the folder, sorted. A folder that was removed meanwhile, by another wipe for
@@ -448,41 +458,21 @@ fn tool_cache_searched_name(path string, want string) ?string {
 	return unsafe { string_from_wide(&name[0]) }
 }
 
-// tool_cache_full_path gives the path that Windows makes of `path` before it acts on it
-// (`GetFullPathNameW`): absolute, with `.` and `..` taken as text, without the dots and spaces at the
-// end of each name, and a name that this Windows takes as a device, such as `nul`, as that device,
-// `\\.\nul`. It gives `path` itself when Windows makes none.
-fn tool_cache_full_path(path string) string {
-	mut buffer := [32768]u16{}
-	length := C.v_toolcache_full_path_name(path.to_wide(), &buffer[0], buffer.len)
-	if length <= 0 || length >= buffer.len {
-		return path
-	}
-	// The helper wrote `length` characters into `buffer`, which `string_from_wide2` reads.
-	return unsafe { string_from_wide2(&buffer[0], length) }
-}
-
 // tool_cache_wipe_full_path gives the absolute path that Windows makes of `path` (see
-// `tool_cache_full_path`): a relative path from the working folder, `C:cache` from the folder that
-// is current on drive `C:`, and `\cache` from the root of the current drive. When Windows makes
-// none, it gives `path` made absolute by `os.abs_path`.
+// `winpath.absolute_path`).
 fn tool_cache_wipe_full_path(path string) string {
-	full := tool_cache_full_path(path)
-	if os.is_abs_path(full) {
-		return full
-	}
-	return tool_cache_full_path(os.abs_path(path))
+	return winpath.absolute_path(path)
 }
 
 // tool_cache_wipe_unreachable says why the path made of the folder at `folder` and `name`, a name
 // that the folder lists, does not reach that item, or gives '' when it does. Windows makes a path
-// into another before it acts on it (see `tool_cache_full_path`): it drops the dots and spaces at the
+// into another before it acts on it (see `winpath.full_path`): it drops the dots and spaces at the
 // end of each name, so `tools.` reaches `tools`, and takes some names as devices, such as `nul`,
 // which names depending on the version of Windows. The wipe asks Windows itself, so it holds for
 // the version it runs on. WSL and `\\?\` paths make such names. The wipe leaves such an item as it
 // is, and fails.
 fn tool_cache_wipe_unreachable(folder string, name string) string {
-	full := tool_cache_full_path(os.join_path_single(folder, name))
+	full := winpath.full_path(os.join_path_single(folder, name))
 	if full.starts_with('\\\\.\\') {
 		return 'its name is that of a device, which a Windows path reaches instead'
 	}
@@ -622,18 +612,44 @@ fn (dir ToolCacheWipeDir) remove_tree(name string) ! {
 // ToolCacheWipeLock is a build lock that a wipe tried to take.
 struct ToolCacheWipeLock {
 	state ToolCacheWipeLockState
+	// problem says what the system does not let the wipe do with the lock file, for a lock file that
+	// cannot be opened and for an attempt that failed.
+	problem string
 mut:
-	file_lock filelock.FileLock
+	handle voidptr = unsafe { nil }
 }
 
 // release lets a held lock go.
 fn (mut held ToolCacheWipeLock) release() {
-	if held.state == .held {
-		held.file_lock.release()
+	if held.handle != unsafe { nil } {
+		C.v_filelock_unlock(held.handle, 0, 0)
+		C.v_toolcache_close_handle(held.handle)
+		held.handle = unsafe { nil }
 	}
 }
 
-// try_lock takes the build lock `name` in the folder without waiting.
+// toolcache_windows_error_lock_violation is `ERROR_LOCK_VIOLATION`: another process has locked a
+// part of the file.
+const toolcache_windows_error_lock_violation = 33
+
+// tool_cache_refused_lock is what came of a lock that Windows refused with the error `code`. Only
+// `ERROR_LOCK_VIOLATION` means that another process holds it. Any other code, such as
+// `ERROR_INVALID_FUNCTION` on a share of WSL, which has no locks, says nothing of other processes.
+fn tool_cache_refused_lock(code int) ToolCacheWipeLock {
+	if code == toolcache_windows_error_lock_violation {
+		return ToolCacheWipeLock{
+			state: .busy
+		}
+	}
+	return ToolCacheWipeLock{
+		state:   .failed
+		problem: 'cannot be locked: ${os.get_error_msg(code)}'
+	}
+}
+
+// try_lock takes the build lock `name` in the folder without waiting, with the kind of lock
+// `os.filelock` takes for a build. `os.filelock` does not tell why an attempt failed, so the file is
+// opened and locked here.
 fn (dir ToolCacheWipeDir) try_lock(name string) ToolCacheWipeLock {
 	path := os.join_path(dir.path, name)
 	if os.is_link(path) || os.is_dir(path) {
@@ -646,24 +662,27 @@ fn (dir ToolCacheWipeDir) try_lock(name string) ToolCacheWipeLock {
 			state: .absent
 		}
 	}
-	mut file_lock := filelock.new_file(path, mode: .exclusive)
-	if file_lock.try_acquire() {
+	handle := C.v_toolcache_create_file_w(path.to_wide(),
+		toolcache_windows_generic_read | toolcache_windows_generic_write, toolcache_windows_file_share_all,
+		toolcache_windows_open_existing, toolcache_windows_file_attribute_normal)
+	if handle == voidptr(-1) {
+		// Read before another call sets it.
+		code := int(C.GetLastError())
+		// A file that another wipe removed meanwhile is no lock file any more.
 		return ToolCacheWipeLock{
-			state:     .held
-			file_lock: file_lock
+			state:   if os.exists(path) { ToolCacheWipeLockState.unopenable } else { .absent }
+			problem: 'cannot be opened: ${os.get_error_msg(code)}'
 		}
 	}
-	// `try_acquire` fails both when another process holds the lock and when the file cannot be
-	// opened; only the first one means a build is in flight. A file that another wipe removed
-	// meanwhile is no lock file any more.
-	mut probe_file := os.open_file(path, 'r+') or {
-		return ToolCacheWipeLock{
-			state: if os.exists(path) { ToolCacheWipeLockState.unopenable } else { .absent }
-		}
+	if C.v_filelock_lock(handle, 1, 1, 0, 0) != 0 {
+		// Read before the close can set it.
+		code := int(C.GetLastError())
+		C.v_toolcache_close_handle(handle)
+		return tool_cache_refused_lock(code)
 	}
-	probe_file.close()
 	return ToolCacheWipeLock{
-		state: .busy
+		state:  .held
+		handle: handle
 	}
 }
 

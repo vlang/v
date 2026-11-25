@@ -4,6 +4,7 @@ import os
 import v.skills
 import v.util.version
 import v.util.recompilation
+import v.util.winpath
 
 const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
@@ -165,29 +166,20 @@ fn main() {
 // left for the system to take, as the folder above the one the path has led to so far, through any
 // link on the way: that is how builds and `v wipe-cache` take it, while `os.abs_path` takes it as
 // text. Windows takes `..` as text too, and it takes `C:cache` from the folder that is current on
-// drive `C:`, and `\cache` from the root of the drive `v up` was started on, which `os.abs_path` and
-// `os.is_abs_path` do not; those are made absolute here as well, as the wipe makes them. When
+// drive `C:`, and `\cache` from the root of the current drive. Windows itself makes such a path and a
+// relative one absolute, all of it at once, as for the wipe; a link that the current folder is, is
+// not followed. A tool that V starts is not told which folder is current on a drive other than the
+// current one, so `Q:cache` is taken from the root of `Q:` there, and not as the wipe takes it. When
 // `start` has no name (it was removed, or a folder above it may not be read), a relative path names
 // no folder that can be told, and `v up` stops.
 fn caller_path(name string, path string, start string) string {
-	$if windows {
-		if path.len >= 2 && path[1] == `:` && (path.len == 2 || path[2] !in [`\\`, `/`]) {
-			// The folder current on that drive, as Windows keeps it for this process.
-			return os.join_path_single(os.real_path(path[..2] + '.'), path[2..])
-		}
-		if path.len >= 1 && path[0] in [`\\`, `/`] && !(path.len >= 2 && path[1] in [
-			`\\`,
-			`/`,
-		])
-			&& start.len >= 2 && start[1] == `:` {
-			return start[..2] + path
-		}
-	}
-	if os.is_abs_path(path) {
-		return path
-	}
-	$if windows {
-		return os.abs_path(path)
+	// On Windows `os.is_abs_path` takes `\cache` for absolute, which is another folder after a change
+	// of drive. Elsewhere `winpath` gives the path as it is.
+	separators := [u8(`\\`), `/`]
+	no_drive := path.len > 0 && path[0] in separators && !(path.len > 1 && path[1] in separators)
+	full := if no_drive || !os.is_abs_path(path) { winpath.absolute_path(path) } else { path }
+	if os.is_abs_path(full) {
+		return full
 	}
 	if start == '' {
 		eprintln('v up: ${name} holds the relative path `${path}`, and the folder `v up` was started from has no name (it was removed, or a folder above it may not be read), so there is no telling which folder that is.')

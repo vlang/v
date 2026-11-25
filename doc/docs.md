@@ -87,7 +87,11 @@ a tool cannot be used; whether something could be removed it cannot tell without
 
 * The entries of a tool that another process has locked at that moment (a build in progress)
   stay, and the output names the tool. The wipe holds the build locks it takes until it is done
-  with the folder, so a build that starts meanwhile waits.
+  with the folder, so a build that starts meanwhile waits. When the system refuses the lock for
+  another reason, as where a file system has no locks, the entries stay too, for no build that is
+  known of: the wipe fails, and names the lock file and the reason. If no entry of the tool is
+  there, it only names the tool, unless the lock file alone keeps a folder V moved aside (see
+  below) from being removed: then it fails too.
 * Lock files (`.<tool>.<user id>.toolcache.lock`) stay, whoever owns them, so a tool cache
   folder stays after a wipe. A tool without a lock file gets one before its entries are removed.
   A link or a folder with such a name is ordinary content.
@@ -136,6 +140,9 @@ a tool cannot be used; whether something could be removed it cannot tell without
   name, so `tools.` reaches `tools`, and takes some names as devices, such as `nul`, which names
   depending on its version. The wipe asks Windows which names those are. The tools pass fails on
   such a name next to a tool cache folder, and a dry run fails on one where the real run would.
+  A folder whose listing the system ends with an error fails the wipe too. On Windows the listing
+  stops at such an error as if the folder ended there: what it did not list stays, and the wipe
+  fails only where the folder itself has to go.
   A setting is taken as Windows takes it: `C:\cache\tools.` names `C:\cache\tools`.
 * A `VTOOLS_CACHE_DIR` that is a symbolic link is left as it is, and the wipe does not follow
   it, also when it is written with a separator or `/.` at its end; the output says so. The wipe

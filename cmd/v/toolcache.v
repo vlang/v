@@ -1479,15 +1479,16 @@ Stop and return a nonzero status if a cache folder cannot be removed or recreate
 the wipe should remove stays, other than what a build in progress or another account keeps.
 
 A tool cache folder is wiped entry by entry. The entries of a tool that another process has
-locked right now (a build in progress) stay, and the output names the tool. Lock files stay too,
-so the folder stays after a wipe. A lock file that cannot be opened is repaired, so that it can
-be locked again, unless another account could swap it for a link: then it is left as it is, the
-entries of its tool are kept, and the wipe fails. So it does when a lock file cannot be made, or
-is no regular file, or cannot be repaired; a dry run assumes it can be made. A folder V builds
-tools in stays even when the wipe leaves it empty, since a build may have just made it. A name
-the wipe cannot look at stays, and the wipe fails. A VTOOLS_CACHE_DIR that is a symbolic link is
-left as it is, however it is written, and the wipe does not follow it: set VTOOLS_CACHE_DIR to
-the folder it leads to, to have that folder wiped.
+locked right now (a build in progress) stay, and the output names the tool. When the system
+refuses the lock for another reason, as on a file system without locks, they stay too, and the
+wipe fails. Lock files stay, so the folder stays after a wipe. A lock file that cannot be opened
+is repaired, so that it can be locked again, unless another account could swap it for a link:
+then it is left as it is, the entries of its tool are kept, and the wipe fails. So it does when
+a lock file cannot be made, or is no regular file, or cannot be repaired; a dry run assumes it
+can be made. A folder V builds tools in stays even when the wipe leaves it empty, since a build
+may have just made it. A name the wipe cannot look at stays, and the wipe fails. A
+VTOOLS_CACHE_DIR that is a symbolic link is left as it is, however it is written, and the wipe
+does not follow it: set VTOOLS_CACHE_DIR to the folder it leads to, to have that folder wiped.
 
 In a folder the wipe goes through that another account can write to, only what you own is
 removed: what another account owns there stays, whatever its name, and does not fail the wipe.
@@ -1759,6 +1760,9 @@ enum ToolCacheWipeLockState {
 	unopenable
 	// unsafe_name: the name is taken by something that is no regular file.
 	unsafe_name
+	// failed: the attempt failed for another reason, such as a file system that has no locks, so
+	// whether another process is at work is not known.
+	failed
 }
 
 // tool_cache_lock_ending ends the name of every build lock (see `tool_cache_lock_path_for_uid`).
@@ -1930,6 +1934,7 @@ mut:
 	busy       []string
 	unlockable []string
 	unopenable []string
+	failed     []string
 	// created lists the lock files that `claim` made, or that a real run would make, in a dry run.
 	created []string
 	// vanishing lists the names a dry run would remove, which a real run no longer finds.
@@ -1942,21 +1947,39 @@ mut:
 	// before_acting is for tests: it is the run's (see `ToolCacheWipeRun.acting_on`), and is called
 	// with the step 'repair' before a lock file is set to mode 0600.
 	before_acting fn (path string, step string) = unsafe { nil }
+	// lock_error is for tests: it is the run's (see `ToolCacheWipeRun.lock_error`).
+	lock_error fn (path string) int = unsafe { nil }
+}
+
+// attempt tries the lock file `name` once (see `try_lock`). A test can make the system refuse it.
+fn (locks &ToolCacheWipeLocks) attempt(dir ToolCacheWipeDir, name string) ToolCacheWipeLock {
+	$if test {
+		if locks.lock_error != unsafe { nil } {
+			code := locks.lock_error(os.join_path(locks.root, name))
+			if code != 0 {
+				return tool_cache_refused_lock(code)
+			}
+		}
+	}
+	return dir.try_lock(name)
 }
 
 // probe takes the build lock of `tool` for the user `uid`, unless it was probed already, and
 // returns what came of it. No lock file means no build is at work: every build creates its lock
 // file before it touches an entry. A lock file that cannot be opened for writing is held by no
 // build either; it is set to mode 0600 and tried again when that is safe (see
-// `tool_cache_lock_is_repairable`), and otherwise left as it is.
+// `tool_cache_lock_is_repairable`), and otherwise left as it is. A lock that the system refuses
+// for another reason than a process that holds it says nothing of builds: it is not taken, and
+// `problems` has the system's reason.
 fn (mut locks ToolCacheWipeLocks) probe(dir ToolCacheWipeDir, tool string, uid u32) ToolCacheWipeLockState {
 	name := tool_cache_lock_name(tool, uid)
 	if name in locks.states {
 		return locks.states[name]
 	}
 	mut state := ToolCacheWipeLockState.absent
+	mut problem := ''
 	if !(locks.dry && locks.vanishing[name]) {
-		mut taken := dir.try_lock(name)
+		mut taken := locks.attempt(dir, name)
 		state = taken.state
 		if state == .unopenable
 			&& tool_cache_lock_is_repairable(locks.me, locks.folder_owner, locks.folder_mode, dir.item(name)) {
@@ -1978,7 +2001,7 @@ fn (mut locks ToolCacheWipeLocks) probe(dir ToolCacheWipeDir, tool string, uid u
 						locks.first_error = 'cannot repair the lock file ${os.join_path(locks.root, name)}: ${err.msg()}'
 					}
 				}
-				taken = dir.try_lock(name)
+				taken = locks.attempt(dir, name)
 				state = taken.state
 			}
 		}
@@ -1991,6 +2014,7 @@ fn (mut locks ToolCacheWipeLocks) probe(dir ToolCacheWipeDir, tool string, uid u
 				locks.held_names << name
 			}
 		}
+		problem = taken.problem
 	}
 	match state {
 		.busy {
@@ -2002,7 +2026,13 @@ fn (mut locks ToolCacheWipeLocks) probe(dir ToolCacheWipeDir, tool string, uid u
 			if tool !in locks.unopenable {
 				locks.unopenable << tool
 			}
-			locks.problems[name] = 'the lock file ${os.join_path(locks.root, name)} cannot be opened'
+			locks.problems[name] = 'the lock file ${os.join_path(locks.root, name)} ${problem}'
+		}
+		.failed {
+			if tool !in locks.failed {
+				locks.failed << tool
+			}
+			locks.problems[name] = 'the lock file ${os.join_path(locks.root, name)} ${problem}'
 		}
 		.unsafe_name {
 			if tool !in locks.unlockable {
@@ -2019,9 +2049,9 @@ fn (mut locks ToolCacheWipeLocks) probe(dir ToolCacheWipeDir, tool string, uid u
 // claim takes the build lock of `tool` for the user `uid` before an entry of that tool is removed,
 // and reports whether the entry may go. When the tool has no lock file, one is made first, so that
 // a builder either finds the lock taken or waits on it. A tool whose lock is taken by another
-// process, cannot be made, cannot be opened, or is no regular file keeps its entries; `problems`
-// says why in every case but the first. A dry run makes nothing and assumes that a real run can
-// make the file.
+// process, is refused by the system, cannot be made, cannot be opened, or is no regular file keeps
+// its entries; `problems` says why in every case but the first. A dry run makes nothing and assumes
+// that a real run can make the file.
 fn (mut locks ToolCacheWipeLocks) claim(dir ToolCacheWipeDir, tool string, uid u32) bool {
 	name := tool_cache_lock_name(tool, uid)
 	mut state := locks.probe(dir, tool, uid)
@@ -2066,15 +2096,18 @@ fn (mut locks ToolCacheWipeLocks) release() {
 
 // wipe_except_text names the tools whose entries a wipe kept, and why, and counts the kept files and
 // folders of other users, for its summary line. Entries kept for any other reason fail the wipe,
-// which then prints no summary (see `wipe_open_root`); a lock file that cannot be opened is named
-// here when no entry of its tool was there to keep.
-fn wipe_except_text(busy []string, unopenable []string, others int) string {
+// which then prints no summary (see `wipe_open_root`); a lock file that cannot be opened or locked is
+// named here when no entry of its tool was there to keep.
+fn wipe_except_text(busy []string, unopenable []string, failed []string, others int) string {
 	mut text := ''
 	if busy.len > 0 {
 		text += ', except for the tools another process has locked right now: ${busy.join(', ')}'
 	}
 	if unopenable.len > 0 {
 		text += ', except for the tools whose lock file cannot be opened and was left as it is: ${unopenable.join(', ')}'
+	}
+	if failed.len > 0 {
+		text += ', except for the tools whose lock file cannot be locked: ${failed.join(', ')}'
 	}
 	if others > 0 {
 		text += ', except for ${others} files and folders of other users'
@@ -2127,6 +2160,9 @@ mut:
 	made_anew []string
 	// before_acting is for tests: see `acting_on`.
 	before_acting fn (path string, step string) = unsafe { nil }
+	// lock_error is for tests: it gives the error code with which the system refuses to lock the
+	// lock file at `path`, or 0 to have it tried.
+	lock_error fn (path string) int = unsafe { nil }
 	// user is for tests: see `wipe_user`.
 	user i64 = -1
 }
@@ -2175,7 +2211,7 @@ fn new_tool_cache_wipe_run() ToolCacheWipeRun {
 // text: the system takes it as the folder above the one the path has led to so far, through any
 // link on the way (see `tool_cache_wipe_place`), and links change during a wipe. On Windows the
 // system takes `..` as text, and it is Windows that makes the path absolute (see
-// `tool_cache_full_path`): `C:cache` lies in the folder that is current on drive `C:`, which
+// `winpath.absolute_path`): `C:cache` lies in the folder that is current on drive `C:`, which
 // `os.abs_path` would put after the working folder. An empty path stays empty: it names no folder.
 fn tool_cache_wipe_absolute(path string) string {
 	if path == '' || os.is_abs_path(path) {
@@ -2839,7 +2875,7 @@ fn (mut run ToolCacheWipeRun) wipe_known(spot ToolCacheSpot, opts WipeCacheOptio
 		problem = err.msg()
 	}
 	left := run.others[others_before..].clone()
-	others := wipe_except_text([], [], left.len)
+	others := wipe_except_text([], [], [], left.len)
 	if !spot.outer {
 		details << inner
 		if problem != '' {
@@ -3052,6 +3088,7 @@ fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, 
 		folder_owner:  folder_owner
 		folder_mode:   folder_mode
 		before_acting: run.before_acting
+		lock_error:    run.lock_error
 	}
 	defer {
 		locks.release()
@@ -3167,7 +3204,7 @@ fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, 
 		}
 	}
 	nothing_kept := kept.len == 0 && locks.busy.len == 0 && locks.unlockable.len == 0
-		&& locks.unopenable.len == 0
+		&& locks.unopenable.len == 0 && locks.failed.len == 0
 	for name in locks.created {
 		if name !in lock_files {
 			lock_files << name
@@ -3208,7 +3245,8 @@ fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, 
 			continue
 		}
 		if should_go && first_error == '' {
-			// It stays for no build and for no other account: it cannot be opened, or is no file.
+			// It stays for no build and for no other account: it cannot be opened or locked, or is
+			// no file.
 			if why := locks.problems[name] {
 				first_error = why
 			}
@@ -3223,7 +3261,9 @@ fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, 
 	busy.sort()
 	mut unopenable := locks.unopenable.clone()
 	unopenable.sort()
-	except := wipe_except_text(busy, unopenable, others)
+	mut failed := locks.failed.clone()
+	failed.sort()
+	except := wipe_except_text(busy, unopenable, failed, others)
 	// A dry run fails where the real run fails, as far as it can tell without changing anything.
 	if first_error == '' {
 		first_error = locks.first_error
@@ -3248,7 +3288,10 @@ fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, 
 	if opts.verbose {
 		lines << details
 	}
-	if !dir.is_at(path) {
+	still_there := dir.is_at(path) or {
+		return error('v wipe-cache: could not look at ${label} folder ${path}: ${err.msg()}')
+	}
+	if !still_there {
 		if os.exists(path) || os.is_link(path) {
 			lines << '${label} folder ${path} was moved aside by a build during the wipe. The wipe finished in the folder it had opened${except}; the new folder at ${path} was not touched.'
 			return
@@ -3264,17 +3307,18 @@ fn (mut run ToolCacheWipeRun) wipe_open_root(dir ToolCacheWipeDir, path string, 
 	// folder that builds neither make nor use gets here (see `builds_in`), so no build makes a new
 	// one there.
 	if folder_goes {
-		remaining := dir.names() or { [''] }
+		remaining := dir.names() or {
+			return error('v wipe-cache: could not list ${label} folder ${path}: ${err.msg()}')
+		}
 		mut problem := ''
 		if remaining.len == 0 {
 			run.acting_on(path, 'rmdir')
 			os.rmdir(path) or { problem = err.msg() }
 		}
-		// A folder that is still the one opened, still there and still empty could not be removed.
-		// Whether it is there is asked last, and by itself: on Windows `is_at` holds for any path,
-		// and a folder that another wipe removed lists as empty.
-		if problem != '' && dir.is_at(path) && (dir.names() or { [''] }).len == 0
-			&& (os.exists(path) || os.is_link(path)) {
+		// A folder that is still there and still empty could not be removed, and one that cannot be
+		// listed any more counts as that too. Whether it is there is asked last: a folder that another
+		// wipe removed lists as empty.
+		if problem != '' && (dir.names() or { []string{} }).len == 0 && dir.stays_at(path) {
 			return error('v wipe-cache: could not remove ${label} folder ${path}: ${problem}')
 		}
 	}
@@ -3329,7 +3373,7 @@ fn (run ToolCacheWipeRun) remove_cache_folder(path string) !int {
 		problem = ''
 		run.acting_on(path, 'rmdir')
 		os.rmdir(path) or { problem = err.msg() }
-		if problem == '' || !dir.is_at(path) || (!os.exists(path) && !os.is_link(path)) {
+		if problem == '' || !dir.stays_at(path) {
 			return 0
 		}
 	}
@@ -3357,7 +3401,7 @@ fn (run ToolCacheWipeRun) wipe_cache_directory(path string, label string, recrea
 				}
 			}
 			others := run.others_in(path)
-			lines << 'Would wipe ${label} folder ${path}${wipe_except_text([], [], others.len)}.'
+			lines << 'Would wipe ${label} folder ${path}${wipe_except_text([], [], [], others.len)}.'
 			if opts.verbose {
 				mut entries := os.ls(path) or {
 					// A folder that a wipe removed meanwhile has nothing left to list.
@@ -3427,7 +3471,7 @@ fn (run ToolCacheWipeRun) wipe_cache_directory(path string, label string, recrea
 	if recreate {
 		run.make_cache_folder_again(path, label)!
 	}
-	lines << '${label} folder ${path} was wiped${wipe_except_text([], [], others)}.'
+	lines << '${label} folder ${path} was wiped${wipe_except_text([], [], [], others)}.'
 }
 
 // make_cache_folder_again makes the cache folder at `path` after it was wiped. Another wipe can
