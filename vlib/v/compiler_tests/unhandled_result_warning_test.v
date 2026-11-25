@@ -11,13 +11,7 @@ import os
 import runtime
 import v.cmdexec
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
 const fixture_root = os.vtmp_dir()
-const unhandled_v3_bin = os.join_path(os.temp_dir(), 'v3_unhandled_result_test_${os.getpid()}')
 
 const prelude = "module main
 
@@ -138,19 +132,6 @@ const cases = [
 	Case{'option_arg', 'println(«maybe()»)', '', .nothing},
 ]
 
-fn build_v3() string {
-	if !os.is_executable(unhandled_v3_bin) {
-		res := os.exec([vexe, '-gc', 'none', '-path', '${'${vlib_dir}|@vlib|@vmodules'}', '-o',
-			unhandled_v3_bin, '${v3_src}'])
-		assert res.exit_code == 0, res.output
-	}
-	return unhandled_v3_bin
-}
-
-fn testsuite_end() {
-	os.rm(unhandled_v3_bin) or {}
-}
-
 fn unmarked(text string) string {
 	return text.replace('«', '').replace('»', '')
 }
@@ -178,10 +159,9 @@ fn write_program(name string, source string) string {
 	return dir
 }
 
-// build_program builds the program in `dir`, as `v run` does before running it:
-// a check alone prints no warning when there is no error.
-fn build_program(v3 string, dir string, env map[string]string) os.Result {
-	return cmdexec.run_in_merged_with_env(v3, ['-nocache', '-gc', 'none', '-nocolor', '-o',
+// build_program compiles the program in `dir` to capture warnings for valid programs.
+fn build_program(dir string, env map[string]string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', '-gc', 'none', '-nocolor', '-o',
 		os.join_path(dir, 'prog'), os.join_path(dir, 'main.v')], '', env)
 }
 
@@ -198,7 +178,6 @@ fn diagnostics_at(output string, line int) []string {
 }
 
 fn test_a_call_whose_result_nothing_handles_is_warned_about() {
-	v3 := build_v3()
 	cpu_budget := math.max(1, math.min(runtime.nr_jobs(), runtime.nr_cpus()))
 	workers := math.min(4, cpu_budget)
 	// Each case has its own project. Split the CPU budget across its compilers
@@ -206,10 +185,10 @@ fn test_a_call_whose_result_nothing_handles_is_warned_about() {
 	compiler_env := {
 		'VJOBS': (cpu_budget / workers).str()
 	}
-	results := parallel.amap(cases, fn [v3, compiler_env] (c Case) os.Result {
+	results := parallel.amap(cases, fn [compiler_env] (c Case) os.Result {
 		dir := write_program(c.name, program(c))
 		defer { os.rmdir_all(dir) or {} }
-		return build_program(v3, dir, compiler_env)
+		return build_program(dir, compiler_env)
 	}, workers: workers)
 	mut wrong := []string{}
 	for i, c in cases {
@@ -250,12 +229,11 @@ fn test_a_call_whose_result_nothing_handles_is_warned_about() {
 // The exact words: those of the errors the checker gives these calls elsewhere,
 // with the call named as it is written.
 fn test_the_warning_names_the_call_and_its_result_type() {
-	v3 := build_v3()
 	dir := write_program('names', prelude + "\nfn main() {\n\tfails()\n\tb := Box{}\n\tb.risky()\n\tos.ls('.')\n\tfails_void()\n}\n")
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	output := build_program(v3, dir, map[string]string{}).output
+	output := build_program(dir, map[string]string{}).output
 	lines := output.split_into_lines()
 	for expected in ['warning: fails() returns `!int`, ${either_hint}',
 		'warning: b.risky() returns `!int`, ${either_hint}',
@@ -268,12 +246,11 @@ fn test_the_warning_names_the_call_and_its_result_type() {
 
 // `v run` shows the warning and runs the program, which goes on without the error.
 fn test_v_run_warns_and_runs_the_program() {
-	v3 := build_v3()
 	dir := write_program('run', prelude + "\nfn main() {\n\tfails()\n\tprintln('after the call')\n}\n")
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	res := os.exec(['${v3}', '-nocache', '-gc', 'none', 'run', os.join_path(dir, 'main.v')])
+	res := os.exec([@VEXE, '-nocache', '-gc', 'none', 'run', os.join_path(dir, 'main.v')])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('warning: fails() returns `!int`, ${either_hint}'), res.output
 	assert res.output.contains('after the call'), res.output
@@ -281,34 +258,31 @@ fn test_v_run_warns_and_runs_the_program() {
 
 // With -W, warnings are errors: this one too.
 fn test_the_warning_is_an_error_with_w() {
-	v3 := build_v3()
 	dir := write_program('werror', prelude + '\nfn main() {\n\tfails()\n}\n')
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	res := os.exec(['${v3}', '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
+	res := os.exec([@VEXE, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('error: fails() returns `!int`, ${either_hint}'), res.output
 }
 
 // Discarding a match result must not gain the returned-branch exemption.
 fn test_a_discarded_match_result_is_an_error_with_w() {
-	v3 := build_v3()
 	dir := write_program('discarded_match', prelude + '\nfn main() {\n\t_ = match 1 {\n\t\t1 { fails() }\n\t\telse { error("other") }\n\t}\n}\n')
 	defer { os.rmdir_all(dir) or {} }
-	res := os.exec([v3, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
+	res := os.exec([@VEXE, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('error: fails() returns `!int`, ${either_hint}'), res.output
 }
 
 fn test_handled_branch_results_compile_with_w() {
-	v3 := build_v3()
 	for c in cases {
 		if c.name !in ['handled_if', 'handled_nested_branch', 'propagated_if'] {
 			continue
 		}
 		dir := write_program('strict_${c.name}', program(c))
-		res := os.exec([v3, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
+		res := os.exec([@VEXE, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
 		os.rmdir_all(dir) or {}
 		assert res.exit_code == 0, '${c.name}: ${res.output}'
 	}
