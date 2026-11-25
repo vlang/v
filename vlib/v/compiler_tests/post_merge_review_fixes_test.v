@@ -4478,7 +4478,10 @@ fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 
 fn test_anonymous_struct_literals_use_typed_shape() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'anonymous_struct_literal_typed_shape', 'fn take_int(value struct {
+	run_good_module_batch(v3_bin, 'anonymous_struct_literals', [
+		ReviewRuntimeCase{
+			name:     'anonymous_struct_literal_typed_shape'
+			source:   'fn take_int(value struct {
 	x int
 }) int {
 	return value.x
@@ -4524,10 +4527,15 @@ fn main() {
 	values << struct { x: 13 }
 	println(int_str(values[0].x))
 }
-	')
-	assert out == '7\nright\n9\n23\n11\n13'
-	inferred_out := run_good(v3_bin, 'anonymous_struct_inferred_literal_typed_shape', 'fn main() {\n\ta := struct { x: 1 }\n\tb := struct { x: "typed" }\n\tprintln(int_str(a.x))\n\tprintln(b.x)\n}\n')
-	assert inferred_out == '1\ntyped'
+	'
+			expected: '7\nright\n9\n23\n11\n13'
+		},
+		ReviewRuntimeCase{
+			name:     'anonymous_struct_inferred_literal_typed_shape'
+			source:   'fn main() {\n\ta := struct { x: 1 }\n\tb := struct { x: "typed" }\n\tprintln(int_str(a.x))\n\tprintln(b.x)\n}\n'
+			expected: '1\ntyped'
+		},
+	])
 }
 
 fn test_anonymous_struct_type_allows_volatile_field_name() {
@@ -5315,11 +5323,38 @@ fn main() {
 
 fn test_isreftype_parenthesized_type_args() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'isreftype_parenthesized_type_args', 'struct Foo {
+	out := run_good_project(v3_bin, 'isreftype_qualified_type_args', {
+		'v.mod':         "Module { name: 'isreftype_qualified_type_args' }\n"
+		'foo/foo.v':     'module foo\n\npub struct Bar {}\n'
+		'main.v':        'module main
+
+import foo
+
+fn main() {
+	check_unqualified_types()
+
+	if !isreftype(foo.Bar) {
+		println("qualified type")
+	}
+	if isreftype(&foo.Bar) {
+		println("qualified ptr type")
+	}
+	bar := foo.Bar{}
+	if isreftype(bar) {
+		println("bad expr")
+	} else {
+		println("qualified value expr")
+	}
+}
+'
+		// This file uses foo as a local variable.
+		'unqualified.v': 'module main
+
+struct Foo {
 	n int
 }
 
-fn main() {
+fn check_unqualified_types() {
 	foo := Foo{}
 	if isreftype(foo) {
 		println("bad expr")
@@ -5344,14 +5379,9 @@ fn main() {
 	_ := isreftype(thread Foo)
 	println("thread type parsed")
 }
-')
-	assert out == 'value expr\nptr expr\nptr type\nfn type\narray type\nchan type\nthread type parsed'
-	qualified_out := run_good_project(v3_bin, 'isreftype_qualified_type_args', {
-		'v.mod':     "Module { name: 'isreftype_qualified_type_args' }\n"
-		'foo/foo.v': 'module foo\n\npub struct Bar {}\n'
-		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\tif !isreftype(foo.Bar) {\n\t\tprintln("qualified type")\n\t}\n\tif isreftype(&foo.Bar) {\n\t\tprintln("qualified ptr type")\n\t}\n\tbar := foo.Bar{}\n\tif isreftype(bar) {\n\t\tprintln("bad expr")\n\t} else {\n\t\tprintln("qualified value expr")\n\t}\n}\n'
-	}, 'main.v')
-	assert qualified_out == 'qualified type\nqualified ptr type\nqualified value expr'
+'
+	}, '')
+	assert out == 'value expr\nptr expr\nptr type\nfn type\narray type\nchan type\nthread type parsed\nqualified type\nqualified ptr type\nqualified value expr'
 	run_bad(v3_bin, 'isreftype_unknown_type_arg', 'fn main() {\n\t_ := isreftype(NoSuchType)\n}\n', 'unknown type `NoSuchType`')
 	run_bad(v3_bin, 'isreftype_unknown_array_elem_type_arg', 'fn main() {\n\t_ := isreftype([]MissingElem)\n}\n', 'unknown type `MissingElem`')
 	run_bad(v3_bin, 'isreftype_unknown_bracket_type_arg', 'fn main() {\n\t_ := isreftype[OtherMissing]()\n}\n', 'unknown type `OtherMissing`')
@@ -9999,7 +10029,10 @@ fn main() {}
 			expected: 'cannot call `str()` method recursively'
 		},
 	])
-	out := run_good(v3_bin, 'recursive_str_explicit_array_str_progress', 'struct Item {
+	run_good_module_batch(v3_bin, 'str_aggregate_runtime', [
+		ReviewRuntimeCase{
+			name:     'recursive_str_explicit_array_str_progress'
+			source:   'struct Item {
 mut:
 	remaining int
 }
@@ -10019,9 +10052,12 @@ fn main() {
 		remaining: 2
 	}.str()
 }
-')
-	assert out == ''
-	custom_out := run_good(v3_bin, 'recursive_str_custom_array_alias_str', 'struct Item {}
+'
+			expected: ''
+		},
+		ReviewRuntimeCase{
+			name:     'recursive_str_custom_array_alias_str'
+			source:   'struct Item {}
 
 type Items = []Item
 
@@ -10037,13 +10073,18 @@ fn (item Item) str() string {
 fn main() {
 	print(Item{}.str())
 }
-')
-	assert custom_out == 'safe'
+'
+			expected: 'safe'
+		},
+	])
 }
 
 fn test_recursive_str_skips_zero_length_repeated_array_provenance() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_zero_length_repeated_array', 'struct Item {}
+	run_good_module_batch(v3_bin, 'str_empty_repeated_array_runtime', [
+		ReviewRuntimeCase{
+			name:     'recursive_str_zero_length_repeated_array'
+			source:   'struct Item {}
 
 fn (item Item) str() string {
 	values := []Item{len: 0, init: item}
@@ -10053,9 +10094,12 @@ fn (item Item) str() string {
 fn main() {
 	print(Item{}.str())
 }
-')
-	assert out == '[]'
-	helper_out := run_good(v3_bin, 'recursive_str_helper_zero_length_repeated_array', 'struct Item {}
+'
+			expected: '[]'
+		},
+		ReviewRuntimeCase{
+			name:     'recursive_str_helper_zero_length_repeated_array'
+			source:   'struct Item {}
 
 fn repeat(item Item) []Item {
 	return []Item{len: 0, init: item}
@@ -10068,8 +10112,10 @@ fn (item Item) str() string {
 fn main() {
 	print(Item{}.str())
 }
-')
-	assert helper_out == '[]'
+'
+			expected: '[]'
+		},
+	])
 	run_bad_module_batch(v3_bin, 'str_repeated_array_rejections', [
 		ReviewRejection{
 			name:     'recursive_str_nonzero_repeated_array'
