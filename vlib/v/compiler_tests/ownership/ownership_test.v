@@ -5251,3 +5251,85 @@ fn main() {
 ")
 	assert result.exit_code == 0, result.output
 }
+
+fn test_ownership_scoped_atomic_workers_join_before_releasing_borrows() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_atomic', r'
+import sync.arc
+
+struct Job {
+	counter &arc.Atomic[int]
+	delta int
+}
+
+fn add(counter &arc.Atomic[int]) {
+	counter.add(1)
+}
+
+fn add_job(job Job) {
+	job.counter.add(job.delta)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	{
+		mut workers := []thread{}
+		defer { workers.wait() }
+		for _ in 0 .. 2 {
+			workers << spawn add(&counter)
+			workers << spawn add_job(Job{counter: &counter, delta: 2})
+		}
+	}
+	assert counter.load() == 6
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_scoped_atomic_workers_reject_unverified_pointer_use() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_atomic_escape', r'
+import sync.arc
+
+fn helper(counter &arc.Atomic[int]) {
+	counter.add(1)
+}
+
+fn work(counter &arc.Atomic[int]) {
+	helper(counter)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	handle := spawn work(&counter)
+	defer { handle.wait() }
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot prove that the scoped thread borrow is used without escaping'), result.output
+}
+
+fn test_ownership_scoped_atomic_workers_reject_detached_or_shorter_lived_borrows() {
+	v3_bin := ownership_build_v3()
+	for body in ['counter := arc.new_atomic(0); spawn work(&counter)',
+		'mut handles := []thread{}; defer { handles.wait() }; for _ in 0 .. 2 { counter := arc.new_atomic(0); handles << spawn work(&counter) }'] {
+		result := run_ownership_check(v3_bin, 'scoped_worker_atomic_lifetime', '
+import sync.arc
+
+fn work(counter &arc.Atomic[int]) {
+	counter.add(1)
+}
+
+fn main() {
+	${body}
+}
+')
+		assert result.exit_code != 0, result.output
+		reason := if body.starts_with('counter') {
+			'references cannot be transferred between threads'
+		} else {
+			'outlives borrowed atomic `counter`'
+		}
+		assert result.output.contains(reason), result.output
+	}
+}
