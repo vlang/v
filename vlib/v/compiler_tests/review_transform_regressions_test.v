@@ -8,6 +8,17 @@ const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 const review_transform_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_review_transform_${tempname.unique_token()}')
+const review_transform_shared_v3 = find_review_transform_shared_compiler('V3_TEST_UNIT_SHARED_V3')
+const review_transform_shared_ownership_v3 = find_review_transform_shared_compiler('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+
+fn find_review_transform_shared_compiler(env_name string) string {
+	shared := os.getenv(env_name)
+	if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		return os.real_path(shared)
+	}
+	return ''
+}
 
 fn review_v3_bin_path() string {
 	return os.join_path(review_transform_fixture_dir, 'v3_review_transform_regressions_test') + $if windows { '.exe' } $else { '' }
@@ -23,10 +34,6 @@ fn review_v3_eval_bin_path() string {
 
 fn testsuite_begin() {
 	os.mkdir_all(review_transform_fixture_dir) or { panic(err) }
-	// The test runner executes test functions in parallel. Build both shared
-	// compiler fixtures here so workers never race while replacing the same bin.
-	_ = build_v3_review_transform()
-	_ = build_v3_review_transform_ownership()
 }
 
 fn testsuite_end() {
@@ -34,6 +41,9 @@ fn testsuite_end() {
 }
 
 fn build_v3_review_transform() string {
+	if review_transform_shared_v3 != '' {
+		return review_transform_shared_v3
+	}
 	v3_bin := review_v3_bin_path()
 	if os.exists(v3_bin) {
 		return v3_bin
@@ -46,11 +56,13 @@ fn build_v3_review_transform() string {
 }
 
 fn build_v3_review_transform_ownership() string {
+	if review_transform_shared_ownership_v3 != '' {
+		return review_transform_shared_ownership_v3
+	}
 	v3_bin := review_v3_ownership_bin_path()
 	if os.exists(v3_bin) {
 		return v3_bin
 	}
-	// Compiler builds already enable the arena, so this can use the runner's shared build.
 	build :=
 		os.exec([vexe, '-gc', 'none', '-d', 'ownership', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
 			'-o', v3_bin, '${v3_src}'])
