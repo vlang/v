@@ -29,11 +29,7 @@ fn or_review_run_fixture(name string, src string, read_c bool) (string, string) 
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	bin_path := os.join_path(dir, 'v3_${name}')
-	src_path := bin_path + '.v'
-	os.write_file(src_path, src) or { panic(err) }
-	compile := os.exec([@VEXE, '-enable-globals', src_path, '-b', 'c', '-o', bin_path])
-	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
+	bin_path := or_review_compile_fixture(dir, name, src)
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	c_source := if read_c {
@@ -44,12 +40,49 @@ fn or_review_run_fixture(name string, src string, read_c bool) (string, string) 
 	return run.output.trim_space(), c_source
 }
 
-struct OrReviewRejection {
+fn or_review_compile_fixture(dir string, name string, src string) string {
+	bin_path := os.join_path(dir, 'v3_${name}')
+	src_path := bin_path + '.v'
+	os.write_file(src_path, src) or { panic(err) }
+	compile := os.exec([@VEXE, '-enable-globals', src_path, '-b', 'c', '-o', bin_path])
+	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
+	return bin_path
+}
+
+fn or_review_run_batch(name string, cases map[string]OrReviewFixture) {
+	dir := os.join_path(os.vtmp_dir(), 'v3_or_review_${tempname.unique_token()}')
+	os.mkdir(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	mut fixtures := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for fixture, case in cases {
+		fixtures << case.source.replace_once('fn main()', 'fn ${fixture}()')
+		calls << "\t\t'${fixture}' { ${fixture}() }"
+	}
+	src := "import os
+
+${fixtures.join('\n')}
+fn main() {
+	match os.args[1] {
+${calls.join('\n')}
+		else { panic('unknown fixture') }
+	}
+}
+"
+	bin_path := or_review_compile_fixture(dir, name, src)
+	for fixture, case in cases {
+		run := os.exec([bin_path, fixture])
+		assert run.exit_code == 0, '${fixture}: run failed\n${run.output}'
+		assert run.output.trim_space() == case.expected, '${fixture}: unexpected output\n${run.output}'
+	}
+}
+
+struct OrReviewFixture {
 	source   string
 	expected string
 }
 
-fn or_review_check_rejections(cases map[string]OrReviewRejection) {
+fn or_review_check_rejections(cases map[string]OrReviewFixture) {
 	dir := os.join_path(os.vtmp_dir(), 'v3_or_review_${tempname.unique_token()}')
 	os.mkdir(dir) or { panic(err) }
 	defer { os.rmdir_all(dir) or {} }
@@ -87,9 +120,6 @@ fn test_channel_receive_or_stabilizes_side_effectful_source() {
 	assert c_source.contains('sync__Channel* __chan_src_'), 'missing channel source temp'
 	assert c_source.contains('sync__Channel__pop(__chan_src_'), 'pop does not use channel source temp'
 	assert c_source.contains('sync__Channel__closed_error(__chan_src_'), 'closed_error does not use channel source temp'
-	selector_out := or_review_run('channel_receive_or_selector',
-		"struct Holder {\n\tch chan int\n}\n\nfn main() {\n\th := Holder{ch: chan int{}}\n\th.ch.close()\n\tvalue := <-h.ch or {\n\t\tprintln('closed')\n\t\treturn\n\t}\n\tprintln(int_str(value))\n}\n")
-	assert selector_out == 'closed'
 }
 
 fn test_array_optional_element_or_uses_fallback_without_err_binding() {
@@ -164,28 +194,29 @@ fn test_pointer_channel_try_call_derefs_receiver() {
 	assert c_source.contains('sync__Channel__try_pop(*(ch),'), 'try_pop on pointer channel receiver does not dereference the channel handle'
 }
 
-fn test_channel_try_push_preserves_explicit_voidptr_cast() {
-	out := or_review_run('channel_try_push_explicit_voidptr',
-		'fn main() {\n\tch := chan voidptr{cap: 1}\n\tx := 42\n\tassert ch.try_push(voidptr(&x)) == .success\n\treceived := <-ch\n\tprintln(int_str(unsafe { *(&int(received)) }))\n}\n')
-	assert out == '42'
-}
-
-fn test_pointer_channel_send_or_derefs_receiver() {
-	out := or_review_run('pointer_channel_send_or_receiver',
-		'fn send(ch &chan int) bool {\n\tch <- 7 or { return false }\n\treturn true\n}\n\nfn main() {\n\tch := chan int{cap: 1}\n\tprintln(send(&ch))\n\tprintln(int_str(<-ch))\n}\n')
-	assert out == 'true\n7'
-}
-
-fn test_channel_send_or_preserves_optional_and_fixed_array_storage() {
-	out := or_review_run('channel_send_or_storage',
-		'fn make_option() ?int {\n\treturn 3\n}\n\nfn main() {\n\toption_ch := chan ?int{cap: 1}\n\toption_value := make_option()\n\toption_ch <- option_value or { panic(err) }\n\n\tfixed_ch := chan [2]int{cap: 1}\n\tfixed_value := [11, 13]!\n\tfixed_ch <- fixed_value or { panic(err) }\n\tprintln("sent")\n}\n')
-	assert out == 'sent'
-}
-
-fn test_channel_send_or_binds_error_during_fallback_transform() {
-	out := or_review_run('channel_send_or_error_interpolation',
-		'fn main() {\n\terr := 7\n\tch := chan int{cap: 1}\n\tch.close()\n\tch <- 1 or {\n\t\tprintln("\${err}")\n\t}\n\tprintln(int_str(err))\n}\n')
-	assert out == 'channel closed\n7'
+fn test_channel_runtime_fixtures() {
+	or_review_run_batch('channel_runtime', {
+		'channel_receive_or_selector':         OrReviewFixture{
+			source:   "struct Holder {\n\tch chan int\n}\n\nfn main() {\n\th := Holder{ch: chan int{}}\n\th.ch.close()\n\tvalue := <-h.ch or {\n\t\tprintln('closed')\n\t\treturn\n\t}\n\tprintln(int_str(value))\n}\n"
+			expected: 'closed'
+		}
+		'channel_try_push_explicit_voidptr':   OrReviewFixture{
+			source:   'fn main() {\n\tch := chan voidptr{cap: 1}\n\tx := 42\n\tassert ch.try_push(voidptr(&x)) == .success\n\treceived := <-ch\n\tprintln(int_str(unsafe { *(&int(received)) }))\n}\n'
+			expected: '42'
+		}
+		'pointer_channel_send_or_receiver':    OrReviewFixture{
+			source:   'fn send(ch &chan int) bool {\n\tch <- 7 or { return false }\n\treturn true\n}\n\nfn main() {\n\tch := chan int{cap: 1}\n\tprintln(send(&ch))\n\tprintln(int_str(<-ch))\n}\n'
+			expected: 'true\n7'
+		}
+		'channel_send_or_storage':             OrReviewFixture{
+			source:   'fn make_option() ?int {\n\treturn 3\n}\n\nfn main() {\n\toption_ch := chan ?int{cap: 1}\n\toption_value := make_option()\n\toption_ch <- option_value or { panic(err) }\n\n\tfixed_ch := chan [2]int{cap: 1}\n\tfixed_value := [11, 13]!\n\tfixed_ch <- fixed_value or { panic(err) }\n\tprintln("sent")\n}\n'
+			expected: 'sent'
+		}
+		'channel_send_or_error_interpolation': OrReviewFixture{
+			source:   'fn main() {\n\terr := 7\n\tch := chan int{cap: 1}\n\tch.close()\n\tch <- 1 or {\n\t\tprintln("\${err}")\n\t}\n\tprintln(int_str(err))\n}\n'
+			expected: 'channel closed\n7'
+		}
+	})
 }
 
 fn test_or_storage_preserves_generic_map_value_type() {
@@ -198,23 +229,23 @@ fn test_or_rejects_non_options_and_implicit_element_errors() {
 	non_option := 'cannot use `or {}` block on non-option variable'
 	implicit_err := 'undefined variable: `err`'
 	or_review_check_rejections({
-		'bare_channel_or_rejected':            OrReviewRejection{
+		'bare_channel_or_rejected':            OrReviewFixture{
 			source:   'fn main() {\n\tch := chan int{}\n\t_ := ch or { ch }\n}\n'
 			expected: non_option
 		}
-		'array_optional_element_implicit_err': OrReviewRejection{
+		'array_optional_element_implicit_err': OrReviewFixture{
 			source:   'fn main() {\n\tmut arr := []?int{}\n\tarr << none\n\tvalue := arr[0] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n'
 			expected: implicit_err
 		}
-		'map_optional_element_implicit_err':   OrReviewRejection{
+		'map_optional_element_implicit_err':   OrReviewFixture{
 			source:   "fn main() {\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tvalue := m['x'] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n"
 			expected: implicit_err
 		}
-		'optional_pointer_or_rejected':        OrReviewRejection{
+		'optional_pointer_or_rejected':        OrReviewFixture{
 			source:   'fn invalid(ptr &?int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n'
 			expected: non_option
 		}
-		'result_pointer_or_rejected':          OrReviewRejection{
+		'result_pointer_or_rejected':          OrReviewFixture{
 			source:   'fn invalid(ptr &!int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n'
 			expected: non_option
 		}
