@@ -560,7 +560,10 @@ fn main() {
 
 fn test_is_check_treats_pointer_aliases_as_pointers() {
 	v3_bin := build_v3()
-	sum_out := run_good(v3_bin, 'is_pointer_alias_sum', 'struct Foo {
+	run_good_module_batch(v3_bin, 'pointer_alias_is_checks', [
+		ReviewRuntimeCase{
+			name:     'is_pointer_alias_sum'
+			source:   'struct Foo {
 		value int
 	}
 
@@ -580,9 +583,12 @@ fn main() {
 		println("other")
 	}
 }
-')
-	assert sum_out == 'foo'
-	interface_out := run_good(v3_bin, 'is_pointer_alias_interface', 'interface Runner {
+'
+			expected: 'foo'
+		},
+		ReviewRuntimeCase{
+			name:     'is_pointer_alias_interface'
+			source:   'interface Runner {
 	run() int
 }
 
@@ -607,8 +613,10 @@ fn main() {
 		println("other")
 	}
 }
-')
-	assert interface_out == 'job'
+'
+			expected: 'job'
+		},
+	])
 }
 
 fn test_interface_equality_includes_implicit_return_boxes() {
@@ -1150,7 +1158,10 @@ fn main() {
 
 fn test_interface_equality_includes_channel_send_and_default_field_boxes() {
 	v3_bin := build_v3()
-	channel_out := run_good(v3_bin, 'interface_eq_channel_send_box', 'interface IValue {}
+	run_good_module_batch(v3_bin, 'interface_channel_and_default_boxes', [
+		ReviewRuntimeCase{
+			name:     'interface_eq_channel_send_box'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -1168,9 +1179,12 @@ fn main() {
 	value := <-ch
 	println(same(value).str())
 }
-')
-	assert channel_out == 'true'
-	default_out := run_good(v3_bin, 'interface_eq_default_field_box', 'interface IValue {}
+'
+			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_default_field_box'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -1190,8 +1204,10 @@ fn main() {
 	holder := Holder{}
 	println(same(holder.value).str())
 }
-')
-	assert default_out == 'true'
+'
+			expected: 'true'
+		},
+	])
 }
 
 fn test_interface_equality_includes_struct_field_boxes() {
@@ -4078,14 +4094,28 @@ fn test_empty_interface_box_preserves_enum_type_id() {
 
 fn test_interface_cast_rejects_pointer_shape_mismatch() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'interface_pointer_shape_mismatch', 'interface Sink {\n\tput(x &int)\n}\n\nstruct Bad {}\n\nfn (b Bad) put(x int) {}\n\nfn main() {\n\t_ := Sink(Bad{})\n}\n', 'does not implement interface')
-	run_bad(v3_bin, 'interface_voidptr_cast_rejected', 'interface Sink {\n\tput()\n}\n\nfn main() {\n\tx := 1\n\tp := voidptr(&x)\n\t_ := Sink(p)\n}\n', 'does not implement interface')
+	run_bad_module_batch(v3_bin, 'interface_pointer_rejections', [
+		ReviewRejection{
+			name:     'interface_pointer_shape_mismatch'
+			source:   'interface Sink {\n\tput(x &int)\n}\n\nstruct Bad {}\n\nfn (b Bad) put(x int) {}\n\nfn main() {\n\t_ := Sink(Bad{})\n}\n'
+			expected: 'does not implement interface'
+		},
+		ReviewRejection{
+			name:     'interface_voidptr_cast_rejected'
+			source:   'interface Sink {\n\tput()\n}\n\nfn main() {\n\tx := 1\n\tp := voidptr(&x)\n\t_ := Sink(p)\n}\n'
+			expected: 'does not implement interface'
+		},
+		ReviewRejection{
+			name:     'interface_alias_cast_non_implementer'
+			source:   'interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nstruct Bad {}\n\nfn main() {\n\t_ := SinkAlias(Bad{})\n}\n'
+			expected: 'does not implement interface'
+		},
+	])
 	run_good_module_batch(v3_bin, 'interface_pointer_casts', [
 		ReviewRuntimeCase{'interface_pointer_voidptr_cast_escape_hatch', 'interface Sink {\n\tput()\n}\n\nfn main() {\n\tp := unsafe { voidptr(0) }\n\t_ := &Sink(p)\n\tprintln("ok")\n}\n', 'ok'},
 		ReviewRuntimeCase{'interface_pointer_nil_cast', "interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nfn main() {\n\t_ := Sink(nil)\n\t_ := &Sink(nil)\n\t_ := &SinkAlias(nil)\n\tprintln('ok')\n}\n", 'ok'},
 		ReviewRuntimeCase{'interface_pointer_nil_argument', "interface Item {\n\tname string\n}\n\nfn take(item &Item) {\n\tassert item == unsafe { nil }\n}\n\nfn main() {\n\tvalue := unsafe { nil }\n\ttake(value)\n\ttake(unsafe { nil })\n\tprintln('ok')\n}\n", 'ok'},
 	])
-	run_bad(v3_bin, 'interface_alias_cast_non_implementer', 'interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nstruct Bad {}\n\nfn main() {\n\t_ := SinkAlias(Bad{})\n}\n', 'does not implement interface')
 }
 
 fn test_interface_is_unqualified_local_uses_exact_impl_id() {
