@@ -4477,10 +4477,12 @@ fn main() {
 	advance(mut borrowed)
 	borrowed.value++
 	owner.get().advance()
+	mut alias := borrowed
+	alias.advance()
 }
 ')
 	assert result.exit_code != 0, result.output
-	assert result.output.count('cannot modify through an immutable borrow') == 4, result.output
+	assert result.output.count('cannot modify through an immutable borrow') == 5, result.output
 
 	valid := run_ownership_check(v3_bin, 'writable_returned_loan', r'
 struct Counter {
@@ -4505,10 +4507,14 @@ fn (mut c Counter) advance() {
 
 fn main() {
 	mut holder := Holder{}
-	mut counter := holder.get()
-	counter.advance()
-	counter.value++
-	assert counter.value == 2
+	{
+		mut counter := holder.get()
+		counter.advance()
+		counter.value++
+	}
+	mut direct := &holder.counter
+	direct.advance()
+	assert direct.value == 3
 }
 ')
 	assert valid.exit_code == 0, valid.output
@@ -4539,4 +4545,34 @@ fn main() {
 ')
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot modify through an immutable borrow'), result.output
+}
+
+fn test_ownership_keeps_optional_returned_borrows_readonly() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'readonly_optional_loan', r'
+struct Counter {
+mut:
+	value int
+}
+struct Owner implements Drop {
+	counter Counter
+}
+fn (mut owner Owner) drop() {}
+fn (owner &^a Owner) get[^a]() ?&^a Counter {
+	return &owner.counter
+}
+fn (mut counter Counter) advance() {
+	counter.value++
+}
+fn main() {
+	mut owner := Owner{}
+	mut from_or := owner.get() or { panic("missing") }
+	from_or.advance()
+	if mut from_guard := owner.get() {
+		from_guard.advance()
+	}
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.count('cannot modify through an immutable borrow') == 2, result.output
 }
