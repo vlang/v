@@ -11,22 +11,29 @@ struct v_glob_view {
     int32_t flags;
     uintptr_t close_fn, read_fn, open_fn, lstat_fn, stat_fn;
 };
+#ifdef V_GLOB_HAS_CALLBACKS
+#define V_GLOB_CALLBACKS(g, v, flags) if (flags & GLOB_ALTDIRFUNC) { \
+        v->close_fn = (uintptr_t)g->gl_closedir; v->read_fn = (uintptr_t)g->gl_readdir; \
+        v->open_fn = (uintptr_t)g->gl_opendir; v->lstat_fn = (uintptr_t)g->gl_lstat; \
+        v->stat_fn = (uintptr_t)g->gl_stat; }
+#define V_GLOB_SET_FLAGS(g, flags_) ((g)->gl_flags = (flags_))
+#else
+#define V_GLOB_CALLBACKS(g, v, flags) ((void)0)
+#define V_GLOB_SET_FLAGS(g, flags_) ((void)0)
+#endif
 #define V_GLOB_READ(type) do { const type *g = (const type *)input; \
     *v = (struct v_glob_view){ \
         .count = flags & GLOB_APPEND ? g->gl_pathc : 0, \
         .paths = flags & GLOB_APPEND ? (uintptr_t)g->gl_pathv : 0, \
         .offset = flags & GLOB_DOOFFS ? g->gl_offs : 0, .flags = flags}; \
-    if (flags & GLOB_ALTDIRFUNC) { \
-        v->close_fn = (uintptr_t)g->gl_closedir; v->read_fn = (uintptr_t)g->gl_readdir; \
-        v->open_fn = (uintptr_t)g->gl_opendir; v->lstat_fn = (uintptr_t)g->gl_lstat; \
-        v->stat_fn = (uintptr_t)g->gl_stat; } } while (0)
+    V_GLOB_CALLBACKS(g, v, flags); } while (0)
 void v_glob_view(uintptr_t input, uintptr_t output, int32_t large, int32_t flags) {
     struct v_glob_view *v = (void *)output;
     if (large) V_GLOB_READ(glob64_t); else V_GLOB_READ(glob_t);
 }
 #define V_GLOB_WRITE(type) do { type *g = (type *)output; \
     g->gl_pathc = v->count; g->gl_pathv = (char **)v->paths; \
-    g->gl_offs = v->offset; g->gl_flags = v->flags; } while (0)
+    g->gl_offs = v->offset; V_GLOB_SET_FLAGS(g, v->flags); } while (0)
 void v_glob_assign(uintptr_t output, uintptr_t input, int32_t large) {
     const struct v_glob_view *v = (const void *)input;
     if (large) V_GLOB_WRITE(glob64_t); else V_GLOB_WRITE(glob_t);
@@ -72,8 +79,12 @@ extern void v_pattern_globfree(uintptr_t, int32_t);
 int glob(const char *pattern, int flags, int (*error)(const char *, int), glob_t *out) {
     return v_pattern_glob((uintptr_t)pattern, flags, (uintptr_t)error, (uintptr_t)out, 0);
 }
+#if !defined(glob64)
 int glob64(const char *pattern, int flags, int (*error)(const char *, int), glob64_t *out) {
     return v_pattern_glob((uintptr_t)pattern, flags, (uintptr_t)error, (uintptr_t)out, 1);
 }
+#endif
 void globfree(glob_t *g) { v_pattern_globfree((uintptr_t)g, 0); }
+#if !defined(globfree64)
 void globfree64(glob64_t *g) { v_pattern_globfree((uintptr_t)g, 1); }
+#endif

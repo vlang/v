@@ -1,5 +1,6 @@
 #define _GNU_SOURCE 1
 #include <spawn.h>
+#include <sched.h>
 #include <errno.h>
 #include <stdint.h>
 #include <string.h>

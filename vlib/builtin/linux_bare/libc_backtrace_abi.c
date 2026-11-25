@@ -1,5 +1,7 @@
-#include <execinfo.h>
 #include <stdint.h>
+#if defined(__GLIBC__)
+#include <execinfo.h>
+#endif
 #include <unwind.h>
 
 extern int32_t v_trace_frame(uintptr_t, uintptr_t);

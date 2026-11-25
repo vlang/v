@@ -1,6 +1,9 @@
 #ifndef V_LINUX_BARE_LIBC_COMPAT_H
 #define V_LINUX_BARE_LIBC_COMPAT_H
 
+#ifndef _LARGEFILE64_SOURCE
+#define _LARGEFILE64_SOURCE 1
+#endif
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif

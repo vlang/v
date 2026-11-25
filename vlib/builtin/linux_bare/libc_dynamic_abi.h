@@ -3,12 +3,7 @@
 #include <stdint.h>
 #include <dlfcn.h>
 #include <link.h>
-#if defined(__GLIBC__)
-# if __GLIBC_PREREQ(2,35)
-#  define V_BARE_SYSTEM_DLFO 1
-# endif
-#endif
-#ifndef V_BARE_SYSTEM_DLFO
+#ifndef DLFO_STRUCT_HAS_EH_DBASE
 /* Public GNU ELF64 API prefix, also usable with older target headers. */
 struct dl_find_object {
     unsigned long long dlfo_flags;

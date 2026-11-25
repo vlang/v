@@ -29,19 +29,25 @@ int scandir(const char *path, struct dirent ***list, int (*select)(const struct 
             int (*compare)(const struct dirent **, const struct dirent **)) {
     return v_directory_scan((uintptr_t)path, (uintptr_t)list, (uintptr_t)select, (uintptr_t)compare, 0);
 }
+#if !defined(scandir64)
 int scandir64(const char *path, struct dirent64 ***list, int (*select)(const struct dirent64 *),
               int (*compare)(const struct dirent64 **, const struct dirent64 **)) {
     return v_directory_scan((uintptr_t)path, (uintptr_t)list, (uintptr_t)select, (uintptr_t)compare, 1);
 }
+#endif
 int alphasort(const struct dirent **a, const struct dirent **b) {
     return v_string_collate((uintptr_t)(*a)->d_name, (uintptr_t)(*b)->d_name);
 }
+#if !defined(alphasort64)
 int alphasort64(const struct dirent64 **a, const struct dirent64 **b) {
     return v_string_collate((uintptr_t)(*a)->d_name, (uintptr_t)(*b)->d_name);
 }
+#endif
 int versionsort(const struct dirent **a, const struct dirent **b) {
     return v_string_version_compare((uintptr_t)(*a)->d_name, (uintptr_t)(*b)->d_name);
 }
+#if !defined(versionsort64)
 int versionsort64(const struct dirent64 **a, const struct dirent64 **b) {
     return v_string_version_compare((uintptr_t)(*a)->d_name, (uintptr_t)(*b)->d_name);
 }
+#endif

@@ -24,7 +24,7 @@ uintptr_t v_pthread_tls_load(uint32_t slot) { return v_pthread_tls[slot]; }
 void v_pthread_tls_store(uint32_t slot, uintptr_t value) { v_pthread_tls[slot] = value; }
 uintptr_t v_pthread_tls_identity(void) { return (uintptr_t)v_pthread_tls; }
 
-_Static_assert(offsetof(struct sched_param, sched_priority) == 0 && sizeof(struct sched_param) == 4,
+_Static_assert(offsetof(struct sched_param, sched_priority) == 0 && sizeof(((struct sched_param *)0)->sched_priority) == sizeof(int32_t),
                "Linux scheduling priority ABI");
 int32_t v_pthread_sched_read(uintptr_t parameters) { return ((const struct sched_param *)parameters)->sched_priority; }
 void v_pthread_sched_write(uintptr_t parameters, int32_t priority) { ((struct sched_param *)parameters)->sched_priority = priority; }
@@ -34,13 +34,13 @@ extern int32_t v_pthread_getsched(uintptr_t, uintptr_t, uintptr_t);
 extern int32_t v_pthread_setsched(uintptr_t, int32_t, uintptr_t);
 extern int32_t v_pthread_setprio(uintptr_t, int32_t);
 extern int32_t v_pthread_affinity(uintptr_t, uintptr_t, uintptr_t, int32_t);
-int pthread_getname_np(pthread_t thread, char *name, size_t size) { return v_pthread_getname(thread, (uintptr_t)name, size); }
-int pthread_setname_np(pthread_t thread, const char *name) { return v_pthread_setname(thread, (uintptr_t)name); }
-int pthread_getschedparam(pthread_t thread, int *policy, struct sched_param *parameters) { return v_pthread_getsched(thread, (uintptr_t)policy, (uintptr_t)parameters); }
-int pthread_setschedparam(pthread_t thread, int policy, const struct sched_param *parameters) { return v_pthread_setsched(thread, policy, (uintptr_t)parameters); }
-int pthread_setschedprio(pthread_t thread, int priority) { return v_pthread_setprio(thread, priority); }
-int pthread_getaffinity_np(pthread_t thread, size_t size, cpu_set_t *set) { return v_pthread_affinity(thread, size, (uintptr_t)set, 0); }
-int pthread_setaffinity_np(pthread_t thread, size_t size, const cpu_set_t *set) { return v_pthread_affinity(thread, size, (uintptr_t)set, 1); }
+int pthread_getname_np(pthread_t thread, char *name, size_t size) { return v_pthread_getname((uintptr_t)thread, (uintptr_t)name, size); }
+int pthread_setname_np(pthread_t thread, const char *name) { return v_pthread_setname((uintptr_t)thread, (uintptr_t)name); }
+int pthread_getschedparam(pthread_t thread, int *policy, struct sched_param *parameters) { return v_pthread_getsched((uintptr_t)thread, (uintptr_t)policy, (uintptr_t)parameters); }
+int pthread_setschedparam(pthread_t thread, int policy, const struct sched_param *parameters) { return v_pthread_setsched((uintptr_t)thread, policy, (uintptr_t)parameters); }
+int pthread_setschedprio(pthread_t thread, int priority) { return v_pthread_setprio((uintptr_t)thread, priority); }
+int pthread_getaffinity_np(pthread_t thread, size_t size, cpu_set_t *set) { return v_pthread_affinity((uintptr_t)thread, size, (uintptr_t)set, 0); }
+int pthread_setaffinity_np(pthread_t thread, size_t size, const cpu_set_t *set) { return v_pthread_affinity((uintptr_t)thread, size, (uintptr_t)set, 1); }
 
 extern int32_t v_pthread_create(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 extern int32_t v_pthread_join(uintptr_t, uintptr_t);
@@ -158,7 +158,7 @@ int sem_getvalue(sem_t *s, int *value) { return v_sem_value((uintptr_t)s, (uintp
 
 extern int32_t v_pthread_getattr(uintptr_t, uintptr_t);
 extern int32_t v_pthread_stack_bounds(uintptr_t, uintptr_t, uintptr_t);
-int pthread_getattr_np(pthread_t t, pthread_attr_t *a) { return v_pthread_getattr(t, (uintptr_t)a); }
+int pthread_getattr_np(pthread_t t, pthread_attr_t *a) { return v_pthread_getattr((uintptr_t)t, (uintptr_t)a); }
 int pthread_attr_getstack(const pthread_attr_t *a, void **base, size_t *size) {
     return v_pthread_stack_bounds((uintptr_t)a, (uintptr_t)base, (uintptr_t)size);
 }

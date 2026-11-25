@@ -1,7 +1,9 @@
 /* Adapted from musl; see COPYRIGHT.musl. */
 #include <errno.h>
 #include <limits.h>
+#ifndef PATH_MAX
 #include <linux/limits.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>

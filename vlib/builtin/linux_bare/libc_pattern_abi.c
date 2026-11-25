@@ -6,7 +6,10 @@
 #include <string.h>
 /* regex_t and regmatch_t layouts belong to the selected C headers. The
  * compiled implementation is an opaque V-owned object stored in regex_t. */
-_Static_assert(sizeof(regex_t)>=sizeof(uintptr_t),"native regex storage");
+/* musl puts re_nsub first; glibc starts with private state. Keep the
+ * owned pointer separate from the field callers are entitled to inspect. */
+#define V_REGEX_OFFSET (offsetof(regex_t, re_nsub) == 0 ? sizeof(size_t) : 0)
+_Static_assert(sizeof(regex_t) >= V_REGEX_OFFSET + sizeof(uintptr_t), "native regex storage");
 extern int32_t v_pattern_compile(uintptr_t,int32_t,uintptr_t,uintptr_t);
 extern int32_t v_pattern_execute(uintptr_t,uintptr_t,uintptr_t,uintptr_t,int32_t);
 extern void v_pattern_free(uintptr_t);
@@ -16,18 +19,18 @@ int regcomp(regex_t *out,const char *pattern,int flags) {
     uintptr_t object=0,groups=0;
     int code=v_pattern_compile((uintptr_t)pattern,flags,(uintptr_t)&object,(uintptr_t)&groups);
     memset(out,0,sizeof *out);
-    memcpy(out,&object,sizeof object);
+    memcpy((unsigned char *)out + V_REGEX_OFFSET,&object,sizeof object);
     out->re_nsub=groups;
     return code;
 }
 int regexec(const regex_t *re,const char *input,size_t count,regmatch_t matches[],int flags) {
     uintptr_t object;
-    memcpy(&object,re,sizeof object);
+    memcpy(&object,(const unsigned char *)re + V_REGEX_OFFSET,sizeof object);
     return v_pattern_execute(object,(uintptr_t)input,count,(uintptr_t)matches,flags);
 }
 void regfree(regex_t *re) {
     uintptr_t object;
-    memcpy(&object,re,sizeof object);
+    memcpy(&object,(const unsigned char *)re + V_REGEX_OFFSET,sizeof object);
     v_pattern_free(object);
     memset(re,0,sizeof *re);
 }
