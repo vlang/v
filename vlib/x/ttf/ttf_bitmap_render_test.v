@@ -23,6 +23,7 @@ fn load_font() ttf.TTF_File {
 	return tf
 }
 
+// new_bmp allocates a buffer owned by the calling test; the font is borrowed.
 fn new_bmp(tf &ttf.TTF_File, w int, h int) ttf.BitMap {
 	font_size := 20
 	device_dpi := 72
@@ -30,7 +31,9 @@ fn new_bmp(tf &ttf.TTF_File, w int, h int) ttf.BitMap {
 	scale := f32(font_size * device_dpi) / f32(72 * int(tf.units_per_em))
 	return ttf.BitMap{
 		tf:       unsafe { tf }
-		buf:      vcalloc(w * h * 4)
+		// The checks count inked pixels, so the buffer must start blank: malloc only
+		// returns zeroed memory when the GC allocates it, not with `-gc none`.
+		buf:      unsafe { vcalloc(w * h * 4) }
 		buf_size: w * h * 4
 		scale:    scale
 		width:    w
@@ -118,6 +121,9 @@ fn test_bit_map_defaults() {
 fn test_new_bitmap_starts_with_zero_coverage() {
 	tf := load_font()
 	bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	for i in 0 .. bmp.buf_size {
 		assert unsafe { *(bmp.buf + i) } == 0
 	}
@@ -126,6 +132,9 @@ fn test_new_bitmap_starts_with_zero_coverage() {
 fn test_clear_zeroes_the_whole_buffer() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.plot(0, 0, u32(0xFF))
 	bmp.plot(7, 3, u32(0xFF))
 	bmp.clear()
@@ -137,6 +146,9 @@ fn test_clear_zeroes_the_whole_buffer() {
 fn test_plot_writes_only_the_alpha_byte() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	assert bmp.plot(0, 0, u32(0xFFFFFFFF)) == true
 	// `plot` writes `u8(c & 0xFF)`, so the colour's other channels are lost.
 	assert px(bmp, 0, 0) == 0xFF
@@ -147,6 +159,9 @@ fn test_plot_writes_only_the_alpha_byte() {
 fn test_plot_rejects_coordinates_outside_the_buffer() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	assert bmp.plot(-1, 0, u32(0xFF)) == false
 	assert bmp.plot(8, 0, u32(0xFF)) == false
 	assert bmp.plot(0, -1, u32(0xFF)) == false
@@ -162,6 +177,9 @@ fn test_plot_rejects_coordinates_outside_the_buffer() {
 fn test_trf_txt_and_trf_ch_are_the_identity_by_default() {
 	tf := load_font()
 	bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	p := ttf.Point{
 		x: 3
 		y: 5
@@ -177,6 +195,9 @@ fn test_trf_txt_and_trf_ch_are_the_identity_by_default() {
 fn test_set_pos_translates_the_text_transform() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.set_pos(10, 20)
 	// `set_pos` writes the translation into elements 6 and 7 only.
 	assert bmp.tr_matrix[6] == 10.0
@@ -192,6 +213,9 @@ fn test_set_pos_translates_the_text_transform() {
 fn test_set_rotation_writes_the_rotation_block() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.set_rotation(f32(0))
 	assert bmp.tr_matrix[0] == 1.0
 	assert bmp.tr_matrix[4] == 1.0
@@ -213,6 +237,9 @@ fn test_set_rotation_writes_the_rotation_block() {
 fn test_init_filler_grows_to_the_bitmap_height() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	assert bmp.filler.len == 4
 	// Each row starts as four zeroed ints, which is why the drawing code
@@ -231,6 +258,9 @@ fn test_init_filler_grows_to_the_bitmap_height() {
 fn test_fline_records_a_horizontal_span() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	bmp.clear_filler()
 	bmp.fline(1, 0, 5, 0, u32(0xFF))
@@ -243,6 +273,9 @@ fn test_fline_records_a_horizontal_span() {
 fn test_fline_ignores_a_span_beyond_the_right_edge() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	bmp.clear_filler()
 	// Both endpoints are past the width, so the bounds check returns early.
@@ -253,6 +286,9 @@ fn test_fline_ignores_a_span_beyond_the_right_edge() {
 fn test_fline_keeps_a_span_that_starts_off_screen() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	bmp.clear_filler()
 	// Only one endpoint is off-screen, so the span is still recorded and the
@@ -264,6 +300,9 @@ fn test_fline_keeps_a_span_that_starts_off_screen() {
 fn test_exec_filler_fills_from_start_plus_one_to_end() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	bmp.clear_filler()
 	bmp.fline(1, 0, 5, 0, u32(0xFF))
@@ -284,6 +323,9 @@ fn test_exec_filler_fills_from_start_plus_one_to_end() {
 fn test_exec_filler_sorts_the_span_before_filling() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	bmp.clear_filler()
 	bmp.filler[0] << [5, 1]
@@ -300,6 +342,9 @@ fn test_exec_filler_sorts_the_span_before_filling() {
 fn test_exec_filler_skips_a_row_with_an_odd_number_of_edges() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	bmp.clear_filler()
 	bmp.filler[0] << [0, 3, 99]
@@ -310,6 +355,9 @@ fn test_exec_filler_skips_a_row_with_an_odd_number_of_edges() {
 fn test_exec_filler_skips_a_span_whose_start_is_past_its_end() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	bmp.clear_filler()
 	bmp.filler[0] << [5, 5]
@@ -326,6 +374,9 @@ fn test_exec_filler_skips_a_span_whose_start_is_past_its_end() {
 fn test_line_outline_writes_the_colour_byte_verbatim() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.style = .outline
 	bmp.line(1, 0, 4, 0, u32(0x7F))
 	assert px(bmp, 1, 0) == 0x7F
@@ -342,9 +393,15 @@ fn test_line_outline_writes_the_colour_byte_verbatim() {
 fn test_line_outline_is_symmetric_in_its_endpoints() {
 	tf := load_font()
 	mut fwd := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(fwd.buf) }
+	}
 	fwd.style = .outline
 	fwd.line(0, 0, 3, 3, u32(0x55))
 	mut rev := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(rev.buf) }
+	}
 	rev.style = .outline
 	rev.line(3, 3, 0, 0, u32(0x55))
 	for y in 0 .. 4 {
@@ -359,6 +416,9 @@ fn test_line_outline_is_symmetric_in_its_endpoints() {
 fn test_line_filled_antialiases_the_same_segment() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	// `.filled` is the default style: the aliased edge is drawn, then the
 	// span is recorded for the filler.
 	bmp.line(1, 0, 4, 0, u32(0x7F))
@@ -372,6 +432,9 @@ fn test_line_filled_antialiases_the_same_segment() {
 fn test_line_raw_only_records_the_filler_span() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.style = .raw
 	bmp.init_filler()
 	bmp.clear_filler()
@@ -386,6 +449,9 @@ fn test_line_raw_only_records_the_filler_span() {
 fn test_box_draws_four_edges() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.style = .outline
 	bmp.box(1, 1, 4, 2, u32(0x33))
 	for x in 1 .. 5 {
@@ -401,6 +467,9 @@ fn test_box_draws_four_edges() {
 fn test_quadratic_falls_back_to_a_line_for_a_flat_curve() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.style = .outline
 	// The bounding box of this curve is 20 by 0 pixels, and the code draws a
 	// straight line when either extent is 2 or less.
@@ -414,6 +483,9 @@ fn test_quadratic_falls_back_to_a_line_for_a_flat_curve() {
 fn test_quadratic_with_equal_endpoints_draws_one_pixel() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.style = .outline
 	bmp.quadratic(5, 1, 5, 1, 5, 1, u32(0x77))
 	assert inked_pixels(bmp) == 1
@@ -446,6 +518,9 @@ fn test_color_multiply_scales_every_channel_and_clamps() {
 fn test_format_texture_expands_coverage_into_rgba() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.plot(1, 1, u32(0x80))
 	bmp.plot(2, 1, u32(0x00))
 	bmp.color = u32(0x11223344)
@@ -465,6 +540,9 @@ fn test_format_texture_expands_coverage_into_rgba() {
 fn test_get_raw_bytes_takes_one_byte_per_pixel() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.plot(3, 2, u32(0x9A))
 	raw := bmp.get_raw_bytes()
 	assert raw.len == bmp.buf_size / 4
@@ -476,6 +554,9 @@ fn test_get_raw_bytes_takes_one_byte_per_pixel() {
 fn test_save_as_ppm_writes_a_p3_header_and_every_pixel() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.clear()
 	bmp.color = u32(0x01020304)
 	bmp.bg_color = u32(0x0A0B0C0D)
@@ -504,6 +585,9 @@ fn test_save_as_ppm_writes_a_p3_header_and_every_pixel() {
 fn test_save_raw_data_writes_the_same_bytes_as_get_raw_bytes() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 8, 4)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.plot(0, 0, u32(0x5A))
 	bmp.plot(7, 3, u32(0x11))
 	path := os.join_path(os.vtmp_dir(), 'x_ttf_render_test_raw.bin_${os.getpid()}')
@@ -521,6 +605,9 @@ fn test_save_raw_data_writes_the_same_bytes_as_get_raw_bytes() {
 fn test_get_bbox_of_an_empty_string_is_only_the_line_height() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 40)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	w, h := bmp.get_bbox('')
 	assert w == 0
 	// int(|2086 - (-579)| * 20/2048)
@@ -530,6 +617,9 @@ fn test_get_bbox_of_an_empty_string_is_only_the_line_height() {
 fn test_get_bbox_advances_by_the_glyph_width() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 40)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	one_w, one_h := bmp.get_bbox('A')
 	assert one_w == 16
 	assert one_h == 26
@@ -542,6 +632,9 @@ fn test_get_bbox_advances_by_the_glyph_width() {
 fn test_get_bbox_charges_a_space_for_a_missing_glyph() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 40)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	space_w, _ := bmp.get_bbox(' ')
 	// U+00E9 and U+263A are both absent from this font, and an unmapped code
 	// point costs the same advance as a space.
@@ -554,6 +647,9 @@ fn test_get_bbox_charges_a_space_for_a_missing_glyph() {
 fn test_get_chars_bbox_returns_width_and_height_per_character() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 40)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	// Two entries per character: the running width and the line height.
 	assert bmp.get_chars_bbox('AB') == [16, 26, 32, 26]
 	assert bmp.get_chars_bbox('').len == 0
@@ -562,6 +658,9 @@ fn test_get_chars_bbox_returns_width_and_height_per_character() {
 fn test_draw_text_returns_the_same_box_as_get_bbox() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 40)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	tw, th := bmp.draw_text('A')
 	bw, bh := bmp.get_bbox('A')
@@ -573,6 +672,9 @@ fn test_draw_text_returns_the_same_box_as_get_bbox() {
 fn test_draw_text_of_an_empty_string_draws_nothing() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 40)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	w, h := bmp.draw_text('')
 	assert w == 0
@@ -583,6 +685,9 @@ fn test_draw_text_of_an_empty_string_draws_nothing() {
 fn test_draw_glyph_returns_the_glyph_box() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	// Glyph 36 is `A`, whose box the table reader reports as (69, 1634).
 	x_min, x_max := bmp.draw_glyph(36)
@@ -594,6 +699,9 @@ fn test_draw_glyph_returns_the_glyph_box() {
 fn test_draw_glyph_returns_zero_for_an_invalid_glyph() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	// Glyph 200 is past the end of the table, so `read_glyph` hands back the
 	// zero Glyph and nothing is plotted.
@@ -610,6 +718,9 @@ fn test_draw_glyph_returns_zero_for_an_invalid_glyph() {
 fn test_get_justify_space_cw_spreads_the_shortfall() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 40)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	// (20 - 10) / 1 space / 5 px == 2.0
 	assert bmp.get_justify_space_cw('a b', 10, 20, 5) == 2.0
 	// No spaces in the text, so there is nothing to spread.
@@ -621,6 +732,9 @@ fn test_get_justify_space_cw_spreads_the_shortfall() {
 fn test_draw_text_block_restores_the_space_width() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	bmp.space_cw = 3.0
 	bmp.draw_text_block('A B', ttf.Text_block{
@@ -636,6 +750,9 @@ fn test_draw_text_block_restores_the_space_width() {
 fn test_draw_text_block_left_is_drawn_from_the_left_edge() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.align = .left
 	bmp.init_filler()
 	bmp.draw_text_block('A', ttf.Text_block{
@@ -654,6 +771,9 @@ fn test_draw_text_block_left_is_drawn_from_the_left_edge() {
 fn test_draw_text_block_center_and_right_offset_the_same_ink() {
 	tf := load_font()
 	mut left := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(left.buf) }
+	}
 	left.align = .left
 	left.init_filler()
 	left.draw_text_block('A', ttf.Text_block{
@@ -665,6 +785,9 @@ fn test_draw_text_block_center_and_right_offset_the_same_ink() {
 	left_lo, _ := ink_extent(left)
 
 	mut centre := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(centre.buf) }
+	}
 	centre.align = .center
 	centre.init_filler()
 	centre.draw_text_block('A', ttf.Text_block{
@@ -680,6 +803,9 @@ fn test_draw_text_block_center_and_right_offset_the_same_ink() {
 	assert centre_hi == 57
 
 	mut right := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(right.buf) }
+	}
 	right.align = .right
 	right.init_filler()
 	right.draw_text_block('A', ttf.Text_block{
@@ -702,6 +828,9 @@ fn test_draw_text_block_center_and_right_offset_the_same_ink() {
 fn test_draw_text_block_justify_aligns_from_the_left() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	// `.justify` is a text alignment value with no offset of its own, so it
 	// lays out exactly like `.left`.
 	bmp.align = .justify
@@ -721,6 +850,9 @@ fn test_draw_text_block_justify_aligns_from_the_left() {
 fn test_draw_text_block_justify_spreads_spaces_to_fill_the_block() {
 	tf := load_font()
 	mut plain := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(plain.buf) }
+	}
 	plain.init_filler()
 	plain.draw_text_block('A A A', ttf.Text_block{
 		x: 0
@@ -732,6 +864,9 @@ fn test_draw_text_block_justify_spreads_spaces_to_fill_the_block() {
 	_, plain_hi := ink_extent(plain)
 
 	mut justified := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(justified.buf) }
+	}
 	justified.justify = true
 	justified.init_filler()
 	justified.draw_text_block('A A A', ttf.Text_block{
@@ -754,6 +889,9 @@ fn test_draw_text_block_wraps_only_when_cut_lines_is_set() {
 	tf := load_font()
 	line := 'AA AA AA AA AA AA AA AA AA AA AA AA AA AA'
 	mut cutting := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(cutting.buf) }
+	}
 	cutting.init_filler()
 	cutting.draw_text_block(line, ttf.Text_block{
 		x:         0
@@ -766,6 +904,9 @@ fn test_draw_text_block_wraps_only_when_cut_lines_is_set() {
 	assert ink_rows(cutting) == 40
 
 	mut overflowing := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(overflowing.buf) }
+	}
 	overflowing.init_filler()
 	overflowing.draw_text_block(line, ttf.Text_block{
 		x:         0
@@ -781,6 +922,9 @@ fn test_draw_text_block_wraps_only_when_cut_lines_is_set() {
 fn test_draw_text_block_splits_on_newlines() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	// Both lines fit the block, so they are drawn one under the other rather
 	// than wrapped.
@@ -796,6 +940,9 @@ fn test_draw_text_block_splits_on_newlines() {
 fn test_draw_text_block_of_an_empty_string_draws_nothing() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	bmp.draw_text_block('', ttf.Text_block{
 		x: 0
@@ -809,6 +956,9 @@ fn test_draw_text_block_of_an_empty_string_draws_nothing() {
 fn test_draw_text_block_drops_a_line_when_its_first_word_overflows() {
 	tf := load_font()
 	mut bmp := new_bmp(&tf, 200, 60)
+	defer {
+		unsafe { free(bmp.buf) }
+	}
 	bmp.init_filler()
 	// `AA` is 32 px wide on its own, which does not fit a 30 px block, so the
 	// cut loop runs down to c == 0 and draws nothing at all.

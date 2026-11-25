@@ -86,7 +86,7 @@ __global (
 	os.write_file(c_file, source + '\nvoid fastc_cycle_emit(i32 character) { putchar(character); }\n') or {
 		panic(err)
 	}
-	build := cmdexec.run('cc', ['-std=gnu11', '-o', program, c_file])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-o', program, c_file])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

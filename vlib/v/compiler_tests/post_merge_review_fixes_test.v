@@ -6651,7 +6651,7 @@ fn main() {
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('translation.html:1:'), compile.output
 	assert compile.output.contains('undefined ident: `ctx`'), compile.output
-	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+	assert compile.output.contains('called from ') && compile.output.contains('${os.path_separator}main.v:4:2'), compile.output
 	assert !compile.output.contains('<veb-template>'), compile.output
 }
 
@@ -6682,7 +6682,7 @@ value
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('control.txt:1:5: error: undefined ident: `missing`'), compile.output
 	assert compile.output.contains('control.txt:4:14: error: undefined ident: `missing_items`'), compile.output
-	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+	assert compile.output.contains('called from ') && compile.output.contains('${os.path_separator}main.v:4:2'), compile.output
 }
 
 fn test_inline_template_control_bodies_use_template_source() {
@@ -6710,7 +6710,7 @@ fn main() {
 
 	assert compile.output.contains('inline_control.txt:2:22: error: undefined ident: `missing_for`'), compile.output
 
-	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+	assert compile.output.contains('called from ') && compile.output.contains('${os.path_separator}main.v:4:2'), compile.output
 	assert !compile.output.contains('<veb-template>'), compile.output
 }
 
@@ -7991,7 +7991,7 @@ partial last
 		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('partial.txt:2:3: error: undefined ident: `missing_from_partial`'), compile.output
-	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
+	assert compile.output.contains('called from ') && compile.output.contains('${os.path_separator}main.v:4:2'), compile.output
 	assert !compile.output.contains('<veb-template>'), compile.output
 }
 

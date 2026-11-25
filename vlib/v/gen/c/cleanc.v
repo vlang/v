@@ -18014,7 +18014,8 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write(g.local_cname(ident_value))
 			} else if is_local && g.local_name_shadows_c_function(ident_value) {
 				g.write(g.local_cname(ident_value))
-			} else if ident_value in g.global_modules {
+			} else if !is_local && ident_value in g.global_modules {
+				// A local of a module that does not own the global's name keeps its value.
 				mod := g.global_modules[ident_value]
 				if mod.len > 0 && mod != 'main' && mod != 'builtin' {
 					g.write(g.global_c_name('${mod}.${ident_value}'))
@@ -19536,6 +19537,13 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write(')')
 			} else if g.gen_checked_integer_cast(id, target_type, cast_arg_id, cast_arg_type, ct) {
 				return
+			} else if semantic_target is types.Struct && g.tc.c_type(cast_arg_type) == ct {
+				// The value already has the target's C type (`Alias(value)` of a C struct).
+				// C only casts to scalar types: GCC and Clang accept a struct cast to its
+				// own type as an extension, MSVC rejects it (C2440).
+				g.write('(')
+				g.gen_cast_value_operand(cast_arg_id, target_type)
+				g.write(')')
 			} else {
 				g.write('(${ct})(')
 				g.gen_cast_value_operand(cast_arg_id, target_type)
@@ -20681,6 +20689,10 @@ fn (g &FlatGen) fixed_array_literal_index_type(base_id flat.NodeId, node flat.No
 }
 
 fn char_escape_codepoint(s string) ?int {
+	// The `\e` (ESC) escape is a GNU C extension; MSVC reads `'\e'` as `'e'`.
+	if s == '\\e' {
+		return 27
+	}
 	if s.starts_with('\\x') && s.len > 2 {
 		return parse_hex_codepoint(s[2..])
 	}
@@ -27667,6 +27679,11 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		return
 	}
 	mut is_static_const := g.is_const_expr(val_id) && !g.const_expr_needs_runtime_storage(expr_str)
+	// MSVC rejects a string's compound literal as a file-scope initializer, also when the
+	// value is not a plain literal (`$d('name', 'default')`).
+	if g.ccompiler == 'msvc' && unalias_type(v_type) is types.String {
+		is_static_const = false
+	}
 	// Aggregate constants that reference another aggregate constant cannot use the
 	// referenced C object as a file-scope initializer. Initialize them in _vinit,
 	// after their dependency has been constructed.

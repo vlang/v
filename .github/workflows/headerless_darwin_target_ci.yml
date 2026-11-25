@@ -1,0 +1,63 @@
+name: Headerless Darwin target regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/gen/c/headerless_program_test.v'
+      - '.github/workflows/headerless_darwin_target_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu-musl-headerless:
+    runs-on: ubuntu-24.04
+    # The legacy Docker image uses Clang 10, which cannot represent these Darwin targets.
+    # Keep musl compilation, but run the strict cross-target gate with a capable Clang.
+    env:
+      V_CI_UBUNTU_MUSL: '1'
+      VFLAGS: -cc musl-gcc -gc none -d use_bundled_libgc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install modern Clang and musl toolchain
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          sudo apt-get update
+          sudo apt-get install -y clang musl-tools
+          clang --version
+          musl-gcc --version
+      - name: Build V from source
+        id: build
+        run: make -j4 && ./v -prod -cg -o v cmd/v
+      - name: Verify original V test formatting
+        id: format
+        run: ./v fmt -verify vlib/v/gen/c/headerless_program_test.v
+      - name: Verify the Darwin triples retain macOS deployment-version macros
+        shell: bash
+        run: |
+          set -eu
+          clang --version
+          probe="$(mktemp)"
+          trap 'rm -f "$probe"' EXIT
+          printf '%s\n' '_Thread_local int v_probe;' > "$probe"
+          failed=0
+          for spec in 'arm64-apple-darwin22 130000 13.0' 'x86_64-apple-darwin21 120000 12.0'; do
+            set -- $spec
+            actual="$(clang -target "$1" "-mmacosx-version-min=$3" -dM -E -x c /dev/null | sed -n 's/^#define __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ //p')"
+            if [ "$actual" != "$2" ]; then
+              echo "$1: expected $2, got $actual" >&2
+              clang -target "$1" "-mmacosx-version-min=$3" -dM -E -x c /dev/null
+              failed=1
+            fi
+            if ! clang -target "$1" "-mmacosx-version-min=$3" -std=c99 -fsyntax-only -x c "$probe"; then
+              failed=1
+            fi
+          done
+          exit "$failed"
+      - name: Execute full original headerless compiler target test with musl
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.format.outcome == 'success' }}
+        run: ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/gen/c/headerless_program_test.v

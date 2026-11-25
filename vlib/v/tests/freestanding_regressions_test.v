@@ -169,7 +169,8 @@ fn main() {
 // test_native_asm_secondary_outputs_and_div_lower checks that a two-output asm block
 // with three inputs stores both halves, and that `div` lowers like `divq`.
 fn test_native_asm_secondary_outputs_and_div_lower() {
-	$if !amd64 {
+	// The amd64 backend builds only on, and for, linux/amd64.
+	$if !(linux && amd64) {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'native_asm_regress_${os.getpid()}')

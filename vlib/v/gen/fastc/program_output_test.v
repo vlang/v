@@ -36,7 +36,7 @@ fn fastc_program_output_files(name string, files map[string]string) string {
 	c_file := os.join_path(root, 'main.c')
 	program := os.join_path(root, 'program')
 	os.write_file(c_file, c_source) or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-w', '-o', program, c_file, '-lm'])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-w', '-o', program, c_file, '-lm'])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run_in_merged(program, [], root)
 	assert run.exit_code == 0, run.output

@@ -47,8 +47,8 @@ fn main() {
 	c_path := os.join_path(root, 'program.c')
 	program := os.join_path(root, 'program')
 	os.write_file(c_path, c_source) or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-Werror=implicit-function-declaration', c_path,
-		'-o', program])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-Werror=implicit-function-declaration',
+		c_path, '-o', program])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
