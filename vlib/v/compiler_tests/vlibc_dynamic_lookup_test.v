@@ -1,5 +1,5 @@
 import os
-import time
+import v.cmdexec
 
 fn test_vlibc_startup_dynamic_lookup() ! {
 	$if !linux || (!amd64 && !arm64) {
@@ -62,19 +62,7 @@ fn dynamic_command(command []string) string {
 }
 
 fn dynamic_command_in(command []string, folder string) string {
-	mut process := os.new_process(command[0])
-	process.set_args(command[1..])
-	if folder.len > 0 { process.set_work_folder(folder) }
-	process.use_pgroup = true
-	process.set_redirect_stdio()
-	process.run()
-	deadline := time.sys_mono_now() + 240 * i64(time.second)
-	for process.is_alive() && time.sys_mono_now() < deadline { time.sleep(10 * time.millisecond) }
-	if process.is_alive() { process.signal_pgkill() }
-	process.wait()
-	output := process.stdout_slurp() + process.stderr_slurp()
-	code := process.code
-	process.close()
-	assert code == 0, '${command}\n${output}'
-	return output
+	result := cmdexec.run_in_with_timeout(command[0], command[1..], folder, 240_000)
+	assert result.exit_code == 0, '${command}\n${result.output}'
+	return result.output
 }

@@ -1,20 +1,9 @@
 import os
-import time
+import v.cmdexec
 
 fn regular_vlibc_run(command []string, seconds int) (int, string) {
-	mut child := os.new_process(command[0])
-	child.set_args(command[1..])
-	child.use_pgroup = true
-	child.set_redirect_stdio_merged()
-	child.run()
-	deadline := time.sys_mono_now() + i64(seconds) * i64(time.second)
-	for child.is_alive() && time.sys_mono_now() < deadline { time.sleep(time.millisecond) }
-	if child.is_alive() { child.signal_pgkill() }
-	child.wait()
-	code := child.code
-	output := child.stdout_slurp()
-	child.close()
-	return code, output
+	result, _ := cmdexec.run_merged_timed(command[0], command[1..], i64(seconds) * 1000, false)
+	return result.exit_code, result.output
 }
 
 fn test_vlibc_preserves_regular_runtime_and_collector() ! {

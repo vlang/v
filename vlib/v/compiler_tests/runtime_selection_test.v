@@ -1,20 +1,10 @@
 import encoding.binary
 import os
-import time
+import v.cmdexec
 
 fn runtime_selection_run(command []string) (int, string) {
-	mut child := os.new_process(command[0])
-	child.set_args(command[1..])
-	child.set_redirect_stdio_merged()
-	child.run()
-	deadline := time.sys_mono_now() + i64(30 * time.second)
-	for child.is_alive() && time.sys_mono_now() < deadline { time.sleep(time.millisecond) }
-	if child.is_alive() { child.signal_kill() }
-	child.wait()
-	code := child.code
-	output := child.stdout_slurp()
-	child.close()
-	return code, output
+	result, _ := cmdexec.run_merged_timed(command[0], command[1..], 30_000, false)
+	return result.exit_code, result.output
 }
 
 fn runtime_selection_is_dynamic(path string) !bool {

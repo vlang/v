@@ -1,22 +1,9 @@
 import os
-import time
+import v.cmdexec
 
 fn native_runtime_command(command []string) (int, string) {
-	mut process := os.new_process(command[0])
-	process.set_args(command[1..])
-	process.use_pgroup = true
-	process.set_redirect_stdio()
-	process.run()
-	deadline := time.sys_mono_now() + 90 * i64(time.second)
-	for process.is_alive() && time.sys_mono_now() < deadline {
-		time.sleep(10 * time.millisecond)
-	}
-	if process.is_alive() { process.signal_pgkill() }
-	process.wait()
-	output := process.stdout_slurp() + process.stderr_slurp()
-	code := process.code
-	process.close()
-	return code, output
+	result := cmdexec.run_with_timeout(command[0], command[1..], 90_000)
+	return result.exit_code, result.output
 }
 
 fn test_vlibc_native_runtime_against_hosted_oracle() ! {
