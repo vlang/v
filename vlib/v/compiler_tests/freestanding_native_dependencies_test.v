@@ -72,3 +72,43 @@ fn test_static_package_private_dependencies_and_archive_cycles_without_link_flag
 	assert failed.exit_code != 0 && failed.output.contains('vlibc_intentionally_missing_48617'), failed.output
 	assert !failed.output.contains('retrying with') && !failed.output.contains('Unknown argument'), failed.output
 }
+
+fn test_freestanding_literal_main_keeps_exported_runtime_dependencies() ! {
+	$if !linux || (!amd64 && !arm64) {
+		return
+	}
+	dir := os.join_path(os.vtmp_dir(), 'freestanding_literal_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'hello.v')
+	os.write_file(source, "fn main() { println('hello') }")!
+	for cc in ['gcc', 'clang'] {
+		os.find_abs_path_of_executable(cc) or { continue }
+		output := os.join_path(dir, cc)
+		built := cmdexec.run(@VEXE, ['-new-compiler', '-cc', cc, '-freestanding', '-ldflags', '-static',
+			'-o', output, source])
+		assert built.exit_code == 0, built.output
+		executed := cmdexec.run(output, [])
+		assert executed.exit_code == 0 && executed.output == 'hello\n', executed.output
+	}
+}
+
+fn test_generated_shim_project_links_target_runtime_and_loader() ! {
+	$if !linux || (!amd64 && !arm64) {
+		return
+	}
+	os.find_abs_path_of_executable('gcc') or { return }
+	dir := os.join_path(os.vtmp_dir(), 'shim_c_project_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'worker.v')
+	project := os.join_path(dir, 'project')
+	os.write_file(source, "fn worker() int { return 42 }\nfn main() { task := spawn worker()\nassert task.wait() == 42\nprintln('worker ok') }")!
+	built := cmdexec.run(@VEXE, ['-cc', 'gcc', '-gc', 'none', '-shim-libc', '-generate-c-project',
+		project, source])
+	assert built.exit_code == 0, built.output
+	linked := cmdexec.run('sh', [os.join_path(project, 'build.sh')])
+	assert linked.exit_code == 0, linked.output
+	executed := cmdexec.run(os.join_path(project, 'worker'), [])
+	assert executed.exit_code == 0 && executed.output == 'worker ok\n', executed.output
+}

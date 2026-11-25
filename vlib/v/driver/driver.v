@@ -12304,6 +12304,9 @@ pub fn run(args []string) {
 		// A library/object is initialized by its host and has no process entry.
 		record_user_define(mut user_defines, mut compile_values, 'v_bare_no_startup')
 	}
+	if !is_shared && !is_o && 'freestanding' in user_defines && v3_needs_vlibc_shim(user_defines) {
+		record_user_define(mut user_defines, mut compile_values, 'v_bare_shim_environment')
+	}
 	apply_v3_gc_mode(gc_mode, disable_gc, mut user_defines, mut compile_values) or {
 		eprintln(err.msg())
 		exit(1)
@@ -12763,8 +12766,8 @@ pub fn run(args []string) {
 	c_compiler = selection.c_compiler
 	use_implicit_tcc_semantics := selection.use_implicit_tcc_semantics
 	effective_c_compiler := selection.effective_c_compiler
-	if backend == 'c' && target.os == 'linux' && !c_only && !is_o && !is_shared
-		&& v3_uses_bare_dynamic_loader(user_defines) {
+	if backend == 'c' && target.os == 'linux' && (!c_only || generate_c_project != '')
+		&& !is_o && !is_shared && v3_uses_bare_dynamic_loader(user_defines) {
 		// Actual dynamic executables retain their loader through strong ABI
 		// references, without linker-specific push/pop state directives.
 		user_c_flags << '-DV_BARE_DYNAMIC_LOADER=1'
@@ -14751,6 +14754,7 @@ pub fn run(args []string) {
 	mut transform_helper_scopes := []voidptr{}
 	mut retain_transform_helper_texts := false
 	mut trivial_literal_output := false
+	mut freestanding_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
 		if continue_collect {
@@ -14779,6 +14783,13 @@ pub fn run(args []string) {
 			&& (effective_c_compiler != 'msvc' || (target.os == 'windows' && minimal_literal_output))
 			&& !cache_state.manager.enabled
 			&& is_trivial_literal_output_program_for_target(a, pre_tc.diagnostic_files, target)
+		// Freestanding startup and exported libc functions execute the full runtime
+		// even when main only prints a literal. Keep their generated helpers.
+		if trivial_literal_output && target.os == 'linux' && target.arch in ['amd64', 'arm64']
+			&& 'freestanding' in prefs.user_defines && 'v_bare_no_startup' !in prefs.user_defines {
+			freestanding_literal_output = true
+			trivial_literal_output = false
+		}
 		if verbose {
 			eprintln('  [ttime]   ck trivial gate  ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
@@ -14866,7 +14877,7 @@ pub fn run(args []string) {
 		// than the bodies it would leave out.
 		skip_library_bodies := backend in ['c', 'arm64'] && !check_only && !is_checker_fixture && !building_v
 			&& test_files.len == 0 && !no_skip_unused && !is_vsh_input && !is_repl && !is_prof
-			&& !is_trace_calls && coverage_dir.len == 0 && !trivial_literal_output
+			&& !is_trace_calls && coverage_dir.len == 0 && !trivial_literal_output && !freestanding_literal_output
 			&& !incremental_cache_hit && !generic_cache_hit && !cache_state.manager.enabled
 			&& vls_line_info == '' && !served.from_server && !served.shares_checks()
 			&& a.missing_imports.len == 0 && os.getenv('V_CHECK_LIBRARY_BODIES') != 'all'
@@ -15323,7 +15334,7 @@ pub fn run(args []string) {
 			used_fns, uses_generics = markused.mark_used_for_native_tests_with_generic_usage(a, markused_tc, test_files)
 		} else if test_files.len > 0 {
 			used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a, markused_tc, test_files)
-		} else if is_vsh_input {
+		} else if is_vsh_input || freestanding_literal_output {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a, markused_tc)
 		} else if trivial_literal_output && used_fns.len > 0 {
 			uses_generics = false
@@ -17358,7 +17369,7 @@ pub fn run(args []string) {
 			resolved_c_flags << '-lgcc_eh'
 		}
 		if v3_omit_system_libc(prefs.user_defines)
-			&& !c_only && !is_o && !is_shared
+			&& (!c_only || generate_c_project != '') && !is_o && !is_shared
 			&& !effective_tcc
 			&& (prefs.normalized_target_os() != 'macos' || prefs.target.arch == 'amd64') {
 			// Native inputs are resolved above. -nostdlib also drops arithmetic
@@ -17370,8 +17381,8 @@ pub fn run(args []string) {
 				}
 			}
 		}
-		if !c_only && !is_o && !is_shared && !effective_tcc && prefs.normalized_target_os() == 'linux'
-			&& v3_uses_bare_dynamic_loader(prefs.user_defines) {
+		if (!c_only || generate_c_project != '') && !is_o && !is_shared && !effective_tcc
+			&& prefs.normalized_target_os() == 'linux' && v3_uses_bare_dynamic_loader(prefs.user_defines) {
 			loader := v3_freestanding_dynamic_loader(c_compiler, prefs.target.arch,
 				environment_c_flags, target_args, resolved_c_flags, link_ld_flags) or {
 				eprintln('v: dynamic vlibc requires a target GNU ELF loader; use -ldflags -static for a static executable')

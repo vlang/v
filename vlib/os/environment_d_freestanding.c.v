@@ -5,6 +5,10 @@ import sync
 
 fn C.clearenv() i32
 
+$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
+	#include "@DIR/../builtin/linux_bare/libc_environment.h"
+}
+
 fn C.v_freestanding_environment_lock()
 fn C.v_freestanding_environment_unlock()
 fn C.v_freestanding_environment_get_locked(const_name &char) &char
@@ -81,7 +85,7 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 
 	@[manualfree]
 	fn fsys_environment_get(key string) (string, bool) {
-		$if linux && (amd64 || arm64) && !v_bare_no_startup ? {
+		$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
 			C.v_freestanding_environment_lock()
 			defer { C.v_freestanding_environment_unlock() }
 			value := unsafe { C.v_freestanding_environment_get_locked(&char(key.str)) }
@@ -165,7 +169,7 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 
 	@[manualfree]
 	fn fsys_environment_set(key string, text string, overwrite bool) int {
-		$if linux && (amd64 || arm64) && !v_bare_no_startup ? {
+		$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
 			return unsafe { C.setenv(&char(key.str), &char(text.str), int(overwrite)) }
 		}
 		name := fsys_environment_prefix(key)
@@ -195,7 +199,7 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 
 	@[manualfree]
 	fn fsys_environment_unset(key string) int {
-		$if linux && (amd64 || arm64) && !v_bare_no_startup ? {
+		$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
 			return unsafe { C.unsetenv(&char(key.str)) }
 		}
 		name := fsys_environment_prefix(key)
@@ -229,7 +233,7 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 
 	@[manualfree]
 	fn fsys_environment_clear() {
-		$if linux && (amd64 || arm64) && !v_bare_no_startup ? {
+		$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
 			C.clearenv()
 			return
 		}
@@ -247,7 +251,7 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 
 	@[manualfree]
 	fn fsys_environment_all() map[string]string {
-		$if linux && (amd64 || arm64) && !v_bare_no_startup ? {
+		$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
 			C.v_freestanding_environment_lock()
 			defer { C.v_freestanding_environment_unlock() }
 			mut values := map[string]string{}

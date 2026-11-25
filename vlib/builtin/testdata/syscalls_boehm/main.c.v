@@ -1,5 +1,7 @@
 module main
 
+import os
+
 $if !freestanding {
 	$compile_error('the syscall runtime is required')
 }
@@ -9,6 +11,8 @@ $if !gcboehm ? {
 
 #include <gc.h>
 
+fn C.getenv(const_name &char) &char
+fn C.setenv(const_name &char, const_value &char, overwrite i32) i32
 fn C.GC_get_heap_size() uint
 fn C.GC_get_total_bytes() uint
 fn C.GC_thread_is_registered() i32
@@ -30,6 +34,16 @@ fn worker() bool {
 }
 
 fn main() {
+	$if no_system_libc ? {
+		if os.setenv('V_BARE_BOEHM_ENV', 'from V', true) != 0 { exit(94) }
+		from_v := C.getenv(c'V_BARE_BOEHM_ENV')
+		if from_v == unsafe { nil } || unsafe { cstring_to_vstring(from_v) } != 'from V' {
+			exit(95)
+		}
+		if C.setenv(c'V_BARE_BOEHM_ENV', c'from C', 1) != 0 || os.environ()['V_BARE_BOEHM_ENV'] != 'from C' {
+			exit(96)
+		}
+	}
 	if !gc_is_enabled() { exit(91) }
 	start := C.GC_get_total_bytes()
 	initial_heap := C.GC_get_heap_size()

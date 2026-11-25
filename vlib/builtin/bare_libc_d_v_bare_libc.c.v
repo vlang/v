@@ -51,17 +51,21 @@ fn memmove(dest voidptr, const_src voidptr, n uint) voidptr {
 	return C.memmove(dest, const_src, n)
 }
 
-fn bare_read(buffer &u8, count u64) (i64, Errno) {
-	return sys_read(0, buffer, count)
-}
-
 // bare_print writes directly to standard output through the kernel runtime.
 pub fn bare_print(buffer &u8, count u64) {
-	sys_write(1, buffer, count)
+	$if i386 {
+		sys_write(1, buffer, count)
+	} $else {
+		bf_write(1, buffer, int(count))
+	}
 }
 
 fn bare_eprint(buffer &u8, count u64) {
-	sys_write(2, buffer, count)
+	$if i386 {
+		sys_write(2, buffer, count)
+	} $else {
+		bf_write(2, buffer, int(count))
+	}
 }
 
 @[noreturn]

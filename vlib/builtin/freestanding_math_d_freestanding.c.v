@@ -7,7 +7,7 @@ module builtin
 // into this file. linux_bare/exports_d_freestanding.v carries the Linux C
 // backend's set, and a freestanding macOS program still links libSystem.
 
-$if freestanding && ((native && linux) || (!i386 && (freebsd || netbsd || dragonfly || solaris))) {
+$if freestanding && !v_bare_libc ?&& ((native && linux) || (!i386 && (freebsd || netbsd || dragonfly || solaris))) {
 	@[export: 'fabs']
 	@[markused]
 	fn bf_fabs(x f64) f64 {
@@ -135,7 +135,7 @@ $if freestanding && ((native && linux) || (!i386 && (freebsd || netbsd || dragon
 	}
 }
 
-$if freestanding && native && linux {
+$if freestanding && !v_bare_libc ?&& native && linux {
 	// posix_memalign returns `size` bytes at an address that is a multiple of
 	// `alignment`, a power of two and a multiple of the pointer size. Alignments up to
 	// the plain allocator's own alignment come from it; larger ones take the aligned path.

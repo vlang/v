@@ -94,6 +94,10 @@ fn v3_build_vlibc_shim(dir string, cc string, target pref.Target, target_args []
 		if !public[name] { private[name] = true }
 	}
 	for name in shim_globals(nm, combined)! {
+		if name in ['v_freestanding_environment_lock', 'v_freestanding_environment_unlock',
+			'v_freestanding_environment_get_locked'] {
+			continue
+		}
 		if name.starts_with('v_') || name.starts_with('__v_') { private[name] = true }
 	}
 	list := os.join_path(work, 'private-symbols')
