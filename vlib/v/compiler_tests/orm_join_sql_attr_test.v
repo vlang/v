@@ -36,6 +36,31 @@ fn orm_join_sql_attr_write_project_file(root string, rel string, src string) {
 	os.write_file(path, src) or { panic(err) }
 }
 
+fn orm_join_sql_attr_run_batch(cases map[string]string) {
+	root := os.join_path(os.vtmp_dir(), 'v3_orm_sql_attr_batch_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for name, source in cases {
+		module_name := 'fixture_${imports.len}'
+		imports << 'import ${module_name}'
+		calls << "\t\t'${name}' { ${module_name}.exercise() }"
+		fixture := 'module ${module_name}\n\n' + source
+		orm_join_sql_attr_write_project_file(root, '${module_name}/${name}.v', fixture.replace_once('\nfn main()',
+			'\npub fn exercise()'))
+	}
+	orm_join_sql_attr_write_project_file(root, 'main.v', "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n")
+	bin_path := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, '-enable-globals', '-b', 'c', '-o', bin_path, root])
+	assert compile.exit_code == 0, compile.output
+	for name, _ in cases {
+		run := os.exec([bin_path, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == '', '${name}: unexpected output\n${run.output}'
+	}
+}
+
 fn orm_join_sql_attr_run_project(name string, files map[string]string) string {
 	root := os.join_path(os.vtmp_dir(), 'v3_${name}_project_${tempname.unique_token()}')
 	os.mkdir(root) or { panic(err) }
@@ -158,7 +183,8 @@ fn main() {
 }
 
 fn test_v3_static_where_and_join_sql_attribute_regressions() {
-	limit_out := orm_join_sql_attr_run('orm_limit_zero', "import db.sqlite
+	orm_join_sql_attr_run_batch({
+		'orm_limit_zero':            "import db.sqlite
 
 struct LimitUser {
 	id int @[primary; sql: serial]
@@ -202,10 +228,8 @@ fn main() {
 	}
 	panic('expected negative runtime LIMIT to fail, got \${negative_rows.len} rows')
 }
-")
-	assert limit_out == ''
-
-	selector_db_out := orm_join_sql_attr_run('orm_selector_db_receiver', "import db.sqlite
+"
+		'orm_selector_db_receiver':  "import db.sqlite
 
 struct SelectorDbApp {
 mut:
@@ -243,10 +267,8 @@ fn main() {
 	assert rows.len == 1
 	assert rows[0].name == 'Alice'
 }
-")
-	assert selector_db_out == ''
-
-	mutated_insert_out := orm_join_sql_attr_run('orm_mutated_insert_fields', 'import db.sqlite
+"
+		'orm_mutated_insert_fields': 'import db.sqlite
 
 struct MutatedInsertUser {
 	id int @[primary; sql: serial]
@@ -276,10 +298,8 @@ fn main() {
 	assert rows.len == 1
 	assert rows[0].name == \'Ada\'
 }
-')
-	assert mutated_insert_out == ''
-
-	selector_insert_out := orm_join_sql_attr_run('orm_selector_insert_value', 'import db.sqlite
+'
+		'orm_selector_insert_value': 'import db.sqlite
 
 struct SelectorInsertUser {
 	id int @[primary]
@@ -332,8 +352,8 @@ fn main() {
 	assert updated.len == 1
 	assert updated[0].name == \'Grace\'
 }
-')
-	assert selector_insert_out == ''
+'
+	})
 
 	invalid_result := orm_join_sql_attr_compile('orm_invalid_static_where', "import db.sqlite
 
@@ -371,7 +391,8 @@ fn main() {
 	assert invalid_result.exit_code != 0
 	assert invalid_result.output.contains("ORM: left side of the `==` expression must be one of the `InvalidWhereUser`'s fields"), invalid_result.output
 
-	signed_out := orm_join_sql_attr_run('orm_signed_static_where', "import db.sqlite
+	orm_join_sql_attr_run_batch({
+		'orm_signed_static_where':        "import db.sqlite
 
 struct SignedScoreUser {
 	id int @[primary; sql: serial]
@@ -407,10 +428,8 @@ fn main() {
 	assert rows.len == 1
 	assert rows[0].score == -1
 }
-")
-	assert signed_out == ''
-
-	mixed_result_out := orm_join_sql_attr_run('orm_mixed_result_failure', "import db.sqlite
+"
+		'orm_mixed_result_failure':       "import db.sqlite
 
 struct MixedResultUser {
 	id int @[primary]
@@ -449,10 +468,8 @@ fn main() {
 	}
 	panic('expected failed mixed-result SQL block to fail')
 }
-")
-	assert mixed_result_out == ''
-
-	final_type_out := orm_join_sql_attr_run('orm_sql_final_statement_type', "import db.sqlite
+"
+		'orm_sql_final_statement_type':   "import db.sqlite
 
 struct FinalTypeUser {
 	id int @[primary]
@@ -490,10 +507,8 @@ fn main() {
 	}!
 	assert upsert_id >= 0
 }
-")
-	assert final_type_out == ''
-
-	expr_out := orm_join_sql_attr_run('orm_static_where_expr_rhs', "import db.sqlite
+"
+		'orm_static_where_expr_rhs':      "import db.sqlite
 
 struct ExprWhereUser {
 	id int @[primary]
@@ -526,10 +541,8 @@ fn main() {
 	assert rows.len == 1
 	assert rows[0].name == 'Alice'
 }
-")
-	assert expr_out == ''
-
-	indexed_expr_out := orm_join_sql_attr_run('orm_static_where_index_expr', "import db.sqlite
+"
+		'orm_static_where_index_expr':    "import db.sqlite
 
 struct IndexedExprWhereUser {
 	id int @[primary]
@@ -562,10 +575,8 @@ fn main() {
 	assert rows.len == 1
 	assert rows[0].name == 'Alice'
 }
-")
-	assert indexed_expr_out == ''
-
-	static_is_out := orm_join_sql_attr_run('orm_static_is_rejects_non_null', "import db.sqlite
+"
+		'orm_static_is_rejects_non_null': "import db.sqlite
 
 struct StaticIsUser {
 	id int @[primary]
@@ -598,10 +609,8 @@ fn main() {
 	}
 	panic('expected static IS with non-null value to fail, got \${rows.len} rows')
 }
-")
-	assert static_is_out == ''
-
-	unfiltered_mutation_out := orm_join_sql_attr_run('orm_unfiltered_update_delete', "import db.sqlite
+"
+		'orm_unfiltered_update_delete':   "import db.sqlite
 
 struct UnfilteredMutationUser {
 	id int @[primary]
@@ -652,10 +661,8 @@ fn main() {
 	assert rows.len == 1
 	assert rows[0].name == 'Ada'
 }
-")
-	assert unfiltered_mutation_out == ''
-
-	mutation_tail_out := orm_join_sql_attr_run('orm_mutation_tail_rejected', "import db.sqlite
+"
+		'orm_mutation_tail_rejected':     "import db.sqlite
 
 struct TailMutationUser {
 	id int @[primary]
@@ -715,10 +722,8 @@ fn main() {
 	}!
 	assert after_delete.len == 2
 }
-")
-	assert mutation_tail_out == ''
-
-	static_or_fallback_out := orm_join_sql_attr_run('orm_static_where_or_fallback', "import db.sqlite
+"
+		'orm_static_where_or_fallback':   "import db.sqlite
 
 struct StaticOrFallbackUser {
 	id int @[primary]
@@ -753,8 +758,8 @@ fn main() {
 	assert rows.len == 1
 	assert rows[0].name == 'Ada'
 }
-")
-	assert static_or_fallback_out == ''
+"
+	})
 
 	generic_after_select_compile := orm_join_sql_attr_compile('orm_generic_after_select', "import db.sqlite
 
