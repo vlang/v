@@ -1597,14 +1597,14 @@ fn test_pr_review_codegen_batch_four() {
 	// A `&Box{...}` value must not be accepted where a `Box[int]` value is expected
 	// (pointer shape must match in the generic-base relaxation).
 	run_bad(v3_bin, 'bad_generic_pointer_shape_arg', 'struct Box[T] {\n\tv T\n}\nfn take(b Box[int]) int {\n\treturn b.v\n}\nfn main() {\n\t_ := take(&Box{\n\t\tv: 1\n\t})\n}\n', 'cannot use')
-	// A method value on a concrete generic receiver resolves the open `Box[T].get`,
-	// types the value, and codegen materialises the `Box_int__get` wrapper.
-	mval := run_good(v3_bin, 'good_generic_receiver_method_value', 'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) get() T {\n\treturn b.v\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 7\n\t}\n\tprintln(int_str(run(b.get)))\n}\n')
-	assert mval == '7'
-	// A V function passed to a parameter whose type is a `fn`-type *alias* keeps the
-	// function pointer (not `(void*)`).
-	alias_cb := run_good(v3_bin, 'good_fn_type_alias_callback', 'type Cb = fn () int\nfn run(cb Cb) int {\n\treturn cb()\n}\nfn five() int {\n\treturn 5\n}\nfn main() {\n\tprintln(int_str(run(five)))\n}\n')
-	assert alias_cb == '5'
+	run_good_module_batch(v3_bin, 'callback_arguments', [
+		// A method value on a concrete generic receiver resolves the open `Box[T].get`,
+		// types the value, and codegen materialises the `Box_int__get` wrapper.
+		TypeCheckerRuntimeCase{'good_generic_receiver_method_value', 'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) get() T {\n\treturn b.v\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 7\n\t}\n\tprintln(int_str(run(b.get)))\n}\n', '7'},
+		// A V function passed to a parameter whose type is a `fn`-type *alias* keeps the
+		// function pointer (not `(void*)`).
+		TypeCheckerRuntimeCase{'good_fn_type_alias_callback', 'type Cb = fn () int\nfn run(cb Cb) int {\n\treturn cb()\n}\nfn five() int {\n\treturn 5\n}\nfn main() {\n\tprintln(int_str(run(five)))\n}\n', '5'},
+	])
 }
 
 // Regression tests for the fifth PR-review batch (vlang/v#27557).
@@ -1702,18 +1702,17 @@ fn test_pr_review_codegen_batch_ten() {
 
 // Regression tests for the eleventh PR-review batch (vlang/v#27557).
 fn test_pr_review_codegen_batch_eleven() {
-	// Each stored method value owns a per-instance receiver context, so callbacks
-	// appended from the same evaluation site keep distinct receivers.
-	appended := run_good(v3_bin, 'good_method_value_array_append', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tmut cbs := []fn () int{}\n\tfor i in 0 .. 3 {\n\t\tc := Counter{\n\t\t\tid: i * 10\n\t\t}\n\t\tcbs << c.report\n\t}\n\tprintln(int_str(cbs[0]()) + "," + int_str(cbs[1]()) + "," + int_str(cbs[2]()))\n}\n')
-	assert appended == '0,10,20'
-	// Array literals retain their bound receivers too.
-	literal := run_good(v3_bin, 'good_method_value_array_literal', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\ta := Counter{\n\t\tid: 1\n\t}\n\tb := Counter{\n\t\tid: 2\n\t}\n\tcbs := [a.report, b.report]\n\tprintln(int_str(cbs[0]()) + "," + int_str(cbs[1]()))\n}\n')
-	assert literal == '1,2'
-	// The supported single-use forms still work: a method value passed directly as a
-	// callback argument, and an `arr << int` append / `int << int` shift are not flagged.
-	imm := run_good(v3_bin, 'good_method_value_immediate_after_guard', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut xs := [1]\n\txs << (2 << 1)\n\tprintln(int_str(run(c.report) + xs.len))\n}\n')
-	// 7 + 2 (xs has [1, 4]) = 9
-	assert imm == '9'
+	run_good_module_batch(v3_bin, 'method_value_arrays', [
+		// Each stored method value owns a per-instance receiver context, so callbacks
+		// appended from the same evaluation site keep distinct receivers.
+		TypeCheckerRuntimeCase{'good_method_value_array_append', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tmut cbs := []fn () int{}\n\tfor i in 0 .. 3 {\n\t\tc := Counter{\n\t\t\tid: i * 10\n\t\t}\n\t\tcbs << c.report\n\t}\n\tprintln(int_str(cbs[0]()) + "," + int_str(cbs[1]()) + "," + int_str(cbs[2]()))\n}\n', '0,10,20'},
+		// Array literals retain their bound receivers too.
+		TypeCheckerRuntimeCase{'good_method_value_array_literal', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\ta := Counter{\n\t\tid: 1\n\t}\n\tb := Counter{\n\t\tid: 2\n\t}\n\tcbs := [a.report, b.report]\n\tprintln(int_str(cbs[0]()) + "," + int_str(cbs[1]()))\n}\n', '1,2'},
+		// The supported single-use forms still work: a method value passed directly as a
+		// callback argument, and an `arr << int` append / `int << int` shift are not flagged.
+		// 7 + 2 (xs has [1, 4]) = 9
+		TypeCheckerRuntimeCase{'good_method_value_immediate_after_guard', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut xs := [1]\n\txs << (2 << 1)\n\tprintln(int_str(run(c.report) + xs.len))\n}\n', '9'},
+	])
 }
 
 // Regression tests for the twelfth PR-review batch (vlang/v#27557).
@@ -1752,21 +1751,19 @@ fn test_pr_review_codegen_batch_fourteen() {
 	assert nondec == '34'
 	// The length guard evaluates non-decimal too: `[1, 2]` does not match `[0xF & 6]int`.
 	run_bad(v3_bin, 'bad_non_decimal_fixed_array_literal_len', 'fn take(a [0xF & 6]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use')
-	// A generic-receiver method with a function-type parameter substitutes the type params
-	// inside the signature, so `Box[string].apply` expects `fn (string) int`, and a matching
-	// callback is accepted and emitted with the right fn-pointer type.
-	apply := run_good(v3_bin, 'good_generic_method_fn_type_param', "struct Box[T] {\n\tv T\n}\nfn (b Box[T]) apply(cb fn (T) int) int {\n\treturn cb(b.v)\n}\nfn slen(s string) int {\n\treturn s.len\n}\nfn main() {\n\tb := Box[string]{\n\t\tv: 'hello'\n\t}\n\tprintln(int_str(b.apply(slen)))\n}\n")
-	assert apply == '5'
-	// The same substitution also handles named parameters inside the callback type:
-	// `fn (x T) int` specializes the type part to `fn (int) int`.
-	named_cb := run_good(v3_bin, 'good_generic_fn_named_callback_param', 'fn run[T](cb fn (x T) int, v T) int {\n\treturn cb(v)\n}\nfn inc(x int) int {\n\treturn x + 1\n}\nfn main() {\n\tprintln(int_str(run(inc, 4)))\n}\n')
-	assert named_cb == '5'
-	// Escaped method values carry durable receiver contexts when returned from
-	// factories or stored in struct fields.
-	returned := run_good(v3_bin, 'good_method_value_return_escape', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn make_callback(c Counter) fn () int {\n\treturn c.report\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(cb()))\n}\n')
-	assert returned == '1'
-	stored := run_good(v3_bin, 'good_method_value_struct_field_escape', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nstruct Engine {\n\tcb fn () int\n}\nfn main() {\n\te := Engine{\n\t\tcb: Counter{\n\t\t\tid: 2\n\t\t}.report\n\t}\n\tprintln(int_str(e.cb()))\n}\n')
-	assert stored == '2'
+	run_good_module_batch(v3_bin, 'callback_specialization_and_escape', [
+		// A generic-receiver method with a function-type parameter substitutes the type params
+		// inside the signature, so `Box[string].apply` expects `fn (string) int`, and a matching
+		// callback is accepted and emitted with the right fn-pointer type.
+		TypeCheckerRuntimeCase{'good_generic_method_fn_type_param', "struct Box[T] {\n\tv T\n}\nfn (b Box[T]) apply(cb fn (T) int) int {\n\treturn cb(b.v)\n}\nfn slen(s string) int {\n\treturn s.len\n}\nfn main() {\n\tb := Box[string]{\n\t\tv: 'hello'\n\t}\n\tprintln(int_str(b.apply(slen)))\n}\n", '5'},
+		// The same substitution also handles named parameters inside the callback type:
+		// `fn (x T) int` specializes the type part to `fn (int) int`.
+		TypeCheckerRuntimeCase{'good_generic_fn_named_callback_param', 'fn run[T](cb fn (x T) int, v T) int {\n\treturn cb(v)\n}\nfn inc(x int) int {\n\treturn x + 1\n}\nfn main() {\n\tprintln(int_str(run(inc, 4)))\n}\n', '5'},
+		// Escaped method values carry durable receiver contexts when returned from
+		// factories or stored in struct fields.
+		TypeCheckerRuntimeCase{'good_method_value_return_escape', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn make_callback(c Counter) fn () int {\n\treturn c.report\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(cb()))\n}\n', '1'},
+		TypeCheckerRuntimeCase{'good_method_value_struct_field_escape', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nstruct Engine {\n\tcb fn () int\n}\nfn main() {\n\te := Engine{\n\t\tcb: Counter{\n\t\t\tid: 2\n\t\t}.report\n\t}\n\tprintln(int_str(e.cb()))\n}\n', '2'},
+	])
 }
 
 fn test_pr_review_codegen_batch_fifteen() {
@@ -1816,16 +1813,12 @@ fn test_pr_review_codegen_batch_seventeen() {
 fn test_pr_review_codegen_batch_eighteen() {
 	// A method-value local retains its receiver when returned or appended to an array.
 	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\n'
-	returned := run_good(v3_bin, 'good_method_value_local_return_escape', mv +
-		'fn make_callback(c Counter) fn () int {\n\tcb := c.report\n\treturn cb\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(cb()))\n}\n')
-	assert returned == '1'
-	appended := run_good(v3_bin, 'good_method_value_local_append_escape', mv +
-		'fn collect(c Counter) []fn () int {\n\tmut arr := []fn () int{}\n\tcb := c.report\n\tarr << cb\n\treturn arr\n}\nfn main() {\n\tarr := collect(Counter{\n\t\tid: 2\n\t})\n\tprintln(int_str(arr[0]()))\n}\n')
-	assert appended == '2'
-	// A method-value local passed straight to a callback parameter does not escape and stays valid.
-	direct := run_good(v3_bin, 'good_method_value_local_direct_use', mv +
-		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tcb := c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
-	assert direct == '7'
+	run_good_module_batch(v3_bin, 'local_method_value_escapes', [
+		TypeCheckerRuntimeCase{'good_method_value_local_return_escape', mv + 'fn make_callback(c Counter) fn () int {\n\tcb := c.report\n\treturn cb\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(cb()))\n}\n', '1'},
+		TypeCheckerRuntimeCase{'good_method_value_local_append_escape', mv + 'fn collect(c Counter) []fn () int {\n\tmut arr := []fn () int{}\n\tcb := c.report\n\tarr << cb\n\treturn arr\n}\nfn main() {\n\tarr := collect(Counter{\n\t\tid: 2\n\t})\n\tprintln(int_str(arr[0]()))\n}\n', '2'},
+		// A method-value local passed straight to a callback parameter does not escape and stays valid.
+		TypeCheckerRuntimeCase{'good_method_value_local_direct_use', mv + 'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tcb := c.report\n\tprintln(int_str(invoke(cb)))\n}\n', '7'},
+	])
 	// A bare heap generic literal (`&Box{v: 1}` where `&Box[int]` is expected) must read its
 	// omitted-field defaults from the concrete instance key: monomorphization drops the bare `Box`
 	// entry, so an omitted `items []T` needs its `array_new` default or the field has invalid
@@ -1939,17 +1932,16 @@ fn test_pr_review_codegen_batch_twentythree() {
 }
 
 fn test_fn_pointer_return_type() {
-	// A function whose return type is itself a function pointer (`fn () fn (int) int`) must be
-	// declared with the shared `_fn_ptr_N` typedef, not the internal `fn_ptr:...` encoding (which
-	// would emit invalid C). Covers a plain fn return and a method returning a fn pointer.
-	picker := run_good(v3_bin, 'good_fn_pointer_return', 'fn add_one(x int) int {\n\treturn x + 1\n}\nfn picker() fn (int) int {\n\treturn add_one\n}\nfn main() {\n\tf := picker()\n\tprintln(int_str(f(41)))\n}\n')
-	assert picker == '42'
-	method_ret := run_good(v3_bin, 'good_method_fn_pointer_return', 'struct Calc {\n\tbase int\n}\nfn dbl(x int) int {\n\treturn x * 2\n}\nfn (c Calc) op() fn (int) int {\n\treturn dbl\n}\nfn main() {\n\tc := Calc{\n\t\tbase: 5\n\t}\n\tf := c.op()\n\tprintln(int_str(f(21)))\n}\n')
-	assert method_ret == '42'
-	// A function returning a callback assembled from a reassigned method-value local compiles and
-	// returns the (plain) callback through the fn-pointer return type.
-	built := run_good(v3_bin, 'good_fn_pointer_return_reassigned_method_value', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn plain() int {\n\treturn 7\n}\nfn build_cb(c Counter) fn () int {\n\tmut cb := c.report\n\tcb = plain\n\treturn cb\n}\nfn main() {\n\tf := build_cb(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(f()))\n}\n')
-	assert built == '7'
+	run_good_module_batch(v3_bin, 'function_pointer_returns', [
+		// A function whose return type is itself a function pointer (`fn () fn (int) int`) must be
+		// declared with the shared `_fn_ptr_N` typedef, not the internal `fn_ptr:...` encoding (which
+		// would emit invalid C). Covers a plain fn return and a method returning a fn pointer.
+		TypeCheckerRuntimeCase{'good_fn_pointer_return', 'fn add_one(x int) int {\n\treturn x + 1\n}\nfn picker() fn (int) int {\n\treturn add_one\n}\nfn main() {\n\tf := picker()\n\tprintln(int_str(f(41)))\n}\n', '42'},
+		TypeCheckerRuntimeCase{'good_method_fn_pointer_return', 'struct Calc {\n\tbase int\n}\nfn dbl(x int) int {\n\treturn x * 2\n}\nfn (c Calc) op() fn (int) int {\n\treturn dbl\n}\nfn main() {\n\tc := Calc{\n\t\tbase: 5\n\t}\n\tf := c.op()\n\tprintln(int_str(f(21)))\n}\n', '42'},
+		// A function returning a callback assembled from a reassigned method-value local compiles and
+		// returns the (plain) callback through the fn-pointer return type.
+		TypeCheckerRuntimeCase{'good_fn_pointer_return_reassigned_method_value', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn plain() int {\n\treturn 7\n}\nfn build_cb(c Counter) fn () int {\n\tmut cb := c.report\n\tcb = plain\n\treturn cb\n}\nfn main() {\n\tf := build_cb(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(f()))\n}\n', '7'},
+	])
 }
 
 fn test_const_length_fixed_array() {
