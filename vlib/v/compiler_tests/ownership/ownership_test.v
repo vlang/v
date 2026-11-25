@@ -4439,3 +4439,70 @@ fn main() {}
 	assert forward.exit_code != 0, forward.output
 	assert forward.output.contains('needs `T` to satisfy `thread.Shareable`'), forward.output
 }
+
+fn test_ownership_transfers_an_audited_native_resource() {
+	v3_bin := ownership_build_v3()
+	name := 'native_thread_transfer'
+	result := run_ownership_check(v3_bin, name, r'
+@[unsafe_thread_transfer]
+struct Buffer implements Drop {
+	ptr &int
+	released chan bool
+}
+
+fn (mut buffer Buffer) drop() {
+	unsafe { free(buffer.ptr) }
+	buffer.released <- true
+}
+
+fn worker(buffer Buffer) int {
+	return *buffer.ptr
+}
+
+fn main() {
+	released := chan bool{cap: 2}
+	ptr := unsafe {
+		value := &int(malloc(sizeof(int)))
+		*value = 42
+		value
+	}
+	buffer := Buffer{ptr: ptr, released: released}
+	job := spawn worker(buffer)
+	assert job.wait() == 42
+	mut flag := false
+	assert released.try_pop(mut flag) == .success
+	assert flag
+	assert released.try_pop(mut flag) == .not_ready
+}
+')
+	assert result.exit_code == 0, result.output
+	binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+
+	invalid := run_ownership_check(v3_bin, 'native_thread_share', r'
+import sync.arc
+
+@[unsafe_thread_transfer]
+struct NativeBuffer {
+	ptr &int
+}
+
+struct BorrowedBuffer {
+	ptr &int
+}
+
+fn share_native(buffer arc.Arc[NativeBuffer]) {}
+fn move_borrow(buffer BorrowedBuffer) {}
+
+fn main() {
+	count := 42
+	shared_buffer := arc.new(NativeBuffer{ptr: &count})
+	_ := spawn share_native(shared_buffer)
+	_ := spawn move_borrow(BorrowedBuffer{ptr: &count})
+}
+')
+	assert invalid.exit_code != 0, invalid.output
+	assert invalid.output.contains('cannot transfer `arc.Arc[NativeBuffer]` as thread argument: field `ptr`'), invalid.output
+	assert invalid.output.contains('cannot transfer `BorrowedBuffer` as thread argument: field `ptr`'), invalid.output
+}

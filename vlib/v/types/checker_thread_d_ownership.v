@@ -158,6 +158,9 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability Thre
 			if flat.source_type_query(name_id).has(.c_prefix) {
 				return 'the C type has no V ownership information'
 			}
+			if capability == .transfer && tc.type_has_declaration_attribute(Type(typ), 'unsafe_thread_transfer') {
+				return none
+			}
 			if payload := tc.thread_wait_return_type(typ) {
 				return tc.ownership_thread_transfer_problem(payload, .transfer, depth + 1, mut seen)
 			}

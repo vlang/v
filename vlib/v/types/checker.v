@@ -19356,6 +19356,7 @@ const builtin_attribute_names = [
 	'unique_key',
 	'union',
 	'unsafe',
+	'unsafe_thread_transfer',
 	'unscoped',
 	'version',
 	'wasm_import_namespace',

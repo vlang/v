@@ -429,6 +429,12 @@ fn receive_owned[T thread.Transferable](value T) T {
 }
 ```
 
+A V struct that owns an opaque native resource can declare
+`@[unsafe_thread_transfer]`. The declaration asserts that each value of the
+struct can be moved to another thread, used there, and destroyed there. For a
+generic struct the guarantee applies to every specialization. Shared access
+still requires the ordinary shareability checks on the fields.
+
 An interface value or function value with an unknown implementation or capture
 list needs an explicit
 `unsafe` boundary. Use `unsafe` only when you can guarantee the lifetime and
