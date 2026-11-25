@@ -208,7 +208,7 @@ jobs:
       - name: Setup MinGW-w64 D3D11 headers for GCC
         id: setup_mingw_w64_d3d11_headers_for_gcc
         if: ${{ success() && !cancelled() && steps.compile_vup_v_with_prod.outcome == 'success' }}
-        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        uses: msys2/setup-msys2@3c51bf698df1e37b2261f53cb67797b97761185c # v2.34.0
         with:
           msystem: UCRT64
           update: true
@@ -540,7 +540,7 @@ jobs:
       - name: Setup MinGW-w64 D3D11 headers for GCC and Clang
         id: setup_mingw_w64_d3d11_headers_for_gcc_and_clang
         if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a1_public_green.outcome == 'success' }}
-        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        uses: msys2/setup-msys2@3c51bf698df1e37b2261f53cb67797b97761185c # v2.34.0
         with:
           msystem: UCRT64
           update: true
