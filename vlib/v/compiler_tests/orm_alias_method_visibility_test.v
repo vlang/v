@@ -145,11 +145,6 @@ fn sql_alias_visibility_import(source string, import_name string) string {
 }
 
 fn sql_alias_visibility_result(name string, is_public bool, expression string, query SqlAliasVisibilityQuery, check_only bool, is_type_public bool, import_name string) os.Result {
-	return sql_alias_visibility_wrapped_result(name, is_public, expression, query,
-		check_only, is_type_public, import_name, '', '')
-}
-
-fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression string, query SqlAliasVisibilityQuery, check_only bool, is_type_public bool, import_name string, wrapper string, lock_receiver string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_sql_alias_visibility_${name}_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'aliases')) or { panic(err) }
@@ -159,8 +154,7 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 	module_source := sql_alias_visibility_module_source(is_public, is_type_public)
 	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'), module_source) or { panic(err) }
 	source := os.join_path(dir, 'main.v')
-	main_source := sql_alias_visibility_wrapped_source(expression, query, import_name, wrapper,
-		lock_receiver)
+	main_source := sql_alias_visibility_wrapped_source(expression, query, import_name, '', '')
 	os.write_file(source, main_source) or { panic(err) }
 	executable := os.join_path(dir, 'main.exe')
 	flags := if check_only { '-check' } else { '' }
@@ -473,35 +467,15 @@ fn test_mut_alias_methods_keep_ordinary_storage_exceptions_in_sql_values() {
 fn test_alias_methods_require_ordinary_shared_locks_in_sql_values() {
 	for method in ['mutate', 'inspect', 'clone'] {
 		import_name := if method == 'inspect' { 'renamed' } else { 'aliases' }
-		for wrapper in ['', 'rlock', 'lock'] {
-			valid := wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock')
-			for query in sql_alias_visibility_queries(valid) {
-				for check_only in [false, true] {
-					result := sql_alias_visibility_wrapped_result('shared_${method}_${wrapper}_${query}_${check_only}',
-						true, 'shared_values.${method}()[0].name', query, check_only,
-						true, import_name, wrapper, 'shared_values')
-					if valid {
-						assert result.exit_code == 0, result.output
-					} else {
-						assert result.exit_code != 0, result.output
-						if method == 'clone' {
-							assert result.output.contains('must be `rlock`ed or `lock`ed'), result.output
-						} else if wrapper == 'rlock' {
-							assert result.output.contains('has an `rlock` but needs a `lock`'), result.output
-						} else {
-							assert result.output.contains('is `shared` and must be `lock`ed'), result.output
-						}
-					}
-				}
-			}
-		}
+		check_sql_alias_lock_matrix(['shared_values'], method, import_name, false)!
 	}
 }
 
 struct SqlAliasLockCase {
-	receiver   string
-	wrapper    string
-	diagnostic string
+	expression    string
+	lock_receiver string
+	wrapper       string
+	diagnostic    string
 }
 
 fn check_sql_alias_lock_batch(cases []SqlAliasLockCase, method string, import_name string, valid bool) ! {
@@ -518,8 +492,8 @@ fn check_sql_alias_lock_batch(cases []SqlAliasLockCase, method string, import_na
 			name := 'fixture_${i}_${query}'
 			fixture_dir := os.join_path(dir, name)
 			os.mkdir(fixture_dir)!
-			program := sql_alias_visibility_wrapped_source('${case.receiver}.${method}()[0].name',
-				query, import_name, case.wrapper, case.receiver)
+			program := sql_alias_visibility_wrapped_source(case.expression, query, import_name,
+				case.wrapper, case.lock_receiver)
 				.replace_once('module main', 'module ${name}')
 				.replace_once('fn main() {', 'pub fn exercise() ! {')
 			os.write_file(os.join_path(fixture_dir, '${name}.v'), program)!
@@ -550,90 +524,53 @@ fn check_sql_alias_lock_batch(cases []SqlAliasLockCase, method string, import_na
 	}
 }
 
-fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_values() {
-	for method in ['mutate', 'clone'] {
-		import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
-		mut cases := []SqlAliasLockCase{}
-		for receiver in ['shared_items[0]', '(shared_collection.values)[0]', 'parameter_items[0]',
-			"holders['primary'].values", "(holders [ 'primary' ]).values"] {
-			for wrapper in ['', 'rlock', 'lock'] {
-				diagnostic := if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
-					''
-				} else if method == 'clone' {
-					'must be `rlock`ed or `lock`ed'
-				} else if wrapper == 'rlock' {
-					'has an `rlock` but needs a `lock`'
-				} else {
-					'is `shared` and must be `lock`ed'
-				}
-				cases << SqlAliasLockCase{
-					receiver:   receiver
-					wrapper:    wrapper
-					diagnostic: diagnostic
-				}
+fn check_sql_alias_lock_matrix(lock_receivers []string, method string, import_name string, lock_whole_array bool) ! {
+	mut cases := []SqlAliasLockCase{}
+	for lock_receiver in lock_receivers {
+		receiver := if lock_whole_array { '${lock_receiver}[0]' } else { lock_receiver }
+		for wrapper in ['', 'rlock', 'lock'] {
+			diagnostic := if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
+				''
+			} else if method == 'clone' {
+				'must be `rlock`ed or `lock`ed'
+			} else if wrapper == 'rlock' {
+				'has an `rlock` but needs a `lock`'
+			} else {
+				'is `shared` and must be `lock`ed'
+			}
+			cases << SqlAliasLockCase{
+				expression:    '${receiver}.${method}()[0].name'
+				lock_receiver: lock_receiver
+				wrapper:       wrapper
+				diagnostic:    diagnostic
 			}
 		}
-		check_sql_alias_lock_batch(cases.filter(it.diagnostic == ''), method, import_name, true)!
-		check_sql_alias_lock_batch(cases.filter(it.diagnostic != ''), method, import_name, false)!
+	}
+	check_sql_alias_lock_batch(cases.filter(it.diagnostic == ''), method, import_name, true)!
+	check_sql_alias_lock_batch(cases.filter(it.diagnostic != ''), method, import_name, false)!
+}
+
+fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_values() {
+	receivers := ['shared_items[0]', '(shared_collection.values)[0]', 'parameter_items[0]',
+		"holders['primary'].values", "(holders [ 'primary' ]).values"]
+	for method in ['mutate', 'clone'] {
+		import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
+		check_sql_alias_lock_matrix(receivers, method, import_name, false)!
 	}
 }
 
 fn test_alias_methods_keep_captured_shared_array_locks_in_sql_values() {
-	for i, receiver in ['closure_items[0]', 'parameter_closure_items[0]', 'nested_closure_items[0]'] {
-		for method in ['mutate', 'clone'] {
-			import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
-			for wrapper in ['', 'rlock', 'lock'] {
-				valid := wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock')
-				for query in sql_alias_visibility_queries(valid) {
-					for check_only in [false, true] {
-						result := sql_alias_visibility_wrapped_result('shared_capture_${i}_${method}_${wrapper}_${query}_${check_only}',
-							true, '${receiver}.${method}()[0].name', query, check_only,
-							true, import_name, wrapper, receiver)
-						if valid {
-							assert result.exit_code == 0, result.output
-						} else {
-							assert result.exit_code != 0, result.output
-							if method == 'clone' {
-								assert result.output.contains('must be `rlock`ed or `lock`ed'), result.output
-							} else if wrapper == 'rlock' {
-								assert result.output.contains('has an `rlock` but needs a `lock`'), result.output
-							} else {
-								assert result.output.contains('is `shared` and must be `lock`ed'), result.output
-							}
-						}
-					}
-				}
-			}
-		}
+	receivers := ['closure_items[0]', 'parameter_closure_items[0]', 'nested_closure_items[0]']
+	for method in ['mutate', 'clone'] {
+		import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
+		check_sql_alias_lock_matrix(receivers, method, import_name, false)!
 	}
 }
 
 fn test_alias_methods_keep_whole_shared_array_locks_in_sql_values() {
-	for i, name in ['whole_parameter_items', 'whole_parameter_closure_items'] {
-		for method in ['mutate', 'clone'] {
-			for wrapper in ['', 'rlock', 'lock'] {
-				valid := wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock')
-				for query in sql_alias_visibility_queries(valid) {
-					for check_only in [false, true] {
-						result := sql_alias_visibility_wrapped_result('shared_whole_${i}_${method}_${wrapper}_${query}_${check_only}',
-							true, '${name}[0].${method}()[0].name', query, check_only,
-							true, 'aliases', wrapper, name)
-						if valid {
-							assert result.exit_code == 0, result.output
-						} else {
-							assert result.exit_code != 0, result.output
-							if method == 'clone' {
-								assert result.output.contains('must be `rlock`ed or `lock`ed'), result.output
-							} else if wrapper == 'rlock' {
-								assert result.output.contains('has an `rlock` but needs a `lock`'), result.output
-							} else {
-								assert result.output.contains('is `shared` and must be `lock`ed'), result.output
-							}
-						}
-					}
-				}
-			}
-		}
+	receivers := ['whole_parameter_items', 'whole_parameter_closure_items']
+	for method in ['mutate', 'clone'] {
+		check_sql_alias_lock_matrix(receivers, method, 'aliases', true)!
 	}
 }
 
