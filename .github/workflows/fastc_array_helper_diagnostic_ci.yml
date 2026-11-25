@@ -1,0 +1,136 @@
+name: FastC array helper declaration diagnostics
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/fastc_array_helper_diagnostic_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  declarations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Original FastC regressions on unmodified compiler
+        id: original
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/fastc-array-diagnostic"
+          mkdir -p "$root"
+          failed=0
+          for cc in gcc tcc; do
+            for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v; do
+              label="$cc-$(basename "$test" .v)"
+              rc=0
+              ./v -cc "$cc" -no-retry-compilation -silent "$test" >"$root/$label.log" 2>&1 || rc=$?
+              cat "$root/$label.log"
+              printf '%s %s\n' "$label" "$rc" >>"$root/original-status.txt"
+              if [ "$rc" -ne 0 ]; then failed=1; fi
+            done
+          done
+          exit "$failed"
+      - name: Instrument a separate diagnostic compiler to retain split C
+        id: instrument
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x ./v
+          root="$RUNNER_TEMP/fastc-array-diagnostic"
+          mkdir -p "$root/split"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("vlib/v/gen/fastc/fastc.v")
+          s = p.read_text()
+          old = "text := fastc_render_c_unit(pieces, units, g, first_unit, end_unit)\n\tfile.write_string(text) or {"
+          new = """text := fastc_render_c_unit(pieces, units, g, first_unit, end_unit)
+          \tcapture := os.getenv('FASTC_DIAGNOSTIC_CAPTURE')
+          \tif capture != '' {
+          \t\tcapture_name := os.file_name(os.dir(path)) + '-' + os.file_name(path)
+          \t\tos.write_file(os.join_path(capture, capture_name), text) or {
+          \t\t\tfile.close()
+          \t\t\treturn 'diagnostic capture failed: ${err.msg()}'
+          \t\t}
+          \t}
+          \tfile.write_string(text) or {""".replace("\\t", "\t").replace("\\${", "${")
+          assert s.count(old) == 1, "unexpected split-unit writer"
+          p.write_text(s.replace(old, new))
+          PY
+          git diff -- vlib/v/gen/fastc/fastc.v | tee "$root/diagnostic-compiler.patch"
+          ./v -prod -cg -o v-diagnostic cmd/v
+          git restore -- vlib/v/gen/fastc/fastc.v
+          git diff --exit-code
+      - name: Capture minimal original cases and compare declarations
+        if: always() && !cancelled() && steps.instrument.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/fastc-array-diagnostic"
+          mkdir -p "$root/cases"
+          cat >"$root/cases/method.v" <<'V'
+          struct Item {}
+          fn (s Item) is_null(p voidptr) bool { return isnil(p) }
+          fn main() { assert Item{}.is_null(nil); println("ok") }
+          V
+          cat >"$root/cases/parenthesized.v" <<'V'
+          fn is_null(p voidptr) bool { return isnil(p) }
+          fn main() { assert is_null((nil)); println("ok") }
+          V
+          cat >"$root/cases/left_comparison.v" <<'V'
+          fn main() { p := voidptr(0); ready := true; assert nil == p; assert nil != voidptr(1); assert nil == p && ready; println("ok") }
+          V
+          cat >"$root/cases/array.v" <<'V'
+          fn main() { values := [voidptr(0), nil]; assert values.len == 2; assert isnil(values[1]); println("ok") }
+          V
+          export FASTC_DIAGNOSTIC_CAPTURE="$root/split"
+          failed=0
+          for source in "$root"/cases/*.v; do
+            label=$(basename "$source" .v)
+            for attempt in 1 2 3; do
+              out="$root/$label-$attempt"
+              rc=0
+              ./v-diagnostic -b fastc -nocache -gc none -keepc -showcc -o "$out" "$source" >"$out.build.log" 2>&1 || rc=$?
+              cat "$out.build.log"
+              printf '%s %s %s\n' "$label" "$attempt" "$rc" >>"$root/probe-status.txt"
+              if [ "$rc" -eq 0 ]; then
+                if ! "$out" >"$out.run.log" 2>&1 || ! grep -qx ok "$out.run.log"; then failed=1; fi
+              else
+                failed=1
+              fi
+            done
+          done
+          for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v; do
+            rc=0
+            label=$(basename "$test" .v)
+            ./v-diagnostic -silent "$test" >"$root/$label.instrumented.log" 2>&1 || rc=$?
+            cat "$root/$label.instrumented.log"
+            printf '%s %s\n' "$label" "$rc" >>"$root/instrumented-status.txt"
+            if [ "$rc" -ne 0 ]; then failed=1; fi
+          done
+          python3 - "$root" <<'PY'
+          import pathlib, re, sys
+          root = pathlib.Path(sys.argv[1])
+          pattern = re.compile(r'\bbuiltin__array_data_(?:header(?:_size)?|allocation_size)\s*\(')
+          with (root / 'helper-occurrences.txt').open('w') as out:
+              for path in sorted(root.rglob('*.c')):
+                  for i, line in enumerate(path.read_text(errors='replace').splitlines(), 1):
+                      if pattern.search(line):
+                          print(f'{path.relative_to(root)}:{i}: {line}', file=out)
+          PY
+          cat "$root/helper-occurrences.txt"
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fastc-array-helper-declarations
+          path: ${{ runner.temp }}/fastc-array-diagnostic
