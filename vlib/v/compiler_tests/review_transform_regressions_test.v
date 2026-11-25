@@ -10509,7 +10509,7 @@ fn main() {
 	saved := chan &Item{cap: 1}
 	selected := make_items().map(match true {
 		true {
-			saved <- unsafe { &it }
+			unsafe { saved <- &it }
 			0
 		}
 		else {
@@ -10545,7 +10545,7 @@ fn main() {
 	selected := make_items().map(match true {
 		true {
 			alias := saved
-			alias <- unsafe { &it }
+			unsafe { alias <- &it }
 			0
 		}
 		else {
@@ -10587,7 +10587,7 @@ fn main() {
 	saved := chan string{cap: 1}
 	selected := make_items().map(match true {
 		true {
-			spawn hold(unsafe { &it }, gate, saved)
+			unsafe { spawn hold(&it, gate, saved) }
 			0
 		}
 		else {
@@ -10629,8 +10629,10 @@ fn main() {
 	saved := chan string{cap: 1}
 	selected := make_items().map(match true {
 		true {
-			pointer := unsafe { &it }
-			spawn pointer.hold(gate, saved)
+			unsafe {
+				pointer := &it
+				spawn pointer.hold(gate, saved)
+			}
 			0
 		}
 		else {

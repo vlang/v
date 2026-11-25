@@ -395,6 +395,28 @@ fn main() {
 }
 ```
 
+## Thread transfers
+
+An ownership build checks the arguments and result of a `spawn` or `go` call,
+including with `-autofree`. The check follows fields, sum variants and container
+elements. A value containing a raw reference cannot cross a thread boundary.
+This also applies to values sent through channels with `<-` or `.try_push()`,
+and to errors passed to `.close()`.
+A channel can carry a concrete error with transferable fields or a message
+error from builtin `error()` or `error_with_code()`.
+
+Pass independent owned values to a worker, or use a typed channel or a `shared`
+binding for synchronized access. The standard library's `arc.Arc[T]` can cross
+a thread boundary when its payload can be transferred and shared safely.
+For example, a worker can take ownership of a `cell.RefCell[int]`. Its
+unsynchronized borrow state prevents sharing it through an `Arc`.
+An interface value or function value with an unknown implementation or capture
+list needs an explicit
+`unsafe` boundary. Use `unsafe` only when you can guarantee the lifetime and
+synchronization of the data passed across the boundary. A result type
+also needs this boundary because its error payload can hold an arbitrary
+`IError` implementation.
+
 ## Full example
 
 From the Rust book, translated to V:
