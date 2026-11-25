@@ -79,6 +79,14 @@ fn main() {
 	require(searched.exit_code == 23, 'live PATH lookup')
 	alias := os.exec(['capture-command', 'child', 'argv0'])
 	require(alias.exit_code == 0 && alias.output == 'capture-command', 'literal argv zero for PATH aliases')
+	first_dir := os.join_path(root, 'first')
+	os.mkdir_all(first_dir) or { panic(err) }
+	broken := os.join_path(first_dir, 'capture-command')
+	os.write_file(broken, '#!/nonexistent-v-capture-interpreter\n') or { panic(err) }
+	os.chmod(broken, 0o755) or { panic(err) }
+	require(os.setenv('PATH', first_dir + os.path_delimiter + root, true) == 0, 'change search path')
+	retry := os.exec(['capture-command', 'child', 'code'])
+	require(retry.exit_code == 23, 'retry PATH after missing interpreter')
 	require(os.setenv('PATH', '', true) == 0, 'empty search path')
 	local := os.exec(['capture-command', 'child', 'argv0'])
 	require(local.exit_code == 0 && local.output == 'capture-command', 'empty PATH searches current directory')

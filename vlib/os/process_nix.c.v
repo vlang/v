@@ -37,7 +37,7 @@ fn env_value_from_entries(env []string, name string) ?string {
 	return none
 }
 
-fn (p &Process) unix_resolve_filename(capture bool) !string {
+fn (p &Process) unix_resolve_filename() !string {
 	if is_abs_path(p.filename) {
 		return p.filename
 	}
@@ -47,11 +47,37 @@ fn (p &Process) unix_resolve_filename(capture bool) !string {
 		}
 		return p.filename
 	}
-	path := env_value_from_entries(p.env, 'PATH') or {
-		if !capture { return error_failed_to_find_executable() }
-		'/bin:/usr/bin'
-	}
+	path := env_value_from_entries(p.env, 'PATH') or { return error_failed_to_find_executable() }
 	return find_abs_path_of_executable_in_path_env(p.filename, path)
+}
+
+// Prepare every PATH candidate before fork. Only execve can determine whether
+// a candidate's interpreter is available, so the child must try them in order.
+@[manualfree]
+fn (p &Process) unix_capture_search_paths() []string {
+	mut path := '/bin:/usr/bin'
+	for i in 0 .. p.env.len {
+		if p.env[i].starts_with('PATH=') {
+			path = p.env[i][5..]
+			break
+		}
+	}
+	defer { unsafe { path.free() } }
+	mut candidates := []string{}
+	mut start := 0
+	for {
+		end := path.index_after(':', start) or { path.len }
+		if start == end {
+			candidates << p.filename.clone()
+		} else {
+			directory := path[start..end]
+			candidates << '${directory}/${p.filename}'
+			unsafe { directory.free() }
+		}
+		if end == path.len { break }
+		start = end + 1
+	}
+	return candidates
 }
 
 // UnixSpawnPlan holds everything the forked child needs, in a form it can use
@@ -72,6 +98,8 @@ struct UnixSpawnPlan {
 	resolve_error string  // when not empty, the child reports it and exits, instead of exec'ing
 	stdin_error   string  // the message prefix used when the stdin file cannot be opened
 	exec_error    string  // the message prefix used when execve fails
+mut:
+	search_paths []string // capture tries these with execve after fork
 }
 
 // unix_prepare_spawn does all the allocating work of a spawn upfront, in the
@@ -86,7 +114,11 @@ fn (p &Process) unix_prepare_spawn() UnixSpawnPlan {
 fn (p &Process) unix_prepare_spawn_plan(capture bool) UnixSpawnPlan {
 	mut exe := ''
 	mut resolve_error := ''
-	if resolved := p.unix_resolve_filename(capture) {
+	mut search_paths := []string{}
+	if capture && p.filename.len > 0 && !p.filename.contains(path_separator) {
+		exe = p.filename
+		search_paths = p.unix_capture_search_paths()
+	} else if resolved := p.unix_resolve_filename() {
 		exe = resolved
 	} else {
 		resolve_error = '${err}\n'
@@ -110,6 +142,7 @@ fn (p &Process) unix_prepare_spawn_plan(capture bool) UnixSpawnPlan {
 	}
 	return UnixSpawnPlan{
 		exe:           exe
+		search_paths:  search_paths
 		argv:          argv
 		envp:          envp
 		resolve_error: resolve_error

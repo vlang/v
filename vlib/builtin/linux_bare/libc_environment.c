@@ -111,7 +111,7 @@ int setenv(const char *name, const char *value, int overwrite) {
     }
     v_linux_lock(&v_environment_lock);
     size_t at = v_env_find(name, n, &count);
-    if (at != SIZE_MAX && (!overwrite || !strcmp(environ[at] + n + 1, value))) {
+    if (at != SIZE_MAX && !overwrite) {
         v_linux_unlock(&v_environment_lock);
         return 0;
     }

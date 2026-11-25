@@ -5,6 +5,7 @@ $if (freestanding || syscalls) && !native && macos && amd64 {
 }
 
 $if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+	#include <errno.h>
 
 	// Darwin has no pipe2: serialize pipe/CLOEXEC publication with Process forks.
 	// Static storage cannot retain an arena allocated synchronization object.
@@ -57,6 +58,7 @@ $if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (ma
 		unsafe {
 			plan.argv.free()
 			plan.envp.free()
+			plan.search_paths.free()
 			plan.resolve_error.free()
 			plan.stdin_error.free()
 			plan.exec_error.free()
@@ -268,6 +270,24 @@ $if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (ma
 			if err != 0 {
 				fsys_process_child_fail('os: failed to change process directory', err, error_fd)
 			}
+		}
+		if plan.search_paths.len > 0 {
+			mut denied := false
+			for i in 0 .. plan.search_paths.len {
+				_, code := bf_execve_result(&char(plan.search_paths[i].str), plan.argv.data, plan.envp.data)
+				if code == C.EACCES { denied = true }
+				// execvp continues past inaccessible entries, absent interpreters,
+				// non-directories, and transient errors from network filesystems.
+				if code != C.ENOENT && code != C.EACCES && code != C.ENOTDIR && code != C.ENODEV
+					&& code != C.ETIMEDOUT && code != C.ESTALE {
+					fsys_process_child_fail(plan.exec_error, code, error_fd)
+				}
+			}
+			fsys_process_child_fail(plan.exec_error, if denied {
+				int(C.EACCES)
+			} else {
+				int(C.ENOENT)
+			}, error_fd)
 		}
 		_, err := bf_execve_result(&char(plan.exe.str), plan.argv.data, plan.envp.data)
 		fsys_process_child_fail(plan.exec_error, err, error_fd)

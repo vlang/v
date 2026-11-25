@@ -119,10 +119,16 @@ extern int64_t v_native_recvmsg(int32_t fd, uintptr_t message, int32_t flags);
 ssize_t recvmsg(int fd, struct msghdr * message, int flags) { return (ssize_t)v_native_recvmsg((int32_t)fd, (uintptr_t)message, (int32_t)flags); }
 extern int64_t v_native_sendmsg(int32_t fd, uintptr_t message, int32_t flags);
 ssize_t sendmsg(int fd, const struct msghdr * message, int flags) { return (ssize_t)v_native_sendmsg((int32_t)fd, (uintptr_t)message, (int32_t)flags); }
+/* The glibc and musl prototypes use different signedness for flags. */
+#ifdef __GLIBC__
+typedef int v_mmsg_flags;
+#else
+typedef unsigned int v_mmsg_flags;
+#endif
 extern int32_t v_native_recvmmsg(int32_t fd, uintptr_t messages, uint32_t count, int32_t flags, uintptr_t timeout);
-int recvmmsg(int fd, struct mmsghdr * messages, unsigned int count, int flags, struct timespec * timeout) { return (int)v_native_recvmmsg((int32_t)fd, (uintptr_t)messages, (uint32_t)count, (int32_t)flags, (uintptr_t)timeout); }
+int recvmmsg(int fd, struct mmsghdr * messages, unsigned int count, v_mmsg_flags flags, struct timespec * timeout) { return (int)v_native_recvmmsg((int32_t)fd, (uintptr_t)messages, (uint32_t)count, (int32_t)flags, (uintptr_t)timeout); }
 extern int32_t v_native_sendmmsg(int32_t fd, uintptr_t messages, uint32_t count, int32_t flags);
-int sendmmsg(int fd, struct mmsghdr * messages, unsigned int count, int flags) { return (int)v_native_sendmmsg((int32_t)fd, (uintptr_t)messages, (uint32_t)count, (int32_t)flags); }
+int sendmmsg(int fd, struct mmsghdr * messages, unsigned int count, v_mmsg_flags flags) { return (int)v_native_sendmmsg((int32_t)fd, (uintptr_t)messages, (uint32_t)count, (int32_t)flags); }
 
 #include <elf.h>
 #include <signal.h>
@@ -130,10 +136,95 @@ int sendmmsg(int fd, struct mmsghdr * messages, unsigned int count, int flags) {
 #include <sys/ioctl.h>
 #include <sys/prctl.h>
 #include <termios.h>
+#include <string.h>
 extern char **environ;
 extern const uintptr_t *v_freestanding_auxiliary_vector;
 uintptr_t v_native_environment(void) { return (uintptr_t)environ; }
-size_t v_native_termios_size(void) { return sizeof(struct termios); }
+/* Linux amd64 and arm64 use 19 control characters in the kernel ABI.
+ * The public structure has additional slots before the speed fields. */
+struct v_kernel_termios2 {
+    uint32_t iflag, oflag, cflag, lflag;
+    unsigned char line, cc[19];
+    uint32_t ispeed, ospeed;
+};
+_Static_assert(offsetof(struct v_kernel_termios2, ispeed) == 36, "kernel termios2 speed offset");
+_Static_assert(NCCS >= 19, "kernel control characters fit in public termios");
+#if B38400 == 38400
+/* glibc's numeric speed ABI also exposes the encoded baud bits in c_cflag.
+ * BOTHER carries a numeric rate directly. Zero input baud follows output. */
+static uint32_t v_termios_speed(uint32_t *bits, uint32_t numeric) {
+    static const uint32_t rates[] = {
+        0, 50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400, 4800,
+        9600, 19200, 38400, UINT32_MAX, 57600, 115200, 230400, 460800,
+        500000, 576000, 921600, 1000000, 1152000, 1500000, 2000000,
+        2500000, 3000000, 3500000, 4000000
+    };
+    if (*bits != CBAUDEX)
+        return rates[(*bits & 15) + ((*bits & CBAUDEX) ? 16 : 0)];
+    for (unsigned i = 0; i < sizeof rates / sizeof *rates; i++) {
+        if (i != 16 && numeric == rates[i]) {
+            *bits = (i & 15) | (i >= 16 ? CBAUDEX : 0);
+            break;
+        }
+    }
+    return numeric;
+}
+static void v_termios_normalize(struct v_kernel_termios2 *kernel) {
+    uint32_t output = kernel->cflag & CBAUD;
+    uint32_t input = (kernel->cflag & CIBAUD) >> 16;
+    kernel->ospeed = v_termios_speed(&output, kernel->ospeed);
+    kernel->ispeed = v_termios_speed(&input, kernel->ispeed);
+    if (kernel->ispeed == 0) {
+        input = output;
+        kernel->ispeed = kernel->ospeed;
+    }
+    kernel->cflag = (kernel->cflag & ~(CBAUD | CIBAUD)) | output | (input << 16);
+}
+#endif
+int32_t v_native_termios_get(int32_t fd, uintptr_t address) {
+    struct termios *out = (struct termios *)address;
+    struct v_kernel_termios2 kernel = {0};
+#if B38400 == 38400
+    const unsigned long request = _IOR('T', 0x2a, struct v_kernel_termios2);
+#else
+    const unsigned long request = TCGETS;
+#endif
+    if (v_linux_result(V_RAW3(SYS_ioctl, fd, request, &kernel)) < 0) return -1;
+#if B38400 == 38400
+    v_termios_normalize(&kernel);
+#endif
+    *out = (struct termios){0};
+    out->c_iflag = kernel.iflag;
+    out->c_oflag = kernel.oflag;
+    out->c_cflag = kernel.cflag;
+    out->c_lflag = kernel.lflag;
+    out->c_line = kernel.line;
+    memcpy(out->c_cc, kernel.cc, sizeof kernel.cc);
+#if B38400 == 38400
+    out->c_ispeed = kernel.ispeed;
+    out->c_ospeed = kernel.ospeed;
+#elif defined(_HAVE_STRUCT_TERMIOS_C_ISPEED) && defined(_HAVE_STRUCT_TERMIOS_C_OSPEED)
+    out->c_ispeed = out->c_ospeed = kernel.cflag & CBAUD;
+#endif
+    return 0;
+}
+int32_t v_native_termios_set(int32_t fd, int32_t action, uintptr_t address) {
+    const struct termios *in = (const struct termios *)address;
+    struct v_kernel_termios2 kernel = { .iflag=in->c_iflag, .oflag=in->c_oflag,
+        .cflag=in->c_cflag, .lflag=in->c_lflag, .line=in->c_line };
+    memcpy(kernel.cc, in->c_cc, sizeof kernel.cc);
+#if B38400 == 38400
+    kernel.ispeed = in->c_ispeed;
+    kernel.ospeed = in->c_ospeed;
+    v_termios_normalize(&kernel);
+    if (kernel.ispeed == kernel.ospeed) kernel.cflag &= ~CIBAUD;
+    const unsigned long requests[] = { _IOW('T', 0x2b, struct v_kernel_termios2),
+        _IOW('T', 0x2c, struct v_kernel_termios2), _IOW('T', 0x2d, struct v_kernel_termios2) };
+#else
+    const unsigned long requests[] = {TCSETS, TCSETSW, TCSETSF};
+#endif
+    return (int32_t)v_linux_result(V_RAW3(SYS_ioctl, fd, requests[action], &kernel));
+}
 _Static_assert(sizeof(struct timeval) == 16 && offsetof(struct timeval, tv_usec) == 8, "native timeval ABI");
 _Static_assert(sizeof(struct rlimit) == 16 && offsetof(struct rlimit, rlim_max) == 8, "native rlimit ABI");
 extern int32_t v_native_execv(uintptr_t, uintptr_t);

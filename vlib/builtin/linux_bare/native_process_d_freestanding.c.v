@@ -5,7 +5,8 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	#include "@DIR/libc_native_abi.h"
 	#include "@DIR/libc_runtime.h"
 	fn C.v_native_environment() uint
-	fn C.v_native_termios_size() uint
+	fn C.v_native_termios_get(i32, uint) i32
+	fn C.v_native_termios_set(i32, i32, uint) i32
 	fn C.getenv(&char) &char
 	fn C.sysconf(i32) i64
 
@@ -200,13 +201,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_native_truncate'; markused]
 	fn bare_native_truncate(path uint, size i64) i32 {
-		fd := bare_native_openat(-100, path, i32(C.O_WRONLY) | i32(C.O_CLOEXEC), 0)
-		if fd < 0 { return -1 }
-		result := bare_native_ftruncate(fd, size)
-		error := bf_native_errno_cell
-		C.close(fd)
-		bf_native_errno_cell = error
-		return result
+		return i32(bare_native_result(sys_call2(u64(C.SYS_truncate), u64(path), u64(size))))
 	}
 	@[export: 'v_native_tcgetattr'; markused]
 	fn bare_native_tcgetattr(fd i32, settings uint) i32 {
@@ -214,8 +209,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			bf_native_errno_cell = i32(C.EFAULT)
 			return -1
 		}
-		unsafe { vmemset(voidptr(settings), 0, int(C.v_native_termios_size())) }
-		return i32(bare_native_result(sys_call3(bf_nr_ioctl, u64(fd), u64(C.TCGETS), u64(settings))))
+		return C.v_native_termios_get(fd, settings)
 	}
 	@[export: 'v_native_tcsetattr'; markused]
 	fn bare_native_tcsetattr(fd i32, action i32, settings uint) i32 {
@@ -223,7 +217,11 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			bf_native_errno_cell = i32(C.EINVAL)
 			return -1
 		}
-		return i32(bare_native_result(sys_call3(bf_nr_ioctl, u64(fd), u64(C.TCSETS) + u64(action), u64(settings))))
+		if settings == 0 {
+			bf_native_errno_cell = i32(C.EFAULT)
+			return -1
+		}
+		return C.v_native_termios_set(fd, action, settings)
 	}
 	@[export: 'v_native_getauxval'; markused]
 	fn bare_native_getauxval(kind uint) uint {

@@ -2,6 +2,10 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <termios.h>
 #include <string.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
@@ -50,7 +54,48 @@ __attribute__((noinline)) static int spawn_one(void) {
     CHECK(wait_status(pid) == 42);
     return 0;
 }
+static int check_file_and_environment(void) {
+    char env[] = "V_PROCESS_PROBE_COPY=abc";
+    CHECK(!putenv(env) && !setenv("V_PROCESS_PROBE_COPY", "abc", 1));
+    env[sizeof env - 2] = 'z';
+    CHECK(!strcmp(getenv("V_PROCESS_PROBE_COPY"), "abc"));
+    CHECK(!unsetenv("V_PROCESS_PROBE_COPY"));
+
+    char path[] = "/tmp/v-truncate-test-XXXXXX";
+    int fd = mkstemp(path);
+    CHECK(fd >= 0);
+    struct rlimit saved;
+    CHECK(!getrlimit(RLIMIT_NOFILE, &saved));
+    struct rlimit limit = saved;
+    limit.rlim_cur = 0;
+    CHECK(!setrlimit(RLIMIT_NOFILE, &limit));
+    int truncated = truncate(path, 7);
+    CHECK(!setrlimit(RLIMIT_NOFILE, &saved));
+    struct stat info;
+    CHECK(!unlink(path));
+    CHECK(!fstat(fd, &info) && !close(fd));
+    CHECK(!truncated && info.st_size == 7);
+#if defined(_HAVE_STRUCT_TERMIOS_C_ISPEED) && defined(_HAVE_STRUCT_TERMIOS_C_OSPEED)
+    fd = open("/dev/ptmx", O_RDWR | O_NOCTTY);
+    CHECK(fd >= 0);
+    struct termios settings;
+    CHECK(!tcgetattr(fd, &settings));
+    /* Linux baud index 14 is 19200 on both supported architectures. */
+    settings.c_cflag = (settings.c_cflag & ~(CBAUD | CIBAUD)) | 14;
+    settings.c_ispeed = settings.c_ospeed = B19200;
+    CHECK(!tcsetattr(fd, TCSANOW, &settings));
+    memset(&settings, 0, sizeof settings);
+    CHECK(!tcgetattr(fd, &settings) && !close(fd));
+    CHECK(settings.c_ispeed == B19200 && settings.c_ospeed == B19200);
+#if B38400 == 38400
+    CHECK(((settings.c_cflag & CIBAUD) >> 16) == (settings.c_cflag & CBAUD));
+#endif
+#endif
+    return 0;
+}
 int v_process_probe(void) {
+    int setup = check_file_and_environment();
+    if (setup) return setup;
     pid_t parent = getpid();
     long session = syscall(SYS_getsid, 0);
     int fd = open("/dev/null", O_RDWR|O_CLOEXEC);

@@ -275,22 +275,26 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 
 	@[export: 'v_native_recvmsg'; markused]
 	fn bare_native_recvmsg(fd i32, message uint, flags i32) i64 {
-		return i64(bare_native_result(sys_call3(u64(C.SYS_recvmsg), u64(fd), u64(message), u64(flags))))
+		return bare_native_result(u64(bare_cancel_syscall(i64(C.SYS_recvmsg), uint(fd),
+			message, uint(flags), 0, 0, 0)))
 	}
 
 	@[export: 'v_native_sendmsg'; markused]
 	fn bare_native_sendmsg(fd i32, message uint, flags i32) i64 {
-		return i64(bare_native_result(sys_call3(u64(C.SYS_sendmsg), u64(fd), u64(message), u64(flags))))
+		return bare_native_result(u64(bare_cancel_syscall(i64(C.SYS_sendmsg), uint(fd),
+			message, uint(flags), 0, 0, 0)))
 	}
 
 	@[export: 'v_native_recvmmsg'; markused]
 	fn bare_native_recvmmsg(fd i32, messages uint, count u32, flags i32, timeout uint) i32 {
-		return i32(bare_native_result(sys_call5(u64(C.SYS_recvmmsg), u64(fd), u64(messages), u64(count), u64(flags), u64(timeout))))
+		return i32(bare_native_result(u64(bare_cancel_syscall(i64(C.SYS_recvmmsg), uint(fd),
+			messages, count, uint(flags), timeout, 0))))
 	}
 
 	@[export: 'v_native_sendmmsg'; markused]
 	fn bare_native_sendmmsg(fd i32, messages uint, count u32, flags i32) i32 {
-		return i32(bare_native_result(sys_call4(u64(C.SYS_sendmmsg), u64(fd), u64(messages), u64(count), u64(flags))))
+		return i32(bare_native_result(u64(bare_cancel_syscall(i64(C.SYS_sendmmsg), uint(fd),
+			messages, count, uint(flags), 0, 0))))
 	}
 
 	@[export: 'v_time_clock_getres'; markused]
