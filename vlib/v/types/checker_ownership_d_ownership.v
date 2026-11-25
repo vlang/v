@@ -13710,10 +13710,6 @@ fn (mut tc TypeChecker) ownership_expr_is_readonly_borrow(id flat.NodeId) bool {
 		call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(clean_id) }
 		return tc.ownership_return_loan_sources(call_name, info).any(!tc.ownership_call_param_is_mut(call_name, it.param_idx))
 	}
-	if node.kind == .ident && !tc.ident_is_mutable_lvalue(node.value)
-		&& unalias_type(tc.resolve_type(clean_id)) is Pointer {
-		return true
-	}
 	name := tc.ownership_expr_ident_name(clean_id)
 	if name == '' {
 		return false
