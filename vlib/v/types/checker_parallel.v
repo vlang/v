@@ -4175,7 +4175,8 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 // returns `[]u8(a)` for an `a []int` (see is_container_layout_error), and an
 // `if x := a` guard whose `a` is declared neither as an option nor as a result,
 // as when `h(User{})` guards its `a T` (see is_concrete_if_guard_error). Every
-// other error and warning of the clone is dropped: checked before the clone is
+// other error and warning of the clone is dropped, except ownership errors for
+// thread transfers whose types are resolved: checked before the clone is
 // lowered, only these are reliable outside checker fixtures, where many valid
 // generic programs would fail. `args`
 // are source-spelling IDs of the types of the instance: the clone spells an
@@ -4198,7 +4199,8 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	tc.checking_concrete_members = false
 	mut kept := []TypeError{}
 	for err in tc.errors[errors_start..] {
-		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
+		if err.kind == .thread_transfer
+			|| (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
 			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node))
 			|| (is_concrete_return_error(err) && tc.operand_is_plain(err.node)
 				&& !tc.value_is_type_tested(err.node, fn_idx)

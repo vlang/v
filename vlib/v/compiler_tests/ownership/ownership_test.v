@@ -4005,3 +4005,363 @@ fn test_ownership_and_autofree_build_every_program_shape() {
 		assert freed.exit_code == 0, '${name} under -autofree:\n${freed.output}'
 	}
 }
+
+fn test_ownership_threads_transfer_values_and_synchronized_handles() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'thread_values', r'
+import sync.arc
+
+struct Job {
+	names []string
+}
+
+fn worker(job Job, count chan int, state arc.Arc[int], shared sums []int) int {
+	lock sums {
+		sums[0] += *state.get()
+	}
+	count <- job.names.len
+	return job.names.len
+}
+
+fn main() {
+	count := chan int{cap: 1}
+	shared sums := [0]
+	state := arc.new(3)
+	handle := spawn worker(Job{names: ["first".clone()]}, count, state, shared sums)
+	assert handle.wait() == 1
+	assert <-count == 1
+}
+')
+	assert res.exit_code == 0, res.output
+}
+
+fn test_ownership_threads_reject_raw_references() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'thread_references', r'
+struct Counter {
+mut:
+	value int
+}
+
+fn increment(mut c Counter) {
+	c.value++
+}
+
+fn main() {
+	mut counter := &Counter{}
+	first := spawn increment(mut counter)
+	second := spawn increment(mut counter)
+	first.wait()
+	second.wait()
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.count('cannot transfer mutable borrow') == 2, res.output
+}
+
+fn test_ownership_thread_transfer_checks_nested_types_and_channel_sends() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'nested_thread_references', r'
+struct Ref {
+	ptr &int
+}
+type Entry = Ref | int
+
+fn consume(entries []?Entry) {
+	assert entries.len >= 0
+}
+
+fn main() {
+	x := 42
+	entry := Ref{ptr: &x}
+	channel := chan Ref{cap: 1}
+	channel <- entry
+	channel.try_push(entry)
+	handle := spawn consume([?Entry(Entry(entry))])
+	handle.wait()
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.count('as channel send: field `ptr`') == 2, res.output
+	assert res.output.contains('as thread argument: variant `Ref`: field `ptr`'), res.output
+}
+
+fn test_ownership_threads_check_detached_calls_results_and_captures() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'thread_results', r'
+fn consume(p &int) {
+	assert *p == 42
+}
+
+fn integer_pointer() &int {
+	return &int(unsafe { malloc(int(sizeof(int))) })
+}
+
+fn main() {
+	n := 42
+	go consume(&n)
+	worker := spawn integer_pointer()
+	worker.wait()
+	capture := fn [n] () { assert n == 42 }
+	task := spawn capture()
+	task.wait()
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('cannot transfer `&int` as thread argument'), res.output
+	assert res.output.contains('cannot transfer `&int` as thread result'), res.output
+	assert res.output.contains('whose captures are unknown'), res.output
+}
+
+fn test_ownership_thread_transfers_check_generic_instances() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'generic_thread_arguments', r'
+fn worker[T](value T) {
+	assert value == value
+}
+
+fn launch[T](value T) {
+	task := spawn worker(value)
+	task.wait()
+}
+
+fn main() {
+	value := 42
+	launch(value)
+	launch(&value)
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('cannot transfer `&int` as thread argument'), res.output
+}
+
+fn test_ownership_spawn_checks_explicit_generic_method_receivers() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'thread_generic_method', r'
+struct Job {
+	value int
+}
+
+fn (job Job) run[T](choice T) int {
+	assert choice == choice
+	return job.value
+}
+
+fn main() {
+	job := Job{value: 7}
+	task := spawn job.run[int](1)
+	assert task.wait() == 7
+}
+')
+	assert res.exit_code == 0, res.output
+	borrowed := run_ownership_check(v3_bin, 'thread_generic_borrowed_receiver', r'
+struct Job {
+	value int
+}
+
+fn (job &Job) run[T](choice T) int {
+	assert choice == choice
+	return job.value
+}
+
+fn main() {
+	job := Job{value: 7}
+	task := spawn job.run[int](1)
+	assert task.wait() == 7
+}
+')
+	assert borrowed.exit_code != 0, borrowed.output
+	assert borrowed.output.contains('cannot transfer `&Job` as thread receiver'), borrowed.output
+}
+
+fn test_ownership_distinguishes_moving_and_sharing_a_ref_cell() {
+	v3_bin := ownership_build_v3()
+	moved := run_ownership_check(v3_bin, 'thread_move_ref_cell', r'
+import cell
+
+fn worker(value cell.RefCell[int]) int {
+	return value.try_borrow() or { -1 }
+}
+
+fn main() {
+	handle := spawn worker(cell.RefCell[int]{})
+	assert handle.wait() == 0
+}
+')
+	assert moved.exit_code == 0, moved.output
+	shared_cell := run_ownership_check(v3_bin, 'thread_share_ref_cell', r'
+import cell
+import sync.arc
+
+struct Job {
+	local cell.RefCell[int]
+	shared_cell arc.Arc[cell.RefCell[int]]
+}
+
+fn worker(job Job) u64 {
+	return job.shared_cell.strong_count()
+}
+
+fn main() {
+	handle := spawn worker(Job{
+		local: cell.RefCell[int]{}
+		shared_cell: arc.new(cell.RefCell[int]{})
+	})
+	handle.wait()
+}
+')
+	assert shared_cell.exit_code != 0, shared_cell.output
+	assert shared_cell.output.contains('field `shared_cell`: cell.RefCell has unsynchronized borrow state'), shared_cell.output
+}
+
+fn test_ownership_rejects_unchecked_lambda_captures_in_spawn() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'thread_lambda_capture', r'
+fn main() {
+	value := 42
+	ptr := &value
+	worker := spawn (|| *ptr)()
+	assert worker.wait() == 42
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('whose captures are unknown'), res.output
+}
+
+fn test_ownership_rejects_unchecked_thread_error_payloads() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'thread_unchecked_error', r'
+fn work() !int {
+	return error("failed")
+}
+
+fn main() {
+	worker := spawn work()
+	_ := worker.wait() or { 0 }
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('the result can contain an error whose type does not guarantee thread-safe implementations'), res.output
+}
+
+fn test_ownership_checks_channel_close_error_payloads() {
+	v3_bin := ownership_build_v3()
+	borrowed := run_ownership_check(v3_bin, 'close_borrowed_error', r'
+struct BorrowedError {
+	data &int
+}
+
+fn (e BorrowedError) msg() string {
+	return e.data.str()
+}
+
+fn (_ BorrowedError) code() int {
+	return 1
+}
+
+fn main() {
+	value := 1
+	ch := chan int{cap: 1}
+	ch.close(BorrowedError{data: &value})
+}
+')
+	assert borrowed.exit_code != 0, borrowed.output
+	assert borrowed.output.contains('as channel close error: field `data`: references cannot be transferred'), borrowed.output
+	owned := run_ownership_check(v3_bin, 'close_owned_error', r'
+struct StatusError {
+	status int
+}
+
+fn (e StatusError) msg() string {
+	return e.status.str()
+}
+
+fn (e StatusError) code() int {
+	return e.status
+}
+
+fn main() {
+	ch := chan int{cap: 1}
+	ch.close(StatusError{status: 42})
+	assert (<-ch or { err.code() }) == 42
+	messages := chan int{cap: 1}
+	messages.close(error("failed"))
+	assert (<-messages or { err.msg().len }) == 6
+}
+')
+	assert owned.exit_code == 0, owned.output
+}
+
+fn test_ownership_checks_mutex_payload_transfers() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'thread_mutex_payload', r'
+import sync.arc
+
+struct Borrowed {
+	ptr &int
+}
+
+fn worker(value arc.Mutex[Borrowed]) {}
+
+fn main() {
+	value := 42
+	owned := arc.new_mutex(Borrowed{ptr: &value})
+	thread := spawn worker(owned)
+	thread.wait()
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('field `ptr`: references cannot be transferred between threads'), res.output
+}
+
+fn test_ownership_allows_mutation_of_a_map_in_a_moved_struct() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check_with_flags(v3_bin, 'move_struct_map', r'
+struct Cache {
+mut:
+	items map[string]string
+}
+
+fn insert(source Cache) Cache {
+	mut cache := source
+	cache.items["key"] = "value".to_owned()
+	return cache
+}
+
+fn main() {
+	cache := insert(Cache{})
+	assert cache.items["key"] == "value"
+}
+', ['-ownership', '-gc', 'none'])
+	assert res.exit_code == 0, res.output
+}
+
+fn test_ownership_moved_struct_does_not_make_borrowed_map_mutable() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'move_struct_borrowed_map', r'
+struct Inner {
+mut:
+	items map[string]string
+}
+
+struct Outer {
+mut:
+	own map[string]string
+	inner &Inner
+}
+
+fn update(source Outer) Outer {
+	mut cache := source
+	cache.inner.items["key"] = "changed".to_owned()
+	return cache
+}
+
+fn main() {
+	inner := Inner{}
+	box := update(Outer{inner: &inner})
+	println(box.inner.items.len)
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('`cache.inner.items` aliases mutable data from an immutable value'), res.output
+}
