@@ -1750,6 +1750,12 @@ fn (tc &TypeChecker) lvalue_has_write_locked_shared_path(id flat.NodeId) bool {
 }
 
 fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
+	$if ownership ? {
+		if tc.a.node(tc.unwrap_paren_expr_id(id)).kind != .ident
+			&& tc.ownership_reject_readonly_borrow_write(id) {
+			return
+		}
+	}
 	if tc.check_locked_shared_base_lvalue_mutation(id) {
 		return
 	}
@@ -16660,6 +16666,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& fn_node.value in ['clear', 'delete', 'move', 'reserve']
 			&& (info.name.len == 0 || info.name.starts_with('map.'))
 		mutating_receiver := tc.mut_receiver_methods[info.name] || builtin_map_mutating_receiver
+		$if ownership ? {
+			if (mutating_receiver || tc.call_param_is_mut(info, 0))
+				&& tc.ownership_reject_readonly_borrow_write(recv_id) {
+				return
+			}
+		}
 		if mutating_receiver {
 			tc.check_locked_shared_mut_receiver_mutation(recv_id)
 		}
@@ -17197,6 +17209,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					|| tc.call_local_fn_value_param_is_mut(node, param_idx, id)
 					|| tc.call_fn_typed_param_is_mut(node, param_idx)
 					|| tc.call_indexed_fn_value_param_is_mut(node, param_idx)))
+		$if ownership ? {
+			if param_is_mut && tc.ownership_reject_readonly_borrow_write(arg_id) {
+				if has_dsl_scope {
+					tc.pop_scope()
+				}
+				continue
+			}
+		}
 		if param_is_mut && mut_arg_node.is_mut {
 			tc.check_locked_shared_base_lvalue_mutation(arg_id)
 		}

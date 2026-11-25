@@ -169,6 +169,8 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability Thre
 				'sync.arc.Weak',
 				'arc.Arc',
 				'arc.Weak',
+				'sync.arc.Once',
+				'arc.Once',
 			]) {
 				// Sending an owner can share the payload with another owner. The
 				// last owner can also destroy it on another thread.
