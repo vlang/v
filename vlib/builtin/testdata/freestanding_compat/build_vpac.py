@@ -20,6 +20,7 @@ import sys
 import tarfile
 
 from build_openlibm import build_openlibm
+from prefix_install import PrefixInstall, lock_build_directories
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('work', type=Path)
@@ -48,6 +49,11 @@ if not architecture or 'linux' not in target:
 modules = Path(environment.get('VMODULES', '').split(os.pathsep)[0] or
                str(Path.home() / '.vmodules')).expanduser().resolve()
 publication = modules / 'vlibc' / ('linux-' + architecture + '-shared')
+store = publication.parent / '.store'
+build_directories = [work, cache]
+if args.install:
+    build_directories.append(store)
+lock_build_directories(*build_directories)
 base = (args.base or publication).resolve()
 if not args.base and (base / 'vpac-profile.json').is_file():
     base = Path(json.loads((base / 'vpac-profile.json').read_text())['base']).resolve()
@@ -60,19 +66,26 @@ recipe = hashlib.sha256(Path(__file__).read_bytes() + (fixture / 'build_openlibm
 if args.install:
     if sys.platform != 'linux' or platform.machine() != target.split('-')[0]:
         parser.error('--install requires a native C toolchain')
-    store = modules / 'vlibc' / '.store'
     if not publication.is_symlink() or store not in publication.resolve().parents:
         parser.error('refusing to replace an unmanaged prefix')
-    prefix = store / ('linux-' + architecture + '-vpac-' + recipe[:24])
+    completion = publication / '.vpac-install-recipe'
+    if (store in base.parents and (base / '.x11-install-recipe').is_file()
+            and completion.is_file() and completion.read_text().strip() == recipe):
+        print(f'Already installed: {publication}', flush=True)
+        sys.exit(0)
+    # Build at its permanent path (embedded pkg-config/CMake paths must work).
+    # Only the atomic symlink replacement makes this release visible.
+    installation = PrefixInstall(publication, f'linux-{architecture}-vpac-{recipe[:24]}')
+    prefix = installation.prefix
 else:
     prefix = (args.prefix or work / 'prefix').resolve()
-if prefix == base or prefix in base.parents:
+if prefix == base or prefix in base.parents or base in prefix.parents:
     parser.error('the output prefix must be separate from --base')
 crypto_prefix = prefix / 'private/mbedtls'
 state = work / 'build-state'
 state.mkdir(exist_ok=True)
-if not prefix.exists():
-    shutil.copytree(base, prefix, symlinks=True)
+if args.install or not prefix.exists():
+    shutil.copytree(base, prefix, symlinks=True, dirs_exist_ok=args.install)
     # Existing metadata continues to name the new, complete prefix.
     for directory in ['lib/pkgconfig', 'share/pkgconfig', 'lib/cmake']:
         for path in (prefix / directory).rglob('*'):
@@ -374,12 +387,7 @@ for library in (prefix / 'lib').glob('lib*-vlibc.so'):
 (prefix / 'vpac-required-symbols.txt').write_text('\n'.join(sorted(imports)) + '\n')
 (prefix / 'vlibc-target').write_text(expected_marker)
 if args.install:
-    temporary = publication.with_name(publication.name + '.new-' + str(os.getpid()))
-    try:
-        temporary.symlink_to(prefix, target_is_directory=True)
-        temporary.replace(publication)
-    finally:
-        temporary.unlink(missing_ok=True)
+    installation.publish('.vpac-install-recipe', recipe)
     print('Installed combined native vlibc dependencies: ' + str(publication), flush=True)
 else:
     print('Dependencies ready. Use VLIBC_PREFIX=' + str(prefix), flush=True)

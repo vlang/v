@@ -19,6 +19,7 @@ import sys
 import tarfile
 
 from build_openlibm import build_openlibm
+from prefix_install import PrefixInstall, lock_build_directories
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('work', type=Path)
@@ -57,13 +58,20 @@ if args.install:
     modules = Path(os.environ.get('VMODULES', '').split(os.pathsep)[0] or
                    str(Path.home() / '.vmodules')).expanduser().resolve()
     store = modules / 'vlibc' / '.store'
+    lock_build_directories(root, store)
     publication = modules / 'vlibc' / ('linux-' + architecture + ('-shared' if args.shared else '-static'))
     if publication.exists() or publication.is_symlink():
         if not publication.is_symlink() or store not in publication.resolve().parents:
             parser.error('refusing to replace an unmanaged prefix: ' + str(publication))
     release = hashlib.sha256(recipe + str(store).encode()).hexdigest()[:24]
-    prefix = store / ('linux-' + architecture + '-' + release)
+    completion = publication / '.x11-install-recipe'
+    if completion.is_file() and completion.read_text().strip() == release and not (publication / 'vpac-profile.json').exists():
+        print(f'Already installed: {publication}', flush=True)
+        sys.exit(0)
+    installation = PrefixInstall(publication, f'linux-{architecture}-{release}')
+    prefix = installation.prefix
 else:
+    lock_build_directories(root)
     prefix = (args.prefix or root / 'prefix').resolve()
 environment.update(CFLAGS=flags, CPPFLAGS='-I' + str(prefix / 'include'),
                    LDFLAGS='-L' + str(prefix / 'lib'),
@@ -270,13 +278,7 @@ if args.shared:
         metadata.write_text('\n'.join(rebuilt) + '\n')
 (prefix / 'vlibc-target').write_text('vlibc-native-v1\nlinux\n' + architecture + '\n')
 if publication:
-    publication.parent.mkdir(parents=True, exist_ok=True)
-    temporary = publication.with_name(publication.name + '.new-' + str(os.getpid()))
-    try:
-        temporary.symlink_to(prefix, target_is_directory=True)
-        temporary.replace(publication)
-    finally:
-        temporary.unlink(missing_ok=True)
+    installation.publish('.x11-install-recipe', release)
     print(f'Installed native vlibc dependencies: {publication}', flush=True)
 else:
     print(f'Dependencies built. Use VLIBC_PREFIX={prefix} or -ldflags @{response}.', flush=True)
