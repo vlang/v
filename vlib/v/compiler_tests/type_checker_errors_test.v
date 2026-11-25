@@ -678,7 +678,8 @@ fn main() {
 	invoke(mut values)
 }
 ', 'argument count mismatch for `value.pop`: expected 0, got 1')
-	valid_array_methods := run_good(v3_bin, 'generic_cgen_array_method_arguments', 'fn invoke[T](mut value T) {
+	run_good_module_batch(v3_bin, 'generic_calls', [
+		TypeCheckerRuntimeCase{'generic_cgen_array_method_arguments', 'fn invoke[T](mut value T) {
 	value.trim(1)
 	value.pop()
 }
@@ -688,8 +689,132 @@ fn main() {
 	invoke(mut values)
 	println(int_str(values.len))
 }
-')
-	assert valid_array_methods == '0'
+', '0'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_method_for_concrete_type', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 7
+}
+
+fn read[T](value T) int {
+	return value.value()
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+}
+', '7'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_method_arguments', 'struct HasValue {}
+
+fn (v HasValue) value(n int) int {
+	return n
+}
+
+fn read[T](value T) int {
+	return value.value(8)
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+}
+', '8'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_params_struct_arguments', '@[params]
+struct ValueConfig {
+	a int
+	b int
+}
+
+struct HasValue {}
+
+fn (v HasValue) value(n int, cfg ValueConfig) int {
+	return n + cfg.a + cfg.b
+}
+
+fn read[T](value T) int {
+	return value.value(1, a: 2, b: 3)
+}
+
+fn read_defaults[T](value T) int {
+	return value.value(4)
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+	println(int_str(read_defaults(HasValue{})))
+}
+', '6\n4'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_method_numeric_comparison', 'struct HasValue {}
+
+fn (v HasValue) value() u8 {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value() == 1
+}
+
+fn main() {
+	println(read(HasValue{}))
+}
+', 'true'},
+		TypeCheckerRuntimeCase{'good_generic_function_field_argument', 'struct HasCallback {
+	cb fn (int) int
+}
+
+fn invoke[T](value T) int {
+	return value.cb(3)
+}
+
+fn main() {
+	println(int_str(invoke(HasCallback{
+		cb: fn (n int) int {
+			return n + 1
+		}
+	})))
+}
+', '4'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_narrow_literal_boundaries', 'struct Sink {}
+
+fn (s Sink) take_unsigned(value u8) {}
+fn (s Sink) take_signed(value i8) {}
+
+fn invoke[T](sink T) {
+	sink.take_unsigned(255)
+	sink.take_signed(-128)
+}
+
+fn main() {
+	invoke(Sink{})
+	println("ok")
+}
+', 'ok'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_none_for_option', 'struct Sink {}
+
+fn (s Sink) take(value ?int) {}
+
+fn invoke[T](sink T) {
+	sink.take(none)
+}
+
+fn main() {
+	invoke(Sink{})
+	println("ok")
+}
+', 'ok'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_variadic_spread_type', 'struct Sink {}
+
+fn (s Sink) take(values ...int) {}
+
+fn invoke[T](sink T, values []int) {
+	sink.take(...values)
+}
+
+fn main() {
+	invoke(Sink{}, [1, 2])
+	println("ok")
+}
+', 'ok'},
+	])
 	run_bad(v3_bin, 'bad_generic_is_on_concrete_non_sum', 'fn matches[T](value int) bool {
 	return value is T
 }
@@ -755,62 +880,6 @@ fn main() {
 	_ := read(HasValue{})
 }
 ', 'argument count mismatch for `value.value`: expected 0, got 1')
-	out := run_good(v3_bin, 'good_generic_receiver_method_for_concrete_type', 'struct HasValue {}
-
-fn (v HasValue) value() int {
-	return 7
-}
-
-fn read[T](value T) int {
-	return value.value()
-}
-
-fn main() {
-	println(int_str(read(HasValue{})))
-}
-')
-	assert out == '7'
-	arg_out := run_good(v3_bin, 'good_generic_receiver_method_arguments', 'struct HasValue {}
-
-fn (v HasValue) value(n int) int {
-	return n
-}
-
-fn read[T](value T) int {
-	return value.value(8)
-}
-
-fn main() {
-	println(int_str(read(HasValue{})))
-}
-')
-	assert arg_out == '8'
-	params_out := run_good(v3_bin, 'good_generic_receiver_params_struct_arguments', '@[params]
-struct ValueConfig {
-	a int
-	b int
-}
-
-struct HasValue {}
-
-fn (v HasValue) value(n int, cfg ValueConfig) int {
-	return n + cfg.a + cfg.b
-}
-
-fn read[T](value T) int {
-	return value.value(1, a: 2, b: 3)
-}
-
-fn read_defaults[T](value T) int {
-	return value.value(4)
-}
-
-fn main() {
-	println(int_str(read(HasValue{})))
-	println(int_str(read_defaults(HasValue{})))
-}
-')
-	assert params_out == '6\n4'
 	run_bad(v3_bin, 'bad_generic_receiver_method_return_context', 'struct HasValue {}
 
 fn (v HasValue) value() int {
@@ -881,21 +950,6 @@ fn main() {
 	_ := read(HasValue{})
 }
 ', 'cannot use `int` as `bool`')
-	comparison_out := run_good(v3_bin, 'good_generic_receiver_method_numeric_comparison', 'struct HasValue {}
-
-fn (v HasValue) value() u8 {
-	return 1
-}
-
-fn read[T](value T) bool {
-	return value.value() == 1
-}
-
-fn main() {
-	println(read(HasValue{}))
-}
-')
-	assert comparison_out == 'true'
 	run_bad(v3_bin, 'bad_generic_receiver_method_assignment_context', 'struct HasValue {}
 
 fn (v HasValue) value() int {
@@ -925,23 +979,6 @@ fn main() {
 	})
 }
 ', 'argument count mismatch for `value.cb`: expected 1, got 0')
-	fn_field_out := run_good(v3_bin, 'good_generic_function_field_argument', 'struct HasCallback {
-	cb fn (int) int
-}
-
-fn invoke[T](value T) int {
-	return value.cb(3)
-}
-
-fn main() {
-	println(int_str(invoke(HasCallback{
-		cb: fn (n int) int {
-			return n + 1
-		}
-	})))
-}
-')
-	assert fn_field_out == '4'
 	run_bad(v3_bin, 'bad_generic_receiver_params_field_type', '@[params]
 struct OpenOptions {
 	limit int
@@ -1000,50 +1037,6 @@ fn main() {
 	invoke(Sink{})
 }
 ', 'cannot use `int` as argument 1 to `sink.take`; expected `i8`')
-	literal_out := run_good(v3_bin, 'good_generic_receiver_narrow_literal_boundaries', 'struct Sink {}
-
-fn (s Sink) take_unsigned(value u8) {}
-fn (s Sink) take_signed(value i8) {}
-
-fn invoke[T](sink T) {
-	sink.take_unsigned(255)
-	sink.take_signed(-128)
-}
-
-fn main() {
-	invoke(Sink{})
-	println("ok")
-}
-')
-	assert literal_out == 'ok'
-	option_out := run_good(v3_bin, 'good_generic_receiver_none_for_option', 'struct Sink {}
-
-fn (s Sink) take(value ?int) {}
-
-fn invoke[T](sink T) {
-	sink.take(none)
-}
-
-fn main() {
-	invoke(Sink{})
-	println("ok")
-}
-')
-	assert option_out == 'ok'
-	variadic_out := run_good(v3_bin, 'good_generic_receiver_variadic_spread_type', 'struct Sink {}
-
-fn (s Sink) take(values ...int) {}
-
-fn invoke[T](sink T, values []int) {
-	sink.take(...values)
-}
-
-fn main() {
-	invoke(Sink{}, [1, 2])
-	println("ok")
-}
-')
-	assert variadic_out == 'ok'
 }
 
 // Regression tests for the post-PR review fixes: fixed-array literals must match
@@ -1533,16 +1526,15 @@ fn test_generic_struct_receiver_and_heap_init() {
 	// not satisfy an expected `Box[int]` (value or pointer form).
 	run_bad(v3_bin, 'bad_generic_concrete_value_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `Box[string]` as `Box[int]` in argument 1 to `use_int`')
 	run_bad(v3_bin, 'bad_generic_concrete_ptr_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := &Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `&Box[string]` as `&Box[int]` in argument 1 to `use_int`')
-	// A generic method on the open `Box[T]` receiver works for every instantiation.
-	good_method := run_good(v3_bin, 'good_generic_method_instances', "struct Box[T] {\n\tval T\n}\nfn (b Box[T]) get() T {\n\treturn b.val\n}\nfn main() {\n\tbi := Box[int]{\n\t\tval: 42\n\t}\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\tprintln(int_str(bi.get()))\n\tprintln(bs.get())\n}\n")
-	assert good_method == '42\nhi'
-	generic_return := run_good(v3_bin, 'good_generic_return_open_struct_param', 'struct Match[T] {\n\tvalue T\n\thas   bool\n}\nfn choose[T](use_second bool, first Match[T], second Match[T]) Match[T] {\n\tif use_second {\n\t\treturn second\n\t}\n\treturn first\n}\nfn (m Match[T]) or[T](other Match[T]) Match[T] {\n\tif m.has {\n\t\treturn m\n\t}\n\treturn other\n}\nfn main() {\n\ta := Match[int]{\n\t\tvalue: 1\n\t\thas: true\n\t}\n\tb := Match[int]{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(choose(true, a, b).value))\n\tprintln(int_str(b.or(a).value))\n}\n')
-	assert generic_return == '2\n1'
-	// A bare generic literal (`Box{..}` / `&Box{..}`) specializes to the expected
-	// concrete instance — and the heap literal must materialize the same concrete
-	// C type (`Box_int`) as the value literal, not the bare template.
-	good_heap := run_good(v3_bin, 'good_generic_bare_value_and_heap_args', 'struct Box[T] {\n\tval T\n}\nfn take_val(b Box[int]) int {\n\treturn b.val\n}\nfn take_heap(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tprintln(int_str(take_val(Box{\n\t\tval: 7\n\t}) + take_heap(&Box{\n\t\tval: 9\n\t})))\n}\n')
-	assert good_heap == '16'
+	run_good_module_batch(v3_bin, 'generic_struct_receivers', [
+		// A generic method on the open `Box[T]` receiver works for every instantiation.
+		TypeCheckerRuntimeCase{'good_generic_method_instances', "struct Box[T] {\n\tval T\n}\nfn (b Box[T]) get() T {\n\treturn b.val\n}\nfn main() {\n\tbi := Box[int]{\n\t\tval: 42\n\t}\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\tprintln(int_str(bi.get()))\n\tprintln(bs.get())\n}\n", '42\nhi'},
+		TypeCheckerRuntimeCase{'good_generic_return_open_struct_param', 'struct Match[T] {\n\tvalue T\n\thas   bool\n}\nfn choose[T](use_second bool, first Match[T], second Match[T]) Match[T] {\n\tif use_second {\n\t\treturn second\n\t}\n\treturn first\n}\nfn (m Match[T]) or[T](other Match[T]) Match[T] {\n\tif m.has {\n\t\treturn m\n\t}\n\treturn other\n}\nfn main() {\n\ta := Match[int]{\n\t\tvalue: 1\n\t\thas: true\n\t}\n\tb := Match[int]{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(choose(true, a, b).value))\n\tprintln(int_str(b.or(a).value))\n}\n', '2\n1'},
+		// A bare generic literal (`Box{..}` / `&Box{..}`) specializes to the expected
+		// concrete instance — and the heap literal must materialize the same concrete
+		// C type (`Box_int`) as the value literal, not the bare template.
+		TypeCheckerRuntimeCase{'good_generic_bare_value_and_heap_args', 'struct Box[T] {\n\tval T\n}\nfn take_val(b Box[int]) int {\n\treturn b.val\n}\nfn take_heap(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tprintln(int_str(take_val(Box{\n\t\tval: 7\n\t}) + take_heap(&Box{\n\t\tval: 9\n\t})))\n}\n', '16'},
+	])
 }
 
 // Regression tests for the post-PR review fixes: const-expression fixed-array
@@ -1608,12 +1600,11 @@ fn test_pr_review_codegen_batch_three() {
 // Regression tests: a bare generic struct literal adopts a matching concrete
 // expected instance (value and heap), and a field-type mismatch is rejected.
 fn test_bare_generic_literal_adopts_expected_instance() {
-	val := run_good(v3_bin, 'good_bare_generic_literal_return', 'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
-	assert val == '7'
-	heap := run_good(v3_bin, 'good_bare_generic_literal_heap_return', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 9\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
-	assert heap == '9'
-	pair := run_good(v3_bin, 'good_bare_generic_literal_multi_param', "struct Pair[L, R] {\n\tl L\n\tr R\n}\nfn make() Pair[string, int] {\n\treturn Pair{\n\t\tl: 'hi'\n\t\tr: 5\n\t}\n}\nfn main() {\n\tp := make()\n\tprintln(p.l)\n\tprintln(int_str(p.r))\n}\n")
-	assert pair == 'hi\n5'
+	run_good_module_batch(v3_bin, 'bare_generic_literals', [
+		TypeCheckerRuntimeCase{'good_bare_generic_literal_return', 'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_bare_generic_literal_heap_return', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 9\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n', '9'},
+		TypeCheckerRuntimeCase{'good_bare_generic_literal_multi_param', "struct Pair[L, R] {\n\tl L\n\tr R\n}\nfn make() Pair[string, int] {\n\treturn Pair{\n\t\tl: 'hi'\n\t\tr: 5\n\t}\n}\nfn main() {\n\tp := make()\n\tprintln(p.l)\n\tprintln(int_str(p.r))\n}\n", 'hi\n5'},
+	])
 	// A field whose type does not match the concrete instantiation is rejected by the
 	// checker (rather than adopting the type and emitting broken C).
 	run_bad(v3_bin, 'bad_bare_generic_literal_field_mismatch', "struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 'str'\n\t}\n}\nfn main() {\n\t_ := make()\n}\n", 'cannot use `Box[string]` as type `Box[int]` in return argument')
@@ -2199,17 +2190,15 @@ fn test_generic_specialization_rejects_incompatible_array_element_return() {
 		// target has to be rejected here rather than at `.id = src.id` in the C.
 		TypeCheckerRejection{'bad_generic_array_elem_unimplemented_interface', 'interface HasId {\n\tid int\n}\n\nstruct NoId {\n\tv int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\t_ := take([NoId{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]bad_generic_array_elem_unimplemented_interface.NoId', '[]bad_generic_array_elem_unimplemented_interface.HasId')},
 	])
-	// Elements that only differ in spelling (a registered alias next to its base
-	// type, one level down) are storage-identical, so the same slot must keep
-	// compiling.
-	rows := run_good(v3_bin, 'good_generic_array_elem_alias_return', 'type NodeId = int\n\nfn take[T](rows [][]T) [][]NodeId {\n\treturn rows\n}\n\nfn main() {\n\trows := take([[1, 2], [3]])\n\tprintln(int_str(rows.len + rows[0].len))\n}\n')
-	assert rows == '4'
-	boxed := run_good(v3_bin, 'good_generic_array_elem_interface_field', 'interface HasId {\n\tid int\n}\n\nstruct WithId {\n\tid int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([WithId{\n\t\tid: 7\n\t}])[0].id))\n}\n')
-	assert boxed == '7'
-	spoken := run_good(v3_bin, 'good_generic_array_elem_interface_method', "interface Speaker {\n\tspeak() string\n}\n\nstruct Dog {}\n\nfn (d Dog) speak() string {\n\treturn 'woof'\n}\n\nfn take[T](items []T) []Speaker {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([Dog{}])[0].speak())\n}\n")
-	assert spoken == 'woof'
-	variants := run_good(v3_bin, 'good_generic_array_elem_sum_variant', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tw int\n}\n\ntype FB = Bar | Foo\n\nfn take[T](items []T) []FB {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([Foo{\n\t\tv: 3\n\t}]).len))\n}\n')
-	assert variants == '1'
+	run_good_module_batch(v3_bin, 'generic_array_returns', [
+		// Elements that only differ in spelling (a registered alias next to its base
+		// type, one level down) are storage-identical, so the same slot must keep
+		// compiling.
+		TypeCheckerRuntimeCase{'good_generic_array_elem_alias_return', 'type NodeId = int\n\nfn take[T](rows [][]T) [][]NodeId {\n\treturn rows\n}\n\nfn main() {\n\trows := take([[1, 2], [3]])\n\tprintln(int_str(rows.len + rows[0].len))\n}\n', '4'},
+		TypeCheckerRuntimeCase{'good_generic_array_elem_interface_field', 'interface HasId {\n\tid int\n}\n\nstruct WithId {\n\tid int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([WithId{\n\t\tid: 7\n\t}])[0].id))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_generic_array_elem_interface_method', "interface Speaker {\n\tspeak() string\n}\n\nstruct Dog {}\n\nfn (d Dog) speak() string {\n\treturn 'woof'\n}\n\nfn take[T](items []T) []Speaker {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([Dog{}])[0].speak())\n}\n", 'woof'},
+		TypeCheckerRuntimeCase{'good_generic_array_elem_sum_variant', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tw int\n}\n\ntype FB = Bar | Foo\n\nfn take[T](items []T) []FB {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([Foo{\n\t\tv: 3\n\t}]).len))\n}\n', '1'},
+	])
 }
 
 // generic_array_return_error is the error for an array of `actual` returned as
