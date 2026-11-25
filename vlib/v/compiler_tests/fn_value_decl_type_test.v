@@ -105,10 +105,33 @@ fn fn_value_run_project_bad(fixture_dir string, name string, files map[string]st
 	root := fn_value_write_project(fixture_dir, name, files)
 	bad_bin := os.join_path(fixture_dir, 'v3_${name}')
 	main_path := os.join_path(root, 'main.v')
-	compile := os.exec([@VEXE, main_path, '-b', 'c', '-o', bad_bin])
+	compile := os.exec([@VEXE, '-b', 'c', '-nocolor', '-o', bad_bin, main_path])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: reached C compiler: ${compile.output}'
 	return compile.output
+}
+
+fn fn_value_check_shadow_rejections(fixture_dir string, cases map[string]string) {
+	mut files := map[string]string{}
+	mut imports := []string{cap: cases.len}
+	for name, source in cases {
+		imports << 'import ${name} as _'
+		files['${name}/${name}.v'] = 'module ${name}\n\n' + source
+	}
+	files['main.v'] = 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n'
+	output := fn_value_run_project_bad(fixture_dir, 'fn_value_local_shadowing', files)
+	assert !output.contains('main__foo'), output
+	mut rejected_files := map[string]bool{}
+	for line in output.split_into_lines() {
+		location, _ := line.split_once(': error: ') or { continue }
+		// Remove the line and column from the right so drive letters stay intact.
+		file := location.all_before_last(':').all_before_last(':')
+		rejected_files[os.file_name(file)] = true
+	}
+	for name, _ in cases {
+		assert '${name}.v' in rejected_files, '${name}: expected a compiler error in\n${output}'
+		assert !output.contains('${name}__foo'), output
+	}
 }
 
 fn fn_value_gen_project_c(fixture_dir string, name string, files map[string]string) string {
@@ -691,21 +714,15 @@ fn main() {
 fn test_fn_value_expected_context_respects_value_shadowing() {
 	fixture_dir := fn_value_new_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	ident_output := fn_value_run_bad(fixture_dir, 'fn_value_expected_ident_shadow',
-		local_ident_expected_shadow_src)
-	assert !ident_output.contains('main__foo'), ident_output
+	fn_value_check_shadow_rejections(fixture_dir, {
+		'fn_value_expected_ident_shadow':        local_ident_expected_shadow_src
+		'fn_value_expected_assignment_shadow':   assignment_expected_shadow_src
+		'fn_value_expected_callback_shadow':     callback_arg_expected_shadow_src
+		'fn_value_expected_struct_field_shadow': struct_field_expected_shadow_src
+	})
 	selector_output := fn_value_run_project_bad(fixture_dir, 'fn_value_expected_import_shadow',
 		imported_fn_value_expected_shadow_project_files())
 	assert !selector_output.contains('worker__inc'), selector_output
-	assign_output := fn_value_run_bad(fixture_dir, 'fn_value_expected_assignment_shadow',
-		assignment_expected_shadow_src)
-	assert !assign_output.contains('main__foo'), assign_output
-	callback_output := fn_value_run_bad(fixture_dir, 'fn_value_expected_callback_shadow',
-		callback_arg_expected_shadow_src)
-	assert !callback_output.contains('main__foo'), callback_output
-	struct_output := fn_value_run_bad(fixture_dir, 'fn_value_expected_struct_field_shadow',
-		struct_field_expected_shadow_src)
-	assert !struct_output.contains('main__foo'), struct_output
 }
 
 // A local cannot be redefined in a nested block, so the same name is bound in
