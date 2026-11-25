@@ -4604,3 +4604,18 @@ fn main() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('the mutable callback call method requires a mutable borrowed receiver'), result.output
 }
+
+fn test_ownership_callback_requires_a_matching_call_method() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'callback_missing_method', r'
+import sync.thread
+
+struct State {}
+
+fn main() {
+	_ = thread.new_mut_callback[int, int, State](State{})
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('the callback state must implement call with the requested signature'), result.output
+}

@@ -14,6 +14,9 @@ mut:
 
 // new_mut_callback moves a value with a public, mutable borrowing call method into a callback.
 pub fn new_mut_callback[A, R Transferable, T Transferable](value T) MutCallback[A, R] {
+	$if T !is MutCallable[A, R] {
+		$compile_error('the callback state must implement call with the requested signature')
+	}
 	$for method in T.methods {
 		$if method.name == 'call' {
 			invoke := T.$method
