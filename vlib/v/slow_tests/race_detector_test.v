@@ -3,7 +3,10 @@
 @[has_globals]
 module main
 
+import arrays.parallel
+import math
 import os
+import runtime
 
 __global tsan_probe_succeeded bool
 
@@ -600,13 +603,51 @@ fn probe_thread_sanitizer() bool {
 	return true
 }
 
-fn build_race_program(name string, source string, flags ...string) string {
+struct RaceProgramBuild {
+	exe    string
+	result os.Result
+}
+
+fn (build RaceProgramBuild) checked_exe() string {
+	assert build.result.exit_code == 0, build.result.output
+	return build.exe
+}
+
+fn compile_race_program(compiler []string, name string, source string, flags []string) RaceProgramBuild {
 	source_path := os.join_path(tdir, '${name}.v')
 	exe_path := os.join_path(tdir, name)
-	os.write_file(source_path, source) or { panic(err) }
-	res := os.exec([@VEXE, '-race', ...flags, '-o', exe_path, source_path])
-	assert res.exit_code == 0, res.output
-	return exe_path
+	os.write_file(source_path, source) or {
+		return RaceProgramBuild{
+			result: os.Result{
+				exit_code: -1
+				output:    err.msg()
+			}
+		}
+	}
+	return RaceProgramBuild{
+		exe:    exe_path
+		result: os.exec([...compiler, '-race', ...flags, '-o', exe_path, source_path])
+	}
+}
+
+fn build_race_program(name string, source string, flags ...string) string {
+	return compile_race_program([@VEXE], name, source, flags).checked_exe()
+}
+
+struct RaceVariant {
+	name  string
+	flags []string
+}
+
+// build_race_variants compiles each group with a shared CPU budget and returns
+// the results in order after all compilers have finished.
+fn build_race_variants(source string, variants []RaceVariant) []RaceProgramBuild {
+	cpu_budget := math.min(runtime.nr_jobs(), runtime.nr_cpus())
+	workers := math.min(4, math.min(cpu_budget, math.max(1, variants.len)))
+	compiler := ['env', 'VJOBS=${cpu_budget / workers}', @VEXE]
+	return parallel.amap(variants, fn [compiler, source] (variant RaceVariant) RaceProgramBuild {
+		return compile_race_program(compiler, variant.name, source, variant.flags)
+	}, workers: workers)
 }
 
 fn test_race_detector() {
@@ -714,13 +755,17 @@ fn test_race_blank_reads_are_reads() {
 	if !thread_sanitizer_runs() {
 		return
 	}
-	for read in ['string', 'fixed_array', 'computed', 'array_literal', 'mut_param',
-		'mut_param_in_parens'] {
+	reads := ['string', 'fixed_array', 'computed', 'array_literal', 'mut_param', 'mut_param_in_parens']
+	variants := reads.map(fn (read string) RaceVariant {
 		mut flags := ['-d', 'read=${read}']
 		if read in ['string', 'fixed_array', 'computed', 'array_literal'] {
 			flags << '-prod'
 		}
-		exe := build_race_program('blank_read_${read}', blank_read_source, ...flags)
+		return RaceVariant{'blank_read_${read}', flags}
+	})
+	for i, build in build_race_variants(blank_read_source, variants) {
+		exe := build.checked_exe()
+		read := reads[i]
 		// With the default trace history, ThreadSanitizer sometimes cannot restore the stack
 		// of the earlier access of the 1000 racing iterations, drops that report and never
 		// reports the address again (about 1 run in 200 on macOS). A longer history keeps it.
@@ -819,12 +864,16 @@ fn test_race_channel_values_are_the_caller_memory() {
 	if !thread_sanitizer_runs() {
 		return
 	}
+	modes := ['pop', 'try_pop', 'push', 'select']
 	for optimized in [false, true] {
-		for mode in ['pop', 'try_pop', 'push', 'select'] {
+		variants := modes.map(fn [optimized] (mode string) RaceVariant {
 			mut flags := ['-d', 'mode=${mode}']
 			if optimized { flags << '-prod' }
-			exe := build_race_program('channel_value_${mode}_${optimized}', channel_value_source,
-				...flags)
+			return RaceVariant{'channel_value_${mode}_${optimized}', flags}
+		})
+		for i, build in build_race_variants(channel_value_source, variants) {
+			exe := build.checked_exe()
+			mode := modes[i]
 			// Like the blank-read fixtures: 1000 racing iterations can outlive the default
 			// trace history, and ThreadSanitizer then drops the report for that address.
 			res := os.exec(['env', '${race_report_options} history_size=7', exe])
