@@ -19,11 +19,6 @@ fn or_review_gen_c(name string, src string) string {
 }
 
 fn or_review_run(name string, src string) string {
-	out, _ := or_review_run_fixture(name, src, false)
-	return out
-}
-
-fn or_review_run_fixture(name string, src string, read_c bool) (string, string) {
 	dir := os.join_path(os.vtmp_dir(), 'v3_or_review_${tempname.unique_token()}')
 	os.mkdir(dir) or { panic(err) }
 	defer {
@@ -32,12 +27,7 @@ fn or_review_run_fixture(name string, src string, read_c bool) (string, string) 
 	bin_path := or_review_compile_fixture(dir, name, src)
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
-	c_source := if read_c {
-		os.read_file(bin_path + '.c') or { panic(err) }
-	} else {
-		''
-	}
-	return run.output.trim_space(), c_source
+	return run.output.trim_space()
 }
 
 fn or_review_compile_fixture(dir string, name string, src string) string {
@@ -49,7 +39,7 @@ fn or_review_compile_fixture(dir string, name string, src string) string {
 	return bin_path
 }
 
-fn or_review_run_batch(name string, cases map[string]OrReviewFixture) {
+fn or_review_run_batch(name string, cases map[string]OrReviewFixture, read_c bool) string {
 	dir := os.join_path(os.vtmp_dir(), 'v3_or_review_${tempname.unique_token()}')
 	os.mkdir(dir) or { panic(err) }
 	defer { os.rmdir_all(dir) or {} }
@@ -75,6 +65,20 @@ ${calls.join('\n')}
 		assert run.exit_code == 0, '${fixture}: run failed\n${run.output}'
 		assert run.output.trim_space() == case.expected, '${fixture}: unexpected output\n${run.output}'
 	}
+	return if read_c {
+		os.read_file(bin_path + '.c') or { panic(err) }
+	} else {
+		''
+	}
+}
+
+fn or_review_c_body(c_source string, function_name string) string {
+	signature := '\nvoid ${function_name}(void) {'
+	start := c_source.index(signature) or { panic('missing generated C body for ${function_name}') }
+	body, _ := c_source[start + signature.len..].split_once('\n}') or {
+		panic('missing generated C body end for ${function_name}')
+	}
+	return body
 }
 
 struct OrReviewFixture {
@@ -122,22 +126,25 @@ fn test_channel_receive_or_stabilizes_side_effectful_source() {
 	assert c_source.contains('sync__Channel__closed_error(__chan_src_'), 'closed_error does not use channel source temp'
 }
 
-fn test_array_optional_element_or_uses_fallback_without_err_binding() {
-	src := 'fn main() {\n\terr := 7\n\tmut arr := []?int{}\n\tarr << none\n\tarr << 5\n\tmissing := arr[0] or { err }\n\tpresent := arr[1] or { -1 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n}\n'
-	out, c_source := or_review_run_fixture('array_optional_element_fallback_run', src, true)
-	assert c_source.contains('__v_option_i64 __arr_opt_'), 'missing loaded optional temp'
-	assert c_source.contains('i64 err = 7;'), 'explicit outer err was not preserved'
-	assert !c_source.contains('IError err = __arr_opt_'), 'element failure branch binds an Option error'
-	assert out == '7\n5'
-}
-
-fn test_map_optional_element_or_uses_fallback_without_err_binding() {
-	src := "fn main() {\n\terr := 7\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tm['y'] = 5\n\tmissing := m['x'] or { err }\n\tpresent := m['y'] or { -1 }\n\tabsent := m['z'] or { -2 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n\tprintln(int_str(absent))\n}\n"
-	out, c_source := or_review_run_fixture('map_optional_element_fallback_run', src, true)
-	assert c_source.contains('__v_option_i64 __map_opt_'), 'missing loaded map optional temp'
-	assert c_source.contains('i64 err = 7;'), 'explicit outer err was not preserved'
-	assert !c_source.contains('IError err = __map_opt_'), 'map element failure branch binds an Option error'
-	assert out == '7\n5\n-2'
+fn test_optional_element_or_uses_fallback_without_err_binding() {
+	c_source := or_review_run_batch('optional_element_fallback', {
+		'array_optional_element_fallback_run': OrReviewFixture{
+			source:   'fn main() {\n\terr := 7\n\tmut arr := []?int{}\n\tarr << none\n\tarr << 5\n\tmissing := arr[0] or { err }\n\tpresent := arr[1] or { -1 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n}\n'
+			expected: '7\n5'
+		}
+		'map_optional_element_fallback_run':   OrReviewFixture{
+			source:   "fn main() {\n\terr := 7\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tm['y'] = 5\n\tmissing := m['x'] or { err }\n\tpresent := m['y'] or { -1 }\n\tabsent := m['z'] or { -2 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n\tprintln(int_str(absent))\n}\n"
+			expected: '7\n5\n-2'
+		}
+	}, true)
+	array_body := or_review_c_body(c_source, 'array_optional_element_fallback_run')
+	assert array_body.contains('__v_option_i64 __arr_opt_'), 'missing loaded optional temp'
+	assert array_body.contains('i64 err = 7;'), 'explicit outer err was not preserved'
+	assert !array_body.contains('IError err = __arr_opt_'), 'element failure branch binds an Option error'
+	map_body := or_review_c_body(c_source, 'map_optional_element_fallback_run')
+	assert map_body.contains('__v_option_i64 __map_opt_'), 'missing loaded map optional temp'
+	assert map_body.contains('i64 err = 7;'), 'explicit outer err was not preserved'
+	assert !map_body.contains('IError err = __map_opt_'), 'map element failure branch binds an Option error'
 }
 
 fn test_nested_optional_logical_or_preserves_short_circuiting() {
@@ -192,7 +199,7 @@ fn test_channel_runtime_fixtures() {
 			source:   'fn main() {\n\terr := 7\n\tch := chan int{cap: 1}\n\tch.close()\n\tch <- 1 or {\n\t\tprintln("\${err}")\n\t}\n\tprintln(int_str(err))\n}\n'
 			expected: 'channel closed\n7'
 		}
-	})
+	}, false)
 }
 
 fn test_or_and_free_runtime_fixtures() {
@@ -217,7 +224,7 @@ fn test_or_and_free_runtime_fixtures() {
 			source:   'struct Box[T] {\n\tvalue T\n}\n\nfn make_map() ?map[string]Box[int] {\n\treturn {"answer": Box[int]{value: 42}}\n}\n\nfn main() {\n\titems := make_map() or { map[string]Box[int]{} }\n\tprintln(int_str(items["answer"].value))\n}\n'
 			expected: '42'
 		}
-	})
+	}, false)
 }
 
 fn test_or_rejects_non_options_and_implicit_element_errors() {
