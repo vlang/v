@@ -4478,3 +4478,73 @@ fn main() {
 	run := os.exec([binary])
 	assert run.exit_code == 0, run.output
 }
+
+fn test_ownership_initializes_a_shared_cell_once() {
+	v3_bin := ownership_build_v3()
+	name := 'arc_once_initialization'
+	result := run_ownership_check(v3_bin, name, r'
+import sync.arc
+
+struct Item implements Drop {
+	text string
+	released chan int
+}
+
+fn (mut item Item) drop() {
+	item.released <- item.text.len
+	drop_owned(item.text)
+}
+
+fn use_once(cell arc.Once[Item], initialized chan bool, released chan int) int {
+	value := cell.get_or_init(fn [initialized, released] () Item {
+		initialized <- true
+		return Item{text: "shared".to_owned(), released: released}
+	})
+	return value.text.len
+}
+
+fn main() {
+	initialized := chan bool{cap: 4}
+	released := chan int{cap: 4}
+	{
+		cell := arc.new_once[Item]()
+		assert cell.get() == none
+		first := spawn use_once(cell.clone(), initialized, released)
+		second := spawn use_once(cell.clone(), initialized, released)
+		assert first.wait() == 6
+		assert second.wait() == 6
+		assert (cell.get() or { panic("missing value") }).text == "shared"
+		assert <-initialized
+		mut more := false
+		assert initialized.try_pop(mut more) == .not_ready
+	}
+	assert <-released == 6
+	mut more := 0
+	assert released.try_pop(mut more) == .not_ready
+
+	with_value := arc.new_once_with(42)
+	assert *(with_value.get() or { panic("missing value") }) == 42
+}
+')
+	assert result.exit_code == 0, result.output
+	binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_rejects_sharing_a_cell_with_unshareable_values() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'arc_once_unshareable_value', r'
+import cell
+import sync.arc
+
+fn worker(value arc.Once[cell.RefCell[int]]) {}
+
+fn main() {
+	value := arc.new_once[cell.RefCell[int]]()
+	_ := spawn worker(value)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cell.RefCell has unsynchronized borrow state'), result.output
+}

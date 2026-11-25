@@ -405,8 +405,10 @@ A channel can carry a concrete error with transferable fields or a message
 error from builtin `error()` or `error_with_code()`.
 
 Pass independent owned values to a worker, or use a typed channel or a `shared`
-binding for synchronized access. The standard library's `arc.Arc[T]` can cross
-a thread boundary when its payload can be transferred and shared safely.
+binding for synchronized access. The standard library's `arc.Arc[T]` and
+`arc.Once[T]` can cross a thread boundary when their payloads can be
+transferred and shared safely. Clones of an `arc.Once` share the same cell.
+`get_or_init` initializes that cell once and borrows the resulting value.
 An `arc.Mutex[T]` instead grants exclusive ownership of the value during an update.
 Its clones can cross a thread boundary when `T` can be transferred. Pass an
 update function that receives `T` and returns a `MutexUpdate[T, R]` with the
