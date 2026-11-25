@@ -36,13 +36,15 @@ fn test_sql_insert_only_diagnostics_in_compile_and_check_modes() ! {
 	assert dynamic.count(update_error) == 2, normal.output
 }
 
-fn test_sql_insert_only_dynamic_aliases_respect_scope_and_reassignment() {
-	root := os.join_path(os.vtmp_dir(), 'orm_insert_only_aliases_${os.getpid()}')
-	os.mkdir_all(root)!
+fn test_sql_insert_only_accepts_valid_dynamic_assignments() {
+	root := os.join_path(os.vtmp_dir(), 'orm_insert_only_valid_assignments_${os.getpid()}')
+	grouped_dir := os.join_path(root, 'grouped_assignments')
+	os.mkdir_all(grouped_dir)!
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'main.v')
 	os.write_file(path, "import db.sqlite
 import orm
+import grouped_assignments
 struct InsertOnlyUser {
  id int @[primary]
  creator string @[sql_insert_only]
@@ -63,6 +65,26 @@ fn main() {
  mut replacement := { creator == 'protected' }
  replacement = runtime_assignments()
  sql db { dynamic update InsertOnlyUser set replacement where id == 1 }!
+ grouped_assignments.check()!
+}
+")!
+	os.write_file(os.join_path(grouped_dir, 'grouped_assignments.v'), "module grouped_assignments
+
+import db.sqlite
+struct InsertOnlyUser {
+ id int @[primary]
+ creator string @[sql_insert_only]
+ name string
+ active bool
+}
+pub fn check() ! {
+ db := sqlite.connect(':memory:')!
+ enabled := true
+ creator := 'read'
+ assignments := {
+  if creator == 'read' { active == (enabled) }
+ }
+ sql db { dynamic update InsertOnlyUser set assignments where id == 1 }!
 }
 ")!
 	for flags in [[]string{}, ['-check']] {
@@ -111,27 +133,5 @@ ${calls.join('\n')}
 		for name, _ in cases {
 			assert diagnostics.any(it.contains('${name}.v:')), '${name}, flags=${flags}: ${result.output}'
 		}
-	}
-	path := os.join_path(root, 'main.v')
-	os.write_file(path, "import db.sqlite
-struct InsertOnlyUser {
- id int @[primary]
- creator string @[sql_insert_only]
- name string
- active bool
-}
-fn main() {
- db := sqlite.connect(':memory:')!
- enabled := true
- creator := 'read'
- assignments := {
-  if creator == 'read' { active == (enabled) }
- }
- sql db { dynamic update InsertOnlyUser set assignments where id == 1 }!
-}
-")!
-	for flags in [[]string{}, ['-check']] {
-		result := os.exec([@VEXE, '-nocolor', ...flags, path])
-		assert result.exit_code == 0, result.output
 	}
 }
