@@ -29,7 +29,7 @@ jobs:
           mkdir -p "$root"
           failed=0
           for cc in gcc tcc; do
-            for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v vlib/v/gen/fastc/vox_constructs_test.v; do
+            for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v vlib/v/gen/fastc/vox_constructs_test.v vlib/v/gen/fastc/main_type_capture_test.v vlib/v/gen/fastc/vox_review_test.v; do
               label="$cc-$(basename "$test" .v)"
               rc=0
               ./v -cc "$cc" -no-retry-compilation -silent "$test" >"$root/$label.log" 2>&1 || rc=$?
@@ -112,7 +112,7 @@ jobs:
               fi
             done
           done
-          for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v vlib/v/gen/fastc/vox_constructs_test.v; do
+          for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v vlib/v/gen/fastc/vox_constructs_test.v vlib/v/gen/fastc/main_type_capture_test.v vlib/v/gen/fastc/vox_review_test.v; do
             rc=0
             label=$(basename "$test" .v)
             ./v-diagnostic -silent "$test" >"$root/$label.instrumented.log" 2>&1 || rc=$?
@@ -136,6 +136,33 @@ jobs:
           PY
           cat "$root/helper-occurrences.txt"
           exit "$failed"
+      - name: Reproduce the original GCC default shard with split C capture
+        if: always() && !cancelled() && steps.instrument.outcome == 'success'
+        shell: bash
+        env:
+          VFLAGS: -cc gcc
+          VTEST_FAIL_FAST: '1'
+          VJOBS: '4'
+          VTEST_SELF_SHARD_INDEX: '1'
+          VTEST_SELF_SHARD_COUNT: '4'
+          VTEST_SHOW_LONGEST_BY_RUNTIME: '3'
+          VTEST_SHOW_LONGEST_BY_COMPTIME: '3'
+          VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/fastc-array-diagnostic"
+          mkdir -p "$root/shard-split"
+          ./v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
+          export FASTC_DIAGNOSTIC_CAPTURE="$root/shard-split"
+          rc=0
+          ./v-diagnostic -W -silent test-self vlib >"$root/gcc-default-shard-1.log" 2>&1 || rc=$?
+          printf '%s\n' "$rc" >"$root/gcc-default-shard-1.status"
+          tail -n 100 "$root/gcc-default-shard-1.log"
+          if ! find "$root/shard-split" -type f -name '*.c' | grep -q .; then
+            echo "No full-shard split units captured" >&2
+            exit 1
+          fi
+          exit "$rc"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
