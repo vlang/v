@@ -397,10 +397,11 @@ fn main() {
 
 ## Thread transfers
 
-An ownership build checks the arguments and result of a `spawn` or `go` call. The
-check follows fields, sum variants and container elements. A value containing a
-raw reference cannot cross a thread boundary. This also applies to values sent
-through channels with `<-` or `.try_push()`, and to errors passed to `.close()`.
+An ownership build checks the arguments and result of a `spawn` or `go` call,
+including with `-autofree`. The check follows fields, sum variants and container
+elements. A value containing a raw reference cannot cross a thread boundary.
+This also applies to values sent through channels with `<-` or `.try_push()`,
+and to errors passed to `.close()`.
 A channel can carry a concrete error with transferable fields or a message
 error from builtin `error()` or `error_with_code()`.
 
