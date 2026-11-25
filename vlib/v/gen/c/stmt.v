@@ -2956,7 +2956,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					return
 				}
 				g.track_ierror_array_push_call_alias(child)
-				if g.gen_autofree_discarded_owned_call(child_id, child) {
+				if g.gen_discarded_owned_call(child_id, child) {
 					return
 				}
 				g.gen_expr(child_id)
@@ -7093,13 +7093,28 @@ fn (g &FlatGen) expr_is_nil_pointer_payload(id flat.NodeId, base &types.Type) bo
 	return g.expr_is_nil_value(id)
 }
 
-fn (mut g FlatGen) gen_autofree_discarded_owned_call(id flat.NodeId, node flat.Node) bool {
-	if !g.tc.autofree_mode || node.kind != .call {
-		return false
+fn (mut g FlatGen) gen_discarded_owned_call(id flat.NodeId, node flat.Node) bool {
+	$if ownership ? {
+		if node.kind != .call || (!g.tc.autofree_mode && !g.discarded_thread_array_wait(node)) {
+			return false
+		}
+	} $else {
+		if !g.tc.autofree_mode || node.kind != .call {
+			return false
+		}
 	}
 	typ := g.usable_expr_type(id)
 	if typ is types.Void || typ is types.Unknown || !g.tc.ownership_type_requires_destruction(typ) {
 		return false
+	}
+	$if ownership ? {
+		if !g.tc.autofree_mode {
+			// Scoped joins use plain scalar results. Payloads with their own
+			// destruction requirements still follow the existing wait path.
+			if typ !is types.Array || g.tc.ownership_type_requires_destruction(typ.elem_type) {
+				return false
+			}
+		}
 	}
 	if g.call_is_optional_failure_constructor(node) && g.cur_fn_ret_is_optional {
 		// gen_expr wraps a bare `error(...)` in the function's `__v_option_T`, so a temp

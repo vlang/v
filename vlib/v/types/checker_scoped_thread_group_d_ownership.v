@@ -26,10 +26,7 @@ fn (tc &TypeChecker) ownership_scoped_thread_group(spawn_id flat.NodeId) ?Scoped
 	if tc.binding_owner_is_global(owner) {
 		return none
 	}
-	ary := array_type_from_receiver(tc.resolve_type(group_id)) or { return none }
-	result := tc.thread_wait_return_type(ary.elem_type) or { return none }
-	// A plain scalar or void wait always joins the whole array.
-	if result !is Void && !ownership_scoped_thread_is_scalar(unalias_type(result)) {
+	if !tc.ownership_scoped_thread_group_array_type(tc.resolve_type(group_id)) {
 		return none
 	}
 	mut child_id := append_id
@@ -47,6 +44,31 @@ fn (tc &TypeChecker) ownership_scoped_thread_group(spawn_id flat.NodeId) ?Scoped
 		}
 		child_id = scope_id
 	}
+}
+
+fn (tc &TypeChecker) ownership_scoped_thread_group_array_type(typ Type) bool {
+	clean := unalias_type(typ)
+	if clean is Array {
+		result := tc.thread_wait_return_type(clean.elem_type) or { return false }
+		// A plain scalar or void wait always joins the whole array.
+		return result is Void || ownership_scoped_thread_is_scalar(unalias_type(result))
+	}
+	return false
+}
+
+// A checked worker array owns its storage until its one deferred wait runs.
+fn (tc &TypeChecker) ownership_scoped_thread_group_owns_binding(id flat.NodeId, typ Type) bool {
+	if !tc.ownership_scoped_thread_group_array_type(typ) {
+		return false
+	}
+	binding_id := tc.direct_parent_id(id)
+	binding := tc.a.node(binding_id)
+	if binding.kind != .decl_assign || binding.children_count != 2 || tc.a.child(binding, 0) != id {
+		return false
+	}
+	lhs := tc.a.node(id)
+	scope := tc.a.node(tc.direct_parent_id(binding_id))
+	return tc.ownership_scoped_thread_group_declaration(scope, flat.empty_node, lhs.value) != none
 }
 
 fn (tc &TypeChecker) ownership_scoped_thread_group_declaration(scope &flat.Node, child_id flat.NodeId, name string) ?flat.NodeId {

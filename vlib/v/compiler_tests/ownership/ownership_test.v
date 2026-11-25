@@ -4806,3 +4806,38 @@ fn main() {
 		assert result.output.contains('references cannot be transferred between threads'), result.output
 	}
 }
+
+fn test_ownership_deferred_thread_wait_drops_results_and_handles() {
+	v3_bin := ownership_build_v3()
+	name := 'deferred_thread_array_cleanup'
+	result := run_ownership_check_c_only(v3_bin, name, r'
+fn work() int {
+	return 7
+}
+
+fn run(early bool) {
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	handles << spawn work()
+	if early {
+		return
+	}
+}
+
+fn main() {
+	run(true)
+	run(false)
+}
+')
+	assert result.exit_code == 0, result.output
+	path := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out.c')
+	generated := os.read_file(path)!
+	waits := generated.split('__v_thread_arr_wait_i64(handles);')
+	assert waits.len == 3
+	for tail in waits[1..] {
+		results_drop := tail.index('array__free(&(__discarded_owned_') or { -1 }
+		handles_drop := tail.index('array__free(&(handles));') or { -1 }
+		assert results_drop >= 0
+		assert handles_drop > results_drop
+	}
+}
