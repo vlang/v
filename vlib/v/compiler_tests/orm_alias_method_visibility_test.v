@@ -275,14 +275,8 @@ fn check_sql_alias_clone_cases(cases []SqlAliasCloneCase, label string, public_m
 				'method `${it.method_receiver}.clone` is private'
 			}
 		})
-		// A rejected batch can exceed the default 20-error limit.
-		flag_sets := if is_public {
-			sql_alias_compile_and_check
-		} else {
-			[['-message-limit', '1000'], ['-check', '-message-limit', '1000']]
-		}
 		check_sql_alias_query_batch(query_cases, '${label}_${is_public}',
-			sql_alias_visibility_queries(is_public), flag_sets,
+			sql_alias_visibility_queries(is_public), sql_alias_compile_and_check,
 			sql_alias_visibility_module_source(is_public, true))!
 	}
 }
@@ -393,7 +387,7 @@ fn test_mut_alias_methods_keep_ordinary_storage_exceptions_in_sql_values() {
 }
 
 fn check_sql_alias_mutability(expressions []string, valid bool) ! {
-	mut cases_by_import := map[string][]SqlAliasQueryCase{}
+	mut cases := []SqlAliasQueryCase{cap: expressions.len}
 	for expression in expressions {
 		import_name := if expression.contains('renamed.') { 'renamed' } else { 'aliases' }
 		diagnostic := if valid {
@@ -403,23 +397,22 @@ fn check_sql_alias_mutability(expressions []string, valid bool) ! {
 		} else {
 			'cannot pass expression as `mut`'
 		}
-		cases_by_import[import_name] << SqlAliasQueryCase{
+		cases << SqlAliasQueryCase{
 			expression:  expression
 			import_name: import_name
 			diagnostic:  diagnostic
 		}
 	}
-	for import_name, cases in cases_by_import {
-		check_sql_alias_query_batch(cases, 'mutability_${import_name}_${valid}',
-			sql_alias_visibility_queries(valid), sql_alias_compile_and_check, sql_alias_public_module)!
-	}
+	check_sql_alias_query_batch(cases, 'mutability_${valid}', sql_alias_visibility_queries(valid),
+		sql_alias_compile_and_check, sql_alias_public_module)!
 }
 
 fn test_alias_methods_require_ordinary_shared_locks_in_sql_values() {
-	for method in ['mutate', 'inspect', 'clone'] {
-		import_name := if method == 'inspect' { 'renamed' } else { 'aliases' }
-		check_sql_alias_lock_matrix(['shared_values'], method, import_name, false)!
-	}
+	check_sql_alias_lock_matrix('ordinary_lock', ['shared_values'], {
+		'mutate':  'aliases'
+		'inspect': 'renamed'
+		'clone':   'aliases'
+	}, false)!
 }
 
 struct SqlAliasQueryCase {
@@ -461,8 +454,13 @@ fn check_sql_alias_query_batch(cases []SqlAliasQueryCase, label string, queries 
 	assert expected.len == 0 || expected.len == calls.len
 	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n\t${calls.join('\n\t')}\n}\n')!
 	executable := os.join_path(dir, 'main.exe')
+	mut diagnostic_flags := ['-nocolor']
+	// Larger batches need every error past the compiler's default limit.
+	if expected.len > 20 {
+		diagnostic_flags << ['-message-limit', '1000']
+	}
 	for flags in flag_sets {
-		result := os.exec([@VEXE, '-nocolor', ...flags, '-o', executable, dir])
+		result := os.exec([@VEXE, ...diagnostic_flags, ...flags, '-o', executable, dir])
 		if expected.len == 0 {
 			assert result.exit_code == 0, result.output
 			if flags.len == 0 {
@@ -479,57 +477,60 @@ fn check_sql_alias_query_batch(cases []SqlAliasQueryCase, label string, queries 
 	}
 }
 
-fn check_sql_alias_lock_matrix(lock_receivers []string, method string, import_name string, lock_whole_array bool) ! {
+fn check_sql_alias_lock_matrix(label string, lock_receivers []string, imports_by_method map[string]string, lock_whole_array bool) ! {
 	mut cases := []SqlAliasQueryCase{}
-	for lock_receiver in lock_receivers {
-		receiver := if lock_whole_array { '${lock_receiver}[0]' } else { lock_receiver }
-		for wrapper in ['', 'rlock', 'lock'] {
-			diagnostic := if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
-				''
-			} else if method == 'clone' {
-				'must be `rlock`ed or `lock`ed'
-			} else if wrapper == 'rlock' {
-				'has an `rlock` but needs a `lock`'
-			} else {
-				'is `shared` and must be `lock`ed'
-			}
-			cases << SqlAliasQueryCase{
-				expression:    '${receiver}.${method}()[0].name'
-				import_name:   import_name
-				lock_receiver: lock_receiver
-				wrapper:       wrapper
-				diagnostic:    diagnostic
+	for method, import_name in imports_by_method {
+		for lock_receiver in lock_receivers {
+			receiver := if lock_whole_array { '${lock_receiver}[0]' } else { lock_receiver }
+			for wrapper in ['', 'rlock', 'lock'] {
+				diagnostic := if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
+					''
+				} else if method == 'clone' {
+					'must be `rlock`ed or `lock`ed'
+				} else if wrapper == 'rlock' {
+					'has an `rlock` but needs a `lock`'
+				} else {
+					'is `shared` and must be `lock`ed'
+				}
+				cases << SqlAliasQueryCase{
+					expression:    '${receiver}.${method}()[0].name'
+					import_name:   import_name
+					lock_receiver: lock_receiver
+					wrapper:       wrapper
+					diagnostic:    diagnostic
+				}
 			}
 		}
 	}
-	check_sql_alias_query_batch(cases.filter(it.diagnostic == ''), '${method}_${import_name}_accepted',
+	check_sql_alias_query_batch(cases.filter(it.diagnostic == ''), '${label}_accepted',
 		sql_alias_visibility_queries(true), sql_alias_compile_and_check, sql_alias_public_module)!
-	check_sql_alias_query_batch(cases.filter(it.diagnostic != ''), '${method}_${import_name}_rejected',
+	check_sql_alias_query_batch(cases.filter(it.diagnostic != ''), '${label}_rejected',
 		sql_alias_visibility_queries(false), sql_alias_compile_and_check, sql_alias_public_module)!
 }
 
 fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_values() {
 	receivers := ['shared_items[0]', '(shared_collection.values)[0]', 'parameter_items[0]',
 		"holders['primary'].values", "(holders [ 'primary' ]).values"]
-	for method in ['mutate', 'clone'] {
-		import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
-		check_sql_alias_lock_matrix(receivers, method, import_name, false)!
-	}
+	check_sql_alias_lock_matrix('shared_element_lock', receivers, {
+		'mutate': 'aliases'
+		'clone':  'renamed'
+	}, false)!
 }
 
 fn test_alias_methods_keep_captured_shared_array_locks_in_sql_values() {
 	receivers := ['closure_items[0]', 'parameter_closure_items[0]', 'nested_closure_items[0]']
-	for method in ['mutate', 'clone'] {
-		import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
-		check_sql_alias_lock_matrix(receivers, method, import_name, false)!
-	}
+	check_sql_alias_lock_matrix('captured_array_lock', receivers, {
+		'mutate': 'aliases'
+		'clone':  'renamed'
+	}, false)!
 }
 
 fn test_alias_methods_keep_whole_shared_array_locks_in_sql_values() {
 	receivers := ['whole_parameter_items', 'whole_parameter_closure_items']
-	for method in ['mutate', 'clone'] {
-		check_sql_alias_lock_matrix(receivers, method, 'aliases', true)!
-	}
+	check_sql_alias_lock_matrix('whole_array_lock', receivers, {
+		'mutate': 'aliases'
+		'clone':  'aliases'
+	}, true)!
 }
 
 fn test_option_result_alias_fallback_methods_keep_resolution_and_visibility_in_sql_values() {
