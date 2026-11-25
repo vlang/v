@@ -5,13 +5,18 @@
 // or spawning it, passes it on too. Where the checker already reports the call
 // with an error (an assignment, an operand, a typed argument...), no warning is
 // added on top.
+import arrays.parallel
+import math
 import os
+import runtime
+import v.cmdexec
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const fixture_root = os.vtmp_dir()
 const unhandled_v3_bin = os.join_path(os.temp_dir(), 'v3_unhandled_result_test_${os.getpid()}')
 
 const prelude = "module main
@@ -167,17 +172,17 @@ fn call_position(c Case) (int, int) {
 
 // write_program writes `source` as main.v of a new directory, and returns it.
 fn write_program(name string, source string) string {
-	dir := os.join_path(os.vtmp_dir(), 'v3_unhandled_result_${name}_${os.getpid()}')
+	dir := os.join_path(fixture_root, 'v3_unhandled_result_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
 	return dir
 }
 
-// build_output builds the program in `dir`, as `v run` does before running it:
+// build_program builds the program in `dir`, as `v run` does before running it:
 // a check alone prints no warning when there is no error.
-fn build_output(v3 string, dir string) string {
-	return os.exec(['${v3}', '-nocache', '-gc', 'none', '-nocolor', '-o', os.join_path(dir, 'prog'),
-		os.join_path(dir, 'main.v')]).output
+fn build_program(v3 string, dir string, env map[string]string) os.Result {
+	return cmdexec.run_in_merged_with_env(v3, ['-nocache', '-gc', 'none', '-nocolor', '-o',
+		os.join_path(dir, 'prog'), os.join_path(dir, 'main.v')], '', env)
 }
 
 // diagnostics_at returns the diagnostics reported on `line` of main.v.
@@ -194,11 +199,22 @@ fn diagnostics_at(output string, line int) []string {
 
 fn test_a_call_whose_result_nothing_handles_is_warned_about() {
 	v3 := build_v3()
-	mut wrong := []string{}
-	for c in cases {
+	cpu_budget := math.max(1, math.min(runtime.nr_jobs(), runtime.nr_cpus()))
+	workers := math.min(4, cpu_budget)
+	// Each case has its own project. Split the CPU budget across its compilers
+	// and keep the results in case order for the diagnostic checks below.
+	compiler_env := {
+		'VJOBS': (cpu_budget / workers).str()
+	}
+	results := parallel.amap(cases, fn [v3, compiler_env] (c Case) os.Result {
 		dir := write_program(c.name, program(c))
-		output := build_output(v3, dir)
-		os.rmdir_all(dir) or {}
+		defer { os.rmdir_all(dir) or {} }
+		return build_program(v3, dir, compiler_env)
+	}, workers: workers)
+	mut wrong := []string{}
+	for i, c in cases {
+		result := results[i]
+		output := result.output
 		line, col := call_position(c)
 		at := diagnostics_at(output, line)
 		warnings := at.filter(it.contains('warning:'))
@@ -217,11 +233,15 @@ fn test_a_call_whose_result_nothing_handles_is_warned_about() {
 				errors.len > 0 && warnings.len == 0
 			}
 			.nothing {
-				at.len == 0
+				at.len == 0 && result.exit_code == 0
 			}
 		}
 		if !ok {
-			wrong << '${c.name} (${c.want}) at ${line}:${col}: ${at}'
+			wrong << if c.want == .nothing && result.exit_code != 0 {
+				'${c.name} (${c.want}): compilation failed\n${output}'
+			} else {
+				'${c.name} (${c.want}) at ${line}:${col}: ${at}'
+			}
 		}
 	}
 	assert wrong.len == 0, wrong.join('\n')
@@ -235,7 +255,7 @@ fn test_the_warning_names_the_call_and_its_result_type() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	output := build_output(v3, dir)
+	output := build_program(v3, dir, map[string]string{}).output
 	lines := output.split_into_lines()
 	for expected in ['warning: fails() returns `!int`, ${either_hint}',
 		'warning: b.risky() returns `!int`, ${either_hint}',
