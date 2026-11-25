@@ -1,3 +1,4 @@
+import json2
 import os
 import v.cmdexec
 import v.tempname
@@ -49,6 +50,46 @@ fn round4_run_bad(compiler string, name string, src string, expected string) {
 	assert compile.exit_code != 0, '${name}: expected failure, got success\n${compile.output}'
 	assert compile.output.contains(expected), '${name}: expected `${expected}` in\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
+}
+
+struct Round4Rejection {
+	name     string
+	source   string
+	expected string
+}
+
+struct Round4Diagnostic {
+	file     string
+	severity string
+	message  string
+}
+
+fn round4_check_rejections(name string, cases []Round4Rejection) {
+	root := round4_tmp_path(name)
+	mut imports := []string{cap: cases.len}
+	for case in cases {
+		imports << 'import ${case.name} as _'
+		round4_write_file(root, os.join_path(case.name, '${case.name}.v'), 'module ${case.name}\n\n' +
+			case.source)
+	}
+	round4_write_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')
+	result := run_round4_compiler(v3_bin, [root, '-json-errors', '-b', 'c', '-o',
+		os.join_path(root, 'program')])
+	assert result.exit_code != 0, result.output
+	assert !result.output.contains('C compilation failed'), result.output
+	mut errors := map[string][]string{}
+	for line in result.output.split_into_lines() {
+		if !line.starts_with('{') {
+			continue
+		}
+		diagnostic := json2.decode[Round4Diagnostic](line) or { panic(err) }
+		if diagnostic.severity == 'error' {
+			errors[os.file_name(diagnostic.file)] << diagnostic.message
+		}
+	}
+	for case in cases {
+		assert errors['${case.name}.v'].any(it.contains(case.expected)), '${case.name}: expected `${case.expected}` in\n${result.output}'
+	}
 }
 
 fn round4_run_good_project(compiler string, name string, files map[string]string, input string) string {
@@ -172,7 +213,8 @@ fn main() {
 ')
 	assert out == 'true,true|2'
 
-	round4_run_bad(v3_bin, 'bad_variant_name_member', 'struct A {}
+	round4_check_rejections('variant_metadata_members', [
+		Round4Rejection{'bad_variant_name_member', 'struct A {}
 struct B {}
 
 type Value = A | B
@@ -184,9 +226,8 @@ fn main() {
 		use_name(variant.name)
 	}
 }
-',
-		'unknown VariantData member `name`')
-	round4_run_bad(v3_bin, 'bad_variant_attrs_member', 'struct A {}
+', 'unknown VariantData member `name`'},
+		Round4Rejection{'bad_variant_attrs_member', 'struct A {}
 struct B {}
 
 type Value = A | B
@@ -198,8 +239,8 @@ fn main() {
 		use_attrs(variant.attrs)
 	}
 }
-',
-		'unknown VariantData member `attrs`')
+', 'unknown VariantData member `attrs`'},
+	])
 }
 
 fn test_comptime_variants_prefer_local_sum_over_imported_short_name() {
@@ -680,7 +721,8 @@ fn main() {
 }
 
 fn test_deferred_metadata_call_arguments_are_checked_against_callee_types() {
-	round4_run_bad(v3_bin, 'bad_method_metadata_call_arg_type', 'struct App {}
+	round4_check_rejections('deferred_metadata_arguments', [
+		Round4Rejection{'bad_method_metadata_call_arg_type', 'struct App {}
 
 fn (app App) run() {
 	_ = app
@@ -693,9 +735,8 @@ fn main() {
 		takes_int(method.name)
 	}
 }
-',
-		'cannot use `string` as argument 1 to `takes_int`; expected `int`')
-	round4_run_bad(v3_bin, 'bad_param_metadata_call_arg_type', 'fn consume(value int) {
+', 'cannot use `string` as argument 1 to `takes_int`; expected `int`'},
+		Round4Rejection{'bad_param_metadata_call_arg_type', 'fn consume(value int) {
 	_ = value
 }
 
@@ -706,9 +747,8 @@ fn main() {
 		takes_string(param.typ)
 	}
 }
-',
-		'cannot use `int` as argument 1 to `takes_string`; expected `string`')
-	round4_run_bad(v3_bin, 'bad_attribute_metadata_call_arg_type', "@[route: '/']
+', 'cannot use `int` as argument 1 to `takes_string`; expected `string`'},
+		Round4Rejection{'bad_attribute_metadata_call_arg_type', "@[route: '/']
 struct App {}
 
 fn takes_bool(value bool) {}
@@ -718,8 +758,8 @@ fn main() {
 		takes_bool(attr.arg)
 	}
 }
-",
-		'cannot use `string` as argument 1 to `takes_bool`; expected `bool`')
+", 'cannot use `string` as argument 1 to `takes_bool`; expected `bool`'},
+	])
 }
 
 fn test_cross_module_composite_field_typ_guard_uses_qualified_type() {
@@ -1107,7 +1147,8 @@ fn main() {
 }
 
 fn test_comptime_for_body_checks_static_code_in_metadata_if_branch() {
-	round4_run_bad(v3_bin, 'bad_static_call_in_comptime_for_metadata_if', 'struct S {
+	round4_check_rejections('static_field_guards', [
+		Round4Rejection{'bad_static_call_in_comptime_for_metadata_if', 'struct S {
 	id int
 }
 
@@ -1118,9 +1159,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_metadata_guard_fn')
-	round4_run_bad(v3_bin, 'bad_static_call_in_comptime_for_type_if', 'struct S {
+', 'unknown function: missing_metadata_guard_fn'},
+		Round4Rejection{'bad_static_call_in_comptime_for_type_if', 'struct S {
 	id int
 }
 
@@ -1131,8 +1171,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_type_guard_fn')
+', 'unknown function: missing_type_guard_fn'},
+	])
 }
 
 fn test_comptime_for_static_check_skips_untaken_metadata_if_branch() {
@@ -1273,7 +1313,8 @@ fn main() {
 }
 
 fn test_unknown_comptime_field_member_is_rejected() {
-	round4_run_bad(v3_bin, 'bad_field_member', 'struct S {
+	round4_check_rejections('field_metadata_members', [
+		Round4Rejection{'bad_field_member', 'struct S {
 	name int
 }
 
@@ -1282,9 +1323,8 @@ fn main() {
 		println(field.nmae)
 	}
 }
-	',
-		'unknown FieldData member `nmae`')
-	round4_run_bad(v3_bin, 'bad_outer_field_member_in_nested_loop', 'struct Foo {
+	', 'unknown FieldData member `nmae`'},
+		Round4Rejection{'bad_outer_field_member_in_nested_loop', 'struct Foo {
 	id int
 }
 
@@ -1299,8 +1339,8 @@ fn main() {
 		}
 	}
 }
-	',
-		'unknown FieldData member `nmae`')
+	', 'unknown FieldData member `nmae`'},
+	])
 }
 
 fn test_unknown_comptime_enum_value_member_is_rejected() {
@@ -1318,7 +1358,8 @@ fn main() {
 }
 
 fn test_non_variant_comptime_loop_variables_are_rejected_as_is_patterns() {
-	round4_run_bad(v3_bin, 'bad_sum_is_field_loop_variable', 'struct A {}
+	round4_check_rejections('non_variant_loop_variables', [
+		Round4Rejection{'bad_sum_is_field_loop_variable', 'struct A {}
 struct B {}
 struct Holder {
 	n int
@@ -1332,9 +1373,8 @@ fn check(value Value) {
 }
 
 fn main() {}
-',
-		'`Value` has no variant `field`')
-	round4_run_bad(v3_bin, 'bad_sum_is_enum_value_loop_variable', 'enum EnumKind {
+', '`bad_sum_is_field_loop_variable.Value` has no variant `bad_sum_is_field_loop_variable.field`'},
+		Round4Rejection{'bad_sum_is_enum_value_loop_variable', 'enum EnumKind {
 	one
 }
 struct A {}
@@ -1348,8 +1388,8 @@ fn check(value Value) {
 }
 
 fn main() {}
-',
-		'`Value` has no variant `item`')
+', '`bad_sum_is_enum_value_loop_variable.Value` has no variant `bad_sum_is_enum_value_loop_variable.item`'},
+	])
 }
 
 fn test_nested_comptime_for_validates_inner_members() {
@@ -1373,7 +1413,8 @@ fn main() {
 }
 
 fn test_unknown_comptime_member_in_if_guard_is_rejected() {
-	round4_run_bad(v3_bin, 'bad_field_guard_member', "struct S {
+	round4_check_rejections('metadata_guard_members', [
+		Round4Rejection{'bad_field_guard_member', "struct S {
 	id int
 }
 
@@ -1384,9 +1425,8 @@ fn main() {
 		}
 	}
 }
-	",
-		'unknown FieldData member `nmae`')
-	round4_run_bad(v3_bin, 'bad_enum_guard_member', "enum Color {
+	", 'unknown FieldData member `nmae`'},
+		Round4Rejection{'bad_enum_guard_member', "enum Color {
 	red
 }
 
@@ -1397,8 +1437,8 @@ fn main() {
 		}
 	}
 }
-	",
-		'unknown EnumData member `nmae`')
+	", 'unknown EnumData member `nmae`'},
+	])
 }
 
 fn test_comptime_member_lookalikes_in_guard_strings_are_ignored() {
@@ -1433,7 +1473,8 @@ fn main() {
 }
 
 fn test_unsupported_comptime_field_members_are_rejected() {
-	round4_run_bad(v3_bin, 'bad_field_is_interface', 'struct S {
+	round4_check_rejections('unsupported_field_members', [
+		Round4Rejection{'bad_field_is_interface', 'struct S {
 		name int
 	}
 
@@ -1442,9 +1483,8 @@ fn main() {
 		println(field.is_interface)
 	}
 }
-',
-		'unknown FieldData member `is_interface`')
-	round4_run_bad(v3_bin, 'bad_field_is_function', 'struct S {
+', 'unknown FieldData member `is_interface`'},
+		Round4Rejection{'bad_field_is_function', 'struct S {
 		name int
 	}
 
@@ -1453,8 +1493,8 @@ fn main() {
 		println(field.is_function)
 	}
 }
-',
-		'unknown FieldData member `is_function`')
+', 'unknown FieldData member `is_function`'},
+	])
 }
 
 fn test_enum_values_use_const_from_declaring_module() {
@@ -2111,8 +2151,8 @@ fn test_path_pseudo_values_expand_in_comptime_conditions() {
 }
 
 fn test_comptime_line_pseudo_values_use_their_token_positions() {
-	if_name := 'comptime_line_pseudo_token_positions_if'
-	src_path := '${round4_tmp_path(if_name)}.v'
+	name := 'comptime_line_pseudo_token_positions'
+	src_path := '${round4_tmp_path(name)}.v'
 	src_file_name := os.file_name(src_path)
 	mut lines := ['fn main() {', '\tmut rows := []string{}']
 	if_line := lines.len + 1
@@ -2125,38 +2165,22 @@ fn test_comptime_line_pseudo_values_use_their_token_positions() {
 	lines << '\t{'
 	lines << "\t\trows << 'if-file-line'"
 	lines << '\t}'
+	match_line := lines.len + 1
+	lines << '\t\$match @LINE'
+	lines << '\t{'
+	lines << "\t\t'${match_line}' { rows << 'match-line' }"
+	lines << "\t\t\$else { rows << 'wrong-match-line' }"
+	lines << '\t}'
+	match_file_line := lines.len + 1
+	lines << '\t\$match @FILE_LINE'
+	lines << '\t{'
+	lines << "\t\t'${src_file_name}:${match_file_line}' { rows << 'match-file-line' }"
+	lines << "\t\t\$else { rows << 'wrong-match-file-line' }"
+	lines << '\t}'
 	lines << "\tprintln(rows.join('|'))"
 	lines << '}'
-	out := round4_run_good(v3_bin, if_name, lines.join('\n') + '\n')
-	assert out == 'if-line|if-file-line'
-
-	match_name := 'comptime_line_pseudo_token_positions_match'
-	mut match_lines := ['fn main() {', '\tmut rows := []string{}']
-	match_line := match_lines.len + 1
-	match_lines << '\t\$match @LINE'
-	match_lines << '\t{'
-	match_lines << "\t\t'${match_line}' { rows << 'match-line' }"
-	match_lines << "\t\t\$else { rows << 'wrong-match-line' }"
-	match_lines << '\t}'
-	match_lines << "\tprintln(rows.join('|'))"
-	match_lines << '}'
-	match_out := round4_run_good(v3_bin, match_name, match_lines.join('\n') + '\n')
-	assert match_out == 'match-line'
-
-	match_file_name := 'comptime_line_pseudo_token_positions_match_file'
-	match_file_src_path := '${round4_tmp_path(match_file_name)}.v'
-	match_file_src_name := os.file_name(match_file_src_path)
-	mut match_file_lines := ['fn main() {', '\tmut rows := []string{}']
-	match_file_line := match_file_lines.len + 1
-	match_file_lines << '\t\$match @FILE_LINE'
-	match_file_lines << '\t{'
-	match_file_lines << "\t\t'${match_file_src_name}:${match_file_line}' { rows << 'match-file-line' }"
-	match_file_lines << "\t\t\$else { rows << 'wrong-match-file-line' }"
-	match_file_lines << '\t}'
-	match_file_lines << "\tprintln(rows.join('|'))"
-	match_file_lines << '}'
-	match_file_out := round4_run_good(v3_bin, match_file_name, match_file_lines.join('\n') + '\n')
-	assert match_file_out == 'match-file-line'
+	out := round4_run_good(v3_bin, name, lines.join('\n') + '\n')
+	assert out == 'if-line|if-file-line|match-line|match-file-line'
 }
 
 fn test_attribute_line_pseudo_values_use_their_token_positions() {
@@ -2264,7 +2288,8 @@ fn main() {
 }
 
 fn test_unresolved_shorthand_method_selectors_are_rejected() {
-	round4_run_bad(v3_bin, 'shorthand_method_selector_outside_loop', 'struct Item {}
+	round4_check_rejections('shorthand_method_selectors', [
+		Round4Rejection{'shorthand_method_selector_outside_loop', 'struct Item {}
 
 fn (item Item) run() {
 	_ = item
@@ -2274,9 +2299,8 @@ fn main() {
 	item := Item{}
 	item.$method()
 }
-',
-		'unknown identifier `method`')
-	round4_run_bad(v3_bin, 'misspelled_shorthand_method_selector', 'struct Item {}
+', 'unknown identifier `method`'},
+		Round4Rejection{'misspelled_shorthand_method_selector', 'struct Item {}
 
 fn (item Item) run() {
 	_ = item
@@ -2288,8 +2312,8 @@ fn main() {
 		item.$methd()
 	}
 }
-',
-		'unknown identifier `methd`')
+', 'unknown identifier `methd`'},
+	])
 }
 
 fn test_bare_method_data_and_imported_return_type_are_materialized() {
@@ -3088,7 +3112,8 @@ fn main() {
 }
 
 fn test_concrete_generic_receiver_reflection_checks_selected_branches() {
-	round4_run_bad(v3_bin, 'generic_receiver_selected_name_branch', 'struct Box[T] {}
+	round4_check_rejections('generic_receiver_branches', [
+		Round4Rejection{'generic_receiver_selected_name_branch', 'struct Box[T] {}
 
 fn (b Box[T]) get(value T) T {
 	_ = b
@@ -3103,9 +3128,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_generic_method_name_branch')
-	round4_run_bad(v3_bin, 'generic_receiver_selected_param_branch', 'struct Box[T] {}
+', 'unknown function: missing_generic_method_name_branch'},
+		Round4Rejection{'generic_receiver_selected_param_branch', 'struct Box[T] {}
 
 fn (b Box[T]) get(value T) T {
 	_ = b
@@ -3120,8 +3144,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_generic_method_param_branch')
+', 'unknown function: missing_generic_method_param_branch'},
+	])
 }
 
 fn test_generic_reflection_compile_error_waits_for_selected_branch() {
@@ -3243,7 +3267,8 @@ fn test_comptime_string_comparisons_normalize_escapes() {
 }
 
 fn test_deferred_reflection_loops_check_static_body_code() {
-	round4_run_bad(v3_bin, 'method_loop_static_body_error', 'struct App {}
+	round4_check_rejections('reflection_static_bodies', [
+		Round4Rejection{'method_loop_static_body_error', 'struct App {}
 
 fn (app App) run(value int) {
 	_ = app
@@ -3255,9 +3280,8 @@ fn main() {
 		missing_method_loop_fn()
 	}
 }
-',
-		'unknown function: missing_method_loop_fn')
-	round4_run_bad(v3_bin, 'param_loop_static_body_error', 'fn consume(value int) {
+', 'unknown function: missing_method_loop_fn'},
+		Round4Rejection{'param_loop_static_body_error', 'fn consume(value int) {
 	_ = value
 }
 
@@ -3266,9 +3290,8 @@ fn main() {
 		missing_param_loop_fn()
 	}
 }
-',
-		'unknown function: missing_param_loop_fn')
-	round4_run_bad(v3_bin, 'attribute_loop_static_body_error', '@[route]
+', 'unknown function: missing_param_loop_fn'},
+		Round4Rejection{'attribute_loop_static_body_error', '@[route]
 struct App {}
 
 fn main() {
@@ -3276,12 +3299,13 @@ fn main() {
 		missing_attribute_loop_fn()
 	}
 }
-',
-		'unknown function: missing_attribute_loop_fn')
+', 'unknown function: missing_attribute_loop_fn'},
+	])
 }
 
 fn test_deferred_reflection_loops_check_selected_metadata_branches() {
-	round4_run_bad(v3_bin, 'method_loop_selected_branch_error', 'struct App {}
+	round4_check_rejections('reflection_name_branches', [
+		Round4Rejection{'method_loop_selected_branch_error', 'struct App {}
 
 fn (app App) run() {
 	_ = app
@@ -3294,9 +3318,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_method_fn')
-	round4_run_bad(v3_bin, 'method_loop_selected_missing_param_branch_error', 'struct App {}
+', 'unknown function: missing_selected_method_fn'},
+		Round4Rejection{'method_loop_selected_missing_param_branch_error', 'struct App {}
 
 fn (app App) run() {
 	_ = app
@@ -3309,9 +3332,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_method_param_slot_fn')
-	round4_run_bad(v3_bin, 'param_loop_selected_branch_error', 'fn consume(value int) {
+', 'unknown function: missing_selected_method_param_slot_fn'},
+		Round4Rejection{'param_loop_selected_branch_error', 'fn consume(value int) {
 	_ = value
 }
 
@@ -3322,9 +3344,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_param_fn')
-	round4_run_bad(v3_bin, 'attribute_loop_selected_branch_error', '@[route]
+', 'unknown function: missing_selected_param_fn'},
+		Round4Rejection{'attribute_loop_selected_branch_error', '@[route]
 struct App {}
 
 fn main() {
@@ -3334,12 +3355,13 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_attribute_fn')
+', 'unknown function: missing_selected_attribute_fn'},
+	])
 }
 
 fn test_deferred_reflection_loops_check_selected_non_name_metadata_branches() {
-	round4_run_bad(v3_bin, 'method_loop_selected_is_pub_branch_error', 'struct App {}
+	round4_check_rejections('reflection_non_name_branches', [
+		Round4Rejection{'method_loop_selected_is_pub_branch_error', 'struct App {}
 
 pub fn (app App) run() {
 	_ = app
@@ -3352,9 +3374,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_public_method_fn')
-	round4_run_bad(v3_bin, 'param_loop_selected_typ_branch_error', 'fn consume(value string) {
+', 'unknown function: missing_selected_public_method_fn'},
+		Round4Rejection{'param_loop_selected_typ_branch_error', 'fn consume(value string) {
 	_ = value
 }
 
@@ -3365,9 +3386,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_string_param_fn')
-	round4_run_bad(v3_bin, 'attribute_loop_selected_arg_branch_error', "@[route: '/path']
+', 'unknown function: missing_selected_string_param_fn'},
+		Round4Rejection{'attribute_loop_selected_arg_branch_error', "@[route: '/path']
 struct App {}
 
 fn main() {
@@ -3377,8 +3397,8 @@ fn main() {
 		}
 	}
 }
-",
-		'unknown function: missing_selected_attribute_arg_fn')
+", 'unknown function: missing_selected_attribute_arg_fn'},
+	])
 }
 
 fn test_deferred_reflection_loops_skip_unselected_metadata_branches() {

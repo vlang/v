@@ -95,15 +95,27 @@ fn run_bad_with_flags(compiler string, name string, src string, expected string,
 
 // run_good supports run good handling for v3 tests.
 fn run_good(compiler string, name string, src string) string {
+	good_bin := compile_good_source(compiler, name, src)
+	return run_good_binary(name, good_bin)
+}
+
+fn compile_good_source(compiler string, name string, src string) string {
 	out := unique_temp_path(name)
 	good_src := out + '.v'
 	os.write_file(good_src, src) or { panic(err) }
-	good_bin := out
-	compile := run_type_checker_compiler(compiler, ['-nocache', '-enable-globals', '${good_src}',
+	compile_good_input(compiler, name, good_src, out)
+	return out
+}
+
+fn compile_good_input(compiler string, name string, input_path string, good_bin string) {
+	compile := run_type_checker_compiler(compiler, ['-nocache', '-enable-globals', input_path,
 		'-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.exec([good_bin])
+}
+
+fn run_good_binary(name string, good_bin string, args ...string) string {
+	run := os.exec([good_bin, ...args])
 	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
 }
@@ -151,6 +163,11 @@ fn run_bad_project(compiler string, name string, files map[string]string, input 
 
 // run_good_project supports run good project handling for v3 tests.
 fn run_good_project(compiler string, name string, files map[string]string, input string) string {
+	good_bin := compile_good_project(compiler, name, files, input)
+	return run_good_binary(name, good_bin)
+}
+
+fn compile_good_project(compiler string, name string, files map[string]string, input string) string {
 	root := unique_temp_path('${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -161,32 +178,33 @@ fn run_good_project(compiler string, name string, files map[string]string, input
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	good_bin := unique_temp_path(name)
-	compile := run_type_checker_compiler(compiler, ['-nocache', '-enable-globals', input_path,
-		'-b', 'c', '-o', good_bin])
-	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
-	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.exec([good_bin])
-	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
-	return run.output.trim_space()
+	compile_good_input(compiler, name, input_path, good_bin)
+	return good_bin
 }
 
-// gen_c_project emits c project output for v3 tests.
-fn gen_c_project(compiler string, name string, files map[string]string, input string) string {
-	root := unique_temp_path('${name}_project')
-	if os.exists(root) {
-		os.rmdir_all(root) or { panic(err) }
+struct TypeCheckerRuntimeCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn run_good_module_batch(compiler string, name string, cases []TypeCheckerRuntimeCase) {
+	mut files := map[string]string{}
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		source := 'module ${module_name}\n\n' + case.source
+		files['${module_name}/${case.name}.v'] = source.replace_once('\nfn main()', '\npub fn exercise()')
 	}
-	os.mkdir_all(root) or { panic(err) }
-	for rel, src in files {
-		write_project_file(root, rel, src)
+	files['main.v'] = "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	good_bin := compile_good_project(compiler, name, files, '')
+	for case in cases {
+		out := run_good_binary(case.name, good_bin, case.name)
+		assert out == case.expected, '${case.name}: expected `${case.expected}`, got `${out}`'
 	}
-	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
-	c_out := unique_temp_path(name) + '.c'
-	os.rm(c_out) or {}
-	compile := run_type_checker_compiler(compiler, [input_path, '-o', '${c_out}'])
-	assert compile.exit_code == 0, '${name}: ${compile.output}'
-	assert os.exists(c_out)
-	return os.read_file(c_out) or { panic(err) }
 }
 
 fn test_parallel_checker_preserves_diagnostic_order() {
@@ -660,7 +678,8 @@ fn main() {
 	invoke(mut values)
 }
 ', 'argument count mismatch for `value.pop`: expected 0, got 1')
-	valid_array_methods := run_good(v3_bin, 'generic_cgen_array_method_arguments', 'fn invoke[T](mut value T) {
+	run_good_module_batch(v3_bin, 'generic_calls', [
+		TypeCheckerRuntimeCase{'generic_cgen_array_method_arguments', 'fn invoke[T](mut value T) {
 	value.trim(1)
 	value.pop()
 }
@@ -670,8 +689,132 @@ fn main() {
 	invoke(mut values)
 	println(int_str(values.len))
 }
-')
-	assert valid_array_methods == '0'
+', '0'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_method_for_concrete_type', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 7
+}
+
+fn read[T](value T) int {
+	return value.value()
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+}
+', '7'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_method_arguments', 'struct HasValue {}
+
+fn (v HasValue) value(n int) int {
+	return n
+}
+
+fn read[T](value T) int {
+	return value.value(8)
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+}
+', '8'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_params_struct_arguments', '@[params]
+struct ValueConfig {
+	a int
+	b int
+}
+
+struct HasValue {}
+
+fn (v HasValue) value(n int, cfg ValueConfig) int {
+	return n + cfg.a + cfg.b
+}
+
+fn read[T](value T) int {
+	return value.value(1, a: 2, b: 3)
+}
+
+fn read_defaults[T](value T) int {
+	return value.value(4)
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+	println(int_str(read_defaults(HasValue{})))
+}
+', '6\n4'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_method_numeric_comparison', 'struct HasValue {}
+
+fn (v HasValue) value() u8 {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value() == 1
+}
+
+fn main() {
+	println(read(HasValue{}))
+}
+', 'true'},
+		TypeCheckerRuntimeCase{'good_generic_function_field_argument', 'struct HasCallback {
+	cb fn (int) int
+}
+
+fn invoke[T](value T) int {
+	return value.cb(3)
+}
+
+fn main() {
+	println(int_str(invoke(HasCallback{
+		cb: fn (n int) int {
+			return n + 1
+		}
+	})))
+}
+', '4'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_narrow_literal_boundaries', 'struct Sink {}
+
+fn (s Sink) take_unsigned(value u8) {}
+fn (s Sink) take_signed(value i8) {}
+
+fn invoke[T](sink T) {
+	sink.take_unsigned(255)
+	sink.take_signed(-128)
+}
+
+fn main() {
+	invoke(Sink{})
+	println("ok")
+}
+', 'ok'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_none_for_option', 'struct Sink {}
+
+fn (s Sink) take(value ?int) {}
+
+fn invoke[T](sink T) {
+	sink.take(none)
+}
+
+fn main() {
+	invoke(Sink{})
+	println("ok")
+}
+', 'ok'},
+		TypeCheckerRuntimeCase{'good_generic_receiver_variadic_spread_type', 'struct Sink {}
+
+fn (s Sink) take(values ...int) {}
+
+fn invoke[T](sink T, values []int) {
+	sink.take(...values)
+}
+
+fn main() {
+	invoke(Sink{}, [1, 2])
+	println("ok")
+}
+', 'ok'},
+	])
 	run_bad(v3_bin, 'bad_generic_is_on_concrete_non_sum', 'fn matches[T](value int) bool {
 	return value is T
 }
@@ -737,62 +880,6 @@ fn main() {
 	_ := read(HasValue{})
 }
 ', 'argument count mismatch for `value.value`: expected 0, got 1')
-	out := run_good(v3_bin, 'good_generic_receiver_method_for_concrete_type', 'struct HasValue {}
-
-fn (v HasValue) value() int {
-	return 7
-}
-
-fn read[T](value T) int {
-	return value.value()
-}
-
-fn main() {
-	println(int_str(read(HasValue{})))
-}
-')
-	assert out == '7'
-	arg_out := run_good(v3_bin, 'good_generic_receiver_method_arguments', 'struct HasValue {}
-
-fn (v HasValue) value(n int) int {
-	return n
-}
-
-fn read[T](value T) int {
-	return value.value(8)
-}
-
-fn main() {
-	println(int_str(read(HasValue{})))
-}
-')
-	assert arg_out == '8'
-	params_out := run_good(v3_bin, 'good_generic_receiver_params_struct_arguments', '@[params]
-struct ValueConfig {
-	a int
-	b int
-}
-
-struct HasValue {}
-
-fn (v HasValue) value(n int, cfg ValueConfig) int {
-	return n + cfg.a + cfg.b
-}
-
-fn read[T](value T) int {
-	return value.value(1, a: 2, b: 3)
-}
-
-fn read_defaults[T](value T) int {
-	return value.value(4)
-}
-
-fn main() {
-	println(int_str(read(HasValue{})))
-	println(int_str(read_defaults(HasValue{})))
-}
-')
-	assert params_out == '6\n4'
 	run_bad(v3_bin, 'bad_generic_receiver_method_return_context', 'struct HasValue {}
 
 fn (v HasValue) value() int {
@@ -863,21 +950,6 @@ fn main() {
 	_ := read(HasValue{})
 }
 ', 'cannot use `int` as `bool`')
-	comparison_out := run_good(v3_bin, 'good_generic_receiver_method_numeric_comparison', 'struct HasValue {}
-
-fn (v HasValue) value() u8 {
-	return 1
-}
-
-fn read[T](value T) bool {
-	return value.value() == 1
-}
-
-fn main() {
-	println(read(HasValue{}))
-}
-')
-	assert comparison_out == 'true'
 	run_bad(v3_bin, 'bad_generic_receiver_method_assignment_context', 'struct HasValue {}
 
 fn (v HasValue) value() int {
@@ -907,23 +979,6 @@ fn main() {
 	})
 }
 ', 'argument count mismatch for `value.cb`: expected 1, got 0')
-	fn_field_out := run_good(v3_bin, 'good_generic_function_field_argument', 'struct HasCallback {
-	cb fn (int) int
-}
-
-fn invoke[T](value T) int {
-	return value.cb(3)
-}
-
-fn main() {
-	println(int_str(invoke(HasCallback{
-		cb: fn (n int) int {
-			return n + 1
-		}
-	})))
-}
-')
-	assert fn_field_out == '4'
 	run_bad(v3_bin, 'bad_generic_receiver_params_field_type', '@[params]
 struct OpenOptions {
 	limit int
@@ -982,50 +1037,6 @@ fn main() {
 	invoke(Sink{})
 }
 ', 'cannot use `int` as argument 1 to `sink.take`; expected `i8`')
-	literal_out := run_good(v3_bin, 'good_generic_receiver_narrow_literal_boundaries', 'struct Sink {}
-
-fn (s Sink) take_unsigned(value u8) {}
-fn (s Sink) take_signed(value i8) {}
-
-fn invoke[T](sink T) {
-	sink.take_unsigned(255)
-	sink.take_signed(-128)
-}
-
-fn main() {
-	invoke(Sink{})
-	println("ok")
-}
-')
-	assert literal_out == 'ok'
-	option_out := run_good(v3_bin, 'good_generic_receiver_none_for_option', 'struct Sink {}
-
-fn (s Sink) take(value ?int) {}
-
-fn invoke[T](sink T) {
-	sink.take(none)
-}
-
-fn main() {
-	invoke(Sink{})
-	println("ok")
-}
-')
-	assert option_out == 'ok'
-	variadic_out := run_good(v3_bin, 'good_generic_receiver_variadic_spread_type', 'struct Sink {}
-
-fn (s Sink) take(values ...int) {}
-
-fn invoke[T](sink T, values []int) {
-	sink.take(...values)
-}
-
-fn main() {
-	invoke(Sink{}, [1, 2])
-	println("ok")
-}
-')
-	assert variadic_out == 'ok'
 }
 
 // Regression tests for the post-PR review fixes: fixed-array literals must match
@@ -1062,25 +1073,23 @@ fn test_fixed_array_length_checks() {
 	run_bad(v3_bin, 'bad_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n', 'cannot use `[]int` as `[4]int` in argument 1 to `take4`')
 	// Genuine fixed arrays of different lengths in if-branches must mismatch.
 	run_bad(v3_bin, 'bad_if_branch_fixed_array_len', 'fn main() {\n\ta := [2]int{}\n\tb := [3]int{}\n\tc := true\n\t_ := if c { a } else { b }\n}\n', 'mismatched types `[2]int` and `[3]int`')
-	// Correct fixed-array length is accepted and round-trips.
-	good4 := run_good(v3_bin, 'good_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0] + a[1] + a[2] + a[3]\n}\nfn main() {\n\tprintln(int_str(take4([10, 20, 30, 40])))\n}\n')
-	assert good4 == '100'
-	// Bare array literals are dynamic `[]T`, so different-length branches are fine.
-	good_lit := run_good(v3_bin, 'good_if_branch_array_literal_len', 'fn main() {\n\tc := true\n\tx := if c { [1, 2, 3] } else { [4, 5] }\n\tprintln(int_str(x.len))\n}\n')
-	assert good_lit == '3'
-	// `return if cond { ... } else { ... }` with fixed-array-const branches must
-	// coerce each branch to the dynamic `[]T` return type (like a plain return and
-	// the `return match` path), not return the bare C fixed array.
-	good_ret_const := run_good(v3_bin, 'good_return_if_fixed_const', 'const wp3 = [1, 2, 3]\nconst wp2 = [4, 5]\nfn pick(c bool) []int {\n\treturn if c { wp3 } else { wp2 }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
-	assert good_ret_const == '5'
-	good_ret_lit := run_good(v3_bin, 'good_return_if_array_literal', 'fn pick(c bool) []int {\n\treturn if c { [1, 2, 3] } else { [4, 5] }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
-	assert good_ret_lit == '5'
+	run_good_module_batch(v3_bin, 'fixed_array_lengths', [
+		// Correct fixed-array length is accepted and round-trips.
+		TypeCheckerRuntimeCase{'good_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0] + a[1] + a[2] + a[3]\n}\nfn main() {\n\tprintln(int_str(take4([10, 20, 30, 40])))\n}\n', '100'},
+		// Bare array literals are dynamic `[]T`, so different-length branches are fine.
+		TypeCheckerRuntimeCase{'good_if_branch_array_literal_len', 'fn main() {\n\tc := true\n\tx := if c { [1, 2, 3] } else { [4, 5] }\n\tprintln(int_str(x.len))\n}\n', '3'},
+		// `return if cond { ... } else { ... }` with fixed-array-const branches must
+		// coerce each branch to the dynamic `[]T` return type (like a plain return and
+		// the `return match` path), not return the bare C fixed array.
+		TypeCheckerRuntimeCase{'good_return_if_fixed_const', 'const wp3 = [1, 2, 3]\nconst wp2 = [4, 5]\nfn pick(c bool) []int {\n\treturn if c { wp3 } else { wp2 }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n', '5'},
+		TypeCheckerRuntimeCase{'good_return_if_array_literal', 'fn pick(c bool) []int {\n\treturn if c { [1, 2, 3] } else { [4, 5] }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n', '5'},
+	])
 	mixed_const_src := 'const xs = [1, 2, 3]\nfn first() int {\n\treturn xs[0]\n}\nfn length_score() int {\n\treturn xs.len\n}\nfn all() []int {\n\treturn xs\n}\nfn main() {\n\tys := all()\n\tprintln(int_str(first() + length_score() + ys.len + ys[2]))\n}\n'
-	mixed_const := run_good(v3_bin, 'good_indexed_const_returned_dynamic_array', mixed_const_src)
+	mixed_const_name := 'good_indexed_const_returned_dynamic_array'
+	mixed_const_bin := compile_good_source(v3_bin, mixed_const_name, mixed_const_src)
+	mixed_const := run_good_binary(mixed_const_name, mixed_const_bin)
 	assert mixed_const == '10'
-	mixed_const_c := gen_c_project(v3_bin, 'good_indexed_const_returned_dynamic_array_c', {
-		'main.v': mixed_const_src
-	}, 'main.v')
+	mixed_const_c := os.read_file(mixed_const_bin + '.c') or { panic(err) }
 	mixed_const_compact := mixed_const_c.replace('\t', '').replace(' ', '').replace('\n', '')
 	// v3 lowers V `int` to the target's pointer width (FlatGen.set_target picks
 	// `i32` when target.pointer_bits is 32), so spell the expected C type from
@@ -1094,15 +1103,14 @@ fn test_fixed_array_length_checks() {
 	assert mixed_const_compact.contains('Arrayall(void){returnmain__xs;}'), mixed_const_c
 	assert !mixed_const_compact.contains('returnnew_array_from_c_array(3,3,sizeof(${int_ct}),&main__xs);'), mixed_const_c
 
-	shadowed := run_good_project(v3_bin, 'good_shadowed_const_fixed_storage', {
+	shadowed_name := 'good_shadowed_const_fixed_storage'
+	shadowed_bin := compile_good_project(v3_bin, shadowed_name, {
 		'main.v':       'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
 		'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
 	}, 'main.v')
+	shadowed := run_good_binary(shadowed_name, shadowed_bin)
 	assert shadowed == '34'
-	shadowed_c := gen_c_project(v3_bin, 'good_shadowed_const_fixed_storage_c', {
-		'main.v':       'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
-		'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
-	}, 'main.v')
+	shadowed_c := os.read_file(shadowed_bin + '.c') or { panic(err) }
 	shadowed_compact := shadowed_c.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert shadowed_compact.contains('Arraymain__xs;'), shadowed_c
 	assert shadowed_compact.contains('returnmain__xs;'), shadowed_c
@@ -1128,16 +1136,13 @@ fn test_if_error_branches_require_result_returns() {
 }
 
 fn test_multi_return_if_tail_infers_common_type() {
-	result_error := run_good(v3_bin, 'good_result_multi_return_error_return', "fn pair(fail bool) !(int, int) {\n\tif fail {\n\t\treturn error('x')\n\t}\n\treturn 1, 2\n}\nfn main() {\n\ta, b := pair(false) or { panic(err.msg()) }\n\tprintln(int_str(a + b))\n\t_, _ := pair(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
-	assert result_error == '3\nx'
-	if_tail := run_good(v3_bin, 'good_multi_return_if_common_pointer_tail', 'fn main() {\n\tx := 7\n\tp, n := if false {\n\t\tnil\n\t\t0\n\t} else {\n\t\t&x\n\t\t1\n\t}\n\tprintln(typeof(p).name)\n\tprintln(int_str(n))\n}\n')
-	assert if_tail == 'voidptr\n1'
-	numeric_tail := run_good(v3_bin, 'good_multi_return_if_promoted_numeric_tail', 'fn main() {\n\tcond := false\n\tx, _ := if cond {\n\t\t1\n\t\t0\n\t} else {\n\t\t1.5\n\t\t0\n\t}\n\tprintln(typeof(x).name)\n\tprintln((x > 1.4).str())\n}\n')
-	assert numeric_tail == 'f64\ntrue'
-	call_decl_assign := run_good(v3_bin, 'good_multi_return_if_call_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\tpair(3)\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert call_decl_assign == '7'
-	call_assign := run_good(v3_bin, 'good_multi_return_if_call_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = if flag {\n\t\tpair(1)\n\t} else {\n\t\tpair(3)\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert call_assign == '7'
+	run_good_module_batch(v3_bin, 'multi_return_if_tail', [
+		TypeCheckerRuntimeCase{'good_result_multi_return_error_return', "fn pair(fail bool) !(int, int) {\n\tif fail {\n\t\treturn error('x')\n\t}\n\treturn 1, 2\n}\nfn main() {\n\ta, b := pair(false) or { panic(err.msg()) }\n\tprintln(int_str(a + b))\n\t_, _ := pair(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", '3\nx'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_common_pointer_tail', 'fn main() {\n\tx := 7\n\tp, n := if false {\n\t\tnil\n\t\t0\n\t} else {\n\t\t&x\n\t\t1\n\t}\n\tprintln(typeof(p).name)\n\tprintln(int_str(n))\n}\n', 'voidptr\n1'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_promoted_numeric_tail', 'fn main() {\n\tcond := false\n\tx, _ := if cond {\n\t\t1\n\t\t0\n\t} else {\n\t\t1.5\n\t\t0\n\t}\n\tprintln(typeof(x).name)\n\tprintln((x > 1.4).str())\n}\n', 'f64\ntrue'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_call_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\tpair(3)\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_call_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = if flag {\n\t\tpair(1)\n\t} else {\n\t\tpair(3)\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+	])
 	run_bad(v3_bin, 'bad_multi_return_if_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n', 'expression evaluated but not used')
 	run_bad(v3_bin, 'bad_multi_return_if_void_tail_decl_assign', 'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n', 'multi-return assignment mismatch')
 }
@@ -1170,54 +1175,48 @@ fn main() {
 }
 
 fn test_multi_return_if_assignment_uses_lhs_context() {
-	enum_tail := run_good(v3_bin, 'good_multi_return_if_assign_enum_and_none_tail', "enum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tcond := false\n\tmut c := Color.red\n\tmut n := 0\n\tc, n = if cond {\n\t\t.red\n\t\t1\n\t} else {\n\t\t.blue\n\t\t2\n\t}\n\tmut opt := ?int(0)\n\tmut label := ''\n\topt, label = if cond {\n\t\tnone\n\t\t'none'\n\t} else {\n\t\t?int(7)\n\t\t'some'\n\t}\n\tvalue := opt or { 0 }\n\tif c == .blue && label == 'some' {\n\t\tprintln(int_str(n + value))\n\t}\n}\n")
-	assert enum_tail == '9'
-	swap_tail := run_good(v3_bin, 'good_multi_return_if_assign_stages_tail_values', "fn main() {\n\tcond := true\n\tmut a := 1\n\tmut b := 2\n\ta, b = if cond {\n\t\tb\n\t\ta\n\t} else {\n\t\ta\n\t\tb\n\t}\n\tprintln(int_str(a) + ':' + int_str(b))\n}\n")
-	assert swap_tail == '2:1'
+	run_good_module_batch(v3_bin, 'multi_return_if_assignment', [
+		TypeCheckerRuntimeCase{'good_multi_return_if_assign_enum_and_none_tail', "enum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tcond := false\n\tmut c := Color.red\n\tmut n := 0\n\tc, n = if cond {\n\t\t.red\n\t\t1\n\t} else {\n\t\t.blue\n\t\t2\n\t}\n\tmut opt := ?int(0)\n\tmut label := ''\n\topt, label = if cond {\n\t\tnone\n\t\t'none'\n\t} else {\n\t\t?int(7)\n\t\t'some'\n\t}\n\tvalue := opt or { 0 }\n\tif c == .blue && label == 'some' {\n\t\tprintln(int_str(n + value))\n\t}\n}\n", '9'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_assign_stages_tail_values', "fn main() {\n\tcond := true\n\tmut a := 1\n\tmut b := 2\n\ta, b = if cond {\n\t\tb\n\t\ta\n\t} else {\n\t\ta\n\t\tb\n\t}\n\tprintln(int_str(a) + ':' + int_str(b))\n}\n", '2:1'},
+	])
 }
 
 fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
-	nested_if_tail := run_good(v3_bin, 'good_nested_if_tail_decl_assign', 'fn main() {\n\tc := true\n\td := false\n\ta, b := if c {\n\t\tif d {\n\t\t\t1\n\t\t\t2\n\t\t} else {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert nested_if_tail == '7'
+	run_good_module_batch(v3_bin, 'nested_if_multi_return', [
+		TypeCheckerRuntimeCase{'good_nested_if_tail_decl_assign', 'fn main() {\n\tc := true\n\td := false\n\ta, b := if c {\n\t\tif d {\n\t\t\t1\n\t\t\t2\n\t\t} else {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_prefixed_nested_block_tail_decl_assign', "fn main() {\n\tc := true\n\ta, b := if c {\n\t\t{\n\t\t\tprintln('side')\n\t\t\t1\n\t\t\t2\n\t\t}\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n", 'side\n3'},
+	])
 	run_bad_with_flags(v3_bin, 'bad_nested_mixed_tuple_tail_branch_type', "fn pair() (int, string) {\n\treturn 1, 'pair'\n}\nfn main() {\n\touter := false\n\tinner := false\n\ta, b := if outer {\n\t\tpair()\n\t} else {\n\t\tif inner {\n\t\t\t1\n\t\t\t'a'\n\t\t} else {\n\t\t\ttrue\n\t\t\t'b'\n\t\t}\n\t}\n\tprintln(int_str(a) + b)\n}\n", 'mismatched types `(int, string)` and `string`', '-check')
-	prefixed_block_tail := run_good(v3_bin, 'good_prefixed_nested_block_tail_decl_assign', "fn main() {\n\tc := true\n\ta, b := if c {\n\t\t{\n\t\t\tprintln('side')\n\t\t\t1\n\t\t\t2\n\t\t}\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n")
-	assert prefixed_block_tail == 'side\n3'
 }
 
 fn test_multi_return_if_returning_branches_do_not_produce_assignment_values() {
-	return_values := run_good(v3_bin, 'good_multi_return_if_branch_return_values', "fn choose(cond bool) (string, string) {\n\ta, b := if cond {\n\t\treturn 'x', 'y'\n\t} else {\n\t\t1\n\t\t2\n\t}\n\treturn int_str(a), int_str(b)\n}\n\nfn main() {\n\ta, b := choose(false)\n\tprintln(a + ':' + b)\n\tc, d := choose(true)\n\tprintln(c + ':' + d)\n}\n")
-	assert return_values == '1:2\nx:y'
-	bare_return := run_good(v3_bin, 'good_multi_return_if_branch_bare_return', "fn emit(cond bool) {\n\ta, b := if cond {\n\t\treturn\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n\nfn main() {\n\temit(false)\n\tprintln('done')\n}\n")
-	assert bare_return == '7\ndone'
-	panic_branch := run_good(v3_bin, 'good_multi_return_if_branch_panic_tail', "fn main() {\n\tbad := false\n\ta, b := if bad {\n\t\tpanic('x')\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n")
-	assert panic_branch == '11'
+	run_good_module_batch(v3_bin, 'multi_return_if_early_exit', [
+		TypeCheckerRuntimeCase{'good_multi_return_if_branch_return_values', "fn choose(cond bool) (string, string) {\n\ta, b := if cond {\n\t\treturn 'x', 'y'\n\t} else {\n\t\t1\n\t\t2\n\t}\n\treturn int_str(a), int_str(b)\n}\n\nfn main() {\n\ta, b := choose(false)\n\tprintln(a + ':' + b)\n\tc, d := choose(true)\n\tprintln(c + ':' + d)\n}\n", '1:2\nx:y'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_branch_bare_return', "fn emit(cond bool) {\n\ta, b := if cond {\n\t\treturn\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n\nfn main() {\n\temit(false)\n\tprintln('done')\n}\n", '7\ndone'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_branch_panic_tail', "fn main() {\n\tbad := false\n\ta, b := if bad {\n\t\tpanic('x')\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n", '11'},
+	])
 }
 
 fn test_multi_rhs_if_expr_is_not_multi_return() {
-	decl_out := run_good(v3_bin, 'good_multi_rhs_if_expr_decl_assign', 'fn main() {\n\tcond := true\n\ta, b := if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n')
-	assert decl_out == '4'
-	assign_out := run_good(v3_bin, 'good_multi_rhs_if_expr_assign', 'fn main() {\n\tcond := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n')
-	assert assign_out == '5'
+	run_good_module_batch(v3_bin, 'multi_rhs_if_expression', [
+		TypeCheckerRuntimeCase{'good_multi_rhs_if_expr_decl_assign', 'fn main() {\n\tcond := true\n\ta, b := if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n', '4'},
+		TypeCheckerRuntimeCase{'good_multi_rhs_if_expr_assign', 'fn main() {\n\tcond := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n', '5'},
+	])
 }
 
 fn test_match_multi_return_tails_require_explicit_tuple() {
-	match_call := run_good(v3_bin, 'good_multi_return_match_call_return', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn pick(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a + b))\n}\n')
-	assert match_call == '7'
-	match_decl_assign := run_good(v3_bin, 'good_multi_return_match_call_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert match_decl_assign == '7'
-	match_assign := run_good(v3_bin, 'good_multi_return_match_call_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert match_assign == '7'
-	match_tuple_decl_assign := run_good(v3_bin, 'good_multi_return_match_tuple_decl_assign', 'fn main() {\n\tflag := false\n\ta, b := match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert match_tuple_decl_assign == '7'
-	match_tuple_assign := run_good(v3_bin, 'good_multi_return_match_tuple_assign', 'fn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert match_tuple_assign == '3'
+	run_good_module_batch(v3_bin, 'multi_return_match_tail', [
+		TypeCheckerRuntimeCase{'good_multi_return_match_call_return', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn pick(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_call_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_call_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_tuple_decl_assign', 'fn main() {\n\tflag := false\n\ta, b := match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_tuple_assign', 'fn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n', '3'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_call_promoted_numeric_types', 'fn pair_int() (int, int) {\n\treturn 1, 2\n}\nfn pair_f64() (f64, int) {\n\treturn 1.5, 2\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair_int()\n\t\t}\n\t\tfalse {\n\t\t\tpair_f64()\n\t\t}\n\t}\n\tprintln(int_str(b))\n\tprintln(a)\n}\n', '2\n1.0'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_call_compatible_alias_assign', "type Count = int\n\nfn pair_alias() (Count, string) {\n\treturn Count(3), 'alias'\n}\n\nfn pair_int() (int, string) {\n\treturn 4, 'int'\n}\n\nfn main() {\n\tflag := false\n\tmut n := Count(0)\n\tmut label := ''\n\tn, label = match flag {\n\t\ttrue {\n\t\t\tpair_alias()\n\t\t}\n\t\tfalse {\n\t\t\tpair_int()\n\t\t}\n\t}\n\tprintln(int_str(n) + ':' + label)\n}\n", '4:int'},
+	])
 	run_bad(v3_bin, 'bad_multi_return_match_overlong_tuple_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue { 1, 2, 3 }\n\t\tfalse { 4, 5 }\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values')
 	run_bad(v3_bin, 'bad_multi_return_match_call_non_exhaustive_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive')
 	run_bad(v3_bin, 'bad_multi_return_match_call_non_exhaustive_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive')
-	numeric_match := run_good(v3_bin, 'good_multi_return_match_call_promoted_numeric_types', 'fn pair_int() (int, int) {\n\treturn 1, 2\n}\nfn pair_f64() (f64, int) {\n\treturn 1.5, 2\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair_int()\n\t\t}\n\t\tfalse {\n\t\t\tpair_f64()\n\t\t}\n\t}\n\tprintln(int_str(b))\n\tprintln(a)\n}\n')
-	assert numeric_match == '2\n1.0'
-	alias_match := run_good(v3_bin, 'good_multi_return_match_call_compatible_alias_assign', "type Count = int\n\nfn pair_alias() (Count, string) {\n\treturn Count(3), 'alias'\n}\n\nfn pair_int() (int, string) {\n\treturn 4, 'int'\n}\n\nfn main() {\n\tflag := false\n\tmut n := Count(0)\n\tmut label := ''\n\tn, label = match flag {\n\t\ttrue {\n\t\t\tpair_alias()\n\t\t}\n\t\tfalse {\n\t\t\tpair_int()\n\t\t}\n\t}\n\tprintln(int_str(n) + ':' + label)\n}\n")
-	assert alias_match == '4:int'
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
 	run_bad(v3_bin, 'bad_multi_return_match_preceding_expr_decl_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values')
@@ -1527,16 +1526,15 @@ fn test_generic_struct_receiver_and_heap_init() {
 	// not satisfy an expected `Box[int]` (value or pointer form).
 	run_bad(v3_bin, 'bad_generic_concrete_value_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `Box[string]` as `Box[int]` in argument 1 to `use_int`')
 	run_bad(v3_bin, 'bad_generic_concrete_ptr_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := &Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `&Box[string]` as `&Box[int]` in argument 1 to `use_int`')
-	// A generic method on the open `Box[T]` receiver works for every instantiation.
-	good_method := run_good(v3_bin, 'good_generic_method_instances', "struct Box[T] {\n\tval T\n}\nfn (b Box[T]) get() T {\n\treturn b.val\n}\nfn main() {\n\tbi := Box[int]{\n\t\tval: 42\n\t}\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\tprintln(int_str(bi.get()))\n\tprintln(bs.get())\n}\n")
-	assert good_method == '42\nhi'
-	generic_return := run_good(v3_bin, 'good_generic_return_open_struct_param', 'struct Match[T] {\n\tvalue T\n\thas   bool\n}\nfn choose[T](use_second bool, first Match[T], second Match[T]) Match[T] {\n\tif use_second {\n\t\treturn second\n\t}\n\treturn first\n}\nfn (m Match[T]) or[T](other Match[T]) Match[T] {\n\tif m.has {\n\t\treturn m\n\t}\n\treturn other\n}\nfn main() {\n\ta := Match[int]{\n\t\tvalue: 1\n\t\thas: true\n\t}\n\tb := Match[int]{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(choose(true, a, b).value))\n\tprintln(int_str(b.or(a).value))\n}\n')
-	assert generic_return == '2\n1'
-	// A bare generic literal (`Box{..}` / `&Box{..}`) specializes to the expected
-	// concrete instance — and the heap literal must materialize the same concrete
-	// C type (`Box_int`) as the value literal, not the bare template.
-	good_heap := run_good(v3_bin, 'good_generic_bare_value_and_heap_args', 'struct Box[T] {\n\tval T\n}\nfn take_val(b Box[int]) int {\n\treturn b.val\n}\nfn take_heap(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tprintln(int_str(take_val(Box{\n\t\tval: 7\n\t}) + take_heap(&Box{\n\t\tval: 9\n\t})))\n}\n')
-	assert good_heap == '16'
+	run_good_module_batch(v3_bin, 'generic_struct_receivers', [
+		// A generic method on the open `Box[T]` receiver works for every instantiation.
+		TypeCheckerRuntimeCase{'good_generic_method_instances', "struct Box[T] {\n\tval T\n}\nfn (b Box[T]) get() T {\n\treturn b.val\n}\nfn main() {\n\tbi := Box[int]{\n\t\tval: 42\n\t}\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\tprintln(int_str(bi.get()))\n\tprintln(bs.get())\n}\n", '42\nhi'},
+		TypeCheckerRuntimeCase{'good_generic_return_open_struct_param', 'struct Match[T] {\n\tvalue T\n\thas   bool\n}\nfn choose[T](use_second bool, first Match[T], second Match[T]) Match[T] {\n\tif use_second {\n\t\treturn second\n\t}\n\treturn first\n}\nfn (m Match[T]) or[T](other Match[T]) Match[T] {\n\tif m.has {\n\t\treturn m\n\t}\n\treturn other\n}\nfn main() {\n\ta := Match[int]{\n\t\tvalue: 1\n\t\thas: true\n\t}\n\tb := Match[int]{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(choose(true, a, b).value))\n\tprintln(int_str(b.or(a).value))\n}\n', '2\n1'},
+		// A bare generic literal (`Box{..}` / `&Box{..}`) specializes to the expected
+		// concrete instance — and the heap literal must materialize the same concrete
+		// C type (`Box_int`) as the value literal, not the bare template.
+		TypeCheckerRuntimeCase{'good_generic_bare_value_and_heap_args', 'struct Box[T] {\n\tval T\n}\nfn take_val(b Box[int]) int {\n\treturn b.val\n}\nfn take_heap(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tprintln(int_str(take_val(Box{\n\t\tval: 7\n\t}) + take_heap(&Box{\n\t\tval: 9\n\t})))\n}\n', '16'},
+	])
 }
 
 // Regression tests for the post-PR review fixes: const-expression fixed-array
@@ -1556,13 +1554,13 @@ fn test_const_expr_fixed_array_and_thread_ptr_wait() {
 // FIELD type (not only as a literal) and must fold whether or not the operators
 // are spaced (`segs+1` as well as `segs + 1`).
 fn test_const_expr_fixed_array_field_and_spacing() {
-	// Struct field `[segs + 1]f32` was emitted as `void verts[4]` (element lost,
-	// size = segs); it must be `[5]f32` with `.len == 5`.
-	good_field := run_good(v3_bin, 'good_const_expr_fixed_array_field', 'const segs = 4\nstruct Mesh {\n\tverts [segs + 1]f32\n}\nfn main() {\n\tm := Mesh{}\n\tprintln(int_str(m.verts.len))\n}\n')
-	assert good_field == '5'
-	// Spaced, unspaced, and nested const-expression sizes all fold to a literal.
-	good_forms := run_good(v3_bin, 'good_const_expr_fixed_array_forms', 'const segs = 3\nconst mult = 2\nfn main() {\n\ta := [segs + 1]int{}\n\tb := [segs+1]int{}\n\tc := [segs * mult]int{}\n\td := [segs - 1]int{}\n\te := [segs * mult + 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len))\n}\n')
-	assert good_forms == '23'
+	run_good_module_batch(v3_bin, 'fixed_array_field_lengths', [
+		// Struct field `[segs + 1]f32` was emitted as `void verts[4]` (element lost,
+		// size = segs); it must be `[5]f32` with `.len == 5`.
+		TypeCheckerRuntimeCase{'good_const_expr_fixed_array_field', 'const segs = 4\nstruct Mesh {\n\tverts [segs + 1]f32\n}\nfn main() {\n\tm := Mesh{}\n\tprintln(int_str(m.verts.len))\n}\n', '5'},
+		// Spaced, unspaced, and nested const-expression sizes all fold to a literal.
+		TypeCheckerRuntimeCase{'good_const_expr_fixed_array_forms', 'const segs = 3\nconst mult = 2\nfn main() {\n\ta := [segs + 1]int{}\n\tb := [segs+1]int{}\n\tc := [segs * mult]int{}\n\td := [segs - 1]int{}\n\te := [segs * mult + 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len))\n}\n', '23'},
+	])
 }
 
 // Regression tests for the second PR-review batch (vlang/v#27557).
@@ -1602,12 +1600,11 @@ fn test_pr_review_codegen_batch_three() {
 // Regression tests: a bare generic struct literal adopts a matching concrete
 // expected instance (value and heap), and a field-type mismatch is rejected.
 fn test_bare_generic_literal_adopts_expected_instance() {
-	val := run_good(v3_bin, 'good_bare_generic_literal_return', 'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
-	assert val == '7'
-	heap := run_good(v3_bin, 'good_bare_generic_literal_heap_return', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 9\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
-	assert heap == '9'
-	pair := run_good(v3_bin, 'good_bare_generic_literal_multi_param', "struct Pair[L, R] {\n\tl L\n\tr R\n}\nfn make() Pair[string, int] {\n\treturn Pair{\n\t\tl: 'hi'\n\t\tr: 5\n\t}\n}\nfn main() {\n\tp := make()\n\tprintln(p.l)\n\tprintln(int_str(p.r))\n}\n")
-	assert pair == 'hi\n5'
+	run_good_module_batch(v3_bin, 'bare_generic_literals', [
+		TypeCheckerRuntimeCase{'good_bare_generic_literal_return', 'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_bare_generic_literal_heap_return', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 9\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n', '9'},
+		TypeCheckerRuntimeCase{'good_bare_generic_literal_multi_param', "struct Pair[L, R] {\n\tl L\n\tr R\n}\nfn make() Pair[string, int] {\n\treturn Pair{\n\t\tl: 'hi'\n\t\tr: 5\n\t}\n}\nfn main() {\n\tp := make()\n\tprintln(p.l)\n\tprintln(int_str(p.r))\n}\n", 'hi\n5'},
+	])
 	// A field whose type does not match the concrete instantiation is rejected by the
 	// checker (rather than adopting the type and emitting broken C).
 	run_bad(v3_bin, 'bad_bare_generic_literal_field_mismatch', "struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 'str'\n\t}\n}\nfn main() {\n\t_ := make()\n}\n", 'cannot use `Box[string]` as type `Box[int]` in return argument')
@@ -1703,23 +1700,22 @@ fn test_pr_review_codegen_batch_eight() {
 
 // Regression tests for the tenth PR-review batch (vlang/v#27557).
 fn test_pr_review_codegen_batch_ten() {
-	// Const fixed-array lengths may use shifts and bitwise operators, in both the string
-	// evaluator (recovered length text) and the AST const evaluator (`const n = 1 << 2`).
-	// `1 << 2`=4, `8 >> 1`=4, `3 | 4`=7, `0xF & 6`=6, `(1 << 3) + 2`=10, `16 >> 2 << 1`=8.
-	shifts := run_good(v3_bin, 'good_shift_bitwise_fixed_array_len', 'const shift_amt = 1 << 2\nconst my_mask = 0xF & 6\nfn main() {\n\ta := [1 << 2]int{}\n\tb := [shift_amt]int{}\n\tc := [8 >> 1]int{}\n\td := [3 | 4]int{}\n\te := [my_mask]int{}\n\tf := [(1 << 3) + 2]int{}\n\tg := [16 >> 2 << 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len + f.len + g.len))\n}\n')
-	// 4 + 4 + 4 + 7 + 6 + 10 + 8 = 43
-	assert shifts == '43'
 	// The fixed-array literal length guard evaluates a shift length: `[1, 2]` (two
 	// elements) does not match an expected `[1 << 2]int` (four), so it is rejected.
 	run_bad(v3_bin, 'bad_shift_fixed_array_literal_len', 'fn take(a [1 << 2]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use')
-	// A function returning a fixed array of structs gets a C return wrapper (emitted after
-	// the struct is defined), so it compiles and round-trips instead of emitting a raw
-	// `Array_fixed_Foo_2` return type C rejects.
-	fa_struct := run_good(v3_bin, 'good_fixed_array_struct_return', 'struct Foo {\n\tx int\n}\nfn make() [2]Foo {\n\treturn [Foo{\n\t\tx: 1\n\t}, Foo{\n\t\tx: 2\n\t}]!\n}\nfn main() {\n\tr := make()\n\tprintln(int_str(r[0].x + r[1].x))\n}\n')
-	assert fa_struct == '3'
-	// Likewise a fixed array of `string` returns through a wrapper.
-	fa_string := run_good(v3_bin, 'good_fixed_array_string_return', "fn make() [2]string {\n\treturn ['hi', 'yo']!\n}\nfn main() {\n\tr := make()\n\tprintln(r[0] + r[1])\n}\n")
-	assert fa_string == 'hiyo'
+	run_good_module_batch(v3_bin, 'fixed_array_shifts_and_returns', [
+		// Const fixed-array lengths may use shifts and bitwise operators, in both the string
+		// evaluator (recovered length text) and the AST const evaluator (`const n = 1 << 2`).
+		// `1 << 2`=4, `8 >> 1`=4, `3 | 4`=7, `0xF & 6`=6, `(1 << 3) + 2`=10, `16 >> 2 << 1`=8.
+		// 4 + 4 + 4 + 7 + 6 + 10 + 8 = 43
+		TypeCheckerRuntimeCase{'good_shift_bitwise_fixed_array_len', 'const shift_amt = 1 << 2\nconst my_mask = 0xF & 6\nfn main() {\n\ta := [1 << 2]int{}\n\tb := [shift_amt]int{}\n\tc := [8 >> 1]int{}\n\td := [3 | 4]int{}\n\te := [my_mask]int{}\n\tf := [(1 << 3) + 2]int{}\n\tg := [16 >> 2 << 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len + f.len + g.len))\n}\n', '43'},
+		// A function returning a fixed array of structs gets a C return wrapper (emitted after
+		// the struct is defined), so it compiles and round-trips instead of emitting a raw
+		// `Array_fixed_Foo_2` return type C rejects.
+		TypeCheckerRuntimeCase{'good_fixed_array_struct_return', 'struct Foo {\n\tx int\n}\nfn make() [2]Foo {\n\treturn [Foo{\n\t\tx: 1\n\t}, Foo{\n\t\tx: 2\n\t}]!\n}\nfn main() {\n\tr := make()\n\tprintln(int_str(r[0].x + r[1].x))\n}\n', '3'},
+		// Likewise a fixed array of `string` returns through a wrapper.
+		TypeCheckerRuntimeCase{'good_fixed_array_string_return', "fn make() [2]string {\n\treturn ['hi', 'yo']!\n}\nfn main() {\n\tr := make()\n\tprintln(r[0] + r[1])\n}\n", 'hiyo'},
+	])
 }
 
 // Regression tests for the eleventh PR-review batch (vlang/v#27557).
@@ -1792,25 +1788,24 @@ fn test_pr_review_codegen_batch_fourteen() {
 }
 
 fn test_pr_review_codegen_batch_fifteen() {
-	// The string length evaluator folds with the same operator precedence as the v3 parser
-	// and AST const evaluator. Shifts share product precedence, so `1 << 2 + 1` is
-	// `(1 << 2) + 1` = 5 whether the length is recovered from a const's source text or a
-	// literal expression. Both must agree, or the literal check and C dimension diverge.
-	prec := run_good(v3_bin, 'good_shift_add_precedence_fixed_array_len', 'const seg_count = 1 << 2 + 1\nfn main() {\n\ta := [1 << 2 + 1]u8{}\n\tb := [seg_count]u8{}\n\tc := [1 + 2 << 1]u8{}\n\tprintln(int_str(a.len + b.len + c.len))\n}\n')
-	// 5 + 5 + 5 = 15
-	assert prec == '15'
 	// The fixed-array literal-length guard uses the same folded length: a `[1 << 2 + 1]int`
 	// parameter (length 5) rejects a 4-element literal.
 	run_bad(v3_bin, 'bad_shift_add_precedence_literal_len', 'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4]!)\n}\n', 'cannot use')
-	// An fn-pointer type whose return is a non-early fixed array (`string`/struct element) gets
-	// a return-wrapper struct. The wrapper is forward-declared before the fn-pointer typedef and
-	// completed after the element type, so the C compiles; the wrapped value is unwrapped to
-	// `.ret_arr` at the indirect call, whether the callback is reached through a param or a
-	// struct field.
-	fp_str := run_good(v3_bin, 'good_fn_ptr_returns_fixed_string_array', "type MakeArr = fn () [2]string\nfn mk() [2]string {\n\treturn ['hi', 'there']!\n}\nfn run(f MakeArr) string {\n\tr := f()\n\treturn r[0]\n}\nstruct Holder {\n\tf MakeArr\n}\nfn main() {\n\th := Holder{\n\t\tf: mk\n\t}\n\tprintln(run(mk) + h.f()[1])\n}\n")
-	assert fp_str == 'hithere'
-	fp_struct := run_good(v3_bin, 'good_fn_ptr_returns_fixed_struct_array', 'struct P {\n\tx int\n}\ntype MakeP = fn () [2]P\nfn mkp() [2]P {\n\treturn [P{\n\t\tx: 3\n\t}, P{\n\t\tx: 4\n\t}]!\n}\nfn runp(f MakeP) int {\n\tr := f()\n\treturn r[0].x + r[1].x\n}\nfn main() {\n\tprintln(int_str(runp(mkp)))\n}\n')
-	assert fp_struct == '7'
+	run_good_module_batch(v3_bin, 'fixed_array_precedence_and_callbacks', [
+		// The string length evaluator folds with the same operator precedence as the v3 parser
+		// and AST const evaluator. Shifts share product precedence, so `1 << 2 + 1` is
+		// `(1 << 2) + 1` = 5 whether the length is recovered from a const's source text or a
+		// literal expression. Both must agree, or the literal check and C dimension diverge.
+		// 5 + 5 + 5 = 15
+		TypeCheckerRuntimeCase{'good_shift_add_precedence_fixed_array_len', 'const seg_count = 1 << 2 + 1\nfn main() {\n\ta := [1 << 2 + 1]u8{}\n\tb := [seg_count]u8{}\n\tc := [1 + 2 << 1]u8{}\n\tprintln(int_str(a.len + b.len + c.len))\n}\n', '15'},
+		// An fn-pointer type whose return is a non-early fixed array (`string`/struct element) gets
+		// a return-wrapper struct. The wrapper is forward-declared before the fn-pointer typedef and
+		// completed after the element type, so the C compiles; the wrapped value is unwrapped to
+		// `.ret_arr` at the indirect call, whether the callback is reached through a param or a
+		// struct field.
+		TypeCheckerRuntimeCase{'good_fn_ptr_returns_fixed_string_array', "type MakeArr = fn () [2]string\nfn mk() [2]string {\n\treturn ['hi', 'there']!\n}\nfn run(f MakeArr) string {\n\tr := f()\n\treturn r[0]\n}\nstruct Holder {\n\tf MakeArr\n}\nfn main() {\n\th := Holder{\n\t\tf: mk\n\t}\n\tprintln(run(mk) + h.f()[1])\n}\n", 'hithere'},
+		TypeCheckerRuntimeCase{'good_fn_ptr_returns_fixed_struct_array', 'struct P {\n\tx int\n}\ntype MakeP = fn () [2]P\nfn mkp() [2]P {\n\treturn [P{\n\t\tx: 3\n\t}, P{\n\t\tx: 4\n\t}]!\n}\nfn runp(f MakeP) int {\n\tr := f()\n\treturn r[0].x + r[1].x\n}\nfn main() {\n\tprintln(int_str(runp(mkp)))\n}\n', '7'},
+	])
 }
 
 fn test_pr_review_codegen_batch_sixteen() {
@@ -1877,41 +1872,23 @@ fn test_pr_review_codegen_batch_nineteen() {
 
 fn test_pr_review_codegen_batch_twenty() {
 	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\n'
-	// Struct fields, array elements, and reassigned callback locals retain the
-	// per-instance context when the method value escapes.
-	field := run_good(v3_bin, 'good_method_value_struct_field_assign', mv +
-		'struct Holder {\nmut:\n\tcb fn () int\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut h := Holder{}\n\th.cb = c.report\n\tprintln(int_str(h.cb()))\n}\n')
-	assert field == '5'
-	indexed := run_good(v3_bin, 'good_method_value_index_assign', mv +
-		'fn main() {\n\tc := Counter{\n\t\tid: 6\n\t}\n\tmut cbs := []fn () int{len: 1}\n\tcbs[0] = c.report\n\tprintln(int_str(cbs[0]()))\n}\n')
-	assert indexed == '6'
-	reassigned := run_good(v3_bin, 'good_method_value_local_eq_then_return_escape', mv +
-		'fn dummy() int {\n\treturn 0\n}\nfn make_callback(c Counter) fn () int {\n\tmut cb := dummy\n\tcb = c.report\n\treturn cb\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 7\n\t})\n\tprintln(int_str(cb()))\n}\n')
-	assert reassigned == '7'
-	// Assigning a method value to a local (including reassignment) and passing it straight to a
-	// callback parameter does not escape, so it stays valid.
-	ok := run_good(v3_bin, 'good_method_value_local_assign_direct_use', mv +
-		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut cb := c.report\n\tcb = c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
-	assert ok == '7'
 	iface_mv := 'interface Runner {\n\trun() int\n}\n\nstruct Job {\n\tid int\n}\n\nfn (j Job) run() int {\n\treturn j.id\n}\n\nstruct Holder {\nmut:\n\tcb fn () int\n}\n'
-	iface_field := run_good(v3_bin, 'good_interface_method_value_struct_field_escape', iface_mv +
-		'fn main() {\n\tr := Runner(Job{\n\t\tid: 8\n\t})\n\th := Holder{\n\t\tcb: r.run\n\t}\n\tprintln(int_str(h.cb()))\n}\n')
-	assert iface_field == '8'
-	iface_assign := run_good(v3_bin, 'good_interface_method_value_struct_field_assign', iface_mv +
-		'fn main() {\n\tr := Runner(Job{\n\t\tid: 9\n\t})\n\tmut h := Holder{}\n\th.cb = r.run\n\tprintln(int_str(h.cb()))\n}\n')
-	assert iface_assign == '9'
-	iface_ok := run_good(v3_bin, 'good_interface_method_value_direct_callback', iface_mv +
-		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tr := Runner(Job{\n\t\tid: 7\n\t})\n\tprintln(int_str(invoke(r.run)))\n}\n')
-	assert iface_ok == '7'
-	iface_nested := run_good(v3_bin, 'good_interface_method_value_captured_alias_return', iface_mv +
-		'fn escape(r Runner) fn () int {\n\tcb := r.run\n\treturn fn [cb] () fn () int {\n\t\treturn cb\n\t}()\n}\n\nfn main() {\n\tcb := escape(Runner(Job{\n\t\tid: 10\n\t}))\n\tprintln(int_str(cb()))\n}\n')
-	assert iface_nested == '10'
-	iface_fn_literal_local := run_good(v3_bin, 'good_interface_method_value_fn_literal_local_scoped', iface_mv +
-		'fn plain() int {\n\treturn 11\n}\n\nfn outer(cb fn () int) fn () int {\n\t_ = fn () {\n\t\tr := Runner(Job{\n\t\t\tid: 5\n\t\t})\n\t\tinner_cb := r.run\n\t\t_ = inner_cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
-	assert iface_fn_literal_local == '11'
-	iface_lambda_local := run_good(v3_bin, 'good_interface_method_value_lambda_local_scoped', iface_mv +
-		'fn plain() int {\n\treturn 13\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn outer(cb fn () int) fn () int {\n\tcall(|| {\n\t\tinner_cb := Runner(Job{\n\t\t\tid: 7\n\t\t}).run\n\t\t_ = inner_cb\n\t})\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
-	assert iface_lambda_local == '13'
+	run_good_module_batch(v3_bin, 'method_values', [
+		// Struct fields, array elements, and reassigned callback locals retain the
+		// per-instance context when the method value escapes.
+		TypeCheckerRuntimeCase{'good_method_value_struct_field_assign', mv + 'struct Holder {\nmut:\n\tcb fn () int\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut h := Holder{}\n\th.cb = c.report\n\tprintln(int_str(h.cb()))\n}\n', '5'},
+		TypeCheckerRuntimeCase{'good_method_value_index_assign', mv + 'fn main() {\n\tc := Counter{\n\t\tid: 6\n\t}\n\tmut cbs := []fn () int{len: 1}\n\tcbs[0] = c.report\n\tprintln(int_str(cbs[0]()))\n}\n', '6'},
+		TypeCheckerRuntimeCase{'good_method_value_local_eq_then_return_escape', mv + 'fn dummy() int {\n\treturn 0\n}\nfn make_callback(c Counter) fn () int {\n\tmut cb := dummy\n\tcb = c.report\n\treturn cb\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 7\n\t})\n\tprintln(int_str(cb()))\n}\n', '7'},
+		// Assigning a method value to a local (including reassignment) and passing it straight to a
+		// callback parameter does not escape, so it stays valid.
+		TypeCheckerRuntimeCase{'good_method_value_local_assign_direct_use', mv + 'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut cb := c.report\n\tcb = c.report\n\tprintln(int_str(invoke(cb)))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_struct_field_escape', iface_mv + 'fn main() {\n\tr := Runner(Job{\n\t\tid: 8\n\t})\n\th := Holder{\n\t\tcb: r.run\n\t}\n\tprintln(int_str(h.cb()))\n}\n', '8'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_struct_field_assign', iface_mv + 'fn main() {\n\tr := Runner(Job{\n\t\tid: 9\n\t})\n\tmut h := Holder{}\n\th.cb = r.run\n\tprintln(int_str(h.cb()))\n}\n', '9'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_direct_callback', iface_mv + 'fn invoke(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tr := Runner(Job{\n\t\tid: 7\n\t})\n\tprintln(int_str(invoke(r.run)))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_captured_alias_return', iface_mv + 'fn escape(r Runner) fn () int {\n\tcb := r.run\n\treturn fn [cb] () fn () int {\n\t\treturn cb\n\t}()\n}\n\nfn main() {\n\tcb := escape(Runner(Job{\n\t\tid: 10\n\t}))\n\tprintln(int_str(cb()))\n}\n', '10'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_fn_literal_local_scoped', iface_mv + 'fn plain() int {\n\treturn 11\n}\n\nfn outer(cb fn () int) fn () int {\n\t_ = fn () {\n\t\tr := Runner(Job{\n\t\t\tid: 5\n\t\t})\n\t\tinner_cb := r.run\n\t\t_ = inner_cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n', '11'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_lambda_local_scoped', iface_mv + 'fn plain() int {\n\treturn 13\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn outer(cb fn () int) fn () int {\n\tcall(|| {\n\t\tinner_cb := Runner(Job{\n\t\t\tid: 7\n\t\t}).run\n\t\t_ = inner_cb\n\t})\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n', '13'},
+	])
 }
 
 fn test_pr_review_codegen_batch_twentyone() {
@@ -1998,17 +1975,16 @@ fn test_fn_pointer_return_type() {
 }
 
 fn test_const_length_fixed_array() {
-	// A fixed array whose length is a const round-trips through the checker as the postfix name
-	// `int[seg_count]`. The transform's fixed-array predicate (now const-aware) folds `.len` to the
-	// constant instead of emitting a struct field access on the C array, and parse_type treats the
-	// builtin-base postfix as a fixed array (not a bogus generic), so the decl uses memcpy.
-	direct := run_good(v3_bin, 'good_const_len_fixed_array_call_len', 'const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\treturn r\n}\nfn main() {\n\tprintln(int_str(f().len))\n}\n')
-	assert direct == '3'
-	decl := run_good(v3_bin, 'good_const_len_fixed_array_decl_len', "const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\tr[0] = 10\n\treturn r\n}\nfn main() {\n\ta := f()\n\tprintln(int_str(a[0]) + ',' + int_str(a.len))\n}\n")
-	assert decl == '10,3'
-	// An expression length (`[segs + 1]int`) likewise folds, iterates, and indexes correctly.
-	expr := run_good(v3_bin, 'good_expr_len_fixed_array', "const segs = 2\nfn f() [segs + 1]int {\n\tmut r := [segs + 1]int{}\n\tr[0] = 5\n\tr[1] = 6\n\tr[2] = 7\n\treturn r\n}\nfn main() {\n\ta := f()\n\tmut sum := 0\n\tfor x in a {\n\t\tsum += x\n\t}\n\tprintln(int_str(a.len) + ',' + int_str(a[1]) + ',' + int_str(sum))\n}\n")
-	assert expr == '3,6,18'
+	run_good_module_batch(v3_bin, 'constant_fixed_array_lengths', [
+		// A fixed array whose length is a const round-trips through the checker as the postfix name
+		// `int[seg_count]`. The transform's fixed-array predicate (now const-aware) folds `.len` to the
+		// constant instead of emitting a struct field access on the C array, and parse_type treats the
+		// builtin-base postfix as a fixed array (not a bogus generic), so the decl uses memcpy.
+		TypeCheckerRuntimeCase{'good_const_len_fixed_array_call_len', 'const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\treturn r\n}\nfn main() {\n\tprintln(int_str(f().len))\n}\n', '3'},
+		TypeCheckerRuntimeCase{'good_const_len_fixed_array_decl_len', "const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\tr[0] = 10\n\treturn r\n}\nfn main() {\n\ta := f()\n\tprintln(int_str(a[0]) + ',' + int_str(a.len))\n}\n", '10,3'},
+		// An expression length (`[segs + 1]int`) likewise folds, iterates, and indexes correctly.
+		TypeCheckerRuntimeCase{'good_expr_len_fixed_array', "const segs = 2\nfn f() [segs + 1]int {\n\tmut r := [segs + 1]int{}\n\tr[0] = 5\n\tr[1] = 6\n\tr[2] = 7\n\treturn r\n}\nfn main() {\n\ta := f()\n\tmut sum := 0\n\tfor x in a {\n\t\tsum += x\n\t}\n\tprintln(int_str(a.len) + ',' + int_str(a[1]) + ',' + int_str(sum))\n}\n", '3,6,18'},
+	])
 }
 
 fn test_pr_review_codegen_batch_twentyfive() {
@@ -2086,13 +2062,13 @@ fn test_pr_review_codegen_batch_twentynine() {
 	// Returning a pointer alias of an aligned local must use the aligned heap-copy helper, matching
 	// the free path for `&Aligned` values.
 	aligned_alias_source := '@[aligned: 64]\nstruct Aligned {\n\tx int\n}\nfn make() &Aligned {\n\tmut x := Aligned{\n\t\tx: 5\n\t}\n\tp := &x\n\treturn p\n}\nfn main() {\n\tp := make()\n\tprintln(int_str(p.x))\n\tunsafe {\n\t\tfree(p)\n\t}\n}\n'
-	aligned_c := gen_c_project(v3_bin, 'good_aligned_pointer_alias_heap_copy_c', {
-		'main.v': aligned_alias_source
-	}, 'main.v')
+	aligned_name := 'good_aligned_pointer_alias_heap_copy_run'
+	aligned_bin := compile_good_source(v3_bin, aligned_name, aligned_alias_source)
+	aligned_c := os.read_file(aligned_bin + '.c') or { panic(err) }
 	assert aligned_c.contains('v3_aligned_memdup('), aligned_c
 	assert !aligned_c.contains('memdup(p, sizeof(Aligned))'), aligned_c
 	assert aligned_c.contains('v3_aligned_free(p)'), aligned_c
-	aligned_alias := run_good(v3_bin, 'good_aligned_pointer_alias_heap_copy_run', aligned_alias_source)
+	aligned_alias := run_good_binary(aligned_name, aligned_bin)
 	assert aligned_alias == '5'
 	// A capitalized field followed by a const-sized fixed array is a named field whose type is
 	// `[n]int`, not a failed generic embedded-field probe that skips `[n]` and leaves `int`.
@@ -2214,17 +2190,15 @@ fn test_generic_specialization_rejects_incompatible_array_element_return() {
 		// target has to be rejected here rather than at `.id = src.id` in the C.
 		TypeCheckerRejection{'bad_generic_array_elem_unimplemented_interface', 'interface HasId {\n\tid int\n}\n\nstruct NoId {\n\tv int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\t_ := take([NoId{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]bad_generic_array_elem_unimplemented_interface.NoId', '[]bad_generic_array_elem_unimplemented_interface.HasId')},
 	])
-	// Elements that only differ in spelling (a registered alias next to its base
-	// type, one level down) are storage-identical, so the same slot must keep
-	// compiling.
-	rows := run_good(v3_bin, 'good_generic_array_elem_alias_return', 'type NodeId = int\n\nfn take[T](rows [][]T) [][]NodeId {\n\treturn rows\n}\n\nfn main() {\n\trows := take([[1, 2], [3]])\n\tprintln(int_str(rows.len + rows[0].len))\n}\n')
-	assert rows == '4'
-	boxed := run_good(v3_bin, 'good_generic_array_elem_interface_field', 'interface HasId {\n\tid int\n}\n\nstruct WithId {\n\tid int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([WithId{\n\t\tid: 7\n\t}])[0].id))\n}\n')
-	assert boxed == '7'
-	spoken := run_good(v3_bin, 'good_generic_array_elem_interface_method', "interface Speaker {\n\tspeak() string\n}\n\nstruct Dog {}\n\nfn (d Dog) speak() string {\n\treturn 'woof'\n}\n\nfn take[T](items []T) []Speaker {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([Dog{}])[0].speak())\n}\n")
-	assert spoken == 'woof'
-	variants := run_good(v3_bin, 'good_generic_array_elem_sum_variant', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tw int\n}\n\ntype FB = Bar | Foo\n\nfn take[T](items []T) []FB {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([Foo{\n\t\tv: 3\n\t}]).len))\n}\n')
-	assert variants == '1'
+	run_good_module_batch(v3_bin, 'generic_array_returns', [
+		// Elements that only differ in spelling (a registered alias next to its base
+		// type, one level down) are storage-identical, so the same slot must keep
+		// compiling.
+		TypeCheckerRuntimeCase{'good_generic_array_elem_alias_return', 'type NodeId = int\n\nfn take[T](rows [][]T) [][]NodeId {\n\treturn rows\n}\n\nfn main() {\n\trows := take([[1, 2], [3]])\n\tprintln(int_str(rows.len + rows[0].len))\n}\n', '4'},
+		TypeCheckerRuntimeCase{'good_generic_array_elem_interface_field', 'interface HasId {\n\tid int\n}\n\nstruct WithId {\n\tid int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([WithId{\n\t\tid: 7\n\t}])[0].id))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_generic_array_elem_interface_method', "interface Speaker {\n\tspeak() string\n}\n\nstruct Dog {}\n\nfn (d Dog) speak() string {\n\treturn 'woof'\n}\n\nfn take[T](items []T) []Speaker {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([Dog{}])[0].speak())\n}\n", 'woof'},
+		TypeCheckerRuntimeCase{'good_generic_array_elem_sum_variant', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tw int\n}\n\ntype FB = Bar | Foo\n\nfn take[T](items []T) []FB {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([Foo{\n\t\tv: 3\n\t}]).len))\n}\n', '1'},
+	])
 }
 
 // generic_array_return_error is the error for an array of `actual` returned as
