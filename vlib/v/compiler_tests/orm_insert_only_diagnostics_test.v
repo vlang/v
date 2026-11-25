@@ -17,6 +17,40 @@ fn test_sql_insert_only_diagnostics_in_compile_and_check_modes() ! {
 			source.replace_once('fn main()', 'pub fn check() !'))!
 		imports << 'import ${module_name} as _'
 	}
+	grouped_dir := os.join_path(root, 'fixture_grouped')
+	os.mkdir(grouped_dir)!
+	cases := {
+		'conjunction':      "name == 'safe' && creator == 'protected'"
+		'disjunction':      "(name == 'safe' || creator == 'protected')"
+		'nested_condition': "if creator == 'read' { if enabled { name == 'safe' && creator == 'protected' } }"
+	}
+	mut calls := []string{cap: cases.len}
+	for name, assignment in cases {
+		os.write_file(os.join_path(grouped_dir, '${name}.v'), "module fixture_grouped
+
+import db.sqlite
+fn check_${name}() ! {
+ db := sqlite.connect(':memory:')!
+ enabled := true
+ creator := 'read'
+ assignments := { ${assignment} }
+ sql db { dynamic update InsertOnlyUser set assignments where id == 1 }!
+}
+")!
+		calls << ' check_${name}()!'
+	}
+	os.write_file(os.join_path(grouped_dir, 'main.v'), "module fixture_grouped
+
+struct InsertOnlyUser {
+ id int @[primary]
+ creator string @[sql_insert_only]
+ name string
+}
+pub fn check() ! {
+${calls.join('\n')}
+}
+")!
+	imports << 'import fixture_grouped as _'
 	attribute_source := os.read_file(os.join_path(fixtures, 'orm_sql_insert_only_attribute.vv'))!
 	os.write_file(os.join_path(root, 'attribute.v'), attribute_source.replace_once('module main',
 		'module main\n\n${imports.join('\n')}\n'))!
@@ -34,6 +68,10 @@ fn test_sql_insert_only_diagnostics_in_compile_and_check_modes() ! {
 	assert diagnostics.any(it.contains('update.v:') && it.contains(update_error)), normal.output
 	dynamic := diagnostics.filter(it.contains('dynamic.v:')).join('\n')
 	assert dynamic.count(update_error) == 2, normal.output
+	grouped_error := '${update_error}creator`'
+	for name, _ in cases {
+		assert diagnostics.any(it.contains('${name}.v:') && it.contains(grouped_error)), '${name}: ${normal.output}'
+	}
 }
 
 fn test_sql_insert_only_accepts_valid_dynamic_assignments() {
@@ -90,48 +128,5 @@ pub fn check() ! {
 	for flags in [[]string{}, ['-check']] {
 		result := os.exec([@VEXE, '-nocolor', ...flags, path])
 		assert result.exit_code == 0, result.output
-	}
-}
-
-fn test_sql_insert_only_dynamic_grouped_assignments_are_checked() {
-	root := os.join_path(os.vtmp_dir(), 'orm_insert_only_grouped_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	rejected_dir := os.join_path(root, 'rejected')
-	os.mkdir(rejected_dir)!
-	cases := {
-		'conjunction':      "name == 'safe' && creator == 'protected'"
-		'disjunction':      "(name == 'safe' || creator == 'protected')"
-		'nested_condition': "if creator == 'read' { if enabled { name == 'safe' && creator == 'protected' } }"
-	}
-	mut calls := []string{cap: cases.len}
-	for name, assignment in cases {
-		os.write_file(os.join_path(rejected_dir, '${name}.v'), "import db.sqlite
-fn check_${name}() ! {
- db := sqlite.connect(':memory:')!
- enabled := true
- creator := 'read'
- assignments := { ${assignment} }
- sql db { dynamic update InsertOnlyUser set assignments where id == 1 }!
-}
-")!
-		calls << ' check_${name}()!'
-	}
-	os.write_file(os.join_path(rejected_dir, 'main.v'), "struct InsertOnlyUser {
- id int @[primary]
- creator string @[sql_insert_only]
- name string
-}
-fn main() {
-${calls.join('\n')}
-}
-")!
-	for flags in [[]string{}, ['-check']] {
-		result := os.exec([@VEXE, '-nocolor', ...flags, rejected_dir])
-		assert result.exit_code == 1, result.output
-		diagnostics := result.output.split_into_lines().filter(it.contains('error: ORM: cannot update insert-only field `InsertOnlyUser.creator`'))
-		for name, _ in cases {
-			assert diagnostics.any(it.contains('${name}.v:')), '${name}, flags=${flags}: ${result.output}'
-		}
 	}
 }
