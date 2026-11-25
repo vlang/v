@@ -7200,7 +7200,13 @@ fn (mut g FlatGen) gen_defer_block(body_id flat.NodeId, frame string) {
 	g.writeln('{')
 	g.indent++
 	for j in 0 .. defer_body.children_count {
-		g.gen_node(g.a.child(&defer_body, j))
+		stmt_id := g.a.child(&defer_body, j)
+		$if ownership ? {
+			if g.gen_scoped_thread_array_wait_stmt(stmt_id) {
+				continue
+			}
+		}
+		g.gen_node(stmt_id)
 	}
 	g.indent--
 	g.writeln('}')

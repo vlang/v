@@ -57,18 +57,20 @@ fn (tc &TypeChecker) ownership_scoped_thread_group_array_type(typ Type) bool {
 }
 
 // A checked worker array owns its storage until its one deferred wait runs.
-fn (tc &TypeChecker) ownership_scoped_thread_group_owns_binding(id flat.NodeId, typ Type) bool {
+fn (mut tc TypeChecker) ownership_mark_scoped_thread_array(id flat.NodeId, binding_id flat.NodeId, typ Type) {
 	if !tc.ownership_scoped_thread_group_array_type(typ) {
-		return false
+		return
 	}
-	binding_id := tc.direct_parent_id(id)
 	binding := tc.a.node(binding_id)
 	if binding.kind != .decl_assign || binding.children_count != 2 || tc.a.child(binding, 0) != id {
-		return false
+		return
 	}
 	lhs := tc.a.node(id)
 	scope := tc.a.node(tc.direct_parent_id(binding_id))
-	return tc.ownership_scoped_thread_group_declaration(scope, flat.empty_node, lhs.value) != none
+	if wait_site := tc.ownership_scoped_thread_group_declaration(scope, flat.empty_node, lhs.value) {
+		tc.a.nodes[int(id)].flags |= flat.node_flag_scoped_thread_array
+		tc.a.nodes[int(wait_site)].flags |= flat.node_flag_scoped_thread_array
+	}
 }
 
 fn (tc &TypeChecker) ownership_scoped_thread_group_declaration(scope &flat.Node, child_id flat.NodeId, name string) ?flat.NodeId {

@@ -404,6 +404,9 @@ pub const node_flag_in_range_index = u8(8)
 // node_flag_retained_reference marks an implicit `&temporary` retained by a field.
 // It uses the same bit on prefix nodes; the C backend must copy its backing value.
 pub const node_flag_retained_reference = u8(8)
+// node_flag_scoped_thread_array marks the binding and deferred wait receiver of
+// an exclusively owned array of scoped worker handles.
+pub const node_flag_scoped_thread_array = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
@@ -551,6 +554,13 @@ pub fn (n &Node) is_detached_spawn() bool {
 @[inline]
 pub fn (n &Node) skip_ownership_drops() bool {
 	return (n.flags & node_flag_skip_ownership_drops) != 0
+}
+
+// is_scoped_thread_array reports whether this identifier belongs to a checked
+// thread array whose deferred wait releases the handles.
+@[inline]
+pub fn (n &Node) is_scoped_thread_array() bool {
+	return n.kind == .ident && (n.flags & node_flag_scoped_thread_array) != 0
 }
 
 // borrows_map_key reports whether a generated map loop only borrows its key.

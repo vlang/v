@@ -1203,6 +1203,34 @@ fn (g &FlatGen) discarded_thread_array_wait(node flat.Node) bool {
 	return false
 }
 
+fn (mut g FlatGen) gen_scoped_thread_array_wait_stmt(stmt_id flat.NodeId) bool {
+	mut id := stmt_id
+	mut call := g.a.node(id)
+	for call.kind in [.expr_stmt, .paren] && call.children_count == 1 {
+		id = g.a.child(call, 0)
+		call = g.a.node(id)
+	}
+	if call.kind != .call || call.children_count != 1 {
+		return false
+	}
+	selector := g.a.child_node(call, 0)
+	if selector.kind != .selector || selector.value != 'wait' || selector.children_count != 1 {
+		return false
+	}
+	receiver_id := g.a.child(selector, 0)
+	if !g.a.node(receiver_id).is_scoped_thread_array() {
+		return false
+	}
+	if !g.gen_discarded_owned_call(id, *call) {
+		g.gen_expr(id)
+		g.writeln(';')
+	}
+	g.write('array__free(&(')
+	g.gen_expr(receiver_id)
+	g.writeln('));')
+	return true
+}
+
 // gen_thread_array_wait emits a call to the (lazily generated) wait function for a
 // `[]thread T` receiver. The element type carries the thread's return type in its
 // name (`thread T`); a bare `thread` denotes a void payload.
