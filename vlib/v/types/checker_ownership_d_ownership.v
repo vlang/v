@@ -2050,6 +2050,17 @@ fn (mut tc TypeChecker) ownership_live_drop_entries() []OwnershipDropEntry {
 	return entries
 }
 
+// ownership_drop_methods_for_type lists the concrete receiver types whose
+// destructors are needed when an explicit drop is lowered.
+pub fn (tc &TypeChecker) ownership_drop_methods_for_type(typ Type) []u32 {
+	if tc.ownership == unsafe { nil } {
+		return []u32{}
+	}
+	mut names := []u32{}
+	tc.ownership_collect_drop_type_names(typ, mut names, mut map[u32]bool{}, false)
+	return names
+}
+
 fn (mut tc TypeChecker) ownership_note_drop_types(_ string, entries []OwnershipDropEntry) {
 	mut st := tc.ownership_state()
 	for entry in entries {

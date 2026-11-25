@@ -178,6 +178,15 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability Thre
 				// The mutex gives each updated value one owner at a time.
 				return tc.ownership_thread_transfer_problem(payload, .transfer, depth + 1, mut seen)
 			}
+			if tc.ownership_thread_library_type(name_id, 'sync/thread', [
+				'sync.thread.MutCallback',
+				'thread.MutCallback',
+			]) {
+				if capability == .share {
+					return 'thread.MutCallback requires exclusive access to its state'
+				}
+				return none
+			}
 			if capability == .share
 				&& tc.ownership_thread_library_payload(name_id, 'cell', ['cell.RefCell']) != none {
 				return 'cell.RefCell has unsynchronized borrow state'
@@ -220,8 +229,10 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability Thre
 // still has ordinary struct constraint semantics.
 fn (tc &TypeChecker) ownership_thread_constraint(name_id u32) ?ThreadCapability {
 	capability := match flat.source_type_name(name_id) {
-		'sync.thread.Transferable', 'thread.Transferable' { ThreadCapability.transfer }
-		'sync.thread.Shareable', 'thread.Shareable' { ThreadCapability.share }
+		'sync.thread.Transferable', 'thread.Transferable', 'Transferable' {
+			ThreadCapability.transfer
+		}
+		'sync.thread.Shareable', 'thread.Shareable', 'Shareable' { ThreadCapability.share }
 		else { return none }
 	}
 	decl := tc.source_struct_decl_for_name(name_id) or { return none }
@@ -234,20 +245,20 @@ fn (tc &TypeChecker) ownership_thread_constraint(name_id u32) ?ThreadCapability 
 // Check declaration provenance before relying on a standard-library type's
 // synchronization or interior mutability.
 fn (tc &TypeChecker) ownership_thread_library_payload(name_id u32, module_path string, supported_names []string) ?Type {
-	syntax := flat.source_type_syntax(name_id)
-	base := flat.source_type_name(syntax.generic_base())
-	if base !in supported_names {
-		return none
-	}
-	args := syntax.generic_app_args()
-	if args.len != 1 || tc.compiler_vroot == '' {
-		return none
-	}
-	decl := tc.source_struct_decl_for_name(syntax.generic_base()) or { return none }
-	if !tc.ownership_thread_library_declaration(decl, module_path) {
+	args := flat.source_type_syntax(name_id).generic_app_args()
+	if args.len != 1 || !tc.ownership_thread_library_type(name_id, module_path, supported_names) {
 		return none
 	}
 	return *tc.parse_type(args[0])
+}
+
+fn (tc &TypeChecker) ownership_thread_library_type(name_id u32, module_path string, supported_names []string) bool {
+	base := flat.source_type_syntax(name_id).generic_base()
+	if flat.source_type_name(base) !in supported_names || tc.compiler_vroot == '' {
+		return false
+	}
+	decl := tc.source_struct_decl_for_name(base) or { return false }
+	return tc.ownership_thread_library_declaration(decl, module_path)
 }
 
 fn (tc &TypeChecker) ownership_thread_library_declaration(decl flat.Node, module_path string) bool {

@@ -1873,6 +1873,15 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		|| call_name.starts_with('builtin.drop_owned_T_') || call_name.starts_with('drop_owned_T_')) {
 		arg_id := t.unwrap_parens(t.a.child(&node, 1))
 		arg := t.a.nodes[int(arg_id)]
+		$if ownership ? {
+			if !isnil(t.tc) {
+				typ := t.tc.parse_type(t.node_type(arg_id))
+				method := if t.tc.autofree_mode { 'free' } else { 'drop' }
+				for receiver in t.tc.ownership_drop_methods_for_type(typ) {
+					t.mark_fn_used_name('${flat.source_type_name(receiver)}.${method}')
+				}
+			}
+		}
 		if arg.kind == .ident && arg.value in t.heaped_amp_locals {
 			// Promotion adds storage indirection, not a language-level reference.
 			// Explicit destruction still targets the original value's elements.
