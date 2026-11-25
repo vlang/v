@@ -82,7 +82,7 @@
   },
   {
     "workflow": "cross_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -150,7 +150,7 @@
   },
   {
     "workflow": "fastc_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       "vlib/v/gen/fastc/**",

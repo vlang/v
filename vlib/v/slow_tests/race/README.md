@@ -5,7 +5,8 @@
 (golang/go@522ebc8370421796f13715117803d3302e8b61bd). `go_race_test.v` runs it the way Go's
 `src/runtime/race/race_test.go` runs the Go tests:
 
-* every program in `testdata/` is built with `v -race` and runs its tests one after another;
+* programs in `testdata/` are built with `v -race` using up to four concurrent builds within
+  the `VJOBS` budget. The finished programs run one at a time in file order.
 * a test whose name starts with `test_race_` passes when the race detector reported a data
   race while it ran, a `test_no_race_` test passes when it reported none.
 

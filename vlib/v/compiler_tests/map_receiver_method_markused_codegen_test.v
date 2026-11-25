@@ -1,23 +1,12 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_map_receiver_method_markused_${os.getpid()}')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_map_receiver_method_is_rooted_by_markused() {
-	v3_bin := build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_map_receiver_method_markused_input_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_map_receiver_method_markused_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	bin := os.join_path(dir, 'v3_map_receiver_method_markused_input')
+	src := bin + '.v'
 	os.write_file(src, "struct Entry {
 	kind int
 }
@@ -41,8 +30,7 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_map_receiver_method_markused_input_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

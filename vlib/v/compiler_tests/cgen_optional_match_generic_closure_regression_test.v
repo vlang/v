@@ -1,27 +1,14 @@
 import os
+import v.tempname
 
-const issues_vexe = @VEXE
-const issues_v3_dir = os.dir(os.dir(@FILE))
-const issues_vlib_dir = os.dir(issues_v3_dir)
-const issues_v3_src = os.join_path(issues_v3_dir, 'v.v')
-
-fn issues_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_issues_27981_27984_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([issues_vexe, '-gc', 'none', '-path', '${issues_vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${issues_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn issues_compile_and_run(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+fn issues_compile_and_run(name string, source string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_${name}')
+	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	compile := os.exec([v3_bin, '-nocache', '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-nocache', src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -29,8 +16,7 @@ fn issues_compile_and_run(v3_bin string, name string, source string) string {
 }
 
 fn test_generic_closure_returning_struct_with_ierror_field() {
-	v3_bin := issues_build_v3()
-	output := issues_compile_and_run(v3_bin, 'issue_27984', '
+	output := issues_compile_and_run('issue_27984', '
 struct Outcome[T] {
 	value T
 	err   IError = none
@@ -68,8 +54,7 @@ fn main() {
 }
 
 fn test_optional_binding_inside_match_with_result_propagation() {
-	v3_bin := issues_build_v3()
-	output := issues_compile_and_run(v3_bin, 'issue_27981', '
+	output := issues_compile_and_run('issue_27981', '
 fn convert(value int) !int {
 	return value
 }

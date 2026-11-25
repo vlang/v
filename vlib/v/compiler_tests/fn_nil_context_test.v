@@ -1,25 +1,11 @@
 import os
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fn_nil_context_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn run_good(v3_bin string, name string, src string) string {
-	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+fn fn_nil_run_good(root string, name string, src string) string {
+	good_src := os.join_path(root, 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.exec([v3_bin, '${good_src}', '-b', 'c', '-o', good_bin])
+	good_bin := os.join_path(root, 'v3_${name}')
+	compile := os.exec([@VEXE, '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
 	run := os.exec([good_bin])
@@ -27,19 +13,21 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
-fn run_bad(v3_bin string, name string, src string, expected string) {
-	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+fn fn_nil_run_bad(root string, name string, src string, expected string) {
+	bad_src := os.join_path(root, 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
+	bad_bin := os.join_path(root, 'v3_${name}')
+	result := os.exec([@VEXE, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert result.exit_code != 0, '${name}: unexpectedly compiled: ${result.output}'
 	assert result.output.contains(expected), '${name}: missing `${expected}` in ${result.output}'
 	assert !result.output.contains('C compilation failed')
 }
 
 fn test_unsafe_nil_contextually_matches_fn_fields() {
-	v3_bin := build_v3()
-	default_out := run_good(v3_bin, 'fn_nil_default', 'struct S {
+	root := os.join_path(os.vtmp_dir(), 'v3_fn_nil_context_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	default_out := fn_nil_run_good(root, 'fn_nil_default', 'struct S {
 mut:
 	f fn (int) ! = unsafe { nil }
 }
@@ -51,7 +39,7 @@ fn main() {
 }
 ')
 	assert default_out == '1'
-	alias_out := run_good(v3_bin, 'fn_alias_nil_field_init', 'type Callback = fn (data voidptr)
+	alias_out := fn_nil_run_good(root, 'fn_alias_nil_field_init', 'type Callback = fn (data voidptr)
 
 struct S {
 	f Callback
@@ -65,7 +53,7 @@ fn main() {
 }
 ')
 	assert alias_out == '2'
-	run_bad(v3_bin, 'fn_field_rejects_voidptr_variable', 'struct S {
+	fn_nil_run_bad(root, 'fn_field_rejects_voidptr_variable', 'struct S {
 	f fn (int) !
 }
 
@@ -77,7 +65,7 @@ fn main() {
 }
 ',
 		'cannot assign to field `f`: expected `fn(int) !void`, not `voidptr`')
-	run_bad(v3_bin, 'fn_field_assignment_rejects_voidptr_variable', 'struct S {
+	fn_nil_run_bad(root, 'fn_field_assignment_rejects_voidptr_variable', 'struct S {
 	mut:
 		f fn (int) !
 }
@@ -89,7 +77,7 @@ fn main() {
 }
 ',
 		'cannot assign to `value.f`: expected `fn (int) !void`, not `voidptr`')
-	run_bad(v3_bin, 'fn_field_rejects_non_nil_unsafe_pointer', 'struct S {
+	fn_nil_run_bad(root, 'fn_field_rejects_non_nil_unsafe_pointer', 'struct S {
 	f fn (int) !
 }
 
@@ -100,7 +88,7 @@ fn main() {
 }
 ',
 		'cannot assign to field `f`: expected `fn(int) !void`, not `&int`')
-	run_bad(v3_bin, 'fn_field_rejects_voidptr_zero', 'struct S {
+	fn_nil_run_bad(root, 'fn_field_rejects_voidptr_zero', 'struct S {
 	f fn (int) !
 }
 
@@ -111,7 +99,7 @@ fn main() {
 }
 ',
 		'cannot assign to field `f`: expected `fn(int) !void`, not `voidptr`')
-	run_bad(v3_bin, 'fn_field_rejects_integer_zero', 'struct S {
+	fn_nil_run_bad(root, 'fn_field_rejects_integer_zero', 'struct S {
 	f fn (int) !
 }
 
@@ -122,7 +110,7 @@ fn main() {
 }
 ',
 		'cannot assign to field `f`: expected `fn(int) !void`, not `int literal`')
-	run_bad(v3_bin, 'fn_field_rejects_wrong_arity', 'fn no_args() ! {
+	fn_nil_run_bad(root, 'fn_field_rejects_wrong_arity', 'fn no_args() ! {
 	return
 }
 
@@ -137,7 +125,7 @@ fn main() {
 }
 ',
 		'cannot assign to field `f`: expected `fn (int) !`, not `fn () !`')
-	run_bad(v3_bin, 'fn_field_rejects_wrong_return', 'fn returns_int(i int) !int {
+	fn_nil_run_bad(root, 'fn_field_rejects_wrong_return', 'fn returns_int(i int) !int {
 	return i
 }
 
@@ -152,7 +140,7 @@ fn main() {
 }
 ',
 		'cannot assign to field `f`: expected `fn (int) !`, not `fn (int) !int`')
-	run_bad(v3_bin, 'fn_alias_field_rejects_wrong_arity', 'type Callback = fn (int) !
+	fn_nil_run_bad(root, 'fn_alias_field_rejects_wrong_arity', 'type Callback = fn (int) !
 
 fn no_args() ! {
 	return

@@ -1,24 +1,28 @@
 // vtest ownership
 import os
-
-const owned_array_mutation_vexe = @VEXE
-const owned_array_mutation_tests_dir = os.dir(@FILE)
-const owned_array_mutation_v3_dir = os.dir(owned_array_mutation_tests_dir)
-const owned_array_mutation_vlib_dir = os.dir(owned_array_mutation_v3_dir)
-const owned_array_mutation_v3_src = os.join_path(owned_array_mutation_v3_dir, 'v.v')
+import v.cmdexec
+import v.tempname
 
 fn test_owned_array_mutations_keep_generated_drop_loops_well_formed() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_owned_array_mutation_test')
-	build :=
-		os.exec([owned_array_mutation_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-			'${owned_array_mutation_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${owned_array_mutation_v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	source := os.join_path(os.temp_dir(), 'v3_owned_array_mutation_input.v')
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	v3_src := os.join_path(os.dir(@FILE), '../v.v')
+	compiler := if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		os.real_path(shared)
+	} else {
+		@VEXE
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_owned_array_mutation_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'v3_owned_array_mutation_input.v')
 	os.write_file(source,
 		"fn main() {\n\tmut values := ['a', 'b', 'c']\n\tvalues.delete(1)\n\tassert values == ['a', 'c']\n\tvalues.clear()\n\tassert values.len == 0\n\tvalues = ['last']\n\tvalues.free()\n\tassert values.len == 0\n\tmut nested := [['owned']]\n\tnested.pop()\n\tassert nested.len == 0\n\tprintln('ok')\n}\n")!
-	out := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-no-parallel', 'run', source])
+	out := cmdexec.run_in_merged_with_env(compiler, ['-ownership', '-d', 'ownership', '-no-parallel',
+		'run', source], '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
 	assert out.exit_code == 0, out.output
 	assert out.output.contains('\nok\n'), out.output
 }

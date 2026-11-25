@@ -1,21 +1,11 @@
 import os
-
-const fixed_array_pointer_assignment_vexe = @VEXE
-const fixed_array_pointer_assignment_tests_dir = os.dir(@FILE)
-const fixed_array_pointer_assignment_v3_dir = os.dir(fixed_array_pointer_assignment_tests_dir)
-const fixed_array_pointer_assignment_vlib_dir = os.dir(fixed_array_pointer_assignment_v3_dir)
-const fixed_array_pointer_assignment_v3_src = os.join_path(fixed_array_pointer_assignment_v3_dir,
-	'v.v')
+import v.tempname
 
 fn test_fixed_array_pointer_assignment_targets_element() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_pointer_assignment_${os.getpid()}')
-	build :=
-		os.exec([fixed_array_pointer_assignment_vexe, '-gc', 'none', '-prealloc', '-path',
-			'${fixed_array_pointer_assignment_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${fixed_array_pointer_assignment_v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	src := os.join_path(os.temp_dir(), 'v3_fixed_array_pointer_assignment_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_pointer_assignment_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'main.v')
 	os.write_file(src, 'fn pair() (int, int) {
 	return 5, 6
 }
@@ -38,8 +28,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_pointer_assignment_program_${os.getpid()}')
-	compile := os.exec([v3_bin, '-nocache', '-no-parallel', '-keepc', '-b', 'c', '${src}', '-o',
+	bin := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, '-nocache', '-no-parallel', '-keepc', '-b', 'c', '${src}', '-o',
 		bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])

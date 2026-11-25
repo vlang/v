@@ -436,6 +436,46 @@ fn test_link_preparation_preserves_option_pairs_beside_real_objects() {
 	assert plan.requests == 1
 }
 
+fn test_shared_native_link_objects_outlive_the_producing_session() {
+	$if windows {
+		return
+	}
+	compiler := os.find_abs_path_of_executable('cc') or { return }
+	old_vtmp := os.getenv_opt('VTMP')
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'shared_link_inputs_${os.getpid()}')
+	cache_dir := os.join_path(root, 'shared')
+	first := os.join_path(root, 'first')
+	second := os.join_path(root, 'second')
+	defer {
+		if value := old_vtmp {
+			os.setenv('VTMP', value, true)
+		} else {
+			os.unsetenv('VTMP')
+		}
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(cache_dir)!
+	for session in [first, second] {
+		os.mkdir(session)!
+		os.symlink(cache_dir, os.join_path(session, 'v3_thirdparty_objs'))!
+	}
+	os.write_file(os.join_path(root, 'helper.c'), 'int helper(void) { return 42; }\n')!
+	flags := [os.join_path(root, 'helper.o')]
+	target := pref.host_target()
+	os.setenv('VTMP', first, true)
+	mut cold := CObjectCacheStats{}
+	produced := prepare_c_flags_for_link(flags, [], [], [], false, false, '', [], target,
+		compiler, false, root, mut cold)!
+	os.setenv('VTMP', second, true)
+	mut warm := CObjectCacheStats{}
+	reused := prepare_c_flags_for_link(flags, [], [], [], false, false, '', [], target,
+		compiler, false, root, mut warm)!
+	assert reused == produced
+	assert warm.dependency_scans == 0
+	os.rm(os.join_path(first, 'v3_thirdparty_objs'))!
+	assert os.is_file(reused[0]), reused[0]
+}
+
 fn test_c_source_language_flags_preserve_filename_case_and_explicit_languages() {
 	flags := ['long C source/my_test_cshim.c', 'native.o', 'cpp_source.C', 'source.cpp']
 	expected := ['-x', 'c', flags[0], '-x', 'none', 'native.o', 'cpp_source.C', 'source.cpp']

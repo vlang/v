@@ -1,21 +1,12 @@
 import os
-
-const lvalue_stabilization_vexe = @VEXE
-const lvalue_stabilization_tests_dir = os.dir(@FILE)
-const lvalue_stabilization_v3_dir = os.dir(lvalue_stabilization_tests_dir)
-const lvalue_stabilization_vlib_dir = os.dir(lvalue_stabilization_v3_dir)
-const lvalue_stabilization_v3_src = os.join_path(lvalue_stabilization_v3_dir, 'v.v')
+import v.cmdexec
+import v.tempname
 
 fn test_lvalue_receiver_stabilization_finishes_after_one_redispatch() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_lvalue_stabilization_test_${pid}')
-	os.rm(v3_bin) or {}
-	build := os.exec([lvalue_stabilization_vexe, '-gc', 'none', '-no-parallel', '-path',
-		'${lvalue_stabilization_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-		'${lvalue_stabilization_v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	src := os.join_path(os.temp_dir(), 'v3_lvalue_stabilization_${pid}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_lvalue_stabilization_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_lvalue_stabilization.v')
 	os.write_file(src, 'module main
 
 struct First {}
@@ -68,8 +59,10 @@ fn main() {
 	println(update_index(First{}))
 }
 ') or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_lvalue_stabilization_${pid}')
-	compile := os.exec([v3_bin, '-no-parallel', '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_lvalue_stabilization')
+	compile := cmdexec.run_in_merged_with_env(@VEXE, ['-no-parallel', src, '-b', 'c', '-o', bin], '', {
+		'VFLAGS': ''
+	})
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])

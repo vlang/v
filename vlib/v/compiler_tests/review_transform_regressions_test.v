@@ -50,8 +50,9 @@ fn build_v3_review_transform_ownership() string {
 	if os.exists(v3_bin) {
 		return v3_bin
 	}
+	// Compiler builds already enable the arena, so this can use the runner's shared build.
 	build :=
-		os.exec([vexe, '-prealloc', '-d', 'ownership', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
+		os.exec([vexe, '-gc', 'none', '-d', 'ownership', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
 			'-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin

@@ -1,38 +1,40 @@
 import os
+import v.cmdexec
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+const v3_bin = @VEXE
+const review_checker_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_review_checker_${tempname.unique_token()}')
 
-fn build_v3_review_checker() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_review_checker_regressions_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn testsuite_begin() {
+	os.mkdir(review_checker_fixture_dir) or { panic(err) }
 }
 
-fn run_bad(v3_bin string, name string, src string, expected string) {
-	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+fn testsuite_end() {
+	os.rmdir_all(review_checker_fixture_dir) or {}
+}
+
+fn run_review_checker(compiler string, args []string) os.Result {
+	return cmdexec.run_in_merged_with_env(compiler, args, '', {
+		'VFLAGS': ''
+	})
+}
+
+fn run_bad(compiler string, name string, src string, expected string) {
+	bad_src := os.join_path(review_checker_fixture_dir, 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
+	bad_bin := os.join_path(review_checker_fixture_dir, 'v3_${name}')
+	result := run_review_checker(compiler, ['${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
 }
 
-fn run_good(v3_bin string, name string, src string) string {
-	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+fn run_good(compiler string, name string, src string) string {
+	good_src := os.join_path(review_checker_fixture_dir, 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.exec([v3_bin, '-enable-globals', '${good_src}', '-b', 'c', '-o', good_bin])
+	good_bin := os.join_path(review_checker_fixture_dir, 'v3_${name}')
+	compile := run_review_checker(compiler, ['-enable-globals', '${good_src}', '-b', 'c', '-o',
+		good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.exec([good_bin])
@@ -40,8 +42,8 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
-fn run_good_project(v3_bin string, name string, files map[string]string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_project_${os.getpid()}')
+fn run_good_project(compiler string, name string, files map[string]string) string {
+	root := os.join_path(review_checker_fixture_dir, 'v3_${name}_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	defer {
@@ -54,18 +56,19 @@ fn run_good_project(v3_bin string, name string, files map[string]string) string 
 		os.write_file(path, source) or { panic(err) }
 	}
 	bin_path := os.join_path(root, 'program')
-	compile := os.exec([v3_bin, '-nocache', '-b', 'c', '-o', bin_path, os.join_path(root, 'main.v')])
+	compile := run_review_checker(compiler, ['-nocache', '-b', 'c', '-o', bin_path,
+		os.join_path(root, 'main.v')])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
 
-fn run_runtime_bad(v3_bin string, name string, src string) string {
-	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+fn run_runtime_bad(compiler string, name string, src string) string {
+	bad_src := os.join_path(review_checker_fixture_dir, 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
+	bad_bin := os.join_path(review_checker_fixture_dir, 'v3_${name}')
+	compile := run_review_checker(compiler, ['${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.exec([bad_bin])
@@ -74,7 +77,6 @@ fn run_runtime_bad(v3_bin string, name string, src string) string {
 }
 
 fn test_recursive_str_allows_smartcast_sum_variant_formatting() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'recursive_str_smartcast_sum_variant', 'type Scalar = bool | int | string
 
 fn (value Scalar) str() string {
@@ -96,7 +98,6 @@ fn main() {
 }
 
 fn test_explicit_mut_sum_smartcasts_preserve_concrete_variant_fields() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'explicit_mut_sum_smartcasts', 'struct First {
 mut:
 	value int
@@ -134,7 +135,6 @@ fn main() {
 }
 
 fn test_forwarded_mut_sum_parameter_invalidates_smartcast() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'forwarded_mut_sum_argument_invalidates_smartcast', 'struct First {
 	value int
 }
@@ -192,7 +192,6 @@ fn main() {
 }
 
 fn test_mut_index_alias_updates_original_storage() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'mut_index_alias', 'struct Item {
 mut:
 	value int
@@ -211,7 +210,6 @@ fn main() {
 }
 
 fn test_shared_globals_keep_lockable_storage_metadata() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'shared_global_storage', '@[has_globals]
 module main
 
@@ -236,13 +234,11 @@ fn main() {
 }
 
 fn test_source_field_names_require_snake_case() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'uppercase_struct_field', 'struct S {\n\tFoo int\n}\n\nfn main() {}\n',
 		'field name `Foo` cannot contain uppercase letters, use snake_case instead')
 }
 
 fn test_generic_factory_can_initialize_its_own_noinit_struct_for_external_callers() {
-	v3_bin := build_v3_review_checker()
 	out := run_good_project(v3_bin, 'generic_noinit_factory', {
 		'factory/factory.v': 'module factory
 
@@ -271,7 +267,6 @@ fn main() {
 }
 
 fn test_orm_checker_resolves_module_qualified_table_fields() {
-	v3_bin := build_v3_review_checker()
 	out := run_good_project(v3_bin, 'qualified_orm_table', {
 		'model/model.v': "module model
 
@@ -314,7 +309,6 @@ fn main() {
 }
 
 fn test_immutable_fields_and_result_storage_are_rejected() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'immutable_struct_field',
 		'struct S {\n\tread_only int\nmut:\n\twritable int\n}\n\nfn main() {\n\tmut s := S{}\n\ts.read_only = 1\n}\n',
 		'field `read_only` of struct `S` is immutable')
@@ -325,7 +319,6 @@ fn test_immutable_fields_and_result_storage_are_rejected() {
 }
 
 fn test_declaration_mutability_and_storage_restrictions_match_v1() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'immutable_reference_in_mut_field', 'struct Holder {
 mut:
 	ptr &int
@@ -395,7 +388,6 @@ fn main() {
 }
 
 fn test_pointer_struct_and_spawn_safety_match_v1() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'unparenthesized_pointer_write', 'fn main() {
 	value := 0
 	p := &value
@@ -481,7 +473,6 @@ fn main() {
 }
 
 fn test_mutable_references_and_enum_order_match_v1() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'mutable_reference_to_immutable_local_declaration', 'struct Foo {
 mut:
 	value int
@@ -548,7 +539,6 @@ fn main() {
 }
 
 fn test_method_value_option_alias_and_const_names_match_v1() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'non_heap_pointer_receiver_method_value', 'struct Foo {}
 
 fn (foo &Foo) ref() int {
@@ -681,14 +671,12 @@ fn main() {
 }
 
 fn test_reject_pointer_expressions_for_value_returns() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_pointer_to_value',
 		'fn f() int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n',
 		'you are returning `&int` instead')
 }
 
 fn test_reject_fixed_array_decay_to_pointer() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_fixed_array_pointer_argument',
 		'fn consume(value &int) {}\n\nfn main() {\n\tconsume([1, 2]!)\n}\n',
 		'cannot use `[2]int` as `&int` in argument 1 to `consume`')
@@ -716,8 +704,7 @@ fn test_reject_fixed_array_decay_to_pointer() {
 }
 
 fn test_enum_in_list_and_nested_array_address_match_v1() {
-	v3_bin := build_v3_review_checker()
-	insert_header := os.join_path(os.temp_dir(), 'v3_review_checker_insert.h')
+	insert_header := os.join_path(review_checker_fixture_dir, 'v3_review_checker_insert.h')
 	os.write_file(insert_header,
 		'static inline int v3_review_checker_inserted(void) { return 6; }\n') or { panic(err) }
 	out := run_good(v3_bin, 'good_enum_in_list_and_nested_array_address', '
@@ -847,14 +834,12 @@ fn main() {
 }
 
 fn test_reject_address_of_map_alias_value() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_address_nested_map_alias_value',
 		"type Scores = map[string]int\ntype ScoresRef = &Scores\n\nfn main() {\n\tmut scores := Scores({'key': 1})\n\tscores_ref := ScoresRef(&scores)\n\t_ := &scores_ref['key']\n}\n",
 		'cannot take the address of map values outside `unsafe`')
 }
 
 fn test_cross_wrapper_option_result_returns_match_v1() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_result_value_in_option_return',
 		'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n',
 		'cannot use `!int` as type `?int` in return argument')
@@ -879,7 +864,6 @@ fn test_cross_wrapper_option_result_returns_match_v1() {
 }
 
 fn test_option_void_is_not_compatible_with_payload_options() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_unsafe_none_option_default', 'struct Holder {
 	value ?int = unsafe { none }
 }
@@ -899,7 +883,6 @@ fn main() {
 }
 
 fn test_assignment_selector_diagnostic_accepts_wide_columns() {
-	v3_bin := build_v3_review_checker()
 	indent := ' '.repeat(32768)
 	run_bad(v3_bin, 'wide_assignment_selector_diagnostic', 'struct Holder {
 	item ?string
@@ -915,7 +898,6 @@ ${indent}value = holder.item or { "" }
 }
 
 fn test_generic_alias_substitutes_channel_element() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'generic_channel_alias_element', 'type Ch[T] = chan T
 
 fn receive(ch Ch[int]) int {
@@ -944,28 +926,24 @@ fn main() {
 }
 
 fn test_trailing_optional_parameters_are_lowered_to_none() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_omitted_optional_parameter',
 		'fn consume(value ?int) int {\n\treturn value or { -1 }\n}\n\nfn main() {\n\tprintln(int_str(consume()))\n\tprintln(int_str(consume(7)))\n}\n')
 	assert out == '-1\n7'
 }
 
 fn test_multi_return_arguments_must_consume_the_parameter_tail() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_variadic_multi_return_argument',
 		'fn pair() (int, []int) {\n\treturn 1, [2, 3]\n}\n\nfn consume(a int, rest ...int) {}\n\nfn main() {\n\tconsume(pair())\n}\n',
 		'cannot use `(int, []int)` as `int` in argument 1 to `consume`')
 }
 
 fn test_receiver_method_tail_multi_return_arguments_are_expanded() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'receiver_method_tail_multi_return',
 		'struct Receiver {}\n\nfn pair() (int, int) {\n\treturn 2, 3\n}\n\nfn (receiver Receiver) use(a int, b int) int {\n\treturn a * 10 + b\n}\n\nfn (receiver Receiver) use_with_prefix(prefix int, a int, b int) int {\n\treturn prefix * 100 + a * 10 + b\n}\n\nfn main() {\n\tprintln(int_str(Receiver{}.use(pair())))\n\tprintln(int_str(Receiver{}.use_with_prefix(1, pair())))\n}\n')
 	assert out == '23\n123'
 }
 
 fn test_power_requires_numeric_operands_or_an_overload() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_bool_power', 'fn main() {\n\t_ := true ** 2\n}\n',
 		'operator `**` requires numeric operands; got `bool` and `int`')
 	run_bad(v3_bin, 'bad_array_power', 'fn main() {\n\t_ := [1] ** 2\n}\n',
@@ -1003,42 +981,36 @@ fn main() {
 }
 
 fn test_if_expr_pointer_and_value_branches_are_incompatible() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_if_expr_pointer_value_branch',
 		'struct Foo {}\n\nfn main() {\n\t_ := if true {\n\t\tFoo{}\n\t} else {\n\t\t&Foo{}\n\t}\n}\n',
 		'mismatched types `Foo` and `&Foo`')
 }
 
 fn test_reject_narrowed_interface_method_parameters() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_exact_interface_method_param',
 		'interface Base {\n\tbase() int\n}\n\ninterface Handler {\n\thandle(value Base) int\n}\n\nstruct Value {}\n\nfn (v Value) base() int {\n\treturn 7\n}\n\nstruct Service {}\n\nfn (s Service) handle(value Base) int {\n\treturn value.base()\n}\n\nfn main() {\n\tprintln(Handler(Service{}).handle(Base(Value{})))\n}\n')
 	assert out == '7'
 }
 
 fn test_implicit_str_sum_does_not_satisfy_interface() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_implicit_str_sum_interface',
 		'interface Printable {\n\tstr() string\n}\ntype Value = int | string\nfn main() {\n\t_ := Printable(Value(1))\n}\n',
 		'does not implement interface')
 }
 
 fn test_implicit_str_unsupported_alias_does_not_satisfy_interface() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_implicit_str_fn_alias_interface',
 		'interface Printable {\n\tstr() string\n}\ntype Callback = fn ()\nfn noop() {}\nfn main() {\n\tcb := Callback(noop)\n\t_ := Printable(cb)\n}\n',
 		'cannot implement interface `Printable` using function')
 }
 
 fn test_multi_return_tail_slots_use_return_compatibility() {
-	v3_bin := build_v3_review_checker()
 	if_out := run_good(v3_bin, 'good_multi_return_if_pointer_value_tail',
 		'struct S {\n\tn int\n}\nfn pick(ok bool) (S, int) {\n\ts := S{\n\t\tn: 5\n\t}\n\treturn if ok {\n\t\t&s\n\t\t1\n\t} else {\n\t\t&s\n\t\t2\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a.n) + "," + int_str(b))\n}\n')
 	assert if_out == '5,2'
 }
 
 fn test_none_ierror_values_lower_to_builtin_none() {
-	v3_bin := build_v3_review_checker()
 	ierror_out := run_good(v3_bin, 'good_none_ierror_contexts',
 		'struct Holder {\n\terr IError = none\n}\n\nfn take(e IError) int {\n\tif e is none {\n\t\treturn 1\n\t}\n\treturn 0\n}\n\nfn make() IError {\n\treturn none\n}\n\nfn main() {\n\tdefault := Holder{}\n\texplicit := Holder{\n\t\terr: none\n\t}\n\tprintln(int_str(take(none) + take(default.err) + take(explicit.err) + take(make())))\n}\n')
 	assert ierror_out == '4'
@@ -1048,7 +1020,6 @@ fn test_none_ierror_values_lower_to_builtin_none() {
 }
 
 fn test_reject_non_optional_or_and_wrapped_string_concat() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_non_optional_literal_or_block', 'fn main() {\n\t_ := 1 or { 2 }\n}\n',
 		'unexpected `or` block')
 	run_bad(v3_bin, 'bad_non_optional_call_or_block',
@@ -1069,14 +1040,12 @@ fn test_reject_non_optional_or_and_wrapped_string_concat() {
 }
 
 fn test_rune_receiver_methods_resolve() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_rune_receiver_methods',
 		'fn main() {\n\tr := `★`\n\tprintln(int_str(`A`.length_in_bytes()))\n\tprintln(int_str(r.bytes().len))\n\tprintln(`c`.to_upper().str())\n}\n')
 	assert out == '1\n3\nC'
 }
 
 fn test_numeric_alias_returns_preserve_integer_float_direction() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_int_alias_float_variable_return',
 		'type Id = int\n\nfn f(x f64) Id {\n\treturn x\n}\n\nfn main() {}\n',
 		'cannot use `f64` as type `Id` in return argument')
@@ -1092,7 +1061,6 @@ fn test_numeric_alias_returns_preserve_integer_float_direction() {
 }
 
 fn test_fn_value_integer_returns_require_matching_c_abi() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_fn_value_integer_return_abi',
 		'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n',
 		'cannot use `fn () u64`')
@@ -1102,21 +1070,18 @@ fn test_fn_value_integer_returns_require_matching_c_abi() {
 }
 
 fn test_fn_value_aggregate_returns_require_compatible_payloads() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_fn_value_array_return_payload',
 		'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n',
 		'cannot use `fn () []int`')
 }
 
 fn test_alias_with_nested_type_separator_stays_alias() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_alias_nested_type_separator',
 		'type Bits = [1 | 2]int\n\nfn values() Bits {\n\treturn [1, 2, 3]!\n}\n\nfn main() {\n\tbits := values()\n\tprintln(int_str(bits[0] + bits[1] + bits[2]))\n}\n')
 	assert out == '6'
 }
 
 fn test_voidptr_params_reject_non_pointer_values() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_voidptr_scalar_arg', 'fn f(p voidptr) {}\n\nfn main() {\n\tf(1)\n}\n',
 		'expression cannot be passed as `voidptr`')
 	out := run_good(v3_bin, 'good_voidptr_pointer_arg',
@@ -1125,7 +1090,6 @@ fn test_voidptr_params_reject_non_pointer_values() {
 }
 
 fn test_shared_receiver_and_arg_require_shared_bindings() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_mut_receiver_immutable_value',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\ts.bump()\n}\n',
 		'`s` is immutable, declare it with `mut` to make it mutable')
@@ -1177,7 +1141,6 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 }
 
 fn test_method_receiver_rejects_extra_pointer_layers() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_value_receiver_extra_pointer_layers', 'struct S {}
 
 fn (s S) value() int {
@@ -1232,7 +1195,6 @@ fn main() {
 }
 
 fn test_restrict_synthetic_hex_fallback_receivers() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_struct_hex_method', 'struct S {}\nfn main() {\n\t_ := S{}.hex()\n}\n',
 		'unknown function')
 	run_bad(v3_bin, 'bad_int_array_hex_method', 'fn main() {\n\t_ := [1, 2].hex()\n}\n',
@@ -1252,21 +1214,18 @@ fn test_restrict_synthetic_hex_fallback_receivers() {
 }
 
 fn test_auto_str_rejects_arguments() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_auto_str_arg',
 		'struct S {\n\tx int\n}\n\nfn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := S{\n\t\tx: 1\n\t}.str(side_effect())\n}\n',
 		'expected 0 arguments, but got 1')
 }
 
 fn test_pointer_hex_receiver_methods_are_allowed() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_pointer_hex_receiver_method',
 		"struct S {\n\tvalue int\n}\n\nfn (s &S) hex() string {\n\treturn 'ptr:' + int_str(s.value)\n}\n\nfn main() {\n\ts := S{\n\t\tvalue: 7\n\t}\n\tp := &s\n\tprintln(p.hex())\n}\n")
 	assert out == 'ptr:7'
 }
 
 fn test_map_keys_and_values_reject_arguments() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_map_keys_arg',
 		'fn main() {\n\tm := map[string]int{}\n\t_ := m.keys(123)\n}\n',
 		'`.keys()` does not have any arguments')
@@ -1276,7 +1235,6 @@ fn test_map_keys_and_values_reject_arguments() {
 }
 
 fn test_array_to_void_array_is_not_implicitly_compatible() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_array_to_void_array_param',
 		'fn take(xs []void) {\n\t_ = xs\n}\n\nfn main() {\n\ttake([1, 2, 3])\n}\n',
 		'cannot use `[]int` as `[]void` in argument 1 to `take`')
@@ -1289,7 +1247,6 @@ fn test_array_to_void_array_is_not_implicitly_compatible() {
 }
 
 fn test_array_insert_and_prepend_reject_wrong_arity() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_array_prepend_missing_arg',
 		'fn main() {\n\tmut a := [1, 2]\n\ta.prepend()\n}\n',
 		'`array.prepend()` should have 1 argument')
@@ -1320,14 +1277,12 @@ fn test_array_insert_and_prepend_reject_wrong_arity() {
 }
 
 fn test_array_insert_and_prepend_accept_many_operands() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_array_insert_prepend_many_operands',
 		"type Strings = []string\n\nfn main() {\n\tmut a := [3, 4]\n\ta.insert(0, [1, 2])\n\tb := [5, 6]\n\ta.insert(1, b)\n\ta.prepend([0])\n\tfixed := [7, 8]!\n\ta.insert(a.len, fixed)\n\tassert a == [0, 1, 5, 6, 2, 3, 4, 7, 8]\n\tmut strs := Strings(['hi'])\n\tstrs.insert(0, ['there'])\n\tstrs.prepend(['hello'])\n\tassert strs == ['hello', 'there', 'hi']\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
 }
 
 fn test_comptime_if_selected_bodies_are_checked() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_concrete_comptime_if_selected_call',
 		'fn main() {\n\t$if int is int {\n\t\tmissing_selected_symbol()\n\t}\n}\n',
 		'unknown function: missing_selected_symbol')
@@ -1337,7 +1292,6 @@ fn test_comptime_if_selected_bodies_are_checked() {
 }
 
 fn test_comptime_match_shadowed_const_subject_is_not_folded() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_comptime_match_parameter_shadows_const',
 		"const mode = 'a'\n\nfn choose(mode string) {\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n\nfn main() {}\n",
 		'definition of `mode` is unknown at compile time')
@@ -1353,7 +1307,6 @@ fn test_comptime_match_shadowed_const_subject_is_not_folded() {
 }
 
 fn test_explicit_generic_calls_use_all_type_arguments() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_multi_explicit_generic_call',
 		"struct Pair[A, B] {\n\tleft  A\n\tright B\n}\n\nfn make_pair[A, B]() Pair[A, B] {\n\treturn Pair[A, B]{}\n}\n\nfn expect_pair(p Pair[int, string]) string {\n\treturn 'ok'\n}\n\nfn main() {\n\tp := make_pair[int, string]()\n\tprintln(expect_pair(p))\n}\n")
 	assert out == 'ok'
@@ -1366,7 +1319,6 @@ fn test_explicit_generic_calls_use_all_type_arguments() {
 }
 
 fn test_escaping_capturing_fn_literals_use_runtime_closures() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'return_capturing_fn_literal',
 		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {}\n')
 	assert out == ''
@@ -1382,7 +1334,6 @@ fn test_escaping_capturing_fn_literals_use_runtime_closures() {
 }
 
 fn test_capturing_fn_literal_aliases_are_binding_scoped() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_capturing_fn_literal_inner_shadow',
 		'fn plain() int {\n\treturn 3\n}\n\nfn make(x int) fn () int {\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t\t_ = cb\n\t}\n\tcb := plain\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make(0)()))\n\tprintln(int_str(make(5)()))\n}\n')
 	assert out == '3\n3'
@@ -1395,7 +1346,6 @@ fn test_capturing_fn_literal_aliases_are_binding_scoped() {
 }
 
 fn test_reject_unsmartcasted_unique_sum_variant_field() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_unsmartcasted_unique_sum_field',
 		'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype Kind = A | B\nfn main() {\n\tk := Kind(B{})\n\t_ := k.only_on_a\n}\n',
 		'field `only_on_a` does not exist or have the same type in these sumtype `Kind` variants')
@@ -1405,7 +1355,6 @@ fn test_reject_unsmartcasted_unique_sum_variant_field() {
 }
 
 fn test_smartcasted_fn_sum_call_keeps_active_variant_arity() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_smartcasted_fn_sum_variant_arity', 'type Callback = fn () int | fn (int) int
 
 fn no_args() int {
@@ -1444,7 +1393,6 @@ fn main() {
 }
 
 fn test_called_generic_functions_report_missing_return() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_called_generic_missing_return',
 		'fn f[T]() int {\n}\nfn main() {\n\t_ := f[int]()\n}\n',
 		'missing return at end of function `f`')
@@ -1454,14 +1402,12 @@ fn test_called_generic_functions_report_missing_return() {
 }
 
 fn test_no_return_calls_satisfy_return_analysis() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_panic_satisfies_return_analysis',
 		"fn choose(ok bool) string {\n\tif ok {\n\t\treturn 'ok'\n\t}\n\tpanic('unreachable')\n}\n\nfn pick(ok bool) int {\n\tif ok {\n\t\treturn 7\n\t}\n\treturn panic('unreachable')\n}\n\nfn main() {\n\tprintln(choose(true))\n\tprintln(int_str(pick(true)))\n}\n")
 	assert out == 'ok\n7'
 }
 
 fn test_assignment_or_fallback_with_exhaustive_nested_match_returns_matches_v1() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'assignment_or_nested_match_returns', 'struct NestedFallbackAnswer {
 	values []string
 }
@@ -1497,7 +1443,6 @@ fn main() {
 }
 
 fn test_builtin_panic_auto_stringifies_nested_generic_struct_during_static_checks() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'panic_nested_generic_auto_str', 'struct StaticPanicNode[T] {
 	value T
 }
@@ -1521,14 +1466,12 @@ fn main() {
 }
 
 fn test_parenthesized_no_return_return_uses_cgen_fallback() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_parenthesized_panic_satisfies_return_codegen',
 		"fn f(ok bool) int {\n\tif ok {\n\t\treturn 9\n\t}\n\treturn (panic('x'))\n}\nfn main() {\n\tprintln(int_str(f(true)))\n}\n")
 	assert out == '9'
 }
 
 fn test_return_panic_with_defer_evaluates_call_before_cleanup() {
-	v3_bin := build_v3_review_checker()
 	out := run_runtime_bad(v3_bin, 'bad_return_panic_defer_order',
 		"fn f() int {\n\tdefer {\n\t\tprintln('cleanup-ran')\n\t}\n\treturn panic('boom')\n}\nfn main() {\n\t_ := f()\n}\n")
 	assert out.contains('boom')
@@ -1536,14 +1479,12 @@ fn test_return_panic_with_defer_evaluates_call_before_cleanup() {
 }
 
 fn test_declared_c_exit_satisfies_return_analysis() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_declared_c_exit_satisfies_return_analysis',
 		'fn C.exit(code int)\nfn f(ok bool) int {\n\tif ok {\n\t\treturn 7\n\t}\n\treturn C.exit(1)\n}\nfn main() {\n\tprintln(int_str(f(true)))\n}\n')
 	assert out == '7'
 }
 
 fn test_no_return_analysis_requires_resolved_builtin_target() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_shadowed_os_exit_missing_return',
 		'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f(os OsLike) int {\n\tos.exit()\n}\nfn main() {}\n',
 		'missing return at end of function `f`')
@@ -1553,7 +1494,6 @@ fn test_no_return_analysis_requires_resolved_builtin_target() {
 }
 
 fn test_no_return_analysis_rejects_shadowed_builtin_fn_values() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_shadowed_exit_fn_value_missing_return',
 		'fn f() int {\n\texit := fn () int { return 1 }\n\texit()\n}\nfn main() {}\n',
 		'missing return at end of function `f`')
@@ -1572,63 +1512,54 @@ fn test_no_return_analysis_rejects_shadowed_builtin_fn_values() {
 }
 
 fn test_returning_receiver_method_named_exit_keeps_value() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_receiver_exit_return_value',
 		'struct Plugin {}\nfn (p Plugin) exit() int {\n\treturn 9\n}\nfn f(plugin Plugin) int {\n\treturn plugin.exit()\n}\nfn main() {\n\tprintln(int_str(f(Plugin{})))\n}\n')
 	assert out == '9'
 }
 
 fn test_imported_module_name_shadowed_by_receiver_for_no_return_analysis() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_shadowed_import_os_exit_missing_return',
 		'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) {}\nfn f(os OsLike) int {\n\tos.exit(0)\n}\nfn main() {}\n',
 		'missing return at end of function `f`')
 }
 
 fn test_import_symbol_parameter_conflict_is_rejected() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_shadowed_os_exit_return_value',
 		'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) int {\n\treturn code + 1\n}\nfn f(os OsLike) int {\n\treturn os.exit(4)\n}\nfn main() {\n\tprintln(int_str(f(OsLike{})))\n}\n',
 		'duplicate of an import symbol `os`')
 }
 
 fn test_no_return_fixed_array_return_uses_abi_wrapper() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_fixed_array_return_panic_abi_wrapper',
 		"import os\nfn f() [3]int {\n\treturn panic('x')\n}\nfn main() {\n\tif os.args.len == -1 {\n\t\tarr := f()\n\t\tprintln(int_str(arr[0]))\n\t}\n}\n")
 	assert out == ''
 }
 
 fn test_no_return_fn_return_uses_abi_typedef() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_fn_return_panic_abi_typedef',
 		"import os\nfn f() fn () int {\n\treturn panic('x')\n}\nfn main() {\n\tif os.args.len == -1 {\n\t\tcb := f()\n\t\tprintln(int_str(cb()))\n\t}\n}\n")
 	assert out == ''
 }
 
 fn test_local_identifiers_shadow_module_consts() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_const_shadowed_by_param_and_local',
 		"const shadowed_value = 'const'\n\nfn param_shadow(shadowed_value int) int {\n\treturn shadowed_value + 1\n}\n\nfn local_shadow() int {\n\tshadowed_value := 2\n\treturn shadowed_value + 1\n}\n\nfn main() {\n\tprintln(int_str(param_shadow(1)))\n\tprintln(int_str(local_shadow()))\n\tprintln(shadowed_value)\n}\n")
 	assert out == '2\n3\nconst'
 }
 
 fn test_match_const_int_does_not_narrow_subject_type() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'match_const_int_no_subject_narrow',
 		'const size_224 = 28\n\nstruct E {\n\tsize int\n}\n\nfn check(hash_size int) !E {\n\tmatch hash_size {\n\t\tsize_224 {\n\t\t\treturn E{\n\t\t\t\tsize: hash_size\n\t\t\t}\n\t\t}\n\t\telse {}\n\t}\n\treturn E{\n\t\tsize: 0\n\t}\n}\n\nfn main() {\n\tprintln(int_str(check(28)!.size))\n}\n')
 	assert out == '28'
 }
 
 fn test_builtin_function_callee_wins_over_unrelated_const_suffix() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'builtin_fn_unrelated_const_suffix',
 		'import math\nfn main() {\n\t_ = math.pi\n\tprintln(f32(1).eq_epsilon(f32(1)))\n}\n')
 	assert out == 'true'
 }
 
 fn test_fn_field_param_mutability_survives_type_identity_paths() {
-	v3_bin := build_v3_review_checker()
 	source_prefix := 'struct Counter {
 mut:
 	value int
@@ -1672,7 +1603,6 @@ fn main() {
 }
 
 fn test_mutable_array_field_copy_requires_clone() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_mutable_array_field_copy', 'struct Holder {
 	items []int
 }
@@ -1704,7 +1634,6 @@ fn main() {
 }
 
 fn test_mutable_map_clone_is_fresh() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_mutable_map_clone', "fn clone_and_extend(source map[string]bool) int {
 	mut cloned := source.clone()
 	cloned['new'] = true
@@ -1723,7 +1652,6 @@ fn main() {
 }
 
 fn test_pr_review_parser_and_checker_safety_batch() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_shared_parameter_missing_marker', 'struct State {}
 
 fn take(shared state State) {}
@@ -1807,7 +1735,6 @@ fn main() {
 }
 
 fn test_vexeroot_insert_and_generated_function_name_exemptions() {
-	v3_bin := build_v3_review_checker()
 	insert_out := run_good(v3_bin, 'good_vexeroot_insert_outside_vlib', '#insert "@VEXEROOT/vlib/v/compiler_tests/testdata/vexeroot_insert.h"
 
 fn C.v3_vexeroot_insert_value() int
@@ -1834,7 +1761,6 @@ fn main() {
 }
 
 fn test_forwarded_variadic_arrays_must_be_final() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_forwarded_variadic_function_trailing_arg', 'fn take(values ...int) {}
 
 fn forward(values ...int) {
@@ -1858,7 +1784,6 @@ fn main() {}
 }
 
 fn test_mut_pointer_local_after_mut_pointer_loop_keeps_pointer_type() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'mut_pointer_local_after_mut_pointer_loop', 'struct Item {
 mut:
 	value int
@@ -1883,7 +1808,6 @@ fn main() {
 }
 
 fn test_pointer_to_sum_supports_type_pattern_membership() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'pointer_sum_type_pattern_membership', 'struct First {}
 
 struct Second {}
@@ -1903,7 +1827,6 @@ fn main() {
 }
 
 fn test_explicit_mut_reference_parameter_writes_through_the_pointer() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'explicit_mut_reference_parameter', 'fn stop(mut running &bool) {
 	unsafe {
 		*running = false
@@ -1936,7 +1859,6 @@ false
 }
 
 fn test_smartcast_receiver_methods_keep_cast_paths_and_declared_sum_methods() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'smartcast_receiver_method_paths', 'struct Leaf {}
 
 struct Container {
@@ -1993,7 +1915,6 @@ fn main() {
 }
 
 fn test_as_cast_value_can_bind_to_immutable_reference_parameter() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'as_cast_implicit_reference', 'struct First {
 	value int
 }
@@ -2017,7 +1938,6 @@ fn main() {
 }
 
 fn test_fresh_pointer_result_does_not_alias_immutable_pointer_argument() {
-	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'fresh_pointer_not_immutable_alias', 'struct State {
 mut:
 	values []int
@@ -2042,7 +1962,6 @@ fn main() {
 }
 
 fn test_forwarded_pointer_result_preserves_immutable_alias() {
-	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'forwarded_pointer_preserves_immutable_alias', 'struct State {
 mut:
 	values []int

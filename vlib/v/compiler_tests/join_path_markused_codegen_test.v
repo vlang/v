@@ -1,23 +1,13 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_join_path_markused_${os.getpid()}')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_join_path_lowering_roots_join_path_single() {
-	v3_bin := build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_join_path_markused_input_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_join_path_markused_input_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src := os.join_path(root, 'main.v')
 	os.write_file(src, "import os
 
 fn main() {
@@ -30,8 +20,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_join_path_markused_input_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

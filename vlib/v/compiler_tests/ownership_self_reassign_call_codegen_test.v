@@ -1,4 +1,5 @@
 import os
+import v.cmdexec
 import v.tempname
 
 // Regression test for the `x = f(mut x)` use-after-free.
@@ -10,33 +11,26 @@ import v.tempname
 // corrupted array contents (e.g. `2043 0 3 4` instead of `1 2 3 4`) and, in the
 // ripgrep port's literal extractor (`seq = ex.cross(seq, ...)`), as a crash.
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-const self_reassign_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_self_reassign_fixtures_${tempname.unique_token()}')
-const self_reassign_compiler = os.join_path(self_reassign_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
-
-fn testsuite_begin() {
-	os.mkdir_all(self_reassign_fixture_dir) or { panic(err) }
-	build :=
-		os.exec([vexe, '-gc', 'none', '-d', 'ownership', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
-			'-o', self_reassign_compiler, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rmdir_all(self_reassign_fixture_dir) or {}
-}
-
 fn self_reassign_run_good(name string, source string) string {
-	src := os.join_path(self_reassign_fixture_dir, 'v3_${name}.v')
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	v3_src := os.join_path(os.dir(@FILE), '../v.v')
+	compiler := if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		os.real_path(shared)
+	} else {
+		@VEXE
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(self_reassign_fixture_dir, 'v3_${name}')
-	compile := os.exec([self_reassign_compiler, '-ownership', '-d', 'ownership', '-b', 'c', '-o',
-		bin, src])
+	bin := os.join_path(root, 'v3_${name}')
+	compile := cmdexec.run_in_merged_with_env(compiler, ['-ownership', '-d', 'ownership', '-b',
+		'c', '-o', bin, src], '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])

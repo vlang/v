@@ -1,53 +1,32 @@
 import os
+import v.tempname
 
-const enum_match_vexe = @VEXE
-const enum_match_tests_dir = os.dir(@FILE)
-const enum_match_v3_dir = os.dir(enum_match_tests_dir)
-const enum_match_vlib_dir = os.dir(enum_match_v3_dir)
-const enum_match_v3_src = os.join_path(enum_match_v3_dir, 'v.v')
-
-// One compiler serves the whole suite; each case used to build its own.
-const enum_match_build_v3_path = os.join_path(os.temp_dir(), 'v3_enum_match_return_checker_test_${os.getpid()}')
-
-fn testsuite_begin() {
-	v3_bin := enum_match_build_v3_path
-	build :=
-		os.exec([enum_match_vexe, '-gc', 'none', '-path',
-			'${enum_match_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${enum_match_v3_src}'])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rm(enum_match_build_v3_path) or {}
-}
-
-fn enum_match_build_v3() string {
-	return enum_match_build_v3_path
-}
-
-fn enum_match_run_to_c(v3_bin string, name string, src string) os.Result {
-	src_path := os.join_path(os.temp_dir(), 'v3_enum_match_return_${name}.v')
+fn enum_match_run_to_c(name string, src string) os.Result {
+	dir := os.join_path(os.vtmp_dir(), 'v3_enum_match_return_${tempname.unique_token()}')
+	os.mkdir(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	base := os.join_path(dir, 'v3_enum_match_return_${name}')
+	src_path := base + '.v'
 	os.write_file(src_path, src) or { panic(err) }
-	c_path := os.join_path(os.temp_dir(), 'v3_enum_match_return_${name}.c')
-	os.rm(c_path) or {}
-	return os.exec([v3_bin, src_path, '-b', 'c', '-o', c_path])
+	return os.exec([@VEXE, src_path, '-b', 'c', '-o', base + '.c'])
 }
 
-fn enum_match_check_good(v3_bin string, name string, src string) {
-	result := enum_match_run_to_c(v3_bin, name, src)
+fn enum_match_check_good(name string, src string) {
+	result := enum_match_run_to_c(name, src)
 	assert result.exit_code == 0, result.output
 	assert !result.output.contains('missing return'), result.output
 }
 
-fn enum_match_check_bad(v3_bin string, name string, src string) {
-	result := enum_match_run_to_c(v3_bin, name, src)
+fn enum_match_check_bad(name string, src string) {
+	result := enum_match_run_to_c(name, src)
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('missing return at end of function'), result.output
 }
 
 fn test_exhaustive_enum_match_without_else_definitely_returns() {
-	v3_bin := enum_match_build_v3()
-	enum_match_check_good(v3_bin, 'exhaustive', 'module main
+	enum_match_check_good('exhaustive', 'module main
 
 enum Color {
 	red
@@ -73,7 +52,7 @@ fn main() {
 	println(label(.red))
 }
 ')
-	enum_match_check_good(v3_bin, 'grouped', 'module main
+	enum_match_check_good('grouped', 'module main
 
 enum Cell {
 	empty
@@ -99,8 +78,7 @@ fn main() {
 }
 
 fn test_non_exhaustive_or_unsupported_match_without_else_does_not_return() {
-	v3_bin := enum_match_build_v3()
-	enum_match_check_bad(v3_bin, 'partial_enum', 'module main
+	enum_match_check_bad('partial_enum', 'module main
 
 enum Color {
 	red
@@ -121,7 +99,7 @@ fn label(c Color) string {
 
 fn main() {}
 ')
-	enum_match_check_bad(v3_bin, 'non_returning_branch', 'module main
+	enum_match_check_bad('non_returning_branch', 'module main
 
 enum Color {
 	red
@@ -146,7 +124,7 @@ fn label(c Color) string {
 
 fn main() {}
 ')
-	enum_match_check_bad(v3_bin, 'non_enum_match', 'module main
+	enum_match_check_bad('non_enum_match', 'module main
 
 fn label(i int) string {
 	match i {
@@ -161,7 +139,7 @@ fn label(i int) string {
 
 fn main() {}
 ')
-	enum_match_check_bad(v3_bin, 'flag_enum', 'module main
+	enum_match_check_bad('flag_enum', 'module main
 
 @[flag]
 enum Permission {

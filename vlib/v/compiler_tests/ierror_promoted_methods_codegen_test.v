@@ -1,28 +1,10 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.exists(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-no-parallel', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_ierror_dispatch_uses_promoted_embedded_methods() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_promoted_methods_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "struct BaseErr {
 	text string
@@ -63,8 +45,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -78,10 +60,9 @@ fn main() {
 }
 
 fn test_ierror_dispatch_uses_promoted_embedded_pointer_methods() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_promoted_pointer_methods_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_promoted_pointer_methods_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "struct PtrErr {
 	text string
@@ -152,8 +133,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_pointer_methods_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -168,10 +149,9 @@ fn main() {
 
 // Embedded structs must come first in a struct body.
 fn test_interface_dispatch_uses_nested_promoted_receiver_path() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_interface_nested_promoted_receiver_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_interface_nested_promoted_receiver_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, 'interface HasNumber {
 	m() int
@@ -215,8 +195,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_interface_nested_promoted_receiver_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -229,10 +209,9 @@ fn main() {
 }
 
 fn test_ierror_embed_compatible_method_dependencies_are_marked_used() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_embed_method_deps_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_embed_method_deps_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "struct GhostError {
 	Error
@@ -264,9 +243,9 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_embed_method_deps_out_${os.getpid()}')
+	bin := os.join_path(root, 'app')
 	// The assertions below inspect implementation bodies in monolithic C output.
-	compile := os.exec([v3_bin, '-nocache', '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-nocache', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -280,11 +259,11 @@ fn main() {
 }
 
 fn test_unused_ierror_compatible_method_dependencies_are_marked_used_without_unpruning_dead_fns() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_unused_method_deps_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_unused_method_deps_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	dead_dir := os.join_path(root, 'dead')
-	os.mkdir_all(dead_dir) or { panic(err) }
+	os.mkdir(dead_dir)!
 	os.write_file(os.join_path(dead_dir, 'dead.v'), "module dead
 
 pub struct Helper {}
@@ -320,9 +299,9 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_unused_method_deps_out_${os.getpid()}')
+	bin := os.join_path(root, 'app')
 	// The assertions below inspect implementation bodies in monolithic C output.
-	compile := os.exec([v3_bin, '-nocache', root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-nocache', root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -339,10 +318,9 @@ fn main() {
 }
 
 fn test_ierror_direct_bad_signature_falls_back_to_promoted_method() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_bad_direct_promoted_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_bad_direct_promoted_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "struct BaseErr {
 	text string
@@ -387,8 +365,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_bad_direct_promoted_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

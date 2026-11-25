@@ -13,3 +13,11 @@ fn test_process_exit_code_with_a_program_waitpid_declaration() {
 	assert p.code == 3
 	p.close()
 }
+
+fn test_exec_exit_codes_with_a_program_waitpid_declaration() {
+	sh := os.find_abs_path_of_executable('sh')!
+	for code in [1, 23, 255] {
+		result := os.exec([sh, '-c', 'exit ${code}'])
+		assert result.exit_code == code, result.output
+	}
+}

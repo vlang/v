@@ -67,9 +67,9 @@ fn C.getgid() i32
 
 fn C.getegid() i32
 
-fn C.v_os_execute_capture_start(cmd &char, child_pid &int, read_fd &int) int
+fn C.v_os_execute_capture_start(cmd &char, child_pid &i32, read_fd &i32) i32
 
-fn C.v_os_exec_capture_start(argv &&char, child_pid &int, read_fd &int) int
+fn C.v_os_exec_capture_start(argv &&char, child_pid &i32, read_fd &i32) i32
 
 enum GlobMatch {
 	exact
@@ -426,8 +426,9 @@ fn execute_shell(cmd string) Result {
 			output:    'exec("${cmd}") is not supported in freestanding builds'
 		}
 	} $else {
-		mut pid := 0
-		mut read_fd := -1
+		// The C capture helper writes C int values, including on big-endian hosts.
+		mut pid := i32(0)
+		mut read_fd := i32(-1)
 		v_os_execute_lock()
 		rc := C.v_os_execute_capture_start(&char(cmd.str), &pid, &read_fd)
 		v_os_execute_unlock()
@@ -437,9 +438,9 @@ fn execute_shell(cmd string) Result {
 				output:    'exec("${cmd}") failed'
 			}
 		}
-		soutput := fd_slurp(read_fd).join('')
-		fd_close(read_fd)
-		mut status := 0
+		soutput := fd_slurp(int(read_fd)).join('')
+		fd_close(int(read_fd))
+		mut status := i32(0)
 		for {
 			C.errno = 0
 			if C.waitpid(pid, &status, 0) != -1 {
@@ -453,7 +454,7 @@ fn execute_shell(cmd string) Result {
 				output:    soutput
 			}
 		}
-		exit_code, _ := posix_wait4_to_exit_status(status)
+		exit_code, _ := posix_wait4_to_exit_status(int(status))
 		return Result{
 			exit_code: exit_code
 			output:    soutput
@@ -482,8 +483,9 @@ pub fn exec(args []string) Result {
 			output:    'exec("${args[0]}") is not supported in freestanding builds'
 		}
 	} $else {
-		mut pid := 0
-		mut read_fd := -1
+		// The C capture helper writes C int values, including on big-endian hosts.
+		mut pid := i32(0)
+		mut read_fd := i32(-1)
 		v_os_execute_lock()
 		rc := C.v_os_exec_capture_start(cargs.data, &pid, &read_fd)
 		v_os_execute_unlock()
@@ -493,9 +495,9 @@ pub fn exec(args []string) Result {
 				output:    'exec("${args[0]}") failed'
 			}
 		}
-		soutput := fd_slurp(read_fd).join('')
-		fd_close(read_fd)
-		mut status := 0
+		soutput := fd_slurp(int(read_fd)).join('')
+		fd_close(int(read_fd))
+		mut status := i32(0)
 		for {
 			C.errno = 0
 			if C.waitpid(pid, &status, 0) != -1 {
@@ -509,7 +511,7 @@ pub fn exec(args []string) Result {
 				output:    soutput
 			}
 		}
-		exit_code, _ := posix_wait4_to_exit_status(status)
+		exit_code, _ := posix_wait4_to_exit_status(int(status))
 		return Result{
 			exit_code: exit_code
 			output:    soutput

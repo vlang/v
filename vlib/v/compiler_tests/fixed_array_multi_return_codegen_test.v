@@ -1,31 +1,6 @@
 import os
 import v.tempname
 
-const fixed_array_multi_vexe = @VEXE
-const fixed_array_multi_tests_dir = os.dir(@FILE)
-const fixed_array_multi_v3_dir = os.dir(fixed_array_multi_tests_dir)
-const fixed_array_multi_vlib_dir = os.dir(fixed_array_multi_v3_dir)
-const fixed_array_multi_v3_src = os.join_path(fixed_array_multi_v3_dir, 'v.v')
-const fixed_array_multi_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_fixed_array_multi_return_compiler_${tempname.unique_token()}')
-
-fn testsuite_end() {
-	os.rmdir_all(fixed_array_multi_compiler_dir) or {}
-}
-
-fn fixed_array_multi_build_v3() string {
-	v3_bin := os.join_path(fixed_array_multi_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	os.mkdir_all(fixed_array_multi_compiler_dir) or { panic(err) }
-	build :=
-		os.exec([fixed_array_multi_vexe, '-gc', 'none', '-path',
-			'${fixed_array_multi_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${fixed_array_multi_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
 fn compact_c_whitespace(s string) string {
 	return s.replace('\t', '').replace(' ', '').replace('\n', '')
 }
@@ -46,8 +21,11 @@ fn has_fixed_array_memmove_source(compact string, name string) bool {
 }
 
 fn test_fixed_array_multi_return_payloads_use_c_arrays_and_memmove() {
-	v3_bin := fixed_array_multi_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_fixed_array_multi_return_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_multi_return_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_fixed_array_multi_return')
+	src := bin + '.v'
 	os.write_file(src, 'module main
 
 fn pair() (int, [3]int) {
@@ -115,8 +93,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_multi_return_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -145,8 +122,11 @@ fn main() {
 }
 
 fn test_deferred_multi_return_pointer_value_slot_uses_expected_type() {
-	v3_bin := fixed_array_multi_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_deferred_multi_return_pointer_value_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_deferred_multi_return_pointer_value_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_deferred_multi_return_pointer_value')
+	src := bin + '.v'
 	os.write_file(src, 'module main
 
 struct S {
@@ -170,8 +150,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_deferred_multi_return_pointer_value_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

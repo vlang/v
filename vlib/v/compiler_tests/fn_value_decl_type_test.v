@@ -1,38 +1,17 @@
 import os
 import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const fn_value_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_fn_value_${tempname.unique_token()}')
-
-fn testsuite_begin() {
-	os.mkdir_all(fn_value_fixture_dir) or { panic(err) }
+fn fn_value_new_fixture_dir() string {
+	root := os.join_path(os.vtmp_dir(), 'v3_fn_value_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	return root
 }
 
-fn testsuite_end() {
-	os.rmdir_all(fn_value_fixture_dir) or {}
-}
-
-fn build_v3() string {
-	v3_bin := os.join_path(fn_value_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn run_good(v3_bin string, name string, src string) string {
-	good_src := os.join_path(fn_value_fixture_dir, 'v3_${name}.v')
+fn fn_value_run_good(fixture_dir string, name string, src string) string {
+	good_src := os.join_path(fixture_dir, 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
-	good_bin := os.join_path(fn_value_fixture_dir, 'v3_${name}')
-	compile := os.exec([v3_bin, '${good_src}', '-b', 'c', '-o', good_bin])
+	good_bin := os.join_path(fixture_dir, 'v3_${name}')
+	compile := os.exec([@VEXE, '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
 	run := os.exec([good_bin])
@@ -40,50 +19,50 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
-fn run_bad(v3_bin string, name string, src string) string {
-	bad_src := os.join_path(fn_value_fixture_dir, 'v3_${name}.v')
+fn fn_value_run_bad(fixture_dir string, name string, src string) string {
+	bad_src := os.join_path(fixture_dir, 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := os.join_path(fn_value_fixture_dir, 'v3_${name}')
-	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
+	bad_bin := os.join_path(fixture_dir, 'v3_${name}')
+	compile := os.exec([@VEXE, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: reached C compiler: ${compile.output}'
 	return compile.output
 }
 
-fn gen_c(v3_bin string, name string, src string) string {
-	src_path := os.join_path(fn_value_fixture_dir, 'v3_${name}.v')
+fn fn_value_gen_c(fixture_dir string, name string, src string) string {
+	src_path := os.join_path(fixture_dir, 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
-	c_path := os.join_path(fn_value_fixture_dir, 'v3_${name}.c')
+	c_path := os.join_path(fixture_dir, 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', c_path])
+	compile := os.exec([@VEXE, src_path, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C file ${c_path}'
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn write_project_file(root string, rel string, src string) {
+fn fn_value_write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
 	os.write_file(path, src) or { panic(err) }
 }
 
-fn write_project(name string, files map[string]string) string {
-	root := os.join_path(fn_value_fixture_dir, 'v3_${name}_project')
+fn fn_value_write_project(fixture_dir string, name string, files map[string]string) string {
+	root := os.join_path(fixture_dir, 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
 	os.mkdir_all(root) or { panic(err) }
 	for rel, src in files {
-		write_project_file(root, rel, src)
+		fn_value_write_project_file(root, rel, src)
 	}
 	return root
 }
 
-fn run_project_good(v3_bin string, name string, files map[string]string) string {
-	root := write_project(name, files)
-	good_bin := os.join_path(fn_value_fixture_dir, 'v3_${name}')
+fn fn_value_run_project_good(fixture_dir string, name string, files map[string]string) string {
+	root := fn_value_write_project(fixture_dir, name, files)
+	good_bin := os.join_path(fixture_dir, 'v3_${name}')
 	main_path := os.join_path(root, 'main.v')
-	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', good_bin])
+	compile := os.exec([@VEXE, main_path, '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
 	run := os.exec([good_bin])
@@ -91,22 +70,22 @@ fn run_project_good(v3_bin string, name string, files map[string]string) string 
 	return run.output.trim_space()
 }
 
-fn run_project_bad(v3_bin string, name string, files map[string]string) string {
-	root := write_project(name, files)
-	bad_bin := os.join_path(fn_value_fixture_dir, 'v3_${name}')
+fn fn_value_run_project_bad(fixture_dir string, name string, files map[string]string) string {
+	root := fn_value_write_project(fixture_dir, name, files)
+	bad_bin := os.join_path(fixture_dir, 'v3_${name}')
 	main_path := os.join_path(root, 'main.v')
-	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', bad_bin])
+	compile := os.exec([@VEXE, main_path, '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: reached C compiler: ${compile.output}'
 	return compile.output
 }
 
-fn gen_project_c(v3_bin string, name string, files map[string]string) string {
-	root := write_project(name, files)
-	c_path := os.join_path(fn_value_fixture_dir, 'v3_${name}.c')
+fn fn_value_gen_project_c(fixture_dir string, name string, files map[string]string) string {
+	root := fn_value_write_project(fixture_dir, name, files)
+	c_path := os.join_path(fixture_dir, 'v3_${name}.c')
 	os.rm(c_path) or {}
 	main_path := os.join_path(root, 'main.v')
-	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', c_path])
+	compile := os.exec([@VEXE, main_path, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C file ${c_path}'
 	return os.read_file(c_path) or { panic(err) }
@@ -420,19 +399,20 @@ println(int_str(take(foo)))
 '
 
 fn test_local_fn_literal_decl_types_are_callable() {
-	v3_bin := build_v3()
-	assert run_good(v3_bin, 'fn_value_optional_void_local', optional_fn_src) == 'optional-ok'
-	assert run_good(v3_bin, 'fn_value_optional_callback_param', optional_callback_param_src) == 'callback-ok'
-	assert run_good(v3_bin, 'fn_value_plain_int_local', plain_fn_src) == '7'
-	assert run_good(v3_bin, 'fn_value_local_ident_shadow', local_ident_shadow_src) == '10'
-	assert run_good(v3_bin, 'fn_value_local_call_shadows_global_return',
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
+	assert fn_value_run_good(fixture_dir, 'fn_value_optional_void_local', optional_fn_src) == 'optional-ok'
+	assert fn_value_run_good(fixture_dir, 'fn_value_optional_callback_param', optional_callback_param_src) == 'callback-ok'
+	assert fn_value_run_good(fixture_dir, 'fn_value_plain_int_local', plain_fn_src) == '7'
+	assert fn_value_run_good(fixture_dir, 'fn_value_local_ident_shadow', local_ident_shadow_src) == '10'
+	assert fn_value_run_good(fixture_dir, 'fn_value_local_call_shadows_global_return',
 		local_fn_call_shadow_global_return_src) == '12'
-	assert run_good(v3_bin, 'fn_value_call_return_shadow', local_fn_value_call_return_shadow_src) == 'ok'
-	assert run_good(v3_bin, 'fn_value_ident_shadowed_by_fn_typed_local',
+	assert fn_value_run_good(fixture_dir, 'fn_value_call_return_shadow', local_fn_value_call_return_shadow_src) == 'ok'
+	assert fn_value_run_good(fixture_dir, 'fn_value_ident_shadowed_by_fn_typed_local',
 		local_fn_value_ident_shadow_fn_src) == '7'
-	assert run_good(v3_bin, 'fn_value_expected_shadowed_by_fn_typed_local',
+	assert fn_value_run_good(fixture_dir, 'fn_value_expected_shadowed_by_fn_typed_local',
 		local_fn_value_expected_shadow_fn_src) == '7'
-	assert run_good(v3_bin, 'fn_value_array_map_result_type', 'fn main() {
+	assert fn_value_run_good(fixture_dir, 'fn_value_array_map_result_type', 'fn main() {
 	i_to_str := fn (i int) string {
 		return i.str()
 	}
@@ -440,7 +420,7 @@ fn test_local_fn_literal_decl_types_are_callable() {
 	println(a == ["1", "2", "3"])
 }
 ') == 'true'
-	assert run_good(v3_bin, 'fn_value_named_local', 'fn add_one(i int) int {
+	assert fn_value_run_good(fixture_dir, 'fn_value_named_local', 'fn add_one(i int) int {
 	return i + 1
 }
 
@@ -449,7 +429,7 @@ fn main() {
 	println(int_str(f(6)))
 }
 ') == '7'
-	assert run_good(v3_bin, 'fn_value_struct_field', 'struct S {
+	assert fn_value_run_good(fixture_dir, 'fn_value_struct_field', 'struct S {
 	f fn (int) int
 }
 
@@ -462,13 +442,14 @@ fn main() {
 	println(int_str(s.f(4)))
 }
 ') == '7'
-	assert run_project_good(v3_bin, 'fn_value_imported_selector_local',
+	assert fn_value_run_project_good(fixture_dir, 'fn_value_imported_selector_local',
 		imported_fn_value_project_files()) == 'imported-ok'
 }
 
 fn test_imported_generic_fn_alias_keeps_parameters() {
-	v3_bin := build_v3()
-	out := run_project_good(v3_bin, 'fn_value_imported_generic_alias', {
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
+	out := fn_value_run_project_good(fixture_dir, 'fn_value_imported_generic_alias', {
 		'v.mod':                 "Module { name: 'fn_value_imported_generic_alias' }\n"
 		'callbacks/callbacks.v': 'module callbacks
 
@@ -492,7 +473,7 @@ fn main() {
 '
 	})
 	assert out == '42'
-	bad_output := run_project_bad(v3_bin, 'fn_value_imported_generic_alias_mismatch', {
+	bad_output := fn_value_run_project_bad(fixture_dir, 'fn_value_imported_generic_alias_mismatch', {
 		'v.mod':                 "Module { name: 'fn_value_imported_generic_alias_mismatch' }\n"
 		'callbacks/callbacks.v': 'module callbacks
 
@@ -519,8 +500,9 @@ fn main() {
 }
 
 fn test_resolved_fn_value_wins_over_imported_const_suffix() {
-	v3_bin := build_v3()
-	out := run_project_good(v3_bin, 'fn_value_imported_const_suffix', {
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
+	out := fn_value_run_project_good(fixture_dir, 'fn_value_imported_const_suffix', {
 		'v.mod':                 "Module { name: 'fn_value_imported_const_suffix' }\n"
 		'collision/collision.v': 'module collision
 
@@ -547,8 +529,9 @@ fn main() {
 }
 
 fn test_main_runtime_shadowed_fn_values_use_declaration_symbol() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'fn_value_main_runtime_shadow_accept', 'fn accept(value int) int {
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
+	out := fn_value_run_good(fixture_dir, 'fn_value_main_runtime_shadow_accept', 'fn accept(value int) int {
 	return value + 1
 }
 
@@ -566,8 +549,9 @@ fn main() {
 }
 
 fn test_address_of_local_fn_value_stores_the_callable_value() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'address_of_local_fn_value', 'struct Holder {
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
+	out := fn_value_run_good(fixture_dir, 'address_of_local_fn_value', 'struct Holder {
 	f fn (int) int = unsafe { nil }
 }
 
@@ -590,11 +574,12 @@ fn main() {
 }
 
 fn test_pointer_to_local_fn_value_round_trips_through_a_deref() {
-	v3_bin := build_v3()
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
 	// The mirror image of the case above: here the pointer *is* the point, so the
 	// `&` cannot be dropped - `*ref` would otherwise read the function's code as
 	// if it were a stored function pointer.
-	out := run_good(v3_bin, 'deref_of_address_of_local_fn_value', 'fn answer() int {
+	out := fn_value_run_good(fixture_dir, 'deref_of_address_of_local_fn_value', 'fn answer() int {
 	return 42
 }
 
@@ -609,8 +594,9 @@ fn main() {
 }
 
 fn test_const_generic_fn_factory_value_call_uses_const_storage() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'const_generic_fn_factory_value_call', '
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
+	out := fn_value_run_good(fixture_dir, 'const_generic_fn_factory_value_call', '
 type Validator[T] = fn (value T) ?int
 
 fn make_validator[T]() Validator[T] {
@@ -629,20 +615,21 @@ fn main() {
 }
 
 fn test_fn_value_expected_context_respects_value_shadowing() {
-	v3_bin := build_v3()
-	ident_output := run_bad(v3_bin, 'fn_value_expected_ident_shadow',
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
+	ident_output := fn_value_run_bad(fixture_dir, 'fn_value_expected_ident_shadow',
 		local_ident_expected_shadow_src)
 	assert !ident_output.contains('main__foo'), ident_output
-	selector_output := run_project_bad(v3_bin, 'fn_value_expected_import_shadow',
+	selector_output := fn_value_run_project_bad(fixture_dir, 'fn_value_expected_import_shadow',
 		imported_fn_value_expected_shadow_project_files())
 	assert !selector_output.contains('worker__inc'), selector_output
-	assign_output := run_bad(v3_bin, 'fn_value_expected_assignment_shadow',
+	assign_output := fn_value_run_bad(fixture_dir, 'fn_value_expected_assignment_shadow',
 		assignment_expected_shadow_src)
 	assert !assign_output.contains('main__foo'), assign_output
-	callback_output := run_bad(v3_bin, 'fn_value_expected_callback_shadow',
+	callback_output := fn_value_run_bad(fixture_dir, 'fn_value_expected_callback_shadow',
 		callback_arg_expected_shadow_src)
 	assert !callback_output.contains('main__foo'), callback_output
-	struct_output := run_bad(v3_bin, 'fn_value_expected_struct_field_shadow',
+	struct_output := fn_value_run_bad(fixture_dir, 'fn_value_expected_struct_field_shadow',
 		struct_field_expected_shadow_src)
 	assert !struct_output.contains('main__foo'), struct_output
 }
@@ -650,8 +637,9 @@ fn test_fn_value_expected_context_respects_value_shadowing() {
 // A local cannot be redefined in a nested block, so the same name is bound in
 // sibling blocks: each call must check against the binding of its own block.
 fn test_variadic_fn_value_marker_uses_nearest_binding() {
-	v3_bin := build_v3()
-	output := run_bad(v3_bin, 'variadic_fn_value_shadowed_by_plain_fn', 'fn variadic(values ...int) int {
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
+	output := fn_value_run_bad(fixture_dir, 'variadic_fn_value_shadowed_by_plain_fn', 'fn variadic(values ...int) int {
 	return values.len
 }
 
@@ -675,8 +663,9 @@ fn main() {
 }
 
 fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
-	v3_bin := build_v3()
-	optional_c := gen_c(v3_bin, 'fn_value_optional_void_local_c', optional_fn_src)
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
+	optional_c := fn_value_gen_c(fixture_dir, 'fn_value_optional_void_local_c', optional_fn_src)
 	// `fn (i int) !` returns a result, so its fn pointer returns `__v_result`.
 	assert !optional_c.contains('__v_option f = __anon_fn'), optional_c
 	assert !optional_c.contains('__v_result f = __anon_fn'), optional_c
@@ -684,31 +673,31 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	assert optional_c.contains('typedef struct __v_result (*_fn_ptr_'), optional_c
 	assert optional_c.contains(' f = __anon_fn_'), optional_c
 
-	optional_callback_c := gen_c(v3_bin, 'fn_value_optional_callback_param_c',
+	optional_callback_c := fn_value_gen_c(fixture_dir, 'fn_value_optional_callback_param_c',
 		optional_callback_param_src)
 	assert !optional_callback_c.contains('__v_option_fn_ptr:'), optional_callback_c
 	assert optional_callback_c.contains('struct __v_option__fn_ptr_'), optional_callback_c
 
-	plain_c := gen_c(v3_bin, 'fn_value_plain_int_local_c', plain_fn_src)
+	plain_c := fn_value_gen_c(fixture_dir, 'fn_value_plain_int_local_c', plain_fn_src)
 	assert !plain_c.contains('__v_option f = __anon_fn'), plain_c
 	assert !plain_c.contains('i64 f = __anon_fn'), plain_c
 	assert plain_c.contains('typedef i64 (*_fn_ptr_'), plain_c
 	assert plain_c.contains(' f = __anon_fn_'), plain_c
 
-	shadow_c := gen_c(v3_bin, 'fn_value_local_ident_shadow_c', local_ident_shadow_src)
+	shadow_c := fn_value_gen_c(fixture_dir, 'fn_value_local_ident_shadow_c', local_ident_shadow_src)
 	assert shadow_c.contains('i64 foo = 10'), shadow_c
 	assert shadow_c.contains('i64 f = foo'), shadow_c
-	call_shadow_c := gen_c(v3_bin, 'fn_value_call_return_shadow_c',
+	call_shadow_c := fn_value_gen_c(fixture_dir, 'fn_value_call_return_shadow_c',
 		local_fn_value_call_return_shadow_src)
 	assert call_shadow_c.contains('string s = f();'), call_shadow_c
 	assert !call_shadow_c.contains('i64 s = f();'), call_shadow_c
 
-	shadow_call_c := gen_c(v3_bin, 'fn_value_local_call_shadows_global_return_c',
+	shadow_call_c := fn_value_gen_c(fixture_dir, 'fn_value_local_call_shadows_global_return_c',
 		local_fn_call_shadow_global_return_src)
 	assert shadow_call_c.contains('i64 x ='), shadow_call_c
 	assert !shadow_call_c.contains('string x ='), shadow_call_c
 
-	imported_c := gen_project_c(v3_bin, 'fn_value_imported_selector_local_c',
+	imported_c := fn_value_gen_project_c(fixture_dir, 'fn_value_imported_selector_local_c',
 		imported_fn_value_project_files())
 	assert !imported_c.contains('i64 f = worker__inc'), imported_c
 	assert !imported_c.contains('i64 loader = worker__read_ok'), imported_c
@@ -722,16 +711,17 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 }
 
 fn test_shadowed_fn_value_calls_use_bound_callable_types() {
-	v3_bin := build_v3()
-	assert run_good(v3_bin, 'fn_value_optional_call_shadow',
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
+	assert fn_value_run_good(fixture_dir, 'fn_value_optional_call_shadow',
 		local_fn_value_optional_call_shadow_src) == '7'
-	assert run_good(v3_bin, 'drop_owned_callback_shadow', drop_owned_callback_shadow_src) == '7'
+	assert fn_value_run_good(fixture_dir, 'drop_owned_callback_shadow', drop_owned_callback_shadow_src) == '7'
 
-	optional_c := gen_c(v3_bin, 'fn_value_optional_call_shadow_c',
+	optional_c := fn_value_gen_c(fixture_dir, 'fn_value_optional_call_shadow_c',
 		local_fn_value_optional_call_shadow_src)
 	assert optional_c.contains('take((__v_option_i64){.ok = true, .value = f()})'), optional_c
 	assert !optional_c.contains('take(f())'), optional_c
 
-	drop_owned_c := gen_c(v3_bin, 'drop_owned_callback_shadow_c', drop_owned_callback_shadow_src)
+	drop_owned_c := fn_value_gen_c(fixture_dir, 'drop_owned_callback_shadow_c', drop_owned_callback_shadow_src)
 	assert drop_owned_c.contains('drop_owned(value);'), drop_owned_c
 }
