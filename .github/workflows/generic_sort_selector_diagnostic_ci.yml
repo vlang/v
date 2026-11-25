@@ -101,6 +101,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-v
       - name: Install original dependencies
+        id: dependencies
         run: |
           .github/workflows/disable_azure_mirror.sh
           v retry -- sudo apt -qq update
@@ -125,6 +126,70 @@ jobs:
           ./v -d cblas -no-parallel -o "$RUNNER_TEMP/vtl-sort-diagnostic/original.c" "$example"
           ./v -d cblas -no-parallel -o "$example.bin" "$example"
           "$example.bin"
+      - name: Bisect the pinned VTL example by semantic use
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/vtl-sort-diagnostic/prefixes"
+          mkdir -p "$root"
+          example="$HOME/.vmodules/vtl/examples/vtl_basic_usage/main.v"
+          python3 - "$example" "$root" <<'PY'
+          import pathlib
+          import sys
+          source = pathlib.Path(sys.argv[1]).read_text()
+          root = pathlib.Path(sys.argv[2])
+          # Keep original statements verbatim; each prefix ends at a complete statement.
+          markers = {
+              'construction': '\nb :=',
+              'addition': '\nc.apply(',
+              'apply': '\nd :=',
+              'map': '\nvalues :=',
+          }
+          for label, marker in markers.items():
+              assert source.count(marker) == 1, (label, marker)
+              folder = root / label
+              folder.mkdir()
+              text = source.split(marker, 1)[0]
+              if label == 'construction':
+                  text += '\nprintln(a)\n'
+              (folder / 'main.v').write_text(text + '\n')
+          folder = root / 'direct_any_with_vtl'
+          folder.mkdir()
+          (folder / 'main.v').write_text("""import vtl
+          import json2
+
+          a := vtl.from_1d([1, 2, 3, 4])!
+          println(a)
+          val := json2.Any({'b': json2.Any(1), 'a': json2.Any(2)})
+          assert json2.encode(val) == '{"a":2,"b":1}'
+          """)
+          PY
+          failed=0
+          printf 'case\temit\tbuild\trun\n' > "$root/results.tsv"
+          for label in construction addition apply map direct_any_with_vtl; do
+            folder="$root/$label"
+            emit=0
+            build=0
+            ran=not-run
+            ./v -cc gcc -no-retry-compilation -d cblas -no-parallel -o "$folder/generated.c" "$folder/main.v" > "$folder/emit.log" 2>&1 || emit=$?
+            ./v -cc gcc -no-retry-compilation -d cblas -no-parallel -keepc -showcc -o "$folder/program" "$folder/main.v" > "$folder/build.log" 2>&1 || build=$?
+            if [ "$build" -eq 0 ]; then
+              ran=0
+              "$folder/program" > "$folder/run.log" 2>&1 || ran=$?
+            fi
+            printf '%s\t%s\t%s\t%s\n' "$label" "$emit" "$build" "$ran" >> "$root/results.tsv"
+            if [ -s "$folder/generated.c" ]; then
+              grep -n 'EncoderMapKey_string.*__sort_.*name' "$folder/generated.c" > "$folder/selector-lines.txt" || :
+              cat "$folder/selector-lines.txt"
+            fi
+            cat "$folder/emit.log" "$folder/build.log"
+            if [ "$emit" -ne 0 ] || [ "$build" -ne 0 ] || [ "$ran" != 0 ]; then
+              failed=1
+            fi
+          done
+          cat "$root/results.tsv"
+          exit "$failed"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
