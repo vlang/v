@@ -142,6 +142,13 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			}
 		}
 		bare_fenv_load(address)
+		$if arm64 {
+			// Trapping exceptions are optional. Unsupported FPCR enable bits read back as zero.
+			if input == ~uint(1) {
+				control, _ := bare_float_control_read()
+				return i32((u64(31) << 8) & ~control)
+			}
+		}
 		return 0
 	}
 
@@ -269,7 +276,8 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	@[export: 'v_fenv_update'; markused]
 	fn bare_fenv_update(input uint) i32 {
 		pending := bare_fenv_flags(-1)
-		bare_fenv_set(input)
+		result := bare_fenv_set(input)
+		if result != 0 { return result }
 		return bare_fenv_raise(i32(pending))
 	}
 }

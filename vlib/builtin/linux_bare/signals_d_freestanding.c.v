@@ -47,7 +47,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_native_sigaction'; markused]
 	fn bare_native_sigaction(number i32, input uint, output uint) i32 {
-		if number < 1 || number > 64 || number == 32 || number == i32(C.SIGKILL) || number == i32(C.SIGSTOP) {
+		if number < 1 || number > 64 || number == 32 {
 			bf_native_errno_cell = i32(C.EINVAL)
 			return -1
 		}
@@ -101,7 +101,16 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 
 	@[export: 'v_native_sigtimedwait'; markused]
 	fn bare_native_sigtimedwait(set uint, info uint, timeout uint) i32 {
-		return i32(bare_native_result(sys_call4(u64(C.SYS_rt_sigtimedwait), u64(set), u64(info), u64(timeout), 8)))
+		mask := bare_user_wait_mask(set)
+		input := if set != 0 { uint(&mask) } else { uint(0) }
+		return i32(bare_native_result(u64(bare_cancel_syscall(i64(C.SYS_rt_sigtimedwait),
+			input, info, timeout, 8, 0, 0))))
+	}
+
+	fn bare_user_wait_mask(set uint) u64 {
+		// Internal thread signals must reach their handlers during a wait.
+		if set == 0 { return 0 }
+		return unsafe { *(&u64(set)) } & ~(u64(3) << 31)
 	}
 
 	@[export: 'v_native_sigwait'; markused]
@@ -123,7 +132,10 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 
 	@[export: 'v_native_sigsuspend'; markused]
 	fn bare_native_sigsuspend(set uint) i32 {
-		return i32(bare_native_result(sys_call2(u64(C.SYS_rt_sigsuspend), u64(set), 8)))
+		mask := bare_user_wait_mask(set)
+		input := if set != 0 { uint(&mask) } else { uint(0) }
+		return i32(bare_native_result(u64(bare_cancel_syscall(i64(C.SYS_rt_sigsuspend),
+			input, 8, 0, 0, 0, 0))))
 	}
 
 	@[export: 'v_native_sigqueue'; markused]

@@ -145,7 +145,60 @@ static void *thread_worker(void *p) {
     if ((uintptr_t)p & 1) pthread_exit(p);
     return p;
 }
+static pthread_key_t shutdown_key;
+static int shutdown_fd, shutdown_mode, shutdown_destructions;
+static pthread_t shutdown_initial, shutdown_final;
+static void shutdown_destructor(void *value) {
+    if (value == &shutdown_key) ++shutdown_destructions;
+}
+static void shutdown_callback(void) {
+    void *expected = shutdown_mode == 0 ? &shutdown_key : NULL;
+    char marker = pthread_equal(pthread_self(), shutdown_final) &&
+        pthread_getspecific(shutdown_key) == expected &&
+        shutdown_destructions == (shutdown_mode != 0) ? 'A' : 'X';
+    (void)write(shutdown_fd, &marker, 1);
+}
+static void *shutdown_last_worker(void *unused) {
+    (void)unused;
+    shutdown_final = pthread_self();
+    if (pthread_join(shutdown_initial, NULL)) _exit(94);
+    return NULL;
+}
+static int thread_shutdown_probe(void) {
+    CHECK(!fflush(NULL));
+    for (int mode = 0; mode < 3; ++mode) {
+        int channel[2], status;
+        CHECK(!pipe(channel));
+        pid_t child = fork();
+        CHECK(child >= 0);
+        if (!child) {
+            close(channel[0]);
+            shutdown_fd = channel[1];
+            shutdown_mode = mode;
+            shutdown_final = shutdown_initial = pthread_self();
+            FILE *stream = fdopen(dup(shutdown_fd), "w");
+            if (!stream || setvbuf(stream, NULL, _IOFBF, 4096) || fputc('F', stream) == EOF)
+                _exit(91);
+            if (pthread_key_create(&shutdown_key, shutdown_destructor) ||
+                pthread_setspecific(shutdown_key, &shutdown_key) || atexit(shutdown_callback))
+                _exit(92);
+            if (!mode) exit(0);
+            if (mode == 2) {
+                pthread_t worker;
+                if (pthread_create(&worker, NULL, shutdown_last_worker, NULL)) _exit(93);
+            }
+            pthread_exit(NULL);
+        }
+        CHECK(!close(channel[1]));
+        CHECK(waitpid(child, &status, 0) == child && WIFEXITED(status) && !WEXITSTATUS(status));
+        char markers[3];
+        CHECK(read(channel[0], markers, sizeof markers) == 2 && !memcmp(markers, "AF", 2));
+        CHECK(!close(channel[0]));
+    }
+    return 0;
+}
 static int threads_probe(void) {
+    CHECK(!thread_shutdown_probe());
 #ifdef PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP
     pthread_t initializers[2];
     for(int i=0;i<2;i++)CHECK(!pthread_create(&initializers[i],NULL,static_recursive_worker,NULL));
@@ -331,6 +384,8 @@ static int interfaces_probe(void) {
 }
 static int calendar_probe(void) {
     CHECK(!setenv("TZ","UTC0",1)); tzset();
+    time_t large = (time_t)1 << 53;
+    CHECK(difftime(large + 1, large) == 1 && difftime(large, large + 1) == -1);
     time_t epoch=0; struct tm t;
     CHECK(gmtime_r(&epoch,&t)); CHECK(t.tm_year==70 && t.tm_mon==0 && t.tm_mday==1 && t.tm_wday==4 && t.tm_yday==0);
     char buffer[64]; CHECK(asctime_r(&t,buffer)); CHECK(!strcmp(buffer,"Thu Jan  1 00:00:00 1970\n"));
@@ -340,7 +395,10 @@ static int calendar_probe(void) {
     t=(struct tm){.tm_year=120,.tm_mon=14,.tm_mday=0,.tm_hour=25,.tm_min=70,.tm_sec=80};
     time_t normalized=timegm(&t); struct tm canonical; CHECK(gmtime_r(&normalized,&canonical));
     CHECK(canonical.tm_year==t.tm_year && canonical.tm_mon==t.tm_mon && canonical.tm_mday==t.tm_mday && t.tm_hour==2 && t.tm_min==11 && t.tm_sec==20);
-    CHECK(!setenv("TZ","EST5EDT,M3.2.0,M11.1.0",1)); tzset();
+    CHECK(!setenv("TZ","EST5EDT,M3.2.0,M11.1.0",1));
+    t=(struct tm){.tm_year=70,.tm_mday=1,.tm_isdst=-1};
+    CHECK(mktime(&t)==18000 && timezone==18000 && daylight &&
+          !strcmp(tzname[0],"EST") && !strcmp(tzname[1],"EDT"));
     epoch=1719792000; CHECK(localtime_r(&epoch,&t)); CHECK(t.tm_gmtoff==-14400 && t.tm_isdst>0);
     CHECK(mktime(&t)==epoch); CHECK(!strcmp(t.tm_zone,"EDT"));
     t.tm_isdst=0; CHECK(mktime(&t)==epoch+3600 && t.tm_isdst>0);
@@ -398,6 +456,12 @@ static int regex_probe(void) {
         printf("regex %zu %d",i,code); if(!code)for(size_t j=0;j<4;j++)printf(" %d:%d",(int)m[j].rm_so,(int)m[j].rm_eo); puts("");
         regfree(&re);
     }
+    regex_t basic;
+    CHECK(!regcomp(&basic,"^*abc",0));
+    CHECK(!regexec(&basic,"*abc",0,NULL,0) && regexec(&basic,"abc",0,NULL,0)==REG_NOMATCH);
+    regfree(&basic);
+    CHECK(fnmatch("a[\\-z]c","a-c",0)==0 && fnmatch("a[\\-z]c","abc",0)==FNM_NOMATCH);
+    CHECK(fnmatch("[\\]]","]",0)==0 && fnmatch("[\\]]","]",FNM_NOESCAPE)==FNM_NOMATCH);
     CHECK(fnmatch("a/*/[[:digit:]]?.v","a/b/12.v",FNM_PATHNAME)==0);
     CHECK(fnmatch("*",".hidden",FNM_PERIOD)==FNM_NOMATCH);
     CHECK(fnmatch("*.*",".hidden",FNM_PERIOD)==FNM_NOMATCH);

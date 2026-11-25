@@ -25,8 +25,10 @@ static void v_bare_preinitialize(int argc, char **argv, char **envp) {
     extern void v_freestanding_program_names(int32_t, uintptr_t);
     v_freestanding_program_names(argc, (uintptr_t)argv);
     extern char **environ;
-    environ = envp;
-    if (!v_bare_startup_running) v_bare_tls_init((uintptr_t *)argv - 1);
+    if (!v_bare_startup_running) {
+        environ = envp;
+        v_bare_tls_init((uintptr_t *)argv - 1);
+    }
     v_bare_preinitialized = 1;
 }
 __attribute__((used, section(".preinit_array")))
@@ -134,7 +136,7 @@ void v_bare_run_initializers(int argc, char **argv, void (*loader_fini)(void)) {
     if (loaded) v_bare_loader_fini = loader_fini;
     char **envp = argv + argc + 1;
     extern char **environ;
-    environ = envp;
+    if (!loaded) environ = envp;
     if (!loaded && __preinit_array_start != NULL && __preinit_array_end != NULL) {
         for (v_bare_initializer *entry = __preinit_array_start;
              entry != __preinit_array_end; ++entry) {
@@ -142,6 +144,8 @@ void v_bare_run_initializers(int argc, char **argv, void (*loader_fini)(void)) {
         }
     }
     if (__init_array_start != NULL && __init_array_end != NULL) {
+        /* A shared object's constructor or a preinitializer may replace environ. */
+        envp = environ;
         for (v_bare_initializer *entry = __init_array_start;
              entry != __init_array_end; ++entry) {
             (*entry)(argc, argv, envp);
@@ -153,8 +157,8 @@ void v_bare_run_finalizers(void) {
     static int finished;
     if (__atomic_exchange_n(&finished, 1, __ATOMIC_ACQ_REL)) return;
     extern void v_freestanding_exit_callbacks(void);
-    extern void v_freestanding_thread_cleanup(void);
-    v_freestanding_thread_cleanup();
+    extern void v_freestanding_tls_destructors(void);
+    v_freestanding_tls_destructors();
     v_freestanding_exit_callbacks();
     if (v_bare_loader_fini) {
         v_bare_loader_fini();

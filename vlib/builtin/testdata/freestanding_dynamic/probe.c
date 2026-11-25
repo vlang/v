@@ -12,6 +12,7 @@ static int finished;
 __attribute__((constructor)) static void initialize(void) {
     const char *value = getenv("VLIBC_DYNAMIC_TEST");
     if (!value || strcmp(value, "from-loader-environment")) _Exit(91);
+    if (setenv("VLIBC_DYNAMIC_CONSTRUCTOR", "initialized", 1)) _Exit(94);
     char *pointer = malloc(128);
     if (!pointer) _Exit(92);
     memset(pointer, 1, 128);

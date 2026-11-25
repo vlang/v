@@ -254,8 +254,8 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		return 0
 	}
 
-	@[export: 'v_freestanding_thread_cleanup'; markused]
-	fn bare_pthread_cleanup() {
+	@[export: 'v_freestanding_tls_destructors'; markused]
+	fn bare_pthread_run_tls_destructors() {
 		for bare_pthread_destructors_get() != unsafe { nil } {
 			entry := bare_pthread_destructors_get()
 			C.v_pthread_tls_store(3, uint(entry.next))
@@ -264,6 +264,10 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			unsafe { __free(entry) }
 			C.v_pthread_destructor_call(function, argument)
 		}
+	}
+
+	fn bare_pthread_cleanup() {
+		bare_pthread_run_tls_destructors()
 		for _ in 0 .. 4 {
 			mut invoked := false
 			mut i := 0
@@ -323,13 +327,20 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			thread.result = C.v_pthread_call(thread.start, thread.argument)
 		}
 		bare_cancel_mark_exiting(mut thread)
+		// V's thread wrapper completes cleanup while the pthread identity is still valid.
+		return unsafe { nil }
+	}
+
+	@[export: 'v_freestanding_thread_cleanup'; markused]
+	fn bare_pthread_finish_worker() {
 		bare_pthread_cleanup()
+		bare_credential_thread_leave()
+		mut thread := bare_pthread_current_get()
+		if thread == unsafe { nil } || thread.implicit != 0 { return }
 		bare_pthread_metadata_leave(mut thread)
 		C.v_pthread_tls_store(0, 0)
 		unsafe { __free(thread.exit_target) }
 		if !bare_cas_u32(&thread.state, 1, 3) { unsafe { __free(thread) } }
-		// V owns its result packet; C's opaque return value stays with its joiner.
-		return unsafe { nil }
 	}
 	@[export: 'v_pthread_create'; markused]
 	fn bare_pthread_create(output uint, attribute_address uint, start uint, argument uint) i32 {

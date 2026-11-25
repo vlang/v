@@ -36,6 +36,7 @@ fn detached() {
 }
 
 fn main() {
+	require_dynamic(os.getenv('VLIBC_DYNAMIC_CONSTRUCTOR') == 'initialized')
 	maps := os.read_file('/proc/self/maps') or { panic(err) }
 	require_dynamic(!maps.contains('/libc.so') && !maps.contains('/libc-'))
 	require_dynamic(maps.contains('libprobe.so') && maps.contains('libbase.so'))

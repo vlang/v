@@ -26,7 +26,6 @@ $if !native && (amd64 || arm64) {
 		context.result = context.start(context.arg)
 		$if !v_bare_no_startup ? {
 			C.v_freestanding_thread_cleanup()
-			bare_credential_thread_leave()
 		}
 		for bare_load_u32(&context.state) == 0 {
 		}

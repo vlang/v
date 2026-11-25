@@ -296,6 +296,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	fn bare_cancel_finish_implicit(mut thread BarePthread) {
 		bare_cancel_clean_to(mut thread, ~uint(0))
 		bare_pthread_cleanup()
+		bare_credential_thread_leave()
 		bare_pthread_metadata_leave(mut thread)
 		bare_store_u32(&thread.state, 3)
 		bf_futex_wake(&thread.state, 0x7fffffff)

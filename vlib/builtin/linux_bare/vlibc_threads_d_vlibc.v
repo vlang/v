@@ -55,7 +55,6 @@ $if !i386 {
 			unsafe { __free(start) }
 			callback(value)
 			C.v_freestanding_thread_cleanup()
-			bare_credential_thread_leave()
 		}
 	}
 

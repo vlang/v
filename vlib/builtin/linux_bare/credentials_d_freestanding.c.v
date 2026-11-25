@@ -3,10 +3,16 @@ module builtin
 
 $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	__global bare_credential_mutex u32
+	// Count the other live threads. The initial thread and the sole survivor of
+	// fork start with zero. Any thread, including the initial one, may leave first.
 	__global bare_credential_threads uint
 
 	fn bare_credential_thread_leave() {
 		bare_compat_lock(&bare_credential_mutex)
+		if bare_credential_threads == 0 {
+			bare_compat_unlock(&bare_credential_mutex)
+			__exit(0)
+		}
 		bare_credential_threads--
 		bare_compat_unlock(&bare_credential_mutex)
 	}

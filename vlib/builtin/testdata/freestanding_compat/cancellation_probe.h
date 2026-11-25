@@ -74,11 +74,53 @@ static int cancel_wait(int *word) {
     }
     return 0;
 }
+struct pending_wait {
+    int kind, fd;
+};
+static void cancel_wait_handler(int number) { (void)number; }
+static void *cancel_pending_wait(void *argument) {
+    const struct pending_wait *wait = argument;
+    struct timespec now = {0};
+    sigset_t signals, empty;
+    sigemptyset(&empty);
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGUSR1);
+    struct mmsghdr message = {0};
+    int received;
+    /* Leave a user signal pending so a missed cancellation cannot hang the test. */
+    if (wait->kind >= 5 && (pthread_sigmask(SIG_BLOCK, &signals, NULL) ||
+        pthread_kill(pthread_self(), SIGUSR1))) return NULL;
+    if (pthread_cancel(pthread_self())) return NULL;
+    switch (wait->kind) {
+    case 0: (void)sigtimedwait(&signals, NULL, &now); break;
+    case 1: (void)recvmsg(wait->fd, &message.msg_hdr, MSG_DONTWAIT); break;
+    case 2: (void)sendmsg(wait->fd, &message.msg_hdr, MSG_DONTWAIT); break;
+    case 3: (void)recvmmsg(wait->fd, &message, 1, MSG_DONTWAIT, &now); break;
+    case 4: (void)sendmmsg(wait->fd, &message, 1, MSG_DONTWAIT); break;
+    case 5: (void)sigwaitinfo(&signals, NULL); break;
+    case 6: (void)sigwait(&signals, &received); break;
+    case 7: (void)sigsuspend(&empty); break;
+    }
+    return NULL;
+}
 static int cancellation_native_probe(void) {
     int old = 77;
     errno = EDOM;
     CHECK(pthread_setcancelstate(77, &old) == EINVAL && old == 77 && errno == EDOM);
     CHECK(pthread_setcanceltype(77, &old) == EINVAL && old == 77 && errno == EDOM);
+    int sockets[2];
+    CHECK(!socketpair(AF_UNIX, SOCK_DGRAM, 0, sockets));
+    struct sigaction action = {.sa_handler = cancel_wait_handler}, previous;
+    sigemptyset(&action.sa_mask);
+    CHECK(!sigaction(SIGUSR1, &action, &previous));
+    for (int kind = 0; kind < 8; ++kind) {
+        struct pending_wait pending = {kind, sockets[0]};
+        pthread_t worker; void *result = NULL;
+        CHECK(!pthread_create(&worker, NULL, cancel_pending_wait, &pending));
+        CHECK(!pthread_join(worker, &result) && result == PTHREAD_CANCELED);
+    }
+    CHECK(!sigaction(SIGUSR1, &previous, NULL));
+    CHECK(!close(sockets[0]) && !close(sockets[1]));
     CHECK(!pthread_key_create(&cancel_probe_key, cancel_destructor));
     for (int round = 0; round < 21; ++round) {
         struct cancel_probe s = {.kind = round % 7, .condition = PTHREAD_COND_INITIALIZER};

@@ -2,6 +2,8 @@
  * Register saves follow musl's amd64/arm64 assembly (COPYRIGHT.musl), with
  * signal-mask storage taken from the native target headers. No host TLS or
  * libc pointer mangling is involved in a standalone bare executable. */
+/* Define the public symbols even when the toolchain fortifies its own headers. */
+#undef _FORTIFY_SOURCE
 #include "libc_compat.h"
 #include <setjmp.h>
 #include <signal.h>
@@ -16,8 +18,10 @@
 #define V_JUMP_REGISTERS(e) ((e)[0].__jb)
 #endif
 #if defined(__x86_64__)
+#define V_JUMP_SP_SLOT 6
 _Static_assert(sizeof V_JUMP_REGISTERS((jmp_buf){0}) == 64, "amd64 jmp registers");
 #elif defined(__aarch64__)
+#define V_JUMP_SP_SLOT 13
 _Static_assert(sizeof V_JUMP_REGISTERS((jmp_buf){0}) == 176, "arm64 jmp registers");
 #endif
 int v_freestanding_save_jump_mask(jmp_buf env, int save) {
@@ -34,8 +38,30 @@ _Noreturn void longjmp(jmp_buf env, int result) {
 }
 extern __typeof__(longjmp) _longjmp __attribute__((alias("longjmp")));
 extern __typeof__(siglongjmp) siglongjmp __attribute__((alias("longjmp")));
+
+extern _Noreturn void v_fortify_fail(void);
+__attribute__((visibility("hidden")))
+_Noreturn void v_freestanding_checked_jump(jmp_buf env, int result, uintptr_t current_sp) {
+    uintptr_t saved_sp = (uintptr_t)V_JUMP_REGISTERS(env)[V_JUMP_SP_SLOT];
+    if (saved_sp < current_sp) {
+        /* A signal handler on an alternate stack may return to the interrupted
+         * regular stack, which can have a lower address. */
+        stack_t alternate;
+        if (V_RAW2(SYS_sigaltstack, NULL, &alternate) == 0) {
+            uintptr_t base = (uintptr_t)alternate.ss_sp;
+            if (!(alternate.ss_flags & SS_ONSTACK) ||
+                (saved_sp > base && saved_sp - base <= alternate.ss_size)) {
+                v_fortify_fail();
+            }
+        }
+    }
+    longjmp(env, result);
+}
 #if defined(__x86_64__)
 __asm__(".pushsection .text\n"
+        ".global __longjmp_chk\n.type __longjmp_chk,@function\n"
+        "__longjmp_chk:\nendbr64\nlea 8(%rsp),%rdx\njmp v_freestanding_checked_jump\n"
+        ".size __longjmp_chk,.-__longjmp_chk\n"
         ".global setjmp\n.global _setjmp\n.global __sigsetjmp\n.global sigsetjmp\n"
         ".type setjmp,@function\n.type _setjmp,@function\n.type __sigsetjmp,@function\n"
         "setjmp:\n_setjmp:\nxor %esi,%esi\njmp __sigsetjmp\n"
@@ -51,6 +77,9 @@ __asm__(".pushsection .text\n"
         "mov 48(%rdi),%rsp\njmp *56(%rdi)\n.popsection\n");
 #elif defined(__aarch64__)
 __asm__(".pushsection .text\n"
+        ".global __longjmp_chk\n.type __longjmp_chk,%function\n"
+        "__longjmp_chk:\nbti c\nmov x2,sp\nb v_freestanding_checked_jump\n"
+        ".size __longjmp_chk,.-__longjmp_chk\n"
         ".global setjmp\n.global _setjmp\n.global __sigsetjmp\n.global sigsetjmp\n"
         ".type setjmp,%function\n.type _setjmp,%function\n.type __sigsetjmp,%function\n"
         "setjmp:\n_setjmp:\nmov w1,0\nb __sigsetjmp\n"

@@ -38,6 +38,7 @@ fn test_dynamic_c_libraries_tls_initializers_and_detached_threads_without_libc()
 				'-Wl,-soname,lib${name}.so', r'-Wl,-rpath,$ORIGIN', '-o',
 				os.join_path(lib, 'lib${name}.so'), os.join_path(fixture, '${name}.c')]
 			if name == 'probe' { arguments << ['-L${lib}', '-lbase'] }
+			if name == 'base' { arguments << ['-O2', '-D_FORTIFY_SOURCE=2'] }
 			built := cmdexec.run(compiler, arguments)
 			assert built.exit_code == 0, built.output
 			elf := cmdexec.run('readelf', ['-d', os.join_path(lib, 'lib${name}.so')])
