@@ -44,30 +44,22 @@ fn or_review_run_fixture(name string, src string, read_c bool) (string, string) 
 	return run.output.trim_space(), c_source
 }
 
-fn or_review_compile_bad(name string, src string) string {
-	dir := os.join_path(os.vtmp_dir(), 'v3_or_review_${tempname.unique_token()}')
-	os.mkdir(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	src_path := os.join_path(dir, 'v3_${name}.v')
-	os.write_file(src_path, src) or { panic(err) }
-	compile := os.exec([@VEXE, src_path, '-b', 'c'])
-	assert compile.exit_code != 0, '${name}: invalid source compiled successfully'
-	return compile.output
+struct OrReviewRejection {
+	source   string
+	expected string
 }
 
-fn or_review_check_rejections(expected string, cases map[string]string) {
+fn or_review_check_rejections(cases map[string]OrReviewRejection) {
 	dir := os.join_path(os.vtmp_dir(), 'v3_or_review_${tempname.unique_token()}')
 	os.mkdir(dir) or { panic(err) }
 	defer { os.rmdir_all(dir) or {} }
 	mut imports := []string{cap: cases.len}
-	for name, source in cases {
+	for name, case in cases {
 		module_name := 'fixture_${imports.len}'
 		module_dir := os.join_path(dir, module_name)
 		os.mkdir(module_dir) or { panic(err) }
 		imports << 'import ${module_name} as _'
-		os.write_file(os.join_path(module_dir, '${name}.v'), 'module ${module_name}\n\n' + source) or {
+		os.write_file(os.join_path(module_dir, '${name}.v'), 'module ${module_name}\n\n' + case.source) or {
 			panic(err)
 		}
 	}
@@ -76,17 +68,15 @@ fn or_review_check_rejections(expected string, cases map[string]string) {
 	compile := os.exec([@VEXE, '-b', 'c', '-nocolor', '-o', os.join_path(dir, 'program'), main_path])
 	assert compile.exit_code != 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	mut rejected_files := map[string]bool{}
+	mut errors := map[string][]string{}
 	for line in compile.output.split_into_lines() {
 		location, message := line.split_once(': error: ') or { continue }
-		if message.contains(expected) {
-			// Drop the line and column from the right to preserve any colon in the path.
-			file := location.all_before_last(':').all_before_last(':')
-			rejected_files[os.file_name(file)] = true
-		}
+		// Drop the line and column from the right to preserve any colon in the path.
+		file := location.all_before_last(':').all_before_last(':')
+		errors[os.file_name(file)] << message
 	}
-	for name, _ in cases {
-		assert '${name}.v' in rejected_files, '${name}: expected `${expected}` in\n${compile.output}'
+	for name, case in cases {
+		assert errors['${name}.v'].any(it.contains(case.expected)), '${name}: expected `${case.expected}` in\n${compile.output}'
 	}
 }
 
@@ -100,12 +90,6 @@ fn test_channel_receive_or_stabilizes_side_effectful_source() {
 	selector_out := or_review_run('channel_receive_or_selector',
 		"struct Holder {\n\tch chan int\n}\n\nfn main() {\n\th := Holder{ch: chan int{}}\n\th.ch.close()\n\tvalue := <-h.ch or {\n\t\tprintln('closed')\n\t\treturn\n\t}\n\tprintln(int_str(value))\n}\n")
 	assert selector_out == 'closed'
-}
-
-fn test_bare_channel_or_is_rejected() {
-	output := or_review_compile_bad('bare_channel_or_rejected',
-		'fn main() {\n\tch := chan int{}\n\t_ := ch or { ch }\n}\n')
-	assert output.contains('cannot use `or {}` block on non-option variable'), output
 }
 
 fn test_array_optional_element_or_uses_fallback_without_err_binding() {
@@ -124,13 +108,6 @@ fn test_map_optional_element_or_uses_fallback_without_err_binding() {
 	assert c_source.contains('i64 err = 7;'), 'explicit outer err was not preserved'
 	assert !c_source.contains('IError err = __map_opt_'), 'map element failure branch binds an Option error'
 	assert out == '7\n5\n-2'
-}
-
-fn test_optional_element_or_rejects_implicit_err() {
-	or_review_check_rejections('undefined variable: `err`', {
-		'array_optional_element_implicit_err': 'fn main() {\n\tmut arr := []?int{}\n\tarr << none\n\tvalue := arr[0] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n'
-		'map_optional_element_implicit_err':   "fn main() {\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tvalue := m['x'] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n"
-	})
 }
 
 fn test_map_index_address_or_nil_remains_valid() {
@@ -217,9 +194,29 @@ fn test_or_storage_preserves_generic_map_value_type() {
 	assert out == '42'
 }
 
-fn test_optional_result_pointers_or_are_rejected() {
-	or_review_check_rejections('cannot use `or {}` block on non-option variable', {
-		'optional_pointer_or_rejected': 'fn invalid(ptr &?int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n'
-		'result_pointer_or_rejected':   'fn invalid(ptr &!int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n'
+fn test_or_rejects_non_options_and_implicit_element_errors() {
+	non_option := 'cannot use `or {}` block on non-option variable'
+	implicit_err := 'undefined variable: `err`'
+	or_review_check_rejections({
+		'bare_channel_or_rejected':            OrReviewRejection{
+			source:   'fn main() {\n\tch := chan int{}\n\t_ := ch or { ch }\n}\n'
+			expected: non_option
+		}
+		'array_optional_element_implicit_err': OrReviewRejection{
+			source:   'fn main() {\n\tmut arr := []?int{}\n\tarr << none\n\tvalue := arr[0] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n'
+			expected: implicit_err
+		}
+		'map_optional_element_implicit_err':   OrReviewRejection{
+			source:   "fn main() {\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tvalue := m['x'] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n"
+			expected: implicit_err
+		}
+		'optional_pointer_or_rejected':        OrReviewRejection{
+			source:   'fn invalid(ptr &?int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n'
+			expected: non_option
+		}
+		'result_pointer_or_rejected':          OrReviewRejection{
+			source:   'fn invalid(ptr &!int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n'
+			expected: non_option
+		}
 	})
 }
