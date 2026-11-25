@@ -8,7 +8,8 @@ const vroot = @VMODROOT
 const test_dir = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'multifile_gotodef')
 const main_file = os.join_path(test_dir, 'main.v')
 const types_file = os.join_path(test_dir, 'types.v')
-const types_expected = os.join_path('multifile_gotodef', 'types.v')
+// VLS response paths use slash separators on every platform.
+const types_expected = 'multifile_gotodef/types.v'
 
 struct TestCase {
 	name        string
