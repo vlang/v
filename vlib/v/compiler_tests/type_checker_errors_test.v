@@ -412,10 +412,28 @@ fn test_type_checker_reports_core_semantic_errors() {
 		TypeCheckerRejection{'bad_undeclared_generic_struct_field', 'struct Box[T] {\n\tother U\n}\nfn main() {}\n', 'generic type name `U` is not mentioned in struct `Box[T]`'},
 		TypeCheckerRejection{'required_options_param', "struct Options {\n\tlimit int\n}\n\nfn connect(url string, opts Options) int {\n\treturn opts.limit\n}\n\nfn main() {\n\t_ := connect('db')\n}\n", 'expected 2 arguments, but got 1'},
 	])
-	container_patterns := run_good(v3_bin, 'good_empty_interface_container_patterns', "interface Any {}\nfn main() {\n\tarr := Any([1, 2])\n\tprintln(arr is []int)\n\tprintln(arr is []string)\n\tm := Any({\n\t\t'a': 1\n\t})\n\tprintln(m is map[string]int)\n\tprintln(m is map[string]string)\n\tprintln(match arr {\n\t\t[]int { 1 }\n\t\telse { 0 }\n\t})\n}\n")
-	assert container_patterns == 'true\nfalse\ntrue\nfalse\n1'
-	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface', "type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
-	assert alias_interface_out == 'test\nhehe'
+	run_good_module_batch(v3_bin, 'core_semantics', [
+		TypeCheckerRuntimeCase{'good_empty_interface_container_patterns', "interface Any {}\nfn main() {\n\tarr := Any([1, 2])\n\tprintln(arr is []int)\n\tprintln(arr is []string)\n\tm := Any({\n\t\t'a': 1\n\t})\n\tprintln(m is map[string]int)\n\tprintln(m is map[string]string)\n\tprintln(match arr {\n\t\t[]int { 1 }\n\t\telse { 0 }\n\t})\n}\n", 'true\nfalse\ntrue\nfalse\n1'},
+		TypeCheckerRuntimeCase{'alias_receiver_implements_interface', "type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n", 'test\nhehe'},
+		TypeCheckerRuntimeCase{'alias_method', 'type UserId = int\n\nfn (id UserId) str() string {\n\treturn int_str(int(id))\n}\n\nfn main() {\n\tid := UserId(1)\n\tprintln(id.str())\n}\n', '1'},
+		TypeCheckerRuntimeCase{'local_err_binding', 'fn main() {\n\terr := 2\n\tprintln(int_str(err + 1))\n}\n', '3'},
+		TypeCheckerRuntimeCase{'local_args_contains', "fn main() {\n\targs := [1, 2]\n\tif args.contains(2) {\n\t\tprintln('ok')\n\t}\n}\n", 'ok'},
+		TypeCheckerRuntimeCase{'custom_codec_methods', 'struct Codec {}\n\nfn (c Codec) decode() int {\n\treturn 7\n}\n\nfn (c Codec) encode() int {\n\treturn 8\n}\n\nfn (c Codec) use(x int) int {\n\treturn x + 1\n}\n\nfn (c Codec) run_at(x int) int {\n\treturn x + 2\n}\n\nfn main() {\n\tc := Codec{}\n\tprintln(int_str(c.decode()))\n\tprintln(int_str(c.encode()))\n\tprintln(int_str(c.use(9)))\n\tprintln(int_str(c.run_at(5)))\n}\n', '7\n8\n10\n7'},
+		TypeCheckerRuntimeCase{'item_with_user_initializer', 'struct ItemWithUserFoo {\n\titem int\n}\n\nfn main() {\n\tx := ItemWithUserFoo{\n\t\titem: 7\n\t}\n\tprintln(int_str(x.item))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'struct_default_literals', 'type GetFn = fn () int\n\nfn default_num() int {\n\treturn 6\n}\n\nstruct Defaults {\n\tx int = 5\n\tget GetFn = default_num\n}\n\nfn main() {\n\ta := Defaults{}\n\tb := &Defaults{}\n\tprintln(int_str(a.x))\n\tprintln(int_str(b.x))\n\tprintln(int_str(a.get()))\n}\n', '5\n5\n6'},
+		TypeCheckerRuntimeCase{'nested_embedded_method', 'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 9\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{}\n\tprintln(int_str(outer.value()))\n}\n', '9'},
+		TypeCheckerRuntimeCase{'aliased_embedded_method', 'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 11\n}\n\nstruct Outer {\n\tLeaf\n}\n\ntype AliasOuter = Outer\n\nfn main() {\n\touter := AliasOuter{}\n\tprintln(int_str(outer.value()))\n}\n', '11'},
+		TypeCheckerRuntimeCase{'nested_embedded_field', 'struct Leaf {\n\tx int\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{\n\t\tMiddle: Middle{\n\t\t\tLeaf: Leaf{\n\t\t\t\tx: 12\n\t\t\t}\n\t\t}\n\t}\n\tprintln(int_str(outer.x))\n}\n', '12'},
+		TypeCheckerRuntimeCase{'map_mutation_lowering', "fn main() {\n\tmut m := map[string]int{}\n\tm['a'] = 1\n\tm['a'] += 2\n\tm['a']++\n\tm['a'] -= 1\n\tprintln(int_str(m['a']))\n}\n", '3'},
+		TypeCheckerRuntimeCase{'map_array_append_lowering', "fn main() {\n\tmut m := map[string][]int{}\n\tm['a'] << 1\n\tm['a'] << 2\n\tprintln(int_str(m['a'].len))\n}\n", '2'},
+		TypeCheckerRuntimeCase{'assoc_selector_type', 'struct Point {\n\tx int\n\ty int\n}\n\nfn main() {\n\tp := Point{\n\t\tx: 10\n\t\ty: 20\n\t}\n\tq := Point{\n\t\t...p\n\t\tx: 99\n\t}\n\tprintln(int_str(q.x + q.y))\n}\n', '119'},
+		TypeCheckerRuntimeCase{'array_literal_push_many', 'fn main() {\n\tmut xs := [1, 2]\n\tys := [3, 4]\n\txs << ys\n\txs << [5, 6]\n\tprintln(int_str(xs.len))\n}\n', '6'},
+		TypeCheckerRuntimeCase{'nested_array_push', 'fn main() {\n\tmut xs := [][]int{}\n\ty := [1, 2]\n\txs << y\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[0][1]))\n}\n', '1\n2'},
+		TypeCheckerRuntimeCase{'mut_array_for_in', 'struct Item {\nmut:\n\tn int\n}\n\nfn main() {\n\tmut xs := []Item{}\n\txs << Item{n: 1}\n\tfor mut item in xs {\n\t\titem.n = 7\n\t}\n\tprintln(int_str(xs[0].n))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'mut_array_for_scalar_updates', 'fn main() {\n\tmut xs := []int{}\n\txs << 1\n\txs << 2\n\tfor mut x in xs {\n\t\tx++\n\t\tx += 10\n\t}\n\tprintln(int_str(xs[0]))\n\tprintln(int_str(xs[1]))\n}\n', '12\n13'},
+		TypeCheckerRuntimeCase{'const_forward', 'const first_value = second_value\nconst second_value = 2\nfn main() {\n\tprintln(int_str(first_value))\n}\n', '2'},
+		TypeCheckerRuntimeCase{'strings_builder_from_vlib', "import strings\n\nfn main() {\n\tmut sb := strings.new_builder(16)\n\tsb.write_string('ok')\n\tsb.write_u8(u8(33))\n\tprintln(sb.last_n(3))\n\tprintln(sb.str())\n}\n", 'ok!\nok!'},
+	])
 	run_bad(v3_bin, 'bad_sum_constructor_extra_arg', 'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n', 'unexpected `,`')
 	run_bad(v3_bin, 'bad_sum_constructor_extra_arg_as_call_arg', 'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn use(t Tree[int]) {}\nfn main() {\n\tuse(Tree[int](Empty{}, side_effect()))\n}\n', 'invalid expression: unexpected token `)`')
 	run_bad_project(v3_bin, 'bad_imported_sum_constructor_extra_arg', {
@@ -437,40 +455,6 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'other.v':     'module main\n\nfn use_it() int {\n\treturn moda.answer()\n}\n'
 		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
 	}, '', 'undefined ident: `moda`')
-	alias_out := run_good(v3_bin, 'alias_method', 'type UserId = int\n\nfn (id UserId) str() string {\n\treturn int_str(int(id))\n}\n\nfn main() {\n\tid := UserId(1)\n\tprintln(id.str())\n}\n')
-	assert alias_out == '1'
-	err_local_out := run_good(v3_bin, 'local_err_binding', 'fn main() {\n\terr := 2\n\tprintln(int_str(err + 1))\n}\n')
-	assert err_local_out == '3'
-	args_contains_out := run_good(v3_bin, 'local_args_contains', "fn main() {\n\targs := [1, 2]\n\tif args.contains(2) {\n\t\tprintln('ok')\n\t}\n}\n")
-	assert args_contains_out == 'ok'
-	custom_codec_out := run_good(v3_bin, 'custom_codec_methods', 'struct Codec {}\n\nfn (c Codec) decode() int {\n\treturn 7\n}\n\nfn (c Codec) encode() int {\n\treturn 8\n}\n\nfn (c Codec) use(x int) int {\n\treturn x + 1\n}\n\nfn (c Codec) run_at(x int) int {\n\treturn x + 2\n}\n\nfn main() {\n\tc := Codec{}\n\tprintln(int_str(c.decode()))\n\tprintln(int_str(c.encode()))\n\tprintln(int_str(c.use(9)))\n\tprintln(int_str(c.run_at(5)))\n}\n')
-	assert custom_codec_out == '7\n8\n10\n7'
-	item_with_user_out := run_good(v3_bin, 'item_with_user_initializer', 'struct ItemWithUserFoo {\n\titem int\n}\n\nfn main() {\n\tx := ItemWithUserFoo{\n\t\titem: 7\n\t}\n\tprintln(int_str(x.item))\n}\n')
-	assert item_with_user_out == '7'
-	struct_default_out := run_good(v3_bin, 'struct_default_literals', 'type GetFn = fn () int\n\nfn default_num() int {\n\treturn 6\n}\n\nstruct Defaults {\n\tx int = 5\n\tget GetFn = default_num\n}\n\nfn main() {\n\ta := Defaults{}\n\tb := &Defaults{}\n\tprintln(int_str(a.x))\n\tprintln(int_str(b.x))\n\tprintln(int_str(a.get()))\n}\n')
-	assert struct_default_out == '5\n5\n6'
-	nested_embedded_method_out := run_good(v3_bin, 'nested_embedded_method', 'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 9\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{}\n\tprintln(int_str(outer.value()))\n}\n')
-	assert nested_embedded_method_out == '9'
-	aliased_embedded_method_out := run_good(v3_bin, 'aliased_embedded_method', 'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 11\n}\n\nstruct Outer {\n\tLeaf\n}\n\ntype AliasOuter = Outer\n\nfn main() {\n\touter := AliasOuter{}\n\tprintln(int_str(outer.value()))\n}\n')
-	assert aliased_embedded_method_out == '11'
-	nested_embedded_field_out := run_good(v3_bin, 'nested_embedded_field', 'struct Leaf {\n\tx int\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{\n\t\tMiddle: Middle{\n\t\t\tLeaf: Leaf{\n\t\t\t\tx: 12\n\t\t\t}\n\t\t}\n\t}\n\tprintln(int_str(outer.x))\n}\n')
-	assert nested_embedded_field_out == '12'
-	map_mutation_out := run_good(v3_bin, 'map_mutation_lowering', "fn main() {\n\tmut m := map[string]int{}\n\tm['a'] = 1\n\tm['a'] += 2\n\tm['a']++\n\tm['a'] -= 1\n\tprintln(int_str(m['a']))\n}\n")
-	assert map_mutation_out == '3'
-	map_array_append_out := run_good(v3_bin, 'map_array_append_lowering', "fn main() {\n\tmut m := map[string][]int{}\n\tm['a'] << 1\n\tm['a'] << 2\n\tprintln(int_str(m['a'].len))\n}\n")
-	assert map_array_append_out == '2'
-	assoc_selector_out := run_good(v3_bin, 'assoc_selector_type', 'struct Point {\n\tx int\n\ty int\n}\n\nfn main() {\n\tp := Point{\n\t\tx: 10\n\t\ty: 20\n\t}\n\tq := Point{\n\t\t...p\n\t\tx: 99\n\t}\n\tprintln(int_str(q.x + q.y))\n}\n')
-	assert assoc_selector_out == '119'
-	array_literal_push_many_out := run_good(v3_bin, 'array_literal_push_many', 'fn main() {\n\tmut xs := [1, 2]\n\tys := [3, 4]\n\txs << ys\n\txs << [5, 6]\n\tprintln(int_str(xs.len))\n}\n')
-	assert array_literal_push_many_out == '6'
-	nested_array_push_out := run_good(v3_bin, 'nested_array_push', 'fn main() {\n\tmut xs := [][]int{}\n\ty := [1, 2]\n\txs << y\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[0][1]))\n}\n')
-	assert nested_array_push_out == '1\n2'
-	mut_array_for_out := run_good(v3_bin, 'mut_array_for_in', 'struct Item {\nmut:\n\tn int\n}\n\nfn main() {\n\tmut xs := []Item{}\n\txs << Item{n: 1}\n\tfor mut item in xs {\n\t\titem.n = 7\n\t}\n\tprintln(int_str(xs[0].n))\n}\n')
-	assert mut_array_for_out == '7'
-	mut_array_for_scalar_out := run_good(v3_bin, 'mut_array_for_scalar_updates', 'fn main() {\n\tmut xs := []int{}\n\txs << 1\n\txs << 2\n\tfor mut x in xs {\n\t\tx++\n\t\tx += 10\n\t}\n\tprintln(int_str(xs[0]))\n\tprintln(int_str(xs[1]))\n}\n')
-	assert mut_array_for_scalar_out == '12\n13'
-	const_forward_out := run_good(v3_bin, 'const_forward', 'const first_value = second_value\nconst second_value = 2\nfn main() {\n\tprintln(int_str(first_value))\n}\n')
-	assert const_forward_out == '2'
 	imported_call_out := run_good_project(v3_bin, 'qualified_import_call', {
 		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.answer()))\n}\n'
 		'moda/moda.v': 'module moda\n\npub fn answer() int {\n\treturn 7\n}\n'
@@ -481,8 +465,6 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'moda/moda.v': 'module moda\n\nfn choose[T](x T) T {\n\t$if T is u8 {\n\t\treturn x\n\t} $else $if T is int {\n\t\treturn x\n\t} $else {}\n\treturn x\n}\n\npub fn after_chain() int {\n\treturn 7\n}\n'
 	}, 'main.v')
 	assert comptime_type_chain_out == '7'
-	builder_out := run_good(v3_bin, 'strings_builder_from_vlib', "import strings\n\nfn main() {\n\tmut sb := strings.new_builder(16)\n\tsb.write_string('ok')\n\tsb.write_u8(u8(33))\n\tprintln(sb.last_n(3))\n\tprintln(sb.str())\n}\n")
-	assert builder_out == 'ok!\nok!'
 	init_order_out := run_good_project(v3_bin, 'module_init_order', {
 		'main.v':      'module main\n\nimport moda\n\n__global seen int\n\nfn init() {\n\tseen = moda.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(moda.value()))\n}\n'
 		'moda/moda.v': 'module moda\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
