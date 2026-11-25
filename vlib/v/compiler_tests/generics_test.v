@@ -545,15 +545,18 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	one_letter_bin := os.join_path(fixture_dir, 'v3_gen_one_letter_concrete_arg')
-	one_letter_compile := os.exec([@VEXE, one_letter_src, '-b', 'c', '-o', one_letter_bin])
+	one_letter_c_path := os.join_path(fixture_dir, 'v3_gen_one_letter_concrete_arg.c')
+	one_letter_compile := os.exec([@VEXE, '-b', 'c', '-o', one_letter_c_path, one_letter_src])
+	assert one_letter_compile.exit_code == 0, one_letter_compile.output
 	assert !one_letter_compile.output.contains('unsupported generic'), one_letter_compile.output
 	assert !one_letter_compile.output.contains('type checker found'), one_letter_compile.output
-	one_letter_c := os.read_file(one_letter_bin + '.c') or { '' }
+	one_letter_c := os.read_file(one_letter_c_path) or { panic(err) }
 	// Generic struct instances declared in main use the `main__` C namespace.
 	assert one_letter_c.contains('struct main__Box_A'), one_letter_c
 
-	selector_convert_out := run_generic_exec(fixture_dir, 'selector_method_arg_infer', '
+	root := os.join_path(fixture_dir, 'runtime_batch')
+	write_generics_project_file(root, 'selector_infer/v3_gen_selector_method_arg_infer.v', 'module selector_infer
+
 struct Box[T] {
 	value T
 }
@@ -562,31 +565,56 @@ fn (b Box[T]) convert[U](value U) U {
 	return value
 }
 
-fn main() {
+pub fn exercise() {
 	b := Box[int]{value: 1}
 	println(b.convert("ok"))
 }
 ')
-	assert selector_convert_out == 'ok'
+	write_generics_project_file(root, 'explicit_args/v3_gen_explicit_generic_call_keeps_runtime_args.v', 'module explicit_args
 
-	explicit_multi_arg_out := run_generic_exec(fixture_dir, 'explicit_generic_call_keeps_runtime_args', '
 fn second[T](a T, b T) T {
 	return b
 }
 
-fn main() {
+pub fn exercise() {
 	println(second[int](1, 2))
 }
 ')
-	assert explicit_multi_arg_out == '2'
+	// Keep result propagation in main to exercise the program entry point.
+	write_generics_project_file(root, 'main.v', "module main
 
-	reused_result_out := run_generic_exec(fixture_dir, 'reused_generic_result_keeps_payload_type', '
 import arrays { sum }
+import os
+import selector_infer
+import explicit_args
 
 fn main() {
+	match os.args[1] {
+		'selector_method_arg_infer' {
+			selector_infer.exercise()
+			return
+		}
+		'explicit_generic_call_keeps_runtime_args' {
+			explicit_args.exercise()
+			return
+		}
+		'reused_generic_result_keeps_payload_type' {}
+		else { panic('unknown fixture') }
+	}
 	mapped := [[1, 2], [3, 4]].map(sum(it)!)
 	println(sum(mapped[..2])!)
 }
-')
-	assert reused_result_out == '10'
+")
+	bin := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, os.join_path(root, 'main.v')])
+	assert compile.exit_code == 0, compile.output
+	for name, expected in {
+		'selector_method_arg_infer':                'ok'
+		'explicit_generic_call_keeps_runtime_args': '2'
+		'reused_generic_result_keeps_payload_type': '10'
+	} {
+		run := os.exec([bin, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == expected, '${name}: expected ${expected} in\n${run.output}'
+	}
 }
