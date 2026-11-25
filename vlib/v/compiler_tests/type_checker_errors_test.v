@@ -1245,7 +1245,8 @@ fn test_pr_review_struct_sum_scope_and_gated_regressions() {
 }
 
 fn test_collapsed_struct_fields_use_positional_target() {
-	run_bad(v3_bin, 'bad_plain_collapsed_struct_field_type', 'struct Config {
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_plain_collapsed_struct_field_type', 'struct Config {
 	cap int
 }
 
@@ -1256,8 +1257,8 @@ fn make(config Config) int {
 fn main() {
 	_ := make(cap: "bad")
 }
-', 'cannot assign to field `cap`: expected `int`, not `string`')
-	run_bad(v3_bin, 'bad_collapsed_params_field_ignores_earlier_struct', 'struct Context {
+', 'cannot assign to field `cap`: expected `int`, not `string`'},
+		TypeCheckerRejection{'bad_collapsed_params_field_ignores_earlier_struct', 'struct Context {
 	retries string
 }
 
@@ -1274,8 +1275,8 @@ fn compile(context Context, options Options) {
 fn main() {
 	compile(Context{}, retries: "bad")
 }
-', 'cannot assign to field `retries`: expected `int`, not `string`')
-	run_bad(v3_bin, 'bad_collapsed_unknown_field_ignores_earlier_struct', 'struct Context {
+', 'cannot assign to field `retries`: expected `int`, not `string`'},
+		TypeCheckerRejection{'bad_collapsed_unknown_field_ignores_earlier_struct', 'struct Context {
 	retries string
 }
 
@@ -1291,8 +1292,8 @@ fn compile(context Context, target Target) {
 fn main() {
 	compile(Context{}, retries: 3)
 }
-', 'unknown field `retries` in struct literal of type `Target`')
-	run_bad(v3_bin, 'bad_method_collapsed_field_ignores_receiver', 'struct Builder {
+', 'unknown field `retries` in struct literal of type `Target`'},
+		TypeCheckerRejection{'bad_method_collapsed_field_ignores_receiver', 'struct Builder {
 	cap string
 }
 
@@ -1308,8 +1309,8 @@ fn (builder Builder) make(config Config) int {
 fn main() {
 	_ := Builder{}.make(cap: "bad")
 }
-', 'cannot assign to field `cap`: expected `int`, not `string`')
-	run_bad(v3_bin, 'bad_variadic_collapsed_struct_field_type', 'struct Point {
+', 'cannot assign to field `cap`: expected `int`, not `string`'},
+		TypeCheckerRejection{'bad_variadic_collapsed_struct_field_type', 'struct Point {
 	x int
 }
 
@@ -1320,8 +1321,8 @@ fn total(points ...Point) int {
 fn main() {
 	_ := total(x: "bad")
 }
-', 'cannot assign to field `x`: expected `int`, not `string`')
-	run_bad(v3_bin, 'bad_later_variadic_collapsed_struct_field_type', 'struct Point {
+', 'cannot assign to field `x`: expected `int`, not `string`'},
+		TypeCheckerRejection{'bad_later_variadic_collapsed_struct_field_type', 'struct Point {
 	x int
 }
 
@@ -1332,8 +1333,8 @@ fn total(points ...Point) int {
 fn main() {
 	_ := total(Point{x: 1}, x: "bad")
 }
-', 'cannot assign to field `x`: expected `int`, not `string`')
-	run_bad(v3_bin, 'bad_collapsed_fn_field_uses_target_diagnostic', 'struct Context {
+', 'cannot assign to field `x`: expected `int`, not `string`'},
+		TypeCheckerRejection{'bad_collapsed_fn_field_uses_target_diagnostic', 'struct Context {
 	callback fn (string)
 }
 
@@ -1354,8 +1355,8 @@ fn string_callback(value string) {
 fn main() {
 	run(Context{}, callback: string_callback)
 }
-', 'cannot assign to field `callback`: expected `fn (int)`, not `fn (string)`')
-	run_bad(v3_bin, 'bad_alias_collapsed_struct_field_type', 'struct Config {
+', 'cannot assign to field `callback`: expected `fn (int)`, not `fn (string)`'},
+		TypeCheckerRejection{'bad_alias_collapsed_struct_field_type', 'struct Config {
 	count int
 }
 
@@ -1368,8 +1369,8 @@ fn use(config ConfigAlias) {
 fn main() {
 	use(count: "bad")
 }
-', 'cannot assign to field `count`: expected `int`, not `string`')
-	run_bad(v3_bin, 'bad_pointer_params_collapsed_field_type', '@[params]
+', 'cannot assign to field `count`: expected `int`, not `string`'},
+		TypeCheckerRejection{'bad_pointer_params_collapsed_field_type', '@[params]
 struct Config {
 	count int
 }
@@ -1381,8 +1382,8 @@ fn use(config &Config) {
 fn main() {
 	use(count: "bad")
 }
-', 'cannot assign to field `count`: expected `int`, not `string`')
-	run_bad(v3_bin, 'bad_pointer_alias_collapsed_field_type', 'struct Earlier {
+', 'cannot assign to field `count`: expected `int`, not `string`'},
+		TypeCheckerRejection{'bad_pointer_alias_collapsed_field_type', 'struct Earlier {
 	count int
 }
 
@@ -1400,8 +1401,8 @@ fn use(earlier Earlier, config ConfigRef) {
 fn main() {
 	use(Earlier{}, count: "bad")
 }
-', 'cannot assign to field `count`: expected `int`, not `string`')
-	run_bad(v3_bin, 'bad_generic_collapsed_field_type', 'struct Config[T] {
+', 'cannot assign to field `count`: expected `int`, not `string`'},
+		TypeCheckerRejection{'bad_generic_collapsed_field_type', 'struct Config[T] {
 	value T
 }
 
@@ -1412,8 +1413,8 @@ fn use[T](config Config[T]) {
 fn main() {
 	use[int](value: "bad")
 }
-', 'cannot assign to field `value`: expected `int`, not `string`')
-	run_bad(v3_bin, 'bad_fn_value_collapsed_field_type', 'struct Config {
+', 'cannot assign to field `value`: expected `int`, not `string`'},
+		TypeCheckerRejection{'bad_fn_value_collapsed_field_type', 'struct Config {
 	count int
 }
 
@@ -1428,8 +1429,8 @@ fn call(callback fn (Config)) {
 fn main() {
 	call(use)
 }
-', 'cannot assign to field `count`: expected `int`, not `string`')
-	run_bad(v3_bin, 'bad_collapsed_interface_target', 'interface Runnable {
+', 'cannot assign to field `count`: expected `int`, not `string`'},
+		TypeCheckerRejection{'bad_collapsed_interface_target', 'interface Runnable {
 	run()
 }
 
@@ -1440,7 +1441,9 @@ fn use(value Runnable) {
 fn main() {
 	use(count: 1)
 }
-', 'cannot instantiate interface `Runnable`')
+', 'cannot instantiate interface `Runnable`'},
+	])
+
 	interface_src := 'interface Runnable {
 	run()
 }
