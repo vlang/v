@@ -78,15 +78,21 @@ fn test_orm_module_local_select_uses_qualified_row_type() {
 	assert !c_code.contains('sizeof(User)'), c_code
 }
 
-fn test_orm_unsupported_select_clauses_use_fallback() {
-	c_code := orm_null_text_gen_c('orm_unsupported_select_clauses', 'import db.sqlite
+fn test_orm_sqlite_unsupported_queries_use_fallback() {
+	c_code := orm_null_text_gen_c('orm_sqlite_fallbacks', 'import db.sqlite
+import time
 
 struct User {
 	id int
 	name string
 }
 
-fn main() {
+struct TestDurationAlias {
+	id int
+	duration time.Duration
+}
+
+fn select_with_unsupported_clauses() ! {
 	mut db := sqlite.connect(":memory:") or { panic(err) }
 	rows1 := sql db {
 		select from User where id == 1
@@ -97,19 +103,8 @@ fn main() {
 	_ = rows1
 	_ = rows2
 }
-')
-	assert !c_code.contains('SELECT "id", "name" FROM "User";'), c_code
-}
 
-fn test_orm_runtime_select_limit_uses_fallback() {
-	c_code := orm_null_text_gen_c('orm_runtime_select_limit_fallback', 'import db.sqlite
-
-struct User {
-	id int
-	name string
-}
-
-fn main() {
+fn select_with_runtime_limit() ! {
 	mut db := sqlite.connect(":memory:") or { panic(err) }
 	n := 1
 	rows := sql db {
@@ -117,8 +112,39 @@ fn main() {
 	}!
 	_ = rows
 }
+
+fn insert_bulk() ! {
+	mut db := sqlite.connect(":memory:") or { panic(err) }
+	users := [
+		User{
+			id: 1
+			name: "a"
+		},
+	]
+	sql db {
+		insert users into User
+	}!
+}
+
+fn create_table_with_unsupported_fields() ! {
+	mut db := sqlite.connect(":memory:") or { panic(err) }
+	sql db {
+		create table TestDurationAlias
+	}!
+}
+
+fn main() {
+	select_with_unsupported_clauses()!
+	select_with_runtime_limit()!
+	insert_bulk()!
+	create_table_with_unsupported_fields()!
+}
 ')
+	assert !c_code.contains('SELECT "id", "name" FROM "User";'), c_code
 	assert !c_code.contains('SELECT "id", "name" FROM "User" LIMIT'), c_code
+	assert !c_code.contains('INSERT INTO "User"'), c_code
+	assert !c_code.contains('(users).name'), c_code
+	assert !c_code.contains('CREATE TABLE IF NOT EXISTS "TestDurationAlias"'), c_code
 }
 
 fn test_orm_non_sqlite_db_uses_fallback() {
@@ -139,31 +165,6 @@ fn main() {
 ')
 	assert !c_code.contains('sqlite3_prepare_v2'), c_code
 	assert !c_code.contains('SELECT "id", "name" FROM "User"'), c_code
-}
-
-fn test_orm_bulk_insert_uses_fallback() {
-	c_code := orm_null_text_gen_c('orm_bulk_insert_fallback', 'import db.sqlite
-
-struct User {
-	id int
-	name string
-}
-
-fn main() {
-	mut db := sqlite.connect(":memory:") or { panic(err) }
-	users := [
-		User{
-			id: 1
-			name: "a"
-		},
-	]
-	sql db {
-		insert users into User
-	}!
-}
-')
-	assert !c_code.contains('INSERT INTO "User"'), c_code
-	assert !c_code.contains('(users).name'), c_code
 }
 
 fn test_multi_statement_sql_keeps_heap_promoted_db_pointer() {
@@ -206,12 +207,6 @@ fn test_orm_insert_requires_qualified_value_type_match() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot use `other.User` as `app.User`'), result.output
 	assert !result.output.contains('C compilation failed'), result.output
-}
-
-fn test_orm_unsupported_field_tables_use_fallback() {
-	c_code := orm_null_text_gen_c('orm_unsupported_field_table_fallback',
-		'import db.sqlite\nimport time\n\nstruct TestDurationAlias {\n\tid int\n\tduration time.Duration\n}\n\nfn main() {\n\tmut db := sqlite.connect(":memory:") or { panic(err) }\n\tsql db {\n\t\tcreate table TestDurationAlias\n\t}!\n}\n')
-	assert !c_code.contains('CREATE TABLE IF NOT EXISTS "TestDurationAlias"'), c_code
 }
 
 fn test_orm_wide_integer_fields_use_sqlite_int64_apis() {
