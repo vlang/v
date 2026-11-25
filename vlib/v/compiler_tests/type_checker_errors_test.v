@@ -1145,16 +1145,13 @@ fn test_if_error_branches_require_result_returns() {
 }
 
 fn test_multi_return_if_tail_infers_common_type() {
-	result_error := run_good(v3_bin, 'good_result_multi_return_error_return', "fn pair(fail bool) !(int, int) {\n\tif fail {\n\t\treturn error('x')\n\t}\n\treturn 1, 2\n}\nfn main() {\n\ta, b := pair(false) or { panic(err.msg()) }\n\tprintln(int_str(a + b))\n\t_, _ := pair(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
-	assert result_error == '3\nx'
-	if_tail := run_good(v3_bin, 'good_multi_return_if_common_pointer_tail', 'fn main() {\n\tx := 7\n\tp, n := if false {\n\t\tnil\n\t\t0\n\t} else {\n\t\t&x\n\t\t1\n\t}\n\tprintln(typeof(p).name)\n\tprintln(int_str(n))\n}\n')
-	assert if_tail == 'voidptr\n1'
-	numeric_tail := run_good(v3_bin, 'good_multi_return_if_promoted_numeric_tail', 'fn main() {\n\tcond := false\n\tx, _ := if cond {\n\t\t1\n\t\t0\n\t} else {\n\t\t1.5\n\t\t0\n\t}\n\tprintln(typeof(x).name)\n\tprintln((x > 1.4).str())\n}\n')
-	assert numeric_tail == 'f64\ntrue'
-	call_decl_assign := run_good(v3_bin, 'good_multi_return_if_call_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\tpair(3)\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert call_decl_assign == '7'
-	call_assign := run_good(v3_bin, 'good_multi_return_if_call_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = if flag {\n\t\tpair(1)\n\t} else {\n\t\tpair(3)\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert call_assign == '7'
+	run_good_module_batch(v3_bin, 'multi_return_if_tail', [
+		TypeCheckerRuntimeCase{'good_result_multi_return_error_return', "fn pair(fail bool) !(int, int) {\n\tif fail {\n\t\treturn error('x')\n\t}\n\treturn 1, 2\n}\nfn main() {\n\ta, b := pair(false) or { panic(err.msg()) }\n\tprintln(int_str(a + b))\n\t_, _ := pair(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", '3\nx'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_common_pointer_tail', 'fn main() {\n\tx := 7\n\tp, n := if false {\n\t\tnil\n\t\t0\n\t} else {\n\t\t&x\n\t\t1\n\t}\n\tprintln(typeof(p).name)\n\tprintln(int_str(n))\n}\n', 'voidptr\n1'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_promoted_numeric_tail', 'fn main() {\n\tcond := false\n\tx, _ := if cond {\n\t\t1\n\t\t0\n\t} else {\n\t\t1.5\n\t\t0\n\t}\n\tprintln(typeof(x).name)\n\tprintln((x > 1.4).str())\n}\n', 'f64\ntrue'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_call_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\tpair(3)\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_call_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = if flag {\n\t\tpair(1)\n\t} else {\n\t\tpair(3)\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+	])
 	run_bad(v3_bin, 'bad_multi_return_if_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n', 'expression evaluated but not used')
 	run_bad(v3_bin, 'bad_multi_return_if_void_tail_decl_assign', 'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n', 'multi-return assignment mismatch')
 }
@@ -1187,54 +1184,48 @@ fn main() {
 }
 
 fn test_multi_return_if_assignment_uses_lhs_context() {
-	enum_tail := run_good(v3_bin, 'good_multi_return_if_assign_enum_and_none_tail', "enum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tcond := false\n\tmut c := Color.red\n\tmut n := 0\n\tc, n = if cond {\n\t\t.red\n\t\t1\n\t} else {\n\t\t.blue\n\t\t2\n\t}\n\tmut opt := ?int(0)\n\tmut label := ''\n\topt, label = if cond {\n\t\tnone\n\t\t'none'\n\t} else {\n\t\t?int(7)\n\t\t'some'\n\t}\n\tvalue := opt or { 0 }\n\tif c == .blue && label == 'some' {\n\t\tprintln(int_str(n + value))\n\t}\n}\n")
-	assert enum_tail == '9'
-	swap_tail := run_good(v3_bin, 'good_multi_return_if_assign_stages_tail_values', "fn main() {\n\tcond := true\n\tmut a := 1\n\tmut b := 2\n\ta, b = if cond {\n\t\tb\n\t\ta\n\t} else {\n\t\ta\n\t\tb\n\t}\n\tprintln(int_str(a) + ':' + int_str(b))\n}\n")
-	assert swap_tail == '2:1'
+	run_good_module_batch(v3_bin, 'multi_return_if_assignment', [
+		TypeCheckerRuntimeCase{'good_multi_return_if_assign_enum_and_none_tail', "enum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tcond := false\n\tmut c := Color.red\n\tmut n := 0\n\tc, n = if cond {\n\t\t.red\n\t\t1\n\t} else {\n\t\t.blue\n\t\t2\n\t}\n\tmut opt := ?int(0)\n\tmut label := ''\n\topt, label = if cond {\n\t\tnone\n\t\t'none'\n\t} else {\n\t\t?int(7)\n\t\t'some'\n\t}\n\tvalue := opt or { 0 }\n\tif c == .blue && label == 'some' {\n\t\tprintln(int_str(n + value))\n\t}\n}\n", '9'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_assign_stages_tail_values', "fn main() {\n\tcond := true\n\tmut a := 1\n\tmut b := 2\n\ta, b = if cond {\n\t\tb\n\t\ta\n\t} else {\n\t\ta\n\t\tb\n\t}\n\tprintln(int_str(a) + ':' + int_str(b))\n}\n", '2:1'},
+	])
 }
 
 fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
-	nested_if_tail := run_good(v3_bin, 'good_nested_if_tail_decl_assign', 'fn main() {\n\tc := true\n\td := false\n\ta, b := if c {\n\t\tif d {\n\t\t\t1\n\t\t\t2\n\t\t} else {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert nested_if_tail == '7'
+	run_good_module_batch(v3_bin, 'nested_if_multi_return', [
+		TypeCheckerRuntimeCase{'good_nested_if_tail_decl_assign', 'fn main() {\n\tc := true\n\td := false\n\ta, b := if c {\n\t\tif d {\n\t\t\t1\n\t\t\t2\n\t\t} else {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_prefixed_nested_block_tail_decl_assign', "fn main() {\n\tc := true\n\ta, b := if c {\n\t\t{\n\t\t\tprintln('side')\n\t\t\t1\n\t\t\t2\n\t\t}\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n", 'side\n3'},
+	])
 	run_bad_with_flags(v3_bin, 'bad_nested_mixed_tuple_tail_branch_type', "fn pair() (int, string) {\n\treturn 1, 'pair'\n}\nfn main() {\n\touter := false\n\tinner := false\n\ta, b := if outer {\n\t\tpair()\n\t} else {\n\t\tif inner {\n\t\t\t1\n\t\t\t'a'\n\t\t} else {\n\t\t\ttrue\n\t\t\t'b'\n\t\t}\n\t}\n\tprintln(int_str(a) + b)\n}\n", 'mismatched types `(int, string)` and `string`', '-check')
-	prefixed_block_tail := run_good(v3_bin, 'good_prefixed_nested_block_tail_decl_assign', "fn main() {\n\tc := true\n\ta, b := if c {\n\t\t{\n\t\t\tprintln('side')\n\t\t\t1\n\t\t\t2\n\t\t}\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n")
-	assert prefixed_block_tail == 'side\n3'
 }
 
 fn test_multi_return_if_returning_branches_do_not_produce_assignment_values() {
-	return_values := run_good(v3_bin, 'good_multi_return_if_branch_return_values', "fn choose(cond bool) (string, string) {\n\ta, b := if cond {\n\t\treturn 'x', 'y'\n\t} else {\n\t\t1\n\t\t2\n\t}\n\treturn int_str(a), int_str(b)\n}\n\nfn main() {\n\ta, b := choose(false)\n\tprintln(a + ':' + b)\n\tc, d := choose(true)\n\tprintln(c + ':' + d)\n}\n")
-	assert return_values == '1:2\nx:y'
-	bare_return := run_good(v3_bin, 'good_multi_return_if_branch_bare_return', "fn emit(cond bool) {\n\ta, b := if cond {\n\t\treturn\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n\nfn main() {\n\temit(false)\n\tprintln('done')\n}\n")
-	assert bare_return == '7\ndone'
-	panic_branch := run_good(v3_bin, 'good_multi_return_if_branch_panic_tail', "fn main() {\n\tbad := false\n\ta, b := if bad {\n\t\tpanic('x')\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n")
-	assert panic_branch == '11'
+	run_good_module_batch(v3_bin, 'multi_return_if_early_exit', [
+		TypeCheckerRuntimeCase{'good_multi_return_if_branch_return_values', "fn choose(cond bool) (string, string) {\n\ta, b := if cond {\n\t\treturn 'x', 'y'\n\t} else {\n\t\t1\n\t\t2\n\t}\n\treturn int_str(a), int_str(b)\n}\n\nfn main() {\n\ta, b := choose(false)\n\tprintln(a + ':' + b)\n\tc, d := choose(true)\n\tprintln(c + ':' + d)\n}\n", '1:2\nx:y'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_branch_bare_return', "fn emit(cond bool) {\n\ta, b := if cond {\n\t\treturn\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n\nfn main() {\n\temit(false)\n\tprintln('done')\n}\n", '7\ndone'},
+		TypeCheckerRuntimeCase{'good_multi_return_if_branch_panic_tail', "fn main() {\n\tbad := false\n\ta, b := if bad {\n\t\tpanic('x')\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n", '11'},
+	])
 }
 
 fn test_multi_rhs_if_expr_is_not_multi_return() {
-	decl_out := run_good(v3_bin, 'good_multi_rhs_if_expr_decl_assign', 'fn main() {\n\tcond := true\n\ta, b := if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n')
-	assert decl_out == '4'
-	assign_out := run_good(v3_bin, 'good_multi_rhs_if_expr_assign', 'fn main() {\n\tcond := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n')
-	assert assign_out == '5'
+	run_good_module_batch(v3_bin, 'multi_rhs_if_expression', [
+		TypeCheckerRuntimeCase{'good_multi_rhs_if_expr_decl_assign', 'fn main() {\n\tcond := true\n\ta, b := if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n', '4'},
+		TypeCheckerRuntimeCase{'good_multi_rhs_if_expr_assign', 'fn main() {\n\tcond := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n', '5'},
+	])
 }
 
 fn test_match_multi_return_tails_require_explicit_tuple() {
-	match_call := run_good(v3_bin, 'good_multi_return_match_call_return', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn pick(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a + b))\n}\n')
-	assert match_call == '7'
-	match_decl_assign := run_good(v3_bin, 'good_multi_return_match_call_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert match_decl_assign == '7'
-	match_assign := run_good(v3_bin, 'good_multi_return_match_call_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert match_assign == '7'
-	match_tuple_decl_assign := run_good(v3_bin, 'good_multi_return_match_tuple_decl_assign', 'fn main() {\n\tflag := false\n\ta, b := match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert match_tuple_decl_assign == '7'
-	match_tuple_assign := run_good(v3_bin, 'good_multi_return_match_tuple_assign', 'fn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n')
-	assert match_tuple_assign == '3'
+	run_good_module_batch(v3_bin, 'multi_return_match_tail', [
+		TypeCheckerRuntimeCase{'good_multi_return_match_call_return', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn pick(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_call_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_call_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_tuple_decl_assign', 'fn main() {\n\tflag := false\n\ta, b := match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_tuple_assign', 'fn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n', '3'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_call_promoted_numeric_types', 'fn pair_int() (int, int) {\n\treturn 1, 2\n}\nfn pair_f64() (f64, int) {\n\treturn 1.5, 2\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair_int()\n\t\t}\n\t\tfalse {\n\t\t\tpair_f64()\n\t\t}\n\t}\n\tprintln(int_str(b))\n\tprintln(a)\n}\n', '2\n1.0'},
+		TypeCheckerRuntimeCase{'good_multi_return_match_call_compatible_alias_assign', "type Count = int\n\nfn pair_alias() (Count, string) {\n\treturn Count(3), 'alias'\n}\n\nfn pair_int() (int, string) {\n\treturn 4, 'int'\n}\n\nfn main() {\n\tflag := false\n\tmut n := Count(0)\n\tmut label := ''\n\tn, label = match flag {\n\t\ttrue {\n\t\t\tpair_alias()\n\t\t}\n\t\tfalse {\n\t\t\tpair_int()\n\t\t}\n\t}\n\tprintln(int_str(n) + ':' + label)\n}\n", '4:int'},
+	])
 	run_bad(v3_bin, 'bad_multi_return_match_overlong_tuple_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue { 1, 2, 3 }\n\t\tfalse { 4, 5 }\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values')
 	run_bad(v3_bin, 'bad_multi_return_match_call_non_exhaustive_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive')
 	run_bad(v3_bin, 'bad_multi_return_match_call_non_exhaustive_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive')
-	numeric_match := run_good(v3_bin, 'good_multi_return_match_call_promoted_numeric_types', 'fn pair_int() (int, int) {\n\treturn 1, 2\n}\nfn pair_f64() (f64, int) {\n\treturn 1.5, 2\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair_int()\n\t\t}\n\t\tfalse {\n\t\t\tpair_f64()\n\t\t}\n\t}\n\tprintln(int_str(b))\n\tprintln(a)\n}\n')
-	assert numeric_match == '2\n1.0'
-	alias_match := run_good(v3_bin, 'good_multi_return_match_call_compatible_alias_assign', "type Count = int\n\nfn pair_alias() (Count, string) {\n\treturn Count(3), 'alias'\n}\n\nfn pair_int() (int, string) {\n\treturn 4, 'int'\n}\n\nfn main() {\n\tflag := false\n\tmut n := Count(0)\n\tmut label := ''\n\tn, label = match flag {\n\t\ttrue {\n\t\t\tpair_alias()\n\t\t}\n\t\tfalse {\n\t\t\tpair_int()\n\t\t}\n\t}\n\tprintln(int_str(n) + ':' + label)\n}\n")
-	assert alias_match == '4:int'
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
 	run_bad(v3_bin, 'bad_multi_return_match_preceding_expr_decl_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values')
