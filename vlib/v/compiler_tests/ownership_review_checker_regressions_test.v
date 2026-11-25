@@ -1,11 +1,27 @@
 import os
 
+const ownership_review_compiler = find_ownership_review_compiler()
+
+fn find_ownership_review_compiler() string {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	source := os.join_path(os.dir(@FILE), '../v.v')
+	// The unit runner adds -gc none, which each fixture already passes.
+	if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] && os.is_file(shared)
+		&& os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(source) {
+		return os.real_path(shared)
+	}
+	return @VEXE
+}
+
+fn run_ownership_review_fixture(source string, flags []string) os.Result {
+	return os.exec([ownership_review_compiler, '-nocache', '-ownership', '-gc', 'none', '-cc',
+		'clang', ...flags, source])
+}
+
 fn run_ownership_regression(source string) {
 	for mode in [['-no-parallel'], []string{}] {
-		mut args := [@VEXE, '-nocache', '-ownership', '-gc', 'none', '-cc', 'clang']
-		args << mode
-		args << ['run', source]
-		result := os.exec(args)
+		result := run_ownership_review_fixture(source, [...mode, 'run'])
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
 }
@@ -126,7 +142,7 @@ fn escaped() ${return_type} {
 }
 fn main() {}
 ')!
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
+		out := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
 		assert out.exit_code != 0, '${return_type}: ${out.output}'
 		assert out.output.contains('cannot return a reference to local storage `local`'), '${return_type}: ${out.output}'
 	}
@@ -192,7 +208,7 @@ fn main() {
 	assert forwarded_owned_value().value == 42
 }
 ')!
-	out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang run ${os.quoted_path(source)}')
+	out := run_ownership_review_fixture(source, ['-d', 'ownership', 'run'])
 	assert out.exit_code == 0, out.output
 }
 
@@ -224,7 +240,7 @@ fn main() {
 	println(view)
 }
 ')!
-			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
+			out := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
 			assert out.exit_code != 0, '${view}: ${out.output}'
 			assert out.output.contains(expected), '${view}: ${out.output}'
 		}
@@ -237,7 +253,7 @@ fn main() {
 	assert unsafe { view.str == owner.str }
 }
 ')!
-	out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang run ${os.quoted_path(source)}')
+	out := run_ownership_review_fixture(source, ['-d', 'ownership', 'run'])
 	assert out.exit_code == 0, out.output
 }
 
@@ -257,7 +273,7 @@ fn main() {
 	println(value)
 }
 ')!
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
+		out := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
 		assert out.exit_code != 0, '${method}: ${out.output}'
 		assert out.output.contains('use of moved value: `value`'), '${method}: ${out.output}'
 	}
@@ -303,7 +319,7 @@ fn escaped() ${return_type} {
 }
 fn main() {}
 ')!
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
+		out := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
 		assert out.exit_code != 0, '${name}: ${out.output}'
 		assert out.output.contains('cannot return a reference to local storage `local`'), '${name}: ${out.output}'
 	}
@@ -334,10 +350,10 @@ fn main() {
 	${action}
 }
 ')!
-			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang -check ${os.quoted_path(source)}')
+			out := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
 			if expected.len == 0 {
 				assert out.exit_code == 0, out.output
-				completed := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -gc none -cc clang run ${os.quoted_path(source)}')
+				completed := run_ownership_review_fixture(source, ['-d', 'ownership', 'run'])
 				assert completed.exit_code == 0, completed.output
 			} else {
 				assert out.exit_code != 0, out.output
