@@ -268,8 +268,9 @@ fn swap_with_context(ctx voidptr, path string) {
 }
 
 // What the doc comments of walk and walk_with_context say about a file that the callback
-// replaces by a folder before the walk reaches it: on Windows and Linux it is still reported as
-// the entry that its folder listed, and not entered; elsewhere it is looked at again and entered.
+// replaces by a folder before the walk reaches it: on Windows, and on Linux where the listing
+// says what an entry is, it is still reported as the entry that its folder listed, and not entered;
+// elsewhere it is looked at again and entered.
 fn test_walks_handle_a_file_that_became_a_folder_as_documented() {
 	root := in_troot('became_folder')
 	for with_context in [false, true] {
@@ -286,9 +287,16 @@ fn test_walks_handle_a_file_that_became_a_folder_as_documented() {
 			os.walk(root, s.add)
 		}
 		born := os.join_path_single(s.other, 'born.txt')
-		$if windows || linux {
+		$if windows {
 			assert s.paths.filter(it == s.other) == [s.other], 'with_context: ${with_context}'
 			assert born !in s.paths, 'with_context: ${with_context}'
+		} $else $if linux {
+			// Whether it is entered depends on whether the listing of this file system says what
+			// an entry is: walk_linux_test.c.v tells the two apart. It is reported once unless
+			// `walk` entered it, which reports no folder.
+			reported := s.paths.filter(it == s.other).len == 1
+			entered := born in s.paths
+			assert reported == (with_context || !entered), 'with_context: ${with_context}'
 		} $else {
 			assert born in s.paths, 'with_context: ${with_context}'
 		}
@@ -323,8 +331,9 @@ fn link_swap_with_context(ctx voidptr, path string) {
 }
 
 // What the doc comments of walk and walk_with_context say about an entry that was listed as a
-// link and that the callback replaces by a folder before the walk reaches it: on Windows and Linux
-// it is reported as the entry that its folder listed, and not entered; elsewhere it is looked at
+// link and that the callback replaces by a folder before the walk reaches it: on Windows, and
+// on Linux where the listing says what an entry is, it is reported as the entry that its folder
+// listed, and not entered; elsewhere it is looked at
 // again and entered. What is behind the links is never reported.
 fn test_walks_handle_a_link_that_became_a_folder_as_documented() {
 	root := in_troot('link_became_folder')
@@ -360,9 +369,16 @@ fn test_walks_handle_a_link_that_became_a_folder_as_documented() {
 		}
 		born := os.join_path_single(s.other, 'born.txt')
 		assert s.paths.filter(os.file_name(it) == 'behind.txt') == [], 'with_context: ${with_context}'
-		$if windows || linux {
+		$if windows {
 			assert s.paths.filter(it == s.other) == [s.other], 'with_context: ${with_context}'
 			assert born !in s.paths, 'with_context: ${with_context}'
+		} $else $if linux {
+			// Whether it is entered depends on whether the listing of this file system says what
+			// an entry is: walk_linux_test.c.v tells the two apart. It is reported once unless
+			// `walk` entered it, which reports no folder.
+			reported := s.paths.filter(it == s.other).len == 1
+			entered := born in s.paths
+			assert reported == (with_context || !entered), 'with_context: ${with_context}'
 		} $else {
 			assert born in s.paths, 'with_context: ${with_context}'
 		}

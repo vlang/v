@@ -24,6 +24,28 @@ fn entered_names(path string, typ u8) (bool, []string) {
 	return is_dir, names
 }
 
+// listing_says_kinds returns whether the file system of `folder` says what each entry of it is.
+// It reads the listing itself, so that it does not depend on what walk_enter makes of it.
+fn listing_says_kinds(folder string) bool {
+	listing := C.opendir(&char(folder.str))
+	assert !isnil(listing), folder
+	mut entries := 0
+	mut unknown := 0
+	for {
+		ent := C.readdir(listing)
+		if isnil(ent) {
+			break
+		}
+		entries++
+		if ent.d_type == 0 {
+			unknown++
+		}
+	}
+	C.closedir(listing)
+	assert entries >= 2, folder
+	return unknown == 0
+}
+
 const walk_test_type_file = u8(8)
 const walk_test_type_link = u8(10)
 
@@ -36,7 +58,7 @@ fn test_walk_enter_adds_the_entries_with_what_the_listing_says_they_are() {
 	is_dir, names := entered_names(folder, walk_type_dir)
 	assert is_dir
 	// A file system that does not say what an entry is gives 0 for each of them.
-	if names.all(it.ends_with(':0')) {
+	if !listing_says_kinds(folder) {
 		eprintln('> ${@FN}: the file system of ${folder} does not say what an entry is')
 		assert names == ['empty:0', 'file.txt:0', 'file_link:0', 'link:0', 'sub:0']
 		return
@@ -118,6 +140,10 @@ fn test_walk_enter_passes_over_a_directory_that_may_not_be_opened() {
 		chmod(sub, 0o700) or {}
 		rmdir_all(folder) or {}
 	}
+	if _ := ls(sub) {
+		eprintln('> skipping ${@FN}: the file system of ${folder} still lets ${sub} be listed')
+		return
+	}
 	for typ in [walk_type_dir, walk_type_unknown] {
 		is_dir, names := entered_names(sub, typ)
 		assert is_dir, 'listed as ${typ}'
@@ -162,6 +188,15 @@ fn test_walks_report_what_a_walk_that_looks_every_entry_up_reports() {
 	}
 	mkdir_all(join_path(folder, 'sub', 'deeper', 'deepest'))!
 	write_file(join_path(folder, 'sub', 'deeper', 'deepest', 'bottom.txt'), 'x')!
+	// Only the names `.` and `..` are left out of a listing: a name that starts with them is
+	// an entry like any other.
+	mkdir(join_path_single(folder, '.hidden_dir'))!
+	write_file(join_path(folder, '.hidden_dir', 'in_hidden.txt'), 'x')!
+	mkdir(join_path_single(folder, '..two_dots_dir'))!
+	write_file(join_path(folder, '..two_dots_dir', '.x'), 'x')!
+	write_file(join_path_single(folder, '.hidden'), 'x')!
+	write_file(join_path_single(folder, '..two_dots'), 'x')!
+	write_file(join_path_single(folder, '...'), 'x')!
 	mut by_name_files := []string{}
 	mut by_name_all := []string{}
 	mut stack := [folder]
@@ -193,6 +228,145 @@ fn test_walks_report_what_a_walk_that_looks_every_entry_up_reports() {
 	})
 	assert files == by_name_files
 	assert all == by_name_all
-	assert files.len == 5
-	assert all.len == 9
+	assert files.len == 10
+	assert all.len == 16
+	for name in ['.hidden', '..two_dots', '...', '.hidden_dir/in_hidden.txt', '..two_dots_dir/.x'] {
+		assert join_path_single(folder, name) in files, name
+	}
+	// Every separator at the end of the root is left out of the reported paths.
+	mut from_slashes := []string{}
+	mut from_slashes_ref := &from_slashes
+	walk(folder + '///', fn [mut from_slashes_ref] (path string) {
+		from_slashes_ref << path
+	})
+	assert from_slashes == files
+	mut all_from_slashes := []string{}
+	walk_with_context(folder + '///', &all_from_slashes, fn (ctx voidptr, path string) {
+		mut paths := unsafe { &[]string(ctx) }
+		paths << path
+	})
+	assert all_from_slashes == all
+}
+
+// A directory that can not be opened because the process has no file descriptor left is still
+// a directory: it is passed over like one that may not be opened, and not reported.
+fn test_walks_pass_over_what_they_have_no_descriptor_left_to_open() {
+	folder := walk_kinds_tree('walk_enter_no_descriptor')!
+	defer {
+		rmdir_all(folder) or {}
+	}
+	mut held := []File{}
+	for held.len < 100000 {
+		held << open('/dev/null') or { break }
+	}
+	mut files := []string{}
+	mut files_ref := &files
+	walk(folder, fn [mut files_ref] (path string) {
+		files_ref << path
+	})
+	mut all := []string{}
+	walk_with_context(folder, &all, fn (ctx voidptr, path string) {
+		mut paths := unsafe { &[]string(ctx) }
+		paths << path
+	})
+	mut added := []WalkListed{}
+	sub_is_dir := walk_enter(WalkListed{ path: join_path_single(folder, 'sub'), typ: walk_type_dir }, mut
+		added)
+	held_count := held.len
+	for mut f in held {
+		f.close()
+	}
+	if held_count == 100000 {
+		eprintln('> skipping ${@FN}: the process may open more than ${held_count} files')
+		return
+	}
+	assert files == []
+	assert all == []
+	assert sub_is_dir
+	assert added.len == 0
+	// With descriptors to spare again, the same walk lists the folder.
+	walk(folder, fn [mut files_ref] (path string) {
+		files_ref << path
+	})
+	assert files.len == 4
+}
+
+// WalkSwap is a walk callback that, at the first path it is given, replaces a file of `root`
+// by a folder of the same name with a file in it: the file it was given when `itself` is set,
+// else the other of `one.txt` and `two.txt`.
+struct WalkSwap {
+mut:
+	root   string
+	itself bool
+	target string
+	paths  []string
+}
+
+fn (mut s WalkSwap) add(path string) {
+	s.paths << path
+	if s.target != '' {
+		return
+	}
+	one := join_path_single(s.root, 'one.txt')
+	two := join_path_single(s.root, 'two.txt')
+	s.target = if s.itself {
+		path
+	} else if path == one {
+		two
+	} else {
+		one
+	}
+	rm(s.target) or { panic(err) }
+	mkdir(s.target) or { panic(err) }
+	write_file(join_path_single(s.target, 'born.txt'), 'x') or { panic(err) }
+}
+
+fn walk_swap_with_context(ctx voidptr, path string) {
+	mut s := unsafe { &WalkSwap(ctx) }
+	s.add(path)
+}
+
+// An entry that its folder listed as a file is reported once and not entered when it has
+// become a folder: both when the callback changed another entry that the walk had still to
+// reach, and when `walk_with_context` passed the callback the very entry that it changed.
+// Where the listing does not say what an entry is, the entry is looked up when the walk reaches
+// it, and entered.
+fn test_walks_do_not_enter_what_was_listed_as_a_file_and_became_a_folder() {
+	root := join_path(vtmp_dir(), 'walk_enter_swap_${getpid()}')
+	defer {
+		rmdir_all(root) or {}
+	}
+	for with_context in [false, true] {
+		for itself in [false, true] {
+			if itself && !with_context {
+				// `walk` is done with a file once it has passed it to the callback.
+				continue
+			}
+			rmdir_all(root) or {}
+			mkdir_all(root)!
+			write_file(join_path_single(root, 'one.txt'), '1')!
+			write_file(join_path_single(root, 'two.txt'), '2')!
+			says_kinds := listing_says_kinds(root)
+			mut s := &WalkSwap{
+				root:   root
+				itself: itself
+			}
+			if with_context {
+				walk_with_context(root, s, walk_swap_with_context)
+			} else {
+				walk(root, s.add)
+			}
+			born := join_path_single(s.target, 'born.txt')
+			what := 'with_context: ${with_context}, itself: ${itself}, says_kinds: ${says_kinds}'
+			if says_kinds {
+				assert s.paths.filter(it == s.target).len == 1, what
+				assert born !in s.paths, what
+				assert s.paths.len == 2, what
+			} else {
+				// `walk` reports no folder that it enters.
+				assert s.paths.filter(it == s.target).len == int(with_context), what
+				assert born in s.paths, what
+			}
+		}
+	}
 }

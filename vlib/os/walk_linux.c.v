@@ -35,6 +35,8 @@ fn walk_is_dir_by_name(path string) bool {
 // is listed is what was opened, also when the callback or another process replaces the
 // directory by a link before the walk reaches it: the open fails then, and the path is looked
 // up by name to tell what it has become.
+// The open is by path. A directory above `item` that is replaced by a link is followed, as it
+// is by a walk on every other system.
 fn walk_enter(item WalkListed, mut remaining []WalkListed) bool {
 	if item.typ == walk_type_unknown {
 		if !walk_is_dir_by_name(item.path) {
@@ -50,14 +52,14 @@ fn walk_enter(item WalkListed, mut remaining []WalkListed) bool {
 		// over from what is reported as an entry.
 		return walk_is_dir_by_name(item.path)
 	}
-	dir := C.fdopendir(fd)
-	if isnil(dir) {
+	listing := C.fdopendir(fd)
+	if isnil(listing) {
 		C.close(fd)
 		return true
 	}
 	first := remaining.len
 	for {
-		ent := C.readdir(dir)
+		ent := C.readdir(listing)
 		if isnil(ent) {
 			break
 		}
@@ -76,7 +78,7 @@ fn walk_enter(item WalkListed, mut remaining []WalkListed) bool {
 		}
 	}
 	// Closing the listing closes `fd` as well.
-	C.closedir(dir)
+	C.closedir(listing)
 	mut lo := first
 	mut hi := remaining.len - 1
 	for lo < hi {
@@ -114,7 +116,8 @@ fn walk_with_context_linux(path string, context voidptr, fcb FnWalkContextCB) {
 	walk_enter(root, mut remaining)
 	for remaining.len > 0 {
 		cur := remaining.pop()
-		// The callback comes first, so that the walk lists what the callback left.
+		// The callback comes first, so that the walk lists a directory as the callback left it.
+		// What was listed as no directory is not looked at again, whatever the callback made of it.
 		fcb(context, cur.path)
 		walk_enter(cur, mut remaining)
 	}
