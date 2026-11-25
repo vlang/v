@@ -151,8 +151,8 @@ fn main() {
 	assert !generated.contains('Array_fixed_math__'), generated
 }
 
-fn test_sizeof_fixed_array_typedef_precedes_function_pointer() {
-	root := fixed_array_write_project('sizeof_fn_ptr', 'module fixture
+fn test_sizeof_fixed_array_typedef_dependency_order() {
+	root := fixed_array_write_project('sizeof_order', 'module fixture
 
 pub type Callback = fn ([sizeof(int)]u8) int
 
@@ -166,61 +166,6 @@ pub fn call() int {
 	data[0] = 7
 	return callback(data)
 }
-', 'module main
-
-import fixture
-
-fn main() {
-	println(fixture.call())
-}
-')
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'out')
-	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '7', run.output
-}
-
-fn test_sizeof_pointer_fixed_array_typedef_precedes_function_pointer() {
-	root := fixed_array_write_project('sizeof_pointer_fn_ptr', 'module fixture
-', 'module main
-
-struct Payload {
-	value int
-}
-
-type IntPointerCallback = fn ([sizeof(&int)]u8) int
-type StructPointerCallback = fn ([sizeof(&Payload)]u8) int
-
-fn int_pointer_size(data [sizeof(&int)]u8) int {
-	return data.len
-}
-
-fn struct_pointer_size(data [sizeof(&Payload)]u8) int {
-	return data.len
-}
-
-fn main() {
-	int_callback := IntPointerCallback(int_pointer_size)
-	struct_callback := StructPointerCallback(struct_pointer_size)
-	int_data := [sizeof(&int)]u8{}
-	struct_data := [sizeof(&Payload)]u8{}
-	println(int_callback(int_data) + struct_callback(struct_data))
-}
-')
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'out')
-	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().int() > 0, run.output
-}
-
-fn test_sizeof_struct_fixed_array_typedef_is_emitted_when_target_is_defined() {
-	root := fixed_array_write_project('sizeof_struct', 'module fixture
 
 pub type Bytes = [sizeof(ZSize)]u8
 
@@ -242,7 +187,33 @@ pub fn score() int {
 
 import fixture
 
+struct Payload {
+	value int
+}
+
+type IntPointerCallback = fn ([sizeof(&int)]u8) int
+type StructPointerCallback = fn ([sizeof(&Payload)]u8) int
+
+fn int_pointer_size(data [sizeof(&int)]u8) int {
+	return data.len
+}
+
+fn struct_pointer_size(data [sizeof(&Payload)]u8) int {
+	return data.len
+}
+
+fn check_pointer_callbacks() {
+	int_callback := IntPointerCallback(int_pointer_size)
+	struct_callback := StructPointerCallback(struct_pointer_size)
+	int_data := [sizeof(&int)]u8{}
+	struct_data := [sizeof(&Payload)]u8{}
+	assert int_callback(int_data) == sizeof(&int)
+	assert struct_callback(struct_data) == sizeof(&Payload)
+}
+
 fn main() {
+	println(fixture.call())
+	check_pointer_callbacks()
 	println(fixture.score())
 }
 ')
@@ -252,7 +223,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '17', run.output
+	assert run.output.trim_space() == '7\n17', run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	size_pos := generated.index('struct fixture__ZSize {') or { -1 }
 	typedef_pos := generated.index('typedef u8 Array_fixed_u8_sizeof_fixture__ZSize') or { -1 }
