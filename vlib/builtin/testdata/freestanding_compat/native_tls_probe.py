@@ -14,6 +14,9 @@ import tempfile
 import threading
 import time
 
+from mapped_libraries import mapped_libraries, system_libc
+
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('binary', type=Path)
 args = parser.parse_args()
@@ -137,9 +140,9 @@ with tempfile.TemporaryDirectory(prefix='vlibc-native-libraries-') as temporary:
             output, _ = process.communicate(timeout=5)
             raise RuntimeError(ready + output)
         maps = Path(f'/proc/{process.pid}/maps').read_text()
-        for line in maps.splitlines():
-            if '/libc.so' in line or '/libpthread.so' in line:
-                raise AssertionError('native fixture loaded libc/pthread: ' + line)
+        libraries = mapped_libraries(process.pid)
+        if system_libc(libraries):
+            raise AssertionError(f'native fixture loaded a host runtime: {libraries}')
         assert 'libcurl-vlibc.so' in maps and 'libvlibc_mbedtls-vlibc.so' in maps, maps
         release.touch()
         output, _ = process.communicate(timeout=25)

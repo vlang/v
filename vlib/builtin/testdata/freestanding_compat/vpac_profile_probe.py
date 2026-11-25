@@ -9,6 +9,9 @@ import subprocess
 import tempfile
 import time
 
+from mapped_libraries import mapped_libraries, system_libc
+
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('binary', type=Path)
 parser.add_argument('--libc-free', action='store_true')
@@ -65,7 +68,7 @@ with tempfile.TemporaryDirectory(prefix='vlibc-vpac-app-') as temporary:
                     assert (proc / 'exe').samefile(binary)
                     maps = (proc / 'maps').read_text()
                     if args.libc_free:
-                        assert '/libc.so' not in maps and '/libpthread.so' not in maps, maps
+                        assert not system_libc(mapped_libraries(process.pid)), maps
                         for name in ('libcurl-vlibc.so', 'libarchive-vlibc.so', 'libgpgme-vlibc.so'):
                             assert name in maps, name
                     os.write(writer, source.encode())

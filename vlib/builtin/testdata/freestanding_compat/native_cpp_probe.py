@@ -8,6 +8,9 @@ import signal
 import subprocess
 import tempfile
 
+from mapped_libraries import mapped_libraries, system_libc
+
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('binary', type=Path)
 args = parser.parse_args()
@@ -30,9 +33,9 @@ with tempfile.TemporaryDirectory(prefix='vlibc-native-cpp-') as temporary:
             output, _ = process.communicate(timeout=5)
             raise RuntimeError(ready + output)
         maps = Path(f'/proc/{process.pid}/maps').read_text()
-        for line in maps.splitlines():
-            if '/libc.so' in line or '/libpthread.so' in line or '/libstdc++.so.6' in line:
-                raise AssertionError('native C++ fixture loaded a host runtime: ' + line)
+        libraries = mapped_libraries(process.pid)
+        if system_libc(libraries) or 'libstdc++.so.6' in libraries:
+            raise AssertionError(f'native fixture loaded a host runtime: {libraries}')
         for library in ['libstdc++-vlibc.so', 'libquadmath-vlibc.so', 'libgcc_s-vlibc.so', 'libm-vlibc.so']:
             assert library in maps, (library, maps)
         gate.touch()

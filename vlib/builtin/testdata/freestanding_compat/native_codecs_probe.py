@@ -8,6 +8,9 @@ import signal
 import subprocess
 import tempfile
 
+from mapped_libraries import mapped_libraries, system_libc
+
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('binary', type=Path)
 parser.add_argument('--hosted', action='store_true', help='run the same assertions against host libraries')
@@ -24,9 +27,9 @@ def read_line(process, timeout):
 
 def check_maps(process):
     maps = Path(f'/proc/{process.pid}/maps').read_text()
-    for line in maps.splitlines():
-        if any(name in line for name in ('/libc.so', '/libpthread.so', '/libstdc++.so.6')):
-            raise AssertionError('native media fixture loaded a host runtime: ' + line)
+    libraries = mapped_libraries(process.pid)
+    if system_libc(libraries) or 'libstdc++.so.6' in libraries:
+        raise AssertionError(f'native fixture loaded a host runtime: {libraries}')
     for library in ('avcodec', 'avformat', 'avfilter', 'avdevice', 'avutil',
                     'swscale', 'swresample', 'ass', 'harfbuzz', 'fribidi', 'asound', 'm'):
         assert 'lib' + library + '-vlibc.so' in maps, (library, maps)

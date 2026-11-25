@@ -8,8 +8,10 @@ import sys
 import tempfile
 import time
 
+from mapped_libraries import mapped_libraries, system_libc
 
-def mapped_libraries(pid, binary):
+
+def child_libraries(pid, binary):
     # x11_smoke launches Vast directly alongside short-lived X11 clients.
     children = Path(f'/proc/{pid}/task/{pid}/children')
     for child in children.read_text().split():
@@ -17,10 +19,9 @@ def mapped_libraries(pid, binary):
         try:
             if not (proc / 'exe').samefile(binary):
                 continue
-            lines = (proc / 'maps').read_text().splitlines()
+            return mapped_libraries(child)
         except (FileNotFoundError, ProcessLookupError):
             continue
-        return {Path(line.split(None, 5)[5]).name for line in lines if '/' in line}
     return set()
 
 
@@ -38,12 +39,11 @@ def check(binary, project, libc_free):
                 seen = False
                 deadline = time.monotonic() + 60
                 while test.poll() is None and time.monotonic() < deadline:
-                    libs = mapped_libraries(test.pid, binary)
-                    if libc_free and any(lib.startswith(('libc.so.', 'libpthread.so.'))
-                                         for lib in libs):
+                    libs = child_libraries(test.pid, binary)
+                    if libc_free and system_libc(libs):
                         raise RuntimeError(f'system libc loaded in Vast: {sorted(libs)}')
                     if all(any(lib.startswith(prefix) for lib in libs) for prefix in required):
-                        if libc_free or any(lib.startswith('libc.so.') for lib in libs):
+                        if libc_free or system_libc(libs):
                             seen = True
                     time.sleep(0.05)
                 status = test.wait(timeout=max(0, deadline - time.monotonic()))

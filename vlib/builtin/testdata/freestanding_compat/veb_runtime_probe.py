@@ -11,6 +11,9 @@ import subprocess
 import tempfile
 import time
 
+from mapped_libraries import mapped_libraries, system_libc
+
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('binary', type=Path)
 parser.add_argument('--libc-free', action='store_true')
@@ -39,8 +42,7 @@ with tempfile.TemporaryDirectory(prefix='veb-syscalls-') as temp:
                     if time.monotonic() >= deadline:
                         raise TimeoutError('server startup')
                     time.sleep(.05)
-            maps = Path(f'/proc/{process.pid}/maps').read_text()
-            if args.libc_free and any('/libc.so' in line or '/libpthread.so' in line for line in maps.splitlines()):
+            if args.libc_free and system_libc(mapped_libraries(process.pid)):
                 raise AssertionError('server loaded libc/pthread')
 
             def request(method, path, body=None, headers=None):

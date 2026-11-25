@@ -13,6 +13,9 @@ import tempfile
 import time
 import zlib
 
+from mapped_libraries import mapped_libraries, system_libc
+
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('binary', type=Path)
 parser.add_argument('--project', required=True, type=Path)
@@ -195,7 +198,7 @@ with tempfile.TemporaryDirectory(prefix='vendetta-runtime-') as temporary:
         assert audio['samplerate'] == 48000, audio
         maps = Path(f'/proc/{player.pid}/maps').read_text()
         if args.libc_free:
-            assert not any('/libc.so' in line or '/libpthread.so' in line for line in maps.splitlines()), maps
+            assert not system_libc(mapped_libraries(player.pid)), maps
             assert 'libmpv-vlibc.so' in maps, maps
         rss = int(next(line.split()[1] for line in Path(f'/proc/{player.pid}/status').read_text().splitlines() if line.startswith('VmRSS:')))
         # Sokol's X11 window does not publish _NET_WM_PID. This private display
