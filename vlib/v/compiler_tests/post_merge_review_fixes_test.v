@@ -10,10 +10,12 @@ const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 const review_workspace = os.join_path(os.vtmp_dir(), 'v3_post_merge_review_${os.getpid()}')
+const review_shared_compiler = find_review_shared_compiler()
 
 fn testsuite_begin() {
 	os.rmdir_all(review_workspace) or {}
 	os.mkdir_all(review_workspace) or { panic(err) }
+	os.setenv('V3CACHE', tmp_test_path('post_merge_review_fixes_cache'), true)
 }
 
 fn testsuite_end() {
@@ -24,18 +26,19 @@ fn tmp_test_path(name string) string {
 	return os.join_path(review_workspace, 'v3_${name}_${os.getpid()}')
 }
 
-fn setup_v3_cache() {
-	cache_dir := tmp_test_path('post_merge_review_fixes_cache')
-	if os.getenv('V3CACHE') == cache_dir {
-		return
+fn find_review_shared_compiler() string {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	if os.getenv('VFLAGS') == '' && os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		return os.real_path(shared)
 	}
-	os.rmdir_all(cache_dir) or {}
-	os.rm(tmp_test_path('post_merge_review_fixes_test') + $if windows { '.exe' } $else { '' }) or {}
-	os.setenv('V3CACHE', cache_dir, true)
+	return ''
 }
 
 fn build_v3() string {
-	setup_v3_cache()
+	if review_shared_compiler != '' {
+		return review_shared_compiler
+	}
 	v3_bin := tmp_test_path('post_merge_review_fixes_test') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
