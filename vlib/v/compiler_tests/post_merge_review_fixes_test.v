@@ -5612,7 +5612,8 @@ fn main() {
 }
 ')
 	assert typeof_out == 'int\nstring\nstring\nunknown Value\n&Value\nValue\n0'
-	promoted_out := run_good(v3_bin, 'promoted_embed_struct_init', 'struct Inner {
+	run_good_module_batch(v3_bin, 'promoted_initializers', [
+		ReviewRuntimeCase{'promoted_embed_struct_init', 'struct Inner {
 	count int = 3
 	items []int
 	value int
@@ -5636,9 +5637,8 @@ fn main() {
 	println(int_str(heap.value))
 	println(int_str(heap.items.len))
 }
-')
-	assert promoted_out == '3\n7\n0\n3\n8\n0'
-	promoted_declared_default_out := run_good(v3_bin, 'promoted_embed_declared_struct_default', 'struct DefaultInner {
+', '3\n7\n0\n3\n8\n0'},
+		ReviewRuntimeCase{'promoted_embed_declared_struct_default', 'struct DefaultInner {
 	a int
 	b int
 }
@@ -5690,22 +5690,8 @@ fn main() {
 	println(int_str(nested_heap.x))
 	println(int_str(nested_heap.y))
 }
-')
-	assert promoted_declared_default_out == '3\n7\n3\n8\n9\n2\n10\n2'
-	promoted_cross_module_default_out := run_good_project(v3_bin, 'promoted_cross_module_struct_default', {
-		'v.mod':            "Module { name: 'promoted_cross_module_struct_default' }\n"
-		'defaults/types.v': 'module defaults\n\npub const default_a = 3\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = Inner{\n\t\ta: default_a\n\t\tb: 4\n\t}\n}\n'
-		'main.v':           'module main\n\nimport defaults\n\nconst default_a = 99\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
-	}, 'main.v')
-	assert promoted_cross_module_default_out == '3\n7'
-	promoted_import_alias_call_default_out := run_good_project(v3_bin, 'promoted_import_alias_call_default', {
-		'v.mod':             "Module { name: 'promoted_import_alias_call_default' }\n"
-		'helpers/helpers.v': 'module helpers\n\npub fn default_a() int {\n\treturn 3\n}\n'
-		'defaults/types.v':  'module defaults\n\nimport helpers as h\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = make_inner(h.default_a())\n}\n\nfn make_inner(a int) Inner {\n\treturn Inner{\n\t\ta: a\n\t\tb: 4\n\t}\n}\n'
-		'main.v':            'module main\n\nimport defaults\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
-	}, 'main.v')
-	assert promoted_import_alias_call_default_out == '3\n7'
-	promoted_value_prelude_out := run_good(v3_bin, 'promoted_default_value_prelude', 'struct PromotedArrayInner {
+', '3\n7\n3\n8\n9\n2\n10\n2'},
+		ReviewRuntimeCase{'promoted_default_value_prelude', 'struct PromotedArrayInner {
 	promoted_values []int
 }
 
@@ -5726,9 +5712,8 @@ fn main() {
 	println(int_str(value.PromotedArrayInner.promoted_values.len))
 	println(int_str(value.PromotedArrayInner.promoted_values[0]))
 }
-')
-	assert promoted_value_prelude_out == '2\n2'
-	promoted_positional_default_out := run_good(v3_bin, 'promoted_embed_positional_default', 'struct PositionalInner {
+', '2\n2'},
+		ReviewRuntimeCase{'promoted_embed_positional_default', 'struct PositionalInner {
 	a int
 	b int
 }
@@ -5749,8 +5734,101 @@ fn main() {
 	println(int_str(heap.a))
 	println(int_str(heap.b))
 }
-')
-	assert promoted_positional_default_out == '7\n4\n8\n4'
+', '7\n4\n8\n4'},
+		ReviewRuntimeCase{'promoted_fixed_array_struct_init', 'struct FixedInner {
+	values [2]int
+}
+
+struct FixedOuter {
+	FixedInner
+}
+
+fn main() {
+	values := [1, 2]!
+	value := FixedOuter{
+		values: values
+	}
+	heap := &FixedOuter{
+		values: [3, 4]!
+	}
+	println(int_str(value.FixedInner.values[0] + value.FixedInner.values[1]))
+	println(int_str(heap.FixedInner.values[0] + heap.FixedInner.values[1]))
+}
+', '3\n7'},
+		ReviewRuntimeCase{'promoted_pointer_embed_struct_init', 'struct PointerInner {
+	count int = 4
+	items []int
+	value int
+}
+
+type PointerInnerRef = &PointerInner
+
+struct PointerOuter {
+	PointerInnerRef
+}
+
+fn main() {
+	value := PointerOuter{
+		value: 9
+	}
+	heap := &PointerOuter{
+		value: 10
+	}
+	println(int_str(value.PointerInnerRef.count))
+	println(int_str(value.PointerInnerRef.value))
+	println(int_str(value.PointerInnerRef.items.len))
+	println(int_str(heap.PointerInnerRef.count))
+	println(int_str(heap.PointerInnerRef.value))
+	println(int_str(heap.PointerInnerRef.items.len))
+}
+', '4\n9\n0\n4\n10\n0'},
+		ReviewRuntimeCase{'promoted_pointer_embed_call_default_escape', 'struct EscapingPointerInner {
+	a int
+	b int
+}
+
+type EscapingPointerInnerRef = &EscapingPointerInner
+
+struct EscapingPointerOuter {
+	EscapingPointerInnerRef = make_escaping_pointer_inner()
+}
+
+fn make_escaping_pointer_inner() EscapingPointerInnerRef {
+	return &EscapingPointerInner{
+		a: 5
+		b: 6
+	}
+}
+
+fn make_escaping_pointer_outer(b int) EscapingPointerOuter {
+	return EscapingPointerOuter{
+		b: b
+	}
+}
+
+fn main() {
+	first := make_escaping_pointer_outer(7)
+	second := make_escaping_pointer_outer(8)
+	println(int_str(first.EscapingPointerInnerRef.a))
+	println(int_str(first.EscapingPointerInnerRef.b))
+	println(int_str(second.EscapingPointerInnerRef.a))
+	println(int_str(second.EscapingPointerInnerRef.b))
+}
+', '5\n7\n5\n8'},
+	])
+	promoted_cross_module_default_out := run_good_project(v3_bin, 'promoted_cross_module_struct_default', {
+		'v.mod':            "Module { name: 'promoted_cross_module_struct_default' }\n"
+		'defaults/types.v': 'module defaults\n\npub const default_a = 3\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = Inner{\n\t\ta: default_a\n\t\tb: 4\n\t}\n}\n'
+		'main.v':           'module main\n\nimport defaults\n\nconst default_a = 99\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
+	}, 'main.v')
+	assert promoted_cross_module_default_out == '3\n7'
+	promoted_import_alias_call_default_out := run_good_project(v3_bin, 'promoted_import_alias_call_default', {
+		'v.mod':             "Module { name: 'promoted_import_alias_call_default' }\n"
+		'helpers/helpers.v': 'module helpers\n\npub fn default_a() int {\n\treturn 3\n}\n'
+		'defaults/types.v':  'module defaults\n\nimport helpers as h\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = make_inner(h.default_a())\n}\n\nfn make_inner(a int) Inner {\n\treturn Inner{\n\t\ta: a\n\t\tb: 4\n\t}\n}\n'
+		'main.v':            'module main\n\nimport defaults\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
+	}, 'main.v')
+	assert promoted_import_alias_call_default_out == '3\n7'
 	promoted_call_default_out := run_good_with_flags(v3_bin, 'promoted_embed_call_default', '-enable-globals', '__global calls int
 
 struct CallInner {
@@ -5785,95 +5863,12 @@ fn main() {
 }
 ')
 	assert promoted_call_default_out == '5\n7\n5\n8\n2'
-	fixed_promoted_out := run_good(v3_bin, 'promoted_fixed_array_struct_init', 'struct FixedInner {
-	values [2]int
-}
-
-struct FixedOuter {
-	FixedInner
-}
-
-fn main() {
-	values := [1, 2]!
-	value := FixedOuter{
-		values: values
-	}
-	heap := &FixedOuter{
-		values: [3, 4]!
-	}
-	println(int_str(value.FixedInner.values[0] + value.FixedInner.values[1]))
-	println(int_str(heap.FixedInner.values[0] + heap.FixedInner.values[1]))
-}
-')
-	assert fixed_promoted_out == '3\n7'
 	fixed_c_struct_eq_out := run_good_project(v3_bin, 'fixed_array_c_struct_equality', {
 		'v.mod':  "Module { name: 'fixed_array_c_struct_equality' }\n"
 		'shim.h': 'struct v3_lowercase_tag { int value; };\n'
 		'main.v': 'module main\n\n#include "shim.h"\n\nfn main() {\n\tleft := [2]C.v3_lowercase_tag{}\n\tright := [2]C.v3_lowercase_tag{}\n\tprintln(left == right)\n}\n'
 	}, 'main.v')
 	assert fixed_c_struct_eq_out == 'true'
-	pointer_promoted_out := run_good(v3_bin, 'promoted_pointer_embed_struct_init', 'struct PointerInner {
-	count int = 4
-	items []int
-	value int
-}
-
-type PointerInnerRef = &PointerInner
-
-struct PointerOuter {
-	PointerInnerRef
-}
-
-fn main() {
-	value := PointerOuter{
-		value: 9
-	}
-	heap := &PointerOuter{
-		value: 10
-	}
-	println(int_str(value.PointerInnerRef.count))
-	println(int_str(value.PointerInnerRef.value))
-	println(int_str(value.PointerInnerRef.items.len))
-	println(int_str(heap.PointerInnerRef.count))
-	println(int_str(heap.PointerInnerRef.value))
-	println(int_str(heap.PointerInnerRef.items.len))
-}
-')
-	assert pointer_promoted_out == '4\n9\n0\n4\n10\n0'
-	pointer_promoted_default_out := run_good(v3_bin, 'promoted_pointer_embed_call_default_escape', 'struct EscapingPointerInner {
-	a int
-	b int
-}
-
-type EscapingPointerInnerRef = &EscapingPointerInner
-
-struct EscapingPointerOuter {
-	EscapingPointerInnerRef = make_escaping_pointer_inner()
-}
-
-fn make_escaping_pointer_inner() EscapingPointerInnerRef {
-	return &EscapingPointerInner{
-		a: 5
-		b: 6
-	}
-}
-
-fn make_escaping_pointer_outer(b int) EscapingPointerOuter {
-	return EscapingPointerOuter{
-		b: b
-	}
-}
-
-fn main() {
-	first := make_escaping_pointer_outer(7)
-	second := make_escaping_pointer_outer(8)
-	println(int_str(first.EscapingPointerInnerRef.a))
-	println(int_str(first.EscapingPointerInnerRef.b))
-	println(int_str(second.EscapingPointerInnerRef.a))
-	println(int_str(second.EscapingPointerInnerRef.b))
-}
-')
-	assert pointer_promoted_default_out == '5\n7\n5\n8'
 	alias_typeof_out := run_good(v3_bin, 'runtime_sum_pointer_alias_typeof', 'type AliasValue = int | string
 type AliasValueRef = &AliasValue
 
