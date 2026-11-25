@@ -8236,7 +8236,10 @@ body { color: red; }
 
 fn test_recursive_str_bound_method_value_preserves_receiver_provenance() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_bound_method_value', 'struct Item {}
+	run_bad_module_batch(v3_bin, 'str_bound_method_rejections', [
+		ReviewRejection{
+			name:     'recursive_str_bound_method_value'
+			source:   'struct Item {}
 
 fn (item Item) str() string {
 	recurse := item.str
@@ -8244,8 +8247,12 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_indexed_bound_method_value', 'struct Item {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_indexed_bound_method_value'
+			source:   'struct Item {}
 
 fn (item Item) str() string {
 	recurse := item.str
@@ -8254,8 +8261,12 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_interface_bound_method_value', 'interface Printable {
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_interface_bound_method_value'
+			source:   'interface Printable {
 	str() string
 }
 
@@ -8268,8 +8279,12 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_function_field_bound_method_value', 'struct Holder {
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_function_field_bound_method_value'
+			source:   'struct Holder {
 	cb fn () string
 }
 
@@ -8283,7 +8298,10 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+	])
 }
 
 fn test_recursive_str_helper_summary_keeps_later_rebind() {
@@ -9542,7 +9560,10 @@ fn main() {
 
 fn test_recursive_str_detects_implicit_print_formatting() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_print_receiver', 'struct Item {}
+	run_bad_module_batch(v3_bin, 'str_print_rejections', [
+		ReviewRejection{
+			name:     'recursive_str_print_receiver'
+			source:   'struct Item {}
 
 fn (item Item) str() string {
 	println(item)
@@ -9550,8 +9571,12 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_print_aggregate_receiver', 'struct Item {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_print_aggregate_receiver'
+			source:   'struct Item {}
 
 fn (item Item) str() string {
 	eprintln([item])
@@ -9559,7 +9584,10 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+	])
 	out := run_good(v3_bin, 'recursive_str_print_progressed_receiver', 'struct Item {
 mut:
 	remaining int
@@ -9631,30 +9659,44 @@ fn main() {}
 
 fn test_recursive_str_detects_string_interpolation_formatting() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_interpolated_receiver', 'struct Item {}
+	run_bad_module_batch(v3_bin, 'str_interpolation_rejections', [
+		ReviewRejection{
+			name:     'recursive_str_interpolated_receiver'
+			source:   'struct Item {}
 
 fn (item Item) str() string {
 	return "\${item}"
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_interpolated_aggregate_receiver', 'struct Item {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_interpolated_aggregate_receiver'
+			source:   'struct Item {}
 
 fn (item Item) str() string {
 	return "\${[item]}"
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_formatted_receiver', 'struct Item {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_formatted_receiver'
+			source:   'struct Item {}
 
 fn (item Item) str() string {
 	return "\${item:10}"
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+	])
 	out := run_good(v3_bin, 'recursive_str_interpolated_progressed_receiver', 'struct Item {
 mut:
 	remaining int
@@ -9680,7 +9722,10 @@ fn main() {
 
 fn test_recursive_str_detects_explicit_aggregate_stringification() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_explicit_array_str', 'struct Item {}
+	run_bad_module_batch(v3_bin, 'str_aggregate_rejections', [
+		ReviewRejection{
+			name:     'recursive_str_explicit_array_str'
+			source:   'struct Item {}
 
 fn (item Item) str() string {
 	values := [item]
@@ -9688,8 +9733,12 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_explicit_map_str', 'struct Item {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_explicit_map_str'
+			source:   'struct Item {}
 
 fn (item Item) str() string {
 	values := {
@@ -9699,7 +9748,10 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+	])
 	out := run_good(v3_bin, 'recursive_str_explicit_array_str_progress', 'struct Item {
 mut:
 	remaining int
@@ -9771,7 +9823,10 @@ fn main() {
 }
 ')
 	assert helper_out == '[]'
-	run_bad(v3_bin, 'recursive_str_nonzero_repeated_array', 'struct Item {}
+	run_bad_module_batch(v3_bin, 'str_repeated_array_rejections', [
+		ReviewRejection{
+			name:     'recursive_str_nonzero_repeated_array'
+			source:   'struct Item {}
 
 fn (item Item) str() string {
 	values := []Item{len: 1, init: item}
@@ -9779,8 +9834,12 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_helper_nonzero_repeated_array', 'struct Item {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_helper_nonzero_repeated_array'
+			source:   'struct Item {}
 
 fn repeat(item Item) []Item {
 	return []Item{len: 1, init: item}
@@ -9791,7 +9850,10 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-', 'cannot call `str()` method recursively')
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+	])
 }
 
 fn test_recursive_str_tracks_for_in_values_and_array_slices() {
