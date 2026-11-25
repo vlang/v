@@ -89,7 +89,8 @@ The macOS arm64 runtime retains libSystem and its existing clock implementation.
 
 Bare builds default to manual memory management. On native Linux amd64 and arm64 C builds,
 `-syscalls -gc boehm` selects Boehm for V allocations, including on spawned V threads.
-With `-no-system-libc`, the collector and C dependencies use the replacement C ABI.
+With `-no-system-libc`, the collector and C dependencies use the replacement C ABI. Standalone
+applications share environment changes between the V `os` module and C environment functions.
 In both modes, release C allocations with the allocator that supplied them.
 
 The bare libc adapters share one dlmalloc heap. Initialization and heap mutations
@@ -219,6 +220,9 @@ Native dependencies under `~/.vmodules/vlibc/linux-<arch>-shared` are discovered
 its pkg-config metadata, apply to executables using `-freestanding` or `-no-system-libc`.
 Builds using system libc and embedded libraries/objects keep their usual search paths. Prefixes are
 not automatically reused for cross targets; an explicit prefix must match that target.
+The X11 and vpac installers build each new release in a private store directory and publish it
+with one symlink replacement after validation. Previously published directories stay available
+to applications using their resolved paths.
 The optional builder below can install the X11/font stack once, after which ordinary
 `v -shim-libc . -o app` commands need no additional dependency flags.
 
@@ -232,7 +236,8 @@ The os module takes the syscall routes under `$if freestanding || syscalls` and 
 paths under `$if !freestanding && !syscalls`. On Linux amd64/arm64 and macOS amd64 C targets,
 `os.exec` captures merged stdout/stderr using the syscall process runtime and inherits stdin.
 Arguments and `argv[0]` are passed literally; a missing `PATH` uses `/bin:/usr/bin` for lookup
-without changing the child's environment. `os.execute` retains its `/bin/sh -c` semantics.
+without changing the child's environment. Lookup continues to the next directory if the kernel
+cannot find an earlier candidate's interpreter. `os.execute` retains its `/bin/sh -c` semantics.
 Capture drains output before waiting, reports execution failures with status -1, and returns
 the signal number for a signaled child, matching hosted capture. `File.reopen` remains unsupported
 in these builds.
@@ -297,6 +302,11 @@ The runtime provides buffered `fopen`/`fdopen`, `fclose`, `fread`/`fwrite`,
 `fflush(NULL)` flushes open output streams without holding the stream registry lock while
 waiting for a stream lock. Buffered output is flushed after normal return and by `exit`.
 Raw kernel exit calls bypass this cleanup.
+
+Native objects compiled against optimized glibc headers can use `getc_unlocked`,
+`putc_unlocked`, `feof_unlocked`, and `ferror_unlocked` on these streams. Their inline
+accesses share the flags and buffering used by the out-of-line functions. Wide streams keep
+the character encoding selected when they first become wide-oriented.
 
 C process adapters supply `setsid`, `dup2`, `execve`, and architecture-specific `vfork`.
 The `wait`, `waitpid`, `wait3`, `wait4` and `waitid` family uses Linux wait syscalls, preserving

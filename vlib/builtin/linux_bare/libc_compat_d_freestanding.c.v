@@ -6,7 +6,7 @@ $if linux && (amd64 || arm64) {
 	// A library/object uses its host's FILE and pthread ABIs.
 	$if !v_bare_no_startup ? {
 		#flag @DIR/libc_sort.c
-		// Hosted stdio inline bodies access libc's private FILE storage.
+		// These translation units provide the out-of-line stdio definitions.
 		#flag -D__NO_INLINE__=1
 		#flag -D_GNU_SOURCE=1
 		#flag @DIR/libc_descriptors.c
