@@ -3652,6 +3652,28 @@ fn (g &FlatGen) resolve_concrete_generic_method_name(type_name_id u32, method st
 	return none
 }
 
+// A generic receiver emitted for a qualified argument retains the argument's
+// module in its specialized method name.
+fn (g &FlatGen) resolve_qualified_generic_method_name(type_name_id u32, method string) ?string {
+	base_id, args, ok := g.shared_generic_app_parts(type_name_id)
+	if !ok || args.len == 0 || !args.any(flat.source_type_shape(it).has(.dotted)) {
+		return none
+	}
+	base := flat.source_type_name(base_id)
+	parts := args.map(generic_receiver_type_arg_fragment(flat.source_type_name(it), true).replace('.', '__'))
+	for suffix in [parts.join('__'), parts.join('_')] {
+		candidate := '${base}_${suffix}.${method}'
+		if candidate in g.tc.fn_param_types || candidate in g.tc.fn_ret_types {
+			return candidate
+		}
+		lowered := g.cname(candidate)
+		if lowered in g.tc.fn_param_types || lowered in g.tc.fn_ret_types {
+			return lowered
+		}
+	}
+	return none
+}
+
 fn generic_receiver_type_suffixes(args []u32) string {
 	variants := generic_receiver_type_suffix_variants(args)
 	if variants.len > 0 {
@@ -3677,28 +3699,32 @@ fn generic_receiver_type_suffix_variants(args []u32) []string {
 }
 
 fn generic_receiver_type_arg_short(type_arg string) string {
+	return generic_receiver_type_arg_fragment(type_arg, false)
+}
+
+fn generic_receiver_type_arg_fragment(type_arg string, qualified bool) string {
 	clean := trimmed_space(type_arg)
 	if clean.starts_with('[]') {
-		return 'Array_${generic_receiver_type_arg_short(clean[2..])}'
+		return 'Array_${generic_receiver_type_arg_fragment(clean[2..], qualified)}'
 	}
 	if clean.starts_with('&') {
-		return 'ptr_${generic_receiver_type_arg_short(clean[1..])}'
+		return 'ptr_${generic_receiver_type_arg_fragment(clean[1..], qualified)}'
 	}
 	if clean.starts_with('map[') {
 		bracket_end := shared_generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len - 1 {
-			key := generic_receiver_type_arg_short(clean[4..bracket_end])
-			value := generic_receiver_type_arg_short(clean[bracket_end + 1..])
+			key := generic_receiver_type_arg_fragment(clean[4..bracket_end], qualified)
+			value := generic_receiver_type_arg_fragment(clean[bracket_end + 1..], qualified)
 			return 'Map_${key}_${value}'
 		}
 	}
 	if clean.starts_with('?') {
-		return 'Option_${generic_receiver_type_arg_short(clean[1..])}'
+		return 'Option_${generic_receiver_type_arg_fragment(clean[1..], qualified)}'
 	}
 	if clean.starts_with('!') {
-		return 'Result_${generic_receiver_type_arg_short(clean[1..])}'
+		return 'Result_${generic_receiver_type_arg_fragment(clean[1..], qualified)}'
 	}
-	if fixed := generic_receiver_fixed_array_type_arg_short(clean) {
+	if fixed := generic_receiver_fixed_array_type_arg_fragment(clean, qualified) {
 		return fixed
 	}
 	if clean.contains('(') || clean.contains(' ') {
@@ -3706,19 +3732,19 @@ fn generic_receiver_type_arg_short(type_arg string) string {
 	}
 	base, args, ok := parse_shared_generic_app_parts(clean)
 	if ok {
-		mut parts := [generic_receiver_type_arg_short(base)]
+		mut parts := [generic_receiver_type_arg_fragment(base, qualified)]
 		for arg in args {
-			parts << generic_receiver_type_arg_short(arg)
+			parts << generic_receiver_type_arg_fragment(arg, qualified)
 		}
 		return parts.join('_')
 	}
-	if clean.contains('.') {
+	if !qualified && clean.contains('.') {
 		return clean.all_after_last('.')
 	}
 	return clean
 }
 
-fn generic_receiver_fixed_array_type_arg_short(type_arg string) ?string {
+fn generic_receiver_fixed_array_type_arg_fragment(type_arg string, qualified bool) ?string {
 	clean := trimmed_space(type_arg)
 	if !clean.starts_with('[') {
 		return none
@@ -3732,7 +3758,7 @@ fn generic_receiver_fixed_array_type_arg_short(type_arg string) ?string {
 	if len_text.len == 0 || elem_text.len == 0 {
 		return none
 	}
-	elem := generic_receiver_type_arg_short(elem_text)
+	elem := generic_receiver_type_arg_fragment(elem_text, qualified)
 	return '${elem}_${len_text}'
 }
 

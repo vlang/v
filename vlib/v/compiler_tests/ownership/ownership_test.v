@@ -4005,3 +4005,55 @@ fn test_ownership_and_autofree_build_every_program_shape() {
 		assert freed.exit_code == 0, '${name} under -autofree:\n${freed.output}'
 	}
 }
+
+fn test_ownership_drops_generic_with_qualified_argument_in_option() {
+	v3_bin := ownership_build_v3()
+	name := 'qualified_generic_option_drop'
+	result := run_ownership_check_with_module(v3_bin, name, r'
+import owner
+
+type Filter = owner.Slot[&owner.Label, bool]
+
+struct Holder {
+	filter ?Filter
+}
+
+fn create(released chan bool) Holder {
+	return Holder{filter: owner.new_slot[&owner.Label, bool](released)}
+}
+
+fn main() {
+	released := chan bool{cap: 2}
+	{
+		holder := create(released)
+		assert holder.filter != none
+	}
+	mut was_released := false
+	assert released.try_pop(mut was_released) == .success
+	assert was_released
+	assert released.try_pop(mut was_released) == .not_ready
+}
+', 'owner', r'
+module owner
+
+pub struct Label {}
+
+pub struct Slot[A, R] implements Drop {
+	released chan bool
+}
+
+pub fn new_slot[A, R](released chan bool) Slot[A, R] {
+	return Slot[A, R]{
+		released: released
+	}
+}
+
+pub fn (mut slot Slot[A, R]) drop() {
+	slot.released <- true
+}
+')
+	assert result.exit_code == 0, result.output
+	binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+}
