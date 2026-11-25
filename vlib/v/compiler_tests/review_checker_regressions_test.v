@@ -49,15 +49,15 @@ fn write_review_batch(name string, cases []ReviewFixture, runnable bool) string 
 	for case in cases {
 		dir := os.join_path(root, case.name)
 		os.mkdir_all(dir) or { panic(err) }
-		source := if runnable {
+		mut source := 'module ${case.name}\n\n' + case.source
+		if runnable {
 			imports << 'import ${case.name}'
 			calls << "\t\t'${case.name}' { ${case.name}.exercise() }"
-			case.source.replace_once('\nfn main()', '\npub fn exercise()')
+			source = source.replace_once('\nfn main()', '\npub fn exercise()')
 		} else {
 			imports << 'import ${case.name} as _'
-			case.source
 		}
-		os.write_file(os.join_path(dir, '${case.name}.v'), 'module ${case.name}\n\n' + source) or {
+		os.write_file(os.join_path(dir, '${case.name}.v'), source) or {
 			panic(err)
 		}
 	}
@@ -902,12 +902,10 @@ fn test_cross_wrapper_option_result_returns_match_v1() {
 		ReviewFixture{'bad_error_branch_in_option_return', "fn make_option(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
 		ReviewFixture{'bad_constant_error_branch_in_option_return', "fn make_option() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
 	])
-	constant_result_out := run_good(v3_bin, 'good_constant_error_branch_in_result_return',
-		"fn make_result() !int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := make_result() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
-	assert constant_result_out == 'bad'
-	out := run_good(v3_bin, 'good_error_branch_in_result_return',
-		"fn make_result(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(make_result(false) or { -1 }))\n\tprintln(int_str(make_result(true) or { -1 }))\n}\n")
-	assert out == '1\n-1'
+	check_review_runtime('result_return_runtime', [
+		ReviewFixture{'good_constant_error_branch_in_result_return', "fn make_result() !int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := make_result() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", 'bad'},
+		ReviewFixture{'good_error_branch_in_result_return', "fn make_result(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(make_result(false) or { -1 }))\n\tprintln(int_str(make_result(true) or { -1 }))\n}\n", '1\n-1'},
+	])
 }
 
 fn test_option_void_is_not_compatible_with_payload_options() {
@@ -1050,12 +1048,10 @@ fn test_multi_return_tail_slots_use_return_compatibility() {
 }
 
 fn test_none_ierror_values_lower_to_builtin_none() {
-	ierror_out := run_good(v3_bin, 'good_none_ierror_contexts',
-		'struct Holder {\n\terr IError = none\n}\n\nfn take(e IError) int {\n\tif e is none {\n\t\treturn 1\n\t}\n\treturn 0\n}\n\nfn make() IError {\n\treturn none\n}\n\nfn main() {\n\tdefault := Holder{}\n\texplicit := Holder{\n\t\terr: none\n\t}\n\tprintln(int_str(take(none) + take(default.err) + take(explicit.err) + take(make())))\n}\n')
-	assert ierror_out == '4'
-	out := run_good(v3_bin, 'good_none_option_context',
-		'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\tif maybe() == none {\n\t\tprintln("option")\n\t}\n}\n')
-	assert out == 'option'
+	check_review_runtime('none_runtime', [
+		ReviewFixture{'good_none_ierror_contexts', 'struct Holder {\n\terr IError = none\n}\n\nfn take(e IError) int {\n\tif e is none {\n\t\treturn 1\n\t}\n\treturn 0\n}\n\nfn make() IError {\n\treturn none\n}\n\nfn main() {\n\tdefault := Holder{}\n\texplicit := Holder{\n\t\terr: none\n\t}\n\tprintln(int_str(take(none) + take(default.err) + take(explicit.err) + take(make())))\n}\n', '4'},
+		ReviewFixture{'good_none_option_context', 'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\tif maybe() == none {\n\t\tprintln("option")\n\t}\n}\n', 'option'},
+	])
 }
 
 fn test_reject_non_optional_or_and_wrapped_string_concat() {
@@ -1082,12 +1078,10 @@ fn test_numeric_alias_returns_preserve_integer_float_direction() {
 		ReviewFixture{'bad_int_alias_float_variable_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_variable_return.Id` in return argument'},
 		ReviewFixture{'bad_int_alias_float_expression_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x + 1.0\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_expression_return.Id` in return argument'},
 	])
-	out := run_good(v3_bin, 'good_float_alias_int_return',
-		'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n')
-	assert out == '1.0'
-	explicit_out := run_good(v3_bin, 'good_explicit_float_to_int_alias_return',
-		'type Id = int\n\nfn f(x f64) Id {\n\treturn Id(x)\n}\n\nfn main() {\n\tprintln(int_str(f(1.5)))\n}\n')
-	assert explicit_out == '1'
+	check_review_runtime('numeric_alias_return_runtime', [
+		ReviewFixture{'good_float_alias_int_return', 'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n', '1.0'},
+		ReviewFixture{'good_explicit_float_to_int_alias_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn Id(x)\n}\n\nfn main() {\n\tprintln(int_str(f(1.5)))\n}\n', '1'},
+	])
 }
 
 fn test_fn_value_integer_returns_require_matching_c_abi() {
@@ -1277,21 +1271,17 @@ fn test_comptime_match_shadowed_const_subject_is_not_folded() {
 	run_bad(v3_bin, 'bad_comptime_match_mutable_local_shadows_const',
 		"const mode = 'a'\n\nfn main() {\n\tmut mode := 'b'\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n",
 		'`mode` is mut and may have changed since its definition')
-	out := run_good(v3_bin, 'good_comptime_match_known_local',
-		"fn main() {\n\tmode := 'b'\n\t\$match mode {\n\t\t'b' { println('ok') }\n\t\t\$else { println('bad') }\n\t}\n}\n")
-	assert out == 'ok'
-	type_out := run_good(v3_bin, 'good_comptime_match_generic_parameter_type',
-		"fn classify[T](value T) string {\n\t\$match value {\n\t\tint { return 'int' }\n\t\t\$else { return 'other' }\n\t}\n}\n\nfn main() {\n\tprintln(classify(1))\n}\n")
-	assert type_out == 'int'
+	check_review_runtime('comptime_match_runtime', [
+		ReviewFixture{'good_comptime_match_known_local', "fn main() {\n\tmode := 'b'\n\t\$match mode {\n\t\t'b' { println('ok') }\n\t\t\$else { println('bad') }\n\t}\n}\n", 'ok'},
+		ReviewFixture{'good_comptime_match_generic_parameter_type', "fn classify[T](value T) string {\n\t\$match value {\n\t\tint { return 'int' }\n\t\t\$else { return 'other' }\n\t}\n}\n\nfn main() {\n\tprintln(classify(1))\n}\n", 'int'},
+	])
 }
 
 fn test_explicit_generic_calls_use_all_type_arguments() {
-	out := run_good(v3_bin, 'good_multi_explicit_generic_call',
-		"struct Pair[A, B] {\n\tleft  A\n\tright B\n}\n\nfn make_pair[A, B]() Pair[A, B] {\n\treturn Pair[A, B]{}\n}\n\nfn expect_pair(p Pair[int, string]) string {\n\treturn 'ok'\n}\n\nfn main() {\n\tp := make_pair[int, string]()\n\tprintln(expect_pair(p))\n}\n")
-	assert out == 'ok'
-	nested := run_good(v3_bin, 'good_nested_explicit_generic_call',
-		"struct Pair[A, B] {\n\tleft  A\n\tright B\n}\n\nstruct Box[T] {\n\tvalue T\n}\n\nfn wrap[T]() Box[T] {\n\treturn Box[T]{}\n}\n\nfn expect_box(b Box[Pair[int, string]]) string {\n\treturn 'ok'\n}\n\nfn main() {\n\tb := wrap[Pair[int, string]]()\n\tprintln(expect_box(b))\n}\n")
-	assert nested == 'ok'
+	check_review_runtime('explicit_generics_runtime', [
+		ReviewFixture{'good_multi_explicit_generic_call', "struct Pair[A, B] {\n\tleft  A\n\tright B\n}\n\nfn make_pair[A, B]() Pair[A, B] {\n\treturn Pair[A, B]{}\n}\n\nfn expect_pair(p Pair[int, string]) string {\n\treturn 'ok'\n}\n\nfn main() {\n\tp := make_pair[int, string]()\n\tprintln(expect_pair(p))\n}\n", 'ok'},
+		ReviewFixture{'good_nested_explicit_generic_call', "struct Pair[A, B] {\n\tleft  A\n\tright B\n}\n\nstruct Box[T] {\n\tvalue T\n}\n\nfn wrap[T]() Box[T] {\n\treturn Box[T]{}\n}\n\nfn expect_box(b Box[Pair[int, string]]) string {\n\treturn 'ok'\n}\n\nfn main() {\n\tb := wrap[Pair[int, string]]()\n\tprintln(expect_box(b))\n}\n", 'ok'},
+	])
 	run_bad(v3_bin, 'bad_explicit_generic_too_many_type_args',
 		'fn id[T](x T) T {\n\treturn x\n}\n\nfn main() {\n\t_ := id[int, string](1)\n}\n',
 		'expected 1 generic parameter, got 2')
