@@ -1,9 +1,16 @@
 // vtest build: !windows
 // Builds and runs programs with `v -race`, the data race detector.
+@[has_globals]
+module main
+
 import os
+
+__global tsan_probe_succeeded bool
 
 const vexe = os.quoted_path(@VEXE)
 const tdir = os.join_path(os.vtmp_dir(), 'race_detector_test_${os.getpid()}')
+// These fixtures join their threads, so TSan can exit without its extra shutdown wait.
+const race_report_options = 'VRACE=exitcode=7 atexit_sleep_ms=0'
 
 const racy_source = 'struct Counter {
 mut:
@@ -564,10 +571,18 @@ fn race_c_compiler() string {
 	return 'cc'
 }
 
-// thread_sanitizer_runs reports whether the C compiler that `-race` uses can build and run
-// a ThreadSanitizer program here. It cannot on Windows, with compilers or distributions
-// without the TSan runtime, or on Linux kernels whose ASLR layout old TSan runtimes reject.
+// thread_sanitizer_runs reuses a successful probe. Failed probes can be transient on
+// hosts whose ASLR sometimes places the sanitizer's mappings at unsupported addresses.
 fn thread_sanitizer_runs() bool {
+	if !tsan_probe_succeeded {
+		tsan_probe_succeeded = probe_thread_sanitizer()
+	}
+	return tsan_probe_succeeded
+}
+
+// probe_thread_sanitizer checks that the compiler can build a TSan binary and that the
+// runtime works on this host, including kernels whose ASLR layout some TSan versions reject.
+fn probe_thread_sanitizer() bool {
 	probe_c := os.join_path(tdir, 'tsan_probe.c')
 	probe_exe := os.join_path(tdir, 'tsan_probe')
 	os.write_file(probe_c, 'int main(void) { return 0; }\n') or { return false }
@@ -611,12 +626,12 @@ fn test_race_detector() {
 	}
 
 	// VRACE passes options to the race detector, like GORACE does for Go.
-	vrace_run := os.exec(['env', 'VRACE=exitcode=7', '${racy}'])
+	vrace_run := os.exec(['env', race_report_options, racy])
 	assert vrace_run.exit_code == 7, vrace_run.output
 
 	// The race runtime support is compiled on its own, and must build in strict C99 mode too.
 	racy_c99 := build_race_program('racy_c99', racy_source, '-c99')
-	racy_c99_run := os.exec(['env', 'VRACE=exitcode=7', '${racy_c99}'])
+	racy_c99_run := os.exec(['env', race_report_options, racy_c99])
 	assert racy_c99_run.exit_code == 7, racy_c99_run.output
 	assert racy_c99_run.output.contains('WARNING: ThreadSanitizer: data race'), racy_c99_run.output
 
@@ -677,7 +692,7 @@ fn test_race_map_value_update_is_a_write() {
 		return
 	}
 	exe := build_race_program('map_value_update', map_value_update_source)
-	res := os.exec(['env', 'VRACE=exitcode=7', exe])
+	res := os.exec(['env', race_report_options, exe])
 	assert res.exit_code == 7, res.output
 	assert res.output.contains('WARNING: ThreadSanitizer: data race'), res.output
 }
@@ -709,7 +724,7 @@ fn test_race_blank_reads_are_reads() {
 		// With the default trace history, ThreadSanitizer sometimes cannot restore the stack
 		// of the earlier access of the 1000 racing iterations, drops that report and never
 		// reports the address again (about 1 run in 200 on macOS). A longer history keeps it.
-		res := os.exec(['env', 'VRACE=exitcode=7 history_size=7', exe])
+		res := os.exec(['env', '${race_report_options} history_size=7', exe])
 		assert res.exit_code == 7, '${read}: ${res.output}'
 		assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${read}: ${res.output}'
 	}
@@ -743,7 +758,7 @@ fn test_race_failed_file_read_does_not_synchronize() {
 		return
 	}
 	exe := build_race_program('failed_read', failed_read_source)
-	res := os.exec(['env', 'VRACE=exitcode=7', exe])
+	res := os.exec(['env', race_report_options, exe])
 	assert res.output.contains('read failed'), res.output
 	assert res.exit_code == 7, res.output
 	assert res.output.contains('WARNING: ThreadSanitizer: data race'), res.output
@@ -780,7 +795,7 @@ fn test_race_select_of_closed_channels_happens_after_the_close() {
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('select -2 x 42'), res.output
 	racy := build_race_program('select_closed_racy', select_closed_source, '-d', 'write_after_close')
-	racy_res := os.exec(['env', 'VRACE=exitcode=7', '${racy}'])
+	racy_res := os.exec(['env', 'VRACE=exitcode=7', racy])
 	assert racy_res.exit_code == 7, racy_res.output
 	assert racy_res.output.contains('WARNING: ThreadSanitizer: data race'), racy_res.output
 }
@@ -812,7 +827,7 @@ fn test_race_channel_values_are_the_caller_memory() {
 				...flags)
 			// Like the blank-read fixtures: 1000 racing iterations can outlive the default
 			// trace history, and ThreadSanitizer then drops the report for that address.
-			res := os.exec(['env', 'VRACE=exitcode=7 history_size=7', exe])
+			res := os.exec(['env', '${race_report_options} history_size=7', exe])
 			assert res.exit_code == 7, '${mode}, optimized=${optimized}: ${res.output}'
 			assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${mode}, optimized=${optimized}: ${res.output}'
 			assert res.output.contains('${mode} done '), res.output
@@ -829,18 +844,16 @@ fn test_race_stdin_read_happens_after_the_write() {
 	if !thread_sanitizer_runs() {
 		return
 	}
-	exe := os.quoted_path(build_race_program('stdin_read', stdin_read_source))
+	exe := build_race_program('stdin_read', stdin_read_source)
 	input := os.join_path(tdir, 'stdin_read.in')
 	other := os.join_path(tdir, 'stdin_read.other')
 	os.write_file(input, '')!
-	res := os.exec(['sh', '-c', 'RACE_WRITE_FILE="\${1}" "\${2}" < "\${3}"', 'v', '${input}',
-		'${build_race_program('stdin_read', stdin_read_source)}', '${input}'])
+	res := os.exec(['sh', '-c', 'RACE_WRITE_FILE="\${1}" "\${2}" < "\${3}"', 'v', input, exe, input])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('char 33 x 42'), res.output
 	os.write_file(other, '')!
-	eof := os.exec(['sh', '-c', 'RACE_WRITE_FILE="\${1}" "\${2}" < /dev/null', 'v', '${other}',
-		'${build_race_program('stdin_read', stdin_read_source)}'])
+	eof := os.exec(['sh', '-c', 'RACE_WRITE_FILE="\${1}" "\${2}" < /dev/null', 'v', other, exe])
 	assert eof.exit_code == 0, eof.output
 	assert !eof.output.contains('ThreadSanitizer'), eof.output
 	assert eof.output.contains('char -1 x 42'), eof.output
