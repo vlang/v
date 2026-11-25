@@ -144,8 +144,8 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_ierror_patterns_resolve_nested_alias_and_selective_imports() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_alias_match_codegen_${tempname.unique_token()}')
+fn test_ierror_patterns_resolve_imports_in_their_source_files() {
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_import_match_codegen_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
 	alias_dir := os.join_path(root, 'nested', 'aliaserrs')
@@ -201,8 +201,29 @@ pub fn fail_selective() !int {
 		panic(err)
 	}
 
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import nested.aliaserrs as aliased
+	fake_dir := os.join_path(root, 'fake')
+	os.mkdir_all(fake_dir) or { panic(err) }
+	os.write_file(os.join_path(fake_dir, 'fake.v'), "module fake
+
+pub struct Error {
+	MessageError
+pub:
+	label string
+}
+
+pub fn fail() !int {
+	return Error{
+		label: 'selective'
+	}
+}
+") or {
+		panic(err)
+	}
+
+	// Keep each import scope in the file that uses it.
+	os.write_file(os.join_path(root, 'nested_patterns.v'), "module main
+
+import nested.aliaserrs as aliased
 import nested.selecterrs { SelectiveError, fail_selective }
 
 fn classify_alias(err IError) string {
@@ -227,12 +248,14 @@ fn classify_selective(err IError) string {
 	}
 }
 
-fn main() {
+fn check_nested_patterns() {
+	mut matched := 0
 	aliased.fail_alias() or {
 		assert err.msg() == 'alias nested'
 		assert classify_alias(err) == 'alias'
 		assert classify_selective(err) == 'other'
 		assert err is aliased.AliasError
+		matched++
 	}
 
 	fail_selective() or {
@@ -240,48 +263,17 @@ fn main() {
 		assert classify_alias(err) == 'other'
 		assert classify_selective(err) == 'selective'
 		assert err is SelectiveError
+		matched++
 	}
-	println('ok')
+	assert matched == 2
 }
 ") or {
 		panic(err)
 	}
 
-	bin := os.join_path(root, 'v3_ierror_alias_match_codegen_input')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
+	os.write_file(os.join_path(root, 'selective_error_pattern.v'), "module main
 
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_selective_imported_error_pattern_prefers_scoped_error() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_selective_error_pattern_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	mod_dir := os.join_path(root, 'fake')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	os.write_file(os.join_path(mod_dir, 'fake.v'), "module fake
-
-pub struct Error {
-	MessageError
-pub:
-	label string
-}
-
-pub fn fail() !int {
-	return Error{
-		label: 'selective'
-	}
-}
-") or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import fake { Error, fail }
+import fake { Error, fail }
 
 fn matches_fake(err IError) bool {
 	if err is Error {
@@ -303,11 +295,10 @@ fn classify(err IError) string {
 	}
 }
 
-fn main() {
+fn check_scoped_error_pattern() {
 	fail() or {
 		assert matches_fake(err)
 		assert classify(err) == 'selective'
-		println('ok')
 		return
 	}
 	assert false
@@ -316,8 +307,18 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(root, 'v3_ierror_selective_error_pattern_input')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, "fn main() {
+	check_nested_patterns()
+	check_scoped_error_pattern()
+	println('ok')
+}
+") or {
+		panic(err)
+	}
+
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
