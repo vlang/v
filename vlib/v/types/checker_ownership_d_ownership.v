@@ -7316,15 +7316,19 @@ fn (mut tc TypeChecker) ownership_merge_branch_borrows(group OwnershipBranchGrou
 	mut st := tc.ownership_state()
 	for branch in group.branches {
 		for name, borrows in branch.borrowed_vars {
-			if name !in group.base.owned_vars && name !in group.base.borrowed_vars && !tc.ownership_storage_participates(name) {
-				continue
-			}
+			tracked_source := name in group.base.owned_vars || name in group.base.borrowed_vars
+				|| tc.ownership_storage_participates(name)
 			mut merged := st.borrowed_vars[name] or { []BorrowInfo{} }
 			for borrow in borrows {
+				// Immutable pointer parameters can lend read-only access even
+				// when their referents are owned outside this function.
+				if !tracked_source && !borrow.read_only {
+					continue
+				}
 				mut exists := false
 				for existing in merged {
 					if existing.borrower == borrow.borrower && existing.pos == borrow.pos
-						&& existing.is_mut == borrow.is_mut {
+						&& existing.is_mut == borrow.is_mut && existing.read_only == borrow.read_only {
 						exists = true
 						break
 					}
@@ -7935,6 +7939,9 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		}
 	}
 	rhs_name := tc.ownership_expr_ident_name(tc.ownership_sum_wrapped_value(rhs_id, lhs_type))
+	if lhs_name == rhs_name && unalias_type(lhs_type) is Pointer {
+		return
+	}
 	if lhs_name != rhs_name || !tc.sum_escape_has_pointer_variant(lhs_type) {
 		tc.ownership_release_borrower(lhs_name)
 	}
@@ -7955,7 +7962,11 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		st.owned_var_types.delete(lhs_name)
 		name := tc.ownership_borrowed_name(rhs_id)
 		if name.len > 0 {
-			tc.ownership_add_borrow(name, lhs_name, assign_id, false)
+			tc.ownership_add_borrow_info(name, BorrowInfo{
+				borrower:  lhs_name
+				pos:       assign_id
+				read_only: tc.ownership_expr_is_readonly_borrow(rhs_id)
+			})
 		}
 		return
 	}
@@ -7964,6 +7975,20 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	}
 	if tc.ownership_mark_borrow_from_call_return(lhs_name, rhs_id, assign_id) {
 		return
+	}
+	if unalias_type(lhs_type) is Pointer {
+		clean_rhs_id := tc.ownership_unwrap_expr(rhs_id)
+		if source_id := tc.immutable_reference_source(clean_rhs_id, tc.resolve_type(clean_rhs_id)) {
+			source := tc.ownership_expr_ident_name(source_id)
+			if source != '' {
+				tc.ownership_add_borrow_info(source, BorrowInfo{
+					borrower:  lhs_name
+					pos:       assign_id
+					read_only: true
+				})
+				return
+			}
+		}
 	}
 	if tc.ownership_method_value_clones_receiver(rhs_id) {
 		st.owned_vars.delete(lhs_name)
@@ -13685,9 +13710,7 @@ fn (mut tc TypeChecker) ownership_expr_is_readonly_borrow(id flat.NodeId) bool {
 		call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(clean_id) }
 		return tc.ownership_return_loan_sources(call_name, info).any(!tc.ownership_call_param_is_mut(call_name, it.param_idx))
 	}
-	// Ordinary pointer aliases already carry this checker provenance, including
-	// a mutable variable initialized from an immutable pointer parameter.
-	if node.kind == .ident && tc.fn_context.immutable_reference_aliases[node.value]
+	if node.kind == .ident && !tc.ident_is_mutable_lvalue(node.value)
 		&& unalias_type(tc.resolve_type(clean_id)) is Pointer {
 		return true
 	}

@@ -4598,3 +4598,52 @@ fn main() {
 ')
 	assert result.exit_code == 0, result.output
 }
+
+fn test_ownership_refreshes_immutable_pointer_aliases_on_assignment() {
+	v3_bin := ownership_build_v3()
+	counter := r'
+@[heap]
+struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) advance() {
+	counter.value++
+}
+'
+	rebound := run_ownership_check(v3_bin, 'writable_pointer_rebind', counter + r'
+fn read(counter &Counter) {
+	mut alias := counter
+	assert alias.value == 0
+	alias = &Counter{}
+	alias.advance()
+	alias.value++
+	assert alias.value == 2
+}
+
+fn main() {
+	counter := Counter{}
+	read(&counter)
+	assert counter.value == 0
+}
+')
+	assert rebound.exit_code == 0, rebound.output
+
+	for assignment in ['alias = counter', 'if choose { alias = counter }'] {
+		reborrowed := run_ownership_check(v3_bin, 'readonly_pointer_rebind', counter + '
+fn read(counter &Counter, choose bool) {
+	mut alias := &Counter{}
+	${assignment}
+	alias.advance()
+}
+
+fn main() {
+	counter := Counter{}
+	read(&counter, true)
+}
+')
+		assert reborrowed.exit_code != 0, reborrowed.output
+		assert reborrowed.output.contains('cannot modify through an immutable borrow'), reborrowed.output
+	}
+}
