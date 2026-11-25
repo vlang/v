@@ -33,6 +33,35 @@ fn checker_assignment_run_good(name string, source string) string {
 	return run.output.trim_space()
 }
 
+fn checker_assignment_run_good_batch(expected string, cases map[string]string) {
+	root := checker_assignment_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for name, source in cases {
+		module_name := 'fixture_${imports.len}'
+		module_dir := os.join_path(root, module_name)
+		os.mkdir(module_dir) or { panic(err) }
+		imports << 'import ${module_name}'
+		calls << "\t\t'${name}' { ${module_name}.exercise() }"
+		fixture := 'module ${module_name}\n\n' + source
+		os.write_file(os.join_path(module_dir, 'v3_${name}.v'), fixture.replace_once('\nfn main()',
+			'\npub fn exercise()')) or { panic(err) }
+	}
+	os.write_file(os.join_path(root, 'main.v'), "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	for name, _ in cases {
+		run := os.exec([bin, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == expected, '${name}: expected `${expected}` in\n${run.output}'
+	}
+}
+
 fn test_assignment_invalidates_written_lhs_smartcast() {
 	checker_assignment_run_bad('bad_assignment_stale_smartcast', 'struct Foo {
 	foo int
@@ -111,7 +140,8 @@ fn main() {
 }
 
 fn test_container_stored_capturing_fn_literals() {
-	alias_out := checker_assignment_run_good('append_alias_capturing_fn_literal', 'fn main() {
+	checker_assignment_run_good_batch('1', {
+		'append_alias_capturing_fn_literal':  'fn main() {
 	x := 1
 	f := fn [x] () int {
 		return x
@@ -120,9 +150,8 @@ fn test_container_stored_capturing_fn_literals() {
 	callbacks << f
 	println(int_str(callbacks[0]()))
 }
-')
-	assert alias_out == '1'
-	direct_out := checker_assignment_run_good('append_direct_capturing_fn_literal', 'fn main() {
+'
+		'append_direct_capturing_fn_literal': 'fn main() {
 	x := 1
 	mut callbacks := []fn () int{}
 	callbacks << fn [x] () int {
@@ -130,12 +159,13 @@ fn test_container_stored_capturing_fn_literals() {
 	}
 	println(int_str(callbacks[0]()))
 }
-')
-	assert direct_out == '1'
+'
+	})
 }
 
 fn test_nonlocal_assigned_capturing_fn_literals() {
-	direct_out := checker_assignment_run_good('field_assign_direct_capturing_fn_literal', 'struct Holder {
+	checker_assignment_run_good_batch('1', {
+		'field_assign_direct_capturing_fn_literal': 'struct Holder {
 mut:
 	cb fn () int
 }
@@ -154,9 +184,8 @@ fn main() {
 	}
 	println(int_str(holder.cb()))
 }
-')
-	assert direct_out == '1'
-	alias_out := checker_assignment_run_good('field_assign_alias_capturing_fn_literal', 'struct Holder {
+'
+		'field_assign_alias_capturing_fn_literal':  'struct Holder {
 mut:
 	cb fn () int
 }
@@ -176,9 +205,8 @@ fn main() {
 	holder.cb = f
 	println(int_str(holder.cb()))
 }
-')
-	assert alias_out == '1'
-	index_out := checker_assignment_run_good('index_assign_capturing_fn_literal', 'fn plain() int {
+'
+		'index_assign_capturing_fn_literal':        'fn plain() int {
 	return 0
 }
 
@@ -190,14 +218,15 @@ fn main() {
 	}
 	println(int_str(callbacks[0]()))
 }
-')
-	assert index_out == '1'
+'
+	})
 }
 
 // A local cannot be redefined in a nested block, so the same name is bound in
 // sibling blocks instead: each use must resolve to the binding of its own block.
 fn test_capturing_fn_literal_marker_uses_nearest_binding() {
-	out := checker_assignment_run_good('capturing_fn_literal_then_plain_fn', 'fn plain() int {
+	checker_assignment_run_good_batch('ok', {
+		'capturing_fn_literal_then_plain_fn': 'fn plain() int {
 	return 2
 }
 
@@ -218,10 +247,8 @@ fn main() {
 	assert callbacks[1]() == 2
 	println("ok")
 }
-')
-	assert out == 'ok'
-	plain_first_out := checker_assignment_run_good('plain_fn_then_capturing_fn_literal',
-		'fn plain() int {
+'
+		'plain_fn_then_capturing_fn_literal': 'fn plain() int {
 	return 2
 }
 
@@ -242,6 +269,6 @@ fn main() {
 	assert callbacks[1]() == 1
 	println("ok")
 }
-')
-	assert plain_first_out == 'ok'
+'
+	})
 }
