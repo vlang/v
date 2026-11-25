@@ -343,16 +343,6 @@ fn test_multiple_pointer_alias_methods_keep_resolution_and_visibility_in_sql_val
 	check_sql_alias_clone_cases(cases, 'multiple_pointer_clone', [true, false])!
 }
 
-fn test_multiple_pointer_alias_methods_keep_declared_sql_result_types() {
-	cases := ['aliases', 'renamed'].map(SqlAliasQueryCase{
-		expression:  '${it}.make_ptr_ptr().clone()[0]'
-		import_name: it
-		diagnostic:  'this expression has type `aliases.Holder`'
-	})
-	check_sql_alias_query_batch(cases, 'multiple_pointer_result', [.selection], [['-check']],
-		sql_alias_public_module)!
-}
-
 fn test_hidden_pointer_alias_methods_keep_resolution_and_visibility_in_sql_values() {
 	mut cases := ['aliases.make_refs().clone()[0].name', 'ref_values.clone()[0].name',
 		'(ref_values).clone()[0].name'].map(SqlAliasCloneCase{
@@ -553,8 +543,12 @@ fn test_option_result_alias_fallback_methods_keep_resolution_and_visibility_in_s
 	check_sql_alias_clone_cases(cases, 'fallback_clone', [true, false])!
 }
 
-fn test_option_result_alias_fallback_methods_keep_declared_sql_result_types() {
-	mut cases := []SqlAliasQueryCase{}
+fn test_alias_methods_keep_declared_sql_result_types() {
+	mut cases := ['aliases', 'renamed'].map(SqlAliasQueryCase{
+		expression:  '${it}.make_ptr_ptr().clone()[0]'
+		import_name: it
+		diagnostic:  'this expression has type `aliases.Holder`'
+	})
 	for import_name in ['aliases', 'renamed'] {
 		for expression in [
 			'(${import_name}.load_names(false) or { values }).clone()[0]',
@@ -569,6 +563,6 @@ fn test_option_result_alias_fallback_methods_keep_declared_sql_result_types() {
 			}
 		}
 	}
-	check_sql_alias_query_batch(cases, 'fallback_result', [.selection], [['-check']],
+	check_sql_alias_query_batch(cases, 'declared_result_types', [.selection], [['-check']],
 		sql_alias_public_module)!
 }
