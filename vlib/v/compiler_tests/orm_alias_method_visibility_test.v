@@ -250,14 +250,6 @@ fn sql_alias_visibility_probe_source(operation SqlAliasVisibilityQuery, expressi
 		.replace('STATEMENT', statement)
 }
 
-fn test_public_inherited_alias_methods_work_in_imported_sql_values() {
-	cases := ['aliases.make().clone()[0].name', 'values.clone()[0].name', '(values).clone()[0].name',
-		'aliases.WrappedNames(values).clone()[0].name'].map(SqlAliasQueryCase{
-		expression: it
-	})
-	check_sql_alias_query_batch(cases, 'public_clone', [.both], [[]string{}], sql_alias_public_module)!
-}
-
 struct SqlAliasCloneCase {
 	expression      string
 	import_name     string = 'aliases'
@@ -279,14 +271,6 @@ fn check_sql_alias_clone_cases(cases []SqlAliasCloneCase, label string, public_m
 			sql_alias_visibility_queries(is_public), sql_alias_compile_and_check,
 			sql_alias_visibility_module_source(is_public, true))!
 	}
-}
-
-fn test_private_inherited_alias_methods_are_rejected_in_sql_values() {
-	cases := ['aliases.make().clone()[0].name', 'values.clone()[0].name', '(values).clone()[0].name',
-		'aliases.WrappedNames(values).clone()[0].name'].map(SqlAliasCloneCase{
-		expression: it
-	})
-	check_sql_alias_clone_cases(cases, 'private_clone', [false])!
 }
 
 fn test_imported_alias_conversions_obey_type_and_method_visibility_in_sql_values() {
@@ -517,8 +501,11 @@ fn test_alias_methods_keep_whole_shared_array_locks_in_sql_values() {
 	}, true)!
 }
 
-fn test_option_result_alias_fallback_methods_keep_resolution_and_visibility_in_sql_values() {
-	mut cases := []SqlAliasCloneCase{}
+fn test_inherited_alias_methods_keep_resolution_and_visibility_in_sql_values() {
+	mut cases := ['aliases.make().clone()[0].name', 'values.clone()[0].name', '(values).clone()[0].name',
+		'aliases.WrappedNames(values).clone()[0].name'].map(SqlAliasCloneCase{
+		expression: it
+	})
 	for import_name in ['aliases', 'renamed'] {
 		for expression in [
 			'(${import_name}.load_names(true) or { values }).clone()[0].name',
@@ -534,7 +521,7 @@ fn test_option_result_alias_fallback_methods_keep_resolution_and_visibility_in_s
 			}
 		}
 	}
-	check_sql_alias_clone_cases(cases, 'fallback_clone', [true, false])!
+	check_sql_alias_clone_cases(cases, 'inherited_clone', [true, false])!
 }
 
 fn test_alias_methods_keep_declared_sql_result_types() {
