@@ -800,7 +800,8 @@ fn main() {
 ")
 	assert generic_after_select_compile.exit_code == 0, generic_after_select_compile.output
 
-	dynamic_is_out := orm_join_sql_attr_run('orm_dynamic_is_rejects_non_null', "import db.sqlite
+	orm_join_sql_attr_run_batch({
+		'orm_dynamic_is_rejects_non_null':   "import db.sqlite
 
 struct DynamicIsUser {
 	id int @[primary]
@@ -835,10 +836,8 @@ fn main() {
 	}
 	panic('expected dynamic IS with non-null value to fail, got \${rows.len} rows')
 }
-")
-	assert dynamic_is_out == ''
-
-	dynamic_indexed_out := orm_join_sql_attr_run('orm_dynamic_where_index_expr', "import db.sqlite
+"
+		'orm_dynamic_where_index_expr':      "import db.sqlite
 
 struct DynamicIndexedUser {
 	id int @[primary]
@@ -878,10 +877,8 @@ fn main() {
 	assert rows.len == 1
 	assert rows[0].name == 'Bob'
 }
-")
-	assert dynamic_indexed_out == ''
-
-	dynamic_count_aggregate_out := orm_join_sql_attr_run('orm_dynamic_count_aggregate_where', "import db.sqlite
+"
+		'orm_dynamic_count_aggregate_where': "import db.sqlite
 import orm
 
 struct DynamicAggregateUser {
@@ -942,10 +939,8 @@ fn main() {
 	returned := dynamic_total(mut db, wanted) or { panic('expected returned aggregate int') }
 	assert returned == 20
 }
-")
-	assert dynamic_count_aggregate_out == ''
-
-	dynamic_alias_out := orm_join_sql_attr_run('orm_dynamic_alias_table_types', "import db.sqlite
+"
+		'orm_dynamic_alias_table_types':     "import db.sqlite
 
 enum AliasUserState {
 	inactive
@@ -1020,10 +1015,8 @@ fn main() {
 	assert relation_rows.len == 1
 	assert relation_rows[0].id == 3
 }
-")
-	assert dynamic_alias_out == ''
-
-	join_count_aggregate_out := orm_join_sql_attr_run('orm_join_count_aggregate', "import db.sqlite
+"
+		'orm_join_count_aggregate':          "import db.sqlite
 
 struct JoinAggregateDepartment {
 	id int @[primary]
@@ -1097,10 +1090,8 @@ fn main() {
 		panic('expected joined aggregate min id')
 	}
 }
-")
-	assert join_count_aggregate_out == ''
-
-	chained_join_out := orm_join_sql_attr_run('orm_chained_join_predicate', "import db.sqlite
+"
+		'orm_chained_join_predicate':        "import db.sqlite
 
 struct ChainCompany {
 	id int @[primary]
@@ -1159,8 +1150,8 @@ fn main() {
 	assert rows.len == 1
 	assert rows[0].name == 'Ada'
 }
-")
-	assert chained_join_out == ''
+"
+	})
 
 	optional_relation_where_out := orm_join_sql_attr_run('orm_optional_relation_where', 'import db.sqlite
 
@@ -1365,7 +1356,8 @@ fn main() {
 ")
 	assert dynamic_final_type_out == ''
 
-	dynamic_guard_failure_out := orm_join_sql_attr_run('orm_dynamic_guard_after_failure', "import db.sqlite
+	orm_join_sql_attr_run_batch({
+		'orm_dynamic_guard_after_failure':    "import db.sqlite
 
 __global calls int
 
@@ -1414,10 +1406,8 @@ fn main() {
 	assert failed
 	assert calls == 0
 }
-")
-	assert dynamic_guard_failure_out == ''
-
-	offset_out := orm_join_sql_attr_run('orm_offset_without_limit', "import db.sqlite
+"
+		'orm_offset_without_limit':           "import db.sqlite
 
 struct OffsetUser {
 	id int @[primary; sql: serial]
@@ -1449,10 +1439,8 @@ fn main() {
 	}
 	panic('expected offset without limit to fail, got \${rows.len} rows')
 }
-")
-	assert offset_out == ''
-
-	negative_offset_out := orm_join_sql_attr_run('orm_negative_runtime_offset', "import db.sqlite
+"
+		'orm_negative_runtime_offset':        "import db.sqlite
 
 struct NegativeOffsetUser {
 	id int @[primary; sql: serial]
@@ -1486,10 +1474,8 @@ fn main() {
 	}
 	panic('expected negative runtime OFFSET to fail, got \${rows.len} rows')
 }
-")
-	assert negative_offset_out == ''
-
-	static_negative_limit_out := orm_join_sql_attr_run('orm_static_negative_limit', "import db.sqlite
+"
+		'orm_static_negative_limit':          "import db.sqlite
 
 struct StaticNegativeLimitUser {
 	id int @[primary; sql: serial]
@@ -1522,10 +1508,8 @@ fn main() {
 	}
 	panic('expected static negative LIMIT to fail, got \${rows.len} rows')
 }
-")
-	assert static_negative_limit_out == ''
-
-	static_negative_offset_out := orm_join_sql_attr_run('orm_static_negative_offset', "import db.sqlite
+"
+		'orm_static_negative_offset':         "import db.sqlite
 
 struct StaticNegativeOffsetUser {
 	id int @[primary; sql: serial]
@@ -1558,10 +1542,8 @@ fn main() {
 	}
 	panic('expected static negative OFFSET to fail, got \${rows.len} rows')
 }
-")
-	assert static_negative_offset_out == ''
-
-	infix_update_out := orm_join_sql_attr_run('orm_update_infix_sql_attr', "import db.sqlite
+"
+		'orm_update_infix_sql_attr':          "import db.sqlite
 
 struct UpdateInfixSqlAttrUser {
 	id int @[primary]
@@ -1595,10 +1577,8 @@ fn main() {
 	assert rows.len == 1
 	assert rows[0].score == 7
 }
-")
-	assert infix_update_out == ''
-
-	aggregate_out := orm_join_sql_attr_run('orm_aggregate_sql_attr', "import db.sqlite
+"
+		'orm_aggregate_sql_attr':             "import db.sqlite
 
 struct AggregateSqlAttrUser {
 	id int @[primary]
@@ -1652,10 +1632,8 @@ fn main() {
 		assert false
 	}
 }
-")
-	assert aggregate_out == ''
-
-	malformed_dynamic_out := orm_join_sql_attr_run('orm_dynamic_malformed_where_update', "import db.sqlite
+"
+		'orm_dynamic_malformed_where_update': "import db.sqlite
 
 struct DynamicMalformedUser {
 	id int @[primary]
@@ -1693,8 +1671,8 @@ fn main() {
 	}
 	panic('expected malformed dynamic WHERE to fail')
 }
-")
-	assert malformed_dynamic_out == ''
+"
+	})
 
 	bad_batch_update := orm_join_sql_attr_compile('orm_batch_update_requires_equality', "import db.sqlite
 
