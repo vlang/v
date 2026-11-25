@@ -92,8 +92,8 @@ fn check_review_rejections(name string, cases []ReviewFixture) {
 	}
 }
 
-fn check_receiver_runtime(cases []ReviewFixture) {
-	root := write_review_batch('receiver_runtime', cases, true)
+fn check_review_runtime(name string, cases []ReviewFixture) {
+	root := write_review_batch(name, cases, true)
 	bin_path := os.join_path(root, 'program')
 	compile := run_review_checker(v3_bin, ['-enable-globals', root, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
@@ -605,48 +605,6 @@ fn main() {
 }
 
 fn test_method_value_option_alias_and_const_names_match_v1() {
-	run_bad(v3_bin, 'non_heap_pointer_receiver_method_value', 'struct Foo {}
-
-fn (foo &Foo) ref() int {
-	return 1
-}
-
-fn make() fn () int {
-	foo := Foo{}
-	return foo.ref
-}
-
-fn main() {}
-',
-		'method `Foo.ref` cannot be used as a variable outside `unsafe` blocks')
-	run_bad(v3_bin, 'stack_pointer_alias_receiver_method_value', 'struct Foo {}
-
-fn (foo &Foo) ref() int {
-	return 1
-}
-
-fn make() fn () int {
-	foo := Foo{}
-	p := &foo
-	return p.ref
-}
-
-fn main() {}
-',
-		'method `Foo.ref` cannot be used as a variable outside `unsafe` blocks')
-	heap_method_value := run_good(v3_bin, 'heap_pointer_receiver_method_value', 'struct Foo {}
-
-fn (foo &Foo) ref() int {
-	return 1
-}
-
-fn main() {
-	foo := &Foo{}
-	callback := foo.ref
-	println(callback())
-}
-')
-	assert heap_method_value == '1'
 	embedded_source := 'struct Base {
 	id int
 }
@@ -659,25 +617,42 @@ struct Plain {
 	Base
 }
 '
-	run_bad(v3_bin, 'embedded_non_heap_pointer_receiver_method_value', embedded_source + 'fn make() fn () int {
+	check_review_rejections('method_errors', [
+		ReviewFixture{'non_heap_pointer_receiver_method_value', 'struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn make() fn () int {
+	foo := Foo{}
+	return foo.ref
+}
+
+fn main() {}
+', 'method `Foo.ref` cannot be used as a variable outside `unsafe` blocks'},
+		ReviewFixture{'stack_pointer_alias_receiver_method_value', 'struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn make() fn () int {
+	foo := Foo{}
+	p := &foo
+	return p.ref
+}
+
+fn main() {}
+', 'method `Foo.ref` cannot be used as a variable outside `unsafe` blocks'},
+		ReviewFixture{'embedded_non_heap_pointer_receiver_method_value', embedded_source + 'fn make() fn () int {
 	p := Plain{}
 	return p.ref
 }
 
 fn main() {}
-',
-		'method `Base.ref` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider declaring `Plain` as `@[heap]`.')
-	embedded_heap_method_value := run_good(v3_bin, 'embedded_heap_pointer_receiver_method_value',
-		embedded_source + 'fn main() {
-	p := &Plain{
-		Base: Base{3}
-	}
-	callback := p.ref
-	println(callback())
-}
-')
-	assert embedded_heap_method_value == '3'
-	run_bad(v3_bin, 'ambiguous_embedded_method_value', 'struct A {}
+', 'method `Base.ref` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider declaring `Plain` as `@[heap]`.'},
+		ReviewFixture{'ambiguous_embedded_method_value', 'struct A {}
 
 fn (a A) name() string {
 	return "a"
@@ -699,22 +674,42 @@ fn main() {
 	f := x.name
 	println(f())
 }
-',
-		'ambiguous method `name`')
-	run_bad(v3_bin, 'direct_option_alias_cast', 'type MaybeInt = ?int
+', 'ambiguous method `name`'},
+		ReviewFixture{'direct_option_alias_cast', 'type MaybeInt = ?int
 
 fn main() {
 	_ := MaybeInt(none)
 }
-',
-		'alias to Option type requires to be used as Option type (?MaybeInt(...))')
-	run_bad(v3_bin, 'uppercase_const_name', 'const Red = 1
+', 'alias to Option type requires to be used as Option type (?MaybeInt(...))'},
+		ReviewFixture{'uppercase_const_name', 'const Red = 1
 
 fn main() {
 	println(Red)
 }
-',
-		'const names cannot contain uppercase letters, use snake_case instead')
+', 'const names cannot contain uppercase letters, use snake_case instead'},
+	])
+	check_review_runtime('method_values', [
+		ReviewFixture{'heap_pointer_receiver_method_value', 'struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn main() {
+	foo := &Foo{}
+	callback := foo.ref
+	println(callback())
+}
+', '1'},
+		ReviewFixture{'embedded_heap_pointer_receiver_method_value', embedded_source + 'fn main() {
+	p := &Plain{
+		Base: Base{3}
+	}
+	callback := p.ref
+	println(callback())
+}
+', '3'},
+	])
 	out := run_good(v3_bin, 'heap_method_value_and_translated_const', '@[translated]
 module main
 
@@ -1133,7 +1128,7 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 		ReviewFixture{'bad_shared_arg_shadowed_local', 'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\tshared s := St{}\n\tif true {\n\t\ts := St{}\n\t\ttake(s)\n\t}\n}\n', 'parameter `s` is `shared`, so use `shared s` instead'},
 		ReviewFixture{'bad_explicit_shared_arg_plain_local', 'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\ts := St{}\n\ttake(shared s)\n}\n', 'cannot use non-shared `bad_explicit_shared_arg_plain_local.St` as argument 1'},
 	])
-	check_receiver_runtime([
+	check_review_runtime('receiver_runtime', [
 		ReviewFixture{'good_mut_receiver_immutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
 		ReviewFixture{'good_shared_arg_and_receiver', 'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(shared s) + s.f()))\n}\n', '3'},
 		ReviewFixture{'good_mut_receiver_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
@@ -1318,15 +1313,11 @@ fn test_escaping_capturing_fn_literals_use_runtime_closures() {
 }
 
 fn test_capturing_fn_literal_aliases_are_binding_scoped() {
-	out := run_good(v3_bin, 'good_capturing_fn_literal_inner_shadow',
-		'fn plain() int {\n\treturn 3\n}\n\nfn make(x int) fn () int {\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t\t_ = cb\n\t}\n\tcb := plain\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make(0)()))\n\tprintln(int_str(make(5)()))\n}\n')
-	assert out == '3\n3'
-	lambda_out := run_good(v3_bin, 'good_lambda_capturing_fn_literal_shadow',
-		'fn plain() int {\n\treturn 4\n}\n\nfn apply(cb fn (int) int) int {\n\treturn cb(1)\n}\n\nfn make() fn () int {\n\tcb := plain\n\t_ = apply(|n| if n > 0 {\n\t\tcb := fn [n] () int {\n\t\t\treturn n\n\t\t}\n\t\t_ = cb\n\t\tn\n\t} else {\n\t\tn\n\t})\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make()()))\n}\n')
-	assert lambda_out == '4'
-	outer_out := run_good(v3_bin, 'outer_capturing_alias_survives_inner_shadow',
-		'fn make(x int) fn () int {\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\treturn cb\n}\nfn main() {\n\tprintln(int_str(make(5)()))\n}\n')
-	assert outer_out == '5'
+	check_review_runtime('closure_values', [
+		ReviewFixture{'good_capturing_fn_literal_inner_shadow', 'fn plain() int {\n\treturn 3\n}\n\nfn make(x int) fn () int {\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t\t_ = cb\n\t}\n\tcb := plain\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make(0)()))\n\tprintln(int_str(make(5)()))\n}\n', '3\n3'},
+		ReviewFixture{'good_lambda_capturing_fn_literal_shadow', 'fn plain() int {\n\treturn 4\n}\n\nfn apply(cb fn (int) int) int {\n\treturn cb(1)\n}\n\nfn make() fn () int {\n\tcb := plain\n\t_ = apply(|n| if n > 0 {\n\t\tcb := fn [n] () int {\n\t\t\treturn n\n\t\t}\n\t\t_ = cb\n\t\tn\n\t} else {\n\t\tn\n\t})\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make()()))\n}\n', '4'},
+		ReviewFixture{'outer_capturing_alias_survives_inner_shadow', 'fn make(x int) fn () int {\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\treturn cb\n}\nfn main() {\n\tprintln(int_str(make(5)()))\n}\n', '5'},
+	])
 }
 
 fn test_reject_unsmartcasted_unique_sum_variant_field() {
