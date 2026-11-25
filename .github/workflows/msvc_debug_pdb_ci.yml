@@ -160,7 +160,11 @@ jobs:
           cd fixture
           git rev-parse HEAD > "$out/fixture.commit"
           git ls-tree -r HEAD > "$out/fixture.git-tree.txt"
-          env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS make -j4 2>&1 | tee "$out/fixture.setup.log"
+          # The fixed checkout is input, not a third compiler to bootstrap.
+          # Its historical source need not build with today's external VC.
+          env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS make -j4 latest_tcc latest_legacy 2>&1 | tee "$out/fixture.setup.log"
+          git -C thirdparty/tcc rev-parse HEAD > "$out/fixture.tcc.commit"
+          git -C thirdparty/legacy/source rev-parse HEAD > "$out/fixture.legacy.commit"
           git diff --exit-code
       - name: Fixed fixture inventory, warmups and ten alternating pairs
         shell: bash
