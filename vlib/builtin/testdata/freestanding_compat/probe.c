@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <netdb.h>
+#include <net/if.h>
 #include <pthread.h>
 #include <sched.h>
 #include <signal.h>
@@ -40,6 +41,19 @@ static volatile sig_atomic_t delivered;
 static void receive_signal(int number) { delivered = number; }
 
 int v_freestanding_compat_check(const char *directory) {
+    struct sigaction previous_action;
+    CHECK(sigaction(SIGSTOP, NULL, &previous_action) == 0);
+    CHECK(sigaction(SIGKILL, NULL, &previous_action) == 0);
+    char unknown_interface[IF_NAMESIZE];
+    errno = 0;
+    CHECK(!if_indextoname(0, unknown_interface) && errno == ENXIO);
+    struct addrinfo canonical_hints = {.ai_flags = AI_CANONNAME, .ai_socktype = SOCK_STREAM};
+    struct addrinfo *canonical_result = NULL;
+    CHECK(getaddrinfo(NULL, "80", &canonical_hints, &canonical_result) == EAI_BADFLAGS);
+    struct sockaddr_in numeric = {.sin_family = AF_INET};
+    char numeric_name[NI_MAXHOST];
+    CHECK(getnameinfo((const struct sockaddr *)&numeric, sizeof numeric, numeric_name,
+                      sizeof numeric_name, NULL, 0, NI_NAMEREQD | NI_NUMERICHOST) == EAI_NONAME);
     char path[1024], renamed[1024], text[128];
     CHECK(snprintf(path, sizeof path, "%s/data", directory) > 0);
     CHECK(snprintf(renamed, sizeof renamed, "%s/renamed", directory) > 0);

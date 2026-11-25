@@ -1,5 +1,5 @@
 import os
-import time
+import v.cmdexec
 
 const compat_fixture = os.join_path(@VMODROOT, 'vlib/builtin/testdata/freestanding_compat')
 
@@ -10,22 +10,8 @@ fn compat_work_directory(label string) !string {
 }
 
 fn compat_run(command []string) (int, string) {
-	mut process := os.new_process(command[0])
-	process.set_args(command[1..])
-	process.set_redirect_stdio()
-	process.run()
-	deadline := time.sys_mono_now() + 60 * i64(time.second)
-	for process.is_alive() && time.sys_mono_now() < deadline {
-		time.sleep(10 * time.millisecond)
-	}
-	if process.is_alive() {
-		process.signal_kill()
-	}
-	process.wait()
-	output := process.stdout_slurp() + process.stderr_slurp()
-	code := process.code
-	process.close()
-	return code, output
+	result := cmdexec.run_with_timeout(command[0], command[1..], 60_000)
+	return result.exit_code, result.output
 }
 
 fn compat_elf_word(data []u8, offset int, width int) u64 {
@@ -167,4 +153,21 @@ fn test_freestanding_resolver_udp_tcp_hosts_services_and_failures() ! {
 			assert output.contains('DNS UDP/TCP fixture passed'), output
 		}
 	}
+}
+
+fn test_shim_libc_with_musl_headers() ! {
+	$if !linux || (!amd64 && !arm64) {
+		return
+	}
+	compiler := os.find_abs_path_of_executable('musl-gcc') or { return }
+	root := compat_work_directory('musl')!
+	defer { os.rmdir_all(root) or {} }
+	output := os.join_path(root, 'musl')
+	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc', compiler,
+		'-shim-libc', '-ldflags', '-static', '-o', output,
+		os.join_path(compat_fixture, 'musl_headers.c.v')])
+	assert built.exit_code == 0, built.output
+	compat_assert_static_elf(output)!
+	code, result := compat_run([output])
+	assert code == 0, result
 }

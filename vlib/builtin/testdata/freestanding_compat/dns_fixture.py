@@ -197,13 +197,17 @@ def main():
                                  capture_output=True, text=True, timeout=60)
         sys.stdout.write(process.stdout)
         sys.stderr.write(process.stderr)
-        assert process.returncode == 0, f"resolver client exited {process.returncode}"
-        assert not errors, errors
-        assert ("truncated.example.test", 1, True) in observed, observed
-        assert ("dual.example.test", 1, False) in observed and ("dual.example.test", 28, False) in observed
-        assert ("203.2.0.192.in-addr.arpa", 12, True) in observed, observed
-        assert ("reverse-alias.example.test", 12, False) in observed, observed
-        assert ("search.example.test", 1, False) in observed
+        process.check_returncode()
+        if errors:
+            raise RuntimeError(f"DNS fixture server failed: {errors}")
+        expected = {("truncated.example.test", 1, True),
+                    ("dual.example.test", 1, False), ("dual.example.test", 28, False),
+                    ("203.2.0.192.in-addr.arpa", 12, True),
+                    ("reverse-alias.example.test", 12, False),
+                    ("search.example.test", 1, False)}
+        missing = expected.difference(observed)
+        if missing:
+            raise RuntimeError(f"missing DNS queries: {sorted(missing)}")
         print(f"DNS UDP/TCP fixture passed ({len(observed)} queries)")
     finally:
         stopped.set()

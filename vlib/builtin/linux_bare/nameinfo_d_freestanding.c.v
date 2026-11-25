@@ -419,7 +419,10 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		return bare_name_copy(output, size, unsafe { tos2(&text[0]) })
 	}
 	fn bare_name_host(address &BareNameAddress, flags i32, hosts uint, paths uint, output uint, size uint) i32 {
-		if flags & i32(C.NI_NUMERICHOST) != 0 { return bare_name_numeric(address, output, size) }
+		if flags & i32(C.NI_NUMERICHOST) != 0 {
+			if flags & i32(C.NI_NAMEREQD) != 0 { return i32(C.EAI_NONAME) }
+			return bare_name_numeric(address, output, size)
+		}
 		mut lookup := *address
 		if address.family == i32(C.AF_INET6) {
 			mut mapped := address.bytes[10] == 255 && address.bytes[11] == 255

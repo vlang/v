@@ -5,8 +5,6 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <linux/netlink.h>
-#include <linux/rtnetlink.h>
 #include <net/if.h>
 #include <poll.h>
 #include <stdio.h>
@@ -216,6 +214,9 @@ static int v_dns_wait(int fd, short events, int64_t deadline) {
         if (!result) { errno = ETIMEDOUT; return -1; }
         return 0;
     }
+}
+int v_resolver_wait_readable(int fd, int64_t deadline) {
+    return v_dns_wait(fd, POLLIN, deadline);
 }
 static int v_dns_transfer(int fd, unsigned char *data, size_t size, int sending, int64_t deadline) {
     size_t done = 0;
@@ -536,58 +537,7 @@ named:;
     return *count ? 0 : EAI_SERVICE;
 }
 
-/* AI_ADDRCONFIG counts configured non-loopback addresses, rather than merely
- * assuming that creating an AF_INET/AF_INET6 socket means it is configured. */
-static int v_configured_families(void) {
-    int fd = socket(AF_NETLINK, SOCK_RAW | SOCK_NONBLOCK | SOCK_CLOEXEC, NETLINK_ROUTE);
-    if (fd < 0) return -1;
-    struct { struct nlmsghdr header; struct ifaddrmsg address; } request;
-    memset(&request, 0, sizeof request);
-    request.header.nlmsg_len = sizeof request;
-    request.header.nlmsg_type = RTM_GETADDR;
-    request.header.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
-    request.header.nlmsg_seq = 1;
-    int mask = 0;
-    unsigned char *buffer = malloc(65536);
-    if (!buffer) { close(fd); errno = ENOMEM; return -1; }
-    if (send(fd, &request, sizeof request, 0) != sizeof request) { mask = -1; goto done; }
-    int64_t deadline = v_dns_now() + 2000;
-    for (;;) {
-        if (v_dns_wait(fd, POLLIN, deadline) < 0) { mask = -1; break; }
-        ssize_t size = recv(fd, buffer, 65536, MSG_TRUNC);
-        if (size < 0 && (errno == EINTR || errno == EAGAIN)) continue;
-        if (size < 0 || size > 65536) { if (size > 65536) errno = EOVERFLOW; mask = -1; break; }
-        int remaining = (int)size;
-        for (struct nlmsghdr *message = (void *)buffer; NLMSG_OK(message, remaining); message = NLMSG_NEXT(message, remaining)) {
-            if (message->nlmsg_seq != 1) continue;
-            if (message->nlmsg_flags & NLM_F_DUMP_INTR) { errno = EAGAIN; mask = -1; goto done; }
-            if (message->nlmsg_type == NLMSG_DONE) goto done;
-            if (message->nlmsg_type == NLMSG_ERROR) { errno = EIO; mask = -1; goto done; }
-            if (message->nlmsg_type != RTM_NEWADDR || NLMSG_PAYLOAD(message, 0) < sizeof(struct ifaddrmsg)) continue;
-            struct ifaddrmsg *address = NLMSG_DATA(message);
-            if (address->ifa_scope == RT_SCOPE_HOST || address->ifa_scope == RT_SCOPE_NOWHERE) continue;
-            if (address->ifa_flags & (IFA_F_TENTATIVE | IFA_F_DADFAILED)) continue;
-            int ioctl_fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-            if (ioctl_fd < 0) ioctl_fd = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-            if (ioctl_fd < 0) { mask = -1; goto done; }
-            struct ifreq interface;
-            memset(&interface, 0, sizeof interface);
-            interface.ifr_ifindex = (int)address->ifa_index;
-            long result = V_RAW3(SYS_ioctl, ioctl_fd, SIOCGIFNAME, &interface);
-            if (!result) result = V_RAW3(SYS_ioctl, ioctl_fd, SIOCGIFFLAGS, &interface);
-            close(ioctl_fd);
-            if (result < 0) { errno = (int)-result; mask = -1; goto done; }
-            if (interface.ifr_flags & IFF_LOOPBACK) continue;
-            if (address->ifa_family == AF_INET) mask |= 1;
-            if (address->ifa_family == AF_INET6) mask |= 2;
-        }
-        if (remaining) { errno = EPROTO; mask = -1; break; }
-    }
-done:;
-    int error = errno;
-    free(buffer); close(fd); errno = error;
-    return mask;
-}
+extern int32_t v_native_configured_families(void);
 
 void freeaddrinfo(struct addrinfo *info) {
     while (info) { struct addrinfo *next = info->ai_next; free(info); info = next; }
@@ -601,13 +551,14 @@ static int v_resolve_getaddrinfo(const char *host, const char *service, const st
     if (!host && !service) return EAI_NONAME;
     int flags = hints->ai_flags, family = hints->ai_family;
     if (flags & ~(AI_PASSIVE | AI_CANONNAME | AI_NUMERICHOST | AI_NUMERICSERV | AI_ADDRCONFIG | AI_V4MAPPED | AI_ALL)) return EAI_BADFLAGS;
+    if (!host && (flags & AI_CANONNAME)) return EAI_BADFLAGS;
     if (family != AF_UNSPEC && family != AF_INET && family != AF_INET6) return EAI_FAMILY;
     struct v_service ports[2];
     int port_count, error = v_services(paths->services_path, service, hints->ai_socktype, hints->ai_protocol, flags, ports, &port_count);
     if (error) return error;
     int configured = 3;
     if (flags & AI_ADDRCONFIG) {
-        configured = v_configured_families();
+        configured = v_native_configured_families();
         if (configured < 0) return EAI_SYSTEM;
     }
     char name[256], canonical[256] = {0};

@@ -10,6 +10,14 @@
 #define freeaddrinfo v_fuzz_freeaddrinfo
 #define gai_strerror v_fuzz_gai_strerror
 #define v_freestanding_getaddrinfo v_fuzz_resolve
+#define v_resolver_context_size v_fuzz_context_size
+#define v_resolver_context_init v_fuzz_context_init
+#define v_resolver_properties v_fuzz_properties
+#define v_resolver_question v_fuzz_question
+#define v_resolver_exchange v_fuzz_exchange
+#define v_resolver_wait_readable v_fuzz_wait_readable
+#define v_resolver_now v_fuzz_now
+#define v_resolver_io_error v_fuzz_io_error
 #include "../../linux_bare/libc_resolver.c"
 #include <sys/mman.h>
 

@@ -4,6 +4,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	#include "@DIR/libc_interfaces_abi.h"
 	#include <sys/socket.h>
 	#include <sys/syscall.h>
+	fn C.v_resolver_wait_readable(i32, i64) i32
 	fn C.v_ifaddr_size() uint
 	fn C.v_ifaddr_sockaddr_size(i32, uint) uint
 	fn C.v_ifaddr_assign(uint, uint, uint, u32, uint, uint, uint, uint)
@@ -21,8 +22,11 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	struct BareInterfaceDump {
 	mut:
-		links     &BareNativeInterface = unsafe { nil }
-		addresses uint
+		links         &BareNativeInterface = unsafe { nil }
+		addresses     uint
+		families_only bool
+		family_mask   i32
+		deadline      i64
 	}
 	struct BareNetlinkAddress {
 	mut:
@@ -126,7 +130,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			}
 			link.flags = bare_interface_u32(message, 24)
 			link.kind = bare_interface_u16(message, 18)
-			if attributes[1] != 0 && sizes[1] != 0 {
+			if !state.families_only && attributes[1] != 0 && sizes[1] != 0 {
 				broad := if sizes[2] == sizes[1] { attributes[2] } else { uint(0) }
 				return bare_interface_record(mut state, link, 17, attributes[1], 0, broad, sizes[1], attributes[7], sizes[7], 0)
 			}
@@ -135,6 +139,16 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		if link == unsafe { nil } { return 0 } // Interface disappeared between dumps.
 		family := i32(unsafe { message[16] })
 		if family != 2 && family != 10 { return 0 }
+		if state.families_only {
+			// IFF_LOOPBACK, host/nowhere scope, DAD-failed and tentative addresses
+			// do not establish an address family for AI_ADDRCONFIG.
+			scope := unsafe { message[19] }
+			flags := unsafe { message[18] }
+			if link.flags & 8 == 0 && scope !in [u8(254), 255] && flags & 0x48 == 0 {
+				state.family_mask |= if family == 2 { 1 } else { 2 }
+			}
+			return 0
+		}
 		width := if family == 2 { uint(4) } else { uint(16) }
 		address := if attributes[2] != 0 { attributes[2] } else { attributes[1] }
 		address_size := if attributes[2] != 0 { sizes[2] } else { sizes[1] }
@@ -175,6 +189,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			break
 		}
 		for {
+			if state.families_only && C.v_resolver_wait_readable(fd, state.deadline) < 0 {
+				return bf_native_errno_cell
+			}
 			mut capacity := i64(0)
 			for {
 				capacity = i64(sys_call6(u64(C.SYS_recvfrom), u64(fd), 0, 0, u64(i32(C.MSG_PEEK) | i32(C.MSG_TRUNC)), 0, 0))
@@ -260,9 +277,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			entry = next
 		}
 	}
-	@[export: 'v_native_getifaddrs'; markused]
-	fn bare_native_getifaddrs(output uint) i32 {
-		mut state := BareInterfaceDump{}
+	fn bare_interface_collect(mut state BareInterfaceDump) i32 {
 		defer {
 			mut link := state.links
 			for link != unsafe { nil } {
@@ -271,9 +286,26 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				link = next
 			}
 		}
+		code := bare_interface_dump(mut state, 18)
+		if code != 0 { return code }
+		return bare_interface_dump(mut state, 22)
+	}
+
+	@[export: 'v_native_configured_families'; markused]
+	fn bare_native_configured_families() i32 {
+		mut state := BareInterfaceDump{ families_only: true, deadline: C.v_resolver_now() + 2000 }
+		code := bare_interface_collect(mut state)
+		if code != 0 {
+			bf_native_errno_cell = code
+			return -1
+		}
+		return state.family_mask
+	}
+	@[export: 'v_native_getifaddrs'; markused]
+	fn bare_native_getifaddrs(output uint) i32 {
+		mut state := BareInterfaceDump{}
 		unsafe { *(&uint(output)) = 0 }
-		mut code := bare_interface_dump(mut state, 18)
-		if code == 0 { code = bare_interface_dump(mut state, 22) }
+		code := bare_interface_collect(mut state)
 		if code != 0 {
 			bare_native_freeifaddrs(state.addresses)
 			bf_native_errno_cell = code
@@ -309,7 +341,11 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		result := bare_native_result(sys_call3(bf_nr_ioctl, u64(fd), 0x8910, u64(&request[0])))
 		error := bf_native_errno_cell
 		C.close(fd)
-		bf_native_errno_cell = error
+		bf_native_errno_cell = if result < 0 && error == i32(C.ENODEV) {
+			i32(C.ENXIO)
+		} else {
+			error
+		}
 		if result < 0 { return 0 }
 		bare_string_strlcpy(output, uint(&request[0]), 16)
 		return output
