@@ -12,11 +12,18 @@ import v.token
 // declares, or what every type of the set has. The parser keeps the constraints
 // next to the generic params (see flat.Node.generic_constraints).
 
+enum ThreadCapability as u8 {
+	none
+	transfer
+	share
+}
+
 // GenericConstraint is what the constraint of a type parameter names.
 struct GenericConstraint {
-	name         u32 // source spelling, resolved for messages
-	is_interface bool
-	iface        Interface
+	name              u32 // source spelling, resolved for messages
+	is_interface      bool
+	thread_capability ThreadCapability
+	iface             Interface
 	// The types of a set, when it names no interface: an interface among them
 	// stands for the types that implement it.
 	types []Type
@@ -51,6 +58,14 @@ fn (tc &TypeChecker) generic_constraint(decl flat.Node, text_id u32) ?GenericCon
 	typ := tc.generic_constraint_type(decl, text_id)
 	if typ is Unknown {
 		return none
+	}
+	$if ownership ? {
+		if capability := tc.ownership_thread_constraint(unalias_type(typ).source_type_id()) {
+			return GenericConstraint{
+				name:              text_id
+				thread_capability: capability
+			}
+		}
 	}
 	mut named := typ
 	for _ in 0 .. 16 {
@@ -335,6 +350,11 @@ fn (tc &TypeChecker) generic_constraint_accepts(constraint GenericConstraint, ac
 	if constraint.expanding_sum {
 		return true
 	}
+	$if ownership ? {
+		if constraint.thread_capability != .none {
+			return tc.ownership_thread_transfer_problem(actual, constraint.thread_capability, 0, mut map[u64]bool{}) == none
+		}
+	}
 	if constraint.is_interface {
 		return tc.type_implements_interface(actual, constraint.iface)
 	}
@@ -373,6 +393,13 @@ pub fn (tc &TypeChecker) generic_instance_satisfies_constraints(decl flat.Node, 
 }
 
 fn (mut tc TypeChecker) record_generic_constraint_error(constraint GenericConstraint, param u32, actual Type, id flat.NodeId, pos token.Pos) {
+	$if ownership ? {
+		if constraint.thread_capability != .none {
+			reason := tc.ownership_thread_transfer_problem(actual, constraint.thread_capability, 0, mut map[u64]bool{}) or { return }
+			tc.record_error_at(.thread_transfer, '`${actual.name()}` does not satisfy `${constraint.name_text()}`: ${reason}', id, pos)
+			return
+		}
+	}
 	if constraint.is_interface {
 		tc.record_interface_implementation_error(.call_arg_mismatch, actual, constraint.iface,
 			id, pos)
@@ -1657,6 +1684,11 @@ fn (tc &TypeChecker) type_param_scope(node flat.Node) TypeParamScope {
 // constraint_need is what `constraint`, written as `display` where it is
 // asked, asks of a type: to implement its interface, or to be one of its set.
 fn constraint_need(constraint GenericConstraint, display string) string {
+	$if ownership ? {
+		if constraint.thread_capability != .none {
+			return 'satisfy `${display}`'
+		}
+	}
 	if constraint.is_interface {
 		return 'implement `${display}`'
 	}
@@ -1671,6 +1703,18 @@ fn (tc &TypeChecker) constraint_unmet_reason(constraints map[u32]GenericConstrai
 	have := constraints[param_id] or {
 		param := flat.source_type_name(param_id)
 		return '`${param}` has no constraint: give it one, `[${param} ${flat.source_type_name(display_id)}]`'
+	}
+	$if ownership ? {
+		if have.thread_capability != .none {
+			if need.thread_capability == have.thread_capability
+				|| (have.thread_capability == .share && need.thread_capability == .transfer) {
+				return none
+			}
+			return 'its constraint `${have.name_text()}` does not provide this guarantee'
+		}
+		if need.thread_capability != .none && (have.is_interface || have.family_struct != 0) {
+			return 'its constraint `${have.name_text()}` does not provide this guarantee'
+		}
 	}
 	if have.is_interface {
 		if !need.is_interface {

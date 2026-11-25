@@ -4365,3 +4365,77 @@ fn main() {
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('`cache.inner.items` aliases mutable data from an immutable value'), res.output
 }
+
+fn test_ownership_checks_thread_capabilities_in_generic_bounds() {
+	v3_bin := ownership_build_v3()
+	good := run_ownership_check(v3_bin, 'thread_bounds_valid', r'
+import sync.thread
+import sync.arc
+import cell
+
+fn consume[T thread.Transferable](input T) T {
+	return input
+}
+
+fn share[T thread.Shareable](input T) arc.Arc[T] {
+	return arc.new(consume(input))
+}
+
+fn worker(value arc.Arc[string]) int {
+	return value.get().len
+}
+
+fn main() {
+	assert consume(7) == 7
+	_ = consume(cell.RefCell[int]{})
+	owner := share("hello".to_owned())
+	handle := spawn worker(owner)
+	assert handle.wait() == 5
+}
+')
+	assert good.exit_code == 0, good.output
+
+	bad := run_ownership_check(v3_bin, 'thread_bounds_invalid', r'
+import sync.thread as transport
+import cell
+
+struct Borrowed {
+	ptr &int
+}
+
+fn consume[T transport.Transferable](input T) T {
+	return input
+}
+
+fn share[T transport.Shareable](input T) T {
+	return input
+}
+
+fn main() {
+	number := 7
+	_ = consume(Borrowed{ptr: &number})
+	_ = share(cell.RefCell[int]{})
+	f := consume[Borrowed]
+	_ = f(Borrowed{ptr: &number})
+}
+')
+	assert bad.exit_code != 0, bad.output
+	assert bad.output.count('does not satisfy `transport.Transferable`: field `ptr`') == 2, bad.output
+	assert bad.output.contains('does not satisfy `transport.Shareable`: cell.RefCell has unsynchronized borrow state'), bad.output
+
+	forward := run_ownership_check(v3_bin, 'thread_bounds_forward', r'
+import sync.thread
+
+fn share[T thread.Shareable](input T) T {
+	return input
+}
+
+fn forward[T thread.Transferable](input T) T {
+	return share(input)
+}
+
+fn main() {}
+')
+	assert forward.exit_code != 0, forward.output
+	assert forward.output.contains('needs `T` to satisfy `thread.Shareable`'), forward.output
+}

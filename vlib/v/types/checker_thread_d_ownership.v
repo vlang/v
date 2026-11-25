@@ -2,11 +2,6 @@ module types
 
 import v.flat
 
-enum ThreadCapability {
-	transfer
-	share
-}
-
 fn (tc &TypeChecker) ownership_checks_thread_boundary() bool {
 	return !tc.autofree_mode && tc.unsafe_depth == 0 && !tc.ownership_effects_disabled()
 }
@@ -157,7 +152,7 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability Thre
 		}
 		Struct {
 			name_id := typ.name_id
-			visit_key := (u64(name_id) << 1) | u64(capability)
+			visit_key := (u64(name_id) << 2) | u64(capability)
 			if seen[visit_key] { return none }
 			seen[visit_key] = true
 			if flat.source_type_query(name_id).has(.c_prefix) {
@@ -206,7 +201,7 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability Thre
 		}
 		SumType {
 			name_id := typ.name_id
-			visit_key := (u64(name_id) << 1) | u64(capability)
+			visit_key := (u64(name_id) << 2) | u64(capability)
 			if seen[visit_key] { return none }
 			seen[visit_key] = true
 			for variant in tc.sum_types.type_ids(tc.sum_base_name(name_id)) or { []u32{} } {
@@ -219,6 +214,21 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability Thre
 		else {}
 	}
 	return none
+}
+
+// Resolve the standard-library markers by declaration, so a same-named user type
+// still has ordinary struct constraint semantics.
+fn (tc &TypeChecker) ownership_thread_constraint(name_id u32) ?ThreadCapability {
+	capability := match flat.source_type_name(name_id) {
+		'sync.thread.Transferable', 'thread.Transferable' { ThreadCapability.transfer }
+		'sync.thread.Shareable', 'thread.Shareable' { ThreadCapability.share }
+		else { return none }
+	}
+	decl := tc.source_struct_decl_for_name(name_id) or { return none }
+	if !tc.ownership_thread_library_declaration(decl, 'sync/thread') {
+		return none
+	}
+	return capability
 }
 
 // Check declaration provenance before relying on a standard-library type's
@@ -234,12 +244,19 @@ fn (tc &TypeChecker) ownership_thread_library_payload(name_id u32, module_path s
 		return none
 	}
 	decl := tc.source_struct_decl_for_name(syntax.generic_base()) or { return none }
+	if !tc.ownership_thread_library_declaration(decl, module_path) {
+		return none
+	}
+	return *tc.parse_type(args[0])
+}
+
+fn (tc &TypeChecker) ownership_thread_library_declaration(decl flat.Node, module_path string) bool {
+	if tc.compiler_vroot == '' {
+		return false
+	}
 	file := tc.ownership_fn_decl_file(decl)
 	source := tc.a.cached_header_sources[file] or { file }
 	file_path := tc.a.real_source_path(source).replace('\\', '/')
 	root := tc.memo_real_path(tc.compiler_vroot).replace('\\', '/').trim_right('/')
-	if !file_path.starts_with('${root}/vlib/${module_path}/') {
-		return none
-	}
-	return *tc.parse_type(args[0])
+	return file_path.starts_with('${root}/vlib/${module_path}/')
 }
