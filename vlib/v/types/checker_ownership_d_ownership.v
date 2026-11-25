@@ -3446,6 +3446,13 @@ fn (mut tc TypeChecker) ownership_prescan_return_aggregate_literal_descendants(f
 		return tc.ownership_prescan_boxed_borrows(fn_name, slot_idx, base_suffix,
 			tc.a.child(&node, 0), param_names, local_types, 0)
 	}
+	if node.kind == .ident && base_suffix == '' && node.value !in param_names {
+		target := tc.fn_ret_types[fn_name] or { return false }
+		if cast_target_interface(target) != none {
+			return tc.ownership_prescan_boxed_borrows(fn_name, slot_idx, base_suffix, id,
+				param_names, local_types, 0)
+		}
+	}
 	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
 		child_id := tc.ownership_unwrap_expr(tc.a.child(&node, 0))
 		if tc.valid_node_id(child_id)
@@ -3608,6 +3615,11 @@ fn (mut tc TypeChecker) ownership_prescan_boxed_borrows(fn_name string, slot_idx
 			}
 		}
 		return marked
+	}
+	if node.kind == .cast_expr && node.children_count == 1
+		&& cast_target_interface(tc.parse_type(node.source_value_id())) != none {
+		return tc.ownership_prescan_boxed_borrows(fn_name, slot_idx, base_suffix,
+			tc.a.child(node, 0), param_names, local_types, depth + 1)
 	}
 	if node.kind != .struct_init {
 		return false

@@ -5196,12 +5196,20 @@ fn (mut factory VisitorFactory) create() Visitor {
 	visitor := BorrowedVisitor{data: factory.data}
 	return Visitor(visitor)
 }
+
+fn (mut factory VisitorFactory) create_named() Visitor {
+	visitor := BorrowedVisitor{data: factory.data}
+	box := Visitor(visitor)
+	result := box
+	return result
+}
 '
 
 fn test_ownership_boxed_visitor_retains_local_storage() {
 	v3_bin := ownership_build_v3()
 	for build in ['return forwarded(&data)',
-		'mut factory := VisitorFactory{data: &data}; return factory.create()'] {
+		'mut factory := VisitorFactory{data: &data}; return factory.create()',
+		'mut factory := VisitorFactory{data: &data}; return factory.create_named()'] {
 		result := run_ownership_check(v3_bin, 'boxed_visitor_escape', boxed_visitor_source + "
 fn dangling() Visitor {
 	data := VisitorData{text: 'local'.clone()}
@@ -5249,5 +5257,18 @@ fn main() {
 	assert data.text == 'changed'
 }
 ")
+	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_named_boxed_visitor_accepts_storage_that_outlives_box() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'named_boxed_visitor_live_borrow', boxed_visitor_source + r'
+fn main() {
+	data := VisitorData{text: "local".clone()}
+	mut factory := VisitorFactory{data: &data}
+	visitor := factory.create_named()
+	assert visitor.visit() == 5
+}
+')
 	assert result.exit_code == 0, result.output
 }
