@@ -4576,3 +4576,25 @@ fn main() {
 	assert result.exit_code != 0, result.output
 	assert result.output.count('cannot modify through an immutable borrow') == 2, result.output
 }
+
+fn test_ownership_bytestr_reads_borrowed_array() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'bytestr_readonly_receiver', r'
+struct Path implements Drop {
+	bytes []u8
+}
+fn (mut path Path) drop() {
+	drop_owned(path.bytes)
+}
+fn (path &^a Path) get[^a]() ?&^a Path {
+	return path
+}
+fn main() {
+	path := Path{bytes: [u8(65)]}
+	view := path.get() or { panic("missing") }
+	assert view.bytes.bytestr() == "A"
+	assert view.bytes.len == 1
+}
+')
+	assert result.exit_code == 0, result.output
+}

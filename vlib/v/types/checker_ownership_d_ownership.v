@@ -5188,7 +5188,7 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 			}
 			if recv_owned && info.params[0] !is Pointer
 				&& !tc.ownership_method_keeps_receiver(fn_node.value)
-				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value)
+				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value, info.name)
 				&& !tc.ownership_map_builtin_keeps_receiver(recv_id, fn_node.value)
 				&& !tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value) {
 				tc.ownership_mark_fn_param_owned(info.name, 0)
@@ -5197,7 +5197,7 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 			recv_name := tc.ownership_expr_ident_name(recv_id)
 			if recv_name.len > 0 && info.params[0] !is Pointer
 				&& !tc.ownership_method_keeps_receiver(fn_node.value)
-				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value)
+				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value, info.name)
 				&& !tc.ownership_map_builtin_keeps_receiver(recv_id, fn_node.value)
 				&& !tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value) {
 				tc.ownership_prescan_transfer_owned_descendants_to_param(recv_name, info.name, 0, mut owned_locals, local_types)
@@ -10181,7 +10181,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 				}
 			}
 			if !tc.ownership_method_keeps_receiver(fn_node.value)
-				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value)
+				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value, call_name)
 				&& !tc.ownership_map_builtin_keeps_receiver(recv_id, fn_node.value)
 				&& !tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value) {
 				if info.params[0] is Pointer {
@@ -10534,7 +10534,7 @@ fn (tc &TypeChecker) ownership_call_arg_reads_receiver_storage(node flat.Node, i
 	recv_id := tc.a.child(fn_node, 0)
 	receiver_is_retained := info.params[0] is Pointer
 		|| tc.ownership_method_keeps_receiver(fn_node.value)
-		|| tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value)
+		|| tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value, info.name)
 		|| tc.ownership_map_builtin_keeps_receiver(recv_id, fn_node.value)
 		|| tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value)
 	if !receiver_is_retained {
@@ -12633,7 +12633,7 @@ fn (tc &TypeChecker) ownership_expr_moves_named_storage(source_id flat.NodeId, t
 		receiver_type := if params.len > 0 { params[0] } else { Type(void_) }
 		if (receiver_type !is Pointer || tc.ownership_call_returns_param(call_name, 0))
 			&& !tc.ownership_method_keeps_receiver(fn_node.value)
-			&& !tc.ownership_array_builtin_keeps_receiver(receiver_id, fn_node.value)
+			&& !tc.ownership_array_builtin_keeps_receiver(receiver_id, fn_node.value, call_name)
 			&& !tc.ownership_map_builtin_keeps_receiver(receiver_id, fn_node.value)
 			&& !tc.ownership_string_builtin_keeps_receiver(receiver_id, fn_node.value)
 			&& tc.ownership_expr_moves_named_storage(receiver_id, target) {
@@ -14178,7 +14178,11 @@ fn (tc &TypeChecker) ownership_method_keeps_receiver(method_name string) bool {
 	return false
 }
 
-fn (tc &TypeChecker) ownership_array_builtin_keeps_receiver(recv_id flat.NodeId, method_name string) bool {
+fn (tc &TypeChecker) ownership_array_builtin_keeps_receiver(recv_id flat.NodeId, method_name string, call_name string) bool {
+	// The checker resolves bytestr directly because it is specific to byte arrays.
+	if call_name == 'array.bytestr' {
+		return true
+	}
 	if unalias_type(unwrap_pointer(tc.resolve_type(recv_id))) !is Array {
 		return false
 	}
