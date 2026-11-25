@@ -1,33 +1,8 @@
 import os
 import v.tempname
 
-const fixed_array_vexe = @VEXE
-const fixed_array_tests_dir = os.dir(@FILE)
-const fixed_array_v3_dir = os.dir(fixed_array_tests_dir)
-const fixed_array_vlib_dir = os.dir(fixed_array_v3_dir)
-const fixed_array_v3_src = os.join_path(fixed_array_v3_dir, 'v.v')
-const fixed_array_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_fixed_array_typedef_compiler_${tempname.unique_token()}')
-
-fn testsuite_end() {
-	os.rmdir_all(fixed_array_compiler_dir) or {}
-}
-
-fn fixed_array_build_v3() string {
-	v3_bin := os.join_path(fixed_array_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	os.mkdir_all(fixed_array_compiler_dir) or { panic(err) }
-	build :=
-		os.exec([fixed_array_vexe, '-gc', 'none', '-path',
-			'${fixed_array_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${fixed_array_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
 fn fixed_array_write_project(name string, fixture_src string, main_src string) string {
-	root := os.join_path(os.temp_dir(), 'v3_fixed_array_typedef_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_typedef_${name}_${tempname.unique_token()}')
 	fixture_dir := os.join_path(root, 'fixture')
 	os.mkdir_all(fixture_dir) or { panic(err) }
 	os.write_file(os.join_path(fixture_dir, 'arrays.c.v'), fixture_src) or { panic(err) }
@@ -36,8 +11,6 @@ fn fixed_array_write_project(name string, fixture_src string, main_src string) s
 }
 
 fn test_fixed_array_typedefs_fold_module_const_lengths() {
-	v3_bin := fixed_array_build_v3()
-
 	run_root := fixed_array_write_project('run', 'module fixture
 
 const max_items = 8
@@ -69,8 +42,9 @@ fn main() {
 	println(int_str(fixture.score()))
 }
 ')
+	defer { os.rmdir_all(run_root) or {} }
 	run_bin := os.join_path(run_root, 'out')
-	run_compile := os.exec([v3_bin, run_root, '-b', 'c', '-o', run_bin])
+	run_compile := os.exec([@VEXE, run_root, '-b', 'c', '-o', run_bin])
 	assert run_compile.exit_code == 0, run_compile.output
 	run_c := os.read_file(run_bin + '.c') or { panic(err) }
 	assert !run_c.contains('[max_items]'), run_c
@@ -113,8 +87,9 @@ fn main() {
 	println(int_str(fixture.shape_score()))
 }
 ')
+	defer { os.rmdir_all(shape_root) or {} }
 	shape_c_path := os.join_path(shape_root, 'out.c')
-	shape_compile := os.exec([v3_bin, shape_root, '-b', 'c', '-o', shape_c_path])
+	shape_compile := os.exec([@VEXE, shape_root, '-b', 'c', '-o', shape_c_path])
 	assert shape_compile.exit_code == 0, shape_compile.output
 	shape_c := os.read_file(shape_c_path) or { panic(err) }
 	assert !shape_c.contains('[max_items]'), shape_c
@@ -126,7 +101,6 @@ fn main() {
 }
 
 fn test_fixed_array_typedefs_keep_declaring_module_with_unrelated_math_import() {
-	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('module_authority', 'module fixture
 
 pub struct Image {
@@ -162,8 +136,9 @@ fn main() {
 	println(int_str(fixture.score() + int(math.sqrt(4))))
 }
 ')
+	defer { os.rmdir_all(root) or {} }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -177,7 +152,6 @@ fn main() {
 }
 
 fn test_sizeof_fixed_array_typedef_precedes_function_pointer() {
-	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('sizeof_fn_ptr', 'module fixture
 
 pub type Callback = fn ([sizeof(int)]u8) int
@@ -200,8 +174,9 @@ fn main() {
 	println(fixture.call())
 }
 ')
+	defer { os.rmdir_all(root) or {} }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -209,7 +184,6 @@ fn main() {
 }
 
 fn test_sizeof_pointer_fixed_array_typedef_precedes_function_pointer() {
-	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('sizeof_pointer_fn_ptr', 'module fixture
 ', 'module main
 
@@ -236,8 +210,9 @@ fn main() {
 	println(int_callback(int_data) + struct_callback(struct_data))
 }
 ')
+	defer { os.rmdir_all(root) or {} }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -245,7 +220,6 @@ fn main() {
 }
 
 fn test_sizeof_struct_fixed_array_typedef_is_emitted_when_target_is_defined() {
-	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('sizeof_struct', 'module fixture
 
 pub type Bytes = [sizeof(ZSize)]u8
@@ -272,8 +246,9 @@ fn main() {
 	println(fixture.score())
 }
 ')
+	defer { os.rmdir_all(root) or {} }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -288,7 +263,6 @@ fn main() {
 }
 
 fn test_imported_fn_pointer_fixed_array_of_backed_enum_uses_emitted_typedef() {
-	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('fn_pointer_enum', 'module fixture
 
 pub enum Mode as u32 {
@@ -309,8 +283,9 @@ fn main() {
 	println(fixture.Mode.one)
 }
 ')
+	defer { os.rmdir_all(root) or {} }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -321,7 +296,6 @@ fn main() {
 }
 
 fn test_enum_fixed_array_fn_pointer_uses_emitted_typedef_name() {
-	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('enum_fn_pointer', 'module fixture
 
 pub enum Combiner as i32 {
@@ -342,8 +316,9 @@ fn main() {
 	println(fixture.callback_size())
 }
 ')
+	defer { os.rmdir_all(root) or {} }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('Array_fixed_fixture__Combiner_2[2]'), generated
@@ -353,7 +328,6 @@ fn main() {
 }
 
 fn test_enum_fixed_array_fn_pointer_pointer_param_uses_emitted_typedef_name() {
-	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('enum_fn_pointer_param', 'module fixture
 
 pub enum Mode as u32 {
@@ -374,8 +348,9 @@ fn main() {
 	println(fixture.callback_size())
 }
 ')
+	defer { os.rmdir_all(root) or {} }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, root])
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('(Array_fixed_fixture__Mode_2*)'), generated
@@ -386,7 +361,6 @@ fn main() {
 }
 
 fn test_enum_fixed_array_fn_pointer_return_alias_emits_wrapper() {
-	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('enum_fn_pointer_return', 'module fixture
 
 pub enum Mode as u32 {
@@ -407,8 +381,9 @@ fn main() {
 	println(fixture.callback_size())
 }
 ')
+	defer { os.rmdir_all(root) or {} }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, root])
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('typedef _v_ret_Array_fixed_fixture__Mode_2 (*_fn_ptr_'), generated
@@ -419,16 +394,13 @@ fn main() {
 }
 
 fn test_backed_enum_callbacks_are_passed_and_invoked() {
-	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('enum_callback_calls', 'module fixture
 pub enum Mode as i32 {
 	one = 7
 	two = 19
 }
 ', '')
-	defer {
-		os.rmdir_all(root) or {}
-	}
+	defer { os.rmdir_all(root) or {} }
 	header := os.join_path(root, 'callbacks.h')
 	os.write_file(header, '#include <stdint.h>
 static int32_t foreign_invoke(int32_t (*cb)(int32_t*)) {
@@ -496,7 +468,7 @@ fn main() {
 ') or { panic(err) }
 	exe_suffix := $if windows { '.exe' } $else { '' }
 	bin := os.join_path(root, 'out${exe_suffix}')
-	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, root])
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert !generated.contains('Array_fixed_int_2'), generated
@@ -505,7 +477,6 @@ fn main() {
 }
 
 fn test_backed_enum_optional_result_callbacks_keep_payload_types() {
-	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('enum_optional_callback_calls', 'module fixture
 pub enum Mode as i32 {
  one = 7
@@ -555,12 +526,10 @@ fn main() {
  assert result_error_message(make_result) == 'ok'
 }
 ")
-	defer {
-		os.rmdir_all(root) or {}
-	}
+	defer { os.rmdir_all(root) or {} }
 	exe_suffix := $if windows { '.exe' } $else { '' }
 	bin := os.join_path(root, 'out${exe_suffix}')
-	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, root])
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert !generated.contains('Array_fixed_int_2'), generated
@@ -570,7 +539,6 @@ fn main() {
 }
 
 fn test_import_alias_const_fixed_array_length_is_folded() {
-	v3_bin := fixed_array_build_v3()
 	root := fixed_array_write_project('import_alias_const', 'module fixture
 
 pub const max_name_size = u32(256)
@@ -588,13 +556,14 @@ fn main() {
 	println(name_size([fx.max_name_size /* trailing comment */]char{}))
 }
 ')
+	defer { os.rmdir_all(root) or {} }
 	// A real module named like the alias must not capture its constant.
 	os.mkdir_all(os.join_path(root, 'fx')) or { panic(err) }
 	os.write_file(os.join_path(root, 'fx', 'fx.v'), 'module fx
 pub const max_name_size = 16
 ') or { panic(err) }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -616,7 +585,7 @@ fn second_size() int {
 }
 ') or { panic(err) }
 	ambiguous_bin := os.join_path(root, 'ambiguous')
-	ambiguous := os.exec([v3_bin, '-b', 'c', '-o', ambiguous_bin, root])
+	ambiguous := os.exec([@VEXE, '-b', 'c', '-o', ambiguous_bin, root])
 	assert ambiguous.exit_code != 0, ambiguous.output
 	assert ambiguous.output.contains('non-constant array bound `fx.max_name_size`'), ambiguous.output
 }
