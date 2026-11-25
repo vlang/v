@@ -33,6 +33,64 @@ fn loop_smartcast_run_good(name string, source string) string {
 	return run.output.trim_space()
 }
 
+struct LoopSmartcastCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn loop_smartcast_compile_batch(bin string, cases []LoopSmartcastCase) os.Result {
+	root := os.dir(bin)
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		module_dir := os.join_path(root, module_name)
+		os.mkdir(module_dir) or { panic(err) }
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		fixture := 'module ${module_name}\n\n' + case.source
+		os.write_file(os.join_path(module_dir, 'v3_${case.name}.v'), fixture.replace_once('\nfn main()',
+			'\npub fn exercise()')) or { panic(err) }
+	}
+	os.write_file(os.join_path(root, 'main.v'), "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n") or {
+		panic(err)
+	}
+	return os.exec([@VEXE, '-b', 'c', '-nocolor', '-o', bin, root])
+}
+
+fn loop_smartcast_run_good_batch(cases []LoopSmartcastCase) {
+	root := loop_smartcast_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'program')
+	compile := loop_smartcast_compile_batch(bin, cases)
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	for case in cases {
+		run := os.exec([bin, case.name])
+		assert run.exit_code == 0, '${case.name}: ${run.output}'
+		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	}
+}
+
+fn loop_smartcast_run_bad_batch(cases []LoopSmartcastCase) {
+	root := loop_smartcast_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	compile := loop_smartcast_compile_batch(os.join_path(root, 'program'), cases)
+	assert compile.exit_code != 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	mut errors := map[string][]string{}
+	for line in compile.output.split_into_lines() {
+		location, message := line.split_once(': error: ') or { continue }
+		// Drop the line and column from the right to preserve any colon in the path.
+		file := location.all_before_last(':').all_before_last(':')
+		errors[os.file_name(file)] << message
+	}
+	for case in cases {
+		assert errors['v3_${case.name}.v'].any(it.contains(case.expected)), '${case.name}: expected `${case.expected}` in\n${compile.output}'
+	}
+}
+
 fn test_mut_sum_call_invalidates_loop_smartcast() {
 	// A loop body that passes the loop-narrowed sum value to a `mut` sum parameter lets
 	// the callee swap the active variant. The loop-condition narrowing must not be
@@ -63,8 +121,11 @@ fn main() {
 ',
 		'field `foo` does not exist')
 
-	// Without a body write the loop-condition narrowing stays valid.
-	nowrite_out := loop_smartcast_run_good('good_loop_smartcast_without_write', 'struct Foo {
+	loop_smartcast_run_good_batch([
+		// Without a body write the loop-condition narrowing stays valid.
+		LoopSmartcastCase{
+			name:     'good_loop_smartcast_without_write'
+			source:   'struct Foo {
 	foo int
 }
 
@@ -81,13 +142,15 @@ fn main() {
 		break
 	}
 }
-')
-	assert nowrite_out == '7'
-
-	// A `mut Variant` parameter cannot change the runtime tag, so passing the narrowed
-	// value to it leaves the narrowing intact and the mutation is observed (no false
-	// positive: the smartcast survives the call).
-	variant_out := loop_smartcast_run_good('good_mut_variant_call_keeps_smartcast', 'struct Foo {
+'
+			expected: '7'
+		},
+		// A `mut Variant` parameter cannot change the runtime tag, so passing the narrowed
+		// value to it leaves the narrowing intact and the mutation is observed (no false
+		// positive: the smartcast survives the call).
+		LoopSmartcastCase{
+			name:     'good_mut_variant_call_keeps_smartcast'
+			source:   'struct Foo {
 mut:
 	foo int
 }
@@ -110,8 +173,10 @@ fn main() {
 		break
 	}
 }
-')
-	assert variant_out == '9'
+'
+			expected: '9'
+		},
+	])
 }
 
 fn test_mut_receiver_call_invalidates_loop_smartcast() {
@@ -145,9 +210,12 @@ fn main() {
 ',
 		'field `foo` does not exist')
 
-	// A mut-receiver method on the narrowed variant type cannot change the runtime
-	// tag, so the narrowing survives and the mutation is observed (no false positive).
-	variant_out := loop_smartcast_run_good('good_loop_mut_variant_receiver_keeps_smartcast', 'struct Foo {
+	loop_smartcast_run_good_batch([
+		// A mut-receiver method on the narrowed variant type cannot change the runtime
+		// tag, so the narrowing survives and the mutation is observed (no false positive).
+		LoopSmartcastCase{
+			name:     'good_loop_mut_variant_receiver_keeps_smartcast'
+			source:   'struct Foo {
 mut:
 	foo int
 }
@@ -170,11 +238,13 @@ fn main() {
 		break
 	}
 }
-')
-	assert variant_out == '9'
-
-	// A read-only method on the sum receiver is not a write, so the narrowing stays.
-	readonly_out := loop_smartcast_run_good('good_loop_readonly_receiver_keeps_smartcast', 'struct Foo {
+'
+			expected: '9'
+		},
+		// A read-only method on the sum receiver is not a write, so the narrowing stays.
+		LoopSmartcastCase{
+			name:     'good_loop_readonly_receiver_keeps_smartcast'
+			source:   'struct Foo {
 	foo int
 }
 
@@ -196,8 +266,10 @@ fn main() {
 		break
 	}
 }
-')
-	assert readonly_out == '5'
+'
+			expected: '5'
+		},
+	])
 }
 
 fn test_nested_mut_receiver_call_invalidates_loop_smartcast() {
@@ -413,10 +485,13 @@ fn main() {
 }
 
 fn test_mut_ancestor_call_invalidates_loop_smartcast() {
-	// Passing the parent `holder` to a `mut` parameter lets the callee reassign the
-	// narrowed field `holder.value`, so it must count as a write to `holder.value`
-	// even though the argument key is only an ancestor of the narrowed key.
-	loop_smartcast_run_bad('bad_loop_mut_ancestor_arg', 'struct Foo {
+	loop_smartcast_run_bad_batch([
+		// Passing the parent `holder` to a `mut` parameter lets the callee reassign the
+		// narrowed field `holder.value`, so it must count as a write to `holder.value`
+		// even though the argument key is only an ancestor of the narrowed key.
+		LoopSmartcastCase{
+			name:     'bad_loop_mut_ancestor_arg'
+			source:   'struct Foo {
 	foo int
 }
 
@@ -445,12 +520,14 @@ fn main() {
 		break
 	}
 }
-',
-		'field `foo` does not exist')
-
-	// A mut-receiver method on the ancestor `holder` can likewise reassign the narrowed
-	// field, so the ancestor receiver counts as a write too.
-	loop_smartcast_run_bad('bad_loop_mut_ancestor_receiver', 'struct Foo {
+'
+			expected: 'field `foo` does not exist'
+		},
+		// A mut-receiver method on the ancestor `holder` can likewise reassign the narrowed
+		// field, so the ancestor receiver counts as a write too.
+		LoopSmartcastCase{
+			name:     'bad_loop_mut_ancestor_receiver'
+			source:   'struct Foo {
 	foo int
 }
 
@@ -479,11 +556,16 @@ fn main() {
 		break
 	}
 }
-',
-		'field `foo` does not exist')
+'
+			expected: 'field `foo` does not exist'
+		},
+	])
 
-	// A read-only method on the ancestor is not a write, so the narrowing stays.
-	readonly_out := loop_smartcast_run_good('good_loop_readonly_ancestor_receiver', 'struct Foo {
+	loop_smartcast_run_good_batch([
+		// A read-only method on the ancestor is not a write, so the narrowing stays.
+		LoopSmartcastCase{
+			name:     'good_loop_readonly_ancestor_receiver'
+			source:   'struct Foo {
 	foo int
 }
 
@@ -512,11 +594,13 @@ fn main() {
 		break
 	}
 }
-')
-	assert readonly_out == '7'
-
-	// A `mut` argument that is neither the key nor an ancestor of it keeps the narrowing.
-	unrelated_out := loop_smartcast_run_good('good_loop_unrelated_mut_arg', 'struct Foo {
+'
+			expected: '7'
+		},
+		// A `mut` argument that is neither the key nor an ancestor of it keeps the narrowing.
+		LoopSmartcastCase{
+			name:     'good_loop_unrelated_mut_arg'
+			source:   'struct Foo {
 	foo int
 }
 
@@ -546,8 +630,10 @@ fn main() {
 		break
 	}
 }
-')
-	assert unrelated_out == '4'
+'
+			expected: '4'
+		},
+	])
 }
 
 fn test_nearest_mixed_branch_smartcasts() {
