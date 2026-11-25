@@ -1,12 +1,6 @@
 import io
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const hello_src = os.join_path(tests_dir, 'testdata', 'hello.v')
+import v.tempname
 
 fn read_c_output_fifo(path string, result chan string) {
 	mut file := os.open(path) or {
@@ -24,23 +18,19 @@ fn read_c_output_fifo(path string, result chan string) {
 
 // test_c_output_path_only_writes_c_file validates this v3 regression case.
 fn test_c_output_path_only_writes_c_file() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_output_only_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	c_out := os.join_path(os.temp_dir(), 'v3_output_only.c')
-	bin_out := c_out.all_before_last('.c')
-	os.rm(c_out) or {}
-	os.rm(bin_out) or {}
+	root := os.join_path(os.vtmp_dir(), 'v3_c_output_only_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	hello_src := os.join_path(os.dir(@FILE), 'testdata', 'hello.v')
+	bin_out := os.join_path(root, 'v3_output_only')
+	c_out := bin_out + '.c'
 
 	mut compile := os.Result{}
 	// Repeated no-GC runs exercise the checker struct-field pointer microcache.
 	// Its pointer-to-integer field assignment used to be lowered as a managed
 	// closure temporary, making this cgen path crash intermittently.
 	for _ in 0 .. 16 {
-		compile = os.exec([v3_bin, '-gc', 'none', '-o', '${c_out}', '${hello_src}'])
+		compile = os.exec([@VEXE, '-gc', 'none', '-o', c_out, hello_src])
 		assert compile.exit_code == 0, compile.output
 	}
 	assert os.exists(c_out)
@@ -50,8 +40,8 @@ fn test_c_output_path_only_writes_c_file() {
 	assert !compile.output.contains('cc -std=gnu11')
 	// A C-only build is silent, so the pipeline has to be observed with `-v`: it
 	// must reach cgen and stop there, without handing anything to a C compiler.
-	os.rm(c_out) or {}
-	verbose_compile := os.exec([v3_bin, '-v', '-gc', 'none', '-o', '${c_out}', '${hello_src}'])
+	os.rm(c_out)!
+	verbose_compile := os.exec([@VEXE, '-v', '-gc', 'none', '-o', c_out, hello_src])
 	assert verbose_compile.exit_code == 0, verbose_compile.output
 	assert os.exists(c_out)
 	assert !os.exists(bin_out)
@@ -60,16 +50,12 @@ fn test_c_output_path_only_writes_c_file() {
 	assert !verbose_compile.output.contains('cc -std=gnu11'), verbose_compile.output
 
 	$if !windows {
-		fifo_out := os.join_path(os.temp_dir(), 'v3_output_fifo_${os.getpid()}.c')
-		os.rm(fifo_out) or {}
-		defer {
-			os.rm(fifo_out) or {}
-		}
-		mkfifo := os.exec(['mkfifo', '${fifo_out}'])
+		fifo_out := os.join_path(root, 'v3_output_fifo.c')
+		mkfifo := os.exec(['mkfifo', fifo_out])
 		assert mkfifo.exit_code == 0, mkfifo.output
 		fifo_result := chan string{cap: 1}
 		reader := spawn read_c_output_fifo(fifo_out, fifo_result)
-		fifo_compile := os.exec([v3_bin, '-gc', 'none', '-o', '${fifo_out}', '${hello_src}'])
+		fifo_compile := os.exec([@VEXE, '-gc', 'none', '-o', fifo_out, hello_src])
 		fifo_source := <-fifo_result
 		reader.wait()
 		assert fifo_compile.exit_code == 0, fifo_compile.output
