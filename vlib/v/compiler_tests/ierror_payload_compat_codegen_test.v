@@ -377,8 +377,8 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_module_local_error_embeds_are_not_result_payloads() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_fake_embed_${tempname.unique_token()}')
+fn test_imported_error_embeds_are_not_result_payloads() {
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_imported_embeds_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'fake')
@@ -424,6 +424,33 @@ pub fn fail_message_error() !int {
 		panic(err)
 	}
 
+	// Keep each selective import in the file that declares its wrapper.
+	for embed, function in {
+		'Error':        'selective_error'
+		'MessageError': 'selective_message_error'
+	} {
+		os.write_file(os.join_path(root, '${function}.v'), "module main
+
+import fake { ${embed} }
+
+struct Selective${embed} {
+	${embed}
+}
+
+fn (err Selective${embed}) msg() string {
+	return 'bad'
+}
+
+fn (err Selective${embed}) code() int {
+	return 7
+}
+
+fn ${function}() !int {
+	return Selective${embed}{}
+}
+") or { panic(err) }
+	}
+
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, 'import fake
 
@@ -431,113 +458,27 @@ fn main() {
 	a := fake.fail_error() or { 0 }
 	b := fake.fail_message_error() or { 0 }
 	_ = a + b
+	_ := selective_error() or { 0 }
+	_ := selective_message_error() or { 0 }
 }
 ') or {
 		panic(err)
 	}
 
-	bin := os.join_path(root, 'v3_ierror_payload_fake_embed_input')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'out')
+	compile := os.exec([@VEXE, root, '-b', 'c', '-nocolor', '-o', bin])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('in return argument'), compile.output
-	assert compile.output.contains('fake.FalseError')
-		|| compile.output.contains('fake.FalseMessageError'), compile.output
-
 	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
-fn test_selective_imported_error_embed_is_not_result_payload() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_selective_error_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	mod_dir := os.join_path(root, 'fake')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	os.write_file(os.join_path(mod_dir, 'fake.v'), 'module fake
-
-pub struct Error {}
-	') or {
-		panic(err)
+	errors := compile.output.split_into_lines().filter(it.contains(': error: '))
+	for typ, file in {
+		'fake.FalseError':        'fake.v'
+		'fake.FalseMessageError': 'fake.v'
+		'SelectiveError':         'selective_error.v'
+		'SelectiveMessageError':  'selective_message_error.v'
+	} {
+		assert errors.any(it.contains('${file}:') && it.contains('${typ}`')
+			&& it.contains('in return argument')), 'expected rejection of `${typ}` in ${file}\n${compile.output}'
 	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import fake { Error }
-
-struct MyErr {
-	Error
-}
-
-fn (err MyErr) msg() string {
-	return 'bad'
-}
-
-fn (err MyErr) code() int {
-	return 7
-}
-
-fn fail() !int {
-	return MyErr{}
-}
-
-fn main() {
-	_ := fail() or { 0 }
-}
-	") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_ierror_payload_selective_error_input')
-	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('in return argument'), compile.output
-	assert compile.output.contains('MyErr'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
-fn test_selective_imported_message_error_embed_is_not_result_payload() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_selective_message_error_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	mod_dir := os.join_path(root, 'fake')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	os.write_file(os.join_path(mod_dir, 'fake.v'), 'module fake
-
-pub struct MessageError {}
-	') or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import fake { MessageError }
-
-struct MyErr {
-	MessageError
-}
-
-fn (err MyErr) msg() string {
-	return 'bad'
-}
-
-fn (err MyErr) code() int {
-	return 7
-}
-
-fn fail() !int {
-	return MyErr{}
-}
-
-fn main() {
-	_ := fail() or { 0 }
-}
-	") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_ierror_payload_selective_message_error_input')
-	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('in return argument'), compile.output
-	assert compile.output.contains('MyErr'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
 fn test_normal_imported_error_does_not_shadow_builtin_error_payload() {
