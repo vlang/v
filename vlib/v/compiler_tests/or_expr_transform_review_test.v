@@ -140,34 +140,10 @@ fn test_map_optional_element_or_uses_fallback_without_err_binding() {
 	assert out == '7\n5\n-2'
 }
 
-fn test_map_index_address_or_nil_remains_valid() {
-	out := or_review_run('map_index_address_or_nil',
-		"fn main() {\n\tmut values := {\n\t\t'x': 7\n\t}\n\tpresent := unsafe { &values['x'] or { nil } }\n\tmissing := unsafe { &values['missing'] or { nil } }\n\tprintln(int_str(*present))\n\tprintln(missing == unsafe { nil })\n}\n")
-	assert out == '7\ntrue'
-}
-
-fn test_nested_optional_infix_or_uses_whole_expression_fallback() {
-	out := or_review_run('nested_optional_infix_or_fallback',
-		'__global left_calls int\n__global right_calls int\n\nfn none_int() ?int {\n\treturn none\n}\n\nfn some_int() ?int {\n\treturn 2\n}\n\nfn left_effect() int {\n\tleft_calls++\n\treturn 40\n}\n\nfn right_effect() int {\n\tright_calls++\n\treturn 40\n}\n\nfn main() {\n\tleft_calls = 0\n\tright_calls = 0\n\ta := (none_int() + right_effect()) or { 0 }\n\tprintln(int_str(a))\n\tprintln(int_str(right_calls))\n\tb := (left_effect() + none_int()) or { 0 }\n\tprintln(int_str(b))\n\tprintln(int_str(left_calls))\n\tc := (some_int() + right_effect()) or { 0 }\n\tprintln(int_str(c))\n\tprintln(int_str(right_calls))\n}\n')
-	assert out == '0\n0\n0\n1\n42\n1'
-}
-
 fn test_nested_optional_logical_or_preserves_short_circuiting() {
 	out := or_review_run('nested_optional_logical_or_short_circuit',
 		'__global calls int\n\nfn yes() ?bool {\n\treturn true\n}\n\nfn no() ?bool {\n\treturn false\n}\n\nfn fail_bool() ?bool {\n\tcalls++\n\treturn none\n}\n\nfn effect_true() ?bool {\n\tcalls++\n\treturn true\n}\n\nfn main() {\n\tcalls = 0\n\ta := (yes()? || fail_bool()?) or { false }\n\tprintln(if a { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\tb := (no()? && fail_bool()?) or { true }\n\tprintln(if b { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\tc := (no()? || effect_true()?) or { false }\n\tprintln(if c { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\td := (yes()? && effect_true()?) or { false }\n\tprintln(if d { "true" } else { "false" })\n\tprintln(int_str(calls))\n}\n')
 	assert out == 'true\n0\nfalse\n0\ntrue\n1\ntrue\n1'
-}
-
-fn test_or_fallback_shadowed_noreturn_names_produce_values() {
-	out := or_review_run('or_fallback_shadowed_noreturn_names',
-		'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\texit := fn () int { return 7 }\n\tx := maybe() or { exit() }\n\tpanic := fn () int { return 9 }\n\ty := maybe() or { panic() }\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n')
-	assert out == '7\n9'
-}
-
-fn test_user_defined_free_method_is_preserved() {
-	out := or_review_run('user_defined_free_method',
-		'struct Hc256 {\nmut:\n\tfreed int\n}\n\nfn (mut h Hc256) free() {\n\th.freed = 7\n}\n\nfn main() {\n\tmut h := Hc256{}\n\th.free()\n\tprintln(int_str(h.freed))\n}\n')
-	assert out == '7'
 }
 
 fn test_default_free_without_user_method_stays_noop() {
@@ -219,10 +195,29 @@ fn test_channel_runtime_fixtures() {
 	})
 }
 
-fn test_or_storage_preserves_generic_map_value_type() {
-	out := or_review_run('or_storage_generic_map_value',
-		'struct Box[T] {\n\tvalue T\n}\n\nfn make_map() ?map[string]Box[int] {\n\treturn {"answer": Box[int]{value: 42}}\n}\n\nfn main() {\n\titems := make_map() or { map[string]Box[int]{} }\n\tprintln(int_str(items["answer"].value))\n}\n')
-	assert out == '42'
+fn test_or_and_free_runtime_fixtures() {
+	or_review_run_batch('or_and_free_runtime', {
+		'map_index_address_or_nil':            OrReviewFixture{
+			source:   "fn main() {\n\tmut values := {\n\t\t'x': 7\n\t}\n\tpresent := unsafe { &values['x'] or { nil } }\n\tmissing := unsafe { &values['missing'] or { nil } }\n\tprintln(int_str(*present))\n\tprintln(missing == unsafe { nil })\n}\n"
+			expected: '7\ntrue'
+		}
+		'nested_optional_infix_or_fallback':   OrReviewFixture{
+			source:   '__global left_calls int\n__global right_calls int\n\nfn none_int() ?int {\n\treturn none\n}\n\nfn some_int() ?int {\n\treturn 2\n}\n\nfn left_effect() int {\n\tleft_calls++\n\treturn 40\n}\n\nfn right_effect() int {\n\tright_calls++\n\treturn 40\n}\n\nfn main() {\n\tleft_calls = 0\n\tright_calls = 0\n\ta := (none_int() + right_effect()) or { 0 }\n\tprintln(int_str(a))\n\tprintln(int_str(right_calls))\n\tb := (left_effect() + none_int()) or { 0 }\n\tprintln(int_str(b))\n\tprintln(int_str(left_calls))\n\tc := (some_int() + right_effect()) or { 0 }\n\tprintln(int_str(c))\n\tprintln(int_str(right_calls))\n}\n'
+			expected: '0\n0\n0\n1\n42\n1'
+		}
+		'or_fallback_shadowed_noreturn_names': OrReviewFixture{
+			source:   'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\texit := fn () int { return 7 }\n\tx := maybe() or { exit() }\n\tpanic := fn () int { return 9 }\n\ty := maybe() or { panic() }\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n'
+			expected: '7\n9'
+		}
+		'user_defined_free_method':            OrReviewFixture{
+			source:   'struct Hc256 {\nmut:\n\tfreed int\n}\n\nfn (mut h Hc256) free() {\n\th.freed = 7\n}\n\nfn main() {\n\tmut h := Hc256{}\n\th.free()\n\tprintln(int_str(h.freed))\n}\n'
+			expected: '7'
+		}
+		'or_storage_generic_map_value':        OrReviewFixture{
+			source:   'struct Box[T] {\n\tvalue T\n}\n\nfn make_map() ?map[string]Box[int] {\n\treturn {"answer": Box[int]{value: 42}}\n}\n\nfn main() {\n\titems := make_map() or { map[string]Box[int]{} }\n\tprintln(int_str(items["answer"].value))\n}\n'
+			expected: '42'
+		}
+	})
 }
 
 fn test_or_rejects_non_options_and_implicit_element_errors() {
