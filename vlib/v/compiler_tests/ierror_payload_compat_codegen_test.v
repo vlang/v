@@ -1,30 +1,14 @@
 import os
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_compat_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.exists(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn run_bad_ierror_payload(v3_bin string, name string, source string, expected string, detail string) {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_${name}_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+fn run_bad_ierror_payload(name string, source string, expected string, detail string) {
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_${name}_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_payload_${name}_out')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert compile.output.contains(detail), compile.output
@@ -32,10 +16,9 @@ fn run_bad_ierror_payload(v3_bin string, name string, source string, expected st
 }
 
 fn test_ierror_method_implementers_can_be_result_payloads() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_compat_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_compat_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "import os
 
@@ -99,8 +82,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_compat_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_payload_compat_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -110,10 +93,9 @@ fn main() {
 }
 
 fn test_ierror_values_can_be_returned_as_result_errors() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_return_value_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_return_value_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "fn direct() !int {
 	return error('direct boom')
@@ -129,8 +111,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_return_value_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_return_value_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -140,10 +122,9 @@ fn main() {
 }
 
 fn test_ierror_payloads_are_preserved_for_void_results() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_void_return_payload_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_void_return_payload_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "struct CustomError {
 	text string
@@ -195,8 +176,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_void_return_payload_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_void_return_payload_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -212,9 +193,9 @@ fn main() {
 }
 
 fn test_selective_imported_ierror_payload_is_result_error() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_selective_custom_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_selective_custom_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'errmod')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'errmod.v'), 'module errmod
@@ -256,8 +237,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_selective_custom_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_payload_selective_custom_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -267,8 +248,7 @@ fn main() {
 }
 
 fn test_bare_ierror_payload_is_not_call_argument_value() {
-	v3_bin := build_v3()
-	run_bad_ierror_payload(v3_bin, 'bad_call_arg', "struct CustomError {
+	run_bad_ierror_payload('bad_call_arg', "struct CustomError {
 	text string
 }
 
@@ -291,7 +271,7 @@ fn main() {
 }
 ",
 		'cannot use', 'CustomError')
-	run_bad_ierror_payload(v3_bin, 'bad_ierror_call_arg', "fn takes(x int) {
+	run_bad_ierror_payload('bad_ierror_call_arg', "fn takes(x int) {
 	_ = x
 }
 
@@ -304,8 +284,7 @@ fn main() {
 }
 
 fn test_bare_ierror_payload_is_not_assigned_to_unwrapped_result_value() {
-	v3_bin := build_v3()
-	run_bad_ierror_payload(v3_bin, 'bad_assignment', "struct CustomError {
+	run_bad_ierror_payload('bad_assignment', "struct CustomError {
 	text string
 }
 
@@ -332,8 +311,7 @@ fn main() {
 }
 
 fn test_alias_of_non_ierror_payload_is_rejected() {
-	v3_bin := build_v3()
-	run_bad_ierror_payload(v3_bin, 'bad_alias_payload', "struct Plain {
+	run_bad_ierror_payload('bad_alias_payload', "struct Plain {
 	text string
 }
 
@@ -354,8 +332,7 @@ fn main() {
 }
 
 fn test_result_error_match_rejects_non_ierror_branch() {
-	v3_bin := build_v3()
-	run_bad_ierror_payload(v3_bin, 'bad_match_branch', "struct CustomError {}
+	run_bad_ierror_payload('bad_match_branch', "struct CustomError {}
 
 fn (err CustomError) msg() string {
 	return 'custom'
@@ -386,9 +363,9 @@ fn main() {
 }
 
 fn test_unqualified_builtin_error_in_imported_module_is_result_payload() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_builtin_error_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_builtin_error_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'payloadmod')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'payloadmod.v'), "module payloadmod
@@ -434,8 +411,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_builtin_error_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_payload_builtin_error_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -445,10 +422,9 @@ fn main() {
 }
 
 fn test_msg_only_struct_is_not_result_payload() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_msg_only_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_msg_only_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "struct NotError {}
 
@@ -467,8 +443,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_msg_only_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_payload_msg_only_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('in return argument'), compile.output
 	assert compile.output.contains('NotError'), compile.output
@@ -476,9 +452,9 @@ fn main() {
 }
 
 fn test_module_local_error_embeds_are_not_result_payloads() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_fake_embed_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_fake_embed_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'fake')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'fake.v'), "module fake
@@ -534,8 +510,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_fake_embed_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_payload_fake_embed_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('in return argument'), compile.output
 	assert compile.output.contains('fake.FalseError')
@@ -545,9 +521,9 @@ fn main() {
 }
 
 fn test_selective_imported_error_embed_is_not_result_payload() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_selective_error_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_selective_error_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'fake')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'fake.v'), 'module fake
@@ -583,8 +559,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_selective_error_input')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_payload_selective_error_input')
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('in return argument'), compile.output
 	assert compile.output.contains('MyErr'), compile.output
@@ -592,9 +568,9 @@ fn main() {
 }
 
 fn test_selective_imported_message_error_embed_is_not_result_payload() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_selective_message_error_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_selective_message_error_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'fake')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'fake.v'), 'module fake
@@ -630,8 +606,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_selective_message_error_input')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_payload_selective_message_error_input')
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('in return argument'), compile.output
 	assert compile.output.contains('MyErr'), compile.output
@@ -639,9 +615,9 @@ fn main() {
 }
 
 fn test_normal_imported_error_does_not_shadow_builtin_error_payload() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_normal_import_error_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_normal_import_error_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'fake')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'fake.v'), 'module fake
@@ -670,8 +646,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_normal_import_error_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_payload_normal_import_error_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -684,9 +660,9 @@ fn main() {
 // test_main_cannot_redeclare_builtin_error_types), so an imported module's
 // `Error` embed always names the builtin one.
 fn test_imported_builtin_error_embed_is_ierror_value() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_imported_builtin_embed_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_imported_builtin_embed_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'payloadmod')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'payloadmod.v'), 'module payloadmod
@@ -718,8 +694,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_imported_builtin_embed_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_payload_imported_builtin_embed_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -731,9 +707,8 @@ fn main() {
 // Like V, the main module cannot declare a type named like the builtin `Error`
 // or `MessageError`, so a main-local error embed cannot shadow them.
 fn test_main_cannot_redeclare_builtin_error_types() {
-	v3_bin := build_v3()
 	for name in ['Error', 'MessageError'] {
-		run_bad_ierror_payload(v3_bin, 'main_local_${name}', "struct ${name} {}
+		run_bad_ierror_payload('main_local_${name}', "struct ${name} {}
 
 struct MyErr {
 	${name}
