@@ -2,21 +2,51 @@ import os
 import v.tempname
 
 fn option_arg_run_good(name string, source string) string {
-	dir := os.join_path(os.vtmp_dir(), 'v3_option_arg_${tempname.unique_token()}')
+	out, _ := option_arg_compile_and_run(name, source, false)
+	return out
+}
+
+fn option_arg_compile_and_run(name string, source string, keep_c bool) (string, string) {
+	tmp := os.vtmp_dir()
+	token := tempname.unique_token()
+	dir := os.join_path(tmp, 'v3_option_arg_${token}')
 	os.mkdir(dir) or { panic(err) }
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	bin := os.join_path(dir, 'v3_${name}')
-	src := bin + '.v'
+	src := os.join_path(dir, 'v3_${name}.v')
+	// Retained C files use the binary basename in the shared V temp directory.
+	bin := os.join_path(dir, 'v3_${name}_${token}') + $if windows { '.exe' } $else { '' }
 	os.write_file(src, source) or { panic(err) }
-	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0
-	assert !compile.output.contains('C compilation failed')
+	mut args := [@VEXE, '-b', 'c', '-o', bin]
+	if keep_c {
+		args << '-keepc'
+	}
+	args << src
+	compile := os.exec(args)
+	retained := if keep_c {
+		prefix := os.file_name(bin) + '.'
+		(os.ls(tmp) or { panic(err) }).filter(it.starts_with(prefix) && it.ends_with('.tmp.c'))
+	} else {
+		[]string{}
+	}
+	defer {
+		for filename in retained {
+			os.rm(os.join_path(tmp, filename)) or {}
+		}
+	}
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
 
 	run := os.exec([bin])
-	assert run.exit_code == 0
-	return run.output.trim_space()
+	assert run.exit_code == 0, run.output
+	c_source := if keep_c {
+		assert retained.len == 1, 'expected one retained C file for ${bin}, got ${retained}'
+		os.read_file(os.join_path(tmp, retained[0])) or { panic(err) }
+	} else {
+		''
+	}
+	return run.output.trim_space(), c_source
 }
 
 fn option_arg_generated_c(name string, source string) string {
@@ -50,9 +80,8 @@ fn main() {
 	println("ok")
 }
 '
-	out := option_arg_run_good('optional_literal_expected_wrapper', source)
+	out, c_code := option_arg_compile_and_run('optional_literal_expected_wrapper', source, true)
 	assert out == 'ok'
-	c_code := option_arg_generated_c('optional_literal_expected_wrapper_c', source)
 	assert c_code.contains('take((__v_option_i64){.ok = true, .value = 1})'), c_code
 }
 
@@ -104,9 +133,8 @@ fn main() {
 
 fn test_error_call_argument_expected_ierror_not_result_wrapper() {
 	source := "fn wrap(err IError) string {\n\treturn err.msg()\n}\n\nfn f() !string {\n\treturn wrap(error('x'))\n}\n\nfn main() {\n\ts := f() or { '' }\n\tassert s == 'x'\n\tprintln('ok')\n}\n"
-	out := option_arg_run_good('error_call_argument_expected_ierror', source)
+	out, c_code := option_arg_compile_and_run('error_call_argument_expected_ierror', source, true)
 	assert out == 'ok'
-	c_code := option_arg_generated_c('error_call_argument_expected_ierror_c', source)
 	assert c_code.contains('wrap((IError){'), c_code
 	assert !c_code.contains('wrap((__v_option_string)'), c_code
 }
@@ -155,9 +183,8 @@ fn test_ierror_parameter_method_call_inside_static_method_uses_interface_method(
 
 fn test_ierror_as_expr_unboxes_concrete_payload() {
 	source := "struct InvalidPatternError {\n\tvalid_up_to int\n}\n\nfn (err InvalidPatternError) msg() string {\n\treturn 'invalid'\n}\n\nfn (err InvalidPatternError) code() int {\n\treturn 0\n}\n\nfn fail() !string {\n\treturn InvalidPatternError{\n\t\tvalid_up_to: 3\n\t}\n}\n\nfn main() {\n\tfail() or {\n\t\tperr := err as InvalidPatternError\n\t\tassert perr.valid_up_to == 3\n\t\tprintln('ok')\n\t\treturn\n\t}\n\tpanic('expected error')\n}\n"
-	out := option_arg_run_good('ierror_as_expr_unbox_payload', source)
+	out, c_code := option_arg_compile_and_run('ierror_as_expr_unbox_payload', source, true)
 	assert out == 'ok'
-	c_code := option_arg_generated_c('ierror_as_expr_unbox_payload_c', source)
 	assert c_code.contains('._object'), c_code
 	assert !c_code.contains('InvalidPatternError perr = err;'), c_code
 }
@@ -179,9 +206,8 @@ fn test_optional_abi_distinguishes_plain_t_name_from_specialized_generic() {
 
 fn test_optional_generic_concrete_abi_converts_optional_args() {
 	source := 'fn maybe() ?int {\n\treturn 5\n}\n\nfn maybe_or_none(flag bool) ?int {\n\tif flag {\n\t\treturn 6\n\t}\n\treturn none\n}\n\nfn take[T](x ?T, fallback T) T {\n\treturn x or { fallback }\n}\n\nfn main() {\n\tx := maybe()\n\tassert take[int](maybe(), 0) == 5\n\tassert take[int](x, 0) == 5\n\tassert take[int](maybe_or_none(false), 9) == 9\n\tprintln("ok")\n}\n'
-	out := option_arg_run_good('optional_generic_concrete_abi_run', source)
+	out, c_code := option_arg_compile_and_run('optional_generic_concrete_abi_run', source, true)
 	assert out == 'ok'
-	c_code := option_arg_generated_c('optional_generic_concrete_abi_c', source)
 	assert c_code.contains('i64 take_T_v_int(__v_option_i64 x, i64 fallback)')
 		|| c_code.contains('i64 take_T_int(__v_option_i64 x, i64 fallback)'), c_code
 	// `int` lowers to `i64`, so a plain `?int` value and the specialized `?T`
@@ -232,9 +258,8 @@ fn main() {
 	println("ok")
 }
 '
-	out := option_arg_run_good('result_multi_return_optional_wrapper', source)
+	out, c_code := option_arg_compile_and_run('result_multi_return_optional_wrapper', source, true)
 	assert out == 'ok'
-	c_code := option_arg_generated_c('result_multi_return_optional_wrapper_c', source)
 	// A `!` multi-return is a Result, so its wrapper is `__v_result_...`; it must be
 	// declared before the first function that returns it.
 	mut wrapper := 'multi_return_i64_main__Ticket'
