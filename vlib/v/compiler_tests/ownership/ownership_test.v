@@ -4291,3 +4291,77 @@ fn main() {
 ')
 	assert owned.exit_code == 0, owned.output
 }
+
+fn test_ownership_checks_mutex_payload_transfers() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'thread_mutex_payload', r'
+import sync.arc
+
+struct Borrowed {
+	ptr &int
+}
+
+fn worker(value arc.Mutex[Borrowed]) {}
+
+fn main() {
+	value := 42
+	owned := arc.new_mutex(Borrowed{ptr: &value})
+	thread := spawn worker(owned)
+	thread.wait()
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('field `ptr`: references cannot be transferred between threads'), res.output
+}
+
+fn test_ownership_allows_mutation_of_a_map_in_a_moved_struct() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check_with_flags(v3_bin, 'move_struct_map', r'
+struct Cache {
+mut:
+	items map[string]string
+}
+
+fn insert(source Cache) Cache {
+	mut cache := source
+	cache.items["key"] = "value".to_owned()
+	return cache
+}
+
+fn main() {
+	cache := insert(Cache{})
+	assert cache.items["key"] == "value"
+}
+', ['-ownership', '-gc', 'none'])
+	assert res.exit_code == 0, res.output
+}
+
+fn test_ownership_moved_struct_does_not_make_borrowed_map_mutable() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'move_struct_borrowed_map', r'
+struct Inner {
+mut:
+	items map[string]string
+}
+
+struct Outer {
+mut:
+	own map[string]string
+	inner &Inner
+}
+
+fn update(source Outer) Outer {
+	mut cache := source
+	cache.inner.items["key"] = "changed".to_owned()
+	return cache
+}
+
+fn main() {
+	inner := Inner{}
+	box := update(Outer{inner: &inner})
+	println(box.inner.items.len)
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('`cache.inner.items` aliases mutable data from an immutable value'), res.output
+}
