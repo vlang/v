@@ -1644,6 +1644,13 @@ fn (ts &TestSession) shared_v3_compilers_to_build(files []string, need_plain boo
 				continue
 			}
 		}
+		if ts.can_resume_file(path) {
+			// The worker still checks progress records and reports any read errors.
+			resume := ts.read_test_resume(path, source) or { TestResume{} }
+			if resume.passed {
+				continue
+			}
+		}
 		if plain_remaining > 0 {
 			plain_remaining--
 		}
