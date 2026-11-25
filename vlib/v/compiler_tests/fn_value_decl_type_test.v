@@ -59,15 +59,46 @@ fn fn_value_write_project(fixture_dir string, name string, files map[string]stri
 }
 
 fn fn_value_run_project_good(fixture_dir string, name string, files map[string]string) string {
+	good_bin := fn_value_compile_good_project(fixture_dir, name, files)
+	run := os.exec([good_bin])
+	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
+	return run.output.trim_space()
+}
+
+fn fn_value_compile_good_project(fixture_dir string, name string, files map[string]string) string {
 	root := fn_value_write_project(fixture_dir, name, files)
 	good_bin := os.join_path(fixture_dir, 'v3_${name}')
 	main_path := os.join_path(root, 'main.v')
 	compile := os.exec([@VEXE, main_path, '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.exec([good_bin])
-	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
-	return run.output.trim_space()
+	return good_bin
+}
+
+struct FnValueRuntimeCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn fn_value_run_good_batch(fixture_dir string, name string, cases []FnValueRuntimeCase) {
+	mut files := map[string]string{}
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		source := 'module ${module_name}\n\n' + case.source
+		files['${module_name}/${case.name}.v'] = source.replace_once('\nfn main()', '\npub fn exercise()')
+	}
+	files['main.v'] = "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	good_bin := fn_value_compile_good_project(fixture_dir, name, files)
+	for case in cases {
+		run := os.exec([good_bin, case.name])
+		assert run.exit_code == 0, '${case.name}: run failed: ${run.output}'
+		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	}
 }
 
 fn fn_value_run_project_bad(fixture_dir string, name string, files map[string]string) string {
@@ -401,26 +432,62 @@ println(int_str(take(foo)))
 fn test_local_fn_literal_decl_types_are_callable() {
 	fixture_dir := fn_value_new_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	assert fn_value_run_good(fixture_dir, 'fn_value_optional_void_local', optional_fn_src) == 'optional-ok'
-	assert fn_value_run_good(fixture_dir, 'fn_value_optional_callback_param', optional_callback_param_src) == 'callback-ok'
-	assert fn_value_run_good(fixture_dir, 'fn_value_plain_int_local', plain_fn_src) == '7'
-	assert fn_value_run_good(fixture_dir, 'fn_value_local_ident_shadow', local_ident_shadow_src) == '10'
-	assert fn_value_run_good(fixture_dir, 'fn_value_local_call_shadows_global_return',
-		local_fn_call_shadow_global_return_src) == '12'
-	assert fn_value_run_good(fixture_dir, 'fn_value_call_return_shadow', local_fn_value_call_return_shadow_src) == 'ok'
-	assert fn_value_run_good(fixture_dir, 'fn_value_ident_shadowed_by_fn_typed_local',
-		local_fn_value_ident_shadow_fn_src) == '7'
-	assert fn_value_run_good(fixture_dir, 'fn_value_expected_shadowed_by_fn_typed_local',
-		local_fn_value_expected_shadow_fn_src) == '7'
-	assert fn_value_run_good(fixture_dir, 'fn_value_array_map_result_type', 'fn main() {
+	fn_value_run_good_batch(fixture_dir, 'fn_value_locals', [
+		FnValueRuntimeCase{
+			name:     'fn_value_optional_void_local'
+			source:   optional_fn_src
+			expected: 'optional-ok'
+		},
+		FnValueRuntimeCase{
+			name:     'fn_value_optional_callback_param'
+			source:   optional_callback_param_src
+			expected: 'callback-ok'
+		},
+		FnValueRuntimeCase{
+			name:     'fn_value_plain_int_local'
+			source:   plain_fn_src
+			expected: '7'
+		},
+		FnValueRuntimeCase{
+			name:     'fn_value_local_ident_shadow'
+			source:   local_ident_shadow_src
+			expected: '10'
+		},
+		FnValueRuntimeCase{
+			name:     'fn_value_local_call_shadows_global_return'
+			source:   local_fn_call_shadow_global_return_src
+			expected: '12'
+		},
+		FnValueRuntimeCase{
+			name:     'fn_value_call_return_shadow'
+			source:   local_fn_value_call_return_shadow_src
+			expected: 'ok'
+		},
+		FnValueRuntimeCase{
+			name:     'fn_value_ident_shadowed_by_fn_typed_local'
+			source:   local_fn_value_ident_shadow_fn_src
+			expected: '7'
+		},
+		FnValueRuntimeCase{
+			name:     'fn_value_expected_shadowed_by_fn_typed_local'
+			source:   local_fn_value_expected_shadow_fn_src
+			expected: '7'
+		},
+		FnValueRuntimeCase{
+			name:     'fn_value_array_map_result_type'
+			source:   'fn main() {
 	i_to_str := fn (i int) string {
 		return i.str()
 	}
 	a := [1, 2, 3].map(i_to_str)
 	println(a == ["1", "2", "3"])
 }
-') == 'true'
-	assert fn_value_run_good(fixture_dir, 'fn_value_named_local', 'fn add_one(i int) int {
+'
+			expected: 'true'
+		},
+		FnValueRuntimeCase{
+			name:     'fn_value_named_local'
+			source:   'fn add_one(i int) int {
 	return i + 1
 }
 
@@ -428,8 +495,12 @@ fn main() {
 	f := add_one
 	println(int_str(f(6)))
 }
-') == '7'
-	assert fn_value_run_good(fixture_dir, 'fn_value_struct_field', 'struct S {
+'
+			expected: '7'
+		},
+		FnValueRuntimeCase{
+			name:     'fn_value_struct_field'
+			source:   'struct S {
 	f fn (int) int
 }
 
@@ -441,7 +512,10 @@ fn main() {
 	}
 	println(int_str(s.f(4)))
 }
-') == '7'
+'
+			expected: '7'
+		},
+	])
 	assert fn_value_run_project_good(fixture_dir, 'fn_value_imported_selector_local',
 		imported_fn_value_project_files()) == 'imported-ok'
 }
