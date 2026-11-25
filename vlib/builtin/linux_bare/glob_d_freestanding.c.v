@@ -182,7 +182,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		directory_path := if prefix.len == 0 { uint(c'.') } else { uint(prefix.str) }
 		directory := C.v_glob_open(walk.view.open_fn, directory_path)
 		if directory == 0 {
-			if bf_native_errno_cell == i32(C.ENOENT) || bf_native_errno_cell == i32(C.ENOTDIR) {
+			if bf_native_errno_cell == i32(C.ENOTDIR) {
 				return 0
 			}
 			return bare_glob_failure(mut walk, directory_path)

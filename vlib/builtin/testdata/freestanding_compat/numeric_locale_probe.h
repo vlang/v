@@ -82,6 +82,13 @@ static int native_environment_probe(void) {
     CHECK(out_first==first && out_second==second);
     CHECK(!native_setenv(FE_NOMASK_ENV) && native_enabled()==FE_ALL_EXCEPT && native_getround()==FE_TONEAREST);
     CHECK(!native_setenv(FE_DFL_ENV));
+#elif defined(__aarch64__) && defined(FE_NOMASK_ENV)
+    int installed = native_setenv(FE_NOMASK_ENV);
+    CHECK((installed == 0) == (native_enabled() == FE_ALL_EXCEPT));
+    CHECK(!native_setenv(FE_DFL_ENV));
+    installed = native_update(FE_NOMASK_ENV);
+    CHECK((installed == 0) == (native_enabled() == FE_ALL_EXCEPT));
+    CHECK(!native_setenv(FE_DFL_ENV));
 #endif
     for(size_t i=0;i<sizeof flags/sizeof *flags;i++) {
         pid_t child=fork(); CHECK(child>=0);

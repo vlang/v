@@ -1,3 +1,5 @@
+/* Use the ordinary optimized GNU header bodies in production builds. */
+#undef __NO_INLINE__
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -17,7 +19,7 @@ static int v_character_ready, v_character_acquired;
 int v_stdio_character_prepare(const char *path) {
     FILE *file = fopen(path, "w+b");
     CHECK(file != NULL);
-    for (unsigned int i = 0; i < 32768; ++i) CHECK(fputc(i & 255, file) == (int)(i & 255));
+    for (unsigned int i = 0; i < 32768; ++i) CHECK(putc_unlocked(i & 255, file) == (int)(i & 255));
     CHECK(fseek(file, 0, SEEK_SET) == 0);
     v_character_stream = file;
     flockfile(file);
@@ -33,7 +35,7 @@ int v_stdio_character_contender(void) {
     flockfile(file);
     __atomic_store_n(&v_character_acquired, 1, __ATOMIC_RELEASE);
     for (unsigned int i = 0; i < 32768; ++i) CHECK(fgetc_unlocked(file) == (int)(i & 255));
-    CHECK(fgetc_unlocked(file) == EOF && feof(file) && !ferror(file));
+    CHECK(fgetc_unlocked(file) == EOF && feof_unlocked(file) && !ferror_unlocked(file));
     CHECK(ungetc(255, file) == 255 && !feof(file));
     CHECK(fgetc(file) == 255 && fgetc(file) == EOF && feof(file));
     CHECK(ungetc(EOF, file) == EOF && feof(file));
@@ -57,7 +59,7 @@ int v_stdio_character_finish(const char *path) {
     FILE *file = v_character_stream;
     CHECK(__atomic_load_n(&v_character_acquired, __ATOMIC_ACQUIRE));
     clearerr(file);
-    CHECK(!feof(file) && !ferror(file));
+    CHECK(!feof_unlocked(file) && !ferror_unlocked(file));
     rewind(file);
     CHECK(fgetc(file) == 0 && ungetc(254, file) == 254 && ungetc(255, file) == 255);
     CHECK(fgetc_unlocked(file) == 255 && fgetc_unlocked(file) == 254 && fgetc(file) == 1);
@@ -81,7 +83,7 @@ int v_stdio_character_finish(const char *path) {
     CHECK(fclose(file) == 0);
     file = fopen(path, "rb");
     CHECK(file != NULL && fgetc(file) == 'Z');
-    CHECK(fputc('x', file) == EOF && ferror(file) && errno == EBADF);
+    CHECK(putc_unlocked('x', file) == EOF && ferror_unlocked(file) && errno == EBADF);
     CHECK(fgetc(file) == 1 && ferror(file));
     clearerr(file);
     CHECK(!ferror(file) && fgetc(file) == 2);

@@ -209,23 +209,25 @@ static int v_locale_checks(void) {
 static int v_jump_checks(void) {
     jmp_buf jump;
     volatile int stage = 0;
-    int value = setjmp(jump);
-    if (!stage) {
-        stage = 1;
-        longjmp(jump, 0);
+    switch (setjmp(jump)) {
+    case 0: stage = 1; longjmp(jump, 0);
+    case 1: CHECK(stage == 1); break;
+    default: return __LINE__;
     }
-    CHECK(value == 1 && stage == 1);
     sigset_t before, blocked, after;
     CHECK(sigprocmask(SIG_SETMASK, NULL, &before) == 0);
     sigemptyset(&blocked);
     sigaddset(&blocked, SIGUSR1);
     CHECK(sigprocmask(SIG_BLOCK, &blocked, NULL) == 0);
-    value = sigsetjmp(jump, 1);
-    if (!value) {
+    sigjmp_buf masked_jump;
+    switch (sigsetjmp(masked_jump, 1)) {
+    case 0:
         CHECK(sigprocmask(SIG_UNBLOCK, &blocked, NULL) == 0);
-        siglongjmp(jump, 27);
+        siglongjmp(masked_jump, 27);
+    case 27: break;
+    default: return __LINE__;
     }
-    CHECK(value == 27 && sigprocmask(SIG_SETMASK, NULL, &after) == 0 &&
+    CHECK(sigprocmask(SIG_SETMASK, NULL, &after) == 0 &&
           sigismember(&after, SIGUSR1) == 1);
     CHECK(sigprocmask(SIG_SETMASK, &before, NULL) == 0);
     return 0;

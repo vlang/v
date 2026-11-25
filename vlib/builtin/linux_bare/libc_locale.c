@@ -1,4 +1,5 @@
 #include "libc_compat.h"
+#include "libc_stdio_abi.h"
 #include <ctype.h>
 #include <langinfo.h>
 #include <limits.h>
@@ -362,7 +363,7 @@ int mbsinit(const mbstate_t *state) {
         memcpy(&s, state, sizeof s);
     return !s.remaining;
 }
-size_t mbrtowc(wchar_t *out, const char *text, size_t size, mbstate_t *state) {
+static size_t v_decode_multibyte(wchar_t *out, const char *text, size_t size, mbstate_t *state, int utf8) {
     if (!state)
         state = &v_mb_read_state;
     if (!text) {
@@ -382,7 +383,8 @@ size_t mbrtowc(wchar_t *out, const char *text, size_t size, mbstate_t *state) {
                 *out = c;
             return c ? 1 : 0;
         }
-        if (!v_freestanding_locale_utf8())
+        if (utf8 < 0) utf8 = v_freestanding_locale_utf8();
+        if (!utf8)
             goto invalid;
         if (c >= 0xc2 && c <= 0xdf) {
             s.value = c & 31;
@@ -427,10 +429,20 @@ invalid:
     errno = EILSEQ;
     return (size_t)-1;
 }
+size_t mbrtowc(wchar_t *out, const char *text, size_t size, mbstate_t *state) {
+    return v_decode_multibyte(out, text, size, state, -1);
+}
+uintptr_t v_stdio_decode(uintptr_t output, uintptr_t input, uintptr_t state, int32_t utf8) {
+    mbstate_t native;
+    memcpy(&native, (void *)state, sizeof native);
+    size_t count = v_decode_multibyte((wchar_t *)output, (const char *)input, 1, &native, utf8);
+    memcpy((void *)state, &native, sizeof native);
+    return count;
+}
 size_t mbrlen(const char *s, size_t n, mbstate_t *state) {
     return mbrtowc(NULL, s, n, state ? state : &v_mb_length_state);
 }
-size_t wcrtomb(char *out, wchar_t wc, mbstate_t *state) {
+static size_t v_encode_multibyte(char *out, wchar_t wc, mbstate_t *state, int utf8) {
     if (!state)
         state = &v_mb_write_state;
     memset(state, 0, sizeof *state);
@@ -441,7 +453,8 @@ size_t wcrtomb(char *out, wchar_t wc, mbstate_t *state) {
         out[0] = c;
         return 1;
     }
-    if (!v_freestanding_locale_utf8() || c > 0x10ffff || (c >= 0xd800 && c <= 0xdfff)) {
+    if (utf8 < 0) utf8 = v_freestanding_locale_utf8();
+    if (!utf8 || c > 0x10ffff || (c >= 0xd800 && c <= 0xdfff)) {
         errno = EILSEQ;
         return (size_t)-1;
     }
@@ -461,6 +474,16 @@ size_t wcrtomb(char *out, wchar_t wc, mbstate_t *state) {
     out[2] = 0x80 | ((c >> 6) & 63);
     out[3] = 0x80 | (c & 63);
     return 4;
+}
+size_t wcrtomb(char *out, wchar_t wc, mbstate_t *state) {
+    return v_encode_multibyte(out, wc, state, -1);
+}
+uintptr_t v_stdio_encode(uintptr_t output, uint32_t value, uintptr_t state, int32_t utf8) {
+    mbstate_t native;
+    memcpy(&native, (void *)state, sizeof native);
+    size_t count = v_encode_multibyte((char *)output, (wchar_t)value, &native, utf8);
+    memcpy((void *)state, &native, sizeof native);
+    return count;
 }
 int mbtowc(wchar_t *out, const char *s, size_t n) {
     static __thread mbstate_t state;

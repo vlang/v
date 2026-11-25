@@ -109,6 +109,13 @@ FILE *fopencookie(void *cookie, const char *mode, cookie_io_functions_t f) {
     return (FILE *)v_stdio_cookie((uintptr_t)cookie, (uintptr_t)mode, (uintptr_t)callbacks);
 }
 #if defined(__GLIBC__)
+int __uflow(FILE *file) V_STDIO_RETURN(int, v_stdio_getchar((uintptr_t)file))
+int __overflow(FILE *file, int value) {
+    if (value == EOF) return fflush(file);
+    V_STDIO_RETURN(int, v_stdio_putchar(value, (uintptr_t)file))
+}
+ssize_t __getdelim(char **line, size_t *capacity, int delimiter, FILE *file)
+    V_STDIO_RETURN(ssize_t, v_stdio_getdelim((uintptr_t)line, (uintptr_t)capacity, delimiter, (uintptr_t)file))
 FILE *fopen64(const char *path, const char *mode) { return (FILE *)v_stdio_fopen((uintptr_t)path, (uintptr_t)mode); }
 int fseeko64(FILE *file, off64_t offset, int whence) V_STDIO_RETURN(int, v_stdio_seek((uintptr_t)file, offset, whence))
 off64_t ftello64(FILE *file) V_STDIO_RETURN(off64_t, v_stdio_tell((uintptr_t)file))
@@ -117,20 +124,6 @@ off64_t ftello64(FILE *file) V_STDIO_RETURN(off64_t, v_stdio_tell((uintptr_t)fil
 #include <string.h>
 _Static_assert(sizeof(wchar_t) == sizeof(uint32_t), "native wide character ABI");
 _Static_assert(sizeof(mbstate_t) == 8, "native conversion-state storage");
-uintptr_t v_stdio_decode(uintptr_t output, uintptr_t input, uintptr_t state) {
-    mbstate_t native;
-    memcpy(&native, (void *)state, sizeof native);
-    size_t count = mbrtowc((wchar_t *)output, (const char *)input, 1, &native);
-    memcpy((void *)state, &native, sizeof native);
-    return count;
-}
-uintptr_t v_stdio_encode(uintptr_t output, uint32_t value, uintptr_t state) {
-    mbstate_t native;
-    memcpy(&native, (void *)state, sizeof native);
-    size_t count = wcrtomb((char *)output, (wchar_t)value, &native);
-    memcpy((void *)state, &native, sizeof native);
-    return count;
-}
 struct v_stdio_position { int64_t offset; unsigned char state[8]; };
 _Static_assert(sizeof(fpos_t) >= sizeof(struct v_stdio_position), "native opaque position storage");
 void v_stdio_position_set(uintptr_t output, int64_t offset, uintptr_t state) {

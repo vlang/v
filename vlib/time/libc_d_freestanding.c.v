@@ -182,15 +182,11 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		c_time_location = entry
 		return loc
 	}
-	fn c_time_fill(epoch i64, output uint, local bool) bool {
+	fn c_time_fill(epoch i64, output uint, loc &Location) bool {
 		mut offset := 0
 		mut dst := false
 		mut zone := uint(c'UTC')
-		if local {
-			loc := c_time_get_location() or {
-				C.v_time_errno_set(i32(C.ENOMEM))
-				return false
-			}
+		if loc != unsafe { nil } {
 			active := loc.zone_at(epoch) or {
 				C.v_time_errno_set(i32(C.EOVERFLOW))
 				return false
@@ -230,23 +226,35 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_time_gmtime'; markused]
 	fn c_time_gmtime(input uint, output uint) uint {
-		return if c_time_fill(unsafe { *(&i64(input)) }, output, false) { output } else { uint(0) }
+		return if c_time_fill(unsafe { *(&i64(input)) }, output, unsafe { nil }) {
+			output
+		} else {
+			uint(0)
+		}
 	}
 	@[export: 'v_time_localtime'; markused]
 	fn c_time_localtime(input uint, output uint) uint {
+		return c_time_localtime_with_names(input, output, false)
+	}
+	fn c_time_localtime_with_names(input uint, output uint, publish bool) uint {
 		c_time_mutex.lock()
 		defer { c_time_mutex.unlock() }
-		return if c_time_fill(unsafe { *(&i64(input)) }, output, true) { output } else { uint(0) }
+		loc := c_time_get_location() or {
+			C.v_time_errno_set(i32(C.ENOMEM))
+			return 0
+		}
+		if publish { c_time_publish_zone(loc) }
+		return if c_time_fill(unsafe { *(&i64(input)) }, output, loc) { output } else { uint(0) }
 	}
 	@[export: 'v_time_localtime_default'; markused]
 	fn c_time_localtime_default(input uint, output uint) uint {
-		c_time_tzset()
-		return c_time_localtime(input, output)
+		return c_time_localtime_with_names(input, output, true)
 	}
 	@[export: 'v_time_ctime_default'; markused]
 	fn c_time_ctime_default(input uint, output uint) uint {
-		c_time_tzset()
-		return c_time_ctime(input, output)
+		mut calendar := C.tm{}
+		if c_time_localtime_default(input, uint(&calendar)) == 0 { return 0 }
+		return c_time_asctime(uint(&calendar), output)
 	}
 
 	@[export: 'v_time_local_offset'; markused]
@@ -274,6 +282,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				C.v_time_errno_set(i32(C.ENOMEM))
 				return -1
 			}
+			c_time_publish_zone(loc)
 			epoch = bare_local_wall_to_unix(unix(wall), loc)
 			if fields[8] >= 0 {
 				active := loc.zone_at(epoch) or {
@@ -299,8 +308,8 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 					}
 				}
 			}
-			if !c_time_fill(epoch, address, true) { return -1 }
-		} else if !c_time_fill(epoch, address, false) {
+			if !c_time_fill(epoch, address, loc) { return -1 }
+		} else if !c_time_fill(epoch, address, unsafe { nil }) {
 			return -1
 		}
 		return epoch
@@ -314,6 +323,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			C.v_time_errno_set(saved)
 		}
 		loc := c_time_get_location() or { return }
+		c_time_publish_zone(loc)
+	}
+	fn c_time_publish_zone(loc &Location) {
 		mut standard := Zone{ name: 'UTC' }
 		mut summer := standard
 		mut has_dst := false
@@ -340,7 +352,10 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		}
 	}
 	@[export: 'v_time_difftime'; markused]
-	fn c_time_difftime(left i64, right i64) f64 { return f64(left) - f64(right) }
+	fn c_time_difftime(left i64, right i64) f64 {
+		if left >= right { return f64(u64(left) - u64(right)) }
+		return -f64(u64(right) - u64(left))
+	}
 	@[export: 'v_time_clock'; markused]
 	fn c_time_clock() i64 {
 		mut stamp := C.timespec{}

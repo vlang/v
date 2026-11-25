@@ -209,7 +209,10 @@ int v_scan_core(struct v_scan *restrict f, const char *restrict fmt, va_list ap)
             pos += shcnt(f);
         }
 
-        shlim(f, width);
+        /* The cursor counts bytes for %n. Wide text limits count converted characters. */
+        /* A suppressed scanset examines input bytes without converting its result. */
+        int wide_text = size == SIZE_l && (t == 's' || t == 'c' || (t == '[' && dest));
+        shlim(f, wide_text ? 0 : width);
         if (shgetc(f) < 0)
             goto input_fail;
         shunget(f);
@@ -253,7 +256,7 @@ int v_scan_core(struct v_scan *restrict f, const char *restrict fmt, va_list ap)
             s = 0;
             i = 0;
             k = t == 'c' ? width + 1U : 31;
-            if (size == SIZE_l) {
+            if (wide_text) {
                 if (alloc) {
                     wcs = malloc(k * sizeof(wchar_t));
                     if (!wcs)
@@ -262,7 +265,7 @@ int v_scan_core(struct v_scan *restrict f, const char *restrict fmt, va_list ap)
                     wcs = dest;
                 }
                 st = (mbstate_t){0};
-                while (scanset[(c = shgetc(f)) + 1]) {
+                while ((!width || i < (size_t)width) && scanset[(c = shgetc(f)) + 1]) {
                     switch (mbrtowc(&wc, &(char){c}, 1, &st)) {
                     case -1:
                         goto input_fail;
@@ -270,7 +273,8 @@ int v_scan_core(struct v_scan *restrict f, const char *restrict fmt, va_list ap)
                         continue;
                     }
                     if (wcs)
-                        wcs[i++] = wc;
+                        wcs[i] = wc;
+                    ++i;
                     if (alloc && i == k) {
                         k += k + 1;
                         wchar_t *tmp = realloc(wcs, k * sizeof(wchar_t));
@@ -302,10 +306,11 @@ int v_scan_core(struct v_scan *restrict f, const char *restrict fmt, va_list ap)
                 while (scanset[(c = shgetc(f)) + 1])
                     ;
             }
-            shunget(f);
+            if (!wide_text || !width || i < (size_t)width)
+                shunget(f);
             if (!shcnt(f))
                 goto match_fail;
-            if (t == 'c' && shcnt(f) != width)
+            if (t == 'c' && (wide_text ? i != (size_t)width : shcnt(f) != width))
                 goto match_fail;
             if (alloc) {
                 if (size == SIZE_l)

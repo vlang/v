@@ -21,7 +21,8 @@ static struct dirent64 *glob_read(void *dir) { ++glob_reads; return readdir64(di
 static int glob_stat(const char *p, struct stat64 *s) { ++glob_stats; return stat64(p, s); }
 static int glob_lstat(const char *p, struct stat64 *s) { ++glob_stats; return lstat64(p, s); }
 static int glob_error(const char *path, int code) {
-    if (strstr(path, "/blocked") && code == EACCES) ++glob_errors;
+    if ((strstr(path, "/blocked") && code == EACCES) ||
+        (strstr(path, "/missing") && code == ENOENT)) ++glob_errors;
     return 1;
 }
 #define GLOB_CHECK(x) do { if (!(x)) { result = __LINE__; goto cleanup; } } while (0)
@@ -33,6 +34,10 @@ static int glob_native_probe(void) {
     const char *old_home = getenv("HOME"); char *saved_home = old_home ? strdup(old_home) : NULL;
     GLOB_CHECK(!old_home || saved_home);
     GLOB_CHECK(mkdtemp(directory));
+    snprintf(pattern, sizeof(pattern), "%s/missing/*", directory);
+    GLOB_CHECK(glob(pattern, GLOB_ERR, glob_error, &g) == GLOB_ABORTED && glob_errors == 1);
+    globfree(&g); memset(&g, 0, sizeof g);
+    glob_errors = 0;
     for (unsigned i = 0; i < sizeof(names) / sizeof(*names); ++i) {
         snprintf(path, sizeof(path), "%s/%s", directory, names[i]);
         fd = open(path, O_CREAT | O_EXCL | O_RDWR, 0600); GLOB_CHECK(fd >= 0);

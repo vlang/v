@@ -223,8 +223,8 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		bare_stdio_lock(address)
 		defer { bare_stdio_unlock(address) }
 		mut stream := bare_stream(address)
-		old_error := stream.error
-		stream.error = false
+		old_error := stream.abi_flags & i32(C.V_STDIO_ERROR)
+		stream.abi_flags &= ~i32(C.V_STDIO_ERROR)
 		limit := if uint(requested - 1) < capacity { uint(requested - 1) } else { capacity }
 		mut count := uint(0)
 		for count < limit {
@@ -238,8 +238,8 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			count++
 			if value == 10 { break }
 		}
-		failed := stream.error && bf_native_errno_cell != i32(C.EAGAIN)
-		stream.error = stream.error || old_error
+		failed := stream.abi_flags & i32(C.V_STDIO_ERROR) != 0 && bf_native_errno_cell != i32(C.EAGAIN)
+		stream.abi_flags |= old_error
 		if count == 0 || failed { return 0 }
 		if count >= capacity { bare_fortify_fail() }
 		bare_fortify_assign(output, count, unit, 0)

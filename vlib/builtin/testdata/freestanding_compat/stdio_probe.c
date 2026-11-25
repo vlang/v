@@ -4,6 +4,8 @@
 #include "probe.h"
 #include <errno.h>
 #include <fcntl.h>
+#include <locale.h>
+#include <wchar.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +17,27 @@
 #define CHECK(condition) do { if (!(condition)) return __LINE__; } while (0)
 int v_freestanding_stdio_check(const char *directory) {
     char path[1024], buffer[32], storage[16];
+    char *saved_locale = strdup(setlocale(LC_CTYPE, NULL));
+    CHECK(saved_locale && setlocale(LC_CTYPE, "C.UTF-8"));
+    wchar_t text[3] = {0};
+    char next = 0;
+    int used = -1;
+    CHECK(sscanf("\xc3\xa9!", "%lc%n%c", text, &used, &next) == 2 &&
+          text[0] == 0xe9 && used == 2 && next == '!');
+    CHECK(sscanf("\xc3\xa9!", "%1ls%c", text, &next) == 2 &&
+          text[0] == 0xe9 && text[1] == 0 && next == '!');
+    CHECK(sscanf("\xc3\xa9!", "%1l[^!]%c", text, &next) == 2 &&
+          text[0] == 0xe9 && text[1] == 0 && next == '!');
+    CHECK(sscanf("\xc3\xa9!", "%*1l[^!]%n", &used) == 0 && used == 1);
+    CHECK(sscanf("\xc3\xa9!", "%*1ls%c", &next) == 1 && next == '!');
+    FILE *wide = tmpfile();
+    CHECK(wide && fwide(wide, 1) > 0 && setlocale(LC_CTYPE, "C"));
+    CHECK(fputwc(0xe9, wide) == 0xe9 && !fseek(wide, 0, SEEK_SET));
+    CHECK(fgetwc(wide) == 0xe9);
+    text[0] = L'x';
+    CHECK(!fgetws(text, 3, wide) && feof(wide) && text[0] == L'x');
+    CHECK(!fclose(wide) && setlocale(LC_CTYPE, saved_locale));
+    free(saved_locale);
     CHECK(snprintf(path, sizeof path, "%s/buffered", directory) > 0);
     FILE *file = fopen(path, "w+b");
     CHECK(file != NULL && setvbuf(file, storage, _IOFBF, sizeof storage) == 0);
@@ -30,6 +53,7 @@ int v_freestanding_stdio_check(const char *directory) {
     rewind(file);
     CHECK(!feof(file) && !ferror(file) && ftell(file) == 0);
     CHECK(fgets(buffer, sizeof buffer, file) == buffer && !strcmp(buffer, "abcdef"));
+    CHECK(fgets(buffer, sizeof buffer, file) == NULL && !strcmp(buffer, "abcdef"));
     CHECK(fclose(file) == 0);
 
     file = fopen(path, "ab");

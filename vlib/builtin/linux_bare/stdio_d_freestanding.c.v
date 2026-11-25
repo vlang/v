@@ -16,20 +16,21 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	fn C.fcntl(i32, i32, ...voidptr) i32
 	fn C.isatty(i32) i32
 	fn C.mkostemp(&char, i32) i32
-	fn C.v_stdio_decode(uint, uint, uint) uint
-	fn C.v_stdio_encode(uint, u32, uint) uint
+	fn C.v_stdio_decode(uint, uint, uint, i32) uint
+	fn C.v_stdio_encode(uint, u32, uint, i32) uint
 	fn C.v_stdio_position_set(uint, i64, uint)
 	fn C.v_stdio_position_get(uint, uint) i64
 
 	@[heap]
 	struct BareStream {
 	mut:
+		// GNU header inlines access flags and four buffer pointers in this prefix.
+		abi_flags    i32
+		abi_storage  [52]u8
 		lock_word    u32
 		owner        uint
 		depth        u32
 		fd           i32
-		error        bool
-		eof          bool
 		allocated    bool
 		mode         i32
 		direction    u32
@@ -52,6 +53,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		cookie       uint
 		callbacks    [4]uint
 		orientation  i32
+		utf8         i32
 		read_state   [8]u8
 		write_state  [8]u8
 	}
@@ -66,7 +68,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		bare_compat_lock(&bare_streams_lock)
 		defer { bare_compat_unlock(&bare_streams_lock) }
 		if bare_load_u32(&bare_streams_ready) != 0 { return }
-		// The C side supplies aligned storage, never a native libc FILE layout.
+		// Standard streams have the same ABI prefix and private state as heap streams.
 		if sizeof(BareStream) > C.v_stdio_standard_size() { bare_thread_fail() }
 		for i in 0 .. 3 {
 			mut stream := unsafe { &BareStream(C.v_stdio_standard(i32(i))) }
@@ -125,7 +127,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		bare_compat_unlock(&stream.lock_word)
 	}
 	fn bare_stream_fail(mut stream BareStream, error i32) i32 {
-		stream.error = true
+		stream.abi_flags |= i32(C.V_STDIO_ERROR)
 		bf_native_errno_cell = error
 		return -1
 	}
@@ -436,7 +438,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				done += pending
 				continue
 			}
-			if stream.eof { break }
+			if stream.abi_flags & i32(C.V_STDIO_EOF) != 0 { break }
 			direct := stream.mode == i32(C._IONBF) || total - done >= stream.capacity
 			buffer := if direct { output + done } else { uint(stream.buffer) }
 			length := if direct { total - done } else { stream.capacity }
@@ -446,7 +448,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				break
 			}
 			if read == 0 {
-				stream.eof = true
+				stream.abi_flags |= i32(C.V_STDIO_EOF)
 				break
 			}
 			if direct {
@@ -527,7 +529,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		stream.write_at = 0
 		stream.pushed_count = 0
 		stream.direction = 0
-		stream.eof = false
+		stream.abi_flags &= ~i32(C.V_STDIO_EOF)
 		stream.read_state = [8]u8{}
 		stream.write_state = [8]u8{}
 		return 0
@@ -563,11 +565,11 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	fn bare_stdio_state(address uint, operation i32) i32 {
 		mut stream := bare_stream(address)
 		return match operation {
-			0 { i32(stream.eof) }
-			1 { i32(stream.error) }
+			0 { i32(stream.abi_flags & i32(C.V_STDIO_EOF) != 0) }
+			1 { i32(stream.abi_flags & i32(C.V_STDIO_ERROR) != 0) }
 			2 {
-				stream.eof = false
-				stream.error = false
+				stream.abi_flags &= ~i32(C.V_STDIO_EOF)
+				stream.abi_flags &= ~i32(C.V_STDIO_ERROR)
 				i32(0)
 			}
 			3 {
@@ -648,8 +650,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			used++
 			if value == 10 { break }
 		}
+		if used == 0 && capacity > 1 { return 0 }
 		unsafe { (&u8(output))[used] = 0 }
-		return if used > 0 || capacity == 1 { output } else { uint(0) }
+		return output
 	}
 	@[export: 'v_stdio_getdelim'; markused]
 	fn bare_stdio_getdelim(line uint, capacity uint, delimiter i32, address uint) i64 {
@@ -687,7 +690,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			}
 			value := bare_stdio_getchar(address)
 			if value < 0 {
-				if stream.error { used = 0 }
+				if stream.abi_flags & i32(C.V_STDIO_ERROR) != 0 { used = 0 }
 				break
 			}
 			unsafe { (&u8(*(&uint(line))))[used] = u8(value) }
@@ -711,7 +714,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		stream.direction = 1
 		stream.pushed[stream.pushed_count] = u8(value)
 		stream.pushed_count++
-		stream.eof = false
+		stream.abi_flags &= ~i32(C.V_STDIO_EOF)
 		return i32(u8(value))
 	}
 	@[export: 'v_stdio_fread'; markused]
@@ -820,13 +823,22 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		}
 		return result
 	}
+	fn bare_stream_orient_wide(mut stream BareStream) bool {
+		if stream.orientation == 0 {
+			stream.utf8 = i32(bare_wide_utf8(0))
+			stream.orientation = 1
+		}
+		return stream.orientation > 0
+	}
 	@[export: 'v_stdio_orientation'; markused]
 	fn bare_stdio_orientation(address uint, mode i32) i32 {
 		bare_stdio_lock(address)
 		defer { bare_stdio_unlock(address) }
 		mut stream := unsafe { &BareStream(address) }
-		if stream.orientation == 0 && mode != 0 {
-			stream.orientation = if mode > 0 { i32(1) } else { i32(-1) }
+		if mode > 0 {
+			bare_stream_orient_wide(mut stream)
+		} else if stream.orientation == 0 && mode < 0 {
+			stream.orientation = -1
 		}
 		return stream.orientation
 	}
@@ -835,7 +847,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		bare_stdio_lock(address)
 		defer { bare_stdio_unlock(address) }
 		mut stream := unsafe { &BareStream(address) }
-		if stream.orientation == 0 { stream.orientation = 1 }
+		if !bare_stream_orient_wide(mut stream) { return 0xffffffff }
 		mut value := u32(0)
 		mut incomplete := false
 		for {
@@ -845,7 +857,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				return 0xffffffff
 			}
 			input := u8(byte)
-			count := C.v_stdio_decode(uint(&value), uint(&input), uint(&stream.read_state[0]))
+			count := C.v_stdio_decode(uint(&value), uint(&input), uint(&stream.read_state[0]), stream.utf8)
 			if count == ~uint(0) {
 				bare_stream_fail(mut stream, i32(C.EILSEQ))
 				return 0xffffffff
@@ -863,10 +875,10 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		bare_stdio_lock(address)
 		defer { bare_stdio_unlock(address) }
 		mut stream := unsafe { &BareStream(address) }
-		if stream.orientation == 0 { stream.orientation = 1 }
+		if !bare_stream_orient_wide(mut stream) { return 0xffffffff }
 		mut bytes := [16]u8{}
 		mut next := stream.write_state
-		size := C.v_stdio_encode(uint(&bytes[0]), value, uint(&next[0]))
+		size := C.v_stdio_encode(uint(&bytes[0]), value, uint(&next[0]), stream.utf8)
 		if size == ~uint(0) {
 			bare_stream_fail(mut stream, i32(C.EILSEQ))
 			return 0xffffffff
@@ -878,13 +890,14 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	@[export: 'v_stdio_ungetwide'; markused]
 	fn bare_stdio_ungetwide(value u32, address uint) u32 {
 		if value == 0xffffffff { return 0xffffffff }
-		mut bytes := [16]u8{}
-		mut state := [8]u8{}
-		size := C.v_stdio_encode(uint(&bytes[0]), value, uint(&state[0]))
-		if size == ~uint(0) { return 0xffffffff }
 		bare_stdio_lock(address)
 		defer { bare_stdio_unlock(address) }
 		mut stream := unsafe { &BareStream(address) }
+		if !bare_stream_orient_wide(mut stream) { return 0xffffffff }
+		mut bytes := [16]u8{}
+		mut state := [8]u8{}
+		size := C.v_stdio_encode(uint(&bytes[0]), value, uint(&state[0]), stream.utf8)
+		if size == ~uint(0) { return 0xffffffff }
 		if !stream.readable || size > uint(stream.pushed.len) - stream.pushed_count || (stream.direction == 2 && bare_stream_flush(mut stream) < 0) {
 			return 0xffffffff
 		}
@@ -896,8 +909,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		}
 		stream.read_state = [8]u8{}
 		stream.direction = 1
-		stream.eof = false
-		if stream.orientation == 0 { stream.orientation = 1 }
+		stream.abi_flags &= ~i32(C.V_STDIO_EOF)
 		return value
 	}
 	@[export: 'v_stdio_getwides'; markused]
@@ -913,8 +925,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			used++
 			if value == 10 { break }
 		}
+		if used == 0 && capacity > 1 { return 0 }
 		unsafe { (&u32(output))[used] = 0 }
-		return if used != 0 || capacity == 1 { output } else { uint(0) }
+		return output
 	}
 	@[export: 'v_stdio_putwides'; markused]
 	fn bare_stdio_putwides(input uint, address uint) i32 {

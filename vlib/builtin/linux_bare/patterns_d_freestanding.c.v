@@ -160,6 +160,14 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		re.position += if !re.glob && re.flags & i32(C.REG_EXTENDED) == 0 { 2 } else { 1 }
 	}
 	fn bare_pattern_bracket_character(mut re BarePattern) (u32, u32, bool) {
+		if re.glob && re.flags & i32(C.FNM_NOESCAPE) == 0 && re.pattern[re.position] == `\\` {
+			re.position++
+			if re.position == re.pattern.len {
+				re.error = i32(C.REG_EBRACK)
+				return 0, 0, false
+			}
+			return bare_pattern_take(mut re), 0, false
+		}
 		if re.position + 1 < re.pattern.len && re.pattern[re.position] == `[` && re.pattern[re.position + 1] in [
 			`:`,
 			`.`,
@@ -259,7 +267,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			}
 			return bare_pattern_add_node(mut re, BarePatternNode{ kind: bare_pattern_literal, value: `$` })
 		}
-		if re.pattern[re.position] == `*` || bare_pattern_token(re, `+`) || bare_pattern_token(re, `?`) || bare_pattern_token(re, `{`) {
+		if (re.pattern[re.position] == `*` && re.flags & i32(C.REG_EXTENDED) != 0) || bare_pattern_token(re, `+`) || bare_pattern_token(re, `?`) || bare_pattern_token(re, `{`) {
 			re.error = i32(C.REG_BADRPT)
 			return -1
 		}
@@ -321,10 +329,13 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			mut atom := bare_pattern_atom(mut re, sequence == -1)
 			if re.error != 0 { return -1 }
 			mut quantified := false
+			basic_anchor := re.flags & i32(C.REG_EXTENDED) == 0 && unsafe { re.nodes[atom].kind } == bare_pattern_bol
 			for re.position < re.pattern.len {
 				mut minimum := 0
 				mut maximum := -1
 				if re.pattern[re.position] == `*` {
+					// An initial BRE star (including immediately after ^) is literal.
+					if basic_anchor { break }
 					re.position++
 				} else if bare_pattern_token(re, `+`) {
 					bare_pattern_skip_token(mut re)
