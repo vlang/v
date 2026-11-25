@@ -1108,13 +1108,15 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 }
 
 fn test_if_error_branches_require_result_returns() {
-	result_if_error := run_good(v3_bin, 'good_result_if_error_branch', "fn f(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
-	assert result_if_error == '1\nbad'
-	result_const_if_error := run_good(v3_bin, 'good_result_const_if_error_branch', "fn f() !int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {\n\t_ := f() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
-	assert result_const_if_error == 'bad'
-	run_bad(v3_bin, 'bad_option_if_error_branch', "fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument')
-	run_bad(v3_bin, 'bad_option_const_if_error_branch', "fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument')
-	run_bad(v3_bin, 'bad_option_return_error', "fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n", 'Option and Result types have been split')
+	run_good_module_batch(v3_bin, 'result_error_branches', [
+		TypeCheckerRuntimeCase{'good_result_if_error_branch', "fn f(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", '1\nbad'},
+		TypeCheckerRuntimeCase{'good_result_const_if_error_branch', "fn f() !int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {\n\t_ := f() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", 'bad'},
+	])
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_option_if_error_branch', "fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
+		TypeCheckerRejection{'bad_option_const_if_error_branch', "fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
+		TypeCheckerRejection{'bad_option_return_error', "fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n", 'Option and Result types have been split'},
+	])
 }
 
 fn test_multi_return_if_tail_infers_common_type() {
@@ -1958,18 +1960,18 @@ fn test_const_length_fixed_array() {
 }
 
 fn test_pr_review_codegen_batch_twentyfive() {
-	// An interface-returning function with a pending `defer` saves its return value into a temp
-	// before running the defers. That temp must hold the boxed interface value (`_typ`/`_object`),
-	// not a zeroed `(Iface){0}`; otherwise the later dynamic dispatch panics. The boxing must match
-	// the direct (defer-free) return path.
-	defer_iface := run_good(v3_bin, 'good_interface_return_with_defer', 'interface Speaker {\n\tspeak() int\n}\nstruct Dog {\n\tvolume int\n}\nfn (d Dog) speak() int {\n\treturn d.volume\n}\nfn make() Speaker {\n\tdefer {\n\t\t_ := 0\n\t}\n\treturn Dog{\n\t\tvolume: 42\n\t}\n}\nfn main() {\n\ts := make()\n\tprintln(int_str(s.speak()))\n}\n')
-	assert defer_iface == '42'
-	// A local whose address escapes (returned via a pointer) is moved to the heap, so the local is
-	// now a `&T`. Its compound (`v += 1`) and postfix (`v++`) mutations must store through the
-	// pointer (`*v += 1`, `(*v)++`), not perform pointer arithmetic; the returned pointer reflects
-	// the mutated value.
-	heap_compound := run_good(v3_bin, 'good_heaped_local_compound_mutation', "fn compound() int {\n\tmut v := 1\n\tp := &v\n\tv += 1\n\treturn *p\n}\nfn postfix() int {\n\tmut v := 5\n\tp := &v\n\tv++\n\tv++\n\treturn *p\n}\nfn main() {\n\tprintln(int_str(compound()) + ',' + int_str(postfix()))\n}\n")
-	assert heap_compound == '2,7'
+	run_good_module_batch(v3_bin, 'deferred_returns_and_heap_mutation', [
+		// An interface-returning function with a pending `defer` saves its return value into a temp
+		// before running the defers. That temp must hold the boxed interface value (`_typ`/`_object`),
+		// not a zeroed `(Iface){0}`; otherwise the later dynamic dispatch panics. The boxing must match
+		// the direct (defer-free) return path.
+		TypeCheckerRuntimeCase{'good_interface_return_with_defer', 'interface Speaker {\n\tspeak() int\n}\nstruct Dog {\n\tvolume int\n}\nfn (d Dog) speak() int {\n\treturn d.volume\n}\nfn make() Speaker {\n\tdefer {\n\t\t_ := 0\n\t}\n\treturn Dog{\n\t\tvolume: 42\n\t}\n}\nfn main() {\n\ts := make()\n\tprintln(int_str(s.speak()))\n}\n', '42'},
+		// A local whose address escapes (returned via a pointer) is moved to the heap, so the local is
+		// now a `&T`. Its compound (`v += 1`) and postfix (`v++`) mutations must store through the
+		// pointer (`*v += 1`, `(*v)++`), not perform pointer arithmetic; the returned pointer reflects
+		// the mutated value.
+		TypeCheckerRuntimeCase{'good_heaped_local_compound_mutation', "fn compound() int {\n\tmut v := 1\n\tp := &v\n\tv += 1\n\treturn *p\n}\nfn postfix() int {\n\tmut v := 5\n\tp := &v\n\tv++\n\tv++\n\treturn *p\n}\nfn main() {\n\tprintln(int_str(compound()) + ',' + int_str(postfix()))\n}\n", '2,7'},
+	])
 }
 
 fn test_pr_review_codegen_batch_twentysix() {
@@ -2044,12 +2046,11 @@ fn test_pr_review_codegen_batch_twentynine() {
 }
 
 fn test_defer_result_review_regressions() {
-	prefixed_local := run_good(v3_bin, 'good_defer_result_prefixed_local', 'fn f() int {\n\t__v3_defer_result := 7\n\t__v3_defer_result_value := 8\n\treturn __v3_defer_result + __v3_defer_result_value\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n')
-	assert prefixed_local == '15'
-	valid := run_good(v3_bin, 'good_defer_result_value', 'fn f() int {\n\tdefer {\n\t\tprintln(int_str($res()))\n\t}\n\treturn 9\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n')
-	assert valid == '9\n9'
-	indexed := run_good(v3_bin, 'good_indexed_defer_result_value', 'fn f() (int, int) {\n\tdefer {\n\t\tprintln(int_str($res(1)))\n\t}\n\treturn 4, 5\n}\nfn main() {\n\ta, b := f()\n\tprintln(int_str(a) + "," + int_str(b))\n}\n')
-	assert indexed == '5\n4,5'
+	run_good_module_batch(v3_bin, 'defer_result_values', [
+		TypeCheckerRuntimeCase{'good_defer_result_prefixed_local', 'fn f() int {\n\t__v3_defer_result := 7\n\t__v3_defer_result_value := 8\n\treturn __v3_defer_result + __v3_defer_result_value\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '15'},
+		TypeCheckerRuntimeCase{'good_defer_result_value', 'fn f() int {\n\tdefer {\n\t\tprintln(int_str($res()))\n\t}\n\treturn 9\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '9\n9'},
+		TypeCheckerRuntimeCase{'good_indexed_defer_result_value', 'fn f() (int, int) {\n\tdefer {\n\t\tprintln(int_str($res(1)))\n\t}\n\treturn 4, 5\n}\nfn main() {\n\ta, b := f()\n\tprintln(int_str(a) + "," + int_str(b))\n}\n', '5\n4,5'},
+	])
 	run_bad_module_batch(v3_bin, [
 		TypeCheckerRejection{'bad_void_defer_result', 'fn f() {\n\tdefer {\n\t\t_ := $res()\n\t}\n}\nfn main() {\n\tf()\n}\n', '`res` can only be used in functions that returns something'},
 		TypeCheckerRejection{'bad_result_defer_result', 'fn f() !int {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f() or { 0 }\n}\n', '`res` cannot be used in functions that returns a Result'},
