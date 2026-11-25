@@ -60,10 +60,13 @@ For additional memory and undefined-behavior checks:
 python3 vlib/builtin/testdata/freestanding_compat/sanitizers.py /tmp/bare-asan clang
 ```
 
-This harness instruments the same C adapter sources with ASan/UBSan, renames their exported
-symbols, and links a hosted test process. Renaming keeps the sanitizer's host libc separate
-from the bare FILE representation. Leak detection remains enabled. The ordinary V regression
-separately exercises the real bare heap and TLS; this hosted harness cannot replace it.
+The harness uses this checkout's `./v` to generate the V runtime and obtain its C adapter list.
+It instruments both with ASan and UBSan, then renames symbols in the compiled objects so the
+test can call the shim alongside the sanitizer's host libc. The V runtime and C adapters
+share ASan's allocator for buffers they exchange. The host creates the test threads, and
+leak detection stays enabled. The freestanding compatibility matrix separately exercises
+the production heap and thread startup. The sanitizer run also compares every byte of the
+formatter output with a system-libc executable and runs the local DNS fixture.
 
 Cross-target checks can use an AArch64 Linux C compiler with native target headers and its
 compiler arithmetic runtime, followed by `qemu-aarch64`. Zig's C driver is one possible test

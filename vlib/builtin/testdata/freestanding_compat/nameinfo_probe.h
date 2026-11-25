@@ -68,7 +68,7 @@ static int nameinfo_reverse_probe(const struct v_resolver_config *paths) {
     CHECK(inet_pton(AF_INET, "192.0.2.205", &v4.sin_addr) == 1);
     CHECK(!REVERSE(0) && !strcmp(host, "192.0.2.205"));
     CHECK(inet_pton(AF_INET, "192.0.2.201", &v4.sin_addr) == 1);
-    fail_socket = 1; last_status = REVERSE(NI_NAMEREQD); fail_socket = 0;
+    fail_socket = 1; REVERSE(NI_NAMEREQD); fail_socket = 0;
     CHECK(last_status == EAI_SYSTEM && errno == EMFILE);
     puts("reverse nameinfo, hosts, services, PTR, CNAME and truncated TCP passed");
 #undef REVERSE

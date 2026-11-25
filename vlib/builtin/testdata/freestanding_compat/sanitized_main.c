@@ -1,9 +1,20 @@
 #include "probe.h"
 #include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 extern void v_freestanding_stdio_flush(void);
+extern void v_freestanding_program_names(int32_t, uintptr_t);
+extern char **environ;
+
+/* The host owns startup and TLS. Publish the same kernel arguments and
+ * auxiliary vector normally supplied by the shim's ELF preinitializer. */
+__attribute__((constructor(100)))
+static void initialize_arguments(int argc, char **argv, char **envp) {
+    environ = envp;
+    v_freestanding_program_names(argc, (uintptr_t)argv);
+}
 
 static void *condition_worker(void *ignored) { (void)ignored; v_freestanding_condition_worker(); return NULL; }
 static void *increment(void *ignored) { (void)ignored; v_freestanding_compat_increment(); return NULL; }

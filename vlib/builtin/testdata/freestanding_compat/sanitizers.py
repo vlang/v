@@ -1,95 +1,100 @@
-"""Instrument the C adapters under distinct symbols, preserving ASan's host libc.
-
-The ordinary V regression separately links the unchanged adapters freestanding.
-This harness adds native memory/error-path coverage without loading ASan into a
-no-libc executable or interposing its host FILE objects and allocator.
-"""
+"""Run the instrumented V runtime and native ABI adapters alongside ASan's host libc."""
+import filecmp
 import os
-import pathlib
+from pathlib import Path
 import subprocess
 import sys
 
-fixture = pathlib.Path(__file__).resolve().parent
+from sanitizer_runtime import compile_v_runtime
+
+fixture = Path(__file__).resolve().parent
 runtime = fixture.parent.parent / 'linux_bare'
-work = pathlib.Path(sys.argv[1]).resolve()
+work = Path(sys.argv[1]).resolve()
 compiler = sys.argv[2] if len(sys.argv) > 2 else 'clang'
 work.mkdir(parents=True, exist_ok=True)
-base = [compiler, '-std=gnu11', '-D_GNU_SOURCE=1', '-D__NO_INLINE__=1', '-O1', '-g',
-        '-fno-builtin', '-fno-omit-frame-pointer', '-fsanitize=address,undefined']
-sources = ['libc_descriptors.c', 'libc_socket.c', 'libc_resolver.c', 'libc_stdio.c',
-           'libc_format.c', 'libc_services.c', 'libc_mutex.c', 'libc_system.c',
-           'libc_strings.c', 'libc_sort.c', 'libc_environment.c', 'libc_locale.c', 'libc_scan.c',
-           'libc_scanf.c', 'libc_intscan.c', 'libc_floatscan.c', 'libc_misc.c',
-           'libc_realpath.c', 'libc_strftime.c', 'libc_random.c', 'libc_math.c',
-           'libc_jump.c', 'libc_exit.c']
-objects, symbols = [], set()
+flags = [compiler, '-std=gnu11', '-D_GNU_SOURCE=1', '-D__NO_INLINE__=1', '-O1', '-g',
+         '-fno-builtin', '-fno-omit-frame-pointer', '-ffunction-sections', '-fdata-sections',
+         '-fsanitize=address,undefined']
 
 
 def run(command, **kwargs):
-    subprocess.run([str(part) for part in command], check=True, **kwargs)
+    subprocess.run(command, check=True, **kwargs)
 
 
-for source in sources:
-    output = work / (source + '.o')
-    run(base + ['-c', runtime / source, '-o', output])
-    objects.append(output)
-    listing = subprocess.check_output(['nm', '-g', '--defined-only', str(output)], text=True)
-    for line in listing.splitlines():
-        parts = line.split()
-        if len(parts) == 3 and parts[1] in ['T', 'D', 'B', 'R'] and not parts[2].startswith(('v_', '__odr_asan')):
-            symbols.add(parts[2])
+def definitions(obj):
+    listing = subprocess.check_output(['nm', '-g', '--defined-only', '--format=posix', obj], text=True)
+    return {line.split()[0] for line in listing.splitlines()
+            if not line.startswith(('v_', 'bare_', '__asan', '__odr_asan', '__ubsan'))}
+
+
+generated = compile_v_runtime(fixture, work, compiler, [*flags, '-fno-inline'])
+objects = [generated]
+for flag in (work / 'runtime.flags').read_text().split('\0'):
+    source = Path(flag)
+    if source.suffix == '.o':
+        obj = work / source.name
+        run(['objcopy', source, obj])
+        objects.append(obj)
+        continue
+    if source.parent != runtime or source.suffix != '.c':
+        continue
+    obj = work / (source.name + '.o')
+    run([*flags, '-c', source, '-o', obj])
+    if source.name == 'initializers.c':
+        # The host owns the initial thread pointer and process startup.
+        run(['objcopy', '--rename-section',
+             '.preinit_array=.data.sanitized_preinit,contents,alloc,load,data', obj])
+    objects.append(obj)
+if len(objects) == 1:
+    raise RuntimeError('No C adapters found in the compiler runtime manifest')
+
+public = {obj: definitions(obj) for obj in objects}
+symbols = set().union(*public.values())
+# Run workers under ASan's pthread interceptor. The allocator wrapper below
+# forwards to ASan, including when the resolver injects a failed allocation.
+hosted = {'malloc', 'calloc', 'realloc', 'free', 'pthread_create', 'pthread_join'}
 mapping = work / 'symbols.txt'
-mapping.write_text(''.join(f'{symbol} v_bare_{symbol}\n' for symbol in sorted(symbols)))
-for output in objects:
-    run(['objcopy', '--redefine-syms=' + str(mapping), output])
+mapping.write_text(''.join(f'{name} v_bare_{name}\n' for name in sorted(symbols - hosted)))
+for obj in objects:
+    args = ['objcopy', '--redefine-syms=' + str(mapping)]
+    for name in hosted & public[obj]:
+        args += ['--redefine-sym', f'{name}=v_bare_{name}']
+    if obj == generated:
+        args += ['--redefine-sym', 'v_freestanding_aligned_alloc=v_sanitized_v_aligned_alloc']
+    run([*args, obj])
+    if obj == generated:
+        # Generated functions call private V heap entry points directly. Use
+        # weak definitions so the hosted heap also owns these allocations.
+        allocators = ['__malloc', '__calloc', '__free', '__malloc_align', 'realloc']
+        run(['objcopy', *['--weaken-symbol=v_bare_' + name for name in allocators], obj])
 
-headers = ['stdio.h', 'stdlib.h', 'string.h', 'unistd.h', 'fcntl.h', 'time.h', 'signal.h',
-           'pthread.h', 'sched.h', 'sys/stat.h', 'sys/socket.h', 'sys/epoll.h',
-           'sys/eventfd.h', 'sys/sendfile.h', 'arpa/inet.h', 'netdb.h', 'assert.h',
-           'ctype.h', 'dirent.h', 'inttypes.h', 'langinfo.h', 'locale.h', 'math.h',
-           'poll.h', 'pwd.h', 'setjmp.h', 'sys/ioctl.h', 'sys/mman.h',
-           'sys/select.h', 'sys/shm.h', 'sys/statfs.h', 'sys/time.h', 'sys/uio.h',
-           'sys/utsname.h', 'sys/random.h', 'libintl.h', 'wchar.h']
-# These ABI entry points are exported by the runtime even when the native
-# headers redirect their ordinary declarations to a different language version.
-extra = ['extern int (sigsetjmp)(sigjmp_buf, int) __attribute__((returns_twice));',
-         'extern int __cxa_atexit(void (*)(void *), void *, void *);',
-         'extern void __cxa_finalize(void *);']
-for prefix in ['__isoc99_', '__isoc23_']:
-    extra += [f'extern int {prefix}sscanf(const char *, const char *, ...);',
-              f'extern int {prefix}vsscanf(const char *, const char *, va_list);',
-              f'extern int {prefix}fscanf(FILE *, const char *, ...);',
-              f'extern int {prefix}vfscanf(FILE *, const char *, va_list);',
-              f'extern int {prefix}scanf(const char *, ...);',
-              f'extern int {prefix}vscanf(const char *, va_list);']
-for name, result in [('strtol', 'long'), ('strtoul', 'unsigned long'),
-                     ('strtoll', 'long long'), ('strtoull', 'unsigned long long'),
-                     ('strtoimax', 'intmax_t'), ('strtoumax', 'uintmax_t')]:
-    extra.append(f'extern {result} __isoc23_{name}(const char *, char **, int);')
-namespace = work / 'namespace.h'
-namespace.write_text(''.join(f'#include <{header}>\n' for header in headers)
-                     + '\n'.join(extra) + '\n'
-                     + ''.join(f'extern __typeof__({symbol}) v_bare_{symbol};\n' for symbol in sorted(symbols))
-                     + ''.join(f'#undef {symbol}\n#define {symbol}'
-                               + ('(...)' if symbol in ['stat', 'stat64'] else '')
-                               + f' v_bare_{symbol}'
-                               + ('(__VA_ARGS__)' if symbol in ['stat', 'stat64'] else '') + '\n'
-                               for symbol in sorted(symbols)))
-test_objects = []
-for source in ['probe.c', 'stdio_probe.c', 'mutex_probe.c', 'format_probe.c',
-               'resolver_probe.c', 'dns_fuzz.c', 'fontstack_probe.c', 'sanitized_main.c']:
-    output = work / (source + '.o')
-    run(base + ['-D__real_socket=__real_v_bare_socket', '-D__wrap_socket=__wrap_v_bare_socket',
-                '-DV_PROBE_SANITIZED=1', '-include', namespace, '-c', fixture / source, '-o', output])
-    test_objects.append(output)
-allocator = work / 'allocator.o'
-run(base + ['-c', fixture / 'sanitized_allocator.c', '-o', allocator])
+# Let the native headers select versioned or redirected ABI names. Rename the
+# resulting relocations under the same map as the implementation objects.
+for name in ['probe.c', 'stdio_probe.c', 'mutex_probe.c', 'format_probe.c', 'resolver_probe.c',
+             'dns_fuzz.c', 'fontstack_probe.c', 'sanitized_main.c']:
+    obj = work / (name + '.o')
+    run([*flags, '-DV_PROBE_SANITIZED=1', '-D__real_socket=__real_v_bare_socket',
+         '-D__wrap_socket=__wrap_v_bare_socket', '-c', fixture / name, '-o', obj])
+    run(['objcopy', '--redefine-syms=' + str(mapping), obj])
+    objects.append(obj)
+
 program = work / 'native-check'
-run(base + objects + test_objects + [allocator, '-pthread', '-lm', '-Wl,--wrap=malloc',
-    '-Wl,--wrap=calloc', '-Wl,--wrap=realloc', '-Wl,--wrap=free', '-Wl,--wrap=v_bare_socket', '-o', program])
-environment = os.environ.copy()
-environment['ASAN_OPTIONS'] = 'detect_leaks=1:abort_on_error=1'
-environment['UBSAN_OPTIONS'] = 'halt_on_error=1:print_stacktrace=1'
+run([*flags, fixture / 'sanitized_allocator.c', *objects, '-pthread', '-lm', '-Wl,--gc-sections',
+     '-Wl,--wrap=malloc', '-Wl,--wrap=calloc', '-Wl,--wrap=realloc', '-Wl,--wrap=free',
+     '-Wl,--wrap=v_bare_socket', '-o', program])
+environment = dict(os.environ, ASAN_OPTIONS='detect_leaks=1:abort_on_error=1',
+                   UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1')
 run([program, work], env=environment, timeout=60)
+main = work / 'format_main.c'
+main.write_text('int v_freestanding_format_oracle(const char *path);\n'
+                'int main(int argc, char **argv) {\n'
+                '    return argc != 2 || v_freestanding_format_oracle(argv[1]);\n}\n')
+oracle = work / 'host-format'
+run([compiler, '-O2', '-ffunction-sections', '-fdata-sections', fixture / 'format_probe.c',
+     main, '-Wl,--gc-sections', '-lm', '-o', oracle])
+host_format = work / 'host-format.bin'
+run([oracle, host_format], timeout=60)
+if not filecmp.cmp(host_format, work / 'format.bin', shallow=False):
+    raise RuntimeError('The instrumented formatting output differs from the host libc oracle')
 run([sys.executable, fixture / 'dns_fixture.py', work / 'dns', program], env=environment, timeout=90)
 print(f'{compiler}: namespaced ASan/UBSan ABI and resolver checks passed')
