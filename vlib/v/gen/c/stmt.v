@@ -1141,7 +1141,11 @@ fn (g &FlatGen) ownership_struct_destructor_method(type_name_id u32) string {
 		&& !g.tc.named_type_implements_marker(type_name_id, flat.source_type_id('Drop')) {
 		return ''
 	}
-	return g.resolve_method_name(type_name_id, g.ownership_destructor_method_name())
+	method := g.ownership_destructor_method_name()
+	if resolved := g.resolve_qualified_generic_method_name(type_name_id, method) {
+		return resolved
+	}
+	return g.resolve_method_name(type_name_id, method)
 }
 
 // ownership_free_call releases boxed storage with the allocator used to create it.
