@@ -1,3 +1,4 @@
+import json2
 import os
 import v.cmdexec
 import v.parser
@@ -190,6 +191,44 @@ fn run_good_module_batch(v3_bin string, name string, cases []ReviewRuntimeCase) 
 		run := os.exec([bin_path, case.name])
 		assert run.exit_code == 0, '${case.name}: ${run.output}'
 		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	}
+}
+
+struct ReviewRejection {
+	name     string
+	source   string
+	expected string
+}
+
+struct ReviewDiagnostic {
+	file     string
+	severity string
+	message  string
+}
+
+fn run_bad_module_batch(v3_bin string, name string, cases []ReviewRejection) {
+	root := '${tmp_test_path(name)}_project'
+	mut imports := []string{cap: cases.len}
+	for case in cases {
+		imports << 'import ${case.name} as _'
+		write_project_file(root, '${case.name}/${case.name}.v', 'module ${case.name}\n\n' + case.source)
+	}
+	write_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')
+	compile := os.exec([v3_bin, root, '-json-errors', '-b', 'c', '-o', tmp_test_path(name)])
+	assert compile.exit_code != 0, '${name}: expected compile failure\n${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
+	mut errors := map[string][]string{}
+	for line in compile.output.split_into_lines() {
+		if !line.starts_with('{') {
+			continue
+		}
+		diagnostic := json2.decode[ReviewDiagnostic](line) or { panic(err) }
+		if diagnostic.severity == 'error' {
+			errors[os.file_name(diagnostic.file)] << diagnostic.message
+		}
+	}
+	for case in cases {
+		assert errors['${case.name}.v'].any(it.contains(case.expected)), '${case.name}: expected `${case.expected}` in\n${compile.output}'
 	}
 }
 
@@ -2347,24 +2386,70 @@ fn main() {
 
 fn test_context_dependent_if_branches_infer_wrapper_types() {
 	v3_bin := build_v3()
-	opt_out := run_good(v3_bin, 'if_none_branch_infers_option', 'fn maybe(flag bool) ?int {\n\treturn if flag { none } else { 3 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n')
-	assert opt_out == '3\n-1'
-	opt_assign_out := run_good(v3_bin, 'if_none_branch_uses_option_assignment_context', 'fn main() {\n\tflag := false\n\tmut value := ?int(none)\n\tvalue = if flag { none } else { 8 }\n\tprintln(int_str(value or { -1 }))\n}\n')
-	assert opt_assign_out == '8'
-	res_out := run_good(v3_bin, 'if_error_branch_infers_result', "fn maybe(flag bool) !int {\n\treturn if flag { error('bad') } else { 4 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
-	assert res_out == '4\n-1'
-	code_out := run_good(v3_bin, 'if_error_with_code_branch_infers_result', "fn maybe(flag bool) !int {\n\treturn if flag { error_with_code('bad', 1) } else { 6 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
-	assert code_out == '6\n-1'
-	match_code_out := run_good(v3_bin, 'match_error_with_code_branch_infers_result', "fn maybe(n int) !int {\n\treturn match n {\n\t\t0 { error_with_code('bad', 2) }\n\t\telse { 7 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(maybe(1) or { -1 }))\n\tprintln(int_str(maybe(0) or { -1 }))\n}\n")
-	assert match_code_out == '7\n-1'
-	inferred_decl_out := run_good(v3_bin, 'if_none_branch_infers_option_without_context', 'fn main() {\n\tx := if true { none } else { 1 }\n\ty := if false { none } else { 2 }\n\tprintln("\${x}")\n\tprintln("\${y}")\n}\n')
-	assert inferred_decl_out == 'Option(none)\nOption(2)'
-	run_bad(v3_bin, 'if_none_branch_rejected_for_result_without_context', 'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n', 'mismatched types `?void` and `!int`')
-	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload', 'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n', 'cannot use `?int` as type `!int` in return argument')
-	run_bad(v3_bin, 'match_none_branch_rejected_for_result_payload', 'fn g(n int) !int {\n\treturn match n {\n\t\t0 { none }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := g(1) or { 0 }\n}\n', 'return type mismatch, it should be `int`, but it is instead `?void`')
-	run_bad(v3_bin, 'if_option_void_branch_rejected_for_payload', 'fn maybe_void() ? {\n\treturn\n}\n\nfn f(ok bool) ?int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n', 'mismatched types `?void` and `int`')
-	run_bad(v3_bin, 'if_result_void_branch_rejected_for_payload', 'fn maybe_void() ! {\n\treturn\n}\n\nfn f(ok bool) !int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n', 'mismatched types `!void` and `int`')
-	run_bad(v3_bin, 'match_option_void_branch_rejected_for_payload', 'fn maybe_void() ? {\n\treturn\n}\n\nfn f(n int) ?int {\n\treturn match n {\n\t\t0 { maybe_void() }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(0) or { 0 }\n}\n', 'return type mismatch, it should be `int`, but it is instead `?void`')
+	run_good_module_batch(v3_bin, 'context_dependent_wrapper_types', [
+		ReviewRuntimeCase{
+			name:     'if_none_branch_infers_option'
+			source:   'fn maybe(flag bool) ?int {\n\treturn if flag { none } else { 3 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n'
+			expected: '3\n-1'
+		},
+		ReviewRuntimeCase{
+			name:     'if_none_branch_uses_option_assignment_context'
+			source:   'fn main() {\n\tflag := false\n\tmut value := ?int(none)\n\tvalue = if flag { none } else { 8 }\n\tprintln(int_str(value or { -1 }))\n}\n'
+			expected: '8'
+		},
+		ReviewRuntimeCase{
+			name:     'if_error_branch_infers_result'
+			source:   "fn maybe(flag bool) !int {\n\treturn if flag { error('bad') } else { 4 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n"
+			expected: '4\n-1'
+		},
+		ReviewRuntimeCase{
+			name:     'if_error_with_code_branch_infers_result'
+			source:   "fn maybe(flag bool) !int {\n\treturn if flag { error_with_code('bad', 1) } else { 6 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n"
+			expected: '6\n-1'
+		},
+		ReviewRuntimeCase{
+			name:     'match_error_with_code_branch_infers_result'
+			source:   "fn maybe(n int) !int {\n\treturn match n {\n\t\t0 { error_with_code('bad', 2) }\n\t\telse { 7 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(maybe(1) or { -1 }))\n\tprintln(int_str(maybe(0) or { -1 }))\n}\n"
+			expected: '7\n-1'
+		},
+		ReviewRuntimeCase{
+			name:     'if_none_branch_infers_option_without_context'
+			source:   'fn main() {\n\tx := if true { none } else { 1 }\n\ty := if false { none } else { 2 }\n\tprintln("\${x}")\n\tprintln("\${y}")\n}\n'
+			expected: 'Option(none)\nOption(2)'
+		},
+	])
+	run_bad_module_batch(v3_bin, 'context_dependent_wrapper_types_rejections', [
+		ReviewRejection{
+			name:     'if_none_branch_rejected_for_result_without_context'
+			source:   'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n'
+			expected: 'mismatched types `?void` and `!int`'
+		},
+		ReviewRejection{
+			name:     'if_none_branch_rejected_for_result_payload'
+			source:   'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n'
+			expected: 'cannot use `?int` as type `!int` in return argument'
+		},
+		ReviewRejection{
+			name:     'match_none_branch_rejected_for_result_payload'
+			source:   'fn g(n int) !int {\n\treturn match n {\n\t\t0 { none }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := g(1) or { 0 }\n}\n'
+			expected: 'return type mismatch, it should be `int`, but it is instead `?void`'
+		},
+		ReviewRejection{
+			name:     'if_option_void_branch_rejected_for_payload'
+			source:   'fn maybe_void() ? {\n\treturn\n}\n\nfn f(ok bool) ?int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n'
+			expected: 'mismatched types `?void` and `int`'
+		},
+		ReviewRejection{
+			name:     'if_result_void_branch_rejected_for_payload'
+			source:   'fn maybe_void() ! {\n\treturn\n}\n\nfn f(ok bool) !int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n'
+			expected: 'mismatched types `!void` and `int`'
+		},
+		ReviewRejection{
+			name:     'match_option_void_branch_rejected_for_payload'
+			source:   'fn maybe_void() ? {\n\treturn\n}\n\nfn f(n int) ?int {\n\treturn match n {\n\t\t0 { maybe_void() }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(0) or { 0 }\n}\n'
+			expected: 'return type mismatch, it should be `int`, but it is instead `?void`'
+		},
+	])
 }
 
 fn test_assoc_return_runs_defers() {
@@ -3989,10 +4074,18 @@ fn test_callback_lambda_lift_preserves_outer_captures() {
 
 fn test_callback_lambda_lift_forwards_optional_void_failures() {
 	v3_bin := build_v3()
-	result_out := run_good(v3_bin, 'callback_lambda_result_void_forward', 'fn takes(cb fn () !void) {\n\tcb() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n\tprintln("success")\n}\n\nfn maybe_fails() !void {\n\treturn error("fail")\n}\n\nfn main() {\n\ttakes(|| maybe_fails())\n}\n')
-	assert result_out == 'fail'
-	option_out := run_good(v3_bin, 'callback_lambda_option_void_forward', 'fn takes(cb fn () ?) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ? {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n')
-	assert option_out == 'none'
+	run_good_module_batch(v3_bin, 'callback_lambda_forwards_void_failures', [
+		ReviewRuntimeCase{
+			name:     'callback_lambda_result_void_forward'
+			source:   'fn takes(cb fn () !void) {\n\tcb() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n\tprintln("success")\n}\n\nfn maybe_fails() !void {\n\treturn error("fail")\n}\n\nfn main() {\n\ttakes(|| maybe_fails())\n}\n'
+			expected: 'fail'
+		},
+		ReviewRuntimeCase{
+			name:     'callback_lambda_option_void_forward'
+			source:   'fn takes(cb fn () ?) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ? {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n'
+			expected: 'none'
+		},
+	])
 }
 
 fn test_user_new_map_call_with_args_uses_renamed_symbol() {
