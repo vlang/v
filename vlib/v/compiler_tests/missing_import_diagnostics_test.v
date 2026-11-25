@@ -1,27 +1,39 @@
 import os
+import v.tempname
 
 const missing_import_vexe = @VEXE
 const missing_import_tests_dir = os.dir(@FILE)
 const missing_import_v3_dir = os.dir(missing_import_tests_dir)
 const missing_import_vlib_dir = os.dir(missing_import_v3_dir)
 const missing_import_v3_src = os.join_path(missing_import_v3_dir, 'v.v')
+const missing_import_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_missing_import_compiler_${tempname.unique_token()}')
+const missing_import_v3_bin = os.join_path(missing_import_compiler_dir, 'v3' + $if windows {
+	'.exe'
+} $else {
+	''
+})
+
+fn testsuite_begin() {
+	os.mkdir_all(missing_import_compiler_dir)!
+	build := os.exec([missing_import_vexe, '-gc', 'none', '-path',
+		'${missing_import_vlib_dir}' + '|@vlib|@vmodules', '-o', missing_import_v3_bin,
+		missing_import_v3_src])
+	assert build.exit_code == 0, build.output
+}
+
+fn testsuite_end() {
+	os.rmdir_all(missing_import_compiler_dir) or {}
+}
 
 fn test_each_unresolved_module_import_is_reported() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_missing_import_diagnostics_${os.getpid()}')
+	v3_bin := missing_import_v3_bin
 	root := os.join_path(os.temp_dir(), 'v3_missing_import_project_${os.getpid()}')
 	output := os.join_path(os.temp_dir(), 'v3_missing_import_output_${os.getpid()}')
 	defer {
-		os.rm(v3_bin) or {}
 		os.rmdir_all(root) or {}
 		os.rm(output) or {}
 		os.rm(output + '.c') or {}
 	}
-	build :=
-		os.exec([missing_import_vexe, '-gc', 'none', '-path',
-			'${missing_import_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${missing_import_v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	os.mkdir_all(root) or { panic(err) }
 	module_name := 'definitely_missing_v3_review_module'
 	empty_module_name := 'empty_target_v3_review_module'
@@ -66,21 +78,14 @@ fn helper() {}
 // The command has to be runnable as printed, and it may only be printed when the
 // directory really holds a module this build could have used.
 fn test_removed_modules_directory_reports_the_move_it_needs() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_modules_layout_hint_${os.getpid()}')
+	v3_bin := missing_import_v3_bin
 	root := os.join_path(os.temp_dir(), 'v3_modules_layout_project_${os.getpid()}')
 	output := os.join_path(os.temp_dir(), 'v3_modules_layout_output_${os.getpid()}')
 	defer {
-		os.rm(v3_bin) or {}
 		os.rmdir_all(root) or {}
 		os.rm(output) or {}
 		os.rm(output + '.c') or {}
 	}
-	build :=
-		os.exec([missing_import_vexe, '-gc', 'none', '-path',
-			'${missing_import_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${missing_import_v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	hint := 'the virtual `modules/` directory is no longer searched for modules.'
 
 	// A plain import moves the module directory itself. The project directory
@@ -338,21 +343,14 @@ fn write_modules_layout_main(root string, import_path string) {
 }
 
 fn test_eager_import_resolution_matches_authoritative_resolution() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_eager_import_resolution_${os.getpid()}')
+	v3_bin := missing_import_v3_bin
 	root := os.join_path(os.temp_dir(), 'v3_eager_import_project_${os.getpid()}')
 	output := os.join_path(os.temp_dir(), 'v3_eager_import_output_${os.getpid()}')
 	defer {
-		os.rm(v3_bin) or {}
 		os.rmdir_all(root) or {}
 		os.rm(output) or {}
 		os.rm(output + '.c') or {}
 	}
-	build :=
-		os.exec([missing_import_vexe, '-gc', 'none', '-path',
-			'${missing_import_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${missing_import_v3_src}'])
-	assert build.exit_code == 0, build.output
-
 	precedence_root := os.join_path(root, 'precedence')
 	local_arrays_dir := os.join_path(precedence_root, 'arrays')
 	os.mkdir_all(local_arrays_dir) or { panic(err) }

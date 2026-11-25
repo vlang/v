@@ -1,34 +1,12 @@
 import os
 import v.tempname
 
-const fixed_array_const_vexe = @VEXE
-const fixed_array_const_tests_dir = os.dir(@FILE)
-const fixed_array_const_v3_dir = os.dir(fixed_array_const_tests_dir)
-const fixed_array_const_vlib_dir = os.dir(fixed_array_const_v3_dir)
-const fixed_array_const_v3_src = os.join_path(fixed_array_const_v3_dir, 'v.v')
-const fixed_array_const_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_fixed_array_const_compiler_${tempname.unique_token()}')
-
-fn testsuite_end() {
-	os.rmdir_all(fixed_array_const_compiler_dir) or {}
-}
-
-fn fixed_array_const_build_v3() string {
-	v3_bin := os.join_path(fixed_array_const_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	os.mkdir_all(fixed_array_const_compiler_dir) or { panic(err) }
-	build :=
-		os.exec([fixed_array_const_vexe, '-gc', 'none', '-path',
-			'${fixed_array_const_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${fixed_array_const_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
 fn test_fixed_array_const_materialization_and_nested_for_in() {
-	v3_bin := fixed_array_const_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_fixed_array_const_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_const_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_fixed_array_const')
+	src := bin + '.v'
 	os.write_file(src, 'module main
 
 struct Item {
@@ -59,8 +37,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_const_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -84,8 +61,11 @@ fn main() {
 }
 
 fn test_fixed_array_pointer_arg_and_dynamic_const_clone() {
-	v3_bin := fixed_array_const_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_fixed_array_arg_const_clone_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_arg_const_clone_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_fixed_array_arg_const_clone')
+	src := bin + '.v'
 	os.write_file(src, 'module main
 
 const vals = [u32(1), 2, 3]
@@ -108,8 +88,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_arg_const_clone_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -127,8 +106,11 @@ fn main() {
 }
 
 fn test_indexed_const_array_with_dynamic_use_stays_dynamic() {
-	v3_bin := fixed_array_const_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_fixed_array_const_dynamic_use_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_const_dynamic_use_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_fixed_array_const_dynamic_use')
+	src := bin + '.v'
 	os.write_file(src, 'module main
 
 const vals = [u32(1), 2, 3]
@@ -149,8 +131,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_const_dynamic_use_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -167,9 +148,9 @@ fn main() {
 }
 
 fn test_ambiguous_short_const_arrays_resolve_in_module_context() {
-	v3_bin := fixed_array_const_build_v3()
-	root := os.join_path(os.temp_dir(), 'v3_fixed_array_ambiguous_const_${os.getpid()}')
-	os.rmdir_all(root) or {}
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_ambiguous_const_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	os.mkdir_all(os.join_path(root, 'a')) or { panic(err) }
 	os.mkdir_all(os.join_path(root, 'b')) or { panic(err) }
 	os.write_file(os.join_path(root, 'a', 'a.v'), 'module a
@@ -209,7 +190,7 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(root, 'app')
-	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -223,9 +204,9 @@ fn main() {
 }
 
 fn test_aliased_import_dynamic_const_use_stays_dynamic() {
-	v3_bin := fixed_array_const_build_v3()
-	root := os.join_path(os.temp_dir(), 'v3_fixed_array_aliased_const_${os.getpid()}')
-	os.rmdir_all(root) or {}
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_aliased_const_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	os.mkdir_all(os.join_path(root, 'pkg')) or { panic(err) }
 	os.write_file(os.join_path(root, 'pkg', 'pkg.v'), 'module pkg
 
@@ -252,7 +233,7 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(root, 'app')
-	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

@@ -15,7 +15,10 @@
 // `VRACE_GO_TEST_ONLY=chan,mop` runs only the programs whose names contain one of the
 // comma separated parts, `VRACE_GO_TEST_VERBOSE=1` also prints the race reports of the
 // tests that failed.
+import arrays.parallel
+import math
 import os
+import runtime
 
 const vexe = os.quoted_path(@VEXE)
 const testdata_dir = os.join_path(os.dir(@FILE), 'testdata')
@@ -107,6 +110,29 @@ fn selected_programs() []string {
 		name := os.file_name(file)
 		return parts.any(name.contains(it))
 	})
+}
+
+struct RaceProgramBuild {
+	path   string
+	exe    string
+	result os.Result
+}
+
+// build_race_programs compiles independent fixtures with a shared CPU budget. All
+// builds finish before the first program runs, so the race checks run without them.
+fn build_race_programs(programs []string) []RaceProgramBuild {
+	cpu_budget := math.min(runtime.nr_jobs(), math.max(1, runtime.nr_cpus()))
+	workers := math.min(4, math.min(cpu_budget, math.max(1, programs.len)))
+	compiler_jobs := (cpu_budget / workers).str()
+	return parallel.amap(programs, fn [compiler_jobs] (program string) RaceProgramBuild {
+		name := os.file_name(program).all_before_last('.v')
+		exe := os.join_path(tdir, name)
+		return RaceProgramBuild{
+			path:   program
+			exe:    exe
+			result: os.exec(['env', 'VJOBS=${compiler_jobs}', @VEXE, '-race', '-o', exe, program])
+		}
+	}, workers: workers)
 }
 
 // TestFn is a test function of a translated program, and the lines that it spans.
@@ -267,12 +293,12 @@ fn test_go_race_suite() {
 	mut false_pos := 0
 	mut false_neg := 0
 	mut problems := []string{}
-	for program in selected_programs() {
-		name := os.file_name(program).all_before_last('.v')
-		exe := os.join_path(tdir, name)
-		build := os.exec([@VEXE, '-race', '-o', exe, '${program}'])
-		if build.exit_code != 0 {
-			problems << '${name}.v does not compile with -race:\n${build.output}'
+	for build in build_race_programs(selected_programs()) {
+		program := build.path
+		exe := build.exe
+		name := os.file_name(exe)
+		if build.result.exit_code != 0 {
+			problems << '${name}.v does not compile with -race:\n${build.result.output}'
 			continue
 		}
 		source := os.read_file(program) or { panic(err) }

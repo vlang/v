@@ -3,6 +3,10 @@ name: VC gen
 on:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      validate_only:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -10,7 +14,7 @@ permissions:
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: gen_vc-gen_vc_ci-${{ github.ref }}
+  group: ${{ inputs.validate_only && format('gen-vc-validation-{0}', github.run_id) || format('gen_vc-gen_vc_ci-{0}', github.ref) }}
   cancel-in-progress: ${{ !contains(github.ref, 'master')}}
 
 # Exactly one of the two jobs runs for each master event. `deploy` publishes vlang/vc from vlang/v master
@@ -18,7 +22,7 @@ concurrency:
 # variable VCGEN_SERVICE to `live` hands publishing to the service, and `validate` runs instead.
 jobs:
   validate:
-    if: github.ref == 'refs/heads/master' && (github.repository != 'vlang/v' || vars.VCGEN_SERVICE == 'live')
+    if: github.ref == 'refs/heads/master' && (inputs.validate_only || github.repository != 'vlang/v' || vars.VCGEN_SERVICE == 'live')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -35,7 +39,7 @@ jobs:
           ./gen_vc snapshot . vc_snapshot
 
   deploy:
-    if: github.ref == 'refs/heads/master' && github.repository == 'vlang/v' && vars.VCGEN_SERVICE != 'live'
+    if: github.ref == 'refs/heads/master' && !inputs.validate_only && github.repository == 'vlang/v' && vars.VCGEN_SERVICE != 'live'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
