@@ -144,27 +144,6 @@ fn sql_alias_visibility_import(source string, import_name string) string {
 		.replace('aliases.WrappedNames', '${import_name}.WrappedNames')
 }
 
-fn sql_alias_visibility_result(name string, is_public bool, expression string, query SqlAliasVisibilityQuery, check_only bool, is_type_public bool, import_name string) os.Result {
-	dir := os.join_path(os.vtmp_dir(), 'v3_sql_alias_visibility_${name}_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'aliases')) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	module_source := sql_alias_visibility_module_source(is_public, is_type_public)
-	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'), module_source) or { panic(err) }
-	source := os.join_path(dir, 'main.v')
-	main_source := sql_alias_visibility_wrapped_source(expression, query, import_name, '', '')
-	os.write_file(source, main_source) or { panic(err) }
-	executable := os.join_path(dir, 'main.exe')
-	flags := if check_only { '-check' } else { '' }
-	result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-o', executable, source])
-	if result.exit_code != 0 || check_only {
-		return result
-	}
-	return os.exec([executable])
-}
-
 fn sql_alias_visibility_wrapped_source(expression string, query SqlAliasVisibilityQuery, import_name string, wrapper string, lock_receiver string) string {
 	closure_name := if expression.contains('whole_parameter_closure_items') {
 		'whole_parameter_closure_items'
@@ -276,7 +255,7 @@ fn test_public_inherited_alias_methods_work_in_imported_sql_values() {
 		'aliases.WrappedNames(values).clone()[0].name'].map(SqlAliasQueryCase{
 		expression: it
 	})
-	check_sql_alias_query_batch(cases, 'public_clone', [.both], [[]string{}])!
+	check_sql_alias_query_batch(cases, 'public_clone', [.both], [[]string{}], sql_alias_public_module)!
 }
 
 struct SqlAliasCloneCase {
@@ -352,17 +331,24 @@ fn test_private_inherited_alias_methods_are_rejected_in_sql_values() {
 }
 
 fn test_imported_alias_conversions_obey_type_and_method_visibility_in_sql_values() {
-	for import_name in ['aliases', 'renamed'] {
-		expression := '${import_name}.WrappedNames(values).clone()[0].name'
-		for check_only in [false, true] {
-			result := sql_alias_visibility_result('conversion_${import_name}_${check_only}',
-				true, expression, .both, check_only, true, import_name)
-			assert result.exit_code == 0, result.output
+	for is_method_public in [false, true] {
+		for is_type_public in [false, true] {
+			diagnostic := if !is_type_public {
+				'type `aliases.WrappedNames` is private'
+			} else if !is_method_public {
+				'method `aliases.WrappedNames.clone` is private'
+			} else {
+				''
+			}
+			cases := ['aliases', 'renamed'].map(SqlAliasQueryCase{
+				expression:  '${it}.WrappedNames(values).clone()[0].name'
+				import_name: it
+				diagnostic:  diagnostic
+			})
+			check_sql_alias_query_batch(cases, 'conversion_${is_method_public}_${is_type_public}',
+				sql_alias_visibility_queries(diagnostic == ''), sql_alias_compile_and_check,
+				sql_alias_visibility_module_source(is_method_public, is_type_public))!
 		}
-		cases := [SqlAliasCloneCase{ expression: expression }]
-		check_sql_alias_clone_batch(cases, import_name, false, false)!
-		check_sql_alias_clone_batch(cases, import_name, true, false)!
-		check_sql_alias_clone_batch(cases, import_name, false, true)!
 	}
 }
 
@@ -407,7 +393,8 @@ fn test_multiple_pointer_alias_methods_keep_declared_sql_result_types() {
 		import_name: it
 		diagnostic:  'this expression has type `aliases.Holder`'
 	})
-	check_sql_alias_query_batch(cases, 'multiple_pointer_result', [.selection], [['-check']])!
+	check_sql_alias_query_batch(cases, 'multiple_pointer_result', [.selection], [['-check']],
+		sql_alias_public_module)!
 }
 
 fn test_hidden_pointer_alias_methods_keep_resolution_and_visibility_in_sql_values() {
@@ -460,7 +447,7 @@ fn check_sql_alias_mutability(expressions []string, valid bool) ! {
 	}
 	for import_name, cases in cases_by_import {
 		check_sql_alias_query_batch(cases, 'mutability_${import_name}_${valid}',
-			sql_alias_visibility_queries(valid), sql_alias_compile_and_check)!
+			sql_alias_visibility_queries(valid), sql_alias_compile_and_check, sql_alias_public_module)!
 	}
 }
 
@@ -480,13 +467,13 @@ struct SqlAliasQueryCase {
 }
 
 const sql_alias_compile_and_check = [[]string{}, ['-check']]
+const sql_alias_public_module = sql_alias_visibility_module_source(true, true)
 
-fn check_sql_alias_query_batch(cases []SqlAliasQueryCase, label string, queries []SqlAliasVisibilityQuery, flag_sets [][]string) ! {
+fn check_sql_alias_query_batch(cases []SqlAliasQueryCase, label string, queries []SqlAliasVisibilityQuery, flag_sets [][]string, module_source string) ! {
 	dir := os.join_path(os.vtmp_dir(), 'v3_sql_alias_query_${label}_${os.getpid()}')
 	os.mkdir_all(os.join_path(dir, 'aliases'))!
 	defer { os.rmdir_all(dir) or {} }
-	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'),
-		sql_alias_visibility_module_source(true, true))!
+	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'), module_source)!
 	mut imports := []string{}
 	mut calls := []string{}
 	mut expected := map[string]string{}
@@ -552,9 +539,9 @@ fn check_sql_alias_lock_matrix(lock_receivers []string, method string, import_na
 		}
 	}
 	check_sql_alias_query_batch(cases.filter(it.diagnostic == ''), '${method}_${import_name}_accepted',
-		sql_alias_visibility_queries(true), sql_alias_compile_and_check)!
+		sql_alias_visibility_queries(true), sql_alias_compile_and_check, sql_alias_public_module)!
 	check_sql_alias_query_batch(cases.filter(it.diagnostic != ''), '${method}_${import_name}_rejected',
-		sql_alias_visibility_queries(false), sql_alias_compile_and_check)!
+		sql_alias_visibility_queries(false), sql_alias_compile_and_check, sql_alias_public_module)!
 }
 
 fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_values() {
@@ -615,5 +602,6 @@ fn test_option_result_alias_fallback_methods_keep_declared_sql_result_types() {
 			}
 		}
 	}
-	check_sql_alias_query_batch(cases, 'fallback_result', [.selection], [['-check']])!
+	check_sql_alias_query_batch(cases, 'fallback_result', [.selection], [['-check']],
+		sql_alias_public_module)!
 }
