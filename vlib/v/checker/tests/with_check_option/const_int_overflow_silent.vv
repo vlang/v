@@ -1,0 +1,51 @@
+module main
+
+type Sat = i8
+
+fn (a Sat) + (b Sat) Sat {
+	s := int(a) + int(b)
+	return if s > 127 { Sat(127) } else { Sat(i8(s)) }
+}
+
+const high = i8(100)
+const top = i64(9223372036854775807)
+const small = u8(255)
+const letter = rune(0x7fffffff)
+const narrowed = i8(u8(200))
+const widened = i16(u8(i8(-1)))
+const kilo = i64(1024)
+const mega = kilo * kilo
+const huge = mega * mega * mega * mega // an initializer: the run-time check does not reach it
+
+@[ignore_overflow]
+fn wraps() i8 {
+	return high + high
+}
+
+fn generic[T](v T) T {
+	return v + high + high
+}
+
+fn main() {
+	high_local := i8(1)
+	a := high + 27 // fits
+	b := 28 + high // a literal on the left: the run-time check lets this wrap
+	c := i16(high) + high // checked as i16
+	d := top - 1
+	e := small + 1 // unsigned
+	f := letter + 1 // rune
+	g := Sat(100) + Sat(100) // a user-defined operator
+	h := typeof(high + high).name // not evaluated
+	i := sizeof(high + high) // not evaluated
+	j := if high < 27 { high + 100 } else { high } // an arm may not run
+	k := false && high + high > 0 // the right side may not run
+	l := high_local + high_local // a local, not a constant
+	m := i16(narrowed) + i16(32700) // a cast changed the operand's value
+	n := i16(i8(1) << 7) + i16(32700) // so did a shift
+	o := widened + i16(-32768) // and a cast inside a constant's initializer
+	println('${a} ${b} ${c} ${d} ${e} ${f} ${g} ${h} ${i} ${j} ${k} ${l} ${m} ${n} ${o}')
+	println(high + high) // a call argument: the call may be compiled out
+	println(wraps())
+	println(huge)
+	println(generic(i8(1)))
+}

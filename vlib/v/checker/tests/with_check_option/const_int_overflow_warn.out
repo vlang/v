@@ -1,0 +1,35 @@
+vlib/v/checker/tests/with_check_option/const_int_overflow_warn.vv:9:9: notice: constant integer expression overflows `i8`
+    7 | 
+    8 | fn wide() int {
+    9 |     return high + high // checked at the left operand's type, i8
+      |            ~~~~~~~~~~~
+   10 | }
+   11 |
+vlib/v/checker/tests/with_check_option/const_int_overflow_warn.vv:13:7: notice: constant integer expression overflows `i8`
+   11 | 
+   12 | fn main() {
+   13 |     x := high + high
+      |          ~~~~~~~~~~~
+   14 |     y := top + 1
+   15 |     z := -high - high
+vlib/v/checker/tests/with_check_option/const_int_overflow_warn.vv:14:7: notice: constant integer expression overflows `i64`
+   12 | fn main() {
+   13 |     x := high + high
+   14 |     y := top + 1
+      |          ~~~~~~~
+   15 |     z := -high - high
+   16 |     w := i8(100) * 2
+vlib/v/checker/tests/with_check_option/const_int_overflow_warn.vv:15:7: notice: constant integer expression overflows `i8`
+   13 |     x := high + high
+   14 |     y := top + 1
+   15 |     z := -high - high
+      |          ~~~~~~~~~~~~
+   16 |     w := i8(100) * 2
+   17 |     println(x)
+vlib/v/checker/tests/with_check_option/const_int_overflow_warn.vv:16:7: notice: constant integer expression overflows `i8`
+   14 |     y := top + 1
+   15 |     z := -high - high
+   16 |     w := i8(100) * 2
+      |          ~~~~~~~~~~~
+   17 |     println(x)
+   18 |     println(y)

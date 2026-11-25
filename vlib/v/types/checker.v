@@ -1505,6 +1505,10 @@ pub mut:
 	const_selector_suffix_count  int                 = -1
 	const_expr_short_names       map[string]bool
 	const_expr_short_names_count int = -1
+	const_overflow_file          string // the file `const_overflow_skip` was computed for
+	const_overflow_skip          bool
+	const_overflow_last          int = -1 // the last `+ - *` whose shape was taken, and
+	const_overflow_last_size     int       // its node count, 0 when it is not constant
 	global_name_bloom            NameBloom // of global_names
 	call_flag_bloom              NameBloom // of the set call_info flags, see call_flag_tables_count
 	call_flag_lens               [4]int    // call_flag_table_lens when call_flag_bloom was built
