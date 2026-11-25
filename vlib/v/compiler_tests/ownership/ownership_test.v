@@ -4005,3 +4005,42 @@ fn test_ownership_and_autofree_build_every_program_shape() {
 		assert freed.exit_code == 0, '${name} under -autofree:\n${freed.output}'
 	}
 }
+
+fn test_ownership_retains_destructors_for_explicit_generic_drops() {
+	v3_bin := ownership_build_v3()
+	name := 'explicit_generic_drop'
+	res := run_ownership_check(v3_bin, name, r'
+struct Tracked implements Drop {
+	text string
+	released chan int
+}
+
+fn report_drop(released chan int, length int) {
+	released <- length
+}
+
+fn (mut tracked Tracked) drop() {
+	report_drop(tracked.released, tracked.text.len)
+	drop_owned(tracked.text)
+}
+
+fn destroy[T](address voidptr) {
+	payload := unsafe { &T(address) }
+	drop_owned(*payload)
+	unsafe { free(payload) }
+}
+
+fn main() {
+	released := chan int{cap: 2}
+	address := unsafe { memdup(&Tracked{text: "drop".to_owned(), released: released}, int(sizeof(Tracked))) }
+	destroy[Tracked](address)
+	assert <-released == 4
+	mut extra := 0
+	assert released.try_pop(mut extra) == .not_ready
+}
+')
+	assert res.exit_code == 0, res.output
+	binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+}
