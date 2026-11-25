@@ -8786,7 +8786,10 @@ fn test_map_rebind_clears_unsafe_alias_provenance() {
 
 fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'unsafe_map_alias_assert_message_assignment', 'fn main() {
+	run_bad_module_batch(v3_bin, 'map_alias_assert_rejections', [
+		ReviewRejection{
+			name:     'unsafe_map_alias_assert_message_assignment'
+			source:   'fn main() {
 	mut original := {
 		"value": 1
 	}
@@ -8801,22 +8804,12 @@ fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
 	copy := alias
 	println(copy.len)
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-	out := run_good(v3_bin, 'unsafe_map_alias_assert_message_rebind', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := unsafe { original }
-	assert true, unsafe {
-		alias = map[string]int{}
-		"failed"
-	}
-	copy := alias
-	println(copy.len)
-}
-')
-	assert out == '1'
-	run_bad(v3_bin, 'unsafe_map_alias_assert_condition_assignment', 'fn main() {
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+		ReviewRejection{
+			name:     'unsafe_map_alias_assert_condition_assignment'
+			source:   'fn main() {
 	mut original := {
 		"value": 1
 	}
@@ -8831,7 +8824,24 @@ fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
 	copy := alias
 	println(copy.len)
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+	])
+	out := run_good(v3_bin, 'unsafe_map_alias_assert_message_rebind', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	assert true, unsafe {
+		alias = map[string]int{}
+		"failed"
+	}
+	copy := alias
+	println(copy.len)
+}
+')
+	assert out == '1'
 }
 
 fn test_fresh_unsafe_map_is_not_reference_alias() {
@@ -8856,7 +8866,10 @@ fn test_fresh_unsafe_map_is_not_reference_alias() {
 
 fn test_unsafe_map_alias_provenance_merges_conditional_expressions() {
 	v3_bin := build_v3()
-	if_out := run_good(v3_bin, 'unsafe_map_alias_if_expression', 'fn choose(cond bool) {
+	run_good_module_batch(v3_bin, 'map_alias_conditional_expressions', [
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_if_expression'
+			source:   'fn choose(cond bool) {
 	mut left := {
 		"value": 1
 	}
@@ -8872,9 +8885,12 @@ fn main() {
 	choose(true)
 	choose(false)
 }
-')
-	assert if_out == '1\n2'
-	match_out := run_good(v3_bin, 'unsafe_map_alias_match_expression', 'fn choose(value int) {
+'
+			expected: '1\n2'
+		},
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_match_expression'
+			source:   'fn choose(value int) {
 	mut left := {
 		"value": 1
 	}
@@ -8893,13 +8909,18 @@ fn main() {
 	choose(0)
 	choose(1)
 }
-')
-	assert match_out == '1\n2'
+'
+			expected: '1\n2'
+		},
+	])
 }
 
 fn test_unsafe_map_alias_unconditional_loop_has_no_zero_iteration_path() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'unsafe_map_alias_unconditional_loop', 'fn main() {
+	run_good_module_batch(v3_bin, 'map_alias_loop_runtime', [
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_unconditional_loop'
+			source:   'fn main() {
 	mut original := {
 		"value": 1
 	}
@@ -8911,9 +8932,12 @@ fn test_unsafe_map_alias_unconditional_loop_has_no_zero_iteration_path() {
 	copy := alias
 	println(copy.len)
 }
-')
-	assert out == '1'
-	post_out := run_good(v3_bin, 'unsafe_map_alias_skipped_loop_post', 'fn main() {
+'
+			expected: '1'
+		},
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_skipped_loop_post'
+			source:   'fn main() {
 	mut original := {
 		"value": 1
 	}
@@ -8924,8 +8948,10 @@ fn test_unsafe_map_alias_unconditional_loop_has_no_zero_iteration_path() {
 	copy := alias
 	println(copy.len)
 }
-')
-	assert post_out == '1'
+'
+			expected: '1'
+		},
+	])
 	run_bad(v3_bin, 'unsafe_map_alias_conditional_loop_zero_path', 'fn branch(cond bool) {
 	mut original := {
 		"value": 1
@@ -8970,7 +8996,10 @@ fn main() {
 
 fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'unsafe_map_alias_skipped_logical_and_rhs', 'fn main() {
+	run_bad_module_batch(v3_bin, 'map_alias_short_circuit_rejections', [
+		ReviewRejection{
+			name:     'unsafe_map_alias_skipped_logical_and_rhs'
+			source:   'fn main() {
 	mut original := {
 		"value": 1
 	}
@@ -8985,8 +9014,12 @@ fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {
 	copy := alias
 	println(copy.len)
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-	run_bad(v3_bin, 'unsafe_map_alias_skipped_logical_or_rhs', 'fn main() {
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+		ReviewRejection{
+			name:     'unsafe_map_alias_skipped_logical_or_rhs'
+			source:   'fn main() {
 	mut original := {
 		"value": 1
 	}
@@ -9001,7 +9034,10 @@ fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {
 	copy := alias
 	println(copy.len)
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+	])
 	out := run_good(v3_bin, 'unsafe_map_alias_required_logical_rhs', 'fn main() {
 	mut original := {
 		"value": 1
@@ -9023,7 +9059,10 @@ fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {
 
 fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'unsafe_map_alias_if_return_path', 'fn branch(cond bool) {
+	run_bad_module_batch(v3_bin, 'map_alias_flow_rejections', [
+		ReviewRejection{
+			name:     'unsafe_map_alias_if_return_path'
+			source:   'fn branch(cond bool) {
 	mut original := {
 		"value": 1
 	}
@@ -9039,8 +9078,12 @@ fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {
 fn main() {
 	branch(false)
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-	run_bad(v3_bin, 'unsafe_map_alias_match_return_path', 'fn branch(value int) {
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+		ReviewRejection{
+			name:     'unsafe_map_alias_match_return_path'
+			source:   'fn branch(value int) {
 	mut original := {
 		"value": 1
 	}
@@ -9059,8 +9102,12 @@ fn main() {
 fn main() {
 	branch(1)
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-	run_bad(v3_bin, 'unsafe_map_alias_loop_zero_path', 'fn branch(values []int) {
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+		ReviewRejection{
+			name:     'unsafe_map_alias_loop_zero_path'
+			source:   'fn branch(values []int) {
 	mut original := {
 		"value": 1
 	}
@@ -9075,8 +9122,14 @@ fn main() {
 fn main() {
 	branch([]int{})
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-	out := run_good(v3_bin, 'unsafe_map_alias_all_if_paths', 'fn branch(cond bool) {
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+	])
+	run_good_module_batch(v3_bin, 'map_alias_flow_runtime', [
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_all_if_paths'
+			source:   'fn branch(cond bool) {
 	mut first := {
 		"value": 1
 	}
@@ -9096,9 +9149,12 @@ fn main() {
 fn main() {
 	branch(false)
 }
-')
-	assert out == '1'
-	loop_out := run_good(v3_bin, 'unsafe_map_alias_loop_return_path', 'fn branch(values []int) {
+'
+			expected: '1'
+		},
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_loop_return_path'
+			source:   'fn branch(values []int) {
 	mut original := {
 		"value": 1
 	}
@@ -9114,8 +9170,10 @@ fn main() {
 fn main() {
 	branch([]int{})
 }
-')
-	assert loop_out == '1'
+'
+			expected: '1'
+		},
+	])
 }
 
 fn test_unsafe_map_alias_provenance_isolates_or_fallback() {
