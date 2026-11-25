@@ -198,8 +198,12 @@ fn main() {
 ')!
 	// `-o file.c` leaves the libc unknown. The segfault handler lives in a separate
 	// object that a plain `cc main.c` does not link.
-	generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-d', 'no_segfault_handler', '-o',
-		c_file, source])
+	// Do not inherit the outer test's explicit libc selection for this probe.
+	generated := cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', '-gc', 'none', '-d',
+		'no_segfault_handler', '-o', c_file, source], '', {
+		'VFLAGS':  ''
+		'VOSARGS': ''
+	})
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(c_file)!
 	assert code.split_into_lines().all(!it.starts_with('#include') || it == '#include "${os.join_path(@VEXEROOT, 'vlib', 'builtin', 'track_heap_checks.h').replace('\\', '/')}"'), 'expected headerless C'
