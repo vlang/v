@@ -900,21 +900,13 @@ fn test_reject_address_of_map_alias_value() {
 }
 
 fn test_cross_wrapper_option_result_returns_match_v1() {
-	run_bad(v3_bin, 'bad_result_value_in_option_return',
-		'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n',
-		'cannot use `!int` as type `?int` in return argument')
-	run_bad(v3_bin, 'bad_result_value_in_optional_pointer_return',
-		'struct Item {}\n\nfn convert(res !Item) ?&Item {\n\treturn res\n}\n\nfn main() {}\n',
-		'cannot use `!Item` as type `?&Item` in return argument')
-	run_bad(v3_bin, 'bad_option_value_in_result_pointer_return',
-		'struct Item {}\n\nfn convert(opt ?Item) !&Item {\n\treturn opt\n}\n\nfn main() {}\n',
-		'cannot use `?Item` as type `!&Item` in return argument')
-	run_bad(v3_bin, 'bad_error_branch_in_option_return',
-		"fn make_option(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {}\n",
-		'cannot use `!int` as type `?int` in return argument')
-	run_bad(v3_bin, 'bad_constant_error_branch_in_option_return',
-		"fn make_option() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {}\n",
-		'cannot use `!int` as type `?int` in return argument')
+	check_review_rejections('option_result_returns', [
+		ReviewFixture{'bad_result_value_in_option_return', 'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n', 'cannot use `!int` as type `?int` in return argument'},
+		ReviewFixture{'bad_result_value_in_optional_pointer_return', 'struct Item {}\n\nfn convert(res !Item) ?&Item {\n\treturn res\n}\n\nfn main() {}\n', 'cannot use `!bad_result_value_in_optional_pointer_return.Item` as type `?&bad_result_value_in_optional_pointer_return.Item` in return argument'},
+		ReviewFixture{'bad_option_value_in_result_pointer_return', 'struct Item {}\n\nfn convert(opt ?Item) !&Item {\n\treturn opt\n}\n\nfn main() {}\n', 'cannot use `?bad_option_value_in_result_pointer_return.Item` as type `!&bad_option_value_in_result_pointer_return.Item` in return argument'},
+		ReviewFixture{'bad_error_branch_in_option_return', "fn make_option(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
+		ReviewFixture{'bad_constant_error_branch_in_option_return', "fn make_option() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
+	])
 	constant_result_out := run_good(v3_bin, 'good_constant_error_branch_in_result_return',
 		"fn make_result() !int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := make_result() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
 	assert constant_result_out == 'bad'
@@ -934,12 +926,10 @@ fn main() {
 }
 ')
 	assert out == 'true'
-	run_bad(v3_bin, 'bad_option_void_returned_as_option_int',
-		'fn empty() ? {\n\treturn\n}\n\nfn value() ?int {\n\treturn empty()\n}\n\nfn main() {}\n',
-		'cannot use `?void` as type `?int` in return argument')
-	run_bad(v3_bin, 'bad_option_void_assigned_to_option_int',
-		'fn empty() ? {\n\treturn\n}\n\nfn main() {\n\tmut value := ?int(1)\n\tvalue = empty()\n}\n',
-		'cannot assign to `value`: expected `?int`, not `?void`')
+	check_review_rejections('option_void_payload', [
+		ReviewFixture{'bad_option_void_returned_as_option_int', 'fn empty() ? {\n\treturn\n}\n\nfn value() ?int {\n\treturn empty()\n}\n\nfn main() {}\n', 'cannot use `?void` as type `?int` in return argument'},
+		ReviewFixture{'bad_option_void_assigned_to_option_int', 'fn empty() ? {\n\treturn\n}\n\nfn main() {\n\tmut value := ?int(1)\n\tvalue = empty()\n}\n', 'cannot assign to `value`: expected `?int`, not `?void`'},
+	])
 }
 
 fn test_assignment_selector_diagnostic_accepts_wide_columns() {
@@ -1080,20 +1070,13 @@ fn test_none_ierror_values_lower_to_builtin_none() {
 }
 
 fn test_reject_non_optional_or_and_wrapped_string_concat() {
-	run_bad(v3_bin, 'bad_non_optional_literal_or_block', 'fn main() {\n\t_ := 1 or { 2 }\n}\n',
-		'unexpected `or` block')
-	run_bad(v3_bin, 'bad_non_optional_call_or_block',
-		'fn value() int {\n\treturn 1\n}\n\nfn main() {\n\tvalue() or { panic(err) }\n}\n',
-		'unexpected `or` block')
-	run_bad(v3_bin, 'bad_non_optional_infix_or_block',
-		'fn maybe() ?int {\n\treturn 1\n}\n\nfn main() {\n\t_ := maybe() == none or { false }\n}\n',
-		'unexpected `or` block, expression of type `bool` is not an Option or a Result')
-	run_bad(v3_bin, 'bad_optional_string_concat',
-		"fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := 'hello ' + maybe_name()\n}\n",
-		'`?string` cannot be used as `string`, unwrap the option first')
-	run_bad(v3_bin, 'bad_result_string_concat',
-		"fn result_name() !string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := result_name() + '!'\n}\n",
-		'unwrapped Result cannot be used in an infix expression')
+	check_review_rejections('or_and_concat', [
+		ReviewFixture{'bad_non_optional_literal_or_block', 'fn main() {\n\t_ := 1 or { 2 }\n}\n', 'unexpected `or` block'},
+		ReviewFixture{'bad_non_optional_call_or_block', 'fn value() int {\n\treturn 1\n}\n\nfn main() {\n\tvalue() or { panic(err) }\n}\n', 'unexpected `or` block'},
+		ReviewFixture{'bad_non_optional_infix_or_block', 'fn maybe() ?int {\n\treturn 1\n}\n\nfn main() {\n\t_ := maybe() == none or { false }\n}\n', 'unexpected `or` block, expression of type `bool` is not an Option or a Result'},
+		ReviewFixture{'bad_optional_string_concat', "fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := 'hello ' + maybe_name()\n}\n", '`?string` cannot be used as `string`, unwrap the option first'},
+		ReviewFixture{'bad_result_string_concat', "fn result_name() !string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := result_name() + '!'\n}\n", 'unwrapped Result cannot be used in an infix expression'},
+	])
 	out := run_good(v3_bin, 'good_map_or_and_unwrapped_string_concat',
 		"fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\tnames := {\n\t\t'first': 'Grace'\n\t}\n\tprintln(names['first'] or { 'unknown' })\n\tprintln('hello ' + (maybe_name() or { 'unknown' }))\n}\n")
 	assert out == 'Grace\nhello Ada'
