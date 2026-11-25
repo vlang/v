@@ -248,12 +248,8 @@ fn main() {
 	generic_sum_type_assert_no_bst_branch_wrap_leaks(c_code)
 }
 
-fn test_generic_sum_bare_variant_match_lowers_to_tag_check() {
-	root := generic_sum_type_fixture_dir('bare_match')
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'app')
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, '
+fn test_generic_sum_concrete_value_variants() {
+	c_code := generic_sum_type_compile_run_source('concrete_value_variants', '
 struct Empty {}
 
 struct Node[T] {
@@ -273,44 +269,6 @@ fn value(tree Tree[int]) int {
 	}
 }
 
-fn main() {
-	tree := Tree[int](Node[int]{
-		value: 42
-	})
-	println(value(tree).str())
-	println(value(Tree[int](Empty{})).str())
-}
-') or {
-		panic(err)
-	}
-
-	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42\n0'
-
-	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert !c_code.contains('if (true)'), c_code
-	assert !c_code.contains('tree == Node'), c_code
-}
-
-fn test_generic_sum_constructor_return_uses_concrete_c_type() {
-	root := generic_sum_type_fixture_dir('return_ctor')
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'app')
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, '
-struct Empty {}
-
-struct Node[T] {
-	value T
-}
-
-type Tree[T] = Empty | Node[T]
-
 fn empty_tree() Tree[int] {
 	return Tree[int](Empty{})
 }
@@ -322,28 +280,71 @@ fn empty_tree_defer() Tree[int] {
 	return Tree[int](Empty{})
 }
 
-fn main() {
+fn check_bare_variant() {
+	tree := Tree[int](Node[int]{
+		value: 42
+	})
+	assert value(tree) == 42
+	assert value(Tree[int](Empty{})) == 0
+}
+
+fn check_constructor_returns() {
 	tree := empty_tree()
 	assert tree is Empty
 	tree_defer := empty_tree_defer()
 	assert tree_defer is Empty
+}
+
+struct Box[T] {
+	value T
+}
+
+type BoxSum = Box[int] | Box[string]
+
+fn score(s BoxSum) int {
+	return match s {
+		Box[int] { 10 + s.value }
+		Box[string] { 100 + s.value.len }
+	}
+}
+
+fn check_distinct_tags() {
+	s := BoxSum(Box[string]{
+		value: "ok"
+	})
+	assert s is Box[string]
+	assert !(s is Box[int])
+	b := s as Box[string]
+	assert b.value == "ok"
+	assert score(s) == 102
+
+	i := BoxSum(Box[int]{
+		value: 7
+	})
+	assert i is Box[int]
+	assert !(i is Box[string])
+	assert score(i) == 17
+}
+
+fn main() {
+	check_bare_variant()
+	check_constructor_returns()
+	check_distinct_tags()
 	println("ok")
 }
-') or {
-		panic(err)
-	}
-
-	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-
-	c_code := os.read_file(bin + '.c') or { panic(err) }
+')
+	assert !c_code.contains('if (true)'), c_code
+	assert !c_code.contains('tree == Node'), c_code
 	assert !c_code.contains('Tree((Empty){})'), c_code
-	assert c_code.contains('return (Tree_int){'), c_code
+	for name, expected in {
+		'empty_tree':       'return (Tree_int){'
+		'empty_tree_defer': '(Tree_int){'
+	} {
+		signature := 'Tree_int ${name}(void) {'
+		assert c_code.contains(signature), c_code
+		body := c_code.all_after(signature).all_before('\n}')
+		assert body.contains(expected), body
+	}
 }
 
 fn test_generic_sum_rejects_mismatched_concrete_variant() {
@@ -564,56 +565,6 @@ fn main() {}
 	assert !compile.output.contains('tcc.exe'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert os.exists(c_out)
-}
-
-fn test_generic_sum_concrete_generic_variants_keep_distinct_tags() {
-	root := generic_sum_type_fixture_dir('distinct_tags')
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'app')
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, '
-struct Box[T] {
-	value T
-}
-
-type BoxSum = Box[int] | Box[string]
-
-fn score(s BoxSum) int {
-	return match s {
-		Box[int] { 10 + s.value }
-		Box[string] { 100 + s.value.len }
-	}
-}
-
-fn main() {
-	s := BoxSum(Box[string]{
-		value: "ok"
-	})
-	assert s is Box[string]
-	assert !(s is Box[int])
-	b := s as Box[string]
-	assert b.value == "ok"
-	assert score(s) == 102
-
-	i := BoxSum(Box[int]{
-		value: 7
-	})
-	assert i is Box[int]
-	assert !(i is Box[string])
-	assert score(i) == 17
-	println("ok")
-}
-	') or {
-		panic(err)
-	}
-
-	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
 }
 
 fn test_generic_sum_type_param_variant_in_imported_module() {
