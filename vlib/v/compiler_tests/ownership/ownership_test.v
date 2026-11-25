@@ -4021,7 +4021,7 @@ fn test_ownership_and_autofree_build_every_program_shape() {
 }
 
 fn test_ownership_reads_scalar_fields_and_pointers_through_borrowed_projections() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	res := run_ownership_check(v3_bin, 'copy_borrowed_projections', r'
 struct Item {
 	value int
@@ -4047,7 +4047,7 @@ fn main() {
 }
 
 fn test_ownership_retains_the_source_loan_for_a_projected_pointer() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	res := run_ownership_check(v3_bin, 'borrowed_pointer_projection', r'
 struct Item {
 mut:
@@ -4070,7 +4070,7 @@ fn main() {
 }
 
 fn test_ownership_rejects_returning_a_projected_pointer_to_local_storage() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	res := run_ownership_check(v3_bin, 'return_borrowed_pointer_projection', r'
 struct Item {
 	text string
@@ -4095,7 +4095,7 @@ fn main() {
 }
 
 fn test_ownership_retains_all_branch_loans_for_a_projected_pointer() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	res := run_ownership_check(v3_bin, 'borrowed_pointer_projection_branches', r'
 struct Item {
 mut:
