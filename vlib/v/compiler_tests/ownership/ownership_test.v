@@ -4448,9 +4448,10 @@ fn main() {
 fn test_ownership_scoped_worker_cannot_retain_borrowed_addresses() {
 	v3_bin := ownership_build_v3()
 	for statement in ['escaped = value', 'escaped = &(*value)', 'retain(value)', 'retain(*value)',
-		'_ := fn [value] () int { return *value }'] {
+		'_ := fn [value] () int { return *value }', 'saved = (|| *value + 1)'] {
 		result := run_ownership_check_with_flags(v3_bin, 'scoped_ref_escape', '
 __global escaped &int
+__global saved fn () int
 
 fn retain(value &int) {
 	escaped = value

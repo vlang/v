@@ -178,14 +178,14 @@ fn (tc &TypeChecker) ownership_scoped_thread_reads_parameter(info CallInfo, inde
 	for i in 0 .. fn_node.children_count {
 		child := tc.a.child(fn_node, i)
 		if tc.a.node(child).kind != .param
-			&& !tc.ownership_scoped_thread_only_reads(child, parameter.value, fields, 0) {
+			&& !tc.ownership_scoped_thread_only_reads(child, parameter.value, fields, false, 0) {
 			return false
 		}
 	}
 	return true
 }
 
-fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name string, fields map[string]bool, depth int) bool {
+fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name string, fields map[string]bool, inside_callable bool, depth int) bool {
 	if depth > 128 {
 		return false
 	}
@@ -194,6 +194,9 @@ fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name str
 		return false
 	}
 	if node.kind in [.ident, .param] && node.value == name {
+		if inside_callable {
+			return false
+		}
 		if fields.len == 0 {
 			return tc.ownership_scoped_thread_scalar_read(id)
 		}
@@ -209,8 +212,9 @@ fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name str
 		}
 		return !borrowed || tc.ownership_scoped_thread_scalar_read(field_id)
 	}
+	nested := inside_callable || node.kind in [.fn_literal, .lambda_expr]
 	for i in 0 .. node.children_count {
-		if !tc.ownership_scoped_thread_only_reads(tc.a.child(node, i), name, fields, depth + 1) {
+		if !tc.ownership_scoped_thread_only_reads(tc.a.child(node, i), name, fields, nested, depth + 1) {
 			return false
 		}
 	}
