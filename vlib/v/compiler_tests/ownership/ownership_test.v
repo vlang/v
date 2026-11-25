@@ -4619,3 +4619,98 @@ fn main() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('the callback state must implement call with the requested signature'), result.output
 }
+
+fn test_ownership_shares_callback_state_between_workers() {
+	v3_bin := ownership_build_v3()
+	name := 'owned_shared_callback'
+	result := run_ownership_check(v3_bin, name, r'
+import sync.thread as transport
+
+struct Rule implements Drop {
+	text string
+	released chan int
+}
+
+pub fn (rule &Rule) call(value &string) bool {
+	return *value == rule.text
+}
+
+fn (mut rule Rule) drop() {
+	rule.released <- rule.text.len
+	drop_owned(rule.text)
+}
+
+fn worker(callback transport.SharedCallback[&string, bool], text string) bool {
+	return callback.call(&text)
+}
+
+fn main() {
+	released := chan int{cap: 2}
+	{
+		cb := transport.new_shared_callback[&string, bool, Rule](Rule{
+			text: "good".to_owned()
+			released: released
+		})
+		first := spawn worker(cb.clone(), "good".to_owned())
+		second := spawn worker(cb, "bad".to_owned())
+		assert first.wait()
+		assert !second.wait()
+	}
+	mut count := 0
+	assert released.try_pop(mut count) == .success
+	assert count == 4
+	assert released.try_pop(mut count) == .not_ready
+}
+')
+	assert result.exit_code == 0, result.output
+	binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_shared_callback_rejects_consuming_receivers() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'shared_callback_consuming_receiver', r'
+import sync.thread
+
+struct State implements Drop {
+	text string
+}
+
+pub fn (state State) call(value &string) bool {
+	return *value == state.text
+}
+
+fn (mut state State) drop() {
+	drop_owned(state.text)
+}
+
+fn main() {
+	_ = thread.new_shared_callback[&string, bool, State](State{text: "value".to_owned()})
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('the shared callback call method requires a borrowed receiver'), result.output
+}
+
+fn test_ownership_shared_callback_requires_shareable_state() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'shared_callback_unshareable_state', r'
+import sync.thread
+import cell
+
+struct State {
+	value cell.RefCell[int]
+}
+
+pub fn (state &State) call(_value int) bool {
+	return true
+}
+
+fn main() {
+	_ = thread.new_shared_callback[int, bool, State](State{})
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('does not satisfy `Shareable`: field `value`: cell.RefCell has unsynchronized borrow state'), result.output
+}
