@@ -1811,8 +1811,8 @@ fn main() {
 }
 "
 
-	qualified_attrs_out := orm_join_sql_attr_run_project('orm_qualified_table_attributes', {
-		'foo/foo.v': "module foo
+	imported_tables_out := orm_join_sql_attr_run_project('orm_imported_table_resolution', {
+		'foo/foo.v':                 "module foo
 
 @[table: 'foo_users']
 pub struct User {
@@ -1822,7 +1822,7 @@ pub mut:
 	foo_name string
 }
 "
-		'bar/bar.v': "module bar
+		'bar/bar.v':                 "module bar
 
 @[table: 'bar_users']
 pub struct User {
@@ -1831,13 +1831,34 @@ pub mut:
 	name string
 }
 "
-		'main.v':    'module main
+		'models/models.v':           "module models
 
-import db.sqlite
-import foo
+@[table: 'alias_users']
+pub struct User {
+pub mut:
+	id            int @[primary]
+	department_id int
+	name          string
+}
+"
+		'departments/departments.v': "module departments
+
+@[table: 'alias_departments']
+pub struct Department {
+pub mut:
+	id   int @[primary]
+	name string
+}
+"
+		'main.v':                    'module main
+
 import bar
+import db.sqlite
+import departments as d
+import foo
+import models as m
 
-fn main() {
+fn check_qualified_table_attributes() ! {
 	mut db := sqlite.connect(\':memory:\') or { panic(err) }
 	defer {
 		db.close() or {}
@@ -1872,37 +1893,8 @@ fn main() {
 	}!
 	assert joined.len == 1
 }
-'
-	})
-	assert qualified_attrs_out == ''
 
-	import_alias_out := orm_join_sql_attr_run_project('orm_import_alias_table_resolution', {
-		'models/models.v':           "module models
-
-@[table: 'alias_users']
-pub struct User {
-pub mut:
-	id            int @[primary]
-	department_id int
-	name          string
-}
-"
-		'departments/departments.v': "module departments
-
-@[table: 'alias_departments']
-pub struct Department {
-pub mut:
-	id   int @[primary]
-	name string
-}
-"
-		'main.v':                    'module main
-
-import db.sqlite
-import departments as d
-import models as m
-
-fn main() {
+fn check_import_alias_table_resolution() ! {
 	mut db := sqlite.connect(\':memory:\') or { panic(err) }
 	defer {
 		db.close() or {}
@@ -1941,9 +1933,14 @@ fn main() {
 	}!
 	assert joined.len == 1
 }
+
+fn main() {
+	check_qualified_table_attributes()!
+	check_import_alias_table_resolution()!
+}
 '
 	})
-	assert import_alias_out == ''
+	assert imported_tables_out == ''
 
 	runtime_cases['orm_join_sql_attr'] = "import db.sqlite
 
