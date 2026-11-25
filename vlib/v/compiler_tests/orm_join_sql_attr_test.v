@@ -1,3 +1,4 @@
+import maps
 import os
 import v.tempname
 
@@ -183,7 +184,7 @@ fn main() {
 }
 
 fn test_v3_static_where_and_join_sql_attribute_regressions() {
-	orm_join_sql_attr_run_batch({
+	mut static_cases := {
 		'orm_limit_zero':            "import db.sqlite
 
 struct LimitUser {
@@ -353,7 +354,7 @@ fn main() {
 	assert updated[0].name == \'Grace\'
 }
 '
-	})
+	}
 
 	invalid_result := orm_join_sql_attr_compile('orm_invalid_static_where', "import db.sqlite
 
@@ -391,7 +392,7 @@ fn main() {
 	assert invalid_result.exit_code != 0
 	assert invalid_result.output.contains("ORM: left side of the `==` expression must be one of the `InvalidWhereUser`'s fields"), invalid_result.output
 
-	orm_join_sql_attr_run_batch({
+	maps.merge_in_place(mut static_cases, {
 		'orm_signed_static_where':        "import db.sqlite
 
 struct SignedScoreUser {
@@ -800,7 +801,9 @@ fn main() {
 ")
 	assert generic_after_select_compile.exit_code == 0, generic_after_select_compile.output
 
-	orm_join_sql_attr_run_batch({
+	orm_join_sql_attr_run_batch(static_cases)
+
+	mut runtime_cases := {
 		'orm_dynamic_is_rejects_non_null':   "import db.sqlite
 
 struct DynamicIsUser {
@@ -1151,9 +1154,8 @@ fn main() {
 	assert rows[0].name == 'Ada'
 }
 "
-	})
+	}
 
-	mut runtime_cases := map[string]string{}
 	runtime_cases['orm_optional_relation_where'] = 'import db.sqlite
 
 struct OptionalRelationAuthor {
@@ -1354,7 +1356,7 @@ fn main() {
 }
 "
 
-	orm_join_sql_attr_run_batch({
+	maps.merge_in_place(mut runtime_cases, {
 		'orm_dynamic_guard_after_failure':    "import db.sqlite
 
 __global calls int
