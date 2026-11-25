@@ -213,7 +213,8 @@ fn main() {
 ')
 	assert out == 'true,true|2'
 
-	round4_run_bad(v3_bin, 'bad_variant_name_member', 'struct A {}
+	round4_check_rejections('variant_metadata_members', [
+		Round4Rejection{'bad_variant_name_member', 'struct A {}
 struct B {}
 
 type Value = A | B
@@ -225,9 +226,8 @@ fn main() {
 		use_name(variant.name)
 	}
 }
-',
-		'unknown VariantData member `name`')
-	round4_run_bad(v3_bin, 'bad_variant_attrs_member', 'struct A {}
+', 'unknown VariantData member `name`'},
+		Round4Rejection{'bad_variant_attrs_member', 'struct A {}
 struct B {}
 
 type Value = A | B
@@ -239,8 +239,8 @@ fn main() {
 		use_attrs(variant.attrs)
 	}
 }
-',
-		'unknown VariantData member `attrs`')
+', 'unknown VariantData member `attrs`'},
+	])
 }
 
 fn test_comptime_variants_prefer_local_sum_over_imported_short_name() {
@@ -721,7 +721,8 @@ fn main() {
 }
 
 fn test_deferred_metadata_call_arguments_are_checked_against_callee_types() {
-	round4_run_bad(v3_bin, 'bad_method_metadata_call_arg_type', 'struct App {}
+	round4_check_rejections('deferred_metadata_arguments', [
+		Round4Rejection{'bad_method_metadata_call_arg_type', 'struct App {}
 
 fn (app App) run() {
 	_ = app
@@ -734,9 +735,8 @@ fn main() {
 		takes_int(method.name)
 	}
 }
-',
-		'cannot use `string` as argument 1 to `takes_int`; expected `int`')
-	round4_run_bad(v3_bin, 'bad_param_metadata_call_arg_type', 'fn consume(value int) {
+', 'cannot use `string` as argument 1 to `takes_int`; expected `int`'},
+		Round4Rejection{'bad_param_metadata_call_arg_type', 'fn consume(value int) {
 	_ = value
 }
 
@@ -747,9 +747,8 @@ fn main() {
 		takes_string(param.typ)
 	}
 }
-',
-		'cannot use `int` as argument 1 to `takes_string`; expected `string`')
-	round4_run_bad(v3_bin, 'bad_attribute_metadata_call_arg_type', "@[route: '/']
+', 'cannot use `int` as argument 1 to `takes_string`; expected `string`'},
+		Round4Rejection{'bad_attribute_metadata_call_arg_type', "@[route: '/']
 struct App {}
 
 fn takes_bool(value bool) {}
@@ -759,8 +758,8 @@ fn main() {
 		takes_bool(attr.arg)
 	}
 }
-",
-		'cannot use `string` as argument 1 to `takes_bool`; expected `bool`')
+", 'cannot use `string` as argument 1 to `takes_bool`; expected `bool`'},
+	])
 }
 
 fn test_cross_module_composite_field_typ_guard_uses_qualified_type() {
@@ -1148,7 +1147,8 @@ fn main() {
 }
 
 fn test_comptime_for_body_checks_static_code_in_metadata_if_branch() {
-	round4_run_bad(v3_bin, 'bad_static_call_in_comptime_for_metadata_if', 'struct S {
+	round4_check_rejections('static_field_guards', [
+		Round4Rejection{'bad_static_call_in_comptime_for_metadata_if', 'struct S {
 	id int
 }
 
@@ -1159,9 +1159,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_metadata_guard_fn')
-	round4_run_bad(v3_bin, 'bad_static_call_in_comptime_for_type_if', 'struct S {
+', 'unknown function: missing_metadata_guard_fn'},
+		Round4Rejection{'bad_static_call_in_comptime_for_type_if', 'struct S {
 	id int
 }
 
@@ -1172,8 +1171,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_type_guard_fn')
+', 'unknown function: missing_type_guard_fn'},
+	])
 }
 
 fn test_comptime_for_static_check_skips_untaken_metadata_if_branch() {
@@ -1314,7 +1313,8 @@ fn main() {
 }
 
 fn test_unknown_comptime_field_member_is_rejected() {
-	round4_run_bad(v3_bin, 'bad_field_member', 'struct S {
+	round4_check_rejections('field_metadata_members', [
+		Round4Rejection{'bad_field_member', 'struct S {
 	name int
 }
 
@@ -1323,9 +1323,8 @@ fn main() {
 		println(field.nmae)
 	}
 }
-	',
-		'unknown FieldData member `nmae`')
-	round4_run_bad(v3_bin, 'bad_outer_field_member_in_nested_loop', 'struct Foo {
+	', 'unknown FieldData member `nmae`'},
+		Round4Rejection{'bad_outer_field_member_in_nested_loop', 'struct Foo {
 	id int
 }
 
@@ -1340,8 +1339,8 @@ fn main() {
 		}
 	}
 }
-	',
-		'unknown FieldData member `nmae`')
+	', 'unknown FieldData member `nmae`'},
+	])
 }
 
 fn test_unknown_comptime_enum_value_member_is_rejected() {
@@ -1359,7 +1358,8 @@ fn main() {
 }
 
 fn test_non_variant_comptime_loop_variables_are_rejected_as_is_patterns() {
-	round4_run_bad(v3_bin, 'bad_sum_is_field_loop_variable', 'struct A {}
+	round4_check_rejections('non_variant_loop_variables', [
+		Round4Rejection{'bad_sum_is_field_loop_variable', 'struct A {}
 struct B {}
 struct Holder {
 	n int
@@ -1373,9 +1373,8 @@ fn check(value Value) {
 }
 
 fn main() {}
-',
-		'`Value` has no variant `field`')
-	round4_run_bad(v3_bin, 'bad_sum_is_enum_value_loop_variable', 'enum EnumKind {
+', '`bad_sum_is_field_loop_variable.Value` has no variant `bad_sum_is_field_loop_variable.field`'},
+		Round4Rejection{'bad_sum_is_enum_value_loop_variable', 'enum EnumKind {
 	one
 }
 struct A {}
@@ -1389,8 +1388,8 @@ fn check(value Value) {
 }
 
 fn main() {}
-',
-		'`Value` has no variant `item`')
+', '`bad_sum_is_enum_value_loop_variable.Value` has no variant `bad_sum_is_enum_value_loop_variable.item`'},
+	])
 }
 
 fn test_nested_comptime_for_validates_inner_members() {
@@ -1414,7 +1413,8 @@ fn main() {
 }
 
 fn test_unknown_comptime_member_in_if_guard_is_rejected() {
-	round4_run_bad(v3_bin, 'bad_field_guard_member', "struct S {
+	round4_check_rejections('metadata_guard_members', [
+		Round4Rejection{'bad_field_guard_member', "struct S {
 	id int
 }
 
@@ -1425,9 +1425,8 @@ fn main() {
 		}
 	}
 }
-	",
-		'unknown FieldData member `nmae`')
-	round4_run_bad(v3_bin, 'bad_enum_guard_member', "enum Color {
+	", 'unknown FieldData member `nmae`'},
+		Round4Rejection{'bad_enum_guard_member', "enum Color {
 	red
 }
 
@@ -1438,8 +1437,8 @@ fn main() {
 		}
 	}
 }
-	",
-		'unknown EnumData member `nmae`')
+	", 'unknown EnumData member `nmae`'},
+	])
 }
 
 fn test_comptime_member_lookalikes_in_guard_strings_are_ignored() {
@@ -1474,7 +1473,8 @@ fn main() {
 }
 
 fn test_unsupported_comptime_field_members_are_rejected() {
-	round4_run_bad(v3_bin, 'bad_field_is_interface', 'struct S {
+	round4_check_rejections('unsupported_field_members', [
+		Round4Rejection{'bad_field_is_interface', 'struct S {
 		name int
 	}
 
@@ -1483,9 +1483,8 @@ fn main() {
 		println(field.is_interface)
 	}
 }
-',
-		'unknown FieldData member `is_interface`')
-	round4_run_bad(v3_bin, 'bad_field_is_function', 'struct S {
+', 'unknown FieldData member `is_interface`'},
+		Round4Rejection{'bad_field_is_function', 'struct S {
 		name int
 	}
 
@@ -1494,8 +1493,8 @@ fn main() {
 		println(field.is_function)
 	}
 }
-',
-		'unknown FieldData member `is_function`')
+', 'unknown FieldData member `is_function`'},
+	])
 }
 
 fn test_enum_values_use_const_from_declaring_module() {
@@ -2305,7 +2304,8 @@ fn main() {
 }
 
 fn test_unresolved_shorthand_method_selectors_are_rejected() {
-	round4_run_bad(v3_bin, 'shorthand_method_selector_outside_loop', 'struct Item {}
+	round4_check_rejections('shorthand_method_selectors', [
+		Round4Rejection{'shorthand_method_selector_outside_loop', 'struct Item {}
 
 fn (item Item) run() {
 	_ = item
@@ -2315,9 +2315,8 @@ fn main() {
 	item := Item{}
 	item.$method()
 }
-',
-		'unknown identifier `method`')
-	round4_run_bad(v3_bin, 'misspelled_shorthand_method_selector', 'struct Item {}
+', 'unknown identifier `method`'},
+		Round4Rejection{'misspelled_shorthand_method_selector', 'struct Item {}
 
 fn (item Item) run() {
 	_ = item
@@ -2329,8 +2328,8 @@ fn main() {
 		item.$methd()
 	}
 }
-',
-		'unknown identifier `methd`')
+', 'unknown identifier `methd`'},
+	])
 }
 
 fn test_bare_method_data_and_imported_return_type_are_materialized() {
