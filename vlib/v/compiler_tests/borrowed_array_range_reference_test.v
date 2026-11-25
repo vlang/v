@@ -115,7 +115,6 @@ fn test_borrowed_array_and_string_ranges_cannot_escape_local_owners() {
 	root := os.join_path(os.vtmp_dir(), 'borrowed_range_local_owner_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
 	cases := [
 		'fn escaped[^a]() &^a []u8 { values := [u8(1), 2]; return &values[1..] }',
 		'fn escaped[^a](values []u8) &^a []u8 { return &values[1..] }',
@@ -153,12 +152,40 @@ fn escaped[^a](values []Resource) &^a []Resource { return &values[1..] }',
 		'fn escaped(choose bool) &string { return if choose { local := "abcdef".to_owned(); &local[1..] } else { local := "ghijkl".to_owned(); &local[1..] } }',
 		'fn escaped(choose bool) &string { return match choose { true { local := "abcdef".to_owned(); &local[1..] } false { local := "ghijkl".to_owned(); &local[1..] } } }',
 	]
+	// Custom flags can change import resolution or limit diagnostics.
+	if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] {
+		check_borrowed_range_escape_batch(root, cases)!
+		return
+	}
+	source := os.join_path(root, 'main.v')
 	for code in cases {
 		os.write_file(source, code + '\nfn main() {}\n')!
 		for mode in ['-no-parallel', ''] {
 			compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership ${mode} -check ${os.quoted_path(source)}')
 			assert compile.exit_code != 0, '${mode}: ${code}: ${compile.output}'
 			assert compile.output.contains('cannot return a reference to local storage'), '${mode}: ${code}: ${compile.output}'
+		}
+	}
+}
+
+fn check_borrowed_range_escape_batch(root string, cases []string) ! {
+	// Keep the original fixture declarations isolated in separate modules.
+	mut imports := []string{cap: cases.len}
+	for i, code in cases {
+		name := 'escape_case_${i}'
+		dir := os.join_path(root, name)
+		os.mkdir(dir)!
+		os.write_file(os.join_path(dir, '${name}.v'), 'module ${name}\n\n${code}\n')!
+		imports << 'import ${name} as _'
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
+	for mode in [['-no-parallel'], []string{}] {
+		compile := os.exec([@VEXE, '-no-memory-limit', '-nocache', '-ownership', ...mode, '-check',
+			root])
+		assert compile.exit_code != 0, '${mode}: ${compile.output}'
+		diagnostics := compile.output.split_into_lines().filter(it.contains('cannot return a reference to local storage'))
+		for i, code in cases {
+			assert diagnostics.any(it.contains('escape_case_${i}.v:')), '${mode}: ${code}: ${compile.output}'
 		}
 	}
 }
