@@ -46,10 +46,11 @@ struct MovedVar {
 }
 
 struct BorrowInfo {
-	borrower  string
-	pos       flat.NodeId
-	is_mut    bool
-	read_only bool
+	borrower    string
+	pos         flat.NodeId
+	is_mut      bool
+	read_only   bool
+	call_result bool
 }
 
 struct OwnershipBorrowConflict {
@@ -7327,15 +7328,19 @@ fn (mut tc TypeChecker) ownership_merge_branch_borrows(group OwnershipBranchGrou
 	mut st := tc.ownership_state()
 	for branch in group.branches {
 		for name, borrows in branch.borrowed_vars {
-			if name !in group.base.owned_vars && name !in group.base.borrowed_vars && !tc.ownership_storage_participates(name) {
-				continue
-			}
+			tracked_source := name in group.base.owned_vars || name in group.base.borrowed_vars
+				|| tc.ownership_storage_participates(name)
 			mut merged := st.borrowed_vars[name] or { []BorrowInfo{} }
 			for borrow in borrows {
+				// Immutable pointer parameters can lend read-only access even
+				// when their referents are owned outside this function.
+				if !tracked_source && !borrow.read_only {
+					continue
+				}
 				mut exists := false
 				for existing in merged {
 					if existing.borrower == borrow.borrower && existing.pos == borrow.pos
-						&& existing.is_mut == borrow.is_mut {
+						&& existing.is_mut == borrow.is_mut && existing.read_only == borrow.read_only {
 						exists = true
 						break
 					}
@@ -7969,7 +7974,11 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		st.owned_var_types.delete(lhs_name)
 		name := tc.ownership_borrowed_name(rhs_id)
 		if name.len > 0 {
-			tc.ownership_add_borrow(name, lhs_name, assign_id, false)
+			tc.ownership_add_borrow_info(name, BorrowInfo{
+				borrower:  lhs_name
+				pos:       assign_id
+				read_only: tc.ownership_expr_is_readonly_borrow(rhs_id)
+			})
 		}
 		return
 	}
@@ -7981,6 +7990,20 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	}
 	if tc.ownership_mark_borrow_from_call_return(lhs_name, rhs_id, assign_id) {
 		return
+	}
+	if unalias_type(lhs_type) is Pointer {
+		clean_rhs_id := tc.ownership_unwrap_expr(rhs_id)
+		if source_id := tc.immutable_reference_source(clean_rhs_id, tc.resolve_type(clean_rhs_id)) {
+			source := tc.ownership_expr_ident_name(source_id)
+			if source != '' {
+				tc.ownership_add_borrow_info(source, BorrowInfo{
+					borrower:  lhs_name
+					pos:       assign_id
+					read_only: true
+				})
+				return
+			}
+		}
 	}
 	if tc.ownership_method_value_clones_receiver(rhs_id) {
 		st.owned_vars.delete(lhs_name)
@@ -11877,10 +11900,11 @@ fn (mut tc TypeChecker) ownership_mark_borrow_from_call_return(lhs_name string, 
 		}
 		is_mut := tc.ownership_call_param_is_mut(call_name, param_idx)
 		tc.ownership_add_borrow_info(borrower_source, BorrowInfo{
-			borrower:  lhs_name
-			pos:       pos
-			is_mut:    is_mut
-			read_only: !is_mut
+			borrower:    lhs_name
+			pos:         pos
+			is_mut:      is_mut
+			read_only:   !is_mut
+			call_result: true
 		})
 	}
 	if marked {
@@ -13767,12 +13791,6 @@ fn (mut tc TypeChecker) ownership_expr_is_readonly_borrow(id flat.NodeId) bool {
 		call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(clean_id) }
 		return tc.ownership_return_loan_sources(call_name, info).any(!tc.ownership_call_param_is_mut(call_name, it.param_idx))
 	}
-	// Ordinary pointer aliases already carry this checker provenance, including
-	// a mutable variable initialized from an immutable pointer parameter.
-	if node.kind == .ident && tc.fn_context.immutable_reference_aliases[node.value]
-		&& unalias_type(tc.resolve_type(clean_id)) is Pointer {
-		return true
-	}
 	name := tc.ownership_expr_ident_name(clean_id)
 	if name == '' {
 		return false
@@ -13792,7 +13810,7 @@ fn (mut tc TypeChecker) ownership_add_borrow(var_name string, borrower string, p
 fn (mut tc TypeChecker) ownership_add_borrow_info(var_name string, info BorrowInfo) {
 	is_mut := info.is_mut
 	pos := info.pos
-	if conflict := tc.ownership_overlapping_borrow_conflict(var_name, is_mut) {
+	if conflict := tc.ownership_overlapping_borrow_conflict(var_name, info) {
 		if is_mut {
 			msg := if conflict.borrow.is_mut {
 				'cannot borrow `${var_name}` as mutable because `${conflict.name}` is already borrowed as mutable'
@@ -13833,7 +13851,7 @@ fn (mut tc TypeChecker) ownership_add_borrow_info(var_name string, info BorrowIn
 	st.borrowed_vars[var_name] = [info]
 }
 
-fn (mut tc TypeChecker) ownership_overlapping_borrow_conflict(var_name string, is_mut bool) ?OwnershipBorrowConflict {
+fn (mut tc TypeChecker) ownership_overlapping_borrow_conflict(var_name string, incoming BorrowInfo) ?OwnershipBorrowConflict {
 	st := tc.ownership_state()
 	for borrowed_name, borrows in st.borrowed_vars {
 		if borrowed_name == var_name || borrows.len == 0 {
@@ -13843,7 +13861,12 @@ fn (mut tc TypeChecker) ownership_overlapping_borrow_conflict(var_name string, i
 			continue
 		}
 		for borrow in borrows {
-			if is_mut || borrow.is_mut {
+			// A call returns one reference even when several places can supply it.
+			if incoming.call_result && borrow.call_result && incoming.borrower == borrow.borrower
+				&& incoming.pos == borrow.pos {
+				continue
+			}
+			if incoming.is_mut || borrow.is_mut {
 				return OwnershipBorrowConflict{
 					name:   borrowed_name
 					borrow: borrow

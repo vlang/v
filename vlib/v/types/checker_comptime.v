@@ -17755,6 +17755,21 @@ fn (tc &TypeChecker) type_contains_mutable_reference_data(typ Type) bool {
 	return false
 }
 
+fn (tc &TypeChecker) legacy_immutable_assignment_alias(id flat.NodeId) bool {
+	node := tc.a.node(id)
+	if node.kind != .ident || !tc.fn_context.immutable_reference_aliases[node.value] {
+		return false
+	}
+	$if ownership ? {
+		// Ownership checks pointer writes against the current loan instead.
+		if !tc.autofree_mode && !tc.ownership_effects_disabled()
+			&& unalias_type(tc.resolve_type(id)) is Pointer {
+			return false
+		}
+	}
+	return true
+}
+
 fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_id flat.NodeId) {
 	if tc.unsafe_depth > 0 || tc.node_is_in_translated_file(id)
 		|| tc.expr_is_unsafe_reference_alias(rhs_id) || !tc.valid_node_id(id) {
@@ -17775,7 +17790,7 @@ fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_i
 			root := tc.a.node(root_id)
 			root_type := unalias_type(tc.resolve_type(root_id))
 			if root.kind == .ident && (root_type is Pointer || root_type is ArrayFixed)
-				&& tc.fn_context.immutable_reference_aliases[root.value] {
+				&& tc.legacy_immutable_assignment_alias(root_id) {
 				tc.record_error_at(.assignment_mismatch, '`${tc.source_text_for_node(id)}` aliases mutable data from an immutable value', id, tc.node_value_diagnostic_pos(id))
 			}
 		}
@@ -17785,12 +17800,11 @@ fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_i
 		base_id := tc.a.child(node, 0)
 		base := tc.a.node(base_id)
 		mut aliases :=
-			(base.kind == .ident && tc.fn_context.immutable_reference_aliases[base.value])
+			tc.legacy_immutable_assignment_alias(base_id)
 				|| (base.kind == .call && tc.call_immutable_alias_source(base_id) != none)
 		if base.kind == .selector {
 			if root_id := tc.lvalue_root_ident(base_id) {
-				root := tc.a.node(root_id)
-				aliases = aliases || tc.fn_context.immutable_reference_aliases[root.value]
+				aliases = aliases || tc.legacy_immutable_assignment_alias(root_id)
 			}
 		}
 		$if ownership ? {
