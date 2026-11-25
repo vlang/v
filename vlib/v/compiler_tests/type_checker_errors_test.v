@@ -541,20 +541,100 @@ fn test_interface_container_as_cast_requirements() {
 }
 
 fn test_review_generic_call_diagnostics() {
-	run_bad(v3_bin, 'bad_nongeneric_unknown_is_pattern', 'fn check(err IError) bool {
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_nongeneric_unknown_is_pattern', 'fn check(err IError) bool {
 	return err is T
 }
 
 fn main() {}
-', 'not compatible with `IError`')
-	run_bad(v3_bin, 'bad_nongeneric_unknown_receiver_call', 'fn main() {
+', 'not compatible with `IError`'},
+		TypeCheckerRejection{'bad_nongeneric_unknown_receiver_call', 'fn main() {
 	missing.method()
 }
-', 'undefined ident: `missing`')
-	run_bad(v3_bin, 'bad_nongeneric_placeholder_call', 'fn main() {
+', 'undefined ident: `missing`'},
+		TypeCheckerRejection{'bad_nongeneric_placeholder_call', 'fn main() {
 	missing[T]()
 }
-', 'unknown function: missing[T]')
+', 'unknown function: missing[T]'},
+	])
+	// Earlier errors stop compilation before the concrete generic calls are checked.
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_generic_missing_receiver_method', 'fn invoke[T](value T) {
+	value.no_such()
+}
+
+fn main() {
+	invoke(1)
+}
+', 'unknown method or field: `int.no_such`'},
+		TypeCheckerRejection{'bad_generic_array_trim_argument_type', 'fn invoke[T](mut value T) {
+	value.trim("bad")
+}
+
+fn main() {
+	mut values := [1, 2]
+	invoke(mut values)
+}
+', 'cannot use `string` as `int` in argument 1 to `[]int.trim`'},
+		TypeCheckerRejection{'bad_generic_receiver_method_for_concrete_type', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+struct NoValue {}
+
+fn read[T](value T) int {
+	return value.value()
+}
+
+fn main() {
+	_ := read(NoValue{})
+}
+', 'unknown method or field: `NoValue.value`'},
+		TypeCheckerRejection{'bad_generic_receiver_method_argument_type', 'struct HasValue {}
+
+fn (v HasValue) value(n int) int {
+	return n
+}
+
+fn read[T](value T) int {
+	return value.value("bad")
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+', 'cannot use `string` as `int` in argument 1 to `bad_generic_receiver_method_argument_type.HasValue.value`'},
+		TypeCheckerRejection{'bad_generic_function_field_argument', 'struct HasCallback {
+	cb fn (int)
+}
+
+fn invoke[T](value T) {
+	value.cb("bad")
+}
+
+fn main() {
+	invoke(HasCallback{
+		cb: fn (n int) {}
+	})
+}
+', 'cannot use `string` as `int` in argument 1 to `bad_generic_function_field_argument.HasCallback.cb`'},
+		TypeCheckerRejection{'bad_generic_receiver_variadic_spread_type', 'struct Sink {}
+
+fn (s Sink) take(values ...int) {}
+
+fn invoke[T](sink T, values []string) {
+	sink.take(...values)
+}
+
+fn main() {
+	invoke(Sink{}, ["bad"])
+}
+', 'cannot use `...string` as `...int` in argument 1 to `bad_generic_receiver_variadic_spread_type.Sink.take`'},
+	])
+
+	// Keep the remaining rejections as entry-point programs for C generation.
 	run_bad(v3_bin, 'bad_generic_missing_explicit_call', 'fn invoke[T]() {
 	missing[T]()
 }
@@ -563,14 +643,6 @@ fn main() {
 	invoke[int]()
 }
 ', 'unknown function `missing')
-	run_bad(v3_bin, 'bad_generic_missing_receiver_method', 'fn invoke[T](value T) {
-	value.no_such()
-}
-
-fn main() {
-	invoke(1)
-}
-', 'unknown method or field: `int.no_such`')
 	run_bad(v3_bin, 'bad_generic_missing_array_receiver_method', 'fn invoke[T](value T) {
 	value.no_such()
 }
@@ -588,15 +660,6 @@ fn main() {
 	invoke(mut values)
 }
 ', 'argument count mismatch for `value.pop`: expected 0, got 1')
-	run_bad(v3_bin, 'bad_generic_array_trim_argument_type', 'fn invoke[T](mut value T) {
-	value.trim("bad")
-}
-
-fn main() {
-	mut values := [1, 2]
-	invoke(mut values)
-}
-', 'cannot use `string` as `int` in argument 1 to `[]int.trim`')
 	valid_array_methods := run_good(v3_bin, 'generic_cgen_array_method_arguments', 'fn invoke[T](mut value T) {
 	value.trim(1)
 	value.pop()
@@ -660,22 +723,6 @@ fn main() {
 	_ := matches[NotError](error("x"))
 }
 ', '`NotError` is not compatible with `IError`')
-	run_bad(v3_bin, 'bad_generic_receiver_method_for_concrete_type', 'struct HasValue {}
-
-fn (v HasValue) value() int {
-	return 1
-}
-
-struct NoValue {}
-
-fn read[T](value T) int {
-	return value.value()
-}
-
-fn main() {
-	_ := read(NoValue{})
-}
-', 'unknown method or field: `NoValue.value`')
 	run_bad(v3_bin, 'bad_generic_receiver_method_argument_count', 'struct HasValue {}
 
 fn (v HasValue) value() int {
@@ -690,20 +737,6 @@ fn main() {
 	_ := read(HasValue{})
 }
 ', 'argument count mismatch for `value.value`: expected 0, got 1')
-	run_bad(v3_bin, 'bad_generic_receiver_method_argument_type', 'struct HasValue {}
-
-fn (v HasValue) value(n int) int {
-	return n
-}
-
-fn read[T](value T) int {
-	return value.value("bad")
-}
-
-fn main() {
-	_ := read(HasValue{})
-}
-', 'cannot use `string` as `int` in argument 1 to `HasValue.value`')
 	out := run_good(v3_bin, 'good_generic_receiver_method_for_concrete_type', 'struct HasValue {}
 
 fn (v HasValue) value() int {
@@ -860,20 +893,6 @@ fn main() {
 	read(HasValue{})
 }
 ', 'cannot use `int` as `bool`')
-	run_bad(v3_bin, 'bad_generic_function_field_argument', 'struct HasCallback {
-	cb fn (int)
-}
-
-fn invoke[T](value T) {
-	value.cb("bad")
-}
-
-fn main() {
-	invoke(HasCallback{
-		cb: fn (n int) {}
-	})
-}
-', 'cannot use `string` as `int` in argument 1 to `HasCallback.cb`')
 	run_bad(v3_bin, 'bad_generic_function_field_argument_count', 'struct HasCallback {
 	cb fn (int)
 }
@@ -993,18 +1012,6 @@ fn main() {
 }
 ')
 	assert option_out == 'ok'
-	run_bad(v3_bin, 'bad_generic_receiver_variadic_spread_type', 'struct Sink {}
-
-fn (s Sink) take(values ...int) {}
-
-fn invoke[T](sink T, values []string) {
-	sink.take(...values)
-}
-
-fn main() {
-	invoke(Sink{}, ["bad"])
-}
-', 'cannot use `...string` as `...int` in argument 1 to `Sink.take`')
 	variadic_out := run_good(v3_bin, 'good_generic_receiver_variadic_spread_type', 'struct Sink {}
 
 fn (s Sink) take(values ...int) {}
