@@ -65,13 +65,15 @@ fn (tc &TypeChecker) ownership_scoped_thread_defer_receiver(id flat.NodeId, name
 enum ScopedThreadAccess {
 	transferred
 	scalar
+	scalar_value
 	atomic
 	mutex
+	record
 }
 
 // Only the direct address of a local immutable binding establishes a loan.
 // The permitted uses depend on the referent's type.
-fn (tc &TypeChecker) ownership_scoped_thread_source(id flat.NodeId) ?ScopedThreadBorrow {
+fn (tc &TypeChecker) ownership_scoped_thread_source(id flat.NodeId, allow_record bool) ?ScopedThreadBorrow {
 	id0 := tc.ownership_unwrap_expr(id)
 	expr := tc.a.node(id0)
 	if expr.kind != .prefix || expr.op != .amp || expr.children_count != 1 {
@@ -79,14 +81,15 @@ fn (tc &TypeChecker) ownership_scoped_thread_source(id flat.NodeId) ?ScopedThrea
 	}
 	source_id := tc.ownership_unwrap_expr(tc.a.child(expr, 0))
 	source := tc.a.node(source_id)
-	if source.kind != .ident || tc.ident_is_mutable_lvalue(source.value) {
+	if source.kind != .ident || tc.ident_is_mutable_lvalue(source.value)
+		|| tc.current_binding_is_shared(source.value) {
 		return none
 	}
 	owner := tc.cur_scope.lookup_owner(source.value) or { return none }
 	if tc.binding_owner_is_global(owner) {
 		return none
 	}
-	access := tc.ownership_scoped_thread_access(tc.resolve_type(source_id)) or { return none }
+	access := tc.ownership_scoped_thread_access(tc.resolve_type(source_id), allow_record) or { return none }
 	return ScopedThreadBorrow{ source: source.value, pos: id, access: access }
 }
 
@@ -107,9 +110,9 @@ fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, ex
 		if !semantic_types_equal(unalias_type(*actual.base_type), unalias_type(*formal.base_type)) {
 			return none
 		}
-		borrow := tc.ownership_scoped_thread_source(id) or { return none }
+		borrow := tc.ownership_scoped_thread_source(id, true) or { return none }
 		// An alias can add its own methods. Check the original library type.
-		access := tc.ownership_scoped_thread_access(*formal.base_type) or { return none }
+		access := tc.ownership_scoped_thread_access(*formal.base_type, true) or { return none }
 		if access != borrow.access {
 			return none
 		}
@@ -141,8 +144,8 @@ fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, ex
 			} else {
 				return none
 			}
-			borrow := tc.ownership_scoped_thread_source(field_id) or { return none }
-			access := tc.ownership_scoped_thread_access(*field_type.base_type) or { return none }
+			borrow := tc.ownership_scoped_thread_source(field_id, false) or { return none }
+			access := tc.ownership_scoped_thread_access(*field_type.base_type, false) or { return none }
 			if access != borrow.access {
 				return none
 			}
@@ -187,7 +190,9 @@ fn (tc &TypeChecker) ownership_scoped_thread_parameter_does_not_escape(info Call
 	mut fields := map[string]ScopedThreadAccess{}
 	mut access := borrows[0].access
 	formal := unalias_type(expected)
-	if formal is Struct {
+	if formal is Pointer && access == .record {
+		fields = tc.ownership_scoped_thread_record_fields(*formal.base_type) or { return false }
+	} else if formal is Struct {
 		access = .transferred
 		for field in tc.struct_fields_for_type(formal.name_id) {
 			fields[field.name] = .transferred
@@ -246,7 +251,15 @@ fn (tc &TypeChecker) ownership_scoped_thread_non_escaping_use(id flat.NodeId, ac
 	return match access {
 		.transferred { true }
 		.scalar { tc.ownership_scoped_thread_scalar_read(id) }
+		.scalar_value {
+			// An inferred local copies the field before any operation can borrow it.
+			binding := tc.a.node(tc.ownership_scoped_thread_use_parent(id))
+			binding.kind == .decl_assign && binding.children_count == 2
+				&& tc.a.child_node(binding, 0).kind == .ident
+				&& tc.ownership_unwrap_expr(tc.a.child(binding, 1)) == id
+		}
 		.atomic, .mutex { tc.ownership_scoped_thread_shared_operation(id, access) }
+		.record { false }
 	}
 }
 
@@ -281,7 +294,7 @@ fn (tc &TypeChecker) ownership_scoped_thread_shared_operation(id flat.NodeId, ac
 	}
 }
 
-fn (tc &TypeChecker) ownership_scoped_thread_access(typ Type) ?ScopedThreadAccess {
+fn (tc &TypeChecker) ownership_scoped_thread_access(typ Type, allow_record bool) ?ScopedThreadAccess {
 	if ownership_scoped_thread_is_scalar(unalias_type(typ)) {
 		return .scalar
 	}
@@ -301,8 +314,37 @@ fn (tc &TypeChecker) ownership_scoped_thread_access(typ Type) ?ScopedThreadAcces
 		if tc.ownership_thread_transfer_problem(payload, .transfer, 0, mut map[u64]bool{}) == none {
 			return .mutex
 		}
+		return none
+	}
+	if allow_record {
+		if _ := tc.ownership_scoped_thread_record_fields(typ) {
+			return .record
+		}
 	}
 	return none
+}
+
+// A borrowed record exposes only copied scalars and direct synchronized operations.
+// The record itself and the addresses of its fields stay with the caller.
+fn (tc &TypeChecker) ownership_scoped_thread_record_fields(typ Type) ?map[string]ScopedThreadAccess {
+	if typ !is Struct {
+		return none
+	}
+	name_id := (typ as Struct).name_id
+	if flat.source_type_query(name_id).has(.c_prefix)
+		|| tc.struct_embed_receiver_names(name_id).len != 0 {
+		return none
+	}
+	mut fields := map[string]ScopedThreadAccess{}
+	for field in tc.struct_fields_for_type(name_id) {
+		if tc.struct_field_is_shared(name_id, field.name)
+			|| receiver_method_name_candidates(typ, field.name, tc.cur_module).any(it in tc.fn_ret_types) {
+			return none
+		}
+		access := tc.ownership_scoped_thread_access(field.typ, false) or { return none }
+		fields[field.name] = if access == .scalar { .scalar_value } else { access }
+	}
+	return if fields.len > 0 { fields } else { none }
 }
 
 // Allow only dereferences used to compute a scalar value. A bare reference

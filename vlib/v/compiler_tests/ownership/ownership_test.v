@@ -5382,6 +5382,91 @@ fn main() {
 	assert result.exit_code == 0, result.output
 }
 
+const scoped_record_worker_source = scoped_mutex_worker_source + '
+struct WorkerState {
+	counter arc.Atomic[int]
+	stats   arc.Mutex[Stats]
+	delta   int
+}
+
+fn new_state() WorkerState {
+	return WorkerState{counter: arc.new_atomic(0), stats: arc.new_mutex(Stats{}), delta: 2}
+}
+
+fn run_worker(state &WorkerState) {
+	delta := state.delta
+	state.counter.add(delta)
+	state.stats.update_with[int, int](delta, add)
+}
+'
+
+fn test_ownership_scoped_workers_borrow_a_record_of_synchronized_handles() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_worker_record'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_record_worker_source + r'
+fn main() {
+	state := new_state()
+	{
+		mut handles := []thread{}
+		defer { handles.wait() }
+		for _ in 0 .. 3 {
+			handles << spawn run_worker(&state)
+		}
+	}
+	{
+		handle := spawn run_worker(&state)
+		defer { handle.wait() }
+	}
+	assert state.counter.load() == 8
+	assert state.stats.update(increment) == 8
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_worker_record_requires_a_join_within_its_lifetime() {
+	v3_bin := ownership_build_v3()
+	for body in [
+		'state := new_state(); handle := spawn run_worker(&state); handle.wait()',
+		'mut handles := []thread{}; defer { handles.wait() }; { state := new_state(); handles << spawn run_worker(&state) }',
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_worker_record_lifetime',
+			scoped_record_worker_source + '\nfn main() { ${body} }\n')
+		assert result.exit_code != 0, result.output
+		message := if body.starts_with('state') {
+			'references cannot be transferred between threads'
+		} else {
+			'outlives borrowed record `state`'
+		}
+		assert result.output.contains(message), result.output
+	}
+}
+
+fn test_ownership_scoped_worker_record_disallows_borrowed_field_addresses() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_record_field_address',
+		scoped_record_worker_source + r'
+fn read_delta(delta &int) int {
+	return *delta
+}
+
+fn read_state(state &WorkerState) int {
+	return read_delta(&state.delta)
+}
+
+fn main() {
+	state := new_state()
+	handle := spawn read_state(&state)
+	defer { handle.wait() }
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot prove that the scoped thread borrow is used without escaping'), result.output
+}
+
 fn test_ownership_scoped_mutex_workers_reject_unverified_pointer_use() {
 	v3_bin := ownership_build_v3()
 	result := run_ownership_check(v3_bin, 'scoped_worker_mutex_escape', scoped_mutex_worker_source + '
