@@ -1,6 +1,13 @@
 // vtest ownership
 import os
 
+const borrowed_range_check_args = [@VEXE, '-no-memory-limit', '-nocache', '-ownership']
+
+struct BorrowedRangeRejection {
+	source   string
+	expected string
+}
+
 fn test_borrowed_array_range_references_preserve_the_owner() {
 	root := os.join_path(os.vtmp_dir(), 'borrowed_array_range_reference_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -152,40 +159,44 @@ fn escaped[^a](values []Resource) &^a []Resource { return &values[1..] }',
 		'fn escaped(choose bool) &string { return if choose { local := "abcdef".to_owned(); &local[1..] } else { local := "ghijkl".to_owned(); &local[1..] } }',
 		'fn escaped(choose bool) &string { return match choose { true { local := "abcdef".to_owned(); &local[1..] } false { local := "ghijkl".to_owned(); &local[1..] } } }',
 	]
-	// Custom flags can change import resolution or limit diagnostics.
-	if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] {
-		check_borrowed_range_escape_batch(root, cases)!
-		return
-	}
-	source := os.join_path(root, 'main.v')
-	for code in cases {
-		os.write_file(source, code + '\nfn main() {}\n')!
-		for mode in ['-no-parallel', ''] {
-			compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership ${mode} -check ${os.quoted_path(source)}')
-			assert compile.exit_code != 0, '${mode}: ${code}: ${compile.output}'
-			assert compile.output.contains('cannot return a reference to local storage'), '${mode}: ${code}: ${compile.output}'
-		}
-	}
+	check_borrowed_range_rejections(root, cases.map(BorrowedRangeRejection{
+		source:   it + '\nfn main() {}\n'
+		expected: 'cannot return a reference to local storage'
+	}))!
 }
 
-fn check_borrowed_range_escape_batch(root string, cases []string) ! {
+fn check_borrowed_range_rejections(root string, cases []BorrowedRangeRejection) ! {
+	modes := [['-no-parallel'], []string{}]
+	// Custom flags can change import resolution or limit diagnostics.
+	if os.getenv('VFLAGS').trim_space() !in ['', '-gc none'] {
+		source := os.join_path(root, 'main.v')
+		for case in cases {
+			os.write_file(source, case.source)!
+			for mode in modes {
+				compile := os.exec([...borrowed_range_check_args, ...mode, '-check', source])
+				assert compile.exit_code != 0, '${mode}: ${case.source}\n${compile.output}'
+				assert compile.output.contains(case.expected), '${mode}: ${case.source}\n${compile.output}'
+			}
+		}
+		return
+	}
 	// Keep the original fixture declarations isolated in separate modules.
 	mut imports := []string{cap: cases.len}
-	for i, code in cases {
-		name := 'escape_case_${i}'
+	for i, case in cases {
+		name := 'range_case_${i}'
 		dir := os.join_path(root, name)
 		os.mkdir(dir)!
-		os.write_file(os.join_path(dir, '${name}.v'), 'module ${name}\n\n${code}\n')!
+		os.write_file(os.join_path(dir, '${name}.v'), 'module ${name}\n\n${case.source}')!
 		imports << 'import ${name} as _'
 	}
 	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
-	for mode in [['-no-parallel'], []string{}] {
-		compile := os.exec([@VEXE, '-no-memory-limit', '-nocache', '-ownership', ...mode, '-check',
-			root])
+	for mode in modes {
+		compile := os.exec([...borrowed_range_check_args, ...mode, '-check', root])
 		assert compile.exit_code != 0, '${mode}: ${compile.output}'
-		diagnostics := compile.output.split_into_lines().filter(it.contains('cannot return a reference to local storage'))
-		for i, code in cases {
-			assert diagnostics.any(it.contains('escape_case_${i}.v:')), '${mode}: ${code}: ${compile.output}'
+		diagnostics := compile.output.split_into_lines().filter(it.contains('error: '))
+		for i, case in cases {
+			assert diagnostics.any(it.contains('range_case_${i}.v:')
+				&& it.all_after('error: ').contains(case.expected)), '${mode}: ${case.source}\n${compile.output}'
 		}
 	}
 }
@@ -249,21 +260,21 @@ fn test_borrowed_string_ranges_keep_source_loans_live() {
 	root := os.join_path(os.vtmp_dir(), 'borrowed_string_range_loan_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	for mutation in ['text = "replacement".to_owned()', 'take(text)'] {
-		os.write_file(source, 'fn take(value string) { _ = value.to_owned() }
+	mut cases := []BorrowedRangeRejection{}
+	for mutation, expected in {
+		'text = "replacement".to_owned()': 'cannot assign to `text` because `text[1]` is borrowed by `view`'
+		'take(text)':                      'cannot move `text` because `text[1]` is borrowed by `view`'
+	} {
+		fixture := 'fn take(value string) { _ = value.to_owned() }
 fn main() {
  mut text := "original".to_owned()
  view := &text[1..]
  ' + mutation + '\n assert *view == "riginal"
 }
-')!
-		for mode in ['-no-parallel', ''] {
-			compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership ${mode} -check ${os.quoted_path(source)}')
-			assert compile.exit_code != 0, '${mode}: ${mutation}: ${compile.output}'
-			assert compile.output.contains('borrow'), '${mode}: ${mutation}: ${compile.output}'
-		}
+'
+		cases << BorrowedRangeRejection{fixture, expected}
 	}
+	check_borrowed_range_rejections(root, cases)!
 }
 
 fn test_borrowed_string_ranges_preserve_bounds_checks_and_evaluation_order() {
@@ -375,10 +386,10 @@ fn test_mixed_mutable_array_reference_returns_keep_source_loans_live() {
 	root := os.join_path(os.vtmp_dir(), 'borrowed_array_range_loan_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
+	mut cases := []BorrowedRangeRejection{}
 	for argument in ['owner', 'owner[..]'] {
 		for mutation in ['drop_owned(owner)', 'owner = ["replacement".to_owned()]'] {
-			os.write_file(source, 'fn choose_view(mut values []string, whole bool) &[]string {
+			fixture := 'fn choose_view(mut values []string, whole bool) &[]string {
  if whole { return &values }
  values_ref := &values
  return &(*values_ref)[1..]
@@ -388,12 +399,9 @@ fn main() {
  result := choose_view(mut ' + argument + ', false)
  ' + mutation + '\n assert (*result)[0] == "second"
 }
-')!
-			for mode in ['-no-parallel', ''] {
-				compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership ${mode} -check ${os.quoted_path(source)}')
-				assert compile.exit_code != 0, '${mode}: ${argument}: ${mutation}: ${compile.output}'
-				assert compile.output.contains('borrowed by `result`'), '${mode}: ${argument}: ${mutation}: ${compile.output}'
-			}
+'
+			cases << BorrowedRangeRejection{fixture, 'borrowed by `result`'}
 		}
 	}
+	check_borrowed_range_rejections(root, cases)!
 }
