@@ -3613,7 +3613,7 @@ fn (mut tc TypeChecker) check_spawn_expr(id flat.NodeId, node flat.Node) {
 	}
 	$if ownership ? {
 		if child.kind == .call && tc.errors.len == error_count && tc.ownership_checks_thread_boundary() {
-			tc.ownership_check_spawn_transfer(child_id, *child)
+			tc.ownership_check_spawn_transfer(id, child_id, *child)
 		}
 	}
 	_ = id

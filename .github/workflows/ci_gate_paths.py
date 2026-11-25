@@ -3,10 +3,9 @@
 
 GitHub's workflow_call trigger cannot have a paths filter. The manifests store
 the original, ordered on.push paths/paths-ignore patterns. The caller runs this
-script after Linux bootstrap and fmt. It selects suites from the changes since the
-newest finished master run whose suites started, not since the push's own base: one
-master run is queued at a time and a newer push replaces the waiting one, so the
-commits of a replaced or cancelled run are tested only by a later run.
+script in each master-push lane. It selects suites from the changes since that
+lane's newest finished run whose suites started. A newer push can replace a
+waiting run, so a later run must cover the commits it skipped.
 No external Python packages are required.
 """
 import argparse
@@ -22,13 +21,14 @@ from urllib.request import Request, urlopen
 ROOT = Path(".github/workflows")
 MANIFEST_DIR = ROOT / "ci_gate_filters"
 CALLER = ROOT / "ci_master.yml"
+LANE_WORKFLOWS = {"master": CALLER, "portability": ROOT / "ci_master_portability.yml"}
 SHARED_COMPILER_FILES = {
     ".github/workflows/bootstrapping_ci.yml",
     ".github/workflows/prepare_v.sh",
     ".github/workflows/prepare_v.ps1",
     "cmd/tools/build_vprod.sh",
 }
-# Uploaded by the record-tested-commit job once vc generation let a run's suites start.
+# Uploaded by record-tested-commit once all bootstrap and VC gates for the lane pass.
 TESTED_MARK = "ci-tested-commit"
 # Conclusions of runs whose started suites all ran to the end.
 FINISHED = {"success", "failure"}
@@ -93,6 +93,12 @@ def should_run(changed, entry):
     )
 
 
+def should_run_in_lane(changed, entry, lane):
+    return (entry["shard"] == lane or entry["workflow"] == "gen_vc_ci.yml") and should_run(
+        changed, entry
+    )
+
+
 def load_entries():
     entries = []
     for file in sorted(MANIFEST_DIR.glob("*.json")):
@@ -111,7 +117,7 @@ def validate(entries):
     caller = CALLER.read_text(encoding="utf-8")
     for entry in entries:
         name = entry["workflow"]
-        if entry["shard"] != "master":
+        if entry["shard"] not in LANE_WORKFLOWS:
             raise ValueError(f"unknown shard: {name}")
         if entry["mode"] not in ("all", "paths", "paths-ignore"):
             raise ValueError(f"unknown filter mode: {name}")
@@ -135,12 +141,13 @@ def validate(entries):
         if f"needs.preflight.outputs.{key} == 'true'" not in caller:
             raise ValueError(f"{name} can bypass preflight")
     for path in ROOT.glob("*.yml"):
-        if path.name in known or path == CALLER:
+        if path.name in known or path in LANE_WORKFLOWS.values():
             continue
         if re.search(r"(?m)^  push:\s*$", path.read_text(encoding="utf-8")):
             raise ValueError(f"ungated master-push workflow: {path.name}")
-    # GitHub counts both bootstrap workflows and all called suites.
-    if sum(not entry.get("inline") for entry in entries) + 2 > 50:
+    # The portability caller adds the shared gate to both bootstrap workflows
+    # and the called suites.
+    if sum(not entry.get("inline") for entry in entries) + 3 > 50:
         raise ValueError("too many unique reusable workflows (>50)")
     assert path_is_selected("cmd/tools/builders/build.v", "paths-ignore",
                             ["cmd/tools/**", "!cmd/tools/builders/**.v"])
@@ -208,10 +215,10 @@ def is_ancestor(commit, after):
     ).returncode == 0
 
 
-def tested_base(api, after, run_id, ancestor=is_ancestor):
-    """Return the head of the newest finished master run that marked its suites as started."""
+def tested_base(api, after, run_id, lane, ancestor=is_ancestor):
+    """Return the head of the newest finished run in the lane that started its suites."""
     runs = api.get(
-        "actions/workflows/ci_master.yml/runs"
+        f"actions/workflows/{LANE_WORKFLOWS[lane].name}/runs"
         f"?branch=master&event=push&status=completed&per_page={MAX_RUNS}"
     ).get("workflow_runs")
     if not isinstance(runs, list):
@@ -234,10 +241,10 @@ def tested_base(api, after, run_id, ancestor=is_ancestor):
     return None
 
 
-def main_base(after):
+def main_base(after, lane):
     try:
         api = GitHubAPI(os.environ.get("GH_TOKEN"), os.environ.get("GITHUB_REPOSITORY"))
-        return tested_base(api, after, int(os.environ.get("GITHUB_RUN_ID") or 0))
+        return tested_base(api, after, int(os.environ.get("GITHUB_RUN_ID") or 0), lane)
     except (RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         print(f"Cannot find the last tested commit ({exc})", file=sys.stderr)
         return None
@@ -253,12 +260,14 @@ def main():
         print(f"Validated {len(entries)} gated push suites")
         return
     after = os.environ.get("CI_AFTER")
-    changed = changed_paths(main_base(after) if after else None, after)
-    selected = entries
+    lane = os.environ.get("CI_LANE", "master")
+    if lane not in LANE_WORKFLOWS:
+        parser.error(f"unknown CI_LANE: {lane}")
+    changed = changed_paths(main_base(after, lane) if after else None, after)
     output_path = os.environ.get("GITHUB_OUTPUT")
     lines = []
-    for entry in selected:
-        enabled = should_run(changed, entry)
+    for entry in entries:
+        enabled = should_run_in_lane(changed, entry, lane)
         key = Path(entry["workflow"]).stem
         lines.append(f"{key}={'true' if enabled else 'false'}")
         print(f"{entry['workflow']}: {'run' if enabled else 'skip'}")

@@ -1,7 +1,7 @@
 [
   {
     "workflow": "paths_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -16,7 +16,7 @@
   },
   {
     "workflow": "periodic_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       "**/periodic_ci.yml"
@@ -25,7 +25,7 @@
   },
   {
     "workflow": "process_regressions_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       "vlib/v/cmdexec/**",
@@ -54,7 +54,7 @@
   },
   {
     "workflow": "release_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       ".github/workflows/release_ci.yml",
@@ -94,7 +94,7 @@
   },
   {
     "workflow": "sanitized_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       "!**",
@@ -148,7 +148,7 @@
   },
   {
     "workflow": "symlink_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       "cmd/tools/vsymlink/**.v",
@@ -165,7 +165,7 @@
   },
   {
     "workflow": "termux_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -180,7 +180,7 @@
   },
   {
     "workflow": "test_selection_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       "cmd/tools/vtest*.v",
@@ -195,7 +195,7 @@
   },
   {
     "workflow": "time_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       "vlib/**",

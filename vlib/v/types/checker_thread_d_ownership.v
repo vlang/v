@@ -6,18 +6,13 @@ fn (tc &TypeChecker) ownership_checks_thread_boundary() bool {
 	return tc.unsafe_depth == 0 && !tc.ownership_effects_disabled()
 }
 
-fn (mut tc TypeChecker) ownership_check_spawn_transfer(call_id flat.NodeId, call flat.Node) {
+fn (mut tc TypeChecker) ownership_check_spawn_transfer(spawn_id flat.NodeId, call_id flat.NodeId, call flat.Node) {
 	info := tc.resolve_call_info(call_id, call) or { return }
+	join_site := tc.ownership_scoped_thread_join_site(spawn_id) or { flat.empty_node }
 	callee_id := tc.a.child(&call, 0)
-	mut callee := tc.a.node(callee_id)
-	if info.has_receiver && callee.kind == .index && callee.children_count > 0 {
-		// The index supplies explicit type arguments to the method selector.
-		callee = tc.a.child_node(callee, 0)
-	}
-	if info.has_receiver && callee.kind == .selector && callee.children_count > 0 {
-		receiver_id := tc.a.child(callee, 0)
+	if receiver_id := tc.ownership_thread_receiver(callee_id, info) {
 		expected := info.params[0] or { tc.resolve_type(receiver_id) }
-		tc.ownership_check_thread_argument(receiver_id, expected, info, 0, 'thread receiver')
+		tc.ownership_check_thread_argument(receiver_id, expected, info, 0, 'thread receiver', join_site)
 	} else if tc.ownership_thread_uses_function_value(callee_id) {
 		tc.record_error(.thread_transfer,
 			'cannot start a thread with a function value whose captures are unknown', callee_id)
@@ -29,9 +24,24 @@ fn (mut tc TypeChecker) ownership_check_spawn_transfer(call_id flat.NodeId, call
 			tc.ownership_call_arg_shift(call, info)
 		elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, param_idx, value_id)
 		expected := tc.ownership_call_arg_expected_type(info, param_idx, elem_idx)
-		tc.ownership_check_thread_argument(arg_id, expected, info, param_idx, 'thread argument')
+		tc.ownership_check_thread_argument(arg_id, expected, info, param_idx, 'thread argument', join_site)
 	}
 	tc.ownership_check_thread_transfer(info.return_type, callee_id, 'thread result')
+}
+
+fn (tc &TypeChecker) ownership_thread_receiver(callee_id flat.NodeId, info CallInfo) ?flat.NodeId {
+	if !info.has_receiver {
+		return none
+	}
+	mut callee := tc.a.node(callee_id)
+	if callee.kind == .index && callee.children_count > 0 {
+		// The index supplies explicit type arguments to the method selector.
+		callee = tc.a.child_node(callee, 0)
+	}
+	if callee.kind == .selector && callee.children_count > 0 {
+		return tc.a.child(callee, 0)
+	}
+	return none
 }
 
 fn (tc &TypeChecker) ownership_thread_uses_function_value(id flat.NodeId) bool {
@@ -55,7 +65,7 @@ fn (tc &TypeChecker) ownership_thread_uses_function_value(id flat.NodeId) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected Type, info CallInfo, index int, role string) {
+fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected Type, info CallInfo, index int, role string, join_site flat.NodeId) {
 	if call_param_is_shared(info, index) && tc.expr_is_shared_arg(id) {
 		tc.ownership_check_thread_transfer(unwrap_pointer(unalias_type(expected)), id, role)
 		return
@@ -66,7 +76,18 @@ fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected
 			'cannot transfer mutable borrow of `${actual.name()}` as ${role}', id)
 		return
 	}
-	if unalias_type(expected) is Pointer {
+	expected_pointer := unalias_type(expected)
+	if expected_pointer is Pointer {
+		actual_pointer := unalias_type(actual)
+		if tc.valid_node_id(join_site) && actual_pointer is Pointer
+			&& semantic_types_equal(unalias_type(*actual_pointer.base_type), unalias_type(*expected_pointer.base_type))
+			&& tc.ownership_scoped_thread_source(id) != none {
+			if !tc.ownership_scoped_thread_reads_parameter(info, index) {
+				tc.record_error(.thread_transfer,
+					'cannot prove that the scoped thread borrow is read without escaping', id)
+			}
+			return
+		}
 		tc.ownership_check_thread_transfer(expected, id, role)
 		return
 	}

@@ -4037,7 +4037,7 @@ fn main() {
 
 fn test_ownership_threads_reject_raw_references() {
 	v3_bin := ownership_build_v3()
-	res := run_ownership_check(v3_bin, 'thread_references', r'
+	source := r'
 struct Counter {
 mut:
 	value int
@@ -4054,9 +4054,12 @@ fn main() {
 	first.wait()
 	second.wait()
 }
-')
-	assert res.exit_code != 0, res.output
-	assert res.output.count('cannot transfer mutable borrow') == 2, res.output
+'
+	for flags in [['-ownership'], ['-autofree'], ['-ownership', '-autofree']] {
+		res := run_ownership_check_with_flags(v3_bin, 'thread_references', source, flags)
+		assert res.exit_code != 0, '${flags}: ${res.output}'
+		assert res.output.count('cannot transfer mutable borrow') == 2, '${flags}: ${res.output}'
+	}
 }
 
 fn test_ownership_thread_transfer_checks_nested_types_and_channel_sends() {
@@ -4174,6 +4177,136 @@ fn main() {
 	assert borrowed.output.contains('cannot transfer `&Job` as thread receiver'), borrowed.output
 }
 
+fn test_ownership_scoped_thread_joins_before_leaving_scope() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'scoped_thread_join', r'
+fn read_value(value &int, results chan int) {
+	results <- *value
+}
+
+fn launch(results chan int, early bool) {
+	value := 42
+	{
+		worker := spawn read_value(&value, results)
+		defer { worker.wait() }
+		if early {
+			return
+		}
+	}
+	assert value == 42
+}
+
+fn main() {
+	results := chan int{cap: 2}
+	launch(results, true)
+	launch(results, false)
+	assert <-results == 42
+	assert <-results == 42
+	for i in 1 .. 3 {
+		value := i
+		worker := spawn read_value(&value, results)
+		defer { worker.wait() }
+		if i == 1 {
+			continue
+		}
+		break
+	}
+	assert <-results == 1
+	assert <-results == 2
+}
+')
+	assert res.exit_code == 0, res.output
+}
+
+fn test_ownership_scoped_thread_reserves_storage_until_join() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'scoped_thread_access', r'
+fn read_value(value &int) int {
+	return *value
+}
+
+fn main() {
+	value := 42
+	worker := spawn read_value(&value)
+	defer { worker.wait() }
+	println(value)
+	worker.wait()
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('cannot use `value` until scoped thread `worker` has joined'), res.output
+	assert res.output.contains('cannot use scoped thread handle `worker` outside its deferred wait'), res.output
+}
+
+fn test_ownership_scoped_thread_cannot_return_or_capture_the_handle() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'scoped_thread_handle_escape', r'
+fn read_value(value &int) int {
+	return *value
+}
+
+fn launch() thread int {
+	value := 42
+	worker := spawn read_value(&value)
+	defer { worker.wait() }
+	callback := fn [worker] () { worker.wait() }
+	callback()
+	return worker
+}
+
+fn main() {
+	_ := launch()
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.count('cannot use scoped thread handle `worker` outside its deferred wait') == 2, res.output
+}
+
+fn test_ownership_scoped_thread_requires_an_unconditional_lexical_join() {
+	v3_bin := ownership_build_v3()
+	for cleanup in ['defer(fn) { worker.wait() }', 'if flag { defer { worker.wait() } }'] {
+		res := run_ownership_check(v3_bin, 'scoped_thread_invalid_join', '
+fn read_value(value &int) int {
+	return *value
+}
+
+fn launch(flag bool) {
+	value := 42
+	worker := spawn read_value(&value)
+	${cleanup}
+}
+
+fn main() {
+	launch(true)
+}
+')
+		assert res.exit_code != 0, res.output
+		assert res.output.contains('cannot transfer `&int` as thread argument'), res.output
+	}
+}
+
+fn test_ownership_scoped_thread_reserves_method_receiver() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'scoped_thread_receiver', r'
+type Number = int
+
+fn (number &Number) read() int {
+	return int(*number)
+}
+
+fn main() {
+	value := Number(42)
+	worker := spawn (&value).read()
+	defer { worker.wait() }
+	assert value == Number(42)
+	worker.wait()
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('cannot use `value` until scoped thread `worker` has joined'), res.output
+	assert res.output.contains('cannot use scoped thread handle `worker` outside its deferred wait'), res.output
+}
+
 fn test_ownership_distinguishes_moving_and_sharing_a_ref_cell() {
 	v3_bin := ownership_build_v3()
 	moved := run_ownership_check(v3_bin, 'thread_move_ref_cell', r'
@@ -4212,6 +4345,26 @@ fn main() {
 ')
 	assert shared_cell.exit_code != 0, shared_cell.output
 	assert shared_cell.output.contains('field `shared_cell`: cell.RefCell has unsynchronized borrow state'), shared_cell.output
+}
+
+fn test_ownership_scoped_thread_accepts_repeated_arguments_to_one_worker() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'scoped_thread_repeated_arguments', r'
+fn sum(left &int, right &int, results chan int) {
+	results <- *left + *right
+}
+
+fn main() {
+	value := 21
+	results := chan int{cap: 1}
+	{
+		worker := spawn sum(&value, &value, results)
+		defer { worker.wait() }
+	}
+	assert <-results == 42
+}
+')
+	assert res.exit_code == 0, res.output
 }
 
 fn test_ownership_rejects_unchecked_lambda_captures_in_spawn() {
@@ -4563,4 +4716,55 @@ fn main() {
 }
 ')
 	assert valid.exit_code == 0, valid.output
+}
+
+fn test_ownership_scoped_worker_cannot_retain_borrowed_addresses() {
+	v3_bin := ownership_build_v3()
+	for statement in ['escaped = value', 'escaped = &(*value)', 'retain(value)', 'retain(*value)',
+		'_ := fn [value] () int { return *value }'] {
+		result := run_ownership_check_with_flags(v3_bin, 'scoped_ref_escape', '
+__global escaped &int
+
+fn retain(value &int) {
+	escaped = value
+}
+
+fn worker(value &int) {
+	${statement}
+}
+
+fn main() {
+	value := 42
+	handle := spawn worker(&value)
+	defer { handle.wait() }
+}
+', ['-ownership', '-enable-globals'])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('scoped thread borrow is read without escaping'), result.output
+	}
+}
+
+fn test_ownership_scoped_worker_can_pass_a_scalar_copy() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_copy', r'
+fn double(value int) int {
+	return value * 2
+}
+
+fn worker(value &int, results chan int) {
+	copy := *value
+	results <- double(copy)
+}
+
+fn main() {
+	results := chan int{cap: 1}
+	value := 21
+	{
+		handle := spawn worker(&value, results)
+		defer { handle.wait() }
+	}
+	assert <-results == value * 2
+}
+')
+	assert result.exit_code == 0, result.output
 }

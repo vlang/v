@@ -401,12 +401,12 @@ remain available for mutation.
 
 ## Thread transfers
 
-An ownership build checks the arguments and result of a `spawn` or `go` call. The
-check follows fields, sum variants and container elements. A value containing a
-raw reference cannot cross a thread boundary. This also applies to values sent
-through channels with `<-` or `.try_push()`, and to errors passed to `.close()`.
-A channel can carry a concrete error with transferable fields or a message
-error from builtin `error()` or `error_with_code()`.
+An ownership build checks the arguments and result of a `spawn` or `go` call,
+including with `-autofree`. The check follows fields, sum variants and container
+elements. A value containing a raw reference needs a scoped join. Values sent
+through channels with `<-` or `.try_push()` and errors passed to `.close()` must be
+transferable. A channel can carry a concrete error with transferable fields or
+a message error from builtin `error()` or `error_with_code()`.
 
 Pass independent owned values to a worker, or use a typed channel or a `shared`
 binding for synchronized access. The standard library's `arc.Arc[T]` can cross
@@ -439,6 +439,28 @@ list needs an explicit
 synchronization of the data passed across the boundary. A result type
 also needs this boundary because its error payload can hold an arbitrary
 `IError` implementation.
+
+A worker can borrow a local immutable scalar when its handle is bound directly
+and the following statement is a lexical `defer` containing only that
+handle's `.wait()`. The defer joins on normal exit and on early return. Use
+the handle only in the defer. Access the borrowed scalar again after the scope
+has ended. The worker must read the scalar as a value. To pass it to a helper,
+bind the dereferenced scalar to a local variable and pass that copy.
+
+```v okfmt
+fn read_number(number &int) {
+	assert *number == 42
+}
+
+fn main() {
+	number := 42
+	{
+		worker := spawn read_number(&number)
+		defer { worker.wait() }
+	}
+	assert number == 42
+}
+```
 
 ## Full example
 
