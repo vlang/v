@@ -33,6 +33,12 @@ pub enum Color {
 	red   @[json: "Red"]
 	green
 }
+
+@[flag]
+pub enum Filter {
+	first
+	second
+}
 ') or { panic(err) }
 	os.write_file(os.join_path(root, 'm', 'm.c.v'), r'module m
 
@@ -148,6 +154,26 @@ fn main() {
 	assert color == .green
 	missing := m.Color.from_string("blue") or { m.Color.none }
 	assert missing == .none
+	checked := m.Color.from(2) or { panic(err) }
+	assert checked == .green
+	rejected := m.Color.from(1 << 32) or {
+		assert err.msg() == "invalid value"
+		m.Color.red
+	}
+	assert rejected == .red
+	from_text := m.Color.from("green") or { panic(err) }
+	assert from_text == .green
+	bad_text := m.Color.from("blue") or {
+		assert err.msg() == "invalid value"
+		m.Color.red
+	}
+	assert bad_text == .red
+	filter := m.Filter.from(3) or { panic(err) }
+	assert filter == m.Filter.first | m.Filter.second
+	outside_mask := m.Filter.from(4) or { m.Filter.second }
+	assert outside_mask == .second
+	empty_filter := m.Filter.from("") or { panic(err) }
+	assert u64(empty_filter) == 0
 	counts := map[string]int{
 		"a": 1
 		"b": 2

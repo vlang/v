@@ -67,3 +67,49 @@ fn main() {
 	assert run.output == ordinary_run.output, run.output
 	assert run.output == 'transparent generic arguments work\n', run.output
 }
+
+fn test_fastc_generic_pointer_casts_keep_option_storage_types() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_option_storage_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), r'module main
+
+struct Item {
+	value int
+}
+
+fn replace_last[T](mut values []T, value T) T {
+	unsafe {
+		mut data := &T(values.data)
+		old := data[values.len - 1]
+		data[values.len - 1] = value
+		return old
+	}
+}
+
+fn main() {
+	first := &Item{value: 42}
+	second := &Item{value: 17}
+	mut values := [?&Item(first), ?&Item(none)]
+	old := replace_last[?&Item](mut values, ?&Item(second))
+	assert old == none
+	value := values[1] or { panic("Missing value") }
+	assert value.value == 17
+	retained := values[0] or { panic("Missing first entry") }
+	assert retained.value == 42
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-d', 'fastc_real_builtin',
+		'-nocache', '-gc', 'none', '-o', program, root], @VEXEROOT, {
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
+	})
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+}
