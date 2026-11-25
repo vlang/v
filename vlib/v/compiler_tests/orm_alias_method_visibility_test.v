@@ -256,21 +256,19 @@ struct SqlAliasCloneCase {
 	method_receiver string = 'aliases.WrappedNames'
 }
 
-fn check_sql_alias_clone_cases(cases []SqlAliasCloneCase, label string, public_methods []bool) ! {
-	for is_public in public_methods {
-		query_cases := cases.map(SqlAliasQueryCase{
-			expression:  it.expression
-			import_name: it.import_name
-			diagnostic:  if is_public {
-				''
-			} else {
-				'method `${it.method_receiver}.clone` is private'
-			}
-		})
-		check_sql_alias_query_batch(query_cases, '${label}_${is_public}',
-			sql_alias_visibility_queries(is_public), sql_alias_compile_and_check,
-			sql_alias_visibility_module_source(is_public, true))!
-	}
+fn check_sql_alias_clone_cases(cases []SqlAliasCloneCase, label string, is_public bool) ! {
+	query_cases := cases.map(SqlAliasQueryCase{
+		expression:  it.expression
+		import_name: it.import_name
+		diagnostic:  if is_public {
+			''
+		} else {
+			'method `${it.method_receiver}.clone` is private'
+		}
+	})
+	check_sql_alias_query_batch(query_cases, '${label}_${is_public}',
+		sql_alias_visibility_queries(is_public), sql_alias_compile_and_check,
+		sql_alias_visibility_module_source(is_public, true))!
 }
 
 fn test_imported_alias_conversions_reject_private_types_in_sql_values() {
@@ -286,7 +284,7 @@ fn test_imported_alias_conversions_reject_private_types_in_sql_values() {
 	}
 }
 
-fn test_pointer_alias_methods_keep_alias_resolution_in_sql_values() {
+fn sql_alias_pointer_clone_cases() []SqlAliasCloneCase {
 	mut cases := ['aliases.make_ptr().clone()[0].name', 'ptr_values.clone()[0].name',
 		'(ptr_values).clone()[0].name'].map(SqlAliasCloneCase{
 		expression:      it
@@ -323,7 +321,7 @@ fn test_pointer_alias_methods_keep_alias_resolution_in_sql_values() {
 		import_name:     'renamed'
 		method_receiver: 'aliases.MoreWrappedRefs'
 	}
-	check_sql_alias_clone_cases(cases, 'pointer_clone', [true, false])!
+	return cases
 }
 
 fn sql_alias_mutability_cases(expressions []string, valid bool) []SqlAliasQueryCase {
@@ -480,7 +478,7 @@ fn test_mut_alias_methods_require_mutable_storage_and_locks_in_sql_values() {
 	check_sql_alias_storage_cases('mutability_and_locks', cases)!
 }
 
-fn test_inherited_alias_methods_keep_resolution_and_visibility_in_sql_values() {
+fn sql_alias_inherited_clone_cases() []SqlAliasCloneCase {
 	mut cases := ['aliases.make().clone()[0].name', 'values.clone()[0].name', '(values).clone()[0].name',
 		'aliases.WrappedNames(values).clone()[0].name'].map(SqlAliasCloneCase{
 		expression: it
@@ -504,7 +502,16 @@ fn test_inherited_alias_methods_keep_resolution_and_visibility_in_sql_values() {
 			}
 		}
 	}
-	check_sql_alias_clone_cases(cases, 'inherited_clone', [true, false])!
+	return cases
+}
+
+fn test_alias_clone_methods_keep_resolution_and_visibility_in_sql_values() {
+	mut cases := sql_alias_pointer_clone_cases()
+	check_sql_alias_clone_cases(cases, 'pointer_clone', true)!
+	inherited := sql_alias_inherited_clone_cases()
+	check_sql_alias_clone_cases(inherited, 'inherited_clone', true)!
+	cases << inherited
+	check_sql_alias_clone_cases(cases, 'private_clone', false)!
 }
 
 fn test_alias_methods_keep_declared_sql_result_types() {
