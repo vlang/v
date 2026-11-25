@@ -1,0 +1,20 @@
+name: CI master portability
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-master-portability
+  cancel-in-progress: false
+
+jobs:
+  portability:
+    uses: ./.github/workflows/ci_master.yml
+    with:
+      portability: true
+    permissions:
+      actions: write
+      contents: write
+      packages: write
+    secrets: inherit

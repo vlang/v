@@ -10,15 +10,18 @@ from urllib.parse import parse_qs, urlsplit
 
 import cleanup_vprod as cleanup
 
+LINUX_WORKFLOW = ".github/workflows/ci_master.yml"
+PORTABILITY_WORKFLOW = ".github/workflows/ci_master_portability.yml"
 
-def run(run_id, **changes):
+
+def run(run_id, path=PORTABILITY_WORKFLOW, **changes):
     value = {
         "id": run_id,
         "run_number": run_id,
         "run_attempt": 1,
-        "workflow_id": 50,
-        "path": cleanup.WORKFLOW,
-        "name": "CI master",
+        "workflow_id": 50 if path == PORTABILITY_WORKFLOW else 49,
+        "path": path,
+        "name": cleanup.WORKFLOWS[path][0],
         "event": "push",
         "head_branch": "master",
         "head_sha": f"{run_id:040x}",
@@ -30,7 +33,9 @@ def run(run_id, **changes):
     return value
 
 
-def artifacts(owner):
+def artifacts(owner, platforms=None):
+    if platforms is None:
+        platforms = cleanup.WORKFLOWS[owner["path"]][1]
     return [{
         "id": owner["id"] * 10 + index,
         "name": f"vprod-{platform}-{owner['head_sha']}",
@@ -43,7 +48,7 @@ def artifacts(owner):
             "repository_id": owner["repository"]["id"],
             "head_repository_id": owner["head_repository"]["id"],
         },
-    } for index, platform in enumerate(sorted(cleanup.PLATFORMS))]
+    } for index, platform in enumerate(sorted(platforms))]
 
 
 class FakeAPI:
@@ -101,11 +106,11 @@ class CleanupTests(unittest.TestCase):
     def test_paginates_before_deleting_and_keeps_unrelated_artifacts(self):
         self.api.artifacts += [{"id": 9999, "name": "test-results"}]
         with patch.object(cleanup, "PAGE_SIZE", 2):
-            self.assertEqual(self.clean(), 6)
+            self.assertEqual(self.clean(), 5)
         first_delete = next(i for i, call in enumerate(self.api.calls) if call[0] == "DELETE")
         pages = [i for i, (_, path) in enumerate(self.api.calls)
                  if path.startswith(f"{cleanup.API_ROOT}/artifacts?")]
-        self.assertEqual(len(pages), 7)
+        self.assertEqual(len(pages), 6)
         self.assertLess(max(pages), first_delete)
         self.assertEqual({a["id"] for a in self.api.artifacts},
                          {a["id"] for a in artifacts(self.current)} | {9999})
@@ -115,7 +120,7 @@ class CleanupTests(unittest.TestCase):
                       run(60, status="waiting"), run(50, status="requested")]:
             self.api.runs[other["id"]] = other
             self.api.artifacts += artifacts(other)
-        self.assertEqual(self.clean(), 6)
+        self.assertEqual(self.clean(), 5)
         self.assertEqual(set(self.api.deleted), {a["id"] for a in artifacts(self.old)})
 
     def test_stale_rerun_cannot_remove_newer_run(self):
@@ -123,7 +128,7 @@ class CleanupTests(unittest.TestCase):
         newer = run(300, updated_at="2026-01-01T00:00:00Z")
         self.api.runs[300] = newer
         self.api.artifacts += artifacts(newer)
-        self.assertEqual(self.clean(), 6)
+        self.assertEqual(self.clean(), 5)
         self.assertTrue({a["id"] for a in artifacts(newer)}.isdisjoint(self.api.deleted))
 
     def test_incomplete_expired_or_duplicate_replacement_keeps_everything(self):
@@ -152,11 +157,23 @@ class CleanupTests(unittest.TestCase):
                     self.clean()
                 self.assertEqual(self.api.deleted, [])
 
-    def test_legacy_four_platform_set_is_cleaned_after_six_replacements(self):
-        old_artifacts = [a for a in artifacts(self.old) if not a["name"].startswith("vprod-termux-")]
-        self.api.artifacts = artifacts(self.current) + old_artifacts
-        self.assertEqual(self.clean(), 4)
-        self.assertEqual(set(self.api.deleted), {a["id"] for a in old_artifacts})
+    def test_linux_cleanup_preserves_legacy_and_portability_compilers_for_other_platforms(self):
+        self.current = run(200, path=LINUX_WORKFLOW, status="in_progress")
+        legacy = run(100, path=LINUX_WORKFLOW)
+        portable = run(90)
+        legacy_artifacts = artifacts(legacy, cleanup.PLATFORMS)
+        self.api = FakeAPI([self.current, legacy, portable],
+                           artifacts(self.current) + legacy_artifacts + artifacts(portable))
+        self.assertEqual(self.clean(), 1)
+        self.assertEqual(self.api.deleted, [legacy_artifacts[0]["id"]])
+
+    def test_portability_cleanup_preserves_linux_workflow_artifacts(self):
+        linux = run(90, path=LINUX_WORKFLOW)
+        self.api.runs[90] = linux
+        legacy = artifacts(linux, cleanup.PLATFORMS)
+        self.api.artifacts += legacy
+        self.assertEqual(self.clean(), 5)
+        self.assertTrue({a["id"] for a in legacy}.isdisjoint(self.api.deleted))
 
     def test_preserves_other_repositories_workflows_events_and_branches(self):
         changes = [
@@ -224,7 +241,7 @@ class CleanupTests(unittest.TestCase):
         first = artifacts(self.old)[0]["id"]
         endpoint = f"{cleanup.API_ROOT}/artifacts/{first}"
         self.api.errors["DELETE", endpoint] = 404
-        self.assertEqual(self.clean(), 5)
+        self.assertEqual(self.clean(), 4)
         self.setUp()
         self.api.errors["DELETE", endpoint] = 403
         with self.assertRaises(cleanup.APIError):
