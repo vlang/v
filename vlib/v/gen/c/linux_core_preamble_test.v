@@ -101,7 +101,8 @@ fn main() {
 	println("OK")
 }
 ')!
-	result := cmdexec.run(@VEXE, ['-nocache', '-cc', linux_native_probe_cc(), '-no-retry-compilation', 'run', source])
+	result := cmdexec.run(@VEXE, ['-nocache', '-cc', linux_native_probe_cc(), '-no-retry-compilation',
+		'run', source])
 	assert result.exit_code == 0, result.output
 	assert result.output == 'OK\n', result.output
 }
