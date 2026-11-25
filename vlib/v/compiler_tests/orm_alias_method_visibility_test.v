@@ -123,6 +123,27 @@ fn sql_alias_visibility_queries(valid bool) []SqlAliasVisibilityQuery {
 	return if valid { [.both] } else { [.selection, .update] }
 }
 
+fn sql_alias_visibility_module_source(is_public bool, is_type_public bool) string {
+	return sql_alias_visibility_module.replace('TYPE_VISIBILITY', if is_type_public {
+		'pub '
+	} else {
+		''
+	}).replace('VISIBILITY', if is_public { 'pub ' } else { '' })
+}
+
+fn sql_alias_visibility_import(source string, import_name string) string {
+	if import_name == 'aliases' {
+		return source
+	}
+	return source.replace('import aliases\n', 'import aliases as ${import_name}\n')
+		.replace('aliases.make()', '${import_name}.make()')
+		.replace('aliases.make_ptr()', '${import_name}.make_ptr()')
+		.replace('aliases.make_ptr_ptr()', '${import_name}.make_ptr_ptr()')
+		.replace('aliases.make_refs()', '${import_name}.make_refs()')
+		.replace('aliases.load_names(', '${import_name}.load_names(')
+		.replace('aliases.WrappedNames', '${import_name}.WrappedNames')
+}
+
 fn sql_alias_visibility_result(name string, is_public bool, expression string, query SqlAliasVisibilityQuery, check_only bool, is_type_public bool, import_name string) os.Result {
 	return sql_alias_visibility_wrapped_result(name, is_public, expression, query,
 		check_only, is_type_public, import_name, '', '')
@@ -135,15 +156,7 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	module_source := sql_alias_visibility_module.replace('TYPE_VISIBILITY', if is_type_public {
-		'pub '
-	} else {
-		''
-	}).replace('VISIBILITY', if is_public {
-		'pub '
-	} else {
-		''
-	})
+	module_source := sql_alias_visibility_module_source(is_public, is_type_public)
 	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'), module_source) or { panic(err) }
 	closure_name := if expression.contains('whole_parameter_closure_items') {
 		'whole_parameter_closure_items'
@@ -206,18 +219,7 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 		} else {
 			''
 		})
-		.replace('import aliases\n', if import_name == 'aliases' {
-			'import aliases\n'
-		} else {
-			'import aliases as ${import_name}\n'
-		})
-		.replace('aliases.make()', '${import_name}.make()')
-		.replace('aliases.make_ptr()', '${import_name}.make_ptr()')
-		.replace('aliases.make_ptr_ptr()', '${import_name}.make_ptr_ptr()')
-		.replace('aliases.make_refs()', '${import_name}.make_refs()')
-		.replace('aliases.load_names(', '${import_name}.load_names(')
-		.replace('aliases.WrappedNames', '${import_name}.WrappedNames')
-	os.write_file(source, main_source) or {
+	os.write_file(source, sql_alias_visibility_import(main_source, import_name)) or {
 		panic(err)
 	}
 	executable := os.join_path(dir, 'main.exe')
@@ -280,17 +282,16 @@ fn test_public_inherited_alias_methods_work_in_imported_sql_values() {
 	}
 }
 
-fn test_private_inherited_alias_methods_are_rejected_in_sql_values() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_sql_alias_visibility_private_${os.getpid()}')
+fn check_sql_alias_clone_rejections(expressions []string, import_name string, is_method_public bool, is_type_public bool) ! {
+	dir := os.join_path(os.vtmp_dir(),
+		'v3_sql_alias_visibility_private_${import_name}_${is_method_public}_${is_type_public}_${os.getpid()}')
 	os.mkdir_all(os.join_path(dir, 'aliases'))!
 	defer { os.rmdir_all(dir) or {} }
-	module_source := sql_alias_visibility_module.replace('TYPE_VISIBILITY', 'pub ').replace('VISIBILITY',
-		'')
+	module_source := sql_alias_visibility_module_source(is_method_public, is_type_public)
 	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'), module_source)!
 	mut probes := []string{}
 	mut calls := []string{}
-	for i, expression in ['aliases.make().clone()[0].name', 'values.clone()[0].name',
-		'(values).clone()[0].name', 'aliases.WrappedNames(values).clone()[0].name'] {
+	for i, expression in expressions {
 		for query in [SqlAliasVisibilityQuery.selection, .update] {
 			name := 'probe_${i}_${query}'
 			probes << sql_alias_visibility_probe_source(query, expression, '', '', '', '')
@@ -298,10 +299,11 @@ fn test_private_inherited_alias_methods_are_rejected_in_sql_values() {
 			calls << '${name}()!'
 		}
 	}
-	main_source := sql_alias_visibility_main.replace('PROBES', probes.join('\n'))
+	program := sql_alias_visibility_main.replace('PROBES', probes.join('\n'))
 		.replace('PROBE_CALLS', calls.join('\n\t'))
 		.replace('EXTRA_DECLARATIONS', '')
 		.replace('EXTRA_BINDINGS', '')
+	main_source := sql_alias_visibility_import(program, import_name)
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, main_source)!
 	mut cases := map[int]string{}
@@ -311,40 +313,39 @@ fn test_private_inherited_alias_methods_are_rejected_in_sql_values() {
 		}
 	}
 	assert cases.len == calls.len
+	expected := if is_type_public {
+		'error: method `aliases.WrappedNames.clone` is private'
+	} else {
+		'error: type `aliases.WrappedNames` is private'
+	}
 	executable := os.join_path(dir, 'main.exe')
 	for flags in [[]string{}, ['-check']] {
 		result := os.exec([@VEXE, '-nocolor', ...flags, '-o', executable, source])
 		assert result.exit_code != 0, result.output
-		diagnostics := result.output.split_into_lines().filter(it.contains('error: method `aliases.WrappedNames.clone` is private'))
+		diagnostics := result.output.split_into_lines().filter(it.contains(expected))
 		for line, query in cases {
 			assert diagnostics.any(it.contains('main.v:${line}:')), '${query}, flags=${flags}: ${result.output}'
 		}
 	}
 }
 
+fn test_private_inherited_alias_methods_are_rejected_in_sql_values() {
+	check_sql_alias_clone_rejections(['aliases.make().clone()[0].name', 'values.clone()[0].name',
+		'(values).clone()[0].name', 'aliases.WrappedNames(values).clone()[0].name'],
+		'aliases', false, true)!
+}
+
 fn test_imported_alias_conversions_obey_type_and_method_visibility_in_sql_values() {
 	for import_name in ['aliases', 'renamed'] {
 		expression := '${import_name}.WrappedNames(values).clone()[0].name'
 		for check_only in [false, true] {
-			for is_method_public in [false, true] {
-				for is_type_public in [false, true] {
-					for query in sql_alias_visibility_queries(is_type_public && is_method_public) {
-						result := sql_alias_visibility_result('conversion_${import_name}_${query}_${check_only}_${is_method_public}_${is_type_public}',
-							is_method_public, expression, query, check_only, is_type_public,
-							import_name)
-						if !is_type_public {
-							assert result.exit_code != 0, result.output
-							assert result.output.contains('type `aliases.WrappedNames` is private'), result.output
-						} else if !is_method_public {
-							assert result.exit_code != 0, result.output
-							assert result.output.contains('method `aliases.WrappedNames.clone` is private'), result.output
-						} else {
-							assert result.exit_code == 0, result.output
-						}
-					}
-				}
-			}
+			result := sql_alias_visibility_result('conversion_${import_name}_${check_only}',
+				true, expression, .both, check_only, true, import_name)
+			assert result.exit_code == 0, result.output
 		}
+		check_sql_alias_clone_rejections([expression], import_name, false, false)!
+		check_sql_alias_clone_rejections([expression], import_name, true, false)!
+		check_sql_alias_clone_rejections([expression], import_name, false, true)!
 	}
 }
 
