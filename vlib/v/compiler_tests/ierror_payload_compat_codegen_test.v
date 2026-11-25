@@ -318,8 +318,8 @@ fn main() {
 	}
 }
 
-fn test_unqualified_builtin_error_in_imported_module_is_result_payload() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_builtin_error_${tempname.unique_token()}')
+fn test_builtin_error_payloads_resolve_across_modules() {
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_builtin_modules_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'payloadmod')
@@ -345,36 +345,75 @@ pub fn builtin_error() !int {
 pub fn embedded_error() !int {
 	return EmbeddedBuiltinError{}
 }
-	") or {
+
+// This wrapper inherits msg and code from the builtin Error.
+pub struct InheritedBuiltinError {
+	Error
+}
+
+pub fn payload() !IError {
+	return InheritedBuiltinError{}
+}
+") or {
+		panic(err)
+	}
+
+	fake_dir := os.join_path(root, 'fake')
+	os.mkdir_all(fake_dir) or { panic(err) }
+	os.write_file(os.join_path(fake_dir, 'fake.v'), 'module fake
+
+pub struct Error {}
+') or {
 		panic(err)
 	}
 
 	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import payloadmod
+	os.write_file(src, "import fake
+import payloadmod
+
+fn fail_with_normal_import() !int {
+	_ := fake.Error{}
+	return Error{}
+}
 
 fn main() {
 	payloadmod.builtin_error() or {
 		assert err.msg() == ''
 		assert err.code() == 0
+		println('module builtin error')
 	}
 	payloadmod.embedded_error() or {
 		assert err.msg() == 'embedded builtin error'
 		assert err.code() == 33
+		println('module embedded error')
 	}
-	println('ok')
+	fail_with_normal_import() or {
+		assert err.msg() == ''
+		assert err.code() == 0
+		println('builtin error with normal import')
+	}
+	value := payloadmod.payload() or { panic(err) }
+	assert value.msg() == ''
+	assert value.code() == 0
+	println('embedded IError value')
 }
-	") or {
+") or {
 		panic(err)
 	}
 
-	bin := os.join_path(root, 'v3_ierror_payload_builtin_error_input')
+	bin := os.join_path(root, 'app')
 	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	assert run.output.trim_space().split_into_lines() == [
+		'module builtin error',
+		'module embedded error',
+		'builtin error with normal import',
+		'embedded IError value',
+	], run.output
 }
 
 fn test_imported_error_embeds_are_not_result_payloads() {
@@ -479,96 +518,6 @@ fn main() {
 		assert errors.any(it.contains('${file}:') && it.contains('${typ}`')
 			&& it.contains('in return argument')), 'expected rejection of `${typ}` in ${file}\n${compile.output}'
 	}
-}
-
-fn test_normal_imported_error_does_not_shadow_builtin_error_payload() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_normal_import_error_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	mod_dir := os.join_path(root, 'fake')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	os.write_file(os.join_path(mod_dir, 'fake.v'), 'module fake
-
-pub struct Error {}
-	') or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import fake
-
-fn fail() !int {
-	_ := fake.Error{}
-	return Error{}
-}
-
-fn main() {
-	fail() or {
-		assert err.msg() == ''
-		assert err.code() == 0
-	}
-	println('ok')
-}
-	") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_ierror_payload_normal_import_error_input')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-// The main module cannot declare its own `Error` any more (see
-// test_main_cannot_redeclare_builtin_error_types), so an imported module's
-// `Error` embed always names the builtin one.
-fn test_imported_builtin_error_embed_is_ierror_value() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_imported_builtin_embed_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	mod_dir := os.join_path(root, 'payloadmod')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	os.write_file(os.join_path(mod_dir, 'payloadmod.v'), 'module payloadmod
-
-pub struct EmbeddedBuiltinError {
-	Error
-}
-
-pub fn payload() !IError {
-	return EmbeddedBuiltinError{}
-}
-	') or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import payloadmod
-
-fn main() {
-	value := payloadmod.payload() or {
-		println('bad error: ' + err.msg())
-		return
-	}
-	assert value.msg() == ''
-	assert value.code() == 0
-	println('ok')
-}
-	") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_ierror_payload_imported_builtin_embed_input')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
 }
 
 // Like V, the main module cannot declare a type named like the builtin `Error`
