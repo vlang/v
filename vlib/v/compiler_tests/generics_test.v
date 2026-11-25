@@ -69,23 +69,28 @@ fn run_no_generic_error(fixture_dir string, name string, src string) {
 	assert !result.output.contains('unsupported generic'), '${name}: should not reject generics without -selfhost, got: ${result.output}'
 }
 
-// run_generic_ok supports run generic ok handling for v3 tests.
-fn run_generic_ok(fixture_dir string, name string, src string, expected string) {
-	src_file := os.join_path(fixture_dir, 'v3_gen_${name}.v')
-	os.write_file(src_file, src) or { panic(err) }
-	bin_file := os.join_path(fixture_dir, 'v3_gen_${name}')
-	c_file := bin_file + '.c'
-	compile := os.exec([@VEXE, src_file, '-b', 'c', '-o', bin_file])
-	// Check that v3 type checker and transform pass without errors
-	assert !compile.output.contains('unsupported generic'), '${name}: should not reject generics, got: ${compile.output}'
-	assert !compile.output.contains('type checker found'), '${name}: type checker errors: ${compile.output}'
-	// Verify C file was generated. The v3 pipeline can succeed even if cc fails due
-	// to pre-existing runtime issues.
-	assert os.exists(c_file), '${name}: C file not generated'
-	c_content := os.read_file(c_file) or { '' }
-	// The mangled generic function should appear in the generated C code
-	if expected.len > 0 {
-		assert c_content.len > 0, '${name}: empty C file'
+fn run_generics_codegen_batch(fixture_dir string, cases map[string]string) {
+	root := os.join_path(fixture_dir, 'codegen_batch')
+	names := cases.keys()
+	mut imports := []string{cap: names.len}
+	mut calls := []string{cap: names.len}
+	for i, name in names {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name}'
+		calls << '\t${module_name}.exercise()'
+		fixture := 'module ${module_name}\n\n' + cases[name]
+		write_generics_project_file(root, '${module_name}/v3_gen_${name}.v', fixture.replace_once('\nfn main()',
+			'\npub fn exercise()'))
+	}
+	write_generics_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')
+	c_file := os.join_path(root, 'program.c')
+	compile := os.exec([@VEXE, '-b', 'c', '-o', c_file, os.join_path(root, 'main.v')])
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('unsupported generic'), compile.output
+	assert !compile.output.contains('type checker found'), compile.output
+	c_content := os.read_file(c_file) or { panic(err) }
+	for i, name in names {
+		assert c_content.contains('void fixture_${i}__exercise(void) {'), '${name}: missing generated C function body'
 	}
 }
 
@@ -379,18 +384,18 @@ struct Phantom[T] {
 fn test_generics_allowed_without_building_v() {
 	fixture_dir := new_generics_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	// generic function — no "unsupported generic" error
-	run_no_generic_error(fixture_dir, 'allow_generic_fn', '
+	run_generics_codegen_batch(fixture_dir, {
+		// generic function — no "unsupported generic" error
+		'allow_generic_fn':        '
 fn id[T](x T) T {
 	return x
 }
 fn main() {
 	_ := id[int](1)
 }
-')
-
-	// generic struct
-	run_no_generic_error(fixture_dir, 'allow_generic_struct', '
+'
+		// generic struct
+		'allow_generic_struct':    '
 struct Box[T] {
 	value T
 }
@@ -398,10 +403,9 @@ fn main() {
 	b := Box[int]{value: 7}
 	_ := b
 }
-')
-
-	// generic method
-	run_no_generic_error(fixture_dir, 'allow_generic_method', '
+'
+		// generic method
+		'allow_generic_method':    '
 struct Box[T] {
 	value T
 }
@@ -412,10 +416,9 @@ fn main() {
 	b := Box[string]{value: "v3"}
 	_ := b
 }
-')
-
-	// nested generic type
-	run_no_generic_error(fixture_dir, 'allow_generic_nested', '
+'
+		// nested generic type
+		'allow_generic_nested':    '
 struct Box[T] {
 	value T
 }
@@ -423,10 +426,9 @@ fn main() {
 	b := Box[[]int]{value: [1, 2, 3]}
 	_ := b
 }
-')
-
-	// option/result generic
-	run_no_generic_error(fixture_dir, 'allow_generic_option', '
+'
+		// option/result generic
+		'allow_generic_option':    '
 fn maybe[T](x T) ?T {
 	return x
 }
@@ -434,19 +436,19 @@ fn main() {
 	x := maybe[int](1) or { 0 }
 	_ := x
 }
-')
+'
+		// generic interface
+		'allow_generic_interface': '
+interface Container[T] {
+	get() T
+}
+fn main() {}
+'
+	})
 
 	// generic type in params/fields/returns
 	run_no_generic_error(fixture_dir, 'allow_generic_type_app', '
 fn takes_box(x Box[int]) {}
-fn main() {}
-')
-
-	// generic interface
-	run_no_generic_error(fixture_dir, 'allow_generic_interface', '
-interface Container[T] {
-	get() T
-}
 fn main() {}
 ')
 }
@@ -456,8 +458,9 @@ fn test_generics_compile_and_run() {
 	fixture_dir := new_generics_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
 
-	// identity function with int and string
-	run_generic_ok(fixture_dir, 'run_id_fn', '
+	run_generics_codegen_batch(fixture_dir, {
+		// identity function with int and string
+		'run_id_fn':                     '
 fn id[T](x T) T {
 	return x
 }
@@ -465,11 +468,9 @@ fn main() {
 	println(id(123))
 	println(id("ok"))
 }
-',
-		'123\nok')
-
-	// generic struct with field access
-	run_generic_ok(fixture_dir, 'run_generic_struct', '
+'
+		// generic struct with field access
+		'run_generic_struct':            '
 struct Box[T] {
 	value T
 }
@@ -477,8 +478,49 @@ fn main() {
 	b := Box[string]{value: "v3"}
 	println(b.value)
 }
-',
-		'v3')
+'
+		// transitive generic calls: outer[T] calls id[T]
+		'run_transitive':                '
+fn id[T](x T) T {
+	return x
+}
+fn outer[T](x T) T {
+	return id(x)
+}
+fn main() {
+	println(outer(42))
+}
+'
+		// multi-param generic
+		'run_multi_param':               '
+fn first[A, B](a A, b B) A {
+	return a
+}
+fn main() {
+	println(first(99, "ignored"))
+}
+'
+		// multi-param generic struct fields
+		'run_multi_param_struct_fields': '
+struct Pair[X, Y] {
+	left X
+	right Y
+}
+fn main() {
+	p := Pair[int, string]{left: 1, right: "ok"}
+	println(p.right)
+}
+'
+		// infer from array element type
+		'run_array_infer':               '
+fn length[T](xs []T) int {
+	return xs.len
+}
+fn main() {
+	println(length([1, 2, 3]))
+}
+'
+	})
 
 	// A one-letter concrete type argument should not be treated as an unresolved
 	// generic placeholder when discovering struct specializations.
@@ -510,55 +552,6 @@ fn main() {
 	one_letter_c := os.read_file(one_letter_bin + '.c') or { '' }
 	// Generic struct instances declared in main use the `main__` C namespace.
 	assert one_letter_c.contains('struct main__Box_A'), one_letter_c
-
-	// transitive generic calls: outer[T] calls id[T]
-	run_generic_ok(fixture_dir, 'run_transitive', '
-fn id[T](x T) T {
-	return x
-}
-fn outer[T](x T) T {
-	return id(x)
-}
-fn main() {
-	println(outer(42))
-}
-',
-		'42')
-
-	// multi-param generic
-	run_generic_ok(fixture_dir, 'run_multi_param', '
-fn first[A, B](a A, b B) A {
-	return a
-}
-fn main() {
-	println(first(99, "ignored"))
-}
-',
-		'99')
-
-	// multi-param generic struct fields
-	run_generic_ok(fixture_dir, 'run_multi_param_struct_fields', '
-struct Pair[X, Y] {
-	left X
-	right Y
-}
-fn main() {
-	p := Pair[int, string]{left: 1, right: "ok"}
-	println(p.right)
-}
-',
-		'ok')
-
-	// infer from array element type
-	run_generic_ok(fixture_dir, 'run_array_infer', '
-fn length[T](xs []T) int {
-	return xs.len
-}
-fn main() {
-	println(length([1, 2, 3]))
-}
-',
-		'3')
 
 	selector_convert_out := run_generic_exec(fixture_dir, 'selector_method_arg_infer', '
 struct Box[T] {
