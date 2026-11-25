@@ -163,6 +163,36 @@ fn write_project_file(root string, rel string, src string) {
 	os.write_file(path, src) or { panic(err) }
 }
 
+struct ReviewRuntimeCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn run_good_module_batch(v3_bin string, name string, cases []ReviewRuntimeCase) {
+	root := '${tmp_test_path(name)}_project'
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		source := 'module ${module_name}\n\n' + case.source
+		write_project_file(root, '${module_name}/${case.name}.v', source.replace_once('\nfn main()',
+			'\npub fn exercise()'))
+	}
+	write_project_file(root, 'main.v', "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n")
+	bin_path := tmp_test_path(name)
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin_path])
+	assert compile.exit_code == 0, '${name}: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
+	for case in cases {
+		run := os.exec([bin_path, case.name])
+		assert run.exit_code == 0, '${case.name}: ${run.output}'
+		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	}
+}
+
 fn run_good_project(v3_bin string, name string, files map[string]string, input string) string {
 	return run_good_project_with_flags(v3_bin, name, '', files, input)
 }
@@ -2794,13 +2824,11 @@ fn test_qualified_enum_str_requires_exact_receiver() {
 
 fn test_array_builtin_method_fallback_keeps_return_type() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'array_builtin_method_fallback', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tnums << 3\n\tptrs := unsafe { nums.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n')
-	assert out == '3'
-	ptr_out := run_good(v3_bin, 'array_pointers_pointer_receiver', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tp := &nums\n\tptrs := unsafe { p.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n')
-	assert ptr_out == '1'
-	reverse_out := run_good(v3_bin, 'array_reverse_pointer_receiver', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tp := &nums\n\tp.reverse()\n\tprintln("ok")\n}\n')
-	assert reverse_out == 'ok'
-	exact_out := run_good(v3_bin, 'exact_array_receiver_methods_before_builtin', 'struct Num {
+	run_good_module_batch(v3_bin, 'array_receiver_methods', [
+		ReviewRuntimeCase{'array_builtin_method_fallback', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tnums << 3\n\tptrs := unsafe { nums.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n', '3'},
+		ReviewRuntimeCase{'array_pointers_pointer_receiver', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tp := &nums\n\tptrs := unsafe { p.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n', '1'},
+		ReviewRuntimeCase{'array_reverse_pointer_receiver', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tp := &nums\n\tp.reverse()\n\tprintln("ok")\n}\n', 'ok'},
+		ReviewRuntimeCase{'exact_array_receiver_methods_before_builtin', 'struct Num {
 	v int
 }
 
@@ -2836,8 +2864,14 @@ fn main() {
 	println(int_str(single.reverse()))
 	println(int_str(single.prepend(4)))
 }
-')
-	assert exact_out == '9\n5\n1\n12\n13\n5'
+', '9\n5\n1\n12\n13\n5'},
+		ReviewRuntimeCase{'fixed_array_dynamic_receiver_method_before_builtin', 'struct Num {}\n\nfn (a []Num) pointers() int {\n\treturn 41\n}\n\nfn main() {\n\tfixed := [3]Num{}\n\tprintln(int_str(fixed.pointers()))\n}\n', '41'},
+		ReviewRuntimeCase{'nested_fixed_array_dynamic_receiver_method', 'struct Num {}\n\nfn (a [][2]Num) pointers() int {\n\treturn 82\n}\n\nfn main() {\n\tfixed := [3][2]Num{}\n\tprintln(int_str(fixed.pointers()))\n}\n', '82'},
+		ReviewRuntimeCase{'fixed_array_builtin_not_alias_method', 'type F = [2]int\n\nfn (f F) pointers() int {\n\treturn 66\n}\n\nfn main() {\n\tmut fixed := [2]int{}\n\tptrs := unsafe { fixed.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n', '2'},
+		ReviewRuntimeCase{'plain_array_contains_not_alias_method', 'type A = []int\n\nfn (a A) contains(x int) int {\n\treturn 0\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tif nums.contains(2) {\n\t\tprintln("builtin")\n\t} else {\n\t\tprintln("alias")\n\t}\n\talias := A(nums)\n\tprintln(int_str(alias.contains(2)))\n}\n', 'builtin\n0'},
+		ReviewRuntimeCase{'fixed_array_pointers_original_storage', 'fn main() {\n\tmut fixed := [3]int{}\n\tfixed[0] = 1\n\tptrs := unsafe { fixed.pointers() }\n\tunsafe {\n\t\tp0 := &int(ptrs[0])\n\t\t*p0 = 9\n\t}\n\tprintln(int_str(fixed[0]))\n}\n', '9'},
+		ReviewRuntimeCase{'fixed_array_pointers_folds_len_expr', 'const segs = 2\n\nfn main() {\n\tmut const_len := [segs + 1]int{}\n\tconst_ptrs := unsafe { const_len.pointers() }\n\tmut shift_len := [8 >>> 1]int{}\n\tshift_ptrs := unsafe { shift_len.pointers() }\n\tprintln(int_str(const_ptrs.len))\n\tprintln(int_str(shift_ptrs.len))\n}\n', '3\n4'},
+	])
 	module_array_out := run_good_project(v3_bin, 'module_array_receiver_methods', {
 		'main.v':             'module main\n\nimport array_utils\nimport array__utils\nimport thing\n\nfn main() {\n\tprintln(array_utils.run())\n\tprintln(array__utils.run())\n\tprintln(thing.run())\n}\n'
 		'array_utils/mod.v':  'module array_utils\n\nstruct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 73\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.reverse())\n}\n'
@@ -2846,22 +2880,10 @@ fn main() {
 	}, 'main.v')
 	assert module_array_out == '73\n83\n91'
 	run_bad(v3_bin, 'exact_array_first_method_checked_before_builtin', 'struct Num {}\n\nfn (a []Num) first() string {\n\treturn "bad"\n}\n\nfn take_int(x int) {}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\ttake_int(nums.first())\n}\n', 'cannot use `string` as `int` in argument 1 to `take_int`')
-	fixed_dynamic_out := run_good(v3_bin, 'fixed_array_dynamic_receiver_method_before_builtin', 'struct Num {}\n\nfn (a []Num) pointers() int {\n\treturn 41\n}\n\nfn main() {\n\tfixed := [3]Num{}\n\tprintln(int_str(fixed.pointers()))\n}\n')
-	assert fixed_dynamic_out == '41'
-	nested_fixed_dynamic_out := run_good(v3_bin, 'nested_fixed_array_dynamic_receiver_method', 'struct Num {}\n\nfn (a [][2]Num) pointers() int {\n\treturn 82\n}\n\nfn main() {\n\tfixed := [3][2]Num{}\n\tprintln(int_str(fixed.pointers()))\n}\n')
-	assert nested_fixed_dynamic_out == '82'
-	fixed_alias_shape_out := run_good(v3_bin, 'fixed_array_builtin_not_alias_method', 'type F = [2]int\n\nfn (f F) pointers() int {\n\treturn 66\n}\n\nfn main() {\n\tmut fixed := [2]int{}\n\tptrs := unsafe { fixed.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n')
-	assert fixed_alias_shape_out == '2'
-	plain_array_contains_out := run_good(v3_bin, 'plain_array_contains_not_alias_method', 'type A = []int\n\nfn (a A) contains(x int) int {\n\treturn 0\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tif nums.contains(2) {\n\t\tprintln("builtin")\n\t} else {\n\t\tprintln("alias")\n\t}\n\talias := A(nums)\n\tprintln(int_str(alias.contains(2)))\n}\n')
-	assert plain_array_contains_out == 'builtin\n0'
-	fixed_out := run_good(v3_bin, 'fixed_array_pointers_original_storage', 'fn main() {\n\tmut fixed := [3]int{}\n\tfixed[0] = 1\n\tptrs := unsafe { fixed.pointers() }\n\tunsafe {\n\t\tp0 := &int(ptrs[0])\n\t\t*p0 = 9\n\t}\n\tprintln(int_str(fixed[0]))\n}\n')
-	assert fixed_out == '9'
 	fixed_expr_out := run_good_with_flags(v3_bin, 'fixed_array_pointers_evaluates_receiver_once', '-enable-globals', '__global calls int\n\nfn next() int {\n\tcalls = calls + 1\n\treturn 0\n}\n\nfn main() {\n\tmut rows := [1][2]int{}\n\trows[0][0] = 5\n\tptrs := unsafe { rows[next()].pointers() }\n\tunsafe {\n\t\tp0 := &int(ptrs[0])\n\t\t*p0 = 8\n\t}\n\tprintln(int_str(calls))\n\tprintln(int_str(rows[0][0]))\n}\n')
 	assert fixed_expr_out == '1\n8'
 	run_bad(v3_bin, 'fixed_array_pointers_rejects_rvalue_receiver', 'fn make_fixed() [2]int {\n\treturn [7, 8]!\n}\n\nfn main() {\n\t_ := unsafe { make_fixed().pointers() }\n}\n', 'fixed array receiver for `pointers` must be addressable')
 	run_bad(v3_bin, 'fixed_array_pointers_rejects_map_index_receiver', 'fn main() {\n\tmut m := map[string][2]int{}\n\tm["x"] = [1, 2]!\n\t_ := unsafe { m["x"].pointers() }\n}\n', 'fixed array receiver for `pointers` must be addressable')
-	fixed_len_expr_out := run_good(v3_bin, 'fixed_array_pointers_folds_len_expr', 'const segs = 2\n\nfn main() {\n\tmut const_len := [segs + 1]int{}\n\tconst_ptrs := unsafe { const_len.pointers() }\n\tmut shift_len := [8 >>> 1]int{}\n\tshift_ptrs := unsafe { shift_len.pointers() }\n\tprintln(int_str(const_ptrs.len))\n\tprintln(int_str(shift_ptrs.len))\n}\n')
-	assert fixed_len_expr_out == '3\n4'
 	run_bad(v3_bin, 'fixed_array_pointers_rejects_extra_arg', 'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut fixed := [3]int{}\n\t_ := unsafe { fixed.pointers(extra_arg()) }\n}\n', 'expected 0 arguments, but got 1')
 }
 
@@ -2951,19 +2973,14 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 	run_bad(v3_bin, 'map_keys_rejects_extra_arg', 'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\t_ := m.keys(extra_arg())\n}\n', '`.keys()` does not have any arguments')
 	run_bad(v3_bin, 'map_delete_rejects_bad_key_type', 'fn main() {\n\tmut m := map[string]int{}\n\tm.delete(123)\n}\n', 'cannot use `int literal` as `string` in argument 1 to `Map.delete`')
 	run_bad(v3_bin, 'map_reserve_rejects_bad_count_type', 'fn main() {\n\tmut m := map[string]int{}\n\tm.reserve("bad")\n}\n', 'cannot use `string` as `u32` in argument 1 to `map[string]int.reserve`')
-	out := run_good(v3_bin, 'map_builtin_method_fallback', 'fn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tmut moved := m.move()\n\tprintln(int_str(m.len))\n\tmoved.clear()\n\tmoved.reserve(6)\n\tmoved.delete("x")\n\tkeys := moved.keys()\n\tvalues := moved.values()\n\tcloned := moved.clone()\n\tprintln(int_str(keys.len + values.len + cloned.len))\n}\n')
-	assert out == '0\n0'
-	empty_arrays_out := run_good(v3_bin, 'map_empty_keys_values_keep_elem_size', "struct State {\n\tlabels map[string]string\n}\n\nfn main() {\n\ts := State{}\n\tmut keys := s.labels.keys()\n\tkeys << 'abc'\n\tprintln(keys[0])\n\tmut values := s.labels.values()\n\tvalues << 'def'\n\tprintln(values[0])\n}\n")
-	assert empty_arrays_out == 'abc\ndef'
-	pointer_out := run_good(v3_bin, 'map_move_pointer_receiver_returns_map', 'fn take(m map[string]int) int {\n\treturn m.len\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tp := &m\n\tprintln(int_str(take(p.move())))\n\tprintln(int_str(m.len))\n}\n')
-	assert pointer_out == '1\n0'
-	exact_out := run_good(v3_bin, 'exact_map_receiver_method_before_builtin', 'struct Num {}\n\nfn (m map[string]Num) keys() int {\n\treturn 77\n}\n\nfn main() {\n\tmut m := map[string]Num{}\n\tm["x"] = Num{}\n\tn := m.keys()\n\tprintln(int_str(n))\n}\n')
-	assert exact_out == '77'
-	alias_rvalue_out := run_good(v3_bin, 'map_alias_rvalue_receiver_method_before_builtin', 'type M = map[string]int\n\nfn (m M) delete(k string) int {\n\treturn 66\n}\n\nfn make_m() M {\n\tmut m := M(map[string]int{})\n\tm["x"] = 1\n\treturn m\n}\n\nfn main() {\n\tprintln(int_str(make_m().delete("x")))\n}\n')
-	assert alias_rvalue_out == '66'
-	plain_map_out := run_good(v3_bin, 'plain_map_builtin_not_alias_method', 'type M = map[string]int\n\nfn (m M) keys() int {\n\treturn 66\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["x"] = 1\n\tkeys := m.keys()\n\tprintln(int_str(keys.len))\n}\n')
-	assert plain_map_out == '1'
-	fixed_key_out := run_good(v3_bin, 'fixed_array_key_map_receiver_methods', 'struct Num {}
+	run_good_module_batch(v3_bin, 'map_receiver_methods', [
+		ReviewRuntimeCase{'map_builtin_method_fallback', 'fn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tmut moved := m.move()\n\tprintln(int_str(m.len))\n\tmoved.clear()\n\tmoved.reserve(6)\n\tmoved.delete("x")\n\tkeys := moved.keys()\n\tvalues := moved.values()\n\tcloned := moved.clone()\n\tprintln(int_str(keys.len + values.len + cloned.len))\n}\n', '0\n0'},
+		ReviewRuntimeCase{'map_empty_keys_values_keep_elem_size', "struct State {\n\tlabels map[string]string\n}\n\nfn main() {\n\ts := State{}\n\tmut keys := s.labels.keys()\n\tkeys << 'abc'\n\tprintln(keys[0])\n\tmut values := s.labels.values()\n\tvalues << 'def'\n\tprintln(values[0])\n}\n", 'abc\ndef'},
+		ReviewRuntimeCase{'map_move_pointer_receiver_returns_map', 'fn take(m map[string]int) int {\n\treturn m.len\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tp := &m\n\tprintln(int_str(take(p.move())))\n\tprintln(int_str(m.len))\n}\n', '1\n0'},
+		ReviewRuntimeCase{'exact_map_receiver_method_before_builtin', 'struct Num {}\n\nfn (m map[string]Num) keys() int {\n\treturn 77\n}\n\nfn main() {\n\tmut m := map[string]Num{}\n\tm["x"] = Num{}\n\tn := m.keys()\n\tprintln(int_str(n))\n}\n', '77'},
+		ReviewRuntimeCase{'map_alias_rvalue_receiver_method_before_builtin', 'type M = map[string]int\n\nfn (m M) delete(k string) int {\n\treturn 66\n}\n\nfn make_m() M {\n\tmut m := M(map[string]int{})\n\tm["x"] = 1\n\treturn m\n}\n\nfn main() {\n\tprintln(int_str(make_m().delete("x")))\n}\n', '66'},
+		ReviewRuntimeCase{'plain_map_builtin_not_alias_method', 'type M = map[string]int\n\nfn (m M) keys() int {\n\treturn 66\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["x"] = 1\n\tkeys := m.keys()\n\tprintln(int_str(keys.len))\n}\n', '1'},
+		ReviewRuntimeCase{'fixed_array_key_map_receiver_methods', 'struct Num {}
 
 fn (m map[[2]string]Num) keys() int {
 	return 88
@@ -2982,8 +2999,8 @@ fn main() {
 	nested[key] = Num{}
 	println(int_str(nested.keys()))
 }
-')
-	assert fixed_key_out == '88\n99'
+', '88\n99'},
+	])
 	module_map_out := run_good_project(v3_bin, 'module_map_receiver_methods', {
 		'main.v':           'module main\n\nimport map__utils\nimport map\nimport thing\n\nfn main() {\n\tprintln(map__utils.run())\n\tprintln(map.run())\n\tprintln(thing.run())\n}\n'
 		'map__utils/mod.v': 'module map__utils\n\nstruct Num {}\n\nfn (m map[string]Num) keys() int {\n\treturn 84\n}\n\npub fn run() string {\n\tmut m := map[string]Num{}\n\tm["x"] = Num{}\n\treturn int_str(m.keys())\n}\n'
