@@ -17895,7 +17895,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write(g.local_cname(ident_value))
 			} else if is_local && g.local_name_shadows_c_function(ident_value) {
 				g.write(g.local_cname(ident_value))
-			} else if ident_value in g.global_modules {
+			} else if !is_local && ident_value in g.global_modules {
 				mod := g.global_modules[ident_value]
 				if mod.len > 0 && mod != 'main' && mod != 'builtin' {
 					g.write(g.global_c_name('${mod}.${ident_value}'))
