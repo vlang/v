@@ -395,7 +395,8 @@ fn test_immutable_fields_and_result_storage_are_rejected() {
 }
 
 fn test_declaration_mutability_and_storage_restrictions_match_v1() {
-	run_bad(v3_bin, 'immutable_reference_in_mut_field', 'struct Holder {
+	check_review_rejections('declaration_storage', [
+		ReviewFixture{'immutable_reference_in_mut_field', 'struct Holder {
 mut:
 	ptr &int
 }
@@ -407,32 +408,28 @@ fn main() {
 	}
 	println(holder)
 }
-',
-		'`value` is immutable, cannot have a mutable reference to an immutable object')
-	run_bad(v3_bin, 'result_struct_field', 'struct Holder {
+', '`value` is immutable, cannot have a mutable reference to an immutable object'},
+		ReviewFixture{'result_struct_field', 'struct Holder {
 	value !int
 }
 
 fn main() {}
-',
-		'struct field does not support storing Result')
-	run_bad(v3_bin, 'mutable_primitive_parameter', 'fn update(mut value int) {
+', 'struct field does not support storing Result'},
+		ReviewFixture{'mutable_primitive_parameter', 'fn update(mut value int) {
 	value++
 }
 
 fn main() {}
-',
-		'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases')
-	run_bad(v3_bin, 'parameter_shadows_import', 'import arrays
+', 'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases'},
+		ReviewFixture{'parameter_shadows_import', 'import arrays
 
 fn update(arrays int) {
 	_ = arrays
 }
 
 fn main() {}
-',
-		'duplicate of an import symbol `arrays`')
-	run_bad(v3_bin, 'mutable_interface_smartcast', 'interface Value {}
+', 'duplicate of an import symbol `arrays`'},
+		ReviewFixture{'mutable_interface_smartcast', 'interface Value {}
 
 struct Concrete {}
 
@@ -440,15 +437,14 @@ fn main() {
 	mut value := Value(Concrete{})
 	if value is Concrete {}
 }
-',
-		'smart casting a mutable interface value requires `if mut value is ...`')
-	run_bad(v3_bin, 'explicit_option_void_return', 'fn work() ?void {
+', 'smart casting a mutable interface value requires `if mut value is ...`'},
+		ReviewFixture{'explicit_option_void_return', 'fn work() ?void {
 	return none
 }
 
 fn main() {}
-',
-		'use `?` instead of `?void`')
+', 'use `?` instead of `?void`'},
+	])
 	out := run_good(v3_bin, 'canonical_option_void_return', 'fn work() ? {
 	return none
 }
@@ -464,30 +460,28 @@ fn main() {
 }
 
 fn test_pointer_struct_and_spawn_safety_match_v1() {
-	run_bad(v3_bin, 'unparenthesized_pointer_write', 'fn main() {
+	check_review_rejections('pointer_spawn', [
+		ReviewFixture{'unparenthesized_pointer_write', 'fn main() {
 	value := 0
 	p := &value
 	*p = 1
 }
-',
-		'modifying variables via dereferencing can only be done in `unsafe` blocks')
-	run_bad(v3_bin, 'parenthesized_pointer_write', 'fn main() {
+', 'modifying variables via dereferencing can only be done in `unsafe` blocks'},
+		ReviewFixture{'parenthesized_pointer_write', 'fn main() {
 	value := 0
 	p := &value
 	(*p) = 1
 }
-',
-		'modifying variables via dereferencing can only be done in `unsafe` blocks')
-	run_bad(v3_bin, 'uninitialized_reference_field', 'struct Holder {
+', 'modifying variables via dereferencing can only be done in `unsafe` blocks'},
+		ReviewFixture{'uninitialized_reference_field', 'struct Holder {
 	value &int
 }
 
 fn main() {
 	_ := Holder{}
 }
-',
-		'reference field `Holder.value` must be initialized')
-	run_bad(v3_bin, 'partial_positional_struct_literal', 'struct Pair {
+', 'reference field `Holder.value` must be initialized'},
+		ReviewFixture{'partial_positional_struct_literal', 'struct Pair {
 	first int
 	second int
 }
@@ -495,17 +489,15 @@ fn main() {
 fn main() {
 	_ := Pair{1}
 }
-',
-		'too few fields in `Pair` literal (expecting 2, got 1)')
-	run_bad(v3_bin, 'local_shadows_import', 'import arrays
+', 'too few fields in `Pair` literal (expecting 2, got 1)'},
+		ReviewFixture{'local_shadows_import', 'import arrays
 
 fn main() {
 	arrays := 1
 	_ = arrays
 }
-',
-		'duplicate of an import symbol `arrays`')
-	run_bad(v3_bin, 'spawn_mutable_value_argument', 'struct State {
+', 'duplicate of an import symbol `arrays`'},
+		ReviewFixture{'spawn_mutable_value_argument', 'struct State {
 mut:
 	value int
 }
@@ -518,9 +510,8 @@ fn main() {
 	mut state := State{}
 	spawn change(mut state)
 }
-',
-		'function in `spawn` statement cannot contain mutable non-reference arguments')
-	run_bad(v3_bin, 'spawn_mutable_value_receiver', 'struct State {
+', 'function in `spawn` statement cannot contain mutable non-reference arguments'},
+		ReviewFixture{'spawn_mutable_value_receiver', 'struct State {
 mut:
 	value int
 }
@@ -533,8 +524,8 @@ fn main() {
 	mut state := State{}
 	spawn state.change()
 }
-',
-		'method in `spawn` statement cannot have non-reference mutable receiver')
+', 'method in `spawn` statement cannot have non-reference mutable receiver'},
+	])
 	out := run_good(v3_bin, 'unsafe_pointer_write', 'fn main() {
 	mut value := 0
 	p := &value
@@ -549,7 +540,8 @@ fn main() {
 }
 
 fn test_mutable_references_and_enum_order_match_v1() {
-	run_bad(v3_bin, 'mutable_reference_to_immutable_local_declaration', 'struct Foo {
+	check_review_rejections('reference_enum', [
+		ReviewFixture{'mutable_reference_to_immutable_local_declaration', 'struct Foo {
 mut:
 	value int
 }
@@ -559,9 +551,8 @@ fn main() {
 	mut pf := &f
 	pf.value = 1
 }
-',
-		'`f` is immutable, cannot have a mutable reference to it')
-	run_bad(v3_bin, 'mutable_reference_to_immutable_local_reassignment', 'struct Foo {
+', '`f` is immutable, cannot have a mutable reference to it'},
+		ReviewFixture{'mutable_reference_to_immutable_local_reassignment', 'struct Foo {
 mut:
 	value int
 }
@@ -572,17 +563,16 @@ fn main() {
 	mut pf := &other
 	pf = &f
 }
-',
-		'`f` is immutable, cannot have a mutable reference to it')
-	run_bad(v3_bin, 'duplicate_value_enum_forward_reference', '@[_allow_multiple_values]
+', '`f` is immutable, cannot have a mutable reference to it'},
+		ReviewFixture{'duplicate_value_enum_forward_reference', '@[_allow_multiple_values]
 enum ForwardValue {
 	a = .c
 	c = 2
 }
 
 fn main() {}
-',
-		'`ForwardValue.c` should be declared before using it')
+', '`ForwardValue.c` should be declared before using it'},
+	])
 	mut out := run_good(v3_bin, 'immutable_reference_and_previous_enum_value', '@[_allow_multiple_values]
 enum Value {
 	a = 1
