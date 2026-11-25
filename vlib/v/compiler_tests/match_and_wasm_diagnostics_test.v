@@ -14,6 +14,11 @@ fn diagnostic_v3_exe() string {
 }
 
 fn build_diagnostic_v3() string {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(diagnostic_v3_src) {
+		return os.real_path(shared)
+	}
 	if os.is_executable(diagnostic_v3_exe()) {
 		return diagnostic_v3_exe()
 	}
