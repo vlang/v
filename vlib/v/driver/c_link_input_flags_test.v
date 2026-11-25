@@ -414,7 +414,7 @@ fn test_link_preparation_preserves_option_pairs_beside_real_objects() {
 		}
 	}
 	target := pref.host_target()
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	cache_dir := v3_object_cache_dir()
 	object_flags := CObjectFlagPlan{
 		primary_compiler: compiler
 		common_flags:     c_object_compile_support_flags(flags)

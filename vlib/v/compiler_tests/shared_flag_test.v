@@ -343,6 +343,55 @@ fn main() {
 	assert first_cached_objects[0] != second_cached_objects[0]
 }
 
+// test_shared_flag_cache_roots_are_deduplicated validates that an explicit V3CACHE
+// naming the same directory as os.vtmp_dir(), either directly or through a path
+// alias, is not counted twice. A direct test invocation with VTMP == V3CACHE used
+// to return every cached object twice, breaking the single-object assertions.
+fn test_shared_flag_cache_roots_are_deduplicated() {
+	pid := os.getpid()
+	vtmp := os.vtmp_dir()
+	cache_dir := os.join_path(vtmp, 'v3_thirdparty_objs_dedup_${pid}')
+	os.mkdir_all(cache_dir)!
+	defer {
+		os.rmdir_all(cache_dir) or {}
+	}
+
+	obj_name := 'dedup_dep_${pid}.o'
+	obj_path := os.join_path(vtmp, obj_name)
+	cached_obj := os.join_path(cache_dir, '${shared_flag_object_cache_prefix(obj_path)}dedup.o')
+	os.write_file(cached_obj, '')!
+	defer {
+		os.rm(cached_obj) or {}
+	}
+
+	old_cache := os.getenv_opt('V3CACHE')
+	cache_was_set := 'V3CACHE' in os.environ()
+	defer {
+		if cache_was_set && old_cache != none {
+			os.setenv('V3CACHE', old_cache, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+	}
+
+	canonical_cache_dir := os.real_path(cache_dir)
+	// The first value is the exact VTMP == V3CACHE case from the review; the second
+	// resolves to the same directory through a path alias, exercising real_path.
+	for cache_value in [vtmp, os.join_path(vtmp, '.')] {
+		os.setenv('V3CACHE', cache_value, true)
+		cached_objects := shared_flag_cached_objects(obj_path)
+		assert cached_objects.len == 1, 'V3CACHE=${cache_value}: ${cached_objects.str()}'
+
+		mut occurrences := 0
+		for dir in shared_flag_object_cache_dirs() {
+			if os.real_path(dir) == canonical_cache_dir {
+				occurrences++
+			}
+		}
+		assert occurrences == 1, 'V3CACHE=${cache_value}: ${occurrences}'
+	}
+}
+
 fn shared_flag_library_postfix() string {
 	$if windows {
 		return '.dll'
@@ -353,16 +402,45 @@ fn shared_flag_library_postfix() string {
 	}
 }
 
-fn shared_flag_cached_objects(obj_path string) []string {
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
-	if !os.exists(cache_dir) {
-		return []
+fn shared_flag_object_cache_dirs() []string {
+	mut roots := [os.vtmp_dir()]
+	if cache := os.getenv_opt('V3CACHE') {
+		if cache.len > 0 {
+			roots << cache
+		}
 	}
+	// V3CACHE may name the same directory as os.vtmp_dir(), either directly or
+	// through an alias/symlink. Canonicalize and deduplicate first, otherwise the
+	// walk below returns each cached object twice.
+	mut unique_roots := []string{}
+	for root in roots {
+		canonical_root := os.real_path(root)
+		if canonical_root !in unique_roots {
+			unique_roots << canonical_root
+		}
+	}
+	mut dirs := []string{}
+	for root in unique_roots {
+		for name in os.ls(root) or { []string{} } {
+			if name == 'v3_thirdparty_objs' || name.starts_with('v3_thirdparty_objs_') {
+				dir := os.join_path(root, name)
+				if dir !in dirs {
+					dirs << dir
+				}
+			}
+		}
+	}
+	return dirs
+}
+
+fn shared_flag_cached_objects(obj_path string) []string {
 	prefix := shared_flag_object_cache_prefix(obj_path)
 	mut found := []string{}
-	for path in os.walk_ext(cache_dir, '.o') {
-		if os.file_name(path).starts_with(prefix) {
-			found << path
+	for cache_dir in shared_flag_object_cache_dirs() {
+		for path in os.walk_ext(cache_dir, '.o') {
+			if os.file_name(path).starts_with(prefix) {
+				found << path
+			}
 		}
 	}
 	return found

@@ -12,7 +12,9 @@ it reports a failed test with the path and filesystem error, and skips compilati
 By default, `v test` keeps the V3 module cache under the incoming `VTMP` folder and exports
 that location as `V3CACHE` before creating the session's nested temporary folder. Nested and
 later sessions reuse that cache. Successful session cleanup removes the session folder while
-leaving the shared cache available for subsequent runs.
+leaving the shared cache available for subsequent runs. Cached third-party C objects use a
+driver-owned folder under the same V3CACHE, so later sessions reuse those objects instead of
+recompiling them; fixed-name folders in a user-supplied V3CACHE remain user-owned.
 
 An existing nonempty `V3CACHE` takes precedence, even with `V3_TEST_ISOLATE_CACHE=1`.
 To isolate a session's cache, leave `V3CACHE` unset and set `V3_TEST_ISOLATE_CACHE=1`.
