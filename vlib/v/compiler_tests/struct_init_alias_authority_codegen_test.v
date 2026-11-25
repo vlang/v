@@ -1,24 +1,7 @@
 import os
+import v.tempname
 
-const struct_alias_vexe = @VEXE
-const struct_alias_tests_dir = os.dir(@FILE)
-const struct_alias_v3_dir = os.dir(struct_alias_tests_dir)
-const struct_alias_vlib_dir = os.dir(struct_alias_v3_dir)
-const struct_alias_v3_src = os.join_path(struct_alias_v3_dir, 'v.v')
-
-fn struct_alias_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_struct_alias_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([struct_alias_vexe, '-gc', 'none', '-path',
-			'${struct_alias_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${struct_alias_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn struct_alias_write_project() string {
-	root := os.join_path(os.temp_dir(), 'v3_struct_alias_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn struct_alias_write_project(root string) {
 	gg_dir := os.join_path(root, 'gg')
 	sgl_dir := os.join_path(root, 'sgl_like')
 	common_dir := os.join_path(root, 'common')
@@ -159,14 +142,17 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	return root
 }
 
 fn test_struct_init_uses_local_alias_authority_before_short_name_fallback() {
-	v3_bin := struct_alias_build_v3()
-	root := struct_alias_write_project()
+	root := os.join_path(os.vtmp_dir(), 'v3_struct_alias_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	struct_alias_write_project(root)
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
