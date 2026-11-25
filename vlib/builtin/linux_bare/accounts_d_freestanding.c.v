@@ -67,15 +67,15 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			}
 			if field != field_count - 1 { continue }
 			ends[field] = length
-			uid := bare_account_number(text[positions[2]..ends[2]]) or { continue }
+			uid := bare_account_number(text.substr_borrowed(positions[2], ends[2])) or { continue }
 			gid := if group != 0 {
 				uid
 			} else {
-				bare_account_number(text[positions[3]..ends[3]]) or { continue }
+				bare_account_number(text.substr_borrowed(positions[3], ends[3])) or { continue }
 			}
 			if name != 0 {
 				wanted := unsafe { tos2(&u8(name)) }
-				if text[..ends[0]] != wanted { continue }
+				if text.substr_borrowed(0, ends[0]) != wanted { continue }
 			} else if uid != identifier {
 				continue
 			}

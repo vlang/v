@@ -43,15 +43,17 @@ void v_name_paths(uintptr_t input, uintptr_t output) {
     uintptr_t *fields = (void *)output;
     fields[0] = (uintptr_t)p->hosts_path; fields[1] = (uintptr_t)p->services_path;
 }
-extern int32_t v_name_getnameinfo(uintptr_t, uint32_t, uintptr_t, uint32_t, uintptr_t, uint32_t, int32_t, uintptr_t);
+extern int32_t v_name_getnameinfo(uintptr_t, uint32_t, uintptr_t, uint32_t, uintptr_t, uint32_t,
+                                  int32_t, uintptr_t, uintptr_t);
 int getnameinfo(const struct sockaddr *address, socklen_t size, char *host, socklen_t host_size,
                 char *service, socklen_t service_size, int flags) {
-    return v_name_getnameinfo((uintptr_t)address, size, (uintptr_t)host, host_size,
-                             (uintptr_t)service, service_size, flags, 0);
+    return v_freestanding_getnameinfo(address, size, host, host_size, service, service_size,
+                                      flags, NULL);
 }
 int v_freestanding_getnameinfo(const struct sockaddr *address, socklen_t size, char *host,
     socklen_t host_size, char *service, socklen_t service_size, int flags,
     const struct v_resolver_config *paths) {
+    struct v_name_address storage;
     return v_name_getnameinfo((uintptr_t)address, size, (uintptr_t)host, host_size,
-                             (uintptr_t)service, service_size, flags, (uintptr_t)paths);
+                              (uintptr_t)service, service_size, flags, (uintptr_t)paths, (uintptr_t)&storage);
 }

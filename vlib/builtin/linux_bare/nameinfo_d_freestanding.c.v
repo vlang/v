@@ -40,7 +40,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		for start < line.len && line[start] <= 32 { start++ }
 		mut end := start
 		for end < line.len && line[end] > 32 && line[end] != `#` && line[end] != `;` { end++ }
-		return line[start..end], end
+		return line.substr_borrowed(start, end), end
 	}
 	fn bare_name_equal(a string, b string) bool {
 		if a.len != b.len { return false }
@@ -171,7 +171,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			if name.len == 0 || cursor == 0 || cursor >= number.len || number[cursor] != `/` || value != port {
 				continue
 			}
-			protocol := number[cursor + 1..]
+			protocol := number.substr_borrowed(cursor + 1, number.len)
 			if protocol != if datagram { 'udp' } else { 'tcp' } { continue }
 			return bare_name_copy(output, size, name)
 		}
@@ -451,7 +451,8 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 					if dot := local.index('.') {
 						full := unsafe { tos2(&u8(output)) }
 						if first := full.index('.') {
-							if bare_name_equal(full[first..], local[dot..]) {
+							if bare_name_equal(full.substr_borrowed(first, full.len),
+								local.substr_borrowed(dot, local.len)) {
 								unsafe { (&u8(output))[first] = 0 }
 							}
 						}
@@ -467,7 +468,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		return bare_name_numeric(address, output, size)
 	}
 	@[export: 'v_name_getnameinfo'; markused]
-	fn bare_name_getnameinfo(input uint, input_size u32, host uint, host_size u32, service uint, service_size u32, flags i32, paths uint) i32 {
+	fn bare_name_getnameinfo(input uint, input_size u32, host uint, host_size u32, service uint, service_size u32, flags i32, paths uint, storage uint) i32 {
 		shield := bare_cancel_shield_enter()
 		defer { bare_cancel_shield_leave(shield) }
 		// IDN transformations require an IDNA implementation, rather than
@@ -476,9 +477,10 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		saved := bf_native_errno_cell
 		mut result := i32(0)
 		defer { if result != i32(C.EAI_SYSTEM) { bf_native_errno_cell = saved } }
-		mut address := BareNameAddress{}
-		result = C.v_name_sockaddr(input, input_size, uint(&address))
+		result = C.v_name_sockaddr(input, input_size, storage)
 		if result != 0 { return result }
+		// The native adapter owns this address for the duration of the call.
+		address := unsafe { &BareNameAddress(voidptr(storage)) }
 		mut files := [uint(c'/etc/hosts'), uint(c'/etc/services')]!
 		if paths != 0 { C.v_name_paths(paths, uint(&files[0])) }
 		if host != 0 && host_size != 0 {
@@ -490,7 +492,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 					result = bare_name_copy(host, host_size, unsafe { tos2(&node[0]) })
 				}
 			} else {
-				result = bare_name_host(&address, flags, files[0], paths, host, host_size)
+				result = bare_name_host(address, flags, files[0], paths, host, host_size)
 			}
 			if result != 0 { return result }
 		}
