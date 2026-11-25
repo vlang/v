@@ -1,7 +1,14 @@
 import os
 import v.tempname
 
-fn or_review_gen_c(name string, src string) string {
+fn or_review_gen_c(name string, cases map[string]string) string {
+	mut fixtures := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for fixture, source in cases {
+		fixtures << source.replace_once('fn main()', 'fn ${fixture}()')
+		calls << '${fixture}()'
+	}
+	src := '${fixtures.join('\n')}\nfn main() {\n\t${calls.join('\n\t')}\n}\n'
 	dir := os.join_path(os.vtmp_dir(), 'v3_or_review_${tempname.unique_token()}')
 	os.mkdir(dir) or { panic(err) }
 	defer {
@@ -72,11 +79,18 @@ ${calls.join('\n')}
 	}
 }
 
-fn or_review_c_body(c_source string, function_name string) string {
-	signature := '\nvoid ${function_name}(void) {'
-	start := c_source.index(signature) or { panic('missing generated C body for ${function_name}') }
-	body, _ := c_source[start + signature.len..].split_once('\n}') or {
-		panic('missing generated C body end for ${function_name}')
+fn or_review_c_body(c_source string, signature_prefix string) string {
+	marker := '\n${signature_prefix}'
+	start := c_source.last_index(marker) or {
+		panic('missing generated C function for ${signature_prefix}')
+	}
+	definition := c_source[start + marker.len..]
+	signature, rest := definition.split_once('\n') or {
+		panic('missing generated C signature for ${signature_prefix}')
+	}
+	assert signature.ends_with(' {'), 'missing generated C definition for ${signature_prefix}'
+	body, _ := rest.split_once('\n}') or {
+		panic('missing generated C body end for ${signature_prefix}')
 	}
 	return body
 }
@@ -117,13 +131,31 @@ fn or_review_check_rejections(cases map[string]OrReviewFixture) {
 	}
 }
 
-fn test_channel_receive_or_stabilizes_side_effectful_source() {
-	c_source := or_review_gen_c('channel_receive_or_source_once',
-		'__global calls int\n\nfn next_channel() chan int {\n\tcalls++\n\tch := chan int{}\n\tch.close()\n\treturn ch\n}\n\nfn main() {\n\tx := (<-next_channel()) or {\n\t\tprintln(err.msg())\n\t\t-1\n\t}\n\tprintln(int_str(x))\n}\n')
-	assert c_source.count('next_channel()') == 1, 'side-effectful channel source was not stabilized'
-	assert c_source.contains('sync__Channel* __chan_src_'), 'missing channel source temp'
-	assert c_source.contains('sync__Channel__pop(__chan_src_'), 'pop does not use channel source temp'
-	assert c_source.contains('sync__Channel__closed_error(__chan_src_'), 'closed_error does not use channel source temp'
+fn test_or_review_codegen_fixtures() {
+	c_source := or_review_gen_c('or_review_codegen', {
+		'channel_receive_or_source_once':   '__global calls int\n\nfn next_channel() chan int {\n\tcalls++\n\tch := chan int{}\n\tch.close()\n\treturn ch\n}\n\nfn main() {\n\tx := (<-next_channel()) or {\n\t\tprintln(err.msg())\n\t\t-1\n\t}\n\tprintln(int_str(x))\n}\n'
+		'default_free_without_user_method': 'struct H {}\n\nfn main() {\n\tmut h := H{}\n\th.free()\n\tprintln("ok")\n}\n'
+		'backed_enum_map_key_size':         'enum Wide as u64 {\n\ta = 1\n\tb = 2\n}\n\nfn main() {\n\tmut m := map[Wide]int{}\n\tm[.a] = 3\n\tm[.b] = 4\n\tm.delete(.a)\n\tprintln(int_str(m[.b] or { 0 }))\n}\n'
+		'pointer_channel_try_receiver':     'fn push(ch &chan int) bool {\n\treturn ch.try_push(7) == .success\n}\n\nfn pop(ch &chan int, out &int) bool {\n\treturn ch.try_pop(mut *out) == .success\n}\n\nfn main() {\n\tch := chan int{cap: 1}\n\tmut out := 0\n\tprintln(push(&ch))\n\tprintln(pop(&ch, &out))\n\tprintln(int_str(out))\n}\n'
+	})
+	receive_body := or_review_c_body(c_source, 'void channel_receive_or_source_once(')
+	assert receive_body.count('next_channel()') == 1, 'side-effectful channel source was not stabilized'
+	assert receive_body.contains('sync__Channel* __chan_src_'), 'missing channel source temp'
+	assert receive_body.contains('sync__Channel__pop(__chan_src_'), 'pop does not use channel source temp'
+	assert receive_body.contains('sync__Channel__closed_error(__chan_src_'), 'closed_error does not use channel source temp'
+	free_body := or_review_c_body(c_source, 'void default_free_without_user_method(')
+	assert free_body.contains('((void)0);'), 'default free did not lower to no-op'
+	assert !c_source.contains('H__free('), 'default free emitted missing user method call'
+	map_body := or_review_c_body(c_source, 'void backed_enum_map_key_size(')
+	assert map_body.contains('new_map(sizeof(u64), sizeof(i64), map_hash_int_8, map_eq_int_8'), 'backed enum map key size does not match 8-byte callbacks'
+	assert map_body.contains('u64 __map_key_'), 'backed enum map key temp does not use backing storage'
+	assert !c_source.contains('Wide __map_key_'), 'backed enum map key temp still uses enum typedef storage'
+	assert !c_source.contains('new_map(sizeof(main__Wide)'), 'backed enum map allocation still uses enum typedef size'
+	assert !c_source.contains('&(main__Wide[]){'), 'backed enum map compound key literal still uses enum typedef storage'
+	push_body := or_review_c_body(c_source, 'bool push(')
+	assert push_body.contains('sync__Channel__try_push(*(ch),'), 'try_push on pointer channel receiver does not dereference the channel handle'
+	pop_body := or_review_c_body(c_source, 'bool pop(')
+	assert pop_body.contains('sync__Channel__try_pop(*(ch),'), 'try_pop on pointer channel receiver does not dereference the channel handle'
 }
 
 fn test_optional_element_or_uses_fallback_without_err_binding() {
@@ -137,11 +169,11 @@ fn test_optional_element_or_uses_fallback_without_err_binding() {
 			expected: '7\n5\n-2'
 		}
 	}, true)
-	array_body := or_review_c_body(c_source, 'array_optional_element_fallback_run')
+	array_body := or_review_c_body(c_source, 'void array_optional_element_fallback_run(')
 	assert array_body.contains('__v_option_i64 __arr_opt_'), 'missing loaded optional temp'
 	assert array_body.contains('i64 err = 7;'), 'explicit outer err was not preserved'
 	assert !array_body.contains('IError err = __arr_opt_'), 'element failure branch binds an Option error'
-	map_body := or_review_c_body(c_source, 'map_optional_element_fallback_run')
+	map_body := or_review_c_body(c_source, 'void map_optional_element_fallback_run(')
 	assert map_body.contains('__v_option_i64 __map_opt_'), 'missing loaded map optional temp'
 	assert map_body.contains('i64 err = 7;'), 'explicit outer err was not preserved'
 	assert !map_body.contains('IError err = __map_opt_'), 'map element failure branch binds an Option error'
@@ -151,30 +183,6 @@ fn test_nested_optional_logical_or_preserves_short_circuiting() {
 	out := or_review_run('nested_optional_logical_or_short_circuit',
 		'__global calls int\n\nfn yes() ?bool {\n\treturn true\n}\n\nfn no() ?bool {\n\treturn false\n}\n\nfn fail_bool() ?bool {\n\tcalls++\n\treturn none\n}\n\nfn effect_true() ?bool {\n\tcalls++\n\treturn true\n}\n\nfn main() {\n\tcalls = 0\n\ta := (yes()? || fail_bool()?) or { false }\n\tprintln(if a { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\tb := (no()? && fail_bool()?) or { true }\n\tprintln(if b { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\tc := (no()? || effect_true()?) or { false }\n\tprintln(if c { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\td := (yes()? && effect_true()?) or { false }\n\tprintln(if d { "true" } else { "false" })\n\tprintln(int_str(calls))\n}\n')
 	assert out == 'true\n0\nfalse\n0\ntrue\n1\ntrue\n1'
-}
-
-fn test_default_free_without_user_method_stays_noop() {
-	c_source := or_review_gen_c('default_free_without_user_method',
-		'struct H {}\n\nfn main() {\n\tmut h := H{}\n\th.free()\n\tprintln("ok")\n}\n')
-	assert c_source.contains('((void)0);'), 'default free did not lower to no-op'
-	assert !c_source.contains('H__free('), 'default free emitted missing user method call'
-}
-
-fn test_backed_enum_map_key_uses_backing_storage_size() {
-	c_source := or_review_gen_c('backed_enum_map_key_size',
-		'enum Wide as u64 {\n\ta = 1\n\tb = 2\n}\n\nfn main() {\n\tmut m := map[Wide]int{}\n\tm[.a] = 3\n\tm[.b] = 4\n\tm.delete(.a)\n\tprintln(int_str(m[.b] or { 0 }))\n}\n')
-	assert c_source.contains('new_map(sizeof(u64), sizeof(i64), map_hash_int_8, map_eq_int_8'), 'backed enum map key size does not match 8-byte callbacks'
-	assert c_source.contains('u64 __map_key_'), 'backed enum map key temp does not use backing storage'
-	assert !c_source.contains('Wide __map_key_'), 'backed enum map key temp still uses enum typedef storage'
-	assert !c_source.contains('new_map(sizeof(main__Wide)'), 'backed enum map allocation still uses enum typedef size'
-	assert !c_source.contains('&(main__Wide[]){'), 'backed enum map compound key literal still uses enum typedef storage'
-}
-
-fn test_pointer_channel_try_call_derefs_receiver() {
-	c_source := or_review_gen_c('pointer_channel_try_receiver',
-		'fn push(ch &chan int) bool {\n\treturn ch.try_push(7) == .success\n}\n\nfn pop(ch &chan int, out &int) bool {\n\treturn ch.try_pop(mut *out) == .success\n}\n\nfn main() {\n\tch := chan int{cap: 1}\n\tmut out := 0\n\tprintln(push(&ch))\n\tprintln(pop(&ch, &out))\n\tprintln(int_str(out))\n}\n')
-	assert c_source.contains('sync__Channel__try_push(*(ch),'), 'try_push on pointer channel receiver does not dereference the channel handle'
-	assert c_source.contains('sync__Channel__try_pop(*(ch),'), 'try_pop on pointer channel receiver does not dereference the channel handle'
 }
 
 fn test_channel_runtime_fixtures() {
