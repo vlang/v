@@ -761,7 +761,7 @@ fn main() {
 "
 	})
 
-	generic_after_select_compile := orm_join_sql_attr_compile('orm_generic_after_select', "import db.sqlite
+	static_cases['orm_generic_after_select'] = "import db.sqlite
 
 struct FirstGenericSqlRow[T] {
 	id int @[primary]
@@ -797,8 +797,7 @@ fn main() {
 		drop table SecondGenericSqlRow[int]
 	}!
 }
-")
-	assert generic_after_select_compile.exit_code == 0, generic_after_select_compile.output
+"
 
 	orm_join_sql_attr_run_batch(static_cases)
 
