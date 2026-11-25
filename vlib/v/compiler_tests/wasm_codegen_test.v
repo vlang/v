@@ -1,19 +1,46 @@
 import os
+import v.tempname
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
-const wasm_compiler = os.join_path(os.vtmp_dir(), 'ssa_wasm_codegen_compiler_${os.getpid()}')
+const wasm_suite_temp = os.join_path(os.vtmp_dir(), 'ssa_wasm_codegen_${tempname.unique_token()}')
+const wasm_compiler = wasm_suite_temp + $if windows { '.exe' } $else { '' }
 
 fn testsuite_begin() {
 	if os.getenv('V3_TEST_WASM') != '1' {
 		eprintln('> skipping v3 wasm backend tests; set V3_TEST_WASM=1 to run')
 		exit(0)
 	}
+	// The launcher caches its WASM-capable compiler. Keep a suite-local build
+	// for standalone drivers, custom flags, and runs with tool caching disabled.
+	if os.getenv('VFLAGS') == ''
+		&& os.getenv('VTOOLS_NO_CACHE').trim_space().to_lower() !in ['1', 'true', 'yes', 'on']
+		&& running_compiler_supports_wasm() {
+		return
+	}
 	build := os.exec([vexe, '-no-retry-compilation', '-cc', 'clang', '-gc', 'none', '-compile-backend',
 		'wasm', '-o', wasm_compiler, v3_src])
 	assert build.exit_code == 0, build.output
+}
+
+fn running_compiler_supports_wasm() bool {
+	source := wasm_suite_temp + '.v'
+	output := wasm_suite_temp + '.wasm'
+	defer {
+		os.rm(source) or {}
+		os.rm(output) or {}
+	}
+	os.write_file(source, 'fn main() {}\n') or { panic(err) }
+	probe := os.exec([vexe, '-b', 'wasm', '-o', output, source])
+	if probe.exit_code != 0
+		&& probe.output.contains('WebAssembly support is not compiled into this executable') {
+		return false
+	}
+	assert probe.exit_code == 0, probe.output
+	assert_valid_wasm(output)
+	return true
 }
 
 fn testsuite_end() {
@@ -21,7 +48,7 @@ fn testsuite_end() {
 }
 
 fn v3_binary() string {
-	return wasm_compiler
+	return if os.is_file(wasm_compiler) { wasm_compiler } else { vexe }
 }
 
 fn compile_to_wasm(v3_bin string, src string, name string) string {
@@ -414,7 +441,7 @@ pub fn answer() int { return value() * 2 }
 ') or { panic(err) }
 	for production in [false, true] {
 		output := os.join_path(dir, 'main_${production}.wasm')
-		mut args := [vexe, '-b', 'wasm', '-o', output, main_v]
+		mut args := [v3_binary(), '-b', 'wasm', '-o', output, main_v]
 		if production {
 			args.insert(1, '-prod')
 		}
