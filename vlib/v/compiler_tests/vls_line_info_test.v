@@ -8,12 +8,7 @@ import time
 import x.json2
 import v.compiler_tests.method_form
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const line_info_v3_bin = os.join_path(os.temp_dir(), 'v3_line_info_test_${os.getpid()}')
+const line_info_v3_bin = @VEXE
 const work_dir = os.join_path(os.vtmp_dir(), 'v3_line_info_test_${os.getpid()}')
 
 const program = "module main
@@ -486,9 +481,6 @@ fn main() {
 "
 
 fn testsuite_begin() {
-	res := os.exec([vexe, '-gc', 'none', '-path', '${'${vlib_dir}|@vlib|@vmodules'}', '-o',
-		line_info_v3_bin, '${v3_src}'])
-	assert res.exit_code == 0, res.output
 	os.mkdir_all(os.join_path(work_dir, 'completion')) or { panic(err) }
 	os.mkdir_all(os.join_path(work_dir, 'declarations')) or { panic(err) }
 	os.mkdir_all(os.join_path(work_dir, 'shadowing')) or { panic(err) }
@@ -519,7 +511,6 @@ fn testsuite_begin() {
 }
 
 fn testsuite_end() {
-	os.rm(line_info_v3_bin) or {}
 	os.rmdir_all(work_dir) or {}
 }
 
@@ -561,8 +552,14 @@ fn ask_at_only(dir string, spec string) string {
 	return run_line_info(dir, spec).trim_space()
 }
 
+fn run_line_info_compiler(args []string, dir string) os.Result {
+	return cmdexec.run_in_merged_with_env(line_info_v3_bin, args, dir, {
+		'VFLAGS': ''
+	})
+}
+
 fn run_line_info(dir string, spec string) string {
-	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
+	res := run_line_info_compiler(['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
 		'main.v:' + '${spec}', 'main.v'], dir)
 	assert res.exit_code == 0, res.output
 	return res.output
@@ -667,8 +664,8 @@ fn without_host(answer string) string {
 // ask_in asks `-line-info` about `spec`, a file of the program of `dir` with a
 // position (`models/models.v:10:10`), checking the program from its main.v.
 fn ask_in(dir string, spec string) string {
-	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
-		'${spec}', 'main.v'], dir)
+	res := run_line_info_compiler(['-w', '-check', '-nocolor', '-vls-mode', '-line-info', '${spec}',
+		'main.v'], dir)
 	assert res.exit_code == 0, res.output
 	return res.output.trim_space()
 }
@@ -992,6 +989,7 @@ fn test_the_diagnostics_server_answers_queries_between_checks() {
 	p.set_work_folder(work_dir)
 	mut env := os.environ()
 	env['V_DIAGNOSTICS_SERVER'] = '1'
+	env['VFLAGS'] = ''
 	p.set_environment(env)
 	p.set_redirect_stdio()
 	p.run()
@@ -1037,6 +1035,7 @@ fn start_server_with(dir string, options []string, vars map[string]string) &os.P
 	for name, value in vars {
 		env[name] = value
 	}
+	env['VFLAGS'] = ''
 	p.set_environment(env)
 	p.set_redirect_stdio()
 	p.run()
@@ -1069,7 +1068,7 @@ fn ask_once(dir string, questions []string) []string {
 // ask_once_with is ask_once with the options `options` besides.
 fn ask_once_with(dir string, options string, questions []string) []string {
 	spec := questions.map('main.v:${it}').join('\t')
-	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor',
+	res := run_line_info_compiler(['-w', '-check', '-nocolor',
 		...(os.split_args(options) or { panic(err) }), '-vls-mode', '-line-info', '${spec}', '.'], dir)
 	assert res.exit_code == 0, res.output
 	return res.output.trim_right('\n').split('\n').map(it.all_after('\t'))
@@ -1851,8 +1850,11 @@ fn check_as_prepared_server(dir string, change fn (string)) (string, string) {
 
 // one_shot_check checks `dir` as a one-shot check of the same command line.
 fn one_shot_check(dir string) string {
-	res := cmdexec.run_in('env', ['V_CHECK_SELECTED_FILES_ONLY=1', line_info_v3_bin, '-no-memory-limit',
-		'-w', '-check', '-nocolor', '.'], dir)
+	res := cmdexec.run_in_merged_with_env(line_info_v3_bin, ['-no-memory-limit', '-w', '-check',
+		'-nocolor', '.'], dir, {
+		'VFLAGS':                      ''
+		'V_CHECK_SELECTED_FILES_ONLY': '1'
+	})
 	return 'exit ${res.exit_code}\n' + res.output.trim_space()
 }
 
