@@ -4,7 +4,9 @@ fn C.setpgid(pid i32, pgid i32) i32
 
 // The posix_spawn calls are in a C object of their own: an `#include <spawn.h>` in this file
 // would put V's whole platform header block into every program that imports `os`.
-#flag linux @VEXEROOT/vlib/os/posix_spawn_nix.o
+$if !freestanding && !syscalls {
+	#flag linux @VEXEROOT/vlib/os/posix_spawn_nix.o
+}
 
 fn C.v_os_posix_spawn(exe &char, argv &&char, envp &&char, use_pgroup i32, stdin_path &char, redirect i32, stdin_fd i32, out_fd i32, err_fd i32, close_fds &i32, n_close i32) i32
 
@@ -35,7 +37,7 @@ fn env_value_from_entries(env []string, name string) ?string {
 	return none
 }
 
-fn (p &Process) unix_resolve_filename() !string {
+fn (p &Process) unix_resolve_filename(capture bool) !string {
 	if is_abs_path(p.filename) {
 		return p.filename
 	}
@@ -45,7 +47,10 @@ fn (p &Process) unix_resolve_filename() !string {
 		}
 		return p.filename
 	}
-	path := env_value_from_entries(p.env, 'PATH') or { return error_failed_to_find_executable() }
+	path := env_value_from_entries(p.env, 'PATH') or {
+		if !capture { return error_failed_to_find_executable() }
+		'/bin:/usr/bin'
+	}
 	return find_abs_path_of_executable_in_path_env(p.filename, path)
 }
 
@@ -75,15 +80,20 @@ struct UnixSpawnPlan {
 // message that the child prints on its (already redirected) stderr, keeping the
 // previous observable behaviour of a child that exits with code 1.
 fn (p &Process) unix_prepare_spawn() UnixSpawnPlan {
+	return p.unix_prepare_spawn_plan(false)
+}
+
+fn (p &Process) unix_prepare_spawn_plan(capture bool) UnixSpawnPlan {
 	mut exe := ''
 	mut resolve_error := ''
-	if resolved := p.unix_resolve_filename() {
+	if resolved := p.unix_resolve_filename(capture) {
 		exe = resolved
 	} else {
 		resolve_error = '${err}\n'
 	}
 	mut argv := []&char{cap: p.args.len + 2}
-	argv << &char(exe.str)
+	// Capture has execvp's literal argv[0] contract, including PATH aliases.
+	argv << if capture { &char(p.filename.str) } else { &char(exe.str) }
 	for i in 0 .. p.args.len {
 		argv << &char(p.args[i].str)
 	}
@@ -256,9 +266,9 @@ fn unix_process_pipe(fds &i32) i32 {
 	return C.pipe(fds)
 }
 
-fn (mut p Process) unix_spawn_process() int {
+fn (mut p Process) unix_spawn_process(inherit_stdin bool) int {
 	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
-		return p.fsys_spawn_process()
+		return p.fsys_spawn_process(inherit_stdin)
 	} $else {
 		return p.unix_spawn_process_libc()
 	}

@@ -418,13 +418,10 @@ pub fn execute(cmd string) Result {
 }
 
 fn execute_shell(cmd string) Result {
-	$if freestanding || syscalls {
-		// execute_capture_nix.o links pipe/posix_spawn and is not linked in a
-		// freestanding build
-		return Result{
-			exit_code: -1
-			output:    'exec("${cmd}") is not supported in freestanding builds'
-		}
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		return fsys_execute_shell(cmd)
+	} $else $if freestanding || syscalls {
+		return Result{ exit_code: -1, output: 'exec("${cmd}") is not supported in freestanding builds' }
 	} $else {
 		mut pid := 0
 		mut read_fd := -1
@@ -469,21 +466,15 @@ pub fn exec(args []string) Result {
 			output:    'exec requires at least one argument'
 		}
 	}
-	mut cargs := []&char{cap: args.len + 1}
-	// Borrow the caller's strings until capture_start consumes argv. Under
-	// autofree, a foreach value is a temporary clone released each iteration.
-	for i in 0 .. args.len {
-		cargs << &char(args[i].str)
-	}
-	cargs << &char(unsafe { nil })
-	$if freestanding || syscalls {
-		// execute_capture_nix.o links pipe/posix_spawn and is not linked in a
-		// freestanding build
-		return Result{
-			exit_code: -1
-			output:    'exec("${args[0]}") is not supported in freestanding builds'
-		}
+	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
+		return fsys_exec_capture(args, args[0])
+	} $else $if freestanding || syscalls {
+		return Result{ exit_code: -1, output: 'exec("${args[0]}") is not supported in freestanding builds' }
 	} $else {
+		mut cargs := []&char{cap: args.len + 1}
+		// Borrow argv entries until the native capture helper consumes them.
+		for i in 0 .. args.len { cargs << &char(args[i].str) }
+		cargs << &char(unsafe { nil })
 		mut pid := 0
 		mut read_fd := -1
 		v_os_execute_lock()
