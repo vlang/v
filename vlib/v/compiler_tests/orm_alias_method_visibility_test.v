@@ -281,15 +281,43 @@ fn test_public_inherited_alias_methods_work_in_imported_sql_values() {
 }
 
 fn test_private_inherited_alias_methods_are_rejected_in_sql_values() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_sql_alias_visibility_private_${os.getpid()}')
+	os.mkdir_all(os.join_path(dir, 'aliases'))!
+	defer { os.rmdir_all(dir) or {} }
+	module_source := sql_alias_visibility_module.replace('TYPE_VISIBILITY', 'pub ').replace('VISIBILITY',
+		'')
+	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'), module_source)!
+	mut probes := []string{}
+	mut calls := []string{}
 	for i, expression in ['aliases.make().clone()[0].name', 'values.clone()[0].name',
 		'(values).clone()[0].name', 'aliases.WrappedNames(values).clone()[0].name'] {
 		for query in [SqlAliasVisibilityQuery.selection, .update] {
-			for check_only in [false, true] {
-				result := sql_alias_visibility_result('private_${i}_${query}_${check_only}',
-					false, expression, query, check_only, true, 'aliases')
-				assert result.exit_code != 0, result.output
-				assert result.output.contains('method `aliases.WrappedNames.clone` is private'), result.output
-			}
+			name := 'probe_${i}_${query}'
+			probes << sql_alias_visibility_probe_source(query, expression, '', '', '', '')
+				.replace_once('fn probe_${query}()', 'fn ${name}()')
+			calls << '${name}()!'
+		}
+	}
+	main_source := sql_alias_visibility_main.replace('PROBES', probes.join('\n'))
+		.replace('PROBE_CALLS', calls.join('\n\t'))
+		.replace('EXTRA_DECLARATIONS', '')
+		.replace('EXTRA_BINDINGS', '')
+	source := os.join_path(dir, 'main.v')
+	os.write_file(source, main_source)!
+	mut cases := map[int]string{}
+	for i, line in main_source.split_into_lines() {
+		if line.contains('.clone()') {
+			cases[i + 1] = line.trim_space()
+		}
+	}
+	assert cases.len == calls.len
+	executable := os.join_path(dir, 'main.exe')
+	for flags in [[]string{}, ['-check']] {
+		result := os.exec([@VEXE, '-nocolor', ...flags, '-o', executable, source])
+		assert result.exit_code != 0, result.output
+		diagnostics := result.output.split_into_lines().filter(it.contains('error: method `aliases.WrappedNames.clone` is private'))
+		for line, query in cases {
+			assert diagnostics.any(it.contains('main.v:${line}:')), '${query}, flags=${flags}: ${result.output}'
 		}
 	}
 }
