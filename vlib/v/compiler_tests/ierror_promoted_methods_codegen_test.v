@@ -1,7 +1,7 @@
 import os
 import v.tempname
 
-fn test_ierror_dispatch_uses_promoted_embedded_methods() {
+fn test_ierror_dispatch_uses_promoted_receivers() {
 	root := os.join_path(os.vtmp_dir(), 'v3_ierror_promoted_methods_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -26,7 +26,7 @@ struct WrapErr {
 	BaseErr
 }
 
-fn fail() !int {
+fn fail_value() !int {
 	return WrapErr{
 		BaseErr: BaseErr{
 			text: 'promoted'
@@ -34,37 +34,7 @@ fn fail() !int {
 	}
 }
 
-fn main() {
-	fail() or {
-		println(err.msg() + ':' + err.code().str())
-		return
-	}
-	println('bad')
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'app')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	c_code := os.read_file('${bin}.c') or { '' }
-	assert c_code.contains('BaseErr__msg(((main__WrapErr*)i->_object)->BaseErr)'), c_code
-	assert c_code.contains('helper_msg'), c_code
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'promoted:42'
-}
-
-fn test_ierror_dispatch_uses_promoted_embedded_pointer_methods() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_promoted_pointer_methods_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "struct PtrErr {
+struct PtrErr {
 	text string
 }
 
@@ -118,16 +88,51 @@ fn fail_nested() !int {
 	}
 }
 
+struct FallbackBaseErr {
+	text string
+}
+
+fn (err FallbackBaseErr) msg() string {
+	return err.text
+}
+
+fn (err FallbackBaseErr) code() int {
+	return 7
+}
+
+struct FallbackWrapErr {
+	FallbackBaseErr
+}
+
+fn (err FallbackWrapErr) msg(extra int) string {
+	return err.FallbackBaseErr.text + ':' + extra.str()
+}
+
+fn (err FallbackWrapErr) code(extra int) int {
+	return extra
+}
+
+fn fail_fallback() !int {
+	return FallbackWrapErr{
+		FallbackBaseErr: FallbackBaseErr{
+			text: 'embedded'
+		}
+	}
+}
+
 fn main() {
+	fail_value() or {
+		println(err.msg() + ':' + err.code().str())
+	}
 	fail_pointer() or {
-		assert err.msg() == 'pointer'
-		assert err.code() == 7
+		println(err.msg() + ':' + err.code().str())
 	}
 	fail_nested() or {
-		assert err.msg() == 'nested'
-		assert err.code() == 8
+		println(err.msg() + ':' + err.code().str())
 	}
-	println('ok')
+	fail_fallback() or {
+		println(err.msg() + ':' + err.code().str())
+	}
 }
 ") or {
 		panic(err)
@@ -139,12 +144,18 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file('${bin}.c') or { '' }
+	assert c_code.contains('BaseErr__msg(((main__WrapErr*)i->_object)->BaseErr)'), c_code
+	assert c_code.contains('helper_msg'), c_code
 	assert c_code.contains('PtrErr__msg(&(((main__PointerWrapErr*)i->_object)->PtrErr))'), c_code
 	assert c_code.contains('InnerErr__msg((((main__NestedWrapErr*)i->_object)->PointerInner).InnerErr)'), c_code
+	assert c_code.contains('FallbackBaseErr__msg(((main__FallbackWrapErr*)i->_object)->FallbackBaseErr)'), c_code
+	assert c_code.contains('FallbackBaseErr__code(((main__FallbackWrapErr*)i->_object)->FallbackBaseErr)'), c_code
+	assert !c_code.contains('return FallbackWrapErr__msg(*(main__FallbackWrapErr*)i->_object)'), c_code
+	assert !c_code.contains('return FallbackWrapErr__code(*(main__FallbackWrapErr*)i->_object)'), c_code
 
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	assert run.output.trim_space() == 'promoted:42\npointer:7\nnested:8\nembedded:7', run.output
 }
 
 // Embedded structs must come first in a struct body.
@@ -315,68 +326,4 @@ fn main() {
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
-}
-
-fn test_ierror_direct_bad_signature_falls_back_to_promoted_method() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_bad_direct_promoted_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "struct BaseErr {
-	text string
-}
-
-fn (err BaseErr) msg() string {
-	return err.text
-}
-
-fn (err BaseErr) code() int {
-	return 7
-}
-
-struct WrapErr {
-	BaseErr
-}
-
-fn (err WrapErr) msg(extra int) string {
-	return err.BaseErr.text + ':' + extra.str()
-}
-
-fn (err WrapErr) code(extra int) int {
-	return extra
-}
-
-fn fail() !int {
-	return WrapErr{
-		BaseErr: BaseErr{
-			text: 'embedded'
-		}
-	}
-}
-
-fn main() {
-	fail() or {
-		println(err.msg() + ':' + err.code().str())
-		return
-	}
-	println('bad')
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'app')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	c_code := os.read_file('${bin}.c') or { '' }
-	assert c_code.contains('BaseErr__msg(((main__WrapErr*)i->_object)->BaseErr)'), c_code
-	assert c_code.contains('BaseErr__code(((main__WrapErr*)i->_object)->BaseErr)'), c_code
-	assert !c_code.contains('return WrapErr__msg(*(main__WrapErr*)i->_object)'), c_code
-	assert !c_code.contains('return WrapErr__code(*(main__WrapErr*)i->_object)'), c_code
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'embedded:7'
 }
