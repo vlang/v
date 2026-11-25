@@ -402,7 +402,14 @@ fn test_imported_module_call_in_struct_default_has_no_receiver_arg() {
 
 fn test_global_struct_defaults_follow_global_declaration_order() {
 	v3_bin := build_v3()
-	out := run_good_with_flags(v3_bin, 'global_struct_default_declaration_order', '-enable-globals', 'struct State {
+	out := run_good_project_with_flags(v3_bin, 'global_struct_defaults', '-enable-globals', {
+		'v.mod':               "Module { name: 'global_struct_default_owner_module' }\n"
+		'defaults/defaults.v': 'module defaults\n\n__global base_value = 1\n\npub struct State {\npub:\n\tvalue int = base_value\n}\n\nfn init() {\n\tbase_value = 7\n}\n'
+		'main.v':              'module main
+
+import defaults
+
+struct State {
 	value int = seed
 }
 
@@ -411,17 +418,15 @@ __global (
 	state State
 )
 
+__global module_state defaults.State
+
 fn main() {
 	println(int_str(state.value))
+	println(int_str(module_state.value))
 }
-')
-	assert out == '7'
-	module_out := run_good_project_with_flags(v3_bin, 'global_struct_default_owner_module', '-enable-globals', {
-		'v.mod':               "Module { name: 'global_struct_default_owner_module' }\n"
-		'defaults/defaults.v': 'module defaults\n\n__global base_value = 1\n\npub struct State {\npub:\n\tvalue int = base_value\n}\n\nfn init() {\n\tbase_value = 7\n}\n'
-		'main.v':              'module main\n\nimport defaults\n\n__global state defaults.State\n\nfn main() {\n\tprintln(int_str(state.value))\n}\n'
+'
 	}, 'main.v')
-	assert module_out == '7'
+	assert out == '7\n7'
 }
 
 fn test_empty_fixed_array_of_function_arrays_resolves_element_type() {
@@ -2640,7 +2645,7 @@ fn main() {
 fn test_or_staging_does_not_construct_unused_defaults() {
 	v3_bin := build_v3()
 	source := '@[has_globals]
-module main
+module staging
 
 __global default_calls int
 
@@ -2674,7 +2679,7 @@ fn maybe_pair(ok bool) !(StagedValue, string) {
 	return StagedValue{value: 11}, "pair"
 }
 
-fn main() {
+pub fn check() {
 	a := choose_value(true)
 	assert a.value == 7 && a.items == [3] && a.labels["k"] == "v"
 	b := choose_value(false)
@@ -2704,9 +2709,13 @@ fn main() {
 	println("ok")
 }
 '
-	assert run_good(v3_bin, 'or_staging_defaults', source) == 'ok'
-	heap_source := source.replace('struct StagedValue {', '@[heap]\nstruct StagedValue {')
-	assert run_good(v3_bin, 'or_staging_heap_defaults', heap_source) == 'ok'
+	heap_source := source.replace_once('module staging', 'module heap_staging').replace_once('struct StagedValue {', '@[heap]\nstruct StagedValue {')
+	out := run_good_project(v3_bin, 'or_staging_defaults', {
+		'main.v':                 'module main\n\nimport heap_staging\nimport staging\n\nfn main() {\n\tstaging.check()\n\theap_staging.check()\n}\n'
+		'staging/staging.v':      source
+		'heap_staging/staging.v': heap_source
+	}, 'main.v')
+	assert out == 'ok\nok'
 }
 
 fn test_interpolation_joins_without_intermediate_storage() {
@@ -6220,19 +6229,34 @@ fn main() {
 }
 ', '5\n7\n5\n8'},
 	])
-	promoted_cross_module_default_out := run_good_project(v3_bin, 'promoted_cross_module_struct_default', {
-		'v.mod':            "Module { name: 'promoted_cross_module_struct_default' }\n"
-		'defaults/types.v': 'module defaults\n\npub const default_a = 3\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = Inner{\n\t\ta: default_a\n\t\tb: 4\n\t}\n}\n'
-		'main.v':           'module main\n\nimport defaults\n\nconst default_a = 99\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
+	promoted_defaults_out := run_good_project(v3_bin, 'promoted_cross_module_struct_default', {
+		'v.mod':                  "Module { name: 'promoted_cross_module_struct_default' }\n"
+		'defaults/types.v':       'module defaults\n\npub const default_a = 3\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = Inner{\n\t\ta: default_a\n\t\tb: 4\n\t}\n}\n'
+		'helpers/helpers.v':      'module helpers\n\npub fn default_a() int {\n\treturn 3\n}\n'
+		'alias_defaults/types.v': 'module alias_defaults\n\nimport helpers as h\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = make_inner(h.default_a())\n}\n\nfn make_inner(a int) Inner {\n\treturn Inner{\n\t\ta: a\n\t\tb: 4\n\t}\n}\n'
+		'main.v':                 'module main
+
+import alias_defaults
+import defaults
+
+const default_a = 99
+
+fn main() {
+	value := defaults.Outer{
+		b: 7
+	}
+	println(int_str(value.Inner.a))
+	println(int_str(value.Inner.b))
+
+	from_alias := alias_defaults.Outer{
+		b: 7
+	}
+	println(int_str(from_alias.Inner.a))
+	println(int_str(from_alias.Inner.b))
+}
+'
 	}, 'main.v')
-	assert promoted_cross_module_default_out == '3\n7'
-	promoted_import_alias_call_default_out := run_good_project(v3_bin, 'promoted_import_alias_call_default', {
-		'v.mod':             "Module { name: 'promoted_import_alias_call_default' }\n"
-		'helpers/helpers.v': 'module helpers\n\npub fn default_a() int {\n\treturn 3\n}\n'
-		'defaults/types.v':  'module defaults\n\nimport helpers as h\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = make_inner(h.default_a())\n}\n\nfn make_inner(a int) Inner {\n\treturn Inner{\n\t\ta: a\n\t\tb: 4\n\t}\n}\n'
-		'main.v':            'module main\n\nimport defaults\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
-	}, 'main.v')
-	assert promoted_import_alias_call_default_out == '3\n7'
+	assert promoted_defaults_out == '3\n7\n3\n7'
 	promoted_call_default_out := run_good_with_flags(v3_bin, 'promoted_embed_call_default', '-enable-globals', '__global calls int
 
 struct CallInner {
