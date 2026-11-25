@@ -174,7 +174,7 @@ as one JSON object per line on stderr, instead of the text with a source excerpt
 
 | Member | Value |
 | --- | --- |
-| `file` | The path the text form shows: relative to the working directory, or absolute with `VERROR_PATHS=absolute`. |
+| `file` | The path the text form shows: relative to the working directory, or absolute with `VERROR_PATHS=absolute`; `\`-separated on Windows. |
 | `line`, `col` | Where the reported span starts. Both start at 1; a column counts bytes. |
 | `end_line`, `end_col` | The position after the last byte of the span. |
 | `severity` | `error`, `warning` or `notice`. |

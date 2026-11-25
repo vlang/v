@@ -1,6 +1,7 @@
 // vtest build: !self_sandboxed_packaging? && !sanitized_job?
 import os
 import term
+import v.fixturetest
 import v.util.diff
 import v.util.vtest
 import time
@@ -458,16 +459,15 @@ fn (mut task TaskDescription) execute() {
 	}
 	mut expected := os.read_file(expected_out_path) or { panic(err) }
 	task.expected = clean_line_endings(expected)
-	task.found___ = clean_line_endings(res.output)
+	mut found := res.output
 	$if windows {
-		if task.is_module {
-			task.found___ = task.found___.replace_once('\\', '/')
-		}
+		found = fixturetest.slash_diagnostic_paths(found)
 	}
+	task.found___ = clean_line_endings(found)
 	if task.expected != task.found___ {
 		task.is_error = true
 		if should_autofix {
-			os.write_file(expected_out_path, res.output) or { panic(err) }
+			os.write_file(expected_out_path, found) or { panic(err) }
 		}
 	}
 }
