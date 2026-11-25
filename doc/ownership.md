@@ -395,6 +395,14 @@ fn main() {
 }
 ```
 
+References returned by a method can keep a field of the receiver borrowed.
+An outstanding field reference prevents moving the receiver. Disjoint fields
+remain available for mutation.
+
+A returned reference retains the access of its source borrow. A mutable binding
+can be rebound, but it does not make an immutable borrow writable. A mutable
+call or a field assignment through that reference requires a mutable loan.
+
 ## Thread transfers
 
 An ownership build checks the arguments and result of a `spawn` or `go` call. The
