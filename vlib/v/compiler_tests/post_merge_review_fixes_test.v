@@ -4065,12 +4065,23 @@ fn test_interface_is_unqualified_local_uses_exact_impl_id() {
 
 fn test_callback_lambda_lift_preserves_outer_captures() {
 	v3_bin := build_v3()
-	no_arg_out := run_good(v3_bin, 'callback_no_arg_lambda_lift_preserves_capture', 'fn apply(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tvalue := 41\n\tprintln(int_str(apply(|| value + 1)))\n}\n')
-	assert no_arg_out == '42'
-	out := run_good(v3_bin, 'callback_lambda_lift_preserves_capture', 'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn main() {\n\toffset := 7\n\tprintln(int_str(apply(|n| n + offset, 5)))\n}\n')
-	assert out == '12'
-	callee_out := run_good(v3_bin, 'callback_lambda_lift_preserves_fn_callee_capture', 'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn double(n int) int {\n\treturn n * 2\n}\n\nfn main() {\n\tcb := double\n\tprintln(int_str(apply(|n| cb(n), 6)))\n}\n')
-	assert callee_out == '12'
+	run_good_module_batch(v3_bin, 'callback_captures', [
+		ReviewRuntimeCase{
+			name:     'callback_no_arg_lambda_lift_preserves_capture'
+			source:   'fn apply(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tvalue := 41\n\tprintln(int_str(apply(|| value + 1)))\n}\n'
+			expected: '42'
+		},
+		ReviewRuntimeCase{
+			name:     'callback_lambda_lift_preserves_capture'
+			source:   'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn main() {\n\toffset := 7\n\tprintln(int_str(apply(|n| n + offset, 5)))\n}\n'
+			expected: '12'
+		},
+		ReviewRuntimeCase{
+			name:     'callback_lambda_lift_preserves_fn_callee_capture'
+			source:   'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn double(n int) int {\n\treturn n * 2\n}\n\nfn main() {\n\tcb := double\n\tprintln(int_str(apply(|n| cb(n), 6)))\n}\n'
+			expected: '12'
+		},
+	])
 }
 
 fn test_callback_lambda_lift_forwards_optional_void_failures() {
@@ -4402,23 +4413,30 @@ fn main() {
 
 fn test_latest_pr_review_codegen_regressions() {
 	v3_bin := build_v3()
-	small_int_comparison := run_good(v3_bin, 'parenthesized_small_int_comparison', 'fn main() {
+	run_good_module_batch(v3_bin, 'codegen_regressions', [
+		ReviewRuntimeCase{
+			name:     'parenthesized_small_int_comparison'
+			source:   'fn main() {
 	println(((u8(255) + u8(1)) == 0).str())
 	println((((u8(255) + u8(1))) == 0).str())
 }
-')
-	assert small_int_comparison == 'true\ntrue'
-
-	c_strings := run_good(v3_bin, 'single_char_c_string_pointer_context', "fn C.strlen(charptr) uint
+'
+			expected: 'true\ntrue'
+		},
+		ReviewRuntimeCase{
+			name:     'single_char_c_string_pointer_context'
+			source:   "fn C.strlen(charptr) uint
 
 fn main() {
 	println(C.strlen(c'\\n'))
 	println(C.strlen((c'\\n')))
 }
-")
-	assert c_strings == '1\n1'
-
-	ierror_selector := run_good(v3_bin, 'temporary_ierror_selector_equality', "struct ErrorHolder {
+"
+			expected: '1\n1'
+		},
+		ReviewRuntimeCase{
+			name:     'temporary_ierror_selector_equality'
+			source:   "struct ErrorHolder {
 	err IError
 }
 
@@ -4432,10 +4450,12 @@ fn main() {
 	other := error('boom')
 	println((make_error_holder().err == other).str())
 }
-")
-	assert ierror_selector == 'true'
-
-	ierror_concrete_types := run_good(v3_bin, 'ierror_equality_concrete_type', 'struct ErrorA {}
+"
+			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'ierror_equality_concrete_type'
+			source:   'struct ErrorA {}
 
 fn (err ErrorA) msg() string {
 	return "same"
@@ -4468,10 +4488,12 @@ fn main() {
 	println((make_error_a() != make_error_b()).str())
 	println((make_error_a() == make_error_a()).str())
 }
-')
-	assert ierror_concrete_types == 'false\ntrue\ntrue'
-
-	ierror_sum_field := run_good(v3_bin, 'ierror_shared_sum_field_equality', 'struct ErrorHolderA {
+'
+			expected: 'false\ntrue\ntrue'
+		},
+		ReviewRuntimeCase{
+			name:     'ierror_shared_sum_field_equality'
+			source:   'struct ErrorHolderA {
 	err IError
 }
 
@@ -4495,10 +4517,12 @@ fn main() {
 	println(equal_error(left, error("boom")).str())
 	println(equal_error(right, error("boom")).str())
 }
-')
-	assert ierror_sum_field == 'true\nfalse'
-
-	shift_once := run_good(v3_bin, 'unsigned_shift_assign_lvalue_once', 'struct Counter {
+'
+			expected: 'true\nfalse'
+		},
+		ReviewRuntimeCase{
+			name:     'unsigned_shift_assign_lvalue_once'
+			source:   'struct Counter {
 mut:
 	value int
 }
@@ -4524,10 +4548,12 @@ fn main() {
 	println(int_str(calls.value))
 	println(int_str(shifted_map[0]))
 }
-')
-	assert shift_once == '1\n4\n16\n125\n2\n125'
-
-	logical_shifts := run_good(v3_bin, 'signed_logical_shift_results', 'type MyInt = int
+'
+			expected: '1\n4\n16\n125\n2\n125'
+		},
+		ReviewRuntimeCase{
+			name:     'signed_logical_shift_results'
+			source:   'type MyInt = int
 type MyIntAlias = MyInt
 type Small = i8
 
@@ -4572,10 +4598,12 @@ fn main() {
 	small_oversized >>>= 8
 	println(int_str(small_oversized))
 }
-')
-	assert logical_shifts == 'true\n9223372036854775805\n9223372036854775805\nu64\n255\nu8\n9223372036854775805\n9223372036854775805\n12\n0\n9223372036854775805\nu64\n1\nu8\n0\n1\n0'
-
-	widened_left_shifts := run_good(v3_bin, 'const_count_left_shift_widening', 'const shift_count = 50 + 1
+'
+			expected: 'true\n9223372036854775805\n9223372036854775805\nu64\n255\nu8\n9223372036854775805\n9223372036854775805\n12\n0\n9223372036854775805\nu64\n1\nu8\n0\n1\n0'
+		},
+		ReviewRuntimeCase{
+			name:     'const_count_left_shift_widening'
+			source:   'const shift_count = 50 + 1
 const named_shift = u64(1 << shift_count)
 const parenthesized_shift = u64(1 << (51))
 
@@ -4583,10 +4611,12 @@ fn main() {
 	println(named_shift.str())
 	println(parenthesized_shift.str())
 }
-')
-	assert widened_left_shifts == '2251799813685248\n2251799813685248'
-
-	shared_sum_field := run_good(v3_bin, 'nested_sum_shared_field_diamond', 'struct Sub1 {
+'
+			expected: '2251799813685248\n2251799813685248'
+		},
+		ReviewRuntimeCase{
+			name:     'nested_sum_shared_field_diamond'
+			source:   'struct Sub1 {
 	id int
 }
 
@@ -4608,10 +4638,12 @@ fn main() {
 	}))
 	println(int_str(value.id))
 }
-')
-	assert shared_sum_field == '7'
-
-	comptime_types := run_good(v3_bin, 'comptime_pointer_and_alias_identity', "type MyAlias = string
+'
+			expected: '7'
+		},
+		ReviewRuntimeCase{
+			name:     'comptime_pointer_and_alias_identity'
+			source:   "type MyAlias = string
 
 fn pointer_kind(p &int) string {
 	$if p is $pointer {
@@ -4636,8 +4668,10 @@ fn main() {
 	println(pointer_kind(&value))
 	println(alias_kind(MyAlias('x')))
 }
-")
-	assert comptime_types == 'pointer\nalias'
+"
+			expected: 'pointer\nalias'
+		},
+	])
 }
 
 fn test_selected_compile_error_in_void_fn_has_clean_diagnostic() {
