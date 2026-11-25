@@ -66,6 +66,7 @@ enum ScopedThreadAccess {
 	transferred
 	scalar
 	atomic
+	mutex
 }
 
 // Only the direct address of a local immutable binding establishes a loan.
@@ -85,14 +86,7 @@ fn (tc &TypeChecker) ownership_scoped_thread_source(id flat.NodeId) ?ScopedThrea
 	if tc.binding_owner_is_global(owner) {
 		return none
 	}
-	typ := tc.resolve_type(source_id)
-	access := if ownership_scoped_thread_is_scalar(unalias_type(typ)) {
-		ScopedThreadAccess.scalar
-	} else if tc.ownership_scoped_thread_is_atomic(typ) {
-		ScopedThreadAccess.atomic
-	} else {
-		return none
-	}
+	access := tc.ownership_scoped_thread_access(tc.resolve_type(source_id)) or { return none }
 	return ScopedThreadBorrow{ source: source.value, pos: id, access: access }
 }
 
@@ -114,9 +108,9 @@ fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, ex
 			return none
 		}
 		borrow := tc.ownership_scoped_thread_source(id) or { return none }
-		// An alias can add its own methods. Only the original library type
-		// supplies the guarantees for the permitted atomic operations.
-		if borrow.access == .atomic && !tc.ownership_scoped_thread_is_atomic(*formal.base_type) {
+		// An alias can add its own methods. Check the original library type.
+		access := tc.ownership_scoped_thread_access(*formal.base_type) or { return none }
+		if access != borrow.access {
 			return none
 		}
 		return [borrow]
@@ -148,7 +142,8 @@ fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, ex
 				return none
 			}
 			borrow := tc.ownership_scoped_thread_source(field_id) or { return none }
-			if borrow.access == .atomic && !tc.ownership_scoped_thread_is_atomic(*field_type.base_type) {
+			access := tc.ownership_scoped_thread_access(*field_type.base_type) or { return none }
+			if access != borrow.access {
 				return none
 			}
 			result << ScopedThreadBorrow{ ...borrow, field: field.name }
@@ -251,21 +246,32 @@ fn (tc &TypeChecker) ownership_scoped_thread_non_escaping_use(id flat.NodeId, ac
 	return match access {
 		.transferred { true }
 		.scalar { tc.ownership_scoped_thread_scalar_read(id) }
-		.atomic { tc.ownership_scoped_thread_atomic_operation(id) }
+		.atomic, .mutex { tc.ownership_scoped_thread_shared_operation(id, access) }
 	}
 }
 
-// The public atomic operations access the payload internally and return
-// scalar values. Field projection and method values can expose storage.
-fn (tc &TypeChecker) ownership_scoped_thread_atomic_operation(id flat.NodeId) bool {
+// These library methods never expose the handle to the caller or the update
+// callback. Field projections and method values can expose its storage.
+fn (tc &TypeChecker) ownership_scoped_thread_shared_operation(id flat.NodeId, access ScopedThreadAccess) bool {
 	selector_id := tc.ownership_scoped_thread_use_parent(id)
 	selector := tc.a.node(selector_id)
 	if selector.kind != .selector || selector.children_count != 1 {
 		return false
 	}
-	call := tc.a.node(tc.ownership_scoped_thread_use_parent(selector_id))
-	if call.kind != .call || call.children_count == 0 || tc.a.child(call, 0) != selector_id {
+	mut callee_id := selector_id
+	parent_id := tc.ownership_scoped_thread_use_parent(selector_id)
+	parent := tc.a.node(parent_id)
+	if access == .mutex && parent.kind == .index && parent.children_count > 0
+		&& tc.a.child(parent, 0) == selector_id {
+		callee_id = parent_id
+	}
+	call := tc.a.node(tc.ownership_scoped_thread_use_parent(callee_id))
+	if call.kind != .call || call.children_count == 0 || tc.a.child(call, 0) != callee_id {
 		return false
+	}
+	if access == .mutex {
+		return (selector.value == 'update' && call.children_count == 2)
+			|| (selector.value == 'update_with' && call.children_count == 3)
 	}
 	return match selector.value {
 		'load' { call.children_count == 1 }
@@ -275,15 +281,28 @@ fn (tc &TypeChecker) ownership_scoped_thread_atomic_operation(id flat.NodeId) bo
 	}
 }
 
-fn (tc &TypeChecker) ownership_scoped_thread_is_atomic(typ Type) bool {
-	if typ !is Struct {
-		return false
+fn (tc &TypeChecker) ownership_scoped_thread_access(typ Type) ?ScopedThreadAccess {
+	if ownership_scoped_thread_is_scalar(unalias_type(typ)) {
+		return .scalar
 	}
-	payload := tc.ownership_thread_library_payload(typ.name_id, 'sync/arc', [
+	if typ !is Struct {
+		return none
+	}
+	if payload := tc.ownership_thread_library_payload(typ.name_id, 'sync/arc', [
 		'arc.Atomic',
 		'sync.arc.Atomic',
-	]) or { return false }
-	return ownership_scoped_thread_is_scalar(unalias_type(payload))
+	]) {
+		return if ownership_scoped_thread_is_scalar(unalias_type(payload)) { .atomic } else { none }
+	}
+	if payload := tc.ownership_thread_library_payload(typ.name_id, 'sync/arc', [
+		'arc.Mutex',
+		'sync.arc.Mutex',
+	]) {
+		if tc.ownership_thread_transfer_problem(payload, .transfer, 0, mut map[u64]bool{}) == none {
+			return .mutex
+		}
+	}
+	return none
 }
 
 // Allow only dereferences used to compute a scalar value. A bare reference

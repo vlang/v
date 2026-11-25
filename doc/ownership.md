@@ -506,6 +506,11 @@ is scalar. It can call the atomic operations directly on that reference, includi
 through a field of the inline worker struct. The handle's binding must outlive the
 join, and the worker cannot pass the reference to another function or store it.
 
+Scoped workers can borrow `sync.arc.Mutex[T]` when `T` satisfies
+`sync.thread.Transferable`. Use `update` or `update_with` directly on the
+reference. For example, several workers can update a mutex protecting a
+statistics record, and the caller can read the record after the deferred join.
+
 ## Full example
 
 From the Rust book, translated to V:

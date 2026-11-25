@@ -5333,3 +5333,112 @@ fn main() {
 		assert result.output.contains(reason), result.output
 	}
 }
+
+const scoped_mutex_worker_source = '
+import sync.arc
+
+struct Stats {
+	count int
+}
+
+fn increment(stats Stats) arc.MutexUpdate[Stats, int] {
+	return arc.MutexUpdate[Stats, int]{ value: Stats{count: stats.count + 1}, result: stats.count }
+}
+
+fn add(stats Stats, delta int) arc.MutexUpdate[Stats, int] {
+	return arc.MutexUpdate[Stats, int]{ value: Stats{count: stats.count + delta}, result: stats.count }
+}
+
+fn work(stats &arc.Mutex[Stats]) {
+	stats.update(increment)
+}
+'
+
+fn test_ownership_scoped_mutex_workers_join_before_releasing_borrows() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_mutex', scoped_mutex_worker_source + '
+struct Job {
+	stats &arc.Mutex[Stats]
+	delta int
+}
+
+fn run_job(job Job) {
+	job.stats.update_with[int, int](job.delta, add)
+}
+
+fn main() {
+	stats := arc.new_mutex(Stats{})
+	{
+		mut handles := []thread{}
+		defer { handles.wait() }
+		for _ in 0 .. 2 {
+			handles << spawn work(&stats)
+			handles << spawn run_job(Job{stats: &stats, delta: 2})
+		}
+	}
+	assert stats.update(increment) == 6
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_scoped_mutex_workers_reject_unverified_pointer_use() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_mutex_escape', scoped_mutex_worker_source + '
+fn forward(stats &arc.Mutex[Stats]) {
+	work(stats)
+}
+
+fn main() {
+	stats := arc.new_mutex(Stats{})
+	handle := spawn forward(&stats)
+	defer { handle.wait() }
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot prove that the scoped thread borrow is used without escaping'), result.output
+}
+
+fn test_ownership_scoped_mutex_workers_reject_invalid_lifetimes() {
+	v3_bin := ownership_build_v3()
+	for body, diagnostic in {
+		'stats := arc.new_mutex(Stats{}); spawn work(&stats)':                                                                                     'references cannot be transferred between threads'
+		'mut handles := []thread{}; defer { handles.wait() }; for _ in 0 .. 2 { stats := arc.new_mutex(Stats{}); handles << spawn work(&stats) }': 'outlives borrowed mutex `stats`'
+	} {
+		result := run_ownership_check(v3_bin, 'scoped_worker_mutex_lifetime', scoped_mutex_worker_source + '
+fn main() {
+	${body}
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains(diagnostic), result.output
+	}
+}
+
+fn test_ownership_scoped_mutex_workers_require_transferable_payloads() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_mutex_payload', r'
+import sync.arc
+
+struct BorrowedStats {
+	count &int
+}
+
+fn read(value BorrowedStats) arc.MutexUpdate[BorrowedStats, int] {
+	return arc.MutexUpdate[BorrowedStats, int]{ value: value, result: *value.count }
+}
+
+fn work(stats &arc.Mutex[BorrowedStats]) {
+	stats.update(read)
+}
+
+fn main() {
+	count := 0
+	stats := arc.new_mutex(BorrowedStats{count: &count})
+	handle := spawn work(&stats)
+	defer { handle.wait() }
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('as thread argument: references cannot be transferred between threads'), result.output
+}
