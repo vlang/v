@@ -2694,7 +2694,7 @@ fn test_interpolation_joins_without_intermediate_storage() {
 
 fn test_for_mut_pointer_storage_receivers_do_not_get_extra_address() {
 	v3_bin := build_v3()
-	item_src := 'struct Item {
+	source := "struct Item {
 mut:
 	n int
 }
@@ -2746,51 +2746,41 @@ fn main() {
 	println(int_str(first.n))
 	println(int_str(c.n))
 }
-'
-	out, item_c := run_good_with_c(v3_bin, 'for_mut_item_receiver_run', item_src)
-	assert out == '3\n4\n5\n2'
-	item_main := c_fn_body(item_c, 'int main(')
-	assert item_main.len > 0, item_c
-	assert item_main.contains('Item* item ='), item_main
-	assert item_main.contains('__bump(item);'), item_main
-	assert !item_main.contains('__bump(&item);'), item_main
-	assert item_main.contains('bump_item(item);'), item_main
-	assert !item_main.contains('bump_item(&item);'), item_main
-	assert item_main.contains('Item** pointer_item ='), item_main
-	assert item_main.contains('__bump(*pointer_item);'), item_main
-	assert item_main.contains('bump_item(*pointer_item);'), item_main
-	assert !item_main.contains('bump_item(pointer_item);'), item_main
-	assert !item_main.contains('__bump(pointer_item);'), item_main
-	assert item_main.contains('inc_counter(&item);'), item_main
-	assert !item_main.contains('inc_counter(item);'), item_main
-	assert item_main.contains('inc_counter(&c);'), item_main
-	assert item_main.contains('__inc(&item);'), item_main
-	assert item_main.contains('__inc(&c);'), item_main
-	assert !item_main.contains('__inc(c);'), item_main
-	assert item_main.contains('Item* item ='), item_main
-	assert item_main.contains('__bump(item);'), item_main
-	assert !item_main.contains('__bump(&item);'), item_main
-	assert item_main.contains('bump_item(item);'), item_main
-	assert !item_main.contains('bump_item(&item);'), item_main
-	assert item_main.contains('inc_counter(&item);'), item_main
-	assert !item_main.contains('inc_counter(item);'), item_main
-	assert item_main.contains('inc_counter(&c);'), item_main
-	assert item_main.contains('__inc(&item);'), item_main
-	assert item_main.contains('__inc(&c);'), item_main
-	assert !item_main.contains('__inc(c);'), item_main
 
-	string_c := gen_c(v3_bin, 'for_mut_string_free_receiver', "fn main() {
+@[markused]
+fn free_strings() {
 	mut values := ['alpha', 'beta']
 	for mut s in values {
 		unsafe { s.free() }
 	}
 }
-")
-	string_main := c_fn_body(string_c, 'int main(')
-	assert string_main.len > 0, string_c
-	assert string_main.contains('string* s ='), string_main
-	assert string_main.contains('string__free(s);'), string_main
-	assert !string_main.contains('string__free(&s);'), string_main
+"
+	out, c_source := run_good_with_c(v3_bin, 'for_mut_pointer_storage_receivers', source)
+	assert out == '3\n4\n5\n2'
+	main_body := c_fn_body(c_source, 'int main(')
+	assert main_body.len > 0, c_source
+	assert main_body.contains('Item* item ='), main_body
+	assert main_body.contains('__bump(item);'), main_body
+	assert !main_body.contains('__bump(&item);'), main_body
+	assert main_body.contains('bump_item(item);'), main_body
+	assert !main_body.contains('bump_item(&item);'), main_body
+	assert main_body.contains('Item** pointer_item ='), main_body
+	assert main_body.contains('__bump(*pointer_item);'), main_body
+	assert main_body.contains('bump_item(*pointer_item);'), main_body
+	assert !main_body.contains('bump_item(pointer_item);'), main_body
+	assert !main_body.contains('__bump(pointer_item);'), main_body
+	assert main_body.contains('inc_counter(&item);'), main_body
+	assert !main_body.contains('inc_counter(item);'), main_body
+	assert main_body.contains('inc_counter(&c);'), main_body
+	assert main_body.contains('__inc(&item);'), main_body
+	assert main_body.contains('__inc(&c);'), main_body
+	assert !main_body.contains('__inc(c);'), main_body
+
+	free_strings_body := c_fn_body(c_source, 'void free_strings(void) {')
+	assert free_strings_body.len > 0, c_source
+	assert free_strings_body.contains('string* s ='), free_strings_body
+	assert free_strings_body.contains('string__free(s);'), free_strings_body
+	assert !free_strings_body.contains('string__free(&s);'), free_strings_body
 }
 
 fn test_assert_capture_preserves_inferred_wide_const_type() {
@@ -2837,12 +2827,27 @@ fn main() {
 
 fn test_channel_alias_close_method_wins_over_builtin() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'channel_alias_close_method_before_builtin', 'type MyChan = chan int\n\nfn (c MyChan) close() int {\n\treturn 71\n}\n\nfn main() {\n\tch := MyChan(unsafe { nil })\n\tprintln(int_str(ch.close()))\n}\n')
+	source := 'type MyChan = chan int
+
+fn (c MyChan) close() int {
+	return 71
+}
+
+fn main() {
+	alias_channel := MyChan(unsafe { nil })
+	println(int_str(alias_channel.close()))
+
+	mut ch := chan bool{cap: 1}
+	p := &ch
+	p.close()
+}
+'
+	out, c_source := run_good_with_c(v3_bin, 'channel_alias_close_method_before_builtin', source)
 	assert out == '71'
-	pointer_c := gen_c(v3_bin, 'pointer_channel_close_lowers_to_runtime', 'fn main() {\n\tmut ch := chan bool{cap: 1}\n\tp := &ch\n\tp.close()\n}\n')
-	assert pointer_c.contains('sync__Channel__close(*p,')
-	assert pointer_c.contains('sizeof(IError)')
-	assert !pointer_c.contains('sync__Channel__close(*p);')
+	main_body := c_fn_body(c_source, 'int main(')
+	assert main_body.contains('sync__Channel__close(*p,'), main_body
+	assert main_body.contains('sizeof(IError)'), main_body
+	assert !main_body.contains('sync__Channel__close(*p);'), main_body
 }
 
 fn test_channel_reference_auto_str_reads_channel_value() {
