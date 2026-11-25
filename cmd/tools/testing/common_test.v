@@ -2,6 +2,30 @@ module testing
 
 import os
 
+fn test_shared_v3_builder_counts_excludes_skipped_files() {
+	root := os.join_path(os.vtmp_dir(), 'shared_v3_builders_${os.getpid()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	plain := os.join_path(root, 'plain_test.v')
+	first_ownership := os.join_path(root, 'first_ownership_test.v')
+	second_ownership := os.join_path(root, 'second_ownership_test.v')
+	os.write_file(plain, "const compiler_args = ['-gc', 'none', 'v.v']")!
+	for path in [first_ownership, second_ownership] {
+		os.write_file(path, "const compiler_args = ['-gc', 'none', '-d', 'ownership', 'v.v']")!
+	}
+	files := [plain, first_ownership, second_ownership]
+	mut session := TestSession{
+		vroot: root
+	}
+	all, all_ownership := session.shared_v3_builder_counts(files)
+	assert all == 3
+	assert all_ownership == 2
+	session.skip_files = [os.real_path(first_ownership), os.real_path(second_ownership)]
+	runnable, runnable_ownership := session.shared_v3_builder_counts(files)
+	assert runnable == 1
+	assert runnable_ownership == 0
+}
+
 fn test_should_retry_execution() {
 	assert should_retry_execution(os.Result{
 		exit_code: -1

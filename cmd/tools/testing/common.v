@@ -1613,10 +1613,32 @@ const shared_v3_ownership_env = 'V3_TEST_UNIT_SHARED_V3_OWNERSHIP'
 // shared_v3_names are the executables that prepare_shared_v3 builds in the session folder.
 const shared_v3_names = ['shared_v3', 'shared_v3_ownership']
 
-// prepare_shared_v3 builds the V3 compiler once, when at least two of `files` build it themselves
-// (as most compiler tests do), and lets the launcher serve their builds with copies of it; the
-// same for the `-d ownership` compiler of the ownership tests. Each build takes ~20 s of CPU.
-// A failed build only leaves the tests to build their own.
+fn (ts &TestSession) shared_v3_builder_counts(files []string) (int, int) {
+	vroot := os.real_path(ts.vroot) + os.path_separator
+	mut skipped := map[string]bool{}
+	for path in ts.skip_files {
+		skipped[path] = true
+	}
+	mut builders := 0
+	mut ownership_builders := 0
+	for file in files {
+		path := os.real_path(file)
+		if !path.starts_with(vroot) || path in skipped {
+			continue
+		}
+		source := os.read_file(path) or { continue }
+		if source.contains("'v.v'") {
+			builders++
+			if source.contains("'-d', 'ownership'") {
+				ownership_builders++
+			}
+		}
+	}
+	return builders, ownership_builders
+}
+
+// prepare_shared_v3 prepares a compiler variant when at least two runnable files may use it.
+// If preparation fails, tests can still build the compiler themselves.
 fn (mut ts TestSession) prepare_shared_v3(files []string) {
 	if !ts.will_compile || os.getenv('VTEST_NO_SHARED_V3') == '1' {
 		return
@@ -1631,22 +1653,7 @@ fn (mut ts TestSession) prepare_shared_v3(files []string) {
 			return
 		}
 	}
-	vroot := os.real_path(ts.vroot) + os.path_separator
-	mut builders := 0
-	mut ownership_builders := 0
-	for file in files {
-		path := os.real_path(file)
-		if !path.starts_with(vroot) {
-			continue
-		}
-		source := os.read_file(path) or { continue }
-		if source.contains("'v.v'") {
-			builders++
-			if source.contains("'-d', 'ownership'") {
-				ownership_builders++
-			}
-		}
-	}
+	builders, ownership_builders := ts.shared_v3_builder_counts(files)
 	mut values := map[string]string{}
 	for i, env in [shared_v3_env, shared_v3_ownership_env] {
 		if os.getenv(env) != '' || (if i == 0 { builders } else { ownership_builders }) < 2 {
