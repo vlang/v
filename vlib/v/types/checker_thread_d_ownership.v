@@ -12,8 +12,13 @@ fn (tc &TypeChecker) ownership_checks_thread_boundary() bool {
 }
 
 fn (mut tc TypeChecker) ownership_check_spawn_transfer(spawn_id flat.NodeId, call_id flat.NodeId, call flat.Node) {
-	info := tc.resolve_call_info(call_id, call) or { return }
+	declared := tc.resolve_call_info(call_id, call) or { return }
 	join_site := tc.ownership_scoped_thread_join_site(spawn_id) or { flat.empty_node }
+	info := if tc.valid_node_id(join_site) {
+		tc.specialized_plain_generic_call_info(call, declared)
+	} else {
+		declared
+	}
 	callee_id := tc.a.child(&call, 0)
 	if receiver_id := tc.ownership_thread_receiver(callee_id, info) {
 		expected := info.params[0] or { tc.resolve_type(receiver_id) }
@@ -81,18 +86,16 @@ fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected
 			'cannot transfer mutable borrow of `${actual.name()}` as ${role}', id)
 		return
 	}
-	expected_pointer := unalias_type(expected)
-	if expected_pointer is Pointer {
-		actual_pointer := unalias_type(actual)
-		if tc.valid_node_id(join_site) && actual_pointer is Pointer
-			&& semantic_types_equal(unalias_type(*actual_pointer.base_type), unalias_type(*expected_pointer.base_type))
-			&& tc.ownership_scoped_thread_source(id) != none {
-			if !tc.ownership_scoped_thread_reads_parameter(info, index) {
+	if tc.valid_node_id(join_site) {
+		if borrows := tc.ownership_scoped_thread_argument_borrows(id, expected) {
+			if !tc.ownership_scoped_thread_reads_parameter(info, index, expected, borrows) {
 				tc.record_error(.thread_transfer,
 					'cannot prove that the scoped thread borrow is read without escaping', id)
 			}
 			return
 		}
+	}
+	if unalias_type(expected) is Pointer {
 		tc.ownership_check_thread_transfer(expected, id, role)
 		return
 	}
