@@ -1530,13 +1530,21 @@ fn test_generic_struct_receiver_and_heap_init() {
 // lengths must be folded to a literal (not c_name-mangled into `segs_+_1`), and the
 // `[]thread T.wait()` helper name must sanitize a pointer payload C type (`Foo*`).
 fn test_const_expr_fixed_array_and_thread_ptr_wait() {
-	// `[segs + 1]f32` must emit `[5]` for both the array dimension and `.len`.
-	good_len := run_good(v3_bin, 'good_const_expr_fixed_array_len', 'const segs = 4\nfn main() {\n\tmut x := [segs + 1]f32{}\n\tx[0] = 1.5\n\tx[segs] = 2.5\n\tprintln(int_str(x.len))\n\tprintln(int_str(int(x[0] + x[segs])))\n}\n')
-	assert good_len == '5\n4'
-	// `[]thread &Foo.wait()` returns `[]&Foo`; the wait helper symbol must not contain
-	// the `*` from the `Foo*` payload C type.
-	good_thread := run_good(v3_bin, 'good_thread_ptr_payload_wait', 'struct Foo {\n\tx int\n}\nfn work(n int) &Foo {\n\treturn &Foo{\n\t\tx: n\n\t}\n}\nfn main() {\n\tmut threads := []thread &Foo{}\n\tthreads << spawn work(40)\n\tthreads << spawn work(2)\n\tresults := threads.wait()\n\tmut sum := 0\n\tfor r in results {\n\t\tsum += r.x\n\t}\n\tprintln(int_str(sum))\n}\n')
-	assert good_thread == '42'
+	run_good_module_batch(v3_bin, 'fixed_array_and_pointer_thread_runtime', [
+		// `[segs + 1]f32` must emit `[5]` for both the array dimension and `.len`.
+		TypeCheckerRuntimeCase{
+			name:     'good_const_expr_fixed_array_len'
+			source:   'const segs = 4\nfn main() {\n\tmut x := [segs + 1]f32{}\n\tx[0] = 1.5\n\tx[segs] = 2.5\n\tprintln(int_str(x.len))\n\tprintln(int_str(int(x[0] + x[segs])))\n}\n'
+			expected: '5\n4'
+		},
+		// `[]thread &Foo.wait()` returns `[]&Foo`; the wait helper symbol must not contain
+		// the `*` from the `Foo*` payload C type.
+		TypeCheckerRuntimeCase{
+			name:     'good_thread_ptr_payload_wait'
+			source:   'struct Foo {\n\tx int\n}\nfn work(n int) &Foo {\n\treturn &Foo{\n\t\tx: n\n\t}\n}\nfn main() {\n\tmut threads := []thread &Foo{}\n\tthreads << spawn work(40)\n\tthreads << spawn work(2)\n\tresults := threads.wait()\n\tmut sum := 0\n\tfor r in results {\n\t\tsum += r.x\n\t}\n\tprintln(int_str(sum))\n}\n'
+			expected: '42'
+		},
+	])
 }
 
 // Regression tests: a const-expression fixed-array length must work as a STRUCT
@@ -1760,15 +1768,23 @@ fn test_pr_review_codegen_batch_eleven() {
 
 // Regression tests for the twelfth PR-review batch (vlang/v#27557).
 fn test_pr_review_codegen_batch_twelve() {
-	// A heap struct literal with POSITIONAL fields must emit positional C values, not a
-	// `. = v` designator. For a *generic* heap literal the fields live under the concrete
-	// instance key (`Box[int]`), so the per-index field lookup must use that, not the bare
-	// `Box`; otherwise `arr << &Box[int]{1, 2}` generates invalid C like `(Box_int){. = 1}`.
-	gpos := run_good(v3_bin, 'good_positional_generic_heap_struct', 'struct Box[T] {\n\ta T\n\tb T\n}\nfn main() {\n\tmut arr := []&Box[int]{}\n\tarr << &Box[int]{1, 2}\n\tprintln(int_str(arr[0].a + arr[0].b))\n}\n')
-	assert gpos == '3'
-	// Non-generic positional heap literals keep working (no regression).
-	pos := run_good(v3_bin, 'good_positional_heap_struct', 'struct Point {\n\tx int\n\ty int\n}\nfn main() {\n\tmut arr := []&Point{}\n\tarr << &Point{1, 2}\n\tprintln(int_str(arr[0].x + arr[0].y))\n}\n')
-	assert pos == '3'
+	run_good_module_batch(v3_bin, 'positional_heap_literals', [
+		// A heap struct literal with POSITIONAL fields must emit positional C values, not a
+		// `. = v` designator. For a *generic* heap literal the fields live under the concrete
+		// instance key (`Box[int]`), so the per-index field lookup must use that, not the bare
+		// `Box`; otherwise `arr << &Box[int]{1, 2}` generates invalid C like `(Box_int){. = 1}`.
+		TypeCheckerRuntimeCase{
+			name:     'good_positional_generic_heap_struct'
+			source:   'struct Box[T] {\n\ta T\n\tb T\n}\nfn main() {\n\tmut arr := []&Box[int]{}\n\tarr << &Box[int]{1, 2}\n\tprintln(int_str(arr[0].a + arr[0].b))\n}\n'
+			expected: '3'
+		},
+		// Non-generic positional heap literals keep working (no regression).
+		TypeCheckerRuntimeCase{
+			name:     'good_positional_heap_struct'
+			source:   'struct Point {\n\tx int\n\ty int\n}\nfn main() {\n\tmut arr := []&Point{}\n\tarr << &Point{1, 2}\n\tprintln(int_str(arr[0].x + arr[0].y))\n}\n'
+			expected: '3'
+		},
+	])
 }
 
 // Regression tests for the thirteenth PR-review batch (vlang/v#27557).
@@ -1862,30 +1878,46 @@ fn test_pr_review_codegen_batch_eighteen() {
 		// A method-value local passed straight to a callback parameter does not escape and stays valid.
 		TypeCheckerRuntimeCase{'good_method_value_local_direct_use', mv + 'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tcb := c.report\n\tprintln(int_str(invoke(cb)))\n}\n', '7'},
 	])
-	// A bare heap generic literal (`&Box{v: 1}` where `&Box[int]` is expected) must read its
-	// omitted-field defaults from the concrete instance key: monomorphization drops the bare `Box`
-	// entry, so an omitted `items []T` needs its `array_new` default or the field has invalid
-	// zeroed array metadata (here a later append would silently drop the elements).
-	heap_default := run_good(v3_bin, 'good_heap_generic_omitted_array_default', "struct Box[T] {\n\tv T\nmut:\n\titems []T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\tmut b := make()\n\tb.items << 10\n\tb.items << 20\n\tprintln(int_str(b.v) + ',' + int_str(b.items.len) + ',' + int_str(b.items[0]) + ',' + int_str(b.items[1]))\n}\n")
-	assert heap_default == '1,2,10,20'
-	// `[]thread T.wait()` recovers the spawned return type from the thread name; a fixed-array
-	// return with a non-decimal length (`[0x10]u8`) must reconstruct the same `_v_ret_*` wrapper
-	// ABI type the spawn wrapper stored, not a bogus generic application of `u8`.
-	thread_fixed := run_good(v3_bin, 'good_thread_wait_nondecimal_fixed_array', "fn work() [0x10]u8 {\n\tmut r := [0x10]u8{}\n\tr[0] = 42\n\tr[15] = 7\n\treturn r\n}\nfn main() {\n\tmut threads := []thread [0x10]u8{}\n\tthreads << spawn work()\n\tresults := threads.wait()\n\tprintln(int_str(results[0][0]) + ',' + int_str(results[0][15]))\n}\n")
-	assert thread_fixed == '42,7'
+	run_good_module_batch(v3_bin, 'heap_defaults_and_fixed_array_thread_runtime', [
+		// A bare heap generic literal (`&Box{v: 1}` where `&Box[int]` is expected) must read its
+		// omitted-field defaults from the concrete instance key: monomorphization drops the bare `Box`
+		// entry, so an omitted `items []T` needs its `array_new` default or the field has invalid
+		// zeroed array metadata (here a later append would silently drop the elements).
+		TypeCheckerRuntimeCase{
+			name:     'good_heap_generic_omitted_array_default'
+			source:   "struct Box[T] {\n\tv T\nmut:\n\titems []T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\tmut b := make()\n\tb.items << 10\n\tb.items << 20\n\tprintln(int_str(b.v) + ',' + int_str(b.items.len) + ',' + int_str(b.items[0]) + ',' + int_str(b.items[1]))\n}\n"
+			expected: '1,2,10,20'
+		},
+		// `[]thread T.wait()` recovers the spawned return type from the thread name; a fixed-array
+		// return with a non-decimal length (`[0x10]u8`) must reconstruct the same `_v_ret_*` wrapper
+		// ABI type the spawn wrapper stored, not a bogus generic application of `u8`.
+		TypeCheckerRuntimeCase{
+			name:     'good_thread_wait_nondecimal_fixed_array'
+			source:   "fn work() [0x10]u8 {\n\tmut r := [0x10]u8{}\n\tr[0] = 42\n\tr[15] = 7\n\treturn r\n}\nfn main() {\n\tmut threads := []thread [0x10]u8{}\n\tthreads << spawn work()\n\tresults := threads.wait()\n\tprintln(int_str(results[0][0]) + ',' + int_str(results[0][15]))\n}\n"
+			expected: '42,7'
+		},
+	])
 }
 
 fn test_pr_review_codegen_batch_nineteen() {
-	// A value local whose address escapes (`p := &v` with `p` returned) is moved to the heap at
-	// its declaration, so a mutation between the alias and the return is observed by the caller —
-	// matching V's auto-heap semantics. Copying eagerly at `p := &v` returned stale data (x == 1).
-	escaped := run_good(v3_bin, 'good_escaped_pointer_alias_mutation', 'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tv.x = 2\n\treturn p\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n')
-	assert escaped == '2'
-	// A static-method call returning a fixed array (`Type.make() [N]T`) is lowered to a selector
-	// whose base is a type, not a receiver value; its `_v_ret_*` wrapper must still be unwrapped to
-	// `.ret_arr`, so the assignment/indexing below sees the array, not the wrapper struct.
-	static_fixed := run_good(v3_bin, 'good_static_method_fixed_array_return', 'struct Maker {}\nfn Maker.make() [3]int {\n\treturn [10, 20, 30]!\n}\nfn main() {\n\ta := Maker.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n')
-	assert static_fixed == '60'
+	run_good_module_batch(v3_bin, 'escaping_pointer_and_static_array_runtime', [
+		// A value local whose address escapes (`p := &v` with `p` returned) is moved to the heap at
+		// its declaration, so a mutation between the alias and the return is observed by the caller —
+		// matching V's auto-heap semantics. Copying eagerly at `p := &v` returned stale data (x == 1).
+		TypeCheckerRuntimeCase{
+			name:     'good_escaped_pointer_alias_mutation'
+			source:   'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tv.x = 2\n\treturn p\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n'
+			expected: '2'
+		},
+		// A static-method call returning a fixed array (`Type.make() [N]T`) is lowered to a selector
+		// whose base is a type, not a receiver value; its `_v_ret_*` wrapper must still be unwrapped to
+		// `.ret_arr`, so the assignment/indexing below sees the array, not the wrapper struct.
+		TypeCheckerRuntimeCase{
+			name:     'good_static_method_fixed_array_return'
+			source:   'struct Maker {}\nfn Maker.make() [3]int {\n\treturn [10, 20, 30]!\n}\nfn main() {\n\ta := Maker.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n'
+			expected: '60'
+		},
+	])
 }
 
 fn test_pr_review_codegen_batch_twenty() {
