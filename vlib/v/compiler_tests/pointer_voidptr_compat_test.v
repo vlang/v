@@ -18,6 +18,39 @@ fn pointer_voidptr_run_good_with_c(dir string, name string, source string) (stri
 	return out, c_source
 }
 
+struct PointerReturnCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn pointer_voidptr_run_good_batch(dir string, cases []PointerReturnCase) {
+	root := os.join_path(dir, 'pointer_returns')
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		module_dir := os.join_path(root, module_name)
+		os.mkdir_all(module_dir) or { panic(err) }
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		fixture := 'module ${module_name}\n\n' + case.source
+		os.write_file(os.join_path(module_dir, 'v3_${case.name}.v'), fixture.replace_once('\nfn main()',
+			'\npub fn exercise()')) or { panic(err) }
+	}
+	os.write_file(os.join_path(root, 'main.v'), "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
+	assert compile.exit_code == 0, compile.output
+	for case in cases {
+		run := os.exec([bin, case.name])
+		assert run.exit_code == 0, '${case.name}: ${run.output}'
+		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	}
+}
+
 fn pointer_voidptr_run_bad(dir string, name string, source string, expected string) {
 	src := os.join_path(dir, 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
@@ -34,7 +67,10 @@ fn test_bare_value_pointer_returns_are_heap_lowered() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	out := pointer_voidptr_run_good(dir, 'bare_pointer_return', 'struct Item {
+	pointer_voidptr_run_good_batch(dir, [
+		PointerReturnCase{
+			name:     'bare_pointer_return'
+			source:   'struct Item {
 	value int
 }
 
@@ -49,9 +85,12 @@ fn main() {
 	item := make()
 	println(int_str(item.value))
 }
-')
-	assert out == '23'
-	optional_out := pointer_voidptr_run_good(dir, 'bare_optional_pointer_return', 'struct Item {
+'
+			expected: '23'
+		},
+		PointerReturnCase{
+			name:     'bare_optional_pointer_return'
+			source:   'struct Item {
 	value int
 }
 
@@ -69,9 +108,12 @@ fn main() {
 	item := make() or { return }
 	println(int_str(item.value))
 }
-')
-	assert optional_out == '29'
-	result_out := pointer_voidptr_run_good(dir, 'bare_result_pointer_return', 'struct Item {
+'
+			expected: '29'
+		},
+		PointerReturnCase{
+			name:     'bare_result_pointer_return'
+			source:   'struct Item {
 	value int
 }
 
@@ -89,8 +131,10 @@ fn main() {
 	item := make() or { return }
 	println(int_str(item.value))
 }
-')
-	assert result_out == '31'
+'
+			expected: '31'
+		},
+	])
 	pointer_voidptr_run_bad(dir, 'bare_interface_pointer_return', 'interface Reader {
 	read() int
 }
