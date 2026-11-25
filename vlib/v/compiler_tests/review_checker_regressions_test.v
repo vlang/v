@@ -573,7 +573,8 @@ enum ForwardValue {
 fn main() {}
 ', '`ForwardValue.c` should be declared before using it'},
 	])
-	mut out := run_good(v3_bin, 'immutable_reference_and_previous_enum_value', '@[_allow_multiple_values]
+	check_review_runtime('reference_enum_runtime', [
+		ReviewFixture{'immutable_reference_and_previous_enum_value', '@[_allow_multiple_values]
 enum Value {
 	a = 1
 	b = .a
@@ -590,9 +591,8 @@ fn main() {
 	pf := &f
 	println(pf.value + int(Value.b))
 }
-')
-	assert out == '3'
-	out = run_good(v3_bin, 'parenthesized_reference_keeps_pointer_binding_mutable', 'fn main() {
+', '3'},
+		ReviewFixture{'parenthesized_reference_keeps_pointer_binding_mutable', 'fn main() {
 	n := 1
 	mut p := (&n)
 	unsafe {
@@ -600,8 +600,8 @@ fn main() {
 	}
 	println(*p)
 }
-')
-	assert out == '10'
+', '10'},
+	])
 }
 
 fn test_method_value_option_alias_and_const_names_match_v1() {
@@ -1137,7 +1137,8 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 }
 
 fn test_method_receiver_rejects_extra_pointer_layers() {
-	run_bad(v3_bin, 'bad_value_receiver_extra_pointer_layers', 'struct S {}
+	check_review_rejections('receiver_pointer_depth', [
+		ReviewFixture{'bad_value_receiver_extra_pointer_layers', 'struct S {}
 
 fn (s S) value() int {
 	return 1
@@ -1149,9 +1150,8 @@ fn main() {
 	pp := &p
 	_ := pp.value()
 }
-',
-		'cannot use receiver `&&S` as `S`')
-	run_bad(v3_bin, 'bad_pointer_receiver_extra_pointer_layers', 'struct S {}
+', 'cannot use receiver `&&bad_value_receiver_extra_pointer_layers.S` as `bad_value_receiver_extra_pointer_layers.S`'},
+		ReviewFixture{'bad_pointer_receiver_extra_pointer_layers', 'struct S {}
 
 fn (s &S) value() int {
 	return 1
@@ -1164,8 +1164,8 @@ fn main() {
 	ppp := &pp
 	_ := ppp.value()
 }
-',
-		'cannot use receiver `&&&S` as `&S`')
+', 'cannot use receiver `&&&bad_pointer_receiver_extra_pointer_layers.S` as `&bad_pointer_receiver_extra_pointer_layers.S`'},
+	])
 	out := run_good(v3_bin, 'good_receiver_single_pointer_adjustment', 'struct S {
 	value int
 }
@@ -1726,29 +1726,29 @@ fn main() {
 }
 
 fn test_vexeroot_insert_and_generated_function_name_exemptions() {
-	insert_out := run_good(v3_bin, 'good_vexeroot_insert_outside_vlib', '#insert "@VEXEROOT/vlib/v/compiler_tests/testdata/vexeroot_insert.h"
+	check_review_runtime('insert_generic_runtime', [
+		ReviewFixture{'good_vexeroot_insert_outside_vlib', '#insert "@VEXEROOT/vlib/v/compiler_tests/testdata/vexeroot_insert.h"
 
 fn C.v3_vexeroot_insert_value() int
 
 fn main() {
 	println(int_str(C.v3_vexeroot_insert_value()))
 }
-')
-	assert insert_out == '37'
-	run_bad(v3_bin, 'bad_source_function_name_with_generic_marker', 'fn bad_T_Name() {}
-
-fn main() {}
-',
-		'function name `bad_T_Name` cannot contain uppercase letters, use snake_case instead')
-	generic_out := run_good(v3_bin, 'good_generated_generic_function_name', 'fn identity[T](value T) T {
+', '37'},
+		ReviewFixture{'good_generated_generic_function_name', 'fn identity[T](value T) T {
 	return value
 }
 
 fn main() {
 	println(int_str(identity[int](7)))
 }
-')
-	assert generic_out == '7'
+', '7'},
+	])
+	run_bad(v3_bin, 'bad_source_function_name_with_generic_marker', 'fn bad_T_Name() {}
+
+fn main() {}
+',
+		'function name `bad_T_Name` cannot contain uppercase letters, use snake_case instead')
 }
 
 fn test_forwarded_variadic_arrays_must_be_final() {
