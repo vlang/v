@@ -15,7 +15,7 @@ fn run_bad_ierror_payload(name string, source string, expected string, detail st
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
-fn test_ierror_method_implementers_can_be_result_payloads() {
+fn test_ierror_payloads_are_preserved_for_typed_and_void_results() {
 	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_compat_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -59,23 +59,83 @@ fn alias_chain_error() !int {
 	}))
 }
 
+fn direct() !int {
+	return error('direct boom')
+}
+
+struct VoidError {
+	text string
+}
+
+fn (err VoidError) msg() string {
+	return err.text
+}
+
+fn (err VoidError) code() int {
+	return 77
+}
+
+fn void_custom_error() ! {
+	return VoidError{
+		text: 'void payload'
+	}
+}
+
+fn void_custom_error_with_defer() ! {
+	defer {
+		_ := 1
+	}
+	return VoidError{
+		text: 'void defer payload'
+	}
+}
+
+fn builtin_error() ! {
+	return error('builtin void')
+}
+
 fn main() {
+	mut payloads := 0
 	os_error() or {
 		assert err.msg() == ''
 		assert err.code() == 0
+		payloads++
 	}
 	custom_error() or {
 		assert err.msg() == 'custom payload'
 		assert err.code() == 77
+		payloads++
 	}
 	alias_error() or {
 		assert err.msg() == 'alias payload'
 		assert err.code() == 77
+		payloads++
 	}
 	alias_chain_error() or {
 		assert err.msg() == 'alias chain payload'
 		assert err.code() == 77
+		payloads++
 	}
+	direct() or {
+		assert err.msg() == 'direct boom'
+		payloads++
+	}
+	void_custom_error() or {
+		assert err.msg() == 'void payload'
+		assert err.code() == 77
+		payloads++
+	}
+	void_custom_error_with_defer() or {
+		assert err.msg() == 'void defer payload'
+		assert err.code() == 77
+		payloads++
+	}
+	builtin_error() or {
+		assert err.msg() == 'builtin void'
+		assert err.code() == 0
+		payloads++
+	}
+	assert payloads == 8
 	println('ok')
 }
 ") or {
@@ -90,106 +150,15 @@ fn main() {
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
-}
-
-fn test_ierror_values_can_be_returned_as_result_errors() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_return_value_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "fn direct() !int {
-	return error('direct boom')
-}
-
-fn main() {
-	direct() or {
-		assert err.msg() == 'direct boom'
-	}
-	println('ok')
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_ierror_return_value_input')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_ierror_payloads_are_preserved_for_void_results() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_void_return_payload_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "struct CustomError {
-	text string
-}
-
-fn (err CustomError) msg() string {
-	return err.text
-}
-
-fn (err CustomError) code() int {
-	return 77
-}
-
-fn custom_error() ! {
-	return CustomError{
-		text: 'void payload'
-	}
-}
-
-fn custom_error_with_defer() ! {
-	defer {
-		_ := 1
-	}
-	return CustomError{
-		text: 'void defer payload'
-	}
-}
-
-fn builtin_error() ! {
-	return error('builtin void')
-}
-
-fn main() {
-	custom_error() or {
-		assert err.msg() == 'void payload'
-		assert err.code() == 77
-	}
-	custom_error_with_defer() or {
-		assert err.msg() == 'void defer payload'
-		assert err.code() == 77
-	}
-	builtin_error() or {
-		assert err.msg() == 'builtin void'
-		assert err.code() == 0
-	}
-	println('ok')
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_ierror_void_return_payload_input')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('__v_result custom_error(void)'), c_code
-	assert c_code.contains('__v_result custom_error_with_defer(void)'), c_code
-	assert c_code.contains('.err = (IError){._typ = '), c_code
-	assert !c_code.contains('__v_result custom_error(void) {\n\treturn (__v_result){.ok = false};'), c_code
+	for name in ['void_custom_error', 'void_custom_error_with_defer'] {
+		signature := '__v_result ${name}(void) {'
+		assert c_code.contains(signature), c_code
+		body := c_code.all_after(signature).all_before('\n}')
+		assert body.contains('.err = (IError){._typ = '), body
+		assert !body.contains('return (__v_result){.ok = false};'), body
+	}
 }
 
 fn test_selective_imported_ierror_payload_is_result_error() {
