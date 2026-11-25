@@ -1,29 +1,15 @@
 import os
-
-const numeric_array_literal_vexe = @VEXE
-const numeric_array_literal_tests_dir = os.dir(@FILE)
-const numeric_array_literal_v3_dir = os.dir(numeric_array_literal_tests_dir)
-const numeric_array_literal_vlib_dir = os.dir(numeric_array_literal_v3_dir)
-const numeric_array_literal_v3_src = os.join_path(numeric_array_literal_v3_dir, 'v.v')
-
-fn numeric_array_literal_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_numeric_array_literal_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([numeric_array_literal_vexe, '-gc', 'none', '-path',
-			'${numeric_array_literal_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${numeric_array_literal_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn numeric_array_literal_compact_c(c_code string) string {
 	return c_code.replace(' ', '').replace('\t', '')
 }
 
 fn test_numeric_array_literals_keep_float_common_type() {
-	v3_bin := numeric_array_literal_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_numeric_array_literal_input_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_numeric_array_literal_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'main.v')
 	os.write_file(src, "
 fn main() {
 	xs := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
@@ -126,10 +112,8 @@ fn add_all[T](items []T) T {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_numeric_array_literal_input_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

@@ -1,25 +1,11 @@
 import os
-
-const nested_array_append_vexe = @VEXE
-const nested_array_append_tests_dir = os.dir(@FILE)
-const nested_array_append_v3_dir = os.dir(nested_array_append_tests_dir)
-const nested_array_append_vlib_dir = os.dir(nested_array_append_v3_dir)
-const nested_array_append_v3_src = os.join_path(nested_array_append_v3_dir, 'v.v')
-
-fn nested_array_append_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_nested_array_append_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([nested_array_append_vexe, '-gc', 'none', '-path',
-			'${nested_array_append_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${nested_array_append_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_nested_array_append_keeps_push_and_push_many_semantics() {
-	v3_bin := nested_array_append_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_nested_array_append_input_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_nested_array_append_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'main.v')
 	os.write_file(src, "fn push_path(mut pattern [][]string, mut path []string) {
 	pattern << [path]
 }
@@ -74,10 +60,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_nested_array_append_input_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
