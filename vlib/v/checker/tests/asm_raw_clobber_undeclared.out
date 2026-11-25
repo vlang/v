@@ -1566,3 +1566,10 @@ vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:2062:9: error: `popq` writes 
       |               ~~~~~
  2063 |         ; (out)
  2064 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:2073:18: error: `movzbl` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 2071 |     mut y := x
+ 2072 |     asm amd64 raw {
+ 2073 |         "movzbl %b[x], %%ecx\n\t"
+      |                        ~~~~~
+ 2074 |         "movl %%ecx, %[y]"
+ 2075 |         ; [y] "=r" (y)

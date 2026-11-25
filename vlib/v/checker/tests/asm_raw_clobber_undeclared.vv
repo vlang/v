@@ -2066,3 +2066,14 @@ fn raw_save_beside_an_output_without_a_constraint_is_reported() u64 {
 	}
 	return out
 }
+
+fn raw_movzx_writes_rcx_undeclared(x u32) u32 {
+	mut y := x
+	asm amd64 raw {
+		"movzbl %b[x], %%ecx\n\t"
+		"movl %%ecx, %[y]"
+		; [y] "=r" (y)
+		; [x] "r" (x)
+	}
+	return y
+}

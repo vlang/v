@@ -384,3 +384,14 @@ fn main() {
 	println(raw_narrow_pair_output_beside_a_braced_rax_input_is_not_reported(1))
 	println(raw_ad_pair_output_with_an_edx_write_is_not_reported())
 }
+
+// The check counts the `a` of an `=Aa` constraint as declaring `rax`, so a write to `eax` is not
+// reported.
+fn raw_aa_pair_output_with_an_eax_write_is_not_reported() u32 {
+	mut y := u32(0)
+	asm amd64 raw {
+		"movl $1, %%eax"
+		; [z] "=Aa" (y)
+	}
+	return y
+}
