@@ -311,6 +311,7 @@ pub enum TypeErrorKind {
 	unhandled_node
 	unsupported_generic
 	compile_error
+	thread_transfer
 }
 
 // CallInfo stores call info metadata used by types.

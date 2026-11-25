@@ -7564,6 +7564,35 @@ fn (tc &TypeChecker) ownership_node_contains(root flat.NodeId, target flat.NodeI
 	return false
 }
 
+// Moving a struct transfers its direct map fields. Pointer-backed projections
+// still require the legacy immutable-alias check.
+fn (tc &TypeChecker) ownership_map_field_has_moved_owner(id flat.NodeId) bool {
+	if tc.autofree_mode || tc.ownership == unsafe { nil } || tc.ownership_effects_disabled() {
+		return false
+	}
+	field := tc.a.node(id)
+	if field.kind != .selector || field.children_count == 0 || unalias_type(tc.resolve_type(id)) !is Map {
+		return false
+	}
+	receiver_id := tc.a.child(field, 0)
+	receiver := tc.a.node(receiver_id)
+	if receiver.kind != .ident || unalias_type(tc.resolve_type(receiver_id)) !is Struct {
+		return false
+	}
+	binding := tc.ownership.owned_vars[receiver.value] or { return false }
+	decl_id := tc.direct_parent_id(binding)
+	decl := tc.a.node(decl_id)
+	if decl.kind != .decl_assign || decl.children_count != 2 || tc.a.child(decl, 0) != binding {
+		return false
+	}
+	source := tc.a.child_node(decl, 1)
+	if source.kind != .ident {
+		return false
+	}
+	moved := tc.ownership.moved_vars[source.value] or { return false }
+	return moved.move_pos == decl_id && moved.moved_to == receiver.value
+}
+
 fn (mut tc TypeChecker) ownership_after_decl_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, assign_id flat.NodeId) {
 	if tc.ownership_effects_disabled() {
 		return

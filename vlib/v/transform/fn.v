@@ -14165,10 +14165,18 @@ fn (mut t Transformer) try_lower_channel_method_call(call_id flat.NodeId, node f
 
 fn (mut t Transformer) lower_runtime_channel_close(base_id flat.NodeId, node flat.Node, ptr_depth int) flat.NodeId {
 	t.mark_fn_used('sync__Channel__close')
+	ierror_type := transform_identity_ierror
 	mut err_values := []flat.NodeId{}
 	if node.children_count > 1 {
 		for i in 1 .. node.children_count {
-			err_values << t.a.child(&node, i)
+			arg := t.a.child(&node, i)
+			// IError uses explicit boxing, even when the array element type is known.
+			arg_type := t.normalize_type_alias(t.node_type(arg))
+			err_values << if arg_type in [ierror_type, transform_identity_builtin_ierror] {
+				arg
+			} else {
+				t.make_cast(ierror_type, arg, ierror_type)
+			}
 		}
 	}
 	errs := if err_values.len > 0 {

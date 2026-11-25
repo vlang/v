@@ -61,3 +61,26 @@ fn test_channel_close_propagates_none_through_an_option() {
 	assert get_opt_val_from_chan(ch) or { -1 } == i64(7)
 	assert get_opt_val_from_chan(ch) or { -1 } == i64(-1)
 }
+
+struct ChannelStatusError {
+	status int
+}
+
+fn (err ChannelStatusError) msg() string {
+	return 'channel stopped'
+}
+
+fn (err ChannelStatusError) code() int {
+	return err.status
+}
+
+fn test_channel_close_boxes_a_concrete_error() {
+	ch := chan i64{cap: 1}
+	ch.close(ChannelStatusError{ status: 42 })
+	_ := get_val_from_chan(ch) or {
+		assert err.msg() == 'channel stopped'
+		assert err.code() == 42
+		return
+	}
+	assert false
+}

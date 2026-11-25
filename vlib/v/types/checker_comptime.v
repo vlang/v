@@ -3115,6 +3115,13 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 			}
 		} else if node.kind == .infix && node.op == .arrow && node.children_count >= 2 {
 			value_id := tc.a.child(&node, 1)
+			if tc.ownership_checks_thread_boundary() {
+				channel_id := tc.a.child(&node, 0)
+				channel_type := unalias_type(unwrap_pointer(tc.resolve_type(channel_id)))
+				if channel_type is Channel {
+					tc.ownership_check_thread_transfer(channel_type.elem_type, value_id, 'channel send')
+				}
+			}
 			tc.ownership_consume_expr(value_id, 'channel send', id)
 		}
 	}
@@ -3603,6 +3610,11 @@ fn (mut tc TypeChecker) check_spawn_expr(id flat.NodeId, node flat.Node) {
 	if child.kind == .call && tc.new_error_kind_since(error_count, .unknown_fn)
 		&& !tc.call_targets_later_local_binding(child) {
 		tc.record_error_at(.assignment_mismatch, 'invalid expr', child_id, child.pos)
+	}
+	$if ownership ? {
+		if child.kind == .call && tc.errors.len == error_count && tc.ownership_checks_thread_boundary() {
+			tc.ownership_check_spawn_transfer(child_id, *child)
+		}
 	}
 	_ = id
 }
@@ -17779,6 +17791,11 @@ fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_i
 			if root_id := tc.lvalue_root_ident(base_id) {
 				root := tc.a.node(root_id)
 				aliases = aliases || tc.fn_context.immutable_reference_aliases[root.value]
+			}
+		}
+		$if ownership ? {
+			if aliases && tc.ownership_map_field_has_moved_owner(base_id) {
+				aliases = false
 			}
 		}
 		if aliases && !tc.mutable_alias_has_fresh_map_storage(base_id)
