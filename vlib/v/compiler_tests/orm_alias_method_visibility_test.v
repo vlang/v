@@ -272,12 +272,11 @@ fn sql_alias_visibility_probe_source(operation SqlAliasVisibilityQuery, expressi
 }
 
 fn test_public_inherited_alias_methods_work_in_imported_sql_values() {
-	for i, expression in ['aliases.make().clone()[0].name', 'values.clone()[0].name',
-		'(values).clone()[0].name', 'aliases.WrappedNames(values).clone()[0].name'] {
-		result := sql_alias_visibility_result('public_${i}_both', true, expression,
-			.both, false, true, 'aliases')
-		assert result.exit_code == 0, result.output
-	}
+	cases := ['aliases.make().clone()[0].name', 'values.clone()[0].name', '(values).clone()[0].name',
+		'aliases.WrappedNames(values).clone()[0].name'].map(SqlAliasQueryCase{
+		expression: it
+	})
+	check_sql_alias_query_batch(cases, 'public_clone', [.both], [[]string{}])!
 }
 
 struct SqlAliasCloneCase {
@@ -403,13 +402,12 @@ fn test_multiple_pointer_alias_methods_keep_resolution_and_visibility_in_sql_val
 }
 
 fn test_multiple_pointer_alias_methods_keep_declared_sql_result_types() {
-	for import_name in ['aliases', 'renamed'] {
-		expression := '${import_name}.make_ptr_ptr().clone()[0]'
-		result := sql_alias_visibility_result('multiple_pointer_result_${import_name}',
-			true, expression, .selection, true, true, import_name)
-		assert result.exit_code != 0, result.output
-		assert result.output.contains('this expression has type `aliases.Holder`'), result.output
-	}
+	cases := ['aliases', 'renamed'].map(SqlAliasQueryCase{
+		expression:  '${it}.make_ptr_ptr().clone()[0]'
+		import_name: it
+		diagnostic:  'this expression has type `aliases.Holder`'
+	})
+	check_sql_alias_query_batch(cases, 'multiple_pointer_result', [.selection], [['-check']])!
 }
 
 fn test_hidden_pointer_alias_methods_keep_resolution_and_visibility_in_sql_values() {
@@ -455,12 +453,14 @@ fn check_sql_alias_mutability(expressions []string, valid bool) ! {
 			'cannot pass expression as `mut`'
 		}
 		cases_by_import[import_name] << SqlAliasQueryCase{
-			expression: expression
-			diagnostic: diagnostic
+			expression:  expression
+			import_name: import_name
+			diagnostic:  diagnostic
 		}
 	}
 	for import_name, cases in cases_by_import {
-		check_sql_alias_query_batch(cases, 'mutability', import_name, valid)!
+		check_sql_alias_query_batch(cases, 'mutability_${import_name}_${valid}',
+			sql_alias_visibility_queries(valid), sql_alias_compile_and_check)!
 	}
 }
 
@@ -473,14 +473,16 @@ fn test_alias_methods_require_ordinary_shared_locks_in_sql_values() {
 
 struct SqlAliasQueryCase {
 	expression    string
+	import_name   string = 'aliases'
 	lock_receiver string
 	wrapper       string
 	diagnostic    string
 }
 
-fn check_sql_alias_query_batch(cases []SqlAliasQueryCase, label string, import_name string, valid bool) ! {
-	dir := os.join_path(os.vtmp_dir(),
-		'v3_sql_alias_query_${label}_${import_name}_${valid}_${os.getpid()}')
+const sql_alias_compile_and_check = [[]string{}, ['-check']]
+
+fn check_sql_alias_query_batch(cases []SqlAliasQueryCase, label string, queries []SqlAliasVisibilityQuery, flag_sets [][]string) ! {
+	dir := os.join_path(os.vtmp_dir(), 'v3_sql_alias_query_${label}_${os.getpid()}')
 	os.mkdir_all(os.join_path(dir, 'aliases'))!
 	defer { os.rmdir_all(dir) or {} }
 	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'),
@@ -489,27 +491,28 @@ fn check_sql_alias_query_batch(cases []SqlAliasQueryCase, label string, import_n
 	mut calls := []string{}
 	mut expected := map[string]string{}
 	for i, case in cases {
-		for query in sql_alias_visibility_queries(valid) {
+		for query in queries {
 			name := 'fixture_${i}_${query}'
 			fixture_dir := os.join_path(dir, name)
 			os.mkdir(fixture_dir)!
-			program := sql_alias_visibility_wrapped_source(case.expression, query, import_name,
+			program := sql_alias_visibility_wrapped_source(case.expression, query, case.import_name,
 				case.wrapper, case.lock_receiver)
 				.replace_once('module main', 'module ${name}')
 				.replace_once('fn main() {', 'pub fn exercise() ! {')
 			os.write_file(os.join_path(fixture_dir, '${name}.v'), program)!
 			imports << 'import ${name}'
 			calls << '${name}.exercise()!'
-			if !valid {
+			if case.diagnostic != '' {
 				expected['${name}.v:'] = case.diagnostic
 			}
 		}
 	}
+	assert expected.len == 0 || expected.len == calls.len
 	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n\t${calls.join('\n\t')}\n}\n')!
 	executable := os.join_path(dir, 'main.exe')
-	for flags in [[]string{}, ['-check']] {
+	for flags in flag_sets {
 		result := os.exec([@VEXE, '-nocolor', ...flags, '-o', executable, dir])
-		if valid {
+		if expected.len == 0 {
 			assert result.exit_code == 0, result.output
 			if flags.len == 0 {
 				run := os.exec([executable])
@@ -541,14 +544,17 @@ fn check_sql_alias_lock_matrix(lock_receivers []string, method string, import_na
 			}
 			cases << SqlAliasQueryCase{
 				expression:    '${receiver}.${method}()[0].name'
+				import_name:   import_name
 				lock_receiver: lock_receiver
 				wrapper:       wrapper
 				diagnostic:    diagnostic
 			}
 		}
 	}
-	check_sql_alias_query_batch(cases.filter(it.diagnostic == ''), method, import_name, true)!
-	check_sql_alias_query_batch(cases.filter(it.diagnostic != ''), method, import_name, false)!
+	check_sql_alias_query_batch(cases.filter(it.diagnostic == ''), '${method}_${import_name}_accepted',
+		sql_alias_visibility_queries(true), sql_alias_compile_and_check)!
+	check_sql_alias_query_batch(cases.filter(it.diagnostic != ''), '${method}_${import_name}_rejected',
+		sql_alias_visibility_queries(false), sql_alias_compile_and_check)!
 }
 
 fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_values() {
@@ -594,17 +600,20 @@ fn test_option_result_alias_fallback_methods_keep_resolution_and_visibility_in_s
 }
 
 fn test_option_result_alias_fallback_methods_keep_declared_sql_result_types() {
+	mut cases := []SqlAliasQueryCase{}
 	for import_name in ['aliases', 'renamed'] {
-		for i, expression in [
+		for expression in [
 			'(${import_name}.load_names(false) or { values }).clone()[0]',
 			'(${import_name}.find_names(false) or { values }).clone()[0]',
 			'(optional_none_values or { values }).clone()[0]',
 			'(optional_some_values or { values }).clone()[0]',
 		] {
-			result := sql_alias_visibility_result('fallback_result_${import_name}_${i}',
-				true, expression, .selection, true, true, import_name)
-			assert result.exit_code != 0, result.output
-			assert result.output.contains('this expression has type `aliases.Holder`'), result.output
+			cases << SqlAliasQueryCase{
+				expression:  expression
+				import_name: import_name
+				diagnostic:  'this expression has type `aliases.Holder`'
+			}
 		}
 	}
+	check_sql_alias_query_batch(cases, 'fallback_result', [.selection], [['-check']])!
 }
