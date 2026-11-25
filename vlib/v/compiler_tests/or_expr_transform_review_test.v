@@ -19,6 +19,11 @@ fn or_review_gen_c(name string, src string) string {
 }
 
 fn or_review_run(name string, src string) string {
+	out, _ := or_review_run_fixture(name, src, false)
+	return out
+}
+
+fn or_review_run_fixture(name string, src string, read_c bool) (string, string) {
 	dir := os.join_path(os.vtmp_dir(), 'v3_or_review_${tempname.unique_token()}')
 	os.mkdir(dir) or { panic(err) }
 	defer {
@@ -31,7 +36,12 @@ fn or_review_run(name string, src string) string {
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
-	return run.output.trim_space()
+	c_source := if read_c {
+		os.read_file(bin_path + '.c') or { panic(err) }
+	} else {
+		''
+	}
+	return run.output.trim_space(), c_source
 }
 
 fn or_review_compile_bad(name string, src string) string {
@@ -45,6 +55,39 @@ fn or_review_compile_bad(name string, src string) string {
 	compile := os.exec([@VEXE, src_path, '-b', 'c'])
 	assert compile.exit_code != 0, '${name}: invalid source compiled successfully'
 	return compile.output
+}
+
+fn or_review_check_rejections(expected string, cases map[string]string) {
+	dir := os.join_path(os.vtmp_dir(), 'v3_or_review_${tempname.unique_token()}')
+	os.mkdir(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	mut imports := []string{cap: cases.len}
+	for name, source in cases {
+		module_name := 'fixture_${imports.len}'
+		module_dir := os.join_path(dir, module_name)
+		os.mkdir(module_dir) or { panic(err) }
+		imports << 'import ${module_name} as _'
+		os.write_file(os.join_path(module_dir, '${name}.v'), 'module ${module_name}\n\n' + source) or {
+			panic(err)
+		}
+	}
+	main_path := os.join_path(dir, 'main.v')
+	os.write_file(main_path, 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n') or { panic(err) }
+	compile := os.exec([@VEXE, '-b', 'c', '-nocolor', '-o', os.join_path(dir, 'program'), main_path])
+	assert compile.exit_code != 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	mut rejected_files := map[string]bool{}
+	for line in compile.output.split_into_lines() {
+		location, message := line.split_once(': error: ') or { continue }
+		if message.contains(expected) {
+			// Drop the line and column from the right to preserve any colon in the path.
+			file := location.all_before_last(':').all_before_last(':')
+			rejected_files[os.file_name(file)] = true
+		}
+	}
+	for name, _ in cases {
+		assert '${name}.v' in rejected_files, '${name}: expected `${expected}` in\n${compile.output}'
+	}
 }
 
 fn test_channel_receive_or_stabilizes_side_effectful_source() {
@@ -67,31 +110,27 @@ fn test_bare_channel_or_is_rejected() {
 
 fn test_array_optional_element_or_uses_fallback_without_err_binding() {
 	src := 'fn main() {\n\terr := 7\n\tmut arr := []?int{}\n\tarr << none\n\tarr << 5\n\tmissing := arr[0] or { err }\n\tpresent := arr[1] or { -1 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n}\n'
-	c_source := or_review_gen_c('array_optional_element_fallback_source', src)
+	out, c_source := or_review_run_fixture('array_optional_element_fallback_run', src, true)
 	assert c_source.contains('__v_option_i64 __arr_opt_'), 'missing loaded optional temp'
 	assert c_source.contains('i64 err = 7;'), 'explicit outer err was not preserved'
 	assert !c_source.contains('IError err = __arr_opt_'), 'element failure branch binds an Option error'
-	out := or_review_run('array_optional_element_fallback_run', src)
 	assert out == '7\n5'
 }
 
 fn test_map_optional_element_or_uses_fallback_without_err_binding() {
 	src := "fn main() {\n\terr := 7\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tm['y'] = 5\n\tmissing := m['x'] or { err }\n\tpresent := m['y'] or { -1 }\n\tabsent := m['z'] or { -2 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n\tprintln(int_str(absent))\n}\n"
-	c_source := or_review_gen_c('map_optional_element_fallback_source', src)
+	out, c_source := or_review_run_fixture('map_optional_element_fallback_run', src, true)
 	assert c_source.contains('__v_option_i64 __map_opt_'), 'missing loaded map optional temp'
 	assert c_source.contains('i64 err = 7;'), 'explicit outer err was not preserved'
 	assert !c_source.contains('IError err = __map_opt_'), 'map element failure branch binds an Option error'
-	out := or_review_run('map_optional_element_fallback_run', src)
 	assert out == '7\n5\n-2'
 }
 
 fn test_optional_element_or_rejects_implicit_err() {
-	array_output := or_review_compile_bad('array_optional_element_implicit_err',
-		'fn main() {\n\tmut arr := []?int{}\n\tarr << none\n\tvalue := arr[0] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n')
-	assert array_output.contains('undefined variable: `err`'), array_output
-	map_output := or_review_compile_bad('map_optional_element_implicit_err',
-		"fn main() {\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tvalue := m['x'] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n")
-	assert map_output.contains('undefined variable: `err`'), map_output
+	or_review_check_rejections('undefined variable: `err`', {
+		'array_optional_element_implicit_err': 'fn main() {\n\tmut arr := []?int{}\n\tarr << none\n\tvalue := arr[0] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n'
+		'map_optional_element_implicit_err':   "fn main() {\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tvalue := m['x'] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n"
+	})
 }
 
 fn test_map_index_address_or_nil_remains_valid() {
@@ -179,10 +218,8 @@ fn test_or_storage_preserves_generic_map_value_type() {
 }
 
 fn test_optional_result_pointers_or_are_rejected() {
-	option_output := or_review_compile_bad('optional_pointer_or_rejected',
-		'fn invalid(ptr &?int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n')
-	assert option_output.contains('cannot use `or {}` block on non-option variable'), option_output
-	result_output := or_review_compile_bad('result_pointer_or_rejected',
-		'fn invalid(ptr &!int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n')
-	assert result_output.contains('cannot use `or {}` block on non-option variable'), result_output
+	or_review_check_rejections('cannot use `or {}` block on non-option variable', {
+		'optional_pointer_or_rejected': 'fn invalid(ptr &?int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n'
+		'result_pointer_or_rejected':   'fn invalid(ptr &!int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n'
+	})
 }
