@@ -493,7 +493,8 @@ immediately defer its `.wait()`. Append each `spawn` directly to that array.
 The workers can return void or a scalar. Declare borrowed scalars in the
 array's scope or an enclosing scope so the deferred join can still reach them.
 The array stays local to the scope, with appends and the deferred wait as its
-only uses.
+only uses. Ownership cleanup releases the handle array and any discarded
+results after the join.
 
 ## Full example
 

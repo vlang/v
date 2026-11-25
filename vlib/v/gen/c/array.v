@@ -1183,6 +1183,26 @@ fn (mut g FlatGen) gen_fixed_array_pointers_expr(base_id flat.NodeId, is_ptr boo
 	g.write('; Array ${res_name} = array_new(sizeof(voidptr), ${len_text}, ${len_text}); for (int ${idx_name} = 0; ${idx_name} < ${len_text}; ${idx_name}++) { ((voidptr*)${res_name}.data)[${idx_name}] = (voidptr)&((*${src_name})[${idx_name}]); } ${res_name}; })')
 }
 
+// A thread array wait creates a fresh array of results. Its temporary owner
+// must release those results when the call is used as a statement.
+fn (g &FlatGen) discarded_thread_array_wait(node flat.Node) bool {
+	$if ownership ? {
+		if node.children_count != 1 {
+			return false
+		}
+		selector := g.a.child_node(&node, 0)
+		if selector.kind != .selector || selector.value != 'wait' || selector.children_count != 1 {
+			return false
+		}
+		receiver := types.unwrap_pointer(g.tc.resolve_type(g.a.child(selector, 0)))
+		if receiver is types.Array {
+			elem := unalias_type(receiver.elem_type)
+			return elem is types.Struct && flat.source_type_shape(elem.source_type_id()).has(.thread_type)
+		}
+	}
+	return false
+}
+
 // gen_thread_array_wait emits a call to the (lazily generated) wait function for a
 // `[]thread T` receiver. The element type carries the thread's return type in its
 // name (`thread T`); a bare `thread` denotes a void payload.

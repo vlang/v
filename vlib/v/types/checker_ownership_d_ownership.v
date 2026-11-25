@@ -1433,7 +1433,7 @@ fn (mut tc TypeChecker) ownership_live_drop_entry(name string) ?OwnershipDropEnt
 		return none
 	}
 	type_name := st.owned_var_types.type_id(name) or { return none }
-	target := tc.ownership_owned_storage_drop_target_for_type_name(type_name) or { return none }
+	target := tc.ownership_owned_storage_drop_target_for_binding(type_name, st.owned_vars[name]) or { return none }
 	return OwnershipDropEntry{
 		name:             name
 		type_name:        target.type_name
@@ -1443,15 +1443,17 @@ fn (mut tc TypeChecker) ownership_live_drop_entry(name string) ?OwnershipDropEnt
 
 // Already-owned values must release nested sum pointer storage even when the payload
 // has no custom Drop method. This does not change which values are owned.
-fn (tc &TypeChecker) ownership_owned_storage_drop_target_for_type_name(type_name_id u32) ?OwnershipDropTarget {
+fn (tc &TypeChecker) ownership_owned_storage_drop_target_for_binding(type_name_id u32, binding_id flat.NodeId) ?OwnershipDropTarget {
 	if target := tc.ownership_drop_target_for_type_name(type_name_id) {
 		return target
 	}
 	if tc.ownership == unsafe { nil } || type_name_id == 0 {
 		return none
 	}
+	typ := tc.parse_type(type_name_id)
 	mut seen := map[u32]bool{}
-	if tc.ownership_owned_storage_contains_pointer_sum(tc.parse_type(type_name_id), 0, mut seen) {
+	if tc.ownership_scoped_thread_group_owns_binding(binding_id, typ)
+		|| tc.ownership_owned_storage_contains_pointer_sum(typ, 0, mut seen) {
 		return OwnershipDropTarget{
 			type_name: type_name_id
 		}
@@ -6536,7 +6538,7 @@ fn (mut tc TypeChecker) ownership_drop_entries_for_loop_base_scope(base Ownershi
 			continue
 		}
 		type_name := snapshot.owned_var_types.type_id(name) or { continue }
-		if target := tc.ownership_owned_storage_drop_target_for_type_name(type_name) {
+		if target := tc.ownership_owned_storage_drop_target_for_binding(type_name, snapshot_pos) {
 			entries << OwnershipDropEntry{
 				name:             name
 				type_name:        target.type_name
@@ -6566,7 +6568,7 @@ fn (mut tc TypeChecker) ownership_drop_entries_since_frame(base OwnershipFrame, 
 	mut entries := []OwnershipDropEntry{}
 	for candidate in candidates {
 		type_name := snapshot.owned_var_types.type_id(candidate.name) or { continue }
-		if target := tc.ownership_owned_storage_drop_target_for_type_name(type_name) {
+		if target := tc.ownership_owned_storage_drop_target_for_binding(type_name, flat.NodeId(candidate.pos)) {
 			entries << OwnershipDropEntry{
 				name:             candidate.name
 				type_name:        target.type_name
