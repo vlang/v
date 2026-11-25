@@ -1,3 +1,4 @@
+import json2
 import os
 import v.cmdexec
 import v.tempname
@@ -27,6 +28,81 @@ fn run_bad(compiler string, name string, src string, expected string) {
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
+}
+
+struct ReceiverFixture {
+	name     string
+	source   string
+	expected string
+}
+
+struct ReceiverDiagnostic {
+	file     string
+	severity string
+	message  string
+}
+
+fn write_receiver_batch(name string, cases []ReceiverFixture, runnable bool) string {
+	root := os.join_path(review_checker_fixture_dir, name)
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		dir := os.join_path(root, case.name)
+		os.mkdir_all(dir) or { panic(err) }
+		source := if runnable {
+			imports << 'import ${case.name}'
+			calls << "\t\t'${case.name}' { ${case.name}.exercise() }"
+			case.source.replace_once('\nfn main()', '\npub fn exercise()')
+		} else {
+			imports << 'import ${case.name} as _'
+			case.source
+		}
+		os.write_file(os.join_path(dir, '${case.name}.v'), 'module ${case.name}\n\n' + source) or {
+			panic(err)
+		}
+	}
+	import_text := imports.join('\n')
+	main := if runnable {
+		"module main\n\nimport os\n${import_text}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	} else {
+		'module main\n\n${import_text}\n\nfn main() {}\n'
+	}
+	os.write_file(os.join_path(root, 'main.v'), main) or { panic(err) }
+	return root
+}
+
+fn check_receiver_rejections(cases []ReceiverFixture) {
+	root := write_receiver_batch('receiver_rejections', cases, false)
+	result := run_review_checker(v3_bin, [root, '-json-errors', '-b', 'c', '-o',
+		os.join_path(root, 'program')])
+	assert result.exit_code != 0, result.output
+	assert !result.output.contains('C compilation failed'), result.output
+	mut errors := map[string][]string{}
+	for line in result.output.split_into_lines() {
+		if !line.starts_with('{') {
+			continue
+		}
+		diagnostic := json2.decode[ReceiverDiagnostic](line) or { panic(err) }
+		if diagnostic.severity == 'error' {
+			errors[os.file_name(diagnostic.file)] << diagnostic.message
+		}
+	}
+	for case in cases {
+		assert errors['${case.name}.v'].any(it.contains(case.expected)), '${case.name}: expected ${case.expected}\n${result.output}'
+	}
+}
+
+fn check_receiver_runtime(cases []ReceiverFixture) {
+	root := write_receiver_batch('receiver_runtime', cases, true)
+	bin_path := os.join_path(root, 'program')
+	compile := run_review_checker(v3_bin, ['-enable-globals', root, '-b', 'c', '-o', bin_path])
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	for case in cases {
+		result := os.exec([bin_path, case.name])
+		assert result.exit_code == 0, '${case.name}: ${result.output}'
+		assert result.output.trim_space() == case.expected, '${case.name}: expected ${case.expected}\n${result.output}'
+	}
 }
 
 fn run_good(compiler string, name string, src string) string {
@@ -1090,54 +1166,26 @@ fn test_voidptr_params_reject_non_pointer_values() {
 }
 
 fn test_shared_receiver_and_arg_require_shared_bindings() {
-	run_bad(v3_bin, 'bad_mut_receiver_immutable_value',
-		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\ts.bump()\n}\n',
-		'`s` is immutable, declare it with `mut` to make it mutable')
-	run_bad(v3_bin, 'bad_generic_mut_receiver_immutable_value',
-		'struct Box[T] {\nmut:\n\tvalue T\n}\n\nfn (mut b Box[T]) set(value T) {\n\tb.value = value\n}\n\nfn main() {\n\tb := Box[int]{\n\t\tvalue: 1\n\t}\n\tb.set(2)\n}\n',
-		'`b` is immutable, declare it with `mut` to make it mutable')
-	run_bad(v3_bin, 'bad_mut_receiver_address_of_immutable_value',
-		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\t(&s).bump()\n}\n',
-		'cannot pass expression as `mut`')
-	immutable_pointer_out := run_good(v3_bin, 'good_mut_receiver_immutable_pointer_binding',
-		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n')
-	assert immutable_pointer_out == '1'
-	run_bad(v3_bin, 'bad_shared_receiver_plain_value',
-		'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n',
-		'cannot use shared method `f` as `s` is not a shared var')
-	run_bad(v3_bin, 'bad_shared_arg_shadowed_local',
-		'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\tshared s := St{}\n\tif true {\n\t\ts := St{}\n\t\ttake(s)\n\t}\n}\n',
-		'parameter `s` is `shared`, so use `shared s` instead')
-	run_bad(v3_bin, 'bad_explicit_shared_arg_plain_local',
-		'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\ts := St{}\n\ttake(shared s)\n}\n',
-		'cannot use non-shared `St` as argument 1')
-	out := run_good(v3_bin, 'good_shared_arg_and_receiver',
-		'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(shared s) + s.f()))\n}\n')
-	assert out == '3'
-	mut_out := run_good(v3_bin, 'good_mut_receiver_mutable_value',
-		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n')
-	assert mut_out == '1'
-	mut_address_out := run_good(v3_bin, 'good_mut_receiver_address_of_mutable_value',
-		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\t(&s).bump()\n\tprintln(int_str(s.value))\n}\n')
-	assert mut_address_out == '1'
-	mut_pointer_out := run_good(v3_bin, 'good_mut_receiver_mutable_pointer_binding',
-		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tmut p := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n')
-	assert mut_pointer_out == '1'
-	global_pointer_out := run_good(v3_bin, 'good_mut_receiver_global_pointer',
-		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\n__global global_st = &St{}\n\nfn main() {\n\tglobal_st.bump()\n\tprintln(int_str(global_st.value))\n}\n')
-	assert global_pointer_out == '1'
-	field_pointer_out := run_good(v3_bin, 'good_mut_receiver_pointer_field',
-		'struct St {\nmut:\n\tvalue int\n}\n\nstruct Holder {\n\tst &St\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tholder := Holder{\n\t\tst: &s\n\t}\n\tholder.st.bump()\n\tprintln(int_str(s.value))\n}\n')
-	assert field_pointer_out == '1'
-	if_guard_out := run_good(v3_bin, 'good_mut_receiver_if_guard_binding',
-		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn get() ?St {\n\treturn St{}\n}\n\nfn main() {\n\tif mut s := get() {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}\n}\n')
-	assert if_guard_out == '1'
-	capture_out := run_good(v3_bin, 'good_mut_receiver_explicit_mut_capture',
-		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tfn [mut s] () {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}()\n}\n')
-	assert capture_out == '1'
-	ptr_out := run_good(v3_bin, 'good_pointer_receiver_immutable_value',
-		'struct St {\n\tvalue int\n}\n\nfn (s &St) get() int {\n\treturn s.value\n}\n\nfn main() {\n\ts := St{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(s.get()))\n}\n')
-	assert ptr_out == '2'
+	check_receiver_rejections([
+		ReceiverFixture{'bad_mut_receiver_immutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\ts.bump()\n}\n', '`s` is immutable, declare it with `mut` to make it mutable'},
+		ReceiverFixture{'bad_generic_mut_receiver_immutable_value', 'struct Box[T] {\nmut:\n\tvalue T\n}\n\nfn (mut b Box[T]) set(value T) {\n\tb.value = value\n}\n\nfn main() {\n\tb := Box[int]{\n\t\tvalue: 1\n\t}\n\tb.set(2)\n}\n', '`b` is immutable, declare it with `mut` to make it mutable'},
+		ReceiverFixture{'bad_mut_receiver_address_of_immutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\t(&s).bump()\n}\n', 'cannot pass expression as `mut`'},
+		ReceiverFixture{'bad_shared_receiver_plain_value', 'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n', 'cannot use shared method `f` as `s` is not a shared var'},
+		ReceiverFixture{'bad_shared_arg_shadowed_local', 'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\tshared s := St{}\n\tif true {\n\t\ts := St{}\n\t\ttake(s)\n\t}\n}\n', 'parameter `s` is `shared`, so use `shared s` instead'},
+		ReceiverFixture{'bad_explicit_shared_arg_plain_local', 'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\ts := St{}\n\ttake(shared s)\n}\n', 'cannot use non-shared `bad_explicit_shared_arg_plain_local.St` as argument 1'},
+	])
+	check_receiver_runtime([
+		ReceiverFixture{'good_mut_receiver_immutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReceiverFixture{'good_shared_arg_and_receiver', 'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(shared s) + s.f()))\n}\n', '3'},
+		ReceiverFixture{'good_mut_receiver_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReceiverFixture{'good_mut_receiver_address_of_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\t(&s).bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReceiverFixture{'good_mut_receiver_mutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tmut p := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReceiverFixture{'good_mut_receiver_global_pointer', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\n__global global_st = &St{}\n\nfn main() {\n\tglobal_st.bump()\n\tprintln(int_str(global_st.value))\n}\n', '1'},
+		ReceiverFixture{'good_mut_receiver_pointer_field', 'struct St {\nmut:\n\tvalue int\n}\n\nstruct Holder {\n\tst &St\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tholder := Holder{\n\t\tst: &s\n\t}\n\tholder.st.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReceiverFixture{'good_mut_receiver_if_guard_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn get() ?St {\n\treturn St{}\n}\n\nfn main() {\n\tif mut s := get() {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}\n}\n', '1'},
+		ReceiverFixture{'good_mut_receiver_explicit_mut_capture', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tfn [mut s] () {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}()\n}\n', '1'},
+		ReceiverFixture{'good_pointer_receiver_immutable_value', 'struct St {\n\tvalue int\n}\n\nfn (s &St) get() int {\n\treturn s.value\n}\n\nfn main() {\n\ts := St{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(s.get()))\n}\n', '2'},
+	])
 }
 
 fn test_method_receiver_rejects_extra_pointer_layers() {
