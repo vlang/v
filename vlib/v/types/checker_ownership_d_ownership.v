@@ -1431,7 +1431,7 @@ fn (mut tc TypeChecker) ownership_live_drop_entry(name string) ?OwnershipDropEnt
 		return none
 	}
 	type_name := st.owned_var_types.type_id(name) or { return none }
-	target := tc.ownership_owned_storage_drop_target_for_type_name(type_name) or { return none }
+	target := tc.ownership_owned_storage_drop_target_for_binding(type_name, st.owned_vars[name]) or { return none }
 	return OwnershipDropEntry{
 		name:             name
 		type_name:        target.type_name
@@ -1441,7 +1441,11 @@ fn (mut tc TypeChecker) ownership_live_drop_entry(name string) ?OwnershipDropEnt
 
 // Already-owned values must release nested sum pointer storage even when the payload
 // has no custom Drop method. This does not change which values are owned.
-fn (tc &TypeChecker) ownership_owned_storage_drop_target_for_type_name(type_name_id u32) ?OwnershipDropTarget {
+fn (tc &TypeChecker) ownership_owned_storage_drop_target_for_binding(type_name_id u32, binding_id flat.NodeId) ?OwnershipDropTarget {
+	if tc.a.node(binding_id).is_scoped_thread_array() {
+		// The checked lexical defer joins the workers and releases the handles.
+		return none
+	}
 	if target := tc.ownership_drop_target_for_type_name(type_name_id) {
 		return target
 	}
@@ -6515,7 +6519,7 @@ fn (mut tc TypeChecker) ownership_drop_entries_for_loop_base_scope(base Ownershi
 			continue
 		}
 		type_name := snapshot.owned_var_types.type_id(name) or { continue }
-		if target := tc.ownership_owned_storage_drop_target_for_type_name(type_name) {
+		if target := tc.ownership_owned_storage_drop_target_for_binding(type_name, snapshot_pos) {
 			entries << OwnershipDropEntry{
 				name:             name
 				type_name:        target.type_name
@@ -6545,7 +6549,7 @@ fn (mut tc TypeChecker) ownership_drop_entries_since_frame(base OwnershipFrame, 
 	mut entries := []OwnershipDropEntry{}
 	for candidate in candidates {
 		type_name := snapshot.owned_var_types.type_id(candidate.name) or { continue }
-		if target := tc.ownership_owned_storage_drop_target_for_type_name(type_name) {
+		if target := tc.ownership_owned_storage_drop_target_for_binding(type_name, flat.NodeId(candidate.pos)) {
 			entries << OwnershipDropEntry{
 				name:             candidate.name
 				type_name:        target.type_name
@@ -7313,11 +7317,13 @@ fn (mut tc TypeChecker) ownership_merge_branch_borrows(group OwnershipBranchGrou
 	mut st := tc.ownership_state()
 	for branch in group.branches {
 		for name, borrows in branch.borrowed_vars {
-			if name !in group.base.owned_vars && name !in group.base.borrowed_vars && !tc.ownership_storage_participates(name) {
-				continue
-			}
+			tracked := name in group.base.owned_vars || name in group.base.borrowed_vars
+				|| tc.ownership_storage_participates(name)
 			mut merged := st.borrowed_vars[name] or { []BorrowInfo{} }
 			for borrow in borrows {
+				if !tracked && !tc.valid_node_id(borrow.thread_join_site) {
+					continue
+				}
 				mut exists := false
 				for existing in merged {
 					if existing.borrower == borrow.borrower && existing.pos == borrow.pos
@@ -7607,6 +7613,7 @@ fn (mut tc TypeChecker) ownership_after_decl_assign(lhs_id flat.NodeId, rhs_id f
 	}
 	tc.ownership_assign_to_name(lhs_name, rhs_id, lhs_type, assign_id)
 	tc.ownership_track_fn_value_binding(lhs_name, rhs_id)
+	tc.ownership_mark_scoped_thread_array(lhs_id, assign_id, lhs_type)
 	tc.ownership_record_scoped_thread_borrows(lhs_name, rhs_id)
 }
 

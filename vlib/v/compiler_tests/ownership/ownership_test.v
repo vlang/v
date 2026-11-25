@@ -71,6 +71,13 @@ fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result 
 }
 
 fn run_ownership_check_with_module(v3_bin string, name string, main_code string, module_name string, module_code string) os.Result {
+	tmp_dir := write_ownership_module_fixture(name, main_code, module_name, module_code)
+	src := os.join_path(tmp_dir, 'main.v')
+	out := os.join_path(tmp_dir, 'out')
+	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', out, src])
+}
+
+fn write_ownership_module_fixture(name string, main_code string, module_name string, module_code string) string {
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic(err) }
@@ -78,10 +85,9 @@ fn run_ownership_check_with_module(v3_bin string, name string, main_code string,
 	os.mkdir_all(module_dir) or { panic(err) }
 	src := os.join_path(tmp_dir, 'main.v')
 	mod_src := os.join_path(module_dir, '${module_name}.v')
-	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, main_code) or { panic(err) }
 	os.write_file(mod_src, module_code) or { panic(err) }
-	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', '${out}', '${src}'])
+	return tmp_dir
 }
 
 fn test_ownership_build_define_is_isolated_and_mode_defines_target() {
@@ -4694,5 +4700,191 @@ fn main() {
 ')
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('cannot use `weight` until scoped thread `first` has joined'), result.output
+	}
+}
+
+fn test_ownership_scoped_thread_array_joins_all_borrowers() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_thread_array', r'
+struct Job {
+	weight &int
+	factor int
+}
+
+fn work(job Job, ready chan bool, results chan int) bool {
+	_ = <-ready
+	results <- *job.weight * job.factor
+	return true
+}
+
+fn main() {
+	weight := 7
+	ready := chan bool{cap: 3}
+	results := chan int{cap: 3}
+	{
+		mut workers := []thread bool{}
+		defer { workers.wait() }
+		for factor in 1 .. 4 {
+			workers << spawn work(Job{weight: &weight, factor: factor}, ready, results)
+		}
+		for _ in 0 .. 3 {
+			ready <- true
+		}
+	}
+	assert <-results + <-results + <-results == 42
+	assert weight == 7
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_scoped_thread_array_keeps_caller_loans_across_branches() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_thread_array_caller_loan', r'
+fn work(weight &int) {
+	assert *weight == 7
+}
+
+fn run(launch bool) {
+	weight := 7
+	mut workers := []thread{}
+	defer { workers.wait() }
+	for i in 0 .. 2 {
+		if launch {
+			workers << spawn work(&weight)
+			if i == 0 {
+				continue
+			}
+			break
+		}
+	}
+	assert weight == 7
+}
+
+fn main() {
+	run(true)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot use `weight` until scoped thread `workers` has joined'), result.output
+}
+
+fn test_ownership_scoped_thread_array_rejects_shorter_lived_storage() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_thread_array_local_escape', r'
+fn work(weight &int) {
+	assert *weight == 7
+}
+
+fn main() {
+	mut workers := []thread{}
+	defer { workers.wait() }
+	for factor in 0 .. 3 {
+		weight := factor + 7
+		workers << spawn work(&weight)
+	}
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('scoped thread group `workers` outlives borrowed scalar `weight`'), result.output
+}
+
+fn test_ownership_scoped_thread_array_rejects_extra_handle_uses() {
+	v3_bin := ownership_build_v3()
+	for statement in ['copy := workers; assert copy.len == 1', 'workers.wait()',
+		'defer(fn) { workers << spawn work(&weight) }'] {
+		result := run_ownership_check(v3_bin, 'scoped_thread_array_handle_escape', '
+fn work(weight &int) {
+	assert *weight == 7
+}
+
+fn main() {
+	weight := 7
+	{
+		mut workers := []thread{}
+		defer { workers.wait() }
+		workers << spawn work(&weight)
+		${statement}
+	}
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('references cannot be transferred between threads'), result.output
+	}
+}
+
+fn test_ownership_deferred_thread_wait_drops_results_and_handles() {
+	v3_bin := ownership_build_v3()
+	name := 'deferred_thread_array_cleanup'
+	result := run_ownership_check_c_only(v3_bin, name, r'
+fn work() int {
+	return 7
+}
+
+fn run(early bool) {
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	handles << spawn work()
+	if early {
+		return
+	}
+}
+
+fn main() {
+	run(true)
+	run(false)
+}
+')
+	assert result.exit_code == 0, result.output
+	path := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out.c')
+	generated := os.read_file(path)!
+	waits := generated.split('__v_thread_arr_wait_i64(handles);')
+	assert waits.len == 3
+	for tail in waits[1..] {
+		results_drop := tail.index('array__free(&(__discarded_owned_') or { -1 }
+		handles_drop := tail.index('array__free(&(handles));') or { -1 }
+		assert results_drop >= 0
+		assert handles_drop > results_drop
+	}
+}
+
+fn test_ownership_deferred_thread_wait_drops_handles_in_imported_method() {
+	v3_bin := ownership_build_v3()
+	tmp := write_ownership_module_fixture('method_deferred_wait', r'
+import worker
+
+fn main() {
+	work := worker.Worker{}
+	work.run(true)
+	work.run(false)
+}
+', 'worker', r'
+module worker
+
+pub struct Worker {}
+
+fn perform() {}
+
+pub fn (receiver Worker) run(early bool) {
+	mut handles := []thread{}
+	defer { handles.wait() }
+	handles << spawn perform()
+	if early {
+		return
+	}
+}
+')
+	src := os.join_path(tmp, 'main.v')
+	out := os.join_path(tmp, 'out.c')
+	for mode in ['-ownership', '-autofree'] {
+		result := os.exec([v3_bin, mode, '-b', 'c', '-o', out, src])
+		assert result.exit_code == 0, result.output
+		generated := os.read_file(out)!
+		waits := generated.split('__v_thread_arr_wait_void(handles);')
+		assert waits.len == 3
+		assert generated.count('array__free(&(handles));') == 2
+		for tail in waits[1..] {
+			assert tail.contains('array__free(&(handles));')
+		}
 	}
 }
