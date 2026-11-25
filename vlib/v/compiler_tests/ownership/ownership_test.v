@@ -4451,3 +4451,92 @@ fn main() {
 ')
 	assert valid.exit_code == 0, valid.output
 }
+
+fn test_ownership_keeps_returned_readonly_references_readonly() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'readonly_returned_loan', r'
+import sync.arc
+
+struct Counter {
+mut:
+	value int
+}
+
+fn (mut c Counter) advance() {
+	c.value++
+}
+
+fn advance(mut c Counter) {
+	c.value++
+}
+
+fn main() {
+	mut owner := arc.new(Counter{})
+	mut borrowed := owner.get()
+	borrowed.advance()
+	advance(mut borrowed)
+	borrowed.value++
+	owner.get().advance()
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.count('cannot modify through an immutable borrow') == 4, result.output
+
+	valid := run_ownership_check(v3_bin, 'writable_returned_loan', r'
+struct Counter {
+mut:
+	value int
+}
+
+struct Holder implements Drop {
+mut:
+	counter Counter
+}
+
+fn (mut holder Holder) drop() {}
+
+fn (mut holder ^a Holder) get[^a]() &^a Counter {
+	return &holder.counter
+}
+
+fn (mut c Counter) advance() {
+	c.value++
+}
+
+fn main() {
+	mut holder := Holder{}
+	mut counter := holder.get()
+	counter.advance()
+	counter.value++
+	assert counter.value == 2
+}
+')
+	assert valid.exit_code == 0, valid.output
+}
+
+fn test_ownership_rejects_mutating_an_immutable_pointer_alias() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'readonly_pointer_alias', r'
+@[heap]
+struct Counter {
+mut:
+	value int
+}
+
+fn (mut c Counter) advance() {
+	c.value++
+}
+
+fn read(counter &Counter) {
+	mut alias := counter
+	alias.advance()
+}
+
+fn main() {
+	counter := Counter{}
+	read(&counter)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot modify through an immutable borrow'), result.output
+}

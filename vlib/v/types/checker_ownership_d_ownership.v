@@ -11735,6 +11735,24 @@ fn (mut tc TypeChecker) ownership_clear_removed_array_element_after_method(array
 	}
 }
 
+fn (mut tc TypeChecker) ownership_return_loan_sources(call_name string, info CallInfo) []OwnershipReturnParamDescendant {
+	st := tc.ownership_state()
+	mut sources := []OwnershipReturnParamDescendant{}
+	for param_idx in st.ownership_fn_returns_param[call_name] {
+		sources << OwnershipReturnParamDescendant{ param_idx: param_idx }
+	}
+	for source in st.ownership_fn_return_param_descs[call_name] {
+		if source.slot_idx != 0 || source.target_suffix != '' || source.source_is_prefix {
+			continue
+		}
+		param := info.params[source.param_idx] or { continue }
+		if unalias_type(param) is Pointer || tc.ownership_call_param_is_mut(call_name, source.param_idx) {
+			sources << source
+		}
+	}
+	return sources
+}
+
 fn (mut tc TypeChecker) ownership_mark_borrow_from_call_return(lhs_name string, rhs_id flat.NodeId, pos flat.NodeId) bool {
 	call_id := tc.ownership_unwrap_expr(rhs_id)
 	if !tc.valid_node_id(call_id) {
@@ -11751,21 +11769,8 @@ fn (mut tc TypeChecker) ownership_mark_borrow_from_call_return(lhs_name string, 
 	}
 	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(call_id) }
 	st := tc.ownership_state()
-	mut sources := []OwnershipReturnParamDescendant{}
-	for param_idx in st.ownership_fn_returns_param[call_name] {
-		sources << OwnershipReturnParamDescendant{ param_idx: param_idx }
-	}
-	for source in st.ownership_fn_return_param_descs[call_name] {
-		if source.slot_idx != 0 || source.target_suffix != '' || source.source_is_prefix {
-			continue
-		}
-		param := info.params[source.param_idx] or { continue }
-		if unalias_type(param) is Pointer || tc.ownership_call_param_is_mut(call_name, source.param_idx) {
-			sources << source
-		}
-	}
 	mut marked := false
-	for source in sources {
+	for source in tc.ownership_return_loan_sources(call_name, info) {
 		param_idx := source.param_idx
 		arg := tc.ownership_call_arg_for_return_param_source_info(node, info, param_idx,
 			source.source_suffix) or { continue }
@@ -13620,6 +13625,54 @@ fn ownership_storage_keys_dynamic_overlap(pattern string, key string) bool {
 		return true
 	}
 	return ownership_storage_keys_overlap(pattern_after, key_after)
+}
+
+// A mutable binding can rebind a reference, but cannot make its referent writable.
+fn (mut tc TypeChecker) ownership_reject_readonly_borrow_write(id flat.NodeId) bool {
+	if tc.autofree_mode || tc.unsafe_depth > 0 || tc.ownership_effects_disabled() {
+		return false
+	}
+	if !tc.ownership_expr_is_readonly_borrow(id) {
+		return false
+	}
+	tc.record_error(.assignment_mismatch, 'cannot modify through an immutable borrow', id)
+	return true
+}
+
+fn (mut tc TypeChecker) ownership_expr_is_readonly_borrow(id flat.NodeId) bool {
+	clean_id := tc.ownership_unwrap_expr(id)
+	node := tc.a.node(clean_id)
+	if node.children_count > 0 && (node.kind in [.selector, .index]
+		|| (node.kind == .prefix && node.op in [.amp, .mul])) {
+		if tc.ownership_expr_is_readonly_borrow(tc.a.child(node, 0)) {
+			return true
+		}
+	}
+	if node.kind == .call {
+		info := tc.resolve_call_info(clean_id, *node) or { return false }
+		if unalias_type(info.return_type) !is Pointer
+			&& unalias_type(tc.resolve_type(clean_id)) !is Pointer {
+			return false
+		}
+		call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(clean_id) }
+		return tc.ownership_return_loan_sources(call_name, info).any(!tc.ownership_call_param_is_mut(call_name, it.param_idx))
+	}
+	// Ordinary pointer aliases already carry this checker provenance, including
+	// a mutable variable initialized from an immutable pointer parameter.
+	if node.kind == .ident && tc.fn_context.immutable_reference_aliases[node.value]
+		&& unalias_type(tc.resolve_type(clean_id)) is Pointer {
+		return true
+	}
+	name := tc.ownership_expr_ident_name(clean_id)
+	if name == '' {
+		return false
+	}
+	for _, borrows in tc.ownership_state().borrowed_vars {
+		if borrows.any(!it.is_mut && it.borrower == name) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) ownership_add_borrow(var_name string, borrower string, pos flat.NodeId, is_mut bool) {
