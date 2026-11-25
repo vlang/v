@@ -1051,10 +1051,12 @@ fn main() {
 }
 
 fn test_fixed_array_length_checks() {
-	// A literal passed where a fixed array is expected must have the exact length.
-	run_bad(v3_bin, 'bad_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n', 'cannot use `[]int` as `[4]int` in argument 1 to `take4`')
-	// Genuine fixed arrays of different lengths in if-branches must mismatch.
-	run_bad(v3_bin, 'bad_if_branch_fixed_array_len', 'fn main() {\n\ta := [2]int{}\n\tb := [3]int{}\n\tc := true\n\t_ := if c { a } else { b }\n}\n', 'mismatched types `[2]int` and `[3]int`')
+	run_bad_module_batch(v3_bin, [
+		// A literal passed where a fixed array is expected must have the exact length.
+		TypeCheckerRejection{'bad_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n', 'cannot use `[]int` as `[4]int` in argument 1 to `bad_fixed_array_arg_len.take4`'},
+		// Genuine fixed arrays of different lengths in if-branches must mismatch.
+		TypeCheckerRejection{'bad_if_branch_fixed_array_len', 'fn main() {\n\ta := [2]int{}\n\tb := [3]int{}\n\tc := true\n\t_ := if c { a } else { b }\n}\n', 'mismatched types `[2]int` and `[3]int`'},
+	])
 	run_good_module_batch(v3_bin, 'fixed_array_lengths', [
 		// Correct fixed-array length is accepted and round-trips.
 		TypeCheckerRuntimeCase{'good_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0] + a[1] + a[2] + a[3]\n}\nfn main() {\n\tprintln(int_str(take4([10, 20, 30, 40])))\n}\n', '100'},
@@ -1198,13 +1200,15 @@ fn test_match_multi_return_tails_require_explicit_tuple() {
 		TypeCheckerRuntimeCase{'good_multi_return_match_call_promoted_numeric_types', 'fn pair_int() (int, int) {\n\treturn 1, 2\n}\nfn pair_f64() (f64, int) {\n\treturn 1.5, 2\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair_int()\n\t\t}\n\t\tfalse {\n\t\t\tpair_f64()\n\t\t}\n\t}\n\tprintln(int_str(b))\n\tprintln(a)\n}\n', '2\n1.0'},
 		TypeCheckerRuntimeCase{'good_multi_return_match_call_compatible_alias_assign', "type Count = int\n\nfn pair_alias() (Count, string) {\n\treturn Count(3), 'alias'\n}\n\nfn pair_int() (int, string) {\n\treturn 4, 'int'\n}\n\nfn main() {\n\tflag := false\n\tmut n := Count(0)\n\tmut label := ''\n\tn, label = match flag {\n\t\ttrue {\n\t\t\tpair_alias()\n\t\t}\n\t\tfalse {\n\t\t\tpair_int()\n\t\t}\n\t}\n\tprintln(int_str(n) + ':' + label)\n}\n", '4:int'},
 	])
-	run_bad(v3_bin, 'bad_multi_return_match_overlong_tuple_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue { 1, 2, 3 }\n\t\tfalse { 4, 5 }\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values')
-	run_bad(v3_bin, 'bad_multi_return_match_call_non_exhaustive_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive')
-	run_bad(v3_bin, 'bad_multi_return_match_call_non_exhaustive_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive')
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_multi_return_match_overlong_tuple_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue { 1, 2, 3 }\n\t\tfalse { 4, 5 }\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values'},
+		TypeCheckerRejection{'bad_multi_return_match_call_non_exhaustive_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive'},
+		TypeCheckerRejection{'bad_multi_return_match_call_non_exhaustive_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive'},
+		TypeCheckerRejection{'bad_multi_return_match_preceding_expr_decl_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values'},
+		TypeCheckerRejection{'bad_multi_return_match_preceding_expr_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values'},
+	])
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
-	run_bad(v3_bin, 'bad_multi_return_match_preceding_expr_decl_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values')
-	run_bad(v3_bin, 'bad_multi_return_match_preceding_expr_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values')
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_tail_return', 'fn pair(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple return values', '-check')
 }
 
@@ -1213,9 +1217,11 @@ fn test_return_if_tuple_tail_multi_return_is_rejected() {
 }
 
 fn test_pr_review_struct_sum_scope_and_gated_regressions() {
-	run_bad(v3_bin, 'bad_non_variadic_array_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points []Point) int {\n\treturn points.len\n}\n\nfn main() {\n\t_ := total(x: 1, y: 2)\n}\n', 'cannot use `key: value` arguments as `[]Point`')
-	run_bad(v3_bin, 'bad_nested_pointer_struct_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\nfn read_box[T](b &&Box[T]) T {\n\treturn b.v\n}\n\nfn main() {\n\t_ := read_box(v: 7)\n}\n', 'cannot use `key: value` arguments as `&&Box[int]` in call to `read_box`')
-	run_bad(v3_bin, 'bad_nested_pointer_struct_alias_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\ntype BoxRef = &&Box[int]\n\nfn read_box_alias(b BoxRef) {}\n\nfn main() {\n\tread_box_alias(v: 7)\n}\n', 'cannot use `key: value` arguments as `BoxRef` in call to `read_box_alias`')
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_non_variadic_array_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points []Point) int {\n\treturn points.len\n}\n\nfn main() {\n\t_ := total(x: 1, y: 2)\n}\n', 'cannot use `key: value` arguments as `[]bad_non_variadic_array_struct_field_args.Point`'},
+		TypeCheckerRejection{'bad_nested_pointer_struct_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\nfn read_box[T](b &&Box[T]) T {\n\treturn b.v\n}\n\nfn main() {\n\t_ := read_box(v: 7)\n}\n', 'cannot use `key: value` arguments as `&&bad_nested_pointer_struct_field_args.Box[int]` in call to `read_box`'},
+		TypeCheckerRejection{'bad_nested_pointer_struct_alias_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\ntype BoxRef = &&Box[int]\n\nfn read_box_alias(b BoxRef) {}\n\nfn main() {\n\tread_box_alias(v: 7)\n}\n', 'cannot use `key: value` arguments as `bad_nested_pointer_struct_alias_field_args.BoxRef` in call to `read_box_alias`'},
+	])
 	variadic_struct := run_good(v3_bin, 'good_variadic_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points ...Point) int {\n\treturn points[0].x + points[0].y\n}\n\nfn main() {\n\tprintln(int_str(total(x: 3, y: 4)))\n}\n')
 	assert variadic_struct == '7'
 	run_bad_project(v3_bin, 'bad_module_type_does_not_bind_main_type', {
