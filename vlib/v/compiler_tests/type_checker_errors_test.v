@@ -114,8 +114,8 @@ fn compile_good_input(compiler string, name string, input_path string, good_bin 
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
 }
 
-fn run_good_binary(name string, good_bin string) string {
-	run := os.exec([good_bin])
+fn run_good_binary(name string, good_bin string, args ...string) string {
+	run := os.exec([good_bin, ...args])
 	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
 }
@@ -180,6 +180,31 @@ fn compile_good_project(compiler string, name string, files map[string]string, i
 	good_bin := unique_temp_path(name)
 	compile_good_input(compiler, name, input_path, good_bin)
 	return good_bin
+}
+
+struct TypeCheckerRuntimeCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn run_good_module_batch(compiler string, name string, cases []TypeCheckerRuntimeCase) {
+	mut files := map[string]string{}
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		source := 'module ${module_name}\n\n' + case.source
+		files['${module_name}/${case.name}.v'] = source.replace_once('\nfn main()', '\npub fn exercise()')
+	}
+	files['main.v'] = "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	good_bin := compile_good_project(compiler, name, files, '')
+	for case in cases {
+		out := run_good_binary(case.name, good_bin, case.name)
+		assert out == case.expected, '${case.name}: expected `${case.expected}`, got `${out}`'
+	}
 }
 
 fn test_parallel_checker_preserves_diagnostic_order() {
@@ -1869,41 +1894,23 @@ fn test_pr_review_codegen_batch_nineteen() {
 
 fn test_pr_review_codegen_batch_twenty() {
 	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\n'
-	// Struct fields, array elements, and reassigned callback locals retain the
-	// per-instance context when the method value escapes.
-	field := run_good(v3_bin, 'good_method_value_struct_field_assign', mv +
-		'struct Holder {\nmut:\n\tcb fn () int\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut h := Holder{}\n\th.cb = c.report\n\tprintln(int_str(h.cb()))\n}\n')
-	assert field == '5'
-	indexed := run_good(v3_bin, 'good_method_value_index_assign', mv +
-		'fn main() {\n\tc := Counter{\n\t\tid: 6\n\t}\n\tmut cbs := []fn () int{len: 1}\n\tcbs[0] = c.report\n\tprintln(int_str(cbs[0]()))\n}\n')
-	assert indexed == '6'
-	reassigned := run_good(v3_bin, 'good_method_value_local_eq_then_return_escape', mv +
-		'fn dummy() int {\n\treturn 0\n}\nfn make_callback(c Counter) fn () int {\n\tmut cb := dummy\n\tcb = c.report\n\treturn cb\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 7\n\t})\n\tprintln(int_str(cb()))\n}\n')
-	assert reassigned == '7'
-	// Assigning a method value to a local (including reassignment) and passing it straight to a
-	// callback parameter does not escape, so it stays valid.
-	ok := run_good(v3_bin, 'good_method_value_local_assign_direct_use', mv +
-		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut cb := c.report\n\tcb = c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
-	assert ok == '7'
 	iface_mv := 'interface Runner {\n\trun() int\n}\n\nstruct Job {\n\tid int\n}\n\nfn (j Job) run() int {\n\treturn j.id\n}\n\nstruct Holder {\nmut:\n\tcb fn () int\n}\n'
-	iface_field := run_good(v3_bin, 'good_interface_method_value_struct_field_escape', iface_mv +
-		'fn main() {\n\tr := Runner(Job{\n\t\tid: 8\n\t})\n\th := Holder{\n\t\tcb: r.run\n\t}\n\tprintln(int_str(h.cb()))\n}\n')
-	assert iface_field == '8'
-	iface_assign := run_good(v3_bin, 'good_interface_method_value_struct_field_assign', iface_mv +
-		'fn main() {\n\tr := Runner(Job{\n\t\tid: 9\n\t})\n\tmut h := Holder{}\n\th.cb = r.run\n\tprintln(int_str(h.cb()))\n}\n')
-	assert iface_assign == '9'
-	iface_ok := run_good(v3_bin, 'good_interface_method_value_direct_callback', iface_mv +
-		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tr := Runner(Job{\n\t\tid: 7\n\t})\n\tprintln(int_str(invoke(r.run)))\n}\n')
-	assert iface_ok == '7'
-	iface_nested := run_good(v3_bin, 'good_interface_method_value_captured_alias_return', iface_mv +
-		'fn escape(r Runner) fn () int {\n\tcb := r.run\n\treturn fn [cb] () fn () int {\n\t\treturn cb\n\t}()\n}\n\nfn main() {\n\tcb := escape(Runner(Job{\n\t\tid: 10\n\t}))\n\tprintln(int_str(cb()))\n}\n')
-	assert iface_nested == '10'
-	iface_fn_literal_local := run_good(v3_bin, 'good_interface_method_value_fn_literal_local_scoped', iface_mv +
-		'fn plain() int {\n\treturn 11\n}\n\nfn outer(cb fn () int) fn () int {\n\t_ = fn () {\n\t\tr := Runner(Job{\n\t\t\tid: 5\n\t\t})\n\t\tinner_cb := r.run\n\t\t_ = inner_cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
-	assert iface_fn_literal_local == '11'
-	iface_lambda_local := run_good(v3_bin, 'good_interface_method_value_lambda_local_scoped', iface_mv +
-		'fn plain() int {\n\treturn 13\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn outer(cb fn () int) fn () int {\n\tcall(|| {\n\t\tinner_cb := Runner(Job{\n\t\t\tid: 7\n\t\t}).run\n\t\t_ = inner_cb\n\t})\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
-	assert iface_lambda_local == '13'
+	run_good_module_batch(v3_bin, 'method_values', [
+		// Struct fields, array elements, and reassigned callback locals retain the
+		// per-instance context when the method value escapes.
+		TypeCheckerRuntimeCase{'good_method_value_struct_field_assign', mv + 'struct Holder {\nmut:\n\tcb fn () int\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut h := Holder{}\n\th.cb = c.report\n\tprintln(int_str(h.cb()))\n}\n', '5'},
+		TypeCheckerRuntimeCase{'good_method_value_index_assign', mv + 'fn main() {\n\tc := Counter{\n\t\tid: 6\n\t}\n\tmut cbs := []fn () int{len: 1}\n\tcbs[0] = c.report\n\tprintln(int_str(cbs[0]()))\n}\n', '6'},
+		TypeCheckerRuntimeCase{'good_method_value_local_eq_then_return_escape', mv + 'fn dummy() int {\n\treturn 0\n}\nfn make_callback(c Counter) fn () int {\n\tmut cb := dummy\n\tcb = c.report\n\treturn cb\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 7\n\t})\n\tprintln(int_str(cb()))\n}\n', '7'},
+		// Assigning a method value to a local (including reassignment) and passing it straight to a
+		// callback parameter does not escape, so it stays valid.
+		TypeCheckerRuntimeCase{'good_method_value_local_assign_direct_use', mv + 'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut cb := c.report\n\tcb = c.report\n\tprintln(int_str(invoke(cb)))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_struct_field_escape', iface_mv + 'fn main() {\n\tr := Runner(Job{\n\t\tid: 8\n\t})\n\th := Holder{\n\t\tcb: r.run\n\t}\n\tprintln(int_str(h.cb()))\n}\n', '8'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_struct_field_assign', iface_mv + 'fn main() {\n\tr := Runner(Job{\n\t\tid: 9\n\t})\n\tmut h := Holder{}\n\th.cb = r.run\n\tprintln(int_str(h.cb()))\n}\n', '9'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_direct_callback', iface_mv + 'fn invoke(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tr := Runner(Job{\n\t\tid: 7\n\t})\n\tprintln(int_str(invoke(r.run)))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_captured_alias_return', iface_mv + 'fn escape(r Runner) fn () int {\n\tcb := r.run\n\treturn fn [cb] () fn () int {\n\t\treturn cb\n\t}()\n}\n\nfn main() {\n\tcb := escape(Runner(Job{\n\t\tid: 10\n\t}))\n\tprintln(int_str(cb()))\n}\n', '10'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_fn_literal_local_scoped', iface_mv + 'fn plain() int {\n\treturn 11\n}\n\nfn outer(cb fn () int) fn () int {\n\t_ = fn () {\n\t\tr := Runner(Job{\n\t\t\tid: 5\n\t\t})\n\t\tinner_cb := r.run\n\t\t_ = inner_cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n', '11'},
+		TypeCheckerRuntimeCase{'good_interface_method_value_lambda_local_scoped', iface_mv + 'fn plain() int {\n\treturn 13\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn outer(cb fn () int) fn () int {\n\tcall(|| {\n\t\tinner_cb := Runner(Job{\n\t\t\tid: 7\n\t\t}).run\n\t\t_ = inner_cb\n\t})\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n', '13'},
+	])
 }
 
 fn test_pr_review_codegen_batch_twentyone() {
