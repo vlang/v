@@ -80,8 +80,8 @@ fn orm_join_sql_attr_run_project(name string, files map[string]string) string {
 	return run.output.trim_space()
 }
 
-fn test_v3_orm_update_function_call_value() {
-	out := orm_join_sql_attr_run('orm_update_function_call_value', "import db.sqlite
+fn test_v3_orm_update_call_and_cast_values() {
+	out := orm_join_sql_attr_run('orm_update_call_and_cast_values', "import db.sqlite
 import encoding.html
 
 // `Table` intentionally collides with orm.Table. The generic specialization
@@ -91,7 +91,7 @@ struct Table {
 	name string
 }
 
-fn main() {
+fn update_with_function_call() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {
 		db.close() or {}
@@ -118,12 +118,6 @@ fn main() {
 	assert rows.len == 1
 	assert rows[0].name == '&lt;Ada&gt;'
 }
-")
-	assert out == ''
-}
-
-fn test_v3_orm_update_call_selector_and_cast_semantics() {
-	out := orm_join_sql_attr_run('orm_update_call_selector_and_cast_semantics', "import db.sqlite
 
 struct User {
 	id int @[primary]
@@ -134,7 +128,7 @@ fn User.decorate(value string) string {
 	return 'static:\${value}'
 }
 
-fn main() {
+fn update_with_selectors_and_casts() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {
 		db.close() or {}
@@ -178,6 +172,11 @@ fn main() {
 	}!
 	assert cast_rows.len == 1
 	assert cast_rows[0].name == '<Ada>'
+}
+
+fn main() {
+	update_with_function_call()
+	update_with_selectors_and_casts()
 }
 ")
 	assert out == ''
