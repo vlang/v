@@ -57,6 +57,14 @@ pub fn load_u64(ptr &u64) u64 {
 	return C.atomic_load_u64(voidptr(ptr))
 }
 
+// compare_and_swap_u64 stores `new` if the atomic value equals `expected`.
+// It reports whether the exchange succeeded.
+@[inline]
+pub fn compare_and_swap_u64(ptr &u64, expected u64, new u64) bool {
+	mut current := expected
+	return C.atomic_compare_exchange_strong_u64(voidptr(ptr), &current, new)
+}
+
 // atomicall set a value
 @[inline]
 pub fn store_i64(ptr &i64, val i64) {
