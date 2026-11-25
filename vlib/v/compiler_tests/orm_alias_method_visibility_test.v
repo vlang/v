@@ -158,6 +158,20 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 	}
 	module_source := sql_alias_visibility_module_source(is_public, is_type_public)
 	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'), module_source) or { panic(err) }
+	source := os.join_path(dir, 'main.v')
+	main_source := sql_alias_visibility_wrapped_source(expression, query, import_name, wrapper,
+		lock_receiver)
+	os.write_file(source, main_source) or { panic(err) }
+	executable := os.join_path(dir, 'main.exe')
+	flags := if check_only { '-check' } else { '' }
+	result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-o', executable, source])
+	if result.exit_code != 0 || check_only {
+		return result
+	}
+	return os.exec([executable])
+}
+
+fn sql_alias_visibility_wrapped_source(expression string, query SqlAliasVisibilityQuery, import_name string, wrapper string, lock_receiver string) string {
 	closure_name := if expression.contains('whole_parameter_closure_items') {
 		'whole_parameter_closure_items'
 	} else if expression.contains('parameter_closure_items') {
@@ -190,7 +204,6 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 		probes << sql_alias_visibility_probe_source(operation, expression, wrapper, lock_receiver,
 			closure_name, parameter_name)
 	}
-	source := os.join_path(dir, 'main.v')
 	main_source := sql_alias_visibility_main.replace('PROBES', probes.join('\n'))
 		.replace('PROBE_CALLS', operations.map('probe_${it}()!').join('\n\t'))
 		.replace('EXTRA_DECLARATIONS', if expression.contains('shared_collection') {
@@ -219,16 +232,7 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 		} else {
 			''
 		})
-	os.write_file(source, sql_alias_visibility_import(main_source, import_name)) or {
-		panic(err)
-	}
-	executable := os.join_path(dir, 'main.exe')
-	flags := if check_only { '-check' } else { '' }
-	result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-o', executable, source])
-	if result.exit_code != 0 || check_only {
-		return result
-	}
-	return os.exec([executable])
+	return sql_alias_visibility_import(main_source, import_name)
 }
 
 fn sql_alias_visibility_probe_source(operation SqlAliasVisibilityQuery, expression string, wrapper string, lock_receiver string, closure_name string, parameter_name string) string {
@@ -494,34 +498,83 @@ fn test_alias_methods_require_ordinary_shared_locks_in_sql_values() {
 	}
 }
 
+struct SqlAliasLockCase {
+	receiver   string
+	wrapper    string
+	diagnostic string
+}
+
+fn check_sql_alias_lock_batch(cases []SqlAliasLockCase, method string, import_name string, valid bool) ! {
+	dir := os.join_path(os.vtmp_dir(), 'v3_sql_alias_lock_${method}_${valid}_${os.getpid()}')
+	os.mkdir_all(os.join_path(dir, 'aliases'))!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'aliases', 'aliases.v'),
+		sql_alias_visibility_module_source(true, true))!
+	mut imports := []string{}
+	mut calls := []string{}
+	mut expected := map[string]string{}
+	for i, case in cases {
+		for query in sql_alias_visibility_queries(valid) {
+			name := 'fixture_${i}_${query}'
+			fixture_dir := os.join_path(dir, name)
+			os.mkdir(fixture_dir)!
+			program := sql_alias_visibility_wrapped_source('${case.receiver}.${method}()[0].name',
+				query, import_name, case.wrapper, case.receiver)
+				.replace_once('module main', 'module ${name}')
+				.replace_once('fn main() {', 'pub fn exercise() ! {')
+			os.write_file(os.join_path(fixture_dir, '${name}.v'), program)!
+			imports << 'import ${name}'
+			calls << '${name}.exercise()!'
+			if !valid {
+				expected['${name}.v:'] = case.diagnostic
+			}
+		}
+	}
+	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n\t${calls.join('\n\t')}\n}\n')!
+	executable := os.join_path(dir, 'main.exe')
+	for flags in [[]string{}, ['-check']] {
+		result := os.exec([@VEXE, '-nocolor', ...flags, '-o', executable, dir])
+		if valid {
+			assert result.exit_code == 0, result.output
+			if flags.len == 0 {
+				run := os.exec([executable])
+				assert run.exit_code == 0, run.output
+			}
+			continue
+		}
+		assert result.exit_code != 0, result.output
+		diagnostics := result.output.split_into_lines().filter(it.contains(': error: '))
+		for location, diagnostic in expected {
+			assert diagnostics.any(it.contains(location) && it.contains(diagnostic)), '${location}, flags=${flags}: ${result.output}'
+		}
+	}
+}
+
 fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_values() {
-	for i, receiver in ['shared_items[0]', '(shared_collection.values)[0]', 'parameter_items[0]',
-		"holders['primary'].values", "(holders [ 'primary' ]).values"] {
-		for method in ['mutate', 'clone'] {
-			import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
+	for method in ['mutate', 'clone'] {
+		import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
+		mut cases := []SqlAliasLockCase{}
+		for receiver in ['shared_items[0]', '(shared_collection.values)[0]', 'parameter_items[0]',
+			"holders['primary'].values", "(holders [ 'primary' ]).values"] {
 			for wrapper in ['', 'rlock', 'lock'] {
-				valid := wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock')
-				for query in sql_alias_visibility_queries(valid) {
-					for check_only in [false, true] {
-						result := sql_alias_visibility_wrapped_result('shared_element_${i}_${method}_${wrapper}_${query}_${check_only}',
-							true, '${receiver}.${method}()[0].name', query, check_only,
-							true, import_name, wrapper, receiver)
-						if valid {
-							assert result.exit_code == 0, result.output
-						} else {
-							assert result.exit_code != 0, result.output
-							if method == 'clone' {
-								assert result.output.contains('must be `rlock`ed or `lock`ed'), result.output
-							} else if wrapper == 'rlock' {
-								assert result.output.contains('has an `rlock` but needs a `lock`'), result.output
-							} else {
-								assert result.output.contains('is `shared` and must be `lock`ed'), result.output
-							}
-						}
-					}
+				diagnostic := if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
+					''
+				} else if method == 'clone' {
+					'must be `rlock`ed or `lock`ed'
+				} else if wrapper == 'rlock' {
+					'has an `rlock` but needs a `lock`'
+				} else {
+					'is `shared` and must be `lock`ed'
+				}
+				cases << SqlAliasLockCase{
+					receiver:   receiver
+					wrapper:    wrapper
+					diagnostic: diagnostic
 				}
 			}
 		}
+		check_sql_alias_lock_batch(cases.filter(it.diagnostic == ''), method, import_name, true)!
+		check_sql_alias_lock_batch(cases.filter(it.diagnostic != ''), method, import_name, false)!
 	}
 }
 
