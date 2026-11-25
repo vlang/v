@@ -536,8 +536,8 @@ fn relative_error_path(path string) string {
 	return run.relative_path(path)
 }
 
-// relative_path is the reported spelling of `path`: resolved, and relative to the working
-// directory unless VERROR_PATHS asks for absolute paths.
+// relative_path is the reported spelling of `path`: resolved, relative to the working
+// directory unless VERROR_PATHS asks for absolute paths, and with the separator of the host.
 fn (mut run DiagnosticRun) relative_path(path string) string {
 	if shown := run.shown_paths[path] {
 		return shown
@@ -553,8 +553,17 @@ fn (mut run DiagnosticRun) relative_path(path string) string {
 	if !run.absolute && normalized.starts_with(run.workdir) {
 		normalized = normalized[run.workdir.len..]
 	}
-	run.shown_paths[path] = normalized
-	return normalized
+	shown := host_separators(normalized, $if windows { true } $else { false })
+	run.shown_paths[path] = shown
+	return shown
+}
+
+// host_separators spells a `/`-separated path with `\` on Windows, as Go reports paths there.
+fn host_separators(path string, windows bool) string {
+	if windows {
+		return path.replace('/', '\\')
+	}
+	return path
 }
 
 // read_source reads `name` like os.read_file, once for consecutive diagnostics of one file.

@@ -17,12 +17,16 @@ fn test_msvc_cl_object_args_translate_a_third_party_object_build() {
 		'-c', 'C:/v/thirdparty/cJSON/cJSON.c'], 'windows')
 	assert args == ['/nologo', '/volatile:ms', '/bigobj', '/MD', '/w', '/DNDEBUG', '/c',
 		'/FoC:/tmp/cJSON.obj', 'C:/v/thirdparty/cJSON/cJSON.c']
+	debug := msvc_cl_object_args(['-g', '-o', 'C:/tmp/a.obj', '-c', 'C:/v/a.c'], 'windows')
+	assert debug == ['/nologo', '/volatile:ms', '/bigobj', '/MD', '/Z7', '/c', '/FoC:/tmp/a.obj',
+		'C:/v/a.c']
 }
 
 fn test_msvc_cl_args_translate_shared_and_debug_builds() {
 	args := msvc_cl_args(['-g', '-shared', '-o', 'out', 'src.c', '-mwindows'], 'windows')
 	assert '/LD' in args
-	assert '/Zi' in args
+	assert '/Z7' in args
+	assert '/Zi' !in args
 	assert '/Feout' in args
 	link := args[args.index('/link') + 1..]
 	assert link == ['/SUBSYSTEM:WINDOWS', '/DEBUG']

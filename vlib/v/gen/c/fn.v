@@ -1768,7 +1768,7 @@ fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?
 		return '__v3_internal_symbol_libc_${name[5..]}'
 	}
 	// Windows headers define these names as macros. Keep main__near etc. available to V.
-	if name in ['main.near', 'main.far', 'main.pascal', 'main.cdecl'] {
+	if name in ['main.near', 'main.far', 'main.pascal', 'main.cdecl', 'main.small', 'main.hyper'] {
 		return '__v3_internal_symbol_macro_${name[5..]}'
 	}
 	if module_name !in ['', 'main'] || name.starts_with('C.') {
@@ -1777,7 +1777,7 @@ fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?
 	if name in ['sync', 'syncfs'] {
 		return '__v3_internal_symbol_libc_${name}'
 	}
-	if name in ['near', 'far', 'pascal', 'cdecl'] {
+	if name in ['near', 'far', 'pascal', 'cdecl', 'small', 'hyper'] {
 		return '__v3_internal_symbol_macro_${name}'
 	}
 	mut c_type_name := false

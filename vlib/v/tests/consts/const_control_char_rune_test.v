@@ -34,3 +34,10 @@ fn test_control_char_consts_usable_in_expr() {
 	assert back_char == `\b`
 	assert tab_char != newline_char
 }
+
+fn test_escape_rune_in_runtime_expression() {
+	mut value := `\e`
+	assert int(value) == 27
+	value = `x`
+	assert int(value) == 120
+}

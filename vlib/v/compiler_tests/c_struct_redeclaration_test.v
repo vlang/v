@@ -100,7 +100,7 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 	})
 	assert cross_module_bad.exit_code != 0, cross_module_bad.output
 	assert cross_module_bad.output.contains('cannot redeclare C struct `C.SharedHeader`'), cross_module_bad.output
-	assert cross_module_bad.output.contains('/b/b.v:3:'), cross_module_bad.output
+	assert cross_module_bad.output.contains(os.path_separator + os.join_path('b', 'b.v') + ':3:'), cross_module_bad.output
 	assert !cross_module_bad.output.contains('semantic checking continued after C declaration conflict'), cross_module_bad.output
 
 	assert !cross_module_bad.output.contains('C compilation failed'), cross_module_bad.output

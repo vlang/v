@@ -80,8 +80,8 @@ fn main() {
 	program := os.join_path(root, 'fastc')
 	generated := generate_files([root], prefs) or { panic(err) }
 	os.write_file(c_path, generated + '\n_Static_assert(__builtin_types_compatible_p(NativePointer, int *), "native pointer width");\n_Static_assert(__builtin_types_compatible_p(NativeDoublePointer, int **), "native double pointer width");\n') or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-O2', '-fno-strict-aliasing', '-D__vinix__', '-o',
-		program, c_path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-O2', '-fno-strict-aliasing', '-D__vinix__',
+		'-o', program, c_path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run_in_merged_with_env(program, [], root, {
 		'FASTC_INT_DIVISION_MODE': ''
@@ -251,8 +251,8 @@ fn main() {
 	c_path := os.join_path(root, 'main.c')
 	program := os.join_path(root, 'fastc')
 	os.write_file(c_path, generated) or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-O2', '-fno-strict-aliasing', '-D__vinix__', '-o',
-		program, c_path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-O2', '-fno-strict-aliasing', '-D__vinix__',
+		'-o', program, c_path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run_in_merged_with_env(program, [], root, {
 		'FASTC_DIVISION_MODE': ''

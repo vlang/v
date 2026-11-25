@@ -68,7 +68,7 @@ fn main() {
 		c_file := os.join_path(root, 'main.c')
 		program := os.join_path(root, 'program')
 		os.write_file(c_file, c_source) or { panic(err) }
-		build := cmdexec.run('cc', ['-std=gnu11', '-Werror=implicit-function-declaration',
+		build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-Werror=implicit-function-declaration',
 			'-DEXPECT_DEFAULT_ATTRIBUTES=${if target_libc { '1' } else { '0' }}', '-pthread', '-o',
 			program, c_file])
 		assert build.exit_code == 0, build.output
