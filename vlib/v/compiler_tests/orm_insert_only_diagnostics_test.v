@@ -2,25 +2,38 @@
 
 import os
 
-fn test_sql_insert_only_diagnostics_in_compile_and_check_modes() {
-	for fixture in ['attribute', 'update', 'dynamic'] {
-		path := os.join_path(os.dir(@VEXE), 'vlib', 'v', 'checker', 'tests',
-			'orm_sql_insert_only_${fixture}.vv')
-		normal := os.exec([@VEXE, '-nocolor', path])
-		checked := os.exec([@VEXE, '-nocolor', '-check', path])
-		assert normal.exit_code == 1, normal.output
-		assert checked.exit_code == 1, checked.output
-		assert normal.output == checked.output
-		if fixture == 'attribute' {
-			assert normal.output.contains('can only be applied to struct fields')
-			assert normal.output.contains('does not accept arguments')
-		} else {
-			assert normal.output.contains('cannot update insert-only field `InsertOnlyUser.')
-		}
-		if fixture == 'dynamic' {
-			assert normal.output.count('error: ORM: cannot update') == 2
-		}
+fn test_sql_insert_only_diagnostics_in_compile_and_check_modes() ! {
+	root := os.join_path(os.vtmp_dir(), 'orm_insert_only_parity_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	fixtures := os.join_path(os.dir(@VEXE), 'vlib', 'v', 'checker', 'tests')
+	mut imports := []string{}
+	for fixture in ['update', 'dynamic'] {
+		module_name := 'fixture_${fixture}'
+		module_dir := os.join_path(root, module_name)
+		os.mkdir(module_dir)!
+		source := os.read_file(os.join_path(fixtures, 'orm_sql_insert_only_${fixture}.vv'))!
+		os.write_file(os.join_path(module_dir, '${fixture}.v'), 'module ${module_name}\n\n' +
+			source.replace_once('fn main()', 'pub fn check() !'))!
+		imports << 'import ${module_name} as _'
 	}
+	attribute_source := os.read_file(os.join_path(fixtures, 'orm_sql_insert_only_attribute.vv'))!
+	os.write_file(os.join_path(root, 'attribute.v'), attribute_source.replace_once('module main',
+		'module main\n\n${imports.join('\n')}\n'))!
+
+	normal := os.exec([@VEXE, '-nocolor', root])
+	checked := os.exec([@VEXE, '-nocolor', '-check', root])
+	assert normal.exit_code == 1, normal.output
+	assert checked.exit_code == 1, checked.output
+	assert normal.output == checked.output
+	diagnostics := normal.output.split_into_lines().filter(it.contains(': error: '))
+	attributes := diagnostics.filter(it.contains('attribute.v:')).join('\n')
+	assert attributes.contains('can only be applied to struct fields'), normal.output
+	assert attributes.contains('does not accept arguments'), normal.output
+	update_error := 'error: ORM: cannot update insert-only field `InsertOnlyUser.'
+	assert diagnostics.any(it.contains('update.v:') && it.contains(update_error)), normal.output
+	dynamic := diagnostics.filter(it.contains('dynamic.v:')).join('\n')
+	assert dynamic.count(update_error) == 2, normal.output
 }
 
 fn test_sql_insert_only_dynamic_aliases_respect_scope_and_reassignment() {
