@@ -4331,18 +4331,30 @@ fn main() {
 
 fn test_mut_interface_argument_borrows_existing_interface_box() {
 	v3_bin := build_v3()
-	source := 'interface Visitor {\n\tvalue() int\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (c Counter) value() int {\n\treturn c.n\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln(int_str(visitor.value()))\n}\n'
-	out, c_source := run_good_with_c(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	assert main_body != '', c_source
-	// Interface calls can retain the mutable view, so its existing box is heap-promoted.
-	assert main_body.contains('Visitor* visitor =')
-	// Heap-promoted caller storage is already a pointer to the existing interface box.
-	assert main_body.contains('call(&visitor);') || main_body.contains('call(visitor);'), main_body
-	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
-	assert out == '1'
+	source := 'interface Visitor {
+	value() int
+mut:
+	visit()
+}
 
-	assign_source := 'interface Base {
+struct Counter {
+mut:
+	n int
+}
+
+fn (c Counter) value() int {
+	return c.n
+}
+
+fn (mut c Counter) visit() {
+	c.n++
+}
+
+fn call(mut visitor Visitor) {
+	visitor.visit()
+}
+
+interface Base {
 	get() int
 }
 
@@ -4361,6 +4373,10 @@ fn update(mut x Base) {
 }
 
 fn main() {
+	mut visitor := Visitor(Counter{})
+	call(mut visitor)
+	println(int_str(visitor.value()))
+
 	mut b := Base(Item{
 		n: 1
 	})
@@ -4368,10 +4384,17 @@ fn main() {
 	println(int_str(b.get()))
 }
 '
-	assign_out, assign_c := run_good_with_c(v3_bin, 'mut_interface_arg_assignment_keeps_storage_run', assign_source)
-	assert assign_c.contains('update(&b);')
-	assert !assign_c.contains('update(&((Base[]){b})[0]);')
-	assert assign_out == '7'
+	out, c_source := run_good_with_c(v3_bin, 'mut_interface_storage', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body != '', c_source
+	// Interface calls can retain the mutable view, so its existing box is heap-promoted.
+	assert main_body.contains('Visitor* visitor =')
+	// Heap-promoted caller storage is already a pointer to the existing interface box.
+	assert main_body.contains('call(&visitor);') || main_body.contains('call(visitor);'), main_body
+	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
+	assert main_body.contains('update(&b);'), main_body
+	assert !c_source.contains('update(&((Base[]){b})[0]);')
+	assert out == '1\n7'
 }
 
 fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
@@ -4824,15 +4847,69 @@ fn main() {
 
 fn test_overloaded_index_compound_assignment_uses_v_operators() {
 	v3_bin := build_v3()
-	string_source := 'struct Dict {\nmut:\n\tvalues map[string]string\n}\n\nfn (d Dict) [] (key string) string {\n\treturn d.values[key]\n}\n\nfn (mut d Dict) []= (key string, value string) {\n\td.values[key] = value\n}\n\nfn main() {\n\tmut d := Dict{\n\t\tvalues: {\n\t\t\t"name": "a"\n\t\t}\n\t}\n\td["name"] += "x"\n\tprintln(d.values["name"])\n}\n'
-	string_out, string_c := run_good_with_c(v3_bin, 'overloaded_index_compound_string_operator', string_source)
-	assert string_c.contains('string__plus('), string_c
-	assert string_out == 'ax'
+	source := 'struct Dict {
+mut:
+	values map[string]string
+}
 
-	struct_source := 'struct Num {\n\tn int\n}\n\nfn (a Num) + (b Num) Num {\n\treturn Num{\n\t\tn: a.n + b.n\n\t}\n}\n\nstruct Slot {\nmut:\n\tvalue Num\n}\n\nfn (s Slot) [] (key string) Num {\n\t_ := key\n\treturn s.value\n}\n\nfn (mut s Slot) []= (key string, value Num) {\n\t_ := key\n\ts.value = value\n}\n\nfn main() {\n\tmut s := Slot{\n\t\tvalue: Num{\n\t\t\tn: 3\n\t\t}\n\t}\n\ts["value"] += Num{\n\t\tn: 4\n\t}\n\tprintln(int_str(s.value.n))\n}\n'
-	struct_out, struct_c := run_good_with_c(v3_bin, 'overloaded_index_compound_struct_operator', struct_source)
-	assert struct_c.contains('__v3_internal_symbol_op_Num__plus('), struct_c
-	assert struct_out == '7'
+fn (d Dict) [] (key string) string {
+	return d.values[key]
+}
+
+fn (mut d Dict) []= (key string, value string) {
+	d.values[key] = value
+}
+
+struct Num {
+	n int
+}
+
+fn (a Num) + (b Num) Num {
+	return Num{
+		n: a.n + b.n
+	}
+}
+
+struct Slot {
+mut:
+	value Num
+}
+
+fn (s Slot) [] (key string) Num {
+	_ := key
+	return s.value
+}
+
+fn (mut s Slot) []= (key string, value Num) {
+	_ := key
+	s.value = value
+}
+
+fn main() {
+	mut d := Dict{
+		values: {
+			"name": "a"
+		}
+	}
+	d["name"] += "x"
+	println(d.values["name"])
+
+	mut s := Slot{
+		value: Num{
+			n: 3
+		}
+	}
+	s["value"] += Num{
+		n: 4
+	}
+	println(int_str(s.value.n))
+}
+'
+	out, c_source := run_good_with_c(v3_bin, 'overloaded_index_compound_operators', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.contains('string__plus('), main_body
+	assert main_body.contains('__v3_internal_symbol_op_Num__plus('), main_body
+	assert out == 'ax\n7'
 }
 
 fn test_overloaded_index_ref_arg_materializes_getter_result() {
