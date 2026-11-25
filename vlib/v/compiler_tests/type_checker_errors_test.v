@@ -1919,27 +1919,23 @@ fn test_pr_review_codegen_batch_twentytwo() {
 }
 
 fn test_pr_review_codegen_batch_twentythree() {
-	// A concrete generic with multiple arguments including a later pointer argument
-	// (`Pair[int, &Node]`) must parse as a generic instance, not a fixed array: the `&` only
-	// leads a type argument because of the preceding comma, so a comma-bearing bracket is never
-	// a fixed-array length (which is always a single integer expression).
-	genptr := run_good(v3_bin, 'good_generic_multi_arg_pointer', 'struct Node {\n\tval int\n}\nstruct Pair[A, B] {\n\tfirst  A\n\tsecond B\n}\nfn main() {\n\tn := Node{\n\t\tval: 5\n\t}\n\tp := Pair[int, &Node]{\n\t\tfirst:  1\n\t\tsecond: &n\n\t}\n\tprintln(int_str(p.first + p.second.val))\n}\n')
-	assert genptr == '6'
-	// A whole-value assignment between two heaped locals (both moved to `&T` because their
-	// addresses escape) must copy the value through the pointers (`*v = *w`), not alias `w`'s
-	// object. Here `v = w` then mutating `w` must leave the first returned pointer at w's old value.
-	heap2 := run_good(v3_bin, 'good_heaped_local_whole_value_assign', "struct Box {\nmut:\n\tx int\n}\nfn split() (&Box, &Box) {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tmut w := Box{\n\t\tx: 2\n\t}\n\tp := &v\n\tq := &w\n\tv = w\n\tw.x = 100\n\treturn p, q\n}\nfn main() {\n\ta, b := split()\n\tprintln(int_str(a.x) + ',' + int_str(b.x))\n}\n")
-	assert heap2 == '2,100'
-	// A method value returned through the branch that does not replace it keeps its receiver.
 	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn plain() int {\n\treturn 0\n}\n'
-	conditional := run_good(v3_bin, 'good_method_value_conditional_reassign_escape', mv +
-		'fn build_cb(c Counter, cond bool) fn () int {\n\tmut cb := c.report\n\tif cond {\n\t\tcb = plain\n\t}\n\treturn cb\n}\nfn main() {\n\tmethod_cb := build_cb(Counter{\n\t\tid: 1\n\t}, false)\n\tplain_cb := build_cb(Counter{\n\t\tid: 2\n\t}, true)\n\tprintln(int_str(method_cb()))\n\tprintln(int_str(plain_cb()))\n}\n')
-	assert conditional == '1\n0'
-	// An unconditional reassignment to a non-method value dominates the later use, so the marker
-	// is cleared and the (now plain) callback is accepted.
-	uncond := run_good(v3_bin, 'good_method_value_unconditional_reassign', mv +
-		'fn build_cb(c Counter) int {\n\tmut cb := c.report\n\tcb = plain\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(build_cb(Counter{\n\t\tid: 1\n\t})))\n}\n')
-	assert uncond == '0'
+	run_good_module_batch(v3_bin, 'escaping_pointer_assignments', [
+		// A concrete generic with multiple arguments including a later pointer argument
+		// (`Pair[int, &Node]`) must parse as a generic instance, not a fixed array: the `&` only
+		// leads a type argument because of the preceding comma, so a comma-bearing bracket is never
+		// a fixed-array length (which is always a single integer expression).
+		TypeCheckerRuntimeCase{'good_generic_multi_arg_pointer', 'struct Node {\n\tval int\n}\nstruct Pair[A, B] {\n\tfirst  A\n\tsecond B\n}\nfn main() {\n\tn := Node{\n\t\tval: 5\n\t}\n\tp := Pair[int, &Node]{\n\t\tfirst:  1\n\t\tsecond: &n\n\t}\n\tprintln(int_str(p.first + p.second.val))\n}\n', '6'},
+		// A whole-value assignment between two heaped locals (both moved to `&T` because their
+		// addresses escape) must copy the value through the pointers (`*v = *w`), not alias `w`'s
+		// object. Here `v = w` then mutating `w` must leave the first returned pointer at w's old value.
+		TypeCheckerRuntimeCase{'good_heaped_local_whole_value_assign', "struct Box {\nmut:\n\tx int\n}\nfn split() (&Box, &Box) {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tmut w := Box{\n\t\tx: 2\n\t}\n\tp := &v\n\tq := &w\n\tv = w\n\tw.x = 100\n\treturn p, q\n}\nfn main() {\n\ta, b := split()\n\tprintln(int_str(a.x) + ',' + int_str(b.x))\n}\n", '2,100'},
+		// A method value returned through the branch that does not replace it keeps its receiver.
+		TypeCheckerRuntimeCase{'good_method_value_conditional_reassign_escape', mv + 'fn build_cb(c Counter, cond bool) fn () int {\n\tmut cb := c.report\n\tif cond {\n\t\tcb = plain\n\t}\n\treturn cb\n}\nfn main() {\n\tmethod_cb := build_cb(Counter{\n\t\tid: 1\n\t}, false)\n\tplain_cb := build_cb(Counter{\n\t\tid: 2\n\t}, true)\n\tprintln(int_str(method_cb()))\n\tprintln(int_str(plain_cb()))\n}\n', '1\n0'},
+		// An unconditional reassignment to a non-method value dominates the later use, so the marker
+		// is cleared and the (now plain) callback is accepted.
+		TypeCheckerRuntimeCase{'good_method_value_unconditional_reassign', mv + 'fn build_cb(c Counter) int {\n\tmut cb := c.report\n\tcb = plain\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(build_cb(Counter{\n\t\tid: 1\n\t})))\n}\n', '0'},
+	])
 }
 
 fn test_fn_pointer_return_type() {
@@ -1985,23 +1981,22 @@ fn test_pr_review_codegen_batch_twentyfive() {
 }
 
 fn test_pr_review_codegen_batch_twentysix() {
-	// The escape prepass must only heap-move a local whose address is *actually returned*. A
-	// pointer that merely appears in a consuming expression (comparison/boolean here, or a deref)
-	// does not escape, so its source local must stay a plain value — otherwise codegen reads it as
-	// an `int*` in the integer comparison and the result is wrong. `return p == p && v == 1` and
-	// `return *p` both keep `v` on the stack.
-	no_escape := run_good(v3_bin, 'good_escape_only_returned_pointer', "fn check() bool {\n\tmut v := 1\n\tp := &v\n\treturn p == p && v == 1\n}\nfn deref() int {\n\tmut v := 3\n\tp := &v\n\tv = 8\n\treturn *p\n}\nfn main() {\n\tprintln(check().str() + ',' + int_str(deref()))\n}\n")
-	assert no_escape == 'true,8'
-	// A pointer that *is* returned (directly, and inside a returned aggregate) must still heap-move
-	// its source local, so the returned pointer observes mutations made after the address was taken.
-	escapes := run_good(v3_bin, 'good_escape_returned_pointer_and_aggregate', "fn direct() &int {\n\tmut v := 10\n\tp := &v\n\tv += 5\n\treturn p\n}\nfn aggregate() []&int {\n\tmut v := 7\n\tp := &v\n\tv = 9\n\treturn [p]\n}\nfn main() {\n\tarr := aggregate()\n\tprintln(int_str(*direct()) + ',' + int_str(*arr[0]))\n}\n")
-	assert escapes == '15,9'
-	// An optional fixed-array return (`?[N]T`) with a pending `defer` routes through the deferred
-	// return path; that path must apply the same temp + memcpy handling as the direct path (the
-	// `.value` member is a fixed array and cannot be set via a compound literal), so the array value
-	// is preserved instead of being dropped to `{.ok = false}`.
-	defer_opt_arr := run_good(v3_bin, 'good_optional_fixed_array_return_with_defer', "fn f() ?[2]int {\n\tdefer {\n\t\t_ := 0\n\t}\n\treturn [1, 2]!\n}\nfn main() {\n\ta := f() or { [0, 0]! }\n\tprintln(int_str(a[0]) + ',' + int_str(a[1]))\n}\n")
-	assert defer_opt_arr == '1,2'
+	run_good_module_batch(v3_bin, 'pointer_escape_and_return', [
+		// The escape prepass must only heap-move a local whose address is *actually returned*. A
+		// pointer that merely appears in a consuming expression (comparison/boolean here, or a deref)
+		// does not escape, so its source local must stay a plain value — otherwise codegen reads it as
+		// an `int*` in the integer comparison and the result is wrong. `return p == p && v == 1` and
+		// `return *p` both keep `v` on the stack.
+		TypeCheckerRuntimeCase{'good_escape_only_returned_pointer', "fn check() bool {\n\tmut v := 1\n\tp := &v\n\treturn p == p && v == 1\n}\nfn deref() int {\n\tmut v := 3\n\tp := &v\n\tv = 8\n\treturn *p\n}\nfn main() {\n\tprintln(check().str() + ',' + int_str(deref()))\n}\n", 'true,8'},
+		// A pointer that *is* returned (directly, and inside a returned aggregate) must still heap-move
+		// its source local, so the returned pointer observes mutations made after the address was taken.
+		TypeCheckerRuntimeCase{'good_escape_returned_pointer_and_aggregate', "fn direct() &int {\n\tmut v := 10\n\tp := &v\n\tv += 5\n\treturn p\n}\nfn aggregate() []&int {\n\tmut v := 7\n\tp := &v\n\tv = 9\n\treturn [p]\n}\nfn main() {\n\tarr := aggregate()\n\tprintln(int_str(*direct()) + ',' + int_str(*arr[0]))\n}\n", '15,9'},
+		// An optional fixed-array return (`?[N]T`) with a pending `defer` routes through the deferred
+		// return path; that path must apply the same temp + memcpy handling as the direct path (the
+		// `.value` member is a fixed array and cannot be set via a compound literal), so the array value
+		// is preserved instead of being dropped to `{.ok = false}`.
+		TypeCheckerRuntimeCase{'good_optional_fixed_array_return_with_defer', "fn f() ?[2]int {\n\tdefer {\n\t\t_ := 0\n\t}\n\treturn [1, 2]!\n}\nfn main() {\n\ta := f() or { [0, 0]! }\n\tprintln(int_str(a[0]) + ',' + int_str(a[1]))\n}\n", '1,2'},
+	])
 }
 
 fn test_pr_review_codegen_batch_twentyseven() {
@@ -2024,23 +2019,21 @@ fn test_pr_review_codegen_batch_twentyeight() {
 }
 
 fn test_pr_review_codegen_batch_twentynine() {
-	// A local pointer initialized from a call must not be treated as an alias of the first
-	// same-pointee pointer argument: the callee can return another argument. Here `choose` returns
-	// `&y`, so returning `p` must not heap-copy `x`.
-	call_alias := run_good(v3_bin, 'good_call_return_pointer_alias_not_inferred', 'struct Box {\nmut:\n\tx int\n}\nfn choose(a &Box, b &Box) &Box {\n\t_ = a\n\treturn b\n}\nfn leak() &Box {\n\tmut x := Box{\n\t\tx: 1\n\t}\n\tmut y := Box{\n\t\tx: 2\n\t}\n\tp := choose(&x, &y)\n\treturn p\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
-	assert call_alias == '2'
-	// Reassigning a local pointer updates the stack-local alias source used when the pointer
-	// escapes. Returning `p` after `p = &y` must heap-copy `y`, not the initializer's `x`.
-	reassigned_alias := run_good(v3_bin, 'good_reassigned_pointer_alias_source', 'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut x := Box{\n\t\tx: 1\n\t}\n\tmut y := Box{\n\t\tx: 2\n\t}\n\tmut p := &x\n\tp = &y\n\treturn p\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
-	assert reassigned_alias == '2'
-	// Returning a pointer alias inside a child scope must copy through the pointer itself even
-	// when another aggregate local is present in that scope.
-	child_scope_alias := run_good(v3_bin, 'good_returned_pointer_alias_child_scope', 'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut a := Box{\n\t\tx: 1\n\t}\n\tp := &a\n\ta.x = 2\n\t{\n\t\tmut inner := Box{\n\t\t\tx: 9\n\t\t}\n\t\tinner.x = 10\n\t\treturn p\n\t}\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
-	assert child_scope_alias == '2'
-	// A pointer alias of a mut parameter already points at caller-owned storage. Returning the
-	// alias must preserve that identity instead of heap-copying the current pointee.
-	mut_param_alias := run_good(v3_bin, 'good_returned_mut_param_pointer_alias_identity', 'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\nfn main() {\n\tmut n := 1\n\tp := keep[int](mut n)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(int_str(n))\n}\n')
-	assert mut_param_alias == '7'
+	run_good_module_batch(v3_bin, 'pointer_alias_runtime', [
+		// A local pointer initialized from a call must not be treated as an alias of the first
+		// same-pointee pointer argument: the callee can return another argument. Here `choose` returns
+		// `&y`, so returning `p` must not heap-copy `x`.
+		TypeCheckerRuntimeCase{'good_call_return_pointer_alias_not_inferred', 'struct Box {\nmut:\n\tx int\n}\nfn choose(a &Box, b &Box) &Box {\n\t_ = a\n\treturn b\n}\nfn leak() &Box {\n\tmut x := Box{\n\t\tx: 1\n\t}\n\tmut y := Box{\n\t\tx: 2\n\t}\n\tp := choose(&x, &y)\n\treturn p\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n', '2'},
+		// Reassigning a local pointer updates the stack-local alias source used when the pointer
+		// escapes. Returning `p` after `p = &y` must heap-copy `y`, not the initializer's `x`.
+		TypeCheckerRuntimeCase{'good_reassigned_pointer_alias_source', 'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut x := Box{\n\t\tx: 1\n\t}\n\tmut y := Box{\n\t\tx: 2\n\t}\n\tmut p := &x\n\tp = &y\n\treturn p\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n', '2'},
+		// Returning a pointer alias inside a child scope must copy through the pointer itself even
+		// when another aggregate local is present in that scope.
+		TypeCheckerRuntimeCase{'good_returned_pointer_alias_child_scope', 'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut a := Box{\n\t\tx: 1\n\t}\n\tp := &a\n\ta.x = 2\n\t{\n\t\tmut inner := Box{\n\t\t\tx: 9\n\t\t}\n\t\tinner.x = 10\n\t\treturn p\n\t}\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n', '2'},
+		// A pointer alias of a mut parameter already points at caller-owned storage. Returning the
+		// alias must preserve that identity instead of heap-copying the current pointee.
+		TypeCheckerRuntimeCase{'good_returned_mut_param_pointer_alias_identity', 'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\nfn main() {\n\tmut n := 1\n\tp := keep[int](mut n)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(int_str(n))\n}\n', '7'},
+	])
 	// Returning a pointer alias of an aligned local must use the aligned heap-copy helper, matching
 	// the free path for `&Aligned` values.
 	aligned_alias_source := '@[aligned: 64]\nstruct Aligned {\n\tx int\n}\nfn make() &Aligned {\n\tmut x := Aligned{\n\t\tx: 5\n\t}\n\tp := &x\n\treturn p\n}\nfn main() {\n\tp := make()\n\tprintln(int_str(p.x))\n\tunsafe {\n\t\tfree(p)\n\t}\n}\n'
