@@ -64,3 +64,137 @@ jobs:
         run: |
           ./v -silent vlib/v/compiler_errors_test.v
           ./v -silent test vlib/v/
+
+      - name: Explicit C backend suite
+        run: ./v -silent test vlib/v/gen/c/
+
+  matched_instructions:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 27a34405cf310a6a6e940dab67cf9a36353ca57f
+          path: baseline
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: 01e6eb7d02f57b3cff068282bf57198019e1630d
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: 2d1367e589ed30c03325e586a8ddfd3bc96c8c3d
+          path: fixture
+          persist-credentials: false
+      - name: Build matched production compilers
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          out="$RUNNER_TEMP/div-benchmark"
+          mkdir -p "$out"
+          {
+            uname -a
+            sw_vers
+            sysctl -n hw.model hw.ncpu hw.memsize
+            clang --version
+            xcodebuild -version
+          } > "$out/environment.txt"
+          for role in baseline candidate; do
+            (
+              cd "$role"
+              git rev-parse HEAD > "$out/$role.commit"
+              env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS make -j4
+              env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 ./v -prod -cc clang self
+              cp ./v "$out/$role.v"
+              shasum -a 256 "$out/$role.v" > "$out/$role.binary.sha256"
+              ./v version
+            ) 2>&1 | tee "$out/$role.build.log"
+          done
+          cd fixture
+          git rev-parse HEAD > "$out/fixture.commit"
+          git ls-tree -r HEAD > "$out/fixture.git-tree.txt"
+          env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS make -j4 2>&1 | tee "$out/fixture.setup.log"
+          git diff --exit-code
+      - name: Fixed fixture inventory, warmups and ten alternating pairs
+        shell: bash
+        working-directory: fixture
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/div-benchmark"
+          args=(-nocache -gc none -prealloc -compile-backend fastc -building-v)
+          run_role() {
+            role="$1"
+            sample="$2"
+            cp "$out/$role.v" ./v
+            shasum -a 256 ./v > "$out/$sample.binary.sha256"
+            rm -f "$out/self.c"
+            if env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
+              /usr/bin/time -l -o "$out/$sample.time.txt" \
+              ./v "${args[@]}" -o "$out/self.c" cmd/v \
+              > "$out/$sample.stdout" 2> "$out/$sample.stderr"; then
+              echo 0 > "$out/$sample.exit-status.txt"
+            else
+              status=$?
+              echo "$status" > "$out/$sample.exit-status.txt"
+              cat "$out/$sample.stderr"
+              return "$status"
+            fi
+            cat "$out/$sample.time.txt"
+            awk '/instructions retired/ { n++; if ($1+0>0) positive++ } END { exit !(n==1 && positive==1) }' "$out/$sample.time.txt"
+            test -s "$out/self.c"
+            shasum -a 256 "$out/self.c" > "$out/$sample.c.sha256"
+            cmp "$out/$role.inventory.c" "$out/self.c"
+          }
+          for role in baseline candidate; do
+            cp "$out/$role.v" ./v
+            env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
+              ./v "${args[@]}" -v -o "$out/self.c" cmd/v \
+              > "$out/$role.inventory.stdout" 2> "$out/$role.inventory.stderr"
+            cat "$out/$role.inventory.stdout" "$out/$role.inventory.stderr"
+            awk '$1=="parsed" && ($2==".v" || $2==".vh") && $3=="lines" { n++; total+=$4 } END { exit !(n==2 && total==559990) }' \
+              "$out/$role.inventory.stdout" "$out/$role.inventory.stderr"
+            cp "$out/self.c" "$out/$role.inventory.c"
+            clang -std=gnu11 -fsyntax-only -I thirdparty -I thirdparty/stdatomic/nix \
+              "$out/self.c" > "$out/$role.syntax.log" 2>&1
+            run_role "$role" "$role-warmup"
+          done
+          cmp "$out/baseline.inventory.c" "$out/candidate.inventory.c"
+          for i in $(seq 1 10); do
+            if [ "$((i % 2))" = 1 ]; then
+              run_role baseline "baseline-$i"
+              run_role candidate "candidate-$i"
+            else
+              run_role candidate "candidate-$i"
+              run_role baseline "baseline-$i"
+            fi
+          done
+          git diff --exit-code
+          python3 - "$out" <<'PY'
+          import pathlib, re, statistics, sys
+          root = pathlib.Path(sys.argv[1])
+          def counters(role):
+              values = []
+              for i in range(1, 11):
+                  text = (root / f'{role}-{i}.time.txt').read_text()
+                  found = re.findall(r'^\s*(\d+)\s+instructions retired\s*$', text, re.M)
+                  assert len(found) == 1 and int(found[0]) > 0, (role, i)
+                  values.append(int(found[0]))
+              return values
+          a, b = counters('baseline'), counters('candidate')
+          diffs = [y-x for x,y in zip(a,b)]
+          ma, mb = statistics.median(a), statistics.median(b)
+          report = (f'559990 parsed lines; median instructions {ma} -> {mb}\n'
+                    f'instructions/line {ma/559990:.2f} -> {mb/559990:.2f}\n'
+                    f'change {(mb/ma-1)*100:.4f}%; median paired delta {statistics.median(diffs)}; '
+                    f'regressing pairs {sum(d>0 for d in diffs)}/10\n')
+          print(report)
+          (root / 'summary.txt').write_text(report)
+          PY
+      - name: Preserve benchmark evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: div-matched-instruction-evidence
+          path: ${{ runner.temp }}/div-benchmark/
+          if-no-files-found: error
