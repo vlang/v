@@ -209,9 +209,10 @@ struct ReviewDiagnostic {
 fn run_bad_module_batch(v3_bin string, name string, cases []ReviewRejection) {
 	root := '${tmp_test_path(name)}_project'
 	mut imports := []string{cap: cases.len}
-	for case in cases {
-		imports << 'import ${case.name} as _'
-		write_project_file(root, '${case.name}/${case.name}.v', 'module ${case.name}\n\n' + case.source)
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name} as _'
+		write_project_file(root, '${module_name}/${case.name}.v', 'module ${module_name}\n\n' + case.source)
 	}
 	write_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')
 	compile := os.exec([v3_bin, root, '-json-errors', '-b', 'c', '-o', tmp_test_path(name)])
@@ -4867,17 +4868,7 @@ fn (mut d Dict) []= (key string, value int) {
 	d.values[key] = value
 }
 '
-	setter_only := run_good(v3_bin, 'overloaded_index_assignment_write_only_setter', setter_only_src + '
-
-fn main() {
-	mut d := Dict{
-		values: map[string]int{}
-	}
-	d["name"] = 7
-	println(int_str(d.values["name"]))
-}
-')
-	assert setter_only == '7'
+	// Run in main to check the unqualified Dict name in the diagnostic.
 	run_bad(v3_bin, 'overloaded_index_compound_assignment_requires_getter', setter_only_src + '
 
 fn main() {
@@ -4896,13 +4887,6 @@ fn (t Tensor) [] (index int) int {
 fn (mut t Tensor) []= (parts []SliceIndex, value int) {
 }
 '
-	run_bad(v3_bin, 'overloaded_index_compound_assignment_checks_getter_index', mismatched_getter_src + '
-
-fn main() {
-	mut t := Tensor{}
-	t[1, 2] += 3
-}
-', 'multi-index expressions on overloaded `[]` require a `[]SliceIndex` parameter')
 	range_mismatched_getter_src := 'struct Window {}
 
 fn (w Window) [] (part SliceIndex) int {
@@ -4912,22 +4896,6 @@ fn (w Window) [] (part SliceIndex) int {
 fn (mut w Window) []= (parts []SliceIndex, value int) {
 }
 '
-	run_bad(v3_bin, 'overloaded_index_compound_assignment_rejects_mismatched_index_temps', range_mismatched_getter_src + '
-
-fn main() {
-	mut w := Window{}
-	w[1..2] += 3
-}
-', 'compound index assignment requires matching `[]` and `[]=` index parameter types')
-	run_bad(v3_bin, 'overloaded_index_assignment_rejects_wrong_setter_key', setter_only_src + '
-
-fn main() {
-	mut d := Dict{
-		values: map[string]int{}
-	}
-	d[1] = 7
-}
-', 'cannot use `int` as overloaded index; expected `string`')
 	getter_and_setter_src := 'struct Dict {
 mut:
 	values map[string]int
@@ -4941,7 +4909,24 @@ fn (mut d Dict) []= (key string, value int) {
 	d.values[key] = value
 }
 '
-	both := run_good(v3_bin, 'overloaded_index_assignment_prefers_setter_value_type', getter_and_setter_src + '
+	run_good_module_batch(v3_bin, 'index_setter_runtime', [
+		ReviewRuntimeCase{
+			name:     'overloaded_index_assignment_write_only_setter'
+			source:   setter_only_src + '
+
+fn main() {
+	mut d := Dict{
+		values: map[string]int{}
+	}
+	d["name"] = 7
+	println(int_str(d.values["name"]))
+}
+'
+			expected: '7'
+		},
+		ReviewRuntimeCase{
+			name:     'overloaded_index_assignment_prefers_setter_value_type'
+			source:   getter_and_setter_src + '
 
 fn main() {
 	mut d := Dict{
@@ -4950,9 +4935,49 @@ fn main() {
 	d["name"] = 9
 	println(int_str(d.values["name"]))
 }
-')
-	assert both == '9'
-	run_bad(v3_bin, 'overloaded_index_assignment_rejects_getter_value_type', getter_and_setter_src + '
+'
+			expected: '9'
+		},
+	])
+	run_bad_module_batch(v3_bin, 'index_setter_rejections', [
+		ReviewRejection{
+			name:     'overloaded_index_compound_assignment_checks_getter_index'
+			source:   mismatched_getter_src + '
+
+fn main() {
+	mut t := Tensor{}
+	t[1, 2] += 3
+}
+'
+			expected: 'multi-index expressions on overloaded `[]` require a `[]SliceIndex` parameter'
+		},
+		ReviewRejection{
+			name:     'overloaded_index_compound_assignment_rejects_mismatched_index_temps'
+			source:   range_mismatched_getter_src + '
+
+fn main() {
+	mut w := Window{}
+	w[1..2] += 3
+}
+'
+			expected: 'compound index assignment requires matching `[]` and `[]=` index parameter types'
+		},
+		ReviewRejection{
+			name:     'overloaded_index_assignment_rejects_wrong_setter_key'
+			source:   setter_only_src + '
+
+fn main() {
+	mut d := Dict{
+		values: map[string]int{}
+	}
+	d[1] = 7
+}
+'
+			expected: 'cannot use `int` as overloaded index; expected `string`'
+		},
+		ReviewRejection{
+			name:     'overloaded_index_assignment_rejects_getter_value_type'
+			source:   getter_and_setter_src + '
 
 fn main() {
 	mut d := Dict{
@@ -4960,8 +4985,12 @@ fn main() {
 	}
 	d["name"] = "bad"
 }
-', 'expected `int`, not `string`')
-	run_bad(v3_bin, 'overloaded_index_compound_assignment_rejects_getter_value_type', getter_and_setter_src + '
+'
+			expected: 'expected `int`, not `string`'
+		},
+		ReviewRejection{
+			name:     'overloaded_index_compound_assignment_rejects_getter_value_type'
+			source:   getter_and_setter_src + '
 
 fn main() {
 	mut d := Dict{
@@ -4969,8 +4998,12 @@ fn main() {
 	}
 	d["name"] += 1
 }
-', 'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
-	run_bad(v3_bin, 'overloaded_index_postfix_mutation_rejected', getter_and_setter_src + '
+'
+			expected: 'compound index assignment getter returns `string`, which cannot be used as setter value `int`'
+		},
+		ReviewRejection{
+			name:     'overloaded_index_postfix_mutation_rejected'
+			source:   getter_and_setter_src + '
 
 fn main() {
 	mut d := Dict{
@@ -4978,7 +5011,10 @@ fn main() {
 	}
 	d["name"]++
 }
-', 'postfix mutation is not supported for overloaded index expressions')
+'
+			expected: 'postfix mutation is not supported for overloaded index expressions'
+		},
+	])
 }
 
 fn test_generic_overloaded_index_uses_specialized_methods() {
@@ -5578,11 +5614,33 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 		ReviewRuntimeCase{'review_call_return_pointer_not_arg_alias', 'fn choose(a &int, b &int) &int {\n\t_ = a\n\treturn b\n}\n\nfn make() &int {\n\tx := 10\n\ty := 20\n\tp := choose(&x, &y)\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n', '20'},
 		ReviewRuntimeCase{'review_mut_param_pointer_alias_return', 'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain[T](mut x T) &T {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep[int](mut a)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain[int](mut b)\n\tunsafe {\n\t\t*q = 8\n\t}\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n', '7\n7\n8\n8'},
 	])
-	run_bad(v3_bin, 'review_setter_only_compound_index_assignment', "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n", 'compound index assignment requires a `[]` overload')
-	run_bad(v3_bin, 'review_getter_only_index_assignment', "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] = 1\n}\n", 'index assignment requires a `[]=` overload')
-	run_bad(v3_bin, 'review_getter_only_compound_index_assignment', "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n", 'index assignment requires a `[]=` overload')
-	run_bad(v3_bin, 'review_compound_index_getter_key_mismatch', "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n", 'cannot use `string` as overloaded index; expected `int`')
-	run_bad(v3_bin, 'review_compound_index_getter_value_mismatch', "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n", 'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
+	run_bad_module_batch(v3_bin, 'review_index_rejections', [
+		ReviewRejection{
+			name:     'review_setter_only_compound_index_assignment'
+			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'compound index assignment requires a `[]` overload'
+		},
+		ReviewRejection{
+			name:     'review_getter_only_index_assignment'
+			source:   "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] = 1\n}\n"
+			expected: 'index assignment requires a `[]=` overload'
+		},
+		ReviewRejection{
+			name:     'review_getter_only_compound_index_assignment'
+			source:   "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'index assignment requires a `[]=` overload'
+		},
+		ReviewRejection{
+			name:     'review_compound_index_getter_key_mismatch'
+			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'cannot use `string` as overloaded index; expected `int`'
+		},
+		ReviewRejection{
+			name:     'review_compound_index_getter_value_mismatch'
+			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'compound index assignment getter returns `string`, which cannot be used as setter value `int`'
+		},
+	])
 	fixed_field_out := run_good(v3_bin, 'review_capital_field_const_fixed_array', '@[translated]\nmodule main\n\nconst n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
 	assert fixed_field_out == '7'
 }
