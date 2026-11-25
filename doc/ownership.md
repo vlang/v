@@ -406,6 +406,8 @@ An abstract interface method can return a reference borrowed from any of its
 reference arguments. The same rule covers references inside a returned
 interface box and through functions that directly forward either result.
 Keep the arguments alive and unchanged while the result is live.
+A move of the returned box to a local binding carries its payload loans with it.
+The borrowed storage must outlive the destination binding.
 An outstanding field reference prevents moving the receiver. Disjoint fields
 remain available for mutation.
 

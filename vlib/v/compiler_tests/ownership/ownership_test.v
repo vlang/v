@@ -5313,6 +5313,30 @@ fn main() {
 	}
 }
 
+fn test_ownership_interface_reference_argument_through_embedded_and_generic_methods() {
+	v3_bin := ownership_build_v3()
+	embedded := interface_reference_argument_source.replace('interface Borrower {', 'interface BaseBorrower {').replace('struct PassThrough {}',
+		'interface Borrower {\n\tBaseBorrower\n}\n\nstruct PassThrough {}')
+	generic := interface_reference_argument_source.replace('interface Borrower {', 'interface Borrower[T] {').replace('borrow[^a](value &^a LoanValue) &^a LoanValue\n',
+		'borrow[^a](value &^a T) &^a T\n').replace('forward(borrower Borrower,',
+		'forward(borrower Borrower[LoanValue],')
+	for source in [embedded, generic] {
+		result := run_ownership_check(v3_bin, 'interface_reference_argument_signature', source + r'
+fn escape() &LoanValue {
+	value := LoanValue{text: "local".clone()}
+	return forward(PassThrough{}, &value)
+}
+
+fn main() {
+	value := escape()
+	assert value.text == "local"
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot return a reference to local storage `value`'), result.output
+	}
+}
+
 fn test_ownership_interface_reference_argument_stays_borrowed() {
 	v3_bin := ownership_build_v3()
 	for body in [
@@ -5416,4 +5440,35 @@ fn main() {
 }
 ')
 	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_interface_box_from_dispatched_factory_moves_ownership() {
+	v3_bin := ownership_build_v3()
+	name := 'dispatched_box_move'
+	source := interface_box_factory_source.replace('struct Reader {', 'struct Reader implements Drop {')
+	result := run_ownership_check_with_flags(v3_bin, name, source + r'
+fn (mut reader Reader) drop() {
+	println(reader.resource.text)
+}
+
+fn main() {
+	mut resource := Resource{text: "first".clone()}
+	replacement := Resource{text: "second".clone()}
+	factory := Factory(Builder{})
+	mut visitor := forward(factory, &resource)
+	{
+		moved := visitor
+		visitor = forward(factory, &replacement)
+		assert moved.read() == 5
+	}
+	resource = Resource{text: "updated".clone()}
+	assert resource.text == "updated"
+	assert visitor.read() == 6
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+	assert run.output.split_into_lines() == ['first', 'second']
 }

@@ -5521,6 +5521,14 @@ fn (mut tc TypeChecker) ownership_prescan_call_info(node flat.Node, local_types 
 				return info
 			}
 			if recv_type := local_types[base_node.value] {
+				clean := unalias_type(unwrap_pointer(unalias_type(recv_type)))
+				if clean is Interface
+					&& fn_node.value in tc.interface_abstract_method_names(clean.name_id) {
+					if info := tc.interface_receiver_method_call_info(clean.name_id, fn_node.value) {
+						tc.ownership_record_return_dependency(info.name)
+						return info
+					}
+				}
 				for mname in receiver_method_name_candidates(unwrap_pointer(recv_type), fn_node.value, tc.cur_module) {
 					if mname !in tc.fn_ret_types {
 						continue
@@ -8177,7 +8185,8 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 					source_type
 				}
 				tc.ownership_mark_owned(lhs_name, target_type, assign_id)
-				if rhs_name != lhs_name && tc.sum_escape_has_pointer_variant(target_type) {
+				if rhs_name != lhs_name && (unalias_type(target_type) is Interface
+					|| tc.sum_escape_has_pointer_variant(target_type)) {
 					tc.ownership_release_borrower(rhs_name)
 				}
 				for source_name in descendants {
@@ -9474,7 +9483,8 @@ fn (mut tc TypeChecker) ownership_alias_storage(lhs_name string, rhs_name string
 	for var_name, borrows in st.borrowed_vars {
 		for borrow in borrows {
 			if borrow.borrower == rhs_name {
-				has_direct_alias = true
+				// A loan inside the payload follows the move of the owned box.
+				has_direct_alias = has_direct_alias || !borrow.boxed_borrow
 			} else if pointer_projection && ownership_storage_key_is_descendant(rhs_name, borrow.borrower) {
 				// A projected pointer can inherit loans from several branches.
 				has_direct_alias = true
@@ -11331,11 +11341,14 @@ fn (mut tc TypeChecker) ownership_mark_return_param_descendants_from_call(lhs_na
 	if lhs_name == '' || fn_name == '' || slot_idx < 0 {
 		return false
 	}
-	if slot_idx == 0 && unalias_type(sum_escape_success_type(tc.resolve_type(call_id))) is Interface {
+	mut root_box := false
+	result_type := tc.resolve_type(call_id)
+	if slot_idx == 0 && unalias_type(sum_escape_success_type(result_type)) is Interface {
 		if info := tc.resolve_call_info(call_id, node) {
 			for source in tc.ownership_interface_return_loans(info) {
 				if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, source.param_idx) {
 					tc.ownership_retain_boxed_borrow(lhs_name, arg_id, '', pos)
+					root_box = true
 				}
 			}
 		}
@@ -11348,9 +11361,16 @@ fn (mut tc TypeChecker) ownership_mark_return_param_descendants_from_call(lhs_na
 		if desc.slot_idx != slot_idx {
 			continue
 		}
+		root_box = root_box || (desc.boxed_borrow && desc.target_suffix == '')
 		if tc.ownership_mark_from_return_param_descendant(lhs_name + desc.target_suffix, call_id, node, fn_name, desc, pos) {
 			marked = true
 		}
+	}
+	if root_box && unalias_type(result_type) is Interface {
+		// The return transfers the interface header. Its runtime box flag determines
+		// whether dropping that header also destroys its concrete object.
+		tc.ownership_mark_owned(lhs_name, result_type, pos)
+		return true
 	}
 	return marked
 }
@@ -13980,7 +14000,7 @@ fn (mut tc TypeChecker) ownership_expr_is_readonly_borrow(id flat.NodeId) bool {
 		return false
 	}
 	for _, borrows in tc.ownership_state().borrowed_vars {
-		if borrows.any(it.read_only && it.borrower == name) {
+		if borrows.any(it.read_only && !it.boxed_borrow && it.borrower == name) {
 			return true
 		}
 	}
@@ -14134,7 +14154,14 @@ fn (mut tc TypeChecker) ownership_release_borrower(borrower string) {
 
 fn (mut tc TypeChecker) ownership_reject_global_move(name string, pos flat.NodeId, target string, is_call bool) {
 	if !tc.ownership_sum_name_has_owner(name) {
-		if source := tc.ownership_borrowed_alias_source(name, false) {
+		// Only a local assignment can transfer a box together with its payload loans.
+		local_box_target := if !is_call && tc.a.node(pos).kind in [.decl_assign, .assign]
+			&& name in tc.ownership_state().owned_vars {
+			target
+		} else {
+			''
+		}
+		if source := tc.ownership_borrowed_alias_source_for_move(name, false, local_box_target) {
 			action := if is_call { 'move into function' } else { 'move to' }
 			tc.record_error(.assignment_mismatch, 'cannot move `${name}` because it borrows `${source}`; attempted ${action} `${target}`', pos)
 		}
@@ -14148,6 +14175,10 @@ fn (mut tc TypeChecker) ownership_reject_global_move(name string, pos flat.NodeI
 }
 
 fn (mut tc TypeChecker) ownership_borrowed_alias_source(name string, mutable_only bool) ?string {
+	return tc.ownership_borrowed_alias_source_for_move(name, mutable_only, '')
+}
+
+fn (tc &TypeChecker) ownership_borrowed_alias_source_for_move(name string, mutable_only bool, local_box_target string) ?string {
 	if name == '' {
 		return none
 	}
@@ -14158,6 +14189,10 @@ fn (mut tc TypeChecker) ownership_borrowed_alias_source(name string, mutable_onl
 				continue
 			}
 			if borrow.borrower == name {
+				if borrow.boxed_borrow && local_box_target != ''
+					&& tc.ownership_boxed_source_outlives_binding(source, local_box_target) {
+					continue
+				}
 				return source
 			}
 			if ownership_storage_key_is_descendant(name, borrow.borrower) {
@@ -14166,6 +14201,20 @@ fn (mut tc TypeChecker) ownership_borrowed_alias_source(name string, mutable_onl
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) ownership_boxed_source_outlives_binding(source string, target string) bool {
+	owner := tc.cur_scope.lookup_owner(target) or { return false }
+	if tc.binding_owner_is_global(owner) || tc.mut_param_binding_matches_lvalue(target)
+		|| tc.current_binding_is_shared(target) {
+		return false
+	}
+	root := source.all_before('.').all_before('[')
+	borrowed := tc.cur_scope.lookup_owner(root) or { return false }
+	if borrowed.belongs_to_scope(owner.scope) {
+		return borrowed.index < owner.index
+	}
+	return borrowed.belongs_to_scope_chain_until(owner.scope, tc.file_scope)
 }
 
 fn (mut tc TypeChecker) ownership_owned_global_type_name(name string) ?u32 {
