@@ -17,9 +17,17 @@ $if !native && (amd64 || arm64) {
 		state u32
 	}
 
+	$if !v_bare_no_startup ? {
+		fn C.v_freestanding_thread_cleanup()
+	}
+
 	fn bare_thread_entry(argument u64) {
 		mut context := unsafe { &BareThreadContext(argument) }
 		context.result = context.start(context.arg)
+		$if !v_bare_no_startup ? {
+			C.v_freestanding_thread_cleanup()
+			bare_credential_thread_leave()
+		}
 		for bare_load_u32(&context.state) == 0 {
 		}
 		if bare_cas_u32(&context.state, 1, 3) { return }
@@ -134,6 +142,14 @@ $if !native && (amd64 || arm64) {
 	// a partial pthread implementation. A library host creates its own threads.
 	@[export: 'v_bare_thread_create'; markused]
 	fn bare_thread_create(start BareThreadStart, arg voidptr, requested_stack uint, detached i32, error_code &i32) voidptr {
+		$if !v_bare_no_startup ? {
+			bare_compat_lock(&bare_credential_mutex)
+		}
+		defer {
+			$if !v_bare_no_startup ? {
+				bare_compat_unlock(&bare_credential_mutex)
+			}
+		}
 		unsafe { *error_code = 0 }
 		stack_size := if requested_stack == 0 { u64(1 << 20) } else { u64(requested_stack) }
 		// Two header words and the kernel TID cell must fit before clone runs.
@@ -148,8 +164,14 @@ $if !native && (amd64 || arm64) {
 		}
 		context.start = start
 		context.arg = arg
+		$if !v_bare_no_startup ? {
+			bare_credential_threads++
+		}
 		mapping, code := bare_thread_mapping_spawn(bare_thread_entry, u64(context), (stack_size + 4095) & ~u64(4095))
 		if code != .enoerror {
+			$if !v_bare_no_startup ? {
+				bare_credential_threads--
+			}
 			unsafe { __free(context) }
 			unsafe { *error_code = i32(code) }
 			return unsafe { nil }

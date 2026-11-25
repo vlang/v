@@ -1,7 +1,9 @@
 @[has_globals]
 module os
 
-#flag -lpthread
+$if !freestanding {
+	#flag -lpthread
+}
 
 fn C.pthread_self() uint
 

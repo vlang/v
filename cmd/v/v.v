@@ -186,9 +186,9 @@ fn main() {
 	if '-new-compiler' in compiler_args {
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
-	if race_build_requested(args) {
-		// The compatibility compiler has no race detector. A failed race build must
-		// report its own error instead of silently retrying without instrumentation.
+	if race_build_requested(args) || new_runtime_build_requested(args) {
+		// The compatibility compiler cannot honor these modes. Preserve the original
+		// build error instead of retrying with unsupported or different semantics.
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
 	if compiler_option_requested(args, '-json-errors') {
@@ -247,6 +247,38 @@ fn main() {
 // race_build_requested reports whether `-race` is one of the compiler options.
 fn race_build_requested(args []string) bool {
 	return compiler_option_requested(args, '-race')
+}
+
+// new_runtime_build_requested identifies runtime modes whose semantics the
+// compatibility compiler cannot preserve. Option values and program arguments
+// are excluded just as they are for normal compiler-option dispatch.
+fn new_runtime_build_requested(args []string) bool {
+	if compiler_option_requested(args, '-syscalls') || compiler_option_requested(args, '-bare')
+		|| compiler_option_requested(args, '-vlibc')
+		|| compiler_option_requested(args, '-no-system-libc') || compiler_option_requested(args, '-shim-libc') {
+		return true
+	}
+	options := compiler_args_before_program(args)
+	mut skip_value := false
+	for i, arg in options {
+		if skip_value {
+			skip_value = false
+			continue
+		}
+		if arg in ['-d', '-define'] && i + 1 < options.len {
+			value := options[i + 1].trim_space()
+			if value == 'vlibc' || (value.starts_with('vlibc=') && value.len > 6) { return true }
+			skip_value = true
+			continue
+		}
+		if arg == '-dvlibc' || (arg.starts_with('-dvlibc=') && arg.len > 8) { return true }
+		if arg in ['-prof', '-profile'] {
+			skip_value = v1_fallback_profile_option_consumes_value(options, i)
+		} else if arg == '-cf' || pref.option_may_consume_value(arg) {
+			skip_value = true
+		}
+	}
+	return false
 }
 
 // compiler_option_requested reports whether `option` is one of the compiler options, and not

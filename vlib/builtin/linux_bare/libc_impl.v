@@ -30,6 +30,11 @@ fn __malloc(n uint) voidptr {
 	}
 	result := unsafe { global_allocator.malloc(n) }
 	bare_heap_unlock()
+	if result == unsafe { nil } {
+		$if linux && !i386 {
+			bf_native_errno_cell = 12
+		}
+	}
 	return result
 }
 
@@ -51,6 +56,11 @@ fn __malloc_align(size uint, alignment uint) voidptr {
 	}
 	result := unsafe { global_allocator.memalign(alignment, size) }
 	bare_heap_unlock()
+	if result == unsafe { nil } {
+		$if linux && !i386 {
+			bf_native_errno_cell = 12
+		}
+	}
 	return result
 }
 
@@ -77,6 +87,11 @@ fn realloc(old_area voidptr, new_size uint) voidptr {
 	bare_heap_lock()
 	result := unsafe { global_allocator.realloc(old_area, new_size) }
 	bare_heap_unlock()
+	if result == unsafe { nil } {
+		$if linux && !i386 {
+			bf_native_errno_cell = 12
+		}
+	}
 	return result
 }
 
@@ -119,6 +134,9 @@ fn memmove(dest voidptr, const_src voidptr, n uint) voidptr {
 @[unsafe]
 fn __calloc(nmemb uint, size uint) voidptr {
 	if size != 0 && nmemb > ~uint(0) / size {
+		$if linux && !i386 {
+			bf_native_errno_cell = 12
+		}
 		return unsafe { nil }
 	}
 	new_area := unsafe { __malloc(nmemb * size) }
@@ -193,13 +211,26 @@ fn bare_backtrace() string {
 @[export: 'exit']
 @[noreturn]
 fn __exit(code int) {
+	$if linux && (amd64 || arm64) {
+		$if !v_bare_no_startup ? {
+			bare_flush_streams()
+		}
+	}
 	sys_exit(code)
 }
 
 // __qsort takes the C callback type: a V `FnSortCB` returns a 64-bit `int`.
 @[export: 'qsort']
 fn __qsort(base voidptr, nmemb uint, size uint, sort_cb C.qsort_callback_func) {
-	panic('qsort() is not yet implemented in `-freestanding`')
+	$if linux && (amd64 || arm64) {
+		$if v_bare_no_startup ? {
+			C.qsort(base, nmemb, size, sort_cb)
+		} $else {
+			C.v_freestanding_qsort(base, nmemb, size, sort_cb)
+		}
+	} $else {
+		panic('qsort() is unavailable on this freestanding target')
+	}
 }
 
 fn init_global_allocator() {

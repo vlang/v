@@ -1,5 +1,5 @@
-// A `-syscalls` program links libc, but its os module takes the raw-syscall
-// routes of vlib/builtin/linux_bare. The routes are verified on Linux only.
+// A `-syscalls` program selects the bare V runtime with libc available for C
+// interoperability. The routes are verified on Linux only.
 import os
 
 const vexe = @VEXE
@@ -65,10 +65,9 @@ fn main() {
 }
 '
 
-// test_syscalls_stdin_readers_share_the_libc_buffer checks that os.get_raw_line
-// continues where input_character stopped: under `-syscalls` both read stdin
-// through libc's buffer, so the rest of the first line is not stranded there.
-fn test_syscalls_stdin_readers_share_the_libc_buffer() {
+// test_syscalls_stdin_readers_share_the_bare_descriptor checks that both readers
+// use the raw descriptor without leaving unread characters in a libc buffer.
+fn test_syscalls_stdin_readers_share_the_bare_descriptor() {
 	$if !linux {
 		return
 	}
@@ -79,12 +78,17 @@ fn test_syscalls_stdin_readers_share_the_libc_buffer() {
 	}
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, syscalls_stdin_program)!
-	exe := os.join_path(root, 'main')
-	build := os.exec([vexe, '-nocache', '-syscalls', '-o', exe, source])
-	assert build.exit_code == 0, build.output
-	run := os.exec(['sh', '-c', 'printf "abc\\nde\\nrest" | "$@"', 'sh', exe])
-	assert run.exit_code == 0, run.output
-	assert run.output == '97\nbc\nde\n', run.output
+	for index, flags in [['-syscalls'], ['-d', 'vlibc'], ['-syscalls', '-d', 'vlibc']] {
+		exe := os.join_path(root, 'main_${index}')
+		mut command := [vexe, '-new-compiler', '-no-retry-compilation', '-nocache']
+		command << flags
+		command << ['-o', exe, source]
+		build := os.exec(command)
+		assert build.exit_code == 0, build.output
+		run := os.exec(['sh', '-c', 'printf "abc\\nde\\nrest" | "$@"', 'sh', exe])
+		assert run.exit_code == 0, run.output
+		assert run.output == '97\nbc\nde\n', run.output
+	}
 }
 
 fn test_file_writes_respect_umask_and_preserve_existing_permissions() {
@@ -155,7 +159,8 @@ fn main() {
 }
 
 // test_syscalls_is_rejected_where_it_is_not_supported checks the combinations that
-// have no runtime yet: a native backend, and `-freestanding` (which is a separate runtime).
+// have no runtime yet: native backends and OpenBSD. An explicit -freestanding
+// instead disables the optional libc without changing the selected V runtime.
 fn test_syscalls_is_rejected_where_it_is_not_supported() {
 	$if !amd64 {
 		return
@@ -172,8 +177,9 @@ fn test_syscalls_is_rejected_where_it_is_not_supported() {
 	assert native.exit_code != 0
 	assert native.output.contains('only supported by the C backend'), native.output
 	both := os.exec([vexe, '-nocache', '-syscalls', '-freestanding', '-o', exe, source])
-	assert both.exit_code != 0
-	assert both.output.contains('separate runtimes'), both.output
+	assert both.exit_code == 0, both.output
+	ran := os.exec([exe])
+	assert ran.exit_code == 0 && ran.output == '1\n', ran.output
 	for flag in ['-syscalls', '-freestanding'] {
 		openbsd := os.exec([vexe, '-nocache', flag, '-os', 'openbsd', '-o', exe, source])
 		assert openbsd.exit_code != 0

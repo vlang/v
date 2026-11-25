@@ -895,6 +895,13 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 		g.gen_executable_cleanup_registration()
 	}
 	g.writeln('}')
+	if 'vlibc_shim_object' in g.compile_defines {
+		// The separate C ABI object must initialize its own private V constants
+		// before the consuming program starts its regular runtime and collector.
+		g.writeln('__attribute__((constructor(101))) static void _vlibc_shim_initialize(void) {')
+		g.writeln('\t_vno_main_init_caller();')
+		g.writeln('}')
+	}
 	g.writeln('')
 }
 

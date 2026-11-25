@@ -105,7 +105,7 @@ $if !i386 {
 	// VlibcThreadFn is the entry point of a freestanding thread.
 	pub type VlibcThreadFn = fn (u64)
 
-	// VlibcThread owns a thread stack and any TLS image until join observes kernel exit.
+	// VlibcThread owns a native pthread or a raw thread's stack and TLS until join.
 	pub struct VlibcThread {
 	pub:
 		fn_ptr           VlibcThreadFn
@@ -117,6 +117,7 @@ $if !i386 {
 		tid_addr         &u32 = unsafe { nil }
 		tls_mapping      voidptr
 		tls_mapping_size u64
+		host_handle      uint
 	}
 
 	// The child never returns through the parent's frame. Its entry function and
@@ -206,7 +207,7 @@ $if !i386 {
 		t.stack = mem
 		t.tid_addr = unsafe { &u32(mem) }
 		mut tls_pointer := voidptr(unsafe { nil })
-		$if freestanding && !native {
+		$if freestanding && !native && !v_bare_libc ? {
 			tls, tls_error := bare_tls_allocate()
 			if tls_error != .enoerror {
 				sys_munmap(t.stack, t.stack_size)

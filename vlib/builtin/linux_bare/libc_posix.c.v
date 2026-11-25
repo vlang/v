@@ -14,6 +14,9 @@ $if !i386 {
 	// failure. Scalar addresses keep C qualifiers and native structs in C.
 	@[export: 'v_freestanding_read']
 	fn libc_read(fd i32, address uint, count uint) i64 {
+		$if linux && (amd64 || arm64) && !v_bare_no_startup ? {
+			return bare_cancel_syscall(i64(bf_nr_read), uint(fd), address, count, 0, 0, 0)
+		}
 		return i64(sys_call3(bf_nr_read, u64(fd), u64(address), u64(count)))
 	}
 
@@ -24,6 +27,9 @@ $if !i386 {
 
 	@[export: 'v_freestanding_nanosleep']
 	fn libc_nanosleep(request uint, remaining uint) i64 {
+		$if linux && (amd64 || arm64) && !v_bare_no_startup ? {
+			return bare_cancel_syscall(i64(bf_nr_nanosleep), request, remaining, 0, 0, 0, 0)
+		}
 		return i64(sys_call2(bf_nr_nanosleep, u64(request), u64(remaining)))
 	}
 

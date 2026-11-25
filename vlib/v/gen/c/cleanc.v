@@ -1461,6 +1461,21 @@ fn (g &FlatGen) parse_annotation_type_reference(type_id u32) &types.Type {
 	return g.tc.parse_type_ref(type_id)
 }
 
+// c_abi_export_names returns C ABI names declared by V functions and globals.
+// Object packaging uses this compiler-owned manifest to isolate private V symbols.
+pub fn (g &FlatGen) c_abi_export_names() []string {
+	mut names := map[string]bool{}
+	for _, name in g.a.export_fn_names {
+		if name.len > 0 { names[name] = true }
+	}
+	for _, name in g.export_global_names {
+		if name.len > 0 { names[name] = true }
+	}
+	mut result := names.keys()
+	result.sort()
+	return result
+}
+
 pub fn (g &FlatGen) c_flags() []string {
 	return g.c_flags.clone()
 }
@@ -6637,7 +6652,7 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			flags, at_start = c_flag_args_with_start_marker(node.typ_text(), g.compiler_vroot, cur_file,
 				g.target, g.compile_values)
 		} else if node.value == 'pkgconfig' {
-			flags = c_pkgconfig_flags(node.typ_text())
+			flags = c_pkgconfig_flags(node.typ_text(), 'v_bare_static' in g.compile_defines)
 		} else {
 			continue
 		}
@@ -6787,7 +6802,7 @@ fn cache_directive_flag_groups(a &flat.FlatAst, vroot string, target pref.Target
 			flags, at_start = c_flag_args_with_start_marker(flat.source_type_name(node.typ), vroot, cur_file, target,
 				compile_values)
 		} else if node.value == 'pkgconfig' {
-			flags = c_pkgconfig_flags(flat.source_type_name(node.typ))
+			flags = c_pkgconfig_flags(flat.source_type_name(node.typ), 'v_bare_static' in compile_values)
 		} else {
 			continue
 		}
@@ -12951,8 +12966,8 @@ fn c_vmod_root_for_file(source_file string) string {
 	return util.nearest_vmod_root(source_file) or { os.real_path(dir) }
 }
 
-fn c_pkgconfig_flags(raw string) []string {
-	args := pref.pkgconfig_flags_args(trimmed_space(raw)) or { return []string{} }
+fn c_pkgconfig_flags(raw string, static_link bool) []string {
+	args := pref.pkgconfig_link_flags_args(trimmed_space(raw), static_link) or { return []string{} }
 	if args.len == 0 {
 		return []string{}
 	}

@@ -1,6 +1,12 @@
 module builtin
 
 $if (freestanding || syscalls) && !i386 && !windows && !openbsd {
+	// bf_set_last_errno records a normalized syscall error for os.last_error().
+	@[inline]
+	pub fn bf_set_last_errno(code int) {
+		bf_last_errno_cell = code
+	}
+
 	// bf_read_ready reads available bytes without waiting for input. It returns
 	// (count, errno), with zero for EOF and normalized errno 11 for unavailable
 	// input. The caller supplies count writable bytes and exclusively controls

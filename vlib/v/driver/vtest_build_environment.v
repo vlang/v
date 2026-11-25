@@ -59,6 +59,23 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 		} else if arg == '-gc' && has_value {
 			gc_mode = args[i + 1]
 			i += 2
+		} else if arg in ['-syscalls', '-bare', '-freestanding', '-vlibc', '-shim-libc',
+			'-no-system-libc'] {
+			match arg {
+				'-syscalls', '-bare' {
+					record_user_define(mut user_defines, mut compile_values, 'syscalls')
+				}
+				'-freestanding', '-vlibc' {
+					record_user_define(mut user_defines, mut compile_values, arg[1..])
+				}
+				else {
+					record_user_define(mut user_defines, mut compile_values, 'no_system_libc')
+					if arg == '-shim-libc' {
+						record_user_define(mut user_defines, mut compile_values, 'vlibc')
+					}
+				}
+			}
+			i++
 		} else if arg == '-cc' && has_value {
 			c_compiler = args[i + 1]
 			c_compiler_explicit = true
@@ -110,12 +127,13 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 	}
 	target := pref.target_from(target_os, target_arch) or { pref.host_target() }
 	host_target := pref.host_target()
+	disable_gc := v3_configure_runtime_gc(false, cross_output, target.os, target.arch, backend,
+		gc_mode, mut user_defines, mut compile_values)
 	mut compiler_defines := user_defines.clone()
-	disable_gc := 'freestanding' in user_defines
-		|| v3_gc_is_disabled(false, cross_output, target.os, target.arch, backend, gc_mode)
 	apply_v3_gc_mode(gc_mode, disable_gc, mut compiler_defines, mut compile_values) or {}
 	selection := v3_select_c_compiler(vroot, V3BundledTccProbeOptions{
 		prefer_platform_cc:  v3_gc_prefers_platform_cc(compiler_defines)
+			|| v3_bare_needs_platform_cc(user_defines, target, backend)
 		backend:             backend
 		is_prod:             is_prod
 		is_c_debug:          is_c_debug
@@ -129,6 +147,9 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 		target:              target
 		bundled_tcc:         os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	})
+	if gc_mode != '' {
+		user_defines << compiler_defines[user_defines.len..]
+	}
 	v3_apply_libc_define(mut user_defines, mut compile_values, libc_mode, selection.c_compiler,
 		v3_should_infer_host_libc(false, false, '', cross_output, target, host_target))
 	mut defines := []string{}

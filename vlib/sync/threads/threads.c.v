@@ -9,5 +9,13 @@ module threads
 // See https://stackoverflow.com/a/31277163/1904615
 
 $if !windows && !android {
-	#flag -lpthread
+	$if freestanding && linux && !native && !i386 {
+		// Standalone Linux uses the bare clone/TLS runtime. Embedded code
+		// retains the host's pthread implementation.
+		$if v_bare_no_startup ? {
+			#flag -lpthread
+		}
+	} $else {
+		#flag -lpthread
+	}
 }

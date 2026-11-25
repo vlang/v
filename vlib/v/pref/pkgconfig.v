@@ -23,3 +23,14 @@ pub fn pkgconfig_flags_args(raw string) ![]string {
 	args << query
 	return args
 }
+
+// pkgconfig_link_flags_args selects static package closures without changing the
+// caller's requested output filters or interpreting package names as options.
+pub fn pkgconfig_link_flags_args(raw string, static_link bool) ![]string {
+	mut args := pkgconfig_flags_args(raw)!
+	if static_link && args.len > 0 {
+		// Prepending keeps the modifier before a caller's `--` terminator.
+		args.prepend('--static')
+	}
+	return args
+}

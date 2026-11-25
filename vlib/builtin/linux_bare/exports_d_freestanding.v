@@ -27,6 +27,10 @@ $if freestanding && !i386 {
 		return math.floor(x)
 	}
 
+	@[export: 'trunc']
+	@[markused]
+	fn bf_trunc(x f64) f64 { return math.trunc(x) }
+
 	@[export: 'pow']
 	@[markused]
 	fn bf_pow(x f64, y f64) f64 {

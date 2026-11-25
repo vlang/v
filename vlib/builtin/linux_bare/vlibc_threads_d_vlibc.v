@@ -41,14 +41,53 @@ $if !i386 {
 		}
 	}
 
-	// vlibc_thread_spawn starts fn_ptr(arg) with independent TLS and a 1 MiB stack.
+	$if freestanding && !native && !v_bare_no_startup ? {
+		// The child owns this heap payload independently of the spawning arena.
+		@[heap]
+		struct BarePublicThreadStart {
+			callback VlibcThreadFn
+			argument u64
+		}
+		fn bare_public_thread_entry(argument u64) {
+			start := unsafe { &BarePublicThreadStart(argument) }
+			callback := start.callback
+			value := start.argument
+			unsafe { __free(start) }
+			callback(value)
+			C.v_freestanding_thread_cleanup()
+			bare_credential_thread_leave()
+		}
+	}
+
+	// vlibc_thread_spawn starts fn_ptr(arg) with independent TLS. Libc-enabled builds
+	// use a native pthread; standalone builds map a 1 MiB stack and ELF TLS image.
 	pub fn vlibc_thread_spawn(fn_ptr VlibcThreadFn, arg u64) (VlibcThread, VlibcErrno) {
+		$if !freestanding || v_bare_libc ? {
+			return vlibc_hosted_thread_spawn(fn_ptr, arg)
+		}
+		$if freestanding && !native && !v_bare_no_startup ? {
+			bare_compat_lock(&bare_credential_mutex)
+			defer { bare_compat_unlock(&bare_credential_mutex) }
+			start := unsafe { &BarePublicThreadStart(__malloc(sizeof(BarePublicThreadStart))) }
+			if start == unsafe { nil } { return VlibcThread{}, unsafe { VlibcErrno(12) } }
+			unsafe { *start = BarePublicThreadStart{ callback: fn_ptr, argument: arg } }
+			bare_credential_threads++
+			t, code := bare_thread_mapping_spawn(bare_public_thread_entry, u64(start), 1 << 20)
+			if code != .enoerror {
+				bare_credential_threads--
+				unsafe { __free(start) }
+			}
+			return t, unsafe { VlibcErrno(code) }
+		}
 		t, code := bare_thread_mapping_spawn(fn_ptr, arg, 1 << 20)
 		return t, unsafe { VlibcErrno(code) }
 	}
 
-	// vlibc_thread_join waits for kernel exit before releasing stack and TLS storage.
+	// vlibc_thread_join waits for thread exit and releases the owned thread resources.
 	pub fn vlibc_thread_join(mut t VlibcThread) VlibcErrno {
+		$if !freestanding || v_bare_libc ? {
+			return vlibc_hosted_thread_join(mut t)
+		}
 		return unsafe { VlibcErrno(bare_thread_mapping_join(mut t)) }
 	}
 

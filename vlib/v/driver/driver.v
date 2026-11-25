@@ -63,12 +63,12 @@ $if !skip_wasm ? {
 // vfmt on
 
 const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
-// syscalls_bare_file_names are the bare-directory files a `-syscalls` build takes:
-// the bf_* layer and the kernel syscall layer. The rest of a bare directory provides
-// libc symbols (libc_impl, libc, exports) or the freestanding entry point, which a
-// libc-linked build must not carry.
+// syscalls_bare_file_names supply the platform syscall layer when libc owns the
+// process ABI. Builtin's bare_libc adapter supplies the freestanding V hooks without
+// replacing libc's allocator, errno, FILE objects, or process/thread startup.
 const syscalls_bare_file_names = ['bf.v', 'syscalls.v', 'linux_syscalls.v', 'linux_syscalls.i386.v',
-	'kernel_services.c.v', 'kernel_services_abi.c.v', 'kernel_services_impl.c.v']
+	'kernel_services.c.v', 'kernel_services_abi.c.v', 'kernel_services_impl.c.v',
+	'closure_memory_d_freestanding.c.v']
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
@@ -3255,8 +3255,11 @@ struct V3CCompilerFlagOptions {
 	no_backtrace   bool
 	is_o           bool
 	is_liveshared  bool
-	// is_freestanding marks a `-freestanding` build: no libc, crt or default libraries.
-	is_freestanding bool
+	// is_freestanding selects bare V runtime compilation; libc may supply the process ABI.
+	is_freestanding        bool
+	freestanding_with_libc bool
+	no_system_libc         bool
+	static_link            bool
 }
 
 struct V3CCompilerFlagPlan {
@@ -4334,11 +4337,12 @@ fn v3_shared_exports_data_names(a &flat.FlatAst) []string {
 }
 
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
+	omit_libc := options.no_system_libc || (options.is_freestanding && !options.freestanding_with_libc)
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
 	// Standalone V3 object builds may omit module #flags. Linux libc hides pipe2
 	// without GNU feature macros, even when <unistd.h> is included.
-	if options.target_os == 'linux' && !options.is_freestanding
+	if options.target_os == 'linux' && (!options.is_freestanding || options.freestanding_with_libc)
 		&& '-D_GNU_SOURCE' !in before_inputs {
 		before_inputs << '-D_GNU_SOURCE'
 	}
@@ -4349,7 +4353,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	// Standalone objects must contain machine code for a later independent link.
 	// A freestanding `_start` calls `main` from a top-level asm block, which the
 	// LTO symbol table does not see, so gcc would drop `main` from the link.
-	before_inputs << if options.is_o || options.is_freestanding {
+	before_inputs << if options.is_o || omit_libc {
 		optimization_flags.filter(it != '-flto')
 	} else {
 		optimization_flags
@@ -4377,7 +4381,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 			before_inputs << '-bt25'
 		}
 	}
-	if options.is_freestanding {
+	if options.is_freestanding || omit_libc {
 		before_inputs << v3_freestanding_c_compile_flags(options.target_os, options.is_tcc)
 	}
 	before_inputs << options.warn_args
@@ -4385,13 +4389,13 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		before_inputs << '-Wno-int-conversion'
 	}
 	if options.target_os == 'macos' && !options.is_shared && !options.is_tcc
-		&& !(options.is_freestanding && options.target_arch == 'amd64') {
+		&& !(omit_libc && options.target_arch == 'amd64') {
 		// With LC_UNIXTHREAD this sets a custom initial stack pointer, rather
 		// than an LC_MAIN stack size. Let XNU allocate the standalone stack.
 		before_inputs << '-Wl,-stack_size,0x4000000'
 	}
 	if options.is_c_debug && options.target_os == 'macos' && !options.is_shared && !options.is_tcc
-		&& !(options.is_freestanding && options.target_arch == 'amd64') {
+		&& !(omit_libc && options.target_arch == 'amd64') {
 		before_inputs << '-Wl,-export_dynamic'
 	}
 	if options.is_shared {
@@ -4418,10 +4422,20 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	} else {
 		c_link_dependency_flags(options.dependencies)
 	}
-	if options.is_freestanding {
+	if omit_libc {
+		if options.target_os == 'linux' && options.static_link && !options.is_o && !options.is_shared && !options.is_tcc {
+			// Static package closures can reference earlier archives. Keep every
+			// declared dependency and rescan archives until their closure resolves.
+			after_inputs.prepend('-Wl,--start-group')
+			after_inputs << '-Wl,--end-group'
+		}
 		// The program brings its own `_start`, syscalls and allocator (see
-		// vlib/builtin/linux_bare), so it links nothing from the host.
-		if !options.is_o && !options.is_shared {
+		// vlib/builtin/linux_bare). Omit automatic CRT/libc inputs while keeping
+		// every explicitly declared C dependency.
+		if options.is_shared && options.no_system_libc {
+			// An embedded DSO obtains the C ABI from its host process.
+			after_inputs << '-nostdlib'
+		} else if !options.is_o && !options.is_shared {
 			if options.target_os == 'macos' && options.target_arch == 'amd64' {
 				// XNU permits static Intel executables with LC_UNIXTHREAD.
 				// The bare entry point owns TLS, initializers, main and exit.
@@ -4432,7 +4446,10 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 				// retains its libSystem startup and platform services.
 				after_inputs << '-lSystem'
 			} else {
-				after_inputs << ['-static', '-nostdlib']
+				after_inputs << '-nostdlib'
+				if options.static_link || options.target_os != 'linux' {
+					after_inputs << '-static'
+				}
 				if options.target_os == 'linux' && !options.is_tcc {
 					// Unused hosted helpers must not introduce libc dependencies.
 					after_inputs << '-Wl,--gc-sections'
@@ -4972,7 +4989,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|native|arm64|amd64|x64|wasm|eval> backend\n' + '  -native                      native backend for the target architecture\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -syscalls                    libc-linked build with os on raw syscalls (C backend)\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -hot-fn <name>              extract raw machine code for one function (hot reload, arm64)\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|native|arm64|amd64|x64|wasm|eval> backend\n' + '  -native                      native backend for the target architecture\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -syscalls, -bare             bare V runtime with libc available (C backend)\n' + '  -vlibc                       enable the vlibc API with the selected V runtime\n' + '  -no-system-libc              omit implicit CRT/libc linkage\n' + '  -shim-libc                   alias for -vlibc -no-system-libc\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -hot-fn <name>              extract raw machine code for one function (hot reload, arm64)\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
 }
 
 fn normalize_backend_name(name string) string {
@@ -11167,39 +11184,6 @@ fn native_freestanding_uses_bare_dir(prefs &pref.Preferences) bool {
 		&& prefs.target.os in ['macos', 'darwin']
 }
 
-// append_hosted_vlibc_files keeps runtime discovery outside the compiler driver.
-fn append_hosted_vlibc_files(prefs &pref.Preferences, builtin_dir string, builtin_defines []string, mut builtin_files []string) {
-	os_name := prefs.target.os
-	candidate := match os_name {
-		'freebsd' { 'freebsd_bare' }
-		'openbsd' { 'openbsd_bare' }
-		'netbsd' { 'netbsd_bare' }
-		'dragonfly' { 'dragonfly_bare' }
-		'macos', 'darwin' { 'macos_bare' }
-		'solaris' { 'solaris_bare' }
-		'android', 'termux' { 'linux_bare' }
-		else { 'linux_bare' }
-	}
-	vlibc_dir := os.join_path(builtin_dir, candidate)
-	if os.is_dir(vlibc_dir) {
-		// Include the syscall layer and Linux's shared thread core. Hosted vlibc
-		// needs its atomic helpers and thread types without freestanding startup.
-		for scn_name in ['syscalls.v', 'linux_syscalls.v', 'thread_core.c.v'] {
-			scn_path := os.join_path(vlibc_dir, scn_name)
-			if os.is_file(scn_path) {
-				builtin_files << prefs.without_excluded([scn_path])
-			}
-		}
-		vlibc_api_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(vlibc_dir,
-			builtin_defines, prefs.backend, prefs.target))
-		for f in vlibc_api_files {
-			if os.file_name(f).ends_with('_d_vlibc.v') {
-				builtin_files << f
-			}
-		}
-	}
-}
-
 // run executes the V3 compiler driver with `args`.
 // run compiles the input selected by args using the requested backend and flags.
 pub fn run(args []string) {
@@ -11570,9 +11554,19 @@ pub fn run(args []string) {
 			record_user_define(mut user_defines, mut compile_values, 'freestanding')
 			no_cache = true
 			i++
-		} else if args[i] == '-syscalls' {
-			// The os module takes the raw-syscall routes, while builtin keeps libc:
-			// the program still links libc, unlike `-freestanding`.
+		} else if args[i] == '-vlibc' {
+			record_user_define(mut user_defines, mut compile_values, 'vlibc')
+			no_cache = true
+			i++
+		} else if args[i] == '-no-system-libc' || args[i] == '-shim-libc' {
+			record_user_define(mut user_defines, mut compile_values, 'no_system_libc')
+			if args[i] == '-shim-libc' {
+				record_user_define(mut user_defines, mut compile_values, 'vlibc')
+			}
+			no_cache = true
+			i++
+		} else if args[i] == '-syscalls' || args[i] == '-bare' {
+			// Select the bare V runtime, retaining libc unless explicitly unlinked.
 			record_user_define(mut user_defines, mut compile_values, 'syscalls')
 			no_cache = true
 			i++
@@ -12225,6 +12219,29 @@ pub fn run(args []string) {
 	if os.getenv(v3_embedded_env) != '1' {
 		maybe_delegate_v3_to_vvmrc(input_file, verbose)
 	}
+	if '-static' in user_c_flags || '-static' in environment_c_flags || '-static' in link_ld_flags {
+		record_user_define(mut user_defines, mut compile_values, 'v_bare_static')
+	}
+	// Select the V runtime independently of the C process ABI. Explicit
+	// -freestanding and -no-system-libc take precedence over optional libc.
+	if 'syscalls' in user_defines && backend != 'c' {
+		eprintln('v: -syscalls is only supported by the C backend (-b c) for now')
+		exit(1)
+	}
+	if 'no_system_libc' in user_defines && backend != 'c' {
+		eprintln('v: -no-system-libc is only supported by the C backend (-b c) for now')
+		exit(1)
+	}
+	disable_gc := v3_configure_runtime_gc(building_v, cross_output, target_os, target_arch,
+		backend, gc_mode, mut user_defines, mut compile_values)
+	if 'no_system_libc' in user_defines {
+		// Cached hosted artifacts may include system startup or collector objects.
+		no_cache = true
+		user_c_flags << '-D__NO_INLINE__=1'
+	}
+	if 'syscalls' in user_defines {
+		no_cache = true
+	}
 	// JS and FastC dispatch before the common runtime-injection validation below.
 	if 'vlibc' in user_defines && backend != 'c' {
 		eprintln('`-d vlibc` requires the C backend and a supported Unix amd64/arm64 target')
@@ -12282,13 +12299,11 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
-	// Freestanding programs have no libc collector. Native builds also omit it.
+	// A bare shared library or object inherits process startup from its host.
 	if 'freestanding' in user_defines && (is_shared || is_o) {
 		// A library/object is initialized by its host and has no process entry.
 		record_user_define(mut user_defines, mut compile_values, 'v_bare_no_startup')
 	}
-	disable_gc := 'freestanding' in user_defines
-		|| v3_gc_is_disabled(building_v, cross_output, target_os, target_arch, backend, gc_mode)
 	apply_v3_gc_mode(gc_mode, disable_gc, mut user_defines, mut compile_values) or {
 		eprintln(err.msg())
 		exit(1)
@@ -12718,11 +12733,7 @@ pub fn run(args []string) {
 	bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	host_os := os.user_os()
 	host_target := pref.host_target()
-	// Bare startup and thread creation initialize real C TLS. TinyCC's hosted
-	// pthread-key fallback cannot provide it without a libc runtime.
-	bare_needs_platform_cc := 'freestanding' in user_defines
-		&& (target.arch !in ['amd64', 'i386']
-			|| (backend == 'c' && target.os in ['linux', 'macos', 'darwin']))
+	bare_needs_platform_cc := v3_bare_needs_platform_cc(user_defines, target, backend)
 	selection := v3_select_c_compiler(prefs.vroot, V3BundledTccProbeOptions{
 		backend:             backend
 		c_only:              c_only
@@ -12752,6 +12763,37 @@ pub fn run(args []string) {
 	c_compiler = selection.c_compiler
 	use_implicit_tcc_semantics := selection.use_implicit_tcc_semantics
 	effective_c_compiler := selection.effective_c_compiler
+	if backend == 'c' && target.os == 'linux' && !c_only && !is_o && !is_shared
+		&& v3_uses_bare_dynamic_loader(user_defines) {
+		// Actual dynamic executables retain their loader through strong ABI
+		// references, without linker-specific push/pop state directives.
+		user_c_flags << '-DV_BARE_DYNAMIC_LOADER=1'
+	}
+	mut native_prefix := ''
+	if backend == 'c' && target.os == 'linux' && v3_omit_system_libc(user_defines)
+		&& !is_o && !is_shared {
+		// Hosted builds do not probe dependency stores or read extra environment.
+		native_prefix = v3_freestanding_native_prefix(target, user_defines, backend, is_o,
+			is_shared, os.vmodules_dir(), os.getenv('VLIBC_PREFIX')) or {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			eprintln(err.msg())
+			exit(1)
+		}
+	}
+	if native_prefix != '' {
+		// Resolve package metadata before parsing/codegen and cache receipts.
+		// This child process owns its environment; the invoking shell is unchanged.
+		os.setenv('PKG_CONFIG_PATH', v3_freestanding_pkgconfig_path(native_prefix,
+			os.getenv('PKG_CONFIG_PATH')), true)
+		user_c_flags << ['-I' + os.join_path(native_prefix, 'include'),
+			'-L' + os.join_path(native_prefix, 'lib')]
+		if 'v_bare_static' !in user_defines {
+			// GNU ld searches transitive DSOs separately from direct -l inputs.
+			user_c_flags << ['-Wl,-rpath,' + os.join_path(native_prefix, 'lib'),
+				'-Wl,-rpath-link,' + os.join_path(native_prefix, 'lib')]
+		}
+		no_cache = true
+	}
 	if v3_tcc_prod_rejected(is_prod, backend, effective_c_compiler, c_compiler) {
 		eprintln('tcc is not allowed with -prod')
 		exit(1)
@@ -13463,9 +13505,9 @@ pub fn run(args []string) {
 	// compile tools against the current tree. V3 selects its pointer-sized map
 	// implementation through the internal backend define above.
 	builtin_files = builtin_files.filter(os.file_name(it) != 'map.v')
-	// `-freestanding` builtin calls hooks (bare_print, __malloc, ...) and links no
-	// libc, so the implementations of those and the process entry point come from
-	// a bare builtin directory, by default vlib/builtin/linux_bare.
+	// Both runtime modes use the platform's bare kernel layer. Standalone builds
+	// also take its process entry and C ABI exports; libc-enabled builds retain
+	// the host ABI and use builtin's bare_libc adapter for the V hooks.
 	if prefs.target.os == 'openbsd' && ('freestanding' in prefs.user_defines
 		|| 'syscalls' in prefs.user_defines) {
 		eprintln('v: -freestanding and -syscalls are not supported for an openbsd target yet')
@@ -13473,10 +13515,6 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	if 'syscalls' in prefs.user_defines {
-		if 'freestanding' in prefs.user_defines {
-			eprintln('v: -syscalls and -freestanding are separate runtimes; pass only one')
-			exit(1)
-		}
 		if prefs.backend != 'c' {
 			eprintln('v: -syscalls is only supported by the C backend (-b c) for now')
 			exit(1)
@@ -13486,9 +13524,10 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
-	if ('freestanding' in prefs.user_defines || 'syscalls' in prefs.user_defines)
+	if ('freestanding' in prefs.user_defines || 'syscalls' in prefs.user_defines
+		|| 'vlibc' in prefs.user_defines)
 		&& (prefs.backend == 'c' || native_freestanding_uses_bare_dir(prefs)) {
-		bare_dir := if bare_builtin_dir.len > 0 {
+		bare_dir := if bare_builtin_dir.len > 0 && 'freestanding' in prefs.user_defines {
 			bare_builtin_dir
 		} else {
 			// Per-OS freestanding runtime. Each OS has its own syscall ABI, so a
@@ -13522,18 +13561,15 @@ pub fn run(args []string) {
 		}
 		mut bare_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(bare_dir,
 			builtin_defines, prefs.backend, prefs.target))
-		if 'freestanding' !in prefs.user_defines {
-			bare_files = bare_files.filter(syscalls_bare_file_names.contains(os.file_name(it)))
+		if 'freestanding' !in prefs.user_defines || 'v_bare_libc' in prefs.user_defines {
+			bare_files = bare_files.filter(syscalls_bare_file_names.contains(os.file_name(it))
+				|| ('vlibc' in prefs.user_defines && (os.file_name(it).ends_with('_d_vlibc.v')
+					|| os.file_name(it).ends_with('_d_vlibc.c.v')
+					|| os.file_name(it) == 'thread_core.c.v')))
 		}
 		builtin_files << bare_files
 	} else if bare_builtin_dir.len > 0 {
 		eprintln('`-bare-builtin-dir` must be used with `-freestanding` or `-syscalls`')
-	}
-	// Freestanding builds already include the runtime from their selected bare directory.
-	// Hosted builds need only its syscall layer and vlibc API, retaining libc startup.
-	if 'vlibc' in prefs.user_defines && 'freestanding' !in prefs.user_defines
-		&& prefs.backend == 'c' {
-		append_hosted_vlibc_files(prefs, builtin_dir, builtin_defines, mut builtin_files)
 	}
 	if no_builtin {
 		builtin_files = []
@@ -16922,6 +16958,9 @@ pub fn run(args []string) {
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
+			if 'vlibc_shim_object' in prefs.user_defines {
+				os.write_lines(generated_path + '.exports', g.c_abi_export_names()) or { panic(err) }
+			}
 			cgen_was_parallel = g.was_parallel()
 			generated_literal_output_only = g.generated_literal_output_only()
 			pruned_function_refs, pruned_functions_checked := g.referenced_pruned_cache_functions()
@@ -17031,6 +17070,9 @@ pub fn run(args []string) {
 				eprintln('error writing ${generated_path}: ${err}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
+			}
+			if 'vlibc_shim_object' in prefs.user_defines {
+				os.write_lines(generated_path + '.exports', g.c_abi_export_names()) or { panic(err) }
 			}
 			cgen_was_parallel = g.was_parallel()
 			generated_literal_output_only = g.generated_literal_output_only()
@@ -17209,7 +17251,7 @@ pub fn run(args []string) {
 				// Native helpers share the generated unit's runtime capabilities.
 				// These flags participate in the existing object/cache manifest key.
 				object_optimization_flags << '-DCUSTOM_DEFINE_freestanding'
-				if is_shared || is_o {
+				if 'v_bare_no_startup' in prefs.user_defines {
 					object_optimization_flags << '-DCUSTOM_DEFINE_v_bare_no_startup'
 				}
 			}
@@ -17311,7 +17353,12 @@ pub fn run(args []string) {
 				cached_object_c_flags << '-D' + macro_name + r'=_Pragma("GCC error \"native cache cannot expand date/time macros\"")'
 			}
 		}
-		if 'freestanding' in prefs.user_defines && !c_only && !is_o && !is_shared
+		if v3_needs_vlibc_shim(prefs.user_defines) && !is_o && !is_shared {
+			// The regular V runtime uses unwind tables for Linux diagnostics.
+			resolved_c_flags << '-lgcc_eh'
+		}
+		if v3_omit_system_libc(prefs.user_defines)
+			&& !c_only && !is_o && !is_shared
 			&& !effective_tcc
 			&& (prefs.normalized_target_os() != 'macos' || prefs.target.arch == 'amd64') {
 			// Native inputs are resolved above. -nostdlib also drops arithmetic
@@ -17322,6 +17369,16 @@ pub fn run(args []string) {
 					resolved_c_flags << runtime_library
 				}
 			}
+		}
+		if !c_only && !is_o && !is_shared && !effective_tcc && prefs.normalized_target_os() == 'linux'
+			&& v3_uses_bare_dynamic_loader(prefs.user_defines) {
+			loader := v3_freestanding_dynamic_loader(c_compiler, prefs.target.arch,
+				environment_c_flags, target_args, resolved_c_flags, link_ld_flags) or {
+				eprintln('v: dynamic vlibc requires a target GNU ELF loader; use -ldflags -static for a static executable')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			resolved_c_flags << loader
 		}
 		if !c_only && !is_o {
 			if missing_gc := v3_missing_bundled_gc_library(resolved_c_flags, prefs.vroot) {
@@ -17371,34 +17428,37 @@ pub fn run(args []string) {
 			program_warn_args << '-Werror=implicit-function-declaration'
 		}
 		c_flag_options := V3CCompilerFlagOptions{
-			environment_c_flags: environment_c_flags
-			link_ld_flags:       shared_link_ld_flags
-			target_args:         target_args
-			link_c_standard:     link_c_standard
-			dependencies:        resolved_c_flags
-			warn_args:           program_warn_args
-			tcc_resources:       v3_tcc_resource_flags_for_compiler(prefs.vroot, planned_tcc_compiler, bundled_tcc, bundled_tcc_available)
-			vroot:               prefs.vroot
-			target_os:           prefs.normalized_target_os()
-			target_arch:         prefs.normalized_target_arch()
-			c_compiler:          effective_c_compiler
-			subsystem:           prefs.subsystem
-			windows_gui_app:     windows_gui_entry_point
-			macos_sdk_root:      flag_plan_sdk_root
-			pic_flag:            pic_flag
-			is_prod:             is_prod
-			no_prod_options:     no_prod_options
-			c_opt_level:         c_opt_level
-			is_shared:           is_shared
-			parallel_cc:         parallel_cc
-			large_c_unit:        large_prod_c_unit
-			limit_inlining:      limit_large_unit_inlining
-			is_tcc:              effective_tcc
-			is_c_debug:          is_c_debug
-			no_backtrace:        'no_backtrace' in prefs.user_defines
-			is_o:                is_o
-			is_liveshared:       is_liveshared
-			is_freestanding:     'freestanding' in prefs.user_defines
+			environment_c_flags:    environment_c_flags
+			link_ld_flags:          shared_link_ld_flags
+			target_args:            target_args
+			link_c_standard:        link_c_standard
+			dependencies:           resolved_c_flags
+			warn_args:              program_warn_args
+			tcc_resources:          v3_tcc_resource_flags_for_compiler(prefs.vroot, planned_tcc_compiler, bundled_tcc, bundled_tcc_available)
+			vroot:                  prefs.vroot
+			target_os:              prefs.normalized_target_os()
+			target_arch:            prefs.normalized_target_arch()
+			c_compiler:             effective_c_compiler
+			subsystem:              prefs.subsystem
+			windows_gui_app:        windows_gui_entry_point
+			macos_sdk_root:         flag_plan_sdk_root
+			pic_flag:               pic_flag
+			is_prod:                is_prod
+			no_prod_options:        no_prod_options
+			c_opt_level:            c_opt_level
+			is_shared:              is_shared
+			parallel_cc:            parallel_cc
+			large_c_unit:           large_prod_c_unit
+			limit_inlining:         limit_large_unit_inlining
+			is_tcc:                 effective_tcc
+			is_c_debug:             is_c_debug
+			no_backtrace:           'no_backtrace' in prefs.user_defines
+			is_o:                   is_o
+			is_liveshared:          is_liveshared
+			is_freestanding:        'freestanding' in prefs.user_defines
+			no_system_libc:         'no_system_libc' in prefs.user_defines
+			freestanding_with_libc: 'v_bare_libc' in prefs.user_defines
+			static_link:            'v_bare_static' in prefs.user_defines
 		}
 		c_flag_plan := v3_c_compiler_flag_plan(c_flag_options)
 		large_c_flag_options := V3CCompilerFlagOptions{
@@ -17408,6 +17468,16 @@ pub fn run(args []string) {
 		}
 		large_c_flag_plan := v3_c_compiler_flag_plan(large_c_flag_options)
 		mut native_support_inputs := []string{}
+		if v3_needs_vlibc_shim(prefs.user_defines) && !is_o && !is_shared
+			&& (!c_only || generate_c_project != '') {
+			shim_dir := if c_only { generate_c_project } else { cc_dir }
+			native_support_inputs << v3_build_vlibc_shim(shim_dir, c_compiler, prefs.target,
+				target_args, 'v_bare_static' in prefs.user_defines) or {
+				eprintln('v: cannot build vlibc replacement: ${err}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+		}
 		if icon_path != '' && os.user_os() != 'windows' {
 			icon_object := prepare_cross_windows_icon_resource(icon_path, cc_dir, c_compiler,
 				verbose || show_cc) or {
@@ -17461,7 +17531,11 @@ pub fn run(args []string) {
 			} else {
 				c_flag_plan.all_flags(dump_support_flags)
 			}
-			write_v3_c_flags_dump(dump_c_flags, dumped_flags, cc_dir)
+			if 'vlibc_shim_object' in prefs.user_defines {
+				os.write_file(dump_c_flags, dumped_flags.join('\x00')) or { panic(err) }
+			} else {
+				write_v3_c_flags_dump(dump_c_flags, dumped_flags, cc_dir)
+			}
 		}
 		if c_only {
 			if headerless_snapshot && cross_libc_headers_output.len == 0

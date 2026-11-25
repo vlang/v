@@ -1533,12 +1533,54 @@ fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
 		assert '-bt25' !in plan.before_inputs, 'tcc=${is_tcc}'
 		// `_start` calls `main` from a top-level asm block, which LTO does not see.
 		assert '-flto' !in plan.before_inputs, 'tcc=${is_tcc}'
-		assert '-static' in plan.after_inputs && '-nostdlib' in plan.after_inputs, 'tcc=${is_tcc}'
+		assert '-static' !in plan.after_inputs && '-nostdlib' in plan.after_inputs, 'tcc=${is_tcc}'
 		assert '-lm' !in plan.after_inputs && '-lpthread' !in plan.after_inputs, 'tcc=${is_tcc}'
 		assert ('-ltcc1' in plan.after_inputs) == is_tcc
 		assert ('-ffunction-sections' in plan.before_inputs) == !is_tcc
 		assert ('-fdata-sections' in plan.before_inputs) == !is_tcc
 		assert ('-Wl,--gc-sections' in plan.after_inputs) == !is_tcc
+	}
+}
+
+fn test_v3_freestanding_flag_plan_can_retain_libc_process_abi() {
+	for production in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			is_freestanding:        true
+			freestanding_with_libc: true
+			is_prod:                production
+			target_os:              'linux'
+			target_arch:            'amd64'
+			c_compiler:             'gcc'
+		})
+		assert '-ffreestanding' in plan.before_inputs
+		assert '-D_GNU_SOURCE' in plan.before_inputs
+		assert ('-flto' in plan.before_inputs) == production
+		assert '-nostdlib' !in plan.after_inputs && '-static' !in plan.after_inputs
+		assert '-lm' in plan.after_inputs && '-lpthread' in plan.after_inputs
+	}
+}
+
+fn test_no_system_libc_link_policy_with_regular_v_runtime() {
+	assert !v3_uses_bare_dynamic_loader(['no_system_libc'])
+	assert !v3_uses_bare_dynamic_loader(['vlibc'])
+	assert !v3_uses_bare_dynamic_loader(['freestanding', 'v_bare_libc', 'v_bare_no_startup'])
+	assert !v3_uses_bare_dynamic_loader(['vlibc', 'no_system_libc', 'v_bare_static'])
+	assert v3_uses_bare_dynamic_loader(['vlibc', 'no_system_libc'])
+	assert v3_uses_bare_dynamic_loader(['freestanding'])
+	for shared in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:      'linux'
+			target_arch:    'amd64'
+			c_compiler:     'gcc'
+			is_shared:      shared
+			no_system_libc: true
+			dependencies:   ['-lapplication']
+		})
+		assert '-D_GNU_SOURCE' in plan.before_inputs
+		assert '-nostdlib' in plan.after_inputs
+		assert '-lapplication' in plan.after_inputs
+		assert '-static' !in plan.after_inputs
+		assert '-lc' !in plan.after_inputs
 	}
 }
 
@@ -2601,4 +2643,42 @@ fn test_v3_program_executable_link_covers_opt_level() {
 	assert other != same_a, 'changing -O0 to -O3 must change the executable identity'
 	empty := v3_program_executable_link_signature([], false, base, '')
 	assert empty != same_a, 'an explicit level must differ from no level'
+}
+
+fn test_standalone_static_archive_groups_preserve_all_declared_libraries() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:       'linux'
+		target_arch:     'amd64'
+		c_compiler:      'gcc'
+		is_freestanding: true
+		static_link:     true
+		dependencies:    ['-lX11', '-lXft', '-lfontconfig', '-lm', '-lpthread', '-ldl']
+	})
+	assert plan.after_inputs[0] == '-Wl,--start-group'
+	for library in ['-lX11', '-lXft', '-lfontconfig', '-lm', '-lpthread', '-ldl'] {
+		assert library in plan.after_inputs
+	}
+	assert '-lc' !in plan.after_inputs
+	assert '-nostdlib' in plan.after_inputs && '-static' in plan.after_inputs
+	assert '-Wl,--end-group' in plan.after_inputs
+}
+
+fn test_linux_bare_dynamic_link_retains_shared_dependencies() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os:       'linux'
+		target_arch:     'amd64'
+		c_compiler:      'gcc'
+		is_freestanding: true
+		dependencies:    ['-lX11', '-lXft', '-lfontconfig']
+	})
+	assert '-static' !in plan.after_inputs
+	assert '-Wl,--start-group' !in plan.after_inputs
+	assert '-nostdlib' in plan.after_inputs
+	// Only symbols requested by linked DSOs need exporting. Exporting every
+	// helper would retain unused hosted runtime references.
+	assert '-Wl,--export-dynamic' !in plan.after_inputs
+	assert '-lc' !in plan.after_inputs
+	for library in ['-lX11', '-lXft', '-lfontconfig'] {
+		assert library in plan.after_inputs
+	}
 }

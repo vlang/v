@@ -5,6 +5,36 @@ import v.pref
 
 const v3_default_gc_mode = 'boehm_full_opt'
 
+// Select the bare hooks and report whether this build must omit the collector.
+fn v3_configure_runtime_gc(building_v bool, cross_output bool, target_os string, target_arch string, backend string, gc_mode string, mut defines []string, mut values map[string]string) bool {
+	disabled := v3_gc_is_disabled(building_v, cross_output, target_os, target_arch, backend, gc_mode)
+	if 'syscalls' !in defines { return disabled || 'freestanding' in defines }
+	boehm := !disabled && gc_mode.starts_with('boehm') && backend == 'c'
+		&& pref.normalized_os(target_os) == 'linux' && pref.normalized_arch(target_arch) in [
+		'amd64',
+		'arm64',
+	]
+	standalone := 'freestanding' in defines || 'no_system_libc' in defines
+	if !standalone || boehm {
+		// The collector's C malloc and pthreads must be independent of the V GC heap.
+		if standalone { record_user_define(mut defines, mut values, 'no_system_libc') }
+		record_user_define(mut defines, mut values, 'v_bare_libc')
+		record_user_define(mut defines, mut values, 'v_bare_no_startup')
+	}
+	record_user_define(mut defines, mut values, 'freestanding')
+	return !boehm
+}
+
+fn v3_bare_needs_platform_cc(defines []string, target pref.Target, backend string) bool {
+	// Bare startup and thread creation require native C TLS.
+	return ('freestanding' in defines || 'no_system_libc' in defines)
+		&& (target.arch !in ['amd64', 'i386'] || (backend == 'c' && target.os in [
+			'linux',
+			'macos',
+			'darwin',
+		]))
+}
+
 fn v3_gc_mode_defines(gc_mode string, disable_gc bool) ![]string {
 	mode := if gc_mode in ['', 'boehm'] { v3_default_gc_mode } else { gc_mode }
 	defines := match mode {
