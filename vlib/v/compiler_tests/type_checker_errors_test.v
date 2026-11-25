@@ -1080,19 +1080,17 @@ fn test_fixed_array_length_checks() {
 	run_bad(v3_bin, 'bad_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n', 'cannot use `[]int` as `[4]int` in argument 1 to `take4`')
 	// Genuine fixed arrays of different lengths in if-branches must mismatch.
 	run_bad(v3_bin, 'bad_if_branch_fixed_array_len', 'fn main() {\n\ta := [2]int{}\n\tb := [3]int{}\n\tc := true\n\t_ := if c { a } else { b }\n}\n', 'mismatched types `[2]int` and `[3]int`')
-	// Correct fixed-array length is accepted and round-trips.
-	good4 := run_good(v3_bin, 'good_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0] + a[1] + a[2] + a[3]\n}\nfn main() {\n\tprintln(int_str(take4([10, 20, 30, 40])))\n}\n')
-	assert good4 == '100'
-	// Bare array literals are dynamic `[]T`, so different-length branches are fine.
-	good_lit := run_good(v3_bin, 'good_if_branch_array_literal_len', 'fn main() {\n\tc := true\n\tx := if c { [1, 2, 3] } else { [4, 5] }\n\tprintln(int_str(x.len))\n}\n')
-	assert good_lit == '3'
-	// `return if cond { ... } else { ... }` with fixed-array-const branches must
-	// coerce each branch to the dynamic `[]T` return type (like a plain return and
-	// the `return match` path), not return the bare C fixed array.
-	good_ret_const := run_good(v3_bin, 'good_return_if_fixed_const', 'const wp3 = [1, 2, 3]\nconst wp2 = [4, 5]\nfn pick(c bool) []int {\n\treturn if c { wp3 } else { wp2 }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
-	assert good_ret_const == '5'
-	good_ret_lit := run_good(v3_bin, 'good_return_if_array_literal', 'fn pick(c bool) []int {\n\treturn if c { [1, 2, 3] } else { [4, 5] }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
-	assert good_ret_lit == '5'
+	run_good_module_batch(v3_bin, 'fixed_array_lengths', [
+		// Correct fixed-array length is accepted and round-trips.
+		TypeCheckerRuntimeCase{'good_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0] + a[1] + a[2] + a[3]\n}\nfn main() {\n\tprintln(int_str(take4([10, 20, 30, 40])))\n}\n', '100'},
+		// Bare array literals are dynamic `[]T`, so different-length branches are fine.
+		TypeCheckerRuntimeCase{'good_if_branch_array_literal_len', 'fn main() {\n\tc := true\n\tx := if c { [1, 2, 3] } else { [4, 5] }\n\tprintln(int_str(x.len))\n}\n', '3'},
+		// `return if cond { ... } else { ... }` with fixed-array-const branches must
+		// coerce each branch to the dynamic `[]T` return type (like a plain return and
+		// the `return match` path), not return the bare C fixed array.
+		TypeCheckerRuntimeCase{'good_return_if_fixed_const', 'const wp3 = [1, 2, 3]\nconst wp2 = [4, 5]\nfn pick(c bool) []int {\n\treturn if c { wp3 } else { wp2 }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n', '5'},
+		TypeCheckerRuntimeCase{'good_return_if_array_literal', 'fn pick(c bool) []int {\n\treturn if c { [1, 2, 3] } else { [4, 5] }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n', '5'},
+	])
 	mixed_const_src := 'const xs = [1, 2, 3]\nfn first() int {\n\treturn xs[0]\n}\nfn length_score() int {\n\treturn xs.len\n}\nfn all() []int {\n\treturn xs\n}\nfn main() {\n\tys := all()\n\tprintln(int_str(first() + length_score() + ys.len + ys[2]))\n}\n'
 	mixed_const_name := 'good_indexed_const_returned_dynamic_array'
 	mixed_const_bin := compile_good_source(v3_bin, mixed_const_name, mixed_const_src)
@@ -1564,13 +1562,13 @@ fn test_const_expr_fixed_array_and_thread_ptr_wait() {
 // FIELD type (not only as a literal) and must fold whether or not the operators
 // are spaced (`segs+1` as well as `segs + 1`).
 fn test_const_expr_fixed_array_field_and_spacing() {
-	// Struct field `[segs + 1]f32` was emitted as `void verts[4]` (element lost,
-	// size = segs); it must be `[5]f32` with `.len == 5`.
-	good_field := run_good(v3_bin, 'good_const_expr_fixed_array_field', 'const segs = 4\nstruct Mesh {\n\tverts [segs + 1]f32\n}\nfn main() {\n\tm := Mesh{}\n\tprintln(int_str(m.verts.len))\n}\n')
-	assert good_field == '5'
-	// Spaced, unspaced, and nested const-expression sizes all fold to a literal.
-	good_forms := run_good(v3_bin, 'good_const_expr_fixed_array_forms', 'const segs = 3\nconst mult = 2\nfn main() {\n\ta := [segs + 1]int{}\n\tb := [segs+1]int{}\n\tc := [segs * mult]int{}\n\td := [segs - 1]int{}\n\te := [segs * mult + 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len))\n}\n')
-	assert good_forms == '23'
+	run_good_module_batch(v3_bin, 'fixed_array_field_lengths', [
+		// Struct field `[segs + 1]f32` was emitted as `void verts[4]` (element lost,
+		// size = segs); it must be `[5]f32` with `.len == 5`.
+		TypeCheckerRuntimeCase{'good_const_expr_fixed_array_field', 'const segs = 4\nstruct Mesh {\n\tverts [segs + 1]f32\n}\nfn main() {\n\tm := Mesh{}\n\tprintln(int_str(m.verts.len))\n}\n', '5'},
+		// Spaced, unspaced, and nested const-expression sizes all fold to a literal.
+		TypeCheckerRuntimeCase{'good_const_expr_fixed_array_forms', 'const segs = 3\nconst mult = 2\nfn main() {\n\ta := [segs + 1]int{}\n\tb := [segs+1]int{}\n\tc := [segs * mult]int{}\n\td := [segs - 1]int{}\n\te := [segs * mult + 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len))\n}\n', '23'},
+	])
 }
 
 // Regression tests for the second PR-review batch (vlang/v#27557).
@@ -1711,23 +1709,22 @@ fn test_pr_review_codegen_batch_eight() {
 
 // Regression tests for the tenth PR-review batch (vlang/v#27557).
 fn test_pr_review_codegen_batch_ten() {
-	// Const fixed-array lengths may use shifts and bitwise operators, in both the string
-	// evaluator (recovered length text) and the AST const evaluator (`const n = 1 << 2`).
-	// `1 << 2`=4, `8 >> 1`=4, `3 | 4`=7, `0xF & 6`=6, `(1 << 3) + 2`=10, `16 >> 2 << 1`=8.
-	shifts := run_good(v3_bin, 'good_shift_bitwise_fixed_array_len', 'const shift_amt = 1 << 2\nconst my_mask = 0xF & 6\nfn main() {\n\ta := [1 << 2]int{}\n\tb := [shift_amt]int{}\n\tc := [8 >> 1]int{}\n\td := [3 | 4]int{}\n\te := [my_mask]int{}\n\tf := [(1 << 3) + 2]int{}\n\tg := [16 >> 2 << 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len + f.len + g.len))\n}\n')
-	// 4 + 4 + 4 + 7 + 6 + 10 + 8 = 43
-	assert shifts == '43'
 	// The fixed-array literal length guard evaluates a shift length: `[1, 2]` (two
 	// elements) does not match an expected `[1 << 2]int` (four), so it is rejected.
 	run_bad(v3_bin, 'bad_shift_fixed_array_literal_len', 'fn take(a [1 << 2]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use')
-	// A function returning a fixed array of structs gets a C return wrapper (emitted after
-	// the struct is defined), so it compiles and round-trips instead of emitting a raw
-	// `Array_fixed_Foo_2` return type C rejects.
-	fa_struct := run_good(v3_bin, 'good_fixed_array_struct_return', 'struct Foo {\n\tx int\n}\nfn make() [2]Foo {\n\treturn [Foo{\n\t\tx: 1\n\t}, Foo{\n\t\tx: 2\n\t}]!\n}\nfn main() {\n\tr := make()\n\tprintln(int_str(r[0].x + r[1].x))\n}\n')
-	assert fa_struct == '3'
-	// Likewise a fixed array of `string` returns through a wrapper.
-	fa_string := run_good(v3_bin, 'good_fixed_array_string_return', "fn make() [2]string {\n\treturn ['hi', 'yo']!\n}\nfn main() {\n\tr := make()\n\tprintln(r[0] + r[1])\n}\n")
-	assert fa_string == 'hiyo'
+	run_good_module_batch(v3_bin, 'fixed_array_shifts_and_returns', [
+		// Const fixed-array lengths may use shifts and bitwise operators, in both the string
+		// evaluator (recovered length text) and the AST const evaluator (`const n = 1 << 2`).
+		// `1 << 2`=4, `8 >> 1`=4, `3 | 4`=7, `0xF & 6`=6, `(1 << 3) + 2`=10, `16 >> 2 << 1`=8.
+		// 4 + 4 + 4 + 7 + 6 + 10 + 8 = 43
+		TypeCheckerRuntimeCase{'good_shift_bitwise_fixed_array_len', 'const shift_amt = 1 << 2\nconst my_mask = 0xF & 6\nfn main() {\n\ta := [1 << 2]int{}\n\tb := [shift_amt]int{}\n\tc := [8 >> 1]int{}\n\td := [3 | 4]int{}\n\te := [my_mask]int{}\n\tf := [(1 << 3) + 2]int{}\n\tg := [16 >> 2 << 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len + f.len + g.len))\n}\n', '43'},
+		// A function returning a fixed array of structs gets a C return wrapper (emitted after
+		// the struct is defined), so it compiles and round-trips instead of emitting a raw
+		// `Array_fixed_Foo_2` return type C rejects.
+		TypeCheckerRuntimeCase{'good_fixed_array_struct_return', 'struct Foo {\n\tx int\n}\nfn make() [2]Foo {\n\treturn [Foo{\n\t\tx: 1\n\t}, Foo{\n\t\tx: 2\n\t}]!\n}\nfn main() {\n\tr := make()\n\tprintln(int_str(r[0].x + r[1].x))\n}\n', '3'},
+		// Likewise a fixed array of `string` returns through a wrapper.
+		TypeCheckerRuntimeCase{'good_fixed_array_string_return', "fn make() [2]string {\n\treturn ['hi', 'yo']!\n}\nfn main() {\n\tr := make()\n\tprintln(r[0] + r[1])\n}\n", 'hiyo'},
+	])
 }
 
 // Regression tests for the eleventh PR-review batch (vlang/v#27557).
@@ -1800,25 +1797,24 @@ fn test_pr_review_codegen_batch_fourteen() {
 }
 
 fn test_pr_review_codegen_batch_fifteen() {
-	// The string length evaluator folds with the same operator precedence as the v3 parser
-	// and AST const evaluator. Shifts share product precedence, so `1 << 2 + 1` is
-	// `(1 << 2) + 1` = 5 whether the length is recovered from a const's source text or a
-	// literal expression. Both must agree, or the literal check and C dimension diverge.
-	prec := run_good(v3_bin, 'good_shift_add_precedence_fixed_array_len', 'const seg_count = 1 << 2 + 1\nfn main() {\n\ta := [1 << 2 + 1]u8{}\n\tb := [seg_count]u8{}\n\tc := [1 + 2 << 1]u8{}\n\tprintln(int_str(a.len + b.len + c.len))\n}\n')
-	// 5 + 5 + 5 = 15
-	assert prec == '15'
 	// The fixed-array literal-length guard uses the same folded length: a `[1 << 2 + 1]int`
 	// parameter (length 5) rejects a 4-element literal.
 	run_bad(v3_bin, 'bad_shift_add_precedence_literal_len', 'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4]!)\n}\n', 'cannot use')
-	// An fn-pointer type whose return is a non-early fixed array (`string`/struct element) gets
-	// a return-wrapper struct. The wrapper is forward-declared before the fn-pointer typedef and
-	// completed after the element type, so the C compiles; the wrapped value is unwrapped to
-	// `.ret_arr` at the indirect call, whether the callback is reached through a param or a
-	// struct field.
-	fp_str := run_good(v3_bin, 'good_fn_ptr_returns_fixed_string_array', "type MakeArr = fn () [2]string\nfn mk() [2]string {\n\treturn ['hi', 'there']!\n}\nfn run(f MakeArr) string {\n\tr := f()\n\treturn r[0]\n}\nstruct Holder {\n\tf MakeArr\n}\nfn main() {\n\th := Holder{\n\t\tf: mk\n\t}\n\tprintln(run(mk) + h.f()[1])\n}\n")
-	assert fp_str == 'hithere'
-	fp_struct := run_good(v3_bin, 'good_fn_ptr_returns_fixed_struct_array', 'struct P {\n\tx int\n}\ntype MakeP = fn () [2]P\nfn mkp() [2]P {\n\treturn [P{\n\t\tx: 3\n\t}, P{\n\t\tx: 4\n\t}]!\n}\nfn runp(f MakeP) int {\n\tr := f()\n\treturn r[0].x + r[1].x\n}\nfn main() {\n\tprintln(int_str(runp(mkp)))\n}\n')
-	assert fp_struct == '7'
+	run_good_module_batch(v3_bin, 'fixed_array_precedence_and_callbacks', [
+		// The string length evaluator folds with the same operator precedence as the v3 parser
+		// and AST const evaluator. Shifts share product precedence, so `1 << 2 + 1` is
+		// `(1 << 2) + 1` = 5 whether the length is recovered from a const's source text or a
+		// literal expression. Both must agree, or the literal check and C dimension diverge.
+		// 5 + 5 + 5 = 15
+		TypeCheckerRuntimeCase{'good_shift_add_precedence_fixed_array_len', 'const seg_count = 1 << 2 + 1\nfn main() {\n\ta := [1 << 2 + 1]u8{}\n\tb := [seg_count]u8{}\n\tc := [1 + 2 << 1]u8{}\n\tprintln(int_str(a.len + b.len + c.len))\n}\n', '15'},
+		// An fn-pointer type whose return is a non-early fixed array (`string`/struct element) gets
+		// a return-wrapper struct. The wrapper is forward-declared before the fn-pointer typedef and
+		// completed after the element type, so the C compiles; the wrapped value is unwrapped to
+		// `.ret_arr` at the indirect call, whether the callback is reached through a param or a
+		// struct field.
+		TypeCheckerRuntimeCase{'good_fn_ptr_returns_fixed_string_array', "type MakeArr = fn () [2]string\nfn mk() [2]string {\n\treturn ['hi', 'there']!\n}\nfn run(f MakeArr) string {\n\tr := f()\n\treturn r[0]\n}\nstruct Holder {\n\tf MakeArr\n}\nfn main() {\n\th := Holder{\n\t\tf: mk\n\t}\n\tprintln(run(mk) + h.f()[1])\n}\n", 'hithere'},
+		TypeCheckerRuntimeCase{'good_fn_ptr_returns_fixed_struct_array', 'struct P {\n\tx int\n}\ntype MakeP = fn () [2]P\nfn mkp() [2]P {\n\treturn [P{\n\t\tx: 3\n\t}, P{\n\t\tx: 4\n\t}]!\n}\nfn runp(f MakeP) int {\n\tr := f()\n\treturn r[0].x + r[1].x\n}\nfn main() {\n\tprintln(int_str(runp(mkp)))\n}\n', '7'},
+	])
 }
 
 fn test_pr_review_codegen_batch_sixteen() {
@@ -1988,17 +1984,16 @@ fn test_fn_pointer_return_type() {
 }
 
 fn test_const_length_fixed_array() {
-	// A fixed array whose length is a const round-trips through the checker as the postfix name
-	// `int[seg_count]`. The transform's fixed-array predicate (now const-aware) folds `.len` to the
-	// constant instead of emitting a struct field access on the C array, and parse_type treats the
-	// builtin-base postfix as a fixed array (not a bogus generic), so the decl uses memcpy.
-	direct := run_good(v3_bin, 'good_const_len_fixed_array_call_len', 'const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\treturn r\n}\nfn main() {\n\tprintln(int_str(f().len))\n}\n')
-	assert direct == '3'
-	decl := run_good(v3_bin, 'good_const_len_fixed_array_decl_len', "const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\tr[0] = 10\n\treturn r\n}\nfn main() {\n\ta := f()\n\tprintln(int_str(a[0]) + ',' + int_str(a.len))\n}\n")
-	assert decl == '10,3'
-	// An expression length (`[segs + 1]int`) likewise folds, iterates, and indexes correctly.
-	expr := run_good(v3_bin, 'good_expr_len_fixed_array', "const segs = 2\nfn f() [segs + 1]int {\n\tmut r := [segs + 1]int{}\n\tr[0] = 5\n\tr[1] = 6\n\tr[2] = 7\n\treturn r\n}\nfn main() {\n\ta := f()\n\tmut sum := 0\n\tfor x in a {\n\t\tsum += x\n\t}\n\tprintln(int_str(a.len) + ',' + int_str(a[1]) + ',' + int_str(sum))\n}\n")
-	assert expr == '3,6,18'
+	run_good_module_batch(v3_bin, 'constant_fixed_array_lengths', [
+		// A fixed array whose length is a const round-trips through the checker as the postfix name
+		// `int[seg_count]`. The transform's fixed-array predicate (now const-aware) folds `.len` to the
+		// constant instead of emitting a struct field access on the C array, and parse_type treats the
+		// builtin-base postfix as a fixed array (not a bogus generic), so the decl uses memcpy.
+		TypeCheckerRuntimeCase{'good_const_len_fixed_array_call_len', 'const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\treturn r\n}\nfn main() {\n\tprintln(int_str(f().len))\n}\n', '3'},
+		TypeCheckerRuntimeCase{'good_const_len_fixed_array_decl_len', "const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\tr[0] = 10\n\treturn r\n}\nfn main() {\n\ta := f()\n\tprintln(int_str(a[0]) + ',' + int_str(a.len))\n}\n", '10,3'},
+		// An expression length (`[segs + 1]int`) likewise folds, iterates, and indexes correctly.
+		TypeCheckerRuntimeCase{'good_expr_len_fixed_array', "const segs = 2\nfn f() [segs + 1]int {\n\tmut r := [segs + 1]int{}\n\tr[0] = 5\n\tr[1] = 6\n\tr[2] = 7\n\treturn r\n}\nfn main() {\n\ta := f()\n\tmut sum := 0\n\tfor x in a {\n\t\tsum += x\n\t}\n\tprintln(int_str(a.len) + ',' + int_str(a[1]) + ',' + int_str(sum))\n}\n", '3,6,18'},
+	])
 }
 
 fn test_pr_review_codegen_batch_twentyfive() {
