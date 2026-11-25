@@ -1,10 +1,5 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+import v.tempname
 
 // Written as a raw string so the escapes reach the compiler under test as typed.
 const nested_it_program = r"fn main() {
@@ -24,15 +19,13 @@ const nested_it_program = r"fn main() {
 // that no declaration reached, and the generated C failed to build with
 // `use of undeclared identifier 'it'`, which made V fall back to the stable compiler.
 fn test_escaped_it_interpolation_in_map_body_compiles() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_nested_escaped_map_it_interp_test')
-	build := os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-		'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	source_file := os.join_path(os.temp_dir(), 'v3_nested_escaped_map_it_interp_input.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_nested_escaped_map_it_interp_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	bin := os.join_path(dir, 'v3_nested_escaped_map_it_interp_input')
+	source_file := bin + '.v'
 	os.write_file(source_file, nested_it_program) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_nested_escaped_map_it_interp_input')
-	compile := os.exec([v3_bin, '-nocache', source_file, '-o', bin])
+	compile := os.exec([@VEXE, '-nocache', source_file, '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

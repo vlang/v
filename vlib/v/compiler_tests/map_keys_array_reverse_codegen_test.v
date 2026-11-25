@@ -1,24 +1,12 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn map_keys_reverse_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_map_keys_array_reverse_codegen_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_map_keys_and_array_reverse_keep_concrete_array_types() {
-	v3_bin := map_keys_reverse_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_map_keys_array_reverse_input_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_map_keys_array_reverse_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	bin := os.join_path(dir, 'v3_map_keys_array_reverse_input')
+	src := bin + '.v'
 	os.write_file(src, "fn first_key(m map[string][]string) string {
 	keys := m.keys()
 	key := keys.first()
@@ -89,8 +77,7 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_map_keys_array_reverse_input_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
