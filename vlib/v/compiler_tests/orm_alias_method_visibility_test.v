@@ -476,18 +476,11 @@ fn check_sql_alias_lock_matrix(label string, lock_receivers []string, imports_by
 		sql_alias_visibility_queries(false), sql_alias_compile_and_check, sql_alias_public_module)!
 }
 
-fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_values() {
+fn test_alias_methods_keep_shared_element_and_captured_array_lock_keys_in_sql_values() {
 	receivers := ['shared_items[0]', '(shared_collection.values)[0]', 'parameter_items[0]',
-		"holders['primary'].values", "(holders [ 'primary' ]).values"]
-	check_sql_alias_lock_matrix('shared_element_lock', receivers, {
-		'mutate': 'aliases'
-		'clone':  'renamed'
-	}, false)!
-}
-
-fn test_alias_methods_keep_captured_shared_array_locks_in_sql_values() {
-	receivers := ['closure_items[0]', 'parameter_closure_items[0]', 'nested_closure_items[0]']
-	check_sql_alias_lock_matrix('captured_array_lock', receivers, {
+		"holders['primary'].values", "(holders [ 'primary' ]).values", 'closure_items[0]',
+		'parameter_closure_items[0]', 'nested_closure_items[0]']
+	check_sql_alias_lock_matrix('shared_element_and_captured_array_locks', receivers, {
 		'mutate': 'aliases'
 		'clone':  'renamed'
 	}, false)!
