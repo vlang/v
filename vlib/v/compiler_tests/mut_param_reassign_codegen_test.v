@@ -1,9 +1,15 @@
+import json2
 import os
 import v.tempname
 
-fn mut_param_reassign_run_good(name string, source string) string {
+fn mut_param_reassign_fixture_dir() string {
 	dir := os.join_path(os.vtmp_dir(), 'v3_mut_param_reassign_${tempname.unique_token()}')
 	os.mkdir(dir) or { panic(err) }
+	return dir
+}
+
+fn mut_param_reassign_run_good(name string, source string) string {
+	dir := mut_param_reassign_fixture_dir()
 	defer {
 		os.rmdir_all(dir) or {}
 	}
@@ -19,8 +25,7 @@ fn mut_param_reassign_run_good(name string, source string) string {
 }
 
 fn mut_param_reassign_run_good_with_c(name string, source string) (string, string) {
-	dir := os.join_path(os.vtmp_dir(), 'v3_mut_param_reassign_${tempname.unique_token()}')
-	os.mkdir(dir) or { panic(err) }
+	dir := mut_param_reassign_fixture_dir()
 	defer {
 		os.rmdir_all(dir) or {}
 	}
@@ -37,8 +42,7 @@ fn mut_param_reassign_run_good_with_c(name string, source string) (string, strin
 }
 
 fn mut_param_reassign_run_bad(name string, source string, expected string) {
-	dir := os.join_path(os.vtmp_dir(), 'v3_mut_param_reassign_${tempname.unique_token()}')
-	os.mkdir(dir) or { panic(err) }
+	dir := mut_param_reassign_fixture_dir()
 	defer {
 		os.rmdir_all(dir) or {}
 	}
@@ -49,6 +53,82 @@ fn mut_param_reassign_run_bad(name string, source string, expected string) {
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
+struct MutParamReassignCase {
+	name     string
+	source   string
+	expected string
+}
+
+struct MutParamReassignDiagnostic {
+	file     string
+	severity string
+	message  string
+}
+
+fn mut_param_reassign_write_module(dir string, module_name string, name string, source string) {
+	module_dir := os.join_path(dir, module_name)
+	os.mkdir(module_dir) or { panic(err) }
+	os.write_file(os.join_path(module_dir, '${name}.v'), 'module ${module_name}\n\n' + source) or {
+		panic(err)
+	}
+}
+
+fn mut_param_reassign_run_good_batch(cases []MutParamReassignCase) {
+	dir := mut_param_reassign_fixture_dir()
+	defer { os.rmdir_all(dir) or {} }
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		source := case.source.replace_once('\nfn main()', '\npub fn exercise()')
+		mut_param_reassign_write_module(dir, module_name, case.name, source)
+	}
+	os.write_file(os.join_path(dir, 'main.v'), "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(dir, 'program')
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, dir])
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	for case in cases {
+		run := os.exec([bin, case.name])
+		assert run.exit_code == 0, '${case.name}: ${run.output}'
+		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	}
+}
+
+fn mut_param_reassign_run_bad_batch(cases []MutParamReassignCase) {
+	dir := mut_param_reassign_fixture_dir()
+	defer { os.rmdir_all(dir) or {} }
+	mut imports := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name} as _'
+		mut_param_reassign_write_module(dir, module_name, case.name, case.source)
+	}
+	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n') or {
+		panic(err)
+	}
+	compile := os.exec([@VEXE, '-json-errors', '-b', 'c', '-o', os.join_path(dir, 'program'), dir])
+	assert compile.exit_code != 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	mut errors := map[string][]string{}
+	for line in compile.output.split_into_lines() {
+		if !line.starts_with('{') {
+			continue
+		}
+		diagnostic := json2.decode[MutParamReassignDiagnostic](line) or { panic(err) }
+		if diagnostic.severity == 'error' {
+			errors[os.file_name(diagnostic.file)] << diagnostic.message
+		}
+	}
+	for case in cases {
+		assert errors['${case.name}.v'].any(it.contains(case.expected)), '${case.name}: expected `${case.expected}` in\n${compile.output}'
+	}
 }
 
 fn test_mut_array_param_reassigns_to_base_type() {
@@ -250,7 +330,10 @@ fn main() {
 }
 
 fn test_mut_pointer_param_reassigns_caller_slot() {
-	out := mut_param_reassign_run_good('mut_pointer_param_reassign', 'struct Item {
+	mut_param_reassign_run_good_batch([
+		MutParamReassignCase{
+			name:     'mut_pointer_param_reassign'
+			source:   'struct Item {
 	value int
 }
 
@@ -271,9 +354,12 @@ fn main() {
 	assert first.value == 1
 	println(int_str(current.value))
 }
-')
-	assert out == '9'
-	out_generic := mut_param_reassign_run_good('generic_mut_pointer_param_reassign', 'struct Item {
+'
+			expected: '9'
+		},
+		MutParamReassignCase{
+			name:     'generic_mut_pointer_param_reassign'
+			source:   'struct Item {
 	value int
 }
 
@@ -292,9 +378,12 @@ fn main() {
 	replace(mut current, &second)
 	println(int_str(current.value))
 }
-')
-	assert out_generic == '8'
-	out_lvalues := mut_param_reassign_run_good('mut_pointer_lvalue_slots', 'struct Item {
+'
+			expected: '8'
+		},
+		MutParamReassignCase{
+			name:     'mut_pointer_lvalue_slots'
+			source:   'struct Item {
 	value int
 }
 
@@ -326,9 +415,12 @@ fn main() {
 	println(int_str(items[0].value))
 	println(int_str(holder.current.value))
 }
-')
-	assert out_lvalues == '9\n7'
-	out_forwarded := mut_param_reassign_run_good('mut_pointer_param_forward_and_index', 'fn write_byte(mut bytes &u8, value u8) {
+'
+			expected: '9\n7'
+		},
+		MutParamReassignCase{
+			name:     'mut_pointer_param_forward_and_index'
+			source:   'fn write_byte(mut bytes &u8, value u8) {
 	unsafe {
 		bytes[0] = value
 	}
@@ -354,8 +446,10 @@ fn main() {
 	assert read_byte(mut bytes) == `Z`
 	println("ok")
 }
-')
-	assert out_forwarded == 'ok'
+'
+			expected: 'ok'
+		},
+	])
 	mut_param_reassign_run_bad('generic_mut_pointer_param_requires_pointer_slot', 'struct Item {
 	value int
 }
@@ -548,7 +642,10 @@ fn main() {
 }
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
-	mut_param_reassign_run_bad('bad_same_scope_mut_string_param_redeclare', "struct Text {
+	mut_param_reassign_run_bad_batch([
+		MutParamReassignCase{
+			name:     'bad_same_scope_mut_string_param_redeclare'
+			source:   "struct Text {
 	value string
 }
 
@@ -565,9 +662,12 @@ fn main() {
 	}
 	_ = shadow_read(mut text)
 }
-",
-		'redefinition of `text`')
-	mut_param_reassign_run_bad('bad_mut_array_param_reassign_elem', "fn bad(mut xs []int) {
+"
+			expected: 'redefinition of `text`'
+		},
+		MutParamReassignCase{
+			name:     'bad_mut_array_param_reassign_elem'
+			source:   "fn bad(mut xs []int) {
 	mut ys := []string{}
 	ys << 'bad'
 	xs = ys
@@ -577,9 +677,12 @@ fn main() {
 	mut xs := []int{}
 	bad(mut xs)
 }
-",
-		'expected `[]int`, not `[]string`')
-	mut_param_reassign_run_bad('bad_mut_array_param_reassign_scalar', 'fn bad(mut xs []int) {
+"
+			expected: 'expected `[]int`, not `[]string`'
+		},
+		MutParamReassignCase{
+			name:     'bad_mut_array_param_reassign_scalar'
+			source:   'fn bad(mut xs []int) {
 	xs = 1
 }
 
@@ -587,17 +690,23 @@ fn main() {
 	mut xs := []int{}
 	bad(mut xs)
 }
-',
-		'expected `[]int`, not `int literal`')
-	mut_param_reassign_run_bad('bad_pointer_local_reassign_value', 'fn main() {
+'
+			expected: 'expected `[]int`, not `int literal`'
+		},
+		MutParamReassignCase{
+			name:     'bad_pointer_local_reassign_value'
+			source:   'fn main() {
 	mut xs := []int{}
 	mut p := &xs
 	mut tmp := []int{}
 	p = tmp
 }
-',
-		'expected `&[]int`, not `[]int`')
-	mut_param_reassign_run_bad('bad_shadowed_mut_param_multi_return', 'fn pair() ([]int, int) {
+'
+			expected: 'expected `&[]int`, not `[]int`'
+		},
+		MutParamReassignCase{
+			name:     'bad_shadowed_mut_param_multi_return'
+			source:   'fn pair() ([]int, int) {
 	mut xs := []int{}
 	return xs, 7
 }
@@ -613,6 +722,8 @@ fn main() {
 	mut xs := []int{}
 	replace(mut xs)
 }
-',
-		'redefinition of `xs`')
+'
+			expected: 'redefinition of `xs`'
+		},
+	])
 }
