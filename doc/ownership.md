@@ -430,7 +430,8 @@ fn receive_owned[T thread.Transferable](value T) T {
 ```
 
 Use `thread.new_mut_callback[A, R, T]` to move owned state with a
-`call(A) R` method into a `thread.MutCallback[A, R]`. The constructor checks
+public `call(A) R` method into a `thread.MutCallback[A, R]`. The method takes a
+mutable borrowed receiver. The constructor checks
 that both the concrete state and the result type are transferable before it
 erases the state's type. Each call borrows the state exclusively. The callback
 drops the state when its owner goes out of scope.

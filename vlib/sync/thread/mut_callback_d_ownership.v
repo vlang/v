@@ -12,8 +12,18 @@ mut:
 	value MutCallable[A, R]
 }
 
-// new_mut_callback moves a callable value into a transferable callback.
+// new_mut_callback moves a value with a public, mutable borrowing call method into a callback.
 pub fn new_mut_callback[A, R Transferable, T Transferable](value T) MutCallback[A, R] {
+	$for method in T.methods {
+		$if method.name == 'call' {
+			invoke := T.$method
+			$if invoke is fn(mut T, A) R {
+				_ = invoke
+			} $else {
+				$compile_error('the mutable callback call method requires a mutable borrowed receiver')
+			}
+		}
+	}
 	return MutCallback[A, R]{
 		value: MutCallable[A, R](value)
 	}

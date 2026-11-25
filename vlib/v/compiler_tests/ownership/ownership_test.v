@@ -4492,7 +4492,7 @@ mut:
 	text string
 }
 
-fn (mut counter Counter) call(amount int) int {
+pub fn (mut counter Counter) call(amount int) int {
 	counter.value += amount
 	return counter.value
 }
@@ -4548,7 +4548,7 @@ mut:
 	count int
 }
 
-fn (mut counter Counter) call(amount int) int {
+pub fn (mut counter Counter) call(amount int) int {
 	counter.count += amount
 	return counter.count
 }
@@ -4578,4 +4578,29 @@ fn main() {
 	assert invalid.output.contains('BorrowingCounter` does not satisfy `Transferable`: field `count`'), invalid.output
 	assert invalid.output.contains('&int` does not satisfy `Transferable`: references cannot be transferred'), invalid.output
 	assert invalid.output.contains('thread.MutCallback requires exclusive access to its state'), invalid.output
+}
+
+fn test_ownership_callback_cannot_consume_its_receiver() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'callback_consuming_receiver', r'
+import sync.thread
+
+struct Counter implements Drop {
+	text string
+}
+
+pub fn (counter Counter) call(amount int) int {
+	return counter.text.len + amount
+}
+
+fn (mut counter Counter) drop() {
+	drop_owned(counter.text)
+}
+
+fn main() {
+	_ = thread.new_mut_callback[int, int, Counter](Counter{text: "value".to_owned()})
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('the mutable callback call method requires a mutable borrowed receiver'), result.output
 }
