@@ -46,9 +46,10 @@ struct MovedVar {
 }
 
 struct BorrowInfo {
-	borrower string
-	pos      flat.NodeId
-	is_mut   bool
+	borrower    string
+	pos         flat.NodeId
+	is_mut      bool
+	call_result bool
 }
 
 struct OwnershipBorrowConflict {
@@ -11787,7 +11788,12 @@ fn (mut tc TypeChecker) ownership_mark_borrow_from_call_return(lhs_name string, 
 		if st.borrowed_vars[borrower_source].any(it.borrower == lhs_name && it.pos == pos) {
 			continue
 		}
-		tc.ownership_add_borrow(borrower_source, lhs_name, pos, tc.ownership_call_param_is_mut(call_name, param_idx))
+		tc.ownership_add_borrow_info(borrower_source, BorrowInfo{
+			borrower:    lhs_name
+			pos:         pos
+			is_mut:      tc.ownership_call_param_is_mut(call_name, param_idx)
+			call_result: true
+		})
 	}
 	if marked {
 		mut state := tc.ownership_state()
@@ -13623,7 +13629,13 @@ fn ownership_storage_keys_dynamic_overlap(pattern string, key string) bool {
 }
 
 fn (mut tc TypeChecker) ownership_add_borrow(var_name string, borrower string, pos flat.NodeId, is_mut bool) {
-	if conflict := tc.ownership_overlapping_borrow_conflict(var_name, is_mut) {
+	tc.ownership_add_borrow_info(var_name, BorrowInfo{ borrower: borrower, pos: pos, is_mut: is_mut })
+}
+
+fn (mut tc TypeChecker) ownership_add_borrow_info(var_name string, info BorrowInfo) {
+	is_mut := info.is_mut
+	pos := info.pos
+	if conflict := tc.ownership_overlapping_borrow_conflict(var_name, info) {
 		if is_mut {
 			msg := if conflict.borrow.is_mut {
 				'cannot borrow `${var_name}` as mutable because `${conflict.name}` is already borrowed as mutable'
@@ -13657,24 +13669,14 @@ fn (mut tc TypeChecker) ownership_add_borrow(var_name string, borrower string, p
 			}
 		}
 		mut updated := existing.clone()
-		updated << BorrowInfo{
-			borrower: borrower
-			pos:      pos
-			is_mut:   is_mut
-		}
+		updated << info
 		st.borrowed_vars[var_name] = updated
 		return
 	}
-	st.borrowed_vars[var_name] = [
-		BorrowInfo{
-			borrower: borrower
-			pos:      pos
-			is_mut:   is_mut
-		},
-	]
+	st.borrowed_vars[var_name] = [info]
 }
 
-fn (mut tc TypeChecker) ownership_overlapping_borrow_conflict(var_name string, is_mut bool) ?OwnershipBorrowConflict {
+fn (mut tc TypeChecker) ownership_overlapping_borrow_conflict(var_name string, incoming BorrowInfo) ?OwnershipBorrowConflict {
 	st := tc.ownership_state()
 	for borrowed_name, borrows in st.borrowed_vars {
 		if borrowed_name == var_name || borrows.len == 0 {
@@ -13684,7 +13686,12 @@ fn (mut tc TypeChecker) ownership_overlapping_borrow_conflict(var_name string, i
 			continue
 		}
 		for borrow in borrows {
-			if is_mut || borrow.is_mut {
+			// A call returns one reference even when several places can supply it.
+			if incoming.call_result && borrow.call_result && incoming.borrower == borrow.borrower
+				&& incoming.pos == borrow.pos {
+				continue
+			}
+			if incoming.is_mut || borrow.is_mut {
 				return OwnershipBorrowConflict{
 					name:   borrowed_name
 					borrow: borrow

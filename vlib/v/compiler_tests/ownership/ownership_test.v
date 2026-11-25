@@ -4451,3 +4451,49 @@ fn main() {
 ')
 	assert valid.exit_code == 0, valid.output
 }
+
+fn test_ownership_keeps_overlapping_alternative_origins_of_one_return() {
+	v3_bin := ownership_build_v3()
+	prefix := r'
+struct Buffer implements Drop {
+mut:
+	items []int
+	other int
+}
+
+fn (mut b Buffer) drop() {
+	drop_owned(b.items)
+}
+
+fn (mut b ^a Buffer) select_item[^a](index int) &^a int {
+	if index < 0 {
+		return &b.items[0]
+	}
+	return &b.items[index]
+}
+'
+	valid := run_ownership_check(v3_bin, 'alternative_return_origins', prefix + r'
+fn main() {
+	mut b := Buffer{items: [1, 2, 3]}
+	{
+		item := b.select_item(2)
+		b.other = 4
+		assert *item == 3
+	}
+	assert b.items == [1, 2, 3]
+	assert b.other == 4
+}
+')
+	assert valid.exit_code == 0, valid.output
+
+	invalid := run_ownership_check(v3_bin, 'alternative_return_conflict', prefix + r'
+fn main() {
+	mut b := Buffer{items: [1, 2, 3]}
+	item := b.select_item(2)
+	b.items[1] = 7
+	println(*item)
+}
+')
+	assert invalid.exit_code != 0, invalid.output
+	assert invalid.output.contains('borrowed by `item`'), invalid.output
+}
