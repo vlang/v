@@ -1288,18 +1288,58 @@ fn test_explicit_generic_calls_use_all_type_arguments() {
 }
 
 fn test_escaping_capturing_fn_literals_use_runtime_closures() {
-	out := run_good(v3_bin, 'return_capturing_fn_literal',
-		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {}\n')
-	assert out == ''
-	alias_out := run_good(v3_bin, 'return_capturing_fn_literal_alias',
-		'fn make(x int) fn () int {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn f\n}\nfn main() {}\n')
-	assert alias_out == ''
-	field_out := run_good(v3_bin, 'struct_field_capturing_fn_literal',
-		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\treturn Holder{\n\t\tcb: fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t}\n}\nfn main() {}\n')
-	assert field_out == ''
-	field_alias_out := run_good(v3_bin, 'struct_field_capturing_fn_literal_alias',
-		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn Holder{\n\t\tcb: f\n\t}\n}\nfn main() {}\n')
-	assert field_alias_out == ''
+	check_review_runtime('escaping_closures', [
+		ReviewFixture{'return_capturing_fn_literal', 'fn make(x int) fn () int {
+	return fn [x] () int {
+		return x
+	}
+}
+fn main() {
+	assert make(7)() == 7
+}
+', ''},
+		ReviewFixture{'return_capturing_fn_literal_alias', 'fn make(x int) fn () int {
+	f := fn [x] () int {
+		return x
+	}
+	return f
+}
+fn main() {
+	assert make(7)() == 7
+}
+', ''},
+		ReviewFixture{'struct_field_capturing_fn_literal', 'struct Holder {
+	cb fn () int
+}
+fn make(x int) Holder {
+	return Holder{
+		cb: fn [x] () int {
+			return x
+		}
+	}
+}
+fn main() {
+	holder := make(7)
+	assert holder.cb() == 7
+}
+', ''},
+		ReviewFixture{'struct_field_capturing_fn_literal_alias', 'struct Holder {
+	cb fn () int
+}
+fn make(x int) Holder {
+	f := fn [x] () int {
+		return x
+	}
+	return Holder{
+		cb: f
+	}
+}
+fn main() {
+	holder := make(7)
+	assert holder.cb() == 7
+}
+', ''},
+	])
 }
 
 fn test_capturing_fn_literal_aliases_are_binding_scoped() {
