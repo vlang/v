@@ -179,6 +179,12 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability Thre
 				return tc.ownership_thread_transfer_problem(payload, .transfer, depth + 1, mut seen)
 			}
 			if tc.ownership_thread_library_type(name_id, 'sync/thread', [
+				'sync.thread.SharedCallback',
+				'thread.SharedCallback',
+			]) {
+				return none
+			}
+			if tc.ownership_thread_library_type(name_id, 'sync/thread', [
 				'sync.thread.MutCallback',
 				'thread.MutCallback',
 			]) {

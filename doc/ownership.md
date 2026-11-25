@@ -436,6 +436,10 @@ that both the concrete state and the result type are transferable before it
 erases the state's type. Each call borrows the state exclusively. The callback
 drops the state when its owner goes out of scope.
 
+Use `thread.new_shared_callback[A, R, T]` to move shareable state into a
+`thread.SharedCallback[A, R]`. The public `call(A) R` method borrows its
+receiver immutably. Clones share the same state, and the final owner drops it.
+
 An interface value or function value with an unknown implementation or capture
 list needs an explicit
 `unsafe` boundary. Use `unsafe` only when you can guarantee the lifetime and
