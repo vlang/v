@@ -21,7 +21,7 @@ jobs:
         with:
           symlink: 'false'
       - name: Verify formatting
-        run: ./v fmt -verify vlib/x/ttf/ttf_bitmap_render_test.v
+        run: ./v fmt -verify vlib/x/ttf/ttf.v vlib/x/ttf/ttf_bitmap_render_test.v
       - name: Test initialized bitmap with nonzero malloc fill
         env:
           MALLOC_PERTURB_: '65'
