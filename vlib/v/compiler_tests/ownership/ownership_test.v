@@ -4478,3 +4478,104 @@ fn main() {
 	run := os.exec([binary])
 	assert run.exit_code == 0, run.output
 }
+
+fn test_ownership_moves_callback_state_between_threads() {
+	v3_bin := ownership_build_v3()
+	name := 'owned_mut_callback'
+	result := run_ownership_check(v3_bin, name, r'
+import sync.thread as vthread
+
+struct Counter implements Drop {
+	released chan int
+mut:
+	value int
+	text string
+}
+
+fn (mut counter Counter) call(amount int) int {
+	counter.value += amount
+	return counter.value
+}
+
+fn (mut counter Counter) drop() {
+	counter.released <- counter.value
+	drop_owned(counter.text)
+}
+
+fn worker(task vthread.MutCallback[int, int]) int {
+	mut callback := task
+	assert callback.call(2) == 3
+	return callback.call(4)
+}
+
+fn main() {
+	released := chan int{cap: 8}
+	mut callback := vthread.new_mut_callback[int, int, Counter](Counter{
+		released: released
+		text: "counter".to_owned()
+	})
+	assert callback.call(1) == 1
+	job := spawn worker(callback)
+	assert job.wait() == 7
+	mut count := 0
+	assert released.try_pop(mut count) == .success
+	assert count == 7
+	assert released.try_pop(mut count) == .not_ready
+}
+')
+	assert result.exit_code == 0, result.output
+	binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_rejects_unsafe_callback_state_and_results() {
+	v3_bin := ownership_build_v3()
+	invalid := run_ownership_check(v3_bin, 'invalid_mut_callback', r'
+import sync.arc
+import sync.thread as transport
+
+struct BorrowingCounter {
+	count &int
+}
+
+fn (mut counter BorrowingCounter) call(amount int) int {
+	return *counter.count + amount
+}
+
+struct Counter {
+mut:
+	count int
+}
+
+fn (mut counter Counter) call(amount int) int {
+	counter.count += amount
+	return counter.count
+}
+
+struct ReturningBorrow {
+mut:
+	count int
+}
+
+fn (mut counter ReturningBorrow) call(amount int) &int {
+	counter.count += amount
+	return &counter.count
+}
+
+fn start(counter arc.Arc[transport.MutCallback[int, int]]) {}
+
+fn main() {
+	count := 0
+	_ = transport.new_mut_callback[int, int, BorrowingCounter](BorrowingCounter{count: &count})
+	_ = transport.new_mut_callback[int, &int, ReturningBorrow](ReturningBorrow{})
+	callback := transport.new_mut_callback[int, int, Counter](Counter{})
+	shared_callback := arc.new(callback)
+	_ := spawn start(shared_callback)
+}
+')
+	assert invalid.exit_code != 0, invalid.output
+	assert invalid.output.contains('BorrowingCounter` does not satisfy `Transferable`: field `count`'), invalid.output
+	assert invalid.output.contains('&int` does not satisfy `Transferable`: references cannot be transferred'), invalid.output
+	assert invalid.output.contains('thread.MutCallback requires exclusive access to its state'), invalid.output
+}
