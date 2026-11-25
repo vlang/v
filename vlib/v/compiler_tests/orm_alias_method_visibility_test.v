@@ -434,25 +434,17 @@ fn sql_alias_lock_cases(lock_receivers []string, imports_by_method map[string]st
 	return cases
 }
 
-fn check_sql_alias_storage_cases(label string, cases []SqlAliasQueryCase) ! {
-	check_sql_alias_query_batch(cases.filter(it.diagnostic == ''), '${label}_accepted',
-		sql_alias_visibility_queries(true), sql_alias_compile_and_check, sql_alias_public_module)!
-	check_sql_alias_query_batch(cases.filter(it.diagnostic != ''), '${label}_rejected',
-		sql_alias_visibility_queries(false), sql_alias_compile_and_check, sql_alias_public_module)!
-}
-
-fn test_alias_methods_keep_shared_element_and_captured_array_lock_keys_in_sql_values() {
+fn sql_alias_shared_element_and_captured_array_lock_cases() []SqlAliasQueryCase {
 	receivers := ['shared_items[0]', '(shared_collection.values)[0]', 'parameter_items[0]',
 		"holders['primary'].values", "(holders [ 'primary' ]).values", 'closure_items[0]',
 		'parameter_closure_items[0]', 'nested_closure_items[0]']
-	cases := sql_alias_lock_cases(receivers, {
+	return sql_alias_lock_cases(receivers, {
 		'mutate': 'aliases'
 		'clone':  'renamed'
 	}, false)
-	check_sql_alias_storage_cases('shared_element_and_captured_array_locks', cases)!
 }
 
-fn test_mut_alias_methods_require_mutable_storage_and_locks_in_sql_values() {
+fn sql_alias_mutability_and_lock_cases() []SqlAliasQueryCase {
 	// Since #29221 a `mut` receiver method needs mutable storage even when it is declared in
 	// another module and only changes private state (`inspect`).
 	mut cases := sql_alias_mutability_cases(['values.mutate()[0].name', '(values).mutate()[0].name',
@@ -475,7 +467,20 @@ fn test_mut_alias_methods_require_mutable_storage_and_locks_in_sql_values() {
 		'mutate': 'aliases'
 		'clone':  'aliases'
 	}, true)
-	check_sql_alias_storage_cases('mutability_and_locks', cases)!
+	return cases
+}
+
+fn test_mut_alias_methods_require_mutable_storage_and_locks_in_sql_values() {
+	mut cases := sql_alias_shared_element_and_captured_array_lock_cases()
+	check_sql_alias_query_batch(cases.filter(it.diagnostic == ''),
+		'shared_element_and_captured_array_locks_accepted', [.both], sql_alias_compile_and_check,
+		sql_alias_public_module)!
+	storage_cases := sql_alias_mutability_and_lock_cases()
+	check_sql_alias_query_batch(storage_cases.filter(it.diagnostic == ''), 'mutability_and_locks_accepted',
+		[.both], sql_alias_compile_and_check, sql_alias_public_module)!
+	cases << storage_cases
+	check_sql_alias_query_batch(cases.filter(it.diagnostic != ''), 'storage_and_locks_rejected',
+		sql_alias_visibility_queries(false), sql_alias_compile_and_check, sql_alias_public_module)!
 }
 
 fn sql_alias_inherited_clone_cases() []SqlAliasCloneCase {
