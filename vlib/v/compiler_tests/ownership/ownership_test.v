@@ -4365,3 +4365,89 @@ fn main() {
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('`cache.inner.items` aliases mutable data from an immutable value'), res.output
 }
+
+fn test_ownership_keeps_receiver_field_loans_from_returned_references() {
+	v3_bin := ownership_build_v3()
+	borrow_generic_mut := run_ownership_check(v3_bin, 'borrow_generic_mut', r'
+struct Value[T] {
+mut:
+	item T
+}
+fn (mut b ^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+fn escape() &int {
+	mut b := Value[int]{item: 7}
+	return b.view()
+}
+fn main() {
+	println(*escape())
+}
+')
+	assert borrow_generic_mut.exit_code != 0, borrow_generic_mut.output
+	assert borrow_generic_mut.output.contains('cannot return a reference to local storage `b`'), borrow_generic_mut.output
+
+	borrow_generic_read := run_ownership_check(v3_bin, 'borrow_generic_read', r'
+struct Value[T] {
+mut:
+	item T
+}
+fn (b &^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+fn escape() &int {
+	b := Value[int]{item: 7}
+	return b.view()
+}
+fn main() {
+	println(*escape())
+}
+')
+	assert borrow_generic_read.exit_code != 0, borrow_generic_read.output
+	assert borrow_generic_read.output.contains('cannot return a reference to local storage `b`'), borrow_generic_read.output
+
+	borrow_moved_owner := run_ownership_check(v3_bin, 'borrow_moved_owner', r'
+struct Value[T] implements Drop {
+mut:
+	item T
+}
+fn (mut b Value[T]) drop() {
+	drop_owned(b.item)
+}
+fn (mut b ^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+fn consume(value Value[string]) {}
+fn main() {
+	mut b := Value[string]{item: "retained".to_owned()}
+	item := b.view()
+	consume(b)
+	println(*item)
+}
+')
+	assert borrow_moved_owner.exit_code != 0, borrow_moved_owner.output
+	assert borrow_moved_owner.output.contains('cannot move `b` because `b.item` is borrowed by `item`'), borrow_moved_owner.output
+
+	valid := run_ownership_check(v3_bin, 'borrow_sibling', r'
+struct Value[T] implements Drop {
+mut:
+	item T
+	other int
+}
+fn (mut b Value[T]) drop() {
+	drop_owned(b.item)
+}
+fn (mut b ^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+
+fn main() {
+	mut b := Value[string]{item: "retained".to_owned()}
+	item := b.view()
+	b.other = 2
+	assert *item == "retained"
+	assert b.other == 2
+}
+')
+	assert valid.exit_code == 0, valid.output
+}

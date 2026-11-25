@@ -395,6 +395,10 @@ fn main() {
 }
 ```
 
+References returned by a method can keep a field of the receiver borrowed.
+An outstanding field reference prevents moving the receiver. Disjoint fields
+remain available for mutation.
+
 ## Thread transfers
 
 An ownership build checks the arguments and result of a `spawn` or `go` call. The
