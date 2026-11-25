@@ -1444,16 +1444,18 @@ fn (mut tc TypeChecker) ownership_live_drop_entry(name string) ?OwnershipDropEnt
 // Already-owned values must release nested sum pointer storage even when the payload
 // has no custom Drop method. This does not change which values are owned.
 fn (tc &TypeChecker) ownership_owned_storage_drop_target_for_binding(type_name_id u32, binding_id flat.NodeId) ?OwnershipDropTarget {
+	if tc.a.node(binding_id).is_scoped_thread_array() {
+		// The checked lexical defer joins the workers and releases the handles.
+		return none
+	}
 	if target := tc.ownership_drop_target_for_type_name(type_name_id) {
 		return target
 	}
 	if tc.ownership == unsafe { nil } || type_name_id == 0 {
 		return none
 	}
-	typ := tc.parse_type(type_name_id)
 	mut seen := map[u32]bool{}
-	if tc.ownership_scoped_thread_group_owns_binding(binding_id, typ)
-		|| tc.ownership_owned_storage_contains_pointer_sum(typ, 0, mut seen) {
+	if tc.ownership_owned_storage_contains_pointer_sum(tc.parse_type(type_name_id), 0, mut seen) {
 		return OwnershipDropTarget{
 			type_name: type_name_id
 		}
@@ -7663,6 +7665,7 @@ fn (mut tc TypeChecker) ownership_after_decl_assign(lhs_id flat.NodeId, rhs_id f
 	}
 	tc.ownership_assign_to_name(lhs_name, rhs_id, lhs_type, assign_id)
 	tc.ownership_track_fn_value_binding(lhs_name, rhs_id)
+	tc.ownership_mark_scoped_thread_array(lhs_id, assign_id, lhs_type)
 	tc.ownership_record_scoped_thread_borrows(lhs_name, rhs_id)
 }
 

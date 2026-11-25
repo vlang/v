@@ -71,6 +71,13 @@ fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result 
 }
 
 fn run_ownership_check_with_module(v3_bin string, name string, main_code string, module_name string, module_code string) os.Result {
+	tmp_dir := write_ownership_module_fixture(name, main_code, module_name, module_code)
+	src := os.join_path(tmp_dir, 'main.v')
+	out := os.join_path(tmp_dir, 'out')
+	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', out, src])
+}
+
+fn write_ownership_module_fixture(name string, main_code string, module_name string, module_code string) string {
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic(err) }
@@ -78,10 +85,9 @@ fn run_ownership_check_with_module(v3_bin string, name string, main_code string,
 	os.mkdir_all(module_dir) or { panic(err) }
 	src := os.join_path(tmp_dir, 'main.v')
 	mod_src := os.join_path(module_dir, '${module_name}.v')
-	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, main_code) or { panic(err) }
 	os.write_file(mod_src, module_code) or { panic(err) }
-	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', '${out}', '${src}'])
+	return tmp_dir
 }
 
 fn test_ownership_build_define_is_isolated_and_mode_defines_target() {
@@ -5112,5 +5118,46 @@ fn main() {
 		handles_drop := tail.index('array__free(&(handles));') or { -1 }
 		assert results_drop >= 0
 		assert handles_drop > results_drop
+	}
+}
+
+fn test_ownership_deferred_thread_wait_drops_handles_in_imported_method() {
+	v3_bin := ownership_build_v3()
+	tmp := write_ownership_module_fixture('method_deferred_wait', r'
+import worker
+
+fn main() {
+	work := worker.Worker{}
+	work.run(true)
+	work.run(false)
+}
+', 'worker', r'
+module worker
+
+pub struct Worker {}
+
+fn perform() {}
+
+pub fn (receiver Worker) run(early bool) {
+	mut handles := []thread{}
+	defer { handles.wait() }
+	handles << spawn perform()
+	if early {
+		return
+	}
+}
+')
+	src := os.join_path(tmp, 'main.v')
+	out := os.join_path(tmp, 'out.c')
+	for mode in ['-ownership', '-autofree'] {
+		result := os.exec([v3_bin, mode, '-b', 'c', '-o', out, src])
+		assert result.exit_code == 0, result.output
+		generated := os.read_file(out)!
+		waits := generated.split('__v_thread_arr_wait_void(handles);')
+		assert waits.len == 3
+		assert generated.count('array__free(&(handles));') == 2
+		for tail in waits[1..] {
+			assert tail.contains('array__free(&(handles));')
+		}
 	}
 }
