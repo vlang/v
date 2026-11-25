@@ -228,7 +228,7 @@ mut:
 	owned_var_types                  flat.TypeTextBindings
 	moved_vars                       map[string]MovedVar
 	borrowed_vars                    map[string][]BorrowInfo
-	scoped_thread_loans_seen        bool
+	scoped_thread_loans_seen         bool
 	ownership_fns                    map[string]bool
 	ownership_fn_params              map[string]bool
 	ownership_fn_returns_param       map[string][]int
@@ -13595,15 +13595,22 @@ fn (mut tc TypeChecker) ownership_add_borrow_info(var_name string, info BorrowIn
 	}
 	mut st := tc.ownership_state()
 	if existing := st.borrowed_vars[var_name] {
-		if is_mut && existing.len > 0 {
-			borrow := existing[0]
-			msg := if borrow.is_mut {
-				'cannot borrow `${var_name}` as mutable more than once'
-			} else {
-				'cannot borrow `${var_name}` as mutable because it is also borrowed as immutable'
+		if is_mut {
+			scoped := tc.valid_node_id(info.thread_join_site)
+			for borrow in existing {
+				// Checked scoped workers only read the scalar. Their reservations
+				// continue to conflict with any ordinary alias of the same place.
+				if scoped && tc.valid_node_id(borrow.thread_join_site) {
+					continue
+				}
+				msg := if borrow.is_mut {
+					'cannot borrow `${var_name}` as mutable more than once'
+				} else {
+					'cannot borrow `${var_name}` as mutable because it is also borrowed as immutable'
+				}
+				tc.record_error(.assignment_mismatch, '${msg}; previous borrow by `${borrow.borrower}`', pos)
+				return
 			}
-			tc.record_error(.assignment_mismatch, '${msg}; previous borrow by `${borrow.borrower}`', pos)
-			return
 		}
 		if !is_mut {
 			for borrow in existing {

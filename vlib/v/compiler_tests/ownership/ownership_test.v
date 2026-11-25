@@ -4629,3 +4629,69 @@ fn main() {
 ')
 	assert result.exit_code == 0, result.output
 }
+
+fn test_ownership_scoped_workers_share_an_immutable_scalar() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_shared_scalar', r'
+struct Job {
+	weight &int
+	number int
+}
+
+fn multiply(job Job, start chan bool, out chan int) {
+	_ = <-start
+	out <- *job.weight * job.number
+}
+
+fn read(weight &int, start chan bool, out chan int) {
+	_ = <-start
+	out <- *weight
+}
+
+fn main() {
+	weight := 7
+	start := chan bool{cap: 2}
+	out := chan int{cap: 2}
+	{
+		first := spawn multiply(Job{weight: &weight, number: 2}, start, out)
+		defer { first.wait() }
+		second := spawn read(&weight, start, out)
+		defer { second.wait() }
+		start <- true
+		start <- true
+	}
+	assert <-out + <-out == 21
+	assert weight == 7
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_scoped_shared_scalar_rejects_ordinary_aliases() {
+	v3_bin := ownership_build_v3()
+	for stmt in ['_ := &weight', 'third := spawn read(&weight); third.wait()',
+		'third := spawn read(forward(&weight)); defer { third.wait() }'] {
+		result := run_ownership_check(v3_bin, 'scoped_shared_bad_alias', '
+fn read(weight &int) int {
+	return *weight
+}
+
+fn forward(weight &int) &int {
+	return weight
+}
+
+fn main() {
+	weight := 7
+	first := spawn read(&weight)
+	defer { first.wait() }
+	{
+		second := spawn read(&weight)
+		defer { second.wait() }
+	}
+	${stmt}
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot use `weight` until scoped thread `first` has joined'), result.output
+	}
+}

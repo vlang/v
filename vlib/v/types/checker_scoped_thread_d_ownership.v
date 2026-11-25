@@ -220,19 +220,12 @@ fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name str
 // Allow only dereferences used to compute a scalar value. A bare reference
 // or a dereference passed by reference could outlive the worker's join.
 fn (tc &TypeChecker) ownership_scoped_thread_scalar_read(id flat.NodeId) bool {
-	mut parent_id := tc.direct_parent_id(id)
-	for tc.a.node(parent_id).kind == .paren {
-		parent_id = tc.direct_parent_id(parent_id)
-	}
-	deref := tc.a.node(parent_id)
+	deref_id := tc.ownership_scoped_thread_use_parent(id)
+	deref := tc.a.node(deref_id)
 	if deref.kind != .prefix || deref.op != .mul {
 		return false
 	}
-	parent_id = tc.direct_parent_id(parent_id)
-	for tc.a.node(parent_id).kind == .paren {
-		parent_id = tc.direct_parent_id(parent_id)
-	}
-	parent := tc.a.node(parent_id)
+	parent := tc.a.node(tc.ownership_scoped_thread_use_parent(deref_id))
 	return match parent.kind {
 		.assert_stmt, .decl_assign, .return_stmt, .string_interp { true }
 		.infix {
@@ -303,6 +296,39 @@ fn (mut tc TypeChecker) ownership_record_scoped_thread_borrow(arg flat.NodeId, i
 	}
 }
 
+fn (tc &TypeChecker) ownership_scoped_thread_use_parent(id flat.NodeId) flat.NodeId {
+	mut parent := tc.direct_parent_id(id)
+	for tc.a.node(parent).kind == .paren {
+		parent = tc.direct_parent_id(parent)
+	}
+	return parent
+}
+
+// A further scoped worker can borrow the same scalar as a direct argument or
+// through an inline initializer. The spawn check certifies its use of the
+// borrow. The arguments of an ordinary helper call remain outside this rule.
+fn (tc &TypeChecker) ownership_scoped_thread_reborrows(id flat.NodeId) bool {
+	addr_id := tc.ownership_scoped_thread_use_parent(id)
+	addr := tc.a.node(addr_id)
+	if addr.kind != .prefix || addr.op != .amp {
+		return false
+	}
+	mut call_id := tc.ownership_scoped_thread_use_parent(addr_id)
+	if tc.a.node(call_id).kind == .field_init {
+		literal_id := tc.ownership_scoped_thread_use_parent(call_id)
+		if tc.a.node(literal_id).kind != .struct_init {
+			return false
+		}
+		call_id = tc.ownership_scoped_thread_use_parent(literal_id)
+	}
+	if tc.a.node(call_id).kind != .call {
+		return false
+	}
+	spawn_id := tc.ownership_scoped_thread_use_parent(call_id)
+	return tc.a.node(spawn_id).kind == .spawn_expr
+		&& tc.ownership_scoped_thread_join_site(spawn_id) != none
+}
+
 fn (mut tc TypeChecker) ownership_reject_scoped_thread_access(name string, id flat.NodeId) bool {
 	state := tc.ownership_state()
 	if !state.scoped_thread_loans_seen {
@@ -314,6 +340,9 @@ fn (mut tc TypeChecker) ownership_reject_scoped_thread_access(name string, id fl
 				continue
 			}
 			if source == name {
+				if tc.ownership_scoped_thread_reborrows(id) {
+					continue
+				}
 				tc.record_error(.thread_transfer,
 					'cannot use `${name}` until scoped thread `${borrow.borrower}` has joined', id)
 				return true

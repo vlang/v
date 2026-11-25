@@ -461,6 +461,9 @@ fn main() {
 }
 ```
 
+Several scoped workers can borrow the same immutable scalar. Each worker has
+its own deferred wait. The caller regains access when all of those scopes end.
+
 ## Full example
 
 From the Rust book, translated to V:
