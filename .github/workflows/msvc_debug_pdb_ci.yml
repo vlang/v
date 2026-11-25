@@ -162,9 +162,13 @@ jobs:
           git ls-tree -r HEAD > "$out/fixture.git-tree.txt"
           # The fixed checkout is input, not a third compiler to bootstrap.
           # Its historical source need not build with today's external VC.
-          env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS make -j4 latest_tcc latest_legacy 2>&1 | tee "$out/fixture.setup.log"
+          # The fixture Makefile enables legacy support only on Darwin <= 16.
+          # macos-15 ARM64 uses the system SDK, so no legacy checkout is created.
+          darwin_major="$(uname -r | cut -d. -f1)"
+          test "$darwin_major" -gt 16
+          env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS make -j4 latest_tcc 2>&1 | tee "$out/fixture.setup.log"
           git -C thirdparty/tcc rev-parse HEAD > "$out/fixture.tcc.commit"
-          git -C thirdparty/legacy/source rev-parse HEAD > "$out/fixture.legacy.commit"
+          printf "not applicable: Darwin %s uses the system SDK\n" "$darwin_major" > "$out/fixture.legacy.status"
           git diff --exit-code
       - name: Fixed fixture inventory, warmups and ten alternating pairs
         shell: bash
