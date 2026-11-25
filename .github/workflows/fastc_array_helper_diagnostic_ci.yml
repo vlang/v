@@ -59,9 +59,9 @@ jobs:
           new = """\ttext := fastc_take_string(mut out)
           \tcapture := os.getenv('FASTC_DIAGNOSTIC_CAPTURE')
           \tif capture != '' {
-          \t\tos.write_file(os.join_path(capture, '\${os.getpid()}-\${g}.c'), text) or { panic(err) }
+          \t\tos.write_file(os.join_path(capture, '${os.getpid()}-${g}.c'), text) or { panic(err) }
           \t}
-          \treturn text""".replace("\\\${", "\${")
+          \treturn text"""
           assert section.count(old) == 1, "unexpected split-unit renderer"
           s = s[:start] + section.replace(old, new) + s[end:]
           p.write_text(s)
