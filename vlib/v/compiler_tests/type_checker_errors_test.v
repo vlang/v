@@ -455,55 +455,149 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'other.v':     'module main\n\nfn use_it() int {\n\treturn moda.answer()\n}\n'
 		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
 	}, '', 'undefined ident: `moda`')
-	imported_call_out := run_good_project(v3_bin, 'qualified_import_call', {
-		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.answer()))\n}\n'
-		'moda/moda.v': 'module moda\n\npub fn answer() int {\n\treturn 7\n}\n'
+	import_calls_out := run_good_project(v3_bin, 'qualified_import_calls', {
+		'main.v':      'module main
+
+import moda
+
+fn main() {
+	println(int_str(moda.answer()))
+	println(int_str(moda.after_chain()))
+}
+'
+		'moda/moda.v': 'module moda
+
+pub fn answer() int {
+	return 7
+}
+
+fn choose[T](x T) T {
+	$if T is u8 {
+		return x
+	} $else $if T is int {
+		return x
+	} $else {}
+	return x
+}
+
+pub fn after_chain() int {
+	return 7
+}
+'
 	}, 'main.v')
-	assert imported_call_out == '7'
-	comptime_type_chain_out := run_good_project(v3_bin, 'comptime_type_chain_keeps_later_decls', {
-		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.after_chain()))\n}\n'
-		'moda/moda.v': 'module moda\n\nfn choose[T](x T) T {\n\t$if T is u8 {\n\t\treturn x\n\t} $else $if T is int {\n\t\treturn x\n\t} $else {}\n\treturn x\n}\n\npub fn after_chain() int {\n\treturn 7\n}\n'
-	}, 'main.v')
-	assert comptime_type_chain_out == '7'
+	assert import_calls_out == '7\n7'
 	init_order_out := run_good_project(v3_bin, 'module_init_order', {
-		'main.v':      'module main\n\nimport moda\n\n__global seen int\n\nfn init() {\n\tseen = moda.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(moda.value()))\n}\n'
-		'moda/moda.v': 'module moda\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
-	}, 'main.v')
-	assert init_order_out == '41\n41'
-	hier_init_order_out := run_good_project(v3_bin, 'hierarchical_module_init_order', {
-		'main.v':               'module main\n\nimport parent.child\n\n__global seen int\n\nfn init() {\n\tseen = child.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(child.value()))\n}\n'
+		'main.v':               'module main
+
+import moda
+import parent.child
+import foo.user
+import bar as shortbar
+import relay
+
+__global (
+	seen int
+	child_seen int
+	transitive_seen int
+)
+
+fn init() {
+	seen = moda.value()
+	child_seen = child.value()
+	transitive_seen = relay.value()
+}
+
+fn main() {
+	println(int_str(seen))
+	println(int_str(moda.value()))
+	println(int_str(child_seen))
+	println(int_str(child.value()))
+	println(int_str(user.value()))
+	println(int_str(shortbar.value()))
+	println(int_str(transitive_seen))
+	println(int_str(relay.value()))
+}
+'
+		'moda/moda.v':          'module moda
+
+__global flag int
+
+fn init() {
+	flag = 41
+}
+
+pub fn value() int {
+	return flag
+}
+'
 		'parent/child/child.v': 'module child\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+		'foo/user/user.v':      'module user\n\nimport foo.bar as foobar\n\n__global seen int\n\nfn init() {\n\tseen = foobar.value() + 1\n}\n\npub fn value() int {\n\treturn seen\n}\n'
+		'foo/bar/bar.v':        'module bar\n\n__global flag int\n\nfn init() {\n\tflag = 40\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+		'bar/bar.v':            'module bar\n\n__global flag int\n\nfn init() {\n\tflag = 3\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+		'relay/relay.v':        'module relay\n\nimport modb\n\npub fn value() int {\n\treturn modb.value()\n}\n'
+		'modb/modb.v':          'module modb\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
 	}, 'main.v')
-	assert hier_init_order_out == '41\n41'
-	dotted_collision_init_order_out := run_good_project(v3_bin, 'dotted_collision_module_init_order', {
-		'main.v':          'module main\n\nimport foo.user\nimport bar as shortbar\n\nfn main() {\n\tprintln(int_str(user.value()))\n\tprintln(int_str(shortbar.value()))\n}\n'
-		'foo/user/user.v': 'module user\n\nimport foo.bar as foobar\n\n__global seen int\n\nfn init() {\n\tseen = foobar.value() + 1\n}\n\npub fn value() int {\n\treturn seen\n}\n'
-		'foo/bar/bar.v':   'module bar\n\n__global flag int\n\nfn init() {\n\tflag = 40\n}\n\npub fn value() int {\n\treturn flag\n}\n'
-		'bar/bar.v':       'module bar\n\n__global flag int\n\nfn init() {\n\tflag = 3\n}\n\npub fn value() int {\n\treturn flag\n}\n'
-	}, 'main.v')
-	assert dotted_collision_init_order_out == '41\n3'
-	transitive_init_order_out := run_good_project(v3_bin, 'transitive_module_init_order', {
-		'main.v':      'module main\n\nimport moda\n\n__global seen int\n\nfn init() {\n\tseen = moda.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(moda.value()))\n}\n'
-		'moda/moda.v': 'module moda\n\nimport modb\n\npub fn value() int {\n\treturn modb.value()\n}\n'
-		'modb/modb.v': 'module modb\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
-	}, 'main.v')
-	assert transitive_init_order_out == '41\n41'
+	assert init_order_out == '41\n41\n41\n41\n41\n3\n41\n41'
 	global_amp_out := run_good(v3_bin, 'global_amp_initializers', 'struct Point {\n\tx int\n\ty int\n}\n\ninterface Reader {\n\tn int\n\tread() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) read() int {\n\treturn b.n + 1\n}\n\n__global (\n\tbase_point = Point{x: 1, y: 2}\n\tassoc_point = &Point{...base_point, y: 5}\n\treader_box = Box{n: 7}\n\treader_ref = &Reader(reader_box)\n)\n\nfn main() {\n\tprintln(int_str(assoc_point.y))\n\tprintln(int_str(reader_ref.n))\n\tprintln(int_str(reader_ref.read()))\n}\n')
 	assert global_amp_out == '5\n7\n8'
-	disabled_if_out := run_good(v3_bin, 'disabled_if_call_elides_args', '__global hit int\n\n@[if trace ?]\nfn trace(x int) {}\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\nfn main() {\n\ttrace(side_effect())\n\tprintln(int_str(hit))\n}\n')
-	assert disabled_if_out == '0'
-	disabled_if_alias_out := run_good_project(v3_bin, 'disabled_if_alias_call_elides_args', {
-		'main.v':      'module main\n\nimport moda as m\n\n__global hit int\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\nfn main() {\n\tm.trace(side_effect())\n\tprintln(int_str(hit))\n}\n'
-		'moda/moda.v': 'module moda\n\n@[if trace ?]\npub fn trace(x int) {}\n'
+	disabled_if_out := run_good_project(v3_bin, 'disabled_if_declarations', {
+		'main.v':      'module main
+
+import moda as m
+
+__global hit int
+
+@[if trace ?]
+fn trace(x int) {}
+
+fn side_effect() int {
+	hit = 99
+	return 1
+}
+
+@[if trace ?]
+struct DisabledStruct {
+	bad MissingDisabledType
+}
+
+struct EnabledStruct {
+	value int
+}
+
+fn main() {
+	trace(side_effect())
+	println(int_str(hit))
+	m.trace(side_effect())
+	println(int_str(hit))
+	println(int_str(m.run()))
+	println(int_str(EnabledStruct{value: 7}.value))
+}
+'
+		'moda/moda.v': 'module moda
+
+__global hit int
+
+struct Tracer {}
+
+@[if trace ?]
+fn (t Tracer) trace(x int) {}
+
+fn side_effect() int {
+	hit = 99
+	return 1
+}
+
+pub fn run() int {
+	t := Tracer{}
+	t.trace(side_effect())
+	return hit
+}
+
+@[if trace ?]
+pub fn trace(x int) {}
+'
 	}, 'main.v')
-	assert disabled_if_alias_out == '0'
-	disabled_if_method_out := run_good_project(v3_bin, 'disabled_if_method_call_elides_args', {
-		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.run()))\n}\n'
-		'moda/moda.v': 'module moda\n\n__global hit int\n\nstruct Tracer {}\n\n@[if trace ?]\nfn (t Tracer) trace(x int) {}\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\npub fn run() int {\n\tt := Tracer{}\n\tt.trace(side_effect())\n\treturn hit\n}\n'
-	}, 'main.v')
-	assert disabled_if_method_out == '0'
-	disabled_if_non_fn_out := run_good(v3_bin, 'disabled_if_non_fn_decl_skipped', '@[if trace ?]\nstruct DisabledStruct {\n\tbad MissingDisabledType\n}\n\nstruct EnabledStruct {\n\tvalue int\n}\n\nfn main() {\n\tprintln(int_str(EnabledStruct{value: 7}.value))\n}\n')
-	assert disabled_if_non_fn_out == '7'
+	assert disabled_if_out == '0\n0\n0\n7'
 	function_defer_loop_out := run_good(v3_bin, 'function_defer_runs_each_loop_execution', '__global hit int\n\nfn run() {\n\tfor _ in 0 .. 3 {\n\t\tdefer(fn) {\n\t\t\thit += 100\n\t\t}\n\t}\n}\n\nfn main() {\n\trun()\n\tprintln(int_str(hit))\n}\n')
 	assert function_defer_loop_out == '300'
 	run_bad_project(v3_bin, 'array_append_distinct_module_types', {
