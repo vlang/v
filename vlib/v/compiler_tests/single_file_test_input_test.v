@@ -1,24 +1,16 @@
 import os
 import v.cmdexec
-
-const single_file_test_v3_dir = os.dir(os.dir(@FILE))
-const single_file_test_vlib_dir = os.dir(single_file_test_v3_dir)
-const single_file_test_v3_src = os.join_path(single_file_test_v3_dir, 'v.v')
+import v.tempname
 
 // An explicit `module main` test is compiled with the `main` sources beside it, and a file
 // without a module declaration is in `main` too. This used to exclude the module-less sibling;
 // 946a1aad85 includes it, as V1 did (a module test compiles every .v file of its directory).
 fn test_explicit_main_test_includes_moduleless_sibling() {
-	root := os.join_path(os.vtmp_dir(), 'v3_single_file_test_input_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_single_file_test_input_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := os.join_path(root, 'v3')
-	build := cmdexec.run(@VEXE, ['-gc', 'none', '-path',
-		'${single_file_test_vlib_dir}|@vlib|@vmodules', '-o', v3_bin, single_file_test_v3_src])
-	assert build.exit_code == 0, build.output
 
 	test_file := os.join_path(root, 'selected_test.v')
 	os.write_file(test_file, 'module main
@@ -45,6 +37,11 @@ fn helper_value() int {
 		panic(err)
 	}
 
-	result := cmdexec.run(v3_bin, ['-nocache', 'test', test_file])
+	// The outer runner's filters select this test, while the child must run its fixture.
+	result := cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', 'test', test_file], '', {
+		'VTEST_ONLY':    ''
+		'VTEST_ONLY_FN': ''
+	})
 	assert result.exit_code == 0, result.output
+	assert result.output.contains('1 passed'), result.output
 }
