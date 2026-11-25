@@ -7894,6 +7894,9 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		}
 	}
 	rhs_name := tc.ownership_expr_ident_name(tc.ownership_sum_wrapped_value(rhs_id, lhs_type))
+	if lhs_name == rhs_name && unalias_type(lhs_type) is Pointer {
+		return
+	}
 	if lhs_name != rhs_name || !tc.sum_escape_has_pointer_variant(lhs_type) {
 		tc.ownership_release_borrower(lhs_name)
 	}
@@ -7918,7 +7921,10 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		}
 		return
 	}
-	if tc.ownership_alias_borrower(lhs_name, rhs_name, assign_id) {
+	pointer_projection := rhs_name.contains_any('.[') && unalias_type(lhs_type) is Pointer
+		&& !lhs_name.contains_any('.[') && tc.name_has_local_binding(lhs_name)
+		&& !tc.ident_is_global_binding(lhs_name) && unalias_type(tc.resolve_type(rhs_id)) is Pointer
+	if tc.ownership_alias_storage(lhs_name, rhs_name, assign_id, pointer_projection) {
 		return
 	}
 	if tc.ownership_mark_borrow_from_call_return(lhs_name, rhs_id, assign_id) {
@@ -7991,6 +7997,12 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	}
 	lhs_owned := tc.ownership_type_is_owned(lhs_type)
 	if rhs_name.len > 0 {
+		if returned_value_is_scalar_copy(lhs_type) {
+			// A read of a scalar copies its value even when the source is borrowed.
+			st.owned_vars.delete(lhs_name)
+			st.owned_var_types.delete(lhs_name)
+			return
+		}
 		tc.ownership_reject_global_move(rhs_name, assign_id, lhs_name, false)
 		if rhs_name in st.owned_vars {
 			descendants := tc.ownership_owned_descendant_names(rhs_name)
@@ -9281,6 +9293,10 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 }
 
 fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name string, pos flat.NodeId) bool {
+	return tc.ownership_alias_storage(lhs_name, rhs_name, pos, false)
+}
+
+fn (mut tc TypeChecker) ownership_alias_storage(lhs_name string, rhs_name string, pos flat.NodeId, pointer_projection bool) bool {
 	if lhs_name == '' || rhs_name == '' {
 		return false
 	}
@@ -9296,6 +9312,14 @@ fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name strin
 		for borrow in borrows {
 			if borrow.borrower == rhs_name {
 				has_direct_alias = true
+			} else if pointer_projection && ownership_storage_key_is_descendant(rhs_name, borrow.borrower) {
+				// A projected pointer can inherit loans from several branches.
+				has_direct_alias = true
+				aliases << OwnershipBorrowerSnapshot{
+					var_name: var_name + rhs_name[borrow.borrower.len..]
+					borrow:   BorrowInfo{ borrower: rhs_name, pos: borrow.pos }
+				}
+				continue
 			} else if ownership_storage_key_is_descendant(borrow.borrower, rhs_name) {
 				projected := tc.returned_receiver_projection_type(source_type, borrow.borrower[rhs_name.len..]) or { continue }
 				if !tc.sum_escape_has_pointer_variant(projected) { continue }
@@ -10964,10 +10988,12 @@ fn (mut tc TypeChecker) ownership_consume_expr(expr_id flat.NodeId, target strin
 	if tc.ownership_effects_disabled() {
 		return
 	}
-	if unwrap_pointer(tc.resolve_type(expr_id)) != tc.resolve_type(expr_id) {
+	typ := tc.resolve_type(expr_id)
+	if unwrap_pointer(typ) != typ {
 		return
 	}
-	if tc.ownership_consume_array_element_method_result(expr_id, target, at) {
+	if tc.ownership_consume_array_element_method_result(expr_id, target, at)
+		|| returned_value_is_scalar_copy(typ) {
 		return
 	}
 	// A consumer of retained storage receives an independent clone. If cloning is not

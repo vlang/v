@@ -4019,3 +4019,110 @@ fn test_ownership_and_autofree_build_every_program_shape() {
 		assert freed.exit_code == 0, '${name} under -autofree:\n${freed.output}'
 	}
 }
+
+fn test_ownership_reads_scalar_fields_and_pointers_through_borrowed_projections() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'copy_borrowed_projections', r'
+struct Item {
+	value int
+	text string
+}
+
+fn main() {
+	items := [Item{value: 42, text: "hello".to_owned()}]
+	item := &items[0]
+	alias := item
+	value := u8(alias.value)
+	mut out := [0]
+	out[0] = alias.value
+	assert value == 42
+	assert out[0] == 42
+	unsafe {
+		bytes := alias.text.str
+		assert bytes[0] == `h`
+	}
+}
+')
+	assert res.exit_code == 0, res.output
+}
+
+fn test_ownership_retains_the_source_loan_for_a_projected_pointer() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'borrowed_pointer_projection', r'
+struct Item {
+mut:
+	text string
+}
+
+fn main() {
+	mut items := [Item{text: "hello".to_owned()}]
+	mut bytes := unsafe { &u8(nil) }
+	unsafe {
+		item := &items[0]
+		bytes = item.text.str
+	}
+	items[0].text = "changed".to_owned()
+	unsafe { assert bytes[0] == `h` }
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('because `items[0].text.str` is borrowed by `bytes`'), res.output
+}
+
+fn test_ownership_rejects_returning_a_projected_pointer_to_local_storage() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'return_borrowed_pointer_projection', r'
+struct Item {
+	text string
+}
+
+fn escape() &u8 {
+	items := [Item{text: "hello".to_owned()}]
+	mut bytes := unsafe { &u8(nil) }
+	unsafe {
+		item := &items[0]
+		bytes = item.text.str
+	}
+	return bytes
+}
+
+fn main() {
+	println(escape())
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('cannot return a reference to local storage `items`'), res.output
+}
+
+fn test_ownership_retains_all_branch_loans_for_a_projected_pointer() {
+	v3_bin := ownership_build_v3()
+	res := run_ownership_check(v3_bin, 'borrowed_pointer_projection_branches', r'
+struct Item {
+mut:
+	text string
+}
+
+fn check(pick_right bool) {
+	mut left := [Item{text: "left".to_owned()}]
+	mut right := [Item{text: "right".to_owned()}]
+	mut bytes := unsafe { &u8(nil) }
+	unsafe {
+		mut item := &left[0]
+		if pick_right {
+			item = &right[0]
+		}
+		bytes = item.text.str
+	}
+	left[0].text = "changed".to_owned()
+	right[0].text = "changed".to_owned()
+	unsafe { println(bytes[0]) }
+}
+
+fn main() {
+	check(false)
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('because `left[0].text.str` is borrowed by `bytes`'), res.output
+	assert res.output.contains('because `right[0].text.str` is borrowed by `bytes`'), res.output
+}
