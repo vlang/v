@@ -1,28 +1,9 @@
 import os
+import v.tempname
 
-const orm_join_sql_attr_vexe = @VEXE
-const orm_join_sql_attr_tests_dir = os.dir(@FILE)
-const orm_join_sql_attr_v3_dir = os.dir(orm_join_sql_attr_tests_dir)
-const orm_join_sql_attr_vlib_dir = os.dir(orm_join_sql_attr_v3_dir)
-const orm_join_sql_attr_v3_src = os.join_path(orm_join_sql_attr_v3_dir, 'v.v')
-
-fn orm_join_sql_attr_build_v3() string {
-	// Not `v3_orm_join_sql_attr_<pid>`: the `orm_join_sql_attr` case uses that as its directory.
-	v3_bin := os.join_path(os.temp_dir(), 'v3_orm_join_sql_attr_compiler_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([orm_join_sql_attr_vexe, '-gc', 'none', '-path',
-			'${orm_join_sql_attr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${orm_join_sql_attr_v3_src}'])
-	assert build.exit_code == 0, build.output
-	assert os.exists(v3_bin), build.output
-	return v3_bin
-}
-
-fn orm_join_sql_attr_run(v3_bin string, name string, src string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn orm_join_sql_attr_run(name string, src string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
@@ -30,24 +11,23 @@ fn orm_join_sql_attr_run(v3_bin string, name string, src string) string {
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := os.join_path(root, 'program')
 	// Some cases count calls through `__global` variables.
-	compile := os.exec([v3_bin, '-enable-globals', src_path, '-b', 'c', '-o', bin_path])
+	compile := os.exec([@VEXE, '-enable-globals', src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
 
-fn orm_join_sql_attr_compile(v3_bin string, name string, src string) os.Result {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn orm_join_sql_attr_compile(name string, src string) os.Result {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
 	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := os.join_path(root, 'program')
-	return os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
+	return os.exec([@VEXE, src_path, '-b', 'c', '-o', bin_path])
 }
 
 fn orm_join_sql_attr_write_project_file(root string, rel string, src string) {
@@ -56,17 +36,18 @@ fn orm_join_sql_attr_write_project_file(root string, rel string, src string) {
 	os.write_file(path, src) or { panic(err) }
 }
 
-fn orm_join_sql_attr_run_project(v3_bin string, name string, files map[string]string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_project_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn orm_join_sql_attr_run_project(name string, files map[string]string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_project_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: '${name}' }\n") or { panic(err) }
 	for rel, src in files {
 		orm_join_sql_attr_write_project_file(root, rel, src)
 	}
-	bin_path := os.join_path(os.temp_dir(), 'v3_${name}_program_${os.getpid()}')
-	os.rm(bin_path) or {}
-	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_path])
+	bin_path := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
@@ -74,8 +55,7 @@ fn orm_join_sql_attr_run_project(v3_bin string, name string, files map[string]st
 }
 
 fn test_v3_orm_update_function_call_value() {
-	v3_bin := orm_join_sql_attr_build_v3()
-	out := orm_join_sql_attr_run(v3_bin, 'orm_update_function_call_value', "import db.sqlite
+	out := orm_join_sql_attr_run('orm_update_function_call_value', "import db.sqlite
 import encoding.html
 
 // `Table` intentionally collides with orm.Table. The generic specialization
@@ -117,8 +97,7 @@ fn main() {
 }
 
 fn test_v3_orm_update_call_selector_and_cast_semantics() {
-	v3_bin := orm_join_sql_attr_build_v3()
-	out := orm_join_sql_attr_run(v3_bin, 'orm_update_call_selector_and_cast_semantics', "import db.sqlite
+	out := orm_join_sql_attr_run('orm_update_call_selector_and_cast_semantics', "import db.sqlite
 
 struct User {
 	id int @[primary]
@@ -179,8 +158,7 @@ fn main() {
 }
 
 fn test_v3_static_where_and_join_sql_attribute_regressions() {
-	v3_bin := orm_join_sql_attr_build_v3()
-	limit_out := orm_join_sql_attr_run(v3_bin, 'orm_limit_zero', "import db.sqlite
+	limit_out := orm_join_sql_attr_run('orm_limit_zero', "import db.sqlite
 
 struct LimitUser {
 	id int @[primary; sql: serial]
@@ -227,7 +205,7 @@ fn main() {
 ")
 	assert limit_out == ''
 
-	selector_db_out := orm_join_sql_attr_run(v3_bin, 'orm_selector_db_receiver', "import db.sqlite
+	selector_db_out := orm_join_sql_attr_run('orm_selector_db_receiver', "import db.sqlite
 
 struct SelectorDbApp {
 mut:
@@ -268,7 +246,7 @@ fn main() {
 ")
 	assert selector_db_out == ''
 
-	mutated_insert_out := orm_join_sql_attr_run(v3_bin, 'orm_mutated_insert_fields', 'import db.sqlite
+	mutated_insert_out := orm_join_sql_attr_run('orm_mutated_insert_fields', 'import db.sqlite
 
 struct MutatedInsertUser {
 	id int @[primary; sql: serial]
@@ -301,7 +279,7 @@ fn main() {
 ')
 	assert mutated_insert_out == ''
 
-	selector_insert_out := orm_join_sql_attr_run(v3_bin, 'orm_selector_insert_value', 'import db.sqlite
+	selector_insert_out := orm_join_sql_attr_run('orm_selector_insert_value', 'import db.sqlite
 
 struct SelectorInsertUser {
 	id int @[primary]
@@ -357,7 +335,7 @@ fn main() {
 ')
 	assert selector_insert_out == ''
 
-	invalid_result := orm_join_sql_attr_compile(v3_bin, 'orm_invalid_static_where', "import db.sqlite
+	invalid_result := orm_join_sql_attr_compile('orm_invalid_static_where', "import db.sqlite
 
 struct InvalidWhereUser {
 	id int @[primary; sql: serial]
@@ -393,7 +371,7 @@ fn main() {
 	assert invalid_result.exit_code != 0
 	assert invalid_result.output.contains("ORM: left side of the `==` expression must be one of the `InvalidWhereUser`'s fields"), invalid_result.output
 
-	signed_out := orm_join_sql_attr_run(v3_bin, 'orm_signed_static_where', "import db.sqlite
+	signed_out := orm_join_sql_attr_run('orm_signed_static_where', "import db.sqlite
 
 struct SignedScoreUser {
 	id int @[primary; sql: serial]
@@ -432,7 +410,7 @@ fn main() {
 ")
 	assert signed_out == ''
 
-	mixed_result_out := orm_join_sql_attr_run(v3_bin, 'orm_mixed_result_failure', "import db.sqlite
+	mixed_result_out := orm_join_sql_attr_run('orm_mixed_result_failure', "import db.sqlite
 
 struct MixedResultUser {
 	id int @[primary]
@@ -474,7 +452,7 @@ fn main() {
 ")
 	assert mixed_result_out == ''
 
-	final_type_out := orm_join_sql_attr_run(v3_bin, 'orm_sql_final_statement_type', "import db.sqlite
+	final_type_out := orm_join_sql_attr_run('orm_sql_final_statement_type', "import db.sqlite
 
 struct FinalTypeUser {
 	id int @[primary]
@@ -515,7 +493,7 @@ fn main() {
 ")
 	assert final_type_out == ''
 
-	expr_out := orm_join_sql_attr_run(v3_bin, 'orm_static_where_expr_rhs', "import db.sqlite
+	expr_out := orm_join_sql_attr_run('orm_static_where_expr_rhs', "import db.sqlite
 
 struct ExprWhereUser {
 	id int @[primary]
@@ -551,7 +529,7 @@ fn main() {
 ")
 	assert expr_out == ''
 
-	indexed_expr_out := orm_join_sql_attr_run(v3_bin, 'orm_static_where_index_expr', "import db.sqlite
+	indexed_expr_out := orm_join_sql_attr_run('orm_static_where_index_expr', "import db.sqlite
 
 struct IndexedExprWhereUser {
 	id int @[primary]
@@ -587,7 +565,7 @@ fn main() {
 ")
 	assert indexed_expr_out == ''
 
-	static_is_out := orm_join_sql_attr_run(v3_bin, 'orm_static_is_rejects_non_null', "import db.sqlite
+	static_is_out := orm_join_sql_attr_run('orm_static_is_rejects_non_null', "import db.sqlite
 
 struct StaticIsUser {
 	id int @[primary]
@@ -623,7 +601,7 @@ fn main() {
 ")
 	assert static_is_out == ''
 
-	unfiltered_mutation_out := orm_join_sql_attr_run(v3_bin, 'orm_unfiltered_update_delete', "import db.sqlite
+	unfiltered_mutation_out := orm_join_sql_attr_run('orm_unfiltered_update_delete', "import db.sqlite
 
 struct UnfilteredMutationUser {
 	id int @[primary]
@@ -677,7 +655,7 @@ fn main() {
 ")
 	assert unfiltered_mutation_out == ''
 
-	mutation_tail_out := orm_join_sql_attr_run(v3_bin, 'orm_mutation_tail_rejected', "import db.sqlite
+	mutation_tail_out := orm_join_sql_attr_run('orm_mutation_tail_rejected', "import db.sqlite
 
 struct TailMutationUser {
 	id int @[primary]
@@ -740,7 +718,7 @@ fn main() {
 ")
 	assert mutation_tail_out == ''
 
-	static_or_fallback_out := orm_join_sql_attr_run(v3_bin, 'orm_static_where_or_fallback', "import db.sqlite
+	static_or_fallback_out := orm_join_sql_attr_run('orm_static_where_or_fallback', "import db.sqlite
 
 struct StaticOrFallbackUser {
 	id int @[primary]
@@ -778,7 +756,7 @@ fn main() {
 ")
 	assert static_or_fallback_out == ''
 
-	generic_after_select_compile := orm_join_sql_attr_compile(v3_bin, 'orm_generic_after_select', "import db.sqlite
+	generic_after_select_compile := orm_join_sql_attr_compile('orm_generic_after_select', "import db.sqlite
 
 struct FirstGenericSqlRow[T] {
 	id int @[primary]
@@ -817,7 +795,7 @@ fn main() {
 ")
 	assert generic_after_select_compile.exit_code == 0, generic_after_select_compile.output
 
-	dynamic_is_out := orm_join_sql_attr_run(v3_bin, 'orm_dynamic_is_rejects_non_null', "import db.sqlite
+	dynamic_is_out := orm_join_sql_attr_run('orm_dynamic_is_rejects_non_null', "import db.sqlite
 
 struct DynamicIsUser {
 	id int @[primary]
@@ -855,7 +833,7 @@ fn main() {
 ")
 	assert dynamic_is_out == ''
 
-	dynamic_indexed_out := orm_join_sql_attr_run(v3_bin, 'orm_dynamic_where_index_expr', "import db.sqlite
+	dynamic_indexed_out := orm_join_sql_attr_run('orm_dynamic_where_index_expr', "import db.sqlite
 
 struct DynamicIndexedUser {
 	id int @[primary]
@@ -898,8 +876,7 @@ fn main() {
 ")
 	assert dynamic_indexed_out == ''
 
-	dynamic_count_aggregate_out := orm_join_sql_attr_run(v3_bin,
-		'orm_dynamic_count_aggregate_where', "import db.sqlite
+	dynamic_count_aggregate_out := orm_join_sql_attr_run('orm_dynamic_count_aggregate_where', "import db.sqlite
 import orm
 
 struct DynamicAggregateUser {
@@ -963,7 +940,7 @@ fn main() {
 ")
 	assert dynamic_count_aggregate_out == ''
 
-	dynamic_alias_out := orm_join_sql_attr_run(v3_bin, 'orm_dynamic_alias_table_types', "import db.sqlite
+	dynamic_alias_out := orm_join_sql_attr_run('orm_dynamic_alias_table_types', "import db.sqlite
 
 enum AliasUserState {
 	inactive
@@ -1041,7 +1018,7 @@ fn main() {
 ")
 	assert dynamic_alias_out == ''
 
-	join_count_aggregate_out := orm_join_sql_attr_run(v3_bin, 'orm_join_count_aggregate', "import db.sqlite
+	join_count_aggregate_out := orm_join_sql_attr_run('orm_join_count_aggregate', "import db.sqlite
 
 struct JoinAggregateDepartment {
 	id int @[primary]
@@ -1118,7 +1095,7 @@ fn main() {
 ")
 	assert join_count_aggregate_out == ''
 
-	chained_join_out := orm_join_sql_attr_run(v3_bin, 'orm_chained_join_predicate', "import db.sqlite
+	chained_join_out := orm_join_sql_attr_run('orm_chained_join_predicate', "import db.sqlite
 
 struct ChainCompany {
 	id int @[primary]
@@ -1180,7 +1157,7 @@ fn main() {
 ")
 	assert chained_join_out == ''
 
-	optional_relation_where_out := orm_join_sql_attr_run(v3_bin, 'orm_optional_relation_where', 'import db.sqlite
+	optional_relation_where_out := orm_join_sql_attr_run('orm_optional_relation_where', 'import db.sqlite
 
 struct OptionalRelationAuthor {
 	id int @[primary]
@@ -1241,7 +1218,7 @@ fn main() {
 ')
 	assert optional_relation_where_out == ''
 
-	dynamic_update_empty_out := orm_join_sql_attr_run(v3_bin, 'orm_dynamic_update_empty_data', "import db.sqlite
+	dynamic_update_empty_out := orm_join_sql_attr_run('orm_dynamic_update_empty_data', "import db.sqlite
 
 struct DynamicEmptyUpdateUser {
 	id int @[primary]
@@ -1304,8 +1281,7 @@ fn main() {
 ")
 	assert dynamic_update_empty_out == ''
 
-	invalid_dynamic_set_compile := orm_join_sql_attr_compile(v3_bin,
-		'orm_dynamic_invalid_set_operator', "import db.sqlite
+	invalid_dynamic_set_compile := orm_join_sql_attr_compile('orm_dynamic_invalid_set_operator', "import db.sqlite
 
 struct DynamicInvalidSetUser {
 	id int @[primary]
@@ -1330,7 +1306,7 @@ fn main() {
 	assert invalid_dynamic_set_compile.exit_code != 0
 	assert invalid_dynamic_set_compile.output.contains('unsupported dynamic SQL SET operator `>`')
 
-	dynamic_final_type_out := orm_join_sql_attr_run(v3_bin, 'orm_dynamic_final_result_type', "import db.sqlite
+	dynamic_final_type_out := orm_join_sql_attr_run('orm_dynamic_final_result_type', "import db.sqlite
 
 struct DynamicFinalUser {
 	id int @[primary]
@@ -1384,7 +1360,7 @@ fn main() {
 ")
 	assert dynamic_final_type_out == ''
 
-	dynamic_guard_failure_out := orm_join_sql_attr_run(v3_bin, 'orm_dynamic_guard_after_failure', "import db.sqlite
+	dynamic_guard_failure_out := orm_join_sql_attr_run('orm_dynamic_guard_after_failure', "import db.sqlite
 
 __global calls int
 
@@ -1436,7 +1412,7 @@ fn main() {
 ")
 	assert dynamic_guard_failure_out == ''
 
-	offset_out := orm_join_sql_attr_run(v3_bin, 'orm_offset_without_limit', "import db.sqlite
+	offset_out := orm_join_sql_attr_run('orm_offset_without_limit', "import db.sqlite
 
 struct OffsetUser {
 	id int @[primary; sql: serial]
@@ -1471,7 +1447,7 @@ fn main() {
 ")
 	assert offset_out == ''
 
-	negative_offset_out := orm_join_sql_attr_run(v3_bin, 'orm_negative_runtime_offset', "import db.sqlite
+	negative_offset_out := orm_join_sql_attr_run('orm_negative_runtime_offset', "import db.sqlite
 
 struct NegativeOffsetUser {
 	id int @[primary; sql: serial]
@@ -1508,7 +1484,7 @@ fn main() {
 ")
 	assert negative_offset_out == ''
 
-	static_negative_limit_out := orm_join_sql_attr_run(v3_bin, 'orm_static_negative_limit', "import db.sqlite
+	static_negative_limit_out := orm_join_sql_attr_run('orm_static_negative_limit', "import db.sqlite
 
 struct StaticNegativeLimitUser {
 	id int @[primary; sql: serial]
@@ -1544,7 +1520,7 @@ fn main() {
 ")
 	assert static_negative_limit_out == ''
 
-	static_negative_offset_out := orm_join_sql_attr_run(v3_bin, 'orm_static_negative_offset', "import db.sqlite
+	static_negative_offset_out := orm_join_sql_attr_run('orm_static_negative_offset', "import db.sqlite
 
 struct StaticNegativeOffsetUser {
 	id int @[primary; sql: serial]
@@ -1580,7 +1556,7 @@ fn main() {
 ")
 	assert static_negative_offset_out == ''
 
-	infix_update_out := orm_join_sql_attr_run(v3_bin, 'orm_update_infix_sql_attr', "import db.sqlite
+	infix_update_out := orm_join_sql_attr_run('orm_update_infix_sql_attr', "import db.sqlite
 
 struct UpdateInfixSqlAttrUser {
 	id int @[primary]
@@ -1617,7 +1593,7 @@ fn main() {
 ")
 	assert infix_update_out == ''
 
-	aggregate_out := orm_join_sql_attr_run(v3_bin, 'orm_aggregate_sql_attr', "import db.sqlite
+	aggregate_out := orm_join_sql_attr_run('orm_aggregate_sql_attr', "import db.sqlite
 
 struct AggregateSqlAttrUser {
 	id int @[primary]
@@ -1674,7 +1650,7 @@ fn main() {
 ")
 	assert aggregate_out == ''
 
-	malformed_dynamic_out := orm_join_sql_attr_run(v3_bin, 'orm_dynamic_malformed_where_update', "import db.sqlite
+	malformed_dynamic_out := orm_join_sql_attr_run('orm_dynamic_malformed_where_update', "import db.sqlite
 
 struct DynamicMalformedUser {
 	id int @[primary]
@@ -1715,7 +1691,7 @@ fn main() {
 ")
 	assert malformed_dynamic_out == ''
 
-	bad_batch_update := orm_join_sql_attr_compile(v3_bin, 'orm_batch_update_requires_equality', "import db.sqlite
+	bad_batch_update := orm_join_sql_attr_compile('orm_batch_update_requires_equality', "import db.sqlite
 
 struct BatchUpdateUser {
 	id int @[primary]
@@ -1741,7 +1717,7 @@ fn main() {
 ")
 	assert bad_batch_update.exit_code != 0, bad_batch_update.output
 
-	ambiguous_join_out := orm_join_sql_attr_run(v3_bin, 'orm_join_qualifies_default_fields', "import db.sqlite
+	ambiguous_join_out := orm_join_sql_attr_run('orm_join_qualifies_default_fields', "import db.sqlite
 
 struct JoinDepartment {
 	id int @[primary]
@@ -1854,7 +1830,7 @@ fn main() {
 ")
 	assert ambiguous_join_out == ''
 
-	qualified_attrs_out := orm_join_sql_attr_run_project(v3_bin, 'orm_qualified_table_attributes', {
+	qualified_attrs_out := orm_join_sql_attr_run_project('orm_qualified_table_attributes', {
 		'foo/foo.v': "module foo
 
 @[table: 'foo_users']
@@ -1919,7 +1895,7 @@ fn main() {
 	})
 	assert qualified_attrs_out == ''
 
-	import_alias_out := orm_join_sql_attr_run_project(v3_bin, 'orm_import_alias_table_resolution', {
+	import_alias_out := orm_join_sql_attr_run_project('orm_import_alias_table_resolution', {
 		'models/models.v':           "module models
 
 @[table: 'alias_users']
@@ -1988,7 +1964,7 @@ fn main() {
 	})
 	assert import_alias_out == ''
 
-	join_out := orm_join_sql_attr_run(v3_bin, 'orm_join_sql_attr', "import db.sqlite
+	join_out := orm_join_sql_attr_run('orm_join_sql_attr', "import db.sqlite
 
 struct RenamedDepartment {
 	dept_id int @[primary; sql: 'id']

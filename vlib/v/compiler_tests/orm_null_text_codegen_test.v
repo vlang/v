@@ -1,60 +1,47 @@
 import os
+import v.tempname
 
-const orm_null_text_vexe = @VEXE
-const orm_null_text_tests_dir = os.dir(@FILE)
-const orm_null_text_v3_dir = os.dir(orm_null_text_tests_dir)
-const orm_null_text_vlib_dir = os.dir(orm_null_text_v3_dir)
-const orm_null_text_v3_src = os.join_path(orm_null_text_v3_dir, 'v.v')
-
-fn orm_null_text_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_orm_null_text_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([orm_null_text_vexe, '-gc', 'none', '-path',
-			'${orm_null_text_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${orm_null_text_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn orm_null_text_gen_c(v3_bin string, name string, src string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn orm_null_text_gen_c(name string, src string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
 	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := os.join_path(root, 'main.c')
-	result := os.exec([v3_bin, src_path, '-o', c_path])
+	result := os.exec([@VEXE, src_path, '-o', c_path])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn orm_null_text_compile_project(v3_bin string, name string, files map[string]string) (os.Result, string) {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn orm_null_text_compile_project(name string, files map[string]string) (os.Result, string) {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
 	for path, contents in files {
 		full_path := os.join_path(root, path)
 		os.mkdir_all(os.dir(full_path)) or { panic(err) }
 		os.write_file(full_path, contents) or { panic(err) }
 	}
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.c')
-	os.rm(c_path) or {}
-	return os.exec([v3_bin, root, '-o', c_path]), c_path
+	c_path := os.join_path(root, 'main.c')
+	result := os.exec([@VEXE, root, '-o', c_path])
+	if result.exit_code != 0 {
+		return result, ''
+	}
+	return result, os.read_file(c_path) or { panic(err) }
 }
 
-fn orm_null_text_gen_c_project(v3_bin string, name string, files map[string]string) string {
-	result, c_path := orm_null_text_compile_project(v3_bin, name, files)
+fn orm_null_text_gen_c_project(name string, files map[string]string) string {
+	result, c_code := orm_null_text_compile_project(name, files)
 	assert result.exit_code == 0, result.output
-	return os.read_file(c_path) or { panic(err) }
+	return c_code
 }
 
 fn test_orm_null_text_fallback_uses_declared_interned_empty_string() {
-	v3_bin := orm_null_text_build_v3()
-	c_code := orm_null_text_gen_c(v3_bin, 'orm_null_text_fallback', 'import db.sqlite
+	c_code := orm_null_text_gen_c('orm_null_text_fallback', 'import db.sqlite
 
 struct User {
 	id int
@@ -81,8 +68,7 @@ fn main() {
 }
 
 fn test_orm_module_local_select_uses_qualified_row_type() {
-	v3_bin := orm_null_text_build_v3()
-	c_code := orm_null_text_gen_c_project(v3_bin, 'orm_module_local_select', {
+	c_code := orm_null_text_gen_c_project('orm_module_local_select', {
 		'v.mod':         "Module { name: 'orm_module_local_select' }\n"
 		'main.v':        'module main\n\nimport model\n\nfn main() {\n\tmodel.load()\n}\n'
 		'model/model.v': 'module model\n\nimport db.sqlite\n\nstruct User {\n\tid int\n\tname string\n}\n\npub fn load() {\n\tmut db := sqlite.connect(":memory:") or { panic(err) }\n\trows := sql db {\n\t\tselect from User\n\t}!\n\t_ = rows\n}\n'
@@ -93,8 +79,7 @@ fn test_orm_module_local_select_uses_qualified_row_type() {
 }
 
 fn test_orm_unsupported_select_clauses_use_fallback() {
-	v3_bin := orm_null_text_build_v3()
-	c_code := orm_null_text_gen_c(v3_bin, 'orm_unsupported_select_clauses', 'import db.sqlite
+	c_code := orm_null_text_gen_c('orm_unsupported_select_clauses', 'import db.sqlite
 
 struct User {
 	id int
@@ -117,8 +102,7 @@ fn main() {
 }
 
 fn test_orm_runtime_select_limit_uses_fallback() {
-	v3_bin := orm_null_text_build_v3()
-	c_code := orm_null_text_gen_c(v3_bin, 'orm_runtime_select_limit_fallback', 'import db.sqlite
+	c_code := orm_null_text_gen_c('orm_runtime_select_limit_fallback', 'import db.sqlite
 
 struct User {
 	id int
@@ -138,8 +122,7 @@ fn main() {
 }
 
 fn test_orm_non_sqlite_db_uses_fallback() {
-	v3_bin := orm_null_text_build_v3()
-	c_code := orm_null_text_gen_c(v3_bin, 'orm_non_sqlite_db_fallback', 'import db.pg
+	c_code := orm_null_text_gen_c('orm_non_sqlite_db_fallback', 'import db.pg
 
 struct User {
 	id int
@@ -159,8 +142,7 @@ fn main() {
 }
 
 fn test_orm_bulk_insert_uses_fallback() {
-	v3_bin := orm_null_text_build_v3()
-	c_code := orm_null_text_gen_c(v3_bin, 'orm_bulk_insert_fallback', 'import db.sqlite
+	c_code := orm_null_text_gen_c('orm_bulk_insert_fallback', 'import db.sqlite
 
 struct User {
 	id int
@@ -185,8 +167,7 @@ fn main() {
 }
 
 fn test_multi_statement_sql_keeps_heap_promoted_db_pointer() {
-	v3_bin := orm_null_text_build_v3()
-	c_code := orm_null_text_gen_c(v3_bin, 'orm_heap_promoted_multi_statement_db', "import db.sqlite
+	c_code := orm_null_text_gen_c('orm_heap_promoted_multi_statement_db', "import db.sqlite
 
 struct User {
 	id int @[primary]
@@ -216,8 +197,7 @@ fn main() {
 }
 
 fn test_orm_insert_requires_qualified_value_type_match() {
-	v3_bin := orm_null_text_build_v3()
-	result, _ := orm_null_text_compile_project(v3_bin, 'orm_insert_qualified_value_mismatch', {
+	result, _ := orm_null_text_compile_project('orm_insert_qualified_value_mismatch', {
 		'v.mod':         "Module { name: 'orm_insert_qualified_value_mismatch' }\n"
 		'main.v':        'module main\n\nimport app\n\nfn main() {\n\tapp.save()\n}\n'
 		'other/other.v': 'module other\n\npub struct User {\npub:\n\tid int\n\tname string\n}\n\npub fn make() User {\n\treturn User{\n\t\tid: 1\n\t\tname: "remote"\n\t}\n}\n'
@@ -229,15 +209,13 @@ fn test_orm_insert_requires_qualified_value_type_match() {
 }
 
 fn test_orm_unsupported_field_tables_use_fallback() {
-	v3_bin := orm_null_text_build_v3()
-	c_code := orm_null_text_gen_c(v3_bin, 'orm_unsupported_field_table_fallback',
+	c_code := orm_null_text_gen_c('orm_unsupported_field_table_fallback',
 		'import db.sqlite\nimport time\n\nstruct TestDurationAlias {\n\tid int\n\tduration time.Duration\n}\n\nfn main() {\n\tmut db := sqlite.connect(":memory:") or { panic(err) }\n\tsql db {\n\t\tcreate table TestDurationAlias\n\t}!\n}\n')
 	assert !c_code.contains('CREATE TABLE IF NOT EXISTS "TestDurationAlias"'), c_code
 }
 
 fn test_orm_wide_integer_fields_use_sqlite_int64_apis() {
-	v3_bin := orm_null_text_build_v3()
-	c_code := orm_null_text_gen_c(v3_bin, 'orm_wide_integer_fields', 'import db.sqlite
+	c_code := orm_null_text_gen_c('orm_wide_integer_fields', 'import db.sqlite
 
 struct Metric {
 	id int
