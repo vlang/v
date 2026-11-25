@@ -567,11 +567,15 @@ fn main() {}
 	assert os.exists(c_out)
 }
 
-fn test_generic_sum_type_param_variant_in_imported_module() {
-	root := generic_sum_type_fixture_dir('param_variant')
+fn test_generic_sum_type_param_variants_resolve_across_modules() {
+	root := generic_sum_type_fixture_dir('param_variant_scopes')
 	defer { os.rmdir_all(root) or {} }
 	maybe_dir := os.join_path(root, 'maybe')
+	payload_dir := os.join_path(root, 'payload')
+	client_dir := os.join_path(root, 'client')
 	os.mkdir_all(maybe_dir) or { panic(err) }
+	os.mkdir_all(payload_dir) or { panic(err) }
+	os.mkdir_all(client_dir) or { panic(err) }
 	os.write_file(os.join_path(maybe_dir, 'maybe.v'), 'module maybe
 
 pub struct Err {}
@@ -599,54 +603,6 @@ pub fn unwrap_int(x Maybe[int]) int {
 	assert y == 7
 	return y
 }
-') or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'module main
-
-import maybe
-
-fn main() {
-	println(maybe.describe(maybe.wrap_int(7)))
-	println(maybe.describe(maybe.wrap_err()))
-	println(maybe.unwrap_int(maybe.wrap_int(7)))
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'app')
-	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'int\nerr\n7'
-
-	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('maybe__Err'), c_code
-	assert !c_code.contains('maybe__Maybe_int y = x'), c_code
-	assert !c_code.contains('maybe__T'), c_code
-	assert !c_code.contains('x == v_int'), c_code
-}
-
-fn test_generic_sum_type_args_keep_non_main_caller_scope_and_selective_imports() {
-	root := generic_sum_type_fixture_dir('caller_scope')
-	defer { os.rmdir_all(root) or {} }
-	maybe_dir := os.join_path(root, 'maybe')
-	payload_dir := os.join_path(root, 'payload')
-	client_dir := os.join_path(root, 'client')
-	os.mkdir_all(maybe_dir) or { panic(err) }
-	os.mkdir_all(payload_dir) or { panic(err) }
-	os.mkdir_all(client_dir) or { panic(err) }
-	os.write_file(os.join_path(maybe_dir, 'maybe.v'), 'module maybe
-
-pub struct Err {}
-
-pub type Maybe[T] = T | Err
 
 pub fn wrap[T](v T) Maybe[T] {
 	return Maybe[T](v)
@@ -720,8 +676,14 @@ pub fn unwrap_payload(x maybe.Maybe[Payload]) Payload {
 	os.write_file(src, 'module main
 
 import client
+// Keep this import spelling distinct from the client module.
+import maybe as int_maybe
 
 fn main() {
+	assert int_maybe.describe(int_maybe.wrap_int(7)) == "int"
+	assert int_maybe.describe(int_maybe.wrap_err()) == "err"
+	assert int_maybe.unwrap_int(int_maybe.wrap_int(7)) == 7
+
 	local_sum := client.make()
 	assert client.describe_local(local_sum) == 7
 	local := client.unwrap_local(local_sum)
@@ -743,9 +705,16 @@ fn main() {
 
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	assert run.output.trim_space() == 'ok', run.output
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
+	wrap_err_signature := 'maybe__Maybe_int maybe__wrap_err(void) {'
+	assert c_code.contains(wrap_err_signature), c_code
+	wrap_err_body := c_code.all_after(wrap_err_signature).all_before('\n}')
+	assert wrap_err_body.contains('.maybe__Err = (maybe__Err)'), wrap_err_body
+	assert !c_code.contains('maybe__Maybe_int y = x'), c_code
+	assert !c_code.contains('maybe__T'), c_code
+	assert !c_code.contains('x == v_int'), c_code
 	assert c_code.contains('maybe__Maybe_client__Local'), c_code
 	assert c_code.contains('maybe__Maybe_payload__Payload'), c_code
 	assert c_code.contains('payload__Payload'), c_code
