@@ -415,6 +415,20 @@ replacement value and result.
 `update_pair` to update two distinct mutexes while holding both locks.
 For example, a worker can take ownership of a `cell.RefCell[int]`. Its
 unsynchronized borrow state prevents sharing it through an `Arc`.
+
+Import `sync.thread` to use these checks as generic bounds. `thread.Transferable`
+requires that a value can move to another thread. `thread.Shareable` also requires
+that the value can be shared safely. A shareable parameter satisfies a transferable
+bound. These bounds check the concrete type before a generic function runs.
+
+```v okfmt
+import sync.thread
+
+fn receive_owned[T thread.Transferable](value T) T {
+	return value
+}
+```
+
 An interface value or function value with an unknown implementation or capture
 list needs an explicit
 `unsafe` boundary. Use `unsafe` only when you can guarantee the lifetime and
