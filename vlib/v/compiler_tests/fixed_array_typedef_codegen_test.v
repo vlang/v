@@ -233,8 +233,9 @@ fn main() {
 	assert holder_pos > typedef_pos, generated
 }
 
-fn test_imported_fn_pointer_fixed_array_of_backed_enum_uses_emitted_typedef() {
-	root := fixed_array_write_project('fn_pointer_enum', 'module fixture
+// Use distinct enum types so each callback must emit its own array typedef.
+fn test_backed_enum_callback_typedefs_use_enum_arrays() {
+	root := fixed_array_write_project('enum_callback_typedefs', 'module fixture
 
 pub enum Mode as u32 {
 	one
@@ -245,123 +246,64 @@ pub struct Extent {
 	width u32
 }
 
-pub type Callback = fn (handle voidptr, extent &Extent, modes [2]Mode)
-', 'module main
-
-import fixture
-
-fn main() {
-	println(fixture.Mode.one)
-}
-')
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'out')
-	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'one', run.output
-	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert generated.contains('typedef fixture__Mode Array_fixed_fixture__Mode_2[2];'), generated
-	assert !generated.contains('Array_fixed_int_2'), generated
-}
-
-fn test_enum_fixed_array_fn_pointer_uses_emitted_typedef_name() {
-	root := fixed_array_write_project('enum_fn_pointer', 'module fixture
+pub type ImportedCallback = fn (handle voidptr, extent &Extent, modes [2]Mode)
 
 pub enum Combiner as i32 {
 	keep = 0
 	replace = 1
 }
 
-pub type Callback = fn (command voidptr, ops [2]Combiner)
+pub type ValueCallback = fn (command voidptr, ops [2]Combiner)
 
-pub fn callback_size() int {
-	return sizeof(Callback)
+pub fn value_callback_size() int {
+	return sizeof(ValueCallback)
+}
+
+pub enum PointerMode as u32 {
+	one
+	two
+}
+
+pub type PointerCallback = fn (modes &[2]PointerMode)
+
+pub fn pointer_callback_size() int {
+	return sizeof(PointerCallback)
+}
+
+pub enum ReturnMode as u32 {
+	one
+	two
+}
+
+pub type ReturnCallback = fn () [2]ReturnMode
+
+pub fn return_callback_size() int {
+	return sizeof(ReturnCallback)
 }
 ', 'module main
 
 import fixture
 
 fn main() {
-	println(fixture.callback_size())
+	println(fixture.Mode.one)
+	println(fixture.value_callback_size() > 0)
+	println(fixture.pointer_callback_size() > 0)
+	println(fixture.return_callback_size() > 0)
 }
 ')
 	defer { os.rmdir_all(root) or {} }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('typedef fixture__Mode Array_fixed_fixture__Mode_2[2];'), generated
 	assert generated.contains('Array_fixed_fixture__Combiner_2[2]'), generated
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().int() > 0, run.output
-}
-
-fn test_enum_fixed_array_fn_pointer_pointer_param_uses_emitted_typedef_name() {
-	root := fixed_array_write_project('enum_fn_pointer_param', 'module fixture
-
-pub enum Mode as u32 {
-	one
-	two
-}
-
-pub type Callback = fn (modes &[2]Mode)
-
-pub fn callback_size() int {
-	return sizeof(Callback)
-}
-', 'module main
-
-import fixture
-
-fn main() {
-	println(fixture.callback_size())
-}
-')
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'out')
-	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
-	assert compile.exit_code == 0, compile.output
-	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert generated.contains('(Array_fixed_fixture__Mode_2*)'), generated
+	assert generated.contains('(Array_fixed_fixture__PointerMode_2*)'), generated
+	assert generated.contains('typedef _v_ret_Array_fixed_fixture__ReturnMode_2 (*_fn_ptr_'), generated
 	assert !generated.contains('Array_fixed_int_2'), generated
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().int() > 0, run.output
-}
-
-fn test_enum_fixed_array_fn_pointer_return_alias_emits_wrapper() {
-	root := fixed_array_write_project('enum_fn_pointer_return', 'module fixture
-
-pub enum Mode as u32 {
-	one
-	two
-}
-
-pub type Callback = fn () [2]Mode
-
-pub fn callback_size() int {
-	return sizeof(Callback)
-}
-', 'module main
-
-import fixture
-
-fn main() {
-	println(fixture.callback_size())
-}
-')
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'out')
-	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
-	assert compile.exit_code == 0, compile.output
-	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert generated.contains('typedef _v_ret_Array_fixed_fixture__Mode_2 (*_fn_ptr_'), generated
-	assert !generated.contains('Array_fixed_int_2'), generated
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().int() > 0, run.output
+	assert run.output.trim_space() == 'one\ntrue\ntrue\ntrue', run.output
 }
 
 fn test_backed_enum_callbacks_are_passed_and_invoked() {
