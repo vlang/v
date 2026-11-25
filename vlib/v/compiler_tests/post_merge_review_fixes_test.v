@@ -469,8 +469,18 @@ fn main() {
 
 fn test_multi_return_assignment_requires_option_result_handling() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'unhandled_result_multi_decl_assign', "fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n", 'pair() returns `!(int, string)`, so it should have either an `or {}` block, or `!` at the end')
-	run_bad(v3_bin, 'unhandled_result_multi_assign', "fn pair() !(int, string) {\n\treturn 4, 'ok'\n}\n\nfn main() {\n\tmut a := 0\n\tmut b := ''\n\ta, b = pair()\n\tprintln(int_str(a) + b)\n}\n", 'requires `or {}`, `!`, or `?` handling')
+	run_bad_module_batch(v3_bin, 'multi_return_rejections', [
+		ReviewRejection{
+			name:     'unhandled_result_multi_decl_assign'
+			source:   "fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n"
+			expected: 'pair() returns `!(int, string)`, so it should have either an `or {}` block, or `!` at the end'
+		},
+		ReviewRejection{
+			name:     'unhandled_result_multi_assign'
+			source:   "fn pair() !(int, string) {\n\treturn 4, 'ok'\n}\n\nfn main() {\n\tmut a := 0\n\tmut b := ''\n\ta, b = pair()\n\tprintln(int_str(a) + b)\n}\n"
+			expected: 'requires `or {}`, `!`, or `?` handling'
+		},
+	])
 	out := run_good(v3_bin, 'handled_result_multi_decl_assign', "fn pair() !(int, string) {\n\treturn 5, 'ok'\n}\n\nfn main() {\n\ta, b := pair() or { panic(err) }\n\tprintln(int_str(a) + b)\n}\n")
 	assert out == '5ok'
 }
@@ -1987,21 +1997,30 @@ fn test_select_compound_receive_assignment_is_rejected() {
 
 fn test_select_assignment_cases_require_receive_rhs() {
 	v3_bin := build_v3()
+	mut cases := []ReviewRejection{cap: 3}
 	for op in [':=', '=', '+='] {
-		run_bad(v3_bin, 'select_non_receive_${op.replace('=', 'eq').replace(':', 'decl').replace('+', 'plus')}', 'fn main() {
+		cases << ReviewRejection{
+			name:     'select_non_receive_${op.replace('=', 'eq').replace(':', 'decl').replace('+', 'plus')}'
+			source:   'fn main() {
 	mut value := 0
 	select {
 		value ${op} 1 {}
 	}
 	println(int_str(value))
 }
-', 'select key: receive expression expected')
+'
+			expected: 'select key: receive expression expected'
+		}
 	}
+	run_bad_module_batch(v3_bin, 'select_non_receive_rejections', cases)
 }
 
 fn test_select_rejects_else_and_timeout_in_either_order() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'select_else_before_timeout', 'import time
+	run_bad_module_batch(v3_bin, 'select_timeout_rejections', [
+		ReviewRejection{
+			name:     'select_else_before_timeout'
+			source:   'import time
 
 fn main() {
 	select {
@@ -2009,8 +2028,12 @@ fn main() {
 		10 * time.millisecond {}
 	}
 }
-', '`else` and timeout value are mutually exclusive `select` keys')
-	run_bad(v3_bin, 'select_timeout_before_else', 'import time
+'
+			expected: '`else` and timeout value are mutually exclusive `select` keys'
+		},
+		ReviewRejection{
+			name:     'select_timeout_before_else'
+			source:   'import time
 
 fn main() {
 	select {
@@ -2018,7 +2041,10 @@ fn main() {
 		else {}
 	}
 }
-', 'timeout `> t` and `else` are mutually exclusive `select` keys')
+'
+			expected: 'timeout `> t` and `else` are mutually exclusive `select` keys'
+		},
+	])
 }
 
 fn test_select_rejects_duplicate_timeouts() {
@@ -2894,21 +2920,32 @@ fn main() {
 
 fn test_explicit_return_semicolon_keeps_unreachable_check() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'explicit_return_semicolon_unreachable', 'fn stop() {
+	run_bad_module_batch(v3_bin, 'return_semicolon_rejections', [
+		ReviewRejection{
+			name:     'explicit_return_semicolon_unreachable'
+			source:   'fn stop() {
 	return;
 	println("unreachable")
 }
 fn main() {}
-', 'unreachable code')
-	run_bad(v3_bin, 'nested_explicit_return_semicolon_unreachable', 'fn stop(ok bool) {
+'
+			expected: 'unreachable code'
+		},
+		ReviewRejection{
+			name:     'nested_explicit_return_semicolon_unreachable'
+			source:   'fn stop(ok bool) {
 	if ok {
 		return;
 		println("unreachable")
 	}
 }
 fn main() {}
-', 'unreachable code')
-	run_bad(v3_bin, 'nested_return_semicolon_unreachable', 'fn stop(ok bool) {
+'
+			expected: 'unreachable code'
+		},
+		ReviewRejection{
+			name:     'nested_return_semicolon_unreachable'
+			source:   'fn stop(ok bool) {
 	if ok {
 		return;
 	}
@@ -2916,7 +2953,10 @@ fn main() {}
 	println("unreachable")
 }
 fn main() {}
-', 'unreachable code')
+'
+			expected: 'unreachable code'
+		},
+	])
 }
 
 fn test_qualified_enum_str_requires_exact_receiver() {
