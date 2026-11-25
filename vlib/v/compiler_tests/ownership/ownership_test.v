@@ -4037,7 +4037,7 @@ fn main() {
 
 fn test_ownership_threads_reject_raw_references() {
 	v3_bin := ownership_build_v3()
-	res := run_ownership_check(v3_bin, 'thread_references', r'
+	source := r'
 struct Counter {
 mut:
 	value int
@@ -4054,9 +4054,12 @@ fn main() {
 	first.wait()
 	second.wait()
 }
-')
-	assert res.exit_code != 0, res.output
-	assert res.output.count('cannot transfer mutable borrow') == 2, res.output
+'
+	for flags in [['-ownership'], ['-autofree'], ['-ownership', '-autofree']] {
+		res := run_ownership_check_with_flags(v3_bin, 'thread_references', source, flags)
+		assert res.exit_code != 0, '${flags}: ${res.output}'
+		assert res.output.count('cannot transfer mutable borrow') == 2, '${flags}: ${res.output}'
+	}
 }
 
 fn test_ownership_thread_transfer_checks_nested_types_and_channel_sends() {

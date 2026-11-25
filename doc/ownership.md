@@ -397,12 +397,12 @@ fn main() {
 
 ## Thread transfers
 
-An ownership build checks the arguments and result of a `spawn` or `go` call. The
-check follows fields, sum variants and container elements. A value containing a
-raw reference needs a scoped join. Values sent through channels with `<-` or
-`.try_push()` and errors passed to `.close()` must be transferable. A channel
-can carry a concrete error with transferable fields or a message error from
-builtin `error()` or `error_with_code()`.
+An ownership build checks the arguments and result of a `spawn` or `go` call,
+including with `-autofree`. The check follows fields, sum variants and container
+elements. A value containing a raw reference needs a scoped join. Values sent
+through channels with `<-` or `.try_push()` and errors passed to `.close()` must be
+transferable. A channel can carry a concrete error with transferable fields or
+a message error from builtin `error()` or `error_with_code()`.
 
 Pass independent owned values to a worker, or use a typed channel or a `shared`
 binding for synchronized access. The standard library's `arc.Arc[T]` can cross
