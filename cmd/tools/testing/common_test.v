@@ -3,7 +3,7 @@ module testing
 import os
 import v.build_constraint
 
-fn test_shared_v3_builder_counts_excludes_skipped_files() {
+fn test_shared_v3_preparation_requires_two_unskipped_candidates() {
 	root := os.join_path(os.vtmp_dir(), 'shared_v3_builders_${os.getpid()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -18,16 +18,22 @@ fn test_shared_v3_builder_counts_excludes_skipped_files() {
 	mut session := TestSession{
 		vroot: root
 	}
-	all, all_ownership := session.shared_v3_builder_counts(files)
-	assert all == 3
-	assert all_ownership == 2
+	build_plain, build_ownership := session.shared_v3_compilers_to_build(files, true, true)
+	assert build_plain
+	assert build_ownership
+	plain_when_supplied, only_ownership := session.shared_v3_compilers_to_build(files, false, true)
+	assert !plain_when_supplied
+	assert only_ownership
+	only_plain, ownership_when_supplied := session.shared_v3_compilers_to_build(files, true, false)
+	assert only_plain
+	assert !ownership_when_supplied
 	session.skip_files = [os.real_path(first_ownership), os.real_path(second_ownership)]
-	runnable, runnable_ownership := session.shared_v3_builder_counts(files)
-	assert runnable == 1
-	assert runnable_ownership == 0
+	plain_after_skips, ownership_after_skips := session.shared_v3_compilers_to_build(files, true, true)
+	assert !plain_after_skips
+	assert !ownership_after_skips
 }
 
-fn test_shared_v3_builder_counts_respects_build_constraints() {
+fn test_shared_v3_preparation_respects_build_constraints() {
 	root := os.join_path(os.vtmp_dir(), 'shared_v3_constraints_${os.getpid()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -46,13 +52,13 @@ fn test_shared_v3_builder_counts_respects_build_constraints() {
 		vroot:             root
 		build_environment: build_constraint.new_environment([], [])
 	}
-	default_builders, default_ownership := session.shared_v3_builder_counts(files)
-	assert default_builders == 1
-	assert default_ownership == 1
+	default_plain, default_ownership := session.shared_v3_compilers_to_build(files, true, true)
+	assert !default_plain
+	assert !default_ownership
 	session.build_environment = build_constraint.new_environment([], ['sharing_enabled'])
-	enabled_builders, enabled_ownership := session.shared_v3_builder_counts(files)
-	assert enabled_builders == 2
-	assert enabled_ownership == 2
+	enabled_plain, enabled_ownership := session.shared_v3_compilers_to_build(files, true, true)
+	assert enabled_plain
+	assert enabled_ownership
 }
 
 fn test_should_retry_execution() {

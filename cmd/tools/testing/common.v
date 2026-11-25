@@ -1609,19 +1609,23 @@ pub fn h_divider() {
 const shared_v3_env = 'V3_TEST_UNIT_SHARED_V3'
 const shared_v3_src_env = 'V3_TEST_UNIT_V3_SRC'
 const shared_v3_ownership_env = 'V3_TEST_UNIT_SHARED_V3_OWNERSHIP'
+const shared_v3_min_builders = 2
 
 // shared_v3_names are the executables that prepare_shared_v3 builds in the session folder.
 const shared_v3_names = ['shared_v3', 'shared_v3_ownership']
 
-fn (ts &TestSession) shared_v3_builder_counts(files []string) (int, int) {
+fn (ts &TestSession) shared_v3_compilers_to_build(files []string, need_plain bool, need_ownership bool) (bool, bool) {
 	vroot := os.real_path(ts.vroot) + os.path_separator
 	mut skipped := map[string]bool{}
 	for path in ts.skip_files {
 		skipped[path] = true
 	}
-	mut builders := 0
-	mut ownership_builders := 0
+	mut plain_remaining := if need_plain { shared_v3_min_builders } else { 0 }
+	mut ownership_remaining := if need_ownership { shared_v3_min_builders } else { 0 }
 	for file in files {
+		if plain_remaining == 0 && ownership_remaining == 0 {
+			break
+		}
 		path := os.real_path(file)
 		if !path.starts_with(vroot) || path in skipped {
 			continue
@@ -1630,24 +1634,35 @@ fn (ts &TestSession) shared_v3_builder_counts(files []string) (int, int) {
 		if !source.contains("'v.v'") {
 			continue
 		}
+		ownership_builder := ownership_remaining > 0 && source.contains("'-d', 'ownership'")
+		if plain_remaining == 0 && !ownership_builder {
+			continue
+		}
 		if source.contains('// vtest build:') {
 			details := test_details_from_lines(source.split_into_lines())
 			if details.vbuild != '' && !(ts.build_environment.eval(details.vbuild) or { false }) {
 				continue
 			}
 		}
-		builders++
-		if source.contains("'-d', 'ownership'") {
-			ownership_builders++
+		if plain_remaining > 0 {
+			plain_remaining--
+		}
+		if ownership_builder {
+			ownership_remaining--
 		}
 	}
-	return builders, ownership_builders
+	return need_plain && plain_remaining == 0, need_ownership && ownership_remaining == 0
 }
 
 // prepare_shared_v3 prepares a compiler variant when at least two runnable files may use it.
 // If preparation fails, tests can still build the compiler themselves.
 fn (mut ts TestSession) prepare_shared_v3(files []string) {
 	if !ts.will_compile || os.getenv('VTEST_NO_SHARED_V3') == '1' {
+		return
+	}
+	need_plain := os.getenv(shared_v3_env) == ''
+	need_ownership := os.getenv(shared_v3_ownership_env) == ''
+	if !need_plain && !need_ownership {
 		return
 	}
 	v3_src := os.join_path(ts.vroot, 'vlib', 'v', 'v.v')
@@ -1660,10 +1675,10 @@ fn (mut ts TestSession) prepare_shared_v3(files []string) {
 			return
 		}
 	}
-	builders, ownership_builders := ts.shared_v3_builder_counts(files)
+	build_plain, build_ownership := ts.shared_v3_compilers_to_build(files, need_plain, need_ownership)
 	mut values := map[string]string{}
-	for i, env in [shared_v3_env, shared_v3_ownership_env] {
-		if os.getenv(env) != '' || (if i == 0 { builders } else { ownership_builders }) < 2 {
+	for i, should_build in [build_plain, build_ownership] {
+		if !should_build {
 			continue
 		}
 		shared_v3 := os.join_path(ts.vtmp_dir, shared_v3_names[i] + $if windows { '.exe' } $else { '' })
@@ -1674,6 +1689,7 @@ fn (mut ts TestSession) prepare_shared_v3(files []string) {
 		args << ['-path', os.join_path(ts.vroot, 'vlib'), '-o', shared_v3, v3_src]
 		build := os.exec(args)
 		if build.exit_code == 0 && os.is_executable(shared_v3) {
+			env := if i == 0 { shared_v3_env } else { shared_v3_ownership_env }
 			values[env] = shared_v3
 		}
 	}
