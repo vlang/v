@@ -1,0 +1,62 @@
+{
+  "curl": {
+    "url": "https://curl.se/download/curl-8.23.0.tar.xz",
+    "sha256": "8dadd7d2536a314f982ad05a651b713f426bf7d02cc2c76cffb9796f2218e6c5",
+    "folder": "curl-8.23.0"
+  },
+  "archive": {
+    "url": "https://www.libarchive.org/downloads/libarchive-3.8.11.tar.xz",
+    "sha256": "a3dc0872b1b39da34dc18ef1b944f0f11ffd37425d70ae04be679279f1cf43d2",
+    "folder": "libarchive-3.8.11"
+  },
+  "mbedtls": {
+    "url": "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.8/mbedtls-3.6.8.tar.bz2",
+    "sha256": "bc54b818e87f49c0b3281dd85d24adaede0e63b4e822e3fbd49c005a38b9595b",
+    "folder": "mbedtls-3.6.8"
+  },
+  "lz4": {
+    "url": "https://github.com/lz4/lz4/releases/download/v1.11.1/lz4-1.11.1.tar.gz",
+    "sha256": "683fed08a844ad012196381e40badf80c0bbe4962959761416d41c9e67d77ec7",
+    "folder": "lz4-1.11.1"
+  },
+  "zstd": {
+    "url": "https://github.com/meta/zstd/releases/download/v1.6.0/zstd-1.6.0.tar.gz",
+    "sha256": "2ba599ae2a257976278e7e71e998433a387bfd18aa7b78678229fd5d84f5e9b8",
+    "folder": "zstd-1.6.0"
+  },
+  "xz": {
+    "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.xz",
+    "sha256": "4ce24038fd4221e0d13bc1a2de7a4db56e90b92b3bf75321f6c14be73f65de4b",
+    "folder": "xz-5.8.4"
+  },
+  "nghttp2": {
+    "url": "https://github.com/nghttp2/nghttp2/releases/download/v1.71.0/nghttp2-1.71.0.tar.xz",
+    "sha256": "c0f55121d88650e4b9227aec28cebaf664d2417ca60fe70be0f8d38829f52116",
+    "folder": "nghttp2-1.71.0"
+  },
+  "seccomp": {
+    "url": "https://github.com/seccomp/libseccomp/releases/download/v2.6.1/libseccomp-2.6.1.tar.gz",
+    "sha256": "501f66c667225d53791b97e1d7cf85ab764c297d04881f60f38f451c4b0ee1be",
+    "folder": "libseccomp-2.6.1"
+  },
+  "gpg-error": {
+    "url": "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.61.tar.bz2",
+    "sha256": "7a85413f2bc354f4f8aa832b718af122e48965e9e0eb9012ee659c13c6385c93",
+    "folder": "libgpg-error-1.61"
+  },
+  "assuan": {
+    "url": "https://gnupg.org/ftp/gcrypt/libassuan/libassuan-3.0.2.tar.bz2",
+    "sha256": "d2931cdad266e633510f9970e1a2f346055e351bb19f9b78912475b8074c36f6",
+    "folder": "libassuan-3.0.2"
+  },
+  "gpgme": {
+    "url": "https://gnupg.org/ftp/gcrypt/gpgme/gpgme-2.3.1.tar.bz2",
+    "sha256": "2bf94e0e677e5a8fc31f79dd323f91c5416b36fb851058bc1e8bce39f2642434",
+    "folder": "gpgme-2.3.1"
+  },
+  "acl": {
+    "url": "https://download.savannah.nongnu.org/releases/acl/acl-2.3.2.tar.xz",
+    "sha256": "97203a72cae99ab89a067fe2210c1cbf052bc492b479eca7d226d9830883b0bd",
+    "folder": "acl-2.3.2"
+  }
+}

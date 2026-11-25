@@ -1,0 +1,13 @@
+{
+  "gcc": {
+    "url": "https://gcc.gnu.org/pub/gcc/releases/gcc-16.2.0/gcc-16.2.0.tar.xz",
+    "folder": "gcc-16.2.0",
+    "sha256": "e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e",
+    "sha512": "c51c30ca7422d0cbecf504b2e0f33c3aca31e0f90a76b65217f465163fa6fa17b3f5de39e145c47e5bab90ac0ce7fff3b03c8d553ae36e01faaea5a50f8648d1"
+  },
+  "openlibm": {
+    "url": "https://github.com/JuliaMath/openlibm/archive/refs/tags/v0.8.8.tar.gz",
+    "folder": "openlibm-0.8.8",
+    "sha256": "721bab18ff37160fd9e903eb211ff26fdee38c3d0041d556b07d76089c435d17"
+  }
+}

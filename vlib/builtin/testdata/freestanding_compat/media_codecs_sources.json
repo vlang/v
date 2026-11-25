@@ -1,0 +1,32 @@
+{
+  "fribidi": {
+    "url": "https://github.com/fribidi/fribidi/releases/download/v1.0.18/fribidi-1.0.18.tar.xz",
+    "folder": "fribidi-1.0.18",
+    "sha256": "1de5e8073d035388b71d0b2d452b1da1f8caeea8a7702997b401fe1b6250727f"
+  },
+  "harfbuzz": {
+    "url": "https://github.com/harfbuzz/harfbuzz/releases/download/15.2.0/harfbuzz-15.2.0.tar.xz",
+    "folder": "harfbuzz-15.2.0",
+    "sha256": "e2ec49090744383cdbe7df808c1cedaafba06a97be8dc4211fe546ba585f12cb"
+  },
+  "ass": {
+    "url": "https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.xz",
+    "folder": "libass-0.17.5",
+    "sha256": "2dca25c0e0c837ddf00b52011b3f82cac1e4ddd3ad018227806b0c2288864acc"
+  },
+  "ffmpeg": {
+    "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+    "folder": "ffmpeg-9.0.2",
+    "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
+  },
+  "asound": {
+    "url": "https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.16.1.tar.bz2",
+    "folder": "alsa-lib-1.2.16.1",
+    "sha256": "f740db7f488255944ffd4428416ee3390a96742856916433df468c281436480e"
+  },
+  "nasm": {
+    "url": "https://www.nasm.us/pub/nasm/releasebuilds/3.02/nasm-3.02.tar.xz",
+    "folder": "nasm-3.02",
+    "sha256": "87336eba53b4acfe917424ab5d500d2b0054d9f5148d35c2273ccf2cfb712f0d"
+  }
+}
