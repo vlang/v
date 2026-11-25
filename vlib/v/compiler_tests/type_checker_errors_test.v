@@ -120,16 +120,18 @@ fn run_good_binary(name string, good_bin string, args ...string) string {
 	return run.output.trim_space()
 }
 
-fn run_runtime_bad(compiler string, name string, src string, expected string) {
+fn run_runtime_bad_cases(compiler string, name string, src string, cases map[string]string) {
 	out := unique_temp_path(name)
 	src_path := out + '.v'
 	os.write_file(src_path, src) or { panic(err) }
 	compile := run_type_checker_compiler(compiler, ['-nocache', src_path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.exec([out])
-	assert run.exit_code != 0, '${name}: expected runtime failure, got success: ${run.output}'
-	assert run.output.contains(expected), '${name}: expected `${expected}` in ${run.output}'
+	for case, expected in cases {
+		run := os.exec([out, case])
+		assert run.exit_code != 0, '${case}: expected runtime failure, got success: ${run.output}'
+		assert run.output.contains(expected), '${case}: expected `${expected}` in ${run.output}'
+	}
 }
 
 fn test_nested_local_redefinition_is_rejected() {
@@ -629,9 +631,35 @@ fn test_interface_container_as_cast_requirements() {
 		TypeCheckerRuntimeCase{'empty_interface_as_array_pattern', 'interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\txs := values(Any([1, 2]))\n\tprintln(xs[0] + xs[1])\n}\n', '3'},
 		TypeCheckerRuntimeCase{'empty_interface_as_map_pattern', "interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\tm := values(Any({'answer': 42}))\n\tprintln(m['answer'])\n}\n", '42'},
 	])
-	run_runtime_bad(v3_bin, 'empty_interface_as_array_non_array_payload', "interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\t_ := values(Any('not an array'))\n}\n", 'as cast: cannot cast interface value to `[]int`')
-	run_runtime_bad(v3_bin, 'empty_interface_as_array_wrong_element_payload', "interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\t_ := values(Any(['wrong element type']))\n}\n", 'as cast: cannot cast interface value to `[]int`')
-	run_runtime_bad(v3_bin, 'empty_interface_as_map_wrong_value_payload', "interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\t_ := values(Any({'answer': 'wrong value type'}))\n}\n", 'as cast: cannot cast interface value to `map[string]int`')
+	bad_casts := "import os
+
+interface Any {}
+fn values(x Any) []int {
+	return x as []int
+}
+fn map_values(x Any) map[string]int {
+	return x as map[string]int
+}
+fn main() {
+	match os.args[1] {
+		'empty_interface_as_array_non_array_payload' {
+			_ := values(Any('not an array'))
+		}
+		'empty_interface_as_array_wrong_element_payload' {
+			_ := values(Any(['wrong element type']))
+		}
+		'empty_interface_as_map_wrong_value_payload' {
+			_ := map_values(Any({'answer': 'wrong value type'}))
+		}
+		else { panic('unknown fixture') }
+	}
+}
+"
+	run_runtime_bad_cases(v3_bin, 'bad_interface_container_casts', bad_casts, {
+		'empty_interface_as_array_non_array_payload':     'as cast: cannot cast interface value to `[]int`'
+		'empty_interface_as_array_wrong_element_payload': 'as cast: cannot cast interface value to `[]int`'
+		'empty_interface_as_map_wrong_value_payload':     'as cast: cannot cast interface value to `map[string]int`'
+	})
 }
 
 fn test_review_generic_call_diagnostics() {
@@ -2256,8 +2284,10 @@ fn test_defer_result_review_regressions() {
 		TypeCheckerRejection{'bad_out_of_range_multi_return_defer_result', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(2)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', 'index 2 out of range of 2 return types'},
 		TypeCheckerRejection{'bad_indexed_scalar_defer_result', 'fn f() int {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n', '`res` index can only be used with multi-return functions'},
 	])
-	run_bad(v3_bin, 'bad_defer_result_trailing_argument_tokens', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', 'expected `)` immediately after the `$res` index')
-	run_bad(v3_bin, 'bad_bare_defer_result', 'fn f() int {\n\tdefer {\n\t\t_ := $res\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n', 'expected `(` after `$res`')
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_defer_result_trailing_argument_tokens', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', 'expected `)` immediately after the `$res` index'},
+		TypeCheckerRejection{'bad_bare_defer_result', 'fn f() int {\n\tdefer {\n\t\t_ := $res\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n', 'expected `(` after `$res`'},
+	])
 }
 
 fn test_defer_result_requires_function_exit_defer() {
