@@ -4759,3 +4759,29 @@ fn main() {
 	assert result.exit_code != 0, result.output
 	assert result.output.count('cannot modify through an immutable borrow') == 2, result.output
 }
+
+fn test_ownership_once_cell_borrows_are_immutable() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'arc_once_immutable', r'
+import sync.arc
+
+struct Counter {
+mut:
+	value int
+}
+
+fn (mut c Counter) advance() {
+	c.value++
+}
+
+fn main() {
+	mut cell := arc.new_once_with(Counter{})
+	mut x := cell.get_or_init(fn () Counter { return Counter{} })
+	x.advance()
+	mut y := cell.get() or { panic("missing") }
+	y.advance()
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.count('cannot modify through an immutable borrow') == 2, result.output
+}
