@@ -1,26 +1,13 @@
 import os
+import v.tempname
 
-const export_attr_vexe = @VEXE
-const export_attr_tests_dir = os.dir(@FILE)
-const export_attr_v3_dir = os.dir(export_attr_tests_dir)
-const export_attr_vlib_dir = os.dir(export_attr_v3_dir)
-const export_attr_v3_src = os.join_path(export_attr_v3_dir, 'v.v')
-
-fn export_attr_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_export_attr_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([export_attr_vexe, '-gc', 'none', '-path',
-			'${export_attr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${export_attr_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn export_attr_fixture_dir(name string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_export_attr_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	return root
 }
 
-fn export_attr_project(name string, files map[string]string) string {
-	root := os.join_path(os.temp_dir(), 'v3_export_attr_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn export_attr_write_project(root string, files map[string]string) {
 	mut rels := files.keys()
 	rels.sort()
 	for rel in rels {
@@ -28,20 +15,20 @@ fn export_attr_project(name string, files map[string]string) string {
 		os.mkdir_all(os.dir(path)) or { panic(err) }
 		os.write_file(path, files[rel]) or { panic(err) }
 	}
-	return root
 }
 
-fn export_attr_compile(v3_bin string, main_file string, output string) os.Result {
-	return os.exec([v3_bin, main_file, '-b', 'c', '-o', output])
+fn export_attr_compile(main_file string, output string) os.Result {
+	return os.exec([@VEXE, main_file, '-b', 'c', '-o', output])
 }
 
-fn export_attr_compile_without_memory_limit(v3_bin string, main_file string, output string) os.Result {
-	return os.exec([v3_bin, '-no-memory-limit', main_file, '-b', 'c', '-o', output])
+fn export_attr_compile_without_memory_limit(main_file string, output string) os.Result {
+	return os.exec([@VEXE, '-no-memory-limit', main_file, '-b', 'c', '-o', output])
 }
 
 fn test_exported_imported_function_is_rooted_and_emitted_as_raw_symbol() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('imported_link', {
+	root := export_attr_fixture_dir('imported_link')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v':       'module main
 
 import expmod
@@ -75,7 +62,7 @@ fn helper_unused() int {
 "
 	})
 	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
@@ -92,8 +79,9 @@ fn helper_unused() int {
 }
 
 fn test_duplicate_export_name_is_rejected() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('duplicate', {
+	root := export_attr_fixture_dir('duplicate')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 @[export: 'raw_duplicate']
@@ -105,14 +93,15 @@ fn two() {}
 fn main() {}
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('duplicate export name `raw_duplicate`'), compile.output
 }
 
 fn test_disabled_export_attr_does_not_register_raw_symbol() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('disabled_export', {
+	root := export_attr_fixture_dir('disabled_export')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 @[if missing_export_flag ?]
@@ -132,7 +121,7 @@ fn main() {
 "
 	})
 	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
@@ -144,8 +133,9 @@ fn main() {
 }
 
 fn test_export_name_collision_with_runtime_symbol_is_rejected() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('runtime_collision', {
+	root := export_attr_fixture_dir('runtime_collision')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 @[export: 'v_free']
@@ -154,14 +144,15 @@ fn collides_with_runtime_free() {}
 fn main() {}
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('export name `v_free`'), compile.output
 }
 
 fn test_export_name_matching_natural_symbol_uses_function_directly() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('natural_collision', {
+	root := export_attr_fixture_dir('natural_collision')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 @[export: 'natural_name']
@@ -173,7 +164,7 @@ fn main() {}
 "
 	})
 	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
 	assert c_code.count('double natural_name(double value) {') == 1, c_code
@@ -181,8 +172,9 @@ fn main() {}
 }
 
 fn test_export_name_matching_natural_symbol_keeps_c_abi_int() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('natural_c_abi_int', {
+	root := export_attr_fixture_dir('natural_c_abi_int')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 @[export: 'natural_add']
@@ -207,7 +199,7 @@ fn main() {
 "
 	})
 	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
@@ -228,8 +220,9 @@ fn test_natural_name_export_links_from_c_object_file() {
 		return
 	}
 	cc := os.find_abs_path_of_executable('cc') or { return }
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('natural_object_file', {
+	root := export_attr_fixture_dir('natural_object_file')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'lib.v':  "module main
 
 @[export: 'natural_mul']
@@ -246,7 +239,7 @@ int main(void) {
 '
 	})
 	object := os.join_path(root, 'lib.o')
-	compile := os.exec([v3_bin, '-gc', 'none', '-cc', cc, '-is_o', '-o', object,
+	compile := os.exec([@VEXE, '-gc', 'none', '-cc', cc, '-is_o', '-o', object,
 		os.join_path(root, 'lib.v')])
 	assert compile.exit_code == 0, compile.output
 	host := os.join_path(root, 'host')
@@ -258,8 +251,9 @@ int main(void) {
 }
 
 fn test_export_name_of_libc_remapped_natural_symbol_prefixes_main_function() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('libc_remapped_natural_collision', {
+	root := export_attr_fixture_dir('libc_remapped_natural_collision')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 fn rint() int {
@@ -280,7 +274,7 @@ fn main() {
 	// A main-module function whose natural C symbol an export owns is prefixed in C
 	// instead of rejected, so both functions keep working.
 	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert !compile.output.contains('redefinition'), compile.output
@@ -293,8 +287,9 @@ fn main() {
 }
 
 fn test_export_main_collision_with_top_level_script_entry_is_rejected() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('top_level_script_export_main_collision', {
+	root := export_attr_fixture_dir('top_level_script_export_main_collision')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "
 @[export: 'main']
 fn exported_entry() {}
@@ -302,7 +297,7 @@ fn exported_entry() {}
 println('script')
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('export name `main` for `exported_entry`'), compile.output
 	assert compile.output.contains('synthetic entry point `main`'), compile.output
@@ -311,8 +306,9 @@ println('script')
 }
 
 fn test_export_main_collision_with_top_level_match_entry_is_rejected() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('top_level_match_export_main_collision', {
+	root := export_attr_fixture_dir('top_level_match_export_main_collision')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "
 @[export: 'main']
 fn exported_entry() {}
@@ -323,7 +319,7 @@ match 1 {
 }
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('export name `main` for `exported_entry`'), compile.output
 	assert compile.output.contains('synthetic entry point `main`'), compile.output
@@ -332,8 +328,9 @@ match 1 {
 }
 
 fn test_export_main_collision_with_test_harness_entry_is_rejected() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('test_harness_export_main_collision', {
+	root := export_attr_fixture_dir('test_harness_export_main_collision')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main_test.v': "
 @[export: 'main']
 fn exported_entry() {}
@@ -341,7 +338,7 @@ fn exported_entry() {}
 fn test_ok() {}
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main_test.v'), os.join_path(root,
+	compile := export_attr_compile(os.join_path(root, 'main_test.v'), os.join_path(root,
 		'app'))
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('export name `main` for `exported_entry`'), compile.output
@@ -351,8 +348,9 @@ fn test_ok() {}
 }
 
 fn test_export_main_in_non_main_test_module_reports_synthetic_collision() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('test_harness_non_main_module_export_main', {
+	root := export_attr_fixture_dir('test_harness_non_main_module_export_main')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'foo_test.v': "module foo
 
 @[export: 'main']
@@ -361,7 +359,7 @@ fn exported_entry() {}
 fn test_ok() {}
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'foo_test.v'), os.join_path(root,
+	compile := export_attr_compile(os.join_path(root, 'foo_test.v'), os.join_path(root,
 		'app'))
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('export name `main` for `foo.exported_entry`'), compile.output
@@ -371,8 +369,9 @@ fn test_ok() {}
 }
 
 fn test_invalid_export_names_are_rejected() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('invalid_names', {
+	root := export_attr_fixture_dir('invalid_names')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 @[export: '1bad']
@@ -384,15 +383,16 @@ fn bad_keyword() {}
 fn main() {}
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('export name `1bad` should be a valid identifier'), compile.output
 	assert compile.output.contains('export name `for` should be a valid identifier'), compile.output
 }
 
 fn test_invalid_imported_export_name_is_rejected_before_cgen() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('invalid_imported_name', {
+	root := export_attr_fixture_dir('invalid_imported_name')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v':          'module main
 
 import badexp
@@ -409,15 +409,16 @@ pub fn answer() int {
 }
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0
 	assert compile.output.contains('export name `1bad` should be a valid identifier'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
 fn test_export_name_reserved_by_v3_c_preamble_is_rejected() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('preamble_reserved_name', {
+	root := export_attr_fixture_dir('preamble_reserved_name')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 @[export: 'bool']
@@ -460,7 +461,7 @@ fn collides_with_runtime_optional() {}
 fn main() {}
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('export name `bool` should be a valid identifier'), compile.output
 	assert compile.output.contains('export name `string` should be a valid identifier'), compile.output
@@ -475,8 +476,9 @@ fn main() {}
 }
 
 fn test_generic_export_is_rejected_fail_closed() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('generic_export', {
+	root := export_attr_fixture_dir('generic_export')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 @[export: 'raw_generic']
@@ -487,14 +489,15 @@ fn raw_generic[T](value T) T {
 fn main() {}
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('generic functions cannot be exported'), compile.output
 }
 
 fn test_exported_function_must_name_params() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('unnamed_param', {
+	root := export_attr_fixture_dir('unnamed_param')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 @[export: 'raw_unnamed']
@@ -505,14 +508,15 @@ fn unnamed(int) int {
 fn main() {}
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('functions with type only params can not have bodies'), compile.output
 }
 
 fn test_export_wrapper_fixed_array_return_uses_return_wrapper_type() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('fixed_array_return', {
+	root := export_attr_fixture_dir('fixed_array_return')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 @[export: 'raw_numbers']
@@ -528,7 +532,7 @@ fn main() {}
 "
 	})
 	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
 	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void);'), c_code
@@ -540,8 +544,9 @@ fn main() {}
 }
 
 fn test_export_wrapper_fn_pointer_return_uses_fn_pointer_typedef() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('fn_pointer_return', {
+	root := export_attr_fixture_dir('fn_pointer_return')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 type Callback = fn () int
@@ -559,7 +564,7 @@ fn main() {}
 "
 	})
 	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
 	assert c_code.contains('typedef i64 (*_fn_ptr_'), c_code
@@ -571,8 +576,9 @@ fn main() {}
 }
 
 fn test_export_wrapper_for_veb_handler_forwards_implicit_ctx() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('veb_implicit_ctx_export_wrapper', {
+	root := export_attr_fixture_dir('veb_implicit_ctx_export_wrapper')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 import veb
@@ -593,7 +599,7 @@ fn main() {}
 "
 	})
 	c_path := os.join_path(root, 'app.c')
-	compile := export_attr_compile_without_memory_limit(v3_bin, os.join_path(root, 'main.v'),
+	compile := export_attr_compile_without_memory_limit(os.join_path(root, 'main.v'),
 		c_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_path) or { panic(err) }
@@ -603,8 +609,9 @@ fn main() {}
 }
 
 fn test_export_wrapper_for_veb_handler_underscore_param_matches_implicit_ctx_position() {
-	v3_bin := export_attr_build_v3()
-	root := export_attr_project('veb_implicit_ctx_underscore_export_wrapper', {
+	root := export_attr_fixture_dir('veb_implicit_ctx_underscore_export_wrapper')
+	defer { os.rmdir_all(root) or {} }
+	export_attr_write_project(root, {
 		'main.v': "module main
 
 import veb
@@ -624,7 +631,7 @@ fn main() {}
 "
 	})
 	c_path := os.join_path(root, 'app.c')
-	compile := export_attr_compile_without_memory_limit(v3_bin, os.join_path(root, 'main.v'),
+	compile := export_attr_compile_without_memory_limit(os.join_path(root, 'main.v'),
 		c_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_path) or { panic(err) }
