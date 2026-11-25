@@ -84,9 +84,75 @@ fn (tc &TypeChecker) ownership_scoped_thread_source(id flat.NodeId) ?string {
 	return if ownership_scoped_thread_is_scalar(typ) { source.value } else { none }
 }
 
+struct ScopedThreadBorrow {
+	source string
+	field  string
+	pos    flat.NodeId
+}
+
+// Collect the loans supplied by a scoped spawn argument. A record's borrowed
+// fields must come directly from the caller, so the initializer provides the
+// complete set of scalar storage the worker can read.
+fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, expected Type) ?[]ScopedThreadBorrow {
+	actual := unalias_type(tc.resolve_type(id))
+	formal := unalias_type(expected)
+	if actual is Pointer && formal is Pointer {
+		if !semantic_types_equal(unalias_type(*actual.base_type), unalias_type(*formal.base_type)) {
+			return none
+		}
+		source := tc.ownership_scoped_thread_source(id) or { return none }
+		return [ScopedThreadBorrow{ source: source, pos: id }]
+	}
+	if actual !is Struct || !semantic_types_equal(actual, formal) {
+		return none
+	}
+	name_id := (actual as Struct).name_id
+	literal := tc.a.node(tc.ownership_unwrap_expr(id))
+	if literal.kind != .struct_init || tc.struct_embed_receiver_names(name_id).len != 0
+		|| tc.ownership_type_has_explicit_drop(name_id)
+		|| receiver_method_name_candidates(actual, 'free', tc.cur_module).any(it in tc.fn_ret_types) {
+		return none
+	}
+	mut result := []ScopedThreadBorrow{}
+	for field in tc.struct_fields_for_type(name_id) {
+		if type_contains_unknown(field.typ) || receiver_method_name_candidates(actual, field.name, tc.cur_module).any(it in tc.fn_ret_types) {
+			return none
+		}
+		field_type := unalias_type(field.typ)
+		if field_type is Pointer {
+			field_id := tc.ownership_scoped_thread_field_initializer(literal, field.name) or { return none }
+			actual_field := unalias_type(tc.resolve_type(field_id))
+			if actual_field is Pointer {
+				if !semantic_types_equal(unalias_type(*actual_field.base_type), unalias_type(*field_type.base_type)) {
+					return none
+				}
+			} else {
+				return none
+			}
+			source := tc.ownership_scoped_thread_source(field_id) or { return none }
+			result << ScopedThreadBorrow{ source: source, field: field.name, pos: field_id }
+			continue
+		}
+		if _ := tc.ownership_thread_transfer_problem(field_type, .transfer, 0, mut map[u64]bool{}) {
+			return none
+		}
+	}
+	return if result.len > 0 { result } else { none }
+}
+
+fn (tc &TypeChecker) ownership_scoped_thread_field_initializer(literal &flat.Node, name string) ?flat.NodeId {
+	for i in 0 .. literal.children_count {
+		field := tc.a.child_node(literal, i)
+		if field.kind == .field_init && field.value == name && field.children_count == 1 {
+			return tc.a.child(field, 0)
+		}
+	}
+	return none
+}
+
 // The join bounds the worker lifetime. Check the resolved V body to prove
 // that the only uses of the borrowed parameter read the scalar's value.
-fn (tc &TypeChecker) ownership_scoped_thread_reads_parameter(info CallInfo, index int) bool {
+fn (tc &TypeChecker) ownership_scoped_thread_reads_parameter(info CallInfo, index int, expected Type, borrows []ScopedThreadBorrow) bool {
 	module_name := tc.fn_type_modules[info.name] or { return false }
 	file := tc.fn_type_files[info.name] or { return false }
 	if file.ends_with('.vh') {
@@ -102,17 +168,24 @@ fn (tc &TypeChecker) ownership_scoped_thread_reads_parameter(info CallInfo, inde
 	if parameter.kind != .param || parameter.value == '' {
 		return false
 	}
+	mut fields := map[string]bool{}
+	formal := unalias_type(expected)
+	if formal is Struct {
+		for field in tc.struct_fields_for_type(formal.name_id) {
+			fields[field.name] = borrows.any(it.field == field.name)
+		}
+	}
 	for i in 0 .. fn_node.children_count {
 		child := tc.a.child(fn_node, i)
 		if tc.a.node(child).kind != .param
-			&& !tc.ownership_scoped_thread_only_reads(child, parameter.value, 0) {
+			&& !tc.ownership_scoped_thread_only_reads(child, parameter.value, fields, 0) {
 			return false
 		}
 	}
 	return true
 }
 
-fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name string, depth int) bool {
+fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name string, fields map[string]bool, depth int) bool {
 	if depth > 128 {
 		return false
 	}
@@ -121,10 +194,23 @@ fn (tc &TypeChecker) ownership_scoped_thread_only_reads(id flat.NodeId, name str
 		return false
 	}
 	if node.kind in [.ident, .param] && node.value == name {
-		return tc.ownership_scoped_thread_scalar_read(id)
+		if fields.len == 0 {
+			return tc.ownership_scoped_thread_scalar_read(id)
+		}
+		field_id := tc.direct_parent_id(id)
+		field := tc.a.node(field_id)
+		if field.kind != .selector {
+			return false
+		}
+		borrowed := fields[field.value] or { return false }
+		parent := tc.a.node(tc.direct_parent_id(field_id))
+		if parent.kind == .call && tc.a.child(parent, 0) == field_id {
+			return false
+		}
+		return !borrowed || tc.ownership_scoped_thread_scalar_read(field_id)
 	}
 	for i in 0 .. node.children_count {
-		if !tc.ownership_scoped_thread_only_reads(tc.a.child(node, i), name, depth + 1) {
+		if !tc.ownership_scoped_thread_only_reads(tc.a.child(node, i), name, fields, depth + 1) {
 			return false
 		}
 	}
@@ -177,7 +263,8 @@ fn (mut tc TypeChecker) ownership_record_scoped_thread_borrows(handle string, rh
 	if call.kind != .call {
 		return
 	}
-	info := tc.resolve_call_info(call_id, *call) or { return }
+	declared := tc.resolve_call_info(call_id, *call) or { return }
+	info := tc.specialized_plain_generic_call_info(*call, declared)
 	if recv := tc.ownership_thread_receiver(tc.a.child(call, 0), info) {
 		expected := info.params[0] or { tc.resolve_type(recv) }
 		tc.ownership_record_scoped_thread_borrow(recv, info, 0, expected, handle, join_site)
@@ -194,27 +281,26 @@ fn (mut tc TypeChecker) ownership_record_scoped_thread_borrows(handle string, rh
 }
 
 fn (mut tc TypeChecker) ownership_record_scoped_thread_borrow(arg flat.NodeId, info CallInfo, param_idx int, expected Type, handle string, join_site flat.NodeId) {
-	if unalias_type(expected) !is Pointer || tc.call_param_is_mut(info, param_idx) {
+	if tc.call_param_is_mut(info, param_idx) {
 		return
 	}
-	source := tc.ownership_scoped_thread_source(arg) or { return }
-	mut state := tc.ownership_state()
-	if borrows := state.borrowed_vars[source] {
-		for borrow in borrows {
-			if borrow.thread_join_site == join_site && borrow.borrower == handle {
-				return
+	borrows := tc.ownership_scoped_thread_argument_borrows(arg, expected) or { return }
+	for borrow in borrows {
+		mut state := tc.ownership_state()
+		if active := state.borrowed_vars[borrow.source] {
+			if active.any(it.thread_join_site == join_site && it.borrower == handle) {
+				continue
 			}
 		}
+		state.scoped_thread_loans_seen = true
+		tc.ownership_add_borrow_info(borrow.source, BorrowInfo{
+			borrower:         handle
+			pos:              borrow.pos
+			// Reserve the referent for the worker until its defer joins.
+			is_mut:           true
+			thread_join_site: join_site
+		})
 	}
-	state.scoped_thread_loans_seen = true
-	tc.ownership_add_borrow_info(source, BorrowInfo{
-		borrower:         handle
-		pos:              arg
-		// Even an immutable pointer can be used by an atomic API. Reserve
-		// the scalar for the worker until its defer has joined.
-		is_mut:           true
-		thread_join_site: join_site
-	})
 }
 
 fn (mut tc TypeChecker) ownership_reject_scoped_thread_access(name string, id flat.NodeId) bool {

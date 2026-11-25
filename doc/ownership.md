@@ -462,6 +462,29 @@ fn main() {
 }
 ```
 
+A worker can also take a struct literal by value with scalar references in named
+fields. Use a struct with default field destruction and initialize each
+reference with the address of a local immutable scalar. The worker can use
+its other transferable fields and read the borrowed fields as scalar values.
+Keep the literal at the spawn site so the checker can find each borrow's source.
+
+```v okfmt
+struct Job {
+	weight &int
+	count  int
+}
+
+fn run_job(job Job) int {
+	return *job.weight * job.count
+}
+
+fn main() {
+	weight := 3
+	worker := spawn run_job(Job{ weight: &weight, count: 7 })
+	defer { worker.wait() }
+}
+```
+
 ## Full example
 
 From the Rust book, translated to V:

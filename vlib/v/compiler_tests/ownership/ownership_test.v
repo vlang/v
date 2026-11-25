@@ -4768,3 +4768,137 @@ fn main() {
 ')
 	assert result.exit_code == 0, result.output
 }
+
+fn test_ownership_scoped_worker_borrows_scalar_fields_of_its_argument() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_struct_fields', r'
+struct Job {
+	value &int
+	extra &int
+	increment int
+}
+
+fn worker(job Job, results chan int) {
+	results <- *job.value + *job.extra + job.increment
+}
+
+fn main() {
+	value := 20
+	extra := 21
+	results := chan int{cap: 1}
+	{
+		handle := spawn worker(Job{value: &value, extra: &extra, increment: 1}, results)
+		defer { handle.wait() }
+	}
+	assert <-results == value + extra + 1
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_scoped_worker_captured_fields_cannot_escape() {
+	v3_bin := ownership_build_v3()
+	for statement in ['escaped = job.value', 'retain(job)', 'job.retain_it()'] {
+		result := run_ownership_check_with_flags(v3_bin, 'scoped_struct_escape', '
+__global escaped &int
+
+struct Job {
+	value &int
+}
+
+fn retain(job Job) {
+	escaped = job.value
+}
+
+fn (job Job) retain_it() {
+	escaped = job.value
+}
+
+fn worker(job Job) {
+	${statement}
+}
+
+fn main() {
+	value := 42
+	handle := spawn worker(Job{value: &value})
+	defer { handle.wait() }
+}
+', ['-ownership', '-enable-globals'])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('scoped thread borrow is read without escaping'), result.output
+	}
+}
+
+fn test_ownership_scoped_worker_struct_loans_protect_caller_storage() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_struct_loan', r'
+struct Job {
+	value &int
+}
+fn worker(job Job) {
+	assert *job.value == 42
+}
+
+fn main() {
+	value := 42
+	handle := spawn worker(Job{value: &value})
+	defer { handle.wait() }
+	assert value == 42
+	handle.wait()
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot use `value` until scoped thread `handle` has joined'), result.output
+	assert result.output.contains('cannot use scoped thread handle `handle` outside its deferred wait'), result.output
+}
+
+fn test_ownership_scoped_worker_rejects_custom_destructors_for_captured_fields() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check_with_flags(v3_bin, 'scoped_struct_drop', r'
+__global escaped &int
+
+struct Job implements Drop {
+	value &int
+}
+
+fn (mut job Job) drop() {
+	escaped = job.value
+}
+
+fn worker(job Job) {
+	assert *job.value == 42
+}
+
+fn main() {
+	value := 42
+	handle := spawn worker(Job{value: &value})
+	defer { handle.wait() }
+}
+', ['-ownership', '-enable-globals'])
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('references cannot be transferred between threads'), result.output
+}
+
+fn test_ownership_scoped_worker_infers_generic_captured_fields() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_generic_fields', r'
+struct Job[T] {
+	value &T
+}
+
+fn run_job[T](job Job[T], results chan T) {
+	results <- *job.value
+}
+
+fn main() {
+	value := 42
+	results := chan int{cap: 1}
+	{
+		worker := spawn run_job(Job[int]{value: &value}, results)
+		defer { worker.wait() }
+	}
+	assert <-results == value
+}
+')
+	assert result.exit_code == 0, result.output
+}
