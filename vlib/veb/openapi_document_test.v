@@ -245,8 +245,8 @@ fn test_typed_openapi_schema_requests_responses_and_security() {
 	assert 'hidden' !in properties.as_map()
 	assert 'nullable' !in api_at(properties, 'optional').as_map()
 	assert 'optional' !in api_at(json2.Any(dto), 'required').as_array().map(it.str())
-	query := api_at(raw, 'paths', '/v1/nested/items/{id}', 'get', 'parameters').as_array()
-	assert query.any(api_at(it, 'name').str() == 'name' && api_at(it, 'in').str() == 'query')
+	get := api_at(raw, 'paths', '/v1/nested/items/{id}', 'get')
+	assert api_at(get, 'requestBody', 'content', 'application/json', 'schema', '$ref').str().ends_with('TypedApiDto')
 	assert api_at(raw, 'components', 'schemas', typeof(TypedApiNode{}).name, 'properties', 'children', 'items', '$ref').str().ends_with('TypedApiNode')
 	assert doc.json(false)! == doc.json(false)!
 	assert json2.decode[json2.Any](doc.json(true)!)! == raw
@@ -1115,8 +1115,8 @@ fn test_handler_typed_metadata_follows_dispatcher_and_mounts() {
 		assert '200' !in api_at(post, 'responses').as_map()
 		for verb in ['get', 'delete', 'head'] {
 			operation := api_at(raw, 'paths', prefix + '/find', verb)
-			assert 'requestBody' !in operation.as_map()
-			assert api_at(operation, 'parameters').as_array().any(api_at(it, 'name').str() == 'name')
+			assert api_at(operation, 'requestBody', 'content', 'application/json', 'schema',
+				'$ref').str().ends_with('TypedApiDto')
 		}
 		$if openapi_extra ? {
 			assert prefix + '/extra' in api_at(raw, 'paths').as_map()

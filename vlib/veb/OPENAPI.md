@@ -142,9 +142,12 @@ work here, including nested DTOs, optional fields, JSON names, maps, arrays, enu
 V attributes currently carry scalar metadata rather than type arguments, so the handler links
 to this typed companion instead of naming DTO types in attribute strings.
 
-Use `request[T]` with no options for a JSON body on POST/PUT/PATCH or query fields on
-GET/DELETE/HEAD. `response[T]` supports multiple status codes and inherits `success_field` for
-successful responses. `raw_response` supports full custom envelopes. Registering explicit
+Use `request[T]` with no options for a JSON body on POST/PUT/PATCH. GET/DELETE/HEAD use query
+fields when every DTO field is a top-level `string`, `int` or `bool`; DTOs with nested values or
+arrays default to a JSON body so fields are not silently omitted. An explicit `query` value
+overrides this selection. `response[T]` supports multiple status codes and inherits
+`success_field` for successful responses. `raw_response` supports full custom envelopes.
+Registering explicit
 `doc.request`, `doc.response` or `doc.raw_response` after `add_app()` overrides the corresponding
 reflected body or response; query fields with the same name are replaced. Handlers without an
 `OpenApi` attribute keep the existing defaults.

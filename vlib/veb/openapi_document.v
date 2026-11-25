@@ -111,7 +111,7 @@ pub:
 @[params]
 pub struct OpenApiRequest {
 pub:
-	// none selects query for GET/DELETE/HEAD and a body for other methods.
+	// none selects query for scalar-only GET/DELETE/HEAD DTOs and a body otherwise.
 	query       ?bool
 	media_type  string = 'application/json'
 	required    bool   = true
@@ -439,7 +439,7 @@ pub fn (mut doc OpenApiDocument) request[T](path string, method http.Method, opt
 	mut item := (doc.paths[key] or { return error('unknown OpenAPI path: ${key}') }).clone()
 	mut operation := (item[verb] or { return error('unknown OpenAPI method: ${verb} ${key}') }).clone()
 	schema := doc.schema[T]()
-	query := options.query or { method in [.get, .delete, .head] }
+	query := options.query or { openapi_query_request[T](method) }
 	if query {
 		mut parameters := (operation['parameters'] or { json2.Any([]json2.Any{}) }).as_array().clone()
 		$if T is $struct {
@@ -491,6 +491,21 @@ pub fn (mut doc OpenApiDocument) request[T](path string, method http.Method, opt
 	}
 	item[verb] = operation
 	doc.paths[key] = item
+}
+
+fn openapi_query_request[T](method http.Method) bool {
+	mut result := method in [.get, .delete, .head]
+	$if T is $struct {
+		$for field in T.fields {
+			$if field.typ is string || field.typ is int || field.typ is bool {
+			} $else {
+				result = false
+			}
+		}
+	} $else {
+		result = false
+	}
+	return result
 }
 
 // response adds a typed response; only successful responses inherit success_field wrapping.
