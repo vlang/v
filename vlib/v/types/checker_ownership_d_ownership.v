@@ -7313,11 +7313,13 @@ fn (mut tc TypeChecker) ownership_merge_branch_borrows(group OwnershipBranchGrou
 	mut st := tc.ownership_state()
 	for branch in group.branches {
 		for name, borrows in branch.borrowed_vars {
-			if name !in group.base.owned_vars && name !in group.base.borrowed_vars && !tc.ownership_storage_participates(name) {
-				continue
-			}
+			tracked := name in group.base.owned_vars || name in group.base.borrowed_vars
+				|| tc.ownership_storage_participates(name)
 			mut merged := st.borrowed_vars[name] or { []BorrowInfo{} }
 			for borrow in borrows {
+				if !tracked && !tc.valid_node_id(borrow.thread_join_site) {
+					continue
+				}
 				mut exists := false
 				for existing in merged {
 					if existing.borrower == borrow.borrower && existing.pos == borrow.pos
