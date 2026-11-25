@@ -375,14 +375,6 @@ fn check_sql_alias_mutability(expressions []string, valid bool) ! {
 		sql_alias_compile_and_check, sql_alias_public_module)!
 }
 
-fn test_alias_methods_require_ordinary_shared_locks_in_sql_values() {
-	check_sql_alias_lock_matrix('ordinary_lock', ['shared_values'], {
-		'mutate':  'aliases'
-		'inspect': 'renamed'
-		'clone':   'aliases'
-	}, false)!
-}
-
 struct SqlAliasQueryCase {
 	expression    string
 	import_name   string = 'aliases'
@@ -445,7 +437,7 @@ fn check_sql_alias_query_batch(cases []SqlAliasQueryCase, label string, queries 
 	}
 }
 
-fn check_sql_alias_lock_matrix(label string, lock_receivers []string, imports_by_method map[string]string, lock_whole_array bool) ! {
+fn sql_alias_lock_cases(lock_receivers []string, imports_by_method map[string]string, lock_whole_array bool) []SqlAliasQueryCase {
 	mut cases := []SqlAliasQueryCase{}
 	for method, import_name in imports_by_method {
 		for lock_receiver in lock_receivers {
@@ -470,6 +462,10 @@ fn check_sql_alias_lock_matrix(label string, lock_receivers []string, imports_by
 			}
 		}
 	}
+	return cases
+}
+
+fn check_sql_alias_lock_cases(label string, cases []SqlAliasQueryCase) ! {
 	check_sql_alias_query_batch(cases.filter(it.diagnostic == ''), '${label}_accepted',
 		sql_alias_visibility_queries(true), sql_alias_compile_and_check, sql_alias_public_module)!
 	check_sql_alias_query_batch(cases.filter(it.diagnostic != ''), '${label}_rejected',
@@ -480,18 +476,24 @@ fn test_alias_methods_keep_shared_element_and_captured_array_lock_keys_in_sql_va
 	receivers := ['shared_items[0]', '(shared_collection.values)[0]', 'parameter_items[0]',
 		"holders['primary'].values", "(holders [ 'primary' ]).values", 'closure_items[0]',
 		'parameter_closure_items[0]', 'nested_closure_items[0]']
-	check_sql_alias_lock_matrix('shared_element_and_captured_array_locks', receivers, {
+	cases := sql_alias_lock_cases(receivers, {
 		'mutate': 'aliases'
 		'clone':  'renamed'
-	}, false)!
+	}, false)
+	check_sql_alias_lock_cases('shared_element_and_captured_array_locks', cases)!
 }
 
-fn test_alias_methods_keep_whole_shared_array_locks_in_sql_values() {
-	receivers := ['whole_parameter_items', 'whole_parameter_closure_items']
-	check_sql_alias_lock_matrix('whole_array_lock', receivers, {
+fn test_alias_methods_require_ordinary_and_whole_array_locks_in_sql_values() {
+	mut cases := sql_alias_lock_cases(['shared_values'], {
+		'mutate':  'aliases'
+		'inspect': 'renamed'
+		'clone':   'aliases'
+	}, false)
+	cases << sql_alias_lock_cases(['whole_parameter_items', 'whole_parameter_closure_items'], {
 		'mutate': 'aliases'
 		'clone':  'aliases'
-	}, true)!
+	}, true)
+	check_sql_alias_lock_cases('ordinary_and_whole_array_locks', cases)!
 }
 
 fn test_inherited_alias_methods_keep_resolution_and_visibility_in_sql_values() {
