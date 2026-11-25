@@ -1,18 +1,17 @@
 import os
 import v.tempname
 
-fn run_bad_ierror_payload(name string, source string, expected string, detail string) {
+fn ierror_payload_rejection(name string, source string) string {
 	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_${name}_${tempname.unique_token()}')
 	os.mkdir(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(root, 'v3_ierror_payload_${name}_out')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-nocolor', '-o', bin])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains(expected), compile.output
-	assert compile.output.contains(detail), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
+	return compile.output
 }
 
 fn test_ierror_payloads_are_preserved_for_typed_and_void_results() {
@@ -216,8 +215,8 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_bare_ierror_payload_is_not_call_argument_value() {
-	run_bad_ierror_payload('bad_call_arg', "struct CustomError {
+fn test_ierror_rejects_invalid_payload_uses() {
+	output := ierror_payload_rejection('invalid_payload_uses', "struct CustomError {
 	text string
 }
 
@@ -233,81 +232,45 @@ fn takes(x int) {
 	_ = x
 }
 
-fn main() {
+fn check_call_args() {
 	takes(CustomError{
 		text: 'payload'
 	})
-}
-",
-		'cannot use', 'CustomError')
-	run_bad_ierror_payload('bad_ierror_call_arg', "fn takes(x int) {
-	_ = x
-}
-
-fn main() {
 	err := error('boom')
 	takes(err)
-}
-",
-		'cannot use', 'IError')
-}
-
-fn test_bare_ierror_payload_is_not_assigned_to_unwrapped_result_value() {
-	run_bad_ierror_payload('bad_assignment', "struct CustomError {
-	text string
-}
-
-fn (err CustomError) msg() string {
-	return err.text
-}
-
-fn (err CustomError) code() int {
-	return 77
 }
 
 fn ok() !int {
 	return 1
 }
 
-fn main() {
+fn check_assignment() {
 	mut value := ok() or { return }
 	value = CustomError{
 		text: 'payload'
 	}
 }
-",
-		'cannot assign', 'CustomError')
-}
 
-fn test_alias_of_non_ierror_payload_is_rejected() {
-	run_bad_ierror_payload('bad_alias_payload', "struct Plain {
+struct Plain {
 	text string
 }
 
 type AliasPlain = Plain
 type AliasChainPlain = AliasPlain
 
-fn fail() !int {
+fn bad_alias() !int {
 	return AliasChainPlain(AliasPlain(Plain{
 		text: 'nope'
 	}))
 }
 
-fn main() {
-	fail() or { return }
-}
-",
-		'in return argument', '`AliasChainPlain`')
-}
+struct MatchError {}
 
-fn test_result_error_match_rejects_non_ierror_branch() {
-	run_bad_ierror_payload('bad_match_branch', "struct CustomError {}
-
-fn (err CustomError) msg() string {
+fn (err MatchError) msg() string {
 	return 'custom'
 }
 
-fn (err CustomError) code() int {
+fn (err MatchError) code() int {
 	return 77
 }
 
@@ -319,16 +282,40 @@ fn other() Other {
 
 fn fail_match(x int) !int {
 	return match x {
-		0 { CustomError{} }
+		0 { MatchError{} }
 		else { other() }
 	}
 }
 
-fn main() {
-	fail_match(1) or { return }
+struct NotError {}
+
+fn (err NotError) msg() string {
+	return 'msg only'
 }
-",
-		'return type mismatch', '`Other`')
+
+fn bad_message_only() !int {
+	return NotError{}
+}
+
+fn main() {
+	check_call_args()
+	check_assignment()
+	bad_alias() or {}
+	fail_match(1) or {}
+	_ := bad_message_only() or { 0 }
+}
+")
+	errors := output.split_into_lines().filter(it.contains(': error: '))
+	for expected in [
+		['cannot use', '`CustomError`'],
+		['cannot use', '`IError`'],
+		['cannot assign', '`CustomError`'],
+		['in return argument', '`AliasChainPlain`'],
+		['return type mismatch', '`Other`'],
+		['in return argument', '`NotError`'],
+	] {
+		assert errors.any(it.contains(expected[0]) && it.contains(expected[1])), 'expected `${expected[0]}` for ${expected[1]}\n${output}'
+	}
 }
 
 fn test_unqualified_builtin_error_in_imported_module_is_result_payload() {
@@ -388,36 +375,6 @@ fn main() {
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
-}
-
-fn test_msg_only_struct_is_not_result_payload() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_msg_only_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "struct NotError {}
-
-fn (err NotError) msg() string {
-	return 'msg only'
-}
-
-fn fail() !int {
-	return NotError{}
-}
-
-fn main() {
-	_ := fail() or { 0 }
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_ierror_payload_msg_only_input')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('in return argument'), compile.output
-	assert compile.output.contains('NotError'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
 fn test_module_local_error_embeds_are_not_result_payloads() {
@@ -677,7 +634,7 @@ fn main() {
 // or `MessageError`, so a main-local error embed cannot shadow them.
 fn test_main_cannot_redeclare_builtin_error_types() {
 	for name in ['Error', 'MessageError'] {
-		run_bad_ierror_payload('main_local_${name}', "struct ${name} {}
+		output := ierror_payload_rejection('main_local_${name}', "struct ${name} {}
 
 struct MyErr {
 	${name}
@@ -698,7 +655,8 @@ fn fail() !int {
 fn main() {
 	_ := fail() or { 0 }
 }
-",
-			'cannot register struct `${name}`', 'another type with this name exists')
+")
+		assert output.contains('cannot register struct `${name}`'), output
+		assert output.contains('another type with this name exists'), output
 	}
 }
