@@ -361,6 +361,10 @@ fn main() {
 // transform must not rewrite the argument through the file's selective imports:
 // that used to request a specialization of `inner` for `pkg.T` and fail the C
 // compilation on the generic addition.
+//
+// A captured generic function value (`f := add[T]`) must also substitute the
+// caller's type. That path uses a separate generic callee so neither case can
+// supply the other's specialization.
 fn test_generic_parameter_wins_over_same_named_selective_import() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_generic_param_shadow_${tempname.unique_token()}')
 	os.mkdir(dir)!
@@ -390,54 +394,18 @@ fn outer[T](a T, b T) T {
 	return inner[T](a, b)
 }
 
-fn main() {
-	println(outer[int](2, 3))
-}
-') or { panic(err) }
-	out := os.join_path(dir, 'app')
-	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '5', run.output
-}
-
-// The same precedence applies to a generic function value (`f := inner[T]`)
-// captured inside a generic function: the argument must stay the parameter so
-// the clone substitutes the caller's type, not the selectively imported type.
-fn test_generic_parameter_wins_over_same_named_selective_import_fn_value() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_generic_param_shadow_fn_value_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.mkdir_all(os.join_path(dir, 'pkg')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "generic_param_fn_value"\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'pkg', 't.v'), 'module pkg
-
-pub struct T {
-pub mut:
-	id int
-}
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main
-
-import pkg { T }
-
-fn inner[X](a X, b X) X {
+fn add[X](a X, b X) X {
 	return a + b
 }
 
-fn outer[T](a T, b T) T {
-	f := inner[T]
+fn outer_fn_value[T](a T, b T) T {
+	f := add[T]
 	return f(a, b)
 }
 
 fn main() {
 	println(outer[int](2, 3))
+	println(outer_fn_value[int](4, 5))
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
@@ -446,5 +414,5 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '5', run.output
+	assert run.output.trim_space() == '5\n9', run.output
 }
