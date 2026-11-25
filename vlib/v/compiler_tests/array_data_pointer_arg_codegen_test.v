@@ -1,19 +1,13 @@
 import os
+import v.tempname
 
 fn test_dynamic_array_data_passes_its_buffer_to_pointer_param() {
-	vexe := @VEXE
-	vlib := os.dir(os.dir(os.dir(@FILE)))
-	v3_source := os.join_path(vlib, 'v', 'v.v')
-	root := os.join_path(os.temp_dir(), 'v3 array data pointer arg ${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3 array data pointer arg ${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
 	exe_suffix := $if windows { '.exe' } $else { '' }
-	v3_bin := os.join_path(root, 'v3${exe_suffix}')
-	build := os.exec([vexe, '-gc', 'none', '-path', '${vlib}' + '|@vlib|@vmodules', '-o', v3_bin,
-		v3_source])
-	assert build.exit_code == 0, build.output
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'module main
 
@@ -69,7 +63,7 @@ fn main() {
 }
 ') or { panic(err) }
 	bin := os.join_path(root, 'out${exe_suffix}')
-	compile := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+	compile := os.exec([@VEXE, '-gc', 'none', '-o', bin, source])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

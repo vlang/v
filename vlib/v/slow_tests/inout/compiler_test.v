@@ -6,9 +6,12 @@ import os
 import rand
 import runtime
 import term
-import v.fixturetest
 import v.util.diff
 import v.util.vtest
+
+$if windows {
+	import v.fixturetest
+}
 
 @[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)

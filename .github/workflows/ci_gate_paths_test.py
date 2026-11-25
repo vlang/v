@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Focused regression checks for CI push path selectors and gated callers."""
 import json
+from pathlib import Path
 import re
 import unittest
 import ci_gate_paths as gate
@@ -45,6 +46,11 @@ class GatePathsTests(unittest.TestCase):
 
     def test_vc_generation_gates_every_downstream_job(self):
         jobs = self.caller_jobs()
+        explicit_gates = {"gen_vc_ci"}
+        for name, entry in self.entries.items():
+            if entry["shard"] == "portability":
+                key = Path(name).stem
+                explicit_gates.add(f"inline_{key}" if entry.get("inline") else key)
         preflight = {
             "bootstrap-linux", "bootstrap-macos", "bootstrap-windows",
             "bootstrap-termux", "windows-bootstrap-contracts", "preflight",
@@ -62,7 +68,15 @@ class GatePathsTests(unittest.TestCase):
                     self.assertIn("gen_vc_ci", needs)
                     if name != "cleanup-vprod":
                         self.assertIn("preflight", needs)
-                self.assertNotRegex(body, r"(?m)^    if:.*\b(always|failure|cancelled)\s*\(")
+                condition = re.search(r"(?m)^    if: (>-\n(?:^      .+\n)+|.+)", body)
+                if name in explicit_gates:
+                    self.assertIsNotNone(condition)
+                    self.assertIn("!cancelled()", condition[1])
+                    for dependency in needs:
+                        self.assertIn(f"needs.{dependency}.result == 'success'", condition[1])
+                elif name not in {"cleanup-vprod", "record-tested-commit"}:
+                    self.assertIsNotNone(condition)
+                    self.assertNotRegex(condition[1], r"\b(always|failure|cancelled)\s*\(")
 
     def test_linux_preflight_does_not_wait_for_other_platforms(self):
         jobs = self.caller_jobs()
@@ -74,11 +88,46 @@ class GatePathsTests(unittest.TestCase):
                 self.assertIsNone(self.dependencies(body))
         self.assertEqual(self.dependencies(jobs["preflight"]), {"bootstrap-linux"})
         self.assertEqual(self.dependencies(jobs["gen_vc_ci"]), {"preflight"})
-        for job in ("linux_ci", "compiler_ci", "tools_ci", "cross_ci", "release_ci"):
+        for job in ("linux_ci", "compiler_ci", "docker_ci", "docs_ci"):
             with self.subTest(job=job):
                 self.assertEqual(
                     self.dependencies(jobs[job]), {"preflight", "gen_vc_ci"}
                 )
+
+    def test_master_lanes_have_independent_bounded_queues(self):
+        linux = gate.CALLER.read_text(encoding="utf-8")
+        portability = gate.LANE_WORKFLOWS["portability"].read_text(encoding="utf-8")
+        self.assertIn("|| 'ci-master-linux' }}", linux)
+        self.assertIn("group: ci-master-portability\n", portability)
+        for source in (linux, portability):
+            self.assertIn("  push:\n    branches: [master]\n", source)
+            self.assertIn("  cancel-in-progress: false\n", source)
+        self.assertIn("uses: ./.github/workflows/ci_master.yml", portability)
+        self.assertIn("portability: true", portability)
+
+    def test_linux_lane_never_selects_a_suite_with_other_platform_runners(self):
+        jobs = self.caller_jobs()
+        for name, entry in self.entries.items():
+            with self.subTest(suite=name):
+                if entry.get("inline"):
+                    source = jobs[f"inline_{Path(name).stem}"]
+                else:
+                    source = (gate.ROOT / name).read_text(encoding="utf-8")
+                portable = name == "termux_ci.yml" or re.search(
+                    r"\b(?:macos|windows)-(?:latest|\d+)|runs-on: \[.*macOS", source
+                ) is not None
+                self.assertEqual(gate.should_run_in_lane(None, entry, "master"), not portable)
+                self.assertEqual(
+                    gate.should_run_in_lane(None, entry, "portability"),
+                    portable or name == "gen_vc_ci.yml",
+                )
+
+    def test_portability_vc_generation_validates_without_using_the_deploy_queue(self):
+        self.assertIn("validate_only: ${{ inputs.portability || false }}", self.caller_jobs()["gen_vc_ci"])
+        source = (gate.ROOT / "gen_vc_ci.yml").read_text(encoding="utf-8")
+        self.assertIn("inputs.validate_only && format('gen-vc-validation-{0}', github.run_id)", source)
+        self.assertIn("&& (inputs.validate_only ||", source)
+        self.assertIn("&& !inputs.validate_only &&", source)
 
     def test_other_platforms_retain_bootstrap_gates(self):
         jobs = self.caller_jobs()
@@ -95,6 +144,15 @@ class GatePathsTests(unittest.TestCase):
             {"gen_vc_ci", "bootstrap-macos", "bootstrap-windows",
              "bootstrap-termux", "windows-bootstrap-contracts"},
         )
+
+    def test_bootstrap_failures_cannot_advance_the_lane_baseline(self):
+        job = self.caller_jobs()["record-tested-commit"]
+        gates = {"bootstrap-macos", "bootstrap-windows", "bootstrap-termux",
+                 "windows-bootstrap-contracts"}
+        self.assertEqual(self.dependencies(job), {"preflight", "gen_vc_ci"} | gates)
+        self.assertIn("!inputs.portability ||", job)
+        for gate_job in gates | {"preflight", "gen_vc_ci"}:
+            self.assertIn(f"needs.{gate_job}.result == 'success'", job)
 
     def test_bootstrap_platform_matrix_matches_all_producers(self):
         source = (gate.ROOT / "bootstrapping_ci.yml").read_text(encoding="utf-8")
@@ -194,7 +252,7 @@ class GatePathsTests(unittest.TestCase):
         ))
 
     def test_workflow_only_changes_retain_lint(self):
-        files = [".github/workflows/ci_master_core.yml"]
+        files = [str(gate.LANE_WORKFLOWS["portability"])]
         self.assertTrue(gate.should_run(files, self.entries["workflow_lint.yml"]))
         self.assertFalse(gate.should_run(files, self.entries["other_ci.yml"]))
 
@@ -226,7 +284,7 @@ class GatePathsTests(unittest.TestCase):
 
         def get(self, path):
             self.paths.append(path)
-            if path.startswith("actions/workflows/ci_master.yml/runs?"):
+            if path.startswith("actions/workflows/"):
                 return {"workflow_runs": self.runs}
             run_id = int(path.split("/")[2])
             names = [gate.TESTED_MARK] if run_id in self.marked else []
@@ -243,9 +301,13 @@ class GatePathsTests(unittest.TestCase):
         api = self.FakeAPI(runs, marked={8, 6, 5})
         # Run 8 was cancelled and run 7 never started its suites, so their commits
         # are tested again from run 6 on.
-        self.assertEqual(gate.tested_base(api, "after", 10, lambda c, a: True), "c6")
-        self.assertIn("status=completed", api.paths[0])
-        self.assertNotIn("actions/runs/8/artifacts?name=ci-tested-commit", api.paths)
+        for lane, workflow in gate.LANE_WORKFLOWS.items():
+            with self.subTest(lane=lane):
+                api.paths.clear()
+                self.assertEqual(gate.tested_base(api, "after", 10, lane, lambda c, a: True), "c6")
+                self.assertIn(f"actions/workflows/{workflow.name}/runs?", api.paths[0])
+                self.assertIn("status=completed", api.paths[0])
+                self.assertNotIn("actions/runs/8/artifacts?name=ci-tested-commit", api.paths)
 
     def test_base_skips_the_current_run_and_unrelated_history(self):
         runs = [
@@ -255,7 +317,7 @@ class GatePathsTests(unittest.TestCase):
         ]
         api = self.FakeAPI(runs, marked={10, 4, 3})
         ancestor = lambda commit, after: commit != "rewritten"
-        self.assertIsNone(gate.tested_base(api, "after", 10, ancestor))
+        self.assertIsNone(gate.tested_base(api, "after", 10, "master", ancestor))
 
     def test_failure_to_compute_diff_runs_all(self):
         self.assertTrue(all(gate.should_run(None, e) for e in self.entries.values()))

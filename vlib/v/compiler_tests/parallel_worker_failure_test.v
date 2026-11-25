@@ -1,23 +1,9 @@
 import os
-import rand
 import strings
+import v.cmdexec
+import v.tempname
 
-const pwf_tests_dir = os.dir(@FILE)
-const pwf_v3_dir = os.dir(pwf_tests_dir)
-const pwf_vlib_dir = os.dir(pwf_v3_dir)
-const pwf_v3_src = os.join_path(pwf_v3_dir, 'v.v')
-
-fn build_parallel_failure_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_failure_${os.getpid()}_${rand.ulid()}')
-	build :=
-		os.exec([@VEXE, '-gc', 'none', '-path', '${pwf_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${pwf_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn write_parallel_failure_source() string {
-	path := os.join_path(os.temp_dir(), 'v3_parallel_failure_${os.getpid()}_${rand.ulid()}.v')
+fn write_parallel_failure_source(path string) {
 	mut src := strings.new_builder(320_000)
 	src.writeln('module main')
 	src.writeln('')
@@ -44,21 +30,14 @@ fn write_parallel_failure_source() string {
 	src.writeln('\tprintln(int_str(total))')
 	src.writeln('}')
 	os.write_file(path, src.str()) or { panic(err) }
-	return path
 }
 
-fn generate_parallel_failure_c(v3_bin string, source string, stage string) string {
-	out := os.join_path(os.temp_dir(),
-		'v3_parallel_failure_${stage}_${os.getpid()}_${rand.ulid()}.c')
-	// Environment is inherited by the child; a `VAR=value` prefix is not portable.
-	if stage.len > 0 {
-		os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', '${stage}:all', true)
-	} else {
-		os.unsetenv('V3_TEST_PTHREAD_CREATE_FAIL')
-	}
-	os.setenv('VJOBS', '4', true)
-	result :=
-		os.exec([v3_bin, '-silent', source, '-o', '${out}'])
+fn generate_parallel_failure_c(source string, stage string) string {
+	out := os.join_path(os.dir(source), 'generated_${stage}.c')
+	result := cmdexec.run_in_merged_with_env(@VEXE, ['-silent', source, '-o', out], '', {
+		'VJOBS':                       '4'
+		'V3_TEST_PTHREAD_CREATE_FAIL': if stage.len > 0 { '${stage}:all' } else { '' }
+	})
 	assert result.exit_code == 0, '${stage}: ${result.output}'
 	return os.read_file(out) or { panic(err) }
 }
@@ -66,11 +45,14 @@ fn generate_parallel_failure_c(v3_bin string, source string, stage string) strin
 // test_parallel_worker_launch_failures_fall_back_synchronously verifies that
 // every compiler phase produces the same output when all helper launches fail.
 fn test_parallel_worker_launch_failures_fall_back_synchronously() {
-	v3_bin := build_parallel_failure_v3()
-	source := write_parallel_failure_source()
-	baseline := generate_parallel_failure_c(v3_bin, source, '')
+	root := os.join_path(os.vtmp_dir(), 'v3_parallel_failure_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	write_parallel_failure_source(source)
+	baseline := generate_parallel_failure_c(source, '')
 	for stage in ['checker', 'transform', 'markused', 'cgen'] {
-		got := generate_parallel_failure_c(v3_bin, source, stage)
+		got := generate_parallel_failure_c(source, stage)
 		assert got == baseline, '${stage} fallback changed generated C'
 	}
 }

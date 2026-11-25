@@ -1,25 +1,15 @@
 import os
-
-const wchar_codegen_vexe = @VEXE
-const wchar_codegen_tests_dir = os.dir(@FILE)
-const wchar_codegen_v3_dir = os.dir(wchar_codegen_tests_dir)
-const wchar_codegen_vlib_dir = os.dir(wchar_codegen_v3_dir)
-const wchar_codegen_v3_src = os.join_path(wchar_codegen_v3_dir, 'v.v')
+import v.tempname
 
 fn test_headerless_wchar_prefers_compiler_type() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_headerless_wchar_test_${pid}')
-	build :=
-		os.exec([wchar_codegen_vexe, '-gc', 'none', '-path',
-			'${wchar_codegen_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${wchar_codegen_v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	src := os.join_path(os.temp_dir(), 'v3_headerless_wchar_${pid}.v')
-	c_out := os.join_path(os.temp_dir(), 'v3_headerless_wchar_${pid}.c')
+	root := os.join_path(os.vtmp_dir(), 'v3_headerless_wchar_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_headerless_wchar.v')
+	c_out := os.join_path(root, 'v3_headerless_wchar.c')
 	os.write_file(src, "fn main() {\n\tmessage := 'ok'\n\tprintln(message)\n}\n") or { panic(err) }
-	os.rm(c_out) or {}
 	// Windows normally uses SDK headers. Select a headerless target on every host.
-	gen_c := os.exec([v3_bin, '-os', 'linux', '-b', 'c', '-o', '${c_out}', '${src}'])
+	gen_c := os.exec([@VEXE, '-os', 'linux', '-b', 'c', '-o', '${c_out}', '${src}'])
 	assert gen_c.exit_code == 0, gen_c.output
 
 	c_code := (os.read_file(c_out) or { panic(err) }).replace('\r\n', '\n')

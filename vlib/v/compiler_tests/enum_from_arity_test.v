@@ -1,43 +1,31 @@
 import os
 import v.tempname
 
-const enum_from_arity_vexe = @VEXE
-const enum_from_arity_tests_dir = os.dir(@FILE)
-const enum_from_arity_v3_dir = os.dir(enum_from_arity_tests_dir)
-const enum_from_arity_vlib_dir = os.dir(enum_from_arity_v3_dir)
-const enum_from_arity_v3_src = os.join_path(enum_from_arity_v3_dir, 'v.v')
-
-const enum_from_arity_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_enum_from_arity_fixtures_${tempname.unique_token()}')
-const enum_from_arity_compiler = os.join_path(enum_from_arity_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
-
-fn testsuite_begin() {
-	os.mkdir_all(enum_from_arity_fixture_dir) or { panic(err) }
-	build :=
-		os.exec([enum_from_arity_vexe, '-gc', 'none', '-path',
-			'${enum_from_arity_vlib_dir}' + '|@vlib|@vmodules', '-o', enum_from_arity_compiler,
-			'${enum_from_arity_v3_src}'])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rmdir_all(enum_from_arity_fixture_dir) or {}
-}
-
 fn enum_from_arity_run_bad(name string, source string, expected string) {
-	src := os.join_path(enum_from_arity_fixture_dir, 'v3_${name}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_enum_from_arity_${tempname.unique_token()}')
+	os.mkdir(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_${name}')
+	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(enum_from_arity_fixture_dir, 'v3_${name}')
-	compile := os.exec([enum_from_arity_compiler, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
 fn enum_from_arity_run_good(name string, source string) string {
-	src := os.join_path(enum_from_arity_fixture_dir, 'v3_${name}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_enum_from_arity_${tempname.unique_token()}')
+	os.mkdir(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_${name}')
+	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(enum_from_arity_fixture_dir, 'v3_${name}')
-	compile := os.exec([enum_from_arity_compiler, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

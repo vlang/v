@@ -1,4 +1,8 @@
+import arrays.parallel
+import math
 import os
+import runtime
+import v.cmdexec
 
 struct NoallocCase {
 	name     string
@@ -537,18 +541,33 @@ fn main() { mut out := []u8{}; handler(mut out, 1) }
 		assert fastc_result.exit_code != 0 && fastc_result.output.contains('noalloc'), fastc_result.output
 	}
 
-	for case in cases {
+	cpu_budget := math.max(1, math.min(runtime.nr_jobs(), runtime.nr_cpus()))
+	workers := math.min(4, cpu_budget)
+	compiler_env := {
+		'VJOBS': (cpu_budget / workers).str()
+	}
+	modes := ['build', 'check']
+	// Each fixture has its own source and output. Keep its build and check in
+	// order and collect results in case order for the assertions below.
+	results := parallel.amap(cases, fn [root, modes, compiler_env] (case NoallocCase) []os.Result {
 		source := os.join_path(root, '${case.name}.c.v')
 		os.write_file(source, case.source) or { panic(err) }
-		for mode in ['build', 'check'] {
-			mut command := [@VEXE, '-gc', 'none']
+		mut outcomes := []os.Result{cap: modes.len}
+		for mode in modes {
+			mut args := ['-gc', 'none']
 			if mode == 'check' {
-				command << '-check'
+				args << '-check'
 			} else {
-				command << ['-o', os.join_path(root, '${case.name}.c')]
+				args << ['-o', os.join_path(root, '${case.name}.c')]
 			}
-			command << source
-			result := os.exec(command)
+			args << source
+			outcomes << cmdexec.run_in_merged_with_env(@VEXE, args, '', compiler_env)
+		}
+		return outcomes
+	}, workers: workers)
+	for case_index, case in cases {
+		for mode_index, mode in modes {
+			result := results[case_index][mode_index]
 			assert (result.exit_code == 0) == case.accepted, '${case.name} ${mode}: ${result.output}'
 			if !case.accepted {
 				assert result.output.contains('noalloc'), '${case.name} ${mode}: ${result.output}'

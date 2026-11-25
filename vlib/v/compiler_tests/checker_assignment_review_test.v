@@ -1,53 +1,31 @@
 import os
 import v.tempname
 
-const checker_assignment_vexe = @VEXE
-const checker_assignment_tests_dir = os.dir(@FILE)
-const checker_assignment_v3_dir = os.dir(checker_assignment_tests_dir)
-const checker_assignment_vlib_dir = os.dir(checker_assignment_v3_dir)
-const checker_assignment_v3_src = os.join_path(checker_assignment_v3_dir, 'v.v')
-const checker_assignment_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_checker_assignment_${tempname.unique_token()}')
-
-fn testsuite_begin() {
-	os.mkdir_all(checker_assignment_compiler_dir) or { panic(err) }
+fn checker_assignment_fixture_dir() string {
+	root := os.join_path(os.vtmp_dir(), 'v3_checker_assignment_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	return root
 }
 
-fn testsuite_end() {
-	os.rmdir_all(checker_assignment_compiler_dir) or {}
-}
-
-fn checker_assignment_build_v3() string {
-	v3_bin := os.join_path(checker_assignment_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([checker_assignment_vexe, '-gc', 'none', '-path',
-			'${checker_assignment_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${checker_assignment_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn checker_assignment_run_bad(v3_bin string, name string, source string, expected string) {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+fn checker_assignment_run_bad(name string, source string, expected string) {
+	root := checker_assignment_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_${name}')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
-fn checker_assignment_run_good(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+fn checker_assignment_run_good(name string, source string) string {
+	root := checker_assignment_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_${name}')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -56,8 +34,7 @@ fn checker_assignment_run_good(v3_bin string, name string, source string) string
 }
 
 fn test_assignment_invalidates_written_lhs_smartcast() {
-	v3_bin := checker_assignment_build_v3()
-	checker_assignment_run_bad(v3_bin, 'bad_assignment_stale_smartcast', 'struct Foo {
+	checker_assignment_run_bad('bad_assignment_stale_smartcast', 'struct Foo {
 	foo int
 }
 
@@ -79,8 +56,7 @@ fn main() {
 }
 
 fn test_optional_assignment_keeps_wrapper_and_qualified_optional_cast_is_known() {
-	v3_bin := checker_assignment_build_v3()
-	out := checker_assignment_run_good(v3_bin, 'optional_assignment_and_qualified_cast', 'import time
+	out := checker_assignment_run_good('optional_assignment_and_qualified_cast', 'import time
 
 type Values = []int
 
@@ -118,8 +94,7 @@ fn main() {
 }
 
 fn test_enum_alias_cast_contextualizes_short_enum_value() {
-	v3_bin := checker_assignment_build_v3()
-	out := checker_assignment_run_good(v3_bin, 'enum_alias_short_value_cast', 'enum Number {
+	out := checker_assignment_run_good('enum_alias_short_value_cast', 'enum Number {
 	one = 1
 	two
 }
@@ -136,8 +111,7 @@ fn main() {
 }
 
 fn test_container_stored_capturing_fn_literals() {
-	v3_bin := checker_assignment_build_v3()
-	alias_out := checker_assignment_run_good(v3_bin, 'append_alias_capturing_fn_literal', 'fn main() {
+	alias_out := checker_assignment_run_good('append_alias_capturing_fn_literal', 'fn main() {
 	x := 1
 	f := fn [x] () int {
 		return x
@@ -148,7 +122,7 @@ fn test_container_stored_capturing_fn_literals() {
 }
 ')
 	assert alias_out == '1'
-	direct_out := checker_assignment_run_good(v3_bin, 'append_direct_capturing_fn_literal', 'fn main() {
+	direct_out := checker_assignment_run_good('append_direct_capturing_fn_literal', 'fn main() {
 	x := 1
 	mut callbacks := []fn () int{}
 	callbacks << fn [x] () int {
@@ -161,8 +135,7 @@ fn test_container_stored_capturing_fn_literals() {
 }
 
 fn test_nonlocal_assigned_capturing_fn_literals() {
-	v3_bin := checker_assignment_build_v3()
-	direct_out := checker_assignment_run_good(v3_bin, 'field_assign_direct_capturing_fn_literal', 'struct Holder {
+	direct_out := checker_assignment_run_good('field_assign_direct_capturing_fn_literal', 'struct Holder {
 mut:
 	cb fn () int
 }
@@ -183,7 +156,7 @@ fn main() {
 }
 ')
 	assert direct_out == '1'
-	alias_out := checker_assignment_run_good(v3_bin, 'field_assign_alias_capturing_fn_literal', 'struct Holder {
+	alias_out := checker_assignment_run_good('field_assign_alias_capturing_fn_literal', 'struct Holder {
 mut:
 	cb fn () int
 }
@@ -205,7 +178,7 @@ fn main() {
 }
 ')
 	assert alias_out == '1'
-	index_out := checker_assignment_run_good(v3_bin, 'index_assign_capturing_fn_literal', 'fn plain() int {
+	index_out := checker_assignment_run_good('index_assign_capturing_fn_literal', 'fn plain() int {
 	return 0
 }
 
@@ -224,8 +197,7 @@ fn main() {
 // A local cannot be redefined in a nested block, so the same name is bound in
 // sibling blocks instead: each use must resolve to the binding of its own block.
 fn test_capturing_fn_literal_marker_uses_nearest_binding() {
-	v3_bin := checker_assignment_build_v3()
-	out := checker_assignment_run_good(v3_bin, 'capturing_fn_literal_then_plain_fn', 'fn plain() int {
+	out := checker_assignment_run_good('capturing_fn_literal_then_plain_fn', 'fn plain() int {
 	return 2
 }
 
@@ -248,7 +220,7 @@ fn main() {
 }
 ')
 	assert out == 'ok'
-	plain_first_out := checker_assignment_run_good(v3_bin, 'plain_fn_then_capturing_fn_literal',
+	plain_first_out := checker_assignment_run_good('plain_fn_then_capturing_fn_literal',
 		'fn plain() int {
 	return 2
 }

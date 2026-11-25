@@ -1,35 +1,14 @@
 import os
-
-const mixed_lock_vexe = @VEXE
-const mixed_lock_tests_dir = os.dir(@FILE)
-const mixed_lock_v3_dir = os.dir(mixed_lock_tests_dir)
-const mixed_lock_vlib_dir = os.dir(mixed_lock_v3_dir)
-const mixed_lock_v3_src = os.join_path(mixed_lock_v3_dir, 'v.v')
-
-fn mixed_lock_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_mixed_lock_codegen_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([mixed_lock_vexe, '-gc', 'none', '-path',
-			'${mixed_lock_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${mixed_lock_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn mixed_lock_gen_c(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
-	os.write_file(src, source) or { panic(err) }
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.c')
-	os.rm(c_path) or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
-	assert compile.exit_code == 0, compile.output
-	assert os.exists(c_path)
-	return os.read_file(c_path) or { panic(err) }
-}
+import v.tempname
 
 fn test_mixed_read_and_write_lock_modes_codegen() {
-	v3_bin := mixed_lock_build_v3()
-	c_source := mixed_lock_gen_c(v3_bin, 'mixed_lock_modes', 'struct St {
+	dir := os.join_path(os.vtmp_dir(), 'v3_mixed_lock_modes_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	src := os.join_path(dir, 'v3_mixed_lock_modes.v')
+	os.write_file(src, 'struct St {
 mut:
 	n int
 }
@@ -42,7 +21,13 @@ fn main() {
 		b.n = 1
 	}
 }
-')
+')!
+	c_path := os.join_path(dir, 'v3_mixed_lock_modes.c')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', c_path])
+	assert compile.exit_code == 0, compile.output
+	assert os.exists(c_path)
+	c_source := os.read_file(c_path) or { panic(err) }
+
 	entry_point := $if windows { '\nint wmain(' } $else { '\nint main(' }
 	main_start := c_source.index(entry_point) or { -1 }
 	assert main_start >= 0, c_source

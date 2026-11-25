@@ -7,35 +7,10 @@ import v.tempname
 // recorded as `bench.Thing` used to be alias-expanded a second time on its way
 // to C and landed on the same-named struct in `x.bench`.
 
-const alias_shadow_vexe = @VEXE
-const alias_shadow_tests_dir = os.dir(@FILE)
-const alias_shadow_v3_dir = os.dir(alias_shadow_tests_dir)
-const alias_shadow_vlib_dir = os.dir(alias_shadow_v3_dir)
-const alias_shadow_v3_src = os.join_path(alias_shadow_v3_dir, 'v.v')
-const alias_shadow_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_alias_shadow_compiler_${tempname.unique_token()}')
-
-fn testsuite_end() {
-	os.rmdir_all(alias_shadow_compiler_dir) or {}
-}
-
-// The fixtures have to be compiled by the V3 compiler built from this checkout.
-// Building `vlib/v/v.v` is also what lets the suite's unit-test wrapper hand
-// back its shared V3 binary; any other invocation is forwarded to the host
-// compiler instead, which would not exercise this code path at all.
-fn alias_shadow_build_v3() string {
-	v3_bin := os.join_path(alias_shadow_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	os.mkdir_all(alias_shadow_compiler_dir) or { panic(err) }
-	build := os.exec([alias_shadow_vexe, '-gc', 'none', '-path',
-		'${alias_shadow_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${alias_shadow_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn alias_shadow_build_and_run(v3_bin string, root string, files map[string]string) os.Result {
-	os.rmdir_all(root) or {}
+fn alias_shadow_build_and_run(name string, files map[string]string) os.Result {
+	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
 	for path, content in files {
 		full := os.join_path(root, path)
 		os.mkdir_all(os.dir(full)) or { panic(err) }
@@ -43,7 +18,7 @@ fn alias_shadow_build_and_run(v3_bin string, root string, files map[string]strin
 	}
 	main_v := os.join_path(root, 'main.v')
 	exe := os.join_path(root, 'prog')
-	compile := os.exec([v3_bin, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
+	compile := os.exec([@VEXE, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
 	if compile.exit_code != 0 {
 		return compile
 	}
@@ -51,12 +26,7 @@ fn alias_shadow_build_and_run(v3_bin string, root string, files map[string]strin
 }
 
 fn test_a_shadowed_module_keeps_its_own_type() {
-	v3_bin := alias_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_short_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := alias_shadow_build_and_run(v3_bin, root, {
+	res := alias_shadow_build_and_run('short', {
 		'bench/bench.v':   'module bench\n\npub struct Thing {\npub mut:\n\tn int\n}\n\npub fn start() Thing {\n\treturn Thing{\n\t\tn: 1\n\t}\n}\n'
 		'x/bench/bench.v': 'module bench\n\npub struct Thing {\npub mut:\n\tm int\n}\n'
 		'main.v':          'module main\n\nimport x.bench\nimport bench as jj\n\nfn main() {\n\tb := jj.start()\n\tprintln(b.n)\n}\n'
@@ -70,12 +40,7 @@ fn test_a_shadowed_module_keeps_its_own_type() {
 // matches the real module `foo.bar`, and `foo.bar.Thing` would be rebased onto
 // `x.foo` and resolve to `x.foo.bar.Thing`.
 fn test_a_shadowed_nested_module_keeps_its_own_type() {
-	v3_bin := alias_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_nested_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := alias_shadow_build_and_run(v3_bin, root, {
+	res := alias_shadow_build_and_run('nested', {
 		'foo/bar/bar.v':   'module bar\n\npub struct Thing {\npub mut:\n\tn int\n}\n\npub fn start() Thing {\n\treturn Thing{\n\t\tn: 42\n\t}\n}\n'
 		'x/foo/foo.v':     'module foo\n\npub fn ping() int {\n\treturn 0\n}\n'
 		'x/foo/bar/bar.v': 'module bar\n\npub struct Thing {\npub mut:\n\tm int\n}\n'
@@ -90,12 +55,7 @@ fn test_a_shadowed_nested_module_keeps_its_own_type() {
 // whole-wrapper lookup, neither of which is registered, and the pointer keeps
 // being rebased onto the shadowing module.
 fn test_a_shadowed_module_keeps_its_own_type_through_a_pointer() {
-	v3_bin := alias_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_ptr_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := alias_shadow_build_and_run(v3_bin, root, {
+	res := alias_shadow_build_and_run('ptr', {
 		'bench/bench.v':   'module bench\n\npub struct Thing {\npub mut:\n\tn int\n}\n\npub fn start() &Thing {\n\treturn &Thing{\n\t\tn: 5\n\t}\n}\n'
 		'x/bench/bench.v': 'module bench\n\npub struct Thing {\npub mut:\n\tm int\n}\n'
 		'main.v':          'module main\n\nimport x.bench\nimport bench as jj\n\nfn main() {\n\tb := jj.start()\n\tprintln(b.n)\n}\n'
@@ -107,12 +67,7 @@ fn test_a_shadowed_module_keeps_its_own_type_through_a_pointer() {
 // The module that owns the canonical annotation need not be imported by the
 // current file. A public signature can carry it across a transitive dependency.
 fn test_a_transitive_shadowed_module_keeps_its_own_type() {
-	v3_bin := alias_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_transitive_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := alias_shadow_build_and_run(v3_bin, root, {
+	res := alias_shadow_build_and_run('transitive', {
 		'bench/bench.v':   'module bench\n\npub struct Thing {\npub mut:\n\tn int\n}\n'
 		'bridge/bridge.v': 'module bridge\n\nimport bench\n\npub fn start() bench.Thing {\n\treturn bench.Thing{\n\t\tn: 17\n\t}\n}\n'
 		'x/bench/bench.v': 'module bench\n\npub struct Thing {\npub mut:\n\tm int\n}\n'
@@ -123,12 +78,7 @@ fn test_a_transitive_shadowed_module_keeps_its_own_type() {
 }
 
 fn test_a_shadowed_module_keeps_its_declared_alias() {
-	v3_bin := alias_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_declared_alias_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := alias_shadow_build_and_run(v3_bin, root, {
+	res := alias_shadow_build_and_run('declared_alias', {
 		'bench/bench.v':   'module bench\n\npub struct Thing {\npub mut:\n\tn int\n}\n\npub type Alias = Thing\n\npub fn start() Alias {\n\treturn Alias(Thing{\n\t\tn: 23\n\t})\n}\n'
 		'x/bench/bench.v': 'module bench\n\npub struct Thing {\npub mut:\n\tm int\n}\n\npub type Alias = Thing\n'
 		'main.v':          'module main\n\nimport x.bench\nimport bench as jj\n\nfn main() {\n\tb := jj.start()\n\tprintln(b.n)\n}\n'
@@ -140,12 +90,7 @@ fn test_a_shadowed_module_keeps_its_declared_alias() {
 // A cast's checker sidecar records the canonical target even though its
 // `node.value` still has the import spelling used in source.
 fn test_a_source_cast_uses_the_shadowing_import() {
-	v3_bin := alias_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_source_cast_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := alias_shadow_build_and_run(v3_bin, root, {
+	res := alias_shadow_build_and_run('source_cast', {
 		'foo/foo.v':   'module foo\n\npub type Value = int\n'
 		'x/foo/foo.v': 'module foo\n\npub type Value = u8\n'
 		'main.v':      'module main\n\nimport x.foo\nimport foo as jj\n\nfn main() {\n\t_ = jj.Value(1)\n\tmut value := foo.Value(200)\n\tvalue += foo.Value(100)\n\tprintln(value)\n}\n'
@@ -158,12 +103,7 @@ fn test_a_source_cast_uses_the_shadowing_import() {
 // arguments. Re-entering the source parser for `foo.Box[int]` would otherwise
 // bind `foo` to the colliding `x.foo` import.
 fn test_a_shadowed_module_keeps_its_generic_type() {
-	v3_bin := alias_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_generic_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := alias_shadow_build_and_run(v3_bin, root, {
+	res := alias_shadow_build_and_run('generic', {
 		'foo/foo.v':   'module foo\n\npub struct Box[T] {\npub mut:\n\tvalue T\n}\n\npub fn start() Box[int] {\n\treturn Box[int]{\n\t\tvalue: 31\n\t}\n}\n'
 		'x/foo/foo.v': 'module foo\n\npub struct Box[T] {\npub mut:\n\tother T\n}\n'
 		'main.v':      'module main\n\nimport x.foo\nimport foo as jj\n\nfn main() {\n\tb := jj.start()\n\tprintln(b.value)\n}\n'

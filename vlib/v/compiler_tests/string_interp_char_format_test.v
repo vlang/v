@@ -1,19 +1,13 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+import v.tempname
 
 fn test_character_interpolation_with_static_width() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_string_interp_char_format_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	source_file := os.join_path(os.temp_dir(), 'v3_string_interp_char_format_input.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_char_format_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source_file := os.join_path(dir, 'main.v')
 	os.write_file(source_file, "fn main() {
 	println('|\${u8(`f`):1c}|')
 	println('|\${u8(`f`):3c}|')
@@ -22,8 +16,8 @@ fn test_character_interpolation_with_static_width() {
 ") or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_string_interp_char_format_input')
-	compile := os.exec([v3_bin, '-nocache', source_file, '-o', bin])
+	bin := os.join_path(dir, 'app')
+	compile := os.exec([@VEXE, '-nocache', source_file, '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

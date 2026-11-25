@@ -1,21 +1,5 @@
 import os
-
-const rawesc_vexe = @VEXE
-const rawesc_tests_dir = os.dir(@FILE)
-const rawesc_v3_dir = os.dir(rawesc_tests_dir)
-const rawesc_vlib_dir = os.dir(rawesc_v3_dir)
-const rawesc_v3_src = os.join_path(rawesc_v3_dir, 'v.v')
-
-fn rawesc_build_v3() string {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_rawhtml_escape_test_${pid}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([rawesc_vexe, '-gc', 'none', '-path', '${rawesc_vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${rawesc_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 // A `$veb.html()` template interpolation is rendered by `veb.filter_html`, which emits a
 // trusted `veb.RawHtml` value verbatim but HTML-escapes everything else. A user-defined
@@ -24,17 +8,15 @@ fn rawesc_build_v3() string {
 // arg must therefore stay the caller's own alias rather than merging into veb's `RawHtml`
 // specialization.
 fn test_filter_html_only_trusts_veb_rawhtml() {
-	v3_bin := rawesc_build_v3()
-	pid := os.getpid()
-	root := os.join_path(os.temp_dir(), 'v3_rawhtml_escape_${pid}_project')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_rawhtml_escape_${tempname.unique_token()}_project')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'rawesc' }\n") or { panic(err) }
 	source := "module main\n\nimport veb\n\ntype RawHtml = string\n\nfn main() {\n\ttrusted := veb.RawHtml('<b>ok</b>')\n\tuntrusted := RawHtml('<script>x</script>')\n\tplain := '<i>p</i>'\n\tprintln(veb.filter_html(trusted))\n\tprintln(veb.filter_html(untrusted))\n\tprintln(veb.filter_html(plain))\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_rawhtml_escape_bin_${pid}')
+	bin := os.join_path(root, 'app')
 	compile :=
-		os.exec([v3_bin, '-no-memory-limit', os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
+		os.exec([@VEXE, '-no-memory-limit', os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])

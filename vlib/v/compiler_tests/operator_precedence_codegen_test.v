@@ -1,4 +1,5 @@
 import os
+import v.tempname
 
 // Locks in V's documented operator precedence (see the language reference,
 // Appendix II) for the v3 parser. `+ - | ^` all share the `sum` level and
@@ -8,77 +9,76 @@ import os
 // or `<<` below `*`) silently reparses real programs, so every boundary pair is
 // pinned here.
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn tmp_precedence_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_prec_${name}_${os.getpid()}')
-}
-
-fn build_v3_precedence() string {
-	v3_bin := tmp_precedence_path('compiler')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn eval_int(v3_bin string, name string, expr string) string {
-	src := 'fn main() {\n\tprintln(${expr})\n}\n'
-	src_path := '${tmp_precedence_path(name)}.v'
-	bin_path := tmp_precedence_path('${name}_bin')
-	os.write_file(src_path, src) or { panic(err) }
-	compile :=
-		os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
-	assert compile.exit_code == 0, '${expr}\n${compile.output}'
-	assert !compile.output.contains('C compilation failed'), '${expr}\n${compile.output}'
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, '${expr}\n${run.output}'
-	return run.output.trim_space()
+struct PrecedenceCase {
+	expression string
+	expected   string
 }
 
 fn test_operator_precedence_boundaries() {
-	v3_bin := build_v3_precedence()
+	cases := [
+		// product binds tighter than sum
+		PrecedenceCase{'2 + 3 * 4', '14'},
+		PrecedenceCase{'20 - 12 / 4', '17'},
 
-	// product binds tighter than sum
-	assert eval_int(v3_bin, 'mul_vs_add', '2 + 3 * 4') == '14'
-	assert eval_int(v3_bin, 'div_vs_sub', '20 - 12 / 4') == '17'
+		// power binds tighter than product
+		PrecedenceCase{'2 * 3 ** 2', '18'},
 
-	// power binds tighter than product
-	assert eval_int(v3_bin, 'mul_vs_power', '2 * 3 ** 2') == '18'
+		// shifts live at product, so they bind tighter than +/-
+		PrecedenceCase{'1 + 2 << 3', '17'},
+		PrecedenceCase{'8 << 1 + 1', '17'},
+		PrecedenceCase{'2 << 3 - 1', '15'},
 
-	// shifts live at product, so they bind tighter than +/-
-	assert eval_int(v3_bin, 'add_then_shift', '1 + 2 << 3') == '17'
-	assert eval_int(v3_bin, 'shift_then_add', '8 << 1 + 1') == '17'
-	assert eval_int(v3_bin, 'shift_then_sub', '2 << 3 - 1') == '15'
+		// & lives at product, |/^ live at sum
+		PrecedenceCase{'10 & 3 + 1', '3'},
+		PrecedenceCase{'1 | 2 & 3', '3'},
+		PrecedenceCase{'5 & 3 ^ 1', '0'},
 
-	// & lives at product, |/^ live at sum
-	assert eval_int(v3_bin, 'and_vs_add', '10 & 3 + 1') == '3'
-	assert eval_int(v3_bin, 'or_vs_and', '1 | 2 & 3') == '3'
-	assert eval_int(v3_bin, 'xor_vs_and', '5 & 3 ^ 1') == '0'
+		// |, ^, +, - all share the sum level and fold left
+		PrecedenceCase{'1 | 2 ^ 3', '0'},
+		PrecedenceCase{'1 ^ 2 | 4', '7'},
+		PrecedenceCase{'1 ^ 2 + 3', '6'},
 
-	// |, ^, +, - all share the sum level and fold left
-	assert eval_int(v3_bin, 'or_vs_xor', '1 | 2 ^ 3') == '0'
-	assert eval_int(v3_bin, 'xor_then_or', '1 ^ 2 | 4') == '7'
-	assert eval_int(v3_bin, 'xor_vs_add', '1 ^ 2 + 3') == '6'
+		// left associativity within a level
+		PrecedenceCase{'10 - 3 - 2', '5'},
+		PrecedenceCase{'2 * 3 % 4', '2'},
+		PrecedenceCase{'32 >> 1 >> 2', '4'},
 
-	// left associativity within a level
-	assert eval_int(v3_bin, 'sub_left_assoc', '10 - 3 - 2') == '5'
-	assert eval_int(v3_bin, 'mod_left_assoc', '2 * 3 % 4') == '2'
-	assert eval_int(v3_bin, 'shift_left_assoc', '32 >> 1 >> 2') == '4'
+		// explicit parentheses override
+		PrecedenceCase{'(1 + 2) << 3', '24'},
 
-	// explicit parentheses override
-	assert eval_int(v3_bin, 'paren_add_shift', '(1 + 2) << 3') == '24'
+		// bitwise binds tighter than comparison
+		PrecedenceCase{'int(3 | 4 == 7)', '1'},
+		PrecedenceCase{'int(5 & 3 == 1)', '1'},
 
-	// bitwise binds tighter than comparison
-	assert eval_int(v3_bin, 'or_vs_eq', 'int(3 | 4 == 7)') == '1'
-	assert eval_int(v3_bin, 'and_vs_eq', 'int(5 & 3 == 1)') == '1'
+		// comparison binds tighter than &&, which binds tighter than ||
+		PrecedenceCase{'int(1 < 2 && 3 < 4)', '1'},
+		PrecedenceCase{'int(true || false && false)', '1'},
+	]
 
-	// comparison binds tighter than &&, which binds tighter than ||
-	assert eval_int(v3_bin, 'cmp_vs_and', 'int(1 < 2 && 3 < 4)') == '1'
-	assert eval_int(v3_bin, 'and_vs_or', 'int(true || false && false)') == '1'
+	dir := os.join_path(os.vtmp_dir(), 'v3_prec_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+
+	mut lines := ['fn main() {']
+	for item in cases {
+		lines << '\tprintln(${item.expression})'
+	}
+	lines << '}'
+	src := os.join_path(dir, 'main.v')
+	os.write_file(src, lines.join('\n') + '\n')!
+
+	bin := os.join_path(dir, 'app')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.exec([bin])
+	assert run.exit_code == 0, run.output
+
+	output := run.output.trim_space().split_into_lines()
+	assert output.len == cases.len, run.output
+	for i, item in cases {
+		assert output[i] == item.expected, item.expression
+	}
 }

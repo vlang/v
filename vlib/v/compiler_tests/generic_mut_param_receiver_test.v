@@ -1,30 +1,5 @@
 import os
-
-const mut_param_receiver_vexe = @VEXE
-const mut_param_receiver_tests_dir = os.dir(@FILE)
-const mut_param_receiver_v3_dir = os.dir(mut_param_receiver_tests_dir)
-const mut_param_receiver_vlib_dir = os.dir(mut_param_receiver_v3_dir)
-const mut_param_receiver_v3_src = os.join_path(mut_param_receiver_v3_dir, 'v.v')
-
-fn mut_param_receiver_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_generic_mut_param_receiver_test') + $if windows { '.exe' } $else { '' }
-}
-
-fn testsuite_begin() {
-	os.rm(mut_param_receiver_v3_bin_path()) or {}
-}
-
-fn mut_param_receiver_build_v3() string {
-	v3_bin := mut_param_receiver_v3_bin_path()
-	if os.exists(v3_bin) {
-		return v3_bin
-	}
-	build := os.exec([mut_param_receiver_vexe, '-gc', 'none', '-path',
-		'${mut_param_receiver_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-		'${mut_param_receiver_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 // A method promoted through the embedded fields of a generic `mut ctrl T`
 // parameter is reached with an `&` on the embedded field. The parameter's C
@@ -34,15 +9,12 @@ fn mut_param_receiver_build_v3() string {
 // modules: the controller embeds an app struct that embeds a generic middleware
 // struct declared in a third module.
 fn test_generic_mut_param_promoted_method_through_embedded_fields() {
-	v3_bin := mut_param_receiver_build_v3()
-	dir := os.join_path(os.temp_dir(), 'v3_generic_mut_param_receiver')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'veblite')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'model')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'route')) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_mut_param_receiver_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.mkdir(os.join_path(dir, 'veblite'))!
+	os.mkdir(os.join_path(dir, 'model'))!
+	os.mkdir(os.join_path(dir, 'route'))!
 	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "mut_param_receiver"\n}\n') or {
 		panic(err)
 	}
@@ -118,7 +90,7 @@ fn main() {
 }
 ") or { panic(err) }
 	out := os.join_path(dir, 'mut_param_receiver')
-	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
+	compile := os.exec([@VEXE, '-nocache', '-o', out, dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])

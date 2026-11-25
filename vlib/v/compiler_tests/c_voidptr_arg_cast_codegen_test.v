@@ -1,28 +1,10 @@
 import os
-
-const voidptr_arg_vexe = @VEXE
-const voidptr_arg_tests_dir = os.dir(@FILE)
-const voidptr_arg_v3_dir = os.dir(voidptr_arg_tests_dir)
-const voidptr_arg_vlib_dir = os.dir(voidptr_arg_v3_dir)
-const voidptr_arg_v3_src = os.join_path(voidptr_arg_v3_dir, 'v.v')
-
-fn voidptr_arg_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([voidptr_arg_vexe, '-gc', 'none', '-path',
-			'${voidptr_arg_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${voidptr_arg_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_c_voidptr_parameter_preserves_v1_call_lowering() {
-	root := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
+	root := os.join_path(os.vtmp_dir(), 'v3_voidptr_arg_cast_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	header := '#ifndef V3_VOIDPTR_ARG_NATIVE_H
 #define V3_VOIDPTR_ARG_NATIVE_H
 #include <stdint.h>
@@ -66,9 +48,8 @@ fn main() {
 }
 ') or { panic(err) }
 
-	v3_bin := voidptr_arg_build_v3()
-	out := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_out_${os.getpid()}')
-	compile := os.exec([v3_bin, source_path, '-b', 'c', '-o', '${out}'])
+	out := os.join_path(root, 'v3_voidptr_arg_cast_out')
+	compile := os.exec([@VEXE, source_path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

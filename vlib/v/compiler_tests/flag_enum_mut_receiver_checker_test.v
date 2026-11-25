@@ -1,37 +1,21 @@
 import os
+import v.tempname
 
-const flag_enum_mut_receiver_vexe = @VEXE
-const flag_enum_mut_receiver_tests_dir = os.dir(@FILE)
-const flag_enum_mut_receiver_v3_dir = os.dir(flag_enum_mut_receiver_tests_dir)
-const flag_enum_mut_receiver_vlib_dir = os.dir(flag_enum_mut_receiver_v3_dir)
-const flag_enum_mut_receiver_v3_src = os.join_path(flag_enum_mut_receiver_v3_dir, 'v.v')
-
-fn flag_enum_mut_receiver_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_flag_enum_mut_receiver_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([flag_enum_mut_receiver_vexe, '-gc', 'none', '-path',
-			'${flag_enum_mut_receiver_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${flag_enum_mut_receiver_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn flag_enum_mut_receiver_run_bad(v3_bin string, name string, source string, expected string) {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+fn flag_enum_mut_receiver_run_bad(dir string, name string, source string, expected string) {
+	bin := os.join_path(dir, 'v3_${name}')
+	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
-fn flag_enum_mut_receiver_run_good(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+fn flag_enum_mut_receiver_run_good(dir string, name string, source string) string {
+	bin := os.join_path(dir, 'v3_${name}')
+	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -40,10 +24,14 @@ fn flag_enum_mut_receiver_run_good(v3_bin string, name string, source string) st
 }
 
 fn test_flag_enum_set_clear_require_mutable_receiver() {
-	v3_bin := flag_enum_mut_receiver_build_v3()
+	dir := os.join_path(os.vtmp_dir(), 'v3_flag_enum_mut_receiver_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	expected := 'flag enum method `set` requires a mutable receiver'
 	expected_clear := 'flag enum method `clear` requires a mutable receiver'
-	flag_enum_mut_receiver_run_bad(v3_bin, 'bad_flag_enum_immutable_set', '@[flag]
+	flag_enum_mut_receiver_run_bad(dir, 'bad_flag_enum_immutable_set', '@[flag]
 enum Mode {
 	a
 	b
@@ -55,7 +43,7 @@ fn main() {
 }
 ',
 		expected)
-	flag_enum_mut_receiver_run_bad(v3_bin, 'bad_flag_enum_rvalue_set', '@[flag]
+	flag_enum_mut_receiver_run_bad(dir, 'bad_flag_enum_rvalue_set', '@[flag]
 enum Mode {
 	a
 	b
@@ -70,7 +58,7 @@ fn main() {
 }
 ',
 		expected)
-	flag_enum_mut_receiver_run_bad(v3_bin, 'bad_flag_enum_immutable_clear', '@[flag]
+	flag_enum_mut_receiver_run_bad(dir, 'bad_flag_enum_immutable_clear', '@[flag]
 enum Mode {
 	a
 	b
@@ -82,7 +70,7 @@ fn main() {
 }
 ',
 		expected_clear)
-	flag_enum_mut_receiver_run_bad(v3_bin, 'bad_flag_enum_immutable_field_set', '@[flag]
+	flag_enum_mut_receiver_run_bad(dir, 'bad_flag_enum_immutable_field_set', '@[flag]
 enum Mode {
 	a
 	b
@@ -100,7 +88,7 @@ fn main() {
 }
 ',
 		expected)
-	out := flag_enum_mut_receiver_run_good(v3_bin, 'good_flag_enum_mut_set_clear', '@[flag]
+	out := flag_enum_mut_receiver_run_good(dir, 'good_flag_enum_mut_set_clear', '@[flag]
 enum Mode {
 	a
 	b

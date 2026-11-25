@@ -1,33 +1,30 @@
 import os
+import v.tempname
 
-const executable_cleanup_vexe = @VEXE
-const executable_cleanup_tests_dir = os.dir(@FILE)
-const executable_cleanup_v3_dir = os.dir(executable_cleanup_tests_dir)
-const executable_cleanup_v3_src = os.join_path(executable_cleanup_v3_dir, 'v.v')
 const executable_cleanup_entry_point = $if windows {
 	'int wmain(int argc, wchar_t** argv) {'
 } $else {
 	'int main(int argc, char** argv) {'
 }
 
-fn executable_cleanup_compile_and_run(v3_bin string, root string, name string, suffix string,
+fn executable_cleanup_compile_and_run(root string, name string, suffix string,
 	source string) (os.Result, string) {
-	generated_c := executable_cleanup_generate_c(v3_bin, root, name, suffix, '', source)
+	generated_c := executable_cleanup_generate_c(root, name, suffix, '', source)
 	source_path := os.join_path(root, '${name}${suffix}')
 	output_path := os.join_path(root, name)
 	compile :=
-		os.exec([v3_bin, '-nocache', '-o', output_path, source_path])
+		os.exec([@VEXE, '-nocache', '-o', output_path, source_path])
 	assert compile.exit_code == 0, compile.output
 	return os.exec([output_path]), generated_c
 }
 
-fn executable_cleanup_generate_c(v3_bin string, root string, name string, suffix string,
+fn executable_cleanup_generate_c(root string, name string, suffix string,
 	flags string, source string) string {
 	source_path := os.join_path(root, '${name}${suffix}')
 	c_path := os.join_path(root, '${name}.c')
 	os.write_file(source_path, source) or { panic(err) }
 	generate :=
-		os.exec([v3_bin, '-nocache', ...(os.split_args(flags) or { panic(err) }), '-o', c_path,
+		os.exec([@VEXE, '-nocache', ...(os.split_args(flags) or { panic(err) }), '-o', c_path,
 			source_path])
 	assert generate.exit_code == 0, generate.output
 	return os.read_file(c_path) or { panic(err) }
@@ -41,18 +38,13 @@ fn assert_cleanup_registered_after_init(c_code string) {
 }
 
 fn test_executable_mains_invoke_module_cleanup() {
-	root := os.join_path(os.temp_dir(), 'v3_executable_cleanup_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	v3_bin := os.join_path(root, 'v3')
+	root := os.join_path(os.vtmp_dir(), 'v3_executable_cleanup_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	build :=
-		os.exec([executable_cleanup_vexe, '-gc', 'none', '-o', v3_bin, executable_cleanup_v3_src])
-	assert build.exit_code == 0, build.output
 
-	main_run, main_c := executable_cleanup_compile_and_run(v3_bin, root, 'user_main', '.v', "fn init() {
+	main_run, main_c := executable_cleanup_compile_and_run(root, 'user_main', '.v', "fn init() {
 	println('init')
 }
 
@@ -70,7 +62,7 @@ fn main() {
 	assert main_c.contains('atexit(_vcleanup);'), main_c
 	assert_cleanup_registered_after_init(main_c)
 
-	init_exit_run, init_exit_c := executable_cleanup_compile_and_run(v3_bin, root, 'init_exit',
+	init_exit_run, init_exit_c := executable_cleanup_compile_and_run(root, 'init_exit',
 		'.v', "fn init() {
 	println('init')
 	exit(0)
@@ -88,7 +80,7 @@ fn main() {
 	assert init_exit_run.output.trim_space() == 'init'
 	assert_cleanup_registered_after_init(init_exit_c)
 
-	top_level_run, top_level_c := executable_cleanup_compile_and_run(v3_bin, root, 'top_level',
+	top_level_run, top_level_c := executable_cleanup_compile_and_run(root, 'top_level',
 		'.vsh', "fn init() {
 	println('init')
 }
@@ -104,7 +96,7 @@ println('top level')
 	assert top_level_c.contains('atexit(_vcleanup);'), top_level_c
 	assert_cleanup_registered_after_init(top_level_c)
 
-	test_run, test_c := executable_cleanup_compile_and_run(v3_bin, root, 'test_main', '_test.v', "fn init() {
+	test_run, test_c := executable_cleanup_compile_and_run(root, 'test_main', '_test.v', "fn init() {
 	println('init')
 }
 
@@ -121,7 +113,7 @@ fn test_one() {
 	assert test_c.contains('atexit(_vcleanup);'), test_c
 	assert_cleanup_registered_after_init(test_c)
 
-	function_only_run, function_only_c := executable_cleanup_compile_and_run(v3_bin, root,
+	function_only_run, function_only_c := executable_cleanup_compile_and_run(root,
 		'function_only', '.v', 'module main
 
 pub fn answer() int {
@@ -150,7 +142,7 @@ pub fn answer() int {
 }
 ")!
 	generate_no_main :=
-		os.exec([v3_bin, '-nocache', '-o', no_main_c_path, no_main_source])
+		os.exec([@VEXE, '-nocache', '-o', no_main_c_path, no_main_source])
 	assert generate_no_main.exit_code == 0, generate_no_main.output
 	no_main_c := os.read_file(no_main_c_path)!
 	assert no_main_c.contains('static void _vno_main_init_caller(void) {'), no_main_c
@@ -185,7 +177,7 @@ pub fn start_wide() i64 {
 	return direct_export_counter
 }
 ")!
-	generate_direct := os.exec([v3_bin, '-nocache', '-enable-globals', '-o', direct_export_c_path,
+	generate_direct := os.exec([@VEXE, '-nocache', '-enable-globals', '-o', direct_export_c_path,
 		direct_export_source])
 	assert generate_direct.exit_code == 0, generate_direct.output
 	direct_export_c := os.read_file(direct_export_c_path)!
@@ -197,7 +189,7 @@ pub fn start_wide() i64 {
 	assert direct_wide_body.contains('_vno_main_init_caller();'), direct_export_c
 	assert !direct_export_c.contains('main__start_wide'), direct_export_c
 
-	explicit_main_no_main_c := executable_cleanup_generate_c(v3_bin, root, 'explicit_main_no_main',
+	explicit_main_no_main_c := executable_cleanup_generate_c(root, 'explicit_main_no_main',
 		'.v', '-d no_main', "fn main() {
 	println('not called')
 }
@@ -206,7 +198,7 @@ pub fn start_wide() i64 {
 	assert !explicit_main_no_main_c.contains('void main(void) {'), explicit_main_no_main_c
 	assert explicit_main_no_main_c.contains('main__main'), explicit_main_no_main_c
 
-	top_level_no_main_c := executable_cleanup_generate_c(v3_bin, root, 'top_level_no_main', '.vsh',
+	top_level_no_main_c := executable_cleanup_generate_c(root, 'top_level_no_main', '.vsh',
 		'-d no_main', "println('not called')
 ")
 	assert !top_level_no_main_c.contains(executable_cleanup_entry_point), top_level_no_main_c

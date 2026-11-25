@@ -1,44 +1,17 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn tmp_pointer_interface_str_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-}
-
-// One compiler serves the whole suite; each case used to build its own.
-const build_v3_pointer_interface_str_path = tmp_pointer_interface_str_path('pointer_interface_str_${os.getpid()}')
-
-fn testsuite_begin() {
-	v3_bin := build_v3_pointer_interface_str_path
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rm(build_v3_pointer_interface_str_path) or {}
-}
-
-fn build_v3_pointer_interface_str() string {
-	return build_v3_pointer_interface_str_path
-}
+import v.tempname
 
 fn test_pointer_to_interface_stringification_uses_pointer_path() {
-	v3_bin := build_v3_pointer_interface_str()
-	src_path := '${tmp_pointer_interface_str_path('source')}.v'
-	bin_path := tmp_pointer_interface_str_path('bin')
+	root := os.join_path(os.vtmp_dir(), 'v3_pointer_interface_str_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src_path := os.join_path(root, 'v3_source.v')
+	bin_path := os.join_path(root, 'v3_bin')
 	os.write_file(src_path,
 		"interface Named {\n\tstr() string\n}\n\nstruct Item {}\n\nfn (i Item) str() string {\n\treturn 'item'\n}\n\nfn main() {\n\tmut value := Named(Item{})\n\tptr := &value\n\ttext := '\${ptr}'\n\tprintln(text.len > 0)\n}\n") or {
 		panic(err)
 	}
-	compile :=
-		os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
+	compile := os.exec([@VEXE, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin_path])
@@ -47,9 +20,11 @@ fn test_pointer_to_interface_stringification_uses_pointer_path() {
 }
 
 fn test_pointer_receiver_str_uses_pointer_argument() {
-	v3_bin := build_v3_pointer_interface_str()
-	src_path := '${tmp_pointer_interface_str_path('pointer_receiver_source')}.v'
-	bin_path := tmp_pointer_interface_str_path('pointer_receiver_bin')
+	root := os.join_path(os.vtmp_dir(), 'v3_pointer_interface_str_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src_path := os.join_path(root, 'v3_pointer_receiver_source.v')
+	bin_path := os.join_path(root, 'v3_pointer_receiver_bin')
 	os.write_file(src_path, "struct Item {
 	value int
 }
@@ -69,8 +44,7 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile :=
-		os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
+	compile := os.exec([@VEXE, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin_path])
@@ -79,9 +53,11 @@ fn main() {
 }
 
 fn test_custom_pointer_interpolation_guards_nil() {
-	v3_bin := build_v3_pointer_interface_str()
-	src_path := '${tmp_pointer_interface_str_path('nil_custom_source')}.v'
-	bin_path := tmp_pointer_interface_str_path('nil_custom_bin')
+	root := os.join_path(os.vtmp_dir(), 'v3_pointer_interface_str_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src_path := os.join_path(root, 'v3_nil_custom_source.v')
+	bin_path := os.join_path(root, 'v3_nil_custom_bin')
 	os.write_file(src_path, "struct PtrItem {
 	value int
 }
@@ -107,8 +83,7 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile :=
-		os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
+	compile := os.exec([@VEXE, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin_path])

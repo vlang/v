@@ -1,5 +1,9 @@
 import os
 
+$if windows {
+	import v.fixturetest
+}
+
 fn test_checker_fixture_rejects_forwarded_mut_value_for_pointer_storage() {
 	fixture := 'vlib/v/checker/tests/modules/comptime_forwarded_mut_pointer_storage'
 	root := os.join_path(os.vtmp_dir(), 'fixture_pointer_storage_${os.getpid()}')
@@ -11,7 +15,10 @@ fn test_checker_fixture_rejects_forwarded_mut_value_for_pointer_storage() {
 		'c', '-prod', '-o', os.join_path(root, 'invalid'), fixture])
 	process.set_redirect_stdio_merged()
 	process.run()
-	output := process.stdout_slurp()
+	mut output := process.stdout_slurp()
+	$if windows {
+		output = fixturetest.slash_diagnostic_paths(output)
+	}
 	process.wait()
 	exit_code := process.code
 	process.close()
