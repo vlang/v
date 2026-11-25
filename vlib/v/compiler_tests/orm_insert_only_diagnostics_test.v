@@ -62,19 +62,17 @@ fn test_sql_insert_only_dynamic_grouped_assignments_are_checked() {
 	root := os.join_path(os.vtmp_dir(), 'orm_insert_only_grouped_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	path := os.join_path(root, 'main.v')
-	for assignment in [
-		"name == 'safe' && creator == 'protected'",
-		"(name == 'safe' || creator == 'protected')",
-		"if creator == 'read' { if enabled { name == 'safe' && creator == 'protected' } }",
-	] {
-		os.write_file(path, "import db.sqlite
-struct InsertOnlyUser {
- id int @[primary]
- creator string @[sql_insert_only]
- name string
-}
-fn main() {
+	rejected_dir := os.join_path(root, 'rejected')
+	os.mkdir(rejected_dir)!
+	cases := {
+		'conjunction':      "name == 'safe' && creator == 'protected'"
+		'disjunction':      "(name == 'safe' || creator == 'protected')"
+		'nested_condition': "if creator == 'read' { if enabled { name == 'safe' && creator == 'protected' } }"
+	}
+	mut calls := []string{cap: cases.len}
+	for name, assignment in cases {
+		os.write_file(os.join_path(rejected_dir, '${name}.v'), "import db.sqlite
+fn check_${name}() ! {
  db := sqlite.connect(':memory:')!
  enabled := true
  creator := 'read'
@@ -82,12 +80,26 @@ fn main() {
  sql db { dynamic update InsertOnlyUser set assignments where id == 1 }!
 }
 ")!
-		for flags in [[]string{}, ['-check']] {
-			result := os.exec([@VEXE, '-nocolor', ...flags, path])
-			assert result.exit_code == 1, result.output
-			assert result.output.contains('cannot update insert-only field `InsertOnlyUser.creator`'), result.output
+		calls << ' check_${name}()!'
+	}
+	os.write_file(os.join_path(rejected_dir, 'main.v'), "struct InsertOnlyUser {
+ id int @[primary]
+ creator string @[sql_insert_only]
+ name string
+}
+fn main() {
+${calls.join('\n')}
+}
+")!
+	for flags in [[]string{}, ['-check']] {
+		result := os.exec([@VEXE, '-nocolor', ...flags, rejected_dir])
+		assert result.exit_code == 1, result.output
+		diagnostics := result.output.split_into_lines().filter(it.contains('error: ORM: cannot update insert-only field `InsertOnlyUser.creator`'))
+		for name, _ in cases {
+			assert diagnostics.any(it.contains('${name}.v:')), '${name}, flags=${flags}: ${result.output}'
 		}
 	}
+	path := os.join_path(root, 'main.v')
 	os.write_file(path, "import db.sqlite
 struct InsertOnlyUser {
  id int @[primary]
