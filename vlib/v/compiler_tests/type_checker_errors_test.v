@@ -95,14 +95,26 @@ fn run_bad_with_flags(compiler string, name string, src string, expected string,
 
 // run_good supports run good handling for v3 tests.
 fn run_good(compiler string, name string, src string) string {
+	good_bin := compile_good_source(compiler, name, src)
+	return run_good_binary(name, good_bin)
+}
+
+fn compile_good_source(compiler string, name string, src string) string {
 	out := unique_temp_path(name)
 	good_src := out + '.v'
 	os.write_file(good_src, src) or { panic(err) }
-	good_bin := out
-	compile := run_type_checker_compiler(compiler, ['-nocache', '-enable-globals', '${good_src}',
+	compile_good_input(compiler, name, good_src, out)
+	return out
+}
+
+fn compile_good_input(compiler string, name string, input_path string, good_bin string) {
+	compile := run_type_checker_compiler(compiler, ['-nocache', '-enable-globals', input_path,
 		'-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
+}
+
+fn run_good_binary(name string, good_bin string) string {
 	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
@@ -151,6 +163,11 @@ fn run_bad_project(compiler string, name string, files map[string]string, input 
 
 // run_good_project supports run good project handling for v3 tests.
 fn run_good_project(compiler string, name string, files map[string]string, input string) string {
+	good_bin := compile_good_project(compiler, name, files, input)
+	return run_good_binary(name, good_bin)
+}
+
+fn compile_good_project(compiler string, name string, files map[string]string, input string) string {
 	root := unique_temp_path('${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -161,32 +178,8 @@ fn run_good_project(compiler string, name string, files map[string]string, input
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	good_bin := unique_temp_path(name)
-	compile := run_type_checker_compiler(compiler, ['-nocache', '-enable-globals', input_path,
-		'-b', 'c', '-o', good_bin])
-	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
-	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.exec([good_bin])
-	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
-	return run.output.trim_space()
-}
-
-// gen_c_project emits c project output for v3 tests.
-fn gen_c_project(compiler string, name string, files map[string]string, input string) string {
-	root := unique_temp_path('${name}_project')
-	if os.exists(root) {
-		os.rmdir_all(root) or { panic(err) }
-	}
-	os.mkdir_all(root) or { panic(err) }
-	for rel, src in files {
-		write_project_file(root, rel, src)
-	}
-	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
-	c_out := unique_temp_path(name) + '.c'
-	os.rm(c_out) or {}
-	compile := run_type_checker_compiler(compiler, [input_path, '-o', '${c_out}'])
-	assert compile.exit_code == 0, '${name}: ${compile.output}'
-	assert os.exists(c_out)
-	return os.read_file(c_out) or { panic(err) }
+	compile_good_input(compiler, name, input_path, good_bin)
+	return good_bin
 }
 
 fn test_parallel_checker_preserves_diagnostic_order() {
@@ -1076,11 +1069,11 @@ fn test_fixed_array_length_checks() {
 	good_ret_lit := run_good(v3_bin, 'good_return_if_array_literal', 'fn pick(c bool) []int {\n\treturn if c { [1, 2, 3] } else { [4, 5] }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
 	assert good_ret_lit == '5'
 	mixed_const_src := 'const xs = [1, 2, 3]\nfn first() int {\n\treturn xs[0]\n}\nfn length_score() int {\n\treturn xs.len\n}\nfn all() []int {\n\treturn xs\n}\nfn main() {\n\tys := all()\n\tprintln(int_str(first() + length_score() + ys.len + ys[2]))\n}\n'
-	mixed_const := run_good(v3_bin, 'good_indexed_const_returned_dynamic_array', mixed_const_src)
+	mixed_const_name := 'good_indexed_const_returned_dynamic_array'
+	mixed_const_bin := compile_good_source(v3_bin, mixed_const_name, mixed_const_src)
+	mixed_const := run_good_binary(mixed_const_name, mixed_const_bin)
 	assert mixed_const == '10'
-	mixed_const_c := gen_c_project(v3_bin, 'good_indexed_const_returned_dynamic_array_c', {
-		'main.v': mixed_const_src
-	}, 'main.v')
+	mixed_const_c := os.read_file(mixed_const_bin + '.c') or { panic(err) }
 	mixed_const_compact := mixed_const_c.replace('\t', '').replace(' ', '').replace('\n', '')
 	// v3 lowers V `int` to the target's pointer width (FlatGen.set_target picks
 	// `i32` when target.pointer_bits is 32), so spell the expected C type from
@@ -1094,15 +1087,14 @@ fn test_fixed_array_length_checks() {
 	assert mixed_const_compact.contains('Arrayall(void){returnmain__xs;}'), mixed_const_c
 	assert !mixed_const_compact.contains('returnnew_array_from_c_array(3,3,sizeof(${int_ct}),&main__xs);'), mixed_const_c
 
-	shadowed := run_good_project(v3_bin, 'good_shadowed_const_fixed_storage', {
+	shadowed_name := 'good_shadowed_const_fixed_storage'
+	shadowed_bin := compile_good_project(v3_bin, shadowed_name, {
 		'main.v':       'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
 		'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
 	}, 'main.v')
+	shadowed := run_good_binary(shadowed_name, shadowed_bin)
 	assert shadowed == '34'
-	shadowed_c := gen_c_project(v3_bin, 'good_shadowed_const_fixed_storage_c', {
-		'main.v':       'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
-		'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
-	}, 'main.v')
+	shadowed_c := os.read_file(shadowed_bin + '.c') or { panic(err) }
 	shadowed_compact := shadowed_c.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert shadowed_compact.contains('Arraymain__xs;'), shadowed_c
 	assert shadowed_compact.contains('returnmain__xs;'), shadowed_c
@@ -2086,13 +2078,13 @@ fn test_pr_review_codegen_batch_twentynine() {
 	// Returning a pointer alias of an aligned local must use the aligned heap-copy helper, matching
 	// the free path for `&Aligned` values.
 	aligned_alias_source := '@[aligned: 64]\nstruct Aligned {\n\tx int\n}\nfn make() &Aligned {\n\tmut x := Aligned{\n\t\tx: 5\n\t}\n\tp := &x\n\treturn p\n}\nfn main() {\n\tp := make()\n\tprintln(int_str(p.x))\n\tunsafe {\n\t\tfree(p)\n\t}\n}\n'
-	aligned_c := gen_c_project(v3_bin, 'good_aligned_pointer_alias_heap_copy_c', {
-		'main.v': aligned_alias_source
-	}, 'main.v')
+	aligned_name := 'good_aligned_pointer_alias_heap_copy_run'
+	aligned_bin := compile_good_source(v3_bin, aligned_name, aligned_alias_source)
+	aligned_c := os.read_file(aligned_bin + '.c') or { panic(err) }
 	assert aligned_c.contains('v3_aligned_memdup('), aligned_c
 	assert !aligned_c.contains('memdup(p, sizeof(Aligned))'), aligned_c
 	assert aligned_c.contains('v3_aligned_free(p)'), aligned_c
-	aligned_alias := run_good(v3_bin, 'good_aligned_pointer_alias_heap_copy_run', aligned_alias_source)
+	aligned_alias := run_good_binary(aligned_name, aligned_bin)
 	assert aligned_alias == '5'
 	// A capitalized field followed by a const-sized fixed array is a named field whose type is
 	// `[n]int`, not a failed generic embedded-field probe that skips `[n]` and leaves `int`.
