@@ -1967,25 +1967,23 @@ fn test_a_constraint_from_another_module_is_checked_at_the_call() {
 	res := check_shapes('modules', 'pub fn longest[T Named](a T, b T) T {
 	return if a.name.len >= b.name.len { a } else { b }
 }
-',
-		"\tprintln(shapes.longest(City{ name: 'Lima' }, City{ name: 'Oslo' }).name)\n\tprintln(shapes.longest(1, 2))\n")
-	assert res.exit_code == 1, res.output
-	errors := res.output.split_into_lines().filter(it.contains(': error: '))
-	assert errors == ["main.v:11:25: error: `int` doesn't implement field `name` of interface `Named`"], res.output
-	// The method form: `longest` a method of a struct of `shapes`, with the same
-	// type parameter, and the same error at the same argument.
-	method_res := check_shapes('modules_methods', 'pub struct Host {}
+
+pub struct Host {}
 
 pub fn (h Host) longest[T Named](a T, b T) T {
 	return if a.name.len >= b.name.len { a } else { b }
 }
 ',
-		"\th := shapes.Host{}\n\tprintln(h.longest(City{ name: 'Lima' }, City{ name: 'Oslo' }).name)\n\tprintln(h.longest(1, 2))\n")
-	assert method_res.exit_code == 1, method_res.output
-	method_errors := method_res.output.split_into_lines().filter(it.contains(': error: '))
-	assert method_errors == [
-		"main.v:12:20: error: `int` doesn't implement field `name` of interface `Named`",
-	], method_res.output
+		"	println(shapes.longest(City{ name: 'Lima' }, City{ name: 'Oslo' }).name)
+	println(shapes.longest(1, 2))
+	h := shapes.Host{}
+	println(h.longest(City{ name: 'Lima' }, City{ name: 'Oslo' }).name)
+	println(h.longest(1, 2))
+")
+	assert res.exit_code == 1, res.output
+	errors := res.output.split_into_lines().filter(it.contains(': error: '))
+	no_name := "`int` doesn't implement field `name` of interface `Named`"
+	assert errors == ['main.v:11:25: error: ${no_name}', 'main.v:14:20: error: ${no_name}'], res.output
 }
 
 // A constraint can also be a set of types, declared with `constraint`: the
