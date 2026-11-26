@@ -6881,3 +6881,27 @@ fn forward_job(job SearchJob) SearchJob {
 		assert result.output.contains(diagnostics[i]), result.output
 	}
 }
+
+fn test_ownership_scoped_generic_factory_input_keeps_its_contract() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_factory_generic_input'
+	source := scoped_factory_owned_input_fixture.replace('interface InputFactory[^scope]',
+		'interface InputFactory[^scope, W]').replace_once('create(job SearchJob)', 'create(job W)')
+		.replace('fn run[^scope](mut factory InputFactory[^scope], mut jobs []SearchJob)',
+			'fn run[^scope, W transport.Transferable](mut factory InputFactory[^scope, W], mut jobs []W)')
+		.replace('run(mut factory, mut jobs)', 'run[SearchJob](mut factory, mut jobs)')
+	result := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+
+	borrowed := run_ownership_check(v3_bin, 'scoped_factory_generic_borrowed',
+		source.replace('W transport.Transferable]', 'W]')
+			.replace('create(job SearchJob)', 'create(job &SearchJob)')
+			.replace('job: job', 'job: *job')
+			.replace('SearchJob{label:', '&SearchJob{label:')
+			.replace('run[SearchJob]', 'run[&SearchJob]'))
+	assert borrowed.exit_code != 0, borrowed.output
+	assert borrowed.output.contains('scoped callback factory method `create`'), borrowed.output
+}

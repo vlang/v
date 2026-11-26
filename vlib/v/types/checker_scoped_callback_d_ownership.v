@@ -180,7 +180,10 @@ fn (tc &TypeChecker) ownership_scoped_callback_factory_borrows(id flat.NodeId) ?
 	}
 	receiver_type := unwrap_pointer(tc.resolve_type(recv_id))
 	info := tc.resolve_call_info(id, *call) or { return none }
-	if int(call.children_count) != info.params.len || !tc.ownership_scoped_factory_signature(info) {
+	allow_open_input := receiver_type is Interface
+		&& tc.ownership_scoped_factory_bound_input(id, info)
+	if int(call.children_count) != info.params.len
+		|| !tc.ownership_scoped_factory_signature(info, allow_open_input) {
 		return none
 	}
 	loan := ScopedThreadBorrow{ source: receiver.value, pos: recv_id }
@@ -213,7 +216,7 @@ fn (mut tc TypeChecker) ownership_collect_scoped_factory_contracts() {
 				continue
 			}
 			key := tc.interface_method_signature_key(iface, method) or { continue }
-			if tc.ownership_scoped_factory_signature(tc.call_info(key, true)) {
+			if tc.ownership_scoped_factory_interface_signature(iface, tc.call_info(key, true)) {
 				state.scoped_factory_contracts[key] = true
 			}
 		}
@@ -331,7 +334,43 @@ struct ScopedFactoryInput {
 	typ  Type
 }
 
-fn (tc &TypeChecker) ownership_scoped_factory_signature(info CallInfo) bool {
+fn (tc &TypeChecker) ownership_scoped_factory_interface_signature(iface u32, info CallInfo) bool {
+	// The contract can name a type parameter. Conformance still checks the
+	// implementation and each scoped call must establish transferability.
+	mut allow_open_input := false
+	if info.params.len == 2 {
+		input := info.params[1]
+		if input is Unknown {
+			placeholder := (input as Unknown).placeholder
+			params := tc.interface_generic_params[tc.interface_metadata_name(iface)] or { []u32{} }
+			allow_open_input = placeholder != 0 && placeholder in params
+		}
+	}
+	return tc.ownership_scoped_factory_signature(info, allow_open_input)
+}
+
+fn (tc &TypeChecker) ownership_scoped_factory_bound_input(id flat.NodeId, info CallInfo) bool {
+	if info.params.len != 2 {
+		return false
+	}
+	input := info.params[1]
+	if input !is Unknown {
+		return false
+	}
+	placeholder := (input as Unknown).placeholder
+	if placeholder == 0 {
+		return false
+	}
+	decl := tc.diagnostic_enclosing_fn(id)
+	if !tc.valid_node_id(decl) {
+		return false
+	}
+	constraints := tc.generic_constraints_of(*tc.a.node(decl))
+	constraint := constraints[placeholder] or { return false }
+	return constraint.thread_capability in [.transfer, .share]
+}
+
+fn (tc &TypeChecker) ownership_scoped_factory_signature(info CallInfo, allow_open_input bool) bool {
 	if !info.has_receiver || info.params.len !in [1, 2] || info.is_variadic || info.is_c_variadic
 		|| !tc.ownership_is_scoped_callback(info.return_type) || call_param_is_shared(info, 0) {
 		return false
@@ -340,13 +379,18 @@ fn (tc &TypeChecker) ownership_scoped_factory_signature(info CallInfo) bool {
 		return true
 	}
 	input := info.params[1]
-	return !tc.call_param_is_mut(info, 1) && !call_param_is_shared(info, 1)
-		&& !type_contains_unknown(input) && !fn_param_is_voidptr_type(input)
+	if tc.call_param_is_mut(info, 1) || call_param_is_shared(info, 1) {
+		return false
+	}
+	if input is Unknown {
+		return allow_open_input && (input as Unknown).placeholder != 0
+	}
+	return !type_contains_unknown(input) && !fn_param_is_voidptr_type(input)
 		&& tc.ownership_thread_transfer_problem(input, .transfer, 0, mut map[u64]bool{}) == none
 }
 
 fn (tc &TypeChecker) ownership_scoped_factory_method_proof(info CallInfo, loan ScopedThreadBorrow) ?ScopedFactoryProof {
-	if !tc.ownership_scoped_factory_signature(info) {
+	if !tc.ownership_scoped_factory_signature(info, false) {
 		return none
 	}
 	formal := unalias_type(info.params[0])
