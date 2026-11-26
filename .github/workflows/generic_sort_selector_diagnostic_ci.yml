@@ -233,3 +233,117 @@ jobs:
         with:
           name: original-vtl-generated-c
           path: ${{ runner.temp }}/vtl-sort-diagnostic
+
+  trace-selector:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Build separate diagnostic compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/selector-trace"
+          mkdir -p "$root"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('vlib/v/transform/array.v')
+          s = p.read_text()
+          start = s.index('fn (mut t Transformer) substitute_array_sort_vars_named(')
+          anchor = '\tstart := t.a.children.len\n'
+          i = s.index(anchor, start)
+          trace = """	if node.kind == .selector && node.value == 'name' && children.len > 0 {
+          		old_base := t.a.child_node(&node, 0)
+          		new_base := t.a.nodes[int(children[0])]
+          		if old_base.kind == .ident && old_base.value in [a_name, b_name] {
+          			eprintln('SORT_TRACE substitute name=${old_base.value} op=${node.op} selector_type=${node.typ} old_base_type=${old_base.typ} new_base_kind=${new_base.kind} new_base_op=${new_base.op} new_base_type=${new_base.typ}')
+          		}
+          	}
+          """
+          p.write_text(s[:i] + trace + s[i:])
+          p = Path('vlib/v/gen/c/cleanc.v')
+          s = p.read_text()
+          anchor = '\t\t\t\tbase_is_deref := base.kind == .prefix && base.op == .mul\n'
+          assert s.count(anchor) == 1
+          trace = """				if node.value == 'name' && base.kind != .ident {
+          					eprintln('SORT_TRACE cgen op=${node.op} selector_type=${node.typ} base_kind=${base.kind} base_op=${base.op} base_node_type=${base.typ} resolved_base_type=${base_type0.source_type_id()} resolved_pointer=${base_type0 is types.Pointer} explicit_deref=${base_is_deref}')
+          				}
+          """
+          p.write_text(s.replace(anchor, anchor + trace))
+          PY
+          git diff -- vlib/v/transform/array.v vlib/v/gen/c/cleanc.v > "$root/instrumentation.diff"
+          ./v -o "$root/vtrace" cmd/v
+          git restore -- vlib/v/transform/array.v vlib/v/gen/c/cleanc.v
+          git diff --exit-code
+      - name: Trace independent name collision and pointer sort controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/selector-trace"
+          python3 - "$root" <<'PY'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1])
+          for case, first, second in [('ref_a', 'a', 'other_b'), ('ref_b', 'other_a', 'b'), ('ref_ab', 'a', 'b'), ('renamed', 'other_a', 'other_b')]:
+              (root / (case + '.v')).write_text(f"""import json2
+
+          struct ProbeValue {{
+              n int
+          }}
+
+          {first} := &ProbeValue{{n: 1}}
+          {second} := &ProbeValue{{n: 2}}
+          assert {first}.n + {second}.n == 3
+          val := json2.Any({{'b': json2.Any(1), 'a': json2.Any(2)}})
+          assert json2.encode(val) == '{{"a":2,"b":1}}'
+          """)
+          (root / 'pointer_sort.v').write_text("""struct SortKey {
+              name string
+          }
+
+          fn main() {
+              mut keys := [&SortKey{name: 'z'}, &SortKey{name: 'a'}]
+              keys.sort(a.name < b.name)
+              assert keys[0].name == 'a'
+              assert keys[1].name == 'z'
+          }
+          """)
+          PY
+          failed=0
+          printf 'case\tcompiler\temit\tbuild\trun\n' > "$root/results.tsv"
+          for case in ref_a ref_b ref_ab renamed pointer_sort; do
+            for role in baseline trace; do
+              v="$GITHUB_WORKSPACE/v"
+              if [ "$role" = trace ]; then v="$root/vtrace"; fi
+              emit=0
+              build=0
+              ran=not-run
+              "$v" -cc gcc -no-retry-compilation -no-parallel -o "$root/$case-$role.c" "$root/$case.v" > "$root/$case-$role.emit.log" 2>&1 || emit=$?
+              "$v" -cc gcc -no-retry-compilation -no-parallel -o "$root/$case-$role.bin" "$root/$case.v" > "$root/$case-$role.build.log" 2>&1 || build=$?
+              if [ "$build" -eq 0 ]; then
+                ran=0
+                "$root/$case-$role.bin" > "$root/$case-$role.run.log" 2>&1 || ran=$?
+              fi
+              printf '%s\t%s\t%s\t%s\t%s\n' "$case" "$role" "$emit" "$build" "$ran" >> "$root/results.tsv"
+              if [ -s "$root/$case-$role.c" ]; then
+                grep -nE '__sort_.*name' "$root/$case-$role.c" > "$root/$case-$role.selectors" || :
+                cat "$root/$case-$role.selectors"
+              fi
+              cat "$root/$case-$role.emit.log" "$root/$case-$role.build.log"
+              if [ "$emit" -ne 0 ] || [ "$build" -ne 0 ] || [ "$ran" != 0 ]; then failed=1; fi
+            done
+          done
+          cat "$root/results.tsv"
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sort-selector-metadata-trace
+          path: |
+            ${{ runner.temp }}/selector-trace
+            !${{ runner.temp }}/selector-trace/vtrace
