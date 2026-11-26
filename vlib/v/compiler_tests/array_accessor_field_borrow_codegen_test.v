@@ -244,74 +244,83 @@ fn test_owned_escaping_field_is_rejected() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
-// An explicit builtin string clone allocates independent storage before the selected field
-// escapes, so the array element itself can remain borrowed even when it has no clone method.
-fn test_owned_escaping_field_string_clone_borrows() {
+// These consumers can borrow the element for the string field read.
+fn test_owned_string_consumers_borrow_array_elements() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_escaping_field_string_clone', "struct E {\n\tname string\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name() string {\n\treturn t.entries.last().name.clone()\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello' }\n\tname := t.last_name()\n\tt.entries.delete_last()\n\tprintln(name)\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_escaping_field_string_clone_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'hello', run.output
-}
-
-// The exclusion is limited to the chain's final value: an owned *intermediate* field whose
-// own final value is non-owned stays borrowable. `arr.last().name.len` reads only the length
-// (an int), so nothing owned escapes and it must still lower to the in-place borrow.
-fn test_owned_intermediate_field_chain_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_intermediate_chain', "struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name_len() int {\n\treturn t.entries.last().name.len\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(int_str(t.last_name_len()))\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('unsupported node kind'), compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_intermediate_chain_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '5', run.output
-}
-
-// An owned field used only by a comparison does not escape. The accessor can borrow the
-// array element even when its type has no clone method.
-fn test_owned_field_comparison_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_comparison', "struct E {\n\tname string\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) has_name(name string) bool {\n\treturn t.entries.last().name == name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello' }\n\tprintln(t.has_name('hello'))\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_field_comparison_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'true', run.output
-}
-
-// Builtin membership only reads and compares the selected string, so the array element can
-// remain borrowed when no element equality overload can invoke user code.
-fn test_owned_field_membership_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_membership', "struct E {
+	compile := compile_v3_ownership_program(v3_bin, 'owned_string_field_reads', "struct E {
 	name string
+}
+
+struct T {
+mut:
+	entries []E
+}
+
+// The string clone can outlive the borrowed element.
+fn (t &T) last_name() string {
+	return t.entries.last().name.clone()
+}
+
+struct SizedEntry {
+	name string
+	size int
+}
+
+struct SizedTable {
+mut:
+	entries []SizedEntry
+}
+
+// Only the length leaves this field chain.
+fn (t &SizedTable) last_name_len() int {
+	return t.entries.last().name.len
+}
+
+fn (t &T) has_name(name string) bool {
+	return t.entries.last().name == name
 }
 
 fn has_last_name(entries []E, names []string) bool {
 	return entries.last().name in names
 }
 
-fn main() {
+fn check_clone() {
+	mut t := T{}
+	t.entries << E{ name: 'hello' }
+	name := t.last_name()
+	t.entries.delete_last()
+	println(name)
+}
+
+fn check_length() {
+	mut t := SizedTable{}
+	t.entries << SizedEntry{ name: 'hello', size: 5 }
+	println(int_str(t.last_name_len()))
+}
+
+fn check_comparison() {
+	mut t := T{}
+	t.entries << E{ name: 'hello' }
+	println(t.has_name('hello'))
+}
+
+fn check_membership() {
 	entries := [E{ name: 'hello' }]
 	println(has_last_name(entries, ['hello']))
 }
+
+fn main() {
+	check_clone()
+	check_length()
+	check_comparison()
+	check_membership()
+}
 ", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_field_membership_bin')
+	assert_clean_borrow_build(compile)
+	bin_path := tmp_array_accessor_borrow_path('owned_string_field_reads_bin')
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'true', run.output
+	assert run.output.trim_space().split_into_lines() == ['hello', '5', 'true', 'true'], run.output
 }
 
 fn test_owned_field_overloaded_membership_is_rejected() {
