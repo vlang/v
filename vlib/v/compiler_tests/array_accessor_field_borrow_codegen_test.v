@@ -420,13 +420,11 @@ fn main() {
 }
 ", '-nocolor')
 	// Locations include the prepended Drop interface.
-	message := 'error: cannot return an independent array element:'
-	detail := 'requires ownership destruction but has no `clone()` method'
 	assert ownership_error_lines(compile) == [
-		'21:9: ${message} `E` ${detail}',
-		'30:9: ${message} `PointerEntry` ${detail}',
-		'57:9: ${message} `WrapperEntry` ${detail}',
-		'64:7: ${message} `E` ${detail}',
+		independent_array_element_error_at('21:9', 'E'),
+		independent_array_element_error_at('30:9', 'PointerEntry'),
+		independent_array_element_error_at('57:9', 'WrapperEntry'),
+		independent_array_element_error_at('64:7', 'E'),
 	], compile.output
 }
 
@@ -479,9 +477,12 @@ fn ownership_error_lines(compile os.Result) []string {
 	return compile.output.split_into_lines().filter(it.contains(': error: ')).map(it.all_after('.v:'))
 }
 
+fn independent_array_element_error_at(location string, element string) string {
+	return '${location}: error: cannot return an independent array element: `${element}` requires ownership destruction but has no `clone()` method'
+}
+
 fn assert_independent_array_element_errors(compile os.Result, locations []string) {
-	message := 'error: cannot return an independent array element: `E` requires ownership destruction but has no `clone()` method'
-	assert ownership_error_lines(compile) == locations.map('${it}: ${message}'), compile.output
+	assert ownership_error_lines(compile) == locations.map(independent_array_element_error_at(it, 'E')), compile.output
 }
 
 // An allocating consumer is borrow-safe only when evaluating its other operands cannot mutate
@@ -754,9 +755,9 @@ fn main() {
 	assert overloaded.output.contains('cannot return an independent array element'), overloaded.output
 }
 
-fn test_owned_aggregate_field_overloaded_comparison_is_rejected() {
+fn test_owned_aggregate_and_interface_comparisons_reject_mutating_overloads() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_aggregate_field_overloaded_comparison', "struct Name {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_comparison_overloads', "struct Name {
 	text string
 }
 
@@ -775,81 +776,66 @@ fn last_names_match(other []Name) bool {
 	return entries.last().names == other
 }
 
-fn main() {
-	entries = [E{ names: [Name{ text: 'hello' }] }]
-	println(last_names_match([Name{ text: 'hello' }]))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-fn test_owned_aggregate_field_overloaded_inequality_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_aggregate_field_overloaded_inequality', "struct Name {
-	text string
-}
-
-struct E {
-	names []Name
-}
-
-__global entries []E
-
-fn (left Name) == (right Name) bool {
-	entries.delete_last()
-	return left.text == right.text
-}
-
 fn last_names_differ(other []Name) bool {
 	return entries.last().names != other
 }
 
-fn main() {
-	entries = [E{ names: [Name{ text: 'hello' }] }]
-	println(last_names_differ([Name{ text: 'world' }]))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-fn test_owned_interface_field_overloaded_comparison_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_interface_field_overloaded_comparison', "interface Named {
+interface Named {
 	name() string
 }
 
-struct Name {
+struct InterfaceName {
 	text string
 }
 
-struct E {
+struct InterfaceEntry implements Drop {
 	value Named
 }
 
-__global entries []E
+__global interface_entries []InterfaceEntry
 
-fn (name Name) name() string {
+fn (name InterfaceName) name() string {
 	return name.text
 }
 
-fn (left Name) == (right Name) bool {
-	entries.delete_last()
+fn (left InterfaceName) == (right InterfaceName) bool {
+	interface_entries.delete_last()
 	return left.text == right.text
 }
 
 fn last_matches(other Named) bool {
-	return entries.last().value == other
+	return interface_entries.last().value == other
+}
+
+fn (mut value InterfaceEntry) drop() {}
+
+fn check_aggregate_equality() {
+	entries = [E{ names: [Name{ text: 'hello' }] }]
+	println(last_names_match([Name{ text: 'hello' }]))
+}
+
+fn check_aggregate_inequality() {
+	entries = [E{ names: [Name{ text: 'hello' }] }]
+	println(last_names_differ([Name{ text: 'world' }]))
+}
+
+fn check_interface_equality() {
+	interface_entries = [InterfaceEntry{ value: Named(InterfaceName{ text: 'hello' }) }]
+	println(last_matches(Named(InterfaceName{ text: 'hello' })))
 }
 
 fn main() {
-	entries = [E{ value: Named(Name{ text: 'hello' }) }]
-	println(last_matches(Named(Name{ text: 'hello' })))
+	check_aggregate_equality()
+	check_aggregate_inequality()
+	check_interface_equality()
 }
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+", '-enable-globals -nocolor')
+	// Locations include the prepended Drop interface.
+	assert ownership_error_lines(compile) == [
+		independent_array_element_error_at('22:9', 'E'),
+		independent_array_element_error_at('26:9', 'E'),
+		independent_array_element_error_at('53:9', 'InterfaceEntry'),
+	], compile.output
 }
 
 fn test_owned_field_with_overloaded_membership_sibling_is_rejected() {
