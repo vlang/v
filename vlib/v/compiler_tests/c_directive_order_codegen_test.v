@@ -428,30 +428,14 @@ fn main() {
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_c_unresolved_quoted_include() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_unresolved_quoted_include_project')
+fn directive_order_gen_c_opaque_headers() string {
+	root := directive_order_fixture_dir('v3_c_directive_order_opaque_headers_project')
 	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod',
-		"Module { name: 'directive_order_unresolved_quoted_include' }\n")
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_opaque_headers' }\n")
 	directive_order_write_file(root, 'main.v', 'module main
 
 #include "external_missing.h"
 #define AFTER_QUOTED_INCLUDE 1
-
-fn main() {}
-')
-	c_out := os.join_path(root, 'v3_c_directive_order_unresolved_quoted_include.c')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
-	assert result.exit_code == 0, result.output
-	return os.read_file(c_out) or { panic(err) }
-}
-
-fn directive_order_gen_c_nested_system_include() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_nested_system_include_project')
-	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod',
-		"Module { name: 'directive_order_nested_system_include' }\n")
-	directive_order_write_file(root, 'main.v', 'module main
 
 #insert "nested_preserved.h"
 
@@ -466,8 +450,8 @@ fn main() {}
 
 typedef uint64_t NestedWord;
 ')
-	c_out := os.join_path(root, 'v3_c_directive_order_nested_system_include.c')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
+	c_out := os.join_path(root, 'v3_c_directive_order_opaque_headers.c')
+	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', c_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -951,19 +935,12 @@ fn test_supported_system_include_is_preserved_and_enables_system_preamble() {
 	assert preamble_idx > dlfcn_idx, c_code
 }
 
-fn test_unresolved_quoted_include_is_preserved() {
-	c_code := directive_order_gen_c_unresolved_quoted_include()
-	include_idx := directive_order_index(c_code, '#include "external_missing.h"')
-	define_idx := directive_order_index(c_code, '#define AFTER_QUOTED_INCLUDE 1')
-	assert include_idx >= 0, c_code
-	assert define_idx >= 0, c_code
+fn test_portable_c_preserves_unresolved_and_nested_includes() {
+	c_code := directive_order_gen_c_opaque_headers()
 	// The global preamble can define this macro earlier, too. The source
 	// directives must still appear together in their original order.
 	assert c_code.contains('#include "external_missing.h"\n#define AFTER_QUOTED_INCLUDE 1'), c_code
-}
 
-fn test_nested_system_include_stays_inside_its_unexpanded_header() {
-	c_code := directive_order_gen_c_nested_system_include()
 	assert c_code.contains('nested_preserved.h"'), c_code
 	assert !c_code.contains('#define NESTED_PLATFORM_HEADER 1'), c_code
 	assert !c_code.contains('#include <nested_platform_header.h>'), c_code
