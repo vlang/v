@@ -280,6 +280,8 @@ the caller supplies a non-null remainder pointer.
 Linux amd64/arm64 C-backend freestanding builds also provide C ABI adapters for
 files (`open`, `close`, `pread`, `lseek`, `stat`, `fstat`, `rename`, `remove`),
 descriptor flags and locks through `fcntl`, sockets, `sendfile`, eventfd and epoll.
+Native glibc objects compiled with `_FILE_OFFSET_BITS=64` can call `fstatat`, `truncate`,
+`statvfs`, `fstatvfs`, `sendfile`, `getrlimit` and `setrlimit` using their ordinary C names.
 The adapters use native C headers for declarations and raw Linux syscalls at runtime;
 they do not link libc. File metadata uses `statx`, requiring Linux 4.11 or newer.
 The variadic `syscall` entry forwards the architecture's argument registers and
@@ -305,7 +307,9 @@ The runtime provides buffered `fopen`/`fdopen`, `fclose`, `fread`/`fwrite`,
 `fseek`/`ftell`, line input, stream error/EOF state, and the three standard streams.
 `setbuf` and `setvbuf` support full, line, and unbuffered modes. Stream locks are recursive;
 `fflush(NULL)` flushes open output streams without holding the stream registry lock while
-waiting for a stream lock. Buffered output is flushed after normal return and by `exit`.
+waiting for a stream lock. When a line-buffered or unbuffered input stream needs a refill,
+the runtime flushes pending line-buffered stdout so an interactive prompt is visible.
+Buffered output is flushed after normal return and by `exit`.
 Raw kernel exit calls bypass this cleanup.
 
 Native objects compiled against optimized glibc headers can use `getc_unlocked`,
@@ -364,7 +368,8 @@ use the supplied C callback ABI; sorting requires no temporary heap allocation.
 The `abs`, `labs`, `llabs`, `div`, `ldiv` and `lldiv` entry points use V integer operations;
 their C adapters preserve the native integer widths and quotient/remainder structure layouts.
 `frexpf`, `frexp` and `frexpl` normalize native representations in V, preserving signed zero,
-subnormals and extended precision without floating arithmetic. `fegetround` and `fesetround`
+subnormals and extended precision. Signaling NaNs raise `FE_INVALID` and become quiet.
+`trunc` preserves the sign of zero in every rounding mode. `fegetround` and `fesetround`
 read and update the calling thread's rounding mode; amd64 updates both x87 and SSE controls.
 Invalid modes leave the controls unchanged.
 On Linux arm64, `scalbnl` scales binary128 values using the active rounding mode and reports
@@ -390,23 +395,27 @@ The runtime also supplies nonlocal jumps with optional signal-mask restoration, 
 APIs, and kernel-backed `arc4random` entropy. C condition variables support private/shared futex
 waits, signal/broadcast, and realtime or monotonic absolute deadlines.
 Native `pthread_create`, join, detach and exit use the same V-owned thread backend as V workers.
-Thread attributes support stack size and detach state. Thread-specific keys run destructors for
-up to four passes, key generations prevent stale values after reuse, and `pthread_once` resets
-an unfinished initializer when its thread exits. Read/write locks support private/shared futexes,
-try/timed acquisition, and the GNU writer preference attribute. Arbitrary host pthread object
-layouts are not supported.
+Thread attributes support stack size, guard size and detach state. A runtime-allocated stack has
+one guard page by default. `pthread_attr_setguardsize` accepts a byte count, rounded up to whole
+pages when the thread is created. A zero count disables the guard.
+Thread-specific keys run destructors for up to four passes. Key generations prevent stale values
+after reuse, and `pthread_once` resets an unfinished initializer when its thread exits.
+Read/write locks support private/shared futexes, try/timed acquisition, and the GNU writer
+preference attribute. Arbitrary host pthread object layouts are not supported.
 Native pthreads support cancellation requests, state/type selection and explicit cancellation
-tests. Blocking descriptor/socket I/O, poll/select, condition waits, join and shell waits have
-cancellation boundaries. Condition cancellation reacquires the mutex before user cleanup;
-canceling a joiner leaves the target joinable. Shell-wait cleanup kills/reaps its owned child
-and restores the parent's signal state. C cleanup buffers run before thread-specific destructors.
+tests. `open` and `openat` honor pending deferred cancellation. Blocking descriptor/socket I/O,
+poll/select, condition waits, join and shell waits also have cancellation boundaries. Condition
+cancellation reacquires the mutex before user cleanup. Canceling a joiner leaves the target
+joinable. Shell-wait cleanup kills and reaps its child, then restores the parent's signal state.
+C cleanup buffers run before thread-specific destructors.
 When a native GCC unwinder is loaded, cancellation and `pthread_exit` also unwind C++ objects,
 including mixed C/C++ cleanup frames and asynchronous signal interruption. C++ catch-all handlers
 must rethrow this unwind. Ordinary C cleanup buffers also work without a shared unwinder.
 The runtime reserves Linux signal 32 for cancellation and keeps it unblocked through the public
-signal-mask API. V-created workers retain V's result ownership; canceling their native identity
-reports `ENOTSUP`. Stateful stdio and resolver adapters temporarily disable cancellation while
-they own internal resources, then restore the caller's state.
+signal-mask API. The public signal disposition functions reject reserved signals 32 and 33.
+V-created workers retain V's result ownership. Canceling their native identity reports `ENOTSUP`.
+Stateful stdio and resolver adapters temporarily disable cancellation while they own internal
+resources, then restore the caller's state.
 Thread-name getters/setters support the current thread and other live native threads, using
 kernel names with a 15-byte limit. Scheduling policy/priority, affinity and niceness adapters
 use the kernel's validation and permission checks. Pthread queries retain their positive errno
