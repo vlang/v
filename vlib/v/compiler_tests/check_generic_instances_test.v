@@ -456,17 +456,60 @@ fn test_operators_that_each_instance_has_stay_valid() {
 	}
 }
 
-// A returned name or field of an instance with another type than the function
-// returns is reported for that instance, in a check and in a build: `is_set(1)`
-// returns an `int` as a `bool`. So is one in a generic closure and in a method of
-// a generic struct.
-const return_program = "fn is_set[T](x T) bool {\n\treturn x\n}\n\nfn name_flag[T](x T) bool {\n\treturn x.name\n}\n\nfn checked[T](mut x T) !int {\n\treturn x.name\n}\n\nfn later[T](mut x T) {\n\tread := fn [mut x] [T] () !int {\n\t\treturn x.name\n\t}\n\t_ = read\n}\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) flag() bool {\n\treturn b.v\n}\n\nfn main() {\n\tprintln(is_set(1))\n\tprintln(name_flag(User{ name: 'a' }))\n\tmut u := User{\n\t\tname: 'b'\n\t}\n\tprintln(checked(mut u) or { 0 })\n\tlater(mut u)\n\tprintln(Box[int]{ v: 1 }.flag())\n}\n"
+// Both check and build report incompatible returns when generic functions,
+// closures, and methods are specialized. A local initialized from a parameter
+// also retains the instance's concrete type.
+const return_program = "fn is_set[T](x T) bool {
+	return x
+}
+
+fn name_flag[T](x T) bool {
+	return x.name
+}
+
+fn checked[T](mut x T) !int {
+	return x.name
+}
+
+fn later[T](mut x T) {
+	read := fn [mut x] [T] () !int {
+		return x.name
+	}
+	_ = read
+}
+
+struct Box[T] {
+	v T
+}
+
+fn (b Box[T]) flag() bool {
+	return b.v
+}
+
+fn invalid[T](value T) bool {
+	local := value
+	return local
+}
+
+fn main() {
+	println(is_set(1))
+	println(name_flag(User{ name: 'a' }))
+	mut u := User{
+		name: 'b'
+	}
+	println(checked(mut u) or { 0 })
+	later(mut u)
+	println(Box[int]{ v: 1 }.flag())
+	println(invalid(1))
+}
+"
 
 const return_errors = ['11:9: cannot use `int` as type `bool` in return argument',
 	'15:9: cannot use `string` as type `bool` in return argument',
 	'19:9: cannot use `string` as type `!int` in return argument',
 	'24:10: cannot use `string` as type `!int` in return argument',
-	'34:9: cannot use `int` as type `bool` in return argument']
+	'34:9: cannot use `int` as type `bool` in return argument',
+	'39:9: cannot use `int` as type `bool` in return argument']
 
 fn test_an_instance_that_returns_a_value_of_another_type_is_reported() {
 	for res in [check_program('return_check', return_program),
@@ -544,28 +587,6 @@ fn main() {
 		build_program('return_valid_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
-	}
-}
-
-// A local initialized from a plain parameter retains the instance's concrete
-// type, so its incompatible return still belongs to the instance's diagnostics.
-fn test_an_instance_returning_a_plain_local_of_another_type_is_reported() {
-	source := 'fn invalid[T](value T) bool {
-	local := value
-	return local
-}
-
-fn main() {
-	println(invalid(1))
-}
-'
-	for res in [check_program('return_plain_local_check', source),
-		build_program('return_plain_local_build', source)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'12:9: cannot use `int` as type `bool` in return argument',
-		], res.output
 	}
 }
 
