@@ -284,39 +284,6 @@ fn main() {
 	assert error_lines(res.output) == [], res.output
 }
 
-fn test_constrained_calls_and_function_values_report_invalid_type_arguments() {
-	res := check_program('invalid_calls', "fn longest[T Named](a T, b T) T {
-	return if a.name.len >= b.name.len { a } else { b }
-}
-
-fn welcome[T NamedGreeter](x T) string {
-	return x.greet() + x.name
-}
-
-fn main() {
-	println(longest(1, 2))
-	println(longest[User](User{ name: 'a' }, User{ name: 'b' }).age)
-	println(longest[int](1, 2))
-	println(welcome(User{ name: 'a' }))
-	println(welcome(Pet{ name: 'b' }))
-
-	good := longest[User]
-	bad := longest[int]
-	println(good(User{ name: 'a' }, User{ name: 'b' }).age)
-	println(bad(1, 2))
-}
-")
-	assert res.exit_code == 1, res.output
-	// Each rejected type argument produces one diagnostic at its use.
-	no_name := "`int` doesn't implement field `name` of interface `Named`"
-	assert error_lines(res.output) == [
-		'10:18: ${no_name}',
-		'12:18: ${no_name}',
-		"14:18: `Pet` doesn't implement method `greet` of interface `NamedGreeter`",
-		'17:17: ${no_name}',
-	], res.output
-}
-
 fn test_constrained_bodies_reject_undeclared_members() {
 	// Check parameters and locals in uncalled generic functions.
 	res := check_program('body_members', "fn derived[T Named](a T, b T, items []T, m map[string]T, c bool, n int) int {
@@ -951,12 +918,18 @@ fn main() {}
 	], res.output
 }
 
-fn test_a_generic_interface_is_a_constraint_bound_to_the_type_argument() {
-	// `[T Comparable[T]]`: the interface of each type argument itself, so `Odd`,
-	// whose `less` takes an `int`, is not `Comparable[Odd]`; `[T Comparable[int]]`
-	// is bound as it is written. The same for a generic struct, a function value
-	// and a type parameter passed on.
-	res := check_program('generic_iface', 'interface Comparable[T] {
+fn test_interface_constraints_check_calls_and_function_values() {
+	// Comparable[T] is bound to the type argument itself, so Odd's less(int)
+	// satisfies Comparable[int] and fails Comparable[Odd].
+	res := check_program('interface_calls', "fn longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+
+fn welcome[T NamedGreeter](x T) string {
+	return x.greet() + x.name
+}
+
+interface Comparable[T] {
 	less(other T) bool
 }
 
@@ -1006,6 +979,17 @@ fn relay_bad[U](a U, b U) U {
 }
 
 fn main() {
+	println(longest(1, 2))
+	println(longest[User](User{ name: 'a' }, User{ name: 'b' }).age)
+	println(longest[int](1, 2))
+	println(welcome(User{ name: 'a' }))
+	println(welcome(Pet{ name: 'b' }))
+
+	good := longest[User]
+	bad := longest[int]
+	println(good(User{ name: 'a' }, User{ name: 'b' }).age)
+	println(bad(1, 2))
+
 	println(smallest(Num{1}, Num{2}).v)
 	println(smallest(Odd{1}, Odd{2}).v)
 	println(smallest(User{}, User{}).name)
@@ -1015,17 +999,23 @@ fn main() {
 	f := smallest[Odd]
 	println(f)
 }
-')
+")
 	assert res.exit_code == 1, res.output
+	no_name := "`int` doesn't implement field `name` of interface `Named`"
+	odd_mismatch := '`Odd` incorrectly implements method `less` of interface `Comparable`: expected `Odd`, not `int` for parameter 1'
 	assert error_lines(res.output) == [
-		'25:12: type `T` has no field named `v`: its constraint `Comparable[T]` does not declare it',
-		'39:7: `Odd` incorrectly implements method `less` of interface `Comparable`: expected `Odd`, not `int` for parameter 1',
-		'47:18: `smallest` needs `U` to implement `Comparable[U]`: `U` has no constraint: give it one, `[U Comparable[U]]`',
-		'52:19: `Odd` incorrectly implements method `less` of interface `Comparable`: expected `Odd`, not `int` for parameter 1',
-		"53:19: `User` doesn't implement method `less` of interface `Comparable`",
-		"54:19: `int` doesn't implement method `less` of interface `Comparable`",
-		'56:16: `Num` incorrectly implements method `less` of interface `Comparable`: expected `int`, not `Num` for parameter 1',
-		'57:16: `Odd` incorrectly implements method `less` of interface `Comparable`: expected `Odd`, not `int` for parameter 1',
+		'33:12: type `T` has no field named `v`: its constraint `Comparable[T]` does not declare it',
+		'47:7: ${odd_mismatch}',
+		'55:18: `smallest` needs `U` to implement `Comparable[U]`: `U` has no constraint: give it one, `[U Comparable[U]]`',
+		'59:18: ${no_name}',
+		'61:18: ${no_name}',
+		"63:18: `Pet` doesn't implement method `greet` of interface `NamedGreeter`",
+		'66:17: ${no_name}',
+		'71:19: ${odd_mismatch}',
+		"72:19: `User` doesn't implement method `less` of interface `Comparable`",
+		"73:19: `int` doesn't implement method `less` of interface `Comparable`",
+		'75:16: `Num` incorrectly implements method `less` of interface `Comparable`: expected `int`, not `Num` for parameter 1',
+		'76:16: ${odd_mismatch}',
 	], res.output
 }
 
