@@ -21,31 +21,28 @@ fn params_struct_run_good(name string, source string) string {
 
 // A `@[params]` struct argument can be supplied as trailing `key: value` call args.
 // Regression: the args used to be dropped, generating `make(1, )` (empty arg, trailing comma).
-fn test_params_struct_call_args_codegen() {
-	source := "@[params]\nstruct Cfg {\n\ta int\n\tb string\n\tc bool\n}\n\nfn make(x int, cfg Cfg) string {\n\treturn '\${x}|\${cfg.a}|\${cfg.b}|\${cfg.c}'\n}\n\nfn main() {\n\tprintln(make(1, a: 10, b: 'hi', c: true))\n\tprintln(make(2, b: 'yo'))\n\tprintln(make(3, Cfg{a: 5, b: 'z', c: true}))\n}\n"
-	out := params_struct_run_good('params_struct_codegen_input', source)
-	assert out == '1|10|hi|true\n2|0|yo|false\n3|5|z|true'
-}
-
-// The standard-library call that originally exposed the bug:
-// `strconv.atof64(s, allow_extra_chars: true)` reachable via `string.f64()`.
-// Previously this generated `strconv__atof64(s, )` (dropped param, trailing comma),
-// which failed C compilation. We only assert it compiles and runs here; atof64's
-// numeric accuracy is covered elsewhere.
-fn test_string_f64_params_struct_codegen() {
-	source := "fn main() {\n\tprintln('\${'3.0'.f64() > 0.0}')\n\tprintln('\${'2.0'.f32() > 0.0}')\n}\n"
-	out := params_struct_run_good('string_f64_params_input', source)
-	assert out == 'true\ntrue'
-}
-
-fn test_pool_config_params_struct_can_be_omitted() {
-	source := "@[params]\nstruct PoolConfig {\n\tmax_open int\n}\n\nfn open_pool(name string, cfg PoolConfig) string {\n\treturn '\${name}|\${cfg.max_open}'\n}\n\nfn main() {\n\tprintln(open_pool('db'))\n\tprintln(open_pool('db', max_open: 4))\n}\n"
-	out := params_struct_run_good('pool_config_params_input', source)
-	assert out == 'db|0\ndb|4'
-}
-
-fn test_params_struct_field_with_or_expression_preserves_collapsed_argument() {
+fn test_direct_params_struct_calls_codegen() {
 	source := '@[params]
+struct Cfg {
+	a int
+	b string
+	c bool
+}
+
+fn make(x int, cfg Cfg) string {
+	return \'\${x}|\${cfg.a}|\${cfg.b}|\${cfg.c}\'
+}
+
+@[params]
+struct PoolConfig {
+	max_open int
+}
+
+fn open_pool(name string, cfg PoolConfig) string {
+	return \'\${name}|\${cfg.max_open}\'
+}
+
+@[params]
 struct Config {
 	host   string
 	port   int
@@ -61,12 +58,24 @@ fn run(prefix string, config Config) string {
 }
 
 fn main() {
+	println(make(1, a: 10, b: \'hi\', c: true))
+	println(make(2, b: \'yo\'))
+	println(make(3, Cfg{a: 5, b: \'z\', c: true}))
+
+	// The f64 conversion exercises the trailing params argument to strconv.atof64.
+	// Numeric accuracy is covered by the strconv tests.
+	println(\'\${\'3.0\'.f64() > 0.0}\')
+	println(\'\${\'2.0\'.f32() > 0.0}\')
+
+	println(open_pool(\'db\'))
+	println(open_pool(\'db\', max_open: 4))
+
 	host := "::1"
 	println(run("listen", host: host, port: 8787, family: choose_family(host) or { 0 }))
 }
 '
-	out := params_struct_run_good('params_struct_or_field_input', source)
-	assert out == 'listen|::1|8787|6'
+	out := params_struct_run_good('direct_params_struct_calls', source)
+	assert out == '1|10|hi|true\n2|0|yo|false\n3|5|z|true\ntrue\ntrue\ndb|0\ndb|4\nlisten|::1|8787|6'
 }
 
 fn test_non_veb_reflected_calls_synthesize_omitted_trailing_args() {
