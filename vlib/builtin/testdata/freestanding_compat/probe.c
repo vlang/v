@@ -8,6 +8,9 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#ifndef PATH_MAX
+#include <linux/limits.h>
+#endif
 #include <netdb.h>
 #include <net/if.h>
 #include <pthread.h>
