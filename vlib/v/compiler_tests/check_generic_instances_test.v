@@ -18,7 +18,7 @@ fn (u User) greet() string {
 }
 '
 
-fn check_program(name string, source string) os.Result {
+fn check_program(name string, source string, flags ...string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_check_generic_instances_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
@@ -26,7 +26,7 @@ fn check_program(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	return os.exec([@VEXE, '-check', '-nocolor', path])
+	return os.exec([@VEXE, '-check', '-nocolor', ...flags, path])
 }
 
 // error_lines returns `line:col: message` for every error of a check output.
@@ -476,13 +476,13 @@ fn test_a_library_that_imports_a_module_of_the_program_keeps_every_body() {
 
 // build_program builds `source` with the prelude, with no V1 to fall back on when
 // the C compiler fails.
-fn build_program(name string, source string) os.Result {
-	return build_program_with_env(name, source, [])
+fn build_program(name string, source string, flags ...string) os.Result {
+	return build_program_with_env(name, source, [], ...flags)
 }
 
 // build_program_with_env is build_program with the environment variables `env`
 // (`NAME=value`) set for the build.
-fn build_program_with_env(name string, source string, env []string) os.Result {
+fn build_program_with_env(name string, source string, env []string, flags ...string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_build_generic_instances_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
@@ -492,7 +492,7 @@ fn build_program_with_env(name string, source string, env []string) os.Result {
 	os.write_file(path, generic_prelude + source) or { panic(err) }
 	mut cmd := ['env']
 	cmd << env
-	cmd << [@VEXE, '-nocolor', '-o', os.join_path(dir, 'main'), path]
+	cmd << [@VEXE, '-nocolor', ...flags, '-o', os.join_path(dir, 'main'), path]
 	return os.exec(cmd)
 }
 
@@ -1087,13 +1087,23 @@ fn main() {
 	}
 }
 
-const wide_struct = 'struct Wide {
+// The layout fixtures specialize arrays and maps of `T` with the element types
+// the body expects and with elements of a different size.
+const layout_declarations = 'type Counts8 = map[string]u8
+
+struct Wide {
 	vals []u64
 }
 
-'
+fn to_bytes[T](a []T) []u8 {
+	return []u8(a)
+}
 
-const wide_array_operations = 'fn assign[T](a []T) []u64 {
+fn widen[T](a []T) []u64 {
+	return a
+}
+
+fn assign[T](a []T) []u64 {
 	mut b := []u64{}
 	b = a.clone()
 	return b
@@ -1105,21 +1115,7 @@ fn wrap[T](a []T) Wide {
 	}
 }
 
-'
-
-// The layout fixtures specialize arrays and maps of `T` with the element types
-// the body expects and with elements of a different size.
-const layout_declarations = 'type Counts8 = map[string]u8
-
-' + wide_struct + 'fn to_bytes[T](a []T) []u8 {
-	return []u8(a)
-}
-
-fn widen[T](a []T) []u64 {
-	return a
-}
-
-' + wide_array_operations + 'fn sum(a []i64) i64 {
+fn sum(a []i64) i64 {
 	return a.len
 }
 
@@ -1255,8 +1251,10 @@ fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() 
 	grow(mut narrow)
 	println(append([u8(1)]))
 '
-	source := layout_declarations + wrapped_layout_declarations + 'fn main() {\n' + layout_calls +
-		bad_layout_calls + wrapped_layout_calls + bad_wrapped_layout_calls + '}\n'
+	source := layout_declarations + wrapped_layout_declarations + container_types +
+		container_conversions + container_nest_and_count + 'fn main() {\n' + layout_calls +
+		bad_layout_calls + wrapped_layout_calls + bad_wrapped_layout_calls +
+		container_type_calls + bad_container_type_calls + '}\n'
 	wrapped_errors := [
 		'61:9: cannot use `?[]u8` as type `?[]u64` in return argument',
 		'65:9: cannot use `[]u8` as type `![]u64` in return argument',
@@ -1265,14 +1263,20 @@ fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() 
 		'81:15: cannot use `&[]u8` as `&[]u64` in argument 1 to `take_mut`',
 		'86:9: cannot append `[]u8` to `[][]u64`',
 	]
-	for res in [check_program('layout_check', source), build_program('layout_build', source)] {
+	container_errors := container_errors_at(['111:9', '115:9', '123:18', '26:6', '32:3', '128:9',
+		'133:9'])
+	// The fixture reports more errors than the default diagnostic limit.
+	flags := ['-message-limit', '100']
+	for res in [check_program('layout_check', source, ...flags),
+		build_program('layout_build', source, ...flags)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
 		errors := error_lines(res.output)
 		// The compiler can interleave the groups. Check the order within each group.
-		assert errors.len == layout_errors.len + wrapped_errors.len, res.output
+		assert errors.len == layout_errors.len + wrapped_errors.len + container_errors.len, res.output
 		assert errors.filter(it in layout_errors) == layout_errors, res.output
 		assert errors.filter(it in wrapped_errors) == wrapped_errors, res.output
+		assert errors.filter(it in container_errors) == container_errors, res.output
 	}
 }
 
@@ -1311,11 +1315,7 @@ fn test_a_build_checks_the_instances_in_a_compiler_process_where_it_cannot_fork(
 	// The warning of the build is printed once, by the build.
 	assert res.output.count('unused variable: `unused`') == 1, res.output
 	// The assignment and field errors use the shared layout declarations.
-	container_positions := ['73:9', '77:9', '85:18', '26:6', '32:3', '90:9', '95:9']
-	mut container_errors := []string{cap: container_type_errors.len}
-	for i, error in container_type_errors {
-		container_errors << '${container_positions[i]}: ${error.all_after(': ')}'
-	}
+	container_errors := container_errors_at(['73:9', '77:9', '85:18', '26:6', '32:3', '90:9', '95:9'])
 	errors := error_lines(res.output)
 	assert errors.len == layout_errors.len + container_errors.len + 1, res.output
 	assert errors.filter(it in layout_errors) == layout_errors, res.output
@@ -1377,9 +1377,6 @@ const container_type_calls = '	println(as_u64([u64(1)]))
 	}))
 '
 
-const container_type_program = container_types + wide_struct + container_conversions +
-	wide_array_operations + container_nest_and_count + 'fn main() {\n' + container_type_calls
-
 const bad_container_type_calls = "	println(as_u64(['a']))
 	println(as_bars([Foo{}]))
 	println(pass(['x']))
@@ -1391,30 +1388,22 @@ const bad_container_type_calls = "	println(as_u64(['a']))
 	}))
 "
 
-const container_type_errors = [
-	'23:9: cannot use `[]string` as type `[]u64` in return argument',
-	'27:9: cannot use `[]Foo` as type `[]Bar` in return argument',
-	'35:18: cannot use `[]string` as `[]u64` in argument 1 to `take_u64`',
-	'40:6: cannot assign to `b`: expected `[]u64`, not `[]string`',
-	'46:3: cannot assign to field `vals`: expected `[]u64`, not `[]string`',
-	'52:9: cannot append `[]string` to `[][]u64`',
-	'57:9: cannot use `map[string]string` as type `map[string]int` in return argument',
+const container_type_error_messages = [
+	'cannot use `[]string` as type `[]u64` in return argument',
+	'cannot use `[]Foo` as type `[]Bar` in return argument',
+	'cannot use `[]string` as `[]u64` in argument 1 to `take_u64`',
+	'cannot assign to `b`: expected `[]u64`, not `[]string`',
+	'cannot assign to field `vals`: expected `[]u64`, not `[]string`',
+	'cannot append `[]string` to `[][]u64`',
+	'cannot use `map[string]string` as type `map[string]int` in return argument',
 ]
 
-// An instance that uses an array or a map as one whose elements have another
-// type, which its elements cannot be used as at all (`[]string` as `[]u64`,
-// `[]Foo` as `[]Bar`), is reported where the body does so, once for that
-// instance, with the wording of the same error outside a generic function, which
-// is V 0.5.2's. A check and a build report the same; the build used to report
-// only a return, without its position.
-fn test_an_instance_that_uses_an_array_or_map_of_another_type_is_reported() {
-	source := container_type_program + bad_container_type_calls + '}\n'
-	for res in [check_program('container_type_check', source),
-		build_program('container_type_build', source)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == container_type_errors, res.output
+fn container_errors_at(positions []string) []string {
+	mut errors := []string{cap: container_type_error_messages.len}
+	for i, message in container_type_error_messages {
+		errors << '${positions[i]}: ${message}'
 	}
+	return errors
 }
 
 // The check of an instance does not see the locals declared in a `$for` body,
