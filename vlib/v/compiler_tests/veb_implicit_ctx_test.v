@@ -355,11 +355,10 @@ fn main() {
 	], run.output
 }
 
-// A reflected veb route can accept the framework Context while the dispatcher
-// carries a custom Context that embeds it. Pass the embedded field to the route,
-// rather than the incompatible address of the complete custom Context.
-fn test_veb_reflected_base_context_uses_embedded_field() {
-	root := veb_ctx_test_dir('embedded_base')!
+// Reflected routes receive the context type they declare. The promoted
+// generic json method on the custom route receives the embedded veb.Context.
+fn test_veb_reflected_calls_use_the_declared_context_receiver() {
+	root := veb_ctx_test_dir('context_receivers')!
 	defer { os.rmdir_all(root) or {} }
 	src := '
 import veb
@@ -369,9 +368,9 @@ pub struct Context {
 	marker int
 }
 
-pub struct App {}
+pub struct FrameworkApp {}
 
-pub fn (mut app App) index(mut ctx veb.Context) veb.Result {
+pub fn (mut app FrameworkApp) index(mut ctx veb.Context) veb.Result {
 	return ctx.text("hello")
 }
 
@@ -383,36 +382,13 @@ fn dispatch[A, X](mut app A, mut ctx X) {
 	}
 }
 
-fn main() {
-	mut app := App{}
+fn check_framework_context() {
+	mut app := FrameworkApp{}
 	mut ctx := Context{}
 	dispatch(mut app, mut ctx)
 }
-'
-	src_file := os.join_path(root, 'v3_veb_embedded_base_ctx.v')
-	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(root, 'v3_veb_embedded_base_ctx.c')
-	compile := os.exec([@VEXE, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
-	assert compile.exit_code == 0, compile.output
-	c_code := os.read_file(c_out) or { '' }
-	assert c_code.contains('App__index(app, &ctx->veb__Context)'), c_code
-	assert !c_code.contains('App__index(app, ctx)'), c_code
-}
 
-// A route whose custom context embeds veb.Context must keep the complete custom
-// context at the reflected route call, while a promoted generic veb.Context
-// method called by that route must receive the embedded framework context.
-fn test_veb_custom_context_route_with_promoted_generic_method() {
-	root := veb_ctx_test_dir('generic_method')!
-	defer { os.rmdir_all(root) or {} }
-	src := '
-import veb
-
-pub struct Context {
-	veb.Context
-}
-
-pub struct App {}
+pub struct CustomApp {}
 
 pub struct SomeData {
 	id string
@@ -424,22 +400,25 @@ fn (mut ctx Context) handle_ok[T](payload T) veb.Result {
 }
 
 @["/some_data"; get]
-pub fn (mut app App) some_data(mut ctx Context) veb.Result {
+pub fn (mut app CustomApp) some_data(mut ctx Context) veb.Result {
 	return ctx.handle_ok(SomeData{ id: "v3" })
 }
 
 fn main() {
-	mut app := App{}
-	veb.run[App, Context](mut app, 8080)
+	check_framework_context()
+	mut app := CustomApp{}
+	veb.run[CustomApp, Context](mut app, 8080)
 }
 '
-	src_file := os.join_path(root, 'v3_veb_custom_context_generic_method.v')
+	src_file := os.join_path(root, 'v3_veb_context_receivers.v')
 	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(root, 'v3_veb_custom_context_generic_method.c')
+	c_out := os.join_path(root, 'v3_veb_context_receivers.c')
 	compile := os.exec([@VEXE, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
+	assert c_code.contains('FrameworkApp__index(app, &ctx->veb__Context)'), c_code
+	assert !c_code.contains('FrameworkApp__index(app, ctx)'), c_code
 	assert c_code.contains('veb__Context_SomeData__json(&ctx->veb__Context, payload)'), c_code
-	assert c_code.contains('App__some_data(app, user_context)'), c_code
-	assert !c_code.contains('App__some_data(app, &user_context->veb__Context)'), c_code
+	assert c_code.contains('CustomApp__some_data(app, user_context)'), c_code
+	assert !c_code.contains('CustomApp__some_data(app, &user_context->veb__Context)'), c_code
 }
