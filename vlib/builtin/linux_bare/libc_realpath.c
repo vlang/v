@@ -124,7 +124,7 @@ restart:
             check_dir = stack[p];
             continue;
         }
-        if (++cnt == 40) {
+        if (++cnt > 40) {
             errno = ELOOP;
             return 0;
         }

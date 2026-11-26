@@ -105,6 +105,7 @@ static void *cancel_pending_wait(void *argument) {
         (void)fcntl(wait->fd, F_SETLKW, &lock);
         break;
     }
+    case 9: (void)openat(AT_FDCWD, "/dev/null", O_RDONLY); break;
     }
     return NULL;
 }
@@ -120,7 +121,7 @@ static int cancellation_native_probe(void) {
     CHECK(!sigaction(SIGUSR1, &action, &previous));
     FILE *lockfile = tmpfile();
     CHECK(lockfile);
-    for (int kind = 0; kind <= 8; ++kind) {
+    for (int kind = 0; kind <= 9; ++kind) {
         struct pending_wait pending = {kind, kind == 8 ? fileno(lockfile) : sockets[0]};
         pthread_t worker; void *result = NULL;
         CHECK(!pthread_create(&worker, NULL, cancel_pending_wait, &pending));

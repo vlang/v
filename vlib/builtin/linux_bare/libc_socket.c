@@ -48,6 +48,10 @@ ssize_t recv(int fd, void *buffer, size_t size, int flags) {
 ssize_t sendfile(int out, int in, off_t *offset, size_t count) {
     return (ssize_t)v_linux_result(v_cancel_syscall(SYS_sendfile, (uintptr_t)(out), (uintptr_t)(in), (uintptr_t)(offset), (uintptr_t)(count), 0, 0));
 }
+#if defined(__GLIBC__)
+_Static_assert(sizeof(off_t) == sizeof(off64_t), "native 64-bit sendfile offsets");
+extern __typeof__(sendfile64) sendfile64 __attribute__((alias("sendfile")));
+#endif
 int eventfd(unsigned int initial, int flags) {
     return (int)v_linux_result(V_RAW2(SYS_eventfd2, initial, flags));
 }

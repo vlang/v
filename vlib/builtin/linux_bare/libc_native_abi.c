@@ -1,5 +1,6 @@
 #include "libc_compat.h"
 #include <fcntl.h>
+#include <string.h>
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
@@ -77,6 +78,14 @@ extern int32_t v_native_getrlimit(int32_t resource, uintptr_t limit);
 int getrlimit(v_native_limit_resource resource, struct rlimit * limit) { return (int)v_native_getrlimit((int32_t)resource, (uintptr_t)limit); }
 extern int32_t v_native_setrlimit(int32_t resource, uintptr_t limit);
 int setrlimit(v_native_limit_resource resource, const struct rlimit * limit) { return (int)v_native_setrlimit((int32_t)resource, (uintptr_t)limit); }
+#if defined(__GLIBC__)
+int getrlimit64(v_native_limit_resource resource, struct rlimit64 *limit) {
+    return v_native_getrlimit(resource, (uintptr_t)limit);
+}
+int setrlimit64(v_native_limit_resource resource, const struct rlimit64 *limit) {
+    return v_native_setrlimit(resource, (uintptr_t)limit);
+}
+#endif
 extern int32_t v_native_gettid(void);
 pid_t gettid(void) { return (pid_t)v_native_gettid(); }
 extern int32_t v_native_sched_yield(void);
@@ -249,6 +258,9 @@ int lchmod(const char *path, mode_t mode) { return v_native_fchmodat(AT_FDCWD, (
 int futimesat(int fd, const char *path, const struct timeval times[2]) { return v_native_futimesat(fd, (uintptr_t)path, (uintptr_t)times, 0); }
 int lutimes(const char *path, const struct timeval times[2]) { return v_native_futimesat(AT_FDCWD, (uintptr_t)path, (uintptr_t)times, AT_SYMLINK_NOFOLLOW); }
 int truncate(const char *path, off_t size) { return v_native_truncate((uintptr_t)path, size); }
+#if defined(__GLIBC__)
+extern __typeof__(truncate64) truncate64 __attribute__((alias("truncate")));
+#endif
 int tcgetattr(int fd, struct termios *settings) { return v_native_tcgetattr(fd, (uintptr_t)settings); }
 int tcsetattr(int fd, int action, const struct termios *settings) { return v_native_tcsetattr(fd, action, (uintptr_t)settings); }
 unsigned long getauxval(unsigned long type) { return v_native_getauxval(type); }
@@ -274,6 +286,20 @@ extern int32_t v_native_ttyname(int32_t,uintptr_t,uintptr_t);
 extern void v_native_closefrom(int32_t);
 int statvfs(const char *p,struct statvfs *v) { return v_native_statvfs((uintptr_t)p,-1,(uintptr_t)v); }
 int fstatvfs(int fd,struct statvfs *v) { return v_native_statvfs(0,fd,(uintptr_t)v); }
+#if defined(__GLIBC__)
+_Static_assert(sizeof(struct statvfs64) == sizeof(struct statvfs) &&
+               offsetof(struct statvfs64, f_namemax) == offsetof(struct statvfs, f_namemax),
+               "native 64-bit file system statistics");
+static int v_statvfs64(uintptr_t path, int fd, struct statvfs64 *out) {
+    struct statvfs data;
+    int result = v_native_statvfs(path, fd, (uintptr_t)&data);
+    if (!result)
+        memcpy(out, &data, sizeof data);
+    return result;
+}
+int statvfs64(const char *path, struct statvfs64 *out) { return v_statvfs64((uintptr_t)path, -1, out); }
+int fstatvfs64(int fd, struct statvfs64 *out) { return v_statvfs64(0, fd, out); }
+#endif
 int ttyname_r(int fd,char *out,size_t n) { return v_native_ttyname(fd,(uintptr_t)out,n); }
 void closefrom(int low) { v_native_closefrom(low); }
 void v_native_statvfs_assign(uintptr_t output,uintptr_t values) {

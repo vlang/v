@@ -1,3 +1,5 @@
+/* Exercise the symbol names selected by large-file system headers in a native object. */
+#define _FILE_OFFSET_BITS 64
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -19,6 +21,8 @@
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/sendfile.h>
+#include <sys/resource.h>
+#include <sys/statvfs.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -41,10 +45,37 @@ int v_freestanding_compat_total(void) { return counter; }
 static volatile sig_atomic_t delivered;
 static void receive_signal(int number) { delivered = number; }
 
+static int check_realpath_limit(const char *directory) {
+    char link[PATH_MAX], path[PATH_MAX], expected[PATH_MAX], resolved[PATH_MAX];
+    CHECK(realpath(directory, expected));
+    int n = snprintf(link, sizeof link, "%s/hop", directory);
+    CHECK(n > 0 && (size_t)n < sizeof link && symlink(".", link) == 0);
+    n = snprintf(path, sizeof path, "%s", expected);
+    CHECK(n > 0 && (size_t)n + 41 * (sizeof "/hop" - 1) < sizeof path);
+    for (int depth = 1; depth <= 41; ++depth) {
+        memcpy(path + n, "/hop", sizeof "/hop");
+        n += sizeof "/hop" - 1;
+        if (depth == 39 || depth == 40)
+            CHECK(realpath(path, resolved) && !strcmp(resolved, expected));
+    }
+    errno = 0;
+    CHECK(!realpath(path, resolved) && errno == ELOOP);
+    CHECK(unlink(link) == 0);
+    return 0;
+}
+
 int v_freestanding_compat_check(const char *directory) {
+    int link_error = check_realpath_limit(directory);
+    if (link_error) return link_error;
     struct sigaction previous_action;
     CHECK(sigaction(SIGSTOP, NULL, &previous_action) == 0);
     CHECK(sigaction(SIGKILL, NULL, &previous_action) == 0);
+    for (int reserved = 32; reserved <= 33; ++reserved) {
+        errno = 0;
+        CHECK(sigaction(reserved, NULL, &previous_action) == -1 && errno == EINVAL);
+        errno = 0;
+        CHECK(signal(reserved, SIG_IGN) == SIG_ERR && errno == EINVAL);
+    }
     char unknown_interface[IF_NAMESIZE];
     errno = 0;
     CHECK(!if_indextoname(0, unknown_interface) && errno == ENXIO);
@@ -90,6 +121,16 @@ int v_freestanding_compat_check(const char *directory) {
     CHECK(memcmp(data, payload + 1, 3) == 0);
     CHECK(pread(-1, data, 1, 0) == -1 && errno == EBADF);
     CHECK(fstat(-1, &metadata) == -1 && errno == EBADF);
+    errno = 0;
+    CHECK(fstat(AT_FDCWD, &metadata) == -1 && errno == EBADF);
+    struct stat cwd;
+    CHECK(stat(".", &cwd) == 0 && fstatat(AT_FDCWD, "", &metadata, AT_EMPTY_PATH) == 0);
+    CHECK(metadata.st_dev == cwd.st_dev && metadata.st_ino == cwd.st_ino);
+    struct statvfs by_path, by_fd;
+    CHECK(statvfs(path, &by_path) == 0 && fstatvfs(fd, &by_fd) == 0);
+    CHECK(by_fd.f_frsize > 0 && by_fd.f_frsize == by_path.f_frsize && by_fd.f_fsid == by_path.f_fsid);
+    struct rlimit limit;
+    CHECK(getrlimit(RLIMIT_NOFILE, &limit) == 0 && setrlimit(RLIMIT_NOFILE, &limit) == 0);
     CHECK(close(-1) == -1 && errno == EBADF);
 
     int pair[2];
@@ -102,6 +143,9 @@ int v_freestanding_compat_check(const char *directory) {
     CHECK(recv(pair[1], data, 3, MSG_WAITALL) == 3 && memcmp(data, payload + 1, 3) == 0);
     CHECK(shutdown(pair[0], SHUT_WR) == 0 && recv(pair[1], data, 1, 0) == 0);
     CHECK(close(pair[0]) == 0 && close(pair[1]) == 0 && close(fd) == 0);
+    off_t large_size = ((off_t)1 << 32) + 17;
+    CHECK(truncate(path, large_size) == 0 && fstatat(AT_FDCWD, path, &metadata, 0) == 0);
+    CHECK(metadata.st_size == large_size);
     CHECK(rename(path, renamed) == 0 && remove(renamed) == 0);
     CHECK(stat(renamed, &metadata) == -1 && errno == ENOENT);
 

@@ -23,7 +23,6 @@ int open(const char *path, int flags, ...) {
     return (int)v_linux_result(v_cancel_syscall(SYS_openat, (uintptr_t)(AT_FDCWD), (uintptr_t)(path), (uintptr_t)(flags), (uintptr_t)(mode), 0, 0));
 }
 
-extern int32_t v_native_openat(int32_t, uintptr_t, int32_t, uint32_t);
 int openat(int fd, const char *path, int flags, ...) {
     mode_t mode = 0;
     if ((flags & O_CREAT) || (flags & O_TMPFILE) == O_TMPFILE) {
@@ -32,7 +31,7 @@ int openat(int fd, const char *path, int flags, ...) {
         mode = va_arg(arguments, unsigned int);
         va_end(arguments);
     }
-    return v_native_openat(fd, (uintptr_t)path, flags, mode);
+    return (int)v_linux_result(v_cancel_syscall(SYS_openat, fd, (uintptr_t)path, flags, mode, 0, 0));
 }
 
 extern int64_t v_native_pread(int32_t, uintptr_t, uintptr_t, int64_t);
@@ -139,7 +138,13 @@ static int v_linux_stat(int fd, const char *path, int flags, struct stat *out) {
 
 int stat(const char *path, struct stat *out) { return v_linux_stat(AT_FDCWD, path, 0, out); }
 
-int fstat(int fd, struct stat *out) { return v_linux_stat(fd, "", AT_EMPTY_PATH, out); }
+int fstat(int fd, struct stat *out) {
+    if (fd < 0) {
+        errno = EBADF;
+        return -1;
+    }
+    return v_linux_stat(fd, "", AT_EMPTY_PATH, out);
+}
 
 int rename(const char *from, const char *to) {
     return (int)v_linux_result(V_RAW4(SYS_renameat, AT_FDCWD, from, AT_FDCWD, to));
@@ -206,16 +211,19 @@ _Static_assert(offsetof(struct stat64, st_ctim) == offsetof(struct stat, st_ctim
 extern __typeof__(open64) open64 __attribute__((alias("open")));
 extern __typeof__(openat) openat64 __attribute__((alias("openat")));
 extern __typeof__(fcntl) fcntl64 __attribute__((alias("fcntl")));
-int stat64(const char *path, struct stat64 *out) {
+int fstatat64(int fd, const char *path, struct stat64 *out, int flags) {
     if (!out) {
         errno = EFAULT;
         return -1;
     }
     struct stat data;
-    int result = stat(path, &data);
+    int result = fstatat(fd, path, &data, flags);
     if (!result)
         memcpy(out, &data, sizeof data);
     return result;
+}
+int stat64(const char *path, struct stat64 *out) {
+    return fstatat64(AT_FDCWD, path, out, 0);
 }
 int fstat64(int fd, struct stat64 *out) {
     if (!out) {
@@ -229,14 +237,6 @@ int fstat64(int fd, struct stat64 *out) {
     return result;
 }
 int lstat64(const char *path, struct stat64 *out) {
-    if (!out) {
-        errno = EFAULT;
-        return -1;
-    }
-    struct stat data;
-    int result = lstat(path, &data);
-    if (!result)
-        memcpy(out, &data, sizeof data);
-    return result;
+    return fstatat64(AT_FDCWD, path, out, AT_SYMLINK_NOFOLLOW);
 }
 #endif

@@ -14,16 +14,19 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		return i32(bare_native_result(sys_call2(u64(C.SYS_sigaltstack), u64(input), u64(output))))
 	}
 
+	fn bare_reserved_signal(number i32) bool {
+		return number == 32 || number == 33
+	}
 	@[export: 'v_native_raise'; markused]
 	fn bare_native_raise(number i32) i32 {
-		if number == 32 || number == 33 { return i32(bare_native_result(u64(-i64(C.EINVAL)))) }
+		if bare_reserved_signal(number) { return i32(bare_native_result(u64(-i64(C.EINVAL)))) }
 		return i32(bare_native_result(sys_call3(u64(C.SYS_tgkill), sys_call0(u64(C.SYS_getpid)),
 			sys_call0(u64(C.SYS_gettid)), u64(number))))
 	}
 
 	@[export: 'v_native_pthread_kill'; markused]
 	fn bare_native_pthread_kill(handle uint, number i32) i32 {
-		if number < 0 || number > 64 || number == 32 || number == 33 { return i32(C.EINVAL) }
+		if number < 0 || number > 64 || bare_reserved_signal(number) { return i32(C.EINVAL) }
 		pid := sys_call0(u64(C.SYS_getpid))
 		// A synchronous handler may call pthread APIs. Never hold the target's
 		// metadata lock when delivering a signal to the calling thread.
@@ -47,7 +50,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_native_sigaction'; markused]
 	fn bare_native_sigaction(number i32, input uint, output uint) i32 {
-		if number < 1 || number > 64 || number == 32 {
+		if number < 1 || number > 64 || bare_reserved_signal(number) {
 			bf_native_errno_cell = i32(C.EINVAL)
 			return -1
 		}
@@ -72,7 +75,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_native_signal'; markused]
 	fn bare_native_signal(number i32, handler uint) uint {
-		if number < 1 || number > 64 || number == 32 || number == i32(C.SIGKILL) || number == i32(C.SIGSTOP) || handler == ~uint(0) {
+		if number < 1 || number > 64 || bare_reserved_signal(number) || number == i32(C.SIGKILL) || number == i32(C.SIGSTOP) || handler == ~uint(0) {
 			bf_native_errno_cell = i32(C.EINVAL)
 			return ~uint(0)
 		}
