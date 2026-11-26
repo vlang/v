@@ -6074,3 +6074,160 @@ fn main() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('outlives borrowed atomic `factory`'), result.output
 }
+
+const abstract_scoped_callback_factory_fixture = scoped_callback_factory_fixture + r'
+interface VisitorFactory[^scope] {
+mut:
+	create() transport.ScopedMutCallback[^scope, int, int]
+}
+'
+
+fn test_ownership_abstract_scoped_callback_factory_reborrows_through_join() {
+	v3_bin := ownership_build_v3()
+	name := 'abstract_scoped_callback_factory_join'
+	source := abstract_scoped_callback_factory_fixture + r'
+struct OtherVisitorFactory[^scope] {
+	counter &^scope arc.Atomic[int]
+}
+
+fn (mut factory OtherVisitorFactory[^scope]) create() transport.ScopedMutCallback[^scope, int, int] {
+	return transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+		counter: factory.counter
+	})
+}
+
+fn run[^scope](mut factory VisitorFactory[^scope], count int) {
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	for _ in 0 .. count {
+		visitor := factory.create()
+		handles << spawn transport.invoke_scoped_mut_callback(visitor, 1)
+	}
+	first := factory.create()
+	handles << spawn transport.invoke_scoped_mut_callback(first, 2)
+	handles << spawn transport.invoke_scoped_mut_callback(factory.create(), 3)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut first := ConcreteVisitorFactory[^scope]{counter: &counter}
+	mut second := OtherVisitorFactory[^scope]{counter: &counter}
+	run(mut first, 4)
+	run(mut second, 2)
+	assert counter.load() == 26
+}
+'
+	result := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_abstract_scoped_callback_factory_rejects_unverified_implementations() {
+	v3_bin := ownership_build_v3()
+	bad := abstract_scoped_callback_factory_fixture.replace('visitor.counter.add(1)',
+		'forward_counter(visitor.counter).add(1)')
+	for convert in ['run(mut concrete)', 'mut erased := VisitorFactory(concrete); run(mut erased)'] {
+		source := bad + r'
+fn forward_counter(counter &arc.Atomic[int]) &arc.Atomic[int] {
+	return counter
+}
+fn run[^scope](mut factory VisitorFactory[^scope]) {
+	handle := spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	defer { handle.wait() }
+}
+fn main() {
+	counter := arc.new_atomic(0)
+	mut concrete := ConcreteVisitorFactory[^scope]{counter: &counter}
+' + convert + '\n}\n'
+		result := run_ownership_check(v3_bin, 'abstract_scoped_callback_factory_bad_impl', source)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
+	}
+}
+
+fn test_ownership_abstract_scoped_callback_factory_requires_contract_through_erasure() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'abstract_scoped_callback_factory_unchecked_interface',
+		abstract_scoped_callback_factory_fixture + r'
+interface PlainFactory {
+mut:
+	create() transport.ScopedMutCallback[int, int]
+}
+
+fn use_checked[^scope](mut factory VisitorFactory[^scope]) {
+	handle := spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	defer { handle.wait() }
+}
+
+fn forward(mut factory PlainFactory) {
+	use_checked(mut factory)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	forward(mut factory)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
+}
+
+fn test_ownership_abstract_scoped_callback_factory_reserves_other_receiver_access() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'abstract_scoped_callback_factory_receiver',
+		abstract_scoped_callback_factory_fixture + r'
+fn run[^scope](mut factory VisitorFactory[^scope]) {
+	handle := spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	defer { handle.wait() }
+	_ := &factory
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut factory)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot use `factory` until scoped thread `handle` has joined'), result.output
+}
+
+fn test_ownership_abstract_scoped_callback_factory_conflicts_with_an_existing_alias() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'abstract_scoped_callback_factory_alias',
+		abstract_scoped_callback_factory_fixture + r'
+fn run[^scope](mut factory VisitorFactory[^scope]) {
+	alias := &factory
+	handle := spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	defer { handle.wait() }
+	_ = alias
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut factory)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('previous borrow by `alias`'), result.output
+}
+
+fn test_ownership_abstract_scoped_callback_factory_rejects_raw_pointer_arguments() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'abstract_scoped_callback_factory_raw',
+		abstract_scoped_callback_factory_fixture + r'
+fn need_factory[^scope](_ &VisitorFactory[^scope]) {}
+
+fn forward(ptr voidptr) {
+	need_factory(ptr)
+}
+
+fn main() {}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot use a raw pointer as a scoped callback factory'), result.output
+}

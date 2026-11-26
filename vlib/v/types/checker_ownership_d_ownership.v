@@ -54,6 +54,7 @@ struct BorrowInfo {
 	boxed_borrow bool
 	// The receiver of the lexical defer that joins a borrow-carrying thread.
 	thread_join_site flat.NodeId = flat.NodeId(-1)
+	scoped_factory   bool
 }
 
 struct OwnershipBorrowConflict {
@@ -242,6 +243,8 @@ mut:
 	ownership_fn_return_descs        map[string][]OwnershipReturnDescendant
 	ownership_fn_return_param_descs  map[string][]OwnershipReturnParamDescendant
 	interface_lifetime_returns       map[u32]map[string][]int
+	scoped_factory_contracts         map[string]bool
+	scoped_factory_implementations   map[string]bool
 	ownership_fn_return_fn_values    map[string]string
 	ownership_fn_literal_ret_types   map[string]Type
 	ownership_fn_literal_param_types map[string][]Type
@@ -485,6 +488,8 @@ fn ownership_clone_state_sharing(src &OwnershipState, observe bool) &OwnershipSt
 		ownership_fn_return_descs:        ownership_clone_return_descs(src.ownership_fn_return_descs)
 		ownership_fn_return_param_descs:  ownership_clone_return_param_descs(src.ownership_fn_return_param_descs)
 		interface_lifetime_returns:       src.interface_lifetime_returns.clone()
+		scoped_factory_contracts:         src.scoped_factory_contracts.clone()
+		scoped_factory_implementations:   src.scoped_factory_implementations.clone()
 		ownership_fn_return_fn_values:    src.ownership_fn_return_fn_values.clone()
 		ownership_fn_literal_ret_types:   map[string]Type{}
 		ownership_fn_literal_param_types: map[string][]Type{}
@@ -2340,6 +2345,7 @@ fn (mut tc TypeChecker) ownership_after_collect() {
 			else {}
 		}
 	}
+	tc.ownership_collect_scoped_factory_contracts()
 	fn_items := tc.ownership_fn_scan_items()
 	max_rounds := ownership_prescan_max_rounds(fn_items.len)
 	tc.ownership_prescan_fn_returns(fn_items, max_rounds)
@@ -10433,7 +10439,13 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 				&& !tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value) {
 				if info.params[0] is Pointer {
 					if recv_name.len > 0 && tc.ownership_storage_participates(recv_name) {
-						tc.ownership_add_borrow(recv_name, call_name, id, tc.ownership_call_param_is_mut(call_name, 0))
+						factory := tc.ownership_scoped_factory_interface_call(recv_id, info)
+						tc.ownership_add_borrow_info(recv_name, BorrowInfo{
+							borrower:       call_name
+							pos:            id
+							is_mut:         !factory && tc.ownership_call_param_is_mut(call_name, 0)
+							scoped_factory: factory
+						})
 						call_borrows << recv_name
 					}
 				} else if recv_requires_move {
@@ -11565,11 +11577,12 @@ fn (mut tc TypeChecker) ownership_add_boxed_borrow(target string, source string,
 		return
 	}
 	tc.ownership_add_borrow_info(source, BorrowInfo{
-		borrower:     target
-		pos:          pos
-		read_only:    true
-		call_result:  true
-		boxed_borrow: true
+		borrower:       target
+		pos:            pos
+		read_only:      true
+		call_result:    true
+		boxed_borrow:   true
+		scoped_factory: tc.ownership_scoped_factory_result_borrow(source, pos)
 	})
 }
 
@@ -14233,7 +14246,9 @@ fn (mut tc TypeChecker) ownership_add_borrow_info(var_name string, info BorrowIn
 			for borrow in existing {
 				// Checked scoped workers only read the scalar. Their reservations
 				// continue to conflict with any ordinary alias of the same place.
-				if scoped && tc.valid_node_id(borrow.thread_join_site) {
+				if (scoped && tc.valid_node_id(borrow.thread_join_site)
+					&& info.scoped_factory == borrow.scoped_factory)
+					|| (info.scoped_factory && borrow.scoped_factory) {
 					continue
 				}
 				msg := if borrow.is_mut {
@@ -14247,7 +14262,7 @@ fn (mut tc TypeChecker) ownership_add_borrow_info(var_name string, info BorrowIn
 		}
 		if !is_mut {
 			for borrow in existing {
-				if borrow.is_mut {
+				if borrow.is_mut && !(info.scoped_factory && borrow.scoped_factory) {
 					tc.record_error(.assignment_mismatch, 'cannot borrow `${var_name}` as immutable because it is borrowed as mutable by `${borrow.borrower}`', pos)
 					return
 				}

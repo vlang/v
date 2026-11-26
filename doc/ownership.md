@@ -533,6 +533,12 @@ fresh box built from an inline state initializer. Borrowed fields must come from
 fields of its receiver. The worker's join keeps that receiver alive and prevents its use
 while the callback runs.
 
+An interface method with no explicit parameters can promise this factory behavior by
+returning a `ScopedMutCallback` for a named lifetime of its receiver. The compiler checks
+every concrete implementation when it is used as that interface. Within a checked
+thread group, the method can create fresh callbacks from the same factory while
+earlier callbacks are still running. Other access to the factory waits for the join.
+
 ## Full example
 
 From the Rust book, translated to V:

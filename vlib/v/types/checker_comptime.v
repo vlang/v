@@ -5886,6 +5886,11 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	// The pointee already has interface storage, so this is a pointer cast rather
 	// than an interface implementation conversion.
 	if target is Pointer && fn_param_is_voidptr_type(actual) {
+		$if ownership ? {
+			if tc.unsafe_depth == 0 && tc.ownership_scoped_factory_interface(target_iface.name_id) {
+				tc.record_error(.thread_transfer, 'cannot use a raw pointer as a scoped callback factory', id)
+			}
+		}
 		return
 	}
 	if tc.interface_field_list(target_iface.source_type_id()).any(it.is_mut) {
@@ -6495,6 +6500,19 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 			if message == '' {
 				if !tc.method_return_signature_compatible(actual_ret, expected_ret) {
 					message = '`${actual_display}` incorrectly implements method `${method}` of interface `${expected_display}`: expected return type `${tc.interface_diagnostic_type_name(expected_ret, '')}`'
+				}
+			}
+		}
+		$if ownership ? {
+			if message == '' && tc.ownership_scoped_factory_interface_method(expected_name_id, method) {
+				proven := if clean_actual is Interface {
+					tc.ownership_scoped_factory_interface_method(clean_actual.name_id, method)
+				} else {
+					tc.ownership_scoped_factory_conforms(actual_key)
+				}
+				if !proven {
+					tc.record_error_at(kind, '`${actual_display}` cannot implement scoped callback factory method `${method}` of `${expected_display}`: expected a fresh callback borrowing only receiver fields', id, pos)
+					return true
 				}
 			}
 		}

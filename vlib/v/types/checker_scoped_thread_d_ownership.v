@@ -66,6 +66,7 @@ enum ScopedThreadAccess {
 	transferred
 	scalar
 	atomic
+	factory
 }
 
 // Only the direct address of a local immutable binding establishes a loan.
@@ -252,6 +253,7 @@ fn (tc &TypeChecker) ownership_scoped_thread_non_escaping_use(id flat.NodeId, ac
 		.transferred { true }
 		.scalar { tc.ownership_scoped_thread_scalar_read(id) }
 		.atomic { tc.ownership_scoped_thread_atomic_operation(id) }
+		.factory { false }
 	}
 }
 
@@ -377,6 +379,7 @@ fn (mut tc TypeChecker) ownership_record_scoped_thread_borrow(arg flat.NodeId, i
 			pos:              borrow.pos
 			// Reserve the referent for the worker until its defer joins.
 			is_mut:           true
+			scoped_factory:   borrow.access == .factory
 			thread_join_site: join_site
 		})
 	}
@@ -435,7 +438,8 @@ fn (mut tc TypeChecker) ownership_reject_scoped_thread_access(name string, id fl
 				continue
 			}
 			if source == name {
-				if tc.ownership_scoped_thread_reborrows(id) {
+				if tc.ownership_scoped_thread_reborrows(id)
+					|| (borrow.scoped_factory && tc.ownership_scoped_factory_receiver_use(id)) {
 					continue
 				}
 				tc.record_error(.thread_transfer,

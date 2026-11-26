@@ -154,20 +154,159 @@ fn (tc &TypeChecker) ownership_scoped_callback_factory_borrows(id flat.NodeId) ?
 		return none
 	}
 	receiver_type := unwrap_pointer(tc.resolve_type(recv_id))
+	info := tc.resolve_call_info(id, *call) or { return none }
+	if !info.has_receiver || info.params.len != 1 || !tc.ownership_is_scoped_callback(info.return_type) {
+		return none
+	}
+	loan := ScopedThreadBorrow{ source: receiver.value, pos: recv_id }
+	if receiver_type is Interface {
+		if !tc.ownership_scoped_factory_interface_method(receiver_type.name_id, callee.value) {
+			return none
+		}
+		// Conformance has already checked the concrete methods. The receiver
+		// pins the referents without granting the worker access to the factory.
+		return [ScopedThreadBorrow{ ...loan, access: .factory }]
+	}
+	if receiver_type !is Struct {
+		return none
+	}
+	formal := unalias_type(info.params[0])
+	if !semantic_types_equal(unwrap_pointer(formal), receiver_type) {
+		return none
+	}
+	return tc.ownership_scoped_factory_method_borrows(info, loan)
+}
+
+// Record proofs while the original declarations are available. Interface
+// queries also run after lowering and after the source arena has been released.
+fn (mut tc TypeChecker) ownership_collect_scoped_factory_contracts() {
+	mut state := tc.ownership_state()
+	for iface, methods in state.interface_lifetime_returns {
+		for method, sources in methods {
+			if sources.len != 1 || sources[0] != 0 {
+				continue
+			}
+			key := tc.interface_method_signature_key(iface, method) or { continue }
+			params := tc.fn_param_types[key] or { continue }
+			result := tc.fn_ret_types[key] or { continue }
+			if params.len == 1 && tc.ownership_is_scoped_callback(result) {
+				state.scoped_factory_contracts[key] = true
+			}
+		}
+	}
+	if state.scoped_factory_contracts.len == 0 {
+		return
+	}
+	previous_file := tc.cur_file
+	previous_module := tc.cur_module
+	defer {
+		tc.cur_file = previous_file
+		tc.cur_module = previous_module
+	}
+	for name, result in tc.fn_ret_types {
+		if !tc.ownership_is_scoped_callback(result) {
+			continue
+		}
+		file := tc.fn_type_files[name] or { continue }
+		tc.cur_file = file
+		tc.cur_module = tc.file_modules[file] or { tc.fn_type_modules[name] }
+		if tc.ownership_scoped_factory_method_borrows(tc.call_info(name, true), ScopedThreadBorrow{}) != none {
+			state.scoped_factory_implementations[name] = true
+		}
+	}
+}
+
+fn (tc &TypeChecker) ownership_scoped_factory_interface_method(iface u32, method string) bool {
+	if isnil(tc.ownership) || tc.ownership.scoped_factory_contracts.len == 0 {
+		return false
+	}
+	key := tc.interface_method_signature_key(iface, method) or { return false }
+	return key in tc.ownership.scoped_factory_contracts
+}
+
+fn (tc &TypeChecker) ownership_scoped_factory_interface(iface u32) bool {
+	if isnil(tc.ownership) || tc.ownership.scoped_factory_contracts.len == 0 {
+		return false
+	}
+	for method in tc.interface_abstract_method_names(iface) {
+		if tc.ownership_scoped_factory_interface_method(iface, method) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) ownership_scoped_factory_conforms(name string) bool {
+	return !isnil(tc.ownership) && name in tc.ownership.scoped_factory_implementations
+}
+
+fn (tc &TypeChecker) ownership_scoped_factory_interface_call(recv_id flat.NodeId, info CallInfo) bool {
+	if isnil(tc.ownership) || tc.ownership.scoped_factory_contracts.len == 0
+		|| !info.has_receiver || !tc.ownership_is_scoped_callback(info.return_type) {
+		return false
+	}
+	receiver := unwrap_pointer(tc.resolve_type(recv_id))
+	return receiver is Interface
+		&& tc.ownership_scoped_factory_interface_method(receiver.name_id, info.name.all_after_last('.'))
+}
+
+fn (tc &TypeChecker) ownership_scoped_factory_receiver_use(id flat.NodeId) bool {
+	selector_id := tc.ownership_scoped_thread_use_parent(id)
+	selector := tc.a.node(selector_id)
+	if selector.kind != .selector || selector.children_count != 1
+		|| tc.ownership_unwrap_expr(tc.a.child(selector, 0)) != id {
+		return false
+	}
+	call_id := tc.ownership_scoped_thread_use_parent(selector_id)
+	call := tc.a.node(call_id)
+	if call.kind != .call || call.children_count != 1 || tc.a.child(call, 0) != selector_id {
+		return false
+	}
+	info := tc.resolve_call_info(call_id, *call) or { return false }
+	return tc.ownership_scoped_factory_interface_call(id, info)
+}
+
+// A directly bound result inherits the verified receiver read. Other loans
+// still conflict with the factory's reservation until the worker joins.
+fn (tc &TypeChecker) ownership_scoped_factory_result_borrow(source string, pos flat.NodeId) bool {
+	if isnil(tc.ownership) || tc.ownership.scoped_factory_contracts.len == 0 {
+		return false
+	}
+	binding := tc.a.node(pos)
+	if binding.kind !in [.decl_assign, .assign] || binding.children_count != 2 {
+		return false
+	}
+	call_id := tc.ownership_unwrap_expr(tc.a.child(binding, 1))
+	call := tc.a.node(call_id)
+	if call.kind != .call || call.children_count != 1 {
+		return false
+	}
+	callee := tc.a.child_node(call, 0)
+	if callee.kind != .selector || callee.children_count != 1 {
+		return false
+	}
+	recv_id := tc.ownership_unwrap_expr(tc.a.child(callee, 0))
+	recv := tc.a.node(recv_id)
+	return recv.kind == .ident && recv.value == source && tc.ownership_scoped_factory_receiver_use(recv_id)
+}
+
+fn (tc &TypeChecker) ownership_scoped_factory_method_borrows(info CallInfo, loan ScopedThreadBorrow) ?[]ScopedThreadBorrow {
+	if info.params.len != 1 || !tc.ownership_is_scoped_callback(info.return_type)
+		|| call_param_is_shared(info, 0) {
+		return none
+	}
+	formal := unalias_type(info.params[0])
+	if formal !is Pointer {
+		return none
+	}
+	receiver_type := unwrap_pointer(formal)
 	if receiver_type !is Struct {
 		return none
 	}
 	if tc.struct_embed_receiver_names(receiver_type.name_id).len != 0 {
 		return none
 	}
-	info := tc.resolve_call_info(id, *call) or { return none }
-	if !info.has_receiver || info.params.len != 1 || !tc.ownership_is_scoped_callback(info.return_type) {
-		return none
-	}
-	formal := unalias_type(info.params[0])
-	if formal !is Pointer || !semantic_types_equal(unwrap_pointer(formal), receiver_type) {
-		return none
-	}
+
 	file := tc.fn_type_files[info.name] or { return none }
 	module_name := tc.fn_type_modules[info.name] or { return none }
 	decl := tc.visible_mutation_fn_decl(info.name, module_name) or { return none }
@@ -188,10 +327,7 @@ fn (tc &TypeChecker) ownership_scoped_callback_factory_borrows(id flat.NodeId) ?
 		return none
 	}
 	borrows := tc.ownership_scoped_callback_factory_fields(*tc.a.node(state_id), state_type,
-		receiver_type, param.value, module_name, ScopedThreadBorrow{
-			source: receiver.value
-			pos:    recv_id
-		}) or { return none }
+		receiver_type, param.value, module_name, loan) or { return none }
 	return if tc.ownership_scoped_callback_methods(state_type, borrows, module_name) {
 		borrows
 	} else {
