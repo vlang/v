@@ -277,8 +277,8 @@ fn main() {
 	assert output.output.trim_space() == 'ok'
 }
 
-fn test_fixed_array_borrows_preserve_callee_evaluation_order() {
-	output := copy_ownership_run('fixed_callee_order', '@[has_globals]
+fn test_fixed_array_borrows_preserve_order_and_allocators() {
+	callee_order := '@[has_globals]
 module main
 
 __global order = []string{}
@@ -342,7 +342,7 @@ fn get_holder() Holder {
 	return Holder{consume_values}
 }
 
-fn main() {
+fn check_callee_order() {
 	mut values := [Item{1}]!
 	assert make_runner().consume(mut values) == 1
 	assert order[0] == "receiver", order.str()
@@ -362,16 +362,10 @@ fn main() {
 	assert runners[0].calls == 1
 	assert order[0] == "index", order.str()
 	assert order.filter(it == "index").len == 1
-	println("ok")
+	println("order")
 }
-')
-	assert output == 'ok'
-}
-
-fn test_promoted_fixed_array_roots_use_matching_windows_allocators() {
-	path := os.join_path(copy_ownership_tmp_dir, 'fixed_root_windows.v')
-	cpath := os.join_path(copy_ownership_tmp_dir, 'fixed_root_windows.c')
-	os.write_file(path, 'interface Drop { mut: drop() }
+'
+	allocators := 'interface Drop { mut: drop() }
 struct PlainCell implements Drop { value int }
 fn (mut cell PlainCell) drop() {}
 struct PlainHolder { values [2]PlainCell label string }
@@ -430,7 +424,10 @@ fn main() {
 	aligned_borrow_scope()
 	println("ok")
 }
-')!
+'
+	path := os.join_path(copy_ownership_tmp_dir, 'fixed_root_windows.v')
+	cpath := os.join_path(copy_ownership_tmp_dir, 'fixed_root_windows.c')
+	os.write_file(path, allocators)!
 	build := os.exec(['${copy_ownership_v3}', '-ownership', '-d', 'ownership', '-no-parallel',
 		'-os', 'windows', '-o', cpath, path])
 	assert build.exit_code == 0, build.output
@@ -457,7 +454,15 @@ fn main() {
 		assert !body.contains('v_free(holder);'), body
 		assert !body.contains('v3_aligned_free(holder);'), body
 	}
-	assert copy_ownership_run('fixed_root_runtime', os.read_file(path)!) == 'ok'
+	runtime := callee_order + '\n' + allocators.replace('fn main() {', 'fn check_runtime_allocations() {').replace('println("ok")',
+		'println("allocations")') + '
+fn main() {
+	check_callee_order()
+	check_runtime_allocations()
+}
+'
+	output := copy_ownership_run('fixed_order_and_allocators', runtime)
+	assert output.split_into_lines() == ['order', 'allocations']
 }
 
 fn test_owned_fixed_array_views_acquire_independent_owners() {
