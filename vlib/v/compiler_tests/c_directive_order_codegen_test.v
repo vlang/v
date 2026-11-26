@@ -304,35 +304,16 @@ int native_use(NativeThing* item) { return item->value; }
 	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
-fn directive_order_gen_c_header_declared_prototype() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_header_declared_proto_project')
+fn directive_order_gen_c_header_declarations() string {
+	root := directive_order_fixture_dir('v3_c_directive_order_header_declarations_project')
 	defer { os.rmdir_all(root) or {} }
 	directive_order_write_file(root, 'v.mod',
-		"Module { name: 'directive_order_header_declared_proto' }\n")
+		"Module { name: 'directive_order_header_declarations' }\n")
 	directive_order_write_file(root, 'main.v', 'module main
 
 #insert "declared_proto.h"
 
 fn C.declared_text() &char
-
-fn main() {
-	_ := C.declared_text()
-}
-')
-	directive_order_write_file(root, 'declared_proto.h', 'const char* declared_text(void);
-')
-	c_out := os.join_path(root, 'v3_c_directive_order_header_declared_proto.c')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
-	assert result.exit_code == 0, result.output
-	return os.read_file(c_out) or { panic(err) }
-}
-
-fn directive_order_gen_c_struct_field_after_header() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_struct_field_after_header_project')
-	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod',
-		"Module { name: 'directive_order_struct_field_after_header' }\n")
-	directive_order_write_file(root, 'main.v', 'module main
 
 #insert "field_thing.h"
 
@@ -345,16 +326,44 @@ struct Wrap {
 	item C.FieldThing
 }
 
+#insert "union_thing.h"
+
+@[typedef]
+union C.AnonymousUnion {
+	value int
+}
+
+@[typedef]
+union C.TaggedUnionAlias {
+	value int
+}
+
+struct WrapUnion {
+	anonymous C.AnonymousUnion
+	tagged    C.TaggedUnionAlias
+}
+
 fn main() {
+	_ := C.declared_text()
 	_ := Wrap{}
+	_ := WrapUnion{}
 }
 ')
+	directive_order_write_file(root, 'declared_proto.h', 'const char* declared_text(void);\n')
 	directive_order_write_file(root, 'field_thing.h', 'typedef struct {
 	int value;
 } FieldThing;
 ')
-	c_out := os.join_path(root, 'v3_c_directive_order_struct_field_after_header.c')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
+	directive_order_write_file(root, 'union_thing.h', 'typedef union {
+	int value;
+} AnonymousUnion;
+
+typedef union TaggedUnionImpl {
+	int value;
+} TaggedUnionAlias;
+')
+	c_out := os.join_path(root, 'v3_c_directive_order_header_declarations.c')
+	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', c_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -437,48 +446,6 @@ static inline int tagged_value(TaggedAlias* item) {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '43', run.output
 	return os.read_file(bin_out + '.c') or { panic(err) }
-}
-
-fn directive_order_gen_c_union_typedef_aliases() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_union_typedef_aliases_project')
-	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod',
-		"Module { name: 'directive_order_union_typedef_aliases' }\n")
-	directive_order_write_file(root, 'main.v', 'module main
-
-#insert "union_thing.h"
-
-@[typedef]
-union C.AnonymousUnion {
-	value int
-}
-
-@[typedef]
-union C.TaggedUnionAlias {
-	value int
-}
-
-struct WrapUnion {
-	anonymous C.AnonymousUnion
-	tagged    C.TaggedUnionAlias
-}
-
-fn main() {
-	_ := WrapUnion{}
-}
-')
-	directive_order_write_file(root, 'union_thing.h', 'typedef union {
-	int value;
-} AnonymousUnion;
-
-typedef union TaggedUnionImpl {
-	int value;
-} TaggedUnionAlias;
-')
-	c_out := os.join_path(root, 'v3_c_directive_order_union_typedef_aliases.c')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
-	assert result.exit_code == 0, result.output
-	return os.read_file(c_out) or { panic(err) }
 }
 
 fn directive_order_gen_and_run_nested_include() string {
@@ -1041,21 +1008,27 @@ fn test_header_includes_are_emitted_before_extern_prototypes() {
 	assert header_idx < proto_idx, c_code
 }
 
-fn test_header_declared_prototypes_are_not_redeclared() {
-	c_code := directive_order_gen_c_header_declared_prototype()
-	header_idx := directive_order_index(c_code, 'declared_proto.h"')
-	assert header_idx >= 0, c_code
+fn test_inserted_headers_supply_native_declarations() {
+	c_code := directive_order_gen_c_header_declarations()
+	assert c_code.contains('declared_proto.h"'), c_code
+	assert c_code.contains('declared_text()'), c_code
 	assert directive_order_count(c_code, 'declared_text(void);') == 0, c_code
-}
 
-fn test_header_includes_are_emitted_before_type_declarations() {
-	c_code := directive_order_gen_c_struct_field_after_header()
-	header_idx := directive_order_index(c_code, 'field_thing.h"')
-	wrap_idx := directive_order_index(c_code, 'struct main__Wrap {')
-	assert header_idx >= 0, c_code
-	assert wrap_idx >= 0, c_code
-	assert header_idx < wrap_idx, c_code
+	for header, declaration in {
+		'field_thing.h"': 'struct main__Wrap {'
+		'union_thing.h"': 'struct main__WrapUnion {'
+	} {
+		header_idx := directive_order_index(c_code, header)
+		wrap_idx := directive_order_index(c_code, declaration)
+		assert header_idx >= 0, c_code
+		assert wrap_idx > header_idx, c_code
+	}
 	assert !c_code.contains('typedef struct FieldThing'), c_code
+	assert !c_code.contains('} TaggedUnionAlias;'), c_code
+	assert !c_code.contains('typedef union AnonymousUnion'), c_code
+	assert !c_code.contains('union AnonymousUnion {\n'), c_code
+	assert !c_code.contains('typedef union TaggedUnionAlias'), c_code
+	assert !c_code.contains('union TaggedUnionAlias {\n'), c_code
 }
 
 fn test_anonymous_typedef_struct_header_is_not_duplicated() {
@@ -1070,16 +1043,6 @@ fn test_tagged_typedef_struct_alias_header_is_not_duplicated() {
 	assert c_code.contains('tagged_thing.h"'), c_code
 	assert !c_code.contains('static inline int tagged_value'), c_code
 	assert !c_code.contains('typedef struct TaggedAlias'), c_code
-}
-
-fn test_native_typedef_union_headers_are_not_duplicated() {
-	c_code := directive_order_gen_c_union_typedef_aliases()
-	assert c_code.contains('union_thing.h"'), c_code
-	assert !c_code.contains('} TaggedUnionAlias;'), c_code
-	assert !c_code.contains('typedef union AnonymousUnion'), c_code
-	assert !c_code.contains('union AnonymousUnion {\n'), c_code
-	assert !c_code.contains('typedef union TaggedUnionAlias'), c_code
-	assert !c_code.contains('union TaggedUnionAlias {\n'), c_code
 }
 
 fn test_nested_local_header_includes_are_left_to_the_c_preprocessor() {
