@@ -579,9 +579,21 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			|| (character >= `a` && character <= `z`) || (character >= `A` && character <= `Z`)
 			|| (unicode && bare_wide_letter(character))
 	}
-	fn bare_pattern_fold(character u32, unicode bool) u32 {
-		if character >= `A` && character <= `Z` { return character + 32 }
-		return if unicode { u32(rune(character).to_lower()) } else { character }
+	fn bare_pattern_fold(re &BarePattern, character u32) u32 {
+		if character < 128 {
+			if re.glob {
+				return if character >= `A` && character <= `Z` { character + 32 } else { character }
+			}
+			return if character >= `a` && character <= `z` { character - 32 } else { character }
+		}
+		if !re.unicode { return character }
+		// fnmatch folds to lowercase. The glibc regex engine matches uppercase forms,
+		// which also equate both lowercase spellings of Greek sigma.
+		return if re.glob {
+			u32(rune(character).to_lower())
+		} else {
+			u32(rune(character).to_upper())
+		}
 	}
 	fn bare_pattern_class_match(re &BarePattern, code BarePatternInstruction, character u32, fold bool) bool {
 		mut found := false
@@ -592,12 +604,16 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				break
 			}
 			if fold {
-				lower := bare_pattern_fold(character, re.unicode)
-				upper := if re.unicode || character < 128 {
-					u32(rune(character).to_upper())
-				} else {
-					character
+				if !re.glob && range.first == range.last {
+					if bare_pattern_fold(re, character) == bare_pattern_fold(re, range.first) {
+						found = true
+						break
+					}
+					continue
 				}
+				if !re.unicode && character >= 128 { continue }
+				lower := u32(rune(character).to_lower())
+				upper := u32(rune(character).to_upper())
 				if (lower >= range.first && lower <= range.last) || (upper >= range.first && upper <= range.last) {
 					found = true
 					break
@@ -745,7 +761,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 							left, left_length := bare_pattern_character(text, a, re.unicode)
 							right, right_length := bare_pattern_character(text, b, re.unicode)
 							if right_length == 0 || (if fold {
-								bare_pattern_fold(left, re.unicode) != bare_pattern_fold(right, re.unicode)
+								bare_pattern_fold(re, left) != bare_pattern_fold(re, right)
 							} else {
 								left != right
 							}) {
@@ -762,7 +778,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 						destination += length
 						if instruction.kind == bare_pattern_literal {
 							proceed = if fold {
-								bare_pattern_fold(character, re.unicode) == bare_pattern_fold(instruction.value, re.unicode)
+								bare_pattern_fold(re, character) == bare_pattern_fold(re, instruction.value)
 							} else {
 								character == instruction.value
 							}

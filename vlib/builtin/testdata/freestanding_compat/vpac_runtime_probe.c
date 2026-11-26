@@ -485,6 +485,13 @@ static int regex_probe(void) {
         {"(a|aa)(a?)","aa",REG_EXTENDED,0},
         {"(a*)*","aaa",REG_EXTENDED,0},
         {"^ж+$","Жж",REG_EXTENDED|REG_ICASE,0},
+        {"^Σ$","ς",REG_EXTENDED|REG_ICASE,0},
+        {"^[Σ]$","ς",REG_EXTENDED|REG_ICASE,0},
+        {"^[ς]$","σ",REG_EXTENDED|REG_ICASE,0},
+        {"^[^ς]$","Σ",REG_EXTENDED|REG_ICASE,REG_NOMATCH},
+        {"^(Σ)\\1$","Σς",REG_EXTENDED|REG_ICASE,0},
+        {"^s$","ſ",REG_EXTENDED|REG_ICASE,0},
+        {"^K$","k",REG_EXTENDED|REG_ICASE,REG_NOMATCH},
         {"[[:lower:]]+","ABCж",REG_EXTENDED|REG_ICASE,0},
     };
     for(size_t i=0;i<sizeof cases/sizeof *cases;i++) {
