@@ -203,42 +203,9 @@ fn main() {
 	], res.output
 }
 
-fn test_the_body_can_use_only_what_the_constraint_declares() {
-	// Reported even though nothing calls `oldest`.
-	res := check_program('body', 'fn oldest[T Named](a T, b T) T {
-	if a.age > b.age {
-		return a
-	}
-	println(a.nme)
-	return b
-}
-
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'2:7: type `T` has no field named `age`: its constraint `Named` does not declare it',
-		'2:15: type `T` has no field named `age`: its constraint `Named` does not declare it',
-		'5:12: type `T` has no field named `nme`: its constraint `Named` does not declare it',
-	], res.output
-}
-
-fn test_a_method_the_constraint_does_not_declare_is_reported_in_the_body() {
-	res := check_program('body_method', 'fn label[T Named](x T) string {
-	return x.greet()
-}
-
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'2:11: type `T` has no method `greet`: its constraint `Named` does not declare it',
-	], res.output
-}
-
-fn test_a_local_that_gets_its_value_from_a_t_is_a_t() {
-	// Every way a local can take a value of type `T`: each `.age` below is on a `T`.
-	res := check_program('derived', "fn derived[T Named](a T, b T, items []T, m map[string]T, c bool, n int) int {
+fn test_constrained_bodies_reject_undeclared_members() {
+	// Check parameters and locals in uncalled generic functions.
+	res := check_program('body_members', "fn derived[T Named](a T, b T, items []T, m map[string]T, c bool, n int) int {
 	x := a
 	mut total := x.age
 	mut y := a
@@ -288,6 +255,18 @@ fn from_set[T Number](x T) int {
 	return y.len
 }
 
+fn oldest[T Named](a T, b T) T {
+	if a.age > b.age {
+		return a
+	}
+	println(a.nme)
+	return b
+}
+
+fn label[T Named](x T) string {
+	return x.greet()
+}
+
 fn main() {}
 ")
 	assert res.exit_code == 1, res.output
@@ -308,6 +287,10 @@ fn main() {}
 		'32:19: type `T` has no method `greet`: its constraint `Named` does not declare it',
 		'41:11: ${no_age}',
 		'48:11: type `T` has no field named `len`: `int`, in its constraint `Number`, does not have it',
+		'52:7: ${no_age}',
+		'52:15: ${no_age}',
+		'55:12: type `T` has no field named `nme`: its constraint `Named` does not declare it',
+		'60:11: type `T` has no method `greet`: its constraint `Named` does not declare it',
 	], res.output
 }
 
