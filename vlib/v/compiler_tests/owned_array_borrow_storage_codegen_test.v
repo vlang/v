@@ -64,8 +64,8 @@ ${branches.join('\n')}
 	return os.join_path(borrow_storage_tmp_dir, name)
 }
 
-fn test_owned_borrowed_array_views_clone_only_when_detaching() {
-	output := borrow_storage_run('fixed_array_detach', '@[has_globals]
+fn test_owned_borrowed_array_views_preserve_owners() {
+	source := '@[has_globals]
 module main
 
 __global next_id = 0
@@ -146,7 +146,7 @@ fn change(mut values []Resource, operation int) {
 	unsafe { values.free() }
 }
 
-fn main() {
+fn check_detach() {
 	for operation in 0 .. 12 {
 		mut fixed := [fresh(), fresh()]
 		original_id := fixed[0].id
@@ -161,24 +161,14 @@ fn main() {
 		drop_owned(fixed)
 	}
 	assert dropped.len == next_id
-	println("ok")
-}
-')
-	assert output == 'ok'
+	println("detach")
 }
 
-fn test_owned_borrowed_array_borrowed_empty_uncloneable_range_can_grow() {
-	output := borrow_storage_run('empty_uncloneable_fixed', '@[has_globals]
-module main
-__global dropped = map[int]bool{}
-interface Drop {
-mut:
-	drop()
-}
+__global empty_dropped = map[int]bool{}
 struct Handle implements Drop { id int }
 fn (mut h Handle) drop() {
-	assert !dropped[h.id]
-	dropped[h.id] = true
+	assert !empty_dropped[h.id]
+	empty_dropped[h.id] = true
 }
 fn duplicate_empty(mut values []Handle) {
 	values << values
@@ -196,7 +186,7 @@ fn grow(mut values []Handle, reserve bool) {
 	assert values.len == 1 && values[0].id == 2
 	unsafe { values.free() }
 }
-fn main() {
+fn check_empty_growth() {
 	mut empty := []Handle{}
 	duplicate_empty(mut empty)
 	assert empty.len == 0
@@ -204,21 +194,29 @@ fn main() {
 	assert kept_empty.len == 0
 	drop_owned(kept_empty)
 	for reserve in [false, true] {
-		dropped = map[int]bool{}
+		empty_dropped = map[int]bool{}
 		mut fixed := [Handle{1}]
 		delete_empty_range(mut fixed[..])
 		assert fixed.len == 1 && fixed[0].id == 1
-		assert dropped.len == 0
+		assert empty_dropped.len == 0
 		grow(mut fixed[0..0], reserve)
-		assert dropped[2]
-		assert !dropped[1]
+		assert empty_dropped[2]
+		assert !empty_dropped[1]
 		drop_owned(fixed)
-		assert dropped.len == 2
+		assert empty_dropped.len == 2
 	}
-	println("ok")
+	println("empty_growth")
 }
-')
-	assert output == 'ok'
+'
+	binary := borrow_storage_compile_dispatch('borrowed_array_views', source, [
+		'\t\t"detach" { check_detach() }',
+		'\t\t"empty_growth" { check_empty_growth() }',
+	])
+	for name in ['detach', 'empty_growth'] {
+		run := os.exec([binary, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == name, '${name}: ${run.output}'
+	}
 }
 
 fn test_owned_borrowed_array_nonempty_uncloneable_views_fail_when_owning() {
