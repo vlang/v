@@ -7995,6 +7995,14 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		}
 		return
 	}
+	if tc.autofree_mode && rhs_name.contains('[') {
+		// Autofree keeps V1's aliasing semantics (see ownership_report_moved): a local
+		// copied from a container element reads it in place, as a call argument does,
+		// so the element stays in (and is freed with) its container.
+		st.owned_vars.delete(lhs_name)
+		st.owned_var_types.delete(lhs_name)
+		return
+	}
 	lhs_owned := tc.ownership_type_is_owned(lhs_type)
 	if rhs_name.len > 0 {
 		if returned_value_is_scalar_copy(lhs_type) {
