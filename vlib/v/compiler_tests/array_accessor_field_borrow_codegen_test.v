@@ -175,21 +175,6 @@ fn compile_v3_uncloneable_array_ownership_program(v3_bin string, name string, sr
 	return compile_v3_ownership_program(v3_bin, name, uncloneable_src, extra_args)
 }
 
-// Concern: `last()` reads its receiver twice (`arr[arr.len - 1]`), so a non-lvalue receiver
-// such as `make_entries()` must be evaluated exactly once. The borrow lowering binds it to a
-// temp instead of duplicating the call.
-fn test_owned_first_last_receiver_evaluated_once() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_eval_once', "struct E {\n\tname string\n\tsize int\n}\n\n__global (\n\tmake_calls = 0\n)\n\nfn make_entries() []E {\n\tmake_calls++\n\treturn [E{ name: 'a', size: 5 }, E{ name: 'b', size: 9 }]\n}\n\nfn main() {\n\ts := make_entries().last().size\n\tprintln(int_str(s) + ':' + int_str(make_calls))\n}\n", '-enable-globals')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('unsupported node kind'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_eval_once_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	// size == 9 (last element), make_entries() invoked once (not twice).
-	assert run.output.trim_space() == '9:1', run.output
-}
-
 fn test_owned_cloned_method_values_run() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_cloned_method_values', "struct CloneableEntry {
@@ -1231,19 +1216,38 @@ fn check_match_branch() {
 	println(last_length_in_match(entries))
 }
 
+__global (
+	make_calls = 0
+)
+
+fn make_entries() []SizedEntry {
+	make_calls++
+	return [SizedEntry{ name: 'a', size: 5 }, SizedEntry{ name: 'b', size: 9 }]
+}
+
+// Concern: `last()` reads its receiver twice (`arr[arr.len - 1]`), so a non-lvalue receiver
+// such as `make_entries()` must be evaluated exactly once. The borrow lowering binds it to a
+// temp instead of duplicating the call.
+fn check_receiver_evaluated_once() {
+	s := make_entries().last().size
+	// size == 9 (last element), make_entries() invoked once (not twice).
+	println(int_str(s) + ':' + int_str(make_calls))
+}
+
 fn main() {
 	check_scalar_index()
 	check_aggregate_field()
 	check_aggregate_arguments()
 	check_parenthesized()
 	check_match_branch()
+	check_receiver_evaluated_once()
 }
-", '')
+", '-enable-globals')
 	assert_clean_borrow_build(compile)
 	bin_path := tmp_array_accessor_borrow_path('owned_scalar_consumers_bin')
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().split_into_lines() == ['104', '5', '15', '0', '5'], run.output
+	assert run.output.trim_space().split_into_lines() == ['104', '5', '15', '0', '5', '9:1'], run.output
 }
 
 fn test_owned_scalar_borrows_with_implicit_mutations_are_rejected() {
