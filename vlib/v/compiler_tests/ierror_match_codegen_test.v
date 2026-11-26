@@ -309,7 +309,7 @@ fn main() {
 	assert run.output.trim_space() == 'ok\nok'
 }
 
-fn test_ierror_patterns_reject_incompatible_imported_types() {
+fn test_ierror_rejects_incompatible_imported_types() {
 	root := os.join_path(os.vtmp_dir(), 'v3_ierror_pattern_rejections_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -347,6 +347,49 @@ pub fn (err FalseMessageError) code() int {
 
 pub fn fail() !int {
 	return Error{}
+}
+") or {
+		panic(err)
+	}
+
+	fakebox_dir := os.join_path(root, 'fakebox')
+	os.mkdir_all(fakebox_dir) or { panic(err) }
+	os.write_file(os.join_path(fakebox_dir, 'fakebox.v'), "module fakebox
+
+pub struct Error {}
+
+pub struct MessageError {}
+
+pub struct FalseError {
+	Error
+}
+
+pub fn (err FalseError) msg() string {
+	return 'false error'
+}
+
+pub fn (err FalseError) code() int {
+	return 91
+}
+
+pub struct FalseMessageError {
+	MessageError
+}
+
+pub fn (err FalseMessageError) msg() string {
+	return 'false message error'
+}
+
+pub fn (err FalseMessageError) code() int {
+	return 92
+}
+
+pub fn fail_error() !int {
+	return &FalseError{}
+}
+
+pub fn fail_message_error() !int {
+	return &FalseMessageError{}
 }
 ") or {
 		panic(err)
@@ -437,10 +480,15 @@ fn check_fake_embeds() {
 }
 ") or { panic(err) }
 
-	os.write_file(os.join_path(root, 'main.v'), 'fn main() {
+	os.write_file(os.join_path(root, 'main.v'), 'import fakebox
+
+fn main() {
 	check_scoped_error()
 	check_msg_only()
 	check_fake_embeds()
+	a := fakebox.fail_error() or { 0 }
+	b := fakebox.fail_message_error() or { 0 }
+	_ = a + b
 }
 ') or { panic(err) }
 
@@ -455,6 +503,10 @@ fn check_fake_embeds() {
 		diagnostics[os.file_name(file)] << message
 	}
 	for file, expected in {
+		'fakebox.v':      [
+			'cannot use `&fakebox.FalseError` as type `!int` in return argument',
+			'cannot use `&fakebox.FalseMessageError` as type `!int` in return argument',
+		]
 		'fake.v':         ['fake.Error` as type `!int` in return argument']
 		'scoped_error.v': ["`Error` doesn't implement interface `IError`"]
 		'msg_only.v':     [
@@ -497,74 +549,5 @@ fn main() {
 	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('Error') && compile.output.contains('IError'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
-fn test_module_local_error_embeds_are_not_boxed_as_ierror() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_fake_error_box_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	mod_dir := os.join_path(root, 'fakebox')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	mod_src := os.join_path(mod_dir, 'fakebox.v')
-	os.write_file(mod_src, "module fakebox
-
-pub struct Error {}
-
-pub struct MessageError {}
-
-pub struct FalseError {
-	Error
-}
-
-pub fn (err FalseError) msg() string {
-	return 'false error'
-}
-
-pub fn (err FalseError) code() int {
-	return 91
-}
-
-pub struct FalseMessageError {
-	MessageError
-}
-
-pub fn (err FalseMessageError) msg() string {
-	return 'false message error'
-}
-
-pub fn (err FalseMessageError) code() int {
-	return 92
-}
-
-pub fn fail_error() !int {
-	return &FalseError{}
-}
-
-pub fn fail_message_error() !int {
-	return &FalseMessageError{}
-}
-") or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'import fakebox
-
-fn main() {
-	a := fakebox.fail_error() or { 0 }
-	b := fakebox.fail_message_error() or { 0 }
-	_ = a + b
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_ierror_fake_error_box_input')
-	compile := os.exec([@VEXE, '${mod_src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot use `&fakebox.FalseError` as type `!int`'), compile.output
-	assert compile.output.contains('fakebox.FalseError')
-		|| compile.output.contains('fakebox.FalseMessageError'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
