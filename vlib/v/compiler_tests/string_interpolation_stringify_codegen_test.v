@@ -7,62 +7,6 @@ fn compile_string_interp_input(source string, bin string) os.Result {
 	return os.exec([@VEXE, src, '-b', 'c', '-nocolor', '-o', bin])
 }
 
-fn test_typed_string_interpolation_stringifies_maps_arrays_and_generic_indexes() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	src := 'fn generic_first[T](xs []T) string {
-	return \'\${xs[0]}\'
-}
-
-fn generic_line[T](xs []T) string {
-	return \'node \${xs[0]}\'
-}
-
-fn main() {
-	visited := {
-		\'A\': true
-	}
-	visited_line := \'Visited: \${visited} done\'
-	assert visited_line.contains(\'Visited: {\')
-	assert visited_line.contains("\'A\': true")
-	assert visited_line.contains(\'} done\')
-
-	graph := {
-		\'A\': [\'B\', \'C\']
-	}
-	graph_line := \'Graph: \${graph}\'
-	assert graph_line.contains(\'Graph: {\')
-	assert graph_line.contains("\'A\': [\'B\', \'C\']")
-
-	int_names := {
-		7: \'seven\'
-	}
-	int_names_line := \'Names: \${int_names}\'
-	assert int_names_line.contains(\'Names: {\')
-	assert int_names_line.contains("7: \'seven\'")
-
-	nums := [1, 2]
-	assert \'Array: \${nums}\' == \'Array: [1, 2]\'
-
-	mut xs := []int{}
-	xs << 7
-	assert generic_first(xs) == \'7\'
-	assert generic_line(xs) == \'node 7\'
-	println(\'ok\')
-}
-'
-	bin := os.join_path(dir, 'v3_string_interpolation_stringify_positive')
-	compile := compile_string_interp_input(src, bin)
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
 // Interpolation keeps the nested method call and the custom str helpers reachable.
 fn test_string_interpolation_keeps_callees_and_str_helpers() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
@@ -296,14 +240,14 @@ fn test_string_plus_does_not_stringify_non_strings() {
 	}
 }
 
-fn test_joined_interpolation_preserves_order_and_formatted_parts() {
+fn test_typed_and_joined_string_interpolation() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
 	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	src := "const prefix = 'hello'
-const greeting = '\${prefix} world!'
+	src := 'const prefix = \'hello\'
+const greeting = \'\${prefix} world!\'
 
 struct Counter {
 mut:
@@ -326,38 +270,80 @@ fn (mut c Counter) maybe() ?int {
 }
 
 fn decorate(text string) string {
-	return '<\${text}> / \${text}'
+	return \'<\${text}> / \${text}\'
+}
+
+fn generic_first[T](xs []T) string {
+	return \'\${xs[0]}\'
+}
+
+fn generic_line[T](xs []T) string {
+	return \'node \${xs[0]}\'
+}
+
+fn check_typed_interpolation() {
+	visited := {
+		\'A\': true
+	}
+	visited_line := \'Visited: \${visited} done\'
+	assert visited_line.contains(\'Visited: {\')
+	assert visited_line.contains("\'A\': true")
+	assert visited_line.contains(\'} done\')
+
+	graph := {
+		\'A\': [\'B\', \'C\']
+	}
+	graph_line := \'Graph: \${graph}\'
+	assert graph_line.contains(\'Graph: {\')
+	assert graph_line.contains("\'A\': [\'B\', \'C\']")
+
+	int_names := {
+		7: \'seven\'
+	}
+	int_names_line := \'Names: \${int_names}\'
+	assert int_names_line.contains(\'Names: {\')
+	assert int_names_line.contains("7: \'seven\'")
+
+	nums := [1, 2]
+	assert \'Array: \${nums}\' == \'Array: [1, 2]\'
+
+	mut xs := []int{}
+	xs << 7
+	assert generic_first(xs) == \'7\'
+	assert generic_line(xs) == \'node 7\'
 }
 
 fn main() {
 	mut c := Counter{}
-	assert '\${c.next()}:\${c.next()}:\${c.next()}' == '1:2:3'
+	assert \'\${c.next()}:\${c.next()}:\${c.next()}\' == \'1:2:3\'
 	assert c.n == 3
 	// Array and optional conversions introduce statements before the join.
-	assert '\${c.next()} / \${c.values()} / \${c.next()}' == '4 / [5] / 6'
-	assert '\${c.next()} / \${c.maybe()} / \${c.next()}' == '7 / Option(8) / 9'
+	assert \'\${c.next()} / \${c.values()} / \${c.next()}\' == \'4 / [5] / 6\'
+	assert \'\${c.next()} / \${c.maybe()} / \${c.next()}\' == \'7 / Option(8) / 9\'
 	assert c.n == 9
-	assert '\${c.next():04d} / \${c.next():x} / \${c.next():3d}' == '0010 / b /  12'
-	assert c.next().str() + (c.next().str() + c.next().str()) == '131415'
+	assert \'\${c.next():04d} / \${c.next():x} / \${c.next():3d}\' == \'0010 / b /  12\'
+	assert c.next().str() + (c.next().str() + c.next().str()) == \'131415\'
 	assert c.n == 15
-	assert greeting == 'hello world!'
-	__v3_internal_symbol_join_0 := 'reserved'
-	assert '<\${__v3_internal_symbol_join_0}>' == '<reserved>'
-	text := 'Привет'
-	assert decorate(text) == '<Привет> / Привет'
+	assert greeting == \'hello world!\'
+	__v3_internal_symbol_join_0 := \'reserved\'
+	assert \'<\${__v3_internal_symbol_join_0}>\' == \'<reserved>\'
+	text := \'Привет\'
+	assert decorate(text) == \'<Привет> / Привет\'
 	zero := u8(0).ascii_str()
-	joined := 'a\${zero}b\${text}'
+	joined := \'a\${zero}b\${text}\'
 	assert joined.len == 3 + text.len
 	assert joined[0] == 97 && joined[1] == 0 && joined[2] == 98
 	assert joined[3..] == text
-	assert text + zero + text == 'Привет' + zero + 'Привет'
-	assert text == 'Привет'
-	println('ok')
+	assert text + zero + text == \'Привет\' + zero + \'Привет\'
+	assert text == \'Привет\'
+	check_typed_interpolation()
+	println(\'ok\')
 }
-"
-	bin := os.join_path(dir, 'v3_string_join_order')
+'
+	bin := os.join_path(dir, 'v3_typed_and_joined_interpolation')
 	compile := compile_string_interp_input(src, bin)
 	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
