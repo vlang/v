@@ -87,18 +87,25 @@ import foo.bar as _
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_and_run_importer_macro() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_importer_macro_project')
+fn directive_order_gen_and_run_local_headers() string {
+	root := directive_order_fixture_dir('v3_c_directive_order_local_headers_project')
 	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_importer_macro' }\n")
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_local_headers' }\n")
 	directive_order_write_file(root, 'main.v', 'module main
 
 #define USE_FOO
 
 import wrapper
+import dir_wrapper
+
+#insert "multiline_value.h"
+
+fn C.multiline_value() int
 
 fn main() {
 	println(wrapper.value().str())
+	println(dir_wrapper.value().str())
+	println(C.multiline_value().str())
 }
 ')
 	directive_order_write_file(root, 'wrapper/wrapper.v', 'module wrapper
@@ -119,28 +126,7 @@ static inline int foo_value(void) {
 	return 42;
 }
 ')
-	bin_out := os.join_path(root, 'v3_c_directive_order_importer_macro')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
-	assert result.exit_code == 0, result.output
-	run := os.exec([bin_out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42', run.output
-	return os.read_file(bin_out + '.c') or { panic(err) }
-}
-
-fn directive_order_gen_and_run_dir_header() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_dir_header_project')
-	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_dir_header' }\n")
-	directive_order_write_file(root, 'main.v', 'module main
-
-import wrapper
-
-fn main() {
-	println(wrapper.value().str())
-}
-')
-	directive_order_write_file(root, 'wrapper/wrapper.v', 'module wrapper
+	directive_order_write_file(root, 'dir_wrapper/dir_wrapper.v', 'module dir_wrapper
 
 #insert "@DIR/dir_value.h"
 
@@ -150,16 +136,21 @@ pub fn value() int {
 	return C.dir_value()
 }
 ')
-	directive_order_write_file(root, 'wrapper/dir_value.h', 'static inline int dir_value(void) {
+	directive_order_write_file(root, 'dir_wrapper/dir_value.h', 'static inline int dir_value(void) {
 	return 24;
 }
 ')
-	bin_out := os.join_path(root, 'v3_c_directive_order_dir_header')
+	directive_order_write_file(root, 'multiline_value.h', 'static inline
+int multiline_value(void) {
+	return 33;
+}
+')
+	bin_out := os.join_path(root, 'v3_c_directive_order_local_headers')
 	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '24', run.output
+	assert run.output.trim_space() == '42\n24\n33', run.output
 	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
@@ -211,35 +202,6 @@ static inline int late_flag_value(void) {
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '52\n63', run.output
-	return os.read_file(bin_out + '.c') or { panic(err) }
-}
-
-fn directive_order_gen_and_run_multiline_static_inline() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_multiline_static_inline_project')
-	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod',
-		"Module { name: 'directive_order_multiline_static_inline' }\n")
-	directive_order_write_file(root, 'main.v', 'module main
-
-#insert "multiline_value.h"
-
-fn C.multiline_value() int
-
-fn main() {
-	println(C.multiline_value().str())
-}
-')
-	directive_order_write_file(root, 'multiline_value.h', 'static inline
-int multiline_value(void) {
-	return 33;
-}
-')
-	bin_out := os.join_path(root, 'v3_c_directive_order_multiline_static_inline')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
-	assert result.exit_code == 0, result.output
-	run := os.exec([bin_out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '33', run.output
 	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
@@ -902,21 +864,17 @@ fn test_c_directives_preserve_dotted_import_module_identity() {
 	assert foo_bar < foo_user, c_code
 }
 
-fn test_importer_macro_is_emitted_before_dependency_include() {
-	c_code := directive_order_gen_and_run_importer_macro()
+fn test_inserted_local_headers_resolve_and_keep_inline_functions() {
+	c_code := directive_order_gen_and_run_local_headers()
 	use_foo := directive_order_index(c_code, '#define USE_FOO')
 	foo_header := directive_order_index(c_code, 'foo.h"')
 	assert use_foo >= 0, c_code
-	assert foo_header >= 0, c_code
-	assert use_foo < foo_header, c_code
-	assert !c_code.contains('int foo_value(void);'), c_code
-}
-
-fn test_dir_include_is_resolved_without_a_header_probe() {
-	c_code := directive_order_gen_and_run_dir_header()
-	dir_header := directive_order_index(c_code, 'dir_value.h"')
-	assert dir_header >= 0, c_code
-	assert !c_code.contains('int dir_value(void);'), c_code
+	assert foo_header > use_foo, c_code
+	assert c_code.contains('dir_value.h"'), c_code
+	assert c_code.contains('multiline_value.h"'), c_code
+	for name in ['foo_value', 'dir_value', 'multiline_value'] {
+		assert !c_code.contains('int ${name}(void);'), c_code
+	}
 }
 
 fn test_quoted_includes_use_earlier_and_later_include_flags() {
@@ -927,13 +885,6 @@ fn test_quoted_includes_use_earlier_and_later_include_flags() {
 		assert !c_code.contains('#include <${name}.h>'), c_code
 		assert !c_code.contains('int ${name}(void);'), c_code
 	}
-}
-
-fn test_multiline_static_inline_header_is_not_redeclared() {
-	c_code := directive_order_gen_and_run_multiline_static_inline()
-	header_idx := directive_order_index(c_code, 'multiline_value.h"')
-	assert header_idx >= 0, c_code
-	assert !c_code.contains('int multiline_value(void);'), c_code
 }
 
 fn test_header_includes_are_emitted_before_extern_prototypes() {
