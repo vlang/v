@@ -794,10 +794,12 @@ fn main() {}
 	], res.output
 }
 
-fn test_generic_types_propagate_required_constraints() {
+fn test_generic_types_and_methods_propagate_required_constraints() {
 	// A type argument's constraint must satisfy the constraint at its use.
-	// Methods on generic receivers can use members the receiver's constraint declares.
-	res := check_program('constraint_propagation', 'struct Box[T Named] {
+	// When all type parameters are constrained, a method body is checked like
+	// a function with both the receiver and method parameters.
+	// Raise the message limit so all 29 errors are printed.
+	res := check_program('constraint_propagation', "struct Box[T Named] {
 	item T
 }
 
@@ -935,8 +937,77 @@ fn (t Tree[T]) years[T](x T) int {
 	return x.age
 }
 
-fn main() {}
-')
+// PairShelf constrains its receiver parameter. Query leaves it open.
+fn takes_int(n int) int {
+	return n
+}
+
+struct PairShelf[T Named] {
+	items []T
+}
+
+fn (s PairShelf[T]) pair[U Named](u U) string {
+	n := takes_int('s')
+	return s.items[0].name + u.name + u.greet() + n.str()
+}
+
+fn pair_fn[T Named, U Named](s PairShelf[T], u U) string {
+	n := takes_int('s')
+	return s.items[0].name + u.name + u.greet() + n.str()
+}
+
+struct Query[T] {
+	items []T
+}
+
+fn (q Query[T]) map[U Named](f fn (T) U) []U {
+	n := takes_int('s')
+	println(n)
+	println(q.items.map(f(it).age))
+	return q.items.map(f(it))
+}
+
+fn map_fn[T, U Named](q Query[T], f fn (T) U) []U {
+	n := takes_int('s')
+	println(n)
+	println(q.items.map(f(it).age))
+	return q.items.map(f(it))
+}
+
+fn to_user(x int) User {
+	return User{
+		name: 'u'
+		age:  x
+	}
+}
+
+fn to_int(x int) int {
+	return x
+}
+
+fn main() {
+	s := PairShelf[User]{
+		items: [User{
+			name: 'a'
+		}]
+	}
+	println(s.pair(User{ name: 'b' }))
+	println(pair_fn(s, User{ name: 'b' }))
+	println(s.pair(3))
+	println(pair_fn(s, 3))
+	println(s.pair[int](3))
+	println(pair_fn[User, int](s, 3))
+	q := Query[int]{
+		items: [1, 2]
+	}
+	println(q.map(to_user))
+	println(map_fn(q, to_user))
+	println(q.map(to_int))
+	println(map_fn(q, to_int))
+	println(q.map[int](to_int))
+	println(map_fn[int, int](q, to_int))
+}
+", '-message-limit', '100')
 	assert res.exit_code == 1, res.output
 	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
 	assert error_lines(res.output) == [
@@ -955,6 +1026,20 @@ fn main() {}
 		'119:18: `Tree[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
 		'128:17: ${no_age}',
 		'136:11: ${no_age}',
+		'149:17: cannot use `string` as `int` in argument 1 to `takes_int`',
+		'150:38: type `U` has no method `greet`: its constraint `Named` does not declare it',
+		'154:17: cannot use `string` as `int` in argument 1 to `takes_int`',
+		'155:38: type `U` has no method `greet`: its constraint `Named` does not declare it',
+		'165:28: type `U` has no field named `age`: its constraint `Named` does not declare it',
+		'172:28: type `U` has no field named `age`: its constraint `Named` does not declare it',
+		"195:17: `int` doesn't implement field `name` of interface `Named`",
+		"196:21: `int` doesn't implement field `name` of interface `Named`",
+		"197:17: `int` doesn't implement field `name` of interface `Named`",
+		"198:24: `int` doesn't implement field `name` of interface `Named`",
+		"204:10: `int` doesn't implement field `name` of interface `Named`",
+		"205:10: `int` doesn't implement field `name` of interface `Named`",
+		"206:16: `int` doesn't implement field `name` of interface `Named`",
+		"207:22: `int` doesn't implement field `name` of interface `Named`",
 	], res.output
 }
 
@@ -1056,103 +1141,6 @@ fn main() {
 		"73:19: `int` doesn't implement method `less` of interface `Comparable`",
 		'75:16: `Num` incorrectly implements method `less` of interface `Comparable`: expected `int`, not `Num` for parameter 1',
 		'76:16: ${odd_mismatch}',
-	], res.output
-}
-
-// A method of a generic struct has the type parameters of its receiver and its
-// own ones, and is checked as a function with all of them is: `pair` as
-// `pair_fn`, `map` as `map_fn`. A call is checked against the constraints of its
-// own type parameters; the body can use on a value of one only what its
-// constraint declares; and it is checked as the body of a normal function only
-// when every type parameter has a constraint, those of the receiver too: that of
-// `Shelf[T Named]`, not that of `Query[T]`.
-fn test_a_method_of_a_generic_struct_is_checked_as_a_function_with_its_type_parameters() {
-	res := check_program('generic_receivers', "fn takes_int(n int) int {
-	return n
-}
-
-struct Shelf[T Named] {
-	items []T
-}
-
-fn (s Shelf[T]) pair[U Named](u U) string {
-	n := takes_int('s')
-	return s.items[0].name + u.name + u.greet() + n.str()
-}
-
-fn pair_fn[T Named, U Named](s Shelf[T], u U) string {
-	n := takes_int('s')
-	return s.items[0].name + u.name + u.greet() + n.str()
-}
-
-struct Query[T] {
-	items []T
-}
-
-fn (q Query[T]) map[U Named](f fn (T) U) []U {
-	n := takes_int('s')
-	println(n)
-	println(q.items.map(f(it).age))
-	return q.items.map(f(it))
-}
-
-fn map_fn[T, U Named](q Query[T], f fn (T) U) []U {
-	n := takes_int('s')
-	println(n)
-	println(q.items.map(f(it).age))
-	return q.items.map(f(it))
-}
-
-fn to_user(x int) User {
-	return User{
-		name: 'u'
-		age:  x
-	}
-}
-
-fn to_int(x int) int {
-	return x
-}
-
-fn main() {
-	s := Shelf[User]{
-		items: [User{
-			name: 'a'
-		}]
-	}
-	println(s.pair(User{ name: 'b' }))
-	println(pair_fn(s, User{ name: 'b' }))
-	println(s.pair(3))
-	println(pair_fn(s, 3))
-	println(s.pair[int](3))
-	println(pair_fn[User, int](s, 3))
-	q := Query[int]{
-		items: [1, 2]
-	}
-	println(q.map(to_user))
-	println(map_fn(q, to_user))
-	println(q.map(to_int))
-	println(map_fn(q, to_int))
-	println(q.map[int](to_int))
-	println(map_fn[int, int](q, to_int))
-}
-")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'10:17: cannot use `string` as `int` in argument 1 to `takes_int`',
-		'11:38: type `U` has no method `greet`: its constraint `Named` does not declare it',
-		'15:17: cannot use `string` as `int` in argument 1 to `takes_int`',
-		'16:38: type `U` has no method `greet`: its constraint `Named` does not declare it',
-		'26:28: type `U` has no field named `age`: its constraint `Named` does not declare it',
-		'33:28: type `U` has no field named `age`: its constraint `Named` does not declare it',
-		"56:17: `int` doesn't implement field `name` of interface `Named`",
-		"57:21: `int` doesn't implement field `name` of interface `Named`",
-		"58:17: `int` doesn't implement field `name` of interface `Named`",
-		"59:24: `int` doesn't implement field `name` of interface `Named`",
-		"65:10: `int` doesn't implement field `name` of interface `Named`",
-		"66:10: `int` doesn't implement field `name` of interface `Named`",
-		"67:16: `int` doesn't implement field `name` of interface `Named`",
-		"68:22: `int` doesn't implement field `name` of interface `Named`",
 	], res.output
 }
 
