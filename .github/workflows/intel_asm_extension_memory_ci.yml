@@ -310,13 +310,24 @@ jobs:
           set -euo pipefail
           out="$RUNNER_TEMP/intel-asm-benchmark"
           test "$(git rev-parse HEAD)" = 2d1367e589ed30c03325e586a8ddfd3bc96c8c3d
-          cp "$out/baseline.v" ./v
-          # Build the documented historical compiler from its own sources, using
-          # the already built baseline as bootstrap rather than today's external VC.
+          # Current V rejects the historical usize/isize aliases. Use a VC
+          # snapshot published before the historical fixture compiler instead.
           # This is an inventory diagnostic only, not a measured production role.
+          vc_sha=953311cd7932af81c26b0f83c88d3cc3e58dbf3b
+          git init vc
+          git -C vc remote add origin https://github.com/vlang/vc.git
+          git -C vc fetch --depth=1 origin "$vc_sha"
+          git -C vc checkout --detach FETCH_HEAD
+          test "$(git -C vc rev-parse HEAD)" = "$vc_sha"
+          git -C vc log -1 --format='%H %cI %s' | tee "$out/reference.vc.txt"
           rc=0
-          env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 \
-            ./v -prod -cc clang self > "$out/reference.build.log" 2>&1 || rc=$?
+          (
+            set -e
+            env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 \
+              make local=1 CC=clang VFLAGS='-cc clang'
+            env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 \
+              ./v -prod -cc clang self
+          ) > "$out/reference.build.log" 2>&1 || rc=$?
           echo "$rc" > "$out/reference.build.exit-status.txt"
           cat "$out/reference.build.log"
           test "$rc" -eq 0
