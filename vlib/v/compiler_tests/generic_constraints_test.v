@@ -1821,10 +1821,9 @@ fn main() {
 	assert res.output.contains('constraint `Expanding[int]` cannot expand a recursive sum type'), res.output
 }
 
-fn test_a_struct_constraint_takes_the_struct_and_the_structs_that_embed_it() {
-	// `[T User]` takes `User` and a struct that embeds it, at any depth, and the
-	// body has what `User` has. A struct that embeds `User` does not get its
-	// operators, so only `==` and `!=` work on such a `T`.
+fn test_struct_constraints_include_the_embedding_family() {
+	// `[T User]` accepts `User` and structs that embed it at any depth.
+	// Each operation and any constraint receiving `T` must support that family.
 	res := check_program('struct_family', "struct Admin {
 	User
 	level int
@@ -1853,29 +1852,6 @@ fn sum[T User](a T, b T) T {
 	return a + b
 }
 
-fn main() {
-	println(show(User{ name: 'u' }))
-	println(show(Admin{ User: User{ name: 'a' } }))
-	println(show(Root{}))
-	println(show(Pet{ name: 'p' }))
-}
-")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'21:11: type `T` has no field named `level`: `User`, in its constraint `User`, does not have it',
-		'26:11: operator `+` is not defined on type `T`: a struct that embeds `User` does not have it',
-		'33:15: cannot use `Pet` as `T`: it is not `User` and does not embed it',
-	], res.output
-}
-
-fn test_a_struct_constraint_needs_its_whole_family_where_its_t_is_given() {
-	// `[T User]` takes the structs that embed `User`: a constraint its `T` is
-	// given to must take them all, as an interface that `User` implements does,
-	// and a sum type that holds `User` alone does not.
-	res := check_program('struct_family_given', 'struct Admin {
-	User
-}
-
 type People = User | Pet
 
 fn greet_named[T Named](x T) string {
@@ -1898,11 +1874,19 @@ fn narrowed[T User](a T, b T) bool {
 	}
 }
 
-fn main() {}
-')
+fn main() {
+	println(show(User{ name: 'u' }))
+	println(show(Admin{ User: User{ name: 'a' } }))
+	println(show(Root{}))
+	println(show(Pet{ name: 'p' }))
+}
+")
 	assert res.exit_code == 1, res.output
 	assert error_lines(res.output) == [
-		'16:38: `only_people` needs `T` to be in `People`: a struct that embeds `User`, in its constraint `User`, is not',
+		'21:11: type `T` has no field named `level`: `User`, in its constraint `User`, does not have it',
+		'26:11: operator `+` is not defined on type `T`: a struct that embeds `User` does not have it',
+		'40:38: `only_people` needs `T` to be in `People`: a struct that embeds `User`, in its constraint `User`, is not',
+		'55:15: cannot use `Pet` as `T`: it is not `User` and does not embed it',
 	], res.output
 }
 
