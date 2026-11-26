@@ -368,9 +368,10 @@ fn main() {}
 	], res.output
 }
 
-fn test_an_operator_needs_every_type_of_the_constraint() {
+fn test_operators_on_constrained_values_require_support_from_all_types() {
 	// An interface declares no operators: a `T` it constrains has `==`, `!=` and
 	// `in`, as a value of the interface. A set takes what all of its types take.
+	// On arrays, `items << x` appends as a statement. In an expression it shifts.
 	res := check_program('operators', 'type Number = int | f64
 
 type Word = string | int
@@ -445,6 +446,15 @@ fn indexes[T Indexable, K Keyed](x T, k K) {
 	println(k[0])
 }
 
+type IntArr2 = []i64
+
+type Ints = IntArr | IntArr2
+
+fn push[T Ints](mut items T) {
+	items << 1
+	_ = items << 1
+}
+
 fn main() {}
 ')
 	assert res.exit_code == 1, res.output
@@ -465,28 +475,7 @@ fn main() {}
 		'62:11: operator `&&` is not defined on type `T`: `int`, in its constraint `Flag`, does not have it',
 		'67:11: operator `-` is not defined on type `T`: `Vec`, in its constraint `Addable`, does not have it',
 		'72:11: type `K` cannot be indexed with `int literal`: `StrMap`, in its constraint `Keyed`, does not have it',
-	], res.output
-}
-
-fn test_an_append_to_a_constrained_array_is_left_to_its_elements() {
-	// `items << x` as a statement is an append, which `[]int` takes; as a value,
-	// `_ = items << x`, it is a shift, which no array takes.
-	res := check_program('append', 'type IntArr = []int
-
-type IntArr2 = []i64
-
-type Ints = IntArr | IntArr2
-
-fn push[T Ints](mut items T) {
-	items << 1
-	_ = items << 1
-}
-
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'9:12: operator `<<` is not defined on type `T` and `int literal`: `IntArr`, in its constraint `Ints`, does not have it',
+		'81:12: operator `<<` is not defined on type `T` and `int literal`: `IntArr`, in its constraint `Ints`, does not have it',
 	], res.output
 }
 
