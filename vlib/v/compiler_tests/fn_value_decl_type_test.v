@@ -653,10 +653,10 @@ fn main() {
 	assert out == '49'
 }
 
-fn test_main_runtime_shadowed_fn_values_use_declaration_symbol() {
+fn test_main_fn_values_use_their_declared_storage() {
 	fixture_dir := fn_value_new_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	out := fn_value_run_good(fixture_dir, 'fn_value_main_runtime_shadow_accept', 'fn accept(value int) int {
+	out := fn_value_run_good(fixture_dir, 'fn_value_main_runtime', 'fn accept(value int) int {
 	return value + 1
 }
 
@@ -664,19 +664,6 @@ fn consume(callback fn (int) int) int {
 	return callback(41)
 }
 
-fn main() {
-	callback := accept
-	println(consume(callback))
-	println(consume(accept))
-}
-')
-	assert out == '42\n42'
-}
-
-fn test_const_generic_fn_factory_value_call_uses_const_storage() {
-	fixture_dir := fn_value_new_fixture_dir()
-	defer { os.rmdir_all(fixture_dir) or {} }
-	out := fn_value_run_good(fixture_dir, 'const_generic_fn_factory_value_call', '
 type Validator[T] = fn (value T) ?int
 
 fn make_validator[T]() Validator[T] {
@@ -688,10 +675,13 @@ fn make_validator[T]() Validator[T] {
 const validate_int = make_validator[int]()
 
 fn main() {
+	callback := accept
+	println(consume(callback))
+	println(consume(accept))
 	println(validate_int(123) == none)
 }
 ')
-	assert out == 'true'
+	assert out.split_into_lines() == ['42', '42', 'true'], out
 }
 
 fn test_fn_value_expected_context_respects_value_shadowing() {
