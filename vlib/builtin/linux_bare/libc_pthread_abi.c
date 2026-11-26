@@ -17,7 +17,6 @@ void v_pthread_destructor_call(uintptr_t function, uintptr_t argument) {
     ((void (*)(void *))function)((void *)argument);
 }
 void v_pthread_once_call(uintptr_t function) { ((void (*)(void))function)(); }
-
 /* The compiler's native C TLS owns only these address-sized storage slots. */
 static __thread uintptr_t v_pthread_tls[5];
 uintptr_t v_pthread_tls_load(uint32_t slot) { return v_pthread_tls[slot]; }
@@ -98,6 +97,15 @@ int __cxa_thread_atexit_impl(void (*function)(void *), void *argument, void *dso
 }
 
 _Static_assert(sizeof(pthread_rwlock_t) >= 16, "native rwlock storage");
+/* Read public-header static kinds through the target's native layout. */
+uint32_t v_rwlock_static_kind(uintptr_t storage) {
+#if defined(__GLIBC__)
+    return ((const pthread_rwlock_t *)storage)->__data.__flags;
+#else
+    (void)storage;
+    return 0;
+#endif
+}
 size_t v_rwlock_size(void) { return sizeof(pthread_rwlock_t); }
 size_t v_rwlock_attributes_size(void) { return sizeof(pthread_rwlockattr_t); }
 extern int32_t v_rwlock_attr_init(uintptr_t);

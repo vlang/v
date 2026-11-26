@@ -10,6 +10,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	fn C.v_pthread_call(uint, uint) uint
 	fn C.v_pthread_destructor_call(uint, uint)
 	fn C.v_pthread_once_call(uint)
+	fn C.v_pthread_once_invoke(uint, uint)
 	fn C.v_pthread_tls_load(u32) uint
 	fn C.v_pthread_tls_store(u32, uint)
 	fn C.v_pthread_tls_identity() uint
@@ -315,6 +316,16 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		C.v_pthread_tls_store(2, 0)
 	}
 
+	@[export: 'v_pthread_once_abandon'; markused]
+	fn bare_pthread_once_abandon(address uint) {
+		entry := unsafe { &BarePthreadOnceCleanup(address) }
+		// Cancellation's unwind-stop may already have removed this record.
+		if bare_pthread_once_cleanup_get() != entry { return }
+		C.v_pthread_tls_store(4, uint(entry.previous))
+		bare_store_u32(entry.control, 0)
+		bf_futex_wake(entry.control, 0x7fffffff)
+	}
+
 	@[export: 'v_pthread_once'; markused]
 	fn bare_pthread_once(address uint, initialize uint) i32 {
 		control := unsafe { &u32(address) }
@@ -323,7 +334,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			if bare_cas_u32(control, 0, 1) {
 				mut cleanup := BarePthreadOnceCleanup{ control: control, previous: bare_pthread_once_cleanup_get() }
 				C.v_pthread_tls_store(4, uint(&cleanup))
-				C.v_pthread_once_call(initialize)
+				C.v_pthread_once_invoke(initialize, uint(&cleanup))
 				C.v_pthread_tls_store(4, uint(cleanup.previous))
 				bare_store_u32(control, 2)
 				bf_futex_wake(control, 0x7fffffff)

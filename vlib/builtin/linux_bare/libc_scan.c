@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
+#include <pthread.h>
 
 void v_scan_limit(struct v_scan *s, off_t limit) {
     s->count = 0;
@@ -63,13 +64,18 @@ static int v_scan_string(const char *text, const char *format, va_list args, int
         .memory = (const unsigned char *)text, .length = strlen(text), .binary = binary};
     return v_scan_core(&s, format, args);
 }
+static void v_scan_unlock(void *stream) { funlockfile(stream); }
 static int v_scan_stream(FILE *stream, const char *format, va_list args, int binary) {
     struct v_scan s = {.stream = stream, .binary = binary};
+    int previous_type, result;
+    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &previous_type);
     flockfile(stream);
-    int result = fwide(stream, -1) > 0 ? EOF : v_scan_core(&s, format, args);
+    pthread_cleanup_push(v_scan_unlock, stream);
+    result = fwide(stream, -1) > 0 ? EOF : v_scan_core(&s, format, args);
     while (s.history_end > s.history_at)
         ungetc(s.history[--s.history_end], stream);
-    funlockfile(stream);
+    pthread_cleanup_pop(1);
+    pthread_setcanceltype(previous_type, NULL);
     return result;
 }
 /* Explicit assembler names avoid glibc headers redirecting definitions to the

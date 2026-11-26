@@ -16,4 +16,6 @@ int32_t v_pthread_sched_read(uintptr_t);
 void v_pthread_sched_write(uintptr_t, int32_t);
 size_t v_rwlock_size(void);
 size_t v_rwlock_attributes_size(void);
+void v_pthread_once_invoke(uintptr_t, uintptr_t);
+uint32_t v_rwlock_static_kind(uintptr_t);
 #endif

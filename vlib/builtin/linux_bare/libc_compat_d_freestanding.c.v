@@ -24,6 +24,8 @@ $if linux && (amd64 || arm64) {
 		#flag @DIR/libc_syslog.c
 		#flag @DIR/libc_mutex.c
 		#flag @DIR/libc_pthread_abi.c
+		#flag @DIR/libc_once.c
+		#flag -Wl,--eh-frame-hdr
 		#flag @DIR/libc_cancel_abi.c
 		#flag @DIR/libc_system.c
 		#flag @DIR/libc_native_abi.c

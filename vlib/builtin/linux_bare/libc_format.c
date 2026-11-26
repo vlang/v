@@ -837,13 +837,16 @@ int snprintf(char *buffer, size_t capacity, const char *format, ...) {
     va_end(arguments);
     return result;
 }
+static void v_format_unlock(void *stream) { funlockfile(stream); }
 int vfprintf(FILE *stream, const char *format, va_list arguments) {
-    uint32_t shield = v_cancel_shield_enter();
+    int previous_type, result;
+    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &previous_type);
     struct v_format_output output = {stream, NULL, 0, 0, 0};
     flockfile(stream);
-    int result = fwide(stream, -1) > 0 ? -1 : v_format(&output, format, arguments);
-    funlockfile(stream);
-    v_cancel_shield_leave(shield);
+    pthread_cleanup_push(v_format_unlock, stream);
+    result = fwide(stream, -1) > 0 ? -1 : v_format(&output, format, arguments);
+    pthread_cleanup_pop(1);
+    pthread_setcanceltype(previous_type, NULL);
     return result;
 }
 int fprintf(FILE *stream, const char *format, ...) {

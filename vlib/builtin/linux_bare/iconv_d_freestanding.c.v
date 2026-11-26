@@ -54,11 +54,11 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			'UTF16BE', 'UCS2BE' {
 				BareIconvEncoding{ kind: 2, table: if encoding == 'UCS2BE' { 1 } else { 0 } }
 			}
-			'UTF16' { BareIconvEncoding{ kind: 2, little: !input, bom: true } }
-			'UCS2' { BareIconvEncoding{ kind: 2, table: 1 } }
+			'UTF16' { BareIconvEncoding{ kind: 2, little: true, bom: true } }
+			'UCS2' { BareIconvEncoding{ kind: 2, little: true, table: 1 } }
 			'UTF32LE', 'UCS4LE', 'WCHART' { BareIconvEncoding{ kind: 3, little: true } }
 			'UTF32BE', 'UCS4BE', 'UCS4' { BareIconvEncoding{ kind: 3 } }
-			'UTF32' { BareIconvEncoding{ kind: 3, little: !input, bom: true } }
+			'UTF32' { BareIconvEncoding{ kind: 3, little: true, bom: true } }
 			else {
 				table := bare_iconv_single_byte_name(encoding)
 				if table < 0 { return none }

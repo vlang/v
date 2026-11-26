@@ -4,6 +4,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	#include "@DIR/libc_pthread_abi.h"
 	#include <errno.h>
 	fn C.v_rwlock_size() uint
+	fn C.v_rwlock_static_kind(uint) u32
 	fn C.v_rwlock_attributes_size() uint
 
 	struct BarePthreadRwlock {
@@ -89,6 +90,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	@[export: 'v_rwlock_acquire'; markused]
 	fn bare_rw_acquire(address uint, write i32, nonblocking i32, deadline uint) i32 {
 		mut rw := unsafe { &BarePthreadRwlock(address) }
+		if C.v_rwlock_static_kind(address) == 2 { bare_cas_u32(&rw.attributes, 0, 4) }
 		if rw.attributes & 256 != 0 { return i32(C.EINVAL) }
 		if write != 0 { bare_rw_add_writer(mut rw, true) }
 		mut result := i32(0)
@@ -143,6 +145,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	@[export: 'v_rwlock_unlock'; markused]
 	fn bare_rw_unlock(address uint) i32 {
 		mut rw := unsafe { &BarePthreadRwlock(address) }
+		if C.v_rwlock_static_kind(address) == 2 { bare_cas_u32(&rw.attributes, 0, 4) }
 		if rw.attributes & 256 != 0 { return i32(C.EINVAL) }
 		mut previous := bare_load_u32(&rw.state)
 		for {

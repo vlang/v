@@ -4,6 +4,14 @@
     uint32_t v_stdio_saved_cancel_state = v_cancel_shield_enter(); \
     type v_stdio_return_value = (expression); \
     v_cancel_shield_leave(v_stdio_saved_cancel_state); return v_stdio_return_value; }
+/* Keep asynchronous cancellation away from stream state transitions, while
+ * allowing deferred cancellation in the descriptor syscall window. V owns
+ * the per-lock cleanup records, including recursive internal acquisitions. */
+#define V_STDIO_IO_RETURN(type, expression) { \
+    int v_stdio_old_type; \
+    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &v_stdio_old_type); \
+    type v_stdio_result = (expression); \
+    pthread_setcanceltype(v_stdio_old_type, NULL); return v_stdio_result; }
 #include "libc_stdio_abi.h"
 
 /* Aligned opaque storage and native public C types only. FILE state and all
@@ -43,15 +51,15 @@ FILE * fdopen(int fd, const char *mode) V_STDIO_RETURN(FILE *, (FILE *)v_stdio_f
 extern int32_t v_stdio_close(uintptr_t);
 int fclose(FILE *file) V_STDIO_RETURN(int, (int)v_stdio_close((uintptr_t)file))
 extern int32_t v_stdio_flush(uintptr_t);
-int fflush(FILE *file) V_STDIO_RETURN(int, (int)v_stdio_flush((uintptr_t)file))
+int fflush(FILE *file) V_STDIO_IO_RETURN(int, (int)v_stdio_flush((uintptr_t)file))
 extern uintptr_t v_stdio_fread(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
-size_t fread(void *data, size_t size, size_t count, FILE *file) V_STDIO_RETURN(size_t, (size_t)v_stdio_fread((uintptr_t)data, (uintptr_t)size, (uintptr_t)count, (uintptr_t)file))
+size_t fread(void *data, size_t size, size_t count, FILE *file) V_STDIO_IO_RETURN(size_t, (size_t)v_stdio_fread((uintptr_t)data, (uintptr_t)size, (uintptr_t)count, (uintptr_t)file))
 extern uintptr_t v_stdio_read(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
-size_t fread_unlocked(void *data, size_t size, size_t count, FILE *file) V_STDIO_RETURN(size_t, (size_t)v_stdio_read((uintptr_t)data, (uintptr_t)size, (uintptr_t)count, (uintptr_t)file))
+size_t fread_unlocked(void *data, size_t size, size_t count, FILE *file) V_STDIO_IO_RETURN(size_t, (size_t)v_stdio_read((uintptr_t)data, (uintptr_t)size, (uintptr_t)count, (uintptr_t)file))
 extern uintptr_t v_stdio_fwrite(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
-size_t fwrite(const void *data, size_t size, size_t count, FILE *file) V_STDIO_RETURN(size_t, (size_t)v_stdio_fwrite((uintptr_t)data, (uintptr_t)size, (uintptr_t)count, (uintptr_t)file))
+size_t fwrite(const void *data, size_t size, size_t count, FILE *file) V_STDIO_IO_RETURN(size_t, (size_t)v_stdio_fwrite((uintptr_t)data, (uintptr_t)size, (uintptr_t)count, (uintptr_t)file))
 extern uintptr_t v_stdio_write(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
-size_t fwrite_unlocked(const void *data, size_t size, size_t count, FILE *file) V_STDIO_RETURN(size_t, (size_t)v_stdio_write((uintptr_t)data, (uintptr_t)size, (uintptr_t)count, (uintptr_t)file))
+size_t fwrite_unlocked(const void *data, size_t size, size_t count, FILE *file) V_STDIO_IO_RETURN(size_t, (size_t)v_stdio_write((uintptr_t)data, (uintptr_t)size, (uintptr_t)count, (uintptr_t)file))
 extern int32_t v_stdio_seek(uintptr_t, int64_t, int32_t);
 int fseeko(FILE *file, off_t offset, int whence) V_STDIO_RETURN(int, (int)v_stdio_seek((uintptr_t)file, (int64_t)offset, (int32_t)whence))
 int fseek(FILE *file, long offset, int whence) V_STDIO_RETURN(int, (int)v_stdio_seek((uintptr_t)file, (int64_t)offset, (int32_t)whence))
@@ -65,30 +73,30 @@ int setvbuf(FILE *file, char *buffer, int mode, size_t size) V_STDIO_RETURN(int,
 extern void v_stdio_setbuf(uintptr_t, uintptr_t);
 void setbuf(FILE *file, char *buffer) { v_stdio_setbuf((uintptr_t)file, (uintptr_t)buffer); }
 extern int32_t v_stdio_fgetc(uintptr_t);
-int fgetc(FILE *file) V_STDIO_RETURN(int, (int)v_stdio_fgetc((uintptr_t)file))
-int getc(FILE *file) V_STDIO_RETURN(int, (int)v_stdio_fgetc((uintptr_t)file))
-int getchar(void) V_STDIO_RETURN(int, (int)v_stdio_fgetc((uintptr_t)stdin))
+int fgetc(FILE *file) V_STDIO_IO_RETURN(int, (int)v_stdio_fgetc((uintptr_t)file))
+int getc(FILE *file) V_STDIO_IO_RETURN(int, (int)v_stdio_fgetc((uintptr_t)file))
+int getchar(void) V_STDIO_IO_RETURN(int, (int)v_stdio_fgetc((uintptr_t)stdin))
 extern int32_t v_stdio_getchar(uintptr_t);
-int fgetc_unlocked(FILE *file) V_STDIO_RETURN(int, (int)v_stdio_getchar((uintptr_t)file))
-int getc_unlocked(FILE *file) V_STDIO_RETURN(int, (int)v_stdio_getchar((uintptr_t)file))
-int getchar_unlocked(void) V_STDIO_RETURN(int, (int)v_stdio_getchar((uintptr_t)stdin))
+int fgetc_unlocked(FILE *file) V_STDIO_IO_RETURN(int, (int)v_stdio_getchar((uintptr_t)file))
+int getc_unlocked(FILE *file) V_STDIO_IO_RETURN(int, (int)v_stdio_getchar((uintptr_t)file))
+int getchar_unlocked(void) V_STDIO_IO_RETURN(int, (int)v_stdio_getchar((uintptr_t)stdin))
 extern int32_t v_stdio_fputc(int32_t, uintptr_t);
-int fputc(int value, FILE *file) V_STDIO_RETURN(int, (int)v_stdio_fputc((int32_t)value, (uintptr_t)file))
-int putc(int value, FILE *file) V_STDIO_RETURN(int, (int)v_stdio_fputc((int32_t)value, (uintptr_t)file))
-int putchar(int value) V_STDIO_RETURN(int, (int)v_stdio_fputc((int32_t)value, (uintptr_t)stdout))
+int fputc(int value, FILE *file) V_STDIO_IO_RETURN(int, (int)v_stdio_fputc((int32_t)value, (uintptr_t)file))
+int putc(int value, FILE *file) V_STDIO_IO_RETURN(int, (int)v_stdio_fputc((int32_t)value, (uintptr_t)file))
+int putchar(int value) V_STDIO_IO_RETURN(int, (int)v_stdio_fputc((int32_t)value, (uintptr_t)stdout))
 extern int32_t v_stdio_putchar(int32_t, uintptr_t);
-int fputc_unlocked(int value, FILE *file) V_STDIO_RETURN(int, (int)v_stdio_putchar((int32_t)value, (uintptr_t)file))
-int putc_unlocked(int value, FILE *file) V_STDIO_RETURN(int, (int)v_stdio_putchar((int32_t)value, (uintptr_t)file))
-int putchar_unlocked(int value) V_STDIO_RETURN(int, (int)v_stdio_putchar((int32_t)value, (uintptr_t)stdout))
+int fputc_unlocked(int value, FILE *file) V_STDIO_IO_RETURN(int, (int)v_stdio_putchar((int32_t)value, (uintptr_t)file))
+int putc_unlocked(int value, FILE *file) V_STDIO_IO_RETURN(int, (int)v_stdio_putchar((int32_t)value, (uintptr_t)file))
+int putchar_unlocked(int value) V_STDIO_IO_RETURN(int, (int)v_stdio_putchar((int32_t)value, (uintptr_t)stdout))
 extern int32_t v_stdio_fputs(uintptr_t, uintptr_t);
-int fputs(const char *text, FILE *file) V_STDIO_RETURN(int, (int)v_stdio_fputs((uintptr_t)text, (uintptr_t)file))
+int fputs(const char *text, FILE *file) V_STDIO_IO_RETURN(int, (int)v_stdio_fputs((uintptr_t)text, (uintptr_t)file))
 extern int32_t v_stdio_puts(uintptr_t);
-int puts(const char *text) V_STDIO_RETURN(int, (int)v_stdio_puts((uintptr_t)text))
+int puts(const char *text) V_STDIO_IO_RETURN(int, (int)v_stdio_puts((uintptr_t)text))
 extern uintptr_t v_stdio_fgets(uintptr_t, int32_t, uintptr_t);
-char * fgets(char *buffer, int size, FILE *file) V_STDIO_RETURN(char *, (char *)v_stdio_fgets((uintptr_t)buffer, (int32_t)size, (uintptr_t)file))
+char * fgets(char *buffer, int size, FILE *file) V_STDIO_IO_RETURN(char *, (char *)v_stdio_fgets((uintptr_t)buffer, (int32_t)size, (uintptr_t)file))
 extern int64_t v_stdio_getdelim(uintptr_t, uintptr_t, int32_t, uintptr_t);
-ssize_t getdelim(char **line, size_t *capacity, int delimiter, FILE *file) V_STDIO_RETURN(ssize_t, (ssize_t)v_stdio_getdelim((uintptr_t)line, (uintptr_t)capacity, (int32_t)delimiter, (uintptr_t)file))
-ssize_t getline(char **line, size_t *capacity, FILE *file) V_STDIO_RETURN(ssize_t, (ssize_t)v_stdio_getdelim((uintptr_t)line, (uintptr_t)capacity, (int32_t)10, (uintptr_t)file))
+ssize_t getdelim(char **line, size_t *capacity, int delimiter, FILE *file) V_STDIO_IO_RETURN(ssize_t, (ssize_t)v_stdio_getdelim((uintptr_t)line, (uintptr_t)capacity, (int32_t)delimiter, (uintptr_t)file))
+ssize_t getline(char **line, size_t *capacity, FILE *file) V_STDIO_IO_RETURN(ssize_t, (ssize_t)v_stdio_getdelim((uintptr_t)line, (uintptr_t)capacity, (int32_t)10, (uintptr_t)file))
 extern int32_t v_stdio_ungetchar(int32_t, uintptr_t);
 int ungetc(int value, FILE *file) V_STDIO_RETURN(int, (int)v_stdio_ungetchar((int32_t)value, (uintptr_t)file))
 extern uintptr_t v_stdio_tmpfile(void);
@@ -110,7 +118,7 @@ FILE *fopencookie(void *cookie, const char *mode, cookie_io_functions_t f) {
     return (FILE *)v_stdio_cookie((uintptr_t)cookie, (uintptr_t)mode, (uintptr_t)callbacks);
 }
 #if defined(__GLIBC__)
-int __uflow(FILE *file) V_STDIO_RETURN(int, v_stdio_getchar((uintptr_t)file))
+int __uflow(FILE *file) V_STDIO_IO_RETURN(int, v_stdio_getchar((uintptr_t)file))
 int __overflow(FILE *file, int value) {
     if (value == EOF) return fflush(file);
     V_STDIO_RETURN(int, v_stdio_putchar(value, (uintptr_t)file))
@@ -151,15 +159,15 @@ extern int32_t v_stdio_putwides(uintptr_t, uintptr_t);
 int fgetpos(FILE *file, fpos_t *position) V_STDIO_RETURN(int, v_stdio_getpos((uintptr_t)file, (uintptr_t)position))
 int fsetpos(FILE *file, const fpos_t *position) V_STDIO_RETURN(int, v_stdio_setpos((uintptr_t)file, (uintptr_t)position))
 int fwide(FILE *file, int mode) V_STDIO_RETURN(int, v_stdio_orientation((uintptr_t)file, mode))
-wint_t fgetwc(FILE *file) V_STDIO_RETURN(wint_t, v_stdio_getwide((uintptr_t)file))
-wint_t getwc(FILE *file) V_STDIO_RETURN(wint_t, v_stdio_getwide((uintptr_t)file))
-wint_t getwchar(void) V_STDIO_RETURN(wint_t, v_stdio_getwide((uintptr_t)stdin))
-wint_t fputwc(wchar_t value, FILE *file) V_STDIO_RETURN(wint_t, v_stdio_putwide((uint32_t)value, (uintptr_t)file))
-wint_t putwc(wchar_t value, FILE *file) V_STDIO_RETURN(wint_t, v_stdio_putwide((uint32_t)value, (uintptr_t)file))
-wint_t putwchar(wchar_t value) V_STDIO_RETURN(wint_t, v_stdio_putwide((uint32_t)value, (uintptr_t)stdout))
+wint_t fgetwc(FILE *file) V_STDIO_IO_RETURN(wint_t, v_stdio_getwide((uintptr_t)file))
+wint_t getwc(FILE *file) V_STDIO_IO_RETURN(wint_t, v_stdio_getwide((uintptr_t)file))
+wint_t getwchar(void) V_STDIO_IO_RETURN(wint_t, v_stdio_getwide((uintptr_t)stdin))
+wint_t fputwc(wchar_t value, FILE *file) V_STDIO_IO_RETURN(wint_t, v_stdio_putwide((uint32_t)value, (uintptr_t)file))
+wint_t putwc(wchar_t value, FILE *file) V_STDIO_IO_RETURN(wint_t, v_stdio_putwide((uint32_t)value, (uintptr_t)file))
+wint_t putwchar(wchar_t value) V_STDIO_IO_RETURN(wint_t, v_stdio_putwide((uint32_t)value, (uintptr_t)stdout))
 wint_t ungetwc(wint_t value, FILE *file) V_STDIO_RETURN(wint_t, v_stdio_ungetwide((uint32_t)value, (uintptr_t)file))
-wchar_t *fgetws(wchar_t *buffer, int count, FILE *file) { return (wchar_t *)v_stdio_getwides((uintptr_t)buffer, count, (uintptr_t)file); }
-int fputws(const wchar_t *text, FILE *file) V_STDIO_RETURN(int, v_stdio_putwides((uintptr_t)text, (uintptr_t)file))
+wchar_t *fgetws(wchar_t *buffer, int count, FILE *file) V_STDIO_IO_RETURN(wchar_t *, (wchar_t *)v_stdio_getwides((uintptr_t)buffer, count, (uintptr_t)file))
+int fputws(const wchar_t *text, FILE *file) V_STDIO_IO_RETURN(int, v_stdio_putwides((uintptr_t)text, (uintptr_t)file))
 #if defined(__GLIBC__)
 int fgetpos64(FILE *file, fpos64_t *position) V_STDIO_RETURN(int, v_stdio_getpos((uintptr_t)file, (uintptr_t)position))
 int fsetpos64(FILE *file, const fpos64_t *position) V_STDIO_RETURN(int, v_stdio_setpos((uintptr_t)file, (uintptr_t)position))

@@ -43,6 +43,15 @@ on targets without that clock; it does not silently substitute UTC or assume a l
 `vlibc_parse_ipv4` requires valid dotted-quad input with four decimal octets in 0..255;
 it does not validate malformed addresses.
 
+Native stdio descriptor I/O honors deferred pthread cancellation and releases internal
+stream locks during cancellation. Native `pthread_once` initializers can throw C++ exceptions;
+failed initialization resets the control so a later call can retry. The standalone Linux ABI
+emits unwind information for the native dependency's C++ exception runtime.
+
+Unqualified `UTF-16`, `UTF-32`, and `UCS-2` iconv names use the supported Linux target's
+little-endian byte order. A UTF-16/32 input BOM overrides that default. Wide character classes
+use the bundled Unicode properties, including alphabetic membership for upper/lower characters.
+
 This interface is experimental. Linux supports amd64 and arm64 using raw syscalls.
 Linux standalone thread startup uses a separate argument block on each mapped stack; join waits
 until the kernel clears that thread's TID before releasing its stack. Libc-enabled `-vlibc` threads

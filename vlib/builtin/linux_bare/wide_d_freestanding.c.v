@@ -41,11 +41,11 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			4 { value < 32 || (value >= 127 && value <= 159) || value == 0x2028 || value == 0x2029 }
 			5 { digit }
 			6 { graph }
-			7 { rune(value).to_upper() != rune(value) }
+			7 { bare_wide_lower(value) }
 			8 { printable }
 			9 { graph && !letter && !digit }
 			10 { space }
-			11 { rune(value).to_lower() != rune(value) }
+			11 { bare_wide_upper(value) }
 			12 { digit || (value >= `a` && value <= `f`) || (value >= `A` && value <= `F`) }
 			else { false }
 		})

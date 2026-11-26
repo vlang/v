@@ -126,24 +126,7 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *previous) {
 }
 
 static long v_auxiliary_value(unsigned long key) {
-    int fd = open("/proc/self/auxv", O_RDONLY | O_CLOEXEC);
-    if (fd < 0) return -1;
-    unsigned long pair[2];
-    long value = -1;
-    for (;;) {
-        size_t done = 0;
-        while (done < sizeof pair) {
-            long count = V_RAW3(SYS_read, fd, (unsigned char *)pair + done, sizeof pair - done);
-            if (count == -EINTR) continue;
-            if (count <= 0) break;
-            done += (size_t)count;
-        }
-        if (done != sizeof pair || !pair[0]) break;
-        if (pair[0] == key) { value = (long)pair[1]; break; }
-    }
-    v_linux_result(V_RAW1(SYS_close, fd));
-    if (value < 0) errno = ENOSYS;
-    return value;
+    return (long)getauxval(key);
 }
 
 static long v_cpu_count(const char *path) {

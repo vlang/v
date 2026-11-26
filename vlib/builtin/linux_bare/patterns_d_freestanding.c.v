@@ -41,25 +41,26 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	@[heap]
 	struct BarePattern {
 	mut:
-		nodes          &BarePatternNode = unsafe { nil }
-		node_count     int
-		node_capacity  int
-		ranges         &BarePatternRange = unsafe { nil }
-		range_count    int
-		range_capacity int
-		code           &BarePatternInstruction = unsafe { nil }
-		code_count     int
-		code_capacity  int
-		pattern        string
-		position       int
-		flags          i32
-		groups         int
-		closed         [10]bool
-		error          i32
-		start          int
-		unicode        bool
-		backrefs       bool
-		glob           bool
+		nodes                &BarePatternNode = unsafe { nil }
+		node_count           int
+		node_capacity        int
+		ranges               &BarePatternRange = unsafe { nil }
+		range_count          int
+		range_capacity       int
+		code                 &BarePatternInstruction = unsafe { nil }
+		code_count           int
+		code_capacity        int
+		pattern              string
+		position             int
+		flags                i32
+		groups               int
+		capture_alternatives &u8 = unsafe { nil }
+		closed               [10]bool
+		error                i32
+		start                int
+		unicode              bool
+		backrefs             bool
+		glob                 bool
 	}
 	// Node/instruction kinds: empty, literal, any, class, concatenate,
 	// alternate, repeat, capture, BOL, EOL, backreference, word boundaries.
@@ -406,6 +407,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				return bare_pattern_emit(mut re, BarePatternInstruction{ kind: bare_pattern_split, next: left, other: right })
 			}
 			bare_pattern_capture {
+				if unsafe { re.nodes[node.left].kind } == bare_pattern_alternate {
+					unsafe { re.capture_alternatives[node.value] = 1 }
+				}
 				end := bare_pattern_emit(mut re, BarePatternInstruction{ kind: bare_pattern_save, next: continuation, value: node.value * 2 + 1 })
 				body := bare_pattern_compile_node(mut re, node.left, end)
 				return bare_pattern_emit(mut re, BarePatternInstruction{ kind: bare_pattern_save, next: body, value: node.value * 2 })
@@ -497,6 +501,8 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		re.unicode = bare_wide_utf8(0)
 		root := if glob { bare_pattern_glob(mut re) } else { bare_pattern_alternation(mut re) }
 		if re.position != re.pattern.len && re.error == 0 { re.error = i32(C.REG_EPAREN) }
+		re.capture_alternatives = unsafe { &u8(__calloc(uint(re.groups + 1), 1)) }
+		if re.capture_alternatives == unsafe { nil } { re.error = i32(C.REG_ESPACE) }
 		accept := bare_pattern_emit(mut re, BarePatternInstruction{ kind: bare_pattern_accept })
 		re.start = bare_pattern_compile_node(mut re, root, accept)
 		unsafe { __free(re.nodes) }
@@ -512,6 +518,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			__free(re.nodes)
 			__free(re.ranges)
 			__free(re.code)
+			__free(re.capture_alternatives)
 			__free(re)
 		}
 	}
@@ -559,10 +566,15 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		unsafe { buckets[position] = uint(node) }
 		return true
 	}
-	fn bare_pattern_preferred(left &i64, right &i64, groups int) int {
-		for group in 0 .. groups + 1 {
+	fn bare_pattern_preferred(left &i64, right &i64, re &BarePattern) int {
+		for group in 0 .. re.groups + 1 {
 			start := unsafe { left[group * 2] }
 			other_start := unsafe { right[group * 2] }
+			// An explicit alternative keeps branch order rather than preferring
+			// its longest branch. Participation still beats a missing capture.
+			if group > 0 && unsafe { re.capture_alternatives[group] } != 0 && start >= 0 && other_start >= 0 {
+				continue
+			}
 			if start != other_start {
 				if start < 0 { return 1 }
 				if other_start < 0 { return -1 }
@@ -692,10 +704,16 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				owned = node
 				pc := node.instruction
 				tags := bare_pattern_tags(node)
+				instruction := unsafe { re.code[pc] }
+				// Compare states after applying tag writes, including the whole-match end.
+				if instruction.kind == bare_pattern_accept { unsafe { tags[1] = i64(position) } }
+				if instruction.kind == bare_pattern_save {
+					unsafe { tags[instruction.value] = i64(position) }
+				}
 				mut prior := unsafe { &BarePatternThread(visited[pc]) }
 				mut dominated := false
 				for prior != unsafe { nil } {
-					comparison := bare_pattern_preferred(bare_pattern_tags(prior), tags, re.groups)
+					comparison := bare_pattern_preferred(bare_pattern_tags(prior), tags, re)
 					if comparison == 0 || (!re.backrefs && comparison < 0) {
 						dominated = true
 						break
@@ -706,7 +724,6 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				if dominated { continue }
 				node.visited = unsafe { &BarePatternThread(visited[pc]) }
 				unsafe { visited[pc] = uint(node) }
-				instruction := unsafe { re.code[pc] }
 				mut destination := position
 				mut proceed := true
 				match instruction.kind {
@@ -715,7 +732,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 							continue
 						}
 						unsafe { tags[1] = i64(position) }
-						if !found || bare_pattern_preferred(tags, best, re.groups) < 0 {
+						if !found || bare_pattern_preferred(tags, best, re) < 0 {
 							unsafe { vmemcpy(best, tags, (re.groups * 2 + 2) * 8) }
 							found = true
 						}

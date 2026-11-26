@@ -243,8 +243,13 @@ double modf(double value, double *integer) {
     union { uint64_t bits; double value; } zero = {u.bits & UINT64_C(0x8000000000000000)};
     if (e < 0) { *integer = zero.value; return value; }
     if (e >= 52) {
+        if (e == 1024 && (u.bits & UINT64_C(0xfffffffffffff))) {
+            /* Native arithmetic quiets an sNaN and raises FE_INVALID once. */
+            *integer = value + value;
+            return *integer;
+        }
         *integer = value;
-        return e == 1024 && (u.bits & UINT64_C(0xfffffffffffff)) ? value : zero.value;
+        return zero.value;
     }
     uint64_t mask = UINT64_C(0xfffffffffffff) >> e;
     if (!(u.bits & mask)) { *integer = value; return zero.value; }

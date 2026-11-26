@@ -122,6 +122,21 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		bare_compat_store_uint(&stream.owner, 0)
 		bare_compat_unlock(&stream.lock_word)
 	}
+	// Install the cancellation cleanup while asynchronous delivery is shielded.
+	fn bare_stdio_cancel_lock(address uint, mut cleanup BareCancelCleanup) {
+		previous := bare_cancel_shield_enter()
+		bare_stdio_lock(address)
+		bare_cancel_cleanup_push(mut cleanup, uint(bare_stdio_unlock_cleanup), address)
+		bare_cancel_shield_leave(previous)
+	}
+	fn bare_stdio_unlock_cleanup(address uint) { bare_stdio_unlock(address) }
+	fn bare_stdio_cancel_unlock(address uint, cleanup &BareCancelCleanup) {
+		previous := bare_cancel_shield_enter()
+		bare_stdio_unlock(address)
+		bare_cancel_cleanup_pop(cleanup)
+		bare_cancel_shield_leave(previous)
+	}
+
 	fn bare_stream_fail(mut stream BareStream, error i32) i32 {
 		stream.abi_flags |= i32(C.V_STDIO_ERROR)
 		bf_native_errno_cell = error
@@ -147,17 +162,18 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		if stream.mode == i32(C._IONBF) || stream.mode == i32(C._IOLBF) {
 			// Match the input-to-stdout lock order at refill, leaving buffered reads alone.
 			address := C.v_stdio_stdout()
-			bare_stdio_lock(address)
+			mut cleanup := BareCancelCleanup{}
+			bare_stdio_cancel_lock(address, mut cleanup)
 			mut out := unsafe { &BareStream(address) }
 			if (out.fd >= 0 || out.is_cookie) && out.writable && !out.writing_cookie && out.mode == i32(C._IOLBF) && out.write_at != 0 {
 				saved_errno := bf_native_errno_cell
 				bare_stream_flush(mut out)
 				bf_native_errno_cell = saved_errno
 			}
-			bare_stdio_unlock(address)
+			bare_stdio_cancel_unlock(address, &cleanup)
 		}
 		if !stream.is_cookie {
-			return i64(sys_call3(bf_nr_read, u64(stream.fd), u64(output), u64(size)))
+			return bare_cancel_syscall(i64(bf_nr_read), uint(stream.fd), output, size, 0, 0, 0)
 		}
 		if stream.callbacks[0] == 0 { return 0 }
 		count := C.v_stdio_cookie_read(stream.callbacks[0], stream.cookie, output, size)
@@ -184,16 +200,29 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		}
 		return position
 	}
+	struct BareStreamWriteCleanup {
+		stream   &BareStream
+		previous bool
+	}
+	fn bare_stream_write_cleanup(address uint) {
+		state := unsafe { &BareStreamWriteCleanup(address) }
+		unsafe { state.stream.writing_cookie = state.previous }
+	}
 	fn bare_stream_raw_write(mut stream BareStream, input uint, size uint) i64 {
 		if !stream.is_cookie {
-			return i64(sys_call3(bf_nr_write, u64(stream.fd), u64(input), u64(size)))
+			return bare_cancel_syscall(i64(bf_nr_write), uint(stream.fd), input, size, 0, 0, 0)
 		}
 		if stream.callbacks[1] == 0 { return i64(size) }
 		// A cookie write/seek callback can refill another input stream.
 		// Its implicit stdout flush must not send these same bytes again.
-		was_writing := stream.writing_cookie
+		state := BareStreamWriteCleanup{ stream: &stream, previous: stream.writing_cookie }
+		mut cleanup := BareCancelCleanup{}
+		bare_cancel_cleanup_push(mut cleanup, uint(bare_stream_write_cleanup), uint(&state))
 		stream.writing_cookie = true
-		defer { stream.writing_cookie = was_writing }
+		defer {
+			bare_stream_write_cleanup(uint(&state))
+			bare_cancel_cleanup_pop(&cleanup)
+		}
 		if stream.append && stream.callbacks[2] != 0 && bare_stream_seek(mut stream, 0, 2) < 0 {
 			return -i64(bf_native_errno_cell)
 		}
@@ -324,15 +353,24 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		stream.is_cookie = true
 		return uint(stream)
 	}
+	fn bare_stdio_release_reference(address uint) {
+		mut stream := unsafe { &BareStream(address) }
+		bare_compat_lock(&bare_streams_lock)
+		stream.references--
+		if stream.references == 0 && stream.closing && stream.allocated {
+			unsafe { __free(stream) }
+		}
+		bare_compat_unlock(&bare_streams_lock)
+	}
 	@[export: 'v_stdio_flush'; markused]
 	fn bare_stdio_flush(address uint) i32 {
 		bare_stdio_init()
 		if address != 0 {
-			bare_stdio_lock(address)
+			mut cleanup := BareCancelCleanup{}
+			bare_stdio_cancel_lock(address, mut cleanup)
+			defer { bare_stdio_cancel_unlock(address, &cleanup) }
 			mut stream := unsafe { &BareStream(address) }
-			result := bare_stream_flush(mut stream)
-			bare_stdio_unlock(address)
-			return result
+			return bare_stream_flush(mut stream)
 		}
 		bare_compat_lock(&bare_streams_lock)
 		limit := bare_streams_identifier
@@ -357,18 +395,17 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			previous = chosen.identifier
 			chosen.references++
 			bare_compat_unlock(&bare_streams_lock)
-			bare_stdio_lock(uint(chosen))
+			mut reference_cleanup := BareCancelCleanup{}
+			bare_cancel_cleanup_push(mut reference_cleanup, uint(bare_stdio_release_reference), uint(chosen))
+			mut cleanup := BareCancelCleanup{}
+			bare_stdio_cancel_lock(uint(chosen), mut cleanup)
 			if (chosen.fd >= 0 || chosen.is_cookie) && chosen.direction == 2 && bare_stream_flush(mut chosen) < 0 {
 				result = -1
 				error = bf_native_errno_cell
 			}
-			bare_stdio_unlock(uint(chosen))
-			bare_compat_lock(&bare_streams_lock)
-			chosen.references--
-			if chosen.references == 0 && chosen.closing && chosen.allocated {
-				unsafe { __free(chosen) }
-			}
-			bare_compat_unlock(&bare_streams_lock)
+			bare_stdio_cancel_unlock(uint(chosen), &cleanup)
+			bare_cancel_cleanup_pop(&reference_cleanup)
+			bare_stdio_release_reference(uint(chosen))
 		}
 		if result != 0 { bf_native_errno_cell = error }
 		return result
@@ -533,8 +570,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 
 	@[export: 'v_stdio_seek'; markused]
 	fn bare_stdio_seek(address uint, offset_value i64, whence i32) i32 {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut stream := unsafe { &BareStream(address) }
 		if stream.direction == 2 && bare_stream_flush(mut stream) < 0 { return -1 }
 		mut offset := offset_value
@@ -559,8 +597,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_stdio_tell'; markused]
 	fn bare_stdio_tell(address uint) i64 {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut stream := unsafe { &BareStream(address) }
 		mut position := bare_stream_seek(mut stream, 0, if stream.append && stream.write_at != 0 {
 			i32(2)
@@ -663,8 +702,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	@[export: 'v_stdio_fgets'; markused]
 	fn bare_stdio_fgets(output uint, capacity i32, address uint) uint {
 		if capacity <= 0 { return 0 }
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut used := 0
 		for used < int(capacity) - 1 {
 			value := bare_stdio_getchar(address)
@@ -689,8 +729,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			bf_native_errno_cell = i32(C.EINVAL)
 			return -1
 		}
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut stream := unsafe { &BareStream(address) }
 		mut used := uint(0)
 		for {
@@ -734,8 +775,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	@[export: 'v_stdio_ungetchar'; markused]
 	fn bare_stdio_ungetchar(value i32, address uint) i32 {
 		if value == -1 { return -1 }
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut stream := unsafe { &BareStream(address) }
 		if !stream.readable || stream.pushed_count == 16 || (stream.direction == 2 && bare_stream_flush(mut stream) < 0) {
 			return -1
@@ -748,38 +790,44 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_stdio_fread'; markused]
 	fn bare_stdio_fread(output uint, size uint, count uint, address uint) uint {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		return bare_stdio_read(output, size, count, address)
 	}
 	@[export: 'v_stdio_fwrite'; markused]
 	fn bare_stdio_fwrite(input uint, size uint, count uint, address uint) uint {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		return bare_stdio_write(input, size, count, address)
 	}
 	@[export: 'v_stdio_fgetc'; markused]
 	fn bare_stdio_fgetc(address uint) i32 {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		return bare_stdio_getchar(address)
 	}
 	@[export: 'v_stdio_fputc'; markused]
 	fn bare_stdio_fputc(value i32, address uint) i32 {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		return bare_stdio_putchar(value, address)
 	}
 	@[export: 'v_stdio_state_locked'; markused]
 	fn bare_stdio_state_locked(address uint, operation i32) i32 {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		return bare_stdio_state(address, operation)
 	}
 	@[export: 'v_stdio_fputs'; markused]
 	fn bare_stdio_fputs(text uint, address uint) i32 {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut stream := unsafe { &BareStream(address) }
 		if stream.orientation > 0 { return -1 }
 		stream.orientation = -1
@@ -789,8 +837,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	@[export: 'v_stdio_puts'; markused]
 	fn bare_stdio_puts(text uint) i32 {
 		address := C.v_stdio_stdout()
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		if bare_stdio_fputs(text, address) < 0 { return -1 }
 		return if bare_stdio_putchar(10, address) >= 0 { i32(0) } else { i32(-1) }
 	}
@@ -836,8 +885,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 
 	@[export: 'v_stdio_getpos'; markused]
 	fn bare_stdio_getpos(address uint, output uint) i32 {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		position := bare_stdio_tell(address)
 		if position < 0 { return -1 }
 		stream := unsafe { &BareStream(address) }
@@ -848,8 +898,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	fn bare_stdio_setpos(address uint, input uint) i32 {
 		mut state := [8]u8{}
 		position := C.v_stdio_position_get(input, uint(&state[0]))
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		result := bare_stdio_seek(address, position, 0)
 		if result == 0 {
 			mut stream := unsafe { &BareStream(address) }
@@ -866,8 +917,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_stdio_orientation'; markused]
 	fn bare_stdio_orientation(address uint, mode i32) i32 {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut stream := unsafe { &BareStream(address) }
 		if mode > 0 {
 			bare_stream_orient_wide(mut stream)
@@ -878,8 +930,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_stdio_getwide'; markused]
 	fn bare_stdio_getwide(address uint) u32 {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut stream := unsafe { &BareStream(address) }
 		if !bare_stream_orient_wide(mut stream) { return 0xffffffff }
 		mut value := u32(0)
@@ -906,8 +959,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_stdio_putwide'; markused]
 	fn bare_stdio_putwide(value u32, address uint) u32 {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut stream := unsafe { &BareStream(address) }
 		if !bare_stream_orient_wide(mut stream) { return 0xffffffff }
 		mut bytes := [16]u8{}
@@ -924,8 +978,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	@[export: 'v_stdio_ungetwide'; markused]
 	fn bare_stdio_ungetwide(value u32, address uint) u32 {
 		if value == 0xffffffff { return 0xffffffff }
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut stream := unsafe { &BareStream(address) }
 		if !bare_stream_orient_wide(mut stream) { return 0xffffffff }
 		mut bytes := [16]u8{}
@@ -949,8 +1004,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	@[export: 'v_stdio_getwides'; markused]
 	fn bare_stdio_getwides(output uint, capacity i32, address uint) uint {
 		if capacity <= 0 { return 0 }
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut stream := unsafe { &BareStream(address) }
 		old_error := stream.abi_flags & i32(C.V_STDIO_ERROR)
 		stream.abi_flags &= ~i32(C.V_STDIO_ERROR)
@@ -974,8 +1030,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_stdio_putwides'; markused]
 	fn bare_stdio_putwides(input uint, address uint) i32 {
-		bare_stdio_lock(address)
-		defer { bare_stdio_unlock(address) }
+		mut cleanup := BareCancelCleanup{}
+		bare_stdio_cancel_lock(address, mut cleanup)
+		defer { bare_stdio_cancel_unlock(address, &cleanup) }
 		mut stream := unsafe { &BareStream(address) }
 		if !bare_stream_orient_wide(mut stream) { return -1 }
 		values := unsafe { &u32(input) }

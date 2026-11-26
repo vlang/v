@@ -1,7 +1,7 @@
 """Regenerate native-runtime character data, without running a V initializer.
 
-Single-byte mappings come from Python's standard codecs. Letter ranges are
-copied from V's existing Unicode table (MIT, as in the repository LICENSE).
+Single-byte mappings come from Python's standard codecs. Character properties are
+copied from V's bundled Unicode Character Database tables (MIT, as in the repository LICENSE).
 """
 from pathlib import Path
 import re
@@ -56,23 +56,25 @@ for index, name in enumerate(codecs):
         aliases += ['MACINTOSH', 'MAC']
     lines.append('\t\t\t' + ', '.join("'%s'" % n for n in aliases) + ' { ' + str(index) + ' }')
 lines += ['\t\t\telse { -1 }', '\t\t}', '\t}', '']
-source = (root / 'vlib/encoding/utf8/utf8_tables.v').read_text()
-letters = source.split('const letter_table = RangeTable{', 1)[1].split('const white_space_table', 1)[0]
-ranges = []
-for text in re.findall(r'Range(?:16|32)\{([^}]+)\}', letters):
-    ranges.append(tuple(int(part.strip(), 0) for part in text.split(',')))
-if not ranges or any(a > b for a, b, stride in ranges):
-    raise RuntimeError('invalid source Unicode letter ranges')
-data = b''.join(struct.pack('<III', *triple) for triple in ranges)
-lines += ['\t// Same Unicode letter ranges as encoding.utf8, without module initialization.',
-          '\tconst bare_letter_ranges = ' + encoded(data), '',
-          '\tfn bare_wide_letter(value u32) bool {',
-          '\t\tmut low := 0', f'\t\tmut high := {len(ranges)}',
+source = (root / 'vlib/unicode/tables.v').read_text()
+for name in ['alphabetic', 'lowercase', 'uppercase']:
+    section = source.split(f'const {name}_ranges = [', 1)[1].split(']', 1)[0]
+    ranges = [(int(a, 16), int(b, 16)) for a, b in
+              re.findall(r'SpanRange\{lo: (0x[0-9a-f]+), hi: (0x[0-9a-f]+)\}', section)]
+    if not ranges or any(a > b for a, b in ranges):
+        raise RuntimeError(f'invalid Unicode {name} property')
+    data = b''.join(struct.pack('<II', a, b) for a, b in ranges)
+    lines += [f'\t// Unicode {name} property, available before native constructors.',
+              f'\tconst bare_{name}_ranges = ' + encoded(data), '']
+lines += ['\tfn bare_wide_property(value u32, data string) bool {',
+          '\t\tmut low := 0', '\t\tmut high := data.len / 8',
           '\t\tfor low < high {', '\t\t\tmiddle := low + (high - low) / 2',
-          '\t\t\tfirst := bare_character_word(bare_letter_ranges, middle * 12)',
-          '\t\t\tlast := bare_character_word(bare_letter_ranges, middle * 12 + 4)',
+          '\t\t\tfirst := bare_character_word(data, middle * 8)',
+          '\t\t\tlast := bare_character_word(data, middle * 8 + 4)',
           '\t\t\tif value < first { high = middle }',
           '\t\t\telse if value > last { low = middle + 1 }',
-          '\t\t\telse { return (value - first) % bare_character_word(bare_letter_ranges, middle * 12 + 8) == 0 }',
-          '\t\t}', '\t\treturn false', '\t}', '}']
+          '\t\t\telse { return true }', '\t\t}', '\t\treturn false', '\t}', '',
+          '\tfn bare_wide_letter(value u32) bool { return bare_wide_property(value, bare_alphabetic_ranges) }',
+          '\tfn bare_wide_lower(value u32) bool { return bare_wide_property(value, bare_lowercase_ranges) }',
+          '\tfn bare_wide_upper(value u32) bool { return bare_wide_property(value, bare_uppercase_ranges) }', '}']
 (root / 'vlib/builtin/linux_bare/iconv_tables_d_freestanding.v').write_text('\n'.join(lines) + '\n')

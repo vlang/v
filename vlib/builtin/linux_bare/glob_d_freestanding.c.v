@@ -162,7 +162,13 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		}
 		mut end := 0
 		for end < pattern.len && pattern[end] != `/` { end++ }
-		component := pattern[..end]
+		mut component_end := end
+		if end < pattern.len && walk.flags & i32(C.GLOB_NOESCAPE) == 0 {
+			mut backslashes := 0
+			for index := end - 1; index >= 0 && pattern[index] == `\\`; index-- { backslashes++ }
+			if backslashes % 2 != 0 { component_end-- }
+		}
+		component := pattern[..component_end]
 		mut next := end
 		for next < pattern.len && pattern[next] == `/` { next++ }
 		separators := pattern[end..next]
