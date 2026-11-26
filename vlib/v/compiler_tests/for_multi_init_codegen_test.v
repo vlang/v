@@ -7,16 +7,16 @@ fn for_multi_init_fixture_dir() string {
 	return root
 }
 
-fn for_multi_init_run_bad(name string, source string, expected string) {
+fn for_multi_init_run_bad(name string, source string) string {
 	root := for_multi_init_fixture_dir()
 	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'v3_for_multi_init_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(root, 'v3_for_multi_init_${name}')
-	result := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
+	result := os.exec([@VEXE, src, '-b', 'c', '-nocolor', '-o', bin])
 	assert result.exit_code != 0, result.output
-	assert result.output.contains(expected), result.output
 	assert !result.output.contains('C compilation failed'), result.output
+	return result.output
 }
 
 fn for_multi_init_gen_c(name string, source string) string {
@@ -302,20 +302,83 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_c_style_for_multi_init_rejects_extra_rhs() {
-	for_multi_init_run_bad('extra_rhs', 'fn bump(n int) int {
+fn test_c_style_for_rejects_invalid_assignments_and_smartcasts() {
+	source := 'fn bump(n int) int {
 	println(n.str())
 	return n
 }
 
-fn main() {
+fn extra_init_rhs() {
 	for a, b := bump(1), bump(2), bump(3); false; {
 		println(a)
 		println(b)
 	}
 }
-',
-		'multi-return assignment mismatch: 3 variables but `int` has 1 values')
+
+fn extra_post_rhs() {
+	mut i := 0
+	for ; i < 1; i = bump(1), bump(2) {
+		i++
+	}
+}
+
+fn scalar_post_rhs() {
+	mut a := 0
+	mut b := 0
+	for ; a < 1; a, b = 1 {
+		break
+	}
+	println(b)
+}
+
+struct Foo {
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+fn stale_post_smartcast() {
+	mut x := Value(Foo{
+		foo: 1
+	})
+	for ; x is Foo; x.foo {
+		x = Bar{}
+	}
+}
+
+fn missing_init_rhs() {
+	for a, b := 1; false; {
+		println(a)
+		println(b)
+	}
+}
+
+fn main() {
+	extra_init_rhs()
+	extra_post_rhs()
+	scalar_post_rhs()
+	stale_post_smartcast()
+	missing_init_rhs()
+}
+'
+	output := for_multi_init_run_bad('header_rejections', source)
+	expected := {
+		'for a, b := bump(1), bump(2), bump(3); false; {': 'multi-return assignment mismatch: 3 variables but `int` has 1 values'
+		'for ; i < 1; i = bump(1), bump(2) {':             'for post assignment mismatch: 1 variables but 2 values'
+		'for ; a < 1; a, b = 1 {':                         'multi-return assignment mismatch: 2 variables but `int` has 1 values'
+		'for ; x is Foo; x.foo {':                         'field `foo` does not exist or have the same type in these sumtype `Value` variants'
+		'for a, b := 1; false; {':                         'multi-return assignment mismatch: 2 variables but `int` has 1 values'
+	}
+	lines := source.split_into_lines()
+	diagnostics := output.split_into_lines().filter(it.contains(': error: '))
+	for header, message in expected {
+		line := lines.index('\t${header}') + 1
+		assert line > 0, header
+		location := 'v3_for_multi_init_header_rejections.v:${line}:'
+		assert diagnostics.any(it.contains(location) && it.contains(message)), 'expected ${message} at ${location}\n${output}'
+	}
 }
 
 fn test_c_style_for_multi_init_allows_multi_return_call() {
@@ -501,56 +564,6 @@ fn main() {
 	assert label_idx < step_idx, post_tail
 }
 
-fn test_c_style_for_post_rejects_extra_rhs() {
-	for_multi_init_run_bad('post_extra_rhs', 'fn bump(n int) int {
-	println(n.str())
-	return n
-}
-
-fn main() {
-	mut i := 0
-	for ; i < 1; i = bump(1), bump(2) {
-		i++
-	}
-}
-',
-		'for post assignment mismatch: 1 variables but 2 values')
-}
-
-fn test_c_style_for_post_rejects_scalar_rhs_for_multi_assign() {
-	for_multi_init_run_bad('post_scalar_rhs', 'fn main() {
-	mut a := 0
-	mut b := 0
-	for ; a < 1; a, b = 1 {
-		break
-	}
-	println(b)
-}
-',
-		'multi-return assignment mismatch: 2 variables but `int` has 1 values')
-}
-
-fn test_c_style_for_post_does_not_use_condition_smartcast() {
-	for_multi_init_run_bad('post_stale_condition_smartcast', 'struct Foo {
-	foo int
-}
-
-struct Bar {}
-
-type Value = Bar | Foo
-
-fn main() {
-	mut x := Value(Foo{
-		foo: 1
-	})
-	for ; x is Foo; x.foo {
-		x = Bar{}
-	}
-}
-',
-		'field `foo` does not exist or have the same type in these sumtype `Value` variants')
-}
-
 fn test_c_style_for_multi_init_allows_selector_lhs_after_comma() {
 	root := for_multi_init_fixture_dir()
 	defer { os.rmdir_all(root) or {} }
@@ -588,19 +601,8 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_c_style_for_multi_init_rejects_missing_rhs() {
-	for_multi_init_run_bad('missing_rhs', 'fn main() {
-	for a, b := 1; false; {
-		println(a)
-		println(b)
-	}
-}
-',
-		'multi-return assignment mismatch: 2 variables but `int` has 1 values')
-}
-
 fn test_for_in_rejects_selector_value_var_after_comma() {
-	for_multi_init_run_bad('for_in_selector_value', 'struct Box {
+	output := for_multi_init_run_bad('for_in_selector_value', 'struct Box {
 mut:
 	x int
 }
@@ -612,6 +614,6 @@ fn main() {
 		println(i)
 	}
 }
-',
-		'invalid for-in header: expected identifiers before `in`')
+')
+	assert output.contains('invalid for-in header: expected identifiers before `in`'), output
 }
