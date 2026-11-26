@@ -326,37 +326,6 @@ fn main() {
 	}
 }
 
-fn test_generic_sum_rejects_mismatched_concrete_variant() {
-	root := generic_sum_type_fixture_dir('negative')
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'app')
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, '
-struct Empty {}
-
-struct Node[T] {
-	value T
-}
-
-type Tree[T] = Empty | Node[T]
-
-fn bad() Tree[int] {
-	return Node[string]{"nope"}
-}
-
-fn main() {}
-') or {
-		panic(err)
-	}
-
-	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot use `Node[string]` as type `Tree[int]`')
-		|| compile.output.contains('cannot return') || compile.output.contains('incompatible'), compile.output
-
-	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
 fn test_generic_sum_rejects_unknown_is_pattern_after_specialization() {
 	root := generic_sum_type_fixture_dir('unknown_is')
 	defer { os.rmdir_all(root) or {} }
@@ -386,8 +355,8 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
-fn test_generic_sum_rejects_qualified_variant_patterns() {
-	root := generic_sum_type_fixture_dir('qualified_negative')
+fn test_generic_sum_rejects_mismatched_and_qualified_variants() {
+	root := generic_sum_type_fixture_dir('variant_errors')
 	defer { os.rmdir_all(root) or {} }
 	left_dir := os.join_path(root, 'left')
 	right_dir := os.join_path(root, 'right')
@@ -455,6 +424,10 @@ fn bad_empty(tree Tree[left.Foo]) int {
 	}
 }
 
+fn bad() Tree[int] {
+	return Node[string]{"nope"}
+}
+
 fn main() {}
 '
 	os.write_file(src, source) or {
@@ -475,6 +448,11 @@ fn main() {}
 		location := 'main.v:${line}:'
 		assert errors.any(it.contains(location) && it.contains('`Tree[left.Foo]` has no variant')), 'expected rejection of ${pattern} at ${location}\n${compile.output}'
 	}
+	mismatch_line := lines.index('\treturn Node[string]{"nope"}') + 1
+	assert mismatch_line > 0
+	location := 'main.v:${mismatch_line}:'
+	assert errors.any(it.contains(location) && (it.contains('cannot use `Node[string]` as type `Tree[int]`')
+		|| it.contains('cannot return') || it.contains('incompatible'))), compile.output
 }
 
 fn test_generic_sum_accepts_declared_qualified_bare_variant_pattern() {
