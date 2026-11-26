@@ -362,20 +362,6 @@ fn test_owned_pointer_field_escape_is_rejected() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
-// Indexing a borrowed owned field immediately yields a scalar, so no array-owned storage
-// escapes and a clone-less element can stay borrowed in place.
-fn test_owned_field_scalar_index_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_scalar_index', "struct E {\n\tname string\n}\n\nfn last_initial() u8 {\n\tarr := [E{ name: 'hello' }]\n\treturn arr.last().name[0]\n}\n\nfn main() {\n\tprintln(int_str(last_initial()))\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_field_scalar_index_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '104', run.output
-}
-
 // A pointer nested inside a non-owning aggregate can still escape the element's lifetime.
 // The final-type check must recurse through the selected aggregate instead of accepting it
 // merely because the aggregate itself has no destructor.
@@ -1124,10 +1110,17 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
-fn test_owned_scalar_consumer_in_aggregate_with_stable_field_borrows() {
+// Indexing and chained length reads can borrow the original element. A length
+// read can also share an initializer or call with stable fields or arguments.
+fn test_owned_scalar_consumers_borrow_array_elements() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_aggregate_stable_field', "struct E {
+	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_consumers', "struct E {
 	name string
+}
+
+fn last_initial() u8 {
+	arr := [E{ name: 'hello' }]
+	return arr.last().name[0]
 }
 
 struct Pair {
@@ -1139,29 +1132,11 @@ fn last_length(arr []E) Pair {
 	return Pair{ n: arr.last().name.len, s: 'ok' }
 }
 
-fn main() {
-	arr := [E{ name: 'hello' }]
-	println(last_length(arr).n)
-}
-", '')
-	assert compile.exit_code == 0, compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_scalar_aggregate_stable_field_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '5', run.output
-}
-
-fn test_owned_scalar_consumer_with_stable_aggregate_argument_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_stable_aggregate_argument', "struct E {
-	name string
-}
-
-struct Pair {
+struct ArgumentPair {
 	n int
 }
 
-fn consume_struct(length int, pair Pair) int {
+fn consume_struct(length int, pair ArgumentPair) int {
 	_ = pair
 	return length
 }
@@ -1177,7 +1152,7 @@ fn consume_array(length int, values []int) int {
 }
 
 fn last_struct_length(entries []E) int {
-	return consume_struct(entries.last().name.len, Pair{ n: 1 })
+	return consume_struct(entries.last().name.len, ArgumentPair{ n: 1 })
 }
 
 fn last_map_length(entries []E) int {
@@ -1188,19 +1163,33 @@ fn last_array_length(entries []E) int {
 	return consume_array(entries.last().name.len, []int{len: 1, init: 1})
 }
 
-fn main() {
+fn check_scalar_index() {
+	println(int_str(last_initial()))
+}
+
+fn check_aggregate_field() {
+	arr := [E{ name: 'hello' }]
+	println(last_length(arr).n)
+}
+
+fn check_aggregate_arguments() {
 	entries1 := [E{ name: 'hello' }]
 	entries2 := [E{ name: 'hello' }]
 	entries3 := [E{ name: 'hello' }]
 	println(last_struct_length(entries1) + last_map_length(entries2) + last_array_length(entries3))
 }
+
+fn main() {
+	check_scalar_index()
+	check_aggregate_field()
+	check_aggregate_arguments()
+}
 ", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_scalar_stable_aggregate_argument_bin')
+	assert_clean_borrow_build(compile)
+	bin_path := tmp_array_accessor_borrow_path('owned_scalar_consumers_bin')
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '15', run.output
+	assert run.output.trim_space().split_into_lines() == ['104', '5', '15'], run.output
 }
 
 fn test_owned_conditional_prerequisites_that_mutate_source_are_rejected() {
