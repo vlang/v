@@ -47,31 +47,6 @@ fn test_for_in_ref_of_local_fixed_array_requires_unsafe() {
 		'cannot reference fixed array `arr` outside `unsafe` blocks')
 }
 
-// A fixed array reached through a struct field is addressable without
-// `unsafe`; `for item in &t.buf` must mutate the underlying elements in
-// place, matching the exact shape of the #28084 report.
-fn test_for_in_ref_mutates_fixed_array_struct_field() {
-	out := for_in_ref_binding_run_good('fixed_array_struct_field_ref',
-		'struct Item {\nmut:\n\tval int\n}\n\nstruct Test {\nmut:\n\tbuf [10]Item\n}\n\nfn main() {\n\tmut t := Test{}\n\tfor i in 0 .. 10 {\n\t\tt.buf[i] = Item{val: i}\n\t}\n\tfor item in &t.buf {\n\t\tunsafe {\n\t\t\titem.val = item.val * 100\n\t\t}\n\t}\n\tmut total := 0\n\tfor item in t.buf {\n\t\ttotal += item.val\n\t}\n\tprintln(total)\n}\n')
-	assert out == '4500'
-}
-
-// Ordinary dynamic arrays already worked before the fix; this guards against
-// regressing that path while changing how the ref/value decision is made.
-fn test_for_in_ref_mutates_dynamic_array() {
-	out := for_in_ref_binding_run_good('dynamic_array_ref',
-		'struct Item {\nmut:\n\tval int\n}\n\nfn main() {\n\tmut arr := []Item{}\n\tfor i in 0 .. 5 {\n\t\tarr << Item{val: i}\n\t}\n\tfor item in &arr {\n\t\tunsafe {\n\t\t\titem.val = item.val * 100\n\t\t}\n\t}\n\tmut total := 0\n\tfor item in arr {\n\t\ttotal += item.val\n\t}\n\tprintln(total)\n}\n')
-	assert out == '1000'
-}
-
-// `for mut item in arr` is a distinct binding mode from `for item in &arr`:
-// both should be able to mutate through the loop variable.
-fn test_for_mut_item_in_plain_array_still_mutates() {
-	out := for_in_ref_binding_run_good('for_mut_item_plain_array',
-		'struct Item {\nmut:\n\tval int\n}\n\nfn main() {\n\tmut arr := [3]Item{}\n\tfor i in 0 .. 3 {\n\t\tarr[i] = Item{val: i + 1}\n\t}\n\tfor mut item in arr {\n\t\titem.val = item.val * 10\n\t}\n\tmut total := 0\n\tfor item in arr {\n\t\ttotal += item.val\n\t}\n\tprintln(total)\n}\n')
-	assert out == '60'
-}
-
 // A `mut` array *parameter* stores its underlying array via a pointer at the
 // ABI level even without any `&` in the for-in line. That must not be
 // mistaken for an explicit `for x in &arr` - plain `for item in arr` inside
@@ -82,26 +57,121 @@ fn test_for_in_over_mut_param_without_amp_is_still_by_value() {
 		'`item` is immutable, declare it with `mut` to make it mutable')
 }
 
-// The two-loop-variable form (`for idx, item in &arr`) binds the *value*
-// variable by reference, not the index - a separate code path from the
-// single-variable form covered above (`annotate_for_in` inserts the index as
-// a plain `int` regardless, and only wraps the value/element variable).
-fn test_for_in_ref_indexed_form_mutates_value_var() {
-	out := for_in_ref_binding_run_good('for_in_ref_indexed_form',
-		'struct Item {\nmut:\n\tval int\n}\n\nfn main() {\n\tmut arr := []Item{}\n\tfor i in 0 .. 4 {\n\t\tarr << Item{val: i}\n\t}\n\tfor idx, item in &arr {\n\t\tunsafe {\n\t\t\titem.val = item.val + idx\n\t\t}\n\t}\n\tmut total := 0\n\tfor item in arr {\n\t\ttotal += item.val\n\t}\n\tprintln(total)\n}\n')
-	assert out == '12'
+fn test_for_in_reference_and_mutation_bindings() {
+	out := for_in_ref_binding_run_good('for_in_ref_bindings', 'struct Item {
+mut:
+	val int
 }
 
-// transform/for.v now reads the element-binding mode back from the loop
-// variable's own checker-resolved type (via raw_checker_node_type) instead
-// of re-inspecting the container's raw AST shape, falling back to the AST
-// shape when that lookup comes back empty. A monomorphized generic method's
-// loop-variable node id is a clone created after the checker's original
-// annotation pass ran on the generic template, and its cached type is not
-// always available by the time transform runs - this must still bind by
-// reference via the AST-shape fallback in that case.
-fn test_for_in_ref_survives_generic_monomorphization() {
-	out := for_in_ref_binding_run_good('for_in_ref_generic_monomorphization',
-		'struct Item {\nmut:\n\tval int\n}\n\nstruct Container[T] {\nmut:\n\titems []T\n}\n\nfn (mut c Container[T]) bump_all() {\n\tfor item in &c.items {\n\t\tunsafe {\n\t\t\titem.val = item.val * 10\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut c := Container[Item]{}\n\tc.items << Item{val: 1}\n\tc.items << Item{val: 2}\n\tc.items << Item{val: 3}\n\tc.bump_all()\n\tmut total := 0\n\tfor it in c.items {\n\t\ttotal += it.val\n\t}\n\tprintln(total)\n}\n')
-	assert out == '60'
+struct Test {
+mut:
+	buf [10]Item
+}
+
+// A struct field lets the loop take a reference to a fixed array.
+fn check_fixed_array_field() {
+	mut t := Test{}
+	for i in 0 .. 10 {
+		t.buf[i] = Item{val: i}
+	}
+	for item in &t.buf {
+		unsafe {
+			item.val = item.val * 100
+		}
+	}
+	mut total := 0
+	for item in t.buf {
+		total += item.val
+	}
+	println(total)
+}
+
+// The dynamic array path also binds elements by reference.
+fn check_dynamic_array() {
+	mut arr := []Item{}
+	for i in 0 .. 5 {
+		arr << Item{val: i}
+	}
+	for item in &arr {
+		unsafe {
+			item.val = item.val * 100
+		}
+	}
+	mut total := 0
+	for item in arr {
+		total += item.val
+	}
+	println(total)
+}
+
+// A mut loop variable aliases the array element.
+fn check_mut_binding() {
+	mut arr := [3]Item{}
+	for i in 0 .. 3 {
+		arr[i] = Item{val: i + 1}
+	}
+	for mut item in arr {
+		item.val = item.val * 10
+	}
+	mut total := 0
+	for item in arr {
+		total += item.val
+	}
+	println(total)
+}
+
+// The indexed form binds the element by reference and the index by value.
+fn check_indexed_ref() {
+	mut arr := []Item{}
+	for i in 0 .. 4 {
+		arr << Item{val: i}
+	}
+	for idx, item in &arr {
+		unsafe {
+			item.val = item.val + idx
+		}
+	}
+	mut total := 0
+	for item in arr {
+		total += item.val
+	}
+	println(total)
+}
+
+struct Container[T] {
+mut:
+	items []T
+}
+
+// The transform can use the iterable shape when a cloned loop variable lacks a checker type.
+fn (mut c Container[T]) bump_all() {
+	for item in &c.items {
+		unsafe {
+			item.val = item.val * 10
+		}
+	}
+}
+
+fn check_generic_container() {
+	mut c := Container[Item]{}
+	c.items << Item{val: 1}
+	c.items << Item{val: 2}
+	c.items << Item{val: 3}
+	c.bump_all()
+	mut total := 0
+	for it in c.items {
+		total += it.val
+	}
+	println(total)
+}
+
+fn main() {
+	check_fixed_array_field()
+	check_dynamic_array()
+	check_mut_binding()
+	check_indexed_ref()
+	check_generic_container()
+}
+')
+	assert out.split_into_lines() == ['4500', '1000', '60', '12', '60'], out
 }
