@@ -93,6 +93,51 @@ fn (tc &TypeChecker) ownership_scoped_callback_origin(id flat.NodeId, expected T
 	return none
 }
 
+// The referent is checked while the box is being built, before its local
+// binding exists. The consuming invocation in the next statement checks the
+// payload and replaces the box's loan with its own scoped reservation.
+fn (tc &TypeChecker) ownership_scoped_callback_binding_reborrows(decl_id flat.NodeId) bool {
+	decl := tc.a.node(decl_id)
+	if decl.kind != .decl_assign || decl.children_count != 2 || decl.is_mut {
+		return false
+	}
+	binding := tc.a.child_node(decl, 0)
+	if binding.kind != .ident || binding.is_mut {
+		return false
+	}
+	constructor_id := tc.ownership_unwrap_expr(tc.a.child(decl, 1))
+	if !tc.ownership_scoped_callback_call_is(constructor_id, 'new_scoped_mut_callback') {
+		return false
+	}
+	scope := tc.a.node(tc.direct_parent_id(decl_id))
+	for i in 1 .. scope.children_count {
+		if tc.a.child(scope, i - 1) != decl_id {
+			continue
+		}
+		stmt := tc.a.node(tc.ownership_unwrap_expr(tc.a.child(scope, i)))
+		if stmt.children_count != 2
+			|| (stmt.kind != .decl_assign && !(stmt.kind == .infix && stmt.op == .left_shift)) {
+			return false
+		}
+		spawn_id := tc.ownership_unwrap_expr(tc.a.child(stmt, 1))
+		spawn_node := tc.a.node(spawn_id)
+		if spawn_node.kind != .spawn_expr || spawn_node.children_count != 1 {
+			return false
+		}
+		runner_id := tc.ownership_unwrap_expr(tc.a.child(spawn_node, 0))
+		runner := tc.a.node(runner_id)
+		if runner.children_count != 3
+			|| !tc.ownership_scoped_callback_call_is(runner_id, 'invoke_scoped_mut_callback') {
+			return false
+		}
+		arg := tc.a.node(tc.ownership_unwrap_expr(tc.a.child(runner, 1)))
+		return arg.kind == .ident && arg.value == binding.value
+			&& (tc.ownership_scoped_thread_join_site(spawn_id) != none
+				|| tc.ownership_scoped_thread_group(spawn_id) != none)
+	}
+	return false
+}
+
 // Check both the worker that receives the box and the origin of its payload loans.
 fn (tc &TypeChecker) ownership_scoped_callback_borrows(id flat.NodeId, expected Type, info CallInfo, index int) ?[]ScopedThreadBorrow {
 	if !semantic_types_equal(unalias_type(tc.resolve_type(id)), unalias_type(expected)) {

@@ -5889,6 +5889,68 @@ fn test_ownership_scoped_mut_callback_requires_the_join_to_bound_its_payload() {
 	}
 }
 
+fn test_ownership_scoped_mut_callbacks_reborrow_through_adjacent_bindings() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_mut_callback_named_reborrow'
+	source := scoped_mut_callback_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	{
+		first := spawn transport.invoke_scoped_mut_callback(
+			transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+				counter: &counter
+			}), 2)
+		defer { first.wait() }
+		callback := (transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+			counter: &counter
+		}))
+		second := spawn transport.invoke_scoped_mut_callback((callback), 3)
+		defer { second.wait() }
+	}
+	assert counter.load() == 7
+	{
+		mut handles := []thread int{}
+		defer { handles.wait() }
+		handles << spawn transport.invoke_scoped_mut_callback(
+			transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+				counter: &counter
+			}), 2)
+		callback := transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+			counter: &counter
+		})
+		handles << spawn transport.invoke_scoped_mut_callback(callback, 3)
+	}
+	assert counter.load() == 14
+}
+'
+	result := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_mut_callback_named_reborrow_requires_adjacent_joined_use() {
+	v3_bin := ownership_build_v3()
+	for body in [
+		'second := spawn transport.invoke_scoped_mut_callback(callback, 3); second.wait()',
+		'println(0); second := spawn transport.invoke_scoped_mut_callback(callback, 3); defer { second.wait() }',
+		'_ = callback',
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_mut_callback_named_reborrow_rejected',
+			scoped_mut_callback_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	first := spawn transport.invoke_scoped_mut_callback(
+		transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{counter: &counter}), 2)
+	defer { first.wait() }
+	callback := transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{counter: &counter})
+' + body + '\n}\n')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot use `counter` until scoped thread `first` has joined'), result.output
+	}
+}
+
 fn test_ownership_scoped_mut_callback_cannot_move_to_an_unchecked_worker() {
 	v3_bin := ownership_build_v3()
 	result := run_ownership_check(v3_bin, 'scoped_mut_callback_unchecked_worker',

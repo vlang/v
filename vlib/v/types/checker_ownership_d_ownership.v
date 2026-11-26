@@ -14275,6 +14275,10 @@ fn (mut tc TypeChecker) ownership_add_borrow_info(var_name string, info BorrowIn
 		if !is_mut {
 			for borrow in existing {
 				if borrow.is_mut && !(info.scoped_factory && borrow.scoped_factory) {
+					if info.boxed_borrow && tc.valid_node_id(borrow.thread_join_site)
+						&& tc.ownership_scoped_callback_binding_reborrows(pos) {
+						continue
+					}
 					tc.record_error(.assignment_mismatch, 'cannot borrow `${var_name}` as immutable because it is borrowed as mutable by `${borrow.borrower}`', pos)
 					return
 				}

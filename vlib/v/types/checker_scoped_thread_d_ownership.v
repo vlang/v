@@ -478,8 +478,8 @@ fn (tc &TypeChecker) ownership_scoped_thread_use_parent(id flat.NodeId) flat.Nod
 }
 
 // A further scoped worker can borrow the same storage as a direct argument or
-// through an inline initializer. The spawn check certifies its use of the
-// borrow. The arguments of an ordinary helper call remain outside this rule.
+// through a callback initializer with a checked spawn. The spawn check
+// certifies its use of the borrow.
 fn (tc &TypeChecker) ownership_scoped_thread_reborrows(id flat.NodeId) bool {
 	addr_id := tc.ownership_scoped_thread_use_parent(id)
 	addr := tc.a.node(addr_id)
@@ -500,6 +500,11 @@ fn (tc &TypeChecker) ownership_scoped_thread_reborrows(id flat.NodeId) bool {
 	if tc.ownership_scoped_callback_call_is(call_id, 'new_scoped_mut_callback') {
 		runner_id := tc.ownership_scoped_thread_use_parent(call_id)
 		runner := tc.a.node(runner_id)
+		if runner.kind == .decl_assign {
+			return runner.children_count == 2
+				&& tc.ownership_unwrap_expr(tc.a.child(runner, 1)) == call_id
+				&& tc.ownership_scoped_callback_binding_reborrows(runner_id)
+		}
 		if runner.kind != .call {
 			return false
 		}

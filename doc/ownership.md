@@ -541,6 +541,9 @@ uses. The deferred wait keeps the borrowed data alive through the calls and clea
 
 Pass the constructor inline or bind its result in the same block as the spawn. The caller
 can invoke or lend the callback to a checked helper before moving it into the worker.
+
+An immutable callback declaration immediately before a checked spawn lets multiple
+joined workers borrow the same atomic through named callbacks.
 The checker verifies every use of a borrowed field in the callback's `call` method and destructor.
 The constructor rejects `-autofree` because that mode preserves caller aliases when values move.
 
