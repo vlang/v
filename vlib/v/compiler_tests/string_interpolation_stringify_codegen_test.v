@@ -63,7 +63,8 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_string_interpolation_method_call_marks_callee_used() {
+// Interpolation keeps the nested method call and the custom str helpers reachable.
+fn test_string_interpolation_keeps_callees_and_str_helpers() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
 	os.mkdir(dir)!
 	defer {
@@ -85,7 +86,7 @@ fn (m Message) to_json() string {
 	return \'{"begin":\${m.begin.to_json()}}\'
 }
 
-fn main() {
+fn check_interpolated_method_call() {
 	msg := Message{
 		begin: Begin{
 			value: 7
@@ -93,26 +94,11 @@ fn main() {
 	}
 	println(msg.to_json())
 }
-'
-	bin := os.join_path(dir, 'v3_string_interp_method_markused')
-	compile := compile_string_interp_input(src, bin)
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '{"begin":7}'
-}
 
-fn test_string_interpolation_discovered_str_method_emits_helpers() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	src := "struct Wrap {}
+struct Wrap {}
 
 fn str_helper() string {
-	return 'wrapped'
+	return \'wrapped\'
 }
 
 fn (w Wrap) str() string {
@@ -120,17 +106,50 @@ fn (w Wrap) str() string {
 	return str_helper()
 }
 
-fn main() {
-	println('\${Wrap{}}')
+fn check_discovered_str_helper() {
+	println(\'\${Wrap{}}\')
 }
-"
-	bin := os.join_path(dir, 'v3_string_interp_str_helper')
+
+type Parser[T] = fn (string) T
+
+struct ParserHolder {
+	parser Parser[int] @[required]
+}
+
+fn (parser Parser[T]) str[T]() string {
+	_ = parser
+	return \'parser\'
+}
+
+fn new_parser() Parser[int] {
+	return fn (text string) int {
+		return text.int()
+	}
+}
+
+fn check_generic_fn_alias_str() {
+	parser := new_parser()
+	assert \'\${parser}\' == \'parser\'
+	holder := ParserHolder{
+		parser: parser
+	}
+	assert \'\${holder}\'.contains(\'parser: parser\')
+	println(\'ok\')
+}
+
+fn main() {
+	check_interpolated_method_call()
+	check_discovered_str_helper()
+	check_generic_fn_alias_str()
+}
+'
+	bin := os.join_path(dir, 'v3_string_interp_callees')
 	compile := compile_string_interp_input(src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'wrapped'
+	assert run.output.trim_space().split_into_lines() == ['{"begin":7}', 'wrapped', 'ok'], run.output
 }
 
 fn test_defer_string_interpolation_with_generic_type_arguments() {
@@ -265,48 +284,6 @@ fn main() {
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'x\n7\ntrue'
-}
-
-fn test_generic_fn_alias_custom_str_survives_call_return_and_struct_field_lowering() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	src := "type Parser[T] = fn (string) T
-
-struct ParserHolder {
-	parser Parser[int] @[required]
-}
-
-fn (parser Parser[T]) str[T]() string {
-	_ = parser
-	return 'parser'
-}
-
-fn new_parser() Parser[int] {
-	return fn (text string) int {
-		return text.int()
-	}
-}
-
-fn main() {
-	parser := new_parser()
-	assert '\${parser}' == 'parser'
-	holder := ParserHolder{
-		parser: parser
-	}
-	assert '\${holder}'.contains('parser: parser')
-	println('ok')
-}
-"
-	bin := os.join_path(dir, 'v3_generic_fn_alias_custom_str')
-	compile := compile_string_interp_input(src, bin)
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
 }
 
 fn test_string_plus_does_not_stringify_non_strings() {
