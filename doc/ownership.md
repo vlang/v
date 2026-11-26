@@ -522,9 +522,14 @@ through a field of the inline worker struct. The handle's binding must outlive t
 join, and the worker cannot pass the reference to another function or store it.
 
 Use `thread.new_scoped_mut_callback` to box a callback whose state contains those scoped borrows.
-Spawn `thread.invoke_scoped_mut_callback` with the constructor inline or with an immutable
-callback declared immediately before the spawn. The invocation owns the box and releases it
-in the worker. The deferred wait keeps the borrowed data alive through both the call and cleanup.
+Spawn `thread.invoke_scoped_mut_callback` to call and release the box in one operation.
+A custom worker can take the box by value, move it to a mutable local, and use
+`callback.call(arg)` repeatedly. It can also pass a mutable borrow to a checked helper.
+The checker follows source functions and methods on concrete parameters to verify these
+uses. The deferred wait keeps the borrowed data alive through the calls and cleanup.
+
+Pass the constructor inline or bind its result in the same block as the spawn. The caller
+can invoke or lend the callback to a checked helper before moving it into the worker.
 The checker verifies every use of a borrowed field in the callback's `call` method and destructor.
 The constructor rejects `-autofree` because that mode preserves caller aliases when values move.
 

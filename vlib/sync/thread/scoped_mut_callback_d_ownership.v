@@ -30,13 +30,18 @@ pub fn new_scoped_mut_callback[^scope, A, R Transferable, T](value T) ScopedMutC
 	}
 }
 
+// call invokes the callback with exclusive access to its state while keeping the box.
+pub fn (mut callback ScopedMutCallback[^scope, A, R]) call(arg A) R {
+	return callback.value.call(arg)
+}
+
 // invoke_scoped_mut_callback takes ownership of a callback, calls it once, and releases its state.
 pub fn invoke_scoped_mut_callback[^scope, A, R Transferable](callback ScopedMutCallback[^scope, A, R], arg A) R {
 	mut owned := callback
 	defer {
 		drop_owned(owned)
 	}
-	return owned.value.call(arg)
+	return owned.call(arg)
 }
 
 // drop releases the callback and its state.

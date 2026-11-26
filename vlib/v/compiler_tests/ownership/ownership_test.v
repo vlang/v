@@ -6231,3 +6231,135 @@ fn main() {}
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot use a raw pointer as a scoped callback factory'), result.output
 }
+
+const scoped_callback_worker_fixture = abstract_scoped_callback_factory_fixture + r'
+fn visit_one[^scope](mut visitor transport.ScopedMutCallback[^scope, int, int], delta int) int {
+	return visitor.call(delta)
+}
+
+struct Walker {
+	delta int
+}
+
+fn (walker Walker) clone() Walker {
+	return Walker{delta: walker.delta}
+}
+
+fn (walker Walker) visit[^scope](mut visitor transport.ScopedMutCallback[^scope, int, int], delta int) int {
+	return visit_one(mut visitor, delta)
+}
+
+fn walk_worker[^scope](walker Walker, visitor_in transport.ScopedMutCallback[^scope, int, int], early bool) int {
+	if early {
+		return 0
+	}
+	mut visitor := visitor_in
+	mut result := 0
+	for _ in 0 .. 3 {
+		result = walker.visit(mut visitor, walker.delta)
+	}
+	return result
+}
+'
+
+fn test_ownership_scoped_callback_worker_calls_a_visitor_repeatedly() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_callback_worker_calls'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_callback_worker_fixture + r'
+fn run[^scope](mut factory VisitorFactory[^scope], walker Walker) {
+	mut first := factory.create()
+	walker.visit(mut first, 1)
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	handles << spawn walk_worker(walker.clone(), first, false)
+	for _ in 0 .. 2 {
+		visitor := factory.create()
+		handles << spawn walk_worker(walker.clone(), visitor, false)
+	}
+	handles << spawn walk_worker(walker.clone(), factory.create(), true)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut factory, Walker{delta: 2})
+	assert counter.load() == 23
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_callback_worker_accepts_inline_boxes_in_a_group() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_callback_worker_inline'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_callback_worker_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	{
+		mut handles := []thread int{}
+		defer { handles.wait() }
+		handles << spawn walk_worker(Walker{delta: 2},
+			transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+				counter: &counter
+			}), false)
+		handles << spawn walk_worker(Walker{delta: 3},
+			transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+				counter: &counter
+			}), false)
+	}
+	assert counter.load() == 17
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_callback_worker_rejects_an_unchecked_helper_or_cleanup() {
+	v3_bin := ownership_build_v3()
+	for fixture in [
+		scoped_callback_worker_fixture.replace('return visitor.call(delta)', '_ = &visitor; return visitor.call(delta)'),
+		scoped_callback_worker_fixture.replace('fn walk_worker[^scope]', '@[manualfree]\nfn walk_worker[^scope]'),
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_callback_worker_escape', fixture + r'
+fn run[^scope](mut factory VisitorFactory[^scope]) {
+	handle := spawn walk_worker(Walker{delta: 1}, factory.create(), false)
+	defer { handle.wait() }
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut factory)
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('scoped callbacks require a checked invocation with a deferred join'), result.output
+	}
+}
+
+fn test_ownership_scoped_callback_worker_requires_original_box_and_join() {
+	v3_bin := ownership_build_v3()
+	for schedule in [
+		'first = factory.create(); handle := spawn walk_worker(Walker{delta: 1}, first, false); defer { handle.wait() }',
+		'spawn walk_worker(Walker{delta: 1}, first, false)',
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_callback_worker_move',
+			scoped_callback_worker_fixture + r'
+fn run[^scope](mut factory VisitorFactory[^scope]) {
+	mut first := factory.create()
+' + schedule + '\n}\n' + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut factory)
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot move `first` because it borrows `factory`'), result.output
+	}
+}

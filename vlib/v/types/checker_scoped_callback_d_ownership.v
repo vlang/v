@@ -37,7 +37,7 @@ fn (tc &TypeChecker) ownership_scoped_callback_call_is(id flat.NodeId, member st
 	return tc.ownership_scoped_callback_function(name, member)
 }
 
-fn (tc &TypeChecker) ownership_scoped_callback_origin(id flat.NodeId) ?flat.NodeId {
+fn (tc &TypeChecker) ownership_scoped_callback_origin(id flat.NodeId, expected Type) ?flat.NodeId {
 	value_id := tc.ownership_unwrap_expr(id)
 	value := tc.a.node(value_id)
 	if value.kind != .ident {
@@ -55,29 +55,54 @@ fn (tc &TypeChecker) ownership_scoped_callback_origin(id flat.NodeId) ?flat.Node
 		if tc.a.child(scope, i) != stmt_id {
 			continue
 		}
-		decl := tc.a.child_node(scope, i - 1)
-		if decl.kind != .decl_assign || decl.children_count != 2 || decl.is_mut {
-			return none
+		for previous := i - 1; previous >= 0; previous-- {
+			decl := tc.a.child_node(scope, previous)
+			if decl.kind != .decl_assign || decl.children_count != 2 {
+				continue
+			}
+			binding_id := tc.a.child(decl, 0)
+			binding := tc.a.node(binding_id)
+			if binding.kind != .ident || binding.value != value.value {
+				continue
+			}
+			if previous + 1 < i {
+				// The box may be used before spawning if those uses borrow
+				// it without replacing it or exposing its payload.
+				fn_id := tc.diagnostic_enclosing_fn(stmt_id)
+				if !tc.valid_node_id(fn_id) || isnil(tc.ownership) {
+					return none
+				}
+				setup := ScopedCallbackWorkerScope{
+					decl:        fn_id
+					name:        tc.ownership.cur_fn
+					module_name: tc.cur_module
+					callback:    expected
+				}
+				mut helpers := map[u64]bool{}
+				for j in previous + 1 .. i {
+					if !tc.ownership_scoped_callback_worker_uses(tc.a.child(scope, j), setup,
+						ScopedCallbackWorkerBinding{ param: binding_id }, false, 0, mut helpers) {
+						return none
+					}
+				}
+			}
+			return tc.ownership_unwrap_expr(tc.a.child(decl, 1))
 		}
-		binding := tc.a.child_node(decl, 0)
-		if binding.kind != .ident || binding.value != value.value || binding.is_mut {
-			return none
-		}
-		// The adjacent immutable declaration fixes the constructor and the
-		// referents in its initializer at the point of the move.
-		return tc.ownership_unwrap_expr(tc.a.child(decl, 1))
+		return none
 	}
 	return none
 }
 
-// The library worker invokes the callback once and drops it before returning.
-// The inline concrete state gives the checker the complete set of payload loans.
+// Check both the worker that receives the box and the origin of its payload loans.
 fn (tc &TypeChecker) ownership_scoped_callback_borrows(id flat.NodeId, expected Type, info CallInfo, index int) ?[]ScopedThreadBorrow {
-	if index != 0 || !tc.ownership_scoped_callback_function(info.name, 'invoke_scoped_mut_callback')
-		|| !semantic_types_equal(unalias_type(tc.resolve_type(id)), unalias_type(expected)) {
+	if !semantic_types_equal(unalias_type(tc.resolve_type(id)), unalias_type(expected)) {
 		return none
 	}
-	origin := tc.ownership_scoped_callback_origin(id) or { return none }
+	if !(index == 0 && tc.ownership_scoped_callback_function(info.name, 'invoke_scoped_mut_callback'))
+		&& !tc.ownership_scoped_callback_worker(info, index, expected) {
+		return none
+	}
+	origin := tc.ownership_scoped_callback_origin(id, expected) or { return none }
 	if !tc.ownership_scoped_callback_call_is(origin, 'new_scoped_mut_callback') {
 		return tc.ownership_scoped_callback_factory_borrows(origin)
 	}

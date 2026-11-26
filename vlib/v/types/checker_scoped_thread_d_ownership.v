@@ -416,8 +416,17 @@ fn (tc &TypeChecker) ownership_scoped_thread_reborrows(id flat.NodeId) bool {
 	if tc.ownership_scoped_callback_call_is(call_id, 'new_scoped_mut_callback') {
 		runner_id := tc.ownership_scoped_thread_use_parent(call_id)
 		runner := tc.a.node(runner_id)
-		if runner.children_count != 3 || tc.ownership_unwrap_expr(tc.a.child(runner, 1)) != call_id
-			|| !tc.ownership_scoped_callback_call_is(runner_id, 'invoke_scoped_mut_callback') {
+		if runner.kind != .call {
+			return false
+		}
+		mut direct_argument := false
+		for i in 1 .. runner.children_count {
+			if tc.ownership_unwrap_expr(tc.call_arg_value(tc.a.child(runner, i))) == call_id {
+				direct_argument = true
+				break
+			}
+		}
+		if !direct_argument {
 			return false
 		}
 		call_id = runner_id

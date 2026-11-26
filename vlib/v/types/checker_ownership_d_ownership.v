@@ -976,20 +976,31 @@ fn (tc &TypeChecker) ownership_checks_suppressed() bool {
 // program's call sites decide what crosses into it. Autofree builds the compiler itself from
 // the library, so it keeps checking every body.
 fn (mut tc TypeChecker) ownership_file_keeps_value_semantics(file string) bool {
-	if tc.autofree_mode || file == '' || tc.compiler_vroot == '' || tc.diagnostic_files.len == 0
-		|| file in tc.diagnostic_files {
+	if !tc.ownership_can_keep_value_semantics(file) {
 		return false
 	}
 	mut st := tc.ownership_state()
 	if cached := st.library_files[file] {
 		return cached
 	}
+	keeps := tc.ownership_file_uses_library_value_semantics(file)
+	st.library_files[file] = keeps
+	return keeps
+}
+
+fn (tc &TypeChecker) ownership_can_keep_value_semantics(file string) bool {
+	return !tc.autofree_mode && file != '' && tc.compiler_vroot != '' && tc.diagnostic_files.len > 0
+		&& file !in tc.diagnostic_files
+}
+
+fn (tc &TypeChecker) ownership_file_uses_library_value_semantics(file string) bool {
+	if !tc.ownership_can_keep_value_semantics(file) {
+		return false
+	}
 	vlib := tc.memo_real_path(tc.compiler_vroot.trim_right('/\\') + '/vlib').replace('\\',
 		'/').trim_right('/')
 	path := tc.a.real_source_path(file).replace('\\', '/')
-	keeps := vlib.len > 0 && path.starts_with(vlib + '/') && !path.starts_with(vlib + '/builtin/')
-	st.library_files[file] = keeps
-	return keeps
+	return vlib.len > 0 && path.starts_with(vlib + '/') && !path.starts_with(vlib + '/builtin/')
 }
 
 // ownership_fn_decl_file returns the file that declares `node`. A generic specialization keeps
