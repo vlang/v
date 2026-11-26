@@ -217,12 +217,11 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_mut_fixed_array_views_borrow_elements_without_clone() {
-	for argument in ['values', 'values[0..1]'] {
-		output := copy_ownership_run('uncloneable_fixed_${argument.len}', '@[has_globals]
+fn test_fixed_array_borrows_preserve_original_owners() {
+	mut source := '@[has_globals]
 module main
 
-__global dropped = false
+__global handle_dropped = false
 
 interface Drop {
 mut:
@@ -235,30 +234,92 @@ mut:
 }
 
 fn (mut h Handle) drop() {
-	assert !dropped
-	dropped = true
+	assert !handle_dropped
+	handle_dropped = true
 }
 
 fn change(mut values []Handle) {
 	values[0].fd = 2
 }
 
-fn inspect(values &[]Handle) int {
+fn inspect_handle(values &[]Handle) int {
 	return values[0].fd
+}
+'
+	for name, argument in {
+		'direct': 'values'
+		'slice':  'values[0..1]'
+	} {
+		source += '
+fn check_${name}() {
+	mut values := [Handle{1}]!
+	assert inspect_handle(values) == 1
+	change(mut ${argument})
+	assert values[0].fd == 2
+	assert !handle_dropped
+	drop_owned(values)
+	assert handle_dropped
+	println("${name}")
+}
+'
+	}
+	source += '
+__global next_id = 0
+__global cloned = 0
+__global dropped = map[int]bool{}
+
+struct Resource implements IClone, Drop {
+	id int
+}
+
+fn fresh() Resource {
+	next_id++
+	return Resource{next_id}
+}
+
+fn (r &Resource) clone() Resource {
+	cloned++
+	return fresh()
+}
+
+fn (mut r Resource) drop() {
+	assert !dropped[r.id]
+	dropped[r.id] = true
+}
+
+fn inspect(values &[]Resource) int {
+	return values[0].id
+}
+
+fn check_immutable() {
+	values := [fresh()]!
+	original_id := values[0].id
+	assert inspect(values) == original_id
+	assert cloned == 0
+	assert values[0].id == original_id
+	assert !dropped[original_id]
+	drop_owned(values)
+	assert dropped[original_id]
+	println("immutable")
 }
 
 fn main() {
-	mut values := [Handle{1}]!
-	assert inspect(values) == 1
-	change(mut ${argument})
-	assert values[0].fd == 2
-	assert !dropped
-	drop_owned(values)
-	assert dropped
-	println("ok")
+	match arguments()[1] {
+		"direct" { check_direct() }
+		"slice" { check_slice() }
+		"immutable" { check_immutable() }
+		else { panic("unknown fixed-array borrow case") }
+	}
 }
-')
-		assert output == 'ok'
+'
+	name := 'fixed_array_borrows'
+	build := copy_ownership_compile(name, source)
+	assert build.exit_code == 0, build.output
+	binary := os.join_path(copy_ownership_tmp_dir, name)
+	for case in ['direct', 'slice', 'immutable'] {
+		run := os.exec([binary, case])
+		assert run.exit_code == 0, '${case}: ${run.output}'
+		assert run.output.trim_space() == case, '${case}: ${run.output}'
 	}
 }
 
@@ -288,57 +349,6 @@ fn main() {
 	output := os.exec([copy_ownership_vexe, 'run', path])
 	assert output.exit_code == 0, output.output
 	assert output.output.trim_space() == 'ok'
-}
-
-fn test_immutable_fixed_array_reference_keeps_original_owners() {
-	output := copy_ownership_run('immutable_fixed_reference', '@[has_globals]
-module main
-
-__global next_id = 0
-__global cloned = 0
-__global dropped = map[int]bool{}
-
-interface Drop {
-mut:
-	drop()
-}
-
-struct Resource implements IClone, Drop {
-	id int
-}
-
-fn fresh() Resource {
-	next_id++
-	return Resource{next_id}
-}
-
-fn (r &Resource) clone() Resource {
-	cloned++
-	return fresh()
-}
-
-fn (mut r Resource) drop() {
-	assert !dropped[r.id]
-	dropped[r.id] = true
-}
-
-fn inspect(values &[]Resource) int {
-	return values[0].id
-}
-
-fn main() {
-	values := [fresh()]!
-	original_id := values[0].id
-	assert inspect(values) == original_id
-	assert cloned == 0
-	assert values[0].id == original_id
-	assert !dropped[original_id]
-	drop_owned(values)
-	assert dropped[original_id]
-	println("ok")
-}
-')
-	assert output == 'ok'
 }
 
 fn test_fixed_array_borrows_preserve_callee_evaluation_order() {
