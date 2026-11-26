@@ -25,20 +25,6 @@ fn mut_param_reassign_run_good_with_c(name string, source string) (string, strin
 	return run.output.trim_space(), c_source
 }
 
-fn mut_param_reassign_run_bad(name string, source string, expected string) {
-	dir := mut_param_reassign_fixture_dir()
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	bin := os.join_path(dir, 'v3_${name}')
-	src := bin + '.v'
-	os.write_file(src, source) or { panic(err) }
-	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains(expected), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
 struct MutParamReassignCase {
 	name     string
 	source   string
@@ -89,8 +75,8 @@ fn mut_param_reassign_run_bad_batch(cases []MutParamReassignCase) {
 	dir := mut_param_reassign_fixture_dir()
 	defer { os.rmdir_all(dir) or {} }
 	mut imports := []string{cap: cases.len}
-	for i, case in cases {
-		module_name := 'fixture_${i}'
+	for case in cases {
+		module_name := case.name
 		imports << 'import ${module_name} as _'
 		mut_param_reassign_write_module(dir, module_name, case.name, case.source)
 	}
@@ -443,76 +429,6 @@ fn main() {
 	])
 }
 
-fn test_inner_scope_redefinition_of_mut_param_is_rejected_before_c_compile() {
-	mut_param_reassign_run_bad('bad_mut_array_param_inner_scope_redefinition', 'fn pair() ([]int, int) {
-	return [1], 0
-}
-
-fn replace(mut xs []int) {
-	if true {
-		mut xs := 0
-		_ = xs
-	}
-	if true {
-		xs, _ = pair()
-	}
-}
-
-fn main() {
-	mut xs := [0]
-	replace(mut xs)
-	assert xs.len == 1
-	assert xs[0] == 1
-	println("ok")
-}
-',
-		'redefinition of `xs`')
-}
-
-fn test_pointer_local_redefinition_of_mut_param_is_rejected_before_c_compile() {
-	mut_param_reassign_run_bad('bad_mut_array_param_pointer_redefinition', 'fn f(mut xs []int) {
-	mut local := []int{}
-	mut other := []int{}
-	{
-		xs := &local
-		xs = &other
-		_ = xs
-	}
-}
-
-fn main() {
-	mut xs := [0]
-	f(mut xs)
-	assert xs.len == 1
-	assert xs[0] == 0
-	println("ok")
-}
-',
-		'redefinition of `xs`')
-}
-
-fn test_generic_mut_pointer_param_requires_pointer_slot() {
-	mut_param_reassign_run_bad('generic_mut_pointer_param_requires_pointer_slot', 'struct Item {
-	value int
-}
-
-fn replace[T](mut current &T, replacement &T) {
-	current = replacement
-}
-
-fn main() {
-	mut current := Item{
-		value: 2
-	}
-	replacement := Item{
-		value: 8
-	}
-	replace[Item](mut current, &replacement)
-}
-',
-		'parameter `current` is `mut current &Item`, a mutable reference to a `&Item`')
-}
-
 fn test_mut_pointer_param_signature_and_expression_conversions() {
 	out, c_source := mut_param_reassign_run_good_with_c('mut_pointer_param_signature_and_expression_conversions', 'interface Reader {
 	read() int
@@ -629,7 +545,79 @@ fn main() {
 }
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
+	pointer_slot_case := 'generic_mut_pointer_param_requires_pointer_slot'
+	pointer_slot_ref := '&${pointer_slot_case}.Item'
 	mut_param_reassign_run_bad_batch([
+		MutParamReassignCase{
+			name:     'bad_mut_array_param_inner_scope_redefinition'
+			source:   'fn pair() ([]int, int) {
+	return [1], 0
+}
+
+fn replace(mut xs []int) {
+	if true {
+		mut xs := 0
+		_ = xs
+	}
+	if true {
+		xs, _ = pair()
+	}
+}
+
+fn main() {
+	mut xs := [0]
+	replace(mut xs)
+	assert xs.len == 1
+	assert xs[0] == 1
+	println("ok")
+}
+'
+			expected: 'redefinition of `xs`'
+		},
+		MutParamReassignCase{
+			name:     'bad_mut_array_param_pointer_redefinition'
+			source:   'fn f(mut xs []int) {
+	mut local := []int{}
+	mut other := []int{}
+	{
+		xs := &local
+		xs = &other
+		_ = xs
+	}
+}
+
+fn main() {
+	mut xs := [0]
+	f(mut xs)
+	assert xs.len == 1
+	assert xs[0] == 0
+	println("ok")
+}
+'
+			expected: 'redefinition of `xs`'
+		},
+		MutParamReassignCase{
+			name:     pointer_slot_case
+			source:   'struct Item {
+	value int
+}
+
+fn replace_pointer_slot[T](mut current &T, replacement &T) {
+	current = replacement
+}
+
+fn main() {
+	mut current := Item{
+		value: 2
+	}
+	replacement := Item{
+		value: 8
+	}
+	replace_pointer_slot[Item](mut current, &replacement)
+}
+'
+			expected: 'parameter `current` is `mut current ${pointer_slot_ref}`, a mutable reference to a `${pointer_slot_ref}`'
+		},
 		MutParamReassignCase{
 			name:     'bad_same_scope_mut_string_param_redeclare'
 			source:   "struct Text {
