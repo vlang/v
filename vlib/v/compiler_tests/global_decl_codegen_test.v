@@ -32,14 +32,70 @@ fn global_decl_generate_c(name string, source string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn test_typed_global_initializers_in_group_keep_type_and_value() {
-	out := global_decl_run_good('typed_global_initializers_in_group', 'import sync.stdatomic\n\n__global (\n\tfirst_flag &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)\n\tsecond_flag &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)\n)\n\nfn main() {\n\tfirst_flag.store(true)\n\tprintln(first_flag.load())\n\tprintln(second_flag.load())\n\tsecond_flag.store(true)\n\tprintln(second_flag.load())\n}\n')
-	assert out == 'true\nfalse\ntrue'
+fn test_global_runtime_initializer_fixtures() {
+	out := global_decl_run_good('global_initializer_cases', 'import sync.stdatomic
+
+__global (
+	first_flag &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
+	second_flag &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
+)
+
+fn check_typed_atomic_globals() {
+	first_flag.store(true)
+	println(first_flag.load())
+	println(second_flag.load())
+	second_flag.store(true)
+	println(second_flag.load())
 }
 
-fn test_implicit_global_dynamic_array_is_initialized_before_append() {
-	out := global_decl_run_good('implicit_global_dynamic_array', "struct Entry {\n\tname string\n}\n\n__global entries []Entry\n\nfn main() {\n\tentries << Entry{name: 'ok'}\n\tprintln(entries[0].name)\n}\n")
-	assert out == 'ok'
+struct Entry {
+	name string
+}
+
+__global entries []Entry
+
+fn check_implicit_global_dynamic_array() {
+	entries << Entry{name: \'ok\'}
+	println(entries[0].name)
+}
+
+__global (
+	ch chan int
+	values = []int{len: 3, init: 7}
+	callback = fn (n int) int {
+		return n + 1
+	}
+)
+
+fn send_value() {
+	ch <- 9
+}
+
+fn check_grouped_global_initializers() {
+	t := spawn send_value()
+	got := <-ch
+	t.wait()
+	println(int_str(got))
+	println(int_str(values.len) + \':\' + int_str(values[2]))
+	println(int_str(callback(4)))
+}
+
+type Pair = [2]int
+
+__global pair Pair = [2]int{init: 7}
+
+fn check_aliased_fixed_array_initializer() {
+	println(int_str(pair[0]) + ":" + int_str(pair[1]))
+}
+
+fn main() {
+	check_typed_atomic_globals()
+	check_implicit_global_dynamic_array()
+	check_grouped_global_initializers()
+	check_aliased_fixed_array_initializer()
+}
+')
+	assert out == 'true\nfalse\ntrue\nok\n9\n3:7\n5\n7:7'
 }
 
 fn test_implicit_global_containers_keep_synthesized_runtime_helpers() {
@@ -47,19 +103,9 @@ fn test_implicit_global_containers_keep_synthesized_runtime_helpers() {
 	assert out == 'ok'
 }
 
-fn test_global_runtime_initializers_preserve_channels_arrays_and_fn_values() {
-	out := global_decl_run_good('global_runtime_initializers', "__global (\n\tch chan int\n\tvalues = []int{len: 3, init: 7}\n\tcallback = fn (n int) int {\n\t\treturn n + 1\n\t}\n)\n\nfn send_value() {\n\tch <- 9\n}\n\nfn main() {\n\tt := spawn send_value()\n\tgot := <-ch\n\tt.wait()\n\tprintln(int_str(got))\n\tprintln(int_str(values.len) + ':' + int_str(values[2]))\n\tprintln(int_str(callback(4)))\n}\n")
-	assert out == '9\n3:7\n5'
-}
-
 fn test_explicit_shared_and_fixed_array_global_initializers() {
 	out := global_decl_run_good('shared_and_fixed_array_global_initializers', "struct Counter {\n\tvalue int\n}\n\n__global counter shared Counter = Counter{value: 7}\n__global fixed_values shared [2]int = [3, 4]!\n__global values = [][2]int{len: 1, init: [1, 2]!}\n\nfn main() {\n\tvalue := rlock counter {\n\t\tcounter.value\n\t}\n\tfixed_value := rlock fixed_values {\n\t\tfixed_values[0] * 10 + fixed_values[1]\n\t}\n\tprintln(int_str(value))\n\tprintln(int_str(fixed_value))\n\tprintln(int_str(values[0][0]) + ':' + int_str(values[0][1]))\n}\n")
 	assert out == '7\n34\n1:2'
-}
-
-fn test_aliased_fixed_array_global_initializer_uses_copy() {
-	out := global_decl_run_good('aliased_fixed_array_global_initializer', 'type Pair = [2]int\n\n__global pair Pair = [2]int{init: 7}\n\nfn main() {\n\tprintln(int_str(pair[0]) + ":" + int_str(pair[1]))\n}\n')
-	assert out == '7:7'
 }
 
 fn test_explicit_shared_array_constructor_preserves_length_capacity_and_initializer() {
