@@ -153,3 +153,45 @@ fn test_ownership_returned_string_fallback_copies_nonowning_arguments() {
 		assert out.output.trim_space() == 'ok', out.output
 	}
 }
+
+fn test_ownership_cached_utf8_validation_borrows_owned_strings() {
+	cc := 'cc'
+	if os.exec([cc, '--version']).exit_code != 0 {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'ownership_cached_utf8_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	previous_cache := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	defer {
+		if value := previous_cache {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+	}
+	// Distinct programs share module objects and each still needs checking.
+	for name in ['cold', 'warm'] {
+		source := os.join_path(root, '${name}.v')
+		executable := os.join_path(root, name + if os.user_os() == 'windows' { '.exe' } else { '' })
+		os.write_file(source, 'import encoding.utf8
+
+fn main() {
+	value := "${name}".to_owned()
+	assert utf8.validate_str(value)
+	println(value)
+}
+')!
+		build := os.exec([@VEXE, '-ownership', '-gc', 'none', '-cc', cc, '-v', '-o', executable,
+			source])
+		assert build.exit_code == 0, build.output
+		if name == 'warm' {
+			assert build.output.split_into_lines().any(it.trim_space().starts_with('.vh files:')
+				&& it.replace('\\', '/').contains('/utf8_')), build.output
+		}
+		run := os.exec([executable])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == name, run.output
+	}
+}

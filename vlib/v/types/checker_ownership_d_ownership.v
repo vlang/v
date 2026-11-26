@@ -14095,12 +14095,17 @@ fn (tc &TypeChecker) ownership_string_builtin_keeps_receiver(recv_id flat.NodeId
 }
 
 fn (tc &TypeChecker) ownership_fn_declared_in_builtin(fn_name string) bool {
+	return tc.ownership_fn_declared_in_stdlib_module(fn_name, 'builtin')
+}
+
+fn (tc &TypeChecker) ownership_fn_declared_in_stdlib_module(fn_name string, module_path string) bool {
 	file := tc.fn_type_files[fn_name] or { return false }
-	normalized := file.replace('\\', '/')
-	return normalized.starts_with('vlib/builtin/')
-		|| normalized.contains('/vlib/builtin/')
-		|| (normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
-			&& normalized.all_after_last('/').starts_with('builtin_'))
+	// The header name can omit the parent modules. Use the source recorded
+	// when the driver loaded the declaration.
+	source := tc.a.cached_header_sources[file] or { file }
+	normalized := source.replace('\\', '/')
+	return normalized.starts_with('vlib/${module_path}/')
+		|| normalized.contains('/vlib/${module_path}/')
 }
 
 fn (tc &TypeChecker) ownership_builtin_string_arg_escapes(fn_name string, param_idx int, typ Type) bool {
@@ -14139,12 +14144,7 @@ fn (tc &TypeChecker) ownership_standard_string_arg_is_borrowed(fn_name string, p
 	if standard_module == '' {
 		return false
 	}
-	file := tc.fn_type_files[fn_name] or { return false }
-	normalized := file.replace('\\', '/')
-	return normalized.starts_with('vlib/${standard_module}/')
-		|| normalized.contains('/vlib/${standard_module}/')
-		|| (normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
-			&& normalized.all_after_last('/').starts_with('${standard_module.replace('/', '_')}_'))
+	return tc.ownership_fn_declared_in_stdlib_module(fn_name, standard_module)
 }
 
 // type_name_text resolves the indexed source type spelling.
