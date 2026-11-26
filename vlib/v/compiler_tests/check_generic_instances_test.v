@@ -973,7 +973,7 @@ fn test_an_instance_of_an_alias_still_lacks_what_neither_has() {
 // element types are expected, and is the program of the layout tests below. Each
 // generic function has an instance with the elements it expects, and the ones
 // below have one with other elements too, which read them with the wrong size.
-const layout_program = "type Counts8 = map[string]u8
+const layout_declarations = 'type Counts8 = map[string]u8
 
 struct Wide {
 	vals []u64
@@ -1023,8 +1023,9 @@ fn total_map[T](m map[string]T) i64 {
 	return map_total(m)
 }
 
-fn main() {
-	println(to_bytes([u8(1)]))
+'
+
+const layout_calls = "	println(to_bytes([u8(1)]))
 	println(widen([u64(1)]))
 	println(assign([u64(1)]))
 	println(wrap([u64(1)]))
@@ -1039,6 +1040,8 @@ fn main() {
 		'a': i64(1)
 	}))
 "
+
+const layout_program = layout_declarations + 'fn main() {\n' + layout_calls
 
 const bad_layout_program = layout_program + "\tprintln(to_bytes([1, 2]))\n\tprintln(to_bytes([i32(1)]))\n\tprintln(widen([u8(1)]))\n\tprintln(assign([u32(1)]))\n\tprintln(wrap([u8(1)]))\n\tprintln(total([i32(1)]))\n\tprintln(narrow_map({\n\t\t'a': 1\n\t}))\n\tprintln(widen_map({\n\t\t'a': u8(1)\n\t}))\n\tprintln(total_map({\n\t\t'a': i32(1)\n\t}))\n}\n"
 
@@ -1066,19 +1069,7 @@ fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() 
 	}
 }
 
-// Instances whose arrays and maps have the elements the body expects stay valid,
-// in a check and in a build, and so does a generic function that no instance
-// gives other elements.
-fn test_instances_with_the_expected_elements_stay_valid() {
-	source := layout_program + '}\n'
-	for res in [check_program('layout_valid_check', source),
-		build_program('layout_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
-
-const wrapped_layout_program = 'fn opt[T](a ?[]T) ?[]u64 {
+const wrapped_layout_declarations = 'fn opt[T](a ?[]T) ?[]u64 {
 	return a
 }
 
@@ -1120,8 +1111,9 @@ fn (u User) speak() string {
 	return u.name
 }
 
-fn main() {
-	println(opt[u64]([u64(1)]))
+'
+
+const wrapped_layout_calls = '	println(opt[u64]([u64(1)]))
 	println(res([u64(1)]) or { [] })
 	println(fixed([u64(1), 2, 3]!))
 	println(nested([[u64(1)]]))
@@ -1130,6 +1122,8 @@ fn main() {
 	println(append([u64(1)]))
 	println(speakers([User{}]).len)
 '
+
+const wrapped_layout_program = wrapped_layout_declarations + 'fn main() {\n' + wrapped_layout_calls
 
 // An option, a result, a fixed array, a nested array, a `mut` argument and an
 // append keep the elements as they are too.
@@ -1150,13 +1144,13 @@ fn test_an_instance_that_wraps_or_nests_an_array_with_other_elements_is_reported
 	}
 }
 
-// The instances of these with the expected elements stay valid, and so does an
-// array of concrete values returned as an array of an interface they implement,
-// which is converted element by element.
-fn test_wrapped_instances_with_the_expected_elements_stay_valid() {
-	source := wrapped_layout_program + '}\n'
-	for res in [check_program('wrapped_layout_valid_check', source),
-		build_program('wrapped_layout_valid_build', source)] {
+// Arrays and maps with the expected elements stay valid, including wrapped
+// arrays. An array can also be converted element by element to an interface array.
+fn test_instances_with_the_expected_elements_stay_valid() {
+	source := layout_declarations + wrapped_layout_declarations + 'fn main() {\n' + layout_calls +
+		wrapped_layout_calls + '}\n'
+	for res in [check_program('layout_valid_check', source),
+		build_program('layout_valid_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}
