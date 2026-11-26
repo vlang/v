@@ -545,11 +545,27 @@ jobs:
               raise SystemExit(1)
           PY
           # Keep the original syntax, output equality and counter requirements.
+          syntax_failed=0
           for role in baseline candidate; do
+            rc=0
             clang -std=gnu11 -fsyntax-only -I thirdparty -I thirdparty/stdatomic/nix \
-              "$out/$role.inventory.c" > "$out/$role.syntax.log" 2>&1
+              "$out/$role.inventory.c" > "$out/$role.syntax.log" 2>&1 || rc=$?
+            printf '%s\n' "$rc" > "$out/$role.syntax.exit-status.txt"
+            echo "$role syntax exit: $rc"
+            cat "$out/$role.syntax.log"
+            if [ "$rc" -ne 0 ]; then syntax_failed=1; fi
           done
-          cmp "$out/baseline.inventory.c" "$out/candidate.inventory.c"
+          shasum -a 256 "$out/baseline.inventory.c" "$out/candidate.inventory.c" | tee "$out/generated-c.sha256"
+          cmp_rc=0
+          cmp "$out/baseline.inventory.c" "$out/candidate.inventory.c" > "$out/generated-c.cmp.log" 2>&1 || cmp_rc=$?
+          echo "generated C equality exit: $cmp_rc"
+          cat "$out/generated-c.cmp.log"
+          if [ "$cmp_rc" -ne 0 ]; then
+            diff -u "$out/baseline.inventory.c" "$out/candidate.inventory.c" > "$out/generated-c.diff" || test "$?" -eq 1
+            head -n 120 "$out/generated-c.diff"
+          fi
+          test "$syntax_failed" -eq 0
+          test "$cmp_rc" -eq 0
           for role in baseline candidate; do
             run_role "$role" "$role-warmup"
           done
