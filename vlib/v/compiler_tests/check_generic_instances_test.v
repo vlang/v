@@ -319,17 +319,6 @@ fn test_a_check_clones_a_library_instance_without_its_body() {
 	assert check.trace == ['1 of 2 library instances cloned without their bodies'], check.trace.str()
 }
 
-fn test_v_check_library_bodies_keeps_the_body_of_every_library_instance() {
-	check := check_with_modules_env('bodies_env', 'V_CHECK_LIBRARY_BODIES=all', {
-		'main.v': header_program
-	}, {
-		'advlib/advlib.v': library_module
-	})
-	assert check.res.exit_code == 0, check.res.output
-	assert check.trace == ['0 of 2 library instances cloned without their bodies',
-		'every library instance keeps its body: V_CHECK_LIBRARY_BODIES=all asks for them'], check.trace.str()
-}
-
 fn test_only_all_keeps_every_library_body() {
 	for value in ['1', ''] {
 		check := check_with_modules_env('bodies_not_all_${value}', 'V_CHECK_LIBRARY_BODIES=${value}', {
@@ -342,7 +331,7 @@ fn test_only_all_keeps_every_library_body() {
 	}
 }
 
-fn test_library_check_restores_existing_environment_values() {
+fn test_v_check_library_bodies_keeps_bodies_and_restores_environment() {
 	keys := ['VMODULES', 'V_DIAGNOSTICS_TRACE', 'V_CHECK_LIBRARY_BODIES']
 	mut previous := map[string]string{}
 	mut present := map[string]bool{}
@@ -368,6 +357,8 @@ fn test_library_check_restores_existing_environment_values() {
 		'advlib/advlib.v': library_module
 	})
 	assert check.res.exit_code == 0, check.res.output
+	assert check.trace == ['0 of 2 library instances cloned without their bodies',
+		'every library instance keeps its body: V_CHECK_LIBRARY_BODIES=all asks for them'], check.trace.str()
 	for key in keys {
 		assert os.getenv(key) == 'saved_${key}'
 	}
