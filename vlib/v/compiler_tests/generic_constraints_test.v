@@ -285,7 +285,10 @@ fn main() {
 }
 
 fn test_constrained_bodies_reject_undeclared_members() {
-	// Check parameters and locals in uncalled generic functions.
+	// Check values derived from constrained parameters in uncalled generic
+	// functions. Values derived from U keep its Named constraint through
+	// guards, calls and array methods, even when the callee uses T.
+	// Raise the message limit so all 29 errors are printed.
 	res := check_program('body_members', "fn derived[T Named](a T, b T, items []T, m map[string]T, c bool, n int) int {
 	x := a
 	mut total := x.age
@@ -348,37 +351,7 @@ fn label[T Named](x T) string {
 	return x.greet()
 }
 
-fn main() {}
-")
-	assert res.exit_code == 1, res.output
-	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
-	assert error_lines(res.output) == [
-		'3:17: ${no_age}',
-		'6:13: ${no_age}',
-		'8:13: ${no_age}',
-		'10:14: ${no_age}',
-		'13:19: ${no_age}',
-		'16:17: ${no_age}',
-		'18:26: ${no_age}',
-		'20:13: ${no_age}',
-		'22:13: ${no_age}',
-		'27:13: ${no_age}',
-		'29:13: ${no_age}',
-		'31:13: ${no_age}',
-		'32:19: type `T` has no method `greet`: its constraint `Named` does not declare it',
-		'41:11: ${no_age}',
-		'48:11: type `T` has no field named `len`: `int`, in its constraint `Number`, does not have it',
-		'52:7: ${no_age}',
-		'52:15: ${no_age}',
-		'55:12: type `T` has no field named `nme`: its constraint `Named` does not declare it',
-		'60:11: type `T` has no method `greet`: its constraint `Named` does not declare it',
-	], res.output
-}
-
-fn test_values_derived_in_a_generic_body_keep_the_callers_type_parameter() {
-	// Values derived from `U` keep the caller's `Named` constraint through guards,
-	// calls and array methods, even when the callee uses `T` for its parameter.
-	res := check_program('caller_types', "fn find[T Named](items []T) ?T {
+fn find[T Named](items []T) ?T {
 	return none
 }
 
@@ -386,7 +359,7 @@ fn pair[T Named](a T) (T, int) {
 	return a, 1
 }
 
-fn derived[U Named](a U, items []U, m map[string]U) int {
+fn derived_from_calls[U Named](a U, items []U, m map[string]U) int {
 	mut total := 0
 	if v := m['k'] {
 		total += v.age
@@ -413,10 +386,6 @@ fn pick[T Named](a T) T {
 	return a
 }
 
-struct Box[T Named] {
-	item T
-}
-
 fn (b Box[T]) get() T {
 	return b.item
 }
@@ -432,20 +401,40 @@ fn mixed[T Greeter, U Named](g T, n U, b Box[U]) int {
 }
 
 fn main() {}
-")
+", '-message-limit', '100')
 	assert res.exit_code == 1, res.output
-	no_age := 'type `U` has no field named `age`: its constraint `Named` does not declare it'
+	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
+	no_caller_age := 'type `U` has no field named `age`: its constraint `Named` does not declare it'
 	assert error_lines(res.output) == [
-		'12:14: ${no_age}',
-		'15:14: ${no_age}',
-		'18:17: ${no_age}',
-		'20:18: ${no_age}',
+		'3:17: ${no_age}',
+		'6:13: ${no_age}',
+		'8:13: ${no_age}',
+		'10:14: ${no_age}',
+		'13:19: ${no_age}',
+		'16:17: ${no_age}',
+		'18:26: ${no_age}',
+		'20:13: ${no_age}',
 		'22:13: ${no_age}',
-		'24:14: ${no_age}',
-		'27:14: ${no_age}',
-		'51:11: ${no_age}',
-		'51:19: ${no_age}',
-		'51:33: ${no_age}',
+		'27:13: ${no_age}',
+		'29:13: ${no_age}',
+		'31:13: ${no_age}',
+		'32:19: type `T` has no method `greet`: its constraint `Named` does not declare it',
+		'41:11: ${no_age}',
+		'48:11: type `T` has no field named `len`: `int`, in its constraint `Number`, does not have it',
+		'52:7: ${no_age}',
+		'52:15: ${no_age}',
+		'55:12: type `T` has no field named `nme`: its constraint `Named` does not declare it',
+		'60:11: type `T` has no method `greet`: its constraint `Named` does not declare it',
+		'74:14: ${no_caller_age}',
+		'77:14: ${no_caller_age}',
+		'80:17: ${no_caller_age}',
+		'82:18: ${no_caller_age}',
+		'84:13: ${no_caller_age}',
+		'86:14: ${no_caller_age}',
+		'89:14: ${no_caller_age}',
+		'109:11: ${no_caller_age}',
+		'109:19: ${no_caller_age}',
+		'109:33: ${no_caller_age}',
 	], res.output
 }
 
