@@ -876,9 +876,9 @@ fn main() {
 	], compile.output
 }
 
-fn test_owned_nested_string_consumer_with_mutating_sibling_is_rejected() {
+fn test_owned_nested_consumers_with_mutating_siblings_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_string_mutating_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_consumers_mutating_siblings', "struct E {
 	name string
 }
 
@@ -887,221 +887,118 @@ fn delete_last(mut arr []E) string {
 	return '?'
 }
 
-fn last_name_then_delete(mut arr []E) string {
-	return (arr.last().name + '!') + delete_last(mut arr)
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-
-	call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value string, suffix string) string {
+fn consume_string(value string, suffix string) string {
 	return value + suffix
 }
 
-fn last_name_then_delete(mut arr []E) string {
-	return consume(arr.last().name + '!', delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert call.exit_code != 0, call.output
-	assert call.output.contains('cannot return an independent array element'), call.output
-
-	interpolation_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_interpolation_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value string, suffix string) string {
-	return value + suffix
-}
-
-fn last_name_then_delete(mut arr []E) string {
-	return consume('<\${arr.last().name}>', delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert interpolation_call.exit_code != 0, interpolation_call.output
-	assert interpolation_call.output.contains('cannot return an independent array element'), interpolation_call.output
-
-	comparison_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_comparison_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value bool, suffix string) bool {
+fn consume_bool(value bool, suffix string) bool {
 	return value
 }
 
-fn last_name_then_delete(mut arr []E) bool {
-	return consume(arr.last().name == 'hello', delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert comparison_call.exit_code != 0, comparison_call.output
-	assert comparison_call.output.contains('cannot return an independent array element'), comparison_call.output
-
-	wrapped_comparison_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_wrapped_comparison_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value bool, suffix string) bool {
+fn consume_int(value int, suffix string) int {
 	return value
-}
-
-fn last_name_then_delete(mut arr []E) bool {
-	return consume(!(arr.last().name == 'hello'), delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert wrapped_comparison_call.exit_code != 0, wrapped_comparison_call.output
-	assert wrapped_comparison_call.output.contains('cannot return an independent array element'), wrapped_comparison_call.output
-
-	scalar_selector_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_selector_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value int, suffix string) int {
-	return value
-}
-
-fn last_name_len_then_delete(mut arr []E) int {
-	return consume(arr.last().name.len, delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_len_then_delete(mut arr))
-}
-", '')
-	assert scalar_selector_call.exit_code != 0, scalar_selector_call.output
-	assert scalar_selector_call.output.contains('cannot return an independent array element'), scalar_selector_call.output
-
-	conditional_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_conditional_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value int, suffix string) int {
-	return value
-}
-
-fn last_name_len_then_delete(mut arr []E, flag bool) int {
-	return consume(if flag { arr.last().name.len } else { 0 }, delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_len_then_delete(mut arr, true))
-}
-", '')
-	assert conditional_call.exit_code != 0, conditional_call.output
-	assert conditional_call.output.contains('cannot return an independent array element'), conditional_call.output
-
-	logical_wrapper_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_logical_wrapper_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value bool, suffix string) bool {
-	return value
-}
-
-fn last_name_then_delete(mut arr []E) bool {
-	return consume((arr.last().name == 'hello') && true, delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert logical_wrapper_call.exit_code != 0, logical_wrapper_call.output
-	assert logical_wrapper_call.output.contains('cannot return an independent array element'), logical_wrapper_call.output
-
-	nested_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_call_argument_mutating_outer_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
 }
 
 fn identity(value string) string {
 	return value
 }
 
-fn consume(value string, suffix string) string {
-	return value + suffix
+fn nested_concat_then_delete(mut arr []E) string {
+	return (arr.last().name + '!') + delete_last(mut arr)
 }
 
-fn last_name_then_delete(mut arr []E) string {
-	return consume(identity(arr.last().name + '!'), delete_last(mut arr))
+fn concat_arg_then_delete(mut arr []E) string {
+	return consume_string(arr.last().name + '!', delete_last(mut arr))
+}
+
+fn interpolation_arg_then_delete(mut arr []E) string {
+	return consume_string('<\${arr.last().name}>', delete_last(mut arr))
+}
+
+fn comparison_arg_then_delete(mut arr []E) bool {
+	return consume_bool(arr.last().name == 'hello', delete_last(mut arr))
+}
+
+fn negated_comparison_arg_then_delete(mut arr []E) bool {
+	return consume_bool(!(arr.last().name == 'hello'), delete_last(mut arr))
+}
+
+fn length_arg_then_delete(mut arr []E) int {
+	return consume_int(arr.last().name.len, delete_last(mut arr))
+}
+
+fn conditional_arg_then_delete(mut arr []E, flag bool) int {
+	return consume_int(if flag { arr.last().name.len } else { 0 }, delete_last(mut arr))
+}
+
+fn logical_arg_then_delete(mut arr []E) bool {
+	return consume_bool((arr.last().name == 'hello') && true, delete_last(mut arr))
+}
+
+fn nested_arg_then_delete(mut arr []E) string {
+	return consume_string(identity(arr.last().name + '!'), delete_last(mut arr))
+}
+
+fn check_nested_concat() {
+	mut arr := [E{ name: 'hello' }]
+	println(nested_concat_then_delete(mut arr))
+}
+
+fn check_concat_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(concat_arg_then_delete(mut arr))
+}
+
+fn check_interpolation_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(interpolation_arg_then_delete(mut arr))
+}
+
+fn check_comparison_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(comparison_arg_then_delete(mut arr))
+}
+
+fn check_negated_comparison_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(negated_comparison_arg_then_delete(mut arr))
+}
+
+fn check_length_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(length_arg_then_delete(mut arr))
+}
+
+fn check_conditional_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(conditional_arg_then_delete(mut arr, true))
+}
+
+fn check_logical_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(logical_arg_then_delete(mut arr))
+}
+
+fn check_nested_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(nested_arg_then_delete(mut arr))
 }
 
 fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
+	check_nested_concat()
+	check_concat_arg()
+	check_interpolation_arg()
+	check_comparison_arg()
+	check_negated_comparison_arg()
+	check_length_arg()
+	check_conditional_arg()
+	check_logical_arg()
+	check_nested_arg()
 }
-", '')
-	assert nested_call.exit_code != 0, nested_call.output
-	assert nested_call.output.contains('cannot return an independent array element'), nested_call.output
+", '-nocolor')
+	// Locations include the prepended Drop interface.
+	assert_independent_array_element_errors(compile, ['32:10', '36:24', '40:28', '44:22', '48:24',
+		'52:21', '56:31', '60:23', '64:33'])
 }
 
 fn test_owned_scalar_consumer_in_aggregate_with_mutating_sibling_is_rejected() {
