@@ -21874,6 +21874,10 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	// This callback alias belongs to V, including when the target supplies libc headers.
 	g.writeln('typedef int (*qsort_callback_func)(const void*, const void*);')
 	if g.target_libc_headers {
+		if 'v_bare_system_environment' in g.compile_defines {
+			// POSIX exposes environ to applications, but the target headers may omit its declaration.
+			g.writeln('extern char** environ;')
+		}
 		// Everything below declares a hosted libc: FILE, the POSIX structs, and the
 		// prototypes that go with them. A kernel defines those itself, in its own
 		// headers, and a second declaration of `struct stat` or `strlen` conflicts

@@ -63,6 +63,9 @@ fn test_syscalls_program_runs_os_on_raw_syscalls() {
 		if cc != '' {
 			args << ['-cc', cc]
 		}
+		$if freebsd {
+			if cc == 'clang' { args << '-target-libc-headers' }
+		}
 		args << ['-o', exe, source]
 		build := os.exec(args)
 		assert build.exit_code == 0, '${name}: ${build.output}'
