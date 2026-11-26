@@ -112,8 +112,8 @@ fn main() {
 	assert !c_code.contains('raw_disabled_export'), c_code
 }
 
-fn test_export_name_matching_natural_symbol_uses_function_directly() {
-	root := export_attr_fixture_dir('natural_collision')
+fn test_export_natural_symbol_codegen_and_runtime() {
+	root := export_attr_fixture_dir('natural_symbols')
 	defer { os.rmdir_all(root) or {} }
 	export_attr_write_project(root, {
 		'main.v': "module main
@@ -122,23 +122,6 @@ fn test_export_name_matching_natural_symbol_uses_function_directly() {
 fn natural_name(value f64) f64 {
 	return value
 }
-
-fn main() {}
-"
-	})
-	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
-	assert compile.exit_code == 0, compile.output
-	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.count('double natural_name(double value) {') == 1, c_code
-	assert !c_code.contains('main__natural_name'), c_code
-}
-
-fn test_export_name_matching_natural_symbol_keeps_c_abi_int() {
-	root := export_attr_fixture_dir('natural_c_abi_int')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
 
 @[export: 'natural_add']
 fn natural_add(left int, right int) int {
@@ -154,28 +137,50 @@ fn take(cb fn (int, int) int) int {
 	return cb(40, 2)
 }
 
+fn rint() int {
+	return 1
+}
+
+@[export: 'v_rint']
+fn exported_rint_collision() int {
+	return 2
+}
+
 fn main() {
 	println(natural_add(3_000_000_000, 1).str())
 	println(take(natural_add).str())
 	println(renamed_add(3_000_000_000, 2).str())
+	println(rint().str())
+	println(exported_rint_collision().str())
 }
 "
 	})
 	bin_path := os.join_path(root, 'app')
 	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	assert !compile.output.contains('redefinition'), compile.output
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '3000000001\n42\n3000000002', run.output
+	assert run.output.trim_space() == '3000000001\n42\n3000000002\n1\n2', run.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
+	assert c_code.count('double natural_name(double value) {') == 1, c_code
+	assert !c_code.contains('main__natural_name'), c_code
+
 	// An export presents the C ABI whether or not it is renamed: C callers pass and
 	// read C `int`. V callers keep the 64-bit function under an internal name.
 	assert c_code.contains('int renamed_add_export(int left, int right) {'), c_code
-	assert c_code.count('int natural_add(int left, int right) {') == 1, c_code
+	natural_add_wrapper := 'int natural_add(int left, int right) {'
+	assert c_code.count(natural_add_wrapper) == 1, c_code
 	assert c_code.contains('i64 main__natural_add(i64 left, i64 right) {'), c_code
-	assert c_code.contains('return main__natural_add(left, right);'), c_code
+	assert c_code.all_after(natural_add_wrapper).all_before('\n}').contains('return main__natural_add(left, right);'), c_code
 	assert c_code.contains('take(main__natural_add)'), c_code
 	assert !c_code.contains('i64 natural_add('), c_code
+
+	// Prefix the main-module function when an export owns its natural C symbol.
+	rint_wrapper := 'int v_rint(void) {'
+	assert c_code.count(rint_wrapper) == 1, c_code
+	assert c_code.all_after(rint_wrapper).all_before('\n}').contains('return exported_rint_collision();'), c_code
 }
 
 fn test_natural_name_export_links_from_c_object_file() {
@@ -211,42 +216,6 @@ int main(void) {
 	run := os.exec([host])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '-42', run.output
-}
-
-fn test_export_name_of_libc_remapped_natural_symbol_prefixes_main_function() {
-	root := export_attr_fixture_dir('libc_remapped_natural_collision')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
-
-fn rint() int {
-	return 1
-}
-
-@[export: 'v_rint']
-fn exported_rint_collision() int {
-	return 2
-}
-
-fn main() {
-	println(rint().str())
-	println(exported_rint_collision().str())
-}
-"
-	})
-	// A main-module function whose natural C symbol an export owns is prefixed in C
-	// instead of rejected, so both functions keep working.
-	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	assert !compile.output.contains('redefinition'), compile.output
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1\n2', run.output
-	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.count('int v_rint(void) {') == 1, c_code
-	assert c_code.contains('return exported_rint_collision();'), c_code
 }
 
 fn test_export_main_collision_with_top_level_script_entry_is_rejected() {
