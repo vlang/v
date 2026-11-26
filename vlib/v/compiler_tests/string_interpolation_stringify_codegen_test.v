@@ -4,7 +4,7 @@ import v.tempname
 fn compile_string_interp_input(source string, bin string) os.Result {
 	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	return os.exec([@VEXE, src, '-b', 'c', '-o', bin])
+	return os.exec([@VEXE, src, '-b', 'c', '-nocolor', '-o', bin])
 }
 
 fn test_typed_string_interpolation_stringifies_maps_arrays_and_generic_indexes() {
@@ -234,37 +234,14 @@ value 9"
 	assert run.output.trim_space() == expected
 }
 
-fn test_string_plus_accepts_string_aliases() {
+fn test_string_plus_and_stringification_accept_aliases() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
 	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
 	src := "type MyString = string
-
-fn main() {
-	s := MyString('y')
-	assert 'x' + s == 'xy'
-	assert s + 'z' == 'yz'
-	println('ok')
-}
-"
-	bin := os.join_path(dir, 'v3_string_alias_plus_positive')
-	compile := compile_string_interp_input(src, bin)
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_primitive_alias_chains_stringify_without_alias_wrapper() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	src := "type A = string
+type A = string
 type B = A
 type I = int
 type J = I
@@ -272,18 +249,22 @@ type Truth = bool
 type Toggle = Truth
 
 fn main() {
+	s := MyString('y')
+	assert 'x' + s == 'xy'
+	assert s + 'z' == 'yz'
+	println('ok')
 	println(B('x'))
 	println(J(7))
 	println(Toggle(true))
 }
 "
-	bin := os.join_path(dir, 'v3_primitive_alias_chain_str')
+	bin := os.join_path(dir, 'v3_string_aliases')
 	compile := compile_string_interp_input(src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'x\n7\ntrue'
+	assert run.output.trim_space().split_into_lines() == ['ok', 'x', '7', 'true'], run.output
 }
 
 fn test_string_plus_does_not_stringify_non_strings() {
@@ -292,26 +273,27 @@ fn test_string_plus_does_not_stringify_non_strings() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	int_bin := os.join_path(dir, 'v3_string_plus_int_negative')
-	int_result := compile_string_interp_input("fn main() {
+	src := "fn main() {
 	_ := 'x' + 1
-}
-",
-		int_bin)
-	assert int_result.exit_code != 0, int_result.output
-	// The V1 wording (550e503dce).
-	assert int_result.output.contains('infix expr: cannot use `int literal` (right expression) as `string`'), int_result.output
-	assert !int_result.output.contains('C compilation failed'), int_result.output
-
-	map_bin := os.join_path(dir, 'v3_string_plus_map_negative')
-	map_result := compile_string_interp_input("fn main() {
 	_ := 'x' + map[string]int{}
 }
-",
-		map_bin)
-	assert map_result.exit_code != 0, map_result.output
-	assert map_result.output.contains('infix expr: cannot use `map[string]int` (right expression) as `string`'), map_result.output
-	assert !map_result.output.contains('C compilation failed'), map_result.output
+"
+	bin := os.join_path(dir, 'v3_string_plus_rejections')
+	result := compile_string_interp_input(src, bin)
+	assert result.exit_code != 0, result.output
+	assert !result.output.contains('C compilation failed'), result.output
+	expected := {
+		"\t_ := 'x' + 1":                'infix expr: cannot use `int literal` (right expression) as `string`'
+		"\t_ := 'x' + map[string]int{}": 'infix expr: cannot use `map[string]int` (right expression) as `string`'
+	}
+	lines := src.split_into_lines()
+	diagnostics := result.output.split_into_lines().filter(it.contains(': error: '))
+	for statement, message in expected {
+		line := lines.index(statement) + 1
+		assert line > 0, statement
+		location := 'v3_string_plus_rejections.v:${line}:'
+		assert diagnostics.any(it.contains(location) && it.contains(message)), 'expected ${message} at ${location}\n${result.output}'
+	}
 }
 
 fn test_joined_interpolation_preserves_order_and_formatted_parts() {
