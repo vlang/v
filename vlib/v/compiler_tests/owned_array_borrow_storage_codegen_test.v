@@ -64,27 +64,6 @@ ${branches.join('\n')}
 	return os.join_path(borrow_storage_tmp_dir, name)
 }
 
-fn test_owned_sum_box_cleanup_matches_gc_allocator() {
-	src := borrow_storage_drop_decls + '
-type Bucket = Res | int
-
-fn main() {
-	bucket := Bucket(Res{1})
-	drop_owned(bucket)
-	mut direct := Res{2}
-	if direct.id == 0 { direct.drop() }
-}
-'
-	for i, flags in ['', '-gc none'] {
-		name := 'sum_box_allocator_${i}'
-		build := borrow_storage_compile_with_flags(name, src, flags)
-		assert build.exit_code == 0, '${name}: ${build.output}'
-		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-		assert run.exit_code == 0, '${name}: ${run.output}'
-		assert run.output.trim_space() == 'drop 1\ndrop 2'
-	}
-}
-
 fn test_owned_borrowed_array_views_clone_only_when_detaching() {
 	output := borrow_storage_run('fixed_array_detach', '@[has_globals]
 module main
@@ -937,16 +916,16 @@ fn (mut h Handle) drop() {}
 	}
 }
 
-fn test_owned_array_trim_drops_only_a_valid_removed_range() {
+fn test_owned_sum_box_and_array_trim_cleanup_match_gc_allocators() {
 	source := '@[has_globals]
 module main
+' + borrow_storage_drop_decls + '
 __global calls = 0
 __global drops = 0
-interface Drop { mut: drop() }
 struct Handle implements Drop { id int }
 fn (mut h Handle) drop() { drops++ }
 fn trim_index(index int) int { calls++; return index }
-fn main() {
+fn check_trim() {
 	for index in [-1, 2, 3, 1, 0] {
 		calls = 0
 		drops = 0
@@ -966,14 +945,35 @@ fn main() {
 	}
 	println("ok")
 }
+
+type Bucket = Res | int
+
+fn main() {
+	case_name := arguments()[1]
+	if case_name == "trim" {
+		check_trim()
+		return
+	}
+	assert case_name == "sum_box"
+	bucket := Bucket(Res{1})
+	drop_owned(bucket)
+	mut direct := Res{2}
+	if direct.id == 0 { direct.drop() }
+}
 '
+	outputs := {
+		'sum_box': 'drop 1\ndrop 2'
+		'trim':    'ok'
+	}
 	for i, flags in ['', '-gc none'] {
-		name := 'owned_trim_bounds_${i}'
+		name := 'owned_cleanup_allocator_${i}'
 		build := borrow_storage_compile_with_flags(name, source, flags)
 		assert build.exit_code == 0, '${name}: ${build.output}'
-		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-		assert run.exit_code == 0, '${name}: ${run.output}'
-		assert run.output.trim_space() == 'ok'
+		for case_name, expected in outputs {
+			run := os.exec([os.join_path(borrow_storage_tmp_dir, name), case_name])
+			assert run.exit_code == 0, '${name} ${case_name}: ${run.output}'
+			assert run.output.trim_space() == expected, '${name} ${case_name}: ${run.output}'
+		}
 	}
 }
 
