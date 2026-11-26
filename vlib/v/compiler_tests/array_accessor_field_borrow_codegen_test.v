@@ -630,9 +630,9 @@ fn main() {
 	], compile.output
 }
 
-fn test_owned_scalar_borrows_with_mutating_siblings_are_rejected() {
+fn test_owned_scalar_borrows_with_mutating_calls_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_mutating_siblings', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_mutating_calls', "struct E {
 	name string
 }
 
@@ -684,14 +684,76 @@ fn check_return() {
 	println(int_str(length) + ':' + action)
 }
 
+fn delete_last(mut entries []E) bool {
+	entries.delete_last()
+	return true
+}
+
+fn if_length(mut entries []E) int {
+	return if delete_last(mut entries) { entries.last().name.len } else { 0 }
+}
+
+fn match_subject_length(mut entries []E) int {
+	return match delete_last(mut entries) {
+		true { entries.last().name.len }
+		else { 0 }
+	}
+}
+
+fn delete_last_or_error(mut entries []E) !int {
+	entries.delete_last()
+	return error('deleted')
+}
+
+fn or_length(mut entries []E) int {
+	return delete_last_or_error(mut entries) or { entries.last().name.len }
+}
+
+fn delete_last_and_return_one(mut entries []E) int {
+	entries.delete_last()
+	return 1
+}
+
+fn match_branch_length(mut entries []E) int {
+	return match 1 {
+		delete_last_and_return_one(mut entries) { entries.last().name.len }
+		else { 0 }
+	}
+}
+
+fn check_if() {
+	mut entries := [E{ name: 'hello' }]
+	println(if_length(mut entries))
+}
+
+fn check_match_subject() {
+	mut entries := [E{ name: 'hello' }]
+	println(match_subject_length(mut entries))
+}
+
+fn check_or() {
+	mut entries := [E{ name: 'hello' }]
+	println(or_length(mut entries))
+}
+
+fn check_match_branch() {
+	mut entries := [E{ name: 'hello' }]
+	println(match_branch_length(mut entries))
+}
+
 fn main() {
 	check_index()
 	check_field()
 	check_return()
+	check_if()
+	check_match_subject()
+	check_or()
+	check_match_branch()
 }
 ", '-nocolor')
 	// Locations include the prepended Drop interface.
-	assert_independent_array_element_errors(compile, ['16:9', '30:18', '39:9'])
+	assert_independent_array_element_errors(compile, ['16:9', '30:18', '39:9', '64:39', '69:10',
+		'80:48', '90:45'])
 }
 
 fn test_owned_field_overloaded_comparison_and_index_are_rejected() {
@@ -1182,80 +1244,6 @@ fn main() {
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['104', '5', '15', '0', '5'], run.output
-}
-
-fn test_owned_conditional_prerequisites_that_mutate_source_are_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_prerequisites', "struct E {
-	name string
-}
-
-fn delete_last(mut entries []E) bool {
-	entries.delete_last()
-	return true
-}
-
-fn if_length(mut entries []E) int {
-	return if delete_last(mut entries) { entries.last().name.len } else { 0 }
-}
-
-fn match_subject_length(mut entries []E) int {
-	return match delete_last(mut entries) {
-		true { entries.last().name.len }
-		else { 0 }
-	}
-}
-
-fn delete_last_or_error(mut entries []E) !int {
-	entries.delete_last()
-	return error('deleted')
-}
-
-fn or_length(mut entries []E) int {
-	return delete_last_or_error(mut entries) or { entries.last().name.len }
-}
-
-fn delete_last_and_return_one(mut entries []E) int {
-	entries.delete_last()
-	return 1
-}
-
-fn match_branch_length(mut entries []E) int {
-	return match 1 {
-		delete_last_and_return_one(mut entries) { entries.last().name.len }
-		else { 0 }
-	}
-}
-
-fn check_if() {
-	mut entries := [E{ name: 'hello' }]
-	println(if_length(mut entries))
-}
-
-fn check_match_subject() {
-	mut entries := [E{ name: 'hello' }]
-	println(match_subject_length(mut entries))
-}
-
-fn check_or() {
-	mut entries := [E{ name: 'hello' }]
-	println(or_length(mut entries))
-}
-
-fn check_match_branch() {
-	mut entries := [E{ name: 'hello' }]
-	println(match_branch_length(mut entries))
-}
-
-fn main() {
-	check_if()
-	check_match_subject()
-	check_or()
-	check_match_branch()
-}
-", '-nocolor')
-	// Locations include the prepended Drop interface.
-	assert_independent_array_element_errors(compile, ['16:39', '21:10', '32:48', '42:45'])
 }
 
 fn test_owned_scalar_borrows_with_implicit_mutations_are_rejected() {
