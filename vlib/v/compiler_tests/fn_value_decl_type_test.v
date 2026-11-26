@@ -7,13 +7,18 @@ fn fn_value_new_fixture_dir() string {
 	return root
 }
 
-fn fn_value_run_good(fixture_dir string, name string, src string) string {
+fn fn_value_compile_good(fixture_dir string, name string, src string) string {
 	good_src := os.join_path(fixture_dir, 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(fixture_dir, 'v3_${name}')
 	compile := os.exec([@VEXE, '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
+	return good_bin
+}
+
+fn fn_value_run_good(fixture_dir string, name string, src string) string {
+	good_bin := fn_value_compile_good(fixture_dir, name, src)
 	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
@@ -389,35 +394,6 @@ fn main() {
 println(use(actual))
 }
 "
-
-const local_fn_value_optional_call_shadow_src = 'fn f() ?int {
-	return 99
-}
-
-fn take(value ?int) int {
-	return value or { -1 }
-}
-
-fn main() {
-	f := fn () int {
-		return 7
-	}
-	println(int_str(take(f())))
-}
-'
-
-const drop_owned_callback_shadow_src = 'fn record(value int) {
-	println(int_str(value))
-}
-
-fn invoke(drop_owned fn (int), value int) {
-	drop_owned(value)
-}
-
-fn main() {
-	invoke(record, 7)
-}
-'
 
 const local_fn_value_ident_shadow_fn_src = 'fn foo(i int) int {
 	return i + 100
@@ -804,15 +780,35 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 fn test_shadowed_fn_value_calls_use_bound_callable_types() {
 	fixture_dir := fn_value_new_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	assert fn_value_run_good(fixture_dir, 'fn_value_optional_call_shadow',
-		local_fn_value_optional_call_shadow_src) == '7'
-	assert fn_value_run_good(fixture_dir, 'drop_owned_callback_shadow', drop_owned_callback_shadow_src) == '7'
+	bin := fn_value_compile_good(fixture_dir, 'fn_value_shadowed_calls', 'fn f() ?int {
+	return 99
+}
 
-	optional_c := fn_value_gen_c(fixture_dir, 'fn_value_optional_call_shadow_c',
-		local_fn_value_optional_call_shadow_src)
-	assert optional_c.contains('take((__v_option_i64){.ok = true, .value = f()})'), optional_c
-	assert !optional_c.contains('take(f())'), optional_c
+fn take(value ?int) int {
+	return value or { -1 }
+}
 
-	drop_owned_c := fn_value_gen_c(fixture_dir, 'drop_owned_callback_shadow_c', drop_owned_callback_shadow_src)
-	assert drop_owned_c.contains('drop_owned(value);'), drop_owned_c
+fn record(value int) {
+	println(int_str(value))
+}
+
+fn invoke(drop_owned fn (int), value int) {
+	drop_owned(value)
+}
+
+fn main() {
+	f := fn () int {
+		return 7
+	}
+	println(int_str(take(f())))
+	invoke(record, 23)
+}
+')
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('take((__v_option_i64){.ok = true, .value = f()})'), generated
+	assert !generated.contains('take(f())'), generated
+	assert generated.contains('drop_owned(value);'), generated
+	run := os.exec([bin])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().split_into_lines() == ['7', '23'], run.output
 }
