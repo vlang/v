@@ -23,8 +23,8 @@ fn spread_promoted_project(name string, files map[string]string, run bool) os.Re
 	return os.exec([binary])
 }
 
-fn test_cross_struct_spread_accepts_complete_promoted_initializers() {
-	result := spread_promoted_project('complete', {
+fn test_cross_struct_spread_runtime_fixtures() {
+	result := spread_promoted_project('runtime', {
 		'support/support.v': 'module support
 pub struct Engine {
 	pub:
@@ -40,7 +40,7 @@ pub struct Nested {
 		active bool
 }
 '
-		'main.v':            'module main
+		'complete.v':        'module main
 import support
 struct LocalLink { token int }
 struct LocalOwner {
@@ -61,7 +61,7 @@ struct GenericOwner[T] {
 	width int
 }
 struct Config { width int }
-fn main() {
+fn check_complete_promoted_initializers() {
 	config := Config{width: 31}
 	generic := GenericOwner[int]{...config, value: 17}
 	assert generic.width == 31
@@ -80,6 +80,100 @@ fn main() {
 	assert nested.engine.tag == 7
 	assert nested.active
 	assert config.width == 31
+}
+'
+		'same_type.v':       'struct CopyLink { token int }
+struct CopyOwner {
+	CopyLink
+	width int
+}
+fn check_same_type_embed_copies() {
+	base := CopyOwner{token: 9, width: 31}
+	copy := CopyOwner{...base, width: 42}
+	assert copy.token == 9
+	assert copy.width == 42
+	assert base.width == 31
+}
+'
+		'evaluation.v':      'struct DefaultLink { token int = unused_default() }
+struct DefaultOwner { DefaultLink }
+struct PartialOwner {
+	DefaultLink
+	width int
+	fixed [2]int
+	dynamic []int
+	label string
+}
+struct FlatOwner { token int = unused_default() }
+struct DefaultConfig {
+	width int
+	fixed [2]int
+	dynamic []int
+	label string
+}
+struct Counter {
+mut:
+	calls int
+	order int
+}
+fn unused_default() int {
+	panic("overridden defaults must not run")
+}
+fn make_config(mut counter Counter) DefaultConfig {
+	counter.calls++
+	counter.order = counter.order * 10 + 1
+	return DefaultConfig{width: 31, fixed: [4, 5]!, dynamic: [6, 7], label: "copied"}
+}
+fn make_token(mut counter Counter) int {
+	counter.order = counter.order * 10 + 2
+	return 9
+}
+fn check_spread_evaluation() {
+	config := DefaultConfig{width: 31}
+	if config.width < 0 { unused_default() }
+	owner := DefaultOwner{...config, token: 9}
+	assert owner.token == 9
+	assert config.width == 31
+	mut counter := Counter{}
+	called := DefaultOwner{...make_config(mut counter), token: make_token(mut counter)}
+	assert called.token == 9
+	assert counter.calls == 1
+	assert counter.order == 12
+	counter = Counter{}
+	heap := &DefaultOwner{...make_config(mut counter), token: make_token(mut counter)}
+	assert heap.token == 9
+	assert counter.calls == 1
+	assert counter.order == 12
+	counter = Counter{}
+	flat := FlatOwner{...make_config(mut counter), token: make_token(mut counter)}
+	assert flat.token == 9
+	assert counter.calls == 1
+	assert counter.order == 12
+	counter = Counter{}
+	partial := PartialOwner{...make_config(mut counter), token: make_token(mut counter)}
+	assert partial.token == 9
+	assert partial.width == 31
+	assert partial.fixed == [4, 5]!
+	assert partial.dynamic == [6, 7]
+	assert partial.label == "copied"
+	assert counter.calls == 1
+	assert counter.order == 12
+}
+'
+		'ampersand_embed.v': 'struct PointerLink { token int }
+struct PointerOwner { &PointerLink }
+struct PointerConfig { width int }
+fn check_ampersand_embed() {
+	config := PointerConfig{width: 31}
+	owner := PointerOwner{...config, token: 9}
+	assert owner.token == 9
+}
+'
+		'main.v':            'fn main() {
+	check_complete_promoted_initializers()
+	check_same_type_embed_copies()
+	check_spread_evaluation()
+	check_ampersand_embed()
 }
 '
 	}, true)
@@ -169,109 +263,4 @@ fn main() {
 	for file, message in expected {
 		assert diagnostics.any(it.contains('${file}:') && it.contains(message)), 'expected ${message} in ${file}\n${result.output}'
 	}
-}
-
-fn test_cross_struct_spread_preserves_same_type_embed_copies() {
-	result := spread_promoted_project('same_type', {
-		'main.v': 'struct Link { token int }
-struct Owner {
-	Link
-	width int
-}
-fn main() {
-	base := Owner{token: 9, width: 31}
-	copy := Owner{...base, width: 42}
-	assert copy.token == 9
-	assert copy.width == 42
-	assert base.width == 31
-}
-'
-	}, true)
-	assert result.exit_code == 0, result.output
-}
-
-fn test_cross_struct_spread_without_copied_fields_preserves_evaluation() {
-	result := spread_promoted_project('no_copied_fields', {
-		'main.v': 'struct Link { token int = unused_default() }
-struct Owner { Link }
-struct PartialOwner {
-	Link
-	width int
-	fixed [2]int
-	dynamic []int
-	label string
-}
-struct FlatOwner { token int = unused_default() }
-struct Config {
-	width int
-	fixed [2]int
-	dynamic []int
-	label string
-}
-struct Counter {
-mut:
-	calls int
-	order int
-}
-fn unused_default() int {
-	panic("overridden defaults must not run")
-}
-fn make_config(mut counter Counter) Config {
-	counter.calls++
-	counter.order = counter.order * 10 + 1
-	return Config{width: 31, fixed: [4, 5]!, dynamic: [6, 7], label: "copied"}
-}
-fn make_token(mut counter Counter) int {
-	counter.order = counter.order * 10 + 2
-	return 9
-}
-fn main() {
-	config := Config{width: 31}
-	if config.width < 0 { unused_default() }
-	owner := Owner{...config, token: 9}
-	assert owner.token == 9
-	assert config.width == 31
-	mut counter := Counter{}
-	called := Owner{...make_config(mut counter), token: make_token(mut counter)}
-	assert called.token == 9
-	assert counter.calls == 1
-	assert counter.order == 12
-	counter = Counter{}
-	heap := &Owner{...make_config(mut counter), token: make_token(mut counter)}
-	assert heap.token == 9
-	assert counter.calls == 1
-	assert counter.order == 12
-	counter = Counter{}
-	flat := FlatOwner{...make_config(mut counter), token: make_token(mut counter)}
-	assert flat.token == 9
-	assert counter.calls == 1
-	assert counter.order == 12
-	counter = Counter{}
-	partial := PartialOwner{...make_config(mut counter), token: make_token(mut counter)}
-	assert partial.token == 9
-	assert partial.width == 31
-	assert partial.fixed == [4, 5]!
-	assert partial.dynamic == [6, 7]
-	assert partial.label == "copied"
-	assert counter.calls == 1
-	assert counter.order == 12
-}
-'
-	}, true)
-	assert result.exit_code == 0, result.output
-}
-
-fn test_cross_struct_spread_accepts_promoted_initializer_with_ampersand_embed() {
-	result := spread_promoted_project('ampersand_embed', {
-		'main.v': 'struct Link { token int }
-struct Owner { &Link }
-struct Config { width int }
-fn main() {
-	config := Config{width: 31}
-	owner := Owner{...config, token: 9}
-	assert owner.token == 9
-}
-'
-	}, true)
-	assert result.exit_code == 0, result.output
 }
