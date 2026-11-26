@@ -46,9 +46,10 @@ struct MovedVar {
 }
 
 struct BorrowInfo {
-	borrower string
-	pos      flat.NodeId
-	is_mut   bool
+	borrower    string
+	pos         flat.NodeId
+	is_mut      bool
+	call_result bool
 }
 
 struct OwnershipBorrowConflict {
@@ -4001,15 +4002,20 @@ fn (mut tc TypeChecker) ownership_prescan_return_param_sources(fn_name string, e
 			&& tc.a.child_node(child, 1).kind == .range)) {
 			child_id = tc.ownership_unwrap_expr(tc.a.child(child, 0))
 		}
-		if tc.valid_node_id(child_id) && tc.a.node(child_id).kind == .ident {
-			child_name := tc.a.node(child_id).value
+		if tc.valid_node_id(child_id) {
+			child_name := tc.ownership_expr_ident_name(child_id)
 			for pi, pname in param_names {
-				if child_name == pname && tc.ownership_call_param_is_mut(fn_name, pi) {
-					param_type := local_types[pname] or { Type(void_) }
-					if unalias_type(unwrap_pointer(param_type)) is Array {
-						tc.ownership_add_fn_return_param(fn_name, pi)
-						tc.ownership_add_fn_return_param_slot(fn_name, pi, slot_idx)
-					}
+				param_type := local_types[pname] or { Type(void_) }
+				is_mut := tc.ownership_call_param_is_mut(fn_name, pi)
+				if (is_mut || unalias_type(param_type) is Pointer)
+					&& ownership_storage_key_is_descendant(child_name, pname) {
+					// Taking the address of a field still borrows the caller's storage.
+					tc.ownership_add_fn_return_param_descendant(fn_name, pi, slot_idx,
+						child_name[pname.len..], '', false, [fn_name])
+				} else if child_name == pname && is_mut
+					&& unalias_type(unwrap_pointer(param_type)) is Array {
+					tc.ownership_add_fn_return_param(fn_name, pi)
+					tc.ownership_add_fn_return_param_slot(fn_name, pi, slot_idx)
 				}
 			}
 		}
@@ -7902,7 +7908,10 @@ fn (mut tc TypeChecker) ownership_commit_multi_assign_temp(temp_name string, lhs
 		} else {
 			lhs_name
 		}
-		tc.ownership_add_borrow(snap.var_name, target_borrower, snap.borrow.pos, snap.borrow.is_mut)
+		tc.ownership_add_borrow_info(snap.var_name, BorrowInfo{
+			...snap.borrow
+			borrower: target_borrower
+		})
 	}
 }
 
@@ -11745,26 +11754,56 @@ fn (mut tc TypeChecker) ownership_mark_borrow_from_call_return(lhs_name string, 
 		return false
 	}
 	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(call_id) }
-	return_param_idxs := tc.ownership_state().ownership_fn_returns_param[call_name] or { []int{} }
-	for param_idx in return_param_idxs {
-		arg_id := tc.ownership_call_arg_for_return_param_info(node, info, param_idx) or { continue }
-		if tc.ownership_call_returns_detached_array_header(call_name, param_idx, arg_id) {
-			continue
-		}
-		mut borrow_name := tc.ownership_borrowed_name(arg_id)
-		if borrow_name.len == 0 {
-			borrow_name = tc.ownership_expr_ident_name(arg_id)
-		}
-		if borrow_name.len == 0 || !tc.ownership_storage_participates(borrow_name) {
-			continue
-		}
-		mut st := tc.ownership_state()
-		st.owned_vars.delete(lhs_name)
-		st.owned_var_types.delete(lhs_name)
-		tc.ownership_add_borrow(borrow_name, lhs_name, pos, tc.ownership_call_param_is_mut(call_name, param_idx))
-		return true
+	st := tc.ownership_state()
+	mut sources := []OwnershipReturnParamDescendant{}
+	for param_idx in st.ownership_fn_returns_param[call_name] {
+		sources << OwnershipReturnParamDescendant{ param_idx: param_idx }
 	}
-	return false
+	for source in st.ownership_fn_return_param_descs[call_name] {
+		if source.slot_idx != 0 || source.target_suffix != '' || source.source_is_prefix {
+			continue
+		}
+		param := info.params[source.param_idx] or { continue }
+		if unalias_type(param) is Pointer || tc.ownership_call_param_is_mut(call_name, source.param_idx) {
+			sources << source
+		}
+	}
+	mut marked := false
+	for source in sources {
+		param_idx := source.param_idx
+		arg := tc.ownership_call_arg_for_return_param_source_info(node, info, param_idx,
+			source.source_suffix) or { continue }
+		if tc.ownership_call_returns_detached_array_header(call_name, param_idx, arg.arg_id) {
+			continue
+		}
+		mut borrower_source := tc.ownership_borrowed_name(arg.arg_id)
+		if borrower_source.len == 0 {
+			borrower_source = tc.ownership_expr_ident_name(arg.arg_id)
+		}
+		if borrower_source.len == 0 {
+			continue
+		}
+		borrower_source += arg.source_suffix
+		if !tc.ownership_storage_participates(borrower_source) {
+			continue
+		}
+		marked = true
+		if st.borrowed_vars[borrower_source].any(it.borrower == lhs_name && it.pos == pos) {
+			continue
+		}
+		tc.ownership_add_borrow_info(borrower_source, BorrowInfo{
+			borrower:    lhs_name
+			pos:         pos
+			is_mut:      tc.ownership_call_param_is_mut(call_name, param_idx)
+			call_result: true
+		})
+	}
+	if marked {
+		mut state := tc.ownership_state()
+		state.owned_vars.delete(lhs_name)
+		state.owned_var_types.delete(lhs_name)
+	}
+	return marked
 }
 
 // An argument copied for an owning call transfers that independent copy through its return.
@@ -13593,7 +13632,13 @@ fn ownership_storage_keys_dynamic_overlap(pattern string, key string) bool {
 }
 
 fn (mut tc TypeChecker) ownership_add_borrow(var_name string, borrower string, pos flat.NodeId, is_mut bool) {
-	if conflict := tc.ownership_overlapping_borrow_conflict(var_name, is_mut) {
+	tc.ownership_add_borrow_info(var_name, BorrowInfo{ borrower: borrower, pos: pos, is_mut: is_mut })
+}
+
+fn (mut tc TypeChecker) ownership_add_borrow_info(var_name string, info BorrowInfo) {
+	is_mut := info.is_mut
+	pos := info.pos
+	if conflict := tc.ownership_overlapping_borrow_conflict(var_name, info) {
 		if is_mut {
 			msg := if conflict.borrow.is_mut {
 				'cannot borrow `${var_name}` as mutable because `${conflict.name}` is already borrowed as mutable'
@@ -13627,24 +13672,14 @@ fn (mut tc TypeChecker) ownership_add_borrow(var_name string, borrower string, p
 			}
 		}
 		mut updated := existing.clone()
-		updated << BorrowInfo{
-			borrower: borrower
-			pos:      pos
-			is_mut:   is_mut
-		}
+		updated << info
 		st.borrowed_vars[var_name] = updated
 		return
 	}
-	st.borrowed_vars[var_name] = [
-		BorrowInfo{
-			borrower: borrower
-			pos:      pos
-			is_mut:   is_mut
-		},
-	]
+	st.borrowed_vars[var_name] = [info]
 }
 
-fn (mut tc TypeChecker) ownership_overlapping_borrow_conflict(var_name string, is_mut bool) ?OwnershipBorrowConflict {
+fn (mut tc TypeChecker) ownership_overlapping_borrow_conflict(var_name string, incoming BorrowInfo) ?OwnershipBorrowConflict {
 	st := tc.ownership_state()
 	for borrowed_name, borrows in st.borrowed_vars {
 		if borrowed_name == var_name || borrows.len == 0 {
@@ -13654,7 +13689,12 @@ fn (mut tc TypeChecker) ownership_overlapping_borrow_conflict(var_name string, i
 			continue
 		}
 		for borrow in borrows {
-			if is_mut || borrow.is_mut {
+			// A call returns one reference even when several places can supply it.
+			if incoming.call_result && borrow.call_result && incoming.borrower == borrow.borrower
+				&& incoming.pos == borrow.pos {
+				continue
+			}
+			if incoming.is_mut || borrow.is_mut {
 				return OwnershipBorrowConflict{
 					name:   borrowed_name
 					borrow: borrow

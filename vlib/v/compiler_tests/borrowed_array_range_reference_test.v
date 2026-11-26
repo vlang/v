@@ -58,18 +58,17 @@ fn main() {
   assert unsafe { uint(first.data) == address + 1 }
   assert first.len == 3
   assert disturb_stack(5) == 13
-  {
-   mut second := owner.free_buffer(0)
-   assert unsafe { uint(second.data) == address }
-   fill(mut second, 8)
-   assert owner.bytes[0] == 8
-   assert second.len == 4
-  }
-  assert owner.bytes[0] == 8
   fill(mut first, 9)
-  assert owner.bytes[1] == 9
   assert first.len == 3
  }
+ assert owner.bytes[1] == 9
+ {
+  mut second := owner.free_buffer(0)
+  assert unsafe { uint(second.data) == address }
+  fill(mut second, 8)
+  assert second.len == 4
+ }
+ assert owner.bytes[0] == 8
  assert owner.bytes == [u8(8), 9, 3, 4]
  assert unsafe { uint(owner.bytes.data) == address }
  {

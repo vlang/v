@@ -4365,3 +4365,161 @@ fn main() {
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('`cache.inner.items` aliases mutable data from an immutable value'), res.output
 }
+
+fn test_ownership_keeps_receiver_field_loans_from_returned_references() {
+	v3_bin := ownership_build_v3()
+	borrow_generic_mut := run_ownership_check(v3_bin, 'borrow_generic_mut', r'
+struct Value[T] {
+mut:
+	item T
+}
+fn (mut b ^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+fn escape() &int {
+	mut b := Value[int]{item: 7}
+	return b.view()
+}
+fn main() {
+	println(*escape())
+}
+')
+	assert borrow_generic_mut.exit_code != 0, borrow_generic_mut.output
+	assert borrow_generic_mut.output.contains('cannot return a reference to local storage `b`'), borrow_generic_mut.output
+
+	borrow_generic_read := run_ownership_check(v3_bin, 'borrow_generic_read', r'
+struct Value[T] {
+mut:
+	item T
+}
+fn (b &^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+fn escape() &int {
+	b := Value[int]{item: 7}
+	return b.view()
+}
+fn main() {
+	println(*escape())
+}
+')
+	assert borrow_generic_read.exit_code != 0, borrow_generic_read.output
+	assert borrow_generic_read.output.contains('cannot return a reference to local storage `b`'), borrow_generic_read.output
+
+	borrow_moved_owner := run_ownership_check(v3_bin, 'borrow_moved_owner', r'
+struct Value[T] implements Drop {
+mut:
+	item T
+}
+fn (mut b Value[T]) drop() {
+	drop_owned(b.item)
+}
+fn (mut b ^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+fn consume(value Value[string]) {}
+fn main() {
+	mut b := Value[string]{item: "retained".to_owned()}
+	item := b.view()
+	consume(b)
+	println(*item)
+}
+')
+	assert borrow_moved_owner.exit_code != 0, borrow_moved_owner.output
+	assert borrow_moved_owner.output.contains('cannot move `b` because `b.item` is borrowed by `item`'), borrow_moved_owner.output
+
+	valid := run_ownership_check(v3_bin, 'borrow_sibling', r'
+struct Value[T] implements Drop {
+mut:
+	item T
+	other int
+}
+fn (mut b Value[T]) drop() {
+	drop_owned(b.item)
+}
+fn (mut b ^a Value[T]) view[^a]() &^a T {
+	return &b.item
+}
+
+fn main() {
+	mut b := Value[string]{item: "retained".to_owned()}
+	item := b.view()
+	b.other = 2
+	assert *item == "retained"
+	assert b.other == 2
+}
+')
+	assert valid.exit_code == 0, valid.output
+}
+
+fn test_ownership_keeps_overlapping_alternative_origins_of_one_return() {
+	v3_bin := ownership_build_v3()
+	prefix := r'
+struct Buffer implements Drop {
+mut:
+	items []int
+	other int
+}
+
+fn (mut b Buffer) drop() {
+	drop_owned(b.items)
+}
+
+fn (mut b ^a Buffer) select_item[^a](index int) &^a int {
+	if index < 0 {
+		return &b.items[0]
+	}
+	return &b.items[index]
+}
+'
+	valid := run_ownership_check(v3_bin, 'alternative_return_origins', prefix + r'
+fn main() {
+	mut b := Buffer{items: [1, 2, 3]}
+	{
+		item := b.select_item(2)
+		b.other = 4
+		assert *item == 3
+	}
+	assert b.items == [1, 2, 3]
+	assert b.other == 4
+}
+')
+	assert valid.exit_code == 0, valid.output
+
+	invalid := run_ownership_check(v3_bin, 'alternative_return_conflict', prefix + r'
+fn main() {
+	mut b := Buffer{items: [1, 2, 3]}
+	item := b.select_item(2)
+	b.items[1] = 7
+	println(*item)
+}
+')
+	assert invalid.exit_code != 0, invalid.output
+	assert invalid.output.contains('borrowed by `item`'), invalid.output
+
+	parallel_assignment := prefix + r'
+fn main() {
+	mut b := Buffer{items: [1, 2, 3]}
+	{
+		mut placeholder := 0
+		mut item := &placeholder
+		mut n := 0
+		item, n = b.select_item(2), 1
+		b.other = 4
+		assert *item == 3
+		assert n == 1
+	}
+	b.items[1] = 7
+	assert b.items == [1, 7, 3]
+	assert b.other == 4
+}
+'
+	valid_parallel := run_ownership_check(v3_bin, 'alternative_return_parallel_assignment',
+		parallel_assignment)
+	assert valid_parallel.exit_code == 0, valid_parallel.output
+
+	invalid_parallel := run_ownership_check(v3_bin, 'alternative_return_parallel_assignment_conflict',
+		parallel_assignment.replace('b.other = 4', 'b.items[1] = 7'))
+	assert invalid_parallel.exit_code != 0, invalid_parallel.output
+	assert invalid_parallel.output.contains('borrowed by `item`'), invalid_parallel.output
+}
