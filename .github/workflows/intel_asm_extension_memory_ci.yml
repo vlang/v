@@ -336,28 +336,10 @@ jobs:
           fixture = pathlib.Path.cwd().resolve()
           log = '\n'.join((out / f'reference.inventory.{s}').read_text(errors='replace')
                           for s in ('stdout', 'stderr'))
-          counts = re.findall(r'^\s*parsed \.(v|vh) files\s+(\d+) files\s*        if: ${{ always() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: intel-asm-matched-instruction-evidence
-          path: ${{ runner.temp }}/intel-asm-benchmark/
-          if-no-files-found: error
-, log, re.M)
-          lines = re.findall(r'^\s*parsed \.(v|vh) lines\s+(\d+) lines\s*        if: ${{ always() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: intel-asm-matched-instruction-evidence
-          path: ${{ runner.temp }}/intel-asm-benchmark/
-          if-no-files-found: error
-, log, re.M)
+          counts = re.findall(r'^\s*parsed \.(v|vh) files\s+(\d+) files\s*$', log, re.M)
+          lines = re.findall(r'^\s*parsed \.(v|vh) lines\s+(\d+) lines\s*$', log, re.M)
           selected = []
-          for _, entry in re.findall(r'^[ \t]*\.(v|vh) files:[ \t]*(.*)        if: ${{ always() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: intel-asm-matched-instruction-evidence
-          path: ${{ runner.temp }}/intel-asm-benchmark/
-          if-no-files-found: error
-, log, re.M):
+          for _, entry in re.findall(r'^[ \t]*\.(v|vh) files:[ \t]*(.*)$', log, re.M):
               for name in entry.split():
                   p = pathlib.Path(name).expanduser()
                   selected.append((fixture / p).resolve().relative_to(fixture).as_posix())
