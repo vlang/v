@@ -991,47 +991,68 @@ fn main() {
 }
 
 fn test_sum_result_error_clone_matrix_rejects_unsupported_result_aliases() {
+	mut source := borrow_storage_drop_decls
+	mut calls := []string{}
+	mut alias_lines := map[int]string{}
 	for clone_kind in ['none', 'incompatible', 'value', 'pointer', 'pointer_alias'] {
-		clone_method := match clone_kind {
-			'incompatible' { 'fn (r &Fault) clone() int { return r.id }' }
-			'value' { 'fn (r &Fault) clone() Fault { return Fault{r.id + 100} }' }
-			'pointer' { 'fn (r &Fault) clone() &Fault { return &Fault{r.id + 100} }' }
-			'pointer_alias' {
-				'type FaultRef = &Fault
-type FaultRefAlias = FaultRef
-fn (r &Fault) clone() FaultRefAlias { return &Fault{r.id + 100} }'
-			}
-			else { '' }
-		}
 		for failed in [false, true] {
-			name := 'sum_result_error_${clone_kind}_${failed}'
-			source := borrow_storage_drop_decls + '
-struct Fault implements Drop { id int }
-fn (r Fault) msg() string { return "failed" }
-fn (r Fault) code() int { return r.id }
-fn (mut r Fault) drop() { println("error \${r.id}") }
+			case_id := calls.len
+			fault := 'Fault${case_id}'
+			clone_method := match clone_kind {
+				'incompatible' { 'fn (r &${fault}) clone() int { return r.id }' }
+				'value' { 'fn (r &${fault}) clone() ${fault} { return ${fault}{r.id + 100} }' }
+				'pointer' { 'fn (r &${fault}) clone() &${fault} { return &${fault}{r.id + 100} }' }
+				'pointer_alias' {
+					'type FaultRef${case_id} = &${fault}
+type FaultRefAlias${case_id} = FaultRef${case_id}
+fn (r &${fault}) clone() FaultRefAlias${case_id} { return &${fault}{r.id + 100} }'
+				}
+				else { '' }
+			}
+			source += '
+struct ${fault} implements Drop { id int }
+fn (r ${fault}) msg() string { return "failed" }
+fn (r ${fault}) code() int { return r.id }
+fn (mut r ${fault}) drop() { println("error \${r.id}") }
 ${clone_method}
-type StringResult = !string
-type StringResultAlias = StringResult
-type Storage = []Res | StringResultAlias
-fn make_result(failed bool) !string {
-	if failed { return Fault{1} }
+'
+			alias_lines[source.count('\n') + 1] = '${clone_kind}_${failed}'
+			source += 'type StringResult${case_id} = !string
+type StringResultAlias${case_id} = StringResult${case_id}
+type Storage${case_id} = []Res | StringResultAlias${case_id}
+fn make_result_${case_id}(failed bool) !string {
+	if failed { return ${fault}{1} }
 	return "payload".repeat(4)
 }
-fn keep(mut source Storage) Storage { return source }
-fn main() {
-	mut source := Storage(StringResultAlias(make_result(${failed})))
-	retained := keep(mut source)
+fn keep_${case_id}(mut source Storage${case_id}) Storage${case_id} { return source }
+fn check_${case_id}() {
+	mut source := Storage${case_id}(StringResultAlias${case_id}(make_result_${case_id}(${failed})))
+	retained := keep_${case_id}(mut source)
 	drop_owned(source)
 	drop_owned(retained)
 	println("ok")
 }
 '
-			build := borrow_storage_compile(name, source)
-			assert build.exit_code != 0, build.output
-			assert build.output.contains('cannot make an alias of Result type'), build.output
-			assert build.output.contains('Result types cannot be stored and have to be unwrapped immediately'), build.output
+			calls << '\tcheck_${case_id}()'
 		}
+	}
+	source += '
+fn main() {
+${calls.join('\n')}
+}
+'
+	name := 'sum_result_error_aliases'
+	build := borrow_storage_compile_with_flags(name, source, '-nocolor')
+	assert build.exit_code != 0, build.output
+	mut rejected_lines := []int{}
+	for diagnostic in build.output.split('${name}.v:') {
+		if diagnostic.contains(': error: cannot make an alias of Result type')
+			&& diagnostic.contains('Details: Result types cannot be stored and have to be unwrapped immediately') {
+			rejected_lines << diagnostic.all_before(':').int()
+		}
+	}
+	for line, case_name in alias_lines {
+		assert line in rejected_lines, '${case_name}: ${build.output}'
 	}
 }
 
