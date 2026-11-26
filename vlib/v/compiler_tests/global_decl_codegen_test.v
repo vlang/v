@@ -259,15 +259,17 @@ fn main() {
 	assert out == '7\nok\n5\n9\n11\n0:0:0:0\n13\n7:fixed:17\n19\n0:7:0\n1:2\n3:4'
 }
 
-fn test_global_channel_containers_are_initialized() {
-	out := global_decl_run_good('global_channel_containers', '__global channels = []chan int{len: 1}
+fn test_global_defaults_and_inferred_initializers() {
+	out := global_decl_run_good('global_defaults_and_inferred_initializers', "import sync.stdatomic
+
+__global channels = []chan int{len: 1}
 __global events shared chan int
 
 fn send_value_to(channel chan int, value int) {
 	channel <- value
 }
 
-fn main() {
+fn check_global_channel_containers() {
 	array_channel := channels[0]
 	array_thread := spawn send_value_to(array_channel, 11)
 	println(int_str(<-array_channel))
@@ -280,12 +282,8 @@ fn main() {
 	println(int_str(<-shared_channel))
 	shared_thread.wait()
 }
-')
-	assert out == '11\n13'
-}
 
-fn test_global_enum_and_sum_values_use_v_defaults() {
-	out := global_decl_run_good('global_enum_and_sum_defaults', "enum Mode {
+enum Mode {
 	ready = 7
 	waiting
 }
@@ -304,7 +302,7 @@ fn describe(value Payload) string {
 	}
 }
 
-fn main() {
+fn check_global_enum_and_sum_defaults() {
 	println(if modes[0] == .ready && modes[1] == .ready { 'ready' } else { 'wrong' })
 	// A local array gets the same default elements as a global one.
 	local_modes := []Mode{len: 2}
@@ -319,13 +317,22 @@ fn main() {
 	}
 	println(shared_description)
 }
-")
-	assert out == 'ready\nlocal-ready\nshared-ready\nstring:\nstring:'
+
+__global flag = stdatomic.new_atomic(false)
+__global number = stdatomic.new_atomic(7)
+
+fn check_inferred_atomic_globals() {
+	println(int_str(number.load()))
+	println(flag.load())
 }
 
-fn test_inferred_generic_atomic_globals_keep_concrete_types() {
-	out := global_decl_run_good('inferred_generic_atomic_globals', 'import sync.stdatomic\n\n__global flag = stdatomic.new_atomic(false)\n__global number = stdatomic.new_atomic(7)\n\nfn main() {\n\tprintln(int_str(number.load()))\n\tprintln(flag.load())\n}\n')
-	assert out == '7\nfalse'
+fn main() {
+	check_global_channel_containers()
+	check_global_enum_and_sum_defaults()
+	check_inferred_atomic_globals()
+}
+")
+	assert out == '11\n13\nready\nlocal-ready\nshared-ready\nstring:\nstring:\n7\nfalse'
 }
 
 fn test_volatile_globals_keep_their_names_and_qualifiers() {
