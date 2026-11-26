@@ -193,22 +193,6 @@ fn test_owned_first_last_receiver_evaluated_once() {
 	assert run.output.trim_space() == '9:1', run.output
 }
 
-// Concern: `(arr.last()).field` must lower to the same in-place borrow as `arr.last().field`.
-// The checker's borrowed-field predicate sees through transparent parentheses to suppress the
-// diagnostic, so the transformer must unwrap them too; otherwise the accessor follows its
-// independent-copy path and emits an empty `(0)` placeholder that fails C compilation.
-fn test_owned_parenthesized_field_borrow() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_paren_borrow', "struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n\ttotal   int\n}\n\nfn (mut t T) shrink() {\n\tfor t.entries.len > 0 {\n\t\tt.total -= (t.entries.last()).size\n\t\tt.entries.delete_last()\n\t}\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'a', size: 5 }\n\tt.entries << E{ name: 'b', size: 7 }\n\tt.total = 12\n\tt.shrink()\n\tprintln(int_str(t.total))\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('unsupported node kind'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_paren_borrow_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '0', run.output
-}
-
 // A method value whose element type does provide `clone()` keeps working: the receiver is
 // cloned (an independent copy), never an alias of the live array element.
 fn test_owned_method_value_with_clone_runs() {
@@ -1146,17 +1130,61 @@ fn check_aggregate_arguments() {
 	println(last_struct_length(entries1) + last_map_length(entries2) + last_array_length(entries3))
 }
 
+struct SizedEntry {
+	name string
+	size int
+}
+
+struct SizedTable {
+mut:
+	entries []SizedEntry
+	total   int
+}
+
+// Concern: (arr.last()).field must lower to the same in-place borrow as arr.last().field.
+// The checker recognizes the borrow through parentheses, and the transformer must unwrap them.
+fn (mut t SizedTable) shrink() {
+	for t.entries.len > 0 {
+		t.total -= (t.entries.last()).size
+		t.entries.delete_last()
+	}
+}
+
+// A literal branch condition cannot mutate the source, so the tail still borrows in place.
+fn last_length_in_match(entries []E) int {
+	return match 1 {
+		1 { entries.last().name.len }
+		else { 0 }
+	}
+}
+
+fn check_parenthesized() {
+	mut t := SizedTable{}
+	t.entries << SizedEntry{ name: 'a', size: 5 }
+	t.entries << SizedEntry{ name: 'b', size: 7 }
+	t.total = 12
+	t.shrink()
+	println(int_str(t.total))
+}
+
+fn check_match_branch() {
+	entries := [E{ name: 'hello' }]
+	println(last_length_in_match(entries))
+}
+
 fn main() {
 	check_scalar_index()
 	check_aggregate_field()
 	check_aggregate_arguments()
+	check_parenthesized()
+	check_match_branch()
 }
 ", '')
 	assert_clean_borrow_build(compile)
 	bin_path := tmp_array_accessor_borrow_path('owned_scalar_consumers_bin')
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().split_into_lines() == ['104', '5', '15'], run.output
+	assert run.output.trim_space().split_into_lines() == ['104', '5', '15', '0', '5'], run.output
 }
 
 fn test_owned_conditional_prerequisites_that_mutate_source_are_rejected() {
@@ -1231,29 +1259,6 @@ fn main() {
 ", '-nocolor')
 	// Locations include the prepended Drop interface.
 	assert_independent_array_element_errors(compile, ['16:39', '21:10', '32:48', '42:45'])
-
-	// A literal branch condition cannot mutate the source, so the tail still borrows in place.
-	safe := compile_v3_ownership_program(v3_bin, 'owned_match_branch_condition_stable', "struct E {
-	name string
-}
-
-fn last_length(entries []E) int {
-	return match 1 {
-		1 { entries.last().name.len }
-		else { 0 }
-	}
-}
-
-fn main() {
-	entries := [E{ name: 'hello' }]
-	println(last_length(entries))
-}
-", '')
-	assert safe.exit_code == 0, safe.output
-	safe_bin_path := tmp_array_accessor_borrow_path('owned_match_branch_condition_stable_bin')
-	safe_run := os.exec([safe_bin_path])
-	assert safe_run.exit_code == 0, safe_run.output
-	assert safe_run.output.trim_space() == '5', safe_run.output
 }
 
 fn test_owned_scalar_consumer_with_mutating_struct_default_sibling_is_rejected() {
