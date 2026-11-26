@@ -19,9 +19,9 @@ struct SelfhostGenericRejection {
 	expected string
 }
 
-fn run_selfhost_bad_batch(fixture_dir string, cases []SelfhostGenericRejection) {
-	root := os.join_path(fixture_dir, 'selfhost_rejections')
-	mut imports := []string{cap: cases.len}
+fn run_selfhost_bad_batch(root string, cases []SelfhostGenericRejection, imported_module string) map[string][]string {
+	mut imports := []string{cap: cases.len + 1}
+	imports << 'import ${imported_module}'
 	for i, case in cases {
 		module_name := 'fixture_${i}'
 		imports << 'import ${module_name} as _'
@@ -44,20 +44,7 @@ fn run_selfhost_bad_batch(fixture_dir string, cases []SelfhostGenericRejection) 
 	for case in cases {
 		assert errors['v3_gen_${case.name}.v'].any(it.contains(case.expected)), '${case.name}: expected `${case.expected}` in\n${result.output}'
 	}
-}
-
-fn run_selfhost_project_bad(fixture_dir string, name string, files map[string]string, input string, expected string) {
-	root := os.join_path(fixture_dir, 'v3_gen_${name}_project')
-	os.mkdir(root) or { panic(err) }
-	for rel, src in files {
-		write_generics_project_file(root, rel, src)
-	}
-	input_path := os.join_path(root, input)
-	bad_bin := os.join_path(fixture_dir, 'v3_gen_${name}')
-	result := os.exec([@VEXE, input_path, '-selfhost', '-b', 'c', '-o', bad_bin])
-	assert result.exit_code != 0, 'expected error for ${name}, but compilation succeeded'
-	assert result.output.contains(expected), 'expected "${expected}" in output for ${name}, got: ${result.output}'
-	assert !result.output.contains('C compilation failed')
+	return errors
 }
 
 // run_no_generic_error supports run no generic error handling for v3 tests.
@@ -163,7 +150,14 @@ fn test_late_generic_reachability_runs_to_fixpoint() {
 fn test_generics_rejected_when_building_v() {
 	fixture_dir := new_generics_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	run_selfhost_bad_batch(fixture_dir, [
+	root := os.join_path(fixture_dir, 'selfhost_rejections')
+	write_generics_project_file(root, 'badmod/badmod.v', 'module badmod
+
+struct Phantom[T] {
+	value int
+}
+')
+	errors := run_selfhost_bad_batch(root, [
 		// generic function
 		SelfhostGenericRejection{
 			name:     'generic_fn'
@@ -330,22 +324,8 @@ fn main() {}
 '
 			expected: 'unsupported generic'
 		},
-	])
-
-	run_selfhost_project_bad(fixture_dir, 'imported_generic_struct', {
-		'main.v':          'module main
-
-import badmod
-
-fn main() {}
-'
-		'badmod/badmod.v': 'module badmod
-
-struct Phantom[T] {
-	value int
-}
-'
-	}, 'main.v', 'unsupported generic struct `Phantom`')
+	], 'badmod')
+	assert errors['badmod.v'].any(it.contains('unsupported generic struct `Phantom`')), errors.str()
 }
 
 // test_generics_allowed_without_building_v validates this v3 regression case.
