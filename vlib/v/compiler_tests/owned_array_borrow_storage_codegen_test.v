@@ -230,37 +230,60 @@ fn main() {
 }
 
 fn test_owned_borrowed_array_nonempty_uncloneable_views_fail_when_owning() {
-	for operation in ['values << Handle{2}', 'values.ensure_cap(values.cap + 1)', 'return values',
-		'reader := fn [values] () int { return values[0].id }; _ = reader'] {
-		name := 'uncloneable_boundary_${operation.len}'
-		tail := if operation.starts_with('return ') { '' } else { 'return []Handle{}' }
-		source := 'interface Drop { mut: drop() }
+	operations := {
+		'append':  'values << Handle{2}'
+		'reserve': 'values.ensure_cap(values.cap + 1)'
+		'return':  'return values'
+		'capture': 'reader := fn [values] () int { return values[0].id }; _ = reader'
+	}
+	mut source := 'import os
+
+interface Drop { mut: drop() }
 struct Handle implements Drop { id int }
 fn (mut h Handle) drop() {}
-fn own(mut values []Handle) []Handle {
+'
+	mut branches := []string{cap: operations.len * 2}
+	for action, operation in operations {
+		tail := if action == 'return' { '' } else { 'return []Handle{}' }
+		for borrowed in [false, true] {
+			name := '${action}_${borrowed}'
+			receiver := if borrowed { 'fixed[..]' } else { 'fixed' }
+			source += '
+fn own_${name}(mut values []Handle) []Handle {
 	${operation}
 	${tail}
 }
 
-fn main() {
-	mut fixed := [Handle{1}]
-	result := own(mut fixed[..])
-	assert result.len == 0
+'
+			branches << '		"${name}" {
+			mut fixed := [Handle{1}]
+			result := own_${name}(mut ${receiver})
+			assert result.len == 0
+		}'
+		}
+	}
+	source += 'fn main() {
+	match os.args[1] {
+${branches.join('\n')}
+		else { panic("unknown array ownership case") }
+	}
 }
 '
+	binary_name := 'uncloneable_boundary'
+	build := borrow_storage_compile(binary_name, source)
+	assert build.exit_code == 0, build.output
+	binary := os.join_path(borrow_storage_tmp_dir, binary_name)
+	for action, _ in operations {
 		for borrowed in [false, true] {
-			input := if borrowed { source } else { source.replace('mut fixed[..]', 'mut fixed') }
-			case_name := '${name}_${borrowed}'
-			build := borrow_storage_compile(case_name, input)
-			assert build.exit_code == 0, build.output
-			run := os.exec([os.join_path(borrow_storage_tmp_dir, case_name)])
-			if !borrowed && operation in ['values << Handle{2}', 'values.ensure_cap(values.cap + 1)'] {
+			name := '${action}_${borrowed}'
+			run := os.exec([binary, name])
+			if !borrowed && action in ['append', 'reserve'] {
 				// Mutating an unsliced owner does not require independent element owners.
-				assert run.exit_code == 0, run.output
+				assert run.exit_code == 0, '${name}: ${run.output}'
 				continue
 			}
-			assert run.exit_code != 0, run.output
-			assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), run.output
+			assert run.exit_code != 0, '${name}: ${run.output}'
+			assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), '${name}: ${run.output}'
 		}
 	}
 }
