@@ -47,13 +47,13 @@ fn copy_ownership_run(name string, src string) string {
 	return run.output.trim_space()
 }
 
-fn test_copy_clones_owned_elements_and_drops_replaced_ones() {
-	output := copy_ownership_run('drops', copy_ownership_drop_decls + '
+fn test_copy_clones_owned_elements_and_drops_replaced_values() {
+	output := copy_ownership_run('copy_owned_elements', copy_ownership_drop_decls + '
 fn make() []Res {
 	return [Res{7}, Res{8}]
 }
 
-fn main() {
+fn check_resource_copies() {
 	{
 		mut dst := [Res{1}, Res{2}]
 		src := [Res{10}, Res{20}, Res{30}]
@@ -67,6 +67,36 @@ fn main() {
 		println("dst \${dst[0].id}")
 	}
 	println("end")
+}
+
+fn words() []string {
+	return ["t".repeat(2), "u".repeat(2)]
+}
+
+fn check_string_and_nested_copies() {
+	mut dst := ["a".repeat(3), "b".repeat(3)]
+	src := ["x".repeat(3), "y".repeat(3), "z".repeat(3)]
+	assert copy(mut dst, src) == 2
+	assert dst == ["xxx", "yyy"]
+	assert src == ["xxx", "yyy", "zzz"]
+	assert copy(mut dst, words()) == 2
+	assert dst == ["tt", "uu"]
+	assert copy(mut dst[1..], src[2..]) == 1
+	assert dst == ["tt", "zzz"]
+	mut fixed := ["p".repeat(2), "q".repeat(2), "r".repeat(2)]!
+	assert copy(mut fixed[1..], src) == 2
+	assert fixed == ["pp", "xxx", "yyy"]!
+	mut nested := [[1, 2], [3]]
+	inner := [[7, 8, 9]]
+	assert copy(mut nested, inner) == 1
+	assert nested == [[7, 8, 9], [3]]
+	assert inner == [[7, 8, 9]]
+	println("ok")
+}
+
+fn main() {
+	check_resource_copies()
+	check_string_and_nested_copies()
 }
 ')
 	assert output.split_into_lines() == [
@@ -87,37 +117,8 @@ fn main() {
 		'dst 107',
 		'drop 107',
 		'end',
+		'ok',
 	]
-}
-
-fn test_copy_clones_strings_and_nested_arrays() {
-	output := copy_ownership_run('strings', '
-fn words() []string {
-	return ["t".repeat(2), "u".repeat(2)]
-}
-
-fn main() {
-	mut dst := ["a".repeat(3), "b".repeat(3)]
-	src := ["x".repeat(3), "y".repeat(3), "z".repeat(3)]
-	assert copy(mut dst, src) == 2
-	assert dst == ["xxx", "yyy"]
-	assert src == ["xxx", "yyy", "zzz"]
-	assert copy(mut dst, words()) == 2
-	assert dst == ["tt", "uu"]
-	assert copy(mut dst[1..], src[2..]) == 1
-	assert dst == ["tt", "zzz"]
-	mut fixed := ["p".repeat(2), "q".repeat(2), "r".repeat(2)]!
-	assert copy(mut fixed[1..], src) == 2
-	assert fixed == ["pp", "xxx", "yyy"]!
-	mut nested := [[1, 2], [3]]
-	inner := [[7, 8, 9]]
-	assert copy(mut nested, inner) == 1
-	assert nested == [[7, 8, 9], [3]]
-	assert inner == [[7, 8, 9]]
-	println("ok")
-}
-')
-	assert output == 'ok'
 }
 
 fn test_copy_rejects_owned_elements_without_clone() {
