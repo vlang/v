@@ -1386,11 +1386,10 @@ fn main() {
 	], res.output
 }
 
-fn test_a_closure_in_a_constrained_body_uses_what_the_constraint_provides() {
-	// A function literal, `fn (x T) string {`, `it` of an array method,
-	// `xs.map(it.age)`, `a` and `b` of a sort, and a short lambda, `|x| x.age`,
-	// take a value of `T` too, with what its constraint provides.
-	res := check_program('closures', 'fn labels[T Named](xs []T) []string {
+fn test_closures_and_array_methods_respect_generic_constraints() {
+	// Closure parameters and array callbacks use the constraint of their input.
+	// Nested array methods each bind `it` to their own element type.
+	res := check_program('constraint_closures', 'fn labels[T Named](xs []T) []string {
 	f := fn (x T) string {
 		return x.name + x.age.str()
 	}
@@ -1417,27 +1416,7 @@ fn lambdas[T Named](xs []T) []int {
 	return xs.map(|x| x.age)
 }
 
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
-	assert error_lines(res.output) == [
-		'3:21: ${no_age}',
-		'10:12: ${no_age}',
-		'16:19: ${no_age}',
-		'20:12: ${no_age}',
-		'20:20: ${no_age}',
-		'25:22: ${no_age}',
-	], res.output
-}
-
-fn test_every_kind_of_closure_and_array_method_in_a_constrained_body_is_checked() {
-	// `it` is the element of the nearest array method, again after an inner one
-	// over other elements; `sorted` and its lambda, `any`, `all` and `count`; a
-	// closure over `&T`, one inside another; a lambda passed to a generic
-	// function, whose parameter type binds it. What `User` or an `int` has, or
-	// what the constraint declares, stays allowed.
-	res := check_program('closures_everywhere', 'fn apply[U](xs []U, f fn (U) int) []int {
+fn apply[U](xs []U, f fn (U) int) []int {
 	mut out := []int{}
 	for x in xs {
 		out << f(x)
@@ -1500,15 +1479,21 @@ fn main() {}
 	assert res.exit_code == 1, res.output
 	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
 	assert error_lines(res.output) == [
-		'14:63: ${no_age}',
-		'18:28: ${no_age}',
-		'18:36: ${no_age}',
-		'22:20: ${no_age}',
-		'23:20: ${no_age}',
-		'24:22: ${no_age}',
-		'29:12: ${no_age}',
-		'37:13: ${no_age}',
-		'56:25: ${no_age}',
+		'3:21: ${no_age}',
+		'10:12: ${no_age}',
+		'16:19: ${no_age}',
+		'20:12: ${no_age}',
+		'20:20: ${no_age}',
+		'25:22: ${no_age}',
+		'41:63: ${no_age}',
+		'45:28: ${no_age}',
+		'45:36: ${no_age}',
+		'49:20: ${no_age}',
+		'50:20: ${no_age}',
+		'51:22: ${no_age}',
+		'56:12: ${no_age}',
+		'64:13: ${no_age}',
+		'83:25: ${no_age}',
 	], res.output
 }
 
