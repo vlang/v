@@ -1043,7 +1043,24 @@ const layout_calls = "	println(to_bytes([u8(1)]))
 
 const layout_program = layout_declarations + 'fn main() {\n' + layout_calls
 
-const bad_layout_program = layout_program + "\tprintln(to_bytes([1, 2]))\n\tprintln(to_bytes([i32(1)]))\n\tprintln(widen([u8(1)]))\n\tprintln(assign([u32(1)]))\n\tprintln(wrap([u8(1)]))\n\tprintln(total([i32(1)]))\n\tprintln(narrow_map({\n\t\t'a': 1\n\t}))\n\tprintln(widen_map({\n\t\t'a': u8(1)\n\t}))\n\tprintln(total_map({\n\t\t'a': i32(1)\n\t}))\n}\n"
+const bad_layout_calls = "	println(to_bytes([1, 2]))
+	println(to_bytes([i32(1)]))
+	println(widen([u8(1)]))
+	println(assign([u32(1)]))
+	println(wrap([u8(1)]))
+	println(total([i32(1)]))
+	println(narrow_map({
+		'a': 1
+	}))
+	println(widen_map({
+		'a': u8(1)
+	}))
+	println(total_map({
+		'a': i32(1)
+	}))
+"
+
+const bad_layout_program = layout_program + bad_layout_calls + '}\n'
 
 const layout_errors = ['17:9: cannot cast array `[]int` to `[]u8`',
 	'17:9: cannot cast array `[]i32` to `[]u8`',
@@ -1054,20 +1071,6 @@ const layout_errors = ['17:9: cannot cast array `[]int` to `[]u8`',
 	'45:9: cannot cast `map[string]int` to `Counts8` (alias to `map[string]u8`)',
 	'49:9: cannot use `map[string]u8` as type `map[string]u64` in return argument',
 	'57:19: cannot use `map[string]i32` as `map[string]i64` in argument 1 to `map_total`']
-
-// An instance whose arrays or maps have other elements than the ones the body
-// uses them as is reported where the body does so, once for each such instance,
-// with the wording of the same error outside a generic function: such an array
-// or map is not converted, so `[]u8(a)` for an `a []int` would read its elements
-// with the wrong size. A check and a build report the same.
-fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() {
-	for res in [check_program('layout_check', bad_layout_program),
-		build_program('layout_build', bad_layout_program)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == layout_errors, res.output
-	}
-}
 
 const wrapped_layout_declarations = 'fn opt[T](a ?[]T) ?[]u64 {
 	return a
@@ -1123,24 +1126,35 @@ const wrapped_layout_calls = '	println(opt[u64]([u64(1)]))
 	println(speakers([User{}]).len)
 '
 
-const wrapped_layout_program = wrapped_layout_declarations + 'fn main() {\n' + wrapped_layout_calls
-
-// An option, a result, a fixed array, a nested array, a `mut` argument and an
-// append keep the elements as they are too.
-fn test_an_instance_that_wraps_or_nests_an_array_with_other_elements_is_reported() {
-	source := wrapped_layout_program + '\tprintln(opt[u8]([u8(1)]))\n\tprintln(res([u8(1)]) or { [] })\n\tprintln(fixed([u8(1), 2, 3]!))\n\tprintln(nested([[u8(1)]]))\n\tmut narrow := [u8(1)]\n\tgrow(mut narrow)\n\tprintln(append([u8(1)]))\n}\n'
-	for res in [check_program('wrapped_layout_check', source),
-		build_program('wrapped_layout_build', source)] {
+// Check and build report each element-type mismatch at its use in the
+// generic body, including wrapped arrays, mutable arguments, and appends.
+fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() {
+	bad_wrapped_layout_calls := '	println(opt[u8]([u8(1)]))
+	println(res([u8(1)]) or { [] })
+	println(fixed([u8(1), 2, 3]!))
+	println(nested([[u8(1)]]))
+	mut narrow := [u8(1)]
+	grow(mut narrow)
+	println(append([u8(1)]))
+'
+	source := layout_declarations + wrapped_layout_declarations + 'fn main() {\n' + layout_calls +
+		bad_layout_calls + wrapped_layout_calls + bad_wrapped_layout_calls + '}\n'
+	wrapped_errors := [
+		'61:9: cannot use `?[]u8` as type `?[]u64` in return argument',
+		'65:9: cannot use `[]u8` as type `![]u64` in return argument',
+		'69:9: cannot use `[3]u8` as type `[3]u64` in return argument',
+		'73:9: cannot use `[][]u8` as type `[][]u64` in return argument',
+		'81:15: cannot use `&[]u8` as `&[]u64` in argument 1 to `take_mut`',
+		'86:9: cannot append `[]u8` to `[][]u64`',
+	]
+	for res in [check_program('layout_check', source), build_program('layout_build', source)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'11:9: cannot use `?[]u8` as type `?[]u64` in return argument',
-			'15:9: cannot use `[]u8` as type `![]u64` in return argument',
-			'19:9: cannot use `[3]u8` as type `[3]u64` in return argument',
-			'23:9: cannot use `[][]u8` as type `[][]u64` in return argument',
-			'31:15: cannot use `&[]u8` as `&[]u64` in argument 1 to `take_mut`',
-			'36:9: cannot append `[]u8` to `[][]u64`',
-		], res.output
+		errors := error_lines(res.output)
+		// The compiler can interleave the groups. Check the order within each group.
+		assert errors.len == layout_errors.len + wrapped_errors.len, res.output
+		assert errors.filter(it in layout_errors) == layout_errors, res.output
+		assert errors.filter(it in wrapped_errors) == wrapped_errors, res.output
 	}
 }
 
