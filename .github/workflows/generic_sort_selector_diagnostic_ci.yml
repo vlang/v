@@ -164,10 +164,48 @@ jobs:
           val := json2.Any({'b': json2.Any(1), 'a': json2.Any(2)})
           assert json2.encode(val) == '{"a":2,"b":1}'
           """)
+          # The failing prefixes have one arrow when only top-level a exists,
+          # and two when both a and b exist. Test whether comparator placeholders
+          # inherit unrelated main-scope pointer metadata.
+          original = source.split('\nb :=', 1)[0]
+          probes = {
+              'vtl_renamed': original.replace('a :=', 'tensor_value :=', 1) + '\nprintln(tensor_value)\n',
+              'vtl_no_print': original + '\n_ = a\n',
+              'vtl_import_json_only': """import vtl
+          import json2
+
+          val := json2.Any({'b': json2.Any(1), 'a': json2.Any(2)})
+          assert json2.encode(val) == '{"a":2,"b":1}'
+          """,
+          }
+          # Keep the same map encoding in every control. Change only the names
+          # of unrelated references, and independently vary one versus two.
+          for label, first, second in [
+              ('json_ref_a', 'a', 'unrelated_b'),
+              ('json_ref_b', 'unrelated_a', 'b'),
+              ('json_ref_ab', 'a', 'b'),
+              ('json_ref_renamed', 'unrelated_a', 'unrelated_b'),
+          ]:
+              probes[label] = f"""import json2
+
+          struct ProbeValue {{
+              n int
+          }}
+
+          {first} := &ProbeValue{{n: 1}}
+          {second} := &ProbeValue{{n: 2}}
+          assert {first}.n + {second}.n == 3
+          val := json2.Any({{'b': json2.Any(1), 'a': json2.Any(2)}})
+          assert json2.encode(val) == '{{"a":2,"b":1}}'
+          """
+          for label, text in probes.items():
+              folder = root / label
+              folder.mkdir()
+              (folder / 'main.v').write_text(text)
           PY
           failed=0
           printf 'case\temit\tbuild\trun\n' > "$root/results.tsv"
-          for label in construction addition apply map direct_any_with_vtl; do
+          for label in construction addition apply map direct_any_with_vtl vtl_renamed vtl_no_print vtl_import_json_only json_ref_a json_ref_b json_ref_ab json_ref_renamed; do
             folder="$root/$label"
             emit=0
             build=0
