@@ -466,10 +466,9 @@ fn tool_cache_wipe_full_path(path string) string {
 
 // tool_cache_wipe_unreachable says why the path made of the folder at `folder` and `name`, a name
 // that the folder lists, does not reach that item, or gives '' when it does. Windows makes a path
-// into another before it acts on it (see `winpath.full_path`): it drops the dots and spaces at the
-// end of each name, so `tools.` reaches `tools`, and takes some names as devices, such as `nul`,
-// which names depending on the version of Windows. The wipe asks Windows itself, so it holds for
-// the version it runs on. WSL and `\\?\` paths make such names. The wipe leaves such an item as it
+// into another before it acts on it (see `winpath.full_path`), so that `tools.` reaches `tools`
+// and `nul` a device, and which names it changes depends on the version of Windows. The wipe asks
+// Windows itself, so it holds for the version it runs on. WSL and `\\?\` paths make such names. The wipe leaves such an item as it
 // is, and fails.
 fn tool_cache_wipe_unreachable(folder string, name string) string {
 	full := winpath.full_path(os.join_path_single(folder, name))

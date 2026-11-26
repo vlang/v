@@ -5,10 +5,9 @@ module winpath
 
 import os
 
-// full_path gives the path that Windows makes of `path` before it acts on it
-// (`GetFullPathNameW`): absolute, with `.` and `..` taken as text, without the dots and spaces at the
-// end of each name, and a name that this Windows takes as a device, such as `nul`, as that device,
-// `\\.\nul`. Links are not followed. It gives `path` itself when Windows makes none.
+// full_path gives the path that Windows makes of `path` before it acts on it, as
+// `GetFullPathNameW` gives it; Microsoft's "File path formats on Windows systems" has the rules.
+// Links are not followed. It gives `path` itself when Windows makes none.
 pub fn full_path(path string) string {
 	mut buffer := [32768]u16{}
 	wide := path.to_wide()

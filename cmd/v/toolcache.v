@@ -1480,13 +1480,15 @@ the wipe should remove stays, other than what a build in progress or another acc
 
 A tool cache folder is wiped entry by entry. The entries of a tool that another process has
 locked right now (a build in progress) stay, and the output names the tool. When the system
-refuses the lock for another reason, as on a file system without locks, they stay too, and the
-wipe fails. Lock files stay, so the folder stays after a wipe. A lock file that cannot be opened
-is repaired, so that it can be locked again, unless another account could swap it for a link:
-then it is left as it is, the entries of its tool are kept, and the wipe fails. So it does when
-a lock file cannot be made, or is no regular file, or cannot be repaired; a dry run assumes it
-can be made. A folder V builds tools in stays even when the wipe leaves it empty, since a build
-may have just made it. A name the wipe cannot look at stays, and the wipe fails. A
+refuses the lock for another reason, as on a file system without locks, they stay too, and fail
+the wipe. Lock files stay, so the folder stays after a wipe. A lock file that cannot be opened
+is repaired, so that it can be locked again, unless another account could swap it for a link;
+when it is left as it is, or still cannot be opened, the entries of its tool are kept and fail
+the wipe. So do those of a tool whose lock file cannot be made or is no regular file; a dry run
+assumes that a lock file can be made. A lock file that cannot be repaired fails the wipe, also
+with no entry of its tool there. A folder V builds tools in stays even when the wipe leaves it
+empty, since a build may have just made it. A name the wipe cannot look at stays, and the wipe
+fails. A
 VTOOLS_CACHE_DIR that is a symbolic link is left as it is, however it is written, and the wipe
 does not follow it: set VTOOLS_CACHE_DIR to the folder it leads to, to have that folder wiped.
 
@@ -2104,7 +2106,7 @@ fn wipe_except_text(busy []string, unopenable []string, failed []string, others 
 		text += ', except for the tools another process has locked right now: ${busy.join(', ')}'
 	}
 	if unopenable.len > 0 {
-		text += ', except for the tools whose lock file cannot be opened and was left as it is: ${unopenable.join(', ')}'
+		text += ', except for the tools whose lock file cannot be opened: ${unopenable.join(', ')}'
 	}
 	if failed.len > 0 {
 		text += ', except for the tools whose lock file cannot be locked: ${failed.join(', ')}'

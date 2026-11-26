@@ -89,27 +89,28 @@ a tool cannot be used; whether something could be removed it cannot tell without
   stay, and the output names the tool. The wipe holds the build locks it takes until it is done
   with the folder, so a build that starts meanwhile waits. When the system refuses the lock for
   another reason, as where a file system has no locks, the entries stay too, for no build that is
-  known of: the wipe fails, and names the lock file and the reason. If no entry of the tool is
-  there, it only names the tool, unless the lock file alone keeps a folder V moved aside (see
-  below) from being removed: then it fails too.
+  known of, and fail the wipe, which names the lock file and the reason.
 * Lock files (`.<tool>.<user id>.toolcache.lock`) stay, whoever owns them, so a tool cache
   folder stays after a wipe. A tool without a lock file gets one before its entries are removed.
   A link or a folder with such a name is ordinary content.
 * A lock file that cannot be opened is set to mode 0600 (on Windows its read-only flag is
-  cleared), so that it can be locked again; one that still cannot be opened then, such as one that
-  another program holds open on Windows, stays, and the wipe fails and names it. Outside
-  Windows this is done only where nobody else could swap the file for a link: its folder is yours
-  or root's, others cannot write to that folder or only with the sticky bit, and the file is yours
-  and has no other hard link. Run as root, the wipe repairs another user's lock file only in a
-  folder that no other account can write to, sticky bit or not. Otherwise the file is left as it
-  is, the entries of its tool are kept, and the wipe fails and names the file: those entries stay
-  for no build. So it does when a tool's lock file cannot be made, or when something that is no
-  regular file has the lock file's name and is not the wipe's to remove. When setting the mode
-  fails, the wipe fails and names the file even if no entry of its tool is there, since builds
-  could not lock it either. A dry run assumes that a lock file can be made, and takes one that
-  cannot be opened as usable after setting its mode only when its mode (on Windows its read-only
-  flag) is what keeps it shut; a file system mounted read-only, or a file marked immutable, it
-  cannot tell from that.
+  cleared), so that it can be locked again; when one still cannot be opened then, such as one
+  that another program holds open on Windows, the entries of its tool are kept and fail the wipe,
+  which names the file. Outside Windows this is done only where nobody else could swap the file
+  for a link: its folder is yours or root's, others cannot write to that folder or only with the
+  sticky bit, and the file is yours and has no other hard link. Run as root, the wipe repairs
+  another user's lock file only in a folder that no other account can write to, sticky bit or
+  not. Otherwise the file is left as it is, and the entries of its tool are kept and fail the
+  wipe, which names the file: those entries stay for no build. So do the entries of a tool whose
+  lock file cannot be made, or whose lock file's name is taken by something that is no regular
+  file and is not the wipe's to remove. A dry run assumes that a lock file can be made, and takes
+  one that cannot be opened as usable after setting its mode only when its mode (on Windows its
+  read-only flag) is what keeps it shut; a file system mounted read-only, or a file marked
+  immutable, it cannot tell from that.
+* Where no entry of a tool is there, a lock file of it that cannot be opened or locked keeps
+  nothing that should go, so it does not fail the wipe: the summary names the tool. It does fail
+  it where setting the lock file's mode fails, since builds could not lock it either, and where
+  the lock file alone keeps a folder V moved aside (see below) from being removed.
 * In a folder that is yours alone (you own it, and neither its group nor others can write to
   it), everything else is removed, whoever owns it. In any other folder the wipe goes through,
   only what you own is removed: what another account owns there stays, whatever its name, with

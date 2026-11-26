@@ -3637,6 +3637,10 @@ fn test_a_folder_is_listed_inspected_and_cleared_through_its_handle() ! {
 		os.rename(folder, folder + '-moved')!
 		assert !dir.is_at(folder)!
 		assert dir.is_at(folder + '-moved')!
+		// A link at the path to the folder that was opened is a link there, not that folder.
+		os.symlink(folder + '-moved', folder)!
+		assert !dir.is_at(folder)!
+		os.rm(folder)!
 		assert dir.names()! == []string{}
 		// A folder that is removed while it is held open lists nothing, and holds nothing.
 		os.rmdir(folder + '-moved')!
@@ -8398,6 +8402,15 @@ fn toolcache_test_unopenable_lock(root string, tool string, uid u32, second_name
 	return lock_path
 }
 
+// The summary names every tool it keeps for each reason, not only the first.
+fn test_the_wipe_summary_names_every_kept_tool() {
+	text := wipe_except_text(['vdoc', 'vfmt'], ['vrepl', 'vtest'], ['vbin2v', 'vcheck-md'], 2)
+	assert text.contains(', except for the tools another process has locked right now: vdoc, vfmt'), text
+	assert text.contains(', except for the tools whose lock file cannot be opened: vrepl, vtest'), text
+	assert text.contains(', except for the tools whose lock file cannot be locked: vbin2v, vcheck-md'), text
+	assert text.contains(', except for 2 files and folders of other users'), text
+}
+
 // In a tool cache folder builds use, a lock file of this user that cannot be opened, and that
 // guards no entry, stays like every lock file there: the wipe succeeds, and names the tool.
 fn test_a_lock_file_that_cannot_be_opened_and_guards_nothing_does_not_fail_the_wipe() ! {
@@ -8419,7 +8432,7 @@ fn test_a_lock_file_that_cannot_be_opened_and_guards_nothing_does_not_fail_the_w
 			'second-name'))!
 		for arguments in [['--tools', '--dry-run'], ['--tools']] {
 			output := wipe_output(...arguments)!
-			assert output.contains('except for the tools whose lock file cannot be opened and was left as it is: vfmt.'), '${arguments}: ${output}'
+			assert output.contains('except for the tools whose lock file cannot be opened: vfmt.'), '${arguments}: ${output}'
 			assert os.is_file(lock_path), output
 		}
 	})!
