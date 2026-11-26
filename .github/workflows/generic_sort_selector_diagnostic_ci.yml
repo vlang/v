@@ -411,6 +411,23 @@ jobs:
             (
               cd "$role"
               git rev-parse HEAD > "$out/$role.commit"
+              # Both historical compiler roles need the same independently tested
+              # compatibility correction from #32987. Do not modify the fixture.
+              compat=0b1f74911c3fe5efce5892578c76f9dc30f46544
+              git fetch --depth=1 origin "$compat"
+              test "$(git rev-parse FETCH_HEAD)" = "$compat"
+              test "$(git rev-parse HEAD:vlib/v/transform/fn.v)" = 7b7b067822fbcd8b250edc141d506c8c4a4b17e0
+              test "$(git rev-parse HEAD:vlib/v/transform/for.v)" = d24036145333ef6fb420289f0b4f49a6ff0f24e9
+              test "$(git rev-parse "$compat:vlib/v/transform/fn.v")" = 76a05572853ae93e518c091d41677e449de3615f
+              test "$(git rev-parse "$compat:vlib/v/transform/for.v")" = 5e8f1244c5c73419568c5ea4bfcc88bbdde2cfbf
+              git show "$compat:vlib/v/transform/fn.v" > vlib/v/transform/fn.v
+              git show "$compat:vlib/v/transform/for.v" > vlib/v/transform/for.v
+              printf '%s\n' "$compat" > "$out/$role.compatibility.commit"
+              git diff --binary > "$out/$role.compatibility.patch"
+              test "$(git diff --name-only)" = "$(printf '%s\n' vlib/v/transform/fn.v vlib/v/transform/for.v)"
+              if [ "$role" = candidate ]; then
+                cmp "$out/baseline.compatibility.patch" "$out/candidate.compatibility.patch"
+              fi
               env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS make -j4
               env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 ./v -prod -cc clang self
               cp ./v "$out/$role.v"
