@@ -560,10 +560,12 @@ fn main() {}
 	], res.output
 }
 
-fn test_compile_time_conditions_narrow_constrained_types_and_values() {
-	// `$if` can narrow a type parameter through the parameter itself or a value
-	// of that type. A condition such as `debug` leaves the type set intact.
-	res := check_program('comptime_narrowing', 'type Number = int | f64
+fn test_comptime_and_runtime_type_checks_on_constrained_values() {
+	// Compile-time conditions can narrow types and values. A condition such
+	// as debug leaves the type set intact. Runtime type tests require a sum
+	// type or interface value, and a match reports its first invalid type pattern.
+	// Raise the message limit so all 21 errors are printed.
+	res := check_program('constraint_type_checks', 'type Number = int | f64
 
 fn narrow[T Number](x T, y T) T {
 	$if T is f64 {
@@ -652,34 +654,6 @@ fn narrow_iface_value[T Named](a T) {
 	}
 }
 
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	modulo_error := 'operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it'
-	shift_error := 'operator `<<` is not defined on type `T` and `int literal`: `f64`, in its constraint `Number`, does not have it'
-	age_error := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
-	assert error_lines(res.output) == [
-		'5:13: ${modulo_error}',
-		'10:13: type `T` has no field named `len`: `int`, in its constraint `Number`, does not have it',
-		'21:13: ${shift_error}',
-		'27:13: ${modulo_error}',
-		'33:13: ${modulo_error}',
-		'36:13: ${modulo_error}',
-		'45:13: ${age_error}',
-		'51:13: ${modulo_error}',
-		'65:13: ${modulo_error}',
-		'70:13: ${shift_error}',
-		'77:13: ${modulo_error}',
-		'86:13: ${age_error}',
-	], res.output
-}
-
-fn test_runtime_type_patterns_on_constrained_values_report_errors() {
-	// Runtime type tests require a sum type or interface value. A match reports
-	// the error at its first type pattern. Value patterns still check member
-	// access under the constraint, and `$if` can test the type parameter.
-	res := check_program('runtime_type_patterns', 'type Number = int | f64
-
 type Shape = Square | Circle
 
 struct Square {}
@@ -739,18 +713,33 @@ fn values[T Number](value T) string {
 }
 
 fn main() {}
-')
+', '-message-limit', '100')
 	assert res.exit_code == 1, res.output
+	modulo_error := 'operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it'
+	shift_error := 'operator `<<` is not defined on type `T` and `int literal`: `f64`, in its constraint `Number`, does not have it'
+	age_error := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
 	assert error_lines(res.output) == [
-		'12:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is f64`',
-		'12:21: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is int`',
-		'15:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value !is f64`',
-		'25:5: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
-		'31:9: `is` can only be used with sum type or interface values, not `T`: `Square`, in its constraint `Shape`, is neither; test `T` with `\$if s is Circle`',
-		'38:3: matching by type can only be done on sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
-		'45:3: matching by type can only be done on sum type or interface values, not `T`: `Square`, in its constraint `Shape`, is neither; test `T` with `\$if s is Circle`',
-		'51:9: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named`, in its constraint `Two`, does not have to be one; test `T` with `\$if x is User`',
-		'56:13: type `T` has no method `nme`: `int`, in its constraint `Number`, does not have it',
+		'5:13: ${modulo_error}',
+		'10:13: type `T` has no field named `len`: `int`, in its constraint `Number`, does not have it',
+		'21:13: ${shift_error}',
+		'27:13: ${modulo_error}',
+		'33:13: ${modulo_error}',
+		'36:13: ${modulo_error}',
+		'45:13: ${age_error}',
+		'51:13: ${modulo_error}',
+		'65:13: ${modulo_error}',
+		'70:13: ${shift_error}',
+		'77:13: ${modulo_error}',
+		'86:13: ${age_error}',
+		'99:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is f64`',
+		'99:21: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is int`',
+		'102:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value !is f64`',
+		'112:5: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
+		'118:9: `is` can only be used with sum type or interface values, not `T`: `Square`, in its constraint `Shape`, is neither; test `T` with `\$if s is Circle`',
+		'125:3: matching by type can only be done on sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
+		'132:3: matching by type can only be done on sum type or interface values, not `T`: `Square`, in its constraint `Shape`, is neither; test `T` with `\$if s is Circle`',
+		'138:9: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named`, in its constraint `Two`, does not have to be one; test `T` with `\$if x is User`',
+		'143:13: type `T` has no method `nme`: `int`, in its constraint `Number`, does not have it',
 	], res.output
 }
 
