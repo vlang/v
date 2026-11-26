@@ -209,7 +209,7 @@ fn main() {
 	assert error_lines(res.output) == [], res.output
 }
 
-fn test_constrained_calls_report_invalid_type_arguments_at_the_call() {
+fn test_constrained_calls_and_function_values_report_invalid_type_arguments() {
 	res := check_program('invalid_calls', "fn longest[T Named](a T, b T) T {
 	return if a.name.len >= b.name.len { a } else { b }
 }
@@ -224,14 +224,21 @@ fn main() {
 	println(longest[int](1, 2))
 	println(welcome(User{ name: 'a' }))
 	println(welcome(Pet{ name: 'b' }))
+
+	good := longest[User]
+	bad := longest[int]
+	println(good(User{ name: 'a' }, User{ name: 'b' }).age)
+	println(bad(1, 2))
 }
 ")
 	assert res.exit_code == 1, res.output
-	// Each rejection is reported once at its call site.
+	// Each rejected type argument produces one diagnostic at its use.
+	no_name := "`int` doesn't implement field `name` of interface `Named`"
 	assert error_lines(res.output) == [
-		"10:18: `int` doesn't implement field `name` of interface `Named`",
-		"12:18: `int` doesn't implement field `name` of interface `Named`",
+		'10:18: ${no_name}',
+		'12:18: ${no_name}',
 		"14:18: `Pet` doesn't implement method `greet` of interface `NamedGreeter`",
+		'17:17: ${no_name}',
 	], res.output
 }
 
@@ -1608,22 +1615,6 @@ fn main() {}
 		"24:12: `int` doesn't implement field `name` of interface `Named`",
 		"25:22: `Box[User]` doesn't implement field `name` of interface `Named`",
 	], res.output
-}
-
-fn test_a_generic_function_value_is_checked() {
-	res := check_program('fn_value', "fn longest[T Named](a T, b T) T {
-	return if a.name.len >= b.name.len { a } else { b }
-}
-
-fn main() {
-	good := longest[User]
-	bad := longest[int]
-	println(good(User{ name: 'a' }, User{ name: 'b' }).age)
-	println(bad(1, 2))
-}
-")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ["7:17: `int` doesn't implement field `name` of interface `Named`"], res.output
 }
 
 fn test_another_type_stands_for_itself() {
