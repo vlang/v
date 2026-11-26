@@ -356,13 +356,40 @@ fn test_a_library_instance_whose_types_reach_a_program_generic_keeps_its_body() 
 }
 
 fn test_a_library_instance_given_an_interface_or_a_program_generic_type_keeps_its_body() {
-	prelude := "import advlib\n\nstruct Dog {}\n\nfn (d Dog) name() string {\n\treturn 'dog'\n}\n\nstruct Pair[T] {\n\ta T\n}\n\nfn first[T](xs []T) T {\n\treturn xs[0]\n}\n\n"
-	iface := check_with_library('interface_trace', prelude + 'fn main() {\n\tprintln(first([1]))\n\tprintln(advlib.with_namer([advlib.Namer(Dog{})], advlib.Namer(Dog{})))\n}\n')
-	assert iface.res.exit_code == 0, iface.res.output
-	assert iface.trace == ['0 of 1 library instances cloned without their bodies'], iface.trace.str()
-	pair := check_with_library('generic_type_trace', prelude + 'fn main() {\n\tprintln(first([1]))\n\tprintln(advlib.with_namer([Pair[int]{ a: 1 }], advlib.Namer(Dog{})))\n}\n')
-	assert pair.res.exit_code == 0, pair.res.output
-	assert pair.trace == ['0 of 1 library instances cloned without their bodies'], pair.trace.str()
+	source := "import advlib
+
+struct Dog {}
+
+fn (d Dog) name() string {
+	return 'dog'
+}
+
+struct Pair[T] {
+	a T
+}
+
+fn first[T](xs []T) T {
+	return xs[0]
+}
+
+fn main() {
+	println(first([1]))
+	println(advlib.with_namer_from_library([advlib.Namer(Dog{})], advlib.Namer(Dog{})))
+	println(advlib.with_namer_from_library([Pair[int]{ a: 1 }], advlib.Namer(Dog{})))
+}
+"
+	// Let the library call with_namer so its type argument determines whether its body is kept.
+	check := check_with_modules('type_argument_trace', {
+		'main.v': source
+	}, {
+		'advlib/advlib.v': library_module + '
+pub fn with_namer_from_library[T](xs []T, n Namer) string {
+	return with_namer(xs, n)
+}
+'
+	})
+	assert check.res.exit_code == 0, check.res.output
+	assert check.trace == ['0 of 4 library instances cloned without their bodies'], check.trace.str()
 }
 
 fn test_a_method_of_a_program_generic_type_keeps_the_body_of_every_library_instance() {
