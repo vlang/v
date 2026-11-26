@@ -10558,7 +10558,8 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 		// rejection below (for example, passing `borrowed.value` when it is a
 		// `string`; passing `borrowed.tag` when it is an enum is a plain copy).
 		if _ := tc.ownership_borrowed_alias_source(arg_name, false) {
-			if tc.ownership_type_requires_destruction(tc.resolve_type(arg_id)) {
+			if tc.ownership_type_requires_destruction(tc.resolve_type(arg_id))
+				&& !tc.ownership_scoped_callback_move(arg_id, expected, info, type_param_idx) {
 				tc.ownership_reject_global_move(arg_name, arg_id, call_name, true)
 				continue
 			}

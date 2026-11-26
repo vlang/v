@@ -106,7 +106,7 @@ struct ScopedThreadBorrow {
 // Collect the loans supplied by a scoped spawn argument. A record's borrowed
 // fields must come directly from the caller, so the initializer provides the
 // complete set of storage the worker can access.
-fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, expected Type) ?[]ScopedThreadBorrow {
+fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, expected Type, check_drop_separately bool) ?[]ScopedThreadBorrow {
 	actual := unalias_type(tc.resolve_type(id))
 	formal := unalias_type(expected)
 	if actual is Pointer && formal is Pointer {
@@ -127,7 +127,7 @@ fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, ex
 	name_id := (actual as Struct).name_id
 	literal := tc.a.node(tc.ownership_unwrap_expr(id))
 	if literal.kind != .struct_init || tc.struct_embed_receiver_names(name_id).len != 0
-		|| tc.ownership_type_has_explicit_drop(name_id)
+		|| (!check_drop_separately && tc.ownership_type_has_explicit_drop(name_id))
 		|| receiver_method_name_candidates(actual, 'free', tc.cur_module).any(it in tc.fn_ret_types) {
 		return none
 	}
@@ -346,11 +346,24 @@ fn (mut tc TypeChecker) ownership_record_scoped_thread_call(call flat.Node, info
 	}
 }
 
+fn (tc &TypeChecker) ownership_scoped_thread_call_borrows(arg flat.NodeId, expected Type, info CallInfo, param_idx int) ?[]ScopedThreadBorrow {
+	if tc.ownership_is_scoped_callback(expected) {
+		return tc.ownership_scoped_callback_borrows(arg, expected, info, param_idx)
+	}
+	return tc.ownership_scoped_thread_argument_borrows(arg, expected, false)
+}
+
 fn (mut tc TypeChecker) ownership_record_scoped_thread_borrow(arg flat.NodeId, info CallInfo, param_idx int, expected Type, handle string, join_site flat.NodeId) {
 	if tc.call_param_is_mut(info, param_idx) {
 		return
 	}
-	borrows := tc.ownership_scoped_thread_argument_borrows(arg, expected) or { return }
+	borrows := tc.ownership_scoped_thread_call_borrows(arg, expected, info, param_idx) or { return }
+	if tc.ownership_is_scoped_callback(expected) {
+		callback := tc.a.node(tc.ownership_unwrap_expr(arg))
+		if callback.kind == .ident {
+			tc.ownership_release_borrower_loans(callback.value, true)
+		}
+	}
 	for borrow in borrows {
 		mut state := tc.ownership_state()
 		if active := state.borrowed_vars[borrow.source] {
@@ -396,6 +409,15 @@ fn (tc &TypeChecker) ownership_scoped_thread_reborrows(id flat.NodeId) bool {
 	}
 	if tc.a.node(call_id).kind != .call {
 		return false
+	}
+	if tc.ownership_scoped_callback_call_is(call_id, 'new_scoped_mut_callback') {
+		runner_id := tc.ownership_scoped_thread_use_parent(call_id)
+		runner := tc.a.node(runner_id)
+		if runner.children_count != 3 || tc.ownership_unwrap_expr(tc.a.child(runner, 1)) != call_id
+			|| !tc.ownership_scoped_callback_call_is(runner_id, 'invoke_scoped_mut_callback') {
+			return false
+		}
+		call_id = runner_id
 	}
 	spawn_id := tc.ownership_scoped_thread_use_parent(call_id)
 	return tc.a.node(spawn_id).kind == .spawn_expr

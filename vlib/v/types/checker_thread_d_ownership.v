@@ -91,7 +91,7 @@ fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected
 		return
 	}
 	if tc.valid_node_id(join_site) {
-		if borrows := tc.ownership_scoped_thread_argument_borrows(id, expected) {
+		if borrows := tc.ownership_scoped_thread_call_borrows(id, expected, info, index) {
 			if group_info := group {
 				for borrow in borrows {
 					if !tc.ownership_scoped_thread_group_source_outlives(borrow.source, group_info) {
@@ -102,7 +102,8 @@ fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected
 					}
 				}
 			}
-			if !tc.ownership_scoped_thread_parameter_does_not_escape(info, index, expected, borrows) {
+			if !tc.ownership_is_scoped_callback(expected)
+				&& !tc.ownership_scoped_thread_parameter_does_not_escape(info, index, expected, borrows) {
 				use := if borrows.any(it.access == .atomic) { 'used' } else { 'read' }
 				tc.record_error(.thread_transfer,
 					'cannot prove that the scoped thread borrow is ${use} without escaping', id)
@@ -241,6 +242,9 @@ fn (tc &TypeChecker) ownership_thread_transfer_problem(typ Type, capability Thre
 					return 'thread.MutCallback requires exclusive access to its state'
 				}
 				return none
+			}
+			if tc.ownership_is_scoped_callback(typ) {
+				return 'scoped callbacks require a checked invocation with a deferred join'
 			}
 			if capability == .share
 				&& tc.ownership_thread_library_payload(name_id, 'cell', ['cell.RefCell']) != none {

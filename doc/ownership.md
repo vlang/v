@@ -521,6 +521,12 @@ is scalar. It can call the atomic operations directly on that reference, includi
 through a field of the inline worker struct. The handle's binding must outlive the
 join, and the worker cannot pass the reference to another function or store it.
 
+Use `thread.new_scoped_mut_callback` to box a callback whose state contains those scoped borrows.
+Spawn `thread.invoke_scoped_mut_callback` with the constructor inline or with an immutable
+callback declared immediately before the spawn. The invocation owns the box and releases it
+in the worker. The deferred wait keeps the borrowed data alive through both the call and cleanup.
+The checker verifies every use of a borrowed field in the callback's `call` method and destructor.
+
 ## Full example
 
 From the Rust book, translated to V:
