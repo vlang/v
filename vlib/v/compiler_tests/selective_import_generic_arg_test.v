@@ -2,18 +2,19 @@ import os
 import v.tempname
 
 // A generic call resolves its type arguments in the file that writes the call.
-// A bare `Token` there means the selectively imported `iam.Token`, not another
-// imported module's same-named type: when the rewrite and the emitted
-// specialization disagreed, V3 reported bogus `unknown function` diagnostics
-// (vlang/v#28489) or failed to link.
-fn test_selective_import_bare_type_arg_wins_over_imported_homonym() {
+// In route.v, the selectively imported iam.Token wins over json2.Token. In
+// main.v, bbb.Token wins over aaa.Token in both Token{} and take[Token].
+// Resolving the homonym during rewriting used to select an undefined
+// specialization (vlang/v#28489).
+fn test_selective_import_type_and_literal_args_win_over_imported_homonyms() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_selective_import_generic_arg_${tempname.unique_token()}')
 	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	os.mkdir_all(os.join_path(dir, 'json2')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'iam')) or { panic(err) }
+	for sub in ['json2', 'iam', 'aaa', 'bbb'] {
+		os.mkdir(os.join_path(dir, sub))!
+	}
 	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "selective_arg"\n}\n') or {
 		panic(err)
 	}
@@ -49,39 +50,6 @@ pub fn bump_token() int {
 	return t.id
 }
 ') or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), "module main
-
-import route
-
-fn main() {
-	assert route.bump_token() == 1
-	println('ok')
-}
-") or { panic(err) }
-	out := os.join_path(dir, 'app')
-	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-// The literal that is passed for a generic parameter must resolve the same way:
-// `Token{}` in a file that imports `bbb { Token }` is bbb.Token even when another
-// imported module declares a same-named Token with different fields. The call
-// used to be rewritten with the homonym, leaving the specialization undefined.
-fn test_selective_import_bare_literal_arg_wins_over_imported_homonym() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_selective_import_literal_arg_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.mkdir_all(os.join_path(dir, 'aaa')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'bbb')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "selective_literal"\n}\n') or {
-		panic(err)
-	}
 	os.write_file(os.join_path(dir, 'aaa', 'a.v'), 'module aaa
 
 pub struct Token {
@@ -101,24 +69,27 @@ pub fn take[T](mut ctrl T) {
 	println(T.name)
 }
 ') or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main
+	os.write_file(os.join_path(dir, 'main.v'), "module main
 
 import aaa
 import bbb { Token }
+import route
 
 fn main() {
+	assert route.bump_token() == 1
 	mut t := Token{}
 	bbb.take[Token](mut t)
 	_ := aaa.Token{}
+	println('ok')
 }
-') or { panic(err) }
+") or { panic(err) }
 	out := os.join_path(dir, 'app')
 	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'bbb.Token'
+	assert run.output.trim_space() == 'bbb.Token\nok', run.output
 }
 
 // Import aliases decide which enum an `<Enum>__autostr` call belongs to as well.

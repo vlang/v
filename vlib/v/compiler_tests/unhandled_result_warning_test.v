@@ -341,13 +341,13 @@ fn test_a_discarded_match_result_is_an_error_with_w() {
 }
 
 fn test_handled_branch_results_compile_with_w() {
-	for c in cases {
-		if c.name !in ['handled_if', 'handled_nested_branch', 'propagated_if'] {
-			continue
-		}
-		dir := write_program('strict_${c.name}', program(c))
-		res := os.exec([@VEXE, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
-		os.rmdir_all(dir) or {}
-		assert res.exit_code == 0, '${c.name}: ${res.output}'
-	}
+	batch := cases.filter(it.name in ['handled_if', 'handled_nested_branch', 'propagated_if'])
+	// Give each original body its own function so local declarations stay scoped.
+	functions := batch.map('${unmarked(it.extra)}\nfn ${it.name}() {\n\t${unmarked(it.code)}\n}')
+	calls := batch.map('\t${it.name}()')
+	source := prelude + '\n${functions.join('\n\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n'
+	dir := write_program('strict_handled_branches', source)
+	defer { os.rmdir_all(dir) or {} }
+	res := os.exec([@VEXE, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
+	assert res.exit_code == 0, res.output
 }

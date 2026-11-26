@@ -185,8 +185,8 @@ fn test_nested_optional_logical_or_preserves_short_circuiting() {
 	assert out == 'true\n0\nfalse\n0\ntrue\n1\ntrue\n1'
 }
 
-fn test_channel_runtime_fixtures() {
-	or_review_run_batch('channel_runtime', {
+fn test_or_review_runtime_fixtures() {
+	or_review_run_batch('or_review_runtime', {
 		'channel_receive_or_selector':         OrReviewFixture{
 			source:   "struct Holder {\n\tch chan int\n}\n\nfn main() {\n\th := Holder{ch: chan int{}}\n\th.ch.close()\n\tvalue := <-h.ch or {\n\t\tprintln('closed')\n\t\treturn\n\t}\n\tprintln(int_str(value))\n}\n"
 			expected: 'closed'
@@ -207,11 +207,6 @@ fn test_channel_runtime_fixtures() {
 			source:   'fn main() {\n\terr := 7\n\tch := chan int{cap: 1}\n\tch.close()\n\tch <- 1 or {\n\t\tprintln("\${err}")\n\t}\n\tprintln(int_str(err))\n}\n'
 			expected: 'channel closed\n7'
 		}
-	}, false)
-}
-
-fn test_or_and_free_runtime_fixtures() {
-	or_review_run_batch('or_and_free_runtime', {
 		'map_index_address_or_nil':            OrReviewFixture{
 			source:   "fn main() {\n\tmut values := {\n\t\t'x': 7\n\t}\n\tpresent := unsafe { &values['x'] or { nil } }\n\tmissing := unsafe { &values['missing'] or { nil } }\n\tprintln(int_str(*present))\n\tprintln(missing == unsafe { nil })\n}\n"
 			expected: '7\ntrue'

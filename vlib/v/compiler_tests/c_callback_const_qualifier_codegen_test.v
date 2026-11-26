@@ -145,15 +145,24 @@ fn main() {
 	assert !generated.contains('.plain = plain_event_callback_adapter_'), generated
 }
 
-fn test_generic_heap_positional_c_callback_codegen() {
+fn test_generic_heap_and_late_alias_c_callback_codegen() {
 	src := const_cb_write_project('module main
 
 #include "@DIR/native_callback.h"
 
 @[typedef]
+struct C.late_alias_desc {
+mut:
+	cb fn (&Event, voidptr) = unsafe { nil }
+	user_data voidptr
+}
+
+@[typedef]
 struct C.native_event {
 	value int
 }
+
+type Event = C.native_event
 
 @[typedef]
 struct C.native_desc {
@@ -182,51 +191,13 @@ fn make_desc[T](data T) &C.native_desc {
 	return &C.native_desc{concrete_event, plain_event, voidptr(data)}
 }
 
-fn main() {
+fn run_generic_heap_callback() {
 	mut app := App{}
 	event := C.native_event{value: 5}
 	desc := make_desc(&app)
 	desc.cb(&event, desc.user_data)
 	desc.plain(&event, desc.user_data)
 	println(int_str(app.hits))
-}
-')
-	root := os.dir(src)
-	defer { os.rmdir_all(root) or {} }
-	out := os.join_path(root, 'out')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', '${out}'])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '55'
-	generated := os.read_file(out + '.c') or { panic(err) }
-	assert generated.contains('concrete_event_callback_adapter_'), generated
-	assert generated.contains('.cb = concrete_event_callback_adapter_'), generated
-	assert !generated.contains('.cb = concrete_event,'), generated
-}
-
-fn test_c_callback_c_alias_declared_after_field_codegen() {
-	src := const_cb_write_project('module main
-
-#include "@DIR/native_callback.h"
-
-@[typedef]
-struct C.late_alias_desc {
-mut:
-	cb fn (&Event, voidptr) = unsafe { nil }
-	user_data voidptr
-}
-
-@[typedef]
-struct C.native_event {
-	value int
-}
-
-type Event = C.native_event
-
-struct App {
-mut:
-	hits int
 }
 
 fn late_alias_event(e &C.native_event, data voidptr) {
@@ -235,6 +206,7 @@ fn late_alias_event(e &C.native_event, data voidptr) {
 }
 
 fn main() {
+	run_generic_heap_callback()
 	mut app := App{}
 	event := C.native_event{value: 11}
 	mut desc := C.late_alias_desc{
@@ -254,11 +226,14 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '22'
+	assert run.output.trim_space().split_into_lines() == ['55', '22'], run.output
 	generated := os.read_file(out + '.c') or { panic(err) }
+	assert generated.contains('concrete_event_callback_adapter_'), generated
+	assert generated.contains('.cb = concrete_event_callback_adapter_'), generated
+	assert !generated.contains('.cb = concrete_event,'), generated
 	assert generated.contains('(const native_event*, void*)'), generated
-	assert generated.contains('late_alias_event_callback_adapter_'), generated
-	assert generated.contains('const native_event* arg0, void* arg1'), generated
+	assert generated.split_into_lines().any(it.contains('late_alias_event_callback_adapter_')
+		&& it.contains('(const native_event* arg0, void* arg1)')), generated
 	assert generated.contains('late_alias_event((native_event*)arg0, arg1);'), generated
 	assert generated.contains('.cb = late_alias_event_callback_adapter_'), generated
 	assert generated.contains('desc.cb = late_alias_event_callback_adapter_'), generated

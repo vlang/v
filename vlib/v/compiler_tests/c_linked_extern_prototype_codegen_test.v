@@ -12,20 +12,49 @@ fn test_linked_source_and_library_declarations_keep_their_prototype() {
 		os.rmdir_all(dir) or {}
 	}
 	os.mkdir(os.join_path(dir, 'libonly'))!
+	os.mkdir(os.join_path(dir, 'inactive_probe'))!
 	os.write_file(os.join_path(dir, 'v.mod'), "Module { name: 'linked_extern_prototype' }\n") or {
 		panic(err)
 	}
 
-	// A linked C source is compiled, linked and run, so a missing prototype shows up
-	// as an implicit declaration error rather than a silently guessed signature.
+	// Check a plain linked C source and one whose V declaration shares a file with
+	// an include for a different target.
 	os.write_file(os.join_path(dir, 'helper.c'), 'int helper_fn(int x) {\n\treturn x * 2;\n}\n') or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\n#flag @VMODROOT/helper.c\n\nfn C.helper_fn(x int) int\n\nfn main() {\n\tprintln(C.helper_fn(21))\n}\n') or { panic(err) }
+	inactive_target := if os.user_os() == 'windows' { 'linux' } else { 'windows' }
+	os.write_file(os.join_path(dir, 'inactive_impl.c'), 'int inactive_fn(int x) {\n\treturn x * 2;\n}\n')!
+	os.write_file(os.join_path(dir, 'inactive_probe', 'probe.v'), 'module inactive_probe
+
+#flag @VMODROOT/inactive_impl.c
+#include ${inactive_target} <inactive_probe.h>
+
+fn C.inactive_fn(x int) int
+
+pub fn double(x int) int {
+	return C.inactive_fn(x)
+}
+')!
+	os.write_file(os.join_path(dir, 'main.v'), 'module main
+
+import inactive_probe
+
+#flag @VMODROOT/helper.c
+
+fn C.helper_fn(x int) int
+
+fn main() {
+	println(C.helper_fn(21))
+	println(inactive_probe.double(13))
+}
+')!
 	program := os.join_path(dir, 'program')
 	result := os.exec([@VEXE, '-b', 'c', '-o', '${program}', os.join_path(dir, 'main.v')])
 	assert result.exit_code == 0, result.output
+	source_c := os.read_file(program + '.c')!
+	assert source_c.contains('int helper_fn(int x);'), source_c
+	assert source_c.contains('int inactive_fn(int x);'), source_c
 	run := os.exec([program])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42'
+	assert run.output.trim_space() == '42\n26', run.output
 
 	// A module that only links a C library. The library itself is not built here, so
 	// only the generated C is inspected for the prototype.
@@ -36,30 +65,6 @@ fn test_linked_source_and_library_declarations_keep_their_prototype() {
 	assert lib_result.exit_code == 0, lib_result.output
 	c_code := os.read_file(c_path) or { panic(err) }
 	assert c_code.contains('int lib_triple(int x);'), c_code
-}
-
-// An include for a target that is not being built contributes no header, so it must
-// not take ownership of the declarations in its file.
-fn test_target_inactive_include_keeps_the_linked_source_prototype() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_inactive_include_prototype_codegen_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	inactive_target := if os.user_os() == 'windows' { 'linux' } else { 'windows' }
-	os.write_file(os.join_path(dir, 'v.mod'), "Module { name: 'inactive_include_prototype' }\n") or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'helper.c'), 'int helper_fn(int x) {\n\treturn x * 2;\n}\n') or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\n#flag @VMODROOT/helper.c\n#include ${inactive_target} <inactive_probe.h>\n\nfn C.helper_fn(x int) int\n\nfn main() {\n\tprintln(C.helper_fn(21))\n}\n') or {
-		panic(err)
-	}
-	program := os.join_path(dir, 'program')
-	result := os.exec([@VEXE, '-b', 'c', '-o', '${program}', os.join_path(dir, 'main.v')])
-	assert result.exit_code == 0, result.output
-	run := os.exec([program])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42'
 }
 
 // `#postinclude` is emitted after every declaration and call site, so it can never

@@ -400,6 +400,8 @@ fn main() {
 const stdout_write_source = 'import os
 import time
 
+const ready = "ready"
+
 struct Data {
 mut:
 	x int
@@ -413,9 +415,10 @@ fn main() {
 	mut d := &Data{}
 	t := spawn fn (mut d Data) {
 		d.x = 42
-		println("ready")
+		println(ready)
 	}(mut d)
-	for os.file_size(path) == 0 {
+	// The text and the newline may reach the file in separate writes.
+	for os.file_size(path) <= u64(ready.len) {
 		time.sleep(time.millisecond)
 	}
 	mut buf := []u8{len: 16}
