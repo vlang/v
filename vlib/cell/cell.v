@@ -4,7 +4,7 @@ module cell
 // may coexist, but an exclusive borrow excludes all others, inspired by
 // Rust's `std::cell::RefCell`. Unlike `shared` variables it is single-threaded
 // and needs no locks; unlike plain references the checks happen at runtime.
-// Access goes through callbacks, since V has no guard lifetimes.
+// Use callbacks for temporary borrows or ownership-mode guards for local borrows.
 @[heap]
 pub struct RefCell[T] {
 mut:

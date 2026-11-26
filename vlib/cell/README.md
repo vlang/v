@@ -11,3 +11,10 @@ Borrow counts are released when a callback returns. `try_borrow` does not keep a
 Values follow ordinary V assignment semantics, including references contained in `T`;
 the cell does not provide deep copies or track aliases retained outside callbacks.
 Do not mutate such aliases during shared access. Cells do not synchronize access across threads.
+
+With `-ownership`, `borrow()` returns a shared `Ref` guard and `borrow_mut()`
+returns an exclusive `RefMut` guard. `try_borrow_ref()` and `try_borrow_mut()`
+return `none` on the corresponding borrow conflicts. Each guard keeps its borrow
+until it is dropped, including when moved between local bindings. `get()` borrows
+the value for the lifetime of the guard reference. `get_mut()` lets callers update
+fields or call mutable methods through an exclusive guard.
