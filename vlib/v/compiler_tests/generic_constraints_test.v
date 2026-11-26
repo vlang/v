@@ -490,11 +490,10 @@ fn main() {}
 	], res.output
 }
 
-fn test_a_compile_time_is_narrows_a_constrained_type() {
-	// In `$if T is f64 {`, `T` is `f64`; in its `$else`, the rest of its set. A
-	// branch that no type of the set reaches, `T is string`, is not checked, and
-	// a condition that names no type parameter leaves the set as it is.
-	res := check_program('comptime_is', 'type Number = int | f64
+fn test_compile_time_conditions_narrow_constrained_types_and_values() {
+	// `$if` can narrow a type parameter through the parameter itself or a value
+	// of that type. A condition such as `debug` leaves the type set intact.
+	res := check_program('comptime_narrowing', 'type Number = int | f64
 
 fn narrow[T Number](x T, y T) T {
 	$if T is f64 {
@@ -542,27 +541,7 @@ fn narrow_iface[T Named](a T) {
 	}
 }
 
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'5:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
-		'10:13: type `T` has no field named `len`: `int`, in its constraint `Number`, does not have it',
-		'21:13: operator `<<` is not defined on type `T` and `int literal`: `f64`, in its constraint `Number`, does not have it',
-		'27:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
-		'33:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
-		'36:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
-		'45:13: type `T` has no field named `age`: its constraint `Named` does not declare it',
-	], res.output
-}
-
-fn test_a_compile_time_is_on_a_value_narrows_its_type_parameter() {
-	// `$if x is f64 {` with `x T` asks what `$if T is f64 {` asks, for a local
-	// that gets its value from a `T` too, and with `!is`, `in`, `!in`, the groups
-	// and `||`. An `is` outside `$if` is no compile-time test: V rejects it.
-	res := check_program('comptime_value_is', 'type Number = int | f64
-
-fn narrow[T Number](x T, y T) T {
+fn narrow_value[T Number](x T, y T) T {
 	$if x is f64 {
 		println(x % y)
 	} $else {
@@ -595,7 +574,7 @@ fn narrow[T Number](x T, y T) T {
 	return x
 }
 
-fn narrow_iface[T Named](a T) {
+fn narrow_iface_value[T Named](a T) {
 	$if a is User {
 		println(a.age)
 	} $else {
@@ -606,12 +585,22 @@ fn narrow_iface[T Named](a T) {
 fn main() {}
 ')
 	assert res.exit_code == 1, res.output
+	modulo_error := 'operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it'
+	shift_error := 'operator `<<` is not defined on type `T` and `int literal`: `f64`, in its constraint `Number`, does not have it'
+	age_error := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
 	assert error_lines(res.output) == [
-		'5:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
-		'19:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
-		'24:13: operator `<<` is not defined on type `T` and `int literal`: `f64`, in its constraint `Number`, does not have it',
-		'31:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
-		'40:13: type `T` has no field named `age`: its constraint `Named` does not declare it',
+		'5:13: ${modulo_error}',
+		'10:13: type `T` has no field named `len`: `int`, in its constraint `Number`, does not have it',
+		'21:13: ${shift_error}',
+		'27:13: ${modulo_error}',
+		'33:13: ${modulo_error}',
+		'36:13: ${modulo_error}',
+		'45:13: ${age_error}',
+		'51:13: ${modulo_error}',
+		'65:13: ${modulo_error}',
+		'70:13: ${shift_error}',
+		'77:13: ${modulo_error}',
+		'86:13: ${age_error}',
 	], res.output
 }
 
