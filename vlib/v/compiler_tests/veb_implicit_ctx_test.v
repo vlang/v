@@ -100,13 +100,36 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 }
 
-// Route handlers that omit their context parameter can still use the implicit
-// mutable `ctx` binding in their body, including when all declared route
-// parameters are unnamed.
-fn test_veb_implicit_ctx_binding_with_unnamed_route_params() {
-	root := veb_ctx_test_dir('unnamed_route')!
+// Handlers with unnamed parameters still receive an implicit ctx. An
+// imported Context that aliases string is also an ordinary route parameter.
+fn test_veb_implicit_ctx_with_unnamed_and_alias_route_params() {
+	root := veb_ctx_test_dir('route_params')!
 	defer { os.rmdir_all(root) or {} }
-	src := '
+	os.mkdir(os.join_path(root, 'other'))!
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'vebimportedctx' }\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'other', 'other.v'), 'module other\n\npub type Context = string\n') or { panic(err) }
+	// Keep the alias import scoped to the file that uses it.
+	os.write_file(os.join_path(root, 'alias_route.v'), "module main
+
+import veb
+import other
+
+pub struct AliasApp {}
+
+pub fn (mut app AliasApp) index(mut ctx Context) veb.Result {
+	return ctx.text('ok')
+}
+
+pub fn (mut app AliasApp) show(slug other.Context) veb.Result {
+	return ctx.text('slug=\${slug}')
+}
+") or { panic(err) }
+
+	main_src := '
+module main
+
 import veb
 
 pub struct Context {
@@ -136,49 +159,9 @@ fn main() {
 	veb.run_at[App, Context](mut app, port: 0) or { panic(err) }
 }
 '
-	src_file := os.join_path(root, 'v3_veb_implicit_ctx_unnamed_route.v')
-	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(root, 'v3_veb_implicit_ctx_unnamed_route')
-	compile := os.exec([@VEXE, '-no-memory-limit', src_file, '-o', bin_out])
-	assert compile.exit_code == 0, compile.output
-}
-
-// A route parameter whose imported type leaf is `Context` but which is not a veb
-// context (here `other.Context` aliases `string`) must not be mistaken for the
-// request context. The handler still receives the hidden `Context`, so its
-// implicit `ctx` use resolves.
-fn test_veb_imported_context_alias_param_still_gets_hidden_ctx() {
-	root := veb_ctx_test_dir('imported')!
-	defer { os.rmdir_all(root) or {} }
-	os.mkdir(os.join_path(root, 'other'))!
-	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'vebimportedctx' }\n") or {
-		panic(err)
-	}
-	os.write_file(os.join_path(root, 'other', 'other.v'), 'module other\n\npub type Context = string\n') or { panic(err) }
-	main_src := "module main
-
-import veb
-import other
-
-pub struct Context {
-	veb.Context
-}
-
-pub struct App {}
-
-pub fn (mut app App) index(mut ctx Context) veb.Result {
-	return ctx.text('ok')
-}
-
-pub fn (mut app App) show(slug other.Context) veb.Result {
-	return ctx.text('slug=\${slug}')
-}
-
-fn main() {}
-"
 	os.write_file(os.join_path(root, 'main.v'), main_src) or { panic(err) }
-	out := os.join_path(root, 'out')
-	compile := os.exec([@VEXE, '-no-memory-limit', os.join_path(root, 'main.v'), '-o', '${out}'])
+	bin_out := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, '-no-memory-limit', root, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 }
 
