@@ -51,6 +51,21 @@ fn borrow_storage_run(name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn borrow_storage_compile_dispatch(name string, declarations string, branches []string) string {
+	source := 'import os
+
+' + declarations + 'fn main() {
+	match os.args[1] {
+${branches.join('\n')}
+		else { panic("unknown array ownership case") }
+	}
+}
+'
+	build := borrow_storage_compile(name, source)
+	assert build.exit_code == 0, '${name}: ${build.output}'
+	return os.join_path(borrow_storage_tmp_dir, name)
+}
+
 fn test_owned_sum_box_cleanup_matches_gc_allocator() {
 	src := borrow_storage_drop_decls + '
 type Bucket = Res | int
@@ -236,9 +251,7 @@ fn test_owned_borrowed_array_nonempty_uncloneable_views_fail_when_owning() {
 		'return':  'return values'
 		'capture': 'reader := fn [values] () int { return values[0].id }; _ = reader'
 	}
-	mut source := 'import os
-
-interface Drop { mut: drop() }
+	mut source := 'interface Drop { mut: drop() }
 struct Handle implements Drop { id int }
 fn (mut h Handle) drop() {}
 '
@@ -262,17 +275,7 @@ fn own_${name}(mut values []Handle) []Handle {
 		}'
 		}
 	}
-	source += 'fn main() {
-	match os.args[1] {
-${branches.join('\n')}
-		else { panic("unknown array ownership case") }
-	}
-}
-'
-	binary_name := 'uncloneable_boundary'
-	build := borrow_storage_compile(binary_name, source)
-	assert build.exit_code == 0, build.output
-	binary := os.join_path(borrow_storage_tmp_dir, binary_name)
+	binary := borrow_storage_compile_dispatch('uncloneable_boundary', source, branches)
 	for action, _ in operations {
 		for borrowed in [false, true] {
 			name := '${action}_${borrowed}'
@@ -1001,50 +1004,56 @@ fn main() {
 }
 
 fn test_invalid_owned_array_growth_preserves_diagnostics_without_cloning() {
+	mut source := 'interface Drop { mut: drop() }
+struct Handle implements Drop { id int }
+fn (mut h Handle) drop() {}
+
+struct CloneableHandle implements Drop { id int }
+fn (mut h CloneableHandle) drop() {}
+fn (h &CloneableHandle) clone() CloneableHandle { println("unexpected clone"); return CloneableHandle{h.id + 100} }
+'
+	mut branches := []string{}
+	mut diagnostics := map[string]string{}
 	for method in ['ensure_cap', 'grow_cap', 'grow_len'] {
 		for overflow in [false, true] {
 			if overflow && method == 'ensure_cap' {
 				continue
 			}
+			amount := if overflow {
+				'max_int'
+			} else if method == 'ensure_cap' {
+				'2'
+			} else {
+				'1'
+			}
+			diagnostic := if overflow {
+				'array.${method}: max_int will be exceeded'
+			} else {
+				'flag `.nogrow` cannot grow in size'
+			}
 			for cloneable in [false, true] {
-				name := 'invalid_growth_${method}_${overflow}_${cloneable}'
-				clone_method := if cloneable {
-					'fn (h &Handle) clone() Handle { println("unexpected clone"); return Handle{h.id + 100} }'
-				} else {
-					''
-				}
-				amount := if overflow {
-					'max_int'
-				} else if method == 'ensure_cap' {
-					'2'
-				} else {
-					'1'
-				}
-				source := 'interface Drop { mut: drop() }
-struct Handle implements Drop { id int }
-fn (mut h Handle) drop() {}
-${clone_method}
-fn grow(mut values []Handle, amount int) {
+				name := '${method}_${overflow}_${cloneable}'
+				element := if cloneable { 'CloneableHandle' } else { 'Handle' }
+				source += '
+fn grow_${name}(mut values []${element}, amount int) {
 	if !${overflow} { unsafe { values.flags.set(.nogrow) } }
 	unsafe { values.${method}(amount) }
 }
-fn main() {
-	mut values := [Handle{1}]
-	grow(mut values[..], ${amount})
-}
+
 '
-				build := borrow_storage_compile(name, source)
-				assert build.exit_code == 0, '${name}: ${build.output}'
-				run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-				assert run.exit_code != 0, '${name}: ${run.output}'
-				assert !run.output.contains('unexpected clone'), '${name}: ${run.output}'
-				expected := if overflow {
-					'array.${method}: max_int will be exceeded'
-				} else {
-					'flag `.nogrow` cannot grow in size'
-				}
-				assert run.output.contains(expected), '${name}: ${run.output}'
+				branches << '		"${name}" {
+			mut values := [${element}{1}]
+			grow_${name}(mut values[..], ${amount})
+		}'
+				diagnostics[name] = diagnostic
 			}
 		}
+	}
+	binary := borrow_storage_compile_dispatch('invalid_growth', source, branches)
+	for name, diagnostic in diagnostics {
+		run := os.exec([binary, name])
+		assert run.exit_code != 0, '${name}: ${run.output}'
+		assert !run.output.contains('unexpected clone'), '${name}: ${run.output}'
+		assert run.output.contains(diagnostic), '${name}: ${run.output}'
 	}
 }
