@@ -525,6 +525,7 @@ Use `thread.new_scoped_mut_callback` to box a callback whose state contains thos
 Spawn `thread.invoke_scoped_mut_callback` with the constructor inline or with an immutable
 callback declared immediately before the spawn. The invocation owns the box and releases it
 in the worker. The deferred wait keeps the borrowed data alive through both the call and cleanup.
+Multiple joined workers can borrow the same atomic through callbacks in either form.
 The checker verifies every use of a borrowed field in the callback's `call` method and destructor.
 The constructor rejects `-autofree` because that mode preserves caller aliases when values move.
 
