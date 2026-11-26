@@ -45,30 +45,43 @@ fn error_lines(output string) []string {
 	return lines
 }
 
-fn test_an_instance_that_reads_a_field_its_type_lacks_is_reported() {
-	res := check_program('int_field', 'fn show[T](x T) string {\n\treturn x.name\n}\n\nfn main() {\n\tprintln(show(1))\n}\n')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ['11:11: `int` has no property `name`'], res.output
+fn test_instances_report_missing_fields_and_methods() {
+	res := check_program('missing_members', "fn show[T](x T) string {
+	return x.name
 }
 
-fn test_a_misspelled_field_is_reported_for_a_struct_instance() {
-	res := check_program('struct_typo', "fn show[T](x T) string {\n\treturn x.nme\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n}\n")
+fn misspelled[T](x T) string {
+	return x.nme
+}
+
+fn call[T](x T) string {
+	return x.greet()
+}
+
+struct Box[T] {
+	v T
+}
+
+fn (b Box[T]) label() string {
+	return b.v.name
+}
+
+fn main() {
+	println(show(1))
+	println(misspelled(User{ name: 'a' }))
+	println(call(User{ name: 'a' }))
+	println(call(1))
+	println(Box[User]{ v: User{ name: 'a' } }.label())
+	println(Box[int]{ v: 1 }.label())
+}
+")
 	assert res.exit_code == 1, res.output
 	errors := error_lines(res.output)
-	assert errors.len == 1, res.output
-	assert errors[0].starts_with('11:11: type `User` has no field named `nme`'), res.output
-}
-
-fn test_an_instance_that_calls_a_method_its_type_lacks_is_reported() {
-	res := check_program('int_method', "fn call[T](x T) string {\n\treturn x.greet()\n}\n\nfn main() {\n\tprintln(call(User{ name: 'a' }))\n\tprintln(call(1))\n}\n")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ['11:11: unknown method or field: `int.greet`.'], res.output
-}
-
-fn test_a_method_of_a_generic_struct_is_checked_for_each_instance() {
-	res := check_program('generic_method', "struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label() string {\n\treturn b.v.name\n}\n\nfn main() {\n\tprintln(Box[User]{ v: User{ name: 'a' } }.label())\n\tprintln(Box[int]{ v: 1 }.label())\n}\n")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ['15:13: `int` has no property `name`'], res.output
+	assert errors.len == 4, res.output
+	assert '11:11: `int` has no property `name`' in errors, res.output
+	assert errors.any(it.starts_with('15:11: type `User` has no field named `nme`')), res.output
+	assert '19:11: unknown method or field: `int.greet`.' in errors, res.output
+	assert '27:13: `int` has no property `name`' in errors, res.output
 }
 
 fn test_instances_that_have_what_the_body_uses_stay_valid() {
