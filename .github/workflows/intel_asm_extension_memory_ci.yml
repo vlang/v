@@ -91,6 +91,12 @@ jobs:
         run: |
           set -eu
           ./v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
+          # Match compiler_ci.yml's Objective-C dependency setup.
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev
+          printf 'int main(void) { return 0; }\n' | gcc -x objective-c - -lobjc -o "$RUNNER_TEMP/objc-smoke"
+          "$RUNNER_TEMP/objc-smoke"
           ./v -silent vlib/v/compiler_errors_test.v
           ./v -silent test vlib/v/
           ./v -silent test vlib/v/gen/c/
