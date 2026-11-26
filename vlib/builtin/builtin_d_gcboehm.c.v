@@ -1,8 +1,7 @@
 module builtin
 
-$if musl ? {
-	// musl has no getcontext implementation. Use the collector's register-saving
-	// fallback when compiling the bundled source with musl-gcc.
+$if musl ?|| (linux && no_system_libc ?) {
+	// Save registers through the collector's portable backend on these runtimes.
 	#flag -DNO_GETCONTEXT=1
 }
 
@@ -128,7 +127,7 @@ $if dynamic_boehm ? {
 	$if macos || linux {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -I @VEXEROOT/thirdparty/libgc/include
-		$if (prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32 || rv64) {
+		$if (linux && no_system_libc ?) || (prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32 || rv64) {
 			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
 			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
@@ -175,8 +174,10 @@ $if dynamic_boehm ? {
 			// Homebrew's bdw-gc; match that. See #25446.
 			#flag -DLARGE_CONFIG=1
 		}
-		#flag -ldl
-		#flag -lpthread
+		$if !no_system_libc ? {
+			#flag -ldl
+			#flag -lpthread
+		}
 	} $else $if freebsd {
 		// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc
 		#flag -DGC_BUILTIN_ATOMIC=1

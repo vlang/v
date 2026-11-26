@@ -1461,6 +1461,21 @@ fn (g &FlatGen) parse_annotation_type_reference(type_id u32) &types.Type {
 	return g.tc.parse_type_ref(type_id)
 }
 
+// c_abi_export_names returns C ABI names declared by V functions and globals.
+// Object packaging uses this compiler-owned manifest to isolate private V symbols.
+pub fn (g &FlatGen) c_abi_export_names() []string {
+	mut names := map[string]bool{}
+	for _, name in g.a.export_fn_names {
+		if name.len > 0 { names[name] = true }
+	}
+	for _, name in g.export_global_names {
+		if name.len > 0 { names[name] = true }
+	}
+	mut result := names.keys()
+	result.sort()
+	return result
+}
+
 pub fn (g &FlatGen) c_flags() []string {
 	return g.c_flags.clone()
 }
@@ -6637,7 +6652,7 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			flags, at_start = c_flag_args_with_start_marker(node.typ_text(), g.compiler_vroot, cur_file,
 				g.target, g.compile_values)
 		} else if node.value == 'pkgconfig' {
-			flags = c_pkgconfig_flags(node.typ_text())
+			flags = c_pkgconfig_flags(node.typ_text(), 'v_bare_static' in g.compile_defines)
 		} else {
 			continue
 		}
@@ -6787,7 +6802,7 @@ fn cache_directive_flag_groups(a &flat.FlatAst, vroot string, target pref.Target
 			flags, at_start = c_flag_args_with_start_marker(flat.source_type_name(node.typ), vroot, cur_file, target,
 				compile_values)
 		} else if node.value == 'pkgconfig' {
-			flags = c_pkgconfig_flags(flat.source_type_name(node.typ))
+			flags = c_pkgconfig_flags(flat.source_type_name(node.typ), 'v_bare_static' in compile_values)
 		} else {
 			continue
 		}
@@ -12951,8 +12966,8 @@ fn c_vmod_root_for_file(source_file string) string {
 	return util.nearest_vmod_root(source_file) or { os.real_path(dir) }
 }
 
-fn c_pkgconfig_flags(raw string) []string {
-	args := pref.pkgconfig_flags_args(trimmed_space(raw)) or { return []string{} }
+fn c_pkgconfig_flags(raw string, static_link bool) []string {
+	args := pref.pkgconfig_link_flags_args(trimmed_space(raw), static_link) or { return []string{} }
 	if args.len == 0 {
 		return []string{}
 	}
@@ -17895,7 +17910,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write(g.local_cname(ident_value))
 			} else if is_local && g.local_name_shadows_c_function(ident_value) {
 				g.write(g.local_cname(ident_value))
-			} else if ident_value in g.global_modules {
+			} else if !is_local && ident_value in g.global_modules {
 				mod := g.global_modules[ident_value]
 				if mod.len > 0 && mod != 'main' && mod != 'builtin' {
 					g.write(g.global_c_name('${mod}.${ident_value}'))
@@ -21271,13 +21286,13 @@ fn (mut g FlatGen) system_libc_preamble() {
 		g.bare_thread_runtime()
 		return
 	}
+	g.writeln('#ifndef _WIN32')
+	g.writeln('extern char** environ;')
+	g.writeln('#endif')
 	if g.unsupported_freestanding_threads() {
 		g.unsupported_freestanding_thread_runtime()
 		return
 	}
-	g.writeln('#ifndef _WIN32')
-	g.writeln('extern char** environ;')
-	g.writeln('#endif')
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
 	if g.target.os in ['freebsd', 'openbsd'] || g.output_cross_c {
 		g.collect_preserved_c_fns(['sysctl'])
@@ -21859,6 +21874,10 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	// This callback alias belongs to V, including when the target supplies libc headers.
 	g.writeln('typedef int (*qsort_callback_func)(const void*, const void*);')
 	if g.target_libc_headers {
+		if 'v_bare_system_environment' in g.compile_defines {
+			// POSIX exposes environ to applications, but the target headers may omit its declaration.
+			g.writeln('extern char** environ;')
+		}
 		// Everything below declares a hosted libc: FILE, the POSIX structs, and the
 		// prototypes that go with them. A kernel defines those itself, in its own
 		// headers, and a second declaration of `struct stat` or `strlen` conflicts

@@ -131,11 +131,41 @@ see also `v help build`.
       cached `.o` files when V can find the corresponding source on disk.
 
    -freestanding
-      Build the executable without dependency on libc. It is linked with
-      `-static -nostdlib` and without a garbage collector, and takes its
+      Build the executable without implicit libc linkage. It uses `-nostdlib`,
+      without a garbage collector, and takes its
       process entry point, syscalls and memory allocator from the bare builtin
       implementation (see `-bare-builtin-dir`).
-      Supported only on `linux` targets, on amd64 and arm64, currently.
+      On Linux amd64/arm64, C shared libraries remain allowed. Use
+      `-ldflags -static` to request static linking explicitly.
+
+   -syscalls, -bare
+      Use the freestanding V runtime with libc available for C interoperability.
+      V output and OS operations use the bare syscall routes. Libc supplies process
+      startup, TLS, pthreads and stdio. The default allocator shares its heap with C.
+      On native Linux amd64 and arm64, pass `-gc boehm` to collect V allocations.
+      C libraries keep their own allocator, including with `-no-system-libc`.
+      Add `-no-system-libc` or `-freestanding` to disable optional libc linkage, in either
+      order. Add `-vlibc` or `-d vlibc` to enable the `vlibc_*` API as well.
+      Supported by the C backend on Unix targets; verified
+      on Linux amd64 and arm64. Platform runtime restrictions still apply.
+
+   -vlibc
+      Enable the `vlibc_*` API with the regular V runtime and selected collector.
+      Equivalent to `-d vlibc`, including without `-syscalls`. Libc retains process
+      startup, TLS, pthreads, stdio and the shared allocation domain.
+      Use `-no-system-libc` to select the standalone replacement C ABI instead.
+
+   -no-system-libc
+      Disable automatic CRT/libc linkage independently of V runtime selection. Supported by
+      the C backend. May be combined with `-syscalls`, `-vlibc`, or `-d vlibc`, in
+      either order. This does not force static linking or discard declared C
+      objects, archives or shared libraries. Dependencies can still request libc
+      themselves; use libc-free dependencies when the whole process must avoid it.
+      With this flag alone, supply the C ABI and process startup. Dynamic Linux
+      executables using V's replacement startup use the target GNU loader for TLS.
+
+   -shim-libc
+      Alias for `-vlibc -no-system-libc`.
 
    -bare-builtin-dir <bare-builtin-dir>
       Use with `-freestanding`. This specifies the directory to the
@@ -350,7 +380,7 @@ see also `v help build`.
       V uses a garbage collector by default. Only the Boehm–Demers–Weiser garbage collector
       is supported currently with the following sub-options:
 
-      `-gc boehm` ........... use default garbage collector (same as not specifying option)
+      `-gc boehm` ........... use the default Boehm mode (explicit opt-in with -syscalls)
       `-gc boehm_full` ...... full garbage collection mode
       `-gc boehm_incr` ...... incremental/generational garbage collection mode
       `-gc boehm_full_opt` .. optimized full garbage collection mode
@@ -610,3 +640,11 @@ see also `v help build`.
       `u8(-1)` or `u32(i64(-5))`. Triggers a panic instead of truncating or reinterpreting
       the value. Only code outside vlib is checked, since the standard library relies on
       truncating casts. Functions tagged with `@[ignore_overflow]` are not checked.
+
+Linux standalone C dependencies:
+  -freestanding and -no-system-libc retain declared C libraries. Static pkg-config
+  dependency closures are requested only for explicit -ldflags -static links.
+  Use a target-matching VLIBC_PREFIX for replacement-runtime C dependencies.
+  Native prefixes under VMODULES/vlibc/linux-<arch>-shared are discovered
+  automatically; explicit static links use linux-<arch>-static. See
+  vlib/builtin/README.vlibc.md for the dependency builder and prefix format.

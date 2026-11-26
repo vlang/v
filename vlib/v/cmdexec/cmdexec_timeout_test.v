@@ -109,6 +109,12 @@ fn testsuite_begin() {
 		eprintln('late descendant stderr')
 		exit(0)
 	}
+	if mode == 'large-output' {
+		println(os.getwd())
+		println('o'.repeat(262144))
+		eprintln('e'.repeat(262144))
+		exit(7)
+	}
 	if mode == 'fast' {
 		println('fast child stdout')
 		eprintln('fast child stderr')
@@ -172,4 +178,16 @@ fn test_run_with_timeout_does_not_confuse_empty_open_pipes_with_eof() {
 	result := run_with_timeout(os.executable(), [timeout_pipe_probe, 'quiet', '', ''], 500)
 	assert result.exit_code != 0, result.output
 	assert_no_unreaped_child('a quiet native child')
+}
+
+fn test_run_in_with_timeout_drains_large_output_in_work_folder() ! {
+	work := os.join_path(os.vtmp_dir(), 'cmdexec_capture_${os.getpid()}')
+	os.mkdir_all(work)!
+	defer { os.rmdir_all(work) or {} }
+	result := run_in_with_timeout(os.executable(), [timeout_pipe_probe, 'large-output', '', ''],
+		work, 5000)
+	assert result.exit_code == 7
+	assert result.output.contains(os.real_path(work))
+	assert result.output.count('o') >= 262144
+	assert result.output.count('e') >= 262144
 }

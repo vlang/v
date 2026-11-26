@@ -105,7 +105,7 @@ $if !i386 {
 	// VlibcThreadFn is the entry point of a freestanding thread.
 	pub type VlibcThreadFn = fn (u64)
 
-	// VlibcThread owns a thread stack and any TLS image until join observes kernel exit.
+	// VlibcThread owns a native pthread or a raw thread's stack and TLS until join.
 	pub struct VlibcThread {
 	pub:
 		fn_ptr           VlibcThreadFn
@@ -117,6 +117,7 @@ $if !i386 {
 		tid_addr         &u32 = unsafe { nil }
 		tls_mapping      voidptr
 		tls_mapping_size u64
+		host_handle      uint
 	}
 
 	// The child never returns through the parent's frame. Its entry function and
@@ -195,21 +196,71 @@ $if !i386 {
 		return result
 	}
 
-	// bare_thread_mapping_spawn starts fn_ptr(arg) with per-thread state and the requested stack.
-	// Freestanding C builds initialize an independent ELF TLS image for the child.
-	fn bare_thread_mapping_spawn(fn_ptr VlibcThreadFn, arg u64, stack_size u64) (VlibcThread, Errno) {
-		mut t := VlibcThread{ fn_ptr: fn_ptr, arg: arg, stack_size: stack_size }
-		mem, e := sys_mmap(unsafe { nil }, t.stack_size, unsafe { MemProt(3) }, unsafe { MapFlags(0x22) }, -1, 0)
-		if e != .enoerror {
-			return t, e
+	// Startup preserves AT_PAGESZ before running native constructors. An embedded
+	// runtime can ask the host libc for its page size instead.
+	fn bare_thread_page_size() u64 {
+		$if linux && freestanding && !native && !v_bare_no_startup ?&& !v_bare_libc ? {
+			return u64(bare_native_getauxval(6))
+		} $else {
+			return u64(C.sysconf(C._SC_PAGESIZE))
 		}
-		t.stack = mem
-		t.tid_addr = unsafe { &u32(mem) }
+	}
+
+	// The clone trampoline reads the first two words from the initial stack pointer.
+	// The kernel TID cell and mapping metadata stay above the child's active stack.
+	struct BareThreadStackHeader {
+		entry      u64
+		argument   u64
+		guard_size u64
+		tid        u32
+	}
+
+	fn (t &VlibcThread) bare_stack_header() &BareThreadStackHeader {
+		return unsafe { &BareThreadStackHeader(u64(t.stack) + t.stack_size - sizeof(BareThreadStackHeader)) }
+	}
+
+	fn (t &VlibcThread) bare_stack_mapping() (voidptr, u64) {
+		guard := t.bare_stack_header().guard_size
+		return voidptr(u64(t.stack) - guard), t.stack_size + guard
+	}
+
+	// Rounding this positive request reserves exactly one native page.
+	const bare_thread_default_guard = 1
+
+	// The guard is below the downward-growing stack. The kernel TID cell and
+	// clone entry arguments belong to the writable portion of the mapping.
+	fn bare_thread_mapping_spawn(fn_ptr VlibcThreadFn, arg u64, requested_stack u64, requested_guard u64) (VlibcThread, Errno) {
+		mut t := VlibcThread{ fn_ptr: fn_ptr, arg: arg }
+		page := bare_thread_page_size()
+		if page == 0 || (page & (page - 1)) != 0 { return t, .einval }
+		mask := page - 1
+		if requested_stack < 16384 || requested_stack > u64(max_int) - mask
+			|| requested_guard > ~u64(0) - mask {
+			return t, .einval
+		}
+		t.stack_size = (requested_stack + mask) & ~mask
+		guard_size := (requested_guard + mask) & ~mask
+		if guard_size > ~u64(0) - t.stack_size { return t, .einval }
+		total := guard_size + t.stack_size
+		mem, e := sys_mmap(unsafe { nil }, total, unsafe { MemProt(3) }, unsafe { MapFlags(0x22) }, -1, 0)
+		if e != .enoerror { return t, e }
+		if guard_size != 0 {
+			result := i64(sys_call3(sys_nr_mprotect, u64(mem), guard_size, u64(MemProt.prot_none)))
+			if result < 0 {
+				sys_munmap(mem, total)
+				return t, unsafe { Errno(-result) }
+			}
+		}
+		t.stack = voidptr(u64(mem) + guard_size)
+		header := t.bare_stack_header()
+		// The new mapping is private and writable until clone publishes it.
+		unsafe { *header = BareThreadStackHeader{ entry: u64(fn_ptr), argument: arg, guard_size: guard_size } }
+		t.tid_addr = &header.tid
 		mut tls_pointer := voidptr(unsafe { nil })
-		$if freestanding && !native {
+		$if freestanding && !native && !v_bare_libc ? {
 			tls, tls_error := bare_tls_allocate()
 			if tls_error != .enoerror {
-				sys_munmap(t.stack, t.stack_size)
+				sys_munmap(mem, total)
 				t.stack = unsafe { nil }
 				t.tid_addr = unsafe { nil }
 				return t, unsafe { Errno(tls_error) }
@@ -218,16 +269,9 @@ $if !i386 {
 			t.tls_mapping_size = u64(tls.mapping_size)
 			tls_pointer = tls.pointer
 		}
-		newsp := unsafe { &u64(u64(mem) + t.stack_size - 16) }
-		// The stack mapping owns all data used by the child; spawning again cannot
-		// overwrite it. No heap allocator is needed on either clone return path.
-		unsafe {
-			newsp[0] = u64(fn_ptr)
-			newsp[1] = arg
-		}
-		t.tid = bare_clone_raw(newsp, t.tid_addr, tls_pointer)
+		t.tid = bare_clone_raw(header, t.tid_addr, tls_pointer)
 		if t.tid < 0 {
-			sys_munmap(t.stack, t.stack_size)
+			sys_munmap(mem, total)
 			if t.tls_mapping != unsafe { nil } {
 				sys_munmap(t.tls_mapping, t.tls_mapping_size)
 				t.tls_mapping = unsafe { nil }
@@ -253,7 +297,8 @@ $if !i386 {
 			// CLONE_CHILD_CLEARTID wakes shared FUTEX_WAIT, not FUTEX_WAIT_PRIVATE.
 			bf_futex_raw(t.tid_addr, 0, tid, unsafe { nil }, unsafe { nil }, 0)
 		}
-		sys_munmap(t.stack, t.stack_size)
+		base, total := t.bare_stack_mapping()
+		sys_munmap(base, total)
 		if t.tls_mapping != unsafe { nil } {
 			sys_munmap(t.tls_mapping, t.tls_mapping_size)
 			t.tls_mapping = unsafe { nil }

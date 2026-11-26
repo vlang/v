@@ -1,9 +1,19 @@
 @[has_globals]
 module os
 
-import sync
+fn C.clearenv() i32
+
+$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
+	#include "@DIR/../builtin/linux_bare/libc_environment.h"
+}
+
+fn C.v_freestanding_environment_lock()
+fn C.v_freestanding_environment_unlock()
+fn C.v_freestanding_environment_get_locked(const_name &char) &char
 
 $if (linux || (macos && amd64)) && !native && !i386 {
+	import sync
+
 	// One allocation owns each changed entry, including its two borrowed string
 	// views. Startup entries remain in the kernel-provided argument block.
 	struct FSysEnvironmentEntry {
@@ -75,6 +85,13 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 
 	@[manualfree]
 	fn fsys_environment_get(key string) (string, bool) {
+		$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
+			C.v_freestanding_environment_lock()
+			defer { C.v_freestanding_environment_unlock() }
+			value := unsafe { C.v_freestanding_environment_get_locked(&char(key.str)) }
+			if value == unsafe { nil } { return '', false }
+			return unsafe { cstring_to_vstring(value) }, true
+		}
 		name := fsys_environment_prefix(key)
 		if !fsys_environment_valid_name(name) { return '', false }
 		fsys_environment_mutex.lock()
@@ -152,6 +169,9 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 
 	@[manualfree]
 	fn fsys_environment_set(key string, text string, overwrite bool) int {
+		$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
+			return unsafe { C.setenv(&char(key.str), &char(text.str), int(overwrite)) }
+		}
 		name := fsys_environment_prefix(key)
 		value := fsys_environment_prefix(text)
 		if !fsys_environment_valid_name(name) { return -1 }
@@ -179,6 +199,9 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 
 	@[manualfree]
 	fn fsys_environment_unset(key string) int {
+		$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
+			return unsafe { C.unsetenv(&char(key.str)) }
+		}
 		name := fsys_environment_prefix(key)
 		if !fsys_environment_valid_name(name) { return -1 }
 		fsys_environment_mutex.lock()
@@ -210,6 +233,14 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 
 	@[manualfree]
 	fn fsys_environment_clear() {
+		$if v_bare_system_environment ? {
+			C.clearenv()
+			return
+		}
+		$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
+			C.clearenv()
+			return
+		}
 		fsys_environment_mutex.lock()
 		mut retired := fsys_environment_entries
 		fsys_environment_entries = unsafe { nil }
@@ -224,6 +255,22 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 
 	@[manualfree]
 	fn fsys_environment_all() map[string]string {
+		$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
+			C.v_freestanding_environment_lock()
+			defer { C.v_freestanding_environment_unlock() }
+			mut values := map[string]string{}
+			entries := unsafe { &&u8(C.environ) }
+			if entries == unsafe { nil } { return values }
+			for i := 0; unsafe { entries[i] } != unsafe { nil }; i++ {
+				// Borrow the C block while locked; return independently owned values.
+				entry := unsafe { tos2(entries[i]) }
+				eq := entry.index_u8(`=`)
+				if eq > 0 {
+					values[fsys_environment_view(entry, 0, eq)] = fsys_environment_view(entry, eq + 1, entry.len).clone()
+				}
+			}
+			return values
+		}
 		mut result := map[string]string{}
 		fsys_environment_mutex.lock()
 		defer { fsys_environment_mutex.unlock() }

@@ -36,6 +36,9 @@ pub fn fd_write(fd int, s string) {
 				continue
 			}
 			if we != 0 || written == 0 {
+				$if !i386 && !windows && !openbsd {
+					if we != 0 { bf_set_last_errno(we) }
+				}
 				return
 			}
 			remaining_fs = remaining_fs - written
@@ -73,7 +76,8 @@ pub fn fd_slurp(fd int) []string {
 	return res
 }
 
-// fd_read reads data from the file descriptor. It returns the read data, and how many bytes were read.
+// fd_read reads up to maxbytes from the file descriptor. It returns the data and byte count,
+// zero at EOF or for fd -1, and a negative count on a read error. Use last_error() on Unix.
 // On signal interruption (EINTR), the read is retried so callers do not see spurious empty results
 // when a signal (for example a Boehm GC stop-the-world signal in a multi-threaded program) interrupts
 // a blocking read.
@@ -90,7 +94,10 @@ pub fn fd_read(fd int, maxbytes int) (string, int) {
 			}
 			if re != 0 || nr < 0 {
 				free(buf)
-				return '', re
+				$if !i386 && !windows && !openbsd {
+					bf_set_last_errno(re)
+				}
+				return '', -1
 			}
 			if nr == 0 {
 				free(buf)
@@ -118,7 +125,13 @@ pub fn fd_read(fd int, maxbytes int) (string, int) {
 				break
 			}
 			if nbytes < 0 {
-				free(buf)
+				$if !windows {
+					saved_errno := C.errno
+					free(buf)
+					C.errno = saved_errno
+				} $else {
+					free(buf)
+				}
 				return '', nbytes
 			}
 			buf[nbytes] = 0
@@ -178,7 +191,7 @@ pub fn fd_is_pending(fd int) bool {
 		// FIONREAD answers directly; there is no select-based fallback for
 		// fds that dislike the ioctl. The request code is per OS: linux
 		// 0x541B, BSD/Darwin 0x4004667f.
-		request := $if linux ? { u64(0x541B) } $else { u64(0x4004667f) }
+		request := $if linux { u64(0x541B) } $else { u64(0x4004667f) }
 		ic := fsys_ioctl(fd, request, &bytes_avail)
 		return ic == 0 && bytes_avail > 0
 	}

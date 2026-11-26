@@ -27,6 +27,17 @@ $if freestanding && !i386 {
 		return math.floor(x)
 	}
 
+	@[export: 'trunc']
+	@[markused]
+	fn bf_trunc(x f64) f64 {
+		bits := math.f64_bits(x)
+		exponent := int((bits >> 52) & 0x7ff) - 1023
+		if exponent < 0 { return math.f64_from_bits(bits & 0x8000000000000000) }
+		if exponent == 1024 { return x + x } // Quiet a signaling NaN with the native exception.
+		if exponent >= 52 { return x }
+		return math.f64_from_bits(bits & ~(u64(0xfffffffffffff) >> exponent))
+	}
+
 	@[export: 'pow']
 	@[markused]
 	fn bf_pow(x f64, y f64) f64 {

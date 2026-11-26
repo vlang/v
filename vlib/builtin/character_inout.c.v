@@ -5,8 +5,13 @@ module builtin
 pub fn input_character() int {
 	mut ch := 0
 	$if freestanding {
-		// TODO
-		return -1
+		$if linux && (amd64 || arm64) {
+			mut byte := u8(0)
+			count, code := bf_read(0, &byte, 1)
+			return if code == 0 && count == 1 { int(byte) } else { -1 }
+		} $else {
+			return -1
+		}
 	} $else $if vinix {
 		// TODO
 		return -1

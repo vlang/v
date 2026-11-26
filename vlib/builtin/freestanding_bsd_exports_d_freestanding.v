@@ -5,7 +5,7 @@ module builtin
 // pow/fabs/floor come from freestanding_math_d_freestanding.c.v.
 // linux_bare/exports_d_freestanding.v carries the Linux set. macOS is left out:
 // a freestanding macOS program still links libSystem, which provides it.
-$if freestanding && !i386 && (freebsd || netbsd || dragonfly || solaris) {
+$if freestanding && !v_bare_libc ?&& !i386 && (freebsd || netbsd || dragonfly || solaris) {
 	// bf_posix_memalign returns `size` bytes at an address that is a multiple of
 	// `alignment`, which must be a power of two and a multiple of the pointer size.
 	// The block comes from the runtime's dlmalloc, so the exported free releases it.

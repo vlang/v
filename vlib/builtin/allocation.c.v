@@ -408,6 +408,9 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 		nptr = unsafe { &u8(vgc_realloc(old_data, uint(new_size))) }
 	} $else $if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
+	} $else $if v_bare_libc ? {
+		// Keep libc's realloc symbol and allocation domain intact for C callers.
+		nptr = unsafe { C.realloc(old_data, new_size) }
 	} $else $if freestanding {
 		// the freestanding runtime (builtin/freestanding.c.v or linux_bare)
 		// provides realloc/1 in place of the libc call

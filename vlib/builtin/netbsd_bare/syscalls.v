@@ -719,7 +719,7 @@ $if !i386 {
 		return res, err
 	}
 
-	$if freestanding {
+	$if freestanding && !v_bare_no_startup ? {
 		$if amd64 {
 			asm amd64 {
 				.pushsection .text

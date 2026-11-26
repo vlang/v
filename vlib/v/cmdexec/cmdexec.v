@@ -29,7 +29,12 @@ pub fn run_in(program string, args []string, work_folder string) os.Result {
 // is reported instead of hanging the compiler forever. The deadline also covers
 // output pipes inherited by descendants after the direct child has exited.
 pub fn run_with_timeout(program string, args []string, timeout_ms i64) os.Result {
-	return run_in_mode(program, args, '', false, timeout_ms)
+	return run_in_with_timeout(program, args, '', timeout_ms)
+}
+
+// run_in_with_timeout runs a bounded command in work_folder and drains both output pipes.
+pub fn run_in_with_timeout(program string, args []string, work_folder string, timeout_ms i64) os.Result {
+	return run_in_mode(program, args, work_folder, false, timeout_ms)
 }
 
 // resolve_program returns the executable to hand to os.Process, or none when

@@ -230,6 +230,7 @@ $if arm64 {
 	const sys_nr_write = u64(64)
 	const sys_nr_openat = u64(56)
 	const sys_nr_close = u64(57)
+	const sys_nr_mprotect = u64(226)
 	const sys_nr_mmap = u64(222)
 	const sys_nr_munmap = u64(215)
 	const sys_nr_mremap = u64(216)
@@ -249,6 +250,7 @@ $if arm64 {
 	const sys_nr_write = u64(1)
 	const sys_nr_open = u64(2)
 	const sys_nr_close = u64(3)
+	const sys_nr_mprotect = u64(10)
 	const sys_nr_mmap = u64(9)
 	const sys_nr_munmap = u64(11)
 	const sys_nr_mremap = u64(25)
@@ -692,10 +694,12 @@ $if !i386 {
 				_start:
 				xor rbp, rbp
 					mov r12, rsp
+					mov r13, rdx
 					mov rdi, rsp
 					call v_bare_tls_init
 					mov rdi, [r12]
 					lea rsi, [r12 + 8]
+					mov rdx, r13
 					call v_bare_run_initializers
 					mov rdi, [r12]
 					lea rsi, [r12 + 8]
@@ -715,10 +719,12 @@ $if !i386 {
 				mov x29, 0
 				mov x30, 0
 					mov x19, sp
+					mov x20, x0
 					mov x0, sp
 					bl v_bare_tls_init
 					ldr x0, [x19]
 					add x1, x19, 8
+					mov x2, x20
 					bl v_bare_run_initializers
 					ldr x0, [x19]
 					add x1, x19, 8

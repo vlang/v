@@ -191,6 +191,23 @@ fn test_native_backend_and_freestanding_skip_gc_defines() {
 	})
 }
 
+fn test_syscall_runtime_only_collects_when_requested() {
+	$if !linux || (!amd64 && !arm64) {
+		return
+	}
+	with_clean_build_environment(fn () {
+		for args in [['-syscalls'], ['-bare', '-gc', 'none'], ['-freestanding', '-gc', 'boehm']] {
+			env := vtest_build_environment(@VEXEROOT, args)
+			assert 'freestanding' in env.defines && 'gcboehm' !in env.defines, args.str()
+			assert 'tinyc' !in env.facts, args.str()
+		}
+		env := vtest_build_environment(@VEXEROOT, ['-bare', '-shim-libc', '-gc', 'boehm'])
+		for flag in ['syscalls', 'freestanding', 'no_system_libc', 'vlibc', 'gcboehm'] {
+			assert flag in env.defines, env.defines.str()
+		}
+	})
+}
+
 fn test_native_backend_aliases_use_the_host_test_environment() {
 	with_clean_build_environment(fn () {
 		expected := vtest_build_environment(@VEXEROOT, ['-b', pref.host_arch()])

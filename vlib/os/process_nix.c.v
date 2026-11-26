@@ -4,7 +4,9 @@ fn C.setpgid(pid i32, pgid i32) i32
 
 // The posix_spawn calls are in a C object of their own: an `#include <spawn.h>` in this file
 // would put V's whole platform header block into every program that imports `os`.
-#flag linux @VEXEROOT/vlib/os/posix_spawn_nix.o
+$if !freestanding && !syscalls {
+	#flag linux @VEXEROOT/vlib/os/posix_spawn_nix.o
+}
 
 fn C.v_os_posix_spawn(exe &char, argv &&char, envp &&char, use_pgroup i32, stdin_path &char, redirect i32, stdin_fd i32, out_fd i32, err_fd i32, close_fds &i32, n_close i32) i32
 
@@ -49,6 +51,35 @@ fn (p &Process) unix_resolve_filename() !string {
 	return find_abs_path_of_executable_in_path_env(p.filename, path)
 }
 
+// Prepare every PATH candidate before fork. Only execve can determine whether
+// a candidate's interpreter is available, so the child must try them in order.
+@[manualfree]
+fn (p &Process) unix_capture_search_paths() []string {
+	mut path := '/bin:/usr/bin'
+	for i in 0 .. p.env.len {
+		if p.env[i].starts_with('PATH=') {
+			path = p.env[i][5..]
+			break
+		}
+	}
+	defer { unsafe { path.free() } }
+	mut candidates := []string{}
+	mut start := 0
+	for {
+		end := path.index_after(':', start) or { path.len }
+		if start == end {
+			candidates << p.filename.clone()
+		} else {
+			directory := path[start..end]
+			candidates << '${directory}/${p.filename}'
+			unsafe { directory.free() }
+		}
+		if end == path.len { break }
+		start = end + 1
+	}
+	return candidates
+}
+
 // UnixSpawnPlan holds everything the forked child needs, in a form it can use
 // without allocating.
 //
@@ -67,6 +98,8 @@ struct UnixSpawnPlan {
 	resolve_error string  // when not empty, the child reports it and exits, instead of exec'ing
 	stdin_error   string  // the message prefix used when the stdin file cannot be opened
 	exec_error    string  // the message prefix used when execve fails
+mut:
+	search_paths []string // capture tries these with execve after fork
 }
 
 // unix_prepare_spawn does all the allocating work of a spawn upfront, in the
@@ -75,15 +108,24 @@ struct UnixSpawnPlan {
 // message that the child prints on its (already redirected) stderr, keeping the
 // previous observable behaviour of a child that exits with code 1.
 fn (p &Process) unix_prepare_spawn() UnixSpawnPlan {
+	return p.unix_prepare_spawn_plan(false)
+}
+
+fn (p &Process) unix_prepare_spawn_plan(capture bool) UnixSpawnPlan {
 	mut exe := ''
 	mut resolve_error := ''
-	if resolved := p.unix_resolve_filename() {
+	mut search_paths := []string{}
+	if capture && p.filename.len > 0 && !p.filename.contains(path_separator) {
+		exe = p.filename
+		search_paths = p.unix_capture_search_paths()
+	} else if resolved := p.unix_resolve_filename() {
 		exe = resolved
 	} else {
 		resolve_error = '${err}\n'
 	}
 	mut argv := []&char{cap: p.args.len + 2}
-	argv << &char(exe.str)
+	// Capture has execvp's literal argv[0] contract, including PATH aliases.
+	argv << if capture { &char(p.filename.str) } else { &char(exe.str) }
 	for i in 0 .. p.args.len {
 		argv << &char(p.args[i].str)
 	}
@@ -100,6 +142,7 @@ fn (p &Process) unix_prepare_spawn() UnixSpawnPlan {
 	}
 	return UnixSpawnPlan{
 		exe:           exe
+		search_paths:  search_paths
 		argv:          argv
 		envp:          envp
 		resolve_error: resolve_error
@@ -256,9 +299,9 @@ fn unix_process_pipe(fds &i32) i32 {
 	return C.pipe(fds)
 }
 
-fn (mut p Process) unix_spawn_process() int {
+fn (mut p Process) unix_spawn_process(inherit_stdin bool) int {
 	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
-		return p.fsys_spawn_process()
+		return p.fsys_spawn_process(inherit_stdin)
 	} $else {
 		return p.unix_spawn_process_libc()
 	}

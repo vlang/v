@@ -15,6 +15,7 @@ module os
 $if freestanding || syscalls {
 	const fsys_darwin_path_max = 1024
 
+	@[manualfree]
 	fn fsys_read_file(path string) ![]u8 {
 		fd, e := bf_openat(path.str, u64(o_rdonly), u64(0))
 		if e != 0 {
@@ -25,12 +26,14 @@ $if freestanding || syscalls {
 		}
 		mut data := []u8{cap: 4096}
 		mut chunk := []u8{len: 4096}
+		defer { unsafe { chunk.free() } }
 		for {
 			nr, re := bf_read(fd, chunk.data, chunk.len)
 			if re == 4 { // EINTR
 				continue
 			}
 			if re != 0 {
+				unsafe { data.free() }
 				return error_with_code('read_file failed: errno ${re}', re)
 			}
 			if nr == 0 {
@@ -151,10 +154,17 @@ $if freestanding || syscalls {
 
 	// fsys_proc_environ_map returns every `KEY=VALUE` entry of
 	// /proc/self/environ as a map.
+	@[manualfree]
 	fn fsys_proc_environ_map() map[string]string {
 		mut res := map[string]string{}
 		content := fsys_read_file('/proc/self/environ') or { return res }
 		text := content.bytestr()
+		defer {
+			unsafe {
+				text.free()
+				content.free()
+			}
+		}
 		mut i := 0
 		for i < text.len {
 			mut eq := -1
@@ -169,6 +179,7 @@ $if freestanding || syscalls {
 				key := text[i..eq].clone()
 				val := text[eq + 1..n].clone()
 				res[key] = val
+				unsafe { key.free() }
 			}
 			i = n + 1
 		}

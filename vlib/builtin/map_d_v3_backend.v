@@ -799,6 +799,9 @@ fn (mut m VMapData) set_general(key voidptr, value voidptr) {
 }
 
 // Doubles the size of the hashmap
+// The temporary table borrows the dense entries and transfers its new metadata
+// into m. Its explicit rollback must be the only cleanup of that temporary.
+@[manualfree]
 fn (mut m VMapData) expand() {
 	old_cap := m.even_index
 	old_metas := m.metas

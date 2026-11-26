@@ -54,6 +54,9 @@ $if !native && (amd64 || arm64) {
 
 	__global g_bare_tls_image BareTlsImage
 	__global g_bare_tls_ready bool
+	__global g_bare_tls_dynamic bool
+
+	fn C.v_bare_loader_tls_allocate(&voidptr, &uint) voidptr
 
 	// bare_tls_layout validates arithmetic before mapping or copying an ELF image.
 	fn bare_tls_layout(data voidptr, filesz uint, memsz uint, requested_align uint) (BareTlsImage, bool) {
@@ -95,6 +98,17 @@ $if !native && (amd64 || arm64) {
 
 	fn bare_tls_allocate() (BareTlsAllocation, Errno) {
 		if !g_bare_tls_ready { return BareTlsAllocation{}, .einval }
+		if g_bare_tls_dynamic {
+			$if !v_bare_no_startup ? {
+				mut pointer := voidptr(unsafe { nil })
+				mut size := uint(0)
+				mapping := C.v_bare_loader_tls_allocate(&pointer, &size)
+				if mapping == unsafe { nil } {
+					return BareTlsAllocation{}, unsafe { Errno(bf_native_errno_cell) }
+				}
+				return BareTlsAllocation{ mapping: mapping, mapping_size: size, pointer: pointer }, .enoerror
+			}
+		}
 		image := g_bare_tls_image
 		mapping, err := sys_mmap(unsafe { nil }, u64(image.mapping_size),
 			unsafe { MemProt(3) }, unsafe { MapFlags(0x22) }, -1, 0)
@@ -181,6 +195,14 @@ $if !native && (amd64 || arm64) {
 			|| uint(header) > ~uint(0) - uint(header.phoff)
 			|| uint(header) + uint(header.phoff) != phdr {
 			bare_tls_startup_failure()
+		}
+		for i in 0 .. int(phnum) {
+			entry := unsafe { &BareElf64ProgramHeader(phdr + uint(i) * phent) }
+			if entry.typ == 3 { // PT_INTERP: preserve the loader's existing TLS.
+				g_bare_tls_dynamic = true
+				g_bare_tls_ready = true
+				return
+			}
 		}
 		mut bias := uint(0)
 		mut found_bias := false

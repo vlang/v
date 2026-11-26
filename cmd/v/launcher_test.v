@@ -1242,3 +1242,31 @@ fn test_host_tool_filters_preserve_other_option_operands() {
 	assert external_tool_compile_args('vtest', prefix) == ['-cc', 'clang', '-cflags', '-arch',
 		'-cflags', 'arm64']
 }
+
+fn test_syscalls_fallback_selection_respects_compiler_argument_boundaries() {
+	for args in [['-syscalls', 'main.v'], ['main.v', '-syscalls'], ['-syscalls', 'run', 'main.v']] {
+		assert compiler_option_requested(args, '-syscalls')
+	}
+	for args in [['-cflags', '-syscalls', 'main.v'], ['run', 'main.v', '-syscalls'],
+		['-e', 'println("-syscalls")']] {
+		assert !compiler_option_requested(args, '-syscalls')
+	}
+}
+
+fn test_new_runtime_fallback_policy_covers_vlibc_defines_without_matching_values() {
+	for args in [['-vlibc', 'main.v'], ['run', '-vlibc', 'main.v'], ['-d', 'vlibc', 'main.v'],
+		['-bare', 'main.v'], ['-bare', 'run', 'main.v'], ['-no-system-libc', 'main.v'],
+		['-shim-libc', 'main.v'], ['main.v', '-define', 'vlibc'], ['-dvlibc', 'main.v'],
+		['-d', 'vlibc=true', 'run', 'main.v'], ['-profile', '-dvlibc', 'main.v']] {
+		assert new_runtime_build_requested(args), args.str()
+	}
+	for args in [['-cflags', '-vlibc', 'main.v'], ['run', 'main.v', '-vlibc'],
+		['-cflags', '-bare', 'main.v'], ['run', 'main.v', '-bare'],
+		['-bare-builtin-dir', '-bare', 'main.v'], ['-cflags', '-no-system-libc', 'main.v'],
+		['run', 'main.v', '-no-system-libc'], ['-ldflags', '-shim-libc', 'main.v'],
+		['run', 'main.v', '-shim-libc'], ['-d', 'other', 'main.v'], ['-dvlibc_extra', 'main.v'],
+		['-cflags', '-dvlibc', 'main.v'], ['run', 'main.v', '-d', 'vlibc'],
+		['-profile', 'profile.out', 'run', 'main.v', '-dvlibc']] {
+		assert !new_runtime_build_requested(args), args.str()
+	}
+}

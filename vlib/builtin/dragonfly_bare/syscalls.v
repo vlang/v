@@ -468,7 +468,7 @@ $if !i386 {
 		return res, err
 	}
 
-	$if freestanding {
+	$if freestanding && !v_bare_no_startup ? {
 		// _start: like FreeBSD's, DragonFly's exec_setregs passes the address of
 		// argc in rdi and aligns rsp only like a call frame, so the stack is
 		// realigned to 16 bytes before calling `main(argc, argv)`.

@@ -59,7 +59,7 @@ pub fn (mut p Process) signal_continue() {
 // process is finished.
 pub fn (mut p Process) wait() {
 	if p.status == .not_started {
-		p._spawn()
+		p._spawn(false)
 	}
 	if p.status !in [.running, .stopped, .aborted] || p.reaped {
 		return
@@ -99,22 +99,40 @@ pub fn (mut p Process) free() {
 	}
 }
 
+// Bare snapshots own their strings. Clear the caller's map after releasing
+// its storage, so autofree also sees an empty value.
+@[manualfree]
+fn fsys_release_process_environment(mut environment map[string]string) {
+	for _, mut value in environment {
+		unsafe { value.free() }
+		value = ''
+	}
+	// Erase the value type: the entries were released above, so only the map
+	// storage and its owned keys remain. This is also valid under autofree.
+	unsafe { (&map(&environment)).free() }
+	environment = map[string]string{}
+}
+
 // _spawn should not be called directly, but only by p.run()/p.wait().
+// Synchronous syscall capture also uses it with inherited stdin.
 // It encapsulates the fork/execve mechanism that allows the
 // asynchronous starting of the new child process.
-fn (mut p Process) _spawn() int {
+fn (mut p Process) _spawn(inherit_stdin bool) int {
 	if !p.env_is_custom {
 		p.env = []string{}
-		current_environment := environ()
+		mut current_environment := environ()
 		for k, v in current_environment {
 			p.env << '${k}=${v}'
+		}
+		$if freestanding || syscalls {
+			fsys_release_process_environment(mut current_environment)
 		}
 	}
 	mut pid := 0
 	$if windows {
 		pid = p.win_spawn_process()
 	} $else {
-		pid = p.unix_spawn_process()
+		pid = p.unix_spawn_process(inherit_stdin)
 	}
 	p.pid = pid
 	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
@@ -366,7 +384,7 @@ pub fn (mut p Process) run() {
 	if p.status != .not_started {
 		return
 	}
-	p._spawn()
+	p._spawn(false)
 }
 
 // system_args runs a program with literal arguments and inherited standard streams.

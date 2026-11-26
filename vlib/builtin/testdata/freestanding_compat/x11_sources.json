@@ -1,0 +1,58 @@
+{
+  "xau": {
+    "url": "https://www.x.org/releases/individual/lib/libXau-1.0.12.tar.xz",
+    "sha256": "74d0e4dfa3d39ad8939e99bda37f5967aba528211076828464d2777d477fc0fb"
+  },
+  "xdmcp": {
+    "url": "https://www.x.org/releases/individual/lib/libXdmcp-1.1.5.tar.xz",
+    "sha256": "d8a5222828c3adab70adf69a5583f1d32eb5ece04304f7f8392b6a353aa2228c"
+  },
+  "xcb": {
+    "url": "https://xorg.freedesktop.org/archive/individual/lib/libxcb-1.17.0.tar.xz",
+    "sha256": "599ebf9996710fea71622e6e184f3a8ad5b43d0e5fa8c4e407123c88a59a6d55"
+  },
+  "xrender": {
+    "url": "https://www.x.org/releases/individual/lib/libXrender-0.9.13.tar.xz",
+    "sha256": "3fe88c609df6782e1e7af2e4de36b2563d70cd70ff7dcb1cda561ad64912bb64"
+  },
+  "zlib": {
+    "url": "https://zlib.net/zlib-1.4.tar.gz",
+    "sha256": "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584"
+  },
+  "bzip2": {
+    "url": "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+    "sha256": "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269"
+  },
+  "brotli": {
+    "url": "https://codeload.github.com/google/brotli/tar.gz/refs/tags/v1.2.1",
+    "sha256": "98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f"
+  },
+  "png": {
+    "url": "https://codeload.github.com/pnggroup/libpng/tar.gz/refs/tags/v1.6.59",
+    "sha256": "2540302a1844ad2b2b501977abecfa850f265f97b78f065a712ab4074a89f5b5"
+  },
+  "freetype": {
+    "url": "https://download.savannah.gnu.org/releases/freetype/freetype-2.15.0.tar.xz",
+    "sha256": "93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5"
+  },
+  "expat": {
+    "url": "https://github.com/libexpat/libexpat/releases/download/R_2_10_0/expat-2.10.0.tar.xz",
+    "sha256": "c624ba2998fc65df1163a49641ff3f9ab73138b11641d92c86bee0fb01b1bc7f"
+  },
+  "x11": {
+    "url": "https://www.x.org/releases/individual/lib/libX11-1.8.14.tar.xz",
+    "sha256": "bbc78c46217174655c2b32b138ad119f3ac15f50808b4d0b3a2677a4b1afc950"
+  },
+  "xft": {
+    "url": "https://www.x.org/releases/individual/lib/libXft-2.3.9.tar.xz",
+    "sha256": "60a25b78945ed6932635b3bb1899a517d31df7456e69867ffba27f89ff3976f5"
+  },
+  "xtrans": {
+    "url": "https://www.x.org/releases/individual/lib/xtrans-1.6.0.tar.xz",
+    "sha256": "faafea166bf2451a173d9d593352940ec6404145c5d1da5c213423ce4d359e92"
+  },
+  "fontconfig": {
+    "url": "https://gitlab.freedesktop.org/api/v4/projects/890/packages/generic/fontconfig/2.18.4/fontconfig-2.18.4.tar.xz",
+    "sha256": "95013637eff5f81d4871dd16cd098c273264c16d0f9f0b27cc43b81b2794bee3"
+  }
+}

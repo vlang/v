@@ -1,4 +1,5 @@
 import os
+import v.cmdexec
 
 fn test_freestanding_process_syscalls_and_child_lifetimes() ! {
 	$if !((linux && (amd64 || arm64)) || (macos && amd64)) {
@@ -50,5 +51,30 @@ fn test_freestanding_process_syscalls_and_child_lifetimes() ! {
 		assert built.exit_code == 0, built.output
 		ran := os.exec([binary])
 		assert ran.exit_code == 0 && ran.output.contains('instrumented Process passed'), ran.output
+	}
+}
+
+fn test_vfork_session_descriptor_duplication_exec_and_parent_stack() ! {
+	$if !linux || (!amd64 && !arm64) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vlibc_process_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for compiler in ['gcc', 'clang'] {
+		os.find_abs_path_of_executable(compiler) or { continue }
+		for production in [false, true] {
+			for flags in [['-shim-libc'], ['-shim-libc', '-ldflags', '-static']] {
+				output := os.join_path(root, '${compiler}_${production}_${flags.len}')
+				mut command := ['-no-retry-compilation', '-cc', compiler, '-o', output]
+				command << flags
+				if production { command << '-prod' }
+				command << os.join_path(@VEXEROOT, 'vlib/builtin/testdata/freestanding_process/main.c.v')
+				built := cmdexec.run(@VEXE, command)
+				assert built.exit_code == 0, built.output
+				result := cmdexec.run(output, [])
+				assert result.exit_code == 0 && result.output == 'process compatibility ok\n', '${compiler}/${production}/${flags}: ${result.exit_code} ${result.output}'
+			}
+		}
 	}
 }

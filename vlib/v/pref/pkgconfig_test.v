@@ -63,3 +63,13 @@ fn test_pkgconfig_flag_queries_reject_malformed_quotes_and_keep_empty_input_empt
 		}
 	}
 }
+
+fn test_static_pkgconfig_closures_keep_filters_and_option_terminators() {
+	assert pkgconfig_link_flags_args('xft', true)! == ['--static', '--cflags', '--libs', 'xft']
+	assert pkgconfig_link_flags_args('--libs-only-l xft', true)! == ['--static', '--libs-only-l',
+		'xft']
+	assert pkgconfig_link_flags_args('-- --static', true)! == ['--static', '--cflags', '--libs',
+		'--', '--static']
+	assert pkgconfig_link_flags_args('--cflags xft', false)! == ['--cflags', 'xft']
+	assert pkgconfig_link_flags_args('', true)! == []string{}
+}
