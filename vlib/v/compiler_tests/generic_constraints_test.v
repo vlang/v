@@ -1713,46 +1713,48 @@ fn main() {
 	}
 }
 
-fn test_a_generic_sum_constraint_rejects_expanding_recursive_declarations() {
-	for name, declaration in {
-		'direct': 'type Expanding[T] = T | Expanding[[]T]'
-		'mutual': 'type Expanding[T] = T | Other[[]T]\ntype Other[T] = T | Expanding[[]T]'
-	} {
-		res := check_whole('sum_instances_recursive_${name}', 'module main
+fn test_generic_sum_constraints_reject_recursive_expansion() {
+	res := check_whole('sum_instances_recursive', 'module main
 
-${declaration}
+type Expanding[T] = T | Expanding[[]T]
 
-fn accept[T Expanding[int]](value T) T {
+fn accept_direct[T Expanding[int]](value T) T {
 	return value
 }
 
-fn main() {
-	println(accept(1))
-}
-')
-		assert res.exit_code == 1, res.output
-		assert res.output.contains('sum type cannot hold itself')
-			|| res.output.contains('cannot be defined recursively'), res.output
-	}
-}
+type MutualFirst[T] = T | MutualSecond[[]T]
+type MutualSecond[T] = T | MutualFirst[[]T]
 
-fn test_a_generic_sum_constraint_rejects_growing_expansion_through_a_type_argument() {
-	res := check_whole('sum_instances_argument_recursive', 'module main
+fn accept_mutual[T MutualFirst[int]](value T) T {
+	return value
+}
 
 type Part[T] = T | bool
 
-type Expanding[T] = T | Part[Expanding[[]T]]
+type ArgumentGrowing[T] = T | Part[ArgumentGrowing[[]T]]
 
-fn accept[T Expanding[int]](value T) T {
+fn accept_argument[T ArgumentGrowing[int]](value T) T {
 	return value
 }
 
 fn main() {
-	println(accept(1))
+	println(accept_direct(1))
+	println(accept_mutual(1))
+	println(accept_argument(1))
 }
 ')
 	assert res.exit_code == 1, res.output
-	assert res.output.contains('constraint `Expanding[int]` cannot expand a recursive sum type'), res.output
+	// The layout paths are incidental to the recursion and constraint checks.
+	errors := error_lines_from(res.output, 1).map(it.all_before('; inline cycle:'))
+	assert errors == [
+		'3:25: sum type cannot hold itself',
+		'5:20: constraint `Expanding[int]` cannot expand a recursive sum type',
+		'9:27: sum type `MutualFirst` cannot be defined recursively',
+		'10:28: sum type `MutualSecond` cannot be defined recursively',
+		'12:20: constraint `MutualFirst[int]` cannot expand a recursive sum type',
+		'18:31: sum type `ArgumentGrowing` cannot be defined recursively',
+		'20:22: constraint `ArgumentGrowing[int]` cannot expand a recursive sum type',
+	], res.output
 }
 
 fn test_struct_constraints_include_the_embedding_family() {
