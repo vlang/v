@@ -50,13 +50,6 @@ const temporarily_disabled_unit_tests = [
 // functions are included automatically.
 const temporarily_disabled_c_directive_order_test_functions = [
 	'test_c_directives_follow_import_dependency_order',
-	'test_importer_macro_is_emitted_before_dependency_include',
-	'test_quoted_include_uses_flag_include_dirs',
-	'test_quoted_include_uses_later_flag_include_dirs',
-	'test_multiline_static_inline_header_is_not_redeclared',
-	'test_header_declared_prototypes_are_not_redeclared',
-	'test_anonymous_typedef_struct_header_is_not_duplicated',
-	'test_tagged_typedef_struct_alias_header_is_not_duplicated',
 	'test_supported_system_include_is_preserved_and_enables_system_preamble',
 	'test_shared_runtime_keeps_rwmutex_init_prototypes',
 ]
