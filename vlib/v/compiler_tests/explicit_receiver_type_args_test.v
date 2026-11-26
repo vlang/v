@@ -107,54 +107,24 @@ fn other_own[T](b Box[T]) int {
 }
 '
 
-fn test_an_explicit_type_that_the_receiver_does_not_fix_is_an_error() {
-	source := receiver_source('', box_of_int + '\tprintln(b.own[string]())\n')
-	res := check_receiver_source('direct', source)
+fn test_explicit_receiver_type_arguments_reject_mismatched_calls() {
+	receivers := box_of_int + '\th := Holder{\n\t\tBox: Box[int]{\n\t\t\titem: 4\n\t\t}\n\t}\n' +
+		'\tmut r := Box[int]{\n\t\titem: 3\n\t}\n' + '\ta := IntBox{\n\t\titem: 3\n\t}\n'
+	direct := '\tprintln(b.own[string]())'
+	embedded := '\tprintln(h.own[string]())'
+	pair := "\tprintln(b.pair[string, string]('x'))"
+	reference := '\tprintln(r.own_ref[string]())'
+	alias := '\tprintln(a.own[string]())'
+	calls := [direct, embedded, pair, reference, alias]
+	source := receiver_source('', receivers + calls.join('\n') + '\n')
+	res := check_receiver_source('mismatched_calls', source)
 	assert res.exit_code == 1, res.output
-	line := line_of(source, '\tprintln(b.own[string]())')
 	assert error_lines(res.output) == [
-		'${line}:15: `own` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
-	], res.output
-}
-
-fn test_an_explicit_type_that_an_embedded_receiver_does_not_fix_is_an_error() {
-	source := receiver_source('', '\th := Holder{\n\t\tBox: Box[int]{\n\t\t\titem: 4\n\t\t}\n\t}\n\tprintln(h.own[string]())\n')
-	res := check_receiver_source('embedded', source)
-	assert res.exit_code == 1, res.output
-	line := line_of(source, '\tprintln(h.own[string]())')
-	// The one error, and not `cannot use receiver `Holder` as `Box[string]``.
-	assert error_lines(res.output) == [
-		'${line}:15: `own` takes `T` from its receiver `Box[int]` (embedded in `Holder`): `T` is `int`, not `string`',
-	], res.output
-}
-
-fn test_an_explicit_type_that_the_receiver_does_not_fix_is_an_error_among_the_methods_own() {
-	source := receiver_source('', box_of_int + "\tprintln(b.pair[string, string]('x'))\n")
-	res := check_receiver_source('pair', source)
-	assert res.exit_code == 1, res.output
-	line := line_of(source, "\tprintln(b.pair[string, string]('x'))")
-	assert error_lines(res.output) == [
-		'${line}:16: `pair` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
-	], res.output
-}
-
-fn test_an_explicit_type_that_a_reference_receiver_does_not_fix_is_an_error() {
-	source := receiver_source('', '\tmut b := Box[int]{\n\t\titem: 3\n\t}\n\tprintln(b.own_ref[string]())\n')
-	res := check_receiver_source('reference', source)
-	assert res.exit_code == 1, res.output
-	line := line_of(source, '\tprintln(b.own_ref[string]())')
-	assert error_lines(res.output) == [
-		'${line}:19: `own_ref` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
-	], res.output
-}
-
-fn test_an_explicit_type_that_an_alias_receiver_does_not_fix_is_an_error() {
-	source := receiver_source('', '\tb := IntBox{\n\t\titem: 3\n\t}\n\tprintln(b.own[string]())\n')
-	res := check_receiver_source('alias', source)
-	assert res.exit_code == 1, res.output
-	line := line_of(source, '\tprintln(b.own[string]())')
-	assert error_lines(res.output) == [
-		'${line}:15: `own` takes `T` from its receiver `IntBox`: `T` is `int`, not `string`',
+		'${line_of(source, direct)}:15: `own` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
+		'${line_of(source, embedded)}:15: `own` takes `T` from its receiver `Box[int]` (embedded in `Holder`): `T` is `int`, not `string`',
+		'${line_of(source, pair)}:16: `pair` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
+		'${line_of(source, reference)}:19: `own_ref` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
+		'${line_of(source, alias)}:15: `own` takes `T` from its receiver `IntBox`: `T` is `int`, not `string`',
 	], res.output
 }
 
