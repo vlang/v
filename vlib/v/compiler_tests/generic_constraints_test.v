@@ -1173,27 +1173,13 @@ fn main() {
 	assert error_lines(res.output) == [], res.output
 }
 
-fn test_a_generic_struct_checks_its_type_arguments() {
-	res := check_program('struct', "struct Box[T Named] {
+fn test_generic_struct_constraints_are_checked_in_declarations_and_initializers() {
+	res := check_program('struct_type_arguments', "struct Box[T Named] {
 	item T
 }
 
 fn (b Box[T]) label() string {
 	return b.item.name
-}
-
-fn main() {
-	println(Box[User]{ item: User{ name: 'a' } }.label())
-	println(Box[int]{ item: 1 }.label())
-}
-")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ["11:10: `int` doesn't implement field `name` of interface `Named`"], res.output
-}
-
-fn test_a_generic_struct_type_written_in_a_declaration_is_checked() {
-	res := check_program('declared', "struct Box[T Named] {
-	item T
 }
 
 struct Shelf {
@@ -1209,12 +1195,26 @@ fn keep(b Box[User]) Box[User] {
 	return b
 }
 
-fn main() {}
+fn main() {
+	println(Box[User]{ item: User{ name: 'a' } }.label())
+	println(Box[int]{ item: 1 }.label())
+
+	good := Box{
+		item: User{ name: 'a' }
+	}
+	bad := Box{
+		item: 1
+	}
+	println('\${good.item.name} \${bad}')
+}
 ")
 	assert res.exit_code == 1, res.output
+	no_name := "`int` doesn't implement field `name` of interface `Named`"
 	assert error_lines(res.output) == [
-		"7:7: `int` doesn't implement field `name` of interface `Named`",
-		"10:11: `int` doesn't implement field `name` of interface `Named`",
+		'11:7: ${no_name}',
+		'14:11: ${no_name}',
+		'24:10: ${no_name}',
+		'29:9: ${no_name}',
 	], res.output
 }
 
@@ -1575,25 +1575,6 @@ fn main() {
 		"37:15: `Rock` doesn't implement field `name` of interface `Named`",
 		'38:16: cannot use `string` as `T`: it is not in its constraint `Number`',
 	], res.output
-}
-
-fn test_an_inferred_generic_struct_init_is_checked() {
-	res := check_program('inferred_init', "struct Box[T Named] {
-	item T
-}
-
-fn main() {
-	good := Box{
-		item: User{ name: 'a' }
-	}
-	bad := Box{
-		item: 1
-	}
-	println('\${good.item.name} \${bad}')
-}
-")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ["9:9: `int` doesn't implement field `name` of interface `Named`"], res.output
 }
 
 fn test_a_generic_type_written_anywhere_in_a_declaration_is_checked() {
