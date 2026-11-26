@@ -176,10 +176,8 @@ struct cmsghdr *__cmsg_nxthdr(struct msghdr *message, struct cmsghdr *current) {
     length = (length + sizeof(size_t) - 1) & ~(sizeof(size_t) - 1);
     if (length > end - at || end - at - length < sizeof *current)
         return NULL;
-    struct cmsghdr *next = (void *)(at + length);
-    if (next->cmsg_len < sizeof *next || next->cmsg_len > end - (at + length))
-        return NULL;
-    return next;
+    /* A sender initializes the next header after obtaining its address. */
+    return (struct cmsghdr *)(at + length);
 }
 
 ssize_t getrandom(void *buffer, size_t size, unsigned int flags) {

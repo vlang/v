@@ -19,6 +19,15 @@
 union v_probe_semun { int val; struct semid_ds *buf; unsigned short *array; struct seminfo *__buf; };
 #define IPC_CHECK(test) do { if (!(test)) { result = __LINE__; goto cleanup; } } while (0)
 static int ipc_native_probe(void) {
+#ifdef __GLIBC__
+    union { struct cmsghdr align; char bytes[2 * CMSG_SPACE(sizeof(int))]; } buffer = {0};
+    struct msghdr control = {.msg_control = buffer.bytes, .msg_controllen = sizeof buffer.bytes};
+    struct cmsghdr *first = CMSG_FIRSTHDR(&control);
+    first->cmsg_len = CMSG_LEN(sizeof(int));
+    /* Keep the external ABI call even when the native headers provide an inline. */
+    struct cmsghdr *(*volatile advance)(struct msghdr *, struct cmsghdr *) = __cmsg_nxthdr;
+    CHECK((char *)advance(&control, first) == buffer.bytes + CMSG_SPACE(sizeof(int)));
+#endif
     int result = 0, semid = -1, shmid = -1, msgid = -1, fd = -1;
     pid_t child = -1;
     unsigned char *memory = (void *)-1;

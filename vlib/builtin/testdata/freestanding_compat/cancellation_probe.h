@@ -88,7 +88,7 @@ static void *cancel_pending_wait(void *argument) {
     struct mmsghdr message = {0};
     int received;
     /* Leave a user signal pending so a missed cancellation cannot hang the test. */
-    if (wait->kind >= 5 && (pthread_sigmask(SIG_BLOCK, &signals, NULL) ||
+    if (wait->kind >= 5 && wait->kind <= 7 && (pthread_sigmask(SIG_BLOCK, &signals, NULL) ||
         pthread_kill(pthread_self(), SIGUSR1))) return NULL;
     if (pthread_cancel(pthread_self())) return NULL;
     switch (wait->kind) {
@@ -100,6 +100,11 @@ static void *cancel_pending_wait(void *argument) {
     case 5: (void)sigwaitinfo(&signals, NULL); break;
     case 6: (void)sigwait(&signals, &received); break;
     case 7: (void)sigsuspend(&empty); break;
+    case 8: {
+        struct flock lock = {.l_type = F_WRLCK, .l_whence = SEEK_SET};
+        (void)fcntl(wait->fd, F_SETLKW, &lock);
+        break;
+    }
     }
     return NULL;
 }
@@ -113,12 +118,15 @@ static int cancellation_native_probe(void) {
     struct sigaction action = {.sa_handler = cancel_wait_handler}, previous;
     sigemptyset(&action.sa_mask);
     CHECK(!sigaction(SIGUSR1, &action, &previous));
-    for (int kind = 0; kind < 8; ++kind) {
-        struct pending_wait pending = {kind, sockets[0]};
+    FILE *lockfile = tmpfile();
+    CHECK(lockfile);
+    for (int kind = 0; kind <= 8; ++kind) {
+        struct pending_wait pending = {kind, kind == 8 ? fileno(lockfile) : sockets[0]};
         pthread_t worker; void *result = NULL;
         CHECK(!pthread_create(&worker, NULL, cancel_pending_wait, &pending));
         CHECK(!pthread_join(worker, &result) && result == PTHREAD_CANCELED);
     }
+    CHECK(!fclose(lockfile));
     CHECK(!sigaction(SIGUSR1, &previous, NULL));
     CHECK(!close(sockets[0]) && !close(sockets[1]));
     CHECK(!pthread_key_create(&cancel_probe_key, cancel_destructor));

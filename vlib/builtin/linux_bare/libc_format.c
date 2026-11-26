@@ -824,7 +824,7 @@ int vfprintf(FILE *stream, const char *format, va_list arguments) {
     uint32_t shield = v_cancel_shield_enter();
     struct v_format_output output = {stream, NULL, 0, 0, 0};
     flockfile(stream);
-    int result = v_format(&output, format, arguments);
+    int result = fwide(stream, -1) > 0 ? -1 : v_format(&output, format, arguments);
     funlockfile(stream);
     v_cancel_shield_leave(shield);
     return result;

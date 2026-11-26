@@ -89,6 +89,8 @@ int fcntl(int fd, int command, ...) {
         return -1;
     }
     va_end(args);
+    if (command == F_SETLKW || command == F_OFD_SETLKW)
+        return (int)v_linux_result(v_cancel_syscall(SYS_fcntl, fd, command, argument, 0, 0, 0));
     long result = V_RAW3(SYS_fcntl, fd, command, argument);
     /* F_GETOWN's successful negative process-group IDs are not kernel errors.
      * Use F_GETOWN_EX to disambiguate them. */

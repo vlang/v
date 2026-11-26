@@ -93,6 +93,17 @@ static void destroy_value(void *p) {
     if ((uintptr_t)p==1) pthread_setspecific(key,(void *)2);
 }
 static int integer_probe(void) {
+#ifdef __GLIBC__
+    struct random_data generator = {0}, control = {0};
+    int32_t storage[32], other[32], value, expected;
+    CHECK(!initstate_r(7, (char *)storage, sizeof storage, &generator));
+    CHECK(!initstate_r(7, (char *)other, sizeof other, &control));
+    for (int i = 0; i < 5; ++i) {
+        CHECK(!random_r(&generator, &value) && !random_r(&control, &expected));
+    }
+    CHECK(!setstate_r((char *)storage, &generator));
+    CHECK(!random_r(&generator, &value) && !random_r(&control, &expected) && value == expected);
+#endif
     /* Volatile function pointers exercise the public ABI rather than C builtins. */
     int (*volatile absolute)(int)=abs;
     long (*volatile absolute_long)(long)=labs;
@@ -247,6 +258,15 @@ static int cookie_seek(void *p,off64_t *offset,int whence) {
     c->at=at; *offset=at; return 0;
 }
 static int cookie_close(void *p) { (void)p; ++cookie_closes; return 0; }
+static ssize_t partial_read_error(void *cookie, char *out, size_t size) {
+    int *calls = cookie;
+    if ((*calls)++ == 0 && size) {
+        out[0] = 'x';
+        return 1;
+    }
+    errno = EIO;
+    return -1;
+}
 static int stdio_probe(void) {
     struct cookie c={0};
     FILE *f=fopencookie(&c,"w+",(cookie_io_functions_t){cookie_read,cookie_write,cookie_seek,cookie_close});
@@ -255,6 +275,17 @@ static int stdio_probe(void) {
     CHECK(ftello(f)==7); CHECK(!fclose(f)); CHECK(cookie_closes==1);
     f=tmpfile(); CHECK(f); CHECK(fputs("temporary",f)>=0); rewind(f);
     CHECK(fread(output,1,9,f)==9 && !memcmp(output,"temporary",9)); CHECK(!fclose(f));
+    int calls = 0;
+    f = fopencookie(&calls, "r", (cookie_io_functions_t){.read = partial_read_error});
+    CHECK(f && !fgets(output, sizeof output, f) && ferror(f) && errno == EIO);
+    CHECK(!fclose(f));
+    f = tmpfile();
+    int (*volatile print)(FILE *, const char *, ...) = fprintf;
+    CHECK(f && print(f, "%s", "") == 0 && fwide(f, 0) < 0);
+    CHECK(fputs("abcdef", f) >= 0 && !fseek(f, 0, SEEK_SET));
+    int shared = dup(fileno(f));
+    CHECK(shared >= 0 && fgetc(f) == 'a' && !fclose(f));
+    CHECK(lseek(shared, 0, SEEK_CUR) == 1 && !close(shared));
     puts("cookie streams and tmpfile passed"); return 0;
 }
 static volatile sig_atomic_t signal_seen;
@@ -404,6 +435,12 @@ static int calendar_probe(void) {
     t.tm_isdst=0; CHECK(mktime(&t)==epoch+3600 && t.tm_isdst>0);
     CHECK(!setenv("TZ","JST-9",1)); CHECK(localtime(&epoch)); CHECK(!strcmp(tzname[0],"JST")); CHECK(localtime_r(&epoch,&t)); CHECK(t.tm_gmtoff==32400 && t.tm_isdst==0);
     CHECK(!setenv("TZ","UTC0",1)); tzset();
+    CHECK(!setenv("TZ", "EST5", 1));
+    tzset();
+    struct tm midnight = {.tm_year = 70, .tm_mday = 1, .tm_isdst = -1};
+    CHECK(strftime(buffer, sizeof buffer, "%s", &midnight) == 5 && !strcmp(buffer, "18000"));
+    CHECK(!setenv("TZ", "UTC0", 1));
+    tzset();
     CHECK(clock()!=(clock_t)-1); struct timespec resolution; CHECK(!clock_getres(CLOCK_MONOTONIC,&resolution));
     puts("calendar, timezone reload and clock APIs passed"); return 0;
 }
@@ -456,6 +493,13 @@ static int regex_probe(void) {
         printf("regex %zu %d",i,code); if(!code)for(size_t j=0;j<4;j++)printf(" %d:%d",(int)m[j].rm_so,(int)m[j].rm_eo); puts("");
         regfree(&re);
     }
+    regex_t bounded;
+    regmatch_t range = {1, 2};
+    CHECK(!regcomp(&bounded, "^a", REG_EXTENDED | REG_NEWLINE));
+    CHECK(regexec(&bounded, "xa", 1, &range, REG_STARTEND) == REG_NOMATCH);
+    range = (regmatch_t){1, 2};
+    CHECK(!regexec(&bounded, "\na", 1, &range, REG_STARTEND) && range.rm_so == 1 && range.rm_eo == 2);
+    regfree(&bounded);
     regex_t basic;
     CHECK(!regcomp(&basic,"^*abc",0));
     CHECK(!regexec(&basic,"*abc",0,NULL,0) && regexec(&basic,"abc",0,NULL,0)==REG_NOMATCH);

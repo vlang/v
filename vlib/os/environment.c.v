@@ -20,7 +20,7 @@ pub fn getenv(key string) string {
 // Returns `none` if the environment variable does not exist.
 @[manualfree]
 pub fn getenv_opt(key string) ?string {
-	$if (freestanding || syscalls) && !(macos && arm64) {
+	$if (freestanding || syscalls) && !(macos && arm64) && !v_bare_system_environment ? {
 		// Syscall-only runtimes supply their own environment storage.
 		v, found := fsys_getenv(key)
 		return if found { v } else { none }
@@ -50,7 +50,7 @@ pub fn getenv_opt(key string) ?string {
 
 // setenv sets the value of an environment variable with `name` to `value`.
 pub fn setenv(name string, value string, overwrite bool) int {
-	$if (freestanding || syscalls) && !(macos && arm64) {
+	$if (freestanding || syscalls) && !(macos && arm64) && !v_bare_system_environment ? {
 		$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 			return fsys_environment_set(name, value, overwrite)
 		} $else {
@@ -84,7 +84,7 @@ pub fn setenv(name string, value string, overwrite bool) int {
 
 // unsetenv clears an environment variable with `name`.
 pub fn unsetenv(name string) int {
-	$if (freestanding || syscalls) && !(macos && arm64) {
+	$if (freestanding || syscalls) && !(macos && arm64) && !v_bare_system_environment ? {
 		$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 			return fsys_environment_unset(name)
 		} $else {
@@ -110,7 +110,7 @@ pub fn unsetenv(name string) int {
 pub fn environ() map[string]string {
 	// TODO how to declare Virtual C globals?
 	// const C.environ &&char
-	$if (freestanding || syscalls) && !(macos && arm64) {
+	$if (freestanding || syscalls) && !(macos && arm64) && !v_bare_system_environment ? {
 		$if freestanding && (linux || (macos && amd64)) && !native && !i386 {
 			return fsys_environment_all()
 		}
@@ -129,6 +129,7 @@ pub fn environ() map[string]string {
 		} $else {
 			// if anything belongs to an unsafe block, this abomination absolutely does.
 			start := unsafe { &&char(voidptr(C.environ)) }
+			if start == unsafe { nil } { return res }
 			mut i := 0
 			for {
 				x := unsafe { start[i] }

@@ -1,4 +1,5 @@
 /* Scaling follows musl's intermediate normal-number method; COPYRIGHT.musl. */
+#include <errno.h>
 #include <float.h>
 #include <math.h>
 #include <stdint.h>
@@ -72,8 +73,13 @@ long double scalbnl(long double x, int n) {
 /* Exact binary remainder: scaling is by powers of two, so subtraction never
  * rounds away a quotient bit. At most one iteration per exponent bit is used. */
 long double fmodl(long double x, long double y) {
-    if (y == 0 || !isfinite(x) || isnan(y))
-        return (x * y) / (x * y);
+    if (isnan(x) || isnan(y))
+        return x + y;
+    if (y == 0 || isinf(x)) {
+        errno = EDOM;
+        volatile long double zero = 0;
+        return zero / zero;
+    }
     int negative = signbit(x);
     x = fabsl(x);
     y = fabsl(y);
@@ -83,7 +89,8 @@ long double fmodl(long double x, long double y) {
         return copysignl(0, negative ? -1 : 1);
     int shift = 0;
     long double scaled = y;
-    while (scaled <= x / 2) {
+    /* Doubling is exact up to this bound, even when x is subnormal. */
+    while (scaled <= LDBL_MAX * 0.5L && scaled * 2 <= x) {
         scaled *= 2;
         ++shift;
     }

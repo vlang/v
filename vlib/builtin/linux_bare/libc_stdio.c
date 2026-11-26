@@ -116,6 +116,7 @@ int __overflow(FILE *file, int value) {
 }
 ssize_t __getdelim(char **line, size_t *capacity, int delimiter, FILE *file)
     V_STDIO_RETURN(ssize_t, v_stdio_getdelim((uintptr_t)line, (uintptr_t)capacity, delimiter, (uintptr_t)file))
+FILE *tmpfile64(void) V_STDIO_RETURN(FILE *, (FILE *)v_stdio_tmpfile())
 FILE *fopen64(const char *path, const char *mode) { return (FILE *)v_stdio_fopen((uintptr_t)path, (uintptr_t)mode); }
 int fseeko64(FILE *file, off64_t offset, int whence) V_STDIO_RETURN(int, v_stdio_seek((uintptr_t)file, offset, whence))
 off64_t ftello64(FILE *file) V_STDIO_RETURN(off64_t, v_stdio_tell((uintptr_t)file))

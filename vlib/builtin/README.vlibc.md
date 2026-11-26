@@ -90,7 +90,8 @@ The macOS arm64 runtime retains libSystem and its existing clock implementation.
 Bare builds default to manual memory management. On native Linux amd64 and arm64 C builds,
 `-syscalls -gc boehm` selects Boehm for V allocations, including on spawned V threads.
 With `-no-system-libc`, the collector and C dependencies use the replacement C ABI. Standalone
-applications share environment changes between the V `os` module and C environment functions.
+applications share environment changes between the V `os` module and C environment functions,
+including when `-syscalls` links the system libc.
 In both modes, release C allocations with the allocator that supplied them.
 
 The bare libc adapters share one dlmalloc heap. Initialization and heap mutations

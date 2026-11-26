@@ -18,6 +18,7 @@ fn C.runtime_c_resize(voidptr, uint) voidptr
 fn C.runtime_c_release(voidptr)
 fn C.runtime_c_errno_address() uint
 fn C.runtime_c_interop() i32
+fn C.runtime_c_update_environment() i32
 fn C.runtime_c_buffered_output()
 
 // Keep the checks active in production, where assert statements are omitted.
@@ -82,6 +83,9 @@ fn main() {
 	require_runtime(left != 0 && right != 0 && left != right)
 	require_runtime(os.setenv('V_RUNTIME_SELECTION', 'bare store', true) == 0)
 	require_runtime(os.getenv('V_RUNTIME_SELECTION') == 'bare store')
+	require_runtime(C.runtime_c_update_environment() == 1)
+	require_runtime(os.getenv('V_RUNTIME_SELECTION') == 'C store')
+	require_runtime(os.environ()['V_RUNTIME_SELECTION'] == 'C store')
 	$if vlibc ? {
 		require_runtime(vlibc_sys_getpid() > 0)
 	}

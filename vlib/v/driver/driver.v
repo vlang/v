@@ -12304,8 +12304,16 @@ pub fn run(args []string) {
 		// A library/object is initialized by its host and has no process entry.
 		record_user_define(mut user_defines, mut compile_values, 'v_bare_no_startup')
 	}
-	if !is_shared && !is_o && 'freestanding' in user_defines && v3_needs_vlibc_shim(user_defines) {
-		record_user_define(mut user_defines, mut compile_values, 'v_bare_shim_environment')
+	if !is_shared && !is_o && 'freestanding' in user_defines {
+		if v3_needs_vlibc_shim(user_defines) {
+			record_user_define(mut user_defines, mut compile_values, 'v_bare_shim_environment')
+		} else if 'syscalls' in user_defines && !v3_omit_system_libc(user_defines)
+			&& pref.normalized_os(target_os) == 'linux' && pref.normalized_arch(target_arch) in [
+			'amd64',
+			'arm64',
+		] {
+			record_user_define(mut user_defines, mut compile_values, 'v_bare_system_environment')
+		}
 	}
 	apply_v3_gc_mode(gc_mode, disable_gc, mut user_defines, mut compile_values) or {
 		eprintln(err.msg())

@@ -6,5 +6,6 @@ void *runtime_c_resize(void *pointer, uintptr_t size);
 void runtime_c_release(void *pointer);
 uintptr_t runtime_c_errno_address(void);
 int runtime_c_interop(void);
+int runtime_c_update_environment(void);
 void runtime_c_buffered_output(void);
 #endif

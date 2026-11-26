@@ -623,7 +623,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		return re.glob && re.flags & i32(C.FNM_PERIOD) != 0 && position < text.len && text[position] == `.`
 			&& (position == 0 || (re.flags & i32(C.FNM_PATHNAME) != 0 && text[position - 1] == `/`))
 	}
-	fn bare_pattern_run(re &BarePattern, text string, matches uint, count uint, flags i32, origin i64) i32 {
+	fn bare_pattern_run(re &BarePattern, text string, matches uint, count uint, flags i32, origin i64, preceding u32) i32 {
 		if text.len > max_int / int(sizeof(uint)) - 1 || re.groups > (max_int / 8 - 2) / 2 {
 			return i32(C.REG_ESPACE)
 		}
@@ -657,7 +657,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		mut error := i32(0)
 		fold := re.flags & (if re.glob { i32(C.FNM_CASEFOLD) } else { i32(C.REG_ICASE) }) != 0
 		newline := !re.glob && re.flags & i32(C.REG_NEWLINE) != 0
-		mut previous_word := false
+		mut previous_word := bare_pattern_word(preceding, re.unicode)
 		mut character_end := 0
 		for position in 0 .. text.len + 1 {
 			character, length := bare_pattern_character(text, position, re.unicode)
@@ -716,7 +716,11 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 					}
 					bare_pattern_save { unsafe { tags[instruction.value] = i64(position) } }
 					bare_pattern_bol {
-						proceed = (position == 0 && flags & i32(C.REG_NOTBOL) == 0) || (newline && position > 0 && text[position - 1] == 10)
+						proceed = if position == 0 {
+							(origin == 0 && flags & i32(C.REG_NOTBOL) == 0) || (newline && preceding == 10)
+						} else {
+							newline && text[position - 1] == 10
+						}
 					}
 					bare_pattern_eol {
 						proceed = (position == text.len && flags & i32(C.REG_NOTEOL) == 0) || (newline && position < text.len && text[position] == 10)
@@ -823,7 +827,19 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			return i32(C.REG_ESPACE)
 		}
 		text := unsafe { tos(&u8(input + uint(origin)), int(length)) }
-		return bare_pattern_run(re, text, matches, count, flags, origin)
+		// A bounded search still sees the character immediately before its start.
+		mut preceding := u32(0)
+		if origin > 0 {
+			mut width := 1
+			for re.unicode && width < 4 && i64(width) < origin
+				&& unsafe { text.str[-width] } & 0xc0 == 0x80 {
+				width++
+			}
+			prefix := unsafe { tos(text.str - width, width) }
+			character, decoded := bare_pattern_character(prefix, 0, re.unicode)
+			if decoded == width { preceding = character }
+		}
+		return bare_pattern_run(re, text, matches, count, flags, origin, preceding)
 	}
 	@[export: 'v_pattern_fnmatch'; markused]
 	fn bare_pattern_fnmatch(pattern uint, input uint, flags i32) i32 {
@@ -834,7 +850,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			return if re.error == i32(C.REG_ESPACE) { i32(-1) } else { i32(C.FNM_NOMATCH) }
 		}
 		text := unsafe { tos2(&u8(input)) }
-		code := bare_pattern_run(re, text, 0, 0, 0, 0)
+		code := bare_pattern_run(re, text, 0, 0, 0, 0, 0)
 		return if code == 0 {
 			i32(0)
 		} else if code == i32(C.REG_NOMATCH) {

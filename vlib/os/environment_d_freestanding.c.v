@@ -233,6 +233,10 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 
 	@[manualfree]
 	fn fsys_environment_clear() {
+		$if v_bare_system_environment ? {
+			C.clearenv()
+			return
+		}
 		$if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
 			C.clearenv()
 			return

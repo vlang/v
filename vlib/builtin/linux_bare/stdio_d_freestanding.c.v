@@ -366,7 +366,17 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	fn bare_stdio_close(address uint) i32 {
 		bare_stdio_lock(address)
 		mut stream := unsafe { &BareStream(address) }
-		mut result := if stream.direction == 2 { bare_stream_flush(mut stream) } else { i32(0) }
+		saved_errno := bf_native_errno_cell
+		mut result := if stream.is_cookie && stream.direction == 1 {
+			i32(0)
+		} else {
+			bare_stream_flush(mut stream)
+		}
+		if result < 0 && stream.direction == 1 && bf_native_errno_cell == i32(C.ESPIPE) {
+			// A nonseekable reader can discard read-ahead on close.
+			result = 0
+			bf_native_errno_cell = saved_errno
+		}
 		mut error := bf_native_errno_cell
 		closed := if stream.is_cookie {
 			if stream.callbacks[3] != 0 {
@@ -645,7 +655,13 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		mut used := 0
 		for used < int(capacity) - 1 {
 			value := bare_stdio_getchar(address)
-			if value < 0 { break }
+			if value < 0 {
+				if bare_stream(address).abi_flags & i32(C.V_STDIO_EOF) == 0 {
+					// Like glibc, deliver bytes already read on a nonblocking stream.
+					if used == 0 || bf_native_errno_cell != i32(C.EAGAIN) { return 0 }
+				}
+				break
+			}
 			unsafe { (&u8(output))[used] = u8(value) }
 			used++
 			if value == 10 { break }

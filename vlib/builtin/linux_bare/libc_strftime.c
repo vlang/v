@@ -8,22 +8,6 @@
 #include <string.h>
 #include <time.h>
 
-static long long v_floor_div(long long x, long long y) { return x / y - (x % y < 0); }
-static long long v_tm_seconds(const struct tm *t) {
-    long long year = (long long)t->tm_year + 1900, month = t->tm_mon;
-    long long adjust = v_floor_div(month, 12);
-    year += adjust;
-    month -= adjust * 12;
-    static const int days[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
-    long long previous = year - 1;
-    long long leap =
-        v_floor_div(previous, 4) - v_floor_div(previous, 100) + v_floor_div(previous, 400);
-    long long total = 365 * (year - 1970) + leap - 477 + days[month] + t->tm_mday - 1;
-    if (month > 1 && !(year % 4) && ((year % 100) || !(year % 400)))
-        ++total;
-    return total * 86400 + (long long)t->tm_hour * 3600 + t->tm_min * 60 + t->tm_sec;
-}
-
 static int is_leap(int y) {
     /* Avoid overflow */
     if (y > INT_MAX - 1900)
@@ -147,10 +131,12 @@ const char *v_strftime_format(char (*s)[100], size_t *l, int f, const struct tm 
     case 'R':
         fmt = "%H:%M";
         goto recu_strftime;
-    case 's':
-        val = v_tm_seconds(tm) - tm->tm_gmtoff;
+    case 's': {
+        struct tm local = *tm;
+        val = mktime(&local);
         width = 1;
         goto number;
+    }
     case 'S':
         val = tm->tm_sec;
         goto number;

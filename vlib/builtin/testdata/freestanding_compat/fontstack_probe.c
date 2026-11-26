@@ -194,7 +194,11 @@ static int v_locale_checks(void) {
                    .tm_zone = "UTC"};
     char date[128];
     CHECK(strftime(date, sizeof date, "%F %G-W%V-%u %z %Z %s", &t) > 0);
-    CHECK(!strcmp(date, "2021-01-01 2020-W53-5 +0000 UTC 1609459200"));
+    char expected[128];
+    struct tm local = t;
+    CHECK(snprintf(expected, sizeof expected, "2021-01-01 2020-W53-5 +0000 UTC %lld",
+                   (long long)mktime(&local)) > 0);
+    CHECK(!strcmp(date, expected));
     CHECK(strftime(date, 3, "%Y", &t) == 0);
     CHECK(setlocale(LC_ALL, "C"));
     CHECK(setlocale(LC_CTYPE, "C.UTF-8"));

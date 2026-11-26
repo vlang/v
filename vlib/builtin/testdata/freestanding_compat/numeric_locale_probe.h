@@ -201,6 +201,15 @@ static void *rounding_worker(void *unused) {
     return NULL;
 }
 static int numeric_native_probe(void) {
+    long double (*volatile remainder)(long double, long double) = fmodl;
+    fenv_t saved;
+    CHECK(!feholdexcept(&saved));
+    CHECK(remainder(3 * LDBL_TRUE_MIN, 2 * LDBL_TRUE_MIN) == LDBL_TRUE_MIN);
+    CHECK(!fetestexcept(FE_UNDERFLOW | FE_INEXACT));
+    errno = 0;
+    CHECK(isnan(remainder(1, 0)) && fetestexcept(FE_INVALID));
+    if (math_errhandling & MATH_ERRNO) CHECK(errno == EDOM);
+    CHECK(!fesetenv(&saved));
     int original=native_getround(); CHECK(original>=0);
     const int modes[]={FE_TONEAREST,FE_UPWARD,FE_DOWNWARD,FE_TOWARDZERO};
     for(size_t i=0;i<sizeof modes/sizeof *modes;i++) {

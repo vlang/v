@@ -1,3 +1,4 @@
+#define _FILE_OFFSET_BITS 64
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -22,14 +23,19 @@ uintptr_t runtime_c_errno_address(void) {
     if (close(-1) != -1 || errno != EBADF) return 0;
     return (uintptr_t)&errno;
 }
+int runtime_c_update_environment(void) {
+    const char *value = getenv("V_RUNTIME_SELECTION");
+    return value && !strcmp(value, "bare store") && !setenv("V_RUNTIME_SELECTION", "C store", 1);
+}
 int runtime_c_interop(void) {
+    /* _FILE_OFFSET_BITS=64 redirects this to tmpfile64 on glibc. */
+    FILE *file = tmpfile();
+    if (!file) return -2;
 #ifdef TEST_HOST_LIBC
     /* These services must retain libc's private FILE and allocation ABIs. */
     char *copy = strdup("host allocation");
     if (!copy || strcmp(copy, "host allocation")) return -1;
     free(copy);
-    FILE *file = tmpfile();
-    if (!file) return -2;
     if (fputs("buffered input\n", file) < 0 || fseek(file, 0, SEEK_SET)) {
         fclose(file); return -3;
     }
@@ -45,7 +51,7 @@ int runtime_c_interop(void) {
     freeaddrinfo(result);
     return 1;
 #else
-    return 0;
+    return fclose(file) ? -4 : 0;
 #endif
 }
 void runtime_c_buffered_output(void) {

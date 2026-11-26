@@ -83,6 +83,7 @@ int setstate_r(char *buffer, struct random_data *s) {
         errno = EINVAL;
         return -1;
     }
+    v_random_save(s);
     int32_t header = *(int32_t *)(void *)buffer;
     int type = header % 5, rear = header / 5;
     if (header < 0 || type < 0 || type > 4 || (type && rear >= v_degrees[type]) ||
@@ -90,7 +91,6 @@ int setstate_r(char *buffer, struct random_data *s) {
         errno = EINVAL;
         return -1;
     }
-    v_random_save(s);
     s->state = (int32_t *)(void *)buffer + 1;
     s->rand_type = type;
     s->rand_deg = v_degrees[type];
