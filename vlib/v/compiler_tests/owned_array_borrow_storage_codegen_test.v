@@ -52,10 +52,8 @@ fn borrow_storage_run(name string, src string) string {
 }
 
 fn borrow_storage_compile_dispatch(name string, declarations string, branches []string) string {
-	source := 'import os
-
-' + declarations + 'fn main() {
-	match os.args[1] {
+	source := declarations + 'fn main() {
+	match arguments()[1] {
 ${branches.join('\n')}
 		else { panic("unknown array ownership case") }
 	}
@@ -993,19 +991,27 @@ fn main() {
 }
 
 fn test_owned_array_trim_drops_only_a_valid_range() {
-	for index in [-1, 0, 1, 2] {
-		output := borrow_storage_run('trim_drop_range_${index}', borrow_storage_drop_decls + '
+	source := borrow_storage_drop_decls + '
 fn trim_at(mut values []Res, index int) {
 	values.trim(index)
 	println("ok")
 	exit(0)
 }
-fn main() {
-	mut values := [Res{1}]
-	trim_at(mut values, ${index})
-}
-')
-		assert output == if index == 0 { 'drop 1\nok' } else { 'ok' }
+'
+	indices := [-1, 0, 1, 2]
+	mut branches := []string{cap: indices.len}
+	for index in indices {
+		branches << '\t\t"${index}" {
+			mut values := [Res{1}]
+			trim_at(mut values, ${index})
+		}'
+	}
+	binary := borrow_storage_compile_dispatch('trim_drop_range', source, branches)
+	for index in indices {
+		run := os.exec([binary, index.str()])
+		expected := if index == 0 { 'drop 1\nok' } else { 'ok' }
+		assert run.exit_code == 0, '${index}: ${run.output}'
+		assert run.output.trim_space() == expected, '${index}: ${run.output}'
 	}
 }
 
