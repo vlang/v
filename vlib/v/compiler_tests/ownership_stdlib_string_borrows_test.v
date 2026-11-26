@@ -1,6 +1,6 @@
 import os
 
-fn test_ownership_standard_string_readers_borrow_owned_arguments() {
+fn test_ownership_stdlib_string_calls_preserve_borrowed_arguments() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_stdlib_string_borrows_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -14,7 +14,7 @@ struct Command {
 	program string
 }
 
-fn main() {
+fn check_standard_string_readers() ! {
 	command := &Command{program: "/tmp/example".to_owned()}
 	program := command.program
 	assert os.is_abs_path(program)
@@ -37,41 +37,10 @@ fn main() {
 	assert "TOKEN".replace("TOKEN", replacement) == "description"
 	assert "TOKEN".replace("TOKEN", replacement) == "description"
 	assert replacement == "description"
-	println("ok")
-}
-')!
-	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
-		assert out.exit_code == 0, '${mode}: ${out.output}'
-		assert out.output.trim_space() == 'ok', out.output
-	}
+	println("readers")
 }
 
-fn test_ownership_user_string_consumers_keep_move_semantics() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_user_string_consumers_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn exists(value string) bool { return value.len > 0 }
-fn main() {
-	value := "owned".to_owned()
-	assert exists(value)
-	println(value)
-}
-')!
-	out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
-	assert out.exit_code != 0, out.output
-	assert out.output.contains('use of moved value: `value`'), out.output
-}
-
-fn test_ownership_file_operations_borrow_their_path_arguments() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_file_string_borrows_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'import os
-fn main() {
+fn check_file_operations() ! {
 	path := @FILE.to_owned()
 	resolved := os.real_path(path)
 	assert resolved.len > 0
@@ -97,14 +66,54 @@ fn main() {
 	os.walk(folder, fn (child string) { assert child.len > 0 })
 	assert folder.len > 0
 	os.rmdir_all(folder)!
-	println("ok")
+	println("paths")
+}
+
+fn check_nonowning_string_fallbacks() {
+	fallback := "fallback".to_owned()
+	result := "abc".substr_or(0, 4, fallback.clone())
+	assert result == fallback
+	assert voidptr(result.str) != voidptr(fallback.str)
+	assert "abc".substr_or(0, 2, fallback.clone()) == "ab"
+	view := fallback.substr_unsafe(1, 4)
+	copied := "abc".substr_or(0, 4, view)
+	assert copied == "all"
+	assert voidptr(copied.str) != voidptr(view.str)
+	assert view == "all"
+	literal := "abc".substr_or(0, 4, "literal")
+	assert literal == "literal"
+	println("fallbacks")
+}
+
+fn main() {
+	check_standard_string_readers()!
+	check_file_operations()!
+	check_nonowning_string_fallbacks()
 }
 ')!
-	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+	for mode in [['-no-parallel'], []string{}] {
+		out := os.exec([@VEXE, '-nocache', '-ownership', '-d', 'ownership', '-cc', 'clang', ...mode,
+			'run', source])
 		assert out.exit_code == 0, '${mode}: ${out.output}'
-		assert out.output.trim_space() == 'ok', out.output
+		assert out.output.trim_space().split_into_lines() == ['readers', 'paths', 'fallbacks'], out.output
 	}
+}
+
+fn test_ownership_user_string_consumers_keep_move_semantics() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_user_string_consumers_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn exists(value string) bool { return value.len > 0 }
+fn main() {
+	value := "owned".to_owned()
+	assert exists(value)
+	println(value)
+}
+')!
+	out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
+	assert out.exit_code != 0, out.output
+	assert out.output.contains('use of moved value: `value`'), out.output
 }
 
 fn test_ownership_returned_string_fallback_moves_owned_argument() {
@@ -123,34 +132,6 @@ fn test_ownership_returned_string_fallback_moves_owned_argument() {
 		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 		assert out.exit_code != 0, out.output
 		assert out.output.contains('use of moved value: `fallback`'), out.output
-	}
-}
-
-fn test_ownership_returned_string_fallback_copies_nonowning_arguments() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_fallback_copy_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn main() {
-	fallback := "fallback".to_owned()
-	result := "abc".substr_or(0, 4, fallback.clone())
-	assert result == fallback
-	assert voidptr(result.str) != voidptr(fallback.str)
-	assert "abc".substr_or(0, 2, fallback.clone()) == "ab"
-	view := fallback.substr_unsafe(1, 4)
-	copied := "abc".substr_or(0, 4, view)
-	assert copied == "all"
-	assert voidptr(copied.str) != voidptr(view.str)
-	assert view == "all"
-	literal := "abc".substr_or(0, 4, "literal")
-	assert literal == "literal"
-	println("ok")
-}
-')!
-	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
-		assert out.exit_code == 0, '${mode}: ${out.output}'
-		assert out.output.trim_space() == 'ok', out.output
 	}
 }
 
