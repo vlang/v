@@ -38,20 +38,6 @@ fn assert_clean_borrow_build(compile os.Result) {
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
-fn run_v3_array_accessor_borrow_program(name string, src string) string {
-	src_path := '${tmp_array_accessor_borrow_path(name)}.v'
-	bin_path := tmp_array_accessor_borrow_path('${name}_bin')
-	os.write_file(src_path, src) or { panic(err) }
-	compile := cmdexec.run_in_merged_with_env(array_accessor_borrow_vexe, [src_path, '-b', 'c',
-		'-o', bin_path], '', {
-		'VFLAGS': ''
-	})
-	assert_clean_borrow_build(compile)
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	return run.output.trim_space()
-}
-
 fn run_v3_array_accessor_borrow_module(name string, module_src string, main_src string) string {
 	proj_dir := tmp_array_accessor_borrow_path(name)
 	mod_dir := os.join_path(proj_dir, 'mymod')
@@ -73,8 +59,12 @@ fn run_v3_array_accessor_borrow_module(name string, module_src string, main_src 
 // not an independent copy, so it must lower to an in-place `arr[..]` access even when
 // the element type owns heap data and has no `clone()` method. This mirrors the HPACK
 // dynamic table (`net.http` / `net.quic`) that `v new --web` pulls in via `veb`.
-fn test_first_last_field_borrow_on_owned_elements() {
-	output := run_v3_array_accessor_borrow_program('field_borrows', "struct Entry {
+fn test_first_last_field_borrow_in_main_and_imported_module() {
+	output := run_v3_array_accessor_borrow_module('field_borrows', 'module mymod\n\nstruct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\npub struct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\npub fn (mut t Tbl) add(name string, value string) {\n\tsz := name.len + value.len + 32\n\tfor t.entries.len > 0 && t.total + sz > 100 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n\tt.entries.insert(0, Entry{ name: name, value: value, size: sz })\n\tt.total += sz\n}\n\npub fn (t &Tbl) total() int {\n\treturn t.total\n}\n', "module main
+
+import mymod
+
+struct Entry {
 	name  string
 	value string
 	size  int
@@ -109,7 +99,7 @@ fn (b &Box) probe() int {
 	return b.entries.first().n + b.entries.last().n + b.entries.last().name.len
 }
 
-fn main() {
+fn check_main_module_borrows() {
 	mut t := Tbl{}
 	t.entries << Entry{ name: 'a', value: 'b', size: 5 }
 	t.entries << Entry{ name: 'c', value: 'd', size: 7 }
@@ -122,16 +112,23 @@ fn main() {
 	b.entries << ProbeEntry{ name: 'cdef', n: 20 }
 	println(int_str(b.probe()))
 }
-")
-	assert output.split_into_lines() == ['0', '34'], output
-}
 
 // The same borrow read inside an imported module: the ownership checker does not
 // diagnose non-user modules, so the regressed transform silently produced `(0)` there,
 // which is precisely why `v .` on a fresh `--web` project failed to compile.
-fn test_first_last_field_borrow_in_imported_module() {
-	out := run_v3_array_accessor_borrow_module('borrow_mod', 'module mymod\n\nstruct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\npub struct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\npub fn (mut t Tbl) add(name string, value string) {\n\tsz := name.len + value.len + 32\n\tfor t.entries.len > 0 && t.total + sz > 100 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n\tt.entries.insert(0, Entry{ name: name, value: value, size: sz })\n\tt.total += sz\n}\n\npub fn (t &Tbl) total() int {\n\treturn t.total\n}\n', "module main\n\nimport mymod\n\nfn main() {\n\tmut t := mymod.Tbl{}\n\tt.add('a', 'b')\n\tt.add('c', 'd')\n\tprintln(int_str(t.total()))\n}\n")
-	assert out == '68'
+fn check_imported_module_borrow() {
+	mut t := mymod.Tbl{}
+	t.add('a', 'b')
+	t.add('c', 'd')
+	println(int_str(t.total()))
+}
+
+fn main() {
+	check_main_module_borrows()
+	check_imported_module_borrow()
+}
+")
+	assert output.split_into_lines() == ['0', '34', '68'], output
 }
 
 // The in-place borrow only fires with the ownership checker (`-d ownership`); it is where
