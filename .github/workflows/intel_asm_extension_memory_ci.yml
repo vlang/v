@@ -120,6 +120,7 @@ jobs:
           path: fixture
           persist-credentials: false
       - name: Build matched production compilers
+        id: build_matched
         shell: bash
         run: |
           set -euo pipefail
@@ -301,6 +302,79 @@ jobs:
           print(report)
           (root / 'summary.txt').write_text(report)
           PY
+      - name: Diagnose historical compiler source selection
+        if: ${{ always() && steps.build_matched.outcome == 'success' }}
+        shell: bash
+        working-directory: fixture
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/intel-asm-benchmark"
+          test "$(git rev-parse HEAD)" = 2d1367e589ed30c03325e586a8ddfd3bc96c8c3d
+          cp "$out/baseline.v" ./v
+          # Build the documented historical compiler from its own sources, using
+          # the already built baseline as bootstrap rather than today's external VC.
+          # This is an inventory diagnostic only, not a measured production role.
+          rc=0
+          env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 \
+            ./v -prod -cc clang self > "$out/reference.build.log" 2>&1 || rc=$?
+          echo "$rc" > "$out/reference.build.exit-status.txt"
+          cat "$out/reference.build.log"
+          test "$rc" -eq 0
+          ./v version | tee "$out/reference.version.txt"
+          shasum -a 256 ./v > "$out/reference.binary.sha256"
+          rc=0
+          env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
+            ./v -nocache -gc none -prealloc -compile-backend fastc -building-v -v \
+              -o "$out/self.c" cmd/v > "$out/reference.inventory.stdout" 2> "$out/reference.inventory.stderr" || rc=$?
+          echo "$rc" > "$out/reference.inventory.exit-status.txt"
+          cat "$out/reference.inventory.stdout" "$out/reference.inventory.stderr"
+          test "$rc" -eq 0
+          cp "$out/self.c" "$out/reference.inventory.c"
+          python3 - "$out" <<'PY'
+          import pathlib, re, sys
+          out = pathlib.Path(sys.argv[1])
+          fixture = pathlib.Path.cwd().resolve()
+          log = '\n'.join((out / f'reference.inventory.{s}').read_text(errors='replace')
+                          for s in ('stdout', 'stderr'))
+          counts = re.findall(r'^\s*parsed \.(v|vh) files\s+(\d+) files\s*        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: intel-asm-matched-instruction-evidence
+          path: ${{ runner.temp }}/intel-asm-benchmark/
+          if-no-files-found: error
+, log, re.M)
+          lines = re.findall(r'^\s*parsed \.(v|vh) lines\s+(\d+) lines\s*        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: intel-asm-matched-instruction-evidence
+          path: ${{ runner.temp }}/intel-asm-benchmark/
+          if-no-files-found: error
+, log, re.M)
+          selected = []
+          for _, entry in re.findall(r'^[ \t]*\.(v|vh) files:[ \t]*(.*)        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: intel-asm-matched-instruction-evidence
+          path: ${{ runner.temp }}/intel-asm-benchmark/
+          if-no-files-found: error
+, log, re.M):
+              for name in entry.split():
+                  p = pathlib.Path(name).expanduser()
+                  selected.append((fixture / p).resolve().relative_to(fixture).as_posix())
+          selected.sort()
+          (out / 'reference.parsed-paths.txt').write_text('\n'.join(selected) + '\n')
+          print('historical compiler counts:', counts, 'lines:', lines, 'listed:', len(selected))
+          for role in ('baseline', 'candidate'):
+              other = set((out / f'{role}.parsed-paths.txt').read_text().splitlines())
+              report = ('reference only:\n' + '\n'.join(sorted(set(selected)-other)) +
+                        '\n' + role + ' only:\n' + '\n'.join(sorted(other-set(selected))) + '\n')
+              (out / f'reference-versus-{role}.txt').write_text(report)
+              print(role, report)
+          assert len(counts) == 2 and dict(counts) == {'v': '562', 'vh': '0'}
+          assert len(lines) == 2 and sum(int(n) for _, n in lines) == 559990
+          assert len(selected) == len(set(selected)) == 562
+          PY
+          git diff --exit-code
       - name: Preserve benchmark evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
