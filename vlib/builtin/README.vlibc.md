@@ -366,6 +366,8 @@ their C adapters preserve the native integer widths and quotient/remainder struc
 subnormals and extended precision without floating arithmetic. `fegetround` and `fesetround`
 read and update the calling thread's rounding mode; amd64 updates both x87 and SSE controls.
 Invalid modes leave the controls unchanged.
+On Linux arm64, `scalbnl` scales binary128 values using the active rounding mode and reports
+overflow, underflow, and inexact results in the floating-point environment.
 The native absolute-value and sign-copy families also preserve floating widths and signed zero.
 Floating environment capture/restore, exception flags, hold/update, and GNU exception-mask
 controls use native V register operations. GNU default-environment sentinels are supported;

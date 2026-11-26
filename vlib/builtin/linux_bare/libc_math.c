@@ -1,5 +1,6 @@
-/* Scaling follows musl's intermediate normal-number method; COPYRIGHT.musl. */
+/* Hardware floating-point scaling follows musl's normal-factor method; COPYRIGHT.musl. */
 #include <errno.h>
+#include <fenv.h>
 #include <float.h>
 #include <math.h>
 #include <stdint.h>
@@ -36,9 +37,69 @@ double scalbn(double x, int n) {
         errno = ERANGE;
     return result;
 }
+#if LDBL_MANT_DIG == 113
+/* AArch64 compiler runtimes can multiply binary128 using integer instructions.
+ * Adjust the exponent directly and round discarded bits using the caller's FP mode. */
+static __uint128_t scale_binary128(__uint128_t bits, int n) {
+    const __uint128_t unit = (__uint128_t)1 << 112;
+    const __uint128_t infinity = (__uint128_t)0x7fff << 112;
+    __uint128_t sign = bits & ((__uint128_t)1 << 127);
+    __uint128_t fraction = bits & (unit - 1);
+    int exponent = (int)((bits >> 112) & 0x7fff);
+    if (exponent == 0x7fff) {
+        if (fraction && !(fraction & (unit >> 1))) {
+            feraiseexcept(FE_INVALID);
+            return bits | (unit >> 1);
+        }
+        return bits;
+    }
+    __uint128_t significand = unit | fraction;
+    if (!exponent) {
+        if (!fraction) return bits;
+        uint64_t high = (uint64_t)(fraction >> 64);
+        int shift = high ? __builtin_clzll(high) - 15
+                         : __builtin_clzll((uint64_t)fraction) + 49;
+        significand = fraction << shift;
+        exponent = 1 - shift;
+    }
+    int64_t scaled = (int64_t)exponent + n;
+    if (scaled > 0 && scaled < 0x7fff)
+        return sign | ((__uint128_t)scaled << 112) | (significand & (unit - 1));
+
+    int mode = fegetround();
+    int away = sign ? mode == FE_DOWNWARD : mode == FE_UPWARD;
+    if (scaled >= 0x7fff) {
+        feraiseexcept(FE_OVERFLOW | FE_INEXACT);
+        if (away || mode == FE_TONEAREST) {
+            errno = ERANGE;
+            return sign | infinity;
+        }
+        return sign | (infinity - 1);
+    }
+    /* At 114 bits the entire significand is strictly below the midpoint. */
+    int drop = scaled < -112 ? 114 : (int)(1 - scaled);
+    __uint128_t kept = significand >> drop;
+    __uint128_t lost = significand & (((__uint128_t)1 << drop) - 1);
+    if (lost) {
+        __uint128_t half = (__uint128_t)1 << (drop - 1);
+        if (away || (mode == FE_TONEAREST && (lost > half || (lost == half && (kept & 1)))))
+            ++kept;
+        feraiseexcept(FE_UNDERFLOW | FE_INEXACT);
+        if (!kept) errno = ERANGE;
+    }
+    return sign | kept;
+}
+#endif
+
 long double scalbnl(long double x, int n) {
 #if LDBL_MANT_DIG == 53
     return scalbn(x, n);
+#elif LDBL_MANT_DIG == 113
+    __uint128_t bits;
+    memcpy(&bits, &x, sizeof bits);
+    bits = scale_binary128(bits, n);
+    memcpy(&x, &bits, sizeof x);
+    return x;
 #else
     if (!isfinite(x) || x == 0)
         return x + x;
@@ -67,9 +128,6 @@ long double scalbnl(long double x, int n) {
 #if LDBL_MANT_DIG == 64
     uint16_t exponent = (uint16_t)(16383 + n);
     memcpy(bytes + 8, &exponent, 2);
-#elif LDBL_MANT_DIG == 113
-    uint16_t exponent = (uint16_t)(16383 + n);
-    memcpy(bytes + 14, &exponent, 2);
 #else
 #error unsupported long double representation
 #endif
