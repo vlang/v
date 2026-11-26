@@ -1282,14 +1282,24 @@ fn test_a_local_of_a_comptime_for_body_is_not_taken_for_a_constant() {
 	assert error_lines(check.res.output) == [], check.res.output
 }
 
-const map_cast_program = "fn to_counts[T](m map[string]T) map[string]u8 {\n\treturn map[string]u8(m)\n}\n\nfn main() {\n\tprintln(to_counts({\n\t\t'a': u8(7)\n\t}))\n"
+const map_cast_declarations = 'fn to_counts[T](m map[string]T) map[string]u8 {
+	return map[string]u8(m)
+}
+
+'
+
+const map_cast_calls = "	println(to_counts({
+		'a': u8(7)
+	}))
+"
 
 // `map[K]V(m)` is a cast, as `?map[K]V(m)` is, and it keeps the elements as
 // they are. An instance that casts a map whose values are stored otherwise is
 // reported where it does so, in a check and in a build. It used to pass the
 // check and give the C compiler an invalid cast.
 fn test_a_map_type_cast_is_checked_for_each_instance() {
-	source := map_cast_program + "\tprintln(to_counts({\n\t\t'a': 258\n\t}))\n}\n"
+	source := map_cast_declarations + 'fn main() {\n' + map_cast_calls +
+		"\tprintln(to_counts({\n\t\t'a': 258\n\t}))\n}\n"
 	for res in [check_program('map_cast_check', source), build_program('map_cast_build', source)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
@@ -1299,30 +1309,47 @@ fn test_a_map_type_cast_is_checked_for_each_instance() {
 	}
 }
 
-// An instance that casts a map to its own type builds and runs.
-fn test_a_map_type_cast_to_the_same_elements_builds() {
-	source := map_cast_program + '}\n'
-	assert error_lines(check_program('map_cast_valid_check', source).output) == []
-	dir := os.join_path(os.vtmp_dir(), 'v3_run_generic_instances_map_cast_${os.getpid()}')
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	path := os.join_path(dir, 'main.v')
-	os.write_file(path, generic_prelude + source) or { panic(err) }
-	res := os.exec(['env', @VEXE, '-nocolor', 'run', path])
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space() == "{'a': 7}", res.output
+const comptime_for_declarations = 'struct Foo {
+	a int
 }
 
-const comptime_for_program = 'struct Foo {\n\ta int\n}\n\nstruct Bar {\n\tb int\n}\n\nfn take_bars(items []Bar) int {\n\treturn items.len\n}\n\nfn wrap[T](x T) []Bar {\n\t\$for field in T.fields {\n\t\titems := [x]\n\t\treturn items\n\t}\n\treturn []\n}\n\nfn count[T](x T) int {\n\t\$for field in T.fields {\n\t\titems := [x]\n\t\treturn take_bars(items)\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(wrap(Bar{ b: 1 }))\n\tprintln(count(Bar{ b: 1 }))\n'
+struct Bar {
+	b int
+}
+
+fn take_bars(items []Bar) int {
+	return items.len
+}
+
+fn wrap[T](x T) []Bar {
+	\$for field in T.fields {
+		items := [x]
+		return items
+	}
+	return []
+}
+
+fn count[T](x T) int {
+	\$for field in T.fields {
+		items := [x]
+		return take_bars(items)
+	}
+	return 0
+}
+
+'
+
+const comptime_for_calls = '	println(wrap(Bar{ b: 1 }))
+	println(count(Bar{ b: 1 }))
+'
 
 // The body of a `$for` is checked in each instance as the rest of the body is:
 // its locals are seen and its returns are checked. `[x]` is a `[]Bar` for a
 // `Bar`, but a `[]Foo` for a `Foo`, which is no `[]Bar`. It used to pass the
 // check and a build, and reach the C compiler.
 fn test_an_array_of_another_type_in_a_comptime_for_body_is_reported_per_instance() {
-	source := comptime_for_program + '\tprintln(wrap(Foo{ a: 2 }))\n\tprintln(count(Foo{ a: 2 }))\n}\n'
+	source := comptime_for_declarations + 'fn main() {\n' + comptime_for_calls +
+		'\tprintln(wrap(Foo{ a: 2 }))\n\tprintln(count(Foo{ a: 2 }))\n}\n'
 	for res in [check_program('comptime_for_check', source),
 		build_program('comptime_for_build', source)] {
 		assert res.exit_code != 0, res.output
@@ -1334,11 +1361,14 @@ fn test_an_array_of_another_type_in_a_comptime_for_body_is_reported_per_instance
 	}
 }
 
-// The instances whose `$for` bodies have the expected types build and run.
-fn test_the_instances_of_a_comptime_for_body_with_the_expected_types_build() {
-	source := comptime_for_program + '}\n'
-	assert error_lines(check_program('comptime_for_valid_check', source).output) == []
-	dir := os.join_path(os.vtmp_dir(), 'v3_run_generic_instances_comptime_for_${os.getpid()}')
+// A map cast to its own type and compile-time loops with the expected types build and run.
+fn test_map_cast_and_comptime_for_instances_build_and_run() {
+	source := map_cast_declarations + comptime_for_declarations + 'fn main() {\n' + map_cast_calls +
+		comptime_for_calls + '}\n'
+	check := check_program('map_cast_comptime_for_valid_check', source)
+	assert check.exit_code == 0, check.output
+	assert error_lines(check.output) == [], check.output
+	dir := os.join_path(os.vtmp_dir(), 'v3_run_generic_instances_map_cast_comptime_for_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
 		os.rmdir_all(dir) or {}
@@ -1347,7 +1377,7 @@ fn test_the_instances_of_a_comptime_for_body_with_the_expected_types_build() {
 	os.write_file(path, generic_prelude + source) or { panic(err) }
 	res := os.exec(['env', @VEXE, '-nocolor', 'run', path])
 	assert res.exit_code == 0, res.output
-	assert res.output.split_into_lines() == ['[Bar{', '    b: 1', '}]', '1'], res.output
+	assert res.output.split_into_lines() == ["{'a': 7}", '[Bar{', '    b: 1', '}]', '1'], res.output
 }
 
 // A local of a `$for` body that has the name of a constant of its own module
