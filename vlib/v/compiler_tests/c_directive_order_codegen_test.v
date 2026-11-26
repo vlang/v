@@ -456,11 +456,18 @@ typedef uint64_t NestedWord;
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_c_sdk_x11_aggregates() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_x11_aggregates_project')
+fn directive_order_gen_c_sdk_headers() string {
+	root := directive_order_fixture_dir('v3_c_directive_order_sdk_headers_project')
 	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_x11_aggregates' }\n")
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_sdk_headers' }\n")
 	directive_order_write_file(root, 'main.v', 'module main
+
+fn main() {
+	check_x11()
+	check_bcrypt()
+}
+')
+	directive_order_write_file(root, 'x11.v', 'module main
 
 #include <X11/Xlib.h>
 
@@ -481,32 +488,22 @@ struct Wrap {
 	event C.XEvent
 }
 
-fn main() {
+fn check_x11() {
 	_ := Wrap{}
 }
 ')
-	c_out := os.join_path(root, 'v3_c_directive_order_x11_aggregates.c')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
-	assert result.exit_code == 0, result.output
-	return os.read_file(c_out) or { panic(err) }
-}
-
-fn directive_order_gen_c_sdk_bcrypt_fn() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_bcrypt_project')
-	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_bcrypt' }\n")
-	directive_order_write_file(root, 'main.v', 'module main
+	directive_order_write_file(root, 'bcrypt.v', 'module main
 
 #include <bcrypt.h>
 
 fn C.BCryptGenRandom(alg int, buffer voidptr, len int, flags int) int
 
-fn main() {
+fn check_bcrypt() {
 	_ := C.BCryptGenRandom(0, voidptr(0), 0, 0)
 }
 ')
-	c_out := os.join_path(root, 'v3_c_directive_order_bcrypt.c')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
+	c_out := os.join_path(root, 'v3_c_directive_order_sdk_headers.c')
+	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', c_out, root])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -947,18 +944,15 @@ fn test_portable_c_preserves_unresolved_and_nested_includes() {
 	assert !c_code.contains('typedef uint64_t NestedWord;'), c_code
 }
 
-fn test_system_header_aggregates_keep_sdk_declarations() {
-	c_code := directive_order_gen_c_sdk_x11_aggregates()
+fn test_system_headers_supply_sdk_aggregates_and_functions() {
+	c_code := directive_order_gen_c_sdk_headers()
 	assert c_code.contains('#include <X11/Xlib.h>'), c_code
 	assert !c_code.contains('typedef union XEvent XEvent;'), c_code
 	assert !c_code.contains('union XEvent {\n'), c_code
 	assert !c_code.contains('typedef union XClientMessageData XClientMessageData;'), c_code
 	assert !c_code.contains('union XClientMessageData {\n'), c_code
 	assert c_code.contains('XEvent event;'), c_code
-}
 
-fn test_system_header_functions_keep_sdk_declarations() {
-	c_code := directive_order_gen_c_sdk_bcrypt_fn()
 	assert c_code.contains('#include <bcrypt.h>'), c_code
 	// The sole occurrence is the call, rather than an extra ABI declaration.
 	assert directive_order_count(c_code, 'BCryptGenRandom(') == 1, c_code
