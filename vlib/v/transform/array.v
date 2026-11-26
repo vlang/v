@@ -1636,7 +1636,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	elem_type := flat.source_type_syntax(array_type).raw_base()
 	raw_rhs_type_source_id := t.node_type(rhs_id)
 
-	mut rhs_type := t.normalize_type_alias(raw_rhs_type_source_id)
+	mut rhs_type := t.array_append_concrete_rhs_type(rhs_id, t.normalize_type_alias(raw_rhs_type_source_id), array_type)
 	rhs_node := t.a.nodes[int(rhs_id)]
 	if literal_variant_source_id := t.array_append_literal_sum_array_variant_type(rhs_id, elem_type) {
 		t.set_node_typ(int(rhs_id), literal_variant_source_id)
@@ -1988,7 +1988,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	elem_type := flat.source_type_syntax(array_type_source_id_2).raw_base()
 	raw_rhs_type_source_id := t.node_type(rhs_id)
 
-	mut rhs_type := t.normalize_type_alias(raw_rhs_type_source_id)
+	mut rhs_type := t.array_append_concrete_rhs_type(rhs_id, t.normalize_type_alias(raw_rhs_type_source_id), array_type_source_id_2)
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
 	if !push_many && t.array_append_rhs_builtin_map_elem_matches(rhs_id, elem_type) {
@@ -2737,6 +2737,26 @@ fn strip_array_append_lhs_prefixes(typ_id u32) u32 {
 		}
 		clean = transform_trimmed_type_id(flat.source_type_syntax(clean).raw_base())
 	}
+}
+
+// array_append_concrete_rhs_type replaces a `<<` rhs type that still names a
+// generic parameter (`[]T` from calling a generic function that returns `[]T`)
+// with the checker's concrete type, so `a << f(b)` appends the elements of the
+// result instead of pushing the array as one element.
+fn (t &Transformer) array_append_concrete_rhs_type(rhs_id flat.NodeId, rhs_type u32, array_type u32) u32 {
+	if isnil(t.tc) || !array_type_has_generic_placeholder(rhs_type)
+		|| array_type_has_generic_placeholder(array_type) {
+		return rhs_type
+	}
+	resolved := t.tc.expr_type(rhs_id) or { t.tc.resolve_type(rhs_id) }
+	if resolved is types.Unknown {
+		return rhs_type
+	}
+	resolved_id := resolved.source_type_id()
+	if resolved_id == 0 || array_type_has_generic_placeholder(resolved_id) {
+		return rhs_type
+	}
+	return t.normalize_type_alias(resolved_id)
 }
 
 fn array_type_has_generic_placeholder(typ_id u32) bool {
