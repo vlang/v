@@ -143,80 +143,6 @@ fn main() {
 	assert build.output.contains('cannot copy `Handle` elements: `Handle` requires ownership destruction but has no compatible `clone()` method'), build.output
 }
 
-fn test_owned_fixed_array_returned_views_acquire_independent_owners() {
-	output := copy_ownership_run('fixed_array_owners', '@[has_globals]
-module main
-
-__global next_owned_id = 0
-__global dropped_ids = map[int]bool{}
-
-interface Drop {
-mut:
-	drop()
-}
-
-struct Tracked implements IClone, Drop {
-	id int
-}
-
-fn fresh() Tracked {
-	next_owned_id++
-	return Tracked{next_owned_id}
-}
-
-fn (r &Tracked) clone() Tracked {
-	return fresh()
-}
-
-fn (mut r Tracked) drop() {
-	assert !dropped_ids[r.id], "owner dropped twice"
-	dropped_ids[r.id] = true
-}
-
-fn keep(mut values []Tracked) []Tracked {
-	return values
-}
-
-fn keep_strings(mut values []string) []string {
-	return values
-}
-
-struct Wrapper {
-	items []Tracked
-}
-
-fn keep_wrappers(mut values []Wrapper) []Wrapper {
-	return values
-}
-
-fn main() {
-	mut fixed := [fresh()]!
-	kept := keep(mut fixed)
-	assert kept[0].id != fixed[0].id
-	drop_owned(kept)
-	assert dropped_ids.len == 1
-	assert !dropped_ids[fixed[0].id]
-	drop_owned(fixed)
-	mut wrappers := [Wrapper{[fresh()]}]!
-	kept_wrappers := keep_wrappers(mut wrappers)
-	drop_owned(kept_wrappers)
-	assert dropped_ids.len == 3
-	assert !dropped_ids[wrappers[0].items[0].id]
-	drop_owned(wrappers)
-	assert dropped_ids.len == next_owned_id
-	mut words := ["first".repeat(3), "second".repeat(3)]!
-	kept_words := keep_strings(mut words)
-	assert kept_words[0] == "firstfirstfirst"
-	assert kept_words[1] == "secondsecondsecond"
-	drop_owned(kept_words)
-	assert words[0] == "firstfirstfirst"
-	drop_owned(words)
-	println("ok")
-}
-')
-	assert output == 'ok'
-}
-
 fn test_fixed_array_borrows_preserve_original_owners() {
 	mut source := '@[has_globals]
 module main
@@ -534,14 +460,78 @@ fn main() {
 	assert copy_ownership_run('fixed_root_runtime', os.read_file(path)!) == 'ok'
 }
 
-fn test_owned_fixed_views_keep_retained_headers_and_captures_alive() {
-	output := copy_ownership_run('fixed_owned_retention', '@[has_globals]
+fn test_owned_fixed_array_views_acquire_independent_owners() {
+	source := '@[has_globals]
 module main
+
 import builtin.closure
+
+' + copy_ownership_drop_decls + '
+__global next_owned_id = 0
+__global dropped_ids = map[int]bool{}
+
+struct Tracked implements IClone, Drop {
+	id int
+}
+
+fn fresh_tracked() Tracked {
+	next_owned_id++
+	return Tracked{next_owned_id}
+}
+
+fn (r &Tracked) clone() Tracked {
+	return fresh_tracked()
+}
+
+fn (mut r Tracked) drop() {
+	assert !dropped_ids[r.id], "owner dropped twice"
+	dropped_ids[r.id] = true
+}
+
+fn keep(mut values []Tracked) []Tracked {
+	return values
+}
+
+fn keep_strings(mut values []string) []string {
+	return values
+}
+
+struct Wrapper {
+	items []Tracked
+}
+
+fn keep_wrappers(mut values []Wrapper) []Wrapper {
+	return values
+}
+
+fn check_returned_views() {
+	mut fixed := [fresh_tracked()]!
+	kept := keep(mut fixed)
+	assert kept[0].id != fixed[0].id
+	drop_owned(kept)
+	assert dropped_ids.len == 1
+	assert !dropped_ids[fixed[0].id]
+	drop_owned(fixed)
+	mut wrappers := [Wrapper{[fresh_tracked()]}]!
+	kept_wrappers := keep_wrappers(mut wrappers)
+	drop_owned(kept_wrappers)
+	assert dropped_ids.len == 3
+	assert !dropped_ids[wrappers[0].items[0].id]
+	drop_owned(wrappers)
+	assert dropped_ids.len == next_owned_id
+	mut words := ["first".repeat(3), "second".repeat(3)]!
+	kept_words := keep_strings(mut words)
+	assert kept_words[0] == "firstfirstfirst"
+	assert kept_words[1] == "secondsecondsecond"
+	drop_owned(kept_words)
+	assert words[0] == "firstfirstfirst"
+	drop_owned(words)
+	println("returned_views")
+}
+
 __global next_id = 0
 __global clones = 0
 __global dropped = map[int]bool{}
-interface Drop { mut: drop() }
 struct Resource implements IClone, Drop { id int mut: value int }
 fn fresh() Resource { next_id++; return Resource{next_id, 0} }
 fn (r &Resource) clone() Resource { clones++; return Resource{fresh().id, r.value} }
@@ -586,21 +576,16 @@ fn check_capture() {
 	kept := fixed_capture()
 	assert kept() == 0
 }
-fn main() {
+fn check_references_and_captures() {
 	for indexed in [false, true] { check_reference(indexed) }
 	mut lifetime := closure.new_lifetime()
 	lifetime.frame(fn () { check_capture() }) or { panic(err) }
 	lifetime.dispose() or { panic(err) }
 	assert clones == 3
 	assert dropped.len == next_id
-	println("ok")
-}
-')
-	assert output == 'ok'
+	println("references_and_captures")
 }
 
-fn test_owned_map_and_accessor_fixed_results_acquire_durable_element_owners() {
-	output := copy_ownership_run('fixed_map_accessor_retention', copy_ownership_drop_decls + '
 fn retain(values &[]Res) &[]Res { return values }
 fn map_reference() &[]Res {
 	mut rows := map[string][1]Res{}
@@ -634,16 +619,38 @@ fn check_holder(last bool) {
 	assert unsafe { kept[0].id } == if last { 250 } else { 240 }
 	unsafe { kept.free() }
 }
-fn main() {
+fn check_map_and_accessors() {
 	check_map()
 	check_accessor(false)
 	check_accessor(true)
 	check_holder(false)
 	check_holder(true)
 }
-')
-	assert output.split_into_lines().sorted() == ['drop 10', 'drop 110', 'drop 120', 'drop 130',
-		'drop 140', 'drop 141', 'drop 150', 'drop 151', 'drop 20', 'drop 20', 'drop 240', 'drop 250',
-		'drop 30', 'drop 30', 'drop 40', 'drop 40', 'drop 41', 'drop 41', 'drop 50', 'drop 50',
-		'drop 51', 'drop 51']
+
+fn main() {
+	match arguments()[1] {
+		"returned_views" { check_returned_views() }
+		"references_and_captures" { check_references_and_captures() }
+		"map_and_accessors" { check_map_and_accessors() }
+		else { panic("unknown fixed-array retention case") }
+	}
+}
+'
+	name := 'fixed_array_retention'
+	build := copy_ownership_compile(name, source)
+	assert build.exit_code == 0, build.output
+	binary := os.join_path(copy_ownership_tmp_dir, name)
+	expected_output := {
+		'returned_views':          ['returned_views']
+		'references_and_captures': ['references_and_captures']
+		'map_and_accessors':       ['drop 10', 'drop 110', 'drop 120', 'drop 130', 'drop 140',
+			'drop 141', 'drop 150', 'drop 151', 'drop 20', 'drop 20', 'drop 240', 'drop 250', 'drop 30',
+			'drop 30', 'drop 40', 'drop 40', 'drop 41', 'drop 41', 'drop 50', 'drop 50', 'drop 51',
+			'drop 51']
+	}
+	for case, expected in expected_output {
+		run := os.exec([binary, case])
+		assert run.exit_code == 0, '${case}: ${run.output}'
+		assert run.output.trim_space().split_into_lines().sorted() == expected, '${case}: ${run.output}'
+	}
 }
