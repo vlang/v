@@ -2388,6 +2388,12 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_with_entry_guard(id flat
 				}
 			}
 			for source in sources {
+				if source.boxed_borrow && source.source_is_prefix {
+					if local := tc.returned_boxed_payload_local_storage(source) {
+						return local
+					}
+					continue
+				}
 				if tc.returned_receiver_call_source_materializes_storage(id, source.arg_id) {
 					if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
 						return local
@@ -2581,6 +2587,12 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_projection(id flat.No
 		}
 		if node.kind == .call {
 			for source in tc.ownership_call_result_projection_sources(id, suffix) {
+				if source.boxed_borrow && source.source_is_prefix {
+					if local := tc.returned_boxed_payload_local_storage(source) {
+						return local
+					}
+					continue
+				}
 				if tc.returned_receiver_call_source_materializes_storage(id, source.arg_id) {
 					if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
 						return local
@@ -2625,6 +2637,17 @@ fn returned_value_is_scalar_copy(typ Type) bool {
 	value_type := unalias_type(typ)
 	return value_type is Primitive || value_type is Char || value_type is Rune
 		|| value_type is ISize || value_type is USize || value_type is Enum
+}
+
+fn (mut tc TypeChecker) returned_boxed_payload_local_storage(source OwnershipCallResultSource) ?string {
+	$if ownership ? {
+		for name in tc.ownership_boxed_payload_borrow_sources(source.arg_id, source.source_suffix, 0) {
+			if local := tc.returned_receiver_local_storage_name(name) {
+				return local
+			}
+		}
+	}
+	return none
 }
 
 // Returned wrappers and aggregates can contain the same borrowed pointers as a direct return.
@@ -2713,6 +2736,12 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 		}
 		if node.kind == .call {
 			for source in tc.ownership_call_result_sources(id) {
+				if source.boxed_borrow && source.source_is_prefix {
+					if local := tc.returned_boxed_payload_local_storage(source) {
+						return local
+					}
+					continue
+				}
 				if tc.returned_receiver_call_source_materializes_storage(id, source.arg_id) {
 					if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
 						return local
@@ -2781,7 +2810,7 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 							}
 							continue
 						}
-						if projected_type is Pointer {
+						if borrow.boxed_borrow || projected_type is Pointer {
 							if local := tc.returned_receiver_local_storage_name(name) {
 								return local
 							}

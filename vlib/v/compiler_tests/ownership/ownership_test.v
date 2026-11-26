@@ -5472,3 +5472,122 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines() == ['first', 'second']
 }
+
+const generic_boxed_wrapper_source = r'
+@[heap]
+struct BoxData {
+	text string
+}
+
+interface BoxReader[R] {
+	read() R
+}
+
+struct BorrowingBoxReader implements Drop {
+	data &BoxData
+}
+
+fn (r &BorrowingBoxReader) read() int { return r.data.text.len }
+fn (mut r BorrowingBoxReader) drop() { println(r.data.text) }
+
+struct ReaderWrapper[R] implements Drop {
+mut:
+	reader BoxReader[R]
+}
+
+fn (mut wrapper ReaderWrapper[R]) drop() {
+	drop_owned(wrapper.reader)
+}
+
+fn wrap_reader[R, T](value T) ReaderWrapper[R] {
+	return ReaderWrapper[R]{reader: BoxReader[R](value)}
+}
+
+fn wrap_borrow(data &BoxData) ReaderWrapper[int] {
+	return wrap_reader[int, BorrowingBoxReader](BorrowingBoxReader{data: data})
+}
+'
+
+fn test_ownership_generic_boxed_wrapper_rejects_local_return() {
+	v3_bin := ownership_build_v3()
+	for build in [
+		'return wrap_reader[int, BorrowingBoxReader](BorrowingBoxReader{data: &data})',
+		'reader := BorrowingBoxReader{data: &data}; return wrap_reader[int, BorrowingBoxReader](reader)',
+		'return wrap_reader[int, BorrowingBoxReader](BorrowingBoxReader{data: if data.text.len == 5 { &data } else { &data }})',
+		'return wrap_borrow(&data)',
+	] {
+		result := run_ownership_check(v3_bin, 'generic_boxed_wrapper_return',
+			generic_boxed_wrapper_source + "
+fn invalid() ReaderWrapper[int] {
+	data := BoxData{text: 'local'.clone()}
+	${build}
+}
+fn main() { assert invalid().reader.read() == 5 }
+")
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot return a reference to local storage `data`'), result.output
+	}
+}
+
+fn test_ownership_generic_boxed_wrapper_retains_payload_loan() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'generic_boxed_wrapper_mutation', generic_boxed_wrapper_source + r'
+fn main() {
+	mut data := BoxData{text: "first".clone()}
+	result := wrap_reader[int, BorrowingBoxReader](BorrowingBoxReader{data: &data})
+	data = BoxData{text: "second".clone()}
+	assert result.reader.read() == 5
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot assign to `data` because it is borrowed by `result.reader`'), result.output
+}
+
+fn test_ownership_generic_boxed_wrapper_rejects_shorter_lived_source() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'generic_boxed_wrapper_scope', generic_boxed_wrapper_source + r'
+fn main() {
+	data := BoxData{text: "first".clone()}
+	mut result := wrap_reader[int, BorrowingBoxReader](BorrowingBoxReader{data: &data})
+	{
+		short := BoxData{text: "second".clone()}
+		result = wrap_reader[int, BorrowingBoxReader](BorrowingBoxReader{data: &short})
+	}
+	assert result.reader.read() == 5
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('because it borrows `short`, which does not outlive `result`'), result.output
+}
+
+fn test_ownership_generic_boxed_wrapper_moves_and_drops_payload() {
+	v3_bin := ownership_build_v3()
+	name := 'generic_boxed_wrapper_move'
+	result := run_ownership_check_with_flags(v3_bin, name, generic_boxed_wrapper_source + r'
+struct OwnedBoxReader { length int }
+fn (r &OwnedBoxReader) read() int { return r.length }
+
+fn owned_wrapper() ReaderWrapper[int] {
+	reader := OwnedBoxReader{length: 6}
+	return wrap_reader[int, OwnedBoxReader](reader)
+}
+
+fn main() {
+	mut data := BoxData{text: "first".clone()}
+	result := wrap_reader[int, BorrowingBoxReader](BorrowingBoxReader{data: &data})
+	{
+		moved := result
+		assert moved.reader.read() == 5
+	}
+	data = BoxData{text: "second".clone()}
+	wrapped := wrap_borrow(&data)
+	assert wrapped.reader.read() == 6
+	assert owned_wrapper().reader.read() == 6
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+	assert run.output.split_into_lines() == ['first', 'second'], run.output
+}

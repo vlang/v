@@ -408,6 +408,8 @@ interface box and through functions that directly forward either result.
 Keep the arguments alive and unchanged while the result is live.
 A move of the returned box to a local binding carries its payload loans with it.
 The borrowed storage must outlive the destination binding.
+A generic constructor that boxes its value argument carries that argument's
+payload loans into its result, including when the interface is a struct field.
 An outstanding field reference prevents moving the receiver. Disjoint fields
 remain available for mutation.
 
