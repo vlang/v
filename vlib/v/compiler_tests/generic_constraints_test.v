@@ -177,46 +177,30 @@ fn main() {
 	assert error_lines(res.output) == [], res.output
 }
 
-fn test_a_call_with_a_type_that_does_not_implement_the_constraint_is_reported_at_the_call() {
-	res := check_program('int_call', 'fn longest[T Named](a T, b T) T {
+fn test_constrained_calls_report_invalid_type_arguments_at_the_call() {
+	res := check_program('invalid_calls', "fn longest[T Named](a T, b T) T {
 	return if a.name.len >= b.name.len { a } else { b }
 }
 
-fn main() {
-	println(longest(1, 2))
-}
-')
-	assert res.exit_code == 1, res.output
-	// Once, at the call: not again in the body of the instance for `int`.
-	assert error_lines(res.output) == ["6:18: `int` doesn't implement field `name` of interface `Named`"], res.output
-}
-
-fn test_an_explicit_type_argument_is_checked_against_the_constraint() {
-	res := check_program('explicit', "fn longest[T Named](a T, b T) T {
-	return if a.name.len >= b.name.len { a } else { b }
-}
-
-fn main() {
-	println(longest[User](User{ name: 'a' }, User{ name: 'b' }).age)
-	println(longest[int](1, 2))
-}
-")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ["7:18: `int` doesn't implement field `name` of interface `Named`"], res.output
-}
-
-fn test_a_missing_method_of_the_constraint_is_reported_at_the_call() {
-	res := check_program('pet_call', "fn welcome[T NamedGreeter](x T) string {
+fn welcome[T NamedGreeter](x T) string {
 	return x.greet() + x.name
 }
 
 fn main() {
+	println(longest(1, 2))
+	println(longest[User](User{ name: 'a' }, User{ name: 'b' }).age)
+	println(longest[int](1, 2))
 	println(welcome(User{ name: 'a' }))
 	println(welcome(Pet{ name: 'b' }))
 }
 ")
 	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ["7:18: `Pet` doesn't implement method `greet` of interface `NamedGreeter`"], res.output
+	// Each rejection is reported once at its call site.
+	assert error_lines(res.output) == [
+		"10:18: `int` doesn't implement field `name` of interface `Named`",
+		"12:18: `int` doesn't implement field `name` of interface `Named`",
+		"14:18: `Pet` doesn't implement method `greet` of interface `NamedGreeter`",
+	], res.output
 }
 
 fn test_the_body_can_use_only_what_the_constraint_declares() {
