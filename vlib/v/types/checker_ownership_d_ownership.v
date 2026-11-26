@@ -2219,7 +2219,9 @@ fn (mut tc TypeChecker) ownership_note_binding(name string, typ Type, pos flat.N
 		if !source_participates && mutable_owned_source {
 			moved_source = true
 		}
-		if moved_source && tc.valid_node_id(source_id) {
+		// Autofree keeps V1's aliasing semantics (see ownership_report_moved): the
+		// move only picks the cleanup owner, and the source must keep its value.
+		if moved_source && !tc.autofree_mode && tc.valid_node_id(source_id) {
 			st.guard_move_reads[int(source_id)] = true
 		}
 		tc.ownership_mark_owned(name, typ, pos)
