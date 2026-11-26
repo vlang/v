@@ -18958,16 +18958,28 @@ fn v3_large_cold_cache_directory_signature(path string) string {
 	return sha256.hexhash(relevant.join('\n'))
 }
 
+struct V3LargeColdCacheFileSignature {
+	kind  string
+	value string
+}
+
 fn v3_large_cold_cache_marker_content(source_files []string) ?string {
-	mut files := map[string]string{}
+	mut files := map[string]V3LargeColdCacheFileSignature{}
 	mut directories := map[string]string{}
 	for source_file in source_files {
 		path := os.real_path(source_file)
-		metadata := modulecache.file_metadata_signature(path)
-		if metadata == '' {
+		mut kind := 'f'
+		mut signature := modulecache.file_metadata_signature(path)
+		if signature == '' {
+			// A fresh file on a coarse-timestamp volume can gain a usable
+			// metadata signature later. Keep comparing contents for this entry.
+			kind = 'c'
+			signature = modulecache.file_signature(path)
+		}
+		if signature == '' {
 			return none
 		}
-		files[path] = metadata
+		files[path] = V3LargeColdCacheFileSignature{kind, signature}
 		directory := os.dir(path)
 		directory_signature := v3_large_cold_cache_directory_signature(directory)
 		if directory_signature == '' {
@@ -18985,7 +18997,8 @@ fn v3_large_cold_cache_marker_content(source_files []string) ?string {
 	mut content := strings.new_builder((file_paths.len + directory_paths.len) * 96)
 	content.write_string(v3_large_cold_cache_marker_version)
 	for path in file_paths {
-		for part in ['f', path, files[path]] {
+		signature := files[path]
+		for part in [signature.kind, path, signature.value] {
 			content.write_u8(0)
 			content.write_string(part)
 		}
@@ -19030,6 +19043,8 @@ fn valid_v3_large_cold_cache_marker(path string) bool {
 		expected := parts[i + 2]
 		actual := if kind == 'f' {
 			modulecache.file_metadata_signature(input_path)
+		} else if kind == 'c' {
+			modulecache.file_signature(input_path)
 		} else if kind == 'd' {
 			v3_large_cold_cache_directory_signature(input_path)
 		} else {
