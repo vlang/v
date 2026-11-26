@@ -512,33 +512,36 @@ fn main() {
 	}
 }
 
-// Like V, the main module cannot declare a type named like the builtin `Error`
-// or `MessageError`, so a main-local error embed cannot shadow them.
+// The builtin Error and MessageError types reserve their names in the main module.
 fn test_main_cannot_redeclare_builtin_error_types() {
-	for name in ['Error', 'MessageError'] {
-		output := ierror_payload_rejection('main_local_${name}', "struct ${name} {}
+	names := ['Error', 'MessageError']
+	mut declarations := []string{cap: names.len}
+	mut calls := []string{cap: names.len}
+	for name in names {
+		fail := 'fail_${name.camel_to_snake()}'
+		declarations << "struct ${name} {}
 
-struct MyErr {
+struct Local${name} {
 	${name}
 }
 
-fn (err MyErr) msg() string {
+fn (err Local${name}) msg() string {
 	return 'bad'
 }
 
-fn (err MyErr) code() int {
+fn (err Local${name}) code() int {
 	return 7
 }
 
-fn fail() !int {
-	return MyErr{}
+fn ${fail}() !int {
+	return Local${name}{}
 }
-
-fn main() {
-	_ := fail() or { 0 }
-}
-")
-		assert output.contains('cannot register struct `${name}`'), output
-		assert output.contains('another type with this name exists'), output
+"
+		calls << '_ := ${fail}() or { 0 }'
+	}
+	source := '${declarations.join('\n')}\nfn main() {\n\t${calls.join('\n\t')}\n}\n'
+	output := ierror_payload_rejection('main_local_error_types', source)
+	for name in names {
+		assert output.contains(': error: cannot register struct `${name}`, another type with this name exists'), output
 	}
 }
