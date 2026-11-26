@@ -438,11 +438,13 @@ fn main() {}
 	], res.output
 }
 
-fn test_operators_on_constrained_values_require_support_from_all_types() {
-	// An interface declares no operators: a `T` it constrains has `==`, `!=` and
-	// `in`, as a value of the interface. A set takes what all of its types take.
-	// On arrays, `items << x` appends as a statement. In an expression it shifts.
-	res := check_program('operators', 'type Number = int | f64
+fn test_operations_on_constrained_values_require_support_from_all_types() {
+	// An interface declares no operators. Equality and membership are available
+	// as for a value of the interface. A constraint set permits only operations
+	// supported by every type in it, including types in an embedding family.
+	// On arrays, items << x appends as a statement and shifts in an expression.
+	// Leave room to report unexpected errors beyond the 20 expected here.
+	res := check_program('constraint_operations', "type Number = int | f64
 
 type Word = string | int
 
@@ -525,8 +527,64 @@ fn push[T Ints](mut items T) {
 	_ = items << 1
 }
 
-fn main() {}
-')
+// User and types that embed it at any depth satisfy a User constraint.
+struct Admin {
+	User
+	level int
+}
+
+struct Root {
+	Admin
+}
+
+fn (a User) + (b User) User {
+	return User{
+		name: a.name + b.name
+	}
+}
+
+fn show[T User](x T) string {
+	return x.name + x.greet()
+}
+
+fn levels[T User](x T) int {
+	return x.level
+}
+
+fn sum[T User](a T, b T) T {
+	println(a == b)
+	return a + b
+}
+
+type People = User | Pet
+
+fn greet_named[T Named](x T) string {
+	return x.name
+}
+
+fn only_people[T People](x T) string {
+	return x.name
+}
+
+fn relay[T User](x T) string {
+	return greet_named(x) + only_people(x)
+}
+
+fn narrowed[T User](a T, b T) bool {
+	\$if T is Admin {
+		return a == b
+	} \$else {
+		return a != b
+	}
+}
+
+fn main() {
+	println(show(User{ name: 'u' }))
+	println(show(Admin{ User: User{ name: 'a' } }))
+	println(show(Root{}))
+	println(show(Pet{ name: 'p' }))
+}
+", '-message-limit', '100')
 	assert res.exit_code == 1, res.output
 	named := 'its constraint `Named` does not declare it'
 	assert error_lines(res.output) == [
@@ -546,6 +604,10 @@ fn main() {}
 		'67:11: operator `-` is not defined on type `T`: `Vec`, in its constraint `Addable`, does not have it',
 		'72:11: type `K` cannot be indexed with `int literal`: `StrMap`, in its constraint `Keyed`, does not have it',
 		'81:12: operator `<<` is not defined on type `T` and `int literal`: `IntArr`, in its constraint `Ints`, does not have it',
+		'105:11: type `T` has no field named `level`: `User`, in its constraint `User`, does not have it',
+		'110:11: operator `+` is not defined on type `T`: a struct that embeds `User` does not have it',
+		'124:38: `only_people` needs `T` to be in `People`: a struct that embeds `User`, in its constraint `User`, is not',
+		'139:15: cannot use `Pet` as `T`: it is not `User` and does not embed it',
 	], res.output
 }
 
@@ -1773,75 +1835,6 @@ fn main() {
 		'12:20: constraint `MutualFirst[int]` cannot expand a recursive sum type',
 		'18:31: sum type `ArgumentGrowing` cannot be defined recursively',
 		'20:22: constraint `ArgumentGrowing[int]` cannot expand a recursive sum type',
-	], res.output
-}
-
-fn test_struct_constraints_include_the_embedding_family() {
-	// `[T User]` accepts `User` and structs that embed it at any depth.
-	// Each operation and any constraint receiving `T` must support that family.
-	res := check_program('struct_family', "struct Admin {
-	User
-	level int
-}
-
-struct Root {
-	Admin
-}
-
-fn (a User) + (b User) User {
-	return User{
-		name: a.name + b.name
-	}
-}
-
-fn show[T User](x T) string {
-	return x.name + x.greet()
-}
-
-fn levels[T User](x T) int {
-	return x.level
-}
-
-fn sum[T User](a T, b T) T {
-	println(a == b)
-	return a + b
-}
-
-type People = User | Pet
-
-fn greet_named[T Named](x T) string {
-	return x.name
-}
-
-fn only_people[T People](x T) string {
-	return x.name
-}
-
-fn relay[T User](x T) string {
-	return greet_named(x) + only_people(x)
-}
-
-fn narrowed[T User](a T, b T) bool {
-	\$if T is Admin {
-		return a == b
-	} \$else {
-		return a != b
-	}
-}
-
-fn main() {
-	println(show(User{ name: 'u' }))
-	println(show(Admin{ User: User{ name: 'a' } }))
-	println(show(Root{}))
-	println(show(Pet{ name: 'p' }))
-}
-")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'21:11: type `T` has no field named `level`: `User`, in its constraint `User`, does not have it',
-		'26:11: operator `+` is not defined on type `T`: a struct that embeds `User` does not have it',
-		'40:38: `only_people` needs `T` to be in `People`: a struct that embeds `User`, in its constraint `User`, is not',
-		'55:15: cannot use `Pet` as `T`: it is not `User` and does not embed it',
 	], res.output
 }
 
