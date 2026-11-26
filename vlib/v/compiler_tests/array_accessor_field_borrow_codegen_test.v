@@ -648,9 +648,9 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
-fn test_owned_field_overloaded_comparison_is_rejected() {
+fn test_owned_field_overloaded_comparison_and_index_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_comparison', "struct Name {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_operators', "struct Name {
 	text string
 }
 
@@ -666,13 +666,31 @@ fn last_name_matches(arr []E) bool {
 	return arr.last().name == Name{ text: 'hello' }
 }
 
-fn main() {
+fn (name Name) [] (index int) u8 {
+	return name.text[index]
+}
+
+fn last_initial(arr []E) u8 {
+	return arr.last().name[0]
+}
+
+fn check_comparison() {
 	arr := [E{ name: Name{ text: 'hello' } }]
 	println(last_name_matches(arr))
 }
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+fn check_index() {
+	arr := [E{ name: Name{ text: 'hello' } }]
+	println(last_initial(arr))
+}
+
+fn main() {
+	check_comparison()
+	check_index()
+}
+", '-nocolor')
+	// Locations include the prepended Drop interface.
+	assert_independent_array_element_errors(compile, ['19:9', '27:9'])
 }
 
 fn test_owned_string_comparison_with_infix_sibling_checks_overloads() {
@@ -1397,33 +1415,6 @@ fn main() {
 	mut entries := [E{ name: 'hello' }]
 	length, action := last_length_then_delete(mut entries)
 	println(int_str(length) + ':' + action)
-}
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-fn test_owned_field_overloaded_index_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_index', "struct Name {
-	text string
-}
-
-struct E {
-	name Name
-}
-
-fn (name Name) [] (index int) u8 {
-	return name.text[index]
-}
-
-fn last_initial(arr []E) u8 {
-	return arr.last().name[0]
-}
-
-fn main() {
-	arr := [E{ name: Name{ text: 'hello' } }]
-	println(last_initial(arr))
 }
 ", '')
 	assert compile.exit_code != 0, compile.output
