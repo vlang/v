@@ -1,7 +1,7 @@
 import os
 
 // The native backend lays `C.dirent` out from the fields that V declares for it, where the C
-// backend leaves that to the header of the system. A walk on Linux reads the name and the kind
+// backend writes a declaration of its own. A walk on Linux reads the name and the kind
 // of an entry from that struct, so a program built by either backend must report the same paths.
 fn test_a_walk_built_by_the_native_backend_reports_the_same_paths() {
 	$if !linux || !amd64 {

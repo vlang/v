@@ -1,5 +1,37 @@
 module os
 
+#include <sys/resource.h>
+
+struct C.rlimit {
+mut:
+	rlim_cur u64
+	rlim_max u64
+}
+
+fn C.getrlimit(resource i32, limit &C.rlimit) i32
+fn C.setrlimit(resource i32, limit &C.rlimit) i32
+
+// The name of the environment variable that walk_no_kinds_test.v sets when it runs this test
+// file with a `readdir` that clears what the listing says an entry is.
+const walk_test_no_kinds_env = 'V_WALK_TEST_NO_KINDS'
+// What this file prints first in such a run, once it has seen that the wrapper is in effect.
+// walk_no_kinds_test.v looks for the same text.
+const walk_test_no_kinds_marker = 'the listings of this run say no kind'
+
+// In a run with `readdir` wrapped, say first whether the wrapper is in effect: it
+// is not where the test is linked statically, or against another C library than the wrapper.
+fn testsuite_begin() {
+	if getenv(walk_test_no_kinds_env) == '' {
+		return
+	}
+	folder := walk_kinds_tree('walk_enter_wrapped') or { panic(err) }
+	kinds := listed_kinds(folder)
+	rmdir_all(folder) or {}
+	if kinds.len == 5 && kinds.values().all(it == walk_type_unknown) {
+		println(walk_test_no_kinds_marker)
+	}
+}
+
 // walk_kinds_tree makes a folder with a folder `sub` (holding `in_sub.txt`), a file `file.txt`,
 // a link `link` to `sub`, a link `file_link` to the file and an empty folder `empty` in it.
 fn walk_kinds_tree(name string) !string {
@@ -269,8 +301,17 @@ fn test_walks_pass_over_what_they_have_no_descriptor_left_to_open() {
 	defer {
 		rmdir_all(folder) or {}
 	}
+	// The test lowers its own limit, so that it does not depend on the one of the machine, which
+	// is too high to reach for the superuser in a container.
+	mut limit := C.rlimit{}
+	assert C.getrlimit(C.RLIMIT_NOFILE, &limit) == 0
+	machine_limit := limit.rlim_cur
+	if limit.rlim_cur > 256 {
+		limit.rlim_cur = 256
+	}
+	assert C.setrlimit(C.RLIMIT_NOFILE, &limit) == 0
 	mut held := []File{}
-	for held.len < 100000 {
+	for held.len < 1000 {
 		held << open('/dev/null') or { break }
 	}
 	mut files := []string{}
@@ -290,10 +331,9 @@ fn test_walks_pass_over_what_they_have_no_descriptor_left_to_open() {
 	for mut f in held {
 		f.close()
 	}
-	if held_count == 100000 {
-		eprintln('> skipping ${@FN}: the process may open more than ${held_count} files')
-		return
-	}
+	limit.rlim_cur = machine_limit
+	assert C.setrlimit(C.RLIMIT_NOFILE, &limit) == 0
+	assert held_count < 1000
 	assert files == []
 	assert all == []
 	assert sub_is_dir
