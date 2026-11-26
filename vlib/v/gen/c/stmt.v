@@ -4897,17 +4897,27 @@ fn lower_c_inline_asm_intel_template(source string, aliases map[string]bool, is_
 	mut lowered := []string{cap: operands.len}
 	for i, operand in operands {
 		mut lowered_operand := lower_c_inline_asm_intel_operand(operand, aliases, is_extended)
-		// Older GNU assemblers do not reliably infer extension-move memory widths
-		// from the mnemonic suffix in Intel mode. Preserve the mnemonic and make
-		// its source width explicit; do not alter register or raw asm operands.
-		if i == 1 && operand.trim_space().starts_with('[') {
+		// GNU as 2.34 rejects the suffix with an explicit memory size.
+		// Named destinations already have their native register width checked.
+		// Use the equivalent Intel mnemonic only for these memory-source forms.
+		if i == 1 && operands.len == 2 && aliases[operands[0].trim_space()]
+			&& operand.trim_space().starts_with('[') {
 			width := match instruction.to_lower() {
 				'movzbw', 'movzbl', 'movzbq', 'movsbw', 'movsbl', 'movsbq' { 'byte ptr ' }
 				'movzwl', 'movzwq', 'movswl', 'movswq' { 'word ptr ' }
 				'movslq' { 'dword ptr ' }
 				else { '' }
 			}
-			lowered_operand = width + lowered_operand
+			if width != '' {
+				instruction = if instruction.to_lower() == 'movslq' {
+					'movsxd'
+				} else if instruction.to_lower().starts_with('movz') {
+					'movzx'
+				} else {
+					'movsx'
+				}
+				lowered_operand = width + lowered_operand
+			}
 		}
 		lowered << lowered_operand
 	}
