@@ -160,61 +160,6 @@ fn main() {
 	}
 }
 
-fn test_selective_imported_ierror_payload_is_result_error() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_selective_custom_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	mod_dir := os.join_path(root, 'errmod')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	os.write_file(os.join_path(mod_dir, 'errmod.v'), 'module errmod
-
-pub struct CustomError {
-	text string
-}
-
-pub fn (err CustomError) msg() string {
-	return err.text
-}
-
-pub fn (err CustomError) code() int {
-	return 77
-}
-	') or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import errmod { CustomError }
-
-fn fail() !int {
-	return CustomError{
-		text: 'imported'
-	}
-}
-
-fn main() {
-	fail() or {
-		assert err.msg() == 'imported'
-		assert err.code() == 77
-		println('ok')
-		return
-	}
-	println('bad')
-}
-	") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_ierror_payload_selective_custom_input')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
 fn test_ierror_rejects_invalid_payload_uses() {
 	output := ierror_payload_rejection('invalid_payload_uses', "struct CustomError {
 	text string
@@ -318,13 +263,57 @@ fn main() {
 	}
 }
 
-fn test_builtin_error_payloads_resolve_across_modules() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_builtin_modules_${tempname.unique_token()}')
+fn test_imported_ierror_payload_resolution() {
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_payload_imports_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
-	mod_dir := os.join_path(root, 'payloadmod')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	os.write_file(os.join_path(mod_dir, 'payloadmod.v'), "module payloadmod
+	errmod_dir := os.join_path(root, 'errmod')
+	os.mkdir_all(errmod_dir) or { panic(err) }
+	os.write_file(os.join_path(errmod_dir, 'errmod.v'), 'module errmod
+
+pub struct CustomError {
+	text string
+}
+
+pub fn (err CustomError) msg() string {
+	return err.text
+}
+
+pub fn (err CustomError) code() int {
+	return 77
+}
+	') or {
+		panic(err)
+	}
+
+	// Keep the selective import scoped to the file that uses it.
+	selective_path := os.join_path(root, 'selective_payload.v')
+	os.write_file(selective_path, "module main
+
+import errmod { CustomError }
+
+fn fail() !int {
+	return CustomError{
+		text: 'imported'
+	}
+}
+
+fn check_selective_imported_payload() {
+	fail() or {
+		assert err.msg() == 'imported'
+		assert err.code() == 77
+		println('ok')
+		return
+	}
+	println('bad')
+}
+	") or {
+		panic(err)
+	}
+
+	payload_dir := os.join_path(root, 'payloadmod')
+	os.mkdir_all(payload_dir) or { panic(err) }
+	os.write_file(os.join_path(payload_dir, 'payloadmod.v'), "module payloadmod
 
 pub struct EmbeddedBuiltinError {
 	Error
@@ -377,6 +366,8 @@ fn fail_with_normal_import() !int {
 }
 
 fn main() {
+	check_selective_imported_payload()
+
 	payloadmod.builtin_error() or {
 		assert err.msg() == ''
 		assert err.code() == 0
@@ -402,13 +393,14 @@ fn main() {
 	}
 
 	bin := os.join_path(root, 'app')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == [
+		'ok',
 		'module builtin error',
 		'module embedded error',
 		'builtin error with normal import',
