@@ -84,8 +84,11 @@ jobs:
               println('joined ${c.n > 0}')
           }
           V
+          # vtest-self.v extracts the outer flags then unsets VFLAGS before
+          # starting tests. Match that environment for nested race builds.
+          # The outer test itself is still compiled with musl-gcc.
           build_rc=0
-          ./v -race -showcc -show-c-output -keepc -no-retry-compilation -o "$out/racy" "$out/racy.v" > "$out/v-build.log" 2>&1 || build_rc=$?
+          env -u VFLAGS ./v -race -showcc -show-c-output -keepc -no-retry-compilation -o "$out/racy" "$out/racy.v" > "$out/v-build.log" 2>&1 || build_rc=$?
           echo "V race build exit=$build_rc"
           cat "$out/v-build.log"
           bad=0
@@ -109,9 +112,11 @@ jobs:
             bad=1
           fi
           original_rc=0
-          ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/slow_tests/race_detector_test.v > "$out/original.log" 2>&1 || original_rc=$?
+          env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/slow_tests/race_detector_test.v > "$out/original.log" 2>&1 || original_rc=$?
           echo "original test exit=$original_rc"
           cat "$out/original.log"
+          # A capability skip is not a passing original race regression.
+          if grep -Fq 'skipping:' "$out/original.log"; then bad=1; fi
           test "$original_rc" -eq 0
           test "$bad" -eq 0
       - uses: actions/upload-artifact@v4
