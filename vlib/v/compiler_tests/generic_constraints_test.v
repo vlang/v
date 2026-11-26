@@ -165,8 +165,41 @@ fn error_lines_from(output string, first int) []string {
 	return lines
 }
 
+// A generic method can pass its type parameter to another method constrained
+// by the same generic interface. smallest infers T from relay's U.
+const constraint_method_relay = 'interface Comparable[T] {
+	less(other T) bool
+}
+
+struct Num {
+	v int
+}
+
+fn (a Num) less(b Num) bool {
+	return a.v < b.v
+}
+
+struct Sorter {}
+
+fn (s Sorter) smallest[T Comparable[T]](a T, b T) T {
+	if a.less(b) {
+		return a
+	}
+	return b
+}
+
+fn (s Sorter) relay[U Comparable[U]](a U, b U) U {
+	return s.smallest(a, b)
+}
+
+fn check_method_relay() {
+	println(Sorter{}.relay(Num{2}, Num{1}).v)
+}
+'
+
 fn test_valid_calls_to_interface_and_type_set_constraints() {
-	res := check_program('valid_constraint_calls', "fn longest[T Named](a T, b T) T {
+	res := check_program('valid_constraint_calls', constraint_method_relay + "
+fn longest[T Named](a T, b T) T {
 	return if a.name.len >= b.name.len { a } else { b }
 }
 
@@ -206,6 +239,7 @@ fn main() {
 	println(double(2))
 	println(double(2.5))
 	println(describe(i64(3)))
+	check_method_relay()
 }
 ")
 	assert res.exit_code == 0, res.output
@@ -957,55 +991,6 @@ fn main() {
 	], res.output
 }
 
-// A method passes its type parameter on to a method whose constraint is a
-// generic interface, as a function does: its checked body has `U` as the
-// interface `Comparable[U]`, which names `U` itself, and `smallest` takes it for
-// `T`. Before, the method said `could not infer generic type `T``.
-fn test_a_method_passes_its_type_parameter_on_to_a_generic_interface_constraint() {
-	source := 'interface Comparable[T] {
-	less(other T) bool
-}
-
-struct Num {
-	v int
-}
-
-fn (a Num) less(b Num) bool {
-	return a.v < b.v
-}
-
-struct Sorter {}
-
-fn (s Sorter) smallest[T Comparable[T]](a T, b T) T {
-	if a.less(b) {
-		return a
-	}
-	return b
-}
-
-fn (s Sorter) relay[U Comparable[U]](a U, b U) U {
-	return s.smallest(a, b)
-}
-
-fn main() {
-	println(Sorter{}.relay(Num{2}, Num{1}).v)
-}
-'
-	res := check_program('method_relay', source)
-	assert res.exit_code == 0, res.output
-	assert error_lines(res.output) == [], res.output
-	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_method_relay_run_${os.getpid()}')
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	path := os.join_path(dir, 'main.v')
-	os.write_file(path, constraint_prelude + source) or { panic(err) }
-	run := os.exec([@VEXE, 'run', path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '1', run.output
-}
-
 // A method of a generic struct has the type parameters of its receiver and its
 // own ones, and is checked as a function with all of them is: `pair` as
 // `pair_fn`, `map` as `map_fn`. A call is checked against the constraints of its
@@ -1104,7 +1089,9 @@ fn main() {
 }
 
 fn test_generic_constraints_on_functions_and_receiver_methods_build_and_run() {
-	res := run_program('constrained_functions_and_methods', constraint_prelude + "struct Shelf[T Named] {
+	res := run_program('constrained_functions_and_methods', constraint_prelude +
+		constraint_method_relay + "
+struct Shelf[T Named] {
 	items []T
 }
 
@@ -1179,6 +1166,7 @@ fn main() {
 	println(q.map[User](to_user).map(it.age))
 	println(map_fn[int, User](q, to_user).map(it.age))
 	check_constraint_calls()
+	check_method_relay()
 }
 ")
 	assert res.exit_code == 0, res.output
@@ -1195,6 +1183,7 @@ fn main() {
 		'42',
 		'2.5',
 		'box of Alex',
+		'1',
 	], res.output
 }
 
