@@ -94,40 +94,6 @@ fn run_generics_codegen_batch(fixture_dir string, cases map[string]string) {
 	}
 }
 
-fn run_generic_exec(fixture_dir string, name string, src string) string {
-	src_file := os.join_path(fixture_dir, 'v3_gen_${name}.v')
-	os.write_file(src_file, src) or { panic(err) }
-	bin_file := os.join_path(fixture_dir, 'v3_gen_${name}')
-	compile := os.exec([@VEXE, src_file, '-b', 'c', '-o', bin_file])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin_file])
-	assert run.exit_code == 0, run.output
-	return run.output.trim_space()
-}
-
-fn test_generic_array_for_in_binding_survives_annotation() {
-	fixture_dir := new_generics_fixture_dir()
-	defer { os.rmdir_all(fixture_dir) or {} }
-	out := run_generic_exec(fixture_dir, 'generic_array_for_in_binding', '
-fn sum[T](data T) int {
-	$if T is $array {
-		mut total := 0
-		for value in data {
-			total += value
-		}
-		return total
-	} $else {
-		return 0
-	}
-}
-
-fn main() {
-	println(sum([1, 2, 3]))
-}
-')
-	assert out == '6'
-}
-
 fn test_explicit_main_generic_arg_survives_imported_call_rewrite() {
 	fixture_dir := new_generics_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
@@ -580,6 +546,24 @@ pub fn exercise() {
 	println(second[int](1, 2))
 }
 ')
+	write_generics_project_file(root, 'array_for_in/v3_gen_generic_array_for_in_binding.v', 'module array_for_in
+
+fn sum[T](data T) int {
+	$if T is $array {
+		mut total := 0
+		for value in data {
+			total += value
+		}
+		return total
+	} $else {
+		return 0
+	}
+}
+
+pub fn exercise() {
+	println(sum([1, 2, 3]))
+}
+')
 	// Keep result propagation in main to exercise the program entry point.
 	write_generics_project_file(root, 'main.v', "module main
 
@@ -587,6 +571,7 @@ import arrays { sum }
 import os
 import selector_infer
 import explicit_args
+import array_for_in
 
 fn main() {
 	match os.args[1] {
@@ -596,6 +581,10 @@ fn main() {
 		}
 		'explicit_generic_call_keeps_runtime_args' {
 			explicit_args.exercise()
+			return
+		}
+		'generic_array_for_in_binding' {
+			array_for_in.exercise()
 			return
 		}
 		'reused_generic_result_keeps_payload_type' {}
@@ -611,6 +600,7 @@ fn main() {
 	for name, expected in {
 		'selector_method_arg_infer':                'ok'
 		'explicit_generic_call_keeps_runtime_args': '2'
+		'generic_array_for_in_binding':             '6'
 		'reused_generic_result_keeps_payload_type': '10'
 	} {
 		run := os.exec([bin, name])
