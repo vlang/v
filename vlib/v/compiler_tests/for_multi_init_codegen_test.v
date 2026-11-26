@@ -94,7 +94,7 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_unsigned_inclusive_for_bound_evaluates_once_per_iteration() {
+fn test_unsigned_inclusive_for_evaluates_bounds_and_runs_post() {
 	root := for_multi_init_fixture_dir()
 	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'v3_for_unsigned_inclusive_bound.v')
@@ -108,7 +108,7 @@ fn next_bound(mut calls Calls) u8 {
 	return u8(2)
 }
 
-fn main() {
+fn check_bound_evaluation() {
 	mut calls := Calls{}
 	mut sum := 0
 	for i := u8(0); i <= next_bound(mut calls); i++ {
@@ -116,27 +116,9 @@ fn main() {
 	}
 	assert sum == 3
 	assert calls.value == 4
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_for_unsigned_inclusive_bound')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
 }
 
-fn test_unsigned_inclusive_for_mutable_bound_keeps_post_semantics() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_unsigned_mutable_bound.v')
-	os.write_file(src, 'fn main() {
+fn check_post_after_mutation() {
 	mut hi := u8(1)
 	mut i := u8(0)
 	mut hits := 0
@@ -168,13 +150,18 @@ fn test_unsigned_inclusive_for_mutable_bound_keeps_post_semantics() {
 		j = 1
 	}
 	assert j == 0
+}
+
+fn main() {
+	check_bound_evaluation()
+	check_post_after_mutation()
 	println("ok")
 }
 ') or {
 		panic(err)
 	}
 
-	bin := os.join_path(root, 'v3_for_unsigned_mutable_bound')
+	bin := os.join_path(root, 'v3_for_unsigned_inclusive_bound')
 	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
