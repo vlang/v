@@ -1824,45 +1824,6 @@ fn main() {
 	], res.output
 }
 
-fn test_interface_constraints_in_type_sets_and_aliases() {
-	// `type Value = Named | int` as a constraint takes `int` and what implements
-	// `Named`. An interface alias also accepts types implementing its interface.
-	res := check_program('interface_constraints', "type Value = Named | int
-
-fn describe[T Value](x T) string {
-	\$if T is User {
-		return x.name + x.greet()
-	} \$else {
-		return ''
-	}
-}
-
-interface ThingThatHasName {
-	name string
-}
-
-type NameAlias = ThingThatHasName
-
-fn show[T NameAlias](x T) string {
-	return x.name
-}
-
-fn main() {
-	println(describe(User{ name: 'u' }))
-	println(describe(Pet{ name: 'p' }))
-	println(describe(3))
-	println(describe(1.5))
-	println(show(1))
-	println(show(User{ name: 'Alex' }))
-}
-")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'25:19: cannot use `f64` as `T`: it is not in its constraint `Value`',
-		"26:15: `int` doesn't implement field `name` of interface `ThingThatHasName`",
-	], res.output
-}
-
 fn test_a_constraint_is_a_type_name_alone() {
 	// V3 used to skip what follows the name of a type parameter: this compiled.
 	res := check_program('not_a_type', 'fn id[T Foo + 42](x T) T {
@@ -1947,13 +1908,9 @@ pub fn (h Host) longest[T Named](a T, b T) T {
 	assert errors == ['main.v:11:25: error: ${no_name}', 'main.v:14:20: error: ${no_name}'], res.output
 }
 
-// A constraint can also be a set of types, declared with `constraint`: the
-// type argument must be one of them, and the body can use on a value of type
-// `T` what every type of the set has.
-
-fn test_constraint_sets_reject_invalid_calls_and_members() {
-	// `len` of arrays, maps and strings, the fields and methods builtin declares
-	// for them; and what an interface declares, named by an alias.
+fn test_type_sets_and_interface_aliases_check_calls_and_members() {
+	// A generic body can use only the members available on every type in
+	// its constraint. An interface alias accepts implementations of the interface.
 	res := check_program('set_rejections', "type Sized = []int | []string | map[string]int | string
 
 type Listy = []int | []string
@@ -2000,8 +1957,35 @@ fn double[T Number](x T) T {
 	return x + x
 }
 
+type NamedOrInt = Named | int
+
+fn describe[T NamedOrInt](x T) string {
+	\$if T is User {
+		return x.name + x.greet()
+	} \$else {
+		return ''
+	}
+}
+
+interface ThingThatHasName {
+	name string
+}
+
+type NameAlias = ThingThatHasName
+
+fn show_aliased[T NameAlias](x T) string {
+	return x.name
+}
+
 fn main() {
 	println(double('a'))
+
+	println(describe(User{ name: 'u' }))
+	println(describe(Pet{ name: 'p' }))
+	println(describe(3))
+	println(describe(1.5))
+	println(show_aliased(1))
+	println(show_aliased(User{ name: 'Alex' }))
 }
 ")
 	assert res.exit_code == 1, res.output
@@ -2009,7 +1993,9 @@ fn main() {
 		'12:11: type `T` has no field named `cap`: `map[string]int`, in its constraint `Sized`, does not have it',
 		'28:11: type `T` has no field named `age`: its constraint `Value` does not declare it',
 		'38:20: type `T` has no method `greet`: `Pet`, in its constraint `Animal`, does not have it',
-		'48:17: cannot use `string` as `T`: it is not in its constraint `Number`',
+		'68:17: cannot use `string` as `T`: it is not in its constraint `Number`',
+		'73:19: cannot use `f64` as `T`: it is not in its constraint `NamedOrInt`',
+		"74:23: `int` doesn't implement field `name` of interface `ThingThatHasName`",
 	], res.output
 }
 
