@@ -84,10 +84,46 @@ fn main() {
 	assert '27:13: `int` has no property `name`' in errors, res.output
 }
 
-fn test_instances_that_have_what_the_body_uses_stay_valid() {
-	res := check_program('valid', "fn show[T](x T) string {\n\treturn x.name\n}\n\nfn call[T](x T) string {\n\treturn x.greet()\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n\tprintln(call(User{ name: 'b' }))\n}\n")
-	assert res.exit_code == 0, res.output
-	assert error_lines(res.output) == [], res.output
+// Specializations resolve fields and methods on concrete types and keep the
+// methods declared on a type argument such as the Octet alias.
+fn test_instances_use_members_of_concrete_types_and_aliases() {
+	source := "fn show[T](x T) string {
+	return x.name
+}
+
+fn call[T](x T) string {
+	return x.greet()
+}
+
+type Octet = string
+
+fn (o Octet) pack() []u8 {
+	return o.bytes()
+}
+
+struct Elm[T] {
+	val T
+}
+
+fn (el Elm[T]) pack() []u8 {
+	return el.val.pack()
+}
+
+fn main() {
+	println(show(User{ name: 'a' }))
+	println(call(User{ name: 'b' }))
+
+	el := Elm[Octet]{
+		val: Octet('xx')
+	}
+	println(el.pack())
+}
+"
+	for res in [check_program('instance_members_check', source),
+		build_program('instance_members_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
 }
 
 // A library module outside the program, where ~/.vmodules keeps them. A check
@@ -1007,19 +1043,6 @@ fn main() {
 "
 	for res in [check_program('call_arg_valid_check', source),
 		build_program('call_arg_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
-
-// A type argument that is an alias with methods of its own, `Octet` for `T`: the
-// clone of `pack` spells its base type, `string`, where the alias's method is
-// the one `el.val.pack()` calls, and the instance is valid in a check and in a
-// build.
-fn test_an_instance_of_an_alias_has_the_methods_of_the_alias() {
-	source := "type Octet = string\n\nfn (o Octet) pack() []u8 {\n\treturn o.bytes()\n}\n\nstruct Elm[T] {\n\tval T\n}\n\nfn (el Elm[T]) pack() []u8 {\n\treturn el.val.pack()\n}\n\nfn main() {\n\tel := Elm[Octet]{\n\t\tval: Octet('xx')\n\t}\n\tprintln(el.pack())\n}\n"
-	for res in [check_program('alias_methods_check', source),
-		build_program('alias_methods_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}
