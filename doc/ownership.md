@@ -233,6 +233,7 @@ A reference returned through a receiver call or an addressed range remains tied 
 storage and cannot escape the ownership scope of a local value. Caller-backed mutable parameters
 and explicit heap-pointer receivers can return such references. The check follows nested return
 aliases to their source regardless of call depth; unresolved alias cycles are rejected.
+When a method returns the address of an owned field, the caller's view keeps that field borrowed.
 The same rule applies to references returned inside options, results, arrays, struct fields,
 interfaces, or sum-type payloads.
 

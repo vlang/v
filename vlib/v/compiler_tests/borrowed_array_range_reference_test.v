@@ -201,6 +201,134 @@ fn check_borrowed_range_rejections(root string, cases []BorrowedRangeRejection) 
 	}
 }
 
+fn test_borrowed_field_returns_keep_their_source_live() {
+	root := os.join_path(os.vtmp_dir(), 'borrowed_field_return_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	buffer_code := '
+struct Buffer {
+mut:
+ bytes []u8
+ reads int
+}
+
+fn (buffer &^a Buffer) as_slice[^a]() &^a []u8 {
+ return &buffer.bytes
+}
+
+fn (mut buffer Buffer) clear() {
+ buffer.bytes.clear()
+}
+
+fn (buffer &^a Buffer) forwarded[^a]() &^a []u8 {
+ return buffer.as_slice()
+}
+
+struct BufferRef[^a] {
+ buffer &^a Buffer
+}
+
+fn (reference BufferRef[^a]) as_slice[^a]() &^a []u8 {
+ return reference.buffer.as_slice()
+}
+'
+	for parallel in ['-no-parallel', ''] {
+		mut args := [@VEXE, '-no-memory-limit', '-nocache', '-ownership', '-check']
+		if parallel != '' {
+			args << parallel
+		}
+		args << source
+		os.write_file(source, buffer_code + '
+fn escaped[^a]() &^a []u8 {
+ buffer := Buffer{bytes: [u8(1)]}
+ return buffer.forwarded()
+}
+
+fn main() { println(escaped().len) }
+')!
+		escape := os.exec(args)
+		assert escape.exit_code != 0, escape.output
+		assert escape.output.contains('cannot return a reference to local storage `buffer`'), escape.output
+
+		os.write_file(source, buffer_code + '
+fn main() {
+ mut buffer := Buffer{bytes: [u8(1)]}
+ view := buffer.as_slice()
+ buffer.clear()
+ assert view.len == 1
+}
+')!
+		mutation := os.exec(args)
+		assert mutation.exit_code != 0, mutation.output
+		assert mutation.output.contains('borrowed as immutable'), mutation.output
+
+		os.write_file(source, buffer_code + '
+fn main() {
+ mut buffer := Buffer{bytes: [u8(1)]}
+ {
+  view := buffer.forwarded()
+  reference := BufferRef{buffer: &buffer}
+  assert reference.as_slice().len == 1
+  buffer.reads++
+  assert view.len == 1
+ }
+ buffer.clear()
+}
+')!
+		valid := os.exec(args)
+		assert valid.exit_code == 0, valid.output
+	}
+}
+
+fn test_unwrapped_views_keep_their_input_borrowed() {
+	root := os.join_path(os.vtmp_dir(), 'borrowed_option_view_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	view_code := '
+struct View[^a] {
+ bytes &^a []u8
+}
+
+fn view[^a](bytes &^a []u8) ?View[^a] {
+ if bytes.len == 0 { return none }
+ return View{bytes: bytes}
+}
+'
+	for mode in ['-no-parallel', ''] {
+		mut args := [@VEXE, '-no-memory-limit', '-nocache', '-ownership', '-check']
+		if mode != '' {
+			args << mode
+		}
+		args << source
+		os.write_file(source, view_code + '
+fn main() {
+ mut bytes := [u8(1)]
+ text := view(&bytes) or { panic("missing view") }
+ bytes[0] = 2
+ assert text.bytes.len == 1
+}
+')!
+		mutation := os.exec(args)
+		assert mutation.exit_code != 0, mutation.output
+		assert mutation.output.contains('`bytes` is borrowed by `text.bytes`'), mutation.output
+
+		os.write_file(source, view_code + '
+fn main() {
+ mut bytes := [u8(1)]
+ {
+  text := view(&bytes) or { panic("missing view") }
+  assert text.bytes.len == 1
+ }
+ bytes[0] = 2
+}
+')!
+		valid := os.exec(args)
+		assert valid.exit_code == 0, valid.output
+	}
+}
+
 fn test_borrowed_string_range_headers_survive_returns_and_loop_iterations() {
 	root := os.join_path(os.vtmp_dir(), 'borrowed_string_range_reference_${os.getpid()}')
 	os.mkdir_all(root)!
