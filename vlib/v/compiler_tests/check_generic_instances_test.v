@@ -477,22 +477,40 @@ fn test_an_instance_that_returns_a_value_of_another_type_is_reported() {
 	}
 }
 
-// Returned values of the types their instances return stay valid, and so do the
-// returns that a clone cannot judge from its concrete types: a call result, a
-// literal of a type parameter, and a value narrowed by `is`.
-fn test_instances_that_return_values_of_their_types_stay_valid() {
-	source := "type Value = int | string\n\nfn same[T](x T) T {\n\treturn x\n}\n\nfn widen[T](x T) i64 {\n\treturn x\n}\n\nfn greeting[T](x T) string {\n\tf := fn [x] [T] () string {\n\t\treturn x.greet()\n\t}\n\treturn f()\n}\n\nfn zero[T]() T {\n\treturn T{}\n}\n\nfn pick[T](v Value, fallback T) int {\n\tif v is int {\n\t\treturn v\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(same(1))\n\tprintln(same('a'))\n\tprintln(widen(i32(2)))\n\tprintln(widen(u8(3)))\n\tprintln(greeting(User{ name: 'c' }))\n\tprintln(zero[map[string]int]())\n\tprintln(pick(Value(4), 0))\n}\n"
-	for res in [check_program('return_valid_check', source),
-		build_program('return_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
+// Returns whose types depend on a call, a type parameter literal, or a value
+// narrowed by `is` stay valid when the generic functions are specialized.
+fn test_instances_return_values_and_local_callbacks() {
+	source := "type Value = int | string
+
+fn same[T](x T) T {
+	return x
 }
 
-// A clone types a local fn literal as the literal's return type. Returning the
-// callback, directly or through another local, is still valid in its instance.
-fn test_instances_returning_local_callbacks_stay_valid() {
-	source := "fn callback[T](x T) fn () !int {
+fn widen[T](x T) i64 {
+	return x
+}
+
+fn greeting[T](x T) string {
+	f := fn [x] [T] () string {
+		return x.greet()
+	}
+	return f()
+}
+
+fn zero[T]() T {
+	return T{}
+}
+
+fn pick[T](v Value, fallback T) int {
+	if v is int {
+		return v
+	}
+	return 0
+}
+
+// A local function literal keeps its callable type when returned directly or
+// through another local in a specialization.
+fn callback[T](x T) fn () !int {
 	make := fn () !int {
 		return 1
 	}
@@ -508,14 +526,22 @@ fn forwarded_callback[T](x T) fn () !int {
 }
 
 fn main() {
+	println(same(1))
+	println(same('a'))
+	println(widen(i32(2)))
+	println(widen(u8(3)))
+	println(greeting(User{ name: 'c' }))
+	println(zero[map[string]int]())
+	println(pick(Value(4), 0))
+
 	f := callback(1)
 	g := forwarded_callback('a')
 	assert f()! == 1
 	assert g()! == 2
 }
 "
-	for res in [check_program('return_local_callbacks_check', source),
-		build_program('return_local_callbacks_build', source)] {
+	for res in [check_program('return_valid_check', source),
+		build_program('return_valid_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}
