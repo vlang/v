@@ -34,12 +34,31 @@ fn main() {
 	run := os.exec([read_only_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'OK', run.output
-	os.write_file(source_path, 'import sample
-fn main() { _ = sample.App.secret }
-')!
-	private_result := os.exec([@VEXE, '-check', source_path])
-	assert private_result.exit_code != 0, private_result.output
-	assert private_result.output.contains('method `sample.App.secret` is private'), private_result.output
+	direct_calls := 'import sample
+fn main() {
+ _ = sample.App.secret
+ mut app := sample.App{}
+ f := sample.App.add
+ _ = f(&app, 1)
+ _ = (f)(&app, 1)
+}
+'
+	os.write_file(source_path, direct_calls)!
+	direct_result := os.exec([@VEXE, '-check', '-nocolor', source_path])
+	assert direct_result.exit_code != 0, direct_result.output
+	expected := {
+		' _ = sample.App.secret': 'method `sample.App.secret` is private'
+		' _ = f(&app, 1)':        'is `mut`, so use'
+		' _ = (f)(&app, 1)':      'is `mut`, so use'
+	}
+	lines := direct_calls.split_into_lines()
+	errors := direct_result.output.split_into_lines().filter(it.contains(': error: '))
+	for statement, message in expected {
+		line := lines.index(statement) + 1
+		assert line > 0, statement
+		location := 'main.v:${line}:'
+		assert errors.any(it.contains(location) && it.contains(message)), 'expected ${message} at ${location}\n${direct_result.output}'
+	}
 	os.write_file(source_path, 'import sample
 fn reflected[T](app &T) int {
  mut result := 0
@@ -57,11 +76,6 @@ fn main() { app := sample.App{}; println(reflected[sample.App](&app)) }
 	assert reflected_private.exit_code != 0, reflected_private.output
 	assert reflected_private.output.contains('method `sample.App.secret` is private'), reflected_private.output
 	for body in [
-		'fn main() {
- mut app := sample.App{}
- f := sample.App.add
- _ = f(&app, 1)
-}',
 		'fn reflected[T](mut app T) {
  \$for method in T.methods {
   \$if method.name == "add" {
