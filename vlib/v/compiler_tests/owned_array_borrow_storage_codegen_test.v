@@ -486,7 +486,8 @@ fn stored_result_sum(present bool) !ResourceStorageSum {
 	mut holder := Holder{[fresh()], "label".repeat(4)}
 	return keep_result_sum(mut holder.values[..], present)
 }
-fn main() {
+// check verifies how array storage is retained and dropped.
+pub fn check() {
 	ordinary_scope()
 	assert dropped.len == 1
 	values := returned()
@@ -590,17 +591,35 @@ fn main() {
 	check_borrow_capture()
 	assert clones == 16
 	assert dropped.len == next_id
-	println("ok")
+	println(@MOD)
 }
 '
-	for borrowed in [false, true] {
-		input := if borrowed {
-			source
-		} else {
+	project := 'retained_array_headers'
+	root := os.join_path(borrow_storage_tmp_dir, project)
+	variants := ['owned_header', 'borrowed_header']
+	mut imports := []string{cap: variants.len}
+	mut branches := []string{cap: variants.len}
+	for name in variants {
+		input := if name == 'owned_header' {
 			source.replace('mut holder.values[..]', 'mut holder.values')
+		} else {
+			source
 		}
-		output := borrow_storage_run('borrowed_array_scope_${borrowed}', input)
-		assert output == 'ok'
+		dir := os.join_path(root, name)
+		os.mkdir_all(dir) or { panic(err) }
+		os.write_file(os.join_path(dir, 'check.v'), input.replace('module main', 'module ${name}')) or {
+			panic(err)
+		}
+		imports << 'import ${name}'
+		branches << '\t\t"${name}" { ${name}.check() }'
+	}
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: '${project}' }\n") or { panic(err) }
+	binary := borrow_storage_compile_dispatch(os.join_path(project, 'main'), imports.join('\n') + '\n\n',
+		branches)
+	for name in variants {
+		run := os.exec([binary, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == name, '${name}: ${run.output}'
 	}
 }
 
