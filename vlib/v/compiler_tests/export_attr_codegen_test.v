@@ -25,11 +25,11 @@ fn export_attr_compile_without_memory_limit(main_file string, output string) os.
 	return os.exec([@VEXE, '-no-memory-limit', main_file, '-b', 'c', '-o', output])
 }
 
-fn test_exported_imported_function_is_rooted_and_emitted_as_raw_symbol() {
-	root := export_attr_fixture_dir('imported_link')
+fn test_imported_and_conditional_exports_use_expected_symbols() {
+	root := export_attr_fixture_dir('imported_and_conditional')
 	defer { os.rmdir_all(root) or {} }
 	export_attr_write_project(root, {
-		'main.v':       'module main
+		'main.v':       "module main
 
 import expmod
 
@@ -39,12 +39,24 @@ fn take_callback(cb fn () int) int {
 	return cb()
 }
 
+@[if missing_export_flag ?]
+@[export: 'raw_disabled_export']
+fn disabled_export() int {
+	return 2
+}
+
+@[export: 'raw_enabled_export']
+fn enabled_export() int {
+	return 7
+}
+
 fn main() {
 	println(C.raw_exported_answer().str())
 	println(expmod.exported_answer().str())
 	println(take_callback(expmod.exported_answer).str())
+	println(enabled_export().str())
 }
-'
+"
 		'expmod/mod.v': "module expmod
 
 @[export: 'raw_exported_answer']
@@ -66,7 +78,7 @@ fn helper_unused() int {
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '41\n41\n41', run.output
+	assert run.output.trim_space() == '41\n41\n41\n7', run.output
 
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
 	// Imported module bodies and export wrappers live in the module-cache unit. Their
@@ -76,38 +88,6 @@ fn helper_unused() int {
 	assert c_code.contains('int raw_exported_answer(void);'), c_code
 	assert c_code.contains('raw_exported_answer()'), c_code
 	assert c_code.contains('take_callback(expmod__exported_answer)'), c_code
-}
-
-fn test_disabled_export_attr_does_not_register_raw_symbol() {
-	root := export_attr_fixture_dir('disabled_export')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
-
-@[if missing_export_flag ?]
-@[export: 'raw_disabled_export']
-fn disabled_export() int {
-	return 2
-}
-
-@[export: 'raw_enabled_export']
-fn enabled_export() int {
-	return 7
-}
-
-fn main() {
-	println(enabled_export().str())
-}
-"
-	})
-	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '7', run.output
-
-	c_code := os.read_file(bin_path + '.c') or { panic(err) }
 	assert c_code.contains('int raw_enabled_export(void) {'), c_code
 	assert !c_code.contains('raw_disabled_export'), c_code
 }
