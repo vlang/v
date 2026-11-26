@@ -78,26 +78,6 @@ fn helper_unused() int {
 	assert c_code.contains('take_callback(expmod__exported_answer)'), c_code
 }
 
-fn test_duplicate_export_name_is_rejected() {
-	root := export_attr_fixture_dir('duplicate')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
-
-@[export: 'raw_duplicate']
-fn one() {}
-
-@[export: 'raw_duplicate']
-fn two() {}
-
-fn main() {}
-"
-	})
-	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('duplicate export name `raw_duplicate`'), compile.output
-}
-
 fn test_disabled_export_attr_does_not_register_raw_symbol() {
 	root := export_attr_fixture_dir('disabled_export')
 	defer { os.rmdir_all(root) or {} }
@@ -130,23 +110,6 @@ fn main() {
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
 	assert c_code.contains('int raw_enabled_export(void) {'), c_code
 	assert !c_code.contains('raw_disabled_export'), c_code
-}
-
-fn test_export_name_collision_with_runtime_symbol_is_rejected() {
-	root := export_attr_fixture_dir('runtime_collision')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
-
-@[export: 'v_free']
-fn collides_with_runtime_free() {}
-
-fn main() {}
-"
-	})
-	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('export name `v_free`'), compile.output
 }
 
 fn test_export_name_matching_natural_symbol_uses_function_directly() {
@@ -368,32 +331,26 @@ fn test_ok() {}
 	assert !compile.output.contains('redefinition'), compile.output
 }
 
-fn test_invalid_export_names_are_rejected() {
-	root := export_attr_fixture_dir('invalid_names')
+fn assert_export_attr_rejections(name string, files map[string]string, expected map[string][]string) {
+	root := export_attr_fixture_dir(name)
 	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
-
-@[export: '1bad']
-fn bad_digit() {}
-
-@[export: 'for']
-fn bad_keyword() {}
-
-fn main() {}
-"
-	})
-	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	export_attr_write_project(root, files)
+	compile := os.exec([@VEXE, '-b', 'c', '-nocolor', '-o', os.join_path(root, 'app'), root])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('export name `1bad` should be a valid identifier'), compile.output
-	assert compile.output.contains('export name `for` should be a valid identifier'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	errors := compile.output.split_into_lines().filter(it.contains(': error: '))
+	for file, messages in expected {
+		file_errors := errors.filter(it.all_before(': error: ').contains('${file}:'))
+		for message in messages {
+			assert file_errors.any(it.contains(': error: ${message}')), 'expected `${message}` in ${file}\n${compile.output}'
+		}
+	}
 }
 
-fn test_invalid_imported_export_name_is_rejected_before_cgen() {
-	root := export_attr_fixture_dir('invalid_imported_name')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v':          'module main
+fn test_export_attribute_checker_rejections() {
+	assert_export_attr_rejections('checker_rejections', {
+		'main.v':           'module main
 
 import badexp
 
@@ -401,25 +358,28 @@ fn main() {
 	println(badexp.answer().str())
 }
 '
-		'badexp/badexp.v': "module badexp
+		'duplicate.v':      "module main
+
+@[export: 'raw_duplicate']
+fn one() {}
+
+@[export: 'raw_duplicate']
+fn two() {}
+"
+		'runtime.v':        "module main
+
+@[export: 'v_free']
+fn collides_with_runtime_free() {}
+"
+		'invalid_names.v':  "module main
 
 @[export: '1bad']
-pub fn answer() int {
-	return 1
-}
-"
-	})
-	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
-	assert compile.exit_code != 0
-	assert compile.output.contains('export name `1bad` should be a valid identifier'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-}
+fn bad_digit() {}
 
-fn test_export_name_reserved_by_v3_c_preamble_is_rejected() {
-	root := export_attr_fixture_dir('preamble_reserved_name')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
+@[export: 'for']
+fn bad_keyword() {}
+"
+		'preamble_names.v': "module main
 
 @[export: 'bool']
 fn collides_with_preamble_bool() bool {
@@ -457,60 +417,48 @@ fn collides_with_runtime_sorted_map() {}
 
 @[export: '__v_option']
 fn collides_with_runtime_optional() {}
-
-fn main() {}
 "
+		'badexp/badexp.v':  "module badexp
+
+@[export: '2bad']
+pub fn answer() int {
+	return 1
+}
+"
+	}, {
+		'duplicate.v':      ['duplicate export name `raw_duplicate`']
+		'runtime.v':        ['export name `v_free`']
+		'invalid_names.v':  ['1bad', 'for'].map('export name `${it}` should be a valid identifier')
+		'preamble_names.v': ['bool', 'string', 'voidptr', 'i8', 'true', 'Array', 'map', 'DenseArray',
+			'SortedMap', '__v_option'].map('export name `${it}` should be a valid identifier')
+		'badexp.v':         ['export name `2bad` should be a valid identifier']
 	})
-	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('export name `bool` should be a valid identifier'), compile.output
-	assert compile.output.contains('export name `string` should be a valid identifier'), compile.output
-	assert compile.output.contains('export name `voidptr` should be a valid identifier'), compile.output
-	assert compile.output.contains('export name `i8` should be a valid identifier'), compile.output
-	assert compile.output.contains('export name `true` should be a valid identifier'), compile.output
-	assert compile.output.contains('export name `Array` should be a valid identifier'), compile.output
-	assert compile.output.contains('export name `map` should be a valid identifier'), compile.output
-	assert compile.output.contains('export name `DenseArray` should be a valid identifier'), compile.output
-	assert compile.output.contains('export name `SortedMap` should be a valid identifier'), compile.output
-	assert compile.output.contains('export name `__v_option` should be a valid identifier'), compile.output
 }
 
-fn test_generic_export_is_rejected_fail_closed() {
-	root := export_attr_fixture_dir('generic_export')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
+fn test_export_attribute_parser_rejections() {
+	assert_export_attr_rejections('parser_rejections', {
+		'main.v':    'module main
+
+fn main() {}
+'
+		'generic.v': "module main
 
 @[export: 'raw_generic']
 fn raw_generic[T](value T) T {
 	return value
 }
-
-fn main() {}
 "
-	})
-	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('generic functions cannot be exported'), compile.output
-}
-
-fn test_exported_function_must_name_params() {
-	root := export_attr_fixture_dir('unnamed_param')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
+		'unnamed.v': "module main
 
 @[export: 'raw_unnamed']
 fn unnamed(int) int {
 	return 0
 }
-
-fn main() {}
 "
+	}, {
+		'generic.v': ['generic functions cannot be exported']
+		'unnamed.v': ['functions with type only params can not have bodies']
 	})
-	compile := export_attr_compile(os.join_path(root, 'main.v'), os.join_path(root, 'app'))
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('functions with type only params can not have bodies'), compile.output
 }
 
 fn test_export_wrappers_use_fixed_array_and_fn_pointer_return_types() {
