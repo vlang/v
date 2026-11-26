@@ -458,12 +458,20 @@ fn main() {
 	assert run.output == 'hello!\n<hello>\nhello\nhello  1\n', run.output
 }
 
+fn assert_independent_array_element_errors(compile os.Result, locations []string) {
+	assert compile.exit_code == 1, compile.output
+	message := 'error: cannot return an independent array element: `E` requires ownership destruction but has no `clone()` method'
+	errors := compile.output.split_into_lines().filter(it.contains(': error: ')).map(it.all_after('.v:'))
+	assert errors == locations.map('${it}: ${message}'), compile.output
+}
+
 // An allocating consumer is borrow-safe only when evaluating its other operands cannot mutate
 // the source array first. Keep the accessor on its independent-copy path when a sibling call can
 // delete the selected element before string concatenation consumes the field.
 fn test_owned_string_consumer_with_mutating_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	concat := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_concat_mutating_sibling', "struct E {
+	// Diagnostic locations include the Drop interface prepended to each fixture.
+	direct := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_mutating_siblings', "struct E {
 	name string
 }
 
@@ -476,36 +484,43 @@ fn last_name_then_delete(mut arr []E) string {
 	return arr.last().name + delete_last(mut arr)
 }
 
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert concat.exit_code != 0, concat.output
-	assert concat.output.contains('cannot return an independent array element'), concat.output
-
-	interp := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '!'
-}
-
-fn last_name_then_delete(mut arr []E) string {
+fn interpolate_then_delete(mut arr []E) string {
 	return '\${arr.last().name}\${delete_last(mut arr)}'
 }
 
-fn main() {
+fn delete_for_comparison(mut arr []E) string {
+	arr.delete_last()
+	return 'hello'
+}
+
+fn compare_then_delete(mut arr []E) bool {
+	return arr.last().name == delete_for_comparison(mut arr)
+}
+
+fn check_concat() {
 	mut arr := [E{ name: 'hello' }]
 	println(last_name_then_delete(mut arr))
 }
-", '')
-	assert interp.exit_code != 0, interp.output
-	assert interp.output.contains('cannot return an independent array element'), interp.output
 
-	stringifier := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_mutating_stringifier', "struct E {
+fn check_interpolation() {
+	mut arr := [E{ name: 'hello' }]
+	println(interpolate_then_delete(mut arr))
+}
+
+fn check_comparison() {
+	mut arr := [E{ name: 'hello' }]
+	println(compare_then_delete(mut arr))
+}
+
+fn main() {
+	check_concat()
+	check_interpolation()
+	check_comparison()
+}
+", '-nocolor')
+	assert_independent_array_element_errors(direct, ['16:9', '20:12', '29:9'])
+
+	stringifiers := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_mutating_stringifiers', "struct E {
 	name string
 }
 
@@ -522,42 +537,30 @@ fn last_name_then_stringify(mutator Mutator) string {
 	return '\${entries.last().name}\${mutator}'
 }
 
-fn main() {
-	entries = [E{ name: 'hello' }]
-	println(last_name_then_stringify(Mutator{}))
-}
-", '-enable-globals')
-	assert stringifier.exit_code != 0, stringifier.output
-	assert stringifier.output.contains('cannot return an independent array element'), stringifier.output
-
-	nested_stringifier := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_nested_mutating_stringifier', "struct E {
-	name string
-}
-
-struct Mutator {}
-
 struct Wrapper {
 	mutator Mutator
 }
 
-__global entries []E
-
-fn (Mutator) str() string {
-	entries.delete_last()
-	return '!'
-}
-
-fn last_name_then_stringify(wrapper Wrapper) string {
+fn last_name_then_stringify_wrapper(wrapper Wrapper) string {
 	return '\${entries.last().name}\${wrapper}'
 }
 
-fn main() {
+fn check_stringifier() {
 	entries = [E{ name: 'hello' }]
-	println(last_name_then_stringify(Wrapper{}))
+	println(last_name_then_stringify(Mutator{}))
 }
-", '-enable-globals')
-	assert nested_stringifier.exit_code != 0, nested_stringifier.output
-	assert nested_stringifier.output.contains('cannot return an independent array element'), nested_stringifier.output
+
+fn check_nested_stringifier() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_then_stringify_wrapper(Wrapper{}))
+}
+
+fn main() {
+	check_stringifier()
+	check_nested_stringifier()
+}
+", '-enable-globals -nocolor')
+	assert_independent_array_element_errors(stringifiers, ['20:12', '28:12'])
 
 	stable_stringifier := compile_v3_ownership_program(v3_bin, 'owned_string_interp_stable_auto_stringifier', "struct E {
 	name string
@@ -578,27 +581,6 @@ fn main() {
 ", '')
 	assert stable_stringifier.exit_code == 0, stable_stringifier.output
 	assert !stable_stringifier.output.contains('cannot return an independent array element'), stable_stringifier.output
-
-	comparison := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_comparison_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return 'hello'
-}
-
-fn last_name_then_delete(mut arr []E) bool {
-	return arr.last().name == delete_last(mut arr)
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert comparison.exit_code != 0, comparison.output
-	assert comparison.output.contains('cannot return an independent array element'), comparison.output
 }
 
 fn test_owned_string_interpolation_with_custom_stringifier_part_is_rejected() {
