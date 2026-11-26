@@ -5161,3 +5161,93 @@ pub fn (receiver Worker) run(early bool) {
 		}
 	}
 }
+
+const boxed_visitor_source = '
+@[heap]
+struct VisitorData {
+	text string
+}
+
+interface Visitor {
+	visit() int
+}
+
+struct BorrowedVisitor {
+	data &VisitorData
+}
+
+fn (visitor &BorrowedVisitor) visit() int {
+	return visitor.data.text.len
+}
+
+fn boxed(data &VisitorData) Visitor {
+	return Visitor(BorrowedVisitor{data: data})
+}
+
+fn forwarded(data &VisitorData) Visitor {
+	return boxed(data)
+}
+
+struct VisitorFactory {
+	data &VisitorData
+}
+
+fn (mut factory VisitorFactory) create() Visitor {
+	visitor := BorrowedVisitor{data: factory.data}
+	return Visitor(visitor)
+}
+'
+
+fn test_ownership_boxed_visitor_retains_local_storage() {
+	v3_bin := ownership_build_v3()
+	for build in ['return forwarded(&data)',
+		'mut factory := VisitorFactory{data: &data}; return factory.create()'] {
+		result := run_ownership_check(v3_bin, 'boxed_visitor_escape', boxed_visitor_source + "
+fn dangling() Visitor {
+	data := VisitorData{text: 'local'.clone()}
+	${build}
+}
+
+fn main() {
+	visitor := dangling()
+	assert visitor.visit() == 5
+}
+")
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot return a reference to local storage `data`'), result.output
+	}
+}
+
+fn test_ownership_boxed_visitor_retains_loan_through_a_move() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'boxed_visitor_mutation', boxed_visitor_source + "
+fn main() {
+	mut data := VisitorData{text: 'local'.clone()}
+	mut moved := Visitor(BorrowedVisitor{data: &data})
+	{
+		visitor := forwarded(&data)
+		moved = visitor
+	}
+	data = VisitorData{text: 'changed'.clone()}
+	assert moved.visit() == 7
+}
+")
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot assign to `data` because it is borrowed by `moved.data`'), result.output
+}
+
+fn test_ownership_boxed_visitor_accepts_storage_that_outlives_box() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'boxed_visitor_live_borrow', boxed_visitor_source + "
+fn main() {
+	mut data := VisitorData{text: 'local'.clone()}
+	{
+		visitor := forwarded(&data)
+		assert visitor.visit() == 5
+	}
+	data = VisitorData{text: 'changed'.clone()}
+	assert data.text == 'changed'
+}
+")
+	assert result.exit_code == 0, result.output
+}

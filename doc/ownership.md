@@ -325,6 +325,11 @@ fn matched_dir_entry[^a](self &^a Ignore) IgnoreMatch[^a] {
 `^` is used instead of Rust's `'` because `'` is already used for string and
 character literals in V.
 
+An interface box returned from a function can retain references in the concrete struct
+it boxes. Those field loans follow the result through forwarding calls. The referenced
+storage must outlive the box, and its owner cannot replace the storage while the box
+uses it.
+
 Multiple immutable borrows are allowed:
 
 ```v okfmt
