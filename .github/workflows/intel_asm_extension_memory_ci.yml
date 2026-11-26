@@ -54,14 +54,22 @@ jobs:
           git diff --exit-code -- vlib/v/gen/c/stmt.v vlib/v/gen/c/stmt_test.v
           ./v fmt -verify vlib/v/gen/c/stmt.v vlib/v/gen/c/stmt_test.v
           fixture=vlib/v/slow_tests/assembly/asm_intel_gcc_suffix_test.amd64.v
-          env -u VFLAGS -u VOSARGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent -cc gcc -no-retry-compilation -keepc -showcc "$fixture"
+          env -u VFLAGS -u VOSARGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent -cc gcc -no-retry-compilation -o ../candidate.c "$fixture"
+          grep -nE 'mov(zx|sx|sxd) .* ptr' ../candidate.c
+          rc=0
+          env -u VFLAGS -u VOSARGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent -cc gcc -no-retry-compilation -keepc -showcc "$fixture" > ../candidate.log 2>&1 || rc=$?
+          cat ../candidate.log
+          test "$rc" -eq 0
           ./v -cc gcc -gc none -silent -no-retry-compilation vlib/v/gen/c/stmt_test.v
           ./v -cc gcc -gc none -silent -no-retry-compilation test vlib/v/slow_tests/assembly/
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: legacy-original-assembler-log
-          path: baseline.log
+          path: |
+            baseline.log
+            candidate.log
+            candidate.c
   modern:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
