@@ -4895,8 +4895,21 @@ fn lower_c_inline_asm_intel_template(source string, aliases map[string]bool, is_
 	}
 	operands := split_c_inline_asm_operands(operands_source)
 	mut lowered := []string{cap: operands.len}
-	for operand in operands {
-		lowered << lower_c_inline_asm_intel_operand(operand, aliases, is_extended)
+	for i, operand in operands {
+		mut lowered_operand := lower_c_inline_asm_intel_operand(operand, aliases, is_extended)
+		// Older GNU assemblers do not reliably infer extension-move memory widths
+		// from the mnemonic suffix in Intel mode. Preserve the mnemonic and make
+		// its source width explicit; do not alter register or raw asm operands.
+		if i == 1 && operand.trim_space().starts_with('[') {
+			width := match instruction.to_lower() {
+				'movzbw', 'movzbl', 'movzbq', 'movsbw', 'movsbl', 'movsbq' { 'byte ptr ' }
+				'movzwl', 'movzwq', 'movswl', 'movswq' { 'word ptr ' }
+				'movslq' { 'dword ptr ' }
+				else { '' }
+			}
+			lowered_operand = width + lowered_operand
+		}
+		lowered << lowered_operand
 	}
 	return line[..instruction_start] + instruction + ' ' + lowered.join(', ')
 }
