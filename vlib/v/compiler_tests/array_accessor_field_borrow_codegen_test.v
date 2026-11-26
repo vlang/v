@@ -537,9 +537,9 @@ fn main() {
 	], compile.output
 }
 
-fn test_owned_scalar_borrows_with_mutating_calls_are_rejected() {
+fn test_owned_borrows_with_explicit_mutating_calls_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_mutating_calls', "struct E {
+	src := "struct E {
 	name string
 }
 
@@ -591,17 +591,17 @@ fn check_return() {
 	println(int_str(length) + ':' + action)
 }
 
-fn delete_last(mut entries []E) bool {
+fn delete_last_for_condition(mut entries []E) bool {
 	entries.delete_last()
 	return true
 }
 
 fn if_length(mut entries []E) int {
-	return if delete_last(mut entries) { entries.last().name.len } else { 0 }
+	return if delete_last_for_condition(mut entries) { entries.last().name.len } else { 0 }
 }
 
 fn match_subject_length(mut entries []E) int {
-	return match delete_last(mut entries) {
+	return match delete_last_for_condition(mut entries) {
 		true { entries.last().name.len }
 		else { 0 }
 	}
@@ -656,11 +656,15 @@ fn main() {
 	check_match_subject()
 	check_or()
 	check_match_branch()
+	check_mutating_siblings()
 }
-", '-nocolor')
+
+" + array_accessor_borrow_mutating_siblings_src
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_borrows_with_mutating_calls', src, '-nocolor')
 	// Locations include the prepended Drop interface.
-	assert_independent_array_element_errors(compile, ['16:9', '30:18', '39:9', '64:39', '69:10',
-		'80:48', '90:45'])
+	assert_independent_array_element_errors(compile, ['16:9', '30:18', '39:9', '64:53', '69:10',
+		'80:48', '90:45', '148:10', '152:24', '156:28', '160:22', '164:24', '168:21', '172:31',
+		'176:23', '180:33', '234:9', '238:12', '247:9'])
 }
 
 fn test_owned_field_overloaded_comparison_and_index_are_rejected() {
@@ -854,13 +858,7 @@ fn main() {
 // An allocating consumer is borrow-safe only when evaluating its other operands cannot mutate
 // the source array first. Keep the accessor on its independent-copy path when a sibling call can
 // delete the selected element before string concatenation consumes the field.
-fn test_owned_consumers_with_mutating_siblings_are_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_consumers_mutating_siblings', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
+const array_accessor_borrow_mutating_siblings_src = "fn delete_last(mut arr []E) string {
 	arr.delete_last()
 	return '?'
 }
@@ -999,7 +997,7 @@ fn check_comparison() {
 	println(compare_then_delete(mut arr))
 }
 
-fn main() {
+fn check_mutating_siblings() {
 	check_nested_concat()
 	check_concat_arg()
 	check_interpolation_arg()
@@ -1013,11 +1011,7 @@ fn main() {
 	check_interpolation()
 	check_comparison()
 }
-", '-nocolor')
-	// Locations include the prepended Drop interface.
-	assert_independent_array_element_errors(compile, ['32:10', '36:24', '40:28', '44:22', '48:24',
-		'52:21', '56:31', '60:23', '64:33', '118:9', '122:12', '131:9'])
-}
+"
 
 // Indexing and chained length reads can borrow the original element. A length
 // read can also share an initializer or call with stable fields or arguments.
