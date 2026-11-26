@@ -11612,6 +11612,15 @@ fn (tc &TypeChecker) type_compatible_unequal(actual &Type, expected &Type) bool 
 				return true
 			}
 			if expected.base_type is Void || actual.base_type is Void {
+				$if ownership ? {
+					if tc.unsafe_depth == 0 && actual.base_type is Void {
+						if iface := cast_target_interface(expected.base_type) {
+							if tc.ownership_scoped_factory_interface(iface.name_id) {
+								return false
+							}
+						}
+					}
+				}
 				return true
 			}
 			expected_base := unalias_type(expected.base_type)
@@ -12972,6 +12981,12 @@ fn interface_implements_interface_guarded(tc &TypeChecker, actual_name_id u32, e
 	mut in_progress := visited.clone()
 	in_progress << guard_key
 	for method in tc.interface_method_names(expected) {
+		$if ownership ? {
+			if tc.ownership_scoped_factory_interface_method(expected, method)
+				&& !tc.ownership_scoped_factory_interface_method(actual, method) {
+				return false
+			}
+		}
 		actual_key := tc.interface_method_signature_key(actual, method) or {
 			'${flat.source_type_name(actual)}.${method}'
 		}
@@ -17082,6 +17097,12 @@ fn method_signature_compatible_for_interface_guarded(tc &TypeChecker, actual_key
 			return false
 		}
 	}
+	$if ownership ? {
+		if tc.ownership_scoped_factory_interface_method(iface_name_id, expected_key.all_after_last('.'))
+			&& !tc.ownership_scoped_factory_conforms(actual_key, expected_key) {
+			return false
+		}
+	}
 	actual_ret := tc.fn_ret_types[actual_key] or { builtin_void_type }
 	return method_return_signature_compatible_guarded(tc, actual_ret, expected_ret, visited)
 }
@@ -17113,6 +17134,12 @@ fn method_call_info_signature_compatible_for_interface_guarded(tc &TypeChecker, 
 	for i in 1 .. actual.params.len {
 		if !method_param_signature_compatible_guarded(tc, actual.params[i], expected_params[i],
 			visited) {
+			return false
+		}
+	}
+	$if ownership ? {
+		if tc.ownership_scoped_factory_interface_method(iface_name_id, expected_key.all_after_last('.'))
+			&& !tc.ownership_scoped_factory_conforms(actual.name, expected_key) {
 			return false
 		}
 	}

@@ -338,6 +338,8 @@ pub:
 	// source_is_prefix reports that the result aliases storage at or below `source_suffix`
 	// of the argument, but not a known exact path (a path widened through recursion).
 	source_is_prefix bool
+	// An interface result can borrow from a source through its hidden payload.
+	boxed_borrow bool
 }
 
 // LocalBinding represents local binding data used by types.
