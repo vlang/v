@@ -1906,10 +1906,10 @@ fn main() {}
 	], res.output
 }
 
-fn test_an_interface_among_the_types_of_a_constraint_stands_for_what_implements_it() {
+fn test_interface_constraints_in_type_sets_and_aliases() {
 	// `type Value = Named | int` as a constraint takes `int` and what implements
-	// `Named`; `$if T is User {` makes `T` a `User` there.
-	res := check_program('interface_variant', "type Value = Named | int
+	// `Named`. An interface alias also accepts types implementing its interface.
+	res := check_program('interface_constraints', "type Value = Named | int
 
 fn describe[T Value](x T) string {
 	\$if T is User {
@@ -1919,39 +1919,29 @@ fn describe[T Value](x T) string {
 	}
 }
 
+interface ThingThatHasName {
+	name string
+}
+
+type NameAlias = ThingThatHasName
+
+fn show[T NameAlias](x T) string {
+	return x.name
+}
+
 fn main() {
 	println(describe(User{ name: 'u' }))
 	println(describe(Pet{ name: 'p' }))
 	println(describe(3))
 	println(describe(1.5))
-}
-")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'15:19: cannot use `f64` as `T`: it is not in its constraint `Value`',
-	], res.output
-}
-
-fn test_an_alias_of_an_interface_is_a_constraint_for_what_implements_it() {
-	// The example of the original proposal: `type Value = ThingThatHasName`.
-	res := check_program('alias_constraint', "interface ThingThatHasName {
-	name string
-}
-
-type Value = ThingThatHasName
-
-fn show[T Value](x T) string {
-	return x.name
-}
-
-fn main() {
 	println(show(1))
 	println(show(User{ name: 'Alex' }))
 }
 ")
 	assert res.exit_code == 1, res.output
 	assert error_lines(res.output) == [
-		"12:15: `int` doesn't implement field `name` of interface `ThingThatHasName`",
+		'25:19: cannot use `f64` as `T`: it is not in its constraint `Value`',
+		"26:15: `int` doesn't implement field `name` of interface `ThingThatHasName`",
 	], res.output
 }
 
