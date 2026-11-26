@@ -311,6 +311,25 @@ fn check_literal_membership() {
 	println(has_known_last_name(entries))
 }
 
+// A plain `string` field uses the builtin stringifier, so the borrow stays safe.
+fn last_label(entries []E) string {
+	return '\${entries.last().name}\${0}'
+}
+
+fn last_name_matches(entries []E) bool {
+	return entries.last().name == ('he' + 'llo')
+}
+
+fn check_plain_interpolation() {
+	entries := [E{ name: 'hello' }]
+	println(last_label(entries))
+}
+
+fn check_builtin_comparison() {
+	entries := [E{ name: 'hello' }]
+	println(last_name_matches(entries))
+}
+
 fn main() {
 	check_clone()
 	check_length()
@@ -318,13 +337,15 @@ fn main() {
 	check_membership()
 	check_allocating_consumers()
 	check_literal_membership()
+	check_plain_interpolation()
+	check_builtin_comparison()
 }
 ", '')
 	assert_clean_borrow_build(compile)
 	bin_path := tmp_array_accessor_borrow_path('owned_string_consumers_bin')
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output == 'hello\n5\ntrue\ntrue\nhello!\n<hello>\nhello\nhello  1\ntrue\n', run.output
+	assert run.output == 'hello\n5\ntrue\ntrue\nhello!\n<hello>\nhello\nhello  1\ntrue\nhello0\ntrue\n', run.output
 }
 
 // A bound method value needs a copy of its receiver. Returning a string,
@@ -584,26 +605,6 @@ fn main() {
 ", '-enable-globals')
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot return an independent array element'), compile.output
-
-	// A plain `string` field uses the builtin stringifier, so the borrow stays safe.
-	safe := compile_v3_ownership_program(v3_bin, 'owned_string_interp_plain_part', "struct E {
-	name string
-}
-
-fn last_label(entries []E) string {
-	return '\${entries.last().name}\${0}'
-}
-
-fn main() {
-	entries := [E{ name: 'hello' }]
-	println(last_label(entries))
-}
-", '')
-	assert safe.exit_code == 0, safe.output
-	safe_bin_path := tmp_array_accessor_borrow_path('owned_string_interp_plain_part_bin')
-	safe_run := os.exec([safe_bin_path])
-	assert safe_run.exit_code == 0, safe_run.output
-	assert safe_run.output.trim_space() == 'hello0', safe_run.output
 }
 
 fn test_owned_scalar_borrows_with_mutating_siblings_are_rejected() {
@@ -715,28 +716,8 @@ fn main() {
 	assert_independent_array_element_errors(compile, ['19:9', '27:9'])
 }
 
-fn test_owned_string_comparison_checks_overloaded_siblings() {
+fn test_owned_string_comparison_with_overloaded_siblings_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	builtin := compile_v3_ownership_program(v3_bin, 'owned_builtin_infix_sibling', "struct E {
-	name string
-}
-
-fn last_name_matches(entries []E) bool {
-	return entries.last().name == ('he' + 'llo')
-}
-
-fn main() {
-	entries := [E{ name: 'hello' }]
-	println(last_name_matches(entries))
-}
-", '')
-	assert builtin.exit_code == 0, builtin.output
-	assert !builtin.output.contains('cannot return an independent array element'), builtin.output
-	builtin_bin_path := tmp_array_accessor_borrow_path('owned_builtin_infix_sibling_bin')
-	builtin_run := os.exec([builtin_bin_path])
-	assert builtin_run.exit_code == 0, builtin_run.output
-	assert builtin_run.output.trim_space() == 'true', builtin_run.output
-
 	overloaded := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_comparison_mutating_operator_siblings', "struct E {
 	name string
 }
