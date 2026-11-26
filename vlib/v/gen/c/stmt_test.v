@@ -753,10 +753,9 @@ fn test_inline_asm_intel_templates_keep_destination_first_order() {
 	assert lower_c_inline_asm_intel_template('vpxord zmm0{k1}{z}, zmm0, zmm0', aliases, true) == 'vpxord zmm0%{k1%}%{z%}, zmm0, zmm0'
 }
 
-
 fn test_inline_asm_intel_extension_move_memory_source_widths() {
 	aliases := {
-		'dst': true
+		'dst':  true
 		'base': true
 	}
 	assert lower_c_inline_asm_intel_template('movzbq dst, [base]', aliases, true) == 'movzbq %V[dst], byte ptr [%V[base]]'
