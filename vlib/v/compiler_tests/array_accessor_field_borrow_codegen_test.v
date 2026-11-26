@@ -1244,9 +1244,9 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
-fn test_owned_scalar_consumer_with_cloning_method_value_sibling_is_rejected() {
+fn test_owned_scalar_consumers_with_cloning_siblings() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_cloning_method_value_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_cloning_siblings', "struct E {
 	name string
 }
 
@@ -1265,22 +1265,63 @@ fn (mutator Mutator) run() string {
 	return mutator.label
 }
 
-fn consume(length int, callback fn () string) int {
+fn consume_method(length int, callback fn () string) int {
 	_ = callback()
 	return length
 }
 
 fn last_length_with_bound_method(mutator Mutator) int {
-	return consume(entries.last().name.len, mutator.run)
+	return consume_method(entries.last().name.len, mutator.run)
 }
 
-fn main() {
+type Reader = string
+
+fn (reader Reader) clone() Reader {
+	entries.delete_last()
+	return Reader(string(reader).clone())
+}
+
+fn (reader Reader) run() string {
+	return reader
+}
+
+fn last_length_with_alias_method(reader Reader) int {
+	return consume_method(entries.last().name.len, reader.run)
+}
+
+fn consume_spread(length int, mutators []Mutator) int {
+	_ = mutators
+	return length
+}
+
+fn last_length_with_spread(mutators []Mutator) int {
+	return consume_spread(entries.last().name.len, [...mutators])
+}
+
+fn check_struct_method() {
 	entries = [E{ name: 'hello' }]
 	println(last_length_with_bound_method(Mutator{ label: 'run' }))
 }
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+fn check_alias_method() {
+	entries = [E{ name: 'hello' }]
+	reader := Reader('run')
+	println(last_length_with_alias_method(reader))
+}
+
+fn check_array_spread() {
+	entries = [E{ name: 'hello' }]
+	println(last_length_with_spread([Mutator{ label: 'delete' }]))
+}
+
+fn main() {
+	check_struct_method()
+	check_alias_method()
+	check_array_spread()
+}
+", '-enable-globals -nocolor')
+	// Locations include the prepended Drop interface.
+	assert_independent_array_element_errors(compile, ['31:24', '46:24', '55:24'])
 
 	safe := compile_v3_ownership_program(v3_bin, 'owned_scalar_default_clone_method_value_sibling', "struct E {
 	name string
@@ -1335,79 +1376,6 @@ fn main() {
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true', run.output
-}
-
-fn test_owned_scalar_consumer_with_alias_clone_method_value_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_alias_clone_method_value_sibling', "struct E {
-	name string
-}
-
-type Reader = string
-
-__global entries []E
-
-fn (reader Reader) clone() Reader {
-	entries.delete_last()
-	return Reader(string(reader).clone())
-}
-
-fn (reader Reader) run() string {
-	return reader
-}
-
-fn consume(length int, callback fn () string) int {
-	_ = callback()
-	return length
-}
-
-fn last_length_with_bound_method(reader Reader) int {
-	return consume(entries.last().name.len, reader.run)
-}
-
-fn main() {
-	entries = [E{ name: 'hello' }]
-	reader := Reader('run')
-	println(last_length_with_bound_method(reader))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-fn test_owned_scalar_consumer_with_cloning_array_spread_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_cloning_array_spread_sibling', "struct E {
-	name string
-}
-
-struct Mutator {
-	label string
-}
-
-__global entries []E
-
-fn (mutator Mutator) clone() Mutator {
-	entries.delete_last()
-	return Mutator{ label: mutator.label.clone() }
-}
-
-fn consume(length int, mutators []Mutator) int {
-	_ = mutators
-	return length
-}
-
-fn last_length_with_spread(mutators []Mutator) int {
-	return consume(entries.last().name.len, [...mutators])
-}
-
-fn main() {
-	entries = [E{ name: 'hello' }]
-	println(last_length_with_spread([Mutator{ label: 'delete' }]))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
 fn test_owned_scalar_multi_return_with_mutating_sibling_is_rejected() {
