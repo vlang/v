@@ -110,7 +110,7 @@ static int native_environment_probe(void) {
 
 #ifndef V_RUNTIME_HOSTED_ORACLE
 static int native_extended_bits_probe(void) {
-    extern void v_native_frexp(uintptr_t,int32_t,uintptr_t);
+    extern int32_t v_native_frexp(uintptr_t,int32_t,uintptr_t);
     extern void v_native_float_sign(uintptr_t,uintptr_t,int32_t);
     /* IEEE binary128 vectors exercise its path even on an x87 host. */
     const struct { uint64_t low,high,out_low,out_high; int exponent; } vectors[]={
@@ -195,6 +195,29 @@ static int decomposition_probe(void) {
     }
     return 0;
 }
+
+static int frexp_nan_probe(int default_nan) {
+    int exponent;
+    float sf = __builtin_nansf("1"), qf = __builtin_nanf("1");
+    double sd = __builtin_nans("1"), qd = __builtin_nan("1");
+    long double sl = __builtin_nansl("1"), ql = __builtin_nanl("1");
+    float expected_f = default_nan ? __builtin_nanf("") : qf;
+    double expected_d = default_nan ? __builtin_nan("") : qd;
+    /* x87 long double has six bytes of padding on amd64. */
+    size_t long_bytes = LDBL_MANT_DIG == 64 ? 10 : sizeof sl;
+    for (int signaling = 0; signaling <= 1; ++signaling) {
+        CHECK(!native_clear(FE_ALL_EXCEPT));
+        float f = native_frexpf(signaling ? sf : qf, &exponent);
+        CHECK(!!native_test(FE_INVALID) == signaling && !memcmp(&f, &expected_f, sizeof f));
+        CHECK(!native_clear(FE_ALL_EXCEPT));
+        double d = native_frexp(signaling ? sd : qd, &exponent);
+        CHECK(!!native_test(FE_INVALID) == signaling && !memcmp(&d, &expected_d, sizeof d));
+        CHECK(!native_clear(FE_ALL_EXCEPT));
+        long double l = native_frexpl(signaling ? sl : ql, &exponent);
+        CHECK(!!native_test(FE_INVALID) == signaling && !memcmp(&l, &ql, long_bytes));
+    }
+    return 0;
+}
 static void *rounding_worker(void *unused) {
     (void)unused;
     if(native_getround()!=FE_DOWNWARD || native_setround(FE_UPWARD) || native_getround()!=FE_UPWARD)return (void *)1;
@@ -204,6 +227,17 @@ static int numeric_native_probe(void) {
     long double (*volatile remainder)(long double, long double) = fmodl;
     fenv_t saved;
     CHECK(!feholdexcept(&saved));
+    CHECK(!frexp_nan_probe(0));
+#if defined(__aarch64__)
+    uint64_t fpcr;
+    __asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
+    uint64_t default_nan = fpcr | (UINT64_C(1) << 25);
+    __asm__ volatile("msr fpcr, %0; isb" :: "r"(default_nan) : "memory");
+    int nan_result = frexp_nan_probe(1);
+    __asm__ volatile("msr fpcr, %0; isb" :: "r"(fpcr) : "memory");
+    CHECK(!nan_result);
+#endif
+    CHECK(!feclearexcept(FE_ALL_EXCEPT));
     double (*volatile scale)(double, int) = scalbn;
     long double (*volatile scale_long)(long double, int) = scalbnl;
     CHECK(!fesetround(FE_TONEAREST));
@@ -238,8 +272,12 @@ static int numeric_native_probe(void) {
     CHECK(!fesetenv(&saved));
     int original=native_getround(); CHECK(original>=0);
     const int modes[]={FE_TONEAREST,FE_UPWARD,FE_DOWNWARD,FE_TOWARDZERO};
+    double (*volatile native_trunc)(double) = trunc;
     for(size_t i=0;i<sizeof modes/sizeof *modes;i++) {
         errno=E2BIG; CHECK(!native_setround(modes[i]) && native_getround()==modes[i] && errno==E2BIG);
+        double positive = native_trunc(0.5), negative = native_trunc(-0.5);
+        CHECK(positive == 0 && !signbit(positive) && negative == 0 && signbit(negative));
+        CHECK(native_trunc(3.75) == 3 && native_trunc(-3.75) == -3);
 #if defined(__x86_64__)
         unsigned short control; unsigned vector;
         __asm__ volatile("fnstcw %0; stmxcsr %1":"=m"(control),"=m"(vector));

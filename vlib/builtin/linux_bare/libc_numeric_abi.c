@@ -9,18 +9,23 @@ _Static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "native floating byte 
 _Static_assert(FLT_MANT_DIG == 24 && DBL_MANT_DIG == 53, "native float/double ABI");
 _Static_assert(LDBL_MANT_DIG == 53 || LDBL_MANT_DIG == 64 || LDBL_MANT_DIG == 113,
                "native long double ABI");
-extern void v_native_frexp(uintptr_t, int32_t, uintptr_t);
+extern int32_t v_native_frexp(uintptr_t, int32_t, uintptr_t);
 extern void v_native_float_sign(uintptr_t, uintptr_t, int32_t);
 extern int32_t v_native_round_get(void);
 extern int32_t v_native_round_set(int32_t);
+/* Native addition quiets signaling NaNs and observes the hardware default-NaN mode. */
 float frexpf(float value, int *exponent) {
-    v_native_frexp((uintptr_t)&value, FLT_MANT_DIG, (uintptr_t)exponent); return value;
+    if (v_native_frexp((uintptr_t)&value, FLT_MANT_DIG, (uintptr_t)exponent)) return value + value;
+    return value;
 }
 double frexp(double value, int *exponent) {
-    v_native_frexp((uintptr_t)&value, DBL_MANT_DIG, (uintptr_t)exponent); return value;
+    if (v_native_frexp((uintptr_t)&value, DBL_MANT_DIG, (uintptr_t)exponent)) return value + value;
+    return value;
 }
 long double frexpl(long double value, int *exponent) {
-    v_native_frexp((uintptr_t)&value, LDBL_MANT_DIG, (uintptr_t)exponent); return value;
+    int native_special = v_native_frexp((uintptr_t)&value, LDBL_MANT_DIG, (uintptr_t)exponent);
+    if (LDBL_MANT_DIG != 113 && native_special) return value + value;
+    return value;
 }
 int fegetround(void) { return v_native_round_get(); }
 int fesetround(int mode) { return v_native_round_set(mode); }

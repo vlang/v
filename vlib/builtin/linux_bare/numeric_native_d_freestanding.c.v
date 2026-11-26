@@ -1,6 +1,8 @@
 module builtin
 
 $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
+	#include <fenv.h>
+
 	@[export: 'v_native_float_sign'; markused]
 	fn bare_native_float_sign(address uint, sign_address uint, precision i32) {
 		index := match precision {
@@ -20,13 +22,16 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	// C passes native floating values by address so extended precision never
 	// crosses V's f64 ABI. Bit normalization is exact under every rounding mode.
 	@[export: 'v_native_frexp'; markused]
-	fn bare_native_frexp(address uint, precision i32, exponent_address uint) {
+	fn bare_native_frexp(address uint, precision i32, exponent_address uint) i32 {
 		mut exponent := i32(0)
+		mut native_special := false
 		if precision == 24 {
 			mut bits := unsafe { *(&u32(address)) }
 			encoded := i32((bits >> 23) & 255)
 			mut fraction := bits & 0x7fffff
-			if encoded != 255 && (encoded != 0 || fraction != 0) {
+			if encoded == 255 {
+				native_special = true
+			} else if encoded != 0 || fraction != 0 {
 				exponent = encoded - 126
 				if encoded == 0 {
 					exponent = -125
@@ -42,7 +47,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			mut bits := unsafe { *(&u64(address)) }
 			encoded := i32((bits >> 52) & 2047)
 			mut fraction := bits & 0xfffffffffffff
-			if encoded != 2047 && (encoded != 0 || fraction != 0) {
+			if encoded == 2047 {
+				native_special = true
+			} else if encoded != 0 || fraction != 0 {
 				exponent = encoded - 1022
 				if encoded == 0 {
 					exponent = -1021
@@ -58,7 +65,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			mut fraction := unsafe { *(&u64(address)) }
 			bits := unsafe { *(&u16(address + 8)) }
 			encoded := i32(bits & 32767)
-			if encoded != 32767 && fraction != 0 {
+			if encoded == 32767 {
+				native_special = true
+			} else if fraction != 0 {
 				exponent = encoded - 16382
 				if encoded == 0 {
 					exponent = -16381
@@ -77,7 +86,13 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			bits := unsafe { *(&u64(address + 8)) }
 			encoded := i32((bits >> 48) & 32767)
 			mut high := bits & 0xffffffffffff
-			if encoded != 32767 && (encoded != 0 || high != 0 || low != 0) {
+			if encoded == 32767 {
+				// Software binary128 addition does not reliably raise hardware exceptions.
+				if (high != 0 || low != 0) && high & 0x800000000000 == 0 {
+					unsafe { *(&u64(address + 8)) = bits | 0x800000000000 }
+					bare_fenv_raise(i32(C.FE_INVALID))
+				}
+			} else if encoded != 0 || high != 0 || low != 0 {
 				exponent = encoded - 16382
 				if encoded == 0 {
 					exponent = -16381
@@ -94,6 +109,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			}
 		}
 		unsafe { *(&i32(exponent_address)) = exponent }
+		return i32(native_special)
 	}
 
 	fn bare_float_control_read() (u64, u32) {
