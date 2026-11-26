@@ -1606,11 +1606,10 @@ fn main() {}
 	], res.output
 }
 
-fn test_another_type_stands_for_itself() {
-	// `[T Ints]` takes `Ints` for `type Ints = []int`: an alias of a type that is
-	// no interface, sum type or struct is a type of its own. A type that does not
-	// exist is reported where it is written.
-	res := check_program('any_type', 'type Ints = []int
+fn test_type_aliases_and_sum_types_as_constraints() {
+	// Ints requires the alias itself. Number and Real admit their sum variants,
+	// including variants reached through a nested sum type.
+	res := check_program('alias_constraints', "type Ints = []int
 
 fn ints[T Ints](x T) int {
 	return x.len
@@ -1620,23 +1619,7 @@ fn nope[T Nope](x T) T {
 	return x
 }
 
-fn main() {
-	println(ints(Ints([1, 2])))
-	println(ints([1, 2]))
-}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'7:11: unknown type `Nope`',
-		'13:15: cannot use `[]int` as `T`: it is not in its constraint `Ints`',
-	], res.output
-}
-
-fn test_a_sum_type_is_a_constraint_that_stands_for_its_variants() {
-	// `type Number = int | f64` is a sum type as the type of a value, and in
-	// `[T Number]` the constraint whose types are its variants; a variant that is
-	// a sum type stands for its own variants.
-	res := check_program('sum_constraint', "type Number = int | f64
+type Number = int | f64
 
 type Integer = int | i64
 
@@ -1660,7 +1643,15 @@ fn half[T Real](x T) T {
 	return x / 2
 }
 
+type Bad = int | Foo
+
+fn keep_bad[T Bad](x T) T {
+	return x
+}
+
 fn main() {
+	println(ints(Ints([1, 2])))
+	println(ints([1, 2]))
 	println(double(2))
 	println(double(1.5))
 	println(double('a'))
@@ -1671,10 +1662,14 @@ fn main() {
 }
 ")
 	assert res.exit_code == 1, res.output
+	// The unknown sum variant is reported once, where Bad is declared.
 	assert error_lines(res.output) == [
-		'14:21: type `T` has no method `hex`: `f64`, in its constraint `Number`, does not have it',
-		'28:17: cannot use `string` as `T`: it is not in its constraint `Number`',
-		'32:15: cannot use `u8` as `T`: it is not in its constraint `Real`',
+		'7:11: unknown type `Nope`',
+		'24:21: type `T` has no method `hex`: `f64`, in its constraint `Number`, does not have it',
+		'35:18: unknown type `Foo`',
+		'43:15: cannot use `[]int` as `T`: it is not in its constraint `Ints`',
+		'46:17: cannot use `string` as `T`: it is not in its constraint `Number`',
+		'50:15: cannot use `u8` as `T`: it is not in its constraint `Real`',
 	], res.output
 }
 
@@ -2050,20 +2045,6 @@ fn main() {
 		'38:20: type `T` has no method `greet`: `Pet`, in its constraint `Animal`, does not have it',
 		'48:17: cannot use `string` as `T`: it is not in its constraint `Number`',
 	], res.output
-}
-
-fn test_a_sum_type_of_unknown_types_is_reported_once() {
-	res := check_program('set_unknown', 'type Bad = int | Foo
-
-fn keep[T Bad](x T) T {
-	return x
-}
-
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	// Once, by the sum type: not again by the constraint that names it.
-	assert error_lines(res.output) == ['1:18: unknown type `Foo`'], res.output
 }
 
 fn test_constraint_is_still_a_name() {
