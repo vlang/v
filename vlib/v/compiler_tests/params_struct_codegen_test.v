@@ -132,7 +132,7 @@ fn test_params_fields_belong_to_params_struct() {
 	assert run.output.trim_space() == 'entry:node:3'
 }
 
-fn test_interface_fields_in_collapsed_struct_calls() {
+fn test_interface_and_fixed_array_fields_in_struct_initializers() {
 	source := 'interface Reader {
 	read(mut buf []u8) !int
 }
@@ -177,13 +177,55 @@ fn row(config RowConfig) string {
 	return kinds.join(",")
 }
 
+struct Item {
+	x int
+}
+
+struct Header {
+mut:
+	data [2]Item
+	cur_pos int
+}
+
+struct Uniforms {
+	lights [2][4]f32
+}
+
+fn light_row() [4]f32 {
+	return [f32(1.1), 1.2, 1.3, 1.4]!
+}
+
+fn check_fixed_array_fields() {
+	mut h := Header{}
+	h.data[0] = Item{x: 4}
+	h.data[1] = Item{x: 9}
+	h.cur_pos = 2
+	combined := Header{
+		data: h.data
+		cur_pos: h.cur_pos
+	}
+	println("\${combined.cur_pos}|\${combined.data[0].x}|\${combined.data[1].x}")
+	mixed := Uniforms{
+		lights: [
+			light_row(),
+			[f32(2.1), 2.2]!,
+		]!
+	}
+	assert mixed.lights[0][0] == f32(1.1)
+	assert mixed.lights[1][0] == f32(2.1)
+	assert mixed.lights[1][1] == f32(2.2)
+	assert mixed.lights[1][2] == 0
+	assert mixed.lights[1][3] == 0
+}
+
 fn main() {
 	println(make(reader: Conn{}, cap: 8))
 	println(row(children: [TextBox{}, Label{}, Button{}]))
+	check_fixed_array_fields()
 }
 '
-	out := params_struct_run_good('params_interface_fields', source)
-	assert out == '8\ntextbox,label,button'
+	out := params_struct_run_good('params_interface_and_fixed_array_fields', source)
+	assert out.split_into_lines() == ['8', 'textbox,label,button', '2|4|9'], out
 }
 
 fn test_collapsed_struct_call_feature_matrix() {
@@ -276,10 +318,4 @@ fn main() {
 '
 	out := params_struct_run_good('collapsed_struct_call_feature_matrix', source)
 	assert out == 'plain:1:11\nalias:2\nparams:3:fast\nalias-params:4:slow\nalias-params:0:slow\npointer:5:fast\npointer:0:slow\n6\n7\nmethod:8\n30\nplain:9:0'
-}
-
-fn test_fixed_array_field_struct_init_codegen() {
-	source := "struct Item {\n\tx int\n}\n\nstruct Header {\nmut:\n\tdata [2]Item\n\tcur_pos int\n}\n\nstruct Uniforms {\n\tlights [2][4]f32\n}\n\nfn row() [4]f32 {\n\treturn [f32(1.1), 1.2, 1.3, 1.4]!\n}\n\nfn main() {\n\tmut h := Header{}\n\th.data[0] = Item{x: 4}\n\th.data[1] = Item{x: 9}\n\th.cur_pos = 2\n\tcombined := Header{\n\t\tdata: h.data\n\t\tcur_pos: h.cur_pos\n\t}\n\tprintln('\${combined.cur_pos}|\${combined.data[0].x}|\${combined.data[1].x}')\n\tmixed := Uniforms{\n\t\tlights: [\n\t\t\trow(),\n\t\t\t[f32(2.1), 2.2]!,\n\t\t]!\n\t}\n\tassert mixed.lights[0][0] == f32(1.1)\n\tassert mixed.lights[1][0] == f32(2.1)\n\tassert mixed.lights[1][1] == f32(2.2)\n\tassert mixed.lights[1][2] == 0\n\tassert mixed.lights[1][3] == 0\n}\n"
-	out := params_struct_run_good('fixed_array_field_struct_init_input', source)
-	assert out == '2|4|9'
 }
