@@ -452,10 +452,7 @@ fn (tc &TypeChecker) ownership_scoped_callback_factory_fields(state flat.Node, s
 			return none
 		}
 		referent := unwrap_pointer(field_type)
-		access := tc.ownership_scoped_thread_access(referent, false) or { return none }
-		if access !in [.atomic, .scalar] {
-			return none
-		}
+		access := tc.ownership_scoped_thread_access(referent, true) or { return none }
 		borrows << ScopedThreadBorrow{ ...loan, field: field.name, access: access }
 	}
 	// Reject positional fields, spreads, and any initializer omitted by the proof.

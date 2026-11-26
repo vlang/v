@@ -544,6 +544,10 @@ can invoke or lend the callback to a checked helper before moving it into the wo
 The checker verifies every use of a borrowed field in the callback's `call` method and destructor.
 The constructor rejects `-autofree` because that mode preserves caller aliases when values move.
 
+Callback state may borrow a synchronized record through a reference field. In `call` and
+the destructor, copy scalar fields into locals and use the supported atomic and mutex
+operations directly on the record's handle fields. The record stays borrowed until the join.
+
 A concrete factory method may also return the callback. The method must directly return a
 fresh box built from an inline state initializer. Borrowed fields must come from reference
 fields of its receiver. The worker's join keeps that receiver alive and prevents its use

@@ -104,7 +104,7 @@ struct ScopedThreadBorrow {
 // Collect the loans supplied by a scoped spawn argument. A record's borrowed
 // fields must come directly from the caller, so the initializer provides the
 // complete set of storage the worker can access.
-fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, expected Type, check_drop_separately bool) ?[]ScopedThreadBorrow {
+fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, expected Type, callback_state bool) ?[]ScopedThreadBorrow {
 	actual := unalias_type(tc.resolve_type(id))
 	formal := unalias_type(expected)
 	if actual is Pointer && formal is Pointer {
@@ -125,7 +125,7 @@ fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, ex
 	name_id := (actual as Struct).name_id
 	literal := tc.a.node(tc.ownership_unwrap_expr(id))
 	if literal.kind != .struct_init || tc.struct_embed_receiver_names(name_id).len != 0
-		|| (!check_drop_separately && tc.ownership_type_has_explicit_drop(name_id))
+		|| (!callback_state && tc.ownership_type_has_explicit_drop(name_id))
 		|| receiver_method_name_candidates(actual, 'free', tc.cur_module).any(it in tc.fn_ret_types) {
 		return none
 	}
@@ -145,8 +145,10 @@ fn (tc &TypeChecker) ownership_scoped_thread_argument_borrows(id flat.NodeId, ex
 			} else {
 				return none
 			}
-			borrow := tc.ownership_scoped_thread_source(field_id, false) or { return none }
-			access := tc.ownership_scoped_thread_access(*field_type.base_type, false) or { return none }
+			borrow := tc.ownership_scoped_thread_source(field_id, callback_state) or { return none }
+			access := tc.ownership_scoped_thread_access(*field_type.base_type, callback_state) or {
+				return none
+			}
 			if access != borrow.access {
 				return none
 			}
@@ -200,12 +202,22 @@ fn (tc &TypeChecker) ownership_scoped_thread_parameter_does_not_escape(info Call
 		}
 		for borrow in borrows {
 			fields[borrow.field] = borrow.access
+			if borrow.access == .record {
+				field := tc.struct_field_type(formal.name_id, borrow.field) or { return false }
+				record := tc.ownership_scoped_thread_record_fields(unwrap_pointer(unalias_type(field))) or {
+					return false
+				}
+				for name, member_access in record {
+					fields['${borrow.field}.${name}'] = member_access
+				}
+			}
 		}
 	}
 	for i in 0 .. fn_node.children_count {
 		child := tc.a.child(fn_node, i)
 		if tc.a.node(child).kind != .param
-			&& !tc.ownership_scoped_thread_uses_do_not_escape(child, parameter.value, access, fields, false, 0) {
+			&& !tc.ownership_scoped_thread_uses_do_not_escape(child, parameter.value, access,
+				fields, false, 0) {
 			return false
 		}
 	}
@@ -227,25 +239,37 @@ fn (tc &TypeChecker) ownership_scoped_thread_uses_do_not_escape(id flat.NodeId, 
 		if fields.len == 0 {
 			return tc.ownership_scoped_thread_non_escaping_use(id, access)
 		}
-		field_id := tc.direct_parent_id(id)
-		field := tc.a.node(field_id)
-		if field.kind != .selector {
-			return false
-		}
-		field_access := fields[field.value] or { return false }
-		parent := tc.a.node(tc.direct_parent_id(field_id))
-		if parent.kind == .call && tc.a.child(parent, 0) == field_id {
-			return false
+		mut field_id := tc.ownership_scoped_thread_field_use(id) or { return false }
+		field_name := tc.a.node(field_id).value
+		mut field_access := fields[field_name] or { return false }
+		if field_access == .record {
+			field_id = tc.ownership_scoped_thread_field_use(field_id) or { return false }
+			member := tc.a.node(field_id).value
+			field_access = fields['${field_name}.${member}'] or { return false }
 		}
 		return tc.ownership_scoped_thread_non_escaping_use(field_id, field_access)
 	}
 	nested := inside_callable || node.kind in [.fn_literal, .lambda_expr]
 	for i in 0 .. node.children_count {
-		if !tc.ownership_scoped_thread_uses_do_not_escape(tc.a.child(node, i), name, access, fields, nested, depth + 1) {
+		if !tc.ownership_scoped_thread_uses_do_not_escape(tc.a.child(node, i), name, access,
+			fields, nested, depth + 1) {
 			return false
 		}
 	}
 	return true
+}
+
+fn (tc &TypeChecker) ownership_scoped_thread_field_use(id flat.NodeId) ?flat.NodeId {
+	field_id := tc.direct_parent_id(id)
+	field := tc.a.node(field_id)
+	if field.kind != .selector || field.children_count != 1 || tc.a.child(field, 0) != id {
+		return none
+	}
+	parent := tc.a.node(tc.direct_parent_id(field_id))
+	if parent.kind == .call && tc.a.child(parent, 0) == field_id {
+		return none
+	}
+	return field_id
 }
 
 fn (tc &TypeChecker) ownership_scoped_thread_non_escaping_use(id flat.NodeId, access ScopedThreadAccess) bool {
