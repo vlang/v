@@ -218,17 +218,14 @@ fn main() {
 '
 	src_file := os.join_path(root, 'v3_veb_complete_context_receiver.v')
 	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(root, 'v3_veb_complete_context_receiver.c')
-	compile := os.exec([@VEXE, '-no-memory-limit', src_file, '-o', '${c_out}'])
+	bin_out := os.join_path(root, 'v3_veb_complete_context_receiver')
+	compile := os.exec([@VEXE, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
-	c_code := os.read_file(c_out) or { '' }
+	c_code := os.read_file(bin_out + '.c') or { panic(err) }
 	assert c_code.contains('Context__before_request(user_context)'), c_code
 	assert !c_code.contains('Context__before_request(&user_context->veb__Context)'), c_code
 	assert c_code.contains('AnonStruct_v3_inferred_'), c_code
 	assert !c_code.contains('v_struct'), c_code
-	bin_out := os.join_path(root, 'v3_veb_complete_context_receiver')
-	native_compile := os.exec([@VEXE, '-no-memory-limit', src_file, '-o', bin_out])
-	assert native_compile.exit_code == 0, native_compile.output
 }
 
 fn test_veb_reflected_context_arguments() {
