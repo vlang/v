@@ -1202,7 +1202,7 @@ pub:
 	mode u32 = 0o777 // note that the actual mode is affected by the process's umask
 }
 
-// mkdir_all will create a valid full path of all directories given in `path`.
+// mkdir_all creates all directories in `path`, allowing concurrent creation of the same directories.
 pub fn mkdir_all(opath string, params MkdirParams) ! {
 	if exists(opath) {
 		if is_dir(opath) {
@@ -1220,6 +1220,9 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 			continue
 		}
 		mkdir(p, params) or {
+			if is_dir(p) {
+				continue
+			}
 			return error_with_code('folder: ${p}, error: ${err.msg()}', err.code())
 		}
 	}
