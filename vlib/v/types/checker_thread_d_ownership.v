@@ -95,15 +95,17 @@ fn (mut tc TypeChecker) ownership_check_thread_argument(id flat.NodeId, expected
 			if group_info := group {
 				for borrow in borrows {
 					if !tc.ownership_scoped_thread_group_source_outlives(borrow.source, group_info) {
+						kind := if borrow.access == .atomic { 'atomic' } else { 'scalar' }
 						tc.record_error(.thread_transfer,
-							'scoped thread group `${group_info.name}` outlives borrowed scalar `${borrow.source}`', borrow.pos)
+							'scoped thread group `${group_info.name}` outlives borrowed ${kind} `${borrow.source}`', borrow.pos)
 						return
 					}
 				}
 			}
-			if !tc.ownership_scoped_thread_reads_parameter(info, index, expected, borrows) {
+			if !tc.ownership_scoped_thread_parameter_does_not_escape(info, index, expected, borrows) {
+				use := if borrows.any(it.access == .atomic) { 'used' } else { 'read' }
 				tc.record_error(.thread_transfer,
-					'cannot prove that the scoped thread borrow is read without escaping', id)
+					'cannot prove that the scoped thread borrow is ${use} without escaping', id)
 			}
 			return
 		}

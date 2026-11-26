@@ -516,6 +516,11 @@ The array stays local to the scope, with appends and the deferred wait as its
 only uses. Ownership cleanup releases the handle array and any discarded
 results after the join.
 
+A scoped worker can also borrow a local `sync.arc.Atomic[T]` handle whose payload
+is scalar. It can call the atomic operations directly on that reference, including
+through a field of the inline worker struct. The handle's binding must outlive the
+join, and the worker cannot pass the reference to another function or store it.
+
 ## Full example
 
 From the Rust book, translated to V:
