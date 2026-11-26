@@ -163,73 +163,54 @@ pub fn value() int {
 	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
-fn directive_order_gen_and_run_flag_include_dir_header() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_flag_include_dir_project')
+fn directive_order_gen_and_run_flag_include_headers() string {
+	root := directive_order_fixture_dir('v3_c_directive_order_flag_include_headers_project')
 	defer { os.rmdir_all(root) or {} }
 	directive_order_write_file(root, 'v.mod',
-		"Module { name: 'directive_order_flag_include_dir' }\n")
+		"Module { name: 'directive_order_flag_include_headers' }\n")
 	directive_order_write_file(root, 'main.v', 'module main
 
-#flag -I @DIR/include
+#flag -I @DIR/early_include
 #insert "flag_value.c"
 
 fn C.flag_value() int
 
+#insert "late_flag_value.c"
+#flag -I @DIR/late_include
+
+fn C.late_flag_value() int
+
 fn main() {
 	println(C.flag_value().str())
+	println(C.late_flag_value().str())
 }
 ')
-	directive_order_write_file(root, 'include/flag_value.c', '#include <flag_value.h>
+	directive_order_write_file(root, 'early_include/flag_value.c', '#include <flag_value.h>
 
 static inline int flag_value(void) {
 	return flag_value_inner();
 }
 ')
-	directive_order_write_file(root, 'include/flag_value.h', 'static inline int flag_value_inner(void) {
+	directive_order_write_file(root, 'early_include/flag_value.h', 'static inline int flag_value_inner(void) {
 	return 52;
 }
 ')
-	bin_out := os.join_path(root, 'v3_c_directive_order_flag_include_dir')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
-	assert result.exit_code == 0, result.output
-	run := os.exec([bin_out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '52', run.output
-	return os.read_file(bin_out + '.c') or { panic(err) }
-}
-
-fn directive_order_gen_and_run_late_flag_include_dir_header() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_late_flag_include_dir_project')
-	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod',
-		"Module { name: 'directive_order_late_flag_include_dir' }\n")
-	directive_order_write_file(root, 'main.v', 'module main
-
-#insert "late_flag_value.c"
-#flag -I @DIR/include
-
-fn C.late_flag_value() int
-
-fn main() {
-	println(C.late_flag_value().str())
-}
-')
-	directive_order_write_file(root, 'include/late_flag_value.c', '#include <late_flag_value.h>
+	directive_order_write_file(root, 'late_include/late_flag_value.c', '#include <late_flag_value.h>
 
 static inline int late_flag_value(void) {
 	return late_flag_value_inner();
 }
 ')
-	directive_order_write_file(root, 'include/late_flag_value.h', 'static inline int late_flag_value_inner(void) {
+	directive_order_write_file(root, 'late_include/late_flag_value.h', 'static inline int late_flag_value_inner(void) {
 	return 63;
 }
 ')
-	bin_out := os.join_path(root, 'v3_c_directive_order_late_flag_include_dir')
+	bin_out := os.join_path(root, 'v3_c_directive_order_flag_include_headers')
 	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '63', run.output
+	assert run.output.trim_space() == '52\n63', run.output
 	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
@@ -938,22 +919,14 @@ fn test_dir_include_is_resolved_without_a_header_probe() {
 	assert !c_code.contains('int dir_value(void);'), c_code
 }
 
-fn test_quoted_include_uses_flag_include_dirs() {
-	c_code := directive_order_gen_and_run_flag_include_dir_header()
-	flag_header := directive_order_index(c_code, 'flag_value.c"')
-	assert flag_header >= 0, c_code
-	// Angle-bracket dependencies remain supplied through the recorded -I flag.
-	assert !c_code.contains('#include <flag_value.h>'), c_code
-	assert !c_code.contains('int flag_value(void);'), c_code
-}
-
-fn test_quoted_include_uses_later_flag_include_dirs() {
-	c_code := directive_order_gen_and_run_late_flag_include_dir_header()
-	flag_header := directive_order_index(c_code, 'late_flag_value.c"')
-	assert flag_header >= 0, c_code
-	assert !c_code.contains('#include <late_flag_value.h>'), c_code
-
-	assert !c_code.contains('int late_flag_value(void);'), c_code
+fn test_quoted_includes_use_earlier_and_later_include_flags() {
+	c_code := directive_order_gen_and_run_flag_include_headers()
+	for name in ['flag_value', 'late_flag_value'] {
+		assert c_code.contains('#include "${name}.c"\n'), c_code
+		// Angle-bracket dependencies remain supplied through each recorded -I flag.
+		assert !c_code.contains('#include <${name}.h>'), c_code
+		assert !c_code.contains('int ${name}(void);'), c_code
+	}
 }
 
 fn test_multiline_static_inline_header_is_not_redeclared() {
