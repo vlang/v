@@ -454,7 +454,7 @@ fn test_macos_linux_cross_compile_uses_bundled_amd64_sysroot() {
 	}
 }
 
-fn test_macos_linux_cross_compile_selects_postgres_sysroot_headers() {
+fn test_macos_linux_cross_compile_does_not_require_postgres_headers() {
 	$if !macos {
 		return
 	}
@@ -473,16 +473,16 @@ fn test_macos_linux_cross_compile_selects_postgres_sysroot_headers() {
 			os.setenv('VFLAGS', value, true)
 		}
 	}
-	// C output exercises conditional headers without requiring a cross toolchain or libpq.
+	// The PostgreSQL driver loads libpq at runtime, so cross-compiled C output must not
+	// depend on development headers or bundled PostgreSQL portability stubs.
 	for target_os in ['macos', 'linux'] {
 		build := cmdexec.run(@VEXE, ['-nocache', '-cc', 'clang', '-os', target_os, '-o', output,
 			source])
 		assert build.exit_code == 0, build.output
 		c_source := os.read_file(output)!
-		assert c_source.contains('#include <libpq/libpq-fe.h>') == (target_os == 'linux')
-		assert c_source.contains('#include <libpq/pg_config.h>') == (target_os == 'linux')
-		assert c_source.contains('#include <libpq-fe.h>') == (target_os == 'macos')
-		assert c_source.contains('#include <pg_config.h>') == (target_os == 'macos')
+		assert !c_source.contains('libpq-fe.h')
+		assert !c_source.contains('pg_config.h')
+		assert !c_source.contains('pgport_stubs.c')
 	}
 }
 
