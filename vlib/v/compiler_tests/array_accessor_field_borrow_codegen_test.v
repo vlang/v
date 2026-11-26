@@ -596,12 +596,44 @@ fn check_nested_stringifier() {
 	println(last_name_then_stringify_wrapper(Wrapper{}))
 }
 
+type Name = string
+
+struct AliasEntry implements Drop {
+	name Name
+}
+
+__global alias_entries []AliasEntry
+
+fn (name Name) str() string {
+	alias_entries.delete_last()
+	return string(name)
+}
+
+// The borrowed interpolation part is itself a string alias with a custom `str()`. The
+// interpolation dispatches through that method (not the builtin stringifier), and it mutates
+// the source array before the borrowed shallow receiver is read, so the borrow is unsafe.
+fn last_label() string {
+	return '\${alias_entries.last().name}\${0}'
+}
+
+fn (mut value AliasEntry) drop() {}
+
+fn check_alias_stringifier() {
+	alias_entries = [AliasEntry{ name: Name('hello') }]
+	println(last_label())
+}
+
 fn main() {
 	check_stringifier()
 	check_nested_stringifier()
+	check_alias_stringifier()
 }
 ", '-enable-globals -nocolor')
-	assert_independent_array_element_errors(stringifiers, ['20:12', '28:12'])
+	assert ownership_error_lines(stringifiers) == [
+		independent_array_element_error_at('20:12', 'E'),
+		independent_array_element_error_at('28:12', 'E'),
+		independent_array_element_error_at('58:12', 'AliasEntry'),
+	], stringifiers.output
 
 	stable_stringifier := compile_v3_ownership_program(v3_bin, 'owned_string_interp_stable_auto_stringifier', "struct E {
 	name string
@@ -622,37 +654,6 @@ fn main() {
 ", '')
 	assert stable_stringifier.exit_code == 0, stable_stringifier.output
 	assert !stable_stringifier.output.contains('cannot return an independent array element'), stable_stringifier.output
-}
-
-fn test_owned_string_interpolation_with_custom_stringifier_part_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	// The borrowed interpolation part is itself a string alias with a custom `str()`. The
-	// interpolation dispatches through that method (not the builtin stringifier), and it mutates
-	// the source array before the borrowed shallow receiver is read, so the borrow is unsafe.
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_self_stringifier', "type Name = string
-
-struct E {
-	name Name
-}
-
-__global entries []E
-
-fn (name Name) str() string {
-	entries.delete_last()
-	return string(name)
-}
-
-fn last_label() string {
-	return '\${entries.last().name}\${0}'
-}
-
-fn main() {
-	entries = [E{ name: Name('hello') }]
-	println(last_label())
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
 fn test_owned_scalar_borrows_with_mutating_siblings_are_rejected() {
