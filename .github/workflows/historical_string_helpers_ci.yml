@@ -1,0 +1,230 @@
+name: Historical vlib string helper availability
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/transform/fn.v'
+      - 'vlib/v/transform/for.v'
+      - '.github/workflows/historical_string_helpers_ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  modern:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+      - uses: ./.github/actions/setup-v
+      - name: Rebuild and verify focused regressions
+        run: |
+          set -eu
+          ./v self
+          ./v fmt -verify vlib/v/transform/fn.v vlib/v/transform/for.v
+          ./v -cc gcc -no-retry-compilation -silent vlib/v/tests/builtin_strings_and_interpolation/string_normalize_compare_test.v
+          ./v -cc gcc -no-retry-compilation -silent vlib/v/tests/builtin_strings_and_interpolation/string_split_for_in_test.v
+          cat > "$RUNNER_TEMP/helper_control.v" <<'V'
+          fn main() {
+              s := ' a,b '
+              assert s.trim_space() == 'a,b'
+              assert s.to_lower_ascii() == ' a,b '
+              mut parts := []string{}
+              for part in s.split(',') {
+                  parts << part
+              }
+              assert parts == [' a', 'b ']
+          }
+          V
+          ./v -gc none -o "$RUNNER_TEMP/helper_control.c" "$RUNNER_TEMP/helper_control.v"
+          python3 - "$RUNNER_TEMP/helper_control.c" <<'PY'
+          import pathlib, re, sys
+          code = pathlib.Path(sys.argv[1]).read_text()
+          for helper in ('string__trim_space_eq', 'string__to_lower_ascii_eq', 'string__split_next'):
+              matches = re.findall(r'\b' + helper + r'\s*\(', code)
+              print(helper, len(matches))
+              assert len(matches) >= 3, helper
+          PY
+          ./v -gc none run "$RUNNER_TEMP/helper_control.v"
+      - name: Full compiler and C backend tests
+        run: |
+          set -eu
+          ./v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
+          # Match compiler_ci.yml's Objective-C dependency setup.
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev
+          printf 'int main(void) { return 0; }\n' | gcc -x objective-c - -lobjc -o "$RUNNER_TEMP/objc-smoke"
+          "$RUNNER_TEMP/objc-smoke"
+          ./v -silent vlib/v/compiler_errors_test.v
+          ./v -silent test vlib/v/
+          ./v -silent test vlib/v/gen/c/
+
+  historical_fixture:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 6f2397155cbf8f69a262747f32dc01a1a601f7bf
+          path: baseline
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: 2d1367e589ed30c03325e586a8ddfd3bc96c8c3d
+          path: fixture
+          persist-credentials: false
+      - name: Build matched production compilers
+        id: build_matched
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          out="$RUNNER_TEMP/historical-helper-check"
+          mkdir -p "$out"
+          {
+            uname -a
+            sw_vers
+            sysctl -n hw.model hw.ncpu hw.memsize
+            clang --version
+            xcodebuild -version
+          } > "$out/environment.txt"
+          for role in baseline candidate; do
+            (
+              cd "$role"
+              git rev-parse HEAD > "$out/$role.commit"
+              env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS make -j4
+              env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 ./v -prod -cc clang self
+              cp ./v "$out/$role.v"
+              shasum -a 256 "$out/$role.v" > "$out/$role.binary.sha256"
+              ./v version
+            ) 2>&1 | tee "$out/$role.build.log"
+          done
+          cd fixture
+          git rev-parse HEAD > "$out/fixture.commit"
+          git ls-tree -r HEAD > "$out/fixture.git-tree.txt"
+          # The fixed checkout is input, not a third compiler to bootstrap.
+          # Its historical source need not build with today's external VC.
+          # The fixture Makefile enables legacy support only on Darwin <= 16.
+          # macos-15 ARM64 uses the system SDK, so no legacy checkout is created.
+          darwin_major="$(uname -r | cut -d. -f1)"
+          test "$darwin_major" -gt 16
+          env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS make -j4 latest_tcc 2>&1 | tee "$out/fixture.setup.log"
+          git -C thirdparty/tcc rev-parse HEAD > "$out/fixture.tcc.commit"
+          printf "not applicable: Darwin %s uses the system SDK\n" "$darwin_major" > "$out/fixture.legacy.status"
+          git diff --exit-code
+      - name: Fixed fixture inventory and before/after syntax
+        shell: bash
+        working-directory: fixture
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/historical-helper-check"
+          # Historical cmd/v selected Wasm implicitly; #31367 made it opt-in.
+          # Restore exactly the documented fixture workload, not a smaller denominator.
+          args=(-nocache -gc none -prealloc -compile-backend fastc,wasm -building-v)
+          printf '%s\n' "${args[@]}" > "$out/measurement-args.txt"
+          # Collect BOTH inventories before enforcing the fixed denominator.
+          # This preserves comparative evidence even when the historical count differs.
+          for role in baseline candidate; do
+            cp "$out/$role.v" ./v
+            rm -f "$out/self.c"
+            rc=0
+            env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
+              ./v "${args[@]}" -v -o "$out/self.c" cmd/v \
+              > "$out/$role.inventory.stdout" 2> "$out/$role.inventory.stderr" || rc=$?
+            echo "$rc" > "$out/$role.inventory.exit-status.txt"
+            cat "$out/$role.inventory.stdout" "$out/$role.inventory.stderr"
+            if [ -s "$out/self.c" ]; then
+              cp "$out/self.c" "$out/$role.inventory.c"
+            fi
+          done
+          python3 - "$out" <<'PY'
+          import collections, hashlib, pathlib, re, subprocess, sys
+          out = pathlib.Path(sys.argv[1])
+          fixture = pathlib.Path.cwd().resolve()
+          paths = sorted(p for p in subprocess.check_output(
+              ['git', 'ls-files', '-z', '--', 'cmd/v', 'vlib']).decode().split('\0')
+              if p and pathlib.Path(p).suffix in ('.v', '.vsh', '.c', '.h'))
+          manifest = b''.join(p.encode() + b'\0' +
+              hashlib.sha256((fixture / p).read_bytes()).hexdigest().encode() + b'\n'
+              for p in paths)
+          (out / 'fixture.source-manifest').write_bytes(manifest)
+          digest = hashlib.sha256(manifest).hexdigest()
+          print('fixture tracked source files:', len(paths), 'manifest SHA-256:', digest)
+          expected_digest = 'f53a9b162657ba667fde1d8a00cd6f59c0f7e6c7f847985894d61189122a2966'
+          inventories = {}
+          errors = []
+          if len(paths) != 8498 or digest != expected_digest:
+              errors.append('fixture source manifest differs from documented fixed fixture')
+          for role in ('baseline', 'candidate'):
+              log = '\n'.join((out / f'{role}.inventory.{suffix}').read_text(errors='replace')
+                              for suffix in ('stdout', 'stderr'))
+              counts = re.findall(r'^\s*parsed \.(v|vh) files\s+(\d+) files\s*$', log, re.M)
+              lines = re.findall(r'^\s*parsed \.(v|vh) lines\s+(\d+) lines\s*$', log, re.M)
+              selected = []
+              for _, entry in re.findall(r'^[ \t]*\.(v|vh) files:[ \t]*(.*)$', log, re.M):
+                  for name in entry.split():
+                      path = pathlib.Path(name).expanduser()
+                      if not path.is_absolute():
+                          path = fixture / path
+                      try:
+                          selected.append(path.resolve().relative_to(fixture).as_posix())
+                      except ValueError:
+                          errors.append(f'{role}: source outside fixture: {path}')
+              selected.sort()
+              inventories[role] = selected
+              (out / f'{role}.parsed-paths.txt').write_text('\n'.join(selected) + '\n')
+              groups = collections.Counter('/'.join(p.split('/')[:3]) for p in selected)
+              print(role, 'files:', counts, 'lines:', lines, 'listed:', len(selected),
+                    'modules:', sorted(groups.items()))
+              if (out / f'{role}.inventory.exit-status.txt').read_text().strip() != '0':
+                  errors.append(f'{role}: inventory compilation failed')
+              if len(counts) != 2 or dict(counts) != {'v': '562', 'vh': '0'}:
+                  errors.append(f'{role}: fixed file count mismatch')
+              if len(lines) != 2 or sum(int(n) for _, n in lines) != 559990:
+                  errors.append(f'{role}: fixed line denominator mismatch')
+              if len(selected) != 562 or len(set(selected)) != 562:
+                  errors.append(f'{role}: parsed file list mismatch')
+              # Hash of the sorted relative paths from the successful historical
+              # reference inventory (job 140137867851, 562 distinct paths).
+              parsed_digest = hashlib.sha256(('\n'.join(selected) + '\n').encode()).hexdigest()
+              print(role, 'parsed path SHA-256:', parsed_digest)
+              if parsed_digest != '375b4ef5dd70a83db5cb3fed9c4c030ee43969e5961abf31b69ee48ca671827c':
+                  errors.append(f'{role}: historical parsed-path manifest mismatch')
+              if any(p not in paths for p in selected):
+                  errors.append(f'{role}: parsed path not in tracked fixture manifest')
+          a, b = inventories['baseline'], inventories['candidate']
+          (out / 'parsed-path-difference.txt').write_text(
+              'baseline only:\n' + '\n'.join(sorted(set(a)-set(b))) +
+              '\ncandidate only:\n' + '\n'.join(sorted(set(b)-set(a))) + '\n')
+          if a != b:
+              errors.append('baseline and candidate parsed different files')
+          if errors:
+              print('\n'.join(errors), file=sys.stderr)
+              raise SystemExit(1)
+          PY
+          # This is a correctness regression, not an instruction comparison:
+          # the original output is invalid C and cannot be a valid benchmark baseline.
+          for role in baseline candidate; do
+            rc=0
+            clang -std=gnu11 -fsyntax-only -ferror-limit=0 -I thirdparty -I thirdparty/stdatomic/nix \
+              "$out/$role.inventory.c" > "$out/$role.syntax.log" 2>&1 || rc=$?
+            printf '%s\n' "$rc" > "$out/$role.syntax.exit-status.txt"
+            echo "$role syntax exit: $rc"
+            cat "$out/$role.syntax.log"
+          done
+          test "$(cat "$out/baseline.syntax.exit-status.txt")" -ne 0
+          grep -F "undeclared function 'string__trim_space_eq'" "$out/baseline.syntax.log"
+          grep -F "undeclared function 'string__split_next'" "$out/baseline.syntax.log"
+          test "$(cat "$out/candidate.syntax.exit-status.txt")" -eq 0
+          git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: historical-helper-availability-evidence
+          path: ${{ runner.temp }}/historical-helper-check
