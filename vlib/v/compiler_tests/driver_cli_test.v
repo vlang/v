@@ -22,12 +22,14 @@ fn testsuite_end() {
 }
 
 fn build_driver_cli_v3() string {
+	// Preserve compiler build options inherited by standalone test invocations.
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	if os.getenv('VFLAGS') == '' && os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(driver_cli_v3_src) {
+		return os.real_path(shared)
+	}
+	// Compiler self-builds already enable preallocation.
 	return build_driver_cli_v3_with_flags(os.join_path(driver_cli_compilers_dir(), 'plain'), [])
-}
-
-fn build_driver_cli_prealloc_v3() string {
-	return build_driver_cli_v3_with_flags(os.join_path(driver_cli_compilers_dir(), 'prealloc'),
-		['-prealloc'])
 }
 
 fn build_driver_cli_v3_with_flags(root string, flags []string) string {
@@ -843,7 +845,7 @@ fn test_driver_persistent_macos_output_survives_cache_removal() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_prealloc_v3()
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'persistent.v')
 	os.write_file(source, "fn main() {
 	println('persistent-output-ok')
@@ -880,7 +882,7 @@ fn test_driver_macos_wrapv_and_cg_link_flags() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_prealloc_v3()
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'signed_overflow.v')
 	// `int` is 64-bit on a 64-bit target, so the overflow point is spelled with the
 	// fixed-width types: each one must wrap (`-fwrapv`) instead of being folded away
@@ -1906,7 +1908,7 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_prealloc_v3()
+	v3_bin := build_driver_cli_v3()
 	program := os.join_path(root, 'dispatcher_build.v')
 	binary := os.join_path(root, 'dispatcher_build')
 	os.write_file(program, "println('built')")!

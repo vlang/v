@@ -33,7 +33,8 @@ fn test_for_in_newline_body_compiles_and_runs() {
 	defer { os.rm(path) or {} }
 	os.write_file(path, 'fn main() {\n\tmut total := 0\n\tfor value in [1, 2, 3]\n\t{\n\t\ttotal += value\n\t}\n\tassert total == 6\n}\n')!
 	mut child := os.new_process(@VEXE)
-	child.set_args(['-no-retry-compilation', '-cc', 'clang', '-gc', 'none', 'run', path])
+	cc := $if windows { 'gcc' } $else { 'clang' }
+	child.set_args(['-no-retry-compilation', '-cc', cc, '-gc', 'none', 'run', path])
 	mut environment := os.environ()
 	environment.delete('VFLAGS')
 	environment.delete('VOSARGS')

@@ -1,20 +1,5 @@
 import os
-
-const no_main_vexe = @VEXE
-const no_main_tests_dir = os.dir(@FILE)
-const no_main_v3_dir = os.dir(no_main_tests_dir)
-const no_main_vlib_dir = os.dir(no_main_v3_dir)
-const no_main_v3_src = os.join_path(no_main_v3_dir, 'v.v')
-
-fn no_main_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_no_main_renamed_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([no_main_vexe, '-gc', 'none', '-path', '${no_main_vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${no_main_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 // Under `-d no_main` the entry `main` is emitted as the ordinary symbol
 // `main__main`. A function calling it must use that name and see a prototype;
@@ -22,16 +7,12 @@ fn no_main_build_v3() string {
 // forward-declared, so the C compiler saw an implicit declaration of `main`
 // emitted before its definition.
 fn test_no_main_renamed_main_is_declared_and_called_by_symbol() {
-	v3_bin := no_main_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_no_main_prog_${os.getpid()}.v')
-	out_c := os.join_path(os.temp_dir(), 'v3_no_main_prog_${os.getpid()}.c')
-	obj := os.join_path(os.temp_dir(), 'v3_no_main_prog_${os.getpid()}.o')
-	defer {
-		os.rm(v3_bin) or {}
-		os.rm(src) or {}
-		os.rm(out_c) or {}
-		os.rm(obj) or {}
-	}
+	root := os.join_path(os.vtmp_dir(), 'v3_no_main_renamed_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_no_main_prog.v')
+	out_c := os.join_path(root, 'v3_no_main_prog.c')
+	obj := os.join_path(root, 'v3_no_main_prog.o')
 	os.write_file(src, "@[export: 'invoke']
 fn invoke() {
 	main()
@@ -44,7 +25,7 @@ fn main() {
 		panic(err)
 	}
 
-	compile := os.exec([v3_bin, '${src}', '-d', 'no_main', '-b', 'c', '-o', '${out_c}'])
+	compile := os.exec([@VEXE, '${src}', '-d', 'no_main', '-b', 'c', '-o', '${out_c}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('cannot be called'), compile.output
 

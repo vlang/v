@@ -1,10 +1,9 @@
 // vtest ownership
 import os
 
-const borrow_storage_vexe = @VEXE
-const borrow_storage_vroot = os.dir(os.dir(os.dir(os.dir(@FILE))))
 const borrow_storage_tmp_dir = os.join_path(os.vtmp_dir(), 'borrow_storage_${os.getpid()}')
-const borrow_storage_v3 = os.join_path(borrow_storage_tmp_dir, 'v3_ownership')
+// `v -ownership` runs the launcher's cached ownership compiler, built from this tree.
+const borrow_storage_v3 = @VEXE
 
 const borrow_storage_drop_decls = 'interface Drop {
 mut:
@@ -26,11 +25,6 @@ fn (r &Res) clone() Res {
 
 fn testsuite_begin() {
 	os.mkdir_all(borrow_storage_tmp_dir) or { panic(err) }
-	cmd_v := os.join_path(borrow_storage_vroot, 'cmd', 'v')
-	vlib := os.join_path(borrow_storage_vroot, 'vlib')
-	build := os.exec([borrow_storage_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-		'${vlib}' + '|@vlib|@vmodules', '-o', '${borrow_storage_v3}', '${cmd_v}'])
-	assert build.exit_code == 0, build.output
 }
 
 fn testsuite_end() {

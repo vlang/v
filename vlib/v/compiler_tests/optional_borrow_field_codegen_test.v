@@ -1,23 +1,12 @@
 import os
+import v.tempname
 
 fn test_optional_field_payload_can_be_borrowed() {
-	vexe := @VEXE
-	v3_dir := os.dir(os.dir(@FILE))
-	vlib_dir := os.dir(v3_dir)
-	v3_src := os.join_path(v3_dir, 'v.v')
-	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_borrow_field_compiler')
-	src := os.join_path(os.temp_dir(), 'v3_optional_borrow_field_input.v')
-	out := os.join_path(os.temp_dir(), 'v3_optional_borrow_field_program')
-	defer {
-		os.rm(v3_bin) or {}
-		os.rm(src) or {}
-		os.rm(out) or {}
-		os.rm(out + '.c') or {}
-	}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
+	dir := os.join_path(os.vtmp_dir(), 'v3_optional_borrow_field_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	src := os.join_path(dir, 'v3_optional_borrow_field_input.v')
+	out := os.join_path(dir, 'v3_optional_borrow_field_program')
 	os.write_file(src, "struct Holder {
 	value ?string
 }
@@ -38,7 +27,7 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-b', 'c', '-o', '${out}', '${src}'])
+	compile := os.exec([@VEXE, '-b', 'c', '-o', out, src])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

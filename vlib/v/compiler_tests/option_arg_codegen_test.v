@@ -1,56 +1,76 @@
 import os
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-// build_v3 builds v3 data for v3 tests.
-fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_option_arg_codegen_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn option_arg_run_good(name string, source string) string {
+	out, _ := option_arg_compile_and_run(name, source, false)
+	return out
 }
 
-// run_good supports run good handling for v3 tests.
-fn run_good(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+fn option_arg_compile_and_run(name string, source string, keep_c bool) (string, string) {
+	tmp := os.vtmp_dir()
+	token := tempname.unique_token()
+	dir := os.join_path(tmp, 'v3_option_arg_${token}')
+	os.mkdir(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	src := os.join_path(dir, 'v3_${name}.v')
+	// Retained C files use the binary basename in the shared V temp directory.
+	bin := os.join_path(dir, 'v3_${name}_${token}') + $if windows { '.exe' } $else { '' }
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0
-	assert !compile.output.contains('C compilation failed')
+	mut args := [@VEXE, '-b', 'c', '-o', bin]
+	if keep_c {
+		args << '-keepc'
+	}
+	args << src
+	compile := os.exec(args)
+	retained := if keep_c {
+		prefix := os.file_name(bin) + '.'
+		(os.ls(tmp) or { panic(err) }).filter(it.starts_with(prefix) && it.ends_with('.tmp.c'))
+	} else {
+		[]string{}
+	}
+	defer {
+		for filename in retained {
+			os.rm(os.join_path(tmp, filename)) or {}
+		}
+	}
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
 
 	run := os.exec([bin])
-	assert run.exit_code == 0
-	return run.output.trim_space()
+	assert run.exit_code == 0, run.output
+	c_source := if keep_c {
+		assert retained.len == 1, 'expected one retained C file for ${bin}, got ${retained}'
+		os.read_file(os.join_path(tmp, retained[0])) or { panic(err) }
+	} else {
+		''
+	}
+	return run.output.trim_space(), c_source
 }
 
-fn generated_c(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+fn option_arg_generated_c(name string, source string) string {
+	dir := os.join_path(os.vtmp_dir(), 'v3_option_arg_${tempname.unique_token()}')
+	os.mkdir(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	base := os.join_path(dir, 'v3_${name}')
+	src := base + '.v'
 	os.write_file(src, source) or { panic(err) }
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
+	c_path := base + '.c'
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
 }
 
 // test_optional_argument_codegen_wraps_values_and_none validates this v3 regression case.
 fn test_optional_argument_codegen_wraps_values_and_none() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'option_arg_codegen_input', "struct Info {\n\tvalue int\n}\n\nfn pass_int(x ?int) int {\n\treturn 1\n}\n\nfn pass_info(x ?Info) int {\n\treturn 1\n}\n\nfn main() {\n\tassert pass_int(3) == 1\n\tassert pass_int(none) == 1\n\tassert pass_info(Info{value: 4}) == 1\n\tassert pass_info(none) == 1\n\tprintln('ok')\n}\n")
+	out := option_arg_run_good('option_arg_codegen_input', "struct Info {\n\tvalue int\n}\n\nfn pass_int(x ?int) int {\n\treturn 1\n}\n\nfn pass_info(x ?Info) int {\n\treturn 1\n}\n\nfn main() {\n\tassert pass_int(3) == 1\n\tassert pass_int(none) == 1\n\tassert pass_info(Info{value: 4}) == 1\n\tassert pass_info(none) == 1\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
 }
 
 fn test_optional_literal_argument_uses_expected_wrapper() {
-	v3_bin := build_v3()
 	source := 'fn take(x ?i64) i64 {
 	return x or { -1 }
 }
@@ -60,15 +80,13 @@ fn main() {
 	println("ok")
 }
 '
-	out := run_good(v3_bin, 'optional_literal_expected_wrapper', source)
+	out, c_code := option_arg_compile_and_run('optional_literal_expected_wrapper', source, true)
 	assert out == 'ok'
-	c_code := generated_c(v3_bin, 'optional_literal_expected_wrapper_c', source)
 	assert c_code.contains('take((__v_option_i64){.ok = true, .value = 1})'), c_code
 }
 
 fn test_optional_reference_string_interpolation_preserves_wrapper() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'optional_reference_string_interpolation', "fn stringify(value ?int) string {
+	out := option_arg_run_good('optional_reference_string_interpolation', "fn stringify(value ?int) string {
 	return '\${&value}'
 }
 
@@ -81,7 +99,6 @@ fn main() {
 }
 
 fn test_optional_params_field_inside_result_function_keeps_field_wrapper() {
-	v3_bin := build_v3()
 	source := 'enum Filter {
 	linear
 }
@@ -110,22 +127,19 @@ fn main() {
 	println("ok")
 }
 '
-	out := run_good(v3_bin, 'optional_params_field_result_wrapper', source)
+	out := option_arg_run_good('optional_params_field_result_wrapper', source)
 	assert out == 'ok'
 }
 
 fn test_error_call_argument_expected_ierror_not_result_wrapper() {
-	v3_bin := build_v3()
 	source := "fn wrap(err IError) string {\n\treturn err.msg()\n}\n\nfn f() !string {\n\treturn wrap(error('x'))\n}\n\nfn main() {\n\ts := f() or { '' }\n\tassert s == 'x'\n\tprintln('ok')\n}\n"
-	out := run_good(v3_bin, 'error_call_argument_expected_ierror', source)
+	out, c_code := option_arg_compile_and_run('error_call_argument_expected_ierror', source, true)
 	assert out == 'ok'
-	c_code := generated_c(v3_bin, 'error_call_argument_expected_ierror_c', source)
 	assert c_code.contains('wrap((IError){'), c_code
 	assert !c_code.contains('wrap((__v_option_string)'), c_code
 }
 
 fn test_selector_named_error_expected_ierror_calls_method() {
-	v3_bin := build_v3()
 	source := "struct Stmt {}
 
 fn (stmt Stmt) error(code int) IError {
@@ -157,30 +171,26 @@ fn main() {
 	assert false
 }
 "
-	out := run_good(v3_bin, 'selector_named_error_expected_ierror', source)
+	out := option_arg_run_good('selector_named_error_expected_ierror', source)
 	assert out == 'ok'
 }
 
 fn test_ierror_parameter_method_call_inside_static_method_uses_interface_method() {
-	v3_bin := build_v3()
 	source := "struct CommandError {\n\tmessage string\n}\n\nfn CommandError.io(ioerr IError) CommandError {\n\treturn CommandError{\n\t\tmessage: ioerr.msg()\n\t}\n}\n\nfn (err CommandError) msg() string {\n\treturn err.message\n}\n\nfn (err CommandError) code() int {\n\treturn 0\n}\n\nfn main() {\n\terr := CommandError.io(error('ok'))\n\tassert err.msg() == 'ok'\n\tprintln('ok')\n}\n"
-	out := run_good(v3_bin, 'ierror_static_method_param_msg', source)
+	out := option_arg_run_good('ierror_static_method_param_msg', source)
 	assert out == 'ok'
 }
 
 fn test_ierror_as_expr_unboxes_concrete_payload() {
-	v3_bin := build_v3()
 	source := "struct InvalidPatternError {\n\tvalid_up_to int\n}\n\nfn (err InvalidPatternError) msg() string {\n\treturn 'invalid'\n}\n\nfn (err InvalidPatternError) code() int {\n\treturn 0\n}\n\nfn fail() !string {\n\treturn InvalidPatternError{\n\t\tvalid_up_to: 3\n\t}\n}\n\nfn main() {\n\tfail() or {\n\t\tperr := err as InvalidPatternError\n\t\tassert perr.valid_up_to == 3\n\t\tprintln('ok')\n\t\treturn\n\t}\n\tpanic('expected error')\n}\n"
-	out := run_good(v3_bin, 'ierror_as_expr_unbox_payload', source)
+	out, c_code := option_arg_compile_and_run('ierror_as_expr_unbox_payload', source, true)
 	assert out == 'ok'
-	c_code := generated_c(v3_bin, 'ierror_as_expr_unbox_payload_c', source)
 	assert c_code.contains('._object'), c_code
 	assert !c_code.contains('InvalidPatternError perr = err;'), c_code
 }
 
 fn test_optional_abi_distinguishes_plain_t_name_from_specialized_generic() {
-	v3_bin := build_v3()
-	c_code := generated_c(v3_bin, 'optional_plain_t_name_abi', 'fn plain[T](x T) T {\n\treturn x\n}\n\nfn plain_t_name(x ?int) int {\n\treturn x or { 0 }\n}\n\nfn maybe() ?int {\n\treturn 3\n}\n\nfn use_fn(f fn (?int) int) int {\n\treturn f(maybe())\n}\n\nfn take[T](x ?T, fallback T) T {\n\treturn x or { fallback }\n}\n\nfn main() {\n\tprintln(plain_t_name(maybe()) + use_fn(plain_t_name) + take[int](7, 0) + plain[int](4))\n}\n')
+	c_code := option_arg_generated_c('optional_plain_t_name_abi', 'fn plain[T](x T) T {\n\treturn x\n}\n\nfn plain_t_name(x ?int) int {\n\treturn x or { 0 }\n}\n\nfn maybe() ?int {\n\treturn 3\n}\n\nfn use_fn(f fn (?int) int) int {\n\treturn f(maybe())\n}\n\nfn take[T](x ?T, fallback T) T {\n\treturn x or { fallback }\n}\n\nfn main() {\n\tprintln(plain_t_name(maybe()) + use_fn(plain_t_name) + take[int](7, 0) + plain[int](4))\n}\n')
 	// With platform `int` lowered to `i64`, `?int` and `?i64` share the
 	// `__v_option_i64` representation, so plain and generic-specialized `?int` uses
 	// converge on it (the fn-pointer ABI stays consistent because every `?int`
@@ -195,11 +205,9 @@ fn test_optional_abi_distinguishes_plain_t_name_from_specialized_generic() {
 }
 
 fn test_optional_generic_concrete_abi_converts_optional_args() {
-	v3_bin := build_v3()
 	source := 'fn maybe() ?int {\n\treturn 5\n}\n\nfn maybe_or_none(flag bool) ?int {\n\tif flag {\n\t\treturn 6\n\t}\n\treturn none\n}\n\nfn take[T](x ?T, fallback T) T {\n\treturn x or { fallback }\n}\n\nfn main() {\n\tx := maybe()\n\tassert take[int](maybe(), 0) == 5\n\tassert take[int](x, 0) == 5\n\tassert take[int](maybe_or_none(false), 9) == 9\n\tprintln("ok")\n}\n'
-	out := run_good(v3_bin, 'optional_generic_concrete_abi_run', source)
+	out, c_code := option_arg_compile_and_run('optional_generic_concrete_abi_run', source, true)
 	assert out == 'ok'
-	c_code := generated_c(v3_bin, 'optional_generic_concrete_abi_c', source)
 	assert c_code.contains('i64 take_T_v_int(__v_option_i64 x, i64 fallback)')
 		|| c_code.contains('i64 take_T_int(__v_option_i64 x, i64 fallback)'), c_code
 	// `int` lowers to `i64`, so a plain `?int` value and the specialized `?T`
@@ -213,27 +221,23 @@ fn test_optional_generic_concrete_abi_converts_optional_args() {
 
 // test_optional_if_expr_codegen_initializes_optional_temp validates this v3 regression case.
 fn test_optional_if_expr_codegen_initializes_optional_temp() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'optional_if_expr_codegen_input', "fn none_int() ?int {\n\treturn none\n}\n\nfn some_int() ?int {\n\treturn 7\n}\n\nfn choose(flag bool) ?int {\n\tvalue := if flag {\n\t\tnone_int()\n\t} else {\n\t\tsome_int()\n\t}\n\treturn value\n}\n\nfn main() {\n\tgood := choose(false) or { 0 }\n\tnone_value := choose(true) or { -1 }\n\tassert good == 7\n\tassert none_value == -1\n\tprintln('ok')\n}\n")
+	out := option_arg_run_good('optional_if_expr_codegen_input', "fn none_int() ?int {\n\treturn none\n}\n\nfn some_int() ?int {\n\treturn 7\n}\n\nfn choose(flag bool) ?int {\n\tvalue := if flag {\n\t\tnone_int()\n\t} else {\n\t\tsome_int()\n\t}\n\treturn value\n}\n\nfn main() {\n\tgood := choose(false) or { 0 }\n\tnone_value := choose(true) or { -1 }\n\tassert good == 7\n\tassert none_value == -1\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
 }
 
 // test_nested_local_optional_primitive_typedef validates this v3 regression case.
 fn test_nested_local_optional_primitive_typedef() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'nested_local_optional_primitive_typedef_input', "fn main() {\n\txs := [?f32(1.5)]\n\tassert xs.len == 1\n\tprintln('ok')\n}\n")
+	out := option_arg_run_good('nested_local_optional_primitive_typedef_input', "fn main() {\n\txs := [?f32(1.5)]\n\tassert xs.len == 1\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
 }
 
 // test_optional_clone_return_wraps_payload validates this v3 regression case.
 fn test_optional_clone_return_wraps_payload() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'optional_clone_return_codegen_input', "fn clone_array(src []int) ?[]int {\n\treturn src.clone()\n}\n\nfn clone_array_defer(src []int) ?[]int {\n\tdefer {}\n\treturn src.clone()\n}\n\nfn clone_map(src map[string]int) ?map[string]int {\n\treturn src.clone()\n}\n\nfn clone_map_defer(src map[string]int) ?map[string]int {\n\tdefer {}\n\treturn src.clone()\n}\n\nfn array_sum(values []int) int {\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\treturn total\n}\n\nfn main() {\n\tmut values := []int{}\n\tvalues << 2\n\tvalues << 5\n\tarr := clone_array(values) or { []int{} }\n\tarr_defer := clone_array_defer(values) or { []int{} }\n\tmut lookup := map[string]int{}\n\tlookup['a'] = 3\n\tlookup['b'] = 4\n\tcloned := clone_map(lookup) or { map[string]int{} }\n\tcloned_defer := clone_map_defer(lookup) or { map[string]int{} }\n\tassert array_sum(arr) == 7\n\tassert array_sum(arr_defer) == 7\n\tassert cloned['a'] + cloned['b'] == 7\n\tassert cloned_defer['a'] + cloned_defer['b'] == 7\n\tprintln('ok')\n}\n")
+	out := option_arg_run_good('optional_clone_return_codegen_input', "fn clone_array(src []int) ?[]int {\n\treturn src.clone()\n}\n\nfn clone_array_defer(src []int) ?[]int {\n\tdefer {}\n\treturn src.clone()\n}\n\nfn clone_map(src map[string]int) ?map[string]int {\n\treturn src.clone()\n}\n\nfn clone_map_defer(src map[string]int) ?map[string]int {\n\tdefer {}\n\treturn src.clone()\n}\n\nfn array_sum(values []int) int {\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\treturn total\n}\n\nfn main() {\n\tmut values := []int{}\n\tvalues << 2\n\tvalues << 5\n\tarr := clone_array(values) or { []int{} }\n\tarr_defer := clone_array_defer(values) or { []int{} }\n\tmut lookup := map[string]int{}\n\tlookup['a'] = 3\n\tlookup['b'] = 4\n\tcloned := clone_map(lookup) or { map[string]int{} }\n\tcloned_defer := clone_map_defer(lookup) or { map[string]int{} }\n\tassert array_sum(arr) == 7\n\tassert array_sum(arr_defer) == 7\n\tassert cloned['a'] + cloned['b'] == 7\n\tassert cloned_defer['a'] + cloned_defer['b'] == 7\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
 }
 
 fn test_result_multi_return_declares_optional_wrapper_before_use() {
-	v3_bin := build_v3()
 	source := 'struct Ticket {
 	value int
 }
@@ -254,9 +258,8 @@ fn main() {
 	println("ok")
 }
 '
-	out := run_good(v3_bin, 'result_multi_return_optional_wrapper', source)
+	out, c_code := option_arg_compile_and_run('result_multi_return_optional_wrapper', source, true)
 	assert out == 'ok'
-	c_code := generated_c(v3_bin, 'result_multi_return_optional_wrapper_c', source)
 	// A `!` multi-return is a Result, so its wrapper is `__v_result_...`; it must be
 	// declared before the first function that returns it.
 	mut wrapper := 'multi_return_i64_main__Ticket'

@@ -1677,6 +1677,13 @@ fn (mut g Parser) rewrite_expression_cast(mut result strings.Builder, expression
 				pointer_cast_depths << paren_depth + 1
 			}
 		}
+	} else if pointer_cast && previous_lit.starts_with('__vf_option_')
+		&& fastc_typed_option_payload(flat.source_type_id(previous_lit)) != none {
+		rendered_previous := g.resolved_expression_name(previous_lit, .unknown)
+		result.go_back(rendered_previous.len + pointer_prefix_len)
+		piece = '((${previous_lit}${pointer_suffix})('
+		cast_depths << paren_depth + 1
+		pointer_cast_depths << paren_depth + 1
 	} else if type_key := g.resolve_declared_type_key(previous_lit) {
 		if !name_is_member {
 			cast_type := fastc_c_declared_type_name(flat.source_type_name(type_key))
@@ -4315,13 +4322,22 @@ fn (mut g Parser) read_channel_receive(stops []token.Token) !string {
 }
 
 // channel_element_type recovers the element C type of the channel that `tokens`
-// evaluates to: a bare local, or an `x.field` member access on a struct with a
+// evaluates to: a local or global, or an `x.field` member access on a struct with a
 // `chan` field. Returns zero when it cannot be determined.
 fn (g &Parser) channel_element_type(tokens []FastcExpressionToken) u32 {
 	if tokens.len == 1 && tokens[0].tok == .name {
 		if tokens[0].chan_element_type != 0 { return tokens[0].chan_element_type }
 		if local := g.locals[tokens[0].lit] {
 			return local.chan_element_type
+		}
+		if key := g.unqualified_global_key(tokens[0].lit) {
+			return g.global_channel_elements.type_id(key) or { u32(0) }
+		}
+	}
+	if tokens.len == 3 && tokens[0].tok == .name && tokens[1].tok == .dot && tokens[2].tok == .name {
+		if module_name := g.imports[tokens[0].lit] {
+			key := fastc_global_key(module_name, tokens[2].lit)
+			return g.global_channel_elements.type_id(key) or { u32(0) }
 		}
 	}
 	if tokens.len >= 3 && tokens.last().tok == .name && tokens[tokens.len - 2].tok == .dot {

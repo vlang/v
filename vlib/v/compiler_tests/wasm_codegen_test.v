@@ -1,19 +1,46 @@
 import os
+import v.tempname
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
-const wasm_compiler = os.join_path(os.vtmp_dir(), 'ssa_wasm_codegen_compiler_${os.getpid()}')
+const wasm_suite_temp = os.join_path(os.vtmp_dir(), 'ssa_wasm_codegen_${tempname.unique_token()}')
+const wasm_compiler = wasm_suite_temp + $if windows { '.exe' } $else { '' }
 
 fn testsuite_begin() {
 	if os.getenv('V3_TEST_WASM') != '1' {
 		eprintln('> skipping v3 wasm backend tests; set V3_TEST_WASM=1 to run')
 		exit(0)
 	}
+	// The launcher caches its WASM-capable compiler. Keep a suite-local build
+	// for standalone drivers, custom flags, and runs with tool caching disabled.
+	if os.getenv('VFLAGS') == ''
+		&& os.getenv('VTOOLS_NO_CACHE').trim_space().to_lower() !in ['1', 'true', 'yes', 'on']
+		&& running_compiler_supports_wasm() {
+		return
+	}
 	build := os.exec([vexe, '-no-retry-compilation', '-cc', 'clang', '-gc', 'none', '-compile-backend',
 		'wasm', '-o', wasm_compiler, v3_src])
 	assert build.exit_code == 0, build.output
+}
+
+fn running_compiler_supports_wasm() bool {
+	source := wasm_suite_temp + '.v'
+	output := wasm_suite_temp + '.wasm'
+	defer {
+		os.rm(source) or {}
+		os.rm(output) or {}
+	}
+	os.write_file(source, 'fn main() {}\n') or { panic(err) }
+	probe := os.exec([vexe, '-b', 'wasm', '-o', output, source])
+	if probe.exit_code != 0
+		&& probe.output.contains('WebAssembly support is not compiled into this executable') {
+		return false
+	}
+	assert probe.exit_code == 0, probe.output
+	assert_valid_wasm(output)
+	return true
 }
 
 fn testsuite_end() {
@@ -21,7 +48,7 @@ fn testsuite_end() {
 }
 
 fn v3_binary() string {
-	return wasm_compiler
+	return if os.is_file(wasm_compiler) { wasm_compiler } else { vexe }
 }
 
 fn compile_to_wasm(v3_bin string, src string, name string) string {
@@ -414,7 +441,7 @@ pub fn answer() int { return value() * 2 }
 ') or { panic(err) }
 	for production in [false, true] {
 		output := os.join_path(dir, 'main_${production}.wasm')
-		mut args := [vexe, '-b', 'wasm', '-o', output, main_v]
+		mut args := [v3_binary(), '-b', 'wasm', '-o', output, main_v]
 		if production {
 			args.insert(1, '-prod')
 		}
@@ -511,6 +538,115 @@ fn test_wasm_exported_functions() {
 	assert res.exit_code == 0, res.output
 	// runner prints "add fib gcd" results space-separated
 	assert last_line(res.output) == '7 55 12', res.output
+}
+
+fn test_wasm_add_example_in_javascript_and_wasmer() {
+	dir := os.join_path(os.vtmp_dir(), 'wasm_embedding_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	example_dir := os.join_path(os.dir(os.dir(v3_dir)), 'examples', 'wasm')
+	for production in [false, true] {
+		output := os.join_path(dir, 'add.wasm')
+		mut args := [v3_binary(), '-b', 'wasm', '-o', output]
+		if production {
+			args << '-prod'
+		}
+		args << os.join_path(example_dir, 'add.v')
+		build := os.exec(args)
+		assert build.exit_code == 0, build.output
+		assert_valid_wasm(output)
+		if node := node_path() {
+			result := os.exec([node, os.join_path(example_dir, 'add.mjs'), output])
+			assert result.exit_code == 0, result.output
+			assert result.output.trim_space() == '42', result.output
+		}
+		if wasmer := os.find_abs_path_of_executable('wasmer') {
+			result := os.exec([wasmer, 'run', '--disable-cache', output, '--invoke', 'add', '20',
+				'22'])
+			assert result.exit_code == 0, result.output
+			assert result.output.trim_space() == '42', result.output
+		} else {
+			eprintln('> wasmer unavailable; skipping Wasmer embedding check')
+		}
+	}
+}
+
+fn test_wasm_host_imports_and_shared_allocator() {
+	node := node_path() or { return }
+	dir := os.join_path(os.vtmp_dir(), 'wasm_host_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'host.wasm.v')
+	output := os.join_path(dir, 'host.wasm')
+	runner := os.join_path(dir, 'host.mjs')
+	os.write_file(source, '
+module main
+
+@[wasm_import_namespace: "host"]
+fn WASM.sum_bytes(ptr &u8, count int) int
+
+@[wasm_import_namespace: "unused"]
+fn WASM.unused() int
+
+pub fn sum_bytes(ptr &u8, count int) int {
+	return WASM.sum_bytes(ptr, count)
+}
+
+pub fn runtime_allocation(n int) &u8 {
+	// Keep the buffer alive until the host discards the instance.
+	return unsafe { malloc(n) }
+}
+') or { panic(err) }
+	os.write_file(runner, "import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const module = await WebAssembly.compile(readFileSync(process.argv[2]));
+assert.deepEqual(WebAssembly.Module.imports(module), [
+  { module: 'host', name: 'sum_bytes', kind: 'function' }
+]);
+assert.throws(() => new WebAssembly.Instance(module, {}), TypeError);
+assert.throws(() => new WebAssembly.Instance(module, { host: {} }), WebAssembly.LinkError);
+let e;
+const instance = await WebAssembly.instantiate(module, {
+  host: {
+    sum_bytes(ptr, count) {
+      // Reentrant allocation may grow memory; obtain the view after it.
+      e.__v_alloc(131072);
+      return new Uint8Array(e.memory.buffer, ptr, count).reduce((a, b) => a + b, 0);
+    }
+  }
+});
+e = instance.exports;
+const p = e.__v_alloc(3) >>> 0;
+assert.equal(p % 16, 0);
+assert.deepEqual([...new Uint8Array(e.memory.buffer, p, 3)], [0, 0, 0]);
+new Uint8Array(e.memory.buffer, p, 3).set([20, 22, 7]);
+const before = e.memory.buffer.byteLength;
+const q = e.__v_alloc(131073) >>> 0;
+assert.equal(q % 16, 0);
+assert.ok(q >= p + 3);
+assert.ok(e.memory.buffer.byteLength > before);
+assert.ok(new Uint8Array(e.memory.buffer, q, 131073).every(x => x === 0));
+const r = e.runtime_allocation(100) >>> 0;
+assert.ok(r >= q + 131073);
+assert.equal(r % 16, 0);
+assert.ok(new Uint8Array(e.memory.buffer, r, 100).every(x => x === 0));
+new Uint8Array(e.memory.buffer, r, 100).fill(9);
+assert.equal(e.sum_bytes(p, 3), 49);
+assert.deepEqual([...new Uint8Array(e.memory.buffer, p, 3)], [20, 22, 7]);
+assert.ok(new Uint8Array(e.memory.buffer, r, 100).every(x => x === 9));
+assert.throws(() => e.__v_alloc(-1), WebAssembly.RuntimeError);
+") or { panic(err) }
+	for production in [false, true] {
+		mut args := [v3_binary(), '-b', 'wasm', '-o', output]
+		if production {
+			args << '-prod'
+		}
+		args << source
+		build := os.exec(args)
+		assert build.exit_code == 0, build.output
+		result := os.exec([node, runner, output])
+		assert result.exit_code == 0, result.output
+	}
 }
 
 fn test_wasm_unsigned_i64_and_bool() {

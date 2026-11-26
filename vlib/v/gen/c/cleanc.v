@@ -5363,18 +5363,24 @@ fn runtime_init_targets_global(init string, cname string) bool {
 	return clean.starts_with('${cname} =') || clean.starts_with('${cname}.') || clean.starts_with('${cname}[') || clean.starts_with('memmove(${cname}')
 }
 
+@[direct_array_access]
 fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 	// This runs once per generated batch, while a batch refers to a handful of
 	// the literals: name a literal when the batch mentions it, not all of them
-	// for every batch.
+	// for every batch. The result is always a new string, which callers own (they
+	// free `source`); it is copied in runs between the renamed symbols, or whole.
+	if !source.contains('_str_') {
+		return source.clone()
+	}
 	mut symbols := []string{len: g.str_lits.len}
-	user_c_symbols := g.cache_user_c_string_symbols()
-	mut out := strings.new_builder(source.len + g.str_lits.len * 8)
+	mut user_c_symbols := map[string]bool{}
+	mut user_c_symbols_ready := false
+	mut out := strings.new_builder(0)
+	mut copied := 0
 	mut i := 0
 	for i < source.len {
 		if source[i] in [`"`, `'`] {
 			quote := source[i]
-			start := i
 			i++
 			for i < source.len {
 				if source[i] == `\\` && i + 1 < source.len {
@@ -5386,20 +5392,16 @@ fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 					break
 				}
 			}
-			out.write_string(source[start..i])
 			continue
 		}
 		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
-			start := i
 			i += 2
 			for i < source.len && source[i] != `\n` {
 				i++
 			}
-			out.write_string(source[start..i])
 			continue
 		}
 		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
-			start := i
 			i += 2
 			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
 				i++
@@ -5409,35 +5411,60 @@ fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 			} else {
 				i = source.len
 			}
-			out.write_string(source[start..i])
 			continue
 		}
-		if c_identifier_start(source[i]) {
+		c := source[i]
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` {
+			// The character tests are spelled out: this loop visits every byte of the
+			// unit, and TinyCC does not inline the helper functions.
 			start := i
 			i++
-			for i < source.len && c_identifier_continue(source[i]) {
-				i++
-			}
-			identifier := source[start..i]
-			if cache_numbered_string_symbol(identifier) && !user_c_symbols[identifier] {
-				mut id := 0
-				for digit in identifier[5..].bytes() {
-					id = id * 10 + int(digit - `0`)
-				}
-				if id >= 0 && id < symbols.len {
-					if symbols[id].len == 0 {
-						symbols[id] = cache_string_symbol(g.str_lits[id])
-					}
-					out.write_string(symbols[id])
-					continue
+			for i < source.len {
+				d := source[i]
+				if (d >= `a` && d <= `z`) || (d >= `A` && d <= `Z`) || d == `_`
+					|| (d >= `0` && d <= `9`) {
+					i++
+				} else {
+					break
 				}
 			}
-			out.write_string(identifier)
+			if i - start <= 5 || c != `_` || source[start + 1] != `s` {
+				continue
+			}
+			identifier := unsafe { tos(source.str + start, i - start) }
+			if !cache_numbered_string_symbol(identifier) {
+				continue
+			}
+			if !user_c_symbols_ready {
+				user_c_symbols = g.cache_user_c_string_symbols()
+				user_c_symbols_ready = true
+			}
+			if user_c_symbols[identifier] {
+				continue
+			}
+			mut id := 0
+			for digit in identifier[5..].bytes() {
+				id = id * 10 + int(digit - `0`)
+			}
+			if id >= 0 && id < symbols.len {
+				if symbols[id].len == 0 {
+					symbols[id] = cache_string_symbol(g.str_lits[id])
+				}
+				if copied == 0 {
+					out = strings.new_builder(source.len + 256)
+				}
+				out.write_string(source[copied..start])
+				out.write_string(symbols[id])
+				copied = i
+			}
 			continue
 		}
-		out.write_u8(source[i])
 		i++
 	}
+	if copied == 0 {
+		return source.clone()
+	}
+	out.write_string(source[copied..])
 	return out.str()
 }
 
@@ -17987,7 +18014,8 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write(g.local_cname(ident_value))
 			} else if is_local && g.local_name_shadows_c_function(ident_value) {
 				g.write(g.local_cname(ident_value))
-			} else if ident_value in g.global_modules {
+			} else if !is_local && ident_value in g.global_modules {
+				// A local of a module that does not own the global's name keeps its value.
 				mod := g.global_modules[ident_value]
 				if mod.len > 0 && mod != 'main' && mod != 'builtin' {
 					g.write(g.global_c_name('${mod}.${ident_value}'))
@@ -18196,6 +18224,18 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 			}
 			if g.gen_translated_numeric_arithmetic(id, node, lhs_id, rhs_id, lhs_type,
 				rhs_type) {
+				g.expected_enum = old_expected_enum
+				return
+			}
+			// Source code cannot offset a `voidptr`, but the lowering of a translated
+			// `m[k] += n` can; standard C (and MSVC) has no `void*` arithmetic.
+			if node.op in [.plus, .minus] && type_is_void_pointer(lhs_type)
+				&& translated_integer_scalar_type(rhs_type) {
+				g.write('((${g.value_c_type(lhs_type)})((u8*)(')
+				g.gen_expr(lhs_id)
+				g.write(') ${g.op_str(node.op)} (')
+				g.gen_expr(rhs_id)
+				g.write(')))')
 				g.expected_enum = old_expected_enum
 				return
 			}
@@ -19497,6 +19537,13 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write(')')
 			} else if g.gen_checked_integer_cast(id, target_type, cast_arg_id, cast_arg_type, ct) {
 				return
+			} else if semantic_target is types.Struct && g.tc.c_type(cast_arg_type) == ct {
+				// The value already has the target's C type (`Alias(value)` of a C struct).
+				// C only casts to scalar types: GCC and Clang accept a struct cast to its
+				// own type as an extension, MSVC rejects it (C2440).
+				g.write('(')
+				g.gen_cast_value_operand(cast_arg_id, target_type)
+				g.write(')')
 			} else {
 				g.write('(${ct})(')
 				g.gen_cast_value_operand(cast_arg_id, target_type)
@@ -20642,6 +20689,10 @@ fn (g &FlatGen) fixed_array_literal_index_type(base_id flat.NodeId, node flat.No
 }
 
 fn char_escape_codepoint(s string) ?int {
+	// The `\e` (ESC) escape is a GNU C extension; MSVC reads `'\e'` as `'e'`.
+	if s == '\\e' {
+		return 27
+	}
 	if s.starts_with('\\x') && s.len > 2 {
 		return parse_hex_codepoint(s[2..])
 	}
@@ -26391,9 +26442,9 @@ fn (mut g FlatGen) emit_global_inits() {
 		g.in_global_array_pointer_init = old_array_pointer_init
 	}
 	// The closure runtime can be imported for syntax that only might need it. Its state
-	// is set up for `closure_init`, and without it the map runtime its fields default to
-	// may not be emitted at all.
-	skip_closure_runtime_globals := !g.needs_closure_runtime_init()
+	// is set up only for a program that enters the runtime; without it the map runtime
+	// its fields default to may not be emitted at all.
+	skip_closure_runtime_globals := !g.needs_closure_runtime_state()
 	for qname in g.global_init_order {
 		g.in_global_array_pointer_init = false
 		if qname in g.c_extern_global_names {
@@ -27628,6 +27679,11 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		return
 	}
 	mut is_static_const := g.is_const_expr(val_id) && !g.const_expr_needs_runtime_storage(expr_str)
+	// MSVC rejects a string's compound literal as a file-scope initializer, also when the
+	// value is not a plain literal (`$d('name', 'default')`).
+	if g.ccompiler == 'msvc' && unalias_type(v_type) is types.String {
+		is_static_const = false
+	}
 	// Aggregate constants that reference another aggregate constant cannot use the
 	// referenced C object as a file-scope initializer. Initialize them in _vinit,
 	// after their dependency has been constructed.

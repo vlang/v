@@ -91,7 +91,7 @@ int main(void) {
 	return 0;
 }
 ') or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-o', program, c_path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-o', program, c_path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
@@ -149,8 +149,8 @@ fn main() {
 	c_path := os.join_path(root, 'main.c')
 	program := os.join_path(root, 'program')
 	os.write_file(c_path, source) or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-Werror=incompatible-pointer-types', '-o', program,
-		c_path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-Werror=incompatible-pointer-types',
+		'-o', program, c_path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

@@ -9,6 +9,15 @@ fn msvc_lower_fn(body string) string {
 	return msvc_norm(msvc_compat_c_source('int f(int a, int b) {\n${body}\n}\n'))
 }
 
+// MSVC rejects a compound literal as a file-scope initializer; the casts of struct types
+// defined on one line, as the option types are, are dropped too.
+fn test_one_line_struct_typedef_casts_are_dropped_from_file_scope_initializers() {
+	src := 'typedef struct __v_option_i64 { bool ok; i64 value; } __v_option_i64;\n' +
+		'const __v_option_i64 main__empty = (__v_option_i64){.ok = false};\n'
+	out := msvc_norm(msvc_compat_c_source(src))
+	assert out.contains('const __v_option_i64 main__empty = {.ok = false};'), out
+}
+
 fn test_statement_expression_in_declaration_is_hoisted() {
 	out := msvc_lower_fn('int x = ({ int t = g(a); t * 2; });')
 	assert !out.contains('({')

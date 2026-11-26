@@ -71,11 +71,18 @@ fn test_compile_notice_rejects_nonliteral_messages() ! {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	input := os.join_path(root, 'main.v')
-	for message in ['42', 'message', r'"value ${message}"'] {
-		os.write_file(input, 'module main\nfn main() {\n message := "runtime"\n $compile_notice(${message})\n}\n')!
-		result := os.exec([@VEXE, '-b', 'c', '-check', input])
-		assert result.exit_code != 0, result.output
-		assert result.output.contains('`$compile_notice` expects a string literal'), result.output
+	messages := ['42', 'message', r'"value ${message}"']
+	header := 'module main\nfn main() {\n message := "runtime"\n'
+	calls := messages.map(' $compile_notice(${it})').join('\n')
+	os.write_file(input, header + calls + '\n}\n')!
+	result := os.exec([@VEXE, '-b', 'c', '-nocolor', '-check', input])
+	assert result.exit_code != 0, result.output
+	diagnostics := result.output.split_into_lines()
+	first_call_line := header.count('\n') + 1
+	for i, message in messages {
+		location := '${os.file_name(input)}:${first_call_line + i}:'
+		assert diagnostics.any(it.contains(location)
+			&& it.ends_with('error: `$compile_notice` expects a string literal')), '${message}: ${result.output}'
 	}
 }
 

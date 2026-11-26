@@ -1,36 +1,12 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-// One compiler serves the whole suite; each case used to build its own.
-const build_v3_path = os.join_path(os.temp_dir(), 'v3_interface_type_pattern_test_${os.getpid()}')
-
-fn testsuite_begin() {
-	v3_bin := build_v3_path
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rm(build_v3_path) or {}
-}
-
-fn build_v3() string {
-	return build_v3_path
-}
+import v.tempname
 
 fn test_interface_type_patterns_resolve_imported_concrete_types() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_interface_type_pattern_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_interface_type_pattern_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'ifacepkg')
-	os.mkdir_all(mod_dir) or { panic(err) }
+	os.mkdir(mod_dir)!
 	os.write_file(os.join_path(mod_dir, 'ifacepkg.v'), "module ifacepkg
 
 pub interface Thing {
@@ -143,8 +119,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_interface_type_pattern_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -162,11 +138,11 @@ fn main() {
 }
 
 fn test_interface_type_patterns_resolve_import_aliases() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_interface_type_pattern_alias_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_interface_type_pattern_alias_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'shapes')
-	os.mkdir_all(mod_dir) or { panic(err) }
+	os.mkdir(mod_dir)!
 	os.write_file(os.join_path(mod_dir, 'shapes.v'), 'module shapes
 
 pub interface Shape {
@@ -233,8 +209,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_interface_type_pattern_alias_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -250,9 +226,10 @@ fn main() {
 }
 
 fn test_interface_match_patterns_lower_embedded_interfaces() {
-	v3_bin := build_v3()
-
-	src := os.join_path(os.temp_dir(), 'v3_interface_match_embedded_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_interface_match_embedded_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_interface_match_embedded.v')
 	os.write_file(src, 'interface Base {
 	get() int
 }
@@ -301,8 +278,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_interface_match_embedded_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

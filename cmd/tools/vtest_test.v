@@ -142,6 +142,15 @@ fn test_strict_v3_flags_apply_only_to_top_level_test_compilation() {
 	assert res.output.contains('1 passed, 1 skipped, 2 total'), res.output
 }
 
+fn test_overlapping_arguments_run_each_file_once() {
+	// A folder and one of its files (or a nested folder) name the same tests twice.
+	file := os.join_path(tpath_passing, os.ls(tpath_passing)!.filter(it.ends_with('_test.v'))[0])
+	res := os.exec([vtest_fixture_executable(), 'test', tpath_passing, file])
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('2 passed, 2 total'), res.output
+	assert !res.output.contains('multiple input paths'), res.output
+}
+
 fn test_with_several_test_files() {
 	old_no_batch := os.getenv_opt('VTEST_NO_BATCH')
 	defer {
@@ -199,6 +208,18 @@ fn test_partial_failure() {
 	assert res.output.contains('assert 5 == 7'), res.output
 	assert res.output.contains(' 1 failed, 1 passed, 2 total'), res.output
 	assert res.output.contains('To reproduce just failure'), res.output
+}
+
+fn test_failed_list_names_only_the_failing_files() {
+	list := os.join_path(tpath, 'failed_list.txt')
+	os.rm(list) or {}
+	os.setenv('VTEST_FAILED_LIST', list, true)
+	res := os.exec([vtest_fixture_executable(), 'test', tpath_partial])
+	os.unsetenv('VTEST_FAILED_LIST')
+	assert res.exit_code == 1, res.output
+	assert os.read_file(list)!.split_into_lines() == [
+		os.real_path(os.join_path(tpath_partial, 'failing_test.v')),
+	]
 }
 
 fn test_run_only_reports_filtered_failures() {

@@ -17,7 +17,7 @@
   },
   {
     "workflow": "tools_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       "cmd/**",
@@ -33,7 +33,7 @@
   },
   {
     "workflow": "v_apps_and_modules_compile_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -79,7 +79,7 @@
   },
   {
     "workflow": "vpm_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       "**/vpm_ci.yml",
@@ -89,7 +89,7 @@
   },
   {
     "workflow": "vsl_and_vtl_compile_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -104,7 +104,7 @@
   },
   {
     "workflow": "vup_works.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -121,7 +121,7 @@
   },
   {
     "workflow": "wasm_backend_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       "cmd/tools/builders/**.v",
@@ -167,7 +167,7 @@
   },
   {
     "workflow": "windows_ci_gcc.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -183,7 +183,7 @@
   },
   {
     "workflow": "windows_ci_msvc.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -199,7 +199,7 @@
   },
   {
     "workflow": "windows_ci_tcc.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",

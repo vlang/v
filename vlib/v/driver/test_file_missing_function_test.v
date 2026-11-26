@@ -37,8 +37,8 @@ fn test_test_files_without_active_functions_report_located_errors() {
 			result := os.exec([@VEXE, '-nocache', '-no-retry-compilation', '-nocolor', ...flags,
 				'-o', output, path])
 			assert result.exit_code == 1, result.output
-			// Diagnostics name a file by its real path, with `/` separators on Windows too.
-			location := '${os.real_path(path).replace('\\', '/')}:${input.line}:1: error: '
+			// Diagnostics show the real path with the host's path separator.
+			location := '${os.real_path(path)}:${input.line}:1: error: '
 			assert result.output.contains(location + missing_test_function_message), result.output
 			assert result.output.count(missing_test_function_message) == 1, result.output
 			assert !result.output.contains('V panic:'), result.output
@@ -117,7 +117,7 @@ fn test_result() ! {
 		os.write_file(invalid, input.source)!
 		result := os.exec([@VEXE, '-nocache', '-no-retry-compilation', '-nocolor', '-check', invalid])
 		assert result.exit_code == 1, result.output
-		location := os.real_path(invalid).replace('\\', '/')
+		location := os.real_path(invalid)
 		assert result.output.contains('${location}:3:1: error: invalid test signature: ${input.name}'), result.output
 		assert !result.output.contains(missing_test_function_message), result.output
 		assert !result.output.contains('V panic:'), result.output

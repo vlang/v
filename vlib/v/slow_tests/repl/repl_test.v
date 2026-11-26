@@ -5,6 +5,7 @@ import os
 import v.slow_tests.repl.runner
 import benchmark
 import sync.pool
+import runtime
 
 @[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
@@ -55,12 +56,24 @@ fn test_all_v_repl_files() {
 	runner.run_repl_file(os.cache_dir(), session.options.vexec,
 		'vlib/v/slow_tests/repl/nothing.repl') or { panic(err) }
 	session.bmark.set_total_expected_steps(session.options.files.len)
-	mut pool_repl := pool.new_pool_processor(callback: worker_repl)
-	pool_repl.set_shared_context(session)
+	mut jobs := runtime.nr_jobs()
 	$if windows {
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
-		pool_repl.set_max_jobs(1)
+		jobs = 1
 	}
+	// The compilers of the REPL sessions share the CPUs, like the compilers of `v test`.
+	compiler_jobs := runtime.nr_cpus() / jobs
+	previous_vjobs := os.getenv_opt('VJOBS')
+	os.setenv('VJOBS', (if compiler_jobs < 1 { 1 } else { compiler_jobs }).str(), true)
+	defer {
+		if value := previous_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	mut pool_repl := pool.new_pool_processor(callback: worker_repl, maxjobs: jobs)
+	pool_repl.set_shared_context(session)
 	pool_repl.work_on_items[string](session.options.files)
 	session.bmark.stop()
 	println(session.bmark.total_message('total time spent running REPL files'))

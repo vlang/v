@@ -322,8 +322,7 @@ def check_sanitizer_shards(workflow):
         else:
             require("            shard_count:" not in row, f"{name} must run its full suite")
     require(field(lane, "fail-fast", 6) == "false", "sanitizers must run every shard")
-    require(field(lane, "VJOBS", 6) == "${{ matrix.shard_count && 2 || 1 }}",
-            "only sharded sanitizer suites should use two workers")
+    require(field(lane, "VJOBS", 6) == "'2'", "sanitizer suites use two workers per runner")
     require(field(lane, "SANITIZER_GITHUB_JOB", 6) == "sanitize-${{ matrix.name }}", "sanitizer identity changed")
     require(field(lane, "VTEST_SELF_SHARD_INDEX", 6) == "${{ matrix.shard || 0 }}", "sanitizer shard index")
     require(field(lane, "VTEST_SELF_SHARD_COUNT", 6) == "${{ matrix.shard_count || 1 }}", "sanitizer shard count")

@@ -60,15 +60,14 @@ fn test_pointer_receiver_calls_keep_by_value_parameters_on_the_stack() {
 	}
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, pointer_receiver_escape_source)!
-	c_path := os.join_path(dir, 'main.c')
-	build := os.exec([@VEXE, '-b', 'c', '-o', c_path, source])
+	binary := os.join_path(dir, 'main')
+	build := os.exec([@VEXE, '-b', 'c', '-o', binary, source])
 	assert build.exit_code == 0, build.output
-	c_source := os.read_file(c_path)!
+	c_source := os.read_file(binary + '.c')!
 	assert c_source.contains('pointer_receiver_collect(main__PointerReceiverElement element)'), c_source.all_after('pointer_receiver_collect(').all_before(')')
 	assert c_source.contains('pointer_receiver_record(main__PointerReceiverElement element)'), c_source.all_after('pointer_receiver_record(').all_before(')')
 	assert !c_source.contains('__heap_value_param')
-	binary := os.join_path(dir, 'main')
-	run := os.exec([@VEXE, '-b', 'c', '-o', binary, 'run', source])
+	run := os.exec([binary])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '4'
 }

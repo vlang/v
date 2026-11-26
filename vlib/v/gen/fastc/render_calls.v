@@ -764,13 +764,21 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 		}
 		type_key := function_key.all_before_last('.')
 		owner := fastc_c_declared_type_name(type_key)
-		method_c_name := g.c_function_name_or(function_key, fastc_method_c_name_for_key(type_key, tokens[i].lit))
+		c_name := g.c_function_name_or(function_key, fastc_method_c_name_for_key(type_key, tokens[i].lit))
 		call_start := if i >= 4 && tokens[i - 4].tok == .name && tokens[i - 3].tok == .dot {
 			i - 4
 		} else {
 			i - 2
 		}
 		call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
+		string_enum_input := if tokens[i].lit == 'from' && c_name == 'v_fastc_enum_from_${owner}'
+			&& call_args.len == 1 {
+			input_type := g.infer_expression_type(call_args[0]) or { u32(0) }
+			g.underlying_alias_type(input_type) == flat.source_type_string
+		} else {
+			false
+		}
+		method_c_name := if string_enum_input { 'v_fastc_enum_from_text_${owner}' } else { c_name }
 		mut named_start := -1
 		for argument_index, argument in call_args {
 			if argument.len >= 3 && argument[0].tok == .name && argument[1].tok == .colon {
@@ -815,7 +823,12 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 			mut rendered_arguments := []string{cap: call_args.len}
 			mut arguments_ok := true
 			for argument_index, argument in call_args {
-				rendered_argument := g.render_call_argument_expression(argument, signature.parameter_types.ids[argument_index]) or {
+				expected := if string_enum_input {
+					flat.source_type_string
+				} else {
+					signature.parameter_types.ids[argument_index]
+				}
+				rendered_argument := g.render_call_argument_expression(argument, expected) or {
 					arguments_ok = false
 					break
 				}

@@ -33,7 +33,7 @@ fn main() { assert choose(1) == 42; println("selected branch") }
 	c_path := os.join_path(root, 'program.c')
 	os.write_file(c_path, c_source) or { panic(err) }
 	program := os.join_path(root, 'program')
-	build := cmdexec.run('cc', ['-std=gnu11', '-o', program, c_path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-o', program, c_path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	ordinary_run := cmdexec.run(ordinary, [])

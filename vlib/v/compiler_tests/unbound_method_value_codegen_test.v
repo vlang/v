@@ -25,12 +25,13 @@ fn main() {
  println("OK")
 }
 ')!
-	generated := os.exec([@VEXE, '-o', c_path, source_path])
-	assert generated.exit_code == 0, generated.output
-	source := os.read_file(c_path)!
+	read_only_bin := os.join_path(root, 'read_only')
+	built := os.exec([@VEXE, '-b', 'c', '-o', read_only_bin, source_path])
+	assert built.exit_code == 0, built.output
+	source := os.read_file(read_only_bin + '.c')!
 	assert !source.contains('_mvctx_'), source
 	assert !source.contains('_mvwrap_'), source
-	run := os.exec([@VEXE, 'run', source_path])
+	run := os.exec([read_only_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'OK', run.output
 	os.write_file(source_path, 'import sample

@@ -1,20 +1,5 @@
 import os
-
-const sizeof_global_vexe = @VEXE
-const sizeof_global_tests_dir = os.dir(@FILE)
-const sizeof_global_v3_dir = os.dir(sizeof_global_tests_dir)
-const sizeof_global_vlib_dir = os.dir(sizeof_global_v3_dir)
-const sizeof_global_v3_src = os.join_path(sizeof_global_v3_dir, 'v.v')
-
-fn sizeof_global_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_sizeof_global_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([sizeof_global_vexe, '-gc', 'none', '-path',
-			'${sizeof_global_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${sizeof_global_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn sizeof_global_write_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
@@ -22,9 +7,7 @@ fn sizeof_global_write_file(root string, rel string, src string) {
 	os.write_file(path, src) or { panic(err) }
 }
 
-fn sizeof_global_write_project() string {
-	root := os.join_path(os.temp_dir(), 'v3_sizeof_global_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn sizeof_global_write_project(root string) {
 	sizeof_global_write_file(root, 'moda/moda.v', 'module moda
 
 pub struct State {
@@ -81,14 +64,15 @@ fn main() {
 	println(int_str(score))
 }
 ')
-	return root
 }
 
 fn test_sizeof_selector_qualifies_global_without_rewriting_locals_or_types() {
-	v3_bin := sizeof_global_build_v3()
-	root := sizeof_global_write_project()
+	root := os.join_path(os.vtmp_dir(), 'v3_sizeof_global_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	sizeof_global_write_project(root)
 	c_path := os.join_path(root, 'out.c')
-	compile := os.exec([v3_bin, '-enable-globals', root, '-b', 'c', '-o', c_path])
+	compile := os.exec([@VEXE, '-enable-globals', root, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(c_path) or { panic(err) }

@@ -380,21 +380,37 @@ fn run_v3_unit_tests(cfg Config) {
 				}
 				continue
 			}
-			// `v test` builds the internal tests of one module into shared binaries
-			// (cmd/tools/testing/batch.v); it needs the files of the module together.
+			// `v test` builds test files of one directory into shared binaries
+			// (cmd/tools/testing/batch.v); it needs the files of the directory together.
 			mut args := [cfg.vexe, '-gc', 'none', '-path', cfg.vlib_dir, '-enable-globals', '-silent',
 				'test']
 			args << group
 			println('> ${args.join(' ')}')
+			// The runner lists the files that failed; a failed batch already ran its files one
+			// by one, so the list names them exactly.
+			failed_list := temp_path(cfg, 'unit_group_failures.txt')
+			os.rm(failed_list) or {}
+			os.setenv('VTEST_FAILED_LIST', failed_list, true)
 			sw := time.new_stopwatch()
 			code := os.system_args(args)
 			seconds := int(sw.elapsed().seconds())
+			os.unsetenv('VTEST_FAILED_LIST')
 			relative_dir := repo_relative_path(cfg, os.dir(group[0]))
 			if code == 0 {
 				println('  ok     ${seconds:4} s  ${relative_dir}/ (${group.len} files)')
 				continue
 			}
-			// Name the failing files: run each of them on its own.
+			listed := (os.read_file(failed_list) or { '' }).split_into_lines().filter(it != '')
+			os.rm(failed_list) or {}
+			if listed.len > 0 {
+				println('  FAILED ${seconds:4} s  ${relative_dir}/ (${group.len} files, exit code ${code}): ${listed.len} failed')
+				for path in listed {
+					failed << repo_relative_path(cfg, path)
+				}
+				continue
+			}
+			// Without a list (the runner itself failed), name the failing files by running
+			// each of them on its own.
 			println('  FAILED ${seconds:4} s  ${relative_dir}/ (${group.len} files, exit code ${code}); running them one by one')
 			for path in group {
 				if !run_unit_test_file(cfg, path) {
@@ -534,16 +550,16 @@ fn run_unit_test_file(cfg Config, path string) bool {
 	return false
 }
 
-// unit_test_groups splits `paths` into runs of neighbouring files that one `v test` can
-// take together: internal tests (a module other than `main`) of one directory. Every other
-// file, and the selectively quarantined one, is a group of its own.
+// unit_test_groups splits `paths` into runs of neighbouring files of one directory, which
+// one `v test` takes together: its runner decides which of them share a binary
+// (cmd/tools/testing/batch.v), for internal and `main` tests alike, and runs the others one
+// by one. The selectively quarantined file is a group of its own.
 fn unit_test_groups(cfg Config, paths []string) [][]string {
 	mut groups := [][]string{}
 	mut current := []string{}
 	mut current_dir := ''
 	for path in paths {
-		groupable := unit_test_is_internal(path)
-			&& repo_relative_path(cfg, path) != 'vlib/v/compiler_tests/c_directive_order_codegen_test.v'
+		groupable := repo_relative_path(cfg, path) != 'vlib/v/compiler_tests/c_directive_order_codegen_test.v'
 		dir := os.dir(path)
 		if current.len > 0 && (!groupable || dir != current_dir) {
 			groups << current
@@ -560,23 +576,6 @@ fn unit_test_groups(cfg Config, paths []string) [][]string {
 		groups << current
 	}
 	return groups
-}
-
-// unit_test_is_internal reports whether the test file `path` declares a module other than
-// `main`, the files that `v test` can build together with others of their module.
-fn unit_test_is_internal(path string) bool {
-	source := os.read_file(path) or { return false }
-	for line in source.split_into_lines() {
-		trimmed := line.trim_space()
-		if trimmed == '' || trimmed.starts_with('//') || trimmed.starts_with('@[') {
-			continue
-		}
-		if trimmed.starts_with('module ') {
-			return trimmed.all_after('module ').trim_space() !in ['', 'main']
-		}
-		return false
-	}
-	return false
 }
 
 fn unit_test_run_only_arg(cfg Config, path string) string {

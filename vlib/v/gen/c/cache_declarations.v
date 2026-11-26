@@ -97,6 +97,7 @@ fn (mut g FlatGen) cache_collect_declaration_refs(source string) {
 	}
 }
 
+@[direct_array_access]
 fn cache_c_skip_literal_or_comment(source string, start int) int {
 	mut i := start
 	if source[i] in [`"`, `'`] {
@@ -127,22 +128,37 @@ fn cache_c_skip_literal_or_comment(source string, start int) int {
 	return start
 }
 
+@[direct_array_access]
 fn cache_c_identifier_refs(source string) map[string]bool {
 	mut refs := map[string]bool{}
 	mut i := 0
+	// This visits every byte of the generated C: the character tests are spelled out
+	// (TinyCC does not inline helpers), and an identifier is copied only the first
+	// time it is seen.
 	for i < source.len {
-		next := cache_c_skip_literal_or_comment(source, i)
-		if next > i {
-			i = next
-		} else if c_identifier_start(source[i]) {
-			start := i
+		c := source[i]
+		if c == `"` || c == `'` || c == `/` {
+			next := cache_c_skip_literal_or_comment(source, i)
+			i = if next > i { next } else { i + 1 }
+			continue
+		}
+		if !((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`) {
 			i++
-			for i < source.len && c_identifier_continue(source[i]) {
+			continue
+		}
+		start := i
+		i++
+		for i < source.len {
+			d := source[i]
+			if (d >= `a` && d <= `z`) || (d >= `A` && d <= `Z`) || d == `_` || (d >= `0` && d <= `9`) {
 				i++
+			} else {
+				break
 			}
-			refs[source[start..i]] = true
-		} else {
-			i++
+		}
+		name := unsafe { tos(source.str + start, i - start) }
+		if name !in refs {
+			refs[name.clone()] = true
 		}
 	}
 	return refs
@@ -154,6 +170,7 @@ struct CacheSupportDefinition {
 	end   int
 }
 
+@[direct_array_access]
 fn cache_collect_support_refs(source string, start int, end int, definitions map[string][]int, mut refs map[string]bool, mut pending []string) {
 	mut i := start
 	for i < end {
@@ -164,13 +181,21 @@ fn cache_collect_support_refs(source string, start int, end int, definitions map
 				continue
 			}
 		}
-		if !c_identifier_start(source[i]) {
+		c := source[i]
+		if !((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`) {
 			i++
 			continue
 		}
 		word_start := i
 		i++
-		for i < end && c_identifier_continue(source[i]) { i++ }
+		for i < end {
+			d := source[i]
+			if (d >= `a` && d <= `z`) || (d >= `A` && d <= `Z`) || d == `_` || (d >= `0` && d <= `9`) {
+				i++
+			} else {
+				break
+			}
+		}
 		// These views stay inside the pruning call, while source remains alive.
 		// Only support names enter the worklist; other identifiers need no copies.
 		name := source.substr_unsafe(word_start, i)
@@ -184,6 +209,7 @@ fn cache_collect_support_refs(source string, start int, end int, definitions map
 // cache_prune_generated_support keeps inline helpers and literal storage reached
 // by a warm program. TinyCC still tokenizes unused inline bodies, so omit
 // unreachable helpers and literal storage before sending C to the compiler.
+@[direct_array_access]
 fn cache_prune_generated_support(source string) string {
 	inline_prefix := 'static inline '
 	mut support := []CacheSupportDefinition{}

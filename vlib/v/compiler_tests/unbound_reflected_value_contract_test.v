@@ -149,37 +149,37 @@ fn main() {
 	public_result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', 'run', source_path])
 	assert public_result.exit_code == 0, public_result.output
 	assert public_result.output.trim_space() == 'OK', public_result.output
-	for control_source in [
-		'struct App { mut: value int }
-fn (mut app App) add[Y](x int) []int { app.value += x; return [app.value] }
-fn invoke[T](mut app T) {
+
+	os.write_file(source_path, 'struct ArrayApp { mut: value int }
+fn (mut app ArrayApp) add[Y](x int) []int { app.value += x; return [app.value] }
+fn invoke_array[T](mut app T) {
  result := app.add[int](1)
  if result != [1] { panic("generic array result") }
 }
-fn main() {
- mut app := App{}
- invoke[App](mut app)
+fn check_generic_array_receiver() {
+ mut app := ArrayApp{}
+ invoke_array[ArrayApp](mut app)
  if app.value != 1 { panic("generic array receiver") }
  println("generic array receiver passed")
 }
-',
-		'struct App { mut: value int }
+
+struct CallbackApp { mut: value int }
 fn increment(y int) int { return y + 1 }
-fn (mut app App) callback[Y](x int) fn (int) int { app.value += x; return increment }
-fn invoke[T](mut app T) {
+fn (mut app CallbackApp) callback[Y](x int) fn (int) int { app.value += x; return increment }
+fn invoke_callback[T](mut app T) {
  f := app.callback[int](1)
  result := f(2)
  if result != 3 { panic("generic callback result") }
 }
-fn main() {
- mut app := App{}
- invoke[App](mut app)
+fn check_generic_callback_receiver() {
+ mut app := CallbackApp{}
+ invoke_callback[CallbackApp](mut app)
  if app.value != 1 { panic("generic callback receiver") }
  println("generic callback receiver passed")
 }
-',
-		'struct App { mut: value int }
-fn (mut app App) add(x int) int { app.value += x; return app.value }
+
+struct BoundApp { mut: value int }
+fn (mut app BoundApp) add(x int) int { app.value += x; return app.value }
 fn reflected[T](mut app T) {
  \$for method in T.methods {
   \$if method.name == "add" {
@@ -190,17 +190,25 @@ fn reflected[T](mut app T) {
   }
  }
 }
-fn main() {
- mut app := App{}
- reflected[App](mut app)
+fn check_bound_local_array_receiver() {
+ mut app := BoundApp{}
+ reflected[BoundApp](mut app)
  if app.value != 1 { panic("bound local receiver") }
  println("bound local array passed")
 }
-',
-	] {
-		os.write_file(source_path, control_source)!
-		control := os.exec([@VEXE, '-no-retry-compilation', '-nocache', 'run', source_path])
-		assert control.exit_code == 0, control.output
-		assert control.output.contains('passed'), control.output
-	}
+
+fn main() {
+ check_generic_array_receiver()
+ check_generic_callback_receiver()
+ check_bound_local_array_receiver()
+}
+')!
+	control := os.exec([@VEXE, '-no-retry-compilation', '-nocache', 'run', source_path])
+	assert control.exit_code == 0, control.output
+	expected := [
+		'generic array receiver passed',
+		'generic callback receiver passed',
+		'bound local array passed',
+	]
+	assert control.output.split_into_lines().filter(it in expected) == expected, control.output
 }

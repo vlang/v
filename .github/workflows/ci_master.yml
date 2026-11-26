@@ -3,18 +3,24 @@ name: CI master
 on:
   push:
     branches: [master]
+  workflow_call:
+    inputs:
+      portability:
+        type: boolean
+        required: true
 
+# Each push workflow has its own queue. The portability caller owns its queue,
+# so its invocation here gets a run-specific group.
 concurrency:
-  group: ci-master-${{ github.sha }}
-  cancel-in-progress: true
+  group: ${{ inputs.portability && format('ci-master-portability-call-{0}', github.run_id) || 'ci-master-linux' }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  # The reusable workflow is called separately so a slow macOS bootstrap
-  # cannot hold Linux formatting, VC generation, and Linux CI in the queue.
   bootstrap-linux:
+    if: ${{ !inputs.portability }}
     uses: ./.github/workflows/bootstrapping_ci.yml
     with:
       platform: linux
@@ -23,6 +29,7 @@ jobs:
       actions: read
 
   bootstrap-macos:
+    if: inputs.portability
     uses: ./.github/workflows/bootstrapping_ci.yml
     with:
       platform: macos
@@ -31,6 +38,7 @@ jobs:
       actions: read
 
   bootstrap-windows:
+    if: inputs.portability
     uses: ./.github/workflows/bootstrapping_ci.yml
     with:
       platform: windows
@@ -39,6 +47,7 @@ jobs:
       actions: read
 
   bootstrap-termux:
+    if: inputs.portability
     uses: ./.github/workflows/bootstrapping_ci.yml
     with:
       platform: termux
@@ -47,7 +56,7 @@ jobs:
       actions: read
 
   cleanup-vprod:
-    # Never prune old artifacts before every new platform compiler exists.
+    # Wait for all replacement compilers in this lane before pruning.
     needs:
       [
         gen_vc_ci,
@@ -56,7 +65,12 @@ jobs:
         bootstrap-termux,
         windows-bootstrap-contracts,
       ]
-    if: github.repository == 'vlang/v' && github.ref == 'refs/heads/master' && github.event_name == 'push'
+    if: >-
+      !cancelled() && github.repository == 'vlang/v' && github.ref == 'refs/heads/master' &&
+      github.event_name == 'push' && needs.gen_vc_ci.result == 'success' &&
+      (!inputs.portability || (needs.bootstrap-macos.result == 'success' &&
+      needs.bootstrap-windows.result == 'success' && needs.bootstrap-termux.result == 'success' &&
+      needs.windows-bootstrap-contracts.result == 'success'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     # Cleanup must not hold up the test gate if the artifact API is unavailable.
@@ -74,14 +88,20 @@ jobs:
         run: python3 .github/workflows/cleanup_vprod.py
 
   windows-bootstrap-contracts:
+    if: inputs.portability
     uses: ./.github/workflows/makev_ci.yml
     permissions:
       contents: read
 
   preflight:
     needs: bootstrap-linux
+    if: ${{ !cancelled() && (inputs.portability || needs.bootstrap-linux.result == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      # Reads earlier master runs and their record-tested-commit marks.
+      actions: read
     outputs:
       benchmark_footprint_json_decode: ${{ steps.paths.outputs.benchmark_footprint_json_decode }}
       benchmark_footprint_json_encode: ${{ steps.paths.outputs.benchmark_footprint_json_encode }}
@@ -153,15 +173,48 @@ jobs:
       - name: Select suites using the original push path filters
         id: paths
         env:
-          CI_BEFORE: ${{ github.event.before }}
           CI_AFTER: ${{ github.sha }}
+          CI_LANE: ${{ inputs.portability && 'portability' || 'master' }}
+          GH_TOKEN: ${{ github.token }}
         run: python3 .github/workflows/ci_gate_paths.py master
 
-  # Regenerate the bootstrap C sources before starting any other suites.
+  # A failed bootstrap can skip selected suites. Leave their changes for the next run.
+  record-tested-commit:
+    needs:
+      [
+        preflight,
+        gen_vc_ci,
+        bootstrap-macos,
+        bootstrap-windows,
+        bootstrap-termux,
+        windows-bootstrap-contracts,
+      ]
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      (!inputs.portability || (needs.bootstrap-macos.result == 'success' &&
+      needs.bootstrap-windows.result == 'success' && needs.bootstrap-termux.result == 'success' &&
+      needs.windows-bootstrap-contracts.result == 'success'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Write the tested commit
+        run: echo "${{ github.sha }}" > ci-tested-commit.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ci-tested-commit
+          path: ci-tested-commit.txt
+          retention-days: 30
+
+  # Portability skips bootstrap-linux. Use explicit results here and in its
+  # suite conditions so Actions does not propagate that skip through preflight.
   gen_vc_ci:
     needs: preflight
-    if: needs.preflight.outputs.gen_vc_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' &&
+      needs.preflight.outputs.gen_vc_ci == 'true'
     uses: ./.github/workflows/gen_vc_ci.yml
+    with:
+      validate_only: ${{ inputs.portability || false }}
     permissions:
       contents: read
     secrets: inherit
@@ -248,7 +301,9 @@ jobs:
 
   cross_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.cross_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.cross_ci == 'true'
     uses: ./.github/workflows/cross_ci.yml
     permissions:
       contents: read
@@ -288,7 +343,9 @@ jobs:
 
   fastc_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.fastc_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.fastc_ci == 'true'
     uses: ./.github/workflows/fastc_ci.yml
     permissions:
       contents: read
@@ -362,7 +419,10 @@ jobs:
 
   macos_ci:
     needs: [preflight, gen_vc_ci, bootstrap-macos]
-    if: needs.preflight.outputs.macos_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.bootstrap-macos.result == 'success' &&
+      needs.preflight.outputs.macos_ci == 'true'
     uses: ./.github/workflows/macos_ci.yml
     permissions:
       contents: read
@@ -370,7 +430,10 @@ jobs:
 
   macos_gitly_ci:
     needs: [preflight, gen_vc_ci, bootstrap-macos]
-    if: needs.preflight.outputs.macos_gitly_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.bootstrap-macos.result == 'success' &&
+      needs.preflight.outputs.macos_gitly_ci == 'true'
     uses: ./.github/workflows/macos_gitly_ci.yml
     permissions:
       contents: read
@@ -400,7 +463,9 @@ jobs:
 
   more_extensive_but_slower_tests_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.more_extensive_but_slower_tests_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.more_extensive_but_slower_tests_ci == 'true'
     uses: ./.github/workflows/more_extensive_but_slower_tests_ci.yml
     permissions:
       contents: read
@@ -416,7 +481,9 @@ jobs:
 
   notices_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.notices_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.notices_ci == 'true'
     uses: ./.github/workflows/notices_ci.yml
     permissions:
       contents: read
@@ -440,7 +507,9 @@ jobs:
 
   paths_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.paths_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.paths_ci == 'true'
     uses: ./.github/workflows/paths_ci.yml
     permissions:
       contents: read
@@ -448,7 +517,9 @@ jobs:
 
   periodic_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.periodic_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.periodic_ci == 'true'
     uses: ./.github/workflows/periodic_ci.yml
     permissions:
       contents: read
@@ -456,7 +527,9 @@ jobs:
 
   process_regressions_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.process_regressions_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.process_regressions_ci == 'true'
     uses: ./.github/workflows/process_regressions_ci.yml
     permissions:
       contents: read
@@ -471,9 +544,11 @@ jobs:
     secrets: inherit
 
   release_ci:
-    # Release builds compile from source on each runner; keep Linux releases unblocked.
+    # Release builds compile from source on each runner.
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.release_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.release_ci == 'true'
     uses: ./.github/workflows/release_ci.yml
     permissions:
       contents: write
@@ -499,7 +574,9 @@ jobs:
 
   sanitized_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.sanitized_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.sanitized_ci == 'true'
     uses: ./.github/workflows/sanitized_ci.yml
     permissions:
       contents: read
@@ -515,7 +592,9 @@ jobs:
 
   symlink_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.symlink_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.symlink_ci == 'true'
     uses: ./.github/workflows/symlink_ci.yml
     permissions:
       contents: read
@@ -531,7 +610,10 @@ jobs:
 
   termux_ci:
     needs: [preflight, gen_vc_ci, bootstrap-termux]
-    if: needs.preflight.outputs.termux_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.bootstrap-termux.result == 'success' &&
+      needs.preflight.outputs.termux_ci == 'true'
     uses: ./.github/workflows/termux_ci.yml
     permissions:
       contents: read
@@ -539,7 +621,9 @@ jobs:
 
   test_selection_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.test_selection_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.test_selection_ci == 'true'
     uses: ./.github/workflows/test_selection_ci.yml
     permissions:
       contents: read
@@ -547,7 +631,9 @@ jobs:
 
   time_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.time_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.time_ci == 'true'
     uses: ./.github/workflows/time_ci.yml
     permissions:
       contents: read
@@ -585,7 +671,9 @@ jobs:
 
   tools_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.tools_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.tools_ci == 'true'
     uses: ./.github/workflows/tools_ci.yml
     permissions:
       contents: read
@@ -593,7 +681,9 @@ jobs:
 
   v_apps_and_modules_compile_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.v_apps_and_modules_compile_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.v_apps_and_modules_compile_ci == 'true'
     uses: ./.github/workflows/v_apps_and_modules_compile_ci.yml
     permissions:
       contents: read
@@ -671,7 +761,9 @@ jobs:
 
   vpm_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.vpm_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.vpm_ci == 'true'
     uses: ./.github/workflows/vpm_ci.yml
     permissions:
       contents: read
@@ -679,7 +771,9 @@ jobs:
 
   vsl_and_vtl_compile_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.vsl_and_vtl_compile_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.vsl_and_vtl_compile_ci == 'true'
     uses: ./.github/workflows/vsl_and_vtl_compile_ci.yml
     permissions:
       contents: read
@@ -687,7 +781,9 @@ jobs:
 
   vup_works:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.vup_works == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.vup_works == 'true'
     uses: ./.github/workflows/vup_works.yml
     permissions:
       contents: read
@@ -695,7 +791,9 @@ jobs:
 
   inline_wasm_backend_ci:
     needs: [preflight, gen_vc_ci]
-    if: needs.preflight.outputs.wasm_backend_ci == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.preflight.outputs.wasm_backend_ci == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -757,7 +855,11 @@ jobs:
   windows_ci_gcc:
     needs:
       [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
-    if: needs.preflight.outputs.windows_ci_gcc == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.bootstrap-windows.result == 'success' &&
+      needs.windows-bootstrap-contracts.result == 'success' &&
+      needs.preflight.outputs.windows_ci_gcc == 'true'
     uses: ./.github/workflows/windows_ci_gcc.yml
     permissions:
       contents: read
@@ -766,7 +868,11 @@ jobs:
   windows_ci_msvc:
     needs:
       [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
-    if: needs.preflight.outputs.windows_ci_msvc == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.bootstrap-windows.result == 'success' &&
+      needs.windows-bootstrap-contracts.result == 'success' &&
+      needs.preflight.outputs.windows_ci_msvc == 'true'
     uses: ./.github/workflows/windows_ci_msvc.yml
     permissions:
       contents: read
@@ -775,7 +881,11 @@ jobs:
   windows_ci_tcc:
     needs:
       [preflight, gen_vc_ci, bootstrap-windows, windows-bootstrap-contracts]
-    if: needs.preflight.outputs.windows_ci_tcc == 'true'
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' && needs.gen_vc_ci.result == 'success' &&
+      needs.bootstrap-windows.result == 'success' &&
+      needs.windows-bootstrap-contracts.result == 'success' &&
+      needs.preflight.outputs.windows_ci_tcc == 'true'
     uses: ./.github/workflows/windows_ci_tcc.yml
     permissions:
       contents: read

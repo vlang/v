@@ -167,6 +167,13 @@ fn msvc_type_names(src string) (map[string]bool, map[string]bool) {
 				parts := line[..line.len - 1].fields()
 				if parts.len == 3 && parts[0] == 'struct' && msvc_is_ident(parts[2]) {
 					structs[parts[2]] = true
+				} else if parts.len > 3 && parts[0] == 'struct' && line.contains('}') {
+					// One-line definitions such as the option types:
+					// `typedef struct __v_option_i64 { bool ok; i64 value; } __v_option_i64;`
+					name := line[..line.len - 1].all_after_last('}').trim_space()
+					if msvc_is_ident(name) {
+						structs[name] = true
+					}
 				} else if parts.len == 2 && msvc_is_ident(parts[0]) {
 					if parts[1].ends_with(']') && parts[1].contains('[') {
 						name := parts[1].all_before('[')

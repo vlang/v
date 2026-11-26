@@ -1,20 +1,16 @@
 import os
 import v.parser
 import v.pref
+import v.tempname
 import v.types
-
-const checker_print_tests_dir = os.dir(@FILE)
-const checker_print_v3_dir = os.dir(checker_print_tests_dir)
-const checker_print_v3_src = os.join_path(checker_print_v3_dir, 'v.v')
-const checker_print_vexe = @VEXE
 
 // check_print_sources validates check print sources state for v3 tests.
 fn check_print_sources(name string, files map[string]string) []types.TypeError {
-	root := os.join_path(os.temp_dir(), 'v3_checker_print_${name}')
-	if os.exists(root) {
-		os.rmdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_checker_print_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
 	}
-	os.mkdir_all(root) or { panic(err) }
 	mut paths := []string{}
 	for rel, src in files {
 		path := os.join_path(root, rel)
@@ -33,14 +29,6 @@ fn check_print_sources(name string, files map[string]string) []types.TypeError {
 	tc.diagnose_unknown_calls = true
 	tc.check_semantics()
 	return tc.errors
-}
-
-// build_checker_print_v3_bin builds checker print v3 bin data for v3 tests.
-fn build_checker_print_v3_bin(name string) string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_checker_print_${name}')
-	build := os.exec([checker_print_vexe, '-gc', 'none', '-o', v3_bin, '${checker_print_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
 }
 
 // test_bare_println_allows_non_string_for_stringify_lowering validates this v3 regression case.
@@ -113,14 +101,18 @@ pub fn println(s string) {}
 
 // test_eprint_bool_compile_uses_stringification validates this v3 regression case.
 fn test_eprint_bool_compile_uses_stringification() {
-	v3_bin := build_checker_print_v3_bin('eprint_bool')
-	src := os.join_path(os.temp_dir(), 'v3_checker_print_eprint_bool.v')
-	bin := os.join_path(os.temp_dir(), 'v3_checker_print_eprint_bool_output')
+	root := os.join_path(os.vtmp_dir(), 'v3_checker_print_eprint_bool_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src := os.join_path(root, 'v3_checker_print_eprint_bool.v')
+	bin := os.join_path(root, 'app')
 	os.write_file(src, '
 fn main() {
 	eprint(true)
 }
 ') or { panic(err) }
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := os.exec([@VEXE, '-o', bin, src])
 	assert compile.exit_code == 0, compile.output
 }

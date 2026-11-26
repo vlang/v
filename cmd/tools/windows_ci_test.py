@@ -39,7 +39,7 @@ def workflow_block(source, name, indent):
 
 
 def validate_master_bootstrap_contract(workflow, master):
-    # Every master push now covers all W3/W4/W5 inputs through the shared gate.
+    # Every admitted portability run covers all W3/W4/W5 inputs through the shared gate.
     push = workflow_block(workflow_block(master, 'on', 0), 'push', 2)
     if push.strip() != 'branches: [master]':
         raise ValueError('master push must be unfiltered')
@@ -57,8 +57,10 @@ def validate_master_bootstrap_contract(workflow, master):
         if not re.search(r'^    uses: \./\.github/workflows/' + re.escape(filename) + r'$',
                          caller, re.M):
             raise ValueError(f'{name} must call {filename}')
-        if re.search(r'^    (if|needs|continue-on-error):', caller, re.M):
-            raise ValueError(f'{name} must run unconditionally')
+        condition = '${{ !inputs.portability }}' if name == 'bootstrap-linux' else 'inputs.portability'
+        if (re.findall(r'^    if: (.+)$', caller, re.M) != [condition]
+                or re.search(r'^    (needs|continue-on-error):', caller, re.M)):
+            raise ValueError(f'{name} must run for its lane')
         if name.startswith('bootstrap-'):
             inputs = workflow_block(caller, 'with', 4)
             if inputs.strip() != f'platform: {name.removeprefix("bootstrap-")}':
@@ -66,8 +68,10 @@ def validate_master_bootstrap_contract(workflow, master):
     preflight = workflow_block(jobs, 'preflight', 2)
     if re.findall(r'^    needs: (.+)$', preflight, re.M) != ['bootstrap-linux']:
         raise ValueError('preflight must depend only on the Linux bootstrap')
-    if re.search(r'^    if:', preflight, re.M):
-        raise ValueError('preflight must retain the default success condition')
+    if re.findall(r'^    if: (.+)$', preflight, re.M) != [
+        "${{ !cancelled() && (inputs.portability || needs.bootstrap-linux.result == 'success') }}"
+    ]:
+        raise ValueError('preflight must require a successful bootstrap in the Linux lane')
     for cc in COMPILERS:
         caller = workflow_block(jobs, f'windows_ci_{cc}', 2)
         needs = re.findall(r'^    needs:\s*\[([^\]]+)\]$', caller, re.M)

@@ -1,33 +1,6 @@
 import os
-
-const selective_import_vexe = @VEXE
-const selective_import_tests_dir = os.dir(@FILE)
-const selective_import_v3_dir = os.dir(selective_import_tests_dir)
-const selective_import_vlib_dir = os.dir(selective_import_v3_dir)
-const selective_import_v3_src = os.join_path(selective_import_v3_dir, 'v.v')
-
-fn selective_import_setup_v3_cache() {
-	cache_dir := os.join_path(os.temp_dir(), 'v3_selective_import_cache_${os.getpid()}')
-	if os.getenv('V3CACHE') == cache_dir {
-		return
-	}
-	os.rmdir_all(cache_dir) or {}
-	os.setenv('V3CACHE', cache_dir, true)
-}
-
-fn selective_import_build_v3() string {
-	selective_import_setup_v3_cache()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([selective_import_vexe, '-gc', 'none', '-path',
-			'${selective_import_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${selective_import_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.cmdexec
+import v.tempname
 
 fn selective_import_write_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
@@ -40,8 +13,8 @@ fn selective_import_write_project(name string, main_src string) string {
 }
 
 fn selective_import_write_project_with_extra(name string, main_src string, extra_files map[string]string) string {
-	root := os.join_path(os.temp_dir(), 'v3_selective_import_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
+	root := os.join_path(os.vtmp_dir(), 'v3_selective_import_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
 	selective_import_write_file(root, 'v.mod', "Module { name: 'selective_import_test' }\n")
 	selective_import_write_file(root, 'mymodules/main_functions.v', 'module mymodules
 
@@ -66,19 +39,26 @@ pub fn sub_xy(x int, y int) int {
 	return root
 }
 
-fn selective_import_compile_run(v3_bin string, name string, main_src string) (string, string) {
+fn selective_import_compile(root string, bin string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', root, '-b', 'c', '-o', bin], '', {
+		'V3CACHE': os.join_path(root, 'cache')
+	})
+}
+
+fn selective_import_compile_run(name string, main_src string) (string, string) {
 	root := selective_import_write_project(name, main_src)
-	return selective_import_compile_run_root(v3_bin, root)
+	return selective_import_compile_run_root(root)
 }
 
-fn selective_import_compile_run_with_extra(v3_bin string, name string, main_src string, extra_files map[string]string) (string, string) {
+fn selective_import_compile_run_with_extra(name string, main_src string, extra_files map[string]string) (string, string) {
 	root := selective_import_write_project_with_extra(name, main_src, extra_files)
-	return selective_import_compile_run_root(v3_bin, root)
+	return selective_import_compile_run_root(root)
 }
 
-fn selective_import_compile_run_root(v3_bin string, root string) (string, string) {
+fn selective_import_compile_run_root(root string) (string, string) {
+	defer { os.rmdir_all(root) or {} }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, '-nocache', root, '-b', 'c', '-o', bin])
+	compile := selective_import_compile(root, bin)
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -86,19 +66,20 @@ fn selective_import_compile_run_root(v3_bin string, root string) (string, string
 	return run.output.trim_space(), generated
 }
 
-fn selective_import_compile_bad(v3_bin string, name string, main_src string) string {
+fn selective_import_compile_bad(name string, main_src string) string {
 	root := selective_import_write_project(name, main_src)
-	return selective_import_compile_bad_root(v3_bin, name, root)
+	return selective_import_compile_bad_root(name, root)
 }
 
-fn selective_import_compile_bad_with_extra(v3_bin string, name string, main_src string, extra_files map[string]string) string {
+fn selective_import_compile_bad_with_extra(name string, main_src string, extra_files map[string]string) string {
 	root := selective_import_write_project_with_extra(name, main_src, extra_files)
-	return selective_import_compile_bad_root(v3_bin, name, root)
+	return selective_import_compile_bad_root(name, root)
 }
 
-fn selective_import_compile_bad_root(v3_bin string, name string, root string) string {
+fn selective_import_compile_bad_root(name string, root string) string {
+	defer { os.rmdir_all(root) or {} }
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, '-nocache', root, '-b', 'c', '-o', bin])
+	compile := selective_import_compile(root, bin)
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), compile.output
 	return compile.output
@@ -188,8 +169,7 @@ pub:
 }
 
 fn test_selective_import_calls_module_and_submodule_functions() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run(v3_bin, 'positive', 'module main
+	output, generated := selective_import_compile_run('positive', 'module main
 
 import mymodules { add_xy }
 import mymodules.submodule { sub_xy }
@@ -205,9 +185,7 @@ fn main() {
 }
 
 fn test_import_alias_variadic_module_call_without_values_skips_module_receiver() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'module_alias_variadic_zero_args', 'module main
+	output, generated := selective_import_compile_run_with_extra('module_alias_variadic_zero_args', 'module main
 
 import logger as log
 
@@ -216,7 +194,7 @@ fn main() {
 	println(int_str(log.sum(4, 5)))
 }
 ', {
-			'logger/logger.v': 'module logger
+		'logger/logger.v': 'module logger
 
 pub fn sum(values ...int) int {
 	mut total := 0
@@ -226,16 +204,14 @@ pub fn sum(values ...int) int {
 	return total
 }
 '
-		})
+	})
 	assert output == '0\n9'
 	assert generated.contains('logger__sum('), generated
 	assert !generated.contains('logger__sum(log'), generated
 }
 
 fn test_json2_decode_calls_the_module_decoder() {
-	v3_bin := selective_import_build_v3()
-	json2_output, json2_generated := selective_import_compile_run_with_extra(v3_bin,
-		'json2_decode', 'module main
+	json2_output, json2_generated := selective_import_compile_run_with_extra('json2_decode', 'module main
 
 import json2
 
@@ -248,7 +224,7 @@ fn main() {
 	println(int_str(cfg.value))
 }
 ', {
-			'json2/decode.v': 'module json2
+		'json2/decode.v': 'module json2
 
 pub struct DecoderOptions {}
 
@@ -258,14 +234,13 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 	return T{}
 }
 '
-		})
+	})
 	assert json2_output == '0'
 	assert json2_generated.contains('json2__decode'), json2_generated
 }
 
 fn test_const_ref_expansion_uses_referenced_const_file_imports() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin, 'const_ref_file_context', 'module main
+	output, generated := selective_import_compile_run_with_extra('const_ref_file_context', 'module main
 
 import y.other as json
 
@@ -307,9 +282,7 @@ pub:
 }
 
 fn test_json2_encode_pure_v_is_specialized() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'json2_encode_specialized', 'module main
+	output, generated := selective_import_compile_run_with_extra('json2_encode_specialized', 'module main
 
 import json2
 
@@ -321,7 +294,7 @@ fn main() {
 	println(json2.encode(User{name: "x"}, json2.EncoderOptions{}))
 }
 ', {
-			'json2/encode.v': 'module json2
+		'json2/encode.v': 'module json2
 
 pub struct EncoderOptions {}
 
@@ -331,15 +304,13 @@ pub fn encode[T](value T, options EncoderOptions) string {
 	return "pure-v"
 }
 '
-		})
+	})
 	assert output == 'pure-v'
 	assert generated.contains('json2__encode'), generated
 }
 
 fn test_selective_import_inside_generic_clone_keeps_source_file_symbol() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'generic_clone_selective_import', 'module main
+	output, generated := selective_import_compile_run_with_extra('generic_clone_selective_import', 'module main
 
 import worker
 
@@ -347,7 +318,7 @@ fn main() {
 	println(int_str(worker.use_add[int](0, 2, 3)))
 }
 ', {
-			'worker/worker.v': 'module worker
+		'worker/worker.v': 'module worker
 
 import mymodules { add_xy }
 import other
@@ -357,22 +328,20 @@ pub fn use_add[T](marker T, x int, y int) int {
 	return add_xy(x, y)
 }
 '
-			'other/other.v':   'module other
+		'other/other.v':   'module other
 
 pub fn add_xy(x int, y int) int {
 	return x * 100 + y
 }
 '
-		})
+	})
 	assert output == '5'
 	assert generated.contains('mymodules__add_xy(x, y)'), generated
 	assert !generated.contains('other__add_xy(x, y)'), generated
 }
 
 fn test_selective_import_explicit_generic_call_keeps_selected_symbol() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'explicit_generic_selective_import', 'module main
+	output, generated := selective_import_compile_run_with_extra('explicit_generic_selective_import', 'module main
 
 import util { id }
 import other
@@ -381,28 +350,26 @@ fn main() {
 	println(int_str(id[int](1)))
 }
 ', {
-			'util/util.v':   'module util
+		'util/util.v':   'module util
 
 pub fn id[T](x T) T {
 	return x
 }
 '
-			'other/other.v': 'module other
+		'other/other.v': 'module other
 
 pub fn id[T](x T) T {
 	return x
 }
 '
-		})
+	})
 	assert output == '1'
 	assert generated.contains('util__id_T_v_int(1)'), generated
 	assert !generated.contains('other__id_T_v_int(1)'), generated
 }
 
 fn test_selective_import_fn_value_inside_generic_clone_keeps_source_file_symbol() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'generic_clone_selective_import_fn_value', 'module main
+	output, generated := selective_import_compile_run_with_extra('generic_clone_selective_import_fn_value', 'module main
 
 import worker
 
@@ -410,7 +377,7 @@ fn main() {
 	println(int_str(worker.use_add_cb[int](0, 2, 3)))
 }
 ', {
-			'worker/worker.v': 'module worker
+		'worker/worker.v': 'module worker
 
 import mymodules { add_xy }
 import other
@@ -424,13 +391,13 @@ pub fn use_add_cb[T](marker T, x int, y int) int {
 	return takes(add_xy, x, y)
 }
 '
-			'other/other.v':   'module other
+		'other/other.v':   'module other
 
 pub fn add_xy(x int, y int) int {
 	return x * 100 + y
 }
 '
-		})
+	})
 	assert output == '5'
 	assert generated.contains('worker__takes(mymodules__add_xy, x, y)'), generated
 	assert !generated.contains('worker__takes(add_xy, x, y)'), generated
@@ -438,9 +405,7 @@ pub fn add_xy(x int, y int) int {
 }
 
 fn test_selective_import_type_inside_generic_clone_signature_keeps_source_file_symbol() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'generic_clone_selective_import_type_signature', 'module main
+	output, generated := selective_import_compile_run_with_extra('generic_clone_selective_import_type_signature', 'module main
 
 import worker
 
@@ -449,7 +414,7 @@ fn main() {
 	println(int_str(worker.take_point[int](p, 2) + p.x))
 }
 ', {
-			'worker/worker.v':     'module worker
+		'worker/worker.v':     'module worker
 
 import geometry { Point }
 import pixels
@@ -466,21 +431,21 @@ pub fn take_point[T](p Point, x T) int {
 	return p.x + 4
 }
 '
-			'geometry/geometry.v': 'module geometry
+		'geometry/geometry.v': 'module geometry
 
 pub struct Point {
 pub:
 	x int
 }
 '
-			'pixels/pixels.v':     'module pixels
+		'pixels/pixels.v':     'module pixels
 
 pub struct Point {
 pub:
 	x int
 }
 '
-		})
+	})
 	assert output == '10'
 	assert generated.contains('geometry__Point worker__make_point_T_v_int(i64 x)'), generated
 	assert generated.contains('i64 worker__take_point_T_v_int(geometry__Point p, i64 x)'), generated
@@ -491,8 +456,7 @@ pub:
 }
 
 fn test_selective_import_symbol_can_be_used_as_function_value() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run(v3_bin, 'fn_value', 'module main
+	output, generated := selective_import_compile_run('fn_value', 'module main
 
 import mymodules { add_xy }
 
@@ -508,9 +472,7 @@ fn main() {
 }
 
 fn test_selective_import_function_value_roots_exact_symbol_with_imported_homonym() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'fn_value_imported_homonym', 'module main
+	output, generated := selective_import_compile_run_with_extra('fn_value_imported_homonym', 'module main
 
 import a { choose }
 import b
@@ -520,27 +482,26 @@ fn main() {
 	println(int_str(f()))
 }
 ', {
-			'a/a.v': 'module a
+		'a/a.v': 'module a
 
 pub fn choose() int {
 	return 11
 }
 '
-			'b/b.v': 'module b
+		'b/b.v': 'module b
 
 pub fn choose() int {
 	return 99
 }
 '
-		})
+	})
 	assert output == '11'
 	assert generated.contains('a__choose'), generated
 	assert !generated.contains('b__choose'), generated
 }
 
 fn test_selective_import_does_not_import_other_symbols_by_suffix() {
-	v3_bin := selective_import_build_v3()
-	output := selective_import_compile_bad(v3_bin, 'hidden_symbol', 'module main
+	output := selective_import_compile_bad('hidden_symbol', 'module main
 
 import mymodules { add_xy }
 
@@ -552,8 +513,7 @@ fn main() {
 }
 
 fn test_selective_import_scope_is_file_local() {
-	v3_bin := selective_import_build_v3()
-	output := selective_import_compile_bad_with_extra(v3_bin, 'file_local', 'module main
+	output := selective_import_compile_bad_with_extra('file_local', 'module main
 
 import mymodules { add_xy }
 
@@ -572,8 +532,7 @@ fn from_other_file() int {
 }
 
 fn test_selective_import_same_symbol_from_two_modules_is_ambiguous() {
-	v3_bin := selective_import_build_v3()
-	output := selective_import_compile_bad_with_extra(v3_bin, 'ambiguous_symbol', 'module main
+	output := selective_import_compile_bad_with_extra('ambiguous_symbol', 'module main
 
 import a { hit }
 import b { hit }
@@ -587,8 +546,7 @@ fn main() {
 }
 
 fn test_duplicate_selective_import_fails_even_when_unused() {
-	v3_bin := selective_import_build_v3()
-	output := selective_import_compile_bad_with_extra(v3_bin, 'ambiguous_unused', 'module main
+	output := selective_import_compile_bad_with_extra('ambiguous_unused', 'module main
 
 import a { hit }
 import b { hit }
@@ -602,8 +560,7 @@ fn main() {
 }
 
 fn test_duplicate_selective_import_fails_even_with_local_homonym() {
-	v3_bin := selective_import_build_v3()
-	output := selective_import_compile_bad_with_extra(v3_bin, 'ambiguous_local_homonym', 'module main
+	output := selective_import_compile_bad_with_extra('ambiguous_local_homonym', 'module main
 
 import a { hit }
 import b { hit }
@@ -621,8 +578,7 @@ fn main() {
 }
 
 fn test_duplicate_selective_import_function_value_reports_ambiguous() {
-	v3_bin := selective_import_build_v3()
-	output := selective_import_compile_bad_with_extra(v3_bin, 'ambiguous_fn_value', 'module main
+	output := selective_import_compile_bad_with_extra('ambiguous_fn_value', 'module main
 
 import a { hit }
 import b { hit }
@@ -640,8 +596,7 @@ fn main() {
 // A local function used to take priority over a selectively imported homonym. Defining
 // one is an error now, as in V1 (f39e8541d8), so neither function is silently picked.
 fn test_local_function_cannot_redefine_selective_import_homonym() {
-	v3_bin := selective_import_build_v3()
-	output := selective_import_compile_bad(v3_bin, 'local_homonym', 'module main
+	output := selective_import_compile_bad('local_homonym', 'module main
 
 import mymodules { add_xy }
 
@@ -657,9 +612,7 @@ fn main() {
 }
 
 fn test_module_homonym_function_signature_uses_module_key() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'module_homonym_signature', 'module main
+	output, generated := selective_import_compile_run_with_extra('module_homonym_signature', 'module main
 
 import foo
 
@@ -672,13 +625,13 @@ fn main() {
 	println(foo.value())
 }
 ', {
-			'foo/foo.v': 'module foo
+		'foo/foo.v': 'module foo
 
 pub fn value() string {
 	return "foo"
 }
 '
-		})
+	})
 	assert output == '7\nfoo'
 	assert generated.contains('i64 value(void);'), generated
 	assert generated.contains('string foo__value(void);'), generated
@@ -687,9 +640,7 @@ pub fn value() string {
 }
 
 fn test_module_local_error_method_signature_uses_module_key() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'module_local_error_method_signature', 'module main
+	output, generated := selective_import_compile_run_with_extra('module_local_error_method_signature', 'module main
 
 import foo
 
@@ -698,7 +649,7 @@ fn main() {
 	println(err.str())
 }
 ', {
-			'foo/foo.v': 'module foo
+		'foo/foo.v': 'module foo
 
 pub struct Error {
 	message string
@@ -718,7 +669,7 @@ pub fn (err Error) str() string {
 	return err.msg()
 }
 '
-		})
+	})
 	assert output == 'local'
 	assert generated.contains('string foo__Error__msg(foo__Error err)'), generated
 	assert generated.contains('return foo__Error__msg(err);'), generated
@@ -726,8 +677,7 @@ pub fn (err Error) str() string {
 }
 
 fn test_selective_import_with_module_alias_keeps_symbol_authority() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run(v3_bin, 'alias', 'module main
+	output, generated := selective_import_compile_run('alias', 'module main
 
 import mymodules as mm { add_xy }
 
@@ -741,8 +691,7 @@ fn main() {
 }
 
 fn test_selective_import_resolves_struct_collision() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin, 'struct_collision', 'module main
+	output, generated := selective_import_compile_run_with_extra('struct_collision', 'module main
 
 import geometry { Point }
 import pixels
@@ -759,9 +708,7 @@ fn main() {
 }
 
 fn test_selective_import_resolves_generic_struct_collision() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'generic_struct_collision', 'module main
+	output, generated := selective_import_compile_run_with_extra('generic_struct_collision', 'module main
 
 import geometry { Box }
 import pixels
@@ -781,7 +728,6 @@ fn main() {
 }
 
 fn test_selective_import_resolves_generic_struct_field_from_decl_file() {
-	v3_bin := selective_import_build_v3()
 	extra := {
 		'types/types.v': 'module types
 
@@ -808,8 +754,7 @@ pub:
 }
 '
 	}
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'generic_struct_field_selective_import', 'module main
+	output, generated := selective_import_compile_run_with_extra('generic_struct_field_selective_import', 'module main
 
 import box { Box }
 import other
@@ -829,7 +774,6 @@ fn main() {
 }
 
 fn test_selective_import_resolves_generic_struct_method_signature_from_decl_file() {
-	v3_bin := selective_import_build_v3()
 	extra := {
 		'types/types.v': 'module types
 
@@ -860,8 +804,7 @@ pub fn (b Box[T]) combine(thing Thing) int {
 }
 '
 	}
-	output, generated := selective_import_compile_run_with_extra(v3_bin,
-		'generic_struct_method_signature_selective_import', 'module main
+	output, generated := selective_import_compile_run_with_extra('generic_struct_method_signature_selective_import', 'module main
 
 import box { Box }
 import other
@@ -880,8 +823,7 @@ fn main() {
 }
 
 fn test_selective_import_resolves_alias_collision() {
-	v3_bin := selective_import_build_v3()
-	output, _ := selective_import_compile_run_with_extra(v3_bin, 'alias_collision', 'module main
+	output, _ := selective_import_compile_run_with_extra('alias_collision', 'module main
 
 import geometry { ItemId }
 import pixels
@@ -899,8 +841,7 @@ fn main() {
 }
 
 fn test_selective_import_resolves_enum_collision() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_collision', 'module main
+	output, generated := selective_import_compile_run_with_extra('enum_collision', 'module main
 
 import geometry { Mode }
 import pixels
@@ -924,8 +865,7 @@ fn main() {
 }
 
 fn test_selective_import_enum_from_uses_selected_type() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_from', 'module main
+	output, generated := selective_import_compile_run_with_extra('enum_from', 'module main
 
 import geometry { Mode }
 import pixels
@@ -943,8 +883,7 @@ fn main() {
 }
 
 fn test_module_qualified_enum_from_uses_imported_type() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin, 'qualified_enum_from', 'module main
+	output, generated := selective_import_compile_run_with_extra('qualified_enum_from', 'module main
 
 import colors
 
@@ -968,8 +907,7 @@ pub enum Color {
 }
 
 fn test_selective_imported_enum_alias_from_string() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_alias_from_string', 'module main
+	output, generated := selective_import_compile_run_with_extra('enum_alias_from_string', 'module main
 
 import colors { Hue }
 
@@ -993,8 +931,7 @@ pub type Hue = Color
 }
 
 fn test_selective_import_resolves_flag_enum_collision() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run_with_extra(v3_bin, 'flag_enum_collision', 'module main
+	output, generated := selective_import_compile_run_with_extra('flag_enum_collision', 'module main
 
 import geometry { Perm }
 import pixels
@@ -1014,8 +951,7 @@ fn main() {
 }
 
 fn test_duplicate_selective_import_type_fails() {
-	v3_bin := selective_import_build_v3()
-	output := selective_import_compile_bad_with_extra(v3_bin, 'ambiguous_type', 'module main
+	output := selective_import_compile_bad_with_extra('ambiguous_type', 'module main
 
 import geometry { Point }
 import pixels { Point }
@@ -1030,8 +966,7 @@ fn main() {
 }
 
 fn test_duplicate_selective_import_enum_selector_fails() {
-	v3_bin := selective_import_build_v3()
-	output := selective_import_compile_bad_with_extra(v3_bin, 'ambiguous_enum_selector', 'module main
+	output := selective_import_compile_bad_with_extra('ambiguous_enum_selector', 'module main
 
 import geometry { Mode }
 import pixels { Mode }
@@ -1046,8 +981,7 @@ fn main() {
 }
 
 fn test_selective_import_enum_selector_keeps_selected_authority() {
-	v3_bin := selective_import_build_v3()
-	output := selective_import_compile_bad_with_extra(v3_bin, 'enum_selector_authority', 'module main
+	output := selective_import_compile_bad_with_extra('enum_selector_authority', 'module main
 
 import geometry { Mode }
 import pixels
@@ -1066,8 +1000,7 @@ fn main() {
 }
 
 fn test_unselected_type_from_selective_import_is_not_resolved_by_suffix() {
-	v3_bin := selective_import_build_v3()
-	output := selective_import_compile_bad_with_extra(v3_bin, 'unselected_type', 'module main
+	output := selective_import_compile_bad_with_extra('unselected_type', 'module main
 
 import geometry { Point }
 import pixels

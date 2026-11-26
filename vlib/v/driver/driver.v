@@ -604,6 +604,7 @@ mut:
 }
 
 struct CObjectFlagPlan {
+	cache_dir              string
 	environment_flags      []string
 	primary_compiler       string
 	primary_compiler_flags []string
@@ -683,6 +684,12 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 			return c_source_language_flags(plan.flags)
 		}
 	}
+	// Test sessions can remove their aliases to this shared cache while another
+	// build is linking. Persist the underlying object paths in both manifests.
+	compile_plan := CObjectFlagPlan{
+		...object_flag_plan
+		cache_dir: os.real_path(cache_dir)
+	}
 	mut prepared := []string{}
 	mut active_language := ''
 	mut i := 0
@@ -726,7 +733,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 			} else {
 				''
 			}
-			object_path := ensure_c_object_file(clean, active_language, &object_flag_plan, c99,
+			object_path := ensure_c_object_file(clean, active_language, &compile_plan, c99,
 				no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
 				uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
@@ -734,7 +741,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		} else if !clean.starts_with('-') && clean.ends_with('.mm') {
 			stats.requests++
 			language := c_source_language(clean, active_language)
-			object_path := ensure_c_source_object(clean, active_language, &object_flag_plan, c99,
+			object_path := ensure_c_source_object(clean, active_language, &compile_plan, c99,
 				no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
 				uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
@@ -765,7 +772,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v5', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-key-v6', os.getwd(), flags.join('\x00'),
 		object_flags.environment_flags.join('\x00'), object_flags.primary_compiler,
 		object_flags.primary_compiler_flags.join('\x00'), object_flags.common_flags.join('\x00'),
 		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
@@ -1778,8 +1785,13 @@ fn acquire_native_object_cache_lock(manifest_path string) (filelock.FileLock, bo
 }
 
 fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
-	ensure_native_object_cache_dir(cache_dir)!
+	cache_dir := if object_flags.cache_dir != '' {
+		object_flags.cache_dir
+	} else {
+		path := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+		ensure_native_object_cache_dir(path)!
+		os.real_path(path)
+	}
 	language := c_source_language(source_file, source_language)
 	is_cpp := language in ['c++', 'objective-c++']
 	std_flag := if is_cpp {
@@ -1945,7 +1957,7 @@ fn publish_native_c_object(temporary string, destination string) !bool {
 fn c_object_manifest_path(cache_dir string, obj_path string, compiler string, compile_args []string, target pref.Target, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-object-manifest-v1', os.real_path(obj_path), compiler_path,
+	for identity in ['v3-c-object-request-key-v2', os.real_path(obj_path), compiler_path,
 		compiler_version, target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
 		target.object_format, compile_args.join('\x00')] {
 		hash = c_hash_bytes(hash, identity.bytes())
@@ -14645,6 +14657,7 @@ pub fn run(args []string) {
 				eprintln(err.msg())
 				exit(1)
 			}
+			wasm_existed_before := os.exists(output_file)
 			g.write(output_file) or {
 				eprintln('error writing ${output_file}')
 				exit(1)
@@ -14653,6 +14666,25 @@ pub fn run(args []string) {
 				eprintln('wasm: ${warning}')
 			}
 			b.step('wasm gen')
+			if should_run {
+				runner := os.getenv_opt('V3_PRIMARY_VEXE') or {
+					os.getenv_opt('VEXE') or {
+						os.join_path(prefs.vroot, if os.user_os() == 'windows' {
+							'v.exe'
+						} else {
+							'v'
+						})
+					}
+				}
+				mut wasm_args := ['wasm', output_file]
+				wasm_args << run_args
+				status := run_binary(runner, wasm_args, false)
+				if !explicit_output && !is_crun && !keep_c && !wasm_existed_before {
+					os.rm(output_file) or {}
+				}
+				if status != 0 { exit(status) }
+				b.step('run')
+			}
 			b.print_report()
 			return
 		} $else {
@@ -18170,21 +18202,28 @@ fn prune_cache_only_function_prototypes(source string, cache_used_fns &map[strin
 	return out.str()
 }
 
+// cache_function_reference_counts counts, up to 2, the identifiers of `source` that are
+// `candidates`. It visits every byte of a C unit: bytes are read directly, and a token is
+// looked up through a view of `source`.
+@[direct_array_access]
 fn cache_function_reference_counts(source string, candidates map[string]bool) map[string]u8 {
 	mut counts := map[string]u8{}
 	mut start := -1
 	for i := 0; i <= source.len; i++ {
-		is_identifier := i < source.len && (source[i].is_alnum() || source[i] == `_`)
-		if is_identifier {
-			if start < 0 {
-				start = i
+		if i < source.len {
+			c := source[i]
+			if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
+				|| c == `_` {
+				if start < 0 {
+					start = i
+				}
+				continue
 			}
-			continue
 		}
 		if start < 0 {
 			continue
 		}
-		token := unsafe { source[start..i] }
+		token := unsafe { tos(source.str + start, i - start) }
 		if candidates[token] && counts[token] < 2 {
 			counts[token]++
 		}
@@ -20310,7 +20349,9 @@ If you want to split one module across subdirectories after moving the root file
 // directory can: their module sources are added once, and the test harness runs
 // the tests of every file.
 fn v_test_batch_input_allowed(input_file string, extra []string, path string) bool {
-	if !input_file.ends_with('_test.v') || !path.ends_with('_test.v') {
+	// `_test.c.v` files are C backend tests, which the C backend batches like the others.
+	if !(input_file.ends_with('_test.v') || input_file.ends_with('_test.c.v'))
+		|| !(path.ends_with('_test.v') || path.ends_with('_test.c.v')) {
 		return false
 	}
 	if !os.is_file(input_file) || !os.is_file(path) {
@@ -21732,6 +21773,8 @@ fn collect_test_harness_decl_ids(a &flat.FlatAst, node &flat.Node, mut ids []fla
 // own: files of one module may each declare `fn test_main()`. A later file's test
 // function of a name that an earlier file of its module already declared is
 // renamed. A batch that fails runs again file by file, under the original names.
+// With V3_INTERNAL_BATCH_SHARED_SUITE_HOOKS=1 (set by the runner, whose batches then
+// share one environment-only `testsuite_begin`), later copies of that hook are renamed too.
 fn rename_colliding_batch_test_fns(mut a flat.FlatAst, test_files []string) {
 	mut selected := map[string]bool{}
 	for file in test_files {
@@ -21739,6 +21782,7 @@ fn rename_colliding_batch_test_fns(mut a flat.FlatAst, test_files []string) {
 	}
 	mut seen := map[string]bool{}
 	mut file_number := 0
+	shared_suite_hooks := os.getenv('V3_INTERNAL_BATCH_SHARED_SUITE_HOOKS') == '1'
 	for file_idx in a.user_code_start .. a.nodes.len {
 		file_node := a.nodes[file_idx]
 		if !is_user_test_file_node(a, file_idx, file_node, selected) {
@@ -21754,6 +21798,17 @@ fn rename_colliding_batch_test_fns(mut a flat.FlatAst, test_files []string) {
 		collect_test_harness_decl_ids(a, &file_node, mut decl_ids)
 		for id in decl_ids {
 			name := a.nodes[int(id)].value
+			if name == 'testsuite_begin' && shared_suite_hooks {
+				// The runner batches files only with the same `testsuite_begin`, which only
+				// unsets environment variables: the first file's runs for the whole binary.
+				key := '${module_name}.${name}'
+				if key in seen {
+					a.nodes[int(id)].value = 'batch_shared_testsuite_begin_${file_number}'
+				} else {
+					seen[key] = true
+				}
+				continue
+			}
 			if !name.starts_with('test_') || name.contains('.')
 				|| test_harness_fn_param_count(a, &a.nodes[int(id)]) != 0 {
 				continue

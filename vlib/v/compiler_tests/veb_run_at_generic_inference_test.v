@@ -29,7 +29,7 @@ fn veb_run_at_project(name string, source string) !string {
 	return root
 }
 
-fn test_veb_run_at_requires_an_explicit_context_type() {
+fn test_veb_run_at_rejects_invalid_generic_arguments() {
 	for module_name in ['veb', 'web'] {
 		import_line := if module_name == 'veb' {
 			'import veb'
@@ -37,68 +37,34 @@ fn test_veb_run_at_requires_an_explicit_context_type() {
 			'import veb as ${module_name}'
 		}
 		source := veb_run_at_source.replace('import veb', import_line)
+			.replace('veb.run_at(mut p, port: 8080)!', 'veb.run_at(mut p, port: 8080)!
+	veb.run_at[Program](mut p, port: 8080)!
+	veb.run_at[Program, Context, int](mut p, port: 8080)!
+	veb.run_at[int, Context](mut p, port: 8080)!')
 			.replace('veb.', '${module_name}.')
-		root := veb_run_at_project('inference_${module_name}', source)!
+		root := veb_run_at_project('invalid_generic_args_${module_name}', source)!
 		defer { os.rmdir_all(root) or {} }
 		for flags in [[]string{}, ['-no-parallel']] {
 			result := os.exec([@VEXE, '-nocache', '-nocolor', ...flags, '-o',
 				os.join_path(root, 'app.c'), root])
 			assert result.exit_code != 0, result.output
 			assert result.output.contains('could not infer generic type `X` in call to `veb.run_at`'), result.output
-			assert !result.output.contains('C compilation error'), result.output
-		}
-	}
-}
-
-fn test_veb_run_at_with_explicit_app_and_context_compiles() {
-	source := veb_run_at_source.replace('veb.run_at(mut p, port: 8080)!',
-		'veb.run_at[Program, Context](mut p, port: 8080)!')
-	root := veb_run_at_project('explicit', source)!
-	defer { os.rmdir_all(root) or {} }
-	program := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
-	result := os.exec([@VEXE, '-nocache', '-o', program, root])
-	assert result.exit_code == 0, result.output
-	assert os.is_file(program), result.output
-}
-
-fn test_veb_run_at_checks_explicit_type_argument_count() {
-	for module_name in ['veb', 'web'] {
-		import_line := if module_name == 'veb' {
-			'import veb'
-		} else {
-			'import veb as ${module_name}'
-		}
-		source := veb_run_at_source.replace('import veb', import_line)
-			.replace('veb.run_at(mut p, port: 8080)!', 'veb.run_at[Program](mut p, port: 8080)!
-	veb.run_at[Program, Context, int](mut p, port: 8080)!')
-			.replace('veb.', '${module_name}.')
-		root := veb_run_at_project('count_${module_name}', source)!
-		defer { os.rmdir_all(root) or {} }
-		for flags in [[]string{}, ['-no-parallel']] {
-			result := os.exec([@VEXE, '-nocache', '-nocolor', ...flags, '-o',
-				os.join_path(root, 'app.c'), root])
-			assert result.exit_code != 0, result.output
 			assert result.output.contains('expected 2 generic parameters, got 1'), result.output
 			assert result.output.contains('expected 2 generic parameters, got 3'), result.output
+			assert result.output.contains('cannot use `&Program` as `&int` in argument 1 to `veb.run_at`'), result.output
 			assert !result.output.contains('C compilation error'), result.output
 		}
 	}
-}
-
-fn test_veb_run_at_checks_explicit_app_type() {
-	source := veb_run_at_source.replace('veb.run_at(mut p, port: 8080)!',
-		'veb.run_at[int, Context](mut p, port: 8080)!')
-	root := veb_run_at_project('wrong_app_type', source)!
-	defer { os.rmdir_all(root) or {} }
-	result := os.exec([@VEXE, '-nocache', '-nocolor', '-o', os.join_path(root, 'app.c'), root])
-	assert result.exit_code != 0, result.output
-	assert result.output.contains('cannot use `&Program` as `&int` in argument 1 to `veb.run_at`'), result.output
-	assert !result.output.contains('C compilation error'), result.output
 }
 
 fn test_veb_run_at_with_explicit_types_preserves_errors_and_handler_response() {
-	source := veb_run_at_source.replace('import veb', 'import veb\nimport net.http')
+	source := veb_run_at_source.replace('import veb', 'import veb\nimport net.http\nimport os')
 		.replace('veb.run_at(mut p, port: 8080)!', '
+	// Compile the valid-port call with result propagation. The test runs without arguments.
+	if os.args.contains("--serve") {
+		veb.run_at[Program, Context](mut p, port: 8080)!
+		return
+	}
 	veb.run_at[Program, Context](mut p, port: 0) or {
 		assert err.msg() == "invalid port number `0`, it should be between 1 and 65535"
 		mut ctx := Context{}
@@ -116,6 +82,7 @@ fn test_veb_run_at_with_explicit_types_preserves_errors_and_handler_response() {
 	program := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
 	compile := os.exec([@VEXE, '-nocache', '-o', program, root])
 	assert compile.exit_code == 0, compile.output
+	assert os.is_file(program), compile.output
 	result := os.exec([program])
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'ok', result.output

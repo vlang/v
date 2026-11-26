@@ -30,7 +30,8 @@ fn test_fastc_internal_startup_hooks_require_actual_calls() {
 		'builtin.startup_dependency': FastcFunctionSignature{ module_name: 'builtin' }
 		'main':                       FastcFunctionSignature{ module_name: 'main' }
 	}
-	used := fastc_collect_referenced_function_names(sources, prefs, functions)
+	used := fastc_collect_referenced_function_names(sources, prefs, fastc_reference_candidates(functions,
+		prefs))
 	assert used['gc_runtime_init']
 	assert used['startup_dependency']
 }
@@ -84,8 +85,8 @@ int main(void) {
 }
 ') or { panic(err) }
 	program := os.join_path(root, 'program')
-	build := cmdexec.run('cc', ['-std=gnu11', '-Werror=implicit-function-declaration', program_c,
-		'-o', program])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-Werror=implicit-function-declaration',
+		program_c, '-o', program])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
@@ -126,8 +127,8 @@ __attribute__((constructor)) static void verify_native_entry(void) {
 }
 ') or { panic(err) }
 	program := os.join_path(root, 'program')
-	build := cmdexec.run('cc', ['-std=gnu11', '-Werror=implicit-function-declaration', program_c,
-		native_c, '-o', program])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-Werror=implicit-function-declaration',
+		program_c, native_c, '-o', program])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
@@ -165,8 +166,8 @@ __attribute__((constructor)) static void native_caller(void) {
 }
 ') or { panic(err) }
 	program := os.join_path(root, 'program')
-	build := cmdexec.run('cc', ['-std=gnu11', '-Werror=implicit-function-declaration', program_c,
-		native_c, '-o', program])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-Werror=implicit-function-declaration',
+		program_c, native_c, '-o', program])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

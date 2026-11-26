@@ -9,36 +9,19 @@ import v.tempname
 //   error: expected expression
 //     return array__clone(&((array[]){array_slice(array.values, 0, array.cols)})[0]);
 
-const local_shadow_vexe = @VEXE
-const local_shadow_tests_dir = os.dir(@FILE)
-const local_shadow_v3_dir = os.dir(local_shadow_tests_dir)
-const local_shadow_vlib_dir = os.dir(local_shadow_v3_dir)
-const local_shadow_v3_src = os.join_path(local_shadow_v3_dir, 'v.v')
-const local_shadow_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_local_shadow_compiler_${tempname.unique_token()}')
-
-fn testsuite_end() {
-	os.rmdir_all(local_shadow_compiler_dir) or {}
+fn local_shadow_fixture_dir(name string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	return root
 }
 
-fn local_shadow_build_v3() string {
-	v3_bin := os.join_path(local_shadow_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	os.mkdir_all(local_shadow_compiler_dir) or { panic(err) }
-	build := os.exec([local_shadow_vexe, '-gc', 'none', '-path',
-		'${local_shadow_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${local_shadow_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn local_shadow_build_and_run(v3_bin string, root string, source string) os.Result {
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn local_shadow_build_and_run(name string, source string) os.Result {
+	root := local_shadow_fixture_dir(name)
+	defer { os.rmdir_all(root) or {} }
 	main_v := os.join_path(root, 'main.v')
 	os.write_file(main_v, source) or { panic(err) }
 	exe := os.join_path(root, 'prog')
-	compile := os.exec([v3_bin, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
+	compile := os.exec([@VEXE, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
 	if compile.exit_code != 0 {
 		return compile
 	}
@@ -46,12 +29,7 @@ fn local_shadow_build_and_run(v3_bin string, root string, source string) os.Resu
 }
 
 fn test_a_local_named_like_a_runtime_type_does_not_hide_it() {
-	v3_bin := local_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := local_shadow_build_and_run(v3_bin, root, 'struct Arg {
+	res := local_shadow_build_and_run('slice', 'struct Arg {
 	values []int
 	cols   int
 }
@@ -74,12 +52,7 @@ fn main() {
 // multi-return declaration and a smartcast each introduce one, and each of them once
 // wrote the declaration through the plain name while the body read the renamed one.
 fn test_every_way_of_introducing_such_a_local_agrees_on_its_name() {
-	v3_bin := local_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_bindings_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := local_shadow_build_and_run(v3_bin, root, 'struct Box {
+	res := local_shadow_build_and_run('bindings', 'struct Box {
 	n int
 }
 
@@ -138,12 +111,7 @@ fn main() {
 // function, and that slot is the local: it has to carry the same name every read of
 // it uses, or the reads inside the closure name something that was never declared.
 fn test_a_deferred_closure_reads_the_local_it_captured() {
-	v3_bin := local_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_defer_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := local_shadow_build_and_run(v3_bin, root, 'fn with_defer() {
+	res := local_shadow_build_and_run('defer', 'fn with_defer() {
 	array := 1
 	defer(fn) {
 		println(array)
@@ -165,12 +133,7 @@ fn main() {
 // that is two parameters called the same thing, and as locals the outer one quietly
 // becomes the inner one.
 fn test_a_source_name_cannot_collide_with_the_renamed_one() {
-	v3_bin := local_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_collision_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := local_shadow_build_and_run(v3_bin, root, 'struct Arg {
+	res := local_shadow_build_and_run('collision', 'struct Arg {
 	values []int
 }
 
@@ -197,12 +160,7 @@ fn main() {
 // itself, and passing it on is written as the parameter's own name. That name is the
 // renamed one, the same as every other read of it.
 fn test_a_mutable_parameter_is_passed_on_under_its_declared_name() {
-	v3_bin := local_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_mut_param_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := local_shadow_build_and_run(v3_bin, root, 'struct Box {
+	res := local_shadow_build_and_run('mut_param', 'struct Box {
 mut:
 	n int
 }
@@ -261,12 +219,7 @@ fn main() {
 // as a shared argument or used as a shared receiver. That storage keeps the same
 // renamed identifier as the declaration when the source name shadows a C type.
 fn test_a_shared_local_is_forwarded_under_its_declared_name() {
-	v3_bin := local_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_shared_${os.getpid()}')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	res := local_shadow_build_and_run(v3_bin, root, 'struct State {
+	res := local_shadow_build_and_run('shared', 'struct State {
 mut:
 	n int
 }
@@ -306,13 +259,8 @@ fn main() {
 // parameter path. Their call into the object-local implementation must use the same
 // renamed parameter spelling.
 fn test_an_object_file_wrapper_forwards_a_renamed_parameter() {
-	v3_bin := local_shadow_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_object_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
+	root := local_shadow_fixture_dir('object')
+	defer { os.rmdir_all(root) or {} }
 	main_v := os.join_path(root, 'main.v')
 	os.write_file(main_v, 'module main
 
@@ -327,7 +275,7 @@ fn main() {
 		panic(err)
 	}
 	object_path := os.join_path(root, 'answer.o')
-	compile := os.exec([v3_bin, '-nocache', '-cc', 'cc', '-o', object_path, '${main_v}'])
+	compile := os.exec([@VEXE, '-nocache', '-cc', 'cc', '-o', object_path, '${main_v}'])
 	assert compile.exit_code == 0, compile.output
 	assert os.is_file(object_path)
 }

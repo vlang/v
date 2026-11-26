@@ -1,5 +1,6 @@
 import os
 import strings
+import v.cmdexec
 import v.flat
 import v.gen.c as cgen
 import v.markused
@@ -9,11 +10,6 @@ import v.tempname
 import v.transform
 import v.types
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
 const markused_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_markused_fixtures_${tempname.unique_token()}')
 
 fn testsuite_begin() {
@@ -377,17 +373,10 @@ fn main() {
 	assert uses_generics
 }
 
-// build_v3_bin returns the compiler shared by this test suite.
-fn build_v3_bin() string {
-	v3_bin := os.join_path(markused_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn run_markused_compiler(args []string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, args, '', {
+		'VFLAGS': ''
+	})
 }
 
 // test_map_literals_seed_new_map_runtime_helper validates this v3 regression case.
@@ -587,7 +576,6 @@ fn main() {
 }
 
 fn test_nested_dynamic_array_drops_unresolved_default_call() {
-	v3_bin := build_v3_bin()
 	source := os.join_path(markused_fixture_dir, 'v3_markused_nested_dynamic_default_${os.getpid()}.c.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_nested_dynamic_default_${os.getpid()}')
 	defer {
@@ -612,7 +600,7 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	compiled := os.exec([v3_bin, '-o', bin, source])
+	compiled := run_markused_compiler(['-o', bin, source])
 	assert compiled.exit_code == 0, compiled.output
 	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
@@ -634,7 +622,7 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	defaults_compiled := os.exec([v3_bin, '-o', bin, source])
+	defaults_compiled := run_markused_compiler(['-o', bin, source])
 	assert defaults_compiled.exit_code == 0, defaults_compiled.output
 	defaults_ran := os.exec([bin])
 	assert defaults_ran.exit_code == 0, defaults_ran.output
@@ -881,7 +869,6 @@ pub fn make() int { return 9 }
 }
 
 fn test_generic_omitted_field_defaults_compile_and_run() {
-	v3_bin := build_v3_bin()
 	source := os.join_path(markused_fixture_dir, 'v3_markused_generic_defaults_${os.getpid()}.c.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_generic_defaults_run_${os.getpid()}')
 	defer {
@@ -913,7 +900,7 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-		compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+		compiled := run_markused_compiler(['-gc', 'none', '-o', bin, source])
 		assert compiled.exit_code == 0, '${literal}: ${compiled.output}'
 		ran := os.exec([bin])
 		assert ran.exit_code == 0, ran.output
@@ -939,7 +926,7 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+	compiled := run_markused_compiler(['-gc', 'none', '-o', bin, source])
 	assert compiled.exit_code == 0, compiled.output
 	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
@@ -947,7 +934,6 @@ fn main() {
 }
 
 fn test_imported_generic_omitted_defaults_compile_and_run() {
-	v3_bin := build_v3_bin()
 	root := os.join_path(markused_fixture_dir, 'v3_markused_imported_generic_defaults_${os.getpid()}')
 	bin := root + '_run'
 	defer {
@@ -991,7 +977,7 @@ pub struct Mixed[T] { pub: inner T local Inner }
 module leaf
 pub fn make() int { return 9 }
 ') or { panic(err) }
-	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, root])
+	compiled := run_markused_compiler(['-gc', 'none', '-o', bin, root])
 	assert compiled.exit_code == 0, compiled.output
 	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
@@ -1078,7 +1064,6 @@ fn make() int { return 9 }
 }
 
 fn test_array_initializers_link_without_unused_defaults() {
-	v3_bin := build_v3_bin()
 	source := os.join_path(markused_fixture_dir, 'v3_markused_unused_array_defaults_${os.getpid()}.c.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_unused_array_defaults_run_${os.getpid()}')
 	defer {
@@ -1118,7 +1103,7 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+	compiled := run_markused_compiler(['-gc', 'none', '-o', bin, source])
 	assert compiled.exit_code == 0, compiled.output
 	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
@@ -1126,7 +1111,6 @@ fn main() {
 }
 
 fn test_alias_value_defaults_compile_and_run() {
-	v3_bin := build_v3_bin()
 	source := os.join_path(markused_fixture_dir, 'v3_markused_alias_array_defaults_${os.getpid()}.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_alias_array_defaults_run_${os.getpid()}')
 	defer {
@@ -1162,7 +1146,7 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-		compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+		compiled := run_markused_compiler(['-gc', 'none', '-o', bin, source])
 		assert compiled.exit_code == 0, '${literal}: ${compiled.output}'
 		ran := os.exec([bin])
 		assert ran.exit_code == 0, ran.output
@@ -2108,8 +2092,6 @@ fn test_top_level_fn_value_roots_helper() {
 }
 
 fn test_top_level_fn_value_compile_keeps_helper() {
-	v3_bin := build_v3_bin()
-
 	src := os.join_path(markused_fixture_dir, 'v3_markused_top_level_fn_value_input.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_top_level_fn_value_input')
 	os.write_file(src, '
@@ -2122,7 +2104,7 @@ println(f() + 1)
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -2594,8 +2576,6 @@ fn main() {
 
 // test_map_literal_compile_keeps_new_map_runtime_helper validates this v3 regression case.
 fn test_map_literal_compile_keeps_new_map_runtime_helper() {
-	v3_bin := build_v3_bin()
-
 	src := os.join_path(markused_fixture_dir, 'v3_markused_map_literal_input.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_map_literal_input')
 	os.write_file(src, '
@@ -2609,14 +2589,12 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
 // test_optional_map_or_compile_keeps_new_map_runtime_helper validates this v3 regression case.
 fn test_optional_map_or_compile_keeps_new_map_runtime_helper() {
-	v3_bin := build_v3_bin()
-
 	src := os.join_path(markused_fixture_dir, 'v3_markused_option_map_or_input.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_option_map_or_input')
 	os.write_file(src, '
@@ -2631,14 +2609,12 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
 // test_return_local_address_compile_keeps_memdup_runtime_helper validates this v3 regression case.
 fn test_return_local_address_compile_keeps_memdup_runtime_helper() {
-	v3_bin := build_v3_bin()
-
 	src := os.join_path(markused_fixture_dir, 'v3_markused_return_local_address_input.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_return_local_address_input')
 	os.write_file(src, '
@@ -2659,14 +2635,12 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
 // test_print_bool_compile_keeps_formatter_runtime_helper validates this v3 regression case.
 fn test_print_bool_compile_keeps_formatter_runtime_helper() {
-	v3_bin := build_v3_bin()
-
 	src := os.join_path(markused_fixture_dir, 'v3_markused_print_bool_input.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_print_bool_input')
 	os.write_file(src, '
@@ -2674,14 +2648,12 @@ fn main() {
 	println(true)
 }
 ') or { panic(err) }
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
 // test_print_signed_width_compile_keeps_str_runtime_helpers validates this v3 regression case.
 fn test_print_signed_width_compile_keeps_str_runtime_helpers() {
-	v3_bin := build_v3_bin()
-
 	src := os.join_path(markused_fixture_dir, 'v3_markused_print_signed_width_input.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_print_signed_width_input')
 	os.write_file(src, "
@@ -2695,7 +2667,7 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('implicit declaration'), compile.output
 	run := os.exec([bin])
@@ -2705,8 +2677,6 @@ fn main() {
 
 // test_string_plus_compile_keeps_plus_runtime_helper validates this v3 regression case.
 fn test_string_plus_compile_keeps_plus_runtime_helper() {
-	v3_bin := build_v3_bin()
-
 	src := os.join_path(markused_fixture_dir, 'v3_markused_string_plus_input.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_string_plus_input')
 	os.write_file(src, '
@@ -2719,6 +2689,6 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }

@@ -1,20 +1,12 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+import v.tempname
 
 fn test_optional_index_keeps_smartcasts_recreated_after_ancestor_write() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_restore_test_${pid}')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	src := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_restore_input_${pid}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_optional_index_smartcast_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	bin := os.join_path(dir, 'v3_optional_index_smartcast_restore_input')
+	src := bin + '.v'
 	os.write_file(src, 'struct Foo {
 	value int
 }
@@ -50,8 +42,7 @@ fn main() {
 }
 ')!
 
-	bin := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_restore_input_${pid}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -59,7 +50,8 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 
-	reassigned_src := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_reassignment_input_${pid}.v')
+	reassigned_bin := os.join_path(dir, 'v3_optional_index_smartcast_reassignment_input')
+	reassigned_src := reassigned_bin + '.v'
 	os.write_file(reassigned_src, 'struct Foo {
 	value int
 }
@@ -93,8 +85,7 @@ fn main() {
 }
 ')!
 
-	reassigned_bin := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_reassignment_input_${pid}')
-	reassigned_compile := os.exec([v3_bin, '${reassigned_src}', '-b', 'c', '-o', reassigned_bin])
+	reassigned_compile := os.exec([@VEXE, reassigned_src, '-b', 'c', '-o', reassigned_bin])
 	assert reassigned_compile.exit_code == 0, reassigned_compile.output
 	assert !reassigned_compile.output.contains('C compilation failed'), reassigned_compile.output
 
