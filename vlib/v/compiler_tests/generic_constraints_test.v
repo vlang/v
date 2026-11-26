@@ -615,18 +615,19 @@ fn main() {}
 	], res.output
 }
 
-fn test_a_runtime_is_on_a_value_of_a_constrained_type_is_reported() {
-	// V takes `is` on a sum type or an interface value only: `value is f64` with
-	// `value T` does not build for a type of the constraint that is neither, so
-	// the check says so where it is written; `$if value is f64 {` tests `T`. A sum
-	// type as the constraint stands for its variants, which are no sum types.
-	res := check_program('runtime_is', 'type Number = int | f64
+fn test_runtime_type_patterns_on_constrained_values_report_errors() {
+	// Runtime type tests require a sum type or interface value. A match reports
+	// the error at its first type pattern. Value patterns still check member
+	// access under the constraint, and `$if` can test the type parameter.
+	res := check_program('runtime_type_patterns', 'type Number = int | f64
 
 type Shape = Square | Circle
 
 struct Square {}
 
-struct Circle {}
+struct Circle {
+	r f64
+}
 
 fn numbers[T Number](value T) string {
 	if value is f64 || value is int {
@@ -651,45 +652,16 @@ fn shapes[T Shape](s T) bool {
 	return s is Circle
 }
 
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'10:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is f64`',
-		'10:21: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is int`',
-		'13:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value !is f64`',
-		'23:5: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
-		'29:9: `is` can only be used with sum type or interface values, not `T`: `Square`, in its constraint `Shape`, is neither; test `T` with `\$if s is Circle`',
-	], res.output
-}
-
-fn test_a_match_by_type_on_a_value_of_a_constrained_type_is_reported_once() {
-	// `match x { User { ... } }` tests the type of a value, as `x is User` does:
-	// it is reported once, at its first type pattern, when a type that the
-	// constraint allows is neither a sum type nor an interface, and `x` is not
-	// reported again in its branches. A match on values tests no type and
-	// decides none: the constraint still applies in its branches. A set with an
-	// interface among its variants allows the types that implement it.
-	res := check_program('runtime_match', 'type Number = int | f64
-
-type Shape = Square | Circle
-
-struct Square {}
-
-struct Circle {
-	r f64
-}
-
 type Two = Named | Greeter
 
-fn named[T Named](a T) {
+fn match_named[T Named](a T) {
 	match a {
 		User { println(a.age) }
 		else {}
 	}
 }
 
-fn shapes[T Shape](s T) f64 {
+fn match_shapes[T Shape](s T) f64 {
 	return match s {
 		Circle { s.r }
 		else { 0.0 }
@@ -711,10 +683,15 @@ fn main() {}
 ')
 	assert res.exit_code == 1, res.output
 	assert error_lines(res.output) == [
-		'15:3: matching by type can only be done on sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
-		'22:3: matching by type can only be done on sum type or interface values, not `T`: `Square`, in its constraint `Shape`, is neither; test `T` with `\$if s is Circle`',
-		'28:9: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named`, in its constraint `Two`, does not have to be one; test `T` with `\$if x is User`',
-		'33:13: type `T` has no method `nme`: `int`, in its constraint `Number`, does not have it',
+		'12:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is f64`',
+		'12:21: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is int`',
+		'15:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value !is f64`',
+		'25:5: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
+		'31:9: `is` can only be used with sum type or interface values, not `T`: `Square`, in its constraint `Shape`, is neither; test `T` with `\$if s is Circle`',
+		'38:3: matching by type can only be done on sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
+		'45:3: matching by type can only be done on sum type or interface values, not `T`: `Square`, in its constraint `Shape`, is neither; test `T` with `\$if s is Circle`',
+		'51:9: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named`, in its constraint `Two`, does not have to be one; test `T` with `\$if x is User`',
+		'56:13: type `T` has no method `nme`: `int`, in its constraint `Number`, does not have it',
 	], res.output
 }
 
