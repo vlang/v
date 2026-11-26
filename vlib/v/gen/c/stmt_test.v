@@ -758,9 +758,10 @@ fn test_inline_asm_intel_extension_move_memory_source_widths() {
 		'dst':  true
 		'base': true
 	}
-	assert lower_c_inline_asm_intel_template('movzbq dst, [base]', aliases, true) == 'movzbq %V[dst], byte ptr [%V[base]]'
-	assert lower_c_inline_asm_intel_template('movswq dst, [base]', aliases, true) == 'movswq %V[dst], word ptr [%V[base]]'
-	assert lower_c_inline_asm_intel_template('movslq dst, [base + 4]', aliases, true) == 'movslq %V[dst], dword ptr [%V[base] + 4]'
+	assert lower_c_inline_asm_intel_template('movzbq dst, [base]', aliases, true) == 'movzx %V[dst], byte ptr [%V[base]]'
+	assert lower_c_inline_asm_intel_template('movswq dst, [base]', aliases, true) == 'movsx %V[dst], word ptr [%V[base]]'
+	assert lower_c_inline_asm_intel_template('movslq dst, [base + 4]', aliases, true) == 'movsxd %V[dst], dword ptr [%V[base] + 4]'
+	assert lower_c_inline_asm_intel_template('movswq rax, [rbx]', aliases, false) == 'movswq rax, [rbx]'
 	assert lower_c_inline_asm_intel_template('movswq rax, bx', aliases, false) == 'movswq rax, bx'
 	assert lower_c_inline_asm_intel_template('movswq rax, word ptr [rbx]', aliases, false) == 'movswq rax, word ptr [rbx]'
 	assert lower_c_inline_asm_intel_template('mov rax, [rbx]', aliases, false) == 'mov rax, [rbx]'
