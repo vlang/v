@@ -277,7 +277,7 @@ jobs:
           p.write_text(s.replace(anchor, anchor + trace))
           PY
           git diff -- vlib/v/transform/array.v vlib/v/gen/c/cleanc.v > "$root/instrumentation.diff"
-          ./v -o "$root/vtrace" cmd/v
+          ./v -o "$GITHUB_WORKSPACE/vtrace" cmd/v
           git restore -- vlib/v/transform/array.v vlib/v/gen/c/cleanc.v
           git diff --exit-code
       - name: Trace independent name collision and pointer sort controls
@@ -319,7 +319,7 @@ jobs:
           for case in ref_a ref_b ref_ab renamed pointer_sort; do
             for role in baseline trace; do
               v="$GITHUB_WORKSPACE/v"
-              if [ "$role" = trace ]; then v="$root/vtrace"; fi
+              if [ "$role" = trace ]; then v="$GITHUB_WORKSPACE/vtrace"; fi
               emit=0
               build=0
               ran=not-run
@@ -344,6 +344,4 @@ jobs:
         if: always()
         with:
           name: sort-selector-metadata-trace
-          path: |
-            ${{ runner.temp }}/selector-trace
-            !${{ runner.temp }}/selector-trace/vtrace
+          path: ${{ runner.temp }}/selector-trace
