@@ -1194,7 +1194,7 @@ fn main() {
 
 fn test_owned_conditional_prerequisites_that_mutate_source_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	if_compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_if_prerequisite', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_prerequisites', "struct E {
 	name string
 }
 
@@ -1203,91 +1203,67 @@ fn delete_last(mut entries []E) bool {
 	return true
 }
 
-fn last_length(mut entries []E) int {
+fn if_length(mut entries []E) int {
 	return if delete_last(mut entries) { entries.last().name.len } else { 0 }
 }
 
-fn main() {
-	mut entries := [E{ name: 'hello' }]
-	println(last_length(mut entries))
-}
-", '')
-	assert if_compile.exit_code != 0, if_compile.output
-	assert if_compile.output.contains('cannot return an independent array element'), if_compile.output
-
-	match_compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_match_prerequisite', "struct E {
-	name string
-}
-
-fn delete_last(mut entries []E) bool {
-	entries.delete_last()
-	return true
-}
-
-fn last_length(mut entries []E) int {
+fn match_subject_length(mut entries []E) int {
 	return match delete_last(mut entries) {
 		true { entries.last().name.len }
 		else { 0 }
 	}
 }
 
-fn main() {
-	mut entries := [E{ name: 'hello' }]
-	println(last_length(mut entries))
-}
-", '')
-	assert match_compile.exit_code != 0, match_compile.output
-	assert match_compile.output.contains('cannot return an independent array element'), match_compile.output
-
-	or_compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_or_prerequisite', "struct E {
-	name string
-}
-
-fn delete_last(mut entries []E) !int {
+fn delete_last_or_error(mut entries []E) !int {
 	entries.delete_last()
 	return error('deleted')
 }
 
-fn last_length(mut entries []E) int {
-	return delete_last(mut entries) or { entries.last().name.len }
+fn or_length(mut entries []E) int {
+	return delete_last_or_error(mut entries) or { entries.last().name.len }
 }
 
-fn main() {
-	mut entries := [E{ name: 'hello' }]
-	println(last_length(mut entries))
-}
-", '')
-	assert or_compile.exit_code != 0, or_compile.output
-	assert or_compile.output.contains('cannot return an independent array element'), or_compile.output
-}
-
-fn test_owned_match_branch_condition_that_mutates_source_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	// A branch condition is evaluated before the branch tail, so a condition that empties the
-	// array invalidates the accessor borrowed in that tail. It must keep copying semantics.
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_match_branch_condition_mutating', "struct E {
-	name string
-}
-
-fn delete_last(mut entries []E) int {
+fn delete_last_and_return_one(mut entries []E) int {
 	entries.delete_last()
 	return 1
 }
 
-fn last_length(mut entries []E) int {
+fn match_branch_length(mut entries []E) int {
 	return match 1 {
-		delete_last(mut entries) { entries.last().name.len }
+		delete_last_and_return_one(mut entries) { entries.last().name.len }
 		else { 0 }
 	}
 }
 
-fn main() {
+fn check_if() {
 	mut entries := [E{ name: 'hello' }]
-	println(last_length(mut entries))
+	println(if_length(mut entries))
 }
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+fn check_match_subject() {
+	mut entries := [E{ name: 'hello' }]
+	println(match_subject_length(mut entries))
+}
+
+fn check_or() {
+	mut entries := [E{ name: 'hello' }]
+	println(or_length(mut entries))
+}
+
+fn check_match_branch() {
+	mut entries := [E{ name: 'hello' }]
+	println(match_branch_length(mut entries))
+}
+
+fn main() {
+	check_if()
+	check_match_subject()
+	check_or()
+	check_match_branch()
+}
+", '-nocolor')
+	// Locations include the prepended Drop interface.
+	assert_independent_array_element_errors(compile, ['16:39', '21:10', '32:48', '42:45'])
 
 	// A literal branch condition cannot mutate the source, so the tail still borrows in place.
 	safe := compile_v3_ownership_program(v3_bin, 'owned_match_branch_condition_stable', "struct E {
