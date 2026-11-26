@@ -149,49 +149,29 @@ fn main() {
 }
 ',
 		'cannot use `Foo` as argument 1 to `T.from`; expected string or integer')
-	enum_from_arity_run_bad('bad_specialized_enum_from_generic_arg', 'struct Foo {}
+
+	// These diagnostics are reported when the generic functions are specialized.
+	specialized := 'struct Foo {}
 
 enum Color {
-	red
-}
-
-fn parse[T](x T) !Color {
-	return Color.from(x)
-}
-
-fn main() {
-	_ := parse[Foo](Foo{}) or { Color.red }
-}
-',
-		'cannot use `Foo` as argument 1 to `Color.from`; expected string or integer')
-	enum_from_arity_run_bad('bad_generic_enum_from_non_enum_receiver', 'struct Foo {}
-
-fn parse[T](value int) ?T {
-	return T.from(value)
-}
-
-fn main() {
-	_ := parse[Foo](0)
-}
-',
-		'unknown function `Foo.from`')
-	// A specialization that returns a Result from an Option function is rejected like the
-	// same return in an ordinary function, instead of failing in the C compiler.
-	enum_from_arity_run_bad('bad_generic_enum_from_option_return', 'enum Color {
 	red
 	blue
 }
 
-fn parse[T](x int) ?T {
+fn parse_concrete[T](x T) !Color {
+	return Color.from(x)
+}
+
+fn parse_non_enum[T](value int) ?T {
+	return T.from(value)
+}
+
+// Check Result to Option returns on the concrete instance.
+fn parse_enum_option[T](x int) ?T {
 	return T.from(x)
 }
 
-fn main() {
-	println(parse[Color](1) or { Color.red })
-}
-',
-		'cannot use `!Color` as type `?Color` in return argument')
-	enum_from_arity_run_bad('bad_generic_result_call_option_return', 'fn checked(x int) !int {
+fn checked(x int) !int {
 	if x < 0 {
 		return error("negative")
 	}
@@ -203,10 +183,22 @@ fn forward[T](x int) ?T {
 }
 
 fn main() {
+	_ := parse_concrete[Foo](Foo{}) or { Color.red }
+	_ := parse_non_enum[Foo](0)
+	println(parse_enum_option[Color](1) or { Color.red })
 	println(forward[int](1) or { 0 })
 }
-',
-		'cannot use `!int` as type `?int` in return argument')
+'
+	output := enum_from_arity_compile_bad('bad_enum_from_specializations', specialized)
+	errors := output.split_into_lines()
+	for message in [
+		'cannot use `Foo` as argument 1 to `Color.from`; expected string or integer',
+		'unknown function `Foo.from`',
+		'cannot use `!Color` as type `?Color` in return argument',
+		'cannot use `!int` as type `?int` in return argument',
+	] {
+		assert errors.contains(message), 'expected ${message}\n${output}'
+	}
 	enum_from_arity_run_good_batch([
 		EnumFromRuntimeCase{
 			name:     'numeric_enum_from_ierror'
