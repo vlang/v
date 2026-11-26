@@ -193,17 +193,65 @@ fn test_owned_first_last_receiver_evaluated_once() {
 	assert run.output.trim_space() == '9:1', run.output
 }
 
+fn test_owned_cloned_method_values_run() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_cloned_method_values', "struct CloneableEntry {
+	name string
+	size int
+}
+
+fn (e CloneableEntry) clone() CloneableEntry {
+	return CloneableEntry{ name: e.name.clone(), size: e.size }
+}
+
+fn (e CloneableEntry) describe() string {
+	return e.name
+}
+
+struct E {
+	name string
+}
+
+struct Reader implements IClone {
+	label string
+}
+
+fn (reader Reader) run() string {
+	return reader.label
+}
+
+fn consume(length int, callback fn () string) int {
+	_ = callback()
+	return length
+}
+
+fn last_length_with_bound_method(arr []E, reader Reader) int {
+	return consume(arr.last().name.len, reader.run)
+}
+
 // A method value whose element type does provide `clone()` keeps working: the receiver is
 // cloned (an independent copy), never an alias of the live array element.
-fn test_owned_method_value_with_clone_runs() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_method_value_clone', "struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) clone() E {\n\treturn E{ name: e.name.clone(), size: e.size }\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'bb', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('unsupported node kind'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_method_value_clone_bin')
+fn check_entry_clone() {
+	arr := [CloneableEntry{ name: 'a', size: 1 }, CloneableEntry{ name: 'bb', size: 2 }]
+	f := arr.last().describe
+	println(f())
+}
+
+fn check_default_clone() {
+	arr := [E{ name: 'hello' }]
+	println(last_length_with_bound_method(arr, Reader{ label: 'run' }))
+}
+
+fn main() {
+	check_entry_clone()
+	check_default_clone()
+}
+", '')
+	assert_clean_borrow_build(compile)
+	bin_path := tmp_array_accessor_borrow_path('owned_cloned_method_values_bin')
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'bb', run.output
+	assert run.output == 'bb\n5\n', run.output
 }
 
 // These consumers can borrow the element for the string field read.
@@ -1277,7 +1325,7 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
-fn test_owned_scalar_consumers_with_cloning_siblings() {
+fn test_owned_scalar_consumers_with_cloning_siblings_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_cloning_siblings', "struct E {
 	name string
@@ -1355,36 +1403,4 @@ fn main() {
 ", '-enable-globals -nocolor')
 	// Locations include the prepended Drop interface.
 	assert_independent_array_element_errors(compile, ['31:24', '46:24', '55:24'])
-
-	safe := compile_v3_ownership_program(v3_bin, 'owned_scalar_default_clone_method_value_sibling', "struct E {
-	name string
-}
-
-struct Reader implements IClone {
-	label string
-}
-
-fn (reader Reader) run() string {
-	return reader.label
-}
-
-fn consume(length int, callback fn () string) int {
-	_ = callback()
-	return length
-}
-
-fn last_length_with_bound_method(arr []E, reader Reader) int {
-	return consume(arr.last().name.len, reader.run)
-}
-
-fn main() {
-	arr := [E{ name: 'hello' }]
-	println(last_length_with_bound_method(arr, Reader{ label: 'run' }))
-}
-", '')
-	assert safe.exit_code == 0, safe.output
-	safe_bin_path := tmp_array_accessor_borrow_path('owned_scalar_default_clone_method_value_sibling_bin')
-	safe_run := os.exec([safe_bin_path])
-	assert safe_run.exit_code == 0, safe_run.output
-	assert safe_run.output.trim_space() == '5', safe_run.output
 }
