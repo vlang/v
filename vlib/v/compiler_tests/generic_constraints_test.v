@@ -1187,8 +1187,11 @@ fn main() {
 	], res.output
 }
 
-fn test_generic_struct_constraints_are_checked_in_declarations_and_initializers() {
-	res := check_program('struct_type_arguments', "struct Box[T Named] {
+fn test_constrained_generic_type_arguments_are_checked() {
+	// Structs, interfaces, aliases, and sum types check their type arguments
+	// where they are written or inferred. Using PetTree as a constraint also
+	// checks its type argument and admits only the variants of that instance.
+	res := check_program('generic_type_arguments', "struct Box[T Named] {
 	item T
 }
 
@@ -1196,7 +1199,7 @@ fn (b Box[T]) label() string {
 	return b.item.name
 }
 
-struct Shelf {
+struct BoxShelf {
 	good Box[User]
 	bad  Box[int]
 }
@@ -1209,34 +1212,7 @@ fn keep(b Box[User]) Box[User] {
 	return b
 }
 
-fn main() {
-	println(Box[User]{ item: User{ name: 'a' } }.label())
-	println(Box[int]{ item: 1 }.label())
-
-	good := Box{
-		item: User{ name: 'a' }
-	}
-	bad := Box{
-		item: 1
-	}
-	println('\${good.item.name} \${bad}')
-}
-")
-	assert res.exit_code == 1, res.output
-	no_name := "`int` doesn't implement field `name` of interface `Named`"
-	assert error_lines(res.output) == [
-		'11:7: ${no_name}',
-		'14:11: ${no_name}',
-		'24:10: ${no_name}',
-		'29:9: ${no_name}',
-	], res.output
-}
-
-fn test_a_generic_interface_alias_or_sum_type_checks_its_type_arguments() {
-	// `interface Shelf[T Named]`, `type Picker[T Named] = fn (T) T` and
-	// `type Tree[T Named] = Leaf[T] | Twig[T]` check their type arguments where
-	// they are written, as a generic struct does. The same with `User` is valid.
-	res := check_program('generic_types', 'interface Shelf[T Named] {
+interface Shelf[T Named] {
 	get() T
 }
 
@@ -1277,59 +1253,60 @@ fn make_picker() Picker[int] {
 	}
 }
 
-fn good(s Shelf[User], p Picker[User], t Tree[User]) {}
+fn good_types(s Shelf[User], p Picker[User], t Tree[User]) {}
+
+type PetTree[T Named] = Leaf[T] | Pet
+
+fn reject_member[U PetTree[int]](x U) U {
+	return x
+}
+
+fn accept_member[U PetTree[User]](x U) U {
+	return x
+}
 
 fn main() {
+	println(Box[User]{ item: User{ name: 'a' } }.label())
+	println(Box[int]{ item: 1 }.label())
+
+	good := Box{
+		item: User{ name: 'a' }
+	}
+	bad := Box{
+		item: 1
+	}
+	println('\${good.item.name} \${bad}')
+
 	println(use_shelf(Shelf[int](IntShelf{})))
 	println(sizeof(Picker[int]))
 	trees := []Tree[int]{}
 	shelves := map[string]Shelf[int]{}
 	println(trees.len + shelves.len)
+
+	println(accept_member(Leaf[User]{}).v.name)
+	println(accept_member(Pet{}).name)
+	println(accept_member(1))
 }
-')
+")
 	assert res.exit_code == 1, res.output
 	no_name := "`int` doesn't implement field `name` of interface `Named`"
 	assert error_lines(res.output) == [
-		'24:9: ${no_name}',
-		'25:10: ${no_name}',
-		'26:9: ${no_name}',
-		'30:15: ${no_name}',
-		'32:16: ${no_name}',
-		'36:18: ${no_name}',
-		'45:20: ${no_name}',
-		'46:17: ${no_name}',
-		'47:13: ${no_name}',
-		'48:24: ${no_name}',
-	], res.output
-}
-
-fn test_a_generic_type_written_as_a_constraint_checks_its_type_arguments() {
-	// `[U Tree[int]]` writes `Tree[int]` too; `[U Tree[User]]` stands for the
-	// variants of `Tree[User]`.
-	res := check_program('constraint_application', 'struct Leaf[T] {
-	v T
-}
-
-type Tree[T Named] = Leaf[T] | Pet
-
-fn bad[U Tree[int]](x U) U {
-	return x
-}
-
-fn good[U Tree[User]](x U) U {
-	return x
-}
-
-fn main() {
-	println(good(Leaf[User]{}).v.name)
-	println(good(Pet{}).name)
-	println(good(1))
-}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		"7:10: `int` doesn't implement field `name` of interface `Named`",
-		'18:15: cannot use `int` as `U`: it is not in its constraint `Tree[User]`',
+		'11:7: ${no_name}',
+		'14:11: ${no_name}',
+		'45:9: ${no_name}',
+		'46:10: ${no_name}',
+		'47:9: ${no_name}',
+		'51:15: ${no_name}',
+		'53:16: ${no_name}',
+		'57:18: ${no_name}',
+		'67:20: ${no_name}',
+		'77:10: ${no_name}',
+		'82:9: ${no_name}',
+		'87:20: ${no_name}',
+		'88:17: ${no_name}',
+		'89:13: ${no_name}',
+		'90:24: ${no_name}',
+		'95:24: cannot use `int` as `U`: it is not in its constraint `PetTree[User]`',
 	], res.output
 }
 
