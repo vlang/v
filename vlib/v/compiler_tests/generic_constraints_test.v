@@ -2271,7 +2271,7 @@ fn test_the_thousands_formatting_of_28797_takes_a_constraint() {
 	assert errors[0].ends_with('cannot use `string` as `T`: it is not in its constraint `Number`'), errors[0]
 }
 
-const inferred_from_constraint = "module main
+const constraint_inference_declarations = 'module main
 
 interface Named {
 	name string
@@ -2296,38 +2296,16 @@ fn (b Box[T]) get() T {
 fn unwrap_name[C Container[T], T Named](c C) string {
 	return c.get().name
 }
+'
 
-fn main() {
-	println(unwrap_name(Box[User]{User{'ana'}}))
-}
-"
-
-fn test_a_type_parameter_is_inferred_from_the_constraint_that_names_it() {
+fn test_types_are_inferred_from_constraints_and_generic_interface_arguments() {
 	// `T` of `[C Container[T], T Named]` is the type of no parameter: a call
 	// binds it from the type of `C`, `Box[User]`, whose `get()` returns a `User`.
-	res := run_program('infer', inferred_from_constraint)
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space() == 'ana', res.output
-	// `Box[int]` binds `T` to `int`, which is no `Named`: the call says so.
-	check := check_whole('infer_int', inferred_from_constraint.replace("Box[User]{User{'ana'}}",
-		'Box[int]{1}'))
-	errors := check.output.split_into_lines().filter(it.contains(': error: '))
-	assert errors.len == 1, check.output
-	assert errors[0].contains('main.v:28:') && errors[0].contains('Named'), errors[0]
-}
-
-const inferred_from_interface = "module main
-
-interface Named {
-	name string
-}
-
+	// `take_now(shelf)` infers `T` from `UserShelf.get()`, just as
+	// `take_now[User](shelf)` and the explicit `Shelf[User]` conversion specify it.
+	res := run_program('infer_constraints_and_interfaces', constraint_inference_declarations + "
 interface Shelf[T Named] {
 	get() T
-}
-
-struct User {
-	name string
 }
 
 struct UserShelf {
@@ -2343,19 +2321,22 @@ fn take_now[T Named](s Shelf[T]) T {
 }
 
 fn main() {
-	shelf := UserShelf{User{'ana'}}
+	println(unwrap_name(Box[User]{User{'ana'}}))
+	shelf := UserShelf{User{'bea'}}
 	println(take_now(shelf).name)
 	println(take_now[User](shelf).name)
 	println(take_now(Shelf[User](shelf)).name)
 }
-"
-
-fn test_a_type_parameter_is_inferred_from_a_type_passed_for_a_generic_interface() {
-	// `take_now(shelf)` passes a `UserShelf` for `s Shelf[T]`: its `get()`
-	// returns a `User`, so `T` is `User`, as `take_now[User](shelf)` writes it.
-	// The check took it so, but the build made no instance of `take_now`, and
-	// the C compiler failed on its call.
-	res := run_program('interface_arg', inferred_from_interface)
+")
 	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split_into_lines() == ['ana', 'ana', 'ana'], res.output
+	assert res.output.trim_space().split_into_lines() == ['ana', 'bea', 'bea', 'bea'], res.output
+	// `Box[int]` binds `T` to `int`, which fails the `Named` constraint at the call.
+	check := check_whole('infer_int', constraint_inference_declarations + '
+fn main() {
+	println(unwrap_name(Box[int]{1}))
+}
+')
+	errors := check.output.split_into_lines().filter(it.contains(': error: '))
+	assert errors.len == 1, check.output
+	assert errors[0].contains('main.v:28:') && errors[0].contains('Named'), errors[0]
 }
