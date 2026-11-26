@@ -511,6 +511,12 @@ Scoped workers can borrow `sync.arc.Mutex[T]` when `T` satisfies
 reference. For example, several workers can update a mutex protecting a
 statistics record, and the caller can read the record after the deferred join.
 
+Several scoped workers can also take `&state` when `state` is an immutable local
+struct containing scalar values and supported atomic or mutex handles. In the
+worker, copy scalar fields into locals and call the supported operations directly
+on the handle fields. The worker's join must run before the record goes out of
+scope. The checker keeps the record borrowed until the join.
+
 ## Full example
 
 From the Rust book, translated to V:
