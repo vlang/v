@@ -38,20 +38,6 @@ fn assert_clean_borrow_build(compile os.Result) {
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
-fn run_v3_array_accessor_borrow_program(name string, src string) string {
-	src_path := '${tmp_array_accessor_borrow_path(name)}.v'
-	bin_path := tmp_array_accessor_borrow_path('${name}_bin')
-	os.write_file(src_path, src) or { panic(err) }
-	compile := cmdexec.run_in_merged_with_env(array_accessor_borrow_vexe, [src_path, '-b', 'c',
-		'-o', bin_path], '', {
-		'VFLAGS': ''
-	})
-	assert_clean_borrow_build(compile)
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	return run.output.trim_space()
-}
-
 fn run_v3_array_accessor_borrow_module(name string, module_src string, main_src string) string {
 	proj_dir := tmp_array_accessor_borrow_path(name)
 	mod_dir := os.join_path(proj_dir, 'mymod')
@@ -73,8 +59,12 @@ fn run_v3_array_accessor_borrow_module(name string, module_src string, main_src 
 // not an independent copy, so it must lower to an in-place `arr[..]` access even when
 // the element type owns heap data and has no `clone()` method. This mirrors the HPACK
 // dynamic table (`net.http` / `net.quic`) that `v new --web` pulls in via `veb`.
-fn test_first_last_field_borrow_on_owned_elements() {
-	output := run_v3_array_accessor_borrow_program('field_borrows', "struct Entry {
+fn test_first_last_field_borrow_in_main_and_imported_module() {
+	output := run_v3_array_accessor_borrow_module('field_borrows', 'module mymod\n\nstruct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\npub struct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\npub fn (mut t Tbl) add(name string, value string) {\n\tsz := name.len + value.len + 32\n\tfor t.entries.len > 0 && t.total + sz > 100 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n\tt.entries.insert(0, Entry{ name: name, value: value, size: sz })\n\tt.total += sz\n}\n\npub fn (t &Tbl) total() int {\n\treturn t.total\n}\n', "module main
+
+import mymod
+
+struct Entry {
 	name  string
 	value string
 	size  int
@@ -109,7 +99,7 @@ fn (b &Box) probe() int {
 	return b.entries.first().n + b.entries.last().n + b.entries.last().name.len
 }
 
-fn main() {
+fn check_main_module_borrows() {
 	mut t := Tbl{}
 	t.entries << Entry{ name: 'a', value: 'b', size: 5 }
 	t.entries << Entry{ name: 'c', value: 'd', size: 7 }
@@ -122,16 +112,23 @@ fn main() {
 	b.entries << ProbeEntry{ name: 'cdef', n: 20 }
 	println(int_str(b.probe()))
 }
-")
-	assert output.split_into_lines() == ['0', '34'], output
-}
 
 // The same borrow read inside an imported module: the ownership checker does not
 // diagnose non-user modules, so the regressed transform silently produced `(0)` there,
 // which is precisely why `v .` on a fresh `--web` project failed to compile.
-fn test_first_last_field_borrow_in_imported_module() {
-	out := run_v3_array_accessor_borrow_module('borrow_mod', 'module mymod\n\nstruct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\npub struct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\npub fn (mut t Tbl) add(name string, value string) {\n\tsz := name.len + value.len + 32\n\tfor t.entries.len > 0 && t.total + sz > 100 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n\tt.entries.insert(0, Entry{ name: name, value: value, size: sz })\n\tt.total += sz\n}\n\npub fn (t &Tbl) total() int {\n\treturn t.total\n}\n', "module main\n\nimport mymod\n\nfn main() {\n\tmut t := mymod.Tbl{}\n\tt.add('a', 'b')\n\tt.add('c', 'd')\n\tprintln(int_str(t.total()))\n}\n")
-	assert out == '68'
+fn check_imported_module_borrow() {
+	mut t := mymod.Tbl{}
+	t.add('a', 'b')
+	t.add('c', 'd')
+	println(int_str(t.total()))
+}
+
+fn main() {
+	check_main_module_borrows()
+	check_imported_module_borrow()
+}
+")
+	assert output.split_into_lines() == ['0', '34', '68'], output
 }
 
 // The in-place borrow only fires with the ownership checker (`-d ownership`); it is where
@@ -178,80 +175,8 @@ fn compile_v3_uncloneable_array_ownership_program(v3_bin string, name string, sr
 	return compile_v3_ownership_program(v3_bin, name, uncloneable_src, extra_args)
 }
 
-// Concern: `last()` reads its receiver twice (`arr[arr.len - 1]`), so a non-lvalue receiver
-// such as `make_entries()` must be evaluated exactly once. The borrow lowering binds it to a
-// temp instead of duplicating the call.
-fn test_owned_first_last_receiver_evaluated_once() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_eval_once', "struct E {\n\tname string\n\tsize int\n}\n\n__global (\n\tmake_calls = 0\n)\n\nfn make_entries() []E {\n\tmake_calls++\n\treturn [E{ name: 'a', size: 5 }, E{ name: 'b', size: 9 }]\n}\n\nfn main() {\n\ts := make_entries().last().size\n\tprintln(int_str(s) + ':' + int_str(make_calls))\n}\n", '-enable-globals')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('unsupported node kind'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_eval_once_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	// size == 9 (last element), make_entries() invoked once (not twice).
-	assert run.output.trim_space() == '9:1', run.output
-}
-
-// Concern: `(arr.last()).field` must lower to the same in-place borrow as `arr.last().field`.
-// The checker's borrowed-field predicate sees through transparent parentheses to suppress the
-// diagnostic, so the transformer must unwrap them too; otherwise the accessor follows its
-// independent-copy path and emits an empty `(0)` placeholder that fails C compilation.
-fn test_owned_parenthesized_field_borrow() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_paren_borrow', "struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n\ttotal   int\n}\n\nfn (mut t T) shrink() {\n\tfor t.entries.len > 0 {\n\t\tt.total -= (t.entries.last()).size\n\t\tt.entries.delete_last()\n\t}\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'a', size: 5 }\n\tt.entries << E{ name: 'b', size: 7 }\n\tt.total = 12\n\tt.shrink()\n\tprintln(int_str(t.total))\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('unsupported node kind'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_paren_borrow_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '0', run.output
-}
-
-// Concern: a bound method value (`arr.last().method`) is not a field read. Closure
-// generation shallow-copies the receiver, so it must keep the copying accessor semantics
-// instead of borrowing the array element. For an owned element with no `clone()` method the
-// accessor is genuinely impossible, so this must be rejected rather than silently miscompiled.
-fn test_owned_method_value_receiver_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_method_value', "struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'b', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-// A method value whose element type does provide `clone()` keeps working: the receiver is
-// cloned (an independent copy), never an alias of the live array element.
-fn test_owned_method_value_with_clone_runs() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_method_value_clone', "struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) clone() E {\n\treturn E{ name: e.name.clone(), size: e.size }\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'bb', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('unsupported node kind'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_method_value_clone_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'bb', run.output
-}
-
-// Concern: only the chain's *final* value is read out, so the borrow is safe only when that
-// value does not own heap data. `arr.last().name` returns the `string` field itself; borrowing
-// would alias the array element's storage, so a returned reference could dangle once the array
-// is destroyed. A clone-less owned element must therefore be rejected, not borrowed.
-fn test_owned_escaping_field_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_escaping_field', "struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name() string {\n\treturn t.entries.last().name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(t.last_name())\n}\n", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
 // These consumers can borrow the element for the string field read.
-fn test_owned_string_consumers_borrow_array_elements() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_string_field_reads', "struct E {
-	name string
-}
-
-struct T {
+const array_accessor_borrow_string_consumers_src = "struct T {
 mut:
 	entries []E
 }
@@ -261,18 +186,13 @@ fn (t &T) last_name() string {
 	return t.entries.last().name.clone()
 }
 
-struct SizedEntry {
-	name string
-	size int
-}
-
-struct SizedTable {
+struct StringSizedTable {
 mut:
 	entries []SizedEntry
 }
 
 // Only the length leaves this field chain.
-fn (t &SizedTable) last_name_len() int {
+fn (t &StringSizedTable) last_name_len() int {
 	return t.entries.last().name.len
 }
 
@@ -293,7 +213,7 @@ fn check_clone() {
 }
 
 fn check_length() {
-	mut t := SizedTable{}
+	mut t := StringSizedTable{}
 	t.entries << SizedEntry{ name: 'hello', size: 5 }
 	println(int_str(t.last_name_len()))
 }
@@ -307,117 +227,6 @@ fn check_comparison() {
 fn check_membership() {
 	entries := [E{ name: 'hello' }]
 	println(has_last_name(entries, ['hello']))
-}
-
-fn main() {
-	check_clone()
-	check_length()
-	check_comparison()
-	check_membership()
-}
-", '')
-	assert_clean_borrow_build(compile)
-	bin_path := tmp_array_accessor_borrow_path('owned_string_field_reads_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().split_into_lines() == ['hello', '5', 'true', 'true'], run.output
-}
-
-fn test_owned_field_overloaded_membership_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_membership', "struct Needle {
-	text string
-}
-
-struct E {
-	value Needle
-}
-
-__global entries []E
-
-fn (left Needle) == (right Needle) bool {
-	entries.delete_last()
-	return left.text == right.text
-}
-
-fn last_value_is_in(haystack []Needle) bool {
-	return entries.last().value in haystack
-}
-
-fn main() {
-	entries = [E{ value: Needle{ text: 'hello' } }]
-	println(last_value_is_in([Needle{ text: 'hello' }]))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-// A non-owning pointer selected from the borrowed element can still outlive the array, so it
-// must not use the in-place borrow path.
-fn test_owned_pointer_field_escape_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_pointer_field_escape', "struct E {\n\tname string\n}\n\nfn last_name_ptr() &u8 {\n\tarr := [E{ name: 'hello' }]\n\treturn arr.last().name.str\n}\n\nfn main() {\n\tprintln(unsafe { cstring_to_vstring(last_name_ptr()) })\n}\n", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-// Indexing a borrowed owned field immediately yields a scalar, so no array-owned storage
-// escapes and a clone-less element can stay borrowed in place.
-fn test_owned_field_scalar_index_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_scalar_index', "struct E {\n\tname string\n}\n\nfn last_initial() u8 {\n\tarr := [E{ name: 'hello' }]\n\treturn arr.last().name[0]\n}\n\nfn main() {\n\tprintln(int_str(last_initial()))\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_field_scalar_index_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '104', run.output
-}
-
-// A pointer nested inside a non-owning aggregate can still escape the element's lifetime.
-// The final-type check must recurse through the selected aggregate instead of accepting it
-// merely because the aggregate itself has no destructor.
-fn test_owned_nested_pointer_aggregate_escape_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_pointer_aggregate_escape', "struct View {
-	ptr &u8
-}
-
-struct Wrapper {
-	view View
-}
-
-struct E {
-	name    string
-	wrapper Wrapper
-}
-
-fn last_wrapper() Wrapper {
-	arr := [E{
-		name: 'hello'
-		wrapper: Wrapper{
-			view: View{
-				ptr: unsafe { nil }
-			}
-		}
-	}]
-	return arr.last().wrapper
-}
-
-fn main() {
-	_ = last_wrapper()
-}
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-fn test_owned_allocating_string_consumers_borrow_array_elements() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_allocating_string_consumers', "struct E {
-	name string
 }
 
 // Concatenation copies the borrowed string into the result.
@@ -444,68 +253,180 @@ fn formatted_last_name_with_sibling() string {
 	return '\${arr.last().name:3s}\${1:3d}'
 }
 
-fn main() {
+fn has_known_last_name(entries []E) bool {
+	return entries.last().name in ['hello', 'other']
+}
+
+fn check_allocating_consumers() {
 	println(decorated_last_name())
 	println(interpolated_last_name())
 	println(formatted_last_name())
 	println(formatted_last_name_with_sibling())
 }
-", '')
-	assert_clean_borrow_build(compile)
-	bin_path := tmp_array_accessor_borrow_path('owned_allocating_string_consumers_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output == 'hello!\n<hello>\nhello\nhello  1\n', run.output
+
+fn check_literal_membership() {
+	entries := [E{ name: 'hello' }]
+	println(has_known_last_name(entries))
 }
 
-// An allocating consumer is borrow-safe only when evaluating its other operands cannot mutate
-// the source array first. Keep the accessor on its independent-copy path when a sibling call can
-// delete the selected element before string concatenation consumes the field.
-fn test_owned_string_consumer_with_mutating_sibling_is_rejected() {
+// A plain `string` field uses the builtin stringifier, so the borrow stays safe.
+fn last_label(entries []E) string {
+	return '\${entries.last().name}\${0}'
+}
+
+fn last_name_matches(entries []E) bool {
+	return entries.last().name == ('he' + 'llo')
+}
+
+fn check_plain_interpolation() {
+	entries := [E{ name: 'hello' }]
+	println(last_label(entries))
+}
+
+fn check_builtin_comparison() {
+	entries := [E{ name: 'hello' }]
+	println(last_name_matches(entries))
+}
+
+struct Stable {
+	n int
+}
+
+fn last_name_then_stringify(entries []E, stable Stable) string {
+	return '\${entries.last().name}\${stable}'
+}
+
+fn check_auto_stringifier() {
+	entries := [E{ name: 'hello' }]
+	println(last_name_then_stringify(entries, Stable{ n: 1 }))
+}
+
+fn check_string_consumers() {
+	_ = check_auto_stringifier // Compile the control without running it.
+	check_clone()
+	check_length()
+	check_comparison()
+	check_membership()
+	check_allocating_consumers()
+	check_literal_membership()
+	check_plain_interpolation()
+	check_builtin_comparison()
+}
+"
+
+// A bound method value needs a copy of its receiver. Returning a string,
+// a pointer, or a nested pointer would let the borrow outlive the array.
+// The nested pointer case uses an aggregate with no destructor.
+fn test_owned_array_element_escapes_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	concat := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_concat_mutating_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_array_element_escapes', "struct E {
+	name string
+	size int
+}
+
+fn (e E) describe() string {
+	return e.name
+}
+
+struct T {
+mut:
+	entries []E
+}
+
+fn (t &T) last_name() string {
+	return t.entries.last().name
+}
+
+struct PointerEntry implements Drop {
 	name string
 }
 
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '!'
+fn last_name_ptr() &u8 {
+	arr := [PointerEntry{ name: 'hello' }]
+	return arr.last().name.str
 }
 
-fn last_name_then_delete(mut arr []E) string {
-	return arr.last().name + delete_last(mut arr)
+fn (mut value PointerEntry) drop() {}
+
+struct View {
+	ptr &u8
+}
+
+struct Wrapper {
+	view View
+}
+
+struct WrapperEntry implements Drop {
+	name    string
+	wrapper Wrapper
+}
+
+fn last_wrapper() Wrapper {
+	arr := [WrapperEntry{
+		name: 'hello'
+		wrapper: Wrapper{
+			view: View{
+				ptr: unsafe { nil }
+			}
+		}
+	}]
+	return arr.last().wrapper
+}
+
+fn (mut value WrapperEntry) drop() {}
+
+fn check_method_value() {
+	arr := [E{ name: 'a', size: 1 }, E{ name: 'b', size: 2 }]
+	f := arr.last().describe
+	println(f())
+}
+
+fn check_string_escape() {
+	mut t := T{}
+	t.entries << E{ name: 'hello', size: 5 }
+	println(t.last_name())
+}
+
+fn check_pointer_escape() {
+	println(unsafe { cstring_to_vstring(last_name_ptr()) })
+}
+
+fn check_nested_pointer_escape() {
+	_ = last_wrapper()
 }
 
 fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
+	check_method_value()
+	check_string_escape()
+	check_pointer_escape()
+	check_nested_pointer_escape()
 }
-", '')
-	assert concat.exit_code != 0, concat.output
-	assert concat.output.contains('cannot return an independent array element'), concat.output
-
-	interp := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '!'
-}
-
-fn last_name_then_delete(mut arr []E) string {
-	return '\${arr.last().name}\${delete_last(mut arr)}'
+", '-nocolor')
+	// Locations include the prepended Drop interface.
+	assert ownership_error_lines(compile) == [
+		independent_array_element_error_at('21:9', 'E'),
+		independent_array_element_error_at('30:9', 'PointerEntry'),
+		independent_array_element_error_at('57:9', 'WrapperEntry'),
+		independent_array_element_error_at('64:7', 'E'),
+	], compile.output
 }
 
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
+fn ownership_error_lines(compile os.Result) []string {
+	assert compile.exit_code == 1, compile.output
+	return compile.output.split_into_lines().filter(it.contains(': error: ')).map(it.all_after('.v:'))
 }
-", '')
-	assert interp.exit_code != 0, interp.output
-	assert interp.output.contains('cannot return an independent array element'), interp.output
 
-	stringifier := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_mutating_stringifier', "struct E {
+fn independent_array_element_error_at(location string, element string) string {
+	return '${location}: error: cannot return an independent array element: `${element}` requires ownership destruction but has no `clone()` method'
+}
+
+fn assert_independent_array_element_errors(compile os.Result, locations []string) {
+	assert ownership_error_lines(compile) == locations.map(independent_array_element_error_at(it, 'E')), compile.output
+}
+
+fn test_owned_string_consumers_reject_mutating_overloads() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_consumers_with_mutating_overloads', "struct E {
 	name string
 }
 
@@ -522,163 +443,233 @@ fn last_name_then_stringify(mutator Mutator) string {
 	return '\${entries.last().name}\${mutator}'
 }
 
-fn main() {
-	entries = [E{ name: 'hello' }]
-	println(last_name_then_stringify(Mutator{}))
-}
-", '-enable-globals')
-	assert stringifier.exit_code != 0, stringifier.output
-	assert stringifier.output.contains('cannot return an independent array element'), stringifier.output
-
-	nested_stringifier := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_nested_mutating_stringifier', "struct E {
-	name string
-}
-
-struct Mutator {}
-
 struct Wrapper {
 	mutator Mutator
 }
 
-__global entries []E
-
-fn (Mutator) str() string {
-	entries.delete_last()
-	return '!'
-}
-
-fn last_name_then_stringify(wrapper Wrapper) string {
+fn last_name_then_stringify_wrapper(wrapper Wrapper) string {
 	return '\${entries.last().name}\${wrapper}'
 }
 
-fn main() {
+fn check_stringifier() {
 	entries = [E{ name: 'hello' }]
-	println(last_name_then_stringify(Wrapper{}))
-}
-", '-enable-globals')
-	assert nested_stringifier.exit_code != 0, nested_stringifier.output
-	assert nested_stringifier.output.contains('cannot return an independent array element'), nested_stringifier.output
-
-	stable_stringifier := compile_v3_ownership_program(v3_bin, 'owned_string_interp_stable_auto_stringifier', "struct E {
-	name string
+	println(last_name_then_stringify(Mutator{}))
 }
 
-struct Stable {
-	n int
+fn check_nested_stringifier() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_then_stringify_wrapper(Wrapper{}))
 }
 
-fn last_name_then_stringify(entries []E, stable Stable) string {
-	return '\${entries.last().name}\${stable}'
-}
+type Name = string
 
-fn main() {
-	entries := [E{ name: 'hello' }]
-	println(last_name_then_stringify(entries, Stable{ n: 1 }))
-}
-", '')
-	assert stable_stringifier.exit_code == 0, stable_stringifier.output
-	assert !stable_stringifier.output.contains('cannot return an independent array element'), stable_stringifier.output
-
-	comparison := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_comparison_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return 'hello'
-}
-
-fn last_name_then_delete(mut arr []E) bool {
-	return arr.last().name == delete_last(mut arr)
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert comparison.exit_code != 0, comparison.output
-	assert comparison.output.contains('cannot return an independent array element'), comparison.output
-}
-
-fn test_owned_string_interpolation_with_custom_stringifier_part_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	// The borrowed interpolation part is itself a string alias with a custom `str()`. The
-	// interpolation dispatches through that method (not the builtin stringifier), and it mutates
-	// the source array before the borrowed shallow receiver is read, so the borrow is unsafe.
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_self_stringifier', "type Name = string
-
-struct E {
+struct AliasEntry implements Drop {
 	name Name
 }
 
-__global entries []E
+__global alias_entries []AliasEntry
 
 fn (name Name) str() string {
-	entries.delete_last()
+	alias_entries.delete_last()
 	return string(name)
 }
 
+// The borrowed interpolation part is itself a string alias with a custom `str()`. The
+// interpolation dispatches through that method (not the builtin stringifier), and it mutates
+// the source array before the borrowed shallow receiver is read, so the borrow is unsafe.
 fn last_label() string {
-	return '\${entries.last().name}\${0}'
+	return '\${alias_entries.last().name}\${0}'
 }
 
-fn main() {
-	entries = [E{ name: Name('hello') }]
+fn (mut value AliasEntry) drop() {}
+
+fn check_alias_stringifier() {
+	alias_entries = [AliasEntry{ name: Name('hello') }]
 	println(last_label())
 }
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
 
-	// A plain `string` field uses the builtin stringifier, so the borrow stays safe.
-	safe := compile_v3_ownership_program(v3_bin, 'owned_string_interp_plain_part', "struct E {
-	name string
+fn (left Mutator) + (right Mutator) string {
+	_ = left
+	_ = right
+	entries.delete_last()
+	return 'hello'
 }
 
-fn last_label(entries []E) string {
-	return '\${entries.last().name}\${0}'
+fn last_name_matches_with_infix(left Mutator, right Mutator) bool {
+	return entries.last().name == (left + right)
+}
+
+fn (Mutator) [] (index int) string {
+	_ = index
+	entries.delete_last()
+	return 'hello'
+}
+
+fn last_name_matches_with_index(mutator Mutator) bool {
+	return entries.last().name == mutator[0]
+}
+
+fn check_infix() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_matches_with_infix(Mutator{}, Mutator{}))
+}
+
+fn check_index() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_matches_with_index(Mutator{}))
 }
 
 fn main() {
-	entries := [E{ name: 'hello' }]
-	println(last_label(entries))
+	check_stringifier()
+	check_nested_stringifier()
+	check_alias_stringifier()
+	check_infix()
+	check_index()
 }
-", '')
-	assert safe.exit_code == 0, safe.output
-	safe_bin_path := tmp_array_accessor_borrow_path('owned_string_interp_plain_part_bin')
-	safe_run := os.exec([safe_bin_path])
-	assert safe_run.exit_code == 0, safe_run.output
-	assert safe_run.output.trim_space() == 'hello0', safe_run.output
+", '-enable-globals -nocolor')
+	// Locations include the prepended Drop interface.
+	assert ownership_error_lines(compile) == [
+		independent_array_element_error_at('20:12', 'E'),
+		independent_array_element_error_at('28:12', 'E'),
+		independent_array_element_error_at('58:12', 'AliasEntry'),
+		independent_array_element_error_at('76:9', 'E'),
+		independent_array_element_error_at('86:9', 'E'),
+	], compile.output
 }
 
-fn test_owned_string_index_with_mutating_index_is_rejected() {
+fn test_owned_borrows_with_explicit_mutating_calls_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_index_mutating_sibling', "struct E {
+	src := "struct E {
 	name string
 }
 
-fn delete_last(mut arr []E) int {
+fn delete_last_for_index(mut arr []E) int {
 	arr.delete_last()
 	return 0
 }
 
 fn last_initial_then_delete(mut arr []E) u8 {
-	return arr.last().name[delete_last(mut arr)]
+	return arr.last().name[delete_last_for_index(mut arr)]
 }
 
-fn main() {
+struct Pair {
+	n int
+	s string
+}
+
+fn delete_last_for_field(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn last_length_in_pair(mut arr []E) Pair {
+	return Pair{ n: arr.last().name.len, s: delete_last_for_field(mut arr) }
+}
+
+fn delete_last_for_return(mut entries []E) string {
+	entries.delete_last()
+	return 'deleted'
+}
+
+fn last_length_in_multi_return(mut entries []E) (int, string) {
+	return entries.last().name.len, delete_last_for_return(mut entries)
+}
+
+fn check_index() {
 	mut arr := [E{ name: 'hello' }]
 	println(last_initial_then_delete(mut arr))
 }
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+fn check_field() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_length_in_pair(mut arr).n)
 }
 
-fn test_owned_field_overloaded_comparison_is_rejected() {
+fn check_return() {
+	mut entries := [E{ name: 'hello' }]
+	length, action := last_length_in_multi_return(mut entries)
+	println(int_str(length) + ':' + action)
+}
+
+fn delete_last_for_condition(mut entries []E) bool {
+	entries.delete_last()
+	return true
+}
+
+fn if_length(mut entries []E) int {
+	return if delete_last_for_condition(mut entries) { entries.last().name.len } else { 0 }
+}
+
+fn match_subject_length(mut entries []E) int {
+	return match delete_last_for_condition(mut entries) {
+		true { entries.last().name.len }
+		else { 0 }
+	}
+}
+
+fn delete_last_or_error(mut entries []E) !int {
+	entries.delete_last()
+	return error('deleted')
+}
+
+fn or_length(mut entries []E) int {
+	return delete_last_or_error(mut entries) or { entries.last().name.len }
+}
+
+fn delete_last_and_return_one(mut entries []E) int {
+	entries.delete_last()
+	return 1
+}
+
+fn match_branch_length(mut entries []E) int {
+	return match 1 {
+		delete_last_and_return_one(mut entries) { entries.last().name.len }
+		else { 0 }
+	}
+}
+
+fn check_if() {
+	mut entries := [E{ name: 'hello' }]
+	println(if_length(mut entries))
+}
+
+fn check_match_subject() {
+	mut entries := [E{ name: 'hello' }]
+	println(match_subject_length(mut entries))
+}
+
+fn check_or() {
+	mut entries := [E{ name: 'hello' }]
+	println(or_length(mut entries))
+}
+
+fn check_match_branch() {
+	mut entries := [E{ name: 'hello' }]
+	println(match_branch_length(mut entries))
+}
+
+fn main() {
+	check_index()
+	check_field()
+	check_return()
+	check_if()
+	check_match_subject()
+	check_or()
+	check_match_branch()
+	check_mutating_siblings()
+}
+
+" + array_accessor_borrow_mutating_siblings_src
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_borrows_with_mutating_calls', src, '-nocolor')
+	// Locations include the prepended Drop interface.
+	assert_independent_array_element_errors(compile, ['16:9', '30:18', '39:9', '64:53', '69:10',
+		'80:48', '90:45', '148:10', '152:24', '156:28', '160:22', '164:24', '168:21', '172:31',
+		'176:23', '180:33', '234:9', '238:12', '247:9'])
+}
+
+fn test_owned_field_overloaded_comparison_and_index_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_comparison', "struct Name {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_operators', "struct Name {
 	text string
 }
 
@@ -694,68 +685,36 @@ fn last_name_matches(arr []E) bool {
 	return arr.last().name == Name{ text: 'hello' }
 }
 
-fn main() {
+fn (name Name) [] (index int) u8 {
+	return name.text[index]
+}
+
+fn last_initial(arr []E) u8 {
+	return arr.last().name[0]
+}
+
+fn check_comparison() {
 	arr := [E{ name: Name{ text: 'hello' } }]
 	println(last_name_matches(arr))
 }
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
 
-fn test_owned_string_comparison_with_infix_sibling_checks_overloads() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	builtin := compile_v3_ownership_program(v3_bin, 'owned_builtin_infix_sibling', "struct E {
-	name string
-}
-
-fn last_name_matches(entries []E) bool {
-	return entries.last().name == ('he' + 'llo')
+fn check_index() {
+	arr := [E{ name: Name{ text: 'hello' } }]
+	println(last_initial(arr))
 }
 
 fn main() {
-	entries := [E{ name: 'hello' }]
-	println(last_name_matches(entries))
+	check_comparison()
+	check_index()
 }
-", '')
-	assert builtin.exit_code == 0, builtin.output
-	assert !builtin.output.contains('cannot return an independent array element'), builtin.output
-	builtin_bin_path := tmp_array_accessor_borrow_path('owned_builtin_infix_sibling_bin')
-	builtin_run := os.exec([builtin_bin_path])
-	assert builtin_run.exit_code == 0, builtin_run.output
-	assert builtin_run.output.trim_space() == 'true', builtin_run.output
-
-	overloaded := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_overloaded_infix_sibling', "struct E {
-	name string
+", '-nocolor')
+	// Locations include the prepended Drop interface.
+	assert_independent_array_element_errors(compile, ['19:9', '27:9'])
 }
 
-struct Mutator {}
-
-__global entries []E
-
-fn (left Mutator) + (right Mutator) string {
-	_ = left
-	_ = right
-	entries.delete_last()
-	return 'hello'
-}
-
-fn last_name_matches(left Mutator, right Mutator) bool {
-	return entries.last().name == (left + right)
-}
-
-fn main() {
-	entries = [E{ name: 'hello' }]
-	println(last_name_matches(Mutator{}, Mutator{}))
-}
-", '-enable-globals')
-	assert overloaded.exit_code != 0, overloaded.output
-	assert overloaded.output.contains('cannot return an independent array element'), overloaded.output
-}
-
-fn test_owned_aggregate_field_overloaded_comparison_is_rejected() {
+fn test_owned_comparison_and_membership_reject_mutating_equality() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_aggregate_field_overloaded_comparison', "struct Name {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_equality_overloads', "struct Name {
 	text string
 }
 
@@ -774,97 +733,85 @@ fn last_names_match(other []Name) bool {
 	return entries.last().names == other
 }
 
-fn main() {
-	entries = [E{ names: [Name{ text: 'hello' }] }]
-	println(last_names_match([Name{ text: 'hello' }]))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-fn test_owned_aggregate_field_overloaded_inequality_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_aggregate_field_overloaded_inequality', "struct Name {
-	text string
-}
-
-struct E {
-	names []Name
-}
-
-__global entries []E
-
-fn (left Name) == (right Name) bool {
-	entries.delete_last()
-	return left.text == right.text
-}
-
 fn last_names_differ(other []Name) bool {
 	return entries.last().names != other
 }
 
-fn main() {
-	entries = [E{ names: [Name{ text: 'hello' }] }]
-	println(last_names_differ([Name{ text: 'world' }]))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-fn test_owned_interface_field_overloaded_comparison_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_interface_field_overloaded_comparison', "interface Named {
+interface Named {
 	name() string
 }
 
-struct Name {
+struct InterfaceName {
 	text string
 }
 
-struct E {
+struct InterfaceEntry implements Drop {
 	value Named
 }
 
-__global entries []E
+__global interface_entries []InterfaceEntry
 
-fn (name Name) name() string {
+fn (name InterfaceName) name() string {
 	return name.text
 }
 
-fn (left Name) == (right Name) bool {
-	entries.delete_last()
+fn (left InterfaceName) == (right InterfaceName) bool {
+	interface_entries.delete_last()
 	return left.text == right.text
 }
 
 fn last_matches(other Named) bool {
-	return entries.last().value == other
+	return interface_entries.last().value == other
 }
 
-fn main() {
-	entries = [E{ value: Named(Name{ text: 'hello' }) }]
-	println(last_matches(Named(Name{ text: 'hello' })))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+fn (mut value InterfaceEntry) drop() {}
+
+fn check_aggregate_equality() {
+	entries = [E{ names: [Name{ text: 'hello' }] }]
+	println(last_names_match([Name{ text: 'hello' }]))
 }
 
-fn test_owned_field_with_overloaded_membership_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_membership_sibling', "struct E {
-	name string
+fn check_aggregate_inequality() {
+	entries = [E{ names: [Name{ text: 'hello' }] }]
+	println(last_names_differ([Name{ text: 'world' }]))
+}
+
+fn check_interface_equality() {
+	interface_entries = [InterfaceEntry{ value: Named(InterfaceName{ text: 'hello' }) }]
+	println(last_matches(Named(InterfaceName{ text: 'hello' })))
 }
 
 struct Needle {
+	text string
+}
+
+struct NeedleEntry implements Drop {
+	value Needle
+}
+
+__global needle_entries []NeedleEntry
+
+fn (left Needle) == (right Needle) bool {
+	needle_entries.delete_last()
+	return left.text == right.text
+}
+
+fn last_value_is_in(haystack []Needle) bool {
+	return needle_entries.last().value in haystack
+}
+
+struct MembershipEntry implements Drop {
+	name string
+}
+
+struct MembershipNeedle {
 	value int
 }
 
-__global entries []E
+__global membership_entries []MembershipEntry
 
-fn (left Needle) == (right Needle) bool {
-	entries.delete_last()
+fn (left MembershipNeedle) == (right MembershipNeedle) bool {
+	membership_entries.delete_last()
 	return left.value == right.value
 }
 
@@ -872,280 +819,212 @@ fn consume(length int, found bool) int {
 	return if found { length } else { 0 }
 }
 
-fn last_length_with_membership(needle Needle, haystack []Needle) int {
-	return consume(entries.last().name.len, needle in haystack)
+fn last_length_with_membership(needle MembershipNeedle, haystack []MembershipNeedle) int {
+	return consume(membership_entries.last().name.len, needle in haystack)
+}
+
+fn (mut value NeedleEntry) drop() {}
+
+fn (mut value MembershipEntry) drop() {}
+
+fn check_direct_membership() {
+	needle_entries = [NeedleEntry{ value: Needle{ text: 'hello' } }]
+	println(last_value_is_in([Needle{ text: 'hello' }]))
+}
+
+fn check_membership_sibling() {
+	membership_entries = [MembershipEntry{ name: 'hello' }]
+	println(last_length_with_membership(MembershipNeedle{ value: 1 }, [MembershipNeedle{ value: 1 }]))
 }
 
 fn main() {
-	entries = [E{ name: 'hello' }]
-	println(last_length_with_membership(Needle{ value: 1 }, [Needle{ value: 1 }]))
+	check_aggregate_equality()
+	check_aggregate_inequality()
+	check_interface_equality()
+	check_direct_membership()
+	check_membership_sibling()
 }
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+", '-enable-globals -nocolor')
+	// Locations include the prepended Drop interface.
+	assert ownership_error_lines(compile) == [
+		independent_array_element_error_at('22:9', 'E'),
+		independent_array_element_error_at('26:9', 'E'),
+		independent_array_element_error_at('53:9', 'InterfaceEntry'),
+		independent_array_element_error_at('89:9', 'NeedleEntry'),
+		independent_array_element_error_at('112:17', 'MembershipEntry'),
+	], compile.output
 }
 
-fn test_owned_nested_string_consumer_with_mutating_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_string_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
+// An allocating consumer is borrow-safe only when evaluating its other operands cannot mutate
+// the source array first. Keep the accessor on its independent-copy path when a sibling call can
+// delete the selected element before string concatenation consumes the field.
+const array_accessor_borrow_mutating_siblings_src = "fn delete_last(mut arr []E) string {
 	arr.delete_last()
 	return '?'
 }
 
-fn last_name_then_delete(mut arr []E) string {
-	return (arr.last().name + '!') + delete_last(mut arr)
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-
-	call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value string, suffix string) string {
+fn consume_string(value string, suffix string) string {
 	return value + suffix
 }
 
-fn last_name_then_delete(mut arr []E) string {
-	return consume(arr.last().name + '!', delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert call.exit_code != 0, call.output
-	assert call.output.contains('cannot return an independent array element'), call.output
-
-	interpolation_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_interpolation_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value string, suffix string) string {
-	return value + suffix
-}
-
-fn last_name_then_delete(mut arr []E) string {
-	return consume('<\${arr.last().name}>', delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert interpolation_call.exit_code != 0, interpolation_call.output
-	assert interpolation_call.output.contains('cannot return an independent array element'), interpolation_call.output
-
-	comparison_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_comparison_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value bool, suffix string) bool {
+fn consume_bool(value bool, suffix string) bool {
 	return value
 }
 
-fn last_name_then_delete(mut arr []E) bool {
-	return consume(arr.last().name == 'hello', delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert comparison_call.exit_code != 0, comparison_call.output
-	assert comparison_call.output.contains('cannot return an independent array element'), comparison_call.output
-
-	wrapped_comparison_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_wrapped_comparison_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value bool, suffix string) bool {
+fn consume_int(value int, suffix string) int {
 	return value
-}
-
-fn last_name_then_delete(mut arr []E) bool {
-	return consume(!(arr.last().name == 'hello'), delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert wrapped_comparison_call.exit_code != 0, wrapped_comparison_call.output
-	assert wrapped_comparison_call.output.contains('cannot return an independent array element'), wrapped_comparison_call.output
-
-	scalar_selector_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_selector_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value int, suffix string) int {
-	return value
-}
-
-fn last_name_len_then_delete(mut arr []E) int {
-	return consume(arr.last().name.len, delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_len_then_delete(mut arr))
-}
-", '')
-	assert scalar_selector_call.exit_code != 0, scalar_selector_call.output
-	assert scalar_selector_call.output.contains('cannot return an independent array element'), scalar_selector_call.output
-
-	conditional_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_conditional_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value int, suffix string) int {
-	return value
-}
-
-fn last_name_len_then_delete(mut arr []E, flag bool) int {
-	return consume(if flag { arr.last().name.len } else { 0 }, delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_len_then_delete(mut arr, true))
-}
-", '')
-	assert conditional_call.exit_code != 0, conditional_call.output
-	assert conditional_call.output.contains('cannot return an independent array element'), conditional_call.output
-
-	logical_wrapper_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_logical_wrapper_call_argument_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn consume(value bool, suffix string) bool {
-	return value
-}
-
-fn last_name_then_delete(mut arr []E) bool {
-	return consume((arr.last().name == 'hello') && true, delete_last(mut arr))
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-", '')
-	assert logical_wrapper_call.exit_code != 0, logical_wrapper_call.output
-	assert logical_wrapper_call.output.contains('cannot return an independent array element'), logical_wrapper_call.output
-
-	nested_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_call_argument_mutating_outer_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
 }
 
 fn identity(value string) string {
 	return value
 }
 
-fn consume(value string, suffix string) string {
-	return value + suffix
+fn nested_concat_then_delete(mut arr []E) string {
+	return (arr.last().name + '!') + delete_last(mut arr)
+}
+
+fn concat_arg_then_delete(mut arr []E) string {
+	return consume_string(arr.last().name + '!', delete_last(mut arr))
+}
+
+fn interpolation_arg_then_delete(mut arr []E) string {
+	return consume_string('<\${arr.last().name}>', delete_last(mut arr))
+}
+
+fn comparison_arg_then_delete(mut arr []E) bool {
+	return consume_bool(arr.last().name == 'hello', delete_last(mut arr))
+}
+
+fn negated_comparison_arg_then_delete(mut arr []E) bool {
+	return consume_bool(!(arr.last().name == 'hello'), delete_last(mut arr))
+}
+
+fn length_arg_then_delete(mut arr []E) int {
+	return consume_int(arr.last().name.len, delete_last(mut arr))
+}
+
+fn conditional_arg_then_delete(mut arr []E, flag bool) int {
+	return consume_int(if flag { arr.last().name.len } else { 0 }, delete_last(mut arr))
+}
+
+fn logical_arg_then_delete(mut arr []E) bool {
+	return consume_bool((arr.last().name == 'hello') && true, delete_last(mut arr))
+}
+
+fn nested_arg_then_delete(mut arr []E) string {
+	return consume_string(identity(arr.last().name + '!'), delete_last(mut arr))
+}
+
+fn check_nested_concat() {
+	mut arr := [E{ name: 'hello' }]
+	println(nested_concat_then_delete(mut arr))
+}
+
+fn check_concat_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(concat_arg_then_delete(mut arr))
+}
+
+fn check_interpolation_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(interpolation_arg_then_delete(mut arr))
+}
+
+fn check_comparison_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(comparison_arg_then_delete(mut arr))
+}
+
+fn check_negated_comparison_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(negated_comparison_arg_then_delete(mut arr))
+}
+
+fn check_length_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(length_arg_then_delete(mut arr))
+}
+
+fn check_conditional_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(conditional_arg_then_delete(mut arr, true))
+}
+
+fn check_logical_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(logical_arg_then_delete(mut arr))
+}
+
+fn check_nested_arg() {
+	mut arr := [E{ name: 'hello' }]
+	println(nested_arg_then_delete(mut arr))
+}
+
+fn delete_last_for_string(mut arr []E) string {
+	arr.delete_last()
+	return '!'
 }
 
 fn last_name_then_delete(mut arr []E) string {
-	return consume(identity(arr.last().name + '!'), delete_last(mut arr))
+	return arr.last().name + delete_last_for_string(mut arr)
 }
 
-fn main() {
+fn interpolate_then_delete(mut arr []E) string {
+	return '\${arr.last().name}\${delete_last_for_string(mut arr)}'
+}
+
+fn delete_for_comparison(mut arr []E) string {
+	arr.delete_last()
+	return 'hello'
+}
+
+fn compare_then_delete(mut arr []E) bool {
+	return arr.last().name == delete_for_comparison(mut arr)
+}
+
+fn check_concat() {
 	mut arr := [E{ name: 'hello' }]
 	println(last_name_then_delete(mut arr))
 }
-", '')
-	assert nested_call.exit_code != 0, nested_call.output
-	assert nested_call.output.contains('cannot return an independent array element'), nested_call.output
-}
 
-fn test_owned_scalar_consumer_in_aggregate_with_mutating_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_aggregate_mutating_sibling', "struct E {
-	name string
-}
-
-struct Pair {
-	n int
-	s string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn last_length_then_delete(mut arr []E) Pair {
-	return Pair{ n: arr.last().name.len, s: delete_last(mut arr) }
-}
-
-fn main() {
+fn check_interpolation() {
 	mut arr := [E{ name: 'hello' }]
-	println(last_length_then_delete(mut arr).n)
-}
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+	println(interpolate_then_delete(mut arr))
 }
 
-fn test_owned_scalar_consumer_in_aggregate_with_stable_field_borrows() {
+fn check_comparison() {
+	mut arr := [E{ name: 'hello' }]
+	println(compare_then_delete(mut arr))
+}
+
+fn check_mutating_siblings() {
+	check_nested_concat()
+	check_concat_arg()
+	check_interpolation_arg()
+	check_comparison_arg()
+	check_negated_comparison_arg()
+	check_length_arg()
+	check_conditional_arg()
+	check_logical_arg()
+	check_nested_arg()
+	check_concat()
+	check_interpolation()
+	check_comparison()
+}
+"
+
+// Indexing and chained length reads can borrow the original element. A length
+// read can also share an initializer or call with stable fields or arguments.
+fn test_owned_array_accessor_consumers_run() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_aggregate_stable_field', "struct E {
+	src := array_accessor_borrow_string_consumers_src + "
+struct E {
 	name string
+}
+
+fn last_initial() u8 {
+	arr := [E{ name: 'hello' }]
+	return arr.last().name[0]
 }
 
 struct Pair {
@@ -1157,29 +1036,11 @@ fn last_length(arr []E) Pair {
 	return Pair{ n: arr.last().name.len, s: 'ok' }
 }
 
-fn main() {
-	arr := [E{ name: 'hello' }]
-	println(last_length(arr).n)
-}
-", '')
-	assert compile.exit_code == 0, compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_scalar_aggregate_stable_field_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '5', run.output
-}
-
-fn test_owned_scalar_consumer_with_stable_aggregate_argument_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_stable_aggregate_argument', "struct E {
-	name string
-}
-
-struct Pair {
+struct ArgumentPair {
 	n int
 }
 
-fn consume_struct(length int, pair Pair) int {
+fn consume_struct(length int, pair ArgumentPair) int {
 	_ = pair
 	return length
 }
@@ -1195,7 +1056,7 @@ fn consume_array(length int, values []int) int {
 }
 
 fn last_struct_length(entries []E) int {
-	return consume_struct(entries.last().name.len, Pair{ n: 1 })
+	return consume_struct(entries.last().name.len, ArgumentPair{ n: 1 })
 }
 
 fn last_map_length(entries []E) int {
@@ -1206,217 +1067,93 @@ fn last_array_length(entries []E) int {
 	return consume_array(entries.last().name.len, []int{len: 1, init: 1})
 }
 
-fn main() {
+fn check_scalar_index() {
+	println(int_str(last_initial()))
+}
+
+fn check_aggregate_field() {
+	arr := [E{ name: 'hello' }]
+	println(last_length(arr).n)
+}
+
+fn check_aggregate_arguments() {
 	entries1 := [E{ name: 'hello' }]
 	entries2 := [E{ name: 'hello' }]
 	entries3 := [E{ name: 'hello' }]
 	println(last_struct_length(entries1) + last_map_length(entries2) + last_array_length(entries3))
 }
-", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_scalar_stable_aggregate_argument_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '15', run.output
-}
 
-fn test_owned_conditional_prerequisites_that_mutate_source_are_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	if_compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_if_prerequisite', "struct E {
+struct SizedEntry {
 	name string
+	size int
 }
 
-fn delete_last(mut entries []E) bool {
-	entries.delete_last()
-	return true
+struct SizedTable {
+mut:
+	entries []SizedEntry
+	total   int
 }
 
-fn last_length(mut entries []E) int {
-	return if delete_last(mut entries) { entries.last().name.len } else { 0 }
-}
-
-fn main() {
-	mut entries := [E{ name: 'hello' }]
-	println(last_length(mut entries))
-}
-", '')
-	assert if_compile.exit_code != 0, if_compile.output
-	assert if_compile.output.contains('cannot return an independent array element'), if_compile.output
-
-	match_compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_match_prerequisite', "struct E {
-	name string
-}
-
-fn delete_last(mut entries []E) bool {
-	entries.delete_last()
-	return true
-}
-
-fn last_length(mut entries []E) int {
-	return match delete_last(mut entries) {
-		true { entries.last().name.len }
-		else { 0 }
+// Concern: (arr.last()).field must lower to the same in-place borrow as arr.last().field.
+// The checker recognizes the borrow through parentheses, and the transformer must unwrap them.
+fn (mut t SizedTable) shrink() {
+	for t.entries.len > 0 {
+		t.total -= (t.entries.last()).size
+		t.entries.delete_last()
 	}
 }
 
-fn main() {
-	mut entries := [E{ name: 'hello' }]
-	println(last_length(mut entries))
-}
-", '')
-	assert match_compile.exit_code != 0, match_compile.output
-	assert match_compile.output.contains('cannot return an independent array element'), match_compile.output
-
-	or_compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_or_prerequisite', "struct E {
-	name string
-}
-
-fn delete_last(mut entries []E) !int {
-	entries.delete_last()
-	return error('deleted')
-}
-
-fn last_length(mut entries []E) int {
-	return delete_last(mut entries) or { entries.last().name.len }
-}
-
-fn main() {
-	mut entries := [E{ name: 'hello' }]
-	println(last_length(mut entries))
-}
-", '')
-	assert or_compile.exit_code != 0, or_compile.output
-	assert or_compile.output.contains('cannot return an independent array element'), or_compile.output
-}
-
-fn test_owned_match_branch_condition_that_mutates_source_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	// A branch condition is evaluated before the branch tail, so a condition that empties the
-	// array invalidates the accessor borrowed in that tail. It must keep copying semantics.
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_match_branch_condition_mutating', "struct E {
-	name string
-}
-
-fn delete_last(mut entries []E) int {
-	entries.delete_last()
-	return 1
-}
-
-fn last_length(mut entries []E) int {
-	return match 1 {
-		delete_last(mut entries) { entries.last().name.len }
-		else { 0 }
-	}
-}
-
-fn main() {
-	mut entries := [E{ name: 'hello' }]
-	println(last_length(mut entries))
-}
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-
-	// A literal branch condition cannot mutate the source, so the tail still borrows in place.
-	safe := compile_v3_ownership_program(v3_bin, 'owned_match_branch_condition_stable', "struct E {
-	name string
-}
-
-fn last_length(entries []E) int {
+// A literal branch condition cannot mutate the source, so the tail still borrows in place.
+fn last_length_in_match(entries []E) int {
 	return match 1 {
 		1 { entries.last().name.len }
 		else { 0 }
 	}
 }
 
-fn main() {
+fn check_parenthesized() {
+	mut t := SizedTable{}
+	t.entries << SizedEntry{ name: 'a', size: 5 }
+	t.entries << SizedEntry{ name: 'b', size: 7 }
+	t.total = 12
+	t.shrink()
+	println(int_str(t.total))
+}
+
+fn check_match_branch() {
 	entries := [E{ name: 'hello' }]
-	println(last_length(entries))
-}
-", '')
-	assert safe.exit_code == 0, safe.output
-	safe_bin_path := tmp_array_accessor_borrow_path('owned_match_branch_condition_stable_bin')
-	safe_run := os.exec([safe_bin_path])
-	assert safe_run.exit_code == 0, safe_run.output
-	assert safe_run.output.trim_space() == '5', safe_run.output
+	println(last_length_in_match(entries))
 }
 
-fn test_owned_scalar_consumer_with_mutating_struct_default_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_mutating_struct_default_sibling', "struct E {
+__global (
+	make_calls = 0
+)
+
+fn make_entries() []SizedEntry {
+	make_calls++
+	return [SizedEntry{ name: 'a', size: 5 }, SizedEntry{ name: 'b', size: 9 }]
+}
+
+// Concern: `last()` reads its receiver twice (`arr[arr.len - 1]`), so a non-lvalue receiver
+// such as `make_entries()` must be evaluated exactly once. The borrow lowering binds it to a
+// temp instead of duplicating the call.
+fn check_receiver_evaluated_once() {
+	s := make_entries().last().size
+	// size == 9 (last element), make_entries() invoked once (not twice).
+	println(int_str(s) + ':' + int_str(make_calls))
+}
+
+struct CloneableEntry {
 	name string
+	size int
 }
 
-struct Pair {
-	n int = delete_last()
+fn (e CloneableEntry) clone() CloneableEntry {
+	return CloneableEntry{ name: e.name.clone(), size: e.size }
 }
 
-__global entries []E
-
-fn delete_last() int {
-	entries.delete_last()
-	return 0
-}
-
-fn consume(length int, pair Pair) int {
-	_ = pair
-	return length
-}
-
-fn last_length() int {
-	return consume(entries.last().name.len, Pair{})
-}
-
-fn main() {
-	entries = [E{ name: 'hello' }]
-	println(last_length())
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-fn test_owned_scalar_consumer_with_cloning_method_value_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_cloning_method_value_sibling', "struct E {
-	name string
-}
-
-struct Mutator {
-	label string
-}
-
-__global entries []E
-
-fn (mutator Mutator) clone() Mutator {
-	entries.delete_last()
-	return Mutator{ label: mutator.label.clone() }
-}
-
-fn (mutator Mutator) run() string {
-	return mutator.label
-}
-
-fn consume(length int, callback fn () string) int {
-	_ = callback()
-	return length
-}
-
-fn last_length_with_bound_method(mutator Mutator) int {
-	return consume(entries.last().name.len, mutator.run)
-}
-
-fn main() {
-	entries = [E{ name: 'hello' }]
-	println(last_length_with_bound_method(Mutator{ label: 'run' }))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-
-	safe := compile_v3_ownership_program(v3_bin, 'owned_scalar_default_clone_method_value_sibling', "struct E {
-	name string
+fn (e CloneableEntry) describe() string {
+	return e.name
 }
 
 struct Reader implements IClone {
@@ -1436,81 +1173,42 @@ fn last_length_with_bound_method(arr []E, reader Reader) int {
 	return consume(arr.last().name.len, reader.run)
 }
 
-fn main() {
+// A method value whose element type does provide `clone()` keeps working: the receiver is
+// cloned (an independent copy), never an alias of the live array element.
+fn check_entry_clone() {
+	arr := [CloneableEntry{ name: 'a', size: 1 }, CloneableEntry{ name: 'bb', size: 2 }]
+	f := arr.last().describe
+	println(f())
+}
+
+fn check_default_clone() {
 	arr := [E{ name: 'hello' }]
 	println(last_length_with_bound_method(arr, Reader{ label: 'run' }))
 }
-", '')
-	assert safe.exit_code == 0, safe.output
-	safe_bin_path := tmp_array_accessor_borrow_path('owned_scalar_default_clone_method_value_sibling_bin')
-	safe_run := os.exec([safe_bin_path])
-	assert safe_run.exit_code == 0, safe_run.output
-	assert safe_run.output.trim_space() == '5', safe_run.output
-}
-
-fn test_owned_field_membership_with_stable_array_literal_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_stable_array_membership', "struct E {
-	name string
-}
-
-fn has_known_last_name(entries []E) bool {
-	return entries.last().name in ['hello', 'other']
-}
 
 fn main() {
-	entries := [E{ name: 'hello' }]
-	println(has_known_last_name(entries))
+	check_scalar_index()
+	check_aggregate_field()
+	check_aggregate_arguments()
+	check_parenthesized()
+	check_match_branch()
+	check_receiver_evaluated_once()
+	check_entry_clone()
+	check_default_clone()
+	check_string_consumers()
 }
-", '')
-	assert compile.exit_code == 0, compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_field_stable_array_membership_bin')
+"
+	compile := compile_v3_ownership_program(v3_bin, 'owned_array_accessor_consumers', src, '-enable-globals')
+	assert_clean_borrow_build(compile)
+	bin_path := tmp_array_accessor_borrow_path('owned_array_accessor_consumers_bin')
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'true', run.output
+	assert run.output == '104\n5\n15\n0\n5\n9:1\nbb\n5\nhello\n5\ntrue\ntrue\nhello!\n<hello>\nhello\nhello  1\ntrue\nhello0\ntrue\n', run.output
 }
 
-fn test_owned_scalar_consumer_with_alias_clone_method_value_sibling_is_rejected() {
+fn test_owned_scalar_borrows_with_implicit_mutations_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_alias_clone_method_value_sibling', "struct E {
-	name string
-}
-
-type Reader = string
-
-__global entries []E
-
-fn (reader Reader) clone() Reader {
-	entries.delete_last()
-	return Reader(string(reader).clone())
-}
-
-fn (reader Reader) run() string {
-	return reader
-}
-
-fn consume(length int, callback fn () string) int {
-	_ = callback()
-	return length
-}
-
-fn last_length_with_bound_method(reader Reader) int {
-	return consume(entries.last().name.len, reader.run)
-}
-
-fn main() {
-	entries = [E{ name: 'hello' }]
-	reader := Reader('run')
-	println(last_length_with_bound_method(reader))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-fn test_owned_scalar_consumer_with_cloning_array_spread_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_cloning_array_spread_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_implicit_mutations', "struct E {
 	name string
 }
 
@@ -1525,101 +1223,89 @@ fn (mutator Mutator) clone() Mutator {
 	return Mutator{ label: mutator.label.clone() }
 }
 
-fn consume(length int, mutators []Mutator) int {
+fn (mutator Mutator) run() string {
+	return mutator.label
+}
+
+fn consume_method(length int, callback fn () string) int {
+	_ = callback()
+	return length
+}
+
+fn last_length_with_bound_method(mutator Mutator) int {
+	return consume_method(entries.last().name.len, mutator.run)
+}
+
+type Reader = string
+
+fn (reader Reader) clone() Reader {
+	entries.delete_last()
+	return Reader(string(reader).clone())
+}
+
+fn (reader Reader) run() string {
+	return reader
+}
+
+fn last_length_with_alias_method(reader Reader) int {
+	return consume_method(entries.last().name.len, reader.run)
+}
+
+fn consume_spread(length int, mutators []Mutator) int {
 	_ = mutators
 	return length
 }
 
 fn last_length_with_spread(mutators []Mutator) int {
-	return consume(entries.last().name.len, [...mutators])
+	return consume_spread(entries.last().name.len, [...mutators])
 }
 
-fn main() {
+fn check_struct_method() {
+	entries = [E{ name: 'hello' }]
+	println(last_length_with_bound_method(Mutator{ label: 'run' }))
+}
+
+fn check_alias_method() {
+	entries = [E{ name: 'hello' }]
+	reader := Reader('run')
+	println(last_length_with_alias_method(reader))
+}
+
+fn check_array_spread() {
 	entries = [E{ name: 'hello' }]
 	println(last_length_with_spread([Mutator{ label: 'delete' }]))
 }
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+struct Pair {
+	n int = delete_last()
 }
 
-fn test_owned_scalar_multi_return_with_mutating_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_multi_return_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut entries []E) string {
+fn delete_last() int {
 	entries.delete_last()
-	return 'deleted'
+	return 0
 }
 
-fn last_length_then_delete(mut entries []E) (int, string) {
-	return entries.last().name.len, delete_last(mut entries)
+fn consume_pair(length int, pair Pair) int {
+	_ = pair
+	return length
 }
 
-fn main() {
-	mut entries := [E{ name: 'hello' }]
-	length, action := last_length_then_delete(mut entries)
-	println(int_str(length) + ':' + action)
-}
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+fn last_length_with_pair_default() int {
+	return consume_pair(entries.last().name.len, Pair{})
 }
 
-fn test_owned_field_overloaded_index_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_index', "struct Name {
-	text string
-}
-
-struct E {
-	name Name
-}
-
-fn (name Name) [] (index int) u8 {
-	return name.text[index]
-}
-
-fn last_initial(arr []E) u8 {
-	return arr.last().name[0]
-}
-
-fn main() {
-	arr := [E{ name: Name{ text: 'hello' } }]
-	println(last_initial(arr))
-}
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-fn test_owned_string_comparison_with_overloaded_index_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_overloaded_index_sibling', "struct E {
-	name string
-}
-
-struct Mutator {}
-
-__global entries []E
-
-fn (Mutator) [] (index int) string {
-	_ = index
-	entries.delete_last()
-	return 'hello'
-}
-
-fn last_name_matches(mutator Mutator) bool {
-	return entries.last().name == mutator[0]
-}
-
-fn main() {
+fn check_pair_default() {
 	entries = [E{ name: 'hello' }]
-	println(last_name_matches(Mutator{}))
+	println(last_length_with_pair_default())
 }
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+fn main() {
+	check_struct_method()
+	check_alias_method()
+	check_array_spread()
+	check_pair_default()
+}
+", '-enable-globals -nocolor')
+	// Locations include the prepended Drop interface.
+	assert_independent_array_element_errors(compile, ['31:24', '46:24', '55:24', '89:22'])
 }

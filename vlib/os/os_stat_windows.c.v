@@ -68,7 +68,10 @@ pub fn stat(path string) !Stat {
 		}
 		// The CRT clamps timestamps before its local epoch to -1. Legacy CRTs
 		// also report a reparse point's own timestamps, which can be positive.
+		// Legacy CRT directory timestamps can remain stale after removing a child.
+		// Read the target's current timestamps from a handle, as for reparse points.
 		mut needs_file_information := st.atime < 0 || st.mtime < 0 || st.ctime < 0
+			|| st.mode & u32(s_ifmt) == u32(s_ifdir)
 		if !needs_file_information {
 			attributes := C.GetFileAttributesW(w_path)
 			needs_file_information = attributes != u32(C.INVALID_FILE_ATTRIBUTES)

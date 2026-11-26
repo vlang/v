@@ -1,0 +1,170 @@
+name: Windows directory removal mtime diagnostic
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/os/os_stat_windows.c.v'
+      - 'vlib/os/directory_removal_mtime_windows_test.c.v'
+      - '.github/workflows/windows_directory_mtime_diagnostic_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-tcc:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
+      # Four test workers fit comfortably: a worker peaks near 0.25 GB and
+      # the runner has 4 CPUs and 16 GB, so this is CPU-bound, not
+      # memory-bound.
+      VJOBS: '4'
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v7
+        id: uses_checkout_v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - name: Build with makev.bat -tcc
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
+        id: build_with_makev_bat_tcc
+        run: |
+          .\makev.bat -tcc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe symlink
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Checkout pinned Windows TCC bundle
+        id: checkout_pinned_windows_tcc_bundle
+        if: ${{ success() && !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: vlang/tccbin
+          ref: f48b48b2a2a027ee91cec7634395d1ec48d3e325
+          path: .ci/tccbin-windows-amd64
+          persist-credentials: false
+      - name: Route TCC validation to pinned bundle
+        id: route_tcc_validation_to_pinned_bundle
+        if: ${{ success() && !cancelled() && steps.checkout_pinned_windows_tcc_bundle.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $expectedSha = 'f48b48b2a2a027ee91cec7634395d1ec48d3e325'
+          $bundle = (Resolve-Path '.\.ci\tccbin-windows-amd64').Path
+          $actualSha = (git -C $bundle rev-parse HEAD).Trim()
+          if ($actualSha -cne $expectedSha) {
+            throw "expected tccbin $expectedSha, got $actualSha"
+          }
+
+          $tcc = Join-Path $bundle 'tcc.exe'
+          if (-not (Test-Path -LiteralPath $tcc -PathType Leaf)) {
+            throw "pinned TCC executable is missing: $tcc"
+          }
+
+          $tccLink = Join-Path $env:GITHUB_WORKSPACE 'thirdparty\tcc'
+          if (Test-Path -LiteralPath $tccLink) {
+            Remove-Item -LiteralPath $tccLink -Recurse -Force
+          }
+          New-Item -ItemType Junction -Path $tccLink -Target $bundle | Out-Null
+          $junctionTarget = [string](Get-Item -LiteralPath $tccLink).Target
+          if ([IO.Path]::GetFullPath($junctionTarget) -cne [IO.Path]::GetFullPath($bundle)) {
+            throw "thirdparty/tcc does not target the pinned bundle: $junctionTarget"
+          }
+
+          Add-Content -Path $env:GITHUB_PATH -Value $bundle
+          Add-Content -Path $env:GITHUB_ENV -Value "PINNED_TCC=$tcc"
+          Add-Content -Path $env:GITHUB_ENV `
+            -Value "VFLAGS=-cc $tcc -no-retry-compilation"
+      - name: Verify pinned TCC command resolution
+        id: verify_pinned_tcc_command_resolution
+        if: ${{ success() && !cancelled() && steps.route_tcc_validation_to_pinned_bundle.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $resolvedTcc = (Get-Command tcc.exe -CommandType Application -ErrorAction Stop).Source
+          if ([IO.Path]::GetFullPath($resolvedTcc) -cne [IO.Path]::GetFullPath($env:PINNED_TCC)) {
+            throw "tcc.exe resolved to '$resolvedTcc', expected '$env:PINNED_TCC'"
+          }
+          Write-Host "Pinned TCC command: $resolvedTcc"
+      - name: Original imp regression and native timestamp probes
+        shell: pwsh
+        run: |
+          $cc = $env:PINNED_TCC
+          $env:VFLAGS = "-cc $cc -no-retry-compilation"
+          .\v.exe -cc $cc -no-retry-compilation self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe fmt -verify vlib/os/os_stat_windows.c.v vlib/os/directory_removal_mtime_windows_test.c.v
+          $format = $LASTEXITCODE
+          if ($format -ne 0) {
+            .\v.exe fmt -w vlib/os/os_stat_windows.c.v vlib/os/directory_removal_mtime_windows_test.c.v
+            git diff
+          }
+          .\v.exe -cc $cc -no-retry-compilation -silent vlib/x/imp/imp_test.v
+          $original = $LASTEXITCODE
+          .\v.exe -cc $cc -no-retry-compilation vlib/os/directory_removal_mtime_windows_test.c.v
+          $probe = $LASTEXITCODE
+          Write-Host "DIRECTORY_MTIME_RESULT format=$format original=$original probe=$probe"
+          if ($format -ne 0 -or $original -ne 0 -or $probe -ne 0) { exit 1 }
+          foreach ($test in @('os_stat_test.v', 'os_stat_windows_test.v', 'stat_negative_times_windows_test.c.v', 'utime_test.v', 'utime_windows_test.c.v', 'walk_windows_test.c.v', 'walk_links_test.v')) {
+            .\v.exe -cc $cc -no-retry-compilation "vlib/os/$test"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+  native-crt:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, msvc]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        if: matrix.cc == 'msvc'
+      - name: Build V
+        shell: pwsh
+        run: |
+          if ('${{ matrix.cc }}' -eq 'msvc') {
+            .\makev.bat -msvc
+          } else {
+            .\makev.bat -gcc
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe -cc ${{ matrix.cc }} -no-retry-compilation self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Original imp regression and native timestamp probes
+        shell: pwsh
+        run: |
+          $cc = '${{ matrix.cc }}'
+          $env:VFLAGS = "-cc $cc -no-retry-compilation"
+          .\v.exe -cc $cc -no-retry-compilation self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe fmt -verify vlib/os/os_stat_windows.c.v vlib/os/directory_removal_mtime_windows_test.c.v
+          $format = $LASTEXITCODE
+          if ($format -ne 0) {
+            .\v.exe fmt -w vlib/os/os_stat_windows.c.v vlib/os/directory_removal_mtime_windows_test.c.v
+            git diff
+          }
+          .\v.exe -cc $cc -no-retry-compilation -silent vlib/x/imp/imp_test.v
+          $original = $LASTEXITCODE
+          .\v.exe -cc $cc -no-retry-compilation vlib/os/directory_removal_mtime_windows_test.c.v
+          $probe = $LASTEXITCODE
+          Write-Host "DIRECTORY_MTIME_RESULT format=$format original=$original probe=$probe"
+          if ($format -ne 0 -or $original -ne 0 -or $probe -ne 0) { exit 1 }
+          foreach ($test in @('os_stat_test.v', 'os_stat_windows_test.v', 'stat_negative_times_windows_test.c.v', 'utime_test.v', 'utime_windows_test.c.v', 'walk_windows_test.c.v', 'walk_links_test.v')) {
+            .\v.exe -cc $cc -no-retry-compilation "vlib/os/$test"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

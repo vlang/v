@@ -82,13 +82,12 @@ fn main() {
 ')
 }
 
-// `.clone()` on an array reached through a method that already returns a pointer
-// (`arc.Arc[[]T].get()` returns `&[]T`) must not take the address again.
-fn test_array_clone_on_pointer_returning_receiver() {
-	occf_compile_and_run('arc_get_clone', 'module main
+fn test_ownership_clones_arc_arrays_and_owned_values() {
+	occf_compile_and_run('clone_arc_arrays_and_owned_values', 'module main
 
 import sync.arc
 
+// Arc.get() already returns &[]T, so cloning must not take its address again.
 fn f() []string {
 	a := arc.new(["x", "y"])
 	return a.get().clone()
@@ -98,55 +97,13 @@ fn length(values []string) int {
 	return values.len
 }
 
-fn main() {
+fn check_arc_array_clone() {
 	assert f().len == 2
 	a := arc.new(["x", "y"])
 	assert length(a.get()) == 2
 }
-')
-}
 
-// A concrete generic-interface application uses the base interface's runtime
-// box while retaining its specialized method parameter types.
-fn test_generic_interface_parameter_uses_base_runtime_box() {
-	occf_compile_and_run('generic_interface_parameter', 'module main
-
-interface CaptureFinder[T] {
-	captures_at(mut caps T) bool
-}
-
-struct Captures {
-mut:
-	count int
-}
-
-struct Matcher {}
-
-fn (m Matcher) captures_at(mut caps Captures) bool {
-	_ = m
-	caps.count++
-	return true
-}
-
-fn captures[T](matcher &CaptureFinder[T], mut caps T) bool {
-	return matcher.captures_at(mut caps)
-}
-
-fn main() {
-	matcher := Matcher{}
-	mut caps := Captures{}
-	assert captures(matcher, mut caps)
-	assert caps.count == 1
-}
-')
-}
-
-// `Drop` does not prevent Rust from deriving `Clone`. An ownership type that
-// explicitly implements both markers can use the compiler's structural clone
-// as long as each ownership-bearing field is itself cloneable.
-fn test_default_clone_is_available_for_drop_type() {
-	occf_compile_and_run('clone_drop_type', 'module main
-
+// A Drop type that implements IClone can use structural cloning for cloneable fields.
 struct Owned implements IClone, Drop {
 mut:
 	value string
@@ -156,7 +113,7 @@ fn (mut x Owned) drop() {
 	x.value = ""
 }
 
-fn main() {
+fn check_drop_type_clone() {
 	first := Owned{
 		value: "hello".to_owned()
 	}
@@ -164,21 +121,14 @@ fn main() {
 	assert first.value == "hello"
 	assert second.value == "hello"
 }
-')
-}
-
-// Array iteration binds elements by value. Ownership-bearing elements must be
-// structurally cloned before the loop body so dropping a binding cannot free
-// storage still owned by the source array.
-fn test_array_for_in_clones_ownership_bearing_elements() {
-	occf_compile_and_run('array_for_in_clone', 'module main
 
 struct Record implements IClone {
 	name string
 	arg  ?string
 }
 
-fn main() {
+// The loop clones each element before binding it so the array keeps its storage.
+fn check_array_iteration_clone() {
 	records := [Record{
 		name: "after-context".to_owned()
 		arg:  "5".to_owned()
@@ -189,6 +139,12 @@ fn main() {
 	}
 	assert records[0].name == "after-context"
 	assert records[0].arg or { "" } == "5"
+}
+
+fn main() {
+	check_arc_array_clone()
+	check_drop_type_clone()
+	check_array_iteration_clone()
 }
 ')
 }
@@ -217,10 +173,37 @@ fn main() {
 ')
 }
 
-// Generic specialization keeps the checker's implicit reference conversion
-// when a concrete value is passed to a borrowed interface parameter.
-fn test_generic_method_accepts_value_for_borrowed_interface_parameter() {
-	occf_compile_and_run('generic_borrowed_interface_arg', 'module main
+fn test_generic_calls_preserve_interface_arguments_and_mutable_receivers() {
+	occf_compile_and_run('generic_interface_and_receiver_calls', 'module main
+
+// A concrete generic interface uses the base runtime box with specialized parameters.
+interface CaptureFinder[T] {
+	captures_at(mut caps T) bool
+}
+
+struct Captures {
+mut:
+	count int
+}
+
+struct Matcher {}
+
+fn (m Matcher) captures_at(mut caps Captures) bool {
+	_ = m
+	caps.count++
+	return true
+}
+
+fn captures[T](matcher &CaptureFinder[T], mut caps T) bool {
+	return matcher.captures_at(mut caps)
+}
+
+fn check_generic_interface_box() {
+	matcher := Matcher{}
+	mut caps := Captures{}
+	assert captures(matcher, mut caps)
+	assert caps.count == 1
+}
 
 interface Reader {
 	value() int
@@ -257,13 +240,49 @@ fn (worker Worker[T]) run(value &int) int {
 	return worker.searcher.search(borrowed)
 }
 
-fn main() {
+// Specialization keeps the implicit reference conversion for borrowed interfaces.
+fn check_borrowed_interface_parameter() {
 	n := 42
 	worker := Worker[int]{
 		value: 1
 		searcher: Searcher{}
 	}
 	assert worker.run(&n) == 42
+}
+
+struct Inner[T] {
+mut:
+	value T
+}
+
+fn (mut inner Inner[T]) get_mut() &T {
+	return &inner.value
+}
+
+struct Outer[T] {
+mut:
+	inner Inner[T]
+}
+
+fn (mut outer Outer[T]) inner_mut() &Inner[T] {
+	return &outer.inner
+}
+
+// Rebuilding local scopes after specialization must preserve mutability.
+fn check_chained_mut_receiver() {
+	mut outer := Outer[int]{
+		inner: Inner[int]{
+			value: 42
+		}
+	}
+	value := outer.inner_mut().get_mut()
+	assert *value == 42
+}
+
+fn main() {
+	check_generic_interface_box()
+	check_borrowed_interface_parameter()
+	check_chained_mut_receiver()
 }
 ')
 }
@@ -304,42 +323,6 @@ fn main() {
 		value: "b".to_owned()
 	}
 	assert consume(first, wrap(second)) == 2
-}
-')
-}
-
-// Reannotation rebuilds local scopes after generic specialization. Mutable
-// declarations must keep their mutability there so chained generic receiver
-// calls are not diagnosed as calls on immutable values.
-fn test_chained_generic_mut_receiver_keeps_mutable_local() {
-	occf_compile_and_run('generic_mut_receiver', 'module main
-
-struct Inner[T] {
-mut:
-	value T
-}
-
-fn (mut inner Inner[T]) get_mut() &T {
-	return &inner.value
-}
-
-struct Outer[T] {
-mut:
-	inner Inner[T]
-}
-
-fn (mut outer Outer[T]) inner_mut() &Inner[T] {
-	return &outer.inner
-}
-
-fn main() {
-	mut outer := Outer[int]{
-		inner: Inner[int]{
-			value: 42
-		}
-	}
-	value := outer.inner_mut().get_mut()
-	assert *value == 42
 }
 ')
 }
