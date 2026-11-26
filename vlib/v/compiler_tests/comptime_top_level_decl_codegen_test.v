@@ -1,20 +1,7 @@
 import os
+import v.tempname
 
-const comptime_decl_vexe = @VEXE
-const comptime_decl_tests_dir = os.dir(@FILE)
-const comptime_decl_v3_dir = os.dir(comptime_decl_tests_dir)
-const comptime_decl_vlib_dir = os.dir(comptime_decl_v3_dir)
-const comptime_decl_v3_src = os.join_path(comptime_decl_v3_dir, 'v.v')
 const comptime_decl_entry_point = $if windows { 'int wmain(' } $else { 'int main(' }
-
-fn comptime_decl_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_comptime_top_level_decl_test')
-	build :=
-		os.exec([comptime_decl_vexe, '-gc', 'none', '-path',
-			'${comptime_decl_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${comptime_decl_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
 
 fn comptime_decl_count(c_code string, needle string) int {
 	mut count := 0
@@ -34,10 +21,12 @@ fn comptime_decl_struct_body(c_code string, name string) string {
 	return rest[..end]
 }
 
-fn comptime_decl_gen_c(v3_bin string, name string, feature bool) string {
-	root := os.join_path(os.temp_dir(), 'v3_comptime_top_level_decl_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn comptime_decl_gen_c(name string, feature bool) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_comptime_top_level_decl_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
 	main_path := os.join_path(root, 'main.v')
 	os.write_file(main_path, "module main
 
@@ -74,7 +63,7 @@ fn main() {
 	}
 	bin_path := os.join_path(root, 'out')
 	feature_arg := if feature { '-d some_feature' } else { '' }
-	compile := os.exec([v3_bin, main_path, ...(os.split_args(feature_arg) or { panic(err) }), '-b',
+	compile := os.exec([@VEXE, main_path, ...(os.split_args(feature_arg) or { panic(err) }), '-b',
 		'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	c_path := bin_path + '.c'
@@ -82,42 +71,45 @@ fn main() {
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn comptime_decl_gen_c_source(v3_bin string, name string, source string, flags string) string {
-	root := os.join_path(os.temp_dir(), 'v3_comptime_top_level_decl_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn comptime_decl_gen_c_source(name string, source string, flags string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_comptime_top_level_decl_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
 	main_path := os.join_path(root, 'main.v')
 	os.write_file(main_path, source) or { panic(err) }
 	c_path := os.join_path(root, 'out.c')
-	compile := os.exec([v3_bin, main_path, ...(os.split_args(flags) or { panic(err) }), '-b', 'c',
+	compile := os.exec([@VEXE, main_path, ...(os.split_args(flags) or { panic(err) }), '-b', 'c',
 		'-o', c_path])
 	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C ${c_path}'
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn comptime_decl_compile_run_source(v3_bin string, name string, source string, flags string) os.Result {
-	root := os.join_path(os.temp_dir(), 'v3_comptime_top_level_decl_run_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn comptime_decl_compile_run_source(name string, source string, flags string) os.Result {
+	root := os.join_path(os.vtmp_dir(), 'v3_comptime_top_level_decl_run_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
 	main_path := os.join_path(root, 'main.v')
 	os.write_file(main_path, source) or { panic(err) }
 	bin_path := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, main_path, ...(os.split_args(flags) or { panic(err) }), '-o', bin_path])
+	compile := os.exec([@VEXE, main_path, ...(os.split_args(flags) or { panic(err) }), '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	return os.exec([bin_path])
 }
 
 fn test_top_level_decls_inside_active_comptime_branch_are_codegen_visible() {
-	v3_bin := comptime_decl_build_v3()
-	else_c := comptime_decl_gen_c(v3_bin, 'else_branch', false)
+	else_c := comptime_decl_gen_c('else_branch', false)
 	else_choice := comptime_decl_struct_body(else_c, 'Choice')
 	assert comptime_decl_count(else_c, 'struct main__Choice {') == 1, else_c
 	// An empty struct body is the zero-sized `E_STRUCT_DECL` member.
 	assert else_choice.contains('E_STRUCT_DECL'), else_c
 	assert !else_choice.contains('i64 x;'), else_c
 
-	feature_c := comptime_decl_gen_c(v3_bin, 'feature_branch', true)
+	feature_c := comptime_decl_gen_c('feature_branch', true)
 	feature_choice := comptime_decl_struct_body(feature_c, 'Choice')
 	assert comptime_decl_count(feature_c, 'struct main__Choice {') == 1, feature_c
 	assert feature_choice.contains('i64 x;'), feature_c
@@ -125,8 +117,7 @@ fn test_top_level_decls_inside_active_comptime_branch_are_codegen_visible() {
 }
 
 fn test_declaration_only_top_level_comptime_block_synthesizes_executable_main() {
-	v3_bin := comptime_decl_build_v3()
-	c_code := comptime_decl_gen_c_source(v3_bin, 'decl_only_no_main', 'module main
+	c_code := comptime_decl_gen_c_source('decl_only_no_main', 'module main
 
 $if some_feature ? {
 	fn helper() int {
@@ -141,8 +132,7 @@ $if some_feature ? {
 }
 
 fn test_top_level_comptime_block_with_statement_still_synthesizes_main() {
-	v3_bin := comptime_decl_build_v3()
-	c_code := comptime_decl_gen_c_source(v3_bin, 'stmt_synth_main', "module main
+	c_code := comptime_decl_gen_c_source('stmt_synth_main', "module main
 
 $if some_feature ? {
 	println('active')
@@ -158,10 +148,9 @@ $if some_feature ? {
 }
 
 fn test_synthetic_top_level_block_keeps_main_scope_locals() {
-	v3_bin := comptime_decl_build_v3()
 	// The statements of an active top-level `$if` start script mode, and all
 	// definitions must come before script code, so `helper` is declared first.
-	run := comptime_decl_compile_run_source(v3_bin, 'synthetic_block_main_scope', 'module main
+	run := comptime_decl_compile_run_source('synthetic_block_main_scope', 'module main
 
 fn helper() int {
 	return 0

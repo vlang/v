@@ -1,24 +1,11 @@
 import os
-
-const filelock_helpers_vexe = @VEXE
-const filelock_helpers_tests_dir = os.dir(@FILE)
-const filelock_helpers_v3_dir = os.dir(filelock_helpers_tests_dir)
-const filelock_helpers_vlib_dir = os.dir(filelock_helpers_v3_dir)
-const filelock_helpers_v3_src = os.join_path(filelock_helpers_v3_dir, 'v.v')
-
-fn filelock_helpers_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_filelock_helpers_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([filelock_helpers_vexe, '-gc', 'none', '-d', 'parallel', '-path',
-			'${filelock_helpers_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, filelock_helpers_v3_src])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_direct_filelock_c_helpers_emit_inline_runtime_defs() {
-	v3_bin := filelock_helpers_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_filelock_helpers_input_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_filelock_helpers_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_filelock_helpers_input.v')
 	os.write_file(src, 'module main
 
 fn C.v_filelock_lock(i32, i32, i32, u64, u64) int
@@ -40,10 +27,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_filelock_helpers_input_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_filelock_helpers_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -58,7 +43,7 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '47'
 
-	method_src := os.join_path(os.temp_dir(), 'v3_filelock_helpers_method_input_${os.getpid()}.v')
+	method_src := os.join_path(root, 'v3_filelock_helpers_method_input.v')
 	os.write_file(method_src, 'module main
 
 import os.filelock
@@ -77,10 +62,8 @@ fn main() {
 	') or {
 		panic(err)
 	}
-	method_bin := os.join_path(os.temp_dir(), 'v3_filelock_helpers_method_input_${os.getpid()}')
-	os.rm(method_bin) or {}
-	os.rm(method_bin + '.c') or {}
-	method_compile := os.exec([v3_bin, '${method_src}', '-b', 'c', '-o', method_bin])
+	method_bin := os.join_path(root, 'v3_filelock_helpers_method_input')
+	method_compile := os.exec([@VEXE, '${method_src}', '-b', 'c', '-o', method_bin])
 	assert method_compile.exit_code == 0, method_compile.output
 	assert !method_compile.output.contains('C compilation failed'), method_compile.output
 	method_c_code := os.read_file(method_bin + '.c') or { panic(err) }

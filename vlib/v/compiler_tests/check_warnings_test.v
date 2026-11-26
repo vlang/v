@@ -114,7 +114,7 @@ fn check_output(name string, source string) os.Result {
 	defer {
 		os.rmdir_all(os.dir(path)) or {}
 	}
-	return os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
+	return os.exec([@VEXE, '-check', '-nocolor', path])
 }
 
 // check_and_build_notices returns the notices of a check and of a build of the same program.
@@ -123,11 +123,10 @@ fn check_and_build_notices(name string, source string) ([]string, []string) {
 	defer {
 		os.rmdir_all(os.dir(path)) or {}
 	}
-	check := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
+	check := os.exec([@VEXE, '-check', '-nocolor', path])
 	assert check.exit_code == 0, check.output
 	exe := path.all_before_last('.v')
-	build := os.exec([@VEXE, '-new-compiler', '-nocache', '-gc', 'none', '-nocolor', '-o', exe,
-		path])
+	build := os.exec([@VEXE, '-nocache', '-gc', 'none', '-nocolor', '-o', exe, path])
 	assert build.exit_code == 0, build.output
 	return notice_lines(check.output), notice_lines(build.output)
 }
@@ -141,7 +140,7 @@ fn check_library_output(name string, source string) os.Result {
 		os.rmdir_all(os.dir(dir)) or {}
 	}
 	os.write_file(os.join_path(dir, '${name}.v'), source) or { panic(err) }
-	return os.exec([@VEXE, '-new-compiler', '-shared', '-check', '-nocolor', dir])
+	return os.exec([@VEXE, '-shared', '-check', '-nocolor', dir])
 }
 
 fn notice_lines(output string) []string {
@@ -150,12 +149,25 @@ fn notice_lines(output string) []string {
 	return lines
 }
 
-// A check prints the warnings of a program without errors too: they are
-// diagnostics like the others, and an editor shows nothing it is not given.
-fn test_check_prints_the_warnings_of_a_program_without_errors() {
-	res := check_output('clean', 'module main\n\nfn main() {\n\tunused := 1\n\tprintln(2)\n}\n')
+// An editor needs warnings and unused-declaration notices from error-free programs too.
+fn test_check_reports_warnings_and_notices_without_errors() {
+	res := check_output('clean', 'module main
+
+const limit = 3
+
+fn helper() int {
+	return 1
+}
+
+fn main() {
+	unused := 1
+	println(2)
+}
+')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('warning: unused variable: `unused`'), res.output
+	assert res.output.contains('notice: unused constant: `limit`'), res.output
+	assert res.output.contains('notice: unused function: `helper`'), res.output
 }
 
 fn test_check_prints_warnings_next_to_errors() {
@@ -163,15 +175,6 @@ fn test_check_prints_warnings_next_to_errors() {
 	assert res.exit_code == 1, res.output
 	assert res.output.contains('warning: unused variable: `unused`'), res.output
 	assert res.output.contains('error: infix expr'), res.output
-}
-
-// A build reports the private functions and constants that nothing uses; a
-// check has to report them too.
-fn test_check_reports_unused_private_declarations() {
-	res := check_output('unused', "module main\n\nconst limit = 3\n\nfn helper() int {\n\treturn 1\n}\n\nfn main() {\n\tprintln('hi')\n}\n")
-	assert res.exit_code == 0, res.output
-	assert res.output.contains('notice: unused constant: `limit`'), res.output
-	assert res.output.contains('notice: unused function: `helper`'), res.output
 }
 
 fn test_check_reports_the_unused_declarations_a_build_reports() {

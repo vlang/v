@@ -7,6 +7,10 @@ import time
 import runtime
 import benchmark
 
+$if windows {
+	import v.fixturetest
+}
+
 const skip_files = [
 	'non_existing.vv', // minimize commit diff churn, do not remove
 	'vlib/v/checker/tests/var_duplicate_const.vv', // produces non-deterministic C error output
@@ -96,6 +100,22 @@ fn test_all() {
 	run_dir := '${checker_dir}/run'
 	su_dir := 'vlib/v/tests/skip_unused'
 	no_closures_dir := 'vlib/v/tests/no_closures'
+	// Fixtures that compile write their executables (and, with -g on macOS, debug symbol
+	// bundles) next to their sources. Remove what this run added once every task is done.
+	output_dirs := [checker_dir, checker_with_check_option_dir, parser_dir, scanner_dir, module_dir,
+		global_dir, global_run_dir, run_dir, su_dir, no_closures_dir]
+	outputs_before := fixture_outputs(output_dirs)
+	defer {
+		for output in fixture_outputs(output_dirs) {
+			if output !in outputs_before {
+				if os.is_dir(output) {
+					os.rmdir_all(output) or {}
+				} else {
+					os.rm(output) or {}
+				}
+			}
+		}
+	}
 	js_checker_tests := ['index_expr_implicit_int_downcast_err.vv',
 		'js_number_requires_explicit_cast.vv']
 	raw_asm_checker_tests := ['asm_raw_label_ok.vv']
@@ -200,7 +220,7 @@ fn test_all() {
 	// optimizing compiler jobs still cover production mode.
 	module_options := $if tinyc { 'run' } $else { '-prod run' }
 	tasks.add('', module_dir, module_options, '.out', module_tests, true)
-	tasks.add('', module_dir, '-new-compiler ${module_options}', '.out', v3_module_tests, true)
+	tasks.add('', module_dir, '${module_options}', '.out', v3_module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
 	tasks.add('', checker_dir, '-disable-explicit-mutability run', '.disable_explicit_mutability.run.out', disable_explicit_mutability_tests, false)
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests, false)
@@ -240,6 +260,16 @@ fn bstep_message(mut bench benchmark.Benchmark, label string, msg string, sdurat
 	return bench.step_message_with_label_and_duration(label, msg, sduration)
 }
 
+// fixture_compiler_jobs is how many worker threads each fixture compiler gets, while `fixture_jobs`
+// fixtures compile at once on `available_cpus`, and at most the `configured_jobs` of VJOBS.
+fn fixture_compiler_jobs(available_cpus int, fixture_jobs int, configured_jobs int) int {
+	mut jobs := available_cpus / if fixture_jobs < 1 { 1 } else { fixture_jobs }
+	if jobs > configured_jobs {
+		jobs = configured_jobs
+	}
+	return if jobs < 1 { 1 } else { jobs }
+}
+
 // process an array of tasks in parallel, using no more than vjobs worker threads
 fn (mut tasks Tasks) run() {
 	if tasks.all.len == 0 {
@@ -247,6 +277,19 @@ fn (mut tasks Tasks) run() {
 	}
 	tasks.show_cmd = show_cmd
 	vjobs := if tasks.parallel_jobs > 0 { tasks.parallel_jobs } else { runtime.nr_jobs() }
+	// The fixture compilers share the CPUs with each other, like the compilers of `v test`:
+	// with every core busy running fixtures, the worker threads of each one only add
+	// overhead (one thread each retires about 12% fewer instructions).
+	previous_vjobs := os.getenv_opt('VJOBS')
+	os.setenv('VJOBS', fixture_compiler_jobs(runtime.nr_cpus(), vjobs, runtime.nr_jobs()).str(),
+		true)
+	defer {
+		if value := previous_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
 	mut bench := benchmark.new_benchmark()
 	bench.set_total_expected_steps(tasks.all.len)
 	mut work := chan TaskDescription{cap: tasks.all.len}
@@ -419,18 +462,37 @@ fn (mut task TaskDescription) execute() {
 	}
 	mut expected := os.read_file(expected_out_path) or { panic(err) }
 	task.expected = clean_line_endings(expected)
-	task.found___ = clean_line_endings(res.output)
+	mut found := res.output
 	$if windows {
-		if task.is_module {
-			task.found___ = task.found___.replace_once('\\', '/')
-		}
+		found = fixturetest.slash_diagnostic_paths(found)
 	}
+	task.found___ = clean_line_endings(found)
 	if task.expected != task.found___ {
 		task.is_error = true
 		if should_autofix {
-			os.write_file(expected_out_path, res.output) or { panic(err) }
+			os.write_file(expected_out_path, found) or { panic(err) }
 		}
 	}
+}
+
+// fixture_outputs lists the executables and macOS debug symbol bundles that exist next to
+// the `.vv` fixtures of `dirs`, which is where compiling a fixture writes them.
+fn fixture_outputs(dirs []string) []string {
+	mut outputs := []string{}
+	for dir in dirs {
+		for entry in os.ls(dir) or { continue } {
+			if !entry.ends_with('.vv') {
+				continue
+			}
+			base := os.join_path(dir, entry.all_before_last('.vv'))
+			for candidate in [base, base + '.exe', base + '.dSYM'] {
+				if os.exists(candidate) {
+					outputs << candidate
+				}
+			}
+		}
+	}
+	return outputs
 }
 
 fn clean_line_endings(s string) string {
@@ -487,4 +549,11 @@ fn get_tests_in_dir(dir string, is_module bool) []string {
 
 fn get_max_ntries() int {
 	return if v_ci_musl { 3 } else { 1 }
+}
+
+fn test_fixture_compilers_share_the_cpus_within_vjobs() {
+	assert fixture_compiler_jobs(18, 18, 18) == 1
+	assert fixture_compiler_jobs(16, 4, 16) == 4
+	assert fixture_compiler_jobs(16, 1, 4) == 4
+	assert fixture_compiler_jobs(2, 8, 8) == 1
 }

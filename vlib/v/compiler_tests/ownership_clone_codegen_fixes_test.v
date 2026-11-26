@@ -1,42 +1,27 @@
 import os
+import v.cmdexec
 import v.tempname
 
-const occf_vexe = @VEXE
-const occf_tests_dir = os.dir(@FILE)
-const occf_v3_dir = os.dir(occf_tests_dir)
-const occf_vlib_dir = os.dir(occf_v3_dir)
-const occf_v3_src = os.join_path(occf_v3_dir, 'v.v')
-const occf_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_ownership_clone_compiler_${tempname.unique_token()}')
-
-fn testsuite_end() {
-	os.rmdir_all(occf_compiler_dir) or {}
-}
-
-fn occf_build_v3() string {
-	v3_bin := os.join_path(occf_compiler_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	os.mkdir_all(occf_compiler_dir) or { panic(err) }
-	build :=
-		os.exec([occf_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-			'${occf_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, occf_v3_src])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
 fn occf_compile_and_run(tag string, source string) {
-	v3_bin := occf_build_v3()
-	pid := os.getpid()
-	src := os.join_path(os.temp_dir(), 'v3_${tag}_${pid}.v')
-	out := os.join_path(os.temp_dir(), 'v3_${tag}_prog_${pid}')
-	defer {
-		os.rm(src) or {}
-		os.rm(out) or {}
-		os.rm(out + '.c') or {}
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	v3_src := os.join_path(os.dir(@FILE), '../v.v')
+	compiler := if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		os.real_path(shared)
+	} else {
+		@VEXE
 	}
+	root := os.join_path(os.vtmp_dir(), 'v3_ownership_clone_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_${tag}.v')
+	out := os.join_path(root, 'v3_${tag}_prog')
 	os.write_file(src, source) or { panic(err) }
-	compile := os.exec([v3_bin, '${src}', '-d', 'ownership', '-b', 'c', '-o', '${out}'])
+	compile := cmdexec.run_in_merged_with_env(compiler, [src, '-d', 'ownership', '-b', 'c', '-o',
+		out], '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

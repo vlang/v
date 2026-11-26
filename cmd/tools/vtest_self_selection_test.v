@@ -7,8 +7,8 @@ const self_selection_tool = os.join_path(self_selection_dir, 'vtest-self.exe')
 
 fn testsuite_begin() {
 	os.mkdir_all(self_selection_dir) or { panic(err) }
-	build := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-o',
-		self_selection_tool, os.join_path(@VMODROOT, 'cmd', 'tools', 'vtest-self.v')], 180_000)
+	build := cmdexec.run_with_timeout(@VEXE, ['-nocache', '-gc', 'none', '-o', self_selection_tool,
+		os.join_path(@VMODROOT, 'cmd', 'tools', 'vtest-self.v')], 180_000)
 	assert build.exit_code == 0, build.output
 }
 
@@ -98,7 +98,7 @@ fn test_environment() {
 		}
 	}
 	os.setenv('VEXE', @VEXE, true)
-	os.setenv('VFLAGS', '-new-compiler -cc ${@CCOMPILER} -d vtest_self_environment_define', true)
+	os.setenv('VFLAGS', '-cc ${@CCOMPILER} -d vtest_self_environment_define', true)
 	result := cmdexec.run_with_timeout(self_selection_tool, ['test-self', os.base(root)], 120_000)
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('1 passed, 1 total'), result.output

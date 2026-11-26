@@ -3,18 +3,14 @@
 import os
 import strings
 import v.cmdexec
+import v.tempname
 
 fn test_selfhost_parallel_workers_grow_for_struct_defaults() {
-	root := os.join_path(os.temp_dir(), 'v3_selfhost_parallel_expansion_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_selfhost_parallel_expansion_${tempname.unique_token()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_dir := os.dir(os.dir(@FILE))
-	compiler := os.join_path(root, 'compiler')
-	build := cmdexec.run(@VEXE, ['-gc', 'none', '-prealloc', '-path',
-		'${os.dir(v3_dir)}|@vlib|@vmodules', '-o', compiler, os.join_path(v3_dir, 'v.v')])
-	assert build.exit_code == 0, build.output
 	mut source := strings.new_builder(64_000)
 	source.writeln('struct Entry {\nmut:\nvalue int = 7\n}')
 	source.writeln('struct State {\nmut:\nvalue int\nvalues [300]Entry\n}')
@@ -32,15 +28,6 @@ fn test_selfhost_parallel_workers_grow_for_struct_defaults() {
 	source.writeln('println(total) }')
 	input := os.join_path(root, 'main.v')
 	os.write_file(input, source.str()) or { panic(err) }
-	old_jobs := os.getenv_opt('VJOBS')
-	os.setenv('VJOBS', '4', true)
-	defer {
-		if jobs := old_jobs {
-			os.setenv('VJOBS', jobs, true)
-		} else {
-			os.unsetenv('VJOBS')
-		}
-	}
 	for parallel in [true, false] {
 		output := os.join_path(root, if parallel { 'parallel' } else { 'serial' })
 		// The stage table is printed only with `-v` or `-show-timings` (2a45ec1b41).
@@ -49,7 +36,10 @@ fn test_selfhost_parallel_workers_grow_for_struct_defaults() {
 			args << '-no-parallel'
 		}
 		args << input
-		compile := cmdexec.run(compiler, args)
+		compile := cmdexec.run_in_merged_with_env(@VEXE, args, '', {
+			'VFLAGS': ''
+			'VJOBS':  '4'
+		})
 		assert compile.exit_code == 0, compile.output
 		if parallel {
 			assert compile.output.contains('transform (parallel)'), compile.output

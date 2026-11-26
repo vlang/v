@@ -1,24 +1,7 @@
 import os
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_current_module_call_return_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn write_project() string {
-	root := os.join_path(os.temp_dir(), 'v3_current_module_call_return_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn current_module_write_project(root string) string {
 	os.mkdir_all(os.join_path(root, 'clock')) or { panic(err) }
 	os.mkdir_all(os.join_path(root, 'zz_other')) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'current_module_call_return' }\n") or {
@@ -84,10 +67,12 @@ fn main() {
 }
 
 fn test_plain_call_prefers_current_module_return_authority() {
-	v3_bin := build_v3()
-	main_path := write_project()
-	out := os.join_path(os.temp_dir(), 'v3_current_module_call_return_out_${os.getpid()}')
-	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', '${out}'])
+	root := os.join_path(os.vtmp_dir(), 'v3_current_module_call_return_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	main_path := current_module_write_project(root)
+	out := os.join_path(root, 'v3_current_module_call_return_out')
+	compile := os.exec([@VEXE, main_path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

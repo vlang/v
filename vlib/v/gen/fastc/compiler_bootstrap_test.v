@@ -5,11 +5,9 @@ import v.cmdexec
 
 fn fastc_bootstrap_env(compiler string) map[string]string {
 	return {
-		'VFLAGS':                        ''
-		'VOSARGS':                       ''
-		'VEXE':                          compiler
-		'V_MACOS_V3_NO_FALLBACK':        '1'
-		'V_C_ERROR_BUG_REPORT_DISABLED': '1'
+		'VFLAGS':  ''
+		'VOSARGS': ''
+		'VEXE':    compiler
 	}
 }
 

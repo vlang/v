@@ -22,7 +22,7 @@ fn fastc_selfhost_index_or_program(name string, main_source string) string {
 	c_path := os.join_path(root, 'main.c')
 	program := os.join_path(root, 'program')
 	os.write_file(c_path, source) or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-w', '-o', program, c_path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-w', '-o', program, c_path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

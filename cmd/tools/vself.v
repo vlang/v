@@ -692,8 +692,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	if no_parallel {
 		training_args << '-no-parallel'
 	}
-	// Exercise real V3 compilation, rather than an inherited cache or V1 fallback.
-	training_cmd := 'env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE V_MACOS_V3_NO_FALLBACK=1 ' +
+	training_cmd := 'env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE ' +
 		compose_v_cmd(pgo_binary, training_args, full_v_cli_source)
 	run_cmd(training_cmd) or {
 		eprintln('PGO step failed while generating the profiling data.')
@@ -716,7 +715,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 		mut fastc_training_args := with_output_arg(training_args, os.join_path(pgo_workspace,
 			'cmd_v_fastc_training.c'))
 		fastc_training_args << ['-b', 'fastc', '-no-memory-limit']
-		fastc_training_cmd := 'env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE V_MACOS_V3_NO_FALLBACK=1 ' +
+		fastc_training_cmd := 'env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE ' +
 			compose_v_cmd(pgo_binary, fastc_training_args, full_v_cli_source)
 		run_cmd(fastc_training_cmd) or {
 			eprintln('PGO step failed while generating the FastC profiling data.')
@@ -756,9 +755,6 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 fn self_build_trains_fastc(args []string) bool {
 	mut includes_fastc := '-prod' in args
 	for i, arg in args {
-		if arg == '-old-compiler' {
-			return false
-		}
 		if arg in ['-d', '-define'] && i + 1 < args.len
 			&& args[i + 1].all_before('=').trim_space() == 'skip_fastc' {
 			return false

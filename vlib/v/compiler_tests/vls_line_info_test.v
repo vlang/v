@@ -8,12 +8,7 @@ import time
 import x.json2
 import v.compiler_tests.method_form
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const line_info_v3_bin = os.join_path(os.temp_dir(), 'v3_line_info_test_${os.getpid()}')
+const line_info_v3_bin = @VEXE
 const work_dir = os.join_path(os.vtmp_dir(), 'v3_line_info_test_${os.getpid()}')
 
 const program = "module main
@@ -486,9 +481,6 @@ fn main() {
 "
 
 fn testsuite_begin() {
-	res := os.exec([vexe, '-gc', 'none', '-prealloc', '-path', '${'${vlib_dir}|@vlib|@vmodules'}',
-		'-o', line_info_v3_bin, '${v3_src}'])
-	assert res.exit_code == 0, res.output
 	os.mkdir_all(os.join_path(work_dir, 'completion')) or { panic(err) }
 	os.mkdir_all(os.join_path(work_dir, 'declarations')) or { panic(err) }
 	os.mkdir_all(os.join_path(work_dir, 'shadowing')) or { panic(err) }
@@ -519,7 +511,6 @@ fn testsuite_begin() {
 }
 
 fn testsuite_end() {
-	os.rm(line_info_v3_bin) or {}
 	os.rmdir_all(work_dir) or {}
 }
 
@@ -561,8 +552,14 @@ fn ask_at_only(dir string, spec string) string {
 	return run_line_info(dir, spec).trim_space()
 }
 
+fn run_line_info_compiler(args []string, dir string) os.Result {
+	return cmdexec.run_in_merged_with_env(line_info_v3_bin, args, dir, {
+		'VFLAGS': ''
+	})
+}
+
 fn run_line_info(dir string, spec string) string {
-	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
+	res := run_line_info_compiler(['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
 		'main.v:' + '${spec}', 'main.v'], dir)
 	assert res.exit_code == 0, res.output
 	return res.output
@@ -667,8 +664,8 @@ fn without_host(answer string) string {
 // ask_in asks `-line-info` about `spec`, a file of the program of `dir` with a
 // position (`models/models.v:10:10`), checking the program from its main.v.
 fn ask_in(dir string, spec string) string {
-	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
-		'${spec}', 'main.v'], dir)
+	res := run_line_info_compiler(['-w', '-check', '-nocolor', '-vls-mode', '-line-info', '${spec}',
+		'main.v'], dir)
 	assert res.exit_code == 0, res.output
 	return res.output.trim_space()
 }
@@ -984,7 +981,7 @@ fn read_until(mut p os.Process, marker string) string {
 }
 
 fn test_the_diagnostics_server_answers_queries_between_checks() {
-	$if !linux {
+	$if !linux && !macos {
 		return
 	}
 	mut p := os.new_process(line_info_v3_bin)
@@ -992,6 +989,7 @@ fn test_the_diagnostics_server_answers_queries_between_checks() {
 	p.set_work_folder(work_dir)
 	mut env := os.environ()
 	env['V_DIAGNOSTICS_SERVER'] = '1'
+	env['VFLAGS'] = ''
 	p.set_environment(env)
 	p.set_redirect_stdio()
 	p.run()
@@ -1037,6 +1035,7 @@ fn start_server_with(dir string, options []string, vars map[string]string) &os.P
 	for name, value in vars {
 		env[name] = value
 	}
+	env['VFLAGS'] = ''
 	p.set_environment(env)
 	p.set_redirect_stdio()
 	p.run()
@@ -1069,7 +1068,7 @@ fn ask_once(dir string, questions []string) []string {
 // ask_once_with is ask_once with the options `options` besides.
 fn ask_once_with(dir string, options string, questions []string) []string {
 	spec := questions.map('main.v:${it}').join('\t')
-	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor',
+	res := run_line_info_compiler(['-w', '-check', '-nocolor',
 		...(os.split_args(options) or { panic(err) }), '-vls-mode', '-line-info', '${spec}', '.'], dir)
 	assert res.exit_code == 0, res.output
 	return res.output.trim_right('\n').split('\n').map(it.all_after('\t'))
@@ -1851,13 +1850,16 @@ fn check_as_prepared_server(dir string, change fn (string)) (string, string) {
 
 // one_shot_check checks `dir` as a one-shot check of the same command line.
 fn one_shot_check(dir string) string {
-	res := cmdexec.run_in('env', ['V_CHECK_SELECTED_FILES_ONLY=1', line_info_v3_bin, '-no-memory-limit',
-		'-w', '-check', '-nocolor', '.'], dir)
+	res := cmdexec.run_in_merged_with_env(line_info_v3_bin, ['-no-memory-limit', '-w', '-check',
+		'-nocolor', '.'], dir, {
+		'VFLAGS':                      ''
+		'V_CHECK_SELECTED_FILES_ONLY': '1'
+	})
 	return 'exit ${res.exit_code}\n' + res.output.trim_space()
 }
 
 fn test_a_prepared_server_checks_as_a_one_shot_check_does() {
-	$if !linux {
+	$if !linux && !macos {
 		return
 	}
 	dir := os.join_path(work_dir, 'prepared')
@@ -1970,6 +1972,69 @@ fn server_check(mut p os.Process, token string) (int, string) {
 	code := out.all_after('v-diagnostics-server: end ').all_before(' ')
 	assert out.contains('v-diagnostics-server: end ${code} ${token}'), out
 	return child, 'exit ${code}\n' + lines.join('\n').trim_space()
+}
+
+fn test_macos_prepared_server_checks_edits_after_cancelling_a_child() {
+	$if !macos {
+		return
+	}
+	dir := program_dir('macos_cancel', prepared_program)
+	path := os.join_path(dir, 'main.v')
+	fifo := os.join_path(dir, 'cancel.fifo')
+	assert os.exec(['mkfifo', fifo]).exit_code == 0
+	mut p := start_server(dir, {
+		'VJOBS':                     '4'
+		'V_DIAGNOSTICS_PREPARE':     '1'
+		'V_DIAGNOSTICS_SHARED':      '1'
+		'V_DIAGNOSTICS_CHILD_PAUSE': fifo
+	})
+	defer { p.close() }
+	p.stdin_write('check cancel\n')
+	started := read_until(mut p, ' cancel\n')
+	child := started.all_after('v-diagnostics-server: child ').all_before(' ').int()
+	assert child > 0, started
+	assert os.exec(['kill', '-KILL', child.str()]).exit_code == 0
+	cancelled := read_until(mut p, 'v-diagnostics-server: end 137 cancel')
+	assert cancelled.contains('v-diagnostics-server: end 137 cancel'), cancelled
+	os.rm(fifo)!
+
+	_, broken := server_check(mut p, 'broken')
+	assert broken == one_shot_check(dir)
+	assert broken.contains('error:'), broken
+	os.write_file(path, prepared_program.replace(" + 'b'", ''))!
+	_, fixed := server_check(mut p, 'fixed')
+	assert fixed == one_shot_check(dir)
+	assert !fixed.contains('error:'), fixed
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
+fn test_macos_diagnostics_child_exits_when_its_server_is_killed() {
+	$if !macos {
+		return
+	}
+	dir := program_dir('macos_orphan', prepared_program)
+	fifo := os.join_path(dir, 'orphan.fifo')
+	assert os.exec(['mkfifo', fifo]).exit_code == 0
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_CHILD_PAUSE': fifo
+	})
+	defer { p.close() }
+	p.stdin_write('check orphan\n')
+	started := read_until(mut p, ' orphan\n')
+	child := started.all_after('v-diagnostics-server: child ').all_before(' ').int()
+	assert child > 0, started
+	assert os.exec(['kill', '-KILL', p.pid.str()]).exit_code == 0
+	p.wait()
+	for _ in 0 .. 500 {
+		if os.exec(['kill', '-0', child.str()]).exit_code != 0 {
+			return
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	os.exec(['kill', '-KILL', child.str()])
+	assert false, 'diagnostics child ${child} outlived its server'
 }
 
 const shared_program = "module main
@@ -2172,16 +2237,22 @@ fn test_a_prepared_server_scans_the_prepared_modules_anew_for_a_program_that_cha
 	assert trace.contains('scanning the prepared modules anew: the program writes `r:levenshtein_distance`'), trace
 }
 
+// generic_heavy_fns is how many generic functions generic_heavy_program declares. Their
+// instances keep the grandchild of a shared check busy for longer than the server waits
+// before it sends a partial answer (partial_answer_ms, 3 ms); with 40 a fast runner
+// finished in time and sent none.
+const generic_heavy_fns = 160
+
 // generic_heavy_program has many instances of generic functions, which the end
 // of a check checks after the rest, and an error the rest finds.
 fn generic_heavy_program() string {
 	mut source := 'module main\n\nstruct Box[T] {\n\tvalue T\n}\n'
-	for i in 0 .. 40 {
+	for i in 0 .. generic_heavy_fns {
 		source += '\nfn wrap_${i}[T](x T) Box[T] {\n\treturn Box[T]{\n\t\tvalue: x\n\t}\n}\n'
 		source += '\nfn unwrap_${i}[T](b Box[T]) T {\n\treturn b.value\n}\n'
 	}
 	source += "\nfn main() {\n\tbroken := 1 + 'a'\n\tprintln(broken)\n"
-	for i in 0 .. 40 {
+	for i in 0 .. generic_heavy_fns {
 		for typ in ['1', "'s'", '1.5', 'true', 'u8(1)'] {
 			source += '\tprintln(unwrap_${i}(wrap_${i}(${typ})))\n'
 		}

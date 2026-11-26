@@ -6,17 +6,41 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
-fn build_v3_test_file_cli_runner() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_test_file_cli_runner')
+const test_file_cli_shared_runner = find_test_file_cli_shared_runner()
+const test_file_cli_runner = if test_file_cli_shared_runner != '' {
+	test_file_cli_shared_runner
+} else {
+	os.join_path(os.temp_dir(), 'v3_test_file_cli_runner_${os.getpid()}') + $if windows { '.exe' } $else { '' }
+}
+
+fn find_test_file_cli_shared_runner() string {
+	// These tests exercise the standalone driver's test command.
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		return os.real_path(shared)
+	}
+	return ''
+}
+
+fn testsuite_begin() {
+	if test_file_cli_shared_runner != '' {
+		return
+	}
 	build :=
-		os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
+		os.exec([vexe, '-gc', 'none', '-o', test_file_cli_runner, '${v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	if test_file_cli_shared_runner == '' {
+		os.rm(test_file_cli_runner) or {}
+	}
 }
 
 // test_direct_test_file_run_executes_harness validates `v3 foo_test.v` behavior.
 fn test_direct_test_file_run_executes_harness() {
-	v3_bin := build_v3_test_file_cli_runner()
+	v3_bin := test_file_cli_runner
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_test_file_cli_run_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir)!
@@ -68,7 +92,7 @@ fn test_implicit_result_propagation() {
 // A test beside a source in a v.mod `subdirs` directory needs every source in
 // that virtual module, not only files in the test's physical directory.
 fn test_direct_test_file_in_virtual_module_directory_includes_sibling_subdirs() {
-	v3_bin := build_v3_test_file_cli_runner()
+	v3_bin := test_file_cli_runner
 	root := os.join_path(os.temp_dir(), 'v3_virtual_module_test_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(os.join_path(root, 'ui'))!
@@ -109,7 +133,7 @@ fn test_virtual_module_sources_are_available() {
 }
 
 fn test_directory_test_command_sets_test_define_before_parsing_inputs() {
-	v3_bin := build_v3_test_file_cli_runner()
+	v3_bin := test_file_cli_runner
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_test_directory_define_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir)!
@@ -138,7 +162,7 @@ fn test_directory_test_command_sets_test_define_before_parsing_inputs() {
 }
 
 fn test_directory_test_command_filters_define_suffixes() {
-	v3_bin := build_v3_test_file_cli_runner()
+	v3_bin := test_file_cli_runner
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_test_directory_suffixes_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir)!
@@ -177,7 +201,7 @@ fn test_directory_test_command_filters_define_suffixes() {
 // forwards every argument after the input file to the program, including
 // `-`-prefixed flags like `--help` (which must not be swallowed as compiler flags).
 fn test_run_forwards_all_args_after_input_file() {
-	v3_bin := build_v3_test_file_cli_runner()
+	v3_bin := test_file_cli_runner
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_run_args_cli_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir)!

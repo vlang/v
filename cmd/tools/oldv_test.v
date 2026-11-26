@@ -13,7 +13,7 @@ fn test_oldv_runs_shell_commands_in_the_old_checkout() {
 	// An existing compiler skips cloning and bootstrapping in the old checkout.
 	os.cp(@VEXE, os.join_path(checkout, executable_name))!
 	oldv := os.join_path(root, if os.user_os() == 'windows' { 'oldv.exe' } else { 'oldv' })
-	built := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-o', oldv,
+	built := cmdexec.run_with_timeout(@VEXE, ['-o', oldv,
 		os.join_path(@VEXEROOT, 'cmd', 'tools', 'oldv.v')], 120_000)
 	assert built.exit_code == 0, built.output
 	dir_command := if os.user_os() == 'windows' { 'cd' } else { 'pwd' }

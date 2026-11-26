@@ -10,33 +10,31 @@ early compatibility feedback.
 
 ## Master push gate
 
-All master-push CI is orchestrated by `ci_master.yml`. It starts Linux,
-macOS, Windows and Termux bootstrap groups in parallel, alongside the
-Linux/Windows `makev_ci.yml` bootstrap contracts. Every bootstrap producer runs
-`test-cleancode` and `test-fmt` in order with its optimized compiler before
-uploading the artifact, including both Termux containers. Once **Linux** bootstrap
-succeeds, the `preflight` job checks CI helpers and selects suites, then
-`gen_vc_ci.yml` generates and checks `v.c` and `v_win.c` on every
-master push, including documentation-only changes and empty diffs. Linux
-suites can start after these checks without waiting for macOS or Windows
-bootstrap. macOS, Windows and Termux suites that only target those platforms
-also require their respective bootstrap group. Windows suites require the
-Windows bootstrap contracts as well. Mixed-platform suites may start with the
-Linux gate and use a source-built compiler if their platform's artifact is
-not available yet. All suites still require successful VC generation.
+`ci_master.yml` runs Linux-only suites. After Linux bootstrap, preflight checks
+the CI helpers and selects suites. `gen_vc_ci.yml` then generates and checks
+`v.c` and `v_win.c`, even for documentation-only changes and empty diffs. It also
+owns VC publishing while the Actions publisher is enabled.
 
-Each failed bootstrap group still fails the overall CI run, but does not
-cancel unrelated platforms' tests. This preserves Linux results even if a
-macOS bootstrap runner is slow or fails. Compiler artifact cleanup waits for
-**all** bootstrap groups and Windows contracts to succeed before pruning
-older artifacts.
+`ci_master_portability.yml` calls the same gate for the macOS, Windows, Termux and
+mixed-platform suites. This lane validates VC generation for its commit. Its
+platform bootstraps and Windows bootstrap contracts run in parallel. Dedicated
+platform suites require the corresponding bootstrap, and Windows suites also
+require the contracts. Mixed suites can build from source when their runner has
+no matching compiler artifact. Every bootstrap producer runs `test-cleancode`
+and `test-fmt` before uploading its optimized compiler.
+
+Each lane keeps one active run and the newest pending run. A queued macOS worker
+can delay the portability lane while Linux continues on later commits. Within
+the portability run, a failed bootstrap group fails the run and the suites that
+depend on that group. Other groups can finish their tests.
 
 Existing suites are called as reusable workflows via `workflow_call`, with
 eight small, formerly standalone checks inlined in the caller to respect
 GitHub Actions' 50-unique-reusable-workflow limit. Original ordered path
-filters live in `ci_gate_filters/*.json` (with VC generation set to `all`) and are applied by
-`ci_gate_paths.py` to the exact before/after SHAs from the push. An
-unavailable diff conservatively runs all suites instead of skipping them.
+filters and lane assignments live in `ci_gate_filters/*.json`. Each lane selects
+changes since its last finished ancestor run that passed its bootstrap and VC
+gates, including changes from pushes that were replaced in the queue. An
+unavailable diff runs every suite in the lane.
 The gate validator rejects newly added direct-push workflows that would
 bypass this dependency.
 
@@ -56,10 +54,8 @@ macOS x64, Windows x64, Termux ARM64 and Termux x64. Linux is built on Ubuntu 22
 the binary also runs on the newer glibc runners. Termux uses Clang inside the official
 `termux/termux-docker` images on matching native ARM64 and x64 runners. Each Termux
 producer runs a sample program and rebuilds the compiler before uploading its binary.
-Each platform-specific suite waits for its producer, while Linux suites
-need only the Linux producer. Mixed-platform suites may fall back to a
-locally optimized compiler when an artifact has not yet been produced.
-A failing producer still marks the full master CI run as failed.
+Each platform-specific suite waits for its producer. Mixed-platform suites may
+build an optimized compiler locally if a matching artifact is unavailable.
 
 The Windows producer creates a private tool cache before building V and verifies
 that two vet invocations reuse the same executable before running formatting checks.
@@ -70,7 +66,7 @@ the full `test-cleancode` and `test-fmt` checks within a 40-minute job limit.
 
 Each producer uploads a seven-day artifact named `vprod-<platform>-<full-commit-sha>`.
 It contains `<full-commit-sha>-<platform>` and its `.sha256` checksum. The setup action
-uses these artifacts within the same master workflow run and verifies their checksum,
+uses these artifacts within the same workflow run and verifies their checksum,
 checkout commit and platform before installing them as `v` or `v.exe`. Rerunning a
 producer replaces its workflow artifact. The binaries are available from the `vlang/v`
 Actions run page, outside GitHub Releases, and require no additional token or secret.
@@ -80,11 +76,11 @@ executable. This supports nested `working-directory` checkouts and compilation f
 project directories. A standalone compiler outside a checkout retains its build-time source
 root as a fallback.
 
-After all platform bootstraps, Windows bootstrap contracts, preflight checks,
-and VC generation succeed, a separate job removes older artifacts from
-completed `CI master` push runs. It preserves artifacts belonging to the current run,
-newer runs and runs still in progress, and only deletes names matching the owning run's
-exact commit and one of the six producer platforms. Other test artifacts are unaffected.
+After its bootstrap gates and VC generation succeed, each lane removes older
+compiler artifacts from completed runs of that lane. Cleanup checks that the current
+run has a complete replacement set and that each deletion matches the owning run's
+exact commit and a platform produced by the lane. Other artifacts, newer runs and
+runs still in progress are preserved.
 An older commit's rerun cannot remove newer binaries. Cleanup uses the automatic
 `GITHUB_TOKEN` with `actions: write` only in that job; test jobs keep their existing
 permissions. Cleanup failure does not block tests, and seven-day expiry bounds retention
@@ -95,6 +91,9 @@ locally. The setup action also supports `use-prebuilt: false` for jobs that requ
 build. Shell-only jobs can call `prepare_v.sh`; set `V_CI_SOURCE_BUILD=1` to ignore a supplied
 prebuilt compiler and optionally `V_CI_CC` to choose the optimizing C compiler.
 `prepare_v.ps1` provides the corresponding Windows build/install step.
+`V_CI_VPROD_STAGE=generate` (with `V_CI_SOURCE_BUILD=1`) stops after writing the optimized
+compiler's C project to `vprod.project`; after `make -C vprod.project` has built `vprod.project/v`,
+`V_CI_VPROD_STAGE=install` installs it like a source build.
 
 Termux artifacts use the platform names `termux-arm64` and `termux-x64`. Install their binary
 as `v` in a checkout of the matching commit after verifying its `.sha256` checksum, and restore
@@ -104,7 +103,10 @@ Bionic libc and are separate from the glibc Linux compiler. The setup helper det
 before considering Linux artifacts and only reuses them for a verified 64-bit userland.
 The dedicated Termux test workflow still builds from source.
 
-Alpine/musl, non-Termux Android, BSD and other CPU architectures build natively. Bootstrap, update,
+Alpine/musl, non-Termux Android, BSD and other CPU architectures build natively. The QEMU
+riscv64 and s390x jobs bootstrap and generate the optimized compiler's C in their container, then
+compile that C on the x86 host with Ubuntu's cross gcc (the same gcc and glibc releases as the
+container): a native `gcc -O2` of it takes 45-70 minutes under emulation. Bootstrap, update,
 prebuilt-release and compiler-under-test checks retain their specific build recipes;
 ordinary tests use the optimized driver. Instrumented compiler builds retain their sanitizer
 flags and add `-prod`. Compiler self-build checks use separate executables or restore the
@@ -113,10 +115,13 @@ optimized driver afterward. Setup still provisions TCC, libgc and bootstrap sour
 Compiler CI also sets `V3_TEST_PROD_COMPILER=1` so `test_all.vsh` optimizes the separate
 V3 drivers it creates for unit tests and examples. Plain nested compiler builds share that
 optimized driver; requests with custom build options still build their own compiler. The unit
-job builds it once before starting its shards, which each receive a private copy. Local runs
-can select another optimizing C compiler with `V3_TEST_PROD_COMPILER_CC`.
+job builds it once before starting its shards, which each receive a private copy. It also builds
+the modules that nearly every unit test compiles, builtin first, once with
+`test_all.vsh --prepare-unit-cache`; `V3_TEST_UNIT_CACHE` hands that module cache to the shards,
+and every batch starts from a copy of it. Local runs can select another optimizing C compiler with
+`V3_TEST_PROD_COMPILER_CC`.
 
-Changes to shared compiler setup or the bootstrap workflow select all master suites, even
+Changes to shared compiler setup or the bootstrap workflow select all suites in both lanes, even
 when a suite's normal path filter would skip them. Local setup regression checks are
 `python3 .github/workflows/prepare_v_test.py` and `python3 cmd/tools/windows_ci_test.py`;
 artifact cleanup checks are `python3 .github/workflows/cleanup_vprod_test.py`.
@@ -354,6 +359,11 @@ Available profiles:
 When migrating a workflow, keep the job's explicit install step until CI proves the
 profile is sufficient. The cache action speeds up installs; it should not hide which
 packages the workflow actually needs.
+
+The action refreshes the apt package lists before the cache lookup. On a miss, the
+underlying cache action installs from whatever lists the runner has, and with a stale
+image it saved entries without packages; every later job then restored nothing and
+installed the whole profile from apt. If that ever recurs, bump `version` in the action.
 
 ## MemorySanitizer dependencies
 

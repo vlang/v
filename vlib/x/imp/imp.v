@@ -843,10 +843,24 @@ fn is_real_dir(path string) bool {
 	return os.is_dir(path) && !os.is_link(path)
 }
 
+// followed_mtime is the mtime of what `path` names, following links like stat(2) does, so
+// that a dangling link has none. On Windows, the C runtime of MinGW and TinyCC reports the
+// mtime of a link itself instead, which made a new link look like a changed input.
+fn followed_mtime(path string) i64 {
+	if os.is_link(path) {
+		target := os.real_path(path)
+		if os.is_link(target) || !os.exists(target) {
+			return 0
+		}
+		return os.file_last_mod_unix(target)
+	}
+	return os.file_last_mod_unix(path)
+}
+
 // newest_mtime returns the latest mtime under `path`, leaving out `excluded`.
 // `key` is the `path_key` of `path`.
 fn newest_mtime(path string, key string, excluded []string) i64 {
-	mut newest := os.file_last_mod_unix(path)
+	mut newest := followed_mtime(path)
 	if is_real_dir(path) {
 		for entry in os.ls(path) or { []string{} } {
 			child_key := os.join_path(key, entry)
@@ -861,7 +875,7 @@ fn newest_mtime(path string, key string, excluded []string) i64 {
 
 // oldest_mtime returns the earliest mtime under `path`.
 fn oldest_mtime(path string) i64 {
-	mut oldest := os.file_last_mod_unix(path)
+	mut oldest := followed_mtime(path)
 	if is_real_dir(path) {
 		for entry in os.ls(path) or { []string{} } {
 			oldest = min_i64_of(oldest, oldest_mtime(os.join_path(path, entry)))

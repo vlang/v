@@ -1,21 +1,5 @@
 import os
-
-const tir_vexe = @VEXE
-const tir_tests_dir = os.dir(@FILE)
-const tir_v3_dir = os.dir(tir_tests_dir)
-const tir_vlib_dir = os.dir(tir_v3_dir)
-const tir_v3_src = os.join_path(tir_v3_dir, 'v.v')
-
-fn tir_build_v3() string {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_include_templates_root_test_${pid}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([tir_vexe, '-gc', 'none', '-path', '${tir_vlib_dir}' + '|@vlib|@vmodules', '-o',
-			v3_bin, '${tir_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn tir_write_file(root string, rel string, source string) {
 	path := os.join_path(root, rel)
@@ -29,19 +13,17 @@ fn tir_write_file(root string, rel string, source string) {
 // `templates/pages/header.html`). This mirrors v1's include resolver; without the fallback such
 // shared-partial templates fail to compile under v.
 fn test_nested_template_includes_shared_root_partial() {
-	v3_bin := tir_build_v3()
-	pid := os.getpid()
-	root := os.join_path(os.temp_dir(), 'v3_tmpl_include_templates_root_${pid}_project')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_tmpl_include_templates_root_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'tir' }\n") or { panic(err) }
 	// The shared partial lives at the templates root; the page lives in a subdirectory.
 	tir_write_file(root, 'templates/header.html', 'HEADER_PARTIAL')
 	tir_write_file(root, 'templates/pages/index.html', '@include "header"\nPAGE_BODY')
 	source := "module main\n\nfn render() string {\n\treturn \$tmpl('templates/pages/index.html').replace('\\n', '|')\n}\n\nfn main() {\n\tprintln(render())\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_tmpl_include_templates_root_bin_${pid}')
-	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])

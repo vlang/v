@@ -16,11 +16,11 @@ fn test_reflected_method_calls_preserve_borrow_and_escape_information() {
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
 	os.cp(os.join_path(@DIR, 'testdata', 'comptime_method_borrow.vv'), source)!
-	c_path := os.join_path(root, 'main.c')
-	generated := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-enable-globals', '-gc', 'none',
-		'-o', c_path, source], 120_000)
-	assert generated.exit_code == 0, generated.output
-	c_source := os.read_file(c_path)!
+	bin := os.join_path(root, 'fixture')
+	built := cmdexec.run_with_timeout(@VEXE, ['-enable-globals', '-gc', 'none', '-b', 'c', '-o',
+		bin, source], 120_000)
+	assert built.exit_code == 0, built.output
+	c_source := os.read_file(bin + '.c')!
 	for name in ['direct_T_App', 'through_local_T_App', 'fixed_direct_T_FixedApp'] {
 		body := reflected_borrow_function(c_source, name)
 		assert !body.contains('memdup('), body
@@ -29,8 +29,7 @@ fn test_reflected_method_calls_preserve_borrow_and_escape_information() {
 		body := reflected_borrow_function(c_source, name)
 		assert body.contains('memdup('), body
 	}
-	ran := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-enable-globals', '-gc', 'none',
-		'run', source], 120_000)
+	ran := cmdexec.run_with_timeout(bin, [], 120_000)
 	assert ran.exit_code == 0, ran.output
 	assert ran.output.trim_space() == 'OK', ran.output
 }

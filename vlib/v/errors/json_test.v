@@ -48,6 +48,7 @@ fn test_json_severity_is_error_warning_or_notice() {
 
 fn test_json_located_message_spans_the_reported_column() {
 	assert json_located_message('notice:', 'unparsed', []string{}, 'dir/a.v', 3, 7) == '{"file":"dir/a.v","line":3,"col":7,"end_line":3,"end_col":8,"severity":"notice","message":"unparsed"}'
+	assert json_located_message('error:', 'x', []string{}, 'dir\\a.v', 1, 1).starts_with('{"file":"dir\\\\a.v",')
 }
 
 fn test_json_error_reports_the_span_of_a_position() {

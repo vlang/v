@@ -700,7 +700,9 @@ fn test_linker_is_asked_once_which_report_it_gives() {
 }
 
 fn test_library_search_dirs_are_read_from_what_a_compiler_prints() {
-	gcc := 'install: /usr/lib/gcc/x86_64-linux-gnu/13/\nprograms: =/usr/bin\nlibraries: =/usr/lib/gcc/x86_64-linux-gnu/13/:/usr/lib/x86_64-linux-gnu/:/lib/\n'
+	// gcc separates the directories with the path delimiter of its host (`;` on Windows).
+	sep := os.path_delimiter
+	gcc := 'install: /usr/lib/gcc/x86_64-linux-gnu/13/\nprograms: =/usr/bin\nlibraries: =/usr/lib/gcc/x86_64-linux-gnu/13/${sep}/usr/lib/x86_64-linux-gnu/${sep}/lib/\n'
 	assert v3_parse_library_search_dirs(gcc) == ['/usr/lib/gcc/x86_64-linux-gnu/13/',
 		'/usr/lib/x86_64-linux-gnu/', '/lib/']
 	tcc := 'install: /tcc/lib\ninclude:\n  /tcc/lib/include\n  /usr/include\nlibraries:\n  thirdparty/tcc/lib\n  /usr/local/lib\n  /usr/lib\nlibtcc1:\n  /tcc/lib/libtcc1.a\n'

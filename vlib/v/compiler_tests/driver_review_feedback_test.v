@@ -1,16 +1,7 @@
 import os
 import v.cmdexec
 
-const driver_review_vlib_dir = os.dir(os.dir(os.dir(@FILE)))
-const driver_review_v3_dir = os.dir(os.dir(@FILE))
-const driver_review_v3_src = os.join_path(driver_review_v3_dir, 'v.v')
-const driver_review_compiler_dir = os.join_path(os.abs_path(os.vtmp_dir()),
-	'v3_driver_review_compiler_${os.getpid()}')
-const v3_bin = os.join_path(driver_review_compiler_dir, 'v3_review_driver' + $if windows {
-	'.exe'
-} $else {
-	''
-})
+const v3_bin = @VEXE
 
 fn driver_review_environment() map[string]string {
 	mut environment := os.environ()
@@ -22,32 +13,7 @@ fn driver_review_environment() map[string]string {
 }
 
 fn run_driver_review_process(program string, args []string, environment map[string]string) os.Result {
-	mut process := os.new_process(program)
-	process.set_args(args)
-	process.set_environment(environment)
-	process.set_redirect_stdio_merged()
-	process.run()
-	output := process.stdout_slurp()
-	process.wait()
-	result := os.Result{
-		exit_code: process.code
-		output:    output
-	}
-	process.close()
-	return result
-}
-
-fn testsuite_begin() {
-	os.rmdir_all(driver_review_compiler_dir) or {}
-	os.mkdir_all(driver_review_compiler_dir)!
-	result := run_driver_review_process(@VEXE, ['-gc', 'none', '-path',
-		'${driver_review_vlib_dir}|@vlib|@vmodules', '-o', v3_bin, driver_review_v3_src],
-		driver_review_environment())
-	assert result.exit_code == 0, result.output
-}
-
-fn testsuite_end() {
-	os.rmdir_all(driver_review_compiler_dir) or {}
+	return cmdexec.run_in_merged_with_env(program, args, '', environment)
 }
 
 fn test_driver_preserves_delegated_cli_modes() {
@@ -344,7 +310,9 @@ fn main() {
 	assert directory_impure.exit_code != 0, directory_impure.output
 	assert directory_impure.output.contains('C code will not be allowed in pure .v files'), directory_impure.output
 
-	assert directory_impure.output.contains(directory_interop_file), directory_impure.output
+	// Diagnostics spell Windows paths with `/`.
+	assert directory_impure.output.replace('\\', '/').contains(directory_interop_file.replace('\\',
+		'/')), directory_impure.output
 
 	import_project := os.join_path(root, 'impure_import')
 	import_module := os.join_path(import_project, 'impurejs')
@@ -360,7 +328,8 @@ fn main() {
 	assert import_impure.exit_code != 0, import_impure.output
 	assert import_impure.output.contains('JS code will not be allowed in pure .v files'), import_impure.output
 
-	assert import_impure.output.contains(import_interop_file), import_impure.output
+	assert import_impure.output.replace('\\', '/').contains(import_interop_file.replace('\\',
+		'/')), import_impure.output
 
 	notice_source := os.join_path(root, 'notice.v')
 	os.write_file(notice_source, 'fn unused() {}\n\nfn main() {}\n')!
@@ -383,7 +352,8 @@ fn test_driver_cache_separates_check_and_semantic_modes() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	environment := driver_review_environment()
+	mut environment := driver_review_environment()
+	environment['V3CACHE'] = os.join_path(root, 'cache')
 
 	check_source := os.join_path(root, 'check_only.v')
 	check_output := os.join_path(root, 'check_only')

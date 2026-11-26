@@ -94,7 +94,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-retry-compilation -no-memory-limit -nocache -ownership -gc none -cc clang -d trace_free ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -no-retry-compilation -no-memory-limit -nocache -ownership -gc none -cc clang -d trace_free ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		for region, expected in {
 			'loops':        3
@@ -115,29 +115,65 @@ fn main() {
 	}
 }
 
-fn test_ownership_allocating_string_ranges_transfer_ownership() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_range_moves_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	for creation in ['owner[1..4]', 'owner#[-4..-1]', 'direct_slice(&owner)', 'named_slice(&owner)'] {
-		os.write_file(source, 'fn direct_slice(text &string) string { return (*text)[1..4] }
+const string_range_move_args = [@VEXE, '-no-retry-compilation', '-no-memory-limit', '-nocache',
+	'-ownership', '-gc', 'none', '-cc', 'clang']
+const string_range_move_error = 'use of moved value: `slice`'
+const string_range_move_declarations = 'fn direct_slice(text &string) string { return (*text)[1..4] }
 fn named_slice(text &string) string {
 	slice := (*text)[1..4]
 	return slice
 }
 fn consume(value string) { _ = value }
-fn main() {
+'
+
+fn string_range_move_fixture(name string, creation string) string {
+	return 'fn ${name}() {
 	owner := "abcdef".to_owned()
 	slice := ${creation}
 	consume(slice)
 	println(slice)
 }
-')!
-		for mode in ['-no-parallel', ''] {
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-retry-compilation -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
+'
+}
+
+fn test_ownership_allocating_string_ranges_transfer_ownership() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_range_moves_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	creations := ['owner[1..4]', 'owner#[-4..-1]', 'direct_slice(&owner)', 'named_slice(&owner)']
+	// Custom flags can limit diagnostics or change their format.
+	if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] {
+		check_string_range_moves_batched(root, creations)!
+		return
+	}
+	source := os.join_path(root, 'main.v')
+	for creation in creations {
+		os.write_file(source, string_range_move_declarations +
+			string_range_move_fixture('main', creation))!
+		for mode in [['-no-parallel'], []string{}] {
+			out := os.exec([...string_range_move_args, ...mode, '-check', source])
 			assert out.exit_code != 0, '${creation} ${mode}: ${out.output}'
-			assert out.output.contains('use of moved value: `slice`'), '${creation} ${mode}: ${out.output}'
+			assert out.output.contains(string_range_move_error), '${creation} ${mode}: ${out.output}'
+		}
+	}
+}
+
+fn check_string_range_moves_batched(root string, creations []string) ! {
+	mut calls := []string{cap: creations.len}
+	for i, creation in creations {
+		name := 'range_case_${i}'
+		os.write_file(os.join_path(root, '${name}.v'), 'module main\n\n' +
+			string_range_move_fixture(name, creation))!
+		calls << '\t${name}()'
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n' +
+		string_range_move_declarations + 'fn main() {\n${calls.join('\n')}\n}\n')!
+	for mode in [['-no-parallel'], []string{}] {
+		out := os.exec([...string_range_move_args, ...mode, '-check', root])
+		assert out.exit_code != 0, '${mode}: ${out.output}'
+		diagnostics := out.output.split_into_lines().filter(it.contains('error: ${string_range_move_error}'))
+		for i, creation in creations {
+			assert diagnostics.any(it.contains('range_case_${i}.v:')), '${creation} ${mode}: ${out.output}'
 		}
 	}
 }

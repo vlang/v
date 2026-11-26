@@ -49,7 +49,8 @@ jobs:
           grep -F "'vlib/x/multiwindow/service_native_win32_no_flag_test.v'" cmd/tools/vtest-self.v
           grep -F "'vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v'" cmd/tools/vtest-self.v
           grep -F "'vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v'" cmd/tools/vtest-self.v
-          grep -F "'vlib/sokol/gfx/metal_private_hook_contract_test.v'" cmd/tools/vtest-self.v
+          # The whole vlib/sokol/gfx directory is skipped under musl (skip_dirs_on_ubuntu_musl).
+          grep -F "'vlib/sokol/gfx', //" cmd/tools/vtest-self.v
           head -n 1 vlib/gg/multiwindow_services_contract_test.v | grep -F '!musl? && !self_ubuntu_musl_ci?'
           head -n 1 vlib/x/multiwindow/service_native_win32_no_flag_test.v | grep -F '!musl? && !self_ubuntu_musl_ci?'
           head -n 1 vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v | grep -F 'gg_multiwindow? && !musl? && !self_ubuntu_musl_ci?'

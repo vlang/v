@@ -248,6 +248,7 @@ pub:
 	exact_used_fns         bool                         // materialize only source functions listed in used_fns
 	allow_missing_fn_stubs bool                         // native compile-only fallback for checker-validated calls
 	use_native_c_sources   bool                         // link V-shipped C implementations instead of SSA replacements
+	literal_output         bool                         // driver-proved literal printing; requires a checker
 	// c_constants holds values of `C.NAME` constants that the driver read from
 	// the program's C headers with the C compiler (see the arm64 driver's
 	// arm64_probe_c_constants): name -> value text.
@@ -290,6 +291,9 @@ pub fn build_with_used(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.Typ
 
 // build_with_options builds with options data for ssa.
 pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, opts BuildOptions) &Module {
+	if opts.literal_output {
+		return build_literal_output(a_, tc.diagnostic_files, opts.target, opts.track_uses)
+	}
 	mut b := Builder{
 		m:                        Module.new()
 		a:                        unsafe { a_ }
@@ -2964,7 +2968,8 @@ fn (b &Builder) skip_source_fn(name string) bool {
 	return name.starts_with('print_backtrace') || name.starts_with('backtrace_')
 		|| name.starts_with('map.')
 		|| name in ['map_map_eq', 'map_map_ne', 'VMapData.free']
-		|| name in ['print_libbacktrace', 'eprint_libbacktrace', 'bsd_backtrace_resolve_atos']
+		|| name in ['print_libbacktrace', 'eprint_libbacktrace', 'bsd_backtrace_resolve_atos',
+			'eprint_backtrace_frame']
 }
 
 // skip_source_fn_in_module supports skip source fn in module handling for Builder.
@@ -9470,7 +9475,9 @@ fn (b &Builder) source_fn_is_used(name string, module_name string) bool {
 	// Method declarations include their receiver; a bare libc name is unrelated.
 	qualified_method := name.replace('__', '.').contains('.')
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		return b.fn_is_used_for_decl(fn_name, qualified_method)
+		// A bare key owned by main or builtin must not retain a same-named
+		// function from another module: its body may never have been lowered.
+		return b.fn_is_used_for_decl(fn_name, qualified_method || b.v_fn_decl_names[name])
 	}
 	return b.fn_is_used_for_decl(name, qualified_method) || b.fn_is_used_for_decl(fn_name, qualified_method)
 }
@@ -10349,6 +10356,18 @@ fn (mut b Builder) build_assign_rhs(lhs flat.Node, rhs_id flat.NodeId) ValueID {
 	return b.build_expr(rhs_id)
 }
 
+fn (b &Builder) mut_value_param_pointer_rebind(name string, param_type TypeID, rhs_id flat.NodeId, rhs_value ValueID) bool {
+	if b.value_type(rhs_value) != param_type || !b.is_pointer_type(param_type)
+		|| name in b.mut_pointer_params || b.is_pointer_type(b.m.type_store.types[param_type].elem_type) {
+		return false
+	}
+	// An implicit mut value parameter has a local ABI pointer. A matching
+	// pointer RHS rebinds it, while a value RHS updates the caller's object.
+	rhs_type := b.checked_expr_type_name(rhs_id)
+	return flat.source_type_shape(rhs_type).has(.pointer)
+		|| flat.source_type_shape(b.type_alias_target(rhs_type) or { rhs_type }).has(.pointer)
+}
+
 fn (mut b Builder) build_assign(node flat.Node) {
 	mut parallel_values := []ValueID{}
 	if b.m.target.ptr_size == 4 && node.op == .assign && node.children_count > 2 {
@@ -10378,8 +10397,14 @@ fn (mut b Builder) build_assign(node flat.Node) {
 					} else {
 						b.build_assign_rhs(lhs, rhs_id)
 					}
-					b.emit2(.store, b.void_type, b.coerce_value_for_type(rhs_val, b.deref_type(addr)),
-						addr)
+					target_addr := if lhs.value_text() in b.mut_param_names
+						&& !b.mut_value_param_pointer_rebind(lhs.value_text(), b.deref_type(addr), rhs_id, rhs_val) {
+						b.build_lvalue_addr(lhs_id)
+					} else {
+						addr
+					}
+					b.emit2(.store, b.void_type, b.coerce_value_for_type(rhs_val, b.deref_type(target_addr)),
+						target_addr)
 				} else {
 					flag_pointer := node.op in [.amp_assign, .pipe_assign, .xor_assign]
 						&& b.is_pointer_type(b.deref_type(addr)) && b.is_flag_enum_expr(lhs_id)
@@ -14988,6 +15013,11 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	fn_node_id := b.a.child(&node, 0)
 	fn_node := b.a.nodes[int(fn_node_id)]
 	fn_name := fn_node.value_text()
+	if fn_node.kind == .selector && fn_name in ['try_push', 'try_pop'] {
+		if value := b.build_channel_try_call(node, fn_node) {
+			return value
+		}
+	}
 	if fn_node.kind == .ident && fn_name == '__v3_closure_current_data' {
 		for global_name in ['closure.g_closure', 'g_closure'] {
 			if closure_addr := b.global_vars[global_name] {
@@ -15410,10 +15440,6 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			return b.build_indirect_call(id, node, fn_node_id)
 		}
 		if stub_id := b.register_interface_method_stub(actual_name, base_id, fn_node.value) {
-			resolved_name = actual_name
-			fn_idx = stub_id
-			is_method = true
-		} else if stub_id := b.register_builtin_method_stub(actual_name, id, node) {
 			resolved_name = actual_name
 			fn_idx = stub_id
 			is_method = true
@@ -15934,35 +15960,6 @@ fn (b &Builder) interface_concrete_method_id(impl_id u32, method string) ?int {
 		}
 	}
 	return none
-}
-
-// register_builtin_method_stub registers checker-known runtime methods that the
-// SSA backend does not lower yet, notably channel try_push/try_pop. The stub
-// keeps the call ABI and result type so native code generation can complete.
-fn (mut b Builder) register_builtin_method_stub(name string, call_id flat.NodeId, node flat.Node) ?int {
-	if !name.contains('.') {
-		return none
-	}
-	receiver_name := name.all_before_last('.')
-	if !receiver_name.starts_with('chan ') {
-		return none
-	}
-	if existing := b.fn_ids[name] {
-		return existing
-	}
-	mut params := []TypeID{cap: node.children_count}
-	params << b.resolve_type(flat.source_type_id(receiver_name))
-	for i in 1 .. node.children_count {
-		arg_id := b.a.child(&node, i)
-		arg_type_name := b.checked_expr_type_name(arg_id)
-		params << if arg_type_name != 0 {
-			b.resolve_type(arg_type_name)
-		} else {
-			b.i64_type
-		}
-	}
-	ret_type := b.call_expr_result_type(call_id, node)
-	return b.register_synthetic_function(name, ret_type, params)
 }
 
 // register_missing_call_stub materializes a checker-validated call whose native
@@ -17640,7 +17637,7 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 				field_ptr := b.get_field_ptr(addr, field_name)
 				return b.emit1(.load, b.deref_type(field_ptr), field_ptr)
 			}
-			if field_name == 'len' && b.deref_type(addr) == b.map_type {
+			if field_name == 'len' && b.is_map_related_type(b.deref_type(addr)) {
 				return b.load_map_len(addr)
 			}
 			if field := b.load_smartcast_sum_selector(addr, base_id, field_name) {
@@ -17653,7 +17650,7 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 	if base.kind == .selector && b.selector_has_addressable_root(&base) {
 		if field_name == 'len' {
 			base_addr := b.build_selector_addr(base)
-			if b.deref_type(base_addr) == b.map_type {
+			if b.is_map_related_type(b.deref_type(base_addr)) {
 				return b.load_map_len(base_addr)
 			}
 		}
@@ -17668,7 +17665,10 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 	}
 	base_val := b.build_expr(base_id)
 	base_typ := b.value_type(base_val)
-	if field_name == 'len' && base_typ == b.map_type {
+	if field_name == 'len' && b.is_map_related_type(base_typ) {
+		if b.is_pointer_type(base_typ) {
+			return b.load_map_len(base_val)
+		}
 		alloca := b.emit0(.alloca, b.m.type_store.get_ptr(base_typ))
 		b.emit2(.store, b.void_type, base_val, alloca)
 		return b.load_map_len(alloca)
@@ -17790,21 +17790,23 @@ fn (b &Builder) selector_qualified_name(node flat.Node) string {
 			break
 		}
 		if cur.kind != .selector {
-			break
+			return ''
 		}
 		if cur.value_text().len > 0 {
 			parts << cur.value_text()
 		}
 		if cur.children_count == 0 {
-			break
+			return ''
 		}
 		next_id := b.a.child(&cur, 0)
 		if int(next_id) < 0 || int(next_id) >= b.a.nodes.len {
-			break
+			return ''
 		}
 		cur = b.a.nodes[int(next_id)]
 	}
-	if parts.len == 0 {
+	// A qualified name must reach its identifier root. Indexing, calls and
+	// dereferences are value expressions, even if their field names match globals.
+	if cur.kind != .ident || parts.len == 0 {
 		return ''
 	}
 	mut out := ''
@@ -17822,11 +17824,24 @@ fn (b &Builder) selector_qualified_name(node flat.Node) string {
 	return out
 }
 
+// is_map_related_type reports whether typ is a map or pointers around a map.
+fn (b &Builder) is_map_related_type(typ TypeID) bool {
+	mut base := typ
+	for b.is_pointer_type(base) {
+		base = b.m.type_store.types[base].elem_type
+	}
+	return base == b.map_type
+}
+
 fn (mut b Builder) load_map_len(map_ptr ValueID) ValueID {
+	mut address := map_ptr
+	for b.is_pointer_type(b.deref_type(address)) {
+		address = b.emit1(.load, b.deref_type(address), address)
+	}
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
 	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
 	result_slot := b.emit0(.alloca, ptr_i64)
-	state := b.map_state_ptr(b.cur_block, map_ptr)
+	state := b.map_state_ptr(b.cur_block, address)
 	zero_state := b.m.get_or_add_const(ptr_state, '0')
 	has_state := b.emit2(.ne, b.i1_type, state, zero_state)
 	blk_load := b.m.add_block(b.cur_func, 'map_len_state')

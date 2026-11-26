@@ -94,7 +94,7 @@ fn test_generic_channel_try_methods_validate_specialized_arguments() {
 		},
 	] {
 		os.write_file(source, '${case.decl}\nfn invalid[T](ch chan T) {\n${case.body}\n}\nfn main() { invalid[${case.typ}](chan ${case.typ}{cap: 1}) }\n')!
-		result := os.exec([@VEXE, '-new-compiler', '-o', os.join_path(directory, 'out.c'), source])
+		result := os.exec([@VEXE, '-o', os.join_path(directory, 'out.c'), source])
 		assert result.exit_code != 0, case.body
 		assert result.output.contains(case.message), result.output
 	}

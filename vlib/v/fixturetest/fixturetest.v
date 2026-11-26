@@ -190,7 +190,10 @@ pub fn run(vexe string, dir string, invocation_args []string) int {
 			index := result.index
 			path := paths[index]
 			result_path := fixture_output_path(index)
-			found_raw := os.read_file(result_path) or { '' }
+			mut found_raw := os.read_file(result_path) or { '' }
+			$if windows {
+				found_raw = slash_diagnostic_paths(found_raw)
+			}
 			os.rm(result_path) or {}
 			found := clean_output(found_raw)
 			exit_code := result.exit_code
@@ -329,6 +332,70 @@ fn fixture_binary_path(index int) string {
 
 fn fixture_output_path(index int) string {
 	return fixture_binary_path(index) + '.fixture.out'
+}
+
+// slash_diagnostic_paths spells the path of each diagnostic location in `output` with `/`, like
+// the `.out` files of fixtures do; the compiler reports paths with `\` on Windows. Only a path
+// that starts a line as `path:line:column`, after an optional `Details: ` or `called from `,
+// changes: source excerpts and messages keep their backslashes.
+pub fn slash_diagnostic_paths(output string) string {
+	if !output.contains('\\') {
+		return output
+	}
+	mut lines := output.split('\n')
+	for i, line in lines {
+		lines[i] = slash_diagnostic_line_path(line)
+	}
+	return lines.join('\n')
+}
+
+fn slash_diagnostic_line_path(line string) string {
+	mut start := 0
+	for prefix in ['Details: ', 'called from '] {
+		if line.starts_with(prefix) {
+			start = prefix.len
+			break
+		}
+	}
+	mut end := start
+	// The colon of a drive letter is part of the path.
+	if line.len > start + 2 && line[start].is_letter() && line[start + 1] == `:`
+		&& line[start + 2] in [`\\`, `/`] {
+		end = start + 2
+	}
+	for end < line.len && line[end] != `:` {
+		if line[end] in [`'`, `"`, `\``, `|`, `\t`] {
+			return line
+		}
+		end++
+	}
+	if !location_numbers_follow(line, end) {
+		return line
+	}
+	path := line[start..end]
+	if !path.contains('\\') {
+		return line
+	}
+	return line[..start] + path.replace('\\', '/') + line[end..]
+}
+
+// location_numbers_follow reports whether `:line:column` starts at `colon` in `line`.
+fn location_numbers_follow(line string, colon int) bool {
+	mut i := colon
+	for _ in 0 .. 2 {
+		if i >= line.len || line[i] != `:` {
+			return false
+		}
+		i++
+		digits := i
+		for i < line.len && line[i].is_digit() {
+			i++
+		}
+		if i == digits {
+			return false
+		}
+	}
+	return true
 }
 
 fn clean_output(input string) string {

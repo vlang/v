@@ -272,8 +272,7 @@ jobs:
       - name: Test v->js
         id: test_v_js
         if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
-        # The loop and interpolation need the compatibility compiler's full JS backend.
-        run: v -old-compiler -b js -o hi.js examples/js_hello_world.v && node hi.js
+        run: v -b js -o hi.js examples/hello_world.v && node hi.js
       - name: Test v binaries
         id: test_v_binaries
         if: ${{ success() && !cancelled() && steps.test_v_js.outcome == 'success' }}
@@ -583,7 +582,7 @@ jobs:
             -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedGreenProductionSurfaceSha256 '2c929f3cddfe4ed6544678de10d9fbe3319f589ee08c0d2e4c8911fcd3738a22' `
-            -ExpectedRunnerSha256 'c651dd1fd7b0a5b58ec999694170d052a40ff5bc3b9b90c47825881af0d13dff'
+            -ExpectedRunnerSha256 '34867c90b94e8b69a93f59806da580b70f9789823cada3bc82f3ca715c81eba4'
       - name: Public gg Win32 controls/state native diagnostic
         if: ${{ always() }}
         shell: pwsh

@@ -25,7 +25,13 @@ fn test_crun_reuses_executable_for_unchanged_v_program() {
 
 	cached := vcrun(vprogram_file, '-show-timings')
 	assert cached.output.split_into_lines().any(it.starts_with('hello')), cached.output
-	assert cached.output.contains('run (cached)'), cached.output
+	// On Windows, builtin always includes its runtime headers (core_windows.h, ...).
+	// They are certified for reuse only by a compiler that can poison the date and
+	// time macros, which TinyCC, the default compiler there, cannot, so crun rebuilds
+	// (see v3_native_interface_closure in vlib/v/driver/native_interfaces.v).
+	$if !windows {
+		assert cached.output.contains('run (cached)'), cached.output
+	}
 }
 
 fn test_crun_rebuilds_when_local_c_source_changes() {

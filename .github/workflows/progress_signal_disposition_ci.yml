@@ -1,0 +1,55 @@
+name: Progress signal disposition regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/x/progress/**'
+      - '.github/workflows/progress_signal_disposition_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify formatting
+        run: ./v fmt -verify vlib/x/progress/terminal.v vlib/x/progress/terminal_nix.c.v
+      - name: Original six-mode signal regression under MemorySanitizer
+        run: |
+          ./v -cc clang -gc none -d use_bundled_libgc -cflags -fno-omit-frame-pointer \
+            -cflags -maes -cflags -mpclmul -cflags -fsanitize=memory -silent -b c \
+            vlib/x/progress/signal_nix_test.c.v
+      - name: GCC progress module tests
+        run: ./v -cc gcc -silent test vlib/x/progress/
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Clang progress module tests
+        run: ./v -cc clang -silent test vlib/x/progress/
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Windows progress module tests
+        run: .\v.exe -cc gcc -silent test vlib/x/progress/

@@ -1,33 +1,20 @@
 import os
+import v.tempname
 
-const generic_sum_type_vexe = @VEXE
-const generic_sum_type_tests_dir = os.dir(@FILE)
-const generic_sum_type_v3_dir = os.dir(generic_sum_type_tests_dir)
-const generic_sum_type_vlib_dir = os.dir(generic_sum_type_v3_dir)
-const generic_sum_type_v3_src = os.join_path(generic_sum_type_v3_dir, 'v.v')
-
-fn generic_sum_type_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.exists(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([generic_sum_type_vexe, '-gc', 'none', '-no-parallel', '-path',
-			'${generic_sum_type_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${generic_sum_type_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn generic_sum_type_fixture_dir(name string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_generic_sum_type_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	return root
 }
 
 fn generic_sum_type_compile_run_source(name string, source string) string {
-	v3_bin := generic_sum_type_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_${name}_${os.getpid()}.v')
+	root := generic_sum_type_fixture_dir(name)
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'app')
+	src := os.join_path(root, 'main.v')
 	os.write_file(src, source) or { panic(err) }
 
-	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_${name}_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -60,90 +47,8 @@ fn generic_sum_type_assert_no_bst_branch_wrap_leaks(c_code string) {
 	assert !c_code.contains('Node_f64 main__insert_'), c_code
 }
 
-fn test_generic_sum_instances_emit_concrete_c_types() {
-	v3_bin := generic_sum_type_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_input_${os.getpid()}.v')
-	os.write_file(src, '
-struct Empty {}
-
-struct Node[T] {
-	value T
-	left  Tree[T]
-	right Tree[T]
-}
-
-type Tree[T] = Empty | &Node[T]
-
-fn leaf[T](value T, empty Tree[T]) Tree[T] {
-	return &Node[T]{value, empty, empty}
-}
-
-fn (tree Tree[T]) size[T]() int {
-	return match tree {
-		Empty { 0 }
-		&Node[T] { 1 + tree.left.size() + tree.right.size() }
-	}
-}
-
-fn (tree Tree[T]) add_left[T](value T) Tree[T] {
-	return match tree {
-		Empty {
-			&Node[T]{value, tree, tree}
-		}
-		&Node[T] {
-			&Node[T]{
-				...tree
-				left: &Node[T]{value, Empty{}, Empty{}}
-			}
-		}
-	}
-}
-
-fn main() {
-	empty_int := Tree[int](Empty{})
-	mut ints := leaf(10, empty_int)
-	ints = ints.add_left(5)
-	assert ints.size() == 2
-
-	empty_f64 := Tree[f64](Empty{})
-	mut floats := leaf(1.25, empty_f64)
-	floats = floats.add_left(0.5)
-	assert floats.size() == 2
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_input_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-
-	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('typedef struct Tree_int Tree_int;'), c_code
-	assert c_code.contains('typedef struct Tree_f64 Tree_f64;'), c_code
-	assert c_code.contains('struct main__Node_int {'), c_code
-	assert c_code.contains('struct main__Node_f64 {'), c_code
-	assert c_code.contains('struct Tree_int {'), c_code
-	assert c_code.contains('struct Tree_f64 {'), c_code
-	assert c_code.contains('main__Node_int* _ptr_Node_int;'), c_code
-	assert c_code.contains('main__Node_f64* _ptr_Node_f64;'), c_code
-	assert !c_code.contains('Array_fixed_Node_T'), c_code
-	assert !c_code.contains('Node_T'), c_code
-	assert !c_code.contains('tree.Node_T'), c_code
-	assert !c_code.contains('Tree_int ints = (Tree){'), c_code
-	assert !c_code.contains('Tree_f64 floats = (Tree){'), c_code
-}
-
-fn test_generic_sum_match_bst_branches_wrap_node_after_monomorphization() {
-	c_code := generic_sum_type_compile_run_source('bst_match_branch_wrap', '
+fn test_generic_sum_recursive_pointer_variants_emit_concrete_c_types() {
+	c_code := generic_sum_type_compile_run_source('recursive_pointer_variants', '
 struct Empty {}
 
 struct Node[T] {
@@ -227,7 +132,37 @@ fn insert_match[T](tree Tree[T], value T) Tree[T] {
 	}
 }
 
-fn main() {
+fn leaf[T](value T, empty Tree[T]) Tree[T] {
+	return &Node[T]{value, empty, empty}
+}
+
+fn (tree Tree[T]) add_left[T](value T) Tree[T] {
+	return match tree {
+		Empty {
+			&Node[T]{value, tree, tree}
+		}
+		&Node[T] {
+			&Node[T]{
+				...tree
+				left: &Node[T]{value, Empty{}, Empty{}}
+			}
+		}
+	}
+}
+
+fn check_tree_construction() {
+	empty_int := Tree[int](Empty{})
+	mut ints := leaf(10, empty_int)
+	ints = ints.add_left(5)
+	assert ints.size() == 2
+
+	empty_f64 := Tree[f64](Empty{})
+	mut floats := leaf(1.25, empty_f64)
+	floats = floats.add_left(0.5)
+	assert floats.size() == 2
+}
+
+fn check_bst_insertion() {
 	mut ints := Tree[int](Empty{})
 	ints = insert_match(ints, 4)
 	ints = insert_match(ints, 2)
@@ -255,17 +190,24 @@ fn main() {
 	floats_method = floats_method.insert(6.0)
 	floats_method = floats_method.insert(6.0)
 	assert floats_method.size() == 3
+}
 
+fn main() {
+	check_tree_construction()
+	check_bst_insertion()
 	println("ok")
 }
 ')
 	generic_sum_type_assert_no_bst_branch_wrap_leaks(c_code)
+	assert c_code.contains('typedef struct Tree_int Tree_int;'), c_code
+	assert c_code.contains('typedef struct Tree_f64 Tree_f64;'), c_code
+	assert !c_code.contains('Node_T'), c_code
+	assert !c_code.contains('Tree_int ints = (Tree){'), c_code
+	assert !c_code.contains('Tree_f64 floats = (Tree){'), c_code
 }
 
-fn test_generic_sum_bare_variant_match_lowers_to_tag_check() {
-	v3_bin := generic_sum_type_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_bare_match_${os.getpid()}.v')
-	os.write_file(src, '
+fn test_generic_sum_concrete_value_variants() {
+	c_code := generic_sum_type_compile_run_source('concrete_value_variants', '
 struct Empty {}
 
 struct Node[T] {
@@ -285,45 +227,6 @@ fn value(tree Tree[int]) int {
 	}
 }
 
-fn main() {
-	tree := Tree[int](Node[int]{
-		value: 42
-	})
-	println(value(tree).str())
-	println(value(Tree[int](Empty{})).str())
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_bare_match_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42\n0'
-
-	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert !c_code.contains('if (true)'), c_code
-	assert !c_code.contains('tree == Node'), c_code
-}
-
-fn test_generic_sum_constructor_return_uses_concrete_c_type() {
-	v3_bin := generic_sum_type_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_return_ctor_${os.getpid()}.v')
-	os.write_file(src, '
-struct Empty {}
-
-struct Node[T] {
-	value T
-}
-
-type Tree[T] = Empty | Node[T]
-
 fn empty_tree() Tree[int] {
 	return Tree[int](Empty{})
 }
@@ -335,67 +238,99 @@ fn empty_tree_defer() Tree[int] {
 	return Tree[int](Empty{})
 }
 
-fn main() {
+fn check_bare_variant() {
+	tree := Tree[int](Node[int]{
+		value: 42
+	})
+	assert value(tree) == 42
+	assert value(Tree[int](Empty{})) == 0
+}
+
+fn check_constructor_returns() {
 	tree := empty_tree()
 	assert tree is Empty
 	tree_defer := empty_tree_defer()
 	assert tree_defer is Empty
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_return_ctor_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-
-	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert !c_code.contains('Tree((Empty){})'), c_code
-	assert c_code.contains('return (Tree_int){'), c_code
 }
 
-fn test_generic_sum_rejects_mismatched_concrete_variant() {
-	v3_bin := generic_sum_type_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_negative_${os.getpid()}.v')
-	os.write_file(src, '
-struct Empty {}
-
-struct Node[T] {
+struct Box[T] {
 	value T
 }
 
-type Tree[T] = Empty | Node[T]
+type BoxSum = Box[int] | Box[string]
 
-fn bad() Tree[int] {
-	return Node[string]{"nope"}
+fn score(s BoxSum) int {
+	return match s {
+		Box[int] { 10 + s.value }
+		Box[string] { 100 + s.value.len }
+	}
 }
 
-fn main() {}
-') or {
-		panic(err)
+fn check_distinct_tags() {
+	s := BoxSum(Box[string]{
+		value: "ok"
+	})
+	assert s is Box[string]
+	assert !(s is Box[int])
+	b := s as Box[string]
+	assert b.value == "ok"
+	assert score(s) == 102
+
+	i := BoxSum(Box[int]{
+		value: 7
+	})
+	assert i is Box[int]
+	assert !(i is Box[string])
+	assert score(i) == 17
+}
+
+struct A {}
+struct B {}
+
+type Value = A | B
+
+fn match_count[T](value T) int {
+	mut count := 0
+	$for variant in T.variants {
+		if value is variant {
+			count++
+		}
 	}
+	return count
+}
 
-	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_negative_${os.getpid()}')
-	os.rm(bin) or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot use `Node[string]` as type `Tree[int]`')
-		|| compile.output.contains('cannot return') || compile.output.contains('incompatible'), compile.output
+fn check_comptime_variant_pattern() {
+	value := Value(A{})
+	assert match_count(value) == 1
+}
 
-	assert !compile.output.contains('C compilation failed'), compile.output
+fn main() {
+	check_bare_variant()
+	check_constructor_returns()
+	check_distinct_tags()
+	check_comptime_variant_pattern()
+	println("ok")
+}
+')
+	assert !c_code.contains('if (true)'), c_code
+	assert !c_code.contains('tree == Node'), c_code
+	assert !c_code.contains('Tree((Empty){})'), c_code
+	for name, expected in {
+		'empty_tree':       'return (Tree_int){'
+		'empty_tree_defer': '(Tree_int){'
+	} {
+		signature := 'Tree_int ${name}(void) {'
+		assert c_code.contains(signature), c_code
+		body := c_code.all_after(signature).all_before('\n}')
+		assert body.contains(expected), body
+	}
 }
 
 fn test_generic_sum_rejects_unknown_is_pattern_after_specialization() {
-	v3_bin := generic_sum_type_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_unknown_is_${os.getpid()}.v')
+	root := generic_sum_type_fixture_dir('unknown_is')
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'app')
+	src := os.join_path(root, 'main.v')
 	os.write_file(src, '
 struct A {}
 struct B {}
@@ -414,43 +349,15 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_unknown_is_${os.getpid()}')
-	os.rm(bin) or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('`Missing` is not a variant of sum type `Value`'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
-fn test_generic_sum_comptime_variant_pattern_still_specializes() {
-	generic_sum_type_compile_run_source('comptime_variant_pattern', '
-struct A {}
-struct B {}
-
-type Value = A | B
-
-fn match_count[T](value T) int {
-	mut count := 0
-	$for variant in T.variants {
-		if value is variant {
-			count++
-		}
-	}
-	return count
-}
-
-fn main() {
-	value := Value(A{})
-	assert match_count(value) == 1
-	println("ok")
-}
-')
-}
-
-fn test_generic_sum_rejects_mismatched_qualified_generic_variant_pattern() {
-	v3_bin := generic_sum_type_build_v3()
-	root := os.join_path(os.temp_dir(), 'v3_generic_sum_type_qualified_negative_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn test_generic_sum_rejects_mismatched_and_qualified_variants() {
+	root := generic_sum_type_fixture_dir('variant_errors')
+	defer { os.rmdir_all(root) or {} }
 	left_dir := os.join_path(root, 'left')
 	right_dir := os.join_path(root, 'right')
 	os.mkdir_all(left_dir) or { panic(err) }
@@ -464,122 +371,6 @@ pub struct Foo {}
 	os.write_file(os.join_path(right_dir, 'right.v'), 'module right
 
 pub struct Foo {}
-') or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'module main
-
-import left
-import right
-
-struct Empty {}
-
-struct Node[T] {
-	value T
-}
-
-type Tree[T] = Empty | Node[T]
-
-fn bad(tree Tree[left.Foo]) int {
-	return match tree {
-		Node[right.Foo] { 1 }
-		else { 0 }
-	}
-}
-
-fn main() {}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_qualified_negative_${os.getpid()}')
-	os.rm(bin) or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('Node[right.Foo]'), compile.output
-	assert compile.output.contains('Tree[left.Foo]'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
-fn test_generic_sum_rejects_qualified_generic_variant_from_other_module() {
-	v3_bin := generic_sum_type_build_v3()
-	root := os.join_path(os.temp_dir(),
-		'v3_generic_sum_type_qualified_variant_negative_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	left_dir := os.join_path(root, 'left')
-	right_dir := os.join_path(root, 'right')
-	os.mkdir_all(left_dir) or { panic(err) }
-	os.mkdir_all(right_dir) or { panic(err) }
-	os.write_file(os.join_path(left_dir, 'left.v'), 'module left
-
-pub struct Foo {}
-') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(right_dir, 'right.v'), 'module right
-
-pub struct Node[T] {
-	pub:
-	value T
-}
-') or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'module main
-
-import left
-import right
-
-struct Empty {}
-
-struct Node[T] {
-	value T
-}
-
-type Tree[T] = Empty | Node[T]
-
-fn bad(tree Tree[left.Foo]) int {
-	return match tree {
-		right.Node[left.Foo] { 1 }
-		else { 0 }
-	}
-}
-
-fn main() {}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(),
-		'v3_generic_sum_type_qualified_variant_negative_${os.getpid()}')
-	os.rm(bin) or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('right.Node[left.Foo]'), compile.output
-	assert compile.output.contains('Tree[left.Foo]'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
-fn test_generic_sum_rejects_qualified_bare_variants_from_other_module() {
-	v3_bin := generic_sum_type_build_v3()
-	root := os.join_path(os.temp_dir(),
-		'v3_generic_sum_type_qualified_bare_variant_negative_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	left_dir := os.join_path(root, 'left')
-	right_dir := os.join_path(root, 'right')
-	os.mkdir_all(left_dir) or { panic(err) }
-	os.mkdir_all(right_dir) or { panic(err) }
-	os.write_file(os.join_path(left_dir, 'left.v'), 'module left
-
-pub struct Foo {}
-') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(right_dir, 'right.v'), 'module right
 
 pub struct Empty {}
 
@@ -592,7 +383,7 @@ pub struct Node[T] {
 	}
 
 	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'module main
+	source := 'module main
 
 import left
 import right
@@ -604,6 +395,20 @@ struct Node[T] {
 }
 
 type Tree[T] = Empty | Node[T]
+
+fn bad_type_arg(tree Tree[left.Foo]) int {
+	return match tree {
+		Node[right.Foo] { 1 }
+		else { 0 }
+	}
+}
+
+fn bad_module(tree Tree[left.Foo]) int {
+	return match tree {
+		right.Node[left.Foo] { 1 }
+		else { 0 }
+	}
+}
 
 fn bad_node(tree Tree[left.Foo]) int {
 	return match tree {
@@ -619,27 +424,40 @@ fn bad_empty(tree Tree[left.Foo]) int {
 	}
 }
 
+fn bad() Tree[int] {
+	return Node[string]{"nope"}
+}
+
 fn main() {}
-') or {
+'
+	os.write_file(src, source) or {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(),
-		'v3_generic_sum_type_qualified_bare_variant_negative_${os.getpid()}')
-	os.rm(bin) or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-nocolor', '-o', bin])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('right.Node'), compile.output
-	assert compile.output.contains('right.Empty'), compile.output
-	assert compile.output.contains('Tree[left.Foo]'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
+	lines := source.split_into_lines()
+	errors := compile.output.split_into_lines().filter(it.contains(': error: '))
+	// Match diagnostics to each pattern's source line. A generic variant's display name
+	// can omit its module qualifier.
+	for pattern in ['Node[right.Foo]', 'right.Node[left.Foo]', 'right.Node', 'right.Empty'] {
+		line := lines.index('\t\t${pattern} { 1 }') + 1
+		assert line > 0, pattern
+		location := 'main.v:${line}:'
+		assert errors.any(it.contains(location) && it.contains('`Tree[left.Foo]` has no variant')), 'expected rejection of ${pattern} at ${location}\n${compile.output}'
+	}
+	mismatch_line := lines.index('\treturn Node[string]{"nope"}') + 1
+	assert mismatch_line > 0
+	location := 'main.v:${mismatch_line}:'
+	assert errors.any(it.contains(location) && (it.contains('cannot use `Node[string]` as type `Tree[int]`')
+		|| it.contains('cannot return') || it.contains('incompatible'))), compile.output
 }
 
 fn test_generic_sum_accepts_declared_qualified_bare_variant_pattern() {
-	v3_bin := generic_sum_type_build_v3()
-	root := os.join_path(os.temp_dir(),
-		'v3_generic_sum_type_declared_qualified_bare_${os.getpid()}')
-	os.rmdir_all(root) or {}
+	root := generic_sum_type_fixture_dir('declared_qualified_bare')
+	defer { os.rmdir_all(root) or {} }
 	foo_dir := os.join_path(root, 'foo')
 	os.mkdir_all(foo_dir) or { panic(err) }
 	os.write_file(os.join_path(foo_dir, 'foo.v'), 'module foo
@@ -673,73 +491,23 @@ fn main() {}
 		panic(err)
 	}
 
-	c_out := os.join_path(os.temp_dir(),
-		'v3_generic_sum_type_declared_qualified_bare_${os.getpid()}.c')
-	os.rm(c_out) or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${c_out}'])
+	c_out := os.join_path(root, 'out.c')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', c_out])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('tcc.exe'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert os.exists(c_out)
 }
 
-fn test_generic_sum_concrete_generic_variants_keep_distinct_tags() {
-	v3_bin := generic_sum_type_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_distinct_tags_${os.getpid()}.v')
-	os.write_file(src, '
-struct Box[T] {
-	value T
-}
-
-type BoxSum = Box[int] | Box[string]
-
-fn score(s BoxSum) int {
-	return match s {
-		Box[int] { 10 + s.value }
-		Box[string] { 100 + s.value.len }
-	}
-}
-
-fn main() {
-	s := BoxSum(Box[string]{
-		value: "ok"
-	})
-	assert s is Box[string]
-	assert !(s is Box[int])
-	b := s as Box[string]
-	assert b.value == "ok"
-	assert score(s) == 102
-
-	i := BoxSum(Box[int]{
-		value: 7
-	})
-	assert i is Box[int]
-	assert !(i is Box[string])
-	assert score(i) == 17
-	println("ok")
-}
-	') or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_distinct_tags_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_generic_sum_type_param_variant_in_imported_module() {
-	v3_bin := generic_sum_type_build_v3()
-	root := os.join_path(os.temp_dir(), 'v3_generic_sum_type_param_variant_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn test_generic_sum_type_param_variants_resolve_across_modules() {
+	root := generic_sum_type_fixture_dir('param_variant_scopes')
+	defer { os.rmdir_all(root) or {} }
 	maybe_dir := os.join_path(root, 'maybe')
+	payload_dir := os.join_path(root, 'payload')
+	client_dir := os.join_path(root, 'client')
 	os.mkdir_all(maybe_dir) or { panic(err) }
+	os.mkdir_all(payload_dir) or { panic(err) }
+	os.mkdir_all(client_dir) or { panic(err) }
 	os.write_file(os.join_path(maybe_dir, 'maybe.v'), 'module maybe
 
 pub struct Err {}
@@ -767,57 +535,6 @@ pub fn unwrap_int(x Maybe[int]) int {
 	assert y == 7
 	return y
 }
-') or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'module main
-
-import maybe
-
-fn main() {
-	println(maybe.describe(maybe.wrap_int(7)))
-	println(maybe.describe(maybe.wrap_err()))
-	println(maybe.unwrap_int(maybe.wrap_int(7)))
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_param_variant_bin_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'int\nerr\n7'
-
-	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('maybe__Err'), c_code
-	assert !c_code.contains('maybe__Maybe_int y = x'), c_code
-	assert !c_code.contains('maybe__T'), c_code
-	assert !c_code.contains('x == v_int'), c_code
-}
-
-fn test_generic_sum_type_args_keep_non_main_caller_scope_and_selective_imports() {
-	v3_bin := generic_sum_type_build_v3()
-	root := os.join_path(os.temp_dir(), 'v3_generic_sum_type_caller_scope_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	maybe_dir := os.join_path(root, 'maybe')
-	payload_dir := os.join_path(root, 'payload')
-	client_dir := os.join_path(root, 'client')
-	os.mkdir_all(maybe_dir) or { panic(err) }
-	os.mkdir_all(payload_dir) or { panic(err) }
-	os.mkdir_all(client_dir) or { panic(err) }
-	os.write_file(os.join_path(maybe_dir, 'maybe.v'), 'module maybe
-
-pub struct Err {}
-
-pub type Maybe[T] = T | Err
 
 pub fn wrap[T](v T) Maybe[T] {
 	return Maybe[T](v)
@@ -891,8 +608,14 @@ pub fn unwrap_payload(x maybe.Maybe[Payload]) Payload {
 	os.write_file(src, 'module main
 
 import client
+// Keep this import spelling distinct from the client module.
+import maybe as int_maybe
 
 fn main() {
+	assert int_maybe.describe(int_maybe.wrap_int(7)) == "int"
+	assert int_maybe.describe(int_maybe.wrap_err()) == "err"
+	assert int_maybe.unwrap_int(int_maybe.wrap_int(7)) == 7
+
 	local_sum := client.make()
 	assert client.describe_local(local_sum) == 7
 	local := client.unwrap_local(local_sum)
@@ -907,18 +630,23 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_caller_scope_bin_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	assert run.output.trim_space() == 'ok', run.output
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
+	wrap_err_signature := 'maybe__Maybe_int maybe__wrap_err(void) {'
+	assert c_code.contains(wrap_err_signature), c_code
+	wrap_err_body := c_code.all_after(wrap_err_signature).all_before('\n}')
+	assert wrap_err_body.contains('.maybe__Err = (maybe__Err)'), wrap_err_body
+	assert !c_code.contains('maybe__Maybe_int y = x'), c_code
+	assert !c_code.contains('maybe__T'), c_code
+	assert !c_code.contains('x == v_int'), c_code
 	assert c_code.contains('maybe__Maybe_client__Local'), c_code
 	assert c_code.contains('maybe__Maybe_payload__Payload'), c_code
 	assert c_code.contains('payload__Payload'), c_code

@@ -1,38 +1,19 @@
 import os
+import v.cmdexec
+import v.tempname
 
-const selfqual_vexe = @VEXE
-const selfqual_tests_dir = os.dir(@FILE)
-const selfqual_v3_dir = os.dir(selfqual_tests_dir)
-const selfqual_vlib_dir = os.dir(selfqual_v3_dir)
-const selfqual_v3_src = os.join_path(selfqual_v3_dir, 'v.v')
-
-fn selfqual_build_v3() string {
-	exe_suffix := $if windows { '.exe' } $else { '' }
-	v3_bin := os.join_path(os.temp_dir(), 'v3 self qualified module name test${exe_suffix}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([selfqual_vexe, '-gc', 'none', '-path', '${'${selfqual_vlib_dir}|@vlib|@vmodules'}',
-			'-o', v3_bin, '${selfqual_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn selfqual_write_module(name string, module_lines []string, test_lines []string) string {
-	root := os.join_path(os.temp_dir(), 'v3 ${name}')
-	mod_dir := os.join_path(root, name)
-	os.rmdir_all(root) or {}
-	os.mkdir_all(mod_dir) or { panic(err) }
+fn selfqual_write_module(mod_dir string, module_lines []string, test_lines []string) {
+	os.mkdir(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'lib.v'), module_lines.join('\n') + '\n') or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'lib_test.v'), test_lines.join('\n') + '\n') or { panic(err) }
-	return root
 }
 
-// The compiler of the tree under test is built from source, and the fallback compiler is
-// disabled while the fixture is built: a failed build would otherwise be retried with the
-// fallback compiler, which hides the defect this test exists to catch.
-fn selfqual_disable_fallback() {
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
+fn selfqual_run_v(args []string) os.Result {
+	// The outer runner's filters select this test, while the child must run its fixture.
+	return cmdexec.run_in_merged_with_env(@VEXE, args, '', {
+		'VTEST_ONLY':    ''
+		'VTEST_ONLY_FN': ''
+	})
 }
 
 // A file can qualify a symbol with the name of its own module (`m.greeting` written inside
@@ -41,9 +22,12 @@ fn selfqual_disable_fallback() {
 // compiler reads the module name as an undeclared identifier. The qualified name is read
 // from a test file of the module here, which is the case that reached the C output.
 fn test_self_qualified_constant_name_is_generated_as_a_c_name() {
-	v3_bin := selfqual_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3 selfqual ${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod := 'selfqual'
-	root := selfqual_write_module(mod, [
+	mod_dir := os.join_path(root, mod)
+	selfqual_write_module(mod_dir, [
 		'module ${mod}',
 		'',
 		"pub const greeting = 'hi'",
@@ -55,25 +39,23 @@ fn test_self_qualified_constant_name_is_generated_as_a_c_name() {
 		'\tprintln(${mod}.greeting.len)',
 		'}',
 	])
-	mod_dir := os.join_path(root, mod)
-	selfqual_disable_fallback()
-	test_out := os.exec([v3_bin, '-gc', 'none', 'test', mod_dir])
+	test_out := selfqual_run_v(['-gc', 'none', 'test', mod_dir])
 	assert test_out.exit_code == 0, test_out.output
 	assert test_out.output.contains('1 passed'), test_out.output
-	c_path := os.join_path(os.temp_dir(), 'v3 self qualified module name.c')
-	generate := os.exec([v3_bin, '-o', c_path, os.join_path(mod_dir, 'lib_test.v')])
+	c_path := os.join_path(root, 'self qualified module name.c')
+	generate := selfqual_run_v(['-o', c_path, os.join_path(mod_dir, 'lib_test.v')])
 	assert generate.exit_code == 0, generate.output
 	generated := os.read_file(c_path) or { panic(err) }
 	assert generated.contains('println(${mod}__greeting);')
 	// The qualified string still reaches C, while its static length folds to a literal.
 	assert generated.contains('println(int__str(2));')
 	assert !generated.contains('${mod}__greeting.len')
-	run_path := os.join_path(os.temp_dir(), 'v3 self qualified module name run' + $if windows {
+	run_path := os.join_path(root, 'self qualified module name run' + $if windows {
 		'.exe'
 	} $else {
 		''
 	})
-	compile := os.exec([v3_bin, '-gc', 'none', '-o', run_path, os.join_path(mod_dir, 'lib_test.v')])
+	compile := selfqual_run_v(['-gc', 'none', '-o', run_path, os.join_path(mod_dir, 'lib_test.v')])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([run_path])
 	assert run.exit_code == 0, run.output

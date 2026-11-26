@@ -45,6 +45,19 @@ case "${V_CI_SOURCE_BUILD:-0}" in
   0|1) ;;
   *) echo 'V_CI_SOURCE_BUILD must be 0 or 1' >&2; exit 1 ;;
 esac
+# Emulated jobs split the source build: `generate` writes the optimized compiler's
+# C project to vprod.project, the job's host compiles it with a cross compiler
+# (`make -C vprod.project`), and `install` installs the result.
+stage=${V_CI_VPROD_STAGE:-}
+case "$stage" in
+  ''|generate|install) ;;
+  *) echo 'V_CI_VPROD_STAGE must be generate or install' >&2; exit 1 ;;
+esac
+if [ -n "$stage" ] && [ "${V_CI_SOURCE_BUILD:-0}" != 1 ]; then
+  echo 'V_CI_VPROD_STAGE needs V_CI_SOURCE_BUILD=1' >&2
+  exit 1
+fi
+vprod_project="$PWD/vprod.project"
 
 sha=$(git rev-parse 'HEAD^{commit}')
 host_platform=$(platform)
@@ -88,6 +101,15 @@ if [ -n "$prebuilt" ]; then
   cp "$prebuilt" ./vprod
   chmod 755 ./vprod
   echo "Using optimized compiler $asset"
+elif [ "$stage" = install ]; then
+  if [ ! -f "$vprod_project/v" ]; then
+    echo "No compiled compiler in $vprod_project; run the generate stage and make -C first" >&2
+    exit 1
+  fi
+  cp "$vprod_project/v" ./vprod
+  chmod 755 ./vprod
+  rm -rf "$vprod_project"
+  echo 'Using optimized compiler compiled from vprod.project'
 else
   if [ ! -x ./v ]; then
     make "$@"
@@ -105,6 +127,14 @@ else
   case "$compiler" in *tcc*) echo 'A production compiler needs an optimizing C compiler' >&2; exit 1 ;; esac
   # Export the C project before native optimization to keep peak memory down.
   # Clear inherited test/backend flags and recursive make settings only here.
+  if [ "$stage" = generate ]; then
+    (
+      unset VFLAGS VEXE VPROD MAKEFLAGS MFLAGS
+      sh cmd/tools/build_vprod.sh ./v ./vprod "$compiler" "$vprod_project"
+    )
+    echo "Generated the optimized compiler's C project in $vprod_project"
+    exit 0
+  fi
   (
     unset VFLAGS VEXE VPROD MAKEFLAGS MFLAGS
     sh cmd/tools/build_vprod.sh ./v ./vprod "$compiler"
@@ -116,6 +146,6 @@ fi
   ./vprod -version
 )
 mv -f ./vprod ./v
-./v -new-compiler -gc none run cmd/tools/detect_tcc.v
-./v -new-compiler -gc none run .github/problem-matchers/register_all.vsh
+./v -gc none run cmd/tools/detect_tcc.v
+./v -gc none run .github/problem-matchers/register_all.vsh
 make "$@" cache-basic-modules

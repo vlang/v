@@ -10,15 +10,6 @@ fn run_issue_28694_probe(name string, source string, files map[string]string) {
 	defer {
 		os.rmdir_all(temp_dir) or {}
 	}
-	old_report_disabled := os.getenv_opt('V_C_ERROR_BUG_REPORT_DISABLED')
-	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
-	defer {
-		if value := old_report_disabled {
-			os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', value, true)
-		} else {
-			os.unsetenv('V_C_ERROR_BUG_REPORT_DISABLED')
-		}
-	}
 	os.write_file(os.join_path(temp_dir, 'v.mod'), "Module { name: 'issue_28694' }\n") or {
 		panic(err)
 	}
@@ -34,7 +25,7 @@ fn run_issue_28694_probe(name string, source string, files map[string]string) {
 		'probe'
 	})
 	os.write_file(source_path, source) or { panic(err) }
-	build := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', output_path, source_path])
+	build := os.exec([@VEXE, '-nocache', '-o', output_path, source_path])
 	assert build.exit_code == 0, '${name}: ${build.output}'
 	run := os.exec([output_path])
 	assert run.exit_code == 0, '${name}: ${run.output}'

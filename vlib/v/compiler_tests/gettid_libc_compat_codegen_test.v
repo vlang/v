@@ -1,30 +1,22 @@
 import os
+import v.cmdexec
+import v.tempname
 
-const gettid_compat_vexe = @VEXE
-const gettid_compat_tests_dir = os.dir(@FILE)
-const gettid_compat_v3_dir = os.dir(gettid_compat_tests_dir)
-const gettid_compat_vlib_dir = os.dir(gettid_compat_v3_dir)
-const gettid_compat_v3_src = os.join_path(gettid_compat_v3_dir, 'v.v')
-
-fn gettid_compat_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_gettid_compat_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	// -prealloc enables the parallel declaration worker that must emit the helper
-	// before function bodies can call it.
-	build :=
-		os.exec([gettid_compat_vexe, '-prealloc', '-path',
-			'${gettid_compat_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${gettid_compat_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn compile_gettid_fixture(src string, bin string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, [src, '-b', 'c', '-o', bin], '', {
+		'VFLAGS': ''
+	})
 }
 
 fn test_v_gettid_uses_declared_libc_compat_helper() {
 	$if !linux {
 		return
 	}
-	v3_bin := gettid_compat_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_gettid_compat_${os.getpid()}.v')
-	bin := os.join_path(os.temp_dir(), 'v3_gettid_compat_${os.getpid()}')
+	workspace := os.join_path(os.vtmp_dir(), 'v3_gettid_compat_${tempname.unique_token()}')
+	os.mkdir(workspace)!
+	defer { os.rmdir_all(workspace) or {} }
+	src := os.join_path(workspace, 'main.v')
+	bin := os.join_path(workspace, 'program')
 	os.write_file(src, 'module main
 
 #flag -Werror=implicit-function-declaration
@@ -35,9 +27,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := compile_gettid_fixture(src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('implicit declaration'), compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
@@ -62,9 +52,11 @@ fn test_v_gettid_with_explicit_c_syscall_keeps_one_syscall_decl() {
 	$if !linux {
 		return
 	}
-	v3_bin := gettid_compat_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_gettid_explicit_syscall_${os.getpid()}.v')
-	bin := os.join_path(os.temp_dir(), 'v3_gettid_explicit_syscall_${os.getpid()}')
+	workspace := os.join_path(os.vtmp_dir(), 'v3_gettid_explicit_syscall_${tempname.unique_token()}')
+	os.mkdir(workspace)!
+	defer { os.rmdir_all(workspace) or {} }
+	src := os.join_path(workspace, 'main.v')
+	bin := os.join_path(workspace, 'program')
 	os.write_file(src, 'module main
 
 #flag -Werror=implicit-function-declaration
@@ -78,9 +70,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := compile_gettid_fixture(src, bin)
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('i32 syscall(i32 number, ...);'), generated

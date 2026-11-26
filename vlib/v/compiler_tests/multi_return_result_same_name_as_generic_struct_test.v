@@ -62,8 +62,7 @@ fn main() {
 		panic(err)
 	}
 	out := os.join_path(dir, 'main.exe')
-	// `-new-compiler` keeps a C error from being answered by the V 0.5.2 fallback.
-	res := os.exec([vexe, '-new-compiler', '-o', out, src])
+	res := os.exec([vexe, '-o', out, src])
 	assert res.exit_code == 0, res.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

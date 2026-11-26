@@ -1,16 +1,13 @@
 // vtest ownership
 import os
+import v.cmdexec
+import v.tempname
 
 const capture_root = os.dir(os.dir(os.dir(os.dir(@FILE))))
-const capture_tmp = os.join_path(os.vtmp_dir(), 'ownership_capture_${os.getpid()}')
-const capture_compiler = os.join_path(capture_tmp, 'v-ownership')
+const capture_tmp = os.join_path(os.vtmp_dir(), 'ownership_capture_${tempname.unique_token()}')
 
 fn testsuite_begin() {
 	os.mkdir_all(capture_tmp) or { panic(err) }
-	vlib := os.join_path(capture_root, 'vlib')
-	build := os.exec([@VEXE, '-gc', 'none', '-d', 'ownership', '-path', '${vlib}|@vlib|@vmodules',
-		'-o', capture_compiler, os.join_path(capture_root, 'vlib', 'v', 'v.v')])
-	assert build.exit_code == 0, build.output
 }
 
 fn testsuite_end() {
@@ -22,16 +19,26 @@ fn check_capture(name string, code string, serial bool) os.Result {
 }
 
 fn check_capture_in_mode(name string, code string, serial bool, mode string) os.Result {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	v3_src := os.join_path(os.dir(@FILE), '../v.v')
+	compiler := if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		os.real_path(shared)
+	} else {
+		@VEXE
+	}
 	source := os.join_path(capture_tmp, '${name}.v')
 	os.write_file(source, code) or { panic(err) }
 	vlib := os.join_path(capture_root, 'vlib')
-	mut command := [capture_compiler, '-nocache', mode, '-d', 'ownership', '-path',
-		'${vlib}|@vlib|@vmodules']
+	mut args := ['-nocache', mode, '-d', 'ownership', '-path', '${vlib}|@vlib|@vmodules']
 	if serial {
-		command << '-no-parallel'
+		args << '-no-parallel'
 	}
-	command << ['run', source]
-	return os.exec(command)
+	args << ['run', source]
+	return cmdexec.run_in_merged_with_env(compiler, args, '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
 }
 
 fn test_nested_array_lambda_capture_can_be_regenerated_for_assertions() {

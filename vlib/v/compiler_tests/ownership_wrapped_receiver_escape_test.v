@@ -1,4 +1,5 @@
 import os
+import json2
 
 struct WrappedReceiverReturnCase {
 	typ        string
@@ -6,11 +7,52 @@ struct WrappedReceiverReturnCase {
 	binding    string
 }
 
+struct WrappedReceiverEscapeDiagnostic {
+	file     string
+	severity string
+	message  string
+}
+
+const wrapped_receiver_escape_declarations = 'struct Builder implements Drop {
+mut:
+	value int
+	drops &int
+}
+struct Holder { target &Builder value int }
+struct Outer { holder Holder value int }
+fn (mut builder Builder) set(value int) &Builder {
+	builder.value = value
+	return builder
+}
+fn (mut builder Builder) drop() { unsafe { *builder.drops += 1 } }
+fn make_holder(mut builder Builder) Holder { return Holder{target: builder.set(44)} }
+fn make_outer(mut builder Builder) Outer { return Outer{holder: make_holder(mut builder)} }
+fn make_heap_holder(mut builder Builder) &Holder { return &Holder{target: builder.set(44)} }
+fn identity_holder(holder Holder) Holder { return holder }
+fn optional_reference(builder &Builder) ?&Builder { return builder }
+fn result_reference(builder &Builder) !&Builder { return builder }
+fn retain_references(references &[]&Builder) &[]&Builder { return references }
+'
+
+fn wrapped_receiver_escape_fixture(case WrappedReceiverReturnCase, name string) (string, string) {
+	source := 'fn ${name}(drops &int) ${case.typ} {
+	mut builder := Builder{drops: drops}
+	${case.binding}
+	return ${case.expression}
+}
+'
+	call := match case.typ {
+		'(int, &Builder)' { '_, _ := ${name}(&drops)' }
+		'!(int, &Builder)' { '_, _ := ${name}(&drops) or { panic(err) }' }
+		else { '_ = ${name}(&drops)' }
+	}
+	return source, call
+}
+
 fn test_ownership_wrapped_receiver_references_cannot_escape_local_storage() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_wrapped_receiver_escape_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
 	cases := [
 		WrappedReceiverReturnCase{'?&Builder', 'builder.set(42)', ''},
 		WrappedReceiverReturnCase{'!&Builder', 'builder.set(42)', ''},
@@ -46,45 +88,52 @@ fn test_ownership_wrapped_receiver_references_cannot_escape_local_storage() {
 		WrappedReceiverReturnCase{'&[]&Builder', 'retain_references(references)', 'references := [builder.set(42)]!'},
 		WrappedReceiverReturnCase{'&[]&Builder', 'retain_references(references["row"])', 'references := {"row": [builder.set(42)]!}'},
 	]
+	// Custom flags can limit diagnostics or select a different output format.
+	if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] {
+		check_wrapped_receiver_escape_batch(root, cases)!
+		return
+	}
+	source := os.join_path(root, 'main.v')
 	for case in cases {
-		call := if case.typ == '(int, &Builder)' {
-			'_, _ := escaped(&drops)'
-		} else if case.typ == '!(int, &Builder)' {
-			'_, _ := escaped(&drops) or { panic(err) }'
-		} else {
-			'_ = escaped(&drops)'
-		}
-		os.write_file(source, 'struct Builder implements Drop {
-mut:
-	value int
-	drops &int
-}
-struct Holder { target &Builder value int }
-struct Outer { holder Holder value int }
-fn (mut builder Builder) set(value int) &Builder {
-	builder.value = value
-	return builder
-}
-fn (mut builder Builder) drop() { unsafe { *builder.drops += 1 } }
-fn make_holder(mut builder Builder) Holder { return Holder{target: builder.set(44)} }
-fn make_outer(mut builder Builder) Outer { return Outer{holder: make_holder(mut builder)} }
-fn make_heap_holder(mut builder Builder) &Holder { return &Holder{target: builder.set(44)} }
-fn identity_holder(holder Holder) Holder { return holder }
-fn optional_reference(builder &Builder) ?&Builder { return builder }
-fn result_reference(builder &Builder) !&Builder { return builder }
-fn retain_references(references &[]&Builder) &[]&Builder { return references }
-fn escaped(drops &int) ${case.typ} {
-	mut builder := Builder{drops: drops}
-	${case.binding}
-	return ${case.expression}
-}
-fn main() { mut drops := 0; ${call} }
-')!
+		fixture, call := wrapped_receiver_escape_fixture(case, 'escaped')
+		os.write_file(source, wrapped_receiver_escape_declarations + fixture +
+			'fn main() { mut drops := 0; ${call} }\n')!
 		for mode in ['-no-parallel', ''] {
 			// Rejected fixtures are checked only: their returned pointers would be dangling.
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 			assert out.exit_code != 0, '${case.typ}: ${case.expression}: ${out.output}'
 			assert out.output.contains('cannot return a reference to local storage'), '${case.typ}: ${case.expression}: ${out.output}'
+		}
+	}
+}
+
+fn check_wrapped_receiver_escape_batch(root string, cases []WrappedReceiverReturnCase) ! {
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		fixture, call := wrapped_receiver_escape_fixture(case, 'escaped_${i}')
+		os.write_file(os.join_path(root, 'escape_case_${i}.v'), 'module main\n\n' + fixture)!
+		calls << '\t{\n\t\tmut drops := 0\n\t\t${call}\n\t}'
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n' +
+		wrapped_receiver_escape_declarations + '\nfn main() {\n${calls.join('\n')}\n}\n')!
+	for mode in [['-no-parallel'], []string{}] {
+		// JSON diagnostics include every error, even above the text diagnostic limit.
+		out := os.exec([@VEXE, '-nocache', '-ownership', '-d', 'ownership', ...mode, '-json-errors',
+			'-check', root])
+		assert out.exit_code != 0, '${mode}: ${out.output}'
+		mut rejected := map[string]bool{}
+		for line in out.output.split_into_lines() {
+			if !line.starts_with('{') {
+				continue
+			}
+			diagnostic := json2.decode[WrappedReceiverEscapeDiagnostic](line)!
+			if diagnostic.severity == 'error'
+				&& diagnostic.message.contains('cannot return a reference to local storage') {
+				rejected[os.file_name(diagnostic.file)] = true
+			}
+		}
+		for i, case in cases {
+			assert 'escape_case_${i}.v' in rejected, '${mode}: ${case.typ}: ${case.expression}: ${out.output}'
 		}
 	}
 }
@@ -180,7 +229,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 	}
 }

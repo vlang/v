@@ -5,14 +5,14 @@
 // or spawning it, passes it on too. Where the checker already reports the call
 // with an error (an assignment, an operand, a typed argument...), no warning is
 // added on top.
+import arrays.parallel
+import json2
+import math
 import os
+import runtime
+import v.cmdexec
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const unhandled_v3_bin = os.join_path(os.temp_dir(), 'v3_unhandled_result_test_${os.getpid()}')
+const fixture_root = os.vtmp_dir()
 
 const prelude = "module main
 
@@ -68,6 +68,19 @@ struct Case {
 	code  string // the body of main; «call» marks the call checked
 	extra string // top-level code, when the call is there instead
 	want  Want
+}
+
+struct CaseResult {
+	compile os.Result
+	at      []string
+}
+
+struct ResultDiagnostic {
+	file     string
+	line     int
+	col      int
+	severity string
+	message  string
 }
 
 const cases = [
@@ -133,19 +146,6 @@ const cases = [
 	Case{'option_arg', 'println(«maybe()»)', '', .nothing},
 ]
 
-fn build_v3() string {
-	if !os.is_executable(unhandled_v3_bin) {
-		res := os.exec([vexe, '-gc', 'none', '-path', '${'${vlib_dir}|@vlib|@vmodules'}', '-o',
-			unhandled_v3_bin, '${v3_src}'])
-		assert res.exit_code == 0, res.output
-	}
-	return unhandled_v3_bin
-}
-
-fn testsuite_end() {
-	os.rm(unhandled_v3_bin) or {}
-}
-
 fn unmarked(text string) string {
 	return text.replace('«', '').replace('»', '')
 }
@@ -167,17 +167,16 @@ fn call_position(c Case) (int, int) {
 
 // write_program writes `source` as main.v of a new directory, and returns it.
 fn write_program(name string, source string) string {
-	dir := os.join_path(os.vtmp_dir(), 'v3_unhandled_result_${name}_${os.getpid()}')
+	dir := os.join_path(fixture_root, 'v3_unhandled_result_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
 	return dir
 }
 
-// build_output builds the program in `dir`, as `v run` does before running it:
-// a check alone prints no warning when there is no error.
-fn build_output(v3 string, dir string) string {
-	return os.exec(['${v3}', '-nocache', '-gc', 'none', '-nocolor', '-o', os.join_path(dir, 'prog'),
-		os.join_path(dir, 'main.v')]).output
+// build_program compiles the program in `dir` to capture warnings for valid programs.
+fn build_program(dir string, env map[string]string, flags ...string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', '-gc', 'none', '-nocolor', ...flags,
+		'-o', os.join_path(dir, 'prog'), os.join_path(dir, 'main.v')], '', env)
 }
 
 // diagnostics_at returns the diagnostics reported on `line` of main.v.
@@ -192,15 +191,75 @@ fn diagnostics_at(output string, line int) []string {
 	return found
 }
 
-fn test_a_call_whose_result_nothing_handles_is_warned_about() {
-	v3 := build_v3()
-	mut wrong := []string{}
-	for c in cases {
+fn build_case_batch(name string, batch []Case, compiler_env map[string]string, expected_exit int) map[string]CaseResult {
+	modules := batch.map('result_${it.name}')
+	imports := modules.map('import ${it}').join('\n')
+	calls := modules.map('\t${it}.exercise()').join('\n')
+	dir := write_program(name, 'module main\n\n${imports}\n\nfn main() {\n${calls}\n}\n')
+	defer { os.rmdir_all(dir) or {} }
+	mut line_by_file := map[string]int{}
+	for i, c in batch {
+		module_name := modules[i]
+		module_dir := os.join_path(dir, module_name)
+		os.mkdir(module_dir) or { panic(err) }
+		filename := '${module_name}.v'
+		// Call each original main body and keep its diagnostic line and column.
+		source := program(c).replace_once('module main\n', 'module ${module_name}\n').replace_once('\nfn main()',
+			'\npub fn exercise()')
+		os.write_file(os.join_path(module_dir, filename), source) or { panic(err) }
+		line, _ := call_position(c)
+		line_by_file[filename] = line
+	}
+	result := build_program(dir, compiler_env, '-json-errors')
+	assert result.exit_code == expected_exit, result.output
+	mut diagnostics := map[string][]string{}
+	for line in result.output.split_into_lines() {
+		if !line.starts_with('{') {
+			continue
+		}
+		diagnostic := json2.decode[ResultDiagnostic](line) or { panic(err) }
+		filename := os.file_name(diagnostic.file)
+		if filename in line_by_file && diagnostic.line == line_by_file[filename] {
+			diagnostics[filename] << '${diagnostic.col}:${diagnostic.severity}: ${diagnostic.message.all_before('\n')}'
+		}
+	}
+	mut results := map[string]CaseResult{}
+	for i, c in batch {
+		results[c.name] = CaseResult{result, diagnostics['${modules[i]}.v']}
+	}
+	return results
+}
+
+fn build_case_matrix(compiler_env map[string]string, workers int) []CaseResult {
+	// Custom flags can limit diagnostics or change how the modules resolve.
+	if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] {
+		// Checker errors can stop the build before warnings are produced.
+		valid := build_case_batch('valid', cases.filter(it.want != .error_only), compiler_env, 0)
+		invalid := build_case_batch('invalid', cases.filter(it.want == .error_only), compiler_env, 1)
+		return cases.map(if it.want == .error_only { invalid[it.name] } else { valid[it.name] })
+	}
+	return parallel.amap(cases, fn [compiler_env] (c Case) CaseResult {
 		dir := write_program(c.name, program(c))
-		output := build_output(v3, dir)
-		os.rmdir_all(dir) or {}
+		defer { os.rmdir_all(dir) or {} }
+		result := build_program(dir, compiler_env)
+		line, _ := call_position(c)
+		return CaseResult{result, diagnostics_at(result.output, line)}
+	}, workers: workers)
+}
+
+fn test_a_call_whose_result_nothing_handles_is_warned_about() {
+	cpu_budget := math.max(1, math.min(runtime.nr_jobs(), runtime.nr_cpus()))
+	workers := math.min(4, cpu_budget)
+	compiler_env := {
+		'VJOBS': (cpu_budget / workers).str()
+	}
+	results := build_case_matrix(compiler_env, workers)
+	mut wrong := []string{}
+	for i, c in cases {
+		result := results[i].compile
+		output := result.output
 		line, col := call_position(c)
-		at := diagnostics_at(output, line)
+		at := results[i].at
 		warnings := at.filter(it.contains('warning:'))
 		errors := at.filter(it.contains('error:'))
 		ok := match c.want {
@@ -217,11 +276,15 @@ fn test_a_call_whose_result_nothing_handles_is_warned_about() {
 				errors.len > 0 && warnings.len == 0
 			}
 			.nothing {
-				at.len == 0
+				at.len == 0 && result.exit_code == 0
 			}
 		}
 		if !ok {
-			wrong << '${c.name} (${c.want}) at ${line}:${col}: ${at}'
+			wrong << if c.want == .nothing && result.exit_code != 0 {
+				'${c.name} (${c.want}): compilation failed\n${output}'
+			} else {
+				'${c.name} (${c.want}) at ${line}:${col}: ${at}'
+			}
 		}
 	}
 	assert wrong.len == 0, wrong.join('\n')
@@ -230,12 +293,11 @@ fn test_a_call_whose_result_nothing_handles_is_warned_about() {
 // The exact words: those of the errors the checker gives these calls elsewhere,
 // with the call named as it is written.
 fn test_the_warning_names_the_call_and_its_result_type() {
-	v3 := build_v3()
 	dir := write_program('names', prelude + "\nfn main() {\n\tfails()\n\tb := Box{}\n\tb.risky()\n\tos.ls('.')\n\tfails_void()\n}\n")
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	output := build_output(v3, dir)
+	output := build_program(dir, map[string]string{}).output
 	lines := output.split_into_lines()
 	for expected in ['warning: fails() returns `!int`, ${either_hint}',
 		'warning: b.risky() returns `!int`, ${either_hint}',
@@ -248,12 +310,11 @@ fn test_the_warning_names_the_call_and_its_result_type() {
 
 // `v run` shows the warning and runs the program, which goes on without the error.
 fn test_v_run_warns_and_runs_the_program() {
-	v3 := build_v3()
 	dir := write_program('run', prelude + "\nfn main() {\n\tfails()\n\tprintln('after the call')\n}\n")
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	res := os.exec(['${v3}', '-nocache', '-gc', 'none', 'run', os.join_path(dir, 'main.v')])
+	res := os.exec([@VEXE, '-nocache', '-gc', 'none', 'run', os.join_path(dir, 'main.v')])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('warning: fails() returns `!int`, ${either_hint}'), res.output
 	assert res.output.contains('after the call'), res.output
@@ -261,35 +322,32 @@ fn test_v_run_warns_and_runs_the_program() {
 
 // With -W, warnings are errors: this one too.
 fn test_the_warning_is_an_error_with_w() {
-	v3 := build_v3()
 	dir := write_program('werror', prelude + '\nfn main() {\n\tfails()\n}\n')
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	res := os.exec(['${v3}', '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
+	res := os.exec([@VEXE, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('error: fails() returns `!int`, ${either_hint}'), res.output
 }
 
 // Discarding a match result must not gain the returned-branch exemption.
 fn test_a_discarded_match_result_is_an_error_with_w() {
-	v3 := build_v3()
 	dir := write_program('discarded_match', prelude + '\nfn main() {\n\t_ = match 1 {\n\t\t1 { fails() }\n\t\telse { error("other") }\n\t}\n}\n')
 	defer { os.rmdir_all(dir) or {} }
-	res := os.exec([v3, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
+	res := os.exec([@VEXE, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('error: fails() returns `!int`, ${either_hint}'), res.output
 }
 
 fn test_handled_branch_results_compile_with_w() {
-	v3 := build_v3()
-	for c in cases {
-		if c.name !in ['handled_if', 'handled_nested_branch', 'propagated_if'] {
-			continue
-		}
-		dir := write_program('strict_${c.name}', program(c))
-		res := os.exec([v3, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
-		os.rmdir_all(dir) or {}
-		assert res.exit_code == 0, '${c.name}: ${res.output}'
-	}
+	batch := cases.filter(it.name in ['handled_if', 'handled_nested_branch', 'propagated_if'])
+	// Give each original body its own function so local declarations stay scoped.
+	functions := batch.map('${unmarked(it.extra)}\nfn ${it.name}() {\n\t${unmarked(it.code)}\n}')
+	calls := batch.map('\t${it.name}()')
+	source := prelude + '\n${functions.join('\n\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n'
+	dir := write_program('strict_handled_branches', source)
+	defer { os.rmdir_all(dir) or {} }
+	res := os.exec([@VEXE, '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
+	assert res.exit_code == 0, res.output
 }

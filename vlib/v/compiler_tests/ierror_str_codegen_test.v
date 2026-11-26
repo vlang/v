@@ -1,19 +1,12 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+import v.tempname
 
 fn test_ierror_str_uses_builtin_formatter() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_str_codegen_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_str_codegen_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 
-	src := os.join_path(os.temp_dir(), 'v3_ierror_str_codegen_input.v')
+	src := os.join_path(root, 'v3_ierror_str_codegen_input.v')
 	os.write_file(src, "fn fail_code(code int) !int {
 	return error_with_code('hi', code)
 }
@@ -45,8 +38,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_str_codegen_input')
-	compile := os.exec([v3_bin, '-nocache', '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_str_codegen_input')
+	compile := os.exec([@VEXE, '-nocache', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

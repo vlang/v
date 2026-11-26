@@ -39,7 +39,7 @@ def workflow_block(source, name, indent):
 
 
 def validate_master_bootstrap_contract(workflow, master):
-    # Every master push now covers all W3/W4/W5 inputs through the shared gate.
+    # Every admitted portability run covers all W3/W4/W5 inputs through the shared gate.
     push = workflow_block(workflow_block(master, 'on', 0), 'push', 2)
     if push.strip() != 'branches: [master]':
         raise ValueError('master push must be unfiltered')
@@ -57,8 +57,10 @@ def validate_master_bootstrap_contract(workflow, master):
         if not re.search(r'^    uses: \./\.github/workflows/' + re.escape(filename) + r'$',
                          caller, re.M):
             raise ValueError(f'{name} must call {filename}')
-        if re.search(r'^    (if|needs|continue-on-error):', caller, re.M):
-            raise ValueError(f'{name} must run unconditionally')
+        condition = '${{ !inputs.portability }}' if name == 'bootstrap-linux' else 'inputs.portability'
+        if (re.findall(r'^    if: (.+)$', caller, re.M) != [condition]
+                or re.search(r'^    (needs|continue-on-error):', caller, re.M)):
+            raise ValueError(f'{name} must run for its lane')
         if name.startswith('bootstrap-'):
             inputs = workflow_block(caller, 'with', 4)
             if inputs.strip() != f'platform: {name.removeprefix("bootstrap-")}':
@@ -66,8 +68,10 @@ def validate_master_bootstrap_contract(workflow, master):
     preflight = workflow_block(jobs, 'preflight', 2)
     if re.findall(r'^    needs: (.+)$', preflight, re.M) != ['bootstrap-linux']:
         raise ValueError('preflight must depend only on the Linux bootstrap')
-    if re.search(r'^    if:', preflight, re.M):
-        raise ValueError('preflight must retain the default success condition')
+    if re.findall(r'^    if: (.+)$', preflight, re.M) != [
+        "${{ !cancelled() && (inputs.portability || needs.bootstrap-linux.result == 'success') }}"
+    ]:
+        raise ValueError('preflight must require a successful bootstrap in the Linux lane')
     for cc in COMPILERS:
         caller = workflow_block(jobs, f'windows_ci_{cc}', 2)
         needs = re.findall(r'^    needs:\s*\[([^\]]+)\]$', caller, re.M)
@@ -440,64 +444,6 @@ class W5SourceTests(unittest.TestCase):
     def test_changed_test_selection_requires_a_new_tuple(self):
         with self.assertRaisesRegex(ValueError, 'tuple mismatch'):
             w5_metadata(self.script.replace("$caseName = 'test_", "$caseName = 'test_other_", 1))
-
-
-class FallbackChecksumTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.shell = shutil.which('sh')
-        compiler = shutil.which('gcc' if os.name == 'nt' else 'cc')
-        if not cls.shell or not compiler:
-            raise unittest.SkipTest('requires a POSIX shell and a C compiler')
-        cls.temp = tempfile.TemporaryDirectory(prefix='fallback checksum stdin ')
-        cls.addClassCleanup(cls.temp.cleanup)
-        cls.root = Path(cls.temp.name)
-        source = cls.root / 'sha256sum.c'
-        source.write_text(r'''
-#include <stdio.h>
-#include <sys/stat.h>
-int main(void) {
-    struct stat info;
-    /* Model Git for Windows coreutils checking stdin before hashing a file. */
-    if (fstat(0, &info) != 0) {
-        fputs("closed stdin\n", stderr);
-        return 9;
-    }
-    puts("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  fixture");
-    return 0;
-}
-''', encoding='utf-8')
-        binary = cls.root / ('sha256sum.exe' if os.name == 'nt' else 'sha256sum')
-        subprocess.run([compiler, '-o', str(binary), str(source)],
-                       check=True, capture_output=True, text=True, timeout=60)
-        installer = (ROOT / 'cmd/tools/install_v1_fallback.sh').read_text(encoding='utf-8')
-        start = installer.index('sha256_of() {\n')
-        end = installer.index('\ncandidate_has_expected_version()', start)
-        cls.function = installer[start:end]
-
-    def checksum_with_closed_stdin(self, function):
-        script = self.root / 'probe.sh'
-        # Set PATH inside the shell: Git for Windows prepends its coreutils to
-        # the inherited Windows PATH when sh starts. cygpath also converts the
-        # drive prefix before POSIX PATH treats its colon as a separator.
-        fixture_path = "'" + self.root.as_posix().replace("'", "'\\''") + "'"
-        setup = (f'fixture_bin={fixture_path}\n'
-                 'if command -v cygpath >/dev/null 2>&1; then\n'
-                 '    fixture_bin=$(cygpath -u "$fixture_bin")\n'
-                 'fi\nPATH="$fixture_bin:$PATH"\nexport PATH\n')
-        script.write_bytes((setup + function + '\nsha256_of fixture 0<&-\n').encode('utf-8'))
-        return subprocess.run([self.shell, script.as_posix()],
-                              capture_output=True, text=True, timeout=30)
-
-    def test_checksum_tools_receive_valid_stdin(self):
-        result = self.checksum_with_closed_stdin(self.function)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(result.stdout.strip(), '0123456789abcdef' * 4)
-
-    def test_closed_stdin_fixture_detects_the_unredirected_regression(self):
-        result = self.checksum_with_closed_stdin(self.function.replace('} < /dev/null', '}'))
-        self.assertEqual(result.stdout.strip(), '')
-        self.assertIn('closed stdin', result.stderr)
 
 
 class ShaderFixtureTests(unittest.TestCase):

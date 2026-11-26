@@ -1,0 +1,113 @@
+name: FreeBSD tools worker regression
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/tools_ci.yml'
+      - '.github/workflows/freebsd_tools_workers_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tools-freebsd:
+    runs-on: ubuntu-latest
+    # After VM bootstrap, GCC's strict suite spends minutes per compiler fixture.
+    timeout-minutes: ${{ matrix.cc == 'gcc' && matrix.suite == 'strict' && 45 || 25 }}
+    strategy:
+      matrix:
+        suite: [default, strict]
+        shard: [0, 1, 2]
+        cc: [tcc, gcc, clang]
+        exclude:
+          - cc: tcc
+            suite: strict
+      fail-fast: false
+    env:
+      # Historical guest logs show compiler workers exhausting swap.
+      VJOBS: '1'
+      VFLAGS: -cc ${{ matrix.cc }}
+      V_CI_SUITE: ${{ matrix.suite }}
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '3'
+      VTEST_SHOW_START: '1'
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start FreeBSD VM with ${{ matrix.cc }}
+        uses: cross-platform-actions/action@82668f1fbd89d9c99487604f822cbf6716f124d3 # v1.7.0
+        with:
+          operating_system: freebsd
+          version: '15.1'
+          # GCC peaks at about 2 GiB compiling the cmd/v tests, which build the whole
+          # compiler; three of them ran out of memory in 8 GiB. The host has 16 GiB.
+          memory: ${{ matrix.cc == 'gcc' && '12G' || '8G' }}
+          # Keep the existing VM size and every shard; cap concurrent test workers.
+          cpu_count: 3
+          shell: sh
+          sync_files: runner-to-vm
+          environment_variables: VFLAGS VJOBS V_CI_SUITE VTEST_SELF_SHARD_INDEX VTEST_SELF_SHARD_COUNT VTEST_SHOW_START VTEST_SHOW_LONGEST_BY_TOTALTIME
+
+      - name: Tests tools on FreeBSD with ${{ matrix.cc }}
+        shell: cpa.sh {0}
+        run: |
+          # A custom VM shell does not imply GitHub's usual fail-fast options.
+          set -eu
+          test "$VJOBS" = 1
+          echo "FreeBSD resources before tools tests"
+          sysctl hw.physmem hw.ncpu
+          swapinfo -h
+          report_resources() {
+            echo "FreeBSD resources at exit"
+            swapinfo -h || true
+            sysctl vm.stats.vm.v_free_count || true
+            sudo dmesg | tail -n 100 || true
+          }
+          trap report_resources EXIT
+          sudo pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv
+          if [ "$VFLAGS" = "-cc gcc" ]; then
+            sudo pkg install -y gcc
+          fi
+          # Mandatory: hostname not set in VM => some tests fail
+          sudo hostname -s freebsd-ci
+          echo "::group::OS infos"
+          uname -a
+          echo "::endgroup::"
+          # Build V
+          echo "::group::Build V"
+          git config --global --add safe.directory .
+          printf "VFLAGS = %s\n" "$VFLAGS"
+          # Non-final commands in an && list are exempt from set -e.
+          gmake
+          # Optimize the driver with Clang; retain the matrix compiler for its tests.
+          VFLAGS= ./v self -prod -cc clang -parallel-cc -showcc
+          sudo ./v symlink
+          echo "::endgroup::"
+          echo "::group::v doctor"
+          ./v doctor
+          echo "::endgroup::"
+          # Keep compiler-wide checks in one job; every test suite is sharded.
+          if [ "$V_CI_SUITE" = "default" ] && [ "$VTEST_SELF_SHARD_INDEX" = "0" ]; then
+            echo "::group::Check code in cmd/ is formatted"
+            ./v fmt -verify cmd/
+            echo "::endgroup::"
+            echo "::group::Check build tools"
+            ./v -silent -N -W -check build-tools
+            echo "::endgroup::"
+          fi
+          if [ "$V_CI_SUITE" = "default" ]; then
+            echo "::group::Test tools"
+            ./v -silent test-self cmd
+            echo "::endgroup::"
+          elif [ "$V_CI_SUITE" = "strict" ] && [ "$VFLAGS" != "-cc tcc" ]; then
+            echo "::group::Test tools (-cstrict)"
+            ./v -silent -W -cstrict test-self cmd
+            echo "::endgroup::"
+          else
+            echo "Unsupported tools suite: $V_CI_SUITE ($VFLAGS)" >&2
+            exit 1
+          fi

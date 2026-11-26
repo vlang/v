@@ -192,8 +192,8 @@ fn test_native_float_formatting_matches_c_rounding_and_shortest_decimal_expansio
 			'c':     c_output
 			'amd64': native_output
 		} {
-			compiled := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc',
-				'none', '-nocache', '-cc', 'cc', '-b', backend, '-o', output, path])
+			compiled := exec_native(['env', 'VFLAGS=', @VEXE, '-gc', 'none', '-nocache', '-cc',
+				'cc', '-b', backend, '-o', output, path])
 			assert compiled.exit_code == 0, compiled.output
 		}
 		reference := os.exec([c_output])
@@ -243,10 +243,10 @@ fn main() {
 }
 ')!
 		for production in [false, true] {
-			mut args := ['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler',
-				'-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-nocache', '-b', 'amd64',
-				'-o', output, path]
-			if production { args.insert(5, '-prod') }
+			mut args := ['env', 'VFLAGS=', @VEXE, '-no-retry-compilation', '-cc', 'cc', '-gc',
+				'none', '-nocache', '-b', 'amd64', '-o', output, path]
+			// Before `-cc cc`, not between the option and its value.
+			if production { args.insert(4, '-prod') }
 			compiled := exec_native(args)
 			assert compiled.exit_code == 0, compiled.output
 			result := os.exec([output])

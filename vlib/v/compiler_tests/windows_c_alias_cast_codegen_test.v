@@ -1,26 +1,14 @@
 import os
-
-const windows_c_alias_vexe = @VEXE
-const windows_c_alias_tests_dir = os.dir(@FILE)
-const windows_c_alias_v3_dir = os.dir(windows_c_alias_tests_dir)
-const windows_c_alias_vlib_dir = os.dir(windows_c_alias_v3_dir)
-const windows_c_alias_v3_src = os.join_path(windows_c_alias_v3_dir, 'v.v')
+import v.tempname
 
 fn test_windows_c_alias_cast_generates_a_c_cast() {
-	root := os.join_path(os.temp_dir(), 'v3_windows_c_alias_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root)!
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	v3_bin := os.join_path(root, 'v3')
-	build := os.exec([windows_c_alias_vexe, '-gc', 'none', '-path',
-		'${windows_c_alias_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${windows_c_alias_v3_src}'])
-	assert build.exit_code == 0, build.output
+	root := os.join_path(os.vtmp_dir(), 'v3_windows_c_alias_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, "import os\nimport v.build_constraint\n\nfn main() {\n\t_ := os.stat('.') or { return }\n\tenvironment := build_constraint.new_environment(['windows'], [])\n\t_ := environment.eval('windows') or { false }\n}\n")!
 	c_path := os.join_path(root, 'main.c')
-	generate := os.exec([v3_bin, '-silent', '-no-parallel', '-os', 'windows', '-cc', 'tcc', '-gc',
+	generate := os.exec([@VEXE, '-silent', '-no-parallel', '-os', 'windows', '-cc', 'tcc', '-gc',
 		'none', '-o', c_path, source])
 	assert generate.exit_code == 0, generate.output
 	c_source := os.read_file(c_path)!

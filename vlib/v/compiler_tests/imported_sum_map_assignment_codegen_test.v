@@ -1,23 +1,11 @@
 import os
-
-const imported_sum_map_vexe = @VEXE
-const imported_sum_map_tests_dir = os.dir(@FILE)
-const imported_sum_map_v3_dir = os.dir(imported_sum_map_tests_dir)
-const imported_sum_map_vlib_dir = os.dir(imported_sum_map_v3_dir)
-const imported_sum_map_v3_src = os.join_path(imported_sum_map_v3_dir, 'v.v')
+import v.tempname
 
 fn test_imported_sum_map_assignment_wraps_concrete_struct_value() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_imported_sum_map_test_${pid}')
-	build :=
-		os.exec([imported_sum_map_vexe, '-gc', 'none', '-path',
-			'${imported_sum_map_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${imported_sum_map_v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	root := os.join_path(os.temp_dir(), 'v3_imported_sum_map_project_${pid}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(os.join_path(root, 'store')) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_imported_sum_map_project_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.mkdir(os.join_path(root, 'store'))!
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'imported_sum_map' }\n") or {
 		panic(err)
 	}
@@ -65,8 +53,8 @@ fn main() {
 		panic(err)
 	}
 
-	out := os.join_path(os.temp_dir(), 'v3_imported_sum_map_out_${pid}')
-	compile := os.exec([v3_bin, '-o', '${out}', main_path])
+	out := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, '-o', out, main_path])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

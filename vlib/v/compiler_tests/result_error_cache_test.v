@@ -33,8 +33,8 @@ fn test_result_error_propagation_compiles_with_cold_and_warm_builtin_cache() {
 		source := os.join_path(root, 'program_${attempt}.v')
 		os.write_file(source, "struct Fault {\n message string\n}\nfn (f Fault) msg() string { return f.message }\nfn (f Fault) code() int { return 17 }\nfn fail(boxed bool) !int {\n if boxed { return Fault{message: 'boxed'} }\n return error('boom')\n}\nfn caller(boxed bool) !int { return fail(boxed)! }\nfn main() {\n for boxed in [false, true] {\n caller(boxed) or {\n assert err.msg() == if boxed { 'boxed' } else { 'boom' }\n assert err.code() == if boxed { 17 } else { 0 }\n continue\n }\n panic('expected an error')\n }\n println('errors preserved ${attempt}')\n}\n")!
 		output := os.join_path(root, 'program_${attempt}')
-		build := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-gc',
-			'none', '-cc', 'cc', '-showcc', '-o', output, source],
+		build := cmdexec.run_with_timeout(vexe, ['-no-retry-compilation', '-gc', 'none', '-cc',
+			'cc', '-showcc', '-o', output, source],
 			120_000)
 		assert build.exit_code == 0, build.output
 		assert !build.output.contains('V3 module cache fallback'), build.output

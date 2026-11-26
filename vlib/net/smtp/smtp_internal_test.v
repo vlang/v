@@ -450,21 +450,25 @@ fn smtp_tls_test_case(executable string, starttls bool, hostname string, verify 
 		os.rm(result_path) or {}
 	}
 
-	mut ready := false
+	// The server renames the complete ready file into place. Windows can still
+	// refuse to open a file that another process has just written (a virus
+	// scanner can hold it briefly), so a failed read is retried as well.
+	mut port := 0
 	for _ in 0 .. 250 {
 		if os.exists(ready_path) {
-			ready = true
-			break
+			if text := os.read_file(ready_path) {
+				port = text.trim_space().int()
+				break
+			}
 		}
 		if !server.is_alive() {
 			return error('SMTP TLS test server exited before listening')
 		}
 		time.sleep(20 * time.millisecond)
 	}
-	if !ready {
+	if port == 0 {
 		return error('SMTP TLS test server did not become ready')
 	}
-	port := os.read_file(ready_path)!.trim_space().int()
 	mut client_state := 'CONNECTED'
 	mut client := new_client(Config{
 		server:   hostname
@@ -486,8 +490,20 @@ fn smtp_tls_test_case(executable string, starttls bool, hostname string, verify 
 	if server.code != 0 {
 		return error('SMTP TLS test server failed with exit code ${server.code}')
 	}
-	server_result := os.read_file(result_path)!.trim_space()
+	server_result := read_smtp_tls_server_file(result_path)!.trim_space()
 	return '${client_state}:${server_result}'
+}
+
+// read_smtp_tls_server_file reads a file that the exited test server wrote last,
+// retrying briefly for the same reason as the ready file.
+fn read_smtp_tls_server_file(path string) !string {
+	for _ in 0 .. 100 {
+		if text := os.read_file(path) {
+			return text
+		}
+		time.sleep(20 * time.millisecond)
+	}
+	return os.read_file(path)
 }
 
 fn test_attachment_filename_crlf_cannot_inject_headers() {

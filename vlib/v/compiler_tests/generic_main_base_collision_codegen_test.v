@@ -1,21 +1,5 @@
 import os
-
-const gmb_vexe = @VEXE
-const gmb_tests_dir = os.dir(@FILE)
-const gmb_v3_dir = os.dir(gmb_tests_dir)
-const gmb_vlib_dir = os.dir(gmb_v3_dir)
-const gmb_v3_src = os.join_path(gmb_v3_dir, 'v.v')
-
-fn gmb_build_v3() string {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_main_base_collision_test_${pid}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([gmb_vexe, '-gc', 'none', '-path', '${gmb_vlib_dir}' + '|@vlib|@vmodules', '-o',
-			v3_bin, '${gmb_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn gmb_write_file(root string, rel string, source string) {
 	path := os.join_path(root, rel)
@@ -23,17 +7,16 @@ fn gmb_write_file(root string, rel string, source string) {
 	os.write_file(path, source) or { panic(err) }
 }
 
-fn gmb_run_project(v3_bin string, name string, files map[string]string) string {
-	pid := os.getpid()
-	root := os.join_path(os.temp_dir(), 'v3_${name}_${pid}_project')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn gmb_run_project(name string, files map[string]string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: '${name}' }\n") or { panic(err) }
 	for rel, source in files {
 		gmb_write_file(root, rel, source)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${pid}')
-	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -51,8 +34,7 @@ fn gmb_run_project(v3_bin string, name string, files map[string]string) string {
 // top-level argument; the collision only surfaces once the bare base flows through a nested
 // composite in the clone.)
 fn test_generic_arg_locks_colliding_main_generic_base() {
-	v3_bin := gmb_build_v3()
-	out := gmb_run_project(v3_bin, 'generic_main_base_collision', {
+	out := gmb_run_project('generic_main_base_collision', {
 		'other/other.v': 'module other\n\npub struct Cont[T] {\npub mut:\n\tinner T\n}\n'
 		'mid/mid.v':     'module mid\n\nimport other\n\npub struct Box[T] {\npub mut:\n\tx T\n}\n\npub fn boxify[T](v T) T {\n\tc := other.Cont[T]{\n\t\tinner: v\n\t}\n\treturn c.inner\n}\n'
 		'main.v':        "module main\n\nimport mid\n\nstruct Box[T] {\npub:\n\tv T\n}\n\nfn main() {\n\tb := Box[string]{\n\t\tv: 'hi'\n\t}\n\tgot := mid.boxify(b)\n\tprintln(got.v)\n}\n"
@@ -66,8 +48,7 @@ fn test_generic_arg_locks_colliding_main_generic_base() {
 // still carrying `main.Connection`'s default-field initializer, and receiver signatures can split
 // between `QueryBuilder_Connection` and `QueryBuilder_mid__Connection` in generated C.
 fn test_generic_receiver_keeps_colliding_main_struct_type() {
-	v3_bin := gmb_build_v3()
-	out := gmb_run_project(v3_bin, 'generic_main_struct_collision', {
+	out := gmb_run_project('generic_main_struct_collision', {
 		'mid/mid.v': 'module mid\n\npub struct Connection {}\n\npub struct QueryBuilder[T] {}\n\npub fn new_query[T]() &QueryBuilder[T] {\n\treturn &QueryBuilder[T]{}\n}\n\npub fn (qb_ &QueryBuilder[T]) map() T {\n\tmut qb := unsafe { qb_ }\n\t_ = qb\n\treturn T{}\n}\n'
 		'main.v':    'module main\n\nimport mid\n\nenum ResourceKind {\n\tconnection\n}\n\nstruct Connection {\n\tkind ResourceKind = .connection\n}\n\nfn main() {\n\tqb := mid.new_query[Connection]()\n\tgot := qb.map()\n\tprintln(got.kind)\n}\n'
 	})

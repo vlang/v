@@ -1,24 +1,13 @@
 import os
-
-const string_int_vexe = @VEXE
-const string_int_tests_dir = os.dir(@FILE)
-const string_int_v3_dir = os.dir(string_int_tests_dir)
-const string_int_vlib_dir = os.dir(string_int_v3_dir)
-const string_int_v3_src = os.join_path(string_int_v3_dir, 'v.v')
-
-fn string_int_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_string_int_markused_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([string_int_vexe, '-gc', 'none', '-path',
-			'${string_int_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${string_int_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_top_level_string_int_roots_exact_receiver_method() {
-	v3_bin := string_int_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_string_int_markused_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_string_int_markused_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src := os.join_path(root, 'main.v')
 	os.write_file(src, "module main
 
 struct S {
@@ -49,8 +38,8 @@ use_local_receiver()
 ") or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_string_int_markused_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('implicit declaration'), compile.output
 	run := os.exec([bin])
@@ -65,8 +54,12 @@ use_local_receiver()
 }
 
 fn test_top_level_or_block_root_receiver_call_roots_string_int() {
-	v3_bin := string_int_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_string_int_or_root_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_string_int_or_root_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src := os.join_path(root, 'main.v')
 	os.write_file(src, "module main
 
 n := arguments()[1] or { '10' }.int()
@@ -74,8 +67,8 @@ println(n)
 ") or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_string_int_or_root_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('implicit declaration'), compile.output
 	run := os.exec([bin])

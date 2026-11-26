@@ -39,8 +39,8 @@ fn test_recursive_type_graph_codegen_stays_bounded_with_and_without_gc() {
 	for mode in ['none', 'boehm_full_opt'] {
 		// Exercise the reported 32-bit PowerPC target without needing its C toolchain.
 		c_path := os.join_path(root, 'graph_${mode}.c')
-		generated := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-gc', mode, '-os', 'macos',
-			'-arch', 'ppc32', '-o', c_path, source], 120_000)
+		generated := cmdexec.run_with_timeout(@VEXE, ['-gc', mode, '-os', 'macos', '-arch', 'ppc32',
+			'-o', c_path, source], 120_000)
 		assert generated.exit_code == 0, generated.output
 		c_source := os.read_file(c_path)!
 		for name in ['GraphLeaf', 'Graph0', 'Graph23'] {
@@ -52,8 +52,7 @@ fn test_recursive_type_graph_codegen_stays_bounded_with_and_without_gc() {
 		$if windows {
 			executable += '.exe'
 		}
-		compiled := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-gc', mode, '-o', executable,
-			source], 120_000)
+		compiled := cmdexec.run_with_timeout(@VEXE, ['-gc', mode, '-o', executable, source], 120_000)
 		assert compiled.exit_code == 0, compiled.output
 		ran := cmdexec.run_with_timeout(executable, [], 30_000)
 		assert ran.exit_code == 0, ran.output

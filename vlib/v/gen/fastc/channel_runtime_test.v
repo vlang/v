@@ -74,6 +74,44 @@ fn main() {
 	fastc_channel_runtime_build_run(root, vroot, 'channels work')
 }
 
+fn test_fastc_select_preserves_global_channel_element_types() {
+	$if !macos && !linux {
+		return
+	}
+	vroot := os.real_path(os.join_path(@DIR, '../../../..'))
+	root := os.join_path(os.vtmp_dir(), 'fastc_global_channels_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), r'@[has_globals]
+module main
+
+__global (
+	numbers = chan int{cap: 1}
+	ready chan bool
+)
+
+fn main() {
+	value := int(1) << 40
+	select {
+		numbers <- value {}
+		else { panic("global send was not ready") }
+	}
+	select {
+		got := <-numbers { assert got == value }
+		else { panic("global receive was not ready") }
+	}
+	ready = chan bool{cap: 1}
+	select {
+		ready <- true {}
+		else { panic("typed global send was not ready") }
+	}
+	assert <-ready
+	println("global channels work")
+}
+') or { panic(err) }
+	fastc_channel_runtime_build_run(root, vroot, 'global channels work', '-d', 'fastc_real_builtin')
+}
+
 fn test_fastc_compiler_workers_run_parallel_batches() {
 	$if !macos && !linux {
 		return
@@ -148,13 +186,12 @@ fn main() {
 	fastc_channel_runtime_build_run(root, vroot, 'fixed arrays work')
 }
 
-fn fastc_channel_runtime_build_run(root string, vroot string, expected string) {
+fn fastc_channel_runtime_build_run(root string, vroot string, expected string, flags ...string) {
 	program := os.join_path(root, 'program')
-	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-gc', 'none', '-o',
-		program, root], vroot, {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-gc', 'none', ...flags,
+		'-o', program, root], vroot, {
+		'VEXE':   @VEXE
+		'VFLAGS': ''
 	})
 	assert build.exit_code == 0, '${root}: ${build.output}'
 	run := cmdexec.run(program, [])

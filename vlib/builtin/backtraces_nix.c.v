@@ -85,54 +85,53 @@ fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 				eprintln('C.backtrace returned less than 2 frames')
 				return false
 			}
-			$if detailed_backtraces ? {
+			$if macos {
 				nr_actual_frames := nr_ptrs - skipframes
+				if nr_actual_frames <= 0 {
+					return false
+				}
 				csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
-				atos_lines := bsd_backtrace_resolve_atos(&buffer[skipframes], nr_actual_frames)
+				// Only a binary with debug info (`-g`) can map a frame to its .v line,
+				// so do not start `atos` for one that has none.
+				mut atos_symbols := []string{}
+				mut file_lines := []string{}
+				$if debug || detailed_backtraces ? {
+					atos_symbols, file_lines = bsd_backtrace_resolve_atos(&buffer[skipframes],
+						nr_actual_frames)
+				}
+				mut has_file_lines := false
+				eprintln('')
 				for i in 0 .. nr_actual_frames {
 					sframe := unsafe { tos2(&u8(csymbols[i])) }
-					mut file_line := ''
-					if i < atos_lines.len {
-						file_line = atos_lines[i]
-					}
 					// macOS format: `0   main   0x00000001047232f8 veb__run_T_main__App_main__Context + 356`
-					symbol_start := sframe.index('0x') or { -1 }
-					if symbol_start < 0 {
-						continue
-					}
-					rest := sframe[symbol_start..]
-					space_after_addr := rest.index(' ') or { -1 }
-					if space_after_addr < 0 {
-						continue
-					}
-					symbol_and_offset := rest[space_after_addr + 1..]
-					plus_pos := symbol_and_offset.index(' + ') or { -1 }
-					mut raw_symbol := symbol_and_offset
-					if plus_pos >= 0 {
-						raw_symbol = symbol_and_offset[..plus_pos]
-					}
-					// Skip C runtime frames that are not V functions:
-					if raw_symbol in ['main', 'start', '_main'] {
-						continue
-					}
-					mut demangled := ''
-					if plus_pos >= 0 {
-						demangled = demangle_v_symbol(raw_symbol) + symbol_and_offset[plus_pos..]
-					} else {
-						demangled = demangle_v_symbol(raw_symbol)
-					}
-					if file_line.len > 0 {
-						eprint(file_line)
-						eprint_space_padding(file_line, 45)
-						eprint(' | ')
-						eprintln(demangled)
-					} else {
-						eprintln(demangled)
+					image, symbol := bsd_backtrace_frame_image_and_symbol(sframe)
+					// Skip the loader, libc and the frames of the garbage collector, which
+					// start the threads of a V program.
+					if symbol.len > 0 && image != 'dyld' && !image.starts_with('libsystem_')
+						&& !symbol.starts_with('GC_') {
+						mut file_line := if i < file_lines.len { file_lines[i] } else { '' }
+						if backtrace_file_line_is_generated(file_line) {
+							file_line = ''
+						}
+						if file_line.len > 0 {
+							has_file_lines = true
+						}
+						eprint_backtrace_frame(if i < atos_symbols.len && atos_symbols[i].len > 0 {
+							atos_symbols[i]
+						} else {
+							symbol
+						}, file_line)
 					}
 				}
-				if nr_actual_frames > 0 {
-					unsafe { C.free(csymbols) }
+				if !has_file_lines {
+					$if !debug {
+						eprintln('(build with `-g` to see the .v line of every frame)')
+					} $else $if tinyc {
+						// `atos` can not read the debug info that TinyCC writes.
+						eprintln('(build with `-cc clang -g` to see the .v line of every frame)')
+					}
 				}
+				unsafe { C.free(csymbols) }
 			} $else {
 				C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
 			}
@@ -141,51 +140,89 @@ fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 	}
 }
 
+// bsd_backtrace_frame_image_and_symbol splits a macOS `backtrace_symbols` line like
+// `0   main   0x00000001047232f8 veb__run_T_main__App_main__Context + 356`
+// into its image (`main`) and its C symbol (`veb__run_T_main__App_main__Context`).
+fn bsd_backtrace_frame_image_and_symbol(sframe string) (string, string) {
+	// The image name can contain spaces, so split around the address instead of
+	// splitting all fields.
+	addr_start := sframe.index(' 0x') or { return '', '' }
+	// An ASCII `trim_chars`, like the other frame parsers in this file, keeps `trim`
+	// and its rune path out of the backtrace code.
+	number_and_image := sframe[..addr_start].trim_chars(' \t', .trim_both)
+	number_end := number_and_image.index(' ') or { return '', '' }
+	image := number_and_image[number_end..].trim_chars(' \t', .trim_both)
+	addr_and_symbol := sframe[addr_start + 1..]
+	symbol_start := addr_and_symbol.index(' ') or { return image, '' }
+	symbol_and_offset := addr_and_symbol[symbol_start + 1..]
+	return image, symbol_and_offset.all_before(' + ')
+}
+
 // bsd_backtrace_resolve_atos uses macOS `atos` to resolve addresses to file:line info.
-// Returns an array of file:line strings (one per frame). Empty string if unresolved.
+// It returns the C symbol and the file:line of each frame, or empty strings for
+// frames it could not resolve.
 @[direct_array_access]
-fn bsd_backtrace_resolve_atos(buffer &voidptr, nr_frames int) []string {
+fn bsd_backtrace_resolve_atos(buffer &voidptr, nr_frames int) ([]string, []string) {
 	$if macos {
 		exe_name := backtrace_current_executable_name()
 		if exe_name.len == 0 {
-			return []string{}
+			return []string{}, []string{}
 		}
 		base_addr := voidptr(C._dyld_get_image_header(0))
 		if base_addr == unsafe { nil } {
-			return []string{}
+			return []string{}, []string{}
 		}
 		// Build single atos command with all addresses for efficiency:
 		mut args := ['atos', '--fullPath', '-o', exe_name, '-l', ptr_str(base_addr)]
 		for i in 0 .. nr_frames {
-			args << ptr_str(unsafe { buffer[i] })
+			// The frames hold return addresses, which can belong to the line after a
+			// call (always after a call to a `@[noreturn]` function like `panic`).
+			// Look up the call instruction itself.
+			addr := u64(unsafe { buffer[i] })
+			args << ptr_str(voidptr(if addr > 0 { addr - 1 } else { addr }))
 		}
 		output, status := backtrace_exec_capture(args)
 		if status != 0 {
-			return []string{}
+			return []string{}, []string{}
 		}
+		mut symbols := []string{cap: nr_frames}
 		mut lines := []string{cap: nr_frames}
 		for output_line in output.split_into_lines() {
 			line := output_line.trim_chars(' \t\n\r', .trim_both)
-			// atos output format: `func_name (in binary) (file.v:42)`
-			// Extract the last parenthesized (file:line) part:
-			paren_pos := line.index_last_('(')
-			if paren_pos >= 0 {
-				file_part := line[paren_pos + 1..]
-				end_paren := file_part.index_last_(')')
-				if end_paren >= 0 {
-					file_line := file_part[..end_paren]
-					if file_line.contains(':') && !file_line.starts_with('in ')
-						&& !file_line.contains('.tmp.c:') {
-						lines << file_line
-						continue
-					}
-				}
-			}
-			lines << ''
+			// Unlike `backtrace_symbols`, which only sees exported symbols, `atos`
+			// also names static functions.
+			symbols << if line.contains(' (in ') { line.all_before(' (in ') } else { '' }
+			lines << atos_output_file_line(line)
 		}
-		return lines
+		return symbols, lines
 	}
-	return []string{}
+	return []string{}, []string{}
+}
+
+// atos_output_file_line returns the `file:line` of an `atos` output line like
+// `func_name (in binary) (file.v:42)`, or '' when atos did not resolve one.
+fn atos_output_file_line(line string) string {
+	paren_pos := line.index_last_('(')
+	if paren_pos < 0 {
+		return ''
+	}
+	file_part := line[paren_pos + 1..]
+	end_paren := file_part.index_last_(')')
+	if end_paren < 0 {
+		return ''
+	}
+	file_line := file_part[..end_paren]
+	if file_line.contains(':') && !file_line.starts_with('in ') {
+		return file_line
+	}
+	return ''
+}
+
+// backtrace_file_line_is_generated reports whether a resolved `file:line` points
+// into C code that V generated, rather than into a .v (or user C) source file.
+fn backtrace_file_line_is_generated(file_line string) bool {
+	return file_line.starts_with('<generated>') || file_line.contains('.tmp.c:')
+		|| file_line.contains('.v3cc.')
 }
 
 @[c_extern]
@@ -254,33 +291,40 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				nr_actual_frames := nr_ptrs - skipframes
 				//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
 				csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
+				eprintln('')
 				for i in 0 .. nr_actual_frames {
+					// Linux format: `./executable(symbol_name+0x1a4) [0x55d1c5a9b1a4]`
 					sframe := unsafe { tos2(&u8(csymbols[i])) }
 					executable := sframe.all_before('(')
 					addr2line_executable := backtrace_addr2line_executable(executable,
 						current_executable_name)
-					addr := sframe.all_after('[').all_before(']')
-					beforeaddr := sframe.all_before('[')
+					// The frames hold return addresses, which can belong to the line after
+					// a call (always after a call to a `@[noreturn]` function like `panic`).
+					// Look up the call instruction itself.
+					addr := u64(unsafe { buffer[skipframes + i] })
 					text, status := backtrace_exec_capture(['addr2line', '-e', addr2line_executable,
-						addr])
-					if status != 0 {
+						ptr_str(voidptr(if addr > 0 { addr - 1 } else { addr }))])
+					mut file_line := ''
+					if status == 0 {
+						file_line = text.trim_chars(' \t\n', .trim_both).all_before(' (discriminator')
+						if file_line.starts_with('??') || backtrace_file_line_is_generated(file_line) {
+							file_line = ''
+						}
+					}
+					symbol := if sframe.contains('(') {
+						sframe.all_after('(').all_before(')').all_before('+')
+					} else {
+						''
+					}
+					if symbol.len == 0 {
 						eprintln(sframe)
+						if file_line.len > 0 {
+							eprint('\t')
+							eprintln(file_line)
+						}
 						continue
 					}
-					mut output := text.trim_chars(' \t\n', .trim_both) + ':'
-					if output in ['??:0:', '??:?:'] {
-						output = ''
-					}
-					// See http://wiki.dwarfstd.org/index.php?title=Path_Discriminators
-					// Note: it is shortened here to just d. , just so that it fits, and so
-					// that the common error file:lineno: line format is enforced.
-					output = output.replace(' (discriminator', ': (d.')
-					eprint(output)
-					eprint_space_padding(output, 55)
-					eprint(' | ')
-					eprint(addr)
-					eprint(' | ')
-					eprintln(demangle_backtrace_sym(beforeaddr))
+					eprint_backtrace_frame(symbol, file_line)
 				}
 				if nr_actual_frames > 0 {
 					unsafe { C.free(csymbols) }

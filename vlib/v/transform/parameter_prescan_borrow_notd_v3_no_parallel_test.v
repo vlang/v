@@ -6,13 +6,28 @@ import v.pref
 import v.types
 
 struct ParamPrescanBorrowSnapshot {
-	params  map[string][]string
-	borrows map[string][]bool
-	file    string
-	mod     string
+	params     map[string][]string
+	borrows    map[string][]bool
+	provenance map[string][]bool
+	prescanned int
+	file       string
+	mod        string
 }
 
 fn param_prescan_borrow_snapshot(path string, parallel bool) ParamPrescanBorrowSnapshot {
+	// The prescan runs on helper threads only with at least two jobs, and a test runner
+	// can set `VJOBS=1` (as the V3 unit test job does).
+	old_vjobs := os.getenv_opt('VJOBS')
+	if parallel && os.getenv('VJOBS').int() < 2 {
+		os.setenv('VJOBS', '2', true)
+	}
+	defer {
+		if value := old_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
 	mut p := parser.Parser.new(pref.new_preferences())
 	mut a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
@@ -28,6 +43,7 @@ fn param_prescan_borrow_snapshot(path string, parallel bool) ParamPrescanBorrowS
 	t.prepare_with_pre_scans()
 	mut params := map[string][]string{}
 	mut borrows := map[string][]bool{}
+	mut provenance := map[string][]bool{}
 	for i, node in a.nodes {
 		if node.kind != .fn_decl {
 			continue
@@ -35,12 +51,15 @@ fn param_prescan_borrow_snapshot(path string, parallel bool) ParamPrescanBorrowS
 		param_types := t.call_param_types_from_decl(node.value) or { panic(node.value) }
 		params[node.value] = param_types.map(it.name().clone())
 		borrows[node.value] = (t.fixed_array_borrow_params[i] or { []bool{} }).clone()
+		provenance[node.value] = (t.call_provenance_borrow_params[i] or { []bool{} }).clone()
 	}
 	result := ParamPrescanBorrowSnapshot{
-		params:  params
-		borrows: borrows
-		file:    tc.cur_file.clone()
-		mod:     tc.cur_module.clone()
+		params:     params
+		borrows:    borrows
+		provenance: provenance
+		prescanned: t.fixed_array_borrow_prescanned
+		file:       tc.cur_file.clone()
+		mod:        tc.cur_module.clone()
 	}
 	for scope in t.prescan_scopes {
 		transform_worker_scope_free(scope)
@@ -161,5 +180,55 @@ fn test_borrow_summary_dependency_chains_cycles_and_repeated_edges() {
 		for name in ['cycle_a', 'cycle_b', 'retained', 'forward_retained'] {
 			assert snapshot.borrows[name].len == 0, name
 		}
+	}
+}
+
+fn test_borrow_prescan_gives_the_serial_summaries_in_both_declaration_orders() {
+	path := os.join_path(os.vtmp_dir(), 'borrow_prescan_orders_${os.getpid()}.v')
+	mut source := 'module main\ntype Row = [4]int\n'
+	source += 'struct Cell {\nmut:\n v int\n}\n'
+	source += 'struct Grid {\nmut:\n cells [2]Cell\n}\n'
+	// The fixed point reaches a caller before a callee declared after it, whose
+	// summary is unproven then, and after a callee declared before it, whose
+	// summary is proven by then. The helper threads analyse both against no
+	// proven summary.
+	for i in 0 .. 300 {
+		body := if i == 299 { 'return p[0]' } else { 'return later${i + 1}(p)' }
+		source += 'fn later${i}(p &Row) int { ${body} }\n'
+	}
+	for i in 0 .. 300 {
+		body := if i == 0 {
+			'return p[0]'
+		} else {
+			'return earlier${i - 1}(p) + earlier${i - 1}(p)'
+		}
+		source += 'fn earlier${i}(p &Row) int { ${body} }\n'
+	}
+	source += 'fn retained(p &Row) &Row { return p }\n'
+	source += 'fn after_retained(p &Row, q &Row) int { return earlier299(p) + unsafe { retained(q)[0] } }\n'
+	source += 'fn after_escape(p &Row) &Row { _ = earlier299(p)\n return retained(p) }\n'
+	source += 'fn bump(mut c Cell) { c.v++ }\n'
+	source += 'fn bump_cell(mut g Grid) { bump(mut g.cells[0]) }\n'
+	source += 'fn narrow(p &Row) !int { return p[0] }\n'
+	source += 'fn main() {}\n'
+	os.write_file(path, source)!
+	defer { os.rm(path) or {} }
+	serial := param_prescan_borrow_snapshot(path, false)
+	parallel := param_prescan_borrow_snapshot(path, true)
+	assert serial.prescanned == 0
+	// Every body analysis of the helper threads stands: none is made again.
+	assert parallel.prescanned >= min_borrow_prescan_candidates
+	assert parallel.prescanned == 607
+	assert serial.borrows.len == parallel.borrows.len
+	for name, borrows in serial.borrows {
+		assert parallel.borrows[name] == borrows, name
+		assert parallel.provenance[name] == serial.provenance[name], name
+	}
+	for name in ['later0', 'later299', 'earlier0', 'earlier299', 'bump', 'bump_cell', 'narrow'] {
+		assert parallel.borrows[name] == [true], name
+	}
+	assert parallel.borrows['after_retained'] == [true, false]
+	for name in ['retained', 'after_escape'] {
+		assert parallel.borrows[name].len == 0, name
 	}
 }

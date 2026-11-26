@@ -217,8 +217,16 @@ fn block_size_of(name string) int {
 	return if name in ['sha1', 'sha224', 'sha256'] { sha256.block_size } else { sha512.block_size }
 }
 
-// naive_hmac is a direct transcription of RFC 2104, used as a reference.
-fn naive_hmac(name string, key []u8, data []u8) []u8 {
+// NaiveHmac is a direct transcription of RFC 2104, used as a reference. The
+// key, padded and xored with ipad and opad, is kept, as PBKDF2 uses one key for
+// thousands of messages.
+struct NaiveHmac {
+	name  string
+	inner []u8 // K XOR ipad
+	outer []u8 // K XOR opad
+}
+
+fn new_naive_hmac(name string, key []u8) NaiveHmac {
 	block_size := block_size_of(name)
 	mut k := if key.len > block_size { hash_sum(name, key) } else { key.clone() }
 	for k.len < block_size {
@@ -230,21 +238,29 @@ fn naive_hmac(name string, key []u8, data []u8) []u8 {
 		inner << (b ^ 0x36)
 		outer << (b ^ 0x5c)
 	}
+	return NaiveHmac{name, inner, outer}
+}
+
+// sum returns H(K XOR opad, H(K XOR ipad, data)).
+fn (h NaiveHmac) sum(data []u8) []u8 {
+	mut inner := h.inner.clone()
 	inner << data
-	outer << hash_sum(name, inner)
-	return hash_sum(name, outer)
+	mut outer := h.outer.clone()
+	outer << hash_sum(h.name, inner)
+	return hash_sum(h.name, outer)
 }
 
 // naive_pbkdf2 is a direct transcription of RFC 8018, section 5.2, used as a reference.
 fn naive_pbkdf2(name string, password []u8, salt []u8, count int, key_length int) []u8 {
+	hmac := new_naive_hmac(name, password)
 	mut dk := []u8{}
 	for i := 1; dk.len < key_length; i++ {
 		mut msg := salt.clone()
 		msg << [u8(i >> 24), u8(i >> 16), u8(i >> 8), u8(i)]
-		mut u := naive_hmac(name, password, msg)
+		mut u := hmac.sum(msg)
 		mut t := u.clone()
 		for _ in 1 .. count {
-			u = naive_hmac(name, password, u)
+			u = hmac.sum(u)
 			for j in 0 .. t.len {
 				t[j] ^= u[j]
 			}

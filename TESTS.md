@@ -71,6 +71,42 @@ cgroup memory limit, and the lower of the CPU count and the cgroup CPU quota.
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
 
+When at least two of the selected test files build the compiler from `vlib/v/v.v` themselves,
+`v test` builds it once at the start, and the `v` launcher serves their plain `-gc none`
+compiler builds with copies of it, as `vlib/v/test_all.vsh` does. It does the same for the
+`-gc none -d ownership` compiler of the ownership tests. Builds with other options still build
+their own. Set `VTEST_NO_SHARED_V3=1` to let every test build its own compiler.
+Each session also shares the cached C objects of thirdparty code (`v3_thirdparty_objs`) with
+the module cache root, unless `V3_TEST_ISOLATE_CACHE=1`.
+
+A module's internal tests (`_test.v` files that declare the module of their directory) spend most
+of their time compiling that module, and small `main` tests the fixed cost of a whole program.
+`v test` builds up to 16 test files of one directory and module into one binary and runs it once:
+the compiler accepts several distinct `_test.v` and `_test.c.v` files of one directory as its
+inputs, `v -skip-running -o bin a_test.v b_test.v`, and adds the module's other sources once.
+Files whose top-level names collide go to different batches; text in string literals does not
+count, and test functions may share a name (the compiler renames them in a batch).
+
+Files that need something of their own share batches only with files that need the same: the
+same `// vtest vflags:`, `-enable-globals` (`global` in the path), a `testsuite_begin` that only
+unsets environment variables, `// vtest retry:`, or changes to environment variables or to the
+working directory that the file saves and restores (`os.getenv_opt`/`os.getwd()` and a `defer`).
+`// vtest build:` constraints that hold and `// vtest ownership` do not keep a file out. Any other
+`// vtest` directive, other suite hooks, process state the file changes without restoring it, its
+arguments or `exit`, and a `main` test with C flags, headers, exported or global symbols run the
+file on its own.
+
+When a batch fails to compile or to run, its files run again one by one, so failures are reported
+as without batching. `VTEST_BATCH_SIZE` sets the largest batch; `VTEST_NO_BATCH=1` runs every file
+on its own. A batch compiles with a memory limit of 4096 MiB (`VTEST_BATCH_MEMORY_LIMIT`), since
+several programs built as one can need far more memory than each alone; over the limit, its files
+run one by one. With `VTEST_SHOW_CMD=1` the runner names the files of a failed batch and why it
+failed: a batch that fails only together points to a compiler bug or to shared state.
+Batching applies only to plain `v test` runs, without `-stats`, `-b` or `VTEST_RESUME_DIR`.
+`vlib/v/test_all.vsh` passes neighbouring test files of one directory to one `v test`. With
+`VTEST_FAILED_LIST=path`, `v test` writes the files that failed to `path`, one per line; the script
+records those, and runs the files of a failing group again one by one only when the list is empty.
+
 `cmd/tools/test_if_v_test_system_works.v` checks direct and nested test invocations,
 including expected failures. It streams child output to stderr while retaining that output
 for its assertions, so a watchdog failure leaves the nested command's progress in the log.
@@ -120,8 +156,8 @@ expressions, ABI, linker inputs, or runtime behavior.
 ## `v test cmd/v/`
 
 The compiler process regressions workflow runs every launcher test in `cmd/v/` on Linux,
-macOS, and Windows with the default compiler. This covers argument routing, fallback
-messages, executable discovery, and tool-cache behavior, including platform-specific code.
+macOS, and Windows with the default compiler. This covers argument routing, diagnostics,
+executable discovery, and tool-cache behavior, including platform-specific code.
 
 ## Line coverage
 
@@ -182,6 +218,9 @@ The macOS tray example is built as a project on macOS and excluded on other host
 
 When `VFLAGS` selects TinyCC, `v build-vbinaries` uses an installed GCC or Clang for its
 production variants. Debug variants retain TinyCC. Other compiler selections are preserved.
+The five builds run side by side, up to `VJOBS`, while their estimated memory (8 GB for a
+production build with debug information, 4 GB without, 2 GB for a debug build) stays within three
+quarters of the physical memory; on a 16 GB machine two production builds overlap.
 
 ## Formatting tests
 
@@ -193,11 +232,15 @@ flat-AST-to-V formatting and round trips.
 
 Check that most .v files, are invariant of `v fmt` runs.
 
+It runs `v vet` and `v fmt -verify` over up to 64 files per command, since both check every file
+they are given and name the ones they reject. A command that fails runs again file by file, so
+the report is the same as without batching; `VTEST_NO_BATCH=1` runs one command per file.
+
 * `v test-fmt`
 
-This tests that all .v files in the current folder are already formatted.
-It is useful for adding to CI jobs, to guarantee, that future contributions
-will keep the existing source nice and clean.
+This tests that `v fmt` can format all .v files in the current folder, and lists the ones that
+need formatting. It runs `v fmt -inprocess -l` over up to 64 files per command, like
+`v test-cleancode`.
 
 ## Markdown/documentation checks:
 
@@ -228,36 +271,7 @@ This runs tests for:
 * `vlib/v/checker/tests/*.vv`
 * `vlib/v/parser/tests/*.vv`
 
-Some fixtures require the V 0.5.2 compatibility compiler: legacy compiler-module diagnostics
-and legacy JSON code-generation errors. The current driver selects that compiler for those
-fixtures; other fixtures, including the `with_check_option` cases, start with the current compiler
-and may use its normal compatibility fallback. The suite remains runnable on master even though
-the legacy compiler sources were removed from this tree.
-
-Prepare the compatibility compiler from the repository root before running the complete suite:
-
-```sh
-make v1
-./v -silent vlib/v/compiler_errors_test.v
-```
-
-`make v1` installs the pinned V 0.5.2 release and its matching library in a cache, or builds that
-release with `oldv` when a usable release binary is unavailable. Initial installation needs network
-access and the installer tools; source builds also need Git and a C compiler. On Windows, run this
-from MSYS2 with GNU make (`make` or `mingw32-make`) available. Building the ordinary compiler with
-`makev.bat` alone does not provision this compatibility compiler.
-
-The driver can run `make v1` automatically when needed. If it reports that no usable fallback was
-found and make is unavailable, install GNU make and run the preparation command above. This is a
-missing test prerequisite, and also affects the complete `v test vlib/v/` run, which includes this
-suite. After installation, a usable cached compatibility compiler can run without make.
-Successful automatic installation keeps progress output out of exact-output fixture diagnostics.
-If installation fails, the driver prints the installer output to explain the missing prerequisite.
-
-Use `-new-compiler` when investigating an individual fixture with the current compiler. It overrides
-explicit legacy fixture selection, so its diagnostics need not match that fixture's existing `.out`
-file. Disabling automatic fallback with `V_MACOS_V3_NO_FALLBACK=1` still permits explicit legacy
-fixture selection and does not remove the suite's compatibility-compiler prerequisite.
+The suite runs each fixture with the current compiler.
 
 > [!NOTE]
 > There are special folders, that compiler_errors_test.v will try to

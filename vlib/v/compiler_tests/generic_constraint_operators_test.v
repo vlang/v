@@ -1,5 +1,7 @@
 module main
 
+import arrays
+import json2
 import os
 
 // An operator on a value of a constrained type parameter takes what every type
@@ -236,6 +238,18 @@ struct OperatorCase {
 	order bool // an order between operands: `<`, `>`, `<=`, `>=`
 }
 
+struct CheckedOperators {
+	cases map[int]OperatorCase
+mut:
+	rejected map[int]bool
+}
+
+struct OperatorDiagnostic {
+	file     string
+	line     int
+	severity string
+}
+
 fn operator_cases() ([]OperatorCase, []OperatorCase, []OperatorCase) {
 	mut binary := []OperatorCase{}
 	for rhs in right_operands {
@@ -268,15 +282,17 @@ fn operator_cases() ([]OperatorCase, []OperatorCase, []OperatorCase) {
 
 // operator_program writes the operations on a value of `typ`, or with
 // `constrained` on a `T` whose constraint is `typ`, and where each case is.
-fn operator_program(typ string, constrained bool) (string, map[int]OperatorCase) {
+// Batch files use distinct function names and share the prelude from main.v.
+fn operator_program(typ string, constrained bool, batched bool) (string, map[int]OperatorCase) {
 	binary, unary, assign := operator_cases()
-	mut lines := operator_prelude.split('\n')
+	mut lines := if batched { ['module main', ''] } else { operator_prelude.split('\n') }
 	mut where := map[int]OperatorCase{}
 	param := if constrained { 'T' } else { typ }
 	generic := if constrained { '[T ${typ}]' } else { '' }
+	suffix := if batched { '_${typ.to_lower()}' } else { '' }
 	for group, cases in [binary, unary, assign] {
 		name := ['binary', 'unary', 'assign'][group]
-		lines << 'fn ${name}${generic}(a ${param}, b ${param}, ${value_params}) {'
+		lines << 'fn ${name}${suffix}${generic}(a ${param}, b ${param}, ${value_params}) {'
 		if group == 2 {
 			lines << '\tmut c := a'
 		}
@@ -289,13 +305,15 @@ fn operator_program(typ string, constrained bool) (string, map[int]OperatorCase)
 		}
 		lines << '}'
 	}
-	lines << 'fn main() {}'
+	if !batched {
+		lines << 'fn main() {}'
+	}
 	return lines.join('\n') + '\n', where
 }
 
 // rejected_lines are the lines of `path` that the check reports an error on.
 fn rejected_lines(path string) map[int]bool {
-	res := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', '-checker-fixture', path])
+	res := os.exec([@VEXE, '-check', '-nocolor', '-checker-fixture', path])
 	assert !res.output.contains(' more errors'), res.output
 	mut lines := map[int]bool{}
 	for line in res.output.split_into_lines() {
@@ -317,6 +335,49 @@ fn check_operator_program(dir string, name string, source string) map[int]bool {
 	return rejected_lines(path)
 }
 
+fn check_operator_types(dir string, constrained bool) map[string]CheckedOperators {
+	mut checks := map[string]CheckedOperators{}
+	// Custom flags can change module resolution or cap the errors for a project.
+	if os.getenv('VFLAGS').trim_space() !in ['', '-gc none'] {
+		for typ in operator_types {
+			source, cases := operator_program(typ, constrained, false)
+			checks[typ] = CheckedOperators{cases, check_operator_program(dir, typ, source)}
+		}
+		return checks
+	}
+	// Each fixture can emit hundreds of errors. Bound the output of each invocation.
+	for i, batch in arrays.chunk(operator_types, 8) {
+		project := os.join_path(dir, 'batch_${i}')
+		os.mkdir_all(project) or { panic(err) }
+		os.write_file(os.join_path(project, 'main.v'), operator_prelude + '\nfn main() {}\n') or {
+			panic(err)
+		}
+		mut type_by_file := map[string]string{}
+		for typ in batch {
+			source, cases := operator_program(typ, constrained, true)
+			filename := 'operators_${typ}.v'
+			os.write_file(os.join_path(project, filename), source) or { panic(err) }
+			type_by_file[filename] = typ
+			checks[typ] = CheckedOperators{ cases: cases }
+		}
+		res := os.exec([@VEXE, '-check', '-nocolor', '-checker-fixture', '-json-errors', project])
+		mut rejected := false
+		for line in res.output.split_into_lines() {
+			if !line.starts_with('{') {
+				continue
+			}
+			diagnostic := json2.decode[OperatorDiagnostic](line) or { panic(err) }
+			if diagnostic.severity == 'error' {
+				typ := type_by_file[os.file_name(diagnostic.file)] or { panic(line) }
+				checks[typ].rejected[diagnostic.line] = true
+				rejected = true
+			}
+		}
+		assert res.exit_code == if rejected { 1 } else { 0 }, res.output
+	}
+	return checks
+}
+
 fn test_an_operator_on_a_constrained_value_follows_the_checker_for_every_type() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_constraint_operators_${os.getpid()}')
 	defer {
@@ -328,11 +389,8 @@ fn test_an_operator_on_a_constrained_value_follows_the_checker_for_every_type() 
 	checks_order := probe.len > 0
 	mut failures := []string{}
 	mut compared := 0
-	mut concrete_by_type := map[string]map[int]bool{}
-	for typ in operator_types {
-		concrete_source, _ := operator_program(typ, false)
-		concrete_by_type[typ] = check_operator_program(dir, 'concrete_${typ}', concrete_source)
-	}
+	concrete_by_type := check_operator_types(os.join_path(dir, 'concrete'), false)
+	constrained_by_type := check_operator_types(os.join_path(dir, 'constrained'), true)
 	// A sum type as the constraint stands for its variants: a `T` takes an
 	// operation that every variant takes. A struct stands for itself and the
 	// structs that embed it, which get none of its operators: a `T` takes what a
@@ -345,17 +403,15 @@ fn test_an_operator_on_a_constrained_value_follows_the_checker_for_every_type() 
 		variants[typ] = ['User']
 	}
 	for typ in operator_types {
-		_, where := operator_program(typ, false)
-		constrained_source, constrained_where := operator_program(typ, true)
-		constrained := check_operator_program(dir, 'constrained_${typ}', constrained_source)
-		for line, c in where {
-			assert constrained_where[line].name == c.name
+		constrained := constrained_by_type[typ]
+		for line, c in concrete_by_type[typ].cases {
+			assert constrained.cases[line].name == c.name
 			by_type := if names := variants[typ] {
-				names.any(line in concrete_by_type[it])
+				names.any(line in concrete_by_type[it].rejected)
 			} else {
-				line in concrete_by_type[typ]
+				line in concrete_by_type[typ].rejected
 			}
-			by_constraint := line in constrained
+			by_constraint := line in constrained.rejected
 			compared++
 			if typ in unchecked_types {
 				if by_constraint {

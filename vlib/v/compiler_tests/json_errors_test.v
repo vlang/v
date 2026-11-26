@@ -106,8 +106,7 @@ fn test_json_errors_reports_errors_and_warnings_with_their_spans() {
 	]
 }
 
-// The option is accepted without `-new-compiler` and without `-check`, and a failed
-// build is not retried with the compatibility compiler, whose diagnostics are text.
+// A failed build prints JSON diagnostics in ordinary build mode.
 fn test_json_errors_of_a_build_are_only_json() {
 	dir := write_project('build', {
 		'main.v': failing_program

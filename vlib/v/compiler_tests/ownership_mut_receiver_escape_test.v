@@ -1,18 +1,8 @@
 import os
 
-fn test_ownership_mut_receiver_reference_cannot_escape_local_storage() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_mut_receiver_escape_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	for expression in ['builder.set(42)', 'builder.set(41).set(42)', 'reference',
-		'if *drops == 0 { builder.set(42) } else { builder.set(41) }',
-		'match *drops { 0 { builder.set(42) } else { builder.set(41) } }', 'unsafe { builder.set(42) }',
-		'unsafe { { mut scoped := Builder{drops: drops}; scoped.set(42) } }',
-		'unsafe { if *drops == 0 { builder.set(42) } else { builder.set(41) } }',
-		'if *drops == 0 { mut scoped := Builder{drops: drops}; scoped.set(42) } else { builder.set(41) }'] {
-		binding := if expression == 'reference' { '\treference := builder.set(42)\n' } else { '' }
-		os.write_file(source, 'struct Builder implements Drop {
+const mut_receiver_escape_args = [@VEXE, '-nocache', '-ownership', '-d', 'ownership', '-check']
+const mut_receiver_escape_error = 'cannot return a reference to local storage'
+const mut_receiver_escape_declarations = 'struct Builder implements Drop {
 mut:
 	value int
 	drops &int
@@ -27,16 +17,58 @@ fn (mut builder Builder) drop() {
 	unsafe { *builder.drops += 1 }
 }
 
-fn escaped(drops &int) &Builder {
+'
+
+fn mut_receiver_escape_function(name string, expression string) string {
+	binding := if expression == 'reference' { '\treference := builder.set(42)\n' } else { '' }
+	return 'fn ${name}(drops &int) &Builder {
 	mut builder := Builder{drops: drops}
 ${binding}\treturn ${expression}
 }
+'
+}
 
-fn main() { mut drops := 0; _ = escaped(&drops) }
-')!
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
+fn test_ownership_mut_receiver_reference_cannot_escape_local_storage() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_mut_receiver_escape_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	expressions := ['builder.set(42)', 'builder.set(41).set(42)', 'reference',
+		'if *drops == 0 { builder.set(42) } else { builder.set(41) }',
+		'match *drops { 0 { builder.set(42) } else { builder.set(41) } }', 'unsafe { builder.set(42) }',
+		'unsafe { { mut scoped := Builder{drops: drops}; scoped.set(42) } }',
+		'unsafe { if *drops == 0 { builder.set(42) } else { builder.set(41) } }',
+		'if *drops == 0 { mut scoped := Builder{drops: drops}; scoped.set(42) } else { builder.set(41) }']
+	// Custom flags can limit diagnostics or change their format.
+	if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] {
+		check_mut_receiver_escape_batch(root, expressions)!
+		return
+	}
+	source := os.join_path(root, 'main.v')
+	for expression in expressions {
+		os.write_file(source, mut_receiver_escape_declarations +
+			mut_receiver_escape_function('escaped', expression) +
+			'\nfn main() { mut drops := 0; _ = escaped(&drops) }\n')!
+		result := os.exec([...mut_receiver_escape_args, source])
 		assert result.exit_code != 0, '${expression}: ${result.output}'
-		assert result.output.contains('cannot return a reference to local storage'), result.output
+		assert result.output.contains(mut_receiver_escape_error), '${expression}: ${result.output}'
+	}
+}
+
+fn check_mut_receiver_escape_batch(root string, expressions []string) ! {
+	mut calls := []string{cap: expressions.len}
+	for i, expression in expressions {
+		name := 'escape_case_${i}'
+		os.write_file(os.join_path(root, '${name}.v'), 'module main\n\n' +
+			mut_receiver_escape_function(name, expression))!
+		calls << '\t{\n\t\tmut drops := 0\n\t\t_ = ${name}(&drops)\n\t}'
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n' +
+		mut_receiver_escape_declarations + 'fn main() {\n${calls.join('\n')}\n}\n')!
+	result := os.exec([...mut_receiver_escape_args, root])
+	assert result.exit_code != 0, result.output
+	diagnostics := result.output.split_into_lines().filter(it.contains('error: ${mut_receiver_escape_error}'))
+	for i, expression in expressions {
+		assert diagnostics.any(it.contains('escape_case_${i}.v:')), '${expression}: ${result.output}'
 	}
 }
 
@@ -52,7 +84,7 @@ fn (mut builder Builder) reference() &Builder {
 }
 fn main() { mut builder := Builder{}; _ = builder.reference() }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
+	result := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('redefinition of `builder`'), result.output
 }
@@ -112,7 +144,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		result := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
 }
@@ -137,7 +169,7 @@ fn reference() &Builder {
 fn main() { assert reference().value == 42 }
 ')!
 		for mode in ['-no-parallel', ''] {
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 			if binding.contains('&Builder') {
 				assert out.exit_code == 0, out.output
 			} else {

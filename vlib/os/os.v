@@ -722,7 +722,13 @@ fn find_abs_path_of_executable_in_path_env(exe_name string, env_path string) !st
 	for suffix in executable_suffixes_for(exe_name) {
 		fexepath := exe_name + suffix
 		if is_abs_path(fexepath) {
-			return fexepath
+			// An absolute name is not searched for. A suffix is only added when it names
+			// a file (Windows `C:/tcc/tcc` is `C:/tcc/tcc.exe`, not a missing `tcc.com`);
+			// otherwise the name is returned as it was given.
+			if suffix == '' || is_file(fexepath) {
+				return fexepath
+			}
+			continue
 		}
 		if fexepath.contains(path_separator) {
 			if is_file(fexepath) && is_executable(fexepath) {
@@ -942,12 +948,33 @@ fn impl_walk_ext(path string, ext string, mut out []string, opts WalkParams) {
 
 // walk traverses the given directory `path`.
 // When a file is encountered, it will call the callback `f` with current file as argument.
+// A link is passed to `f` too, and is not followed, also when it leads to a directory.
+// Except on Windows, whether a directory is a link is looked up right before the walk lists
+// it, so a directory that another process replaces by a link between that lookup and the
+// listing is still entered.
 // The entries of each directory are visited in the order of `os.ls`, which is not sorted and
 // differs between platforms and filesystems. For a walk in lexical order, see: `os.walk_dir`
+// On Windows, what an entry is comes from the listing of its directory. Only what was listed
+// as a directory is opened, without following a link, and what was opened is then asked what
+// it is and listed, so a directory that was replaced by a link is not entered. On a file system
+// that can not list a directory through what was opened, the directory is listed by its name
+// once it has said that it is no link, and is entered when it is replaced by a link right then,
+// as on other systems. An entry that
+// was listed as a file or as a link is passed to `f` and not entered, also when the callback
+// or another process has replaced it by a directory before the walk reaches it, and also when
+// its name ends in a dot or a space and a directory has that name without the ending.
+// A directory, the root included, is opened under its name with a separator after it, so a
+// directory that has the name of a device, such as `NUL` or `CON`, and one whose name ends
+// in a space, is entered like any other.
+// A root that is only separators, such as `\` or `/`, is not walked.
 // Note: walk can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`
 pub fn walk(path string, f fn (string)) {
+	$if windows && !js {
+		walk_windows(path, f)
+		return
+	}
 	if path == '' {
 		return
 	}
@@ -1105,12 +1132,33 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // For each encountered file *and* directory, it will call your `fcb` callback,
 // passing it the arbitrary `context` in its first parameter,
 // and the path to the file in its second parameter.
+// A link is passed to `fcb` too, and is not followed, also when it leads to a directory.
+// Except on Windows, whether a directory is a link is looked up right before the walk lists
+// it, so a directory that another process replaces by a link between that lookup and the
+// listing is still entered.
 // The entries of each directory are visited in the order of `os.ls`, which is not sorted and
 // differs between platforms and filesystems. For a walk in lexical order, see: `os.walk_dir`
+// On Windows, what an entry is comes from the listing of its directory. Only what was listed
+// as a directory is opened, without following a link, and what was opened is then asked what
+// it is and listed, so a directory that was replaced by a link is not entered. On a file system
+// that can not list a directory through what was opened, the directory is listed by its name
+// once it has said that it is no link, and is entered when it is replaced by a link right then,
+// as on other systems. An entry that
+// was listed as a file or as a link is passed to `fcb` and not entered, also when the callback
+// or another process has replaced it by a directory before the walk reaches it, and also when
+// its name ends in a dot or a space and a directory has that name without the ending.
+// A directory, the root included, is opened under its name with a separator after it, so a
+// directory that has the name of a device, such as `NUL` or `CON`, and one whose name ends
+// in a space, is entered like any other.
+// A root that is only separators, such as `\` or `/`, is not walked.
 // Note: walk_with_context can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
+	$if windows && !js {
+		walk_with_context_windows(path, context, fcb)
+		return
+	}
 	if path == '' {
 		return
 	}
@@ -1154,7 +1202,7 @@ pub:
 	mode u32 = 0o777 // note that the actual mode is affected by the process's umask
 }
 
-// mkdir_all will create a valid full path of all directories given in `path`.
+// mkdir_all creates all directories in `path`, allowing concurrent creation of the same directories.
 pub fn mkdir_all(opath string, params MkdirParams) ! {
 	if exists(opath) {
 		if is_dir(opath) {
@@ -1172,6 +1220,9 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 			continue
 		}
 		mkdir(p, params) or {
+			if is_dir(p) {
+				continue
+			}
 			return error_with_code('folder: ${p}, error: ${err.msg()}', err.code())
 		}
 	}

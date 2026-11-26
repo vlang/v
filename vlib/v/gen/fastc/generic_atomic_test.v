@@ -279,10 +279,9 @@ fn main() {
 			'-target-libc-headers', '-os', 'vinix', '-arch', arch, '-gc', 'none', '-manualfree',
 			'-nofloat', '-d', 'no_backtrace', '-exclude', '@vlib/builtin/backtraces_nix.c.v', '-o',
 			c_path, root], vroot, {
-			'VEXE':                   @VEXE
-			'VFLAGS':                 ''
-			'VOSARGS':                ''
-			'V_MACOS_V3_NO_FALLBACK': '1'
+			'VEXE':    @VEXE
+			'VFLAGS':  ''
+			'VOSARGS': ''
 		})
 		assert build.exit_code == 0, '${arch}: ${build.output}'
 		mut flags := ['-w', '-O2', '-fno-strict-aliasing', '-D__vinix__']

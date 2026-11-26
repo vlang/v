@@ -838,6 +838,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 	mut early_initializers := map[string]string{}
 	mut uses_pthread_tls := false
 	mut option_types := flat.TypeTextBindings{}
+	mut channel_elements := flat.TypeTextBindings{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := flat.TypeTextBindings{}
 	mut function_definitions := map[string]string{}
@@ -866,8 +867,8 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			fastc_prefixed_c_names:       fastc_prefixed_c_names
 			declaration_initializer_mode: true
 			has_c_functions:              helper_has_c_functions
-			comparison_memo:              map[i64]FastcRenderedExpression{}
-			type_memo:                    map[i64]u32{}
+			comparison_memo:              map[i64]FastcComparisonMemoEntry{}
+			type_memo:                    map[i64]FastcTypeMemoEntry{}
 			method_key_memo:              map[u32]map[string]string{}
 			field_memo:                   map[u32]map[string]&FastcStructField{}
 			spawn_typedefs:               map[string]string{}
@@ -893,6 +894,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			function_c_names:             function_c_names
 			constant_types:               constant_types
 			global_option_types:          option_types
+			global_channel_elements:      channel_elements
 			global_types:                 global_types
 			composite_types:              map[string]bool{}
 			fixed_array_types:            flat.TypeTextBindings{}
@@ -903,6 +905,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 		uses_pthread_tls = uses_pthread_tls || gen.uses_pthread_tls
 		global_types = gen.global_types.move()
 		option_types = gen.global_option_types.move()
+		channel_elements = gen.global_channel_elements.move()
 		for name, _ in gen.composite_types {
 			composite_types[name] = true
 		}
@@ -941,6 +944,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 	}
 	return FastcGlobalDeclarations{
 		option_types:         option_types
+		channel_elements:     channel_elements
 		declarations:         out.str()
 		uses_pthread_tls:     uses_pthread_tls
 		module_initializers:  module_initializers
@@ -1150,9 +1154,19 @@ fn (mut g Parser) parse_one_global_declaration(attributes FastcDeclarationAttrib
 			if payload != 0 {
 				g.global_option_types.set_id(key, payload)
 			}
+		} else if typ == fastc_type_chan {
+			element := g.channel_element_type(g.last_expression)
+			if element != 0 {
+				g.global_channel_elements.set_id(key, element)
+			}
 		}
 		g.skip_semicolons()
 		return
+	}
+	channel_element := if g.tok == .name && g.lit == 'chan' {
+		fastc_peek_chan_element(g.s, g.path, g.module_name, g.imports, g.declared_types, g.selfhost)
+	} else {
+		u32(0)
 	}
 	typ := g.parse_type()!
 	is_function_pointer := g.pending_fn_pointer
@@ -1176,6 +1190,9 @@ fn (mut g Parser) parse_one_global_declaration(attributes FastcDeclarationAttrib
 	g.global_types.set_id(key, typ)
 	if g.pending_option_value_type != 0 {
 		g.global_option_types.set_id(key, g.pending_option_value_type)
+	}
+	if channel_element != 0 {
+		g.global_channel_elements.set_id(key, channel_element)
 	}
 	if g.tok != .assign && g.selfhost && !attributes.is_cinit {
 		// An array or map global starts empty, not as zeroed memory.
@@ -1486,8 +1503,8 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				fastc_prefixed_c_names:       fastc_prefixed_c_names
 				declaration_initializer_mode: true
 				has_c_functions:              helper_has_c_functions
-				comparison_memo:              map[i64]FastcRenderedExpression{}
-				type_memo:                    map[i64]u32{}
+				comparison_memo:              map[i64]FastcComparisonMemoEntry{}
+				type_memo:                    map[i64]FastcTypeMemoEntry{}
 				method_key_memo:              map[u32]map[string]string{}
 				field_memo:                   map[u32]map[string]&FastcStructField{}
 				spawn_typedefs:               map[string]string{}
@@ -1676,8 +1693,8 @@ fn fastc_parse_constant_file_unscoped(ctx &FastcConstantGenContext, source_file 
 		fastc_prefixed_c_names:       ctx.fastc_prefixed_c_names
 		declaration_initializer_mode: true
 		has_c_functions:              ctx.has_c_functions
-		comparison_memo:              map[i64]FastcRenderedExpression{}
-		type_memo:                    map[i64]u32{}
+		comparison_memo:              map[i64]FastcComparisonMemoEntry{}
+		type_memo:                    map[i64]FastcTypeMemoEntry{}
 		method_key_memo:              map[u32]map[string]string{}
 		field_memo:                   map[u32]map[string]&FastcStructField{}
 		spawn_typedefs:               map[string]string{}
@@ -2577,13 +2594,14 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 			}
 		}
 	}
-	enum_helper_names, enum_helper_texts := fastc_generate_enum_string_helpers(enum_infos, prefs.target_libc_headers)
+	enum_helper_names, enum_helper_texts, enum_from_types := fastc_generate_enum_helpers(enum_infos, prefs)
 	timer.mark('type_declarations.enum_helpers')
 	return FastcTypeDeclarations{
 		declarations_head:     declarations_head
 		declarations:          out.str()
 		enum_helper_names:     enum_helper_names
 		enum_helper_texts:     enum_helper_texts
+		enum_from_types:       enum_from_types
 		alias_base_types:      alias_base_types
 		fn_alias_return_types: fn_alias_return_types
 		enum_field_types:      enum_field_types
@@ -3826,6 +3844,7 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 		return error('fastc parser does not support unfinished enum `${name}` in ${source_file.path}')
 	}
 	enum_infos << FastcEnumInfo{
+		key:         key
 		c_name:      c_name
 		name:        flat.source_type_id(name)
 		fields:      field_names.clone()
@@ -4017,12 +4036,12 @@ fn fastc_emit_enum_print_function(c_name string, name string, fields []string, i
 	out.writeln('}')
 }
 
-// fastc_generate_enum_string_helpers renders the `str` and print helper of
-// every enum as separate pieces (parallel name and text lists), so the
-// stitch can leave out the helpers nothing reachable calls.
-fn fastc_generate_enum_string_helpers(infos []FastcEnumInfo, target_libc_headers bool) ([]string, []string) {
+// fastc_generate_enum_helpers emits each helper separately so the stitch can
+// leave out helpers that no reachable function calls.
+fn fastc_generate_enum_helpers(infos []FastcEnumInfo, prefs &pref.Preferences) ([]string, []string, flat.TypeTextBindings) {
 	mut names := []string{cap: infos.len * 2}
 	mut texts := []string{cap: infos.len * 2}
+	mut from_types := flat.TypeTextBindings{}
 	for info in infos {
 		mut out := strings.new_builder(256)
 		out.writeln('string v_fastc_enum_str_${info.c_name}(${info.c_name} value) {')
@@ -4060,7 +4079,7 @@ fn fastc_generate_enum_string_helpers(infos []FastcEnumInfo, target_libc_headers
 		// `?Enum` (none when no field name matches).
 		from_out.writeln('Option ${info.c_name}__from_string(string __vf_from) {')
 		for field in info.fields {
-			value := if target_libc_headers {
+			value := if prefs.target_libc_headers {
 				'V_FASTC_OPTION_SUCCESS(Option, ${info.c_name}, __vf_value)'
 			} else {
 				'(Option){.data=v_fastc_interface_box(&__vf_value, sizeof(${info.c_name})), .state=0}'
@@ -4072,8 +4091,63 @@ fn fastc_generate_enum_string_helpers(infos []FastcEnumInfo, target_libc_headers
 		from_out.writeln('')
 		names << '${info.c_name}__from_string'
 		texts << from_out.str()
+		if prefs.building_v {
+			from_types.set(info.key, info.c_name)
+			names << 'v_fastc_enum_from_${info.c_name}'
+			texts << fastc_generate_enum_from_helper(info, prefs.target_libc_headers)
+			names << 'v_fastc_enum_from_text_${info.c_name}'
+			texts << fastc_generate_enum_from_text_helper(info, prefs.target_libc_headers)
+		}
 	}
-	return names, texts
+	return names, texts, from_types
+}
+
+fn fastc_generate_enum_from_helper(info &FastcEnumInfo, target_libc_headers bool) string {
+	mut out := strings.new_builder(256)
+	out.writeln('__v_result v_fastc_enum_from_${info.c_name}(u64 input) {')
+	if info.is_flag {
+		mut bits := []string{cap: info.fields.len + 1}
+		bits << '0'
+		for field in info.fields {
+			bits << '${info.c_name}__${field}'
+		}
+		out.writeln('\tif ((input & ~((u64)(${bits.join(' | ')}))) != 0)')
+	} else {
+		mut checks := []string{cap: info.fields.len + 1}
+		checks << 'true'
+		for field in info.fields {
+			checks << 'input != (u64)${info.c_name}__${field}'
+		}
+		out.writeln('\tif (${checks.join(' && ')})')
+	}
+	out.writeln('\t\treturn (__v_result){.err=builtin__error(_S("invalid value")), .state=1};')
+	out.writeln('\t${info.c_name} value = (${info.c_name})input;')
+	if target_libc_headers {
+		out.writeln('\treturn V_FASTC_OPTION_SUCCESS(__v_result, ${info.c_name}, value);')
+	} else {
+		out.writeln('\treturn (__v_result){.data=v_fastc_interface_box(&value, sizeof(value))};')
+	}
+	out.writeln('}')
+	out.writeln('')
+	return out.str()
+}
+
+fn fastc_generate_enum_from_text_helper(info &FastcEnumInfo, target_libc_headers bool) string {
+	mut out := strings.new_builder(256)
+	out.writeln('__v_result v_fastc_enum_from_text_${info.c_name}(string input) {')
+	if info.is_flag {
+		out.writeln('\tif (input.len == 0) return v_fastc_enum_from_${info.c_name}(0);')
+	}
+	out.writeln('\tOption matched = ${info.c_name}__from_string(input);')
+	out.writeln('\tif (matched.state) return (__v_result){.err=builtin__error(_S("invalid value")), .state=1};')
+	if target_libc_headers {
+		out.writeln('\treturn V_FASTC_OPTION_SUCCESS(__v_result, ${info.c_name}, V_FASTC_OPTION_VALUE(${info.c_name}, matched));')
+	} else {
+		out.writeln('\treturn (__v_result){.data=matched.data};')
+	}
+	out.writeln('}')
+	out.writeln('')
+	return out.str()
 }
 
 fn fastc_emit_interface_declaration(mut scan scanner.Scanner, source_file FastcSourceFile, mut out strings.Builder) !token.Token {

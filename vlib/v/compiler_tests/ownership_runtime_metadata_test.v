@@ -4,19 +4,30 @@ const ownership_runtime_tests_dir = os.dir(@FILE)
 const ownership_runtime_compiler_dir = os.dir(ownership_runtime_tests_dir)
 const ownership_runtime_vlib_dir = os.dir(ownership_runtime_compiler_dir)
 
+fn ownership_runtime_bootstrap(root string, suffix string) string {
+	source := os.join_path(ownership_runtime_compiler_dir, 'v.v')
+	// The runner's standalone driver can build the ownership-enabled overlay.
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	if os.getenv('VFLAGS') == '' && os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(source) {
+		return os.real_path(shared)
+	}
+	// Compile the optional ownership helpers with normal value semantics. The
+	// bare frontend permits this bootstrap for either compiler entry point.
+	bootstrap := os.join_path(root, 'bootstrap${suffix}')
+	build := os.exec([@VEXE, '-no-retry-compilation', '-cc', 'clang', '-gc', 'none', '-path',
+		'${ownership_runtime_vlib_dir}|@vlib|@vmodules', '-o', bootstrap, source])
+	assert build.exit_code == 0, build.output
+	return bootstrap
+}
+
 fn test_ownership_checker_runtime_metadata_survives_arena_release() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_runtime_metadata_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	suffix := $if windows { '.exe' } $else { '' }
-	bootstrap := os.join_path(root, 'bootstrap${suffix}')
-	// Compile the optional ownership helpers with normal value semantics. The
-	// bare frontend permits this bootstrap for either compiler entry point.
-	build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none',
-		'-path', '${ownership_runtime_vlib_dir}|@vlib|@vmodules', '-o', bootstrap,
-		os.join_path(ownership_runtime_compiler_dir, 'v.v')])
-	assert build.exit_code == 0, build.output
+	bootstrap := ownership_runtime_bootstrap(root, suffix)
 
 	overlay_vlib := os.join_path(root, 'vlib')
 	overlay_types := os.join_path(overlay_vlib, 'v', 'types')

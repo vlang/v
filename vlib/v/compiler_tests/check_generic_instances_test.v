@@ -18,7 +18,7 @@ fn (u User) greet() string {
 }
 '
 
-fn check_program(name string, source string) os.Result {
+fn check_program(name string, source string, flags ...string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_check_generic_instances_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
@@ -26,7 +26,7 @@ fn check_program(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	return os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
+	return os.exec([@VEXE, '-check', '-nocolor', ...flags, path])
 }
 
 // error_lines returns `line:col: message` for every error of a check output.
@@ -45,36 +45,101 @@ fn error_lines(output string) []string {
 	return lines
 }
 
-fn test_an_instance_that_reads_a_field_its_type_lacks_is_reported() {
-	res := check_program('int_field', 'fn show[T](x T) string {\n\treturn x.name\n}\n\nfn main() {\n\tprintln(show(1))\n}\n')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ['11:11: `int` has no property `name`'], res.output
+fn test_instances_report_missing_fields_and_methods() {
+	res := check_program('missing_members', "fn show[T](x T) string {
+	return x.name
 }
 
-fn test_a_misspelled_field_is_reported_for_a_struct_instance() {
-	res := check_program('struct_typo', "fn show[T](x T) string {\n\treturn x.nme\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n}\n")
+fn misspelled[T](x T) string {
+	return x.nme
+}
+
+fn call[T](x T) string {
+	return x.greet()
+}
+
+struct Box[T] {
+	v T
+}
+
+fn (b Box[T]) label() string {
+	return b.v.name
+}
+
+type Octet = string
+
+struct Elm[T] {
+	val T
+}
+
+fn (el Elm[T]) size() int {
+	return el.val.size()
+}
+
+fn main() {
+	println(show(1))
+	println(misspelled(User{ name: 'a' }))
+	println(call(User{ name: 'a' }))
+	println(call(1))
+	println(Box[User]{ v: User{ name: 'a' } }.label())
+	println(Box[int]{ v: 1 }.label())
+
+	el := Elm[Octet]{
+		val: Octet('xx')
+	}
+	println(el.size())
+}
+")
 	assert res.exit_code == 1, res.output
 	errors := error_lines(res.output)
-	assert errors.len == 1, res.output
-	assert errors[0].starts_with('11:11: type `User` has no field named `nme`'), res.output
+	assert errors.len == 5, res.output
+	assert '11:11: `int` has no property `name`' in errors, res.output
+	assert errors.any(it.starts_with('15:11: type `User` has no field named `nme`')), res.output
+	assert '19:11: unknown method or field: `int.greet`.' in errors, res.output
+	assert '27:13: `int` has no property `name`' in errors, res.output
+	assert '37:16: unknown method or field: `string.size`' in errors, res.output
 }
 
-fn test_an_instance_that_calls_a_method_its_type_lacks_is_reported() {
-	res := check_program('int_method', "fn call[T](x T) string {\n\treturn x.greet()\n}\n\nfn main() {\n\tprintln(call(User{ name: 'a' }))\n\tprintln(call(1))\n}\n")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ['11:11: unknown method or field: `int.greet`.'], res.output
+// Specializations resolve fields and methods on concrete types and keep the
+// methods declared on a type argument such as the Octet alias.
+fn test_instances_use_members_of_concrete_types_and_aliases() {
+	source := "fn show[T](x T) string {
+	return x.name
 }
 
-fn test_a_method_of_a_generic_struct_is_checked_for_each_instance() {
-	res := check_program('generic_method', "struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label() string {\n\treturn b.v.name\n}\n\nfn main() {\n\tprintln(Box[User]{ v: User{ name: 'a' } }.label())\n\tprintln(Box[int]{ v: 1 }.label())\n}\n")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ['15:13: `int` has no property `name`'], res.output
+fn call[T](x T) string {
+	return x.greet()
 }
 
-fn test_instances_that_have_what_the_body_uses_stay_valid() {
-	res := check_program('valid', "fn show[T](x T) string {\n\treturn x.name\n}\n\nfn call[T](x T) string {\n\treturn x.greet()\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n\tprintln(call(User{ name: 'b' }))\n}\n")
-	assert res.exit_code == 0, res.output
-	assert error_lines(res.output) == [], res.output
+type Octet = string
+
+fn (o Octet) pack() []u8 {
+	return o.bytes()
+}
+
+struct Elm[T] {
+	val T
+}
+
+fn (el Elm[T]) pack() []u8 {
+	return el.val.pack()
+}
+
+fn main() {
+	println(show(User{ name: 'a' }))
+	println(call(User{ name: 'b' }))
+
+	el := Elm[Octet]{
+		val: Octet('xx')
+	}
+	println(el.pack())
+}
+"
+	for res in [check_program('instance_members_check', source),
+		build_program('instance_members_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
 }
 
 // A library module outside the program, where ~/.vmodules keeps them. A check
@@ -199,7 +264,7 @@ fn check_with_modules_env(name string, env string, files map[string]string, modu
 			}
 		}
 	}
-	res := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', os.join_path(program, 'main.v')])
+	res := os.exec([@VEXE, '-check', '-nocolor', os.join_path(program, 'main.v')])
 	prefix := 'v-diagnostics-server: instances: '
 	lines := (os.read_file(trace) or { '' }).split_into_lines().filter(it.starts_with(prefix)).map(it[prefix.len..])
 	return LibraryCheck{
@@ -207,23 +272,6 @@ fn check_with_modules_env(name string, env string, files map[string]string, modu
 		trace: lines
 	}
 }
-
-const operator_program = 'import advlib
-
-struct Vec[T] {
-	x T
-}
-
-fn (a Vec[T]) + (b Vec[T]) Vec[T] {
-	return Vec[T]{
-		x: a.x.name
-	}
-}
-
-fn main() {
-	println(advlib.total([Vec[int]{1}, Vec[int]{2}]).x)
-}
-'
 
 const dispatch_program = 'import advlib
 
@@ -254,17 +302,6 @@ fn test_a_check_clones_a_library_instance_without_its_body() {
 	assert check.trace == ['1 of 2 library instances cloned without their bodies'], check.trace.str()
 }
 
-fn test_v_check_library_bodies_keeps_the_body_of_every_library_instance() {
-	check := check_with_modules_env('bodies_env', 'V_CHECK_LIBRARY_BODIES=all', {
-		'main.v': header_program
-	}, {
-		'advlib/advlib.v': library_module
-	})
-	assert check.res.exit_code == 0, check.res.output
-	assert check.trace == ['0 of 2 library instances cloned without their bodies',
-		'every library instance keeps its body: V_CHECK_LIBRARY_BODIES=all asks for them'], check.trace.str()
-}
-
 fn test_only_all_keeps_every_library_body() {
 	for value in ['1', ''] {
 		check := check_with_modules_env('bodies_not_all_${value}', 'V_CHECK_LIBRARY_BODIES=${value}', {
@@ -277,7 +314,7 @@ fn test_only_all_keeps_every_library_body() {
 	}
 }
 
-fn test_library_check_restores_existing_environment_values() {
+fn test_v_check_library_bodies_keeps_bodies_and_restores_environment() {
 	keys := ['VMODULES', 'V_DIAGNOSTICS_TRACE', 'V_CHECK_LIBRARY_BODIES']
 	mut previous := map[string]string{}
 	mut present := map[string]bool{}
@@ -303,6 +340,8 @@ fn test_library_check_restores_existing_environment_values() {
 		'advlib/advlib.v': library_module
 	})
 	assert check.res.exit_code == 0, check.res.output
+	assert check.trace == ['0 of 2 library instances cloned without their bodies',
+		'every library instance keeps its body: V_CHECK_LIBRARY_BODIES=all asks for them'], check.trace.str()
 	for key in keys {
 		assert os.getenv(key) == 'saved_${key}'
 	}
@@ -310,22 +349,53 @@ fn test_library_check_restores_existing_environment_values() {
 
 fn test_a_library_instance_whose_types_reach_a_program_generic_keeps_its_body() {
 	// `Job` holds a `Runner`, which has a method with type parameters of its own.
-	check := check_with_library('method_level_trace', method_level_program)
+	check := check_with_library('method_level', method_level_program)
+	assert check.res.exit_code == 1, check.res.output
+	assert error_lines(check.res.output) == ['6:11: `int` has no property `name`'], check.res.output
 	assert check.trace == ['0 of 1 library instances cloned without their bodies'], check.trace.str()
 }
 
 fn test_a_library_instance_given_an_interface_or_a_program_generic_type_keeps_its_body() {
-	prelude := "import advlib\n\nstruct Dog {}\n\nfn (d Dog) name() string {\n\treturn 'dog'\n}\n\nstruct Pair[T] {\n\ta T\n}\n\nfn first[T](xs []T) T {\n\treturn xs[0]\n}\n\n"
-	iface := check_with_library('interface_trace', prelude + 'fn main() {\n\tprintln(first([1]))\n\tprintln(advlib.with_namer([advlib.Namer(Dog{})], advlib.Namer(Dog{})))\n}\n')
-	assert iface.res.exit_code == 0, iface.res.output
-	assert iface.trace == ['0 of 1 library instances cloned without their bodies'], iface.trace.str()
-	pair := check_with_library('generic_type_trace', prelude + 'fn main() {\n\tprintln(first([1]))\n\tprintln(advlib.with_namer([Pair[int]{ a: 1 }], advlib.Namer(Dog{})))\n}\n')
-	assert pair.res.exit_code == 0, pair.res.output
-	assert pair.trace == ['0 of 1 library instances cloned without their bodies'], pair.trace.str()
+	source := "import advlib
+
+struct Dog {}
+
+fn (d Dog) name() string {
+	return 'dog'
+}
+
+struct Pair[T] {
+	a T
+}
+
+fn first[T](xs []T) T {
+	return xs[0]
+}
+
+fn main() {
+	println(first([1]))
+	println(advlib.with_namer_from_library([advlib.Namer(Dog{})], advlib.Namer(Dog{})))
+	println(advlib.with_namer_from_library([Pair[int]{ a: 1 }], advlib.Namer(Dog{})))
+}
+"
+	// Let the library call with_namer so its type argument determines whether its body is kept.
+	check := check_with_modules('type_argument_trace', {
+		'main.v': source
+	}, {
+		'advlib/advlib.v': library_module + '
+pub fn with_namer_from_library[T](xs []T, n Namer) string {
+	return with_namer(xs, n)
+}
+'
+	})
+	assert check.res.exit_code == 0, check.res.output
+	assert check.trace == ['0 of 4 library instances cloned without their bodies'], check.trace.str()
 }
 
 fn test_a_method_of_a_program_generic_type_keeps_the_body_of_every_library_instance() {
-	check := check_with_library('dispatch_trace', dispatch_program)
+	check := check_with_library('dispatch', dispatch_program)
+	assert check.res.exit_code == 1, check.res.output
+	assert error_lines(check.res.output) == ['8:13: `int` has no property `name`'], check.res.output
 	assert check.trace == ['0 of 1 library instances cloned without their bodies',
 		'every library instance keeps its body: `Box.name` is a method of a generic type of the program'], check.trace.str()
 }
@@ -333,34 +403,52 @@ fn test_a_method_of_a_program_generic_type_keeps_the_body_of_every_library_insta
 // The instances below are asked for only in the body of a library instance.
 // Each check has to report the member that the concrete type lacks.
 
-fn test_an_operator_applied_in_a_library_body_checks_the_program_instance() {
-	check := check_with_library('operator', operator_program)
-	assert check.res.exit_code == 1, check.res.output
-	assert error_lines(check.res.output) == ['9:10: `int` has no property `name`'], check.res.output
+fn test_calls_in_library_bodies_check_program_instances() {
+	check := check_with_library('operator_method_and_interface', 'import advlib
+
+struct Vec[T] {
+	x T
 }
 
-fn test_a_method_called_in_a_library_body_checks_the_program_instance() {
-	check := check_with_library('method', 'import advlib\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label() string {\n\treturn b.v.name\n}\n\nfn main() {\n\tprintln(advlib.label_of(Box[int]{ v: 1 }))\n}\n')
-	assert check.res.exit_code == 1, check.res.output
-	assert error_lines(check.res.output) == ['8:13: `int` has no property `name`'], check.res.output
+fn (a Vec[T]) + (b Vec[T]) Vec[T] {
+	return Vec[T]{
+		x: a.x.name
+	}
 }
 
-fn test_an_interface_call_in_a_library_body_checks_the_program_instance_it_reaches() {
-	check := check_with_library('dispatch', dispatch_program)
-	assert check.res.exit_code == 1, check.res.output
-	assert error_lines(check.res.output) == ['8:13: `int` has no property `name`'], check.res.output
+struct Box[T] {
+	v T
 }
 
-fn test_an_interface_type_argument_checks_the_program_instance_its_call_reaches() {
-	check := check_with_library('interface_arg', 'import advlib\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) name() string {\n\treturn b.v.name\n}\n\ninterface Named {\n\tname() string\n}\n\nfn main() {\n\txs := [Named(Box[int]{ v: 1 })]\n\tprintln(advlib.names_of(xs))\n}\n')
-	assert check.res.exit_code == 1, check.res.output
-	assert error_lines(check.res.output) == ['8:13: `int` has no property `name`'], check.res.output
+fn (b Box[T]) label() string {
+	return b.v.name
 }
 
-fn test_a_method_with_its_own_type_parameters_reached_through_a_field_is_checked() {
-	check := check_with_library('method_level', method_level_program)
+struct NamedBox[T] {
+	v T
+}
+
+fn (b NamedBox[T]) name() string {
+	return b.v.name
+}
+
+interface Named {
+	name() string
+}
+
+fn main() {
+	println(advlib.total([Vec[int]{1}, Vec[int]{2}]).x)
+	println(advlib.label_of(Box[int]{ v: 1 }))
+	xs := [Named(NamedBox[int]{ v: 1 })]
+	println(advlib.names_of(xs))
+}
+')
 	assert check.res.exit_code == 1, check.res.output
-	assert error_lines(check.res.output) == ['6:11: `int` has no property `name`'], check.res.output
+	errors := error_lines(check.res.output)
+	assert errors.len == 3, check.res.output
+	assert '9:10: `int` has no property `name`' in errors, check.res.output
+	assert '18:13: `int` has no property `name`' in errors, check.res.output
+	assert '26:13: `int` has no property `name`' in errors, check.res.output
 }
 
 fn test_a_comptime_for_lowered_after_an_interface_call_in_a_library_body_is_checked() {
@@ -388,13 +476,13 @@ fn test_a_library_that_imports_a_module_of_the_program_keeps_every_body() {
 
 // build_program builds `source` with the prelude, with no V1 to fall back on when
 // the C compiler fails.
-fn build_program(name string, source string) os.Result {
-	return build_program_with_env(name, source, [])
+fn build_program(name string, source string, flags ...string) os.Result {
+	return build_program_with_env(name, source, [], ...flags)
 }
 
 // build_program_with_env is build_program with the environment variables `env`
 // (`NAME=value`) set for the build.
-fn build_program_with_env(name string, source string, env []string) os.Result {
+fn build_program_with_env(name string, source string, env []string, flags ...string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_build_generic_instances_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
@@ -402,58 +490,101 @@ fn build_program_with_env(name string, source string, env []string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	mut cmd := ['env', 'V_MACOS_V3_NO_FALLBACK=1']
+	mut cmd := ['env']
 	cmd << env
-	cmd << [@VEXE, '-new-compiler', '-nocolor', '-o', os.join_path(dir, 'main'), path]
+	cmd << [@VEXE, '-nocolor', ...flags, '-o', os.join_path(dir, 'main'), path]
 	return os.exec(cmd)
 }
 
-// A build reports the errors of an instance where a check does, as V1 did: the
-// body of a generic function without constraints is still not checked on its
-// own, but each of its instances is, instead of failing in the C compiler.
-fn test_a_build_reports_the_member_an_instance_lacks() {
-	source := "fn show[T](x T) string {\n\treturn x.nme\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n}\n"
-	res := build_program('build_struct_typo', source)
-	assert res.exit_code != 0, res.output
-	assert !res.output.contains('C compilation error'), res.output
-	errors := error_lines(res.output)
-	assert errors.len == 1, res.output
-	assert errors[0].starts_with('11:11: type `User` has no field named `nme`'), res.output
+// Both check and build diagnose invalid expressions in a generic body when
+// the function is specialized.
+fn test_instances_report_member_operator_and_guard_errors() {
+	source := "fn show[T](x T) string {
+	return x.nme
 }
 
-// An operator that the type of an instance does not have is reported for that
-// instance too, in a check and in a build: `int + string`.
-fn test_an_operator_an_instance_lacks_is_reported() {
-	source := "fn add[T](a T) int {\n\treturn a + 'x'\n}\n\nfn main() {\n\tprintln(add(1))\n}\n"
-	for res in [check_program('operator_check', source), build_program('operator_build', source)] {
+fn add[T](a T) int {
+	return a + 'x'
+}
+
+fn guard[T](a T) {
+	if v := a {
+		println(v)
+	}
+}
+
+fn main() {
+	println(show(User{ name: 'a' }))
+	println(add(1))
+	guard(User{ name: 'a' })
+}
+"
+	for res in [check_program('instance_expr_check', source),
+		build_program('instance_expr_build', source)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == ['11:9: operator `+` cannot concatenate `int` and `string`'], res.output
+		errors := error_lines(res.output)
+		assert errors.len == 3, res.output
+		assert errors.any(it.starts_with('11:11: type `User` has no field named `nme`')), res.output
+		assert '15:9: operator `+` cannot concatenate `int` and `string`' in errors, res.output
+		assert '19:10: expression should either return an Option or a Result' in errors, res.output
 	}
 }
 
-// An operator that every instance has, and one in a `$if` branch that an
-// instance does not take, give no error.
-fn test_operators_that_each_instance_has_stay_valid() {
-	source := "fn join[T](a T, b T) T {\n\treturn a + b\n}\n\nfn inc[T](a T) T {\n\t\$if T is int {\n\t\treturn a + 1\n\t} \$else {\n\t\treturn a\n\t}\n}\n\nfn main() {\n\tprintln(join(1, 2))\n\tprintln(join('a', 'b'))\n\tprintln(inc(1))\n\tprintln(inc('s'))\n}\n"
-	for res in [check_program('operators_valid_check', source),
-		build_program('operators_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
+// Both check and build report incompatible returns when generic functions,
+// closures, and methods are specialized. A local initialized from a parameter
+// also retains the instance's concrete type.
+const return_program = "fn is_set[T](x T) bool {
+	return x
 }
 
-// A returned name or field of an instance with another type than the function
-// returns is reported for that instance, in a check and in a build: `is_set(1)`
-// returns an `int` as a `bool`. So is one in a generic closure and in a method of
-// a generic struct.
-const return_program = "fn is_set[T](x T) bool {\n\treturn x\n}\n\nfn name_flag[T](x T) bool {\n\treturn x.name\n}\n\nfn checked[T](mut x T) !int {\n\treturn x.name\n}\n\nfn later[T](mut x T) {\n\tread := fn [mut x] [T] () !int {\n\t\treturn x.name\n\t}\n\t_ = read\n}\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) flag() bool {\n\treturn b.v\n}\n\nfn main() {\n\tprintln(is_set(1))\n\tprintln(name_flag(User{ name: 'a' }))\n\tmut u := User{\n\t\tname: 'b'\n\t}\n\tprintln(checked(mut u) or { 0 })\n\tlater(mut u)\n\tprintln(Box[int]{ v: 1 }.flag())\n}\n"
+fn name_flag[T](x T) bool {
+	return x.name
+}
+
+fn checked[T](mut x T) !int {
+	return x.name
+}
+
+fn later[T](mut x T) {
+	read := fn [mut x] [T] () !int {
+		return x.name
+	}
+	_ = read
+}
+
+struct Box[T] {
+	v T
+}
+
+fn (b Box[T]) flag() bool {
+	return b.v
+}
+
+fn invalid[T](value T) bool {
+	local := value
+	return local
+}
+
+fn main() {
+	println(is_set(1))
+	println(name_flag(User{ name: 'a' }))
+	mut u := User{
+		name: 'b'
+	}
+	println(checked(mut u) or { 0 })
+	later(mut u)
+	println(Box[int]{ v: 1 }.flag())
+	println(invalid(1))
+}
+"
 
 const return_errors = ['11:9: cannot use `int` as type `bool` in return argument',
 	'15:9: cannot use `string` as type `bool` in return argument',
 	'19:9: cannot use `string` as type `!int` in return argument',
 	'24:10: cannot use `string` as type `!int` in return argument',
-	'34:9: cannot use `int` as type `bool` in return argument']
+	'34:9: cannot use `int` as type `bool` in return argument',
+	'39:9: cannot use `int` as type `bool` in return argument']
 
 fn test_an_instance_that_returns_a_value_of_another_type_is_reported() {
 	for res in [check_program('return_check', return_program),
@@ -464,22 +595,40 @@ fn test_an_instance_that_returns_a_value_of_another_type_is_reported() {
 	}
 }
 
-// Returned values of the types their instances return stay valid, and so do the
-// returns that a clone cannot judge from its concrete types: a call result, a
-// literal of a type parameter, and a value narrowed by `is`.
-fn test_instances_that_return_values_of_their_types_stay_valid() {
-	source := "type Value = int | string\n\nfn same[T](x T) T {\n\treturn x\n}\n\nfn widen[T](x T) i64 {\n\treturn x\n}\n\nfn greeting[T](x T) string {\n\tf := fn [x] [T] () string {\n\t\treturn x.greet()\n\t}\n\treturn f()\n}\n\nfn zero[T]() T {\n\treturn T{}\n}\n\nfn pick[T](v Value, fallback T) int {\n\tif v is int {\n\t\treturn v\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(same(1))\n\tprintln(same('a'))\n\tprintln(widen(i32(2)))\n\tprintln(widen(u8(3)))\n\tprintln(greeting(User{ name: 'c' }))\n\tprintln(zero[map[string]int]())\n\tprintln(pick(Value(4), 0))\n}\n"
-	for res in [check_program('return_valid_check', source),
-		build_program('return_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
+// Returns whose types depend on a call, a type parameter literal, or a value
+// narrowed by `is` stay valid when the generic functions are specialized.
+fn test_instances_return_values_and_local_callbacks() {
+	source := "type Value = int | string
+
+fn same[T](x T) T {
+	return x
 }
 
-// A clone types a local fn literal as the literal's return type. Returning the
-// callback, directly or through another local, is still valid in its instance.
-fn test_instances_returning_local_callbacks_stay_valid() {
-	source := "fn callback[T](x T) fn () !int {
+fn widen[T](x T) i64 {
+	return x
+}
+
+fn greeting[T](x T) string {
+	f := fn [x] [T] () string {
+		return x.greet()
+	}
+	return f()
+}
+
+fn zero[T]() T {
+	return T{}
+}
+
+fn pick[T](v Value, fallback T) int {
+	if v is int {
+		return v
+	}
+	return 0
+}
+
+// A local function literal keeps its callable type when returned directly or
+// through another local in a specialization.
+fn callback[T](x T) fn () !int {
 	make := fn () !int {
 		return 1
 	}
@@ -495,62 +644,139 @@ fn forwarded_callback[T](x T) fn () !int {
 }
 
 fn main() {
+	println(same(1))
+	println(same('a'))
+	println(widen(i32(2)))
+	println(widen(u8(3)))
+	println(greeting(User{ name: 'c' }))
+	println(zero[map[string]int]())
+	println(pick(Value(4), 0))
+
 	f := callback(1)
 	g := forwarded_callback('a')
 	assert f()! == 1
 	assert g()! == 2
 }
 "
-	for res in [check_program('return_local_callbacks_check', source),
-		build_program('return_local_callbacks_build', source)] {
+	for res in [check_program('return_valid_check', source),
+		build_program('return_valid_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}
 }
 
-// A local initialized from a plain parameter retains the instance's concrete
-// type, so its incompatible return still belongs to the instance's diagnostics.
-fn test_an_instance_returning_a_plain_local_of_another_type_is_reported() {
-	source := 'fn invalid[T](value T) bool {
-	local := value
-	return local
+// Check the operator in the active compile-time branch and option guards over
+// parameters, map indexes, and smartcast values.
+fn test_valid_operators_and_option_guards_in_instances() {
+	source := "fn join[T](a T, b T) T {
+	return a + b
+}
+
+fn inc[T](a T) T {
+	\$if T is int {
+		return a + 1
+	} \$else {
+		return a
+	}
+}
+
+fn plain[T](a T) string {
+	if v := a {
+		return '\${v}'
+	}
+	return 'none'
+}
+
+fn opt[T](a ?T) string {
+	if v := a {
+		return '\${v}'
+	}
+	return 'none'
+}
+
+fn mut_opt[T](mut a ?T) string {
+	if v := a {
+		return '\${v}'
+	}
+	return 'none'
+}
+
+fn index[T](m map[string]T) string {
+	if v := m['a'] {
+		return '\${v}'
+	}
+	return 'none'
+}
+
+fn smart[T](a ?T) string {
+	if a != none {
+		if v := a {
+			return '\${v}'
+		}
+	}
+	return 'none'
+}
+
+fn smart_else[T](mut a ?T) string {
+	if a == none {
+		return 'none'
+	} else {
+		if mut v := a {
+			return '\${v}'
+		}
+	}
+	return 'none'
+}
+
+fn smart_match[T](mut a ?T, n int) string {
+	if a != none {
+		match n {
+			1 {
+				if mut v := a {
+					return '\${v}'
+				}
+			}
+			else {}
+		}
+	}
+	return 'none'
+}
+
+struct Box[T] {
+	val ?T
+}
+
+fn (b Box[T]) get() string {
+	if b.val != none {
+		if v := b.val {
+			return '\${v}'
+		}
+	}
+	return 'none'
 }
 
 fn main() {
-	println(invalid(1))
-}
-'
-	for res in [check_program('return_plain_local_check', source),
-		build_program('return_plain_local_build', source)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'12:9: cannot use `int` as type `bool` in return argument',
-		], res.output
-	}
-}
+	println(join(1, 2))
+	println(join('a', 'b'))
+	println(inc(1))
+	println(inc('s'))
 
-// An `if v := a` guard over an `a T` whose instance is neither an option nor a
-// result is reported for that instance, in a check and in a build, as V1 did,
-// instead of failing in the C compiler.
-fn test_an_if_guard_over_a_plain_instance_is_reported() {
-	source := "fn show[T](a T) {\n\tif v := a {\n\t\tprintln(v)\n\t}\n}\n\nfn main() {\n\tshow(User{ name: 'a' })\n}\n"
-	for res in [check_program('if_guard_check', source), build_program('if_guard_build', source)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'11:10: expression should either return an Option or a Result',
-		], res.output
-	}
+	x := ?int(3)
+	println(plain(x))
+	println(opt[int](4))
+	mut y := ?string('s')
+	println(mut_opt(mut y))
+	println(index({
+		'a': 5
+	}))
+	println(smart[int](6))
+	println(smart_else(mut y))
+	println(smart_match(mut y, 1))
+	println(Box[int]{ val: 7 }.get())
 }
-
-// Guards over instances that are options, over `?T` and `mut ?T` parameters, over
-// a map index, and over options smartcast to their payload (`if a != none`, the
-// `else` of `if a == none`, a `match` arm, a `?T` field) give no error.
-fn test_if_guards_over_options_in_instances_stay_valid() {
-	source := "fn plain[T](a T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn opt[T](a ?T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn mut_opt[T](mut a ?T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn index[T](m map[string]T) string {\n\tif v := m['a'] {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn smart[T](a ?T) string {\n\tif a != none {\n\t\tif v := a {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn smart_else[T](mut a ?T) string {\n\tif a == none {\n\t\treturn 'none'\n\t} else {\n\t\tif mut v := a {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn smart_match[T](mut a ?T, n int) string {\n\tif a != none {\n\t\tmatch n {\n\t\t\t1 {\n\t\t\t\tif mut v := a {\n\t\t\t\t\treturn '\${v}'\n\t\t\t\t}\n\t\t\t}\n\t\t\telse {}\n\t\t}\n\t}\n\treturn 'none'\n}\n\nstruct Box[T] {\n\tval ?T\n}\n\nfn (b Box[T]) get() string {\n\tif b.val != none {\n\t\tif v := b.val {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn main() {\n\tx := ?int(3)\n\tprintln(plain(x))\n\tprintln(opt[int](4))\n\tmut y := ?string('s')\n\tprintln(mut_opt(mut y))\n\tprintln(index({\n\t\t'a': 5\n\t}))\n\tprintln(smart[int](6))\n\tprintln(smart_else(mut y))\n\tprintln(smart_match(mut y, 1))\n\tprintln(Box[int]{ val: 7 }.get())\n}\n"
-	for res in [check_program('if_guard_valid_check', source),
-		build_program('if_guard_valid_build', source)] {
+"
+	for res in [check_program('operators_and_guards_check', source),
+		build_program('operators_and_guards_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}
@@ -572,7 +798,7 @@ fn test_an_instance_error_is_reported_at_its_line_directive() {
 		'fn valid[T](x T) bool {\n#line 3 "view.txt"\n\treturn x.name\n}\n\nfn main() {\n\tprintln(valid(User{}))\n}\n') or {
 		panic(err)
 	}
-	res := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
+	res := os.exec([@VEXE, '-check', '-nocolor', path])
 	assert res.exit_code == 1, res.output
 	assert res.output.contains('view.txt:3:9: error: cannot use `string` as type `bool` in return argument'), res.output
 }
@@ -580,7 +806,8 @@ fn test_an_instance_error_is_reported_at_its_line_directive() {
 // call_arg_program passes names and fields of the wrong type from generic
 // bodies: a `bool` to a `string` parameter of a function, an `int` to a method
 // and to a fn-typed field, a callback of another signature, and the same from a
-// generic closure and a method of a generic struct.
+// generic closure and a method of a generic struct. Loop values passed directly
+// from a parameter, through an array alias, or from an array literal are checked too.
 const call_arg_program = "fn take(s string) int {
 	return s.len
 }
@@ -630,6 +857,27 @@ fn (b Box[T]) send() int {
 	return take(b.v)
 }
 
+fn take_u8(n u8) {}
+
+fn from_param[T](values []T) {
+	for value in values {
+		take_u8(value)
+	}
+}
+
+fn from_alias[T](values []T) {
+	alias := values
+	for value in alias {
+		take_u8(value)
+	}
+}
+
+fn from_literal[T](value T) {
+	for item in [value] {
+		take_u8(item)
+	}
+}
+
 fn main() {
 	mut app := App{}
 	println(label(mut app))
@@ -637,6 +885,9 @@ fn main() {
 	send(1, Sink{})
 	later(2)
 	println(Box[bool]{ v: true }.send())
+	from_param([u64(1)])
+	from_alias([u64(1)])
+	from_literal(u64(1))
 }
 "
 
@@ -645,7 +896,10 @@ const call_arg_errors = ['32:14: cannot use `bool` as `string` in argument 1 to 
 	'40:9: cannot use `int` as `string` in argument 1 to `Sink.show`',
 	'41:8: cannot use `int` as `string` in argument 1 to `Sink.put`',
 	'46:15: cannot use `int` as `string` in argument 1 to `take`',
-	'56:14: cannot use `bool` as `string` in argument 1 to `take`']
+	'56:14: cannot use `bool` as `string` in argument 1 to `take`',
+	'63:11: cannot use `u64` as `u8` in argument 1 to `take_u8`',
+	'70:11: cannot use `u64` as `u8` in argument 1 to `take_u8`',
+	'76:11: cannot use `u64` as `u8` in argument 1 to `take_u8`']
 
 // A plain argument of an instance with another type than its parameter is
 // reported for that instance, in a check and in a build, at the argument.
@@ -663,6 +917,7 @@ fn test_an_instance_that_passes_an_argument_of_another_type_is_reported() {
 // call result, a value narrowed by `is` or `match`, one passed in the body of a
 // `$for`, a spread `...args`, and a local initialized by a `match` or a fn
 // literal, which a clone can type as an `int` and as the literal's return type.
+// Loop values also keep the element type inferred from a `match`.
 fn test_instances_that_pass_arguments_of_their_types_stay_valid() {
 	source := "type Value = int | string
 
@@ -763,6 +1018,21 @@ fn sized[T](x T) u8 {
 	return take_u8(len)
 }
 
+fn check_loop_lengths[T](x T) {
+	lengths := [match typeof(x).name {
+		'u8' { u8(2) }
+		else { 4 }
+	}]
+	for length in lengths {
+		assert take_u8(length) == 2
+	}
+	aliases := lengths
+	for _, length in aliases {
+		copy := length
+		assert take_u8(copy) == 2
+	}
+}
+
 fn spread[T](args ...T) int {
 	return pair(...args)
 }
@@ -805,6 +1075,7 @@ fn main() {
 	println(narrowed(Value('d'), 0))
 	println(fields(Named{ label: 'e' }, Value('f')))
 	println(sized(1))
+	check_loop_lengths(u8(1))
 	println(spread(1, 2))
 	println(callback(u))
 }
@@ -816,104 +1087,9 @@ fn main() {
 	}
 }
 
-fn test_instances_keep_the_inferred_types_of_loop_values() {
-	source := "fn take_u8(n u8) u8 {
-	return n
-}
-
-fn sized[T](x T) {
-	lengths := [match typeof(x).name {
-		'u8' { u8(2) }
-		else { 4 }
-	}]
-	for length in lengths {
-		assert take_u8(length) == 2
-	}
-	aliases := lengths
-	for _, length in aliases {
-		copy := length
-		assert take_u8(copy) == 2
-	}
-}
-
-fn main() {
-	sized(u8(1))
-}
-"
-	for res in [check_program('inferred_loop_check', source),
-		build_program('inferred_loop_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
-
-fn test_instances_still_report_incompatible_plain_loop_values() {
-	source := 'fn take_u8(n u8) {}
-
-fn from_param[T](values []T) {
-	for value in values {
-		take_u8(value)
-	}
-}
-
-fn from_alias[T](values []T) {
-	alias := values
-	for value in alias {
-		take_u8(value)
-	}
-}
-
-fn from_literal[T](value T) {
-	for item in [value] {
-		take_u8(item)
-	}
-}
-
-fn main() {
-	from_param([u64(1)])
-	from_alias([u64(1)])
-	from_literal(u64(1))
-}
-'
-	for res in [check_program('plain_loop_check', source), build_program('plain_loop_build', source)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		errors := error_lines(res.output)
-		assert errors.len == 3, res.output
-		for error in errors {
-			assert error.contains('cannot use `u64` as `u8` in argument 1 to `take_u8`'), res.output
-		}
-	}
-}
-
-// A type argument that is an alias with methods of its own, `Octet` for `T`: the
-// clone of `pack` spells its base type, `string`, where the alias's method is
-// the one `el.val.pack()` calls, and the instance is valid in a check and in a
-// build.
-fn test_an_instance_of_an_alias_has_the_methods_of_the_alias() {
-	source := "type Octet = string\n\nfn (o Octet) pack() []u8 {\n\treturn o.bytes()\n}\n\nstruct Elm[T] {\n\tval T\n}\n\nfn (el Elm[T]) pack() []u8 {\n\treturn el.val.pack()\n}\n\nfn main() {\n\tel := Elm[Octet]{\n\t\tval: Octet('xx')\n\t}\n\tprintln(el.pack())\n}\n"
-	for res in [check_program('alias_methods_check', source),
-		build_program('alias_methods_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
-
-// The alias does not lend its base type a method it lacks: `Octet` has no
-// `size`, and `string` has none either.
-fn test_an_instance_of_an_alias_still_lacks_what_neither_has() {
-	res := check_program('alias_lacks', "type Octet = string\n\nstruct Elm[T] {\n\tval T\n}\n\nfn (el Elm[T]) size() int {\n\treturn el.val.size()\n}\n\nfn main() {\n\tel := Elm[Octet]{\n\t\tval: Octet('xx')\n\t}\n\tprintln(el.size())\n}\n")
-	assert res.exit_code == 1, res.output
-	errors := error_lines(res.output)
-	assert errors.len == 1, res.output
-	assert errors[0].contains('size'), res.output
-}
-
-// layout_program uses arrays and maps of `T` where arrays and maps of fixed
-// element types are expected, and is the program of the layout tests below. Each
-// generic function has an instance with the elements it expects, and the ones
-// below have one with other elements too, which read them with the wrong size.
-const layout_program = "type Counts8 = map[string]u8
+// The layout fixtures specialize arrays and maps of `T` with the element types
+// the body expects and with elements of a different size.
+const layout_declarations = 'type Counts8 = map[string]u8
 
 struct Wide {
 	vals []u64
@@ -963,8 +1139,9 @@ fn total_map[T](m map[string]T) i64 {
 	return map_total(m)
 }
 
-fn main() {
-	println(to_bytes([u8(1)]))
+'
+
+const layout_calls = "	println(to_bytes([u8(1)]))
 	println(widen([u64(1)]))
 	println(assign([u64(1)]))
 	println(wrap([u64(1)]))
@@ -980,7 +1157,24 @@ fn main() {
 	}))
 "
 
-const bad_layout_program = layout_program + "\tprintln(to_bytes([1, 2]))\n\tprintln(to_bytes([i32(1)]))\n\tprintln(widen([u8(1)]))\n\tprintln(assign([u32(1)]))\n\tprintln(wrap([u8(1)]))\n\tprintln(total([i32(1)]))\n\tprintln(narrow_map({\n\t\t'a': 1\n\t}))\n\tprintln(widen_map({\n\t\t'a': u8(1)\n\t}))\n\tprintln(total_map({\n\t\t'a': i32(1)\n\t}))\n}\n"
+const layout_program = layout_declarations + 'fn main() {\n' + layout_calls
+
+const bad_layout_calls = "	println(to_bytes([1, 2]))
+	println(to_bytes([i32(1)]))
+	println(widen([u8(1)]))
+	println(assign([u32(1)]))
+	println(wrap([u8(1)]))
+	println(total([i32(1)]))
+	println(narrow_map({
+		'a': 1
+	}))
+	println(widen_map({
+		'a': u8(1)
+	}))
+	println(total_map({
+		'a': i32(1)
+	}))
+"
 
 const layout_errors = ['17:9: cannot cast array `[]int` to `[]u8`',
 	'17:9: cannot cast array `[]i32` to `[]u8`',
@@ -992,33 +1186,7 @@ const layout_errors = ['17:9: cannot cast array `[]int` to `[]u8`',
 	'49:9: cannot use `map[string]u8` as type `map[string]u64` in return argument',
 	'57:19: cannot use `map[string]i32` as `map[string]i64` in argument 1 to `map_total`']
 
-// An instance whose arrays or maps have other elements than the ones the body
-// uses them as is reported where the body does so, once for each such instance,
-// with the wording of the same error outside a generic function: such an array
-// or map is not converted, so `[]u8(a)` for an `a []int` would read its elements
-// with the wrong size. A check and a build report the same.
-fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() {
-	for res in [check_program('layout_check', bad_layout_program),
-		build_program('layout_build', bad_layout_program)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == layout_errors, res.output
-	}
-}
-
-// Instances whose arrays and maps have the elements the body expects stay valid,
-// in a check and in a build, and so does a generic function that no instance
-// gives other elements.
-fn test_instances_with_the_expected_elements_stay_valid() {
-	source := layout_program + '}\n'
-	for res in [check_program('layout_valid_check', source),
-		build_program('layout_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
-
-const wrapped_layout_program = 'fn opt[T](a ?[]T) ?[]u64 {
+const wrapped_layout_declarations = 'fn opt[T](a ?[]T) ?[]u64 {
 	return a
 }
 
@@ -1060,8 +1228,9 @@ fn (u User) speak() string {
 	return u.name
 }
 
-fn main() {
-	println(opt[u64]([u64(1)]))
+'
+
+const wrapped_layout_calls = '	println(opt[u64]([u64(1)]))
 	println(res([u64(1)]) or { [] })
 	println(fixed([u64(1), 2, 3]!))
 	println(nested([[u64(1)]]))
@@ -1071,32 +1240,54 @@ fn main() {
 	println(speakers([User{}]).len)
 '
 
-// An option, a result, a fixed array, a nested array, a `mut` argument and an
-// append keep the elements as they are too.
-fn test_an_instance_that_wraps_or_nests_an_array_with_other_elements_is_reported() {
-	source := wrapped_layout_program + '\tprintln(opt[u8]([u8(1)]))\n\tprintln(res([u8(1)]) or { [] })\n\tprintln(fixed([u8(1), 2, 3]!))\n\tprintln(nested([[u8(1)]]))\n\tmut narrow := [u8(1)]\n\tgrow(mut narrow)\n\tprintln(append([u8(1)]))\n}\n'
-	for res in [check_program('wrapped_layout_check', source),
-		build_program('wrapped_layout_build', source)] {
+// Check and build report each element-type mismatch at its use in the
+// generic body, including wrapped arrays, mutable arguments, and appends.
+fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() {
+	bad_wrapped_layout_calls := '	println(opt[u8]([u8(1)]))
+	println(res([u8(1)]) or { [] })
+	println(fixed([u8(1), 2, 3]!))
+	println(nested([[u8(1)]]))
+	mut narrow := [u8(1)]
+	grow(mut narrow)
+	println(append([u8(1)]))
+'
+	source := layout_declarations + wrapped_layout_declarations + container_types +
+		container_conversions + container_nest_and_count + 'fn main() {\n' + layout_calls +
+		bad_layout_calls + wrapped_layout_calls + bad_wrapped_layout_calls +
+		container_type_calls + bad_container_type_calls + '}\n'
+	wrapped_errors := [
+		'61:9: cannot use `?[]u8` as type `?[]u64` in return argument',
+		'65:9: cannot use `[]u8` as type `![]u64` in return argument',
+		'69:9: cannot use `[3]u8` as type `[3]u64` in return argument',
+		'73:9: cannot use `[][]u8` as type `[][]u64` in return argument',
+		'81:15: cannot use `&[]u8` as `&[]u64` in argument 1 to `take_mut`',
+		'86:9: cannot append `[]u8` to `[][]u64`',
+	]
+	container_errors := container_errors_at(['111:9', '115:9', '123:18', '26:6', '32:3', '128:9',
+		'133:9'])
+	// The fixture reports more errors than the default diagnostic limit.
+	flags := ['-message-limit', '100']
+	for res in [check_program('layout_check', source, ...flags),
+		build_program('layout_build', source, ...flags)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'11:9: cannot use `?[]u8` as type `?[]u64` in return argument',
-			'15:9: cannot use `[]u8` as type `![]u64` in return argument',
-			'19:9: cannot use `[3]u8` as type `[3]u64` in return argument',
-			'23:9: cannot use `[][]u8` as type `[][]u64` in return argument',
-			'31:15: cannot use `&[]u8` as `&[]u64` in argument 1 to `take_mut`',
-			'36:9: cannot append `[]u8` to `[][]u64`',
-		], res.output
+		errors := error_lines(res.output)
+		// The compiler can interleave the groups. Check the order within each group.
+		assert errors.len == layout_errors.len + wrapped_errors.len + container_errors.len, res.output
+		assert errors.filter(it in layout_errors) == layout_errors, res.output
+		assert errors.filter(it in wrapped_errors) == wrapped_errors, res.output
+		assert errors.filter(it in container_errors) == container_errors, res.output
 	}
 }
 
-// The instances of these with the expected elements stay valid, and so does an
-// array of concrete values returned as an array of an interface they implement,
-// which is converted element by element.
-fn test_wrapped_instances_with_the_expected_elements_stay_valid() {
-	source := wrapped_layout_program + '}\n'
-	for res in [check_program('wrapped_layout_valid_check', source),
-		build_program('wrapped_layout_valid_build', source)] {
+// Arrays and maps with the expected elements stay valid, including wrapped
+// arrays. An array can also be converted element by element to an interface array.
+fn test_instances_with_the_expected_elements_stay_valid() {
+	source := layout_declarations + wrapped_layout_declarations + container_types +
+		container_conversions + container_nest_and_count + 'fn main() {\n' +
+		layout_calls + wrapped_layout_calls + container_type_calls + '}\n'
+	for res in [check_program('layout_valid_check', source),
+		build_program('layout_valid_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}
@@ -1108,27 +1299,34 @@ fn test_wrapped_instances_with_the_expected_elements_stay_valid() {
 // a check reports, once, and still builds a valid program.
 fn test_a_build_checks_the_instances_in_a_compiler_process_where_it_cannot_fork() {
 	env := ['V_CHECK_INSTANCES_IN_BUILD=process']
-	res := build_program_with_env('layout_build_process', bad_layout_program, env)
+	source := layout_declarations + 'fn show[T](x T) string {
+	return x.nme
+}
+
+' + container_types + container_conversions + container_nest_and_count + 'fn main() {
+	mut unused := 1
+' + layout_calls + bad_layout_calls + container_type_calls + bad_container_type_calls +
+		"	println(show(User{ name: 'a' }))
+}
+"
+	res := build_program_with_env('invalid_build_process', source, env)
 	assert res.exit_code != 0, res.output
 	assert !res.output.contains('C compilation error'), res.output
-	assert error_lines(res.output) == layout_errors, res.output
-	member := build_program_with_env('member_build_process', "fn show[T](x T) string {\n\treturn x.nme\n}\n\nfn main() {\n\tmut unused := 1\n\tprintln(show(User{ name: 'a' }))\n}\n",
-		env)
-	assert member.exit_code != 0, member.output
 	// The warning of the build is printed once, by the build.
-	assert member.output.count('unused variable: `unused`') == 1, member.output
-	errors := error_lines(member.output)
-	assert errors.len == 1, member.output
-	assert errors[0].starts_with('11:11: type `User` has no field named `nme`'), member.output
+	assert res.output.count('unused variable: `unused`') == 1, res.output
+	// The assignment and field errors use the shared layout declarations.
+	container_errors := container_errors_at(['73:9', '77:9', '85:18', '26:6', '32:3', '90:9', '95:9'])
+	errors := error_lines(res.output)
+	assert errors.len == layout_errors.len + container_errors.len + 1, res.output
+	assert errors.filter(it in layout_errors) == layout_errors, res.output
+	assert errors.filter(it in container_errors) == container_errors, res.output
+	assert errors.any(it.starts_with('61:11: type `User` has no field named `nme`')), res.output
 	valid := build_program_with_env('layout_valid_build_process', layout_program + '}\n', env)
 	assert valid.exit_code == 0, valid.output
 	assert error_lines(valid.output) == [], valid.output
 }
 
-// container_type_program uses arrays and maps of `T` where ones of other element
-// types are expected. Each generic function has an instance with the elements
-// it expects.
-const container_type_program = 'struct Foo {
+const container_types = 'struct Foo {
 	a int
 }
 
@@ -1136,11 +1334,9 @@ struct Bar {
 	b string
 }
 
-struct Wide {
-	vals []u64
-}
+'
 
-fn as_u64[T](a []T) []u64 {
+const container_conversions = 'fn as_u64[T](a []T) []u64 {
 	return a
 }
 
@@ -1156,19 +1352,9 @@ fn pass[T](a []T) int {
 	return take_u64(a)
 }
 
-fn assign[T](a []T) []u64 {
-	mut b := []u64{}
-	b = a.clone()
-	return b
-}
+'
 
-fn wrap[T](a []T) Wide {
-	return Wide{
-		vals: a
-	}
-}
-
-fn nest[T](a []T) [][]u64 {
+const container_nest_and_count = 'fn nest[T](a []T) [][]u64 {
 	mut out := [][]u64{}
 	out << a
 	return out
@@ -1178,8 +1364,9 @@ fn counts[T](m map[string]T) map[string]int {
 	return m
 }
 
-fn main() {
-	println(as_u64([u64(1)]))
+'
+
+const container_type_calls = '	println(as_u64([u64(1)]))
 	println(as_bars([Bar{}]))
 	println(pass([u64(1)]))
 	println(assign([u64(1)]))
@@ -1190,40 +1377,33 @@ fn main() {
 	}))
 '
 
-// An instance that uses an array or a map as one whose elements have another
-// type, which its elements cannot be used as at all (`[]string` as `[]u64`,
-// `[]Foo` as `[]Bar`), is reported where the body does so, once for that
-// instance, with the wording of the same error outside a generic function, which
-// is V 0.5.2's. A check and a build report the same; the build used to report
-// only a return, without its position.
-fn test_an_instance_that_uses_an_array_or_map_of_another_type_is_reported() {
-	source := container_type_program + "\tprintln(as_u64(['a']))\n\tprintln(as_bars([Foo{}]))\n\tprintln(pass(['x']))\n\tprintln(assign(['y']))\n\tprintln(wrap(['z']))\n\tprintln(nest(['w']))\n\tprintln(counts({\n\t\t'a': 'b'\n\t}))\n}\n"
-	for res in [check_program('container_type_check', source),
-		build_program('container_type_build', source), build_program_with_env('container_type_build_process', source, [
-			'V_CHECK_INSTANCES_IN_BUILD=process',
-		])] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'23:9: cannot use `[]string` as type `[]u64` in return argument',
-			'27:9: cannot use `[]Foo` as type `[]Bar` in return argument',
-			'35:18: cannot use `[]string` as `[]u64` in argument 1 to `take_u64`',
-			'40:6: cannot assign to `b`: expected `[]u64`, not `[]string`',
-			'46:3: cannot assign to field `vals`: expected `[]u64`, not `[]string`',
-			'52:9: cannot append `[]string` to `[][]u64`',
-			'57:9: cannot use `map[string]string` as type `map[string]int` in return argument',
-		], res.output
-	}
-}
+const bad_container_type_calls = "	println(as_u64(['a']))
+	println(as_bars([Foo{}]))
+	println(pass(['x']))
+	println(assign(['y']))
+	println(wrap(['z']))
+	println(nest(['w']))
+	println(counts({
+		'a': 'b'
+	}))
+"
 
-// The instances with the expected elements stay valid.
-fn test_instances_with_arrays_and_maps_of_the_expected_type_stay_valid() {
-	source := container_type_program + '}\n'
-	for res in [check_program('container_type_valid_check', source),
-		build_program('container_type_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
+const container_type_error_messages = [
+	'cannot use `[]string` as type `[]u64` in return argument',
+	'cannot use `[]Foo` as type `[]Bar` in return argument',
+	'cannot use `[]string` as `[]u64` in argument 1 to `take_u64`',
+	'cannot assign to `b`: expected `[]u64`, not `[]string`',
+	'cannot assign to field `vals`: expected `[]u64`, not `[]string`',
+	'cannot append `[]string` to `[][]u64`',
+	'cannot use `map[string]string` as type `map[string]int` in return argument',
+]
+
+fn container_errors_at(positions []string) []string {
+	mut errors := []string{cap: container_type_error_messages.len}
+	for i, message in container_type_error_messages {
+		errors << '${positions[i]}: ${message}'
 	}
+	return errors
 }
 
 // The check of an instance does not see the locals declared in a `$for` body,
@@ -1239,86 +1419,112 @@ fn test_a_local_of_a_comptime_for_body_is_not_taken_for_a_constant() {
 	assert error_lines(check.res.output) == [], check.res.output
 }
 
-const map_cast_program = "fn to_counts[T](m map[string]T) map[string]u8 {\n\treturn map[string]u8(m)\n}\n\nfn main() {\n\tprintln(to_counts({\n\t\t'a': u8(7)\n\t}))\n"
+const map_cast_comptime_for_program = "fn to_counts[T](m map[string]T) map[string]u8 {
+	return map[string]u8(m)
+}
 
-// `map[K]V(m)` is a cast, as `?map[K]V(m)` is, and it keeps the elements as
-// they are. An instance that casts a map whose values are stored otherwise is
-// reported where it does so, in a check and in a build. It used to pass the
-// check and give the C compiler an invalid cast.
-fn test_a_map_type_cast_is_checked_for_each_instance() {
-	source := map_cast_program + "\tprintln(to_counts({\n\t\t'a': 258\n\t}))\n}\n"
-	for res in [check_program('map_cast_check', source), build_program('map_cast_build', source)] {
+struct Foo {
+	a int
+}
+
+struct Bar {
+	b int
+}
+
+fn take_bars(items []Bar) int {
+	return items.len
+}
+
+fn wrap[T](x T) []Bar {
+	\$for field in T.fields {
+		items := [x]
+		return items
+	}
+	return []
+}
+
+fn count[T](x T) int {
+	\$for field in T.fields {
+		items := [x]
+		return take_bars(items)
+	}
+	return 0
+}
+
+fn main() {
+	println(to_counts({
+		'a': u8(7)
+	}))
+	println(wrap(Bar{ b: 1 }))
+	println(count(Bar{ b: 1 }))
+"
+
+// A map cast preserves element types. A local array in a compile-time loop
+// has the element type of its specialization, in both returns and arguments.
+fn test_map_cast_and_comptime_for_instances_reject_wrong_element_types() {
+	source := map_cast_comptime_for_program + "	println(to_counts({
+		'a': 258
+	}))
+	println(wrap(Foo{ a: 2 }))
+	println(count(Foo{ a: 2 }))
+}
+"
+	for res in [check_program('map_cast_comptime_for_check', source),
+		build_program('map_cast_comptime_for_build', source)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
 		assert error_lines(res.output) == [
 			'11:9: cannot cast map `map[string]int` to `map[string]u8`',
+			'29:10: cannot use `[]Foo` as type `[]Bar` in return argument',
+			'37:20: cannot use `[]Foo` as `[]Bar` in argument 1 to `take_bars`',
 		], res.output
 	}
 }
 
-// An instance that casts a map to its own type builds and runs.
-fn test_a_map_type_cast_to_the_same_elements_builds() {
-	source := map_cast_program + '}\n'
-	assert error_lines(check_program('map_cast_valid_check', source).output) == []
-	dir := os.join_path(os.vtmp_dir(), 'v3_run_generic_instances_map_cast_${os.getpid()}')
+// A map cast to its own type and compile-time loops with the expected types build and run.
+fn test_map_cast_and_comptime_for_instances_build_and_run() {
+	source := map_cast_comptime_for_program + "	println(routes)
+	println(first_routes(Foo{}))
+}
+
+const routes = ['/', '/x']
+
+struct Holder {
+	routes &map[string]int
+}
+
+fn make_routes() map[string]int {
+	return {
+		'a': 1
+	}
+}
+
+// The local map shadows the module constant inside the compile-time loop.
+fn first_routes[T](x T) int {
+	\$for field in T.fields {
+		routes := make_routes()
+		h := Holder{
+			routes: &routes
+		}
+		return h.routes.len
+	}
+	return 0
+}
+"
+	check := check_program('map_cast_comptime_for_valid_check', source)
+	assert check.exit_code == 0, check.output
+	assert error_lines(check.output) == [], check.output
+	dir := os.join_path(os.vtmp_dir(), 'v3_run_generic_instances_map_cast_comptime_for_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
 		os.rmdir_all(dir) or {}
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	res := os.exec(['env', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler', '-nocolor', 'run',
-		path])
+	res := os.exec(['env', @VEXE, '-nocolor', 'run', path])
 	assert res.exit_code == 0, res.output
-	assert res.output.trim_space() == "{'a': 7}", res.output
-}
-
-const comptime_for_program = 'struct Foo {\n\ta int\n}\n\nstruct Bar {\n\tb int\n}\n\nfn take_bars(items []Bar) int {\n\treturn items.len\n}\n\nfn wrap[T](x T) []Bar {\n\t\$for field in T.fields {\n\t\titems := [x]\n\t\treturn items\n\t}\n\treturn []\n}\n\nfn count[T](x T) int {\n\t\$for field in T.fields {\n\t\titems := [x]\n\t\treturn take_bars(items)\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(wrap(Bar{ b: 1 }))\n\tprintln(count(Bar{ b: 1 }))\n'
-
-// The body of a `$for` is checked in each instance as the rest of the body is:
-// its locals are seen and its returns are checked. `[x]` is a `[]Bar` for a
-// `Bar`, but a `[]Foo` for a `Foo`, which is no `[]Bar`. It used to pass the
-// check and a build, and reach the C compiler.
-fn test_an_array_of_another_type_in_a_comptime_for_body_is_reported_per_instance() {
-	source := comptime_for_program + '\tprintln(wrap(Foo{ a: 2 }))\n\tprintln(count(Foo{ a: 2 }))\n}\n'
-	for res in [check_program('comptime_for_check', source),
-		build_program('comptime_for_build', source)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'25:10: cannot use `[]Foo` as type `[]Bar` in return argument',
-			'33:20: cannot use `[]Foo` as `[]Bar` in argument 1 to `take_bars`',
-		], res.output
-	}
-}
-
-// The instances whose `$for` bodies have the expected types build and run.
-fn test_the_instances_of_a_comptime_for_body_with_the_expected_types_build() {
-	source := comptime_for_program + '}\n'
-	assert error_lines(check_program('comptime_for_valid_check', source).output) == []
-	dir := os.join_path(os.vtmp_dir(), 'v3_run_generic_instances_comptime_for_${os.getpid()}')
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	path := os.join_path(dir, 'main.v')
-	os.write_file(path, generic_prelude + source) or { panic(err) }
-	res := os.exec(['env', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler', '-nocolor', 'run',
-		path])
-	assert res.exit_code == 0, res.output
-	assert res.output.split_into_lines() == ['[Bar{', '    b: 1', '}]', '1'], res.output
-}
-
-// A local of a `$for` body that has the name of a constant of its own module
-// is the local, in the check of an instance too: `&routes` is a
-// `&map[string]int`, not a `&[]string`.
-fn test_a_local_of_a_comptime_for_body_shadows_a_constant_of_its_module() {
-	source := "const routes = ['/', '/x']\n\nstruct Foo {\n\ta int\n}\n\nstruct Holder {\n\troutes &map[string]int\n}\n\nfn make_routes() map[string]int {\n\treturn {\n\t\t'a': 1\n\t}\n}\n\nfn first_routes[T](x T) int {\n\t\$for field in T.fields {\n\t\troutes := make_routes()\n\t\th := Holder{\n\t\t\troutes: &routes\n\t\t}\n\t\treturn h.routes.len\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(routes)\n\tprintln(first_routes(Foo{}))\n}\n"
-	for res in [check_program('comptime_for_shadow_check', source),
-		build_program('comptime_for_shadow_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
+	assert res.output.split_into_lines() == ["{'a': 7}", '[Bar{', '    b: 1', '}]', '1', "['/', '/x']",
+		'1'], res.output
 }
 
 // A library module outside the program whose generic functions are wrong for
@@ -1388,10 +1594,9 @@ fn build_with_modules_env(name string, files map[string]string, modules map[stri
 			os.write_file(path, content) or { panic(err) }
 		}
 	}
-	mut cmd := ['env', 'V_MACOS_V3_NO_FALLBACK=1', 'VMODULES=${modules_dir}']
+	mut cmd := ['env', 'VMODULES=${modules_dir}']
 	cmd << env
-	cmd << [@VEXE, '-new-compiler', '-nocolor', '-o', os.join_path(dir, 'main'),
-		os.join_path(program, 'main.v')]
+	cmd << [@VEXE, '-nocolor', '-o', os.join_path(dir, 'main'), os.join_path(program, 'main.v')]
 	return os.exec(cmd)
 }
 

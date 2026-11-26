@@ -29,8 +29,7 @@ fn main() {
 }
 ')!
 	for flags in [[]string{}, ['-prealloc']] {
-		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', ...flags,
-			'run', source_path])
+		result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', ...flags, 'run', source_path])
 		assert result.exit_code == 0, result.output
 		assert result.output.trim_space() == 'passed', result.output
 	}

@@ -47,6 +47,10 @@ shell, terminal = pty.fork()
 if shell == 0:
     os.chdir(root)
     os.environ.update(PS1="VPTY> ", ENV="", BASH_ENV="", TERM="xterm")
+    # A runner started in the background ignores SIGINT and SIGQUIT, and a shell cannot
+    # restore a signal that was ignored when it started; Ctrl-C would then reach nothing.
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    signal.signal(signal.SIGQUIT, signal.SIG_DFL)
     os.execv("/bin/sh", ["/bin/sh", "-i"])
 
 buffer = b""

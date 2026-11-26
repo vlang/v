@@ -1,34 +1,12 @@
 import os
-
-const generic_lambda_vexe = @VEXE
-const generic_lambda_tests_dir = os.dir(@FILE)
-const generic_lambda_v3_dir = os.dir(generic_lambda_tests_dir)
-const generic_lambda_vlib_dir = os.dir(generic_lambda_v3_dir)
-const generic_lambda_v3_source = os.join_path(generic_lambda_v3_dir, 'v.v')
-
-fn generic_lambda_tmp_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_generic_lambda_${name}_${os.getpid()}')
-}
-
-fn generic_lambda_build_v3() string {
-	v3_bin := generic_lambda_tmp_path('compiler')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([generic_lambda_vexe, '-gc', 'none', '-path',
-			'${generic_lambda_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, generic_lambda_v3_source])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_generic_lambda_infers_return_from_contextual_parameter() {
-	v3_bin := generic_lambda_build_v3()
-	source_path := generic_lambda_tmp_path('source.v')
-	output_path := generic_lambda_tmp_path('output')
-	defer {
-		os.rm(v3_bin) or {}
-		os.rm(source_path) or {}
-		os.rm(output_path) or {}
-	}
+	root := os.join_path(os.vtmp_dir(), 'v3_generic_lambda_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	output_path := os.join_path(root, 'app')
 	os.write_file(source_path, "struct Box[T] {
 	value T
 }
@@ -52,14 +30,7 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	old_no_fallback := os.getenv_opt('V_MACOS_V3_NO_FALLBACK')
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	compile := os.exec([v3_bin, '-o', output_path, source_path])
-	if value := old_no_fallback {
-		os.setenv('V_MACOS_V3_NO_FALLBACK', value, true)
-	} else {
-		os.unsetenv('V_MACOS_V3_NO_FALLBACK')
-	}
+	compile := os.exec([@VEXE, '-o', output_path, source_path])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([output_path])
 	assert run.exit_code == 0, run.output

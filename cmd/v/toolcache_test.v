@@ -481,7 +481,7 @@ fn test_staged_tool_binary_path_keeps_the_platform_executable_suffix() {
 	}
 }
 
-// A tool that failed to build must not be pinned to the compatibility compiler forever: a
+// A tool that failed to build must be rebuilt after its sources change. A
 // broken intermediate state of any vlib module it imports has to be retried once it is fixed.
 fn test_a_recorded_build_failure_is_retried_once_its_inputs_change() {
 	directory := toolcache_test_dir('failure')
@@ -1072,11 +1072,25 @@ fn test_the_cache_key_covers_ambient_native_flags() {
 	}
 
 	baseline := tool_cache_key(vexe, 'vdemo', [source], [])
+	full_baseline := tool_cache_key(vexe, 'v3_full', [source], [], optional_compiler: true)
 	for name in ambient_build_variables {
 		os.setenv(name, '-DSOMETHING=1', true)
 		assert tool_cache_key(vexe, 'vdemo', [source], []) != baseline, '${name} must be part of the key'
+		full_key := tool_cache_key(vexe, 'v3_full', [source], [], optional_compiler: true)
+		assert (full_key == full_baseline) == (name in ['CFLAGS', 'LDFLAGS']), name
 		os.setenv(name, '', true)
 		assert tool_cache_key(vexe, 'vdemo', [source], []) == baseline, 'clearing ${name} must restore the key'
+	}
+
+	$if windows {
+		os.setenv('cflags', '-DOPTIONAL_TARGET=1', true)
+		os.setenv('ldflags', 'target-only.o', true)
+		assert os.getenv('CFLAGS') == '-DOPTIONAL_TARGET=1'
+		assert os.getenv('LDFLAGS') == 'target-only.o'
+		assert tool_build_environment(true).keys().all(it.to_upper_ascii() !in [
+			'CFLAGS',
+			'LDFLAGS',
+		])
 	}
 }
 

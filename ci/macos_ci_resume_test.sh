@@ -36,7 +36,7 @@ cat > "$fake_v" <<'MOCK'
 set -eu
 if [ "$1" = -silent ] && [ "$2" = vlib/v/util/machosign/macho_sign_test.v ]; then
     [ "$CI" = true ] && [ "$GITHUB_ACTIONS" = true ] || exit 91
-    [ "$VFLAGS" = '-cc clang' ] && [ "$V_MACOS_V3_NO_FALLBACK" = 1 ] || exit 92
+    [ "$VFLAGS" = '-cc clang' ] || exit 92
     [ -z "${VTEST_ONLY_FN:-}" ] || exit 89
     echo signing >> signing.log
     [ ! -f fail-signing ] || exit 23
@@ -56,7 +56,7 @@ if [ "$1" = -no-memory-limit ]; then
 fi
 [ "$1" = run ] && [ "$2" = ci/macos_ci.vsh ] || exit 90
 [ "$CI" = true ] && [ "$GITHUB_ACTIONS" = true ] || exit 91
-[ "$VFLAGS" = '-cc clang' ] && [ "$V_MACOS_V3_NO_FALLBACK" = 1 ] || exit 92
+[ "$VFLAGS" = '-cc clang' ] || exit 92
 [ "$VTEST_ONLY" = unrelated_test.v ] && [ "$VTEST_ONLY_FN" = test_unrelated ] || exit 88
 [ "${VTEST_FAIL_FAST:-}" = 1 ] && [ "${VJOBS:-}" = 1 ] || exit 93
 case "$V_MACOS_CI_TASK_PROGRESS" in */"$3") ;; *) exit 96 ;; esac

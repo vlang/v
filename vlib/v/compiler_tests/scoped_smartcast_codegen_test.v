@@ -23,8 +23,7 @@ fn test_generic_codegen_after_scoped_transform_with_two_workers() {
 	}
 	// Two workers exercise the scoped specialization path. Constant generation
 	// subsequently queries the checker after that arena has been released.
-	compiled := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-nocache', '-o', executable,
-		fixture], 120_000)
+	compiled := cmdexec.run_with_timeout(@VEXE, ['-nocache', '-o', executable, fixture], 120_000)
 	assert compiled.exit_code == 0, compiled.output
 	ran := cmdexec.run_with_timeout(executable, [], 30_000)
 	assert ran.exit_code == 0, ran.output

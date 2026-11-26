@@ -130,6 +130,9 @@ const reserved_words = {
 	'far':      true
 	'pascal':   true
 	'cdecl':    true
+	// rpcndr.h defines these as the types `char` and `__int64`.
+	'small':    true
+	'hyper':    true
 	// windef.h defines these as function-like macros, which reject a one-argument
 	// declaration (`double min(Tree* tree)`) or a two-argument definition.
 	'min':      true
@@ -160,6 +163,8 @@ const libc_collisions = {
 	'clock':        true
 	'connect':      true
 	'cos':          true
+	// <stdlib.h>, which Windows units reach through <immintrin.h>.
+	'div':          true
 	'drem':         true
 	'dup2':         true
 	'execlp':       true
@@ -253,7 +258,7 @@ pub fn c_name(name string) string {
 	// The collision sets contain only short names; longer identifiers cannot match.
 	if (n.len <= max_c_collision_name_len && (n in reserved_words || n in libc_collisions))
 		|| is_string_literal_symbol(n) {
-		if n in ['near', 'far', 'pascal', 'cdecl', 'min', 'max'] {
+		if n in ['near', 'far', 'pascal', 'cdecl', 'small', 'hyper', 'min', 'max'] {
 			return '${internal_symbol_c_prefix}macro_${n}'
 		}
 		if name.contains('@') {

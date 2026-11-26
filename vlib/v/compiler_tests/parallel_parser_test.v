@@ -1,13 +1,12 @@
 import os
 import strings
+import v.cmdexec
 import v.parser
 import v.pref
 import v.tempname
 
 const pp_tests_dir = os.dir(@FILE)
 const pp_v3_dir = os.dir(pp_tests_dir)
-const pp_vlib_dir = os.dir(pp_v3_dir)
-const pp_v3_src = os.join_path(pp_v3_dir, 'v.v')
 const pp_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_parallel_parser_fixtures_${tempname.unique_token()}')
 const pp_module_padding = '/*' + ' '.repeat(48 * 1024) + '*/\n'
 
@@ -20,10 +19,14 @@ fn testsuite_end() {
 }
 
 // parallel_parse_input_files gathers enough real compiler sources to cross the
-// parallel-parse thresholds (min file count and total byte size).
+// parallel-parse thresholds (min file count and total byte size) many times
+// over: about 1.6 MB in 37 files. `types` and `transform` would add 10 MB and
+// grow the heap past 1 GB, where Boehm's black-listing can refuse every fresh
+// block for the parser's arrays and abort with "Too many retries in
+// GC_alloc_large".
 fn parallel_parse_input_files() []string {
 	mut files := []string{}
-	for sub in ['types', 'transform', 'parser', 'markused', 'flat'] {
+	for sub in ['parser', 'markused', 'flat'] {
 		dir := os.join_path(pp_v3_dir, sub)
 		mut names := os.ls(dir) or { continue }
 		names.sort()
@@ -395,20 +398,10 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'match_fallback_const_enabled')
 }
 
-// build_parallel_parser_v3 supplies the same driver to all the parser integration cases.
-fn build_parallel_parser_v3() string {
-	v3_bin := os.join_path(pp_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([@VEXE, '-gc', 'none', '-path', '${pp_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${pp_v3_src}'])
-	if build.exit_code != 0 {
-		os.rm(v3_bin) or {}
-	}
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn run_parallel_parser_compiler(args []string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, args, '', {
+		'VJOBS': '4'
+	})
 }
 
 fn write_parallel_parser_module(project_dir string, name string, body string) {
@@ -459,19 +452,9 @@ fn parallel_parser_project() string {
 // whose import waves are parsed on worker threads produces a working program,
 // and that the bench output reports the parse phase as parallel.
 fn test_parallel_parser_compiles_multi_module_project() {
-	v3_bin := build_parallel_parser_v3()
 	main_path := parallel_parser_project()
 	bin_out := os.join_path(pp_fixture_dir, 'parallel_parser_project_out')
-	old_vjobs := os.getenv_opt('VJOBS')
-	os.setenv('VJOBS', '4', true)
-	defer {
-		if value := old_vjobs {
-			os.setenv('VJOBS', value, true)
-		} else {
-			os.unsetenv('VJOBS')
-		}
-	}
-	compile := os.exec([v3_bin, '-v', '-b', 'c', '-o', bin_out, main_path])
+	compile := run_parallel_parser_compiler(['-v', '-b', 'c', '-o', bin_out, main_path])
 	assert compile.exit_code == 0, compile.output
 	$if !windows {
 		assert compile.output.contains('parse .v (parallel)'), compile.output
@@ -535,10 +518,9 @@ pub fn bump(mut c Counter) int {
 // master too (markused prunes RwMutex methods that only cgen-synthesized
 // code calls), which is unrelated to import resolution.
 fn test_parallel_parser_seeds_implicit_sync_import_mid_wave() {
-	v3_bin := build_parallel_parser_v3()
 	main_path := write_parallel_parser_implicit_sync_project('parallel_parser_implicit_sync')
 	c_out := os.join_path(pp_fixture_dir, 'parallel_parser_implicit_sync.c')
-	compile := os.exec(['env', 'VJOBS=4', v3_bin, main_path, '-o', '${c_out}'])
+	compile := run_parallel_parser_compiler([main_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
 	// The sync module's own functions only appear when the synthetic
@@ -625,11 +607,10 @@ pub fn make_wg() &sync.WaitGroup {
 // linking a shared+lock project fails on master too (markused prunes the RwMutex
 // methods that only cgen-synthesized code calls), which is unrelated here.
 fn test_parallel_parser_seeds_implicit_sync_before_explicit_import() {
-	v3_bin := build_parallel_parser_v3()
 	main_path :=
 		write_parallel_parser_implicit_before_explicit_sync_project('parallel_parser_implicit_before_explicit_sync')
 	c_out := os.join_path(pp_fixture_dir, 'parallel_parser_implicit_before_explicit_sync.c')
-	compile := os.exec(['env', 'VJOBS=4', v3_bin, main_path, '-o', '${c_out}'])
+	compile := run_parallel_parser_compiler([main_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
 	// The earlier module's `lock` lowered against sync, and the later module's
@@ -704,10 +685,9 @@ pub fn wg_count() int {
 // node/children shift leaves a runnable program. Unlike the shared+lock cases,
 // an `$embed_file` project links, so the program is built and run end to end.
 fn test_parallel_parser_splices_synthetic_import_in_serial_order() {
-	v3_bin := build_parallel_parser_v3()
 	main_path, expected := write_parallel_parser_splice_project('parallel_parser_splice')
 	bin_out := os.join_path(pp_fixture_dir, 'parallel_parser_splice_out')
-	compile := os.exec(['env', 'VJOBS=4', v3_bin, main_path, '-b', 'c', '-o', bin_out])
+	compile := run_parallel_parser_compiler([main_path, '-b', 'c', '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -717,11 +697,9 @@ fn test_parallel_parser_splices_synthetic_import_in_serial_order() {
 // test_no_parallel_parser_keeps_parse_serial validates the runtime opt-out:
 // `--no-parallel` must keep the parse phase off the worker threads.
 fn test_no_parallel_parser_keeps_parse_serial() {
-	v3_bin := build_parallel_parser_v3()
 	main_path := parallel_parser_project()
 	bin_out := os.join_path(pp_fixture_dir, 'parallel_parser_serial_out')
-	compile := os.exec(['env', 'VJOBS=4', v3_bin, '--no-parallel', main_path, '-b', 'c', '-o',
-		bin_out])
+	compile := run_parallel_parser_compiler(['--no-parallel', main_path, '-b', 'c', '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('parse .v (parallel)'), compile.output
 	assert !compile.output.contains('parse .vh (parallel)'), compile.output

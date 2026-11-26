@@ -35,22 +35,22 @@ import v.types
 const cached_runtime_function_names = ['__as_cast', '__new_array', '__new_array_aligned',
 	'__new_array_noscan', 'arguments', 'array_sort_move', 'atoi', 'autostr_addr_pop',
 	'autostr_addr_type_in_stack', 'autostr_addr_type_push', 'builtin_init', 'closure_create_with_data',
-	'closure_data', 'closure_init', 'closure_try_destroy', 'common_parse_int', 'common_parse_uint',
-	'common_parse_uint2', 'copy', 'cstring_to_vstring', 'data_to_hex_string', 'drop_owned',
-	'drop_owned_v3_interface', 'eprint', 'eprintln', 'error', 'error_with_code', 'exit',
-	'f64_to_decimal', 'f64_to_decimal_exact_int', 'fabs', 'fast_string_eq', 'format_int', 'format_uint',
-	'free', 'gc_runtime_init', 'is_digit', 'is_space', 'isnil', 'malloc', 'malloc_noscan',
-	'malloc_uncollectable', 'map_clone_int_1', 'map_clone_int_16', 'map_clone_int_2', 'map_clone_int_4',
-	'map_clone_int_8', 'map_clone_string', 'map_eq_int_1', 'map_eq_int_16', 'map_eq_int_2',
-	'map_eq_int_4', 'map_eq_int_8', 'map_eq_string', 'map_free_nop', 'map_free_string', 'map_hash_int_1',
-	'map_hash_int_16', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8', 'map_hash_string',
-	'map_map_eq', 'memdup', 'memdup_align', 'memdup_noscan', 'min', 'new_array_from_c_array',
-	'new_array_from_c_array_aligned', 'new_array_from_c_array_no_alloc', 'new_array_from_c_array_noscan',
-	'new_builder', 'new_map', 'new_map_aligned', 'panic', 'panic_debug', 'panic_frame_done',
-	'panic_frame_pop', 'panic_frame_push', 'panic_frame_relink', 'panic_frames_reset',
-	'panic_recover_frame', 'parse_int', 'parse_uint', 'parser', 'print', 'println', 'ptr_str',
-	'quote', 'recover', 'repeat', 'string_plus_many', 'tos2', 'v_fixed_index', 'v_fixed_index_i64',
-	'v_fixed_index_u64', 'v_gettid', 'vcalloc', 'vgc_scan_range']
+	'closure_data', 'closure_ensure_initialized', 'closure_init', 'closure_try_destroy',
+	'common_parse_int', 'common_parse_uint', 'common_parse_uint2', 'copy', 'cstring_to_vstring',
+	'data_to_hex_string', 'drop_owned', 'drop_owned_v3_interface', 'eprint', 'eprintln', 'error',
+	'error_with_code', 'exit', 'f64_to_decimal', 'f64_to_decimal_exact_int', 'fabs', 'fast_string_eq',
+	'format_int', 'format_uint', 'free', 'gc_runtime_init', 'is_digit', 'is_space', 'isnil', 'malloc',
+	'malloc_noscan', 'malloc_uncollectable', 'map_clone_int_1', 'map_clone_int_16', 'map_clone_int_2',
+	'map_clone_int_4', 'map_clone_int_8', 'map_clone_string', 'map_eq_int_1', 'map_eq_int_16',
+	'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8', 'map_eq_string', 'map_free_nop', 'map_free_string',
+	'map_hash_int_1', 'map_hash_int_16', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8',
+	'map_hash_string', 'map_map_eq', 'memdup', 'memdup_align', 'memdup_noscan', 'min',
+	'new_array_from_c_array', 'new_array_from_c_array_aligned', 'new_array_from_c_array_no_alloc',
+	'new_array_from_c_array_noscan', 'new_builder', 'new_map', 'new_map_aligned', 'panic', 'panic_debug',
+	'panic_frame_done', 'panic_frame_pop', 'panic_frame_push', 'panic_frame_relink',
+	'panic_frames_reset', 'panic_recover_frame', 'parse_int', 'parse_uint', 'parser', 'print',
+	'println', 'ptr_str', 'quote', 'recover', 'repeat', 'string_plus_many', 'tos2', 'v_fixed_index',
+	'v_fixed_index_i64', 'v_fixed_index_u64', 'v_gettid', 'vcalloc', 'vgc_scan_range']
 
 // cached_module_function_names are the plain functions of the other modules of
 // vlib that a stage of the compiler spells in a string literal, with the name of
@@ -69,7 +69,8 @@ const cached_module_function_names = ['debug.after_call_hook', 'debug.before_cal
 	'os.posix_get_error_msg', 'os.quoted_path', 'os.read_bytes', 'os.read_file', 'os.real_path',
 	'os.walk', 'os.win_volume_len', 'overflow.add_i8', 'rand.init', 'sync.channel_select',
 	'sync.channel_select_lang', 'sync.cpanic', 'sync.cpanic_errno', 'sync.new_channel_st',
-	'sync.should_be_zero', 'time.now', 'time.sleep', 'time.ticks', 'time.vpc_now', 'time.vpc_now_darwin']
+	'sync.should_be_zero', 'time.now', 'time.sleep', 'time.ticks', 'time.vpc_now', 'time.vpc_now_darwin',
+	'utf8.validate_str']
 
 // cached_function_name_patterns are the names that a stage of the compiler puts
 // together when it runs, as far as its string literals show them: a name with

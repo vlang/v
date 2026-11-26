@@ -7,8 +7,6 @@
 // optimized version can be substituted
 module sha256
 
-import math.bits
-
 const _k = [
 	0x428a2f98,
 	0x71374491,
@@ -76,6 +74,8 @@ const _k = [
 	0xc67178f2,
 ]
 
+// The rounds rotate with plain shifts rather than bits.rotate_left_32: compilers that
+// do not inline (TinyCC) would otherwise make ten calls per round.
 @[direct_array_access]
 fn block_generic(mut dig Digest, p_ []u8) {
 	unsafe {
@@ -99,9 +99,9 @@ fn block_generic(mut dig Digest, p_ []u8) {
 			}
 			for i := 16; i < 64; i++ {
 				v1 := w[i - 2]
-				t1 := (bits.rotate_left_32(v1, -17)) ^ (bits.rotate_left_32(v1, -19)) ^ (v1 >> 10)
+				t1 := ((v1 >> 17) | (v1 << 15)) ^ ((v1 >> 19) | (v1 << 13)) ^ (v1 >> 10)
 				v2 := w[i - 15]
-				t2 := (bits.rotate_left_32(v2, -7)) ^ (bits.rotate_left_32(v2, -18)) ^ (v2 >> 3)
+				t2 := ((v2 >> 7) | (v2 << 25)) ^ ((v2 >> 18) | (v2 << 14)) ^ (v2 >> 3)
 				w[i] = t1 + w[i - 7] + t2 + w[i - 16]
 			}
 			mut a := h0
@@ -114,10 +114,10 @@ fn block_generic(mut dig Digest, p_ []u8) {
 			mut h := h7
 			for i in 0 .. 64 {
 				t1 := h +
-					((bits.rotate_left_32(e, -6)) ^ (bits.rotate_left_32(e, -11)) ^ (bits.rotate_left_32(e, -25))) +
+					(((e >> 6) | (e << 26)) ^ ((e >> 11) | (e << 21)) ^ ((e >> 25) | (e << 7))) +
 					((e & f) ^ (~e & g)) + u32(_k[i]) + w[i]
 				t2 :=
-					((bits.rotate_left_32(a, -2)) ^ (bits.rotate_left_32(a, -13)) ^ (bits.rotate_left_32(a, -22))) +
+					(((a >> 2) | (a << 30)) ^ ((a >> 13) | (a << 19)) ^ ((a >> 22) | (a << 10))) +
 						((a & b) ^ (a & c) ^ (b & c))
 				h = g
 				g = f

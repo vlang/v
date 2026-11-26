@@ -1,0 +1,46 @@
+name: Annotation memo lifetime ASan regression
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/annotation_stack_asan_regression_ci.yml'
+      - 'vlib/v/types/annotation_stack_test.v'
+      - 'vlib/v/types/storage_query.v'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: annotation-memo-asan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  original-annotation-regression:
+    name: Annotation type memo (${{ matrix.compiler }} ASan)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    env:
+      VJOBS: '2'
+      ASAN_OPTIONS: 'halt_on_error=1:detect_stack_use_after_return=1:detect_leaks=1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V and optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify unchanged original V regression formatting
+        run: ./v fmt -verify vlib/v/types/annotation_stack_test.v
+      # R384 was an executed GCC ASan stack-use-after-scope in the
+      # original 20,000-node annotation walk; run both original tests.
+      - name: Execute original annotation memo test under ASan
+        run: |
+          ./v -cc ${{ matrix.compiler }} -cflags -fno-omit-frame-pointer \
+            -cflags -fsanitize=address -silent \
+            vlib/v/types/annotation_stack_test.v

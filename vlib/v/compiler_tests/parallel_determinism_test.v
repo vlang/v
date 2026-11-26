@@ -1,26 +1,11 @@
 import os
-import rand
 import strings
 import v.cmdexec
-
-const determinism_vexe = @VEXE
-const determinism_tests_dir = os.dir(@FILE)
-const determinism_v3_dir = os.dir(determinism_tests_dir)
-const determinism_vlib_dir = os.dir(determinism_v3_dir)
-const determinism_v3_src = os.join_path(determinism_v3_dir, 'v.v')
-
-fn determinism_build_v3() string {
-	bin := os.join_path(os.temp_dir(), 'v3_parallel_determinism_${os.getpid()}_${rand.ulid()}')
-	result := cmdexec.run(determinism_vexe, ['-gc', 'none', '-path',
-		'${determinism_vlib_dir}|@vlib|@vmodules', '-o', bin, determinism_v3_src])
-	assert result.exit_code == 0, result.output
-	return bin
-}
+import v.tempname
 
 fn determinism_write_project() string {
-	root := os.join_path(os.temp_dir(),
-		'v3_parallel_determinism_project_${os.getpid()}_${rand.ulid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_parallel_determinism_project_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), 'Module { name: "parallel_determinism" }\n') or {
 		panic(err)
 	}
@@ -60,26 +45,16 @@ fn determinism_diff_context(left []u8, right []u8) string {
 }
 
 fn test_parallel_pipeline_matches_serial_generated_c() {
-	v3_bin := determinism_build_v3()
 	root := determinism_write_project()
 	parallel_c := os.join_path(root, 'parallel.c')
 	serial_c := os.join_path(root, 'serial.c')
-	defer {
-		os.rm(v3_bin) or {}
-		os.rmdir_all(root) or {}
+	defer { os.rmdir_all(root) or {} }
+	env := {
+		'VJOBS': '4'
 	}
-	old_jobs := os.getenv_opt('VJOBS')
-	os.setenv('VJOBS', '4', true)
-	defer {
-		if jobs := old_jobs {
-			os.setenv('VJOBS', jobs, true)
-		} else {
-			os.unsetenv('VJOBS')
-		}
-	}
-	parallel := cmdexec.run(v3_bin, ['-o', parallel_c, root])
+	parallel := cmdexec.run_in_merged_with_env(@VEXE, ['-o', parallel_c, root], '', env)
 	assert parallel.exit_code == 0, parallel.output
-	serial := cmdexec.run(v3_bin, ['-no-parallel', '-o', serial_c, root])
+	serial := cmdexec.run_in_merged_with_env(@VEXE, ['-no-parallel', '-o', serial_c, root], '', env)
 	assert serial.exit_code == 0, serial.output
 	parallel_bytes := os.read_bytes(parallel_c) or { panic(err) }
 	serial_bytes := os.read_bytes(serial_c) or { panic(err) }

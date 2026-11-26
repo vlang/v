@@ -42,7 +42,6 @@ chmod 755 "$output"
 printf "TRAIN jobs=%s args=%s\n" "$VJOBS" "$*" >> "$VSELF_PGO_TEST_LOG"
 if [ -n "${VFLAGS-}" ] || [ -n "${VEXE-}" ]; then exit 3; fi
 if [ -n "${LLVM_PROFILE_FILE-}" ]; then exit 6; fi
-if [ "$V_MACOS_V3_NO_FALLBACK" != "1" ]; then exit 4; fi
 if [ "$VSELF_PGO_TEST_FAIL" = "1" ]; then exit 5; fi
 case "$*" in
     *"-b fastc "*) if [ "${VSELF_PGO_TEST_FAIL_FASTC-}" = "1" ]; then exit 7; fi ;;

@@ -13,8 +13,7 @@ fn main() {
 }
 ')!
 	c_path := os.join_path(root, 'main.c')
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-o', c_path,
-		source])
+	generated := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-o', c_path, source])
 	assert generated.exit_code == 0, generated.output
 	c_source := os.read_file(c_path)!
 	declarations := c_source.split_into_lines().filter(it.contains(' os__g_v_os_execute_mutex_storage['))
@@ -46,7 +45,6 @@ int main(void) {
 	assert compiled.exit_code == 0, compiled.output
 	run := os.exec([executable])
 	assert run.exit_code == 0, run.output
-	executed := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', @CCOMPILER, 'run',
-		source])
+	executed := os.exec([@VEXE, '-no-retry-compilation', '-cc', @CCOMPILER, 'run', source])
 	assert executed.exit_code == 0, executed.output
 }

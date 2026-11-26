@@ -1,20 +1,12 @@
 import os
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn test_optional_index_keeps_smartcasts_recreated_after_ancestor_write() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_restore_test_${pid}')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	src := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_restore_input_${pid}.v')
+fn test_optional_index_restores_smartcasts_after_writes() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_optional_index_smartcast_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	bin := os.join_path(dir, 'v3_optional_index_smartcast_restore_input')
+	src := bin + '.v'
 	os.write_file(src, 'struct Foo {
 	value int
 }
@@ -44,61 +36,50 @@ fn main() {
 		if h.value is Foo {
 			assert opts[0] == none
 			assert h.value.value == 2
+			println("ancestor write ok")
 		}
 	}
-	println("ok")
+	check_index_reassignment()
 }
-')!
 
-	bin := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_restore_input_${pid}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok', run.output
-
-	reassigned_src := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_reassignment_input_${pid}.v')
-	os.write_file(reassigned_src, 'struct Foo {
+struct IndexedValue {
 	value int
 }
 
-struct Holder {
+struct IndexedHolder {
 mut:
-	value ?Foo
+	value ?IndexedValue
 }
 
-fn main() {
-	mut h := Holder{}
-	h.value = Foo{
+fn check_index_reassignment() {
+	mut h := IndexedHolder{}
+	h.value = IndexedValue{
 		value: 1
 	}
 	opts := []?int{len: 1}
 	if h.value != none {
 		assert opts[if true {
-			h.value = Foo{
+			h.value = IndexedValue{
 				value: 2
 			}
 			0
 		} else {
-			h.value = Foo{
+			h.value = IndexedValue{
 				value: 3
 			}
 			0
 		}] == none
 		assert h.value.value == 2
+		println("index reassignment ok")
 	}
-	println("ok")
 }
 ')!
 
-	reassigned_bin := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_reassignment_input_${pid}')
-	reassigned_compile := os.exec([v3_bin, '${reassigned_src}', '-b', 'c', '-o', reassigned_bin])
-	assert reassigned_compile.exit_code == 0, reassigned_compile.output
-	assert !reassigned_compile.output.contains('C compilation failed'), reassigned_compile.output
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
 
-	reassigned_run := os.exec([reassigned_bin])
-	assert reassigned_run.exit_code == 0, reassigned_run.output
-	assert reassigned_run.output.trim_space() == 'ok', reassigned_run.output
+	run := os.exec([bin])
+	assert run.exit_code == 0, run.output
+	assert run.output.split_into_lines() == ['ancestor write ok', 'index reassignment ok'], run.output
 }

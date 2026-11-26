@@ -70,7 +70,7 @@ fn check_receiver_source(name string, source string) os.Result {
 	defer {
 		os.rmdir_all(os.dir(path)) or {}
 	}
-	return os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
+	return os.exec([@VEXE, '-check', '-nocolor', path])
 }
 
 fn build_receiver_source(name string, source string) os.Result {
@@ -78,7 +78,7 @@ fn build_receiver_source(name string, source string) os.Result {
 	defer {
 		os.rmdir_all(os.dir(path)) or {}
 	}
-	return os.exec([@VEXE, '-new-compiler', '-nocolor', '-o', path.all_before_last('.'), path])
+	return os.exec([@VEXE, '-nocolor', '-o', path.all_before_last('.'), path])
 }
 
 // error_lines returns `line:col: message` for every error of an output.
@@ -107,57 +107,36 @@ fn other_own[T](b Box[T]) int {
 }
 '
 
-fn test_an_explicit_type_that_the_receiver_does_not_fix_is_an_error() {
-	source := receiver_source('', box_of_int + '\tprintln(b.own[string]())\n')
-	res := check_receiver_source('direct', source)
+fn test_explicit_receiver_type_arguments_reject_mismatches() {
+	receivers := box_of_int + '\th := Holder{\n\t\tBox: Box[int]{\n\t\t\titem: 4\n\t\t}\n\t}\n' +
+		'\tmut r := Box[int]{\n\t\titem: 3\n\t}\n' + '\ta := IntBox{\n\t\titem: 3\n\t}\n'
+	direct := '\tprintln(b.own[string]())'
+	embedded := '\tprintln(h.own[string]())'
+	pair := "\tprintln(b.pair[string, string]('x'))"
+	reference := '\tprintln(r.own_ref[string]())'
+	alias := '\tprintln(a.own[string]())'
+	calls := [direct, embedded, pair, reference, alias]
+	value_arithmetic := '\tx := f + 1'
+	mismatched_method_value := '\tg := b.own[string]'
+	method_values := ['\tf := b.own[int]', value_arithmetic, '\tprintln(x)', mismatched_method_value,
+		'\tprintln(g())']
+	source := receiver_source('', receivers + calls.join('\n') + '\n' +
+		method_values.join('\n') + '\n')
+	res := check_receiver_source('mismatches', source)
 	assert res.exit_code == 1, res.output
-	line := line_of(source, '\tprintln(b.own[string]())')
 	assert error_lines(res.output) == [
-		'${line}:15: `own` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
+		'${line_of(source, direct)}:15: `own` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
+		'${line_of(source, embedded)}:15: `own` takes `T` from its receiver `Box[int]` (embedded in `Holder`): `T` is `int`, not `string`',
+		'${line_of(source, pair)}:16: `pair` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
+		'${line_of(source, reference)}:19: `own_ref` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
+		'${line_of(source, alias)}:15: `own` takes `T` from its receiver `IntBox`: `T` is `int`, not `string`',
+		'${line_of(source, value_arithmetic)}:7: mismatched types `fn () int` and `int literal`',
+		'${line_of(source, value_arithmetic)}:7: infix expr: cannot use `int literal` (right expression) as `fn () int`',
+		'${line_of(source, mismatched_method_value)}:12: `own` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
 	], res.output
 }
 
-fn test_an_explicit_type_that_an_embedded_receiver_does_not_fix_is_an_error() {
-	source := receiver_source('', '\th := Holder{\n\t\tBox: Box[int]{\n\t\t\titem: 4\n\t\t}\n\t}\n\tprintln(h.own[string]())\n')
-	res := check_receiver_source('embedded', source)
-	assert res.exit_code == 1, res.output
-	line := line_of(source, '\tprintln(h.own[string]())')
-	// The one error, and not `cannot use receiver `Holder` as `Box[string]``.
-	assert error_lines(res.output) == [
-		'${line}:15: `own` takes `T` from its receiver `Box[int]` (embedded in `Holder`): `T` is `int`, not `string`',
-	], res.output
-}
-
-fn test_an_explicit_type_that_the_receiver_does_not_fix_is_an_error_among_the_methods_own() {
-	source := receiver_source('', box_of_int + "\tprintln(b.pair[string, string]('x'))\n")
-	res := check_receiver_source('pair', source)
-	assert res.exit_code == 1, res.output
-	line := line_of(source, "\tprintln(b.pair[string, string]('x'))")
-	assert error_lines(res.output) == [
-		'${line}:16: `pair` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
-	], res.output
-}
-
-fn test_an_explicit_type_that_a_reference_receiver_does_not_fix_is_an_error() {
-	source := receiver_source('', '\tmut b := Box[int]{\n\t\titem: 3\n\t}\n\tprintln(b.own_ref[string]())\n')
-	res := check_receiver_source('reference', source)
-	assert res.exit_code == 1, res.output
-	line := line_of(source, '\tprintln(b.own_ref[string]())')
-	assert error_lines(res.output) == [
-		'${line}:19: `own_ref` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
-	], res.output
-}
-
-fn test_an_explicit_type_that_an_alias_receiver_does_not_fix_is_an_error() {
-	source := receiver_source('', '\tb := IntBox{\n\t\titem: 3\n\t}\n\tprintln(b.own[string]())\n')
-	res := check_receiver_source('alias', source)
-	assert res.exit_code == 1, res.output
-	line := line_of(source, '\tprintln(b.own[string]())')
-	assert error_lines(res.output) == [
-		'${line}:15: `own` takes `T` from its receiver `IntBox`: `T` is `int`, not `string`',
-	], res.output
-}
-
+// A separate fixture lets the checker reach the instantiated body after checking main.
 fn test_an_instance_whose_receiver_fixes_another_type_is_an_error() {
 	source := receiver_source(other_own, "\tprintln(other_own(Box[string]{\n\t\titem: 'a'\n\t}))\n")
 	res := check_receiver_source('instance', source)
@@ -192,30 +171,4 @@ fn test_explicit_types_that_the_receiver_fixes_are_fine() {
 	res := check_receiver_source('fine', receiver_source(other_own, body))
 	assert res.exit_code == 0, res.output
 	assert error_lines(res.output) == [], res.output
-}
-
-// A generic method named with its type arguments is a value of the type of that
-// method, as a generic function named so is: a variable it initializes has
-// that type, and a misuse of it is an error.
-fn test_a_method_value_has_the_type_of_the_method_it_names() {
-	source := receiver_source('', box_of_int + '\tf := b.own[int]\n\tx := f + 1\n\tprintln(x)\n')
-	res := check_receiver_source('value_type', source)
-	assert res.exit_code == 1, res.output
-	line := line_of(source, '\tx := f + 1')
-	assert error_lines(res.output) == [
-		'${line}:7: mismatched types `fn () int` and `int literal`',
-		'${line}:7: infix expr: cannot use `int literal` (right expression) as `fn () int`',
-	], res.output
-}
-
-// A method named with its type arguments and without a call is checked as its
-// call is: `b.own[string]` for a `Box[int]` too.
-fn test_a_method_value_that_writes_another_type_than_the_receiver_fixes_is_an_error() {
-	source := receiver_source('', box_of_int + '\tf := b.own[string]\n\tprintln(f())\n')
-	res := check_receiver_source('value', source)
-	assert res.exit_code == 1, res.output
-	line := line_of(source, '\tf := b.own[string]')
-	assert error_lines(res.output) == [
-		'${line}:12: `own` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
-	], res.output
 }

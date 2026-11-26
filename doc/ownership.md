@@ -124,8 +124,9 @@ branches. Each element gets independent storage and leaves the source usable. Fr
 are evaluated once per element without an additional clone; a zero-length initializer does not
 evaluate its expression.
 
-Standard string methods, numeric parsers, path inspection and joining functions, and
-string-builder writes borrow string arguments that cannot escape through the return value.
+Standard string methods, numeric parsers, UTF-8 validation, path inspection and joining functions,
+and string-builder writes borrow string arguments that cannot escape through the return value.
+They also borrow when the compiler loads their declarations from the module cache.
 Signed numeric parsing preserves the caller's string while removing a leading sign.
 Arguments that may be returned, such as the fallback of `string.substr_or()`, transfer ownership
 instead. Use `.clone()` when the caller also needs to keep an owned fallback. User functions with
@@ -349,6 +350,9 @@ fn main() {
 ```
 
 ### Borrow restrictions
+
+A scalar field read through a borrow copies the scalar. A local pointer
+read through a borrow retains a loan on the backing storage.
 
 A borrowed variable cannot be moved or reassigned while the borrow is active:
 

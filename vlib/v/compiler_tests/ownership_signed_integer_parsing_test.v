@@ -46,7 +46,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		result := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 		assert result.output.trim_space() == 'ok', result.output
 	}

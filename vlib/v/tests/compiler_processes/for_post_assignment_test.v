@@ -68,7 +68,7 @@ fn main() {
 			os.write_file(source, '${attribute}module main\n${code}')!
 			for autofree in [false, true] {
 				for serial in [false, true] {
-					mut args := ['-new-compiler', '-gc', 'none', '-cc', @CCOMPILER]
+					mut args := ['-gc', 'none', '-cc', @CCOMPILER]
 					if autofree { args << '-autofree' }
 					if serial { args << '-no-parallel' }
 					args << ['run', source]
@@ -245,7 +245,7 @@ fn main() {
 		source := os.join_path(root, 'main.v')
 		os.write_file(source, '${attribute}module main\n${program}')!
 		for autofree in [false, true] {
-			mut args := [@VEXE, '-new-compiler', '-gc', 'none']
+			mut args := [@VEXE, '-gc', 'none']
 			if autofree {
 				args << '-autofree'
 			}

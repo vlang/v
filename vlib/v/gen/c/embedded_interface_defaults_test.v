@@ -57,7 +57,7 @@ fn run_embedded_interface_defaults_source(name string, source string) string {
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'main.v')
 	os.write_file(path, source) or { panic(err) }
-	result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', 'run', path])
+	result := cmdexec.run(@VEXE, ['-nocache', 'run', path])
 	assert result.exit_code == 0, result.output
 	return result.output
 }

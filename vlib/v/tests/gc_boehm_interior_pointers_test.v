@@ -7,6 +7,11 @@
 // This checks the setting itself: whether a particular block survives a
 // collection depends on stale values in the conservatively scanned stack, which
 // can keep a block alive by accident and make such a test pass without the fix.
+//
+// The generated C does not include gc.h, so request the prototype: units that
+// use system headers (Windows MSVC and TinyCC) otherwise get none, and MSVC
+// rejects the implicit declaration (C4013).
+@[c_extern]
 fn C.GC_get_all_interior_pointers() int
 
 fn test_boehm_recognises_interior_pointers() {

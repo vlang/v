@@ -39,6 +39,7 @@ pub fn draw_instance() string {
 fn test_imported_static_method_keeps_its_own_signature_and_visibility() {
 	root := static_instance_method_project('static_instance_method_public')!
 	defer { os.rmdir_all(root) or {} }
+	run_flags := $if windows { ['-gc', 'none'] } $else { ['-cc', 'clang', '-gc', 'none'] }
 	for static_first in [false, true] {
 		write_static_instance_methods(root, static_first, true)!
 		for import_line, type_name in {
@@ -59,8 +60,8 @@ fn main() {
 }
 ')!
 			for flags in [[]string{}, ['-no-parallel']] {
-				result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang',
-					'-gc', 'none', ...flags, 'run', root])
+				result := os.exec([@VEXE, '-no-retry-compilation', ...run_flags, ...flags, 'run',
+					root])
 				assert result.exit_code == 0, result.output
 			}
 		}
@@ -85,8 +86,7 @@ fn main() {
 }
 ')!
 			for flags in [[]string{}, ['-no-parallel']] {
-				result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang',
-					...flags, '-check', root])
+				result := os.exec([@VEXE, '-no-retry-compilation', ...flags, '-check', root])
 				assert result.exit_code != 0, result.output
 				kind := if static_public { 'method' } else { 'function' }
 				assert result.output.contains('error: ${kind} `'), result.output

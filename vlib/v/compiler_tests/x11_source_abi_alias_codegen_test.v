@@ -1,25 +1,7 @@
 import os
+import v.tempname
 
-const x11_alias_vexe = @VEXE
-const x11_alias_tests_dir = os.dir(@FILE)
-const x11_alias_v3_dir = os.dir(x11_alias_tests_dir)
-const x11_alias_vlib_dir = os.dir(x11_alias_v3_dir)
-const x11_alias_v3_src = os.join_path(x11_alias_v3_dir, 'v.v')
-
-fn x11_alias_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_x11_alias_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([x11_alias_vexe, '-gc', 'none', '-path', '${x11_alias_vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${x11_alias_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn x11_alias_write_project() string {
-	root := os.join_path(os.temp_dir(), 'v3_x11_alias_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn x11_alias_write_project(root string) {
 	os.write_file(os.join_path(root, 'native_abi.h'), '#ifndef V3_X11_ALIAS_NATIVE_ABI_H
 #define V3_X11_ALIAS_NATIVE_ABI_H
 typedef unsigned long NativeAtom;
@@ -85,14 +67,15 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	return root
 }
 
 fn test_c_typedef_aliases_are_preserved_for_x11_abi_shapes() {
-	v3_bin := x11_alias_build_v3()
-	root := x11_alias_write_project()
+	root := os.join_path(os.vtmp_dir(), 'v3_x11_alias_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	x11_alias_write_project(root)
 	c_path := os.join_path(root, 'out.c')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', c_path])
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(c_path) or { panic(err) }

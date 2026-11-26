@@ -2,7 +2,7 @@
 import os
 
 fn run_agents_create(args []string) os.Result {
-	mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none']
+	mut command := [@VEXE, '-no-retry-compilation', '-cc', 'clang', '-gc', 'none']
 	command << args
 	return os.exec(['sh', '-c', command.map(os.quoted_path(it)).join(' ') + ' < /dev/null'])
 }

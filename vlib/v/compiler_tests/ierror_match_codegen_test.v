@@ -1,27 +1,10 @@
 import os
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const ierror_match_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_ierror_match_compiler_${os.getpid()}')
-const v3_bin = os.join_path(ierror_match_compiler_dir, 'v3' + $if windows { '.exe' } $else { '' })
-
-fn testsuite_begin() {
-	os.rmdir_all(ierror_match_compiler_dir) or {}
-	os.mkdir_all(ierror_match_compiler_dir)!
-	build := os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}|@vlib|@vmodules', '-o', v3_bin,
-		v3_src])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rmdir_all(ierror_match_compiler_dir) or {}
-}
-
-fn test_ierror_concrete_match_uses_type_ids() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_${os.getpid()}')
+fn test_ierror_patterns_use_type_ids_and_file_local_imports() {
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_match_codegen_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'myerrs')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'myerrs.v'), "module myerrs
@@ -95,74 +78,6 @@ pub fn fail_with_defer(code int) !int {
 		panic(err)
 	}
 
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import myerrs
-
-fn classify(err IError) string {
-	match err {
-		myerrs.FirstError {
-			return 'first'
-		}
-		myerrs.SecondError {
-			return 'second'
-		}
-		else {
-			return 'unknown'
-		}
-	}
-}
-
-fn is_first(err IError) bool {
-	return err is myerrs.FirstError
-}
-
-fn main() {
-	myerrs.fail(1) or {
-		assert err.msg() == 'first alpha'
-		assert err.code() == 11
-		assert classify(err) == 'first'
-		assert is_first(err)
-	}
-	myerrs.fail(2) or {
-		assert err.msg() == 'second'
-		assert err.code() == 22
-		assert classify(err) == 'second'
-		assert !is_first(err)
-	}
-	assert myerrs.fail(3)! == 7
-	myerrs.fail_from_match(1) or {
-		assert err.msg() == 'first match'
-		assert classify(err) == 'first'
-	}
-	myerrs.fail_with_defer(1) or {
-		assert err.msg() == 'first defer'
-		assert classify(err) == 'first'
-	}
-	println('ok')
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('._typ == '), c_code
-	// Interface method calls pass the typed receiver in parentheses.
-	assert c_code.contains('IError__msg(&(err))'), c_code
-	assert !c_code.contains('err == myerrs__FirstError'), c_code
-	assert !c_code.contains('err == myerrs__SecondError'), c_code
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_ierror_patterns_resolve_nested_alias_and_selective_imports() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_alias_match_codegen_${os.getpid()}')
 	alias_dir := os.join_path(root, 'nested', 'aliaserrs')
 	selective_dir := os.join_path(root, 'nested', 'selecterrs')
 	os.mkdir_all(alias_dir) or { panic(err) }
@@ -216,8 +131,29 @@ pub fn fail_selective() !int {
 		panic(err)
 	}
 
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import nested.aliaserrs as aliased
+	fake_dir := os.join_path(root, 'fake')
+	os.mkdir_all(fake_dir) or { panic(err) }
+	os.write_file(os.join_path(fake_dir, 'fake.v'), "module fake
+
+pub struct Error {
+	MessageError
+pub:
+	label string
+}
+
+pub fn fail() !int {
+	return Error{
+		label: 'selective'
+	}
+}
+") or {
+		panic(err)
+	}
+
+	// Keep each import scope in the file that uses it.
+	os.write_file(os.join_path(root, 'nested_patterns.v'), "module main
+
+import nested.aliaserrs as aliased
 import nested.selecterrs { SelectiveError, fail_selective }
 
 fn classify_alias(err IError) string {
@@ -242,12 +178,14 @@ fn classify_selective(err IError) string {
 	}
 }
 
-fn main() {
+fn check_nested_patterns() {
+	mut matched := 0
 	aliased.fail_alias() or {
 		assert err.msg() == 'alias nested'
 		assert classify_alias(err) == 'alias'
 		assert classify_selective(err) == 'other'
 		assert err is aliased.AliasError
+		matched++
 	}
 
 	fail_selective() or {
@@ -255,46 +193,17 @@ fn main() {
 		assert classify_alias(err) == 'other'
 		assert classify_selective(err) == 'selective'
 		assert err is SelectiveError
+		matched++
 	}
-	println('ok')
+	assert matched == 2
 }
 ") or {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_alias_match_codegen_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
+	os.write_file(os.join_path(root, 'selective_error_pattern.v'), "module main
 
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_selective_imported_error_pattern_prefers_scoped_error() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_selective_error_pattern_${os.getpid()}')
-	mod_dir := os.join_path(root, 'fake')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	os.write_file(os.join_path(mod_dir, 'fake.v'), "module fake
-
-pub struct Error {
-	MessageError
-pub:
-	label string
-}
-
-pub fn fail() !int {
-	return Error{
-		label: 'selective'
-	}
-}
-") or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import fake { Error, fail }
+import fake { Error, fail }
 
 fn matches_fake(err IError) bool {
 	if err is Error {
@@ -304,7 +213,7 @@ fn matches_fake(err IError) bool {
 	return false
 }
 
-fn classify(err IError) string {
+fn classify_scoped_error(err IError) string {
 	return match err {
 		Error {
 			assert err.label == 'selective'
@@ -316,11 +225,10 @@ fn classify(err IError) string {
 	}
 }
 
-fn main() {
+fn check_scoped_error_pattern() {
 	fail() or {
 		assert matches_fake(err)
-		assert classify(err) == 'selective'
-		println('ok')
+		assert classify_scoped_error(err) == 'selective'
 		return
 	}
 	assert false
@@ -329,103 +237,16 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_selective_error_pattern_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_scoped_error_pattern_does_not_fallback_to_builtin_error() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_scoped_error_no_fallback_${os.getpid()}')
-	mod_dir := os.join_path(root, 'fake')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	os.write_file(os.join_path(mod_dir, 'fake.v'), 'module fake
-
-pub struct Error {}
-
-pub fn fail() !int {
-	return Error{}
-}
-') or {
-		panic(err)
-	}
-
 	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'import fake { Error, fail }
-
-fn is_fake(err IError) bool {
-	return err is Error
-}
-
-fn main() {
-	fail() or {
-		_ := is_fake(err)
-		return
-	}
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_scoped_error_no_fallback_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('fake.Error') || compile.output.contains('Error'), compile.output
-	assert compile.output.contains('IError') || compile.output.contains('cannot return'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
-fn test_local_error_pattern_does_not_fallback_to_builtin_error() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_local_error_no_fallback_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'struct Error {}
-
-fn is_local(err IError) bool {
-	return err is Error
-}
-
-fn main() {
-	err := error("plain")
-	_ := is_local(err)
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_local_error_no_fallback_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('Error') && compile.output.contains('IError'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
-fn test_msg_only_struct_is_not_ierror_pattern() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_not_error_${os.getpid()}')
-	mod_dir := os.join_path(root, 'noterrs')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	os.write_file(os.join_path(mod_dir, 'noterrs.v'), "module noterrs
-
-pub struct NotError {}
-
-pub fn (err NotError) msg() string {
-	return 'not actually an error'
-}
-") or {
-		panic(err)
-	}
-
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import noterrs
+	os.write_file(src, "import myerrs
 
 fn classify(err IError) string {
 	match err {
-		noterrs.NotError {
-			return 'not-error'
+		myerrs.FirstError {
+			return 'first'
+		}
+		myerrs.SecondError {
+			return 'second'
 		}
 		else {
 			return 'unknown'
@@ -433,29 +254,65 @@ fn classify(err IError) string {
 	}
 }
 
-fn is_not_error(err IError) bool {
-	return err is noterrs.NotError
+fn is_first(err IError) bool {
+	return err is myerrs.FirstError
 }
 
 fn main() {
-	err := error('plain')
-	assert classify(err) == 'unknown'
-	assert !is_not_error(err)
+	myerrs.fail(1) or {
+		assert err.msg() == 'first alpha'
+		assert err.code() == 11
+		assert classify(err) == 'first'
+		assert is_first(err)
+	}
+	myerrs.fail(2) or {
+		assert err.msg() == 'second'
+		assert err.code() == 22
+		assert classify(err) == 'second'
+		assert !is_first(err)
+	}
+	assert myerrs.fail(3)! == 7
+	myerrs.fail_from_match(1) or {
+		assert err.msg() == 'first match'
+		assert classify(err) == 'first'
+	}
+	myerrs.fail_with_defer(1) or {
+		assert err.msg() == 'first defer'
+		assert classify(err) == 'first'
+	}
+	println('ok')
+
+	check_nested_patterns()
+	check_scoped_error_pattern()
+	println('ok')
 }
 ") or {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_not_error_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('noterrs.NotError') && compile.output.contains('IError'), compile.output
-
+	bin := os.join_path(root, 'v3_ierror_match_codegen_input')
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
+	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
+
+	c_code := os.read_file(bin + '.c') or { panic(err) }
+	classify_body := c_code.all_after('string classify(IError err) {').all_before('\n}')
+	assert classify_body.contains('err._typ == '), classify_body
+	// Interface method calls pass the typed receiver in parentheses.
+	first_error_body := c_code.all_after('myerrs__fail(1);').all_before('\n\t}')
+	assert first_error_body.contains('IError__msg(&(err))'), first_error_body
+	assert !c_code.contains('err == myerrs__FirstError'), c_code
+	assert !c_code.contains('err == myerrs__SecondError'), c_code
+
+	run := os.exec([bin])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok\nok'
 }
 
-fn test_module_local_error_embeds_are_not_ierror_patterns() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_pattern_${os.getpid()}')
+fn test_ierror_rejects_incompatible_imported_types() {
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_pattern_rejections_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mod_dir := os.join_path(root, 'fake')
 	os.mkdir_all(mod_dir) or { panic(err) }
 	os.write_file(os.join_path(mod_dir, 'fake.v'), "module fake
@@ -487,56 +344,17 @@ pub fn (err FalseMessageError) msg() string {
 pub fn (err FalseMessageError) code() int {
 	return 92
 }
-") or {
-		panic(err)
-	}
 
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "import fake
-
-fn classify(err IError) string {
-	match err {
-		fake.FalseError {
-			return 'false-error'
-		}
-		fake.FalseMessageError {
-			return 'false-message-error'
-		}
-		else {
-			return 'unknown'
-		}
-	}
-}
-
-fn is_false_error(err IError) bool {
-	return err is fake.FalseError || err is fake.FalseMessageError
-}
-
-fn main() {
-	err := error('plain')
-	assert classify(err) == 'unknown'
-	assert !is_false_error(err)
+pub fn fail() !int {
+	return Error{}
 }
 ") or {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_pattern_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('fake.FalseError') && compile.output.contains('IError'), compile.output
-
-	assert compile.output.contains('fake.FalseMessageError') && compile.output.contains('IError'), compile.output
-
-	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
-fn test_module_local_error_embeds_are_not_boxed_as_ierror() {
-	root := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_box_${os.getpid()}')
-	mod_dir := os.join_path(root, 'fakebox')
-	os.mkdir_all(mod_dir) or { panic(err) }
-	mod_src := os.join_path(mod_dir, 'fakebox.v')
-	os.write_file(mod_src, "module fakebox
+	fakebox_dir := os.join_path(root, 'fakebox')
+	os.mkdir_all(fakebox_dir) or { panic(err) }
+	os.write_file(os.join_path(fakebox_dir, 'fakebox.v'), "module fakebox
 
 pub struct Error {}
 
@@ -577,23 +395,159 @@ pub fn fail_message_error() !int {
 		panic(err)
 	}
 
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'import fakebox
+	noterrs_dir := os.join_path(root, 'noterrs')
+	os.mkdir_all(noterrs_dir) or { panic(err) }
+	os.write_file(os.join_path(noterrs_dir, 'noterrs.v'), "module noterrs
+
+pub struct NotError {}
+
+pub fn (err NotError) msg() string {
+	return 'not actually an error'
+}
+") or {
+		panic(err)
+	}
+
+	// Keep the selective Error import scoped to its fixture.
+	os.write_file(os.join_path(root, 'scoped_error.v'), 'module main
+
+import fake { Error, fail }
+
+fn is_fake(err IError) bool {
+	return err is Error
+}
+
+fn check_scoped_error() {
+	fail() or {
+		_ := is_fake(err)
+		return
+	}
+}
+') or { panic(err) }
+
+	os.write_file(os.join_path(root, 'msg_only.v'), "module main
+
+import noterrs
+
+fn classify_msg_only(err IError) string {
+	match err {
+		noterrs.NotError {
+			return 'not-error'
+		}
+		else {
+			return 'unknown'
+		}
+	}
+}
+
+fn is_not_error(err IError) bool {
+	return err is noterrs.NotError
+}
+
+fn check_msg_only() {
+	err := error('plain')
+	assert classify_msg_only(err) == 'unknown'
+	assert !is_not_error(err)
+}
+") or { panic(err) }
+
+	os.write_file(os.join_path(root, 'fake_embeds.v'), "module main
+
+import fake
+
+fn classify_fake_embeds(err IError) string {
+	match err {
+		fake.FalseError {
+			return 'false-error'
+		}
+		fake.FalseMessageError {
+			return 'false-message-error'
+		}
+		else {
+			return 'unknown'
+		}
+	}
+}
+
+fn is_false_error(err IError) bool {
+	return err is fake.FalseError || err is fake.FalseMessageError
+}
+
+fn check_fake_embeds() {
+	err := error('plain')
+	assert classify_fake_embeds(err) == 'unknown'
+	assert !is_false_error(err)
+}
+") or { panic(err) }
+
+	os.write_file(os.join_path(root, 'main.v'), 'import fakebox
 
 fn main() {
+	check_scoped_error()
+	check_msg_only()
+	check_fake_embeds()
 	a := fakebox.fail_error() or { 0 }
 	b := fakebox.fail_message_error() or { 0 }
 	_ = a + b
+}
+') or { panic(err) }
+
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, root, '-b', 'c', '-nocolor', '-o', bin])
+	assert compile.exit_code != 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	mut diagnostics := map[string][]string{}
+	for line in compile.output.split_into_lines() {
+		location, message := line.split_once(': error: ') or { continue }
+		file := location.all_before_last(':').all_before_last(':')
+		diagnostics[os.file_name(file)] << message
+	}
+	for file, expected in {
+		'fakebox.v':      [
+			'cannot use `&fakebox.FalseError` as type `!int` in return argument',
+			'cannot use `&fakebox.FalseMessageError` as type `!int` in return argument',
+		]
+		'fake.v':         ['fake.Error` as type `!int` in return argument']
+		'scoped_error.v': ["`Error` doesn't implement interface `IError`"]
+		'msg_only.v':     [
+			'`noterrs.NotError` is not compatible with `IError`',
+			"`noterrs.NotError` doesn't implement interface `IError`",
+		]
+		'fake_embeds.v':  [
+			'`fake.FalseError` is not compatible with `IError`',
+			'`fake.FalseMessageError` is not compatible with `IError`',
+			"`fake.FalseError` doesn't implement interface `IError`",
+			"`fake.FalseMessageError` doesn't implement interface `IError`",
+		]
+	} {
+		for message in expected {
+			assert diagnostics[file].any(it.contains(message)), 'expected ${message} in ${file}\n${compile.output}'
+		}
+	}
+}
+
+fn test_local_error_pattern_does_not_fallback_to_builtin_error() {
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_local_error_no_fallback_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, 'struct Error {}
+
+fn is_local(err IError) bool {
+	return err is Error
+}
+
+fn main() {
+	err := error("plain")
+	_ := is_local(err)
 }
 ') or {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_box_input')
-	compile := os.exec([v3_bin, '${mod_src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_local_error_no_fallback_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot use `&fakebox.FalseError` as type `!int`'), compile.output
-	assert compile.output.contains('fakebox.FalseError')
-		|| compile.output.contains('fakebox.FalseMessageError'), compile.output
+	assert compile.output.contains('Error') && compile.output.contains('IError'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }

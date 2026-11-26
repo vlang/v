@@ -44,7 +44,7 @@ fn test_ownership_dispatch_refreshes_the_primary_isolated_cache() ! {
 	previous := os.environ()
 	variables := ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE', 'VEXE', 'V3_PRIMARY_VEXE', 'VFLAGS',
 		'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_ENTRY',
-		'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
+		'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V_SKIP_VVMRC']
 	defer {
 		for variable in variables {
 			if variable in previous {
@@ -64,7 +64,6 @@ fn test_ownership_dispatch_refreshes_the_primary_isolated_cache() ! {
 	// and its ownership helper must retain that replacement after exec.
 	os.setenv('V3_PRIMARY_VEXE', os.join_path(root, 'stale-parent'), true)
 	os.setenv('V_SKIP_VVMRC', '1', true)
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	for variable in ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_ENTRY',
 		'V3_CACHE_REFRESH_PROJECT_FLAGS'] {
 		os.unsetenv(variable)
@@ -152,11 +151,46 @@ fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 fn test_cached_dependency_inputs_restore_empty_variable_value() {
 	expected_head := 'format=test\n'
 	stamp := expected_head + 'dependency=fixed\tvalue\n' + 'dependency=external-root-owner:c:0\t\n'
-	restored := cached_dependency_inputs_from_stamp(stamp, expected_head, {
+	restored := cached_dependency_inputs_from_stamp('', stamp, expected_head, {
 		'fixed': 'value'
 	}, ['external-root-owner:']) or { panic('expected cache dependency restore') }
 	assert 'external-root-owner:c:0' in restored
 	assert restored['external-root-owner:c:0'] == ''
+}
+
+// Stamps name the headers in the cache relative to it, so a copy of the cache at
+// another path stays valid, while a changed header still invalidates it.
+fn test_object_stamp_stays_valid_in_a_copy_of_the_cache() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_relocated_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	original := os.join_path(root, 'original')
+	copy := os.join_path(root, 'copy')
+	os.mkdir_all(original)!
+	os.write_file(os.join_path(original, 'dep.vh'), 'pub fn f()\n')!
+	signature := file_signature(os.join_path(original, 'dep.vh'))
+	stamp := object_entry_stamp(original, 'salt', 'source', {
+		os.join_path(original, 'dep.vh'): signature
+	}, 'compile')
+	assert stamp.contains('dependency=${cache_dir_dependency_prefix}dep.vh\t')
+	assert !stamp.contains(original)
+	expected := entry_stamp('salt', 'source')
+	assert object_stamp_valid(original, stamp, expected)
+	os.cp_all(original, copy, true)!
+	os.rmdir_all(original)!
+	assert object_stamp_valid(copy, stamp, expected)
+	assert object_stamp_dependencies_match(copy, stamp, {
+		os.join_path(copy, 'dep.vh'): signature
+	})
+	assert cgen_entry_stamp(original, 'salt', 'source', {
+		os.join_path(original, 'dep.vh'): signature
+	}, 'generation') == cgen_entry_stamp(copy, 'salt', 'source', {
+		os.join_path(copy, 'dep.vh'): signature
+	}, 'generation')
+	os.write_file(os.join_path(copy, 'dep.vh'), 'pub fn f(x int)\n')!
+	assert !object_stamp_valid(copy, stamp, expected)
 }
 
 fn test_native_declaration_api_macro_definition_is_not_localized() {
@@ -235,7 +269,9 @@ fn test_cached_file_line_uses_source_file_name() {
 	source := 'return [@FILE, @FILE_LINE, @LINE]'
 	source_file := os.join_path(os.vtmp_dir(), 'nested', 'origin.v')
 	rewritten := cached_embedded_source_paths(source, '', source_file, 5)
-	assert rewritten == "return ['${os.real_path(source_file)}', 'origin.v:5', '5']"
+	// The path is a V string literal, so a Windows `\` separator is escaped.
+	file_literal := os.real_path(source_file).replace('\\', '\\\\')
+	assert rewritten == "return ['${file_literal}', 'origin.v:5', '5']"
 }
 
 fn test_without_duplicate_static_string_definitions_keeps_new_literals() {
@@ -1452,13 +1488,15 @@ fn test_program_executable_is_restored_for_the_inputs_that_linked_it() {
 		return
 	}
 	assert cached.notices == 'notices\nof the build\n'
-	restored := os.join_path(root, 'restored')
+	// Windows tells executables apart by their extension.
+	exe_ext := $if windows { '.exe' } $else { '' }
+	restored := os.join_path(root, 'restored${exe_ext}')
 	assert cached.restore(restored)
 	assert os.read_file(restored)! == 'first executable'
 	assert os.is_executable(restored)
 	// The restored file has the permissions of one that a linker creates: all
 	// that the umask of the caller leaves.
-	reference := os.join_path(root, 'reference')
+	reference := os.join_path(root, 'reference${exe_ext}')
 	mut created := os.open_file(reference, 'w', 0o777)!
 	created.close()
 	assert os.stat(restored)!.mode & 0o777 == os.stat(reference)!.mode & 0o777

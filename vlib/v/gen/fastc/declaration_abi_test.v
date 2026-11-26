@@ -11,8 +11,8 @@ fn declaration_abi_run_c(name string, source string) {
 	path := os.join_path(root, 'main.c')
 	program := os.join_path(root, 'program')
 	os.write_file(path, source) or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-Werror=incompatible-pointer-types', '-o', program,
-		path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-Werror=incompatible-pointer-types',
+		'-o', program, path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

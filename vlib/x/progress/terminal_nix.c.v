@@ -1,6 +1,20 @@
 module progress
 
+import os
 import term.termios
+
+#include <signal.h>
+
+// Query the disposition without replacing it. Installing the pointer returned
+// by signal() can install a sanitizer's interceptor as its own handler.
+#define v_progress_signal_is_default(sig, old) (sigaction((sig), NULL, (old)) == 0 && (old)->sa_handler == SIG_DFL)
+
+fn C.v_progress_signal_is_default(sig i32, old &C.sigaction) bool
+
+fn signal_is_default(sig os.Signal) bool {
+	old := C.sigaction{}
+	return C.v_progress_signal_is_default(int(sig), &old)
+}
 
 // terminal_size returns the columns and rows of the terminal attached to
 // `fd`, or (0, 0) when it cannot be determined.

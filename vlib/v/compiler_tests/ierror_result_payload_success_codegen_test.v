@@ -1,21 +1,7 @@
 import os
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_result_payload_success_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn c_fn_body(c_code string, header string) string {
+fn ierror_result_c_body(c_code string, header string) string {
 	start := c_code.index(header) or { return '' }
 	tail := c_code[start..]
 	end := tail.index('\n}\n') or { return tail }
@@ -23,10 +9,9 @@ fn c_fn_body(c_code string, header string) string {
 }
 
 fn test_ierror_shaped_result_payload_returns_success_before_error_boxing() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_result_payload_success_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_result_payload_success_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "struct MyErr {
 	label string
@@ -183,8 +168,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_result_payload_success_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_ierror_result_payload_success_out')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -193,17 +178,17 @@ fn main() {
 	assert run.output.trim_space() == 'OK:payload\nOK:payload-defer\nIERR_OK:payload-ierror\nIERR_LOCAL_OK:payload-local-err\nIERR_DEFER_OK:payload-ierror-defer\nIERR_FALLBACK_OK:fallback-ierror\nIERR_PAYLOAD_FAILURE:payload-error\nERR:real-error:7\nFIXED_ERR:fixed-error\nIERR:boom\nIERR_DEFER:boom'
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	payload_ierror_body := c_fn_body(c_code, '__v_result_IError payload_ierror(void) {')
+	payload_ierror_body := ierror_result_c_body(c_code, '__v_result_IError payload_ierror(void) {')
 	assert payload_ierror_body.contains('.ok = true, .value = (IError){._typ = '), payload_ierror_body
 	assert !payload_ierror_body.contains('.ok = false'), payload_ierror_body
 
-	payload_ierror_local_body := c_fn_body(c_code,
+	payload_ierror_local_body := ierror_result_c_body(c_code,
 		'__v_result_IError payload_ierror_local_err(void) {')
 	assert payload_ierror_local_body.contains('.ok = true, .value = (IError){._typ = '), payload_ierror_local_body
 	assert payload_ierror_local_body.contains('memdup((main__MyErr[]){\terr}, sizeof(main__MyErr))'), payload_ierror_local_body
 	assert !payload_ierror_local_body.contains('.ok = false'), payload_ierror_local_body
 
-	payload_ierror_defer_body := c_fn_body(c_code, '__v_result_IError payload_ierror_defer(void) {')
+	payload_ierror_defer_body := ierror_result_c_body(c_code, '__v_result_IError payload_ierror_defer(void) {')
 	assert payload_ierror_defer_body.contains('= (__v_result_IError){.ok = true, .value = '), payload_ierror_defer_body
 
 	assert payload_ierror_defer_body.contains('(IError){._typ = '), payload_ierror_defer_body

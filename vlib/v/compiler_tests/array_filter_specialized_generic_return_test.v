@@ -1,21 +1,14 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+import v.tempname
 
 fn test_array_filter_uses_specialized_generic_call_return_type() {
 	exe_suffix := $if windows { '.exe' } $else { '' }
-	test_path := os.join_path(os.temp_dir(), 'v3_array_filter_specialized_generic_return_test')
-	v3_bin := '${test_path}${exe_suffix}'
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	src_path := '${test_path}_program.v'
+	dir := os.join_path(os.vtmp_dir(), 'v3_array_filter_specialized_generic_return_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	src_path := os.join_path(dir, 'v3_array_filter_specialized_generic_return_test_program.v')
 	os.write_file(src_path, '
 import arrays { flat_map, flat_map_indexed, map_indexed }
 
@@ -51,8 +44,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin_path := '${test_path}_program${exe_suffix}'
-	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
+	bin_path := os.join_path(dir, 'app${exe_suffix}')
+	compile := os.exec([@VEXE, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output

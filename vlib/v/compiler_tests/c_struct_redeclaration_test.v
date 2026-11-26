@@ -1,90 +1,48 @@
 import os
-import rand
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_struct_redeclaration_${os.getpid()}_${rand.ulid()}')
-	build :=
-		os.exec([vexe, '-prealloc', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn c_struct_redecl_fixture_dir(name string) string {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	return root
 }
 
-fn unique_temp_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}_${rand.ulid()}')
-}
-
-fn run_v3_source(v3_bin string, name string, src string) os.Result {
-	out := unique_temp_path(name)
-	src_path := out + '.v'
-	os.write_file(src_path, src) or { panic(err) }
-	return os.exec([v3_bin, src_path, '-b', 'c', '-o', '${out}'])
-}
-
-fn run_v3_source_cgen(v3_bin string, name string, src string) os.Result {
-	out := unique_temp_path(name) + '.c'
-	src_path := unique_temp_path(name) + '.v'
-	os.write_file(src_path, src) or { panic(err) }
-	return os.exec([v3_bin, src_path, '-b', 'c', '-o', '${out}'])
-}
-
-fn run_v3_project(v3_bin string, name string, files map[string]string) os.Result {
-	root := unique_temp_path('${name}_project')
-	os.mkdir_all(root) or { panic(err) }
+fn c_struct_redecl_compile_project(name string, files map[string]string) os.Result {
+	root := c_struct_redecl_fixture_dir('${name}_project')
+	defer { os.rmdir_all(root) or {} }
 	for rel, src in files {
 		path := os.join_path(root, rel)
 		os.mkdir_all(os.dir(path)) or { panic(err) }
 		os.write_file(path, src) or { panic(err) }
 	}
-	out := unique_temp_path(name)
-	return os.exec([v3_bin, root, '-b', 'c', '-o', '${out}'])
+	out := os.join_path(root, 'v3_${name}')
+	return os.exec([@VEXE, root, '-b', 'c', '-o', '${out}'])
 }
 
 fn test_c_struct_redeclaration_checks_field_signature() {
-	v3_bin := build_v3()
-	bad := run_v3_source(v3_bin, 'bad_c_struct_redeclaration',
-		'struct C.dirent {\n\td_name [256]char\n}\n\nstruct C.dirent {\n\td_name byteptr\n}\n\nfn main() {}\n')
-	assert bad.exit_code != 0, bad.output
-	assert bad.output.contains('cannot redeclare C struct `C.dirent`'), bad.output
-	assert !bad.output.contains('C compilation failed'), bad.output
-	reordered := run_v3_source(v3_bin, 'bad_c_struct_reordered_fields',
-		'struct C.OrderedPair {\n\tleft int\n\tright int\n}\n\nstruct C.OrderedPair {\n\tright int\n\tleft int\n}\n\nfn main() {}\n')
-	assert reordered.exit_code != 0, reordered.output
-	assert reordered.output.contains('cannot redeclare C struct `C.OrderedPair`'), reordered.output
-	assert !reordered.output.contains('C compilation failed'), reordered.output
+	accepted := c_struct_redecl_compile_project('accepted_c_struct_redeclarations', {
+		'main.v':                                         'module main\n\nfn main() {}\n'
+		'good_c_struct_redeclaration.v':                  'module main\n\n@[typedef]\nstruct C.XKeyEvent {\n\tkeycode u32\n\tstate u32\n}\n\nstruct C.XKeyEvent {\n\tkeycode u32\n\tstate u32\n}\n\n@[typedef]\nunion C.XClientMessageData {\nmut:\n\tb [20]u8\n\ts [10]i16\n\tl [5]i64\n}\n\nunion C.XClientMessageData {\nmut:\n\tl [5]i64\n}\n\n@[typedef]\nunion C.XEvent {\nmut:\n\ttype int\n\txkey C.XKeyEvent\n}\n\nunion C.XEvent {\nmut:\n\t@type int\n\txkey C.XKeyEvent\n}\n'
+		'good_c_struct_partial_views.v':                  'module main\n\n@[typedef]\nstruct C.HeaderEvent {\n\ttype int\n\tserial u64\n\tdisplay voidptr\n\twindow u64\n\tatom u64\n\tstate int\n}\n\nstruct C.HeaderEvent {\n\tstate int\n\tatom u64\n}\n\n@[typedef]\nunion C.HeaderUnion {\n\ttype int\n\tclient C.HeaderEvent\n\tpad [24]i64\n}\n\nunion C.HeaderUnion {\n\t@type int\n\tproperty C.HeaderEvent\n}\n'
+		'good_c_struct_alias_field_redeclaration.v':      'module main\n\ntype MyByte = u8\n\nstruct C.Foo {\n\tx MyByte\n}\n\nstruct C.Foo {\n\tx u8\n}\n'
+		'good_c_struct_late_alias_field_redeclaration.v': 'module main\n\nstruct C.LateAlias {\n\tx MyInt\n}\n\ntype MyInt = int\n\nstruct C.LateAlias {\n\tx int\n}\n'
+	})
+	assert accepted.exit_code == 0, accepted.output
+	assert !accepted.output.contains('C compilation failed'), accepted.output
 
-	good := run_v3_source(v3_bin, 'good_c_struct_redeclaration',
-		'@[typedef]\nstruct C.XKeyEvent {\n\tkeycode u32\n\tstate u32\n}\n\nstruct C.XKeyEvent {\n\tkeycode u32\n\tstate u32\n}\n\n@[typedef]\nunion C.XClientMessageData {\nmut:\n\tb [20]u8\n\ts [10]i16\n\tl [5]i64\n}\n\nunion C.XClientMessageData {\nmut:\n\tl [5]i64\n}\n\n@[typedef]\nunion C.XEvent {\nmut:\n\ttype int\n\txkey C.XKeyEvent\n}\n\nunion C.XEvent {\nmut:\n\t@type int\n\txkey C.XKeyEvent\n}\n\nfn main() {}\n')
-	assert good.exit_code == 0, good.output
-	assert !good.output.contains('C compilation failed'), good.output
+	rejected := c_struct_redecl_compile_project('rejected_c_struct_redeclarations', {
+		'main.v':                           'module main\n\nfn main() {}\n'
+		'bad_c_struct_redeclaration.v':     'module main\n\nstruct C.dirent {\n\td_name [256]char\n}\n\nstruct C.dirent {\n\td_name byteptr\n}\n'
+		'bad_c_struct_reordered_fields.v':  'module main\n\nstruct C.OrderedPair {\n\tleft int\n\tright int\n}\n\nstruct C.OrderedPair {\n\tright int\n\tleft int\n}\n'
+		'bad_c_struct_partial_view_type.v': 'module main\n\nstruct C.HeaderEvent {\n\ttype int\n\tserial u64\n\tstate int\n}\n\nstruct C.HeaderEvent {\n\tstate u64\n}\n'
+	})
+	assert rejected.exit_code != 0, rejected.output
+	assert rejected.output.contains('cannot redeclare C struct `C.dirent`'), rejected.output
+	assert rejected.output.contains('cannot redeclare C struct `C.OrderedPair`'), rejected.output
+	assert rejected.output.contains('cannot redeclare C struct `C.HeaderEvent`'), rejected.output
+	assert !rejected.output.contains('C compilation failed'), rejected.output
 
-	partial_views_good := run_v3_source(v3_bin, 'good_c_struct_partial_views',
-		'@[typedef]\nstruct C.HeaderEvent {\n\ttype int\n\tserial u64\n\tdisplay voidptr\n\twindow u64\n\tatom u64\n\tstate int\n}\n\nstruct C.HeaderEvent {\n\tstate int\n\tatom u64\n}\n\n@[typedef]\nunion C.HeaderUnion {\n\ttype int\n\tclient C.HeaderEvent\n\tpad [24]i64\n}\n\nunion C.HeaderUnion {\n\t@type int\n\tproperty C.HeaderEvent\n}\n\nfn main() {}\n')
-	assert partial_views_good.exit_code == 0, partial_views_good.output
-	assert !partial_views_good.output.contains('C compilation failed'), partial_views_good.output
-
-	partial_view_bad := run_v3_source(v3_bin, 'bad_c_struct_partial_view_type',
-		'struct C.HeaderEvent {\n\ttype int\n\tserial u64\n\tstate int\n}\n\nstruct C.HeaderEvent {\n\tstate u64\n}\n\nfn main() {}\n')
-	assert partial_view_bad.exit_code != 0, partial_view_bad.output
-	assert partial_view_bad.output.contains('cannot redeclare C struct `C.HeaderEvent`'), partial_view_bad.output
-
-	alias_good := run_v3_source(v3_bin, 'good_c_struct_alias_field_redeclaration',
-		'type MyByte = u8\n\nstruct C.Foo {\n\tx MyByte\n}\n\nstruct C.Foo {\n\tx u8\n}\n\nfn main() {}\n')
-	assert alias_good.exit_code == 0, alias_good.output
-	assert !alias_good.output.contains('C compilation failed'), alias_good.output
-
-	late_alias_good := run_v3_source(v3_bin, 'good_c_struct_late_alias_field_redeclaration',
-		'struct C.LateAlias {\n\tx MyInt\n}\n\ntype MyInt = int\n\nstruct C.LateAlias {\n\tx int\n}\n\nfn main() {}\n')
-	assert late_alias_good.exit_code == 0, late_alias_good.output
-	assert !late_alias_good.output.contains('C compilation failed'), late_alias_good.output
-
-	cross_file_bad := run_v3_project(v3_bin, 'bad_c_struct_cross_file_redeclaration', {
+	cross_file_bad := c_struct_redecl_compile_project('bad_c_struct_cross_file_redeclaration', {
 		'a.v': 'module main\n\nstruct C.Split {\n\tx int\n}\n\nfn main() {}\n'
 		'b.v': 'module main\n\nstruct C.Split {\n\tx string\n}\n'
 	})
@@ -92,7 +50,7 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 	assert cross_file_bad.output.contains('cannot redeclare C struct `C.Split`'), cross_file_bad.output
 	assert !cross_file_bad.output.contains('C compilation failed'), cross_file_bad.output
 
-	cross_module_bad := run_v3_project(v3_bin, 'bad_c_struct_cross_module_redeclaration', {
+	cross_module_bad := c_struct_redecl_compile_project('bad_c_struct_cross_module_redeclaration', {
 		'v.mod':  'Module { name: "shared_header_modules" }\n'
 		'a/a.v':  'module a\n\npub struct C.SharedHeader {\n\tx int\n}\n\npub fn touch_a() int {\n\treturn 1\n}\n'
 		'b/b.v':  'module b\n\npub struct C.SharedHeader {\n\ty byteptr\n}\n\npub fn touch_b() int {\n\treturn 2\n}\n'
@@ -100,12 +58,12 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 	})
 	assert cross_module_bad.exit_code != 0, cross_module_bad.output
 	assert cross_module_bad.output.contains('cannot redeclare C struct `C.SharedHeader`'), cross_module_bad.output
-	assert cross_module_bad.output.contains('/b/b.v:3:'), cross_module_bad.output
+	assert cross_module_bad.output.contains(os.path_separator + os.join_path('b', 'b.v') + ':3:'), cross_module_bad.output
 	assert !cross_module_bad.output.contains('semantic checking continued after C declaration conflict'), cross_module_bad.output
 
 	assert !cross_module_bad.output.contains('C compilation failed'), cross_module_bad.output
 
-	cached_termios_good := run_v3_project(v3_bin, 'module_cache_termios_shims', {
+	cached_termios_good := c_struct_redecl_compile_project('module_cache_termios_shims', {
 		'v.mod':                   'Module { name: "cached_termios_shims" }\n'
 		'term/term_cached.vh':     'module term\n\nstruct C.termios {\n\tc_iflag int\n}\n'
 		'term/termios/termios.vh': 'module termios\n\nstruct C.termios {\n\tc_iflag uint\n\tc_ispeed uint\n}\n'

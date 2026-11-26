@@ -11,13 +11,13 @@ fn test_windows_workflow_validation_plans() {
 		assert job.env['VTEST_FAIL_FAST'] == '1'
 		assert job.steps[0].id == 'all_code_is_formatted'
 		self_tests := job.steps.filter(it.id == 'self_tests')
-		if compiler == 'gcc' {
-			// GCC's full V self-tests moved to the dedicated sharded job; they
-			// no longer run in the regular gcc-windows validation worker.
+		if compiler in ['gcc', 'msvc'] {
+			// GCC's and MSVC's full V self-tests moved to dedicated sharded jobs;
+			// they no longer run in the regular validation worker.
 			assert self_tests.len == 0
 			doc := yaml.parse_file(os.join_path(root, '.github', 'workflows',
-				'windows_ci_gcc.yml'))!
-			shards := doc.value_opt('jobs.gcc-windows-self-tests')!
+				'windows_ci_${compiler}.yml'))!
+			shards := doc.value_opt('jobs.${compiler}-windows-self-tests')!
 			mut native_self_tests := 0
 			for value in shards.value('steps').array() {
 				step := value.as_map()
@@ -54,7 +54,6 @@ fn test_msvc_probe_selection_includes_watchdog() {
 	assert selected.map(it.id) == [preparation, probe]
 	assert job.select_steps('ci')!.map(it.id) == job.steps.map(it.id)
 	assert job.select_steps(preparation)!.map(it.id) == [preparation]
-	assert job.select_steps('self_tests')!.map(it.id) == ['self_tests']
 	for id in [probe, 'unknown'] {
 		missing := Job{
 			compiler: 'msvc'

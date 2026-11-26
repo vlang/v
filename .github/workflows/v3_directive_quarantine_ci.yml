@@ -1,0 +1,99 @@
+name: V3 directive quarantine regression
+on:
+  pull_request:
+    paths:
+      - vlib/v/test_all.vsh
+      - vlib/v/compiler_tests/c_directive_order_codegen_test.v
+      - .github/workflows/v3_directive_quarantine_ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: V3 unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: false
+      - name: Install Objective-C compiler
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev
+      - name: Verify runner formatting and preserved consolidated tests
+        run: |
+          ./v fmt -verify vlib/v/test_all.vsh
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          runner = Path('vlib/v/test_all.vsh').read_text()
+          fixture = Path('vlib/v/compiler_tests/c_directive_order_codegen_test.v').read_text()
+          block = runner.split('const temporarily_disabled_c_directive_order_test_functions = [', 1)[1].split(']', 1)[0]
+          disabled = set(re.findall(r"'(test_\w+)'", block))
+          names = set(re.findall(r'^fn (test_\w+)\(', fixture, re.M))
+          assert disabled <= names, disabled - names
+          consolidated = {
+              'test_inserted_local_headers_resolve_and_keep_inline_functions',
+              'test_quoted_includes_use_earlier_and_later_include_flags',
+              'test_inserted_headers_supply_native_declarations',
+              'test_native_typedef_headers_supply_types_and_inline_functions',
+          }
+          assert consolidated <= names - disabled
+          PY
+          ./v -gc none -enable-globals -silent test -run-only test_inserted_local_headers_resolve_and_keep_inline_functions,test_quoted_includes_use_earlier_and_later_include_flags,test_inserted_headers_supply_native_declarations,test_native_typedef_headers_supply_types_and_inline_functions vlib/v/compiler_tests/c_directive_order_codegen_test.v
+      - name: Test compiler
+        run: |
+          set -uo pipefail
+          shards="$(nproc)"
+          logs="$RUNNER_TEMP/v3-unit-tests"
+          mkdir -p "$logs"
+          # Optimize the nested test driver once before fan-out. Each shard
+          # copies it into its private directory instead of running concurrent
+          # production compiler builds with multiplied peak memory.
+          ./v -gc none -path "$PWD/vlib" -prod -cc clang -parallel-cc \
+            -o "$logs/shared-v3" vlib/v/v.v || exit $?
+          export V3_TEST_UNIT_SHARED_V3="$logs/shared-v3"
+          export V3_TEST_UNIT_V3_SRC="$PWD/vlib/v/v.v"
+          ./v run vlib/v/test_all.vsh --prepare-unit-cache "$logs/unit-cache" || exit $?
+          export V3_TEST_UNIT_CACHE="$logs/unit-cache"
+          pids=()
+          for i in $(seq 1 "$shards"); do
+            mkdir -p "$logs/vtmp-$i"
+            # A private VTMP per shard keeps the concurrent `v run` builds of test_all.vsh
+            # apart. Every line of the shared live log is prefixed with its shard.
+            # A background job of a non-interactive shell ignores SIGINT and SIGQUIT, and
+            # the tests would inherit that; `env` restores the default handling, so that
+            # tests which interrupt the programs they start behave as in a foreground run.
+            (
+              VTMP="$logs/vtmp-$i" env --default-signal=INT,QUIT \
+                ./v run vlib/v/test_all.vsh --units-only --shard "$i/$shards" 2>&1 \
+                | tee "$logs/shard-$i.log" | sed -u "s|^|[$i/$shards] |"
+              exit "${PIPESTATUS[0]}"
+            ) &
+            pids+=("$!")
+          done
+          failed=()
+          for i in $(seq 1 "$shards"); do
+            wait "${pids[$((i - 1))]}" || failed+=("$i")
+          done
+          for i in "${failed[@]}"; do
+            log="$logs/shard-$i.log"
+            echo "::error::V3 unit test shard $i/$shards failed"
+            if grep -q 'unit test files failed:' "$log"; then
+              sed -n '/unit test files failed:/,$p' "$log"
+            else
+              tail -n 60 "$log"
+            fi
+          done
+          if [ "${#failed[@]}" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All $shards V3 unit test shards passed"

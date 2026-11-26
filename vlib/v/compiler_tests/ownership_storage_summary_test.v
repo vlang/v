@@ -1,4 +1,13 @@
 import os
+import json2
+
+const local_storage_return_error = 'cannot return a reference to local storage `local`'
+
+struct OwnedStorageDiagnostic {
+	file     string
+	severity string
+	message  string
+}
 
 fn test_ownership_return_does_not_recheck_earlier_chained_receiver_after_move() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_chained_receiver_return_${os.getpid()}')
@@ -112,11 +121,11 @@ fn test_ownership_mutable_formal_returns_keep_earlier_local_storage_diagnostics(
 	root := os.join_path(os.vtmp_dir(), 'ownership_mutable_formal_borrow_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
+	mut fixtures := []string{}
 	for borrowed in ['local.reference()', 'ptr'] {
 		pointer_type := if borrowed == 'ptr' { '&&Builder' } else { '&Builder' }
 		pointer_binding := if borrowed == 'ptr' { 'ptr := &local' } else { '' }
-		os.write_file(source_path, 'struct Builder { number int }
+		fixtures << 'struct Builder { number int }
 fn (mut builder Builder) reference() &Builder { return builder }
 struct Holder { mut: target ${pointer_type} = unsafe { nil } }
 fn store(mut holder Holder, builder ${pointer_type}) { holder.target = builder }
@@ -132,13 +141,9 @@ fn main() {
 	mut holder := Holder{}
 	_ = escaped(mut holder)
 }
-')!
-		for mode in ['-no-parallel', ''] {
-			result := run_owned_storage_summary(source_path, mode, '-check')
-			assert result.exit_code != 0, '${borrowed}: ${mode}: ${result.output}'
-			assert result.output.contains('cannot return a reference to local storage `local`'), '${borrowed}: ${mode}: ${result.output}'
-		}
+'
 	}
+	check_owned_storage_rejections(root, fixtures, [local_storage_return_error])!
 }
 
 fn test_ownership_mutable_map_sources_preserve_value_and_header_semantics() {
@@ -328,12 +333,12 @@ fn test_ownership_returned_fields_still_reject_local_references() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_reference_fields_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
+	mut fixtures := []string{}
 	for return_type, expression in {
 		'Holder':   'ptr.holder'
 		'&Builder': 'ptr.holder.target'
 	} {
-		os.write_file(source_path, 'struct Builder { mut: number int }
+		fixtures << 'struct Builder { mut: number int }
 fn (mut builder Builder) reference() &Builder { return builder }
 struct Holder { target &Builder }
 struct Container { holder Holder }
@@ -344,24 +349,22 @@ fn escaped() ${return_type} {
 	return ${expression}
 }
 fn main() {}
-')!
-		for mode in ['-no-parallel', ''] {
-			// Returned references would dangle, so only check these fixtures.
-			result := run_owned_storage_summary(source_path, mode, '-check')
-			assert result.exit_code != 0, '${return_type}: ${mode}: ${result.output}'
-			assert result.output.contains('cannot return a reference to local storage')
-				|| result.output.contains('cannot move `ptr.holder.target` because it borrows'), '${return_type}: ${mode}: ${result.output}'
-		}
+'
 	}
+	check_owned_storage_rejections(root, fixtures, [
+		'cannot return a reference to local storage',
+		'cannot move `ptr.holder.target` because it borrows',
+	])!
 }
 
 fn test_ownership_result_errors_still_reject_local_references() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_result_reference_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
+	mut fixtures := []string{}
+	// A Result can hold a borrowed error payload even when its success value is a scalar.
 	for return_type in ['!int', '!string', '!'] {
-		os.write_file(source_path, 'struct Builder { mut: number int }
+		fixtures << 'struct Builder { mut: number int }
 fn (mut builder Builder) reference() &Builder { return builder }
 struct Fault { target &Builder }
 fn (fault Fault) msg() string { return "fault" }
@@ -374,14 +377,9 @@ fn escaped() ${return_type} {
 	return boxed(mut local)
 }
 fn main() {}
-')!
-		for mode in ['-no-parallel', ''] {
-			// A Result can hold a borrowed error payload even when its success value is a scalar.
-			result := run_owned_storage_summary(source_path, mode, '-check')
-			assert result.exit_code != 0, '${return_type}: ${mode}: ${result.output}'
-			assert result.output.contains('cannot return a reference to local storage `local`'), '${return_type}: ${mode}: ${result.output}'
-		}
+'
 	}
+	check_owned_storage_rejections(root, fixtures, [local_storage_return_error])!
 }
 
 fn test_ownership_storage_queries_preserve_overwrites() {
@@ -389,6 +387,7 @@ fn test_ownership_storage_queries_preserve_overwrites() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source_path := os.join_path(root, 'main.v')
+	mut rejected_fixtures := []string{}
 	common := 'struct Builder { mut: number int }
 fn (mut builder Builder) reference() &Builder { return builder }
 struct Holder { mut: target &Builder }
@@ -406,38 +405,38 @@ fn store_borrowed(mut holder Holder, builder &Builder) { holder.target = builder
 		} else {
 			'Holder{target: &Builder{number: 0}}'
 		}
-		os.write_file(source_path, common + 'fn escaped() Holder {
+		fixture := common + 'fn escaped() Holder {
 	mut local := Builder{}
 	mut holder := ${initial}
 	${setter}
 	return holder
 }
 fn main() { assert escaped().target.number == 42 }
-')!
-		for mode in ['-no-parallel', ''] {
-			command := if accepted { 'run' } else { '-check' }
-			result := run_owned_storage_summary(source_path, mode, command)
-			if accepted {
+'
+		if accepted {
+			os.write_file(source_path, fixture)!
+			for mode in ['-no-parallel', ''] {
+				result := run_owned_storage_summary(source_path, mode, 'run')
 				assert result.exit_code == 0, '${setter}: ${mode}: ${result.output}'
-			} else {
-				assert result.exit_code != 0, '${setter}: ${mode}: ${result.output}'
-				assert result.output.contains('cannot return a reference to local storage `local`'), '${setter}: ${mode}: ${result.output}'
 			}
+		} else {
+			rejected_fixtures << fixture
 		}
 	}
+	check_owned_storage_rejections(root, rejected_fixtures, [local_storage_return_error])!
 }
 
 fn test_ownership_local_binding_history_preserves_initial_and_rebound_borrows() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_local_binding_borrow_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
+	mut fixtures := []string{}
 	for binding in [
 		'mut holder := Holder{target: &local}',
 		'original := Holder{target: local.reference()}; mut holder := original',
 		'mut holder := Holder{target: &Builder{}}; holder = Holder{target: local.reference()}',
 	] {
-		os.write_file(source_path, 'struct Builder { mut: number int }
+		fixtures << 'struct Builder { mut: number int }
 fn (mut builder Builder) reference() &Builder { return builder }
 struct Holder { mut: target &Builder }
 fn no_op(mut holder Holder, number int) { _ = holder; _ = number }
@@ -448,13 +447,9 @@ fn escaped() Holder {
 	return holder
 }
 fn main() { _ = escaped() }
-')!
-		for mode in ['-no-parallel', ''] {
-			result := run_owned_storage_summary(source_path, mode, '-check')
-			assert result.exit_code != 0, '${binding}: ${mode}: ${result.output}'
-			assert result.output.contains('cannot return a reference to local storage `local`'), '${binding}: ${mode}: ${result.output}'
-		}
+'
 	}
+	check_owned_storage_rejections(root, fixtures, [local_storage_return_error])!
 }
 
 fn test_ownership_storage_queries_handle_recursive_setters() {
@@ -509,10 +504,53 @@ fn main() {}
 	}
 }
 
-fn run_owned_storage_summary(source string, mode string, command string) os.Result {
-	mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-ownership', '-d',
-		'ownership']
+fn check_owned_storage_rejections(root string, fixtures []string, expected []string) ! {
+	// Custom flags can change import resolution or limit diagnostics.
+	if os.getenv('VFLAGS').trim_space() !in ['', '-gc none'] {
+		source := os.join_path(root, 'main.v')
+		for fixture in fixtures {
+			os.write_file(source, fixture)!
+			for mode in ['-no-parallel', ''] {
+				result := run_owned_storage_summary(source, mode, '-check')
+				assert result.exit_code != 0, '${mode}: ${fixture}\n${result.output}'
+				assert expected.any(result.output.contains(it)), '${mode}: ${fixture}\n${result.output}'
+			}
+		}
+		return
+	}
+	batch := os.join_path(root, 'rejections')
+	os.mkdir(batch)!
+	mut imports := []string{cap: fixtures.len}
+	for i, fixture in fixtures {
+		name := 'storage_case_${i}'
+		dir := os.join_path(batch, name)
+		os.mkdir(dir)!
+		os.write_file(os.join_path(dir, '${name}.v'), 'module ${name}\n\n' + fixture)!
+		imports << 'import ${name} as _'
+	}
+	os.write_file(os.join_path(batch, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
+	for mode in ['-no-parallel', ''] {
+		result := run_owned_storage_summary(batch, mode, '-check', '-json-errors')
+		assert result.exit_code != 0, '${mode}: ${result.output}'
+		mut rejected := map[string]bool{}
+		for line in result.output.split_into_lines() {
+			if !line.starts_with('{') {
+				continue
+			}
+			diagnostic := json2.decode[OwnedStorageDiagnostic](line)!
+			if diagnostic.severity == 'error' && expected.any(diagnostic.message.contains(it)) {
+				rejected[os.file_name(diagnostic.file)] = true
+			}
+		}
+		for i, fixture in fixtures {
+			assert 'storage_case_${i}.v' in rejected, '${mode}: ${fixture}\n${result.output}'
+		}
+	}
+}
+
+fn run_owned_storage_summary(source string, mode string, command string, flags ...string) os.Result {
+	mut args := [@VEXE, '-no-retry-compilation', '-nocache', '-ownership', '-d', 'ownership']
 	if mode != '' { args << mode }
-	args << [command, source]
+	args << [...flags, command, source]
 	return os.exec(args)
 }

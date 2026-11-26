@@ -1,94 +1,125 @@
 import os
 import v.tempname
 
-const enum_from_arity_vexe = @VEXE
-const enum_from_arity_tests_dir = os.dir(@FILE)
-const enum_from_arity_v3_dir = os.dir(enum_from_arity_tests_dir)
-const enum_from_arity_vlib_dir = os.dir(enum_from_arity_v3_dir)
-const enum_from_arity_v3_src = os.join_path(enum_from_arity_v3_dir, 'v.v')
-
-const enum_from_arity_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_enum_from_arity_fixtures_${tempname.unique_token()}')
-const enum_from_arity_compiler = os.join_path(enum_from_arity_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
-
-fn testsuite_begin() {
-	os.mkdir_all(enum_from_arity_fixture_dir) or { panic(err) }
-	build :=
-		os.exec([enum_from_arity_vexe, '-gc', 'none', '-path',
-			'${enum_from_arity_vlib_dir}' + '|@vlib|@vmodules', '-o', enum_from_arity_compiler,
-			'${enum_from_arity_v3_src}'])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rmdir_all(enum_from_arity_fixture_dir) or {}
+fn enum_from_arity_compile_bad(name string, source string) string {
+	dir := os.join_path(os.vtmp_dir(), 'v3_enum_from_arity_${tempname.unique_token()}')
+	os.mkdir(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_${name}')
+	src := bin + '.v'
+	os.write_file(src, source) or { panic(err) }
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
+	assert compile.exit_code != 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	return compile.output
 }
 
 fn enum_from_arity_run_bad(name string, source string, expected string) {
-	src := os.join_path(enum_from_arity_fixture_dir, 'v3_${name}.v')
-	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(enum_from_arity_fixture_dir, 'v3_${name}')
-	compile := os.exec([enum_from_arity_compiler, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains(expected), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
+	output := enum_from_arity_compile_bad(name, source)
+	assert output.contains(expected), output
 }
 
 fn enum_from_arity_run_good(name string, source string) string {
-	src := os.join_path(enum_from_arity_fixture_dir, 'v3_${name}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_enum_from_arity_${tempname.unique_token()}')
+	os.mkdir(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_${name}')
+	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(enum_from_arity_fixture_dir, 'v3_${name}')
-	compile := os.exec([enum_from_arity_compiler, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
 
+struct EnumFromRuntimeCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn enum_from_arity_run_good_batch(cases []EnumFromRuntimeCase) {
+	dir := os.join_path(os.vtmp_dir(), 'v3_enum_from_arity_${tempname.unique_token()}')
+	os.mkdir(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		module_dir := os.join_path(dir, module_name)
+		os.mkdir(module_dir) or { panic(err) }
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		source := 'module ${module_name}\n\n' + case.source
+		os.write_file(os.join_path(module_dir, '${case.name}.v'), source.replace_once('\nfn main()',
+			'\npub fn exercise()')) or { panic(err) }
+	}
+	os.write_file(os.join_path(dir, 'main.v'), "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(dir, 'program')
+	compile := os.exec([@VEXE, dir, '-b', 'c', '-o', bin])
+	assert compile.exit_code == 0, compile.output
+	for case in cases {
+		run := os.exec([bin, case.name])
+		assert run.exit_code == 0, '${case.name}: ${run.output}'
+		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	}
+}
+
+fn enum_from_arity_check_errors(name string, source string, missing_arg string, extra_arg string) {
+	output := enum_from_arity_compile_bad(name, source)
+	lines := source.split_into_lines()
+	errors := output.split_into_lines().filter(it.contains(': error: '))
+	for count, statement in {
+		0: missing_arg
+		2: extra_arg
+	} {
+		line := lines.index(statement) + 1
+		assert line > 0, statement
+		message := ': error: expected 1 argument, but got ${count}'
+		assert errors.any(it.contains('.v:${line}:') && it.ends_with(message)), output
+	}
+}
+
 fn test_enum_from_rejects_wrong_arity() {
-	enum_from_arity_run_bad('bad_enum_from_missing_arg', 'enum Color {
+	direct := 'enum Color {
 	red
 }
 
 fn main() {
 	_ := Color.from()
-}
-',
-		'expected 1 argument, but got 0')
-	enum_from_arity_run_bad('bad_enum_from_extra_arg', 'enum Color {
-	red
-}
-
-fn main() {
 	_ := Color.from(0, 1)
 }
-',
-		'expected 1 argument, but got 2')
-	enum_from_arity_run_bad('bad_generic_enum_from_missing_arg', 'enum Color {
+'
+	enum_from_arity_check_errors('bad_enum_from_direct_arity', direct, '\t_ := Color.from()',
+		'\t_ := Color.from(0, 1)')
+
+	// Check generic instantiations in a program whose direct calls pass checking.
+	generic := 'enum Color {
 	red
 }
 
-fn parse[T]() {
+fn parse_missing[T]() {
 	_ := T.from()
 }
 
-fn main() {
-	parse[Color]()
-}
-',
-		'expected 1 argument, but got 0')
-	enum_from_arity_run_bad('bad_generic_enum_from_extra_arg', 'enum Color {
-	red
-}
-
-fn parse[T](s string) {
+fn parse_extra[T](s string) {
 	_ := T.from(s, 1)
 }
 
 fn main() {
-	parse[Color]("red")
+	parse_missing[Color]()
+	parse_extra[Color]("red")
 }
-',
-		'expected 1 argument, but got 2')
+'
+	enum_from_arity_check_errors('bad_enum_from_generic_arity', generic, '\t_ := T.from()',
+		'\t_ := T.from(s, 1)')
 }
 
 fn test_enum_from_validates_input_type_and_numeric_error() {
@@ -118,49 +149,29 @@ fn main() {
 }
 ',
 		'cannot use `Foo` as argument 1 to `T.from`; expected string or integer')
-	enum_from_arity_run_bad('bad_specialized_enum_from_generic_arg', 'struct Foo {}
+
+	// These diagnostics are reported when the generic functions are specialized.
+	specialized := 'struct Foo {}
 
 enum Color {
-	red
-}
-
-fn parse[T](x T) !Color {
-	return Color.from(x)
-}
-
-fn main() {
-	_ := parse[Foo](Foo{}) or { Color.red }
-}
-',
-		'cannot use `Foo` as argument 1 to `Color.from`; expected string or integer')
-	enum_from_arity_run_bad('bad_generic_enum_from_non_enum_receiver', 'struct Foo {}
-
-fn parse[T](value int) ?T {
-	return T.from(value)
-}
-
-fn main() {
-	_ := parse[Foo](0)
-}
-',
-		'unknown function `Foo.from`')
-	// A specialization that returns a Result from an Option function is rejected like the
-	// same return in an ordinary function, instead of failing in the C compiler.
-	enum_from_arity_run_bad('bad_generic_enum_from_option_return', 'enum Color {
 	red
 	blue
 }
 
-fn parse[T](x int) ?T {
+fn parse_concrete[T](x T) !Color {
+	return Color.from(x)
+}
+
+fn parse_non_enum[T](value int) ?T {
+	return T.from(value)
+}
+
+// Check Result to Option returns on the concrete instance.
+fn parse_enum_option[T](x int) ?T {
 	return T.from(x)
 }
 
-fn main() {
-	println(parse[Color](1) or { Color.red })
-}
-',
-		'cannot use `!Color` as type `?Color` in return argument')
-	enum_from_arity_run_bad('bad_generic_result_call_option_return', 'fn checked(x int) !int {
+fn checked(x int) !int {
 	if x < 0 {
 		return error("negative")
 	}
@@ -172,11 +183,26 @@ fn forward[T](x int) ?T {
 }
 
 fn main() {
+	_ := parse_concrete[Foo](Foo{}) or { Color.red }
+	_ := parse_non_enum[Foo](0)
+	println(parse_enum_option[Color](1) or { Color.red })
 	println(forward[int](1) or { 0 })
 }
-',
-		'cannot use `!int` as type `?int` in return argument')
-	out := enum_from_arity_run_good('numeric_enum_from_ierror', 'enum Color {
+'
+	output := enum_from_arity_compile_bad('bad_enum_from_specializations', specialized)
+	errors := output.split_into_lines()
+	for message in [
+		'cannot use `Foo` as argument 1 to `Color.from`; expected string or integer',
+		'unknown function `Foo.from`',
+		'cannot use `!Color` as type `?Color` in return argument',
+		'cannot use `!int` as type `?int` in return argument',
+	] {
+		assert errors.contains(message), 'expected ${message}\n${output}'
+	}
+	enum_from_arity_run_good_batch([
+		EnumFromRuntimeCase{
+			name:     'numeric_enum_from_ierror'
+			source:   'enum Color {
 	red
 	blue
 }
@@ -189,15 +215,22 @@ fn main() {
 		return
 	}
 }
-')
-	assert out == 'red\ninvalid value'
-	enum_alias_out := enum_from_arity_run_good('enum_alias_numeric_from',
-		'type Hue = Color\n\nenum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tvalue := Hue.from(1) or { panic(err) }\n\tprintln(value)\n}\n')
-	assert enum_alias_out == 'blue'
-	enum_alias_string_out := enum_from_arity_run_good('enum_alias_string_from',
-		'type Hue = Color\n\nenum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tvalue := Hue.from("blue") or { panic(err) }\n\tprintln(value)\n}\n')
-	assert enum_alias_string_out == 'blue'
-	alias_out := enum_from_arity_run_good('string_alias_enum_from', 'type Name = string
+'
+			expected: 'red\ninvalid value'
+		},
+		EnumFromRuntimeCase{
+			name:     'enum_alias_numeric_from'
+			source:   'type Hue = Color\n\nenum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tvalue := Hue.from(1) or { panic(err) }\n\tprintln(value)\n}\n'
+			expected: 'blue'
+		},
+		EnumFromRuntimeCase{
+			name:     'enum_alias_string_from'
+			source:   'type Hue = Color\n\nenum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tvalue := Hue.from("blue") or { panic(err) }\n\tprintln(value)\n}\n'
+			expected: 'blue'
+		},
+		EnumFromRuntimeCase{
+			name:     'string_alias_enum_from'
+			source:   'type Name = string
 
 enum Color {
 	red
@@ -208,9 +241,12 @@ fn main() {
 	value := Color.from(Name("blue")) or { panic(err) }
 	println(value)
 }
-')
-	assert alias_out == 'blue'
-	generic_out := enum_from_arity_run_good('generic_string_enum_from', 'fn parse[T](s string) !T {
+'
+			expected: 'blue'
+		},
+		EnumFromRuntimeCase{
+			name:     'generic_string_enum_from'
+			source:   'fn parse[T](s string) !T {
 	return T.from(s)
 }
 
@@ -223,9 +259,12 @@ fn main() {
 	value := parse[Color]("blue") or { panic(err) }
 	println(value)
 }
-')
-	assert generic_out == 'blue'
-	specialized_inputs_out := enum_from_arity_run_good('generic_enum_from_valid_inputs', 'enum Color {
+'
+			expected: 'blue'
+		},
+		EnumFromRuntimeCase{
+			name:     'generic_enum_from_valid_inputs'
+			source:   'enum Color {
 	red
 	blue
 }
@@ -238,9 +277,12 @@ fn main() {
 	println(parse[string]("blue") or { panic(err) })
 	println(parse[int](0) or { panic(err) })
 }
-')
-	assert specialized_inputs_out == 'blue\nred'
-	generic_enum_numeric_out := enum_from_arity_run_good('generic_enum_numeric_from', 'enum Color {
+'
+			expected: 'blue\nred'
+		},
+		EnumFromRuntimeCase{
+			name:     'generic_enum_numeric_from'
+			source:   'enum Color {
 	red
 	blue
 }
@@ -256,8 +298,10 @@ fn main() {
 		return
 	}
 }
-')
-	assert generic_enum_numeric_out == 'blue\ninvalid value'
+'
+			expected: 'blue\ninvalid value'
+		},
+	])
 }
 
 fn test_user_enum_from_and_zero_methods_are_preserved() {

@@ -51,12 +51,6 @@ fn start_program_instance_check_process(args []string, library_instances bool) P
 	environment[instance_check_library_env] = if library_instances { '1' } else { '0' }
 	// The arguments already hold VFLAGS.
 	environment['VFLAGS'] = ''
-	// The check reports its own result, whatever it is, and has no C to retry
-	// with V1, and the fallback marker of the build is not its own.
-	environment[macos_v3_no_fallback_env] = '1'
-	environment.delete(macos_v3_fallback_file_env)
-	environment.delete(macos_v3_c_error_dir_env)
-	environment.delete(macos_v3_source_manifest_env)
 	// An executable that another build kept would run instead of the check.
 	environment['V3_CACHE_DISABLE_PROGRAM_EXECUTABLE'] = '1'
 	// Its output goes to a pipe: colors are what the build would print.

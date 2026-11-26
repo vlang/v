@@ -1,28 +1,10 @@
 import os
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.exists(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-no-parallel', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn test_ierror_dispatch_uses_promoted_embedded_methods() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+fn test_interface_dispatch_uses_promoted_receivers() {
+	root := os.join_path(os.vtmp_dir(), 'v3_promoted_receiver_dispatch_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "struct BaseErr {
 	text string
@@ -44,7 +26,7 @@ struct WrapErr {
 	BaseErr
 }
 
-fn fail() !int {
+fn fail_value() !int {
 	return WrapErr{
 		BaseErr: BaseErr{
 			text: 'promoted'
@@ -52,38 +34,7 @@ fn fail() !int {
 	}
 }
 
-fn main() {
-	fail() or {
-		println(err.msg() + ':' + err.code().str())
-		return
-	}
-	println('bad')
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	c_code := os.read_file('${bin}.c') or { '' }
-	assert c_code.contains('BaseErr__msg(((main__WrapErr*)i->_object)->BaseErr)'), c_code
-	assert c_code.contains('helper_msg'), c_code
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'promoted:42'
-}
-
-fn test_ierror_dispatch_uses_promoted_embedded_pointer_methods() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_promoted_pointer_methods_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "struct PtrErr {
+struct PtrErr {
 	text string
 }
 
@@ -137,43 +88,39 @@ fn fail_nested() !int {
 	}
 }
 
-fn main() {
-	fail_pointer() or {
-		assert err.msg() == 'pointer'
-		assert err.code() == 7
-	}
-	fail_nested() or {
-		assert err.msg() == 'nested'
-		assert err.code() == 8
-	}
-	println('ok')
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_pointer_methods_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	c_code := os.read_file('${bin}.c') or { '' }
-	assert c_code.contains('PtrErr__msg(&(((main__PointerWrapErr*)i->_object)->PtrErr))'), c_code
-	assert c_code.contains('InnerErr__msg((((main__NestedWrapErr*)i->_object)->PointerInner).InnerErr)'), c_code
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+struct FallbackBaseErr {
+	text string
 }
 
-// Embedded structs must come first in a struct body.
-fn test_interface_dispatch_uses_nested_promoted_receiver_path() {
-	v3_bin := build_v3()
+fn (err FallbackBaseErr) msg() string {
+	return err.text
+}
 
-	root := os.join_path(os.temp_dir(), 'v3_interface_nested_promoted_receiver_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'interface HasNumber {
+fn (err FallbackBaseErr) code() int {
+	return 7
+}
+
+struct FallbackWrapErr {
+	FallbackBaseErr
+}
+
+fn (err FallbackWrapErr) msg(extra int) string {
+	return err.FallbackBaseErr.text + ':' + extra.str()
+}
+
+fn (err FallbackWrapErr) code(extra int) int {
+	return extra
+}
+
+fn fail_fallback() !int {
+	return FallbackWrapErr{
+		FallbackBaseErr: FallbackBaseErr{
+			text: 'embedded'
+		}
+	}
+}
+
+interface HasNumber {
 	m() int
 }
 
@@ -185,6 +132,7 @@ fn (inner Inner) m() int {
 	return inner.n
 }
 
+// Embedded structs must come first in a struct body.
 struct Mid {
 	Inner
 	pad int
@@ -200,6 +148,19 @@ fn use(item HasNumber) int {
 }
 
 fn main() {
+	fail_value() or {
+		println(err.msg() + ':' + err.code().str())
+	}
+	fail_pointer() or {
+		println(err.msg() + ':' + err.code().str())
+	}
+	fail_nested() or {
+		println(err.msg() + ':' + err.code().str())
+	}
+	fail_fallback() or {
+		println(err.msg() + ':' + err.code().str())
+	}
+
 	item := Outer{
 		tag: 100
 		Mid: Mid{
@@ -211,28 +172,35 @@ fn main() {
 	}
 	println(int_str(use(item)))
 }
-') or {
+") or {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_interface_nested_promoted_receiver_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file('${bin}.c') or { '' }
+	assert c_code.contains('BaseErr__msg(((main__WrapErr*)i->_object)->BaseErr)'), c_code
+	assert c_code.contains('helper_msg'), c_code
+	assert c_code.contains('PtrErr__msg(&(((main__PointerWrapErr*)i->_object)->PtrErr))'), c_code
+	assert c_code.contains('InnerErr__msg((((main__NestedWrapErr*)i->_object)->PointerInner).InnerErr)'), c_code
+	assert c_code.contains('FallbackBaseErr__msg(((main__FallbackWrapErr*)i->_object)->FallbackBaseErr)'), c_code
+	assert c_code.contains('FallbackBaseErr__code(((main__FallbackWrapErr*)i->_object)->FallbackBaseErr)'), c_code
+	assert !c_code.contains('return FallbackWrapErr__msg(*(main__FallbackWrapErr*)i->_object)'), c_code
+	assert !c_code.contains('return FallbackWrapErr__code(*(main__FallbackWrapErr*)i->_object)'), c_code
 	assert c_code.contains('Inner__m((((main__Outer*)i->_object)->Mid).Inner)'), c_code
 
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42'
+	assert run.output.trim_space() == 'promoted:42\npointer:7\nnested:8\nembedded:7\n42', run.output
 }
 
 fn test_ierror_embed_compatible_method_dependencies_are_marked_used() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_embed_method_deps_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_embed_method_deps_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "struct GhostError {
 	Error
@@ -264,9 +232,9 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_embed_method_deps_out_${os.getpid()}')
+	bin := os.join_path(root, 'app')
 	// The assertions below inspect implementation bodies in monolithic C output.
-	compile := os.exec([v3_bin, '-nocache', '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-nocache', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -280,11 +248,11 @@ fn main() {
 }
 
 fn test_unused_ierror_compatible_method_dependencies_are_marked_used_without_unpruning_dead_fns() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_unused_method_deps_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_ierror_unused_method_deps_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	dead_dir := os.join_path(root, 'dead')
-	os.mkdir_all(dead_dir) or { panic(err) }
+	os.mkdir(dead_dir)!
 	os.write_file(os.join_path(dead_dir, 'dead.v'), "module dead
 
 pub struct Helper {}
@@ -320,9 +288,9 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_unused_method_deps_out_${os.getpid()}')
+	bin := os.join_path(root, 'app')
 	// The assertions below inspect implementation bodies in monolithic C output.
-	compile := os.exec([v3_bin, '-nocache', root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-nocache', root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -336,69 +304,4 @@ fn main() {
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
-}
-
-fn test_ierror_direct_bad_signature_falls_back_to_promoted_method() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_bad_direct_promoted_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "struct BaseErr {
-	text string
-}
-
-fn (err BaseErr) msg() string {
-	return err.text
-}
-
-fn (err BaseErr) code() int {
-	return 7
-}
-
-struct WrapErr {
-	BaseErr
-}
-
-fn (err WrapErr) msg(extra int) string {
-	return err.BaseErr.text + ':' + extra.str()
-}
-
-fn (err WrapErr) code(extra int) int {
-	return extra
-}
-
-fn fail() !int {
-	return WrapErr{
-		BaseErr: BaseErr{
-			text: 'embedded'
-		}
-	}
-}
-
-fn main() {
-	fail() or {
-		println(err.msg() + ':' + err.code().str())
-		return
-	}
-	println('bad')
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_bad_direct_promoted_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	c_code := os.read_file('${bin}.c') or { '' }
-	assert c_code.contains('BaseErr__msg(((main__WrapErr*)i->_object)->BaseErr)'), c_code
-	assert c_code.contains('BaseErr__code(((main__WrapErr*)i->_object)->BaseErr)'), c_code
-	assert !c_code.contains('return WrapErr__msg(*(main__WrapErr*)i->_object)'), c_code
-	assert !c_code.contains('return WrapErr__code(*(main__WrapErr*)i->_object)'), c_code
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'embedded:7'
 }

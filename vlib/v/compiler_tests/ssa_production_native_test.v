@@ -5,6 +5,23 @@ const ssa_production_vlib_dir = os.dir(os.dir(os.dir(@FILE)))
 const ssa_production_v3_dir = os.dir(os.dir(@FILE))
 const ssa_production_v3_src = os.join_path(ssa_production_v3_dir, 'v.v')
 
+fn compile_ssa_production_fixture(root string, args []string) os.Result {
+	if os.getenv('VFLAGS') == ''
+		&& os.getenv('VTOOLS_NO_CACHE').trim_space().to_lower() !in ['1', 'true', 'yes', 'on'] {
+		compile := cmdexec.run(@VEXE, args)
+		if compile.exit_code == 0
+			|| !compile.output.contains('ARM64 support is not compiled into this executable') {
+			return compile
+		}
+	}
+	// Standalone runs can build just the ARM64 backend for this fixture.
+	v3_bin := os.join_path(root, 'v3')
+	build := cmdexec.run(@VEXE, ['-gc', 'none', '-compile-backend', 'arm64', '-path',
+		'${ssa_production_vlib_dir}|@vlib|@vmodules', '-o', v3_bin, ssa_production_v3_src])
+	assert build.exit_code == 0, build.output
+	return cmdexec.run(v3_bin, args)
+}
+
 fn test_production_native_pipeline_promotes_branch_and_loop_locals() {
 	$if macos && arm64 {
 		root := os.join_path(os.vtmp_dir(), 'v3_ssa_production_${os.getpid()}')
@@ -13,11 +30,6 @@ fn test_production_native_pipeline_promotes_branch_and_loop_locals() {
 		defer {
 			os.rmdir_all(root) or {}
 		}
-		v3_bin := os.join_path(root, 'v3')
-		// A `vlib/v/v.v` compiler leaves the ARM64 backend out unless it is asked for.
-		build := cmdexec.run(@VEXE, ['-gc', 'none', '-compile-backend', 'arm64', '-path',
-			'${ssa_production_vlib_dir}|@vlib|@vmodules', '-o', v3_bin, ssa_production_v3_src])
-		assert build.exit_code == 0, build.output
 		source := os.join_path(root, 'main.v')
 		os.write_file(source, 'fn choose(ok bool) int {
 	mut value := 0
@@ -62,7 +74,8 @@ fn main() {
 		}
 		output := os.join_path(root, 'program')
 		// No `-gc none`: the ARM64 backend links no collector, so it must not use one.
-		compile := cmdexec.run(v3_bin, ['-prod', '-b', 'arm64', '-o', output, source])
+		compile := compile_ssa_production_fixture(root, ['-prod', '-b', 'arm64', '-o', output,
+			source])
 		assert compile.exit_code == 0, compile.output
 		run := cmdexec.run(output, [])
 		assert run.exit_code == 0, run.output

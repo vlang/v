@@ -52,7 +52,7 @@ fn main() {
 	}
 }
 ')!
-		result := os.exec([@VEXE, '-new-compiler', '-gc', 'none', 'run', root])
+		result := os.exec([@VEXE, '-gc', 'none', 'run', root])
 		assert result.exit_code == 0, 'translated=${translated}: ${result.output}'
 	}
 }
@@ -77,7 +77,7 @@ ${fn_attribute}fn check() {
 }
 fn main() { unsafe { check() } }
 ')!
-			result := os.exec([@VEXE, '-new-compiler', '-check', root])
+			result := os.exec([@VEXE, '-check', root])
 			assert result.exit_code != 0, 'translated=${translated}, ${expression}: ${result.output}'
 			if expression == 'Phase.missing' {
 				assert result.output.contains('unknown enum field `missing`'), result.output

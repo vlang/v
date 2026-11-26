@@ -51,8 +51,9 @@ fn test_retry() {
 	assert res.output.contains('error: exceeded maximum number of retries (3)!'), res.output
 	assert res.output.count(failure_output) == 3, res.output
 
-	pass_cmd := '${os.quoted_path(retry_exe)} ${retry_probe}'
-	res = os.exec([vexe, 'retry', pass_cmd])
+	// Without `--`; the command is passed as separate arguments. One pre-quoted
+	// string would be quoted again on Windows and reach the shell as `\"path\"`.
+	res = os.exec([vexe, 'retry', retry_exe, retry_probe])
 	dump_on_ci(res)
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '[]', res.output

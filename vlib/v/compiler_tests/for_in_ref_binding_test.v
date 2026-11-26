@@ -1,5 +1,5 @@
 import os
-import rand
+import v.tempname
 
 // Regression coverage for #28084: `for x in &arr` must bind elements by
 // reference, not by value. The checker's `for_in_iterable_yields_ref` used to
@@ -7,45 +7,19 @@ import rand
 // recorded the loop variable as pointer-typed for this case and mutations
 // through it were silently lost.
 
-const for_in_ref_binding_vexe = @VEXE
-const for_in_ref_binding_tests_dir = os.dir(@FILE)
-const for_in_ref_binding_v3_dir = os.dir(for_in_ref_binding_tests_dir)
-const for_in_ref_binding_vlib_dir = os.dir(for_in_ref_binding_v3_dir)
-const for_in_ref_binding_v3_src = os.join_path(for_in_ref_binding_v3_dir, 'v.v')
-
-fn for_in_ref_binding_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_for_in_ref_binding_test') + $if windows { '.exe' } $else { '' }
+fn for_in_ref_binding_fixture_dir() string {
+	root := os.join_path(os.vtmp_dir(), 'v3_for_in_ref_binding_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	return root
 }
 
-fn testsuite_begin() {
-	v3_bin := for_in_ref_binding_v3_bin_path()
-	if os.exists(v3_bin) {
-		os.rm(v3_bin) or {}
-	}
-}
-
-fn build_v3_for_in_ref_binding() string {
-	v3_bin := for_in_ref_binding_v3_bin_path()
-	if os.exists(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([for_in_ref_binding_vexe, '-gc', 'none', '-path',
-			'${for_in_ref_binding_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			for_in_ref_binding_v3_src])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn for_in_ref_binding_temp_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}_${rand.ulid()}')
-}
-
-fn for_in_ref_binding_run_good(v3_bin string, name string, src string) string {
-	out := for_in_ref_binding_temp_path(name)
+fn for_in_ref_binding_run_good(name string, src string) string {
+	root := for_in_ref_binding_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	out := os.join_path(root, 'v3_${name}')
 	src_path := out + '.v'
 	os.write_file(src_path, src) or { panic(err) }
-	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', '${out}'])
+	compile := os.exec([@VEXE, src_path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.exec([out])
@@ -53,86 +27,170 @@ fn for_in_ref_binding_run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
-fn for_in_ref_binding_run_bad(v3_bin string, name string, src string, expected string) {
-	out := for_in_ref_binding_temp_path(name)
+fn test_for_in_rejects_invalid_reference_bindings() {
+	root := for_in_ref_binding_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	out := os.join_path(root, 'v3_for_in_ref_rejections')
 	src_path := out + '.v'
-	os.write_file(src_path, src) or { panic(err) }
-	result := os.exec([v3_bin, src_path, '-b', 'c', '-o', '${out}'])
-	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
-	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
+	source := 'struct Item {
+mut:
+	val int
 }
 
-// A local fixed array cannot be referenced outside `unsafe` at all (it is
-// stack-stored), independent of for-in - this must keep failing the same way
-// it does for any other `&` of a local fixed array.
-fn test_for_in_ref_of_local_fixed_array_requires_unsafe() {
-	v3_bin := build_v3_for_in_ref_binding()
-	for_in_ref_binding_run_bad(v3_bin, 'local_fixed_array_ref',
-		'struct Item {\nmut:\n\tval int\n}\n\nfn main() {\n\tmut arr := [3]Item{}\n\tfor item in &arr {\n\t\tprintln(item.val)\n\t}\n}\n',
-		'cannot reference fixed array `arr` outside `unsafe` blocks')
+// Taking the address of a local fixed array requires unsafe.
+fn reference_local_fixed_array() {
+	mut arr := [3]Item{}
+	for item in &arr {
+		println(item.val)
+	}
 }
 
-// A fixed array reached through a struct field is addressable without
-// `unsafe`; `for item in &t.buf` must mutate the underlying elements in
-// place, matching the exact shape of the #28084 report.
-fn test_for_in_ref_mutates_fixed_array_struct_field() {
-	v3_bin := build_v3_for_in_ref_binding()
-	out := for_in_ref_binding_run_good(v3_bin, 'fixed_array_struct_field_ref',
-		'struct Item {\nmut:\n\tval int\n}\n\nstruct Test {\nmut:\n\tbuf [10]Item\n}\n\nfn main() {\n\tmut t := Test{}\n\tfor i in 0 .. 10 {\n\t\tt.buf[i] = Item{val: i}\n\t}\n\tfor item in &t.buf {\n\t\tunsafe {\n\t\t\titem.val = item.val * 100\n\t\t}\n\t}\n\tmut total := 0\n\tfor item in t.buf {\n\t\ttotal += item.val\n\t}\n\tprintln(total)\n}\n')
-	assert out == '4500'
+// Plain iteration over a mut array parameter still binds items by value.
+fn touch(mut arr []Item) {
+	for item in arr {
+		item.val = item.val * 1000
+	}
 }
 
-// Ordinary dynamic arrays already worked before the fix; this guards against
-// regressing that path while changing how the ref/value decision is made.
-fn test_for_in_ref_mutates_dynamic_array() {
-	v3_bin := build_v3_for_in_ref_binding()
-	out := for_in_ref_binding_run_good(v3_bin, 'dynamic_array_ref',
-		'struct Item {\nmut:\n\tval int\n}\n\nfn main() {\n\tmut arr := []Item{}\n\tfor i in 0 .. 5 {\n\t\tarr << Item{val: i}\n\t}\n\tfor item in &arr {\n\t\tunsafe {\n\t\t\titem.val = item.val * 100\n\t\t}\n\t}\n\tmut total := 0\n\tfor item in arr {\n\t\ttotal += item.val\n\t}\n\tprintln(total)\n}\n')
-	assert out == '1000'
+fn main() {
+	reference_local_fixed_array()
+	mut arr := []Item{}
+	arr << Item{val: 1}
+	touch(mut arr)
+}
+'
+	os.write_file(src_path, source) or { panic(err) }
+	result := os.exec([@VEXE, src_path, '-b', 'c', '-nocolor', '-o', out])
+	assert result.exit_code != 0, result.output
+	expected := {
+		'\tfor item in &arr {':           'cannot reference fixed array `arr` outside `unsafe` blocks'
+		'\t\titem.val = item.val * 1000': '`item` is immutable, declare it with `mut` to make it mutable'
+	}
+	lines := source.split_into_lines()
+	diagnostics := result.output.split_into_lines().filter(it.contains(': error: '))
+	for statement, message in expected {
+		line := lines.index(statement) + 1
+		assert line > 0, statement
+		location := 'v3_for_in_ref_rejections.v:${line}:'
+		assert diagnostics.any(it.contains(location) && it.contains(message)), 'expected ${message} at ${location}\n${result.output}'
+	}
 }
 
-// `for mut item in arr` is a distinct binding mode from `for item in &arr`:
-// both should be able to mutate through the loop variable.
-fn test_for_mut_item_in_plain_array_still_mutates() {
-	v3_bin := build_v3_for_in_ref_binding()
-	out := for_in_ref_binding_run_good(v3_bin, 'for_mut_item_plain_array',
-		'struct Item {\nmut:\n\tval int\n}\n\nfn main() {\n\tmut arr := [3]Item{}\n\tfor i in 0 .. 3 {\n\t\tarr[i] = Item{val: i + 1}\n\t}\n\tfor mut item in arr {\n\t\titem.val = item.val * 10\n\t}\n\tmut total := 0\n\tfor item in arr {\n\t\ttotal += item.val\n\t}\n\tprintln(total)\n}\n')
-	assert out == '60'
+fn test_for_in_reference_and_mutation_bindings() {
+	out := for_in_ref_binding_run_good('for_in_ref_bindings', 'struct Item {
+mut:
+	val int
 }
 
-// A `mut` array *parameter* stores its underlying array via a pointer at the
-// ABI level even without any `&` in the for-in line. That must not be
-// mistaken for an explicit `for x in &arr` - plain `for item in arr` inside
-// such a function still binds `item` by value.
-fn test_for_in_over_mut_param_without_amp_is_still_by_value() {
-	v3_bin := build_v3_for_in_ref_binding()
-	for_in_ref_binding_run_bad(v3_bin, 'mut_param_no_amp_by_value',
-		'struct Item {\nmut:\n\tval int\n}\n\nfn touch(mut arr []Item) {\n\tfor item in arr {\n\t\titem.val = item.val * 1000\n\t}\n}\n\nfn main() {\n\tmut arr := []Item{}\n\tarr << Item{val: 1}\n\ttouch(mut arr)\n}\n',
-		'`item` is immutable, declare it with `mut` to make it mutable')
+struct Test {
+mut:
+	buf [10]Item
 }
 
-// The two-loop-variable form (`for idx, item in &arr`) binds the *value*
-// variable by reference, not the index - a separate code path from the
-// single-variable form covered above (`annotate_for_in` inserts the index as
-// a plain `int` regardless, and only wraps the value/element variable).
-fn test_for_in_ref_indexed_form_mutates_value_var() {
-	v3_bin := build_v3_for_in_ref_binding()
-	out := for_in_ref_binding_run_good(v3_bin, 'for_in_ref_indexed_form',
-		'struct Item {\nmut:\n\tval int\n}\n\nfn main() {\n\tmut arr := []Item{}\n\tfor i in 0 .. 4 {\n\t\tarr << Item{val: i}\n\t}\n\tfor idx, item in &arr {\n\t\tunsafe {\n\t\t\titem.val = item.val + idx\n\t\t}\n\t}\n\tmut total := 0\n\tfor item in arr {\n\t\ttotal += item.val\n\t}\n\tprintln(total)\n}\n')
-	assert out == '12'
+// A struct field lets the loop take a reference to a fixed array.
+fn check_fixed_array_field() {
+	mut t := Test{}
+	for i in 0 .. 10 {
+		t.buf[i] = Item{val: i}
+	}
+	for item in &t.buf {
+		unsafe {
+			item.val = item.val * 100
+		}
+	}
+	mut total := 0
+	for item in t.buf {
+		total += item.val
+	}
+	println(total)
 }
 
-// transform/for.v now reads the element-binding mode back from the loop
-// variable's own checker-resolved type (via raw_checker_node_type) instead
-// of re-inspecting the container's raw AST shape, falling back to the AST
-// shape when that lookup comes back empty. A monomorphized generic method's
-// loop-variable node id is a clone created after the checker's original
-// annotation pass ran on the generic template, and its cached type is not
-// always available by the time transform runs - this must still bind by
-// reference via the AST-shape fallback in that case.
-fn test_for_in_ref_survives_generic_monomorphization() {
-	v3_bin := build_v3_for_in_ref_binding()
-	out := for_in_ref_binding_run_good(v3_bin, 'for_in_ref_generic_monomorphization',
-		'struct Item {\nmut:\n\tval int\n}\n\nstruct Container[T] {\nmut:\n\titems []T\n}\n\nfn (mut c Container[T]) bump_all() {\n\tfor item in &c.items {\n\t\tunsafe {\n\t\t\titem.val = item.val * 10\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut c := Container[Item]{}\n\tc.items << Item{val: 1}\n\tc.items << Item{val: 2}\n\tc.items << Item{val: 3}\n\tc.bump_all()\n\tmut total := 0\n\tfor it in c.items {\n\t\ttotal += it.val\n\t}\n\tprintln(total)\n}\n')
-	assert out == '60'
+// The dynamic array path also binds elements by reference.
+fn check_dynamic_array() {
+	mut arr := []Item{}
+	for i in 0 .. 5 {
+		arr << Item{val: i}
+	}
+	for item in &arr {
+		unsafe {
+			item.val = item.val * 100
+		}
+	}
+	mut total := 0
+	for item in arr {
+		total += item.val
+	}
+	println(total)
+}
+
+// A mut loop variable aliases the array element.
+fn check_mut_binding() {
+	mut arr := [3]Item{}
+	for i in 0 .. 3 {
+		arr[i] = Item{val: i + 1}
+	}
+	for mut item in arr {
+		item.val = item.val * 10
+	}
+	mut total := 0
+	for item in arr {
+		total += item.val
+	}
+	println(total)
+}
+
+// The indexed form binds the element by reference and the index by value.
+fn check_indexed_ref() {
+	mut arr := []Item{}
+	for i in 0 .. 4 {
+		arr << Item{val: i}
+	}
+	for idx, item in &arr {
+		unsafe {
+			item.val = item.val + idx
+		}
+	}
+	mut total := 0
+	for item in arr {
+		total += item.val
+	}
+	println(total)
+}
+
+struct Container[T] {
+mut:
+	items []T
+}
+
+// The transform can use the iterable shape when a cloned loop variable lacks a checker type.
+fn (mut c Container[T]) bump_all() {
+	for item in &c.items {
+		unsafe {
+			item.val = item.val * 10
+		}
+	}
+}
+
+fn check_generic_container() {
+	mut c := Container[Item]{}
+	c.items << Item{val: 1}
+	c.items << Item{val: 2}
+	c.items << Item{val: 3}
+	c.bump_all()
+	mut total := 0
+	for it in c.items {
+		total += it.val
+	}
+	println(total)
+}
+
+fn main() {
+	check_fixed_array_field()
+	check_dynamic_array()
+	check_mut_binding()
+	check_indexed_ref()
+	check_generic_container()
+}
+')
+	assert out.split_into_lines() == ['4500', '1000', '60', '12', '60'], out
 }

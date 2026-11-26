@@ -1,57 +1,76 @@
 import os
 import v.tempname
 
-const pointer_voidptr_vexe = @VEXE
-const pointer_voidptr_tests_dir = os.dir(@FILE)
-const pointer_voidptr_v3_dir = os.dir(pointer_voidptr_tests_dir)
-const pointer_voidptr_vlib_dir = os.dir(pointer_voidptr_v3_dir)
-const pointer_voidptr_v3_src = os.join_path(pointer_voidptr_v3_dir, 'v.v')
-
-const pointer_voidptr_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_pointer_voidptr_fixtures_${tempname.unique_token()}')
-const pointer_voidptr_compiler = os.join_path(pointer_voidptr_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
-
-fn testsuite_begin() {
-	os.mkdir_all(pointer_voidptr_fixture_dir) or { panic(err) }
-	build :=
-		os.exec([pointer_voidptr_vexe, '-gc', 'none', '-path',
-			'${pointer_voidptr_vlib_dir}' + '|@vlib|@vmodules', '-o', pointer_voidptr_compiler,
-			'${pointer_voidptr_v3_src}'])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rmdir_all(pointer_voidptr_fixture_dir) or {}
-}
-
-fn pointer_voidptr_run_good(name string, source string) string {
-	src := os.join_path(pointer_voidptr_fixture_dir, 'v3_${name}.v')
+fn pointer_voidptr_run_good(dir string, name string, source string) string {
+	src := os.join_path(dir, 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(pointer_voidptr_fixture_dir, 'v3_${name}')
-	compile := os.exec([pointer_voidptr_compiler, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(dir, 'v3_${name}')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
 
-fn pointer_voidptr_run_good_with_c(name string, source string) (string, string) {
-	out := pointer_voidptr_run_good(name, source)
-	c_source := os.read_file(os.join_path(pointer_voidptr_fixture_dir, 'v3_${name}.c')) or { panic(err) }
+fn pointer_voidptr_run_good_with_c(dir string, name string, source string) (string, string) {
+	out := pointer_voidptr_run_good(dir, name, source)
+	c_source := os.read_file(os.join_path(dir, 'v3_${name}.c')) or { panic(err) }
 	return out, c_source
 }
 
-fn pointer_voidptr_run_bad(name string, source string, expected string) {
-	src := os.join_path(pointer_voidptr_fixture_dir, 'v3_${name}.v')
+struct PointerReturnCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn pointer_voidptr_run_good_batch(dir string, cases []PointerReturnCase) {
+	root := os.join_path(dir, 'pointer_returns')
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		module_dir := os.join_path(root, module_name)
+		os.mkdir_all(module_dir) or { panic(err) }
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		fixture := 'module ${module_name}\n\n' + case.source
+		os.write_file(os.join_path(module_dir, 'v3_${case.name}.v'), fixture.replace_once('\nfn main()',
+			'\npub fn exercise()')) or { panic(err) }
+	}
+	os.write_file(os.join_path(root, 'main.v'), "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
+	assert compile.exit_code == 0, compile.output
+	for case in cases {
+		run := os.exec([bin, case.name])
+		assert run.exit_code == 0, '${case.name}: ${run.output}'
+		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	}
+}
+
+fn pointer_voidptr_run_bad(dir string, name string, source string, expected string) {
+	src := os.join_path(dir, 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(pointer_voidptr_fixture_dir, 'v3_${name}')
-	compile := os.exec([pointer_voidptr_compiler, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(dir, 'v3_${name}')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
 fn test_bare_value_pointer_returns_are_heap_lowered() {
-	out := pointer_voidptr_run_good('bare_pointer_return', 'struct Item {
+	dir := os.join_path(os.vtmp_dir(), 'v3_pointer_voidptr_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	pointer_voidptr_run_good_batch(dir, [
+		PointerReturnCase{
+			name:     'bare_pointer_return'
+			source:   'struct Item {
 	value int
 }
 
@@ -66,9 +85,12 @@ fn main() {
 	item := make()
 	println(int_str(item.value))
 }
-')
-	assert out == '23'
-	optional_out := pointer_voidptr_run_good('bare_optional_pointer_return', 'struct Item {
+'
+			expected: '23'
+		},
+		PointerReturnCase{
+			name:     'bare_optional_pointer_return'
+			source:   'struct Item {
 	value int
 }
 
@@ -86,9 +108,12 @@ fn main() {
 	item := make() or { return }
 	println(int_str(item.value))
 }
-')
-	assert optional_out == '29'
-	result_out := pointer_voidptr_run_good('bare_result_pointer_return', 'struct Item {
+'
+			expected: '29'
+		},
+		PointerReturnCase{
+			name:     'bare_result_pointer_return'
+			source:   'struct Item {
 	value int
 }
 
@@ -106,9 +131,11 @@ fn main() {
 	item := make() or { return }
 	println(int_str(item.value))
 }
-')
-	assert result_out == '31'
-	pointer_voidptr_run_bad('bare_interface_pointer_return', 'interface Reader {
+'
+			expected: '31'
+		},
+	])
+	pointer_voidptr_run_bad(dir, 'bare_interface_pointer_return', 'interface Reader {
 	read() int
 }
 
@@ -126,7 +153,7 @@ fn make() &Reader {
 fn main() {}
 ',
 		'you are returning `File` instead')
-	pointer_voidptr_run_bad('bare_sum_pointer_return', 'struct A {}
+	pointer_voidptr_run_bad(dir, 'bare_sum_pointer_return', 'struct A {}
 
 struct B {}
 
@@ -143,6 +170,11 @@ fn main() {}
 }
 
 fn test_optional_value_to_pointer_return_heap_copies_payload() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_pointer_voidptr_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	source := 'struct Item {
 	value int
 }
@@ -160,12 +192,17 @@ fn main() {
 	println(int_str(item.value))
 }
 '
-	out, c_source := pointer_voidptr_run_good_with_c('optional_value_to_pointer_return', source)
+	out, c_source := pointer_voidptr_run_good_with_c(dir, 'optional_value_to_pointer_return', source)
 	assert out == '47'
 	assert c_source.contains('memdup(&maybe.value, sizeof(main__Item))'), c_source
 }
 
 fn test_wrapped_multi_return_bare_pointer_slots_are_heap_lowered() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_pointer_voidptr_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	source := 'struct Item {
 	value int
 }
@@ -196,54 +233,36 @@ fn main() {
 	println(int_str(result_n))
 }
 '
-	out, c_source := pointer_voidptr_run_good_with_c('wrapped_multi_return_bare_pointer_slots', source)
+	out, c_source := pointer_voidptr_run_good_with_c(dir, 'wrapped_multi_return_bare_pointer_slots', source)
 	assert out == '31\n37\n41\n43'
 	assert c_source.count('sizeof(main__Item)') >= 2, c_source
 }
 
-fn test_c_voidptr_struct_argument_passes_its_address() {
-	header := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_voidptr_struct.h')
-	source := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_voidptr_struct.v')
-	bin := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_voidptr_struct')
-	os.write_file(header, 'static int v3_read_cfg(void *ptr) { return *((int *)ptr); }\n') or {
-		panic(err)
+fn test_c_voidptr_arguments_accept_struct_and_allocated_buffer() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_pointer_voidptr_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
 	}
-	os.write_file(source, '#insert "${header}"
+	header := os.join_path(dir, 'v3_c_voidptr_arguments.h')
+	os.write_file(header, 'static int v3_read_cfg(void *ptr) { return *((int *)ptr); }
+static int v3_read_byte(void *ptr) { return *((unsigned char *)ptr); }
+')!
+	source := '#insert "${header}"
 
 struct Cfg {
 	value int
 }
 
 fn C.v3_read_cfg(voidptr) int
+fn C.v3_read_byte(&voidptr) int
 
 fn main() {
 	cfg := Cfg{
 		value: 17
 	}
 	println(int_str(C.v3_read_cfg(cfg)))
-}
-') or {
-		panic(err)
-	}
-	compile := os.exec([pointer_voidptr_compiler, source, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '17'
-}
 
-fn test_c_pointer_to_voidptr_argument_accepts_allocated_buffer() {
-	header := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_pointer_to_voidptr.h')
-	source := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_pointer_to_voidptr.v')
-	bin := os.join_path(pointer_voidptr_fixture_dir, 'v3_c_pointer_to_voidptr')
-	os.write_file(header, 'static int v3_read_byte(void *ptr) { return *((unsigned char *)ptr); }\n') or {
-		panic(err)
-	}
-	os.write_file(source, '#insert "${header}"
-
-fn C.v3_read_byte(&voidptr) int
-
-fn main() {
 	buffer := vcalloc(1)
 	unsafe {
 		buffer[0] = 19
@@ -253,17 +272,17 @@ fn main() {
 		free(buffer)
 	}
 }
-') or {
-		panic(err)
-	}
-	compile := os.exec([pointer_voidptr_compiler, source, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '19'
+'
+	out := pointer_voidptr_run_good(dir, 'c_voidptr_arguments', source)
+	assert out == '17\n19', out
 }
 
 fn test_pointer_to_voidptr_return_keeps_pointer_value() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_pointer_voidptr_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
 	source := 'fn make_values() voidptr {
 	unsafe {
 		values := &voidptr(malloc(64))
@@ -280,7 +299,7 @@ fn main() {
 	}
 }
 '
-	out, c_source := pointer_voidptr_run_good_with_c('pointer_to_voidptr_return', source)
+	out, c_source := pointer_voidptr_run_good_with_c(dir, 'pointer_to_voidptr_return', source)
 	assert out == '17'
 	assert !c_source.contains('return *values;'), c_source
 }

@@ -72,7 +72,6 @@ fn test_flag_object_rebuilds_when_header_search_environment_changes() ! {
 		environment['VFLAGS'] = ''
 		environment['CPATH'] = ''
 		environment['C_INCLUDE_PATH'] = ''
-		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 		environment['VTMP'] = os.join_path(root, 'tmp_${name}')
 		environment['V3CACHE'] = os.join_path(root, 'cache_${name}')
 		program := os.join_path(root, 'program')

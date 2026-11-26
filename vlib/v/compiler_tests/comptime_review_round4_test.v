@@ -1,36 +1,27 @@
+import json2
 import os
+import v.cmdexec
+import v.tempname
 
-const round4_vexe = @VEXE
-const round4_tests_dir = os.dir(@FILE)
-const round4_v3_dir = os.dir(round4_tests_dir)
-const round4_vlib_dir = os.dir(round4_v3_dir)
-const round4_v3_src = os.join_path(round4_v3_dir, 'v.v')
-
-fn round4_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_comptime_review_round4_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-}
+const v3_bin = @VEXE
+const round4_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_round4_${tempname.unique_token()}')
 
 fn testsuite_begin() {
-	v3_bin := round4_v3_bin_path()
-	if os.exists(v3_bin) {
-		os.rm(v3_bin) or {}
-	}
+	os.mkdir(round4_fixture_dir) or { panic(err) }
 }
 
-fn round4_build_v3() string {
-	v3_bin := round4_v3_bin_path()
-	if os.exists(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([round4_vexe, '-gc', 'none', '-prealloc', '-path',
-			'${round4_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${round4_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn testsuite_end() {
+	os.rmdir_all(round4_fixture_dir) or {}
+}
+
+fn run_round4_compiler(compiler string, args []string) os.Result {
+	return cmdexec.run_in_merged_with_env(compiler, args, '', {
+		'VFLAGS': ''
+	})
 }
 
 fn round4_tmp_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_round4_${name}_${os.getpid()}')
+	return os.join_path(round4_fixture_dir, 'v3_round4_${name}')
 }
 
 fn round4_write_file(root string, rel string, src string) {
@@ -39,11 +30,11 @@ fn round4_write_file(root string, rel string, src string) {
 	os.write_file(path, src) or { panic(err) }
 }
 
-fn round4_run_good(v3_bin string, name string, src string) string {
+fn round4_run_good(compiler string, name string, src string) string {
 	src_path := '${round4_tmp_path(name)}.v'
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := round4_tmp_path(name)
-	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
+	compile := run_round4_compiler(compiler, [src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
 	run := os.exec([bin_path])
@@ -51,17 +42,57 @@ fn round4_run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
-fn round4_run_bad(v3_bin string, name string, src string, expected string) {
+fn round4_run_bad(compiler string, name string, src string, expected string) {
 	src_path := '${round4_tmp_path(name)}.v'
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := round4_tmp_path(name)
-	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
+	compile := run_round4_compiler(compiler, [src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code != 0, '${name}: expected failure, got success\n${compile.output}'
 	assert compile.output.contains(expected), '${name}: expected `${expected}` in\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
 }
 
-fn round4_run_good_project(v3_bin string, name string, files map[string]string, input string) string {
+struct Round4Rejection {
+	name     string
+	source   string
+	expected string
+}
+
+struct Round4Diagnostic {
+	file     string
+	severity string
+	message  string
+}
+
+fn round4_check_rejections(name string, cases []Round4Rejection) {
+	root := round4_tmp_path(name)
+	mut imports := []string{cap: cases.len}
+	for case in cases {
+		imports << 'import ${case.name} as _'
+		round4_write_file(root, os.join_path(case.name, '${case.name}.v'), 'module ${case.name}\n\n' +
+			case.source)
+	}
+	round4_write_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')
+	result := run_round4_compiler(v3_bin, [root, '-json-errors', '-b', 'c', '-o',
+		os.join_path(root, 'program')])
+	assert result.exit_code != 0, result.output
+	assert !result.output.contains('C compilation failed'), result.output
+	mut errors := map[string][]string{}
+	for line in result.output.split_into_lines() {
+		if !line.starts_with('{') {
+			continue
+		}
+		diagnostic := json2.decode[Round4Diagnostic](line) or { panic(err) }
+		if diagnostic.severity == 'error' {
+			errors[os.file_name(diagnostic.file)] << diagnostic.message
+		}
+	}
+	for case in cases {
+		assert errors['${case.name}.v'].any(it.contains(case.expected)), '${case.name}: expected `${case.expected}` in\n${result.output}'
+	}
+}
+
+fn round4_run_good_project(compiler string, name string, files map[string]string, input string) string {
 	root := '${round4_tmp_path(name)}_project'
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -72,7 +103,7 @@ fn round4_run_good_project(v3_bin string, name string, files map[string]string, 
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	bin_path := round4_tmp_path(name)
-	compile := os.exec([v3_bin, input_path, '-b', 'c', '-o', bin_path])
+	compile := run_round4_compiler(compiler, [input_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
 	run := os.exec([bin_path])
@@ -81,7 +112,6 @@ fn round4_run_good_project(v3_bin string, name string, files map[string]string, 
 }
 
 fn test_comptime_field_metadata_records_modifiers_and_attrs() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_metadata', "struct S {
 	private int
 pub:
@@ -106,7 +136,6 @@ fn main() {
 }
 
 fn test_comptime_match_accepts_type_group_patterns() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'comptime_match_type_group_patterns', 'struct S {}
 
 fn classify[T](value T) string {
@@ -128,7 +157,6 @@ fn main() {
 }
 
 fn test_bare_comptime_field_materializes_fielddata() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'bare_fielddata', "type WireName = string
 
 struct S {
@@ -158,7 +186,6 @@ fn main() {
 }
 
 fn test_comptime_variant_metadata_only_exposes_typ() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'variant_metadata_typ', 'struct A {}
 struct B {}
 
@@ -186,7 +213,8 @@ fn main() {
 ')
 	assert out == 'true,true|2'
 
-	round4_run_bad(v3_bin, 'bad_variant_name_member', 'struct A {}
+	round4_check_rejections('variant_metadata_members', [
+		Round4Rejection{'bad_variant_name_member', 'struct A {}
 struct B {}
 
 type Value = A | B
@@ -198,9 +226,8 @@ fn main() {
 		use_name(variant.name)
 	}
 }
-',
-		'unknown VariantData member `name`')
-	round4_run_bad(v3_bin, 'bad_variant_attrs_member', 'struct A {}
+', 'unknown VariantData member `name`'},
+		Round4Rejection{'bad_variant_attrs_member', 'struct A {}
 struct B {}
 
 type Value = A | B
@@ -212,12 +239,11 @@ fn main() {
 		use_attrs(variant.attrs)
 	}
 }
-',
-		'unknown VariantData member `attrs`')
+', 'unknown VariantData member `attrs`'},
+	])
 }
 
 fn test_comptime_variants_prefer_local_sum_over_imported_short_name() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'variant_local_sum_precedence', {
 		'v.mod':         "Module { name: 'variant_local_sum_precedence' }\n"
 		'other/other.v': 'module other
@@ -257,7 +283,6 @@ fn main() {
 }
 
 fn test_comptime_field_generic_helper_infers_matching_argument() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_generic_helper_matching_arg', 'struct S {
 	id int
 	name string
@@ -283,7 +308,6 @@ fn main() {
 }
 
 fn test_comptime_for_value_field_sources_use_value_type() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'value_field_source', "struct Inner {
 	count int
 }
@@ -325,7 +349,6 @@ fn main() {
 }
 
 fn test_comptime_for_import_alias_source_values() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'import_alias_values', {
 		'v.mod':           "Module { name: 'import_alias_values' }\n"
 		'colors/colors.v': 'module colors
@@ -352,7 +375,6 @@ fn main() {
 }
 
 fn test_comptime_for_nested_value_source_uses_resolved_field_type() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'nested_value_resolved_field_type', {
 		'v.mod':     "Module { name: 'nested_value_resolved_field_type' }\n"
 		'pkg/pkg.v': 'module pkg
@@ -392,7 +414,6 @@ fn main() {
 }
 
 fn test_comptime_field_typ_guards_use_declaring_module_type() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'field_typ_guard_decl_module', {
 		'v.mod':     "Module { name: 'field_typ_guard_decl_module' }\n"
 		'pkg/pkg.v': 'module pkg
@@ -429,7 +450,6 @@ fn main() {
 }
 
 fn test_comptime_field_unaliased_typ_preserves_option_wrapper() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_unaliased_option', "type Alias = string
 
 struct S {
@@ -459,7 +479,6 @@ fn main() {
 }
 
 fn test_comptime_for_source_alias_chains_unroll() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'comptime_for_alias_chain', "enum Color {
 	red
 	blue
@@ -490,7 +509,6 @@ fn main() {
 }
 
 fn test_comptime_for_selective_import_alias_source_unrolls() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'selective_comptime_for_alias_chain', {
 		'v.mod':           "Module { name: 'selective_comptime_for_alias_chain' }\n"
 		'colors/colors.v': 'module colors
@@ -531,7 +549,6 @@ fn main() {
 }
 
 fn test_selective_import_comptime_for_static_pruning_resolves_type() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'selective_import_comptime_for_static_pruning', {
 		'v.mod':     "Module { name: 'selective_import_comptime_for_static_pruning' }\n"
 		'pkg/pkg.v': 'module pkg
@@ -562,7 +579,6 @@ fn main() {
 }
 
 fn test_non_generic_call_matching_generic_short_name_does_not_skip_comptime_for() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'generic_short_name_false_positive', {
 		'v.mod':             "Module { name: 'generic_short_name_false_positive' }\n"
 		'helpers/helpers.v': "module helpers
@@ -604,7 +620,6 @@ fn main() {
 }
 
 fn test_unreachable_generic_call_in_metadata_if_does_not_skip_comptime_for() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'unreachable_generic_call_in_comptime_for', "struct S {
 	id int
 }
@@ -638,7 +653,6 @@ fn main() {
 }
 
 fn test_value_source_comptime_for_static_pruning_resolves_field_path() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'value_source_comptime_for_static_pruning', "struct Inner {
 	id int
 }
@@ -667,7 +681,6 @@ fn main() {
 }
 
 fn test_shadowed_comptime_for_substitutes_nested_source_type() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'shadowed_comptime_for_nested_source', "struct Inner {
 	name string
 }
@@ -692,7 +705,6 @@ fn main() {
 }
 
 fn test_metadata_call_arguments_are_checked_against_callee_types() {
-	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_metadata_call_arg_type', 'struct S {
 	id int
 }
@@ -709,8 +721,8 @@ fn main() {
 }
 
 fn test_deferred_metadata_call_arguments_are_checked_against_callee_types() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'bad_method_metadata_call_arg_type', 'struct App {}
+	round4_check_rejections('deferred_metadata_arguments', [
+		Round4Rejection{'bad_method_metadata_call_arg_type', 'struct App {}
 
 fn (app App) run() {
 	_ = app
@@ -723,9 +735,8 @@ fn main() {
 		takes_int(method.name)
 	}
 }
-',
-		'cannot use `string` as argument 1 to `takes_int`; expected `int`')
-	round4_run_bad(v3_bin, 'bad_param_metadata_call_arg_type', 'fn consume(value int) {
+', 'cannot use `string` as argument 1 to `takes_int`; expected `int`'},
+		Round4Rejection{'bad_param_metadata_call_arg_type', 'fn consume(value int) {
 	_ = value
 }
 
@@ -736,9 +747,8 @@ fn main() {
 		takes_string(param.typ)
 	}
 }
-',
-		'cannot use `int` as argument 1 to `takes_string`; expected `string`')
-	round4_run_bad(v3_bin, 'bad_attribute_metadata_call_arg_type', "@[route: '/']
+', 'cannot use `int` as argument 1 to `takes_string`; expected `string`'},
+		Round4Rejection{'bad_attribute_metadata_call_arg_type', "@[route: '/']
 struct App {}
 
 fn takes_bool(value bool) {}
@@ -748,12 +758,11 @@ fn main() {
 		takes_bool(attr.arg)
 	}
 }
-",
-		'cannot use `string` as argument 1 to `takes_bool`; expected `bool`')
+", 'cannot use `string` as argument 1 to `takes_bool`; expected `bool`'},
+	])
 }
 
 fn test_cross_module_composite_field_typ_guard_uses_qualified_type() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'cross_module_composite_field_typ_guard', {
 		'v.mod':     "Module { name: 'cross_module_composite_field_typ_guard' }\n"
 		'pkg/pkg.v': 'module pkg
@@ -789,7 +798,6 @@ fn main() {
 }
 
 fn test_enum_value_metadata_call_arguments_use_enumdata_types() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_metadata_call_args', "enum Color {
 	red = 7
 }
@@ -814,7 +822,6 @@ fn main() {
 }
 
 fn test_enum_value_metadata_value_arg_is_checked() {
-	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_enum_value_metadata_arg_type', 'enum Color {
 	red
 }
@@ -831,7 +838,6 @@ fn main() {
 }
 
 fn test_enum_value_metadata_if_prunes_untaken_branches() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_metadata_if_prunes_else', "enum Color {
 	only
 }
@@ -852,7 +858,6 @@ fn main() {
 }
 
 fn test_enum_value_metadata_handles_unsigned_shift() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_metadata_unsigned_shift', "enum Shifted {
 	a = 8 >>> 1
 }
@@ -869,7 +874,6 @@ fn main() {
 }
 
 fn test_enum_value_metadata_folds_power() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_metadata_power', "enum Powered {
 	a = 2 ** 3
 	b
@@ -887,7 +891,6 @@ fn main() {
 }
 
 fn test_enum_power_metadata_prunes_static_checker_branches() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_power_metadata_static_checker', 'enum Powered {
 	a = 2 ** 3
 }
@@ -908,7 +911,6 @@ fn main() {
 // `item.value` is the enum value itself (as in V1), so it interpolates as the
 // field name; its numeric form, including width formatting, needs a cast.
 fn test_enum_value_metadata_interpolation_stays_numeric() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_metadata_numeric_interpolation', "enum Color {
 	red = 7
 	blue = 42
@@ -926,7 +928,6 @@ fn main() {
 }
 
 fn test_enum_value_metadata_preserves_wide_backed_values() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_metadata_wide_backed', "enum Wide as u64 {
 	big = u64(1) << 40
 	next
@@ -944,7 +945,6 @@ fn main() {
 }
 
 fn test_field_loop_specializes_multi_parameter_generic_helper() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_loop_multi_generic_helper', "struct Data {
 	n int
 	label string
@@ -972,7 +972,6 @@ fn main() {
 }
 
 fn test_cross_module_dynamic_field_selector_uses_qualified_type() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'cross_module_dynamic_field_selector_type', {
 		'v.mod':     "Module { name: 'cross_module_dynamic_field_selector_type' }\n"
 		'pkg/pkg.v': 'module pkg
@@ -1013,7 +1012,6 @@ fn main() {
 }
 
 fn test_comptime_for_typeof_dynamic_field_selector_is_preserved() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'typeof_dynamic_field_selector_in_comptime_for', "struct Foo {
 	id int
 	name string
@@ -1035,7 +1033,6 @@ fn main() {
 }
 
 fn test_comptime_for_body_checks_static_code() {
-	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_static_code_in_comptime_for', 'struct S {
 	id int
 }
@@ -1050,7 +1047,6 @@ fn main() {
 }
 
 fn test_comptime_for_body_checks_static_code_in_regular_if_branch() {
-	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_static_code_in_comptime_for_if_branch', 'struct S {
 	id int
 }
@@ -1067,7 +1063,6 @@ fn main() {
 }
 
 fn test_comptime_for_body_checks_static_call_in_mixed_expression() {
-	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_static_call_in_comptime_for_mixed_expr', 'struct S {
 	id int
 }
@@ -1082,7 +1077,6 @@ fn main() {
 }
 
 fn test_comptime_field_type_selectors_are_type_ids() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_type_selectors_are_type_ids', 'type MyInt = int
 
 struct S {
@@ -1127,7 +1121,6 @@ fn main() {
 }
 
 fn test_comptime_bare_field_type_guards_are_folded() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'bare_field_type_guards', 'struct S {
 	id int
 	name string
@@ -1154,8 +1147,8 @@ fn main() {
 }
 
 fn test_comptime_for_body_checks_static_code_in_metadata_if_branch() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'bad_static_call_in_comptime_for_metadata_if', 'struct S {
+	round4_check_rejections('static_field_guards', [
+		Round4Rejection{'bad_static_call_in_comptime_for_metadata_if', 'struct S {
 	id int
 }
 
@@ -1166,9 +1159,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_metadata_guard_fn')
-	round4_run_bad(v3_bin, 'bad_static_call_in_comptime_for_type_if', 'struct S {
+', 'unknown function: missing_metadata_guard_fn'},
+		Round4Rejection{'bad_static_call_in_comptime_for_type_if', 'struct S {
 	id int
 }
 
@@ -1179,12 +1171,11 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_type_guard_fn')
+', 'unknown function: missing_type_guard_fn'},
+	])
 }
 
 fn test_comptime_for_static_check_skips_untaken_metadata_if_branch() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'untaken_metadata_if_static_code', 'struct S {
 	id int
 }
@@ -1208,7 +1199,6 @@ fn main() {
 }
 
 fn test_comptime_for_static_check_folds_fielddata_flags() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'fielddata_flag_static_guards', 'struct S {
 pub mut:
 	ptr &int
@@ -1230,7 +1220,6 @@ fn main() {
 }
 
 fn test_comptime_field_is_struct_for_generic_struct_instance() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'generic_struct_field_is_struct', 'struct Box[T] {
 	value T
 }
@@ -1256,7 +1245,6 @@ fn main() {
 }
 
 fn test_nested_comptime_for_uses_substituted_field_type_source() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_comptime_for_field_type_source', 'struct Inner {
 	count int
 	label string
@@ -1283,7 +1271,6 @@ fn main() {
 }
 
 fn test_nested_comptime_for_shadowed_loop_variables() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'shadowed_comptime_for', "struct A {
 	a int
 }
@@ -1326,8 +1313,8 @@ fn main() {
 }
 
 fn test_unknown_comptime_field_member_is_rejected() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'bad_field_member', 'struct S {
+	round4_check_rejections('field_metadata_members', [
+		Round4Rejection{'bad_field_member', 'struct S {
 	name int
 }
 
@@ -1336,9 +1323,8 @@ fn main() {
 		println(field.nmae)
 	}
 }
-	',
-		'unknown FieldData member `nmae`')
-	round4_run_bad(v3_bin, 'bad_outer_field_member_in_nested_loop', 'struct Foo {
+	', 'unknown FieldData member `nmae`'},
+		Round4Rejection{'bad_outer_field_member_in_nested_loop', 'struct Foo {
 	id int
 }
 
@@ -1353,12 +1339,11 @@ fn main() {
 		}
 	}
 }
-	',
-		'unknown FieldData member `nmae`')
+	', 'unknown FieldData member `nmae`'},
+	])
 }
 
 fn test_unknown_comptime_enum_value_member_is_rejected() {
-	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_enum_value_member', 'enum Color {
 	red
 }
@@ -1373,8 +1358,8 @@ fn main() {
 }
 
 fn test_non_variant_comptime_loop_variables_are_rejected_as_is_patterns() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'bad_sum_is_field_loop_variable', 'struct A {}
+	round4_check_rejections('non_variant_loop_variables', [
+		Round4Rejection{'bad_sum_is_field_loop_variable', 'struct A {}
 struct B {}
 struct Holder {
 	n int
@@ -1388,9 +1373,8 @@ fn check(value Value) {
 }
 
 fn main() {}
-',
-		'`Value` has no variant `field`')
-	round4_run_bad(v3_bin, 'bad_sum_is_enum_value_loop_variable', 'enum EnumKind {
+', '`bad_sum_is_field_loop_variable.Value` has no variant `bad_sum_is_field_loop_variable.field`'},
+		Round4Rejection{'bad_sum_is_enum_value_loop_variable', 'enum EnumKind {
 	one
 }
 struct A {}
@@ -1404,12 +1388,11 @@ fn check(value Value) {
 }
 
 fn main() {}
-',
-		'`Value` has no variant `item`')
+', '`bad_sum_is_enum_value_loop_variable.Value` has no variant `bad_sum_is_enum_value_loop_variable.item`'},
+	])
 }
 
 fn test_nested_comptime_for_validates_inner_members() {
-	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_nested_enum_value_member', 'struct S {
 	id int
 }
@@ -1430,8 +1413,8 @@ fn main() {
 }
 
 fn test_unknown_comptime_member_in_if_guard_is_rejected() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'bad_field_guard_member', "struct S {
+	round4_check_rejections('metadata_guard_members', [
+		Round4Rejection{'bad_field_guard_member', "struct S {
 	id int
 }
 
@@ -1442,9 +1425,8 @@ fn main() {
 		}
 	}
 }
-	",
-		'unknown FieldData member `nmae`')
-	round4_run_bad(v3_bin, 'bad_enum_guard_member', "enum Color {
+	", 'unknown FieldData member `nmae`'},
+		Round4Rejection{'bad_enum_guard_member', "enum Color {
 	red
 }
 
@@ -1455,12 +1437,11 @@ fn main() {
 		}
 	}
 }
-	",
-		'unknown EnumData member `nmae`')
+	", 'unknown EnumData member `nmae`'},
+	])
 }
 
 fn test_comptime_member_lookalikes_in_guard_strings_are_ignored() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'guard_member_text_literal', "struct S {
 	id int
 }
@@ -1492,8 +1473,8 @@ fn main() {
 }
 
 fn test_unsupported_comptime_field_members_are_rejected() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'bad_field_is_interface', 'struct S {
+	round4_check_rejections('unsupported_field_members', [
+		Round4Rejection{'bad_field_is_interface', 'struct S {
 		name int
 	}
 
@@ -1502,9 +1483,8 @@ fn main() {
 		println(field.is_interface)
 	}
 }
-',
-		'unknown FieldData member `is_interface`')
-	round4_run_bad(v3_bin, 'bad_field_is_function', 'struct S {
+', 'unknown FieldData member `is_interface`'},
+		Round4Rejection{'bad_field_is_function', 'struct S {
 		name int
 	}
 
@@ -1513,12 +1493,11 @@ fn main() {
 		println(field.is_function)
 	}
 }
-',
-		'unknown FieldData member `is_function`')
+', 'unknown FieldData member `is_function`'},
+	])
 }
 
 fn test_enum_values_use_const_from_declaring_module() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'enum_const_decl_module', {
 		'v.mod':           "Module { name: 'enum_const_decl_module' }\n"
 		'colors/colors.v': 'module colors
@@ -1551,7 +1530,6 @@ fn main() {
 }
 
 fn test_enum_values_resolve_enum_member_references() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_member_ref_values', '@[_allow_multiple_values]
 enum Multi {
 	base = 100
@@ -1572,7 +1550,6 @@ fn main() {
 }
 
 fn test_enum_values_preserve_flag_values_and_attrs() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_flag_attrs', "@[flag]
 enum Perm {
 	read  @[json: 'r'; primary]
@@ -1595,7 +1572,6 @@ fn main() {
 }
 
 fn test_selective_imported_enum_alias_resolves_underlying_enum() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'selective_enum_alias', {
 		'v.mod':           "Module { name: 'selective_enum_alias' }\n"
 		'colors/colors.v': 'module colors
@@ -1621,7 +1597,6 @@ fn main() {
 }
 
 fn test_operator_overload_struct_pseudovar() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'operator_overload_struct_pseudovar', 'struct S {
 	name string
 }
@@ -1641,7 +1616,6 @@ fn main() {
 }
 
 fn test_comptime_shared_type_group_is_checked_like_transformer() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'shared_type_group', "struct Counter {}
 
 fn main() {
@@ -1656,7 +1630,6 @@ fn main() {
 }
 
 fn test_comptime_voidptr_type_group_is_checked_like_transformer() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'voidptr_type_group', "fn main() {
 	$if voidptr is $voidptr {
 		println('voidptr')
@@ -1669,7 +1642,6 @@ fn test_comptime_voidptr_type_group_is_checked_like_transformer() {
 }
 
 fn test_cached_values_do_not_replace_reflection_guard_identifiers() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'cached_reflection_guard_identifiers', "struct Foo {
 	id    int
 	title string
@@ -1706,7 +1678,6 @@ fn main() {
 }
 
 fn test_method_metadata_arrays_attrs_and_type_guards_are_materialized() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'method_metadata_materialized', "struct App {}
 
 @[get]
@@ -1749,7 +1720,6 @@ fn main() {
 }
 
 fn test_method_parameter_count_guards_are_folded() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'method_parameter_count_guards', 'struct Counted {}
 
 fn (item Counted) empty() {
@@ -1778,7 +1748,6 @@ fn main() {
 }
 
 fn test_comptime_method_calls_accept_spread_and_variadic_arity() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'method_call_spread_and_variadic_arity', 'struct Calls {}
 
 fn (calls Calls) fixed(value string, count int) string {
@@ -1810,7 +1779,6 @@ fn main() {
 }
 
 fn test_method_metadata_locations_are_materialized() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'method_metadata_location', 'struct Located {}
 
 fn (item Located) run() {
@@ -1852,7 +1820,6 @@ fn main() {
 }
 
 fn test_field_type_membership_uses_the_selected_receiver_type() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_type_membership_receiver', 'struct ReflectedFields {
 	id int
 }
@@ -1888,7 +1855,6 @@ fn main() {
 }
 
 fn test_optional_reflected_for_iterable_with_fallback_is_not_unwrapped_twice() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'optional_reflected_for_fallback', 'struct OptionalRows {
 	values ?[]int
 }
@@ -1908,7 +1874,6 @@ fn main() {
 }
 
 fn test_quoted_attribute_preserves_structured_kind() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'quoted_attribute_kind', "@['route'; plain]
 struct Tagged {}
 
@@ -1928,7 +1893,6 @@ fn main() {
 }
 
 fn test_string_attribute_names_preserve_colons() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'string_attribute_names_with_colons', "@['http://x'; 'a:b']
 struct ColonNamedAttrs {}
 
@@ -1951,7 +1915,6 @@ fn main() {
 }
 
 fn test_qualified_single_letter_type_is_a_concrete_generic_argument() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'qualified_single_letter_generic_arg', {
 		'v.mod':           "Module { name: 'qualified_single_letter_generic_arg' }\n"
 		'letter/letter.v': 'module letter
@@ -1995,7 +1958,6 @@ fn main() {
 }
 
 fn test_attribute_reflection_resolves_import_alias_sources() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'attribute_reflection_import_alias', {
 		'v.mod':           "Module { name: 'attribute_reflection_import_alias' }\n"
 		'routes/routes.v': 'module routes
@@ -2028,7 +1990,6 @@ fn main() {
 }
 
 fn test_attribute_reflection_resolves_selective_import_sources() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'attribute_reflection_selective_import', {
 		'v.mod':           "Module { name: 'attribute_reflection_selective_import' }\n"
 		'routes/routes.v': 'module routes
@@ -2063,7 +2024,6 @@ fn main() {
 }
 
 fn test_method_type_value_and_indexed_param_type_guards_are_materialized() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'method_type_and_indexed_param_guards', 'struct MethodTypes {}
 
 fn (m MethodTypes) empty() {
@@ -2105,7 +2065,6 @@ fn main() {
 }
 
 fn test_comptime_pseudo_value_is_not_resolved_as_cached_local() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'pseudo_value_cached_local', "fn main() {
 	c := 'js'
 	_ = c
@@ -2129,7 +2088,6 @@ fn test_build_pseudo_values_expand_in_comptime_conditions() {
 			os.unsetenv('SOURCE_DATE_EPOCH')
 		}
 	}
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'build_pseudo_values_in_comptime_conditions', "fn main() {
 	mut rows := []string{}
 	\$if @BUILD_TIMESTAMP == '0' {
@@ -2153,7 +2111,6 @@ fn test_build_pseudo_values_expand_in_comptime_conditions() {
 }
 
 fn test_path_pseudo_values_expand_in_comptime_conditions() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'path_pseudo_values_in_comptime_conditions', "fn main() {
 	mut rows := []string{}
 	\$if @FILE != '@FILE' {
@@ -2194,9 +2151,8 @@ fn test_path_pseudo_values_expand_in_comptime_conditions() {
 }
 
 fn test_comptime_line_pseudo_values_use_their_token_positions() {
-	v3_bin := round4_build_v3()
-	if_name := 'comptime_line_pseudo_token_positions_if'
-	src_path := '${round4_tmp_path(if_name)}.v'
+	name := 'comptime_line_pseudo_token_positions'
+	src_path := '${round4_tmp_path(name)}.v'
 	src_file_name := os.file_name(src_path)
 	mut lines := ['fn main() {', '\tmut rows := []string{}']
 	if_line := lines.len + 1
@@ -2209,42 +2165,25 @@ fn test_comptime_line_pseudo_values_use_their_token_positions() {
 	lines << '\t{'
 	lines << "\t\trows << 'if-file-line'"
 	lines << '\t}'
+	match_line := lines.len + 1
+	lines << '\t\$match @LINE'
+	lines << '\t{'
+	lines << "\t\t'${match_line}' { rows << 'match-line' }"
+	lines << "\t\t\$else { rows << 'wrong-match-line' }"
+	lines << '\t}'
+	match_file_line := lines.len + 1
+	lines << '\t\$match @FILE_LINE'
+	lines << '\t{'
+	lines << "\t\t'${src_file_name}:${match_file_line}' { rows << 'match-file-line' }"
+	lines << "\t\t\$else { rows << 'wrong-match-file-line' }"
+	lines << '\t}'
 	lines << "\tprintln(rows.join('|'))"
 	lines << '}'
-	out := round4_run_good(v3_bin, if_name, lines.join('\n') + '\n')
-	assert out == 'if-line|if-file-line'
-
-	match_name := 'comptime_line_pseudo_token_positions_match'
-	mut match_lines := ['fn main() {', '\tmut rows := []string{}']
-	match_line := match_lines.len + 1
-	match_lines << '\t\$match @LINE'
-	match_lines << '\t{'
-	match_lines << "\t\t'${match_line}' { rows << 'match-line' }"
-	match_lines << "\t\t\$else { rows << 'wrong-match-line' }"
-	match_lines << '\t}'
-	match_lines << "\tprintln(rows.join('|'))"
-	match_lines << '}'
-	match_out := round4_run_good(v3_bin, match_name, match_lines.join('\n') + '\n')
-	assert match_out == 'match-line'
-
-	match_file_name := 'comptime_line_pseudo_token_positions_match_file'
-	match_file_src_path := '${round4_tmp_path(match_file_name)}.v'
-	match_file_src_name := os.file_name(match_file_src_path)
-	mut match_file_lines := ['fn main() {', '\tmut rows := []string{}']
-	match_file_line := match_file_lines.len + 1
-	match_file_lines << '\t\$match @FILE_LINE'
-	match_file_lines << '\t{'
-	match_file_lines << "\t\t'${match_file_src_name}:${match_file_line}' { rows << 'match-file-line' }"
-	match_file_lines << "\t\t\$else { rows << 'wrong-match-file-line' }"
-	match_file_lines << '\t}'
-	match_file_lines << "\tprintln(rows.join('|'))"
-	match_file_lines << '}'
-	match_file_out := round4_run_good(v3_bin, match_file_name, match_file_lines.join('\n') + '\n')
-	assert match_file_out == 'match-file-line'
+	out := round4_run_good(v3_bin, name, lines.join('\n') + '\n')
+	assert out == 'if-line|if-file-line|match-line|match-file-line'
 }
 
 fn test_attribute_line_pseudo_values_use_their_token_positions() {
-	v3_bin := round4_build_v3()
 	name := 'attribute_line_pseudo_token_positions'
 	src_path := '${round4_tmp_path(name)}.v'
 	src_file_name := os.file_name(src_path)
@@ -2266,7 +2205,6 @@ fn test_attribute_line_pseudo_values_use_their_token_positions() {
 }
 
 fn test_comptime_define_builtin_is_not_resolved_as_cached_local() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'define_builtin_cached_local', "fn main() {
 	d := false
 	_ = d
@@ -2281,7 +2219,6 @@ fn test_comptime_define_builtin_is_not_resolved_as_cached_local() {
 }
 
 fn test_fn_literal_comptime_values_do_not_leak_to_outer_scope() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'fn_literal_comptime_value_scope', "fn main() {
 	f := fn () {
 		x := 'inside'
@@ -2299,7 +2236,6 @@ fn test_fn_literal_comptime_values_do_not_leak_to_outer_scope() {
 }
 
 fn test_cached_char_literals_match_scanner_values() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'cached_char_literals', "const cached_char = `a`
 
 fn main() {
@@ -2321,7 +2257,6 @@ fn main() {
 }
 
 fn test_comptime_char_literal_operand_is_not_replaced_by_cached_local() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'char_literal_cached_local_collision', "fn main() {
 	a := `b`
 	ch := `a`
@@ -2337,7 +2272,6 @@ fn test_comptime_char_literal_operand_is_not_replaced_by_cached_local() {
 }
 
 fn test_dynamic_selector_outside_reflection_loop_is_rejected() {
-	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'dynamic_selector_outside_reflection_loop', 'struct Item {
 	name string
 }
@@ -2354,8 +2288,8 @@ fn main() {
 }
 
 fn test_unresolved_shorthand_method_selectors_are_rejected() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'shorthand_method_selector_outside_loop', 'struct Item {}
+	round4_check_rejections('shorthand_method_selectors', [
+		Round4Rejection{'shorthand_method_selector_outside_loop', 'struct Item {}
 
 fn (item Item) run() {
 	_ = item
@@ -2365,9 +2299,8 @@ fn main() {
 	item := Item{}
 	item.$method()
 }
-',
-		'unknown identifier `method`')
-	round4_run_bad(v3_bin, 'misspelled_shorthand_method_selector', 'struct Item {}
+', 'unknown identifier `method`'},
+		Round4Rejection{'misspelled_shorthand_method_selector', 'struct Item {}
 
 fn (item Item) run() {
 	_ = item
@@ -2379,12 +2312,11 @@ fn main() {
 		item.$methd()
 	}
 }
-',
-		'unknown identifier `methd`')
+', 'unknown identifier `methd`'},
+	])
 }
 
 fn test_bare_method_data_and_imported_return_type_are_materialized() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'bare_method_data_imported_return', {
 		'v.mod':     "Module { name: 'bare_method_data_imported_return' }\n"
 		'pkg/pkg.v': 'module pkg
@@ -2434,7 +2366,6 @@ fn main() {
 }
 
 fn test_imported_function_param_types_use_declaring_module() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'imported_function_param_module', {
 		'v.mod':     "Module { name: 'imported_function_param_module' }\n"
 		'pkg/pkg.v': 'module pkg
@@ -2472,7 +2403,6 @@ fn main() {
 }
 
 fn test_raw_string_operand_is_normalized_before_comptime_folding() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'raw_string_comptime_local_collision', "fn main() {
 	r := 'wrong'
 	_ = r
@@ -2487,7 +2417,6 @@ fn test_raw_string_operand_is_normalized_before_comptime_folding() {
 }
 
 fn test_raw_string_comptime_match_literals_are_normalized() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'raw_string_comptime_match_literals', "fn main() {
 	\$match r'abc' {
 		'abc' { println('subject') }
@@ -2503,7 +2432,6 @@ fn test_raw_string_comptime_match_literals_are_normalized() {
 }
 
 fn test_field_condition_substitution_skips_string_literals() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_condition_string_literal', "struct QuotedFields {
 pub:
 	id int
@@ -2528,7 +2456,6 @@ fn main() {
 }
 
 fn test_method_condition_substitution_skips_string_literals() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'method_condition_string_literal', "struct QuotedMethods {}
 
 pub fn (q QuotedMethods) target() {
@@ -2558,7 +2485,6 @@ fn main() {
 }
 
 fn test_vmod_file_expands_in_comptime_conditions() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'vmod_file_comptime_conditions', {
 		'v.mod':  "Module { name: 'vmod_file_comptime_conditions' }\n"
 		'main.v': "module main
@@ -2582,7 +2508,6 @@ fn main() {
 }
 
 fn test_vmod_file_comptime_condition_without_project_is_compile_error() {
-	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'vmod_file_comptime_condition_without_project', "fn main() {
 	\$if @VMOD_FILE == '' {}
 }
@@ -2591,7 +2516,6 @@ fn test_vmod_file_comptime_condition_without_project_is_compile_error() {
 }
 
 fn test_comptime_const_values_persist_across_module_files_without_leaking() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'comptime_const_values_across_files', {
 		'v.mod':      "Module { name: 'comptime_const_values_across_files' }\n"
 		'a_consts.v': "module main
@@ -2632,7 +2556,6 @@ pub fn value() string {
 }
 
 fn test_soa_attribute_and_static_method_reflection_distinction() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'soa_and_static_method_distinction', "@[soa]
 struct SoaItem {
 	value int
@@ -2678,7 +2601,6 @@ fn main() {
 }
 
 fn test_v_owned_matching_soa_companion_declaration_is_preserved() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'v_owned_matching_soa_companion', "@[soa]
 struct VOwnedSoaItem {
 	value int
@@ -2707,7 +2629,6 @@ fn main() {
 }
 
 fn test_header_backed_soa_companion_uses_native_typedef() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'header_backed_soa_companion', {
 		'v.mod':           "Module { name: 'header_backed_soa_companion' }\n"
 		'soa.h':           '#ifndef HEADER_BACKED_SOA_H\n#define HEADER_BACKED_SOA_H\n#include <stdint.h>\ntypedef struct HeaderSoaItem_SOA {\n\tint len;\n\tint cap;\n\tint64_t* value;\n} HeaderSoaItem_SOA;\n#endif\n'
@@ -2747,7 +2668,6 @@ fn main() {
 }
 
 fn test_param_and_attribute_guards_preserve_quoted_member_text() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'quoted_param_attribute_guards', "@[route]
 @[timeout: 5]
 struct GuardAttrs {}
@@ -2776,7 +2696,6 @@ fn main() {
 }
 
 fn test_nested_param_and_attribute_reflection_respects_shadowing() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_param_attribute_shadowing', "@[outer]
 struct OuterAttrs {}
 
@@ -2812,7 +2731,6 @@ fn main() {
 }
 
 fn test_nested_param_guards_respect_identifier_boundaries() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_param_guard_identifier_boundaries', "fn outer(y string, z int) {
 	_ = y
 	_ = z
@@ -2839,7 +2757,6 @@ fn main() {
 }
 
 fn test_raw_string_attribute_arguments_are_normalized() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'raw_string_attribute_argument', "@[route: r'/path']
 fn handler() {}
 
@@ -2855,7 +2772,6 @@ fn main() {
 }
 
 fn test_normal_string_attribute_arguments_are_unescaped() {
-	v3_bin := round4_build_v3()
 	src := [
 		"@[quote: 'O\\'Reilly']",
 		"@[line: 'a\\n']",
@@ -2889,7 +2805,6 @@ fn test_normal_string_attribute_arguments_are_unescaped() {
 }
 
 fn test_attribute_guard_escapes_reflected_string_arguments() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'attribute_guard_escaped_argument', '@[label: "O\'Reilly"]
 fn handler() {}
 
@@ -2907,7 +2822,6 @@ fn main() {
 }
 
 fn test_nested_method_attribute_guard_preserves_inner_selector() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_attribute_guard', "struct App {}
 
 @[get]
@@ -2936,7 +2850,6 @@ fn main() {
 }
 
 fn test_nested_attribute_method_guard_preserves_inner_selector() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_attribute_method_guard', "@[route]
 struct Routes {}
 
@@ -2966,7 +2879,6 @@ fn main() {
 }
 
 fn test_nested_param_field_guard_preserves_inner_selector() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_param_field_guard', "struct Row {
 	id int
 	name string
@@ -2993,7 +2905,6 @@ fn main() {
 }
 
 fn test_comptime_string_literal_text_is_not_resolved_as_cached_local() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'comptime_string_literal_cached_local', "fn main() {
 	x := 'y'
 	_ = x
@@ -3008,7 +2919,6 @@ fn test_comptime_string_literal_text_is_not_resolved_as_cached_local() {
 }
 
 fn test_params_reflection_resolves_import_alias_source() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'params_reflection_import_alias', {
 		'v.mod':     "Module { name: 'params_reflection_import_alias' }\n"
 		'pkg/pkg.v': 'module pkg
@@ -3034,7 +2944,6 @@ fn main() {
 }
 
 fn test_params_reflection_resolves_selective_import_source() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'params_reflection_selective_import', {
 		'v.mod':     "Module { name: 'params_reflection_selective_import' }\n"
 		'pkg/pkg.v': 'module pkg
@@ -3064,7 +2973,6 @@ fn main() {
 }
 
 fn test_local_reflection_sources_are_qualified_to_current_module() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'local_reflection_source_module_qualification', {
 		'v.mod':               "Module { name: 'local_reflection_source_module_qualification' }\n"
 		'localmod/localmod.v': 'module localmod
@@ -3103,7 +3011,6 @@ fn main() {
 }
 
 fn test_nested_field_method_guard_preserves_inner_selector() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_field_method_guard', "struct Row {
 	id int
 	name string
@@ -3135,7 +3042,6 @@ fn main() {
 }
 
 fn test_nested_method_reflection_respects_shadowed_loop_variable() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_shadowing', 'struct OuterMethods {}
 
 fn (o OuterMethods) outer(value string) string {
@@ -3173,7 +3079,6 @@ fn main() {
 }
 
 fn test_generic_receiver_method_metadata_uses_concrete_args() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'generic_receiver_method_metadata', 'struct Box[T] {
 	value T
 }
@@ -3207,8 +3112,8 @@ fn main() {
 }
 
 fn test_concrete_generic_receiver_reflection_checks_selected_branches() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'generic_receiver_selected_name_branch', 'struct Box[T] {}
+	round4_check_rejections('generic_receiver_branches', [
+		Round4Rejection{'generic_receiver_selected_name_branch', 'struct Box[T] {}
 
 fn (b Box[T]) get(value T) T {
 	_ = b
@@ -3223,9 +3128,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_generic_method_name_branch')
-	round4_run_bad(v3_bin, 'generic_receiver_selected_param_branch', 'struct Box[T] {}
+', 'unknown function: missing_generic_method_name_branch'},
+		Round4Rejection{'generic_receiver_selected_param_branch', 'struct Box[T] {}
 
 fn (b Box[T]) get(value T) T {
 	_ = b
@@ -3240,12 +3144,11 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_generic_method_param_branch')
+', 'unknown function: missing_generic_method_param_branch'},
+	])
 }
 
 fn test_generic_reflection_compile_error_waits_for_selected_branch() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'generic_reflection_unselected_compile_error', "struct App {}
 
 fn (app App) present() {
@@ -3288,7 +3191,6 @@ fn main() {
 }
 
 fn test_generic_method_reflection_preserves_main_specialization_origin() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'generic_method_reflection_main_origin', {
 		'v.mod':     "Module { name: 'generic_method_reflection_main_origin' }\n"
 		'pkg/pkg.v': 'module pkg
@@ -3326,7 +3228,6 @@ fn main() {
 }
 
 fn test_selected_comptime_if_expression_keeps_setup_statements() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'comptime_if_expr_setup_statements', "fn main() {
 	x := \$if true {
 		println('then setup')
@@ -3349,7 +3250,6 @@ fn test_selected_comptime_if_expression_keeps_setup_statements() {
 }
 
 fn test_comptime_string_comparisons_normalize_escapes() {
-	v3_bin := round4_build_v3()
 	src := [
 		'const quote = "\'"',
 		"const slash = '\\\\'",
@@ -3367,8 +3267,8 @@ fn test_comptime_string_comparisons_normalize_escapes() {
 }
 
 fn test_deferred_reflection_loops_check_static_body_code() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'method_loop_static_body_error', 'struct App {}
+	round4_check_rejections('reflection_static_bodies', [
+		Round4Rejection{'method_loop_static_body_error', 'struct App {}
 
 fn (app App) run(value int) {
 	_ = app
@@ -3380,9 +3280,8 @@ fn main() {
 		missing_method_loop_fn()
 	}
 }
-',
-		'unknown function: missing_method_loop_fn')
-	round4_run_bad(v3_bin, 'param_loop_static_body_error', 'fn consume(value int) {
+', 'unknown function: missing_method_loop_fn'},
+		Round4Rejection{'param_loop_static_body_error', 'fn consume(value int) {
 	_ = value
 }
 
@@ -3391,9 +3290,8 @@ fn main() {
 		missing_param_loop_fn()
 	}
 }
-',
-		'unknown function: missing_param_loop_fn')
-	round4_run_bad(v3_bin, 'attribute_loop_static_body_error', '@[route]
+', 'unknown function: missing_param_loop_fn'},
+		Round4Rejection{'attribute_loop_static_body_error', '@[route]
 struct App {}
 
 fn main() {
@@ -3401,13 +3299,13 @@ fn main() {
 		missing_attribute_loop_fn()
 	}
 }
-',
-		'unknown function: missing_attribute_loop_fn')
+', 'unknown function: missing_attribute_loop_fn'},
+	])
 }
 
 fn test_deferred_reflection_loops_check_selected_metadata_branches() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'method_loop_selected_branch_error', 'struct App {}
+	round4_check_rejections('reflection_name_branches', [
+		Round4Rejection{'method_loop_selected_branch_error', 'struct App {}
 
 fn (app App) run() {
 	_ = app
@@ -3420,9 +3318,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_method_fn')
-	round4_run_bad(v3_bin, 'method_loop_selected_missing_param_branch_error', 'struct App {}
+', 'unknown function: missing_selected_method_fn'},
+		Round4Rejection{'method_loop_selected_missing_param_branch_error', 'struct App {}
 
 fn (app App) run() {
 	_ = app
@@ -3435,9 +3332,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_method_param_slot_fn')
-	round4_run_bad(v3_bin, 'param_loop_selected_branch_error', 'fn consume(value int) {
+', 'unknown function: missing_selected_method_param_slot_fn'},
+		Round4Rejection{'param_loop_selected_branch_error', 'fn consume(value int) {
 	_ = value
 }
 
@@ -3448,9 +3344,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_param_fn')
-	round4_run_bad(v3_bin, 'attribute_loop_selected_branch_error', '@[route]
+', 'unknown function: missing_selected_param_fn'},
+		Round4Rejection{'attribute_loop_selected_branch_error', '@[route]
 struct App {}
 
 fn main() {
@@ -3460,13 +3355,13 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_attribute_fn')
+', 'unknown function: missing_selected_attribute_fn'},
+	])
 }
 
 fn test_deferred_reflection_loops_check_selected_non_name_metadata_branches() {
-	v3_bin := round4_build_v3()
-	round4_run_bad(v3_bin, 'method_loop_selected_is_pub_branch_error', 'struct App {}
+	round4_check_rejections('reflection_non_name_branches', [
+		Round4Rejection{'method_loop_selected_is_pub_branch_error', 'struct App {}
 
 pub fn (app App) run() {
 	_ = app
@@ -3479,9 +3374,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_public_method_fn')
-	round4_run_bad(v3_bin, 'param_loop_selected_typ_branch_error', 'fn consume(value string) {
+', 'unknown function: missing_selected_public_method_fn'},
+		Round4Rejection{'param_loop_selected_typ_branch_error', 'fn consume(value string) {
 	_ = value
 }
 
@@ -3492,9 +3386,8 @@ fn main() {
 		}
 	}
 }
-',
-		'unknown function: missing_selected_string_param_fn')
-	round4_run_bad(v3_bin, 'attribute_loop_selected_arg_branch_error', "@[route: '/path']
+', 'unknown function: missing_selected_string_param_fn'},
+		Round4Rejection{'attribute_loop_selected_arg_branch_error', "@[route: '/path']
 struct App {}
 
 fn main() {
@@ -3504,12 +3397,11 @@ fn main() {
 		}
 	}
 }
-",
-		'unknown function: missing_selected_attribute_arg_fn')
+", 'unknown function: missing_selected_attribute_arg_fn'},
+	])
 }
 
 fn test_deferred_reflection_loops_skip_unselected_metadata_branches() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'deferred_loop_unselected_metadata_branches', '@[route]
 struct App {}
 
@@ -3551,7 +3443,6 @@ fn main() {
 }
 
 fn test_deferred_reflection_loops_skip_unselected_non_name_metadata_branches() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'deferred_loop_unselected_non_name_metadata_branches', '@[route]
 struct App {}
 
@@ -3593,7 +3484,6 @@ fn main() {
 }
 
 fn test_empty_deferred_reflection_loops_skip_static_body_checks() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'empty_deferred_reflection_loops', 'struct Empty {}
 
 fn no_params() {}
@@ -3658,7 +3548,6 @@ fn main() {
 }
 
 fn test_empty_interface_attribute_loop_skips_static_body_checks() {
-	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'empty_interface_attribute_loop', 'interface EmptyInterface {}
 
 fn main() {

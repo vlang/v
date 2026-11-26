@@ -72,10 +72,9 @@ fn main() {
 	ordinary := os.join_path(root, 'ordinary')
 	ordinary_build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'c', '-nocache', '-gc', 'none',
 		'-o', ordinary, root], @VEXEROOT, {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	assert ordinary_build.exit_code == 0, ordinary_build.output
 	ordinary_run := cmdexec.run(ordinary, [])
@@ -99,7 +98,7 @@ fn main() {
 		c_path := os.join_path(root, 'main_${target_headers}.c')
 		program := os.join_path(root, 'fastc_${target_headers}')
 		os.write_file(c_path, generated) or { panic(err) }
-		build := cmdexec.run('cc', ['-std=gnu11', '-O2', '-fno-strict-aliasing',
+		build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-O2', '-fno-strict-aliasing',
 			'-Werror=incompatible-pointer-types', '-o', program, c_path])
 		assert build.exit_code == 0, build.output
 		run := cmdexec.run(program, [])
@@ -136,10 +135,9 @@ fn main() { _ := Reader(Source{}) }
 		os.write_file(path, source) or { panic(err) }
 		ordinary := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'c', '-nocache', '-gc', 'none',
 			'-o', os.join_path(root, 'invalid_${i}'), path], @VEXEROOT, {
-			'VEXE':                   @VEXE
-			'VFLAGS':                 ''
-			'VOSARGS':                ''
-			'V_MACOS_V3_NO_FALLBACK': '1'
+			'VEXE':    @VEXE
+			'VFLAGS':  ''
+			'VOSARGS': ''
 		})
 		assert ordinary.exit_code != 0, ordinary.output
 	}

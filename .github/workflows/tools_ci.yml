@@ -19,7 +19,6 @@ jobs:
     env:
       VFLAGS: -cc gcc
       VJOBS: '2'
-      V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -32,7 +31,7 @@ jobs:
         with:
           symlink: false
       - name: Check BSD tool job failure propagation
-        run: ./v -new-compiler cmd/tools/tools_ci_test.v
+        run: ./v cmd/tools/tools_ci_test.v
       - name: Check shell regression test formatting
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ./v fmt -verify cmd/tools/tools_ci_test.v
@@ -300,7 +299,7 @@ jobs:
             suite: strict
       fail-fast: false
     env:
-      # The guest has 8 GiB RAM; parallel compiler self-tests exhausted swap.
+      # Historical guest logs show compiler workers exhausting swap.
       VJOBS: '1'
       VFLAGS: -cc ${{ matrix.cc }}
       V_CI_SUITE: ${{ matrix.suite }}
@@ -318,9 +317,10 @@ jobs:
         with:
           operating_system: freebsd
           version: '15.1'
-          memory: 8G
-          # Keep all three test shards; VJOBS=1 caps memory-intensive
-          # compilations within each shard rather than dropping tests.
+          # GCC peaks at about 2 GiB compiling the cmd/v tests, which build the whole
+          # compiler; three of them ran out of memory in 8 GiB. The host has 16 GiB.
+          memory: ${{ matrix.cc == 'gcc' && '12G' || '8G' }}
+          # Keep the existing VM size and every shard; cap concurrent test workers.
           cpu_count: 3
           shell: sh
           sync_files: runner-to-vm

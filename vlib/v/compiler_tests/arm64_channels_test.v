@@ -43,8 +43,45 @@ fn sort_with(mut values []int, compare fn (&int, &int) int) {
 	C.qsort(values.data, uint(values.len), uint(sizeof(int)), compare)
 }
 
+fn check_matrix(matrix [2][3]int) {
+	assert matrix[0][0] == 1
+	assert matrix[0][1] == 2
+	assert matrix[0][2] == 3
+	assert matrix[1][0] == 4
+	assert matrix[1][1] == 5
+	assert matrix[1][2] == 6
+}
+
+fn test_payloads() {
+	matrices := chan [2][3]int{cap: 1}
+	matrix := [[1, 2, 3]!, [4, 5, 6]!]!
+	assert matrices.try_push(&matrix) == .success
+	mut received := [2][3]int{}
+	assert matrices.try_pop(mut received) == .success
+	check_matrix(received)
+
+	matrices <- matrix
+	blocking := <-matrices
+	check_matrix(blocking)
+	select {
+		matrices <- matrix {}
+	}
+	select {
+		selected := <-matrices { check_matrix(selected) }
+	}
+
+	pointers := chan voidptr{cap: 1}
+	value := 42
+	pointer := voidptr(&value)
+	assert pointers.try_push(&pointer) == .success
+	got := <-pointers
+	assert got == voidptr(&pointer)
+	assert got != pointer
+}
+
 fn main() {
 	C.alarm(20)
+	test_payloads()
 	mut q := &Queue{
 		jobs: chan Job{cap: 8}
 	}
@@ -122,6 +159,39 @@ fn main() {
 	numbers.close()
 	println('closed \${numbers.closed}')
 
+	queue := chan Job{cap: 1}
+	mut popped := Job{value: -1}
+	assert queue.try_pop(mut popped) != .success
+	assert popped.value == -1
+	assert queue.try_push(Job{value: 23, stop: true}) == .success
+	assert queue.try_push(Job{value: 99}) != .success
+	assert queue.try_pop(mut popped) == .success
+	assert popped.value == 23 && popped.stop
+	assert queue.try_pop(mut popped) != .success
+	queue.close()
+	assert queue.try_pop(mut popped) == .closed
+	assert queue.try_push(Job{}) == .closed
+
+	texts.try_push('nonblocking')
+	mut text := ''
+	assert texts.try_pop(mut text) == .success
+	println(text)
+	pairs := chan [2]int{cap: 1}
+	pair := [4, 7]!
+	assert pairs.try_push(&pair) == .success
+	mut received_pair := [0, 0]!
+	assert pairs.try_pop(mut received_pair) == .success
+	assert received_pair == pair
+	pairs <- pair
+	blocking_pair := <-pairs
+	assert blocking_pair == pair
+	select {
+		pairs <- pair {}
+	}
+	select {
+		selected_pair := <-pairs { assert selected_pair == pair }
+	}
+
 	mut values := [3, 1, 2]
 	sort_with(mut values, less)
 	println(values)
@@ -138,6 +208,7 @@ timeout
 len 0 cap 1 closed false
 len 1
 closed true
+nonblocking
 [1, 2, 3]'
 
 fn test_channels_and_select_work_on_arm64() {

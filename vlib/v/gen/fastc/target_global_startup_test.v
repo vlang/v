@@ -108,7 +108,7 @@ __attribute__((constructor)) static void native_entry(void) {
 	ready = true;
 }
 ') or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-o', program, c_path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-o', program, c_path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

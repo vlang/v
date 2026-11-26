@@ -82,7 +82,7 @@ runs:
     # missing artifacts fall back to a local optimized compiler build.
     - name: Download the bootstrapped compiler
       id: artifact
-      if: inputs.use-prebuilt == 'true' && steps.compiler.outputs.platform != '' && github.workflow == 'CI master' && steps.compiler.outputs.sha == github.sha
+      if: inputs.use-prebuilt == 'true' && steps.compiler.outputs.platform != '' && (github.workflow == 'CI master' || github.workflow == 'CI master portability') && steps.compiler.outputs.sha == github.sha
       # A downstream-only rerun can outlive artifact cleanup or retention.
       # Missing artifacts fall back to an optimized local build.
       continue-on-error: true
@@ -176,9 +176,9 @@ runs:
         }
         & "$env:GITHUB_ACTION_PATH/../../workflows/prepare_v.ps1" -Prebuilt $env:V_CI_PREBUILT
         if ($LASTEXITCODE -ne 0) { throw "Optimized compiler setup failed (exit $LASTEXITCODE)" }
-        .\v.exe -new-compiler -gc none run cmd/tools/detect_tcc.v
+        .\v.exe -gc none run cmd/tools/detect_tcc.v
         if ($LASTEXITCODE -ne 0) { throw "TCC detection failed (exit $LASTEXITCODE)" }
-        .\v.exe -new-compiler -gc none run .github/problem-matchers/register_all.vsh
+        .\v.exe -gc none run .github/problem-matchers/register_all.vsh
         if ($LASTEXITCODE -ne 0) { throw "Problem matcher setup failed (exit $LASTEXITCODE)" }
         if ($env:RUN_SYMLINK -eq 'true') {
           .\v.exe symlink

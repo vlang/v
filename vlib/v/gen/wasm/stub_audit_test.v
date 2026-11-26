@@ -30,18 +30,27 @@ module wasm
 
 import encoding.hex
 import os
+import v.cmdexec
 import v.parser
 import v.pref
 import v.ssa
 import v.transform
 import v.types
 
+const stub_default_scratch = os.join_path(os.vtmp_dir(), 'wasm_stub_${os.getpid()}')
+
 fn stub_scratch() string {
 	custom := os.getenv('STUB_SCRATCH')
 	if custom.len > 0 {
 		return custom
 	}
-	return os.join_path(os.home_dir(), 'AppData', 'Local', 'Temp', 'opencode', 'wasmstub')
+	return stub_default_scratch
+}
+
+fn testsuite_end() {
+	if os.getenv('STUB_SCRATCH') == '' {
+		os.rmdir_all(stub_default_scratch) or {}
+	}
 }
 
 fn stub_enter_workspace() {
@@ -887,7 +896,10 @@ fn stub_child(tag string) {
 }
 
 fn stub_child_build(tag string) string {
-	res := os.exec([os.executable(), '--stub-child', tag])
+	mut environment := os.environ()
+	// The child exits before suite teardown. Its files belong to the parent's scratch tree.
+	environment['STUB_SCRATCH'] = stub_scratch()
+	res := cmdexec.run_in_merged_with_env(os.executable(), ['--stub-child', tag], '', environment)
 	return res.output
 }
 

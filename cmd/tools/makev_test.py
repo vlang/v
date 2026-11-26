@@ -52,6 +52,19 @@ class BootstrapConfigurationTests(unittest.TestCase):
                 self.assertEqual(len(commands), 1)
                 self.assertIn("%VC_BOOTSTRAP_DEFINE%", commands[0])
 
+    def test_tcc_bootstrap_searches_checkout_root_with_spaces(self):
+        # The vc snapshot lives under vc/ and can include
+        # thirdparty/stdatomic/win/atomic.h relative to the checkout root.
+        # -B selects TCC's runtime, not the snapshot's V header search root.
+        command = next(
+            line for line in routine("build_bootstrap_with_tcc").splitlines()
+            if line.lstrip().startswith('"!tcc_exe!" ') and '"%V_C_FILE%"' in line
+        )
+        self.assertIn(' -I "%~dp0." ', command)
+        # An unescaped trailing backslash before a closing Windows quote is
+        # ambiguous to some argument parsers when the root contains spaces.
+        self.assertNotIn(' -I "%~dp0\\" ', command)
+
     def test_msvc_bootstrap_selects_v1(self):
         # MSVC's cl.exe is invoked directly (there is no "!msvc_exe!" variable
         # the way the other three bootstraps have), so this needs its own
@@ -207,12 +220,6 @@ class BootstrapConfigurationTests(unittest.TestCase):
                     self.assertIn("call :build_stage_with_" + stage, body)
                 self.assertIn('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS%', body)
                 self.assertNotIn('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS%', body)
-
-    def test_install_does_not_build_a_fake_compatibility_compiler(self):
-        install = routine("move_updated_to_v")
-        self.assertNotIn("-d v1_fallback", install)
-        self.assertNotIn("V1_FALLBACK", SOURCE)
-        self.assertNotIn("V_FALLBACK_CC_ARGS", SOURCE)
 
     def test_failed_checks_and_postbuild_tools_are_not_masked(self):
         self.assertIn('"%V_EXE%" test-all\nexit /b !ERRORLEVEL!', routine("check"))
@@ -1197,15 +1204,13 @@ int main(void) {
             check=False,
         )
 
-    def test_smoke_log_reports_a_compiler_fallback(self):
+    def test_smoke_log_reports_a_c_compiler_retry(self):
         with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
             workdir = Path(directory)
             clean = self.run_smoke_log_check(workdir, "Hello, World!\n")
             self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
             for log_text in (
                 "warning: tcc compilation failed, falling back to gcc.exe\n",
-                "V compilation failed (c_compilation_error); retrying with the V1 compiler\n",
-                "note: V could not build this program with the default compiler\n",
             ):
                 with self.subTest(log=log_text):
                     result = self.run_smoke_log_check(workdir, log_text)

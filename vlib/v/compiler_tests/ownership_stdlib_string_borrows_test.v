@@ -5,7 +5,8 @@ fn test_ownership_standard_string_readers_borrow_owned_arguments() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'import os
+	os.write_file(source, 'import encoding.utf8
+import os
 import strconv
 import strings
 
@@ -25,6 +26,8 @@ fn main() {
 	assert strconv.parse_uint(value, 10, 64)! == 42
 	assert strconv.parse_int(value, 10, 64)! == 42
 	assert value == "42"
+	assert utf8.validate_str(value)
+	assert value == "42"
 	mut builder := strings.new_builder(8)
 	builder.write_string(value)
 	builder.write_string(value)
@@ -38,7 +41,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		assert out.output.trim_space() == 'ok', out.output
 	}
@@ -56,7 +59,7 @@ fn main() {
 	println(value)
 }
 ')!
-	out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
+	out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
 	assert out.exit_code != 0, out.output
 	assert out.output.contains('use of moved value: `value`'), out.output
 }
@@ -98,7 +101,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		assert out.output.trim_space() == 'ok', out.output
 	}
@@ -117,7 +120,7 @@ fn test_ownership_returned_string_fallback_moves_owned_argument() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
 		assert out.exit_code != 0, out.output
 		assert out.output.contains('use of moved value: `fallback`'), out.output
 	}
@@ -145,8 +148,50 @@ fn test_ownership_returned_string_fallback_copies_nonowning_arguments() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		assert out.output.trim_space() == 'ok', out.output
+	}
+}
+
+fn test_ownership_cached_utf8_validation_borrows_owned_strings() {
+	cc := 'cc'
+	if os.exec([cc, '--version']).exit_code != 0 {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'ownership_cached_utf8_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	previous_cache := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	defer {
+		if value := previous_cache {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+	}
+	// Distinct programs share module objects and each still needs checking.
+	for name in ['cold', 'warm'] {
+		source := os.join_path(root, '${name}.v')
+		executable := os.join_path(root, name + if os.user_os() == 'windows' { '.exe' } else { '' })
+		os.write_file(source, 'import encoding.utf8
+
+fn main() {
+	value := "${name}".to_owned()
+	assert utf8.validate_str(value)
+	println(value)
+}
+')!
+		build := os.exec([@VEXE, '-ownership', '-gc', 'none', '-cc', cc, '-v', '-o', executable,
+			source])
+		assert build.exit_code == 0, build.output
+		if name == 'warm' {
+			assert build.output.split_into_lines().any(it.trim_space().starts_with('.vh files:')
+				&& it.replace('\\', '/').contains('/utf8_')), build.output
+		}
+		run := os.exec([executable])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == name, run.output
 	}
 }

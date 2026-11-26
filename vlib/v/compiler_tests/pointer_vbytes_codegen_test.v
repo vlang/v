@@ -1,29 +1,18 @@
 import os
-
-const pointer_vbytes_vexe = @VEXE
-const pointer_vbytes_tests_dir = os.dir(@FILE)
-const pointer_vbytes_v3_dir = os.dir(pointer_vbytes_tests_dir)
-const pointer_vbytes_vlib_dir = os.dir(pointer_vbytes_v3_dir)
-const pointer_vbytes_v3_src = os.join_path(pointer_vbytes_v3_dir, 'v.v')
-
-fn pointer_vbytes_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_pointer_vbytes_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([pointer_vbytes_vexe, '-gc', 'none', '-path',
-			'${pointer_vbytes_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${pointer_vbytes_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn pointer_vbytes_compact_c(c_code string) string {
 	return c_code.replace(' ', '').replace('\t', '')
 }
 
 fn test_u8_pointer_vbytes_uses_byteptr_helper() {
-	v3_bin := pointer_vbytes_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_pointer_vbytes_input_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_pointer_vbytes_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_pointer_vbytes_input')
+	src := bin + '.v'
 	os.write_file(src, "
 fn main() {
 	unsafe {
@@ -47,10 +36,7 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_pointer_vbytes_input_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

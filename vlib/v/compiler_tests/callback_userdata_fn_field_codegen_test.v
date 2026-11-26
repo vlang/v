@@ -1,52 +1,40 @@
 // vtest ownership
 import os
 import strings
+import v.cmdexec
 import v.tempname
 
-const callback_vexe = @VEXE
 const callback_tests_dir = os.dir(@FILE)
 const callback_v3_dir = os.dir(callback_tests_dir)
 const callback_vlib_dir = os.dir(callback_v3_dir)
 const callback_v3_src = os.join_path(callback_v3_dir, 'v.v')
 const callback_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_callback_userdata_${tempname.unique_token()}')
 
-fn testsuite_begin() {
-	os.mkdir_all(callback_compiler_dir) or { panic(err) }
-}
-
 fn testsuite_end() {
 	os.rmdir_all(callback_compiler_dir) or {}
 }
 
-fn callback_build_v3() string {
-	return callback_build_v3_with_flags('serial', '-d ownership')
-}
-
-fn callback_build_v3_parallel() string {
-	return callback_build_v3_with_flags('parallel', '-d parallel')
-}
-
-fn callback_build_v3_with_flags(name string, flags string) string {
-	v3_bin := os.join_path(callback_compiler_dir, name) + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
+fn callback_ownership_compiler() string {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(callback_v3_src) {
+		return os.real_path(shared)
 	}
-	build :=
-		os.exec([callback_vexe, ...(os.split_args(flags) or { panic(err) }), '-gc', 'none', '-path',
-			'${callback_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${callback_v3_src}'])
+	bin := os.join_path(callback_compiler_dir, 'ownership') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(bin) {
+		return bin
+	}
+	os.mkdir_all(callback_compiler_dir) or { panic(err) }
+	build := os.exec([@VEXE, '-d', 'ownership', '-gc', 'none', '-path',
+		'${callback_vlib_dir}' + '|@vlib|@vmodules', '-o', bin, '${callback_v3_src}'])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+	return bin
 }
 
-fn callback_write_source(name string, source string) string {
-	path := os.join_path(os.temp_dir(), 'v3_callback_userdata_${name}_${os.getpid()}.v')
+fn callback_write_source(root string, name string, source string) string {
+	path := os.join_path(root, '${name}.v')
 	os.write_file(path, source) or { panic(err) }
 	return path
-}
-
-fn callback_compile(v3_bin string, source string, name string) os.Result {
-	out := os.join_path(os.temp_dir(), 'v3_callback_userdata_${name}_${os.getpid()}')
-	return os.exec([v3_bin, source, '-b', 'c', '-o', '${out}'])
 }
 
 fn callback_write_project_file(root string, rel string, source string) string {
@@ -70,8 +58,11 @@ fn callback_adapter_names(generated string, prefix string) []string {
 }
 
 fn test_autofree_bound_main_method_callback_uses_emitted_symbol() {
-	v3_bin := callback_build_v3()
-	source := callback_write_source('autofree_bound_main_method', 'module main
+	root := os.join_path(os.vtmp_dir(), 'v3_callback_userdata_bound_method_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	v3_bin := callback_ownership_compiler()
+	source := callback_write_source(root, 'autofree_bound_main_method', 'module main
 
 struct Event {
 	value int
@@ -98,7 +89,7 @@ fn main() {
 	println(app.value)
 }
 ')
-	out := os.join_path(os.temp_dir(), 'v3_callback_bound_method_autofree_${os.getpid()}')
+	out := os.join_path(root, 'bound_method_autofree')
 	compile := os.exec([v3_bin, '-autofree', source, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
@@ -109,9 +100,83 @@ fn main() {
 	assert !generated.contains('void App__on_event('), generated
 }
 
+fn test_callback_userdata_fn_field_rejects_incompatible_types() {
+	root := os.join_path(os.vtmp_dir(), 'v3_callback_userdata_rejections_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	v3_bin := callback_ownership_compiler()
+	source := 'module main
+
+struct FrameConfig {
+	frame fn (voidptr)
+}
+
+struct Event {}
+struct Other {}
+struct App {}
+
+struct PointerResultConfig {
+	cb fn () &Event
+}
+
+struct EventConfig {
+	event fn (&Event, voidptr)
+}
+
+struct PrimitiveParamConfig {
+	cb fn (i64)
+}
+
+fn wrong_arity(a voidptr, b int) {}
+
+fn wrong_return(a voidptr) int {
+	return 1
+}
+
+fn ret_voidptr() voidptr {
+	return voidptr(0)
+}
+
+fn wrong_param(e &Other, mut app App) {}
+
+fn takes_int(x int) {}
+
+fn main() {
+	_ := FrameConfig{frame: wrong_arity}
+	_ := FrameConfig{frame: wrong_return}
+	_ := PointerResultConfig{cb: ret_voidptr}
+	_ := EventConfig{event: wrong_param}
+	// Function type identity distinguishes int and i64 even when their C widths match.
+	_ := PrimitiveParamConfig{cb: takes_int}
+}
+'
+	src := callback_write_source(root, 'rejected_callbacks', source)
+	out := os.join_path(root, 'program')
+	compile := os.exec([v3_bin, src, '-b', 'c', '-nocolor', '-o', out])
+	assert compile.exit_code != 0, compile.output
+	expected := {
+		'FrameConfig{frame: wrong_arity}':      'expected `fn (voidptr)`, not `fn (voidptr, int)`'
+		'FrameConfig{frame: wrong_return}':     'expected `fn (voidptr)`, not `fn (voidptr) int`'
+		'PointerResultConfig{cb: ret_voidptr}': 'expected `fn () &Event`, not `fn () voidptr`'
+		'EventConfig{event: wrong_param}':      'expected `fn (&Event, voidptr)`, not `fn (&Other, mut App)`'
+		'PrimitiveParamConfig{cb: takes_int}':  'expected `fn (i64)`, not `fn (int)`'
+	}
+	lines := source.split_into_lines()
+	diagnostics := compile.output.split_into_lines().filter(it.contains(': error: '))
+	for initializer, message in expected {
+		line := lines.index('\t_ := ${initializer}') + 1
+		assert line > 0, initializer
+		location := 'rejected_callbacks.v:${line}:'
+		assert diagnostics.any(it.contains(location) && it.contains(message)), 'missing "${message}" at ${location}\n${compile.output}'
+	}
+}
+
 fn test_callback_userdata_fn_field_adapters() {
-	v3_bin := callback_build_v3()
-	good_src := callback_write_source('good', 'module main
+	root := os.join_path(os.vtmp_dir(), 'v3_callback_userdata_adapters_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	v3_bin := callback_ownership_compiler()
+	good_src := callback_write_source(root, 'good', 'module main
 
 __global C.user_data voidptr
 
@@ -223,7 +288,7 @@ fn main() {
 	println(int_str(first + second + c.frames))
 }
 ')
-	good_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_good_${os.getpid()}')
+	good_out := os.join_path(root, 'good')
 	good_compile := os.exec([v3_bin, '-enable-globals', '${good_src}', '-b', 'c', '-o', '${good_out}'])
 	assert good_compile.exit_code == 0, good_compile.output
 	run := os.exec([good_out])
@@ -257,7 +322,7 @@ fn main() {
 	assert !generated.contains('use_cb(frame,'), generated
 	assert !generated.contains('direct_callback_adapter'), generated
 
-	autofree_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_autofree_${os.getpid()}')
+	autofree_out := os.join_path(root, 'autofree')
 	autofree_compile :=
 		os.exec([v3_bin, '-enable-globals', '-autofree', '${good_src}', '-b', 'c', '-o',
 			'${autofree_out}'])
@@ -269,81 +334,7 @@ fn main() {
 	assert autofree_c.contains('main__frame((main__App*)arg0);'), autofree_c
 	assert autofree_c.contains('main__on_event(arg0, (main__App*)arg1);'), autofree_c
 
-	wrong_arity := callback_write_source('wrong_arity', 'module main
-struct Config {
-	frame fn (voidptr)
-}
-fn wrong(a voidptr, b int) {}
-fn main() {
-	_ := Config{frame: wrong}
-}
-')
-	arity_compile := callback_compile(v3_bin, wrong_arity, 'wrong_arity')
-	assert arity_compile.exit_code != 0, arity_compile.output
-
-	wrong_return := callback_write_source('wrong_return', 'module main
-struct Config {
-	frame fn (voidptr)
-}
-fn wrong(a voidptr) int {
-	return 1
-}
-fn main() {
-	_ := Config{frame: wrong}
-}
-')
-	return_compile := callback_compile(v3_bin, wrong_return, 'wrong_return')
-	assert return_compile.exit_code != 0, return_compile.output
-
-	wrong_return_pointer := callback_write_source('wrong_return_pointer', 'module main
-struct Event {}
-struct Config {
-	cb fn () &Event
-}
-fn ret_voidptr() voidptr {
-	return voidptr(0)
-}
-fn main() {
-	_ := Config{cb: ret_voidptr}
-}
-')
-	return_pointer_compile := callback_compile(v3_bin, wrong_return_pointer, 'wrong_return_pointer')
-	assert return_pointer_compile.exit_code != 0, return_pointer_compile.output
-
-	wrong_param := callback_write_source('wrong_param', 'module main
-struct Event {}
-struct Other {}
-struct App {}
-struct Config {
-	event fn (&Event, voidptr)
-}
-fn wrong(e &Other, mut app App) {}
-fn main() {
-	_ := Config{event: wrong}
-}
-')
-	param_compile := callback_compile(v3_bin, wrong_param, 'wrong_param')
-	assert param_compile.exit_code != 0, param_compile.output
-
-	wrong_primitive_param := callback_write_source('wrong_primitive_param', 'module main
-struct Config {
-	cb fn (i64)
-}
-fn takes_int(x int) {}
-fn main() {
-	_ := Config{cb: takes_int}
-}
-')
-	primitive_param_compile := callback_compile(v3_bin, wrong_primitive_param,
-		'wrong_primitive_param')
-	// `fn (int)` and `fn (i64)` are distinct source types even though platform `int`
-	// currently shares i64's C width on 64-bit targets; assigning one to the other
-	// stays a type error (function-type identity is independent of the emitted C
-	// spelling and target width).
-	assert primitive_param_compile.exit_code != 0, primitive_param_compile.output
-
-	homonym_root := os.join_path(os.temp_dir(), 'v3_callback_userdata_homonym_${os.getpid()}')
-	os.rmdir_all(homonym_root) or {}
+	homonym_root := os.join_path(root, 'homonym')
 	callback_write_project_file(homonym_root, 'left/left.v', 'module left
 
 pub struct App {
@@ -391,7 +382,7 @@ fn main() {
 	println(int_str(app.hits))
 }
 ')
-	homonym_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_homonym_out_${os.getpid()}')
+	homonym_out := os.join_path(root, 'homonym_out')
 	homonym_compile := os.exec([v3_bin, '${homonym_main}', '-b', 'c', '-o', '${homonym_out}'])
 	assert homonym_compile.exit_code == 0, homonym_compile.output
 	homonym_run := os.exec([homonym_out])
@@ -402,7 +393,7 @@ fn main() {
 	assert homonym_c.contains('right__hit((right__App*)arg0);'), homonym_c
 	assert !homonym_c.contains('left__hit_callback_adapter'), homonym_c
 
-	c_fn_src := callback_write_source('c_fn_value', 'module main
+	c_fn_src := callback_write_source(root, 'c_fn_value', 'module main
 
 fn C.abs(int) int
 
@@ -426,7 +417,7 @@ fn main() {
 	println(int_str(rc))
 }
 ')
-	c_fn_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_c_fn_${os.getpid()}')
+	c_fn_out := os.join_path(root, 'c_fn')
 	c_fn_compile := os.exec([v3_bin, '${c_fn_src}', '-b', 'c', '-o', '${c_fn_out}'])
 	assert c_fn_compile.exit_code == 0, c_fn_compile.output
 	c_fn_run := os.exec([c_fn_out])
@@ -439,7 +430,9 @@ fn main() {
 }
 
 fn test_callback_parallel_wrapper_names_are_stable() {
-	v3_bin := callback_build_v3_parallel()
+	root := os.join_path(os.vtmp_dir(), 'v3_callback_userdata_parallel_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	mut src := strings.new_builder(128 * 1024)
 	src.write_string('module main
 
@@ -502,9 +495,12 @@ fn erased(e voidptr, data voidptr) {
 	src.write_string('	println(int_str(app.total))
 }
 ')
-	parallel_src := callback_write_source('parallel', src.str())
-	parallel_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_parallel_${os.getpid()}')
-	parallel_compile := os.exec([v3_bin, '${parallel_src}', '-b', 'c', '-o', '${parallel_out}'])
+	parallel_src := callback_write_source(root, 'parallel', src.str())
+	parallel_out := os.join_path(root, 'parallel')
+	parallel_compile := cmdexec.run_in_merged_with_env(@VEXE, [parallel_src, '-b', 'c', '-o',
+		parallel_out], '', {
+		'VJOBS': '2'
+	})
 	assert parallel_compile.exit_code == 0, parallel_compile.output
 	parallel_run := os.exec([parallel_out])
 	assert parallel_run.exit_code == 0, parallel_run.output
