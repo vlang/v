@@ -225,7 +225,7 @@ fn test_owned_method_value_with_clone_runs() {
 // These consumers can borrow the element for the string field read.
 fn test_owned_string_consumers_borrow_array_elements() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_string_field_reads', "struct E {
+	compile := compile_v3_ownership_program(v3_bin, 'owned_string_consumers', "struct E {
 	name string
 }
 
@@ -287,18 +287,60 @@ fn check_membership() {
 	println(has_last_name(entries, ['hello']))
 }
 
+// Concatenation copies the borrowed string into the result.
+fn decorated_last_name() string {
+	arr := [E{ name: 'hello' }]
+	return arr.last().name + '!'
+}
+
+// A multi-part interpolation also copies the borrowed string.
+fn interpolated_last_name() string {
+	arr := [E{ name: 'hello' }]
+	return '<\${arr.last().name}>'
+}
+
+// Padding may return its input when the requested width is already met.
+fn formatted_last_name() string {
+	arr := [E{ name: 'hello' }]
+	return '\${arr.last().name:3s}'
+}
+
+// The formatted string can also appear next to a formatted integer.
+fn formatted_last_name_with_sibling() string {
+	arr := [E{ name: 'hello' }]
+	return '\${arr.last().name:3s}\${1:3d}'
+}
+
+fn has_known_last_name(entries []E) bool {
+	return entries.last().name in ['hello', 'other']
+}
+
+fn check_allocating_consumers() {
+	println(decorated_last_name())
+	println(interpolated_last_name())
+	println(formatted_last_name())
+	println(formatted_last_name_with_sibling())
+}
+
+fn check_literal_membership() {
+	entries := [E{ name: 'hello' }]
+	println(has_known_last_name(entries))
+}
+
 fn main() {
 	check_clone()
 	check_length()
 	check_comparison()
 	check_membership()
+	check_allocating_consumers()
+	check_literal_membership()
 }
 ", '')
 	assert_clean_borrow_build(compile)
-	bin_path := tmp_array_accessor_borrow_path('owned_string_field_reads_bin')
+	bin_path := tmp_array_accessor_borrow_path('owned_string_consumers_bin')
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().split_into_lines() == ['hello', '5', 'true', 'true'], run.output
+	assert run.output == 'hello\n5\ntrue\ntrue\nhello!\n<hello>\nhello\nhello  1\ntrue\n', run.output
 }
 
 // A bound method value needs a copy of its receiver. Returning a string,
@@ -396,50 +438,6 @@ fn main() {
 		independent_array_element_error_at('57:9', 'WrapperEntry'),
 		independent_array_element_error_at('64:7', 'E'),
 	], compile.output
-}
-
-fn test_owned_allocating_string_consumers_borrow_array_elements() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_allocating_string_consumers', "struct E {
-	name string
-}
-
-// Concatenation copies the borrowed string into the result.
-fn decorated_last_name() string {
-	arr := [E{ name: 'hello' }]
-	return arr.last().name + '!'
-}
-
-// A multi-part interpolation also copies the borrowed string.
-fn interpolated_last_name() string {
-	arr := [E{ name: 'hello' }]
-	return '<\${arr.last().name}>'
-}
-
-// Padding may return its input when the requested width is already met.
-fn formatted_last_name() string {
-	arr := [E{ name: 'hello' }]
-	return '\${arr.last().name:3s}'
-}
-
-// The formatted string can also appear next to a formatted integer.
-fn formatted_last_name_with_sibling() string {
-	arr := [E{ name: 'hello' }]
-	return '\${arr.last().name:3s}\${1:3d}'
-}
-
-fn main() {
-	println(decorated_last_name())
-	println(interpolated_last_name())
-	println(formatted_last_name())
-	println(formatted_last_name_with_sibling())
-}
-", '')
-	assert_clean_borrow_build(compile)
-	bin_path := tmp_array_accessor_borrow_path('owned_allocating_string_consumers_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output == 'hello!\n<hello>\nhello\nhello  1\n', run.output
 }
 
 fn ownership_error_lines(compile os.Result) []string {
@@ -1403,26 +1401,4 @@ fn main() {
 	safe_run := os.exec([safe_bin_path])
 	assert safe_run.exit_code == 0, safe_run.output
 	assert safe_run.output.trim_space() == '5', safe_run.output
-}
-
-fn test_owned_field_membership_with_stable_array_literal_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_stable_array_membership', "struct E {
-	name string
-}
-
-fn has_known_last_name(entries []E) bool {
-	return entries.last().name in ['hello', 'other']
-}
-
-fn main() {
-	entries := [E{ name: 'hello' }]
-	println(has_known_last_name(entries))
-}
-", '')
-	assert compile.exit_code == 0, compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_field_stable_array_membership_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'true', run.output
 }
