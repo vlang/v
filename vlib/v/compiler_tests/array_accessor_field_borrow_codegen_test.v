@@ -1285,44 +1285,9 @@ fn main() {
 	assert_independent_array_element_errors(compile, ['16:39', '21:10', '32:48', '42:45'])
 }
 
-fn test_owned_scalar_consumer_with_mutating_struct_default_sibling_is_rejected() {
+fn test_owned_scalar_borrows_with_implicit_mutations_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_mutating_struct_default_sibling', "struct E {
-	name string
-}
-
-struct Pair {
-	n int = delete_last()
-}
-
-__global entries []E
-
-fn delete_last() int {
-	entries.delete_last()
-	return 0
-}
-
-fn consume(length int, pair Pair) int {
-	_ = pair
-	return length
-}
-
-fn last_length() int {
-	return consume(entries.last().name.len, Pair{})
-}
-
-fn main() {
-	entries = [E{ name: 'hello' }]
-	println(last_length())
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
-fn test_owned_scalar_consumers_with_cloning_siblings_are_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_cloning_siblings', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_implicit_mutations', "struct E {
 	name string
 }
 
@@ -1390,12 +1355,36 @@ fn check_array_spread() {
 	println(last_length_with_spread([Mutator{ label: 'delete' }]))
 }
 
+struct Pair {
+	n int = delete_last()
+}
+
+fn delete_last() int {
+	entries.delete_last()
+	return 0
+}
+
+fn consume_pair(length int, pair Pair) int {
+	_ = pair
+	return length
+}
+
+fn last_length_with_pair_default() int {
+	return consume_pair(entries.last().name.len, Pair{})
+}
+
+fn check_pair_default() {
+	entries = [E{ name: 'hello' }]
+	println(last_length_with_pair_default())
+}
+
 fn main() {
 	check_struct_method()
 	check_alias_method()
 	check_array_spread()
+	check_pair_default()
 }
 ", '-enable-globals -nocolor')
 	// Locations include the prepended Drop interface.
-	assert_independent_array_element_errors(compile, ['31:24', '46:24', '55:24'])
+	assert_independent_array_element_errors(compile, ['31:24', '46:24', '55:24', '89:22'])
 }
