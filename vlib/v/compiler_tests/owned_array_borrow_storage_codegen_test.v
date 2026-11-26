@@ -656,7 +656,7 @@ fn main() { _ = absent() }
 	assert nested.output.contains('cannot cast `?Bucket` to `?Bucket`')
 }
 
-fn test_mutable_wrapped_array_storage_acquires_managed_payloads() {
+fn test_mutable_wrapped_array_storage_preserves_payloads() {
 	wrappers := {
 		'option':       '?[]Res'
 		'sum':          'Storage'
@@ -705,23 +705,7 @@ fn check_${name}() {
 		expected << '${name}\ndrop 1\ndrop 101'
 	}
 	source += '
-fn main() {
-${calls.join('\n')}
-}
-'
-	output := borrow_storage_run('wrapped_mut_array', source)
-	assert output == expected.join('\n')
-}
-
-fn test_mutable_wrapped_array_storage_keeps_inactive_payloads() {
-	output := borrow_storage_run('wrapped_mut_array_inactive', borrow_storage_drop_decls + '
-type Storage = []Res | int
-type WrappedStorage = ?[]Res | int
-fn keep_option(mut source ?[]Res) ?[]Res { return source }
-fn keep_sum(mut source Storage) Storage { return source }
-fn keep_optional_sum(mut source ?Storage) ?Storage { return source }
-fn keep_wrapped_sum(mut source WrappedStorage) WrappedStorage { return source }
-fn main() {
+fn check_inactive() {
 	mut absent := ?[]Res(none)
 	assert keep_option(mut absent) == none
 	mut scalar := Storage(7)
@@ -741,8 +725,16 @@ fn main() {
 	drop_owned(kept_variant)
 	println("ok")
 }
-')
-	assert output == 'ok'
+
+fn main() {
+${calls.join('\n')}
+	println("inactive")
+	check_inactive()
+}
+'
+	expected << 'inactive\nok'
+	output := borrow_storage_run('wrapped_mut_array', source)
+	assert output == expected.join('\n')
 }
 
 fn test_generic_mutable_optional_array_storage_acquires_each_specialization() {
