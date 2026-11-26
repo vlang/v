@@ -2116,40 +2116,10 @@ fn main() {
 	assert error_lines(res.output) == [], res.output
 }
 
-fn test_a_call_with_a_type_outside_the_constraint_set_is_reported_at_the_call() {
-	res := check_program('set_call', "type Number = int | i64 | f64
-
-fn double[T Number](x T) T {
-	return x + x
-}
-
-fn main() {
-	println(double('a'))
-}
-")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ['8:17: cannot use `string` as `T`: it is not in its constraint `Number`'], res.output
-}
-
-fn test_the_body_can_use_only_what_every_type_of_the_set_has() {
-	res := check_program('set_body', 'type Animal = User | Pet
-
-fn label[T Animal](x T) string {
-	return x.name + x.greet()
-}
-
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'4:20: type `T` has no method `greet`: `Pet`, in its constraint `Animal`, does not have it',
-	], res.output
-}
-
-fn test_the_body_can_use_what_every_type_of_a_set_of_any_types_has() {
+fn test_constraint_sets_reject_invalid_calls_and_members() {
 	// `len` of arrays, maps and strings, the fields and methods builtin declares
 	// for them; and what an interface declares, named by an alias.
-	res := check_program('set_members_any', 'type Sized = []int | []string | map[string]int | string
+	res := check_program('set_rejections', "type Sized = []int | []string | map[string]int | string
 
 type Listy = []int | []string
 
@@ -2183,12 +2153,28 @@ fn texts[T Sized](x T) string {
 	return x.str()
 }
 
-fn main() {}
-')
+type Animal = User | Pet
+
+fn label[T Animal](x T) string {
+	return x.name + x.greet()
+}
+
+type Number = int | i64 | f64
+
+fn double[T Number](x T) T {
+	return x + x
+}
+
+fn main() {
+	println(double('a'))
+}
+")
 	assert res.exit_code == 1, res.output
 	assert error_lines(res.output) == [
 		'12:11: type `T` has no field named `cap`: `map[string]int`, in its constraint `Sized`, does not have it',
 		'28:11: type `T` has no field named `age`: its constraint `Value` does not declare it',
+		'38:20: type `T` has no method `greet`: `Pet`, in its constraint `Animal`, does not have it',
+		'48:17: cannot use `string` as `T`: it is not in its constraint `Number`',
 	], res.output
 }
 
