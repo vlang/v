@@ -10,52 +10,7 @@ fn fixed_array_write_project(name string, fixture_src string, main_src string) s
 	return root
 }
 
-fn test_fixed_array_typedefs_fold_module_const_lengths() {
-	run_root := fixed_array_write_project('run', 'module fixture
-
-const max_items = 8
-const rows = 6
-const cols = 16
-
-pub struct Widget {
-mut:
-	images [max_items]int
-}
-
-pub struct Nested {
-mut:
-	cells [rows][cols]int
-}
-
-pub fn score() int {
-	mut w := Widget{}
-	mut n := Nested{}
-	w.images[0] = 3
-	n.cells[1][2] = 5
-	return w.images[0] + n.cells[1][2]
-}
-', 'module main
-
-import fixture
-
-fn main() {
-	println(int_str(fixture.score()))
-}
-')
-	defer { os.rmdir_all(run_root) or {} }
-	run_bin := os.join_path(run_root, 'out')
-	run_compile := os.exec([@VEXE, run_root, '-b', 'c', '-o', run_bin])
-	assert run_compile.exit_code == 0, run_compile.output
-	run_c := os.read_file(run_bin + '.c') or { panic(err) }
-	assert !run_c.contains('[max_items]'), run_c
-	assert !run_c.contains('[rows]'), run_c
-	assert !run_c.contains('[cols]'), run_c
-	assert run_c.contains('images[8]'), run_c
-	assert run_c.contains('cells[6][16]'), run_c
-	run := os.exec([run_bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '8'
-
+fn test_fixed_array_typedefs_fold_extern_struct_const_lengths() {
 	shape_root := fixed_array_write_project('shape', 'module fixture
 
 const max_items = 8
@@ -151,8 +106,30 @@ fn main() {
 	assert !generated.contains('Array_fixed_math__'), generated
 }
 
-fn test_sizeof_fixed_array_typedef_dependency_order() {
-	root := fixed_array_write_project('sizeof_order', 'module fixture
+fn test_fixed_array_typedef_lengths_and_dependency_order() {
+	root := fixed_array_write_project('lengths_and_order', 'module fixture
+
+const max_items = 8
+const rows = 6
+const cols = 16
+
+pub struct Widget {
+mut:
+	images [max_items]int
+}
+
+pub struct Nested {
+mut:
+	cells [rows][cols]int
+}
+
+pub fn const_length_score() int {
+	mut w := Widget{}
+	mut n := Nested{}
+	w.images[0] = 3
+	n.cells[1][2] = 5
+	return w.images[0] + n.cells[1][2]
+}
 
 pub type Callback = fn ([sizeof(int)]u8) int
 
@@ -212,6 +189,7 @@ fn check_pointer_callbacks() {
 }
 
 fn main() {
+	println(int_str(fixture.const_length_score()))
 	println(fixture.call())
 	check_pointer_callbacks()
 	println(fixture.score())
@@ -223,8 +201,13 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '7\n17', run.output
+	assert run.output.trim_space().split_into_lines() == ['8', '7', '17'], run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert !generated.contains('[max_items]'), generated
+	assert !generated.contains('[rows]'), generated
+	assert !generated.contains('[cols]'), generated
+	assert generated.contains('images[8]'), generated
+	assert generated.contains('cells[6][16]'), generated
 	size_pos := generated.index('struct fixture__ZSize {') or { -1 }
 	typedef_pos := generated.index('typedef u8 Array_fixed_u8_sizeof_fixture__ZSize') or { -1 }
 	holder_pos := generated.index('struct fixture__ZZHolder {') or { -1 }
