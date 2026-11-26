@@ -421,27 +421,38 @@ fn build_program_with_env(name string, source string, env []string) os.Result {
 	return os.exec(cmd)
 }
 
-// A build reports the errors of an instance where a check does, as V1 did: the
-// body of a generic function without constraints is still not checked on its
-// own, but each of its instances is, instead of failing in the C compiler.
-fn test_a_build_reports_the_member_an_instance_lacks() {
-	source := "fn show[T](x T) string {\n\treturn x.nme\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n}\n"
-	res := build_program('build_struct_typo', source)
-	assert res.exit_code != 0, res.output
-	assert !res.output.contains('C compilation error'), res.output
-	errors := error_lines(res.output)
-	assert errors.len == 1, res.output
-	assert errors[0].starts_with('11:11: type `User` has no field named `nme`'), res.output
+// Both check and build diagnose invalid expressions in a generic body when
+// the function is specialized.
+fn test_instances_report_member_operator_and_guard_errors() {
+	source := "fn show[T](x T) string {
+	return x.nme
 }
 
-// An operator that the type of an instance does not have is reported for that
-// instance too, in a check and in a build: `int + string`.
-fn test_an_operator_an_instance_lacks_is_reported() {
-	source := "fn add[T](a T) int {\n\treturn a + 'x'\n}\n\nfn main() {\n\tprintln(add(1))\n}\n"
-	for res in [check_program('operator_check', source), build_program('operator_build', source)] {
+fn add[T](a T) int {
+	return a + 'x'
+}
+
+fn guard[T](a T) {
+	if v := a {
+		println(v)
+	}
+}
+
+fn main() {
+	println(show(User{ name: 'a' }))
+	println(add(1))
+	guard(User{ name: 'a' })
+}
+"
+	for res in [check_program('instance_expr_check', source),
+		build_program('instance_expr_build', source)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == ['11:9: operator `+` cannot concatenate `int` and `string`'], res.output
+		errors := error_lines(res.output)
+		assert errors.len == 3, res.output
+		assert errors.any(it.starts_with('11:11: type `User` has no field named `nme`')), res.output
+		assert '15:9: operator `+` cannot concatenate `int` and `string`' in errors, res.output
+		assert '19:10: expression should either return an Option or a Result' in errors, res.output
 	}
 }
 
@@ -587,20 +598,6 @@ fn main() {
 		build_program('return_valid_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
-	}
-}
-
-// An `if v := a` guard over an `a T` whose instance is neither an option nor a
-// result is reported for that instance, in a check and in a build, as V1 did,
-// instead of failing in the C compiler.
-fn test_an_if_guard_over_a_plain_instance_is_reported() {
-	source := "fn show[T](a T) {\n\tif v := a {\n\t\tprintln(v)\n\t}\n}\n\nfn main() {\n\tshow(User{ name: 'a' })\n}\n"
-	for res in [check_program('if_guard_check', source), build_program('if_guard_build', source)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'11:10: expression should either return an Option or a Result',
-		], res.output
 	}
 }
 
