@@ -368,11 +368,10 @@ typedef union TaggedUnionImpl {
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_and_run_anonymous_typedef() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_anonymous_typedef_project')
+fn directive_order_gen_and_run_header_typedefs() string {
+	root := directive_order_fixture_dir('v3_c_directive_order_header_typedefs_project')
 	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod',
-		"Module { name: 'directive_order_anonymous_typedef' }\n")
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_header_typedefs' }\n")
 	directive_order_write_file(root, 'main.v', 'module main
 
 #insert "anonymous_thing.h"
@@ -384,37 +383,6 @@ struct C.AnonymousThing {
 
 fn C.anonymous_value(item &C.AnonymousThing) int
 
-fn main() {
-	mut item := C.AnonymousThing{
-		value: 31
-	}
-	println(C.anonymous_value(&item).str())
-}
-')
-	directive_order_write_file(root, 'anonymous_thing.h', 'typedef struct {
-	int value;
-} AnonymousThing;
-
-static inline int anonymous_value(AnonymousThing* item) {
-	return item->value;
-}
-')
-	bin_out := os.join_path(root, 'v3_c_directive_order_anonymous_typedef')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
-	assert result.exit_code == 0, result.output
-	run := os.exec([bin_out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '31', run.output
-	return os.read_file(bin_out + '.c') or { panic(err) }
-}
-
-fn directive_order_gen_and_run_tagged_typedef_alias() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_tagged_typedef_alias_project')
-	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod',
-		"Module { name: 'directive_order_tagged_typedef_alias' }\n")
-	directive_order_write_file(root, 'main.v', 'module main
-
 #insert "tagged_thing.h"
 
 @[typedef]
@@ -423,36 +391,6 @@ struct C.TaggedAlias {
 }
 
 fn C.tagged_value(item &C.TaggedAlias) int
-
-fn main() {
-	mut item := C.TaggedAlias{
-		value: 43
-	}
-	println(C.tagged_value(&item).str())
-}
-')
-	directive_order_write_file(root, 'tagged_thing.h', 'typedef struct TaggedImpl {
-	int value;
-} TaggedAlias;
-
-static inline int tagged_value(TaggedAlias* item) {
-	return item->value;
-}
-')
-	bin_out := os.join_path(root, 'v3_c_directive_order_tagged_typedef_alias')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
-	assert result.exit_code == 0, result.output
-	run := os.exec([bin_out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '43', run.output
-	return os.read_file(bin_out + '.c') or { panic(err) }
-}
-
-fn directive_order_gen_and_run_nested_include() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_nested_include_project')
-	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_nested_include' }\n")
-	directive_order_write_file(root, 'main.v', 'module main
 
 #insert "outer.h"
 
@@ -464,10 +402,36 @@ struct C.NestedThing {
 fn C.nested_value(item &C.NestedThing) int
 
 fn main() {
-	mut item := C.NestedThing{
+	mut anonymous_item := C.AnonymousThing{
+		value: 31
+	}
+	println(C.anonymous_value(&anonymous_item).str())
+
+	mut tagged_item := C.TaggedAlias{
+		value: 43
+	}
+	println(C.tagged_value(&tagged_item).str())
+
+	mut nested_item := C.NestedThing{
 		value: 11
 	}
-	println(C.nested_value(&item).str())
+	println(C.nested_value(&nested_item).str())
+}
+')
+	directive_order_write_file(root, 'anonymous_thing.h', 'typedef struct {
+	int value;
+} AnonymousThing;
+
+static inline int anonymous_value(AnonymousThing* item) {
+	return item->value;
+}
+')
+	directive_order_write_file(root, 'tagged_thing.h', 'typedef struct TaggedImpl {
+	int value;
+} TaggedAlias;
+
+static inline int tagged_value(TaggedAlias* item) {
+	return item->value;
 }
 ')
 	directive_order_write_file(root, 'outer.h', '#include "types.h"
@@ -484,12 +448,12 @@ typedef struct {
 	uint32_t value;
 } NestedThing;
 ')
-	bin_out := os.join_path(root, 'v3_c_directive_order_nested_include')
+	bin_out := os.join_path(root, 'v3_c_directive_order_header_typedefs')
 	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '16', run.output
+	assert run.output.trim_space() == '31\n43\n16', run.output
 	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
@@ -1031,22 +995,16 @@ fn test_inserted_headers_supply_native_declarations() {
 	assert !c_code.contains('union TaggedUnionAlias {\n'), c_code
 }
 
-fn test_anonymous_typedef_struct_header_is_not_duplicated() {
-	c_code := directive_order_gen_and_run_anonymous_typedef()
+fn test_native_typedef_headers_supply_types_and_inline_functions() {
+	c_code := directive_order_gen_and_run_header_typedefs()
 	assert c_code.contains('anonymous_thing.h"'), c_code
 	assert !c_code.contains('static inline int anonymous_value'), c_code
 	assert !c_code.contains('typedef struct AnonymousThing'), c_code
-}
 
-fn test_tagged_typedef_struct_alias_header_is_not_duplicated() {
-	c_code := directive_order_gen_and_run_tagged_typedef_alias()
 	assert c_code.contains('tagged_thing.h"'), c_code
 	assert !c_code.contains('static inline int tagged_value'), c_code
 	assert !c_code.contains('typedef struct TaggedAlias'), c_code
-}
 
-fn test_nested_local_header_includes_are_left_to_the_c_preprocessor() {
-	c_code := directive_order_gen_and_run_nested_include()
 	assert c_code.contains('outer.h"'), c_code
 	assert !c_code.contains('#define NESTED_BIAS 5'), c_code
 	assert !c_code.contains('} NestedThing;'), c_code
