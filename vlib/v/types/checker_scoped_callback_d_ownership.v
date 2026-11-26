@@ -199,7 +199,8 @@ fn (tc &TypeChecker) ownership_scoped_callback_factory_borrows(id flat.NodeId) ?
 	if !semantic_types_equal(unwrap_pointer(formal), receiver_type) {
 		return none
 	}
-	return tc.ownership_scoped_factory_method_borrows(info, loan)
+	proof := tc.ownership_scoped_factory_method_proof(info, loan) or { return none }
+	return proof.borrows
 }
 
 // Record proofs while the original declarations are available. Interface
@@ -235,8 +236,9 @@ fn (mut tc TypeChecker) ownership_collect_scoped_factory_contracts() {
 		file := tc.fn_type_files[name] or { continue }
 		tc.cur_file = file
 		tc.cur_module = tc.file_modules[file] or { tc.fn_type_modules[name] }
-		if tc.ownership_scoped_factory_method_borrows(tc.call_info(name, true), ScopedThreadBorrow{}) != none {
-			state.scoped_factory_implementations[name] = true
+		if proof := tc.ownership_scoped_factory_method_proof(tc.call_info(name, true),
+			ScopedThreadBorrow{}) {
+			state.scoped_factory_implementations[name] = proof.pops
 		}
 	}
 }
@@ -261,8 +263,13 @@ fn (tc &TypeChecker) ownership_scoped_factory_interface(iface u32) bool {
 	return false
 }
 
-fn (tc &TypeChecker) ownership_scoped_factory_conforms(name string) bool {
-	return !isnil(tc.ownership) && name in tc.ownership.scoped_factory_implementations
+fn (tc &TypeChecker) ownership_scoped_factory_conforms(name string, contract string) bool {
+	if isnil(tc.ownership) {
+		return false
+	}
+	pops := tc.ownership.scoped_factory_implementations[name] or { return false }
+	is_mut, is_shared := tc.method_receiver_flags(contract)
+	return !pops || (is_mut && !is_shared)
 }
 
 fn (tc &TypeChecker) ownership_scoped_factory_interface_call(recv_id flat.NodeId, info CallInfo) bool {
@@ -315,7 +322,12 @@ fn (tc &TypeChecker) ownership_scoped_factory_result_borrow(source string, pos f
 	return recv.kind == .ident && recv.value == source && tc.ownership_scoped_factory_receiver_use(recv_id)
 }
 
-fn (tc &TypeChecker) ownership_scoped_factory_method_borrows(info CallInfo, loan ScopedThreadBorrow) ?[]ScopedThreadBorrow {
+struct ScopedFactoryProof {
+	borrows []ScopedThreadBorrow
+	pops    bool
+}
+
+fn (tc &TypeChecker) ownership_scoped_factory_method_proof(info CallInfo, loan ScopedThreadBorrow) ?ScopedFactoryProof {
 	if info.params.len != 1 || !tc.ownership_is_scoped_callback(info.return_type)
 		|| call_param_is_shared(info, 0) {
 		return none
@@ -351,10 +363,13 @@ fn (tc &TypeChecker) ownership_scoped_factory_method_borrows(info CallInfo, loan
 		|| receiver_method_name_candidates(state_type, 'free', module_name).any(it in tc.fn_ret_types) {
 		return none
 	}
-	borrows := tc.ownership_scoped_callback_factory_fields(*tc.a.node(state_id), state_type,
+	proof := tc.ownership_scoped_callback_factory_fields(*tc.a.node(state_id), state_type,
 		receiver_type, param.value, module_name, loan) or { return none }
-	return if tc.ownership_scoped_callback_methods(state_type, borrows, module_name) {
-		borrows
+	if proof.pops && !tc.call_param_is_mut(info, 0) {
+		return none
+	}
+	return if tc.ownership_scoped_callback_methods(state_type, proof.borrows, module_name) {
+		proof
 	} else {
 		none
 	}
@@ -396,9 +411,10 @@ fn (tc &TypeChecker) ownership_scoped_callback_factory_state(id flat.NodeId, rec
 	return none
 }
 
-fn (tc &TypeChecker) ownership_scoped_callback_factory_fields(state flat.Node, state_type Struct, receiver_type Struct, param string, module_name string, loan ScopedThreadBorrow) ?[]ScopedThreadBorrow {
+fn (tc &TypeChecker) ownership_scoped_callback_factory_fields(state flat.Node, state_type Struct, receiver_type Struct, param string, module_name string, loan ScopedThreadBorrow) ?ScopedFactoryProof {
 	mut borrows := []ScopedThreadBorrow{}
 	mut initialized := 0
+	mut pops := false
 	for field in tc.struct_fields_for_type(state_type.name_id) {
 		if type_contains_unknown(field.typ) || receiver_method_name_candidates(state_type, field.name, module_name).any(it in tc.fn_ret_types) {
 			return none
@@ -414,19 +430,20 @@ fn (tc &TypeChecker) ownership_scoped_callback_factory_fields(state flat.Node, s
 		initialized++
 		value := tc.a.node(tc.ownership_unwrap_expr(value_id))
 		if field_type !is Pointer {
-			if value.kind !in [.int_literal, .float_literal, .bool_literal, .char_literal,
-				.string_literal]
-				|| tc.ownership_thread_transfer_problem(field_type, .transfer, 0, mut map[u64]bool{}) != none {
+			if tc.ownership_thread_transfer_problem(field_type, .transfer, 0, mut map[u64]bool{}) != none {
 				return none
+			}
+			if value.kind !in [.int_literal, .float_literal, .bool_literal, .char_literal,
+				.string_literal] {
+				if !tc.ownership_scoped_factory_pool_pop(value, field_type, receiver_type, param,
+					module_name) {
+					return none
+				}
+				pops = true
 			}
 			continue
 		}
-		if value.kind != .selector || value.children_count != 1
-			|| receiver_method_name_candidates(receiver_type, value.value, module_name).any(it in tc.fn_ret_types) {
-			return none
-		}
-		base := tc.a.child_node(value, 0)
-		if base.kind != .ident || base.value != param {
+		if !tc.ownership_scoped_factory_receiver_field(*value, receiver_type, param, module_name) {
 			return none
 		}
 		source := tc.struct_field_type(receiver_type.name_id, value.value) or { return none }
@@ -445,5 +462,9 @@ fn (tc &TypeChecker) ownership_scoped_callback_factory_fields(state flat.Node, s
 		borrows << ScopedThreadBorrow{ ...loan, field: field.name, access: access }
 	}
 	// Reject positional fields, spreads, and any initializer omitted by the proof.
-	return if initialized == state.children_count && borrows.len > 0 { borrows } else { none }
+	if initialized != state.children_count || borrows.len == 0
+		|| (pops && borrows.any(it.access != .atomic)) {
+		return none
+	}
+	return ScopedFactoryProof{ borrows: borrows, pops: pops }
 }

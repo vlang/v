@@ -6363,3 +6363,126 @@ fn main() {
 		assert result.output.contains('cannot move `first` because it borrows `factory`'), result.output
 	}
 }
+
+const scoped_factory_pool_fixture = r'
+import sync.arc
+import sync.thread as transport
+
+struct PoolJob {
+	label string
+}
+
+struct PoolVisitor implements Drop {
+	counter &arc.Atomic[int]
+	job PoolJob
+}
+
+pub fn (mut visitor PoolVisitor) call(delta int) int {
+	return visitor.counter.add(delta + visitor.job.label.len)
+}
+
+fn (mut visitor PoolVisitor) drop() {
+	visitor.counter.add(1)
+}
+
+interface PoolFactory[^scope] {
+mut:
+	create() transport.ScopedMutCallback[^scope, int, int]
+}
+
+struct JobFactory[^scope] {
+	counter &^scope arc.Atomic[int]
+mut:
+	jobs []PoolJob
+}
+
+fn (mut factory JobFactory[^scope]) create() transport.ScopedMutCallback[^scope, int, int] {
+	return transport.new_scoped_mut_callback[int, int, PoolVisitor](PoolVisitor{
+		counter: factory.counter
+		job: factory.jobs.pop()
+	})
+}
+
+fn visit_job[^scope](visitor_in transport.ScopedMutCallback[^scope, int, int]) {
+	mut visitor := visitor_in
+	for _ in 0 .. 2 {
+		visitor.call(1)
+	}
+}
+
+fn run[^scope](mut factory PoolFactory[^scope]) {
+	mut handles := []thread{}
+	defer { handles.wait() }
+	for _ in 0 .. 3 {
+		visitor := factory.create()
+		handles << spawn visit_job(visitor)
+	}
+}
+'
+
+fn test_ownership_scoped_factory_pool_moves_disjoint_owned_jobs() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_factory_pool_jobs'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_factory_pool_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := JobFactory[^scope]{
+		counter: &counter
+		jobs: [
+			PoolJob{label: "keep".clone()},
+			PoolJob{label: "xy".clone()},
+			PoolJob{label: "abc".clone()},
+			PoolJob{label: "d".clone()},
+		]
+	}
+	run(mut factory)
+	assert counter.load() == 21
+	assert factory.jobs.len == 1
+	assert factory.jobs[0].label == "keep"
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_factory_pool_rejects_overlapping_or_opaque_storage() {
+	v3_bin := ownership_build_v3()
+	for field in ['nested Nested', 'nested arc.Arc[Nested]', 'native voidptr'] {
+		fixture := scoped_factory_pool_fixture.replace('struct PoolJob {',
+			'struct Nested { value arc.Atomic[int] }\nstruct PoolJob {\n\t${field}')
+		result := run_ownership_check(v3_bin, 'scoped_factory_pool_overlap', fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := JobFactory[^scope]{counter: &counter, jobs: []PoolJob{}}
+	run(mut factory)
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
+	}
+}
+
+fn test_ownership_scoped_factory_pool_requires_builtin_pop_and_mutable_contract() {
+	v3_bin := ownership_build_v3()
+	for fixture in [
+		scoped_factory_pool_fixture + r'
+fn (mut jobs []PoolJob) pop() PoolJob {
+	return PoolJob{label: "replacement"}
+}
+',
+		scoped_factory_pool_fixture.replace('interface PoolFactory[^scope] {\nmut:',
+			'interface PoolFactory[^scope] {'),
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_factory_pool_contract', fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := JobFactory[^scope]{counter: &counter, jobs: []PoolJob{}}
+	run(mut factory)
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
+	}
+}

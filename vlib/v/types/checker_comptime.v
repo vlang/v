@@ -6507,11 +6507,12 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 			if message == '' && tc.ownership_scoped_factory_interface_method(expected_name_id, method) {
 				proven := if clean_actual is Interface {
 					tc.ownership_scoped_factory_interface_method(clean_actual.name_id, method)
+						&& (!actual_receiver_mut || expected_receiver_mut)
 				} else {
-					tc.ownership_scoped_factory_conforms(actual_key)
+					tc.ownership_scoped_factory_conforms(actual_key, expected_key)
 				}
 				if !proven {
-					tc.record_error_at(kind, '`${actual_display}` cannot implement scoped callback factory method `${method}` of `${expected_display}`: expected a fresh callback borrowing only receiver fields', id, pos)
+					tc.record_error_at(kind, '`${actual_display}` cannot implement scoped callback factory method `${method}` of `${expected_display}`: expected a fresh callback from receiver references and disjoint owned storage', id, pos)
 					return true
 				}
 			}

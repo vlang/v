@@ -17099,7 +17099,7 @@ fn method_signature_compatible_for_interface_guarded(tc &TypeChecker, actual_key
 	}
 	$if ownership ? {
 		if tc.ownership_scoped_factory_interface_method(iface_name_id, expected_key.all_after_last('.'))
-			&& !tc.ownership_scoped_factory_conforms(actual_key) {
+			&& !tc.ownership_scoped_factory_conforms(actual_key, expected_key) {
 			return false
 		}
 	}
@@ -17139,7 +17139,7 @@ fn method_call_info_signature_compatible_for_interface_guarded(tc &TypeChecker, 
 	}
 	$if ownership ? {
 		if tc.ownership_scoped_factory_interface_method(iface_name_id, expected_key.all_after_last('.'))
-			&& !tc.ownership_scoped_factory_conforms(actual.name) {
+			&& !tc.ownership_scoped_factory_conforms(actual.name, expected_key) {
 			return false
 		}
 	}

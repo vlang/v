@@ -229,21 +229,22 @@ mut:
 
 struct OwnershipState {
 mut:
-	owned_vars                       map[string]flat.NodeId
-	owned_var_types                  flat.TypeTextBindings
-	moved_vars                       map[string]MovedVar
-	borrowed_vars                    map[string][]BorrowInfo
-	scoped_thread_loans_seen         bool
-	ownership_fns                    map[string]bool
-	ownership_fn_params              map[string]bool
-	ownership_fn_returns_param       map[string][]int
-	ownership_fn_array_headers       map[string][]int
-	ownership_fn_return_params       map[string][]OwnershipReturnParamSlot
-	ownership_fn_return_slots        map[string][]int
-	ownership_fn_return_descs        map[string][]OwnershipReturnDescendant
-	ownership_fn_return_param_descs  map[string][]OwnershipReturnParamDescendant
-	interface_lifetime_returns       map[u32]map[string][]int
-	scoped_factory_contracts         map[string]bool
+	owned_vars                      map[string]flat.NodeId
+	owned_var_types                 flat.TypeTextBindings
+	moved_vars                      map[string]MovedVar
+	borrowed_vars                   map[string][]BorrowInfo
+	scoped_thread_loans_seen        bool
+	ownership_fns                   map[string]bool
+	ownership_fn_params             map[string]bool
+	ownership_fn_returns_param      map[string][]int
+	ownership_fn_array_headers      map[string][]int
+	ownership_fn_return_params      map[string][]OwnershipReturnParamSlot
+	ownership_fn_return_slots       map[string][]int
+	ownership_fn_return_descs       map[string][]OwnershipReturnDescendant
+	ownership_fn_return_param_descs map[string][]OwnershipReturnParamDescendant
+	interface_lifetime_returns      map[u32]map[string][]int
+	scoped_factory_contracts        map[string]bool
+	// Presence certifies the method. The value records whether it pops.
 	scoped_factory_implementations   map[string]bool
 	ownership_fn_return_fn_values    map[string]string
 	ownership_fn_literal_ret_types   map[string]Type
@@ -10454,7 +10455,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 						tc.ownership_add_borrow_info(recv_name, BorrowInfo{
 							borrower:       call_name
 							pos:            id
-							is_mut:         !factory && tc.ownership_call_param_is_mut(call_name, 0)
+							is_mut:         tc.ownership_call_param_is_mut(call_name, 0)
 							scoped_factory: factory
 						})
 						call_borrows << recv_name

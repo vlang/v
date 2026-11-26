@@ -544,6 +544,11 @@ every concrete implementation when it is used as that interface. Within a checke
 thread group, the method can create fresh callbacks from the same factory while
 earlier callbacks are still running. Other access to the factory waits for the join.
 
+A mutable factory method can initialize owned visitor state with the builtin `pop()` on
+a mutable array field. All borrowed captures must refer to atomics. The checker examines
+the pool element types, including nested storage, to ensure the pool cannot hold an atomic
+borrowed by a visitor. Each call moves the popped element into the visitor.
+
 ## Full example
 
 From the Rust book, translated to V:
