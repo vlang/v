@@ -2,6 +2,43 @@ module main
 
 import os
 
+fn check_direct_unbound_values_require_mut(root string, source_path string, c_path string) ! {
+	bodies := {
+		'local':    'struct LocalApp { mut: value int }
+fn (mut app LocalApp) add(x int) int { app.value += x; return app.value }
+fn main() { mut app := LocalApp{}; f := LocalApp.add; _ = f(&app, 1) }'
+		'imported': 'import sample
+fn main() { mut app := sample.App{}; f := sample.App.add; _ = f(&app, 1) }'
+	}
+	mut modules := []string{cap: 4}
+	for kind, body in bodies {
+		for i, invocation in [body, body.replace('_ = f(', '_ = (f)(')] {
+			name := '${kind}_unbound_call_${i}'
+			modules << name
+			dir := os.join_path(root, name)
+			os.mkdir(dir)!
+			os.write_file(os.join_path(dir, '${name}.v'), 'module ${name}\n\n${invocation}\n')!
+		}
+	}
+	imports := modules.map('import ${it} as _')
+	os.write_file(source_path, 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
+	result := os.exec([@VEXE, '-no-retry-compilation', '-nocache', '-nocolor', '-o', c_path,
+		source_path])
+	assert result.exit_code != 0, result.output
+	mut missing_mut := map[string]bool{}
+	for line in result.output.split_into_lines() {
+		location, message := line.split_once(': error: ') or { continue }
+		if message.contains('is `mut`, so use') {
+			// Strip the line and column while preserving drive letters in the path.
+			file := location.all_before_last(':').all_before_last(':')
+			missing_mut[os.file_name(file)] = true
+		}
+	}
+	for name in modules {
+		assert '${name}.v' in missing_mut, '${name}: missing mut argument diagnostic\n${result.output}'
+	}
+}
+
 fn test_unbound_reflected_values_enforce_privacy_and_mut_arguments() {
 	root := os.join_path(os.vtmp_dir(), 'unbound_value_contract_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'sample'))!
@@ -34,12 +71,8 @@ fn main() { app := sample.App{}; println(reflected[sample.App](&app)) }
 	assert private_result.exit_code != 0, private_result.output
 	assert private_result.output.contains('method `sample.App.secret` is private'), private_result.output
 
+	check_direct_unbound_values_require_mut(root, source_path, c_path)!
 	for body in [
-		'struct LocalApp { mut: value int }
-fn (mut app LocalApp) add(x int) int { app.value += x; return app.value }
-fn main() { mut app := LocalApp{}; f := LocalApp.add; _ = f(&app, 1) }',
-		'import sample
-fn main() { mut app := sample.App{}; f := sample.App.add; _ = f(&app, 1) }',
 		'import sample
 fn reflected[T](mut app T) {
  \$for method in T.methods {
