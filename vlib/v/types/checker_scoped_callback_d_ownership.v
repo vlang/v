@@ -37,7 +37,7 @@ fn (tc &TypeChecker) ownership_scoped_callback_call_is(id flat.NodeId, member st
 	return tc.ownership_scoped_callback_function(name, member)
 }
 
-fn (tc &TypeChecker) ownership_scoped_callback_constructor(id flat.NodeId) ?flat.NodeId {
+fn (tc &TypeChecker) ownership_scoped_callback_origin(id flat.NodeId) ?flat.NodeId {
 	value_id := tc.ownership_unwrap_expr(id)
 	value := tc.a.node(value_id)
 	if value.kind != .ident {
@@ -45,7 +45,11 @@ fn (tc &TypeChecker) ownership_scoped_callback_constructor(id flat.NodeId) ?flat
 	}
 	call := tc.ownership_scoped_thread_use_parent(value_id)
 	spawn_id := tc.ownership_scoped_thread_use_parent(call)
-	stmt_id := tc.ownership_scoped_thread_use_parent(spawn_id)
+	mut stmt_id := tc.ownership_scoped_thread_use_parent(spawn_id)
+	parent_id := tc.direct_parent_id(stmt_id)
+	if tc.a.node(parent_id).kind == .expr_stmt {
+		stmt_id = parent_id
+	}
 	scope := tc.a.node(tc.direct_parent_id(stmt_id))
 	for i in 1 .. scope.children_count {
 		if tc.a.child(scope, i) != stmt_id {
@@ -73,10 +77,12 @@ fn (tc &TypeChecker) ownership_scoped_callback_borrows(id flat.NodeId, expected 
 		|| !semantic_types_equal(unalias_type(tc.resolve_type(id)), unalias_type(expected)) {
 		return none
 	}
-	constructor_id := tc.ownership_scoped_callback_constructor(id) or { return none }
-	constructor := tc.a.node(constructor_id)
-	if constructor.children_count != 2
-		|| !tc.ownership_scoped_callback_call_is(constructor_id, 'new_scoped_mut_callback') {
+	origin := tc.ownership_scoped_callback_origin(id) or { return none }
+	if !tc.ownership_scoped_callback_call_is(origin, 'new_scoped_mut_callback') {
+		return tc.ownership_scoped_callback_factory_borrows(origin)
+	}
+	constructor := tc.a.node(origin)
+	if constructor.children_count != 2 {
 		return none
 	}
 	state_id := tc.call_arg_value(tc.a.child(constructor, 1))
@@ -86,17 +92,22 @@ fn (tc &TypeChecker) ownership_scoped_callback_borrows(id flat.NodeId, expected 
 		return none
 	}
 	borrows := tc.ownership_scoped_thread_argument_borrows(state_id, state_type, true) or { return none }
-	if !tc.ownership_scoped_callback_method(state_type, 'call', borrows)
-		|| (tc.ownership_type_has_explicit_drop(state_type.name_id)
-			&& !tc.ownership_scoped_callback_method(state_type, 'drop', borrows)) {
-		return none
+	return if tc.ownership_scoped_callback_methods(state_type, borrows, tc.cur_module) {
+		borrows
+	} else {
+		none
 	}
-	return borrows
 }
 
-fn (tc &TypeChecker) ownership_scoped_callback_method(state_type Type, member string, borrows []ScopedThreadBorrow) bool {
+fn (tc &TypeChecker) ownership_scoped_callback_methods(state_type Struct, borrows []ScopedThreadBorrow, module_name string) bool {
+	return tc.ownership_scoped_callback_method(state_type, 'call', borrows, module_name)
+		&& (!tc.ownership_type_has_explicit_drop(state_type.name_id)
+			|| tc.ownership_scoped_callback_method(state_type, 'drop', borrows, module_name))
+}
+
+fn (tc &TypeChecker) ownership_scoped_callback_method(state_type Type, member string, borrows []ScopedThreadBorrow, module_name string) bool {
 	mut checked := false
-	for name in receiver_method_name_candidates(state_type, member, tc.cur_module) {
+	for name in receiver_method_name_candidates(state_type, member, module_name) {
 		if name !in tc.fn_ret_types || !tc.method_can_be_called_on_receiver(state_type, member, name) {
 			continue
 		}
@@ -120,4 +131,158 @@ fn (tc &TypeChecker) ownership_scoped_callback_move(id flat.NodeId, expected Typ
 	return (tc.ownership_scoped_thread_join_site(spawn_id) != none
 		|| tc.ownership_scoped_thread_group(spawn_id) != none)
 		&& tc.ownership_scoped_callback_borrows(id, expected, info, index) != none
+}
+
+// Verify a fresh box from a concrete method, then reserve its receiver until the
+// join. The borrows come directly from reference fields of that receiver.
+fn (tc &TypeChecker) ownership_scoped_callback_factory_borrows(id flat.NodeId) ?[]ScopedThreadBorrow {
+	call := tc.a.node(id)
+	if call.kind != .call || call.children_count != 1 {
+		return none
+	}
+	callee := tc.a.child_node(call, 0)
+	if callee.kind != .selector || callee.children_count != 1 {
+		return none
+	}
+	recv_id := tc.ownership_unwrap_expr(tc.a.child(callee, 0))
+	receiver := tc.a.node(recv_id)
+	if receiver.kind != .ident {
+		return none
+	}
+	owner := tc.cur_scope.lookup_owner(receiver.value) or { return none }
+	if tc.binding_owner_is_global(owner) {
+		return none
+	}
+	receiver_type := unwrap_pointer(tc.resolve_type(recv_id))
+	if receiver_type !is Struct {
+		return none
+	}
+	if tc.struct_embed_receiver_names(receiver_type.name_id).len != 0 {
+		return none
+	}
+	info := tc.resolve_call_info(id, *call) or { return none }
+	if !info.has_receiver || info.params.len != 1 || !tc.ownership_is_scoped_callback(info.return_type) {
+		return none
+	}
+	formal := unalias_type(info.params[0])
+	if formal !is Pointer || !semantic_types_equal(unwrap_pointer(formal), receiver_type) {
+		return none
+	}
+	file := tc.fn_type_files[info.name] or { return none }
+	module_name := tc.fn_type_modules[info.name] or { return none }
+	decl := tc.visible_mutation_fn_decl(info.name, module_name) or { return none }
+	method := tc.a.node(flat.NodeId(decl.idx))
+	if file.ends_with('.vh') || method.kind != .fn_decl || method.children_count != 2
+		|| tc.ownership_fn_decl_file(*method) != file {
+		return none
+	}
+	param := tc.a.child_node(method, 0)
+	body := tc.a.child_node(method, 1)
+	if param.kind != .param || body.kind != .return_stmt || body.children_count != 1 {
+		return none
+	}
+	state_id, state_type := tc.ownership_scoped_callback_factory_state(tc.a.child(body, 0),
+		param.value, file, module_name) or { return none }
+	if tc.struct_embed_receiver_names(state_type.name_id).len != 0
+		|| receiver_method_name_candidates(state_type, 'free', module_name).any(it in tc.fn_ret_types) {
+		return none
+	}
+	borrows := tc.ownership_scoped_callback_factory_fields(*tc.a.node(state_id), state_type,
+		receiver_type, param.value, module_name, ScopedThreadBorrow{
+			source: receiver.value
+			pos:    recv_id
+		}) or { return none }
+	return if tc.ownership_scoped_callback_methods(state_type, borrows, module_name) {
+		borrows
+	} else {
+		none
+	}
+}
+
+fn (tc &TypeChecker) ownership_scoped_callback_factory_state(id flat.NodeId, receiver string, file string, module_name string) ?(flat.NodeId, Struct) {
+	constructor := tc.a.node(tc.ownership_unwrap_expr(id))
+	if constructor.kind != .call || constructor.children_count != 2 {
+		return none
+	}
+	index := tc.a.child_node(constructor, 0)
+	args := tc.generic_call_type_arg_names(*index)
+	if args.len != 3 {
+		return none
+	}
+	callee := tc.a.child_node(index, 0)
+	if callee.kind != .selector || callee.value != 'new_scoped_mut_callback' || callee.children_count != 1 {
+		return none
+	}
+	base := tc.a.child_node(callee, 0)
+	if base.kind != .ident || base.value == receiver {
+		return none
+	}
+	imports := tc.file_imports_by_file[file] or { return none }
+	imported_module := imports.imports[base.value] or { return none }
+	if !tc.ownership_scoped_callback_function('${imported_module}.${callee.value}', callee.value) {
+		return none
+	}
+	state_id := tc.ownership_unwrap_expr(tc.call_arg_value(tc.a.child(constructor, 1)))
+	state := tc.a.node(state_id)
+	if state.kind != .struct_init || state.source_value_id() != args[2]
+		|| flat.source_type_shape(args[2]).has(.dotted) || flat.source_type_syntax(args[2]).generic_app_args().len != 0 {
+		return none
+	}
+	state_type := tc.parse_type(tc.qualify_type_name_at(args[2], state_id, module_name))
+	if state_type is Struct {
+		return state_id, state_type
+	}
+	return none
+}
+
+fn (tc &TypeChecker) ownership_scoped_callback_factory_fields(state flat.Node, state_type Struct, receiver_type Struct, param string, module_name string, loan ScopedThreadBorrow) ?[]ScopedThreadBorrow {
+	mut borrows := []ScopedThreadBorrow{}
+	mut initialized := 0
+	for field in tc.struct_fields_for_type(state_type.name_id) {
+		if type_contains_unknown(field.typ) || receiver_method_name_candidates(state_type, field.name, module_name).any(it in tc.fn_ret_types) {
+			return none
+		}
+		field_type := unalias_type(field.typ)
+		value_id := tc.ownership_scoped_thread_field_initializer(&state, field.name) or {
+			if field_type is Pointer || field.has_default
+				|| tc.ownership_thread_transfer_problem(field_type, .transfer, 0, mut map[u64]bool{}) != none {
+				return none
+			}
+			continue
+		}
+		initialized++
+		value := tc.a.node(tc.ownership_unwrap_expr(value_id))
+		if field_type !is Pointer {
+			if value.kind !in [.int_literal, .float_literal, .bool_literal, .char_literal,
+				.string_literal]
+				|| tc.ownership_thread_transfer_problem(field_type, .transfer, 0, mut map[u64]bool{}) != none {
+				return none
+			}
+			continue
+		}
+		if value.kind != .selector || value.children_count != 1
+			|| receiver_method_name_candidates(receiver_type, value.value, module_name).any(it in tc.fn_ret_types) {
+			return none
+		}
+		base := tc.a.child_node(value, 0)
+		if base.kind != .ident || base.value != param {
+			return none
+		}
+		source := tc.struct_field_type(receiver_type.name_id, value.value) or { return none }
+		source_type := unalias_type(source)
+		if source_type !is Pointer || !semantic_types_equal(unwrap_pointer(source_type), unwrap_pointer(field_type)) {
+			return none
+		}
+		referent := unwrap_pointer(field_type)
+		access := if ownership_scoped_thread_is_scalar(unalias_type(referent)) {
+			ScopedThreadAccess.scalar
+		} else if tc.ownership_scoped_thread_is_atomic(referent) {
+			ScopedThreadAccess.atomic
+		} else {
+			return none
+		}
+		borrows << ScopedThreadBorrow{ ...loan, field: field.name, access: access }
+	}
+	// Reject positional fields, spreads, and any initializer omitted by the proof.
+	return if initialized == state.children_count && borrows.len > 0 { borrows } else { none }
 }

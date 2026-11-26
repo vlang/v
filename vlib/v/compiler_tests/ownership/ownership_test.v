@@ -5961,3 +5961,116 @@ fn main() {
 		assert result.output.contains(reason), result.output
 	}
 }
+
+const scoped_callback_factory_fixture = scoped_mut_callback_fixture + r'
+struct ConcreteVisitorFactory[^scope] {
+	counter &^scope arc.Atomic[int]
+}
+
+fn (mut factory ConcreteVisitorFactory[^scope]) create() transport.ScopedMutCallback[^scope, int, int] {
+	return transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+		counter: factory.counter
+	})
+}
+'
+
+fn test_ownership_scoped_callback_factory_joins_and_drops_fresh_boxes() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_callback_factory_join'
+	source := scoped_callback_factory_fixture + r'
+fn run[^scope](mut factory ConcreteVisitorFactory[^scope]) {
+	for _ in 0 .. 3 {
+		visitor := factory.create()
+		handle := spawn transport.invoke_scoped_mut_callback(visitor, 1)
+		defer { handle.wait() }
+	}
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut first := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut first)
+	assert counter.load() == 6
+	{
+		mut second := ConcreteVisitorFactory[^scope]{counter: &counter}
+		mut handles := []thread int{}
+		defer { handles.wait() }
+		handles << spawn transport.invoke_scoped_mut_callback(first.create(), 2)
+		visitor := second.create()
+		handles << spawn transport.invoke_scoped_mut_callback(visitor, 3)
+	}
+	assert counter.load() == 13
+}
+'
+	result := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_callback_factory_requires_a_visible_fresh_box_and_safe_methods() {
+	v3_bin := ownership_build_v3()
+	for fixture in [
+		scoped_callback_factory_fixture.replace('counter: factory.counter',
+			'counter: forward_counter(factory.counter)'),
+		scoped_callback_factory_fixture.replace('visitor.counter.add(1)',
+			'forward_counter(visitor.counter).add(1)'),
+	] {
+		source := fixture + r'
+fn forward_counter(counter &arc.Atomic[int]) &arc.Atomic[int] {
+	return counter
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	handle := spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	defer { handle.wait() }
+}
+'
+		result := run_ownership_check(v3_bin, 'scoped_callback_factory_unproven', source)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('scoped callbacks require a checked invocation with a deferred join'), result.output
+	}
+}
+
+fn test_ownership_scoped_callback_factory_keeps_the_receiver_and_referent_live() {
+	v3_bin := ownership_build_v3()
+	for use in ['_ := factory.create()', 'drop_owned(counter)'] {
+		source := scoped_callback_factory_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	visitor := factory.create()
+	handle := spawn transport.invoke_scoped_mut_callback(visitor, 2)
+	defer { handle.wait() }
+	' + use + '\n}\n'
+		result := run_ownership_check(v3_bin, 'scoped_callback_factory_live', source)
+		assert result.exit_code != 0, result.output
+		reason := if use.starts_with('_') {
+			'cannot use `factory` until scoped thread `handle` has joined'
+		} else {
+			'because `counter` is borrowed by `factory.counter`'
+		}
+		assert result.output.contains(reason), result.output
+	}
+}
+
+fn test_ownership_scoped_callback_factory_group_cannot_outlive_the_receiver() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_callback_factory_group_scope',
+		scoped_callback_factory_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	for _ in 0 .. 2 {
+		mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+		handles << spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	}
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('outlives borrowed atomic `factory`'), result.output
+}

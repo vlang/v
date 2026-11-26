@@ -528,6 +528,11 @@ in the worker. The deferred wait keeps the borrowed data alive through both the 
 The checker verifies every use of a borrowed field in the callback's `call` method and destructor.
 The constructor rejects `-autofree` because that mode preserves caller aliases when values move.
 
+A concrete factory method may also return the callback. The method must directly return a
+fresh box built from an inline state initializer. Borrowed fields must come from reference
+fields of its receiver. The worker's join keeps that receiver alive and prevents its use
+while the callback runs.
+
 ## Full example
 
 From the Rust book, translated to V:
