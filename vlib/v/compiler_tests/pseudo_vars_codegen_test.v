@@ -51,37 +51,28 @@ fn test_quoted_comptime_pseudo_vars_are_not_expanded() {
 	assert run.output.trim_space() == 'ok'
 }
 
-// test_embed_file_codegen validates that v3 lowers $embed_file to EmbedFileData.
-fn test_embed_file_codegen() {
-	tmp_dir := os.join_path(os.vtmp_dir(), 'v3_embed_file_codegen_${tempname.unique_token()}')
-	os.mkdir(tmp_dir)!
-	defer {
-		os.rmdir_all(tmp_dir) or {}
-	}
-	payload := os.join_path(tmp_dir, 'payload.txt')
-	os.write_file(payload, 'hello')!
-	src := os.join_path(tmp_dir, 'main.v')
-	bin := os.join_path(tmp_dir, 'main')
-	os.write_file(src,
-		"fn main() {\n\tdata := \$embed_file('payload.txt')\n\tassert data.len == 5\n\tassert data.to_string() == 'hello'\n}\n")!
-	result := os.exec([@VEXE, '${src}', '-o', bin])
-	assert result.exit_code == 0, result.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-}
-
-// test_embed_file_at_file_from_relative_subdir_path validates @FILE source path
-// resolution for $embed_file().
-fn test_embed_file_at_file_from_relative_subdir_path() {
+// Both the literal asset path and @FILE resolve beside the source file.
+fn test_embed_file_resolves_paths_from_relative_subdir() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v3_embed_file_at_file_codegen_${tempname.unique_token()}')
 	os.mkdir_all(os.join_path(tmp_dir, 'sub'))!
 	defer {
 		os.rmdir_all(tmp_dir) or {}
 	}
+	os.write_file(os.join_path(tmp_dir, 'sub', 'payload.txt'), 'hello')!
 	src := os.join_path(tmp_dir, 'sub', 'main.v')
 	bin := os.join_path(tmp_dir, 'main')
-	os.write_file(src,
-		"fn main() {\n\tdata := \$embed_file(@FILE)\n\tassert data.len > 0\n\tassert data.to_string().contains('relative @FILE embed marker')\n}\n\n// relative @FILE embed marker\n")!
+	os.write_file(src, "fn main() {
+	payload := \$embed_file('payload.txt')
+	assert payload.len == 5
+	assert payload.to_string() == 'hello'
+
+	data := \$embed_file(@FILE)
+	assert data.len > 0
+	assert data.to_string().contains('relative @FILE embed marker')
+}
+
+// relative @FILE embed marker
+")!
 	result := cmdexec.run_in(@VEXE, ['sub/main.v', '-o', bin], tmp_dir)
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin])
