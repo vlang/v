@@ -733,7 +733,7 @@ fn main() {
 	assert_independent_array_element_errors(compile, ['19:9', '27:9'])
 }
 
-fn test_owned_string_comparison_with_infix_sibling_checks_overloads() {
+fn test_owned_string_comparison_checks_overloaded_siblings() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	builtin := compile_v3_ownership_program(v3_bin, 'owned_builtin_infix_sibling', "struct E {
 	name string
@@ -755,7 +755,7 @@ fn main() {
 	assert builtin_run.exit_code == 0, builtin_run.output
 	assert builtin_run.output.trim_space() == 'true', builtin_run.output
 
-	overloaded := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_overloaded_infix_sibling', "struct E {
+	overloaded := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_comparison_mutating_operator_siblings', "struct E {
 	name string
 }
 
@@ -770,17 +770,37 @@ fn (left Mutator) + (right Mutator) string {
 	return 'hello'
 }
 
-fn last_name_matches(left Mutator, right Mutator) bool {
+fn last_name_matches_with_infix(left Mutator, right Mutator) bool {
 	return entries.last().name == (left + right)
 }
 
-fn main() {
-	entries = [E{ name: 'hello' }]
-	println(last_name_matches(Mutator{}, Mutator{}))
+fn (Mutator) [] (index int) string {
+	_ = index
+	entries.delete_last()
+	return 'hello'
 }
-", '-enable-globals')
-	assert overloaded.exit_code != 0, overloaded.output
-	assert overloaded.output.contains('cannot return an independent array element'), overloaded.output
+
+fn last_name_matches_with_index(mutator Mutator) bool {
+	return entries.last().name == mutator[0]
+}
+
+fn check_infix() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_matches_with_infix(Mutator{}, Mutator{}))
+}
+
+fn check_index() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_matches_with_index(Mutator{}))
+}
+
+fn main() {
+	check_infix()
+	check_index()
+}
+", '-enable-globals -nocolor')
+	// Locations include the prepended Drop interface.
+	assert_independent_array_element_errors(overloaded, ['22:9', '32:9'])
 }
 
 fn test_owned_aggregate_and_interface_comparisons_reject_mutating_overloads() {
@@ -1405,33 +1425,4 @@ fn main() {
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true', run.output
-}
-
-fn test_owned_string_comparison_with_overloaded_index_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_overloaded_index_sibling', "struct E {
-	name string
-}
-
-struct Mutator {}
-
-__global entries []E
-
-fn (Mutator) [] (index int) string {
-	_ = index
-	entries.delete_last()
-	return 'hello'
-}
-
-fn last_name_matches(mutator Mutator) bool {
-	return entries.last().name == mutator[0]
-}
-
-fn main() {
-	entries = [E{ name: 'hello' }]
-	println(last_name_matches(Mutator{}))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
