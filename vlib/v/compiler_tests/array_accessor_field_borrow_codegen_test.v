@@ -624,28 +624,68 @@ fn main() {
 	assert safe_run.output.trim_space() == 'hello0', safe_run.output
 }
 
-fn test_owned_string_index_with_mutating_index_is_rejected() {
+fn test_owned_scalar_borrows_with_mutating_siblings_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_index_mutating_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_mutating_siblings', "struct E {
 	name string
 }
 
-fn delete_last(mut arr []E) int {
+fn delete_last_for_index(mut arr []E) int {
 	arr.delete_last()
 	return 0
 }
 
 fn last_initial_then_delete(mut arr []E) u8 {
-	return arr.last().name[delete_last(mut arr)]
+	return arr.last().name[delete_last_for_index(mut arr)]
 }
 
-fn main() {
+struct Pair {
+	n int
+	s string
+}
+
+fn delete_last_for_field(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn last_length_in_pair(mut arr []E) Pair {
+	return Pair{ n: arr.last().name.len, s: delete_last_for_field(mut arr) }
+}
+
+fn delete_last_for_return(mut entries []E) string {
+	entries.delete_last()
+	return 'deleted'
+}
+
+fn last_length_in_multi_return(mut entries []E) (int, string) {
+	return entries.last().name.len, delete_last_for_return(mut entries)
+}
+
+fn check_index() {
 	mut arr := [E{ name: 'hello' }]
 	println(last_initial_then_delete(mut arr))
 }
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+fn check_field() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_length_in_pair(mut arr).n)
+}
+
+fn check_return() {
+	mut entries := [E{ name: 'hello' }]
+	length, action := last_length_in_multi_return(mut entries)
+	println(int_str(length) + ':' + action)
+}
+
+fn main() {
+	check_index()
+	check_field()
+	check_return()
+}
+", '-nocolor')
+	// Locations include the prepended Drop interface.
+	assert_independent_array_element_errors(compile, ['16:9', '30:18', '39:9'])
 }
 
 fn test_owned_field_overloaded_comparison_and_index_are_rejected() {
@@ -1019,35 +1059,6 @@ fn main() {
 		'52:21', '56:31', '60:23', '64:33'])
 }
 
-fn test_owned_scalar_consumer_in_aggregate_with_mutating_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_aggregate_mutating_sibling', "struct E {
-	name string
-}
-
-struct Pair {
-	n int
-	s string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '?'
-}
-
-fn last_length_then_delete(mut arr []E) Pair {
-	return Pair{ n: arr.last().name.len, s: delete_last(mut arr) }
-}
-
-fn main() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_length_then_delete(mut arr).n)
-}
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
 // Indexing and chained length reads can borrow the original element. A length
 // read can also share an initializer or call with stable fields or arguments.
 fn test_owned_scalar_consumers_borrow_array_elements() {
@@ -1394,31 +1405,6 @@ fn main() {
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true', run.output
-}
-
-fn test_owned_scalar_multi_return_with_mutating_sibling_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_multi_return_mutating_sibling', "struct E {
-	name string
-}
-
-fn delete_last(mut entries []E) string {
-	entries.delete_last()
-	return 'deleted'
-}
-
-fn last_length_then_delete(mut entries []E) (int, string) {
-	return entries.last().name.len, delete_last(mut entries)
-}
-
-fn main() {
-	mut entries := [E{ name: 'hello' }]
-	length, action := last_length_then_delete(mut entries)
-	println(int_str(length) + ':' + action)
-}
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
 fn test_owned_string_comparison_with_overloaded_index_sibling_is_rejected() {
