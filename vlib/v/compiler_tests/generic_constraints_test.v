@@ -197,8 +197,8 @@ fn check_method_relay() {
 }
 '
 
-fn test_valid_calls_to_interface_and_type_set_constraints() {
-	res := check_program('valid_constraint_calls', constraint_method_relay + "
+fn test_valid_constraint_calls_and_identifier_uses() {
+	res := check_program('valid_constraint_calls', constraint_method_relay + '
 fn longest[T Named](a T, b T) T {
 	return if a.name.len >= b.name.len { a } else { b }
 }
@@ -211,7 +211,7 @@ fn total[T Named](a T, items []T) int {
 	}
 	n := 5
 	sum += n
-	s := 'abc'
+	s := \'abc\'
 	sum += s.len
 	first := items[0]
 	return sum + first.name.len
@@ -227,21 +227,59 @@ fn describe[T Number](x T) string {
 	return x.str()
 }
 
-fn main() {
-	u := longest(User{ name: 'Alex', age: 30 }, User{ name: 'Bob', age: 25 })
-	println(u.age)
-	println(longest(Pet{ name: 'Rex' }, Pet{ name: 'Tom' }).name)
+type Part[T] = T | bool
 
-	println(total(User{ name: 'a' }, [User{
-		name: 'b'
+type First = Part[int]
+
+type Nested = Part[Part[int]] | Part[string]
+
+type Aliased = Part[First] | Part[string]
+
+fn accept[T Nested](value T) T {
+	return value
+}
+
+fn check_finite_nested_constraints() {
+	println(accept(1))
+	println(accept("ok"))
+	println(accept(true))
+	println(accept_alias(1))
+	println(accept_alias("ok"))
+	println(accept_alias(true))
+}
+
+fn accept_alias[T Aliased](value T) T {
+	return value
+}
+
+struct Rule {
+	constraint string
+}
+
+fn check_constraint_identifier() {
+	constraint := Rule{
+		constraint: \'x\'
+	}
+	println(constraint.constraint)
+}
+
+fn main() {
+	u := longest(User{ name: \'Alex\', age: 30 }, User{ name: \'Bob\', age: 25 })
+	println(u.age)
+	println(longest(Pet{ name: \'Rex\' }, Pet{ name: \'Tom\' }).name)
+
+	println(total(User{ name: \'a\' }, [User{
+		name: \'b\'
 	}]))
 
 	println(double(2))
 	println(double(2.5))
 	println(describe(i64(3)))
 	check_method_relay()
+	check_finite_nested_constraints()
+	check_constraint_identifier()
 }
-")
+')
 	assert res.exit_code == 0, res.output
 	assert error_lines(res.output) == [], res.output
 }
@@ -1675,37 +1713,6 @@ fn main() {
 	}
 }
 
-fn test_a_nested_sum_constraint_keeps_finite_nested_generic_instances() {
-	res := check_whole('sum_instances_finite_nested', 'module main
-
-type Part[T] = T | bool
-
-type First = Part[int]
-
-type Nested = Part[Part[int]] | Part[string]
-
-type Aliased = Part[First] | Part[string]
-
-fn accept[T Nested](value T) T {
-	return value
-}
-
-fn main() {
-	println(accept(1))
-	println(accept("ok"))
-	println(accept(true))
-	println(accept_alias(1))
-	println(accept_alias("ok"))
-	println(accept_alias(true))
-}
-
-fn accept_alias[T Aliased](value T) T {
-	return value
-}
-')
-	assert res.exit_code == 0, res.output
-}
-
 fn test_a_generic_sum_constraint_rejects_expanding_recursive_declarations() {
 	for name, declaration in {
 		'direct': 'type Expanding[T] = T | Expanding[[]T]'
@@ -2004,22 +2011,6 @@ fn main() {
 		'38:20: type `T` has no method `greet`: `Pet`, in its constraint `Animal`, does not have it',
 		'48:17: cannot use `string` as `T`: it is not in its constraint `Number`',
 	], res.output
-}
-
-fn test_constraint_is_still_a_name() {
-	res := check_program('name', "struct Rule {
-	constraint string
-}
-
-fn main() {
-	constraint := Rule{
-		constraint: 'x'
-	}
-	println(constraint.constraint)
-}
-")
-	assert res.exit_code == 0, res.output
-	assert error_lines(res.output) == [], res.output
 }
 
 fn test_the_thousands_formatting_of_28797_takes_a_constraint() {
