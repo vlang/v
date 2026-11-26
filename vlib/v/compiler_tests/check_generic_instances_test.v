@@ -1299,9 +1299,10 @@ fn test_a_build_checks_the_instances_in_a_compiler_process_where_it_cannot_fork(
 	return x.nme
 }
 
-fn main() {
+' + container_types + container_conversions + container_nest_and_count + 'fn main() {
 	mut unused := 1
-' + layout_calls + bad_layout_calls + "	println(show(User{ name: 'a' }))
+' + layout_calls + bad_layout_calls + container_type_calls + bad_container_type_calls +
+		"	println(show(User{ name: 'a' }))
 }
 "
 	res := build_program_with_env('invalid_build_process', source, env)
@@ -1309,9 +1310,16 @@ fn main() {
 	assert !res.output.contains('C compilation error'), res.output
 	// The warning of the build is printed once, by the build.
 	assert res.output.count('unused variable: `unused`') == 1, res.output
+	// The assignment and field errors use the shared layout declarations.
+	container_positions := ['73:9', '77:9', '85:18', '26:6', '32:3', '90:9', '95:9']
+	mut container_errors := []string{cap: container_type_errors.len}
+	for i, error in container_type_errors {
+		container_errors << '${container_positions[i]}: ${error.all_after(': ')}'
+	}
 	errors := error_lines(res.output)
-	assert errors.len == layout_errors.len + 1, res.output
+	assert errors.len == layout_errors.len + container_errors.len + 1, res.output
 	assert errors.filter(it in layout_errors) == layout_errors, res.output
+	assert errors.filter(it in container_errors) == container_errors, res.output
 	assert errors.any(it.starts_with('61:11: type `User` has no field named `nme`')), res.output
 	valid := build_program_with_env('layout_valid_build_process', layout_program + '}\n', env)
 	assert valid.exit_code == 0, valid.output
@@ -1372,6 +1380,27 @@ const container_type_calls = '	println(as_u64([u64(1)]))
 const container_type_program = container_types + wide_struct + container_conversions +
 	wide_array_operations + container_nest_and_count + 'fn main() {\n' + container_type_calls
 
+const bad_container_type_calls = "	println(as_u64(['a']))
+	println(as_bars([Foo{}]))
+	println(pass(['x']))
+	println(assign(['y']))
+	println(wrap(['z']))
+	println(nest(['w']))
+	println(counts({
+		'a': 'b'
+	}))
+"
+
+const container_type_errors = [
+	'23:9: cannot use `[]string` as type `[]u64` in return argument',
+	'27:9: cannot use `[]Foo` as type `[]Bar` in return argument',
+	'35:18: cannot use `[]string` as `[]u64` in argument 1 to `take_u64`',
+	'40:6: cannot assign to `b`: expected `[]u64`, not `[]string`',
+	'46:3: cannot assign to field `vals`: expected `[]u64`, not `[]string`',
+	'52:9: cannot append `[]string` to `[][]u64`',
+	'57:9: cannot use `map[string]string` as type `map[string]int` in return argument',
+]
+
 // An instance that uses an array or a map as one whose elements have another
 // type, which its elements cannot be used as at all (`[]string` as `[]u64`,
 // `[]Foo` as `[]Bar`), is reported where the body does so, once for that
@@ -1379,22 +1408,12 @@ const container_type_program = container_types + wide_struct + container_convers
 // is V 0.5.2's. A check and a build report the same; the build used to report
 // only a return, without its position.
 fn test_an_instance_that_uses_an_array_or_map_of_another_type_is_reported() {
-	source := container_type_program + "\tprintln(as_u64(['a']))\n\tprintln(as_bars([Foo{}]))\n\tprintln(pass(['x']))\n\tprintln(assign(['y']))\n\tprintln(wrap(['z']))\n\tprintln(nest(['w']))\n\tprintln(counts({\n\t\t'a': 'b'\n\t}))\n}\n"
+	source := container_type_program + bad_container_type_calls + '}\n'
 	for res in [check_program('container_type_check', source),
-		build_program('container_type_build', source), build_program_with_env('container_type_build_process', source, [
-			'V_CHECK_INSTANCES_IN_BUILD=process',
-		])] {
+		build_program('container_type_build', source)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'23:9: cannot use `[]string` as type `[]u64` in return argument',
-			'27:9: cannot use `[]Foo` as type `[]Bar` in return argument',
-			'35:18: cannot use `[]string` as `[]u64` in argument 1 to `take_u64`',
-			'40:6: cannot assign to `b`: expected `[]u64`, not `[]string`',
-			'46:3: cannot assign to field `vals`: expected `[]u64`, not `[]string`',
-			'52:9: cannot append `[]string` to `[][]u64`',
-			'57:9: cannot use `map[string]string` as type `map[string]int` in return argument',
-		], res.output
+		assert error_lines(res.output) == container_type_errors, res.output
 	}
 }
 
