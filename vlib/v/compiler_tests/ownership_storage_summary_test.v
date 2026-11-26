@@ -205,34 +205,44 @@ fn escaped() Holder {
 }
 fn main() {}
 ', [local_storage_return_error]}
+	cases << OwnedStorageRejection{owned_storage_map_source_fixture(true), [
+		'cannot return a reference to local storage `source`',
+	]}
+	cases << OwnedStorageRejection{owned_storage_overwrite_fixture('Holder{target: local.reference()}',
+		'no_op(mut holder, 42)'), [local_storage_return_error]}
+	cases << OwnedStorageRejection{owned_storage_overwrite_fixture('Holder{target: &Builder{number: 0}}',
+		'store_borrowed(mut holder, local.reference())'), [local_storage_return_error]}
 	check_owned_storage_rejections(root, cases)!
 }
 
-fn test_ownership_mutable_map_sources_preserve_value_and_header_semantics() {
+fn test_ownership_mutable_map_sources_preserve_owned_values() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_mutable_map_source_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source_path := os.join_path(root, 'main.v')
-	for borrowed_header in [false, true] {
-		field_type := if borrowed_header {
-			'&map[string]string = unsafe { nil }'
-		} else {
-			'map[string]string'
-		}
-		params := if borrowed_header { 'number int' } else { 'mut source map[string]string' }
-		store_body := if borrowed_header {
-			'_ = holder; _ = number'
-		} else {
-			'holder.value = source'
-		}
-		initial := if borrowed_header { 'Holder{value: &source}' } else { 'Holder{}' }
-		argument := if borrowed_header { '0' } else { 'mut source' }
-		main_body := if borrowed_header {
-			'_ = escaped()'
-		} else {
-			'assert escaped().value["key"] == "value"'
-		}
-		os.write_file(source_path, 'struct Holder { mut: value ${field_type} }
+	os.write_file(source_path, owned_storage_map_source_fixture(false))!
+	for mode in ['-no-parallel', ''] {
+		result := run_owned_storage_summary(source_path, mode, 'run')
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
+}
+
+fn owned_storage_map_source_fixture(borrowed_header bool) string {
+	field_type := if borrowed_header {
+		'&map[string]string = unsafe { nil }'
+	} else {
+		'map[string]string'
+	}
+	params := if borrowed_header { 'number int' } else { 'mut source map[string]string' }
+	store_body := if borrowed_header { '_ = holder; _ = number' } else { 'holder.value = source' }
+	initial := if borrowed_header { 'Holder{value: &source}' } else { 'Holder{}' }
+	argument := if borrowed_header { '0' } else { 'mut source' }
+	main_body := if borrowed_header {
+		'_ = escaped()'
+	} else {
+		'assert escaped().value["key"] == "value"'
+	}
+	return 'struct Holder { mut: value ${field_type} }
 fn store(mut holder Holder, ${params}) { ${store_body} }
 fn escaped() Holder {
 	mut source := {"key": "value"}
@@ -241,18 +251,7 @@ fn escaped() Holder {
 	return holder
 }
 fn main() { ${main_body} }
-')!
-		for mode in ['-no-parallel', ''] {
-			command := if borrowed_header { '-check' } else { 'run' }
-			result := run_owned_storage_summary(source_path, mode, command)
-			if borrowed_header {
-				assert result.exit_code != 0, '${mode}: ${result.output}'
-				assert result.output.contains('cannot return a reference to local storage `source`'), '${mode}: ${result.output}'
-			} else {
-				assert result.exit_code == 0, '${mode}: ${result.output}'
-			}
-		}
-	}
+'
 }
 
 fn test_ownership_field_projections_do_not_escape_local_storage() {
@@ -385,25 +384,22 @@ fn test_ownership_storage_queries_preserve_overwrites() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source_path := os.join_path(root, 'main.v')
-	mut rejected := []OwnedStorageRejection{}
-	common := 'struct Builder { mut: number int }
+	os.write_file(source_path, owned_storage_overwrite_fixture('Holder{target: local.reference()}',
+		'store_number(mut holder, 42)'))!
+	for mode in ['-no-parallel', ''] {
+		result := run_owned_storage_summary(source_path, mode, 'run')
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
+}
+
+fn owned_storage_overwrite_fixture(initial string, setter string) string {
+	return 'struct Builder { mut: number int }
 fn (mut builder Builder) reference() &Builder { return builder }
 struct Holder { mut: target &Builder }
 fn store_number(mut holder Holder, number int) { holder.target = &Builder{number: number} }
 fn no_op(mut holder Holder, number int) { _ = holder; _ = number }
 fn store_borrowed(mut holder Holder, builder &Builder) { holder.target = builder }
-'
-	for setter, accepted in {
-		'store_number(mut holder, 42)':                  true
-		'no_op(mut holder, 42)':                         false
-		'store_borrowed(mut holder, local.reference())': false
-	} {
-		initial := if accepted || setter.starts_with('no_op') {
-			'Holder{target: local.reference()}'
-		} else {
-			'Holder{target: &Builder{number: 0}}'
-		}
-		fixture := common + 'fn escaped() Holder {
+fn escaped() Holder {
 	mut local := Builder{}
 	mut holder := ${initial}
 	${setter}
@@ -411,17 +407,6 @@ fn store_borrowed(mut holder Holder, builder &Builder) { holder.target = builder
 }
 fn main() { assert escaped().target.number == 42 }
 '
-		if accepted {
-			os.write_file(source_path, fixture)!
-			for mode in ['-no-parallel', ''] {
-				result := run_owned_storage_summary(source_path, mode, 'run')
-				assert result.exit_code == 0, '${setter}: ${mode}: ${result.output}'
-			}
-		} else {
-			rejected << OwnedStorageRejection{fixture, [local_storage_return_error]}
-		}
-	}
-	check_owned_storage_rejections(root, rejected)!
 }
 
 fn test_ownership_storage_queries_handle_recursive_setters() {
