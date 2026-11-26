@@ -91,29 +91,24 @@ println(ls("custom")!.join(","))
 	assert shadow_result.output.trim_space() == 'local custom', shadow_result.output
 }
 
-// Script mode is a last resort: a declaration in the script itself keeps its
-// meaning even when `os` exports the same name.
-fn test_vsh_script_declaration_shadows_os_symbol() {
-	result := run_vsh_script('shadow', "fn exists(path string) string {
+fn test_vsh_script_local_declaration_and_closure_scope() {
+	result := run_vsh_script('local_scope', "fn exists(path string) string {
 	return 'local ' + path
 }
 
+// The local declaration shadows the implicit os symbol.
 println(exists('exists'))
 println(os.exists(temp_dir()))
-")
-	assert result.exit_code == 0, result.output
-	assert result.output.split_into_lines() == ['local exists', 'true'], result.output
-}
 
-fn test_vsh_script_closure_captures_preceding_top_level_local() {
-	result := run_vsh_script('closure_capture', "message := 'captured'
+// The closure can capture a preceding top-level local.
+message := 'captured'
 callback := fn [message] () {
 	println(message)
 }
 callback()
 ")
 	assert result.exit_code == 0, result.output
-	assert result.output.trim_space() == 'captured', result.output
+	assert result.output.split_into_lines() == ['local exists', 'true', 'captured'], result.output
 }
 
 // `-raw-vsh-tmp-prefix` compiles an input without the `.vsh` extension as a V script
