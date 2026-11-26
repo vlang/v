@@ -27,61 +27,6 @@ fn occf_compile_and_run(tag string, source string) {
 	assert run.exit_code == 0, run.output
 }
 
-// Reassigning an `?string` field via the drop-before-assign lowering must keep
-// the optional storage type; the temp used to hold the (auto-wrapped) value must
-// be `__v_option_string`, not the unwrapped `string` smartcast.
-fn test_optional_drop_before_assign_keeps_optional_temp() {
-	occf_compile_and_run('opt_drop_assign', 'module main
-
-fn f(input ?string) ?string {
-	mut preprocessor := ?string(none)
-	if value := input {
-		preprocessor = value.clone()
-	}
-	return preprocessor
-}
-
-fn main() {
-	assert (f("hello") or { "none" }) == "hello"
-}
-')
-}
-
-// The final synthetic store in drop-before-assign lowering may be visited by
-// transform again. It must not destroy the same old field value a second time.
-fn test_owned_field_assignment_drops_replaced_value_once() {
-	occf_compile_and_run('field_assign_one_drop', 'module main
-
-struct Owned implements Drop {
-	drops &int
-}
-
-fn (mut value Owned) drop() {
-	unsafe {
-		*value.drops += 1
-	}
-}
-
-struct Holder {
-mut:
-	value Owned
-}
-
-fn main() {
-	mut drops := 0
-	mut holder := Holder{
-		value: Owned{
-			drops: &drops
-		}
-	}
-	holder.value = Owned{
-		drops: &drops
-	}
-	assert drops == 1
-}
-')
-}
-
 fn test_ownership_clones_arc_arrays_and_owned_values() {
 	occf_compile_and_run('clone_arc_arrays_and_owned_values', 'module main
 
@@ -287,17 +232,57 @@ fn main() {
 ')
 }
 
-// Consuming an aggregate call argument moves its base and owned descendants as
-// one value instead of treating the descendant metadata as a second use.
-fn test_call_consumes_owned_aggregate_and_descendants_once() {
-	occf_compile_and_run('call_owned_aggregate', 'module main
+fn test_owned_assignments_and_aggregate_moves_preserve_lifetimes() {
+	occf_compile_and_run('owned_assignments_and_aggregate_moves', 'module main
 
-struct Owned implements Drop {
+// The drop-before-assign temporary keeps ?string storage after the smartcast.
+fn f(input ?string) ?string {
+	mut preprocessor := ?string(none)
+	if value := input {
+		preprocessor = value.clone()
+	}
+	return preprocessor
+}
+
+fn check_optional_assignment() {
+	assert (f("hello") or { "none" }) == "hello"
+}
+
+struct FieldOwned implements Drop {
+	drops &int
+}
+
+fn (mut value FieldOwned) drop() {
+	unsafe {
+		*value.drops += 1
+	}
+}
+
+struct Holder {
+mut:
+	value FieldOwned
+}
+
+// A second transform of the synthetic store must still drop the replaced field once.
+fn check_owned_field_assignment() {
+	mut drops := 0
+	mut holder := Holder{
+		value: FieldOwned{
+			drops: &drops
+		}
+	}
+	holder.value = FieldOwned{
+		drops: &drops
+	}
+	assert drops == 1
+}
+
+struct CallOwned implements Drop {
 mut:
 	value string
 }
 
-fn (mut value Owned) drop() {
+fn (mut value CallOwned) drop() {
 	value.value = ""
 }
 
@@ -311,28 +296,20 @@ fn wrap[T](value T) Wrapper[T] {
 	}
 }
 
-fn consume[T](first Owned, second Wrapper[T]) int {
+fn consume[T](first CallOwned, second Wrapper[T]) int {
 	return first.value.len + second.value.value.len
 }
 
-fn main() {
-	first := Owned{
+// A consuming call transfers the aggregate and its owned descendants together.
+fn check_consuming_call() {
+	first := CallOwned{
 		value: "a".to_owned()
 	}
-	second := Owned{
+	second := CallOwned{
 		value: "b".to_owned()
 	}
 	assert consume(first, wrap(second)) == 2
 }
-')
-}
-
-// Moving a destructible aggregate leaves its source storage uninitialized.
-// A later assignment must initialize that storage directly instead of dropping
-// the old bits, which now belong to the move destination. The same rule applies
-// when the move destination is an optional.
-fn test_moved_aggregate_reassignment_skips_stale_drop() {
-	occf_compile_and_run('moved_reassign', 'module main
 
 struct Owned implements Drop {
 mut:
@@ -356,6 +333,7 @@ fn (mut value Owned) drop() {
 	value.value = ""
 }
 
+// Reassigning a moved-from aggregate initializes the source without a stale drop.
 fn direct_move(drops &int) {
 	mut current := Owned{
 		value: "old".to_owned()
@@ -442,7 +420,7 @@ fn nested_call_moves_source_once(drops &int) {
 	assert consume_wrapped(wrap_owned(value))
 }
 
-fn main() {
+fn check_moved_aggregate_reassignment() {
 	mut direct_drops := 0
 	direct_move(&direct_drops)
 	assert direct_drops == 2
@@ -461,6 +439,13 @@ fn main() {
 	mut nested_call_drops := 0
 	nested_call_moves_source_once(&nested_call_drops)
 	assert nested_call_drops == 1
+}
+
+fn main() {
+	check_optional_assignment()
+	check_owned_field_assignment()
+	check_consuming_call()
+	check_moved_aggregate_reassignment()
 }
 ')
 }
