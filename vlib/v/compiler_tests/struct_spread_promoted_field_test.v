@@ -86,72 +86,42 @@ fn main() {
 	assert result.exit_code == 0, result.output
 }
 
-fn test_cross_struct_spread_requires_all_embedded_members() {
-	result := spread_promoted_project('incomplete', {
-		'main.v': 'struct Link {
+fn test_cross_struct_spread_rejects_invalid_promoted_initializers() {
+	mut files := {
+		'incomplete.v':          'struct IncompleteLink {
 	token int
 	active bool
 }
-struct Owner {
-	Link
+struct IncompleteOwner {
+	IncompleteLink
 	width int
 }
-struct Config { width int }
-fn main() {
+fn check_incomplete() {
 	config := Config{width: 31}
-	_ = Owner{...config, token: 9}
+	_ = IncompleteOwner{...config, token: 9}
 }
 '
-	}, false)
-	assert result.exit_code != 0, result.output
-	assert result.output.contains('struct `Config` is not compatible with struct `Owner`'), result.output
-}
-
-fn test_cross_struct_spread_checks_promoted_member_types() {
-	result := spread_promoted_project('wrong_type', {
-		'main.v': 'struct Link { token int }
-struct Owner {
-	Link
+		'typed_token.v':         'struct TypedLink { token int }
+struct TypedOwner {
+	TypedLink
 	width int
 }
-struct Config { width int }
-fn main() {
+fn check_wrong_type() {
 	config := Config{width: 31}
-	_ = Owner{...config, token: "wrong"}
+	_ = TypedOwner{...config, token: "wrong"}
 }
 '
-	}, false)
-	assert result.exit_code != 0, result.output
-	assert result.output.contains('cannot assign to field `token`: expected `int`, not `string`'), result.output
-}
-
-fn test_cross_struct_spread_checks_concrete_generic_promoted_types() {
-	result := spread_promoted_project('generic_wrong_type', {
-		'main.v': 'struct Link[T] { value T }
-struct Owner[T] {
-	Link[T]
+		'typed_generic_value.v': 'struct GenericLink[T] { value T }
+struct GenericOwner[T] {
+	GenericLink[T]
 	width int
 }
-struct Config { width int }
-fn main() {
+fn check_generic_wrong_type() {
 	config := Config{width: 31}
-	_ = Owner[int]{...config, value: "wrong"}
+	_ = GenericOwner[int]{...config, value: "wrong"}
 }
 '
-	}, false)
-	assert result.exit_code != 0, result.output
-	assert result.output.contains('cannot assign to field `value`: expected `int`, not `string`'), result.output
-}
-
-fn test_cross_struct_spread_does_not_count_shadowed_promoted_names() {
-	for name, members in {
-		'direct':        'Link\n\ttoken int'
-		'nested':        'Middle'
-		'duplicate':     'Link\n\tOther'
-		'repeated_path': 'One\n\tAnother'
-	} {
-		result := spread_promoted_project(name, {
-			'main.v': 'struct Link { token int }
+		'shadowed_links.v':      'struct Link { token int }
 struct Other { token int }
 struct Middle {
 	Link
@@ -159,19 +129,45 @@ struct Middle {
 }
 struct One { Link }
 struct Another { Link }
-struct Owner {
+'
+	}
+	mut checks := ['check_incomplete()', 'check_wrong_type()', 'check_generic_wrong_type()']
+	mut expected := {
+		'incomplete.v':          'struct `Config` is not compatible with struct `IncompleteOwner`'
+		'typed_token.v':         'cannot assign to field `token`: expected `int`, not `string`'
+		'typed_generic_value.v': 'cannot assign to field `value`: expected `int`, not `string`'
+	}
+	for name, members in {
+		'direct':        'Link\n\ttoken int'
+		'nested':        'Middle'
+		'duplicate':     'Link\n\tOther'
+		'repeated_path': 'One\n\tAnother'
+	} {
+		owner := '${name.snake_to_camel()}Owner'
+		file := '${name}.v'
+		files[file] = 'struct ${owner} {
 	${members}
 	width int
 }
-struct Config { width int }
-fn main() {
+fn check_${name}() {
 	config := Config{width: 31}
-	_ = Owner{...config, token: 9}
+	_ = ${owner}{...config, token: 9}
 }
 '
-		}, false)
-		assert result.exit_code != 0, '${name}: ${result.output}'
-		assert result.output.contains('struct `Config` is not compatible with struct `Owner`'), '${name}: ${result.output}'
+		checks << 'check_${name}()'
+		expected[file] = 'struct `Config` is not compatible with struct `${owner}`'
+	}
+	files['main.v'] = 'struct Config { width int }
+
+fn main() {
+	${checks.join('\n\t')}
+}
+'
+	result := spread_promoted_project('rejections', files, false)
+	assert result.exit_code != 0, result.output
+	diagnostics := result.output.split_into_lines().filter(it.contains(': error: '))
+	for file, message in expected {
+		assert diagnostics.any(it.contains('${file}:') && it.contains(message)), 'expected ${message} in ${file}\n${result.output}'
 	}
 }
 
