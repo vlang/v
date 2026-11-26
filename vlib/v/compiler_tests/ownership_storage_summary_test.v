@@ -270,8 +270,8 @@ fn main() { ${main_body} }
 	}
 }
 
-fn test_ownership_copied_fields_do_not_escape_local_storage() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_copied_fields_${os.getpid()}')
+fn test_ownership_field_projections_do_not_escape_local_storage() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_field_projections_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source_path := os.join_path(root, 'main.v')
@@ -323,21 +323,10 @@ fn main() {
 	assert fixed() == [6, 7]!
 	assert optional() or { panic("none") } == 44
 	assert result() or { panic(err) } == 45
-}
-')!
-	for mode in ['-no-parallel', ''] {
-		result := run_owned_storage_summary(source_path, mode, 'run')
-		assert result.exit_code == 0, '${mode}: ${result.output}'
-	}
+	check_scalar_projections()
 }
 
-fn test_ownership_scalar_projections_do_not_escape_local_storage() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_scalar_projections_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-
-	source_path := os.join_path(root, 'main.v')
-	os.write_file(source_path, 'type Number = int
+type Number = int
 enum State { ready }
 struct Scalars {
 	flag bool
@@ -374,7 +363,7 @@ fn unsigned() uint {
 	ptr := &local
 	return ptr.unsigned
 }
-fn number() Number {
+fn aliased_number() Number {
 	local := Scalars{number: Number(4)}
 	ptr := &local
 	return ptr.number
@@ -389,13 +378,13 @@ fn indexed() int {
 	ptr := &local
 	return ptr.values[1]
 }
-fn main() {
+fn check_scalar_projections() {
 	assert flag()
 	assert fraction() == 1.5
 	assert letter() == rune(65)
 	assert signed() == -2
 	assert unsigned() == 3
-	assert number() == Number(4)
+	assert aliased_number() == Number(4)
 	assert state() == .ready
 	assert indexed() == 6
 }
