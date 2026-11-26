@@ -42,13 +42,6 @@ fn fn_value_write_project(fixture_dir string, name string, files map[string]stri
 	return root
 }
 
-fn fn_value_run_project_good(fixture_dir string, name string, files map[string]string) string {
-	good_bin := fn_value_compile_good_project(fixture_dir, name, files)
-	run := os.exec([good_bin])
-	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
-	return run.output.trim_space()
-}
-
 fn fn_value_compile_good_project(fixture_dir string, name string, files map[string]string) string {
 	root := fn_value_write_project(fixture_dir, name, files)
 	good_bin := os.join_path(fixture_dir, 'v3_${name}')
@@ -110,8 +103,16 @@ fn fn_value_run_project_bad(fixture_dir string, name string, files map[string]st
 
 fn imported_fn_value_project_files() map[string]string {
 	return {
-		'v.mod':           "Module { name: 'fn_value_imported' }\n"
-		'worker/worker.v': "module worker
+		'v.mod':                 "Module { name: 'fn_value_imported' }\n"
+		'callbacks/callbacks.v': 'module callbacks
+
+pub type Callback[T] = fn (T) int
+'
+		'collision/collision.v': 'module collision
+
+pub const foo = 7
+'
+		'worker/worker.v':       "module worker
 
 pub fn inc(i int) int {
 	return i + 1
@@ -132,8 +133,10 @@ pub fn read_other(i int) !int {
 	return i + 50
 }
 "
-		'main.v':          "module main
+		'main.v':                "module main
 
+import callbacks
+import collision
 import worker
 
 fn inc(i int) int {
@@ -151,6 +154,22 @@ fn read_from_local() !int {
 	return loader(2)!
 }
 
+fn twice(value int) int {
+	return value * 2
+}
+
+fn invoke(callback callbacks.Callback[int]) int {
+	return callback(21)
+}
+
+fn foo() int {
+	return 42
+}
+
+fn take(callback fn () int) int {
+	return callback()
+}
+
 fn main() {
 	mut f := worker.inc
 	assert f(4) == 5
@@ -165,6 +184,8 @@ fn main() {
 	local_f := local_worker.inc
 	assert local_f == 7
 	println('imported-ok')
+	println(int_str(invoke(twice)))
+	println(int_str(take(foo) + collision.foo))
 }
 "
 	}
@@ -538,33 +559,9 @@ fn main() {
 	}
 }
 
-fn test_imported_generic_fn_alias_keeps_parameters() {
+fn test_imported_generic_fn_alias_rejects_mismatched_parameters() {
 	fixture_dir := fn_value_new_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	out := fn_value_run_project_good(fixture_dir, 'fn_value_imported_generic_alias', {
-		'v.mod':                 "Module { name: 'fn_value_imported_generic_alias' }\n"
-		'callbacks/callbacks.v': 'module callbacks
-
-pub type Callback[T] = fn (T) int
-'
-		'main.v':                'module main
-
-import callbacks
-
-fn twice(value int) int {
-	return value * 2
-}
-
-fn invoke(callback callbacks.Callback[int]) int {
-	return callback(21)
-}
-
-fn main() {
-	println(int_str(invoke(twice)))
-}
-'
-	})
-	assert out == '42'
 	bad_output := fn_value_run_project_bad(fixture_dir, 'fn_value_imported_generic_alias_mismatch', {
 		'v.mod':                 "Module { name: 'fn_value_imported_generic_alias_mismatch' }\n"
 		'callbacks/callbacks.v': 'module callbacks
@@ -589,35 +586,6 @@ fn main() {
 '
 	})
 	assert bad_output.contains('cannot use `fn (string) int` as `fn (int) int` in argument 1 to `invoke`'), bad_output
-}
-
-fn test_resolved_fn_value_wins_over_imported_const_suffix() {
-	fixture_dir := fn_value_new_fixture_dir()
-	defer { os.rmdir_all(fixture_dir) or {} }
-	out := fn_value_run_project_good(fixture_dir, 'fn_value_imported_const_suffix', {
-		'v.mod':                 "Module { name: 'fn_value_imported_const_suffix' }\n"
-		'collision/collision.v': 'module collision
-
-pub const foo = 7
-'
-		'main.v':                'module main
-
-import collision
-
-fn foo() int {
-	return 42
-}
-
-fn take(callback fn () int) int {
-	return callback()
-}
-
-fn main() {
-	println(int_str(take(foo) + collision.foo))
-}
-'
-	})
-	assert out == '49'
 }
 
 fn test_main_fn_values_use_their_declared_storage() {
@@ -723,14 +691,18 @@ fn test_imported_fn_values_keep_callable_types() {
 	assert !imported_c.contains('i64 loader = worker__read_ok'), imported_c
 	assert !imported_c.contains(' f = main__inc'), imported_c
 	assert imported_c.contains('i64 local_f = local_worker.inc'), imported_c
-	assert imported_c.contains('typedef i64 (*_fn_ptr_'), imported_c
-	assert imported_c.contains(' f = worker__inc'), imported_c
+	declaration, _ := imported_c.split_once(' f = worker__inc;') or {
+		panic('missing local assignment of worker.inc')
+	}
+	pointer_type := declaration.all_after_last('\n').trim_space()
+	assert pointer_type.starts_with('_fn_ptr_'), pointer_type
+	assert imported_c.contains('typedef i64 (*${pointer_type})('), pointer_type
 	assert imported_c.contains('f = worker__dec'), imported_c
 	assert imported_c.contains(' loader = worker__read_ok'), imported_c
 	assert imported_c.contains('loader = worker__read_other'), imported_c
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'imported-ok', run.output
+	assert run.output.trim_space().split_into_lines() == ['imported-ok', '42', '49'], run.output
 }
 
 fn test_shadowed_fn_value_calls_use_bound_callable_types() {
