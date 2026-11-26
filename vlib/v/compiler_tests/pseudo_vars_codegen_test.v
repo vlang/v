@@ -2,16 +2,10 @@ import os
 import v.cmdexec
 import v.tempname
 
-// test_at_mod_codegen validates that v3 lowers @MOD to the current module name.
-fn test_at_mod_codegen() {
+fn test_at_mod_codegen_in_named_module() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v3_at_mod_${tempname.unique_token()}')
 	os.mkdir(tmp_dir)!
 	defer { os.rmdir_all(tmp_dir) or {} }
-	main_src := os.join_path(tmp_dir, 'v3_at_mod_main.v')
-	main_bin := os.join_path(tmp_dir, 'v3_at_mod_main')
-	os.write_file(main_src, "fn main() {\n\tassert @MOD == 'main'\n}\n")!
-	main_result := os.exec([@VEXE, '${main_src}', '-o', main_bin])
-	assert main_result.exit_code == 0, main_result.output
 
 	module_test_src := os.join_path(tmp_dir, 'v3_at_mod_module_test.v')
 	module_test_bin := os.join_path(tmp_dir, 'v3_at_mod_module_test')
@@ -36,19 +30,26 @@ fn test_at_file_line_codegen_uses_source_line() {
 	assert run.output == 'v3_file_line_main.v:2\nv3_file_line_main.v:3\n', run.output
 }
 
-fn test_quoted_comptime_pseudo_vars_are_not_expanded() {
-	tmp_dir := os.join_path(os.vtmp_dir(), 'v3_quoted_pseudo_vars_${tempname.unique_token()}')
+fn test_main_pseudo_vars_and_quoted_comptime_literals() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v3_main_pseudo_vars_${tempname.unique_token()}')
 	os.mkdir(tmp_dir)!
 	defer { os.rmdir_all(tmp_dir) or {} }
-	main_src := os.join_path(tmp_dir, 'v3_quoted_pseudo_vars_main.v')
-	main_bin := os.join_path(tmp_dir, 'v3_quoted_pseudo_vars_main')
-	os.write_file(main_src,
-		"fn main() {\n\t\$if '@OS' == @OS {\n\t\tprintln('wrong')\n\t} \$else {\n\t\tprintln('ok')\n\t}\n}\n")!
+	main_src := os.join_path(tmp_dir, 'v3_main_pseudo_vars.v')
+	main_bin := os.join_path(tmp_dir, 'v3_main_pseudo_vars')
+	os.write_file(main_src, "fn main() {
+	assert @MOD == 'main'
+	\$if '@OS' == @OS {
+		println('wrong')
+	} \$else {
+		println('ok')
+	}
+}
+")!
 	compile := os.exec([@VEXE, '${main_src}', '-o', main_bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([main_bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	assert run.output.trim_space() == 'ok', run.output
 }
 
 // Both the literal asset path and @FILE resolve beside the source file.
