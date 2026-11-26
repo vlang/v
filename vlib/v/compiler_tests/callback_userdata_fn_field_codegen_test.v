@@ -37,11 +37,6 @@ fn callback_write_source(root string, name string, source string) string {
 	return path
 }
 
-fn callback_compile(v3_bin string, source string) os.Result {
-	out := source.all_before_last('.')
-	return os.exec([v3_bin, source, '-b', 'c', '-o', '${out}'])
-}
-
 fn callback_write_project_file(root string, rel string, source string) string {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
@@ -103,6 +98,77 @@ fn main() {
 	generated := os.read_file(out + '.c') or { panic(err) }
 	assert generated.contains('main__App_on_event('), generated
 	assert !generated.contains('void App__on_event('), generated
+}
+
+fn test_callback_userdata_fn_field_rejects_incompatible_types() {
+	root := os.join_path(os.vtmp_dir(), 'v3_callback_userdata_rejections_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	v3_bin := callback_ownership_compiler()
+	source := 'module main
+
+struct FrameConfig {
+	frame fn (voidptr)
+}
+
+struct Event {}
+struct Other {}
+struct App {}
+
+struct PointerResultConfig {
+	cb fn () &Event
+}
+
+struct EventConfig {
+	event fn (&Event, voidptr)
+}
+
+struct PrimitiveParamConfig {
+	cb fn (i64)
+}
+
+fn wrong_arity(a voidptr, b int) {}
+
+fn wrong_return(a voidptr) int {
+	return 1
+}
+
+fn ret_voidptr() voidptr {
+	return voidptr(0)
+}
+
+fn wrong_param(e &Other, mut app App) {}
+
+fn takes_int(x int) {}
+
+fn main() {
+	_ := FrameConfig{frame: wrong_arity}
+	_ := FrameConfig{frame: wrong_return}
+	_ := PointerResultConfig{cb: ret_voidptr}
+	_ := EventConfig{event: wrong_param}
+	// Function type identity distinguishes int and i64 even when their C widths match.
+	_ := PrimitiveParamConfig{cb: takes_int}
+}
+'
+	src := callback_write_source(root, 'rejected_callbacks', source)
+	out := os.join_path(root, 'program')
+	compile := os.exec([v3_bin, src, '-b', 'c', '-nocolor', '-o', out])
+	assert compile.exit_code != 0, compile.output
+	expected := {
+		'FrameConfig{frame: wrong_arity}':      'expected `fn (voidptr)`, not `fn (voidptr, int)`'
+		'FrameConfig{frame: wrong_return}':     'expected `fn (voidptr)`, not `fn (voidptr) int`'
+		'PointerResultConfig{cb: ret_voidptr}': 'expected `fn () &Event`, not `fn () voidptr`'
+		'EventConfig{event: wrong_param}':      'expected `fn (&Event, voidptr)`, not `fn (&Other, mut App)`'
+		'PrimitiveParamConfig{cb: takes_int}':  'expected `fn (i64)`, not `fn (int)`'
+	}
+	lines := source.split_into_lines()
+	diagnostics := compile.output.split_into_lines().filter(it.contains(': error: '))
+	for initializer, message in expected {
+		line := lines.index('\t_ := ${initializer}') + 1
+		assert line > 0, initializer
+		location := 'rejected_callbacks.v:${line}:'
+		assert diagnostics.any(it.contains(location) && it.contains(message)), 'missing "${message}" at ${location}\n${compile.output}'
+	}
 }
 
 fn test_callback_userdata_fn_field_adapters() {
@@ -267,78 +333,6 @@ fn main() {
 	autofree_c := os.read_file(autofree_out + '.c') or { panic(err) }
 	assert autofree_c.contains('main__frame((main__App*)arg0);'), autofree_c
 	assert autofree_c.contains('main__on_event(arg0, (main__App*)arg1);'), autofree_c
-
-	wrong_arity := callback_write_source(root, 'wrong_arity', 'module main
-struct Config {
-	frame fn (voidptr)
-}
-fn wrong(a voidptr, b int) {}
-fn main() {
-	_ := Config{frame: wrong}
-}
-')
-	arity_compile := callback_compile(v3_bin, wrong_arity)
-	assert arity_compile.exit_code != 0, arity_compile.output
-
-	wrong_return := callback_write_source(root, 'wrong_return', 'module main
-struct Config {
-	frame fn (voidptr)
-}
-fn wrong(a voidptr) int {
-	return 1
-}
-fn main() {
-	_ := Config{frame: wrong}
-}
-')
-	return_compile := callback_compile(v3_bin, wrong_return)
-	assert return_compile.exit_code != 0, return_compile.output
-
-	wrong_return_pointer := callback_write_source(root, 'wrong_return_pointer', 'module main
-struct Event {}
-struct Config {
-	cb fn () &Event
-}
-fn ret_voidptr() voidptr {
-	return voidptr(0)
-}
-fn main() {
-	_ := Config{cb: ret_voidptr}
-}
-')
-	return_pointer_compile := callback_compile(v3_bin, wrong_return_pointer)
-	assert return_pointer_compile.exit_code != 0, return_pointer_compile.output
-
-	wrong_param := callback_write_source(root, 'wrong_param', 'module main
-struct Event {}
-struct Other {}
-struct App {}
-struct Config {
-	event fn (&Event, voidptr)
-}
-fn wrong(e &Other, mut app App) {}
-fn main() {
-	_ := Config{event: wrong}
-}
-')
-	param_compile := callback_compile(v3_bin, wrong_param)
-	assert param_compile.exit_code != 0, param_compile.output
-
-	wrong_primitive_param := callback_write_source(root, 'wrong_primitive_param', 'module main
-struct Config {
-	cb fn (i64)
-}
-fn takes_int(x int) {}
-fn main() {
-	_ := Config{cb: takes_int}
-}
-')
-	primitive_param_compile := callback_compile(v3_bin, wrong_primitive_param)
-	// `fn (int)` and `fn (i64)` are distinct source types even though platform `int`
-	// currently shares i64's C width on 64-bit targets; assigning one to the other
-	// stays a type error (function-type identity is independent of the emitted C
-	// spelling and target width).
-	assert primitive_param_compile.exit_code != 0, primitive_param_compile.output
 
 	homonym_root := os.join_path(root, 'homonym')
 	callback_write_project_file(homonym_root, 'left/left.v', 'module left
