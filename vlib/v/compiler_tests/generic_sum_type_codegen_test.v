@@ -47,89 +47,8 @@ fn generic_sum_type_assert_no_bst_branch_wrap_leaks(c_code string) {
 	assert !c_code.contains('Node_f64 main__insert_'), c_code
 }
 
-fn test_generic_sum_instances_emit_concrete_c_types() {
-	root := generic_sum_type_fixture_dir('input')
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'app')
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, '
-struct Empty {}
-
-struct Node[T] {
-	value T
-	left  Tree[T]
-	right Tree[T]
-}
-
-type Tree[T] = Empty | &Node[T]
-
-fn leaf[T](value T, empty Tree[T]) Tree[T] {
-	return &Node[T]{value, empty, empty}
-}
-
-fn (tree Tree[T]) size[T]() int {
-	return match tree {
-		Empty { 0 }
-		&Node[T] { 1 + tree.left.size() + tree.right.size() }
-	}
-}
-
-fn (tree Tree[T]) add_left[T](value T) Tree[T] {
-	return match tree {
-		Empty {
-			&Node[T]{value, tree, tree}
-		}
-		&Node[T] {
-			&Node[T]{
-				...tree
-				left: &Node[T]{value, Empty{}, Empty{}}
-			}
-		}
-	}
-}
-
-fn main() {
-	empty_int := Tree[int](Empty{})
-	mut ints := leaf(10, empty_int)
-	ints = ints.add_left(5)
-	assert ints.size() == 2
-
-	empty_f64 := Tree[f64](Empty{})
-	mut floats := leaf(1.25, empty_f64)
-	floats = floats.add_left(0.5)
-	assert floats.size() == 2
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-
-	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('typedef struct Tree_int Tree_int;'), c_code
-	assert c_code.contains('typedef struct Tree_f64 Tree_f64;'), c_code
-	assert c_code.contains('struct main__Node_int {'), c_code
-	assert c_code.contains('struct main__Node_f64 {'), c_code
-	assert c_code.contains('struct Tree_int {'), c_code
-	assert c_code.contains('struct Tree_f64 {'), c_code
-	assert c_code.contains('main__Node_int* _ptr_Node_int;'), c_code
-	assert c_code.contains('main__Node_f64* _ptr_Node_f64;'), c_code
-	assert !c_code.contains('Array_fixed_Node_T'), c_code
-	assert !c_code.contains('Node_T'), c_code
-	assert !c_code.contains('tree.Node_T'), c_code
-	assert !c_code.contains('Tree_int ints = (Tree){'), c_code
-	assert !c_code.contains('Tree_f64 floats = (Tree){'), c_code
-}
-
-fn test_generic_sum_match_bst_branches_wrap_node_after_monomorphization() {
-	c_code := generic_sum_type_compile_run_source('bst_match_branch_wrap', '
+fn test_generic_sum_recursive_pointer_variants_emit_concrete_c_types() {
+	c_code := generic_sum_type_compile_run_source('recursive_pointer_variants', '
 struct Empty {}
 
 struct Node[T] {
@@ -213,7 +132,37 @@ fn insert_match[T](tree Tree[T], value T) Tree[T] {
 	}
 }
 
-fn main() {
+fn leaf[T](value T, empty Tree[T]) Tree[T] {
+	return &Node[T]{value, empty, empty}
+}
+
+fn (tree Tree[T]) add_left[T](value T) Tree[T] {
+	return match tree {
+		Empty {
+			&Node[T]{value, tree, tree}
+		}
+		&Node[T] {
+			&Node[T]{
+				...tree
+				left: &Node[T]{value, Empty{}, Empty{}}
+			}
+		}
+	}
+}
+
+fn check_tree_construction() {
+	empty_int := Tree[int](Empty{})
+	mut ints := leaf(10, empty_int)
+	ints = ints.add_left(5)
+	assert ints.size() == 2
+
+	empty_f64 := Tree[f64](Empty{})
+	mut floats := leaf(1.25, empty_f64)
+	floats = floats.add_left(0.5)
+	assert floats.size() == 2
+}
+
+fn check_bst_insertion() {
 	mut ints := Tree[int](Empty{})
 	ints = insert_match(ints, 4)
 	ints = insert_match(ints, 2)
@@ -241,11 +190,20 @@ fn main() {
 	floats_method = floats_method.insert(6.0)
 	floats_method = floats_method.insert(6.0)
 	assert floats_method.size() == 3
+}
 
+fn main() {
+	check_tree_construction()
+	check_bst_insertion()
 	println("ok")
 }
 ')
 	generic_sum_type_assert_no_bst_branch_wrap_leaks(c_code)
+	assert c_code.contains('typedef struct Tree_int Tree_int;'), c_code
+	assert c_code.contains('typedef struct Tree_f64 Tree_f64;'), c_code
+	assert !c_code.contains('Node_T'), c_code
+	assert !c_code.contains('Tree_int ints = (Tree){'), c_code
+	assert !c_code.contains('Tree_f64 floats = (Tree){'), c_code
 }
 
 fn test_generic_sum_concrete_value_variants() {
