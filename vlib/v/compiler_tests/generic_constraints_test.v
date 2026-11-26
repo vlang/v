@@ -1053,8 +1053,8 @@ fn main() {
 	], res.output
 }
 
-fn test_a_method_of_a_generic_struct_with_constrained_type_parameters_builds_and_runs() {
-	res := run_program('generic_receivers_run', constraint_prelude + "struct Shelf[T Named] {
+fn test_generic_constraints_on_functions_and_receiver_methods_build_and_run() {
+	res := run_program('constrained_functions_and_methods', constraint_prelude + "struct Shelf[T Named] {
 	items []T
 }
 
@@ -1085,6 +1085,32 @@ fn to_user(x int) User {
 	}
 }
 
+struct Box[T Named] {
+	item T
+}
+
+fn (b Box[T]) label() string {
+	return 'box of \${b.item.name}'
+}
+
+type Number = int | i64 | f64
+
+fn longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+
+fn double[T Number](x T) T {
+	return x + x
+}
+
+fn check_constraint_calls() {
+	u := longest(User{ name: 'Alex', age: 30 }, User{ name: 'Bo', age: 25 })
+	println(u.age)
+	println(double(21))
+	println(double(1.25))
+	println(Box[User]{ item: u }.label())
+}
+
 fn main() {
 	s := Shelf[User]{
 		items: [User{
@@ -1102,11 +1128,24 @@ fn main() {
 	println(map_fn(q, to_user).map(it.name))
 	println(q.map[User](to_user).map(it.age))
 	println(map_fn[int, User](q, to_user).map(it.age))
+	check_constraint_calls()
 }
 ")
 	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split_into_lines() == ['a+p', 'a+p', 'a+b', 'a+b', "['u1', 'u2']",
-		"['u1', 'u2']", '[1, 2]', '[1, 2]'], res.output
+	assert res.output.trim_space().split_into_lines() == [
+		'a+p',
+		'a+p',
+		'a+b',
+		'a+b',
+		"['u1', 'u2']",
+		"['u1', 'u2']",
+		'[1, 2]',
+		'[1, 2]',
+		'30',
+		'42',
+		'2.5',
+		'box of Alex',
+	], res.output
 }
 
 fn test_a_local_of_type_t_can_use_what_the_constraint_declares() {
@@ -2206,37 +2245,6 @@ fn main() {
 ")
 	assert res.exit_code == 0, res.output
 	assert error_lines(res.output) == [], res.output
-}
-
-fn test_a_program_with_constraints_builds_and_runs() {
-	res := run_program('run', constraint_prelude + "struct Box[T Named] {
-	item T
-}
-
-fn (b Box[T]) label() string {
-	return 'box of \${b.item.name}'
-}
-
-type Number = int | i64 | f64
-
-fn longest[T Named](a T, b T) T {
-	return if a.name.len >= b.name.len { a } else { b }
-}
-
-fn double[T Number](x T) T {
-	return x + x
-}
-
-fn main() {
-	u := longest(User{ name: 'Alex', age: 30 }, User{ name: 'Bo', age: 25 })
-	println(u.age)
-	println(double(21))
-	println(double(1.25))
-	println(Box[User]{ item: u }.label())
-}
-")
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split_into_lines() == ['30', '42', '2.5', 'box of Alex'], res.output
 }
 
 fn test_the_thousands_formatting_of_28797_takes_a_constraint() {
