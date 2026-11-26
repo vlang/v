@@ -9042,7 +9042,11 @@ fn (mut tc TypeChecker) ownership_mark_assoc_literal_fields_with_mode(lhs_name s
 	base_id := tc.a.child(&node, 0)
 	base_name := tc.ownership_expr_ident_name(base_id)
 	mut marked := false
-	if base_name.len > 0 {
+	if tc.autofree_mode && base_name.contains('[') {
+		// Autofree keeps V1's aliasing semantics (see ownership_report_moved): the
+		// update copies the container element in place, and the element stays in
+		// (and is freed with) its container, as with `x := values[i]`.
+	} else if base_name.len > 0 {
 		tc.ownership_reject_global_move(base_name, pos, lhs_name, false)
 		mut st := tc.ownership_state()
 		if base_name in st.owned_vars {
@@ -9240,6 +9244,16 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 			|| tc.ownership_sum_name_has_owner(source_name) {
 			_ = tc.ownership_alias_borrower(target_name, source_name, pos)
 		}
+	}
+	if tc.autofree_mode && source_name.contains('[') {
+		// Autofree keeps V1's aliasing semantics (see ownership_report_moved): a field
+		// set from a container element reads it in place, and the element stays in
+		// (and is freed with) its container.
+		mut st := tc.ownership_state()
+		st.owned_vars.delete(target_name)
+		st.owned_var_types.delete(target_name)
+		st.moved_vars.delete(target_name)
+		return false
 	}
 	if source_name.len > 0 && source_name in tc.ownership_state().owned_vars {
 		tc.ownership_reject_global_move(source_name, pos, target_name, false)
