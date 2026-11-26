@@ -36,6 +36,11 @@ jobs:
           musl-gcc --version
           VFLAGS='-cc gcc -gc none' ./v -silent -no-retry-compilation vlib/v/gen/c/linux_core_preamble_test.v
           VFLAGS='-cc musl-gcc -gc none -d use_bundled_libgc' ./v -silent -no-retry-compilation vlib/v/gen/c/linux_core_preamble_test.v
+      - name: Original SDK fixture with test-self flag isolation
+        run: |
+          set -eu
+          env -u VFLAGS -u VOSARGS ./v -cc gcc -gc none -silent -no-retry-compilation vlib/v/gen/c/linux_core_preamble_test.v
+          env -u VFLAGS -u VOSARGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent -no-retry-compilation vlib/v/gen/c/linux_core_preamble_test.v
   native_alpine:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
