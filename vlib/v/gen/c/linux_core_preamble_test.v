@@ -101,8 +101,9 @@ fn main() {
 	println("OK")
 }
 ')!
-	result := cmdexec.run(@VEXE, ['-nocache', '-cc', linux_native_probe_cc(), '-no-retry-compilation',
-		'run', source])
+	// This native libc probe does not need a collector or a musl libgc installation.
+	result := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-cc', linux_native_probe_cc(),
+		'-no-retry-compilation', 'run', source])
 	assert result.exit_code == 0, result.output
 	assert result.output == 'OK\n', result.output
 }
