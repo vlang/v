@@ -595,35 +595,8 @@ pub fn (app &App) show(id int) veb.Result {
 	return ctx.text('ok')
 }
 
-fn main() {}
-"
-	})
-	c_path := os.join_path(root, 'app.c')
-	compile := export_attr_compile_without_memory_limit(os.join_path(root, 'main.v'),
-		c_path)
-	assert compile.exit_code == 0, compile.output
-	c_code := os.read_file(c_path) or { panic(err) }
-	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, int id);'), c_code
-	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, int id) {'), c_code
-	assert c_code.contains('return App__show(app, ctx, id);'), c_code
-}
-
-fn test_export_wrapper_for_veb_handler_underscore_param_matches_implicit_ctx_position() {
-	root := export_attr_fixture_dir('veb_implicit_ctx_underscore_export_wrapper')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
-
-import veb
-
-pub struct Context {
-	veb.Context
-}
-
-pub struct App {}
-
 @[export: 'raw_show_underscore']
-pub fn (app &App) show(_ int) veb.Result {
+pub fn (app &App) show_underscore(_ int) veb.Result {
 	return ctx.text('ok')
 }
 
@@ -635,8 +608,15 @@ fn main() {}
 		c_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_path) or { panic(err) }
-	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, int _2);'), c_code
-	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, int _2) {'), c_code
-	assert c_code.contains('return App__show(app, ctx, _2);'), c_code
-	assert !c_code.contains('return App__show(app, ctx, _1);'), c_code
+	for method, param in {
+		'show':            'id'
+		'show_underscore': '_2'
+	} {
+		signature := 'veb__Result raw_${method}(main__App* app, main__Context* ctx, int ${param})'
+		assert c_code.contains('${signature};'), c_code
+		assert c_code.contains('${signature} {'), c_code
+		body := c_code.all_after('${signature} {').all_before('\n}')
+		assert body.contains('return App__${method}(app, ctx, ${param});'), body
+	}
+	assert !c_code.contains('return App__show_underscore(app, ctx, _1);'), c_code
 }
