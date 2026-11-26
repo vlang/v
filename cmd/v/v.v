@@ -365,7 +365,9 @@ fn launch_optional_compiler(vexe string, vroot string, name string, description 
 	if tool_cache_is_disabled() {
 		run_uncached_optional_compiler(vexe, compiler_source, name, description, build_args, args)
 	}
-	entry := tool_cache_entry(vexe, vroot, name, compiler_source, build_args) or {
+	entry := tool_cache_entry(vexe, vroot, name, compiler_source, build_args,
+		optional_compiler: true
+	) or {
 		eprintln('cannot find a writable cache for the ${description} compiler')
 		eprintln(err.msg())
 		exit(1)
@@ -399,12 +401,9 @@ fn run_uncached_optional_compiler(vexe string, compiler_source string, name stri
 	}
 	mut build_args := compiler_build_args.clone()
 	build_args << ['-o', binary, compiler_source]
-	mut environment := os.environ()
-	// VFLAGS applies to the requested compilation, not the helper build.
-	environment['VFLAGS'] = ''
 	mut build := os.new_process(vexe)
 	build.set_args(build_args)
-	build.set_environment(environment)
+	build.set_environment(tool_build_environment(true))
 	build.wait()
 	build_code := build.code
 	build.close()
