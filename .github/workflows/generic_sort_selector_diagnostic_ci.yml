@@ -345,3 +345,32 @@ jobs:
         with:
           name: sort-selector-metadata-trace
           path: ${{ runner.temp }}/selector-trace
+
+  compiler-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+      - uses: ./.github/actions/setup-v
+      - name: Rebuild and verify formatting
+        run: |
+          set -eu
+          ./v self
+          ./v fmt -w vlib/v/transform/array.v
+          git diff -- vlib/v/transform/array.v
+          git diff --exit-code -- vlib/v/transform/array.v
+          ./v fmt -verify vlib/v/transform/array.v
+          ./v -cc gcc -no-retry-compilation -no-parallel vlib/json2/encode_map_order_test.v
+      - name: Full compiler and C backend tests
+        run: |
+          set -eu
+          ./v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev
+          ./v -silent vlib/v/compiler_errors_test.v
+          ./v -silent test vlib/v/
+          ./v -silent test vlib/v/gen/c/
