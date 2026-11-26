@@ -5731,3 +5731,1347 @@ fn main() {
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 }
+
+fn test_ownership_scoped_atomic_workers_join_before_releasing_borrows() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_atomic', r'
+import sync.arc
+
+struct Job {
+	counter &arc.Atomic[int]
+	delta int
+}
+
+fn add(counter &arc.Atomic[int]) {
+	counter.add(1)
+}
+
+fn add_job(job Job) {
+	job.counter.add(job.delta)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	{
+		mut workers := []thread{}
+		defer { workers.wait() }
+		for _ in 0 .. 2 {
+			workers << spawn add(&counter)
+			workers << spawn add_job(Job{counter: &counter, delta: 2})
+		}
+	}
+	assert counter.load() == 6
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_scoped_atomic_workers_reject_unverified_pointer_use() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_atomic_escape', r'
+import sync.arc
+
+fn helper(counter &arc.Atomic[int]) {
+	counter.add(1)
+}
+
+fn work(counter &arc.Atomic[int]) {
+	helper(counter)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	handle := spawn work(&counter)
+	defer { handle.wait() }
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot prove that the scoped thread borrow is used without escaping'), result.output
+}
+
+fn test_ownership_scoped_atomic_workers_reject_detached_or_shorter_lived_borrows() {
+	v3_bin := ownership_build_v3()
+	for body in ['counter := arc.new_atomic(0); spawn work(&counter)',
+		'mut handles := []thread{}; defer { handles.wait() }; for _ in 0 .. 2 { counter := arc.new_atomic(0); handles << spawn work(&counter) }'] {
+		result := run_ownership_check(v3_bin, 'scoped_worker_atomic_lifetime', '
+import sync.arc
+
+fn work(counter &arc.Atomic[int]) {
+	counter.add(1)
+}
+
+fn main() {
+	${body}
+}
+')
+		assert result.exit_code != 0, result.output
+		reason := if body.starts_with('counter') {
+			'references cannot be transferred between threads'
+		} else {
+			'outlives borrowed atomic `counter`'
+		}
+		assert result.output.contains(reason), result.output
+	}
+}
+
+const scoped_mut_callback_fixture = r'
+import sync.arc
+import sync.thread as transport
+
+struct ScopedVisitor implements Drop {
+	counter &arc.Atomic[int]
+}
+
+pub fn (mut visitor ScopedVisitor) call(delta int) int {
+	return visitor.counter.add(delta)
+}
+
+fn (mut visitor ScopedVisitor) drop() {
+	visitor.counter.add(1)
+}
+'
+
+fn test_ownership_scoped_mut_callback_joins_before_releasing_owned_state() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_mut_callback_join'
+	source := scoped_mut_callback_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	{
+		callback := transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+			counter: &counter
+		})
+		handle := spawn transport.invoke_scoped_mut_callback(callback, 2)
+		defer { handle.wait() }
+	}
+	assert counter.load() == 3
+	{
+		mut handles := []thread int{}
+		defer { handles.wait() }
+		for _ in 0 .. 4 {
+			handles << spawn transport.invoke_scoped_mut_callback(
+				transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+					counter: &counter
+				}), 2)
+		}
+	}
+	assert counter.load() == 15
+}
+'
+	result := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+
+	autofree := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-autofree'])
+	assert autofree.exit_code != 0, autofree.output
+	assert autofree.output.contains('scoped mutable callbacks require ownership moves'), autofree.output
+}
+
+fn test_ownership_scoped_mut_callback_requires_the_join_to_bound_its_payload() {
+	v3_bin := ownership_build_v3()
+	call := 'transport.invoke_scoped_mut_callback(transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{counter: &counter}), 2)'
+	for body in [
+		'counter := arc.new_atomic(0); spawn ${call}',
+		'counter := arc.new_atomic(0); go ${call}',
+		'mut handles := []thread int{}; defer { handles.wait() }; for _ in 0 .. 2 { counter := arc.new_atomic(0); handles << spawn ${call} }',
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_mut_callback_lifetime',
+			scoped_mut_callback_fixture + '\nfn main() { ${body} }\n')
+		assert result.exit_code != 0, result.output
+		reason := if body.starts_with('mut handles') {
+			'outlives borrowed atomic `counter`'
+		} else {
+			'scoped callbacks require a checked invocation with a deferred join'
+		}
+		assert result.output.contains(reason), result.output
+	}
+}
+
+fn test_ownership_scoped_mut_callbacks_reborrow_through_adjacent_bindings() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_mut_callback_named_reborrow'
+	source := scoped_mut_callback_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	{
+		first := spawn transport.invoke_scoped_mut_callback(
+			transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+				counter: &counter
+			}), 2)
+		defer { first.wait() }
+		callback := (transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+			counter: &counter
+		}))
+		second := spawn transport.invoke_scoped_mut_callback((callback), 3)
+		defer { second.wait() }
+	}
+	assert counter.load() == 7
+	{
+		mut handles := []thread int{}
+		defer { handles.wait() }
+		handles << spawn transport.invoke_scoped_mut_callback(
+			transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+				counter: &counter
+			}), 2)
+		callback := transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+			counter: &counter
+		})
+		handles << spawn transport.invoke_scoped_mut_callback(callback, 3)
+	}
+	assert counter.load() == 14
+}
+'
+	result := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_mut_callback_named_reborrow_requires_adjacent_joined_use() {
+	v3_bin := ownership_build_v3()
+	for body in [
+		'second := spawn transport.invoke_scoped_mut_callback(callback, 3); second.wait()',
+		'println(0); second := spawn transport.invoke_scoped_mut_callback(callback, 3); defer { second.wait() }',
+		'_ = callback',
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_mut_callback_named_reborrow_rejected',
+			scoped_mut_callback_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	first := spawn transport.invoke_scoped_mut_callback(
+		transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{counter: &counter}), 2)
+	defer { first.wait() }
+	callback := transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{counter: &counter})
+' + body + '\n}\n')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot use `counter` until scoped thread `first` has joined'), result.output
+	}
+}
+
+fn test_ownership_scoped_mut_callback_cannot_move_to_an_unchecked_worker() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_mut_callback_unchecked_worker',
+		scoped_mut_callback_fixture + r'
+fn other_worker[^scope](callback transport.ScopedMutCallback[^scope, int, int]) int {
+	return transport.invoke_scoped_mut_callback(callback, 1)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	handle := spawn other_worker(
+		transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+			counter: &counter
+		}))
+	defer { handle.wait() }
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('scoped callbacks require a checked invocation with a deferred join'), result.output
+}
+
+fn test_ownership_scoped_mut_callback_checks_the_call_and_destructor() {
+	v3_bin := ownership_build_v3()
+	for body in [
+		scoped_mut_callback_fixture.replace('return visitor.counter.add(delta)',
+			'return use_counter(visitor.counter, delta)'),
+		scoped_mut_callback_fixture.replace('visitor.counter.add(1)',
+			'use_counter(visitor.counter, 1)'),
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_mut_callback_escape', body + r'
+fn use_counter(counter &arc.Atomic[int], delta int) int {
+	return counter.add(delta)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	handle := spawn transport.invoke_scoped_mut_callback(
+		transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+			counter: &counter
+		}), 2)
+	defer { handle.wait() }
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('scoped callbacks require a checked invocation with a deferred join'), result.output
+	}
+}
+
+fn test_ownership_scoped_mut_callback_move_keeps_the_active_loan() {
+	v3_bin := ownership_build_v3()
+	for access in ['counter.load()', 'transport.invoke_scoped_mut_callback(callback, 3)'] {
+		source := scoped_mut_callback_fixture + "
+fn main() {
+	counter := arc.new_atomic(0)
+	callback := transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+		counter: &counter
+	})
+	handle := spawn transport.invoke_scoped_mut_callback(callback, 2)
+	defer { handle.wait() }
+	${access}
+}
+"
+		result := run_ownership_check(v3_bin, 'scoped_mut_callback_move', source)
+		assert result.exit_code != 0, result.output
+		reason := if access.starts_with('counter') {
+			'cannot use `counter` until scoped thread `handle` has joined'
+		} else {
+			'use of moved value: `callback`'
+		}
+		assert result.output.contains(reason), result.output
+	}
+}
+
+const scoped_callback_factory_fixture = scoped_mut_callback_fixture + r'
+struct ConcreteVisitorFactory[^scope] {
+	counter &^scope arc.Atomic[int]
+}
+
+fn (mut factory ConcreteVisitorFactory[^scope]) create() transport.ScopedMutCallback[^scope, int, int] {
+	return transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+		counter: factory.counter
+	})
+}
+'
+
+fn test_ownership_scoped_callback_factory_joins_and_drops_fresh_boxes() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_callback_factory_join'
+	source := scoped_callback_factory_fixture + r'
+fn run[^scope](mut factory ConcreteVisitorFactory[^scope]) {
+	for _ in 0 .. 3 {
+		visitor := factory.create()
+		handle := spawn transport.invoke_scoped_mut_callback(visitor, 1)
+		defer { handle.wait() }
+	}
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut first := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut first)
+	assert counter.load() == 6
+	{
+		mut second := ConcreteVisitorFactory[^scope]{counter: &counter}
+		mut handles := []thread int{}
+		defer { handles.wait() }
+		handles << spawn transport.invoke_scoped_mut_callback(first.create(), 2)
+		visitor := second.create()
+		handles << spawn transport.invoke_scoped_mut_callback(visitor, 3)
+	}
+	assert counter.load() == 13
+}
+'
+	result := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_callback_factory_requires_a_visible_fresh_box_and_safe_methods() {
+	v3_bin := ownership_build_v3()
+	for fixture in [
+		scoped_callback_factory_fixture.replace('counter: factory.counter',
+			'counter: forward_counter(factory.counter)'),
+		scoped_callback_factory_fixture.replace('visitor.counter.add(1)',
+			'forward_counter(visitor.counter).add(1)'),
+	] {
+		source := fixture + r'
+fn forward_counter(counter &arc.Atomic[int]) &arc.Atomic[int] {
+	return counter
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	handle := spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	defer { handle.wait() }
+}
+'
+		result := run_ownership_check(v3_bin, 'scoped_callback_factory_unproven', source)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('scoped callbacks require a checked invocation with a deferred join'), result.output
+	}
+}
+
+fn test_ownership_scoped_callback_factory_keeps_the_receiver_and_referent_live() {
+	v3_bin := ownership_build_v3()
+	for use in ['_ := factory.create()', 'drop_owned(counter)'] {
+		source := scoped_callback_factory_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	visitor := factory.create()
+	handle := spawn transport.invoke_scoped_mut_callback(visitor, 2)
+	defer { handle.wait() }
+	' + use + '\n}\n'
+		result := run_ownership_check(v3_bin, 'scoped_callback_factory_live', source)
+		assert result.exit_code != 0, result.output
+		reason := if use.starts_with('_') {
+			'cannot use `factory` until scoped thread `handle` has joined'
+		} else {
+			'because `counter` is borrowed by `factory.counter`'
+		}
+		assert result.output.contains(reason), result.output
+	}
+}
+
+fn test_ownership_scoped_callback_factory_group_cannot_outlive_the_receiver() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_callback_factory_group_scope',
+		scoped_callback_factory_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	for _ in 0 .. 2 {
+		mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+		handles << spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	}
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('outlives borrowed atomic `factory`'), result.output
+}
+
+const abstract_scoped_callback_factory_fixture = scoped_callback_factory_fixture + r'
+interface VisitorFactory[^scope] {
+mut:
+	create() transport.ScopedMutCallback[^scope, int, int]
+}
+'
+
+fn test_ownership_abstract_scoped_callback_factory_reborrows_through_join() {
+	v3_bin := ownership_build_v3()
+	name := 'abstract_scoped_callback_factory_join'
+	source := abstract_scoped_callback_factory_fixture + r'
+struct OtherVisitorFactory[^scope] {
+	counter &^scope arc.Atomic[int]
+}
+
+fn (mut factory OtherVisitorFactory[^scope]) create() transport.ScopedMutCallback[^scope, int, int] {
+	return transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+		counter: factory.counter
+	})
+}
+
+fn run[^scope](mut factory VisitorFactory[^scope], count int) {
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	for _ in 0 .. count {
+		visitor := factory.create()
+		handles << spawn transport.invoke_scoped_mut_callback(visitor, 1)
+	}
+	first := factory.create()
+	handles << spawn transport.invoke_scoped_mut_callback(first, 2)
+	handles << spawn transport.invoke_scoped_mut_callback(factory.create(), 3)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut first := ConcreteVisitorFactory[^scope]{counter: &counter}
+	mut second := OtherVisitorFactory[^scope]{counter: &counter}
+	run(mut first, 4)
+	run(mut second, 2)
+	assert counter.load() == 26
+}
+'
+	result := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_abstract_scoped_callback_factory_rejects_unverified_implementations() {
+	v3_bin := ownership_build_v3()
+	bad := abstract_scoped_callback_factory_fixture.replace('visitor.counter.add(1)',
+		'forward_counter(visitor.counter).add(1)')
+	for convert in ['run(mut concrete)', 'mut erased := VisitorFactory(concrete); run(mut erased)'] {
+		source := bad + r'
+fn forward_counter(counter &arc.Atomic[int]) &arc.Atomic[int] {
+	return counter
+}
+fn run[^scope](mut factory VisitorFactory[^scope]) {
+	handle := spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	defer { handle.wait() }
+}
+fn main() {
+	counter := arc.new_atomic(0)
+	mut concrete := ConcreteVisitorFactory[^scope]{counter: &counter}
+' + convert + '\n}\n'
+		result := run_ownership_check(v3_bin, 'abstract_scoped_callback_factory_bad_impl', source)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
+	}
+}
+
+fn test_ownership_abstract_scoped_callback_factory_requires_contract_through_erasure() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'abstract_scoped_callback_factory_unchecked_interface',
+		abstract_scoped_callback_factory_fixture + r'
+interface PlainFactory {
+mut:
+	create() transport.ScopedMutCallback[int, int]
+}
+
+fn use_checked[^scope](mut factory VisitorFactory[^scope]) {
+	handle := spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	defer { handle.wait() }
+}
+
+fn forward(mut factory PlainFactory) {
+	use_checked(mut factory)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	forward(mut factory)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
+}
+
+fn test_ownership_abstract_scoped_callback_factory_reserves_other_receiver_access() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'abstract_scoped_callback_factory_receiver',
+		abstract_scoped_callback_factory_fixture + r'
+fn run[^scope](mut factory VisitorFactory[^scope]) {
+	handle := spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	defer { handle.wait() }
+	_ := &factory
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut factory)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot use `factory` until scoped thread `handle` has joined'), result.output
+}
+
+fn test_ownership_abstract_scoped_callback_factory_conflicts_with_an_existing_alias() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'abstract_scoped_callback_factory_alias',
+		abstract_scoped_callback_factory_fixture + r'
+fn run[^scope](mut factory VisitorFactory[^scope]) {
+	alias := &factory
+	handle := spawn transport.invoke_scoped_mut_callback(factory.create(), 1)
+	defer { handle.wait() }
+	_ = alias
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut factory)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('previous borrow by `alias`'), result.output
+}
+
+fn test_ownership_abstract_scoped_callback_factory_rejects_raw_pointer_arguments() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'abstract_scoped_callback_factory_raw',
+		abstract_scoped_callback_factory_fixture + r'
+fn need_factory[^scope](_ &VisitorFactory[^scope]) {}
+
+fn forward(ptr voidptr) {
+	need_factory(ptr)
+}
+
+fn main() {}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot use a raw pointer as a scoped callback factory'), result.output
+}
+
+const scoped_callback_worker_fixture = abstract_scoped_callback_factory_fixture + r'
+fn visit_one[^scope](mut visitor transport.ScopedMutCallback[^scope, int, int], delta int) int {
+	return visitor.call(delta)
+}
+
+struct Walker {
+	delta int
+}
+
+fn (walker Walker) clone() Walker {
+	return Walker{delta: walker.delta}
+}
+
+fn (walker Walker) visit[^scope](mut visitor transport.ScopedMutCallback[^scope, int, int], delta int) int {
+	return visit_one(mut visitor, delta)
+}
+
+fn walk_worker[^scope](walker Walker, visitor_in transport.ScopedMutCallback[^scope, int, int], early bool) int {
+	if early {
+		return 0
+	}
+	mut visitor := visitor_in
+	mut result := 0
+	for _ in 0 .. 3 {
+		result = walker.visit(mut visitor, walker.delta)
+	}
+	return result
+}
+'
+
+fn test_ownership_scoped_callback_worker_calls_a_visitor_repeatedly() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_callback_worker_calls'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_callback_worker_fixture + r'
+fn run[^scope](mut factory VisitorFactory[^scope], walker Walker) {
+	mut first := factory.create()
+	walker.visit(mut first, 1)
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	handles << spawn walk_worker(walker.clone(), first, false)
+	for _ in 0 .. 2 {
+		visitor := factory.create()
+		handles << spawn walk_worker(walker.clone(), visitor, false)
+	}
+	handles << spawn walk_worker(walker.clone(), factory.create(), true)
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut factory, Walker{delta: 2})
+	assert counter.load() == 23
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_callback_worker_accepts_inline_boxes_in_a_group() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_callback_worker_inline'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_callback_worker_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	{
+		mut handles := []thread int{}
+		defer { handles.wait() }
+		handles << spawn walk_worker(Walker{delta: 2},
+			transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+				counter: &counter
+			}), false)
+		handles << spawn walk_worker(Walker{delta: 3},
+			transport.new_scoped_mut_callback[int, int, ScopedVisitor](ScopedVisitor{
+				counter: &counter
+			}), false)
+	}
+	assert counter.load() == 17
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_callback_worker_rejects_an_unchecked_helper_or_cleanup() {
+	v3_bin := ownership_build_v3()
+	for fixture in [
+		scoped_callback_worker_fixture.replace('return visitor.call(delta)', '_ = &visitor; return visitor.call(delta)'),
+		scoped_callback_worker_fixture.replace('fn walk_worker[^scope]', '@[manualfree]\nfn walk_worker[^scope]'),
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_callback_worker_escape', fixture + r'
+fn run[^scope](mut factory VisitorFactory[^scope]) {
+	handle := spawn walk_worker(Walker{delta: 1}, factory.create(), false)
+	defer { handle.wait() }
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut factory)
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('scoped callbacks require a checked invocation with a deferred join'), result.output
+	}
+}
+
+fn test_ownership_scoped_callback_worker_requires_original_box_and_join() {
+	v3_bin := ownership_build_v3()
+	for schedule in [
+		'first = factory.create(); handle := spawn walk_worker(Walker{delta: 1}, first, false); defer { handle.wait() }',
+		'spawn walk_worker(Walker{delta: 1}, first, false)',
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_callback_worker_move',
+			scoped_callback_worker_fixture + r'
+fn run[^scope](mut factory VisitorFactory[^scope]) {
+	mut first := factory.create()
+' + schedule + '\n}\n' + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := ConcreteVisitorFactory[^scope]{counter: &counter}
+	run(mut factory)
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot move `first` because it borrows `factory`'), result.output
+	}
+}
+
+const scoped_factory_pool_fixture = r'
+import sync.arc
+import sync.thread as transport
+
+struct PoolJob {
+	label string
+}
+
+struct PoolVisitor implements Drop {
+	counter &arc.Atomic[int]
+	job PoolJob
+}
+
+pub fn (mut visitor PoolVisitor) call(delta int) int {
+	return visitor.counter.add(delta + visitor.job.label.len)
+}
+
+fn (mut visitor PoolVisitor) drop() {
+	visitor.counter.add(1)
+}
+
+interface PoolFactory[^scope] {
+mut:
+	create() transport.ScopedMutCallback[^scope, int, int]
+}
+
+struct JobFactory[^scope] {
+	counter &^scope arc.Atomic[int]
+mut:
+	jobs []PoolJob
+}
+
+fn (mut factory JobFactory[^scope]) create() transport.ScopedMutCallback[^scope, int, int] {
+	return transport.new_scoped_mut_callback[int, int, PoolVisitor](PoolVisitor{
+		counter: factory.counter
+		job: factory.jobs.pop()
+	})
+}
+
+fn visit_job[^scope](visitor_in transport.ScopedMutCallback[^scope, int, int]) {
+	mut visitor := visitor_in
+	for _ in 0 .. 2 {
+		visitor.call(1)
+	}
+}
+
+fn run[^scope](mut factory PoolFactory[^scope]) {
+	mut handles := []thread{}
+	defer { handles.wait() }
+	for _ in 0 .. 3 {
+		visitor := factory.create()
+		handles << spawn visit_job(visitor)
+	}
+}
+'
+
+fn test_ownership_scoped_factory_pool_moves_disjoint_owned_jobs() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_factory_pool_jobs'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_factory_pool_fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := JobFactory[^scope]{
+		counter: &counter
+		jobs: [
+			PoolJob{label: "keep".clone()},
+			PoolJob{label: "xy".clone()},
+			PoolJob{label: "abc".clone()},
+			PoolJob{label: "d".clone()},
+		]
+	}
+	run(mut factory)
+	assert counter.load() == 21
+	assert factory.jobs.len == 1
+	assert factory.jobs[0].label == "keep"
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_factory_pool_rejects_overlapping_or_opaque_storage() {
+	v3_bin := ownership_build_v3()
+	for field in ['nested Nested', 'nested arc.Arc[Nested]', 'native voidptr'] {
+		fixture := scoped_factory_pool_fixture.replace('struct PoolJob {',
+			'struct Nested { value arc.Atomic[int] }\nstruct PoolJob {\n\t${field}')
+		result := run_ownership_check(v3_bin, 'scoped_factory_pool_overlap', fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := JobFactory[^scope]{counter: &counter, jobs: []PoolJob{}}
+	run(mut factory)
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
+	}
+}
+
+fn test_ownership_scoped_factory_pool_requires_builtin_pop_and_mutable_contract() {
+	v3_bin := ownership_build_v3()
+	for fixture in [
+		scoped_factory_pool_fixture + r'
+fn (mut jobs []PoolJob) pop() PoolJob {
+	return PoolJob{label: "replacement"}
+}
+',
+		scoped_factory_pool_fixture.replace('interface PoolFactory[^scope] {\nmut:',
+			'interface PoolFactory[^scope] {'),
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_factory_pool_contract', fixture + r'
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := JobFactory[^scope]{counter: &counter, jobs: []PoolJob{}}
+	run(mut factory)
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
+	}
+}
+
+const scoped_mutex_worker_source = '
+import sync.arc
+
+struct Stats {
+	count int
+}
+
+fn increment(stats Stats) arc.MutexUpdate[Stats, int] {
+	return arc.MutexUpdate[Stats, int]{ value: Stats{count: stats.count + 1}, result: stats.count }
+}
+
+fn add(stats Stats, delta int) arc.MutexUpdate[Stats, int] {
+	return arc.MutexUpdate[Stats, int]{ value: Stats{count: stats.count + delta}, result: stats.count }
+}
+
+fn work(stats &arc.Mutex[Stats]) {
+	stats.update(increment)
+}
+'
+
+fn test_ownership_scoped_mutex_workers_join_before_releasing_borrows() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_mutex', scoped_mutex_worker_source + '
+struct Job {
+	stats &arc.Mutex[Stats]
+	delta int
+}
+
+fn run_job(job Job) {
+	job.stats.update_with[int, int](job.delta, add)
+}
+
+fn main() {
+	stats := arc.new_mutex(Stats{})
+	{
+		mut handles := []thread{}
+		defer { handles.wait() }
+		for _ in 0 .. 2 {
+			handles << spawn work(&stats)
+			handles << spawn run_job(Job{stats: &stats, delta: 2})
+		}
+	}
+	assert stats.update(increment) == 6
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
+const scoped_record_worker_source = scoped_mutex_worker_source + '
+struct WorkerState {
+	counter arc.Atomic[int]
+	stats   arc.Mutex[Stats]
+	delta   int
+}
+
+fn new_state() WorkerState {
+	return WorkerState{counter: arc.new_atomic(0), stats: arc.new_mutex(Stats{}), delta: 2}
+}
+
+fn run_worker(state &WorkerState) {
+	delta := state.delta
+	state.counter.add(delta)
+	state.stats.update_with[int, int](delta, add)
+}
+'
+
+fn test_ownership_scoped_workers_borrow_a_record_of_synchronized_handles() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_worker_record'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_record_worker_source + r'
+fn main() {
+	state := new_state()
+	{
+		mut handles := []thread{}
+		defer { handles.wait() }
+		for _ in 0 .. 3 {
+			handles << spawn run_worker(&state)
+		}
+	}
+	{
+		handle := spawn run_worker(&state)
+		defer { handle.wait() }
+	}
+	assert state.counter.load() == 8
+	assert state.stats.update(increment) == 8
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_worker_record_requires_a_join_within_its_lifetime() {
+	v3_bin := ownership_build_v3()
+	for body in [
+		'state := new_state(); handle := spawn run_worker(&state); handle.wait()',
+		'mut handles := []thread{}; defer { handles.wait() }; { state := new_state(); handles << spawn run_worker(&state) }',
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_worker_record_lifetime',
+			scoped_record_worker_source + '\nfn main() { ${body} }\n')
+		assert result.exit_code != 0, result.output
+		message := if body.starts_with('state') {
+			'references cannot be transferred between threads'
+		} else {
+			'outlives borrowed record `state`'
+		}
+		assert result.output.contains(message), result.output
+	}
+}
+
+fn test_ownership_scoped_worker_record_disallows_borrowed_field_addresses() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_record_field_address',
+		scoped_record_worker_source + r'
+fn read_delta(delta &int) int {
+	return *delta
+}
+
+fn read_state(state &WorkerState) int {
+	return read_delta(&state.delta)
+}
+
+fn main() {
+	state := new_state()
+	handle := spawn read_state(&state)
+	defer { handle.wait() }
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot prove that the scoped thread borrow is used without escaping'), result.output
+}
+
+fn test_ownership_scoped_mutex_workers_reject_unverified_pointer_use() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_mutex_escape', scoped_mutex_worker_source + '
+fn forward(stats &arc.Mutex[Stats]) {
+	work(stats)
+}
+
+fn main() {
+	stats := arc.new_mutex(Stats{})
+	handle := spawn forward(&stats)
+	defer { handle.wait() }
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot prove that the scoped thread borrow is used without escaping'), result.output
+}
+
+fn test_ownership_scoped_mutex_workers_reject_invalid_lifetimes() {
+	v3_bin := ownership_build_v3()
+	for body, diagnostic in {
+		'stats := arc.new_mutex(Stats{}); spawn work(&stats)':                                                                                     'references cannot be transferred between threads'
+		'mut handles := []thread{}; defer { handles.wait() }; for _ in 0 .. 2 { stats := arc.new_mutex(Stats{}); handles << spawn work(&stats) }': 'outlives borrowed mutex `stats`'
+	} {
+		result := run_ownership_check(v3_bin, 'scoped_worker_mutex_lifetime', scoped_mutex_worker_source + '
+fn main() {
+	${body}
+}
+')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains(diagnostic), result.output
+	}
+}
+
+fn test_ownership_scoped_mutex_workers_require_transferable_payloads() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'scoped_worker_mutex_payload', r'
+import sync.arc
+
+struct BorrowedStats {
+	count &int
+}
+
+fn read(value BorrowedStats) arc.MutexUpdate[BorrowedStats, int] {
+	return arc.MutexUpdate[BorrowedStats, int]{ value: value, result: *value.count }
+}
+
+fn work(stats &arc.Mutex[BorrowedStats]) {
+	stats.update(read)
+}
+
+fn main() {
+	count := 0
+	stats := arc.new_mutex(BorrowedStats{count: &count})
+	handle := spawn work(&stats)
+	defer { handle.wait() }
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('as thread argument: references cannot be transferred between threads'), result.output
+}
+
+const scoped_callback_record_fixture = r'
+import sync.arc
+import sync.thread as transport
+
+struct VisitorState {
+	count arc.Atomic[int]
+	stats arc.Mutex[int]
+	step int
+}
+
+struct RecordVisitor implements Drop {
+	state &VisitorState
+}
+
+fn add_stats(total int, amount int) arc.MutexUpdate[int, int] {
+	return arc.MutexUpdate[int, int]{value: total + amount, result: total + amount}
+}
+
+pub fn (mut visitor RecordVisitor) call(delta int) int {
+	step := visitor.state.step
+	visitor.state.stats.update_with(step * delta, add_stats)
+	return visitor.state.count.add(1)
+}
+
+fn (mut visitor RecordVisitor) drop() {
+	visitor.state.stats.update_with(1, add_stats)
+	visitor.state.count.add(1)
+}
+
+interface RecordFactory[^scope] {
+mut:
+	create() transport.ScopedMutCallback[^scope, int, int]
+}
+
+struct VisitorFactory[^scope] {
+	state &^scope VisitorState
+}
+
+fn (mut factory VisitorFactory[^scope]) create() transport.ScopedMutCallback[^scope, int, int] {
+	return transport.new_scoped_mut_callback[int, int, RecordVisitor](RecordVisitor{
+		state: factory.state
+	})
+}
+
+fn visit_record[^scope](callback transport.ScopedMutCallback[^scope, int, int]) {
+	mut visitor := callback
+	visitor.call(1)
+	visitor.call(1)
+}
+
+fn run[^scope](mut factory RecordFactory[^scope]) {
+	mut handles := []thread{}
+	defer { handles.wait() }
+	for _ in 0 .. 3 {
+		handles << spawn visit_record(factory.create())
+	}
+}
+'
+
+fn test_ownership_scoped_callback_records_borrow_synchronized_state() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_callback_record'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_callback_record_fixture + r'
+fn main() {
+	state := VisitorState{count: arc.new_atomic(0), stats: arc.new_mutex(0), step: 2}
+	{
+		mut factory := VisitorFactory[^scope]{state: &state}
+		run(mut factory)
+	}
+	{
+		callback := transport.new_scoped_mut_callback[int, int, RecordVisitor](RecordVisitor{
+			state: &state
+		})
+		handle := spawn transport.invoke_scoped_mut_callback(callback, 1)
+		defer { handle.wait() }
+	}
+	assert state.count.load() == 11
+	assert state.stats.update_with(0, add_stats) == 18
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_callback_records_reject_escaping_state() {
+	v3_bin := ownership_build_v3()
+	for use, escape in {
+		'step := visitor.state.step':                    '_ = &visitor.state.step; step := visitor.state.step'
+		'return visitor.state.count.add(1)':             '_ = visitor.state; return visitor.state.count.add(1)'
+		'visitor.state.stats.update_with(1, add_stats)': '_ = &visitor.state.stats; visitor.state.stats.update_with(1, add_stats)'
+	} {
+		source := scoped_callback_record_fixture.replace(use, escape) + r'
+fn main() {
+	state := VisitorState{count: arc.new_atomic(0), stats: arc.new_mutex(0), step: 2}
+	mut factory := VisitorFactory[^scope]{state: &state}
+	run(mut factory)
+}
+'
+		result := run_ownership_check(v3_bin, 'scoped_callback_record_escape', source)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
+	}
+}
+
+const scoped_factory_record_pool_fixture = r'
+import sync.arc
+import sync.thread as transport
+
+struct RecordPoolState {
+	calls arc.Atomic[int]
+	stats arc.Mutex[int]
+}
+
+struct RecordPoolJob {
+	label string
+}
+
+struct RecordPoolVisitor implements Drop {
+	state &RecordPoolState
+	job RecordPoolJob
+}
+
+fn add_record_pool_stats(total int, amount int) arc.MutexUpdate[int, int] {
+	return arc.MutexUpdate[int, int]{ value: total + amount, result: total + amount }
+}
+
+pub fn (mut visitor RecordPoolVisitor) call(delta int) int {
+	visitor.state.stats.update_with(delta + visitor.job.label.len, add_record_pool_stats)
+	return visitor.state.calls.add(1)
+}
+
+fn (mut visitor RecordPoolVisitor) drop() {
+	visitor.state.stats.update_with(1, add_record_pool_stats)
+	visitor.state.calls.add(1)
+}
+
+interface RecordPoolFactory[^scope] {
+mut:
+	create() transport.ScopedMutCallback[^scope, int, int]
+}
+
+struct RecordJobFactory[^scope] {
+	state &^scope RecordPoolState
+mut:
+	jobs []RecordPoolJob
+}
+
+fn (mut factory RecordJobFactory[^scope]) create() transport.ScopedMutCallback[^scope, int, int] {
+	return transport.new_scoped_mut_callback[int, int, RecordPoolVisitor](RecordPoolVisitor{
+		state: factory.state
+		job: factory.jobs.pop()
+	})
+}
+
+fn run_record_pool[^scope](mut factory RecordPoolFactory[^scope]) {
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	for _ in 0 .. 3 {
+		visitor := factory.create()
+		handles << spawn transport.invoke_scoped_mut_callback(visitor, 1)
+	}
+}
+'
+
+const scoped_factory_record_pool_program = scoped_factory_record_pool_fixture + r'
+fn main() {
+	state := RecordPoolState{calls: arc.new_atomic(0), stats: arc.new_mutex(0)}
+	mut factory := RecordJobFactory[^scope]{
+		state: &state
+		jobs: [
+			RecordPoolJob{label: "keep".clone()},
+			RecordPoolJob{label: "abc".clone()},
+			RecordPoolJob{label: "xy".clone()},
+			RecordPoolJob{label: "d".clone()},
+		]
+	}
+	run_record_pool(mut factory)
+	assert state.calls.load() == 6
+	assert state.stats.update_with(0, add_record_pool_stats) == 12
+	assert factory.jobs.len == 1
+	assert factory.jobs[0].label == "keep"
+}
+'
+
+fn test_ownership_scoped_factory_pool_borrows_synchronized_record() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_factory_synchronized_record_pool'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_factory_record_pool_program,
+		['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_factory_record_pool_rejects_reachable_sync_handles() {
+	v3_bin := ownership_build_v3()
+	for field in ['other arc.Mutex[int]', 'other arc.Arc[NestedPoolState]', 'other []RecordPoolState'] {
+		source := scoped_factory_record_pool_fixture.replace('struct RecordPoolJob {',
+			'struct NestedPoolState { handle arc.Mutex[int] }\nstruct RecordPoolJob {\n\t${field}') + r'
+fn main() {
+	state := RecordPoolState{calls: arc.new_atomic(0), stats: arc.new_mutex(0)}
+	mut factory := RecordJobFactory[^scope]{state: &state, jobs: []RecordPoolJob{}}
+	run_record_pool(mut factory)
+}
+'
+		result := run_ownership_check(v3_bin, 'scoped_factory_synchronized_pool_overlap', source)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
+	}
+}
+
+const scoped_factory_owned_input_fixture = r'
+import sync.arc
+import sync.thread as transport
+
+struct SearchJob {
+	label string
+}
+
+struct InputVisitor implements Drop {
+	counter &arc.Atomic[int]
+	job SearchJob
+}
+
+pub fn (mut visitor InputVisitor) call(delta int) int {
+	return visitor.counter.add(delta + visitor.job.label.len)
+}
+
+fn (mut visitor InputVisitor) drop() {
+	visitor.counter.add(1)
+}
+
+interface InputFactory[^scope] {
+mut:
+	create(job SearchJob) transport.ScopedMutCallback[^scope, int, int]
+}
+
+struct JobInputFactory[^scope] {
+	counter &^scope arc.Atomic[int]
+}
+
+fn (mut factory JobInputFactory[^scope]) create(job SearchJob) transport.ScopedMutCallback[^scope, int, int] {
+	return transport.new_scoped_mut_callback[int, int, InputVisitor](InputVisitor{
+		counter: factory.counter
+		job: job
+	})
+}
+
+fn run[^scope](mut factory InputFactory[^scope], mut jobs []SearchJob) {
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	for _ in 0 .. 3 {
+		job := jobs.pop()
+		visitor := factory.create(job)
+		handles << spawn transport.invoke_scoped_mut_callback(visitor, 1)
+	}
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := JobInputFactory[^scope]{counter: &counter}
+	mut jobs := [
+		SearchJob{label: "stay".clone()},
+		SearchJob{label: "a".clone()},
+		SearchJob{label: "bb".clone()},
+		SearchJob{label: "ccc".clone()},
+	]
+	run(mut factory, mut jobs)
+	assert counter.load() == 12
+	assert jobs.len == 1
+	assert jobs[0].label == "stay"
+}
+'
+
+fn test_ownership_scoped_factory_owned_input_moves_job_into_box() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_factory_owned_input'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_factory_owned_input_fixture,
+		['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_factory_owned_input_rejects_hidden_or_borrowed_inputs() {
+	v3_bin := ownership_build_v3()
+	diagnostics := [
+		'cannot implement scoped callback factory method `create`',
+		'cannot move `visitor` because it borrows `factory`',
+	]
+	for i, fixture in [
+		scoped_factory_owned_input_fixture.replace('job: job', 'job: forward_job(job)') + r'
+fn forward_job(job SearchJob) SearchJob {
+	return job
+}
+',
+		scoped_factory_owned_input_fixture.replace('create(job SearchJob)', 'create(job &SearchJob)')
+			.replace('job: job', 'job: *job').replace('factory.create(job)', 'factory.create(&job)'),
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_factory_owned_input_rejected', fixture)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains(diagnostics[i]), result.output
+	}
+}
+
+fn test_ownership_scoped_generic_factory_input_keeps_its_contract() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_factory_generic_input'
+	source := scoped_factory_owned_input_fixture.replace('interface InputFactory[^scope]',
+		'interface InputFactory[^scope, W]').replace_once('create(job SearchJob)', 'create(job W)')
+		.replace('fn run[^scope](mut factory InputFactory[^scope], mut jobs []SearchJob)',
+			'fn run[^scope, W transport.Transferable](mut factory InputFactory[^scope, W], mut jobs []W)')
+		.replace('run(mut factory, mut jobs)', 'run[SearchJob](mut factory, mut jobs)')
+	result := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+
+	borrowed := run_ownership_check(v3_bin, 'scoped_factory_generic_borrowed',
+		source.replace('W transport.Transferable]', 'W]')
+			.replace('create(job SearchJob)', 'create(job &SearchJob)')
+			.replace('job: job', 'job: *job')
+			.replace('SearchJob{label:', '&SearchJob{label:')
+			.replace('run[SearchJob]', 'run[&SearchJob]'))
+	assert borrowed.exit_code != 0, borrowed.output
+	assert borrowed.output.contains('scoped callback factory method `create`'), borrowed.output
+}
