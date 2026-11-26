@@ -1178,8 +1178,6 @@ const bad_layout_calls = "	println(to_bytes([1, 2]))
 	}))
 "
 
-const bad_layout_program = layout_program + bad_layout_calls + '}\n'
-
 const layout_errors = ['17:9: cannot cast array `[]int` to `[]u8`',
 	'17:9: cannot cast array `[]i32` to `[]u8`',
 	'21:9: cannot use `[]u8` as type `[]u64` in return argument',
@@ -1294,18 +1292,24 @@ fn test_instances_with_the_expected_elements_stay_valid() {
 // a check reports, once, and still builds a valid program.
 fn test_a_build_checks_the_instances_in_a_compiler_process_where_it_cannot_fork() {
 	env := ['V_CHECK_INSTANCES_IN_BUILD=process']
-	res := build_program_with_env('layout_build_process', bad_layout_program, env)
+	source := layout_declarations + 'fn show[T](x T) string {
+	return x.nme
+}
+
+fn main() {
+	mut unused := 1
+' + layout_calls + bad_layout_calls + "	println(show(User{ name: 'a' }))
+}
+"
+	res := build_program_with_env('invalid_build_process', source, env)
 	assert res.exit_code != 0, res.output
 	assert !res.output.contains('C compilation error'), res.output
-	assert error_lines(res.output) == layout_errors, res.output
-	member := build_program_with_env('member_build_process', "fn show[T](x T) string {\n\treturn x.nme\n}\n\nfn main() {\n\tmut unused := 1\n\tprintln(show(User{ name: 'a' }))\n}\n",
-		env)
-	assert member.exit_code != 0, member.output
 	// The warning of the build is printed once, by the build.
-	assert member.output.count('unused variable: `unused`') == 1, member.output
-	errors := error_lines(member.output)
-	assert errors.len == 1, member.output
-	assert errors[0].starts_with('11:11: type `User` has no field named `nme`'), member.output
+	assert res.output.count('unused variable: `unused`') == 1, res.output
+	errors := error_lines(res.output)
+	assert errors.len == layout_errors.len + 1, res.output
+	assert errors.filter(it in layout_errors) == layout_errors, res.output
+	assert errors.any(it.starts_with('61:11: type `User` has no field named `nme`')), res.output
 	valid := build_program_with_env('layout_valid_build_process', layout_program + '}\n', env)
 	assert valid.exit_code == 0, valid.output
 	assert error_lines(valid.output) == [], valid.output
