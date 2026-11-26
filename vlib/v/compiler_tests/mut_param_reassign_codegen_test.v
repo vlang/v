@@ -429,8 +429,8 @@ fn main() {
 	])
 }
 
-fn test_mut_pointer_param_signature_and_expression_conversions() {
-	out, c_source := mut_param_reassign_run_good_with_c('mut_pointer_param_signature_and_expression_conversions', 'interface Reader {
+fn test_mut_parameter_pointer_slots_and_forwarding_codegen() {
+	out, c_source := mut_param_reassign_run_good_with_c('mut_param_pointer_codegen', 'interface Reader {
 	read() int
 }
 
@@ -493,25 +493,15 @@ fn forward(mut item &Item) int {
 	return read_field(mut item) + read_deref(mut item) + read_method(mut item) + consume_reader(item) + consume_pointer(item) + consume_optional(item) + copied.value + assigned.value + incremented
 }
 
-fn main() {
+fn check_pointer_slot_conversions() {
 	mut value := Item{
 		value: 7
 	}
 	mut item := &value
 	println(int_str(forward(mut item)))
 }
-')
-	assert out == '62'
-	assert c_source.contains('i64 read_field(main__Item** item) {'), 'missing main__Item** signature'
-	assert !c_source.contains('i64 read_field(main__Item*** item) {'), 'found over-indirected main__Item*** signature'
-	assert c_source.contains('return ((*item))->value;'), 'missing single slot dereference'
-	assert c_source.contains('return (*(*item));'), 'missing source dereference after slot dereference'
-	assert c_source.contains('copied_value = (*(*item));'), 'missing standalone assignment dereference'
-	assert c_source.contains('((*(*value)))++;'), 'missing standalone postfix dereference'
-}
 
-fn test_generic_mut_sum_parameter_forwards_existing_pointer() {
-	out, c_source := mut_param_reassign_run_good_with_c('generic_mut_sum_forward', 'struct Cat {
+struct Cat {
 	name string
 }
 
@@ -530,6 +520,7 @@ fn decode[T](mut value T, replacement T) {
 }
 
 fn main() {
+	check_pointer_slot_conversions()
 	mut animal := Animal(Dog{
 		name: "Rex"
 	})
@@ -539,9 +530,21 @@ fn main() {
 	println(animal)
 }
 ')
-	assert out == "Animal(Cat{\n    name: 'Tom'\n})"
-	assert c_source.contains('replace_T_Animal(value, ')
-	assert !c_source.contains('replace_T_Animal(&value, ')
+	assert out == "62\nAnimal(Cat{\n    name: 'Tom'\n})"
+	assert c_source.contains('i64 read_field(main__Item** item) {'), 'missing main__Item** signature'
+	assert !c_source.contains('i64 read_field(main__Item*** item) {'), 'found over-indirected main__Item*** signature'
+	read_field_c := c_source.all_after('i64 read_field(main__Item** item) {').all_before('\n}')
+	copy_deref_c := c_source.all_after('main__Item copy_deref(main__Item** item) {').all_before('\n}')
+	assign_deref_c := c_source.all_after('main__Item assign_deref(main__Item** item) {').all_before('\n}')
+	increment_deref_c := c_source.all_after('i64 increment_deref(i64** value) {').all_before('\n}')
+	assert read_field_c.contains('return ((*item))->value;'), 'missing single slot dereference'
+	assert copy_deref_c.contains('return (*(*item));'), 'missing source dereference after slot dereference'
+	assert assign_deref_c.contains('copied_value = (*(*item));'), 'missing standalone assignment dereference'
+	assert increment_deref_c.contains('((*(*value)))++;'), 'missing standalone postfix dereference'
+
+	decode_c := c_source.all_after('void decode_T_Animal(Animal* value, Animal* replacement) {').all_before('\n}')
+	assert decode_c.contains('replace_T_Animal(value, '), decode_c
+	assert !decode_c.contains('replace_T_Animal(&value, '), decode_c
 }
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
