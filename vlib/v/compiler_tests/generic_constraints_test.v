@@ -43,13 +43,16 @@ const first_line = 28
 
 // check_program checks `source` after the prelude, and its method form too (see
 // same_with_methods).
-fn check_program(name string, source string) os.Result {
-	res := check_program_form(name, source)
-	same_with_methods(name, source, first_line, res, check_program_form)
+fn check_program(name string, source string, flags ...string) os.Result {
+	check := fn [flags] (name string, source string) os.Result {
+		return check_program_form(name, source, flags)
+	}
+	res := check(name, source)
+	same_with_methods(name, source, first_line, res, check)
 	return res
 }
 
-fn check_program_form(name string, source string) os.Result {
+fn check_program_form(name string, source string, flags []string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
@@ -57,7 +60,7 @@ fn check_program_form(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, constraint_prelude + source) or { panic(err) }
-	return os.exec([@VEXE, '-check', '-nocolor', path])
+	return os.exec([@VEXE, '-check', '-nocolor', ...flags, path])
 }
 
 // check_fixture checks `source` after the prelude as the checker fixtures are
@@ -1507,11 +1510,11 @@ fn main() {
 	], res.output
 }
 
-fn test_a_generic_type_written_anywhere_in_a_declaration_is_checked() {
-	// A type alias of a function, the methods of an interface, an embedded struct,
-	// the key of a map, a nested application, an anonymous struct, a sum type and
-	// an alias: each at the application that fails, not at the start of the type.
-	res := check_program('written_decls', 'struct Box[T Named] {
+fn test_generic_type_arguments_in_declarations_and_expressions_are_checked() {
+	// Each invalid application is reported where it is written.
+	// The corresponding uses of Box[User] are valid.
+	// Raise the message limit so all 23 errors are printed.
+	res := check_program('written_type_arguments', 'struct Box[T Named] {
 	item T
 }
 
@@ -1538,30 +1541,6 @@ struct Holder {
 type SumBad = Box[int] | string
 
 type AliasBad = Box[int]
-
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		"5:20: `int` doesn't implement field `name` of interface `Named`",
-		"10:8: `int` doesn't implement field `name` of interface `Named`",
-		"11:8: `int` doesn't implement field `name` of interface `Named`",
-		"16:2: `int` doesn't implement field `name` of interface `Named`",
-		"17:12: `int` doesn't implement field `name` of interface `Named`",
-		"18:11: `Box[User]` doesn't implement field `name` of interface `Named`",
-		"21:9: `int` doesn't implement field `name` of interface `Named`",
-		"25:15: `int` doesn't implement field `name` of interface `Named`",
-		"27:17: `int` doesn't implement field `name` of interface `Named`",
-	], res.output
-}
-
-fn test_a_generic_type_written_in_an_expression_is_checked() {
-	// Explicit type arguments of a call, map, array and channel literals, `sizeof`,
-	// `typeof`, `isreftype`, casts to a pointer or an option, and a function literal's
-	// parameter and return type. The same with `Box[User]` is valid.
-	res := check_program('written_exprs', 'struct Box[T Named] {
-	item T
-}
 
 fn make[T]() T {
 	return T{}
@@ -1597,23 +1576,33 @@ fn sites() {
 }
 
 fn main() {}
-')
+', '-message-limit', '100')
 	assert res.exit_code == 1, res.output
+	int_without_name := "`int` doesn't implement field `name` of interface `Named`"
 	assert error_lines(res.output) == [
-		"10:15: `int` doesn't implement field `name` of interface `Named`",
-		"12:19: `int` doesn't implement field `name` of interface `Named`",
-		"13:15: `int` doesn't implement field `name` of interface `Named`",
-		"14:15: `int` doesn't implement field `name` of interface `Named`",
-		"15:15: `int` doesn't implement field `name` of interface `Named`",
-		"16:18: `int` doesn't implement field `name` of interface `Named`",
-		"17:18: `int` doesn't implement field `name` of interface `Named`",
-		"18:9: `int` doesn't implement field `name` of interface `Named`",
-		"19:10: `int` doesn't implement field `name` of interface `Named`",
-		"20:13: `int` doesn't implement field `name` of interface `Named`",
-		"21:15: `int` doesn't implement field `name` of interface `Named`",
-		"21:25: `int` doesn't implement field `name` of interface `Named`",
-		"24:12: `int` doesn't implement field `name` of interface `Named`",
-		"25:22: `Box[User]` doesn't implement field `name` of interface `Named`",
+		'5:20: ${int_without_name}',
+		'10:8: ${int_without_name}',
+		'11:8: ${int_without_name}',
+		'16:2: ${int_without_name}',
+		'17:12: ${int_without_name}',
+		"18:11: `Box[User]` doesn't implement field `name` of interface `Named`",
+		'21:9: ${int_without_name}',
+		'25:15: ${int_without_name}',
+		'27:17: ${int_without_name}',
+		'34:15: ${int_without_name}',
+		'36:19: ${int_without_name}',
+		'37:15: ${int_without_name}',
+		'38:15: ${int_without_name}',
+		'39:15: ${int_without_name}',
+		'40:18: ${int_without_name}',
+		'41:18: ${int_without_name}',
+		'42:9: ${int_without_name}',
+		'43:10: ${int_without_name}',
+		'44:13: ${int_without_name}',
+		'45:15: ${int_without_name}',
+		'45:25: ${int_without_name}',
+		'48:12: ${int_without_name}',
+		"49:22: `Box[User]` doesn't implement field `name` of interface `Named`",
 	], res.output
 }
 
