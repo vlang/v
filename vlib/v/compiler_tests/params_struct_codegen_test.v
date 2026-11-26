@@ -132,14 +132,27 @@ fn test_params_fields_belong_to_params_struct() {
 	assert run.output.trim_space() == 'entry:node:3'
 }
 
-fn test_interface_field_in_params_struct_codegen() {
-	source := 'interface Reader {\n\tread(mut buf []u8) !int\n}\n\nstruct Conn {}\n\nfn (c Conn) read(mut buf []u8) !int {\n\treturn 0\n}\n\nstruct Config {\n\treader Reader\n\tcap int\n}\n\nfn make(cfg Config) int {\n\treturn cfg.cap\n}\n\nfn main() {\n\tprintln(make(reader: Conn{}, cap: 8))\n}\n'
-	out := params_struct_run_good('params_interface_field_input', source)
-	assert out == '8'
+fn test_interface_fields_in_collapsed_struct_calls() {
+	source := 'interface Reader {
+	read(mut buf []u8) !int
 }
 
-fn test_interface_array_field_in_params_struct_uses_expected_element_type() {
-	source := 'interface Widget {
+struct Conn {}
+
+fn (c Conn) read(mut buf []u8) !int {
+	return 0
+}
+
+struct Config {
+	reader Reader
+	cap int
+}
+
+fn make(cfg Config) int {
+	return cfg.cap
+}
+
+interface Widget {
 	kind() string
 }
 
@@ -165,11 +178,12 @@ fn row(config RowConfig) string {
 }
 
 fn main() {
+	println(make(reader: Conn{}, cap: 8))
 	println(row(children: [TextBox{}, Label{}, Button{}]))
 }
 '
-	out := params_struct_run_good('params_interface_array_field_input', source)
-	assert out == 'textbox,label,button'
+	out := params_struct_run_good('params_interface_fields', source)
+	assert out == '8\ntextbox,label,button'
 }
 
 fn test_collapsed_struct_call_feature_matrix() {
