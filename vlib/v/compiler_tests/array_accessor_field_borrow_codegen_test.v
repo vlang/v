@@ -517,61 +517,9 @@ fn assert_independent_array_element_errors(compile os.Result, locations []string
 	assert ownership_error_lines(compile) == locations.map(independent_array_element_error_at(it, 'E')), compile.output
 }
 
-// An allocating consumer is borrow-safe only when evaluating its other operands cannot mutate
-// the source array first. Keep the accessor on its independent-copy path when a sibling call can
-// delete the selected element before string concatenation consumes the field.
-fn test_owned_string_consumer_with_mutating_sibling_is_rejected() {
+fn test_owned_string_interpolation_rejects_mutating_stringifiers() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	// Diagnostic locations include the Drop interface prepended to each fixture.
-	direct := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_mutating_siblings', "struct E {
-	name string
-}
-
-fn delete_last(mut arr []E) string {
-	arr.delete_last()
-	return '!'
-}
-
-fn last_name_then_delete(mut arr []E) string {
-	return arr.last().name + delete_last(mut arr)
-}
-
-fn interpolate_then_delete(mut arr []E) string {
-	return '\${arr.last().name}\${delete_last(mut arr)}'
-}
-
-fn delete_for_comparison(mut arr []E) string {
-	arr.delete_last()
-	return 'hello'
-}
-
-fn compare_then_delete(mut arr []E) bool {
-	return arr.last().name == delete_for_comparison(mut arr)
-}
-
-fn check_concat() {
-	mut arr := [E{ name: 'hello' }]
-	println(last_name_then_delete(mut arr))
-}
-
-fn check_interpolation() {
-	mut arr := [E{ name: 'hello' }]
-	println(interpolate_then_delete(mut arr))
-}
-
-fn check_comparison() {
-	mut arr := [E{ name: 'hello' }]
-	println(compare_then_delete(mut arr))
-}
-
-fn main() {
-	check_concat()
-	check_interpolation()
-	check_comparison()
-}
-", '-nocolor')
-	assert_independent_array_element_errors(direct, ['16:9', '20:12', '29:9'])
-
 	stringifiers := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_mutating_stringifiers', "struct E {
 	name string
 }
@@ -957,9 +905,12 @@ fn main() {
 	], compile.output
 }
 
-fn test_owned_nested_consumers_with_mutating_siblings_are_rejected() {
+// An allocating consumer is borrow-safe only when evaluating its other operands cannot mutate
+// the source array first. Keep the accessor on its independent-copy path when a sibling call can
+// delete the selected element before string concatenation consumes the field.
+fn test_owned_consumers_with_mutating_siblings_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_consumers_mutating_siblings', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_consumers_mutating_siblings', "struct E {
 	name string
 }
 
@@ -1065,6 +1016,43 @@ fn check_nested_arg() {
 	println(nested_arg_then_delete(mut arr))
 }
 
+fn delete_last_for_string(mut arr []E) string {
+	arr.delete_last()
+	return '!'
+}
+
+fn last_name_then_delete(mut arr []E) string {
+	return arr.last().name + delete_last_for_string(mut arr)
+}
+
+fn interpolate_then_delete(mut arr []E) string {
+	return '\${arr.last().name}\${delete_last_for_string(mut arr)}'
+}
+
+fn delete_for_comparison(mut arr []E) string {
+	arr.delete_last()
+	return 'hello'
+}
+
+fn compare_then_delete(mut arr []E) bool {
+	return arr.last().name == delete_for_comparison(mut arr)
+}
+
+fn check_concat() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_then_delete(mut arr))
+}
+
+fn check_interpolation() {
+	mut arr := [E{ name: 'hello' }]
+	println(interpolate_then_delete(mut arr))
+}
+
+fn check_comparison() {
+	mut arr := [E{ name: 'hello' }]
+	println(compare_then_delete(mut arr))
+}
+
 fn main() {
 	check_nested_concat()
 	check_concat_arg()
@@ -1075,11 +1063,14 @@ fn main() {
 	check_conditional_arg()
 	check_logical_arg()
 	check_nested_arg()
+	check_concat()
+	check_interpolation()
+	check_comparison()
 }
 ", '-nocolor')
 	// Locations include the prepended Drop interface.
 	assert_independent_array_element_errors(compile, ['32:10', '36:24', '40:28', '44:22', '48:24',
-		'52:21', '56:31', '60:23', '64:33'])
+		'52:21', '56:31', '60:23', '64:33', '118:9', '122:12', '131:9'])
 }
 
 // Indexing and chained length reads can borrow the original element. A length
