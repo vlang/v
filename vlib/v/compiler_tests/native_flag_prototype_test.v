@@ -78,10 +78,23 @@ fn test_forced_c_sources_keep_c_function_prototypes() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	os.write_file(os.join_path(root, 'helper'),
-		'int native_flag_value(void) { return 73; }\n')!
-	compile_and_run_native_flag(root, 'forced_c', '-x c @DIR/helper -x none')
-	compile_and_run_native_flag(root, 'joined_c', '-xc @DIR/helper -xnone')
+	os.write_file(os.join_path(root, 'separate'),
+		'int native_separate_value(void) { return 73; }\n')!
+	os.write_file(os.join_path(root, 'joined'), 'int native_joined_value(void) { return 74; }\n')!
+	output := compile_and_run_native_flag_program(root, 'forced_c', '#flag -x c @DIR/separate -x none
+#flag -xc @DIR/joined -xnone
+
+fn C.native_separate_value() i32
+fn C.native_joined_value() i32
+
+fn main() {
+	assert C.native_separate_value() == 73
+	assert C.native_joined_value() == 74
+}
+')
+	generated := os.read_file(output + '.c')!
+	assert generated.contains('i32 native_separate_value(void);')
+	assert generated.contains('i32 native_joined_value(void);')
 }
 
 fn test_force_loaded_archives_keep_c_function_prototypes() {
