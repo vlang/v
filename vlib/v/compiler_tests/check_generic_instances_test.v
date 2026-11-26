@@ -1489,7 +1489,34 @@ fn test_map_cast_and_comptime_for_instances_reject_wrong_element_types() {
 
 // A map cast to its own type and compile-time loops with the expected types build and run.
 fn test_map_cast_and_comptime_for_instances_build_and_run() {
-	source := map_cast_comptime_for_program + '}\n'
+	source := map_cast_comptime_for_program + "	println(routes)
+	println(first_routes(Foo{}))
+}
+
+const routes = ['/', '/x']
+
+struct Holder {
+	routes &map[string]int
+}
+
+fn make_routes() map[string]int {
+	return {
+		'a': 1
+	}
+}
+
+// The local map shadows the module constant inside the compile-time loop.
+fn first_routes[T](x T) int {
+	\$for field in T.fields {
+		routes := make_routes()
+		h := Holder{
+			routes: &routes
+		}
+		return h.routes.len
+	}
+	return 0
+}
+"
 	check := check_program('map_cast_comptime_for_valid_check', source)
 	assert check.exit_code == 0, check.output
 	assert error_lines(check.output) == [], check.output
@@ -1502,19 +1529,8 @@ fn test_map_cast_and_comptime_for_instances_build_and_run() {
 	os.write_file(path, generic_prelude + source) or { panic(err) }
 	res := os.exec(['env', @VEXE, '-nocolor', 'run', path])
 	assert res.exit_code == 0, res.output
-	assert res.output.split_into_lines() == ["{'a': 7}", '[Bar{', '    b: 1', '}]', '1'], res.output
-}
-
-// A local of a `$for` body that has the name of a constant of its own module
-// is the local, in the check of an instance too: `&routes` is a
-// `&map[string]int`, not a `&[]string`.
-fn test_a_local_of_a_comptime_for_body_shadows_a_constant_of_its_module() {
-	source := "const routes = ['/', '/x']\n\nstruct Foo {\n\ta int\n}\n\nstruct Holder {\n\troutes &map[string]int\n}\n\nfn make_routes() map[string]int {\n\treturn {\n\t\t'a': 1\n\t}\n}\n\nfn first_routes[T](x T) int {\n\t\$for field in T.fields {\n\t\troutes := make_routes()\n\t\th := Holder{\n\t\t\troutes: &routes\n\t\t}\n\t\treturn h.routes.len\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(routes)\n\tprintln(first_routes(Foo{}))\n}\n"
-	for res in [check_program('comptime_for_shadow_check', source),
-		build_program('comptime_for_shadow_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
+	assert res.output.split_into_lines() == ["{'a': 7}", '[Bar{', '    b: 1', '}]', '1', "['/', '/x']",
+		'1'], res.output
 }
 
 // A library module outside the program whose generic functions are wrong for
