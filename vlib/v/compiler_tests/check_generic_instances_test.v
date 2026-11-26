@@ -66,6 +66,16 @@ fn (b Box[T]) label() string {
 	return b.v.name
 }
 
+type Octet = string
+
+struct Elm[T] {
+	val T
+}
+
+fn (el Elm[T]) size() int {
+	return el.val.size()
+}
+
 fn main() {
 	println(show(1))
 	println(misspelled(User{ name: 'a' }))
@@ -73,15 +83,21 @@ fn main() {
 	println(call(1))
 	println(Box[User]{ v: User{ name: 'a' } }.label())
 	println(Box[int]{ v: 1 }.label())
+
+	el := Elm[Octet]{
+		val: Octet('xx')
+	}
+	println(el.size())
 }
 ")
 	assert res.exit_code == 1, res.output
 	errors := error_lines(res.output)
-	assert errors.len == 4, res.output
+	assert errors.len == 5, res.output
 	assert '11:11: `int` has no property `name`' in errors, res.output
 	assert errors.any(it.starts_with('15:11: type `User` has no field named `nme`')), res.output
 	assert '19:11: unknown method or field: `int.greet`.' in errors, res.output
 	assert '27:13: `int` has no property `name`' in errors, res.output
+	assert '37:16: unknown method or field: `string.size`' in errors, res.output
 }
 
 // Specializations resolve fields and methods on concrete types and keep the
@@ -1046,16 +1062,6 @@ fn main() {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}
-}
-
-// The alias does not lend its base type a method it lacks: `Octet` has no
-// `size`, and `string` has none either.
-fn test_an_instance_of_an_alias_still_lacks_what_neither_has() {
-	res := check_program('alias_lacks', "type Octet = string\n\nstruct Elm[T] {\n\tval T\n}\n\nfn (el Elm[T]) size() int {\n\treturn el.val.size()\n}\n\nfn main() {\n\tel := Elm[Octet]{\n\t\tval: Octet('xx')\n\t}\n\tprintln(el.size())\n}\n")
-	assert res.exit_code == 1, res.output
-	errors := error_lines(res.output)
-	assert errors.len == 1, res.output
-	assert errors[0].contains('size'), res.output
 }
 
 // layout_program uses arrays and maps of `T` where arrays and maps of fixed
