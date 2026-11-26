@@ -2052,39 +2052,35 @@ fn main() {
 	], res.output
 }
 
+fn read_format_thousands_fixture() string {
+	return os.read_file(os.join_path(os.dir(@FILE), 'testdata', 'format_thousands_28797.v')) or {
+		panic(err)
+	}
+}
+
 fn test_the_thousands_formatting_of_28797_takes_a_constraint() {
 	// vlang/v#28797 rejects the types that are not numbers with `$if T !in
 	// [...] { $compile_error(...) }`. With `[T Number]` in its place, its code
-	// builds and runs, and its examples and tests hold...
-	source := os.read_file(os.join_path(os.dir(@FILE), 'testdata', 'format_thousands_28797.v')) or {
-		panic(err)
-	}
-	res := run_program('28797', source)
+	// builds and runs, and its examples and tests hold.
+	res := run_program('28797', read_format_thousands_fixture())
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().ends_with('1.234.567.891.42'), res.output
-	// ... and a call with a string is reported where it is made, as the error of
-	// the constraint.
-	last := "\tprintln(format_thousands(1234567891.42, '.'))"
-	call := source.split('\n').index(last) + 2
-	assert call > 1
-	check := check_whole('28797_misuse', source.replace(last, last +
-		"\n\tprintln(format_thousands('1234', ','))"))
-	assert check.exit_code != 0, check.output
-	errors := check.output.split_into_lines().filter(it.contains(': error: '))
-	assert errors.len == 1, check.output
-	assert errors[0].contains('main.v:${call}:'), errors[0]
-	assert errors[0].ends_with('cannot use `string` as `T`: it is not in its constraint `Number`'), errors[0]
 }
 
-fn test_an_inferred_type_argument_must_satisfy_its_constraint() {
+fn test_inferred_type_arguments_must_satisfy_their_constraints() {
+	declarations := constraint_prelude.all_after('module main\n\n') + '\n' +
+		constraint_inference_declarations
+	source := read_format_thousands_fixture().replace('\nfn main() {\n', '\n${declarations}\nfn main() {\n')
+	last := "\tprintln(format_thousands(1234567891.42, '.'))"
+	format_line := source.split_into_lines().index(last) + 2
+	assert format_line > 1
+	bad_format := "\tprintln(format_thousands('1234', ','))"
 	// InferenceBox[int] binds T to int, so the call fails the Named constraint.
-	check := check_program('infer_int', constraint_inference_declarations + '
-fn main() {
-	println(unwrap_name(InferenceBox[int]{1}))
-}
-')
+	bad_inference := '\tprintln(unwrap_name(InferenceBox[int]{1}))'
+	check := check_whole('inferred_rejections', source.replace(last, '${last}\n${bad_format}\n${bad_inference}'))
 	assert check.exit_code == 1, check.output
-	assert error_lines(check.output) == [
-		"22:10: `int` doesn't implement field `name` of interface `Named`",
+	assert error_lines_from(check.output, 1) == [
+		'${format_line}:27: cannot use `string` as `T`: it is not in its constraint `Number`',
+		"${format_line + 1}:10: `int` doesn't implement field `name` of interface `Named`",
 	], check.output
 }
