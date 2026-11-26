@@ -301,36 +301,6 @@ fn main() {
 	assert run.output.trim_space().split_into_lines() == ['hello', '5', 'true', 'true'], run.output
 }
 
-fn test_owned_field_overloaded_membership_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_membership', "struct Needle {
-	text string
-}
-
-struct E {
-	value Needle
-}
-
-__global entries []E
-
-fn (left Needle) == (right Needle) bool {
-	entries.delete_last()
-	return left.text == right.text
-}
-
-fn last_value_is_in(haystack []Needle) bool {
-	return entries.last().value in haystack
-}
-
-fn main() {
-	entries = [E{ value: Needle{ text: 'hello' } }]
-	println(last_value_is_in([Needle{ text: 'hello' }]))
-}
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
 // A bound method value needs a copy of its receiver. Returning a string,
 // a pointer, or a nested pointer would let the borrow outlive the array.
 // The nested pointer case uses an aggregate with no destructor.
@@ -838,20 +808,39 @@ fn main() {
 	], compile.output
 }
 
-fn test_owned_field_with_overloaded_membership_sibling_is_rejected() {
+fn test_owned_membership_rejects_mutating_overloads() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_membership_sibling', "struct E {
-	name string
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_membership_overloads', "struct Needle {
+	text string
 }
 
-struct Needle {
-	value int
+struct E {
+	value Needle
 }
 
 __global entries []E
 
 fn (left Needle) == (right Needle) bool {
 	entries.delete_last()
+	return left.text == right.text
+}
+
+fn last_value_is_in(haystack []Needle) bool {
+	return entries.last().value in haystack
+}
+
+struct MembershipEntry implements Drop {
+	name string
+}
+
+struct MembershipNeedle {
+	value int
+}
+
+__global membership_entries []MembershipEntry
+
+fn (left MembershipNeedle) == (right MembershipNeedle) bool {
+	membership_entries.delete_last()
 	return left.value == right.value
 }
 
@@ -859,17 +848,32 @@ fn consume(length int, found bool) int {
 	return if found { length } else { 0 }
 }
 
-fn last_length_with_membership(needle Needle, haystack []Needle) int {
-	return consume(entries.last().name.len, needle in haystack)
+fn last_length_with_membership(needle MembershipNeedle, haystack []MembershipNeedle) int {
+	return consume(membership_entries.last().name.len, needle in haystack)
+}
+
+fn (mut value MembershipEntry) drop() {}
+
+fn check_direct_membership() {
+	entries = [E{ value: Needle{ text: 'hello' } }]
+	println(last_value_is_in([Needle{ text: 'hello' }]))
+}
+
+fn check_membership_sibling() {
+	membership_entries = [MembershipEntry{ name: 'hello' }]
+	println(last_length_with_membership(MembershipNeedle{ value: 1 }, [MembershipNeedle{ value: 1 }]))
 }
 
 fn main() {
-	entries = [E{ name: 'hello' }]
-	println(last_length_with_membership(Needle{ value: 1 }, [Needle{ value: 1 }]))
+	check_direct_membership()
+	check_membership_sibling()
 }
-", '-enable-globals')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+", '-enable-globals -nocolor')
+	// Locations include the prepended Drop interface.
+	assert ownership_error_lines(compile) == [
+		independent_array_element_error_at('22:9', 'E'),
+		independent_array_element_error_at('45:17', 'MembershipEntry'),
+	], compile.output
 }
 
 fn test_owned_nested_string_consumer_with_mutating_sibling_is_rejected() {
