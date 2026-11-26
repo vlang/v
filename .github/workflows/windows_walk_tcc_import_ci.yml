@@ -406,3 +406,40 @@ jobs:
             $process.Dispose()
           }
 
+  native-walk:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, msvc]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        if: matrix.cc == 'msvc'
+      - name: Build V
+        shell: pwsh
+        run: |
+          if ('${{ matrix.cc }}' -eq 'msvc') {
+            .\makev.bat -msvc
+          } else {
+            .\makev.bat -gcc
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe -cc ${{ matrix.cc }} -no-retry-compilation self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify directory queries and original gg failures
+        shell: pwsh
+        run: |
+          .\v.exe fmt -verify vlib/os/os_windows.c.v vlib/os/walk_windows_test.c.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:VFLAGS = '-cc ${{ matrix.cc }} -no-retry-compilation'
+          .\v.exe -cc ${{ matrix.cc }} -no-retry-compilation -silent test vlib/os/walk_windows_test.c.v vlib/os/walk_links_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe test vlib/gg/legacy_import_multiwindow_isolation_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe -d gg_multiwindow -run-only test_win32_public_controls_publish_observed_state_red test vlib/gg/multiwindow_win32_public_services_contract_windows_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
