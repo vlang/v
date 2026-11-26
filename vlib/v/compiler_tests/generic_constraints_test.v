@@ -1596,8 +1596,8 @@ fn main() {}
 }
 
 fn test_type_aliases_and_sum_types_as_constraints() {
-	// Ints requires the alias itself. Number and Real admit their sum variants,
-	// including variants reached through a nested sum type.
+	// Ints requires the alias itself. Number, Real, and Both admit their sum
+	// variants, including variants reached through nested and generic sum types.
 	res := check_program('alias_constraints', "type Ints = []int
 
 fn ints[T Ints](x T) int {
@@ -1638,6 +1638,14 @@ fn keep_bad[T Bad](x T) T {
 	return x
 }
 
+type Part[T] = T | bool
+
+type Both = Part[int] | Part[string]
+
+fn accept[T Both](value T) T {
+	return value
+}
+
 fn main() {
 	println(ints(Ints([1, 2])))
 	println(ints([1, 2]))
@@ -1648,6 +1656,7 @@ fn main() {
 	println(half(i64(4)))
 	println(half(f32(1)))
 	println(half(u8(1)))
+	println(accept(1.5))
 }
 ")
 	assert res.exit_code == 1, res.output
@@ -1656,13 +1665,15 @@ fn main() {
 		'7:11: unknown type `Nope`',
 		'24:21: type `T` has no method `hex`: `f64`, in its constraint `Number`, does not have it',
 		'35:18: unknown type `Foo`',
-		'43:15: cannot use `[]int` as `T`: it is not in its constraint `Ints`',
-		'46:17: cannot use `string` as `T`: it is not in its constraint `Number`',
-		'50:15: cannot use `u8` as `T`: it is not in its constraint `Real`',
+		'51:15: cannot use `[]int` as `T`: it is not in its constraint `Ints`',
+		'54:17: cannot use `string` as `T`: it is not in its constraint `Number`',
+		'58:15: cannot use `u8` as `T`: it is not in its constraint `Real`',
+		'59:17: cannot use `f64` as `T`: it is not in its constraint `Both`',
 	], res.output
 }
 
 fn test_a_nested_sum_constraint_keeps_distinct_generic_instances() {
+	// Each variant order starts with fresh generic instances.
 	for name, variants in {
 		'int_first':    'Part[int] | Part[string]'
 		'string_first': 'Part[string] | Part[int]'
@@ -1685,24 +1696,6 @@ fn main() {
 ")
 		assert res.exit_code == 0, res.output
 	}
-	res := check_whole('sum_instances_invalid', 'module main
-
-type Part[T] = T | bool
-
-type Both = Part[int] | Part[string]
-
-fn accept[T Both](value T) T {
-	return value
-}
-
-fn main() {
-	println(accept(1.5))
-}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines_from(res.output, 1) == [
-		'12:17: cannot use `f64` as `T`: it is not in its constraint `Both`',
-	], res.output
 }
 
 fn test_a_nested_sum_constraint_keeps_finite_nested_generic_instances() {
