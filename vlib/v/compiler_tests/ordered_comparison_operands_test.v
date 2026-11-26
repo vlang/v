@@ -6,13 +6,9 @@
 // the comparisons marked below that V1 let through to the C compiler.
 import os
 import rand
+import v.cmdexec
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const ordered_v3_bin = os.join_path(os.temp_dir(), 'v3_ordered_comparison_test_${os.getpid()}')
+const ordered_test_dir = os.join_path(os.vtmp_dir(), 'v3_ordered_comparison_${rand.ulid()}')
 
 const ordered_ops = ['<', '>', '<=', '>=']
 
@@ -327,31 +323,23 @@ struct ErrorAt {
 	msg  string
 }
 
-fn setup_v3_cache() {
-	cache_dir := os.join_path(os.temp_dir(), 'v3_ordered_comparison_cache_${os.getpid()}')
-	if os.getenv('V3CACHE') == cache_dir {
-		return
-	}
-	os.rmdir_all(cache_dir) or {}
-	os.rm(ordered_v3_bin) or {}
-	os.setenv('V3CACHE', cache_dir, true)
+fn testsuite_begin() {
+	os.mkdir(ordered_test_dir) or { panic(err) }
 }
 
-// build_v3 builds the compiler under test once per test process.
-fn build_v3() string {
-	setup_v3_cache()
-	if os.is_executable(ordered_v3_bin) {
-		return ordered_v3_bin
-	}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${'${vlib_dir}|@vlib|@vmodules'}', '-o',
-			ordered_v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return ordered_v3_bin
+fn testsuite_end() {
+	os.rmdir_all(ordered_test_dir) or {}
+}
+
+fn run_ordered_comparison_compiler(args []string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, args, '', {
+		'VFLAGS':  ''
+		'V3CACHE': os.join_path(ordered_test_dir, 'cache')
+	})
 }
 
 fn unique_temp_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_ordered_${name}_${os.getpid()}_${rand.ulid()}')
+	return os.join_path(ordered_test_dir, '${name}_${rand.ulid()}')
 }
 
 fn check_errors(name string, src string) []ErrorAt {
@@ -370,9 +358,9 @@ fn check_errors(name string, src string) []ErrorAt {
 // check_file_errors runs the checker alone over the file at `path` and returns
 // every error it reports, uncapped, in whichever file it is.
 fn check_file_errors(path string) []ErrorAt {
-	v3_bin := build_v3()
 	result :=
-		os.exec([v3_bin, '-nocache', '-check', '-nocolor', '-checker-fixture', path])
+		run_ordered_comparison_compiler(['-nocache', '-check', '-nocolor', '-checker-fixture',
+			path])
 	mut errors := []ErrorAt{}
 	for line in result.output.split_into_lines() {
 		if !line.contains(': error: ') {
@@ -394,7 +382,6 @@ fn check_file_errors(path string) []ErrorAt {
 }
 
 fn run_good(name string, src string) string {
-	v3_bin := build_v3()
 	out := unique_temp_path(name)
 	good_src := out + '.v'
 	os.write_file(good_src, src) or { panic(err) }
@@ -403,7 +390,7 @@ fn run_good(name string, src string) string {
 		os.rm(out) or {}
 	}
 	compile :=
-		os.exec([v3_bin, '-nocache', '${good_src}', '-b', 'c', '-o', '${out}'])
+		run_ordered_comparison_compiler(['-nocache', good_src, '-b', 'c', '-o', out])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
 	run := os.exec([out])
@@ -1016,7 +1003,7 @@ fn test_ordered_comparisons_in_templates() {
 	}
 	good_bin := os.join_path(dir, 'good')
 	compile :=
-		os.exec(['${build_v3()}', '-nocache', '${good_src}', '-b', 'c', '-o', good_bin])
+		run_ordered_comparison_compiler(['-nocache', good_src, '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([good_bin])
 	assert run.exit_code == 0, run.output

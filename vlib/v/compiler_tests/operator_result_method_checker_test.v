@@ -81,32 +81,23 @@ fn test_operator_result_type_is_used_before_method_resolution() {
 	good := 'module main
 
 import clock
+import time
 
 fn main() {
 	println((clock.now() - clock.now()).milliseconds())
 	println(clock.Span(123000000).milliseconds())
 	span := clock.Span(10)
 	_ := span.milliseconds()
-}
-'
-	good_res := check_to_c('good', good)
-	assert good_res.exit_code == 0, good_res.output
-	assert !good_res.output.contains('unknown function `milliseconds`'), good_res.output
 
-	time_good := 'module main
-
-import time
-
-fn main() {
 	println((time.now() - time.now()).milliseconds())
 	println(time.Duration(123000000).milliseconds())
 	d := time.Duration(10)
 	_ := d.milliseconds()
 }
 '
-	time_res := check_to_c('time_good', time_good)
-	assert time_res.exit_code == 0, time_res.output
-	assert !time_res.output.contains('unknown function `milliseconds`'), time_res.output
+	good_res := check_to_c('good', good)
+	assert good_res.exit_code == 0, good_res.output
+	assert !good_res.output.contains('unknown function `milliseconds`'), good_res.output
 
 	time_standalone := 'module main
 

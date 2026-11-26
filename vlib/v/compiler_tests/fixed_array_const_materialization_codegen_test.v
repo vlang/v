@@ -1,7 +1,7 @@
 import os
 import v.tempname
 
-fn test_fixed_array_const_materialization_and_nested_for_in() {
+fn test_local_array_const_materialization() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_const_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -30,9 +30,37 @@ fn item_sum() int {
 	return items[0].value + items[1].value
 }
 
+const clone_vals = [u32(2), 3, 4]
+
+fn bump(mut xs [3]u32) {
+	xs[0] += clone_vals[1]
+}
+
+fn clone_score() int {
+	mut xs := [u32(10), 20, 30]!
+	bump(mut xs)
+	cloned := clone_vals.clone()
+	cloned_paren := (clone_vals).clone()
+	return int(xs[0] + cloned[2] + cloned_paren[1])
+}
+
+const vals = [u32(1), 2, 3]
+const fixed_only = [u32(4), 5, 6]
+
+fn take(xs []u32) u32 {
+	return xs[2]
+}
+
+fn indexed_score() u32 {
+	xs := vals
+	return vals[1] + xs[0] + take(vals) + fixed_only[1]
+}
+
 fn main() {
 	println(sum_nums().str())
 	println(item_sum().str())
+	println(clone_score().str())
+	println(indexed_score().str())
 }
 ') or {
 		panic(err)
@@ -41,7 +69,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().split_into_lines() == ['21', '15'], run.output
+	assert run.output.trim_space().split_into_lines() == ['21', '15', '20', '11'], run.output
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
@@ -58,87 +86,16 @@ fn main() {
 	assert !sum_nums_body.replace('\t', '').replace(' ', '').replace('\n', '').contains('<0;'), sum_nums_body
 	deparenthesized := compact.replace('(', '').replace(')', '')
 	assert deparenthesized.contains('returnmain__items[0]->value+main__items[1]->value;'), generated
-}
 
-fn test_fixed_array_pointer_arg_and_dynamic_const_clone() {
-	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_arg_const_clone_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'v3_fixed_array_arg_const_clone')
-	src := bin + '.v'
-	os.write_file(src, 'module main
-
-const vals = [u32(1), 2, 3]
-
-fn bump(mut xs [3]u32) {
-	xs[0] += vals[1]
-}
-
-fn score() int {
-	mut xs := [u32(10), 20, 30]!
-	bump(mut xs)
-	cloned := vals.clone()
-	cloned_paren := (vals).clone()
-	return int(xs[0] + cloned[2] + cloned_paren[1])
-}
-
-fn main() {
-	println(score().str())
-}
-') or {
-		panic(err)
-	}
-	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '17', run.output
-
-	generated := os.read_file(bin + '.c') or { panic(err) }
-	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
-	deparenthesized := compact.replace('(', '').replace(')', '')
+	// Cloning requires a dynamic array even when another use indexes the constant.
 	assert compact.contains('bump(&xs);'), generated
 	assert !compact.contains('bump(xs);'), generated
-	assert !compact.contains('u32main__vals[3]'), generated
-	assert !compact.contains('array__clone(&main__vals)') || generated.contains('Array main__vals'), generated
-	assert !deparenthesized.contains('array__clone&main__vals')
-		|| generated.contains('Array main__vals'), generated
-}
+	assert !compact.contains('u32main__clone_vals[3]'), generated
+	assert !compact.contains('array__clone(&main__clone_vals)') || generated.contains('Array main__clone_vals'), generated
+	assert !deparenthesized.contains('array__clone&main__clone_vals')
+		|| generated.contains('Array main__clone_vals'), generated
 
-fn test_indexed_const_array_with_dynamic_use_stays_dynamic() {
-	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_const_dynamic_use_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'v3_fixed_array_const_dynamic_use')
-	src := bin + '.v'
-	os.write_file(src, 'module main
-
-const vals = [u32(1), 2, 3]
-const fixed_only = [u32(4), 5, 6]
-
-fn take(xs []u32) u32 {
-	return xs[2]
-}
-
-fn score() u32 {
-	xs := vals
-	return vals[1] + xs[0] + take(vals) + fixed_only[1]
-}
-
-fn main() {
-	println(score().str())
-}
-') or {
-		panic(err)
-	}
-	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '11', run.output
-
-	generated := os.read_file(bin + '.c') or { panic(err) }
-	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
+	// Assignment and argument passing also require dynamic storage.
 	assert generated.contains('Array main__vals'), generated
 	assert !compact.contains('constu32main__vals[3]'), generated
 	assert !compact.contains('Arrayxs=main__vals;') || generated.contains('Array main__vals'), generated

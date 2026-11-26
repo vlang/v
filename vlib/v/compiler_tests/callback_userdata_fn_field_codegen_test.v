@@ -10,19 +10,21 @@ const callback_vlib_dir = os.dir(callback_v3_dir)
 const callback_v3_src = os.join_path(callback_v3_dir, 'v.v')
 const callback_compiler_dir = os.join_path(os.vtmp_dir(), 'v3_callback_userdata_${tempname.unique_token()}')
 
-fn testsuite_begin() {
-	os.mkdir_all(callback_compiler_dir) or { panic(err) }
-}
-
 fn testsuite_end() {
 	os.rmdir_all(callback_compiler_dir) or {}
 }
 
 fn callback_ownership_compiler() string {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(callback_v3_src) {
+		return os.real_path(shared)
+	}
 	bin := os.join_path(callback_compiler_dir, 'ownership') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(bin) {
 		return bin
 	}
+	os.mkdir_all(callback_compiler_dir) or { panic(err) }
 	build := os.exec([@VEXE, '-d', 'ownership', '-gc', 'none', '-path',
 		'${callback_vlib_dir}' + '|@vlib|@vmodules', '-o', bin, '${callback_v3_src}'])
 	assert build.exit_code == 0, build.output

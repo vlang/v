@@ -1,4 +1,5 @@
 import arrays.parallel
+import json2
 import math
 import os
 import runtime
@@ -7,7 +8,14 @@ import v.cmdexec
 struct NoallocCase {
 	name     string
 	accepted bool
+	isolated bool
 	source   string
+}
+
+struct NoallocDiagnostic {
+	file     string
+	severity string
+	message  string
 }
 
 fn test_noalloc_contracts_in_build_and_check() {
@@ -242,6 +250,7 @@ fn main() { _ = handler(true, 'value') }
 		NoallocCase{
 			name:     'generic_allocation'
 			accepted: false
+			isolated: true
 			source:   'fn stringify[T](n T) string { return n.str() }
 @[noalloc]
 fn handler() int { return stringify[int](3).len }
@@ -312,6 +321,7 @@ fn main() { _ = identity[int](2) }
 		NoallocCase{
 			name:     'generic_root_allocating'
 			accepted: false
+			isolated: true
 			source:   '@[noalloc]
 fn stringify[T](value T) string { return value.str() }
 fn main() { _ = stringify[int](2) }
@@ -504,6 +514,7 @@ fn main() { mut out := []u8{}; handler(mut out, 1) }
 		NoallocCase{
 			name:     'generic_allocation_before_terminal'
 			accepted: false
+			isolated: true
 			source:   '@[noalloc]\nfn handler[T](value T) { values := [value]; panic(values.str()) }\nfn main() { if false { handler[int](1) } }\n'
 		},
 		NoallocCase{
@@ -547,25 +558,30 @@ fn main() { mut out := []u8{}; handler(mut out, 1) }
 		'VJOBS': (cpu_budget / workers).str()
 	}
 	modes := ['build', 'check']
+	// Custom flags can change module lookup or limit the diagnostics in a batch.
+	individual_cases := if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] {
+		// Generic diagnostics may need later compiler stages. C declarations share a global name.
+		batched := cases.filter(!it.isolated && !it.source.contains('fn C.'))
+		check_noalloc_acceptance_batch(root, batched.filter(it.accepted), modes, compiler_env)
+		check_noalloc_rejection_batch(root, batched.filter(!it.accepted), modes, compiler_env)
+		batched_names := batched.map(it.name)
+		cases.filter(it.name !in batched_names)
+	} else {
+		cases
+	}
 	// Each fixture has its own source and output. Keep its build and check in
 	// order and collect results in case order for the assertions below.
-	results := parallel.amap(cases, fn [root, modes, compiler_env] (case NoallocCase) []os.Result {
+	results := parallel.amap(individual_cases, fn [root, modes, compiler_env] (case NoallocCase) []os.Result {
 		source := os.join_path(root, '${case.name}.c.v')
 		os.write_file(source, case.source) or { panic(err) }
 		mut outcomes := []os.Result{cap: modes.len}
 		for mode in modes {
-			mut args := ['-gc', 'none']
-			if mode == 'check' {
-				args << '-check'
-			} else {
-				args << ['-o', os.join_path(root, '${case.name}.c')]
-			}
-			args << source
-			outcomes << cmdexec.run_in_merged_with_env(@VEXE, args, '', compiler_env)
+			outcomes << run_noalloc_fixture(source, os.join_path(root, '${case.name}.c'), mode,
+				compiler_env)
 		}
 		return outcomes
 	}, workers: workers)
-	for case_index, case in cases {
+	for case_index, case in individual_cases {
 		for mode_index, mode in modes {
 			result := results[case_index][mode_index]
 			assert (result.exit_code == 0) == case.accepted, '${case.name} ${mode}: ${result.output}'
@@ -577,6 +593,85 @@ fn main() { mut out := []u8{}; handler(mut out, 1) }
 			}
 		}
 	}
+}
+
+fn write_noalloc_batch(project string, cases []NoallocCase) {
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		name := 'case_${case.name}'
+		dir := os.join_path(project, name)
+		os.mkdir_all(dir) or { panic(err) }
+		fixture := if case.accepted {
+			// Keep the original entry point reachable so its calls are generated.
+			imports << 'import ${name}'
+			calls << '\t${name}.exercise()\n'
+			case.source.replace_once('\nfn main()', '\npub fn exercise()')
+		} else {
+			imports << 'import ${name} as _'
+			case.source
+		}
+		os.write_file(os.join_path(dir, '${name}.c.v'), 'module ${name}\n\n' + fixture) or {
+			panic(err)
+		}
+	}
+	os.write_file(os.join_path(project, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('')}}\n') or {
+		panic(err)
+	}
+}
+
+fn check_noalloc_acceptance_batch(root string, cases []NoallocCase, modes []string, compiler_env map[string]string) {
+	project := os.join_path(root, 'accepted')
+	c_path := os.join_path(root, 'accepted.c')
+	write_noalloc_batch(project, cases)
+	for mode in modes {
+		result := run_noalloc_fixture(project, c_path, mode, compiler_env)
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
+	generated_c := os.read_file(c_path) or { panic(err) }
+	for case in cases {
+		entry := 'case_${case.name}__exercise'
+		assert generated_c.contains('void ${entry}(void) {'), '${case.name}: missing generated entry point'
+		assert generated_c.contains('${entry}();'), '${case.name}: missing call to entry point'
+	}
+}
+
+fn check_noalloc_rejection_batch(root string, cases []NoallocCase, modes []string, compiler_env map[string]string) {
+	project := os.join_path(root, 'rejections')
+	write_noalloc_batch(project, cases)
+	for mode in modes {
+		result := run_noalloc_fixture(project, os.join_path(root, 'rejections.c'), mode,
+			compiler_env, '-json-errors')
+		assert result.exit_code != 0, '${mode}: ${result.output}'
+		mut diagnostics := map[string][]string{}
+		for line in result.output.split_into_lines() {
+			if !line.starts_with('{') {
+				continue
+			}
+			diagnostic := json2.decode[NoallocDiagnostic](line) or { panic(err) }
+			if diagnostic.severity == 'error' && diagnostic.message.contains('@[noalloc]') {
+				diagnostics[os.file_name(diagnostic.file)] << diagnostic.message
+			}
+		}
+		for case in cases {
+			filename := 'case_${case.name}.c.v'
+			assert filename in diagnostics, '${case.name} ${mode}: ${result.output}'
+			if case.name == 'int_to_string' {
+				assert diagnostics[filename].any(it.contains('case_int_to_string.handler -> case_int_to_string.middle')), result.output
+			}
+		}
+	}
+}
+
+fn run_noalloc_fixture(source string, output string, mode string, compiler_env map[string]string, flags ...string) os.Result {
+	mut args := ['-gc', 'none', ...flags]
+	if mode == 'check' {
+		args << '-check'
+	} else {
+		args << ['-o', output]
+	}
+	args << source
+	return cmdexec.run_in_merged_with_env(@VEXE, args, '', compiler_env)
 }
 
 fn test_noalloc_cannot_reuse_an_allocating_cached_dependency() {

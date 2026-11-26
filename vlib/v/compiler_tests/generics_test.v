@@ -7,21 +7,43 @@ fn new_generics_fixture_dir() string {
 	return root
 }
 
-// run_selfhost_bad supports run selfhost bad handling for v3 tests.
-fn run_selfhost_bad(fixture_dir string, name string, src string, expected string) {
-	bad_src := os.join_path(fixture_dir, 'v3_gen_${name}.v')
-	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := os.join_path(fixture_dir, 'v3_gen_${name}')
-	result := os.exec([@VEXE, bad_src, '-selfhost', '-b', 'c', '-o', bad_bin])
-	assert result.exit_code != 0, 'expected error for ${name}, but compilation succeeded'
-	assert result.output.contains(expected), 'expected "${expected}" in output for ${name}, got: ${result.output}'
-	assert !result.output.contains('C compilation failed')
-}
-
 fn write_generics_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
 	os.write_file(path, src) or { panic(err) }
+}
+
+struct SelfhostGenericRejection {
+	name     string
+	source   string
+	expected string
+}
+
+fn run_selfhost_bad_batch(fixture_dir string, cases []SelfhostGenericRejection) {
+	root := os.join_path(fixture_dir, 'selfhost_rejections')
+	mut imports := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name} as _'
+		write_generics_project_file(root, '${module_name}/v3_gen_${case.name}.v', 'module ${module_name}\n\n' +
+			case.source)
+	}
+	write_generics_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')
+	// The combined fixtures exceed the default diagnostic limit.
+	result := os.exec([@VEXE, '-selfhost', '-b', 'c', '-nocolor', '-message-limit', '100', '-o',
+		os.join_path(root, 'program'), os.join_path(root, 'main.v')])
+	assert result.exit_code != 0, result.output
+	assert !result.output.contains('C compilation failed'), result.output
+	mut errors := map[string][]string{}
+	for line in result.output.split_into_lines() {
+		location, message := line.split_once(': error: ') or { continue }
+		// Drop the line and column from the right to preserve any colon in the path.
+		file := location.all_before_last(':').all_before_last(':')
+		errors[os.file_name(file)] << message
+	}
+	for case in cases {
+		assert errors['v3_gen_${case.name}.v'].any(it.contains(case.expected)), '${case.name}: expected `${case.expected}` in\n${result.output}'
+	}
 }
 
 fn run_selfhost_project_bad(fixture_dir string, name string, files map[string]string, input string, expected string) {
@@ -47,23 +69,28 @@ fn run_no_generic_error(fixture_dir string, name string, src string) {
 	assert !result.output.contains('unsupported generic'), '${name}: should not reject generics without -selfhost, got: ${result.output}'
 }
 
-// run_generic_ok supports run generic ok handling for v3 tests.
-fn run_generic_ok(fixture_dir string, name string, src string, expected string) {
-	src_file := os.join_path(fixture_dir, 'v3_gen_${name}.v')
-	os.write_file(src_file, src) or { panic(err) }
-	bin_file := os.join_path(fixture_dir, 'v3_gen_${name}')
-	c_file := bin_file + '.c'
-	compile := os.exec([@VEXE, src_file, '-b', 'c', '-o', bin_file])
-	// Check that v3 type checker and transform pass without errors
-	assert !compile.output.contains('unsupported generic'), '${name}: should not reject generics, got: ${compile.output}'
-	assert !compile.output.contains('type checker found'), '${name}: type checker errors: ${compile.output}'
-	// Verify C file was generated. The v3 pipeline can succeed even if cc fails due
-	// to pre-existing runtime issues.
-	assert os.exists(c_file), '${name}: C file not generated'
-	c_content := os.read_file(c_file) or { '' }
-	// The mangled generic function should appear in the generated C code
-	if expected.len > 0 {
-		assert c_content.len > 0, '${name}: empty C file'
+fn run_generics_codegen_batch(fixture_dir string, cases map[string]string) {
+	root := os.join_path(fixture_dir, 'codegen_batch')
+	names := cases.keys()
+	mut imports := []string{cap: names.len}
+	mut calls := []string{cap: names.len}
+	for i, name in names {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name}'
+		calls << '\t${module_name}.exercise()'
+		fixture := 'module ${module_name}\n\n' + cases[name]
+		write_generics_project_file(root, '${module_name}/v3_gen_${name}.v', fixture.replace_once('\nfn main()',
+			'\npub fn exercise()'))
+	}
+	write_generics_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')
+	c_file := os.join_path(root, 'program.c')
+	compile := os.exec([@VEXE, '-b', 'c', '-o', c_file, os.join_path(root, 'main.v')])
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('unsupported generic'), compile.output
+	assert !compile.output.contains('type checker found'), compile.output
+	c_content := os.read_file(c_file) or { panic(err) }
+	for i, name in names {
+		assert c_content.contains('void fixture_${i}__exercise(void) {'), '${name}: missing generated C function body'
 	}
 }
 
@@ -168,19 +195,24 @@ fn test_late_generic_reachability_runs_to_fixpoint() {
 fn test_generics_rejected_when_building_v() {
 	fixture_dir := new_generics_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	// generic function
-	run_selfhost_bad(fixture_dir, 'generic_fn', '
+	run_selfhost_bad_batch(fixture_dir, [
+		// generic function
+		SelfhostGenericRejection{
+			name:     'generic_fn'
+			source:   '
 fn id[T](x T) T {
 	return x
 }
 fn main() {
 	println(id[int](1))
 }
-',
-		'unsupported generic')
-
-	// generic struct
-	run_selfhost_bad(fixture_dir, 'generic_struct', '
+'
+			expected: 'unsupported generic'
+		},
+		// generic struct
+		SelfhostGenericRejection{
+			name:     'generic_struct'
+			source:   '
 struct Box[T] {
 	value T
 }
@@ -188,45 +220,57 @@ fn main() {
 	b := Box[int]{value: 7}
 	println(b.value)
 }
-	',
-		'unsupported generic')
-
-	// generic struct with no generic fields
-	run_selfhost_bad(fixture_dir, 'generic_struct_marker_only', '
+	'
+			expected: 'unsupported generic'
+		},
+		// generic struct with no generic fields
+		SelfhostGenericRejection{
+			name:     'generic_struct_marker_only'
+			source:   '
 struct Phantom[T] {
 	value int
 }
 fn main() {}
-',
-		'unsupported generic struct `Phantom`')
-
-	run_selfhost_bad(fixture_dir, 'generic_fn_marker_only', '
+'
+			expected: 'unsupported generic struct `Phantom`'
+		},
+		SelfhostGenericRejection{
+			name:     'generic_fn_marker_only'
+			source:   '
 fn unused[T]() {}
 fn main() {}
-	',
-		'unsupported generic declaration `unused`')
-
-	run_selfhost_bad(fixture_dir, 'generic_c_fn_marker_only', '
+	'
+			expected: 'unsupported generic declaration `unused`'
+		},
+		SelfhostGenericRejection{
+			name:     'generic_c_fn_marker_only'
+			source:   '
 fn helper[T]()
 fn main() {}
-	',
-		'unsupported generic declaration `helper`')
-
-	// Single-letter capital names are reserved for generic parameters.
-	run_selfhost_bad(fixture_dir, 'generic_interface_marker_only', '
+	'
+			expected: 'unsupported generic declaration `helper`'
+		},
+		// Single-letter capital names are reserved for generic parameters.
+		SelfhostGenericRejection{
+			name:     'generic_interface_marker_only'
+			source:   '
 interface Marker[T] {}
 fn main() {}
-	',
-		'unsupported generic declaration `Marker`')
-
-	run_selfhost_bad(fixture_dir, 'generic_type_alias_marker_only', '
+	'
+			expected: 'unsupported generic declaration `Marker`'
+		},
+		SelfhostGenericRejection{
+			name:     'generic_type_alias_marker_only'
+			source:   '
 type Alias[T] = int
 fn main() {}
-',
-		'unsupported generic declaration `Alias`')
-
-	// generic method
-	run_selfhost_bad(fixture_dir, 'generic_method', '
+'
+			expected: 'unsupported generic declaration `Alias`'
+		},
+		// generic method
+		SelfhostGenericRejection{
+			name:     'generic_method'
+			source:   '
 struct Box[T] {
 	value T
 }
@@ -237,11 +281,13 @@ fn main() {
 	b := Box[string]{value: "v3"}
 	println(b.get())
 }
-',
-		'unsupported generic')
-
-	// generic with option/result return
-	run_selfhost_bad(fixture_dir, 'generic_option', '
+'
+			expected: 'unsupported generic'
+		},
+		// generic with option/result return
+		SelfhostGenericRejection{
+			name:     'generic_option'
+			source:   '
 fn maybe[T](x T) ?T {
 	return x
 }
@@ -249,60 +295,74 @@ fn main() {
 	x := maybe[int](1) or { 0 }
 	println(x)
 }
-',
-		'unsupported generic')
-
-	// multiple type parameters
-	run_selfhost_bad(fixture_dir, 'generic_multi_param', '
+'
+			expected: 'unsupported generic'
+		},
+		// multiple type parameters
+		SelfhostGenericRejection{
+			name:     'generic_multi_param'
+			source:   '
 fn pair[A, B](a A, b B) A {
 	return a
 }
 fn main() {
 	_ := pair[int, string](1, "ok")
 }
-',
-		'unsupported generic')
-
-	// generic type application in params
-	run_selfhost_bad(fixture_dir, 'generic_param_type', '
+'
+			expected: 'unsupported generic'
+		},
+		// generic type application in params
+		SelfhostGenericRejection{
+			name:     'generic_param_type'
+			source:   '
 fn takes_box(x Box[int]) {}
 fn main() {}
-',
-		'unsupported generic type application `Box[int]`')
-
-	// generic struct field
-	run_selfhost_bad(fixture_dir, 'generic_field_type', '
+'
+			expected: 'unsupported generic type application `Box[int]`'
+		},
+		// generic struct field
+		SelfhostGenericRejection{
+			name:     'generic_field_type'
+			source:   '
 struct Wrapper {
 	inner Box[string]
 }
 fn main() {}
-',
-		'unsupported generic type application `Box[string]`')
-
-	// generic return type
-	run_selfhost_bad(fixture_dir, 'generic_return_type', '
+'
+			expected: 'unsupported generic type application `Box[string]`'
+		},
+		// generic return type
+		SelfhostGenericRejection{
+			name:     'generic_return_type'
+			source:   '
 fn make_box() Box[int] {
 	return Box[int]{}
 }
 fn main() {}
-',
-		'unsupported generic type application `Box[int]`')
-
-	// generic sum type
-	run_selfhost_bad(fixture_dir, 'generic_type_decl', '
+'
+			expected: 'unsupported generic type application `Box[int]`'
+		},
+		// generic sum type
+		SelfhostGenericRejection{
+			name:     'generic_type_decl'
+			source:   '
 type Result[T] = T | string
 fn main() {}
-',
-		'unsupported generic')
-
-	// generic interface
-	run_selfhost_bad(fixture_dir, 'generic_interface', '
+'
+			expected: 'unsupported generic'
+		},
+		// generic interface
+		SelfhostGenericRejection{
+			name:     'generic_interface'
+			source:   '
 interface Container[T] {
 	get() T
 }
 fn main() {}
-',
-		'unsupported generic')
+'
+			expected: 'unsupported generic'
+		},
+	])
 
 	run_selfhost_project_bad(fixture_dir, 'imported_generic_struct', {
 		'main.v':          'module main
@@ -324,18 +384,18 @@ struct Phantom[T] {
 fn test_generics_allowed_without_building_v() {
 	fixture_dir := new_generics_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	// generic function — no "unsupported generic" error
-	run_no_generic_error(fixture_dir, 'allow_generic_fn', '
+	run_generics_codegen_batch(fixture_dir, {
+		// generic function — no "unsupported generic" error
+		'allow_generic_fn':        '
 fn id[T](x T) T {
 	return x
 }
 fn main() {
 	_ := id[int](1)
 }
-')
-
-	// generic struct
-	run_no_generic_error(fixture_dir, 'allow_generic_struct', '
+'
+		// generic struct
+		'allow_generic_struct':    '
 struct Box[T] {
 	value T
 }
@@ -343,10 +403,9 @@ fn main() {
 	b := Box[int]{value: 7}
 	_ := b
 }
-')
-
-	// generic method
-	run_no_generic_error(fixture_dir, 'allow_generic_method', '
+'
+		// generic method
+		'allow_generic_method':    '
 struct Box[T] {
 	value T
 }
@@ -357,10 +416,9 @@ fn main() {
 	b := Box[string]{value: "v3"}
 	_ := b
 }
-')
-
-	// nested generic type
-	run_no_generic_error(fixture_dir, 'allow_generic_nested', '
+'
+		// nested generic type
+		'allow_generic_nested':    '
 struct Box[T] {
 	value T
 }
@@ -368,10 +426,9 @@ fn main() {
 	b := Box[[]int]{value: [1, 2, 3]}
 	_ := b
 }
-')
-
-	// option/result generic
-	run_no_generic_error(fixture_dir, 'allow_generic_option', '
+'
+		// option/result generic
+		'allow_generic_option':    '
 fn maybe[T](x T) ?T {
 	return x
 }
@@ -379,19 +436,19 @@ fn main() {
 	x := maybe[int](1) or { 0 }
 	_ := x
 }
-')
+'
+		// generic interface
+		'allow_generic_interface': '
+interface Container[T] {
+	get() T
+}
+fn main() {}
+'
+	})
 
 	// generic type in params/fields/returns
 	run_no_generic_error(fixture_dir, 'allow_generic_type_app', '
 fn takes_box(x Box[int]) {}
-fn main() {}
-')
-
-	// generic interface
-	run_no_generic_error(fixture_dir, 'allow_generic_interface', '
-interface Container[T] {
-	get() T
-}
 fn main() {}
 ')
 }
@@ -401,8 +458,9 @@ fn test_generics_compile_and_run() {
 	fixture_dir := new_generics_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
 
-	// identity function with int and string
-	run_generic_ok(fixture_dir, 'run_id_fn', '
+	run_generics_codegen_batch(fixture_dir, {
+		// identity function with int and string
+		'run_id_fn':                     '
 fn id[T](x T) T {
 	return x
 }
@@ -410,11 +468,9 @@ fn main() {
 	println(id(123))
 	println(id("ok"))
 }
-',
-		'123\nok')
-
-	// generic struct with field access
-	run_generic_ok(fixture_dir, 'run_generic_struct', '
+'
+		// generic struct with field access
+		'run_generic_struct':            '
 struct Box[T] {
 	value T
 }
@@ -422,8 +478,49 @@ fn main() {
 	b := Box[string]{value: "v3"}
 	println(b.value)
 }
-',
-		'v3')
+'
+		// transitive generic calls: outer[T] calls id[T]
+		'run_transitive':                '
+fn id[T](x T) T {
+	return x
+}
+fn outer[T](x T) T {
+	return id(x)
+}
+fn main() {
+	println(outer(42))
+}
+'
+		// multi-param generic
+		'run_multi_param':               '
+fn first[A, B](a A, b B) A {
+	return a
+}
+fn main() {
+	println(first(99, "ignored"))
+}
+'
+		// multi-param generic struct fields
+		'run_multi_param_struct_fields': '
+struct Pair[X, Y] {
+	left X
+	right Y
+}
+fn main() {
+	p := Pair[int, string]{left: 1, right: "ok"}
+	println(p.right)
+}
+'
+		// infer from array element type
+		'run_array_infer':               '
+fn length[T](xs []T) int {
+	return xs.len
+}
+fn main() {
+	println(length([1, 2, 3]))
+}
+'
+	})
 
 	// A one-letter concrete type argument should not be treated as an unresolved
 	// generic placeholder when discovering struct specializations.
@@ -448,64 +545,18 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	one_letter_bin := os.join_path(fixture_dir, 'v3_gen_one_letter_concrete_arg')
-	one_letter_compile := os.exec([@VEXE, one_letter_src, '-b', 'c', '-o', one_letter_bin])
+	one_letter_c_path := os.join_path(fixture_dir, 'v3_gen_one_letter_concrete_arg.c')
+	one_letter_compile := os.exec([@VEXE, '-b', 'c', '-o', one_letter_c_path, one_letter_src])
+	assert one_letter_compile.exit_code == 0, one_letter_compile.output
 	assert !one_letter_compile.output.contains('unsupported generic'), one_letter_compile.output
 	assert !one_letter_compile.output.contains('type checker found'), one_letter_compile.output
-	one_letter_c := os.read_file(one_letter_bin + '.c') or { '' }
+	one_letter_c := os.read_file(one_letter_c_path) or { panic(err) }
 	// Generic struct instances declared in main use the `main__` C namespace.
 	assert one_letter_c.contains('struct main__Box_A'), one_letter_c
 
-	// transitive generic calls: outer[T] calls id[T]
-	run_generic_ok(fixture_dir, 'run_transitive', '
-fn id[T](x T) T {
-	return x
-}
-fn outer[T](x T) T {
-	return id(x)
-}
-fn main() {
-	println(outer(42))
-}
-',
-		'42')
+	root := os.join_path(fixture_dir, 'runtime_batch')
+	write_generics_project_file(root, 'selector_infer/v3_gen_selector_method_arg_infer.v', 'module selector_infer
 
-	// multi-param generic
-	run_generic_ok(fixture_dir, 'run_multi_param', '
-fn first[A, B](a A, b B) A {
-	return a
-}
-fn main() {
-	println(first(99, "ignored"))
-}
-',
-		'99')
-
-	// multi-param generic struct fields
-	run_generic_ok(fixture_dir, 'run_multi_param_struct_fields', '
-struct Pair[X, Y] {
-	left X
-	right Y
-}
-fn main() {
-	p := Pair[int, string]{left: 1, right: "ok"}
-	println(p.right)
-}
-',
-		'ok')
-
-	// infer from array element type
-	run_generic_ok(fixture_dir, 'run_array_infer', '
-fn length[T](xs []T) int {
-	return xs.len
-}
-fn main() {
-	println(length([1, 2, 3]))
-}
-',
-		'3')
-
-	selector_convert_out := run_generic_exec(fixture_dir, 'selector_method_arg_infer', '
 struct Box[T] {
 	value T
 }
@@ -514,31 +565,56 @@ fn (b Box[T]) convert[U](value U) U {
 	return value
 }
 
-fn main() {
+pub fn exercise() {
 	b := Box[int]{value: 1}
 	println(b.convert("ok"))
 }
 ')
-	assert selector_convert_out == 'ok'
+	write_generics_project_file(root, 'explicit_args/v3_gen_explicit_generic_call_keeps_runtime_args.v', 'module explicit_args
 
-	explicit_multi_arg_out := run_generic_exec(fixture_dir, 'explicit_generic_call_keeps_runtime_args', '
 fn second[T](a T, b T) T {
 	return b
 }
 
-fn main() {
+pub fn exercise() {
 	println(second[int](1, 2))
 }
 ')
-	assert explicit_multi_arg_out == '2'
+	// Keep result propagation in main to exercise the program entry point.
+	write_generics_project_file(root, 'main.v', "module main
 
-	reused_result_out := run_generic_exec(fixture_dir, 'reused_generic_result_keeps_payload_type', '
 import arrays { sum }
+import os
+import selector_infer
+import explicit_args
 
 fn main() {
+	match os.args[1] {
+		'selector_method_arg_infer' {
+			selector_infer.exercise()
+			return
+		}
+		'explicit_generic_call_keeps_runtime_args' {
+			explicit_args.exercise()
+			return
+		}
+		'reused_generic_result_keeps_payload_type' {}
+		else { panic('unknown fixture') }
+	}
 	mapped := [[1, 2], [3, 4]].map(sum(it)!)
 	println(sum(mapped[..2])!)
 }
-')
-	assert reused_result_out == '10'
+")
+	bin := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, os.join_path(root, 'main.v')])
+	assert compile.exit_code == 0, compile.output
+	for name, expected in {
+		'selector_method_arg_infer':                'ok'
+		'explicit_generic_call_keeps_runtime_args': '2'
+		'reused_generic_result_keeps_payload_type': '10'
+	} {
+		run := os.exec([bin, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == expected, '${name}: expected ${expected} in\n${run.output}'
+	}
 }

@@ -350,6 +350,9 @@ fn main() {
 
 ### Borrow restrictions
 
+A scalar field read through a borrow copies the scalar. A local pointer
+read through a borrow retains a loan on the backing storage.
+
 A borrowed variable cannot be moved or reassigned while the borrow is active:
 
 ```v okfmt

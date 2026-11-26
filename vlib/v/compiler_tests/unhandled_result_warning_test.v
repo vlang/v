@@ -6,6 +6,7 @@
 // with an error (an assignment, an operand, a typed argument...), no warning is
 // added on top.
 import arrays.parallel
+import json2
 import math
 import os
 import runtime
@@ -67,6 +68,19 @@ struct Case {
 	code  string // the body of main; «call» marks the call checked
 	extra string // top-level code, when the call is there instead
 	want  Want
+}
+
+struct CaseResult {
+	compile os.Result
+	at      []string
+}
+
+struct ResultDiagnostic {
+	file     string
+	line     int
+	col      int
+	severity string
+	message  string
 }
 
 const cases = [
@@ -160,9 +174,9 @@ fn write_program(name string, source string) string {
 }
 
 // build_program compiles the program in `dir` to capture warnings for valid programs.
-fn build_program(dir string, env map[string]string) os.Result {
-	return cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', '-gc', 'none', '-nocolor', '-o',
-		os.join_path(dir, 'prog'), os.join_path(dir, 'main.v')], '', env)
+fn build_program(dir string, env map[string]string, flags ...string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', '-gc', 'none', '-nocolor', ...flags,
+		'-o', os.join_path(dir, 'prog'), os.join_path(dir, 'main.v')], '', env)
 }
 
 // diagnostics_at returns the diagnostics reported on `line` of main.v.
@@ -177,25 +191,75 @@ fn diagnostics_at(output string, line int) []string {
 	return found
 }
 
+fn build_case_batch(name string, batch []Case, compiler_env map[string]string, expected_exit int) map[string]CaseResult {
+	modules := batch.map('result_${it.name}')
+	imports := modules.map('import ${it}').join('\n')
+	calls := modules.map('\t${it}.exercise()').join('\n')
+	dir := write_program(name, 'module main\n\n${imports}\n\nfn main() {\n${calls}\n}\n')
+	defer { os.rmdir_all(dir) or {} }
+	mut line_by_file := map[string]int{}
+	for i, c in batch {
+		module_name := modules[i]
+		module_dir := os.join_path(dir, module_name)
+		os.mkdir(module_dir) or { panic(err) }
+		filename := '${module_name}.v'
+		// Call each original main body and keep its diagnostic line and column.
+		source := program(c).replace_once('module main\n', 'module ${module_name}\n').replace_once('\nfn main()',
+			'\npub fn exercise()')
+		os.write_file(os.join_path(module_dir, filename), source) or { panic(err) }
+		line, _ := call_position(c)
+		line_by_file[filename] = line
+	}
+	result := build_program(dir, compiler_env, '-json-errors')
+	assert result.exit_code == expected_exit, result.output
+	mut diagnostics := map[string][]string{}
+	for line in result.output.split_into_lines() {
+		if !line.starts_with('{') {
+			continue
+		}
+		diagnostic := json2.decode[ResultDiagnostic](line) or { panic(err) }
+		filename := os.file_name(diagnostic.file)
+		if filename in line_by_file && diagnostic.line == line_by_file[filename] {
+			diagnostics[filename] << '${diagnostic.col}:${diagnostic.severity}: ${diagnostic.message.all_before('\n')}'
+		}
+	}
+	mut results := map[string]CaseResult{}
+	for i, c in batch {
+		results[c.name] = CaseResult{result, diagnostics['${modules[i]}.v']}
+	}
+	return results
+}
+
+fn build_case_matrix(compiler_env map[string]string, workers int) []CaseResult {
+	// Custom flags can limit diagnostics or change how the modules resolve.
+	if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] {
+		// Checker errors can stop the build before warnings are produced.
+		valid := build_case_batch('valid', cases.filter(it.want != .error_only), compiler_env, 0)
+		invalid := build_case_batch('invalid', cases.filter(it.want == .error_only), compiler_env, 1)
+		return cases.map(if it.want == .error_only { invalid[it.name] } else { valid[it.name] })
+	}
+	return parallel.amap(cases, fn [compiler_env] (c Case) CaseResult {
+		dir := write_program(c.name, program(c))
+		defer { os.rmdir_all(dir) or {} }
+		result := build_program(dir, compiler_env)
+		line, _ := call_position(c)
+		return CaseResult{result, diagnostics_at(result.output, line)}
+	}, workers: workers)
+}
+
 fn test_a_call_whose_result_nothing_handles_is_warned_about() {
 	cpu_budget := math.max(1, math.min(runtime.nr_jobs(), runtime.nr_cpus()))
 	workers := math.min(4, cpu_budget)
-	// Each case has its own project. Split the CPU budget across its compilers
-	// and keep the results in case order for the diagnostic checks below.
 	compiler_env := {
 		'VJOBS': (cpu_budget / workers).str()
 	}
-	results := parallel.amap(cases, fn [compiler_env] (c Case) os.Result {
-		dir := write_program(c.name, program(c))
-		defer { os.rmdir_all(dir) or {} }
-		return build_program(dir, compiler_env)
-	}, workers: workers)
+	results := build_case_matrix(compiler_env, workers)
 	mut wrong := []string{}
 	for i, c in cases {
-		result := results[i]
+		result := results[i].compile
 		output := result.output
 		line, col := call_position(c)
-		at := diagnostics_at(output, line)
+		at := results[i].at
 		warnings := at.filter(it.contains('warning:'))
 		errors := at.filter(it.contains('error:'))
 		ok := match c.want {

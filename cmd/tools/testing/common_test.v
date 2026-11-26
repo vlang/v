@@ -1,6 +1,65 @@
 module testing
 
 import os
+import v.build_constraint
+
+fn test_shared_v3_preparation_requires_two_unskipped_candidates() {
+	root := os.join_path(os.vtmp_dir(), 'shared_v3_builders_${os.getpid()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	plain := os.join_path(root, 'plain_test.v')
+	first_ownership := os.join_path(root, 'first_ownership_test.v')
+	second_ownership := os.join_path(root, 'second_ownership_test.v')
+	os.write_file(plain, "const compiler_args = ['-gc', 'none', 'v.v']")!
+	for path in [first_ownership, second_ownership] {
+		os.write_file(path, "const compiler_args = ['-gc', 'none', '-d', 'ownership', 'v.v']")!
+	}
+	files := [plain, first_ownership, second_ownership]
+	mut session := TestSession{
+		vroot: root
+	}
+	build_plain, build_ownership := session.shared_v3_compilers_to_build(files, true, true)
+	assert build_plain
+	assert build_ownership
+	plain_when_supplied, only_ownership := session.shared_v3_compilers_to_build(files, false, true)
+	assert !plain_when_supplied
+	assert only_ownership
+	only_plain, ownership_when_supplied := session.shared_v3_compilers_to_build(files, true, false)
+	assert only_plain
+	assert !ownership_when_supplied
+	session.skip_files = [os.real_path(first_ownership), os.real_path(second_ownership)]
+	plain_after_skips, ownership_after_skips := session.shared_v3_compilers_to_build(files, true, true)
+	assert !plain_after_skips
+	assert !ownership_after_skips
+}
+
+fn test_shared_v3_preparation_respects_build_constraints() {
+	root := os.join_path(os.vtmp_dir(), 'shared_v3_constraints_${os.getpid()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut files := []string{}
+	for name, constraints in {
+		'optional':  '// vtest build: false\n// vtest build: sharing_enabled?'
+		'disabled':  '// vtest build: sharing_enabled?\n// vtest build: false'
+		'malformed': '// vtest build: ('
+		'cleared':   '// vtest build: false\n// vtest build:'
+	} {
+		path := os.join_path(root, '${name}_test.v')
+		os.write_file(path, "${constraints}\nconst compiler_args = ['-gc', 'none', '-d', 'ownership', 'v.v']\n")!
+		files << path
+	}
+	mut session := TestSession{
+		vroot:             root
+		build_environment: build_constraint.new_environment([], [])
+	}
+	default_plain, default_ownership := session.shared_v3_compilers_to_build(files, true, true)
+	assert !default_plain
+	assert !default_ownership
+	session.build_environment = build_constraint.new_environment([], ['sharing_enabled'])
+	enabled_plain, enabled_ownership := session.shared_v3_compilers_to_build(files, true, true)
+	assert enabled_plain
+	assert enabled_ownership
+}
 
 fn test_should_retry_execution() {
 	assert should_retry_execution(os.Result{

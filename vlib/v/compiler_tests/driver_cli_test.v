@@ -22,6 +22,12 @@ fn testsuite_end() {
 }
 
 fn build_driver_cli_v3() string {
+	// Preserve compiler build options inherited by standalone test invocations.
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	if os.getenv('VFLAGS') == '' && os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(driver_cli_v3_src) {
+		return os.real_path(shared)
+	}
 	// Compiler self-builds already enable preallocation.
 	return build_driver_cli_v3_with_flags(os.join_path(driver_cli_compilers_dir(), 'plain'), [])
 }
