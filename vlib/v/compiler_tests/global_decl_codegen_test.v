@@ -103,22 +103,70 @@ fn test_implicit_global_containers_keep_synthesized_runtime_helpers() {
 	assert out == 'ok'
 }
 
-fn test_explicit_shared_and_fixed_array_global_initializers() {
-	out := global_decl_run_good('shared_and_fixed_array_global_initializers', "struct Counter {\n\tvalue int\n}\n\n__global counter shared Counter = Counter{value: 7}\n__global fixed_values shared [2]int = [3, 4]!\n__global values = [][2]int{len: 1, init: [1, 2]!}\n\nfn main() {\n\tvalue := rlock counter {\n\t\tcounter.value\n\t}\n\tfixed_value := rlock fixed_values {\n\t\tfixed_values[0] * 10 + fixed_values[1]\n\t}\n\tprintln(int_str(value))\n\tprintln(int_str(fixed_value))\n\tprintln(int_str(values[0][0]) + ':' + int_str(values[0][1]))\n}\n")
-	assert out == '7\n34\n1:2'
+fn test_shared_global_initializer_fixtures() {
+	out := global_decl_run_good('shared_global_initializer_cases', "struct Counter {
+	value int
 }
 
-fn test_explicit_shared_array_constructor_preserves_length_capacity_and_initializer() {
-	out := global_decl_run_good('shared_array_constructor_initializer', "__global values shared []int = []int{len: 2, cap: 4, init: 7}
+__global counter shared Counter = Counter{value: 7}
+__global fixed_values shared [2]int = [3, 4]!
+__global fixed_rows = [][2]int{len: 1, init: [1, 2]!}
 
-fn main() {
+fn check_explicit_shared_and_fixed_array_globals() {
+	value := rlock counter {
+		counter.value
+	}
+	fixed_value := rlock fixed_values {
+		fixed_values[0] * 10 + fixed_values[1]
+	}
+	println(int_str(value))
+	println(int_str(fixed_value))
+	println(int_str(fixed_rows[0][0]) + ':' + int_str(fixed_rows[0][1]))
+}
+
+__global values shared []int = []int{len: 2, cap: 4, init: 7}
+
+fn check_shared_array_constructor() {
 	summary := rlock values {
 		int_str(values.len) + ':' + int_str(values.cap) + ':' + int_str(values[0]) + ':' + int_str(values[1])
 	}
 	println(summary)
 }
+
+struct Config {
+	value int = 7
+}
+
+__global slots shared [2]map[string]int
+__global lists shared [2][]int
+__global configs shared [2]Config
+
+fn check_implicit_shared_fixed_array_containers() {
+	lock slots {
+		slots[0]['k'] = 1
+	}
+	lock lists {
+		lists[1] << 2
+	}
+	map_value := rlock slots {
+		slots[0]['k']
+	}
+	array_value := rlock lists {
+		lists[1][0]
+	}
+	default_value := rlock configs {
+		configs[0].value
+	}
+	println(int_str(map_value) + ':' + int_str(array_value) + ':' + int_str(default_value))
+}
+
+fn main() {
+	check_explicit_shared_and_fixed_array_globals()
+	check_shared_array_constructor()
+	check_implicit_shared_fixed_array_containers()
+}
 ")
-	assert out == '2:4:7:7'
+	assert out == '7\n34\n1:2\n2:4:7:7\n1:2:7'
 }
 
 fn test_shared_array_literal_preserves_left_to_right_evaluation() {
@@ -142,37 +190,6 @@ fn main() {
 	assert c_source.contains('array_get(values->val, 1)) = next(2);'), c_source
 	out := global_decl_run_good('shared_array_literal_eval_order', source)
 	assert out == '1:12:12'
-}
-
-fn test_implicit_shared_fixed_array_container_elements_are_initialized() {
-	out := global_decl_run_good('implicit_shared_fixed_array_containers', "struct Config {
-	value int = 7
-}
-
-__global slots shared [2]map[string]int
-__global lists shared [2][]int
-__global configs shared [2]Config
-
-fn main() {
-	lock slots {
-		slots[0]['k'] = 1
-	}
-	lock lists {
-		lists[1] << 2
-	}
-	map_value := rlock slots {
-		slots[0]['k']
-	}
-	array_value := rlock lists {
-		lists[1][0]
-	}
-	default_value := rlock configs {
-		configs[0].value
-	}
-	println(int_str(map_value) + ':' + int_str(array_value) + ':' + int_str(default_value))
-}
-")
-	assert out == '1:2:7'
 }
 
 fn test_global_array_initializers_fill_runtime_defaults() {
