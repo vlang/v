@@ -82,30 +82,6 @@ fn main() {
 ')
 }
 
-// `.clone()` on an array reached through a method that already returns a pointer
-// (`arc.Arc[[]T].get()` returns `&[]T`) must not take the address again.
-fn test_array_clone_on_pointer_returning_receiver() {
-	occf_compile_and_run('arc_get_clone', 'module main
-
-import sync.arc
-
-fn f() []string {
-	a := arc.new(["x", "y"])
-	return a.get().clone()
-}
-
-fn length(values []string) int {
-	return values.len
-}
-
-fn main() {
-	assert f().len == 2
-	a := arc.new(["x", "y"])
-	assert length(a.get()) == 2
-}
-')
-}
-
 // A concrete generic-interface application uses the base interface's runtime
 // box while retaining its specialized method parameter types.
 fn test_generic_interface_parameter_uses_base_runtime_box() {
@@ -141,12 +117,28 @@ fn main() {
 ')
 }
 
-// `Drop` does not prevent Rust from deriving `Clone`. An ownership type that
-// explicitly implements both markers can use the compiler's structural clone
-// as long as each ownership-bearing field is itself cloneable.
-fn test_default_clone_is_available_for_drop_type() {
-	occf_compile_and_run('clone_drop_type', 'module main
+fn test_ownership_clones_arc_arrays_and_owned_values() {
+	occf_compile_and_run('clone_arc_arrays_and_owned_values', 'module main
 
+import sync.arc
+
+// Arc.get() already returns &[]T, so cloning must not take its address again.
+fn f() []string {
+	a := arc.new(["x", "y"])
+	return a.get().clone()
+}
+
+fn length(values []string) int {
+	return values.len
+}
+
+fn check_arc_array_clone() {
+	assert f().len == 2
+	a := arc.new(["x", "y"])
+	assert length(a.get()) == 2
+}
+
+// A Drop type that implements IClone can use structural cloning for cloneable fields.
 struct Owned implements IClone, Drop {
 mut:
 	value string
@@ -156,7 +148,7 @@ fn (mut x Owned) drop() {
 	x.value = ""
 }
 
-fn main() {
+fn check_drop_type_clone() {
 	first := Owned{
 		value: "hello".to_owned()
 	}
@@ -164,21 +156,14 @@ fn main() {
 	assert first.value == "hello"
 	assert second.value == "hello"
 }
-')
-}
-
-// Array iteration binds elements by value. Ownership-bearing elements must be
-// structurally cloned before the loop body so dropping a binding cannot free
-// storage still owned by the source array.
-fn test_array_for_in_clones_ownership_bearing_elements() {
-	occf_compile_and_run('array_for_in_clone', 'module main
 
 struct Record implements IClone {
 	name string
 	arg  ?string
 }
 
-fn main() {
+// The loop clones each element before binding it so the array keeps its storage.
+fn check_array_iteration_clone() {
 	records := [Record{
 		name: "after-context".to_owned()
 		arg:  "5".to_owned()
@@ -189,6 +174,12 @@ fn main() {
 	}
 	assert records[0].name == "after-context"
 	assert records[0].arg or { "" } == "5"
+}
+
+fn main() {
+	check_arc_array_clone()
+	check_drop_type_clone()
+	check_array_iteration_clone()
 }
 ')
 }
