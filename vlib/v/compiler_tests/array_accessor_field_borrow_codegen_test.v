@@ -74,14 +74,56 @@ fn run_v3_array_accessor_borrow_module(name string, module_src string, main_src 
 // the element type owns heap data and has no `clone()` method. This mirrors the HPACK
 // dynamic table (`net.http` / `net.quic`) that `v new --web` pulls in via `veb`.
 fn test_first_last_field_borrow_on_owned_elements() {
-	// The exact evict-loop shape: read the last element's scalar field, then remove it.
-	last_field := run_v3_array_accessor_borrow_program('last_field', "struct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\nstruct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\nfn (mut t Tbl) shrink() {\n\tfor t.entries.len > 0 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n}\n\nfn main() {\n\tmut t := Tbl{}\n\tt.entries << Entry{ name: 'a', value: 'b', size: 5 }\n\tt.entries << Entry{ name: 'c', value: 'd', size: 7 }\n\tt.total = 12\n\tt.shrink()\n\tprintln(int_str(t.total))\n}\n")
-	assert last_field == '0'
+	output := run_v3_array_accessor_borrow_program('field_borrows', "struct Entry {
+	name  string
+	value string
+	size  int
+}
 
-	// first()/last() field reads through both value and ref receivers, incl. a chained
-	// field access (`last().name.len`).
-	mixed := run_v3_array_accessor_borrow_program('mixed_field', "struct Entry {\n\tname string\n\tn    int\n}\n\nstruct Box {\nmut:\n\tentries []Entry\n}\n\nfn (b &Box) probe() int {\n\treturn b.entries.first().n + b.entries.last().n + b.entries.last().name.len\n}\n\nfn main() {\n\tmut b := Box{}\n\tb.entries << Entry{ name: 'ab', n: 10 }\n\tb.entries << Entry{ name: 'cdef', n: 20 }\n\tprintln(int_str(b.probe()))\n}\n")
-	assert mixed == '34'
+struct Tbl {
+mut:
+	entries []Entry
+	total   int
+}
+
+fn (mut t Tbl) shrink() {
+	// Read the last element before evicting it.
+	for t.entries.len > 0 {
+		t.total -= t.entries.last().size
+		t.entries.delete_last()
+	}
+}
+
+struct ProbeEntry {
+	name string
+	n    int
+}
+
+struct Box {
+mut:
+	entries []ProbeEntry
+}
+
+fn (b &Box) probe() int {
+	// Include a chained field read through a reference receiver.
+	return b.entries.first().n + b.entries.last().n + b.entries.last().name.len
+}
+
+fn main() {
+	mut t := Tbl{}
+	t.entries << Entry{ name: 'a', value: 'b', size: 5 }
+	t.entries << Entry{ name: 'c', value: 'd', size: 7 }
+	t.total = 12
+	t.shrink()
+	println(int_str(t.total))
+
+	mut b := Box{}
+	b.entries << ProbeEntry{ name: 'ab', n: 10 }
+	b.entries << ProbeEntry{ name: 'cdef', n: 20 }
+	println(int_str(b.probe()))
+}
+")
+	assert output.split_into_lines() == ['0', '34'], output
 }
 
 // The same borrow read inside an imported module: the ownership checker does not
