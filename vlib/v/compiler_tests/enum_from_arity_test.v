@@ -1,7 +1,7 @@
 import os
 import v.tempname
 
-fn enum_from_arity_run_bad(name string, source string, expected string) {
+fn enum_from_arity_compile_bad(name string, source string) string {
 	dir := os.join_path(os.vtmp_dir(), 'v3_enum_from_arity_${tempname.unique_token()}')
 	os.mkdir(dir) or { panic(err) }
 	defer {
@@ -12,8 +12,13 @@ fn enum_from_arity_run_bad(name string, source string, expected string) {
 	os.write_file(src, source) or { panic(err) }
 	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
+	return compile.output
+}
+
+fn enum_from_arity_run_bad(name string, source string, expected string) {
+	output := enum_from_arity_compile_bad(name, source)
+	assert output.contains(expected), output
 }
 
 fn enum_from_arity_run_good(name string, source string) string {
@@ -67,51 +72,54 @@ fn enum_from_arity_run_good_batch(cases []EnumFromRuntimeCase) {
 	}
 }
 
+fn enum_from_arity_check_errors(name string, source string, missing_arg string, extra_arg string) {
+	output := enum_from_arity_compile_bad(name, source)
+	lines := source.split_into_lines()
+	errors := output.split_into_lines().filter(it.contains(': error: '))
+	for count, statement in {
+		0: missing_arg
+		2: extra_arg
+	} {
+		line := lines.index(statement) + 1
+		assert line > 0, statement
+		message := ': error: expected 1 argument, but got ${count}'
+		assert errors.any(it.contains('.v:${line}:') && it.ends_with(message)), output
+	}
+}
+
 fn test_enum_from_rejects_wrong_arity() {
-	enum_from_arity_run_bad('bad_enum_from_missing_arg', 'enum Color {
+	direct := 'enum Color {
 	red
 }
 
 fn main() {
 	_ := Color.from()
-}
-',
-		'expected 1 argument, but got 0')
-	enum_from_arity_run_bad('bad_enum_from_extra_arg', 'enum Color {
-	red
-}
-
-fn main() {
 	_ := Color.from(0, 1)
 }
-',
-		'expected 1 argument, but got 2')
-	enum_from_arity_run_bad('bad_generic_enum_from_missing_arg', 'enum Color {
+'
+	enum_from_arity_check_errors('bad_enum_from_direct_arity', direct, '\t_ := Color.from()',
+		'\t_ := Color.from(0, 1)')
+
+	// Check generic instantiations in a program whose direct calls pass checking.
+	generic := 'enum Color {
 	red
 }
 
-fn parse[T]() {
+fn parse_missing[T]() {
 	_ := T.from()
 }
 
-fn main() {
-	parse[Color]()
-}
-',
-		'expected 1 argument, but got 0')
-	enum_from_arity_run_bad('bad_generic_enum_from_extra_arg', 'enum Color {
-	red
-}
-
-fn parse[T](s string) {
+fn parse_extra[T](s string) {
 	_ := T.from(s, 1)
 }
 
 fn main() {
-	parse[Color]("red")
+	parse_missing[Color]()
+	parse_extra[Color]("red")
 }
-',
-		'expected 1 argument, but got 2')
+'
+	enum_from_arity_check_errors('bad_enum_from_generic_arity', generic, '\t_ := T.from()',
+		'\t_ := T.from(s, 1)')
 }
 
 fn test_enum_from_validates_input_type_and_numeric_error() {
