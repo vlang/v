@@ -1280,8 +1280,17 @@ fn tool_build_environment(optional_compiler bool) map[string]string {
 	// A tool build already has any VFLAGS it needs in its explicit arguments.
 	environment['VFLAGS'] = ''
 	if optional_compiler {
-		for name in optional_compiler_target_flags {
-			environment.delete(name)
+		$if windows {
+			// Windows looks up environment variables case-insensitively.
+			for name in environment.keys() {
+				if name.to_upper_ascii() in optional_compiler_target_flags {
+					environment.delete(name)
+				}
+			}
+		} $else {
+			for name in optional_compiler_target_flags {
+				environment.delete(name)
+			}
 		}
 	}
 	return environment

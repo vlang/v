@@ -1081,6 +1081,17 @@ fn test_the_cache_key_covers_ambient_native_flags() {
 		os.setenv(name, '', true)
 		assert tool_cache_key(vexe, 'vdemo', [source], []) == baseline, 'clearing ${name} must restore the key'
 	}
+
+	$if windows {
+		os.setenv('cflags', '-DOPTIONAL_TARGET=1', true)
+		os.setenv('ldflags', 'target-only.o', true)
+		assert os.getenv('CFLAGS') == '-DOPTIONAL_TARGET=1'
+		assert os.getenv('LDFLAGS') == 'target-only.o'
+		assert tool_build_environment(true).keys().all(it.to_upper_ascii() !in [
+			'CFLAGS',
+			'LDFLAGS',
+		])
+	}
 }
 
 // A tool that compiles local C sources or includes local headers has to be rebuilt when any
