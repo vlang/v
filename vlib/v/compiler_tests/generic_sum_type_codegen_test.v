@@ -284,10 +284,31 @@ fn check_distinct_tags() {
 	assert score(i) == 17
 }
 
+struct A {}
+struct B {}
+
+type Value = A | B
+
+fn match_count[T](value T) int {
+	mut count := 0
+	$for variant in T.variants {
+		if value is variant {
+			count++
+		}
+	}
+	return count
+}
+
+fn check_comptime_variant_pattern() {
+	value := Value(A{})
+	assert match_count(value) == 1
+}
+
 fn main() {
 	check_bare_variant()
 	check_constructor_returns()
 	check_distinct_tags()
+	check_comptime_variant_pattern()
 	println("ok")
 }
 ')
@@ -363,31 +384,6 @@ fn main() {
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('`Missing` is not a variant of sum type `Value`'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
-fn test_generic_sum_comptime_variant_pattern_still_specializes() {
-	generic_sum_type_compile_run_source('comptime_variant_pattern', '
-struct A {}
-struct B {}
-
-type Value = A | B
-
-fn match_count[T](value T) int {
-	mut count := 0
-	$for variant in T.variants {
-		if value is variant {
-			count++
-		}
-	}
-	return count
-}
-
-fn main() {
-	value := Value(A{})
-	assert match_count(value) == 1
-	println("ok")
-}
-')
 }
 
 fn test_generic_sum_rejects_qualified_variant_patterns() {
