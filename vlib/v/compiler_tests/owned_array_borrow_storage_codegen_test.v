@@ -931,22 +931,28 @@ ${rejected_calls.join('\n')}
 }
 
 fn test_empty_owned_array_deletion_preserves_invalid_index_diagnostics() {
-	for index in [-1, 2] {
-		name := 'empty_delete_invalid_${index}'
-		source := 'interface Drop { mut: drop() }
+	indices := {
+		'negative': -1
+		'past_end': 2
+	}
+	mut source := 'interface Drop { mut: drop() }
 struct Handle implements Drop { id int }
 fn (mut h Handle) drop() {}
-fn delete_empty_range(mut values []Handle) { values.delete_many(${index}, 0) }
-fn main() {
-	mut values := [Handle{1}]
-	delete_empty_range(mut values[..])
-}
 '
-		build := borrow_storage_compile(name, source)
-		assert build.exit_code == 0, build.output
-		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-		assert run.exit_code != 0, run.output
-		assert run.output.contains('array.delete: index out of range'), run.output
+	mut branches := []string{cap: indices.len}
+	for name, index in indices {
+		source += 'fn delete_empty_range_${name}(mut values []Handle) { values.delete_many(${index}, 0) }
+'
+		branches << '\t\t"${name}" {
+			mut values := [Handle{1}]
+			delete_empty_range_${name}(mut values[..])
+		}'
+	}
+	binary := borrow_storage_compile_dispatch('empty_delete_invalid', source, branches)
+	for name, index in indices {
+		run := os.exec([binary, name])
+		assert run.exit_code != 0, '${index}: ${run.output}'
+		assert run.output.contains('array.delete: index out of range (i,a.len):${index}, 1'), '${index}: ${run.output}'
 	}
 }
 
