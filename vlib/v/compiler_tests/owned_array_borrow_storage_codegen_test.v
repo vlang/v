@@ -851,33 +851,65 @@ fn main() {
 }
 
 fn test_uncloneable_mut_array_bulk_copies_fail_before_duplicating_owners() {
-	for index, operation in ['values << values', 'values.prepend(values)', 'values.insert(0, values)'] {
-		for borrowed in [false, true] {
-			name := 'uncloneable_bulk_${index}_${borrowed}'
-			source := 'interface Drop { mut: drop() }
+	operations := {
+		'append':  'values << values'
+		'prepend': 'values.prepend(values)'
+		'insert':  'values.insert(0, values)'
+	}
+	declarations := 'interface Drop { mut: drop() }
 struct Handle implements Drop { id int }
 fn (mut h Handle) drop() {}
-fn duplicate(mut values []Handle) {
+'
+	mut append_source := declarations
+	mut rejected_source := declarations
+	mut append_branches := []string{}
+	mut rejected_calls := []string{}
+	mut rejected_lines := []int{}
+	for action, operation in operations {
+		for borrowed in [false, true] {
+			name := '${action}_${borrowed}'
+			source := '
+fn duplicate_${name}(mut values []Handle) {
 	${operation}
 }
-fn main() {
+fn check_${name}() {
 	mut values := [Handle{1}]
-	if ${borrowed} { duplicate(mut values[..]) } else { duplicate(mut values) }
+	if ${borrowed} { duplicate_${name}(mut values[..]) } else { duplicate_${name}(mut values) }
+}
+
+'
+			if action == 'append' {
+				append_source += source
+				append_branches << '		"${name}" { check_${name}() }'
+			} else {
+				// The checker already rejects receiver-aliased prepend/insert copies.
+				// The operation follows the blank line and function signature.
+				rejected_lines << rejected_source.count('\n') + 3
+				rejected_source += source
+				rejected_calls << '	check_${name}()'
+			}
+		}
+	}
+	clone_error := 'requires ownership destruction but has no compatible `clone()` method'
+	rejected_source += 'fn main() {
+${rejected_calls.join('\n')}
 }
 '
-			build := borrow_storage_compile(name, source)
-			if index > 0 {
-				// The checker already rejects receiver-aliased prepend/insert copies.
-				assert build.exit_code != 0, build.output
-				assert build.output.contains('cannot copy receiver-aliased `[]Handle` value'), build.output
-				assert build.output.contains('requires ownership destruction but has no compatible `clone()` method'), build.output
-				continue
-			}
-			assert build.exit_code == 0, build.output
-			run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-			assert run.exit_code != 0, run.output
-			assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), run.output
-		}
+	build := borrow_storage_compile_with_flags('uncloneable_bulk_rejected', rejected_source, '-nocolor')
+	assert build.exit_code == 1, build.output
+	errors := build.output.split_into_lines().filter(it.contains(': error: ')).map(it.all_after('.v:'))
+	assert errors.map(it.all_before(':').int()) == rejected_lines, build.output
+	for diagnostic in errors {
+		assert diagnostic.contains('cannot copy receiver-aliased `[]Handle` value'), build.output
+		assert diagnostic.contains(clone_error), build.output
+	}
+
+	binary := borrow_storage_compile_dispatch('uncloneable_bulk_append', append_source, append_branches)
+	for borrowed in [false, true] {
+		name := 'append_${borrowed}'
+		run := os.exec([binary, name])
+		assert run.exit_code != 0, '${name}: ${run.output}'
+		assert run.output.contains(clone_error), '${name}: ${run.output}'
 	}
 }
 
