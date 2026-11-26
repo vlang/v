@@ -1724,13 +1724,13 @@ fn check_chunk_thread(arg voidptr) voidptr {
 			if a.promote_to != unsafe { nil } {
 				// The bodies are merged into this worker's accumulator, and no later
 				// chunk writes their nodes: promote them while their nodes are at hand.
-				master.promote_check_chunk(chunk, mut a.promotion, a.scope)
+				master.promote_check_chunk_types(chunk, mut a.promotion)
 			}
 		}
 	} else if a.scope_enabled {
 		w.check_scoped_batches(*items, batch_limit)
 		if a.promote_to != unsafe { nil } {
-			master.promote_check_chunk(*items, mut a.promotion, a.scope)
+			master.promote_check_chunk_types(*items, mut a.promotion)
 		}
 	} else {
 		w.check_fn_items_serial(*items)
@@ -1740,14 +1740,6 @@ fn check_chunk_thread(arg voidptr) voidptr {
 	w.reuse_check_batch_scope = false
 	check_worker_scope_leave(a.scope)
 	if a.promote_to != unsafe { nil } {
-		if a.promotion.names_pending {
-			// The names outlive the arena: they go to this thread's persistent one.
-			if a.dynamic_items == unsafe { nil } {
-				master.promote_check_chunk_call_names(*items)
-			} else {
-				master.promote_check_chunk_call_names(a.processed)
-			}
-		}
 		a.promotion.done = true
 	}
 	item_count := if a.dynamic_items == unsafe { nil } {
@@ -6789,12 +6781,8 @@ mut:
 	// The calls of the bodies that may return a Result (see
 	// call_may_return_result), in node order within each chunk.
 	result_calls []i32
-	// names_pending is set when a chunk's call names could not be given
-	// persistent storage right after the chunk: the task then promotes those of
-	// all its chunks at its end.
-	names_pending bool
-	missing       map[u64]i32
-	cache         CheckChunkPromotionCache
+	missing      map[u64]i32
+	cache        CheckChunkPromotionCache
 }
 
 // CheckChunkPromotionCache maps the worker's canonical types to what a probe of
@@ -6809,31 +6797,6 @@ mut:
 	ptrs   [16384]voidptr
 	values [16384]voidptr
 	misses [16384]i32
-}
-
-// promote_check_chunk promotes the node caches of the bodies `items`, which the
-// calling worker of a parallel check has checked and merged into its
-// accumulator, to `tc`, the master, which the worker may only read. `scope` is
-// the worker's arena, current at the call: what is left to the master is listed
-// in it, and the names go to the thread's persistent arena under it.
-fn (mut tc TypeChecker) promote_check_chunk(items []CheckWorkItem, mut p CheckChunkPromotion, scope voidptr) {
-	tc.promote_check_chunk_types(items, mut p)
-	if p.names_pending {
-		return
-	}
-	$if prealloc {
-		if scope != unsafe { nil } {
-			state := unsafe { prealloc_scope_suspend(scope) }
-			if state == unsafe { nil } {
-				p.names_pending = true
-				return
-			}
-			tc.promote_check_chunk_call_names(items)
-			unsafe { prealloc_scope_resume(scope, state) }
-			return
-		}
-	}
-	tc.promote_check_chunk_call_names(items)
 }
 
 // promote_check_chunk_types rebinds the expression types of the nodes of `items`
@@ -6878,21 +6841,6 @@ fn (mut tc TypeChecker) promote_check_chunk_types(items []CheckWorkItem, mut p C
 			if idx >= user_code_start && tc.a.nodes[idx].kind == .call
 				&& tc.call_may_return_result(idx) {
 				p.result_calls << i32(idx)
-			}
-		}
-	}
-}
-
-// promote_check_chunk_call_names gives the resolved call names of the nodes of
-// `items` storage in the current arena, as check_clone_chunk_thread does.
-@[direct_array_access]
-fn (mut tc TypeChecker) promote_check_chunk_call_names(items []CheckWorkItem) {
-	mut names := CheckNamePromotionCache{}
-	for item in items {
-		for idx in item.range_lo .. item.fn_idx + 1 {
-			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut
-					names)
 			}
 		}
 	}

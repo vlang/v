@@ -3731,7 +3731,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	// still running. Size it before the first merge: grown through every
 	// doubling, it left several times its final size behind in the stage arena.
 	if t.tc.parallel_check_sparse {
-		t.tc.sparse_resolved_call_names.reserve(u32(t.tc.sparse_resolved_call_names.len +
+		t.tc.sparse_resolved_calls.reserve(u32(t.tc.sparse_resolved_calls.len +
 			base_nodes / shared_sparse_call_names_per_base_nodes))
 	}
 	// The same holds for the log of rewritten base nodes that every merge extends.

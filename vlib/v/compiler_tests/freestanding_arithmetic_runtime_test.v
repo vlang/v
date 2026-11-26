@@ -32,8 +32,8 @@ fn test_freestanding_links_native_compiler_arithmetic_runtime() ! {
 		if _ := os.find_abs_path_of_executable(compiler) {} else { continue }
 		available++
 		output := os.join_path(root, compiler)
-		built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-b', 'c', '-cc', compiler,
-			'-freestanding', '-o', output, source])
+		built := os.exec([@VEXE, '-no-retry-compilation', '-b', 'c', '-cc', compiler, '-freestanding',
+			'-o', output, source])
 		assert built.exit_code == 0, built.output
 		ran := os.exec([output])
 		assert ran.exit_code == 0, ran.output
@@ -56,9 +56,9 @@ fn main() {
  println("wide arithmetic ok")
 }')!
 				for selection_flag in ['-cflags', '-ldflags'] {
-					selected := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-showcc',
-						'-b', 'c', '-cc', compiler, selection_flag, '--rtlib=compiler-rt',
-						'-freestanding', '-o', output, selection_source])
+					selected := os.exec([@VEXE, '-no-retry-compilation', '-showcc', '-b', 'c',
+						'-cc', compiler, selection_flag, '--rtlib=compiler-rt', '-freestanding',
+						'-o', output, selection_source])
 					assert selected.exit_code == 0, selected.output
 					assert selected.output.contains(os.real_path(archive)), selected.output
 					selected_run := os.exec([output])

@@ -20,8 +20,7 @@ fn test_showcc_skill_claim_prints_the_c_command_and_then_the_move_into_place() {
 	}
 	shown_executable := cmdexec.display('mv', [executable]).all_after('mv ')
 	assert shown_executable != executable, 'the path has nothing to quote: ${executable}'
-	result := os.exec([@VEXE, '-new-compiler', '-showcc', '-gc', 'none', '-nocache', '-o', executable,
-		source])
+	result := os.exec([@VEXE, '-showcc', '-gc', 'none', '-nocache', '-o', executable, source])
 	assert result.exit_code == 0, result.output
 	shown := result.output.split_into_lines().filter(it.starts_with('  > '))
 	assert shown.len >= 2, result.output

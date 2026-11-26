@@ -13,8 +13,7 @@ fn test_export_function_declarators_preserve_sdk_macros() ! {
 	source := os.join_path(fixtures, 'main.c.v')
 	for optimized in [false, true] {
 		binary := os.join_path(work, 'program')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-			cc]
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', cc]
 		if optimized { command << '-prod' }
 		mut executable_command := command.clone()
 		executable_command << ['-o', binary, source]
@@ -62,8 +61,8 @@ fn test_live_export_declarators_preserve_sdk_macros() ! {
 	source := os.join_path(@VEXEROOT, 'vlib', 'v', 'compiler_tests', 'testdata', 'export_function_macros', 'live', 'main.c.v')
 	for optimized in [false, true] {
 		binary := os.join_path(work, 'program')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-			cc, '-live', '-o', binary, source]
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', cc, '-live', '-o',
+			binary, source]
 		if optimized { command << '-prod' }
 		build := os.exec(command)
 		assert build.exit_code == 0, build.output
@@ -129,8 +128,8 @@ fn main() {
 		mut objects := map[string]string{}
 		for warm in [false, true] {
 			binary := os.join_path(work, 'cached_program')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-				cc, '-show-timings', '-cflags', macros, '-o', binary, source]
+			mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', cc, '-show-timings',
+				'-cflags', macros, '-o', binary, source]
 			if optimized { command << '-prod' }
 			build := os.exec(command)
 			assert build.exit_code == 0, build.output

@@ -157,8 +157,7 @@ fn main() { assert exported_value() == 41 }
 	// Exported names retain their C spelling and avoid function-like SDK macros.
 	assert generated.contains(' (operator)(void) {')
 	assert !generated.contains('__v3_internal_symbol_cpp_operator')
-	run := cmdexec.run(@VEXE, ['-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-		'gcc', 'run', source])
+	run := cmdexec.run(@VEXE, ['-no-retry-compilation', '-gc', 'none', '-cc', 'gcc', 'run', source])
 	assert run.exit_code == 0, run.output
 }
 

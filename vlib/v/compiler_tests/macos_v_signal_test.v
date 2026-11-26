@@ -9,8 +9,8 @@ fn test_macos_signal_backend_selection_and_instrumentation_boundary() ! {
 	os.write_file(source, 'import os\nfn main() { os.signal_ignore(.pipe) }\n')!
 	for role in ['raw', 'arm64', 'hosted'] {
 		output := os.join_path(root, '${role}.c')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-os',
-			'macos', '-arch', if role == 'arm64' { 'arm64' } else { 'amd64' }]
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-os', 'macos', '-arch',
+			if role == 'arm64' { 'arm64' } else { 'amd64' }]
 		if role != 'hosted' { command << '-freestanding' }
 		if role == 'raw' { command << ['-profile', '-trace-calls'] }
 		command << ['-o', output, source]
@@ -67,8 +67,7 @@ fn test_macos_signal_policy_and_c_abi_without_darwin_kernel() ! {
 			os.join_path(fixture, 'policy.c'), '-o', object])
 		assert compile_c.exit_code == 0, compile_c.output
 		binary := os.join_path(root, if production { 'prod' } else { 'debug' })
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-			clang, '-o', binary]
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', clang, '-o', binary]
 		if production { command << '-prod' }
 		command << root
 		build := os.exec(command)
@@ -88,8 +87,8 @@ fn test_macos_raw_signal_delivery_returns_through_validated_trampoline() ! {
 	source := os.join_path(@VEXEROOT, 'vlib/builtin/testdata/macos_signal/native/main.c.v')
 	for production in [false, true] {
 		binary := os.join_path(root, if production { 'prod' } else { 'debug' })
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-gc',
-			'none', '-cc', 'clang', '-o', binary]
+		mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none', '-cc',
+			'clang', '-o', binary]
 		if production { command << '-prod' }
 		command << source
 		build := os.exec(command)

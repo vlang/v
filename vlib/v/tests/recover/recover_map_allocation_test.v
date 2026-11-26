@@ -6,7 +6,7 @@ fn test_map_remains_usable_when_an_allocation_panics() ! {
 	defer { os.rmdir_all(dir) or {} }
 	bin := os.join_path(dir, 'map_failure' + $if windows { '.exe' } $else { '' })
 	source := os.join_path(@VMODROOT, 'vlib/v/tests/recover/testdata/map_failure/main.c.v')
-	compile := os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-o', bin, source])
+	compile := os.exec([@VEXE, '-gc', 'none', '-o', bin, source])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

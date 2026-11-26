@@ -9,8 +9,8 @@ fn test_freestanding_captured_functions_pool_lifetimes_and_context_cancel() ! {
 		source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_closures')
 		for role in ['debug', 'prod'] {
 			program := os.join_path(work, role)
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-gc',
-				'none', '-enable-globals']
+			mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none',
+				'-enable-globals']
 			if role == 'prod' { command << '-prod' }
 			command << ['-o', program, source]
 			compiled := os.exec(command)
@@ -30,8 +30,8 @@ fn test_macos_amd64_freestanding_closure_pages_enforce_write_and_execute_permiss
 		source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_closures')
 		for probe in ['closure_write_code', 'closure_execute_metadata'] {
 			program := os.join_path(work, probe)
-			compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding',
-				'-gc', 'none', '-enable-globals', '-d', probe, '-o', program, source])
+			compiled := os.exec([@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none',
+				'-enable-globals', '-d', probe, '-o', program, source])
 			assert compiled.exit_code == 0, compiled.output
 			code, output := run_freestanding_closure_probe(program, [])
 			assert output.contains(if probe == 'closure_write_code' {
@@ -126,8 +126,8 @@ fn test_freestanding_library_captured_functions_from_foreign_host_threads() ! {
 		$if macos {
 			library = os.join_path(work, 'libclosures.dylib')
 		}
-		compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding',
-			'-gc', 'none', '-shared', '-o', library, os.join_path(fixtures, 'library.v')])
+		compiled := os.exec([@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none', '-shared',
+			'-o', library, os.join_path(fixtures, 'library.v')])
 		assert compiled.exit_code == 0, compiled.output
 		host := os.join_path(work, 'host')
 		mut command := ['cc', '-pthread', '-o', host, os.join_path(fixtures, 'host.c')]

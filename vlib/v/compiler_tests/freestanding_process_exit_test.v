@@ -11,7 +11,7 @@ fn test_freestanding_process_return_exit_and_worker_panic_terminate_all_threads(
 	source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_process_exit', 'main.v')
 	for role in ['debug', 'prod'] {
 		program := os.join_path(work, role)
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-freestanding',
+		mut command := [@VEXE, '-no-retry-compilation', '-cc', 'clang', '-freestanding',
 			'-enable-globals', '-d', 'vlibc', '-o', program]
 		if role == 'prod' { command << '-prod' }
 		command << source

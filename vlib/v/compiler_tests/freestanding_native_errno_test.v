@@ -39,8 +39,8 @@ fn test_freestanding_native_errno_is_independent_of_normalized_bf_errors() ! {
 	os.write_file(source, freestanding_native_errno_source)!
 	for with_vlibc in [false, true] {
 		output := os.join_path(root, if with_vlibc { 'vlibc' } else { 'plain' })
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-b', 'c', '-cc', 'clang',
-			'-freestanding', '-cstrict', '-o', output]
+		mut command := [@VEXE, '-no-retry-compilation', '-b', 'c', '-cc', 'clang', '-freestanding',
+			'-cstrict', '-o', output]
 		if with_vlibc { command << ['-d', 'vlibc'] }
 		command << source
 		built := os.exec(command)

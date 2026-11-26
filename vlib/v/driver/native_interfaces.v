@@ -42,7 +42,7 @@ fn v3_windows_native_interface(path string, vroot string) bool {
 
 // A TinyCC build cannot reliably diagnose date/time macros. Its interface
 // contract is limited to this audited bundled snapshot, hashed as opaque bytes.
-// Audited against master 8b3c052fc74eb10434bdcb1a97d6409bc1e08cc3 (98 files).
+// Audited against the bundled snapshot, including the Termux CHAR_BIT guard (#31477).
 // The two stateless poll interfaces have independently reviewed content pins;
 // changing any of the 100 inputs requires an ownership and determinism review.
 fn v3_pinned_web_native_interfaces(vroot string) bool {
@@ -67,7 +67,7 @@ fn v3_pinned_web_native_interfaces_digests(vroot string, mut digests map[string]
 		name := path[root.len + 1..].replace('\\', '/')
 		parts << name + '\x00' + digest
 	}
-	if sha256.hexhash(parts.join('\n')) != 'a28e5f94cc8104ea9ff30a79e0901da3daed25aa3f1d58530d1db81669c0f11f' {
+	if sha256.hexhash(parts.join('\n')) != '131a5c3675c253b801cad3790cb4c6fa68184d9e11e7a7038bacc0b29fce7da0' {
 		return false
 	}
 	poll_path := os.join_path(root, 'vlib', 'os', 'fd_poll.h')
@@ -127,7 +127,6 @@ fn v3_pinned_compiler_native_interfaces_digests(vroot string, mut digests map[st
 	}
 	return true
 }
-
 
 fn v3_native_interface_configuration_override(value string) bool {
 	return value.contains('MBEDTLS_CONFIG_FILE') || value.contains('MBEDTLS_USER_CONFIG_FILE')

@@ -22,8 +22,8 @@ fn test_freestanding_c_initializers_follow_tls_and_finalizers_reverse_order() ! 
 		if _ := os.find_abs_path_of_executable(compiler) {} else { continue }
 		for role in ['plain', 'vlibc', 'prod'] {
 			program := os.join_path(work, '${compiler}-${role}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', compiler,
-				'-freestanding', '-o', program]
+			mut command := [@VEXE, '-no-retry-compilation', '-cc', compiler, '-freestanding', '-o',
+				program]
 			if role != 'plain' { command << ['-d', 'vlibc'] }
 			if role == 'prod' { command << '-prod' }
 			command << source

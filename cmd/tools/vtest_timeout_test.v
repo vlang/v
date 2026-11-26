@@ -68,7 +68,7 @@ fn process_is_alive(pid int) bool {
 }
 
 fn run_v_test(args []string, env map[string]string) (os.Result, time.Duration) {
-	mut cmd_args := [vexe, '-new-compiler', '-silent', 'test']
+	mut cmd_args := [vexe, '-silent', 'test']
 	cmd_args << args
 	os.setenv('VCOLORS', 'never', true)
 	os.setenv('VJOBS', '1', true)
@@ -149,7 +149,7 @@ fn test_a_stats_retry_is_under_the_limit_too() {
 			os.setenv('VTEST_RETRY_TIMEOUT', '1', true)
 		}
 		sw := time.new_stopwatch()
-		mut cmd_args := [vexe, '-new-compiler', '-stats', '-silent', 'test']
+		mut cmd_args := [vexe, '-stats', '-silent', 'test']
 		cmd_args << flags
 		cmd_args << file
 		result := os.exec(cmd_args)
@@ -169,7 +169,7 @@ const own_cache_test_source = "import os
 fn test_the_cache_is_this_tests_own() {
 	cache := os.getenv('V3CACHE')
 	assert os.file_name(cache) == 'v3cache', cache
-	assert os.dir(cache) == os.dir(os.executable()), cache + ' / ' + os.executable()
+	assert os.real_path(os.dir(cache)) == os.dir(os.executable()), cache + ' / ' + os.executable()
 }
 "
 
@@ -186,7 +186,7 @@ fn test_a_limited_run_gets_the_per_test_environment() {
 		os.setenv('VJOBS', '1', true)
 		os.unsetenv('VTEST_ONLY_FN')
 		os.unsetenv('VTEST_TIMEOUT')
-		mut cmd_args := [vexe, '-new-compiler']
+		mut cmd_args := [vexe]
 		if mode != '' {
 			cmd_args << mode
 		}
@@ -235,7 +235,7 @@ fn test_a_retry_that_times_out_is_not_retried_either() {
 			os.unsetenv('VTEST_ONLY_FN')
 			os.unsetenv('VTEST_TIMEOUT')
 			os.unsetenv('VTEST_RETRY_TIMEOUT')
-			mut cmd_args := [vexe, '-new-compiler']
+			mut cmd_args := [vexe]
 			if mode != '' {
 				cmd_args << mode
 			}

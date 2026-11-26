@@ -20,7 +20,7 @@ fn process_is_alive(pid int) bool {
 }
 
 fn run_v_test(args []string, env map[string]string) (os.Result, time.Duration) {
-	mut cmd_args := [vexe, '-new-compiler', '-silent', 'test']
+	mut cmd_args := [vexe, '-silent', 'test']
 	cmd_args << args
 	os.setenv('VCOLORS', 'never', true)
 	os.setenv('VJOBS', '1', true)
@@ -81,7 +81,7 @@ fn test_interrupting_the_runner_ends_the_tests_it_started() {
 	os.unsetenv('VTEST_TIMEOUT')
 	os.unsetenv('VTEST_RETRY_TIMEOUT')
 	mut runner := os.new_process(vexe)
-	runner.set_args(['-new-compiler', '-silent', 'test', file])
+	runner.set_args(['-silent', 'test', file])
 	runner.use_pgroup = true
 	runner.set_redirect_stdio()
 	runner.run()
@@ -234,7 +234,7 @@ fn test_interrupting_the_runner_while_it_starts_a_test_ends_that_test_too() {
 	os.setenv('VTEST_SPAWN_HOLD_READY', os.join_path(dir, 'child.pid'), true)
 	os.setenv('LD_PRELOAD', shim, true)
 	mut runner := os.new_process(vexe)
-	runner.set_args(['-new-compiler', '-silent', 'test', file])
+	runner.set_args(['-silent', 'test', file])
 	runner.use_pgroup = true
 	runner.set_redirect_stdio()
 	runner.run()

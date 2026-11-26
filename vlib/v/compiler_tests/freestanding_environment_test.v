@@ -82,8 +82,8 @@ fn run_environment_matrix(autofree bool) ! {
 	target := $if amd64 { 'amd64' } $else { 'arm64' }
 	for production in [false, true] {
 		for bare in [false, true] {
-			mut flags := [@VEXE, '-nocache', '-new-compiler', '-no-retry-compilation', '-arch',
-				target, '-gc', 'none', '-cc', clang]
+			mut flags := [@VEXE, '-nocache', '-no-retry-compilation', '-arch', target, '-gc', 'none',
+				'-cc', clang]
 			if production { flags << '-prod' }
 			if autofree { flags << '-autofree' }
 			if bare { flags << '-freestanding' }
@@ -161,8 +161,8 @@ fn test_freestanding_embedded_environment_without_process_arguments() ! {
 	for object in [false, true] {
 		for autofree in [false, true] {
 			library := os.join_path(work, if object { 'environment.o' } else { 'libenvironment.so' })
-			mut command := [@VEXE, '-nocache', '-new-compiler', '-no-retry-compilation', '-freestanding',
-				'-gc', 'none', '-cc', clang, '-o', library]
+			mut command := [@VEXE, '-nocache', '-no-retry-compilation', '-freestanding', '-gc',
+				'none', '-cc', clang, '-o', library]
 			if autofree { command << '-autofree' }
 			if object {
 				command << ['-is_o', '-d', 'no_main']

@@ -86,7 +86,7 @@ fn run_embed_freestanding_mode(flags []string, tag string, remove_files bool) {
 	defer { os.rmdir_all(root) or {} }
 	embed_freestanding_fixture(root)
 	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
-	mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none']
+	mut args := [@VEXE, '-no-retry-compilation', '-gc', 'none']
 	args << flags
 	args << ['-o', binary, os.join_path(root, 'main.v')]
 	build := os.exec(args)
@@ -122,8 +122,7 @@ fn main() {
 }
 ') or { panic(err) }
 	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
-	build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-g', '-gc', 'none', '-o',
-		binary, source])
+	build := os.exec([@VEXE, '-no-retry-compilation', '-g', '-gc', 'none', '-o', binary, source])
 	assert build.exit_code == 0, build.output
 	os.write_file(os.join_path(root, 'created_after_build.txt'), 'loaded at runtime') or { panic(err) }
 	run := os.exec([binary])
@@ -145,8 +144,7 @@ fn test_freestanding_missing_payload_is_a_compile_error() {
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() { println(\$embed_file("missing.bin").to_string()) }') or { panic(err) }
-	build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-check',
-		source])
+	build := os.exec([@VEXE, '-no-retry-compilation', '-freestanding', '-check', source])
 	assert build.exit_code != 0, build.output
 	assert build.output.contains('cannot embed file'), build.output
 	assert build.output.contains('missing.bin'), build.output

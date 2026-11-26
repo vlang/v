@@ -10,8 +10,8 @@ fn test_freestanding_memory_primitives_and_generated_aligned_storage() ! {
 	source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_memory', 'main.c.v')
 	for role in ['plain', 'vlibc', 'prod', 'c23'] {
 		program := os.join_path(work, role)
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-freestanding',
-			'-o', program]
+		mut command := [@VEXE, '-no-retry-compilation', '-cc', 'clang', '-freestanding', '-o',
+			program]
 		if role in ['vlibc', 'prod'] { command << ['-d', 'vlibc'] }
 		if role == 'prod' { command << '-prod' }
 		// gnu2x is also accepted by Clang versions predating the gnu23 spelling.
@@ -35,8 +35,8 @@ fn test_freestanding_allocation_failure_does_not_allocate_a_panic_message() ! {
 	source := os.join_path(work, 'oom.v')
 	os.write_file(source, 'fn main() { unsafe { malloc(-1) } }')!
 	program := os.join_path(work, 'oom')
-	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-freestanding',
-		'-o', program, source])
+	built := os.exec([@VEXE, '-no-retry-compilation', '-cc', 'clang', '-freestanding', '-o', program,
+		source])
 	assert built.exit_code == 0, built.output
 	ran := os.exec([program])
 	assert ran.exit_code == 1, ran.output

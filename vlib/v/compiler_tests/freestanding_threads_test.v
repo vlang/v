@@ -9,7 +9,7 @@ fn test_freestanding_v_spawn_wait_results_detach_and_context_deadline() ! {
 		source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_threads', 'main.v')
 		for role in ['debug', 'prod'] {
 			program := os.join_path(work, role)
-			mut command := [@VEXE, '-new-compiler', '-freestanding', '-gc', 'none', '-enable-globals']
+			mut command := [@VEXE, '-freestanding', '-gc', 'none', '-enable-globals']
 			if role == 'prod' { command << '-prod' }
 			command << ['-o', program, source]
 			compiled := os.exec(command)
@@ -28,8 +28,8 @@ fn test_freestanding_raw_thread_failure_join_and_late_detach() ! {
 		defer { os.rmdir_all(work) or {} }
 		source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_threads', 'raw.c.v')
 		program := os.join_path(work, 'raw')
-		compiled := os.exec([@VEXE, '-new-compiler', '-freestanding', '-gc', 'none', '-enable-globals',
-			'-o', program, source])
+		compiled := os.exec([@VEXE, '-freestanding', '-gc', 'none', '-enable-globals', '-o', program,
+			source])
 		assert compiled.exit_code == 0, compiled.output
 		code, output := run_freestanding_thread_probe(program, [])
 		assert code == 0, output
@@ -62,8 +62,8 @@ fn test_freestanding_library_v_spawn_uses_foreign_host_pthreads() ! {
 		$if macos {
 			library = os.join_path(work, 'libthreads.dylib')
 		}
-		compiled := os.exec([@VEXE, '-new-compiler', '-freestanding', '-gc', 'none', '-shared',
-			'-o', library, os.join_path(fixtures, 'library.v')])
+		compiled := os.exec([@VEXE, '-freestanding', '-gc', 'none', '-shared', '-o', library,
+			os.join_path(fixtures, 'library.v')])
 		assert compiled.exit_code == 0, compiled.output
 		host := os.join_path(work, 'host')
 		mut command := ['cc', '-pthread', '-o', host, os.join_path(fixtures, 'host.c')]
@@ -86,7 +86,7 @@ fn test_freestanding_detached_teardown_blocks_signal_handlers() ! {
 		source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_threads', 'signals.c.v')
 		for role in ['debug', 'prod'] {
 			program := os.join_path(work, role)
-			mut command := [@VEXE, '-new-compiler', '-freestanding', '-gc', 'none', '-enable-globals']
+			mut command := [@VEXE, '-freestanding', '-gc', 'none', '-enable-globals']
 			if role == 'prod' { command << '-prod' }
 			command << ['-o', program, source]
 			compiled := os.exec(command)
@@ -106,7 +106,7 @@ fn test_freestanding_basic_v_spawn_wait_results_and_detach() ! {
 		source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_threads', 'basic.v')
 		for role in ['debug', 'prod'] {
 			program := os.join_path(work, role)
-			mut command := [@VEXE, '-new-compiler', '-freestanding', '-gc', 'none', '-enable-globals']
+			mut command := [@VEXE, '-freestanding', '-gc', 'none', '-enable-globals']
 			if role == 'prod' { command << '-prod' }
 			command << ['-o', program, source]
 			compiled := os.exec(command)
@@ -126,7 +126,7 @@ fn test_freestanding_sync_native_thread_helper_and_waitgroup() ! {
 		source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_threads', 'sync_helper.c.v')
 		for role in ['debug', 'prod'] {
 			program := os.join_path(work, role)
-			mut command := [@VEXE, '-new-compiler', '-freestanding', '-gc', 'none', '-enable-globals']
+			mut command := [@VEXE, '-freestanding', '-gc', 'none', '-enable-globals']
 			if role == 'prod' { command << '-prod' }
 			command << ['-o', program, source]
 			compiled := os.exec(command)
@@ -146,8 +146,8 @@ fn test_freestanding_macos_v_thread_signal_tls_and_teardown() ! {
 		source := os.join_path(@VEXEROOT, 'vlib/builtin/testdata/macos_v_threads/signals.c.v')
 		for prod in [false, true] {
 			program := os.join_path(work, 'signals_${prod}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-gc',
-				'none', '-enable-globals', '-cc', 'clang']
+			mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none',
+				'-enable-globals', '-cc', 'clang']
 			if prod { command << '-prod' }
 			command << ['-o', program, source]
 			built := os.exec(command)

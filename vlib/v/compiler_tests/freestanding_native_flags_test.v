@@ -10,7 +10,7 @@ fn test_native_helpers_share_freestanding_capabilities_and_cache_identity() ! {
 		// Distinct capability results prove the cache does not reuse its hosted object.
 		for role in ['hosted', 'bare', 'bare_warm'] {
 			program := os.join_path(work, role)
-			mut command := [@VEXE, '-new-compiler', '-cc', 'cc', '-gc', 'none']
+			mut command := [@VEXE, '-cc', 'cc', '-gc', 'none']
 			if role != 'hosted' { command << '-freestanding' }
 			command << ['-o', program, os.join_path(fixtures, 'main.c.v')]
 			compiled := os.exec(command)
@@ -23,8 +23,8 @@ fn test_native_helpers_share_freestanding_capabilities_and_cache_identity() ! {
 		$if macos {
 			library = os.join_path(work, 'libflags.dylib')
 		}
-		compiled := os.exec([@VEXE, '-new-compiler', '-cc', 'cc', '-freestanding', '-gc', 'none',
-			'-shared', '-o', library, os.join_path(fixtures, 'library.c.v')])
+		compiled := os.exec([@VEXE, '-cc', 'cc', '-freestanding', '-gc', 'none', '-shared', '-o',
+			library, os.join_path(fixtures, 'library.c.v')])
 		assert compiled.exit_code == 0, compiled.output
 		host := os.join_path(work, 'host')
 		mut command := ['cc', '-o', host, os.join_path(fixtures, 'host.c')]

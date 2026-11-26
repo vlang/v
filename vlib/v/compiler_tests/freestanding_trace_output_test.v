@@ -25,9 +25,8 @@ fn test_raw_trace_hooks_do_not_enter_allocator_or_free_stack_views() ! {
 	}
 	for role in ['debug', 'prod', 'autofree'] {
 		binary := os.join_path(work, 'trace')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-			clang, '-ldflags', '-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=free', '-o',
-			binary]
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', clang, '-ldflags',
+			'-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=free', '-o', binary]
 		if role == 'prod' { command << '-prod' }
 		if role == 'autofree' { command << '-autofree' }
 		command << work

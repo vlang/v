@@ -32,7 +32,7 @@ fn skill_assert_notices(flags []string) []string {
 	}
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, skill_assert_source.trim_left('\n')) or { panic(err) }
-	result := os.exec([@VEXE, '-new-compiler', ...flags, '-check', source])
+	result := os.exec([@VEXE, ...flags, '-check', source])
 	assert result.exit_code == 0, result.output
 	return result.output.split_into_lines().filter(it.contains('notice: assert contains'))
 }

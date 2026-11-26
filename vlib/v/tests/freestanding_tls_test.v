@@ -33,8 +33,7 @@ fn test_linux_freestanding_tls_initialization_clone_and_invalid_images() ! {
 		os.mkdir_all(work)!
 		defer { os.rmdir_all(work) or {} }
 		source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_tls', 'main.v')
-		base := [@VEXE, '-new-compiler', '-freestanding', '-gc', 'none', '-enable-globals', '-d',
-			'vlibc']
+		base := [@VEXE, '-freestanding', '-gc', 'none', '-enable-globals', '-d', 'vlibc']
 		mut original := []u8{}
 		mut tls := -1
 		for role in ['default', 'offset', 'prod'] {
@@ -95,8 +94,8 @@ fn test_freestanding_shared_library_uses_host_threads_tls() ! {
 		defer { os.rmdir_all(work) or {} }
 		fixtures := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_tls')
 		library := os.join_path(work, 'libtls.so')
-		compiled := os.exec([@VEXE, '-new-compiler', '-freestanding', '-gc', 'none', '-enable-globals',
-			'-shared', '-o', library, os.join_path(fixtures, 'library.v')])
+		compiled := os.exec([@VEXE, '-freestanding', '-gc', 'none', '-enable-globals', '-shared',
+			'-o', library, os.join_path(fixtures, 'library.v')])
 		assert compiled.exit_code == 0, compiled.output
 		host := os.join_path(work, 'host')
 		linked := os.exec(['cc', '-pthread', '-o', host, os.join_path(fixtures, 'host.c'), '-ldl'])

@@ -89,8 +89,8 @@ fn test_showcc_prints_the_move_that_puts_the_output_in_place() {
 		name := if toolchain.len == 0 { 'the C backend' } else { toolchain.join(' ') }
 		for flag in ['-showcc', '-v'] {
 			os.rm(executable) or {}
-			result := os.exec([@VEXE, '-new-compiler', ...toolchain, flag, '-gc', 'none', '-nocache',
-				'-o', executable, source])
+			result := os.exec([@VEXE, ...toolchain, flag, '-gc', 'none', '-nocache', '-o', executable,
+				source])
 			if result.exit_code != 0 && toolchain.len > 0 {
 				why := fastc_unavailable(result.output)
 				if why != '' {
@@ -119,8 +119,7 @@ fn test_showcc_prints_the_move_that_puts_the_output_in_place() {
 	working_dir := os.getwd()
 	os.chdir(plain_root)!
 	plain_name := $if windows { 'plain_program.exe' } $else { 'plain_program' }
-	plain := os.exec([@VEXE, '-new-compiler', '-showcc', '-gc', 'none', '-nocache', '-o', plain_name,
-		'main.v'])
+	plain := os.exec([@VEXE, '-showcc', '-gc', 'none', '-nocache', '-o', plain_name, 'main.v'])
 	os.chdir(working_dir)!
 	assert plain.exit_code == 0, plain.output
 	plain_moves := plain.output.split_into_lines().filter(it.starts_with('  > mv ')
@@ -128,7 +127,7 @@ fn test_showcc_prints_the_move_that_puts_the_output_in_place() {
 	assert plain_moves.len == 1, plain.output
 	// Without the flags the build says nothing of it.
 	os.rm(executable) or {}
-	quiet := os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-nocache', '-o', executable, source])
+	quiet := os.exec([@VEXE, '-gc', 'none', '-nocache', '-o', executable, source])
 	assert quiet.exit_code == 0, quiet.output
 	assert !quiet.output.contains('  > '), quiet.output
 }

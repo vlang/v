@@ -32,8 +32,8 @@ fn test_macos_amd64_freestanding_initial_stack_and_exit() ! {
 	vexe := os.getenv_opt('VEXE') or { @VEXE }
 	for production in [false, true] {
 		binary := os.join_path(root, if production { 'prod' } else { 'debug' })
-		mut command := [vexe, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-freestanding',
-			'-gc', 'none', '-o', binary]
+		mut command := [vexe, '-no-retry-compilation', '-cc', 'clang', '-freestanding', '-gc',
+			'none', '-o', binary]
 		if production {
 			command << '-prod'
 		}

@@ -10,8 +10,8 @@ fn test_freestanding_linux_posix_io_abi_and_errors() ! {
 	source := os.join_path(@VMODROOT, 'vlib/v/compiler_tests/testdata/freestanding_posix_io/main.c.v')
 	for with_vlibc in [false, true] {
 		output := os.join_path(root, if with_vlibc { 'vlibc' } else { 'plain' })
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-b', 'c', '-cc', 'clang',
-			'-freestanding', '-cstrict', '-o', output]
+		mut command := [@VEXE, '-no-retry-compilation', '-b', 'c', '-cc', 'clang', '-freestanding',
+			'-cstrict', '-o', output]
 		if with_vlibc { command << ['-d', 'vlibc'] }
 		command << source
 		built := os.exec(command)

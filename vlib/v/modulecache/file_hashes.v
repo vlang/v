@@ -205,21 +205,46 @@ fn memoized_file_hash(path string, kind string, compute fn (string) string) stri
 	key := '${kind}\t${path}'
 	metadata := '${m.device}:${m.inode}:${m.size}:${m.mtime_seconds}:${m.mtime_nanoseconds}:${m.ctime_seconds}:${m.ctime_nanoseconds}'
 	shard := file_hash_memo_shard(path)
-	memo.mu.lock()
-	memo.load(shard)
-	known := memo.entries[key] or { '' }
-	memo.mu.unlock()
+	known := memo.hash_entry(shard, key, '')
 	if known.len > metadata.len && known[metadata.len] == `\t` && known.starts_with(metadata) {
 		return known[metadata.len + 1..]
 	}
 	hash := compute(path)
 	if file_hash_is_valid(kind, hash) {
-		memo.mu.lock()
-		memo.entries[key] = '${metadata}\t${hash}'
-		memo.append(shard, '${key}\t${metadata}\t${hash}\n')
-		memo.mu.unlock()
+		memo.hash_entry(shard, key, '${metadata}\t${hash}')
 	}
 	return hash
+}
+
+// hash_entry keeps the memo's allocations in the thread's long-lived memory.
+// Compiler stages can release the arenas that hold their path and hash strings.
+fn (mut memo FileHashMemo) hash_entry(shard string, key string, value string) string {
+	$if prealloc {
+		// Recurse through any nested compiler arenas, without moving the actual
+		// file reads or hash computation out of their caller's arena.
+		scope := unsafe { prealloc_scope_retain_current() }
+		if scope != unsafe { nil } {
+			state := unsafe { prealloc_scope_suspend(scope) }
+			defer {
+				unsafe {
+					prealloc_scope_resume(scope, state)
+					prealloc_scope_release(scope)
+				}
+			}
+			if state == unsafe { nil } {
+				return ''
+			}
+			return memo.hash_entry(shard, key, value)
+		}
+	}
+	memo.mu.lock()
+	defer { memo.mu.unlock() }
+	memo.load(shard)
+	if value != '' {
+		memo.entries[key.clone()] = value.clone()
+		memo.append(shard, '${key}\t${value}\n')
+	}
+	return memo.entries[key] or { '' }
 }
 
 // file_hash_is_valid reports whether `hash` has the form of a value of `kind`.
@@ -259,7 +284,7 @@ fn (mut memo FileHashMemo) load(shard string) {
 	}
 	path := os.join_path_single(memo.dir, shard)
 	content := os.read_file(path) or {
-		memo.loaded[shard] = 0
+		memo.loaded[shard.clone()] = 0
 		return
 	}
 	mut lines := 0
@@ -283,7 +308,7 @@ fn (mut memo FileHashMemo) load(shard string) {
 		}
 		memo.entries[key] = '${fields[2]}\t${fields[3]}'
 	}
-	memo.loaded[shard] = lines
+	memo.loaded[shard.clone()] = lines
 	// Later lines replace earlier ones. Rewrite a shard that grew mostly stale.
 	if lines > 1024 && lines > 2 * entries {
 		mut out := []string{cap: entries}

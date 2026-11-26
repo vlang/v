@@ -14,8 +14,7 @@ fn test_exec_argument_storage_outlives_subprocess_start() ! {
 	for optimized in [false, true] {
 		for autofree in [false, true] {
 			binary := os.join_path(root, 'argv_${optimized}_${autofree}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-				'clang']
+			mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', 'clang']
 			if optimized { command << '-prod' }
 			if autofree { command << '-autofree' }
 			command << ['-o', binary, source]

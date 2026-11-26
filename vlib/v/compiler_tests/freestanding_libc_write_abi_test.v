@@ -57,8 +57,8 @@ fn test_freestanding_write_export_matches_headers_and_external_c_abi() ! {
 	os.write_file(os.join_path(root, 'write_check.c'), freestanding_write_c)!
 	for with_vlibc in [false, true] {
 		output := os.join_path(root, if with_vlibc { 'vlibc' } else { 'plain' })
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-b', 'c', '-cc', 'clang',
-			'-freestanding', '-cstrict', '-o', output]
+		mut command := [@VEXE, '-no-retry-compilation', '-b', 'c', '-cc', 'clang', '-freestanding',
+			'-cstrict', '-o', output]
 		if with_vlibc { command << ['-d', 'vlibc'] }
 		command << source
 		built := os.exec(command)

@@ -9,6 +9,7 @@ fn test_file_hash_memo_reuses_hashes_until_the_file_changes() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
+	g_file_hash_memo = unsafe { nil }
 	enable_file_hash_memo(os.join_path(dir, 'memo'))
 	path := os.join_path(dir, 'input.h')
 	os.write_file(path, 'int first;\n')!
@@ -38,6 +39,7 @@ fn test_file_hash_memo_skips_files_modified_during_the_build() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
+	g_file_hash_memo = unsafe { nil }
 	enable_file_hash_memo(os.join_path(dir, 'memo'))
 	path := os.join_path(dir, 'fresh.h')
 	// Written after the memo started: its timestamp cannot tell a later
@@ -70,6 +72,7 @@ fn test_file_hash_memo_reads_only_the_shards_of_the_files_it_hashes() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
+	g_file_hash_memo = unsafe { nil }
 	enable_file_hash_memo(os.join_path(dir, 'memo'))
 	g_file_hash_memo.loaded = map[string]int{}
 	g_file_hash_memo.entries = map[string]string{}
@@ -91,4 +94,28 @@ fn test_file_hash_memo_reads_only_the_shards_of_the_files_it_hashes() {
 	assert file_signature(paths[0]) == file_signature_uncached(paths[0])
 	assert g_file_hash_memo.loaded.keys() == [file_hash_memo_shard(paths[0])]
 	assert 'fnv\t${paths[0]}' in g_file_hash_memo.entries
+}
+
+fn test_file_hash_memo_survives_nested_prealloc_scopes() ! {
+	$if prealloc {
+		dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_scoped_hashes_${os.getpid()}')
+		os.mkdir_all(dir)!
+		defer { os.rmdir_all(dir) or {} }
+		g_file_hash_memo = unsafe { nil }
+		enable_file_hash_memo(os.join_path(dir, 'memo'))
+		path := os.join_path(dir, 'input')
+		os.write_file(path, 'persistent hash')!
+		old := time.utc().unix() - 600
+		os.utime(path, old, old)!
+		expected := file_signature_uncached(path)
+		outer := unsafe { prealloc_scope_begin() }
+		inner := unsafe { prealloc_scope_begin() }
+		assert file_signature(path) == expected
+		unsafe {
+			prealloc_scope_end(inner)
+			prealloc_scope_end(outer)
+		}
+		assert file_signature(path) == expected
+		assert g_file_hash_memo.entries['fnv\t${path}'].ends_with('\t${expected}')
+	}
 }

@@ -2013,7 +2013,8 @@ fn (tc &TypeChecker) lvalue_matches_mut_param(lhs_type &Type, base_type &Type) b
 }
 
 fn (tc &TypeChecker) lvalue_ident_is_known(name string) bool {
-	if _ := tc.cur_scope.lookup_id(flat.source_type_id(name)) {
+	name_id := flat.source_type_existing_id(name) or { return false }
+	if _ := tc.cur_scope.lookup_id(name_id) {
 		return true
 	}
 	if _ := tc.file_scope.lookup_id(flat.source_type_id(name)) {
@@ -9727,7 +9728,8 @@ fn (tc &TypeChecker) name_has_local_binding(name string) bool {
 	if tc.cur_scope == unsafe { nil } {
 		return false
 	}
-	if _ := tc.cur_scope.lookup(name) {
+	name_id := flat.source_type_existing_id(name) or { return false }
+	if _ := tc.cur_scope.lookup_id(name_id) {
 		return true
 	}
 	return false
@@ -11355,7 +11357,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 	// shadows a function `callback` of the module, as it does for `callback()`.
 	local_base := tc.a.nodes[int(base_id)]
 	if local_base.kind == .ident && !local_base.value.contains('.') {
-		if local_type := tc.cur_scope.lookup(local_base.value) {
+		if local_type := tc.cur_scope.lookup_id(local_base.name_id()) {
 			if _ := fn_type_from_type(local_type) {
 				return none
 			}

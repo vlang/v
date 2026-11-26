@@ -7,7 +7,7 @@ fn test_header_owned_c_union_tags_preserve_layout_and_native_abi() ! {
 	source := os.join_path(@VEXEROOT, 'vlib', 'v', 'compiler_tests', 'testdata', 'c_union_tags', 'main.c.v')
 	for role in ['debug', 'prod'] {
 		program := os.join_path(work, role) + $if windows { '.exe' } $else { '' }
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none']
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none']
 		if role == 'prod' { command << '-prod' }
 		command << ['-o', program, source]
 		compiled := os.exec(command)
@@ -38,8 +38,7 @@ fn main() {
  println("headerless C union layout passed")
 }')!
 	program := os.join_path(work, 'program') + $if windows { '.exe' } $else { '' }
-	compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-o',
-		program, source])
+	compiled := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-o', program, source])
 	assert compiled.exit_code == 0, compiled.output
 	result := os.exec([program])
 	assert result.exit_code == 0, result.output

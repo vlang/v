@@ -25,7 +25,7 @@ fn main() {
 ')!
 		for syscalls in [false, true] {
 			program := os.join_path(work, 'threads_${syscalls}')
-			mut command := [@VEXE, '-new-compiler', '-gc', 'none', '-d', 'vlibc']
+			mut command := [@VEXE, '-gc', 'none', '-d', 'vlibc']
 			if syscalls {
 				command << '-syscalls'
 			}

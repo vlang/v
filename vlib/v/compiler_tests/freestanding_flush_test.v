@@ -15,8 +15,8 @@ fn test_freestanding_flush_preserves_output_without_diagnostics() ! {
 }')!
 	for with_vlibc in [false, true] {
 		output := os.join_path(root, if with_vlibc { 'vlibc' } else { 'plain' })
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-b', 'c', '-cc', 'clang',
-			'-freestanding', '-o', output]
+		mut command := [@VEXE, '-no-retry-compilation', '-b', 'c', '-cc', 'clang', '-freestanding',
+			'-o', output]
 		if with_vlibc { command << ['-d', 'vlibc'] }
 		command << source
 		built := os.exec(command)

@@ -8,8 +8,8 @@ fn test_const_qualified_c_exports_forward_to_v_parameters() ! {
 	source := os.join_path(@VEXEROOT, 'vlib', 'v', 'compiler_tests', 'testdata', 'export_const_arguments', 'main.c.v')
 	for role in ['debug', 'prod'] {
 		program := os.join_path(work, role) + $if windows { '.exe' } $else { '' }
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-			cc, '-cstrict', '-cflags', '-Werror=incompatible-pointer-types-discards-qualifiers']
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', cc, '-cstrict', '-cflags',
+			'-Werror=incompatible-pointer-types-discards-qualifiers']
 		if role == 'prod' { command << '-prod' }
 		command << ['-o', program, source]
 		compiled := os.exec(command)
@@ -30,9 +30,9 @@ fn test_const_qualified_c_exports_from_object_files() ! {
 	defer { os.rmdir_all(work) or {} }
 	fixtures := os.join_path(@VEXEROOT, 'vlib', 'v', 'compiler_tests', 'testdata', 'export_const_arguments')
 	object := os.join_path(work, 'library.o')
-	compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-		cc, '-cstrict', '-cflags', '-Werror=incompatible-pointer-types-discards-qualifiers', '-is_o',
-		'-d', 'export_const_object', '-o', object, os.join_path(fixtures, 'main.c.v')])
+	compiled := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', cc, '-cstrict',
+		'-cflags', '-Werror=incompatible-pointer-types-discards-qualifiers', '-is_o', '-d',
+		'export_const_object', '-o', object, os.join_path(fixtures, 'main.c.v')])
 	assert compiled.exit_code == 0, compiled.output
 	host_source := os.join_path(work, 'host.c')
 	os.write_file(host_source, '#include "sdk.h"\nint main(void) { return sdk_verify(); }\n')!
@@ -57,9 +57,8 @@ fn C.sdk_bad(const_source &i32) u64
 fn bad_reader(source &i64) u64 { return unsafe { u64(*source) } }
 fn main() {}
 ')!
-	compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-		cc, '-cstrict', '-cflags', '-Werror=incompatible-pointer-types', '-o',
-		os.join_path(work, 'bad'), source])
+	compiled := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', cc, '-cstrict',
+		'-cflags', '-Werror=incompatible-pointer-types', '-o', os.join_path(work, 'bad'), source])
 	assert compiled.exit_code != 0
 	assert compiled.output.contains('incompatible pointer types'), compiled.output
 	assert compiled.output.contains('i64'), compiled.output

@@ -8,9 +8,9 @@ fn test_macos_vlibc_threads_select_raw_or_host_runtime() ! {
 	source := os.join_path(@VEXEROOT, 'vlib/builtin/testdata/macos_vlibc_threads/main.v')
 	for role in ['raw', 'arm64', 'explicit_host', 'shared', 'object'] {
 		output := os.join_path(work, '${role}.c')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-			'-os', 'macos', '-arch', if role == 'arm64' { 'arm64' } else { 'amd64' }, '-freestanding',
-			'-enable-globals', '-d', 'vlibc']
+		mut command := [@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-os', 'macos',
+			'-arch', if role == 'arm64' { 'arm64' } else { 'amd64' }, '-freestanding', '-enable-globals',
+			'-d', 'vlibc']
 		match role {
 			'explicit_host' { command << ['-d', 'v_bare_no_startup'] }
 			'shared' { command << '-shared' }
@@ -44,8 +44,8 @@ fn test_macos_vlibc_thread_ownership_and_raw_imports() ! {
 	for optimized in [false, true] {
 		for autofree in [false, true] {
 			program := os.join_path(work, 'threads-${optimized}-${autofree}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc',
-				'none', '-freestanding', '-d', 'vlibc', '-enable-globals']
+			mut command := [@VEXE, '-no-retry-compilation', '-cc', 'clang', '-gc', 'none',
+				'-freestanding', '-d', 'vlibc', '-enable-globals']
 			if optimized { command << '-prod' }
 			if autofree { command << '-autofree' }
 			command << ['-o', program, source]

@@ -24,8 +24,8 @@ fn test_macos_v_clock_policy_with_raw_dispatcher_doubles() ! {
 	}
 	for prod in [false, true] {
 		output := os.join_path(root, 'clock_${prod}')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none',
-			'-enable-globals', '-cc', cc, '-cflags',
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-enable-globals', '-cc',
+			cc, '-cflags',
 			'-Werror=incompatible-pointer-types -Werror=incompatible-function-pointer-types -Werror=incompatible-pointer-types-discards-qualifiers',
 			'-o', output]
 		if prod { command << '-prod' }
@@ -48,8 +48,8 @@ fn test_macos_amd64_v_clocks_use_no_dynamic_libraries() ! {
 	for prod in [false, true] {
 		for mode in ['plain', 'profile', 'trace'] {
 			binary := os.join_path(root, 'clock_${prod}_${mode}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-gc',
-				'none', '-cc', 'clang', '-o', binary]
+			mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none', '-cc',
+				'clang', '-o', binary]
 			if prod { command << '-prod' }
 			report := os.join_path(root, 'profile_${prod}.txt')
 			if mode == 'profile' { command << ['-profile', report] }
@@ -109,8 +109,8 @@ fn test_macos_amd64_v_nanosleep_reports_real_signal_interruption() ! {
 	fixture := os.join_path(@VMODROOT, 'vlib/builtin/testdata/macos_clocks/signal/main.c.v')
 	for prod in [false, true] {
 		binary := os.join_path(root, 'signal_${prod}')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding',
-			'-enable-globals', '-gc', 'none', '-cc', 'clang', '-o', binary]
+		mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-enable-globals', '-gc',
+			'none', '-cc', 'clang', '-o', binary]
 		if prod { command << '-prod' }
 		command << fixture
 		built := os.exec(command)

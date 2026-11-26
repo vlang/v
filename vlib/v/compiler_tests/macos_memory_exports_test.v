@@ -14,8 +14,8 @@ fn test_macos_amd64_generated_v_memory_exports() ! {
 	os.write_file(source, 'fn main() { println(bf_last_errno()) }\n')!
 	for optimized in [false, true] {
 		generated := os.join_path(work, 'macos.c')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-os',
-			'macos', '-arch', 'amd64', '-freestanding', '-o', generated, source]
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-os', 'macos', '-arch',
+			'amd64', '-freestanding', '-o', generated, source]
 		if optimized { command << '-prod' }
 		result := os.exec(command)
 		assert result.exit_code == 0, result.output
@@ -52,8 +52,8 @@ fn test_macos_amd64_generated_v_memory_exports() ! {
 	// These leaf operations must remain callable before profiling/tracing or TLS
 	// initialization. Instrumented callers must not instrument the leaf chain.
 	instrumented := os.join_path(work, 'instrumented.c')
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-os', 'macos',
-		'-arch', 'amd64', '-freestanding', '-profile', '-trace-calls', '-o', instrumented, source])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-os', 'macos', '-arch',
+		'amd64', '-freestanding', '-profile', '-trace-calls', '-o', instrumented, source])
 	assert result.exit_code == 0, result.output
 	for definition in macos_memory_functions(os.read_file(instrumented)!) {
 		if definition.contains('bf_last_errno(') { continue }
@@ -63,16 +63,15 @@ fn test_macos_amd64_generated_v_memory_exports() ! {
 
 	// An embedding host owns its native errno accessor and native TLS.
 	embedded := os.join_path(work, 'embedded.c')
-	embedded_result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none',
-		'-os', 'macos', '-arch', 'amd64', '-freestanding', '-d', 'v_bare_no_startup', '-o', embedded,
-		source])
+	embedded_result := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-os', 'macos',
+		'-arch', 'amd64', '-freestanding', '-d', 'v_bare_no_startup', '-o', embedded, source])
 	assert embedded_result.exit_code == 0, embedded_result.output
 	assert !os.read_file(embedded)!.contains('bare_macos_errno_pointer(')
 
 	// The user-supported ARM64 platform keeps its libSystem implementations.
 	arm := os.join_path(work, 'arm.c')
-	arm_result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-os',
-		'macos', '-arch', 'arm64', '-freestanding', '-o', arm, source])
+	arm_result := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-os', 'macos', '-arch',
+		'arm64', '-freestanding', '-o', arm, source])
 	assert arm_result.exit_code == 0, arm_result.output
 	arm_source := os.read_file(arm)!
 	assert !arm_source.contains('bare_macos_memcpy(')
@@ -121,8 +120,8 @@ fn C.__error() &i32
 fn read_host_errno() i32 { return unsafe { *C.__error() } }
 ')!
 	library := os.join_path(work, 'library.dylib')
-	compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-		cc, '-freestanding', '-shared', '-d', 'v_bare_no_startup', '-o', library, source])
+	compiled := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', cc, '-freestanding',
+		'-shared', '-d', 'v_bare_no_startup', '-o', library, source])
 	assert compiled.exit_code == 0, compiled.output
 	host_source := os.join_path(work, 'host.c')
 	os.write_file(host_source, '#include <assert.h>

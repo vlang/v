@@ -11,8 +11,7 @@ fn test_naked_assembly_owns_integer_pointer_and_stack_argument_returns() ! {
 	fixture := os.join_path(@VEXEROOT, 'vlib/v/compiler_tests/testdata/naked_asm_returns/main.v')
 	for prod in [false, true] {
 		program := os.join_path(root, 'native_${prod}')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-			'-cc', clang]
+		mut command := [@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc', clang]
 		if prod { command << '-prod' }
 		command << ['-o', program, fixture]
 		built := os.exec(command)
@@ -37,7 +36,7 @@ fn main() { println(work()) }
 	} {
 		path := os.join_path(root, '${name}.v')
 		os.write_file(path, source)!
-		checked := os.exec([@VEXE, '-new-compiler', '-check', path])
+		checked := os.exec([@VEXE, '-check', path])
 		assert checked.exit_code != 0, checked.output
 		if name == 'ordinary' {
 			assert checked.output.contains('missing return at end of function `work`'), checked.output

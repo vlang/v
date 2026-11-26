@@ -30,8 +30,8 @@ fn test_macos_kernel_services_without_host_imports() ! {
 		assert ran.exit_code == 0, 'standalone exit ${ran.exit_code}: ${ran.output}'
 	}
 	output := os.join_path(root, 'v_bridge')
-	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-gc',
-		'none', '-cc', 'clang', '-o', output, os.join_path(fixture, 'main.c.v')])
+	built := os.exec([@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none', '-cc', 'clang',
+		'-o', output, os.join_path(fixture, 'main.c.v')])
 	assert built.exit_code == 0, built.output
 	ran := os.exec([output])
 	assert ran.exit_code == 0 && ran.output.trim_space() == 'macOS kernel services ok', ran.output

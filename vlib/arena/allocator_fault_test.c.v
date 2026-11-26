@@ -11,8 +11,7 @@ fn test_fallible_allocator_rolls_back_each_allocation_failure() {
 	for optimized in [false, true] {
 		for tracked in [false, true] {
 			binary := os.join_path(root, 'fault-${optimized}-${tracked}')
-			mut command := [@VEXE, '-gc', 'none', '-cc', 'clang', '-new-compiler',
-				'-no-retry-compilation']
+			mut command := [@VEXE, '-gc', 'none', '-cc', 'clang', '-no-retry-compilation']
 			if optimized { command << '-prod' }
 			if tracked { command << ['-d', 'track_heap'] }
 			command << ['-o', binary, source]

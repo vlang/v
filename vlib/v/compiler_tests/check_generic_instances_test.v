@@ -264,9 +264,9 @@ fn test_a_global_shadowed_in_an_instance_of_a_smartcast_receiver_is_reported() {
 	os.write_file(path, "module main\n\n__global gv = 1\n\ntype Sum = Box[int] | string\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) m() T {\n\t\$if T is int {\n\t\tgv := 3\n\t\t_ = gv\n\t}\n\treturn b.v\n}\n\nfn wrap(s Sum) int {\n\treturn match s {\n\t\tBox[int] { s.m() }\n\t\tstring { 0 }\n\t}\n}\n\nfn main() {\n\tprintln(wrap(Sum('a')))\n}\n") or {
 		panic(err)
 	}
-	check := os.exec([@VEXE, '-new-compiler', '-enable-globals', '-check', '-nocolor', path])
-	build := os.exec([@VEXE, '-new-compiler', '-enable-globals', '-nocolor', '-o',
-		os.join_path(dir, 'program'), path])
+	check := os.exec([@VEXE, '-enable-globals', '-check', '-nocolor', path])
+	build := os.exec([@VEXE, '-enable-globals', '-nocolor', '-o', os.join_path(dir, 'program'),
+		path])
 	for res in [check, build] {
 		assert res.exit_code == 1, res.output
 		assert error_lines(res.output) == ['13:3: variable `gv` shadows a global variable'], res.output

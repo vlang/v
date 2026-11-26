@@ -12,8 +12,8 @@ fn test_freestanding_sync_waits_and_io_pipe() ! {
 	for production in [false, true] {
 		for with_vlibc in [false, true] {
 			output := os.join_path(root, 'sync_${production}_${with_vlibc}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-b', 'c', '-cc',
-				'clang', '-freestanding', '-gc', 'none', '-cstrict', '-o', output]
+			mut command := [@VEXE, '-no-retry-compilation', '-b', 'c', '-cc', 'clang', '-freestanding',
+				'-gc', 'none', '-cstrict', '-o', output]
 			if production { command << '-prod' }
 			if with_vlibc { command << ['-d', 'vlibc'] }
 			command << os.join_path(fixtures, 'main.c.v')

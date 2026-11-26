@@ -837,7 +837,7 @@ fn (mut ts TestSession) run_tool_batch(files []string, test_id string, thread_id
 	argv << abs_files
 	ts.append_message(.compile_begin, cmdexec.display(ts.vexe, argv[1..]), mtc)
 	sw := time.new_stopwatch()
-	res := ts.exec_compiler(argv, mtc)
+	res := ts.exec_compiler(argv, {}, mtc)
 	duration := sw.elapsed()
 	if res.exit_code != 0 {
 		// The files run again one by one and print their own output.

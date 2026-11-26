@@ -11,8 +11,8 @@ fn test_macos_amd64_raw_sync_contention_and_deadlines() ! {
 	fixture := os.join_path(@VMODROOT, 'vlib/builtin/testdata/macos_sync/main.v')
 	for prod in [false, true] {
 		binary := os.join_path(root, 'sync_${prod}')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-gc',
-			'none', '-cc', 'clang', '-o', binary]
+		mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none', '-cc',
+			'clang', '-o', binary]
 		if prod { command << '-prod' }
 		command << fixture
 		built := os.exec(command)

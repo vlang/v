@@ -83,8 +83,8 @@ fn test_freestanding_real_path_matches_hosted_filesystem_resolution() ! {
 	for optimized in [false, true] {
 		for mode in ['hosted', 'bare', 'syscalls', 'autofree'] {
 			binary := os.join_path(root, '${mode}_${optimized}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-				'clang', '-arch', arch]
+			mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', 'clang', '-arch',
+				arch]
 			if optimized { command << '-prod' }
 			if mode in ['bare', 'autofree'] { command << '-freestanding' }
 			if mode == 'autofree' { command << '-autofree' }

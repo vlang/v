@@ -10,8 +10,7 @@ fn test_linux_freestanding_context_repetition_releases_worker_stacks() ! {
 		defer { os.rmdir_all(work) or {} }
 		for role in ['debug', 'prod', 'prealloc'] {
 			program := os.join_path(work, role)
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-gc',
-				'none']
+			mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none']
 			if role == 'prod' { command << '-prod' }
 			if role == 'prealloc' { command << '-prealloc' }
 			command << ['-o', program,

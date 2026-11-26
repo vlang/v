@@ -11,8 +11,7 @@ fn test_freestanding_process_syscalls_and_child_lifetimes() ! {
 	for optimized in [false, true] {
 		for mode in ['hosted', 'syscalls', 'syscalls_autofree', 'bare', 'autofree'] {
 			binary := os.join_path(root, '${mode}_${optimized}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-				'clang']
+			mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', 'clang']
 			if optimized { command << '-prod' }
 			if mode in ['bare', 'autofree'] { command << '-freestanding' }
 			if mode in ['autofree', 'syscalls_autofree'] { command << '-autofree' }
@@ -36,9 +35,8 @@ fn test_freestanding_process_syscalls_and_child_lifetimes() ! {
 		// Instrumentation must not add a runtime callback anywhere between fork
 		// and exec, including the string tests and syscall leaf wrappers.
 		binary := os.join_path(root, 'instrumented_${optimized}')
-		mut instrumented := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-			'clang', '-syscalls', '-trace-calls', '-profile',
-			os.join_path(root, 'profile_${optimized}.txt')]
+		mut instrumented := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', 'clang', '-syscalls',
+			'-trace-calls', '-profile', os.join_path(root, 'profile_${optimized}.txt')]
 		if optimized { instrumented << '-prod' }
 		$if linux {
 			instrumented << ['-d', 'process_track_alloc', '-cflags', '-DPROCESS_TRACK_ALLOC', '-ldflags',

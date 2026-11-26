@@ -9,8 +9,8 @@ fn test_freestanding_aligned_alloc_abi() ! {
 	defer { os.rmdir_all(root) or {} }
 	for prod in [false, true] {
 		output := os.join_path(root, 'aligned_${prod}')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-gc',
-			'none', '-cc', 'clang', '-o', output]
+		mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none', '-cc',
+			'clang', '-o', output]
 		if prod { command << '-prod' }
 		command << os.join_path(@VMODROOT, 'vlib/builtin/testdata/freestanding_aligned_alloc/main.c.v')
 		built := os.exec(command)

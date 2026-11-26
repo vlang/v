@@ -24,8 +24,8 @@ fn test_macos_libc_generated_policy_and_c_abi() ! {
 	for autofree in [false, true] {
 		for optimized in [false, true] {
 			output := os.join_path(work, 'generated.c')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-os',
-				'macos', '-arch', 'amd64', '-freestanding', '-d', 'no_main', '-o', output]
+			mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-os', 'macos', '-arch',
+				'amd64', '-freestanding', '-d', 'no_main', '-o', output]
 			if optimized { command << '-prod' }
 			if autofree { command << '-autofree' }
 			command << source
@@ -107,8 +107,8 @@ fn test_macos_libc_platform_and_instrumentation_selection() ! {
 	os.write_file(source, 'fn main() {}\n')!
 	for role in ['raw', 'arm64', 'hosted', 'syscalls', 'object', 'shared', 'explicit_host'] {
 		output := os.join_path(work, '${role}.c')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-os',
-			'macos', '-arch', if role == 'arm64' { 'arm64' } else { 'amd64' }]
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-os', 'macos', '-arch',
+			if role == 'arm64' { 'arm64' } else { 'amd64' }]
 		if role == 'syscalls' {
 			command << '-syscalls'
 		} else if role != 'hosted' {
@@ -145,8 +145,8 @@ fn test_macos_native_libc_and_abnormal_termination() ! {
 	assert compiled.exit_code == 0, compiled.output
 	for optimized in [false, true] {
 		binary := os.join_path(work, if optimized { 'prod' } else { 'debug' })
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-freestanding',
-			'-cc', clang, '-o', binary]
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-freestanding', '-cc',
+			clang, '-o', binary]
 		if optimized { command << '-prod' }
 		command << os.join_path(fixture, 'main.c.v')
 		build := os.exec(command)

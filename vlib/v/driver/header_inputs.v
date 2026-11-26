@@ -399,12 +399,6 @@ fn v3_note_missing_below(dir string, below string, before i64, mut there map[str
 	return v3_path_is_older_than(dir, below, before)
 }
 
-// v3_path_is_below reports whether `path` is inside the directory `dir`.
-fn v3_path_is_below(path string, dir string) bool {
-	return path.len > dir.len && path.starts_with(dir)
-		&& (path[dir.len] == os.path_separator[0] || dir.ends_with(os.path_separator))
-}
-
 // v3_header_inputs returns what a compilation of `unit` depends on, given the
 // files that the compiler `read` for it, where it looks for an included file, and
 // a time `before`, in seconds, from before it started.

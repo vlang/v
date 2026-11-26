@@ -1344,7 +1344,13 @@ fn v3_is_deep_in_a_system_root(path string, system_roots []string) bool {
 // The parts of a Windows path can be separated by `\` as well as by `/`.
 fn v3_path_is_below(path string, dir string) bool {
 	$if windows {
-		return path.replace('\\', '/').starts_with(dir.replace('\\', '/') + '/')
+		normalized_dir := dir.replace('\\', '/')
+		normalized_path := path.replace('\\', '/')
+		return normalized_path.len > normalized_dir.len
+			&& normalized_path.starts_with(normalized_dir)
+			&& (normalized_path[normalized_dir.len] == `/` || normalized_dir.ends_with('/'))
+	} $else {
+		return path.len > dir.len && path.starts_with(dir)
+			&& (path[dir.len] == `/` || dir.ends_with('/'))
 	}
-	return path.starts_with(dir + '/')
 }

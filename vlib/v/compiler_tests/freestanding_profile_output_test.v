@@ -19,8 +19,8 @@ fn test_raw_profile_report_v_policy_with_host_descriptors() ! {
 	}
 	for prod in [false, true] {
 		binary := os.join_path(work, 'report')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-			cc, '-o', binary, work]
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', cc, '-o', binary,
+			work]
 		if prod { command << '-prod' }
 		built := os.exec(command)
 		assert built.exit_code == 0, built.output
@@ -117,9 +117,9 @@ fn test_raw_profile_and_trace_generation_keeps_hosted_and_arm64_paths() ! {
 	for prod in [false, true] {
 		for target in ['raw', 'raw_trace', 'hosted', 'arm64'] {
 			output := os.join_path(work, 'report.c')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-				'clang', '-os', 'macos', '-arch', if target == 'arm64' { 'arm64' } else { 'amd64' },
-				'-profile', os.join_path(work, 'profile "report".txt'), '-o', output]
+			mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', 'clang', '-os',
+				'macos', '-arch', if target == 'arm64' { 'arm64' } else { 'amd64' }, '-profile',
+				os.join_path(work, 'profile "report".txt'), '-o', output]
 			if prod { command << '-prod' }
 			if target != 'hosted' { command << '-freestanding' }
 			if target == 'raw_trace' { command << '-trace-calls' }
@@ -174,8 +174,8 @@ fn test_raw_profile_runtime_remains_distinct_from_user_profile_module() ! {
 	source := os.join_path(work, 'main.v')
 	os.write_file(source, 'import profile\nfn main() { assert profile.sample() == 7 }\n')!
 	output := os.join_path(work, 'report.c')
-	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc', 'clang',
-		'-os', 'macos', '-arch', 'amd64', '-freestanding', '-profile', '-', '-o', output, source])
+	built := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', 'clang', '-os', 'macos',
+		'-arch', 'amd64', '-freestanding', '-profile', '-', '-o', output, source])
 	assert built.exit_code == 0, built.output
 	code := os.read_file(output)!
 	report := profile_report_function_body(code, 'vprint_profile_stats')

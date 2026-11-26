@@ -59,8 +59,8 @@ fn test_freestanding_native_errno_is_separate_for_concurrent_threads() ! {
 	source := os.join_path(root, 'main.c.v')
 	os.write_file(source, freestanding_native_errno_thread_source)!
 	output := os.join_path(root, 'threads')
-	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-b', 'c', '-cc', 'clang',
-		'-freestanding', '-d', 'vlibc', '-cstrict', '-o', output, source])
+	built := os.exec([@VEXE, '-no-retry-compilation', '-b', 'c', '-cc', 'clang', '-freestanding',
+		'-d', 'vlibc', '-cstrict', '-o', output, source])
 	assert built.exit_code == 0, built.output
 	ran := os.exec([output])
 	assert ran.exit_code == 0, ran.output

@@ -470,7 +470,6 @@ fn second_size() int {
 }
 
 fn test_struct_field_const_length_used_from_another_module() {
-	v3_bin := fixed_array_build_v3()
 	// fixture imports other, so other is the module the checker is in when the lengths are
 	// folded: every part of `2 * (n + 1)` must still be read in fixture.
 	root := fixed_array_write_project('foreign_field_len', 'module fixture
@@ -501,6 +500,7 @@ fn main() {
 	println(fixture.other_size())
 }
 ')
+	defer { os.rmdir_all(root) or {} }
 	// Another module declares a const of the same bare name, so `n` does not name one const
 	// program-wide; the field must keep the length of its own module's `n`.
 	for name, src in {
@@ -534,7 +534,7 @@ pub fn (c Carrier) total() int {
 		os.write_file(os.join_path(root, name, '${name}.v'), src) or { panic(err) }
 	}
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, root])
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

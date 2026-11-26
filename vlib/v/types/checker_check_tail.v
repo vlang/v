@@ -117,7 +117,7 @@ fn (tc &TypeChecker) call_may_return_result(idx int) bool {
 		}
 	}
 	if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-		if ret := tc.fn_ret_types[tc.resolved_call_names[idx].value] {
+		if ret := tc.fn_ret_types[tc.symbol_name(tc.resolved_calls[idx])] {
 			return unalias_type(ret) is ResultType
 		}
 	}

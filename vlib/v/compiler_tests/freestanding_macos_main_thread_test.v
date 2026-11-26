@@ -39,8 +39,8 @@ fn test_macos_signal_identity_selects_kernel_only_for_raw_amd64() ! {
 		for arch in ['amd64', 'arm64'] {
 			for freestanding in [false, true] {
 				output := os.join_path(root, '${target_os}_${arch}_${freestanding}.c')
-				mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc',
-					'none', '-os', target_os, '-arch', arch]
+				mut command := [@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-os',
+					target_os, '-arch', arch]
 				if freestanding { command << '-freestanding' }
 				command << ['-o', output, source]
 				built := os.exec(command)
@@ -83,8 +83,8 @@ fn test_macos_raw_main_thread_identity_survives_worker_lifetimes() ! {
 	os.write_file(source, macos_main_thread_program)!
 	for production in [false, true] {
 		binary := os.join_path(root, if production { 'prod' } else { 'debug' })
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-freestanding',
-			'-gc', 'none', '-o', binary]
+		mut command := [@VEXE, '-no-retry-compilation', '-cc', 'clang', '-freestanding', '-gc',
+			'none', '-o', binary]
 		if production { command << '-prod' }
 		command << source
 		built := os.exec(command)

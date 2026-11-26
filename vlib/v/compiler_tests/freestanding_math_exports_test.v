@@ -80,8 +80,8 @@ fn test_freestanding_c_math_exports_and_general_power_operator() {
 		os.write_file(source, freestanding_math_exports_program.replace('@POW_ROWS@', rows.join(','))) or { panic(err) }
 		for mode in ['', '-prod'] {
 			binary := os.join_path(root, 'probe')
-			build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding',
-				'-gc', 'none', mode, '-o', binary, source])
+			build := os.exec([@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none', mode,
+				'-o', binary, source])
 			assert build.exit_code == 0, build.output
 			run := os.exec([binary])
 			assert run.exit_code == 0, '${mode}: ${run.output}'

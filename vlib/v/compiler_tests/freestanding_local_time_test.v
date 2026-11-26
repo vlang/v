@@ -37,8 +37,8 @@ fn test_linux_freestanding_local_timezone() ! {
 	for prod in [false, true] {
 		for name in ['main', 'arena', 'prealloc', 'registry', 'concurrent'] {
 			output := os.join_path(root, '${name}_${prod}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-gc',
-				'none', '-cc', 'clang', '-o', output]
+			mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-gc', 'none', '-cc',
+				'clang', '-o', output]
 			if prod { command << '-prod' }
 			if name == 'prealloc' { command << '-prealloc' }
 			if name == 'concurrent' { command << ['-d', 'vlibc'] }
@@ -127,8 +127,8 @@ fn test_zoneinfo_registry_survives_scopes_with_autofree() ! {
 	defer { os.rmdir_all(root) or {} }
 	for prealloc in [false, true] {
 		output := os.join_path(root, 'registry_${prealloc}')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-autofree',
-			'-cc', 'clang', '-o', output]
+		mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-autofree', '-cc', 'clang',
+			'-o', output]
 		if prealloc { command << '-prealloc' }
 		fixture := if prealloc { 'registry_autofree_prealloc' } else { 'registry_autofree' }
 		command << os.join_path(@VMODROOT, 'vlib/time/testdata/freestanding_local', fixture, 'main.v')

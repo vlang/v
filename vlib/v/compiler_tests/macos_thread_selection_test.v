@@ -8,8 +8,8 @@ fn test_macos_shared_object_and_hosted_threads_keep_the_hosts_tls() ! {
 	os.write_file(source, 'fn twice(value int) int { return value * 2 }\nfn main() { task := spawn twice(21); println(task.wait()) }\n')!
 	for role in ['hosted', 'shared', 'object', 'explicit_host'] {
 		output := os.join_path(root, '${role}.c')
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
-			'-os', 'macos', '-arch', 'amd64', '-enable-globals']
+		mut command := [@VEXE, '-no-retry-compilation', '-nocache', '-gc', 'none', '-os', 'macos',
+			'-arch', 'amd64', '-enable-globals']
 		match role {
 			'shared' { command << ['-freestanding', '-shared'] }
 			'object' { command << ['-freestanding', '-is_o'] }
