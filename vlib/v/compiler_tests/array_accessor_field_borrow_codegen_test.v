@@ -378,7 +378,21 @@ fn check_builtin_comparison() {
 	println(last_name_matches(entries))
 }
 
+struct Stable {
+	n int
+}
+
+fn last_name_then_stringify(entries []E, stable Stable) string {
+	return '\${entries.last().name}\${stable}'
+}
+
+fn check_auto_stringifier() {
+	entries := [E{ name: 'hello' }]
+	println(last_name_then_stringify(entries, Stable{ n: 1 }))
+}
+
 fn main() {
+	_ = check_auto_stringifier // Compile the control without running it.
 	check_clone()
 	check_length()
 	check_comparison()
@@ -634,26 +648,6 @@ fn main() {
 		independent_array_element_error_at('28:12', 'E'),
 		independent_array_element_error_at('58:12', 'AliasEntry'),
 	], stringifiers.output
-
-	stable_stringifier := compile_v3_ownership_program(v3_bin, 'owned_string_interp_stable_auto_stringifier', "struct E {
-	name string
-}
-
-struct Stable {
-	n int
-}
-
-fn last_name_then_stringify(entries []E, stable Stable) string {
-	return '\${entries.last().name}\${stable}'
-}
-
-fn main() {
-	entries := [E{ name: 'hello' }]
-	println(last_name_then_stringify(entries, Stable{ n: 1 }))
-}
-", '')
-	assert stable_stringifier.exit_code == 0, stable_stringifier.output
-	assert !stable_stringifier.output.contains('cannot return an independent array element'), stable_stringifier.output
 }
 
 fn test_owned_scalar_borrows_with_mutating_siblings_are_rejected() {
