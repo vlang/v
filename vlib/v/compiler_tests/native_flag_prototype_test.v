@@ -1,15 +1,59 @@
 import os
 
-fn test_linker_object_inputs_keep_c_function_prototypes() {
+fn test_linker_inputs_keep_c_function_prototypes() {
 	root := os.join_path(os.vtmp_dir(), 'linker_object_flag_prototypes_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'helper.c')
 	object := os.join_path(root, 'helper.o')
-	os.write_file(source, 'int native_flag_value(void) { return 73; }\n')!
+	os.write_file(source, 'int native_object_value(void) { return 73; }\n')!
 	compiled := os.exec(['cc', '-c', source, '-o', object])
 	assert compiled.exit_code == 0, compiled.output
-	compile_and_run_native_flag(root, 'linker_object', '-Wl,@DIR/helper.o')
+
+	$if macos {
+		// Keep the archive's module-level linkage away from the object binding.
+		archive_root := os.join_path(root, 'archive_case')
+		os.mkdir(archive_root)!
+		member_source := os.join_path(archive_root, 'member.c')
+		member_object := os.join_path(archive_root, 'member.o')
+		archive := os.join_path(archive_root, 'helper.a')
+		os.write_file(member_source, 'int native_archive_value(void) { return 74; }\n')!
+		member_build := os.exec(['cc', '-c', member_source, '-o', member_object])
+		assert member_build.exit_code == 0, member_build.output
+		archived := os.exec(['ar', 'rcs', archive, member_object])
+		assert archived.exit_code == 0, archived.output
+		os.write_file(os.join_path(archive_root, 'archive_case.v'), 'module archive_case
+
+#flag -Wl,-force_load,@DIR/helper.a
+fn C.native_archive_value() i32
+
+pub fn value() i32 {
+	return C.native_archive_value()
+}
+')!
+	}
+
+	output := compile_and_run_native_flag_program(root, 'linker_inputs', 'module main
+
+\$if macos {
+	import archive_case
+}
+
+#flag -Wl,@DIR/helper.o
+fn C.native_object_value() i32
+
+fn main() {
+	assert C.native_object_value() == 73
+	\$if macos {
+		assert archive_case.value() == 74
+	}
+}
+')
+	generated := os.read_file(output + '.c')!
+	assert generated.contains('i32 native_object_value(void);')
+	$if macos {
+		assert generated.contains('i32 native_archive_value(void);')
+	}
 }
 
 fn test_portable_c_keeps_prototypes_for_other_target_native_inputs() {
@@ -95,25 +139,6 @@ fn main() {
 	generated := os.read_file(output + '.c')!
 	assert generated.contains('i32 native_separate_value(void);')
 	assert generated.contains('i32 native_joined_value(void);')
-}
-
-fn test_force_loaded_archives_keep_c_function_prototypes() {
-	$if macos {
-		root := os.join_path(os.vtmp_dir(), 'force_load_flag_prototypes_${os.getpid()}')
-		os.mkdir_all(root)!
-		defer {
-			os.rmdir_all(root) or {}
-		}
-		source := os.join_path(root, 'helper.c')
-		object := os.join_path(root, 'helper.o')
-		archive := os.join_path(root, 'helper.a')
-		os.write_file(source, 'int native_flag_value(void) { return 73; }\n')!
-		compiled := os.exec(['cc', '-c', source, '-o', object])
-		assert compiled.exit_code == 0, compiled.output
-		archived := os.exec(['ar', 'rcs', archive, object])
-		assert archived.exit_code == 0, archived.output
-		compile_and_run_native_flag(root, 'force_load', '-Wl,-force_load,@DIR/helper.a')
-	}
 }
 
 fn compile_and_run_native_flag(root string, name string, flag string) {
