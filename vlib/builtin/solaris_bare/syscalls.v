@@ -498,7 +498,7 @@ $if !i386 {
 		return i64(rc)
 	}
 
-	$if freestanding {
+	$if freestanding && !v_bare_no_startup ? {
 		asm amd64 {
 			.pushsection .text
 			.globl _start

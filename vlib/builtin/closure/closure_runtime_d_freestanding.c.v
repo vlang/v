@@ -1,8 +1,6 @@
 @[has_globals]
 module closure
 
-import sync
-
 #include "@VEXEROOT/vlib/builtin/closure/closure_freestanding.h"
 
 fn C.v_closure_map(uint) voidptr
@@ -12,6 +10,8 @@ fn C.v_closure_flush_code(voidptr, uint)
 fn C.v_closure_map_static_templates(uint) voidptr
 
 $if (linux && !native && (amd64 || arm64)) || (macos && amd64) {
+	import sync
+
 	@[cinit]
 	__global g_closure_bare_once = sync.Mutex{}
 	@[cinit]

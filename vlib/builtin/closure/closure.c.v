@@ -856,6 +856,10 @@ fn closure_alloc() {
 
 // closure_init initializes global closure subsystem(INTERNAL COMPILER USE ONLY).
 fn closure_init() {
+	$if freestanding && (freebsd || netbsd || dragonfly || solaris) {
+		// These targets have no trampoline mapping. Defer initialization until a closure is used.
+		return
+	}
 	closure_ensure_initialized()
 }
 

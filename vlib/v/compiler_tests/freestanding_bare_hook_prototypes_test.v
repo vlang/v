@@ -69,7 +69,7 @@ fn test_syscalls_uses_target_write_without_exporting_standalone_allocators() ! {
 	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "fn main() { eprintln('hello') }")!
-	for target in ['freebsd', 'macos'] {
+	for target in ['freebsd', 'netbsd', 'dragonfly', 'solaris', 'macos'] {
 		c_file := os.join_path(root, '${target}.c')
 		result := os.exec([bare_hook_vexe, '-new-compiler', '-syscalls', '-gc', 'none', '-os',
 			target, '-arch', 'amd64', '-o', c_file, src])
@@ -78,5 +78,38 @@ fn test_syscalls_uses_target_write_without_exporting_standalone_allocators() ! {
 		assert source.contains('bf_write(2, buffer'), target
 		assert !source.contains('sys_write(2, buffer'), target
 		assert !source.contains('init_global_allocator();'), target
+		assert !source.contains('.globl _start'), target
+	}
+}
+
+fn test_freebsd_syscalls_links_with_system_startup_and_allocator() ! {
+	$if freebsd && (amd64 || arm64) {
+		root := os.join_path(os.vtmp_dir(), 'freebsd_syscalls_startup_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		src := os.join_path(root, 'main.c.v')
+		os.write_file(src, "module main
+
+#include <stdlib.h>
+
+fn C.posix_memalign(&voidptr, uint, uint) i32
+
+fn main() {
+	mut block := voidptr(0)
+	if C.posix_memalign(&block, 64, 129) != 0 || block == unsafe { nil } || uint(block) % 64 != 0 {
+		exit(1)
+	}
+	unsafe { C.free(block) }
+	println('aligned allocation ok')
+}
+")!
+		for mode in ['-syscalls', '-bare'] {
+			exe := os.join_path(root, 'probe')
+			result := os.exec([bare_hook_vexe, '-new-compiler', '-no-retry-compilation', '-cc',
+				'cc', '-gc', 'none', mode, '-o', exe, src])
+			assert result.exit_code == 0, result.output
+			run := os.exec([exe])
+			assert run.exit_code == 0 && run.output.trim_space() == 'aligned allocation ok', run.output
+		}
 	}
 }

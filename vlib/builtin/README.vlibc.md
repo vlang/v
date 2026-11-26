@@ -194,10 +194,13 @@ per-thread/per-CPU state and does not opt into this user-space ELF TLS setup.
 `-syscalls`, or its alias `-bare`, selects the freestanding V runtime with libc available to C code.
 Both `syscalls` and `freestanding` compile-time conditions are true. V printing and OS operations
 use the bare kernel routes; `input_character()` and `os.get_raw_line()` read the raw descriptor.
-Libc supplies startup, ELF TLS, pthreads, and C stdio. With the default manual allocator,
-V and C share an allocation domain. V aligned allocations accept power-of-two alignments
-starting at 1 and arbitrary positive sizes. Small alignments use malloc's guarantee and
-larger ones use posix_memalign. Both work with ordinary C/V free and realloc.
+Libc supplies startup, ELF TLS, pthreads, and C stdio. On FreeBSD, the system startup object
+provides the executable entry point and the system libc provides `posix_memalign` and `free`.
+With the default manual allocator, V and C share an allocation domain. V aligned allocations
+accept power-of-two alignments starting at 1 and arbitrary positive sizes. Small alignments use
+malloc's guarantee and larger ones use posix_memalign. Both work with ordinary C/V free and realloc.
+Freestanding FreeBSD programs can run without closures. Capturing closures require executable
+trampoline storage, which the FreeBSD freestanding runtime does not implement.
 With explicit Boehm collection, V allocations belong to the collector and C allocations
 belong to the selected C runtime.
 

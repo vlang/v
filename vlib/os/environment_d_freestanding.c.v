@@ -1,8 +1,6 @@
 @[has_globals]
 module os
 
-import sync
-
 fn C.clearenv() i32
 
 $if linux && (amd64 || arm64) && (!v_bare_no_startup ?|| v_bare_shim_environment ?) {
@@ -14,6 +12,8 @@ fn C.v_freestanding_environment_unlock()
 fn C.v_freestanding_environment_get_locked(const_name &char) &char
 
 $if (linux || (macos && amd64)) && !native && !i386 {
+	import sync
+
 	// One allocation owns each changed entry, including its two borrowed string
 	// views. Startup entries remain in the kernel-provided argument block.
 	struct FSysEnvironmentEntry {

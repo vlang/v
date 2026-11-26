@@ -198,6 +198,7 @@ $if !i386 {
 		return i64(rc_in), VlibcErrno.enoerror
 	}
 
+	// FreeBSD/amd64 clears r8, r9 and r10 when returning to userspace.
 	fn sys_call0(scn u64) (u64, u64) {
 		mut res := u64(0)
 		mut err := u64(0)
@@ -234,6 +235,9 @@ $if !i386 {
 				; rax
 				  rdx
 				  rcx
+				  r8
+				  r9
+				  r10
 				  r11
 				  cc
 				  memory
@@ -285,6 +289,9 @@ $if !i386 {
 				; rax
 				  rdx
 				  rcx
+				  r8
+				  r9
+				  r10
 				  r11
 				  cc
 				  memory
@@ -332,6 +339,9 @@ $if !i386 {
 				; rax
 				  rdx
 				  rcx
+				  r8
+				  r9
+				  r10
 				  r11
 				  cc
 				  memory
@@ -382,6 +392,9 @@ $if !i386 {
 				; rax
 				  rdx
 				  rcx
+				  r8
+				  r9
+				  r10
 				  r11
 				  cc
 				  memory
@@ -437,6 +450,9 @@ $if !i386 {
 				; rax
 				  rdx
 				  rcx
+				  r8
+				  r9
+				  r10
 				  r11
 				  cc
 				  memory
@@ -497,6 +513,8 @@ $if !i386 {
 				; rax
 				  rdx
 				  rcx
+				  r8
+				  r9
 				  r10
 				  r11
 				  cc
@@ -563,9 +581,10 @@ $if !i386 {
 				; rax
 				  rdx
 				  rcx
+				  r8
+				  r9
 				  r10
 				  r11
-				  r8
 				  cc
 				  memory
 			}
@@ -635,10 +654,10 @@ $if !i386 {
 				; rax
 				  rdx
 				  rcx
-				  r10
-				  r11
 				  r8
 				  r9
+				  r10
+				  r11
 				  cc
 				  memory
 			}
@@ -646,7 +665,7 @@ $if !i386 {
 		return res, err
 	}
 
-	$if freestanding {
+	$if freestanding && !v_bare_no_startup ? {
 		// _start is the process entry point. FreeBSD's exec_setregs passes the
 		// address of argc (followed by argv, envp, ...) in rdi/x0 and only aligns
 		// the stack pointer like a call frame (rsp % 16 == 8), so argc is not
