@@ -139,17 +139,6 @@ fn fn_value_check_shadow_rejections(fixture_dir string, cases map[string]string)
 	}
 }
 
-fn fn_value_gen_project_c(fixture_dir string, name string, files map[string]string) string {
-	root := fn_value_write_project(fixture_dir, name, files)
-	c_path := os.join_path(fixture_dir, 'v3_${name}.c')
-	os.rm(c_path) or {}
-	main_path := os.join_path(root, 'main.v')
-	compile := os.exec([@VEXE, main_path, '-b', 'c', '-o', c_path])
-	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
-	assert os.exists(c_path), '${name}: missing generated C file ${c_path}'
-	return os.read_file(c_path) or { panic(err) }
-}
-
 fn imported_fn_value_project_files() map[string]string {
 	return {
 		'v.mod':           "Module { name: 'fn_value_imported' }\n"
@@ -515,8 +504,6 @@ fn main() {
 			expected: '7'
 		},
 	])
-	assert fn_value_run_project_good(fixture_dir, 'fn_value_imported_selector_local',
-		imported_fn_value_project_files()) == 'imported-ok'
 }
 
 fn test_imported_generic_fn_alias_keeps_parameters() {
@@ -763,9 +750,14 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 		local_fn_call_shadow_global_return_src)
 	assert shadow_call_c.contains('i64 x ='), shadow_call_c
 	assert !shadow_call_c.contains('string x ='), shadow_call_c
+}
 
-	imported_c := fn_value_gen_project_c(fixture_dir, 'fn_value_imported_selector_local_c',
+fn test_imported_fn_values_keep_callable_types() {
+	fixture_dir := fn_value_new_fixture_dir()
+	defer { os.rmdir_all(fixture_dir) or {} }
+	bin := fn_value_compile_good_project(fixture_dir, 'fn_value_imported_selector_local',
 		imported_fn_value_project_files())
+	imported_c := os.read_file(bin + '.c') or { panic(err) }
 	assert !imported_c.contains('i64 f = worker__inc'), imported_c
 	assert !imported_c.contains('i64 loader = worker__read_ok'), imported_c
 	assert !imported_c.contains(' f = main__inc'), imported_c
@@ -775,6 +767,9 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	assert imported_c.contains('f = worker__dec'), imported_c
 	assert imported_c.contains(' loader = worker__read_ok'), imported_c
 	assert imported_c.contains('loader = worker__read_other'), imported_c
+	run := os.exec([bin])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'imported-ok', run.output
 }
 
 fn test_shadowed_fn_value_calls_use_bound_callable_types() {
