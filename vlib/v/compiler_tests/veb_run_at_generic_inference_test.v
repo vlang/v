@@ -84,7 +84,7 @@ fn check_body_only_type() {
 	}
 }
 
-fn test_veb_run_at_with_explicit_types_preserves_errors_and_handler_response() {
+fn test_veb_run_at_response_and_generic_inference() {
 	source := veb_run_at_source.replace('import veb', 'import veb\nimport net.http\nimport os')
 		.replace('veb.run_at(mut p, port: 8080)!', '
 	// Compile the valid-port call with result propagation. The test runs without arguments.
@@ -92,6 +92,7 @@ fn test_veb_run_at_with_explicit_types_preserves_errors_and_handler_response() {
 		veb.run_at[Program, Context](mut p, port: 8080)!
 		return
 	}
+	check_generic_inference()
 	veb.run_at[Program, Context](mut p, port: 0) or {
 		assert err.msg() == "invalid port number `0`, it should be between 1 and 65535"
 		mut ctx := Context{}
@@ -100,23 +101,15 @@ fn test_veb_run_at_with_explicit_types_preserves_errors_and_handler_response() {
 		response := veb.render_request[Program, Context](mut p, http.Request{url: "/"})!
 		assert response.res.status_code == 200
 		assert response.res.body == "hello"
-		println("ok")
+		println("response ok")
 		return
 	}
 	panic("expected an invalid port error")')
 	root := veb_run_at_project('response', source)!
 	defer { os.rmdir_all(root) or {} }
-	program := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
-	compile := os.exec([@VEXE, '-nocache', '-o', program, root])
-	assert compile.exit_code == 0, compile.output
-	assert os.is_file(program), compile.output
-	result := os.exec([program])
-	assert result.exit_code == 0, result.output
-	assert result.output.trim_space() == 'ok', result.output
-}
+	os.write_file(os.join_path(root, 'inference.v'), 'module main
 
-fn test_generic_return_and_constraint_inference_still_work() {
-	root := veb_run_at_project('inference_sources', 'import arrays
+import arrays
 
 interface Container[T] {
 	get() T
@@ -134,7 +127,7 @@ fn make_default[T](_ int) T {
 fn make_box[C Container[T], T](_ int) C {
 	return C{}
 }
-fn main() {
+fn check_generic_inference() {
 	assert arrays.uniq([1, 1, 2]) == [1, 2]
 	assert (arrays.min([3, 1, 2]) or { panic(err) }) == 1
 	assert read(Box{}) == 7
@@ -144,11 +137,14 @@ fn main() {
 	mut value := 1
 	value = make_default(0)
 	assert value == 0
-	println("ok")
+	println("inference ok")
 }
 ')!
-	defer { os.rmdir_all(root) or {} }
-	result := os.exec([@VEXE, '-nocache', 'run', root])
+	program := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
+	compile := os.exec([@VEXE, '-nocache', '-o', program, root])
+	assert compile.exit_code == 0, compile.output
+	assert os.is_file(program), compile.output
+	result := os.exec([program])
 	assert result.exit_code == 0, result.output
-	assert result.output.trim_space() == 'ok', result.output
+	assert result.output.split_into_lines() == ['inference ok', 'response ok'], result.output
 }
