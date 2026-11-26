@@ -521,13 +521,61 @@ is scalar. It can call the atomic operations directly on that reference, includi
 through a field of the inline worker struct. The handle's binding must outlive the
 join, and the worker cannot pass the reference to another function or store it.
 
+Scoped workers can borrow `sync.arc.Mutex[T]` when `T` satisfies
+`sync.thread.Transferable`. Use `update` or `update_with` directly on the
+reference. For example, several workers can update a mutex protecting a
+statistics record, and the caller can read the record after the deferred join.
+
+Several scoped workers can also take `&state` when `state` is an immutable local
+struct containing scalar values and supported atomic or mutex handles. In the
+worker, copy scalar fields into locals and call the supported operations directly
+on the handle fields. The worker's join must run before the record goes out of
+scope. The checker keeps the record borrowed until the join.
+
 Use `thread.new_scoped_mut_callback` to box a callback whose state contains those scoped borrows.
-Spawn `thread.invoke_scoped_mut_callback` with the constructor inline or with an immutable
-callback declared immediately before the spawn. The invocation owns the box and releases it
-in the worker. The deferred wait keeps the borrowed data alive through both the call and cleanup.
-Multiple joined workers can borrow the same atomic through callbacks in either form.
+Spawn `thread.invoke_scoped_mut_callback` to call and release the box in one operation.
+A custom worker can take the box by value, move it to a mutable local, and use
+`callback.call(arg)` repeatedly. It can also pass a mutable borrow to a checked helper.
+The checker follows source functions and methods on concrete parameters to verify these
+uses. The deferred wait keeps the borrowed data alive through the calls and cleanup.
+
+Pass the constructor inline or bind its result in the same block as the spawn. The caller
+can invoke or lend the callback to a checked helper before moving it into the worker.
+
+An immutable callback declaration immediately before a checked spawn lets multiple
+joined workers borrow the same atomic through named callbacks.
 The checker verifies every use of a borrowed field in the callback's `call` method and destructor.
 The constructor rejects `-autofree` because that mode preserves caller aliases when values move.
+
+Callback state may borrow a synchronized record through a reference field. In `call` and
+the destructor, copy scalar fields into locals and use the supported atomic and mutex
+operations directly on the record's handle fields. The record stays borrowed until the join.
+
+A concrete factory method may also return the callback. The method must directly return a
+fresh box built from an inline state initializer. Borrowed fields must come from reference
+fields of its receiver. The worker's join keeps that receiver alive and prevents its use
+while the callback runs.
+
+An interface method can promise this factory behavior by
+returning a `ScopedMutCallback` for a named lifetime of its receiver. The compiler checks
+every concrete implementation when it is used as that interface. Within a checked
+thread group, the method can create fresh callbacks from the same factory while
+earlier callbacks are still running. Other access to the factory waits for the join.
+
+The method may take one transferable value by value and move it directly into one
+field of the callback. This lets the caller take a job from a separate pool before
+creating the visitor. The job moves with the callback and the borrow stays tied to
+the factory receiver.
+
+A factory interface may name a type parameter for that value. A generic walker can
+declare the parameter as `thread.Transferable` and use the same factory interface for
+different job types. Each concrete implementation still has to satisfy the factory contract.
+
+A mutable factory method can initialize owned visitor state with the builtin `pop()` on
+a mutable array field. The callback may borrow atomics, mutexes, or records containing
+those handles. The checker examines nested pool storage and rejects opaque fields and
+reachable atomics. For a callback that can access a borrowed mutex, the pool must
+also exclude reachable mutexes. Each call moves the popped element into the visitor.
 
 ## Full example
 
