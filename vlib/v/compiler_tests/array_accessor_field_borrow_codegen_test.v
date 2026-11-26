@@ -517,10 +517,9 @@ fn assert_independent_array_element_errors(compile os.Result, locations []string
 	assert ownership_error_lines(compile) == locations.map(independent_array_element_error_at(it, 'E')), compile.output
 }
 
-fn test_owned_string_interpolation_rejects_mutating_stringifiers() {
+fn test_owned_string_consumers_reject_mutating_overloads() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	// Diagnostic locations include the Drop interface prepended to each fixture.
-	stringifiers := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_mutating_stringifiers', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_consumers_with_mutating_overloads', "struct E {
 	name string
 }
 
@@ -582,17 +581,53 @@ fn check_alias_stringifier() {
 	println(last_label())
 }
 
+fn (left Mutator) + (right Mutator) string {
+	_ = left
+	_ = right
+	entries.delete_last()
+	return 'hello'
+}
+
+fn last_name_matches_with_infix(left Mutator, right Mutator) bool {
+	return entries.last().name == (left + right)
+}
+
+fn (Mutator) [] (index int) string {
+	_ = index
+	entries.delete_last()
+	return 'hello'
+}
+
+fn last_name_matches_with_index(mutator Mutator) bool {
+	return entries.last().name == mutator[0]
+}
+
+fn check_infix() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_matches_with_infix(Mutator{}, Mutator{}))
+}
+
+fn check_index() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_matches_with_index(Mutator{}))
+}
+
 fn main() {
 	check_stringifier()
 	check_nested_stringifier()
 	check_alias_stringifier()
+	check_infix()
+	check_index()
 }
 ", '-enable-globals -nocolor')
-	assert ownership_error_lines(stringifiers) == [
+	// Locations include the prepended Drop interface.
+	assert ownership_error_lines(compile) == [
 		independent_array_element_error_at('20:12', 'E'),
 		independent_array_element_error_at('28:12', 'E'),
 		independent_array_element_error_at('58:12', 'AliasEntry'),
-	], stringifiers.output
+		independent_array_element_error_at('76:9', 'E'),
+		independent_array_element_error_at('86:9', 'E'),
+	], compile.output
 }
 
 fn test_owned_scalar_borrows_with_mutating_siblings_are_rejected() {
@@ -702,56 +737,6 @@ fn main() {
 ", '-nocolor')
 	// Locations include the prepended Drop interface.
 	assert_independent_array_element_errors(compile, ['19:9', '27:9'])
-}
-
-fn test_owned_string_comparison_with_overloaded_siblings_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	overloaded := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_comparison_mutating_operator_siblings', "struct E {
-	name string
-}
-
-struct Mutator {}
-
-__global entries []E
-
-fn (left Mutator) + (right Mutator) string {
-	_ = left
-	_ = right
-	entries.delete_last()
-	return 'hello'
-}
-
-fn last_name_matches_with_infix(left Mutator, right Mutator) bool {
-	return entries.last().name == (left + right)
-}
-
-fn (Mutator) [] (index int) string {
-	_ = index
-	entries.delete_last()
-	return 'hello'
-}
-
-fn last_name_matches_with_index(mutator Mutator) bool {
-	return entries.last().name == mutator[0]
-}
-
-fn check_infix() {
-	entries = [E{ name: 'hello' }]
-	println(last_name_matches_with_infix(Mutator{}, Mutator{}))
-}
-
-fn check_index() {
-	entries = [E{ name: 'hello' }]
-	println(last_name_matches_with_index(Mutator{}))
-}
-
-fn main() {
-	check_infix()
-	check_index()
-}
-", '-enable-globals -nocolor')
-	// Locations include the prepended Drop interface.
-	assert_independent_array_element_errors(overloaded, ['22:9', '32:9'])
 }
 
 fn test_owned_aggregate_and_interface_comparisons_reject_mutating_overloads() {
