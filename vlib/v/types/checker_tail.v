@@ -17524,6 +17524,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		mut compatible_interface_value_arg := false
 		mut mutable_interface_impl_arg := false
 		if expected_interface := cast_target_interface(clean_expected_for_interface) {
+			$if ownership ? {
+				if tc.unsafe_depth == 0 && fn_param_is_voidptr_type(actual)
+					&& tc.ownership_scoped_factory_interface(expected_interface.name_id) {
+					tc.record_error(.thread_transfer, 'cannot use a raw pointer as a scoped callback factory', arg_id)
+					continue
+				}
+			}
 			allow_mut_receiver := param_is_mut && mut_arg_node.is_mut
 			// A raw pointer is an explicit escape hatch for interface reference
 			// parameters; it does not describe a concrete interface implementer.
