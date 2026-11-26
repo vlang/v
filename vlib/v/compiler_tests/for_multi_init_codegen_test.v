@@ -381,46 +381,28 @@ fn main() {
 	}
 }
 
-fn test_c_style_for_multi_init_allows_multi_return_call() {
+fn test_c_style_for_assigns_multiple_values_in_init_and_post() {
 	root := for_multi_init_fixture_dir()
 	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_multi_init_pair.v')
+	src := os.join_path(root, 'v3_for_multi_assign.v')
 	os.write_file(src, 'fn pair() (int, int) {
 	return 1, 2
 }
 
-fn main() {
+fn check_init_call() {
 	mut total := 0
 	for a, b := pair(); a == 1; {
 		total = a + b
 		break
 	}
 	assert total == 3
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_for_multi_init_pair')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
 }
 
-fn test_c_style_for_post_allows_multi_return_call() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_post_pair.v')
-	os.write_file(src, 'fn step(a int, b int) (int, int) {
+fn step(a int, b int) (int, int) {
 	return a + 1, b + 2
 }
 
-fn main() {
+fn check_post_call() {
 	mut a := 0
 	mut b := 0
 	mut n := 0
@@ -432,13 +414,38 @@ fn main() {
 	}
 	assert a == 3
 	assert b == 6
+}
+
+struct Pair {
+mut:
+	x int
+	y int
+}
+
+fn check_init_selectors() {
+	mut a := Pair{}
+	mut total := 0
+	for a.x, a.y = 0, 1; a.x < 3; {
+		total += a.x + a.y
+		a.x += 1
+		a.y += 2
+	}
+	assert total == 12
+	assert a.x == 3
+	assert a.y == 7
+}
+
+fn main() {
+	check_init_call()
+	check_post_call()
+	check_init_selectors()
 	println("ok")
 }
 ') or {
 		panic(err)
 	}
 
-	bin := os.join_path(root, 'v3_for_post_pair')
+	bin := os.join_path(root, 'v3_for_multi_assign')
 	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -562,43 +569,6 @@ fn main() {
 		return
 	}
 	assert label_idx < step_idx, post_tail
-}
-
-fn test_c_style_for_multi_init_allows_selector_lhs_after_comma() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_multi_init_selector_lhs.v')
-	os.write_file(src, 'struct Pair {
-mut:
-	x int
-	y int
-}
-
-fn main() {
-	mut a := Pair{}
-	mut total := 0
-	for a.x, a.y = 0, 1; a.x < 3; {
-		total += a.x + a.y
-		a.x += 1
-		a.y += 2
-	}
-	assert total == 12
-	assert a.x == 3
-	assert a.y == 7
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_for_multi_init_selector_lhs')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
 }
 
 fn test_for_in_rejects_selector_value_var_after_comma() {
