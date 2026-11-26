@@ -69,7 +69,7 @@ fn run_no_generic_error(fixture_dir string, name string, src string) {
 	assert !result.output.contains('unsupported generic'), '${name}: should not reject generics without -selfhost, got: ${result.output}'
 }
 
-fn run_generics_codegen_batch(fixture_dir string, cases map[string]string) {
+fn run_generics_codegen_batch(fixture_dir string, cases map[string]string, main_source string) string {
 	root := os.join_path(fixture_dir, 'codegen_batch')
 	names := cases.keys()
 	mut imports := []string{cap: names.len}
@@ -82,7 +82,8 @@ fn run_generics_codegen_batch(fixture_dir string, cases map[string]string) {
 		write_generics_project_file(root, '${module_name}/v3_gen_${name}.v', fixture.replace_once('\nfn main()',
 			'\npub fn exercise()'))
 	}
-	write_generics_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')
+	main_with_calls := main_source.replace_once('\nfn main() {\n', '\nfn main() {\n${calls.join('\n')}\n')
+	write_generics_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n' + main_with_calls)
 	c_file := os.join_path(root, 'program.c')
 	compile := os.exec([@VEXE, '-b', 'c', '-o', c_file, os.join_path(root, 'main.v')])
 	assert compile.exit_code == 0, compile.output
@@ -92,6 +93,7 @@ fn run_generics_codegen_batch(fixture_dir string, cases map[string]string) {
 	for i, name in names {
 		assert c_content.contains('void fixture_${i}__exercise(void) {'), '${name}: missing generated C function body'
 	}
+	return c_content
 }
 
 fn test_explicit_main_generic_arg_survives_imported_call_rewrite() {
@@ -410,7 +412,7 @@ interface Container[T] {
 }
 fn main() {}
 '
-	})
+	}, '\nfn main() {\n}\n')
 
 	// generic type in params/fields/returns
 	run_no_generic_error(fixture_dir, 'allow_generic_type_app', '
@@ -424,7 +426,7 @@ fn test_generics_compile_and_run() {
 	fixture_dir := new_generics_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
 
-	run_generics_codegen_batch(fixture_dir, {
+	c_content := run_generics_codegen_batch(fixture_dir, {
 		// identity function with int and string
 		'run_id_fn':                     '
 fn id[T](x T) T {
@@ -486,12 +488,7 @@ fn main() {
 	println(length([1, 2, 3]))
 }
 '
-	})
-
-	// A one-letter concrete type argument should not be treated as an unresolved
-	// generic placeholder when discovering struct specializations.
-	one_letter_src := os.join_path(fixture_dir, 'v3_gen_one_letter_concrete_arg.v')
-	os.write_file(one_letter_src, '
+	}, '
 struct A {
 	value int
 }
@@ -508,17 +505,9 @@ fn main() {
 	}
 	_ := b
 }
-') or {
-		panic(err)
-	}
-	one_letter_c_path := os.join_path(fixture_dir, 'v3_gen_one_letter_concrete_arg.c')
-	one_letter_compile := os.exec([@VEXE, '-b', 'c', '-o', one_letter_c_path, one_letter_src])
-	assert one_letter_compile.exit_code == 0, one_letter_compile.output
-	assert !one_letter_compile.output.contains('unsupported generic'), one_letter_compile.output
-	assert !one_letter_compile.output.contains('type checker found'), one_letter_compile.output
-	one_letter_c := os.read_file(one_letter_c_path) or { panic(err) }
-	// Generic struct instances declared in main use the `main__` C namespace.
-	assert one_letter_c.contains('struct main__Box_A'), one_letter_c
+')
+	// Keep the one-letter concrete argument in main's namespace.
+	assert c_content.contains('struct main__Box_A'), c_content
 
 	root := os.join_path(fixture_dir, 'runtime_batch')
 	write_generics_project_file(root, 'selector_infer/v3_gen_selector_method_arg_infer.v', 'module selector_infer
