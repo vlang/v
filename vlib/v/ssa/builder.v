@@ -10553,10 +10553,69 @@ fn (mut b Builder) build_index_assign(node flat.Node) {
 }
 
 fn (b &Builder) is_dynamic_array_lvalue(base_id flat.NodeId) bool {
-	type_name := b.checked_expr_type_name(base_id)
+	mut type_id := base_id
+	mut node := b.a.nodes[int(type_id)]
+	for node.kind == .paren && node.children_count > 0 {
+		type_id = b.a.child(&node, 0)
+		node = b.a.nodes[int(type_id)]
+	}
+	type_name := b.checked_expr_type_name(type_id)
 	shape := flat.source_type_shape(type_name)
 	return shape.has(.array_type) && !shape.has(.map_type)
 		&& !b.is_fixed_array_type_name(type_name) && b.is_addressable_array_storage(base_id)
+}
+
+fn (b &Builder) should_refresh_array_lvalue_after_rhs(id flat.NodeId) bool {
+	if !b.is_dynamic_array_lvalue(id) {
+		return false
+	}
+	mut current_id := id
+	mut node := b.a.nodes[int(current_id)]
+	for node.kind == .paren && node.children_count > 0 {
+		current_id = b.a.child(&node, 0)
+		node = b.a.nodes[int(current_id)]
+	}
+	match node.kind {
+		.prefix {
+			return node.op == .mul
+		}
+		.selector {
+			return b.has_stable_array_selector_root(b.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut b Builder) refresh_array_lvalue_base_after_rhs(base_id flat.NodeId, mut cached map[int]ValueID) {
+	cached.delete(int(base_id))
+	old_values := b.lvalue_expr_values
+	b.lvalue_expr_values = cached
+	cached[int(base_id)] = b.build_expr(base_id)
+	b.lvalue_expr_values = old_values
+}
+
+fn (b &Builder) has_stable_array_selector_root(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= b.a.nodes.len {
+		return false
+	}
+	node := b.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return true
+		}
+		.paren, .selector {
+			return node.children_count > 0
+				&& b.has_stable_array_selector_root(b.a.child(&node, 0))
+		}
+		.prefix {
+			return node.op == .mul
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (b &Builder) is_addressable_array_storage(id flat.NodeId) bool {
@@ -10593,8 +10652,16 @@ fn (b &Builder) is_addressable_array_storage(id flat.NodeId) bool {
 
 fn (mut b Builder) build_dynamic_array_index_assign(assign_node flat.Node, lhs_id flat.NodeId, lhs flat.Node, rhs_id flat.NodeId) {
 	b.check_wide_integer_index(lhs)
+	base_id := b.a.child(&lhs, 0)
 	mut cached_expr_values := map[int]ValueID{}
 	b.capture_lvalue_expr_values(lhs_id, lhs_id, mut cached_expr_values)
+	refresh_base_after_rhs := b.should_refresh_array_lvalue_after_rhs(base_id)
+	if refresh_base_after_rhs {
+		old_values := b.lvalue_expr_values
+		b.lvalue_expr_values = cached_expr_values
+		cached_expr_values[int(base_id)] = b.build_expr(base_id)
+		b.lvalue_expr_values = old_values
+	}
 	old_expr_values := b.lvalue_expr_values
 	if assign_node.op != .assign {
 		b.lvalue_expr_values = cached_expr_values
@@ -10605,6 +10672,9 @@ fn (mut b Builder) build_dynamic_array_index_assign(assign_node flat.Node, lhs_i
 		rhs_value = b.coerce_flag_enum_assign_rhs(lhs_id, assign_node.op, rhs_id, rhs_value)
 		result := b.build_compound_assign_value(assign_node.op, current, rhs_value,
 			b.checked_expr_type_name(lhs_id))
+		if refresh_base_after_rhs {
+			b.refresh_array_lvalue_base_after_rhs(base_id, mut cached_expr_values)
+		}
 		b.lvalue_expr_values = cached_expr_values
 		addr_after := b.build_lvalue_addr(lhs_id)
 		b.lvalue_expr_values = old_expr_values
@@ -10612,6 +10682,9 @@ fn (mut b Builder) build_dynamic_array_index_assign(assign_node flat.Node, lhs_i
 		return
 	}
 	result := b.build_expr(rhs_id)
+	if refresh_base_after_rhs {
+		b.refresh_array_lvalue_base_after_rhs(base_id, mut cached_expr_values)
+	}
 	b.lvalue_expr_values = cached_expr_values
 	addr_after := b.build_lvalue_addr(lhs_id)
 	b.lvalue_expr_values = old_expr_values

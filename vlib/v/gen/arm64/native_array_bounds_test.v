@@ -92,6 +92,16 @@ fn grow(mut values []int) int {
 	return 55
 }
 
+fn shrink(mut values []int) int {
+	values = values[..1]
+	return 55
+}
+
+fn switch_array_pointer(mut pointer &[]int, next &[]int) int {
+	pointer = next
+	return 55
+}
+
 fn grow_outer(mut matrix [][]int) int {
 	matrix[0] << 44
 	matrix << [40]
@@ -327,6 +337,41 @@ println(first.items.len.str() + ", " + first.items[3].str() + ", " + second.item
 			expected: '4, 55, 4'
 		}
 		run_native_array_bounds_case(root, case, []string{})
+	}
+}
+
+fn test_native_pointer_array_store_refreshes_after_rhs() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_pointer_array_store_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		grow_case := NativeArrayBoundsCase{
+			name:     'pointer_array_store_growth'
+			body:     'mut p := &[10, 20, 30]
+(*p)[3] = grow(mut *p)
+println(p.len.str() + " " + (*p)[3].str())'
+			expected: '4 55'
+		}
+		run_native_array_bounds_case(root, grow_case, []string{})
+		receiver_case := NativeArrayBoundsCase{
+			name:     'pointer_array_receiver_before_rhs'
+			body:     'mut first := [10, 20, 30, 40]
+mut second := [1, 2, 3, 4]
+mut p := &first
+(*p)[3] = switch_array_pointer(mut p, &second)
+println(first[3].str() + " " + second[3].str())'
+			expected: '55 4'
+		}
+		run_native_array_bounds_case(root, receiver_case, []string{})
+		shrink_case := NativeArrayBoundsCase{
+			name:     'pointer_array_store_shrink'
+			body:     'mut p := &[10, 20, 30]
+(*p)[2] = shrink(mut *p)
+println("store completed")'
+			expected: 'array.set: index out of range'
+			panics:   true
+		}
+		run_native_array_bounds_case(root, shrink_case, []string{})
 	}
 }
 
