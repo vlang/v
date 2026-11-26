@@ -49,6 +49,7 @@ struct BorrowInfo {
 	borrower    string
 	pos         flat.NodeId
 	is_mut      bool
+	read_only   bool
 	call_result bool
 }
 
@@ -2187,6 +2188,9 @@ fn (mut tc TypeChecker) ownership_note_binding(name string, typ Type, pos flat.N
 	mut st := tc.ownership_state()
 	st.moved_vars.delete(name)
 	source_id := tc.ownership_guard_source_for_binding(pos, name)
+	if unalias_type(typ) is Pointer && tc.ownership_mark_borrow_from_call_return(name, source_id, pos) {
+		return
+	}
 	source_name := tc.ownership_expr_ident_name(source_id)
 	// A guard binding `val := t[k]` copies the slot's value while sharing its heap storage, so
 	// note the alias; a later `&val` re-stored to `t[k]` then resolves back to that slot.
@@ -5185,7 +5189,7 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 			}
 			if recv_owned && info.params[0] !is Pointer
 				&& !tc.ownership_method_keeps_receiver(fn_node.value)
-				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value)
+				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value, info.name)
 				&& !tc.ownership_map_builtin_keeps_receiver(recv_id, fn_node.value)
 				&& !tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value) {
 				tc.ownership_mark_fn_param_owned(info.name, 0)
@@ -5194,7 +5198,7 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 			recv_name := tc.ownership_expr_ident_name(recv_id)
 			if recv_name.len > 0 && info.params[0] !is Pointer
 				&& !tc.ownership_method_keeps_receiver(fn_node.value)
-				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value)
+				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value, info.name)
 				&& !tc.ownership_map_builtin_keeps_receiver(recv_id, fn_node.value)
 				&& !tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value) {
 				tc.ownership_prescan_transfer_owned_descendants_to_param(recv_name, info.name, 0, mut owned_locals, local_types)
@@ -7313,15 +7317,19 @@ fn (mut tc TypeChecker) ownership_merge_branch_borrows(group OwnershipBranchGrou
 	mut st := tc.ownership_state()
 	for branch in group.branches {
 		for name, borrows in branch.borrowed_vars {
-			if name !in group.base.owned_vars && name !in group.base.borrowed_vars && !tc.ownership_storage_participates(name) {
-				continue
-			}
+			tracked_source := name in group.base.owned_vars || name in group.base.borrowed_vars
+				|| tc.ownership_storage_participates(name)
 			mut merged := st.borrowed_vars[name] or { []BorrowInfo{} }
 			for borrow in borrows {
+				// Immutable pointer parameters can lend read-only access even
+				// when their referents are owned outside this function.
+				if !tracked_source && !borrow.read_only {
+					continue
+				}
 				mut exists := false
 				for existing in merged {
 					if existing.borrower == borrow.borrower && existing.pos == borrow.pos
-						&& existing.is_mut == borrow.is_mut {
+						&& existing.is_mut == borrow.is_mut && existing.read_only == borrow.read_only {
 						exists = true
 						break
 					}
@@ -7932,6 +7940,9 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		}
 	}
 	rhs_name := tc.ownership_expr_ident_name(tc.ownership_sum_wrapped_value(rhs_id, lhs_type))
+	if lhs_name == rhs_name && unalias_type(lhs_type) is Pointer {
+		return
+	}
 	if lhs_name != rhs_name || !tc.sum_escape_has_pointer_variant(lhs_type) {
 		tc.ownership_release_borrower(lhs_name)
 	}
@@ -7952,7 +7963,11 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		st.owned_var_types.delete(lhs_name)
 		name := tc.ownership_borrowed_name(rhs_id)
 		if name.len > 0 {
-			tc.ownership_add_borrow(name, lhs_name, assign_id, false)
+			tc.ownership_add_borrow_info(name, BorrowInfo{
+				borrower:  lhs_name
+				pos:       assign_id
+				read_only: tc.ownership_expr_is_readonly_borrow(rhs_id)
+			})
 		}
 		return
 	}
@@ -7961,6 +7976,20 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	}
 	if tc.ownership_mark_borrow_from_call_return(lhs_name, rhs_id, assign_id) {
 		return
+	}
+	if unalias_type(lhs_type) is Pointer {
+		clean_rhs_id := tc.ownership_unwrap_expr(rhs_id)
+		if source_id := tc.immutable_reference_source(clean_rhs_id, tc.resolve_type(clean_rhs_id)) {
+			source := tc.ownership_expr_ident_name(source_id)
+			if source != '' {
+				tc.ownership_add_borrow_info(source, BorrowInfo{
+					borrower:  lhs_name
+					pos:       assign_id
+					read_only: true
+				})
+				return
+			}
+		}
 	}
 	if tc.ownership_method_value_clones_receiver(rhs_id) {
 		st.owned_vars.delete(lhs_name)
@@ -9357,7 +9386,11 @@ fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name strin
 	}
 	for alias in aliases {
 		suffix := alias.borrow.borrower[rhs_name.len..]
-		tc.ownership_add_borrow(alias.var_name, lhs_name + suffix, pos, alias.borrow.is_mut)
+		tc.ownership_add_borrow_info(alias.var_name, BorrowInfo{
+			...alias.borrow
+			borrower: lhs_name + suffix
+			pos:      pos
+		})
 	}
 	// Descendant loans follow an aggregate copy without replacing the ordinary
 	// ownership transfer of its other fields or its base value.
@@ -10174,7 +10207,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 				}
 			}
 			if !tc.ownership_method_keeps_receiver(fn_node.value)
-				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value)
+				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value, call_name)
 				&& !tc.ownership_map_builtin_keeps_receiver(recv_id, fn_node.value)
 				&& !tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value) {
 				if info.params[0] is Pointer {
@@ -10527,7 +10560,7 @@ fn (tc &TypeChecker) ownership_call_arg_reads_receiver_storage(node flat.Node, i
 	recv_id := tc.a.child(fn_node, 0)
 	receiver_is_retained := info.params[0] is Pointer
 		|| tc.ownership_method_keeps_receiver(fn_node.value)
-		|| tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value)
+		|| tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value, info.name)
 		|| tc.ownership_map_builtin_keeps_receiver(recv_id, fn_node.value)
 		|| tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value)
 	if !receiver_is_retained {
@@ -11739,21 +11772,7 @@ fn (mut tc TypeChecker) ownership_clear_removed_array_element_after_method(array
 	}
 }
 
-fn (mut tc TypeChecker) ownership_mark_borrow_from_call_return(lhs_name string, rhs_id flat.NodeId, pos flat.NodeId) bool {
-	call_id := tc.ownership_unwrap_expr(rhs_id)
-	if !tc.valid_node_id(call_id) {
-		return false
-	}
-	node := tc.a.nodes[int(call_id)]
-	if node.kind != .call {
-		return false
-	}
-	info := tc.resolve_call_info(call_id, node) or { return false }
-	return_type := tc.resolve_type(call_id)
-	if info.return_type !is Pointer && return_type !is Pointer {
-		return false
-	}
-	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(call_id) }
+fn (mut tc TypeChecker) ownership_return_loan_sources(call_name string, info CallInfo) []OwnershipReturnParamDescendant {
 	st := tc.ownership_state()
 	mut sources := []OwnershipReturnParamDescendant{}
 	for param_idx in st.ownership_fn_returns_param[call_name] {
@@ -11768,8 +11787,38 @@ fn (mut tc TypeChecker) ownership_mark_borrow_from_call_return(lhs_name string, 
 			sources << source
 		}
 	}
+	return sources
+}
+
+// The success value of an Option or Result can borrow the same origin.
+fn ownership_return_borrows_reference(typ Type) bool {
+	clean := unalias_type(typ)
+	payload := contextual_payload_type(clean) or { clean }
+	return unalias_type(payload) is Pointer
+}
+
+fn (mut tc TypeChecker) ownership_mark_borrow_from_call_return(lhs_name string, rhs_id flat.NodeId, pos flat.NodeId) bool {
+	mut call_id := tc.ownership_unwrap_expr(rhs_id)
+	if tc.valid_node_id(call_id) && tc.a.node(call_id).kind == .or_expr
+		&& tc.a.node(call_id).children_count > 0 {
+		call_id = tc.ownership_unwrap_expr(tc.a.child(tc.a.node(call_id), 0))
+	}
+	if !tc.valid_node_id(call_id) {
+		return false
+	}
+	node := tc.a.nodes[int(call_id)]
+	if node.kind != .call {
+		return false
+	}
+	info := tc.resolve_call_info(call_id, node) or { return false }
+	return_type := tc.resolve_type(call_id)
+	if !ownership_return_borrows_reference(info.return_type) && !ownership_return_borrows_reference(return_type) {
+		return false
+	}
+	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(call_id) }
+	st := tc.ownership_state()
 	mut marked := false
-	for source in sources {
+	for source in tc.ownership_return_loan_sources(call_name, info) {
 		param_idx := source.param_idx
 		arg := tc.ownership_call_arg_for_return_param_source_info(node, info, param_idx,
 			source.source_suffix) or { continue }
@@ -11791,10 +11840,12 @@ fn (mut tc TypeChecker) ownership_mark_borrow_from_call_return(lhs_name string, 
 		if st.borrowed_vars[borrower_source].any(it.borrower == lhs_name && it.pos == pos) {
 			continue
 		}
+		is_mut := tc.ownership_call_param_is_mut(call_name, param_idx)
 		tc.ownership_add_borrow_info(borrower_source, BorrowInfo{
 			borrower:    lhs_name
 			pos:         pos
-			is_mut:      tc.ownership_call_param_is_mut(call_name, param_idx)
+			is_mut:      is_mut
+			read_only:   !is_mut
 			call_result: true
 		})
 	}
@@ -12609,7 +12660,7 @@ fn (tc &TypeChecker) ownership_expr_moves_named_storage(source_id flat.NodeId, t
 		receiver_type := if params.len > 0 { params[0] } else { Type(void_) }
 		if (receiver_type !is Pointer || tc.ownership_call_returns_param(call_name, 0))
 			&& !tc.ownership_method_keeps_receiver(fn_node.value)
-			&& !tc.ownership_array_builtin_keeps_receiver(receiver_id, fn_node.value)
+			&& !tc.ownership_array_builtin_keeps_receiver(receiver_id, fn_node.value, call_name)
 			&& !tc.ownership_map_builtin_keeps_receiver(receiver_id, fn_node.value)
 			&& !tc.ownership_string_builtin_keeps_receiver(receiver_id, fn_node.value)
 			&& tc.ownership_expr_moves_named_storage(receiver_id, target) {
@@ -13631,6 +13682,48 @@ fn ownership_storage_keys_dynamic_overlap(pattern string, key string) bool {
 	return ownership_storage_keys_overlap(pattern_after, key_after)
 }
 
+// A mutable binding can rebind a reference, but cannot make its referent writable.
+fn (mut tc TypeChecker) ownership_reject_readonly_borrow_write(id flat.NodeId) bool {
+	if tc.autofree_mode || tc.unsafe_depth > 0 || tc.ownership_effects_disabled() {
+		return false
+	}
+	if !tc.ownership_expr_is_readonly_borrow(id) {
+		return false
+	}
+	tc.record_error(.assignment_mismatch, 'cannot modify through an immutable borrow', id)
+	return true
+}
+
+fn (mut tc TypeChecker) ownership_expr_is_readonly_borrow(id flat.NodeId) bool {
+	clean_id := tc.ownership_unwrap_expr(id)
+	node := tc.a.node(clean_id)
+	if node.children_count > 0 && (node.kind in [.selector, .index, .or_expr]
+		|| (node.kind == .prefix && node.op in [.amp, .mul])) {
+		if tc.ownership_expr_is_readonly_borrow(tc.a.child(node, 0)) {
+			return true
+		}
+	}
+	if node.kind == .call {
+		info := tc.resolve_call_info(clean_id, *node) or { return false }
+		if !ownership_return_borrows_reference(info.return_type)
+			&& !ownership_return_borrows_reference(tc.resolve_type(clean_id)) {
+			return false
+		}
+		call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(clean_id) }
+		return tc.ownership_return_loan_sources(call_name, info).any(!tc.ownership_call_param_is_mut(call_name, it.param_idx))
+	}
+	name := tc.ownership_expr_ident_name(clean_id)
+	if name == '' {
+		return false
+	}
+	for _, borrows in tc.ownership_state().borrowed_vars {
+		if borrows.any(it.read_only && it.borrower == name) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut tc TypeChecker) ownership_add_borrow(var_name string, borrower string, pos flat.NodeId, is_mut bool) {
 	tc.ownership_add_borrow_info(var_name, BorrowInfo{ borrower: borrower, pos: pos, is_mut: is_mut })
 }
@@ -14111,7 +14204,11 @@ fn (tc &TypeChecker) ownership_method_keeps_receiver(method_name string) bool {
 	return false
 }
 
-fn (tc &TypeChecker) ownership_array_builtin_keeps_receiver(recv_id flat.NodeId, method_name string) bool {
+fn (tc &TypeChecker) ownership_array_builtin_keeps_receiver(recv_id flat.NodeId, method_name string, call_name string) bool {
+	// The checker resolves bytestr directly because it is specific to byte arrays.
+	if call_name == 'array.bytestr' {
+		return true
+	}
 	if unalias_type(unwrap_pointer(tc.resolve_type(recv_id))) !is Array {
 		return false
 	}

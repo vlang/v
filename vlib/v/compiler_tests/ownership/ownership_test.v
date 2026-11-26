@@ -4452,6 +4452,202 @@ fn main() {
 	assert valid.exit_code == 0, valid.output
 }
 
+fn test_ownership_keeps_returned_readonly_references_readonly() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'readonly_returned_loan', r'
+import sync.arc
+
+struct Counter {
+mut:
+	value int
+}
+
+fn (mut c Counter) advance() {
+	c.value++
+}
+
+fn advance(mut c Counter) {
+	c.value++
+}
+
+fn main() {
+	mut owner := arc.new(Counter{})
+	mut borrowed := owner.get()
+	borrowed.advance()
+	advance(mut borrowed)
+	borrowed.value++
+	owner.get().advance()
+	mut alias := borrowed
+	alias.advance()
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.count('cannot modify through an immutable borrow') == 5, result.output
+
+	valid := run_ownership_check(v3_bin, 'writable_returned_loan', r'
+struct Counter {
+mut:
+	value int
+}
+
+struct Holder implements Drop {
+mut:
+	counter Counter
+}
+
+fn (mut holder Holder) drop() {}
+
+fn (mut holder ^a Holder) get[^a]() &^a Counter {
+	return &holder.counter
+}
+
+fn (mut c Counter) advance() {
+	c.value++
+}
+
+fn main() {
+	mut holder := Holder{}
+	{
+		mut counter := holder.get()
+		counter.advance()
+		counter.value++
+	}
+	mut direct := &holder.counter
+	direct.advance()
+	assert direct.value == 3
+}
+')
+	assert valid.exit_code == 0, valid.output
+}
+
+fn test_ownership_rejects_mutating_an_immutable_pointer_alias() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'readonly_pointer_alias', r'
+@[heap]
+struct Counter {
+mut:
+	value int
+}
+
+fn (mut c Counter) advance() {
+	c.value++
+}
+
+fn read(counter &Counter) {
+	mut alias := counter
+	alias.advance()
+}
+
+fn main() {
+	counter := Counter{}
+	read(&counter)
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot modify through an immutable borrow'), result.output
+}
+
+fn test_ownership_keeps_optional_returned_borrows_readonly() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'readonly_optional_loan', r'
+struct Counter {
+mut:
+	value int
+}
+struct Owner implements Drop {
+	counter Counter
+}
+fn (mut owner Owner) drop() {}
+fn (owner &^a Owner) get[^a]() ?&^a Counter {
+	return &owner.counter
+}
+fn (mut counter Counter) advance() {
+	counter.value++
+}
+fn main() {
+	mut owner := Owner{}
+	mut from_or := owner.get() or { panic("missing") }
+	from_or.advance()
+	if mut from_guard := owner.get() {
+		from_guard.advance()
+	}
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.count('cannot modify through an immutable borrow') == 2, result.output
+}
+
+fn test_ownership_bytestr_reads_borrowed_array() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'bytestr_readonly_receiver', r'
+struct Path implements Drop {
+	bytes []u8
+}
+fn (mut path Path) drop() {
+	drop_owned(path.bytes)
+}
+fn (path &^a Path) get[^a]() ?&^a Path {
+	return path
+}
+fn main() {
+	path := Path{bytes: [u8(65)]}
+	view := path.get() or { panic("missing") }
+	assert view.bytes.bytestr() == "A"
+	assert view.bytes.len == 1
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_ownership_refreshes_immutable_pointer_aliases_on_assignment() {
+	v3_bin := ownership_build_v3()
+	counter := r'
+@[heap]
+struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) advance() {
+	counter.value++
+}
+'
+	rebound := run_ownership_check(v3_bin, 'writable_pointer_rebind', counter + r'
+fn read(counter &Counter) {
+	mut alias := counter
+	assert alias.value == 0
+	alias = &Counter{}
+	alias.advance()
+	alias.value++
+	assert alias.value == 2
+}
+
+fn main() {
+	counter := Counter{}
+	read(&counter)
+	assert counter.value == 0
+}
+')
+	assert rebound.exit_code == 0, rebound.output
+
+	for assignment in ['alias = counter', 'if choose { alias = counter }'] {
+		reborrowed := run_ownership_check(v3_bin, 'readonly_pointer_rebind', counter + '
+fn read(counter &Counter, choose bool) {
+	mut alias := &Counter{}
+	${assignment}
+	alias.advance()
+}
+
+fn main() {
+	counter := Counter{}
+	read(&counter, true)
+}
+')
+		assert reborrowed.exit_code != 0, reborrowed.output
+		assert reborrowed.output.contains('cannot modify through an immutable borrow'), reborrowed.output
+	}
+}
+
 fn test_ownership_keeps_overlapping_alternative_origins_of_one_return() {
 	v3_bin := ownership_build_v3()
 	prefix := r'

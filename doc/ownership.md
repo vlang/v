@@ -401,6 +401,10 @@ remain available for mutation. When a method can return a reference from several
 places, assigning the reference keeps each possible source borrowed, including
 when the reference is assigned alongside another value.
 
+A returned reference retains the access of its source borrow. A mutable binding
+can be rebound, but it does not make an immutable borrow writable. A mutable
+call or a field assignment through that reference requires a mutable loan.
+
 ## Thread transfers
 
 An ownership build checks the arguments and result of a `spawn` or `go` call. The
