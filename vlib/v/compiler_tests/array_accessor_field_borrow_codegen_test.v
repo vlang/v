@@ -176,13 +176,7 @@ fn compile_v3_uncloneable_array_ownership_program(v3_bin string, name string, sr
 }
 
 // These consumers can borrow the element for the string field read.
-fn test_owned_string_consumers_borrow_array_elements() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_string_consumers', "struct E {
-	name string
-}
-
-struct T {
+const array_accessor_borrow_string_consumers_src = "struct T {
 mut:
 	entries []E
 }
@@ -192,18 +186,13 @@ fn (t &T) last_name() string {
 	return t.entries.last().name.clone()
 }
 
-struct SizedEntry {
-	name string
-	size int
-}
-
-struct SizedTable {
+struct StringSizedTable {
 mut:
 	entries []SizedEntry
 }
 
 // Only the length leaves this field chain.
-fn (t &SizedTable) last_name_len() int {
+fn (t &StringSizedTable) last_name_len() int {
 	return t.entries.last().name.len
 }
 
@@ -224,7 +213,7 @@ fn check_clone() {
 }
 
 fn check_length() {
-	mut t := SizedTable{}
+	mut t := StringSizedTable{}
 	t.entries << SizedEntry{ name: 'hello', size: 5 }
 	println(int_str(t.last_name_len()))
 }
@@ -312,7 +301,7 @@ fn check_auto_stringifier() {
 	println(last_name_then_stringify(entries, Stable{ n: 1 }))
 }
 
-fn main() {
+fn check_string_consumers() {
 	_ = check_auto_stringifier // Compile the control without running it.
 	check_clone()
 	check_length()
@@ -323,13 +312,7 @@ fn main() {
 	check_plain_interpolation()
 	check_builtin_comparison()
 }
-", '')
-	assert_clean_borrow_build(compile)
-	bin_path := tmp_array_accessor_borrow_path('owned_string_consumers_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output == 'hello\n5\ntrue\ntrue\nhello!\n<hello>\nhello\nhello  1\ntrue\nhello0\ntrue\n', run.output
-}
+"
 
 // A bound method value needs a copy of its receiver. Returning a string,
 // a pointer, or a nested pointer would let the borrow outlive the array.
@@ -1038,9 +1021,10 @@ fn main() {
 
 // Indexing and chained length reads can borrow the original element. A length
 // read can also share an initializer or call with stable fields or arguments.
-fn test_owned_scalar_borrows_and_cloned_method_values_run() {
+fn test_owned_array_accessor_consumers_run() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_consumers', "struct E {
+	src := array_accessor_borrow_string_consumers_src + "
+struct E {
 	name string
 }
 
@@ -1217,13 +1201,15 @@ fn main() {
 	check_receiver_evaluated_once()
 	check_entry_clone()
 	check_default_clone()
+	check_string_consumers()
 }
-", '-enable-globals')
+"
+	compile := compile_v3_ownership_program(v3_bin, 'owned_array_accessor_consumers', src, '-enable-globals')
 	assert_clean_borrow_build(compile)
-	bin_path := tmp_array_accessor_borrow_path('owned_scalar_consumers_bin')
+	bin_path := tmp_array_accessor_borrow_path('owned_array_accessor_consumers_bin')
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output == '104\n5\n15\n0\n5\n9:1\nbb\n5\n', run.output
+	assert run.output == '104\n5\n15\n0\n5\n9:1\nbb\n5\nhello\n5\ntrue\ntrue\nhello!\n<hello>\nhello\nhello  1\ntrue\nhello0\ntrue\n', run.output
 }
 
 fn test_owned_scalar_borrows_with_implicit_mutations_are_rejected() {
