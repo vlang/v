@@ -3,6 +3,7 @@ name: Windows directory removal mtime diagnostic
 on:
   pull_request:
     paths:
+      - 'vlib/os/os_stat_windows.c.v'
       - 'vlib/os/directory_removal_mtime_windows_test.c.v'
       - '.github/workflows/windows_directory_mtime_diagnostic_ci.yml'
   workflow_dispatch:
@@ -102,10 +103,10 @@ jobs:
           $env:VFLAGS = "-cc $cc -no-retry-compilation"
           .\v.exe -cc $cc -no-retry-compilation self
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .\v.exe fmt -verify vlib/os/directory_removal_mtime_windows_test.c.v
+          .\v.exe fmt -verify vlib/os/os_stat_windows.c.v vlib/os/directory_removal_mtime_windows_test.c.v
           $format = $LASTEXITCODE
           if ($format -ne 0) {
-            .\v.exe fmt -w vlib/os/directory_removal_mtime_windows_test.c.v
+            .\v.exe fmt -w vlib/os/os_stat_windows.c.v vlib/os/directory_removal_mtime_windows_test.c.v
             git diff
           }
           .\v.exe -cc $cc -no-retry-compilation -silent vlib/x/imp/imp_test.v
@@ -114,6 +115,10 @@ jobs:
           $probe = $LASTEXITCODE
           Write-Host "DIRECTORY_MTIME_RESULT format=$format original=$original probe=$probe"
           if ($format -ne 0 -or $original -ne 0 -or $probe -ne 0) { exit 1 }
+          foreach ($test in @('os_stat_test.v', 'os_stat_windows_test.v', 'stat_negative_times_windows_test.c.v', 'utime_test.v', 'utime_windows_test.c.v', 'walk_windows_test.c.v', 'walk_links_test.v')) {
+            .\v.exe -cc $cc -no-retry-compilation "vlib/os/$test"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
   native-crt:
     runs-on: windows-2022
@@ -147,10 +152,10 @@ jobs:
           $env:VFLAGS = "-cc $cc -no-retry-compilation"
           .\v.exe -cc $cc -no-retry-compilation self
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .\v.exe fmt -verify vlib/os/directory_removal_mtime_windows_test.c.v
+          .\v.exe fmt -verify vlib/os/os_stat_windows.c.v vlib/os/directory_removal_mtime_windows_test.c.v
           $format = $LASTEXITCODE
           if ($format -ne 0) {
-            .\v.exe fmt -w vlib/os/directory_removal_mtime_windows_test.c.v
+            .\v.exe fmt -w vlib/os/os_stat_windows.c.v vlib/os/directory_removal_mtime_windows_test.c.v
             git diff
           }
           .\v.exe -cc $cc -no-retry-compilation -silent vlib/x/imp/imp_test.v
@@ -159,3 +164,7 @@ jobs:
           $probe = $LASTEXITCODE
           Write-Host "DIRECTORY_MTIME_RESULT format=$format original=$original probe=$probe"
           if ($format -ne 0 -or $original -ne 0 -or $probe -ne 0) { exit 1 }
+          foreach ($test in @('os_stat_test.v', 'os_stat_windows_test.v', 'stat_negative_times_windows_test.c.v', 'utime_test.v', 'utime_windows_test.c.v', 'walk_windows_test.c.v', 'walk_links_test.v')) {
+            .\v.exe -cc $cc -no-retry-compilation "vlib/os/$test"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
