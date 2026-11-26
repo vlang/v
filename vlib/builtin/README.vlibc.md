@@ -317,8 +317,8 @@ the usual restrictions and call `execve` or `_exit` without returning to the cal
 
 The musl-derived formatter supplies `printf`, `fprintf`, `snprintf`, `sprintf`,
 `asprintf`, and their `v` variants.
-It supports integer and floating-point conversions,
-hexadecimal floats, long doubles, `%n`, positional arguments through position 9, field widths,
+It supports integer conversions including binary (`%b` and `%B`), floating-point conversions
+including hexadecimal and long double, `%n`, positional arguments through position 9, field widths,
 precision, and flags. Floating-point rounding follows the architecture's rounding mode.
 Wide-character conversions follow the selected C or C.UTF-8 locale and report `EILSEQ`
 for invalid or unrepresentable input. Growing output uses one formatting pass, including `%n`.
@@ -330,8 +330,8 @@ Additional C adapters provide `posix_memalign`, `strcmp`, `strchr`, `strstr`,
 `explicit_bzero`, `getpid`, `sched_getaffinity`, `signal`, signal-set and mask operations,
 `time`, and `gmtime_r`.
 `sysconf` supports page size, clock ticks, online/configured processor counts,
-physical/available pages, and the descriptor limit. Its page and clock information
-uses `/proc/self/auxv`, and processor counts use `/sys/devices/system/cpu`.
+physical/available pages, the descriptor limit, and minimum and recommended signal stack sizes.
+Page and clock values come from `/proc/self/auxv`. Processor counts use `/sys/devices/system/cpu`.
 Unsupported queries fail with `EINVAL`. C crypto libraries can use normal, recursive,
 and error-checking pthread mutexes, including the standard `PTHREAD_MUTEX_INITIALIZER`.
 Mutex attributes select private or process-shared futexes; timed locks support realtime
@@ -489,7 +489,8 @@ GNU and POSIX `strerror_r` keep their distinct return contracts. The POSIX entry
 
 Dynamic lookup uses the loader's public ELF link-map metadata. `dlopen` can acquire an
 already loaded startup dependency, including its public library-name symlink; `dlsym` searches
-its dependency closure, `RTLD_DEFAULT` or `RTLD_NEXT`. `dlclose` releases that acquisition while
+its dependency closure. The main handle and `RTLD_DEFAULT` also see startup preloads.
+`RTLD_NEXT` starts after the calling object. `dlclose` releases that acquisition while
 startup references retain the mapping. Errors are thread-local. `dladdr` and `dl_iterate_phdr`
 expose loaded objects and their public program-header metadata. In static executables,
 `dl_iterate_phdr` visits the main image so collectors can find its writable roots.

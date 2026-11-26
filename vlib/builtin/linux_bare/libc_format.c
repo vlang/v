@@ -177,6 +177,7 @@ static const unsigned char states[]['z'-'A'+1] = {
 	{ /* 0: bare types */
 		S('d') = INT, S('i') = INT,
 		S('o') = UINT, S('u') = UINT, S('x') = UINT, S('X') = UINT,
+		S('b') = UINT, S('B') = UINT,
 		S('e') = DBL, S('f') = DBL, S('g') = DBL, S('a') = DBL,
 		S('E') = DBL, S('F') = DBL, S('G') = DBL, S('A') = DBL,
 		S('c') = INT, S('C') = UINT,
@@ -187,6 +188,7 @@ static const unsigned char states[]['z'-'A'+1] = {
 	}, { /* 1: l-prefixed */
 		S('d') = LONG, S('i') = LONG,
 		S('o') = ULONG, S('u') = ULONG, S('x') = ULONG, S('X') = ULONG,
+		S('b') = ULONG, S('B') = ULONG,
 		S('e') = DBL, S('f') = DBL, S('g') = DBL, S('a') = DBL,
 		S('E') = DBL, S('F') = DBL, S('G') = DBL, S('A') = DBL,
 		S('c') = UINT, S('s') = PTR, S('n') = PTR,
@@ -195,17 +197,20 @@ static const unsigned char states[]['z'-'A'+1] = {
 		S('d') = LLONG, S('i') = LLONG,
 		S('o') = ULLONG, S('u') = ULLONG,
 		S('x') = ULLONG, S('X') = ULLONG,
+		S('b') = ULLONG, S('B') = ULLONG,
 		S('n') = PTR,
 	}, { /* 3: h-prefixed */
 		S('d') = SHORT, S('i') = SHORT,
 		S('o') = USHORT, S('u') = USHORT,
 		S('x') = USHORT, S('X') = USHORT,
+		S('b') = USHORT, S('B') = USHORT,
 		S('n') = PTR,
 		S('h') = HHPRE,
 	}, { /* 4: hh-prefixed */
 		S('d') = CHAR, S('i') = CHAR,
 		S('o') = UCHAR, S('u') = UCHAR,
 		S('x') = UCHAR, S('X') = UCHAR,
+		S('b') = UCHAR, S('B') = UCHAR,
 		S('n') = PTR,
 	}, { /* 5: L-prefixed */
 		S('e') = LDBL, S('f') = LDBL, S('g') = LDBL, S('a') = LDBL,
@@ -215,11 +220,13 @@ static const unsigned char states[]['z'-'A'+1] = {
 		S('d') = PDIFF, S('i') = PDIFF,
 		S('o') = SIZET, S('u') = SIZET,
 		S('x') = SIZET, S('X') = SIZET,
+		S('b') = SIZET, S('B') = SIZET,
 		S('n') = PTR,
 	}, { /* 7: j-prefixed */
 		S('d') = IMAX, S('i') = IMAX,
 		S('o') = UMAX, S('u') = UMAX,
 		S('x') = UMAX, S('X') = UMAX,
+		S('b') = UMAX, S('B') = UMAX,
 		S('n') = PTR,
 	}
 };
@@ -570,7 +577,7 @@ static int printf_core(struct v_format_output *f, const char *fmt, va_list *ap, 
 	unsigned st, ps;
 	int cnt=0, l=0;
 	size_t i;
-	char buf[sizeof(uintmax_t)*3];
+	char buf[sizeof(uintmax_t)*CHAR_BIT];
 	const char *prefix;
 	int t, pl;
 	wchar_t wc[2], *ws;
@@ -690,6 +697,15 @@ static int printf_core(struct v_format_output *f, const char *fmt, va_list *ap, 
 			case JPRE: *(uintmax_t *)arg.p = cnt; break;
 			}
 			continue;
+		case 'b': case 'B':
+			a = z;
+			for (uintmax_t bits = arg.i; bits; bits >>= 1)
+				*--a = '0' + (bits & 1);
+			if (arg.i && (fl & ALT_FORM)) {
+				prefix = t == 'b' ? "0b" : "0B";
+				pl = 2;
+			}
+			goto integer_precision;
 		case 'p':
 			p = MAX(p, 2*sizeof(void*));
 			t = 'x';
@@ -714,6 +730,7 @@ static int printf_core(struct v_format_output *f, const char *fmt, va_list *ap, 
 		case 'u':
 			a = fmt_u(arg.i, z);
 			}
+		integer_precision:
 			if (xp && p<0) goto overflow;
 			if (xp) fl &= ~ZERO_PAD;
 			if (!arg.i && !p) {

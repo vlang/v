@@ -6,6 +6,8 @@
 #include <string.h>
 
 double scalbn(double x, int n) {
+    if (!isfinite(x) || x == 0)
+        return x + x;
     if (n > 1023) {
         x *= 0x1p1023;
         n -= 1023;
@@ -29,12 +31,17 @@ double scalbn(double x, int n) {
         uint64_t bits;
         double value;
     } factor = {.bits = (uint64_t)(1023 + n) << 52};
-    return x * factor.value;
+    double result = x * factor.value;
+    if (!isfinite(result) || result == 0)
+        errno = ERANGE;
+    return result;
 }
 long double scalbnl(long double x, int n) {
 #if LDBL_MANT_DIG == 53
     return scalbn(x, n);
 #else
+    if (!isfinite(x) || x == 0)
+        return x + x;
     if (n > 16383) {
         x *= 0x1p16383L;
         n -= 16383;
@@ -67,7 +74,10 @@ long double scalbnl(long double x, int n) {
 #error unsupported long double representation
 #endif
     memcpy(&factor, bytes, sizeof factor);
-    return x * factor;
+    long double result = x * factor;
+    if (!isfinite(result) || result == 0)
+        errno = ERANGE;
+    return result;
 #endif
 }
 /* Exact binary remainder: scaling is by powers of two, so subtraction never

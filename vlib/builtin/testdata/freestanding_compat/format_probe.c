@@ -167,6 +167,12 @@ static int hexadecimal_value(const char *text, uint64_t bits) {
 
 int v_freestanding_format_contracts(void) {
     char buffer[128];
+    if (format_output(buffer, sizeof buffer, "%#08b|%#.0b|%-#6.3hhB", 10u, 0u, 258u) != 16 ||
+        strcmp(buffer, "0b001010||0B010 ")) return __LINE__;
+    if (format_output(buffer, sizeof buffer, "%#llb", ULLONG_MAX) != 66 ||
+        strncmp(buffer, "0b", 2) || strspn(buffer + 2, "1") != 64) return __LINE__;
+    if (format_output(buffer, 5, "%#.64jb", (uintmax_t)1) != 66 ||
+        strcmp(buffer, "0b00")) return __LINE__;
     /* INT_MIN's implied positive width exceeds the return type. glibc's empty
      * string case returns zero here; require the POSIX EOVERFLOW contract. */
     errno = 0;

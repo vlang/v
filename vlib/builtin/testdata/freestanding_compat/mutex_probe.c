@@ -26,6 +26,10 @@ int v_freestanding_mutex_check(void) {
     if (deadline.tv_nsec >= 1000000000) { ++deadline.tv_sec; deadline.tv_nsec -= 1000000000; }
     errno = E2BIG;
     CHECK(pthread_mutex_timedlock(&mutex, &deadline) == ETIMEDOUT && errno == E2BIG);
+    const struct timespec past = {.tv_sec = -1};
+    CHECK(pthread_mutex_timedlock(&mutex, &past) == ETIMEDOUT && errno == E2BIG);
+    CHECK(!pthread_mutex_unlock(&mutex));
+    CHECK(!pthread_mutex_timedlock(&mutex, &past) && errno == E2BIG);
     CHECK(pthread_mutex_unlock(&mutex) == 0 && pthread_mutex_destroy(&mutex) == 0);
     CHECK(pthread_mutexattr_settype(&attributes, PTHREAD_MUTEX_RECURSIVE) == 0);
     CHECK(pthread_mutex_init(&mutex, &attributes) == 0);

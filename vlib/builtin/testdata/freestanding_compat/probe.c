@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/auxv.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/sendfile.h>
@@ -204,6 +205,18 @@ int v_freestanding_compat_check(const char *directory) {
     CHECK(time(&timestamp) > 0 && timestamp > 0);
     errno = E2BIG;
     CHECK(sysconf(_SC_PAGESIZE) >= 4096 && errno == E2BIG);
+#ifdef _SC_MINSIGSTKSZ
+    long minimum_stack = sysconf(_SC_MINSIGSTKSZ);
+    long recommended_stack = SIGSTKSZ;
+    CHECK(minimum_stack > 0 && recommended_stack >= minimum_stack && errno == E2BIG);
+    unsigned long kernel_minimum = getauxval(AT_MINSIGSTKSZ);
+    if (kernel_minimum) CHECK((unsigned long)minimum_stack == kernel_minimum);
+    stack_t previous_stack;
+    stack_t alternate = {.ss_sp = malloc(recommended_stack), .ss_size = recommended_stack};
+    CHECK(alternate.ss_sp && !sigaltstack(&alternate, &previous_stack));
+    CHECK(!sigaltstack(&previous_stack, NULL));
+    free(alternate.ss_sp);
+#endif
     CHECK(sysconf(_SC_NPROCESSORS_ONLN) > 0 && sysconf(_SC_PHYS_PAGES) > 0);
     CHECK(sysconf(-1) == -1 && errno == EINVAL);
     cpu_set_t cpus;

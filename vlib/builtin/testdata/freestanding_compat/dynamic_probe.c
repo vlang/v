@@ -33,7 +33,14 @@ int32_t v_dynamic_probe(void) {
     CHECK(!dlsym(handle,"v_dynamic_zero") && !dlerror());
     CHECK(dlsym(RTLD_NEXT,"v_dynamic_root")==v_dynamic_root);
     void *main=dlopen(0,RTLD_NOW); CHECK(main);
-    CHECK(dlsym(main,"v_dynamic_root")==v_dynamic_root); CHECK(!dlclose(main));
+    CHECK(dlsym(main,"v_dynamic_root")==v_dynamic_root);
+    int *preloaded=dlsym(RTLD_DEFAULT,"v_dynamic_preloaded");
+    CHECK(preloaded && *preloaded==17 && dlsym(main,"v_dynamic_preloaded")==preloaded);
+    CHECK(!dlsym(handle,"v_dynamic_preloaded") && dlerror());
+    CHECK(!dlclose(main) && !dlsym(main,"v_dynamic_preloaded") && dlerror());
+    Dl_info executable={0};
+    CHECK(dladdr(v_dynamic_probe,&executable));
+    CHECK(executable.dli_fname && !strcmp(executable.dli_fname,program_invocation_name));
     Dl_info info={0}; CHECK(dladdr(v_dynamic_root,&info));
     CHECK(info.dli_fname&&strstr(info.dli_fname,"libv_dynamic_root.so"));
     CHECK(info.dli_sname&&!strcmp(info.dli_sname,"v_dynamic_root"));

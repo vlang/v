@@ -6,6 +6,7 @@
 #include <sched.h>
 #include <signal.h>
 #include <string.h>
+#include <sys/auxv.h>
 #include <sys/resource.h>
 #include <sys/sysinfo.h>
 #include <time.h>
@@ -180,12 +181,48 @@ static long v_cpu_count(const char *path) {
     return total > 0 ? total : -1;
 }
 
+#ifdef _SC_MINSIGSTKSZ
+/* GNU signal.h exposes sysconf calls in place of the legacy ABI constants. */
+#if defined(__aarch64__)
+enum { v_signal_stack_floor = 5120 };
+#else
+enum { v_signal_stack_floor = 2048 };
+#endif
+
+static long v_signal_stack_minimum(void) {
+    unsigned long size = getauxval(AT_MINSIGSTKSZ);
+    if (size) return (long)size;
+#if defined(__x86_64__)
+    /* Older kernels omit the auxv entry. Account for the signal frame, its
+     * alignment, the enabled XSAVE area, and the trailing 32-bit marker. */
+    unsigned int a, b, c, d;
+    __asm__("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "0"(0), "2"(0));
+    if (a >= 13) {
+        __asm__("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "0"(1), "2"(0));
+        if (c & (1U << 27)) {
+            __asm__("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "0"(13), "2"(0));
+            return 512L + b + sizeof(uint32_t);
+        }
+    }
+#endif
+    return v_signal_stack_floor;
+}
+#endif
+
 long sysconf(int name) {
     int saved_errno = errno;
     long result;
     switch (name) {
     case _SC_PAGESIZE: result = v_auxiliary_value(6); break; /* AT_PAGESZ */
     case _SC_CLK_TCK: result = v_auxiliary_value(17); break; /* AT_CLKTCK */
+#ifdef _SC_MINSIGSTKSZ
+    case _SC_MINSIGSTKSZ: result = v_signal_stack_minimum(); break;
+    case _SC_SIGSTKSZ:
+        result = v_signal_stack_minimum();
+        if (result < v_signal_stack_floor) result = v_signal_stack_floor;
+        result *= 4;
+        break;
+#endif
     case _SC_THREAD_STACK_MIN: result = 16384; break;
     case _SC_THREAD_KEYS_MAX: result = 1024; break;
     case _SC_THREAD_DESTRUCTOR_ITERATIONS: result = 4; break;

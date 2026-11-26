@@ -116,6 +116,8 @@ static int v_mutex_acquire(pthread_mutex_t *storage, int nonblocking, clockid_t 
         if (deadline && (deadline->tv_nsec < 0 || deadline->tv_nsec >= 1000000000))
             return EINVAL;
         while (__atomic_exchange_n(&mutex->lock, 2, __ATOMIC_ACQUIRE)) {
+            if (deadline && deadline->tv_sec < 0)
+                return ETIMEDOUT;
             int operation = mutex->attributes & V_MUTEX_SHARED ? 0 : 128;
             if (deadline)
                 operation |= 9 | (clock == CLOCK_REALTIME ? 256 : 0); /* WAIT_BITSET */

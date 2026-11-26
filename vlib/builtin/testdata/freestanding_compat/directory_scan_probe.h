@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -22,6 +23,21 @@ static int directory_scan_native_probe(void) {
     struct dirent64 **large = NULL;
     char directory[] = "/tmp/vlibc-directory-XXXXXX", path[512];
     DIRECTORY_CHECK(mkdtemp(directory));
+    int path_fd = open(directory, O_PATH | O_DIRECTORY);
+    DIRECTORY_CHECK(path_fd >= 0);
+    errno = 0;
+    DIRECTORY_CHECK(!fdopendir(path_fd) && errno == EBADF);
+    struct statfs64 by_path, by_fd;
+    DIRECTORY_CHECK(!statfs64(directory, &by_path) && !fstatfs64(path_fd, &by_fd));
+    DIRECTORY_CHECK(by_path.f_type == by_fd.f_type && by_path.f_bsize == by_fd.f_bsize);
+    DIRECTORY_CHECK(!close(path_fd));
+    snprintf(path, sizeof path, "%s/removed", directory);
+    DIRECTORY_CHECK(!mkdir(path, 0700));
+    DIR *removed = opendir(path);
+    DIRECTORY_CHECK(removed && !rmdir(path));
+    errno = EDOM;
+    DIRECTORY_CHECK(!readdir(removed) && errno == EDOM);
+    DIRECTORY_CHECK(!closedir(removed));
     for (int i = 0; i < 73; ++i) {
         const char *extra[] = {"item10", "item2", "item01"};
         if (i < 70) snprintf(path, sizeof(path), "%s/entry_%03d", directory, i);

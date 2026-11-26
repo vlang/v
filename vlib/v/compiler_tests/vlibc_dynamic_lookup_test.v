@@ -9,7 +9,7 @@ fn test_vlibc_startup_dynamic_lookup() ! {
 	root := os.join_path(os.vtmp_dir(), 'vlibc_dynamic_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	for library in ['leaf', 'root'] {
+	for library in ['preload', 'leaf', 'root'] {
 		mut command := ['gcc', '-fPIC', '-shared', '-nostdlib', '-funwind-tables',
 			'-fno-optimize-sibling-calls', '-Wl,--eh-frame-hdr',
 			'-Wl,--hash-style=${if library == 'leaf' { 'sysv' } else { 'gnu' }}',
@@ -28,7 +28,8 @@ fn test_vlibc_startup_dynamic_lookup() ! {
 		if production { command << '-prod' }
 		command << os.join_path(fixture, 'dynamic_runtime.c.v')
 		dynamic_command(command)
-		output := dynamic_command_in([binary], root)
+		preload := os.join_path(root, 'libv_dynamic_preload.so')
+		output := dynamic_command_in(['env', 'LD_PRELOAD=${preload}', binary], root)
 		assert output.contains('GNU/SysV ELF lookup'), output
 		elf := dynamic_command(['readelf', '-d', binary])
 		assert elf.contains('[./libv_dynamic_root.so]'), elf

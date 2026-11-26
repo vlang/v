@@ -320,14 +320,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			bare_dynamic_error(c'next symbol not found')
 			return 0
 		}
-		if handle == 0 {
-			mut object := C.v_dynamic_head()
-			for object != 0 {
-				address, found := bare_dynamic_lookup(object, name)
-				if found { return address }
-				object = C.v_dynamic_field(object, 3)
-			}
-		} else {
+		if handle != 0 {
 			bare_compat_lock(&bare_dynamic_mutex)
 			mut entry := bare_dynamic_handles
 			for entry != unsafe { nil } && entry.object != handle { entry = entry.next }
@@ -337,6 +330,16 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				bare_dynamic_error(c'invalid dynamic library handle')
 				return 0
 			}
+		}
+		head := C.v_dynamic_head()
+		if handle == 0 || handle == head {
+			mut object := head
+			for object != 0 {
+				address, found := bare_dynamic_lookup(object, name)
+				if found { return address }
+				object = C.v_dynamic_field(object, 3)
+			}
+		} else {
 			// Search the handle followed by its breadth-first DT_NEEDED closure.
 			mut count := uint(0)
 			mut object := C.v_dynamic_head()
@@ -450,7 +453,13 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				}
 			}
 		}
-		C.v_dynamic_address_set(output, C.v_dynamic_field(object, 1), header, name, best)
+		mut file := C.v_dynamic_field(object, 1)
+		if object == C.v_dynamic_head() && (file == 0 || unsafe { *(&u8(file)) } == 0)
+			&& g_main_argc > 0 {
+			// The loader leaves the main executable's link-map name empty.
+			file = unsafe { (&uint(g_main_argv))[0] }
+		}
+		C.v_dynamic_address_set(output, file, header, name, best)
 		if extra != 0 && (flags == 1 || flags == 2) {
 			unsafe { *(&uint(extra)) = if flags == 1 { best_symbol } else { object } }
 		}

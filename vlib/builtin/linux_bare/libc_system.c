@@ -152,7 +152,7 @@ DIR *fdopendir(int fd) {
     int flags = fcntl(fd, F_GETFL);
     if (flags < 0)
         return NULL;
-    if ((flags & O_ACCMODE) == O_WRONLY) {
+    if ((flags & O_PATH) || (flags & O_ACCMODE) == O_WRONLY) {
         errno = EBADF;
         return NULL;
     }
@@ -188,7 +188,8 @@ struct dirent *readdir(DIR *directory) {
     if (d->at == d->end) {
         long n = V_RAW3(SYS_getdents64, d->fd, d->buffer, sizeof d->buffer);
         if (n <= 0) {
-            if (n < 0)
+            /* Linux reports ENOENT when the open directory has been removed. */
+            if (n < 0 && n != -ENOENT)
                 v_linux_result(n);
             v_linux_unlock(&d->lock);
             return NULL;
@@ -239,6 +240,9 @@ long telldir(DIR *directory) {
 #if defined(__GLIBC__)
 extern __typeof__(mmap64) mmap64 __attribute__((alias("mmap")));
 _Static_assert(sizeof(struct statfs64) == sizeof(struct statfs), "native statfs64");
+int statfs64(const char *path, struct statfs64 *out) {
+    return v_linux_result(V_RAW2(SYS_statfs, path, out));
+}
 int fstatfs64(int fd, struct statfs64 *out) {
     if (!out) {
         errno = EFAULT;

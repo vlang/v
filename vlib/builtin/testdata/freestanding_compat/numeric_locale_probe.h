@@ -204,6 +204,17 @@ static int numeric_native_probe(void) {
     long double (*volatile remainder)(long double, long double) = fmodl;
     fenv_t saved;
     CHECK(!feholdexcept(&saved));
+    double (*volatile scale)(double, int) = scalbn;
+    long double (*volatile scale_long)(long double, int) = scalbnl;
+    CHECK(!fesetround(FE_TONEAREST));
+    errno = E2BIG;
+    CHECK(scale(DBL_MIN, -1) == DBL_MIN / 2 && !fetestexcept(FE_ALL_EXCEPT) && errno == E2BIG);
+    CHECK(scale_long(0, 100) == 0 && errno == E2BIG);
+    CHECK(isinf(scale(DBL_MAX, 1)) && fetestexcept(FE_OVERFLOW) && errno == ERANGE);
+    CHECK(!feclearexcept(FE_ALL_EXCEPT));
+    errno = E2BIG;
+    CHECK(scale_long(LDBL_TRUE_MIN, -1) == 0 && fetestexcept(FE_UNDERFLOW) && errno == ERANGE);
+    CHECK(!feclearexcept(FE_ALL_EXCEPT));
     CHECK(remainder(3 * LDBL_TRUE_MIN, 2 * LDBL_TRUE_MIN) == LDBL_TRUE_MIN);
     CHECK(!fetestexcept(FE_UNDERFLOW | FE_INEXACT));
     errno = 0;

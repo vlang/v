@@ -933,10 +933,19 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		if capacity <= 0 { return 0 }
 		bare_stdio_lock(address)
 		defer { bare_stdio_unlock(address) }
+		mut stream := unsafe { &BareStream(address) }
+		old_error := stream.abi_flags & i32(C.V_STDIO_ERROR)
+		stream.abi_flags &= ~i32(C.V_STDIO_ERROR)
+		defer { stream.abi_flags |= old_error }
 		mut used := 0
 		for used < int(capacity) - 1 {
 			value := bare_stdio_getwide(address)
-			if value == 0xffffffff { break }
+			if value == 0xffffffff {
+				if stream.abi_flags & i32(C.V_STDIO_ERROR) != 0 && bf_native_errno_cell != i32(C.EAGAIN) {
+					return 0
+				}
+				break
+			}
 			unsafe { (&u32(output))[used] = value }
 			used++
 			if value == 10 { break }
@@ -949,6 +958,8 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	fn bare_stdio_putwides(input uint, address uint) i32 {
 		bare_stdio_lock(address)
 		defer { bare_stdio_unlock(address) }
+		mut stream := unsafe { &BareStream(address) }
+		if !bare_stream_orient_wide(mut stream) { return -1 }
 		values := unsafe { &u32(input) }
 		mut position := 0
 		for unsafe { values[position] } != 0 {
