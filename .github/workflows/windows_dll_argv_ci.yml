@@ -1,0 +1,71 @@
+name: Windows DLL argv regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/tests/create_dll/**'
+      - 'vlib/v/gen/c/fn.v'
+      - 'vlib/v/gen/c/windows_dll_export_attribute_test.v'
+      - '.github/workflows/windows_dll_argv_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-dll:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify formatting and original DLL tests
+        shell: pwsh
+        run: |
+          .\v.exe fmt -verify vlib/v/tests/create_dll/create_win_dll_test.v
+          if ($LASTEXITCODE -ne 0) { throw "Format verification failed" }
+          .\v.exe fmt -verify vlib/v/gen/c/fn.v vlib/v/gen/c/windows_dll_export_attribute_test.v
+          if ($LASTEXITCODE -ne 0) { throw "Compiler format verification failed" }
+          .\v.exe -cc gcc -silent vlib/v/gen/c/windows_dll_export_attribute_test.v
+          if ($LASTEXITCODE -ne 0) { throw "Export attribute regression failed" }
+          foreach ($cc in @('gcc', 'msvc', 'tcc')) {
+            Write-Host "Running original DLL test with $cc"
+            .\v.exe -cc $cc -no-retry-compilation -silent vlib/v/tests/create_dll/create_win_dll_test.v
+            if ($LASTEXITCODE -ne 0) { throw "$cc DLL regression failed" }
+            Write-Host "$cc DLL regression passed"
+            $exports = dumpbin /exports "vlib/v/tests/create_dll/create_win_${cc}64.dll"
+            if ($LASTEXITCODE -ne 0 -or -not ($exports -match '\bTatltuae\s*$')) { throw "$cc DLL missing Tatltuae export" }
+          }
+      - name: Inspect DLL export tables after a failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem vlib/v/tests/create_dll -Filter 'create_win_*.dll' | ForEach-Object {
+            Write-Host "Exports from $($_.FullName)"
+            dumpbin /exports $_.FullName
+          }
+  linux-cross-export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify the exact cross-target export regression
+        run: |
+          ./v fmt -w vlib/v/gen/c/windows_dll_export_attribute_test.v
+          git diff --exit-code
+          ./v fmt -verify vlib/v/gen/c/windows_dll_export_attribute_test.v
+          ./v -cc gcc -silent vlib/v/gen/c/windows_dll_export_attribute_test.v
+          ./v -cc clang -silent vlib/v/gen/c/windows_dll_export_attribute_test.v

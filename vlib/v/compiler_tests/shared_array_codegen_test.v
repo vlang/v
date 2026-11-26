@@ -1,38 +1,16 @@
 import os
+import v.tempname
 
-const shared_array_vexe = @VEXE
-const shared_array_tests_dir = os.dir(@FILE)
-const shared_array_v3_dir = os.dir(shared_array_tests_dir)
-const shared_array_vlib_dir = os.dir(shared_array_v3_dir)
-const shared_array_v3_src = os.join_path(shared_array_v3_dir, 'v.v')
-
-// One compiler serves the whole suite; each case used to build its own.
-const shared_array_build_v3_path = os.join_path(os.temp_dir(), 'v3_shared_array_codegen_${os.getpid()}')
-
-fn testsuite_begin() {
-	v3_bin := shared_array_build_v3_path
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([shared_array_vexe, '-gc', 'none', '-path',
-			'${shared_array_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${shared_array_v3_src}'])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rm(shared_array_build_v3_path) or {}
-}
-
-fn shared_array_build_v3() string {
-	return shared_array_build_v3_path
-}
-
-fn shared_array_run_good(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+fn shared_array_run_good(name string, source string) string {
+	dir := os.join_path(os.vtmp_dir(), 'v3_shared_array_${tempname.unique_token()}')
+	os.mkdir(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_${name}')
+	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -46,16 +24,20 @@ fn shared_array_write_project_file(root string, rel string, source string) {
 	os.write_file(path, source) or { panic(err) }
 }
 
-fn shared_array_run_project(v3_bin string, name string, files map[string]string, input string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+fn shared_array_run_project(name string, files map[string]string, input string) string {
+	dir := os.join_path(os.vtmp_dir(), 'v3_shared_array_${tempname.unique_token()}')
+	os.mkdir(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	root := os.join_path(dir, 'v3_${name}')
+	os.mkdir(root) or { panic(err) }
 	for rel, source in files {
 		shared_array_write_project_file(root, rel, source)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_bin_${os.getpid()}')
+	bin := os.join_path(dir, 'v3_${name}_bin')
 	input_path := os.join_path(root, input)
-	compile := os.exec([v3_bin, input_path, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, input_path, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -64,8 +46,7 @@ fn shared_array_run_project(v3_bin string, name string, files map[string]string,
 }
 
 fn test_selector_shared_array_index_from_pointer_receiver() {
-	v3_bin := shared_array_build_v3()
-	out := shared_array_run_good(v3_bin, 'shared_array_pointer_receiver_index', 'import sync
+	out := shared_array_run_good('shared_array_pointer_receiver_index', 'import sync
 
 struct Item {
 	value int
@@ -102,8 +83,7 @@ fn main() {
 }
 
 fn test_imported_shared_array_field_push_uses_owner_module() {
-	v3_bin := shared_array_build_v3()
-	out := shared_array_run_project(v3_bin, 'shared_array_imported_field_push', {
+	out := shared_array_run_project('shared_array_imported_field_push', {
 		'v.mod':         "Module { name: 'shared_array_imported_field_push' }\n"
 		'other/other.v': 'module other
 

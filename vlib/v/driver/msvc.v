@@ -261,7 +261,10 @@ fn msvc_translate_cl_args(args []string, target_os string, generated bool) []str
 		compile << ['/std:c11', '/D_CRT_DECLARE_NONSTDC_NAMES=1']
 	}
 	if is_debug {
-		compile << '/Zi'
+		// `/Zi` would write the `vc140.pdb` of the working directory, which the `cl` runs of
+		// builds side by side there share (C1090). `/Z7` keeps the debug information in the
+		// object; the linker's `/DEBUG` still writes the program's PDB from it.
+		compile << '/Z7'
 		link << '/DEBUG'
 	}
 	if compile_only {

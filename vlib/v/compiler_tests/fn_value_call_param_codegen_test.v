@@ -1,19 +1,12 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+import v.tempname
 
 fn test_fn_value_callee_uses_its_own_parameter_types() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fn_value_call_param_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
+	root := os.join_path(os.vtmp_dir(), 'v3_fn_value_call_param_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 
-	src := os.join_path(os.temp_dir(), 'v3_fn_value_call_param_input.v')
+	src := os.join_path(root, 'v3_fn_value_call_param_input.v')
 	os.write_file(src, 'fn replacement(name string, mut out []string) {
 	out << name
 }
@@ -33,8 +26,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	c_path := os.join_path(os.temp_dir(), 'v3_fn_value_call_param_input.c')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
+	c_path := os.join_path(root, 'v3_fn_value_call_param_input.c')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	c_code := os.read_file(c_path) or { panic(err) }

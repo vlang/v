@@ -198,3 +198,19 @@ fn test_fixture_result_requires_expected_exit_code() {
 	assert fixture_result_matches(error_output, error_output, 1, 1)
 	assert !fixture_result_matches(error_output, error_output, 1, 0)
 }
+
+fn test_slash_diagnostic_paths_changes_only_location_paths() {
+	output := "vlib\\v\\x.vv:3:7: error: unknown escape `\\q`
+    3 | s := 'a\\qb'
+      |      ^
+Details: vlib\\v\\x.vv:5:1: details: see `C:\\tmp\\y.v`
+called from D:\\tmp\\main.v:4:2
+D:\\tmp\\a.v:12: FAIL"
+	assert slash_diagnostic_paths(output) == "vlib/v/x.vv:3:7: error: unknown escape `\\q`
+    3 | s := 'a\\qb'
+      |      ^
+Details: vlib/v/x.vv:5:1: details: see `C:\\tmp\\y.v`
+called from D:/tmp/main.v:4:2
+D:\\tmp\\a.v:12: FAIL"
+	assert slash_diagnostic_paths('a/b.v:1:2: error: x') == 'a/b.v:1:2: error: x'
+}

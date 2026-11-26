@@ -2,28 +2,10 @@ import os
 import v.markused
 import v.parser
 import v.pref
+import v.tempname
 import v.types
 
-const typed_receiver_vexe = @VEXE
-const typed_receiver_tests_dir = os.dir(@FILE)
-const typed_receiver_v3_dir = os.dir(typed_receiver_tests_dir)
-const typed_receiver_vlib_dir = os.dir(typed_receiver_v3_dir)
-const typed_receiver_v3_src = os.join_path(typed_receiver_v3_dir, 'v.v')
-
-fn typed_receiver_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_typed_receiver_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([typed_receiver_vexe, '-gc', 'none', '-path',
-			'${typed_receiver_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${typed_receiver_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn typed_receiver_write_project() string {
-	root := os.join_path(os.temp_dir(), 'v3_markused_typed_receiver_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn typed_receiver_write_project(root string) string {
 	os.mkdir_all(os.join_path(root, 'seriesmod')) or { panic(err) }
 	os.mkdir_all(os.join_path(root, 'othermod')) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'typed_receiver_markused' }\n") or {
@@ -126,8 +108,11 @@ fn main() {
 }
 
 fn typed_receiver_mark_used_project(name string, files map[string]string, main_file string) map[string]bool {
-	root := os.join_path(os.temp_dir(), 'v3_markused_typed_receiver_used_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
+	root := os.join_path(os.vtmp_dir(), 'v3_markused_typed_receiver_used_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
 	mut paths := []string{}
 	main_path := os.join_path(root, main_file)
 	mut rel_paths := files.keys()
@@ -285,10 +270,14 @@ fn main() {
 }
 
 fn test_markused_roots_exact_typed_const_receiver_method() {
-	v3_bin := typed_receiver_build_v3()
-	main_path := typed_receiver_write_project()
-	out := os.join_path(os.temp_dir(), 'v3_markused_typed_receiver_out_${os.getpid()}')
-	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', '${out}'])
+	root := os.join_path(os.vtmp_dir(), 'v3_markused_typed_receiver_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_path := typed_receiver_write_project(root)
+	out := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, main_path, '-b', 'c', '-o', out])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

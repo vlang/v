@@ -1,5 +1,6 @@
 // vtest ownership
 import os
+import v.tempname
 
 const arc_codegen_vexe = @VEXE
 const arc_codegen_tests_dir = os.dir(@FILE)
@@ -7,26 +8,30 @@ const arc_codegen_v3_dir = os.dir(arc_codegen_tests_dir)
 const arc_codegen_vlib_dir = os.dir(arc_codegen_v3_dir)
 const arc_codegen_v3_src = os.join_path(arc_codegen_v3_dir, 'v.v')
 
-fn test_arc_clone_shares_payload_and_drops_it_once() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_arc_codegen_${pid}')
-	src := os.join_path(os.temp_dir(), 'v3_arc_codegen_${pid}.v')
-	out := os.join_path(os.temp_dir(), 'v3_arc_codegen_program_${pid}')
-	nonownership_src := os.join_path(os.temp_dir(), 'v3_arc_codegen_nonownership_${pid}.v')
-	nonownership_out := os.join_path(os.temp_dir(), 'v3_arc_codegen_nonownership_program_${pid}')
-	defer {
-		os.rm(v3_bin) or {}
-		os.rm(src) or {}
-		os.rm(out) or {}
-		os.rm(out + '.c') or {}
-		os.rm(nonownership_src) or {}
-		os.rm(nonownership_out) or {}
-		os.rm(nonownership_out + '.c') or {}
+fn arc_codegen_compiler(root string) string {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(arc_codegen_v3_src) {
+		return os.real_path(shared)
 	}
-	build :=
-		os.exec([arc_codegen_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-			'${arc_codegen_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${arc_codegen_v3_src}'])
+	bin := os.join_path(root, 'ownership_compiler') + $if windows { '.exe' } $else { '' }
+	build := os.exec([arc_codegen_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+		'${arc_codegen_vlib_dir}' + '|@vlib|@vmodules', '-o', bin, arc_codegen_v3_src])
 	assert build.exit_code == 0, build.output
+	return bin
+}
+
+fn test_arc_clone_shares_payload_and_drops_it_once() {
+	root := os.join_path(os.vtmp_dir(), 'v3_arc_codegen_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := arc_codegen_compiler(root)
+	src := os.join_path(root, 'arc.v')
+	out := os.join_path(root, 'arc_program')
+	nonownership_src := os.join_path(root, 'nonownership.v')
+	nonownership_out := os.join_path(root, 'nonownership_program')
 	os.write_file(src, 'module main
 
 import sync.arc

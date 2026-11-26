@@ -1,21 +1,5 @@
 import os
-
-const type_authority_vexe = @VEXE
-const type_authority_tests_dir = os.dir(@FILE)
-const type_authority_v3_dir = os.dir(type_authority_tests_dir)
-const type_authority_vlib_dir = os.dir(type_authority_v3_dir)
-const type_authority_v3_src = os.join_path(type_authority_v3_dir, 'v.v')
-
-fn type_authority_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_type_authority_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([type_authority_vexe, '-gc', 'none', '-path',
-			'${type_authority_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${type_authority_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn type_authority_write_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
@@ -23,9 +7,7 @@ fn type_authority_write_file(root string, rel string, src string) {
 	os.write_file(path, src) or { panic(err) }
 }
 
-fn type_authority_write_project() string {
-	root := os.join_path(os.temp_dir(), 'v3_type_authority_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn type_authority_write_project(root string) {
 	type_authority_write_file(root, 'dep/dep.v', 'module dep
 
 pub struct Color {
@@ -116,14 +98,17 @@ fn main() {
 	println(int_str(score))
 }
 ')
-	return root
 }
 
 fn test_imported_type_authority_for_if_expr_and_fixed_array_index() {
-	v3_bin := type_authority_build_v3()
-	root := type_authority_write_project()
+	root := os.join_path(os.vtmp_dir(), 'v3_type_authority_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	type_authority_write_project(root)
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, '-nocache', root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-nocache', root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

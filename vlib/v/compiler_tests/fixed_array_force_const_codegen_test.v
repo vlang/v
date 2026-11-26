@@ -1,21 +1,5 @@
 import os
-
-const fixed_array_force_vexe = @VEXE
-const fixed_array_force_tests_dir = os.dir(@FILE)
-const fixed_array_force_v3_dir = os.dir(fixed_array_force_tests_dir)
-const fixed_array_force_vlib_dir = os.dir(fixed_array_force_v3_dir)
-const fixed_array_force_v3_src = os.join_path(fixed_array_force_v3_dir, 'v.v')
-
-fn fixed_array_force_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_force_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([fixed_array_force_vexe, '-gc', 'none', '-path',
-			'${fixed_array_force_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${fixed_array_force_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 // fixed_array_force_arr_lit_owners returns, for each array literal temporary in
 // the generated C, the header of the function that declares it, or the line
@@ -35,9 +19,7 @@ fn fixed_array_force_arr_lit_owners(generated string) []string {
 	return owners
 }
 
-fn fixed_array_force_write_project() string {
-	root := os.join_path(os.temp_dir(), 'v3_fixed_array_force_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn fixed_array_force_write_project(root string) {
 	fixture_dir := os.join_path(root, 'fixture')
 	os.mkdir_all(fixture_dir) or { panic(err) }
 	os.write_file(os.join_path(fixture_dir, 'pass_action.h'), '#ifndef V3_FIXED_ARRAY_FORCE_PASS_ACTION_H
@@ -109,14 +91,15 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	return root
 }
 
 fn test_fixed_array_force_array_literal_const_field_does_not_leak_array_temp() {
-	v3_bin := fixed_array_force_build_v3()
-	root := fixed_array_force_write_project()
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_force_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	fixed_array_force_write_project(root)
 	bin := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

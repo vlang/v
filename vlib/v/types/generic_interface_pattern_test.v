@@ -190,8 +190,10 @@ fn verify_imported_generic_interface_pattern_pointer_identity(pointer_prefix str
 fn main() { animation.verify_pool() }
 ') or { panic(err) }
 	mut compilers := [[]string{}]
-	if _ := os.find_abs_path_of_executable('clang') {
-		compilers << ['-cc', 'clang']
+	$if !windows {
+		if _ := os.find_abs_path_of_executable('clang') {
+			compilers << ['-cc', 'clang']
+		}
 	}
 	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
 	for flags in compilers {

@@ -1,24 +1,16 @@
 import os
-
-const sha3_issue_vexe = @VEXE
-const sha3_issue_tests_dir = os.dir(@FILE)
-const sha3_issue_v3_dir = os.dir(sha3_issue_tests_dir)
-const sha3_issue_vlib_dir = os.dir(sha3_issue_v3_dir)
-const sha3_issue_v3_src = os.join_path(sha3_issue_v3_dir, 'v.v')
+import v.tempname
 
 // test_sha3_issue_26961_compile validates that v3 can compile the sha3 benchmark
 // program from https://github.com/vlang/v/issues/26961 .
 fn test_sha3_issue_26961_compile() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_sha3_issue_26961_${pid}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([sha3_issue_vexe, '-gc', 'none', '-path',
-			'${sha3_issue_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${sha3_issue_v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	src := os.join_path(os.temp_dir(), 'v3_sha3_issue_26961_${pid}.v')
-	bin := os.join_path(os.temp_dir(), 'v3_sha3_issue_26961_bin_${pid}')
+	root := os.join_path(os.vtmp_dir(), 'v3_sha3_issue_26961_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src := os.join_path(root, 'v3_sha3_issue_26961.v')
+	bin := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
 	os.write_file(src, 'import crypto.sha3
 import time
 
@@ -31,10 +23,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
 
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert os.exists(bin), compile.output
 }

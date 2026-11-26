@@ -96,8 +96,8 @@ void probe_borrowed_callback(void) {
 	if (borrowed_calls != 2) abort();
 }
 ') or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-Werror=incompatible-pointer-types', '-o', program,
-		c_path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-Werror=incompatible-pointer-types',
+		'-o', program, c_path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

@@ -1,24 +1,11 @@
 import os
-
-const c_anon_param_vexe = @VEXE
-const c_anon_param_tests_dir = os.dir(@FILE)
-const c_anon_param_v3_dir = os.dir(c_anon_param_tests_dir)
-const c_anon_param_vlib_dir = os.dir(c_anon_param_v3_dir)
-const c_anon_param_v3_src = os.join_path(c_anon_param_v3_dir, 'v.v')
-
-fn c_anon_param_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_anon_param_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([c_anon_param_vexe, '-gc', 'none', '-path',
-			'${c_anon_param_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${c_anon_param_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_c_anonymous_params_keep_pointer_call_shape() {
-	v3_bin := c_anon_param_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_c_anon_param_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_c_anon_param_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_c_anon_param.v')
 	os.write_file(src, 'module main
 
 @[typedef]
@@ -92,9 +79,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	c_path := os.join_path(os.temp_dir(), 'v3_c_anon_param_${os.getpid()}.c')
-	os.rm(c_path) or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
+	c_path := os.join_path(root, 'v3_c_anon_param.c')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(c_path) or { panic(err) }
 	assert generated.contains('take_ptr(ptr)'), generated

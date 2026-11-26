@@ -1,25 +1,7 @@
 import os
+import v.tempname
 
-const generic_receiver_nested_vexe = @VEXE
-const generic_receiver_nested_tests_dir = os.dir(@FILE)
-const generic_receiver_nested_v3_dir = os.dir(generic_receiver_nested_tests_dir)
-const generic_receiver_nested_vlib_dir = os.dir(generic_receiver_nested_v3_dir)
-const generic_receiver_nested_v3_src = os.join_path(generic_receiver_nested_v3_dir, 'v.v')
-
-fn generic_receiver_nested_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_receiver_nested_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([generic_receiver_nested_vexe, '-gc', 'none', '-path',
-			'${generic_receiver_nested_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${generic_receiver_nested_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn generic_receiver_nested_write_project() string {
-	root := os.join_path(os.temp_dir(), 'v3_generic_receiver_nested_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn generic_receiver_nested_write_project(root string) string {
 	os.mkdir_all(os.join_path(root, 'gr')) or { panic(err) }
 	os.mkdir_all(os.join_path(root, 'models')) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'generic_receiver_nested' }\n") or {
@@ -126,12 +108,12 @@ fn main() {
 }
 
 fn test_generic_receiver_nested_calls_use_specialized_receiver_methods() {
-	v3_bin := generic_receiver_nested_build_v3()
-	main_path := generic_receiver_nested_write_project()
-	out := os.join_path(os.temp_dir(), 'v3_generic_receiver_nested_out_${os.getpid()}')
-	os.rm(out) or {}
-	os.rm(out + '.c') or {}
-	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', '${out}'])
+	root := os.join_path(os.vtmp_dir(), 'v3_generic_receiver_nested_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	main_path := generic_receiver_nested_write_project(root)
+	out := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, main_path, '-b', 'c', '-o', out])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

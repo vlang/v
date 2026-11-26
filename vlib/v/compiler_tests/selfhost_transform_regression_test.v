@@ -1,37 +1,28 @@
 import os
+import v.cmdexec
+import v.tempname
 
-const selfhost_regression_vexe = @VEXE
-const selfhost_regression_tests_dir = os.dir(@FILE)
-const selfhost_regression_v3_dir = os.dir(selfhost_regression_tests_dir)
-const selfhost_regression_vlib_dir = os.dir(selfhost_regression_v3_dir)
-const selfhost_regression_v3_src = os.join_path(selfhost_regression_v3_dir, 'v.v')
-
-fn selfhost_regression_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_selfhost_transform_regression_test') + $if windows { '.exe' } $else { '' }
-}
+const selfhost_regression_dir = os.join_path(os.real_path(os.vtmp_dir()), 'v3_selfhost_transform_${tempname.unique_token()}')
 
 fn testsuite_begin() {
-	os.rm(selfhost_regression_v3_bin_path()) or {}
+	os.mkdir(selfhost_regression_dir) or { panic(err) }
 }
 
-fn selfhost_regression_build_v3() string {
-	v3_bin := selfhost_regression_v3_bin_path()
-	if os.exists(v3_bin) {
-		return v3_bin
-	}
-	build := os.exec([selfhost_regression_vexe, '-gc', 'none', '-path',
-		'${selfhost_regression_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-		'${selfhost_regression_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn testsuite_end() {
+	os.rmdir_all(selfhost_regression_dir) or {}
+}
+
+fn compile_selfhost_regression(source string, output string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', '-b', 'c', '-o', output, source], '', {
+		'VFLAGS': ''
+	})
 }
 
 fn selfhost_regression_run(name string, source string) string {
-	v3_bin := selfhost_regression_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_selfhost_regression_${name}.v')
-	bin := os.join_path(os.temp_dir(), 'v3_selfhost_regression_${name}')
+	src := os.join_path(selfhost_regression_dir, 'v3_selfhost_regression_${name}.v')
+	bin := os.join_path(selfhost_regression_dir, 'v3_selfhost_regression_${name}')
 	os.write_file(src, source) or { panic(err) }
-	compile := os.exec([v3_bin, '-nocache', '-b', 'c', '-o', bin, '${src}'])
+	compile := compile_selfhost_regression(src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
@@ -212,7 +203,7 @@ fn main() {
 
 fn test_static_method_pseudo_variables_use_source_name() {
 	name := 'static_method_pseudo_vars'
-	src := os.join_path(os.temp_dir(), 'v3_selfhost_regression_${name}.v')
+	src := os.join_path(selfhost_regression_dir, 'v3_selfhost_regression_${name}.v')
 	source_path_literal := src.replace('\\', '\\\\')
 	out := selfhost_regression_run(name, 'struct Cache__static__State {}
 
@@ -481,9 +472,7 @@ fn main() {
 // method and a value-branch argument makes the ordering guards snapshot the type name as a
 // receiver (`void __order_snapshot_0 = shapes__Box;`).
 fn test_module_qualified_static_assoc_call_with_branch_argument() {
-	v3_bin := selfhost_regression_build_v3()
-	root := os.join_path(os.temp_dir(), 'v3_selfhost_regression_static_assoc_${os.getpid()}')
-	os.rmdir_all(root) or {}
+	root := os.join_path(selfhost_regression_dir, 'v3_selfhost_regression_static_assoc')
 	os.mkdir_all(os.join_path(root, 'shapes')) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'selfhost_regression_static_assoc' }\n") or {
 		panic(err)
@@ -532,8 +521,8 @@ fn main() {
 	println("\${c.w}-\${c.h}")
 }
 ') or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_selfhost_regression_static_assoc_bin_${os.getpid()}')
-	compile := os.exec([v3_bin, '-nocache', '-b', 'c', '-o', bin, main_path])
+	bin := os.join_path(selfhost_regression_dir, 'v3_selfhost_regression_static_assoc_bin')
+	compile := compile_selfhost_regression(main_path, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])

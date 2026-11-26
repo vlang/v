@@ -158,6 +158,14 @@ fn main() {
 			}
 			continue
 		}
+		if foptions.is_l && foptions.in_process {
+			// `v test-fmt` checks that every file can be formatted this way, many files per
+			// process, without starting a worker for each.
+			if !foptions.list_file_in_process(fpath) {
+				errors++
+			}
+			continue
+		}
 		mut worker_command_array := cli_args_no_files.clone()
 		worker_command_array << ['-worker', fpath]
 		worker_cmd := worker_command_array.join(' ')
@@ -212,6 +220,23 @@ fn (foptions &FormatOptions) verify_file(fpath string) bool {
 	content := os.read_file(fpath) or { return false }
 	fcontent := foptions.formatted_content_from_file(fpath, false) or { return false }
 	return fcontent == content
+}
+
+// list_file_in_process formats `fpath` like a `-l` worker does, and reports whether that
+// succeeded; a file that formats differently is listed as needing formatting.
+fn (foptions &FormatOptions) list_file_in_process(fpath string) bool {
+	if fpath.contains('_vfmt_off') {
+		return true
+	}
+	content := os.read_file(fpath) or {
+		eprintln('File ${fpath} could not be read')
+		return false
+	}
+	formatted := foptions.formatted_content_from_file(fpath, true) or { return false }
+	if formatted != content {
+		eprintln('File needs formatting: ${fpath}')
+	}
+	return true
 }
 
 fn (foptions &FormatOptions) vlog(msg string) {

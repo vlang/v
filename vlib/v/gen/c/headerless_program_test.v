@@ -338,12 +338,20 @@ fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
 	// The macOS targets are spelled as Darwin versions with a minimum macOS version, which
 	// gives the same predefined macros: older clangs (the musl image's) reject `macos13`
 	// in a target triple.
-	// Even older clangs reject a minimum macOS version they do not know ("invalid
-	// version number in '-mmacosx-version-min=13.0'"); check Darwin without one there.
+	// Older clangs reject a minimum macOS version they do not know ("invalid version
+	// number in '-mmacosx-version-min=13.0'"), and without one they assume a macOS
+	// too old for thread-local storage. Use the newest minimum this clang accepts with
+	// _Thread_local, and leave the Darwin targets out if it accepts none.
 	probe := os.join_path(os.vtmp_dir(), 'macos_min_version_probe_${os.getpid()}.c')
-	os.write_file(probe, 'int v_probe;\n')!
-	knows_macos_min := os.exec([clang, '-target', 'arm64-apple-darwin22', '-mmacosx-version-min=13.0',
-		'-fsyntax-only', probe]).exit_code == 0
+	os.write_file(probe, '_Thread_local int v_probe;\n')!
+	mut macos_min := ''
+	for version in ['13.0', '10.15'] {
+		if os.exec([clang, '-target', 'arm64-apple-darwin22', '-mmacosx-version-min=${version}',
+			'-std=c99', '-Wno-everything', '-fsyntax-only', probe]).exit_code == 0 {
+			macos_min = version
+			break
+		}
+	}
 	os.rm(probe) or {}
 	mut checks := [][]string{}
 	for target in ['x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu', 'aarch64-linux-android24',
@@ -351,7 +359,18 @@ fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
 		'x86_64-apple-darwin21 -mmacosx-version-min=12.0', 'x86_64-unknown-freebsd14',
 		'x86_64-unknown-openbsd7', 'x86_64-unknown-netbsd10', 'x86_64-unknown-dragonfly6'] {
 		mut args := [clang, '-target']
-		args << if knows_macos_min { target.split(' ') } else { [target.all_before(' ')] }
+		if target.contains('-apple-') {
+			if macos_min == '' {
+				continue
+			}
+			args << if macos_min == '13.0' {
+				target.split(' ')
+			} else {
+				[target.all_before(' '), '-mmacosx-version-min=${macos_min}']
+			}
+		} else {
+			args << target.split(' ')
+		}
 		args << ['-std=c99', '-fsyntax-only', '-Wno-everything', '-Werror=implicit-function-declaration',
 			'-DCUSTOM_DEFINE_v1_fallback', c_file]
 		checks << args

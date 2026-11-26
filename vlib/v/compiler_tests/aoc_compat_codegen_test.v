@@ -1,37 +1,16 @@
 import os
-
-const aoc_compat_vexe = @VEXE
-const aoc_compat_tests_dir = os.dir(@FILE)
-const aoc_compat_v3_dir = os.dir(aoc_compat_tests_dir)
-const aoc_compat_vlib_dir = os.dir(aoc_compat_v3_dir)
-const aoc_compat_v3_src = os.join_path(aoc_compat_v3_dir, 'v.v')
-
-fn aoc_compat_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_aoc_compat_codegen_test') + $if windows { '.exe' } $else { '' }
-}
-
-fn testsuite_begin() {
-	os.rm(aoc_compat_v3_bin_path()) or {}
-}
-
-fn aoc_compat_build_v3() string {
-	v3_bin := aoc_compat_v3_bin_path()
-	if os.exists(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([aoc_compat_vexe, '-gc', 'none', '-path',
-			'${aoc_compat_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${aoc_compat_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn aoc_compat_run(name string, source string) string {
-	v3_bin := aoc_compat_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_aoc_compat_${name}.v')
-	bin := os.join_path(os.temp_dir(), 'v3_aoc_compat_${name}')
+	root := os.join_path(os.vtmp_dir(), 'v3_aoc_compat_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	bin := os.join_path(root, 'v3_aoc_compat_${name}')
+	src := bin + '.v'
 	os.write_file(src, source) or { panic(err) }
-	compile := os.exec([v3_bin, '-nocache', '-b', 'c', '-o', bin, '${src}'])
+	compile := os.exec([@VEXE, '-nocache', '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])

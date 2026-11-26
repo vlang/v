@@ -50,6 +50,100 @@ fn test_one() {}
 	assert !source_mentions_word('item := 1', 'it')
 }
 
+fn test_environment_changes_batch_only_when_they_are_restored() {
+	restored := "fn test_a() {\n\told := os.getenv_opt('X')\n\tos.setenv('X', '1', true)\n\tdefer {\n\t\tif v := old { os.setenv('X', v, true) } else { os.unsetenv('X') }\n\t}\n}\n"
+	assert test_restores_environment(restored)
+	assert !test_restores_environment("fn test_a() {\n\tos.setenv('X', '1', true)\n}\n")
+	assert !test_restores_environment('fn test_a() {\n\tdefer {}\n\tassert os.getenv_opt("X") == none\n}\n')
+}
+
+fn test_units_keep_environment_changing_files_apart() ! {
+	root := batch_test_root('environment')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	restored := "module util\nfn test_NAME() {\n\told := os.getenv_opt('X')\n\tos.setenv('X', '1', true)\n\tdefer {\n\t\tif v := old { os.setenv('X', v, true) } else { os.unsetenv('X') }\n\t}\n}\n"
+	files := {
+		'a_test.v': 'module util\nfn test_a() {}\n'
+		'b_test.v': restored.replace('NAME', 'b')
+		'c_test.v': restored.replace('NAME', 'c')
+		'd_test.v': "module util\nfn test_d() {\n\tos.setenv('X', '1', true)\n}\n"
+	}
+	mut paths := []string{}
+	for name, source in files {
+		path := os.join_path(root, name)
+		os.write_file(path, source)!
+		paths << path
+	}
+	mut ts := TestSession{
+		vexe:              os.executable()
+		will_compile:      true
+		exec_mode:         .compile_and_run
+		build_environment: build_constraint.new_environment(['macos'], [])
+	}
+	assert ts.test_units(paths) == [paths[0], '${paths[1]}\n${paths[2]}', paths[3]]
+}
+
+fn test_units_batch_files_that_restore_the_working_directory_apart() ! {
+	root := batch_test_root('cwd')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	restored := 'module util\nfn test_NAME() {\n\told := os.getwd()\n\tos.chdir(os.temp_dir()) or {}\n\tdefer {\n\t\tos.chdir(old) or {}\n\t}\n}\n'
+	files := {
+		'a_test.v': 'module util\nfn test_a() {}\n'
+		'b_test.v': restored.replace('NAME', 'b')
+		'c_test.v': restored.replace('NAME', 'c')
+		'd_test.v': 'module util\nfn test_d() {\n\tos.chdir(os.temp_dir()) or {}\n}\n'
+	}
+	mut paths := []string{}
+	for name, source in files {
+		path := os.join_path(root, name)
+		os.write_file(path, source)!
+		paths << path
+	}
+	mut ts := TestSession{
+		vexe:              os.executable()
+		will_compile:      true
+		exec_mode:         .compile_and_run
+		build_environment: build_constraint.new_environment(['macos'], [])
+	}
+	assert ts.test_units(paths) == [paths[0], '${paths[1]}\n${paths[2]}', paths[3]]
+}
+
+fn test_units_group_files_by_vflags_and_accept_ownership_markers() ! {
+	root := batch_test_root('vflags')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	files := {
+		'a_test.v': 'module util\nfn test_a() {}\n'
+		'b_test.v': 'module util\n// vtest ownership\nfn test_b() {}\n'
+		'c_test.v': 'module util\n// vtest vflags: -w\nfn test_c() {}\n'
+		'd_test.v': 'module util\n// vtest vflags: -w\nfn test_d() {}\n'
+		'e_test.v': 'module util\n// vtest vflags: -d x\nfn test_e() {}\n'
+	}
+	mut paths := []string{}
+	for name, source in files {
+		path := os.join_path(root, name)
+		os.write_file(path, source)!
+		paths << path
+	}
+	mut ts := TestSession{
+		vexe:              os.executable()
+		will_compile:      true
+		exec_mode:         .compile_and_run
+		build_environment: build_constraint.new_environment(['macos'], [])
+	}
+	assert ts.test_units(paths) == ['${paths[0]}\n${paths[1]}', '${paths[2]}\n${paths[3]}', paths[4]]
+}
+
+fn test_vflags_are_part_of_the_batch_key() {
+	assert test_file_vflags('fn test_a() {}\n') == ''
+	assert test_file_vflags('// vtest vflags: -w\nfn test_a() {}\n') == '-w'
+	assert test_file_vflags('// vtest vflags: -d a\n// vtest vflags:  -d b \nfn test_a() {}\n') == '-d b'
+}
+
 fn test_env_cleanup_hook_accepts_only_unsetenv_lines() {
 	cleanup := "import os\n\nfn testsuite_begin() {\n\tos.unsetenv('VFLAGS')\n\tos.unsetenv('VOSARGS')\n}\n\nfn test_a() {}\n"
 	hook := test_env_cleanup_hook(test_code_text(cleanup), cleanup) or { panic('no hook') }
@@ -129,17 +223,106 @@ fn test_units_batch_internal_tests_of_one_module_without_name_clashes() ! {
 	}
 	units := ts.test_units(paths)
 	// `k_test.v` declares a constant `it`, which `l_test.v` uses as a local.
-	batch := '${paths[0]}\n${paths[1]}\n${paths[11]}\n${paths[15]}\n${paths[17]}\n${paths[18]}'
+	// `g_test.c.v` is a C backend test, which a batch is too.
+	batch := '${paths[0]}\n${paths[1]}\n${paths[6]}\n${paths[11]}\n${paths[15]}\n${paths[17]}\n${paths[18]}'
 	// `main` tests share batches of their own; one with a `module main` clause is
 	// compiled with its directory's other `main` sources, so it does not join those
 	// without a clause. A file with C flags builds alone.
 	main_batch := '${paths[4]}\n${paths[13]}\n${paths[14]}'
 	// `c_test.v` clashes with `a_test.v` and starts a second batch of its own.
 	assert units == [batch, '${paths[2]}\n${paths[12]}\n${paths[19]}', paths[3], main_batch, paths[5],
-		paths[6], paths[7], paths[8], paths[9], paths[10], paths[16]]
+		paths[7], paths[8], paths[9], paths[10], paths[16]]
 	ts.exec_mode = .compile
 	assert ts.test_units(paths) == paths
 	ts.exec_mode = .compile_and_run
 	ts.vargs = '-b js'
 	assert ts.test_units(paths) == paths
+}
+
+// `v vet` gets the same options for every file of a command (see tool_units).
+fn test_tool_units_group_files_that_get_the_same_vet_options() ! {
+	root := batch_test_root('tool-units')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	mut paths := []string{}
+	for name in ['a.v', 'global_b.v', 'c.v', 'global_d.v'] {
+		path := os.join_path(root, name)
+		os.write_file(path, 'module main\n')!
+		paths << path
+	}
+	vet := TestSession{
+		vargs: '-silent vet'
+	}
+	assert vet.can_batch_tool_runs()
+	assert vet.tool_units(paths) == ['${paths[0]}\n${paths[2]}', '${paths[1]}\n${paths[3]}']
+	fmt := TestSession{
+		vargs: '-silent fmt -inprocess -verify'
+	}
+	assert fmt.can_batch_tool_runs()
+	assert fmt.tool_units(paths) == [paths.join('\n')]
+	assert TestSession{
+		vargs: 'fmt -inprocess -l'
+	}.can_batch_tool_runs()
+	assert !TestSession{
+		vargs: 'fmt -w'
+	}.can_batch_tool_runs()
+}
+
+// A command over several files that rejects one of them names that file, and only that one.
+fn test_tool_batch_that_fails_names_only_the_rejected_file() ! {
+	root := batch_test_root('tool-batch')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	mut paths := []string{}
+	for name, source in {
+		'a.v': 'module main\n\nfn main() {\n\tprintln(1)\n}\n'
+		'b.v': 'module main\nfn main() {\n  x:=1\n println(x)\n}\n'
+		'c.v': 'module main\n\nfn main() {\n\tprintln(3)\n}\n'
+	} {
+		path := os.join_path(root, name)
+		os.write_file(path, source)!
+		paths << path
+	}
+	mut ts := new_test_session('-silent fmt -inprocess -verify', false)
+	// CI sets VTEST_FAIL_FAST=1; the counts below need every file of the session to run.
+	ts.fail_fast = false
+	ts.vexe = @VEXE
+	ts.files << paths
+	ts.test()
+	assert ts.benchmark.nok == 2
+	assert ts.benchmark.nfail == 1
+	rlock ts.failed_files {
+		assert ts.failed_files == [os.real_path(paths[1])]
+	}
+}
+
+// `v test-fmt` fails only the files that cannot be formatted; one that formats differently passes.
+fn test_fmt_list_batch_fails_only_the_file_that_cannot_be_formatted() ! {
+	root := batch_test_root('fmt-list-batch')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	mut paths := []string{}
+	for name, source in {
+		'a.v': 'module main\n\nfn main() {\n\tprintln(1)\n}\n'
+		'b.v': 'module main\nfn main( {\n'
+		'c.v': 'module main\nfn main() {\n  x:=1\n println(x)\n}\n'
+	} {
+		path := os.join_path(root, name)
+		os.write_file(path, source)!
+		paths << path
+	}
+	mut ts := new_test_session('-silent fmt -inprocess -l', false)
+	// CI sets VTEST_FAIL_FAST=1; the counts below need every file of the session to run.
+	ts.fail_fast = false
+	ts.vexe = @VEXE
+	ts.files << paths
+	ts.test()
+	assert ts.benchmark.nok == 2
+	assert ts.benchmark.nfail == 1
+	rlock ts.failed_files {
+		assert ts.failed_files == [os.real_path(paths[1])]
+	}
 }

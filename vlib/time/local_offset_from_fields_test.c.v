@@ -1,21 +1,23 @@
 module time
 
-fn C.tzset()
+$if !windows && !solaris {
+	fn C.tzset()
 
-struct OffsetZone {
-	tz    string
-	label string
-}
+	struct OffsetZone {
+		tz    string
+		label string
+	}
 
-fn set_test_tz(tz string) {
-	unsafe { C.setenv(c'TZ', &char(tz.str), 1) }
-	C.tzset()
-}
+	fn set_test_tz(tz string) {
+		unsafe { C.setenv(c'TZ', &char(tz.str), 1) }
+		C.tzset()
+	}
 
-fn localtime_at(sec i64) C.tm {
-	mut loc_tm := C.tm{}
-	C.localtime_r(voidptr(&sec), &loc_tm)
-	return loc_tm
+	fn localtime_at(sec i64) C.tm {
+		mut loc_tm := C.tm{}
+		C.localtime_r(voidptr(&sec), &loc_tm)
+		return loc_tm
+	}
 }
 
 // Solaris's struct tm has no tm_gmtoff, so c_local_epoch_offset derives the offset there

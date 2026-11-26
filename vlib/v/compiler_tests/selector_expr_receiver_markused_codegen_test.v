@@ -1,37 +1,13 @@
 import os
 import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const selector_markused_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_selector_markused_fixtures_${tempname.unique_token()}')
-
-fn testsuite_begin() {
-	os.mkdir_all(selector_markused_fixture_dir) or { panic(err) }
-}
-
-fn testsuite_end() {
-	os.rmdir_all(selector_markused_fixture_dir) or {}
-}
-
-fn build_v3() string {
-	v3_bin := os.join_path(selector_markused_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
 fn test_selector_receiver_or_expr_roots_string_methods() {
-	v3_bin := build_v3()
-
-	src := os.join_path(selector_markused_fixture_dir, 'v3_selector_expr_receiver_markused_input_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_selector_expr_receiver_markused_input_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src := os.join_path(root, 'main.v')
 	os.write_file(src, "fn maybe_input() ?string {
 	return none
 }
@@ -48,8 +24,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(selector_markused_fixture_dir, 'v3_selector_expr_receiver_markused_input_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -64,10 +40,12 @@ fn main() {
 }
 
 fn test_top_level_selector_receiver_or_expr_roots_string_methods() {
-	v3_bin := build_v3()
-
-	src := os.join_path(selector_markused_fixture_dir,
-		'v3_top_level_selector_expr_receiver_markused_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_top_level_selector_expr_receiver_markused_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src := os.join_path(root, 'main.v')
 	os.write_file(src, "fn maybe_input() ?string {
 	return none
 }
@@ -84,9 +62,8 @@ for i := 0; i < 1; i++ {
 		panic(err)
 	}
 
-	bin := os.join_path(selector_markused_fixture_dir,
-		'v3_top_level_selector_expr_receiver_markused_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -100,9 +77,12 @@ for i := 0; i < 1; i++ {
 }
 
 fn test_result_selector_receiver_or_expr_roots_string_methods() {
-	v3_bin := build_v3()
-
-	src := os.join_path(selector_markused_fixture_dir, 'v3_result_selector_expr_receiver_markused_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_result_selector_expr_receiver_markused_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src := os.join_path(root, 'main.v')
 	os.write_file(src, "fn get_value() !string {
 	return error('x')
 }
@@ -119,8 +99,8 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(selector_markused_fixture_dir, 'v3_result_selector_expr_receiver_markused_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

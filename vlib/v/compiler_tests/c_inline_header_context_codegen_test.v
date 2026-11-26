@@ -1,20 +1,5 @@
 import os
-
-const inline_header_vexe = @VEXE
-const inline_header_tests_dir = os.dir(@FILE)
-const inline_header_v3_dir = os.dir(inline_header_tests_dir)
-const inline_header_vlib_dir = os.dir(inline_header_v3_dir)
-const inline_header_v3_src = os.join_path(inline_header_v3_dir, 'v.v')
-
-fn inline_header_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_inline_header_context_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([inline_header_vexe, '-gc', 'none', '-path',
-			'${inline_header_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${inline_header_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn inline_header_write_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
@@ -51,10 +36,9 @@ fn include_occurrences_are_under_guard(c_code string, include_text string, guard
 }
 
 fn test_nested_local_header_text_stays_under_parent_preprocessor_context() {
-	v3_bin := inline_header_build_v3()
-	root := os.join_path(os.temp_dir(), 'v3_inline_header_context_project_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_inline_header_context_project_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	inline_header_write_file(root, 'v.mod', "Module { name: 'inline_header_context' }\n")
 	inline_header_write_file(root, 'main.v', 'module main
 
@@ -89,7 +73,7 @@ static inline int optional_backend_value(void) { return 9; }
 ')
 	// The C preprocessor handles comments and inactive nested includes, including for -cross.
 	bin_out := os.join_path(root, 'out')
-	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
+	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output

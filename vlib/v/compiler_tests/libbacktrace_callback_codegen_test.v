@@ -1,28 +1,21 @@
 import os
+import v.tempname
 
 fn test_libbacktrace_callback_codegen_matches_header() {
 	$if !linux && !macos {
 		return
 	}
 	vroot := @VEXEROOT
-	v3_dir := os.join_path(vroot, 'vlib', 'v')
-	vlib_dir := os.join_path(vroot, 'vlib')
-	temp_dir := os.join_path(os.vtmp_dir(), 'v3_libbacktrace_callback_${os.getpid()}')
-	os.rmdir_all(temp_dir) or {}
-	os.mkdir_all(temp_dir) or { panic(err) }
+	temp_dir := os.join_path(os.vtmp_dir(), 'v3_libbacktrace_callback_${tempname.unique_token()}')
+	os.mkdir(temp_dir)!
 	defer {
 		os.rmdir_all(temp_dir) or {}
 	}
 
-	v3_bin := os.join_path(temp_dir, 'v3')
-	build := os.exec([@VEXE, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o',
-		v3_bin, os.join_path(v3_dir, 'v.v')])
-	assert build.exit_code == 0, build.output
-
 	source := os.join_path(temp_dir, 'main.v')
 	os.write_file(source, "fn main() {\n\tpanic('boom')\n}\n") or { panic(err) }
 	c_path := os.join_path(temp_dir, 'main.c')
-	generate := os.exec([v3_bin, '-d', 'use_libbacktrace', '-b', 'c', '-o', c_path, source])
+	generate := os.exec([@VEXE, '-d', 'use_libbacktrace', '-b', 'c', '-o', c_path, source])
 	assert generate.exit_code == 0, generate.output
 
 	c_source := os.read_file(c_path) or { panic(err) }

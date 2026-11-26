@@ -1,43 +1,10 @@
 import os
-
-const header_owned_vexe = @VEXE
-const header_owned_tests_dir = os.dir(@FILE)
-const header_owned_v3_dir = os.dir(header_owned_tests_dir)
-const header_owned_vlib_dir = os.dir(header_owned_v3_dir)
-const header_owned_v3_src = os.join_path(header_owned_v3_dir, 'v.v')
-
-fn header_owned_v3_bin_path() string {
-	return os.join_path(os.vtmp_dir(), 'v3_header_owned_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-}
-
-fn header_owned_build_v3() string {
-	v3_bin := header_owned_v3_bin_path()
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build := os.exec([header_owned_vexe, '-gc', 'none', '-path',
-		'${header_owned_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${header_owned_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn testsuite_begin() {
-	os.rm(header_owned_v3_bin_path()) or {}
-	_ = header_owned_build_v3()
-}
-
-fn testsuite_end() {
-	os.rm(header_owned_v3_bin_path()) or {}
-}
+import v.tempname
 
 fn test_plain_v_header_owned_c_structs_are_not_redeclared() {
-	root := os.join_path(os.vtmp_dir(), 'v3_header_owned_struct_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	v3_bin := header_owned_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_header_owned_struct_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 
 	os.write_file(os.join_path(root, 'types.h'), '#ifndef V3_HEADER_OWNED_TYPES_H
 #define V3_HEADER_OWNED_TYPES_H
@@ -86,7 +53,7 @@ fn main() {
 }
 ')!
 	out := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, '--no-parallel', os.join_path(root, 'main.v'), '-b', 'c', '-o',
+	compile := os.exec([@VEXE, '--no-parallel', os.join_path(root, 'main.v'), '-b', 'c', '-o',
 		'${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
@@ -100,12 +67,9 @@ fn main() {
 }
 
 fn test_repeated_header_after_define_preserves_preprocessor_semantics() {
-	root := os.join_path(os.vtmp_dir(), 'v3_repeated_header_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
+	root := os.join_path(os.vtmp_dir(), 'v3_repeated_header_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'library.h'), '#ifndef V3_SINGLE_HEADER_DECLARATION
 #define V3_SINGLE_HEADER_DECLARATION
 int v3_single_header_value(void);
@@ -130,9 +94,8 @@ fn main() {
 	println(C.v3_single_header_value())
 }
 ')!
-	v3_bin := header_owned_build_v3()
 	out := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, '--no-parallel', os.join_path(root, 'main.v'), '-b', 'c', '-o',
+	compile := os.exec([@VEXE, '--no-parallel', os.join_path(root, 'main.v'), '-b', 'c', '-o',
 		'${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
@@ -153,12 +116,9 @@ fn main() {
 
 fn test_macos_header_only_objective_c_uses_objective_c_translation_unit() {
 	$if macos {
-		root := os.join_path(os.vtmp_dir(), 'v3_header_only_objective_c_${os.getpid()}')
-		os.rmdir_all(root) or {}
-		os.mkdir_all(root) or { panic(err) }
-		defer {
-			os.rmdir_all(root) or {}
-		}
+		root := os.join_path(os.vtmp_dir(), 'v3_header_only_objective_c_${tempname.unique_token()}')
+		os.mkdir(root)!
+		defer { os.rmdir_all(root) or {} }
 		os.write_file(os.join_path(root, 'objective_c_api.h'), '#ifndef __OBJC__
 #error this header requires an Objective-C translation unit
 #endif
@@ -174,9 +134,8 @@ fn main() {
 	println(42)
 }
 ')!
-		v3_bin := header_owned_build_v3()
 		out := os.join_path(root, 'out')
-		compile := os.exec([v3_bin, '-nocache', '--no-parallel', '-cc', 'clang',
+		compile := os.exec([@VEXE, '-nocache', '--no-parallel', '-cc', 'clang',
 			os.join_path(root, 'main.v'), '-b', 'c', '-o', '${out}'])
 		assert compile.exit_code == 0, compile.output
 		run := os.exec([out])

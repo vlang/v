@@ -1,0 +1,143 @@
+name: POSIX capture C int ABI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'vlib/os/os_nix.c.v'
+      - 'vlib/os/process_waitpid_abi_nix_test.c.v'
+      - 'vlib/v/gen/fastc/unit_compile_nix.c.v'
+      - 'vlib/v/gen/fastc/capture_abi_nix_test.c.v'
+      - '.github/workflows/posix_capture_abi_ci.yml'
+
+concurrency:
+  group: posix-capture-abi-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  s390x_linux:
+    # The host should always be Linux
+    runs-on: ubuntu-22.04
+    # Embedding the Linux-default V3 compiler makes both bootstrap stages slow under QEMU.
+    timeout-minutes: 120
+    name: Build on ubuntu-22.04 s390x
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: uraimo/run-on-arch-action@1e2c619f81e6d8609845ea1d2f443a778df1ac68 # v3
+        name: Bootstrap and generate the optimized compiler
+        with:
+          arch: s390x
+          distro: ubuntu22.04
+          base_image: --platform=linux/s390x s390x/ubuntu:22.04
+          shell: /bin/bash
+          install: |
+            apt-get update -q -y
+            apt-get install -q -y make gcc git file coreutils binutils
+          run: |
+            # The checkout belongs to the host runner, not the container's root user.
+            # Scope Git's ownership exception to this mounted repository only.
+            git config --global --add safe.directory "$(pwd -P)"
+            uname -a
+            make --version
+            gcc --version
+            ls -la
+            make
+            file ./v
+            ls -la ./v
+            V_CI_SOURCE_BUILD=1 V_CI_VPROD_STAGE=generate sh .github/workflows/prepare_v.sh
+      # The native `gcc -O2` of the generated C takes about 45 minutes under QEMU.
+      # Ubuntu's cross compiler on the x86 host is the same gcc release with the
+      # same glibc as the s390x container, and finishes in a few minutes.
+      - name: Compile the optimized compiler with a cross compiler
+        run: |
+          set -euo pipefail
+          sudo chown -R "$(id -u):$(id -g)" .
+          sudo apt-get update -q -y
+          sudo apt-get install -q -y gcc-s390x-linux-gnu
+          mkdir -p "$RUNNER_TEMP/cross-gcc"
+          ln -sf "$(command -v s390x-linux-gnu-gcc)" "$RUNNER_TEMP/cross-gcc/gcc"
+          PATH="$RUNNER_TEMP/cross-gcc:$PATH" make --no-print-directory -C vprod.project
+          file vprod.project/v
+      - uses: uraimo/run-on-arch-action@1e2c619f81e6d8609845ea1d2f443a778df1ac68 # v3
+        name: Install the optimized compiler and run tests
+        with:
+          arch: s390x
+          distro: ubuntu22.04
+          base_image: --platform=linux/s390x s390x/ubuntu:22.04
+          shell: /bin/bash
+          install: |
+            apt-get update -q -y
+            apt-get install -q -y make gcc git file coreutils binutils
+          run: |
+            set -euo pipefail
+            git config --global --add safe.directory "$(pwd -P)"
+            # Installing runs the compiler on s390x first (`v -version`).
+            V_CI_SOURCE_BUILD=1 V_CI_VPROD_STAGE=install sh .github/workflows/prepare_v.sh
+            # V3 is the default compiler on Linux. Keep bootstrap fallback-compatible,
+            # then make ordinary test compilation fail instead of silently retrying V1.
+            ./v fmt -verify vlib/os/os_nix.c.v vlib/os/process_waitpid_abi_nix_test.c.v
+            ./v -silent vlib/os/exec_helpers_test.v
+            ./v -silent vlib/os/process_waitpid_abi_nix_test.c.v
+            ./v -silent vlib/v/gen/fastc/capture_abi_nix_test.c.v
+            ./v test vlib/builtin vlib/os vlib/encoding/binary
+            ./v test vlib/v/tests/fns/closure_test.v
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify format and run capture and Process tests
+        run: |
+          ./v fmt -w vlib/os/os_nix.c.v vlib/os/process_waitpid_abi_nix_test.c.v vlib/v/gen/fastc/unit_compile_nix.c.v vlib/v/gen/fastc/capture_abi_nix_test.c.v
+          git diff --exit-code
+          for cc in gcc clang; do
+            ./v -cc "$cc" -silent vlib/os/exec_helpers_test.v
+            ./v -cc "$cc" -silent vlib/os/process_waitpid_abi_nix_test.c.v
+            ./v -cc "$cc" -silent vlib/os/execute_legacy_test.v
+            ./v -cc "$cc" -silent vlib/v/gen/fastc/capture_abi_nix_test.c.v
+          done
+
+  bootstrap_capture:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the initial compiler without the optimized self-build wrapper
+        run: make -j4
+      - name: Capture generated C and verify both bindings before v self
+        run: |
+          ./v -cc gcc -gc none -o "$RUNNER_TEMP/capture_abi.c" vlib/v/gen/fastc/capture_abi_nix_test.c.v
+          grep -nE 'v_os_exec_capture_start\(|v_os_exec_capture_input_start\(|waitpid\(' "$RUNNER_TEMP/capture_abi.c" | sed -n '1,80p'
+          ./v -cc gcc -gc none -keepc -showcc -show-c-output -silent vlib/v/gen/fastc/capture_abi_nix_test.c.v
+          ./v -cc clang -gc none -keepc -showcc -show-c-output -silent vlib/v/gen/fastc/capture_abi_nix_test.c.v
+
+  compiler_regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Install compiler test dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev libgl-dev libegl-dev libgl1-mesa-dri
+      - name: Compiler errors
+        run: ./v -silent vlib/v/compiler_errors_test.v
+      - name: Full compiler suite
+        run: ./v -silent test vlib/v/

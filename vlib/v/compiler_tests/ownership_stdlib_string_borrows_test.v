@@ -5,7 +5,8 @@ fn test_ownership_standard_string_readers_borrow_owned_arguments() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'import os
+	os.write_file(source, 'import encoding.utf8
+import os
 import strconv
 import strings
 
@@ -24,6 +25,8 @@ fn main() {
 	value := "42".to_owned()
 	assert strconv.parse_uint(value, 10, 64)! == 42
 	assert strconv.parse_int(value, 10, 64)! == 42
+	assert value == "42"
+	assert utf8.validate_str(value)
 	assert value == "42"
 	mut builder := strings.new_builder(8)
 	builder.write_string(value)

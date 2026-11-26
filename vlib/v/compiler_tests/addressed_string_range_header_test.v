@@ -1,5 +1,6 @@
 // vtest ownership
 import os
+import json2
 
 fn test_addressed_string_range_headers_keep_their_type_and_values() {
 	root := os.join_path(os.vtmp_dir(), 'addressed_string_range_header_${os.getpid()}')
@@ -107,12 +108,40 @@ fn main() {
 	}
 }
 
+const addressed_range_rejection_args = [@VEXE, '-no-memory-limit', '-nocache', '-ownership', '-gc',
+	'none', '-cc', 'clang']
+const addressed_range_rejection_error = 'cannot take an addressed string range from a temporary value'
+
+struct AddressedRangeRejectionDiagnostic {
+	file     string
+	severity string
+	message  string
+}
+
+fn addressed_range_rejection_fixture(expression string) string {
+	return 'type Text = string
+struct Holder { text string }
+fn make_text() string { return "abcabcabc".to_owned() }
+fn maybe_text() ?string { return make_text() }
+fn make_holder() Holder { return Holder{text: make_text()} }
+fn make_array() []string { return [make_text()] }
+fn escaped() &string {
+	return ${expression}
+}
+fn main() {
+	for _ in 0 .. 3 {
+		view := ${expression}
+		println(*view)
+	}
+}
+'
+}
+
 fn test_ownership_addressed_string_ranges_reject_temporary_sources() {
 	root := os.join_path(os.vtmp_dir(), 'addressed_string_range_temporary_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	for expression in [
+	expressions := [
 		'&"abc".repeat(3)[1..]',
 		'&("abc".repeat(3)[1..])',
 		'&("abc".to_owned())[1..]',
@@ -130,28 +159,50 @@ fn test_ownership_addressed_string_ranges_reject_temporary_sources() {
 		'&([make_text()]!)[0][1..]',
 		'&(Holder{text: make_text()}).text[1..]',
 		'&"abc".repeat(3)[1..][1..]',
-	] {
-		os.write_file(source, 'type Text = string
-struct Holder { text string }
-fn make_text() string { return "abcabcabc".to_owned() }
-fn maybe_text() ?string { return make_text() }
-fn make_holder() Holder { return Holder{text: make_text()} }
-fn make_array() []string { return [make_text()] }
-fn escaped() &string {
-	return ${expression}
-}
-fn main() {
-	for _ in 0 .. 3 {
-		view := ${expression}
-		println(*view)
+	]
+	// Custom flags can change import resolution or limit diagnostics.
+	if os.getenv('VFLAGS').trim_space() in ['', '-gc none'] {
+		check_addressed_range_rejections_batched(root, expressions)!
+		return
+	}
+	source := os.join_path(root, 'main.v')
+	for expression in expressions {
+		os.write_file(source, addressed_range_rejection_fixture(expression))!
+		for mode in [['-no-parallel'], []string{}] {
+			out := os.exec([...addressed_range_rejection_args, ...mode, '-check', source])
+			assert out.exit_code != 0, '${expression}: ${out.output}'
+			assert out.output.contains(addressed_range_rejection_error), '${expression}: ${out.output}'
+		}
 	}
 }
-')!
-		for mode in ['-no-parallel', ''] {
-			// Rejection cases cannot own their backing allocation, so they are never run.
-			out := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
-			assert out.exit_code != 0, '${expression}: ${out.output}'
-			assert out.output.contains('cannot take an addressed string range from a temporary value'), '${expression}: ${out.output}'
+
+fn check_addressed_range_rejections_batched(root string, expressions []string) ! {
+	mut imports := []string{cap: expressions.len}
+	for i, expression in expressions {
+		name := 'range_case_${i}'
+		dir := os.join_path(root, name)
+		os.mkdir(dir)!
+		os.write_file(os.join_path(dir, '${name}.v'), 'module ${name}\n\n' +
+			addressed_range_rejection_fixture(expression))!
+		imports << 'import ${name} as _'
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
+	for mode in [['-no-parallel'], []string{}] {
+		// Each fixture can report two errors, so use JSON to avoid the text diagnostic limit.
+		out := os.exec([...addressed_range_rejection_args, ...mode, '-json-errors', '-check', root])
+		assert out.exit_code != 0, '${mode}: ${out.output}'
+		mut rejected := map[string]bool{}
+		for line in out.output.split_into_lines() {
+			if !line.starts_with('{') {
+				continue
+			}
+			diagnostic := json2.decode[AddressedRangeRejectionDiagnostic](line)!
+			if diagnostic.severity == 'error' && diagnostic.message.contains(addressed_range_rejection_error) {
+				rejected[os.file_name(diagnostic.file)] = true
+			}
+		}
+		for i, expression in expressions {
+			assert 'range_case_${i}.v' in rejected, '${mode}: ${expression}: ${out.output}'
 		}
 	}
 }

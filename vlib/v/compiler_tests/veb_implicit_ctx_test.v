@@ -1,28 +1,10 @@
 import os
 import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const veb_ctx_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_veb_ctx_fixtures_${tempname.unique_token()}')
-
-fn testsuite_begin() {
-	os.mkdir_all(veb_ctx_fixture_dir) or { panic(err) }
-}
-
-fn testsuite_end() {
-	os.rmdir_all(veb_ctx_fixture_dir) or {}
-}
-
-fn build_v3() string {
-	v3_bin := os.join_path(veb_ctx_fixture_dir, 'v3') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn veb_ctx_test_dir(name string) !string {
+	root := os.join_path(os.vtmp_dir(), 'v3_veb_ctx_${name}_${tempname.unique_token()}')
+	os.mkdir(root)!
+	return root
 }
 
 // A `veb.Result` method that receives the implicit `Context` parameter can be
@@ -30,7 +12,8 @@ fn build_v3() string {
 // type-check (not report a missing argument) and forward the enclosing `ctx`,
 // not a zero/default value.
 fn test_veb_implicit_ctx_forwarded_at_direct_and_reflected_call_sites() {
-	v3_bin := build_v3()
+	root := veb_ctx_test_dir('forwarded')!
+	defer { os.rmdir_all(root) or {} }
 	src := '
 import veb
 
@@ -66,11 +49,10 @@ fn main() {
 	_ := app.index()
 }
 '
-	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_ctx.v')
+	src_file := os.join_path(root, 'v3_veb_ctx.v')
 	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_ctx.c')
-	os.rm(c_out) or {}
-	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', '${c_out}'])
+	c_out := os.join_path(root, 'v3_veb_ctx.c')
+	compile := os.exec([@VEXE, '-no-memory-limit', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	// No-arg reflected delegation forwards the enclosing ctx in the ctx slot.
@@ -84,13 +66,8 @@ fn main() {
 // whose context is implicit. Its call-site spelling must match its parameter
 // declaration even when the source name shadows a runtime C type.
 fn test_veb_explicit_ctx_named_like_runtime_type_is_forwarded() {
-	v3_bin := build_v3()
-	root := os.join_path(veb_ctx_fixture_dir, 'v3_veb_renamed_ctx_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
+	root := veb_ctx_test_dir('renamed')!
+	defer { os.rmdir_all(root) or {} }
 	src_file := os.join_path(root, 'main.v')
 	os.write_file(src_file, 'module main
 
@@ -119,7 +96,7 @@ fn main() {
 		panic(err)
 	}
 	bin_out := os.join_path(root, 'app')
-	compile := os.exec([v3_bin, '-no-memory-limit', '-nocache', src_file, '-o', bin_out])
+	compile := os.exec([@VEXE, '-no-memory-limit', '-nocache', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -127,7 +104,8 @@ fn main() {
 // mutable `ctx` binding in their body, including when all declared route
 // parameters are unnamed.
 fn test_veb_implicit_ctx_binding_with_unnamed_route_params() {
-	v3_bin := build_v3()
+	root := veb_ctx_test_dir('unnamed_route')!
+	defer { os.rmdir_all(root) or {} }
 	src := '
 import veb
 
@@ -158,11 +136,10 @@ fn main() {
 	veb.run_at[App, Context](mut app, port: 0) or { panic(err) }
 }
 '
-	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_implicit_ctx_unnamed_route.v')
+	src_file := os.join_path(root, 'v3_veb_implicit_ctx_unnamed_route.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_implicit_ctx_unnamed_route')
-	os.rm(bin_out) or {}
-	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', bin_out])
+	bin_out := os.join_path(root, 'v3_veb_implicit_ctx_unnamed_route')
+	compile := os.exec([@VEXE, '-no-memory-limit', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -171,13 +148,9 @@ fn main() {
 // request context. The handler still receives the hidden `Context`, so its
 // implicit `ctx` use resolves.
 fn test_veb_imported_context_alias_param_still_gets_hidden_ctx() {
-	v3_bin := build_v3()
-	root := os.join_path(veb_ctx_fixture_dir, 'v3_veb_imported_ctx_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(os.join_path(root, 'other')) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
+	root := veb_ctx_test_dir('imported')!
+	defer { os.rmdir_all(root) or {} }
+	os.mkdir(os.join_path(root, 'other'))!
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'vebimportedctx' }\n") or {
 		panic(err)
 	}
@@ -205,7 +178,7 @@ fn main() {}
 "
 	os.write_file(os.join_path(root, 'main.v'), main_src) or { panic(err) }
 	out := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, '-no-memory-limit', os.join_path(root, 'main.v'), '-o', '${out}'])
+	compile := os.exec([@VEXE, '-no-memory-limit', os.join_path(root, 'main.v'), '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -214,7 +187,8 @@ fn main() {}
 // route its receiver to the embedded framework field just because both types
 // share the short name `Context`.
 fn test_veb_program_context_hook_keeps_complete_receiver() {
-	v3_bin := build_v3()
+	root := veb_ctx_test_dir('complete_receiver')!
+	defer { os.rmdir_all(root) or {} }
 	src := '
 import veb
 
@@ -242,20 +216,18 @@ fn main() {
 	veb.run_at[App, Context](mut app, port: 0) or { panic(err) }
 }
 '
-	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_complete_context_receiver.v')
+	src_file := os.join_path(root, 'v3_veb_complete_context_receiver.v')
 	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_complete_context_receiver.c')
-	os.rm(c_out) or {}
-	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', '${c_out}'])
+	c_out := os.join_path(root, 'v3_veb_complete_context_receiver.c')
+	compile := os.exec([@VEXE, '-no-memory-limit', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	assert c_code.contains('Context__before_request(user_context)'), c_code
 	assert !c_code.contains('Context__before_request(&user_context->veb__Context)'), c_code
 	assert c_code.contains('AnonStruct_v3_inferred_'), c_code
 	assert !c_code.contains('v_struct'), c_code
-	bin_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_complete_context_receiver')
-	os.rm(bin_out) or {}
-	native_compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', bin_out])
+	bin_out := os.join_path(root, 'v3_veb_complete_context_receiver')
+	native_compile := os.exec([@VEXE, '-no-memory-limit', src_file, '-o', bin_out])
 	assert native_compile.exit_code == 0, native_compile.output
 }
 
@@ -265,7 +237,8 @@ fn main() {
 // The same program also ensures a framework method binds to `veb.Context`
 // rather than a same-named program receiver.
 fn test_veb_reflected_implicit_ctx_call_uses_abi_params() {
-	v3_bin := build_v3()
+	root := veb_ctx_test_dir('reflected')!
+	defer { os.rmdir_all(root) or {} }
 	src := '
 import veb
 
@@ -300,11 +273,10 @@ fn main() {
 	dispatch(App{}, mut ctx, ["first", "second"])
 }
 '
-	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_reflected_implicit_ctx.v')
+	src_file := os.join_path(root, 'v3_veb_reflected_implicit_ctx.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_reflected_implicit_ctx')
-	os.rm(bin_out) or {}
-	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
+	bin_out := os.join_path(root, 'v3_veb_reflected_implicit_ctx')
+	compile := os.exec([@VEXE, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -317,7 +289,8 @@ fn main() {
 // veb answer `HTTP/ 0` for every route whose handler omitted `ctx`. (A handler
 // that needs more arguments is a reflected-call arity error, so none is here.)
 fn test_veb_reflected_implicit_ctx_call_without_spread_args() {
-	v3_bin := build_v3()
+	root := veb_ctx_test_dir('no_spread')!
+	defer { os.rmdir_all(root) or {} }
 	src := '
 import veb
 
@@ -351,11 +324,10 @@ fn main() {
 	dispatch(mut app, mut ctx)
 }
 '
-	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_implicit_ctx_no_spread.v')
+	src_file := os.join_path(root, 'v3_veb_implicit_ctx_no_spread.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_implicit_ctx_no_spread')
-	os.rm(bin_out) or {}
-	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
+	bin_out := os.join_path(root, 'v3_veb_implicit_ctx_no_spread')
+	compile := os.exec([@VEXE, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -369,7 +341,8 @@ fn main() {
 // (A `string` route parameter would leave the argument in the hidden slot and
 // the route short of an argument, which is a reflected-call arity error.)
 fn test_veb_reflected_context_value_binds_to_declared_interface_param() {
-	v3_bin := build_v3()
+	root := veb_ctx_test_dir('interface_arg')!
+	defer { os.rmdir_all(root) or {} }
 	src := '
 import veb
 
@@ -401,11 +374,10 @@ fn main() {
 	dispatch(mut app, ctx)
 }
 '
-	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_ctx_interface_arg.v')
+	src_file := os.join_path(root, 'v3_veb_ctx_interface_arg.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_ctx_interface_arg')
-	os.rm(bin_out) or {}
-	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
+	bin_out := os.join_path(root, 'v3_veb_ctx_interface_arg')
+	compile := os.exec([@VEXE, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -416,7 +388,8 @@ fn main() {
 // carries a custom Context that embeds it. Pass the embedded field to the route,
 // rather than the incompatible address of the complete custom Context.
 fn test_veb_reflected_base_context_uses_embedded_field() {
-	v3_bin := build_v3()
+	root := veb_ctx_test_dir('embedded_base')!
+	defer { os.rmdir_all(root) or {} }
 	src := '
 import veb
 
@@ -445,11 +418,10 @@ fn main() {
 	dispatch(mut app, mut ctx)
 }
 '
-	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_embedded_base_ctx.v')
+	src_file := os.join_path(root, 'v3_veb_embedded_base_ctx.v')
 	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_embedded_base_ctx.c')
-	os.rm(c_out) or {}
-	compile := os.exec([v3_bin, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
+	c_out := os.join_path(root, 'v3_veb_embedded_base_ctx.c')
+	compile := os.exec([@VEXE, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	assert c_code.contains('App__index(app, &ctx->veb__Context)'), c_code
@@ -460,7 +432,8 @@ fn main() {
 // context at the reflected route call, while a promoted generic veb.Context
 // method called by that route must receive the embedded framework context.
 fn test_veb_custom_context_route_with_promoted_generic_method() {
-	v3_bin := build_v3()
+	root := veb_ctx_test_dir('generic_method')!
+	defer { os.rmdir_all(root) or {} }
 	src := '
 import veb
 
@@ -489,11 +462,10 @@ fn main() {
 	veb.run[App, Context](mut app, 8080)
 }
 '
-	src_file := os.join_path(veb_ctx_fixture_dir, 'v3_veb_custom_context_generic_method.v')
+	src_file := os.join_path(root, 'v3_veb_custom_context_generic_method.v')
 	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(veb_ctx_fixture_dir, 'v3_veb_custom_context_generic_method.c')
-	os.rm(c_out) or {}
-	compile := os.exec([v3_bin, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
+	c_out := os.join_path(root, 'v3_veb_custom_context_generic_method.c')
+	compile := os.exec([@VEXE, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	assert c_code.contains('veb__Context_SomeData__json(&ctx->veb__Context, payload)'), c_code
