@@ -375,7 +375,9 @@ fn test_library_check_restores_existing_environment_values() {
 
 fn test_a_library_instance_whose_types_reach_a_program_generic_keeps_its_body() {
 	// `Job` holds a `Runner`, which has a method with type parameters of its own.
-	check := check_with_library('method_level_trace', method_level_program)
+	check := check_with_library('method_level', method_level_program)
+	assert check.res.exit_code == 1, check.res.output
+	assert error_lines(check.res.output) == ['6:11: `int` has no property `name`'], check.res.output
 	assert check.trace == ['0 of 1 library instances cloned without their bodies'], check.trace.str()
 }
 
@@ -390,7 +392,9 @@ fn test_a_library_instance_given_an_interface_or_a_program_generic_type_keeps_it
 }
 
 fn test_a_method_of_a_program_generic_type_keeps_the_body_of_every_library_instance() {
-	check := check_with_library('dispatch_trace', dispatch_program)
+	check := check_with_library('dispatch', dispatch_program)
+	assert check.res.exit_code == 1, check.res.output
+	assert error_lines(check.res.output) == ['8:13: `int` has no property `name`'], check.res.output
 	assert check.trace == ['0 of 1 library instances cloned without their bodies',
 		'every library instance keeps its body: `Box.name` is a method of a generic type of the program'], check.trace.str()
 }
@@ -410,22 +414,10 @@ fn test_a_method_called_in_a_library_body_checks_the_program_instance() {
 	assert error_lines(check.res.output) == ['8:13: `int` has no property `name`'], check.res.output
 }
 
-fn test_an_interface_call_in_a_library_body_checks_the_program_instance_it_reaches() {
-	check := check_with_library('dispatch', dispatch_program)
-	assert check.res.exit_code == 1, check.res.output
-	assert error_lines(check.res.output) == ['8:13: `int` has no property `name`'], check.res.output
-}
-
 fn test_an_interface_type_argument_checks_the_program_instance_its_call_reaches() {
 	check := check_with_library('interface_arg', 'import advlib\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) name() string {\n\treturn b.v.name\n}\n\ninterface Named {\n\tname() string\n}\n\nfn main() {\n\txs := [Named(Box[int]{ v: 1 })]\n\tprintln(advlib.names_of(xs))\n}\n')
 	assert check.res.exit_code == 1, check.res.output
 	assert error_lines(check.res.output) == ['8:13: `int` has no property `name`'], check.res.output
-}
-
-fn test_a_method_with_its_own_type_parameters_reached_through_a_field_is_checked() {
-	check := check_with_library('method_level', method_level_program)
-	assert check.res.exit_code == 1, check.res.output
-	assert error_lines(check.res.output) == ['6:11: `int` has no property `name`'], check.res.output
 }
 
 fn test_a_comptime_for_lowered_after_an_interface_call_in_a_library_body_is_checked() {
