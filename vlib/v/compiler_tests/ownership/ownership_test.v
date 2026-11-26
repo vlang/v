@@ -6787,6 +6787,114 @@ fn main() {
 	}
 }
 
+const scoped_factory_record_pool_fixture = r'
+import sync.arc
+import sync.thread as transport
+
+struct RecordPoolState {
+	calls arc.Atomic[int]
+	stats arc.Mutex[int]
+}
+
+struct RecordPoolJob {
+	label string
+}
+
+struct RecordPoolVisitor implements Drop {
+	state &RecordPoolState
+	job RecordPoolJob
+}
+
+fn add_record_pool_stats(total int, amount int) arc.MutexUpdate[int, int] {
+	return arc.MutexUpdate[int, int]{ value: total + amount, result: total + amount }
+}
+
+pub fn (mut visitor RecordPoolVisitor) call(delta int) int {
+	visitor.state.stats.update_with(delta + visitor.job.label.len, add_record_pool_stats)
+	return visitor.state.calls.add(1)
+}
+
+fn (mut visitor RecordPoolVisitor) drop() {
+	visitor.state.stats.update_with(1, add_record_pool_stats)
+	visitor.state.calls.add(1)
+}
+
+interface RecordPoolFactory[^scope] {
+mut:
+	create() transport.ScopedMutCallback[^scope, int, int]
+}
+
+struct RecordJobFactory[^scope] {
+	state &^scope RecordPoolState
+mut:
+	jobs []RecordPoolJob
+}
+
+fn (mut factory RecordJobFactory[^scope]) create() transport.ScopedMutCallback[^scope, int, int] {
+	return transport.new_scoped_mut_callback[int, int, RecordPoolVisitor](RecordPoolVisitor{
+		state: factory.state
+		job: factory.jobs.pop()
+	})
+}
+
+fn run_record_pool[^scope](mut factory RecordPoolFactory[^scope]) {
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	for _ in 0 .. 3 {
+		visitor := factory.create()
+		handles << spawn transport.invoke_scoped_mut_callback(visitor, 1)
+	}
+}
+'
+
+const scoped_factory_record_pool_program = scoped_factory_record_pool_fixture + r'
+fn main() {
+	state := RecordPoolState{calls: arc.new_atomic(0), stats: arc.new_mutex(0)}
+	mut factory := RecordJobFactory[^scope]{
+		state: &state
+		jobs: [
+			RecordPoolJob{label: "keep".clone()},
+			RecordPoolJob{label: "abc".clone()},
+			RecordPoolJob{label: "xy".clone()},
+			RecordPoolJob{label: "d".clone()},
+		]
+	}
+	run_record_pool(mut factory)
+	assert state.calls.load() == 6
+	assert state.stats.update_with(0, add_record_pool_stats) == 12
+	assert factory.jobs.len == 1
+	assert factory.jobs[0].label == "keep"
+}
+'
+
+fn test_ownership_scoped_factory_pool_borrows_synchronized_record() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_factory_synchronized_record_pool'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_factory_record_pool_program,
+		['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_factory_record_pool_rejects_reachable_sync_handles() {
+	v3_bin := ownership_build_v3()
+	for field in ['other arc.Mutex[int]', 'other arc.Arc[NestedPoolState]', 'other []RecordPoolState'] {
+		source := scoped_factory_record_pool_fixture.replace('struct RecordPoolJob {',
+			'struct NestedPoolState { handle arc.Mutex[int] }\nstruct RecordPoolJob {\n\t${field}') + r'
+fn main() {
+	state := RecordPoolState{calls: arc.new_atomic(0), stats: arc.new_mutex(0)}
+	mut factory := RecordJobFactory[^scope]{state: &state, jobs: []RecordPoolJob{}}
+	run_record_pool(mut factory)
+}
+'
+		result := run_ownership_check(v3_bin, 'scoped_factory_synchronized_pool_overlap', source)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
+	}
+}
+
 const scoped_factory_owned_input_fixture = r'
 import sync.arc
 import sync.thread as transport
