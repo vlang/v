@@ -2054,6 +2054,14 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 			expr_type = call_type
 		}
 	}
+	if expr.kind == .call && array_type_has_generic_placeholder(expr_type) {
+		// A generic call is typed by its declared return (`[]T`); the variant is
+		// its concrete return (`[]Sub`).
+		concrete := t.concrete_generic_call_return_type(expr_id, expr)
+		if concrete != 0 && !array_type_has_generic_placeholder(concrete) {
+			expr_type = concrete
+		}
+	}
 	if expr.kind in [.ident, .selector] {
 		if expr.kind == .ident && expr.value.len > 0 {
 			local_type_source_id := t.raw_var_type(expr.value)
