@@ -39,17 +39,16 @@ fn main() {
 	}
 }
 
-fn test_ownership_value_returns_survive_repeated_storage_queries() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_value_return_${os.getpid()}')
+fn test_ownership_map_returns_preserve_storage_summaries() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_map_returns_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
-	mut source := 'struct Holder { mut: values map[string]string }\n'
-	source += 'fn store0(mut holder Holder, value string) { holder.values["key"] = value }\n'
+	mut stores := 'struct Holder { mut: values map[string]string }\n'
+	stores += 'fn store0(mut holder Holder, value string) { holder.values["key"] = value }\n'
 	for i in 1 .. 19 {
-		source += 'fn store${i}(mut holder Holder, value string) { store${i - 1}(mut holder, value); store${i - 1}(mut holder, value) }\n'
+		stores += 'fn store${i}(mut holder Holder, value string) { store${i - 1}(mut holder, value); store${i - 1}(mut holder, value) }\n'
 	}
-	source += 'fn value(flag bool) string {
+	local_return := stores + 'fn value(flag bool) string {
 	mut holder := Holder{}
 	if flag {
 		input := "value"
@@ -58,48 +57,19 @@ fn test_ownership_value_returns_survive_repeated_storage_queries() {
 	if text := holder.values["key"] { return text }
 	return ""
 }
-fn main() { assert value(true) == "value"; assert value(false) == "" }
+pub fn check() { assert value(true) == "value"; assert value(false) == "" }
 '
-	os.write_file(source_path, source)!
-	for mode in ['-no-parallel', ''] {
-		result := run_owned_storage_summary(source_path, mode, 'run')
-		assert result.exit_code == 0, '${mode}: ${result.output}'
-	}
-}
-
-fn test_ownership_mutable_formal_returns_ignore_independent_call_inputs() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_mutable_formal_value_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
-	mut source := 'struct Holder { mut: values map[string]string }\n'
-	source += 'fn store0(mut holder Holder, value string) { holder.values["key"] = value }\n'
-	for i in 1 .. 19 {
-		source += 'fn store${i}(mut holder Holder, value string) { store${i - 1}(mut holder, value); store${i - 1}(mut holder, value) }\n'
-	}
-	source += 'fn value(mut holder Holder, number int) string {
+	mutable_return := stores + 'fn value(mut holder Holder, number int) string {
 	store18(mut holder, "\${number}")
 	if text := holder.values["key"] { return text }
 	return ""
 }
-fn main() {
+pub fn check() {
 	mut holder := Holder{}
 	assert value(mut holder, 42) == "42"
 }
 '
-	os.write_file(source_path, source)!
-	for mode in ['-no-parallel', ''] {
-		result := run_owned_storage_summary(source_path, mode, 'run')
-		assert result.exit_code == 0, '${mode}: ${result.output}'
-	}
-}
-
-fn test_ownership_mutable_formal_history_probe_does_not_replay_chained_calls() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_mutable_formal_chained_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
-	os.write_file(source_path, 'struct Holder { mut: values map[string]string }
+	chained_return := 'struct Holder { mut: values map[string]string }
 struct Item { text string }
 fn make_item(text string) Item { return Item{text: text} }
 fn (item Item) view() string { return item.text }
@@ -111,13 +81,28 @@ fn value(mut holder Holder) string {
 	if result := holder.values["key"] { return result }
 	return ""
 }
-fn main() {
+pub fn check() {
 	mut holder := Holder{}
 	assert value(mut holder) == "value"
 }
-')!
+'
+	fixtures := {
+		'local_return':   local_return
+		'mutable_return': mutable_return
+		'chained_return': chained_return
+	}
+	mut imports := []string{cap: fixtures.len}
+	mut calls := []string{cap: fixtures.len}
+	for name, fixture in fixtures {
+		dir := os.join_path(root, name)
+		os.mkdir(dir)!
+		os.write_file(os.join_path(dir, '${name}.v'), 'module ${name}\n\n${fixture}')!
+		imports << 'import ${name}'
+		calls << '\t${name}.check()'
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')!
 	for mode in ['-no-parallel', ''] {
-		result := run_owned_storage_summary(source_path, mode, 'run')
+		result := run_owned_storage_summary(root, mode, 'run')
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
 }
