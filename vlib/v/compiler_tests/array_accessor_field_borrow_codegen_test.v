@@ -74,14 +74,56 @@ fn run_v3_array_accessor_borrow_module(name string, module_src string, main_src 
 // the element type owns heap data and has no `clone()` method. This mirrors the HPACK
 // dynamic table (`net.http` / `net.quic`) that `v new --web` pulls in via `veb`.
 fn test_first_last_field_borrow_on_owned_elements() {
-	// The exact evict-loop shape: read the last element's scalar field, then remove it.
-	last_field := run_v3_array_accessor_borrow_program('last_field', "struct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\nstruct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\nfn (mut t Tbl) shrink() {\n\tfor t.entries.len > 0 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n}\n\nfn main() {\n\tmut t := Tbl{}\n\tt.entries << Entry{ name: 'a', value: 'b', size: 5 }\n\tt.entries << Entry{ name: 'c', value: 'd', size: 7 }\n\tt.total = 12\n\tt.shrink()\n\tprintln(int_str(t.total))\n}\n")
-	assert last_field == '0'
+	output := run_v3_array_accessor_borrow_program('field_borrows', "struct Entry {
+	name  string
+	value string
+	size  int
+}
 
-	// first()/last() field reads through both value and ref receivers, incl. a chained
-	// field access (`last().name.len`).
-	mixed := run_v3_array_accessor_borrow_program('mixed_field', "struct Entry {\n\tname string\n\tn    int\n}\n\nstruct Box {\nmut:\n\tentries []Entry\n}\n\nfn (b &Box) probe() int {\n\treturn b.entries.first().n + b.entries.last().n + b.entries.last().name.len\n}\n\nfn main() {\n\tmut b := Box{}\n\tb.entries << Entry{ name: 'ab', n: 10 }\n\tb.entries << Entry{ name: 'cdef', n: 20 }\n\tprintln(int_str(b.probe()))\n}\n")
-	assert mixed == '34'
+struct Tbl {
+mut:
+	entries []Entry
+	total   int
+}
+
+fn (mut t Tbl) shrink() {
+	// Read the last element before evicting it.
+	for t.entries.len > 0 {
+		t.total -= t.entries.last().size
+		t.entries.delete_last()
+	}
+}
+
+struct ProbeEntry {
+	name string
+	n    int
+}
+
+struct Box {
+mut:
+	entries []ProbeEntry
+}
+
+fn (b &Box) probe() int {
+	// Include a chained field read through a reference receiver.
+	return b.entries.first().n + b.entries.last().n + b.entries.last().name.len
+}
+
+fn main() {
+	mut t := Tbl{}
+	t.entries << Entry{ name: 'a', value: 'b', size: 5 }
+	t.entries << Entry{ name: 'c', value: 'd', size: 7 }
+	t.total = 12
+	t.shrink()
+	println(int_str(t.total))
+
+	mut b := Box{}
+	b.entries << ProbeEntry{ name: 'ab', n: 10 }
+	b.entries << ProbeEntry{ name: 'cdef', n: 20 }
+	println(int_str(b.probe()))
+}
+")
+	assert output.split_into_lines() == ['0', '34'], output
 }
 
 // The same borrow read inside an imported module: the ownership checker does not
@@ -202,74 +244,83 @@ fn test_owned_escaping_field_is_rejected() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
-// An explicit builtin string clone allocates independent storage before the selected field
-// escapes, so the array element itself can remain borrowed even when it has no clone method.
-fn test_owned_escaping_field_string_clone_borrows() {
+// These consumers can borrow the element for the string field read.
+fn test_owned_string_consumers_borrow_array_elements() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_escaping_field_string_clone', "struct E {\n\tname string\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name() string {\n\treturn t.entries.last().name.clone()\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello' }\n\tname := t.last_name()\n\tt.entries.delete_last()\n\tprintln(name)\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_escaping_field_string_clone_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'hello', run.output
-}
-
-// The exclusion is limited to the chain's final value: an owned *intermediate* field whose
-// own final value is non-owned stays borrowable. `arr.last().name.len` reads only the length
-// (an int), so nothing owned escapes and it must still lower to the in-place borrow.
-fn test_owned_intermediate_field_chain_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_intermediate_chain', "struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name_len() int {\n\treturn t.entries.last().name.len\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(int_str(t.last_name_len()))\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('unsupported node kind'), compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_intermediate_chain_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '5', run.output
-}
-
-// An owned field used only by a comparison does not escape. The accessor can borrow the
-// array element even when its type has no clone method.
-fn test_owned_field_comparison_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_comparison', "struct E {\n\tname string\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) has_name(name string) bool {\n\treturn t.entries.last().name == name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello' }\n\tprintln(t.has_name('hello'))\n}\n", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_field_comparison_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'true', run.output
-}
-
-// Builtin membership only reads and compares the selected string, so the array element can
-// remain borrowed when no element equality overload can invoke user code.
-fn test_owned_field_membership_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_membership', "struct E {
+	compile := compile_v3_ownership_program(v3_bin, 'owned_string_field_reads', "struct E {
 	name string
+}
+
+struct T {
+mut:
+	entries []E
+}
+
+// The string clone can outlive the borrowed element.
+fn (t &T) last_name() string {
+	return t.entries.last().name.clone()
+}
+
+struct SizedEntry {
+	name string
+	size int
+}
+
+struct SizedTable {
+mut:
+	entries []SizedEntry
+}
+
+// Only the length leaves this field chain.
+fn (t &SizedTable) last_name_len() int {
+	return t.entries.last().name.len
+}
+
+fn (t &T) has_name(name string) bool {
+	return t.entries.last().name == name
 }
 
 fn has_last_name(entries []E, names []string) bool {
 	return entries.last().name in names
 }
 
-fn main() {
+fn check_clone() {
+	mut t := T{}
+	t.entries << E{ name: 'hello' }
+	name := t.last_name()
+	t.entries.delete_last()
+	println(name)
+}
+
+fn check_length() {
+	mut t := SizedTable{}
+	t.entries << SizedEntry{ name: 'hello', size: 5 }
+	println(int_str(t.last_name_len()))
+}
+
+fn check_comparison() {
+	mut t := T{}
+	t.entries << E{ name: 'hello' }
+	println(t.has_name('hello'))
+}
+
+fn check_membership() {
 	entries := [E{ name: 'hello' }]
 	println(has_last_name(entries, ['hello']))
 }
+
+fn main() {
+	check_clone()
+	check_length()
+	check_comparison()
+	check_membership()
+}
 ", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_field_membership_bin')
+	assert_clean_borrow_build(compile)
+	bin_path := tmp_array_accessor_borrow_path('owned_string_field_reads_bin')
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'true', run.output
+	assert run.output.trim_space().split_into_lines() == ['hello', '5', 'true', 'true'], run.output
 }
 
 fn test_owned_field_overloaded_membership_is_rejected() {
@@ -363,100 +414,48 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
-// Builtin string concatenation allocates the result and copies both operands, so the selected
-// string cannot escape through the `+` consumer and the array element can stay borrowed.
-fn test_owned_string_concatenation_consumer_borrows() {
+fn test_owned_allocating_string_consumers_borrow_array_elements() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_string_concat_consumer', "struct E {
+	compile := compile_v3_ownership_program(v3_bin, 'owned_allocating_string_consumers', "struct E {
 	name string
 }
 
+// Concatenation copies the borrowed string into the result.
 fn decorated_last_name() string {
 	arr := [E{ name: 'hello' }]
 	return arr.last().name + '!'
 }
 
-fn main() {
-	println(decorated_last_name())
-}
-", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_string_concat_consumer_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'hello!', run.output
-}
-
-// A multi-part interpolation lowers through string__plus and copies the selected string, so the
-// accessor can borrow the array element just like the explicit concatenation case.
-fn test_owned_allocating_string_interpolation_consumer_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_string_interp_consumer', "struct E {
-	name string
-}
-
-fn decorated_last_name() string {
+// A multi-part interpolation also copies the borrowed string.
+fn interpolated_last_name() string {
 	arr := [E{ name: 'hello' }]
 	return '<\${arr.last().name}>'
 }
 
-fn main() {
-	println(decorated_last_name())
-}
-", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_string_interp_consumer_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '<hello>', run.output
-}
-
-// A format directive wraps the expression before the interpolation consumes it. The checker
-// must see through that wrapper, and formatting must stabilize a borrowed string because
-// padding is allowed to return its input unchanged when the requested width is already met.
-fn test_owned_formatted_string_interpolation_consumer_borrows() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_formatted_string_interp_consumer', "struct E {
-	name string
-}
-
+// Padding may return its input when the requested width is already met.
 fn formatted_last_name() string {
 	arr := [E{ name: 'hello' }]
 	return '\${arr.last().name:3s}'
 }
 
-fn main() {
-	println(formatted_last_name())
-}
-", '')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('cannot return an independent array element'), compile.output
-	bin_path := tmp_array_accessor_borrow_path('owned_formatted_string_interp_consumer_bin')
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'hello', run.output
-
-	siblings := compile_v3_ownership_program(v3_bin, 'owned_formatted_string_interp_sibling', "struct E {
-	name string
-}
-
-fn formatted_last_name() string {
+// The formatted string can also appear next to a formatted integer.
+fn formatted_last_name_with_sibling() string {
 	arr := [E{ name: 'hello' }]
 	return '\${arr.last().name:3s}\${1:3d}'
 }
 
 fn main() {
+	println(decorated_last_name())
+	println(interpolated_last_name())
 	println(formatted_last_name())
+	println(formatted_last_name_with_sibling())
 }
 ", '')
-	assert siblings.exit_code == 0, siblings.output
-	assert !siblings.output.contains('cannot return an independent array element'), siblings.output
-	siblings_bin_path := tmp_array_accessor_borrow_path('owned_formatted_string_interp_sibling_bin')
-	siblings_run := os.exec([siblings_bin_path])
-	assert siblings_run.exit_code == 0, siblings_run.output
-	assert siblings_run.output == 'hello  1\n', siblings_run.output
+	assert_clean_borrow_build(compile)
+	bin_path := tmp_array_accessor_borrow_path('owned_allocating_string_consumers_bin')
+	run := os.exec([bin_path])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'hello!\n<hello>\nhello\nhello  1\n', run.output
 }
 
 // An allocating consumer is borrow-safe only when evaluating its other operands cannot mutate

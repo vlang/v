@@ -19,9 +19,9 @@ struct SelfhostGenericRejection {
 	expected string
 }
 
-fn run_selfhost_bad_batch(fixture_dir string, cases []SelfhostGenericRejection) {
-	root := os.join_path(fixture_dir, 'selfhost_rejections')
-	mut imports := []string{cap: cases.len}
+fn run_selfhost_bad_batch(root string, cases []SelfhostGenericRejection, imported_module string) map[string][]string {
+	mut imports := []string{cap: cases.len + 1}
+	imports << 'import ${imported_module}'
 	for i, case in cases {
 		module_name := 'fixture_${i}'
 		imports << 'import ${module_name} as _'
@@ -44,20 +44,7 @@ fn run_selfhost_bad_batch(fixture_dir string, cases []SelfhostGenericRejection) 
 	for case in cases {
 		assert errors['v3_gen_${case.name}.v'].any(it.contains(case.expected)), '${case.name}: expected `${case.expected}` in\n${result.output}'
 	}
-}
-
-fn run_selfhost_project_bad(fixture_dir string, name string, files map[string]string, input string, expected string) {
-	root := os.join_path(fixture_dir, 'v3_gen_${name}_project')
-	os.mkdir(root) or { panic(err) }
-	for rel, src in files {
-		write_generics_project_file(root, rel, src)
-	}
-	input_path := os.join_path(root, input)
-	bad_bin := os.join_path(fixture_dir, 'v3_gen_${name}')
-	result := os.exec([@VEXE, input_path, '-selfhost', '-b', 'c', '-o', bad_bin])
-	assert result.exit_code != 0, 'expected error for ${name}, but compilation succeeded'
-	assert result.output.contains(expected), 'expected "${expected}" in output for ${name}, got: ${result.output}'
-	assert !result.output.contains('C compilation failed')
+	return errors
 }
 
 // run_no_generic_error supports run no generic error handling for v3 tests.
@@ -69,7 +56,7 @@ fn run_no_generic_error(fixture_dir string, name string, src string) {
 	assert !result.output.contains('unsupported generic'), '${name}: should not reject generics without -selfhost, got: ${result.output}'
 }
 
-fn run_generics_codegen_batch(fixture_dir string, cases map[string]string) {
+fn run_generics_codegen_batch(fixture_dir string, cases map[string]string, main_source string) string {
 	root := os.join_path(fixture_dir, 'codegen_batch')
 	names := cases.keys()
 	mut imports := []string{cap: names.len}
@@ -82,7 +69,8 @@ fn run_generics_codegen_batch(fixture_dir string, cases map[string]string) {
 		write_generics_project_file(root, '${module_name}/v3_gen_${name}.v', fixture.replace_once('\nfn main()',
 			'\npub fn exercise()'))
 	}
-	write_generics_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')
+	main_with_calls := main_source.replace_once('\nfn main() {\n', '\nfn main() {\n${calls.join('\n')}\n')
+	write_generics_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n' + main_with_calls)
 	c_file := os.join_path(root, 'program.c')
 	compile := os.exec([@VEXE, '-b', 'c', '-o', c_file, os.join_path(root, 'main.v')])
 	assert compile.exit_code == 0, compile.output
@@ -92,40 +80,7 @@ fn run_generics_codegen_batch(fixture_dir string, cases map[string]string) {
 	for i, name in names {
 		assert c_content.contains('void fixture_${i}__exercise(void) {'), '${name}: missing generated C function body'
 	}
-}
-
-fn run_generic_exec(fixture_dir string, name string, src string) string {
-	src_file := os.join_path(fixture_dir, 'v3_gen_${name}.v')
-	os.write_file(src_file, src) or { panic(err) }
-	bin_file := os.join_path(fixture_dir, 'v3_gen_${name}')
-	compile := os.exec([@VEXE, src_file, '-b', 'c', '-o', bin_file])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin_file])
-	assert run.exit_code == 0, run.output
-	return run.output.trim_space()
-}
-
-fn test_generic_array_for_in_binding_survives_annotation() {
-	fixture_dir := new_generics_fixture_dir()
-	defer { os.rmdir_all(fixture_dir) or {} }
-	out := run_generic_exec(fixture_dir, 'generic_array_for_in_binding', '
-fn sum[T](data T) int {
-	$if T is $array {
-		mut total := 0
-		for value in data {
-			total += value
-		}
-		return total
-	} $else {
-		return 0
-	}
-}
-
-fn main() {
-	println(sum([1, 2, 3]))
-}
-')
-	assert out == '6'
+	return c_content
 }
 
 fn test_explicit_main_generic_arg_survives_imported_call_rewrite() {
@@ -195,7 +150,14 @@ fn test_late_generic_reachability_runs_to_fixpoint() {
 fn test_generics_rejected_when_building_v() {
 	fixture_dir := new_generics_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	run_selfhost_bad_batch(fixture_dir, [
+	root := os.join_path(fixture_dir, 'selfhost_rejections')
+	write_generics_project_file(root, 'badmod/badmod.v', 'module badmod
+
+struct Phantom[T] {
+	value int
+}
+')
+	errors := run_selfhost_bad_batch(root, [
 		// generic function
 		SelfhostGenericRejection{
 			name:     'generic_fn'
@@ -362,22 +324,8 @@ fn main() {}
 '
 			expected: 'unsupported generic'
 		},
-	])
-
-	run_selfhost_project_bad(fixture_dir, 'imported_generic_struct', {
-		'main.v':          'module main
-
-import badmod
-
-fn main() {}
-'
-		'badmod/badmod.v': 'module badmod
-
-struct Phantom[T] {
-	value int
-}
-'
-	}, 'main.v', 'unsupported generic struct `Phantom`')
+	], 'badmod')
+	assert errors['badmod.v'].any(it.contains('unsupported generic struct `Phantom`')), errors.str()
 }
 
 // test_generics_allowed_without_building_v validates this v3 regression case.
@@ -444,7 +392,7 @@ interface Container[T] {
 }
 fn main() {}
 '
-	})
+	}, '\nfn main() {\n}\n')
 
 	// generic type in params/fields/returns
 	run_no_generic_error(fixture_dir, 'allow_generic_type_app', '
@@ -458,7 +406,7 @@ fn test_generics_compile_and_run() {
 	fixture_dir := new_generics_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
 
-	run_generics_codegen_batch(fixture_dir, {
+	c_content := run_generics_codegen_batch(fixture_dir, {
 		// identity function with int and string
 		'run_id_fn':                     '
 fn id[T](x T) T {
@@ -520,12 +468,7 @@ fn main() {
 	println(length([1, 2, 3]))
 }
 '
-	})
-
-	// A one-letter concrete type argument should not be treated as an unresolved
-	// generic placeholder when discovering struct specializations.
-	one_letter_src := os.join_path(fixture_dir, 'v3_gen_one_letter_concrete_arg.v')
-	os.write_file(one_letter_src, '
+	}, '
 struct A {
 	value int
 }
@@ -542,17 +485,9 @@ fn main() {
 	}
 	_ := b
 }
-') or {
-		panic(err)
-	}
-	one_letter_c_path := os.join_path(fixture_dir, 'v3_gen_one_letter_concrete_arg.c')
-	one_letter_compile := os.exec([@VEXE, '-b', 'c', '-o', one_letter_c_path, one_letter_src])
-	assert one_letter_compile.exit_code == 0, one_letter_compile.output
-	assert !one_letter_compile.output.contains('unsupported generic'), one_letter_compile.output
-	assert !one_letter_compile.output.contains('type checker found'), one_letter_compile.output
-	one_letter_c := os.read_file(one_letter_c_path) or { panic(err) }
-	// Generic struct instances declared in main use the `main__` C namespace.
-	assert one_letter_c.contains('struct main__Box_A'), one_letter_c
+')
+	// Keep the one-letter concrete argument in main's namespace.
+	assert c_content.contains('struct main__Box_A'), c_content
 
 	root := os.join_path(fixture_dir, 'runtime_batch')
 	write_generics_project_file(root, 'selector_infer/v3_gen_selector_method_arg_infer.v', 'module selector_infer
@@ -580,6 +515,24 @@ pub fn exercise() {
 	println(second[int](1, 2))
 }
 ')
+	write_generics_project_file(root, 'array_for_in/v3_gen_generic_array_for_in_binding.v', 'module array_for_in
+
+fn sum[T](data T) int {
+	$if T is $array {
+		mut total := 0
+		for value in data {
+			total += value
+		}
+		return total
+	} $else {
+		return 0
+	}
+}
+
+pub fn exercise() {
+	println(sum([1, 2, 3]))
+}
+')
 	// Keep result propagation in main to exercise the program entry point.
 	write_generics_project_file(root, 'main.v', "module main
 
@@ -587,6 +540,7 @@ import arrays { sum }
 import os
 import selector_infer
 import explicit_args
+import array_for_in
 
 fn main() {
 	match os.args[1] {
@@ -596,6 +550,10 @@ fn main() {
 		}
 		'explicit_generic_call_keeps_runtime_args' {
 			explicit_args.exercise()
+			return
+		}
+		'generic_array_for_in_binding' {
+			array_for_in.exercise()
 			return
 		}
 		'reused_generic_result_keeps_payload_type' {}
@@ -611,6 +569,7 @@ fn main() {
 	for name, expected in {
 		'selector_method_arg_infer':                'ok'
 		'explicit_generic_call_keeps_runtime_args': '2'
+		'generic_array_for_in_binding':             '6'
 		'reused_generic_result_keeps_payload_type': '10'
 	} {
 		run := os.exec([bin, name])

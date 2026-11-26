@@ -177,12 +177,42 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {cc: gcc, suite: default, shard: 1, count: 4, task: self_tests_gcc, flags: '-cc gcc'}
-          - {cc: gcc, suite: default, shard: 2, count: 4, task: self_tests_gcc, flags: '-cc gcc'}
-          - {cc: gcc, suite: prod, shard: 2, count: 4, task: self_tests_prod_gcc, flags: '-cc gcc'}
-          - {cc: clang, suite: default, shard: 1, count: 4, task: self_tests_clang, flags: '-cc clang'}
-          - {cc: tcc, suite: default, shard: 1, count: 3, task: self_tests_vprod_tcc, flags: '-cc tcc -no-retry-compilation'}
-          - {cc: tcc, suite: default, shard: 2, count: 3, task: self_tests_vprod_tcc, flags: '-cc tcc -no-retry-compilation'}
+          - cc: gcc
+            suite: default
+            shard: 1
+            count: 4
+            task: self_tests_gcc
+            flags: '-cc gcc'
+          - cc: gcc
+            suite: default
+            shard: 2
+            count: 4
+            task: self_tests_gcc
+            flags: '-cc gcc'
+          - cc: gcc
+            suite: prod
+            shard: 2
+            count: 4
+            task: self_tests_prod_gcc
+            flags: '-cc gcc'
+          - cc: clang
+            suite: default
+            shard: 1
+            count: 4
+            task: self_tests_clang
+            flags: '-cc clang'
+          - cc: tcc
+            suite: default
+            shard: 1
+            count: 3
+            task: self_tests_vprod_tcc
+            flags: '-cc tcc -no-retry-compilation'
+          - cc: tcc
+            suite: default
+            shard: 2
+            count: 3
+            task: self_tests_vprod_tcc
+            flags: '-cc tcc -no-retry-compilation'
     env:
       VFLAGS: ${{ matrix.flags }}
       VJOBS: '4'

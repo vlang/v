@@ -1,27 +1,35 @@
 import os
 import v.tempname
 
-fn fn_index_write_source(root string, name string, source string) string {
-	path := os.join_path(root, 'v3_fn_index_${name}.v')
-	os.write_file(path, source) or { panic(err) }
-	return path
-}
-
 // A `recv.field[i]()` call invokes the function value stored at index `i`. The
 // brackets used to be read as explicit generic type arguments, so the checker
 // rejected the index variable as an unknown type and the C backend emitted a call
 // to a nonexistent `Recv__field` method.
-fn test_fn_values_in_container_fields_and_locals_are_called_through_the_index() {
+fn test_fn_value_index_calls_and_explicit_generic_calls() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fn_index_fixtures_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := fn_index_write_source(root, 'container_calls', 'module main
+	source := os.join_path(root, 'v3_fn_index_container_calls.v')
+	os.write_file(source, 'module main
 
 struct Registry {
 mut:
 	fns      []fn (int) int
 	named    map[string]fn (int) int
 	void_fns []fn ()
+}
+
+struct Box[T] {
+mut:
+	items []T
+}
+
+fn (b Box[T]) pick[U](d U) U {
+	return d
+}
+
+fn apply[T](f fn (T) T, v T) T {
+	return f(v)
 }
 
 fn double(x int) int {
@@ -53,6 +61,13 @@ fn main() {
 	r.void_fns[idx]()
 	println(total)
 	call_local_container_values()
+
+	// Exercise explicit method type arguments alongside the indexed calls.
+	b := Box[int]{
+		items: [1, 2, 3]
+	}
+	println(b.pick[string]("generic-ok"))
+	println(apply[int](double, 21))
 }
 
 fn shout() {
@@ -72,13 +87,14 @@ fn call_local_container_values() {
 	key := "k"
 	m[key]()
 }
-')
+')!
 	out := os.join_path(root, 'v3_fn_index_container_calls')
 	compile := os.exec([@VEXE, source, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
-	assert run.output.split_into_lines() == ['hello', '28', 'called', 'called', 'called', 'called'], run.output
+	assert run.output.split_into_lines() == ['hello', '28', 'called', 'called', 'called', 'called',
+		'generic-ok', '42'], run.output
 	generated := os.read_file(out + '.c') or { panic(err) }
 	assert !generated.contains('Registry__fns'), generated
 	assert !generated.contains('Registry__void_fns'), generated
@@ -86,44 +102,4 @@ fn call_local_container_values() {
 	assert generated.contains('array_get(r.fns,'), generated
 	// array_push needs the address of the stored pointer so it can copy the pointer bytes.
 	assert generated.contains('array_push(&fns, &__arr_val_'), generated
-}
-
-// The container guards above must not swallow a real `recv.method[T]()` call.
-fn test_explicit_generic_method_call_still_resolves() {
-	root := os.join_path(os.vtmp_dir(), 'v3_fn_index_fixtures_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := fn_index_write_source(root, 'explicit_generic', 'module main
-
-struct Box[T] {
-mut:
-	items []T
-}
-
-fn (b Box[T]) pick[U](d U) U {
-	return d
-}
-
-fn apply[T](f fn (T) T, v T) T {
-	return f(v)
-}
-
-fn double(x int) int {
-	return x * 2
-}
-
-fn main() {
-	b := Box[int]{
-		items: [1, 2, 3]
-	}
-	println(b.pick[string]("generic-ok"))
-	println(apply[int](double, 21))
-}
-')
-	out := os.join_path(root, 'v3_fn_index_explicit_generic')
-	compile := os.exec([@VEXE, source, '-b', 'c', '-o', '${out}'])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.split_into_lines() == ['generic-ok', '42']
 }

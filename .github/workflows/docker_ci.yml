@@ -158,18 +158,15 @@ jobs:
         run: ./v -silent test-cleancode
       - name: Verify cached interface dispatch against musl-native SQLite
         run: env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/gen/c/cached_interface_dispatch_test.v
-      # The legacy image ships Node 14; the Wasm host tests import node:assert/strict.
-      # Keep the musl C toolchain and image, but use a supported Node runtime.
-      - name: Install Node for Wasm host tests
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - name: Set up Node.js for WebAssembly tests
+        uses: actions/setup-node@v7
         with:
-          node-version: '22'
-          package-manager-cache: false
+          node-version: 22
       - name: Verify Wasm host runtime and original tests
         run: |
           node --version
           node --input-type=module -e "import assert from 'node:assert/strict'; import { readFileSync } from 'node:fs'; assert.equal(typeof readFileSync, 'function'); assert.throws(() => assert.equal(1, '1')); assert.ok(WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0])))"
-          ./v -silent test vlib/v/gen/wasm/shapes_test.v vlib/v/gen/wasm/e2e_test.v
+          ./v -silent test vlib/v/gen/wasm/shapes_test.v vlib/v/gen/wasm/e2e_test.v vlib/v/gen/wasm/stub_audit_test.v
       - name: Test V fixed tests
         run: ./v -silent test-self vlib
 
