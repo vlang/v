@@ -14,9 +14,26 @@ pub fn has_native_platform_constant(name string, target TargetData) bool {
 
 fn native_platform_constant(name string, target TargetData) ?i64 {
 	if target.is_linux() {
+		if target.arch == 'arm64' {
+			if value := native_linux_arm64_constant(name) {
+				return value
+			}
+		}
 		return native_linux_constant(name)
 	}
 	return native_darwin_constant(name)
+}
+
+// native_linux_arm64_constant returns the value of a constant on Linux arm64 where it is not
+// the one that native_linux_constant gives, which is that of Linux amd64. The kernel's
+// arch/arm64/include/uapi/asm/fcntl.h gives these two open flags other bits than
+// include/uapi/asm-generic/fcntl.h does: the amd64 values are O_DIRECT and O_LARGEFILE there.
+fn native_linux_arm64_constant(name string) ?i64 {
+	match name {
+		'O_DIRECTORY' { return i64(0x4000) }
+		'O_NOFOLLOW' { return i64(0x8000) }
+		else { return none }
+	}
 }
 
 fn native_linux_constant(name string) ?i64 {

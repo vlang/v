@@ -24,26 +24,26 @@ fn entered_names(path string, typ u8) (bool, []string) {
 	return is_dir, names
 }
 
-// listing_says_kinds returns whether the file system of `folder` says what each entry of it is.
+// listed_kinds returns what the listing of `folder` says each entry of it is, by name, without
+// `.` and `..`, which a walk does not use. A listing may say it for some entries and not for
+// others, so every expectation is taken from the entry it is about.
 // It reads the listing itself, so that it does not depend on what walk_enter makes of it.
-fn listing_says_kinds(folder string) bool {
+fn listed_kinds(folder string) map[string]u8 {
 	listing := C.opendir(&char(folder.str))
 	assert !isnil(listing), folder
-	mut entries := 0
-	mut unknown := 0
+	mut kinds := map[string]u8{}
 	for {
 		ent := C.readdir(listing)
 		if isnil(ent) {
 			break
 		}
-		entries++
-		if ent.d_type == 0 {
-			unknown++
+		name := unsafe { tos_clone(&u8(&ent.d_name[0])) }
+		if name != '.' && name != '..' {
+			kinds[name] = ent.d_type
 		}
 	}
 	C.closedir(listing)
-	assert entries >= 2, folder
-	return unknown == 0
+	return kinds
 }
 
 const walk_test_type_file = u8(8)
@@ -57,13 +57,27 @@ fn test_walk_enter_adds_the_entries_with_what_the_listing_says_they_are() {
 	}
 	is_dir, names := entered_names(folder, walk_type_dir)
 	assert is_dir
-	// A file system that does not say what an entry is gives 0 for each of them.
-	if !listing_says_kinds(folder) {
-		eprintln('> ${@FN}: the file system of ${folder} does not say what an entry is')
-		assert names == ['empty:0', 'file.txt:0', 'file_link:0', 'link:0', 'sub:0']
-		return
+	// Each entry is carried with what the listing says it is: its kind, or 0 where the file
+	// system does not say, which it may do for some entries of a folder and not for others.
+	kinds := listed_kinds(folder)
+	assert kinds.len == 5
+	mut expected := []string{}
+	for name, kind in {
+		'empty':     walk_type_dir
+		'file.txt':  walk_test_type_file
+		'file_link': walk_test_type_link
+		'link':      walk_test_type_link
+		'sub':       walk_type_dir
+	} {
+		assert name in kinds, name
+		assert kinds[name] in [kind, walk_type_unknown], name
+		if kinds[name] == walk_type_unknown {
+			eprintln('> ${@FN}: the listing of ${folder} does not say what ${name} is')
+		}
+		expected << '${name}:${kinds[name]}'
 	}
-	assert names == ['empty:4', 'file.txt:8', 'file_link:10', 'link:10', 'sub:4']
+	expected.sort()
+	assert names == expected
 	mut remaining := []WalkListed{}
 	assert walk_enter(WalkListed{ path: folder, typ: walk_type_dir }, mut remaining)
 	assert remaining.all(it.path.starts_with(folder + path_separator))
@@ -329,8 +343,9 @@ fn walk_swap_with_context(ctx voidptr, path string) {
 // An entry that its folder listed as a file is reported once and not entered when it has
 // become a folder: both when the callback changed another entry that the walk had still to
 // reach, and when `walk_with_context` passed the callback the very entry that it changed.
-// Where the listing does not say what an entry is, the entry is looked up when the walk reaches
-// it, and entered.
+// An entry whose kind the listing does not say is looked up when the walk reaches it, and
+// entered. A listing may say the kind of one entry and not of the other, so the expectation is
+// taken from the entry that was replaced.
 fn test_walks_do_not_enter_what_was_listed_as_a_file_and_became_a_folder() {
 	root := join_path(vtmp_dir(), 'walk_enter_swap_${getpid()}')
 	defer {
@@ -346,7 +361,8 @@ fn test_walks_do_not_enter_what_was_listed_as_a_file_and_became_a_folder() {
 			mkdir_all(root)!
 			write_file(join_path_single(root, 'one.txt'), '1')!
 			write_file(join_path_single(root, 'two.txt'), '2')!
-			says_kinds := listing_says_kinds(root)
+			kinds := listed_kinds(root)
+			assert kinds.len == 2
 			mut s := &WalkSwap{
 				root:   root
 				itself: itself
@@ -357,8 +373,12 @@ fn test_walks_do_not_enter_what_was_listed_as_a_file_and_became_a_folder() {
 				walk(root, s.add)
 			}
 			born := join_path_single(s.target, 'born.txt')
-			what := 'with_context: ${with_context}, itself: ${itself}, says_kinds: ${says_kinds}'
-			if says_kinds {
+			target_name := file_name(s.target)
+			assert target_name in kinds
+			listed_as := kinds[target_name]
+			assert listed_as in [walk_test_type_file, walk_type_unknown]
+			what := 'with_context: ${with_context}, itself: ${itself}, listed as: ${listed_as}'
+			if listed_as == walk_test_type_file {
 				assert s.paths.filter(it == s.target).len == 1, what
 				assert born !in s.paths, what
 				assert s.paths.len == 2, what
