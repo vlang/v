@@ -1126,9 +1126,31 @@ fn main() {
 	], res.output
 }
 
+// unwrap_name infers T from the return type of the container's get method.
+const constraint_inference_declarations = 'interface Container[T] {
+	get() T
+}
+
+struct InferenceUser {
+	name string
+}
+
+struct InferenceBox[T] {
+	item T
+}
+
+fn (b InferenceBox[T]) get() T {
+	return b.item
+}
+
+fn unwrap_name[C Container[T], T Named](c C) string {
+	return c.get().name
+}
+'
+
 fn test_generic_constraints_on_functions_and_receiver_methods_build_and_run() {
 	res := run_program('constrained_functions_and_methods', constraint_prelude +
-		constraint_method_relay + "
+		constraint_method_relay + constraint_inference_declarations + "
 struct Shelf[T Named] {
 	items []T
 }
@@ -1186,6 +1208,30 @@ fn check_constraint_calls() {
 	println(Box[User]{ item: u }.label())
 }
 
+interface ValueShelf[T Named] {
+	get() T
+}
+
+struct UserShelf {
+	u InferenceUser
+}
+
+fn (s UserShelf) get() InferenceUser {
+	return s.u
+}
+
+fn take_now[T Named](s ValueShelf[T]) T {
+	return s.get()
+}
+
+fn check_inferred_constraints() {
+	println(unwrap_name(InferenceBox[InferenceUser]{InferenceUser{'ana'}}))
+	shelf := UserShelf{InferenceUser{'bea'}}
+	println(take_now(shelf).name)
+	println(take_now[InferenceUser](shelf).name)
+	println(take_now(ValueShelf[InferenceUser](shelf)).name)
+}
+
 fn main() {
 	s := Shelf[User]{
 		items: [User{
@@ -1205,6 +1251,7 @@ fn main() {
 	println(map_fn[int, User](q, to_user).map(it.age))
 	check_constraint_calls()
 	check_method_relay()
+	check_inferred_constraints()
 }
 ")
 	assert res.exit_code == 0, res.output
@@ -1222,6 +1269,10 @@ fn main() {
 		'2.5',
 		'box of Alex',
 		'1',
+		'ana',
+		'bea',
+		'bea',
+		'bea',
 	], res.output
 }
 
@@ -2025,72 +2076,15 @@ fn test_the_thousands_formatting_of_28797_takes_a_constraint() {
 	assert errors[0].ends_with('cannot use `string` as `T`: it is not in its constraint `Number`'), errors[0]
 }
 
-const constraint_inference_declarations = 'module main
-
-interface Named {
-	name string
-}
-
-interface Container[T] {
-	get() T
-}
-
-struct User {
-	name string
-}
-
-struct Box[T] {
-	item T
-}
-
-fn (b Box[T]) get() T {
-	return b.item
-}
-
-fn unwrap_name[C Container[T], T Named](c C) string {
-	return c.get().name
-}
-'
-
-fn test_types_are_inferred_from_constraints_and_generic_interface_arguments() {
-	// `T` of `[C Container[T], T Named]` is the type of no parameter: a call
-	// binds it from the type of `C`, `Box[User]`, whose `get()` returns a `User`.
-	// `take_now(shelf)` infers `T` from `UserShelf.get()`, just as
-	// `take_now[User](shelf)` and the explicit `Shelf[User]` conversion specify it.
-	res := run_program('infer_constraints_and_interfaces', constraint_inference_declarations + "
-interface Shelf[T Named] {
-	get() T
-}
-
-struct UserShelf {
-	u User
-}
-
-fn (s UserShelf) get() User {
-	return s.u
-}
-
-fn take_now[T Named](s Shelf[T]) T {
-	return s.get()
-}
-
+fn test_an_inferred_type_argument_must_satisfy_its_constraint() {
+	// InferenceBox[int] binds T to int, so the call fails the Named constraint.
+	check := check_program('infer_int', constraint_inference_declarations + '
 fn main() {
-	println(unwrap_name(Box[User]{User{'ana'}}))
-	shelf := UserShelf{User{'bea'}}
-	println(take_now(shelf).name)
-	println(take_now[User](shelf).name)
-	println(take_now(Shelf[User](shelf)).name)
-}
-")
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split_into_lines() == ['ana', 'bea', 'bea', 'bea'], res.output
-	// `Box[int]` binds `T` to `int`, which fails the `Named` constraint at the call.
-	check := check_whole('infer_int', constraint_inference_declarations + '
-fn main() {
-	println(unwrap_name(Box[int]{1}))
+	println(unwrap_name(InferenceBox[int]{1}))
 }
 ')
-	errors := check.output.split_into_lines().filter(it.contains(': error: '))
-	assert errors.len == 1, check.output
-	assert errors[0].contains('main.v:28:') && errors[0].contains('Named'), errors[0]
+	assert check.exit_code == 1, check.output
+	assert error_lines(check.output) == [
+		"22:10: `int` doesn't implement field `name` of interface `Named`",
+	], check.output
 }
