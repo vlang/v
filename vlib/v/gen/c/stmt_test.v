@@ -753,6 +753,20 @@ fn test_inline_asm_intel_templates_keep_destination_first_order() {
 	assert lower_c_inline_asm_intel_template('vpxord zmm0{k1}{z}, zmm0, zmm0', aliases, true) == 'vpxord zmm0%{k1%}%{z%}, zmm0, zmm0'
 }
 
+
+fn test_inline_asm_intel_extension_move_memory_source_widths() {
+	aliases := {
+		'dst': true
+		'base': true
+	}
+	assert lower_c_inline_asm_intel_template('movzbq dst, [base]', aliases, true) == 'movzbq %V[dst], byte ptr [%V[base]]'
+	assert lower_c_inline_asm_intel_template('movswq dst, [base]', aliases, true) == 'movswq %V[dst], word ptr [%V[base]]'
+	assert lower_c_inline_asm_intel_template('movslq dst, [base + 4]', aliases, true) == 'movslq %V[dst], dword ptr [%V[base] + 4]'
+	assert lower_c_inline_asm_intel_template('movswq rax, bx', aliases, false) == 'movswq rax, bx'
+	assert lower_c_inline_asm_intel_template('movswq rax, word ptr [rbx]', aliases, false) == 'movswq rax, word ptr [rbx]'
+	assert lower_c_inline_asm_intel_template('mov rax, [rbx]', aliases, false) == 'mov rax, [rbx]'
+}
+
 fn test_inline_asm_raw_templates_are_taken_verbatim() {
 	source := '"addl %[increment], %[value]\\n\\t"
 "nop%{%%k1%}\\n\\t" // trailing comment
