@@ -171,11 +171,11 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_labeled_c_style_for_multi_init_flow_targets_named_loop() {
+fn test_c_style_for_control_flow_and_post_updates() {
 	root := for_multi_init_fixture_dir()
 	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_multi_init_labeled.v')
-	os.write_file(src, 'fn main() {
+	src := os.join_path(root, 'v3_for_loop_control_flow.v')
+	os.write_file(src, 'fn check_labeled_init_flow() {
 	mut out := ""
 	outer: for x, stop := 0, 3; x < stop; x++ {
 		for y := 0; y < 3; y++ {
@@ -208,30 +208,13 @@ fn test_labeled_c_style_for_multi_init_flow_targets_named_loop() {
 	assert hits == 1
 	println(out)
 }
-	') or {
-		panic(err)
-	}
 
-	bin := os.join_path(root, 'v3_for_multi_init_labeled')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '0:0;0:1;0:2;2:0;'
-}
-
-fn test_c_style_for_post_respects_labeled_continue_target() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_post_labeled_continue.v')
-	os.write_file(src, 'struct Posts {
+struct Posts {
 mut:
 	value int
 }
 
-fn step(mut posts Posts, a int, b int) (int, int) {
+fn counted_step(mut posts Posts, a int, b int) (int, int) {
 	posts.value++
 	return a + 1, b + 1
 }
@@ -241,7 +224,7 @@ fn continue_same_loop() {
 	mut a := 0
 	mut b := 0
 	mut hits := 0
-	loop: for ; a < 3; a, b = step(mut posts, a, b) {
+	loop: for ; a < 3; a, b = counted_step(mut posts, a, b) {
 		hits++
 		if a < 2 {
 			continue loop
@@ -260,7 +243,7 @@ fn continue_outer_loop() {
 	outer_loop: for ; outer < 2; outer++ {
 		mut a := 0
 		mut b := 0
-		for ; a < 2; a, b = step(mut inner_posts, a, b) {
+		for ; a < 2; a, b = counted_step(mut inner_posts, a, b) {
 			hits++
 			continue outer_loop
 		}
@@ -270,23 +253,72 @@ fn continue_outer_loop() {
 	assert inner_posts.value == 0
 }
 
+fn step(a int, b int) (int, int) {
+	return a + 1, b + 1
+}
+
+fn continue_in_match() {
+	mut a := 0
+	mut b := 0
+	mut guard := 0
+	for ; a < 3; a, b = step(a, b) {
+		guard++
+		if guard > 5 {
+			break
+		}
+		match a {
+			0 {
+				continue
+			}
+			else {}
+		}
+	}
+	assert a == 3
+	assert b == 3
+	assert guard == 3
+}
+
+fn continue_in_select() {
+	mut a := 0
+	mut b := 0
+	mut guard := 0
+	for ; a < 3; a, b = step(a, b) {
+		guard++
+		if guard > 5 {
+			break
+		}
+		select {
+			else {
+				continue
+			}
+		}
+	}
+	assert a == 3
+	assert b == 3
+	assert guard == 3
+}
+
 fn main() {
+	check_labeled_init_flow()
 	continue_same_loop()
 	continue_outer_loop()
+	println("ok")
+	continue_in_match()
+	continue_in_select()
 	println("ok")
 }
 ') or {
 		panic(err)
 	}
 
-	bin := os.join_path(root, 'v3_for_post_labeled_continue')
+	bin := os.join_path(root, 'v3_for_loop_control_flow')
 	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	assert run.output.trim_space().split_into_lines() == ['0:0;0:1;0:2;2:0;', 'ok', 'ok'], run.output
 }
 
 fn test_c_style_for_rejects_invalid_assignments_and_smartcasts() {
@@ -433,74 +465,6 @@ fn main() {
 	}
 
 	bin := os.join_path(root, 'v3_for_multi_assign')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_c_style_for_post_runs_before_match_and_select_branch_continue() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_post_branch_continue.v')
-	os.write_file(src, 'fn step(a int, b int) (int, int) {
-	return a + 1, b + 1
-}
-
-fn continue_in_match() {
-	mut a := 0
-	mut b := 0
-	mut guard := 0
-	for ; a < 3; a, b = step(a, b) {
-		guard++
-		if guard > 5 {
-			break
-		}
-		match a {
-			0 {
-				continue
-			}
-			else {}
-		}
-	}
-	assert a == 3
-	assert b == 3
-	assert guard == 3
-}
-
-fn continue_in_select() {
-	mut a := 0
-	mut b := 0
-	mut guard := 0
-	for ; a < 3; a, b = step(a, b) {
-		guard++
-		if guard > 5 {
-			break
-		}
-		select {
-			else {
-				continue
-			}
-		}
-	}
-	assert a == 3
-	assert b == 3
-	assert guard == 3
-}
-
-fn main() {
-	continue_in_match()
-	continue_in_select()
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_for_post_branch_continue')
 	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
