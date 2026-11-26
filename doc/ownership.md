@@ -307,7 +307,7 @@ Declared types with these names still follow the usual interface checks.
 
 ### Explicit lifetimes
 
-Ownership mode also supports explicit named lifetimes with `^name`.
+Ownership mode uses `^name` for named lifetime annotations.
 
 Use `&^a T` for a borrowed reference with an explicit lifetime and `[^a]`
 in generic parameter and argument lists:
@@ -324,6 +324,12 @@ fn matched_dir_entry[^a](self &^a Ignore) IgnoreMatch[^a] {
 
 `^` is used instead of Rust's `'` because `'` is already used for string and
 character literals in V.
+
+When an abstract interface method returns an interface or struct that names a lifetime declared
+by the interface, its result keeps the loans carried by the receiver. For example, a
+`Factory[^a]` with a `create() Visitor[^a]` method can return a visitor that borrows caller
+data carried by the factory. A forwarding function carries the same loans to its caller.
+A method result can also carry a loan from an argument that names the same lifetime.
 
 An interface box returned from a function can retain references in the concrete struct
 it boxes. Those field loans follow the result through local bindings and forwarding

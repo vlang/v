@@ -188,6 +188,7 @@ mut:
 	comptime_value_undos              []ComptimeValueUndo
 	comptime_value_scopes             []int
 	pending_flag                      bool
+	parsed_lifetime_names             []u32
 	pending_json_as_number            bool // `@[json_as_number]` seen before the next enum decl
 	pending_params                    bool
 	pending_typedef                   bool
@@ -3992,9 +3993,11 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 	// generic params
 	mut generic_params := []string{}
 	mut generic_constraints := []u32{}
+	lifetime_params_start := p.parsed_lifetime_names.len
 	if p.tok == .lsbr {
 		generic_params, generic_constraints = p.parse_generic_params()
 	}
+	interface_lifetimes := p.parsed_lifetimes_since(lifetime_params_start)
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
 	}
@@ -4022,11 +4025,12 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			field_name += '.' + p.expect_name_or_keyword()
 		}
 		mut method_generic_params := []string{}
+		method_lifetime_params_start := p.parsed_lifetime_names.len
 		method_generic_start := p.tok_pos
 		if p.tok == .lsbr && p.peek() in [.name, .xor] {
 			if p.peek() == .xor {
-				// Compiler parsing erases interface method lifetimes; formatter parsing keeps
-				// their source-facing generic parameter spelling.
+				// Lifetime names belong to ownership metadata. The formatter also keeps
+				// them in the generic parameter list so it can print the signature.
 				lifetime_params := p.parse_generic_param_names()
 				if p.prefs.is_fmt {
 					method_generic_params = lifetime_params.clone()
@@ -4037,6 +4041,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				method_generic_params = p.parse_generic_param_names()
 			}
 		}
+		method_lifetime_params := p.parsed_lifetimes_since(method_lifetime_params_start)
 		if !p.prefs.is_fmt && generic_params.len == 0 && method_generic_params.len > 0 {
 			p.record_diagnostic_span('non-generic interface `${name}` cannot define a generic method',
 				method_generic_start, method_generic_start + 1)
@@ -4087,7 +4092,9 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 						param_name = p.expect_name_or_keyword()
 					}
 				}
+				param_lifetimes_start := p.parsed_lifetime_names.len
 				mut ptype := p.parse_type_name_bytes()
+				param_lifetimes := p.parsed_lifetimes_since(param_lifetimes_start)
 				param_end := p.prev_tok_end
 				// V has no default parameter values: diagnose `=` here instead of
 				// letting the loop re-enter on it and shred the rest of the
@@ -4124,6 +4131,11 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					}
 					pos:    param_pos
 				})
+				if param_lifetimes != 0 {
+					p.a.nodes[int(param_id)].set_lifetime_syntax(flat.LifetimeSyntax{
+						type_uses: param_lifetimes
+					})
+				}
 				params << param_id
 				p.record_formatter_param_end(param_id, param_end)
 				if p.tok == .comma {
@@ -4136,9 +4148,11 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			param_list_end := p.tok_pos
 			p.check(.rpar) // skip )
 			mut ret_type := u32(0)
+			result_lifetimes_start := p.parsed_lifetime_names.len
 			if p.tok != .semicolon && p.tok != .rcbr && p.tok != .eof {
 				ret_type = p.parse_type_name()
 			}
+			result_lifetimes := p.parsed_lifetimes_since(result_lifetimes_start)
 			start := p.add_children(params)
 			method_id := p.add_node(flat.Node{
 				kind:           .interface_field
@@ -4151,6 +4165,12 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				children_count: flat.child_count(params.len)
 				pos:            p.span_to(method_start)
 			})
+			if method_lifetime_params != 0 || result_lifetimes != 0 {
+				p.a.nodes[int(method_id)].set_lifetime_syntax(flat.LifetimeSyntax{
+					parameters: method_lifetime_params
+					type_uses:  result_lifetimes
+				})
+			}
 			ids << method_id
 			p.record_formatter_param_list_end(method_id, param_list_end)
 		} else if p.tok == .semicolon || p.tok == .rcbr {
@@ -4178,7 +4198,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 	}
 	p.check(.rcbr)
 	start := p.add_children(ids)
-	return p.add_node(flat.Node{
+	id := p.add_node(flat.Node{
 		kind:           .interface_decl
 		op:             if is_pub { .arrow } else { .none }
 		value:          name
@@ -4187,6 +4207,10 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(interface_start)
 	})
+	if interface_lifetimes != 0 {
+		p.a.nodes[int(id)].set_lifetime_syntax(flat.LifetimeSyntax{ parameters: interface_lifetimes })
+	}
+	return id
 }
 
 fn (mut p Parser) import_stmt() flat.NodeId {
@@ -8180,6 +8204,7 @@ fn (mut p Parser) parse_generic_params() ([]string, []u32) {
 				expect_name = true
 			} else if expect_name && p.tok == .xor && p.peek() == .name {
 				p.next()
+				p.parsed_lifetime_names << flat.source_type_id(p.lit)
 				if p.prefs.is_fmt {
 					names << '^${p.lit}'
 					constraints << u32(0)
@@ -17845,10 +17870,21 @@ fn (mut p Parser) consume_lifetime_type_param() string {
 	mut lifetime := '^'
 	p.next()
 	if p.tok == .name {
+		p.parsed_lifetime_names << flat.source_type_id(p.lit)
 		lifetime += p.lit
 		p.next()
 	}
 	return lifetime
+}
+
+fn (p &Parser) parsed_lifetimes_since(start int) u32 {
+	if start == p.parsed_lifetime_names.len {
+		return 0
+	}
+	if start + 1 == p.parsed_lifetime_names.len {
+		return p.parsed_lifetime_names[start]
+	}
+	return flat.source_type_id(p.parsed_lifetime_names[start..].map(flat.source_type_name(it)).join(','))
 }
 
 fn lifetime_type_text(lifetime string, typ string) string {

@@ -241,6 +241,7 @@ mut:
 	ownership_fn_return_slots        map[string][]int
 	ownership_fn_return_descs        map[string][]OwnershipReturnDescendant
 	ownership_fn_return_param_descs  map[string][]OwnershipReturnParamDescendant
+	interface_lifetime_returns       map[u32]map[string][]int
 	ownership_fn_return_fn_values    map[string]string
 	ownership_fn_literal_ret_types   map[string]Type
 	ownership_fn_literal_param_types map[string][]Type
@@ -483,6 +484,7 @@ fn ownership_clone_state_sharing(src &OwnershipState, observe bool) &OwnershipSt
 		ownership_fn_return_slots:        ownership_clone_int_lists(src.ownership_fn_return_slots)
 		ownership_fn_return_descs:        ownership_clone_return_descs(src.ownership_fn_return_descs)
 		ownership_fn_return_param_descs:  ownership_clone_return_param_descs(src.ownership_fn_return_param_descs)
+		interface_lifetime_returns:       src.interface_lifetime_returns.clone()
 		ownership_fn_return_fn_values:    src.ownership_fn_return_fn_values.clone()
 		ownership_fn_literal_ret_types:   map[string]Type{}
 		ownership_fn_literal_param_types: map[string][]Type{}
@@ -2324,6 +2326,10 @@ fn (mut tc TypeChecker) ownership_after_collect() {
 			.global_decl {
 				tc.ownership_collect_global_decl(tc.ownership_node_module(node, cur_module), node)
 			}
+			.interface_decl {
+				tc.ownership_collect_interface_lifetime_results(tc.ownership_node_module(node, cur_module),
+					node)
+			}
 			.fn_decl {
 				tc.ownership_collect_fn_signature(node)
 				tc.ownership_collect_fn_param_mut(cur_module, node)
@@ -2339,6 +2345,46 @@ fn (mut tc TypeChecker) ownership_after_collect() {
 	tc.ownership_prescan_fn_returns(fn_items, max_rounds)
 	tc.ownership_prescan_owned_call_params(fn_items, max_rounds)
 	tc.ownership_collect_globals_after_prescan()
+}
+
+fn (mut tc TypeChecker) ownership_collect_interface_lifetime_results(module_name string, node flat.Node) {
+	mut methods := map[string][]int{}
+	for i in 0 .. node.children_count {
+		method := tc.a.child_node(&node, i)
+		if method.kind != .interface_field || method.op != .dot {
+			continue
+		}
+		lifetimes := method.lifetime_syntax()
+		if lifetimes.type_uses == 0 {
+			continue
+		}
+		names := flat.source_type_name(node.lifetime_syntax().parameters).split(',')
+		method_names := flat.source_type_name(lifetimes.parameters).split(',')
+		result_names := flat.source_type_name(lifetimes.type_uses).split(',')
+		mut sources := []int{}
+		if result_names.any(it in names && it !in method_names) {
+			sources << 0
+		}
+		for j in 0 .. method.children_count {
+			param := tc.a.child_node(method, j)
+			param_lifetimes := param.lifetime_syntax().type_uses
+			if param_lifetimes == 0 {
+				continue
+			}
+			param_names := flat.source_type_name(param_lifetimes).split(',')
+			if param_names.any(it in result_names && (it in names || it in method_names)) {
+				sources << j + 1
+			}
+		}
+		if sources.len > 0 {
+			methods[method.value] = sources
+		}
+	}
+	if methods.len > 0 {
+		interface_name := qualify_decl_name_in_module_id(node.source_value_id(),
+			flat.source_type_id(module_name))
+		tc.ownership_state().interface_lifetime_returns[interface_name] = methods
+	}
 }
 
 fn (mut tc TypeChecker) ownership_collect_globals_after_prescan() {
@@ -11374,13 +11420,17 @@ fn (mut tc TypeChecker) ownership_mark_return_param_descendants_from_call(lhs_na
 	}
 	mut root_box := false
 	result_type := tc.resolve_type(call_id)
-	if slot_idx == 0 && unalias_type(sum_escape_success_type(result_type)) is Interface {
+	if slot_idx == 0 && (unalias_type(sum_escape_success_type(result_type)) is Interface
+		|| (tc.ownership_state().interface_lifetime_returns.len > 0
+			&& tc.a.child_node(&node, 0).kind in [.selector, .index])) {
 		if info := tc.resolve_call_info(call_id, node) {
 			for source in tc.ownership_interface_return_loans(info) {
-				if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, source.param_idx) {
-					tc.ownership_retain_boxed_borrow(lhs_name, arg_id, '', pos)
-					root_box = true
+				if !source.boxed_borrow {
+					continue
 				}
+				tc.ownership_mark_from_return_param_descendant(lhs_name, call_id, node, fn_name,
+					source, pos)
+				root_box = true
 			}
 		}
 	}
@@ -12138,15 +12188,17 @@ fn (mut tc TypeChecker) ownership_return_loan_sources(call_name string, info Cal
 	return sources
 }
 
-// An abstract method can return a reference into any of its reference arguments,
-// including in the concrete payload of an interface result.
+// An abstract method may retain its reference arguments or borrow data that the
+// receiver carries for an interface-level lifetime named by the result.
 fn (tc &TypeChecker) ownership_interface_return_loans(info CallInfo) []OwnershipReturnParamDescendant {
-	if !info.has_receiver || info.params.len < 2 {
+	if isnil(tc.ownership) || !info.has_receiver || info.params.len == 0 || (info.params.len == 1
+		&& tc.ownership.interface_lifetime_returns.len == 0) {
 		return []
 	}
 	payload := unalias_type(sum_escape_success_type(info.return_type))
 	boxed := payload is Interface
-	if !boxed && payload !is Pointer {
+	if !boxed && payload !is Pointer
+		&& (payload !is Struct || tc.ownership.interface_lifetime_returns.len == 0) {
 		return []
 	}
 	receiver := unalias_type(unwrap_pointer(unalias_type(info.params[0])))
@@ -12154,13 +12206,31 @@ fn (tc &TypeChecker) ownership_interface_return_loans(info CallInfo) []Ownership
 		return []
 	}
 	method := info.name.all_after_last('.')
-	if method !in tc.interface_abstract_method_names(receiver.name_id) {
-		return []
-	}
 	mut result := []OwnershipReturnParamDescendant{}
+	if boxed || payload is Struct {
+		if methods := tc.ownership.interface_lifetime_returns[tc.interface_metadata_name(receiver.name_id)] {
+			if sources := methods[method] {
+				for index in sources {
+					param := info.params[index] or { continue }
+					// Receiver sources refer to the data carried in their fields.
+					result << OwnershipReturnParamDescendant{
+						param_idx:        index
+						source_is_prefix: index == 0 || unalias_type(param) !is Pointer
+						boxed_borrow:     true
+					}
+				}
+			}
+		}
+	}
+	if (!boxed && payload !is Pointer) || method !in tc.interface_abstract_method_names(receiver.name_id) {
+		return result
+	}
 	for i in 1 .. info.params.len {
 		if unalias_type(info.params[i]) is Pointer {
-			result << OwnershipReturnParamDescendant{ param_idx: i, boxed_borrow: boxed }
+			source := OwnershipReturnParamDescendant{ param_idx: i, boxed_borrow: boxed }
+			if source !in result {
+				result << source
+			}
 		}
 	}
 	return result
@@ -12773,7 +12843,11 @@ pub fn (mut tc TypeChecker) ownership_call_result_sources(id flat.NodeId) []Owne
 	mut result := []OwnershipCallResultSource{}
 	for source in tc.ownership_interface_return_loans(info) {
 		if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, source.param_idx) {
-			result << OwnershipCallResultSource{ arg_id: arg_id, boxed_borrow: source.boxed_borrow }
+			result << OwnershipCallResultSource{
+				arg_id:           arg_id
+				source_is_prefix: source.source_is_prefix
+				boxed_borrow:     source.boxed_borrow
+			}
 		}
 	}
 	for param_idx in tc.ownership_state().ownership_fn_returns_param[call_name] {

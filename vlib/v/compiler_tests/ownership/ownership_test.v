@@ -5591,3 +5591,143 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines() == ['first', 'second'], run.output
 }
+
+const named_factory_lifetime_source = r'
+@[heap]
+struct FactoryData {
+	text string
+}
+
+interface FactoryReader[R] {
+	read() R
+}
+
+struct BorrowingFactoryReader[^a] implements Drop {
+	data &^a FactoryData
+}
+
+fn (r &BorrowingFactoryReader[^a]) read() int { return r.data.text.len }
+fn (mut r BorrowingFactoryReader[^a]) drop() {}
+
+struct FactoryResult[^a, R] implements Drop {
+mut:
+	reader FactoryReader[R]
+}
+
+fn (mut result FactoryResult[^a, R]) drop() {
+	drop_owned(result.reader)
+}
+
+interface LifetimeFactory[^a] {
+mut:
+	create() FactoryResult[^a, int]
+}
+
+struct BorrowingFactory[^a] {
+	data &^a FactoryData
+}
+
+fn (mut factory BorrowingFactory[^a]) create() FactoryResult[^a, int] {
+	return FactoryResult[^a, int]{
+		reader: FactoryReader[int](BorrowingFactoryReader[^a]{data: factory.data})
+	}
+}
+
+fn through_lifetime_factory[^a](mut factory LifetimeFactory[^a]) FactoryResult[^a, int] {
+	return factory.create()
+}
+'
+
+fn test_ownership_named_interface_result_rejects_returning_a_local_borrow() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'named_interface_result_escape', named_factory_lifetime_source + r'
+fn invalid_lifetime[^a]() FactoryResult[^a, int] {
+	data := FactoryData{text: "local".clone()}
+	mut factory := BorrowingFactory[^a]{data: &data}
+	return through_lifetime_factory(mut factory)
+}
+
+fn main() {
+	result := invalid_lifetime()
+	assert result.reader.read() == 5
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot return a reference to local storage `data`'), result.output
+}
+
+fn test_ownership_named_interface_result_retains_method_argument() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'named_interface_argument_escape', named_factory_lifetime_source + r'
+interface ArgumentFactory {
+	build[^a](data &^a FactoryData) FactoryResult[^a, int]
+}
+
+struct BorrowingArgumentFactory {}
+
+fn (_ &BorrowingArgumentFactory) build[^a](data &^a FactoryData) FactoryResult[^a, int] {
+	return FactoryResult[^a, int]{
+		reader: FactoryReader[int](BorrowingFactoryReader[^a]{data: data})
+	}
+}
+
+fn invalid_argument[^a](factory &ArgumentFactory) FactoryResult[^a, int] {
+	data := FactoryData{text: "local".clone()}
+	return factory.build(&data)
+}
+
+fn main() {
+	factory := ArgumentFactory(BorrowingArgumentFactory{})
+	result := invalid_argument(&factory)
+	assert result.reader.read() == 5
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot return a reference to local storage `data`'), result.output
+}
+
+fn test_ownership_named_interface_result_keeps_the_referent_borrowed() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'named_interface_result_mutation', named_factory_lifetime_source + r'
+fn main() {
+	mut data := FactoryData{text: "first".clone()}
+	standin := FactoryData{text: "second".clone()}
+	mut factory := BorrowingFactory[^a]{data: &data}
+	result := through_lifetime_factory(mut factory)
+	factory = BorrowingFactory[^a]{data: &standin}
+	data = FactoryData{text: "updated".clone()}
+	assert result.reader.read() == 5
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot assign to `data` because it is borrowed by `result`'), result.output
+}
+
+fn test_ownership_named_interface_results_can_share_caller_storage() {
+	v3_bin := ownership_build_v3()
+	name := 'named_interface_result_live'
+	result := run_ownership_check_with_flags(v3_bin, name, named_factory_lifetime_source + r'
+fn make_from_data[^a](data &^a FactoryData) FactoryResult[^a, int] {
+	mut factory := BorrowingFactory[^a]{data: data}
+	return through_lifetime_factory(mut factory)
+}
+
+fn read_twice[^a](mut factory LifetimeFactory[^a]) int {
+	first := factory.create()
+	second := factory.create()
+	return first.reader.read() + second.reader.read()
+}
+
+fn main() {
+	data := FactoryData{text: "caller".clone()}
+	mut factory := BorrowingFactory[^a]{data: &data}
+	assert read_twice(mut factory) == 12
+	result := make_from_data(&data)
+	assert result.reader.read() == 6
+}
+', ['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
