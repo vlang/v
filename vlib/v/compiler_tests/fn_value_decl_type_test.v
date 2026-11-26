@@ -101,13 +101,15 @@ fn fn_value_run_project_bad(fixture_dir string, name string, files map[string]st
 	return compile.output
 }
 
-fn imported_fn_value_project_files() map[string]string {
-	return {
-		'v.mod':                 "Module { name: 'fn_value_imported' }\n"
-		'callbacks/callbacks.v': 'module callbacks
+const fn_value_callback_alias_src = 'module callbacks
 
 pub type Callback[T] = fn (T) int
 '
+
+fn imported_fn_value_project_files() map[string]string {
+	return {
+		'v.mod':                 "Module { name: 'fn_value_imported' }\n"
+		'callbacks/callbacks.v': fn_value_callback_alias_src
 		'collision/collision.v': 'module collision
 
 pub const foo = 7
@@ -191,17 +193,19 @@ fn main() {
 	}
 }
 
-fn imported_fn_value_expected_shadow_project_files() map[string]string {
+fn fn_value_binding_rejection_project_files() map[string]string {
 	return {
-		'v.mod':           "Module { name: 'fn_value_expected_shadow' }\n"
-		'worker/worker.v': 'module worker
+		'v.mod':                 "Module { name: 'fn_value_expected_shadow' }\n"
+		'callbacks/callbacks.v': fn_value_callback_alias_src
+		'worker/worker.v':       'module worker
 
 pub fn inc(i int) int {
 	return i + 1
 }
 '
-		'main.v':          'module main
+		'main.v':                'module main
 
+import callbacks
 import worker
 
 struct Holder {
@@ -212,12 +216,21 @@ fn take(f fn (int) int) int {
 	return f(4)
 }
 
+fn wrong(value string) int {
+	return value.len
+}
+
+fn invoke(callback callbacks.Callback[int]) int {
+	return callback(21)
+}
+
 fn main() {
 	local_holder := Holder{
 		inc: 7
 	}
 	got := take(local_holder.inc)
 	println(int_str(got))
+	_ := invoke(wrong)
 }
 '
 	}
@@ -559,35 +572,6 @@ fn main() {
 	}
 }
 
-fn test_imported_generic_fn_alias_rejects_mismatched_parameters() {
-	fixture_dir := fn_value_new_fixture_dir()
-	defer { os.rmdir_all(fixture_dir) or {} }
-	bad_output := fn_value_run_project_bad(fixture_dir, 'fn_value_imported_generic_alias_mismatch', {
-		'v.mod':                 "Module { name: 'fn_value_imported_generic_alias_mismatch' }\n"
-		'callbacks/callbacks.v': 'module callbacks
-
-pub type Callback[T] = fn (T) int
-'
-		'main.v':                'module main
-
-import callbacks
-
-fn wrong(value string) int {
-	return value.len
-}
-
-fn invoke(callback callbacks.Callback[int]) int {
-	return callback(21)
-}
-
-fn main() {
-	_ := invoke(wrong)
-}
-'
-	})
-	assert bad_output.contains('cannot use `fn (string) int` as `fn (int) int` in argument 1 to `invoke`'), bad_output
-}
-
 fn test_main_fn_values_use_their_declared_storage() {
 	fixture_dir := fn_value_new_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
@@ -619,7 +603,7 @@ fn main() {
 	assert out.split_into_lines() == ['42', '42', 'true'], out
 }
 
-fn test_fn_value_binding_diagnostics_respect_shadowing() {
+fn test_fn_value_rejects_invalid_bindings() {
 	fixture_dir := fn_value_new_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
 	cases := {
@@ -648,7 +632,7 @@ fn main() {
 }
 '
 	}
-	mut files := imported_fn_value_expected_shadow_project_files()
+	mut files := fn_value_binding_rejection_project_files()
 	mut imports := []string{cap: cases.len}
 	for name, source in cases {
 		imports << 'import ${name} as _'
@@ -669,7 +653,6 @@ fn main() {
 		diagnostics[os.file_name(file)] << message
 	}
 	expected := {
-		'main.v':                                  'cannot use `int` as `fn (int) int` in argument 1 to `take`'
 		'fn_value_expected_ident_shadow.v':        'cannot use `int` as `fn () int` in argument 1 to `fn_value_expected_ident_shadow.take`'
 		'fn_value_expected_assignment_shadow.v':   'cannot assign to `f`: expected `fn (int) int`, not `int`'
 		'fn_value_expected_callback_shadow.v':     'cannot use `int` as `fn (int) int` in argument 1 to `fn_value_expected_callback_shadow.call`'
@@ -678,6 +661,9 @@ fn main() {
 	for file, message in expected {
 		assert message in diagnostics[file], '${file}: missing ${message}\n${output}'
 	}
+	main_diagnostics := diagnostics['main.v']
+	assert 'cannot use `int` as `fn (int) int` in argument 1 to `take`' in main_diagnostics, output
+	assert 'cannot use `fn (string) int` as `fn (int) int` in argument 1 to `invoke`' in main_diagnostics, output
 	assert diagnostics['variadic_fn_value_shadowed_by_plain_fn.v'] == ['expected 1 argument, but got 2'], output
 }
 
