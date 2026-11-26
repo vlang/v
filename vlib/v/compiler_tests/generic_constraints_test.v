@@ -673,12 +673,10 @@ fn main() {}
 	], res.output
 }
 
-fn test_a_constrained_generic_needs_the_constraint_of_a_type_parameter_it_takes() {
-	// `Box[T]` or `pick(a, b)` with a type parameter of the declaration around
-	// them: its constraint has to satisfy theirs, where they are written, as in
-	// Go and Rust. A `T` without one is told which to take; an interface that
-	// embeds `Named` satisfies `Named`, and so does `T` in `$if T is int`.
-	res := check_program('propagation', 'struct Box[T Named] {
+fn test_generic_types_propagate_required_constraints() {
+	// A type argument's constraint must satisfy the constraint at its use.
+	// Methods on generic receivers can use members the receiver's constraint declares.
+	res := check_program('constraint_propagation', 'struct Box[T Named] {
 	item T
 }
 
@@ -758,9 +756,68 @@ fn narrowed_call[T Number](x T) {
 	}
 }
 
+interface Shelf[T Named] {
+	get() T
+}
+
+type Picker[T Named] = fn (T) T
+
+struct Leaf[T] {
+	v T
+}
+
+type Tree[T Named] = Leaf[T] | string
+
+fn take[T](s Shelf[T]) T {
+	return s.get()
+}
+
+fn take_ok[T Named](s Shelf[T]) T {
+	return s.get()
+}
+
+interface BigShelf[T] {
+	Shelf[T]
+	count() int
+}
+
+interface BigShelfOk[T Named] {
+	Shelf[T]
+	count() int
+}
+
+struct Keeper[T] {
+	p ?Picker[T]
+}
+
+struct KeeperOk[T NamedGreeter] {
+	p ?Picker[T]
+}
+
+type Forest[T] = Tree[T] | int
+
+type ForestOk[T Named] = Tree[T] | int
+
+fn (s Shelf[T]) label[T]() string {
+	return s.get().name
+}
+
+fn (s Shelf[T]) years[T]() int {
+	return s.get().age
+}
+
+fn (t Tree[T]) describe[T](x T) string {
+	return x.name
+}
+
+fn (t Tree[T]) years[T](x T) int {
+	return x.age
+}
+
 fn main() {}
 ')
 	assert res.exit_code == 1, res.output
+	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
 	assert error_lines(res.output) == [
 		'6:9: `Box[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
 		'5:17: `Box[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
@@ -771,6 +828,12 @@ fn main() {}
 		'52:16: `double` needs `W` to be in `Number`: `string`, in its constraint `Word`, is not',
 		"60:15: `int` doesn't implement field `name` of interface `Named`",
 		'64:8: `Box[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+		'93:14: `Shelf[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+		'102:2: `Shelf[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+		'112:5: `Picker[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+		'119:18: `Tree[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+		'128:17: ${no_age}',
+		'136:11: ${no_age}',
 	], res.output
 }
 
@@ -1231,83 +1294,6 @@ fn main() {
 		'46:17: ${no_name}',
 		'47:13: ${no_name}',
 		'48:24: ${no_name}',
-	], res.output
-}
-
-fn test_a_generic_interface_alias_or_sum_type_passes_its_constraint_on() {
-	// `Shelf[T]`, `?Picker[T]` or `Tree[T]` with a type parameter of the
-	// declaration around them needs its constraint to satisfy theirs, as `Box[T]`
-	// does; and a method of one takes its constraint: `s.get().name` works in
-	// `fn (s Shelf[T])`.
-	res := check_program('generic_types_given', 'interface Shelf[T Named] {
-	get() T
-}
-
-type Picker[T Named] = fn (T) T
-
-struct Leaf[T] {
-	v T
-}
-
-type Tree[T Named] = Leaf[T] | string
-
-fn take[T](s Shelf[T]) T {
-	return s.get()
-}
-
-fn take_ok[T Named](s Shelf[T]) T {
-	return s.get()
-}
-
-interface BigShelf[T] {
-	Shelf[T]
-	count() int
-}
-
-interface BigShelfOk[T Named] {
-	Shelf[T]
-	count() int
-}
-
-struct Keeper[T] {
-	p ?Picker[T]
-}
-
-struct KeeperOk[T NamedGreeter] {
-	p ?Picker[T]
-}
-
-type Forest[T] = Tree[T] | int
-
-type ForestOk[T Named] = Tree[T] | int
-
-fn (s Shelf[T]) label[T]() string {
-	return s.get().name
-}
-
-fn (s Shelf[T]) years[T]() int {
-	return s.get().age
-}
-
-fn (t Tree[T]) describe[T](x T) string {
-	return x.name
-}
-
-fn (t Tree[T]) years[T](x T) int {
-	return x.age
-}
-
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
-	assert error_lines(res.output) == [
-		'13:14: `Shelf[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
-		'22:2: `Shelf[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
-		'32:5: `Picker[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
-		'39:18: `Tree[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
-		'48:17: ${no_age}',
-		'56:11: ${no_age}',
 	], res.output
 }
 
