@@ -162,15 +162,47 @@ fn error_lines_from(output string, first int) []string {
 	return lines
 }
 
-fn test_a_constrained_call_with_types_that_implement_the_interface_is_valid() {
-	res := check_program('valid', "fn longest[T Named](a T, b T) T {
+fn test_valid_calls_to_interface_and_type_set_constraints() {
+	res := check_program('valid_constraint_calls', "fn longest[T Named](a T, b T) T {
 	return if a.name.len >= b.name.len { a } else { b }
+}
+
+fn total[T Named](a T, items []T) int {
+	x := a
+	mut sum := x.name.len
+	for y in items {
+		sum += y.name.len
+	}
+	n := 5
+	sum += n
+	s := 'abc'
+	sum += s.len
+	first := items[0]
+	return sum + first.name.len
+}
+
+type Number = int | i64 | f64
+
+fn double[T Number](x T) T {
+	return x + x
+}
+
+fn describe[T Number](x T) string {
+	return x.str()
 }
 
 fn main() {
 	u := longest(User{ name: 'Alex', age: 30 }, User{ name: 'Bob', age: 25 })
 	println(u.age)
 	println(longest(Pet{ name: 'Rex' }, Pet{ name: 'Tom' }).name)
+
+	println(total(User{ name: 'a' }, [User{
+		name: 'b'
+	}]))
+
+	println(double(2))
+	println(double(2.5))
+	println(describe(i64(3)))
 }
 ")
 	assert res.exit_code == 0, res.output
@@ -1156,31 +1188,6 @@ fn main() {
 	], res.output
 }
 
-fn test_a_local_of_type_t_can_use_what_the_constraint_declares() {
-	res := check_program('derived_valid', "fn total[T Named](a T, items []T) int {
-	x := a
-	mut sum := x.name.len
-	for y in items {
-		sum += y.name.len
-	}
-	n := 5
-	sum += n
-	s := 'abc'
-	sum += s.len
-	first := items[0]
-	return sum + first.name.len
-}
-
-fn main() {
-	println(total(User{ name: 'a' }, [User{
-		name: 'b'
-	}]))
-}
-")
-	assert res.exit_code == 0, res.output
-	assert error_lines(res.output) == [], res.output
-}
-
 fn test_generic_struct_constraints_are_checked_in_declarations_and_initializers() {
 	res := check_program('struct_type_arguments', "struct Box[T Named] {
 	item T
@@ -2004,27 +2011,6 @@ pub fn (h Host) longest[T Named](a T, b T) T {
 // A constraint can also be a set of types, declared with `constraint`: the
 // type argument must be one of them, and the body can use on a value of type
 // `T` what every type of the set has.
-
-fn test_a_call_with_a_type_of_the_constraint_set_is_valid() {
-	res := check_program('set_valid', 'type Number = int | i64 | f64
-
-fn double[T Number](x T) T {
-	return x + x
-}
-
-fn describe[T Number](x T) string {
-	return x.str()
-}
-
-fn main() {
-	println(double(2))
-	println(double(2.5))
-	println(describe(i64(3)))
-}
-')
-	assert res.exit_code == 0, res.output
-	assert error_lines(res.output) == [], res.output
-}
 
 fn test_constraint_sets_reject_invalid_calls_and_members() {
 	// `len` of arrays, maps and strings, the fields and methods builtin declares
