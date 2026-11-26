@@ -30,29 +30,56 @@ fn veb_run_at_project(name string, source string) !string {
 }
 
 fn test_veb_run_at_rejects_invalid_generic_arguments() {
-	for module_name in ['veb', 'web'] {
-		import_line := if module_name == 'veb' {
-			'import veb'
-		} else {
-			'import veb as ${module_name}'
-		}
-		source := veb_run_at_source.replace('import veb', import_line)
-			.replace('veb.run_at(mut p, port: 8080)!', 'veb.run_at(mut p, port: 8080)!
+	invalid_calls := 'veb.run_at(mut p, port: 8080)!
 	veb.run_at[Program](mut p, port: 8080)!
 	veb.run_at[Program, Context, int](mut p, port: 8080)!
-	veb.run_at[int, Context](mut p, port: 8080)!')
-			.replace('veb.', '${module_name}.')
-		root := veb_run_at_project('invalid_generic_args_${module_name}', source)!
-		defer { os.rmdir_all(root) or {} }
-		for flags in [[]string{}, ['-no-parallel']] {
-			result := os.exec([@VEXE, '-nocache', '-nocolor', ...flags, '-o',
-				os.join_path(root, 'app.c'), root])
-			assert result.exit_code != 0, result.output
-			assert result.output.contains('could not infer generic type `X` in call to `veb.run_at`'), result.output
-			assert result.output.contains('expected 2 generic parameters, got 1'), result.output
-			assert result.output.contains('expected 2 generic parameters, got 3'), result.output
-			assert result.output.contains('cannot use `&Program` as `&int` in argument 1 to `veb.run_at`'), result.output
-			assert !result.output.contains('C compilation error'), result.output
+	veb.run_at[int, Context](mut p, port: 8080)!'
+	source := veb_run_at_source.replace('veb.run_at(mut p, port: 8080)!', invalid_calls)
+	root := veb_run_at_project('invalid_generic_args', source)!
+	defer { os.rmdir_all(root) or {} }
+	aliased_calls := invalid_calls.replace('veb.', 'web.')
+	os.write_file(os.join_path(root, 'aliased.v'), 'module main
+
+import veb as web
+
+fn check_aliased_run_at() ! {
+	mut p := Program{}
+	${aliased_calls}
+}
+')!
+	os.write_file(os.join_path(root, 'body_only.v'), 'fn use_type[A, X](value A) {
+	_ = X{}
+}
+fn check_body_only_type() {
+	use_type(1)
+}
+')!
+
+	run_at_errors := [
+		'could not infer generic type `X` in call to `veb.run_at`',
+		'expected 2 generic parameters, got 1',
+		'expected 2 generic parameters, got 3',
+		'cannot use `&Program` as `&int` in argument 1 to `veb.run_at`',
+	]
+	for flags in [[]string{}, ['-no-parallel']] {
+		result := os.exec([@VEXE, '-nocache', '-nocolor', ...flags, '-o', os.join_path(root, 'app.c'),
+			root])
+		assert result.exit_code != 0, result.output
+		assert !result.output.contains('C compilation error'), result.output
+		mut diagnostics := map[string][]string{}
+		for line in result.output.split_into_lines() {
+			location, message := line.split_once(': error: ') or { continue }
+			file := location.all_before_last(':').all_before_last(':')
+			diagnostics[os.file_name(file)] << message
+		}
+		for file, expected in {
+			'main.v':      run_at_errors
+			'aliased.v':   run_at_errors
+			'body_only.v': ['could not infer generic type `X` in call to `use_type`']
+		} {
+			for message in expected {
+				assert diagnostics[file].any(it.contains(message)), 'expected ${message} in ${file}\n${result.output}'
+			}
 		}
 	}
 }
@@ -86,20 +113,6 @@ fn test_veb_run_at_with_explicit_types_preserves_errors_and_handler_response() {
 	result := os.exec([program])
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'ok', result.output
-}
-
-fn test_generic_type_used_only_in_the_body_requires_explicit_arguments() {
-	root := veb_run_at_project('unused_type', 'fn use_type[A, X](value A) {
-	_ = X{}
-}
-fn main() {
-	use_type(1)
-}
-')!
-	defer { os.rmdir_all(root) or {} }
-	result := os.exec([@VEXE, '-nocache', '-nocolor', '-o', os.join_path(root, 'app.c'), root])
-	assert result.exit_code != 0, result.output
-	assert result.output.contains('could not infer generic type `X` in call to `use_type`'), result.output
 }
 
 fn test_generic_return_and_constraint_inference_still_work() {
