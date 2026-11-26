@@ -602,13 +602,13 @@ pub fn check() {
 	}
 }
 
-fn test_explicit_optional_sum_cast_preserves_empty_and_owned_array_payloads() {
-	output := borrow_storage_run('explicit_optional_sum_cast', borrow_storage_drop_decls + '
+fn test_array_sum_storage_preserves_owned_payloads() {
+	output := borrow_storage_run('array_sum_payloads', borrow_storage_drop_decls + '
 type Bucket = []Res | int
 fn keep(mut values []Res) ?Bucket { return ?Bucket(Bucket(values)) }
 fn absent() ?Bucket { return none }
 fn explicit_absent() ?Bucket { return ?Bucket(none) }
-fn main() {
+fn check_optional_sum() {
 	assert absent() == none
 	assert explicit_absent() == none
 	mut empty := []Res{}
@@ -624,8 +624,31 @@ fn main() {
 	drop_owned(bucket)
 	drop_owned(values)
 }
+
+type Storage = []Res | string
+fn keep_string(mut source Storage) Storage { return source }
+fn check_string_sum() {
+	mut source := Storage("payload".repeat(4))
+	retained := keep_string(mut source)
+	drop_owned(source)
+	if retained is string {
+		assert retained == "payload".repeat(4)
+	} else { assert false }
+	drop_owned(retained)
+	println("ok")
+}
+
+fn main() {
+	println("optional_sum")
+	check_optional_sum()
+	println("string_sum")
+	check_string_sum()
+}
 ')
-	assert output == 'drop 101\ndrop 1'
+	assert output == 'optional_sum\ndrop 101\ndrop 1\nstring_sum\nok'
+}
+
+fn test_nested_optional_sum_cast_is_rejected() {
 	nested := borrow_storage_compile('nested_optional_sum_cast', '
 type Bucket = []int | int
 fn absent() ?Bucket { return ?Bucket(?Bucket(none)) }
@@ -742,24 +765,6 @@ fn main() {
 }
 ')
 	assert output == 'drop 1\ndrop 101\ndrop 2\ndrop 102\nother 3\nother 1003'
-}
-
-fn test_mutable_array_sum_storage_acquires_nonarray_variant_owners() {
-	output := borrow_storage_run('sum_string_storage', borrow_storage_drop_decls + '
-type Storage = []Res | string
-fn keep(mut source Storage) Storage { return source }
-fn main() {
-	mut source := Storage("payload".repeat(4))
-	retained := keep(mut source)
-	drop_owned(source)
-	if retained is string {
-		assert retained == "payload".repeat(4)
-	} else { assert false }
-	drop_owned(retained)
-	println("ok")
-}
-')
-	assert output == 'ok'
 }
 
 fn test_mutable_array_value_captures_acquire_owned_snapshots() {
