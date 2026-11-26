@@ -1282,34 +1282,11 @@ fn test_a_local_of_a_comptime_for_body_is_not_taken_for_a_constant() {
 	assert error_lines(check.res.output) == [], check.res.output
 }
 
-const map_cast_declarations = 'fn to_counts[T](m map[string]T) map[string]u8 {
+const map_cast_comptime_for_program = "fn to_counts[T](m map[string]T) map[string]u8 {
 	return map[string]u8(m)
 }
 
-'
-
-const map_cast_calls = "	println(to_counts({
-		'a': u8(7)
-	}))
-"
-
-// `map[K]V(m)` is a cast, as `?map[K]V(m)` is, and it keeps the elements as
-// they are. An instance that casts a map whose values are stored otherwise is
-// reported where it does so, in a check and in a build. It used to pass the
-// check and give the C compiler an invalid cast.
-fn test_a_map_type_cast_is_checked_for_each_instance() {
-	source := map_cast_declarations + 'fn main() {\n' + map_cast_calls +
-		"\tprintln(to_counts({\n\t\t'a': 258\n\t}))\n}\n"
-	for res in [check_program('map_cast_check', source), build_program('map_cast_build', source)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'11:9: cannot cast map `map[string]int` to `map[string]u8`',
-		], res.output
-	}
-}
-
-const comptime_for_declarations = 'struct Foo {
+struct Foo {
 	a int
 }
 
@@ -1337,34 +1314,39 @@ fn count[T](x T) int {
 	return 0
 }
 
-'
-
-const comptime_for_calls = '	println(wrap(Bar{ b: 1 }))
+fn main() {
+	println(to_counts({
+		'a': u8(7)
+	}))
+	println(wrap(Bar{ b: 1 }))
 	println(count(Bar{ b: 1 }))
-'
+"
 
-// The body of a `$for` is checked in each instance as the rest of the body is:
-// its locals are seen and its returns are checked. `[x]` is a `[]Bar` for a
-// `Bar`, but a `[]Foo` for a `Foo`, which is no `[]Bar`. It used to pass the
-// check and a build, and reach the C compiler.
-fn test_an_array_of_another_type_in_a_comptime_for_body_is_reported_per_instance() {
-	source := comptime_for_declarations + 'fn main() {\n' + comptime_for_calls +
-		'\tprintln(wrap(Foo{ a: 2 }))\n\tprintln(count(Foo{ a: 2 }))\n}\n'
-	for res in [check_program('comptime_for_check', source),
-		build_program('comptime_for_build', source)] {
+// A map cast preserves element types. A local array in a compile-time loop
+// has the element type of its specialization, in both returns and arguments.
+fn test_map_cast_and_comptime_for_instances_reject_wrong_element_types() {
+	source := map_cast_comptime_for_program + "	println(to_counts({
+		'a': 258
+	}))
+	println(wrap(Foo{ a: 2 }))
+	println(count(Foo{ a: 2 }))
+}
+"
+	for res in [check_program('map_cast_comptime_for_check', source),
+		build_program('map_cast_comptime_for_build', source)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
 		assert error_lines(res.output) == [
-			'25:10: cannot use `[]Foo` as type `[]Bar` in return argument',
-			'33:20: cannot use `[]Foo` as `[]Bar` in argument 1 to `take_bars`',
+			'11:9: cannot cast map `map[string]int` to `map[string]u8`',
+			'29:10: cannot use `[]Foo` as type `[]Bar` in return argument',
+			'37:20: cannot use `[]Foo` as `[]Bar` in argument 1 to `take_bars`',
 		], res.output
 	}
 }
 
 // A map cast to its own type and compile-time loops with the expected types build and run.
 fn test_map_cast_and_comptime_for_instances_build_and_run() {
-	source := map_cast_declarations + comptime_for_declarations + 'fn main() {\n' + map_cast_calls +
-		comptime_for_calls + '}\n'
+	source := map_cast_comptime_for_program + '}\n'
 	check := check_program('map_cast_comptime_for_valid_check', source)
 	assert check.exit_code == 0, check.output
 	assert error_lines(check.output) == [], check.output
