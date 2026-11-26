@@ -82,41 +82,6 @@ fn main() {
 ')
 }
 
-// A concrete generic-interface application uses the base interface's runtime
-// box while retaining its specialized method parameter types.
-fn test_generic_interface_parameter_uses_base_runtime_box() {
-	occf_compile_and_run('generic_interface_parameter', 'module main
-
-interface CaptureFinder[T] {
-	captures_at(mut caps T) bool
-}
-
-struct Captures {
-mut:
-	count int
-}
-
-struct Matcher {}
-
-fn (m Matcher) captures_at(mut caps Captures) bool {
-	_ = m
-	caps.count++
-	return true
-}
-
-fn captures[T](matcher &CaptureFinder[T], mut caps T) bool {
-	return matcher.captures_at(mut caps)
-}
-
-fn main() {
-	matcher := Matcher{}
-	mut caps := Captures{}
-	assert captures(matcher, mut caps)
-	assert caps.count == 1
-}
-')
-}
-
 fn test_ownership_clones_arc_arrays_and_owned_values() {
 	occf_compile_and_run('clone_arc_arrays_and_owned_values', 'module main
 
@@ -208,10 +173,37 @@ fn main() {
 ')
 }
 
-// Generic specialization keeps the checker's implicit reference conversion
-// when a concrete value is passed to a borrowed interface parameter.
-fn test_generic_method_accepts_value_for_borrowed_interface_parameter() {
-	occf_compile_and_run('generic_borrowed_interface_arg', 'module main
+fn test_generic_calls_preserve_interface_arguments_and_mutable_receivers() {
+	occf_compile_and_run('generic_interface_and_receiver_calls', 'module main
+
+// A concrete generic interface uses the base runtime box with specialized parameters.
+interface CaptureFinder[T] {
+	captures_at(mut caps T) bool
+}
+
+struct Captures {
+mut:
+	count int
+}
+
+struct Matcher {}
+
+fn (m Matcher) captures_at(mut caps Captures) bool {
+	_ = m
+	caps.count++
+	return true
+}
+
+fn captures[T](matcher &CaptureFinder[T], mut caps T) bool {
+	return matcher.captures_at(mut caps)
+}
+
+fn check_generic_interface_box() {
+	matcher := Matcher{}
+	mut caps := Captures{}
+	assert captures(matcher, mut caps)
+	assert caps.count == 1
+}
 
 interface Reader {
 	value() int
@@ -248,13 +240,49 @@ fn (worker Worker[T]) run(value &int) int {
 	return worker.searcher.search(borrowed)
 }
 
-fn main() {
+// Specialization keeps the implicit reference conversion for borrowed interfaces.
+fn check_borrowed_interface_parameter() {
 	n := 42
 	worker := Worker[int]{
 		value: 1
 		searcher: Searcher{}
 	}
 	assert worker.run(&n) == 42
+}
+
+struct Inner[T] {
+mut:
+	value T
+}
+
+fn (mut inner Inner[T]) get_mut() &T {
+	return &inner.value
+}
+
+struct Outer[T] {
+mut:
+	inner Inner[T]
+}
+
+fn (mut outer Outer[T]) inner_mut() &Inner[T] {
+	return &outer.inner
+}
+
+// Rebuilding local scopes after specialization must preserve mutability.
+fn check_chained_mut_receiver() {
+	mut outer := Outer[int]{
+		inner: Inner[int]{
+			value: 42
+		}
+	}
+	value := outer.inner_mut().get_mut()
+	assert *value == 42
+}
+
+fn main() {
+	check_generic_interface_box()
+	check_borrowed_interface_parameter()
+	check_chained_mut_receiver()
 }
 ')
 }
@@ -295,42 +323,6 @@ fn main() {
 		value: "b".to_owned()
 	}
 	assert consume(first, wrap(second)) == 2
-}
-')
-}
-
-// Reannotation rebuilds local scopes after generic specialization. Mutable
-// declarations must keep their mutability there so chained generic receiver
-// calls are not diagnosed as calls on immutable values.
-fn test_chained_generic_mut_receiver_keeps_mutable_local() {
-	occf_compile_and_run('generic_mut_receiver', 'module main
-
-struct Inner[T] {
-mut:
-	value T
-}
-
-fn (mut inner Inner[T]) get_mut() &T {
-	return &inner.value
-}
-
-struct Outer[T] {
-mut:
-	inner Inner[T]
-}
-
-fn (mut outer Outer[T]) inner_mut() &Inner[T] {
-	return &outer.inner
-}
-
-fn main() {
-	mut outer := Outer[int]{
-		inner: Inner[int]{
-			value: 42
-		}
-	}
-	value := outer.inner_mut().get_mut()
-	assert *value == 42
 }
 ')
 }
