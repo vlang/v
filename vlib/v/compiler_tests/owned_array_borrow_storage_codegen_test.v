@@ -765,36 +765,6 @@ fn main() {
 	assert output == 'drop 1\ndrop 101\ndrop 2\ndrop 102\nother 3\nother 1003'
 }
 
-fn test_result_storage_aliases_require_immediate_unwrapping() {
-	build := borrow_storage_compile('failed_result_storage', borrow_storage_drop_decls + '
-struct Fault implements IClone, Drop { id int }
-fn (r Fault) msg() string { return "failed" }
-fn (r Fault) code() int { return r.id }
-fn (r &Fault) clone() Fault { return Fault{r.id + 100} }
-fn (mut r Fault) drop() { println("error \${r.id}") }
-type ArrayResult = ![]Res
-type ArrayResultAlias = ArrayResult
-type ResultStorage = ArrayResultAlias | int
-fn fail(id int) ![]Res { return Fault{id} }
-fn keep_alias(mut source ArrayResultAlias) ArrayResultAlias { return source }
-fn keep_sum(mut source ResultStorage) ResultStorage { return source }
-fn main() {
-	mut source := ArrayResultAlias(fail(1))
-	retained := ArrayResultAlias(keep_alias(mut source))
-	drop_owned(source)
-	drop_owned(retained)
-	mut sum_source := ResultStorage(ArrayResultAlias(fail(2)))
-	sum_retained := keep_sum(mut sum_source)
-	drop_owned(sum_source)
-	drop_owned(sum_retained)
-}
-')
-	assert build.exit_code != 0
-	assert build.output.contains('cannot make an alias of Result type')
-	assert build.output.contains('Result types cannot be stored and have to be unwrapped immediately')
-	assert build.output.contains('fail() returns `![]Res`')
-}
-
 fn test_mutable_array_sum_storage_acquires_nonarray_variant_owners() {
 	output := borrow_storage_run('sum_string_storage', borrow_storage_drop_decls + '
 type Storage = []Res | string
@@ -1032,10 +1002,43 @@ fn trim_at(mut values []Res, index int) {
 	}
 }
 
-fn test_sum_result_error_clone_matrix_rejects_unsupported_result_aliases() {
-	mut source := borrow_storage_drop_decls
+fn test_result_storage_aliases_require_immediate_unwrapping() {
+	mut source := borrow_storage_drop_decls + '
+struct Fault implements IClone, Drop { id int }
+fn (r Fault) msg() string { return "failed" }
+fn (r Fault) code() int { return r.id }
+fn (r &Fault) clone() Fault { return Fault{r.id + 100} }
+fn (mut r Fault) drop() { println("error \${r.id}") }
+'
+	mut alias_lines := {
+		source.count('\n') + 1: 'ArrayResult'
+	}
+	source += 'type ArrayResult = ![]Res
+type ArrayResultAlias = ArrayResult
+type ResultStorage = ArrayResultAlias | int
+fn fail(id int) ![]Res { return Fault{id} }
+fn keep_alias(mut source ArrayResultAlias) ArrayResultAlias { return source }
+fn keep_sum(mut source ResultStorage) ResultStorage { return source }
+fn check_array_result() {
+	mut source := ArrayResultAlias(fail(1))
+	retained := ArrayResultAlias(keep_alias(mut source))
+	drop_owned(source)
+	drop_owned(retained)
+	mut sum_source := ResultStorage(ArrayResultAlias(fail(2)))
+	sum_retained := keep_sum(mut sum_source)
+	drop_owned(sum_source)
+	drop_owned(sum_retained)
+}
+'
+	mut fail_lines := []int{}
+	for i, line in source.split_into_lines() {
+		if line.contains('ArrayResultAlias(fail(') {
+			fail_lines << i + 1
+		}
+	}
+	assert fail_lines.len == 2
+
 	mut calls := []string{}
-	mut alias_lines := map[int]string{}
 	for clone_kind in ['none', 'incompatible', 'value', 'pointer', 'pointer_alias'] {
 		for failed in [false, true] {
 			case_id := calls.len
@@ -1080,22 +1083,29 @@ fn check_${case_id}() {
 	}
 	source += '
 fn main() {
+	check_array_result()
 ${calls.join('\n')}
 }
 '
-	name := 'sum_result_error_aliases'
-	build := borrow_storage_compile_with_flags(name, source, '-nocolor')
+	name := 'result_storage_aliases'
+	build := borrow_storage_compile_with_flags(name, source, '-nocolor -message-limit 100')
 	assert build.exit_code != 0, build.output
 	mut rejected_lines := []int{}
+	mut rejected_fail_lines := []int{}
 	for diagnostic in build.output.split('${name}.v:') {
+		line := diagnostic.all_before(':').int()
 		if diagnostic.contains(': error: cannot make an alias of Result type')
 			&& diagnostic.contains('Details: Result types cannot be stored and have to be unwrapped immediately') {
-			rejected_lines << diagnostic.all_before(':').int()
+			rejected_lines << line
+		}
+		if diagnostic.contains(': error: fail() returns `![]Res`') {
+			rejected_fail_lines << line
 		}
 	}
 	for line, case_name in alias_lines {
 		assert line in rejected_lines, '${case_name}: ${build.output}'
 	}
+	assert rejected_fail_lines.sorted() == fail_lines, build.output
 }
 
 fn test_invalid_owned_array_growth_preserves_diagnostics_without_cloning() {
