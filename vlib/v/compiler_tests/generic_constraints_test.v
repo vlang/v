@@ -294,10 +294,10 @@ fn main() {}
 	], res.output
 }
 
-fn test_a_local_from_a_guard_a_call_or_an_array_method_is_a_t() {
-	// `U`, not `T`: the type of a call must be the caller's parameter, not the
-	// callee's `T`, which has the same name in `find` and `pair`.
-	res := check_program('derived_calls', "fn find[T Named](items []T) ?T {
+fn test_values_derived_in_a_generic_body_keep_the_callers_type_parameter() {
+	// Values derived from `U` keep the caller's `Named` constraint through guards,
+	// calls and array methods, even when the callee uses `T` for its parameter.
+	res := check_program('caller_types', "fn find[T Named](items []T) ?T {
 	return none
 }
 
@@ -328,6 +328,28 @@ fn derived[U Named](a U, items []U, m map[string]U) int {
 	return total
 }
 
+fn pick[T Named](a T) T {
+	return a
+}
+
+struct Box[T Named] {
+	item T
+}
+
+fn (b Box[T]) get() T {
+	return b.item
+}
+
+// The caller has its own parameter T with a different constraint.
+fn mixed[T Greeter, U Named](g T, n U, b Box[U]) int {
+	x := pick(n)
+	println(x.name)
+	println(g.greet())
+	y := b.get()
+	println(y.name)
+	return x.age + y.age + pick(n).age
+}
+
 fn main() {}
 ")
 	assert res.exit_code == 1, res.output
@@ -340,41 +362,9 @@ fn main() {}
 		'22:13: ${no_age}',
 		'24:14: ${no_age}',
 		'27:14: ${no_age}',
-	], res.output
-}
-
-fn test_a_generic_call_in_the_body_has_the_type_of_the_caller() {
-	// `pick(n)` is a `U`: its own `T` is bound to the caller's `U`, and the
-	// caller's `T` is another type parameter, with another constraint.
-	res := check_program('call_type', 'fn pick[T Named](a T) T {
-	return a
-}
-
-struct Box[T Named] {
-	item T
-}
-
-fn (b Box[T]) get() T {
-	return b.item
-}
-
-fn mixed[T Greeter, U Named](g T, n U, b Box[U]) int {
-	x := pick(n)
-	println(x.name)
-	println(g.greet())
-	y := b.get()
-	println(y.name)
-	return x.age + y.age + pick(n).age
-}
-
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	no_age := 'type `U` has no field named `age`: its constraint `Named` does not declare it'
-	assert error_lines(res.output) == [
-		'19:11: ${no_age}',
-		'19:19: ${no_age}',
-		'19:33: ${no_age}',
+		'51:11: ${no_age}',
+		'51:19: ${no_age}',
+		'51:33: ${no_age}',
 	], res.output
 }
 
