@@ -505,6 +505,45 @@ fn main() {
 '
 			expected: '7'
 		},
+		FnValueRuntimeCase{
+			name:     'address_of_local_fn_value'
+			source:   'struct Holder {
+	f fn (int) int = unsafe { nil }
+}
+
+fn make_holder() Holder {
+	offset := 4
+	local := fn [offset] (value int) int {
+		return value + offset
+	}
+	return Holder{
+		f: &local
+	}
+}
+
+fn main() {
+	holder := make_holder()
+	println(holder.f(3))
+}
+'
+			expected: '7'
+		},
+		// Dereferencing ref needs the address of the stored function pointer.
+		FnValueRuntimeCase{
+			name:     'deref_of_address_of_local_fn_value'
+			source:   'fn answer() int {
+	return 42
+}
+
+fn main() {
+	f := answer
+	ref := &f
+	deref := *ref
+	println(deref())
+}
+'
+			expected: '42'
+		},
 	]
 	bin := fn_value_compile_good_batch(fixture_dir, 'fn_value_locals', cases)
 	generated := os.read_file(bin + '.c') or { panic(err) }
@@ -632,51 +671,6 @@ fn main() {
 }
 ')
 	assert out == '42\n42'
-}
-
-fn test_address_of_local_fn_value_stores_the_callable_value() {
-	fixture_dir := fn_value_new_fixture_dir()
-	defer { os.rmdir_all(fixture_dir) or {} }
-	out := fn_value_run_good(fixture_dir, 'address_of_local_fn_value', 'struct Holder {
-	f fn (int) int = unsafe { nil }
-}
-
-fn make_holder() Holder {
-	offset := 4
-	local := fn [offset] (value int) int {
-		return value + offset
-	}
-	return Holder{
-		f: &local
-	}
-}
-
-fn main() {
-	holder := make_holder()
-	println(holder.f(3))
-}
-')
-	assert out == '7'
-}
-
-fn test_pointer_to_local_fn_value_round_trips_through_a_deref() {
-	fixture_dir := fn_value_new_fixture_dir()
-	defer { os.rmdir_all(fixture_dir) or {} }
-	// The mirror image of the case above: here the pointer *is* the point, so the
-	// `&` cannot be dropped - `*ref` would otherwise read the function's code as
-	// if it were a stored function pointer.
-	out := fn_value_run_good(fixture_dir, 'deref_of_address_of_local_fn_value', 'fn answer() int {
-	return 42
-}
-
-fn main() {
-	f := answer
-	ref := &f
-	deref := *ref
-	println(deref())
-}
-')
-	assert out == '42'
 }
 
 fn test_const_generic_fn_factory_value_call_uses_const_storage() {
