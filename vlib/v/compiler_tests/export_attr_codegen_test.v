@@ -513,8 +513,8 @@ fn main() {}
 	assert compile.output.contains('functions with type only params can not have bodies'), compile.output
 }
 
-fn test_export_wrapper_fixed_array_return_uses_return_wrapper_type() {
-	root := export_attr_fixture_dir('fixed_array_return')
+fn test_export_wrappers_use_fixed_array_and_fn_pointer_return_types() {
+	root := export_attr_fixture_dir('return_types')
 	defer { os.rmdir_all(root) or {} }
 	export_attr_write_project(root, {
 		'main.v': "module main
@@ -527,27 +527,6 @@ fn numbers() [3]int {
 	values[2] = 3
 	return values
 }
-
-fn main() {}
-"
-	})
-	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
-	assert compile.exit_code == 0, compile.output
-	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void);'), c_code
-	assert c_code.contains('_v_ret_Array_fixed_i64_3 raw_numbers(void);'), c_code
-	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void) {'), c_code
-	assert c_code.contains('_v_ret_Array_fixed_i64_3 raw_numbers(void) {'), c_code
-	assert c_code.contains('return numbers();'), c_code
-	assert !c_code.contains('\nArray_fixed_i64_3 raw_numbers(void)'), c_code
-}
-
-fn test_export_wrapper_fn_pointer_return_uses_fn_pointer_typedef() {
-	root := export_attr_fixture_dir('fn_pointer_return')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
 
 type Callback = fn () int
 
@@ -567,11 +546,27 @@ fn main() {}
 	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.contains('typedef i64 (*_fn_ptr_'), c_code
-	assert c_code.contains(' callback(void);'), c_code
-	assert c_code.contains(' raw_callback(void);'), c_code
-	assert c_code.contains(' raw_callback(void) {'), c_code
-	assert c_code.contains('return callback();'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void);'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_i64_3 raw_numbers(void);'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void) {'), c_code
+	numbers_wrapper := '_v_ret_Array_fixed_i64_3 raw_numbers(void) {'
+	assert c_code.contains(numbers_wrapper), c_code
+	assert c_code.all_after(numbers_wrapper).all_before('\n}').contains('return numbers();'), c_code
+	assert !c_code.contains('\nArray_fixed_i64_3 raw_numbers(void)'), c_code
+
+	for name, return_type in {
+		'callback':     'i64'
+		'raw_callback': 'int'
+	} {
+		before_prototype, _ := c_code.split_once(' ${name}(void);') or {
+			panic('missing C prototype for ${name}')
+		}
+		typedef_name := before_prototype.all_after_last('\n')
+		assert typedef_name.starts_with('_fn_ptr_'), typedef_name
+		assert c_code.contains('typedef ${return_type} (*${typedef_name})(void);'), c_code
+		assert c_code.contains('${typedef_name} ${name}(void) {'), c_code
+	}
+	assert c_code.all_after(' raw_callback(void) {').all_before('\n}').contains('return callback();'), c_code
 	assert !c_code.contains('fn_ptr:'), c_code
 }
 
