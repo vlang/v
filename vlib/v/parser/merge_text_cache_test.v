@@ -56,8 +56,9 @@ fn test_merge_text_probes_promote_payloads_without_attribute_names() {
 	mut master := Parser.new(pref.new_preferences())
 	mut worker := Parser.new(pref.new_preferences())
 	master.a.intern_text('Counter')
-	unsafe { master.a.nodes.grow_len(2) }
-	// Both values hit the master table; only typed payload ownership needs a tail pass.
+	master.a.intern_text('borrow')
+	unsafe { master.a.nodes.grow_len(3) }
+	// All node names hit the master table. Their metadata still needs a tail pass.
 	scope := parser_worker_scope_begin(true)
 	enum_payload := flat.node_payload_with_type_metadata([]string{}, flat.source_type_u64,
 		[]u32{})
@@ -72,16 +73,21 @@ fn test_merge_text_probes_promote_payloads_without_attribute_names() {
 		kind:    .debugger_stmt
 		payload: debugger_payload
 	})
+	mut method := flat.Node{ kind: .interface_field, value: 'borrow' }
+	method.set_lifetime_syntax(flat.LifetimeSyntax{ type_uses: flat.source_type_id('loan') })
+	lifetime_payload := method.payload
+	worker.a.add_node(method)
 	parser_worker_scope_leave(scope)
 	mut args := ParseMergeCopyArgs{
 		master: voidptr(master)
 		worker: voidptr(worker)
 	}
 	parse_merge_copy_thread(voidptr(&args))
-	assert args.miss_nodes == [0, 1]
+	assert args.miss_nodes == [0, 1, 2]
 	master.a.intern_node_texts_at(args.miss_nodes)
 	assert master.a.nodes[0].payload != enum_payload
 	assert master.a.nodes[1].payload != debugger_payload
+	assert master.a.nodes[2].payload != lifetime_payload
 	parser_worker_scope_free(scope)
 	assert master.a.nodes[0].enum_backing_type_id() == flat.source_type_u64
 	assert master.a.nodes[0].generic_params().len == 0
@@ -89,4 +95,5 @@ fn test_merge_text_probes_promote_payloads_without_attribute_names() {
 	assert master.a.nodes[1].debugger_value_type_ids() == [flat.source_type_int, flat.source_type_u64]
 	assert master.a.nodes[1].generic_params().len == 0
 	assert master.a.nodes[1].generic_constraint_ids().len == 0
+	assert flat.source_type_name(master.a.nodes[2].lifetime_syntax().type_uses) == 'loan'
 }

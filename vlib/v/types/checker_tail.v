@@ -2388,6 +2388,12 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_with_entry_guard(id flat
 				}
 			}
 			for source in sources {
+				if source.boxed_borrow && source.source_is_prefix {
+					if local := tc.returned_boxed_payload_local_storage(source) {
+						return local
+					}
+					continue
+				}
 				if tc.returned_receiver_call_source_materializes_storage(id, source.arg_id) {
 					if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
 						return local
@@ -2581,6 +2587,12 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_projection(id flat.No
 		}
 		if node.kind == .call {
 			for source in tc.ownership_call_result_projection_sources(id, suffix) {
+				if source.boxed_borrow && source.source_is_prefix {
+					if local := tc.returned_boxed_payload_local_storage(source) {
+						return local
+					}
+					continue
+				}
 				if tc.returned_receiver_call_source_materializes_storage(id, source.arg_id) {
 					if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
 						return local
@@ -2625,6 +2637,17 @@ fn returned_value_is_scalar_copy(typ Type) bool {
 	value_type := unalias_type(typ)
 	return value_type is Primitive || value_type is Char || value_type is Rune
 		|| value_type is ISize || value_type is USize || value_type is Enum
+}
+
+fn (mut tc TypeChecker) returned_boxed_payload_local_storage(source OwnershipCallResultSource) ?string {
+	$if ownership ? {
+		for name in tc.ownership_boxed_payload_borrow_sources(source.arg_id, source.source_suffix, 0) {
+			if local := tc.returned_receiver_local_storage_name(name) {
+				return local
+			}
+		}
+	}
+	return none
 }
 
 // Returned wrappers and aggregates can contain the same borrowed pointers as a direct return.
@@ -2713,6 +2736,12 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 		}
 		if node.kind == .call {
 			for source in tc.ownership_call_result_sources(id) {
+				if source.boxed_borrow && source.source_is_prefix {
+					if local := tc.returned_boxed_payload_local_storage(source) {
+						return local
+					}
+					continue
+				}
 				if tc.returned_receiver_call_source_materializes_storage(id, source.arg_id) {
 					if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
 						return local
@@ -2781,7 +2810,7 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 							}
 							continue
 						}
-						if projected_type is Pointer {
+						if borrow.boxed_borrow || projected_type is Pointer {
 							if local := tc.returned_receiver_local_storage_name(name) {
 								return local
 							}
@@ -17495,6 +17524,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		mut compatible_interface_value_arg := false
 		mut mutable_interface_impl_arg := false
 		if expected_interface := cast_target_interface(clean_expected_for_interface) {
+			$if ownership ? {
+				if tc.unsafe_depth == 0 && fn_param_is_voidptr_type(actual)
+					&& tc.ownership_scoped_factory_interface(expected_interface.name_id) {
+					tc.record_error(.thread_transfer, 'cannot use a raw pointer as a scoped callback factory', arg_id)
+					continue
+				}
+			}
 			allow_mut_receiver := param_is_mut && mut_arg_node.is_mut
 			// A raw pointer is an explicit escape hatch for interface reference
 			// parameters; it does not describe a concrete interface implementer.

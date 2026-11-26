@@ -205,6 +205,32 @@ fn test_lifetime_generic_suffixes_are_erased() {
 	assert fn_decl_param_pairs(a, .fn_decl, 'after') == []
 }
 
+fn test_interface_lifetime_names_are_preserved_on_declarations() {
+	a := parse_parser_regression_source('interface_lifetime_names', r'
+interface Factory[^state, T] {
+	make[^arg](value &^arg T) Wrapper[^state, T]
+}
+')
+	mut checked := false
+	for node in a.nodes {
+		if node.kind != .interface_decl || node.value != 'Factory' {
+			continue
+		}
+		assert node.generic_params() == ['T']
+		assert flat.source_type_name(node.lifetime_syntax().parameters) == 'state'
+		method := a.child_node(&node, 0)
+		assert method.generic_params().len == 0
+		assert method.typ_text() == 'Wrapper[T]'
+		assert flat.source_type_name(method.lifetime_syntax().parameters) == 'arg'
+		assert flat.source_type_name(method.lifetime_syntax().type_uses) == 'state'
+		argument := a.child_node(method, 0)
+		assert argument.typ_text() == '&T'
+		assert flat.source_type_name(argument.lifetime_syntax().type_uses) == 'arg'
+		checked = true
+	}
+	assert checked
+}
+
 fn test_lifetime_generic_struct_init_suffixes_are_erased() {
 	a := parse_parser_regression_source('lifetime_generic_struct_init_suffixes',
 		'struct Candidate {}\nstruct Slot[T] {}\n\nfn make[^a]() {\n\t_ := Candidate[^a]{}\n\t_ := Slot[int, ^a]{}\n}\n')
