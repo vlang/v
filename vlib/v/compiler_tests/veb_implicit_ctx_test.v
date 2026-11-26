@@ -231,13 +231,8 @@ fn main() {
 	assert native_compile.exit_code == 0, native_compile.output
 }
 
-// Reflected calls pass the hidden veb context explicitly. Their source method
-// metadata still omits that hidden parameter, so argument spreading must use
-// the checker's ABI signature and must not insert the context a second time.
-// The same program also ensures a framework method binds to `veb.Context`
-// rather than a same-named program receiver.
-fn test_veb_reflected_implicit_ctx_call_uses_abi_params() {
-	root := veb_ctx_test_dir('reflected')!
+fn test_veb_reflected_context_arguments() {
+	root := veb_ctx_test_dir('reflected_context_arguments')!
 	defer { os.rmdir_all(root) or {} }
 	src := '
 import veb
@@ -246,19 +241,24 @@ pub struct Context {
 	veb.Context
 }
 
-pub struct App {}
+pub struct SpreadApp {}
 
 fn (mut ctx Context) not_found() veb.Result {
 	return ctx.text("program")
 }
 
-fn (app App) bookmark(kind string, id string) veb.Result {
+fn (app SpreadApp) bookmark(kind string, id string) veb.Result {
 	_ = app
 	println(kind + ":" + id)
 	return veb.no_result()
 }
 
-fn dispatch[A, X](app A, mut ctx X, args []string) {
+// Reflected calls pass the hidden veb context explicitly. Their source method
+// metadata still omits that hidden parameter, so argument spreading must use
+// the checked ABI signature, which already includes the hidden context.
+// The same program also ensures a framework method binds to `veb.Context`
+// rather than a same-named program receiver.
+fn dispatch_spread[A, X](app A, mut ctx X, args []string) {
 	$for method in A.methods {
 		$if method.return_type is veb.Result {
 			app.$method(mut ctx, ...args)
@@ -266,21 +266,23 @@ fn dispatch[A, X](app A, mut ctx X, args []string) {
 	}
 }
 
-fn main() {
+fn check_spread() {
 	mut framework_ctx := veb.Context{}
 	_ := framework_ctx.file(@FILE)
 	mut ctx := Context{}
-	dispatch(App{}, mut ctx, ["first", "second"])
+	dispatch_spread(SpreadApp{}, mut ctx, ["first", "second"])
 }
-'
-	src_file := os.join_path(root, 'v3_veb_reflected_implicit_ctx.v')
-	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(root, 'v3_veb_reflected_implicit_ctx')
-	compile := os.exec([@VEXE, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin_out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'first:second', run.output
+
+pub struct ContextOnlyApp {}
+
+pub fn (mut app ContextOnlyApp) index() veb.Result {
+	println("index called")
+	return veb.no_result()
+}
+
+pub fn (mut app ContextOnlyApp) explicit(mut ctx Context) veb.Result {
+	println("explicit called")
+	return veb.no_result()
 }
 
 // A reflected `app.$method(mut ctx)` call passes the hidden veb context as its
@@ -288,29 +290,7 @@ fn main() {
 // it, so the specialization must be kept: dropping it as an arity mismatch made
 // veb answer `HTTP/ 0` for every route whose handler omitted `ctx`. (A handler
 // that needs more arguments is a reflected-call arity error, so none is here.)
-fn test_veb_reflected_implicit_ctx_call_without_spread_args() {
-	root := veb_ctx_test_dir('no_spread')!
-	defer { os.rmdir_all(root) or {} }
-	src := '
-import veb
-
-pub struct Context {
-	veb.Context
-}
-
-pub struct App {}
-
-pub fn (mut app App) index() veb.Result {
-	println("index called")
-	return veb.no_result()
-}
-
-pub fn (mut app App) explicit(mut ctx Context) veb.Result {
-	println("explicit called")
-	return veb.no_result()
-}
-
-fn dispatch[A, X](mut app A, mut ctx X) {
+fn dispatch_context_only[A, X](mut app A, mut ctx X) {
 	$for method in A.methods {
 		$if method.return_type is veb.Result {
 			app.$method(mut ctx)
@@ -318,20 +298,20 @@ fn dispatch[A, X](mut app A, mut ctx X) {
 	}
 }
 
-fn main() {
-	mut app := App{}
+fn check_context_only() {
+	mut app := ContextOnlyApp{}
 	mut ctx := Context{}
-	dispatch(mut app, mut ctx)
+	dispatch_context_only(mut app, mut ctx)
 }
-'
-	src_file := os.join_path(root, 'v3_veb_implicit_ctx_no_spread.v')
-	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(root, 'v3_veb_implicit_ctx_no_spread')
-	compile := os.exec([@VEXE, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin_out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().split_into_lines() == ['index called', 'explicit called'], run.output
+
+pub interface RouteArg {}
+
+pub struct InterfaceApp {}
+
+pub fn (mut app InterfaceApp) accepts(value RouteArg) veb.Result {
+	_ = value
+	println("interface called")
+	return veb.no_result()
 }
 
 // Arity decides whether a reflected argument occupies the hidden context slot.
@@ -340,27 +320,7 @@ fn main() {
 // copy of the hidden parameter merely because its concrete type is Context.
 // (A `string` route parameter would leave the argument in the hidden slot and
 // the route short of an argument, which is a reflected-call arity error.)
-fn test_veb_reflected_context_value_binds_to_declared_interface_param() {
-	root := veb_ctx_test_dir('interface_arg')!
-	defer { os.rmdir_all(root) or {} }
-	src := '
-import veb
-
-pub interface RouteArg {}
-
-pub struct Context {
-	veb.Context
-}
-
-pub struct App {}
-
-pub fn (mut app App) accepts(value RouteArg) veb.Result {
-	_ = value
-	println("interface called")
-	return veb.no_result()
-}
-
-fn dispatch[A](mut app A, ctx &Context) {
+fn dispatch_interface_arg[A](mut app A, ctx &Context) {
 	$for method in A.methods {
 		$if method.return_type is veb.Result {
 			app.$method(ctx)
@@ -368,20 +328,31 @@ fn dispatch[A](mut app A, ctx &Context) {
 	}
 }
 
-fn main() {
-	mut app := App{}
+fn check_interface_arg() {
+	mut app := InterfaceApp{}
 	ctx := &Context{}
-	dispatch(mut app, ctx)
+	dispatch_interface_arg(mut app, ctx)
+}
+
+fn main() {
+	check_spread()
+	check_context_only()
+	check_interface_arg()
 }
 '
-	src_file := os.join_path(root, 'v3_veb_ctx_interface_arg.v')
+	src_file := os.join_path(root, 'v3_veb_reflected_context_arguments.v')
 	os.write_file(src_file, src) or { panic(err) }
-	bin_out := os.join_path(root, 'v3_veb_ctx_interface_arg')
+	bin_out := os.join_path(root, 'v3_veb_reflected_context_arguments')
 	compile := os.exec([@VEXE, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'interface called', run.output
+	assert run.output.trim_space().split_into_lines() == [
+		'first:second',
+		'index called',
+		'explicit called',
+		'interface called',
+	], run.output
 }
 
 // A reflected veb route can accept the framework Context while the dispatcher
