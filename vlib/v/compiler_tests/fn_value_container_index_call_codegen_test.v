@@ -11,11 +11,11 @@ fn fn_index_write_source(root string, name string, source string) string {
 // brackets used to be read as explicit generic type arguments, so the checker
 // rejected the index variable as an unknown type and the C backend emitted a call
 // to a nonexistent `Recv__field` method.
-fn test_fn_value_stored_in_container_field_is_called_through_the_index() {
+fn test_fn_values_in_container_fields_and_locals_are_called_through_the_index() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fn_index_fixtures_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := fn_index_write_source(root, 'container_field', 'module main
+	source := fn_index_write_source(root, 'container_calls', 'module main
 
 struct Registry {
 mut:
@@ -52,35 +52,14 @@ fn main() {
 	idx := 0
 	r.void_fns[idx]()
 	println(total)
+	call_local_container_values()
 }
-')
-	out := os.join_path(root, 'v3_fn_index_container_field')
-	compile := os.exec([@VEXE, source, '-b', 'c', '-o', '${out}'])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.split_into_lines() == ['hello', '28']
-	generated := os.read_file(out + '.c') or { panic(err) }
-	assert !generated.contains('Registry__fns'), generated
-	assert !generated.contains('Registry__void_fns'), generated
-	assert !generated.contains('Registry__named'), generated
-	assert generated.contains('array_get(r.fns,'), generated
-}
-
-// `arr << fn_value` stores the function pointer by address into the array buffer.
-// Collapsing `&tmp` to the bare function value made `array_push` copy the element
-// bytes out of the function's own code, so the later call crashed.
-fn test_fn_value_pushed_into_a_local_container_is_callable() {
-	root := os.join_path(os.vtmp_dir(), 'v3_fn_index_fixtures_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := fn_index_write_source(root, 'local_container', 'module main
 
 fn shout() {
 	println("called")
 }
 
-fn main() {
+fn call_local_container_values() {
 	mut fns := []fn (){}
 	mut m := map[string]fn (){}
 	for _ in 0 .. 3 {
@@ -94,13 +73,18 @@ fn main() {
 	m[key]()
 }
 ')
-	out := os.join_path(root, 'v3_fn_index_local_container')
+	out := os.join_path(root, 'v3_fn_index_container_calls')
 	compile := os.exec([@VEXE, source, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
-	assert run.output.split_into_lines() == ['called', 'called', 'called', 'called']
+	assert run.output.split_into_lines() == ['hello', '28', 'called', 'called', 'called', 'called'], run.output
 	generated := os.read_file(out + '.c') or { panic(err) }
+	assert !generated.contains('Registry__fns'), generated
+	assert !generated.contains('Registry__void_fns'), generated
+	assert !generated.contains('Registry__named'), generated
+	assert generated.contains('array_get(r.fns,'), generated
+	// array_push needs the address of the stored pointer so it can copy the pointer bytes.
 	assert generated.contains('array_push(&fns, &__arr_val_'), generated
 }
 
