@@ -137,7 +137,7 @@ fn main() {
 	assert run.output.trim_space() == 'true\nfalse\ntrue\nfalse\ntrue\nfalse\nfoo\nbar\nAda:37\nb:4'
 }
 
-fn test_interface_type_patterns_resolve_import_aliases() {
+fn test_interface_type_patterns_resolve_aliases_and_embedded_interfaces() {
 	root := os.join_path(os.vtmp_dir(), 'v3_interface_type_pattern_alias_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -204,33 +204,15 @@ fn main() {
 	println(is_rect(circle).str())
 	println(classify(rect))
 	println(classify(circle))
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'app')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	c_code := os.read_file('${bin}.c') or { '' }
-	assert c_code.contains('._typ =='), c_code
-	assert !c_code.contains('return true;\\n}\\n\\nstring classify'), c_code
-	assert !c_code.contains('s == shapes__Rect'), c_code
-	assert !c_code.contains('s == sh__Rect'), c_code
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'true\nfalse\nrect\nother'
+	println(classify_embedded(Item{
+		n: 7
+	}))
+	println(classify_embedded(Plain{
+		n: 3
+	}))
 }
 
-fn test_interface_match_patterns_lower_embedded_interfaces() {
-	root := os.join_path(os.vtmp_dir(), 'v3_interface_match_embedded_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_interface_match_embedded.v')
-	os.write_file(src, 'interface Base {
+interface Base {
 	get() int
 }
 
@@ -259,20 +241,11 @@ fn (i Item) extra() int {
 	return i.n + 1
 }
 
-fn classify(base Base) string {
+fn classify_embedded(base Base) string {
 	return match base {
 		Child { "child:" + int_str(base.extra()) }
 		else { "base:" + int_str(base.get()) }
 	}
-}
-
-fn main() {
-	println(classify(Item{
-		n: 7
-	}))
-	println(classify(Plain{
-		n: 3
-	}))
 }
 ') or {
 		panic(err)
@@ -283,11 +256,20 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	c_code := os.read_file('${bin}.c') or { '' }
-	assert !c_code.contains('base == Child'), c_code
-	assert !c_code.contains('base == main__Child'), c_code
+	c_code := os.read_file('${bin}.c')!
+	is_rect_c := c_code.find_between('bool is_rect(shapes__Shape s) {', '\n}\n')
+	assert is_rect_c.contains('s._typ =='), c_code
+	assert !is_rect_c.contains('return true;'), is_rect_c
+	classify_c := c_code.find_between('string classify(shapes__Shape s) {', '\n}\n')
+	assert classify_c.contains('s._typ =='), c_code
+	assert !classify_c.contains('s == shapes__Rect'), classify_c
+	assert !classify_c.contains('s == sh__Rect'), classify_c
+	classify_embedded_c := c_code.find_between('string classify_embedded(Base base) {', '\n}\n')
+	assert classify_embedded_c.contains('base._typ =='), c_code
+	assert !classify_embedded_c.contains('base == Child'), classify_embedded_c
+	assert !classify_embedded_c.contains('base == main__Child'), classify_embedded_c
 
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'child:8\nbase:3'
+	assert run.output.trim_space() == 'true\nfalse\nrect\nother\nchild:8\nbase:3', run.output
 }
