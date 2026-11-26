@@ -24,16 +24,6 @@ fn fn_value_run_good(fixture_dir string, name string, src string) string {
 	return run.output.trim_space()
 }
 
-fn fn_value_run_bad(fixture_dir string, name string, src string) string {
-	bad_src := os.join_path(fixture_dir, 'v3_${name}.v')
-	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := os.join_path(fixture_dir, 'v3_${name}')
-	compile := os.exec([@VEXE, '${bad_src}', '-b', 'c', '-o', bad_bin])
-	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
-	assert !compile.output.contains('C compilation failed'), '${name}: reached C compiler: ${compile.output}'
-	return compile.output
-}
-
 fn fn_value_write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
@@ -116,29 +106,6 @@ fn fn_value_run_project_bad(fixture_dir string, name string, files map[string]st
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: reached C compiler: ${compile.output}'
 	return compile.output
-}
-
-fn fn_value_check_shadow_rejections(fixture_dir string, cases map[string]string) {
-	mut files := map[string]string{}
-	mut imports := []string{cap: cases.len}
-	for name, source in cases {
-		imports << 'import ${name} as _'
-		files['${name}/${name}.v'] = 'module ${name}\n\n' + source
-	}
-	files['main.v'] = 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n'
-	output := fn_value_run_project_bad(fixture_dir, 'fn_value_local_shadowing', files)
-	assert !output.contains('main__foo'), output
-	mut rejected_files := map[string]bool{}
-	for line in output.split_into_lines() {
-		location, _ := line.split_once(': error: ') or { continue }
-		// Remove the line and column from the right so drive letters stay intact.
-		file := location.all_before_last(':').all_before_last(':')
-		rejected_files[os.file_name(file)] = true
-	}
-	for name, _ in cases {
-		assert '${name}.v' in rejected_files, '${name}: expected a compiler error in\n${output}'
-		assert !output.contains('${name}__foo'), output
-	}
 }
 
 fn imported_fn_value_project_files() map[string]string {
@@ -684,26 +651,16 @@ fn main() {
 	assert out.split_into_lines() == ['42', '42', 'true'], out
 }
 
-fn test_fn_value_expected_context_respects_value_shadowing() {
+fn test_fn_value_binding_diagnostics_respect_shadowing() {
 	fixture_dir := fn_value_new_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	fn_value_check_shadow_rejections(fixture_dir, {
-		'fn_value_expected_ident_shadow':        local_ident_expected_shadow_src
-		'fn_value_expected_assignment_shadow':   assignment_expected_shadow_src
-		'fn_value_expected_callback_shadow':     callback_arg_expected_shadow_src
-		'fn_value_expected_struct_field_shadow': struct_field_expected_shadow_src
-	})
-	selector_output := fn_value_run_project_bad(fixture_dir, 'fn_value_expected_import_shadow',
-		imported_fn_value_expected_shadow_project_files())
-	assert !selector_output.contains('worker__inc'), selector_output
-}
-
-// A local cannot be redefined in a nested block, so the same name is bound in
-// sibling blocks: each call must check against the binding of its own block.
-fn test_variadic_fn_value_marker_uses_nearest_binding() {
-	fixture_dir := fn_value_new_fixture_dir()
-	defer { os.rmdir_all(fixture_dir) or {} }
-	output := fn_value_run_bad(fixture_dir, 'variadic_fn_value_shadowed_by_plain_fn', 'fn variadic(values ...int) int {
+	cases := {
+		'fn_value_expected_ident_shadow':         local_ident_expected_shadow_src
+		'fn_value_expected_assignment_shadow':    assignment_expected_shadow_src
+		'fn_value_expected_callback_shadow':      callback_arg_expected_shadow_src
+		'fn_value_expected_struct_field_shadow':  struct_field_expected_shadow_src
+		// Each call must check the binding from its own sibling block.
+		'variadic_fn_value_shadowed_by_plain_fn': 'fn variadic(values ...int) int {
 	return values.len
 }
 
@@ -721,9 +678,39 @@ fn main() {
 		_ := cb(1, 2)
 	}
 }
-')
-	assert output.contains('expected 1 argument, but got 2'), output
-	assert output.count('error:') == 1, output
+'
+	}
+	mut files := imported_fn_value_expected_shadow_project_files()
+	mut imports := []string{cap: cases.len}
+	for name, source in cases {
+		imports << 'import ${name} as _'
+		files['${name}/${name}.v'] = 'module ${name}\n\n' + source
+	}
+	files['main.v'] = files['main.v'].replace_once('import worker', 'import worker\n' + imports.join('\n'))
+	output := fn_value_run_project_bad(fixture_dir, 'fn_value_binding_rejections', files)
+	assert !output.contains('main__foo'), output
+	assert !output.contains('worker__inc'), output
+	for name, _ in cases {
+		assert !output.contains('${name}__foo'), output
+	}
+	mut diagnostics := map[string][]string{}
+	for line in output.split_into_lines() {
+		location, message := line.split_once(': error: ') or { continue }
+		// Remove the line and column from the right so drive letters stay intact.
+		file := location.all_before_last(':').all_before_last(':')
+		diagnostics[os.file_name(file)] << message
+	}
+	expected := {
+		'main.v':                                  'cannot use `int` as `fn (int) int` in argument 1 to `take`'
+		'fn_value_expected_ident_shadow.v':        'cannot use `int` as `fn () int` in argument 1 to `fn_value_expected_ident_shadow.take`'
+		'fn_value_expected_assignment_shadow.v':   'cannot assign to `f`: expected `fn (int) int`, not `int`'
+		'fn_value_expected_callback_shadow.v':     'cannot use `int` as `fn (int) int` in argument 1 to `fn_value_expected_callback_shadow.call`'
+		'fn_value_expected_struct_field_shadow.v': 'cannot assign to field `f`: expected `fn (int) int`, not `fn () int`'
+	}
+	for file, message in expected {
+		assert message in diagnostics[file], '${file}: missing ${message}\n${output}'
+	}
+	assert diagnostics['variadic_fn_value_shadowed_by_plain_fn.v'] == ['expected 1 argument, but got 2'], output
 }
 
 fn test_imported_fn_values_keep_callable_types() {
