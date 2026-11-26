@@ -32,11 +32,11 @@ fn for_multi_init_gen_c(name string, source string) string {
 }
 
 // The empty-post loop must leave following_iterator as a top-level declaration.
-fn test_c_style_for_multi_init_and_post_assignments() {
+fn test_c_style_for_runtime_fixtures() {
 	root := for_multi_init_fixture_dir()
 	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_multi_assign.v')
-	os.write_file(src, "struct Iter {
+	src := os.join_path(root, 'v3_for_loop_runtime.v')
+	os.write_file(src, 'struct Iter {
 	label string
 }
 
@@ -52,7 +52,7 @@ fn scan_empty_post() int {
 
 fn following_iterator() Iter {
 	return Iter{
-		label: 'ok'
+		label: "ok"
 	}
 }
 
@@ -124,35 +124,18 @@ fn check_init_selectors() {
 	assert a.y == 7
 }
 
-fn main() {
+fn check_multi_init_and_post_assignments() {
 	assert scan_empty_post() == 6
-	assert following_iterator().label == 'ok'
+	assert following_iterator().label == "ok"
 	assert scan_with_post() == 6
 	assert indexed_for_in_score() == 16
 	check_init_call()
 	check_post_call()
 	check_init_selectors()
-	println('ok')
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_for_multi_assign')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	println("ok")
 }
 
-fn test_unsigned_inclusive_for_evaluates_bounds_and_runs_post() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_unsigned_inclusive_bound.v')
-	os.write_file(src, 'struct Calls {
+struct Calls {
 mut:
 	value int
 }
@@ -206,30 +189,13 @@ fn check_post_after_mutation() {
 	assert j == 0
 }
 
-fn main() {
+fn check_unsigned_inclusive_for() {
 	check_bound_evaluation()
 	check_post_after_mutation()
 	println("ok")
 }
-') or {
-		panic(err)
-	}
 
-	bin := os.join_path(root, 'v3_for_unsigned_inclusive_bound')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_c_style_for_control_flow_and_post_updates() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_loop_control_flow.v')
-	os.write_file(src, 'fn check_labeled_init_flow() {
+fn check_labeled_init_flow() {
 	mut out := ""
 	outer: for x, stop := 0, 3; x < stop; x++ {
 		for y := 0; y < 3; y++ {
@@ -307,7 +273,7 @@ fn continue_outer_loop() {
 	assert inner_posts.value == 0
 }
 
-fn step(a int, b int) (int, int) {
+fn control_flow_step(a int, b int) (int, int) {
 	return a + 1, b + 1
 }
 
@@ -315,7 +281,7 @@ fn continue_in_match() {
 	mut a := 0
 	mut b := 0
 	mut guard := 0
-	for ; a < 3; a, b = step(a, b) {
+	for ; a < 3; a, b = control_flow_step(a, b) {
 		guard++
 		if guard > 5 {
 			break
@@ -336,7 +302,7 @@ fn continue_in_select() {
 	mut a := 0
 	mut b := 0
 	mut guard := 0
-	for ; a < 3; a, b = step(a, b) {
+	for ; a < 3; a, b = control_flow_step(a, b) {
 		guard++
 		if guard > 5 {
 			break
@@ -352,7 +318,7 @@ fn continue_in_select() {
 	assert guard == 3
 }
 
-fn main() {
+fn check_loop_control_flow_and_post_updates() {
 	check_labeled_init_flow()
 	continue_same_loop()
 	continue_outer_loop()
@@ -361,18 +327,30 @@ fn main() {
 	continue_in_select()
 	println("ok")
 }
+
+fn main() {
+	check_multi_init_and_post_assignments()
+	check_unsigned_inclusive_for()
+	check_loop_control_flow_and_post_updates()
+}
 ') or {
 		panic(err)
 	}
 
-	bin := os.join_path(root, 'v3_for_loop_control_flow')
+	bin := os.join_path(root, 'v3_for_loop_runtime')
 	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().split_into_lines() == ['0:0;0:1;0:2;2:0;', 'ok', 'ok'], run.output
+	assert run.output.trim_space().split_into_lines() == [
+		'ok',
+		'ok',
+		'0:0;0:1;0:2;2:0;',
+		'ok',
+		'ok',
+	], run.output
 }
 
 fn test_c_style_for_rejects_invalid_assignments_and_smartcasts() {
