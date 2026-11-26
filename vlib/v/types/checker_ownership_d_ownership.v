@@ -7877,6 +7877,35 @@ fn (mut tc TypeChecker) ownership_commit_multi_assign_temp(temp_name string, lhs
 	}
 }
 
+// ownership_mark_autofree_local_copy makes `a := b` (or `a = b`) copy `b` under
+// -autofree. Autofree keeps V1's aliasing semantics, so `b` stays usable after
+// the copy (see ownership_report_moved), and `b` may be a parameter or another
+// value that `a` must not own. Sharing the storage would let a drop of `a` (for
+// example when `a` is reassigned) free the value that `b` still uses.
+fn (mut tc TypeChecker) ownership_mark_autofree_local_copy(lhs_name string, rhs_name string, rhs_id flat.NodeId, assign_id flat.NodeId) bool {
+	if lhs_name == rhs_name || rhs_name.contains_any('.[') {
+		return false
+	}
+	clean_id := tc.ownership_unwrap_expr(rhs_id)
+	if !tc.valid_node_id(clean_id) || tc.a.nodes[int(clean_id)].kind != .ident {
+		return false
+	}
+	typ := tc.resolve_type(clean_id)
+	// A sum with a pointer variant carries an explicit runtime owner, so a copy
+	// moves that owner and keeps the pointer's identity.
+	if !tc.ownership_type_requires_destruction(typ) || tc.sum_escape_has_pointer_variant(typ) {
+		return false
+	}
+	if _ := tc.ownership_borrowed_copy_missing_clone(clean_id, typ) {
+		return false
+	}
+	mut st := tc.ownership_state()
+	st.borrowed_projection_actions[int(rhs_id)] = .clone_value
+	st.borrowed_projection_actions[int(clean_id)] = .clone_value
+	tc.ownership_mark_owned(lhs_name, typ, assign_id)
+	return true
+}
+
 fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.NodeId, lhs_type Type, assign_id flat.NodeId) {
 	if source := tc.ownership_borrowed_alias_source(lhs_name, true) {
 		tc.ownership_consume_expr(rhs_id, source, assign_id)
@@ -8004,6 +8033,11 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 			return
 		}
 		tc.ownership_reject_global_move(rhs_name, assign_id, lhs_name, false)
+		if tc.autofree_mode && tc.ownership_mark_autofree_local_copy(lhs_name, rhs_name, rhs_id,
+			assign_id)
+		{
+			return
+		}
 		if rhs_name in st.owned_vars {
 			descendants := tc.ownership_owned_descendant_names(rhs_name)
 			source_type := tc.ownership_type_for_var(rhs_name, lhs_type)
