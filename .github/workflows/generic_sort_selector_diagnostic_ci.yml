@@ -437,7 +437,10 @@ jobs:
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/sort-selector-benchmark"
-          args=(-nocache -gc none -prealloc -compile-backend fastc -building-v)
+          # Historical cmd/v selected Wasm implicitly; #31367 made it opt-in.
+          # Restore exactly the documented fixture workload, not a smaller denominator.
+          args=(-nocache -gc none -prealloc -compile-backend fastc,wasm -building-v)
+          printf '%s\n' "${args[@]}" > "$out/measurement-args.txt"
           run_role() {
             role="$1"
             sample="$2"
@@ -523,6 +526,12 @@ jobs:
                   errors.append(f'{role}: fixed line denominator mismatch')
               if len(selected) != 562 or len(set(selected)) != 562:
                   errors.append(f'{role}: parsed file list mismatch')
+              # Hash of the sorted relative paths from the successful historical
+              # reference inventory (job 140137867851, 562 distinct paths).
+              parsed_digest = hashlib.sha256(('\n'.join(selected) + '\n').encode()).hexdigest()
+              print(role, 'parsed path SHA-256:', parsed_digest)
+              if parsed_digest != '375b4ef5dd70a83db5cb3fed9c4c030ee43969e5961abf31b69ee48ca671827c':
+                  errors.append(f'{role}: historical parsed-path manifest mismatch')
               if any(p not in paths for p in selected):
                   errors.append(f'{role}: parsed path not in tracked fixture manifest')
           a, b = inventories['baseline'], inventories['candidate']
