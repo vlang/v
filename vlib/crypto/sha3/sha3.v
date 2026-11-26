@@ -117,7 +117,7 @@ struct Digest {
 	output_len int // the number of bytes to output
 mut:
 	input_buffer []u8  // temporary holding buffer for input bytes
-	s            State // the state of a kaccak-p[1600, 24] sponge
+	s            State // the state of a keccak-p[1600, 24] sponge
 }
 
 // the low order pad bits for a hash function
@@ -270,7 +270,7 @@ fn (mut d Digest) write_bytes(data []u8) {
 
 			// absorb them
 			d.s.xor_bytes(d.input_buffer[..d.rate], d.rate)
-			d.s.kaccak_p_1600_24()
+			d.s.keccak_p_1600_24()
 
 			d.input_buffer = ''.bytes()
 		}
@@ -279,7 +279,7 @@ fn (mut d Digest) write_bytes(data []u8) {
 	// absorb the remaining bytes
 	for bytes_remaining.len >= d.rate {
 		d.s.xor_bytes(bytes_remaining[..d.rate], d.rate)
-		d.s.kaccak_p_1600_24()
+		d.s.keccak_p_1600_24()
 		bytes_remaining = unsafe { bytes_remaining[d.rate..] }
 	}
 
@@ -323,34 +323,21 @@ fn (mut d Digest) checksum_internal() []u8 {
 	}
 
 	d.s.xor_bytes(d.input_buffer[..d.rate], d.rate)
-	d.s.kaccak_p_1600_24()
+	d.s.keccak_p_1600_24()
 
 	// absorption is done.  on to squeezing.
-
-	// We know that we can extract rate bytes from the current
-	// state.  If the output_len is <= rate, we don't need to
-	// iterate and can just return the bytes from the current
-	// state.
-
-	if d.output_len <= d.rate {
-		return d.s.to_bytes()[..d.output_len]
-	}
-
-	// we need to squeeze the sponge a little harder to get
-	// longer strings of bytes.
-
-	mut output_bytes := []u8{cap: d.output_len}
-	mut remaining_ouput_len := d.output_len
-
-	for remaining_ouput_len > 0 {
-		mut byte_len_this_round := int_min(remaining_ouput_len, d.rate)
-		output_bytes << d.s.to_bytes()[..byte_len_this_round]
-
-		remaining_ouput_len -= byte_len_this_round
-
-		if remaining_ouput_len > 0 {
-			d.s.kaccak_p_1600_24()
+	// The output gets its own buffer of exactly output_len bytes, so it carries none of the rest of
+	// the state.
+	mut output_bytes := []u8{len: d.output_len}
+	mut offset := 0
+	for {
+		n := int_min(d.output_len - offset, d.rate)
+		d.s.store_bytes(mut output_bytes, offset, n)
+		offset += n
+		if offset >= d.output_len {
+			break
 		}
+		d.s.keccak_p_1600_24()
 	}
 
 	return output_bytes

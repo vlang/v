@@ -11,10 +11,12 @@ module sha3
 pub struct Shake {
 	rate int // bytes per permutation (168 for shake-128, 136 for shake-256)
 mut:
-	s            State
-	input_buffer []u8
-	finalized    bool
-	squeeze_buf  []u8
+	s State
+	// buf holds the partial input block while absorbing and the current output block while
+	// squeezing. It is a fixed array, so a copy of a Shake does not share it with the original.
+	buf       [200]u8
+	pos       int // bytes of input in buf, or bytes of buf already read
+	finalized bool
 }
 
 // new_shake128 returns a new Shake instance for SHAKE-128 extended output function.
@@ -38,41 +40,33 @@ pub fn (mut s Shake) write(data []u8) {
 	if s.finalized {
 		panic('sha3: write after read on Shake')
 	}
-	if data.len == 0 {
-		return
-	}
-
-	// avoid cloning on each iteration
-	mut remaining := unsafe { data[..] }
-
-	if s.input_buffer.len != 0 {
-		empty_space := s.rate - s.input_buffer.len
-
-		if remaining.len < empty_space {
-			s.input_buffer << remaining
-			return
-		} else {
-			s.input_buffer << remaining[..empty_space]
-			remaining = unsafe { remaining[empty_space..] }
-
-			s.s.xor_bytes(s.input_buffer[..s.rate], s.rate)
-			s.s.kaccak_p_1600_24()
-
-			s.input_buffer = []u8{}
+	mut off := 0
+	if s.pos > 0 {
+		take := int_min(s.rate - s.pos, data.len)
+		for i in 0 .. take {
+			s.buf[s.pos + i] = data[i]
 		}
+		s.pos += take
+		off = take
+		if s.pos < s.rate {
+			return
+		}
+		s.s.xor_block(mut s.buf, s.rate)
+		s.s.keccak_p_1600_24()
+		s.pos = 0
 	}
-
-	for remaining.len >= s.rate {
-		s.s.xor_bytes(remaining[..s.rate], s.rate)
-		s.s.kaccak_p_1600_24()
-		remaining = unsafe { remaining[s.rate..] }
+	for data.len - off >= s.rate {
+		s.s.xor_bytes(data[off..off + s.rate], s.rate)
+		s.s.keccak_p_1600_24()
+		off += s.rate
 	}
-
-	if remaining.len > 0 {
-		s.input_buffer = remaining.clone()
+	for i in off .. data.len {
+		s.buf[i - off] = data[i]
 	}
+	s.pos = data.len - off
 }
 
+@[direct_array_access]
 fn (mut s Shake) finalize() {
 	if s.finalized {
 		return
@@ -80,23 +74,20 @@ fn (mut s Shake) finalize() {
 	s.finalized = true
 
 	// pad10*1 with xof domain separator 0x1f (FIPS 202 sec B.2)
-	mut padded := s.input_buffer.clone()
-	if padded.len == s.rate - 1 {
-		padded << u8(0x80 | 0x1f)
-	} else {
-		padded << u8(0x1f)
-		for padded.len < s.rate - 1 {
-			padded << u8(0x00)
-		}
-		padded << u8(0x80)
+	for i in s.pos .. s.rate {
+		s.buf[i] = 0
 	}
+	s.buf[s.pos] ^= 0x1f
+	s.buf[s.rate - 1] ^= 0x80
+	s.s.xor_block(mut s.buf, s.rate)
+	s.s.keccak_p_1600_24()
+	s.load_block()
+}
 
-	s.s.xor_bytes(padded[..s.rate], s.rate)
-	s.s.kaccak_p_1600_24()
-
-	state_bytes := s.s.to_bytes()
-	s.squeeze_buf = state_bytes[..s.rate].clone()
-	s.input_buffer = []u8{}
+// load_block copies the next `rate` bytes of output from the state into buf.
+fn (mut s Shake) load_block() {
+	s.s.store_block(mut s.buf, s.rate)
+	s.pos = 0
 }
 
 // read squeezes `out_len` bytes from the sponge state.
@@ -106,30 +97,30 @@ pub fn (mut s Shake) read(out_len int) []u8 {
 	if !s.finalized {
 		s.finalize()
 	}
-
-	mut result := []u8{cap: out_len}
-	mut remaining := out_len
-
-	for remaining > 0 {
-		if s.squeeze_buf.len == 0 {
-			s.s.kaccak_p_1600_24()
-			state_bytes := s.s.to_bytes()
-			s.squeeze_buf = state_bytes[..s.rate].clone()
-		}
-
-		take := if remaining < s.squeeze_buf.len { remaining } else { s.squeeze_buf.len }
-		result << s.squeeze_buf[..take]
-		s.squeeze_buf = s.squeeze_buf[take..].clone()
-		remaining -= take
+	if out_len <= 0 {
+		return []u8{}
 	}
-
-	return result
+	mut out := []u8{len: out_len}
+	mut off := 0
+	for off < out_len {
+		if s.pos == s.rate {
+			s.s.keccak_p_1600_24()
+			s.load_block()
+		}
+		take := int_min(out_len - off, s.rate - s.pos)
+		for i in 0 .. take {
+			out[off + i] = s.buf[s.pos + i]
+		}
+		s.pos += take
+		off += take
+	}
+	return out
 }
 
 // reset clears the sponge state, allowing the Shake instance to be reused.
 pub fn (mut s Shake) reset() {
 	s.s = State{}
-	s.input_buffer = []u8{}
+	s.buf = [200]u8{}
+	s.pos = 0
 	s.finalized = false
-	s.squeeze_buf = []u8{}
 }
