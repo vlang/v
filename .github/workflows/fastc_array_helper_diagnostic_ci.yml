@@ -168,3 +168,61 @@ jobs:
         with:
           name: fastc-array-helper-declarations
           path: ${{ runner.temp }}/fastc-array-diagnostic
+
+  upstream-fixed:
+    name: Verify upstream reference snapshot (${{ matrix.cc }}, ${{ matrix.suite }}, shard ${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {cc: gcc, suite: default, shard: 1, count: 4, task: self_tests_gcc, flags: '-cc gcc'}
+          - {cc: gcc, suite: default, shard: 2, count: 4, task: self_tests_gcc, flags: '-cc gcc'}
+          - {cc: gcc, suite: prod, shard: 2, count: 4, task: self_tests_prod_gcc, flags: '-cc gcc'}
+          - {cc: clang, suite: default, shard: 1, count: 4, task: self_tests_clang, flags: '-cc clang'}
+          - {cc: tcc, suite: default, shard: 1, count: 3, task: self_tests_vprod_tcc, flags: '-cc tcc -no-retry-compilation'}
+          - {cc: tcc, suite: default, shard: 2, count: 3, task: self_tests_vprod_tcc, flags: '-cc tcc -no-retry-compilation'}
+    env:
+      VFLAGS: ${{ matrix.flags }}
+      VJOBS: '4'
+      VTEST_FAIL_FAST: '1'
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: ${{ matrix.count }}
+      VTEST_SHOW_LONGEST_BY_RUNTIME: '3'
+      VTEST_SHOW_LONGEST_BY_COMPTIME: '3'
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 25e6fe4b3b137a04a9aed595c4a4a40225f042f6
+          persist-credentials: false
+      - name: Confirm exact fixed revision
+        run: |
+          test "$(git rev-parse HEAD)" = 25e6fe4b3b137a04a9aed595c4a4a40225f042f6
+          git log -1 --format='%H %s'
+      - uses: ./.github/actions/cache-apt-packages-action
+      - uses: ./.github/actions/setup-v
+      - name: Original dependency setup
+        run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_${{ matrix.cc }}
+      - name: Original full failing shard
+        run: v run ci/linux_ci.vsh ${{ matrix.task }}
+      - name: Repeat original focused FastC regressions
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x ./v
+          compiler=./v
+          if [ "${{ matrix.suite }}" = prod ]; then
+            test -x ./vprod
+            compiler=./vprod
+          fi
+          for attempt in 1 2 3; do
+            for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/tests/compiler_processes/fastc_remaining_regressions_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v vlib/v/gen/fastc/vox_constructs_test.v vlib/v/gen/fastc/main_type_capture_test.v vlib/v/gen/fastc/vox_review_test.v; do
+              "$compiler" -cc "${{ matrix.cc }}" -no-retry-compilation -silent "$test"
+            done
+          done
+      - name: Original stdout synchronization regression
+        if: matrix.cc == 'gcc' && matrix.suite == 'prod'
+        run: ./vprod -cc gcc -silent vlib/v/slow_tests/race_detector_test.v
