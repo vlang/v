@@ -640,7 +640,8 @@ fn test_an_instance_error_is_reported_at_its_line_directive() {
 // call_arg_program passes names and fields of the wrong type from generic
 // bodies: a `bool` to a `string` parameter of a function, an `int` to a method
 // and to a fn-typed field, a callback of another signature, and the same from a
-// generic closure and a method of a generic struct.
+// generic closure and a method of a generic struct. Loop values passed directly
+// from a parameter, through an array alias, or from an array literal are checked too.
 const call_arg_program = "fn take(s string) int {
 	return s.len
 }
@@ -690,6 +691,27 @@ fn (b Box[T]) send() int {
 	return take(b.v)
 }
 
+fn take_u8(n u8) {}
+
+fn from_param[T](values []T) {
+	for value in values {
+		take_u8(value)
+	}
+}
+
+fn from_alias[T](values []T) {
+	alias := values
+	for value in alias {
+		take_u8(value)
+	}
+}
+
+fn from_literal[T](value T) {
+	for item in [value] {
+		take_u8(item)
+	}
+}
+
 fn main() {
 	mut app := App{}
 	println(label(mut app))
@@ -697,6 +719,9 @@ fn main() {
 	send(1, Sink{})
 	later(2)
 	println(Box[bool]{ v: true }.send())
+	from_param([u64(1)])
+	from_alias([u64(1)])
+	from_literal(u64(1))
 }
 "
 
@@ -705,7 +730,10 @@ const call_arg_errors = ['32:14: cannot use `bool` as `string` in argument 1 to 
 	'40:9: cannot use `int` as `string` in argument 1 to `Sink.show`',
 	'41:8: cannot use `int` as `string` in argument 1 to `Sink.put`',
 	'46:15: cannot use `int` as `string` in argument 1 to `take`',
-	'56:14: cannot use `bool` as `string` in argument 1 to `take`']
+	'56:14: cannot use `bool` as `string` in argument 1 to `take`',
+	'63:11: cannot use `u64` as `u8` in argument 1 to `take_u8`',
+	'70:11: cannot use `u64` as `u8` in argument 1 to `take_u8`',
+	'76:11: cannot use `u64` as `u8` in argument 1 to `take_u8`']
 
 // A plain argument of an instance with another type than its parameter is
 // reported for that instance, in a check and in a build, at the argument.
@@ -890,45 +918,6 @@ fn main() {
 		build_program('call_arg_valid_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
-	}
-}
-
-fn test_instances_still_report_incompatible_plain_loop_values() {
-	source := 'fn take_u8(n u8) {}
-
-fn from_param[T](values []T) {
-	for value in values {
-		take_u8(value)
-	}
-}
-
-fn from_alias[T](values []T) {
-	alias := values
-	for value in alias {
-		take_u8(value)
-	}
-}
-
-fn from_literal[T](value T) {
-	for item in [value] {
-		take_u8(item)
-	}
-}
-
-fn main() {
-	from_param([u64(1)])
-	from_alias([u64(1)])
-	from_literal(u64(1))
-}
-'
-	for res in [check_program('plain_loop_check', source), build_program('plain_loop_build', source)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		errors := error_lines(res.output)
-		assert errors.len == 3, res.output
-		for error in errors {
-			assert error.contains('cannot use `u64` as `u8` in argument 1 to `take_u8`'), res.output
-		}
 	}
 }
 
