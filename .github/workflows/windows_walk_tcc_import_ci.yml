@@ -1,14 +1,29 @@
 name: Windows walk TCC import regression
 
 on:
-  push:
-    branches: [ci-fix-windows-walk-tcc-import-20261126]
+  pull_request:
+    paths:
+      - 'vlib/os/os_windows.c.v'
+      - 'vlib/os/walk_windows_test.c.v'
+      - 'vlib/os/walk_links_test.v'
+      - '.github/workflows/windows_walk_tcc_import_ci.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  preflight-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate master CI gate contracts
+        run: |
+          python3 .github/workflows/ci_gate_paths.py validate
+          python3 .github/workflows/ci_gate_paths_test.py
+
   tcc-multiwindow:
     runs-on: windows-2022
     timeout-minutes: 60
