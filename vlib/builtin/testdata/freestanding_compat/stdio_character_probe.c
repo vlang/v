@@ -8,15 +8,77 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #include <sys/syscall.h>
 #include <time.h>
 #include <unistd.h>
+#include <wchar.h>
 
 #define CHECK(condition) do { if (!(condition)) return __LINE__; } while (0)
 static FILE *v_character_stream;
 static int v_character_ready, v_character_acquired;
 
+static int check_prompt_read(int output_fd, char stdout_buffer[BUFSIZ]) {
+    char input_buffer[128], received[6];
+    int input[2];
+    CHECK(!pipe(input));
+    CHECK(!setvbuf(stdout, stdout_buffer, _IOLBF, BUFSIZ));
+    FILE *reader = fdopen(input[0], "r");
+    CHECK(reader && !setvbuf(reader, input_buffer, _IOLBF, sizeof input_buffer));
+    CHECK(write(input[1], "AB", 2) == 2 && !close(input[1]));
+    CHECK(fputs("prompt", stdout) >= 0 && read(output_fd, received, sizeof received) < 0 && errno == EAGAIN);
+    CHECK(fgetc(reader) == 'A' && read(output_fd, received, sizeof received) == 6 &&
+          !memcmp(received, "prompt", 6));
+    CHECK(fputs("next", stdout) >= 0 && fgetc(reader) == 'B');
+    CHECK(read(output_fd, received, sizeof received) < 0 && errno == EAGAIN);
+    CHECK(fgetc(reader) == EOF && read(output_fd, received, sizeof received) == 4 &&
+          !memcmp(received, "next", 4));
+    CHECK(!fclose(reader));
+    return 0;
+}
+
+#ifdef __GLIBC__
+static ssize_t prompt_cookie_write(void *cookie, const char *data, size_t size) {
+    return write(*(int *)cookie, data, size);
+}
+#endif
+
+static int check_prompt_flush(void) {
+    static char buffers[3][BUFSIZ];
+    int output[2], saved = dup(STDOUT_FILENO);
+    CHECK(saved >= 0 && !pipe2(output, O_NONBLOCK | O_CLOEXEC));
+    CHECK(dup2(output[1], STDOUT_FILENO) == STDOUT_FILENO);
+    int result = check_prompt_read(output[0], buffers[0]);
+    if (result) return result;
+    CHECK(dup2(saved, STDOUT_FILENO) == STDOUT_FILENO && !close(saved));
+#ifdef __GLIBC__
+    FILE *original = stdout;
+    for (int cookie = 0; cookie <= 1; ++cookie) {
+        FILE *redirected = cookie
+            ? fopencookie(&output[1], "w", (cookie_io_functions_t){.write = prompt_cookie_write})
+            : fdopen(dup(output[1]), "w");
+        CHECK(redirected);
+        stdout = redirected;
+        result = check_prompt_read(output[0], buffers[cookie + 1]);
+        stdout = original;
+        if (result) return result;
+        CHECK(!fclose(redirected));
+    }
+#endif
+    CHECK(!close(output[0]) && !close(output[1]));
+    return 0;
+}
+
 int v_stdio_character_prepare(const char *path) {
+    int result = check_prompt_flush();
+    if (result) return result;
+    int count = -1;
+    int (*volatile put_string)(const char *, FILE *) = fputs;
+    FILE *fresh = tmpfile();
+    CHECK(fresh && put_string("", fresh) >= 0 && fwide(fresh, 0) < 0 && !fclose(fresh));
+    fresh = tmpfile();
+    CHECK(fresh && fscanf(fresh, "%n", &count) == 0 && count == 0 &&
+          fwide(fresh, 0) < 0 && !fclose(fresh));
     FILE *file = fopen(path, "w+b");
     CHECK(file != NULL);
     for (unsigned int i = 0; i < 32768; ++i) CHECK(putc_unlocked(i & 255, file) == (int)(i & 255));

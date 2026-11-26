@@ -13,6 +13,7 @@ __typeof__(stdin) stdin = (FILE *)v_stdio_objects[0];
 __typeof__(stdout) stdout = (FILE *)v_stdio_objects[1];
 __typeof__(stderr) stderr = (FILE *)v_stdio_objects[2];
 uintptr_t v_stdio_standard(int32_t index) { return (uintptr_t)v_stdio_objects[index]; }
+uintptr_t v_stdio_stdout(void) { return (uintptr_t)stdout; }
 size_t v_stdio_standard_size(void) { return sizeof v_stdio_objects[0]; }
 int64_t v_stdio_cookie_read(uintptr_t f, uintptr_t cookie, uintptr_t output, uintptr_t size) {
     return ((cookie_read_function_t *)f)((void *)cookie, (char *)output, size);

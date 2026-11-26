@@ -168,6 +168,16 @@ static int v_locale_checks(void) {
     CHECK(mbstowcs(wide, "\xc3\xa9", 4) == 1 && wide[0] == 0xe9 && !wide[1]);
     CHECK(wcstombs(utf, L"\u00e9", sizeof utf) == 2 && !memcmp(utf, "\xc3\xa9", 3));
     const wchar_t invalid[] = {0xd800, 0};
+    const wchar_t partial[] = {L'A', 0xd800, 0};
+    reverse = partial;
+    errno = 0;
+    CHECK(wcsnrtombs(utf, &reverse, 3, 1, &st) == 1 && reverse == partial + 1 &&
+          utf[0] == 'A' && !errno);
+    CHECK(wcsnrtombs(utf, &reverse, 2, 0, &st) == 0 && reverse == partial + 1 && !errno);
+    CHECK(wcsnrtombs(utf, &reverse, 2, sizeof utf, &st) == (size_t)-1 && errno == EILSEQ);
+    const wchar_t minus_one = (wchar_t)-1, one = 1;
+    int (*volatile compare)(const wchar_t *, const wchar_t *, size_t) = wmemcmp;
+    CHECK((compare(&minus_one, &one, 1) < 0) == (minus_one < one));
     reverse = invalid;
     errno = 0;
     CHECK(wcsrtombs(utf, &reverse, 0, &st) == 0 && reverse == invalid && !errno);

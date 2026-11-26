@@ -8,6 +8,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	#include <errno.h>
 
 	fn C.v_stdio_standard(i32) uint
+	fn C.v_stdio_stdout() uint
 	fn C.v_stdio_standard_size() uint
 	fn C.v_stdio_cookie_read(uint, uint, uint, uint) i64
 	fn C.v_stdio_cookie_write(uint, uint, uint, uint) i64
@@ -25,37 +26,38 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	struct BareStream {
 	mut:
 		// GNU header inlines access flags and four buffer pointers in this prefix.
-		abi_flags    i32
-		abi_storage  [52]u8
-		lock_word    u32
-		owner        uint
-		depth        u32
-		fd           i32
-		allocated    bool
-		mode         i32
-		direction    u32
-		append       bool
-		readable     bool
-		writable     bool
-		closing      bool
-		references   u32
-		identifier   u64
-		buffer       &u8 = unsafe { nil }
-		capacity     uint
-		read_at      uint
-		read_end     uint
-		write_at     uint
-		owns_buffer  bool
-		pushed       [16]u8
-		pushed_count uint
-		next         &BareStream = unsafe { nil }
-		is_cookie    bool
-		cookie       uint
-		callbacks    [4]uint
-		orientation  i32
-		utf8         i32
-		read_state   [8]u8
-		write_state  [8]u8
+		abi_flags      i32
+		abi_storage    [52]u8
+		lock_word      u32
+		owner          uint
+		depth          u32
+		fd             i32
+		allocated      bool
+		mode           i32
+		direction      u32
+		append         bool
+		readable       bool
+		writable       bool
+		closing        bool
+		references     u32
+		identifier     u64
+		buffer         &u8 = unsafe { nil }
+		capacity       uint
+		read_at        uint
+		read_end       uint
+		write_at       uint
+		owns_buffer    bool
+		pushed         [16]u8
+		pushed_count   uint
+		next           &BareStream = unsafe { nil }
+		is_cookie      bool
+		writing_cookie bool
+		cookie         uint
+		callbacks      [4]uint
+		orientation    i32
+		utf8           i32
+		read_state     [8]u8
+		write_state    [8]u8
 	}
 
 	__global bare_streams_lock u32
@@ -73,13 +75,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		for i in 0 .. 3 {
 			mut stream := unsafe { &BareStream(C.v_stdio_standard(i32(i))) }
 			stream.fd = i32(i)
-			stream.mode = if i == 1 {
-				i32(-1)
-			} else if i == 2 {
-				i32(C._IONBF)
-			} else {
-				i32(C._IOFBF)
-			}
+			stream.mode = if i == 2 { i32(C._IONBF) } else { i32(-1) }
 			stream.readable = i == 0
 			stream.writable = i != 0
 			bare_streams_identifier++
@@ -148,6 +144,18 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		return true
 	}
 	fn bare_stream_raw_read(mut stream BareStream, output uint, size uint) i64 {
+		if stream.mode == i32(C._IONBF) || stream.mode == i32(C._IOLBF) {
+			// Match the input-to-stdout lock order at refill, leaving buffered reads alone.
+			address := C.v_stdio_stdout()
+			bare_stdio_lock(address)
+			mut out := unsafe { &BareStream(address) }
+			if (out.fd >= 0 || out.is_cookie) && out.writable && !out.writing_cookie && out.mode == i32(C._IOLBF) && out.write_at != 0 {
+				saved_errno := bf_native_errno_cell
+				bare_stream_flush(mut out)
+				bf_native_errno_cell = saved_errno
+			}
+			bare_stdio_unlock(address)
+		}
 		if !stream.is_cookie {
 			return i64(sys_call3(bf_nr_read, u64(stream.fd), u64(output), u64(size)))
 		}
@@ -181,6 +189,11 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 			return i64(sys_call3(bf_nr_write, u64(stream.fd), u64(input), u64(size)))
 		}
 		if stream.callbacks[1] == 0 { return i64(size) }
+		// A cookie write/seek callback can refill another input stream.
+		// Its implicit stdout flush must not send these same bytes again.
+		was_writing := stream.writing_cookie
+		stream.writing_cookie = true
+		defer { stream.writing_cookie = was_writing }
 		if stream.append && stream.callbacks[2] != 0 && bare_stream_seek(mut stream, 0, 2) < 0 {
 			return -i64(bf_native_errno_cell)
 		}
@@ -252,7 +265,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		mut stream := unsafe { &BareStream(__calloc(1, sizeof(BareStream))) }
 		if stream == unsafe { nil } { return stream }
 		stream.fd = fd
-		stream.mode = i32(C._IOFBF)
+		stream.mode = if fd < 0 { i32(C._IOFBF) } else { i32(-1) }
 		stream.allocated = true
 		stream.readable = flags & i32(C.O_ACCMODE) != i32(C.O_WRONLY)
 		stream.writable = flags & i32(C.O_ACCMODE) != i32(C.O_RDONLY)
@@ -765,12 +778,17 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	}
 	@[export: 'v_stdio_fputs'; markused]
 	fn bare_stdio_fputs(text uint, address uint) i32 {
+		bare_stdio_lock(address)
+		defer { bare_stdio_unlock(address) }
+		mut stream := unsafe { &BareStream(address) }
+		if stream.orientation > 0 { return -1 }
+		stream.orientation = -1
 		length := int(bare_string_chr_nul(text, 0) - text)
-		return if bare_stdio_fwrite(text, 1, length, address) == length { i32(0) } else { i32(-1) }
+		return if bare_stdio_write(text, 1, length, address) == length { i32(0) } else { i32(-1) }
 	}
 	@[export: 'v_stdio_puts'; markused]
 	fn bare_stdio_puts(text uint) i32 {
-		address := C.v_stdio_standard(1)
+		address := C.v_stdio_stdout()
 		bare_stdio_lock(address)
 		defer { bare_stdio_unlock(address) }
 		if bare_stdio_fputs(text, address) < 0 { return -1 }

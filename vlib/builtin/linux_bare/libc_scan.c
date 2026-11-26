@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 
 void v_scan_limit(struct v_scan *s, off_t limit) {
     s->count = 0;
@@ -65,7 +66,7 @@ static int v_scan_string(const char *text, const char *format, va_list args, int
 static int v_scan_stream(FILE *stream, const char *format, va_list args, int binary) {
     struct v_scan s = {.stream = stream, .binary = binary};
     flockfile(stream);
-    int result = v_scan_core(&s, format, args);
+    int result = fwide(stream, -1) > 0 ? EOF : v_scan_core(&s, format, args);
     while (s.history_end > s.history_at)
         ungetc(s.history[--s.history_end], stream);
     funlockfile(stream);

@@ -16,6 +16,7 @@ _Static_assert(_IO_EOF_SEEN == 0x10 && _IO_ERR_SEEN == 0x20, "GNU FILE state fla
 #endif
 enum { V_STDIO_EOF = 0x10, V_STDIO_ERROR = 0x20 };
 uintptr_t v_stdio_standard(int32_t);
+uintptr_t v_stdio_stdout(void);
 size_t v_stdio_standard_size(void);
 int64_t v_stdio_cookie_read(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 int64_t v_stdio_cookie_write(uintptr_t, uintptr_t, uintptr_t, uintptr_t);

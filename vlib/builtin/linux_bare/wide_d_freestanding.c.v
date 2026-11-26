@@ -94,7 +94,10 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		for i := uint(0); i < limit; i++ {
 			a := unsafe { (&u32(left))[i] }
 			b := unsafe { (&u32(right))[i] }
-			if a != b { return if a < b { i32(-1) } else { i32(1) } }
+			if a != b {
+				less := if C.WCHAR_MIN < 0 { i32(a) < i32(b) } else { a < b }
+				return if less { i32(-1) } else { i32(1) }
+			}
 			if nul != 0 && a == 0 { break }
 		}
 		return 0
@@ -175,7 +178,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		mut input := unsafe { *(&uint(source)) }
 		mut remaining := characters
 		mut count := uint(0)
-		for remaining > 0 {
+		for remaining > 0 && (output == 0 || count < limit) {
 			value := unsafe { *(&u32(input)) }
 			mut buffer := [8]u8{}
 			mut next := [8]u8{}
