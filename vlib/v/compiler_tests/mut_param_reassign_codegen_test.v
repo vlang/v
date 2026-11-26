@@ -8,22 +8,6 @@ fn mut_param_reassign_fixture_dir() string {
 	return dir
 }
 
-fn mut_param_reassign_run_good(name string, source string) string {
-	dir := mut_param_reassign_fixture_dir()
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	bin := os.join_path(dir, 'v3_${name}')
-	src := bin + '.v'
-	os.write_file(src, source) or { panic(err) }
-	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	return run.output.trim_space()
-}
-
 fn mut_param_reassign_run_good_with_c(name string, source string) (string, string) {
 	dir := mut_param_reassign_fixture_dir()
 	defer {
@@ -131,8 +115,11 @@ fn mut_param_reassign_run_bad_batch(cases []MutParamReassignCase) {
 	}
 }
 
-fn test_mut_array_param_reassigns_to_base_type() {
-	out := mut_param_reassign_run_good('mut_array_param_reassign', 'fn replace(mut xs []int) {
+fn test_mut_param_reassign_runtime_cases() {
+	mut_param_reassign_run_good_batch([
+		MutParamReassignCase{
+			name:     'mut_array_param_reassign'
+			source:   'fn replace(mut xs []int) {
 	mut tmp := []int{}
 	tmp << 4
 	tmp << 9
@@ -148,12 +135,12 @@ fn main() {
 	assert xs[1] == 9
 	println("ok")
 }
-')
-	assert out == 'ok'
-}
-
-fn test_mut_string_param_concat_reads_as_string() {
-	out := mut_param_reassign_run_good('mut_string_param_concat', "struct Text {
+'
+			expected: 'ok'
+		},
+		MutParamReassignCase{
+			name:     'mut_string_param_concat'
+			source:   "struct Text {
 	value string
 }
 
@@ -167,12 +154,12 @@ fn main() {
 	}
 	println(add(mut text))
 }
-")
-	assert out == 'hi!'
-}
-
-fn test_generic_mut_array_param_reassigns_to_base_type() {
-	out := mut_param_reassign_run_good('generic_mut_array_param_reassign', 'struct Item {
+"
+			expected: 'hi!'
+		},
+		MutParamReassignCase{
+			name:     'generic_mut_array_param_reassign'
+			source:   'struct Item {
 	data int
 	priority int
 }
@@ -191,12 +178,12 @@ fn main() {
 	assert xs[0].priority == 3
 	println("ok")
 }
-')
-	assert out == 'ok'
-}
-
-fn test_mut_map_param_reassigns_to_base_type() {
-	out := mut_param_reassign_run_good('mut_map_param_reassign', "fn replace(mut m map[string]int) {
+'
+			expected: 'ok'
+		},
+		MutParamReassignCase{
+			name:     'mut_map_param_reassign'
+			source:   "fn replace(mut m map[string]int) {
 	tmp := {
 		'answer': 42
 	}
@@ -211,12 +198,12 @@ fn main() {
 	assert m['answer'] == 42
 	println('ok')
 }
-")
-	assert out == 'ok'
-}
-
-fn test_multi_return_assign_to_mut_array_param_uses_base_type() {
-	out := mut_param_reassign_run_good('mut_array_param_multi_return_reassign', 'fn pair() ([]int, int) {
+"
+			expected: 'ok'
+		},
+		MutParamReassignCase{
+			name:     'mut_array_param_multi_return_reassign'
+			source:   'fn pair() ([]int, int) {
 	return [1, 2], 7
 }
 
@@ -232,60 +219,12 @@ fn main() {
 	assert xs[1] == 2
 	println("ok")
 }
-')
-	assert out == 'ok'
-}
-
-fn test_inner_scope_redefinition_of_mut_param_is_rejected_before_c_compile() {
-	mut_param_reassign_run_bad('bad_mut_array_param_inner_scope_redefinition', 'fn pair() ([]int, int) {
-	return [1], 0
-}
-
-fn replace(mut xs []int) {
-	if true {
-		mut xs := 0
-		_ = xs
-	}
-	if true {
-		xs, _ = pair()
-	}
-}
-
-fn main() {
-	mut xs := [0]
-	replace(mut xs)
-	assert xs.len == 1
-	assert xs[0] == 1
-	println("ok")
-}
-',
-		'redefinition of `xs`')
-}
-
-fn test_pointer_local_redefinition_of_mut_param_is_rejected_before_c_compile() {
-	mut_param_reassign_run_bad('bad_mut_array_param_pointer_redefinition', 'fn f(mut xs []int) {
-	mut local := []int{}
-	mut other := []int{}
-	{
-		xs := &local
-		xs = &other
-		_ = xs
-	}
-}
-
-fn main() {
-	mut xs := [0]
-	f(mut xs)
-	assert xs.len == 1
-	assert xs[0] == 0
-	println("ok")
-}
-',
-		'redefinition of `xs`')
-}
-
-fn test_mut_param_compound_assign_and_postfix_store_through_pointer() {
-	out := mut_param_reassign_run_good('mut_param_compound_assign', 'struct Counter {
+'
+			expected: 'ok'
+		},
+		MutParamReassignCase{
+			name:     'mut_param_compound_assign'
+			source:   'struct Counter {
 mut:
 	value int
 }
@@ -303,12 +242,12 @@ fn main() {
 	assert counter.value == 3
 	println("ok")
 }
-')
-	assert out == 'ok'
-}
-
-fn test_mut_param_unsigned_right_shift_assign_stores_through_pointer() {
-	out := mut_param_reassign_run_good('mut_param_unsigned_right_shift_assign', 'struct Counter {
+'
+			expected: 'ok'
+		},
+		MutParamReassignCase{
+			name:     'mut_param_unsigned_right_shift_assign'
+			source:   'struct Counter {
 mut:
 	value int
 }
@@ -325,12 +264,9 @@ fn main() {
 	assert counter.value == 4
 	println("ok")
 }
-')
-	assert out == 'ok'
-}
-
-fn test_mut_pointer_param_reassigns_caller_slot() {
-	mut_param_reassign_run_good_batch([
+'
+			expected: 'ok'
+		},
 		MutParamReassignCase{
 			name:     'mut_pointer_param_reassign'
 			source:   'struct Item {
@@ -449,30 +385,9 @@ fn main() {
 '
 			expected: 'ok'
 		},
-	])
-	mut_param_reassign_run_bad('generic_mut_pointer_param_requires_pointer_slot', 'struct Item {
-	value int
-}
-
-fn replace[T](mut current &T, replacement &T) {
-	current = replacement
-}
-
-fn main() {
-	mut current := Item{
-		value: 2
-	}
-	replacement := Item{
-		value: 8
-	}
-	replace[Item](mut current, &replacement)
-}
-',
-		'parameter `current` is `mut current &Item`, a mutable reference to a `&Item`')
-}
-
-fn test_fn_literal_mut_pointer_param_reassigns_caller_slot() {
-	out := mut_param_reassign_run_good('fn_literal_mut_pointer_param_reassign', 'struct Item {
+		MutParamReassignCase{
+			name:     'fn_literal_mut_pointer_param_reassign'
+			source:   'struct Item {
 	value int
 }
 
@@ -492,12 +407,12 @@ fn main() {
 	assert first.value == 1
 	println(int_str(current.value))
 }
-')
-	assert out == '9'
-}
-
-fn test_fn_literal_value_param_shadow_preserves_outer_pointer_flags() {
-	out := mut_param_reassign_run_good('fn_literal_value_param_shadow', 'struct Item {
+'
+			expected: '9'
+		},
+		MutParamReassignCase{
+			name:     'fn_literal_value_param_shadow'
+			source:   'struct Item {
 	value int
 }
 
@@ -522,8 +437,80 @@ fn main() {
 	assert first.value == 1
 	println(int_str(current.value))
 }
-')
-	assert out == '9'
+'
+			expected: '9'
+		},
+	])
+}
+
+fn test_inner_scope_redefinition_of_mut_param_is_rejected_before_c_compile() {
+	mut_param_reassign_run_bad('bad_mut_array_param_inner_scope_redefinition', 'fn pair() ([]int, int) {
+	return [1], 0
+}
+
+fn replace(mut xs []int) {
+	if true {
+		mut xs := 0
+		_ = xs
+	}
+	if true {
+		xs, _ = pair()
+	}
+}
+
+fn main() {
+	mut xs := [0]
+	replace(mut xs)
+	assert xs.len == 1
+	assert xs[0] == 1
+	println("ok")
+}
+',
+		'redefinition of `xs`')
+}
+
+fn test_pointer_local_redefinition_of_mut_param_is_rejected_before_c_compile() {
+	mut_param_reassign_run_bad('bad_mut_array_param_pointer_redefinition', 'fn f(mut xs []int) {
+	mut local := []int{}
+	mut other := []int{}
+	{
+		xs := &local
+		xs = &other
+		_ = xs
+	}
+}
+
+fn main() {
+	mut xs := [0]
+	f(mut xs)
+	assert xs.len == 1
+	assert xs[0] == 0
+	println("ok")
+}
+',
+		'redefinition of `xs`')
+}
+
+fn test_generic_mut_pointer_param_requires_pointer_slot() {
+	mut_param_reassign_run_bad('generic_mut_pointer_param_requires_pointer_slot', 'struct Item {
+	value int
+}
+
+fn replace[T](mut current &T, replacement &T) {
+	current = replacement
+}
+
+fn main() {
+	mut current := Item{
+		value: 2
+	}
+	replacement := Item{
+		value: 8
+	}
+	replace[Item](mut current, &replacement)
+}
+',
+		'parameter `current` is `mut current &Item`, a mutable reference to a `&Item`')
 }
 
 fn test_mut_pointer_param_signature_and_expression_conversions() {
