@@ -972,14 +972,23 @@ fn (g &Parser) render_native_function_pointer(tokens []FastcExpressionToken, exp
 	return none
 }
 
-fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pref.Preferences, functions map[string]FastcFunctionSignature) map[string]bool {
-	mut available_names := map[string]bool{}
-	for key in functions.keys() {
-		available_names[key.all_after_last('.')] = true
+// fastc_reference_candidates snapshots the names before the generator adds
+// synthesized signatures. A true value marks an entry root.
+fn fastc_reference_candidates(functions map[string]FastcFunctionSignature, prefs &pref.Preferences) map[string]bool {
+	mut candidates := map[string]bool{}
+	for key, signature in functions {
+		name := key.all_after_last('.')
+		candidates[name] = candidates[name] || fastc_function_is_native_root(key, signature)
+			|| (prefs.is_test && fastc_is_test_harness_function(name)
+				&& fastc_is_test_source(signature.path, prefs))
 	}
+	return candidates
+}
+
+fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pref.Preferences, candidates map[string]bool) map[string]bool {
 	mut references := map[string]map[string]bool{}
 	mut top_level_references := map[string]bool{}
-	fastc_collect_reference_partials(sources, prefs, available_names, mut references, mut top_level_references)
+	fastc_collect_reference_partials(sources, prefs, candidates, mut references, mut top_level_references)
 	mut used := {
 		'main':                     true
 		'run':                      true
@@ -1055,20 +1064,10 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 		// The startup sequence calls it (see fastc_gc_startup_initializer).
 		used['gc_runtime_init'] = true
 	}
-	// Native callers enter exported V functions without a V call site. Their
-	// transitive callees must participate in the same reachability traversal.
-	for key, signature in functions {
-		if fastc_function_is_native_root(key, signature) {
-			used[key.all_after_last('.')] = true
-		}
-	}
-	// A test build calls the test file's tests from the main it synthesizes.
-	if prefs.is_test {
-		for key, signature in functions {
-			name := key.all_after_last('.')
-			if fastc_is_test_harness_function(name) && fastc_is_test_source(signature.path, prefs) {
-				used[name] = true
-			}
+	// Native entry points and test harness functions have no V caller.
+	for name, is_root in candidates {
+		if is_root {
+			used[name] = true
 		}
 	}
 	// Operator overload declarations are emitted even when their symbolic names do
