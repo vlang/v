@@ -58,18 +58,17 @@ fn main() {
   assert unsafe { uint(first.data) == address + 1 }
   assert first.len == 3
   assert disturb_stack(5) == 13
-  {
-   mut second := owner.free_buffer(0)
-   assert unsafe { uint(second.data) == address }
-   fill(mut second, 8)
-   assert owner.bytes[0] == 8
-   assert second.len == 4
-  }
-  assert owner.bytes[0] == 8
   fill(mut first, 9)
-  assert owner.bytes[1] == 9
   assert first.len == 3
  }
+ assert owner.bytes[1] == 9
+ {
+  mut second := owner.free_buffer(0)
+  assert unsafe { uint(second.data) == address }
+  fill(mut second, 8)
+  assert second.len == 4
+ }
+ assert owner.bytes[0] == 8
  assert owner.bytes == [u8(8), 9, 3, 4]
  assert unsafe { uint(owner.bytes.data) == address }
  {
@@ -108,6 +107,35 @@ fn main() {
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, '${mode}: ${run.output}'
+	}
+}
+
+fn test_borrowed_mutable_array_ranges_cannot_overlap() {
+	root := os.join_path(os.vtmp_dir(), 'borrowed_mutable_array_ranges_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, '
+struct Buffer implements IClone {
+mut:
+ bytes []u8
+}
+
+fn (mut value ^a Buffer) view[^a](start int) &^a []u8 {
+ return &value.bytes[start..]
+}
+
+fn main() {
+ mut owner := Buffer{bytes: [u8(1), 2, 3, 4]}
+ mut first := owner.view(1)
+ mut second := owner.view(0)
+ assert first.len + second.len == 7
+}
+')!
+	for mode in [[]string{}, ['-no-parallel']] {
+		compile := os.exec([@VEXE, '-nocache', '-ownership', ...mode, '-check', source])
+		assert compile.exit_code != 0, compile.output
+		assert compile.output.contains('previous borrow by `first`'), compile.output
 	}
 }
 
