@@ -57,20 +57,14 @@ fn test_veb_run_at_rejects_invalid_generic_arguments() {
 	}
 }
 
-fn test_veb_run_at_with_explicit_app_and_context_compiles() {
-	source := veb_run_at_source.replace('veb.run_at(mut p, port: 8080)!',
-		'veb.run_at[Program, Context](mut p, port: 8080)!')
-	root := veb_run_at_project('explicit', source)!
-	defer { os.rmdir_all(root) or {} }
-	program := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
-	result := os.exec([@VEXE, '-nocache', '-o', program, root])
-	assert result.exit_code == 0, result.output
-	assert os.is_file(program), result.output
-}
-
 fn test_veb_run_at_with_explicit_types_preserves_errors_and_handler_response() {
-	source := veb_run_at_source.replace('import veb', 'import veb\nimport net.http')
+	source := veb_run_at_source.replace('import veb', 'import veb\nimport net.http\nimport os')
 		.replace('veb.run_at(mut p, port: 8080)!', '
+	// Compile the valid-port call with result propagation. The test runs without arguments.
+	if os.args.contains("--serve") {
+		veb.run_at[Program, Context](mut p, port: 8080)!
+		return
+	}
 	veb.run_at[Program, Context](mut p, port: 0) or {
 		assert err.msg() == "invalid port number `0`, it should be between 1 and 65535"
 		mut ctx := Context{}
@@ -88,6 +82,7 @@ fn test_veb_run_at_with_explicit_types_preserves_errors_and_handler_response() {
 	program := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
 	compile := os.exec([@VEXE, '-nocache', '-o', program, root])
 	assert compile.exit_code == 0, compile.output
+	assert os.is_file(program), compile.output
 	result := os.exec([program])
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'ok', result.output
