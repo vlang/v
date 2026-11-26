@@ -324,7 +324,7 @@ jobs:
           (
             set -e
             env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 \
-              make local=1 CC=clang VFLAGS='-cc clang'
+              make local=1 CC=clang VFLAGS='-cc clang' &&
             env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 \
               ./v -prod -cc clang self
           ) > "$out/reference.build.log" 2>&1 || rc=$?
