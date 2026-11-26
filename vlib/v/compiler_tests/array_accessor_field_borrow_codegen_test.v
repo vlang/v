@@ -209,17 +209,6 @@ fn test_owned_parenthesized_field_borrow() {
 	assert run.output.trim_space() == '0', run.output
 }
 
-// Concern: a bound method value (`arr.last().method`) is not a field read. Closure
-// generation shallow-copies the receiver, so it must keep the copying accessor semantics
-// instead of borrowing the array element. For an owned element with no `clone()` method the
-// accessor is genuinely impossible, so this must be rejected rather than silently miscompiled.
-fn test_owned_method_value_receiver_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_method_value', "struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'b', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
-}
-
 // A method value whose element type does provide `clone()` keeps working: the receiver is
 // cloned (an independent copy), never an alias of the live array element.
 fn test_owned_method_value_with_clone_runs() {
@@ -231,17 +220,6 @@ fn test_owned_method_value_with_clone_runs() {
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'bb', run.output
-}
-
-// Concern: only the chain's *final* value is read out, so the borrow is safe only when that
-// value does not own heap data. `arr.last().name` returns the `string` field itself; borrowing
-// would alias the array element's storage, so a returned reference could dangle once the array
-// is destroyed. A clone-less owned element must therefore be rejected, not borrowed.
-fn test_owned_escaping_field_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_escaping_field', "struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name() string {\n\treturn t.entries.last().name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(t.last_name())\n}\n", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
 // These consumers can borrow the element for the string field read.
@@ -353,21 +331,41 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
-// A non-owning pointer selected from the borrowed element can still outlive the array, so it
-// must not use the in-place borrow path.
-fn test_owned_pointer_field_escape_is_rejected() {
+// A bound method value needs a copy of its receiver. Returning a string,
+// a pointer, or a nested pointer would let the borrow outlive the array.
+// The nested pointer case uses an aggregate with no destructor.
+fn test_owned_array_element_escapes_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_pointer_field_escape', "struct E {\n\tname string\n}\n\nfn last_name_ptr() &u8 {\n\tarr := [E{ name: 'hello' }]\n\treturn arr.last().name.str\n}\n\nfn main() {\n\tprintln(unsafe { cstring_to_vstring(last_name_ptr()) })\n}\n", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_array_element_escapes', "struct E {
+	name string
+	size int
 }
 
-// A pointer nested inside a non-owning aggregate can still escape the element's lifetime.
-// The final-type check must recurse through the selected aggregate instead of accepting it
-// merely because the aggregate itself has no destructor.
-fn test_owned_nested_pointer_aggregate_escape_is_rejected() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_pointer_aggregate_escape', "struct View {
+fn (e E) describe() string {
+	return e.name
+}
+
+struct T {
+mut:
+	entries []E
+}
+
+fn (t &T) last_name() string {
+	return t.entries.last().name
+}
+
+struct PointerEntry implements Drop {
+	name string
+}
+
+fn last_name_ptr() &u8 {
+	arr := [PointerEntry{ name: 'hello' }]
+	return arr.last().name.str
+}
+
+fn (mut value PointerEntry) drop() {}
+
+struct View {
 	ptr &u8
 }
 
@@ -375,13 +373,13 @@ struct Wrapper {
 	view View
 }
 
-struct E {
+struct WrapperEntry implements Drop {
 	name    string
 	wrapper Wrapper
 }
 
 fn last_wrapper() Wrapper {
-	arr := [E{
+	arr := [WrapperEntry{
 		name: 'hello'
 		wrapper: Wrapper{
 			view: View{
@@ -392,12 +390,44 @@ fn last_wrapper() Wrapper {
 	return arr.last().wrapper
 }
 
-fn main() {
+fn (mut value WrapperEntry) drop() {}
+
+fn check_method_value() {
+	arr := [E{ name: 'a', size: 1 }, E{ name: 'b', size: 2 }]
+	f := arr.last().describe
+	println(f())
+}
+
+fn check_string_escape() {
+	mut t := T{}
+	t.entries << E{ name: 'hello', size: 5 }
+	println(t.last_name())
+}
+
+fn check_pointer_escape() {
+	println(unsafe { cstring_to_vstring(last_name_ptr()) })
+}
+
+fn check_nested_pointer_escape() {
 	_ = last_wrapper()
 }
-", '')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+fn main() {
+	check_method_value()
+	check_string_escape()
+	check_pointer_escape()
+	check_nested_pointer_escape()
+}
+", '-nocolor')
+	// Locations include the prepended Drop interface.
+	message := 'error: cannot return an independent array element:'
+	detail := 'requires ownership destruction but has no `clone()` method'
+	assert ownership_error_lines(compile) == [
+		'21:9: ${message} `E` ${detail}',
+		'30:9: ${message} `PointerEntry` ${detail}',
+		'57:9: ${message} `WrapperEntry` ${detail}',
+		'64:7: ${message} `E` ${detail}',
+	], compile.output
 }
 
 fn test_owned_allocating_string_consumers_borrow_array_elements() {
@@ -444,11 +474,14 @@ fn main() {
 	assert run.output == 'hello!\n<hello>\nhello\nhello  1\n', run.output
 }
 
-fn assert_independent_array_element_errors(compile os.Result, locations []string) {
+fn ownership_error_lines(compile os.Result) []string {
 	assert compile.exit_code == 1, compile.output
+	return compile.output.split_into_lines().filter(it.contains(': error: ')).map(it.all_after('.v:'))
+}
+
+fn assert_independent_array_element_errors(compile os.Result, locations []string) {
 	message := 'error: cannot return an independent array element: `E` requires ownership destruction but has no `clone()` method'
-	errors := compile.output.split_into_lines().filter(it.contains(': error: ')).map(it.all_after('.v:'))
-	assert errors == locations.map('${it}: ${message}'), compile.output
+	assert ownership_error_lines(compile) == locations.map('${it}: ${message}'), compile.output
 }
 
 // An allocating consumer is borrow-safe only when evaluating its other operands cannot mutate
