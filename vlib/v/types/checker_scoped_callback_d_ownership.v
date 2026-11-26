@@ -485,8 +485,8 @@ fn (tc &TypeChecker) ownership_scoped_callback_factory_state(id flat.NodeId, rec
 
 fn (tc &TypeChecker) ownership_scoped_callback_factory_fields(state flat.Node, state_type Struct, receiver_type Struct, param string, module_name string, input ?ScopedFactoryInput, loan ScopedThreadBorrow) ?ScopedFactoryProof {
 	mut borrows := []ScopedThreadBorrow{}
+	mut pool_elements := []Type{}
 	mut initialized := 0
-	mut pops := false
 	mut moves_input := false
 	for field in tc.struct_fields_for_type(state_type.name_id) {
 		if type_contains_unknown(field.typ) || receiver_method_name_candidates(state_type, field.name, module_name).any(it in tc.fn_ret_types) {
@@ -521,7 +521,7 @@ fn (tc &TypeChecker) ownership_scoped_callback_factory_fields(state flat.Node, s
 					module_name) {
 					return none
 				}
-				pops = true
+				pool_elements << field_type
 			}
 			continue
 		}
@@ -538,9 +538,10 @@ fn (tc &TypeChecker) ownership_scoped_callback_factory_fields(state flat.Node, s
 		borrows << ScopedThreadBorrow{ ...loan, field: field.name, access: access }
 	}
 	// Reject positional fields, spreads, and any initializer omitted by the proof.
+	pops := pool_elements.len > 0
 	if initialized != state.children_count || borrows.len == 0
 		|| (input != none && !moves_input)
-		|| (pops && borrows.any(it.access != .atomic)) {
+		|| (pops && !tc.ownership_scoped_factory_pool_borrows_disjoint(pool_elements, state_type, borrows)) {
 		return none
 	}
 	return ScopedFactoryProof{ borrows: borrows, pops: pops }
