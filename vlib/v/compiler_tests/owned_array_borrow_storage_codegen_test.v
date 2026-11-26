@@ -640,7 +640,20 @@ fn main() { _ = absent() }
 }
 
 fn test_mutable_wrapped_array_storage_acquires_managed_payloads() {
-	for wrapper in ['?[]Res', 'Storage', '?Storage', 'WrappedStorage'] {
+	wrappers := {
+		'option':       '?[]Res'
+		'sum':          'Storage'
+		'optional_sum': '?Storage'
+		'wrapped_sum':  'WrappedStorage'
+	}
+	mut source := borrow_storage_drop_decls + '
+type Storage = []Res | int
+type WrappedStorage = ?[]Res | int
+'
+	mut calls := []string{}
+	mut expected := []string{}
+	for name, wrapper in wrappers {
+		keep := 'keep_${name}'
 		payload := if wrapper == '?[]Res' {
 			'[Res{1}]'
 		} else if wrapper == 'WrappedStorage' {
@@ -650,9 +663,9 @@ fn test_mutable_wrapped_array_storage_acquires_managed_payloads() {
 		}
 		initial := if wrapper.starts_with('?') { '${wrapper}(${payload})' } else { payload }
 		unwrapped := if wrapper.starts_with('?') {
-			'keep(mut source) or { panic("missing payload") }'
+			'${keep}(mut source) or { panic("missing payload") }'
 		} else {
-			'keep(mut source)'
+			'${keep}(mut source)'
 		}
 		check := if wrapper == '?[]Res' {
 			'assert retained[0].id == 101'
@@ -661,20 +674,26 @@ fn test_mutable_wrapped_array_storage_acquires_managed_payloads() {
 		} else {
 			'if retained is []Res { assert retained[0].id == 101 } else { assert false }'
 		}
-		output := borrow_storage_run('wrapped_mut_array_${wrapper.len}', borrow_storage_drop_decls + '
-type Storage = []Res | int
-type WrappedStorage = ?[]Res | int
-fn keep(mut source ${wrapper}) ${wrapper} { return source }
-fn main() {
+		source += '
+fn ${keep}(mut source ${wrapper}) ${wrapper} { return source }
+fn check_${name}() {
 	mut source := ${initial}
 	retained := ${unwrapped}
 	drop_owned(source)
 	${check}
 	drop_owned(retained)
 }
-')
-		assert output == 'drop 1\ndrop 101'
+'
+		calls << '\tprintln("${name}")\n\tcheck_${name}()'
+		expected << '${name}\ndrop 1\ndrop 101'
 	}
+	source += '
+fn main() {
+${calls.join('\n')}
+}
+'
+	output := borrow_storage_run('wrapped_mut_array', source)
+	assert output == expected.join('\n')
 }
 
 fn test_mutable_wrapped_array_storage_keeps_inactive_payloads() {
