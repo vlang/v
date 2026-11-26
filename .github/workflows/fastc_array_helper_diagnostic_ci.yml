@@ -120,7 +120,7 @@ jobs:
             printf '%s %s\n' "$label" "$rc" >>"$root/instrumented-status.txt"
             if [ "$rc" -ne 0 ]; then failed=1; fi
           done
-          if ! find "$root/split" -name '*.c' -type f | grep -q .; then
+          if ! find "$root/split" -type f -name '*.c' -print -quit | grep -q .; then
             echo "No split units captured; diagnostic is incomplete" >&2
             failed=1
           fi
@@ -158,7 +158,7 @@ jobs:
           ./v-diagnostic -W -silent test-self vlib >"$root/gcc-default-shard-1.log" 2>&1 || rc=$?
           printf '%s\n' "$rc" >"$root/gcc-default-shard-1.status"
           tail -n 100 "$root/gcc-default-shard-1.log"
-          if ! find "$root/shard-split" -type f -name '*.c' | grep -q .; then
+          if ! find "$root/shard-split" -type f -name '*.c' -print -quit | grep -q .; then
             echo "No full-shard split units captured" >&2
             exit 1
           fi
