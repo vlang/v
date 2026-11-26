@@ -456,17 +456,6 @@ fn main() {
 	}
 }
 
-// An operator that every instance has, and one in a `$if` branch that an
-// instance does not take, give no error.
-fn test_operators_that_each_instance_has_stay_valid() {
-	source := "fn join[T](a T, b T) T {\n\treturn a + b\n}\n\nfn inc[T](a T) T {\n\t\$if T is int {\n\t\treturn a + 1\n\t} \$else {\n\t\treturn a\n\t}\n}\n\nfn main() {\n\tprintln(join(1, 2))\n\tprintln(join('a', 'b'))\n\tprintln(inc(1))\n\tprintln(inc('s'))\n}\n"
-	for res in [check_program('operators_valid_check', source),
-		build_program('operators_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
-
 // Both check and build report incompatible returns when generic functions,
 // closures, and methods are specialized. A local initialized from a parameter
 // also retains the instance's concrete type.
@@ -601,13 +590,118 @@ fn main() {
 	}
 }
 
-// Guards over instances that are options, over `?T` and `mut ?T` parameters, over
-// a map index, and over options smartcast to their payload (`if a != none`, the
-// `else` of `if a == none`, a `match` arm, a `?T` field) give no error.
-fn test_if_guards_over_options_in_instances_stay_valid() {
-	source := "fn plain[T](a T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn opt[T](a ?T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn mut_opt[T](mut a ?T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn index[T](m map[string]T) string {\n\tif v := m['a'] {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn smart[T](a ?T) string {\n\tif a != none {\n\t\tif v := a {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn smart_else[T](mut a ?T) string {\n\tif a == none {\n\t\treturn 'none'\n\t} else {\n\t\tif mut v := a {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn smart_match[T](mut a ?T, n int) string {\n\tif a != none {\n\t\tmatch n {\n\t\t\t1 {\n\t\t\t\tif mut v := a {\n\t\t\t\t\treturn '\${v}'\n\t\t\t\t}\n\t\t\t}\n\t\t\telse {}\n\t\t}\n\t}\n\treturn 'none'\n}\n\nstruct Box[T] {\n\tval ?T\n}\n\nfn (b Box[T]) get() string {\n\tif b.val != none {\n\t\tif v := b.val {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn main() {\n\tx := ?int(3)\n\tprintln(plain(x))\n\tprintln(opt[int](4))\n\tmut y := ?string('s')\n\tprintln(mut_opt(mut y))\n\tprintln(index({\n\t\t'a': 5\n\t}))\n\tprintln(smart[int](6))\n\tprintln(smart_else(mut y))\n\tprintln(smart_match(mut y, 1))\n\tprintln(Box[int]{ val: 7 }.get())\n}\n"
-	for res in [check_program('if_guard_valid_check', source),
-		build_program('if_guard_valid_build', source)] {
+// Check the operator in the active compile-time branch and option guards over
+// parameters, map indexes, and smartcast values.
+fn test_valid_operators_and_option_guards_in_instances() {
+	source := "fn join[T](a T, b T) T {
+	return a + b
+}
+
+fn inc[T](a T) T {
+	\$if T is int {
+		return a + 1
+	} \$else {
+		return a
+	}
+}
+
+fn plain[T](a T) string {
+	if v := a {
+		return '\${v}'
+	}
+	return 'none'
+}
+
+fn opt[T](a ?T) string {
+	if v := a {
+		return '\${v}'
+	}
+	return 'none'
+}
+
+fn mut_opt[T](mut a ?T) string {
+	if v := a {
+		return '\${v}'
+	}
+	return 'none'
+}
+
+fn index[T](m map[string]T) string {
+	if v := m['a'] {
+		return '\${v}'
+	}
+	return 'none'
+}
+
+fn smart[T](a ?T) string {
+	if a != none {
+		if v := a {
+			return '\${v}'
+		}
+	}
+	return 'none'
+}
+
+fn smart_else[T](mut a ?T) string {
+	if a == none {
+		return 'none'
+	} else {
+		if mut v := a {
+			return '\${v}'
+		}
+	}
+	return 'none'
+}
+
+fn smart_match[T](mut a ?T, n int) string {
+	if a != none {
+		match n {
+			1 {
+				if mut v := a {
+					return '\${v}'
+				}
+			}
+			else {}
+		}
+	}
+	return 'none'
+}
+
+struct Box[T] {
+	val ?T
+}
+
+fn (b Box[T]) get() string {
+	if b.val != none {
+		if v := b.val {
+			return '\${v}'
+		}
+	}
+	return 'none'
+}
+
+fn main() {
+	println(join(1, 2))
+	println(join('a', 'b'))
+	println(inc(1))
+	println(inc('s'))
+
+	x := ?int(3)
+	println(plain(x))
+	println(opt[int](4))
+	mut y := ?string('s')
+	println(mut_opt(mut y))
+	println(index({
+		'a': 5
+	}))
+	println(smart[int](6))
+	println(smart_else(mut y))
+	println(smart_match(mut y, 1))
+	println(Box[int]{ val: 7 }.get())
+}
+"
+	for res in [check_program('operators_and_guards_check', source),
+		build_program('operators_and_guards_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}
