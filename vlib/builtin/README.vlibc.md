@@ -196,6 +196,7 @@ Both `syscalls` and `freestanding` compile-time conditions are true. V printing 
 use the bare kernel routes; `input_character()` and `os.get_raw_line()` read the raw descriptor.
 Libc supplies startup, ELF TLS, pthreads, and C stdio. On FreeBSD, the system startup object
 provides the executable entry point and the system libc provides `posix_memalign` and `free`.
+V and C share the system environment, including changes made after startup.
 With the default manual allocator, V and C share an allocation domain. V aligned allocations
 accept power-of-two alignments starting at 1 and arbitrary positive sizes. Small alignments use
 malloc's guarantee and larger ones use posix_memalign. Both work with ordinary C/V free and realloc.

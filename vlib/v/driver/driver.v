@@ -12308,7 +12308,7 @@ pub fn run(args []string) {
 		if v3_needs_vlibc_shim(user_defines) {
 			record_user_define(mut user_defines, mut compile_values, 'v_bare_shim_environment')
 		} else if 'syscalls' in user_defines && !v3_omit_system_libc(user_defines)
-			&& pref.normalized_os(target_os) == 'linux' && pref.normalized_arch(target_arch) in [
+			&& pref.normalized_os(target_os) in ['linux', 'freebsd'] && pref.normalized_arch(target_arch) in [
 			'amd64',
 			'arm64',
 		] {

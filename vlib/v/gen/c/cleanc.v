@@ -21286,13 +21286,13 @@ fn (mut g FlatGen) system_libc_preamble() {
 		g.bare_thread_runtime()
 		return
 	}
+	g.writeln('#ifndef _WIN32')
+	g.writeln('extern char** environ;')
+	g.writeln('#endif')
 	if g.unsupported_freestanding_threads() {
 		g.unsupported_freestanding_thread_runtime()
 		return
 	}
-	g.writeln('#ifndef _WIN32')
-	g.writeln('extern char** environ;')
-	g.writeln('#endif')
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
 	if g.target.os in ['freebsd', 'openbsd'] || g.output_cross_c {
 		g.collect_preserved_c_fns(['sysctl'])

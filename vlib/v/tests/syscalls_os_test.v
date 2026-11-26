@@ -1,10 +1,14 @@
 // A `-syscalls` program selects the bare V runtime with libc available for C
-// interoperability. The routes are verified on Linux only.
+// interoperability. The hosted environment is checked on Linux and FreeBSD.
 import os
 
 const vexe = @VEXE
 
 const syscalls_program = "import os
+
+#include <stdlib.h>
+fn C.setenv(&char, &char, int) int
+fn C.getenv(&char) &char
 
 fn main() {
 	dir := os.args[1]
@@ -17,13 +21,25 @@ fn main() {
 	cwd := os.getwd()
 	assert !cwd.contains('\\0')
 	println(os.getenv('SYSCALLS_TEST_VALUE'))
+	if C.setenv(c'V_SYSCALLS_SHARED', c'from-c', 1) != 0 { panic('C.setenv failed') }
+	assert os.getenv('V_SYSCALLS_SHARED') == 'from-c'
+	assert os.environ()['V_SYSCALLS_SHARED'] == 'from-c'
+	if os.setenv('V_SYSCALLS_SHARED', 'from-v', true) != 0 { panic('os.setenv failed') }
+	value := C.getenv(c'V_SYSCALLS_SHARED')
+	assert value != unsafe { nil }
+	assert unsafe { cstring_to_vstring(value) } == 'from-v'
+	if os.unsetenv('V_SYSCALLS_SHARED') != 0 { panic('os.unsetenv failed') }
+	assert C.getenv(c'V_SYSCALLS_SHARED') == unsafe { nil }
+	os.clearenv()
+	assert os.environ().len == 0
+	assert C.getenv(c'SYSCALLS_TEST_VALUE') == unsafe { nil }
 }
 "
 
 // test_syscalls_program_runs_os_on_raw_syscalls builds the program with the
 // default C compiler and with each of gcc and clang that is installed, then runs it.
 fn test_syscalls_program_runs_os_on_raw_syscalls() {
-	$if !linux {
+	$if !linux && !freebsd {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'syscalls_os_${os.getpid()}')
@@ -31,7 +47,7 @@ fn test_syscalls_program_runs_os_on_raw_syscalls() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	source := os.join_path(root, 'main.v')
+	source := os.join_path(root, 'main.c.v')
 	os.write_file(source, syscalls_program)!
 	mut compilers := ['']
 	for cc in ['gcc', 'clang'] {
