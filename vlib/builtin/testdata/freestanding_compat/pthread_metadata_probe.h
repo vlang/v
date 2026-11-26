@@ -1,6 +1,7 @@
 #ifndef V_RUNTIME_PTHREAD_METADATA_PROBE_H
 #define V_RUNTIME_PTHREAD_METADATA_PROBE_H
 #include <sched.h>
+#include <sys/syscall.h>
 
 struct pthread_metadata_state {
     int ready, release, failed;
@@ -18,7 +19,83 @@ static void *pthread_metadata_worker(void *argument) {
     while (!__atomic_load_n(&s->release, __ATOMIC_ACQUIRE)) nanosleep(&delay, NULL);
     return NULL;
 }
+struct pthread_guard_probe {
+    size_t page, requested;
+    uintptr_t base;
+    size_t guard;
+};
+
+static int pthread_guard_check(struct pthread_guard_probe *probe) {
+    pthread_attr_t attr;
+    size_t size;
+    void *base;
+    char local;
+    CHECK(!pthread_getattr_np(pthread_self(), &attr));
+    CHECK(!pthread_attr_getstack(&attr, &base, &size));
+    CHECK(!pthread_attr_getguardsize(&attr, &probe->guard));
+    CHECK(!pthread_attr_destroy(&attr));
+    probe->base = (uintptr_t)base;
+    CHECK((uintptr_t)&local >= probe->base && (uintptr_t)&local - probe->base < size);
+    size_t rounded = (probe->requested + probe->page - 1) / probe->page * probe->page;
+    CHECK(probe->guard >= probe->requested && probe->guard <= rounded);
+#ifndef V_RUNTIME_HOSTED_ORACLE
+    CHECK(probe->guard == rounded && size >= (1U << 20));
+    if (rounded) {
+        FILE *maps = fopen("/proc/self/maps", "r");
+        CHECK(maps);
+        int protected = 0;
+        char line[512], permissions[5];
+        unsigned long start, end;
+        while (fgets(line, sizeof line, maps)) {
+            if (sscanf(line, "%lx-%lx %4s", &start, &end, permissions) == 3 &&
+                start <= probe->base - rounded && end >= probe->base &&
+                !strncmp(permissions, "---", 3)) protected = 1;
+        }
+        CHECK(!fclose(maps) && protected);
+    }
+#endif
+    return 0;
+}
+
+static void *pthread_guard_worker(void *argument) {
+    return (void *)(uintptr_t)pthread_guard_check(argument);
+}
+
+static int pthread_guard_probe(void) {
+    long page = sysconf(_SC_PAGESIZE);
+    CHECK(page > 0);
+    pthread_attr_t attr;
+    size_t initial;
+    CHECK(!pthread_attr_init(&attr));
+    CHECK(!pthread_attr_getguardsize(&attr, &initial));
+#ifndef V_RUNTIME_HOSTED_ORACLE
+    CHECK(initial == (size_t)page);
+#endif
+    CHECK(!pthread_attr_setstacksize(&attr, 1U << 20));
+    size_t requests[] = {initial, 2 * (size_t)page + 1, 0};
+    for (unsigned i = 0; i < sizeof requests / sizeof requests[0]; ++i) {
+        if (i) CHECK(!pthread_attr_setguardsize(&attr, requests[i]));
+        size_t stored;
+        CHECK(!pthread_attr_getguardsize(&attr, &stored) && stored == requests[i]);
+        struct pthread_guard_probe probe = {.page = (size_t)page, .requested = stored};
+        pthread_t thread;
+        void *result;
+        CHECK(!pthread_create(&thread, i ? &attr : NULL, pthread_guard_worker, &probe));
+        CHECK(!pthread_join(thread, &result) && !result);
+#ifndef V_RUNTIME_HOSTED_ORACLE
+        if (probe.guard) {
+            unsigned char residency;
+            errno = 0;
+            CHECK(syscall(SYS_mincore, (void *)(probe.base - probe.guard),
+                          probe.page, &residency) == -1 && errno == ENOMEM);
+        }
+#endif
+    }
+    CHECK(!pthread_attr_destroy(&attr));
+    return 0;
+}
 static int pthread_metadata_native_probe(void) {
+    CHECK(!pthread_guard_probe());
     pthread_t self = pthread_self(); char saved[16], name[32];
     CHECK(!pthread_getname_np(self, saved, sizeof(saved)));
     errno = EDOM;

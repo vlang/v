@@ -71,14 +71,14 @@ $if !i386 {
 			if start == unsafe { nil } { return VlibcThread{}, unsafe { VlibcErrno(12) } }
 			unsafe { *start = BarePublicThreadStart{ callback: fn_ptr, argument: arg } }
 			bare_credential_threads++
-			t, code := bare_thread_mapping_spawn(bare_public_thread_entry, u64(start), 1 << 20)
+			t, code := bare_thread_mapping_spawn(bare_public_thread_entry, u64(start), 1 << 20, bare_thread_default_guard)
 			if code != .enoerror {
 				bare_credential_threads--
 				unsafe { __free(start) }
 			}
 			return t, unsafe { VlibcErrno(code) }
 		}
-		t, code := bare_thread_mapping_spawn(fn_ptr, arg, 1 << 20)
+		t, code := bare_thread_mapping_spawn(fn_ptr, arg, 1 << 20, bare_thread_default_guard)
 		return t, unsafe { VlibcErrno(code) }
 	}
 

@@ -20,6 +20,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	mut:
 		stack_size uint
 		stack_base uint
+		guard_size uint
 		detached   i32
 	}
 	@[heap]
@@ -137,13 +138,17 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	@[export: 'v_pthread_attr_init'; markused]
 	fn bare_pthread_attr_init(address uint) i32 {
 		unsafe { vmemset(voidptr(address), 0, int(C.v_pthread_attributes_size())) }
+		mut attributes := unsafe { &BarePthreadAttributes(address) }
+		attributes.guard_size = uint(bare_thread_page_size())
 		return 0
 	}
 	@[export: 'v_pthread_attr_destroy'; markused]
 	fn bare_pthread_attr_destroy(_ uint) i32 { return 0 }
 	@[export: 'v_pthread_attr_setstack'; markused]
 	fn bare_pthread_attr_setstack(address uint, size uint) i32 {
-		if size < 16384 || size > uint(max_int) - 4095 { return i32(C.EINVAL) }
+		if size < 16384 || size > uint(max_int) - (uint(bare_thread_page_size()) - 1) {
+			return i32(C.EINVAL)
+		}
 		mut attributes := unsafe { &BarePthreadAttributes(address) }
 		attributes.stack_size = size
 		return 0
@@ -153,6 +158,19 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		attributes := unsafe { &BarePthreadAttributes(address) }
 		size := if attributes.stack_size == 0 { uint(1 << 20) } else { attributes.stack_size }
 		unsafe { *(&uint(output)) = size }
+		return 0
+	}
+	@[export: 'v_pthread_attr_setguard'; markused]
+	fn bare_pthread_attr_setguard(address uint, size uint) i32 {
+		if size > ~uint(0) - (uint(bare_thread_page_size()) - 1) { return i32(C.EINVAL) }
+		mut attributes := unsafe { &BarePthreadAttributes(address) }
+		attributes.guard_size = size
+		return 0
+	}
+	@[export: 'v_pthread_attr_getguard'; markused]
+	fn bare_pthread_attr_getguard(address uint, output uint) i32 {
+		attributes := unsafe { &BarePthreadAttributes(address) }
+		unsafe { *(&uint(output)) = attributes.guard_size }
 		return 0
 	}
 	@[export: 'v_pthread_attr_setdetach'; markused]
@@ -349,7 +367,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		settings := if attribute_address != 0 {
 			unsafe { *(&BarePthreadAttributes(attribute_address)) }
 		} else {
-			BarePthreadAttributes{}
+			BarePthreadAttributes{ guard_size: bare_thread_default_guard }
 		}
 		mut thread := unsafe { &BarePthread(__calloc(1, sizeof(BarePthread))) }
 		if thread == unsafe { nil } { return i32(C.ENOMEM) }
@@ -362,7 +380,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		thread.argument = argument
 		thread.state = 1
 		mut code := i32(0)
-		backend := bare_thread_create(bare_pthread_entry, thread, settings.stack_size, 0, &code)
+		backend := bare_thread_create_guarded(bare_pthread_entry, thread, settings.stack_size, settings.guard_size, 0, &code)
 		if backend == unsafe { nil } || code != 0 {
 			unsafe {
 				__free(thread.exit_target)

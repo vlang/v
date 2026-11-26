@@ -36,7 +36,8 @@ $if !native && (amd64 || arm64) {
 		mapping := context.mapping
 		if context.result != unsafe { nil } { unsafe { __free(context.result) } }
 		unsafe { __free(context) }
-		bare_thread_unmap_self(mapping.stack, mapping.stack_size, mapping.tls_mapping, mapping.tls_mapping_size)
+		base, total := mapping.bare_stack_mapping()
+		bare_thread_unmap_self(base, total, mapping.tls_mapping, mapping.tls_mapping_size)
 	}
 
 	fn bare_thread_block_signals() {
@@ -141,6 +142,10 @@ $if !native && (amd64 || arm64) {
 	// a partial pthread implementation. A library host creates its own threads.
 	@[export: 'v_bare_thread_create'; markused]
 	fn bare_thread_create(start BareThreadStart, arg voidptr, requested_stack uint, detached i32, error_code &i32) voidptr {
+		return bare_thread_create_guarded(start, arg, requested_stack, bare_thread_default_guard, detached, error_code)
+	}
+
+	fn bare_thread_create_guarded(start BareThreadStart, arg voidptr, requested_stack uint, guard uint, detached i32, error_code &i32) voidptr {
 		$if !v_bare_no_startup ? {
 			bare_compat_lock(&bare_credential_mutex)
 		}
@@ -151,11 +156,6 @@ $if !native && (amd64 || arm64) {
 		}
 		unsafe { *error_code = 0 }
 		stack_size := if requested_stack == 0 { u64(1 << 20) } else { u64(requested_stack) }
-		// Two header words and the kernel TID cell must fit before clone runs.
-		if stack_size < 16384 || stack_size > u64(max_int) - 4095 {
-			unsafe { *error_code = i32(Errno.einval) }
-			return unsafe { nil }
-		}
 		mut context := unsafe { &BareThreadContext(__calloc(1, sizeof(BareThreadContext))) }
 		if context == unsafe { nil } {
 			unsafe { *error_code = i32(Errno.enomem) }
@@ -166,7 +166,7 @@ $if !native && (amd64 || arm64) {
 		$if !v_bare_no_startup ? {
 			bare_credential_threads++
 		}
-		mapping, code := bare_thread_mapping_spawn(bare_thread_entry, u64(context), (stack_size + 4095) & ~u64(4095))
+		mapping, code := bare_thread_mapping_spawn(bare_thread_entry, u64(context), stack_size, u64(guard))
 		if code != .enoerror {
 			$if !v_bare_no_startup ? {
 				bare_credential_threads--

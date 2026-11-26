@@ -7,7 +7,7 @@
 _Static_assert(sizeof(pthread_t) == sizeof(uintptr_t), "native pthread handle");
 _Static_assert(sizeof(pthread_key_t) == sizeof(uint32_t), "native pthread key");
 _Static_assert(sizeof(pthread_once_t) == sizeof(uint32_t), "native pthread once");
-_Static_assert(sizeof(pthread_attr_t) >= 3 * sizeof(uintptr_t), "native pthread attributes");
+_Static_assert(sizeof(pthread_attr_t) >= 4 * sizeof(uintptr_t), "native pthread attributes");
 size_t v_pthread_attributes_size(void) { return sizeof(pthread_attr_t); }
 size_t v_pthread_jump_size(void) { return sizeof(jmp_buf); }
 uintptr_t v_pthread_call(uintptr_t function, uintptr_t argument) {
@@ -162,8 +162,14 @@ int pthread_getattr_np(pthread_t t, pthread_attr_t *a) { return v_pthread_getatt
 int pthread_attr_getstack(const pthread_attr_t *a, void **base, size_t *size) {
     return v_pthread_stack_bounds((uintptr_t)a, (uintptr_t)base, (uintptr_t)size);
 }
-/* The runtime allocates its stacks without separate guard mappings. */
-int pthread_attr_getguardsize(const pthread_attr_t *a, size_t *size) { (void)a; *size = 0; return 0; }
+extern int32_t v_pthread_attr_setguard(uintptr_t, uintptr_t);
+extern int32_t v_pthread_attr_getguard(uintptr_t, uintptr_t);
+int pthread_attr_setguardsize(pthread_attr_t *a, size_t size) {
+    return v_pthread_attr_setguard((uintptr_t)a, size);
+}
+int pthread_attr_getguardsize(const pthread_attr_t *a, size_t *size) {
+    return v_pthread_attr_getguard((uintptr_t)a, (uintptr_t)size);
+}
 extern int32_t v_pthread_atfork(uintptr_t, uintptr_t, uintptr_t);
 int pthread_atfork(void (*prepare)(void), void (*parent)(void), void (*child)(void)) {
     return v_pthread_atfork((uintptr_t)prepare, (uintptr_t)parent, (uintptr_t)child);

@@ -22,6 +22,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		mut line := [96]u8{}
 		mut used := 0
 		mut preceding := uint(0)
+		mut preceding_guard := uint(0)
 		for {
 			count := i64(sys_call3(u64(C.SYS_read), u64(fd), u64(&buffer[0]), u64(buffer.len)))
 			if count == -i64(C.EINTR) { continue }
@@ -36,7 +37,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 					continue
 				}
 				start, separator := bare_fortify_hex(&line, used, 0)
-				end, _ := bare_fortify_hex(&line, used, separator + 1)
+				end, last := bare_fortify_hex(&line, used, separator + 1)
+				no_access := last + 3 < used && line[last + 1] == `-` && line[last + 2] == `-`
+					&& line[last + 3] == `-`
 				used = 0
 				if start <= sample && sample < end {
 					mut base := start
@@ -50,10 +53,19 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 							preceding
 						}
 					}
+					// An implicit V worker uses the runtime's default one-page guard.
+					// The initial kernel stack has no separately allocated guard.
+					attributes.guard_size = if !main_thread && preceding == start
+						&& preceding_guard >= attributes.guard_size {
+						attributes.guard_size
+					} else {
+						uint(0)
+					}
 					attributes.stack_base = base
 					attributes.stack_size = end - base
 					return 0
 				}
+				preceding_guard = if no_access { end - start } else { uint(0) }
 				preceding = end
 			}
 		}
@@ -79,6 +91,7 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		mapping := unsafe { (&BareThreadContext(thread.backend)).mapping }
 		attributes.stack_base = uint(mapping.stack)
 		attributes.stack_size = uint(mapping.stack_size)
+		attributes.guard_size = uint(mapping.bare_stack_header().guard_size)
 		return 0
 	}
 	@[export: 'v_pthread_stack_bounds'; markused]
