@@ -3210,7 +3210,7 @@ fn test_a_lock_file_with_a_second_name_is_left_as_it_is() ! {
 		os.link(lock_path, os.join_path(directory, 'second-name'))!
 		for arguments in [['--tools', '--dry-run'], ['--tools']] {
 			message := wipe_failure(...arguments)
-			assert message == 'v wipe-cache: could not remove V tool cache folder ${tools}: the entries of vfmt stay: the lock file ${lock_path} cannot be opened: ${os.posix_get_error_msg(13)}', message
+			assert message == 'v wipe-cache: could not remove V tool cache folder ${tools}: the entries of vfmt stay: the lock file ${lock_path} cannot be opened: ${os.posix_get_error_msg(os.error_code_denied)}', message
 			assert os.is_dir(entry), message
 			assert !os.is_writable(lock_path), message
 		}
@@ -3653,7 +3653,7 @@ fn test_a_folder_is_listed_inspected_and_cleared_through_its_handle() ! {
 		if _ := lost.is_at(directory) {
 			assert false, 'a folder that cannot be looked at was compared'
 		} else {
-			assert err.msg() == os.posix_get_error_msg(9)
+			assert err.msg() == os.posix_get_error_msg(C.EBADF)
 		}
 		if os.geteuid() != 0 {
 			closed := os.join_path(directory, 'closed')
@@ -3665,7 +3665,7 @@ fn test_a_folder_is_listed_inspected_and_cleared_through_its_handle() ! {
 			if _ := dir.is_at(os.join_path(closed, 'folder')) {
 				assert false, 'a path that cannot be looked at was compared'
 			} else {
-				assert err.msg().contains(os.posix_get_error_msg(13)), err.msg()
+				assert err.msg().contains(os.posix_get_error_msg(os.error_code_denied)), err.msg()
 			}
 		}
 	}
@@ -3830,7 +3830,7 @@ fn test_a_build_lock_is_taken_through_the_open_folder() ! {
 			fd: -1
 		}.try_lock(name)
 		assert lost.state == .failed
-		assert lost.problem == 'cannot be opened: ${os.posix_get_error_msg(9)}'
+		assert lost.problem == 'cannot be opened: ${os.posix_get_error_msg(C.EBADF)}'
 		if os.geteuid() != 0 {
 			// A lock file that cannot be handed to the user it is made for is not left behind.
 			foreign := tool_cache_lock_name('vother', u32(os.getuid()) + 1)
@@ -4885,7 +4885,7 @@ fn test_a_moved_aside_folder_keeps_its_lock_files_while_one_of_them_is_not_the_w
 		if stuck_is_unopenable {
 			for arguments in [['--tools', '--dry-run'], ['--tools']] {
 				message := wipe_failure(...arguments)
-				assert message == 'v wipe-cache: could not remove Moved-aside V tool cache folder ${stuck_aside}: the lock file ${stuck_lock} cannot be opened: ${os.posix_get_error_msg(13)}', '${arguments}: ${message}'
+				assert message == 'v wipe-cache: could not remove Moved-aside V tool cache folder ${stuck_aside}: the lock file ${stuck_lock} cannot be opened: ${os.posix_get_error_msg(os.error_code_denied)}', '${arguments}: ${message}'
 				assert os.is_file(stuck_lock), message
 				assert os.is_file(beside_stuck), message
 			}
@@ -6179,7 +6179,7 @@ fn test_a_wipe_that_cannot_look_at_the_place_of_a_folder_fails() ! {
 			}
 			os.chmod(cache_v_dir, 0o700)!
 			assert os.is_dir(path), '${path}: ${failure} ${lines}'
-			assert failure.contains(os.posix_get_error_msg(13)), '${path}: ${failure} ${lines}'
+			assert failure.contains(os.posix_get_error_msg(os.error_code_denied)), '${path}: ${failure} ${lines}'
 			if path == tools {
 				assert failure.starts_with('v wipe-cache: could not look at V tool cache folder ${tools}: '), failure
 			} else if path != cache {
@@ -7425,7 +7425,7 @@ fn test_lock_files_no_build_can_use_in_a_moved_aside_folder_fail_the_wipe_on_the
 		mut failure := ''
 		run.wipe_tool_cache_directory(aside, parse_wipe_cache_options([], ['--tools'])!, mut
 			lines) or { failure = err.msg() }
-		assert failure.ends_with(': the lock file ${lock_paths[0]} cannot be opened: ${os.posix_get_error_msg(13)}'), failure
+		assert failure.ends_with(': the lock file ${lock_paths[0]} cannot be opened: ${os.posix_get_error_msg(os.error_code_denied)}'), failure
 		for lock_path in lock_paths {
 			assert os.is_file(lock_path), failure
 		}
@@ -8128,7 +8128,7 @@ fn test_a_folder_that_cannot_be_opened_is_named_with_the_reason() ! {
 		message := wipe_failure('--vcache')
 		os.chmod(closed, 0o700)!
 		// EACCES is 13 on every POSIX system V runs on.
-		assert message == 'v wipe-cache: could not remove V cache folder ${vcache}: ${closed}: ${os.posix_get_error_msg(13)}', message
+		assert message == 'v wipe-cache: could not remove V cache folder ${vcache}: ${closed}: ${os.posix_get_error_msg(os.error_code_denied)}', message
 	})!
 }
 
@@ -8427,17 +8427,14 @@ fn test_a_lock_file_that_cannot_be_opened_and_guards_nothing_does_not_fail_the_w
 
 // toolcache_test_contention_codes lists the error codes with which a system says that another process
 // holds the lock, and toolcache_test_refusal_codes the ones the manuals name for other failures of
-// the call, which say nothing of other processes. `EAGAIN` and `EDEADLK` have each other's number on
-// Linux and on the others.
+// the call, which say nothing of other processes. Outside Windows the numbers are the target's own,
+// since they differ between systems.
 fn toolcache_test_contention_codes() []int {
 	$if windows {
 		// ERROR_LOCK_VIOLATION
 		return [33]
-	} $else $if linux {
-		// EAGAIN, EACCES
-		return [11, 13]
 	} $else {
-		return [35, 13]
+		return [int(C.EAGAIN), C.EACCES]
 	}
 }
 
@@ -8446,12 +8443,9 @@ fn toolcache_test_refusal_codes() []int {
 		// ERROR_INVALID_FUNCTION (a share of WSL), ERROR_ACCESS_DENIED, ERROR_INVALID_HANDLE,
 		// ERROR_SHARING_VIOLATION, ERROR_NOT_SUPPORTED, ERROR_IO_PENDING
 		return [1, 5, 6, 32, 50, 997]
-	} $else $if linux {
-		// EINTR, EIO, EBADF, EFAULT, EINVAL, EDEADLK, ENOLCK, EOVERFLOW, EOPNOTSUPP
-		return [4, 5, 9, 14, 22, 35, 37, 75, 95]
 	} $else {
-		// EINTR, EIO, EBADF, EDEADLK, EFAULT, EINVAL, ENOLCK
-		return [4, 5, 9, 11, 14, 22, 77]
+		return [int(C.EINTR), C.EIO, C.EBADF, C.EFAULT, C.EINVAL, C.EDEADLK, C.ENOLCK, C.EOVERFLOW,
+			C.EOPNOTSUPP]
 	}
 }
 
@@ -8464,6 +8458,7 @@ fn test_only_a_code_that_says_so_means_that_a_build_lock_is_held() {
 		assert refused.problem == '', code.str()
 	}
 	for code in toolcache_test_refusal_codes() {
+		assert code !in toolcache_test_contention_codes(), code.str()
 		refused := tool_cache_refused_lock(code)
 		assert refused.state == .failed, code.str()
 		assert refused.problem.starts_with('cannot be locked: '), refused.problem
