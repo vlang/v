@@ -4496,4 +4496,30 @@ fn main() {
 ')
 	assert invalid.exit_code != 0, invalid.output
 	assert invalid.output.contains('borrowed by `item`'), invalid.output
+
+	parallel_assignment := prefix + r'
+fn main() {
+	mut b := Buffer{items: [1, 2, 3]}
+	{
+		mut placeholder := 0
+		mut item := &placeholder
+		mut n := 0
+		item, n = b.select_item(2), 1
+		b.other = 4
+		assert *item == 3
+		assert n == 1
+	}
+	b.items[1] = 7
+	assert b.items == [1, 7, 3]
+	assert b.other == 4
+}
+'
+	valid_parallel := run_ownership_check(v3_bin, 'alternative_return_parallel_assignment',
+		parallel_assignment)
+	assert valid_parallel.exit_code == 0, valid_parallel.output
+
+	invalid_parallel := run_ownership_check(v3_bin, 'alternative_return_parallel_assignment_conflict',
+		parallel_assignment.replace('b.other = 4', 'b.items[1] = 7'))
+	assert invalid_parallel.exit_code != 0, invalid_parallel.output
+	assert invalid_parallel.output.contains('borrowed by `item`'), invalid_parallel.output
 }

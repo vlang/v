@@ -7908,7 +7908,10 @@ fn (mut tc TypeChecker) ownership_commit_multi_assign_temp(temp_name string, lhs
 		} else {
 			lhs_name
 		}
-		tc.ownership_add_borrow(snap.var_name, target_borrower, snap.borrow.pos, snap.borrow.is_mut)
+		tc.ownership_add_borrow_info(snap.var_name, BorrowInfo{
+			...snap.borrow
+			borrower: target_borrower
+		})
 	}
 }
 
