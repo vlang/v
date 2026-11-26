@@ -723,6 +723,7 @@ fn test_an_instance_that_passes_an_argument_of_another_type_is_reported() {
 // call result, a value narrowed by `is` or `match`, one passed in the body of a
 // `$for`, a spread `...args`, and a local initialized by a `match` or a fn
 // literal, which a clone can type as an `int` and as the literal's return type.
+// Loop values also keep the element type inferred from a `match`.
 fn test_instances_that_pass_arguments_of_their_types_stay_valid() {
 	source := "type Value = int | string
 
@@ -823,6 +824,21 @@ fn sized[T](x T) u8 {
 	return take_u8(len)
 }
 
+fn check_loop_lengths[T](x T) {
+	lengths := [match typeof(x).name {
+		'u8' { u8(2) }
+		else { 4 }
+	}]
+	for length in lengths {
+		assert take_u8(length) == 2
+	}
+	aliases := lengths
+	for _, length in aliases {
+		copy := length
+		assert take_u8(copy) == 2
+	}
+}
+
 fn spread[T](args ...T) int {
 	return pair(...args)
 }
@@ -865,43 +881,13 @@ fn main() {
 	println(narrowed(Value('d'), 0))
 	println(fields(Named{ label: 'e' }, Value('f')))
 	println(sized(1))
+	check_loop_lengths(u8(1))
 	println(spread(1, 2))
 	println(callback(u))
 }
 "
 	for res in [check_program('call_arg_valid_check', source),
 		build_program('call_arg_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
-
-fn test_instances_keep_the_inferred_types_of_loop_values() {
-	source := "fn take_u8(n u8) u8 {
-	return n
-}
-
-fn sized[T](x T) {
-	lengths := [match typeof(x).name {
-		'u8' { u8(2) }
-		else { 4 }
-	}]
-	for length in lengths {
-		assert take_u8(length) == 2
-	}
-	aliases := lengths
-	for _, length in aliases {
-		copy := length
-		assert take_u8(copy) == 2
-	}
-}
-
-fn main() {
-	sized(u8(1))
-}
-"
-	for res in [check_program('inferred_loop_check', source),
-		build_program('inferred_loop_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}
