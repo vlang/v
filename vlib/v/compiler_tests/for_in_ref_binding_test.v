@@ -27,34 +27,53 @@ fn for_in_ref_binding_run_good(name string, src string) string {
 	return run.output.trim_space()
 }
 
-fn for_in_ref_binding_run_bad(name string, src string, expected string) {
+fn test_for_in_rejects_invalid_reference_bindings() {
 	root := for_in_ref_binding_fixture_dir()
 	defer { os.rmdir_all(root) or {} }
-	out := os.join_path(root, 'v3_${name}')
+	out := os.join_path(root, 'v3_for_in_ref_rejections')
 	src_path := out + '.v'
-	os.write_file(src_path, src) or { panic(err) }
-	result := os.exec([@VEXE, src_path, '-b', 'c', '-o', '${out}'])
-	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
-	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
+	source := 'struct Item {
+mut:
+	val int
 }
 
-// A local fixed array cannot be referenced outside `unsafe` at all (it is
-// stack-stored), independent of for-in - this must keep failing the same way
-// it does for any other `&` of a local fixed array.
-fn test_for_in_ref_of_local_fixed_array_requires_unsafe() {
-	for_in_ref_binding_run_bad('local_fixed_array_ref',
-		'struct Item {\nmut:\n\tval int\n}\n\nfn main() {\n\tmut arr := [3]Item{}\n\tfor item in &arr {\n\t\tprintln(item.val)\n\t}\n}\n',
-		'cannot reference fixed array `arr` outside `unsafe` blocks')
+// Taking the address of a local fixed array requires unsafe.
+fn reference_local_fixed_array() {
+	mut arr := [3]Item{}
+	for item in &arr {
+		println(item.val)
+	}
 }
 
-// A `mut` array *parameter* stores its underlying array via a pointer at the
-// ABI level even without any `&` in the for-in line. That must not be
-// mistaken for an explicit `for x in &arr` - plain `for item in arr` inside
-// such a function still binds `item` by value.
-fn test_for_in_over_mut_param_without_amp_is_still_by_value() {
-	for_in_ref_binding_run_bad('mut_param_no_amp_by_value',
-		'struct Item {\nmut:\n\tval int\n}\n\nfn touch(mut arr []Item) {\n\tfor item in arr {\n\t\titem.val = item.val * 1000\n\t}\n}\n\nfn main() {\n\tmut arr := []Item{}\n\tarr << Item{val: 1}\n\ttouch(mut arr)\n}\n',
-		'`item` is immutable, declare it with `mut` to make it mutable')
+// Plain iteration over a mut array parameter still binds items by value.
+fn touch(mut arr []Item) {
+	for item in arr {
+		item.val = item.val * 1000
+	}
+}
+
+fn main() {
+	reference_local_fixed_array()
+	mut arr := []Item{}
+	arr << Item{val: 1}
+	touch(mut arr)
+}
+'
+	os.write_file(src_path, source) or { panic(err) }
+	result := os.exec([@VEXE, src_path, '-b', 'c', '-nocolor', '-o', out])
+	assert result.exit_code != 0, result.output
+	expected := {
+		'\tfor item in &arr {':           'cannot reference fixed array `arr` outside `unsafe` blocks'
+		'\t\titem.val = item.val * 1000': '`item` is immutable, declare it with `mut` to make it mutable'
+	}
+	lines := source.split_into_lines()
+	diagnostics := result.output.split_into_lines().filter(it.contains(': error: '))
+	for statement, message in expected {
+		line := lines.index(statement) + 1
+		assert line > 0, statement
+		location := 'v3_for_in_ref_rejections.v:${line}:'
+		assert diagnostics.any(it.contains(location) && it.contains(message)), 'expected ${message} at ${location}\n${result.output}'
+	}
 }
 
 fn test_for_in_reference_and_mutation_bindings() {
