@@ -34,17 +34,6 @@ fn fn_value_run_bad(fixture_dir string, name string, src string) string {
 	return compile.output
 }
 
-fn fn_value_gen_c(fixture_dir string, name string, src string) string {
-	src_path := os.join_path(fixture_dir, 'v3_${name}.v')
-	os.write_file(src_path, src) or { panic(err) }
-	c_path := os.join_path(fixture_dir, 'v3_${name}.c')
-	os.rm(c_path) or {}
-	compile := os.exec([@VEXE, src_path, '-b', 'c', '-o', c_path])
-	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
-	assert os.exists(c_path), '${name}: missing generated C file ${c_path}'
-	return os.read_file(c_path) or { panic(err) }
-}
-
 fn fn_value_write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
@@ -86,24 +75,37 @@ struct FnValueRuntimeCase {
 	expected string
 }
 
-fn fn_value_run_good_batch(fixture_dir string, name string, cases []FnValueRuntimeCase) {
+fn fn_value_compile_good_batch(fixture_dir string, name string, cases []FnValueRuntimeCase) string {
 	mut files := map[string]string{}
 	mut imports := []string{cap: cases.len}
 	mut calls := []string{cap: cases.len}
-	for i, case in cases {
-		module_name := 'fixture_${i}'
+	for case in cases {
+		module_name := case.name
 		imports << 'import ${module_name}'
 		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
 		source := 'module ${module_name}\n\n' + case.source
-		files['${module_name}/${case.name}.v'] = source.replace_once('\nfn main()', '\npub fn exercise()')
+		files['${module_name}/fixture.v'] = source.replace_once('\nfn main()', '\npub fn exercise()')
 	}
 	files['main.v'] = "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
-	good_bin := fn_value_compile_good_project(fixture_dir, name, files)
-	for case in cases {
-		run := os.exec([good_bin, case.name])
-		assert run.exit_code == 0, '${case.name}: run failed: ${run.output}'
-		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	return fn_value_compile_good_project(fixture_dir, name, files)
+}
+
+fn fn_value_c_definition(generated string, function string) string {
+	_, definition := generated.rsplit_once('\n${function}(') or {
+		panic('missing generated function ${function}')
 	}
+	assert definition.all_before('\n').ends_with(') {'), function
+	return definition.all_before('\n}')
+}
+
+fn fn_value_check_literal_pointer(generated string, module_name string, result_type string) {
+	definition := fn_value_c_definition(generated, 'void ${module_name}__exercise')
+	declaration, _ := definition.split_once(' f = ${module_name}____anon_fn_') or {
+		panic('missing function literal assignment in ${module_name}\n${definition}')
+	}
+	pointer_type := declaration.all_after_last('\n').trim_space()
+	assert pointer_type.starts_with('_fn_ptr_'), definition
+	assert generated.contains('typedef ${result_type} (*${pointer_type})('), '${module_name}: ${pointer_type} must return ${result_type}'
 }
 
 fn fn_value_run_project_bad(fixture_dir string, name string, files map[string]string) string {
@@ -420,7 +422,7 @@ println(int_str(take(foo)))
 fn test_local_fn_literal_decl_types_are_callable() {
 	fixture_dir := fn_value_new_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	fn_value_run_good_batch(fixture_dir, 'fn_value_locals', [
+	cases := [
 		FnValueRuntimeCase{
 			name:     'fn_value_optional_void_local'
 			source:   optional_fn_src
@@ -503,7 +505,31 @@ fn main() {
 '
 			expected: '7'
 		},
-	])
+	]
+	bin := fn_value_compile_good_batch(fixture_dir, 'fn_value_locals', cases)
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	// Check the typedef used by each local declaration, since other cases emit their own.
+	fn_value_check_literal_pointer(generated, 'fn_value_optional_void_local', 'struct __v_result')
+	fn_value_check_literal_pointer(generated, 'fn_value_plain_int_local', 'i64')
+	optional_callback := fn_value_c_definition(generated, 'void fn_value_optional_callback_param__accept_optional_callback')
+	option_type := optional_callback.all_before(' callback)')
+	assert option_type.starts_with('__v_option__fn_ptr_'), optional_callback
+	assert generated.contains('typedef struct ${option_type} {'), option_type
+	assert !generated.contains('__v_option_fn_ptr:'), generated
+	shadow := fn_value_c_definition(generated, 'void fn_value_local_ident_shadow__exercise')
+	assert shadow.contains('i64 foo = 10'), shadow
+	assert shadow.contains('i64 f = foo'), shadow
+	call_shadow := fn_value_c_definition(generated, 'string fn_value_call_return_shadow__use')
+	assert call_shadow.contains('string s = f();'), call_shadow
+	assert !call_shadow.contains('i64 s = f();'), call_shadow
+	shadow_call := fn_value_c_definition(generated, 'void fn_value_local_call_shadows_global_return__exercise')
+	assert shadow_call.contains('i64 x ='), shadow_call
+	assert !shadow_call.contains('string x ='), shadow_call
+	for case in cases {
+		run := os.exec([bin, case.name])
+		assert run.exit_code == 0, '${case.name}: run failed: ${run.output}'
+		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	}
 }
 
 fn test_imported_generic_fn_alias_keeps_parameters() {
@@ -714,42 +740,6 @@ fn main() {
 ')
 	assert output.contains('expected 1 argument, but got 2'), output
 	assert output.count('error:') == 1, output
-}
-
-fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
-	fixture_dir := fn_value_new_fixture_dir()
-	defer { os.rmdir_all(fixture_dir) or {} }
-	optional_c := fn_value_gen_c(fixture_dir, 'fn_value_optional_void_local_c', optional_fn_src)
-	// `fn (i int) !` returns a result, so its fn pointer returns `__v_result`.
-	assert !optional_c.contains('__v_option f = __anon_fn'), optional_c
-	assert !optional_c.contains('__v_result f = __anon_fn'), optional_c
-	assert !optional_c.contains('i64 f = __anon_fn'), optional_c
-	assert optional_c.contains('typedef struct __v_result (*_fn_ptr_'), optional_c
-	assert optional_c.contains(' f = __anon_fn_'), optional_c
-
-	optional_callback_c := fn_value_gen_c(fixture_dir, 'fn_value_optional_callback_param_c',
-		optional_callback_param_src)
-	assert !optional_callback_c.contains('__v_option_fn_ptr:'), optional_callback_c
-	assert optional_callback_c.contains('struct __v_option__fn_ptr_'), optional_callback_c
-
-	plain_c := fn_value_gen_c(fixture_dir, 'fn_value_plain_int_local_c', plain_fn_src)
-	assert !plain_c.contains('__v_option f = __anon_fn'), plain_c
-	assert !plain_c.contains('i64 f = __anon_fn'), plain_c
-	assert plain_c.contains('typedef i64 (*_fn_ptr_'), plain_c
-	assert plain_c.contains(' f = __anon_fn_'), plain_c
-
-	shadow_c := fn_value_gen_c(fixture_dir, 'fn_value_local_ident_shadow_c', local_ident_shadow_src)
-	assert shadow_c.contains('i64 foo = 10'), shadow_c
-	assert shadow_c.contains('i64 f = foo'), shadow_c
-	call_shadow_c := fn_value_gen_c(fixture_dir, 'fn_value_call_return_shadow_c',
-		local_fn_value_call_return_shadow_src)
-	assert call_shadow_c.contains('string s = f();'), call_shadow_c
-	assert !call_shadow_c.contains('i64 s = f();'), call_shadow_c
-
-	shadow_call_c := fn_value_gen_c(fixture_dir, 'fn_value_local_call_shadows_global_return_c',
-		local_fn_call_shadow_global_return_src)
-	assert shadow_call_c.contains('i64 x ='), shadow_call_c
-	assert !shadow_call_c.contains('string x ='), shadow_call_c
 }
 
 fn test_imported_fn_values_keep_callable_types() {
