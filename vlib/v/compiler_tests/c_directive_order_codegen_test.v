@@ -594,19 +594,29 @@ fn main() {
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_and_run_stdarg_header() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_stdarg_project')
+fn directive_order_gen_and_run_standard_headers() string {
+	root := directive_order_fixture_dir('v3_c_directive_order_standard_headers_project')
 	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_stdarg' }\n")
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_standard_headers' }\n")
 	directive_order_write_file(root, 'main.v', 'module main
+
+fn main() {
+	println(C.stdarg_sum(3, 1, 2, 3).str())
+	println(C.inttypes_macro_widths().str())
+}
+')
+	directive_order_write_file(root, 'stdarg.v', 'module main
 
 #include "stdarg_user.h"
 
 fn C.stdarg_sum(count int, ...int) int
+')
+	directive_order_write_file(root, 'inttypes.v', 'module main
 
-fn main() {
-	println(C.stdarg_sum(3, 1, 2, 3).str())
-}
+#include <stdint.h>
+#include "inttypes_user.h"
+
+fn C.inttypes_macro_widths() int
 ')
 	directive_order_write_file(root, 'stdarg_user.h', '#include <stdarg.h>
 #include <stddef.h>
@@ -628,44 +638,22 @@ static inline int stdarg_sum(int count, ...) {
 	return total;
 }
 ')
-	bin_out := os.join_path(root, 'v3_c_directive_order_stdarg')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
-	assert result.exit_code == 0, result.output
-	run := os.exec([bin_out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '6', run.output
-	return os.read_file(bin_out + '.c') or { panic(err) }
-}
-
-fn directive_order_gen_and_run_inttypes_header() string {
-	root := directive_order_fixture_dir('v3_c_directive_order_inttypes_project')
-	defer { os.rmdir_all(root) or {} }
-	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_inttypes' }\n")
-	directive_order_write_file(root, 'main.v', 'module main
-
-#include <stdint.h>
-#include "inttypes_user.h"
-
-fn C.inttypes_macro_widths() int
-
-fn main() {
-	println(C.inttypes_macro_widths().str())
-}
-')
-	directive_order_write_file(root, 'inttypes_macros.h', '#include <inttypes.h>
-')
+	directive_order_write_file(root, 'inttypes_macros.h', '#include <inttypes.h>\n')
 	directive_order_write_file(root, 'inttypes_user.h', '#include "inttypes_macros.h"
 
 static inline int inttypes_macro_widths(void) {
 	return (int) (sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64));
 }
 ')
-	bin_out := os.join_path(root, 'v3_c_directive_order_inttypes')
-	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
+	bin_out := os.join_path(root, 'v3_c_directive_order_standard_headers')
+	result := os.exec([@VEXE, '-cross', '-b', 'c', '-o', bin_out, root])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().int() > 0, run.output
+	values := run.output.trim_space().split_into_lines()
+	assert values.len == 2, run.output
+	assert values[0] == '6', run.output
+	assert values[1].int() > 0, run.output
 	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
@@ -988,15 +976,12 @@ fn test_timerfd_header_keeps_sdk_declarations() {
 	assert directive_order_count(c_code, 'timerfd_gettime(') == 1, c_code
 }
 
-fn test_stdarg_in_native_header_provides_va_defs() {
-	c_code := directive_order_gen_and_run_stdarg_header()
+fn test_native_headers_supply_variadic_and_format_definitions() {
+	c_code := directive_order_gen_and_run_standard_headers()
 	assert c_code.contains('stdarg_user.h"'), c_code
 	assert !c_code.contains('offsetof(struct StdargThing, value)'), c_code
 	assert !c_code.contains('static inline int stdarg_sum(int count, ...)'), c_code
-}
 
-fn test_inttypes_in_native_header_keeps_format_macros() {
-	c_code := directive_order_gen_and_run_inttypes_header()
 	assert c_code.contains('inttypes_user.h"'), c_code
 	assert !c_code.contains('sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64)'), c_code
 }
