@@ -1087,25 +1087,13 @@ fn main() {
 	}
 }
 
-// layout_program uses arrays and maps of `T` where arrays and maps of fixed
-// element types are expected, and is the program of the layout tests below. Each
-// generic function has an instance with the elements it expects, and the ones
-// below have one with other elements too, which read them with the wrong size.
-const layout_declarations = 'type Counts8 = map[string]u8
-
-struct Wide {
+const wide_struct = 'struct Wide {
 	vals []u64
 }
 
-fn to_bytes[T](a []T) []u8 {
-	return []u8(a)
-}
+'
 
-fn widen[T](a []T) []u64 {
-	return a
-}
-
-fn assign[T](a []T) []u64 {
+const wide_array_operations = 'fn assign[T](a []T) []u64 {
 	mut b := []u64{}
 	b = a.clone()
 	return b
@@ -1117,7 +1105,21 @@ fn wrap[T](a []T) Wide {
 	}
 }
 
-fn sum(a []i64) i64 {
+'
+
+// The layout fixtures specialize arrays and maps of `T` with the element types
+// the body expects and with elements of a different size.
+const layout_declarations = 'type Counts8 = map[string]u8
+
+' + wide_struct + 'fn to_bytes[T](a []T) []u8 {
+	return []u8(a)
+}
+
+fn widen[T](a []T) []u64 {
+	return a
+}
+
+' + wide_array_operations + 'fn sum(a []i64) i64 {
 	return a.len
 }
 
@@ -1277,8 +1279,9 @@ fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() 
 // Arrays and maps with the expected elements stay valid, including wrapped
 // arrays. An array can also be converted element by element to an interface array.
 fn test_instances_with_the_expected_elements_stay_valid() {
-	source := layout_declarations + wrapped_layout_declarations + 'fn main() {\n' + layout_calls +
-		wrapped_layout_calls + '}\n'
+	source := layout_declarations + wrapped_layout_declarations + container_types +
+		container_conversions + container_nest_and_count + 'fn main() {\n' +
+		layout_calls + wrapped_layout_calls + container_type_calls + '}\n'
 	for res in [check_program('layout_valid_check', source),
 		build_program('layout_valid_build', source)] {
 		assert res.exit_code == 0, res.output
@@ -1315,10 +1318,7 @@ fn main() {
 	assert error_lines(valid.output) == [], valid.output
 }
 
-// container_type_program uses arrays and maps of `T` where ones of other element
-// types are expected. Each generic function has an instance with the elements
-// it expects.
-const container_type_program = 'struct Foo {
+const container_types = 'struct Foo {
 	a int
 }
 
@@ -1326,11 +1326,9 @@ struct Bar {
 	b string
 }
 
-struct Wide {
-	vals []u64
-}
+'
 
-fn as_u64[T](a []T) []u64 {
+const container_conversions = 'fn as_u64[T](a []T) []u64 {
 	return a
 }
 
@@ -1346,19 +1344,9 @@ fn pass[T](a []T) int {
 	return take_u64(a)
 }
 
-fn assign[T](a []T) []u64 {
-	mut b := []u64{}
-	b = a.clone()
-	return b
-}
+'
 
-fn wrap[T](a []T) Wide {
-	return Wide{
-		vals: a
-	}
-}
-
-fn nest[T](a []T) [][]u64 {
+const container_nest_and_count = 'fn nest[T](a []T) [][]u64 {
 	mut out := [][]u64{}
 	out << a
 	return out
@@ -1368,8 +1356,9 @@ fn counts[T](m map[string]T) map[string]int {
 	return m
 }
 
-fn main() {
-	println(as_u64([u64(1)]))
+'
+
+const container_type_calls = '	println(as_u64([u64(1)]))
 	println(as_bars([Bar{}]))
 	println(pass([u64(1)]))
 	println(assign([u64(1)]))
@@ -1379,6 +1368,9 @@ fn main() {
 		"a": 1
 	}))
 '
+
+const container_type_program = container_types + wide_struct + container_conversions +
+	wide_array_operations + container_nest_and_count + 'fn main() {\n' + container_type_calls
 
 // An instance that uses an array or a map as one whose elements have another
 // type, which its elements cannot be used as at all (`[]string` as `[]u64`,
@@ -1403,16 +1395,6 @@ fn test_an_instance_that_uses_an_array_or_map_of_another_type_is_reported() {
 			'52:9: cannot append `[]string` to `[][]u64`',
 			'57:9: cannot use `map[string]string` as type `map[string]int` in return argument',
 		], res.output
-	}
-}
-
-// The instances with the expected elements stay valid.
-fn test_instances_with_arrays_and_maps_of_the_expected_type_stay_valid() {
-	source := container_type_program + '}\n'
-	for res in [check_program('container_type_valid_check', source),
-		build_program('container_type_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
 	}
 }
 
