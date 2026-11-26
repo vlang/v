@@ -564,10 +564,15 @@ field of the callback. This lets the caller take a job from a separate pool befo
 creating the visitor. The job moves with the callback and the borrow stays tied to
 the factory receiver.
 
+A factory interface may name a type parameter for that value. A generic walker can
+declare the parameter as `thread.Transferable` and use the same factory interface for
+different job types. Each concrete implementation still has to satisfy the factory contract.
+
 A mutable factory method can initialize owned visitor state with the builtin `pop()` on
-a mutable array field. All borrowed captures must refer to atomics. The checker examines
-the pool element types, including nested storage, to ensure the pool cannot hold an atomic
-borrowed by a visitor. Each call moves the popped element into the visitor.
+a mutable array field. The callback may borrow atomics, mutexes, or records containing
+those handles. The checker examines nested pool storage and rejects opaque fields and
+reachable atomics. For a callback that can access a borrowed mutex, the pool must
+also exclude reachable mutexes. Each call moves the popped element into the visitor.
 
 ## Full example
 
