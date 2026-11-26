@@ -273,23 +273,6 @@ fn check_with_modules_env(name string, env string, files map[string]string, modu
 	}
 }
 
-const operator_program = 'import advlib
-
-struct Vec[T] {
-	x T
-}
-
-fn (a Vec[T]) + (b Vec[T]) Vec[T] {
-	return Vec[T]{
-		x: a.x.name
-	}
-}
-
-fn main() {
-	println(advlib.total([Vec[int]{1}, Vec[int]{2}]).x)
-}
-'
-
 const dispatch_program = 'import advlib
 
 struct Box[T] {
@@ -393,22 +376,52 @@ fn test_a_method_of_a_program_generic_type_keeps_the_body_of_every_library_insta
 // The instances below are asked for only in the body of a library instance.
 // Each check has to report the member that the concrete type lacks.
 
-fn test_an_operator_applied_in_a_library_body_checks_the_program_instance() {
-	check := check_with_library('operator', operator_program)
-	assert check.res.exit_code == 1, check.res.output
-	assert error_lines(check.res.output) == ['9:10: `int` has no property `name`'], check.res.output
+fn test_calls_in_library_bodies_check_program_instances() {
+	check := check_with_library('operator_method_and_interface', 'import advlib
+
+struct Vec[T] {
+	x T
 }
 
-fn test_a_method_called_in_a_library_body_checks_the_program_instance() {
-	check := check_with_library('method', 'import advlib\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label() string {\n\treturn b.v.name\n}\n\nfn main() {\n\tprintln(advlib.label_of(Box[int]{ v: 1 }))\n}\n')
-	assert check.res.exit_code == 1, check.res.output
-	assert error_lines(check.res.output) == ['8:13: `int` has no property `name`'], check.res.output
+fn (a Vec[T]) + (b Vec[T]) Vec[T] {
+	return Vec[T]{
+		x: a.x.name
+	}
 }
 
-fn test_an_interface_type_argument_checks_the_program_instance_its_call_reaches() {
-	check := check_with_library('interface_arg', 'import advlib\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) name() string {\n\treturn b.v.name\n}\n\ninterface Named {\n\tname() string\n}\n\nfn main() {\n\txs := [Named(Box[int]{ v: 1 })]\n\tprintln(advlib.names_of(xs))\n}\n')
+struct Box[T] {
+	v T
+}
+
+fn (b Box[T]) label() string {
+	return b.v.name
+}
+
+struct NamedBox[T] {
+	v T
+}
+
+fn (b NamedBox[T]) name() string {
+	return b.v.name
+}
+
+interface Named {
+	name() string
+}
+
+fn main() {
+	println(advlib.total([Vec[int]{1}, Vec[int]{2}]).x)
+	println(advlib.label_of(Box[int]{ v: 1 }))
+	xs := [Named(NamedBox[int]{ v: 1 })]
+	println(advlib.names_of(xs))
+}
+')
 	assert check.res.exit_code == 1, check.res.output
-	assert error_lines(check.res.output) == ['8:13: `int` has no property `name`'], check.res.output
+	errors := error_lines(check.res.output)
+	assert errors.len == 3, check.res.output
+	assert '9:10: `int` has no property `name`' in errors, check.res.output
+	assert '18:13: `int` has no property `name`' in errors, check.res.output
+	assert '26:13: `int` has no property `name`' in errors, check.res.output
 }
 
 fn test_a_comptime_for_lowered_after_an_interface_call_in_a_library_body_is_checked() {
