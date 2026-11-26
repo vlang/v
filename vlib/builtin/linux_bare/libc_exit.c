@@ -1,6 +1,10 @@
 #include "libc_compat.h"
 #include <stdlib.h>
 #include <unistd.h>
+/* Standalone executables omit crtbegin. A supplied CRT's strong definition
+ * takes precedence; hidden visibility keeps each image's identity private. */
+__attribute__((weak, visibility("hidden"))) void *__dso_handle = &__dso_handle;
+
 struct v_exit_callback {
     struct v_exit_callback *next;
     union {

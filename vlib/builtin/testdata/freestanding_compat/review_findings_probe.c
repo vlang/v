@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <wctype.h>
+#include <wchar.h>
 #define CHECK(c) do { if (!(c)) { fprintf(stderr, "review regression line %d\n", __LINE__); return 1; } } while (0)
 static uint64_t bits(double x) { uint64_t b; memcpy(&b, &x, 8); return b; }
 static int numeric(void) {
@@ -42,7 +43,7 @@ static int constants(void) {
     CHECK(!restored && page>0 && tick>0 && p==page && t==tick && !pe && !te);
     return 0;
 }
-struct input_state { FILE *stream; int ready, kind; };
+struct input_state { FILE *stream; int ready, kind; char *line; size_t capacity; };
 static void unlock_stream(void *s) { if (s) funlockfile(s); }
 static void *input_worker(void *arg) {
     struct input_state *s=arg;
@@ -53,20 +54,28 @@ static void *input_worker(void *arg) {
     if (s->kind==3) { char b; (void)fread(&b,1,1,s->stream); }
     else if (s->kind==4) { char b[8]; (void)fgets(b,sizeof b,s->stream); }
     else if (s->kind==5) { int n; (void)fscanf(s->stream,"%d",&n); }
+    else if (s->kind==6) {
+        ssize_t (*volatile direct)(char **,size_t *,FILE *)=getline;
+        (void)direct(&s->line,&s->capacity,s->stream);
+    } else if (s->kind==7) (void)getline(&s->line,&s->capacity,s->stream);
     else (void)fgetc(s->stream);
     pthread_cleanup_pop(0);
     return (void *)17;
 }
 static int input_cancellation(void) {
-    for (int kind=0; kind<6; ++kind) {
-        int p[2]; CHECK(!pipe(p)); struct input_state s={.stream=fdopen(p[0],"r"),.kind=kind};
+    for (int kind=0; kind<10; ++kind) {
+        int p[2]={-1,-1};
+        if(kind<8) CHECK(!pipe(p));
+        else { p[0]=open("/dev/null",O_RDONLY); CHECK(p[0]>=0); }
+        struct input_state s={.stream=fdopen(p[0],"r"),.kind=kind<8 ? kind : kind-2};
         CHECK(s.stream && !setvbuf(s.stream,NULL,_IONBF,0));
         pthread_t t; CHECK(!pthread_create(&t,NULL,input_worker,&s));
         while (!__atomic_load_n(&s.ready,__ATOMIC_ACQUIRE)) usleep(1000);
         if (kind==1) { usleep(50000); CHECK(!pthread_cancel(t)); }
         void *result; CHECK(!pthread_join(t,&result) && result==PTHREAD_CANCELED);
         CHECK(!ftrylockfile(s.stream)); funlockfile(s.stream);
-        CHECK(!fclose(s.stream) && !close(p[1]));
+        CHECK(!fclose(s.stream)); free(s.line);
+        if(p[1]>=0) CHECK(!close(p[1]));
     }
     return 0;
 }
@@ -76,25 +85,36 @@ static void *output_worker(void *arg) {
     pthread_cancel(pthread_self());
     if (s->kind==0) (void)fputc('A',s->stream);
     else if (s->kind==1) (void)fprintf(s->stream,"%s","A");
+    else if (s->kind==4) {
+        int (*volatile direct)(int,FILE *)=fputc_unlocked;
+        (void)direct('A',s->stream);
+    } else if (s->kind==5) (void)putc_unlocked('A',s->stream);
     else (void)fflush(s->kind==2 ? s->stream : NULL);
     return (void *)17;
 }
 static int output_cancellation(void) {
-    for(int kind=0;kind<4;++kind) {
-        int p[2]; CHECK(!pipe(p)); int flags=fcntl(p[1],F_GETFL);
-        CHECK(flags>=0 && !fcntl(p[1],F_SETFL,flags|O_NONBLOCK));
-        char buffer[4096]; memset(buffer,'x',sizeof buffer);
-        while(write(p[1],buffer,sizeof buffer)>0) {}
-        CHECK(errno==EAGAIN && !fcntl(p[1],F_SETFL,flags));
-        struct output_state s={.stream=fdopen(p[1],"w"),.kind=kind};
-        CHECK(s.stream && !setvbuf(s.stream,NULL,kind<2 ? _IONBF : _IOFBF,4096));
-        if(kind>=2) CHECK(fputc('A',s.stream)=='A');
+    for(int kind=0;kind<8;++kind) {
+        int p[2]={-1,-1}; char buffer[4096];
+        if(kind<6) {
+            CHECK(!pipe(p)); int flags=fcntl(p[1],F_GETFL);
+            CHECK(flags>=0 && !fcntl(p[1],F_SETFL,flags|O_NONBLOCK));
+            memset(buffer,'x',sizeof buffer);
+            while(write(p[1],buffer,sizeof buffer)>0) {}
+            CHECK(errno==EAGAIN && !fcntl(p[1],F_SETFL,flags));
+        } else { p[1]=open("/dev/null",O_WRONLY); CHECK(p[1]>=0); }
+        struct output_state s={.stream=fdopen(p[1],"w"),.kind=kind<6 ? kind : kind-2};
+        int buffered=kind==2 || kind==3;
+        CHECK(s.stream && !setvbuf(s.stream,NULL,buffered ? _IOFBF : _IONBF,4096));
+        if(buffered) CHECK(fputc('A',s.stream)=='A');
         pthread_t t; void *result;
         CHECK(!pthread_create(&t,NULL,output_worker,&s) && !pthread_join(t,&result));
         CHECK(result==PTHREAD_CANCELED && !ftrylockfile(s.stream)); funlockfile(s.stream);
-        CHECK(!fcntl(p[0],F_SETFL,O_NONBLOCK));
-        while(read(p[0],buffer,sizeof buffer)>0) {}
-        CHECK(!fclose(s.stream) && !close(p[0]));
+        if(p[0]>=0) {
+            CHECK(!fcntl(p[0],F_SETFL,O_NONBLOCK));
+            while(read(p[0],buffer,sizeof buffer)>0) {}
+        }
+        CHECK(!fclose(s.stream));
+        if(p[0]>=0) CHECK(!close(p[0]));
     }
     return 0;
 }
@@ -114,6 +134,20 @@ static int captures(void) {
         for(unsigned j=0;j<3;++j) CHECK(m[j].rm_so==expected[i][j].rm_so && m[j].rm_eo==expected[i][j].rm_eo);
         regfree(&re);
     }
+    const struct { const char *pattern,*text; int start,end,capture_start,capture_end; } refs[]={
+        {"^(a|ab)b?\\1$","abab",0,4,0,2},
+        {"(a|ab)b?\\1","abab",0,4,0,2},
+        {"(a|ab)b?\\1","zzababyy",2,6,2,4},
+        {"^(a|ab)b?\\1$","aa",0,2,0,1},
+        {"^(a|ab)b?\\1$","aba",0,3,0,1},
+    };
+    for(unsigned i=0;i<sizeof refs/sizeof *refs;++i) {
+        regex_t re; regmatch_t m[3]; CHECK(!regcomp(&re,refs[i].pattern,REG_EXTENDED));
+        CHECK(!regexec(&re,refs[i].text,3,m,0));
+        CHECK(m[0].rm_so==refs[i].start && m[0].rm_eo==refs[i].end);
+        CHECK(m[1].rm_so==refs[i].capture_start && m[1].rm_eo==refs[i].capture_end);
+        regfree(&re);
+    }
     CHECK(setlocale(LC_CTYPE,"C.UTF-8"));
     CHECK(iswlower(0xdf) && iswlower(0xaa) && iswupper(0x3d2));
     CHECK(iswupper(0x2160) && iswalpha(0x2160) && iswalnum(0x2160) && !iswpunct(0x2160));
@@ -124,6 +158,19 @@ static int captures(void) {
         CHECK(regexec(&re,strings[i],0,NULL,0)==(i==3 ? REG_NOMATCH : 0)); regfree(&re);
     }
     CHECK(setlocale(LC_CTYPE,"C")); return 0;
+}
+static int column_widths(void) {
+    CHECK(setlocale(LC_CTYPE,"C.UTF-8"));
+    const struct { wchar_t value; int width; } rows[]={
+        {0,0},{L'A',1},{L'\n',-1},{0x7f,-1},{0x301,0},{0x200b,0},
+        {0x61c,0},{0x202a,0},{0x1160,0},{0x11a8,0},{0xd7b0,0},{0xd7cb,0},
+        {0x200c,0},{0x200d,0},{0xfe0f,0},{0x00ad,1},{0x600,1},{0x903,1},
+        {0x115f,2},{0x754c,2},{0x1f600,2},
+    };
+    for(unsigned i=0;i<sizeof rows/sizeof *rows;++i) CHECK(wcwidth(rows[i].value)==rows[i].width);
+    CHECK(wcwidth(L'A')+wcwidth(0x200b)+wcwidth(L'B')==2);
+    CHECK(setlocale(LC_CTYPE,"C")); CHECK(wcwidth(0x200b)==-1);
+    return 0;
 }
 static int conversion(void) {
     const char *from[]={"UTF-16","UTF-32","UCS-2","UTF-8","UTF-16","UTF-32"};
@@ -188,7 +235,7 @@ static int quoting(void) {
 }
 int v_review_findings_probe(void) {
     CHECK(!numeric() && !constants() && !input_cancellation() && !output_cancellation() && !captures());
-    CHECK(!conversion() && !rwlocks() && !quoting());
+    CHECK(!conversion() && !rwlocks() && !quoting() && !column_widths());
     return 0;
 }
 #ifdef HOSTED_REVIEW

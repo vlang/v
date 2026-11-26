@@ -121,10 +121,10 @@ FILE *fopencookie(void *cookie, const char *mode, cookie_io_functions_t f) {
 int __uflow(FILE *file) V_STDIO_IO_RETURN(int, v_stdio_getchar((uintptr_t)file))
 int __overflow(FILE *file, int value) {
     if (value == EOF) return fflush(file);
-    V_STDIO_RETURN(int, v_stdio_putchar(value, (uintptr_t)file))
+    V_STDIO_IO_RETURN(int, v_stdio_putchar(value, (uintptr_t)file))
 }
 ssize_t __getdelim(char **line, size_t *capacity, int delimiter, FILE *file)
-    V_STDIO_RETURN(ssize_t, v_stdio_getdelim((uintptr_t)line, (uintptr_t)capacity, delimiter, (uintptr_t)file))
+    V_STDIO_IO_RETURN(ssize_t, v_stdio_getdelim((uintptr_t)line, (uintptr_t)capacity, delimiter, (uintptr_t)file))
 FILE *tmpfile64(void) V_STDIO_RETURN(FILE *, (FILE *)v_stdio_tmpfile())
 FILE *fopen64(const char *path, const char *mode) { return (FILE *)v_stdio_fopen((uintptr_t)path, (uintptr_t)mode); }
 int fseeko64(FILE *file, off64_t offset, int whence) V_STDIO_RETURN(int, v_stdio_seek((uintptr_t)file, offset, whence))

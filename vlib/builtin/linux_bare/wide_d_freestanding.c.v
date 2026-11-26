@@ -81,7 +81,8 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 	fn bare_wide_width(value u32) i32 {
 		if value == 0 { return 0 }
 		if bare_wide_class(value, 8, 0) == 0 { return -1 }
-		return i32(utf8_rune_visible_width(rune(value), grapheme_break_property(rune(value))))
+		if bare_wide_property(value, bare_width_zero_ranges) { return 0 }
+		return if bare_wide_property(value, bare_width_double_ranges) { i32(2) } else { i32(1) }
 	}
 	@[export: 'v_wide_length'; markused]
 	fn bare_wide_length(address uint, limit uint) uint {

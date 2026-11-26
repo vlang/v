@@ -1,10 +1,11 @@
 import os
 import v.cmdexec
 
-fn review_findings_command(args []string) {
+fn review_findings_command(args []string) string {
 	timeout := if args.len == 1 { 15_000 } else { 180_000 }
 	result := cmdexec.run_with_timeout(args[0], args[1..], timeout)
 	assert result.exit_code == 0, '${args}: ${result.output}'
+	return result.output
 }
 
 fn test_freestanding_native_review_regressions() ! {
@@ -52,4 +53,31 @@ fn test_freestanding_native_review_regressions() ! {
 		review_findings_command(args)
 		review_findings_command([binary])
 	}
+	ctor_object := os.join_path(root, 'ctor.o')
+	review_findings_command(['g++', '-O2', '-fno-exceptions', '-fno-rtti', '-c',
+		os.join_path(fixture, 'review_ctor.cpp'), '-o', ctor_object])
+	host_source := os.join_path(root, 'host.c')
+	os.write_file(host_source, 'extern int v_review_ctor_probe(void); int main(void) { return v_review_ctor_probe(); }')!
+	review_findings_command(['gcc', host_source, ctor_object, '-o', host])
+	assert review_findings_command([host]) == 'destructor ran\n'
+	ctor_source := 'module main\n#flag ${ctor_object}\nfn C.v_review_ctor_probe() int\nfn main() { exit(C.v_review_ctor_probe()) }\n'
+	os.write_file(source, ctor_source)!
+	for production in [false, true] {
+		binary := os.join_path(root, 'ctor_${production}')
+		mut args := [@VEXE, '-no-retry-compilation', '-gc', 'none', '-syscalls', '-shim-libc',
+			'-cc', 'gcc', '-ldflags', '-static', '-o', binary]
+		if production { args << '-prod' }
+		args << source
+		review_findings_command(args)
+		assert review_findings_command([binary]) == 'destructor ran\n'
+	}
+	// Explicit CRT objects must override the fallback identity without a duplicate definition.
+	crt_begin := review_findings_command(['gcc', '-print-file-name=crtbegin.o']).trim_space()
+	crt_end := review_findings_command(['gcc', '-print-file-name=crtend.o']).trim_space()
+	assert os.is_file(crt_begin) && os.is_file(crt_end)
+	os.write_file(source, ctor_source + '#flag ${crt_begin}\n#flag ${crt_end}\n')!
+	binary := os.join_path(root, 'ctor_crt')
+	review_findings_command([@VEXE, '-no-retry-compilation', '-gc', 'none', '-syscalls', '-shim-libc',
+		'-cc', 'gcc', '-ldflags', '-static', '-o', binary, source])
+	assert review_findings_command([binary]) == 'destructor ran\n'
 }

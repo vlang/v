@@ -566,6 +566,12 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		unsafe { buckets[position] = uint(node) }
 		return true
 	}
+	fn bare_pattern_same_tags(left &i64, right &i64, groups int) bool {
+		for index in 0 .. groups * 2 + 2 {
+			if unsafe { left[index] != right[index] } { return false }
+		}
+		return true
+	}
 	fn bare_pattern_preferred(left &i64, right &i64, re &BarePattern) int {
 		for group in 0 .. re.groups + 1 {
 			start := unsafe { left[group * 2] }
@@ -714,7 +720,9 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 				mut dominated := false
 				for prior != unsafe { nil } {
 					comparison := bare_pattern_preferred(bare_pattern_tags(prior), tags, re)
-					if comparison == 0 || (!re.backrefs && comparison < 0) {
+					// Preference ties can hide distinct captured strings needed by a backreference.
+					identical := comparison == 0 && (!re.backrefs || bare_pattern_same_tags(bare_pattern_tags(prior), tags, re.groups))
+					if identical || (!re.backrefs && comparison < 0) {
 						dominated = true
 						break
 					}

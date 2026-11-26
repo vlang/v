@@ -44,9 +44,14 @@ on targets without that clock; it does not silently substitute UTC or assume a l
 it does not validate malformed addresses.
 
 Native stdio descriptor I/O honors deferred pthread cancellation and releases internal
-stream locks during cancellation. Native `pthread_once` initializers can throw C++ exceptions;
+stream locks during cancellation. Optimized GNU-header entry points share that behavior.
+Native `pthread_once` initializers can throw C++ exceptions;
 failed initialization resets the control so a later call can retry. The standalone Linux ABI
 emits unwind information for the native dependency's C++ exception runtime.
+Standalone executable links supply a hidden weak C++ DSO identity for destructor registration.
+Explicit CRT objects can supply their own identity. Finalization keeps each identity separate.
+Native `wcwidth` counts columns per code point, including zero-width format controls and
+medial/trailing Hangul characters. Width tables use the bundled Unicode version.
 
 Unqualified `UTF-16`, `UTF-32`, and `UCS-2` iconv names use the supported Linux target's
 little-endian byte order. A UTF-16/32 input BOM overrides that default. Wide character classes
