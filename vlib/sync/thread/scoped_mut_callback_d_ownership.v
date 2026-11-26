@@ -9,6 +9,9 @@ mut:
 
 // new_scoped_mut_callback moves mutable callback state into a scoped callback.
 pub fn new_scoped_mut_callback[^scope, A, R Transferable, T](value T) ScopedMutCallback[^scope, A, R] {
+	$if autofree {
+		$compile_error('scoped mutable callbacks require ownership moves, which autofree does not track')
+	}
 	$if T !is MutCallable[A, R] {
 		$compile_error('the callback state must implement call with the requested signature')
 	}

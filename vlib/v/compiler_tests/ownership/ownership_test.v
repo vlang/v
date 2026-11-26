@@ -5834,7 +5834,7 @@ fn (mut visitor ScopedVisitor) drop() {
 fn test_ownership_scoped_mut_callback_joins_before_releasing_owned_state() {
 	v3_bin := ownership_build_v3()
 	name := 'scoped_mut_callback_join'
-	result := run_ownership_check_with_flags(v3_bin, name, scoped_mut_callback_fixture + r'
+	source := scoped_mut_callback_fixture + r'
 fn main() {
 	counter := arc.new_atomic(0)
 	{
@@ -5857,11 +5857,16 @@ fn main() {
 	}
 	assert counter.load() == 15
 }
-', ['-ownership', '-gc', 'none'])
+'
+	result := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-gc', 'none'])
 	assert result.exit_code == 0, result.output
 	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
+
+	autofree := run_ownership_check_with_flags(v3_bin, name, source, ['-ownership', '-autofree'])
+	assert autofree.exit_code != 0, autofree.output
+	assert autofree.output.contains('scoped mutable callbacks require ownership moves'), autofree.output
 }
 
 fn test_ownership_scoped_mut_callback_requires_the_join_to_bound_its_payload() {
