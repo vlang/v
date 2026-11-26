@@ -786,9 +786,9 @@ fn main() {
 	assert_independent_array_element_errors(compile, ['19:9', '27:9'])
 }
 
-fn test_owned_aggregate_and_interface_comparisons_reject_mutating_overloads() {
+fn test_owned_comparison_and_membership_reject_mutating_equality() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_comparison_overloads', "struct Name {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_equality_overloads', "struct Name {
 	text string
 }
 
@@ -855,39 +855,23 @@ fn check_interface_equality() {
 	println(last_matches(Named(InterfaceName{ text: 'hello' })))
 }
 
-fn main() {
-	check_aggregate_equality()
-	check_aggregate_inequality()
-	check_interface_equality()
-}
-", '-enable-globals -nocolor')
-	// Locations include the prepended Drop interface.
-	assert ownership_error_lines(compile) == [
-		independent_array_element_error_at('22:9', 'E'),
-		independent_array_element_error_at('26:9', 'E'),
-		independent_array_element_error_at('53:9', 'InterfaceEntry'),
-	], compile.output
-}
-
-fn test_owned_membership_rejects_mutating_overloads() {
-	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_membership_overloads', "struct Needle {
+struct Needle {
 	text string
 }
 
-struct E {
+struct NeedleEntry implements Drop {
 	value Needle
 }
 
-__global entries []E
+__global needle_entries []NeedleEntry
 
 fn (left Needle) == (right Needle) bool {
-	entries.delete_last()
+	needle_entries.delete_last()
 	return left.text == right.text
 }
 
 fn last_value_is_in(haystack []Needle) bool {
-	return entries.last().value in haystack
+	return needle_entries.last().value in haystack
 }
 
 struct MembershipEntry implements Drop {
@@ -913,10 +897,12 @@ fn last_length_with_membership(needle MembershipNeedle, haystack []MembershipNee
 	return consume(membership_entries.last().name.len, needle in haystack)
 }
 
+fn (mut value NeedleEntry) drop() {}
+
 fn (mut value MembershipEntry) drop() {}
 
 fn check_direct_membership() {
-	entries = [E{ value: Needle{ text: 'hello' } }]
+	needle_entries = [NeedleEntry{ value: Needle{ text: 'hello' } }]
 	println(last_value_is_in([Needle{ text: 'hello' }]))
 }
 
@@ -926,6 +912,9 @@ fn check_membership_sibling() {
 }
 
 fn main() {
+	check_aggregate_equality()
+	check_aggregate_inequality()
+	check_interface_equality()
 	check_direct_membership()
 	check_membership_sibling()
 }
@@ -933,7 +922,10 @@ fn main() {
 	// Locations include the prepended Drop interface.
 	assert ownership_error_lines(compile) == [
 		independent_array_element_error_at('22:9', 'E'),
-		independent_array_element_error_at('45:17', 'MembershipEntry'),
+		independent_array_element_error_at('26:9', 'E'),
+		independent_array_element_error_at('53:9', 'InterfaceEntry'),
+		independent_array_element_error_at('89:9', 'NeedleEntry'),
+		independent_array_element_error_at('112:17', 'MembershipEntry'),
 	], compile.output
 }
 
