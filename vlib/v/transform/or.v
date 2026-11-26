@@ -709,8 +709,14 @@ fn (mut t Transformer) enum_from_info(expr_id flat.NodeId) ?EnumFromInfo {
 	if t.enum_from_call_uses_user_method(expr_id) {
 		return none
 	}
-	enum_id := t.a.child(&fn_node, 0)
-	enum_type_source_id := t.enum_type_from_node(enum_id) or { return none }
+	// The checker's result payload retains the enum's declaring module.
+	checked_type := t.raw_checker_node_type(expr_id)
+	checked_enum := t.optional_base_type(checked_type)
+	enum_type_source_id := if checked_enum != checked_type && checked_enum in t.enum_types {
+		checked_enum
+	} else {
+		t.enum_type_from_node(t.a.child(&fn_node, 0)) or { return none }
+	}
 	arg_id := t.a.child(&expr, 1)
 	arg_node := t.a.nodes[int(arg_id)]
 	mut arg_type := if arg_node.kind in [.string_literal, .string_interp] {
@@ -853,7 +859,7 @@ fn (mut t Transformer) transform_enum_from_or_expr(id flat.NodeId, node flat.Nod
 	val_name := t.new_temp('enum_val')
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	arg_expr := t.transform_expr(info.arg_id)
+	arg_expr := t.transform_value_operand(info.arg_id)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
 	if info.integer_input {
@@ -897,7 +903,7 @@ fn (mut t Transformer) try_lower_enum_from_call(call_id flat.NodeId, _node flat.
 	})
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	arg_expr := t.transform_expr(info.arg_id)
+	arg_expr := t.transform_value_operand(info.arg_id)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
 	if info.integer_input {
