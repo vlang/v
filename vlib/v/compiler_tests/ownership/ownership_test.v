@@ -6786,3 +6786,98 @@ fn main() {
 		assert result.output.contains('cannot implement scoped callback factory method `create`'), result.output
 	}
 }
+
+const scoped_factory_owned_input_fixture = r'
+import sync.arc
+import sync.thread as transport
+
+struct SearchJob {
+	label string
+}
+
+struct InputVisitor implements Drop {
+	counter &arc.Atomic[int]
+	job SearchJob
+}
+
+pub fn (mut visitor InputVisitor) call(delta int) int {
+	return visitor.counter.add(delta + visitor.job.label.len)
+}
+
+fn (mut visitor InputVisitor) drop() {
+	visitor.counter.add(1)
+}
+
+interface InputFactory[^scope] {
+mut:
+	create(job SearchJob) transport.ScopedMutCallback[^scope, int, int]
+}
+
+struct JobInputFactory[^scope] {
+	counter &^scope arc.Atomic[int]
+}
+
+fn (mut factory JobInputFactory[^scope]) create(job SearchJob) transport.ScopedMutCallback[^scope, int, int] {
+	return transport.new_scoped_mut_callback[int, int, InputVisitor](InputVisitor{
+		counter: factory.counter
+		job: job
+	})
+}
+
+fn run[^scope](mut factory InputFactory[^scope], mut jobs []SearchJob) {
+	mut handles := []thread int{}
+	defer { handles.wait() }
+	for _ in 0 .. 3 {
+		job := jobs.pop()
+		visitor := factory.create(job)
+		handles << spawn transport.invoke_scoped_mut_callback(visitor, 1)
+	}
+}
+
+fn main() {
+	counter := arc.new_atomic(0)
+	mut factory := JobInputFactory[^scope]{counter: &counter}
+	mut jobs := [
+		SearchJob{label: "stay".clone()},
+		SearchJob{label: "a".clone()},
+		SearchJob{label: "bb".clone()},
+		SearchJob{label: "ccc".clone()},
+	]
+	run(mut factory, mut jobs)
+	assert counter.load() == 12
+	assert jobs.len == 1
+	assert jobs[0].label == "stay"
+}
+'
+
+fn test_ownership_scoped_factory_owned_input_moves_job_into_box() {
+	v3_bin := ownership_build_v3()
+	name := 'scoped_factory_owned_input'
+	result := run_ownership_check_with_flags(v3_bin, name, scoped_factory_owned_input_fixture,
+		['-ownership', '-gc', 'none'])
+	assert result.exit_code == 0, result.output
+	out := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_ownership_scoped_factory_owned_input_rejects_hidden_or_borrowed_inputs() {
+	v3_bin := ownership_build_v3()
+	diagnostics := [
+		'cannot implement scoped callback factory method `create`',
+		'cannot move `visitor` because it borrows `factory`',
+	]
+	for i, fixture in [
+		scoped_factory_owned_input_fixture.replace('job: job', 'job: forward_job(job)') + r'
+fn forward_job(job SearchJob) SearchJob {
+	return job
+}
+',
+		scoped_factory_owned_input_fixture.replace('create(job SearchJob)', 'create(job &SearchJob)')
+			.replace('job: job', 'job: *job').replace('factory.create(job)', 'factory.create(&job)'),
+	] {
+		result := run_ownership_check(v3_bin, 'scoped_factory_owned_input_rejected', fixture)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains(diagnostics[i]), result.output
+	}
+}

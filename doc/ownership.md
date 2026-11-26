@@ -553,11 +553,16 @@ fresh box built from an inline state initializer. Borrowed fields must come from
 fields of its receiver. The worker's join keeps that receiver alive and prevents its use
 while the callback runs.
 
-An interface method with no explicit parameters can promise this factory behavior by
+An interface method can promise this factory behavior by
 returning a `ScopedMutCallback` for a named lifetime of its receiver. The compiler checks
 every concrete implementation when it is used as that interface. Within a checked
 thread group, the method can create fresh callbacks from the same factory while
 earlier callbacks are still running. Other access to the factory waits for the join.
+
+The method may take one transferable value by value and move it directly into one
+field of the callback. This lets the caller take a job from a separate pool before
+creating the visitor. The job moves with the callback and the borrow stays tied to
+the factory receiver.
 
 A mutable factory method can initialize owned visitor state with the builtin `pop()` on
 a mutable array field. All borrowed captures must refer to atomics. The checker examines
