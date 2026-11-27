@@ -55,6 +55,16 @@ pub fn tool_specs() []ToolSpec {
 	specs << spec_doctor()
 	specs << spec_veb_routes()
 	specs << spec_skills()
+	// VLS delegation, only when vls is installed.
+	if find_vls_binary() != none {
+		specs << spec_vls_check()
+		specs << spec_vls_hover()
+		specs << spec_vls_definition()
+		specs << spec_vls_references()
+		specs << spec_vls_rename()
+		specs << spec_vls_symbols()
+		specs << spec_vls_completion()
+	}
 	// Running code.
 	specs << spec_run()
 	specs << spec_eval()
