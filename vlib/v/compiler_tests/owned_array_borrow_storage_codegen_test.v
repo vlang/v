@@ -600,52 +600,6 @@ pub fn check() {
 	}
 }
 
-fn test_array_sum_storage_preserves_owned_payloads() {
-	output := borrow_storage_run('array_sum_payloads', borrow_storage_drop_decls + '
-type Bucket = []Res | int
-fn keep(mut values []Res) ?Bucket { return ?Bucket(Bucket(values)) }
-fn absent() ?Bucket { return none }
-fn explicit_absent() ?Bucket { return ?Bucket(none) }
-fn check_optional_sum() {
-	assert absent() == none
-	assert explicit_absent() == none
-	mut empty := []Res{}
-	empty_bucket := keep(mut empty) or { panic("missing empty payload") }
-	if empty_bucket is []Res { assert empty_bucket.len == 0 } else { assert false }
-	drop_owned(empty_bucket)
-	mut values := [Res{1}]
-	bucket := keep(mut values) or { panic("missing owned payload") }
-	if bucket is []Res {
-		assert bucket[0].id == 101
-		assert values[0].id == 1
-	} else { assert false }
-	drop_owned(bucket)
-	drop_owned(values)
-}
-
-type Storage = []Res | string
-fn keep_string(mut source Storage) Storage { return source }
-fn check_string_sum() {
-	mut source := Storage("payload".repeat(4))
-	retained := keep_string(mut source)
-	drop_owned(source)
-	if retained is string {
-		assert retained == "payload".repeat(4)
-	} else { assert false }
-	drop_owned(retained)
-	println("ok")
-}
-
-fn main() {
-	println("optional_sum")
-	check_optional_sum()
-	println("string_sum")
-	check_string_sum()
-}
-')
-	assert output == 'optional_sum\ndrop 101\ndrop 1\nstring_sum\nok'
-}
-
 fn test_nested_optional_sum_cast_is_rejected() {
 	nested := borrow_storage_compile('nested_optional_sum_cast', '
 type Bucket = []int | int
@@ -749,15 +703,54 @@ fn check_generic_optional() {
 	drop_owned(other_retained)
 }
 
+type Bucket = []Res | int
+fn keep_bucket(mut values []Res) ?Bucket { return ?Bucket(Bucket(values)) }
+fn absent() ?Bucket { return none }
+fn explicit_absent() ?Bucket { return ?Bucket(none) }
+fn check_optional_bucket() {
+	assert absent() == none
+	assert explicit_absent() == none
+	mut empty := []Res{}
+	empty_bucket := keep_bucket(mut empty) or { panic("missing empty payload") }
+	if empty_bucket is []Res { assert empty_bucket.len == 0 } else { assert false }
+	drop_owned(empty_bucket)
+	mut values := [Res{1}]
+	bucket := keep_bucket(mut values) or { panic("missing owned payload") }
+	if bucket is []Res {
+		assert bucket[0].id == 101
+		assert values[0].id == 1
+	} else { assert false }
+	drop_owned(bucket)
+	drop_owned(values)
+}
+
+type StringStorage = []Res | string
+fn keep_string(mut source StringStorage) StringStorage { return source }
+fn check_string_sum() {
+	mut source := StringStorage("payload".repeat(4))
+	retained := keep_string(mut source)
+	drop_owned(source)
+	if retained is string {
+		assert retained == "payload".repeat(4)
+	} else { assert false }
+	drop_owned(retained)
+	println("ok")
+}
+
 fn main() {
 	println("generic_optional")
 	check_generic_optional()
 ${calls.join('\n')}
 	println("inactive")
 	check_inactive()
+	println("optional_bucket")
+	check_optional_bucket()
+	println("string_sum")
+	check_string_sum()
 }
 '
 	expected << 'inactive\nok'
+	expected << 'optional_bucket\ndrop 101\ndrop 1\nstring_sum\nok'
 	output := borrow_storage_run('wrapped_mut_array', source)
 	assert output == expected.join('\n')
 }
