@@ -883,32 +883,6 @@ ${rejected_calls.join('\n')}
 	}
 }
 
-fn test_empty_owned_array_deletion_preserves_invalid_index_diagnostics() {
-	indices := {
-		'negative': -1
-		'past_end': 2
-	}
-	mut source := 'interface Drop { mut: drop() }
-struct Handle implements Drop { id int }
-fn (mut h Handle) drop() {}
-'
-	mut branches := []string{cap: indices.len}
-	for name, index in indices {
-		source += 'fn delete_empty_range_${name}(mut values []Handle) { values.delete_many(${index}, 0) }
-'
-		branches << '\t\t"${name}" {
-			mut values := [Handle{1}]
-			delete_empty_range_${name}(mut values[..])
-		}'
-	}
-	binary := borrow_storage_compile_dispatch('empty_delete_invalid', source, branches)
-	for name, index in indices {
-		run := os.exec([binary, name])
-		assert run.exit_code != 0, '${index}: ${run.output}'
-		assert run.output.contains('array.delete: index out of range (i,a.len):${index}, 1'), '${index}: ${run.output}'
-	}
-}
-
 fn test_owned_sum_box_and_array_trim_cleanup_match_gc_allocators() {
 	source := '@[has_globals]
 module main
@@ -1101,7 +1075,7 @@ ${calls.join('\n')}
 	assert rejected_fail_lines.sorted() == fail_lines, build.output
 }
 
-fn test_invalid_owned_array_growth_preserves_diagnostics_without_cloning() {
+fn test_invalid_owned_array_growth_and_deletion_preserve_diagnostics() {
 	mut source := 'interface Drop { mut: drop() }
 struct Handle implements Drop { id int }
 fn (mut h Handle) drop() {}
@@ -1147,7 +1121,20 @@ fn grow_${name}(mut values []${element}, amount int) {
 			}
 		}
 	}
-	binary := borrow_storage_compile_dispatch('invalid_growth', source, branches)
+	indices := {
+		'negative': -1
+		'past_end': 2
+	}
+	for name, index in indices {
+		source += 'fn delete_empty_range_${name}(mut values []Handle) { values.delete_many(${index}, 0) }
+'
+		branches << '\t\t"${name}" {
+			mut values := [Handle{1}]
+			delete_empty_range_${name}(mut values[..])
+		}'
+		diagnostics[name] = 'array.delete: index out of range (i,a.len):${index}, 1'
+	}
+	binary := borrow_storage_compile_dispatch('invalid_array_operations', source, branches)
 	for name, diagnostic in diagnostics {
 		run := os.exec([binary, name])
 		assert run.exit_code != 0, '${name}: ${run.output}'
