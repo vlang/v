@@ -889,7 +889,9 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	ownership_merge_drop_lists_by_name(mut dst.sum_local_heap_sources, src.sum_local_heap_sources)
 	ownership_merge_bool_map(mut dst.sum_promoted_local_bindings, src.sum_promoted_local_bindings)
 	for expr, source in src.sum_value_transfer_sources {
-		dst.sum_value_transfer_sources[expr] = source
+		// map values are copied by header, not by bytes; the source may live in
+		// the disposable round arena that is released right after this merge.
+		dst.sum_value_transfer_sources[expr] = source.clone()
 	}
 	for expr, moved in src.sum_move_reads {
 		if moved { dst.sum_move_reads[expr] = true }
@@ -2870,6 +2872,20 @@ fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem
 	mut not_converged_idx := -1
 	for {
 		rounds++
+		// One round allocates a fresh set of maps for every function. Keep those
+		// scratch allocations in a disposable arena, and promote only the inferred
+		// results before releasing it; otherwise a round over ~18k functions stays
+		// live for the whole compilation in a `-prealloc` compiler.
+		mut r := tc
+		mut round_scope := voidptr(0)
+		$if prealloc {
+			round_scope = unsafe { prealloc_scope_begin() }
+			r = tc.fork_for_parallel_check()
+			r.verbose = tc.verbose
+			r.ownership_return_item_by_name = tc.ownership_return_item_by_name
+			r.ownership_return_edges = []u64{cap: items.len * 8}
+			r.ownership_return_record_calls = true
+		}
 		mut scanned_items := 0
 		mut changed_items := []int{}
 		for item_idx := items.len - 1; item_idx >= 0; item_idx-- {
@@ -2881,53 +2897,68 @@ fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem
 				break
 			}
 			scanned_items++
-			tc.ownership_return_current_item = item_idx
-			tc.ownership_return_item_changed = false
+			r.ownership_return_current_item = item_idx
+			r.ownership_return_item_changed = false
 			item := items[item_idx]
-			item_before := tc.ownership_return_prescan_fn_state_count(item.name)
-			tc.cur_file = item.file
-			tc.cur_module = item.module
-			node := tc.a.nodes[item.idx]
+			item_before := r.ownership_return_prescan_fn_state_count(item.name)
+			r.cur_file = item.file
+			r.cur_module = item.module
+			node := r.a.nodes[item.idx]
 			if node.typ == 0 || node.typ == flat.source_type_void {
-				previous_fn := tc.ownership_state().cur_fn
-				tc.ownership_state().cur_fn = item.name
-				tc.ownership_prescan_sum_local_returns(item.name, node)
-				tc.ownership_state().cur_fn = previous_fn
+				previous_fn := r.ownership_state().cur_fn
+				r.ownership_state().cur_fn = item.name
+				r.ownership_prescan_sum_local_returns(item.name, node)
+				r.ownership_state().cur_fn = previous_fn
 				continue
 			}
-			tc.ownership_prescan_fn_return_node(item.name, node)
-			if tc.ownership_return_item_changed
-				|| tc.ownership_return_prescan_fn_state_count(item.name) != item_before {
+			r.ownership_prescan_fn_return_node(item.name, node)
+			if r.ownership_return_item_changed
+				|| r.ownership_return_prescan_fn_state_count(item.name) != item_before {
 				changed_items << item_idx
 			}
 		}
-		if not_converged_idx >= 0 {
-			break
+		$if prealloc {
+			// Detach before building the next round's state so those allocations
+			// go to the parent arena; the scope's storage stays readable until freed.
+			unsafe { prealloc_scope_leave(round_scope) }
 		}
-		tc.timing_profile('  [ttime]   ownership return round ${rounds}: ${scanned_items} scanned, ${changed_items.len} changed')
-		if changed_items.len == 0 {
-			break
-		}
-		pending = []bool{len: items.len}
-		mut queued := 0
-		mut changed_set := []bool{len: items.len}
-		for changed_idx in changed_items {
-			changed_set[changed_idx] = true
-		}
-		for edge in tc.ownership_return_edges {
-			callee_idx := int(edge >> 32)
-			if !changed_set[callee_idx] {
-				continue
+		mut done := not_converged_idx >= 0
+		mut next_pending := pending
+		if !done {
+			r.timing_profile('  [ttime]   ownership return round ${rounds}: ${scanned_items} scanned, ${changed_items.len} changed')
+			if changed_items.len == 0 {
+				done = true
+			} else {
+				next_pending = []bool{len: items.len}
+				mut queued := 0
+				mut changed_set := []bool{len: items.len}
+				for changed_idx in changed_items {
+					changed_set[changed_idx] = true
+				}
+				for edge in r.ownership_return_edges {
+					callee_idx := int(edge >> 32)
+					if !changed_set[callee_idx] {
+						continue
+					}
+					caller_idx := int(edge & 0xffff_ffff)
+					if !next_pending[caller_idx] {
+						next_pending[caller_idx] = true
+						queued++
+					}
+				}
+				if queued == 0 {
+					done = true
+				}
 			}
-			caller_idx := int(edge & 0xffff_ffff)
-			if !pending[caller_idx] {
-				pending[caller_idx] = true
-				queued++
-			}
 		}
-		if queued == 0 {
+		$if prealloc {
+			tc.ownership_merge_parallel_check_worker(r)
+			unsafe { prealloc_scope_free_after(round_scope) }
+		}
+		if done {
 			break
 		}
+		pending = next_pending.clone()
 	}
 	tc.ownership_return_record_calls = false
 	tc.ownership_return_current_item = -1
@@ -4329,8 +4360,16 @@ fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnS
 	mut not_converged_idx := -1
 	for {
 		rounds++
-		tc.ownership_param_changed_items = []bool{len: items.len}
-		tc.ownership_param_track_changes = true
+		mut r := tc
+		mut round_scope := voidptr(0)
+		$if prealloc {
+			round_scope = unsafe { prealloc_scope_begin() }
+			r = tc.fork_for_parallel_check()
+			r.verbose = tc.verbose
+			r.ownership_param_item_by_name = tc.ownership_param_item_by_name
+		}
+		r.ownership_param_changed_items = []bool{len: items.len}
+		r.ownership_param_track_changes = true
 		mut scanned_items := 0
 		for item_idx, item in items {
 			if !pending[item_idx] {
@@ -4341,26 +4380,39 @@ fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnS
 				break
 			}
 			scanned_items++
-			tc.ownership_param_current_item = item_idx
-			tc.cur_file = item.file
-			tc.cur_module = item.module
-			tc.ownership_prescan_fn_owned_call_params(item.name, tc.a.nodes[item.idx])
+			r.ownership_param_current_item = item_idx
+			r.cur_file = item.file
+			r.cur_module = item.module
+			r.ownership_prescan_fn_owned_call_params(item.name, r.a.nodes[item.idx])
 		}
-		tc.ownership_param_track_changes = false
-		if not_converged_idx >= 0 {
-			break
+		r.ownership_param_track_changes = false
+		$if prealloc {
+			unsafe { prealloc_scope_leave(round_scope) }
 		}
-		mut changed_items := 0
-		for changed in tc.ownership_param_changed_items {
-			if changed {
-				changed_items++
+		mut done := not_converged_idx >= 0
+		mut next_pending := pending
+		if !done {
+			mut changed_items := 0
+			for changed in r.ownership_param_changed_items {
+				if changed {
+					changed_items++
+				}
+			}
+			r.timing_profile('  [ttime]   ownership params round ${rounds}: ${scanned_items} scanned, ${changed_items} changed')
+			if changed_items == 0 {
+				done = true
+			} else {
+				next_pending = r.ownership_param_changed_items.clone()
 			}
 		}
-		tc.timing_profile('  [ttime]   ownership params round ${rounds}: ${scanned_items} scanned, ${changed_items} changed')
-		if changed_items == 0 {
+		$if prealloc {
+			tc.ownership_merge_parallel_check_worker(r)
+			unsafe { prealloc_scope_free_after(round_scope) }
+		}
+		if done {
 			break
 		}
-		pending = tc.ownership_param_changed_items.clone()
+		pending = next_pending.clone()
 	}
 	tc.ownership_param_track_changes = false
 	tc.ownership_param_current_item = -1
