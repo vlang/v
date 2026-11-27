@@ -172,8 +172,8 @@ fn main() {
 	assert builtin_max_len_uses > 0, c_code
 }
 
-fn test_struct_constant_storage_and_enum_powers() {
-	good_bin := review_cgen_run_batch('struct_constant_storage_and_enum_powers', [
+fn test_constant_storage_enum_powers_and_nested_arrays() {
+	good_bin := review_cgen_run_batch('constant_storage_enum_powers_and_nested_arrays', [
 		ReviewCgenCase{'struct_const_sum_type_runtime_init', 'interface Value {}
 
 struct Empty {}
@@ -225,176 +225,6 @@ fn main() {
 	println(u64(BackedFlagPower.next))
 }
 ', '8\n9\n10\n4\n8\n32\n16\n32'},
-	], map[string]string{})
-	c_code := os.read_file(good_bin + '.c') or { panic(err) }
-	assert c_code.contains('fixture_0__Holder fixture_0__holder;'), c_code
-	assert c_code.contains('fixture_0__holder = (fixture_0__Holder){'), c_code
-	assert c_code.contains('._object = (fixture_0__Empty*)(memdup('), c_code
-}
-
-fn test_literal_and_imported_enum_method_calls() {
-	review_cgen_run_batch('literal_and_imported_enum_method_calls', [
-		ReviewCgenCase{'int_literal_receiver', 'fn main() {
-	println(255.hex_full())
-	println(4294967296.hex_full())
-}
-', '00000000000000ff\n0000000100000000'},
-		ReviewCgenCase{'imported_enum_method_call', 'module main\n\nimport ast\nimport token\n\nfn main() {\n\tprintln(ast.render(token.Kind.word))\n}\n', 'word'},
-	], {
-		'v.mod':         'Module { name: "literal_and_imported_enum_method_calls" }\n'
-		'token/token.v': "module token\n\npub enum Kind {\n\tword\n}\n\npub fn (kind Kind) str() string {\n\treturn 'word'\n}\n"
-		'ast/ast.v':     'module ast\n\nimport token\n\npub fn render(kind token.Kind) string {\n\treturn kind.str()\n}\n'
-	})
-}
-
-fn test_c_output_arguments_and_mut_parameters() {
-	good_bin := review_cgen_run_batch('c_output_arguments_and_mut_parameters', [
-		ReviewCgenCase{'c_int_array_data_abi', "#include <stdio.h>
-
-fn main() {
-	mut first := []int{len: 1}
-	mut second := []int{len: 1}
-	C.sscanf(c'4 2', c'%d %d', first.data, second.data)
-	println(int_str(first[0] + second[0]))
-}
-", '6'},
-		ReviewCgenCase{'mut_parameter_power_assign', 'struct Number {
-mut:
-	value int
-}
-
-fn square(mut number Number) {
-	number.value **= 2
-}
-
-fn main() {
-	mut number := Number{
-		value: 3
-	}
-	square(mut number)
-	println(int_str(number.value))
-}
-', '9'},
-	], map[string]string{})
-	c_code := os.read_file(good_bin + '.c') or { panic(err) }
-	abi_body := review_cgen_body(c_code, 'void fixture_0__exercise(')
-	assert abi_body.contains('int* _cabi_out_values_'), abi_body
-	assert abi_body.contains('free(_cabi_out_values_'), abi_body
-	square_body := review_cgen_body(c_code, 'void fixture_1__square(')
-	compact := square_body.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('__v_pow_i64('), square_body
-	assert !compact.contains('(i64*)__v_pow_i64('), square_body
-}
-
-fn test_array_and_struct_field_power_assign() {
-	good_bin := review_cgen_run_batch('array_and_struct_field_power_assign', [
-		ReviewCgenCase{'array_power_assign', 'struct IntList {
-mut:
-	values []int
-}
-
-fn (list IntList) [] (index int) int {
-	return list.values[index]
-}
-
-fn (mut list IntList) []= (index int, value int) {
-	list.values[index] = value
-}
-
-struct Exponent {
-	value int
-}
-
-fn (a Exponent) ** (b Exponent) Exponent {
-	return Exponent{
-		value: a.value * 10 + b.value
-	}
-}
-
-struct ExponentList {
-mut:
-	values []Exponent
-}
-
-fn (list ExponentList) [] (index int) Exponent {
-	return list.values[index]
-}
-
-fn (mut list ExponentList) []= (index int, value Exponent) {
-	list.values[index] = value
-}
-
-fn main() {
-	mut values := [2, 3]
-	values[0] **= 3
-	println(int_str(values[0]))
-	mut direct := [Exponent{
-		value: 4
-	}]
-	direct[0] **= Exponent{
-		value: 5
-	}
-	println(int_str(direct[0].value))
-	mut list := IntList{
-		values: [3]
-	}
-	list[0] **= 2
-	println(int_str(list.values[0]))
-	mut exponents := ExponentList{
-		values: [Exponent{
-			value: 2
-		}]
-	}
-	exponents[0] **= Exponent{
-		value: 3
-	}
-	println(int_str(exponents.values[0].value))
-}
-', '8\n45\n9\n23'},
-		ReviewCgenCase{'struct_field_power_assign', 'struct Exponent {
-	value int
-}
-
-fn (a Exponent) ** (b Exponent) Exponent {
-	return Exponent{
-		value: a.value * 10 + b.value
-	}
-}
-
-struct Box {
-mut:
-	value Exponent
-}
-
-fn main() {
-	mut box := Box{
-		value: Exponent{
-			value: 2
-		}
-	}
-	box.value **= Exponent{
-		value: 3
-	}
-	println(int_str(box.value.value))
-}
-', '23'},
-	], map[string]string{})
-	c_code := os.read_file(good_bin + '.c') or { panic(err) }
-	array_body := review_cgen_body(c_code, 'void fixture_0__exercise(')
-	array_compact := array_body.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert array_compact.contains('array__set(_a0,_i0,&(i64[]){((i64)__v_pow_i64('), array_body
-	assert array_compact.contains('array__set(_a1,_i1,&(fixture_0__Exponent[]){__v3_internal_symbol_op_fixture_0__Exponent__pow(*(fixture_0__Exponent*)array_get(*_a1,_i1),'), array_body
-	assert array_compact.contains('__v3_internal_symbol_op_fixture_0__IntList__op_index_set('), array_body
-	assert array_compact.contains('__v3_internal_symbol_op_fixture_0__ExponentList__op_index_set('), array_body
-	assert array_compact.contains('__v3_internal_symbol_op_fixture_0__Exponent__pow('), array_body
-	assert !c_code.contains(' ** '), c_code
-	field_body := review_cgen_body(c_code, 'void fixture_1__exercise(')
-	field_compact := field_body.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert field_compact.contains('box.value=__v3_internal_symbol_op_fixture_1__Exponent__pow(box.value,(fixture_1__Exponent){.value=3});'), field_body
-}
-
-fn test_addressed_constants_and_nested_array_types() {
-	good_bin := review_cgen_run_batch('addressed_constants_and_nested_array_types', [
 		ReviewCgenCase{'addressed_inferred_array_const', 'const vals = [1, 2, 3]
 
 fn array_len(values &[]int) int {
@@ -492,95 +322,23 @@ fn main() {
 ', '0\n0\n0\n2\n3\n1\n0\n0\n0\n0\n17\n11\n12\n13\n14\n15\n16'},
 	], map[string]string{})
 	c_code := os.read_file(good_bin + '.c') or { panic(err) }
+	assert c_code.contains('fixture_0__Holder fixture_0__holder;'), c_code
+	assert c_code.contains('fixture_0__holder = (fixture_0__Holder){'), c_code
+	assert c_code.contains('._object = (fixture_0__Empty*)(memdup('), c_code
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('Arrayfixture_0__vals;'), c_code
-	assert compact.contains('fixture_0__vals=new_array_from_c_array(3,3,sizeof(i64),'), c_code
-	assert !compact.contains('i64fixture_0__vals[3]'), c_code
+	assert compact.contains('Arrayfixture_2__vals;'), c_code
+	assert compact.contains('fixture_2__vals=new_array_from_c_array(3,3,sizeof(i64),'), c_code
+	assert !compact.contains('i64fixture_2__vals[3]'), c_code
 }
 
-fn test_numbered_identifiers_and_user_free_method() {
-	good_bin := review_cgen_run_batch('numbered_identifiers_and_user_free_method', [
-		ReviewCgenCase{'numbered_string_identifier_collision', 'struct Named {
-	_str_2 string
+fn test_literal_enum_pointer_and_mut_receivers() {
+	review_cgen_run_batch('literal_enum_pointer_and_mut_receivers', [
+		ReviewCgenCase{'int_literal_receiver', 'fn main() {
+	println(255.hex_full())
+	println(4294967296.hex_full())
 }
-
-fn main() {
-	_str_1 := "local"
-	value := Named{
-		_str_2: "field"
-	}
-	println(_str_1 + ":" + value._str_2)
-}
-', 'local:field'},
-		ReviewCgenCase{'user_defined_free_method', 'struct Handle {
-mut:
-	freed bool
-}
-
-fn (mut h Handle) free() {
-	h.freed = true
-	println("freed")
-}
-
-fn main() {
-	mut h := Handle{}
-	h.free()
-}
-', 'freed'},
-	], map[string]string{})
-	c_code := os.read_file(good_bin + '.c') or { panic(err) }
-	body := review_cgen_body(c_code, 'void fixture_0__exercise(')
-	assert body.contains('string v__str_1 = '), body
-	assert body.contains('.v__str_2 = '), body
-	assert body.contains('value.v__str_2'), body
-}
-
-fn test_imported_free_calls() {
-	review_cgen_run_batch('imported_free_calls', [
-		ReviewCgenCase{'module_qualified_free_call', 'module main
-
-import m
-
-fn main() {
-	values := [2, 3]
-	println(int_str(m.free(values)))
-}
-', '4'},
-		ReviewCgenCase{'selective_import_free_call', 'module main
-
-import m { free }
-
-fn main() {
-	values := [3, 4]
-	println(int_str(free(values)))
-}
-', '5'},
-	], {
-		'v.mod': 'Module { name: "imported_free_calls" }\n'
-		'm/m.v': 'module m
-
-pub fn free(values []int) int {
-	return values[0] + values.len
-}
-'
-	})
-}
-
-fn test_sum_types_with_colliding_import_aliases() {
-	review_cgen_run_batch('sum_types_with_colliding_import_aliases', [
-		ReviewCgenCase{'sum_container_variant_alias_collision', 'module main\n\nimport other\nimport sub.tast\n\ntype Mixed = map[string]other.Value | map[string]tast.Value\n\nfn score(value Mixed) int {\n\tif value is map[string]tast.Value {\n\t\titems := value as map[string]tast.Value\n\t\treturn items["x"].n\n\t}\n\treturn -1\n}\n\nfn main() {\n\tvalue := Mixed(map[string]tast.Value{\n\t\t"x": tast.Value{\n\t\t\tn: 71\n\t\t}\n\t})\n\tprintln(int_str(score(value)))\n}\n', '71'},
-		ReviewCgenCase{'sum_name_import_alias_collision', 'module main\n\nimport a.tast as other_tast\nimport b.tast\n\nfn score(value tast.Value) int {\n\tif value is tast.Target {\n\t\ttarget := value as tast.Target\n\t\treturn target.n\n\t}\n\treturn -1\n}\n\nfn main() {\n\t_ := other_tast.Value(other_tast.Target{})\n\tvalue := tast.Value(tast.Target{\n\t\tn: 79\n\t})\n\tprintln(int_str(score(value)))\n}\n', '79'},
-	], {
-		'v.mod':            'Module { name: "sum_types_with_colliding_import_aliases" }\n'
-		'other/value.v':    'module other\n\npub struct Value {\npub:\n\tn int\n}\n'
-		'sub/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
-		'a/tast/tast.v':    'module tast\n\npub struct Target {}\npub struct Second {}\npub type Value = Target | Second\n'
-		'b/tast/tast.v':    'module tast\n\npub struct First {}\npub struct Target {\npub:\n\tn int\n}\npub type Value = First | Target\n'
-	})
-}
-
-fn test_pointer_and_mut_receivers() {
-	review_cgen_run_batch('pointer_and_mut_receivers', [
+', '00000000000000ff\n0000000100000000'},
+		ReviewCgenCase{'imported_enum_method_call', 'module main\n\nimport ast\nimport token\n\nfn main() {\n\tprintln(ast.render(token.Kind.word))\n}\n', 'word'},
 		ReviewCgenCase{'pointer_receiver_on_pointer_param', 'struct S {
 	n int
 }
@@ -619,7 +377,268 @@ fn main() {
 	println(int_str(cmd.arg("a").arg("b").count()))
 }
 ', '2'},
+	], {
+		'v.mod':         'Module { name: "literal_and_imported_enum_method_calls" }\n'
+		'token/token.v': "module token\n\npub enum Kind {\n\tword\n}\n\npub fn (kind Kind) str() string {\n\treturn 'word'\n}\n"
+		'ast/ast.v':     'module ast\n\nimport token\n\npub fn render(kind token.Kind) string {\n\treturn kind.str()\n}\n'
+	})
+}
+
+fn test_c_output_arguments_and_power_assignments() {
+	good_bin := review_cgen_run_batch('c_output_arguments_and_power_assignments', [
+		ReviewCgenCase{'c_int_array_data_abi', "#include <stdio.h>
+
+fn main() {
+	mut first := []int{len: 1}
+	mut second := []int{len: 1}
+	C.sscanf(c'4 2', c'%d %d', first.data, second.data)
+	println(int_str(first[0] + second[0]))
+}
+", '6'},
+		ReviewCgenCase{'mut_parameter_power_assign', 'struct Number {
+mut:
+	value int
+}
+
+fn square(mut number Number) {
+	number.value **= 2
+}
+
+fn main() {
+	mut number := Number{
+		value: 3
+	}
+	square(mut number)
+	println(int_str(number.value))
+}
+', '9'},
+		ReviewCgenCase{'array_power_assign', 'struct IntList {
+mut:
+	values []int
+}
+
+fn (list IntList) [] (index int) int {
+	return list.values[index]
+}
+
+fn (mut list IntList) []= (index int, value int) {
+	list.values[index] = value
+}
+
+struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * 10 + b.value
+	}
+}
+
+struct ExponentList {
+mut:
+	values []Exponent
+}
+
+fn (list ExponentList) [] (index int) Exponent {
+	return list.values[index]
+}
+
+fn (mut list ExponentList) []= (index int, value Exponent) {
+	list.values[index] = value
+}
+
+fn main() {
+	mut values := [2, 3]
+	values[0] **= 3
+	println(int_str(values[0]))
+	mut direct := [Exponent{
+		value: 4
+	}]
+	direct[0] **= Exponent{
+		value: 5
+	}
+	println(int_str(direct[0].value))
+	mut list := IntList{
+		values: [3]
+	}
+	list[0] **= 2
+	println(int_str(list.values[0]))
+	mut exponents := ExponentList{
+		values: [Exponent{
+			value: 2
+		}]
+	}
+	exponents[0] **= Exponent{
+		value: 3
+	}
+	println(int_str(exponents.values[0].value))
+}
+', '8\n45\n9\n23'},
+		ReviewCgenCase{'struct_field_power_assign', 'struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * 10 + b.value
+	}
+}
+
+struct Box {
+mut:
+	value Exponent
+}
+
+fn main() {
+	mut box := Box{
+		value: Exponent{
+			value: 2
+		}
+	}
+	box.value **= Exponent{
+		value: 3
+	}
+	println(int_str(box.value.value))
+}
+', '23'},
 	], map[string]string{})
+	c_code := os.read_file(good_bin + '.c') or { panic(err) }
+	abi_body := review_cgen_body(c_code, 'void fixture_0__exercise(')
+	assert abi_body.contains('int* _cabi_out_values_'), abi_body
+	assert abi_body.contains('free(_cabi_out_values_'), abi_body
+	square_body := review_cgen_body(c_code, 'void fixture_1__square(')
+	compact := square_body.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('__v_pow_i64('), square_body
+	assert !compact.contains('(i64*)__v_pow_i64('), square_body
+	array_body := review_cgen_body(c_code, 'void fixture_2__exercise(')
+	array_compact := array_body.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert array_compact.contains('array__set(_a0,_i0,&(i64[]){((i64)__v_pow_i64('), array_body
+	assert array_compact.contains('array__set(_a1,_i1,&(fixture_2__Exponent[]){__v3_internal_symbol_op_fixture_2__Exponent__pow(*(fixture_2__Exponent*)array_get(*_a1,_i1),'), array_body
+	assert array_compact.contains('__v3_internal_symbol_op_fixture_2__IntList__op_index_set('), array_body
+	assert array_compact.contains('__v3_internal_symbol_op_fixture_2__ExponentList__op_index_set('), array_body
+	assert array_compact.contains('__v3_internal_symbol_op_fixture_2__Exponent__pow('), array_body
+	assert !c_code.contains(' ** '), c_code
+	field_body := review_cgen_body(c_code, 'void fixture_3__exercise(')
+	field_compact := field_body.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert field_compact.contains('box.value=__v3_internal_symbol_op_fixture_3__Exponent__pow(box.value,(fixture_3__Exponent){.value=3});'), field_body
+}
+
+fn test_numbered_identifiers_and_free_calls() {
+	good_bin := review_cgen_run_batch('numbered_identifiers_and_free_calls', [
+		ReviewCgenCase{'numbered_string_identifier_collision', 'struct Named {
+	_str_2 string
+}
+
+fn main() {
+	_str_1 := "local"
+	value := Named{
+		_str_2: "field"
+	}
+	println(_str_1 + ":" + value._str_2)
+}
+', 'local:field'},
+		ReviewCgenCase{'user_defined_free_method', 'struct Handle {
+mut:
+	freed bool
+}
+
+fn (mut h Handle) free() {
+	h.freed = true
+	println("freed")
+}
+
+fn main() {
+	mut h := Handle{}
+	h.free()
+}
+', 'freed'},
+		ReviewCgenCase{'module_qualified_free_call', 'module main
+
+import m
+
+fn main() {
+	values := [2, 3]
+	println(int_str(m.free(values)))
+}
+', '4'},
+		ReviewCgenCase{'selective_import_free_call', 'module main
+
+import m { free }
+
+fn main() {
+	values := [3, 4]
+	println(int_str(free(values)))
+}
+', '5'},
+	], {
+		'v.mod': 'Module { name: "imported_free_calls" }\n'
+		'm/m.v': 'module m
+
+pub fn free(values []int) int {
+	return values[0] + values.len
+}
+'
+	})
+	c_code := os.read_file(good_bin + '.c') or { panic(err) }
+	body := review_cgen_body(c_code, 'void fixture_0__exercise(')
+	assert body.contains('string v__str_1 = '), body
+	assert body.contains('.v__str_2 = '), body
+	assert body.contains('value.v__str_2'), body
+}
+
+fn test_sum_type_aliases_and_generic_new_defaults() {
+	review_cgen_run_batch('sum_type_aliases_and_generic_new_defaults', [
+		ReviewCgenCase{'sum_container_variant_alias_collision', 'module main\n\nimport other\nimport sub.tast\n\ntype Mixed = map[string]other.Value | map[string]tast.Value\n\nfn score(value Mixed) int {\n\tif value is map[string]tast.Value {\n\t\titems := value as map[string]tast.Value\n\t\treturn items["x"].n\n\t}\n\treturn -1\n}\n\nfn main() {\n\tvalue := Mixed(map[string]tast.Value{\n\t\t"x": tast.Value{\n\t\t\tn: 71\n\t\t}\n\t})\n\tprintln(int_str(score(value)))\n}\n', '71'},
+		ReviewCgenCase{'sum_name_import_alias_collision', 'module main\n\nimport a.tast as other_tast\nimport b.tast\n\nfn score(value tast.Value) int {\n\tif value is tast.Target {\n\t\ttarget := value as tast.Target\n\t\treturn target.n\n\t}\n\treturn -1\n}\n\nfn main() {\n\t_ := other_tast.Value(other_tast.Target{})\n\tvalue := tast.Value(tast.Target{\n\t\tn: 79\n\t})\n\tprintln(int_str(score(value)))\n}\n', '79'},
+		ReviewCgenCase{'direct_map_generic_zero_new', 'struct Box[T] {
+mut:
+	value T
+}
+
+fn main() {
+	mut values := $zero(map[string]int{})
+	mut box := $new(Box[int]{})
+	values["answer"] = 19
+	box.value = 20
+	println(int_str(values["answer"]))
+	println(int_str(box.value))
+}
+', '19\n20'},
+		ReviewCgenCase{'generic_new_expression_scope', "fn initialized_value() int {
+	println('initialized')
+	return 1
+}
+
+struct NeedsInitialization {
+	value int = initialized_value()
+}
+
+fn maybe_new[T](cond bool) {
+	if cond {
+		_ = \$new(T)
+	}
+}
+
+fn maybe_short_new[T](cond bool) bool {
+	return cond && !isnil(\$new(T))
+}
+
+fn main() {
+	maybe_new[NeedsInitialization](false)
+	println('after false')
+	maybe_new[NeedsInitialization](true)
+	println(maybe_short_new[NeedsInitialization](false))
+	println(maybe_short_new[NeedsInitialization](true))
+}
+", 'after false\ninitialized\nfalse\ninitialized\ntrue'},
+	], {
+		'v.mod':            'Module { name: "sum_types_with_colliding_import_aliases" }\n'
+		'other/value.v':    'module other\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'sub/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'a/tast/tast.v':    'module tast\n\npub struct Target {}\npub struct Second {}\npub type Value = Target | Second\n'
+		'b/tast/tast.v':    'module tast\n\npub struct First {}\npub struct Target {\npub:\n\tn int\n}\npub type Value = First | Target\n'
+	})
 }
 
 fn test_pointer_value_compatibility_keeps_qualified_struct_names() {
@@ -707,50 +726,4 @@ fn main() {
 }
 ')
 	assert out == '15'
-}
-
-fn test_generic_new_expression_defaults() {
-	review_cgen_run_batch('generic_new_expression_defaults', [
-		ReviewCgenCase{'direct_map_generic_zero_new', 'struct Box[T] {
-mut:
-	value T
-}
-
-fn main() {
-	mut values := $zero(map[string]int{})
-	mut box := $new(Box[int]{})
-	values["answer"] = 19
-	box.value = 20
-	println(int_str(values["answer"]))
-	println(int_str(box.value))
-}
-', '19\n20'},
-		ReviewCgenCase{'generic_new_expression_scope', "fn initialized_value() int {
-	println('initialized')
-	return 1
-}
-
-struct NeedsInitialization {
-	value int = initialized_value()
-}
-
-fn maybe_new[T](cond bool) {
-	if cond {
-		_ = \$new(T)
-	}
-}
-
-fn maybe_short_new[T](cond bool) bool {
-	return cond && !isnil(\$new(T))
-}
-
-fn main() {
-	maybe_new[NeedsInitialization](false)
-	println('after false')
-	maybe_new[NeedsInitialization](true)
-	println(maybe_short_new[NeedsInitialization](false))
-	println(maybe_short_new[NeedsInitialization](true))
-}
-", 'after false\ninitialized\nfalse\ninitialized\ntrue'},
-	], map[string]string{})
 }
