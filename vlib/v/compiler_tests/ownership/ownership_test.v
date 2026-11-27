@@ -5560,6 +5560,62 @@ fn main() {
 	assert result.output.contains('because it borrows `short`, which does not outlive `result`'), result.output
 }
 
+fn test_ownership_direct_interface_box_keeps_its_payload_loan() {
+	v3_bin := ownership_build_v3()
+	for boxed in [
+		'reader',
+		'BoxReader[int](reader)',
+		'BorrowingBoxReader{data: &source}',
+		'BoxReader[int](BorrowingBoxReader{data: &source})',
+	] {
+		for assignment in [
+			'result = ReaderWrapper[int]{reader: ${boxed}}',
+			'result.reader = ${boxed}',
+			'result.reader, count = ${boxed}, 6',
+		] {
+			program := generic_boxed_wrapper_source + "
+fn main() {
+	data := BoxData{text: 'first'.clone()}
+	DESTINATION_SOURCE
+	mut result := wrap_borrow(&data)
+	mut count := 5
+	{
+		INNER_SOURCE
+		reader := BorrowingBoxReader{data: &source}
+		${assignment}
+	}
+	assert result.reader.read() == 6
+	assert count >= 5
+}
+"
+			binding := "source := BoxData{text: 'second'.clone()}"
+			valid := run_ownership_check_c_only(v3_bin, 'direct_interface_box_outlives',
+				program.replace('DESTINATION_SOURCE', binding).replace('INNER_SOURCE', ''))
+			assert valid.exit_code == 0, valid.output
+			invalid := run_ownership_check_c_only(v3_bin, 'direct_interface_box_short_borrow',
+				program.replace('DESTINATION_SOURCE', '').replace('INNER_SOURCE', binding))
+			assert invalid.exit_code != 0, invalid.output
+			assert invalid.output.contains('because it borrows `source`, which does not outlive `result`'), invalid.output
+		}
+	}
+}
+
+fn test_ownership_direct_interface_reference_still_passes_as_mut() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check_c_only(v3_bin, 'direct_interface_ref_mut', generic_boxed_wrapper_source + r'
+fn use_reader(mut reader BoxReader[int]) int {
+	return reader.read()
+}
+fn main() {
+	source := BoxData{text: "value".clone()}
+	reader := BorrowingBoxReader{data: &source}
+	mut boxed := BoxReader[int](&reader)
+	assert use_reader(mut boxed) == 5
+}
+')
+	assert result.exit_code == 0, result.output
+}
+
 fn test_ownership_generic_boxed_wrapper_moves_and_drops_payload() {
 	v3_bin := ownership_build_v3()
 	name := 'generic_boxed_wrapper_move'
