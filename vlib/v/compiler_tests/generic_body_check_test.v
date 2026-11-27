@@ -111,8 +111,51 @@ fn main() {
 	assert errors[1].starts_with('main.v:12:2: error: unexpected name `asd`'), errors[1]
 }
 
-fn test_a_generic_body_whose_type_parameters_all_have_constraints_is_checked() {
-	errors := check('independent', "module main
+struct GenericBodyDiagnosticCase {
+	name     string
+	source   string
+	prefixes []string
+}
+
+fn check_body_batch(name string, sources map[string]string) map[string][]string {
+	dir := os.join_path(work_dir, name)
+	os.mkdir_all(dir) or { panic(err) }
+	mut imports := []string{cap: sources.len}
+	mut calls := []string{cap: sources.len}
+	mut diagnostics := map[string][]string{}
+	for label, source in sources {
+		mod_dir := os.join_path(dir, label)
+		os.mkdir_all(mod_dir) or { panic(err) }
+		fixture := source.replace_once('module main\n', 'module ${label}\n').replace_once('\nfn main()',
+			'\npub fn exercise()')
+		os.write_file(os.join_path(mod_dir, 'main.v'), fixture) or { panic(err) }
+		imports << 'import ${label}'
+		calls << '\t${label}.exercise()'
+		diagnostics[label] = []
+	}
+	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
+		panic(err)
+	}
+	res := cmdexec.run_in(@VEXE, ['-check', '-nocolor', '.'], dir)
+	assert res.exit_code != 0, res.output
+	for line in res.output.split_into_lines() {
+		if !line.contains(': error: ') && !line.contains(': warning: ') {
+			continue
+		}
+		label := line.all_before('/main.v:')
+		assert label in diagnostics, line
+		// Keep source locations and resolve the added module qualification in diagnostics.
+		diagnostics[label] << line.all_after('/').replace_each(['${name}.${label}.', '', '${label}.',
+			''])
+	}
+	return diagnostics
+}
+
+fn test_generic_body_function_and_method_diagnostics() {
+	cases := [
+		GenericBodyDiagnosticCase{
+			name:     'independent'
+			source:   "module main
 
 type Numeric = int | f64
 
@@ -149,17 +192,18 @@ fn main() {
 	println(named(User{'a'}))
 	println(wrong_return(User{'b'}))
 }
-")
-	assert errors.len == 3, errors.str()
-	assert errors[0].starts_with('main.v:19:2: error: unexpected name `asd`'), errors[0]
-	assert errors[1].starts_with('main.v:23:9: error: operator `+` cannot concatenate `int` and `string`'), errors[1]
-	assert errors[2].starts_with('main.v:30:9: error: cannot use `int literal` as type `string` in return argument'), errors[2]
-}
-
-fn test_a_compile_time_in_decides_the_branch_that_a_type_checks() {
-	// `$if x in [int]` and `$if T !in [f64]` choose code by the type, as `is`
-	// does: each check of the body takes the branch that its type takes.
-	errors := check('comptime_in', 'module main
+"
+			prefixes: [
+				'main.v:19:2: error: unexpected name `asd`',
+				'main.v:23:9: error: operator `+` cannot concatenate `int` and `string`',
+				'main.v:30:9: error: cannot use `int literal` as type `string` in return argument',
+			]
+		},
+		// `$if x in [int]` and `$if T !in [f64]` choose code by the type, as `is`
+		// does: each check of the body takes the branch that its type takes.
+		GenericBodyDiagnosticCase{
+			name:     'comptime_in'
+			source:   'module main
 
 type Number = int | f64
 
@@ -193,17 +237,18 @@ fn main() {
 	println(with_type_not_in(2))
 	println(describe(3))
 }
-')
-	assert errors.len == 2, errors.str()
-	assert errors[0].starts_with('main.v:11:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`'), errors[0]
-	assert errors[1].starts_with('main.v:18:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`'), errors[1]
-}
-
-fn test_an_interface_constraint_checks_the_branch_of_a_type_that_implements_it() {
-	// With an interface as its constraint, the body is checked with the interface,
-	// where `x is User` is false: the branch of each type that a `$if` tests and
-	// that implements the interface is checked with that type as well.
-	errors := check('iface_branch', 'module main
+'
+			prefixes: [
+				'main.v:11:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`',
+				'main.v:18:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`',
+			]
+		},
+		// With an interface as its constraint, the body is checked with the interface,
+		// where `x is User` is false: the branch of each type that a `$if` tests and
+		// that implements the interface is checked with that type as well.
+		GenericBodyDiagnosticCase{
+			name:     'iface_branch'
+			source:   'module main
 
 interface Named {
 	name string
@@ -244,15 +289,16 @@ fn main() {
 	println(describe(User{"ana", 30}))
 	println(level_of(Admin{"bob", 2}))
 }
-')
-	assert errors.len == 1, errors.str()
-	assert errors[0].starts_with('main.v:23:20: error: cannot use `string` as `int` in argument 1 to `takes_int`: when `T` is `User`, which implements `Named`'), errors[0]
-}
-
-fn test_a_constraint_that_names_its_type_parameter_is_checked_too() {
-	// `[T Comparable[T]]`: `T` is any type that implements `Comparable` of
-	// itself; the body is checked with that interface, `T` open inside it.
-	errors := check('self_constraint', 'module main
+'
+			prefixes: [
+				'main.v:23:20: error: cannot use `string` as `int` in argument 1 to `takes_int`: when `T` is `User`, which implements `Named`',
+			]
+		},
+		// `[T Comparable[T]]`: `T` is any type that implements `Comparable` of
+		// itself; the body is checked with that interface, `T` open inside it.
+		GenericBodyDiagnosticCase{
+			name:     'self_constraint'
+			source:   'module main
 
 interface Comparable[T] {
 	less(other T) bool
@@ -290,42 +336,15 @@ fn main() {
 	println(smallest_index([Version{2}, Version{1}]))
 	println(smallest([Version{2}, Version{1}]))
 }
-')
-	assert errors.len == 1, errors.str()
-	assert errors[0].starts_with('main.v:19:11: error: cannot assign to `best`: expected `int`'), errors[0]
-	assert errors[0].contains('`T` is any type that implements `Comparable[T]`'), errors[0]
-}
-
-fn test_a_constraint_that_names_another_type_parameter_is_checked_too() {
-	// `[C Container[T], T Named]`: `C` is checked as `Container[Named]`, the
-	// type of `T` put into the type of `C`.
-	errors := check('cross_constraint', 'module main
-
-interface Named {
-	name string
-}
-
-interface Container[T] {
-	get() T
-}
-
-fn unwrap_name[C Container[T], T Named](c C) string {
-	return c.get().name
-}
-
-fn unwrap_length[C Container[T], T Named](c C) string {
-	return c.get().name.len
-}
-
-fn main() {}
-')
-	assert errors.len == 1, errors.str()
-	assert errors[0].starts_with('main.v:16:9: error: cannot use `int` as type `string` in return argument'), errors[0]
-}
-
-fn test_a_local_that_a_compile_time_is_tests_checks_the_branch_of_its_type() {
-	// `y := x` holds the `T` of `x`: `$if y is User` has a branch for `User`.
-	errors := check('local_is', 'module main
+'
+			prefixes: [
+				'main.v:19:11: error: cannot assign to `best`: expected `int`',
+			]
+		},
+		// `y := x` holds the `T` of `x`: `$if y is User` has a branch for `User`.
+		GenericBodyDiagnosticCase{
+			name:     'local_is'
+			source:   'module main
 
 interface Named {
 	name string
@@ -351,15 +370,16 @@ fn describe[T Named](x T) int {
 fn main() {
 	println(describe(User{"ana", 30}))
 }
-')
-	assert errors.len == 1, errors.str()
-	assert errors[0].starts_with('main.v:19:20: error: cannot use `string` as `int` in argument 1 to `takes_int`: when `T` is `User`, which implements `Named`'), errors[0]
-}
-
-fn test_every_combination_of_the_types_of_the_constraints_is_checked() {
-	// 6 x 6 combinations: the error is there only when `T` is `f64` and `U`
-	// is `string`, and neither of them is the first type of its set.
-	errors := check('combinations', 'module main
+'
+			prefixes: [
+				'main.v:19:20: error: cannot use `string` as `int` in argument 1 to `takes_int`: when `T` is `User`, which implements `Named`',
+			]
+		},
+		// 6 x 6 combinations: the error is there only when `T` is `f64` and `U`
+		// is `string`, and neither of them is the first type of its set.
+		GenericBodyDiagnosticCase{
+			name:     'combinations'
+			source:   'module main
 
 type Num6 = int | i8 | i16 | i32 | i64 | f64
 
@@ -377,11 +397,226 @@ fn mix[T Num6, U Val6](a T, b U) string {
 fn main() {
 	println(mix(1.5, "b"))
 }
+'
+			prefixes: [
+				'main.v:10:11: error: cannot use `f64` as type `string` in return argument',
+			]
+		},
+		// `$if x in [User, Admin] {` with an interface: the body is checked with
+		// each type of the list, the second one too.
+		GenericBodyDiagnosticCase{
+			name:     'in_list'
+			source:   'module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+}
+
+struct Admin {
+	name string
+}
+
+fn (u User) label() string {
+	return u.name
+}
+
+fn (a Admin) label() int {
+	return a.name.len
+}
+
+fn tag[T Named](x T) string {
+	\$if x in [User, Admin] {
+		return x.label()
+	}
+	return x.name
+}
+
+fn main() {
+	println(tag(User{"ana"}))
+}
+'
+			prefixes: [
+				'main.v:25:10: error: cannot use `int` as type `string` in return argument: when `T` is `Admin`, which implements `Named`',
+			]
+		},
+		GenericBodyDiagnosticCase{
+			name:     'flows'
+			source:   "module main
+
+type Number = int | f64
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+}
+
+struct Shelf[T Named] {
+	item T
+}
+
+fn takes_int(n int) int {
+	return n
+}
+
+fn assign_named[T Named](x T) int {
+	mut e := 0
+	e = x
+	return e
+}
+
+fn assign_number[T Number](x T) int {
+	mut e := 0
+	e = x
+	return e
+}
+
+fn return_string[T Number](x T) T {
+	println(x)
+	return 'no'
+}
+
+fn pass_named[T Named](x T) int {
+	return takes_int(x)
+}
+
+fn name_plus_one[T Named](x T) string {
+	return x.name + 1
+}
+
+fn (s Shelf[T]) count() int {
+	return s.item.name
+}
+
+fn main() {
+	println(assign_named(User{'a'}))
+	println(assign_number(1))
+	println(return_string(1))
+	println(pass_named(User{'a'}))
+	println(name_plus_one(User{'a'}))
+	println(Shelf[User]{User{'b'}}.count())
+}
+"
+			prefixes: [
+				'main.v:23:6: error: cannot assign to `e`: expected `int`, not `Named`: `T` is any type that implements `Named`',
+				'main.v:29:6: error: cannot assign to `e`: expected `int`, not `f64`: when `T` is `f64`, in its constraint `Number`',
+				'main.v:35:9: error: cannot use `string` as type `int` in return argument: when `T` is `int`, in its constraint `Number`',
+				'main.v:39:19: error: cannot use `Named` as `int` in argument 1 to `takes_int`: `T` is any type that implements `Named`',
+				'main.v:43:9: error: infix expr: cannot use `int literal` (right expression) as `string`: `T` is any type that implements `Named`',
+				'main.v:47:9: error: cannot use `string` as type `int` in return argument: `T` is any type that implements `Named`',
+			]
+		},
+		GenericBodyDiagnosticCase{
+			name:     'constraint'
+			source:   "module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+}
+
+fn named[T Named](x T) string {
+	return x.nombre
+}
+
+fn main() {
+	println(named(User{'a'}))
+}
+"
+			prefixes: [
+				'main.v:12:11: error: type `T` has no field named `nombre`: its constraint `Named` does not declare it',
+			]
+		},
+	]
+	mut sources := map[string]string{}
+	for case in cases {
+		sources[case.name] = case.source
+	}
+	function_errors := check_body_batch('body_functions', sources)
+
+	mut forms := map[string]method_form.MethodForm{}
+	for case in cases {
+		form := method_form.of(case.source) or { panic('missing method form for ${case.name}') }
+		forms[case.name] = form
+		sources[case.name] = form.source
+	}
+	method_errors := check_body_batch('body_methods', sources)
+	for case in cases {
+		errors := function_errors[case.name]
+		assert errors.len == case.prefixes.len, '${case.name}: ${errors}'
+		for i, expected in case.prefixes {
+			assert errors[i].starts_with(expected), '${case.name}: ${errors[i]}'
+		}
+		difference := forms[case.name].differences(errors.map(it.all_after('main.v:')),
+			method_errors[case.name].map(it.all_after('main.v:')))
+		assert difference == '', 'the method form of `${case.name}`: ${difference}'
+	}
+	assert function_errors['self_constraint'][0].contains('`T` is any type that implements `Comparable[T]`'), function_errors['self_constraint'][0]
+	assert function_errors['combinations'][0].contains('when `T` is `f64`'), function_errors['combinations'][0]
+	assert function_errors['combinations'][0].contains('when `U` is `string`'), function_errors['combinations'][0]
+}
+
+fn test_unused_generic_body_diagnostics() {
+	errors := check('unused_bodies', 'module main
+
+type Number = i8 | i16 | i32 | int | i64 | u8 | u16 | u32 | f32 | f64
+
+interface Container[T] {
+	get() T
+}
+
+// `[C Container[T], T Named]`: `C` is checked as `Container[Named]`, the
+// type of `T` put into the type of `C`.
+interface Named {
+	name string
+}
+
+fn unwrap_name[C Container[T], T Named](c C) string {
+	return c.get().name
+}
+
+fn unwrap_length[C Container[T], T Named](c C) string {
+	return c.get().name.len
+}
+
+// `return a` fails whatever `C` is: the error does not name it.
+fn two[A Number, B Number, C Number](a A, b B, c C) int {
+	\$if A is f64 {
+		\$if B is f64 {
+			return a
+		}
+	}
+	return 0
+}
+
+// `[C Container[T], T Wrapper[C]]`: `z` is a `T`, not the unfolding of what
+// `T` and `C` name of each other.
+interface Wrapper[C] {
+	inner() C
+}
+
+fn loop_types[C Container[T], T Wrapper[C]](c C) int {
+	x := c.get()
+	y := x.inner()
+	z := y.get()
+	return z
+}
+
+fn main() {}
 ')
-	assert errors.len == 1, errors.str()
-	assert errors[0].starts_with('main.v:10:11: error: cannot use `f64` as type `string` in return argument'), errors[0]
-	assert errors[0].contains('when `T` is `f64`'), errors[0]
-	assert errors[0].contains('when `U` is `string`'), errors[0]
+	assert errors.len == 3, errors.str()
+	assert errors[0].starts_with('main.v:20:9: error: cannot use `int` as type `string` in return argument'), errors[0]
+	assert errors[1] == 'main.v:27:11: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`', errors[1]
+	assert errors[2] == 'main.v:43:9: error: cannot use `T` as type `int` in return argument: `C` is any type that implements `Container[T]`, and `T` is any type that implements `Wrapper[C]`', errors[2]
 }
 
 fn test_past_the_budget_every_way_the_compile_time_ifs_can_go_is_checked() {
@@ -444,46 +679,6 @@ fn main() {}
 	assert errors[3] == 'main.v:42:10: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[3]
 }
 
-fn test_each_type_of_a_compile_time_in_list_checks_its_branch() {
-	// `$if x in [User, Admin] {` with an interface: the body is checked with
-	// each type of the list, the second one too.
-	errors := check('in_list', 'module main
-
-interface Named {
-	name string
-}
-
-struct User {
-	name string
-}
-
-struct Admin {
-	name string
-}
-
-fn (u User) label() string {
-	return u.name
-}
-
-fn (a Admin) label() int {
-	return a.name.len
-}
-
-fn tag[T Named](x T) string {
-	\$if x in [User, Admin] {
-		return x.label()
-	}
-	return x.name
-}
-
-fn main() {
-	println(tag(User{"ana"}))
-}
-')
-	assert errors.len == 1, errors.str()
-	assert errors[0].starts_with('main.v:25:10: error: cannot use `int` as type `string` in return argument: when `T` is `Admin`, which implements `Named`'), errors[0]
-}
-
 fn test_in_each_way_the_compile_time_ifs_go_every_type_is_checked() {
 	// Past the budget, a branch that `$if`s on `A` and `B` lead to is checked with
 	// each type of `C` too, which no `$if` tests: `takes_i64(c)` fails only when
@@ -509,51 +704,6 @@ fn main() {}
 ')
 	assert errors.len == 1, errors.str()
 	assert errors[0].starts_with('main.v:12:21: error: cannot use `f32` as `i64` in argument 1 to `takes_i64`: '), errors[0]
-}
-
-fn test_an_error_names_only_the_type_parameters_that_decide_it() {
-	// `return a` fails whatever `C` is: the error does not name it.
-	errors := check('deciders', 'module main
-
-type Number = i8 | i16 | i32 | int | i64 | u8 | u16 | u32 | f32 | f64
-
-fn two[A Number, B Number, C Number](a A, b B, c C) int {
-	\$if A is f64 {
-		\$if B is f64 {
-			return a
-		}
-	}
-	return 0
-}
-
-fn main() {}
-')
-	assert errors == ['main.v:8:11: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`'], errors.str()
-}
-
-fn test_a_type_that_constraints_unfold_into_is_named_by_its_type_parameter() {
-	// `[C Container[T], T Wrapper[C]]`: `z` is a `T`, not the unfolding of what
-	// `T` and `C` name of each other.
-	errors := check('unfolded', 'module main
-
-interface Wrapper[C] {
-	inner() C
-}
-
-interface Container[T] {
-	get() T
-}
-
-fn loop_types[C Container[T], T Wrapper[C]](c C) int {
-	x := c.get()
-	y := x.inner()
-	z := y.get()
-	return z
-}
-
-fn main() {}
-')
-	assert errors == ['main.v:15:9: error: cannot use `T` as type `int` in return argument: `C` is any type that implements `Container[T]`, and `T` is any type that implements `Wrapper[C]`'], errors.str()
 }
 
 fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
@@ -684,80 +834,6 @@ fn (s S) private_method() int {
 	}
 }
 
-fn test_a_generic_body_reports_what_the_constraints_of_its_type_parameters_decide() {
-	errors := check('flows', "module main
-
-type Number = int | f64
-
-interface Named {
-	name string
-}
-
-struct User {
-	name string
-}
-
-struct Shelf[T Named] {
-	item T
-}
-
-fn takes_int(n int) int {
-	return n
-}
-
-fn assign_named[T Named](x T) int {
-	mut e := 0
-	e = x
-	return e
-}
-
-fn assign_number[T Number](x T) int {
-	mut e := 0
-	e = x
-	return e
-}
-
-fn return_string[T Number](x T) T {
-	println(x)
-	return 'no'
-}
-
-fn pass_named[T Named](x T) int {
-	return takes_int(x)
-}
-
-fn name_plus_one[T Named](x T) string {
-	return x.name + 1
-}
-
-fn (s Shelf[T]) count() int {
-	return s.item.name
-}
-
-fn main() {
-	println(assign_named(User{'a'}))
-	println(assign_number(1))
-	println(return_string(1))
-	println(pass_named(User{'a'}))
-	println(name_plus_one(User{'a'}))
-	println(Shelf[User]{User{'b'}}.count())
-}
-")
-	assert errors.len == 6, errors.str()
-	assert errors[0].starts_with('main.v:23:6: error: '), errors[0]
-	assert errors[0].contains('`T` is any type that implements `Named`'), errors[0]
-	assert errors[1].starts_with('main.v:29:6: error: '), errors[1]
-	assert errors[1].contains('when `T` is `f64`, in its constraint `Number`'), errors[1]
-	assert errors[2].starts_with('main.v:35:9: error: '), errors[2]
-	assert errors[2].contains('in its constraint `Number`'), errors[2]
-	assert errors[3].starts_with('main.v:39:19: error: '), errors[3]
-	assert errors[3].contains('`T` is any type that implements `Named`'), errors[3]
-	assert errors[4].starts_with('main.v:43:'), errors[4]
-	assert errors[4].contains('`T` is any type that implements `Named`'), errors[4]
-	assert errors[5].starts_with('main.v:47:9: error: '), errors[5]
-	assert errors[5].contains('`T` is any type that implements `Named`'), errors[5]
-}
-
 fn test_a_generic_body_reports_nothing_the_type_parameters_decide() {
 	// Each statement below depends on `T`: the checks against the constraints
 	// say what is wrong there, and nothing is wrong here.
@@ -803,27 +879,4 @@ fn main() {
 }
 ")
 	assert errors == []string{}
-}
-
-fn test_an_error_of_a_type_parameter_is_told_once_by_its_constraint() {
-	errors := check('constraint', "module main
-
-interface Named {
-	name string
-}
-
-struct User {
-	name string
-}
-
-fn named[T Named](x T) string {
-	return x.nombre
-}
-
-fn main() {
-	println(named(User{'a'}))
-}
-")
-	assert errors.len == 1, errors.str()
-	assert errors[0].contains('type `T` has no field named `nombre`: its constraint `Named` does not declare it'), errors[0]
 }

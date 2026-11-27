@@ -2869,115 +2869,77 @@ fn main() {
 	assert fail_map_dynamic_index_read.output.contains('use of moved value: `m[k]`'), fail_map_dynamic_index_read.output
 }
 
-fn test_ownership_array_pop_call_arguments_update_storage() {
-	v3_bin := ownership_compiler
+fn ownership_array_pop_runtime_fixture() string {
+	mut source := ''
+	mut calls := []string{cap: 8}
 	for method in ['pop', 'pop_left'] {
-		name := 'array_${method}_call_arg_storage'
-		ok := run_ownership_check(v3_bin, name, '
-fn sink(s string, original &u8) {
+		pointers := if method == 'pop' {
+			['last_ptr', 'first_ptr']
+		} else {
+			['first_ptr', 'last_ptr']
+		}
+		// Use a distinct sink for each case so its other call sites cannot affect ownership inference.
+		source += '
+fn sink_${method}_storage(s string, original &u8) {
 	assert s.str == original
 	assert s == "item"
 }
 
-fn main() {
+fn check_${method}_storage() {
 	value := "item".to_owned()
 	original := value.str
 	mut arr := [value]
-	sink(arr.${method}(), original)
+	sink_${method}_storage(arr.${method}(), original)
 	arr << "literal"
 	x := arr[0]
 	y := x
 	assert x == "literal"
 	_ = y
 }
-')
-		assert ok.exit_code == 0, ok.output
-		binary := os.join_path(ownership_work_dir, name, 'out')
-		run := os.exec([binary])
-		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == '', run.output
 
-		remaining := run_ownership_check(v3_bin, 'array_${method}_call_arg_retains_other_owner', '
-fn sink(s string) {
-	_ = s
-}
-
-fn main() {
-	mut arr := ["first".to_owned(), "last".to_owned()]
-	sink(arr.${method}())
-	x := arr[0]
-	y := x
-	println(x)
-	_ = y
-}
-')
-		assert remaining.exit_code != 0
-		assert remaining.output.contains('use of moved value: `x`'), remaining.output
-	}
-
-	for method in ['pop', 'pop_left'] {
-		name := 'array_${method}_literal_call_arg_clone'
-		code := '
-fn sink(s string) {
+fn sink_${method}_literal(s string) {
 	assert s == "seed" || s == "literal"
 }
 
-fn main() {
-	sink("seed".to_owned())
+fn check_${method}_literal() {
+	sink_${method}_literal("seed".to_owned())
 	mut arr := ["literal"]
-	sink(arr.${method}())
+	sink_${method}_literal(arr.${method}())
 	assert arr.len == 0
 }
-'
-		compiled := run_ownership_check(v3_bin, name, code)
-		assert compiled.exit_code == 0, compiled.output
-		cloned_c_path := os.join_path(ownership_work_dir, name, 'out.c')
-		cloned_c := os.read_file(cloned_c_path) or { panic(err) }
-		assert cloned_c.contains('sink(string__clone(')
-		binary := os.join_path(ownership_work_dir, name, 'out')
-		run := os.exec([binary])
-		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == '', run.output
 
-		unknown := run_ownership_check(v3_bin, 'array_${method}_unknown_length_call_arg', '
-fn count() int {
+fn count_${method}() int {
 	return 0
 }
 
-fn sink(s string, original &u8) {
+fn sink_${method}_unknown_length(s string, original &u8) {
 	assert s.str == original
 	assert s == "item"
 }
 
-fn main() {
+fn check_${method}_unknown_length() {
 	value := "item".to_owned()
 	original := value.str
-	mut arr := []string{len: count()}
+	mut arr := []string{len: count_${method}()}
 	arr << value
-	sink(arr.${method}(), original)
+	sink_${method}_unknown_length(arr.${method}(), original)
 	assert arr.len == 0
 }
-')
-		assert unknown.exit_code == 0, unknown.output
-		unknown_binary := os.join_path(ownership_work_dir, 'array_${method}_unknown_length_call_arg', 'out')
-		unknown_run := os.exec([unknown_binary])
-		assert unknown_run.exit_code == 0, unknown_run.output
 
-		consecutive := run_ownership_check(v3_bin, 'array_${method}_consecutive_call_args', '
-fn sink(s string, original &u8) {
+fn sink_${method}_consecutive(s string, original &u8) {
 	assert s.str == original
 	assert s == "first" || s == "last"
 }
 
-fn main() {
+fn check_${method}_consecutive() {
 	first := "first".to_owned()
 	last := "last".to_owned()
 	first_ptr := first.str
 	last_ptr := last.str
 	mut arr := [first, last]
-	sink(arr.${method}(), ${if method == 'pop' { 'last_ptr' } else { 'first_ptr' }})
+	sink_${method}_consecutive(arr.${method}(), ${pointers[0]})
 	assert arr.len == 1
-	sink(arr.${method}(), ${if method == 'pop' { 'first_ptr' } else { 'last_ptr' }})
+	sink_${method}_consecutive(arr.${method}(), ${pointers[1]})
 	assert arr.len == 0
 	arr << "literal"
 	x := arr[0]
@@ -2985,30 +2947,68 @@ fn main() {
 	assert x == "literal"
 	_ = y
 }
-')
-		assert consecutive.exit_code == 0, consecutive.output
-		consecutive_binary := os.join_path(ownership_work_dir, 'array_${method}_consecutive_call_args', 'out')
-		consecutive_run := os.exec([consecutive_binary])
-		assert consecutive_run.exit_code == 0, consecutive_run.output
+'
+		for case in ['storage', 'literal', 'unknown_length', 'consecutive'] {
+			calls << '\tcheck_${method}_${case}()'
+		}
 	}
+	return source + '\nfn main() {\n${calls.join('\n')}\n}\n'
+}
 
-	shifted := run_ownership_check(v3_bin, 'array_pop_left_cloned_call_arg_shifts_owner', '
-fn sink(s string) {
+fn test_ownership_array_pop_call_arguments_update_storage() {
+	v3_bin := ownership_compiler
+	name := 'array_pop_call_arguments'
+	compiled := run_ownership_check(v3_bin, name, ownership_array_pop_runtime_fixture())
+	assert compiled.exit_code == 0, compiled.output
+	binary := os.join_path(ownership_work_dir, name, 'out')
+	generated := os.read_file(binary + '.c') or { panic(err) }
+	for method in ['pop', 'pop_left'] {
+		assert generated.contains('sink_${method}_literal(string__clone('), 'missing literal clone for ${method}'
+	}
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '', run.output
+
+	check_ownership_array_pop_rejections(v3_bin)
+}
+
+fn check_ownership_array_pop_rejections(v3_bin string) {
+	mut source := ''
+	mut calls := []string{cap: 3}
+	mut rejected_lines := map[int]string{}
+	for case in ['pop', 'pop_left', 'pop_left_shifted'] {
+		shifted := case == 'pop_left_shifted'
+		method := if shifted { 'pop_left' } else { case }
+		setup := if shifted {
+			'\tsink_${case}("seed".to_owned())\n\tmut arr := ["literal", "owned".to_owned()]'
+		} else {
+			'\tmut arr := ["first".to_owned(), "last".to_owned()]'
+		}
+		source += '
+fn sink_${case}(s string) {
 	_ = s
 }
 
-fn main() {
-	sink("seed".to_owned())
-	mut arr := ["literal", "owned".to_owned()]
-	sink(arr.pop_left())
+fn reject_${case}() {
+${setup}
+	sink_${case}(arr.${method}())
 	x := arr[0]
 	y := x
-	println(x)
+'
+		rejected_lines[source.count('\n') + 1] = case
+		source += '\tprintln(x)
 	_ = y
 }
-')
-	assert shifted.exit_code != 0
-	assert shifted.output.contains('use of moved value: `x`'), shifted.output
+'
+		calls << '\treject_${case}()'
+	}
+	source += '\nfn main() {\n${calls.join('\n')}\n}\n'
+	result := run_ownership_check(v3_bin, 'array_pop_rejections', source)
+	assert result.exit_code != 0, result.output
+	diagnostics := result.output.split_into_lines().filter(it.contains(': error: use of moved value: `x`'))
+	for line, case in rejected_lines {
+		assert diagnostics.any(it.contains('main.v:${line}:')), '${case}: ${result.output}'
+	}
 }
 
 fn test_ownership_array_alias_builtin_method_keeps_receiver() {
@@ -4046,16 +4046,15 @@ fn main() {
 	assert res.exit_code == 0, res.output
 }
 
-fn test_ownership_retains_the_source_loan_for_a_projected_pointer() {
-	v3_bin := ownership_compiler
-	res := run_ownership_check(v3_bin, 'borrowed_pointer_projection', r'
-struct Item {
+fn test_ownership_projected_pointer_loans_reject_invalid_uses() {
+	source := r'
+struct ProjectionItem {
 mut:
 	text string
 }
 
-fn main() {
-	mut items := [Item{text: "hello".to_owned()}]
+fn check_projection_mutation() {
+	mut items := [ProjectionItem{text: "hello".to_owned()}]
 	mut bytes := unsafe { &u8(nil) }
 	unsafe {
 		item := &items[0]
@@ -4064,20 +4063,13 @@ fn main() {
 	items[0].text = "changed".to_owned()
 	unsafe { assert bytes[0] == `h` }
 }
-')
-	assert res.exit_code != 0, res.output
-	assert res.output.contains('because `items[0].text.str` is borrowed by `bytes`'), res.output
-}
 
-fn test_ownership_rejects_returning_a_projected_pointer_to_local_storage() {
-	v3_bin := ownership_compiler
-	res := run_ownership_check(v3_bin, 'return_borrowed_pointer_projection', r'
-struct Item {
+struct EscapeItem {
 	text string
 }
 
 fn escape() &u8 {
-	items := [Item{text: "hello".to_owned()}]
+	items := [EscapeItem{text: "hello".to_owned()}]
 	mut bytes := unsafe { &u8(nil) }
 	unsafe {
 		item := &items[0]
@@ -4086,25 +4078,18 @@ fn escape() &u8 {
 	return bytes
 }
 
-fn main() {
+fn check_projection_return() {
 	println(escape())
 }
-')
-	assert res.exit_code != 0, res.output
-	assert res.output.contains('cannot return a reference to local storage `items`'), res.output
-}
 
-fn test_ownership_retains_all_branch_loans_for_a_projected_pointer() {
-	v3_bin := ownership_compiler
-	res := run_ownership_check(v3_bin, 'borrowed_pointer_projection_branches', r'
-struct Item {
+struct BranchItem {
 mut:
 	text string
 }
 
 fn check(pick_right bool) {
-	mut left := [Item{text: "left".to_owned()}]
-	mut right := [Item{text: "right".to_owned()}]
+	mut left := [BranchItem{text: "left".to_owned()}]
+	mut right := [BranchItem{text: "right".to_owned()}]
 	mut bytes := unsafe { &u8(nil) }
 	unsafe {
 		mut item := &left[0]
@@ -4118,11 +4103,29 @@ fn check(pick_right bool) {
 	unsafe { println(bytes[0]) }
 }
 
-fn main() {
+fn check_projection_branches() {
 	check(false)
 }
-')
+
+fn main() {
+	check_projection_mutation()
+	check_projection_return()
+	check_projection_branches()
+}
+'
+	res := run_ownership_check(ownership_compiler, 'borrowed_pointer_projection_rejections', source)
 	assert res.exit_code != 0, res.output
-	assert res.output.contains('because `left[0].text.str` is borrowed by `bytes`'), res.output
-	assert res.output.contains('because `right[0].text.str` is borrowed by `bytes`'), res.output
+	expected := {
+		'items[0].text = "changed".to_owned()': 'because `items[0].text.str` is borrowed by `bytes`'
+		'return bytes':                         'cannot return a reference to local storage `items`'
+		'left[0].text = "changed".to_owned()':  'because `left[0].text.str` is borrowed by `bytes`'
+		'right[0].text = "changed".to_owned()': 'because `right[0].text.str` is borrowed by `bytes`'
+	}
+	lines := source.split_into_lines()
+	diagnostics := res.output.split_into_lines().filter(it.contains(': error: '))
+	for statement, message in expected {
+		line := lines.index('\t${statement}') + 1
+		assert line > 0, statement
+		assert diagnostics.any(it.contains('main.v:${line}:') && it.contains(message)), '${statement}: ${res.output}'
+	}
 }

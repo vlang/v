@@ -1,15 +1,15 @@
 // vtest ownership
 import os
 
-const borrowed_range_check_args = [@VEXE, '-no-memory-limit', '-nocache', '-ownership']
+const borrowed_range_compiler_args = [@VEXE, '-no-memory-limit', '-nocache', '-ownership']
 
 struct BorrowedRangeRejection {
 	source   string
 	expected string
 }
 
-fn test_borrowed_array_range_references_preserve_the_owner() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_array_range_reference_${os.getpid()}')
+fn test_borrowed_array_references_preserve_owners_and_parameter_headers() {
+	root := os.join_path(os.vtmp_dir(), 'borrowed_array_references_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
@@ -48,7 +48,7 @@ fn (value &Buffer) copy() []u8 {
  return value.bytes[1..3]
 }
 
-fn fill(mut bytes []u8, value u8) {
+fn fill_range(mut bytes []u8, value u8) {
  bytes[0] = value
 }
 
@@ -57,7 +57,7 @@ fn disturb_stack(seed int) int {
  return values[0] + values[3]
 }
 
-fn main() {
+fn check_range_owner() {
  mut owner := Buffer{bytes: [u8(1), 2, 3, 4]}
  address := unsafe { uint(owner.bytes.data) }
  {
@@ -68,12 +68,12 @@ fn main() {
   {
    mut second := owner.free_buffer(0)
    assert unsafe { uint(second.data) == address }
-   fill(mut second, 8)
+   fill_range(mut second, 8)
    assert owner.bytes[0] == 8
    assert second.len == 4
   }
   assert owner.bytes[0] == 8
-  fill(mut first, 9)
+  fill_range(mut first, 9)
   assert owner.bytes[1] == 9
   assert first.len == 3
  }
@@ -108,18 +108,74 @@ fn main() {
  assert owner.bytes[1] == 9
  assert copied[0] == 7
 }
+
+fn fill(mut dst []u8) {
+ dst_ptr := &dst
+ callback := fn [dst_ptr] () {
+  unsafe { (*dst_ptr)[0] = u8(9) }
+  for value in 0 .. 100 { unsafe { (*dst_ptr) << u8(value) } }
+ }
+ callback()
+ assert dst.len == 101
+ assert dst[0] == 9
+}
+fn parameter_reference[^a](mut values ^a []u8) &^a []u8 { return &values }
+struct Resource implements IClone, Drop { value int }
+fn (mut value Resource) drop() {}
+fn resource_reference[^a](mut values ^a []Resource) &^a []Resource { return &values }
+fn fill_slice(mut dst []u8) {
+ dst_ptr := &dst
+ callback := fn [dst_ptr] () { unsafe { (*dst_ptr)[0] = u8(8) } }
+ callback()
+}
+
+fn check_parameter_header() {
+ mut dst := [u8(1)]
+ {
+  reference := parameter_reference(mut dst)
+  assert voidptr(reference) == voidptr(&dst)
+  assert unsafe { reference.data == dst.data }
+ }
+ fill(mut dst)
+ assert dst.len == 101
+ assert dst[0] == 9
+ assert dst[100] == 99
+ fill_slice(mut dst[1..2])
+ assert dst[1] == 8
+ mut fixed := [u8(1), 2]!
+ fill_slice(mut fixed[..])
+ assert fixed[0] == 8
+ mut resources := [Resource{1}]
+ {
+  view := resource_reference(mut resources)
+  assert voidptr(view) == voidptr(&resources)
+  assert unsafe { view.data == resources.data }
+  assert unsafe { (*view)[0].value == 1 }
+ }
+ assert resources[0].value == 1
+}
+
+fn main() {
+ check_range_owner()
+ println("range owner")
+ check_parameter_header()
+ println("parameter header")
+}
 ')!
-	for mode in ['-no-parallel', ''] {
-		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+	for mode in [['-no-parallel'], []string{}] {
+		name := if mode.len > 0 { 'program_serial' } else { 'program_parallel' }
+		output := os.join_path(root, name + $if windows { '.exe' } $else { '' })
+		compile := os.exec([...borrowed_range_compiler_args, '-cc', 'clang', ...mode, '-o', output,
+			source])
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
-		run := os.execute(os.quoted_path(output))
+		run := os.exec([output])
 		assert run.exit_code == 0, '${mode}: ${run.output}'
+		assert run.output.trim_space().split_into_lines() == ['range owner', 'parameter header'], '${mode}: ${run.output}'
 	}
 }
 
-fn test_borrowed_array_and_string_ranges_cannot_escape_local_owners() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_range_local_owner_${os.getpid()}')
+fn test_borrowed_ranges_reject_local_escapes_and_live_loan_mutations() {
+	root := os.join_path(os.vtmp_dir(), 'borrowed_range_rejections_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	cases := [
@@ -159,10 +215,11 @@ fn escaped[^a](values []Resource) &^a []Resource { return &values[1..] }',
 		'fn escaped(choose bool) &string { return if choose { local := "abcdef".to_owned(); &local[1..] } else { local := "ghijkl".to_owned(); &local[1..] } }',
 		'fn escaped(choose bool) &string { return match choose { true { local := "abcdef".to_owned(); &local[1..] } false { local := "ghijkl".to_owned(); &local[1..] } } }',
 	]
-	check_borrowed_range_rejections(root, cases.map(BorrowedRangeRejection{
+	escapes := cases.map(BorrowedRangeRejection{
 		source:   it + '\nfn main() {}\n'
 		expected: 'cannot return a reference to local storage'
-	}))!
+	})
+	check_borrowed_range_rejections(root, [...escapes, ...borrowed_range_source_loan_rejections()])!
 }
 
 fn check_borrowed_range_rejections(root string, cases []BorrowedRangeRejection) ! {
@@ -173,7 +230,7 @@ fn check_borrowed_range_rejections(root string, cases []BorrowedRangeRejection) 
 		for case in cases {
 			os.write_file(source, case.source)!
 			for mode in modes {
-				compile := os.exec([...borrowed_range_check_args, ...mode, '-check', source])
+				compile := os.exec([...borrowed_range_compiler_args, ...mode, '-check', source])
 				assert compile.exit_code != 0, '${mode}: ${case.source}\n${compile.output}'
 				assert compile.output.contains(case.expected), '${mode}: ${case.source}\n${compile.output}'
 			}
@@ -191,7 +248,9 @@ fn check_borrowed_range_rejections(root string, cases []BorrowedRangeRejection) 
 	}
 	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
 	for mode in modes {
-		compile := os.exec([...borrowed_range_check_args, ...mode, '-check', root])
+		// A single check must report every fixture's error past the default display limit.
+		compile := os.exec([...borrowed_range_compiler_args, ...mode, '-message-limit', '100',
+			'-check', root])
 		assert compile.exit_code != 0, '${mode}: ${compile.output}'
 		diagnostics := compile.output.split_into_lines().filter(it.contains('error: '))
 		for i, case in cases {
@@ -201,65 +260,112 @@ fn check_borrowed_range_rejections(root string, cases []BorrowedRangeRejection) 
 	}
 }
 
-fn test_borrowed_string_range_headers_survive_returns_and_loop_iterations() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_string_range_reference_${os.getpid()}')
+fn test_borrowed_string_ranges_preserve_headers_bounds_and_evaluation_order() {
+	root := os.join_path(os.vtmp_dir(), 'borrowed_string_ranges_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn split[^a](text &^a string) []&^a string {
-  mut result := []&^a string{}
-  for start in [0, 4] {
-   end := if start == 0 { 4 } else { text.len }
-   result << &(*text)[start..end]
-  }
-  return result
+	os.write_file(source, '@[has_globals]
+module main
+
+import os
+
+__global calls = 0
+__global ordered_text = "abcdef"
+fn source() &string { assert calls == 0; calls++; return &ordered_text }
+fn ordered_start() int { assert calls == 1; calls++; return 1 }
+fn ordered_end() int { assert calls == 2; calls++; return 4 }
+
+fn split[^a](text &^a string) []&^a string {
+ mut result := []&^a string{}
+ for start in [0, 4] {
+  end := if start == 0 { 4 } else { text.len }
+  result << &(*text)[start..end]
  }
- fn view[^a](text &^a string, start int, end int) &^a string {
-  return &((*text)[start..end])
+ return result
+}
+fn header_view[^a](text &^a string, start int, end int) &^a string {
+ return &((*text)[start..end])
+}
+fn disturb_stack(seed int) int {
+ values := [seed, seed + 1, seed + 2, seed + 3]!
+ return values[0] + values[3]
+}
+fn check_headers() {
+ text := "abc\\nxyz".to_owned()
+ address := unsafe { uint(text.str) }
+ {
+  parts := split(text)
+  first := header_view(text, 0, 4)
+  full := header_view(text, 0, text.len)
+  last := header_view(text, 4, text.len)
+  empty := header_view(text, 2, 2)
+  assert disturb_stack(3) == 9
+  assert *parts[0] == "abc\\n"
+  assert *parts[1] == "xyz"
+  assert unsafe { uint(parts[0].str) == address }
+  assert unsafe { uint(parts[1].str) == address + 4 }
+  assert voidptr(parts[0]) != voidptr(parts[1])
+  assert *full == text
+  assert unsafe { uint(full.str) == address }
+  assert *first == "abc\\n"
+  assert *last == "xyz"
+  assert empty.len == 0
+  assert unsafe { uint(empty.str) == address + 2 }
  }
- fn disturb_stack(seed int) int {
-  values := [seed, seed + 1, seed + 2, seed + 3]!
-  return values[0] + values[3]
+ assert text == "abc\\nxyz"
+ assert unsafe { uint(text.str) == address }
+}
+
+fn check_bounds() {
+ start := os.args[1].int()
+ end := os.args[2].int()
+ text := "abcd".to_owned()
+ view := &text[start..end]
+ assert view.len == end - start
+}
+
+fn check_evaluation_order() {
+ view := &(*source())[ordered_start()..ordered_end()]
+ assert calls == 3
+ assert *view == "bcd"
+ assert unsafe { view.str == ordered_text.str + 1 }
+}
+
+fn main() {
+ if os.args.len == 1 {
+  check_headers()
+  println("headers")
+  check_evaluation_order()
+  println("evaluation order")
+ } else {
+  check_bounds()
+  println("bounds")
  }
- fn main() {
-  text := "abc\\nxyz".to_owned()
-  address := unsafe { uint(text.str) }
-  {
-   parts := split(text)
-   first := view(text, 0, 4)
-   full := view(text, 0, text.len)
-   last := view(text, 4, text.len)
-   empty := view(text, 2, 2)
-   assert disturb_stack(3) == 9
-   assert *parts[0] == "abc\\n"
-   assert *parts[1] == "xyz"
-   assert unsafe { uint(parts[0].str) == address }
-   assert unsafe { uint(parts[1].str) == address + 4 }
-   assert voidptr(parts[0]) != voidptr(parts[1])
-   assert *full == text
-   assert unsafe { uint(full.str) == address }
-   assert *first == "abc\\n"
-   assert *last == "xyz"
-   assert empty.len == 0
-   assert unsafe { uint(empty.str) == address + 2 }
-  }
-  assert text == "abc\\nxyz"
-  assert unsafe { uint(text.str) == address }
- }
- ')!
-	for mode in ['-no-parallel', ''] {
-		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+}
+')!
+	for mode in [['-no-parallel'], []string{}] {
+		name := if mode.len > 0 { 'program_serial' } else { 'program_parallel' }
+		output := os.join_path(root, name + $if windows { '.exe' } $else { '' })
+		compile := os.exec([...borrowed_range_compiler_args, '-cc', 'clang', ...mode, '-o', output,
+			source])
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
-		run := os.execute(os.quoted_path(output))
+		run := os.exec([output])
 		assert run.exit_code == 0, '${mode}: ${run.output}'
+		assert run.output.trim_space().split_into_lines() == ['headers', 'evaluation order'], '${mode}: ${run.output}'
+		valid := os.exec([output, '1', '3'])
+		assert valid.exit_code == 0, '${mode}: ${valid.output}'
+		assert valid.output.trim_space() == 'bounds', '${mode}: ${valid.output}'
+		for bounds in [[-1, 2], [0, 5], [3, 2], [5, 5], [0, -1]] {
+			start, end := bounds[0], bounds[1]
+			invalid := os.exec([output, start.str(), end.str()])
+			assert invalid.exit_code != 0, '${mode}: ${bounds}: ${invalid.output}'
+			assert invalid.output.contains('substr(${start}, ${end}) out of bounds (len=4) s=abcd'), '${mode}: ${bounds}: ${invalid.output}'
+		}
 	}
 }
 
-fn test_borrowed_string_ranges_keep_source_loans_live() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_string_range_loan_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
+fn borrowed_range_source_loan_rejections() []BorrowedRangeRejection {
 	mut cases := []BorrowedRangeRejection{}
 	for mutation, expected in {
 		'text = "replacement".to_owned()': 'cannot assign to `text` because `text[1]` is borrowed by `view`'
@@ -274,119 +380,6 @@ fn main() {
 '
 		cases << BorrowedRangeRejection{fixture, expected}
 	}
-	check_borrowed_range_rejections(root, cases)!
-}
-
-fn test_borrowed_string_ranges_preserve_bounds_checks_and_evaluation_order() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_string_range_bounds_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'import os
-fn main() {
- start := os.args[1].int()
- end := os.args[2].int()
- text := "abcd".to_owned()
- view := &text[start..end]
- assert view.len == end - start
-}
-')!
-	for mode in ['-no-parallel', ''] {
-		output := os.join_path(root, 'bounds_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
-		assert compile.exit_code == 0, '${mode}: ${compile.output}'
-		for bounds in [[-1, 2], [0, 5], [3, 2], [5, 5], [0, -1]] {
-			start, end := bounds[0], bounds[1]
-			run := os.execute('${os.quoted_path(output)} ${start} ${end}')
-			assert run.exit_code != 0, '${mode}: ${bounds}: ${run.output}'
-			assert run.output.contains('substr(${start}, ${end}) out of bounds (len=4) s=abcd'), '${mode}: ${bounds}: ${run.output}'
-		}
-		run := os.execute('${os.quoted_path(output)} 1 3')
-		assert run.exit_code == 0, '${mode}: ${run.output}'
-	}
-	os.write_file(source, '@[has_globals]
-module main
-__global calls = 0
-__global text = "abcdef"
-fn source() &string { assert calls == 0; calls++; return &text }
-fn start() int { assert calls == 1; calls++; return 1 }
-fn end() int { assert calls == 2; calls++; return 4 }
-fn main() { view := &(*source())[start()..end()]; assert calls == 3; assert *view == "bcd"; assert unsafe { view.str == text.str + 1 } }
-')!
-	for mode in ['-no-parallel', ''] {
-		output := os.join_path(root, 'ordered_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
-		assert compile.exit_code == 0, '${mode}: ${compile.output}'
-		run := os.execute(os.quoted_path(output))
-		assert run.exit_code == 0, '${mode}: ${run.output}'
-	}
-}
-
-fn test_explicit_mutable_array_parameter_addresses_update_the_caller_header() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_mutable_array_header_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn fill(mut dst []u8) {
- dst_ptr := &dst
- callback := fn [dst_ptr] () {
-  unsafe { (*dst_ptr)[0] = u8(9) }
-  for value in 0 .. 100 { unsafe { (*dst_ptr) << u8(value) } }
- }
- callback()
- assert dst.len == 101
- assert dst[0] == 9
-}
-fn parameter_reference[^a](mut values ^a []u8) &^a []u8 { return &values }
-struct Resource implements IClone, Drop { value int }
-fn (mut value Resource) drop() {}
-fn resource_reference[^a](mut values ^a []Resource) &^a []Resource { return &values }
-fn fill_slice(mut dst []u8) {
- dst_ptr := &dst
- callback := fn [dst_ptr] () { unsafe { (*dst_ptr)[0] = u8(8) } }
- callback()
-}
-
-fn main() {
- mut dst := [u8(1)]
- {
-  reference := parameter_reference(mut dst)
-  assert voidptr(reference) == voidptr(&dst)
-  assert unsafe { reference.data == dst.data }
- }
- fill(mut dst)
- assert dst.len == 101
- assert dst[0] == 9
- assert dst[100] == 99
- fill_slice(mut dst[1..2])
- assert dst[1] == 8
- mut fixed := [u8(1), 2]!
- fill_slice(mut fixed[..])
- assert fixed[0] == 8
- mut resources := [Resource{1}]
- {
-  view := resource_reference(mut resources)
-  assert voidptr(view) == voidptr(&resources)
-  assert unsafe { view.data == resources.data }
-  assert unsafe { (*view)[0].value == 1 }
- }
- assert resources[0].value == 1
-}
-')!
-	for mode in ['-no-parallel', ''] {
-		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
-		assert compile.exit_code == 0, '${mode}: ${compile.output}'
-		run := os.execute(os.quoted_path(output))
-		assert run.exit_code == 0, '${mode}: ${run.output}'
-	}
-}
-
-fn test_mixed_mutable_array_reference_returns_keep_source_loans_live() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_array_range_loan_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	mut cases := []BorrowedRangeRejection{}
 	for argument in ['owner', 'owner[..]'] {
 		for mutation in ['drop_owned(owner)', 'owner = ["replacement".to_owned()]'] {
 			fixture := 'fn choose_view(mut values []string, whole bool) &[]string {
@@ -403,5 +396,5 @@ fn main() {
 			cases << BorrowedRangeRejection{fixture, 'borrowed by `result`'}
 		}
 	}
-	check_borrowed_range_rejections(root, cases)!
+	return cases
 }

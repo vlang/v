@@ -2,6 +2,12 @@ name: Docker CI
 
 on:
   workflow_call:
+  pull_request:
+    paths:
+      - '.github/workflows/docker_ci.yml'
+      - '.github/workflows/headerless_darwin_target_ci.yml'
+      - 'vlib/v/gen/c/cached_interface_dispatch_test.v'
+      - 'cmd/tools/vtest-self.v'
 
 concurrency:
   group: docker-docker_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -114,7 +120,7 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Add dependencies
-        run: apt-get update && apt-get install -y libsqlite3-dev pkgconf
+        run: apt-get update && apt-get install -y libsqlite3-dev pkgconf xz-utils
       - name: Build musl-native SQLite for V database tests
         run: |
           set -eu
@@ -150,9 +156,72 @@ jobs:
           echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
       - name: All code is formatted
         run: ./v -silent test-cleancode
+      - name: Verify cached interface dispatch against musl-native SQLite
+        run: env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/gen/c/cached_interface_dispatch_test.v
       - name: Set up Node.js for WebAssembly tests
         uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: Verify Wasm host runtime and original tests
+        run: |
+          node --version
+          node --input-type=module -e "import assert from 'node:assert/strict'; import { readFileSync } from 'node:fs'; assert.equal(typeof readFileSync, 'function'); assert.throws(() => assert.equal(1, '1')); assert.ok(WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0])))"
+          ./v -silent test vlib/v/gen/wasm/shapes_test.v vlib/v/gen/wasm/e2e_test.v vlib/v/gen/wasm/stub_audit_test.v
+      - name: Set up the musl C++ toolchain
+        run: |
+          set -eu
+          zig_dist=zig-x86_64-linux-0.15.2
+          archive="$RUNNER_TEMP/$zig_dist.tar.xz"
+          wget -q "https://ziglang.org/download/0.15.2/$zig_dist.tar.xz" -O "$archive"
+          echo "02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239  $archive" | sha256sum --check --strict
+          tar -xJf "$archive" -C "$RUNNER_TEMP"
+          compiler_dir="$RUNNER_TEMP/musl-cxx"
+          mkdir -p "$compiler_dir"
+          ln -s "$RUNNER_TEMP/$zig_dist/zig" "$compiler_dir/zig"
+          # V passes the source language explicitly for native object builds.
+          # Link C++ objects with the matching musl libc++ runtime.
+          cat > "$compiler_dir/musl-gcc" <<'SH'
+          #!/bin/bash
+          zig="$(dirname "$0")/zig"
+          args=("$@")
+          previous=
+          link_cpp=
+          for i in "${!args[@]}"; do
+            arg=${args[i]}
+            if [[ $previous == -x && $arg == c++ ]]; then
+              exec "$zig" c++ -target x86_64-linux-musl "$@"
+            fi
+            if [[ $arg == -lstdc++ ]]; then
+              args[i]=-lc++
+              link_cpp=1
+            fi
+            previous=$arg
+          done
+          if [[ -n $link_cpp ]]; then
+            exec "$zig" cc -target x86_64-linux-musl "${args[@]}"
+          fi
+          exec /usr/bin/musl-gcc "$@"
+          SH
+          chmod +x "$compiler_dir/musl-gcc"
+      - name: Verify original C++17 object compilation in the musl lane
+        run: |
+          export PATH="$RUNNER_TEMP/musl-cxx:$PATH"
+          ./v -cc musl-gcc -gc none -d use_bundled_libgc -showcc -silent -b c vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v
+      - name: Verify original SLH-DSA tests with musl OpenSSL
+        run: |
+          set -eu
+          export PATH="$RUNNER_TEMP/musl-cxx:$PATH"
+          test -f /usr/local/include/openssl/obj_mac.h
+          ./v fmt -verify vlib/x/crypto/slhdsa/slhdsa.c.v
+          # Exercise the precise failing cached compilation, not only the C toolchain.
+          ./v -cc musl-gcc -gc none -d use_bundled_libgc -showcc -silent -no-retry-compilation vlib/x/crypto/slhdsa/usage_test.v
+          ./v -cc musl-gcc -gc none -d use_bundled_libgc -showcc -silent -no-retry-compilation vlib/x/crypto/slhdsa/base_test.v
       - name: Test V fixed tests
-        run: ./v -silent test-self vlib
+        run: |
+          export PATH="$RUNNER_TEMP/musl-cxx:$PATH"
+          ./v -silent test-self vlib
+
+  # Preserve the legacy image and its full suite; exercise Darwin targets with
+  # the modern Clang gate that supports their TLS and deployment macros.
+  ubuntu-musl-headerless:
+    uses: ./.github/workflows/headerless_darwin_target_ci.yml

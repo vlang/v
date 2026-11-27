@@ -7,23 +7,6 @@ fn fn_value_new_fixture_dir() string {
 	return root
 }
 
-fn fn_value_compile_good(fixture_dir string, name string, src string) string {
-	good_src := os.join_path(fixture_dir, 'v3_${name}.v')
-	os.write_file(good_src, src) or { panic(err) }
-	good_bin := os.join_path(fixture_dir, 'v3_${name}')
-	compile := os.exec([@VEXE, '${good_src}', '-b', 'c', '-o', good_bin])
-	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
-	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	return good_bin
-}
-
-fn fn_value_run_good(fixture_dir string, name string, src string) string {
-	good_bin := fn_value_compile_good(fixture_dir, name, src)
-	run := os.exec([good_bin])
-	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
-	return run.output.trim_space()
-}
-
 fn fn_value_write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
@@ -42,11 +25,10 @@ fn fn_value_write_project(fixture_dir string, name string, files map[string]stri
 	return root
 }
 
-fn fn_value_compile_good_project(fixture_dir string, name string, files map[string]string) string {
+fn fn_value_compile_good_project(fixture_dir string, name string, input string, files map[string]string) string {
 	root := fn_value_write_project(fixture_dir, name, files)
 	good_bin := os.join_path(fixture_dir, 'v3_${name}')
-	main_path := os.join_path(root, 'main.v')
-	compile := os.exec([@VEXE, main_path, '-b', 'c', '-o', good_bin])
+	compile := os.exec([@VEXE, os.join_path(root, input), '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
 	return good_bin
@@ -70,7 +52,7 @@ fn fn_value_compile_good_batch(fixture_dir string, name string, cases []FnValueR
 		files['${module_name}/fixture.v'] = source.replace_once('\nfn main()', '\npub fn exercise()')
 	}
 	files['main.v'] = "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
-	return fn_value_compile_good_project(fixture_dir, name, files)
+	return fn_value_compile_good_project(fixture_dir, name, 'main.v', files)
 }
 
 fn fn_value_c_definition(generated string, function string) string {
@@ -572,37 +554,6 @@ fn main() {
 	}
 }
 
-fn test_main_fn_values_use_their_declared_storage() {
-	fixture_dir := fn_value_new_fixture_dir()
-	defer { os.rmdir_all(fixture_dir) or {} }
-	out := fn_value_run_good(fixture_dir, 'fn_value_main_runtime', 'fn accept(value int) int {
-	return value + 1
-}
-
-fn consume(callback fn (int) int) int {
-	return callback(41)
-}
-
-type Validator[T] = fn (value T) ?int
-
-fn make_validator[T]() Validator[T] {
-	return fn [T] (value T) ?int {
-		return none
-	}
-}
-
-const validate_int = make_validator[int]()
-
-fn main() {
-	callback := accept
-	println(consume(callback))
-	println(consume(accept))
-	println(validate_int(123) == none)
-}
-')
-	assert out.split_into_lines() == ['42', '42', 'true'], out
-}
-
 fn test_fn_value_rejects_invalid_bindings() {
 	fixture_dir := fn_value_new_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
@@ -667,38 +618,41 @@ fn main() {
 	assert diagnostics['variadic_fn_value_shadowed_by_plain_fn.v'] == ['expected 1 argument, but got 2'], output
 }
 
-fn test_imported_fn_values_keep_callable_types() {
+fn test_main_and_imported_fn_values_keep_callable_types() {
 	fixture_dir := fn_value_new_fixture_dir()
 	defer { os.rmdir_all(fixture_dir) or {} }
-	bin := fn_value_compile_good_project(fixture_dir, 'fn_value_imported_selector_local',
-		imported_fn_value_project_files())
-	imported_c := os.read_file(bin + '.c') or { panic(err) }
-	assert !imported_c.contains('i64 f = worker__inc'), imported_c
-	assert !imported_c.contains('i64 loader = worker__read_ok'), imported_c
-	assert !imported_c.contains(' f = main__inc'), imported_c
-	assert imported_c.contains('i64 local_f = local_worker.inc'), imported_c
-	declaration, _ := imported_c.split_once(' f = worker__inc;') or {
-		panic('missing local assignment of worker.inc')
-	}
-	pointer_type := declaration.all_after_last('\n').trim_space()
-	assert pointer_type.starts_with('_fn_ptr_'), pointer_type
-	assert imported_c.contains('typedef i64 (*${pointer_type})('), pointer_type
-	assert imported_c.contains('f = worker__dec'), imported_c
-	assert imported_c.contains(' loader = worker__read_ok'), imported_c
-	assert imported_c.contains('loader = worker__read_other'), imported_c
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().split_into_lines() == ['imported-ok', '42', '49'], run.output
+	mut files := imported_fn_value_project_files()
+	files['imported.v'] = files['main.v'].replace_once('\nfn main() {', '\nfn case_imported() {')
+	files['main_runtime.v'] = 'fn accept(value int) int {
+	return value + 1
 }
 
-fn test_shadowed_fn_value_calls_use_bound_callable_types() {
-	fixture_dir := fn_value_new_fixture_dir()
-	defer { os.rmdir_all(fixture_dir) or {} }
-	bin := fn_value_compile_good(fixture_dir, 'fn_value_shadowed_calls', 'fn f() ?int {
+fn consume(callback fn (int) int) int {
+	return callback(41)
+}
+
+type Validator[T] = fn (value T) ?int
+
+fn make_validator[T]() Validator[T] {
+	return fn [T] (value T) ?int {
+		return none
+	}
+}
+
+const validate_int = make_validator[int]()
+
+fn case_main_runtime() {
+	callback := accept
+	println(consume(callback))
+	println(consume(accept))
+	println(validate_int(123) == none)
+}
+'
+	files['shadowed_calls.v'] = 'fn f() ?int {
 	return 99
 }
 
-fn take(value ?int) int {
+fn take_option(value ?int) int {
 	return value or { -1 }
 }
 
@@ -706,23 +660,54 @@ fn record(value int) {
 	println(int_str(value))
 }
 
-fn invoke(drop_owned fn (int), value int) {
+fn invoke_drop(drop_owned fn (int), value int) {
 	drop_owned(value)
 }
 
-fn main() {
+fn case_shadowed_calls() {
 	f := fn () int {
 		return 7
 	}
-	println(int_str(take(f())))
-	invoke(record, 23)
+	println(int_str(take_option(f())))
+	invoke_drop(record, 23)
 }
-')
+'
+	files['main.v'] = "module main
+
+fn main() {
+	match arguments()[1] {
+		'main_runtime' { case_main_runtime() }
+		'imported' { case_imported() }
+		'shadowed_calls' { case_shadowed_calls() }
+		else { panic('unknown fixture') }
+	}
+}
+"
+	bin := fn_value_compile_good_project(fixture_dir, 'fn_value_callables', '.', files)
 	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert generated.contains('take((__v_option_i64){.ok = true, .value = f()})'), generated
-	assert !generated.contains('take(f())'), generated
+	assert !generated.contains('i64 f = worker__inc'), generated
+	assert !generated.contains('i64 loader = worker__read_ok'), generated
+	assert !generated.contains(' f = main__inc'), generated
+	assert generated.contains('i64 local_f = local_worker.inc'), generated
+	declaration, _ := generated.split_once(' f = worker__inc;') or {
+		panic('missing local assignment of worker.inc')
+	}
+	pointer_type := declaration.all_after_last('\n').trim_space()
+	assert pointer_type.starts_with('_fn_ptr_'), pointer_type
+	assert generated.contains('typedef i64 (*${pointer_type})('), pointer_type
+	assert generated.contains('f = worker__dec'), generated
+	assert generated.contains(' loader = worker__read_ok'), generated
+	assert generated.contains('loader = worker__read_other'), generated
+	assert generated.contains('take_option((__v_option_i64){.ok = true, .value = f()})'), generated
+	assert !generated.contains('take_option(f())'), generated
 	assert generated.contains('drop_owned(value);'), generated
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().split_into_lines() == ['7', '23'], run.output
+	for name, expected in {
+		'main_runtime':   '42\n42\ntrue'
+		'imported':       'imported-ok\n42\n49'
+		'shadowed_calls': '7\n23'
+	} {
+		run := os.exec([bin, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == expected, '${name}: ${run.output}'
+	}
 }
