@@ -50,8 +50,21 @@ jobs:
           set -e
           cat "$RUNNER_TEMP/baseline-ordering.log"
           test "$rc" -ne 0
-          grep -F 'test_partial_cache_map_key_helpers_follow_their_builtin_prototypes' "$RUNNER_TEMP/baseline-ordering.log"
-          grep -F 'prototype < definition' "$RUNNER_TEMP/baseline-ordering.log"
+          # The test harness reports the assertion's helper, not the caller.
+          grep -F 'fn check_cache_map_key_helper_prototypes' "$RUNNER_TEMP/baseline-ordering.log"
+          grep -F 'assert prototype < definition' "$RUNNER_TEMP/baseline-ordering.log"
+          grep -F 'fast_string_eq((*left)[i], (*right)[i])' "$RUNNER_TEMP/baseline-ordering.log"
+          # Distinguish the existing demand-mode control from the partial-cache failure.
+          ./v -cc clang -run-only c.test_cache_map_key_helpers_follow_their_builtin_prototypes vlib/v/gen/c/cache_declarations_test.v
+          set +e
+          ./v -cc clang -run-only c.test_partial_cache_map_key_helpers_follow_their_builtin_prototypes vlib/v/gen/c/cache_declarations_test.v > "$RUNNER_TEMP/baseline-partial-only.log" 2>&1
+          partial_rc=$?
+          set -e
+          cat "$RUNNER_TEMP/baseline-partial-only.log"
+          test "$partial_rc" -ne 0
+          grep -F 'fn check_cache_map_key_helper_prototypes' "$RUNNER_TEMP/baseline-partial-only.log"
+          grep -F 'assert prototype < definition' "$RUNNER_TEMP/baseline-partial-only.log"
+          grep -F 'fast_string_eq((*left)[i], (*right)[i])' "$RUNNER_TEMP/baseline-partial-only.log"
       - name: Candidate declaration and actual partial-cache tests
         shell: bash
         run: |
@@ -69,4 +82,6 @@ jobs:
         if: always()
         with:
           name: partial-cache-baseline-log
-          path: ${{ runner.temp }}/baseline-ordering.log
+          path: |
+            ${{ runner.temp }}/baseline-ordering.log
+            ${{ runner.temp }}/baseline-partial-only.log
