@@ -60,7 +60,7 @@ struct Holder { mut: target &Builder }
 	}
 }
 
-fn test_ownership_map_returns_and_overwrites_preserve_storage() {
+fn test_ownership_storage_preserves_map_returns_overwrites_and_projections() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_map_returns_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -112,11 +112,12 @@ pub fn check() {
 	overwritten := owned_storage_overwrite_fixture('Holder{target: local.reference()}',
 		'store_number(mut holder, 42)', 'pub fn check()')
 	run_owned_storage_checks(root, {
-		'local_return':   local_return
-		'mutable_return': mutable_return
-		'chained_return': chained_return
-		'owned_source':   owned_source
-		'overwritten':    overwritten
+		'field_projections': owned_storage_field_projections_fixture()
+		'local_return':      local_return
+		'mutable_return':    mutable_return
+		'chained_return':    chained_return
+		'owned_source':      owned_source
+		'overwritten':       overwritten
 	})!
 }
 
@@ -266,12 +267,8 @@ fn escaped() Holder {
 '
 }
 
-fn test_ownership_field_projections_do_not_escape_local_storage() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_field_projections_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
-	os.write_file(source_path, 'struct Value {
+fn owned_storage_field_projections_fixture() string {
+	return 'struct Value {
 	number int
 	text string
 	values [2]int
@@ -309,7 +306,7 @@ fn result() !int {
 	ptr := &local
 	return ptr.number
 }
-fn main() {
+pub fn check() {
 	assert number() == 42
 	assert text() == "copied"
 	returned := value()
@@ -384,11 +381,7 @@ fn check_scalar_projections() {
 	assert state() == .ready
 	assert indexed() == 6
 }
-')!
-	for mode in ['-no-parallel', ''] {
-		result := run_owned_storage_summary(source_path, mode, 'run')
-		assert result.exit_code == 0, '${mode}: ${result.output}'
-	}
+'
 }
 
 fn owned_storage_overwrite_fixture(initial string, setter string, entry_point string) string {
