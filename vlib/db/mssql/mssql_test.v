@@ -93,6 +93,40 @@ fn test_connection_and_query() {
 	]
 }
 
+fn test_parameterized_exec_and_last_id() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		return
+	}
+
+	mut conn := connect_with_retry()!
+	defer {
+		conn.close()
+	}
+
+	conn.query("if object_id('vlang_mssql_bind_test', 'U') is not null drop table vlang_mssql_bind_test") or {}
+	defer {
+		conn.query("if object_id('vlang_mssql_bind_test', 'U') is not null drop table vlang_mssql_bind_test") or {}
+	}
+
+	conn.query('create table vlang_mssql_bind_test (
+		id int identity(1,1) primary key,
+		name varchar(32) not null,
+		note varchar(32) null
+	)')!
+
+	conn.exec('insert into vlang_mssql_bind_test (name, note) values (?, ?)', ['alice', 'hello'])!
+	assert conn.last_id() == 1
+
+	res := conn.exec('select name, note from vlang_mssql_bind_test where name = ?', ['alice'])!
+	assert res.rows == [mssql.Row{ vals: ['alice', 'hello'] }]
+
+	conn.exec('insert into vlang_mssql_bind_test (name, note) values (?, ?)', ['bob', none])!
+	null_res := conn.exec('select name, note from vlang_mssql_bind_test where name = ?', ['bob'])!
+	assert null_res.rows[0].vals[0] == 'bob'
+	assert null_res.rows[0].is_null(1)
+}
+
 fn connect_with_retry() !mssql.Connection {
 	conn_str := os.getenv_opt('VMSSQL_CONN_STR') or { default_mssql_conn_str }
 	mut last_err := 'could not connect to sql server'
