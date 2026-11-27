@@ -130,8 +130,6 @@ mut:
 	// checker_depth is the nesting depth reached by the current check_array/
 	// check_object call chain; see max_nesting_depth in check.v.
 	checker_depth int
-	// any_container_depth is the nesting depth of dynamic Any containers being built.
-	any_container_depth int
 }
 
 // no_value_idx is the index of a value that is not there, such as the `_type` of an
@@ -440,29 +438,28 @@ fn decoder_for_text(val string, params DecoderOptions) !Decoder {
 	return decoder
 }
 
-// decode decodes a JSON string into a specified type.
-// By default, decoding is lenient. Use `strict: true` for strict type conversion
-// and `json5: true` to accept JSON5 syntax.
-// Use decode_standard to avoid generating JSON5 decoding code for the target type.
-// Input nested deeper than 512 array/object levels errors. Recursive Any values are
-// additionally limited to 256 containers.
+// decode decodes a standard JSON string into a specified type. JSON5 input is
+// not accepted here; use decode_json5 for that (see issue #31406).
+// By default, decoding is lenient. Use `strict: true` for strict type conversion.
 @[manualfree]
 pub fn decode[T](val string, params DecoderOptions) !T {
-	if params.json5 {
-		mut buffer := DecodeBuffer{}
-		defer {
-			unsafe { buffer.values_info.free() }
-		}
-		return decode_json5[T](val, mut buffer, params)
-	}
 	return decode_standard[T](val, params)
+}
+
+// decode_json5 decodes a JSON5 string into a specified type.
+@[manualfree]
+pub fn decode_json5[T](val string, params DecoderOptions) !T {
+	mut buffer := DecodeBuffer{}
+	defer {
+		unsafe { buffer.values_info.free() }
+	}
+	return decode_json5_buffer[T](val, mut buffer, params)
 }
 
 // decode_standard decodes standard JSON into a specified type without generating
 // JSON5 decoding code. It is lenient by default; use `strict: true` for strict
 // type conversion. The `json5` option is ignored; JSON5 syntax is always rejected.
-// Input nested deeper than 512 array/object levels errors. Recursive Any values are
-// additionally limited to 256 containers.
+// Input nested deeper than 512 array/object levels errors.
 @[manualfree]
 pub fn decode_standard[T](val string, params DecoderOptions) !T {
 	mut decoder := decoder_for_text(val, params)!
@@ -480,12 +477,11 @@ pub fn decode_standard[T](val string, params DecoderOptions) !T {
 // buffer's token allocation and growing it during validation instead of counting
 // values in a separate pass. Returned values remain valid when buffer is reused,
 // including after an error. The caller must provide exclusive access to buffer.
-// Input nested deeper than 512 array/object levels errors. Recursive Any values are
-// additionally limited to 256 containers.
+// Input nested deeper than 512 array/object levels errors.
 @[manualfree]
 pub fn decode_reuse[T](val string, mut buffer DecodeBuffer, params DecoderOptions) !T {
 	if params.json5 {
-		return decode_json5[T](val, mut buffer, params)
+		return decode_json5_buffer[T](val, mut buffer, params)
 	}
 	if val == '' {
 		return JsonDecodeError{

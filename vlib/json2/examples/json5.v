@@ -36,7 +36,7 @@ fn dynamic() {
 // decode converts a document into a V type. Missing keys keep the field
 // default, so a partial document is valid input.
 fn typed() {
-	cfg := json2.decode[Config]('{ name: "srv", ratio: 1.5 }', json5: true) or { panic(err) }
+	cfg := json2.decode_json5[Config]('{ name: "srv", ratio: 1.5 }') or { panic(err) }
 	println('name  = ${cfg.name}')
 	println('port  = ${cfg.port}') // 8080, the default
 	println('ratio = ${cfg.ratio}')

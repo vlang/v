@@ -109,7 +109,7 @@ fn (mut c CustomWhole) from_json(v json2.Any) {
 }
 
 fn test_decode_simple_struct() {
-	got := json2.decode[Simple]('{ name: "V", count: 3, ratio: 1.5, flag: true }', json5: true)!
+	got := json2.decode_json5[Simple]('{ name: "V", count: 3, ratio: 1.5, flag: true }')!
 	assert got == Simple{
 		name:  'V'
 		count: 3
@@ -119,7 +119,7 @@ fn test_decode_simple_struct() {
 }
 
 fn test_decode_missing_keys_keep_defaults() {
-	got := json2.decode[Simple]('{ name: "V" }', json5: true)!
+	got := json2.decode_json5[Simple]('{ name: "V" }')!
 	assert got.name == 'V'
 	assert got.count == 0
 	assert got.ratio == 0.0
@@ -127,27 +127,25 @@ fn test_decode_missing_keys_keep_defaults() {
 }
 
 fn test_decode_null_leaves_default() {
-	got := json2.decode[Simple]('{ name: null }', json5: true)!
+	got := json2.decode_json5[Simple]('{ name: null }')!
 	assert got.name == ''
 }
 
 fn test_decode_unquoted_and_quoted_keys_mix() {
-	got := json2.decode[Simple]('{ "name": \'a\', \'count\': 2, /* c */ ratio: -0.25, }',
-		json5: true
-	)!
+	got := json2.decode_json5[Simple]('{ "name": \'a\', \'count\': 2, /* c */ ratio: -0.25, }')!
 	assert got.name == 'a'
 	assert got.count == 2
 	assert got.ratio == -0.25
 }
 
 fn test_decode_nested_struct() {
-	got := json2.decode[Inner]('{ label: "x", count: 1 }', json5: true)!
+	got := json2.decode_json5[Inner]('{ label: "x", count: 1 }')!
 	assert got.label == 'x'
 	assert got.count == 1
 }
 
 fn test_decode_struct_error_on_non_object() {
-	json2.decode[Inner]('[1]', json5: true) or {
+	json2.decode_json5[Inner]('[1]') or {
 		assert err.msg() != ''
 		return
 	}
@@ -155,7 +153,7 @@ fn test_decode_struct_error_on_non_object() {
 }
 
 fn test_decode_map() {
-	got := json2.decode[map[string]string]('{ a: "1", b: "2", }', json5: true)!
+	got := json2.decode_json5[map[string]string]('{ a: "1", b: "2", }')!
 	assert got == {
 		'a': '1'
 		'b': '2'
@@ -163,7 +161,7 @@ fn test_decode_map() {
 }
 
 fn test_decode_map_error_on_non_object() {
-	json2.decode[map[string]string]('[]', json5: true) or {
+	json2.decode_json5[map[string]string]('[]') or {
 		assert err.msg() != ''
 		return
 	}
@@ -171,33 +169,31 @@ fn test_decode_map_error_on_non_object() {
 }
 
 fn test_decode_dynamic_array() {
-	got := json2.decode[[]int]('[1, 2, 3]', json5: true)!
+	got := json2.decode_json5[[]int]('[1, 2, 3]')!
 	assert got == [1, 2, 3]
 }
 
 fn test_decode_empty_array() {
-	got := json2.decode[[]string]('[]', json5: true)!
+	got := json2.decode_json5[[]string]('[]')!
 	assert got.len == 0
 }
 
 fn test_decode_fixed_array_keeps_length() {
-	got := json2.decode[[2]int]('[1, 2, 3]', json5: true)!
+	got := json2.decode_json5[[2]int]('[1, 2, 3]')!
 	assert got == [1, 2]
-	got2 := json2.decode[[3]int]('[1]', json5: true)!
+	got2 := json2.decode_json5[[3]int]('[1]')!
 	assert got2 == [1, 0, 0]
 }
 
 fn test_decode_array_of_structs() {
-	got := json2.decode[[]Inner]('[{ label: "a", count: 1 }, { label: "b", count: 2 }]',
-		json5: true
-	)!
+	got := json2.decode_json5[[]Inner]('[{ label: "a", count: 1 }, { label: "b", count: 2 }]')!
 	assert got.len == 2
 	assert got[0].label == 'a'
 	assert got[1].count == 2
 }
 
 fn test_decode_nested_array() {
-	got := json2.decode[[][]int]('[[1, 2], [], [3]]', json5: true)!
+	got := json2.decode_json5[[][]int]('[[1, 2], [], [3]]')!
 	assert got.len == 3
 	assert got[0] == [1, 2]
 	assert got[1].len == 0
@@ -205,36 +201,36 @@ fn test_decode_nested_array() {
 }
 
 fn test_decode_skip_attribute() {
-	got := json2.decode[Skipped]('{ a: 1, b: 2 }', json5: true)!
+	got := json2.decode_json5[Skipped]('{ a: 1, b: 2 }')!
 	assert got.a == 1
 	assert got.b == 0
 }
 
 fn test_decode_json5_attribute() {
-	got := json2.decode[Renamed]('{ real_name: "v" }', json5: true)!
+	got := json2.decode_json5[Renamed]('{ real_name: "v" }')!
 	assert got.name == 'v'
 }
 
 fn test_decode_embedded_struct_is_flattened() {
-	got := json2.decode[WithEmbed]('{ label: "l", name: "n" }', json5: true)!
+	got := json2.decode_json5[WithEmbed]('{ label: "l", name: "n" }')!
 	assert got.label == 'l'
 	assert got.name == 'n'
 }
 
 fn test_decode_json5_attribute_on_enum() {
-	got := json2.decode[Tagged]('{ mode: "fast", other: "keep" }', json5: true)!
+	got := json2.decode_json5[Tagged]('{ mode: "fast", other: "keep" }')!
 	assert got.mode == .fast
 	assert got.other == 'keep'
 }
 
 fn test_decode_enum_by_name_and_number() {
-	assert json2.decode[Tagged]('{ mode: "fast" }', json5: true)!.mode == .fast
-	assert json2.decode[Tagged]('{ mode: 1 }', json5: true)!.mode == .fast
-	assert json2.decode[Tagged]('{ mode: 0 }', json5: true)!.mode == .slow
+	assert json2.decode_json5[Tagged]('{ mode: "fast" }')!.mode == .fast
+	assert json2.decode_json5[Tagged]('{ mode: 1 }')!.mode == .fast
+	assert json2.decode_json5[Tagged]('{ mode: 0 }')!.mode == .slow
 }
 
 fn test_decode_enum_error() {
-	json2.decode[Tagged]('{ mode: "nope" }', json5: true) or {
+	json2.decode_json5[Tagged]('{ mode: "nope" }') or {
 		assert err.msg().contains('enum')
 		return
 	}
@@ -242,7 +238,7 @@ fn test_decode_enum_error() {
 }
 
 fn test_decode_all_integer_widths() {
-	got := json2.decode[IntWidths]('{ u: 1, i: -1, b: 2, h: 3, w: 4, l: 5, x: 6 }', json5: true)!
+	got := json2.decode_json5[IntWidths]('{ u: 1, i: -1, b: 2, h: 3, w: 4, l: 5, x: 6 }')!
 	assert got.u == u8(1)
 	assert got.i == i8(-1)
 	assert got.b == u8(2)
@@ -253,7 +249,7 @@ fn test_decode_all_integer_widths() {
 }
 
 fn test_decode_narrow_int_rejects_overflow() {
-	json2.decode[IntWidths]('{ u: 300 }', json5: true) or {
+	json2.decode_json5[IntWidths]('{ u: 300 }') or {
 		assert err.msg() != ''
 		return
 	}
@@ -261,7 +257,7 @@ fn test_decode_narrow_int_rejects_overflow() {
 }
 
 fn test_decode_negative_to_unsigned_rejected() {
-	json2.decode[IntWidths]('{ b: -1 }', json5: true) or {
+	json2.decode_json5[IntWidths]('{ b: -1 }') or {
 		assert err.msg() != ''
 		return
 	}
@@ -269,7 +265,7 @@ fn test_decode_negative_to_unsigned_rejected() {
 }
 
 fn test_decode_hex_and_floats() {
-	got := json2.decode[Simple]('{ count: 0x10, ratio: .5 }', json5: true)!
+	got := json2.decode_json5[Simple]('{ count: 0x10, ratio: .5 }')!
 	assert got.count == 16
 	assert got.ratio == 0.5
 }
@@ -294,11 +290,11 @@ fn test_decode_large_hexadecimal_floats() {
 		'-0x000':                                u64(0x8000000000000000)
 	}
 	for text, expected in cases {
-		assert math.f64_bits(json2.decode[f64](text, json5: true)!) == expected, text
+		assert math.f64_bits(json2.decode_json5[f64](text)!) == expected, text
 		assert math.f64_bits(json2.parse(text, json5: true)!.f64()) == expected, text
 	}
-	assert json2.decode[f32]('0x10000000000000000', json5: true)! == f32(18446744073709551616.0)
-	got := json2.decode[Simple]('{ratio: 0x10000000000000000}', json5: true)!
+	assert json2.decode_json5[f32]('0x10000000000000000')! == f32(18446744073709551616.0)
+	got := json2.decode_json5[Simple]('{ratio: 0x10000000000000000}')!
 	assert got.ratio == 18446744073709551616.0
 	doc := json2.parse_text('{values: [0x10000000000000000]}', json5: true)!
 	assert doc.value('values[0]').f64() == 18446744073709551616.0
@@ -308,77 +304,77 @@ fn test_decode_hexadecimal_float_overflow() {
 	// At 2^1024 - 2^970, nearest-even rounding overflows to infinity.
 	below := '0x' + 'f'.repeat(13) + 'b' + 'f'.repeat(242)
 	tie := '0x' + 'f'.repeat(13) + 'c' + '0'.repeat(242)
-	assert math.f64_bits(json2.decode[f64](below, json5: true)!) == u64(0x7fefffffffffffff)
+	assert math.f64_bits(json2.decode_json5[f64](below)!) == u64(0x7fefffffffffffff)
 	for text in [tie, '0x1' + '0'.repeat(256), '0x' + 'f'.repeat(1024)] {
-		assert math.is_inf(json2.decode[f64](text, json5: true)!, 1)
-		assert math.is_inf(json2.decode[f64]('-' + text, json5: true)!, -1)
+		assert math.is_inf(json2.decode_json5[f64](text)!, 1)
+		assert math.is_inf(json2.decode_json5[f64]('-' + text)!, -1)
 		assert math.is_inf(json2.parse(text, json5: true)!.f64(), 1)
 	}
-	assert json2.decode[f64]('0x' + '0'.repeat(1024), json5: true)! == 0.0
+	assert json2.decode_json5[f64]('0x' + '0'.repeat(1024))! == 0.0
 }
 
 fn test_decode_hexadecimal_integer_range_checks() {
-	assert json2.decode[u64]('0xffffffffffffffff', json5: true)! == u64(0xffffffffffffffff)
-	assert json2.decode[i64]('-0x8000000000000000', json5: true)! == i64(-9223372036854775807 - 1)
+	assert json2.decode_json5[u64]('0xffffffffffffffff')! == u64(0xffffffffffffffff)
+	assert json2.decode_json5[i64]('-0x8000000000000000')! == i64(-9223372036854775807 - 1)
 	for text in ['0x10000000000000000', '-0x10000000000000000'] {
-		json2.decode[u64](text, json5: true) or { continue }
+		json2.decode_json5[u64](text) or { continue }
 		assert false, 'expected unsigned integer overflow: ${text}'
 	}
 	for text in ['0x8000000000000000', '-0x8000000000000001', '0x10000000000000000'] {
-		json2.decode[i64](text, json5: true) or { continue }
+		json2.decode_json5[i64](text) or { continue }
 		assert false, 'expected signed integer overflow: ${text}'
 	}
 }
 
 fn test_decode_infinity_to_float() {
-	got := json2.decode[Simple]('{ ratio: Infinity }', json5: true)!
+	got := json2.decode_json5[Simple]('{ ratio: Infinity }')!
 	assert got.ratio > 0.0
 }
 
 fn test_decode_any_field() {
-	got := json2.decode[WithAny]('{ raw: { a: 1 }, list: [1, 2] }', json5: true)!
+	got := json2.decode_json5[WithAny]('{ raw: { a: 1 }, list: [1, 2] }')!
 	assert got.raw.as_map()['a'] or { json2.null }.int() == 1
 	assert got.list.len == 2
 }
 
 fn test_decode_to_any() {
-	got := json2.decode[json2.Any]('{ a: 1 }', json5: true)!
+	got := json2.decode_json5[json2.Any]('{ a: 1 }')!
 	assert got.as_map()['a'] or { json2.null }.int() == 1
 }
 
 fn test_decode_top_level_scalars() {
-	assert json2.decode[string]('"s"', json5: true)! == 's'
-	assert json2.decode[int]('42', json5: true)! == 42
-	assert json2.decode[bool]('true', json5: true)!
-	assert json2.decode[f64]('1.5', json5: true)! == 1.5
+	assert json2.decode_json5[string]('"s"')! == 's'
+	assert json2.decode_json5[int]('42')! == 42
+	assert json2.decode_json5[bool]('true')!
+	assert json2.decode_json5[f64]('1.5')! == 1.5
 }
 
 fn test_decode_option_field() {
-	got := json2.decode[WithOption]('{ present: { label: "x" }, absent: null }', json5: true)!
+	got := json2.decode_json5[WithOption]('{ present: { label: "x" }, absent: null }')!
 	assert got.present != none
 	assert (got.present or { Inner{} }).label == 'x'
 	assert got.absent == none
 }
 
 fn test_decode_custom_string_hook() {
-	got := json2.decode[CustomString]('{ name: "ab" }', json5: true)!
+	got := json2.decode_json5[CustomString]('{ name: "ab" }')!
 	assert got.name.value == 'AB'
 }
 
 fn test_decode_custom_string_hook_error() {
-	json2.decode[CustomString]('{ name: "" }', json5: true) or { return }
+	json2.decode_json5[CustomString]('{ name: "" }') or { return }
 	assert false, 'expected the custom hook to fail'
 }
 
 fn test_decode_custom_number_hook() {
 	// The hook receives the literal source text of the number, so a hexadecimal
 	// literal reaches it intact.
-	got := json2.decode[CustomNumber]('{ n: 0x10 }', json5: true)!
+	got := json2.decode_json5[CustomNumber]('{ n: 0x10 }')!
 	assert got.n.value == 16
 }
 
 fn test_decode_custom_whole_value_hook() {
-	got := json2.decode[CustomWhole]('{ whatever: "raw" }', json5: true)!
+	got := json2.decode_json5[CustomWhole]('{ whatever: "raw" }')!
 	assert got.value == 'raw'
 }
 

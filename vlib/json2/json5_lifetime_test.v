@@ -29,17 +29,17 @@ fn (mut value Json5RetainedNumberHook) from_json_number(text string) ! {
 
 fn test_json5_returned_strings_survive_allocations_and_buffer_reuse() {
 	mut buffer := DecodeBuffer{}
-	root := decode[string]("'root string'", json5: true)!
+	root := decode_json5[string]("'root string'")!
 	fields := decode_reuse[Json5BorrowedStrings]("{name:'field string',items:['array string'],object_text:{key:'object string'},raw:{key:'raw string'}}",
 		mut buffer,
 		json5: true
 	)!
-	values := decode[map[string]string]("{'map key':'map value'}", json5: true)!
-	dynamic := decode[Any]("{bareKey:'dynamic string'}", json5: true)!
-	dynamic_root := decode[Any]("'dynamic root string'", json5: true)!
-	escaped := decode[string]("'escaped\\nstring'", json5: true)!
-	string_hook := decode[Json5RetainedStringHook]("'hook string'", json5: true)!
-	number_hook := decode[Json5RetainedNumberHook]('0x1234', json5: true)!
+	values := decode_json5[map[string]string]("{'map key':'map value'}")!
+	dynamic := decode_json5[Any]("{bareKey:'dynamic string'}")!
+	dynamic_root := decode_json5[Any]("'dynamic root string'")!
+	escaped := decode_json5[string]("'escaped\\nstring'")!
+	string_hook := decode_json5[Json5RetainedStringHook]("'hook string'")!
+	number_hook := decode_json5[Json5RetainedNumberHook]('0x1234')!
 	mut allocations := [][]u8{}
 	for i in 0 .. 256 {
 		// Occupy freed parser allocations of different sizes and repeatedly reuse tokens.

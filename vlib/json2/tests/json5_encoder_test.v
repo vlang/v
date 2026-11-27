@@ -29,7 +29,7 @@ fn test_encode_options_preserves_present_payloads_and_none() {
 		color:   Color.green
 	}
 	text := json2.encode(settings, json5: true)
-	decoded := json2.decode[OptionalSettings](text, json5: true)!
+	decoded := json2.decode_json5[OptionalSettings](text)!
 	assert decoded.present or { -1 } == 42
 	assert decoded.absent == none
 	assert decoded.label or { '' } == 'value'
@@ -144,7 +144,7 @@ fn test_encode_and_decode_unicode_identifier_categories() {
 		}
 		text := json2.encode(value, json5: true, unquoted_keys: true)
 		assert text == '{' + key + ':1}'
-		assert json2.decode[map[string]int](text, json5: true)! == value
+		assert json2.decode_json5[map[string]int](text)! == value
 	}
 	// No and Me are excluded; marks, digits and other connectors cannot start keys.
 	for key in ['a\u00b2', 'a\u0488', 'a\U0001f100', '\u0903a', '\u203fa', '\u0660a', 'a-'] {
@@ -153,8 +153,8 @@ fn test_encode_and_decode_unicode_identifier_categories() {
 		}
 		text := json2.encode(value, json5: true, unquoted_keys: true)
 		assert text == '{"' + key + '":1}'
-		assert json2.decode[map[string]int](text, json5: true)! == value
-		json2.decode[map[string]int]('{' + key + ':1}', json5: true) or { continue }
+		assert json2.decode_json5[map[string]int](text)! == value
+		json2.decode_json5[map[string]int]('{' + key + ':1}') or { continue }
 		assert false, 'invalid bare key was accepted: ${key}'
 	}
 }
@@ -215,7 +215,7 @@ fn test_encode_line_separators_with_each_quote_style() {
 			assert !text.contains('\u2028')
 			assert !text.contains('\u2029')
 			assert text[0] == if single_quotes { `'` } else { `"` }
-			assert json2.decode[string](text, json5: true)! == value
+			assert json2.decode_json5[string](text)! == value
 		}
 	}
 	assert json2.encode('a\u2028b\u2029c', json5: true) == r'"a\u2028b\u2029c"'
@@ -226,7 +226,7 @@ fn test_encode_line_separators_with_each_quote_style() {
 	}
 	text := json2.encode(keys, json5: true, unquoted_keys: true)
 	assert text == r'{"key\u2028\u2029":"value\u2028\u2029"}'
-	assert json2.decode[map[string]string](text, json5: true)! == keys
+	assert json2.decode_json5[map[string]string](text)! == keys
 	mut appended := 'prefix:'.bytes()
 	json2.encode_append('a\u2028b', mut appended, json5: true)
 	assert appended.bytestr() == r'prefix:"a\u2028b"'
