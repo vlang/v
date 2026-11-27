@@ -63,6 +63,82 @@ fn check_program_form(name string, source string, flags []string) os.Result {
 	return os.exec([@VEXE, '-check', '-nocolor', ...flags, path])
 }
 
+struct ConstraintDiagnosticCase {
+	name     string
+	source   string
+	expected []string
+}
+
+fn constraint_diagnostic_batch(name string, sources map[string]string) map[string][]string {
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_${name}_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	mut imports := []string{cap: sources.len}
+	mut calls := []string{cap: sources.len}
+	mut errors := map[string][]string{}
+	for label, source in sources {
+		case_dir := os.join_path(dir, label)
+		os.mkdir_all(case_dir) or { panic(err) }
+		fixture := (constraint_prelude + source).replace_once('module main\n', 'module ${label}\n').replace_once('\nfn main()',
+			'\npub fn exercise()')
+		os.write_file(os.join_path(case_dir, 'case.v'), fixture) or { panic(err) }
+		imports << 'import ${label}'
+		calls << '\t${label}.exercise()'
+		errors[label] = []
+	}
+	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
+		panic(err)
+	}
+	// The batch contains more errors than the default diagnostic limit.
+	res := cmdexec.run_in(@VEXE, ['-check', '-nocolor', '-message-limit', '300', '.'], dir)
+	assert res.exit_code == 1, res.output
+	project := os.file_name(dir)
+	for line in res.output.split_into_lines() {
+		location, message := line.split_once(': error: ') or { continue }
+		without_col := location.all_before_last(':')
+		path := without_col.all_before_last(':')
+		label := os.file_name(os.dir(path))
+		assert os.file_name(path) == 'case.v' && label in errors, line
+		program_line := without_col.all_after_last(':').int() - first_line + 1
+		col := location.all_after_last(':')
+		normalized := message.replace_each(['${project}.${label}.', '', '${label}.', ''])
+		errors[label] << '${program_line}:${col}: ${normalized}'
+	}
+	return errors
+}
+
+fn test_generic_constraint_function_and_method_diagnostics() {
+	cases := [
+		constraint_operations_case(),
+		interface_calls_case(),
+		generic_type_arguments_case(),
+		constraint_closures_case(),
+		alias_constraints_case(),
+		set_rejections_case(),
+	]
+	mut sources := map[string]string{}
+	for case in cases {
+		sources[case.name] = case.source
+	}
+	function_errors := constraint_diagnostic_batch('batch_functions', sources)
+
+	mut forms := map[string]method_form.MethodForm{}
+	for case in cases {
+		form := method_form.of(case.source) or { panic('missing method form for ${case.name}') }
+		forms[case.name] = form
+		sources[case.name] = form.source
+	}
+	method_errors := constraint_diagnostic_batch('batch_methods', sources)
+	for case in cases {
+		original := function_errors[case.name]
+		assert original == case.expected, '${case.name}: ${original}'
+		difference := forms[case.name].differences(original, method_errors[case.name])
+		assert difference == '', 'the method form of `${case.name}`: ${difference}'
+	}
+}
+
 // check_fixture checks `source` after the prelude as the checker fixtures are
 // checked, `-checker-fixture`, where each concrete instance of a generic
 // function is checked in full.
@@ -438,13 +514,12 @@ fn main() {}
 	], res.output
 }
 
-fn test_operations_on_constrained_values_require_support_from_all_types() {
+fn constraint_operations_case() ConstraintDiagnosticCase {
 	// An interface declares no operators. Equality and membership are available
 	// as for a value of the interface. A constraint set permits only operations
 	// supported by every type in it, including types in an embedding family.
 	// On arrays, items << x appends as a statement and shifts in an expression.
-	// Leave room to report unexpected errors beyond the 20 expected here.
-	res := check_program('constraint_operations', "type Number = int | f64
+	source := "type Number = int | f64
 
 type Word = string | int
 
@@ -584,10 +659,9 @@ fn main() {
 	println(show(Root{}))
 	println(show(Pet{ name: 'p' }))
 }
-", '-message-limit', '100')
-	assert res.exit_code == 1, res.output
+"
 	named := 'its constraint `Named` does not declare it'
-	assert error_lines(res.output) == [
+	expected := [
 		'28:12: operator `+` is not defined on type `T`: ${named}',
 		'30:4: operator `+=` is not defined on type `T`: ${named}',
 		'31:3: operator `++` is not defined on type `T`: ${named}',
@@ -608,7 +682,8 @@ fn main() {
 		'110:11: operator `+` is not defined on type `T`: a struct that embeds `User` does not have it',
 		'124:38: `only_people` needs `T` to be in `People`: a struct that embeds `User`, in its constraint `User`, is not',
 		'139:15: cannot use `Pet` as `T`: it is not `User` and does not embed it',
-	], res.output
+	]
+	return ConstraintDiagnosticCase{'constraint_operations', source, expected}
 }
 
 fn test_comptime_and_runtime_type_checks_on_constrained_values() {
@@ -1043,10 +1118,10 @@ fn main() {
 	], res.output
 }
 
-fn test_interface_constraints_check_calls_and_function_values() {
+fn interface_calls_case() ConstraintDiagnosticCase {
 	// Comparable[T] is bound to the type argument itself, so Odd's less(int)
 	// satisfies Comparable[int] and fails Comparable[Odd].
-	res := check_program('interface_calls', "fn longest[T Named](a T, b T) T {
+	source := "fn longest[T Named](a T, b T) T {
 	return if a.name.len >= b.name.len { a } else { b }
 }
 
@@ -1124,11 +1199,10 @@ fn main() {
 	f := smallest[Odd]
 	println(f)
 }
-")
-	assert res.exit_code == 1, res.output
+"
 	no_name := "`int` doesn't implement field `name` of interface `Named`"
 	odd_mismatch := '`Odd` incorrectly implements method `less` of interface `Comparable`: expected `Odd`, not `int` for parameter 1'
-	assert error_lines(res.output) == [
+	expected := [
 		'33:12: type `T` has no field named `v`: its constraint `Comparable[T]` does not declare it',
 		'47:7: ${odd_mismatch}',
 		'55:18: `smallest` needs `U` to implement `Comparable[U]`: `U` has no constraint: give it one, `[U Comparable[U]]`',
@@ -1141,7 +1215,8 @@ fn main() {
 		"73:19: `int` doesn't implement method `less` of interface `Comparable`",
 		'75:16: `Num` incorrectly implements method `less` of interface `Comparable`: expected `int`, not `Num` for parameter 1',
 		'76:16: ${odd_mismatch}',
-	], res.output
+	]
+	return ConstraintDiagnosticCase{'interface_calls', source, expected}
 }
 
 // unwrap_name infers T from the return type of the container's get method.
@@ -1294,11 +1369,11 @@ fn main() {
 	], res.output
 }
 
-fn test_constrained_generic_type_arguments_are_checked() {
+fn generic_type_arguments_case() ConstraintDiagnosticCase {
 	// Structs, interfaces, aliases, and sum types check their type arguments
 	// where they are written or inferred. Using PetTree as a constraint also
 	// checks its type argument and admits only the variants of that instance.
-	res := check_program('generic_type_arguments', "struct Box[T Named] {
+	source := "struct Box[T Named] {
 	item T
 }
 
@@ -1394,10 +1469,9 @@ fn main() {
 	println(accept_member(Pet{}).name)
 	println(accept_member(1))
 }
-")
-	assert res.exit_code == 1, res.output
+"
 	no_name := "`int` doesn't implement field `name` of interface `Named`"
-	assert error_lines(res.output) == [
+	expected := [
 		'11:7: ${no_name}',
 		'14:11: ${no_name}',
 		'45:9: ${no_name}',
@@ -1414,13 +1488,14 @@ fn main() {
 		'89:13: ${no_name}',
 		'90:24: ${no_name}',
 		'95:24: cannot use `int` as `U`: it is not in its constraint `PetTree[User]`',
-	], res.output
+	]
+	return ConstraintDiagnosticCase{'generic_type_arguments', source, expected}
 }
 
-fn test_closures_and_array_methods_respect_generic_constraints() {
+fn constraint_closures_case() ConstraintDiagnosticCase {
 	// Closure parameters and array callbacks use the constraint of their input.
 	// Nested array methods each bind `it` to their own element type.
-	res := check_program('constraint_closures', 'fn labels[T Named](xs []T) []string {
+	source := 'fn labels[T Named](xs []T) []string {
 	f := fn (x T) string {
 		return x.name + x.age.str()
 	}
@@ -1506,10 +1581,9 @@ fn given[T Named](xs []T) []int {
 }
 
 fn main() {}
-')
-	assert res.exit_code == 1, res.output
+'
 	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
-	assert error_lines(res.output) == [
+	expected := [
 		'3:21: ${no_age}',
 		'10:12: ${no_age}',
 		'16:19: ${no_age}',
@@ -1525,7 +1599,8 @@ fn main() {}
 		'56:12: ${no_age}',
 		'64:13: ${no_age}',
 		'83:25: ${no_age}',
-	], res.output
+	]
+	return ConstraintDiagnosticCase{'constraint_closures', source, expected}
 }
 
 fn test_an_instance_the_constraint_rejects_is_reported_at_its_call_only() {
@@ -1679,10 +1754,10 @@ fn main() {}
 	], res.output
 }
 
-fn test_type_aliases_and_sum_types_as_constraints() {
+fn alias_constraints_case() ConstraintDiagnosticCase {
 	// Ints requires the alias itself. Number, Real, and Both admit their sum
 	// variants, including variants reached through nested and generic sum types.
-	res := check_program('alias_constraints', "type Ints = []int
+	source := "type Ints = []int
 
 fn ints[T Ints](x T) int {
 	return x.len
@@ -1742,10 +1817,9 @@ fn main() {
 	println(half(u8(1)))
 	println(accept(1.5))
 }
-")
-	assert res.exit_code == 1, res.output
+"
 	// The unknown sum variant is reported once, where Bad is declared.
-	assert error_lines(res.output) == [
+	expected := [
 		'7:11: unknown type `Nope`',
 		'24:21: type `T` has no method `hex`: `f64`, in its constraint `Number`, does not have it',
 		'35:18: unknown type `Foo`',
@@ -1753,7 +1827,8 @@ fn main() {
 		'54:17: cannot use `string` as `T`: it is not in its constraint `Number`',
 		'58:15: cannot use `u8` as `T`: it is not in its constraint `Real`',
 		'59:17: cannot use `f64` as `T`: it is not in its constraint `Both`',
-	], res.output
+	]
+	return ConstraintDiagnosticCase{'alias_constraints', source, expected}
 }
 
 fn test_a_nested_sum_constraint_keeps_distinct_generic_instances() {
@@ -1910,10 +1985,10 @@ pub fn (h Host) longest[T Named](a T, b T) T {
 	assert errors == ['main.v:11:25: error: ${no_name}', 'main.v:14:20: error: ${no_name}'], res.output
 }
 
-fn test_type_sets_and_interface_aliases_check_calls_and_members() {
+fn set_rejections_case() ConstraintDiagnosticCase {
 	// A generic body can use only the members available on every type in
 	// its constraint. An interface alias accepts implementations of the interface.
-	res := check_program('set_rejections', "type Sized = []int | []string | map[string]int | string
+	source := "type Sized = []int | []string | map[string]int | string
 
 type Listy = []int | []string
 
@@ -1989,16 +2064,16 @@ fn main() {
 	println(show_aliased(1))
 	println(show_aliased(User{ name: 'Alex' }))
 }
-")
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
+"
+	expected := [
 		'12:11: type `T` has no field named `cap`: `map[string]int`, in its constraint `Sized`, does not have it',
 		'28:11: type `T` has no field named `age`: its constraint `Value` does not declare it',
 		'38:20: type `T` has no method `greet`: `Pet`, in its constraint `Animal`, does not have it',
 		'68:17: cannot use `string` as `T`: it is not in its constraint `Number`',
 		'73:19: cannot use `f64` as `T`: it is not in its constraint `NamedOrInt`',
 		"74:23: `int` doesn't implement field `name` of interface `ThingThatHasName`",
-	], res.output
+	]
+	return ConstraintDiagnosticCase{'set_rejections', source, expected}
 }
 
 fn read_format_thousands_fixture() string {
