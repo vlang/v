@@ -883,24 +883,21 @@ fn main() {
 }
 ')
 	assert out == 'enum\n42\n9\n42\n1.0\n42.0\n8\ntrue\n0\nA\nnone\n6'
-	run_bad(v3_bin, 'bad_address_mutable_array_element',
-		'fn main() {\n\tmut values := [1]\n\t_ := &values[0]\n}\n',
-		'cannot take the address of mutable array elements outside unsafe blocks')
-}
-
-fn test_reject_address_of_map_alias_value() {
-	run_bad(v3_bin, 'bad_address_nested_map_alias_value',
-		"type Scores = map[string]int\ntype ScoresRef = &Scores\n\nfn main() {\n\tmut scores := Scores({'key': 1})\n\tscores_ref := ScoresRef(&scores)\n\t_ := &scores_ref['key']\n}\n",
-		'cannot take the address of map values outside `unsafe`')
+	check_review_rejections('container_element_addresses', [
+		ReviewFixture{'bad_address_mutable_array_element', 'fn main() {\n\tmut values := [1]\n\t_ := &values[0]\n}\n', 'cannot take the address of mutable array elements outside unsafe blocks'},
+		ReviewFixture{'bad_address_nested_map_alias_value', "type Scores = map[string]int\ntype ScoresRef = &Scores\n\nfn main() {\n\tmut scores := Scores({'key': 1})\n\tscores_ref := ScoresRef(&scores)\n\t_ := &scores_ref['key']\n}\n", 'cannot take the address of map values outside `unsafe`'},
+	])
 }
 
 fn test_cross_wrapper_option_result_returns_match_v1() {
-	check_review_rejections('option_result_returns', [
+	check_review_rejections('option_result_compatibility', [
 		ReviewFixture{'bad_result_value_in_option_return', 'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n', 'cannot use `!int` as type `?int` in return argument'},
 		ReviewFixture{'bad_result_value_in_optional_pointer_return', 'struct Item {}\n\nfn convert(res !Item) ?&Item {\n\treturn res\n}\n\nfn main() {}\n', 'cannot use `!bad_result_value_in_optional_pointer_return.Item` as type `?&bad_result_value_in_optional_pointer_return.Item` in return argument'},
 		ReviewFixture{'bad_option_value_in_result_pointer_return', 'struct Item {}\n\nfn convert(opt ?Item) !&Item {\n\treturn opt\n}\n\nfn main() {}\n', 'cannot use `?bad_option_value_in_result_pointer_return.Item` as type `!&bad_option_value_in_result_pointer_return.Item` in return argument'},
 		ReviewFixture{'bad_error_branch_in_option_return', "fn make_option(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
 		ReviewFixture{'bad_constant_error_branch_in_option_return', "fn make_option() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
+		ReviewFixture{'bad_option_void_returned_as_option_int', 'fn empty() ? {\n\treturn\n}\n\nfn value() ?int {\n\treturn empty()\n}\n\nfn main() {}\n', 'cannot use `?void` as type `?int` in return argument'},
+		ReviewFixture{'bad_option_void_assigned_to_option_int', 'fn empty() ? {\n\treturn\n}\n\nfn main() {\n\tmut value := ?int(1)\n\tvalue = empty()\n}\n', 'cannot assign to `value`: expected `?int`, not `?void`'},
 	])
 	check_review_runtime('result_return_runtime', [
 		ReviewFixture{'good_constant_error_branch_in_result_return', "fn make_result() !int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := make_result() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", 'bad'},
@@ -919,10 +916,6 @@ fn main() {
 }
 ')
 	assert out == 'true'
-	check_review_rejections('option_void_payload', [
-		ReviewFixture{'bad_option_void_returned_as_option_int', 'fn empty() ? {\n\treturn\n}\n\nfn value() ?int {\n\treturn empty()\n}\n\nfn main() {}\n', 'cannot use `?void` as type `?int` in return argument'},
-		ReviewFixture{'bad_option_void_assigned_to_option_int', 'fn empty() ? {\n\treturn\n}\n\nfn main() {\n\tmut value := ?int(1)\n\tvalue = empty()\n}\n', 'cannot assign to `value`: expected `?int`, not `?void`'},
-	])
 }
 
 fn test_assignment_selector_diagnostic_accepts_wide_columns() {
@@ -975,9 +968,27 @@ fn test_trailing_optional_parameters_are_lowered_to_none() {
 }
 
 fn test_multi_return_arguments_must_consume_the_parameter_tail() {
-	run_bad(v3_bin, 'bad_variadic_multi_return_argument',
-		'fn pair() (int, []int) {\n\treturn 1, [2, 3]\n}\n\nfn consume(a int, rest ...int) {}\n\nfn main() {\n\tconsume(pair())\n}\n',
-		'cannot use `(int, []int)` as `int` in argument 1 to `consume`')
+	check_review_rejections('variadic_argument_rejections', [
+		ReviewFixture{'bad_variadic_multi_return_argument', 'fn pair() (int, []int) {\n\treturn 1, [2, 3]\n}\n\nfn consume(a int, rest ...int) {}\n\nfn main() {\n\tconsume(pair())\n}\n', 'cannot use `(int, []int)` as `int` in argument 1 to `bad_variadic_multi_return_argument.consume`'},
+		ReviewFixture{'bad_forwarded_variadic_function_trailing_arg', 'fn take(values ...int) {}
+
+fn forward(values ...int) {
+	take(...values, 2)
+}
+
+fn main() {}
+', 'when forwarding a variadic variable, it must be the final argument'},
+		ReviewFixture{'bad_forwarded_variadic_method_trailing_arg', 'struct Receiver {}
+
+fn (receiver Receiver) take(values ...int) {}
+
+fn (receiver Receiver) forward(values ...int) {
+	receiver.take(...values, 2)
+}
+
+fn main() {}
+', 'when forwarding a variadic variable, it must be the final argument'},
+	])
 }
 
 fn test_receiver_method_tail_multi_return_arguments_are_expanded() {
@@ -1030,15 +1041,10 @@ fn test_reject_narrowed_interface_method_parameters() {
 }
 
 fn test_implicit_str_sum_does_not_satisfy_interface() {
-	run_bad(v3_bin, 'bad_implicit_str_sum_interface',
-		'interface Printable {\n\tstr() string\n}\ntype Value = int | string\nfn main() {\n\t_ := Printable(Value(1))\n}\n',
-		'does not implement interface')
-}
-
-fn test_implicit_str_unsupported_alias_does_not_satisfy_interface() {
-	run_bad(v3_bin, 'bad_implicit_str_fn_alias_interface',
-		'interface Printable {\n\tstr() string\n}\ntype Callback = fn ()\nfn noop() {}\nfn main() {\n\tcb := Callback(noop)\n\t_ := Printable(cb)\n}\n',
-		'cannot implement interface `Printable` using function')
+	check_review_rejections('implicit_str_interface_rejections', [
+		ReviewFixture{'bad_implicit_str_sum_interface', 'interface Printable {\n\tstr() string\n}\ntype Value = int | string\nfn main() {\n\t_ := Printable(Value(1))\n}\n', 'does not implement interface'},
+		ReviewFixture{'bad_implicit_str_fn_alias_interface', 'interface Printable {\n\tstr() string\n}\ntype Callback = fn ()\nfn noop() {}\nfn main() {\n\tcb := Callback(noop)\n\t_ := Printable(cb)\n}\n', 'cannot implement interface `bad_implicit_str_fn_alias_interface.Printable` using function'},
+	])
 }
 
 fn test_multi_return_tail_slots_use_return_compatibility() {
@@ -1085,18 +1091,13 @@ fn test_numeric_alias_returns_preserve_integer_float_direction() {
 }
 
 fn test_fn_value_integer_returns_require_matching_c_abi() {
-	run_bad(v3_bin, 'bad_fn_value_integer_return_abi',
-		'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n',
-		'cannot use `fn () u64`')
+	check_review_rejections('fn_value_return_compatibility', [
+		ReviewFixture{'bad_fn_value_integer_return_abi', 'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n', 'cannot use `fn () u64`'},
+		ReviewFixture{'bad_fn_value_array_return_payload', 'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n', 'cannot use `fn () []int`'},
+	])
 	out := run_good(v3_bin, 'good_fn_value_matching_integer_return_abi',
 		'fn letter() rune {\n\treturn `A`\n}\n\nfn invoke(callback fn () u32) u32 {\n\treturn callback()\n}\n\nfn main() {\n\tprintln(int_str(int(invoke(letter))))\n}\n')
 	assert out == '65'
-}
-
-fn test_fn_value_aggregate_returns_require_compatible_payloads() {
-	run_bad(v3_bin, 'bad_fn_value_array_return_payload',
-		'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n',
-		'cannot use `fn () []int`')
 }
 
 fn test_alias_with_nested_type_separator_stays_alias() {
@@ -1114,30 +1115,13 @@ fn test_voidptr_params_reject_non_pointer_values() {
 }
 
 fn test_shared_receiver_and_arg_require_shared_bindings() {
-	check_review_rejections('receiver_rejections', [
+	check_review_rejections('receiver_binding_rejections', [
 		ReviewFixture{'bad_mut_receiver_immutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\ts.bump()\n}\n', '`s` is immutable, declare it with `mut` to make it mutable'},
 		ReviewFixture{'bad_generic_mut_receiver_immutable_value', 'struct Box[T] {\nmut:\n\tvalue T\n}\n\nfn (mut b Box[T]) set(value T) {\n\tb.value = value\n}\n\nfn main() {\n\tb := Box[int]{\n\t\tvalue: 1\n\t}\n\tb.set(2)\n}\n', '`b` is immutable, declare it with `mut` to make it mutable'},
 		ReviewFixture{'bad_mut_receiver_address_of_immutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\t(&s).bump()\n}\n', 'cannot pass expression as `mut`'},
 		ReviewFixture{'bad_shared_receiver_plain_value', 'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n', 'cannot use shared method `f` as `s` is not a shared var'},
 		ReviewFixture{'bad_shared_arg_shadowed_local', 'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\tshared s := St{}\n\tif true {\n\t\ts := St{}\n\t\ttake(s)\n\t}\n}\n', 'parameter `s` is `shared`, so use `shared s` instead'},
 		ReviewFixture{'bad_explicit_shared_arg_plain_local', 'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\ts := St{}\n\ttake(shared s)\n}\n', 'cannot use non-shared `bad_explicit_shared_arg_plain_local.St` as argument 1'},
-	])
-	check_review_runtime('receiver_runtime', [
-		ReviewFixture{'good_mut_receiver_immutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
-		ReviewFixture{'good_shared_arg_and_receiver', 'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(shared s) + s.f()))\n}\n', '3'},
-		ReviewFixture{'good_mut_receiver_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
-		ReviewFixture{'good_mut_receiver_address_of_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\t(&s).bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
-		ReviewFixture{'good_mut_receiver_mutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tmut p := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
-		ReviewFixture{'good_mut_receiver_global_pointer', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\n__global global_st = &St{}\n\nfn main() {\n\tglobal_st.bump()\n\tprintln(int_str(global_st.value))\n}\n', '1'},
-		ReviewFixture{'good_mut_receiver_pointer_field', 'struct St {\nmut:\n\tvalue int\n}\n\nstruct Holder {\n\tst &St\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tholder := Holder{\n\t\tst: &s\n\t}\n\tholder.st.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
-		ReviewFixture{'good_mut_receiver_if_guard_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn get() ?St {\n\treturn St{}\n}\n\nfn main() {\n\tif mut s := get() {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}\n}\n', '1'},
-		ReviewFixture{'good_mut_receiver_explicit_mut_capture', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tfn [mut s] () {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}()\n}\n', '1'},
-		ReviewFixture{'good_pointer_receiver_immutable_value', 'struct St {\n\tvalue int\n}\n\nfn (s &St) get() int {\n\treturn s.value\n}\n\nfn main() {\n\ts := St{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(s.get()))\n}\n', '2'},
-	])
-}
-
-fn test_method_receiver_rejects_extra_pointer_layers() {
-	check_review_rejections('receiver_pointer_depth', [
 		ReviewFixture{'bad_value_receiver_extra_pointer_layers', 'struct S {}
 
 fn (s S) value() int {
@@ -1166,6 +1150,21 @@ fn main() {
 }
 ', 'cannot use receiver `&&&bad_pointer_receiver_extra_pointer_layers.S` as `&bad_pointer_receiver_extra_pointer_layers.S`'},
 	])
+	check_review_runtime('receiver_runtime', [
+		ReviewFixture{'good_mut_receiver_immutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReviewFixture{'good_shared_arg_and_receiver', 'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(shared s) + s.f()))\n}\n', '3'},
+		ReviewFixture{'good_mut_receiver_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_address_of_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\t(&s).bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_mutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tmut p := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_global_pointer', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\n__global global_st = &St{}\n\nfn main() {\n\tglobal_st.bump()\n\tprintln(int_str(global_st.value))\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_pointer_field', 'struct St {\nmut:\n\tvalue int\n}\n\nstruct Holder {\n\tst &St\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tholder := Holder{\n\t\tst: &s\n\t}\n\tholder.st.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_if_guard_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn get() ?St {\n\treturn St{}\n}\n\nfn main() {\n\tif mut s := get() {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}\n}\n', '1'},
+		ReviewFixture{'good_mut_receiver_explicit_mut_capture', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tfn [mut s] () {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}()\n}\n', '1'},
+		ReviewFixture{'good_pointer_receiver_immutable_value', 'struct St {\n\tvalue int\n}\n\nfn (s &St) get() int {\n\treturn s.value\n}\n\nfn main() {\n\ts := St{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(s.get()))\n}\n', '2'},
+	])
+}
+
+fn test_method_receiver_rejects_extra_pointer_layers() {
 	out := run_good(v3_bin, 'good_receiver_single_pointer_adjustment', 'struct S {
 	value int
 }
@@ -1217,26 +1216,9 @@ fn test_pointer_hex_receiver_methods_are_allowed() {
 }
 
 fn test_map_keys_and_values_reject_arguments() {
-	check_review_rejections('map_method_arguments', [
+	check_review_rejections('collection_method_arity_rejections', [
 		ReviewFixture{'bad_map_keys_arg', 'fn main() {\n\tm := map[string]int{}\n\t_ := m.keys(123)\n}\n', '`.keys()` does not have any arguments'},
 		ReviewFixture{'bad_map_values_arg', "fn main() {\n\tm := map[string]int{}\n\t_ := m.values('x')\n}\n", '`.values()` does not have any arguments'},
-	])
-}
-
-fn test_array_to_void_array_is_not_implicitly_compatible() {
-	run_bad(v3_bin, 'bad_array_to_void_array_param',
-		'fn take(xs []void) {\n\t_ = xs\n}\n\nfn main() {\n\ttake([1, 2, 3])\n}\n',
-		'cannot use `[]int` as `[]void` in argument 1 to `take`')
-	run_bad(v3_bin, 'bad_array_to_void_array_user_receiver',
-		'type Voids = []void\n\nfn (xs Voids) touch() int {\n\treturn xs.len\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tprintln(nums.touch().str())\n}\n',
-		'unknown function: nums.touch')
-	out := run_good(v3_bin, 'good_array_clone_ignores_void_array_receiver',
-		'type Voids = []void\n\nfn (xs Voids) clone() int {\n\treturn 7\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tcloned := nums.clone()\n\tprintln(int_str(cloned.len + cloned[2]))\n}\n')
-	assert out == '6'
-}
-
-fn test_array_insert_and_prepend_reject_wrong_arity() {
-	check_review_rejections('array_insert_prepend', [
 		ReviewFixture{'bad_array_prepend_missing_arg', 'fn main() {\n\tmut a := [1, 2]\n\ta.prepend()\n}\n', '`array.prepend()` should have 1 argument'},
 		ReviewFixture{'bad_array_prepend_extra_arg', 'fn side_effect() int {\n\treturn 3\n}\nfn main() {\n\tmut a := [1, 2]\n\ta.prepend(0, side_effect())\n}\n', '`array.prepend()` should have 1 argument'},
 		ReviewFixture{'bad_array_insert_missing_arg', 'fn main() {\n\tmut a := [1, 2]\n\ta.insert(0)\n}\n', '`array.insert()` should have 2 arguments'},
@@ -1247,6 +1229,16 @@ fn test_array_insert_and_prepend_reject_wrong_arity() {
 		ReviewFixture{'bad_array_prepend_many_arg_type', "fn main() {\n\tmut a := [1, 2]\n\ta.prepend(['x'])\n}\n", 'cannot prepend `[]string` to `[]int`'},
 		ReviewFixture{'bad_array_insert_many_arg_type', "fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, ['x'])\n}\n", 'cannot insert `[]string` to `[]int`'},
 	])
+}
+
+fn test_array_to_void_array_is_not_implicitly_compatible() {
+	check_review_rejections('void_array_compatibility', [
+		ReviewFixture{'bad_array_to_void_array_param', 'fn take(xs []void) {\n\t_ = xs\n}\n\nfn main() {\n\ttake([1, 2, 3])\n}\n', 'cannot use `[]int` as `[]void` in argument 1 to `bad_array_to_void_array_param.take`'},
+		ReviewFixture{'bad_array_to_void_array_user_receiver', 'type Voids = []void\n\nfn (xs Voids) touch() int {\n\treturn xs.len\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tprintln(nums.touch().str())\n}\n', 'unknown function: nums.touch'},
+	])
+	out := run_good(v3_bin, 'good_array_clone_ignores_void_array_receiver',
+		'type Voids = []void\n\nfn (xs Voids) clone() int {\n\treturn 7\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tcloned := nums.clone()\n\tprintln(int_str(cloned.len + cloned[2]))\n}\n')
+	assert out == '6'
 }
 
 fn test_array_insert_and_prepend_accept_many_operands() {
@@ -1265,12 +1257,10 @@ fn test_comptime_if_selected_bodies_are_checked() {
 }
 
 fn test_comptime_match_shadowed_const_subject_is_not_folded() {
-	run_bad(v3_bin, 'bad_comptime_match_parameter_shadows_const',
-		"const mode = 'a'\n\nfn choose(mode string) {\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n\nfn main() {}\n",
-		'definition of `mode` is unknown at compile time')
-	run_bad(v3_bin, 'bad_comptime_match_mutable_local_shadows_const',
-		"const mode = 'a'\n\nfn main() {\n\tmut mode := 'b'\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n",
-		'`mode` is mut and may have changed since its definition')
+	check_review_rejections('comptime_match_shadowing_rejections', [
+		ReviewFixture{'bad_comptime_match_parameter_shadows_const', "const mode = 'a'\n\nfn choose(mode string) {\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n\nfn main() {}\n", 'definition of `mode` is unknown at compile time'},
+		ReviewFixture{'bad_comptime_match_mutable_local_shadows_const', "const mode = 'a'\n\nfn main() {\n\tmut mode := 'b'\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n", '`mode` is mut and may have changed since its definition'},
+	])
 	check_review_runtime('comptime_match_runtime', [
 		ReviewFixture{'good_comptime_match_known_local', "fn main() {\n\tmode := 'b'\n\t\$match mode {\n\t\t'b' { println('ok') }\n\t\t\$else { println('bad') }\n\t}\n}\n", 'ok'},
 		ReviewFixture{'good_comptime_match_generic_parameter_type', "fn classify[T](value T) string {\n\t\$match value {\n\t\tint { return 'int' }\n\t\t\$else { return 'other' }\n\t}\n}\n\nfn main() {\n\tprintln(classify(1))\n}\n", 'int'},
@@ -1490,14 +1480,9 @@ fn test_declared_c_exit_satisfies_return_analysis() {
 }
 
 fn test_no_return_analysis_requires_resolved_builtin_target() {
-	check_review_rejections('resolved_return_target', [
+	check_review_rejections('shadowed_no_return_targets', [
 		ReviewFixture{'bad_shadowed_os_exit_missing_return', 'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f(os OsLike) int {\n\tos.exit()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
 		ReviewFixture{'bad_local_os_exit_missing_return', 'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f() int {\n\tos := OsLike{}\n\tos.exit()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
-	])
-}
-
-fn test_no_return_analysis_rejects_shadowed_builtin_fn_values() {
-	check_review_rejections('shadowed_return_targets', [
 		ReviewFixture{'bad_shadowed_exit_fn_value_missing_return', 'fn f() int {\n\texit := fn () int { return 1 }\n\texit()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
 		ReviewFixture{'bad_shadowed_panic_fn_value_missing_return', 'fn f() int {\n\tpanic := fn () int { return 1 }\n\tpanic()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
 		ReviewFixture{'bad_nested_shadowed_exit_fn_value_missing_return', 'fn f() int {\n\t{\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n}\nfn main() {}\n', 'missing return at end of function `f`'},
@@ -1749,29 +1734,6 @@ fn main() {
 fn main() {}
 ',
 		'function name `bad_T_Name` cannot contain uppercase letters, use snake_case instead')
-}
-
-fn test_forwarded_variadic_arrays_must_be_final() {
-	check_review_rejections('forwarded_variadic_arguments', [
-		ReviewFixture{'bad_forwarded_variadic_function_trailing_arg', 'fn take(values ...int) {}
-
-fn forward(values ...int) {
-	take(...values, 2)
-}
-
-fn main() {}
-', 'when forwarding a variadic variable, it must be the final argument'},
-		ReviewFixture{'bad_forwarded_variadic_method_trailing_arg', 'struct Receiver {}
-
-fn (receiver Receiver) take(values ...int) {}
-
-fn (receiver Receiver) forward(values ...int) {
-	receiver.take(...values, 2)
-}
-
-fn main() {}
-', 'when forwarding a variadic variable, it must be the final argument'},
-	])
 }
 
 fn test_mut_pointer_local_after_mut_pointer_loop_keeps_pointer_type() {
