@@ -1214,6 +1214,88 @@ fn test_instruction_that_changes_nothing() {
 		['ok', 'amd64', 'shrq $0, %%rbx'],
 		['ok', 'amd64', 'sarq $0, %%rbx'],
 		['ok', 'amd64', 'andq $-1, %%rbx'],
+		// Other spellings of the same values, as GNU as and clang read them (amendment 5).
+		['ok', 'amd64', 'addq $00, %%rbx'],
+		['ok', 'amd64', 'addq $0X0, %%rbx'],
+		['ok', 'amd64', 'addq $0b0, %%rbx'],
+		['ok', 'amd64', 'addq $0B0, %%rbx'],
+		['ok', 'amd64', 'addq $-0, %%rbx'],
+		['ok', 'amd64', 'addq $+0, %%rbx'],
+		['ok', 'amd64', 'addq $(0), %%rbx'],
+		['ok', 'amd64', 'addq $((0)), %%rbx'],
+		['ok', 'amd64', 'addq $- -0, %%rbx'],
+		['ok', 'amd64', 'addq $~-1, %%rbx'],
+		['ok', 'amd64', 'addq $!1, %%rbx'],
+		['ok', 'amd64', 'addq $0x00000000, %%rbx'],
+		['ok', 'amd64', 'subq $-0x0, %%rbx'],
+		['ok', 'amd64', 'orq $0b00, %%rbx'],
+		['ok', 'amd64', 'xorq $(0), %%rbx'],
+		['ok', 'amd64', 'addb $256, %%bl'],
+		['ok', 'amd64', 'addw $0x10000, %%bx'],
+		['ok', 'amd64', 'andq $~0, %%rbx'],
+		['ok', 'amd64', 'andq $-0x1, %%rbx'],
+		['ok', 'amd64', 'andq $0xffffffffffffffff, %%rbx'],
+		['ok', 'amd64', 'andq $18446744073709551615, %%rbx'],
+		['ok', 'amd64', 'andq $01777777777777777777777, %%rbx'],
+		['ok', 'amd64', 'andq $(-1), %%rbx'],
+		['ok', 'amd64', 'andq $- 1, %%rbx'],
+		['ok', 'amd64', 'andb $255, %%bl'],
+		['ok', 'amd64', 'andb $0xff, %%bl'],
+		['ok', 'amd64', 'andb $-1, %%bl'],
+		['ok', 'amd64', 'andw $0xffff, %%bx'],
+		['ok', 'amd64', 'andw $65535, %%bx'],
+		['ok', 'i386', 'andl $0xffffffff, %%esi'],
+		['ok', 'i386', 'addl $0x0, %%esi'],
+		['ok', 'amd64', 'shlq $64, %%rbx'],
+		['ok', 'amd64', 'shlq $0x40, %%rbx'],
+		['ok', 'amd64', 'shrq $128, %%rbx'],
+		['ok', 'amd64', 'sarq $0xc0, %%rbx'],
+		['ok', 'amd64', 'shlb $32, %%bl'],
+		['ok', 'amd64', 'shlw $32, %%bx'],
+		['ok', 'i386', 'shll $32, %%esi'],
+		['ok', 'amd64', 'leaq 0x0(,%%rbx,1), %%rbx'],
+		['ok', 'amd64', 'leaq (,%%rbx), %%rbx'],
+		['ok', 'amd64', 'leaq 00(%%rbx), %%rbx'],
+		['ok', 'amd64', 'leaq 0b0(%%rbx), %%rbx'],
+		['ok', 'amd64', 'leaq -0(%%rbx), %%rbx'],
+		['ok', 'amd64', 'leaq (0)(%%rbx), %%rbx'],
+		['ok', 'amd64', 'leaq 0(%%rbx,%%riz,2), %%rbx'],
+		['ok', 'amd64', 'leaw (%%rbx), %%bx'],
+		['ok', 'amd64', 'leaw (%%ebx), %%bx'],
+		['ok', 'amd64', 'leaw (,%%rbx,1), %%bx'],
+		['ok', 'amd64', 'leaq (,%%rbx,01), %%rbx'],
+		['ok', 'amd64', 'leaq (,%%rbx,0x1), %%rbx'],
+		['ok', 'amd64', 'leaq (,%%rbx,(1)), %%rbx'],
+		['ok', 'amd64', 'leaq (,%%rbx, +1), %%rbx'],
+		['ok', 'amd64', 'leaq (0)(,%%rbx,(1)), %%rbx'],
+		['no', 'amd64', 'leaq (,%%rbx,2-1), %%rbx'],
+		['no', 'amd64', 'leaq (%%rcx,%%rbx,1), %%rbx'],
+		['no', 'amd64', 'addq 00, %%rbx'],
+		['no', 'amd64', 'andq 0, %%rbx'],
+		['no', 'amd64', 'leaq (,%%rbx,(2)), %%rbx'],
+		['ok', 'i386', 'leal 0x0(,%%esi,1), %%esi'],
+		['ok', 'i386', 'leal 00(%%esi), %%esi'],
+		['ok', 'i386', 'leaw (%%si), %%si'],
+		['no', 'amd64', 'shlb $8, %%bl'],
+		['no', 'amd64', 'shlq $63, %%rbx'],
+		['no', 'i386', 'shll $31, %%esi'],
+		['no', 'amd64', 'addb $255, %%bl'],
+		['no', 'amd64', 'andb $254, %%bl'],
+		['no', 'amd64', 'andw $0xff, %%bx'],
+		['no', 'amd64', 'andq $0x7fffffffffffffff, %%rbx'],
+		['no', 'amd64', 'addq $1-1, %%rbx'],
+		['no', 'amd64', 'addq $~0, %%rbx'],
+		['no', 'amd64', 'orq $!0, %%rbx'],
+		['no', 'amd64', 'andq $--1, %%rbx'],
+		['no', 'amd64', 'addq $18446744073709551616, %%rbx'],
+		['no', 'amd64', 'leaq (%%ebx), %%rbx'],
+		['no', 'i386', 'leal (%%si), %%esi'],
+		['no', 'amd64', 'leaq (,%%rbx,2), %%rbx'],
+		['no', 'amd64', 'leaq 1(,%%rbx,1), %%rbx'],
+		['no', 'amd64', 'leaq (,%%rcx,1), %%rbx'],
+		['no', 'amd64', 'leaq 8(%%rbx,%%riz,2), %%rbx'],
+		['no', 'amd64', 'leaq 0(%%rbx,%%rcx,1), %%rbx'],
+		['no', 'amd64', 'leaq 0(%%rcx,%%riz,1), %%rbx'],
 		['no', 'amd64', 'leaq 8(%%rsi), %%rsi'],
 		['no', 'amd64', 'leaq 0(%%rdi), %%rsi'],
 		['no', 'amd64', 'leaq 0(%%rsi,%%rdi,1), %%rsi'],
@@ -1474,4 +1556,45 @@ fn test_operand_is_pinned_only_without_a_register_the_compiler_chooses() {
 	for constraint in ['=@ccz', '=@ccnz', '+@cca', 'a,d', '=a,=d', '0,1'] {
 		assert !raw_is_free(constraint), constraint
 	}
+}
+
+fn test_integer_value_reads_what_the_assemblers_read() {
+	for text, want in {
+		'0':                    u64(0)
+		'00':                   0
+		'010':                  8
+		'0x1F':                 31
+		'0B101':                5
+		'18446744073709551615': max_u64
+		'-1':                   max_u64
+		'~0':                   max_u64
+		'!0':                   1
+		'!7':                   0
+		'+-(2)':                max_u64 - 1
+		'((3))':                3
+	} {
+		assert inline_asm_raw_integer_value(text) or { panic('${text}: none') } == want, text
+	}
+	for text in ['', '-', '()', '(0', '(0+1)', '(0]', '0)', '1-1', '08', '0b2', '0x', '0xg', '1x5',
+		'1b1', '18446744073709551616', 'x', '0h', '1_0'] {
+		assert inline_asm_raw_integer_value(text) == none, text
+	}
+	// Deep nesting must not exhaust the stack.
+	n := 1_000_000
+	assert inline_asm_raw_integer_value('('.repeat(n) + '-(~(0))' + ')'.repeat(n)) or { 0 } == 1
+	assert inline_asm_raw_integer_value('-'.repeat(n) + '1') or { 0 } == 1
+	assert inline_asm_raw_integer_value('('.repeat(n) + '1' + ')'.repeat(n - 1)) == none
+}
+
+fn test_lea_keeps_reads_the_address() {
+	for address in ['(rbx)', '0(rbx)', '(,rbx)', '(,rbx,1)', '(0)(,rbx,(1))', '(rbx,riz,4)'] {
+		assert inline_asm_raw_lea_keeps(address, 'rbx', 64, 64), address
+	}
+	for address in ['rbx', '(rbx', 'rbx)', '(rbx)x', '(,rbx,1,2)', '(rbx,,2)', '(,riz)', '()',
+		'(,,1)', '(rcx,rbx,1)', '(,rbx,2)', '1(rbx)', 'x(rbx)', '(ebx)'] {
+		assert !inline_asm_raw_lea_keeps(address, 'rbx', 64, 64), address
+	}
+	assert inline_asm_raw_lea_keeps('(ebx)', 'bx', 16, 64)
+	assert !inline_asm_raw_lea_keeps('(si)', 'si', 16, 64)
+	assert inline_asm_raw_lea_keeps('(si)', 'si', 16, 32)
 }

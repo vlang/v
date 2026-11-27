@@ -326,11 +326,12 @@ writes. `doc/docs.md` says what they report. They do not model an assembler: a t
 cannot read as plain AT&T code is not checked. The choices below rest on what GNU as 2.44, GCC 14
 and clang 19.1.7 did on x86-64 Linux; run them again before changing one.
 
-* A `rep` counts for the string instruction after it only where both assemblers agree. `rep` on
-  its own line, and `wait rep` on one line (which clang refuses), reach the next instruction. Both
-  encode `lock` and `rep` on separate lines, and `lock` before a `rep movsb` line, as one
-  instruction that faults. Other spellings of `rep` with `lock` or `wait` are refused by GNU as
-  and read in different ways by clang, so none counts.
+* A `rep` counts for the string instruction after it only where no assembler that takes the
+  spelling puts it elsewhere. `rep` on its own line, and `wait rep` on one line (which clang
+  refuses), reach the next instruction. Both encode `lock` and `rep` on separate lines, in either
+  order, and `lock` before a `rep movsb` line, as one instruction that faults. Other spellings of
+  `rep` with `lock` or `wait` are refused by GNU as, and refused or read in different ways by
+  clang, so none counts.
 * Alignment after a lone `rep` may emit padding that takes the prefix (`.p2align 4`), or nothing
   (`.p2align 0`).
 * A fill byte is code: `.p2align 1, 0x41` at an odd offset makes the next `movl $1, %eax` write

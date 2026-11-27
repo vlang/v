@@ -11860,14 +11860,15 @@ checked for writes or flags at all: a push or pop of another width, or of an ope
 width the check does not know, such as one bound to a field, a pop into `%%rsp` or a stack address,
 any other instruction that names `%%rsp`, or `%%rbp` inside a frame, `enter`, `pusha`, `popa`, a
 16-bit `leavew`, a `leave` outside a frame, any form of `ret`, a far jump, call or return, `iret`,
-`sysenter`, `sysret`, `sysexit`, `xbegin`, a 16-bit `callw`, a `call` to a label of the template, as
-in `call 1f; 1: pop %%rbx` or `call getpc@PLT; getpc:`, or to a target that is not a plain symbol
-name, such as `*%%rcx` or `.+5`, and a `call` while a value the template pushed is still on the
-stack, as the function owns the slots above its return address and may change them, or pop them with
-`ret $n`. A register that the template copies whole with `mov`, in any letter case, to another
-register from `rax` to `r15` other than `rsp`, or to an operand reference such as `%[slot]`, and
-later copies back whole from that same place, is not checked for writes at all, also when the copy
-goes through several such places or a `push` and a `pop`: the check does not follow whether the
+`uiret`, `eretu`, `erets`, `sysenter`, `sysret`, `sysexit`, `xbegin`, a 16-bit `callw`, a `call` to
+a label of the template, as in `call 1f; 1: pop %%rbx` or `call getpc@PLT; getpc:`, or to a
+target that is not a plain symbol name, such as `*%%rcx` or `.+5`, and a `call` while a value the
+template pushed is still on the stack, as the function owns the slots above its return address and
+may change them, or pop them with `ret $n`. A register that the template copies whole with `mov`,
+in any letter case, to another register from `rax` to `r15` other than `rsp`, or to an operand
+reference such as `%[slot]`, and later copies back whole from that same place, is not checked for
+writes at all, also when the copy goes through several such places or a `push` and a `pop`: the
+check does not follow whether the
 place changes in between, nor writes after the copy back. An operand is compared as written, so `%0`
 and `%[slot]`, `%q[slot]` and `%[slot]`, or `%[Slot]` and `%[slot]`, are different places, and an
 operand named `%[rbx]` is not the register. A copy to memory written in the template, such as
@@ -11908,10 +11909,15 @@ registers of the instruction after it, `addr32`, `notrack`, `xacquire` or a pseu
 `.d8` or `.d32`, such as the `.s` of `movq.s`, which choose the encoding as those pseudo prefixes
 do. The check skips `@[_naked]` functions, anonymous functions outside a function body, such as in
 the initializer of a constant or a global or in a field's default value, and a block with a clobber
-given by number. An instruction that cannot change its destination, such as `movq %%rbx, %%rbx`,
-`orq %%rbx, %%rbx`, `leaq 0(%%rsi), %%rsi` or `addq $0, %%rbx`, is not a write, though it may set
-the flags. A 32-bit one in an amd64 block is a write, as it clears the upper half. A value changed
-and changed back, as by two `notq`, is reported.
+given by number. An instruction that cannot change its destination is not a write, though it may
+set the flags: `mov`, `or` or `and` of a register with itself, a `lea` of the register itself
+(`leaq 0(%%rsi), %%rsi`, `leaq (,%%rsi,1), %%rsi`), `add`, `sub`, `or` or `xor` of an immediate
+that is zero at the destination's width, `and` of one that is all ones there (`andb $255, %%bl`),
+and a shift by a count that the CPU masks to zero (`shlq $64, %%rbx`). The immediate is read as a
+number in decimal, octal, hex or binary, with `-`, `+`, `~`, `!` and parentheses; any other form,
+such as `1-1` or a symbol, counts as a change. A 32-bit destination in an amd64 block is
+always written, as the upper half is cleared. A value changed and changed back, as by two `notq`,
+is reported.
 
 Both checks read only plain instructions, labels, comments, and the `.cfi_` directives and the
 alignment and symbol directives `.align`, `.p2align`, `.balign`, `.globl`, `.global`, `.weak`,

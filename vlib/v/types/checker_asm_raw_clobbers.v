@@ -22,10 +22,10 @@ const inline_asm_raw_string_families = ['movs', 'stos', 'lods', 'cmps', 'scas', 
 
 // inline_asm_raw_far_transfers start the GNU x86 mnemonics, other than a jump, a loop and a near
 // `call`, that leave the template or resume it elsewhere: every form of `ret`, a far jump, call
-// or return, an interrupt return, `sysenter`, `sysret` and `sysexit`, and `xbegin`, whose abort
-// resumes at its label.
-const inline_asm_raw_far_transfers = ['ret', 'lret', 'iret', 'sysenter', 'sysret', 'sysexit', 'ljmp',
-	'lcall', 'xbegin']!
+// or return, an interrupt return, the user interrupt return `uiret`, the FRED returns `eretu` and
+// `erets`, `sysenter`, `sysret` and `sysexit`, and `xbegin`, whose abort resumes at its label.
+const inline_asm_raw_far_transfers = ['ret', 'lret', 'iret', 'uiret', 'eretu', 'erets', 'sysenter',
+	'sysret', 'sysexit', 'ljmp', 'lcall', 'xbegin']!
 
 // inline_asm_raw_flag_families are the GNU x86 mnemonics that set the condition flags.
 const inline_asm_raw_flag_families = ['add', 'sub', 'and', 'or', 'xor', 'cmp', 'test', 'inc', 'dec',
@@ -957,10 +957,134 @@ fn inline_asm_raw_written_destination(instruction InlineAsmRawInstruction, name 
 	return none
 }
 
+// inline_asm_raw_integer_value returns the value of an integer constant as GNU as and clang read it
+// (`text` without the `$` and blanks): a decimal number, an octal one with a leading zero, a `0x` or
+// `0b` one, each after any number of the prefix operators `-`, `+`, `~` and `!` and in any number of
+// parentheses. It returns none for anything else, such as a symbol, a character constant, an
+// expression with two operands, or a number wider than 64 bits.
+fn inline_asm_raw_integer_value(text string) ?u64 {
+	// The operators and opening parentheses before the number, outermost first. They are applied
+	// innermost first, each `(` taking its `)`; a loop, as the nesting has no limit.
+	mut start := 0
+	for start < text.len && text[start] in [`-`, `+`, `~`, `!`, `(`] {
+		start++
+	}
+	mut end := start
+	for end < text.len && text[end].is_alnum() {
+		end++
+	}
+	mut value := inline_asm_raw_integer_digits(text[start..end])?
+	for op in text[..start].reverse() {
+		match op {
+			`(` {
+				if end >= text.len || text[end] != `)` {
+					return none
+				}
+				end++
+			}
+			`-` {
+				value = u64(0) - value
+			}
+			`~` {
+				value = ~value
+			}
+			`!` {
+				value = u64(if value == 0 { 1 } else { 0 })
+			}
+			else {}
+		}
+	}
+	return if end == text.len { value } else { none }
+}
+
+// inline_asm_raw_integer_digits returns the value of the number `digits` of
+// inline_asm_raw_integer_value, or none when it is not one.
+fn inline_asm_raw_integer_digits(digits string) ?u64 {
+	mut base := u64(10)
+	mut body := digits
+	if digits.len > 2 && digits[0] == `0` && digits[1] in [`x`, `X`] {
+		base = 16
+		body = digits[2..]
+	} else if digits.len > 2 && digits[0] == `0` && digits[1] in [`b`, `B`] {
+		base = 2
+		body = digits[2..]
+	} else if digits.len > 1 && digits[0] == `0` {
+		base = 8
+		body = digits[1..]
+	}
+	if body == '' {
+		return none
+	}
+	mut value := u64(0)
+	for d in body {
+		// `d` is a letter or digit; a letter past `f` gives 16 or more, which no base takes.
+		digit := u64(inline_asm_raw_hex_value(d))
+		if digit >= base || value > (max_u64 - digit) / base {
+			return none
+		}
+		value = value * base + digit
+	}
+	return value
+}
+
+// inline_asm_raw_lea_keeps reports whether a `lea` source `address` (lower case, without `%` and
+// blanks) computes the value of the register `name` of `width` bits: a displacement that reads as
+// zero, and the register itself as the base, alone or with `riz` or `eiz` as the index, or as the
+// index with no base and a scale of 1. The address register must be at least as wide as `name`, as
+// a narrower one is zero-extended, and at least 32 bits wide on amd64. The scale is read by
+// inline_asm_raw_integer_value, as the displacement is.
+fn inline_asm_raw_lea_keeps(address string, name string, width int, arch_bits int) bool {
+	if !address.ends_with(')') {
+		return false
+	}
+	// The address starts at the `(` that matches the last `)`; the scale may hold parentheses.
+	mut open := address.len - 1
+	mut depth := 0
+	for ; open >= 0; open-- {
+		if address[open] == `)` {
+			depth++
+		} else if address[open] == `(` {
+			depth--
+			if depth == 0 {
+				break
+			}
+		}
+	}
+	if open < 0 {
+		return false
+	}
+	if open > 0 && inline_asm_raw_integer_value(address[..open]) or { return false } != 0 {
+		return false
+	}
+	parts := address[open + 1..address.len - 1].split(',')
+	if parts.len > 3 {
+		return false
+	}
+	base := parts[0]
+	index := if parts.len > 1 { parts[1] } else { '' }
+	scale := if parts.len > 2 {
+		inline_asm_raw_integer_value(parts[2]) or { return false }
+	} else {
+		1
+	}
+	register := if index in ['', 'riz', 'eiz'] && (index != '' || parts.len < 3) {
+		base
+	} else if base == '' && scale == 1 {
+		index
+	} else {
+		return false
+	}
+	bits := inline_asm_att_register_width(register, arch_bits)
+	return inline_asm_raw_x86_family(register) == inline_asm_raw_x86_family(name) && bits >= width
+		&& bits >= arch_bits / 2
+}
+
 // inline_asm_raw_changes_nothing reports whether an instruction of the family `family` leaves its
 // register destination as it was: `mov`, `or` or `and` of the register with itself, `lea` of its own
-// value, or one of the families below with an operand that changes nothing. A 32-bit write on amd64
-// clears the upper half of the register, so it changes it.
+// value (inline_asm_raw_lea_keeps), an `add`, `sub`, `or` or `xor` of an immediate that is zero at
+// the destination's width, an `and` of one that is all ones there, or a shift by a count the CPU
+// masks to zero. An immediate is read by inline_asm_raw_integer_value; one it cannot read counts
+// as a change. A 32-bit write on amd64 clears the upper half of the register, so it changes it.
 fn inline_asm_raw_changes_nothing(instruction InlineAsmRawInstruction, family string, arch_bits int) bool {
 	if instruction.operands.len != 2 {
 		return false
@@ -968,27 +1092,29 @@ fn inline_asm_raw_changes_nothing(instruction InlineAsmRawInstruction, family st
 	src := instruction.operands[0]
 	dst := instruction.operands[1]
 	width := inline_asm_att_register_width(dst.name, arch_bits)
-	if width == 32 && arch_bits == 64 {
+	if width !in [8, 16, 32, 64] || (width == 32 && arch_bits == 64) {
 		return false
 	}
 	text := src.text.to_lower_ascii().replace_each(['%', '', ' ', '', '\t', ''])
 	name := dst.name.to_lower_ascii()
 	if family == 'lea' {
-		if width != arch_bits {
-			return false
-		}
-		index := if arch_bits == 64 { 'riz' } else { 'eiz' }
-		address := text.all_after_first('(')
-		return text.all_before('(') in ['', '0', '0x0']
-			&& (address == '${name})' || address == '${name},${index},1)')
+		return inline_asm_raw_lea_keeps(text, name, width, arch_bits)
 	}
 	if src.kind == .register {
 		return family in ['mov', 'or', 'and'] && src.name.to_lower_ascii() == name
 	}
-	if text in ['\$0', '\$0x0'] {
-		return family in ['add', 'sub', 'or', 'xor', 'shl', 'shr', 'sar']
+	if !text.starts_with('$') {
+		return false
 	}
-	return text == '\$-1' && family == 'and'
+	value := inline_asm_raw_integer_value(text[1..]) or { return false }
+	mask := if width == 64 { max_u64 } else { (u64(1) << width) - 1 }
+	return match family {
+		'add', 'sub', 'or', 'xor' { value & mask == 0 }
+		'and' { value & mask == mask }
+		// A count is one byte, which the CPU masks to 6 bits for a 64-bit operand, 5 otherwise.
+		'shl', 'shr', 'sar' { value & 0xff & u64(if width == 64 { 63 } else { 31 }) == 0 }
+		else { false }
+	}
 }
 
 // check_inline_asm_raw_clobbers reports a GNU x86 raw template that writes a general-purpose

@@ -3222,3 +3222,39 @@ fn raw_save_in_an_input_tied_to_an_output_is_not_reported(s u64) u64 {
 	}
 	return out
 }
+
+fn raw_user_interrupt_return_is_not_checked(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"movq $1, %%r8\n\t"
+		"uiret"
+		; [y] "+r" (y)
+		; 
+		; 
+	}
+	return y
+}
+
+fn raw_fred_user_return_is_not_checked(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"movq $1, %%r8\n\t"
+		"eretu"
+		; [y] "+r" (y)
+		; 
+		; 
+	}
+	return y
+}
+
+fn raw_fred_supervisor_return_is_not_checked(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"movq $1, %%r8\n\t"
+		"ERETS"
+		; [y] "+r" (y)
+		; 
+		; 
+	}
+	return y
+}
