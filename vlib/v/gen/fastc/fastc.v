@@ -2583,7 +2583,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut output_body_offsets := []int{cap: sources.len + 16}
 	mut output_proto_offsets := []int{cap: sources.len + 16}
 	mut body_directive_lines := []FastcCDirectiveLine{}
-	mut directive_groups := []string{}
+	mut directive_groups_by_module := map[string][]string{}
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
 	for name, array_type_id in global_output.fixed_array_types.ids {
 		fixed_array_types.set_id(name, array_type_id)
@@ -2660,7 +2660,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	fastc_deduplicate_fragment_prototypes(mut outputs, generation_sources)
 	timer.mark('file_outputs')
 
-	for output in outputs {
+	for output_index, output in outputs {
 		if output.failed {
 			return error(output.error_message)
 		}
@@ -2677,7 +2677,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			partition := fastc_partition_c_directive_ranges(output.body.len, output.directive_lines)
 			mut directives := strings.new_builder(256)
 			fastc_write_c_source_ranges(mut directives, output.body, partition.directive_ranges)
-			directive_groups << directives.str()
+			module_name := generation_sources[output_index].header.module_name
+			directive_groups_by_module[module_name] << directives.str()
 		}
 		for line in output.directive_lines {
 			kind := line.kind
@@ -3056,6 +3057,17 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 	}
 	fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, c_integer_comparison_helpers)
+	// Header declarations in an imported module can supply types or macros
+	// to an importer's native includes. Keep that order independently of
+	// the order in which the source-resolution and file-output passes run.
+	mut directive_groups := []string{}
+	for source in ordered_sources {
+		module_name := source.header.module_name
+		if groups := directive_groups_by_module[module_name] {
+			directive_groups << groups
+			directive_groups_by_module.delete(module_name)
+		}
+	}
 	header_directives, native_source_includes := fastc_split_native_directives(directive_groups)
 	pieces << header_directives
 	timer.mark('assemble.directives')

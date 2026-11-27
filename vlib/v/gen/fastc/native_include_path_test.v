@@ -106,3 +106,48 @@ fn test_fastc_includes_headers_staged_beside_a_symlinked_v_source() ! {
 	assert generated.contains('#include "${os.join_path(staged, 'native.h')}"')
 	assert generated.contains('#include "${os.join_path(original, 'original.h')}"')
 }
+
+fn test_fastc_emits_native_dependencies_before_their_importers() ! {
+	prefs := pref.new_preferences()
+	mut sources := []FastcSourceFile{}
+	inputs := {
+		'consumer.c.v': 'module consumer\nimport provider as _\n#include "consumer.h"\n'
+		'provider.c.v': 'module provider\n#include "provider.h"\n'
+	}
+	for path in ['consumer.c.v', 'provider.c.v'] {
+		text := inputs[path]
+		sources << FastcSourceFile{
+			path:   path
+			source: text
+			header: fastc_scan_source_header(text, path, prefs)!
+		}
+	}
+	// Discovery can present the consumer first. Resolve the V import edge
+	// before emitting its include, without inspecting either native header.
+	generated, _, _ := generate_source_files(sources, map[string]string{}, prefs)!
+	provider := generated.index('#include "provider.h"') or { panic('provider include missing') }
+	consumer := generated.index('#include "consumer.h"') or { panic('consumer include missing') }
+	assert provider < consumer
+}
+
+fn test_fastc_pkgconfig_preserves_the_argument_and_flag_boundaries() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'fastc_pkgconfig_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	tool := os.join_path(root, 'pkg-config')
+	os.write_file(tool, '#!/bin/sh\n[ "$#" -eq 2 ] && [ "$1" = "--cflags" ] && [ "$2" = "some library" ] || exit 1\nprintf \'%s\\n\' \'-I"some directory" -DFOO=1\'\n')!
+	os.chmod(tool, 0o700)!
+	old_path := os.getenv_opt('PATH')
+	os.setenv('PATH', root, true)
+	defer {
+		if value := old_path {
+			os.setenv('PATH', value, true)
+		} else {
+			os.unsetenv('PATH')
+		}
+	}
+	assert fastc_pkgconfig_flags('--cflags "some library"')! == ['-Isome directory', '-DFOO=1']
+}
