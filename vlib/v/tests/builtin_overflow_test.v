@@ -505,3 +505,33 @@ fn test_checked_negation_division_shifts_and_casts() {
 	}
 	assert errors == 0
 }
+
+fn test_checked_powi() {
+	work_dir := os.join_path(os.vtmp_dir(), 'overflow_powi_${os.getpid()}')
+	os.mkdir_all(work_dir)!
+	defer { os.rmdir_all(work_dir) or {} }
+	source := os.join_path(work_dir, 'powi.v')
+	exe := os.join_path(work_dir, 'powi.exe')
+	os.write_file(source, 'import math
+import os
+
+fn main() {
+	if os.args[1] == "overflow" {
+		println(math.powi(2, 1000))
+		return
+	}
+	println(math.powi(2, 62))
+	println(math.powi(-2, 63))
+	println(math.powi(-1, max_i64))
+	println(math.powi(min_i64, 1))
+	println(math.powi(max_i64, 1))
+	println(math.powi(0, 9))
+	println(math.powi(0, 0))
+	println(math.powi(0, -1))
+}
+')!
+	compile_case_program(source, exe, ['-check-overflow'])
+	cases := [ok_case('4611686018427387904\n-9223372036854775808\n-1\n-9223372036854775808\n9223372036854775807\n0\n1\n-1',
+		'fit'), panic_case('attempt to mul with overflow', 'overflow')]
+	assert run_cases('checked powi', exe, cases) == 0
+}
