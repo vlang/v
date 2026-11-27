@@ -1,5 +1,10 @@
 module os
 
+$if !windows {
+	#include <dirent.h>
+}
+
+// C.dirent is declared here for the V checker; the C compiler uses <dirent.h>.
 pub struct C.dirent {
 	d_ino     u64
 	d_seekoff u64
