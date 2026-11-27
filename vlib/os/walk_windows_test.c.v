@@ -475,6 +475,7 @@ fn walk_test_names(remaining []WalkPending) []string {
 // A listing that ends, and a listing that the file system does not offer, both stop with a
 // failed call. Only the first is the end of the folder.
 fn test_walk_list_handle_tells_the_end_of_a_folder_from_a_listing_that_is_not_offered() {
+	assert walk_file_info_address() != unsafe { nil }
 	folder := walk_test_tree('walk_list_handle')!
 	defer {
 		walk_test_tree_remove(folder)

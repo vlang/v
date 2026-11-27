@@ -150,5 +150,9 @@ jobs:
           echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
       - name: All code is formatted
         run: ./v -silent test-cleancode
+      - name: Set up Node.js for WebAssembly tests
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
       - name: Test V fixed tests
         run: ./v -silent test-self vlib

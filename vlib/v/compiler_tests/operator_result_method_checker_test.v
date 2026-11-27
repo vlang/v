@@ -126,8 +126,8 @@ fn main() {
 	assert bad_res.output.contains('bogus_method'), bad_res.output
 }
 
-fn test_string_alias_operator_overloads_are_preserved() {
-	out := run_standalone('string_alias_operator_overloads', "type S = string
+fn test_operator_overloads_and_named_equality_method() {
+	out := run_standalone('operator_overloads_and_named_eq', "type S = string
 
 fn (a S) == (b S) bool {
 	return false
@@ -137,17 +137,7 @@ fn (a S) < (b S) bool {
 	return false
 }
 
-fn main() {
-	assert !(S('x') == S('x'))
-	assert !(S('a') < S('b'))
-	println('ok')
-}
-")
-	assert out == 'ok'
-}
-
-fn test_named_eq_method_does_not_replace_struct_equality() {
-	out := run_standalone('named_eq_method', 'struct Rectangle {
+struct Rectangle {
 	x int
 }
 
@@ -156,9 +146,12 @@ fn (r Rectangle) eq(s Rectangle) bool {
 }
 
 fn main() {
+	assert !(S('x') == S('x'))
+	assert !(S('a') < S('b'))
+	println('ok')
 	println(Rectangle{x: 1}.eq(Rectangle{x: 1}))
 	println(Rectangle{x: 1}.eq(Rectangle{x: 2}))
 }
-')
-	assert out == 'true\nfalse'
+")
+	assert out == 'ok\ntrue\nfalse'
 }

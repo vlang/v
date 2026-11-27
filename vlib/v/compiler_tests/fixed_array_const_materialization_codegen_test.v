@@ -104,12 +104,13 @@ fn main() {
 		|| generated.contains('Array main__fixed_only'), generated
 }
 
-fn test_ambiguous_short_const_arrays_resolve_in_module_context() {
-	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_ambiguous_const_${tempname.unique_token()}')
+fn test_imported_array_const_storage_uses_module_context() {
+	root := os.join_path(os.vtmp_dir(), 'v3_imported_array_const_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
-	os.mkdir_all(os.join_path(root, 'a')) or { panic(err) }
-	os.mkdir_all(os.join_path(root, 'b')) or { panic(err) }
+	for sub in ['a', 'b', 'pkg'] {
+		os.mkdir(os.join_path(root, sub))!
+	}
 	os.write_file(os.join_path(root, 'a', 'a.v'), 'module a
 
 const vals = [1, 2, 3]
@@ -130,18 +131,34 @@ pub fn pick() int {
 ') or {
 		panic(err)
 	}
+	os.write_file(os.join_path(root, 'pkg', 'pkg.v'), 'module pkg
+
+pub const values = [u32(1), 2, 3]
+
+pub fn indexed() u32 {
+	return values[1]
+}
+') or {
+		panic(err)
+	}
 	os.write_file(os.join_path(root, 'main.v'), 'module main
 
 import a
 import b
+import pkg as p
 
 fn take(x []int) int {
 	return x[0]
 }
 
+fn take_dynamic(xs []u32) u32 {
+	return xs[2]
+}
+
 fn main() {
 	vals := [10, 20, 30]
 	println((take(vals) + a.pick() + b.pick()).str())
+	println((p.indexed() + take_dynamic(p.values)).str())
 }
 ') or {
 		panic(err)
@@ -151,53 +168,13 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '17', run.output
+	assert run.output.trim_space() == '17\n5', run.output
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
 	// Cache-split builds keep inferred array constants dynamic to preserve the module ABI.
 	assert compact.contains('consti64a__vals[3]') || generated.contains('Array a__vals'), generated
 	assert compact.contains('consti64b__vals[3]') || generated.contains('Array b__vals'), generated
-}
-
-fn test_aliased_import_dynamic_const_use_stays_dynamic() {
-	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_aliased_const_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	os.mkdir_all(os.join_path(root, 'pkg')) or { panic(err) }
-	os.write_file(os.join_path(root, 'pkg', 'pkg.v'), 'module pkg
-
-pub const vals = [u32(1), 2, 3]
-
-pub fn indexed() u32 {
-	return vals[1]
-}
-') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(root, 'main.v'), 'module main
-
-import pkg as p
-
-fn take(xs []u32) u32 {
-	return xs[2]
-}
-
-fn main() {
-	println((p.indexed() + take(p.vals)).str())
-}
-') or {
-		panic(err)
-	}
-	bin := os.join_path(root, 'app')
-	compile := os.exec([@VEXE, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '5', run.output
-
-	generated := os.read_file(bin + '.c') or { panic(err) }
-	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert generated.contains('Array pkg__vals'), generated
-	assert !compact.contains('constu32pkg__vals[3]'), generated
+	assert generated.contains('Array pkg__values'), generated
+	assert !compact.contains('constu32pkg__values[3]'), generated
 }

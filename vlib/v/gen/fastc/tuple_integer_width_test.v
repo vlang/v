@@ -83,7 +83,7 @@ fn main() {
 		c_path := os.join_path(root, 'main.c')
 		program := os.join_path(root, 'program')
 		os.write_file(c_path, source) or { panic(err) }
-		mut flags := ['-std=gnu11', '-O2']
+		mut flags := ['-std=gnu11', '-O2', '-pthread']
 		if pattern_probe.exit_code == 0 {
 			// Expose unwritten bytes when the C compiler supports stack-pattern initialization.
 			flags << '-ftrivial-auto-var-init=pattern'
