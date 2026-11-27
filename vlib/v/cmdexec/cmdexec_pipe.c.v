@@ -11,6 +11,8 @@ $if windows {
 	#flag @VMODROOT/vlib/v/cmdexec/cmdexec_wait.o
 
 	fn C.v_cmdexec_poll_revents(fd int, events i16) i16
+
+	@[c_extern]
 	fn C.v_cmdexec_child_has_exited(pid i32) i32
 }
 

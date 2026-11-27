@@ -12663,7 +12663,9 @@ pub fn run(args []string) {
 		c_compiler
 	}
 	native_compiler_cacheable := v3_native_compiler_cacheable(native_cache_compiler)
-		&& ![...environment_c_flags, ...user_c_flags, ...link_ld_flags].any(v3_native_compiler_option_is_opaque(it, false))
+		&& !environment_c_flags.any(v3_native_compiler_option_is_opaque(it, false))
+		&& !user_c_flags.any(v3_native_compiler_option_is_opaque(it, false))
+		&& !link_ld_flags.any(v3_native_compiler_option_is_opaque(it, false))
 	if !native_compiler_cacheable && !check_only && !only_check_syntax
 		&& backend in ['c', 'arm64', 'amd64', 'fastc'] {
 		trace_v3_cache_fallback('the C compiler command is outside the native cache contract')

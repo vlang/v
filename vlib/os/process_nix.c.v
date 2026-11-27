@@ -6,6 +6,7 @@ fn C.setpgid(pid i32, pgid i32) i32
 // would put V's whole platform header block into every program that imports `os`.
 #flag linux @VEXEROOT/vlib/os/posix_spawn_nix.o
 
+@[c_extern]
 fn C.v_os_posix_spawn(exe &char, argv &&char, envp &&char, use_pgroup i32, stdin_path &char, redirect i32, stdin_fd i32, out_fd i32, err_fd i32, close_fds &i32, n_close i32) i32
 
 // glibc hides pipe2 without GNU feature macros, even when unistd.h is included.

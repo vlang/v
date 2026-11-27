@@ -142,12 +142,12 @@ pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
 // Swapping a builder with itself does nothing.
 @[inline; manualfree]
 pub fn (mut b Builder) swap(mut other Builder) {
-	// Exchange owned headers without autofree cloning either allocation.
-	mut tmp := [sizeof(Builder)]u8{}
+	// Use a raw stack header so autofree does not clone either allocation.
+	mut tmp := array{}
 	unsafe {
-		vmemcpy(&tmp[0], &b, int(sizeof(Builder)))
+		vmemcpy(&tmp, &b, int(sizeof(Builder)))
 		vmemmove(&b, &other, int(sizeof(Builder)))
-		vmemcpy(&other, &tmp[0], int(sizeof(Builder)))
+		vmemcpy(&other, &tmp, int(sizeof(Builder)))
 	}
 }
 
@@ -158,7 +158,7 @@ pub fn (mut b Builder) swap(mut other Builder) {
 // Transferring a builder to itself does nothing.
 @[manualfree]
 pub fn (mut b Builder) transfer_to(mut target Builder) {
-	if &b == &target || b.len == 0 {
+	if voidptr(&b) == voidptr(&target) || b.len == 0 {
 		return
 	}
 	// Compare allocation starts, including slices and buffers advanced by drop().

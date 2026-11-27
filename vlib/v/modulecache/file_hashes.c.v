@@ -6,6 +6,14 @@ import sync
 import time
 import crypto.sha256
 
+fn C.atomic_load_u32(voidptr) u32
+
+fn C.atomic_store_u32(voidptr, u32)
+
+fn C.atomic_compare_exchange_strong_u32(voidptr, voidptr, u32) bool
+
+fn C.cpu_relax()
+
 // FileHashMemo remembers the content hashes of files by their metadata, from
 // one build to the next, as Zig's build cache trusts a file whose size, inode
 // and modification time are unchanged (std/Build/Cache.zig,
