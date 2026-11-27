@@ -127,6 +127,12 @@ pub fn fd_read(fd int, maxbytes int) (string, int) {
 	}
 }
 
+$if !windows {
+	#include <sys/select.h>
+}
+
+// C.fd_set and C.timeval are declared here for the V checker;
+// the C compiler uses <sys/select.h>.
 @[typedef]
 pub struct C.fd_set {}
 
