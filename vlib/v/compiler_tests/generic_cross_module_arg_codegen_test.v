@@ -62,80 +62,6 @@ fn generic_cross_check_batch(name string, cases []GenericCrossFixture) {
 	}
 }
 
-fn test_generic_mut_pointer_callback_preserves_reassigned_slot() {
-	out := generic_cross_run_project('generic_mut_pointer_callback_slot', {
-		'main.v': "module main
-
-@[heap]
-struct Dog {
-	name string
-}
-
-struct Box[T] {
-	item T
-}
-
-fn apply[T](b Box[T], f fn (mut it T)) T {
-	mut it := b.item
-	f(mut it)
-	return it
-}
-
-fn main() {
-	first := &Dog{
-		name: 'first'
-	}
-	second := &Dog{
-		name: 'second'
-	}
-	box := Box[&Dog]{
-		item: first
-	}
-	result := apply[&Dog](box, fn [second] (mut it &Dog) {
-		it = second
-	})
-	println(result.name)
-}
-"
-	})
-	assert out == 'second'
-}
-
-fn test_generic_mut_value_callback_keeps_single_caller_slot() {
-	out := generic_cross_run_project('generic_mut_value_callback_slot', {
-		'main.v': "module main
-
-struct Dog {
-mut:
-	name string
-}
-
-struct Box[T] {
-	item T
-}
-
-fn apply[T](b Box[T], f fn (mut it T)) T {
-	mut it := b.item
-	f(mut it)
-	return it
-}
-
-fn main() {
-	box := Box[Dog]{
-		item: Dog{
-			name: 'first'
-		}
-	}
-	result := apply[Dog](box, fn (mut it Dog) {
-		it.name = 'second'
-	})
-	println(result.name)
-}
-"
-	})
-	assert out == 'second'
-}
-
 fn test_generic_builders_and_receivers() {
 	generic_cross_check_batch('generic_builders_and_receivers', [
 		GenericCrossFixture{
@@ -219,6 +145,29 @@ fn test_generic_builders_and_receivers() {
 			}
 			expected: '43'
 		},
+		GenericCrossFixture{
+			name:     'pointer_callback'
+			files:    {
+				'case.v': "module pointer_callback\n\n@[heap]\nstruct Dog {\n\tname string\n}\n\nstruct Box[T] {\n\titem T\n}\n\nfn apply[T](b Box[T], f fn (mut it T)) T {\n\tmut it := b.item\n\tf(mut it)\n\treturn it\n}\n\npub fn exercise() {\n\tfirst := &Dog{\n\t\tname: 'first'\n\t}\n\tsecond := &Dog{\n\t\tname: 'second'\n\t}\n\tbox := Box[&Dog]{\n\t\titem: first\n\t}\n\tresult := apply[&Dog](box, fn [second] (mut it &Dog) {\n\t\tit = second\n\t})\n\tprintln(result.name)\n}\n"
+			}
+			expected: 'second'
+		},
+		GenericCrossFixture{
+			name:     'value_callback'
+			files:    {
+				'case.v': "module value_callback\n\nstruct Dog {\nmut:\n\tname string\n}\n\nstruct Box[T] {\n\titem T\n}\n\nfn apply[T](b Box[T], f fn (mut it T)) T {\n\tmut it := b.item\n\tf(mut it)\n\treturn it\n}\n\npub fn exercise() {\n\tbox := Box[Dog]{\n\t\titem: Dog{\n\t\t\tname: 'first'\n\t\t}\n\t}\n\tresult := apply[Dog](box, fn (mut it Dog) {\n\t\tit.name = 'second'\n\t})\n\tprintln(result.name)\n}\n"
+			}
+			expected: 'second'
+		},
+		GenericCrossFixture{
+			name:     'mut_receiver'
+			files:    {
+				'printer/printer.v': 'module printer\n\npub struct Impl[W] {\n\tvalue W\nmut:\n\tcount int\n}\n\npub fn Impl.new[W](value W) Impl[W] {\n\treturn Impl[W]{\n\t\tvalue: value\n\t}\n}\n\npub fn (mut imp Impl[W]) run() int {\n\timp.bump()\n\treturn imp.count\n}\n\nfn (mut imp Impl[W]) bump() {\n\timp.count += 47\n}\n'
+				'user/user.v':       'module user\n\nimport mut_receiver.printer\n\nstruct BufferWriter {}\n\npub fn run() int {\n\tmut imp := printer.Impl.new(BufferWriter{})\n\treturn imp.run()\n}\n'
+				'case.v':            'module mut_receiver\n\nimport mut_receiver.user\n\npub fn exercise() {\n\tprintln(int_str(user.run()))\n}\n'
+			}
+			expected: '47'
+		},
 	])
 }
 
@@ -237,17 +186,6 @@ fn test_static_generic_call_uses_declared_module_name_for_nested_import_path() {
 		'main.v':          'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
 	})
 	assert out == '37'
-}
-
-// The `mut` interface parameter of `use_sink` is named `value`: a parameter may not
-// share the name of its module, and the argument for it is passed with `mut`.
-fn test_generic_struct_interface_dispatch_emits_required_methods() {
-	out := generic_cross_run_project('generic_interface_dispatch', {
-		'sink/sink.v': 'module sink\n\npub interface Sink {\nmut:\n\tbegin() bool\n}\n\npub struct Box[W] {\nmut:\n\tvalue W\n\tcount int\n}\n\npub fn Box.new[W](value W) Box[W] {\n\treturn Box[W]{\n\t\tvalue: value\n\t}\n}\n\npub fn (mut b Box[W]) begin() bool {\n\tb.count++\n\treturn true\n}\n\npub fn use_sink(mut value Sink) bool {\n\treturn value.begin()\n}\n'
-		'user/user.v': 'module user\n\nimport sink\n\nstruct Local {\n\tn int\n}\n\npub fn run() int {\n\tmut boxed := sink.Box.new(Local{\n\t\tn: 29\n\t})\n\tok := sink.use_sink(mut boxed)\n\treturn if ok { 29 } else { 0 }\n}\n'
-		'main.v':      'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
-	})
-	assert out == '29'
 }
 
 fn test_generic_interface_result_call_keeps_specialized_symbol_and_wrapper() {
@@ -287,6 +225,25 @@ fn test_generic_interfaces_and_lifetimes() {
 			}
 			expected: '53'
 		},
+		GenericCrossFixture{
+			name:     'lifetime_only'
+			files:    {
+				'ignore/ignore.v': 'module ignore\n\npub struct Ref[^a] {\n\tn int\n}\n\npub struct Match[T] {\n\tvalue T\n\thas_value bool\n}\n\npub fn (m Match[T]) is_none() bool {\n\treturn !m.has_value\n}\n\npub fn (m Match[T]) inner() ?T {\n\tif !m.has_value {\n\t\treturn none\n\t}\n\treturn m.value\n}\n\nstruct Matcher {}\n\nfn (matcher &^a Matcher) matched[^a](n int) Match[Ref[^a]] {\n\t_ = matcher\n\tif n == 0 {\n\t\treturn Match[Ref[^a]]{}\n\t}\n\treturn Match[Ref[^a]]{\n\t\tvalue: Ref[^a]{\n\t\t\tn: n\n\t\t}\n\t\thas_value: true\n\t}\n}\n\nstruct Override {\n\tmatcher Matcher\n}\n\nfn (o &^a Override) matched[^a](n int) int {\n\tmat := o.matcher.matched(n)\n\tif mat.is_none() {\n\t\treturn 1\n\t}\n\tif value := mat.inner() {\n\t\treturn value.n\n\t}\n\treturn 0\n}\n\npub fn run() int {\n\toverride := Override{\n\t\tmatcher: Matcher{}\n\t}\n\treturn override.matched(59)\n}\n'
+				'case.v':          'module lifetime_only\n\nimport lifetime_only.ignore\n\npub fn exercise() {\n\tprintln(int_str(ignore.run()))\n}\n'
+			}
+			expected: '59'
+		},
+		// The `mut` interface parameter of `use_sink` is named `value`: a parameter may not
+		// share the name of its module, and the argument for it is passed with `mut`.
+		GenericCrossFixture{
+			name:     'bool_dispatch'
+			files:    {
+				'sink/sink.v': 'module sink\n\npub interface Sink {\nmut:\n\tbegin() bool\n}\n\npub struct Box[W] {\nmut:\n\tvalue W\n\tcount int\n}\n\npub fn Box.new[W](value W) Box[W] {\n\treturn Box[W]{\n\t\tvalue: value\n\t}\n}\n\npub fn (mut b Box[W]) begin() bool {\n\tb.count++\n\treturn true\n}\n\npub fn use_sink(mut value Sink) bool {\n\treturn value.begin()\n}\n'
+				'user/user.v': 'module user\n\nimport bool_dispatch.sink\n\nstruct Local {\n\tn int\n}\n\npub fn run() int {\n\tmut boxed := sink.Box.new(Local{\n\t\tn: 29\n\t})\n\tok := sink.use_sink(mut boxed)\n\treturn if ok { 29 } else { 0 }\n}\n'
+				'case.v':      'module bool_dispatch\n\nimport bool_dispatch.user\n\npub fn exercise() {\n\tprintln(int_str(user.run()))\n}\n'
+			}
+			expected: '29'
+		},
 	])
 }
 
@@ -296,21 +253,4 @@ fn test_generic_receiver_boxes_lifetime_struct_for_interface_dispatch() {
 		'main.v':      "module main\n\nimport sink\n\nstruct Local {}\n\nfn main() {\n\tpath := 'x'\n\ttag := 1\n\tmut driver := sink.Driver[Local]{\n\t\tvalue: Local{}\n\t}\n\tprintln(int_str(driver.run(&path, &tag) or { 0 }))\n}\n"
 	})
 	assert out == '43'
-}
-
-fn test_specialized_generic_mut_receiver_body_uses_emitted_method_name() {
-	out := generic_cross_run_project('generic_specialized_mut_receiver_body_name', {
-		'printer/printer.v': 'module printer\n\npub struct Impl[W] {\n\tvalue W\nmut:\n\tcount int\n}\n\npub fn Impl.new[W](value W) Impl[W] {\n\treturn Impl[W]{\n\t\tvalue: value\n\t}\n}\n\npub fn (mut imp Impl[W]) run() int {\n\timp.bump()\n\treturn imp.count\n}\n\nfn (mut imp Impl[W]) bump() {\n\timp.count += 47\n}\n'
-		'user/user.v':       'module user\n\nimport printer\n\nstruct BufferWriter {}\n\npub fn run() int {\n\tmut imp := printer.Impl.new(BufferWriter{})\n\treturn imp.run()\n}\n'
-		'main.v':            'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
-	})
-	assert out == '47'
-}
-
-fn test_lifetime_only_method_body_specializes_generic_receiver_methods() {
-	out := generic_cross_run_project('generic_lifetime_only_method_body', {
-		'ignore/ignore.v': 'module ignore\n\npub struct Ref[^a] {\n\tn int\n}\n\npub struct Match[T] {\n\tvalue T\n\thas_value bool\n}\n\npub fn (m Match[T]) is_none() bool {\n\treturn !m.has_value\n}\n\npub fn (m Match[T]) inner() ?T {\n\tif !m.has_value {\n\t\treturn none\n\t}\n\treturn m.value\n}\n\nstruct Matcher {}\n\nfn (matcher &^a Matcher) matched[^a](n int) Match[Ref[^a]] {\n\t_ = matcher\n\tif n == 0 {\n\t\treturn Match[Ref[^a]]{}\n\t}\n\treturn Match[Ref[^a]]{\n\t\tvalue: Ref[^a]{\n\t\t\tn: n\n\t\t}\n\t\thas_value: true\n\t}\n}\n\nstruct Override {\n\tmatcher Matcher\n}\n\nfn (o &^a Override) matched[^a](n int) int {\n\tmat := o.matcher.matched(n)\n\tif mat.is_none() {\n\t\treturn 1\n\t}\n\tif value := mat.inner() {\n\t\treturn value.n\n\t}\n\treturn 0\n}\n\npub fn run() int {\n\toverride := Override{\n\t\tmatcher: Matcher{}\n\t}\n\treturn override.matched(59)\n}\n'
-		'main.v':          'module main\n\nimport ignore\n\nfn main() {\n\tprintln(int_str(ignore.run()))\n}\n'
-	})
-	assert out == '59'
 }
