@@ -644,9 +644,9 @@ fn main() {
 	])
 }
 
-fn test_multi_return_assignment_requires_option_result_handling() {
+fn test_wrapper_and_multi_return_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'multi_return_rejections', [
+	run_bad_module_batch(v3_bin, 'wrapper_and_multi_return_rejections', [
 		ReviewRejection{
 			name:     'unhandled_result_multi_decl_assign'
 			source:   "fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n"
@@ -656,6 +656,36 @@ fn test_multi_return_assignment_requires_option_result_handling() {
 			name:     'unhandled_result_multi_assign'
 			source:   "fn pair() !(int, string) {\n\treturn 4, 'ok'\n}\n\nfn main() {\n\tmut a := 0\n\tmut b := ''\n\ta, b = pair()\n\tprintln(int_str(a) + b)\n}\n"
 			expected: 'requires `or {}`, `!`, or `?` handling'
+		},
+		ReviewRejection{
+			name:     'if_none_branch_rejected_for_result_without_context'
+			source:   'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n'
+			expected: 'mismatched types `?void` and `!int`'
+		},
+		ReviewRejection{
+			name:     'if_none_branch_rejected_for_result_payload'
+			source:   'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n'
+			expected: 'cannot use `?int` as type `!int` in return argument'
+		},
+		ReviewRejection{
+			name:     'match_none_branch_rejected_for_result_payload'
+			source:   'fn g(n int) !int {\n\treturn match n {\n\t\t0 { none }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := g(1) or { 0 }\n}\n'
+			expected: 'return type mismatch, it should be `int`, but it is instead `?void`'
+		},
+		ReviewRejection{
+			name:     'if_option_void_branch_rejected_for_payload'
+			source:   'fn maybe_void() ? {\n\treturn\n}\n\nfn f(ok bool) ?int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n'
+			expected: 'mismatched types `?void` and `int`'
+		},
+		ReviewRejection{
+			name:     'if_result_void_branch_rejected_for_payload'
+			source:   'fn maybe_void() ! {\n\treturn\n}\n\nfn f(ok bool) !int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n'
+			expected: 'mismatched types `!void` and `int`'
+		},
+		ReviewRejection{
+			name:     'match_option_void_branch_rejected_for_payload'
+			source:   'fn maybe_void() ? {\n\treturn\n}\n\nfn f(n int) ?int {\n\treturn match n {\n\t\t0 { maybe_void() }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(0) or { 0 }\n}\n'
+			expected: 'return type mismatch, it should be `int`, but it is instead `?void`'
 		},
 	])
 }
@@ -1706,9 +1736,9 @@ fn main() {
 	assert out == 'false\ntrue'
 }
 
-fn test_select_receive_type_rejections() {
+fn test_select_receive_assignment_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'select_receive_type_rejections', [
+	run_bad_module_batch(v3_bin, 'select_receive_assignment_rejections', [
 		ReviewRejection{'select_receive_assign_bool_mismatch', 'fn main() {
 	ch := chan int{}
 	mut value := false
@@ -1720,6 +1750,25 @@ fn test_select_receive_type_rejections() {
 }
 ', 'cannot assign `int` to `bool`'},
 		ReviewRejection{'select_receive_assign_string_mismatch', "fn main() {\n\tch := chan int{}\n\tmut value := ''\n\tselect {\n\t\tvalue = <-ch {}\n\t\telse {}\n\t}\n\tprintln(value)\n}\n", 'cannot assign `int` to `string`'},
+		ReviewRejection{'select_compound_receive_assign', 'fn main() {
+	ch := chan int{}
+	mut value := 1
+	select {
+		value += <-ch {}
+		else {}
+	}
+	println(int_str(value))
+}
+', 'compound receive assignment `+=` is not supported in `select`'},
+		ReviewRejection{'select_receive_decl_index_lhs', 'fn main() {
+	ch := chan int{}
+	mut values := [0]
+	select {
+		values[0] := <-ch {}
+		else {}
+	}
+}
+', 'select receive declaration requires a plain identifier on the left side'},
 	])
 }
 
@@ -2063,31 +2112,6 @@ fn test_select_lowering_roots_array_free() {
 }
 ')
 	assert out == ''
-}
-
-fn test_select_receive_lhs_rejections() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'select_receive_lhs_rejections', [
-		ReviewRejection{'select_compound_receive_assign', 'fn main() {
-	ch := chan int{}
-	mut value := 1
-	select {
-		value += <-ch {}
-		else {}
-	}
-	println(int_str(value))
-}
-', 'compound receive assignment `+=` is not supported in `select`'},
-		ReviewRejection{'select_receive_decl_index_lhs', 'fn main() {
-	ch := chan int{}
-	mut values := [0]
-	select {
-		values[0] := <-ch {}
-		else {}
-	}
-}
-', 'select receive declaration requires a plain identifier on the left side'},
-	])
 }
 
 fn test_select_assignment_cases_require_receive_rhs() {
@@ -2451,38 +2475,6 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 			name:     'if_none_branch_infers_option_without_context'
 			source:   'fn main() {\n\tx := if true { none } else { 1 }\n\ty := if false { none } else { 2 }\n\tprintln("\${x}")\n\tprintln("\${y}")\n}\n'
 			expected: 'Option(none)\nOption(2)'
-		},
-	])
-	run_bad_module_batch(v3_bin, 'context_dependent_wrapper_types_rejections', [
-		ReviewRejection{
-			name:     'if_none_branch_rejected_for_result_without_context'
-			source:   'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n'
-			expected: 'mismatched types `?void` and `!int`'
-		},
-		ReviewRejection{
-			name:     'if_none_branch_rejected_for_result_payload'
-			source:   'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n'
-			expected: 'cannot use `?int` as type `!int` in return argument'
-		},
-		ReviewRejection{
-			name:     'match_none_branch_rejected_for_result_payload'
-			source:   'fn g(n int) !int {\n\treturn match n {\n\t\t0 { none }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := g(1) or { 0 }\n}\n'
-			expected: 'return type mismatch, it should be `int`, but it is instead `?void`'
-		},
-		ReviewRejection{
-			name:     'if_option_void_branch_rejected_for_payload'
-			source:   'fn maybe_void() ? {\n\treturn\n}\n\nfn f(ok bool) ?int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n'
-			expected: 'mismatched types `?void` and `int`'
-		},
-		ReviewRejection{
-			name:     'if_result_void_branch_rejected_for_payload'
-			source:   'fn maybe_void() ! {\n\treturn\n}\n\nfn f(ok bool) !int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n'
-			expected: 'mismatched types `!void` and `int`'
-		},
-		ReviewRejection{
-			name:     'match_option_void_branch_rejected_for_payload'
-			source:   'fn maybe_void() ? {\n\treturn\n}\n\nfn f(n int) ?int {\n\treturn match n {\n\t\t0 { maybe_void() }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(0) or { 0 }\n}\n'
-			expected: 'return type mismatch, it should be `int`, but it is instead `?void`'
 		},
 	])
 }
@@ -7144,9 +7136,9 @@ fn same_scope() {
 	assert four_b[0].line == 14, p.diagnostics.str()
 }
 
-fn test_recursive_str_helper_control_flow_rejections() {
+fn test_recursive_str_control_flow_and_progress_rejections() {
 	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_helper_control_flow_rejections', [
+	run_bad_file_batch(v3_bin, 'recursive_str_control_flow_and_progress_rejections', [
 		ReviewRejection{'recursive_str_helper_early_return', 'struct EarlyReturnItem {
 mut:
 	remaining int
@@ -7223,54 +7215,6 @@ fn (item BreakLoopItem) str() string {
 	return copy.str()
 }
 ', 'cannot call `str()` method recursively'},
-	])
-}
-
-fn test_unknown_struct_suppression_stays_with_related_generic_declaration() {
-	v3_bin := build_v3()
-	src := 'fn broken[U](value T) {
-	_ := value
-}
-
-fn unrelated() {
-	_ := T{}
-}
-
-fn main() {}
-'
-	bad_src := '${tmp_test_path('unrelated_unknown_struct')}.v'
-	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := tmp_test_path('unrelated_unknown_struct')
-	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('generic type name `T` is not mentioned in fn `broken[U]`'), compile.output
-	assert compile.output.contains('unknown struct `T`'), compile.output
-}
-
-fn test_generic_array_suppression_keeps_unrelated_unknown_type_errors() {
-	v3_bin := build_v3()
-	src := 'struct Example[T] {}
-
-fn main() {
-	_ = T(0)
-	_ = []Example[T]{}
-}
-'
-	bad_src := '${tmp_test_path('generic_array_unrelated_unknown_type')}.v'
-	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := tmp_test_path('generic_array_unrelated_unknown_type')
-	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
-	assert compile.exit_code != 0, compile.output
-	unknown_lines :=
-		compile.output.split_into_lines().filter(it.contains('error: unknown type `T`'))
-	assert unknown_lines.len > 0, compile.output
-	assert unknown_lines.all(it.contains(':4:')), compile.output
-	assert compile.output.contains('generic struct cannot be used in non-generic function'), compile.output
-}
-
-fn test_recursive_str_conditional_progress_rejections() {
-	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_conditional_progress_rejections', [
 		ReviewRejection{'recursive_str_zero_iteration_loop', 'struct ZeroIterationItem {
 mut:
 	remaining int
@@ -7382,6 +7326,48 @@ fn (item OrItem) str() string {
 }
 ', 'cannot call `str()` method recursively'},
 	])
+}
+
+fn test_unknown_struct_suppression_stays_with_related_generic_declaration() {
+	v3_bin := build_v3()
+	src := 'fn broken[U](value T) {
+	_ := value
+}
+
+fn unrelated() {
+	_ := T{}
+}
+
+fn main() {}
+'
+	bad_src := '${tmp_test_path('unrelated_unknown_struct')}.v'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('unrelated_unknown_struct')
+	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('generic type name `T` is not mentioned in fn `broken[U]`'), compile.output
+	assert compile.output.contains('unknown struct `T`'), compile.output
+}
+
+fn test_generic_array_suppression_keeps_unrelated_unknown_type_errors() {
+	v3_bin := build_v3()
+	src := 'struct Example[T] {}
+
+fn main() {
+	_ = T(0)
+	_ = []Example[T]{}
+}
+'
+	bad_src := '${tmp_test_path('generic_array_unrelated_unknown_type')}.v'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('generic_array_unrelated_unknown_type')
+	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
+	assert compile.exit_code != 0, compile.output
+	unknown_lines :=
+		compile.output.split_into_lines().filter(it.contains('error: unknown type `T`'))
+	assert unknown_lines.len > 0, compile.output
+	assert unknown_lines.all(it.contains(':4:')), compile.output
+	assert compile.output.contains('generic struct cannot be used in non-generic function'), compile.output
 }
 
 fn test_recursive_str_implicit_and_inactive_paths() {
@@ -7500,9 +7486,9 @@ fn main() {
 	assert out == ''
 }
 
-fn test_recursive_str_helper_alias_provenance_rejections() {
+fn test_recursive_str_helper_and_container_provenance_rejections() {
 	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_helper_alias_provenance_rejections', [
+	run_bad_file_batch(v3_bin, 'recursive_str_helper_and_container_provenance_rejections', [
 		ReviewRejection{'recursive_str_helper_return_alias', 'struct ReturnedAliasItem {}
 
 fn same(item ReturnedAliasItem) ReturnedAliasItem {
@@ -7593,12 +7579,91 @@ fn (item LaterRebindItem) str() string {
 	return copy.str()
 }
 ', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_element_provenance', 'struct ArrayElementItem {}
+
+fn (item ArrayElementItem) str() string {
+	items := [item]
+	return items[0].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_map_element_provenance', 'struct MapElementItem {}
+
+fn (item MapElementItem) str() string {
+	values := {"self": item}
+	return values["self"].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_buffered_channel_provenance', 'struct BufferedChannelItem {}
+
+fn (item BufferedChannelItem) str() string {
+	ch := chan BufferedChannelItem{cap: 1}
+	ch <- item
+	return (<-ch).str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_wrapper_field_provenance', 'struct WrappedItem {}
+
+struct WrappedWrapper {
+	value WrappedItem
+}
+
+fn (item WrappedItem) str() string {
+	wrapped := WrappedWrapper{
+		value: item
+	}
+	return wrapped.value.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_append_provenance', 'struct AppendedItem {}
+
+fn (item AppendedItem) str() string {
+	mut items := []AppendedItem{}
+	items << item
+	return items[0].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_helper_array_provenance', 'struct ArrayHelperItem {}
+
+fn array_helper_wrap(item ArrayHelperItem) []ArrayHelperItem {
+	return [item]
+}
+
+fn (item ArrayHelperItem) str() string {
+	return array_helper_wrap(item)[0].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_helper_map_provenance', 'struct MapHelperItem {}
+
+fn map_helper_wrap(item MapHelperItem) map[string]MapHelperItem {
+	return {"self": item}
+}
+
+fn (item MapHelperItem) str() string {
+	return map_helper_wrap(item)["self"].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_helper_wrapper_provenance', 'struct WrapperHelperItem {}
+
+struct WrapperHelperWrapper {
+	value WrapperHelperItem
+}
+
+fn wrapper_helper_wrap(item WrapperHelperItem) WrapperHelperWrapper {
+	return WrapperHelperWrapper{
+		value: item
+	}
+}
+
+fn (item WrapperHelperItem) str() string {
+	return wrapper_helper_wrap(item).value.str()
+}
+', 'cannot call `str()` method recursively'},
 	])
 }
 
-fn test_recursive_str_invoked_and_asserted_calls_rejections() {
+fn test_recursive_str_calls_and_ineffective_mutation_rejections() {
 	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_invoked_and_asserted_calls_rejections', [
+	run_bad_file_batch(v3_bin, 'recursive_str_calls_and_ineffective_mutation_rejections', [
 		ReviewRejection{'recursive_str_invoked_helper_call', 'struct InvokedHelperItem {}
 
 fn recurse(item InvokedHelperItem) string {
@@ -7654,6 +7719,67 @@ fn (item AssertMutationItem) str() string {
 fn (item AssertMessageItem) str() string {
 	assert false, item.str()
 	return "unreachable"
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_add_zero_noop', 'struct AddZeroItem {
+mut:
+	remaining int
+}
+
+fn (item AddZeroItem) str() string {
+	mut copy := item
+	copy.remaining += 0
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_multiply_one_noop', 'struct MultiplyOneItem {
+mut:
+	remaining int
+}
+
+fn (item MultiplyOneItem) str() string {
+	mut copy := item
+	copy.remaining *= 1
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_helper_add_zero_noop', 'struct HelperAddZeroItem {
+mut:
+	remaining int
+}
+
+fn unchanged(mut item HelperAddZeroItem) {
+	item.remaining += 0
+}
+
+fn (item HelperAddZeroItem) str() string {
+	mut copy := item
+	unchanged(mut copy)
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_reversed_increment', 'struct ReversedIncrementItem {
+mut:
+	remaining int
+}
+
+fn (item ReversedIncrementItem) str() string {
+	mut copy := item
+	copy.remaining--
+	copy.remaining++
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_reversed_compound_assignment', 'struct ReversedAssignmentItem {
+mut:
+	remaining int
+}
+
+fn (item ReversedAssignmentItem) str() string {
+	mut copy := item
+	copy.remaining += 2
+	copy.remaining -= 2
+	return copy.str()
 }
 ', 'cannot call `str()` method recursively'},
 	])
@@ -7837,9 +7963,9 @@ fn main() {}
 	assert helper_out == ''
 }
 
-fn test_recursive_str_spawn_and_defer_rejections() {
+fn test_recursive_str_delayed_and_storage_mutation_rejections() {
 	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_spawn_and_defer_rejections', [
+	run_bad_file_batch(v3_bin, 'recursive_str_delayed_and_storage_mutation_rejections', [
 		ReviewRejection{'recursive_str_spawned_mutation', 'struct SpawnMutationItem {
 mut:
 	remaining int
@@ -7904,6 +8030,115 @@ fn (item BeforeMutationItem) str() string {
 		_ := next.str()
 	}
 	return ""
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_literal_provenance', 'struct LiteralItem {
+	remaining int
+}
+
+fn (item LiteralItem) str() string {
+	return LiteralItem{
+		remaining: item.remaining
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_update_provenance', 'struct UpdateItem {
+	value int
+}
+
+fn (item UpdateItem) str() string {
+	return UpdateItem{
+		...item
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_update_noop_field', 'struct NoopUpdateItem {
+	remaining int
+}
+
+fn (item NoopUpdateItem) str() string {
+	return NoopUpdateItem{
+		...item
+		remaining: item.remaining + 0
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_update_helper_provenance', 'struct HelperUpdateItem {
+	value int
+}
+
+fn helper_update_same(value HelperUpdateItem) HelperUpdateItem {
+	return value
+}
+
+fn (item HelperUpdateItem) str() string {
+	return helper_update_same(HelperUpdateItem{
+		...item
+	}).str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_helper_returned_struct_update', 'struct ReturnedUpdateItem {
+	value int
+}
+
+fn returned_update_same(item ReturnedUpdateItem) ReturnedUpdateItem {
+	return ReturnedUpdateItem{
+		...item
+	}
+}
+
+fn (item ReturnedUpdateItem) str() string {
+	return returned_update_same(item).str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_guarded_bool_noop_struct_update', 'struct GuardedUpdateItem {
+	done bool
+}
+
+fn (item GuardedUpdateItem) str() string {
+	if !item.done {
+		return "done"
+	}
+	return GuardedUpdateItem{
+		...item
+		done: true
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_delete_shift', 'struct DeletedItem {
+	remaining int
+}
+
+fn (item DeletedItem) str() string {
+	mut items := [DeletedItem{
+		remaining: item.remaining - 1
+	}, item]
+	items.delete(0)
+	return items[0].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_reverse_in_place', 'struct ReversedItem {
+	remaining int
+}
+
+fn (item ReversedItem) str() string {
+	mut items := [item, ReversedItem{
+		remaining: item.remaining - 1
+	}]
+	items.reverse_in_place()
+	return items[1].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_prepend_shift', 'struct PrependedItem {
+	remaining int
+}
+
+fn (item PrependedItem) str() string {
+	mut items := [item]
+	items.prepend(PrependedItem{
+		remaining: item.remaining - 1
+	})
+	return items[1].str()
 }
 ', 'cannot call `str()` method recursively'},
 	])
@@ -8320,73 +8555,6 @@ fn main() {
 	])
 }
 
-fn test_recursive_str_ineffective_mutation_rejections() {
-	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_ineffective_mutation_rejections', [
-		ReviewRejection{'recursive_str_add_zero_noop', 'struct AddZeroItem {
-mut:
-	remaining int
-}
-
-fn (item AddZeroItem) str() string {
-	mut copy := item
-	copy.remaining += 0
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_multiply_one_noop', 'struct MultiplyOneItem {
-mut:
-	remaining int
-}
-
-fn (item MultiplyOneItem) str() string {
-	mut copy := item
-	copy.remaining *= 1
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_helper_add_zero_noop', 'struct HelperAddZeroItem {
-mut:
-	remaining int
-}
-
-fn unchanged(mut item HelperAddZeroItem) {
-	item.remaining += 0
-}
-
-fn (item HelperAddZeroItem) str() string {
-	mut copy := item
-	unchanged(mut copy)
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_reversed_increment', 'struct ReversedIncrementItem {
-mut:
-	remaining int
-}
-
-fn (item ReversedIncrementItem) str() string {
-	mut copy := item
-	copy.remaining--
-	copy.remaining++
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_reversed_compound_assignment', 'struct ReversedAssignmentItem {
-mut:
-	remaining int
-}
-
-fn (item ReversedAssignmentItem) str() string {
-	mut copy := item
-	copy.remaining += 2
-	copy.remaining -= 2
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-	])
-}
-
 fn test_duplicate_function_diagnostics_survive_body_errors() {
 	check_src := '${tmp_test_path('duplicate_fn_with_body_error')}.v'
 	os.write_file(check_src, "fn duplicate() int {
@@ -8777,94 +8945,9 @@ fn main() {
 	])
 }
 
-fn test_recursive_str_container_provenance_rejections() {
+fn test_recursive_str_aggregate_transfer_and_lookup_rejections() {
 	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_container_provenance_rejections', [
-		ReviewRejection{'recursive_str_array_element_provenance', 'struct ArrayElementItem {}
-
-fn (item ArrayElementItem) str() string {
-	items := [item]
-	return items[0].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_map_element_provenance', 'struct MapElementItem {}
-
-fn (item MapElementItem) str() string {
-	values := {"self": item}
-	return values["self"].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_buffered_channel_provenance', 'struct BufferedChannelItem {}
-
-fn (item BufferedChannelItem) str() string {
-	ch := chan BufferedChannelItem{cap: 1}
-	ch <- item
-	return (<-ch).str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_wrapper_field_provenance', 'struct WrappedItem {}
-
-struct WrappedWrapper {
-	value WrappedItem
-}
-
-fn (item WrappedItem) str() string {
-	wrapped := WrappedWrapper{
-		value: item
-	}
-	return wrapped.value.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_append_provenance', 'struct AppendedItem {}
-
-fn (item AppendedItem) str() string {
-	mut items := []AppendedItem{}
-	items << item
-	return items[0].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_helper_array_provenance', 'struct ArrayHelperItem {}
-
-fn array_helper_wrap(item ArrayHelperItem) []ArrayHelperItem {
-	return [item]
-}
-
-fn (item ArrayHelperItem) str() string {
-	return array_helper_wrap(item)[0].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_helper_map_provenance', 'struct MapHelperItem {}
-
-fn map_helper_wrap(item MapHelperItem) map[string]MapHelperItem {
-	return {"self": item}
-}
-
-fn (item MapHelperItem) str() string {
-	return map_helper_wrap(item)["self"].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_helper_wrapper_provenance', 'struct WrapperHelperItem {}
-
-struct WrapperHelperWrapper {
-	value WrapperHelperItem
-}
-
-fn wrapper_helper_wrap(item WrapperHelperItem) WrapperHelperWrapper {
-	return WrapperHelperWrapper{
-		value: item
-	}
-}
-
-fn (item WrapperHelperItem) str() string {
-	return wrapper_helper_wrap(item).value.str()
-}
-', 'cannot call `str()` method recursively'},
-	])
-}
-
-fn test_recursive_str_aggregate_transfer_rejections() {
-	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_aggregate_transfer_rejections', [
+	run_bad_file_batch(v3_bin, 'recursive_str_aggregate_transfer_and_lookup_rejections', [
 		ReviewRejection{'recursive_str_multi_return_slot_provenance', 'struct ReturnedSlotItem {}
 
 fn returned_slot_carry(item ReturnedSlotItem) (ReturnedSlotItem, int) {
@@ -8957,6 +9040,49 @@ fn (item WrapperFieldItem) str() string {
 	return wrapped.value.str()
 }
 ', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_constant_local_receiver_index', 'struct ConstantIndexItem {}
+
+fn (item ConstantIndexItem) str() string {
+	items := [item, ConstantIndexItem{}]
+	index := 0
+	return items[index].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_mutated_local_receiver_index', 'struct MutatedIndexItem {}
+
+fn (item MutatedIndexItem) str() string {
+	items := [item, MutatedIndexItem{}]
+	mut index := 1
+	index--
+	return items[index].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_for_in_value', 'struct ForValueItem {}
+
+fn (item ForValueItem) str() string {
+	for copy in [item] {
+		return copy.str()
+	}
+	return ""
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_for_in_index_and_value', 'struct ForIndexValueItem {}
+
+fn (item ForIndexValueItem) str() string {
+	for _, copy in [item] {
+		return copy.str()
+	}
+	return ""
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_slice_receiver', 'struct SlicedItem {}
+
+fn (item SlicedItem) str() string {
+	items := [item]
+	slice := items[0..1]
+	return slice[0].str()
+}
+', 'cannot call `str()` method recursively'},
 	])
 }
 
@@ -8996,9 +9122,9 @@ fn main() {}
 	assert out == ''
 }
 
-fn test_map_alias_creation_and_rebind_rejections() {
+fn test_map_alias_initialization_and_conditional_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'map_alias_creation_and_rebind_rejections', [
+	run_bad_module_batch(v3_bin, 'map_alias_initialization_and_conditional_rejections', [
 		ReviewRejection{'map_rebind_clears_unsafe_alias', 'fn main() {
 	mut original := {
 		"value": 1
@@ -9015,6 +9141,86 @@ fn test_map_alias_creation_and_rebind_rejections() {
 	println(copy.len)
 }
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+		ReviewRejection{
+			name:     'unsafe_map_alias_assert_message_assignment'
+			source:   'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	assert true, (if true {
+		alias = unsafe { original }
+		"failed"
+	} else {
+		alias = unsafe { original }
+		"failed"
+	})
+	copy := alias
+	println(copy.len)
+}
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+		ReviewRejection{
+			name:     'unsafe_map_alias_assert_condition_assignment'
+			source:   'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	assert (if true {
+		alias = unsafe { original }
+		true
+	} else {
+		alias = unsafe { original }
+		true
+	})
+	copy := alias
+	println(copy.len)
+}
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+		ReviewRejection{
+			name:     'unsafe_map_alias_skipped_logical_and_rhs'
+			source:   'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if false && (if true {
+		alias = unsafe { original }
+		true
+	} else {
+		alias = unsafe { original }
+		true
+	}) {}
+	copy := alias
+	println(copy.len)
+}
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+		ReviewRejection{
+			name:     'unsafe_map_alias_skipped_logical_or_rhs'
+			source:   'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if true || (if true {
+		alias = unsafe { original }
+		true
+	} else {
+		alias = unsafe { original }
+		true
+	}) {}
+	copy := alias
+	println(copy.len)
+}
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
 	])
 }
 
@@ -9230,92 +9436,6 @@ fn main() {
 	])
 }
 
-fn test_map_alias_conditional_evaluation_rejections() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'map_alias_conditional_evaluation_rejections', [
-		ReviewRejection{
-			name:     'unsafe_map_alias_assert_message_assignment'
-			source:   'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	assert true, (if true {
-		alias = unsafe { original }
-		"failed"
-	} else {
-		alias = unsafe { original }
-		"failed"
-	})
-	copy := alias
-	println(copy.len)
-}
-'
-			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
-		},
-		ReviewRejection{
-			name:     'unsafe_map_alias_assert_condition_assignment'
-			source:   'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	assert (if true {
-		alias = unsafe { original }
-		true
-	} else {
-		alias = unsafe { original }
-		true
-	})
-	copy := alias
-	println(copy.len)
-}
-'
-			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
-		},
-		ReviewRejection{
-			name:     'unsafe_map_alias_skipped_logical_and_rhs'
-			source:   'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	if false && (if true {
-		alias = unsafe { original }
-		true
-	} else {
-		alias = unsafe { original }
-		true
-	}) {}
-	copy := alias
-	println(copy.len)
-}
-'
-			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
-		},
-		ReviewRejection{
-			name:     'unsafe_map_alias_skipped_logical_or_rhs'
-			source:   'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	if true || (if true {
-		alias = unsafe { original }
-		true
-	} else {
-		alias = unsafe { original }
-		true
-	}) {}
-	copy := alias
-	println(copy.len)
-}
-'
-			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
-		},
-	])
-}
-
 fn test_fresh_unsafe_map_is_not_reference_alias() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'unsafe_map_reference_alias', 'fn main() {
@@ -9330,9 +9450,9 @@ fn test_fresh_unsafe_map_is_not_reference_alias() {
 	assert out == '1'
 }
 
-fn test_map_alias_control_flow_rejections() {
+fn test_map_alias_branch_and_control_flow_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'map_alias_control_flow_rejections', [
+	run_bad_module_batch(v3_bin, 'map_alias_branch_and_control_flow_rejections', [
 		ReviewRejection{'unsafe_map_alias_conditional_loop_zero_path', 'fn branch(cond bool) {
 	mut original := {
 		"value": 1
@@ -9434,12 +9554,6 @@ fn main() {
 '
 			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
 		},
-	])
-}
-
-fn test_map_alias_branch_isolation_rejections() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'map_alias_branch_isolation_rejections', [
 		ReviewRejection{'unsafe_map_alias_or_fallback_success_path', 'fn maybe(ok bool) ?int {
 	if ok {
 		return 1
@@ -9493,121 +9607,6 @@ fn main() {
 	}
 }
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
-	])
-}
-
-fn test_recursive_str_storage_mutation_rejections() {
-	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_storage_mutation_rejections', [
-		ReviewRejection{'recursive_str_struct_literal_provenance', 'struct LiteralItem {
-	remaining int
-}
-
-fn (item LiteralItem) str() string {
-	return LiteralItem{
-		remaining: item.remaining
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_struct_update_provenance', 'struct UpdateItem {
-	value int
-}
-
-fn (item UpdateItem) str() string {
-	return UpdateItem{
-		...item
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_struct_update_noop_field', 'struct NoopUpdateItem {
-	remaining int
-}
-
-fn (item NoopUpdateItem) str() string {
-	return NoopUpdateItem{
-		...item
-		remaining: item.remaining + 0
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_struct_update_helper_provenance', 'struct HelperUpdateItem {
-	value int
-}
-
-fn helper_update_same(value HelperUpdateItem) HelperUpdateItem {
-	return value
-}
-
-fn (item HelperUpdateItem) str() string {
-	return helper_update_same(HelperUpdateItem{
-		...item
-	}).str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_helper_returned_struct_update', 'struct ReturnedUpdateItem {
-	value int
-}
-
-fn returned_update_same(item ReturnedUpdateItem) ReturnedUpdateItem {
-	return ReturnedUpdateItem{
-		...item
-	}
-}
-
-fn (item ReturnedUpdateItem) str() string {
-	return returned_update_same(item).str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_guarded_bool_noop_struct_update', 'struct GuardedUpdateItem {
-	done bool
-}
-
-fn (item GuardedUpdateItem) str() string {
-	if !item.done {
-		return "done"
-	}
-	return GuardedUpdateItem{
-		...item
-		done: true
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_delete_shift', 'struct DeletedItem {
-	remaining int
-}
-
-fn (item DeletedItem) str() string {
-	mut items := [DeletedItem{
-		remaining: item.remaining - 1
-	}, item]
-	items.delete(0)
-	return items[0].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_reverse_in_place', 'struct ReversedItem {
-	remaining int
-}
-
-fn (item ReversedItem) str() string {
-	mut items := [item, ReversedItem{
-		remaining: item.remaining - 1
-	}]
-	items.reverse_in_place()
-	return items[1].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_prepend_shift', 'struct PrependedItem {
-	remaining int
-}
-
-fn (item PrependedItem) str() string {
-	mut items := [item]
-	items.prepend(PrependedItem{
-		remaining: item.remaining - 1
-	})
-	return items[1].str()
-}
-', 'cannot call `str()` method recursively'},
 	])
 }
 
@@ -9724,9 +9723,9 @@ fn main() {
 	assert out == ''
 }
 
-fn test_str_formatting_rejections() {
+fn test_recursive_str_formatting_and_aggregate_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'str_formatting_rejections', [
+	run_bad_module_batch(v3_bin, 'recursive_str_formatting_and_aggregate_rejections', [
 		ReviewRejection{
 			name:     'recursive_str_print_receiver'
 			source:   'struct Item {}
@@ -9789,61 +9788,6 @@ fn main() {}
 '
 			expected: 'cannot call `str()` method recursively'
 		},
-	])
-}
-
-fn test_recursive_str_array_lookup_rejections() {
-	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_array_lookup_rejections', [
-		ReviewRejection{'recursive_str_constant_local_receiver_index', 'struct ConstantIndexItem {}
-
-fn (item ConstantIndexItem) str() string {
-	items := [item, ConstantIndexItem{}]
-	index := 0
-	return items[index].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_mutated_local_receiver_index', 'struct MutatedIndexItem {}
-
-fn (item MutatedIndexItem) str() string {
-	items := [item, MutatedIndexItem{}]
-	mut index := 1
-	index--
-	return items[index].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_for_in_value', 'struct ForValueItem {}
-
-fn (item ForValueItem) str() string {
-	for copy in [item] {
-		return copy.str()
-	}
-	return ""
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_for_in_index_and_value', 'struct ForIndexValueItem {}
-
-fn (item ForIndexValueItem) str() string {
-	for _, copy in [item] {
-		return copy.str()
-	}
-	return ""
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_slice_receiver', 'struct SlicedItem {}
-
-fn (item SlicedItem) str() string {
-	items := [item]
-	slice := items[0..1]
-	return slice[0].str()
-}
-', 'cannot call `str()` method recursively'},
-	])
-}
-
-fn test_str_aggregate_conversion_rejections() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'str_aggregate_conversion_rejections', [
 		ReviewRejection{
 			name:     'recursive_str_explicit_array_str'
 			source:   'struct Item {}
