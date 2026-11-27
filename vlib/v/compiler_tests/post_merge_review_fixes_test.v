@@ -486,9 +486,9 @@ fn main() {
 	assert out == '2\n0\n4\n0'
 }
 
-fn test_tuple_returns_and_wrapped_conversions() {
+fn test_wrapped_return_and_branch_values() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'tuple_returns_and_wrapped_conversions', [
+	run_good_module_batch(v3_bin, 'wrapped_return_and_branch_values', [
 		ReviewRuntimeCase{'handled_result_multi_decl_assign', "fn pair() !(int, string) {\n\treturn 5, 'ok'\n}\n\nfn main() {\n\ta, b := pair() or { panic(err) }\n\tprintln(int_str(a) + b)\n}\n", '5ok'},
 		ReviewRuntimeCase{'multi_assign_smartcast_rhs', 'struct Foo {
 	field int
@@ -641,6 +641,36 @@ fn main() {
 '
 			expected: '3\n5\n7\n11'
 		},
+		ReviewRuntimeCase{
+			name:     'if_none_branch_infers_option'
+			source:   'fn maybe(flag bool) ?int {\n\treturn if flag { none } else { 3 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n'
+			expected: '3\n-1'
+		},
+		ReviewRuntimeCase{
+			name:     'if_none_branch_uses_option_assignment_context'
+			source:   'fn main() {\n\tflag := false\n\tmut value := ?int(none)\n\tvalue = if flag { none } else { 8 }\n\tprintln(int_str(value or { -1 }))\n}\n'
+			expected: '8'
+		},
+		ReviewRuntimeCase{
+			name:     'if_error_branch_infers_result'
+			source:   "fn maybe(flag bool) !int {\n\treturn if flag { error('bad') } else { 4 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n"
+			expected: '4\n-1'
+		},
+		ReviewRuntimeCase{
+			name:     'if_error_with_code_branch_infers_result'
+			source:   "fn maybe(flag bool) !int {\n\treturn if flag { error_with_code('bad', 1) } else { 6 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n"
+			expected: '6\n-1'
+		},
+		ReviewRuntimeCase{
+			name:     'match_error_with_code_branch_infers_result'
+			source:   "fn maybe(n int) !int {\n\treturn match n {\n\t\t0 { error_with_code('bad', 2) }\n\t\telse { 7 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(maybe(1) or { -1 }))\n\tprintln(int_str(maybe(0) or { -1 }))\n}\n"
+			expected: '7\n-1'
+		},
+		ReviewRuntimeCase{
+			name:     'if_none_branch_infers_option_without_context'
+			source:   'fn main() {\n\tx := if true { none } else { 1 }\n\ty := if false { none } else { 2 }\n\tprintln("\${x}")\n\tprintln("\${y}")\n}\n'
+			expected: 'Option(none)\nOption(2)'
+		},
 	])
 }
 
@@ -745,9 +775,9 @@ fn main() {
 	assert out == '1'
 }
 
-fn test_pointer_aliases_and_mutable_slots() {
+fn test_pointer_alias_slots_and_arguments() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'pointer_aliases_and_mutable_slots', [
+	run_good_module_batch(v3_bin, 'pointer_alias_slots_and_arguments', [
 		ReviewRuntimeCase{
 			name:     'is_pointer_alias_sum'
 			source:   'struct Foo {
@@ -806,12 +836,53 @@ fn main() {
 		ReviewRuntimeCase{'pointer_arithmetic_deref', 'fn main() {\n\tmut nums := [1, 2]!\n\tp := unsafe { &nums[0] }\n\tv := unsafe { *(p + 1) }\n\tprintln(int_str(v))\n}\n', '2'},
 		ReviewRuntimeCase{'parenthesized_pointer_cast_deref', "fn load(s charptr, offset u64) u8 {\n\treturn u8(unsafe { *(charptr(u64(s) + offset)) })\n}\n\nfn main() {\n\ts := c'VinixV3!'\n\tmut result := ''\n\tfor i in u64(0) .. u64(8) {\n\t\tresult += rune(load(s, i)).str()\n\t}\n\tprintln(result)\n}\n", 'VinixV3!'},
 		ReviewRuntimeCase{'generic_mut_pointer_cast_slot_address', 'fn address[T](mut value T) voidptr {\n\tif sizeof(T) == 8 {\n\t\treturn voidptr(value)\n\t}\n\treturn unsafe { nil }\n}\n\nfn main() {\n\tmut n := 7\n\tmut pointers := unsafe { [1]&int{} }\n\tpointers[0] = &n\n\tresult := address[&int](mut &pointers[0])\n\tprintln(result == voidptr(&pointers[0]))\n\tprintln(result == voidptr(pointers[0]))\n}\n', 'true\nfalse'},
+		ReviewRuntimeCase{'review_pointer_value_receiver_str', "struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n", '&custom:7'},
+		ReviewRuntimeCase{'review_interface_smartcast_pointer_str', "interface Named {\n\tname() string\n}\n\nstruct Item {}\n\nfn (i Item) name() string {\n\treturn 'item'\n}\n\nfn (i Item) str() string {\n\treturn i.name()\n}\n\nfn describe(value Named) string {\n\treturn match value {\n\t\tItem { value.str() }\n\t\telse { 'unknown' }\n\t}\n}\n\nfn main() {\n\tvalue := Named(&Item{})\n\tprintln(describe(value))\n\tboxed := Named(Item{})\n\tprintln(describe(boxed))\n}\n", '&item\nitem'},
+		ReviewRuntimeCase{'review_one_level_implicit_address', 'fn take(p &int) int {\n\treturn *p\n}\n\nfn main() {\n\tmut n := 3\n\tprintln(int_str(take(n)))\n}\n', '3'},
+		ReviewRuntimeCase{'review_alias_struct_implicit_interface_str', "interface Printable {\n\tstr() string\n}\n\nstruct Foo {\n\tx int\n}\n\ntype AliasFoo = Foo\n\nfn main() {\n\tvalue := Printable(AliasFoo(Foo{\n\t\tx: 7\n\t}))\n\ttext := value.str()\n\tprintln(text.contains('Foo'))\n\tprintln(text.contains('x: 7'))\n}\n", 'true\ntrue'},
+		ReviewRuntimeCase{'review_alias_fields_implicit_interface_str', 'interface Printable {\n\tstr() string\n}\n\nstruct Bar {\n\tx int\n}\n\ntype MyBar = Bar\ntype MyNums = []int\ntype MyFixed = [2]int\ntype MyName = string\n\nstruct Foo {\n\tbar   MyBar\n\tnums  MyNums\n\tfixed MyFixed\n\tname  MyName\n}\n\nfn main() {\n\tvalue := Printable(Foo{\n\t\tbar: MyBar(Bar{\n\t\t\tx: 7\n\t\t})\n\t\tnums: MyNums([1, 2])\n\t\tfixed: MyFixed([3, 4]!)\n\t\tname: MyName(\'Ada\')\n\t})\n\ttext := value.str()\n\tprintln(text.contains(\'x: 7\'))\n\tprintln(text.contains(\'[1, 2]\'))\n\tprintln(text.contains(\'[3, 4]\'))\n\tprintln(text.contains("\'Ada\'"))\n}\n', 'true\ntrue\ntrue\ntrue'},
+		ReviewRuntimeCase{'review_call_return_pointer_not_arg_alias', 'fn choose(a &int, b &int) &int {\n\t_ = a\n\treturn b\n}\n\nfn make() &int {\n\tx := 10\n\ty := 20\n\tp := choose(&x, &y)\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n', '20'},
+		ReviewRuntimeCase{'review_mut_param_pointer_alias_return', 'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain[T](mut x T) &T {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep[int](mut a)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain[int](mut b)\n\tunsafe {\n\t\t*q = 8\n\t}\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n', '7\n7\n8\n8'},
+		ReviewRuntimeCase{'review_map_index_implicit_ref_arg', 'struct Image {
+	value int
+}
+
+fn draw(image &Image) int {
+	return image.value
+}
+
+fn main() {
+	images := {
+		"avatar": Image{value: 9}
+	}
+	println(draw(images["avatar"]))
+}
+', '9'},
+		ReviewRuntimeCase{'review_multi_level_implicit_addresses', 'fn set_double(pp &&int) {\n\tunsafe {\n\t\t**pp = 5\n\t}\n}\n\nfn set_triple(pp &&&int) {\n\tunsafe {\n\t\t***pp = 7\n\t}\n}\n\nfn main() {\n\tmut x := 1\n\tset_double(x)\n\tmut y := 2\n\tp := &y\n\tset_triple(p)\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n', '5\n7'},
+		ReviewRuntimeCase{'interface_mut_array_argument', 'interface Reader {
+mut:
+	read(mut buf []u8)
+}
+
+struct Source {}
+
+fn (mut source Source) read(mut buf []u8) {
+	buf[0] = 7
+}
+
+fn main() {
+	mut reader := Reader(Source{})
+	mut buf := []u8{len: 1}
+	reader.read(mut buf)
+	println(buf[0])
+}
+', '7'},
 	])
 }
 
-fn test_interface_return_value_boxes() {
+fn test_interface_return_and_container_boxes() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_return_value_boxes', [
+	run_good_module_batch(v3_bin, 'interface_return_and_container_boxes', [
 		ReviewRuntimeCase{
 			name:     'interface_eq_implicit_return_box'
 			source:   'interface IValue {}
@@ -1016,12 +1087,6 @@ fn main() {
 '
 			expected: 'true\n7\ntrue\n17'
 		},
-	])
-}
-
-fn test_interface_array_and_fallback_boxes() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_array_and_fallback_boxes', [
 		ReviewRuntimeCase{
 			name:     'interface_eq_container_literal_box'
 			source:   'interface IValue {}
@@ -2443,42 +2508,6 @@ fn main() {
 	assert out == '12\n32'
 }
 
-fn test_context_dependent_if_branches_infer_wrapper_types() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'context_dependent_wrapper_types', [
-		ReviewRuntimeCase{
-			name:     'if_none_branch_infers_option'
-			source:   'fn maybe(flag bool) ?int {\n\treturn if flag { none } else { 3 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n'
-			expected: '3\n-1'
-		},
-		ReviewRuntimeCase{
-			name:     'if_none_branch_uses_option_assignment_context'
-			source:   'fn main() {\n\tflag := false\n\tmut value := ?int(none)\n\tvalue = if flag { none } else { 8 }\n\tprintln(int_str(value or { -1 }))\n}\n'
-			expected: '8'
-		},
-		ReviewRuntimeCase{
-			name:     'if_error_branch_infers_result'
-			source:   "fn maybe(flag bool) !int {\n\treturn if flag { error('bad') } else { 4 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n"
-			expected: '4\n-1'
-		},
-		ReviewRuntimeCase{
-			name:     'if_error_with_code_branch_infers_result'
-			source:   "fn maybe(flag bool) !int {\n\treturn if flag { error_with_code('bad', 1) } else { 6 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n"
-			expected: '6\n-1'
-		},
-		ReviewRuntimeCase{
-			name:     'match_error_with_code_branch_infers_result'
-			source:   "fn maybe(n int) !int {\n\treturn match n {\n\t\t0 { error_with_code('bad', 2) }\n\t\telse { 7 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(maybe(1) or { -1 }))\n\tprintln(int_str(maybe(0) or { -1 }))\n}\n"
-			expected: '7\n-1'
-		},
-		ReviewRuntimeCase{
-			name:     'if_none_branch_infers_option_without_context'
-			source:   'fn main() {\n\tx := if true { none } else { 1 }\n\ty := if false { none } else { 2 }\n\tprintln("\${x}")\n\tprintln("\${y}")\n}\n'
-			expected: 'Option(none)\nOption(2)'
-		},
-	])
-}
-
 fn test_assoc_return_runs_defers() {
 	v3_bin := build_v3()
 	out := run_good_with_flags(v3_bin, 'assoc_return_runs_defers', '-enable-globals', 'struct Point {\n\tx int\n\ty int\n}\n\n__global hit int\n\nfn make_point() Point {\n\tbase := Point{\n\t\tx: 1\n\t\ty: 2\n\t}\n\tdefer {\n\t\thit = 7\n\t}\n\treturn Point{\n\t\t...base\n\t\tx: 5\n\t}\n}\n\nfn main() {\n\tp := make_point()\n\tprintln(int_str(p.x))\n\tprintln(int_str(hit))\n}\n')
@@ -3021,9 +3050,9 @@ fn test_array_and_map_receiver_rejections() {
 	])
 }
 
-fn test_array_and_map_receiver_methods() {
+fn test_collection_methods_and_equality() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'array_and_map_receiver_methods', [
+	run_good_module_batch(v3_bin, 'collection_methods_and_equality', [
 		ReviewRuntimeCase{'array_builtin_method_fallback', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tnums << 3\n\tptrs := unsafe { nums.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n', '3'},
 		ReviewRuntimeCase{'array_pointers_pointer_receiver', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tp := &nums\n\tptrs := unsafe { p.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n', '1'},
 		ReviewRuntimeCase{'array_reverse_pointer_receiver', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tp := &nums\n\tp.reverse()\n\tprintln("ok")\n}\n', 'ok'},
@@ -3096,6 +3125,8 @@ fn main() {
 	println(int_str(nested.keys()))
 }
 ', '88\n99'},
+		ReviewRuntimeCase{'map_semantic_value_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := {\n\t\t'x': Item{\n\t\t\tname: 'hello'.clone()\n\t\t\tparts: ['ab'.clone()]\n\t\t}\n\t}\n\tright := {\n\t\t'x': Item{\n\t\t\tname: join('he', 'llo')\n\t\t\tparts: [join('a', 'b')]\n\t\t}\n\t}\n\tarr_left := {\n\t\t'y': ['cd'.clone()]\n\t}\n\tarr_right := {\n\t\t'y': [join('c', 'd')]\n\t}\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(arr_left == arr_right)\n}\n", 'true\nfalse\ntrue'},
+		ReviewRuntimeCase{'array_eq_struct_operator_used', 'struct Item {\n\tvalue int\n}\n\nfn (a Item) == (b Item) bool {\n\treturn a.value % 10 == b.value % 10\n}\n\nfn main() {\n\tleft := [Item{value: 12}]\n\tright := [Item{value: 2}]\n\tprintln(left == right)\n}\n', 'true'},
 	])
 }
 
@@ -3114,9 +3145,9 @@ fn test_array_builtin_method_fallback_keeps_return_type() {
 	assert fixed_expr_out == '1\n8'
 }
 
-fn test_method_values_and_callback_arguments() {
+fn test_callback_values_captures_and_returns() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'method_values_and_callback_arguments', [
+	run_good_module_batch(v3_bin, 'callback_values_captures_and_returns', [
 		ReviewRuntimeCase{
 			name:     'alias_receiver_underlying_method_value_escape'
 			source:   'struct Runner {
@@ -3223,6 +3254,31 @@ fn main() {
 	println(apply(value))
 }
 ', '4.0'},
+		ReviewRuntimeCase{
+			name:     'callback_no_arg_lambda_lift_preserves_capture'
+			source:   'fn apply(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tvalue := 41\n\tprintln(int_str(apply(|| value + 1)))\n}\n'
+			expected: '42'
+		},
+		ReviewRuntimeCase{
+			name:     'callback_lambda_lift_preserves_capture'
+			source:   'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn main() {\n\toffset := 7\n\tprintln(int_str(apply(|n| n + offset, 5)))\n}\n'
+			expected: '12'
+		},
+		ReviewRuntimeCase{
+			name:     'callback_lambda_lift_preserves_fn_callee_capture'
+			source:   'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn double(n int) int {\n\treturn n * 2\n}\n\nfn main() {\n\tcb := double\n\tprintln(int_str(apply(|n| cb(n), 6)))\n}\n'
+			expected: '12'
+		},
+		ReviewRuntimeCase{
+			name:     'callback_lambda_result_void_forward'
+			source:   'fn takes(cb fn () !void) {\n\tcb() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n\tprintln("success")\n}\n\nfn maybe_fails() !void {\n\treturn error("fail")\n}\n\nfn main() {\n\ttakes(|| maybe_fails())\n}\n'
+			expected: 'fail'
+		},
+		ReviewRuntimeCase{
+			name:     'callback_lambda_option_void_forward'
+			source:   'fn takes(cb fn () ?) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ? {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n'
+			expected: 'none'
+		},
 	])
 }
 
@@ -3354,25 +3410,11 @@ fn test_string_index_type_is_u8() {
 	assert out == 'u8\n67'
 }
 
-fn test_numeric_map_stringification() {
+fn test_numeric_map_and_interpolation_formatting() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'numeric_map_stringification', [
+	run_good_module_batch(v3_bin, 'numeric_map_and_interpolation_formatting', [
 		ReviewRuntimeCase{'f32_map_stringification', "fn main() {\n\tm := {\n\t\t'a': f32(1.5)\n\t}\n\tprintln(m)\n\tfixed := [f32(1.5), f32(2.25)]!\n\tmf := {\n\t\t'x': fixed\n\t}\n\tprintln(mf)\n}\n", "{'a': 1.5}\n{'x': [1.5, 2.25]}"},
 		ReviewRuntimeCase{'u8_map_stringification', "fn main() {\n\tkeys := {\n\t\tu8(23): 'x'\n\t}\n\tvals := {\n\t\t'x': u8(23)\n\t}\n\tboth := {\n\t\tu8(65): u8(10)\n\t}\n\tprintln(keys)\n\tprintln(vals)\n\tprintln(both)\n}\n", "{23: 'x'}\n{'x': 23}\n{65: 10}"},
-	])
-}
-
-fn test_semantic_collection_equality() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'semantic_collection_equality', [
-		ReviewRuntimeCase{'map_semantic_value_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := {\n\t\t'x': Item{\n\t\t\tname: 'hello'.clone()\n\t\t\tparts: ['ab'.clone()]\n\t\t}\n\t}\n\tright := {\n\t\t'x': Item{\n\t\t\tname: join('he', 'llo')\n\t\t\tparts: [join('a', 'b')]\n\t\t}\n\t}\n\tarr_left := {\n\t\t'y': ['cd'.clone()]\n\t}\n\tarr_right := {\n\t\t'y': [join('c', 'd')]\n\t}\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(arr_left == arr_right)\n}\n", 'true\nfalse\ntrue'},
-		ReviewRuntimeCase{'array_eq_struct_operator_used', 'struct Item {\n\tvalue int\n}\n\nfn (a Item) == (b Item) bool {\n\treturn a.value % 10 == b.value % 10\n}\n\nfn main() {\n\tleft := [Item{value: 12}]\n\tright := [Item{value: 2}]\n\tprintln(left == right)\n}\n', 'true'},
-	])
-}
-
-fn test_interpolation_and_composite_formatting() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interpolation_and_composite_formatting', [
 		ReviewRuntimeCase{'wide_zero_padded_interpolation', "fn main() {\n\tbig := i64(5000000000)\n\tubig := u64(18446744073709551615)\n\tsmall := u64(42)\n\tprintln('\${big:012d}')\n\tprintln('\${ubig:020u}')\n\tprintln('\${small:08u}')\n}\n", '005000000000\n18446744073709551615\n00000042'},
 		ReviewRuntimeCase{'formatted_interpolation_rune_and_long_float', "fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n\tprintln('\${238.5:0.0f}')\n\tprintln('\${239.5555555:0.6f}')\n}\n", '3\n226,130,172\n202\n49,46,48,48\n239\n239.555556'},
 		ReviewRuntimeCase{'formatted_interpolation_integer_alias_character_code', "type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n", 'ABC'},
@@ -3433,9 +3475,9 @@ fn test_alias_interface_str_dispatch_marks_alias_method_used() {
 	assert out == 'label:7'
 }
 
-fn test_interface_str_receiver_dispatch() {
+fn test_interface_str_dispatch_and_fields() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_str_receiver_dispatch', [
+	run_good_module_batch(v3_bin, 'interface_str_dispatch_and_fields', [
 		ReviewRuntimeCase{'implicit_interface_str_dispatch_receiver', 'interface Printable {
 	str() string
 }
@@ -3592,36 +3634,6 @@ fn main() {
 	println(value.str())
 }
 ', 'Foo{\n    ref: ref:7\n    refbox: refbox:9\n}'},
-	])
-}
-
-fn test_implicit_interface_str_dispatch_stringifies_struct_alias() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_struct_alias', 'interface Printable {
-	str() string
-}
-
-struct Foo {
-	x int
-}
-
-type AliasFoo = Foo
-
-fn main() {
-	aliased := AliasFoo(Foo{
-		x: 7
-	})
-	value := Printable(aliased)
-	println(value.str())
-}
-')
-	assert out.contains('x: 7')
-	assert !out.contains('Foo{}')
-}
-
-fn test_interface_str_collection_and_pointer_fields() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_str_collection_and_pointer_fields', [
 		ReviewRuntimeCase{'implicit_interface_str_dispatch_collection_aliases', 'interface Printable {
 	str() string
 }
@@ -3813,6 +3825,30 @@ fn main() {
 }
 ', "Foo{\n    labels: {'a': 3}\n    fixed: [4, 5]\n}"},
 	])
+}
+
+fn test_implicit_interface_str_dispatch_stringifies_struct_alias() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_struct_alias', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	x int
+}
+
+type AliasFoo = Foo
+
+fn main() {
+	aliased := AliasFoo(Foo{
+		x: 7
+	})
+	value := Printable(aliased)
+	println(value.str())
+}
+')
+	assert out.contains('x: 7')
+	assert !out.contains('Foo{}')
 }
 
 fn test_empty_interface_str_dispatch_stringifies_boxed_map() {
@@ -4210,37 +4246,6 @@ fn test_interface_is_unqualified_local_uses_exact_impl_id() {
 		'main.v':          'module main\n\nimport b\n\nfn main() {\n\tprintln(b.is_local_actor(b.make_local()).str())\n\tprintln(b.is_local_actor(b.make_a()).str())\n}\n'
 	}, 'main.v')
 	assert out == 'true\nfalse'
-}
-
-fn test_lambda_captures_and_void_failures() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'lambda_captures_and_void_failures', [
-		ReviewRuntimeCase{
-			name:     'callback_no_arg_lambda_lift_preserves_capture'
-			source:   'fn apply(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tvalue := 41\n\tprintln(int_str(apply(|| value + 1)))\n}\n'
-			expected: '42'
-		},
-		ReviewRuntimeCase{
-			name:     'callback_lambda_lift_preserves_capture'
-			source:   'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn main() {\n\toffset := 7\n\tprintln(int_str(apply(|n| n + offset, 5)))\n}\n'
-			expected: '12'
-		},
-		ReviewRuntimeCase{
-			name:     'callback_lambda_lift_preserves_fn_callee_capture'
-			source:   'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn double(n int) int {\n\treturn n * 2\n}\n\nfn main() {\n\tcb := double\n\tprintln(int_str(apply(|n| cb(n), 6)))\n}\n'
-			expected: '12'
-		},
-		ReviewRuntimeCase{
-			name:     'callback_lambda_result_void_forward'
-			source:   'fn takes(cb fn () !void) {\n\tcb() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n\tprintln("success")\n}\n\nfn maybe_fails() !void {\n\treturn error("fail")\n}\n\nfn main() {\n\ttakes(|| maybe_fails())\n}\n'
-			expected: 'fail'
-		},
-		ReviewRuntimeCase{
-			name:     'callback_lambda_option_void_forward'
-			source:   'fn takes(cb fn () ?) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ? {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n'
-			expected: 'none'
-		},
-	])
 }
 
 fn test_user_new_map_call_with_args_uses_renamed_symbol() {
@@ -5086,9 +5091,9 @@ fn main() {
 	assert out == 'platform|custom'
 }
 
-fn test_overloaded_index_runtime() {
+fn test_index_overloads_and_interface_upcasts() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'overloaded_index_runtime', [
+	run_good_module_batch(v3_bin, 'index_overloads_and_interface_upcasts', [
 		ReviewRuntimeCase{'overloaded_index_compound_assignment_caches_operands', 'struct IntList {
 mut:
 	values []int
@@ -5169,6 +5174,10 @@ fn main() {
 	println(int_str(cfg.x))
 }
 ', '7\n9'},
+		ReviewRuntimeCase{'review_generic_index_overload_specializes', 'struct Box[T] {\nmut:\n\tvalues []T\n}\n\nfn (b Box[T]) [] (i int) T {\n\treturn b.values[i]\n}\n\nfn (mut b Box[T]) []= (i int, value T) {\n\tb.values[i] = value\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tvalues: [1, 2]\n\t}\n\tprintln(b[1].str())\n\tb[1] = 9\n\tprintln(b[1].str())\n}\n', '2\n9'},
+		ReviewRuntimeCase{'review_explicit_generic_method_callee', 'interface Named {\n\tname() string\n}\n\nstruct Config {\n\tx int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) name() string {\n\treturn u.name\n}\n\nstruct Runner {}\n\nfn (r Runner) type_name[T]() string {\n\t_ = r\n\treturn typeof[T]().name\n}\n\nfn (r Runner) make[T](cfg T) T {\n\t_ = r\n\treturn cfg\n}\n\nfn (r Runner) pass[T](value T) T {\n\t_ = r\n\treturn value\n}\n\nfn main() {\n\tr := Runner{}\n\tprintln(r.type_name[int]())\n\tcfg := r.make[Config](x: 7)\n\tprintln(int_str(cfg.x))\n\tnamed := r.pass[Named](User{\n\t\tname: "Ada"\n\t})\n\tprintln(named.name())\n}\n', 'int\n7\nAda'},
+		ReviewRuntimeCase{'review_interface_rvalue_upcasts', 'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n', 'call\nif\nindex'},
+		ReviewRuntimeCase{'review_embedded_interface_fields_and_ptr_upcast', 'interface Base {\n\tname string\n\tlabel() string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name + ":label"\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn use_ptr(b &Base) string {\n\treturn b.name + ":" + b.label()\n}\n\nfn describe(base Base) string {\n\treturn match base {\n\t\tChild { base.name + ":" + base.child().str() }\n\t\telse { "else" }\n\t}\n}\n\nfn main() {\n\tchild := Child(User{\n\t\tname: "Ada"\n\t})\n\tbase := Base(User{\n\t\tname: "Bea"\n\t})\n\tprintln(child.name)\n\tprintln(use_ptr(child))\n\tprintln(describe(base))\n}\n', 'Ada\nAda:Ada:label\nBea:3'},
 	])
 }
 
@@ -6024,12 +6033,6 @@ fn main() {
 }
 ")
 	assert overload_out == '7\n12\n1\n10\nax\n5\n2\n5'
-	run_good_module_batch(v3_bin, 'interface_index_and_upcasts', [
-		ReviewRuntimeCase{'review_generic_index_overload_specializes', 'struct Box[T] {\nmut:\n\tvalues []T\n}\n\nfn (b Box[T]) [] (i int) T {\n\treturn b.values[i]\n}\n\nfn (mut b Box[T]) []= (i int, value T) {\n\tb.values[i] = value\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tvalues: [1, 2]\n\t}\n\tprintln(b[1].str())\n\tb[1] = 9\n\tprintln(b[1].str())\n}\n', '2\n9'},
-		ReviewRuntimeCase{'review_explicit_generic_method_callee', 'interface Named {\n\tname() string\n}\n\nstruct Config {\n\tx int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) name() string {\n\treturn u.name\n}\n\nstruct Runner {}\n\nfn (r Runner) type_name[T]() string {\n\t_ = r\n\treturn typeof[T]().name\n}\n\nfn (r Runner) make[T](cfg T) T {\n\t_ = r\n\treturn cfg\n}\n\nfn (r Runner) pass[T](value T) T {\n\t_ = r\n\treturn value\n}\n\nfn main() {\n\tr := Runner{}\n\tprintln(r.type_name[int]())\n\tcfg := r.make[Config](x: 7)\n\tprintln(int_str(cfg.x))\n\tnamed := r.pass[Named](User{\n\t\tname: "Ada"\n\t})\n\tprintln(named.name())\n}\n', 'int\n7\nAda'},
-		ReviewRuntimeCase{'review_interface_rvalue_upcasts', 'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n', 'call\nif\nindex'},
-		ReviewRuntimeCase{'review_embedded_interface_fields_and_ptr_upcast', 'interface Base {\n\tname string\n\tlabel() string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name + ":label"\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn use_ptr(b &Base) string {\n\treturn b.name + ":" + b.label()\n}\n\nfn describe(base Base) string {\n\treturn match base {\n\t\tChild { base.name + ":" + base.child().str() }\n\t\telse { "else" }\n\t}\n}\n\nfn main() {\n\tchild := Child(User{\n\t\tname: "Ada"\n\t})\n\tbase := Base(User{\n\t\tname: "Bea"\n\t})\n\tprintln(child.name)\n\tprintln(use_ptr(child))\n\tprintln(describe(base))\n}\n', 'Ada\nAda:Ada:label\nBea:3'},
-	])
 	str_out := run_good(v3_bin, 'review_pointer_fields_implicit_str', "interface Printable {
 	str() string
 }
@@ -6073,53 +6076,6 @@ fn main() {
 	_ := Sink(p)
 }
 	', 'does not implement interface')
-}
-
-fn test_pointer_method_and_reference_arguments() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'pointer_method_and_reference_arguments', [
-		ReviewRuntimeCase{'review_pointer_value_receiver_str', "struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n", '&custom:7'},
-		ReviewRuntimeCase{'review_interface_smartcast_pointer_str', "interface Named {\n\tname() string\n}\n\nstruct Item {}\n\nfn (i Item) name() string {\n\treturn 'item'\n}\n\nfn (i Item) str() string {\n\treturn i.name()\n}\n\nfn describe(value Named) string {\n\treturn match value {\n\t\tItem { value.str() }\n\t\telse { 'unknown' }\n\t}\n}\n\nfn main() {\n\tvalue := Named(&Item{})\n\tprintln(describe(value))\n\tboxed := Named(Item{})\n\tprintln(describe(boxed))\n}\n", '&item\nitem'},
-		ReviewRuntimeCase{'review_one_level_implicit_address', 'fn take(p &int) int {\n\treturn *p\n}\n\nfn main() {\n\tmut n := 3\n\tprintln(int_str(take(n)))\n}\n', '3'},
-		ReviewRuntimeCase{'review_alias_struct_implicit_interface_str', "interface Printable {\n\tstr() string\n}\n\nstruct Foo {\n\tx int\n}\n\ntype AliasFoo = Foo\n\nfn main() {\n\tvalue := Printable(AliasFoo(Foo{\n\t\tx: 7\n\t}))\n\ttext := value.str()\n\tprintln(text.contains('Foo'))\n\tprintln(text.contains('x: 7'))\n}\n", 'true\ntrue'},
-		ReviewRuntimeCase{'review_alias_fields_implicit_interface_str', 'interface Printable {\n\tstr() string\n}\n\nstruct Bar {\n\tx int\n}\n\ntype MyBar = Bar\ntype MyNums = []int\ntype MyFixed = [2]int\ntype MyName = string\n\nstruct Foo {\n\tbar   MyBar\n\tnums  MyNums\n\tfixed MyFixed\n\tname  MyName\n}\n\nfn main() {\n\tvalue := Printable(Foo{\n\t\tbar: MyBar(Bar{\n\t\t\tx: 7\n\t\t})\n\t\tnums: MyNums([1, 2])\n\t\tfixed: MyFixed([3, 4]!)\n\t\tname: MyName(\'Ada\')\n\t})\n\ttext := value.str()\n\tprintln(text.contains(\'x: 7\'))\n\tprintln(text.contains(\'[1, 2]\'))\n\tprintln(text.contains(\'[3, 4]\'))\n\tprintln(text.contains("\'Ada\'"))\n}\n', 'true\ntrue\ntrue\ntrue'},
-		ReviewRuntimeCase{'review_call_return_pointer_not_arg_alias', 'fn choose(a &int, b &int) &int {\n\t_ = a\n\treturn b\n}\n\nfn make() &int {\n\tx := 10\n\ty := 20\n\tp := choose(&x, &y)\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n', '20'},
-		ReviewRuntimeCase{'review_mut_param_pointer_alias_return', 'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain[T](mut x T) &T {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep[int](mut a)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain[int](mut b)\n\tunsafe {\n\t\t*q = 8\n\t}\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n', '7\n7\n8\n8'},
-		ReviewRuntimeCase{'review_map_index_implicit_ref_arg', 'struct Image {
-	value int
-}
-
-fn draw(image &Image) int {
-	return image.value
-}
-
-fn main() {
-	images := {
-		"avatar": Image{value: 9}
-	}
-	println(draw(images["avatar"]))
-}
-', '9'},
-		ReviewRuntimeCase{'review_multi_level_implicit_addresses', 'fn set_double(pp &&int) {\n\tunsafe {\n\t\t**pp = 5\n\t}\n}\n\nfn set_triple(pp &&&int) {\n\tunsafe {\n\t\t***pp = 7\n\t}\n}\n\nfn main() {\n\tmut x := 1\n\tset_double(x)\n\tmut y := 2\n\tp := &y\n\tset_triple(p)\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n', '5\n7'},
-		ReviewRuntimeCase{'interface_mut_array_argument', 'interface Reader {
-mut:
-	read(mut buf []u8)
-}
-
-struct Source {}
-
-fn (mut source Source) read(mut buf []u8) {
-	buf[0] = 7
-}
-
-fn main() {
-	mut reader := Reader(Source{})
-	mut buf := []u8{len: 1}
-	reader.read(mut buf)
-	println(buf[0])
-}
-', '7'},
-	])
 }
 
 fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
@@ -7785,9 +7741,9 @@ fn (item ReversedAssignmentItem) str() string {
 	])
 }
 
-fn test_recursive_str_helper_and_loop_progress() {
+fn test_recursive_str_control_flow_runtime() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_helper_and_loop_progress', [
+	run_good_module_batch(v3_bin, 'recursive_str_control_flow_runtime', [
 		ReviewRuntimeCase{'recursive_str_progressed_invoked_helper_call', 'struct Item {
 mut:
 	remaining int
@@ -7890,6 +7846,128 @@ fn main() {
 	}.str())
 }
 ', ''},
+		ReviewRuntimeCase{'recursive_str_exhaustive_enum_match_progress', 'enum Mode {
+	one
+	two
+}
+
+struct Item {
+	mode Mode
+mut:
+	remaining int
+}
+
+fn decrement(mut item Item) {
+	match item.mode {
+		.one { item.remaining-- }
+		.two { item.remaining-- }
+	}
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	decrement(mut copy)
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+', 'done'},
+		ReviewRuntimeCase{'recursive_str_exhaustive_sum_match_progress', 'struct First {}
+struct Second {}
+type Mode = First | Second
+
+struct Item {
+	mode Mode = First{}
+mut:
+	remaining int
+}
+
+fn decrement(mut item Item) {
+	match item.mode {
+		First { item.remaining-- }
+		Second { item.remaining-- }
+	}
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	decrement(mut copy)
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+', 'done'},
+		ReviewRuntimeCase{'recursive_str_direct_exhaustive_enum_match', 'enum Mode {
+	one
+	two
+}
+
+struct Item {
+	mode Mode
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	match copy.mode {
+		.one { copy.remaining-- }
+		.two { copy.remaining-- }
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+', 'done'},
+		ReviewRuntimeCase{'recursive_str_direct_exhaustive_sum_match', 'struct First {}
+struct Second {}
+type Mode = First | Second
+
+struct Item {
+	mode Mode = First{}
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	match copy.mode {
+		First { copy.remaining-- }
+		Second { copy.remaining-- }
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+', 'done'},
 	])
 }
 
@@ -8310,9 +8388,9 @@ fn main() {
 	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
 }
 
-fn test_recursive_str_array_progress() {
+fn test_recursive_str_array_and_child_values() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_array_progress', [
+	run_good_module_batch(v3_bin, 'recursive_str_array_and_child_values', [
 		ReviewRuntimeCase{'recursive_str_array_append_progress', 'struct Item {
 mut:
 	items []int
@@ -8424,134 +8502,123 @@ fn main() {
 	_ = Item{}.str()
 }
 ', ''},
-	])
+		ReviewRuntimeCase{'recursive_str_child_value', 'struct Tree {
+	children []Tree
 }
 
-fn test_recursive_str_match_progress() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_match_progress', [
-		ReviewRuntimeCase{'recursive_str_exhaustive_enum_match_progress', 'enum Mode {
-	one
-	two
-}
-
-struct Item {
-	mode Mode
-mut:
-	remaining int
-}
-
-fn decrement(mut item Item) {
-	match item.mode {
-		.one { item.remaining-- }
-		.two { item.remaining-- }
+fn (tree Tree) str() string {
+	if tree.children.len == 0 {
+		return "leaf"
 	}
-}
-
-fn (item Item) str() string {
-	if item.remaining == 0 {
-		return "done"
-	}
-	mut copy := item
-	decrement(mut copy)
-	return copy.str()
+	return tree.children[0].str()
 }
 
 fn main() {
-	println(Item{
-		remaining: 1
+	println(Tree{
+		children: [Tree{}]
 	}.str())
 }
-', 'done'},
-		ReviewRuntimeCase{'recursive_str_exhaustive_sum_match_progress', 'struct First {}
-struct Second {}
-type Mode = First | Second
-
-struct Item {
-	mode Mode = First{}
-mut:
-	remaining int
+', 'leaf'},
+		ReviewRuntimeCase{'recursive_str_helper_returned_child', 'struct Tree {
+	children []Tree
 }
 
-fn decrement(mut item Item) {
-	match item.mode {
-		First { item.remaining-- }
-		Second { item.remaining-- }
-	}
+fn first(tree Tree) Tree {
+	return tree.children[0]
 }
 
-fn (item Item) str() string {
-	if item.remaining == 0 {
-		return "done"
+fn (tree Tree) str() string {
+	if tree.children.len == 0 {
+		return "leaf"
 	}
-	mut copy := item
-	decrement(mut copy)
-	return copy.str()
+	return first(tree).str()
 }
 
 fn main() {
-	println(Item{
-		remaining: 1
+	println(Tree{
+		children: [Tree{}]
 	}.str())
 }
-', 'done'},
-		ReviewRuntimeCase{'recursive_str_direct_exhaustive_enum_match', 'enum Mode {
-	one
-	two
-}
-
-struct Item {
-	mode Mode
+', 'leaf'},
+		ReviewRuntimeCase{
+			name:     'recursive_str_explicit_array_str_progress'
+			source:   'struct Item {
 mut:
 	remaining int
 }
 
 fn (item Item) str() string {
-	if item.remaining == 0 {
-		return "done"
+	if item.remaining <= 0 {
+		return ""
 	}
-	mut copy := item
-	match copy.mode {
-		.one { copy.remaining-- }
-		.two { copy.remaining-- }
-	}
-	return copy.str()
+	mut next := item
+	next.remaining--
+	values := [next]
+	return values.str()
 }
 
 fn main() {
-	println(Item{
-		remaining: 1
-	}.str())
+	_ = Item{
+		remaining: 2
+	}.str()
 }
-', 'done'},
-		ReviewRuntimeCase{'recursive_str_direct_exhaustive_sum_match', 'struct First {}
-struct Second {}
-type Mode = First | Second
+'
+			expected: ''
+		},
+		ReviewRuntimeCase{
+			name:     'recursive_str_custom_array_alias_str'
+			source:   'struct Item {}
 
-struct Item {
-	mode Mode = First{}
-mut:
-	remaining int
+type Items = []Item
+
+fn (items Items) str() string {
+	return "safe"
 }
 
 fn (item Item) str() string {
-	if item.remaining == 0 {
-		return "done"
-	}
-	mut copy := item
-	match copy.mode {
-		First { copy.remaining-- }
-		Second { copy.remaining-- }
-	}
-	return copy.str()
+	values := Items([item])
+	return values.str()
 }
 
 fn main() {
-	println(Item{
-		remaining: 1
-	}.str())
+	print(Item{}.str())
 }
-', 'done'},
+'
+			expected: 'safe'
+		},
+		ReviewRuntimeCase{
+			name:     'recursive_str_zero_length_repeated_array'
+			source:   'struct Item {}
+
+fn (item Item) str() string {
+	values := []Item{len: 0, init: item}
+	return values.str()
+}
+
+fn main() {
+	print(Item{}.str())
+}
+'
+			expected: '[]'
+		},
+		ReviewRuntimeCase{
+			name:     'recursive_str_helper_zero_length_repeated_array'
+			source:   'struct Item {}
+
+fn repeat(item Item) []Item {
+	return []Item{len: 0, init: item}
+}
+
+fn (item Item) str() string {
+	return repeat(item).str()
+}
+
+fn main() {
+	print(Item{}.str())
+}
+'
+			expected: '[]'
+		},
 	])
 }
 
@@ -8820,129 +8887,6 @@ fn main() {
 		os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('must be called from an `unsafe` block'), compile.output
-}
-
-fn test_recursive_str_child_and_aggregate_values() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_child_and_aggregate_values', [
-		ReviewRuntimeCase{'recursive_str_child_value', 'struct Tree {
-	children []Tree
-}
-
-fn (tree Tree) str() string {
-	if tree.children.len == 0 {
-		return "leaf"
-	}
-	return tree.children[0].str()
-}
-
-fn main() {
-	println(Tree{
-		children: [Tree{}]
-	}.str())
-}
-', 'leaf'},
-		ReviewRuntimeCase{'recursive_str_helper_returned_child', 'struct Tree {
-	children []Tree
-}
-
-fn first(tree Tree) Tree {
-	return tree.children[0]
-}
-
-fn (tree Tree) str() string {
-	if tree.children.len == 0 {
-		return "leaf"
-	}
-	return first(tree).str()
-}
-
-fn main() {
-	println(Tree{
-		children: [Tree{}]
-	}.str())
-}
-', 'leaf'},
-		ReviewRuntimeCase{
-			name:     'recursive_str_explicit_array_str_progress'
-			source:   'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	mut next := item
-	next.remaining--
-	values := [next]
-	return values.str()
-}
-
-fn main() {
-	_ = Item{
-		remaining: 2
-	}.str()
-}
-'
-			expected: ''
-		},
-		ReviewRuntimeCase{
-			name:     'recursive_str_custom_array_alias_str'
-			source:   'struct Item {}
-
-type Items = []Item
-
-fn (items Items) str() string {
-	return "safe"
-}
-
-fn (item Item) str() string {
-	values := Items([item])
-	return values.str()
-}
-
-fn main() {
-	print(Item{}.str())
-}
-'
-			expected: 'safe'
-		},
-		ReviewRuntimeCase{
-			name:     'recursive_str_zero_length_repeated_array'
-			source:   'struct Item {}
-
-fn (item Item) str() string {
-	values := []Item{len: 0, init: item}
-	return values.str()
-}
-
-fn main() {
-	print(Item{}.str())
-}
-'
-			expected: '[]'
-		},
-		ReviewRuntimeCase{
-			name:     'recursive_str_helper_zero_length_repeated_array'
-			source:   'struct Item {}
-
-fn repeat(item Item) []Item {
-	return []Item{len: 0, init: item}
-}
-
-fn (item Item) str() string {
-	return repeat(item).str()
-}
-
-fn main() {
-	print(Item{}.str())
-}
-'
-			expected: '[]'
-		},
-	])
 }
 
 fn test_recursive_str_aggregate_transfer_and_lookup_rejections() {
