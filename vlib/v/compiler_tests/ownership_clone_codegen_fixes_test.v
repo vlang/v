@@ -27,8 +27,8 @@ fn occf_compile_and_run(tag string, source string) {
 	assert run.exit_code == 0, run.output
 }
 
-fn test_ownership_clones_arc_arrays_and_owned_values() {
-	occf_compile_and_run('clone_arc_arrays_and_owned_values', 'module main
+fn test_ownership_clone_and_specialization_preserve_types() {
+	occf_compile_and_run('clone_and_specialization', 'module main
 
 import sync.arc
 
@@ -86,25 +86,14 @@ fn check_array_iteration_clone() {
 	assert records[0].arg or { "" } == "5"
 }
 
-fn main() {
-	check_arc_array_clone()
-	check_drop_type_clone()
-	check_array_iteration_clone()
-}
-')
+struct Item {
+	value int
 }
 
 // Captured function literals retain their declared parameter types during checking, so
 // generic builtin methods can validate them against the specialized element
 // type instead of falling back to `fn (voidptr, voidptr)`.
-fn test_captured_sort_compare_keeps_parameter_types() {
-	occf_compile_and_run('captured_sort_compare', 'module main
-
-struct Item {
-	value int
-}
-
-fn main() {
+fn check_captured_sort_compare() {
 	reverse := true
 	mut items := [Item{value: 1}, Item{value: 2}]
 	items.sort_with_compare(fn [reverse] (a &Item, b &Item) int {
@@ -115,11 +104,6 @@ fn main() {
 	})
 	assert items[0].value == 2
 }
-')
-}
-
-fn test_generic_calls_preserve_interface_arguments_and_mutable_receivers() {
-	occf_compile_and_run('generic_interface_and_receiver_calls', 'module main
 
 // A concrete generic interface uses the base runtime box with specialized parameters.
 interface CaptureFinder[T] {
@@ -225,6 +209,10 @@ fn check_chained_mut_receiver() {
 }
 
 fn main() {
+	check_arc_array_clone()
+	check_drop_type_clone()
+	check_array_iteration_clone()
+	check_captured_sort_compare()
 	check_generic_interface_box()
 	check_borrowed_interface_parameter()
 	check_chained_mut_receiver()
