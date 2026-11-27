@@ -42,7 +42,7 @@ fn atou_common(s string, type_max u64) !u64 {
 	mut x := u64(0)
 	mut underscored := false
 	for i in start_idx .. s.len {
-		c := s[i] - `0`
+		c := int(s[i]) - 48 // a byte below `0` gives a negative c, so nothing wraps
 		if c == 47 { // 47 = Ascii(`_`) -  ascii(`0`) = 95 - 48.
 			if underscored == true { // Two consecutives underscore
 				return error('strconv.atou: parsing "${s}": consecutives underscores are not allowed')
@@ -50,7 +50,7 @@ fn atou_common(s string, type_max u64) !u64 {
 			underscored = true
 			continue // Skip underscore
 		} else {
-			if c > 9 {
+			if u64(c) > 9 {
 				return error('strconv.atou: parsing "${s}": invalid radix 10 character')
 			}
 			underscored = false

@@ -80,10 +80,14 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	cutoff := max_u64 / u64(base) + u64(1)
 	max_val := if bit_size == 64 { max_u64 } else { (u64(1) << u64(bit_size)) - u64(1) }
 	basem1 := base - 1
+	if basem1 < 0 {
+		// No byte is a digit in a negative base.
+		return u64(0), 1
+	}
 
 	mut n := u64(0)
 	for i in start_index .. s.len {
-		mut c := s[i]
+		c := s[i]
 
 		// manage underscore inside the number
 		if c == `_` {
@@ -101,24 +105,31 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 
 		mut sub_count := 0
 
-		// get the 0-9 digit
-		c -= 48 // subtract the rune `0`
+		// get the 0-9 digit; a byte below `0` gives a negative d, so nothing wraps
+		mut d := int(c) - 48
 
 		// check if we are in the superior base rune interval [A..Z]
-		if c >= 17 { // (65 - 48)
+		if d >= 17 { // (65 - 48)
 			sub_count++
-			c -= 7 // subtract the `A` - `0` rune to obtain the value of the digit
+			d -= 7 // subtract the `A` - `0` rune to obtain the value of the digit
 
 			// check if we are in the superior base rune interval [a..z]
-			if c >= 42 { // (97 - 7 - 48)
+			if d >= 42 { // (97 - 7 - 48)
 				sub_count++
-				c -= 32 // subtract the `a` - `0` rune to obtain the value of the digit
+				d -= 32 // subtract the `a` - `0` rune to obtain the value of the digit
 			}
 		}
 
-		// check for digit over base
-		if c > basem1 || (sub_count == 0 && c > 9) {
-			return n, i + 1
+		// A negative digit is above every positive base in this unsigned comparison.
+		if u64(d) > u64(basem1) || (sub_count == 0 && d > 9) {
+			// Preserve the old byte decode for undocumented bases above 169.
+			// Wrapping the initial subtraction to u8, then folding both letter ranges,
+			// gave d + 256 - 7 - 32 for a byte below `0`.
+			if d < 0 && d + 217 <= basem1 {
+				d += 217
+			} else {
+				return n, i + 1
+			}
 		}
 
 		// check if we are in the cutoff zone
@@ -128,13 +139,14 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 			return max_val, -3
 		}
 		n *= u64(base)
-		n1 := n + u64(c)
-		if n1 < n || n1 > max_val {
-			// n+v overflows
+		// The C digit test has made d nonnegative. The evaluator holds u64 as i64;
+		// a negative d there previously triggered the post-add carry test.
+		if n > max_val || d < 0 || u64(d) > max_val - n {
+			// n+v overflows; testing before the addition keeps it from wrapping
 			// return error('parse_uint: range error ${s}')
 			return max_val, -3
 		}
-		n = n1
+		n += u64(d)
 	}
 	return n, 0
 }
@@ -278,7 +290,7 @@ fn atoi_common(s string, type_min i64, type_max i64) !i64 {
 	mut x := i64(0)
 	mut underscored := false
 	for i in start_idx .. s.len {
-		c := s[i] - `0`
+		c := i64(s[i]) - 48 // a byte below `0` gives a negative c, so nothing wraps
 		if c == 47 { // 47 = Ascii(`_`) -  ascii(`0`) = 95 - 48.
 			if underscored == true { // Two consecutives underscore
 				return error('strconv.atoi: parsing "${s}": consecutives underscores are not allowed')
@@ -286,7 +298,7 @@ fn atoi_common(s string, type_min i64, type_max i64) !i64 {
 			underscored = true
 			continue // Skip underscore
 		} else {
-			if c > 9 {
+			if u64(c) > 9 {
 				return error('strconv.atoi: parsing "${s}": invalid radix 10 character')
 			}
 			underscored = false
@@ -335,7 +347,7 @@ pub fn atoi64(s string) !i64 {
 	mut x := i64(0)
 	mut underscored := false
 	for i in start_idx .. s.len {
-		c := s[i] - `0`
+		c := i64(s[i]) - 48 // a byte below `0` gives a negative c, so nothing wraps
 		if c == 47 { // 47 = Ascii(`_`) -  ascii(`0`) = 95 - 48.
 			if underscored == true { // Two consecutives underscore
 				return error('strconv.atoi64: parsing "${s}": consecutives underscores are not allowed')
@@ -343,7 +355,7 @@ pub fn atoi64(s string) !i64 {
 			underscored = true
 			continue // Skip underscore
 		} else {
-			if c > 9 {
+			if u64(c) > 9 {
 				return error('strconv.atoi64: parsing "${s}": invalid radix 10 character')
 			}
 			underscored = false
