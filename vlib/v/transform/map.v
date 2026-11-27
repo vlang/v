@@ -2142,9 +2142,16 @@ fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
 	], flat.source_type_voidptr)
 	missing_stmts << t.make_decl_assign_typed(new_zero_name, t.zero_value_for_type(info.value_type),
 		info.value_type)
-	missing_stmts << t.make_expr_stmt(reinsert)
-	t.append_owned_map_set_key_cleanup(reinsert_key_name, cleanup_reinsert_key, reinsert_key_existed_name,
-		mut missing_stmts)
+	if cleanup_reinsert_key {
+		// Preserve the slot as the value of the missing branch after key cleanup.
+		reinsert_slot_name := t.new_temp('map_reinsert_slot')
+		missing_stmts << t.make_decl_assign_typed(reinsert_slot_name, reinsert, flat.source_type_voidptr)
+		t.append_owned_map_set_key_cleanup(reinsert_key_name, cleanup_reinsert_key, reinsert_key_existed_name,
+			mut missing_stmts)
+		missing_stmts << t.make_expr_stmt(t.make_ident(reinsert_slot_name))
+	} else {
+		missing_stmts << t.make_expr_stmt(reinsert)
+	}
 	missing_block := t.make_block(missing_stmts)
 	current_slot := t.make_if(t.make_map_exists_expr(map_expr, info.base_type, lookup_key_name),
 		t.make_block([t.make_expr_stmt(found)]), missing_block)

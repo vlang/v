@@ -14022,14 +14022,15 @@ fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.
 }
 
 // append_owned_map_entry_delete_with_drops snapshots ownership-bearing stored values,
-// removes the entry, and only then destroys the snapshots so key mutation cannot prevent
-// map__delete from finding the entry.
+// removes the entry, and only then destroys the snapshots not owned by the runtime callback.
 fn (mut t Transformer) append_owned_map_entry_delete_with_drops(map_expr flat.NodeId, map_type_id u32, key_name string, key_type_name_id u32, value_type_name_id u32) bool {
 	if isnil(t.tc) || t.cur_fn_value_semantics {
 		return false
 	}
-	clean_key_type := t.trimmed_type_id(t.normalize_type_alias(key_type_name_id))
-	key_requires_drop := clean_key_type != flat.source_type_string
+	// map__delete already destroys keys through the same callback used at allocation.
+	// A shallow snapshot must not be dropped again for string or fixed-array keys.
+	_, _, _, key_free_fn := t.map_callback_names_for_type(t.map_key_storage_type(key_type_name_id))
+	key_requires_drop := key_free_fn == 'map_free_nop'
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type_name_id))
 	value_requires_drop :=
 		t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type_name_id))

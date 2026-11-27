@@ -1,0 +1,117 @@
+name: Nested map staged-RHS ownership sanitizers
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/nested_map_ownership_sanitizers_ci.yml'
+      - 'vlib/v/transform/**'
+      - 'vlib/v/gen/c/nested_map_append_staged_rhs_test.v'
+      - 'vlib/v/tests/nested_map_mutation_missing_outer_key_test.v'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nested-map-ownership-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  original-regression:
+    name: Nested map ownership (${{ matrix.sanitizer }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [memory, address-no-gc, address-autofree, address-delete-key, address-reinsert-key]
+    env:
+      VJOBS: '2'
+      MSAN_OPTIONS: halt_on_error=1:exit_code=86
+      ASAN_OPTIONS: halt_on_error=1:detect_leaks=1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Check original V tests are formatted
+        run: |
+          ./v fmt -verify vlib/v/transform/fn.v
+          ./v fmt -verify vlib/v/transform/map.v
+          ./v fmt -verify vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+          ./v fmt -verify vlib/v/gen/c/nested_map_append_staged_rhs_test.v
+      - name: Reproduce corrected original nested-map test with MemorySanitizer
+        if: matrix.sanitizer == 'memory'
+        run: |
+          ./v -cc clang -gc none -d use_bundled_libgc \
+            -cflags -fno-omit-frame-pointer -cflags -maes -cflags -mpclmul \
+            -cflags -fsanitize=memory -silent \
+            vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      # Keep the independent GCC ownership control executable even if the
+      # full unsuppressed ASan/LeakSanitizer run below exits nonzero.
+      - name: Check generated C retains staged-array ownership
+        if: matrix.sanitizer == 'address-no-gc'
+        run: |
+          ./v -cc gcc -silent vlib/v/gen/c/nested_map_append_staged_rhs_test.v
+      - name: Reproduce corrected original nested-map test with AddressSanitizer without GC
+        if: matrix.sanitizer == 'address-no-gc'
+        run: |
+          ./v -cc clang -gc none -cflags -fno-omit-frame-pointer \
+            -cflags -fsanitize=address -silent \
+            vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      # Retain a separate translation of the same source after the original
+      # execution, even when LeakSanitizer reports a failure. The original
+      # command above is unchanged: -keepc can alter cache selection.
+      - name: Retain no-GC generated C for ownership analysis
+        if: always() && matrix.sanitizer == 'address-no-gc'
+        env:
+          VTMP: ${{ runner.temp }}/nested-map-no-gc
+        run: |
+          mkdir -p "$VTMP"
+          ./v -cc clang -gc none -keepc -skip-running \
+            -cflags -fno-omit-frame-pointer -cflags -fsanitize=address -silent \
+            vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      - name: Compare original test with explicit autofree and no GC
+        if: matrix.sanitizer == 'address-autofree'
+        env:
+          VTMP: ${{ runner.temp }}/nested-map-autofree
+        run: |
+          mkdir -p "$VTMP"
+          ./v -cc clang -gc none -autofree -keepc \
+            -cflags -fno-omit-frame-pointer -cflags -fsanitize=address -silent \
+            vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      # Run the reduced regression independently; the original full tests above
+      # remain unfiltered and can expose other ownership failures.
+      - name: Verify fixed-array key delete with ASan and autofree
+        if: matrix.sanitizer == 'address-delete-key'
+        env:
+          VTEST_ONLY_FN: test_delete_fixed_array_string_key_with_owned_value
+        run: |
+          ./v -cc clang -gc none -autofree -cflags -fno-omit-frame-pointer \
+            -cflags -fsanitize=address -silent \
+            vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      - name: Verify original owned-key reinsertion after deletion with ASan
+        if: matrix.sanitizer == 'address-reinsert-key'
+        env:
+          VTEST_ONLY_FN: test_later_operand_deletes_owned_outer_key
+          VTMP: ${{ runner.temp }}/nested-map-reinsert-key
+        run: |
+          mkdir -p "$VTMP"
+          ./v -cc clang -gc none -autofree -keepc \
+            -cflags -fno-omit-frame-pointer -cflags -fsanitize=address -silent \
+            vlib/v/tests/nested_map_mutation_missing_outer_key_test.v
+      - name: Run compiler diagnostics and transform regression tests
+        if: matrix.sanitizer == 'address-delete-key'
+        run: |
+          ./v -silent vlib/v/compiler_errors_test.v
+          ./v -silent test vlib/v/transform/
+      - name: Preserve generated C even if the sanitizer fails
+        if: always() && (matrix.sanitizer == 'address-no-gc' || matrix.sanitizer == 'address-autofree' || matrix.sanitizer == 'address-reinsert-key')
+        uses: actions/upload-artifact@v7
+        with:
+          name: nested-map-c-${{ matrix.sanitizer }}
+          path: ${{ runner.temp }}/nested-map-*/*nested_map_mutation_missing_outer_key_test*.tmp.c
+          if-no-files-found: error
+          retention-days: 7
