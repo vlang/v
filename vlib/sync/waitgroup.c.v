@@ -110,9 +110,11 @@ pub fn (mut wg WaitGroup) add(delta int) {
 
 // add_state changes the task count, wakes the waiters when it becomes zero, and returns
 // whether this call moved it up from zero.
+@[ignore_overflow]
 fn (mut wg WaitGroup) add_state(delta int) !bool {
 	state_delta := u64(u32(delta)) << 32
 	old_state := C.atomic_fetch_add_u64(voidptr(&wg.state), state_delta)
+	// Negative deltas wrap in the packed state just as they do in the atomic addition.
 	new_state := old_state + state_delta
 	new_nrjobs := int(i32(new_state >> 32))
 	mut num_waiters := u32(new_state)
