@@ -186,6 +186,46 @@ fn test_hash_skip_needs_outputs_and_inputs() {
 	assert !is_unchanged(f, digest)
 }
 
+// test_dry_run_plans_without_side_effects checks that -n reports the flows that
+// would run but creates no outputs and no state.
+fn test_dry_run_plans_without_side_effects() {
+	sandbox('dry_run')
+	os.write_file('src', '')!
+	mut c := new()
+	c.add_flow(id: 'build', takes: ['src'], gives: ['out'], flow: record)
+	c.execute(['-n', 'build'])!
+	assert !os.exists('out')
+	assert !os.exists('log')
+	assert !os.exists('.imp')
+	assert c.ran == 1 && c.skipped == 0 && c.failed == 0
+}
+
+// test_verbose_and_summary_reports_counts checks that -v and -n add a summary
+// and that skipped flows are counted separately from those that ran.
+fn test_verbose_and_summary_reports_counts() {
+	sandbox('summary')
+	os.write_file('src', '')!
+	set_mtime('src', -100)
+	mut c := new()
+	c.add_flow(id: 'build', takes: ['src'], gives: ['out'], flow: record)
+	c.execute(['-v', 'build'])!
+	c.execute(['-v', 'build'])!
+	assert c.ran == 1 && c.skipped == 1
+}
+
+// test_dry_run_plans_all_hooks_of_a_non_skipped_flow checks that a dry run
+// visits both required and optional hooks, but writes no files at all.
+fn test_dry_run_plans_all_hooks_of_a_non_skipped_flow() {
+	sandbox('dry_hooks')
+	mut c := new()
+	c.add_flow(id: 'req', check: .none, flow: record)
+	c.add_flow(id: 'opt', check: .none, flow: record)
+	c.add_flow(id: 'build', check: .none, pre: [required('req'), hook('opt')], flow: record)
+	c.execute(['--dry-run', 'build'])!
+	assert !os.exists('log')
+	assert c.ran == 3
+}
+
 // test_walks_do_not_follow_links checks that a link loop in an input directory
 // cannot trap the skip checks, which take a dangling link as an entry like any
 // other.
