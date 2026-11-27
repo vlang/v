@@ -316,9 +316,10 @@ fn main() {
 	assert out == 'true'
 }
 
-fn test_array_append_to_map_value_struct_field_uses_mutable_map_entry() {
+fn test_map_append_value_paths() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'array_append_to_map_value_struct_field', 'struct Item {
+	run_good_module_batch(v3_bin, 'map_append_value_paths', [
+		TransformFixture{'array_append_to_map_value_struct_field', 'struct Item {
 mut:
 	values []int
 }
@@ -334,13 +335,34 @@ fn main() {
 	append_value(mut items, "first", 7)
 	println(items["first"].values)
 }
-')
-	assert out == '[7]'
+', '[7]'},
+		TransformFixture{'user_defined_scalar_map_append', 'type Bar = int
+
+fn (b Bar) map() int {
+	return b + 1
 }
 
-fn test_or_block_match_with_break_has_no_value_assignment() {
+fn main() {
+	mut values := []int{}
+	values << Bar(0).map()
+	println(int_str(values.len))
+	println(int_str(values[0]))
+}
+', '1\n1'},
+		TransformFixture{'builtin_map_nested_array_append', 'fn main() {
+	mut values := [][]int{}
+	values << [1, 2].map(it)
+	println(int_str(values.len))
+	println(int_str(values[0][1]))
+}
+', '1\n2'},
+	])
+}
+
+fn test_match_and_result_payloads() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'or_block_match_break', 'struct NoIdle {}
+	run_good_module_batch(v3_bin, 'match_and_result_payloads', [
+		TransformFixture{'or_block_match_break', 'struct NoIdle {}
 
 fn (_ NoIdle) msg() string {
 	return "no idle value"
@@ -374,13 +396,8 @@ fn get() !int {
 fn main() {
 	println(get() or { panic(err) })
 }
-')
-	assert out == '7'
-}
-
-fn test_result_payload_converts_to_interface_and_sum_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'result_interface_and_sum_payload', 'interface Number {
+', '7'},
+		TransformFixture{'result_interface_and_sum_payload', 'interface Number {
 	number() int
 }
 
@@ -423,8 +440,8 @@ fn main() {
 		else {}
 	}
 }
-')
-	assert out == '7\n9'
+', '7\n9'},
+	])
 }
 
 fn test_interface_pointer_receiver_dispatch_preserves_pointer_depth() {
@@ -1488,10 +1505,13 @@ fn test_nested_string_array_literal_keeps_alias_element_type() {
 	assert out == '/*\n*/'
 }
 
-fn test_generic_array_retyping_is_scoped_to_the_lowered_literal() {
+fn test_array_literal_inference() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'generic_array_retype_temp_scope', "enum ChildSize {\n\tcompact\n}\n\nfn delimiters() [][]string {\n\treturn [['/*', '*/']]\n}\n\nfn child_sizes(len int) []ChildSize {\n\treturn [ChildSize.compact].repeat(len)\n}\n\nfn main() {\n\tvalues := delimiters()\n\tsizes := child_sizes(2)\n\tprintln(values[0][0])\n\tprintln(values[0][1])\n\tprintln(int_str(sizes.len))\n}\n")
-	assert out == '/*\n*/\n2'
+	run_good_module_batch(v3_bin, 'array_literal_inference', [
+		TransformFixture{'generic_array_retype_temp_scope', "enum ChildSize {\n\tcompact\n}\n\nfn delimiters() [][]string {\n\treturn [['/*', '*/']]\n}\n\nfn child_sizes(len int) []ChildSize {\n\treturn [ChildSize.compact].repeat(len)\n}\n\nfn main() {\n\tvalues := delimiters()\n\tsizes := child_sizes(2)\n\tprintln(values[0][0])\n\tprintln(values[0][1])\n\tprintln(int_str(sizes.len))\n}\n", '/*\n*/\n2'},
+		TransformFixture{'nested_inferred_fixed_array_literal', 'fn main() {\n\tvalues := [..][..]int[[1, 2], [3, 4]]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n', '10'},
+		TransformFixture{'nested_inferred_fixed_array_literal_rows', 'fn main() {\n\trow1 := [..]int[1, 2]\n\trow2 := [..]int[3, 4]\n\tvalues := [..][..]int[row1, row2]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n', '10'},
+	])
 }
 
 fn test_generic_specializations_keep_full_aliased_import_paths() {
@@ -1507,10 +1527,6 @@ fn test_generic_specializations_keep_full_aliased_import_paths() {
 
 fn test_nested_inferred_fixed_array_literal_parses() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'nested_inferred_fixed_array_literal', 'fn main() {\n\tvalues := [..][..]int[[1, 2], [3, 4]]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
-	assert out == '10'
-	from_rows := run_good(v3_bin, 'nested_inferred_fixed_array_literal_rows', 'fn main() {\n\trow1 := [..]int[1, 2]\n\trow2 := [..]int[3, 4]\n\tvalues := [..][..]int[row1, row2]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
-	assert from_rows == '10'
 	run_bad(v3_bin, 'ragged_nested_inferred_fixed_array_literal', 'fn main() {\n\t_ := [..][..]int[[1], [2, 3]]\n}\n', 'inferred fixed-array literal rows must have the same size')
 }
 
@@ -1999,9 +2015,10 @@ fn test_const_array_allows_newline_separators_with_line_comments() {
 	assert out == '3\n2'
 }
 
-fn test_const_struct_channel_default_uses_runtime_init() {
+fn test_constant_channel_defaults() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'const_struct_channel_default_runtime_init', 'struct Holder {
+	run_good_module_batch(v3_bin, 'constant_channel_defaults', [
+		TransformFixture{'const_struct_channel_default_runtime_init', 'struct Holder {
 	ch chan int
 }
 
@@ -2011,13 +2028,8 @@ fn main() {
 	holder.ch.close()
 	println("ok")
 }
-')
-	assert out == 'ok'
-}
-
-fn test_const_nested_struct_channel_default_uses_runtime_init() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'const_nested_struct_channel_default_runtime_init', 'struct Inner {
+', 'ok'},
+		TransformFixture{'const_nested_struct_channel_default_runtime_init', 'struct Inner {
 	ch chan int
 }
 
@@ -2031,8 +2043,8 @@ fn main() {
 	outer.inner.ch.close()
 	println("ok")
 }
-')
-	assert out == 'ok'
+', 'ok'},
+	])
 }
 
 fn test_heap_attribute_does_not_promote_channel_with_imported_pointer_element() {
@@ -4405,23 +4417,19 @@ fn main() {
 ', 'cannot modify constant `counter`')
 }
 
-fn test_mut_value_capture_in_call_under_selector_base() {
+fn test_callback_selector_captures() {
 	v3_bin := build_v3_review_transform()
-	// A `[mut s]` value capture used as a call argument nested inside a selector base
-	// (`wrap(s).s.n`) must still be lowered to its value; the selector-base deref
-	// suppression applies only to the direct receiver ident, not to nested expressions.
-	out := run_good(v3_bin, 'mut_capture_selector_base', 'struct S {\n\tn int\n}\n\nstruct Box {\n\ts S\n}\n\nfn wrap(s S) Box {\n\treturn Box{\n\t\ts: s\n\t}\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str(wrap(s).s.n))\n\t})\n}\n')
-	assert out == '7'
-}
-
-fn test_mut_value_capture_parenthesized_selector_receiver() {
-	v3_bin := build_v3_review_transform()
-	// A `[mut s]` value capture is a `&S` local; a parenthesized direct receiver
-	// (`(s).n`) is still the direct selector receiver and must keep the suppression so
-	// the selector emits arrow access. Otherwise the inner `s` is auto-dereferenced to
-	// `*s` while the selector still emits `->`, producing an invalid `(*s)->n`.
-	out := run_good(v3_bin, 'mut_capture_paren_selector_base', 'struct S {\n\tn int\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str((s).n))\n\t})\n}\n')
-	assert out == '7'
+	run_good_module_batch(v3_bin, 'callback_selector_captures', [
+		// A `[mut s]` value capture used as a call argument nested inside a selector base
+		// (`wrap(s).s.n`) must still be lowered to its value; the selector-base deref
+		// suppression applies only to the direct receiver ident, not to nested expressions.
+		TransformFixture{'mut_capture_selector_base', 'struct S {\n\tn int\n}\n\nstruct Box {\n\ts S\n}\n\nfn wrap(s S) Box {\n\treturn Box{\n\t\ts: s\n\t}\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str(wrap(s).s.n))\n\t})\n}\n', '7'},
+		// A `[mut s]` value capture is a `&S` local; a parenthesized direct receiver
+		// (`(s).n`) is still the direct selector receiver and must keep the suppression so
+		// the selector emits arrow access. Otherwise the inner `s` is auto-dereferenced to
+		// `*s` while the selector still emits `->`, producing an invalid `(*s)->n`.
+		TransformFixture{'mut_capture_paren_selector_base', 'struct S {\n\tn int\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str((s).n))\n\t})\n}\n', '7'},
+	])
 }
 
 fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
@@ -5739,45 +5747,11 @@ fn main() {}
 	assert !c_source.contains('#define __V_HEADERLESS_STDINT_H'), c_source
 }
 
-fn test_statement_array_append_consumes_rhs_expression() {
+fn test_array_append_expression_targets() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'statement_array_append_rhs_expression', 'fn main() {\n\tmut value := u32(0x123)\n\tmut values := []u32{}\n\tvalues << value & 0xff\n\tprintln(int_str(int(values[0])))\n}\n')
-	assert out == '35'
-}
-
-fn test_user_defined_scalar_map_method_append_pushes_one() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'user_defined_scalar_map_append', 'type Bar = int
-
-fn (b Bar) map() int {
-	return b + 1
-}
-
-fn main() {
-	mut values := []int{}
-	values << Bar(0).map()
-	println(int_str(values.len))
-	println(int_str(values[0]))
-}
-')
-	assert out == '1\n1'
-}
-
-fn test_builtin_map_nested_array_append_pushes_one() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'builtin_map_nested_array_append', 'fn main() {
-	mut values := [][]int{}
-	values << [1, 2].map(it)
-	println(int_str(values.len))
-	println(int_str(values[0][1]))
-}
-')
-	assert out == '1\n2'
-}
-
-fn test_array_valued_sum_variant_append_pushes_one() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'array_valued_sum_variant_append', 'type Value = int | []u8 | [2]u8
+	run_good_module_batch(v3_bin, 'array_append_expression_targets', [
+		TransformFixture{'statement_array_append_rhs_expression', 'fn main() {\n\tmut value := u32(0x123)\n\tmut values := []u32{}\n\tvalues << value & 0xff\n\tprintln(int_str(int(values[0])))\n}\n', '35'},
+		TransformFixture{'array_valued_sum_variant_append', 'type Value = int | []u8 | [2]u8
 
 fn main() {
 	mut values := []Value{}
@@ -5793,13 +5767,22 @@ fn main() {
 	println(int_str(int(inner_fixed[0])))
 	println(int_str(int(inner_fixed[1])))
 }
-')
-	assert out == '2\n2\n2\n3\n4'
+', '2\n2\n2\n3\n4'},
+		TransformFixture{'array_accessor_append_target', 'fn main() {
+	mut nested := [][]int{}
+	nested << []int{}
+	nested.last() << [1, 2, 3]
+	nested.first() << [4, 5, 6]
+	println(nested)
+}
+', '[[1, 2, 3, 4, 5, 6]]'},
+	])
 }
 
-fn test_optional_append_to_map_value_copies_back_absent_entry() {
+fn test_optional_map_and_array_append() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'optional_append_to_map_value_copyback', 'fn next_value() ?int {
+	run_good_module_batch(v3_bin, 'optional_map_and_array_append', [
+		TransformFixture{'optional_append_to_map_value_copyback', 'fn next_value() ?int {
 	return 7
 }
 
@@ -5813,14 +5796,26 @@ fn main() {
 	println("new" in values)
 	println(int_str(values["new"][0]))
 }
-')
-	assert out == 'true\n7'
+', 'true\n7'},
+		TransformFixture{'optional_map_append_evaluation_order', 'struct State {\nmut:\n\tkey   string\n\ttrace string\n}\n\nfn select_key(key string, mut state State) string {\n\tstate.trace += "key"\n\treturn key\n}\n\nfn next_value(mut state State) ?int {\n\tstate.trace += "rhs"\n\tstate.key = "changed"\n\treturn 7\n}\n\nfn main() {\n\tmut state := State{\n\t\tkey: "original"\n\t}\n\tmut values := map[string][]int{}\n\tvalues[select_key(state.key, mut state)] << next_value(mut state) or { return }\n\tprintln(state.trace)\n\tprintln(int_str(values["original"][0]))\n\tprintln("changed" in values)\n}\n', 'keyrhs\n7\nfalse'},
+		TransformFixture{'optional_shift_rhs_evaluated_once', 'struct Counter {
+mut:
+	value int
 }
 
-fn test_optional_map_append_evaluates_key_before_rhs() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'optional_map_append_evaluation_order', 'struct State {\nmut:\n\tkey   string\n\ttrace string\n}\n\nfn select_key(key string, mut state State) string {\n\tstate.trace += "key"\n\treturn key\n}\n\nfn next_value(mut state State) ?int {\n\tstate.trace += "rhs"\n\tstate.key = "changed"\n\treturn 7\n}\n\nfn main() {\n\tmut state := State{\n\t\tkey: "original"\n\t}\n\tmut values := map[string][]int{}\n\tvalues[select_key(state.key, mut state)] << next_value(mut state) or { return }\n\tprintln(state.trace)\n\tprintln(int_str(values["original"][0]))\n\tprintln("changed" in values)\n}\n')
-	assert out == 'keyrhs\n7\nfalse'
+fn next_value(mut calls Counter) ?int {
+	calls.value++
+	return 1
+}
+
+fn main() {
+	mut calls := Counter{}
+	flags := 2
+	flags << next_value(mut calls) or { return }
+	println(int_str(calls.value))
+}
+', '1'},
+	])
 }
 
 fn test_optional_append_to_shared_array_is_autolocked() {
@@ -5842,28 +5837,6 @@ fn main() {
 	assert lock_idx >= 0, body
 	unlock_rel := body[push_idx..].index('sync__RwMutex__unlock(') or { -1 }
 	assert unlock_rel >= 0, body
-}
-
-fn test_failed_optional_append_probe_does_not_evaluate_rhs_twice() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'optional_shift_rhs_evaluated_once', 'struct Counter {
-mut:
-	value int
-}
-
-fn next_value(mut calls Counter) ?int {
-	calls.value++
-	return 1
-}
-
-fn main() {
-	mut calls := Counter{}
-	flags := 2
-	flags << next_value(mut calls) or { return }
-	println(int_str(calls.value))
-}
-')
-	assert out == '1'
 }
 
 fn test_json2_skipped_pointer_field_does_not_specialize_decoder() {
@@ -12010,9 +11983,10 @@ fn main() {
 	assert out == 'ok'
 }
 
-fn test_explicit_nested_array_generic_argument_keeps_all_dimensions() {
+fn test_generic_nested_array_arguments() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'explicit_nested_array_generic_argument', 'fn make[T]() T {
+	run_good_module_batch(v3_bin, 'generic_nested_array_arguments', [
+		TransformFixture{'explicit_nested_array_generic_argument', 'fn make[T]() T {
 	return T{}
 }
 
@@ -12020,21 +11994,16 @@ fn main() {
 	value := make[[][]int]()
 	println(typeof(value).name)
 }
-')
-	assert out == '[][]int'
-}
-
-fn test_for_in_generic_call_keeps_nested_array_element_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'for_in_generic_call_nested_array_element', 'import arrays
+', '[][]int'},
+		TransformFixture{'for_in_generic_call_nested_array_element', 'import arrays
 
 fn main() {
 	for part in arrays.chunk("ABCD".bytes(), 2) {
 		println(part[0])
 	}
 }
-')
-	assert out == '65\n67'
+', '65\n67'},
+	])
 }
 
 fn test_flag_enum_struct_field_defaults_to_zero() {
@@ -12057,9 +12026,10 @@ fn main() {
 	assert out == '0'
 }
 
-fn test_array_map_in_sum_smartcast_uses_collection_lowering() {
+fn test_sum_smartcast_array_operations() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'array_map_in_sum_smartcast', 'type Value = int | []int
+	run_good_module_batch(v3_bin, 'sum_smartcast_array_operations', [
+		TransformFixture{'array_map_in_sum_smartcast', 'type Value = int | []int
 
 fn normalize(value Value) Value {
 	return match value {
@@ -12074,13 +12044,8 @@ fn main() {
 		println(result)
 	}
 }
-')
-	assert out == '[2, 3]'
-}
-
-fn test_for_in_sum_array_smartcast_indexes_variant_payload() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'for_in_sum_array_smartcast', 'type Size = []f64 | f64
+', '[2, 3]'},
+		TransformFixture{'for_in_sum_array_smartcast', 'type Size = []f64 | f64
 
 fn values(size Size) []f32 {
 	mut result := []f32{}
@@ -12100,8 +12065,8 @@ fn values(size Size) []f32 {
 fn main() {
 	println(values(Size([1.5, 2.5])))
 }
-')
-	assert out == '[1.5, 2.5]'
+', '[1.5, 2.5]'},
+	])
 }
 
 fn test_autofree_array_map_preserves_v1_sum_value_copy_compatibility() {
@@ -12438,19 +12403,6 @@ fn main() {
 	assert out == '99\n7'
 }
 
-fn test_array_accessors_are_addressable_append_targets() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'array_accessor_append_target', 'fn main() {
-	mut nested := [][]int{}
-	nested << []int{}
-	nested.last() << [1, 2, 3]
-	nested.first() << [4, 5, 6]
-	println(nested)
-}
-')
-	assert out == '[[1, 2, 3, 4, 5, 6]]'
-}
-
 fn test_selected_comptime_block_preserves_outer_value_tail() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'selected_comptime_block_value_tail', "fn main() {
@@ -12474,9 +12426,10 @@ fn test_none_literal_str_method() {
 	assert out == '<none>'
 }
 
-fn test_smartcast_sum_value_keeps_sum_method_receiver() {
+fn test_sum_smartcast_method_receivers() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'smartcast_sum_method_receiver', 'struct Square {}
+	run_good_module_batch(v3_bin, 'sum_smartcast_method_receivers', [
+		TransformFixture{'smartcast_sum_method_receiver', 'struct Square {}
 
 struct Circle {}
 
@@ -12498,13 +12451,8 @@ fn print_name(shape Shape) {
 fn main() {
 	print_name(Square{})
 }
-')
-	assert out == 'square'
-}
-
-fn test_smartcast_nested_sum_uses_nested_sum_method_receiver() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'smartcast_nested_sum_method_receiver', 'struct Integer {}
+', 'square'},
+		TransformFixture{'smartcast_nested_sum_method_receiver', 'struct Integer {}
 
 struct Text {}
 
@@ -12529,8 +12477,8 @@ fn print_name(node Node) {
 fn main() {
 	print_name(Expr(Integer{}))
 }
-')
-	assert out == 'integer'
+', 'integer'},
+	])
 }
 
 fn test_nested_match_smartcast_declaration_uses_nearest_variant() {
