@@ -68,6 +68,24 @@ enum WideSigned as i64 {
 	neg = -9000000000
 }
 
+enum ByteEnum as u8 {
+	low
+	high
+}
+
+struct ByteEnumFields {
+	value   ByteEnum
+	marker  u8
+	values  []ByteEnum
+}
+
+fn test_decode_backed_enum_into_fields_and_array_elements() {
+	result := json2.decode[ByteEnumFields]('{"value":"high","marker":123,"values":["high","low","high"]}')!
+	assert result.value == .high
+	assert result.marker == 123
+	assert result.values == [ByteEnum.high, .low, .high]
+}
+
 struct OptionContainers {
 	fixed  [2]?int
 	by_key map[string]?int

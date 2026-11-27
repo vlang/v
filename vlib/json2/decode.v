@@ -1072,8 +1072,9 @@ fn (mut decoder Decoder) decode_struct_field[F](field &F, is_raw bool, is_requir
 				*field = decoder.decode_new_pointer(*field)!
 			}
 		} $else {
-			mut target := unsafe { field }
-			decoder.decode_value(mut target)!
+			unsafe {
+				decoder.decode_value(mut *field)!
+			}
 		}
 	}
 }
@@ -1579,8 +1580,9 @@ fn (mut decoder Decoder) decode_fixed_array_element[E](element &E) ! {
 			*element = decoder.decode_array_element(*element)!
 		}
 	} $else {
-		mut target := unsafe { element }
-		decoder.decode_value(mut target)!
+		unsafe {
+			decoder.decode_value(mut *element)!
+		}
 	}
 }
 
