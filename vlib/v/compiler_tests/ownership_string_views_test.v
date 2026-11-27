@@ -2,8 +2,9 @@ import os
 import json2
 
 struct OwnershipStringViewRejection {
-	body     string
-	expected string
+	body                    string
+	expected                string
+	standalone_declarations ?string
 }
 
 struct OwnershipStringViewDiagnostic {
@@ -13,13 +14,23 @@ struct OwnershipStringViewDiagnostic {
 }
 
 const ownership_string_view_rejection_args = [@VEXE, '-nocache', '-ownership', '-d', 'ownership']
+const ownership_string_returned_fallback_body = '	mut original := "fallback".to_owned()
+	mut result := "".to_owned()
+	{
+		view := original.substr_unsafe(1, 4)
+		result = "abc".substr_or(0, 4, view)
+		assert view == "all"
+		assert unsafe { result.str != view.str }
+	}
+	original = "replacement".to_owned()'
 
 fn check_ownership_string_view_rejections(root string, declarations string, cases []OwnershipStringViewRejection, modes [][]string) ! {
 	main := os.join_path(root, 'main.v')
 	// Custom flags can limit diagnostics or change how a project is resolved.
 	if os.getenv('VFLAGS').trim_space() !in ['', '-gc none'] {
 		for case in cases {
-			os.write_file(main, declarations + 'fn main() {\n${case.body}\n}\n')!
+			case_declarations := case.standalone_declarations or { declarations }
+			os.write_file(main, case_declarations + 'fn main() {\n${case.body}\n}\n')!
 			for mode in modes {
 				out := os.exec([...ownership_string_view_rejection_args, ...mode, '-check', main])
 				assert out.exit_code != 0, '${mode}: ${case.body}\n${out.output}'
@@ -53,12 +64,12 @@ fn check_ownership_string_view_rejections(root string, declarations string, case
 	}
 }
 
-fn test_ownership_string_views_do_not_create_implicit_owners() {
+fn test_ownership_string_views_and_returned_fallbacks_preserve_storage() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_string_views_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'import os
+	views := 'import os
 import encoding.utf8
 
 fn read_view(value &string) int {
@@ -152,12 +163,27 @@ fn main() {
 	assert os.join_path(view, "child") == "file/child"
 	assert view == "file"
 	println("ok")
+	CHECK_FALLBACK
 }
-')!
-	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+'
+	fallback := '
+fn check_cloned_returned_fallback() {
+${ownership_string_returned_fallback_body}
+	assert result == "all"
+	println("fallback")
+}
+'
+	for mode in [['-no-parallel'], []string{}] {
+		// The default-mode fixtures exercise their original string cleanup separately.
+		serial := mode.len > 0
+		check := if serial { '\tcheck_cloned_returned_fallback()\n' } else { '' }
+		extra := if serial { fallback } else { '' }
+		os.write_file(source, views.replace('\tCHECK_FALLBACK\n', check) + extra)!
+		out := os.exec([@VEXE, '-nocache', '-ownership', '-d', 'ownership', '-cc', 'clang', ...mode,
+			'run', source])
 		assert out.exit_code == 0, '${mode}: ${out.output}'
-		assert out.output.trim_space() == 'ok', out.output
+		expected := if serial { ['ok', 'fallback'] } else { ['ok'] }
+		assert out.output.trim_space().split_into_lines() == expected, out.output
 	}
 }
 
@@ -174,7 +200,7 @@ fn test_ownership_string_views_still_require_explicit_owned_copies_to_move() {
 	owned := ${creation}
 	consume(owned)
 	println(owned)'
-		cases << OwnershipStringViewRejection{body, 'use of moved value: `owned`'}
+		cases << OwnershipStringViewRejection{ body: body, expected: 'use of moved value: `owned`' }
 	}
 	check_ownership_string_view_rejections(root, 'fn consume(value string) { _ = value }\n',
 		cases, [[]string{}])!
@@ -199,7 +225,7 @@ fn test_ownership_string_views_keep_owner_borrow_until_view_expires() {
 	}
 	${invalid_action}
 	assert view.len > 0'
-			cases << OwnershipStringViewRejection{body, expected}
+			cases << OwnershipStringViewRejection{ body: body, expected: expected }
 		}
 	}
 	check_ownership_string_view_rejections(root, 'fn consume(value string) { _ = value }\nfn identity(value string) string { return value }\n',
@@ -296,86 +322,57 @@ fn main() {
 	}
 }
 
-fn test_ownership_string_view_results_from_owning_calls_are_owned() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_view_result_moves_${os.getpid()}')
+fn test_ownership_string_calls_preserve_move_semantics() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_call_moves_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn identity(value string) string { return value }
-fn consume(value string) { _ = value }
-fn main() {
+	identity := 'fn identity(value string) string { return value }\n'
+	consume := 'fn consume(value string) { _ = value }\n'
+	consume_many := 'fn consume_many(values ...string) int { return values.len }\n'
+	first_value := 'fn first(values ...string) string { return values[0] }\n'
+	user_method := 'struct Source {}
+fn (source Source) substr_unsafe() string { return "independent".to_owned() }
+'
+	declarations := identity + consume + consume_many + first_value + user_method
+	moved_result := 'use of moved value: `result`'
+	moved_owned := 'use of moved value: `owned`'
+	mut cases := [
+		OwnershipStringViewRejection{'
 	owned := identity("owned argument".to_owned())
 	assert owned.len > 0
 	original := "borrowed argument".to_owned()
 	ptr := &original
 	result := identity(*ptr)
 	consume(result)
-	println(result)
-}
-')!
-	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
-		assert out.exit_code != 0, '${mode}: ${out.output}'
-		assert out.output.contains('use of moved value: `result`'), '${mode}: ${out.output}'
-	}
-}
+	println(result)', moved_result, identity + consume},
+		OwnershipStringViewRejection{'
+	owned := ["owned argument".to_owned()]
+	assert consume_many(...owned) == 1
+	println(owned.len)', moved_owned, consume_many},
+		OwnershipStringViewRejection{'
+	owned := ["owned argument".to_owned()]
+	result := first(...owned)
+	consume(result)
+	println(result)', moved_result, first_value + consume},
+		OwnershipStringViewRejection{'
+	result := Source{}.substr_unsafe()
+	consume(result)
+	println(result)', moved_result, user_method + consume},
+	]
 
-fn test_ownership_string_call_copies_preserve_owned_argument_moves() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_call_copy_moves_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	mut cases := []OwnershipStringViewRejection{}
 	for first in ['owned', 'if owned.len > 0 { owned } else { "fallback" }'] {
 		for next in ['consume(owned)', 'consume(if owned.len > 0 { owned } else { "fallback" })'] {
 			body := '
 	owned := "owned argument".to_owned()
 	consume(${first})
 	${next}'
-			cases << OwnershipStringViewRejection{body, 'use of moved value: `owned`'}
+			cases << OwnershipStringViewRejection{body, moved_owned, consume}
 		}
 	}
-	check_ownership_string_view_rejections(root, 'fn consume(value string) { _ = value }\n',
-		cases, [['-no-parallel'], []string{}])!
-}
-
-fn test_ownership_string_call_copies_preserve_owned_variadic_array_moves() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_array_call_moves_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn consume(values ...string) int { return values.len }
-fn main() {
-	owned := ["owned argument".to_owned()]
-	assert consume(...owned) == 1
-	println(owned.len)
-}
-')!
-	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
-		assert out.exit_code != 0, '${mode}: ${out.output}'
-		assert out.output.contains('use of moved value: `owned`'), '${mode}: ${out.output}'
-	}
-}
-
-fn test_ownership_string_returns_preserve_owned_variadic_array_elements() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_array_return_moves_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn first(values ...string) string { return values[0] }
-fn consume(value string) { _ = value }
-fn main() {
-	owned := ["owned argument".to_owned()]
-	result := first(...owned)
-	consume(result)
-	println(result)
-}
-')!
-	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
-		assert out.exit_code != 0, '${mode}: ${out.output}'
-		assert out.output.contains('use of moved value: `result`'), '${mode}: ${out.output}'
-	}
+	check_ownership_string_view_rejections(root, declarations, cases, [
+		['-no-parallel'],
+		[]string{},
+	])!
 }
 
 fn test_ownership_dereferenced_pointer_calls_retain_string_owner_loans() {
@@ -393,32 +390,11 @@ fn test_ownership_dereferenced_pointer_calls_retain_string_owner_loans() {
 	view := ${expression}
 	${action}
 	assert view == "owned text"'
-			cases << OwnershipStringViewRejection{body, diagnostic}
+			cases << OwnershipStringViewRejection{ body: body, expected: diagnostic }
 		}
 	}
 	check_ownership_string_view_rejections(root, 'fn pointer(value &string) &string { return value }\nfn forward(value &string) &string { return value }\nfn consume(value string) { _ = value }\n',
 		cases, [['-no-parallel'], []string{}])!
-}
-
-fn test_ownership_user_substr_unsafe_method_retains_its_owned_return() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_user_substr_unsafe_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'struct Source {}
-fn (source Source) substr_unsafe() string { return "independent".to_owned() }
-fn consume(value string) { _ = value }
-fn main() {
-	result := Source{}.substr_unsafe()
-	consume(result)
-	println(result)
-}
-')!
-	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
-		assert out.exit_code != 0, out.output
-		assert out.output.contains('use of moved value: `result`'), out.output
-	}
 }
 
 fn test_ownership_cloned_returned_fallback_detaches_source_loan() {
@@ -426,31 +402,21 @@ fn test_ownership_cloned_returned_fallback_detaches_source_loan() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	for last_use in ['assert result == "all"', 'consume(result)\n\tprintln(result)'] {
-		os.write_file(source, 'fn consume(value string) { _ = value }
+	fixture := 'fn consume(value string) { _ = value }
 fn main() {
-	mut original := "fallback".to_owned()
-	mut result := "".to_owned()
-	{
-		view := original.substr_unsafe(1, 4)
-		result = "abc".substr_or(0, 4, view)
-		assert view == "all"
-		assert unsafe { result.str != view.str }
-	}
-	original = "replacement".to_owned()
-	${last_use}
+${ownership_string_returned_fallback_body}
+	LAST_USE
 }
-')!
-		for mode in ['-no-parallel', ''] {
-			command := if last_use.starts_with('consume') { '-check' } else { '-cc clang run' }
-			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} ${command} ${os.quoted_path(source)}')
-			assert !out.output.contains('cannot assign to `original`'), out.output
-			if last_use.starts_with('consume') {
-				assert out.exit_code != 0, out.output
-				assert out.output.contains('use of moved value: `result`'), out.output
-			} else {
-				assert out.exit_code == 0, out.output
-			}
-		}
+'
+	os.write_file(source, fixture.replace('LAST_USE', 'assert result == "all"'))!
+	success := os.exec([...ownership_string_view_rejection_args, '-cc', 'clang', 'run', source])
+	assert !success.output.contains('cannot assign to `original`'), success.output
+	assert success.exit_code == 0, success.output
+	os.write_file(source, fixture.replace('LAST_USE', 'consume(result)\n\tprintln(result)'))!
+	for mode in [['-no-parallel'], []string{}] {
+		out := os.exec([...ownership_string_view_rejection_args, ...mode, '-check', source])
+		assert !out.output.contains('cannot assign to `original`'), out.output
+		assert out.exit_code != 0, out.output
+		assert out.output.contains('use of moved value: `result`'), out.output
 	}
 }
