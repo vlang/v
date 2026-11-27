@@ -45,11 +45,6 @@ fn selective_import_compile(root string, bin string) os.Result {
 	})
 }
 
-fn selective_import_compile_run(name string, main_src string) (string, string) {
-	root := selective_import_write_project(name, main_src)
-	return selective_import_compile_run_root(root)
-}
-
 fn selective_import_compile_run_with_extra(name string, main_src string, extra_files map[string]string) (string, string) {
 	root := selective_import_write_project_with_extra(name, main_src, extra_files)
 	return selective_import_compile_run_root(root)
@@ -64,6 +59,41 @@ fn selective_import_compile_run_root(root string) (string, string) {
 	assert run.exit_code == 0, run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	return run.output.trim_space(), generated
+}
+
+struct SelectiveImportCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn selective_import_compile_batch(name string, cases []SelectiveImportCase, extra_files map[string]string) string {
+	mut files := extra_files.clone()
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		entry := 'case_${case.name}'
+		files['${case.name}.v'] = case.source.replace_once('\nfn main() {', '\nfn ${entry}() {')
+		calls << "\t\t'${case.name}' { ${entry}() }"
+	}
+	root := selective_import_write_project_with_extra(name, "module main\n\nfn main() {\n\tmatch arguments()[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n", files)
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'out')
+	compile := selective_import_compile(root, bin)
+	assert compile.exit_code == 0, '${name}: ${compile.output}'
+	for case in cases {
+		run := os.exec([bin, case.name])
+		assert run.exit_code == 0, '${case.name}: ${run.output}'
+		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	}
+	return os.read_file(bin + '.c') or { panic(err) }
+}
+
+fn selective_import_c_case(generated string, name string) string {
+	header := '\nvoid case_${name}(void) {\n'
+	start := generated.index(header) or { panic('missing C function for ${name}') }
+	body := generated[start + header.len..]
+	end := body.index('\n}\n') or { panic('missing end of C function for ${name}') }
+	return body[..end]
 }
 
 fn selective_import_compile_bad(name string, main_src string) string {
@@ -168,8 +198,9 @@ pub:
 	}
 }
 
-fn test_selective_import_calls_module_and_submodule_functions() {
-	output, generated := selective_import_compile_run('positive', 'module main
+fn test_selective_import_function_calls_and_values() {
+	generated := selective_import_compile_batch('function_calls_and_values', [
+		SelectiveImportCase{'positive', 'module main
 
 import mymodules { add_xy }
 import mymodules.submodule { sub_xy }
@@ -178,14 +209,8 @@ fn main() {
 	println(int_str(add_xy(2, 3)))
 	println(int_str(sub_xy(10, 7)))
 }
-')
-	assert output == '5\n3'
-	assert generated.contains('mymodules__add_xy(2, 3)'), generated
-	assert generated.contains('submodule__sub_xy(10, 7)'), generated
-}
-
-fn test_import_alias_variadic_module_call_without_values_skips_module_receiver() {
-	output, generated := selective_import_compile_run_with_extra('module_alias_variadic_zero_args', 'module main
+', '5\n3'},
+		SelectiveImportCase{'module_alias_variadic_zero_args', 'module main
 
 import logger as log
 
@@ -193,7 +218,25 @@ fn main() {
 	println(int_str(log.sum()))
 	println(int_str(log.sum(4, 5)))
 }
-', {
+', '0\n9'},
+		SelectiveImportCase{'fn_value', 'module main
+
+import mymodules { add_xy }
+
+fn main() {
+	f := add_xy
+	println(int_str(f(2, 3)))
+}
+', '5'},
+		SelectiveImportCase{'alias', 'module main
+
+import mymodules as mm { add_xy }
+
+fn main() {
+	println(int_str(add_xy(4, 5)))
+}
+', '9'},
+	], {
 		'logger/logger.v': 'module logger
 
 pub fn sum(values ...int) int {
@@ -205,9 +248,22 @@ pub fn sum(values ...int) int {
 }
 '
 	})
-	assert output == '0\n9'
-	assert generated.contains('logger__sum('), generated
-	assert !generated.contains('logger__sum(log'), generated
+	positive := selective_import_c_case(generated, 'positive')
+	assert positive.contains('mymodules__add_xy(2, 3)'), positive
+	assert positive.contains('submodule__sub_xy(10, 7)'), positive
+
+	variadic := selective_import_c_case(generated, 'module_alias_variadic_zero_args')
+	assert variadic.contains('logger__sum('), variadic
+	assert !variadic.contains('logger__sum(log'), variadic
+
+	fn_value := selective_import_c_case(generated, 'fn_value')
+	assert fn_value.contains('mymodules__add_xy'), fn_value
+	assert fn_value.contains('f(2, 3)'), fn_value
+	assert !fn_value.contains('i64 f = mymodules__add_xy'), fn_value
+
+	alias_call := selective_import_c_case(generated, 'alias')
+	assert alias_call.contains('mymodules__add_xy(4, 5)'), alias_call
+	assert !generated.contains('mm__add_xy'), generated
 }
 
 fn test_json2_decode_calls_the_module_decoder() {
@@ -455,22 +511,6 @@ pub:
 	assert !generated.contains('\ni64 worker__take_point_T_v_int(pixels__Point p, i64 x)'), generated
 }
 
-fn test_selective_import_symbol_can_be_used_as_function_value() {
-	output, generated := selective_import_compile_run('fn_value', 'module main
-
-import mymodules { add_xy }
-
-fn main() {
-	f := add_xy
-	println(int_str(f(2, 3)))
-}
-')
-	assert output == '5'
-	assert generated.contains('mymodules__add_xy'), generated
-	assert generated.contains('f(2, 3)'), generated
-	assert !generated.contains('i64 f = mymodules__add_xy'), generated
-}
-
 fn test_selective_import_function_value_roots_exact_symbol_with_imported_homonym() {
 	output, generated := selective_import_compile_run_with_extra('fn_value_imported_homonym', 'module main
 
@@ -676,22 +716,19 @@ pub fn (err Error) str() string {
 	assert !generated.contains('string foo__Error__msg(Error err)'), generated
 }
 
-fn test_selective_import_with_module_alias_keeps_symbol_authority() {
-	output, generated := selective_import_compile_run('alias', 'module main
+fn test_selective_import_type_collisions_and_enum_from() {
+	mut extra := selective_import_type_collision_modules()
+	extra['colors/colors.v'] = 'module colors
 
-import mymodules as mm { add_xy }
-
-fn main() {
-	println(int_str(add_xy(4, 5)))
-}
-')
-	assert output == '9'
-	assert generated.contains('mymodules__add_xy(4, 5)'), generated
-	assert !generated.contains('mm__add_xy'), generated
+pub enum Color {
+	red
+	blue
 }
 
-fn test_selective_import_resolves_struct_collision() {
-	output, generated := selective_import_compile_run_with_extra('struct_collision', 'module main
+pub type Hue = Color
+'
+	generated := selective_import_compile_batch('type_collisions_and_enum_from', [
+		SelectiveImportCase{'struct_collision', 'module main
 
 import geometry { Point }
 import pixels
@@ -700,15 +737,8 @@ fn main() {
 	p := Point{x: 7}
 	println(int_str(p.x))
 }
-',
-		selective_import_type_collision_modules())
-	assert output == '7'
-	assert generated.contains('geometry__Point p ='), generated
-	assert !generated.contains('pixels__Point p ='), generated
-}
-
-fn test_selective_import_resolves_generic_struct_collision() {
-	output, generated := selective_import_compile_run_with_extra('generic_struct_collision', 'module main
+', '7'},
+		SelectiveImportCase{'generic_struct_collision', 'module main
 
 import geometry { Box }
 import pixels
@@ -718,13 +748,101 @@ fn main() {
 	p := pixels.Box[int]{other: 8}
 	println(int_str(b.value + p.other))
 }
-',
-		selective_import_type_collision_modules())
-	assert output == '15'
+', '15'},
+		SelectiveImportCase{'alias_collision', 'module main
+
+import geometry { ItemId }
+import pixels
+
+fn value(id ItemId) int {
+	return int(id)
+}
+
+fn main() {
+	println(int_str(value(ItemId(9))))
+}
+', '9'},
+		SelectiveImportCase{'enum_collision', 'module main
+
+import geometry { Mode }
+import pixels
+
+fn is_on(mode Mode) bool {
+	return mode == .on
+}
+
+fn main() {
+	if is_on(.on) {
+		println("on")
+	}
+}
+', 'on'},
+		SelectiveImportCase{'enum_from', 'module main
+
+import geometry { Mode }
+import pixels
+
+fn main() {
+	mode := Mode.from(8) or { panic(err) }
+	println(mode)
+	string_mode := Mode.from("on") or { panic(err) }
+	println(string_mode)
+}
+', 'off\non'},
+		SelectiveImportCase{'qualified_enum_from', 'module main
+
+import colors
+
+fn main() {
+	numeric := colors.Color.from(1) or { panic(err) }
+	println(numeric)
+	text := colors.Color.from("red") or { panic(err) }
+	println(text)
+}
+', 'blue\nred'},
+		SelectiveImportCase{'enum_alias_from_string', 'module main
+
+import colors { Hue }
+
+fn main() {
+	value := Hue.from("blue") or { panic(err) }
+	println(value)
+}
+', 'blue'},
+		SelectiveImportCase{'flag_enum_collision', 'module main
+
+import geometry { Perm }
+import pixels
+
+fn main() {
+	m := Perm.a | .b
+	println(int_str(int(m)))
+}
+', '3'},
+	], extra)
+	point := selective_import_c_case(generated, 'struct_collision')
+	assert point.contains('geometry__Point p ='), point
+	assert !point.contains('pixels__Point p ='), point
+
+	boxes := selective_import_c_case(generated, 'generic_struct_collision')
 	assert generated.contains('struct geometry__Box_int'), generated
 	assert generated.contains('struct pixels__Box_int'), generated
-	assert generated.contains('geometry__Box_int b ='), generated
-	assert generated.contains('pixels__Box_int p ='), generated
+	assert boxes.contains('geometry__Box_int b ='), boxes
+	assert boxes.contains('pixels__Box_int p ='), boxes
+
+	assert generated.contains('return mode == geometry__Mode__on;'), generated
+	assert !generated.contains('return mode == pixels__Mode__on;'), generated
+	enum_case := selective_import_c_case(generated, 'enum_collision')
+	assert enum_case.contains('is_on(geometry__Mode__on)'), enum_case
+	assert !enum_case.contains('is_on(pixels__Mode__on)'), enum_case
+
+	assert !generated.contains('unknown__from'), generated
+
+	flags := selective_import_c_case(generated, 'flag_enum_collision')
+	// The flags are both represented as C ints, but .b is 2 in geometry and 4 in pixels.
+	assert flags.contains(' m = 1 | 2;'), flags
+	assert !flags.contains(' m = 1 | 4;'), flags
+	assert !flags.contains('Perm.a'), flags
 }
 
 fn test_selective_import_resolves_generic_struct_field_from_decl_file() {
@@ -820,134 +938,6 @@ fn main() {
 	assert generated.contains('i64 box__Box_int__combine(box__Box_int b, types__Thing thing)'), generated
 	assert !generated.contains('i64 box__Box_int__combine(box__Box_int b, box__Thing thing)'), generated
 	assert !generated.contains('i64 box__Box_int__combine(box__Box_int b, other__Thing thing)'), generated
-}
-
-fn test_selective_import_resolves_alias_collision() {
-	output, _ := selective_import_compile_run_with_extra('alias_collision', 'module main
-
-import geometry { ItemId }
-import pixels
-
-fn value(id ItemId) int {
-	return int(id)
-}
-
-fn main() {
-	println(int_str(value(ItemId(9))))
-}
-',
-		selective_import_type_collision_modules())
-	assert output == '9'
-}
-
-fn test_selective_import_resolves_enum_collision() {
-	output, generated := selective_import_compile_run_with_extra('enum_collision', 'module main
-
-import geometry { Mode }
-import pixels
-
-fn is_on(mode Mode) bool {
-	return mode == .on
-}
-
-fn main() {
-	if is_on(.on) {
-		println("on")
-	}
-}
-',
-		selective_import_type_collision_modules())
-	assert output == 'on'
-	assert generated.contains('return mode == geometry__Mode__on;'), generated
-	assert generated.contains('is_on(geometry__Mode__on)'), generated
-	assert !generated.contains('return mode == pixels__Mode__on;'), generated
-	assert !generated.contains('is_on(pixels__Mode__on)'), generated
-}
-
-fn test_selective_import_enum_from_uses_selected_type() {
-	output, generated := selective_import_compile_run_with_extra('enum_from', 'module main
-
-import geometry { Mode }
-import pixels
-
-fn main() {
-	mode := Mode.from(8) or { panic(err) }
-	println(mode)
-	string_mode := Mode.from("on") or { panic(err) }
-	println(string_mode)
-}
-',
-		selective_import_type_collision_modules())
-	assert output == 'off\non'
-	assert !generated.contains('unknown__from'), generated
-}
-
-fn test_module_qualified_enum_from_uses_imported_type() {
-	output, generated := selective_import_compile_run_with_extra('qualified_enum_from', 'module main
-
-import colors
-
-fn main() {
-	numeric := colors.Color.from(1) or { panic(err) }
-	println(numeric)
-	text := colors.Color.from("red") or { panic(err) }
-	println(text)
-}
-', {
-		'colors/colors.v': 'module colors
-
-pub enum Color {
-	red
-	blue
-}
-'
-	})
-	assert output == 'blue\nred'
-	assert !generated.contains('unknown__from'), generated
-}
-
-fn test_selective_imported_enum_alias_from_string() {
-	output, generated := selective_import_compile_run_with_extra('enum_alias_from_string', 'module main
-
-import colors { Hue }
-
-fn main() {
-	value := Hue.from("blue") or { panic(err) }
-	println(value)
-}
-', {
-		'colors/colors.v': 'module colors
-
-pub enum Color {
-	red
-	blue
-}
-
-pub type Hue = Color
-'
-	})
-	assert output == 'blue'
-	assert !generated.contains('unknown__from'), generated
-}
-
-fn test_selective_import_resolves_flag_enum_collision() {
-	output, generated := selective_import_compile_run_with_extra('flag_enum_collision', 'module main
-
-import geometry { Perm }
-import pixels
-
-fn main() {
-	m := Perm.a | .b
-	println(int_str(int(m)))
-}
-',
-		selective_import_type_collision_modules())
-	assert output == '3'
-	// `m` is a `geometry.Perm`, whose C type is `int`; the C type is not what is checked
-	// here, the flag values are: `.b` is 2 in geometry and 4 in pixels.
-	assert generated.contains(' m = 1 | 2;'), generated
-	assert !generated.contains(' m = 1 | 4;'), generated
-	assert !generated.contains('Perm.a'), generated
 }
 
 fn test_duplicate_selective_import_type_fails() {
