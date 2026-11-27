@@ -2,7 +2,7 @@ import os
 import v.cmdexec
 import v.tempname
 
-fn occf_compile_and_run(tag string, source string) {
+fn test_ownership_clone_specialization_and_moves() {
 	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
 	v3_src := os.join_path(os.dir(@FILE), '../v.v')
 	compiler := if os.is_file(shared) && os.is_executable(shared)
@@ -14,21 +14,9 @@ fn occf_compile_and_run(tag string, source string) {
 	root := os.join_path(os.vtmp_dir(), 'v3_ownership_clone_${tempname.unique_token()}')
 	os.mkdir(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_${tag}.v')
-	out := os.join_path(root, 'v3_${tag}_prog')
-	os.write_file(src, source) or { panic(err) }
-	compile := cmdexec.run_in_merged_with_env(compiler, [src, '-d', 'ownership', '-b', 'c', '-o',
-		out], '', {
-		'VFLAGS':               ''
-		'VTOOLS_CACHE_VERBOSE': ''
-	})
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-}
-
-fn test_ownership_clone_and_specialization_preserve_types() {
-	occf_compile_and_run('clone_and_specialization', 'module main
+	src := os.join_path(root, 'main.v')
+	out := os.join_path(root, 'program')
+	os.write_file(src, 'module main
 
 import sync.arc
 
@@ -208,23 +196,8 @@ fn check_chained_mut_receiver() {
 	assert *value == 42
 }
 
-fn main() {
-	check_arc_array_clone()
-	check_drop_type_clone()
-	check_array_iteration_clone()
-	check_captured_sort_compare()
-	check_generic_interface_box()
-	check_borrowed_interface_parameter()
-	check_chained_mut_receiver()
-}
-')
-}
-
-fn test_owned_assignments_and_aggregate_moves_preserve_lifetimes() {
-	occf_compile_and_run('owned_assignments_and_aggregate_moves', 'module main
-
 // The drop-before-assign temporary keeps ?string storage after the smartcast.
-fn f(input ?string) ?string {
+fn assign_optional_string(input ?string) ?string {
 	mut preprocessor := ?string(none)
 	if value := input {
 		preprocessor = value.clone()
@@ -233,7 +206,7 @@ fn f(input ?string) ?string {
 }
 
 fn check_optional_assignment() {
-	assert (f("hello") or { "none" }) == "hello"
+	assert (assign_optional_string("hello") or { "none" }) == "hello"
 }
 
 struct FieldOwned implements Drop {
@@ -299,7 +272,7 @@ fn check_consuming_call() {
 	assert consume(first, wrap(second)) == 2
 }
 
-struct Owned implements Drop {
+struct MovedValue implements Drop {
 mut:
 	value string
 	drops &int
@@ -311,10 +284,10 @@ struct BorrowedAggregate {
 }
 
 struct WrappedOwned {
-	value Owned
+	value MovedValue
 }
 
-fn (mut value Owned) drop() {
+fn (mut value MovedValue) drop() {
 	unsafe {
 		*value.drops += 1
 	}
@@ -323,12 +296,12 @@ fn (mut value Owned) drop() {
 
 // Reassigning a moved-from aggregate initializes the source without a stale drop.
 fn direct_move(drops &int) {
-	mut current := Owned{
+	mut current := MovedValue{
 		value: "old".to_owned()
 		drops: drops
 	}
 	saved := current
-	current = Owned{
+	current = MovedValue{
 		value: "new".to_owned()
 		drops: drops
 	}
@@ -340,13 +313,13 @@ fn direct_move(drops &int) {
 }
 
 fn optional_move(drops &int) {
-	mut current := Owned{
+	mut current := MovedValue{
 		value: "old".to_owned()
 		drops: drops
 	}
-	mut previous := ?Owned(none)
-	previous = ?Owned(current)
-	current = Owned{
+	mut previous := ?MovedValue(none)
+	previous = ?MovedValue(current)
+	current = MovedValue{
 		value: "new".to_owned()
 		drops: drops
 	}
@@ -360,13 +333,13 @@ fn optional_move(drops &int) {
 }
 
 fn nested_array_append_move(drops &int) {
-	mut outer := [][]Owned{}
-	mut inner := [Owned{
+	mut outer := [][]MovedValue{}
+	mut inner := [MovedValue{
 		value: "nested".to_owned()
 		drops: drops
 	}]
 	outer << inner
-	inner = []Owned{}
+	inner = []MovedValue{}
 	unsafe {
 		assert *drops == 0
 	}
@@ -390,7 +363,7 @@ fn borrowed_scalar_field_is_copy(value &BorrowedAggregate) string {
 	return unsafe { u8(value.tag).ascii_str() }
 }
 
-fn wrap_owned(value Owned) WrappedOwned {
+fn wrap_owned(value MovedValue) WrappedOwned {
 	return WrappedOwned{
 		value: value
 	}
@@ -401,7 +374,7 @@ fn consume_wrapped(value WrappedOwned) bool {
 }
 
 fn nested_call_moves_source_once(drops &int) {
-	value := Owned{
+	value := MovedValue{
 		value: "nested call".to_owned()
 		drops: drops
 	}
@@ -430,10 +403,25 @@ fn check_moved_aggregate_reassignment() {
 }
 
 fn main() {
+	check_arc_array_clone()
+	check_drop_type_clone()
+	check_array_iteration_clone()
+	check_captured_sort_compare()
+	check_generic_interface_box()
+	check_borrowed_interface_parameter()
+	check_chained_mut_receiver()
 	check_optional_assignment()
 	check_owned_field_assignment()
 	check_consuming_call()
 	check_moved_aggregate_reassignment()
 }
-')
+') or { panic(err) }
+	compile := cmdexec.run_in_merged_with_env(compiler, [src, '-d', 'ownership', '-b', 'c', '-o',
+		out], '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
+	assert compile.exit_code == 0, compile.output
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
 }
