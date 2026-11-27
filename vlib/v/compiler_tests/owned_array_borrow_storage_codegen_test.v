@@ -23,6 +23,13 @@ fn (r &Res) clone() Res {
 }
 '
 
+const borrow_storage_handle_decls = 'struct Handle implements Drop { id int }
+fn (mut h Handle) drop() {}
+'
+const borrow_storage_uncloneable_decls = 'interface Drop { mut: drop() }
+' + borrow_storage_handle_decls
+const borrow_storage_clone_error = 'requires ownership destruction but has no compatible `clone()` method'
+
 fn testsuite_begin() {
 	os.mkdir_all(borrow_storage_tmp_dir) or { panic(err) }
 }
@@ -43,37 +50,21 @@ fn borrow_storage_compile_with_flags(name string, src string, flags string) os.R
 		...(os.split_args(flags) or { panic(err) }), '-o', '${out}', path])
 }
 
-fn borrow_storage_run(name string, src string) string {
-	build := borrow_storage_compile(name, src)
-	assert build.exit_code == 0, '${name}: ${build.output}'
-	run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-	assert run.exit_code == 0, '${name}: ${run.output}'
-	return run.output.trim_space()
-}
-
-fn test_owned_sum_box_cleanup_matches_gc_allocator() {
-	src := borrow_storage_drop_decls + '
-type Bucket = Res | int
-
-fn main() {
-	bucket := Bucket(Res{1})
-	drop_owned(bucket)
-	mut direct := Res{2}
-	if direct.id == 0 { direct.drop() }
-}
-'
-	for i, flags in ['', '-gc none'] {
-		name := 'sum_box_allocator_${i}'
-		build := borrow_storage_compile_with_flags(name, src, flags)
-		assert build.exit_code == 0, '${name}: ${build.output}'
-		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-		assert run.exit_code == 0, '${name}: ${run.output}'
-		assert run.output.trim_space() == 'drop 1\ndrop 2'
+fn borrow_storage_compile_dispatch(name string, declarations string, branches []string) string {
+	source := declarations + 'fn main() {
+	match arguments()[1] {
+${branches.join('\n')}
+		else { panic("unknown array ownership case") }
 	}
 }
+'
+	build := borrow_storage_compile(name, source)
+	assert build.exit_code == 0, '${name}: ${build.output}'
+	return os.join_path(borrow_storage_tmp_dir, name)
+}
 
-fn test_owned_borrowed_array_views_clone_only_when_detaching() {
-	output := borrow_storage_run('fixed_array_detach', '@[has_globals]
+fn test_owned_borrowed_array_views_preserve_owners() {
+	source := '@[has_globals]
 module main
 
 __global next_id = 0
@@ -154,7 +145,7 @@ fn change(mut values []Resource, operation int) {
 	unsafe { values.free() }
 }
 
-fn main() {
+fn check_detach() {
 	for operation in 0 .. 12 {
 		mut fixed := [fresh(), fresh()]
 		original_id := fixed[0].id
@@ -169,24 +160,14 @@ fn main() {
 		drop_owned(fixed)
 	}
 	assert dropped.len == next_id
-	println("ok")
-}
-')
-	assert output == 'ok'
+	println("detach")
 }
 
-fn test_owned_borrowed_array_borrowed_empty_uncloneable_range_can_grow() {
-	output := borrow_storage_run('empty_uncloneable_fixed', '@[has_globals]
-module main
-__global dropped = map[int]bool{}
-interface Drop {
-mut:
-	drop()
-}
+__global empty_dropped = map[int]bool{}
 struct Handle implements Drop { id int }
 fn (mut h Handle) drop() {
-	assert !dropped[h.id]
-	dropped[h.id] = true
+	assert !empty_dropped[h.id]
+	empty_dropped[h.id] = true
 }
 fn duplicate_empty(mut values []Handle) {
 	values << values
@@ -204,7 +185,7 @@ fn grow(mut values []Handle, reserve bool) {
 	assert values.len == 1 && values[0].id == 2
 	unsafe { values.free() }
 }
-fn main() {
+fn check_empty_growth() {
 	mut empty := []Handle{}
 	duplicate_empty(mut empty)
 	assert empty.len == 0
@@ -212,60 +193,91 @@ fn main() {
 	assert kept_empty.len == 0
 	drop_owned(kept_empty)
 	for reserve in [false, true] {
-		dropped = map[int]bool{}
+		empty_dropped = map[int]bool{}
 		mut fixed := [Handle{1}]
 		delete_empty_range(mut fixed[..])
 		assert fixed.len == 1 && fixed[0].id == 1
-		assert dropped.len == 0
+		assert empty_dropped.len == 0
 		grow(mut fixed[0..0], reserve)
-		assert dropped[2]
-		assert !dropped[1]
+		assert empty_dropped[2]
+		assert !empty_dropped[1]
 		drop_owned(fixed)
-		assert dropped.len == 2
+		assert empty_dropped.len == 2
 	}
-	println("ok")
+	println("empty_growth")
 }
-')
-	assert output == 'ok'
+'
+	binary := borrow_storage_compile_dispatch('borrowed_array_views', source, [
+		'\t\t"detach" { check_detach() }',
+		'\t\t"empty_growth" { check_empty_growth() }',
+	])
+	for name in ['detach', 'empty_growth'] {
+		run := os.exec([binary, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == name, '${name}: ${run.output}'
+	}
 }
 
-fn test_owned_borrowed_array_nonempty_uncloneable_views_fail_when_owning() {
-	for operation in ['values << Handle{2}', 'values.ensure_cap(values.cap + 1)', 'return values',
-		'reader := fn [values] () int { return values[0].id }; _ = reader'] {
-		name := 'uncloneable_boundary_${operation.len}'
-		tail := if operation.starts_with('return ') { '' } else { 'return []Handle{}' }
-		source := 'interface Drop { mut: drop() }
-struct Handle implements Drop { id int }
-fn (mut h Handle) drop() {}
-fn own(mut values []Handle) []Handle {
+fn test_array_view_operations_preserve_ownership_and_bounds_diagnostics() {
+	operations := {
+		'append':  'values << Handle{2}'
+		'reserve': 'values.ensure_cap(values.cap + 1)'
+		'return':  'return values'
+		'capture': 'reader := fn [values] () int { return values[0].id }; _ = reader'
+	}
+	mut source := borrow_storage_uncloneable_decls
+	mut branches := []string{}
+	mut succeeds := map[string]bool{}
+	for action, operation in operations {
+		tail := if action == 'return' { '' } else { 'return []Handle{}' }
+		for borrowed in [false, true] {
+			name := '${action}_${borrowed}'
+			receiver := if borrowed { 'fixed[..]' } else { 'fixed' }
+			source += '
+fn own_${name}(mut values []Handle) []Handle {
 	${operation}
 	${tail}
 }
 
-fn main() {
-	mut fixed := [Handle{1}]
-	result := own(mut fixed[..])
-	assert result.len == 0
-}
 '
-		for borrowed in [false, true] {
-			input := if borrowed { source } else { source.replace('mut fixed[..]', 'mut fixed') }
-			case_name := '${name}_${borrowed}'
-			build := borrow_storage_compile(case_name, input)
-			assert build.exit_code == 0, build.output
-			run := os.exec([os.join_path(borrow_storage_tmp_dir, case_name)])
-			if !borrowed && operation in ['values << Handle{2}', 'values.ensure_cap(values.cap + 1)'] {
-				// Mutating an unsliced owner does not require independent element owners.
-				assert run.exit_code == 0, run.output
-				continue
-			}
-			assert run.exit_code != 0, run.output
-			assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), run.output
+			branches << '		"${name}" {
+			mut fixed := [Handle{1}]
+			result := own_${name}(mut ${receiver})
+			assert result.len == 0
+		}'
+			// Mutating an unsliced owner does not require independent element owners.
+			succeeds[name] = !borrowed && action in ['append', 'reserve']
 		}
+	}
+	for borrowed in [false, true] {
+		name := 'append_${borrowed}'
+		source += borrow_storage_bulk_copy_case(name, 'values << values', borrowed)
+		branches << '\t\t"duplicate_${name}" { check_${name}() }'
+		succeeds['duplicate_${name}'] = false
+	}
+	invalid_source, invalid_branches, diagnostics := borrow_storage_invalid_array_operations()
+	binary := borrow_storage_compile_dispatch('array_view_operations', source + invalid_source, [
+		...branches,
+		...invalid_branches,
+	])
+	for name, should_succeed in succeeds {
+		run := os.exec([binary, name])
+		if should_succeed {
+			assert run.exit_code == 0, '${name}: ${run.output}'
+			continue
+		}
+		assert run.exit_code != 0, '${name}: ${run.output}'
+		assert run.output.contains(borrow_storage_clone_error), '${name}: ${run.output}'
+	}
+	for name, diagnostic in diagnostics {
+		run := os.exec([binary, name])
+		assert run.exit_code != 0, '${name}: ${run.output}'
+		assert !run.output.contains('unexpected clone'), '${name}: ${run.output}'
+		assert run.output.contains(diagnostic), '${name}: ${run.output}'
 	}
 }
 
-fn test_borrowed_owned_array_storage_scope_and_retained_headers() {
+fn test_borrowed_owned_array_storage_scope_retained_headers_and_captures() {
 	source := '@[has_globals]
 module main
 import builtin.closure
@@ -462,7 +474,8 @@ fn stored_result_sum(present bool) !ResourceStorageSum {
 	mut holder := Holder{[fresh()], "label".repeat(4)}
 	return keep_result_sum(mut holder.values[..], present)
 }
-fn main() {
+// check verifies how array storage is retained and dropped.
+pub fn check() {
 	ordinary_scope()
 	assert dropped.len == 1
 	values := returned()
@@ -566,201 +579,10 @@ fn main() {
 	check_borrow_capture()
 	assert clones == 16
 	assert dropped.len == next_id
-	println("ok")
+	println(@MOD)
 }
 '
-	for borrowed in [false, true] {
-		input := if borrowed {
-			source
-		} else {
-			source.replace('mut holder.values[..]', 'mut holder.values')
-		}
-		output := borrow_storage_run('borrowed_array_scope_${borrowed}', input)
-		assert output == 'ok'
-	}
-}
-
-fn test_explicit_optional_sum_cast_preserves_empty_and_owned_array_payloads() {
-	output := borrow_storage_run('explicit_optional_sum_cast', borrow_storage_drop_decls + '
-type Bucket = []Res | int
-fn keep(mut values []Res) ?Bucket { return ?Bucket(Bucket(values)) }
-fn absent() ?Bucket { return none }
-fn explicit_absent() ?Bucket { return ?Bucket(none) }
-fn main() {
-	assert absent() == none
-	assert explicit_absent() == none
-	mut empty := []Res{}
-	empty_bucket := keep(mut empty) or { panic("missing empty payload") }
-	if empty_bucket is []Res { assert empty_bucket.len == 0 } else { assert false }
-	drop_owned(empty_bucket)
-	mut values := [Res{1}]
-	bucket := keep(mut values) or { panic("missing owned payload") }
-	if bucket is []Res {
-		assert bucket[0].id == 101
-		assert values[0].id == 1
-	} else { assert false }
-	drop_owned(bucket)
-	drop_owned(values)
-}
-')
-	assert output == 'drop 101\ndrop 1'
-	nested := borrow_storage_compile('nested_optional_sum_cast', '
-type Bucket = []int | int
-fn absent() ?Bucket { return ?Bucket(?Bucket(none)) }
-fn main() { _ = absent() }
-')
-	assert nested.exit_code != 0
-	assert nested.output.contains('cannot cast `?Bucket` to `?Bucket`')
-}
-
-fn test_mutable_wrapped_array_storage_acquires_managed_payloads() {
-	for wrapper in ['?[]Res', 'Storage', '?Storage', 'WrappedStorage'] {
-		payload := if wrapper == '?[]Res' {
-			'[Res{1}]'
-		} else if wrapper == 'WrappedStorage' {
-			'WrappedStorage(?[]Res([Res{1}]))'
-		} else {
-			'Storage([Res{1}])'
-		}
-		initial := if wrapper.starts_with('?') { '${wrapper}(${payload})' } else { payload }
-		unwrapped := if wrapper.starts_with('?') {
-			'keep(mut source) or { panic("missing payload") }'
-		} else {
-			'keep(mut source)'
-		}
-		check := if wrapper == '?[]Res' {
-			'assert retained[0].id == 101'
-		} else if wrapper == 'WrappedStorage' {
-			'assert retained is ?[]Res'
-		} else {
-			'if retained is []Res { assert retained[0].id == 101 } else { assert false }'
-		}
-		output := borrow_storage_run('wrapped_mut_array_${wrapper.len}', borrow_storage_drop_decls + '
-type Storage = []Res | int
-type WrappedStorage = ?[]Res | int
-fn keep(mut source ${wrapper}) ${wrapper} { return source }
-fn main() {
-	mut source := ${initial}
-	retained := ${unwrapped}
-	drop_owned(source)
-	${check}
-	drop_owned(retained)
-}
-')
-		assert output == 'drop 1\ndrop 101'
-	}
-}
-
-fn test_mutable_wrapped_array_storage_keeps_inactive_payloads() {
-	output := borrow_storage_run('wrapped_mut_array_inactive', borrow_storage_drop_decls + '
-type Storage = []Res | int
-type WrappedStorage = ?[]Res | int
-fn keep_option(mut source ?[]Res) ?[]Res { return source }
-fn keep_sum(mut source Storage) Storage { return source }
-fn keep_optional_sum(mut source ?Storage) ?Storage { return source }
-fn keep_wrapped_sum(mut source WrappedStorage) WrappedStorage { return source }
-fn main() {
-	mut absent := ?[]Res(none)
-	assert keep_option(mut absent) == none
-	mut scalar := Storage(7)
-	retained := keep_sum(mut scalar)
-	drop_owned(scalar)
-	assert retained == Storage(7)
-	drop_owned(retained)
-	mut absent_sum := ?Storage(none)
-	assert keep_optional_sum(mut absent_sum) == none
-	mut scalar_sum := ?Storage(Storage(9))
-	kept := keep_optional_sum(mut scalar_sum) or { panic("missing scalar") }
-	assert kept == Storage(9)
-	mut absent_variant := WrappedStorage(?[]Res(none))
-	kept_variant := keep_wrapped_sum(mut absent_variant)
-	assert kept_variant is ?[]Res
-	drop_owned(absent_variant)
-	drop_owned(kept_variant)
-	println("ok")
-}
-')
-	assert output == 'ok'
-}
-
-fn test_generic_mutable_optional_array_storage_acquires_each_specialization() {
-	output := borrow_storage_run('generic_optional_mut_warmed', borrow_storage_drop_decls + '
-struct OtherRes implements IClone, Drop { id int }
-fn (r &OtherRes) clone() OtherRes { return OtherRes{r.id + 1000} }
-fn (mut r OtherRes) drop() { println("other \${r.id}") }
-fn warm(mut source ?[]Res) ?[]Res { return source }
-fn keep[T](mut source ?[]T) ?[]T { return source }
-fn main() {
-	mut initial := ?[]Res([Res{1}])
-	warmed := warm(mut initial) or { panic("missing warm") }
-	drop_owned(initial)
-	assert warmed[0].id == 101
-	drop_owned(warmed)
-	mut source := ?[]Res([Res{2}])
-	retained := keep[Res](mut source) or { panic("missing first") }
-	drop_owned(source)
-	assert retained[0].id == 102
-	drop_owned(retained)
-	mut other := ?[]OtherRes([OtherRes{3}])
-	other_retained := keep[OtherRes](mut other) or { panic("missing second") }
-	drop_owned(other)
-	assert other_retained[0].id == 1003
-	drop_owned(other_retained)
-}
-')
-	assert output == 'drop 1\ndrop 101\ndrop 2\ndrop 102\nother 3\nother 1003'
-}
-
-fn test_result_storage_aliases_require_immediate_unwrapping() {
-	build := borrow_storage_compile('failed_result_storage', borrow_storage_drop_decls + '
-struct Fault implements IClone, Drop { id int }
-fn (r Fault) msg() string { return "failed" }
-fn (r Fault) code() int { return r.id }
-fn (r &Fault) clone() Fault { return Fault{r.id + 100} }
-fn (mut r Fault) drop() { println("error \${r.id}") }
-type ArrayResult = ![]Res
-type ArrayResultAlias = ArrayResult
-type ResultStorage = ArrayResultAlias | int
-fn fail(id int) ![]Res { return Fault{id} }
-fn keep_alias(mut source ArrayResultAlias) ArrayResultAlias { return source }
-fn keep_sum(mut source ResultStorage) ResultStorage { return source }
-fn main() {
-	mut source := ArrayResultAlias(fail(1))
-	retained := ArrayResultAlias(keep_alias(mut source))
-	drop_owned(source)
-	drop_owned(retained)
-	mut sum_source := ResultStorage(ArrayResultAlias(fail(2)))
-	sum_retained := keep_sum(mut sum_source)
-	drop_owned(sum_source)
-	drop_owned(sum_retained)
-}
-')
-	assert build.exit_code != 0
-	assert build.output.contains('cannot make an alias of Result type')
-	assert build.output.contains('Result types cannot be stored and have to be unwrapped immediately')
-	assert build.output.contains('fail() returns `![]Res`')
-}
-
-fn test_mutable_array_sum_storage_acquires_nonarray_variant_owners() {
-	output := borrow_storage_run('sum_string_storage', borrow_storage_drop_decls + '
-type Storage = []Res | string
-fn keep(mut source Storage) Storage { return source }
-fn main() {
-	mut source := Storage("payload".repeat(4))
-	retained := keep(mut source)
-	drop_owned(source)
-	if retained is string {
-		assert retained == "payload".repeat(4)
-	} else { assert false }
-	drop_owned(retained)
-	println("ok")
-}
-')
-	assert output == 'ok'
-}
-
-fn test_mutable_array_value_captures_acquire_owned_snapshots() {
-	output := borrow_storage_run('array_capture_storage', '@[has_globals]
+	capture_source := '@[has_globals]
 module main
 import builtin.closure
 __global next_id = 0
@@ -808,7 +630,7 @@ fn check_primitive_capture() {
 	owner[0] = 402
 	assert kept() == 401
 }
-fn main() {
+pub fn check() {
 	mut lifetime := closure.new_lifetime()
 	lifetime.frame(fn () {
 		for borrowed in [false, true] { check_capture(borrowed) }
@@ -820,71 +642,203 @@ fn main() {
 	assert dropped.len == next_id
 	println("ok")
 }
-')
-	assert output == 'ok'
+'
+	project := 'retained_array_headers'
+	root := os.join_path(borrow_storage_tmp_dir, project)
+	variants := {
+		'owned_header':    source.replace('mut holder.values[..]', 'mut holder.values')
+		'borrowed_header': source
+		'array_capture':   capture_source
+	}
+	mut imports := []string{cap: variants.len}
+	mut branches := []string{cap: variants.len}
+	for name, input in variants {
+		dir := os.join_path(root, name)
+		os.mkdir_all(dir) or { panic(err) }
+		os.write_file(os.join_path(dir, 'check.v'), input.replace('module main', 'module ${name}')) or {
+			panic(err)
+		}
+		imports << 'import ${name}'
+		branches << '\t\t"${name}" { ${name}.check() }'
+	}
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: '${project}' }\n") or { panic(err) }
+	binary := borrow_storage_compile_dispatch(os.join_path(project, 'main'), imports.join('\n') + '\n\n',
+		branches)
+	for name, _ in variants {
+		run := os.exec([binary, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		expected := if name == 'array_capture' { 'ok' } else { name }
+		assert run.output.trim_space() == expected, '${name}: ${run.output}'
+	}
 }
 
-fn test_uncloneable_mut_array_bulk_copies_fail_before_duplicating_owners() {
-	for index, operation in ['values << values', 'values.prepend(values)', 'values.insert(0, values)'] {
-		for borrowed in [false, true] {
-			name := 'uncloneable_bulk_${index}_${borrowed}'
-			source := 'interface Drop { mut: drop() }
-struct Handle implements Drop { id int }
-fn (mut h Handle) drop() {}
-fn duplicate(mut values []Handle) {
+fn borrow_storage_wrapped_array_cases() (string, string) {
+	wrappers := {
+		'option':       '?[]Res'
+		'sum':          'Storage'
+		'optional_sum': '?Storage'
+		'wrapped_sum':  'WrappedStorage'
+	}
+	mut source := '
+type Storage = []Res | int
+type WrappedStorage = ?[]Res | int
+'
+	mut calls := []string{}
+	mut expected := ['generic_optional\ndrop 1\ndrop 101\ndrop 2\ndrop 102\nother 3\nother 1003']
+	for name, wrapper in wrappers {
+		keep := 'keep_${name}'
+		payload := if wrapper == '?[]Res' {
+			'[Res{1}]'
+		} else if wrapper == 'WrappedStorage' {
+			'WrappedStorage(?[]Res([Res{1}]))'
+		} else {
+			'Storage([Res{1}])'
+		}
+		initial := if wrapper.starts_with('?') { '${wrapper}(${payload})' } else { payload }
+		unwrapped := if wrapper.starts_with('?') {
+			'${keep}(mut source) or { panic("missing payload") }'
+		} else {
+			'${keep}(mut source)'
+		}
+		check := if wrapper == '?[]Res' {
+			'assert retained[0].id == 101'
+		} else if wrapper == 'WrappedStorage' {
+			'assert retained is ?[]Res'
+		} else {
+			'if retained is []Res { assert retained[0].id == 101 } else { assert false }'
+		}
+		source += '
+fn ${keep}(mut source ${wrapper}) ${wrapper} { return source }
+fn check_${name}() {
+	mut source := ${initial}
+	retained := ${unwrapped}
+	drop_owned(source)
+	${check}
+	drop_owned(retained)
+}
+'
+		calls << '\tprintln("${name}")\n\tcheck_${name}()'
+		expected << '${name}\ndrop 1\ndrop 101'
+	}
+	source += '
+fn check_inactive() {
+	mut absent := ?[]Res(none)
+	assert keep_option(mut absent) == none
+	mut scalar := Storage(7)
+	retained := keep_sum(mut scalar)
+	drop_owned(scalar)
+	assert retained == Storage(7)
+	drop_owned(retained)
+	mut absent_sum := ?Storage(none)
+	assert keep_optional_sum(mut absent_sum) == none
+	mut scalar_sum := ?Storage(Storage(9))
+	kept := keep_optional_sum(mut scalar_sum) or { panic("missing scalar") }
+	assert kept == Storage(9)
+	mut absent_variant := WrappedStorage(?[]Res(none))
+	kept_variant := keep_wrapped_sum(mut absent_variant)
+	assert kept_variant is ?[]Res
+	drop_owned(absent_variant)
+	drop_owned(kept_variant)
+	println("ok")
+}
+
+struct OtherRes implements IClone, Drop { id int }
+fn (r &OtherRes) clone() OtherRes { return OtherRes{r.id + 1000} }
+fn (mut r OtherRes) drop() { println("other \${r.id}") }
+fn warm(mut source ?[]Res) ?[]Res { return source }
+fn keep[T](mut source ?[]T) ?[]T { return source }
+fn check_generic_optional() {
+	mut initial := ?[]Res([Res{1}])
+	warmed := warm(mut initial) or { panic("missing warm") }
+	drop_owned(initial)
+	assert warmed[0].id == 101
+	drop_owned(warmed)
+	mut source := ?[]Res([Res{2}])
+	retained := keep[Res](mut source) or { panic("missing first") }
+	drop_owned(source)
+	assert retained[0].id == 102
+	drop_owned(retained)
+	mut other := ?[]OtherRes([OtherRes{3}])
+	other_retained := keep[OtherRes](mut other) or { panic("missing second") }
+	drop_owned(other)
+	assert other_retained[0].id == 1003
+	drop_owned(other_retained)
+}
+
+type OptionalArrayBucket = []Res | int
+fn keep_bucket(mut values []Res) ?OptionalArrayBucket { return ?OptionalArrayBucket(OptionalArrayBucket(values)) }
+fn absent() ?OptionalArrayBucket { return none }
+fn explicit_absent() ?OptionalArrayBucket { return ?OptionalArrayBucket(none) }
+fn check_optional_bucket() {
+	assert absent() == none
+	assert explicit_absent() == none
+	mut empty := []Res{}
+	empty_bucket := keep_bucket(mut empty) or { panic("missing empty payload") }
+	if empty_bucket is []Res { assert empty_bucket.len == 0 } else { assert false }
+	drop_owned(empty_bucket)
+	mut values := [Res{1}]
+	bucket := keep_bucket(mut values) or { panic("missing owned payload") }
+	if bucket is []Res {
+		assert bucket[0].id == 101
+		assert values[0].id == 1
+	} else { assert false }
+	drop_owned(bucket)
+	drop_owned(values)
+}
+
+type StringStorage = []Res | string
+fn keep_string(mut source StringStorage) StringStorage { return source }
+fn check_string_sum() {
+	mut source := StringStorage("payload".repeat(4))
+	retained := keep_string(mut source)
+	drop_owned(source)
+	if retained is string {
+		assert retained == "payload".repeat(4)
+	} else { assert false }
+	drop_owned(retained)
+	println("ok")
+}
+
+fn check_wrapped_arrays() {
+	println("generic_optional")
+	check_generic_optional()
+${calls.join('\n')}
+	println("inactive")
+	check_inactive()
+	println("optional_bucket")
+	check_optional_bucket()
+	println("string_sum")
+	check_string_sum()
+}
+'
+	expected << 'inactive\nok'
+	expected << 'optional_bucket\ndrop 101\ndrop 1\nstring_sum\nok'
+	return source, expected.join('\n')
+}
+
+fn borrow_storage_bulk_copy_case(name string, operation string, borrowed bool) string {
+	return '
+fn duplicate_${name}(mut values []Handle) {
 	${operation}
 }
-fn main() {
+fn check_${name}() {
 	mut values := [Handle{1}]
-	if ${borrowed} { duplicate(mut values[..]) } else { duplicate(mut values) }
-}
-'
-			build := borrow_storage_compile(name, source)
-			if index > 0 {
-				// The checker already rejects receiver-aliased prepend/insert copies.
-				assert build.exit_code != 0, build.output
-				assert build.output.contains('cannot copy receiver-aliased `[]Handle` value'), build.output
-				assert build.output.contains('requires ownership destruction but has no compatible `clone()` method'), build.output
-				continue
-			}
-			assert build.exit_code == 0, build.output
-			run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-			assert run.exit_code != 0, run.output
-			assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), run.output
-		}
-	}
+	if ${borrowed} { duplicate_${name}(mut values[..]) } else { duplicate_${name}(mut values) }
 }
 
-fn test_empty_owned_array_deletion_preserves_invalid_index_diagnostics() {
-	for index in [-1, 2] {
-		name := 'empty_delete_invalid_${index}'
-		source := 'interface Drop { mut: drop() }
-struct Handle implements Drop { id int }
-fn (mut h Handle) drop() {}
-fn delete_empty_range(mut values []Handle) { values.delete_many(${index}, 0) }
-fn main() {
-	mut values := [Handle{1}]
-	delete_empty_range(mut values[..])
-}
 '
-		build := borrow_storage_compile(name, source)
-		assert build.exit_code == 0, build.output
-		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-		assert run.exit_code != 0, run.output
-		assert run.output.contains('array.delete: index out of range'), run.output
-	}
 }
 
-fn test_owned_array_trim_drops_only_a_valid_removed_range() {
-	source := '@[has_globals]
+fn test_owned_sum_box_and_array_trim_cleanup_match_gc_allocators() {
+	declarations := '@[has_globals]
 module main
+' + borrow_storage_drop_decls + '
 __global calls = 0
 __global drops = 0
-interface Drop { mut: drop() }
 struct Handle implements Drop { id int }
 fn (mut h Handle) drop() { drops++ }
 fn trim_index(index int) int { calls++; return index }
-fn main() {
+fn check_trim() {
 	for index in [-1, 2, 3, 1, 0] {
 		calls = 0
 		drops = 0
@@ -904,124 +858,266 @@ fn main() {
 	}
 	println("ok")
 }
-'
-	for i, flags in ['', '-gc none'] {
-		name := 'owned_trim_bounds_${i}'
-		build := borrow_storage_compile_with_flags(name, source, flags)
-		assert build.exit_code == 0, '${name}: ${build.output}'
-		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-		assert run.exit_code == 0, '${name}: ${run.output}'
-		assert run.output.trim_space() == 'ok'
-	}
-}
 
-fn test_owned_array_trim_drops_only_a_valid_range() {
-	for index in [-1, 0, 1, 2] {
-		output := borrow_storage_run('trim_drop_range_${index}', borrow_storage_drop_decls + '
-fn trim_at(mut values []Res, index int) {
+type Bucket = Res | int
+
+'
+	trim_range := 'fn trim_at(mut values []Res, index int) {
 	values.trim(index)
 	println("ok")
 	exit(0)
 }
-fn main() {
-	mut values := [Res{1}]
-	trim_at(mut values, ${index})
+
+'
+	main_start := 'fn main() {
+	case_name := arguments()[1]
+	if case_name == "trim" {
+		check_trim()
+		return
+	}
+'
+	sum_box := '	assert case_name == "sum_box"
+	bucket := Bucket(Res{1})
+	drop_owned(bucket)
+	mut direct := Res{2}
+	if direct.id == 0 { direct.drop() }
 }
-')
-		assert output == if index == 0 { 'drop 1\nok' } else { 'ok' }
+'
+	indices := [-1, 0, 1, 2]
+	mut branches := []string{cap: indices.len}
+	for index in indices {
+		branches << '\t\t"${index}" {
+			mut values := [Res{1}]
+			trim_at(mut values, ${index})
+		}'
+	}
+	default_dispatch := '	if case_name == "wrapped_arrays" {
+		check_wrapped_arrays()
+		return
+	}
+	match case_name {
+${branches.join('\n')}
+		else {}
+	}
+'
+	wrapped_source, wrapped_output := borrow_storage_wrapped_array_cases()
+	for i, flags in ['', '-gc none'] {
+		name := 'owned_cleanup_allocator_${i}'
+		mut source := declarations + main_start + sum_box
+		mut outputs := {
+			'sum_box': 'drop 1\ndrop 2'
+			'trim':    'ok'
+		}
+		if flags == '' {
+			source = declarations + trim_range + wrapped_source + main_start + default_dispatch + sum_box
+			outputs['wrapped_arrays'] = wrapped_output
+			for index in indices {
+				outputs[index.str()] = if index == 0 { 'drop 1\nok' } else { 'ok' }
+			}
+		}
+		build := borrow_storage_compile_with_flags(name, source, flags)
+		assert build.exit_code == 0, '${name}: ${build.output}'
+		for case_name, expected in outputs {
+			run := os.exec([os.join_path(borrow_storage_tmp_dir, name), case_name])
+			assert run.exit_code == 0, '${name} ${case_name}: ${run.output}'
+			assert run.output.trim_space() == expected, '${name} ${case_name}: ${run.output}'
+		}
 	}
 }
 
-fn test_sum_result_error_clone_matrix_rejects_unsupported_result_aliases() {
-	for clone_kind in ['none', 'incompatible', 'value', 'pointer', 'pointer_alias'] {
-		clone_method := match clone_kind {
-			'incompatible' { 'fn (r &Fault) clone() int { return r.id }' }
-			'value' { 'fn (r &Fault) clone() Fault { return Fault{r.id + 100} }' }
-			'pointer' { 'fn (r &Fault) clone() &Fault { return &Fault{r.id + 100} }' }
-			'pointer_alias' {
-				'type FaultRef = &Fault
-type FaultRefAlias = FaultRef
-fn (r &Fault) clone() FaultRefAlias { return &Fault{r.id + 100} }'
-			}
-			else { '' }
-		}
-		for failed in [false, true] {
-			name := 'sum_result_error_${clone_kind}_${failed}'
-			source := borrow_storage_drop_decls + '
-struct Fault implements Drop { id int }
+fn test_array_storage_rejects_result_aliases_nested_casts_and_bulk_receiver_aliases() {
+	mut source := borrow_storage_drop_decls + '
+struct Fault implements IClone, Drop { id int }
 fn (r Fault) msg() string { return "failed" }
 fn (r Fault) code() int { return r.id }
+fn (r &Fault) clone() Fault { return Fault{r.id + 100} }
 fn (mut r Fault) drop() { println("error \${r.id}") }
+'
+	mut alias_lines := {
+		source.count('\n') + 1: 'ArrayResult'
+	}
+	source += 'type ArrayResult = ![]Res
+type ArrayResultAlias = ArrayResult
+type ResultStorage = ArrayResultAlias | int
+fn fail(id int) ![]Res { return Fault{id} }
+fn keep_alias(mut source ArrayResultAlias) ArrayResultAlias { return source }
+fn keep_sum(mut source ResultStorage) ResultStorage { return source }
+fn check_array_result() {
+	mut source := ArrayResultAlias(fail(1))
+	retained := ArrayResultAlias(keep_alias(mut source))
+	drop_owned(source)
+	drop_owned(retained)
+	mut sum_source := ResultStorage(ArrayResultAlias(fail(2)))
+	sum_retained := keep_sum(mut sum_source)
+	drop_owned(sum_source)
+	drop_owned(sum_retained)
+}
+'
+	mut fail_lines := []int{}
+	for i, line in source.split_into_lines() {
+		if line.contains('ArrayResultAlias(fail(') {
+			fail_lines << i + 1
+		}
+	}
+	assert fail_lines.len == 2
+
+	mut calls := []string{}
+	for clone_kind in ['none', 'incompatible', 'value', 'pointer', 'pointer_alias'] {
+		for failed in [false, true] {
+			case_id := calls.len
+			fault := 'Fault${case_id}'
+			clone_method := match clone_kind {
+				'incompatible' { 'fn (r &${fault}) clone() int { return r.id }' }
+				'value' { 'fn (r &${fault}) clone() ${fault} { return ${fault}{r.id + 100} }' }
+				'pointer' { 'fn (r &${fault}) clone() &${fault} { return &${fault}{r.id + 100} }' }
+				'pointer_alias' {
+					'type FaultRef${case_id} = &${fault}
+type FaultRefAlias${case_id} = FaultRef${case_id}
+fn (r &${fault}) clone() FaultRefAlias${case_id} { return &${fault}{r.id + 100} }'
+				}
+				else { '' }
+			}
+			source += '
+struct ${fault} implements Drop { id int }
+fn (r ${fault}) msg() string { return "failed" }
+fn (r ${fault}) code() int { return r.id }
+fn (mut r ${fault}) drop() { println("error \${r.id}") }
 ${clone_method}
-type StringResult = !string
-type StringResultAlias = StringResult
-type Storage = []Res | StringResultAlias
-fn make_result(failed bool) !string {
-	if failed { return Fault{1} }
+'
+			alias_lines[source.count('\n') + 1] = '${clone_kind}_${failed}'
+			source += 'type StringResult${case_id} = !string
+type StringResultAlias${case_id} = StringResult${case_id}
+type Storage${case_id} = []Res | StringResultAlias${case_id}
+fn make_result_${case_id}(failed bool) !string {
+	if failed { return ${fault}{1} }
 	return "payload".repeat(4)
 }
-fn keep(mut source Storage) Storage { return source }
-fn main() {
-	mut source := Storage(StringResultAlias(make_result(${failed})))
-	retained := keep(mut source)
+fn keep_${case_id}(mut source Storage${case_id}) Storage${case_id} { return source }
+fn check_${case_id}() {
+	mut source := Storage${case_id}(StringResultAlias${case_id}(make_result_${case_id}(${failed})))
+	retained := keep_${case_id}(mut source)
 	drop_owned(source)
 	drop_owned(retained)
 	println("ok")
 }
 '
-			build := borrow_storage_compile(name, source)
-			assert build.exit_code != 0, build.output
-			assert build.output.contains('cannot make an alias of Result type'), build.output
-			assert build.output.contains('Result types cannot be stored and have to be unwrapped immediately'), build.output
+			calls << '\tcheck_${case_id}()'
 		}
 	}
+	nested_cast_line := source.count('\n') + 3
+	source += '
+type Bucket = []int | int
+fn absent() ?Bucket { return ?Bucket(?Bucket(none)) }
+'
+	bulk_start_line := source.count('\n') + 1
+	source += '\n' + borrow_storage_handle_decls
+	mut bulk_lines := []int{}
+	for action, operation in {
+		'prepend': 'values.prepend(values)'
+		'insert':  'values.insert(0, values)'
+	} {
+		for borrowed in [false, true] {
+			name := '${action}_${borrowed}'
+			// The operation follows the blank line and function signature.
+			bulk_lines << source.count('\n') + 3
+			source += borrow_storage_bulk_copy_case(name, operation, borrowed)
+			calls << '\tcheck_${name}()'
+		}
+	}
+	bulk_end_line := source.count('\n')
+	source += '
+fn main() {
+	check_array_result()
+	_ = absent()
+${calls.join('\n')}
+}
+'
+	name := 'array_storage_rejected'
+	build := borrow_storage_compile_with_flags(name, source, '-nocolor -message-limit 100')
+	assert build.exit_code == 1, build.output
+	mut rejected_lines := []int{}
+	mut rejected_fail_lines := []int{}
+	mut rejected_bulk_lines := []int{}
+	diagnostics := build.output.split('${name}.v:')
+	for diagnostic in diagnostics {
+		line := diagnostic.all_before(':').int()
+		if diagnostic.contains(': error: cannot make an alias of Result type')
+			&& diagnostic.contains('Details: Result types cannot be stored and have to be unwrapped immediately') {
+			rejected_lines << line
+		}
+		if diagnostic.contains(': error: fail() returns `![]Res`') {
+			rejected_fail_lines << line
+		}
+		if line >= bulk_start_line && line <= bulk_end_line && diagnostic.contains(': error: ') {
+			assert diagnostic.contains('cannot copy receiver-aliased `[]Handle` value'), build.output
+			assert diagnostic.contains(borrow_storage_clone_error), build.output
+			rejected_bulk_lines << line
+		}
+	}
+	for line, case_name in alias_lines {
+		assert line in rejected_lines, '${case_name}: ${build.output}'
+	}
+	assert rejected_fail_lines.sorted() == fail_lines, build.output
+	assert diagnostics.any(it.all_before(':').int() == nested_cast_line
+		&& it.contains(': error: cannot cast `?Bucket` to `?Bucket`')), build.output
+	assert rejected_bulk_lines == bulk_lines, build.output
 }
 
-fn test_invalid_owned_array_growth_preserves_diagnostics_without_cloning() {
+fn borrow_storage_invalid_array_operations() (string, []string, map[string]string) {
+	mut source := '
+struct CloneableHandle implements Drop { id int }
+fn (mut h CloneableHandle) drop() {}
+fn (h &CloneableHandle) clone() CloneableHandle { println("unexpected clone"); return CloneableHandle{h.id + 100} }
+'
+	mut branches := []string{}
+	mut diagnostics := map[string]string{}
 	for method in ['ensure_cap', 'grow_cap', 'grow_len'] {
 		for overflow in [false, true] {
 			if overflow && method == 'ensure_cap' {
 				continue
 			}
+			amount := if overflow {
+				'max_int'
+			} else if method == 'ensure_cap' {
+				'2'
+			} else {
+				'1'
+			}
+			diagnostic := if overflow {
+				'array.${method}: max_int will be exceeded'
+			} else {
+				'flag `.nogrow` cannot grow in size'
+			}
 			for cloneable in [false, true] {
-				name := 'invalid_growth_${method}_${overflow}_${cloneable}'
-				clone_method := if cloneable {
-					'fn (h &Handle) clone() Handle { println("unexpected clone"); return Handle{h.id + 100} }'
-				} else {
-					''
-				}
-				amount := if overflow {
-					'max_int'
-				} else if method == 'ensure_cap' {
-					'2'
-				} else {
-					'1'
-				}
-				source := 'interface Drop { mut: drop() }
-struct Handle implements Drop { id int }
-fn (mut h Handle) drop() {}
-${clone_method}
-fn grow(mut values []Handle, amount int) {
+				name := '${method}_${overflow}_${cloneable}'
+				element := if cloneable { 'CloneableHandle' } else { 'Handle' }
+				source += '
+fn grow_${name}(mut values []${element}, amount int) {
 	if !${overflow} { unsafe { values.flags.set(.nogrow) } }
 	unsafe { values.${method}(amount) }
 }
-fn main() {
-	mut values := [Handle{1}]
-	grow(mut values[..], ${amount})
-}
+
 '
-				build := borrow_storage_compile(name, source)
-				assert build.exit_code == 0, '${name}: ${build.output}'
-				run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-				assert run.exit_code != 0, '${name}: ${run.output}'
-				assert !run.output.contains('unexpected clone'), '${name}: ${run.output}'
-				expected := if overflow {
-					'array.${method}: max_int will be exceeded'
-				} else {
-					'flag `.nogrow` cannot grow in size'
-				}
-				assert run.output.contains(expected), '${name}: ${run.output}'
+				branches << '		"${name}" {
+			mut values := [${element}{1}]
+			grow_${name}(mut values[..], ${amount})
+		}'
+				diagnostics[name] = diagnostic
 			}
 		}
 	}
+	indices := {
+		'negative': -1
+		'past_end': 2
+	}
+	for name, index in indices {
+		source += 'fn delete_empty_range_${name}(mut values []Handle) { values.delete_many(${index}, 0) }
+'
+		branches << '\t\t"${name}" {
+			mut values := [Handle{1}]
+			delete_empty_range_${name}(mut values[..])
+		}'
+		diagnostics[name] = 'array.delete: index out of range (i,a.len):${index}, 1'
+	}
+	return source, branches, diagnostics
 }

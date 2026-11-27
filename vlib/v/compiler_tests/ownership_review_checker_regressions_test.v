@@ -3,6 +3,7 @@ import json2
 
 const ownership_review_default_flags = os.getenv('VFLAGS').trim_space() in ['', '-gc none']
 const ownership_review_compiler = find_ownership_review_compiler()
+const ownership_review_local_receiver_error = 'cannot return a reference to local storage `local`'
 
 fn find_ownership_review_compiler() string {
 	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
@@ -31,7 +32,7 @@ struct OwnershipReviewDiagnostic {
 	message  string
 }
 
-fn check_ownership_review_rejections(root string, cases []OwnershipReviewRejection) ! {
+fn check_ownership_review_rejections(root string, cases []OwnershipReviewRejection, forbidden ...string) ! {
 	// Custom flags can change import resolution or limit diagnostics.
 	if !ownership_review_default_flags {
 		source := os.join_path(root, 'main.v')
@@ -40,6 +41,7 @@ fn check_ownership_review_rejections(root string, cases []OwnershipReviewRejecti
 			out := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
 			assert out.exit_code != 0, '${case.source}\n${out.output}'
 			assert out.output.contains(case.expected), '${case.source}\n${out.output}'
+			assert forbidden.all(!out.output.contains(it)), '${case.source}\n${out.output}'
 		}
 		return
 	}
@@ -56,6 +58,7 @@ fn check_ownership_review_rejections(root string, cases []OwnershipReviewRejecti
 	os.write_file(os.join_path(batch, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
 	out := run_ownership_review_fixture(batch, ['-d', 'ownership', '-json-errors', '-check'])
 	assert out.exit_code != 0, out.output
+	assert forbidden.all(!out.output.contains(it)), out.output
 	mut diagnostics := []OwnershipReviewDiagnostic{}
 	for line in out.output.split_into_lines() {
 		if line.starts_with('{') {
@@ -69,15 +72,8 @@ fn check_ownership_review_rejections(root string, cases []OwnershipReviewRejecti
 	}
 }
 
-fn run_ownership_regression(source string) {
-	for mode in [['-no-parallel'], []string{}] {
-		result := run_ownership_review_fixture(source, [...mode, 'run'])
-		assert result.exit_code == 0, '${mode}: ${result.output}'
-	}
-}
-
-fn test_ownership_arc_literal_transfers_nested_fields_once() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_arc_literal_${os.getpid()}')
+fn test_ownership_arc_and_chained_calls_preserve_owned_values() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_arc_and_chained_calls_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
@@ -92,34 +88,20 @@ struct Pair implements IClone {
 	right Value
 }
 
-struct Holder implements IClone {
+struct PairHolder implements IClone {
 	inner arc.Arc[Pair]
 }
 
-fn hold(left Value, right Value) Holder {
-	return Holder{
+fn hold(left Value, right Value) PairHolder {
+	return PairHolder{
 		inner: arc.new(Pair{left: left, right: right})
 	}
 }
 
-fn main() {
+fn check_arc_literal() {
 	holder := hold(Value{"left".to_owned()}, Value{"right".to_owned()})
 	assert holder.inner.get().left.text == "left"
 	assert holder.inner.get().right.text == "right"
-}
-')!
-	run_ownership_regression(source)
-}
-
-fn test_ownership_replacing_arc_field_can_return_receiver_reference() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_arc_receiver_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'import sync.arc
-
-struct Value implements IClone {
-	text string
 }
 
 struct Holder {
@@ -132,21 +114,13 @@ fn (mut holder Holder) replace(value Value) &Holder {
 	return holder
 }
 
-fn main() {
+fn check_arc_receiver() {
 	mut holder := Holder{arc.new(Value{"old".to_owned()})}
 	updated := holder.replace(Value{"new".to_owned()})
 	assert updated.inner.get().text == "new"
 }
-')!
-	run_ownership_regression(source)
-}
 
-fn test_ownership_chained_call_can_consume_argument_once() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_chained_call_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn normalize(value string) string {
+fn normalize(value string) string {
 	return value.trim_space()
 }
 
@@ -154,15 +128,24 @@ fn split(value string) []string {
 	return normalize(value).split("/")
 }
 
-fn main() {
+fn check_chained_call() {
 	assert split(" a/b ".to_owned()) == ["a", "b"]
 }
+
+fn main() {
+	check_arc_literal()
+	check_arc_receiver()
+	check_chained_call()
+}
 ')!
-	run_ownership_regression(source)
+	for mode in [['-no-parallel'], []string{}] {
+		result := run_ownership_review_fixture(source, [...mode, 'run'])
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
 }
 
-fn test_ownership_local_receiver_cannot_escape_in_wrapped_or_aggregate_returns() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_wrapped_receiver_${os.getpid()}')
+fn test_ownership_local_receiver_cannot_escape_in_returns_or_aliases() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_receiver_escape_review_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	mut cases := []OwnershipReviewRejection{}
@@ -192,17 +175,14 @@ fn escaped() ${return_type} {
 }
 fn main() {}
 '
-		cases << OwnershipReviewRejection{fixture, 'cannot return a reference to local storage `local`'}
+		cases << OwnershipReviewRejection{fixture, ownership_review_local_receiver_error}
 	}
+	cases << ownership_review_aggregate_alias_rejections()
 	check_ownership_review_rejections(root, cases)!
 }
 
-fn test_ownership_wrapped_receiver_can_return_caller_or_heap_storage() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_wrapped_receiver_safe_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'struct Builder { mut: value int }
+fn ownership_review_wrapped_receiver_and_pointer_checks() string {
+	return 'struct Builder { mut: value int }
 fn (mut builder Builder) set(value int) &Builder {
 	builder.value = value
 	return builder
@@ -241,7 +221,7 @@ fn forwarded_owned_value() Builder {
 	local := Builder{value: 42}
 	return identity(local)
 }
-fn main() {
+fn check_wrapped_receivers() {
 	mut builder := Builder{}
 	assert (optional(mut builder) or { panic("none") }).value == 42
 	assert (result(mut builder) or { panic(err) }).value == 42
@@ -256,16 +236,20 @@ fn main() {
 	assert owned_value().value == 42
 	assert forwarded_owned_value().value == 42
 }
-')!
-	out := run_ownership_review_fixture(source, ['-d', 'ownership', 'run'])
-	assert out.exit_code == 0, out.output
+
+fn check_pointer_identity() {
+	owner := "original".to_owned()
+	view := *pointer(&owner)
+	assert view == owner
+	assert unsafe { view.str == owner.str }
+}
+'
 }
 
-fn test_ownership_dereferenced_pointer_call_retains_string_source_loan() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_pointer_call_view_${os.getpid()}')
+fn test_ownership_string_pointer_loans_and_owned_method_returns() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_loans_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
 	mut cases := []OwnershipReviewRejection{}
 	for view in ['*pointer(&owner)', '*forward(pointer(&owner))',
 		'*(if owner.len > 0 { pointer(&owner) } else { pointer(&owner) })',
@@ -293,26 +277,8 @@ fn main() {
 			cases << OwnershipReviewRejection{fixture, expected}
 		}
 	}
-	check_ownership_review_rejections(root, cases)!
-	os.write_file(source, 'fn pointer(value &string) &string { return value }
-fn main() {
-	owner := "original".to_owned()
-	view := *pointer(&owner)
-	assert view == owner
-	assert unsafe { view.str == owner.str }
-}
-')!
-	out := run_ownership_review_fixture(source, ['-d', 'ownership', 'run'])
-	assert out.exit_code == 0, out.output
-}
-
-fn test_ownership_user_substr_unsafe_method_preserves_owned_return() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_user_substr_unsafe_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
 	for method in ['substr_unsafe', 'owned_text'] {
-		os.write_file(source, 'struct Source {}
+		fixture := 'struct Source {}
 fn (source Source) ${method}() string { return "independent".to_owned() }
 fn consume(value string) { _ = value }
 fn main() {
@@ -321,17 +287,13 @@ fn main() {
 	consume(value)
 	println(value)
 }
-')!
-		out := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
-		assert out.exit_code != 0, '${method}: ${out.output}'
-		assert out.output.contains('use of moved value: `value`'), '${method}: ${out.output}'
+'
+		cases << OwnershipReviewRejection{fixture, 'use of moved value: `value`'}
 	}
+	check_ownership_review_rejections(root, cases)!
 }
 
-fn test_ownership_local_receiver_cannot_escape_through_aggregate_aliases() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_aggregate_alias_receiver_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
+fn ownership_review_aggregate_alias_rejections() []OwnershipReviewRejection {
 	mut cases := []OwnershipReviewRejection{}
 	for name, body in {
 		'named':       'held := Holder{target: local.set(42)}; return held'
@@ -368,46 +330,50 @@ fn escaped() ${return_type} {
 }
 fn main() {}
 '
-		cases << OwnershipReviewRejection{fixture, 'cannot return a reference to local storage `local`'}
+		cases << OwnershipReviewRejection{fixture, ownership_review_local_receiver_error}
 	}
-	check_ownership_review_rejections(root, cases)!
+	return cases
 }
 
-fn test_ownership_copied_fallback_detaches_loan_and_retains_owned_result() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_copied_fallback_loan_${os.getpid()}')
+fn test_ownership_runtime_storage_and_loans() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_runtime_storage_and_loans_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
+	prelude := 'fn consume(value string) { _ = value }
+fn pointer(value &string) &string { return value }
+'
+	mut accepted := prelude
+	mut calls := []string{}
+	mut rejections := []OwnershipReviewRejection{}
 	for creation, text in {
 		'*pointer(&original)':                     'fallback'
 		'unsafe { original.substr_unsafe(1, 4) }': 'all'
 	} {
-		for action, expected in {
-			'assert result == "${text}"':       ''
-			'consume(result); println(result)': 'use of moved value: `result`'
-		} {
-			os.write_file(source, 'fn consume(value string) { _ = value }
-fn pointer(value &string) &string { return value }
-fn main() {
-	mut original := "fallback".to_owned()
+		body := '	mut original := "fallback".to_owned()
 	mut view := ${creation}
 	result := "abc".substr_or(0, 4, view)
 	assert view == "${text}"
 	view = ""
-	original = "replacement".to_owned()
-	${action}
+	original = "replacement".to_owned()'
+		accepted += '\nfn check_${text}_copy() {\n${body}
+	assert result == "${text}"
 }
-')!
-			out := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
-			if expected.len == 0 {
-				assert out.exit_code == 0, out.output
-				completed := run_ownership_review_fixture(source, ['-d', 'ownership', 'run'])
-				assert completed.exit_code == 0, completed.output
-			} else {
-				assert out.exit_code != 0, out.output
-				assert out.output.contains(expected), out.output
-				assert !out.output.contains('cannot assign to `original`'), out.output
-			}
-		}
+'
+		calls << '\tcheck_${text}_copy()'
+		rejections << OwnershipReviewRejection{prelude + 'fn main() {\n${body}
+	consume(result); println(result)
+}
+', 'use of moved value: `result`'}
 	}
+	os.write_file(source, accepted + '\nfn main() {\n${calls.join('\n')}\n}\n')!
+	checked := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
+	assert checked.exit_code == 0, checked.output
+
+	calls << ['\tcheck_wrapped_receivers()', '\tcheck_pointer_identity()']
+	os.write_file(source, accepted + '\n' + ownership_review_wrapped_receiver_and_pointer_checks() +
+		'\nfn main() {\n${calls.join('\n')}\n}\n')!
+	out := run_ownership_review_fixture(source, ['-d', 'ownership', 'run'])
+	assert out.exit_code == 0, out.output
+	check_ownership_review_rejections(root, rejections, 'cannot assign to `original`')!
 }

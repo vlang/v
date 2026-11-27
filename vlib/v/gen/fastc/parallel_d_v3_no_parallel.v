@@ -31,7 +31,8 @@ struct FastcPendingInterfaceDispatches {
 
 fn fastc_start_referenced_function_names(sources []FastcSourceFile, prefs &pref.Preferences, functions map[string]FastcFunctionSignature) FastcPendingReferences {
 	return FastcPendingReferences{
-		references: fastc_collect_referenced_function_names(sources, prefs, functions)
+		references: fastc_collect_referenced_function_names(sources, prefs,
+			fastc_reference_candidates(functions, prefs))
 	}
 }
 

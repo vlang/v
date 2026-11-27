@@ -41,7 +41,8 @@ fn intel_gnu_extension_move_memory_sources_with_gcc(byte_base &u8, word_base &i1
 	mut dword_extended := i64(0)
 	asm amd64 intel {
 		movzbq zero_extended, [byte_base]
-		movswq word_extended, [word_base]
+		// Older GNU assemblers require the size of this memory operand.
+		movswq word_extended, word ptr [word_base]
 		movslq dword_extended, [dword_base]
 		; =r (zero_extended)
 		  =r (word_extended)

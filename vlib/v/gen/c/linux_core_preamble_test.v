@@ -5,6 +5,15 @@ import v.cmdexec
 import v.flat
 import v.types
 
+// Use the same libc as the V test executable. On a glibc host with musl-gcc,
+// plain cc would compare a musl declaration against the glibc SDK instead.
+fn linux_native_probe_cc() string {
+	$if musl ? {
+		return os.find_abs_path_of_executable('musl-gcc') or { 'cc' }
+	}
+	return 'cc'
+}
+
 fn test_linux_open_flags_match_native_libc() {
 	$if !linux || freestanding {
 		return
@@ -40,7 +49,7 @@ fn test_linux_open_flags_match_native_libc() {
 	defer { os.rmdir_all(dir) or {} }
 	source := os.join_path(dir, 'sdk.c')
 	os.write_file(source, code)!
-	result := cmdexec.run('cc', ['-std=c11', '-Werror', '-fsyntax-only', source])
+	result := cmdexec.run(linux_native_probe_cc(), ['-std=c11', '-Werror', '-fsyntax-only', source])
 	assert result.exit_code == 0, result.output
 }
 
@@ -69,7 +78,7 @@ fn test_linux_rusage_storage_matches_native_libc() {
 	defer { os.rmdir_all(dir) or {} }
 	source := os.join_path(dir, 'sdk.c')
 	os.write_file(source, code)!
-	result := cmdexec.run('cc', ['-std=c11', '-Werror', '-fsyntax-only', source])
+	result := cmdexec.run(linux_native_probe_cc(), ['-std=c11', '-Werror', '-fsyntax-only', source])
 	assert result.exit_code == 0, result.output
 }
 
@@ -92,7 +101,9 @@ fn main() {
 	println("OK")
 }
 ')!
-	result := cmdexec.run(@VEXE, ['-nocache', '-cc', 'cc', '-no-retry-compilation', 'run', source])
+	// This native libc probe does not need a collector or a musl libgc installation.
+	result := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-cc', linux_native_probe_cc(),
+		'-no-retry-compilation', 'run', source])
 	assert result.exit_code == 0, result.output
 	assert result.output == 'OK\n', result.output
 }
@@ -154,7 +165,7 @@ int main(void) {
 	return pthread_rwlockattr_destroy(&attr);
 }
 ')!
-	compiled := cmdexec.run('cc', ['-std=c99', '-o', exe, source, '-lpthread'])
+	compiled := cmdexec.run(linux_native_probe_cc(), ['-std=c99', '-o', exe, source, '-lpthread'])
 	assert compiled.exit_code == 0, compiled.output
 	run := cmdexec.run(exe, [])
 	assert run.exit_code == 0, run.output
@@ -188,13 +199,18 @@ fn main() {
 ')!
 	// `-o file.c` leaves the libc unknown. The segfault handler lives in a separate
 	// object that a plain `cc main.c` does not link.
-	generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-d', 'no_segfault_handler', '-o',
-		c_file, source])
+	// Do not inherit the outer test's explicit libc selection for this probe.
+	generated := cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', '-gc', 'none', '-d',
+		'no_segfault_handler', '-o', c_file, source], '', {
+		'VFLAGS':  ''
+		'VOSARGS': ''
+	})
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(c_file)!
 	assert code.split_into_lines().all(!it.starts_with('#include') || it == '#include "${os.join_path(@VEXEROOT, 'vlib', 'builtin', 'track_heap_checks.h').replace('\\', '/')}"'), 'expected headerless C'
 	assert !code.contains('#define CUSTOM_DEFINE_glibc') && !code.contains('#define CUSTOM_DEFINE_musl')
-	compiled := cmdexec.run('cc', ['-std=c99', '-w', '-o', exe, c_file, '-lm', '-lpthread'])
+	compiled := cmdexec.run(linux_native_probe_cc(), ['-std=c99', '-w', '-o', exe, c_file, '-lm',
+		'-lpthread'])
 	assert compiled.exit_code == 0, compiled.output
 	run := cmdexec.run(exe, [])
 	assert run.exit_code == 0, run.output

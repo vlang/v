@@ -21,31 +21,28 @@ fn params_struct_run_good(name string, source string) string {
 
 // A `@[params]` struct argument can be supplied as trailing `key: value` call args.
 // Regression: the args used to be dropped, generating `make(1, )` (empty arg, trailing comma).
-fn test_params_struct_call_args_codegen() {
-	source := "@[params]\nstruct Cfg {\n\ta int\n\tb string\n\tc bool\n}\n\nfn make(x int, cfg Cfg) string {\n\treturn '\${x}|\${cfg.a}|\${cfg.b}|\${cfg.c}'\n}\n\nfn main() {\n\tprintln(make(1, a: 10, b: 'hi', c: true))\n\tprintln(make(2, b: 'yo'))\n\tprintln(make(3, Cfg{a: 5, b: 'z', c: true}))\n}\n"
-	out := params_struct_run_good('params_struct_codegen_input', source)
-	assert out == '1|10|hi|true\n2|0|yo|false\n3|5|z|true'
-}
-
-// The standard-library call that originally exposed the bug:
-// `strconv.atof64(s, allow_extra_chars: true)` reachable via `string.f64()`.
-// Previously this generated `strconv__atof64(s, )` (dropped param, trailing comma),
-// which failed C compilation. We only assert it compiles and runs here; atof64's
-// numeric accuracy is covered elsewhere.
-fn test_string_f64_params_struct_codegen() {
-	source := "fn main() {\n\tprintln('\${'3.0'.f64() > 0.0}')\n\tprintln('\${'2.0'.f32() > 0.0}')\n}\n"
-	out := params_struct_run_good('string_f64_params_input', source)
-	assert out == 'true\ntrue'
-}
-
-fn test_pool_config_params_struct_can_be_omitted() {
-	source := "@[params]\nstruct PoolConfig {\n\tmax_open int\n}\n\nfn open_pool(name string, cfg PoolConfig) string {\n\treturn '\${name}|\${cfg.max_open}'\n}\n\nfn main() {\n\tprintln(open_pool('db'))\n\tprintln(open_pool('db', max_open: 4))\n}\n"
-	out := params_struct_run_good('pool_config_params_input', source)
-	assert out == 'db|0\ndb|4'
-}
-
-fn test_params_struct_field_with_or_expression_preserves_collapsed_argument() {
+fn test_direct_params_struct_calls_codegen() {
 	source := '@[params]
+struct Cfg {
+	a int
+	b string
+	c bool
+}
+
+fn make(x int, cfg Cfg) string {
+	return \'\${x}|\${cfg.a}|\${cfg.b}|\${cfg.c}\'
+}
+
+@[params]
+struct PoolConfig {
+	max_open int
+}
+
+fn open_pool(name string, cfg PoolConfig) string {
+	return \'\${name}|\${cfg.max_open}\'
+}
+
+@[params]
 struct Config {
 	host   string
 	port   int
@@ -61,12 +58,24 @@ fn run(prefix string, config Config) string {
 }
 
 fn main() {
+	println(make(1, a: 10, b: \'hi\', c: true))
+	println(make(2, b: \'yo\'))
+	println(make(3, Cfg{a: 5, b: \'z\', c: true}))
+
+	// The f64 conversion exercises the trailing params argument to strconv.atof64.
+	// Numeric accuracy is covered by the strconv tests.
+	println(\'\${\'3.0\'.f64() > 0.0}\')
+	println(\'\${\'2.0\'.f32() > 0.0}\')
+
+	println(open_pool(\'db\'))
+	println(open_pool(\'db\', max_open: 4))
+
 	host := "::1"
 	println(run("listen", host: host, port: 8787, family: choose_family(host) or { 0 }))
 }
 '
-	out := params_struct_run_good('params_struct_or_field_input', source)
-	assert out == 'listen|::1|8787|6'
+	out := params_struct_run_good('direct_params_struct_calls', source)
+	assert out == '1|10|hi|true\n2|0|yo|false\n3|5|z|true\ntrue\ntrue\ndb|0\ndb|4\nlisten|::1|8787|6'
 }
 
 fn test_non_veb_reflected_calls_synthesize_omitted_trailing_args() {
@@ -123,14 +132,27 @@ fn test_params_fields_belong_to_params_struct() {
 	assert run.output.trim_space() == 'entry:node:3'
 }
 
-fn test_interface_field_in_params_struct_codegen() {
-	source := 'interface Reader {\n\tread(mut buf []u8) !int\n}\n\nstruct Conn {}\n\nfn (c Conn) read(mut buf []u8) !int {\n\treturn 0\n}\n\nstruct Config {\n\treader Reader\n\tcap int\n}\n\nfn make(cfg Config) int {\n\treturn cfg.cap\n}\n\nfn main() {\n\tprintln(make(reader: Conn{}, cap: 8))\n}\n'
-	out := params_struct_run_good('params_interface_field_input', source)
-	assert out == '8'
+fn test_interface_and_fixed_array_fields_in_struct_initializers() {
+	source := 'interface Reader {
+	read(mut buf []u8) !int
 }
 
-fn test_interface_array_field_in_params_struct_uses_expected_element_type() {
-	source := 'interface Widget {
+struct Conn {}
+
+fn (c Conn) read(mut buf []u8) !int {
+	return 0
+}
+
+struct Config {
+	reader Reader
+	cap int
+}
+
+fn make(cfg Config) int {
+	return cfg.cap
+}
+
+interface Widget {
 	kind() string
 }
 
@@ -155,12 +177,55 @@ fn row(config RowConfig) string {
 	return kinds.join(",")
 }
 
+struct Item {
+	x int
+}
+
+struct Header {
+mut:
+	data [2]Item
+	cur_pos int
+}
+
+struct Uniforms {
+	lights [2][4]f32
+}
+
+fn light_row() [4]f32 {
+	return [f32(1.1), 1.2, 1.3, 1.4]!
+}
+
+fn check_fixed_array_fields() {
+	mut h := Header{}
+	h.data[0] = Item{x: 4}
+	h.data[1] = Item{x: 9}
+	h.cur_pos = 2
+	combined := Header{
+		data: h.data
+		cur_pos: h.cur_pos
+	}
+	println("\${combined.cur_pos}|\${combined.data[0].x}|\${combined.data[1].x}")
+	mixed := Uniforms{
+		lights: [
+			light_row(),
+			[f32(2.1), 2.2]!,
+		]!
+	}
+	assert mixed.lights[0][0] == f32(1.1)
+	assert mixed.lights[1][0] == f32(2.1)
+	assert mixed.lights[1][1] == f32(2.2)
+	assert mixed.lights[1][2] == 0
+	assert mixed.lights[1][3] == 0
+}
+
 fn main() {
+	println(make(reader: Conn{}, cap: 8))
 	println(row(children: [TextBox{}, Label{}, Button{}]))
+	check_fixed_array_fields()
 }
 '
-	out := params_struct_run_good('params_interface_array_field_input', source)
-	assert out == 'textbox,label,button'
+	out := params_struct_run_good('params_interface_and_fixed_array_fields', source)
+	assert out.split_into_lines() == ['8', 'textbox,label,button', '2|4|9'], out
 }
 
 fn test_collapsed_struct_call_feature_matrix() {
@@ -253,10 +318,4 @@ fn main() {
 '
 	out := params_struct_run_good('collapsed_struct_call_feature_matrix', source)
 	assert out == 'plain:1:11\nalias:2\nparams:3:fast\nalias-params:4:slow\nalias-params:0:slow\npointer:5:fast\npointer:0:slow\n6\n7\nmethod:8\n30\nplain:9:0'
-}
-
-fn test_fixed_array_field_struct_init_codegen() {
-	source := "struct Item {\n\tx int\n}\n\nstruct Header {\nmut:\n\tdata [2]Item\n\tcur_pos int\n}\n\nstruct Uniforms {\n\tlights [2][4]f32\n}\n\nfn row() [4]f32 {\n\treturn [f32(1.1), 1.2, 1.3, 1.4]!\n}\n\nfn main() {\n\tmut h := Header{}\n\th.data[0] = Item{x: 4}\n\th.data[1] = Item{x: 9}\n\th.cur_pos = 2\n\tcombined := Header{\n\t\tdata: h.data\n\t\tcur_pos: h.cur_pos\n\t}\n\tprintln('\${combined.cur_pos}|\${combined.data[0].x}|\${combined.data[1].x}')\n\tmixed := Uniforms{\n\t\tlights: [\n\t\t\trow(),\n\t\t\t[f32(2.1), 2.2]!,\n\t\t]!\n\t}\n\tassert mixed.lights[0][0] == f32(1.1)\n\tassert mixed.lights[1][0] == f32(2.1)\n\tassert mixed.lights[1][1] == f32(2.2)\n\tassert mixed.lights[1][2] == 0\n\tassert mixed.lights[1][3] == 0\n}\n"
-	out := params_struct_run_good('fixed_array_field_struct_init_input', source)
-	assert out == '2|4|9'
 }

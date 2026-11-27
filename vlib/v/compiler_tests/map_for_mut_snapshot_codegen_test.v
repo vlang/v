@@ -16,8 +16,8 @@ fn map_for_mut_run_good(name string, source string) string {
 	return run.output.trim_space()
 }
 
-fn test_mut_map_iteration_snapshot_updates_original_values() {
-	out := map_for_mut_run_good('map_for_mut_snapshot_updates_original', 'fn main() {
+fn test_mut_map_iteration_preserves_map_updates() {
+	out := map_for_mut_run_good('map_for_mut_updates', 'fn check_snapshot_updates_original_values() {
 	mut m := map[string]int{}
 	m["a"] = 1
 	m["b"] = 1
@@ -31,18 +31,13 @@ fn test_mut_map_iteration_snapshot_updates_original_values() {
 	b := m["b"] or { 0 }
 	assert a == 2
 	assert b == 2
-	println("ok")
-}
-')
-	assert out == 'ok'
 }
 
-fn test_mut_pointer_map_iteration_replaces_stored_pointer() {
-	out := map_for_mut_run_good('map_for_mut_pointer_replaces_slot', 'struct Item {
+struct Item {
 	value int
 }
 
-fn main() {
+fn check_pointer_slot_replacement() {
 	first := &Item{value: 1}
 	replacement := &Item{value: 2}
 	mut values := map[string]&Item{}
@@ -55,65 +50,45 @@ fn main() {
 	stored := values["item"] or { &Item{} }
 	assert stored == replacement
 	assert stored.value == 2
-	println("ok")
-}
-')
-	assert out == 'ok'
 }
 
-fn test_mut_map_iteration_delete_current_key_preserves_deletion() {
-	out := map_for_mut_run_good('map_for_mut_delete_current_key', 'fn main() {
-		mut m := map[string][2]int{}
-		m["a"] = [1, 0]!
-		m["b"] = [2, 0]!
-		for key, mut v in m {
+fn check_delete_current_key() {
+	mut m := map[string][2]int{}
+	m["a"] = [1, 0]!
+	m["b"] = [2, 0]!
+	for key, mut v in m {
+		v[0] = 9
+		m.delete(key)
+	}
+	assert m.len == 0
+}
+
+fn check_equal_value_reinsertion() {
+	mut m := map[string][2]int{}
+	m["a"] = [1, 0]!
+	for key, mut v in m {
+		v[0] = 9
+		m.delete(key)
+		m[key] = [1, 0]!
+	}
+	assert m["a"][0] == 1
+}
+
+fn check_explicit_update() {
+	mut m := map[string][2]int{}
+	m["a"] = [1, 0]!
+	m["b"] = [2, 0]!
+	for key, mut v in m {
+		if key == "a" {
 			v[0] = 9
-			m.delete(key)
+			m[key] = [3, 0]!
 		}
-		assert m.len == 0
-		println("ok")
+		m.delete("missing")
 	}
-	')
-	assert out == 'ok'
+	assert m["a"][0] == 3
 }
 
-fn test_mut_map_iteration_delete_reinsert_equal_value_is_not_clobbered() {
-	out := map_for_mut_run_good('map_for_mut_delete_reinsert_equal_value', 'fn main() {
-		mut m := map[string][2]int{}
-		m["a"] = [1, 0]!
-		for key, mut v in m {
-			v[0] = 9
-			m.delete(key)
-			m[key] = [1, 0]!
-		}
-		assert m["a"][0] == 1
-		println("ok")
-	}
-	')
-	assert out == 'ok'
-}
-
-fn test_mut_map_iteration_explicit_update_is_not_clobbered() {
-	out := map_for_mut_run_good('map_for_mut_explicit_update_not_clobbered', 'fn main() {
-		mut m := map[string][2]int{}
-		m["a"] = [1, 0]!
-		m["b"] = [2, 0]!
-		for key, mut v in m {
-			if key == "a" {
-				v[0] = 9
-				m[key] = [3, 0]!
-			}
-			m.delete("missing")
-		}
-		assert m["a"][0] == 3
-		println("ok")
-	}
-	')
-	assert out == 'ok'
-}
-
-fn test_mut_map_fixed_array_value_copyback_runs_before_continue() {
-	out := map_for_mut_run_good('map_for_mut_fixed_array_continue_copyback', 'fn main() {
+fn check_copyback_before_continue() {
 	mut m := map[string][2]int{}
 	m["a"] = [1, 0]!
 	m["b"] = [2, 0]!
@@ -129,104 +104,108 @@ fn test_mut_map_fixed_array_value_copyback_runs_before_continue() {
 	b := m["b"] or { [0, 0]! }
 	assert a[1] == 11
 	assert b[1] == 12
+}
+
+fn main() {
+	check_snapshot_updates_original_values()
+	check_pointer_slot_replacement()
+	check_delete_current_key()
+	check_equal_value_reinsertion()
+	check_explicit_update()
+	check_copyback_before_continue()
 	println("ok")
 }
 ')
-	assert out == 'ok'
+	assert out == 'ok', out
 }
 
-fn test_mut_map_fixed_array_value_copyback_runs_before_return() {
-	out := map_for_mut_run_good('map_for_mut_fixed_array_return_copyback', '__global values map[string][2]int
+fn test_mut_map_iteration_copies_back_before_return() {
+	out := map_for_mut_run_good('map_for_mut_return_copyback', '__global array_values map[string][2]int
+__global scalar_values map[string]int
 
 fn update_void() {
-	for _, mut v in values {
+	for _, mut v in array_values {
 		v[0] = 7
 		return
 	}
 }
 
 fn update_value() int {
-	for _, mut v in values {
+	for _, mut v in array_values {
 		v[0] = 9
 		return 9
 	}
 	return 0
 }
 
-fn main() {
-	values = map[string][2]int{}
-	values["x"] = [1, 2]!
+fn check_fixed_array_return_copyback() {
+	array_values = map[string][2]int{}
+	array_values["x"] = [1, 2]!
 	update_void()
-	av := values["x"] or { [0, 0]! }
+	av := array_values["x"] or { [0, 0]! }
 	assert av[0] == 7
 
-	values = map[string][2]int{}
-	values["x"] = [1, 2]!
+	array_values = map[string][2]int{}
+	array_values["x"] = [1, 2]!
 	ret := update_value()
-	bv := values["x"] or { [0, 0]! }
+	bv := array_values["x"] or { [0, 0]! }
 	assert ret == 9
 	assert bv[0] == 9
 	println("ok")
 }
-')
-	assert out == 'ok'
-}
-
-fn test_mut_map_scalar_return_reads_updated_value() {
-	out := map_for_mut_run_good('map_for_mut_scalar_return_reads_update', '__global values map[string]int
-
-fn return_int_from_map() int {
-	for _, mut v in values {
-		v = 7
-		return values["x"]
-	}
-	return 0
-}
-
-fn main() {
-	values = map[string]int{}
-	values["x"] = 1
-	println(int_str(return_int_from_map()))
-}
-')
-	assert out == '7'
-}
-
-fn test_mut_map_fixed_array_return_reads_copied_back_value() {
-	out := map_for_mut_run_good('map_for_mut_fixed_array_return_reads_copyback', '__global values map[string][2]int
 
 fn return_array_from_map() [2]int {
-	for _, mut v in values {
+	for _, mut v in array_values {
 		v[0] = 7
-		return values["x"]
+		return array_values["x"]
 	}
 	return [0, 0]!
 }
 
-fn return_int_from_map() int {
-	for _, mut v in values {
+fn return_int_from_array_map() int {
+	for _, mut v in array_values {
 		v[0] = 9
-		return values["x"][0]
+		return array_values["x"][0]
 	}
 	return 0
 }
 
-fn main() {
-	values = map[string][2]int{}
-	values["x"] = [1, 2]!
+fn check_fixed_array_return_reads_copyback() {
+	array_values = map[string][2]int{}
+	array_values["x"] = [1, 2]!
 	a := return_array_from_map()
 	assert a[0] == 7
-	av := values["x"] or { [0, 0]! }
+	av := array_values["x"] or { [0, 0]! }
 	assert av[0] == 7
 
-	values = map[string][2]int{}
-	values["x"] = [1, 2]!
-	b := return_int_from_map()
+	array_values = map[string][2]int{}
+	array_values["x"] = [1, 2]!
+	b := return_int_from_array_map()
 	assert b == 9
-	bv := values["x"] or { [0, 0]! }
+	bv := array_values["x"] or { [0, 0]! }
 	assert bv[0] == 9
 	println("ok")
 }
+
+fn return_int_from_scalar_map() int {
+	for _, mut v in scalar_values {
+		v = 7
+		return scalar_values["x"]
+	}
+	return 0
+}
+
+fn check_scalar_return_reads_update() {
+	scalar_values = map[string]int{}
+	scalar_values["x"] = 1
+	println(int_str(return_int_from_scalar_map()))
+}
+
+fn main() {
+	check_fixed_array_return_copyback()
+	check_scalar_return_reads_update()
+	check_fixed_array_return_reads_copyback()
+}
 ')
-	assert out == 'ok'
+	assert out.split_into_lines() == ['ok', '7', 'ok'], out
 }

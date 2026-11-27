@@ -30,7 +30,8 @@ fn test_fastc_internal_startup_hooks_require_actual_calls() {
 		'builtin.startup_dependency': FastcFunctionSignature{ module_name: 'builtin' }
 		'main':                       FastcFunctionSignature{ module_name: 'main' }
 	}
-	used := fastc_collect_referenced_function_names(sources, prefs, functions)
+	used := fastc_collect_referenced_function_names(sources, prefs, fastc_reference_candidates(functions,
+		prefs))
 	assert used['gc_runtime_init']
 	assert used['startup_dependency']
 }

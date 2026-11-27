@@ -18,6 +18,39 @@ fn pointer_voidptr_run_good_with_c(dir string, name string, source string) (stri
 	return out, c_source
 }
 
+struct PointerReturnCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn pointer_voidptr_run_good_batch(dir string, cases []PointerReturnCase) {
+	root := os.join_path(dir, 'pointer_returns')
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		module_dir := os.join_path(root, module_name)
+		os.mkdir_all(module_dir) or { panic(err) }
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		fixture := 'module ${module_name}\n\n' + case.source
+		os.write_file(os.join_path(module_dir, 'v3_${case.name}.v'), fixture.replace_once('\nfn main()',
+			'\npub fn exercise()')) or { panic(err) }
+	}
+	os.write_file(os.join_path(root, 'main.v'), "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
+	assert compile.exit_code == 0, compile.output
+	for case in cases {
+		run := os.exec([bin, case.name])
+		assert run.exit_code == 0, '${case.name}: ${run.output}'
+		assert run.output.trim_space() == case.expected, '${case.name}: expected `${case.expected}` in\n${run.output}'
+	}
+}
+
 fn pointer_voidptr_run_bad(dir string, name string, source string, expected string) {
 	src := os.join_path(dir, 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
@@ -34,7 +67,10 @@ fn test_bare_value_pointer_returns_are_heap_lowered() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	out := pointer_voidptr_run_good(dir, 'bare_pointer_return', 'struct Item {
+	pointer_voidptr_run_good_batch(dir, [
+		PointerReturnCase{
+			name:     'bare_pointer_return'
+			source:   'struct Item {
 	value int
 }
 
@@ -49,9 +85,12 @@ fn main() {
 	item := make()
 	println(int_str(item.value))
 }
-')
-	assert out == '23'
-	optional_out := pointer_voidptr_run_good(dir, 'bare_optional_pointer_return', 'struct Item {
+'
+			expected: '23'
+		},
+		PointerReturnCase{
+			name:     'bare_optional_pointer_return'
+			source:   'struct Item {
 	value int
 }
 
@@ -69,9 +108,12 @@ fn main() {
 	item := make() or { return }
 	println(int_str(item.value))
 }
-')
-	assert optional_out == '29'
-	result_out := pointer_voidptr_run_good(dir, 'bare_result_pointer_return', 'struct Item {
+'
+			expected: '29'
+		},
+		PointerReturnCase{
+			name:     'bare_result_pointer_return'
+			source:   'struct Item {
 	value int
 }
 
@@ -89,8 +131,10 @@ fn main() {
 	item := make() or { return }
 	println(int_str(item.value))
 }
-')
-	assert result_out == '31'
+'
+			expected: '31'
+		},
+	])
 	pointer_voidptr_run_bad(dir, 'bare_interface_pointer_return', 'interface Reader {
 	read() int
 }
@@ -194,59 +238,31 @@ fn main() {
 	assert c_source.count('sizeof(main__Item)') >= 2, c_source
 }
 
-fn test_c_voidptr_struct_argument_passes_its_address() {
+fn test_c_voidptr_arguments_accept_struct_and_allocated_buffer() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_pointer_voidptr_${tempname.unique_token()}')
 	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	header := os.join_path(dir, 'v3_c_voidptr_struct.h')
-	source := os.join_path(dir, 'v3_c_voidptr_struct.v')
-	bin := os.join_path(dir, 'v3_c_voidptr_struct')
-	os.write_file(header, 'static int v3_read_cfg(void *ptr) { return *((int *)ptr); }\n') or {
-		panic(err)
-	}
-	os.write_file(source, '#insert "${header}"
+	header := os.join_path(dir, 'v3_c_voidptr_arguments.h')
+	os.write_file(header, 'static int v3_read_cfg(void *ptr) { return *((int *)ptr); }
+static int v3_read_byte(void *ptr) { return *((unsigned char *)ptr); }
+')!
+	source := '#insert "${header}"
 
 struct Cfg {
 	value int
 }
 
 fn C.v3_read_cfg(voidptr) int
+fn C.v3_read_byte(&voidptr) int
 
 fn main() {
 	cfg := Cfg{
 		value: 17
 	}
 	println(int_str(C.v3_read_cfg(cfg)))
-}
-') or {
-		panic(err)
-	}
-	compile := os.exec([@VEXE, source, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '17'
-}
 
-fn test_c_pointer_to_voidptr_argument_accepts_allocated_buffer() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_pointer_voidptr_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	header := os.join_path(dir, 'v3_c_pointer_to_voidptr.h')
-	source := os.join_path(dir, 'v3_c_pointer_to_voidptr.v')
-	bin := os.join_path(dir, 'v3_c_pointer_to_voidptr')
-	os.write_file(header, 'static int v3_read_byte(void *ptr) { return *((unsigned char *)ptr); }\n') or {
-		panic(err)
-	}
-	os.write_file(source, '#insert "${header}"
-
-fn C.v3_read_byte(&voidptr) int
-
-fn main() {
 	buffer := vcalloc(1)
 	unsafe {
 		buffer[0] = 19
@@ -256,14 +272,9 @@ fn main() {
 		free(buffer)
 	}
 }
-') or {
-		panic(err)
-	}
-	compile := os.exec([@VEXE, source, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '19'
+'
+	out := pointer_voidptr_run_good(dir, 'c_voidptr_arguments', source)
+	assert out == '17\n19', out
 }
 
 fn test_pointer_to_voidptr_return_keeps_pointer_value() {

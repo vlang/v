@@ -28,6 +28,26 @@ fn test_mkdir_all_is_idempotent() {
 	assert os.is_dir(nested)
 }
 
+fn test_mkdir_all_accepts_concurrent_creation() {
+	base := os.join_path(os.vtmp_dir(), 'mkdir_all_concurrent_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	defer { os.rmdir_all(base) or {} }
+	for i in 0 .. 8 {
+		nested := os.join_path(base, i.str(), 'parent', 'leaf')
+		start := chan bool{}
+		mut workers := []thread{}
+		for _ in 0 .. 8 {
+			workers << spawn fn (start chan bool, nested string) {
+				_ := <-start or { false }
+				os.mkdir_all(nested) or { panic(err) }
+			}(start, nested)
+		}
+		start.close()
+		workers.wait()
+		assert os.is_dir(nested)
+	}
+}
+
 fn test_mkdir_all_accepts_the_alternate_separator() {
 	base := os.join_path(os.vtmp_dir(), 'vcov_mkdir_params_test_${os.getpid()}')
 	os.rmdir_all(base) or {}

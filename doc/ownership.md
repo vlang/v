@@ -126,6 +126,7 @@ evaluate its expression.
 
 Standard string methods, numeric parsers, UTF-8 validation, path inspection and joining functions,
 and string-builder writes borrow string arguments that cannot escape through the return value.
+They also borrow when the compiler loads their declarations from the module cache.
 Signed numeric parsing preserves the caller's string while removing a leading sign.
 Arguments that may be returned, such as the fallback of `string.substr_or()`, transfer ownership
 instead. Use `.clone()` when the caller also needs to keep an owned fallback. User functions with
