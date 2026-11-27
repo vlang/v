@@ -745,9 +745,10 @@ fn main() {
 	assert out == 'ok'
 }
 
-fn test_generic_shared_parameter_value_copy_uses_inner_type() {
+fn test_generic_value_storage() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'generic_shared_parameter_value_copy', 'struct State {
+	run_good_module_batch(v3_bin, 'generic_value_storage', [
+		TransformFixture{'generic_shared_parameter_value_copy', 'struct State {
 	label string
 }
 
@@ -764,8 +765,38 @@ fn main() {
 	destroy(shared state)
 	println("done")
 }
-')
-	assert out == 'done'
+', 'done'},
+		TransformFixture{'generic_pointer_struct_default', 'struct Item {
+	value int = 7
+}
+
+fn make_default[T]() T {
+	return T{}
+}
+
+fn main() {
+	item := make_default[&Item]()
+	println(item.value)
+}
+', '7'},
+		TransformFixture{'specialized_generic_or_alias_storage', 'type Label = string
+
+struct Box[T] {
+	value T
+}
+
+fn make_box[T](value T) !Box[T] {
+	return Box[T]{
+		value: value
+	}
+}
+
+fn main() {
+	box := make_box[Label](Label("ok")) or { Box[Label]{} }
+	println(box.value)
+}
+', 'ok'},
+	])
 }
 
 fn test_c_pointer_zero_argument_stays_null() {
@@ -962,10 +993,12 @@ fn gen_c_from_project_with_flags(v3_bin string, name string, flags string, files
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
+fn test_mutable_parameter_interpolation() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'lifted_literal_mut_param_interpolation', 'struct Counter {\n\tvalue int\n}\n\nfn main() {\n\tmut counter := Counter{\n\t\tvalue: 7\n\t}\n\tf := fn (mut value Counter) {\n\t\tprintln("\${value.value}")\n\t}\n\tf(mut counter)\n}\n')
-	assert out == '7'
+	run_good_module_batch(v3_bin, 'mutable_parameter_interpolation', [
+		TransformFixture{'lifted_literal_mut_param_interpolation', 'struct Counter {\n\tvalue int\n}\n\nfn main() {\n\tmut counter := Counter{\n\t\tvalue: 7\n\t}\n\tf := fn (mut value Counter) {\n\t\tprintln("\${value.value}")\n\t}\n\tf(mut counter)\n}\n', '7'},
+		TransformFixture{'fn_literal_mut_param_interp', "struct Counter {\n\tvalue int\n}\n\nfn show(mut counter Counter) {\n\t_ := fn () {}\n\tprintln('\${counter.value}')\n}\n\nfn main() {\n\tmut counter := Counter{\n\t\tvalue: 42\n\t}\n\tshow(mut counter)\n}\n", '42'},
+	])
 }
 
 fn test_auto_str_preserves_distinct_structs_beyond_inline_depth() {
@@ -1460,24 +1493,6 @@ fn test_qualified_generic_function_value_without_generic_calls_is_specialized() 
 	assert out == '42\n42'
 }
 
-fn test_generic_struct_default_for_pointer_type_uses_heap_storage() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'generic_pointer_struct_default', 'struct Item {
-	value int = 7
-}
-
-fn make_default[T]() T {
-	return T{}
-}
-
-fn main() {
-	item := make_default[&Item]()
-	println(item.value)
-}
-')
-	assert out == '7'
-}
-
 fn test_optional_if_guard_prefers_local_type_over_imported_homonym() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'optional_if_guard_local_type_collision', {
@@ -1567,9 +1582,10 @@ fn main() {
 	assert out == '1\n1'
 }
 
-fn test_unsafe_block_tail_keeps_lexical_smartcast() {
+fn test_sum_smartcast_scopes() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'unsafe_block_tail_lexical_smartcast', 'struct LambdaNode {
+	run_good_module_batch(v3_bin, 'sum_smartcast_scopes', [
+		TransformFixture{'unsafe_block_tail_lexical_smartcast', 'struct LambdaNode {
 mut:
 	value int
 }
@@ -1588,8 +1604,10 @@ fn main() {
 		println(int_str(node.value))
 	}
 }
-')
-	assert out == '7'
+', '7'},
+		TransformFixture{'negative_is_return_smartcast', 'struct MapKind {\n\tkey_type int\n\tvalue_type int\n}\nstruct OtherKind {}\ntype Kind = MapKind | OtherKind\n\nfn passthrough(k Kind) Kind {\n\treturn k\n}\n\nfn score(k Kind) int {\n\tclean := passthrough(k)\n\tif clean !is MapKind {\n\t\treturn 0\n\t}\n\treturn clean.key_type + clean.value_type\n}\n\nfn main() {\n\tprintln(int_str(score(Kind(MapKind{\n\t\tkey_type: 2\n\t\tvalue_type: 5\n\t}))))\n\tprintln(int_str(score(Kind(OtherKind{}))))\n}\n', '7\n0'},
+		TransformFixture{'if_expr_selector_decl_smartcast_local', 'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\ntype Animal = Cat | Dog\n\nstruct Ident {\n\tobj Animal\n}\n\nfn has_age(cat Cat) bool {\n\treturn cat.age == 3\n}\n\nfn main() {\n\tleft := Ident{\n\t\tobj: Animal(Cat{\n\t\t\tage: 2\n\t\t})\n\t}\n\tmut obj := if left.obj is Cat {\n\t\tleft.obj\n\t} else {\n\t\tCat{}\n\t}\n\tif true {\n\t\tobj = Cat{\n\t\t\tage: 3\n\t\t}\n\t}\n\tprintln(has_age(obj))\n}\n', 'true'},
+	])
 }
 
 fn test_nested_shared_field_lock_allows_member_access() {
@@ -1902,10 +1920,48 @@ fn test_nested_shared_field_lock_rejects_overloaded_index() {
 	run_bad(v3_bin, 'nested_shared_field_lock_overloaded_index', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Registry {\n\tentries []&Coordinator\n}\n\nfn (registry Registry) [] (key int) &Coordinator {\n\treturn registry.entries[key]\n}\n\nfn main() {\n\tmut coordinator := Coordinator{}\n\tmut registry := Registry{\n\t\tentries: [&coordinator]\n\t}\n\tkey := 0\n\tlock registry[key].state {\n\t\tregistry[key].state.value = 7\n\t}\n}\n', 'selector bases and indices must be stable expressions')
 }
 
-fn test_reassigned_nil_pointer_can_be_dereferenced() {
+fn test_pointer_value_storage() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'reassigned_nil_pointer', 'fn main() {\n\tmut pointer := &int(unsafe { nil })\n\tmut value := 7\n\tpointer = &value\n\tprintln(int_str(*pointer))\n}\n')
-	assert out == '7'
+	run_good_module_batch(v3_bin, 'pointer_value_storage', [
+		TransformFixture{'reassigned_nil_pointer', 'fn main() {\n\tmut pointer := &int(unsafe { nil })\n\tmut value := 7\n\tpointer = &value\n\tprintln(int_str(*pointer))\n}\n', '7'},
+		TransformFixture{'address_of_nil_pointer_cast_storage', 'struct Holder {
+	ptr voidptr
+}
+
+fn main() {
+	value := Holder{
+		ptr: unsafe { &voidptr(nil) }
+	}
+	println(value.ptr == unsafe { nil })
+}
+', 'true'},
+		TransformFixture{'unsafe_postfix_pointer_to_pointer', 'struct Item {
+	value int
+}
+
+struct PointerState {
+mut:
+	list &&char
+}
+
+type RawHandle = voidptr
+
+fn (item &Item) read() int {
+	return item.value
+}
+
+fn main() {
+	item := &Item{value: 9}
+	state := PointerState{
+		list: unsafe { &&char(nil) }
+	}
+	handle := RawHandle(unsafe { nil })
+	println(unsafe { item }.read())
+	println(state.list == unsafe { &&char(nil) })
+	println(handle == RawHandle(unsafe { nil }))
+}
+', '9\ntrue\ntrue'},
+	])
 }
 
 fn test_imported_shared_field_without_sync_import_compiles_and_locks() {
@@ -2003,10 +2059,35 @@ fn main() {
 	assert out == '2'
 }
 
-fn test_array_map_fn_value_uses_callback_return_type() {
+fn test_collection_callback_arguments() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'array_map_fn_value_return_type', "fn main() {\n\ti_to_str := fn (i int) string {\n\t\treturn int_str(i)\n\t}\n\ta := [1, 2, 3].map(i_to_str)\n\tassert a == ['1', '2', '3']\n\tprintln(a[0] + a[1] + a[2])\n}\n")
-	assert out == '123'
+	run_good_module_batch(v3_bin, 'collection_callback_arguments', [
+		TransformFixture{'array_map_fn_value_return_type', "fn main() {\n\ti_to_str := fn (i int) string {\n\t\treturn int_str(i)\n\t}\n\ta := [1, 2, 3].map(i_to_str)\n\tassert a == ['1', '2', '3']\n\tprintln(a[0] + a[1] + a[2])\n}\n", '123'},
+		TransformFixture{'capturing_callback_variable_parameters', 'fn report(callback fn (int, string)) {
+	callback(42, "ready")
+}
+
+fn main() {
+	prefix := "progress"
+	callback := fn [prefix] (percent int, stage string) {
+		println("\${prefix}:\${percent}:\${stage}")
+	}
+	report(callback)
+}
+', 'progress:42:ready'},
+		TransformFixture{'fixed_array_branch_callbacks', 'fn main() {
+	values := [1, 2, 3, 4]!
+	filtered := values.filter(if it % 2 == 0 { true } else { false })
+	mapped := values.map(match it % 2 {
+		0 { it * 10 }
+		else { it + 1 }
+	})
+	assert filtered == [2, 4]
+	assert mapped == [2, 20, 4, 40]
+	println(int_str(filtered.len + mapped[3]))
+}
+', '42'},
+	])
 }
 
 fn test_const_array_allows_newline_separators_with_line_comments() {
@@ -2057,14 +2138,33 @@ fn test_heap_attribute_does_not_promote_channel_with_imported_pointer_element() 
 	assert out == '42'
 }
 
-fn test_mut_pointer_capture_is_not_over_dereferenced() {
+fn test_mutable_closure_captures() {
 	v3_bin := build_v3_review_transform()
-	// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a
-	// genuine `&S` local: its rvalue uses must not be over-dereferenced, so a call that
-	// expects the pointer still receives it (regression for gating the pointer-value
-	// rvalue/lvalue flags on `capture_by_ref` instead of every `capture_mut`).
-	out := run_good(v3_bin, 'mut_pointer_capture', 'struct S {\n\tn int\n}\n\nfn takes_ptr(p &S) int {\n\treturn p.n\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut p := &S{\n\t\tn: 5\n\t}\n\tcall(fn [mut p] () {\n\t\tprintln(int_str(takes_ptr(p)))\n\t})\n}\n')
-	assert out == '5'
+	run_good_module_batch(v3_bin, 'mutable_closure_captures', [
+		// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a
+		// genuine `&S` local: its rvalue uses must not be over-dereferenced, so a call that
+		// expects the pointer still receives it (regression for gating the pointer-value
+		// rvalue/lvalue flags on `capture_by_ref` instead of every `capture_mut`).
+		TransformFixture{'mut_pointer_capture', 'struct S {\n\tn int\n}\n\nfn takes_ptr(p &S) int {\n\treturn p.n\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut p := &S{\n\t\tn: 5\n\t}\n\tcall(fn [mut p] () {\n\t\tprintln(int_str(takes_ptr(p)))\n\t})\n}\n', '5'},
+		// `[mut value]` gives each closure its own copy: 52 + 141 + 41.
+		TransformFixture{'nested_capture_of_mut_capture', 'fn main() {
+	mut value := 41
+	outer := fn [mut value] () int {
+		inner := fn [mut value] () int {
+			value += 10
+			return value + 1
+		}
+		first := inner()
+		snapshot := fn [value] () int {
+			return value + 100
+		}
+		return first + snapshot() + value
+	}
+	println(int_str(outer()))
+	println(int_str(value))
+}
+', '234\n41'},
+	])
 }
 
 fn test_non_escaping_local_closures_are_reclaimed_in_hot_loop() {
@@ -3399,29 +3499,6 @@ fn test_immediately_invoked_closure_keeps_spawned_nested_capture_alive() {
 	assert out == '42'
 }
 
-fn test_nested_capture_of_a_mut_capture_copies_its_value() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'nested_capture_of_mut_capture', 'fn main() {
-	mut value := 41
-	outer := fn [mut value] () int {
-		inner := fn [mut value] () int {
-			value += 10
-			return value + 1
-		}
-		first := inner()
-		snapshot := fn [value] () int {
-			return value + 100
-		}
-		return first + snapshot() + value
-	}
-	println(int_str(outer()))
-	println(int_str(value))
-}
-')
-	// `[mut value]` gives each closure its own copy: 52 + 141 + 41.
-	assert out == '234\n41'
-}
-
 fn test_immediately_invoked_closure_keeps_aliased_spawn_capture_alive() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn main() {
@@ -4432,15 +4509,18 @@ fn test_callback_selector_captures() {
 	])
 }
 
-fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
+fn test_escaping_address_identity() {
 	v3_bin := build_v3_review_transform()
-	// When a local `s` whose address escapes is moved to the heap, `s` becomes the `&S`
-	// heap pointer and the alias `p := &s` must stay that pointer (`p := s`), NOT be
-	// auto-dereferenced to `*s`. Over-dereferencing here initializes `p`'s `&S` decl from
-	// an `S` value (a stale stack copy), reviving the escape/stale-mutation bug the heap
-	// move avoids. A later `s = S{n: 2}` must be observable through the returned pointer.
-	out := run_good(v3_bin, 'heap_escaping_amp_alias', 'struct S {\n\tn int\n}\n\nfn leak() &S {\n\tmut s := S{\n\t\tn: 1\n\t}\n\tp := &s\n\ts = S{\n\t\tn: 2\n\t}\n\treturn p\n}\n\nfn main() {\n\tp := leak()\n\tprintln(int_str(p.n))\n}\n')
-	assert out == '2'
+	run_good_module_batch(v3_bin, 'escaping_address_identity', [
+		// When a local `s` whose address escapes is moved to the heap, `s` becomes the `&S`
+		// heap pointer and the alias `p := &s` must stay that pointer (`p := s`), NOT be
+		// auto-dereferenced to `*s`. Over-dereferencing here initializes `p`'s `&S` decl from
+		// an `S` value (a stale stack copy), reviving the escape/stale-mutation bug the heap
+		// move avoids. A later `s = S{n: 2}` must be observable through the returned pointer.
+		TransformFixture{'heap_escaping_amp_alias', 'struct S {\n\tn int\n}\n\nfn leak() &S {\n\tmut s := S{\n\t\tn: 1\n\t}\n\tp := &s\n\ts = S{\n\t\tn: 2\n\t}\n\treturn p\n}\n\nfn main() {\n\tp := leak()\n\tprintln(int_str(p.n))\n}\n', '2'},
+		TransformFixture{'heap_escaping_amp_reassign_source', 'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n', '20'},
+		TransformFixture{'return_pointer_backed_field_address', 'struct Node[T] {\nmut:\n\tvalue T\n}\n\nstruct List[T] {\nmut:\n\ttail &Node[T] = unsafe { nil }\n}\n\nfn (list &List[T]) last() &T {\n\treturn &list.tail.value\n}\n\nfn main() {\n\tmut node := &Node[int]{\n\t\tvalue: 1\n\t}\n\tlist := List[int]{\n\t\ttail: node\n\t}\n\tmut last := list.last()\n\tunsafe {\n\t\t*last = 9\n\t}\n\tprintln(int_str(node.value))\n}\n', '9'},
+	])
 }
 
 fn test_scalar_return_call_does_not_heap_promote_address_argument() {
@@ -4549,8 +4629,6 @@ fn main() {
 
 fn test_heap_escaping_amp_reassignment_moves_current_source() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'heap_escaping_amp_reassign_source', 'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n')
-	assert out == '20'
 	c_source := gen_c_from_source(v3_bin, 'heap_escaping_amp_reassign_source_c', 'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\t_ := make()\n}\n')
 	body := c_fn_body(c_source, 'i64* make(void) {')
 	assert body.contains('i64* b ='), body
@@ -4588,12 +4666,6 @@ fn main() {
 	out, c_source := run_good_with_c(v3_bin, 'map_index_selector_write_retains_local_address', '', source)
 	body := c_fn_body(c_source, 'map make_cache(void) {')
 	assert body.contains('memdup'), body
-	assert out == '9'
-}
-
-fn test_return_address_of_pointer_backed_field_preserves_identity() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'return_pointer_backed_field_address', 'struct Node[T] {\nmut:\n\tvalue T\n}\n\nstruct List[T] {\nmut:\n\ttail &Node[T] = unsafe { nil }\n}\n\nfn (list &List[T]) last() &T {\n\treturn &list.tail.value\n}\n\nfn main() {\n\tmut node := &Node[int]{\n\t\tvalue: 1\n\t}\n\tlist := List[int]{\n\t\ttail: node\n\t}\n\tmut last := list.last()\n\tunsafe {\n\t\t*last = 9\n\t}\n\tprintln(int_str(node.value))\n}\n')
 	assert out == '9'
 }
 
@@ -4928,10 +5000,12 @@ fn test_struct_equality_with_interface_field_compiles() {
 	assert out == 'true'
 }
 
-fn test_pointer_u8_array_bytestr_stays_in_cgen() {
+fn test_pointer_array_and_string_values() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'pointer_u8_array_bytestr', 'fn show(data &[]u8) string {\n\treturn data.bytestr()\n}\n\nfn main() {\n\tbytes := [u8(104), u8(105)]\n\tprintln(show(&bytes))\n}\n')
-	assert out == 'hi'
+	run_good_module_batch(v3_bin, 'pointer_array_and_string_values', [
+		TransformFixture{'pointer_u8_array_bytestr', 'fn show(data &[]u8) string {\n\treturn data.bytestr()\n}\n\nfn main() {\n\tbytes := [u8(104), u8(105)]\n\tprintln(show(&bytes))\n}\n', 'hi'},
+		TransformFixture{'string_pointer_comparison', "fn main() {\n\tleft := 'same'.clone()\n\tright := 'same'.clone()\n\tpleft := &left\n\tpright := &right\n\tprintln(pleft == pright)\n\tprintln(pleft != pright)\n\tprintln(*pleft == *pright)\n}\n", 'false\ntrue\ntrue'},
+	])
 }
 
 fn test_cyclic_interface_default_does_not_deref_nil_global() {
@@ -4964,18 +5038,6 @@ fn test_array_repeat_safe_wrapper_compiles_in_prod() {
 	out := run_good_with_flags(v3_bin, 'array_repeat_prod', '-prod', 'fn main() {\n\tprintln([1, 2, 3].repeat(2))\n}\n')
 	assert out == '[1, 2, 3, 1, 2, 3]'
 	run_bad_with_flags(v3_bin, 'array_repeat_to_depth_prod', '-prod', 'fn main() {\n\t_ := [1, 2, 3].repeat_to_depth(2, 0)\n}\n', 'must be called from an `unsafe` block')
-}
-
-fn test_negative_is_return_smartcasts_following_statements() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'negative_is_return_smartcast', 'struct MapKind {\n\tkey_type int\n\tvalue_type int\n}\nstruct OtherKind {}\ntype Kind = MapKind | OtherKind\n\nfn passthrough(k Kind) Kind {\n\treturn k\n}\n\nfn score(k Kind) int {\n\tclean := passthrough(k)\n\tif clean !is MapKind {\n\t\treturn 0\n\t}\n\treturn clean.key_type + clean.value_type\n}\n\nfn main() {\n\tprintln(int_str(score(Kind(MapKind{\n\t\tkey_type: 2\n\t\tvalue_type: 5\n\t}))))\n\tprintln(int_str(score(Kind(OtherKind{}))))\n}\n')
-	assert out == '7\n0'
-}
-
-fn test_if_expr_smartcast_selector_decl_does_not_smartcast_local() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'if_expr_selector_decl_smartcast_local', 'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\ntype Animal = Cat | Dog\n\nstruct Ident {\n\tobj Animal\n}\n\nfn has_age(cat Cat) bool {\n\treturn cat.age == 3\n}\n\nfn main() {\n\tleft := Ident{\n\t\tobj: Animal(Cat{\n\t\t\tage: 2\n\t\t})\n\t}\n\tmut obj := if left.obj is Cat {\n\t\tleft.obj\n\t} else {\n\t\tCat{}\n\t}\n\tif true {\n\t\tobj = Cat{\n\t\t\tage: 3\n\t\t}\n\t}\n\tprintln(has_age(obj))\n}\n')
-	assert out == 'true'
 }
 
 fn test_comptime_type_conditions() {
@@ -5055,12 +5117,6 @@ fn test_array_slice_mutations() {
 	])
 }
 
-fn test_string_pointer_comparisons_keep_pointer_semantics() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'string_pointer_comparison', "fn main() {\n\tleft := 'same'.clone()\n\tright := 'same'.clone()\n\tpleft := &left\n\tpright := &right\n\tprintln(pleft == pright)\n\tprintln(pleft != pright)\n\tprintln(*pleft == *pright)\n}\n")
-	assert out == 'false\ntrue\ntrue'
-}
-
 fn test_map_keys_and_values_lower_to_runtime_methods() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'map_keys_values_lowering', "fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tsingle := {\n\t\t'only': 9\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n\tprintln(int_str(single.keys().len))\n\tprintln(single.keys()[0])\n\tprintln(int_str(single.values().len))\n\tprintln(int_str(single.values()[0]))\n}\n")
@@ -5098,12 +5154,6 @@ fn test_map_literal_declaration_evaluates_entries_once() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_with_flags(v3_bin, 'map_literal_decl_side_effects', '-enable-globals', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'key'\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tvalues := {\n\t\tnext_key(): next_val()\n\t}\n\tprintln(int_str(values['key']))\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
 	assert out == '10\n1,1'
-}
-
-fn test_fn_literal_preserves_mut_param_string_interpolation() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'fn_literal_mut_param_interp', "struct Counter {\n\tvalue int\n}\n\nfn show(mut counter Counter) {\n\t_ := fn () {}\n\tprintln('\${counter.value}')\n}\n\nfn main() {\n\tmut counter := Counter{\n\t\tvalue: 42\n\t}\n\tshow(mut counter)\n}\n")
-	assert out == '42'
 }
 
 fn test_shadowed_minmaxof_calls_are_not_rewritten() {
@@ -5184,9 +5234,10 @@ fn test_parallel_monomorphization_registers_worker_fixed_array_signatures() {
 	assert out == '40'
 }
 
-fn test_generic_function_type_arguments_keep_parameter_commas() {
+fn test_function_value_types() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'generic_function_type_argument', "fn identity[T](value T) T {
+	run_good_module_batch(v3_bin, 'function_value_types', [
+		TransformFixture{'generic_function_type_argument', "fn identity[T](value T) T {
 	return value
 }
 
@@ -5198,13 +5249,8 @@ fn main() {
 	callback := identity(accepts)
 	println(callback(3, 'abc'))
 }
-")
-	assert out == 'true'
-}
-
-fn test_returned_mut_callback_preserves_pointer_parameter() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'returned_mut_callback_parameter', 'struct Item {
+", 'true'},
+		TransformFixture{'returned_mut_callback_parameter', 'struct Item {
 mut:
 	value int
 }
@@ -5223,8 +5269,28 @@ fn main() {
 	callback(mut item)
 	println(int_str(item.value))
 }
-')
-	assert out == '7'
+', '7'},
+		TransformFixture{'typeof_function_fixed_array_types', 'fn values() [3]int {
+	return [1, 2, 3]!
+}
+
+fn first_two(input [3]int) [2]int {
+	return [input[0], input[1]]!
+}
+
+const values_fn_type_name = typeof(values).name
+const first_two_fn_type_name = typeof(first_two).name
+
+fn main() {
+	values_fn := values
+	first_two_fn := first_two
+	println(typeof(values_fn).name)
+	println(typeof(first_two_fn).name)
+	println(values_fn_type_name)
+	println(first_two_fn_type_name)
+}
+', 'fn () [3]int\nfn ([3]int) [2]int\nfn () [3]int\nfn ([3]int) [2]int'},
+	])
 }
 
 fn test_recursive_closure_assignment_refreshes_self_capture() {
@@ -5244,31 +5310,6 @@ fn test_recursive_closure_assignment_refreshes_self_capture() {
 }
 ')
 	assert out == '120'
-}
-
-fn test_typeof_function_fixed_array_types_keep_function_shape() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'typeof_function_fixed_array_types', 'fn values() [3]int {
-	return [1, 2, 3]!
-}
-
-fn first_two(input [3]int) [2]int {
-	return [input[0], input[1]]!
-}
-
-const values_fn_type_name = typeof(values).name
-const first_two_fn_type_name = typeof(first_two).name
-
-fn main() {
-	values_fn := values
-	first_two_fn := first_two
-	println(typeof(values_fn).name)
-	println(typeof(first_two_fn).name)
-	println(values_fn_type_name)
-	println(first_two_fn_type_name)
-}
-')
-	assert out == 'fn () [3]int\nfn ([3]int) [2]int\nfn () [3]int\nfn ([3]int) [2]int'
 }
 
 fn test_typeof_idx_uses_active_smartcast() {
@@ -5676,22 +5717,13 @@ fn test_hierarchical_import_runtime_inits_before_importer_init() {
 	assert out == '41'
 }
 
-fn test_lowered_generic_operator_call_records_specialization() {
+fn test_emitted_generic_specializations() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'lowered_generic_operator_call_records_specialization', 'struct Box[T] {\n\tv T\n}\n\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\n\nfn main() {\n\tleft := Box[int]{\n\t\tv: 2\n\t}\n\tright := Box[int]{\n\t\tv: 5\n\t}\n\tresult := left + right\n\tprintln(int_str(result.v))\n}\n')
-	assert out == '7'
-}
-
-fn test_late_inferred_generic_call_emits_specialization() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'late_inferred_generic_call_emits_specialization', 'fn make[T]() T {\n\treturn T(41)\n}\n\nfn use[T](value T) T {\n\treturn value + T(1)\n}\n\nfn main() {\n\tx := make[int]()\n\tprintln(int_str(use(x)))\n}\n')
-	assert out == '42'
-}
-
-fn test_late_reachable_body_generic_call_emits_specialization() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'late_reachable_body_generic_call_emits_specialization', 'fn identity[T](value T) T {\n\treturn value\n}\n\nfn late_helper() int {\n\treturn identity[int](42)\n}\n\nfn outer[T]() int {\n\treturn late_helper()\n}\n\nfn main() {\n\tprintln(int_str(outer[int]()))\n}\n')
-	assert out == '42'
+	run_good_module_batch(v3_bin, 'emitted_generic_specializations', [
+		TransformFixture{'lowered_generic_operator_call_records_specialization', 'struct Box[T] {\n\tv T\n}\n\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\n\nfn main() {\n\tleft := Box[int]{\n\t\tv: 2\n\t}\n\tright := Box[int]{\n\t\tv: 5\n\t}\n\tresult := left + right\n\tprintln(int_str(result.v))\n}\n', '7'},
+		TransformFixture{'late_inferred_generic_call_emits_specialization', 'fn make[T]() T {\n\treturn T(41)\n}\n\nfn use[T](value T) T {\n\treturn value + T(1)\n}\n\nfn main() {\n\tx := make[int]()\n\tprintln(int_str(use(x)))\n}\n', '42'},
+		TransformFixture{'late_reachable_body_generic_call_emits_specialization', 'fn identity[T](value T) T {\n\treturn value\n}\n\nfn late_helper() int {\n\treturn identity[int](42)\n}\n\nfn outer[T]() int {\n\treturn late_helper()\n}\n\nfn main() {\n\tprintln(int_str(outer[int]()))\n}\n', '42'},
+	])
 }
 
 fn test_module_qualified_panic_keeps_module_symbol() {
@@ -6166,23 +6198,6 @@ fn test_array_filter_and_map_reuse_capturing_callback_state() {
 	assert out == '[2, 3]\n[11, 22, 33]'
 }
 
-fn test_capturing_callback_variable_keeps_declared_parameters() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'capturing_callback_variable_parameters', 'fn report(callback fn (int, string)) {
-	callback(42, "ready")
-}
-
-fn main() {
-	prefix := "progress"
-	callback := fn [prefix] (percent int, stage string) {
-		println("\${prefix}:\${percent}:\${stage}")
-	}
-	report(callback)
-}
-')
-	assert out == 'progress:42:ready'
-}
-
 fn test_array_filter_and_map_hoist_bound_method_callbacks() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]
@@ -6265,23 +6280,6 @@ fn main() {
 '
 	out := run_good(v3_bin, 'array_branch_selected_function_values', source)
 	assert out == '8'
-}
-
-fn test_fixed_array_filter_and_map_keep_branch_callbacks_inside_iteration() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'fixed_array_branch_callbacks', 'fn main() {
-	values := [1, 2, 3, 4]!
-	filtered := values.filter(if it % 2 == 0 { true } else { false })
-	mapped := values.map(match it % 2 {
-		0 { it * 10 }
-		else { it + 1 }
-	})
-	assert filtered == [2, 4]
-	assert mapped == [2, 20, 4, 40]
-	println(int_str(filtered.len + mapped[3]))
-}
-')
-	assert out == '42'
 }
 
 fn test_array_map_drops_temporary_source_after_transient_element_address() {
@@ -11920,28 +11918,6 @@ fn main() {
 	assert out == '&Item'
 }
 
-fn test_specialized_generic_or_uses_alias_struct_storage() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'specialized_generic_or_alias_storage', 'type Label = string
-
-struct Box[T] {
-	value T
-}
-
-fn make_box[T](value T) !Box[T] {
-	return Box[T]{
-		value: value
-	}
-}
-
-fn main() {
-	box := make_box[Label](Label("ok")) or { Box[Label]{} }
-	println(box.value)
-}
-')
-	assert out == 'ok'
-}
-
 fn test_result_unwrapped_sum_collections_compare_semantically() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'result_unwrapped_sum_collection_equality', 'type Value = bool | string
@@ -13164,22 +13140,6 @@ fn test_imported_generic_default_uses_main_struct_defaults_after_short_name_coll
 	assert out == '0'
 }
 
-fn test_address_of_nil_pointer_cast_provides_pointer_value_storage() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'address_of_nil_pointer_cast_storage', 'struct Holder {
-	ptr voidptr
-}
-
-fn main() {
-	value := Holder{
-		ptr: unsafe { &voidptr(nil) }
-	}
-	println(value.ptr == unsafe { nil })
-}
-')
-	assert out == 'true'
-}
-
 fn test_later_block_call_arg_does_not_capture_earlier_sum_temporary() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'call_arg_sum_temp_before_block', 'struct Item {}
@@ -13468,37 +13428,6 @@ fn main() {
 }
 ')
 	assert out == '7'
-}
-
-fn test_unsafe_postfix_and_pointer_to_pointer_type_parse() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'unsafe_postfix_pointer_to_pointer', 'struct Item {
-	value int
-}
-
-struct PointerState {
-mut:
-	list &&char
-}
-
-type RawHandle = voidptr
-
-fn (item &Item) read() int {
-	return item.value
-}
-
-fn main() {
-	item := &Item{value: 9}
-	state := PointerState{
-		list: unsafe { &&char(nil) }
-	}
-	handle := RawHandle(unsafe { nil })
-	println(unsafe { item }.read())
-	println(state.list == unsafe { &&char(nil) })
-	println(handle == RawHandle(unsafe { nil }))
-}
-')
-	assert out == '9\ntrue\ntrue'
 }
 
 fn test_export_wrapper_uses_declared_header_c_abi() {
