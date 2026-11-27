@@ -173,8 +173,8 @@ fn main() {
 	assert out == '7'
 }
 
-fn test_sum_smartcast_fields_and_reference_arguments() {
-	check_review_runtime('sum_smartcast_fields_and_reference_arguments', [
+fn test_sum_smartcasts_and_reference_arguments() {
+	check_review_runtime('sum_smartcasts_and_reference_arguments', [
 		ReviewFixture{'explicit_mut_sum_smartcasts', 'struct First {
 mut:
 	value int
@@ -227,6 +227,91 @@ fn main() {
 	println(inspect(value as First))
 }
 ', '7'},
+		ReviewFixture{'good_smartcasted_unique_sum_field', 'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype Kind = A | B\nfn main() {\n\tk := Kind(A{\n\t\tonly_on_a: 7\n\t})\n\tif k is A {\n\t\tprintln(int_str(k.only_on_a))\n\t}\n}\n', '7'},
+		ReviewFixture{'good_smartcasted_fn_sum_variant_arity', 'type Callback = fn () int | fn (int) int
+
+fn with_arg(value int) int {
+	return value
+}
+
+fn invoke(cb Callback) int {
+	if cb is fn (int) int {
+		return cb(7)
+	}
+	return 0
+}
+
+fn main() {
+	println(int_str(invoke(Callback(with_arg))))
+}
+', '7'},
+		ReviewFixture{'smartcast_receiver_method_paths', 'struct Leaf {}
+
+struct Container {
+	left &Expr
+}
+
+struct Assignment {
+mut:
+	left []Expr
+}
+
+struct EmptyStmt {}
+
+type Expr = Container | Leaf
+type Stmt = Assignment | EmptyStmt
+
+struct Branch {
+mut:
+	stmt Stmt
+}
+
+fn (expr Expr) pos() int {
+	return 7
+}
+
+fn (leaf &Leaf) is_mut() bool {
+	return true
+}
+
+fn main() {
+	container_expr := Expr(Container{
+		left: &Expr(Leaf{})
+	})
+	if container_expr is Container && (container_expr as Container).left is Leaf {
+		println((container_expr as Container).left.is_mut())
+	}
+	mut branch := Branch{
+		stmt: Stmt(Assignment{
+			left: [Expr(Leaf{})]
+		})
+	}
+	match mut branch.stmt {
+		Assignment {
+			if mut branch.stmt.left[0] is Leaf {
+				println(branch.stmt.left[0].pos())
+			}
+		}
+		else {}
+	}
+}
+', 'true
+7'},
+		ReviewFixture{'pointer_sum_type_pattern_membership', 'struct First {}
+
+struct Second {}
+
+type Node = First | Second
+
+fn accepts(node &Node) bool {
+	return node in [First, Second]
+}
+
+fn main() {
+	mut node := Node(First{})
+	println(accepts(&node))
+}
+', 'true'},
 	])
 }
 
@@ -287,8 +372,8 @@ fn main() {
 	])
 }
 
-fn test_mutable_index_and_pointer_loop_bindings() {
-	check_review_runtime('mutable_index_and_pointer_loop_bindings', [
+fn test_pointer_writes_and_mutable_loop_bindings() {
+	check_review_runtime('pointer_writes_and_mutable_loop_bindings', [
 		ReviewFixture{'mut_index_alias', 'struct Item {
 mut:
 	value int
@@ -323,6 +408,36 @@ fn main() {
 	}
 }
 ', 'nil'},
+		ReviewFixture{'unsafe_pointer_write', 'fn main() {
+	mut value := 0
+	p := &value
+	unsafe {
+		*p = 1
+		(*p) = 2
+	}
+	println(value)
+}
+', '2'},
+		ReviewFixture{'fresh_pointer_not_immutable_alias', 'struct State {
+mut:
+	values []int
+}
+
+fn fresh(seed &int) &State {
+	return &State{
+		values: [*seed]
+	}
+}
+
+fn main() {
+	seed := 1
+	mut state := fresh(&seed)
+	for i, value in state.values {
+		state.values[i] = value + 1
+	}
+	println(state.values[0])
+}
+', '2'},
 	])
 }
 
@@ -519,8 +634,8 @@ fn main() {}
 	])
 }
 
-fn test_optional_value_contexts() {
-	check_review_runtime('optional_value_contexts', [
+fn test_option_and_result_value_contexts() {
+	check_review_runtime('option_and_result_value_contexts', [
 		ReviewFixture{'canonical_option_void_return', 'fn work() ? {
 	return none
 }
@@ -544,6 +659,9 @@ fn main() {
 		ReviewFixture{'good_none_ierror_contexts', 'struct Holder {\n\terr IError = none\n}\n\nfn take(e IError) int {\n\tif e is none {\n\t\treturn 1\n\t}\n\treturn 0\n}\n\nfn make() IError {\n\treturn none\n}\n\nfn main() {\n\tdefault := Holder{}\n\texplicit := Holder{\n\t\terr: none\n\t}\n\tprintln(int_str(take(none) + take(default.err) + take(explicit.err) + take(make())))\n}\n', '4'},
 		ReviewFixture{'good_none_option_context', 'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\tif maybe() == none {\n\t\tprintln("option")\n\t}\n}\n', 'option'},
 		ReviewFixture{'good_omitted_optional_parameter', 'fn consume(value ?int) int {\n\treturn value or { -1 }\n}\n\nfn main() {\n\tprintln(int_str(consume()))\n\tprintln(int_str(consume(7)))\n}\n', '-1\n7'},
+		ReviewFixture{'good_constant_error_branch_in_result_return', "fn make_result() !int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := make_result() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", 'bad'},
+		ReviewFixture{'good_error_branch_in_result_return', "fn make_result(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(make_result(false) or { -1 }))\n\tprintln(int_str(make_result(true) or { -1 }))\n}\n", '1\n-1'},
+		ReviewFixture{'good_map_or_and_unwrapped_string_concat', "fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\tnames := {\n\t\t'first': 'Grace'\n\t}\n\tprintln(names['first'] or { 'unknown' })\n\tprintln('hello ' + (maybe_name() or { 'unknown' }))\n}\n", 'Grace\nhello Ada'},
 	])
 }
 
@@ -649,43 +767,8 @@ fn main() {
 	])
 }
 
-fn test_pointer_writes_and_fresh_results() {
-	check_review_runtime('pointer_writes_and_fresh_results', [
-		ReviewFixture{'unsafe_pointer_write', 'fn main() {
-	mut value := 0
-	p := &value
-	unsafe {
-		*p = 1
-		(*p) = 2
-	}
-	println(value)
-}
-', '2'},
-		ReviewFixture{'fresh_pointer_not_immutable_alias', 'struct State {
-mut:
-	values []int
-}
-
-fn fresh(seed &int) &State {
-	return &State{
-		values: [*seed]
-	}
-}
-
-fn main() {
-	seed := 1
-	mut state := fresh(&seed)
-	for i, value in state.values {
-		state.values[i] = value + 1
-	}
-	println(state.values[0])
-}
-', '2'},
-	])
-}
-
-fn test_mutable_references_and_enum_order_match_v1() {
-	check_review_runtime('reference_enum_runtime', [
+fn test_reference_bindings_and_type_aliases() {
+	check_review_runtime('reference_bindings_and_type_aliases', [
 		ReviewFixture{'immutable_reference_and_previous_enum_value', '@[_allow_multiple_values]
 enum Value {
 	a = 1
@@ -713,6 +796,19 @@ fn main() {
 	println(*p)
 }
 ', '10'},
+		ReviewFixture{'good_alias_nested_type_separator', 'type Bits = [1 | 2]int\n\nfn values() Bits {\n\treturn [1, 2, 3]!\n}\n\nfn main() {\n\tbits := values()\n\tprintln(int_str(bits[0] + bits[1] + bits[2]))\n}\n', '6'},
+		ReviewFixture{'generic_channel_alias_element', 'type Ch[T] = chan T
+
+fn receive(ch Ch[int]) int {
+	return <-ch
+}
+
+fn main() {
+	ch := chan int{cap: 1}
+	ch <- 42
+	println(int_str(receive(ch)))
+}
+', '42'},
 	])
 }
 
@@ -800,7 +896,7 @@ fn main() {
 }
 ', 'const names cannot contain uppercase letters, use snake_case instead'},
 	])
-	check_review_runtime('method_values', [
+	check_review_runtime('method_values_and_closure_captures', [
 		ReviewFixture{'heap_pointer_receiver_method_value', 'struct Foo {}
 
 fn (foo &Foo) ref() int {
@@ -821,6 +917,59 @@ fn main() {
 	println(callback())
 }
 ', '3'},
+		ReviewFixture{'return_capturing_fn_literal', 'fn make(x int) fn () int {
+	return fn [x] () int {
+		return x
+	}
+}
+fn main() {
+	assert make(7)() == 7
+}
+', ''},
+		ReviewFixture{'return_capturing_fn_literal_alias', 'fn make(x int) fn () int {
+	f := fn [x] () int {
+		return x
+	}
+	return f
+}
+fn main() {
+	assert make(7)() == 7
+}
+', ''},
+		ReviewFixture{'struct_field_capturing_fn_literal', 'struct Holder {
+	cb fn () int
+}
+fn make(x int) Holder {
+	return Holder{
+		cb: fn [x] () int {
+			return x
+		}
+	}
+}
+fn main() {
+	holder := make(7)
+	assert holder.cb() == 7
+}
+', ''},
+		ReviewFixture{'struct_field_capturing_fn_literal_alias', 'struct Holder {
+	cb fn () int
+}
+fn make(x int) Holder {
+	f := fn [x] () int {
+		return x
+	}
+	return Holder{
+		cb: f
+	}
+}
+fn main() {
+	holder := make(7)
+	assert holder.cb() == 7
+}
+', ''},
+		ReviewFixture{'good_capturing_fn_literal_inner_shadow', 'fn plain() int {\n\treturn 3\n}\n\nfn make(x int) fn () int {\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t\t_ = cb\n\t}\n\tcb := plain\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make(0)()))\n\tprintln(int_str(make(5)()))\n}\n', '3\n3'},
+		ReviewFixture{'good_lambda_capturing_fn_literal_shadow', 'fn plain() int {\n\treturn 4\n}\n\nfn apply(cb fn (int) int) int {\n\treturn cb(1)\n}\n\nfn make() fn () int {\n\tcb := plain\n\t_ = apply(|n| if n > 0 {\n\t\tcb := fn [n] () int {\n\t\t\treturn n\n\t\t}\n\t\t_ = cb\n\t\tn\n\t} else {\n\t\tn\n\t})\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make()()))\n}\n', '4'},
+		ReviewFixture{'outer_capturing_alias_survives_inner_shadow', 'fn make(x int) fn () int {\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\treturn cb\n}\nfn main() {\n\tprintln(int_str(make(5)()))\n}\n', '5'},
 	])
 	out := run_good(v3_bin, 'heap_method_value_and_translated_const', '@[translated]
 module main
@@ -1020,14 +1169,6 @@ fn test_option_result_return_and_expression_rejections() {
 	])
 }
 
-fn test_result_returns_and_or_fallbacks() {
-	check_review_runtime('result_returns_and_or_fallbacks', [
-		ReviewFixture{'good_constant_error_branch_in_result_return', "fn make_result() !int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := make_result() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", 'bad'},
-		ReviewFixture{'good_error_branch_in_result_return', "fn make_result(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(make_result(false) or { -1 }))\n\tprintln(int_str(make_result(true) or { -1 }))\n}\n", '1\n-1'},
-		ReviewFixture{'good_map_or_and_unwrapped_string_concat', "fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\tnames := {\n\t\t'first': 'Grace'\n\t}\n\tprintln(names['first'] or { 'unknown' })\n\tprintln('hello ' + (maybe_name() or { 'unknown' }))\n}\n", 'Grace\nhello Ada'},
-	])
-}
-
 fn test_assignment_selector_diagnostic_accepts_wide_columns() {
 	indent := ' '.repeat(32768)
 	run_bad(v3_bin, 'wide_assignment_selector_diagnostic', 'struct Holder {
@@ -1083,8 +1224,8 @@ fn main() {}
 	])
 }
 
-fn test_structured_returns_and_match_fallback() {
-	check_review_runtime('structured_returns_and_match_fallback', [
+fn test_control_flow_returns_and_abi_wrappers() {
+	check_review_runtime('control_flow_returns_and_abi_wrappers', [
 		ReviewFixture{'receiver_method_tail_multi_return', 'struct Receiver {}\n\nfn pair() (int, int) {\n\treturn 2, 3\n}\n\nfn (receiver Receiver) use(a int, b int) int {\n\treturn a * 10 + b\n}\n\nfn (receiver Receiver) use_with_prefix(prefix int, a int, b int) int {\n\treturn prefix * 100 + a * 10 + b\n}\n\nfn main() {\n\tprintln(int_str(Receiver{}.use(pair())))\n\tprintln(int_str(Receiver{}.use_with_prefix(1, pair())))\n}\n', '23\n123'},
 		ReviewFixture{'good_multi_return_if_pointer_value_tail', 'struct S {\n\tn int\n}\nfn pick(ok bool) (S, int) {\n\ts := S{\n\t\tn: 5\n\t}\n\treturn if ok {\n\t\t&s\n\t\t1\n\t} else {\n\t\t&s\n\t\t2\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a.n) + "," + int_str(b))\n}\n', '5,2'},
 		ReviewFixture{'assignment_or_nested_match_returns', 'struct NestedFallbackAnswer {
@@ -1118,6 +1259,12 @@ fn main() {
 	println(answer.values[0])
 }
 ', 'handled'},
+		ReviewFixture{'good_panic_satisfies_return_analysis', "fn choose(ok bool) string {\n\tif ok {\n\t\treturn 'ok'\n\t}\n\tpanic('unreachable')\n}\n\nfn pick(ok bool) int {\n\tif ok {\n\t\treturn 7\n\t}\n\treturn panic('unreachable')\n}\n\nfn main() {\n\tprintln(choose(true))\n\tprintln(int_str(pick(true)))\n}\n", 'ok\n7'},
+		ReviewFixture{'good_parenthesized_panic_satisfies_return_codegen', "fn f(ok bool) int {\n\tif ok {\n\t\treturn 9\n\t}\n\treturn (panic('x'))\n}\nfn main() {\n\tprintln(int_str(f(true)))\n}\n", '9'},
+		ReviewFixture{'good_declared_c_exit_satisfies_return_analysis', 'fn C.exit(code int)\nfn f(ok bool) int {\n\tif ok {\n\t\treturn 7\n\t}\n\treturn C.exit(1)\n}\nfn main() {\n\tprintln(int_str(f(true)))\n}\n', '7'},
+		ReviewFixture{'good_receiver_exit_return_value', 'struct Plugin {}\nfn (p Plugin) exit() int {\n\treturn 9\n}\nfn f(plugin Plugin) int {\n\treturn plugin.exit()\n}\nfn main() {\n\tprintln(int_str(f(Plugin{})))\n}\n', '9'},
+		ReviewFixture{'good_fixed_array_return_panic_abi_wrapper', "import os\nfn f() [3]int {\n\treturn panic('x')\n}\nfn main() {\n\tif os.args.len == -1 {\n\t\tarr := f()\n\t\tprintln(int_str(arr[0]))\n\t}\n}\n", ''},
+		ReviewFixture{'good_fn_return_panic_abi_typedef', "import os\nfn f() fn () int {\n\treturn panic('x')\n}\nfn main() {\n\tif os.args.len == -1 {\n\t\tcb := f()\n\t\tprintln(int_str(cb()))\n\t}\n}\n", ''},
 	])
 }
 
@@ -1138,91 +1285,10 @@ fn test_if_expr_pointer_and_value_branches_are_incompatible() {
 		'mismatched types `Foo` and `&Foo`')
 }
 
-fn test_interface_and_voidptr_arguments() {
-	check_review_runtime('interface_and_voidptr_arguments', [
+fn test_receiver_and_interface_arguments() {
+	check_review_runtime('receiver_and_interface_arguments', [
 		ReviewFixture{'good_exact_interface_method_param', 'interface Base {\n\tbase() int\n}\n\ninterface Handler {\n\thandle(value Base) int\n}\n\nstruct Value {}\n\nfn (v Value) base() int {\n\treturn 7\n}\n\nstruct Service {}\n\nfn (s Service) handle(value Base) int {\n\treturn value.base()\n}\n\nfn main() {\n\tprintln(Handler(Service{}).handle(Base(Value{})))\n}\n', '7'},
 		ReviewFixture{'good_voidptr_pointer_arg', 'fn f(p voidptr) int {\n\t_ = p\n\treturn 7\n}\n\nfn main() {\n\tx := 1\n\tprintln(int_str(f(&x)))\n}\n', '7'},
-	])
-}
-
-fn test_synthetic_str_and_hex_method_rejections() {
-	check_review_rejections('synthetic_str_and_hex_method_rejections', [
-		ReviewFixture{'bad_implicit_str_sum_interface', 'interface Printable {\n\tstr() string\n}\ntype Value = int | string\nfn main() {\n\t_ := Printable(Value(1))\n}\n', 'does not implement interface'},
-		ReviewFixture{'bad_implicit_str_fn_alias_interface', 'interface Printable {\n\tstr() string\n}\ntype Callback = fn ()\nfn noop() {}\nfn main() {\n\tcb := Callback(noop)\n\t_ := Printable(cb)\n}\n', 'cannot implement interface `bad_implicit_str_fn_alias_interface.Printable` using function'},
-		ReviewFixture{'bad_struct_hex_method', 'struct S {}\nfn main() {\n\t_ := S{}.hex()\n}\n', 'unknown function'},
-		ReviewFixture{'bad_int_array_hex_method', 'fn main() {\n\t_ := [1, 2].hex()\n}\n', 'unknown function'},
-		ReviewFixture{'bad_map_hex_method', 'fn main() {\n\tm := map[string]int{}\n\t_ := m.hex()\n}\n', 'unknown function'},
-		ReviewFixture{'bad_float_hex_method', 'fn main() {\n\t_ := f32(1.5).hex()\n}\n', 'unknown function'},
-		ReviewFixture{'bad_pointer_hex_method', 'fn main() {\n\tx := 1\n\tp := &x\n\t_ := p.hex()\n}\n', 'unknown function'},
-		ReviewFixture{'bad_numeric_hex_arg', 'fn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := u8(1).hex(side_effect())\n}\n', 'expected 0 arguments, but got 1'},
-		ReviewFixture{'bad_auto_str_arg', 'struct S {\n\tx int\n}\n\nfn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := S{\n\t\tx: 1\n\t}.str(side_effect())\n}\n', 'expected 0 arguments, but got 1'},
-	])
-}
-
-fn test_synthetic_receiver_dispatch_runtime() {
-	check_review_runtime('synthetic_receiver_dispatch_runtime', [
-		ReviewFixture{'good_rune_receiver_methods', 'fn main() {\n\tr := `★`\n\tprintln(int_str(`A`.length_in_bytes()))\n\tprintln(int_str(r.bytes().len))\n\tprintln(`c`.to_upper().str())\n}\n', '1\n3\nC'},
-		ReviewFixture{'supported_hex_methods', "fn main() {\n\tprintln(u8(15).hex())\n\tprintln(i64(255).hex())\n\tprintln([u8(1), 15, 255].hex())\n\tprintln(char(65).hex())\n\tprintln(`A`.hex())\n\tprintln('abc'.hex())\n}\n", '0f\nff\n010fff\n41\n41\n616263'},
-		ReviewFixture{'good_pointer_hex_receiver_method', "struct S {\n\tvalue int\n}\n\nfn (s &S) hex() string {\n\treturn 'ptr:' + int_str(s.value)\n}\n\nfn main() {\n\ts := S{\n\t\tvalue: 7\n\t}\n\tp := &s\n\tprintln(p.hex())\n}\n", 'ptr:7'},
-	])
-}
-
-fn test_numeric_and_function_return_type_rejections() {
-	check_review_rejections('numeric_and_function_return_type_rejections', [
-		ReviewFixture{'bad_int_alias_float_variable_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_variable_return.Id` in return argument'},
-		ReviewFixture{'bad_int_alias_float_expression_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x + 1.0\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_expression_return.Id` in return argument'},
-		ReviewFixture{'bad_fn_value_integer_return_abi', 'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n', 'cannot use `fn () u64`'},
-		ReviewFixture{'bad_fn_value_array_return_payload', 'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n', 'cannot use `fn () []int`'},
-	])
-}
-
-fn test_numeric_and_callback_return_types() {
-	check_review_runtime('numeric_and_callback_return_types', [
-		ReviewFixture{'good_float_alias_int_return', 'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n', '1.0'},
-		ReviewFixture{'good_explicit_float_to_int_alias_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn Id(x)\n}\n\nfn main() {\n\tprintln(int_str(f(1.5)))\n}\n', '1'},
-		ReviewFixture{'good_fn_value_matching_integer_return_abi', 'fn letter() rune {\n\treturn `A`\n}\n\nfn invoke(callback fn () u32) u32 {\n\treturn callback()\n}\n\nfn main() {\n\tprintln(int_str(int(invoke(letter))))\n}\n', '65'},
-		ReviewFixture{'good_overloaded_power', 'struct Exponent {
-	value int
-}
-
-fn (a Exponent) ** (b Exponent) Exponent {
-	return Exponent{
-		value: a.value * b.value
-	}
-}
-
-fn main() {
-	value := Exponent{
-		value: 2
-	} ** Exponent{
-		value: 3
-	}
-	println(int_str(value.value))
-}
-', '6'},
-	])
-}
-
-fn test_nested_and_generic_alias_runtime() {
-	check_review_runtime('nested_and_generic_alias_runtime', [
-		ReviewFixture{'good_alias_nested_type_separator', 'type Bits = [1 | 2]int\n\nfn values() Bits {\n\treturn [1, 2, 3]!\n}\n\nfn main() {\n\tbits := values()\n\tprintln(int_str(bits[0] + bits[1] + bits[2]))\n}\n', '6'},
-		ReviewFixture{'generic_channel_alias_element', 'type Ch[T] = chan T
-
-fn receive(ch Ch[int]) int {
-	return <-ch
-}
-
-fn main() {
-	ch := chan int{cap: 1}
-	ch <- 42
-	println(int_str(receive(ch)))
-}
-', '42'},
-	])
-}
-
-fn test_receiver_and_reference_arguments() {
-	check_review_runtime('receiver_and_reference_arguments', [
 		ReviewFixture{'good_mut_receiver_immutable_pointer_binding', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
 		ReviewFixture{'good_shared_arg_and_receiver', 'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(shared s) + s.f()))\n}\n', '3'},
 		ReviewFixture{'good_mut_receiver_mutable_value', 'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n', '1'},
@@ -1285,6 +1351,59 @@ false
 	])
 }
 
+fn test_synthetic_str_and_hex_method_rejections() {
+	check_review_rejections('synthetic_str_and_hex_method_rejections', [
+		ReviewFixture{'bad_implicit_str_sum_interface', 'interface Printable {\n\tstr() string\n}\ntype Value = int | string\nfn main() {\n\t_ := Printable(Value(1))\n}\n', 'does not implement interface'},
+		ReviewFixture{'bad_implicit_str_fn_alias_interface', 'interface Printable {\n\tstr() string\n}\ntype Callback = fn ()\nfn noop() {}\nfn main() {\n\tcb := Callback(noop)\n\t_ := Printable(cb)\n}\n', 'cannot implement interface `bad_implicit_str_fn_alias_interface.Printable` using function'},
+		ReviewFixture{'bad_struct_hex_method', 'struct S {}\nfn main() {\n\t_ := S{}.hex()\n}\n', 'unknown function'},
+		ReviewFixture{'bad_int_array_hex_method', 'fn main() {\n\t_ := [1, 2].hex()\n}\n', 'unknown function'},
+		ReviewFixture{'bad_map_hex_method', 'fn main() {\n\tm := map[string]int{}\n\t_ := m.hex()\n}\n', 'unknown function'},
+		ReviewFixture{'bad_float_hex_method', 'fn main() {\n\t_ := f32(1.5).hex()\n}\n', 'unknown function'},
+		ReviewFixture{'bad_pointer_hex_method', 'fn main() {\n\tx := 1\n\tp := &x\n\t_ := p.hex()\n}\n', 'unknown function'},
+		ReviewFixture{'bad_numeric_hex_arg', 'fn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := u8(1).hex(side_effect())\n}\n', 'expected 0 arguments, but got 1'},
+		ReviewFixture{'bad_auto_str_arg', 'struct S {\n\tx int\n}\n\nfn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := S{\n\t\tx: 1\n\t}.str(side_effect())\n}\n', 'expected 0 arguments, but got 1'},
+	])
+}
+
+fn test_numeric_returns_and_synthetic_receivers() {
+	check_review_runtime('numeric_returns_and_synthetic_receivers', [
+		ReviewFixture{'good_rune_receiver_methods', 'fn main() {\n\tr := `★`\n\tprintln(int_str(`A`.length_in_bytes()))\n\tprintln(int_str(r.bytes().len))\n\tprintln(`c`.to_upper().str())\n}\n', '1\n3\nC'},
+		ReviewFixture{'supported_hex_methods', "fn main() {\n\tprintln(u8(15).hex())\n\tprintln(i64(255).hex())\n\tprintln([u8(1), 15, 255].hex())\n\tprintln(char(65).hex())\n\tprintln(`A`.hex())\n\tprintln('abc'.hex())\n}\n", '0f\nff\n010fff\n41\n41\n616263'},
+		ReviewFixture{'good_pointer_hex_receiver_method', "struct S {\n\tvalue int\n}\n\nfn (s &S) hex() string {\n\treturn 'ptr:' + int_str(s.value)\n}\n\nfn main() {\n\ts := S{\n\t\tvalue: 7\n\t}\n\tp := &s\n\tprintln(p.hex())\n}\n", 'ptr:7'},
+		ReviewFixture{'good_float_alias_int_return', 'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n', '1.0'},
+		ReviewFixture{'good_explicit_float_to_int_alias_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn Id(x)\n}\n\nfn main() {\n\tprintln(int_str(f(1.5)))\n}\n', '1'},
+		ReviewFixture{'good_fn_value_matching_integer_return_abi', 'fn letter() rune {\n\treturn `A`\n}\n\nfn invoke(callback fn () u32) u32 {\n\treturn callback()\n}\n\nfn main() {\n\tprintln(int_str(int(invoke(letter))))\n}\n', '65'},
+		ReviewFixture{'good_overloaded_power', 'struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * b.value
+	}
+}
+
+fn main() {
+	value := Exponent{
+		value: 2
+	} ** Exponent{
+		value: 3
+	}
+	println(int_str(value.value))
+}
+', '6'},
+	])
+}
+
+fn test_numeric_and_function_return_type_rejections() {
+	check_review_rejections('numeric_and_function_return_type_rejections', [
+		ReviewFixture{'bad_int_alias_float_variable_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_variable_return.Id` in return argument'},
+		ReviewFixture{'bad_int_alias_float_expression_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x + 1.0\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_expression_return.Id` in return argument'},
+		ReviewFixture{'bad_fn_value_integer_return_abi', 'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n', 'cannot use `fn () u64`'},
+		ReviewFixture{'bad_fn_value_array_return_payload', 'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n', 'cannot use `fn () []int`'},
+	])
+}
+
 fn test_collection_call_argument_rejections() {
 	check_review_rejections('collection_call_argument_rejections', [
 		ReviewFixture{'bad_map_keys_arg', 'fn main() {\n\tm := map[string]int{}\n\t_ := m.keys(123)\n}\n', '`.keys()` does not have any arguments'},
@@ -1303,41 +1422,6 @@ fn test_collection_call_argument_rejections() {
 	])
 }
 
-fn test_mutable_collection_clone_runtime() {
-	check_review_runtime('mutable_collection_clone_runtime', [
-		ReviewFixture{'good_array_clone_ignores_void_array_receiver', 'type Voids = []void\n\nfn (xs Voids) clone() int {\n\treturn 7\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tcloned := nums.clone()\n\tprintln(int_str(cloned.len + cloned[2]))\n}\n', '6'},
-		ReviewFixture{'good_mutable_array_field_clone', 'struct Holder {
-	items []int
-}
-
-fn main() {
-	holder := Holder{
-		items: [1]
-	}
-	mut copy := holder.items.clone()
-	copy << 2
-	println(int_str(copy.len))
-	println(int_str(holder.items.len))
-}
-', '2\n1'},
-		ReviewFixture{'good_mutable_map_clone', "fn clone_and_extend(source map[string]bool) int {
-	mut cloned := source.clone()
-	cloned['new'] = true
-	return cloned.len
-}
-
-fn main() {
-	source := {
-		'old': true
-	}
-	println(int_str(clone_and_extend(source)))
-	println(int_str(source.len))
-}
-", '2\n1'},
-		ReviewFixture{'good_array_insert_prepend_many_operands', "type Strings = []string\n\nfn main() {\n\tmut a := [3, 4]\n\ta.insert(0, [1, 2])\n\tb := [5, 6]\n\ta.insert(1, b)\n\ta.prepend([0])\n\tfixed := [7, 8]!\n\ta.insert(a.len, fixed)\n\tassert a == [0, 1, 5, 6, 2, 3, 4, 7, 8]\n\tmut strs := Strings(['hi'])\n\tstrs.insert(0, ['there'])\n\tstrs.prepend(['hello'])\n\tassert strs == ['hello', 'there', 'hi']\n\tprintln('ok')\n}\n", 'ok'},
-	])
-}
-
 fn test_comptime_condition_and_match_rejections() {
 	check_review_rejections('comptime_condition_and_match_rejections', [
 		ReviewFixture{'bad_concrete_comptime_if_selected_call', 'fn main() {\n\t$if int is int {\n\t\tmissing_selected_symbol()\n\t}\n}\n', 'unknown function: missing_selected_symbol'},
@@ -1346,161 +1430,15 @@ fn test_comptime_condition_and_match_rejections() {
 	])
 }
 
-fn test_comptime_and_explicit_generics() {
-	check_review_runtime('comptime_and_explicit_generics', [
+fn test_comptime_and_name_resolution() {
+	check_review_runtime('comptime_and_name_resolution', [
 		ReviewFixture{'good_generic_comptime_if_unselected_branch_is_not_checked', "fn ok() {}\n\nfn f[T]() {\n\t$if T is int {\n\t\tok()\n\t} $else {\n\t\tonly_for_other_t()\n\t}\n}\n\nfn main() {\n\tf[int]()\n\tprintln('ok')\n}\n", 'ok'},
 		ReviewFixture{'good_comptime_match_known_local', "fn main() {\n\tmode := 'b'\n\t\$match mode {\n\t\t'b' { println('ok') }\n\t\t\$else { println('bad') }\n\t}\n}\n", 'ok'},
 		ReviewFixture{'good_comptime_match_generic_parameter_type', "fn classify[T](value T) string {\n\t\$match value {\n\t\tint { return 'int' }\n\t\t\$else { return 'other' }\n\t}\n}\n\nfn main() {\n\tprintln(classify(1))\n}\n", 'int'},
 		ReviewFixture{'good_multi_explicit_generic_call', "struct Pair[A, B] {\n\tleft  A\n\tright B\n}\n\nfn make_pair[A, B]() Pair[A, B] {\n\treturn Pair[A, B]{}\n}\n\nfn expect_pair(p Pair[int, string]) string {\n\treturn 'ok'\n}\n\nfn main() {\n\tp := make_pair[int, string]()\n\tprintln(expect_pair(p))\n}\n", 'ok'},
 		ReviewFixture{'good_nested_explicit_generic_call', "struct Pair[A, B] {\n\tleft  A\n\tright B\n}\n\nstruct Box[T] {\n\tvalue T\n}\n\nfn wrap[T]() Box[T] {\n\treturn Box[T]{}\n}\n\nfn expect_box(b Box[Pair[int, string]]) string {\n\treturn 'ok'\n}\n\nfn main() {\n\tb := wrap[Pair[int, string]]()\n\tprintln(expect_box(b))\n}\n", 'ok'},
-	])
-}
-
-fn test_escaping_capturing_fn_literals_use_runtime_closures() {
-	check_review_runtime('closure_capture_and_shadowing', [
-		ReviewFixture{'return_capturing_fn_literal', 'fn make(x int) fn () int {
-	return fn [x] () int {
-		return x
-	}
-}
-fn main() {
-	assert make(7)() == 7
-}
-', ''},
-		ReviewFixture{'return_capturing_fn_literal_alias', 'fn make(x int) fn () int {
-	f := fn [x] () int {
-		return x
-	}
-	return f
-}
-fn main() {
-	assert make(7)() == 7
-}
-', ''},
-		ReviewFixture{'struct_field_capturing_fn_literal', 'struct Holder {
-	cb fn () int
-}
-fn make(x int) Holder {
-	return Holder{
-		cb: fn [x] () int {
-			return x
-		}
-	}
-}
-fn main() {
-	holder := make(7)
-	assert holder.cb() == 7
-}
-', ''},
-		ReviewFixture{'struct_field_capturing_fn_literal_alias', 'struct Holder {
-	cb fn () int
-}
-fn make(x int) Holder {
-	f := fn [x] () int {
-		return x
-	}
-	return Holder{
-		cb: f
-	}
-}
-fn main() {
-	holder := make(7)
-	assert holder.cb() == 7
-}
-', ''},
-		ReviewFixture{'good_capturing_fn_literal_inner_shadow', 'fn plain() int {\n\treturn 3\n}\n\nfn make(x int) fn () int {\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t\t_ = cb\n\t}\n\tcb := plain\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make(0)()))\n\tprintln(int_str(make(5)()))\n}\n', '3\n3'},
-		ReviewFixture{'good_lambda_capturing_fn_literal_shadow', 'fn plain() int {\n\treturn 4\n}\n\nfn apply(cb fn (int) int) int {\n\treturn cb(1)\n}\n\nfn make() fn () int {\n\tcb := plain\n\t_ = apply(|n| if n > 0 {\n\t\tcb := fn [n] () int {\n\t\t\treturn n\n\t\t}\n\t\t_ = cb\n\t\tn\n\t} else {\n\t\tn\n\t})\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make()()))\n}\n', '4'},
-		ReviewFixture{'outer_capturing_alias_survives_inner_shadow', 'fn make(x int) fn () int {\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\treturn cb\n}\nfn main() {\n\tprintln(int_str(make(5)()))\n}\n', '5'},
-	])
-}
-
-fn test_sum_smartcast_runtime_paths() {
-	check_review_runtime('sum_smartcast_runtime_paths', [
-		ReviewFixture{'good_smartcasted_unique_sum_field', 'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype Kind = A | B\nfn main() {\n\tk := Kind(A{\n\t\tonly_on_a: 7\n\t})\n\tif k is A {\n\t\tprintln(int_str(k.only_on_a))\n\t}\n}\n', '7'},
-		ReviewFixture{'good_smartcasted_fn_sum_variant_arity', 'type Callback = fn () int | fn (int) int
-
-fn with_arg(value int) int {
-	return value
-}
-
-fn invoke(cb Callback) int {
-	if cb is fn (int) int {
-		return cb(7)
-	}
-	return 0
-}
-
-fn main() {
-	println(int_str(invoke(Callback(with_arg))))
-}
-', '7'},
-		ReviewFixture{'smartcast_receiver_method_paths', 'struct Leaf {}
-
-struct Container {
-	left &Expr
-}
-
-struct Assignment {
-mut:
-	left []Expr
-}
-
-struct EmptyStmt {}
-
-type Expr = Container | Leaf
-type Stmt = Assignment | EmptyStmt
-
-struct Branch {
-mut:
-	stmt Stmt
-}
-
-fn (expr Expr) pos() int {
-	return 7
-}
-
-fn (leaf &Leaf) is_mut() bool {
-	return true
-}
-
-fn main() {
-	container_expr := Expr(Container{
-		left: &Expr(Leaf{})
-	})
-	if container_expr is Container && (container_expr as Container).left is Leaf {
-		println((container_expr as Container).left.is_mut())
-	}
-	mut branch := Branch{
-		stmt: Stmt(Assignment{
-			left: [Expr(Leaf{})]
-		})
-	}
-	match mut branch.stmt {
-		Assignment {
-			if mut branch.stmt.left[0] is Leaf {
-				println(branch.stmt.left[0].pos())
-			}
-		}
-		else {}
-	}
-}
-', 'true
-7'},
-		ReviewFixture{'pointer_sum_type_pattern_membership', 'struct First {}
-
-struct Second {}
-
-type Node = First | Second
-
-fn accepts(node &Node) bool {
-	return node in [First, Second]
-}
-
-fn main() {
-	mut node := Node(First{})
-	println(accepts(&node))
-}
-', 'true'},
+		ReviewFixture{'good_const_shadowed_by_param_and_local', "const shadowed_value = 'const'\n\nfn param_shadow(shadowed_value int) int {\n\treturn shadowed_value + 1\n}\n\nfn local_shadow() int {\n\tshadowed_value := 2\n\treturn shadowed_value + 1\n}\n\nfn main() {\n\tprintln(int_str(param_shadow(1)))\n\tprintln(int_str(local_shadow()))\n\tprintln(shadowed_value)\n}\n", '2\n3\nconst'},
+		ReviewFixture{'builtin_fn_unrelated_const_suffix', 'import math\nfn main() {\n\t_ = math.pi\n\tprintln(f32(1).eq_epsilon(f32(1)))\n}\n', 'true'},
 	])
 }
 
@@ -1537,17 +1475,6 @@ fn test_called_generic_functions_report_missing_return() {
 	run_bad(v3_bin, 'bad_generic_comptime_branch_missing_return',
 		'fn f[T]() int {\n\t$if T is int {\n\t\treturn 1\n\t}\n}\nfn main() {\n\t_ := f[string]()\n}\n',
 		'missing return at end of function `f`')
-}
-
-fn test_no_return_analysis_and_abi_wrappers() {
-	check_review_runtime('no_return_analysis_and_abi_wrappers', [
-		ReviewFixture{'good_panic_satisfies_return_analysis', "fn choose(ok bool) string {\n\tif ok {\n\t\treturn 'ok'\n\t}\n\tpanic('unreachable')\n}\n\nfn pick(ok bool) int {\n\tif ok {\n\t\treturn 7\n\t}\n\treturn panic('unreachable')\n}\n\nfn main() {\n\tprintln(choose(true))\n\tprintln(int_str(pick(true)))\n}\n", 'ok\n7'},
-		ReviewFixture{'good_parenthesized_panic_satisfies_return_codegen', "fn f(ok bool) int {\n\tif ok {\n\t\treturn 9\n\t}\n\treturn (panic('x'))\n}\nfn main() {\n\tprintln(int_str(f(true)))\n}\n", '9'},
-		ReviewFixture{'good_declared_c_exit_satisfies_return_analysis', 'fn C.exit(code int)\nfn f(ok bool) int {\n\tif ok {\n\t\treturn 7\n\t}\n\treturn C.exit(1)\n}\nfn main() {\n\tprintln(int_str(f(true)))\n}\n', '7'},
-		ReviewFixture{'good_receiver_exit_return_value', 'struct Plugin {}\nfn (p Plugin) exit() int {\n\treturn 9\n}\nfn f(plugin Plugin) int {\n\treturn plugin.exit()\n}\nfn main() {\n\tprintln(int_str(f(Plugin{})))\n}\n', '9'},
-		ReviewFixture{'good_fixed_array_return_panic_abi_wrapper', "import os\nfn f() [3]int {\n\treturn panic('x')\n}\nfn main() {\n\tif os.args.len == -1 {\n\t\tarr := f()\n\t\tprintln(int_str(arr[0]))\n\t}\n}\n", ''},
-		ReviewFixture{'good_fn_return_panic_abi_typedef', "import os\nfn f() fn () int {\n\treturn panic('x')\n}\nfn main() {\n\tif os.args.len == -1 {\n\t\tcb := f()\n\t\tprintln(int_str(cb()))\n\t}\n}\n", ''},
-	])
 }
 
 fn test_builtin_panic_auto_stringifies_nested_generic_struct_during_static_checks() {
@@ -1591,13 +1518,6 @@ fn test_shadowed_exit_and_panic_rejections() {
 		ReviewFixture{'bad_nested_shadowed_exit_multi_return_branch', 'fn main() {\n\tflag := true\n\ta, b := if flag {\n\t\t1, 2\n\t} else {\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n', 'multi-return assignment mismatch'},
 		ReviewFixture{'bad_shadowed_import_os_exit_missing_return', 'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) {}\nfn f(os OsLike) int {\n\tos.exit(0)\n}\nfn main() {}\n', 'missing return at end of function `f`'},
 		ReviewFixture{'bad_shadowed_os_exit_return_value', 'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) int {\n\treturn code + 1\n}\nfn f(os OsLike) int {\n\treturn os.exit(4)\n}\nfn main() {\n\tprintln(int_str(f(OsLike{})))\n}\n', 'duplicate of an import symbol `os`'},
-	])
-}
-
-fn test_local_and_builtin_name_resolution() {
-	check_review_runtime('local_and_builtin_name_resolution', [
-		ReviewFixture{'good_const_shadowed_by_param_and_local', "const shadowed_value = 'const'\n\nfn param_shadow(shadowed_value int) int {\n\treturn shadowed_value + 1\n}\n\nfn local_shadow() int {\n\tshadowed_value := 2\n\treturn shadowed_value + 1\n}\n\nfn main() {\n\tprintln(int_str(param_shadow(1)))\n\tprintln(int_str(local_shadow()))\n\tprintln(shadowed_value)\n}\n", '2\n3\nconst'},
-		ReviewFixture{'builtin_fn_unrelated_const_suffix', 'import math\nfn main() {\n\t_ = math.pi\n\tprintln(f32(1).eq_epsilon(f32(1)))\n}\n', 'true'},
 	])
 }
 
@@ -1746,7 +1666,7 @@ fn main() {
 }
 
 fn test_vexeroot_insert_and_generated_function_name_exemptions() {
-	check_review_runtime('insert_generic_runtime', [
+	check_review_runtime('collection_mutation_and_generic_lowering', [
 		ReviewFixture{'good_vexeroot_insert_outside_vlib', '#insert "@VEXEROOT/vlib/v/compiler_tests/testdata/vexeroot_insert.h"
 
 fn C.v3_vexeroot_insert_value() int
@@ -1763,6 +1683,36 @@ fn main() {
 	println(int_str(identity[int](7)))
 }
 ', '7'},
+		ReviewFixture{'good_array_clone_ignores_void_array_receiver', 'type Voids = []void\n\nfn (xs Voids) clone() int {\n\treturn 7\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tcloned := nums.clone()\n\tprintln(int_str(cloned.len + cloned[2]))\n}\n', '6'},
+		ReviewFixture{'good_mutable_array_field_clone', 'struct Holder {
+	items []int
+}
+
+fn main() {
+	holder := Holder{
+		items: [1]
+	}
+	mut copy := holder.items.clone()
+	copy << 2
+	println(int_str(copy.len))
+	println(int_str(holder.items.len))
+}
+', '2\n1'},
+		ReviewFixture{'good_mutable_map_clone', "fn clone_and_extend(source map[string]bool) int {
+	mut cloned := source.clone()
+	cloned['new'] = true
+	return cloned.len
+}
+
+fn main() {
+	source := {
+		'old': true
+	}
+	println(int_str(clone_and_extend(source)))
+	println(int_str(source.len))
+}
+", '2\n1'},
+		ReviewFixture{'good_array_insert_prepend_many_operands', "type Strings = []string\n\nfn main() {\n\tmut a := [3, 4]\n\ta.insert(0, [1, 2])\n\tb := [5, 6]\n\ta.insert(1, b)\n\ta.prepend([0])\n\tfixed := [7, 8]!\n\ta.insert(a.len, fixed)\n\tassert a == [0, 1, 5, 6, 2, 3, 4, 7, 8]\n\tmut strs := Strings(['hi'])\n\tstrs.insert(0, ['there'])\n\tstrs.prepend(['hello'])\n\tassert strs == ['hello', 'there', 'hi']\n\tprintln('ok')\n}\n", 'ok'},
 	])
 	run_bad(v3_bin, 'bad_source_function_name_with_generic_marker', 'fn bad_T_Name() {}
 
