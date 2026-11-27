@@ -218,20 +218,31 @@ fn main() {
 	assert out == 'true'
 }
 
-fn test_array_method_on_imported_global_keeps_global_type() {
+fn test_array_constants_and_globals() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'array_method_on_imported_global', 'import os
+	run_good_module_batch(v3_bin, 'array_constants_and_globals', [
+		TransformFixture{'array_method_on_imported_global', 'import os
 
 fn main() {
 	println(os.args.last().len > 0)
 }
-')
-	assert out == 'true'
+', 'true'},
+		TransformFixture{'const_array_line_comments', 'const xs = [\n\t1\n\t// one\n\t2\n\t// two\n\t3\n]\n\nfn main() {\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[1]))\n}\n', '3\n2'},
+		TransformFixture{'module_local_const_array_struct_types', 'import encoding.utf8
+import hash.crc32
+
+fn main() {
+	_ := crc32.sum([u8(1), 2, 3])
+	println(utf8.is_number(`7`))
+}
+', 'true'},
+	])
 }
 
-fn test_explicit_generic_call_keeps_container_and_imported_struct_types() {
+fn test_generic_result_contexts() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'explicit_generic_call_result_context', 'import time
+	run_good_module_batch(v3_bin, 'generic_result_contexts', [
+		TransformFixture{'explicit_generic_call_result_context', 'import time
 
 fn identity[T](value T) T {
 	return value
@@ -258,8 +269,39 @@ fn main() {
 	println(typeof(box.value).name)
 	println(typeof(generic_map[string]()).name)
 }
-')
-	assert out == 'yes\n2024\nint\nmap[string]string'
+', 'yes\n2024\nint\nmap[string]string'},
+		TransformFixture{'specialized_generic_match_expression_type', "type Value = []u8 | i64 | string
+
+struct Reader {}
+
+fn (Reader) load[T]() !map[string]T {
+	\$if T is string {
+		return {
+			'answer': 'ready'
+		}
+	}
+	return map[string]T{}
+}
+
+fn normalize[T](value Value) T {
+	\$if T is string {
+		result := match value {
+			[]u8 { value.bytestr() }
+			string { value }
+			i64 { value.str() }
+		}
+		return result
+	}
+	return T{}
+}
+
+fn main() {
+	println(normalize[string](Value('ready')))
+	result := Reader{}.load[string]() or { panic(err) }
+	println(result['answer'])
+}
+", 'ready\nready'},
+	])
 }
 
 fn test_sum_equality_uses_canonical_struct_field_types() {
@@ -1213,10 +1255,21 @@ fn main() {
 	])
 }
 
-fn test_folded_string_constant_ifs_keep_branch_scopes() {
+fn test_folded_expression_scopes() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'folded_string_constant_if_branch_scopes', "fn main() {\n\tif 'left' == 'left' {\n\t\tx := 20\n\t\tprintln(int_str(x))\n\t}\n\tif 'right' == 'right' {\n\t\tx := 22\n\t\tprintln(int_str(x))\n\t}\n}\n")
-	assert out == '20\n22'
+	run_good_module_batch(v3_bin, 'folded_expression_scopes', [
+		TransformFixture{'folded_string_constant_if_branch_scopes', "fn main() {\n\tif 'left' == 'left' {\n\t\tx := 20\n\t\tprintln(int_str(x))\n\t}\n\tif 'right' == 'right' {\n\t\tx := 22\n\t\tprintln(int_str(x))\n\t}\n}\n", '20\n22'},
+		TransformFixture{'selected_comptime_block_value_tail', "fn main() {
+	value := if true {
+		\$if msvc { 'msvc' } \$else { 'other' }
+	} else {
+		''
+	}
+	println(value)
+}
+", 'other'},
+		TransformFixture{'nested_string_interpolation', "fn main() {\n\tvalue := 'ok'\n\tprintln('outer \${if value.len > 0 { 'inner \${value}' } else { 'empty' }} done')\n}\n", 'outer inner ok done'},
+	])
 }
 
 fn test_import_aliased_variadic_call_uses_exact_module() {
@@ -1565,15 +1618,11 @@ fn test_nested_inferred_fixed_array_literal_parses() {
 	run_bad(v3_bin, 'ragged_nested_inferred_fixed_array_literal', 'fn main() {\n\t_ := [..][..]int[[1], [2, 3]]\n}\n', 'inferred fixed-array literal rows must have the same size')
 }
 
-fn test_shared_field_without_sync_import_compiles_and_locks() {
+fn test_shared_fields_and_mutating_methods() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'shared_field_without_sync_import', 'struct S {\nmut:\n\ta shared int\n}\n\nfn main() {\n\tmut s := S{}\n\tlock s.a {\n\t\ts.a = 7\n\t\tprintln(int_str(s.a))\n\t}\n}\n')
-	assert out == '7'
-}
-
-fn test_direct_shared_field_lock_allows_mut_receiver_and_branch_tail_append() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'direct_shared_lock_mut_receiver_and_append', 'struct State {
+	run_good_module_batch(v3_bin, 'shared_fields_and_mutating_methods', [
+		TransformFixture{'shared_field_without_sync_import', 'struct S {\nmut:\n\ta shared int\n}\n\nfn main() {\n\tmut s := S{}\n\tlock s.a {\n\t\ts.a = 7\n\t\tprintln(int_str(s.a))\n\t}\n}\n', '7'},
+		TransformFixture{'direct_shared_lock_mut_receiver_and_append', 'struct State {
 mut:
 	values shared []string
 	count int
@@ -1598,8 +1647,8 @@ fn main() {
 	println(int_str(state.count))
 	println(int_str(len))
 }
-')
-	assert out == '1\n1'
+', '1\n1'},
+	])
 }
 
 fn test_sum_smartcast_scopes() {
@@ -1630,10 +1679,14 @@ fn main() {
 	])
 }
 
-fn test_nested_shared_field_lock_allows_member_access() {
+fn test_nested_shared_field_access() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'nested_shared_field_lock', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut coordinator := Coordinator{}\n\tlock coordinator.state {\n\t\tcoordinator.state.value = 7\n\t}\n\tmut value := 0\n\trlock coordinator.state {\n\t\tvalue = coordinator.state.value\n\t}\n\tprintln(int_str(value))\n}\n')
-	assert out == '7'
+	run_good_module_batch(v3_bin, 'nested_shared_field_access', [
+		TransformFixture{'nested_shared_field_lock', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut coordinator := Coordinator{}\n\tlock coordinator.state {\n\t\tcoordinator.state.value = 7\n\t}\n\tmut value := 0\n\trlock coordinator.state {\n\t\tvalue = coordinator.state.value\n\t}\n\tprintln(int_str(value))\n}\n', '7'},
+		TransformFixture{'nested_shared_field_lock_distinct_literal_index', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut items := [&first, &second]\n\tlock items[0].state {\n\t\titems[1] = &first\n\t\titems[0].state.value = 7\n\t\tprintln(int_str(items[0].state.value))\n\t}\n}\n', '7'},
+		TransformFixture{'nested_shared_field_lock_distinct_explicit_capture_pointer', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tcallback := fn [mut holder, mut unrelated, replacement] () {\n\t\tlock holder.current.state {\n\t\t\tunrelated.current = &replacement\n\t\t\tholder.current.state.value = 31\n\t\t\tprintln(int_str(holder.current.state.value))\n\t\t}\n\t}\n\tcallback()\n}\n', '31'},
+		TransformFixture{'nested_shared_field_lock_distinct_indirect_pointer_write', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut slot := &unrelated\n\tlock holder.current.state {\n\t\tunsafe {\n\t\t\t*slot = &Holder{\n\t\t\t\tcurrent: &replacement\n\t\t\t}\n\t\t}\n\t\tholder.current.state.value = 23\n\t\tprintln(int_str(holder.current.state.value))\n\t}\n}\n', '23'},
+	])
 }
 
 fn test_nested_shared_field_lock_rejects_base_reassignment() {
@@ -1666,8 +1719,6 @@ fn test_nested_shared_field_lock_rejects_aliased_index_mutation() {
 			expected: 'may alias locked shared value `items[0].state`'
 		},
 	])
-	out := run_good(v3_bin, 'nested_shared_field_lock_distinct_literal_index', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut items := [&first, &second]\n\tlock items[0].state {\n\t\titems[1] = &first\n\t\titems[0].state.value = 7\n\t\tprintln(int_str(items[0].state.value))\n\t}\n}\n')
-	assert out == '7'
 }
 
 fn test_nested_shared_field_lock_rejects_promoted_field_alias_mutation() {
@@ -1857,8 +1908,6 @@ fn test_nested_shared_field_lock_treats_lambda_pointer_parameters_as_aliases() {
 fn test_nested_shared_field_lock_preserves_explicit_capture_pointer_aliases() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'nested_shared_field_lock_explicit_capture_pointer_alias_mutation', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := holder\n\tcallback := fn [mut holder, mut alias, replacement] () {\n\t\tlock holder.current.state {\n\t\t\talias.current = &replacement\n\t\t\tholder.current.state.value++\n\t\t}\n\t}\n\tcallback()\n}\n', 'may alias locked shared value `holder.current.state`')
-	out := run_good(v3_bin, 'nested_shared_field_lock_distinct_explicit_capture_pointer', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tcallback := fn [mut holder, mut unrelated, replacement] () {\n\t\tlock holder.current.state {\n\t\t\tunrelated.current = &replacement\n\t\t\tholder.current.state.value = 31\n\t\t\tprintln(int_str(holder.current.state.value))\n\t\t}\n\t}\n\tcallback()\n}\n')
-	assert out == '31'
 }
 
 fn test_nested_shared_field_lock_treats_if_guard_pointer_binding_as_alias() {
@@ -1896,8 +1945,6 @@ fn test_nested_shared_field_lock_tracks_indirect_pointer_writes() {
 			expected: 'may alias locked shared value `holder.current.state`'
 		},
 	])
-	out := run_good(v3_bin, 'nested_shared_field_lock_distinct_indirect_pointer_write', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut slot := &unrelated\n\tlock holder.current.state {\n\t\tunsafe {\n\t\t\t*slot = &Holder{\n\t\t\t\tcurrent: &replacement\n\t\t\t}\n\t\t}\n\t\tholder.current.state.value = 23\n\t\tprintln(int_str(holder.current.state.value))\n\t}\n}\n')
-	assert out == '23'
 }
 
 fn test_nested_shared_field_lock_preserves_labelled_loop_exit_pointer_aliases() {
@@ -2108,12 +2155,6 @@ fn main() {
 }
 ', '42'},
 	])
-}
-
-fn test_const_array_allows_newline_separators_with_line_comments() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'const_array_line_comments', 'const xs = [\n\t1\n\t// one\n\t2\n\t// two\n\t3\n]\n\nfn main() {\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[1]))\n}\n')
-	assert out == '3\n2'
 }
 
 fn test_constant_channel_defaults() {
@@ -5175,10 +5216,35 @@ fn test_array_slice_mutations() {
 	])
 }
 
-fn test_map_keys_and_values_lower_to_runtime_methods() {
+fn test_map_iteration_and_access() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'map_keys_values_lowering', "fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tsingle := {\n\t\t'only': 9\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n\tprintln(int_str(single.keys().len))\n\tprintln(single.keys()[0])\n\tprintln(int_str(single.values().len))\n\tprintln(int_str(single.values()[0]))\n}\n")
-	assert out == '2\n2\n3\n1\nonly\n1\n9'
+	run_good_module_batch(v3_bin, 'map_iteration_and_access', [
+		TransformFixture{'map_keys_values_lowering', "fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tsingle := {\n\t\t'only': 9\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n\tprintln(int_str(single.keys().len))\n\tprintln(single.keys()[0])\n\tprintln(int_str(single.values().len))\n\tprintln(int_str(single.values()[0]))\n}\n", '2\n2\n3\n1\nonly\n1\n9'},
+		TransformFixture{'mut_map_for_in_writeback_continue_break', 'struct Box {
+mut:
+	n int
+}
+
+fn main() {
+	mut items := map[string]Box{}
+	items["a"] = Box{n: 1}
+	items["b"] = Box{n: 2}
+	for _, mut value in items {
+		value.n += 10
+		continue
+	}
+	println(items["a"].n)
+	println(items["b"].n)
+	mut once := map[string]Box{}
+	once["x"] = Box{n: 3}
+	for _, mut value in once {
+		value.n = 9
+		break
+	}
+	println(once["x"].n)
+}
+', '11\n12\n9'},
+	])
 }
 
 fn test_map_numeric_stringification() {
@@ -5231,10 +5297,59 @@ fn test_array_last_index_values() {
 	])
 }
 
-fn test_generic_string_literal_matching_typeof_marker_is_preserved() {
+fn test_comptime_type_inference() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'generic_marker_string_literal', "fn marker_and_type[T](value T) string {\n\tmarker := '__v3_generic_type_name:T'\n\treturn marker + '|' + typeof(value).name\n}\n\nfn main() {\n\tprintln(marker_and_type(7))\n}\n")
-	assert out == '__v3_generic_type_name:T|int'
+	run_good_module_batch(v3_bin, 'comptime_type_inference', [
+		TransformFixture{'generic_marker_string_literal', "fn marker_and_type[T](value T) string {\n\tmarker := '__v3_generic_type_name:T'\n\treturn marker + '|' + typeof(value).name\n}\n\nfn main() {\n\tprintln(marker_and_type(7))\n}\n", '__v3_generic_type_name:T|int'},
+		TransformFixture{'generic_typeof_idx_comparison', 'fn pick_idx[T]() int {
+	$if typeof[T]().idx == typeof[int]().idx {
+		return 42
+	} $else {
+		return T.missing_method()
+	}
+}
+
+fn concrete_idx() int {
+	$if typeof[int]().idx == typeof[int]().idx {
+		return 1
+	} $else {
+		return 2
+	}
+}
+
+fn main() {
+	println(concrete_idx())
+	println(pick_idx[int]())
+}
+', '1\n42'},
+		TransformFixture{'comptime_field_generic_shadowing_local', 'struct Sample {
+	values map[string]int
+}
+
+fn inferred_type[T](value T) string {
+	_ = value
+	return typeof[T]().name
+}
+
+fn main() {
+	sample := Sample{
+		values: {
+			"one": 1
+		}
+	}
+	$for field in Sample.fields {
+		$if field.is_map {
+			for key, value in sample.$(field.name) {
+				_ = key
+				_ = value
+			}
+			key := 1.5
+			println(inferred_type(key))
+		}
+	}
+}
+', 'f64'},
+	])
 }
 
 fn test_parallel_monomorphization_grows_uneven_worker_regions() {
@@ -5407,61 +5522,6 @@ fn main() {
 }
 ')
 	assert out == 'Foo\ntrue\nBar\ntrue'
-}
-
-fn test_generic_typeof_idx_comparison_prunes_dead_branch() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'generic_typeof_idx_comparison', 'fn pick_idx[T]() int {
-	$if typeof[T]().idx == typeof[int]().idx {
-		return 42
-	} $else {
-		return T.missing_method()
-	}
-}
-
-fn concrete_idx() int {
-	$if typeof[int]().idx == typeof[int]().idx {
-		return 1
-	} $else {
-		return 2
-	}
-}
-
-fn main() {
-	println(concrete_idx())
-	println(pick_idx[int]())
-}
-')
-	assert out == '1\n42'
-}
-
-fn test_mut_map_for_in_writeback_survives_continue_and_break() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'mut_map_for_in_writeback_continue_break', 'struct Box {
-mut:
-	n int
-}
-
-fn main() {
-	mut items := map[string]Box{}
-	items["a"] = Box{n: 1}
-	items["b"] = Box{n: 2}
-	for _, mut value in items {
-		value.n += 10
-		continue
-	}
-	println(items["a"].n)
-	println(items["b"].n)
-	mut once := map[string]Box{}
-	once["x"] = Box{n: 3}
-	for _, mut value in once {
-		value.n = 9
-		break
-	}
-	println(once["x"].n)
-}
-')
-	assert out == '11\n12\n9'
 }
 
 fn test_interface_to_interface_conversion_preserves_fields() {
@@ -5933,10 +5993,27 @@ fn main() {
 	assert unlock_rel >= 0, body
 }
 
-fn test_json2_skipped_pointer_field_does_not_specialize_decoder() {
+fn test_json_payload_storage() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'json2_skipped_pointer_field', 'import gg\nimport x.json2\n\nstruct Config {\n\tcontext &gg.Context @[skip]\n\tname string\n}\n\nfn main() {\n\tconfig := json2.decode[Config]("{\\"name\\":\\"ok\\"}") or { panic(err) }\n\tprintln(config.name)\n}\n')
-	assert out == 'ok'
+	run_good_module_batch(v3_bin, 'json_payload_storage', [
+		TransformFixture{'json2_skipped_pointer_field', 'import gg\nimport x.json2\n\nstruct Config {\n\tcontext &gg.Context @[skip]\n\tname string\n}\n\nfn main() {\n\tconfig := json2.decode[Config]("{\\"name\\":\\"ok\\"}") or { panic(err) }\n\tprintln(config.name)\n}\n', 'ok'},
+		TransformFixture{'json2_shared_struct_field_value', 'import x.json2\n\nstruct State {\n\tvalue int\n}\n\nstruct Client {\n\tstate shared State\n}\n\nfn main() {\n\tclient := Client{}\n\tprintln(json2.encode(client))\n}\n', '{"state":{"value":0}}'},
+		TransformFixture{'json_result_or_if_struct', 'import x.json2
+
+struct Review {
+	id int
+}
+
+fn main() {
+	review := if true {
+		json2.decode[Review]("{\\"id\\":7}") or { Review{id: 1} }
+	} else {
+		Review{id: 2}
+	}
+	println(review.id)
+}
+', '7'},
+	])
 }
 
 fn test_comptime_field_generic_calls_keep_resolved_field_types() {
@@ -5949,38 +6026,6 @@ fn test_comptime_field_generic_calls_keep_resolved_field_types() {
 		'main.v':        'module main\n\nimport codec\nimport model\n\nfn main() {\n\tmut event := model.Event{}\n\tcodec.visit(mut event)\n\tprintln(int_str(int(event.key)))\n}\n'
 	}, 'main.v')
 	assert out == '0'
-}
-
-fn test_comptime_field_generic_call_prefers_shadowing_local_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'comptime_field_generic_shadowing_local', 'struct Sample {
-	values map[string]int
-}
-
-fn inferred_type[T](value T) string {
-	_ = value
-	return typeof[T]().name
-}
-
-fn main() {
-	sample := Sample{
-		values: {
-			"one": 1
-		}
-	}
-	$for field in Sample.fields {
-		$if field.is_map {
-			for key, value in sample.$(field.name) {
-				_ = key
-				_ = value
-			}
-			key := 1.5
-			println(inferred_type(key))
-		}
-	}
-}
-')
-	assert out == 'f64'
 }
 
 fn test_comptime_pointer_field_generic_local_uses_call_return_type() {
@@ -6133,12 +6178,6 @@ fn test_json2_decode_keeps_main_type_with_imported_homonym() {
 	assert out == '42'
 }
 
-fn test_json2_encode_shared_struct_field_uses_locked_value_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'json2_shared_struct_field_value', 'import x.json2\n\nstruct State {\n\tvalue int\n}\n\nstruct Client {\n\tstate shared State\n}\n\nfn main() {\n\tclient := Client{}\n\tprintln(json2.encode(client))\n}\n')
-	assert out == '{"state":{"value":0}}'
-}
-
 fn test_json2_decode_any_map_keeps_sum_value_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'json2_any_map_value', 'import x.json2\n\nfn main() {\n\tvalues := json2.decode[map[string]json2.Any](r\'{"ok":true}\')!\n\tprintln(values["ok"] or { json2.Any(false) })\n}\n')
@@ -6193,19 +6232,6 @@ fn test_parallel_json2_exact_callee_does_not_rebind_main_type_to_imported_homony
 	}, 'main.v')
 	assert c_source.contains('decode_struct_key_T_Discord(')
 	assert !c_source.contains('decode_struct_key_T_discord__Discord(')
-}
-
-fn test_module_local_const_array_struct_types_do_not_use_previous_module() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'module_local_const_array_struct_types', 'import encoding.utf8
-import hash.crc32
-
-fn main() {
-	_ := crc32.sum([u8(1), 2, 3])
-	println(utf8.is_number(`7`))
-}
-')
-	assert out == 'true'
 }
 
 fn test_moved_module_alias_uses_target_module_identity() {
@@ -11963,9 +11989,10 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
-fn test_recursive_sum_cast_does_not_select_container_variant() {
+fn test_sum_value_boxing() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'recursive_sum_same_type_cast', 'type Tree = int | []Tree
+	run_good_module_batch(v3_bin, 'sum_value_boxing', [
+		TransformFixture{'recursive_sum_same_type_cast', 'type Tree = int | []Tree
 
 fn leaf(value int) Tree {
 	return Tree(value)
@@ -11976,8 +12003,24 @@ fn main() {
 	assert tree == Tree([Tree(1), Tree(2)])
 	println("ok")
 }
-')
-	assert out == 'ok'
+', 'ok'},
+		TransformFixture{'call_arg_sum_temp_before_block', 'struct Item {}
+
+struct Other {}
+
+type Node = Item | Other
+
+fn inspect(node &Node, data voidptr) {
+	println(node is Item)
+	println(data == unsafe { nil })
+}
+
+fn main() {
+	item := &Item{}
+	inspect(Node(*item), unsafe { nil })
+}
+', 'true\ntrue'},
+	])
 }
 
 fn test_generic_nested_array_arguments() {
@@ -12003,9 +12046,10 @@ fn main() {
 	])
 }
 
-fn test_flag_enum_struct_field_defaults_to_zero() {
+fn test_struct_initializer_contexts() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'flag_enum_struct_field_default', '@[flag]
+	run_good_module_batch(v3_bin, 'struct_initializer_contexts', [
+		TransformFixture{'flag_enum_struct_field_default', '@[flag]
 enum Mode {
 	read
 	write
@@ -12019,8 +12063,46 @@ fn main() {
 	config := Config{}
 	println(int(config.mode))
 }
-')
-	assert out == '0'
+', '0'},
+		TransformFixture{'struct_literal_ref_and_option_or_mut_receiver', 'import net
+
+struct Reader {
+mut:
+	value int
+}
+
+struct Client {
+	reader ?Reader
+}
+
+fn (mut reader Reader) next() int {
+	reader.value++
+	return reader.value
+}
+
+fn borrow(reader &Reader) int {
+	return reader.value
+}
+
+fn main() {
+	mut client := Client{
+		reader: Reader{
+			value: 4
+		}
+	}
+	println(borrow(Reader{
+		value: 7
+	}))
+	println(client.reader or { return }.next())
+	protocols := [net.Protocol.icmp, net.Protocol.icmpv6, net.Protocol.raw]
+	println(protocols.len)
+	unsafe {
+		null_char := &char(0)
+		println(isnil(null_char))
+	}
+}
+', '7\n5\n3\ntrue'},
+	])
 }
 
 fn test_sum_smartcast_array_operations() {
@@ -12176,49 +12258,6 @@ fn main() {
 	assert out == '42'
 }
 
-fn test_struct_literal_implicit_reference_and_option_or_mut_receiver() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'struct_literal_ref_and_option_or_mut_receiver', 'import net
-
-struct Reader {
-mut:
-	value int
-}
-
-struct Client {
-	reader ?Reader
-}
-
-fn (mut reader Reader) next() int {
-	reader.value++
-	return reader.value
-}
-
-fn borrow(reader &Reader) int {
-	return reader.value
-}
-
-fn main() {
-	mut client := Client{
-		reader: Reader{
-			value: 4
-		}
-	}
-	println(borrow(Reader{
-		value: 7
-	}))
-	println(client.reader or { return }.next())
-	protocols := [net.Protocol.icmp, net.Protocol.icmpv6, net.Protocol.raw]
-	println(protocols.len)
-	unsafe {
-		null_char := &char(0)
-		println(isnil(null_char))
-	}
-}
-')
-	assert out == '7\n5\n3\ntrue'
-}
-
 fn test_implicit_voidptr_argument_promotes_local_to_heap() {
 	v3_bin := build_v3_review_transform()
 	generated := gen_c_from_source(v3_bin, 'implicit_voidptr_argument_heap_escape', 'struct State {
@@ -12367,20 +12406,6 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == '99\n7'
-}
-
-fn test_selected_comptime_block_preserves_outer_value_tail() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'selected_comptime_block_value_tail', "fn main() {
-	value := if true {
-		\$if msvc { 'msvc' } \$else { 'other' }
-	} else {
-		''
-	}
-	println(value)
-}
-")
-	assert out == 'other'
 }
 
 fn test_none_literal_str_method() {
@@ -13052,42 +13077,6 @@ fn main() {
 	assert out == 'Node{\n    value: 1\n}\n1'
 }
 
-fn test_specialized_generic_match_expression_ignores_unresolved_branch_types() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'specialized_generic_match_expression_type', "type Value = []u8 | i64 | string
-
-struct Reader {}
-
-fn (Reader) load[T]() !map[string]T {
-	\$if T is string {
-		return {
-			'answer': 'ready'
-		}
-	}
-	return map[string]T{}
-}
-
-fn normalize[T](value Value) T {
-	\$if T is string {
-		result := match value {
-			[]u8 { value.bytestr() }
-			string { value }
-			i64 { value.str() }
-		}
-		return result
-	}
-	return T{}
-}
-
-fn main() {
-	println(normalize[string](Value('ready')))
-	result := Reader{}.load[string]() or { panic(err) }
-	println(result['answer'])
-}
-")
-	assert out == 'ready\nready'
-}
-
 fn test_imported_generic_default_uses_main_struct_defaults_after_short_name_collision() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'generic_main_default_short_name_collision', {
@@ -13096,27 +13085,6 @@ fn test_imported_generic_default_uses_main_struct_defaults_after_short_name_coll
 		'main.v':      'module main\n\nimport factory\n\nstruct Doc {\n\titems []int\n}\n\nfn main() {\n\tvalue := factory.make[Doc]()\n\tprintln(value.items.len)\n}\n'
 	}, 'main.v')
 	assert out == '0'
-}
-
-fn test_later_block_call_arg_does_not_capture_earlier_sum_temporary() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'call_arg_sum_temp_before_block', 'struct Item {}
-
-struct Other {}
-
-type Node = Item | Other
-
-fn inspect(node &Node, data voidptr) {
-	println(node is Item)
-	println(data == unsafe { nil })
-}
-
-fn main() {
-	item := &Item{}
-	inspect(Node(*item), unsafe { nil })
-}
-')
-	assert out == 'true\ntrue'
 }
 
 fn test_test_command_skips_incompatible_single_file() {
@@ -13360,32 +13328,6 @@ fn main() {
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
 	assert out == 'source\nsource'
-}
-
-fn test_nested_string_interpolation_restores_outer_scanner_state() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'nested_string_interpolation', "fn main() {\n\tvalue := 'ok'\n\tprintln('outer \${if value.len > 0 { 'inner \${value}' } else { 'empty' }} done')\n}\n")
-	assert out == 'outer inner ok done'
-}
-
-fn test_json_result_or_tail_keeps_if_expression_struct_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'json_result_or_if_struct', 'import x.json2
-
-struct Review {
-	id int
-}
-
-fn main() {
-	review := if true {
-		json2.decode[Review]("{\\"id\\":7}") or { Review{id: 1} }
-	} else {
-		Review{id: 2}
-	}
-	println(review.id)
-}
-')
-	assert out == '7'
 }
 
 fn test_export_wrapper_uses_declared_header_c_abi() {
