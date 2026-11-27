@@ -2551,22 +2551,13 @@ fn test_assoc_return_runs_defers() {
 	assert out == '5\n7'
 }
 
-fn test_pointer_arithmetic_deref_keeps_pointer_type() {
+fn test_pointer_dereference_and_mut_slots() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'pointer_arithmetic_deref', 'fn main() {\n\tmut nums := [1, 2]!\n\tp := unsafe { &nums[0] }\n\tv := unsafe { *(p + 1) }\n\tprintln(int_str(v))\n}\n')
-	assert out == '2'
-}
-
-fn test_parenthesized_pointer_cast_deref_is_not_dropped() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'parenthesized_pointer_cast_deref', "fn load(s charptr, offset u64) u8 {\n\treturn u8(unsafe { *(charptr(u64(s) + offset)) })\n}\n\nfn main() {\n\ts := c'VinixV3!'\n\tmut result := ''\n\tfor i in u64(0) .. u64(8) {\n\t\tresult += rune(load(s, i)).str()\n\t}\n\tprintln(result)\n}\n")
-	assert out == 'VinixV3!'
-}
-
-fn test_generic_mut_pointer_cast_keeps_slot_address() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'generic_mut_pointer_cast_slot_address', 'fn address[T](mut value T) voidptr {\n\tif sizeof(T) == 8 {\n\t\treturn voidptr(value)\n\t}\n\treturn unsafe { nil }\n}\n\nfn main() {\n\tmut n := 7\n\tmut pointers := unsafe { [1]&int{} }\n\tpointers[0] = &n\n\tresult := address[&int](mut &pointers[0])\n\tprintln(result == voidptr(&pointers[0]))\n\tprintln(result == voidptr(pointers[0]))\n}\n')
-	assert out == 'true\nfalse'
+	run_good_module_batch(v3_bin, 'pointer_dereference_and_mut_slots', [
+		ReviewRuntimeCase{'pointer_arithmetic_deref', 'fn main() {\n\tmut nums := [1, 2]!\n\tp := unsafe { &nums[0] }\n\tv := unsafe { *(p + 1) }\n\tprintln(int_str(v))\n}\n', '2'},
+		ReviewRuntimeCase{'parenthesized_pointer_cast_deref', "fn load(s charptr, offset u64) u8 {\n\treturn u8(unsafe { *(charptr(u64(s) + offset)) })\n}\n\nfn main() {\n\ts := c'VinixV3!'\n\tmut result := ''\n\tfor i in u64(0) .. u64(8) {\n\t\tresult += rune(load(s, i)).str()\n\t}\n\tprintln(result)\n}\n", 'VinixV3!'},
+		ReviewRuntimeCase{'generic_mut_pointer_cast_slot_address', 'fn address[T](mut value T) voidptr {\n\tif sizeof(T) == 8 {\n\t\treturn voidptr(value)\n\t}\n\treturn unsafe { nil }\n}\n\nfn main() {\n\tmut n := 7\n\tmut pointers := unsafe { [1]&int{} }\n\tpointers[0] = &n\n\tresult := address[&int](mut &pointers[0])\n\tprintln(result == voidptr(&pointers[0]))\n\tprintln(result == voidptr(pointers[0]))\n}\n', 'true\nfalse'},
+	])
 }
 
 fn test_builtin_addr_requires_unsafe_and_addresses_pointer_variables() {
@@ -3425,16 +3416,12 @@ fn test_string_index_type_is_u8() {
 	assert out == 'u8\n67'
 }
 
-fn test_f32_map_and_fixed_array_stringification() {
+fn test_numeric_map_stringification() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'f32_map_stringification', "fn main() {\n\tm := {\n\t\t'a': f32(1.5)\n\t}\n\tprintln(m)\n\tfixed := [f32(1.5), f32(2.25)]!\n\tmf := {\n\t\t'x': fixed\n\t}\n\tprintln(mf)\n}\n")
-	assert out == "{'a': 1.5}\n{'x': [1.5, 2.25]}"
-}
-
-fn test_u8_map_stringification_is_numeric() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'u8_map_stringification', "fn main() {\n\tkeys := {\n\t\tu8(23): 'x'\n\t}\n\tvals := {\n\t\t'x': u8(23)\n\t}\n\tboth := {\n\t\tu8(65): u8(10)\n\t}\n\tprintln(keys)\n\tprintln(vals)\n\tprintln(both)\n}\n")
-	assert out == "{23: 'x'}\n{'x': 23}\n{65: 10}"
+	run_good_module_batch(v3_bin, 'numeric_map_stringification', [
+		ReviewRuntimeCase{'f32_map_stringification', "fn main() {\n\tm := {\n\t\t'a': f32(1.5)\n\t}\n\tprintln(m)\n\tfixed := [f32(1.5), f32(2.25)]!\n\tmf := {\n\t\t'x': fixed\n\t}\n\tprintln(mf)\n}\n", "{'a': 1.5}\n{'x': [1.5, 2.25]}"},
+		ReviewRuntimeCase{'u8_map_stringification', "fn main() {\n\tkeys := {\n\t\tu8(23): 'x'\n\t}\n\tvals := {\n\t\t'x': u8(23)\n\t}\n\tboth := {\n\t\tu8(65): u8(10)\n\t}\n\tprintln(keys)\n\tprintln(vals)\n\tprintln(both)\n}\n", "{23: 'x'}\n{'x': 23}\n{65: 10}"},
+	])
 }
 
 fn test_map_equality_uses_semantic_value_comparison() {
@@ -3449,22 +3436,13 @@ fn test_array_equality_marks_struct_operator_used() {
 	assert out == 'true'
 }
 
-fn test_zero_padded_interpolation_preserves_wide_integers() {
+fn test_formatted_interpolation_values() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'wide_zero_padded_interpolation', "fn main() {\n\tbig := i64(5000000000)\n\tubig := u64(18446744073709551615)\n\tsmall := u64(42)\n\tprintln('\${big:012d}')\n\tprintln('\${ubig:020u}')\n\tprintln('\${small:08u}')\n}\n")
-	assert out == '005000000000\n18446744073709551615\n00000042'
-}
-
-fn test_formatted_interpolation_rune_and_long_float() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'formatted_interpolation_rune_and_long_float', "fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n\tprintln('\${238.5:0.0f}')\n\tprintln('\${239.5555555:0.6f}')\n}\n")
-	assert out == '3\n226,130,172\n202\n49,46,48,48\n239\n239.555556'
-}
-
-fn test_formatted_interpolation_integer_alias_character_code() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'formatted_interpolation_integer_alias_character_code', "type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n")
-	assert out == 'ABC'
+	run_good_module_batch(v3_bin, 'formatted_interpolation_values', [
+		ReviewRuntimeCase{'wide_zero_padded_interpolation', "fn main() {\n\tbig := i64(5000000000)\n\tubig := u64(18446744073709551615)\n\tsmall := u64(42)\n\tprintln('\${big:012d}')\n\tprintln('\${ubig:020u}')\n\tprintln('\${small:08u}')\n}\n", '005000000000\n18446744073709551615\n00000042'},
+		ReviewRuntimeCase{'formatted_interpolation_rune_and_long_float', "fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n\tprintln('\${238.5:0.0f}')\n\tprintln('\${239.5555555:0.6f}')\n}\n", '3\n226,130,172\n202\n49,46,48,48\n239\n239.555556'},
+		ReviewRuntimeCase{'formatted_interpolation_integer_alias_character_code', "type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n", 'ABC'},
+	])
 }
 
 fn test_formatted_interpolation_alias_uses_string_representation() {
@@ -3525,9 +3503,10 @@ fn test_alias_interface_str_dispatch_marks_alias_method_used() {
 	assert out == 'label:7'
 }
 
-fn test_implicit_interface_str_dispatch_uses_boxed_receiver() {
+fn test_interface_str_receiver_types() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_receiver', 'interface Printable {
+	run_good_module_batch(v3_bin, 'interface_str_receiver_types', [
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_receiver', 'interface Printable {
 	str() string
 }
 
@@ -3541,13 +3520,8 @@ fn main() {
 	})
 	println(value.str())
 }
-')
-	assert out == 'Foo{\n    x: 7\n}'
-}
-
-fn test_implicit_interface_str_dispatch_accepts_generic_struct() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_generic_struct', 'interface Printable {
+', 'Foo{\n    x: 7\n}'},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_generic_struct', 'interface Printable {
 	str() string
 }
 
@@ -3561,13 +3535,8 @@ fn main() {
 	})
 	println(value.str())
 }
-')
-	assert out == 'Box[int]{\n    value: 7\n}'
-}
-
-fn test_implicit_interface_str_dispatch_stringifies_enum() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_enum', 'interface Printable {
+', 'Box[int]{\n    value: 7\n}'},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_enum', 'interface Printable {
 	str() string
 }
 
@@ -3580,8 +3549,8 @@ fn main() {
 	value := Printable(Color.red)
 	println(value.str())
 }
-')
-	assert out == 'red'
+', 'red'},
+	])
 }
 
 fn test_implicit_interface_str_dispatch_stringifies_struct_alias() {
@@ -3608,9 +3577,10 @@ fn main() {
 	assert !out.contains('Foo{}')
 }
 
-fn test_implicit_interface_str_dispatch_stringifies_collection_aliases() {
+fn test_interface_str_collection_values() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_collection_aliases', 'interface Printable {
+	run_good_module_batch(v3_bin, 'interface_str_collection_values', [
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_collection_aliases', 'interface Printable {
 	str() string
 }
 
@@ -3631,8 +3601,31 @@ fn main() {
 	println(pair.str())
 	println(words.str())
 }
-')
-	assert out == "[1, 2]\n{'a': 3}\n[4, 5]\n['x', 'y']"
+', "[1, 2]\n{'a': 3}\n[4, 5]\n['x', 'y']"},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_collections', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	nums []int
+	labels map[string]int
+	fixed [2]int
+	words []string
+}
+
+fn main() {
+	value := Printable(Foo{
+		nums: [1, 2]
+		labels: {
+			"a": 3
+		}
+		fixed: [4, 5]!
+		words: ["x", "y"]
+	})
+	println(value.str())
+}
+', "Foo{\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n    words: ['x', 'y']\n}"},
+	])
 }
 
 fn test_empty_interface_str_dispatch_stringifies_boxed_map() {
@@ -3668,9 +3661,10 @@ fn main() {
 ', 'does not implement interface')
 }
 
-fn test_implicit_interface_str_dispatch_stringifies_nested_struct_fields() {
+fn test_interface_str_aggregate_fields() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_nested_struct', 'interface Printable {
+	run_good_module_batch(v3_bin, 'interface_str_aggregate_fields', [
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_nested_struct', 'interface Printable {
 	str() string
 }
 
@@ -3690,36 +3684,42 @@ fn main() {
 	})
 	println(value.str())
 }
-')
-	assert out == 'Foo{\n    bar: Bar{\n        x: 7\n    }\n}'
-}
-
-fn test_implicit_interface_str_dispatch_stringifies_collection_fields() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_collections', 'interface Printable {
+', 'Foo{\n    bar: Bar{\n        x: 7\n    }\n}'},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_aliased_fields', 'interface Printable {
 	str() string
 }
 
+struct Bar {
+	x int
+}
+
+type MyBar = Bar
+type MyNums = []int
+type MyLabels = map[string]int
+type MyFixed = [2]int
+
 struct Foo {
-	nums []int
-	labels map[string]int
-	fixed [2]int
-	words []string
+	bar MyBar
+	nums MyNums
+	labels MyLabels
+	fixed MyFixed
 }
 
 fn main() {
 	value := Printable(Foo{
-		nums: [1, 2]
-		labels: {
+		bar: MyBar(Bar{
+			x: 7
+		})
+		nums: MyNums([1, 2])
+		labels: MyLabels({
 			"a": 3
-		}
-		fixed: [4, 5]!
-		words: ["x", "y"]
+		})
+		fixed: MyFixed([4, 5]!)
 	})
 	println(value.str())
 }
-')
-	assert out == "Foo{\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n    words: ['x', 'y']\n}"
+', "Foo{\n    bar: Bar{\n        x: 7\n    }\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n}"},
+	])
 }
 
 fn test_implicit_interface_str_dispatch_stringifies_typed_map_fields() {
@@ -3779,48 +3779,10 @@ fn main() {
 	assert !out.contains('?int{}'), out
 }
 
-fn test_implicit_interface_str_dispatch_unaliases_field_types() {
+fn test_interface_str_custom_pointer_methods() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_aliased_fields', 'interface Printable {
-	str() string
-}
-
-struct Bar {
-	x int
-}
-
-type MyBar = Bar
-type MyNums = []int
-type MyLabels = map[string]int
-type MyFixed = [2]int
-
-struct Foo {
-	bar MyBar
-	nums MyNums
-	labels MyLabels
-	fixed MyFixed
-}
-
-fn main() {
-	value := Printable(Foo{
-		bar: MyBar(Bar{
-			x: 7
-		})
-		nums: MyNums([1, 2])
-		labels: MyLabels({
-			"a": 3
-		})
-		fixed: MyFixed([4, 5]!)
-	})
-	println(value.str())
-}
-')
-	assert out == "Foo{\n    bar: Bar{\n        x: 7\n    }\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n}"
-}
-
-fn test_implicit_interface_str_dispatch_preserves_pointer_field_custom_str() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_custom_str', 'interface Printable {
+	run_good_module_batch(v3_bin, 'interface_str_custom_pointer_methods', [
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_pointer_custom_str', 'interface Printable {
 	str() string
 }
 
@@ -3858,13 +3820,8 @@ fn main() {
 	})
 	println(value.str())
 }
-')
-	assert out == 'Foo{\n    bar: value:7\n    baz: ptr:9\n}'
-}
-
-fn test_implicit_interface_str_dispatch_preserves_pointer_alias_custom_str() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_alias_custom_str', 'interface Printable {
+', 'Foo{\n    bar: value:7\n    baz: ptr:9\n}'},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_pointer_alias_custom_str', 'interface Printable {
 	str() string
 }
 
@@ -3896,13 +3853,8 @@ fn main() {
 	})
 	println(value.str())
 }
-')
-	assert out == 'Foo{\n    name: name:Ada\n    missing: &nil\n    code: code:7\n}'
-}
-
-fn test_implicit_interface_str_dispatch_preserves_pointer_alias_receiver_custom_str() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_alias_receiver_custom_str', 'interface Printable {
+', 'Foo{\n    name: name:Ada\n    missing: &nil\n    code: code:7\n}'},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_pointer_alias_receiver_custom_str', 'interface Printable {
 	str() string
 }
 
@@ -3941,13 +3893,14 @@ fn main() {
 	})
 	println(value.str())
 }
-')
-	assert out == 'Foo{\n    ref: ref:7\n    refbox: refbox:9\n}'
+', 'Foo{\n    ref: ref:7\n    refbox: refbox:9\n}'},
+	])
 }
 
-fn test_implicit_interface_str_dispatch_dereferences_pointer_struct_fields() {
+fn test_interface_str_pointer_fields() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_struct_fields', 'interface Printable {
+	run_good_module_batch(v3_bin, 'interface_str_pointer_fields', [
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_pointer_struct_fields', 'interface Printable {
 	str() string
 }
 
@@ -3970,13 +3923,8 @@ fn main() {
 	})
 	println(value.str())
 }
-')
-	assert out == 'Foo{\n    bar: Bar{\n        x: 7\n    }\n    empty: &nil\n}'
-}
-
-fn test_implicit_interface_str_dispatch_treats_pointer_alias_fields_as_pointers() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_alias_struct_fields', 'interface Printable {
+', 'Foo{\n    bar: Bar{\n        x: 7\n    }\n    empty: &nil\n}'},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_pointer_alias_struct_fields', 'interface Printable {
 	str() string
 }
 
@@ -4001,8 +3949,48 @@ fn main() {
 	})
 	println(value.str())
 }
-')
-	assert out == 'Foo{\n    bar: Bar{\n        x: 7\n    }\n    empty: &nil\n}'
+', 'Foo{\n    bar: Bar{\n        x: 7\n    }\n    empty: &nil\n}'},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_pointer_scalar_fields', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	p &int
+	s &string
+}
+
+fn main() {
+	n := 7
+	text := "hi"
+	value := Printable(Foo{
+		p: &n
+		s: &text
+	})
+	println(value.str())
+}
+', "Foo{\n    p: 7\n    s: 'hi'\n}"},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_pointer_collection_fields', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	labels &map[string]int
+	fixed  &[2]int
+}
+
+fn main() {
+	labels := {
+		"a": 3
+	}
+	fixed := [4, 5]!
+	value := Printable(Foo{
+		labels: &labels
+		fixed: unsafe { &fixed }
+	})
+	println(value.str())
+}
+', "Foo{\n    labels: {'a': 3}\n    fixed: [4, 5]\n}"},
+	])
 }
 
 fn test_bare_aligned_attribute_metadata_and_cgen() {
@@ -4093,56 +4081,6 @@ fn make_alias() &Bare {
 	assert c_source.contains('v3_aligned_memdup(&__assoc_')
 	out := run_good(v3_bin, 'bare_aligned_attribute_cgen', source)
 	assert out == '29'
-}
-
-fn test_implicit_interface_str_dispatch_dereferences_pointer_scalar_fields() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_scalar_fields', 'interface Printable {
-	str() string
-}
-
-struct Foo {
-	p &int
-	s &string
-}
-
-fn main() {
-	n := 7
-	text := "hi"
-	value := Printable(Foo{
-		p: &n
-		s: &text
-	})
-	println(value.str())
-}
-')
-	assert out == "Foo{\n    p: 7\n    s: 'hi'\n}"
-}
-
-fn test_implicit_interface_str_dispatch_dereferences_pointer_collection_fields() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_collection_fields', 'interface Printable {
-	str() string
-}
-
-struct Foo {
-	labels &map[string]int
-	fixed  &[2]int
-}
-
-fn main() {
-	labels := {
-		"a": 3
-	}
-	fixed := [4, 5]!
-	value := Printable(Foo{
-		labels: &labels
-		fixed: unsafe { &fixed }
-	})
-	println(value.str())
-}
-')
-	assert out == "Foo{\n    labels: {'a': 3}\n    fixed: [4, 5]\n}"
 }
 
 fn test_map_pointer_alias_cast_preserves_existing_pointer() {
@@ -8069,9 +8007,10 @@ fn main() {
 	assert out == 'done'
 }
 
-fn test_recursive_str_exhaustive_enum_and_sum_matches_count_as_progress() {
+fn test_recursive_str_exhaustive_match_progress() {
 	v3_bin := build_v3()
-	enum_out := run_good(v3_bin, 'recursive_str_exhaustive_enum_match_progress', 'enum Mode {
+	run_good_module_batch(v3_bin, 'recursive_str_exhaustive_match_progress', [
+		ReviewRuntimeCase{'recursive_str_exhaustive_enum_match_progress', 'enum Mode {
 	one
 	two
 }
@@ -8103,10 +8042,8 @@ fn main() {
 		remaining: 1
 	}.str())
 }
-')
-	assert enum_out == 'done'
-
-	sum_out := run_good(v3_bin, 'recursive_str_exhaustive_sum_match_progress', 'struct First {}
+', 'done'},
+		ReviewRuntimeCase{'recursive_str_exhaustive_sum_match_progress', 'struct First {}
 struct Second {}
 type Mode = First | Second
 
@@ -8137,13 +8074,14 @@ fn main() {
 		remaining: 1
 	}.str())
 }
-')
-	assert sum_out == 'done'
+', 'done'},
+	])
 }
 
-fn test_recursive_str_direct_exhaustive_matches_count_as_progress() {
+fn test_recursive_str_direct_exhaustive_match_progress() {
 	v3_bin := build_v3()
-	enum_out := run_good(v3_bin, 'recursive_str_direct_exhaustive_enum_match', 'enum Mode {
+	run_good_module_batch(v3_bin, 'recursive_str_direct_exhaustive_match_progress', [
+		ReviewRuntimeCase{'recursive_str_direct_exhaustive_enum_match', 'enum Mode {
 	one
 	two
 }
@@ -8171,10 +8109,8 @@ fn main() {
 		remaining: 1
 	}.str())
 }
-')
-	assert enum_out == 'done'
-
-	sum_out := run_good(v3_bin, 'recursive_str_direct_exhaustive_sum_match', 'struct First {}
+', 'done'},
+		ReviewRuntimeCase{'recursive_str_direct_exhaustive_sum_match', 'struct First {}
 struct Second {}
 type Mode = First | Second
 
@@ -8201,8 +8137,8 @@ fn main() {
 		remaining: 1
 	}.str())
 }
-')
-	assert sum_out == 'done'
+', 'done'},
+	])
 }
 
 fn test_recursive_str_noop_mutations_do_not_count_as_progress() {
