@@ -17,6 +17,7 @@ const external_commands = [
 	'bug',
 	'bug-report',
 	'bug-report-send',
+	'c-api',
 	'build-examples',
 	'build-tools',
 	'build-vbinaries',
@@ -109,6 +110,32 @@ fn main() {
 	os.setenv('VEXE', vexe, true)
 	os.setenv('VCHILD', 'true', true)
 	mut args := remove_obsolete_skip_unused_flag(merged_v_args())
+	// `-c-api` is a convenience alias for `c-api`: it builds a shared library
+	// and generates the C release artifacts, so `-shared` is implied.
+	if '-c-api' in args {
+		mut tool_args := ['c-api']
+		mut skip_next := false
+		for i, arg in args {
+			if skip_next {
+				skip_next = false
+				continue
+			}
+			if arg == '-c-api' || arg == '-shared' || arg == '--shared' {
+				continue
+			}
+			if arg == '--c-api-dir' {
+				if i + 1 < args.len {
+					tool_args << '-o'
+					tool_args << args[i + 1]
+					skip_next = true
+				}
+				continue
+			}
+			tool_args << arg
+		}
+		run_external_tool(tool_args, 0, 'c-api')
+		return
+	}
 	if args.len == 0 {
 		run_external_tool(args, -1, 'repl')
 		return
@@ -472,6 +499,9 @@ fn run_external_tool(args []string, command_index int, command string) {
 		}
 		'vlib-docs' {
 			'vdoc'
+		}
+		'c-api' {
+			'capi'
 		}
 		else {
 			'v' + command
