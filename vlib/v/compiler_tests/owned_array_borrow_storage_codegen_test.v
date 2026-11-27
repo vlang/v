@@ -656,7 +656,7 @@ fn main() { _ = absent() }
 	assert nested.output.contains('cannot cast `?Bucket` to `?Bucket`')
 }
 
-fn test_mutable_wrapped_array_storage_preserves_payloads() {
+fn test_mutable_wrapped_array_storage_preserves_payloads_and_specializations() {
 	wrappers := {
 		'option':       '?[]Res'
 		'sum':          'Storage'
@@ -668,7 +668,7 @@ type Storage = []Res | int
 type WrappedStorage = ?[]Res | int
 '
 	mut calls := []string{}
-	mut expected := []string{}
+	mut expected := ['generic_optional\ndrop 1\ndrop 101\ndrop 2\ndrop 102\nother 3\nother 1003']
 	for name, wrapper in wrappers {
 		keep := 'keep_${name}'
 		payload := if wrapper == '?[]Res' {
@@ -726,25 +726,12 @@ fn check_inactive() {
 	println("ok")
 }
 
-fn main() {
-${calls.join('\n')}
-	println("inactive")
-	check_inactive()
-}
-'
-	expected << 'inactive\nok'
-	output := borrow_storage_run('wrapped_mut_array', source)
-	assert output == expected.join('\n')
-}
-
-fn test_generic_mutable_optional_array_storage_acquires_each_specialization() {
-	output := borrow_storage_run('generic_optional_mut_warmed', borrow_storage_drop_decls + '
 struct OtherRes implements IClone, Drop { id int }
 fn (r &OtherRes) clone() OtherRes { return OtherRes{r.id + 1000} }
 fn (mut r OtherRes) drop() { println("other \${r.id}") }
 fn warm(mut source ?[]Res) ?[]Res { return source }
 fn keep[T](mut source ?[]T) ?[]T { return source }
-fn main() {
+fn check_generic_optional() {
 	mut initial := ?[]Res([Res{1}])
 	warmed := warm(mut initial) or { panic("missing warm") }
 	drop_owned(initial)
@@ -761,8 +748,18 @@ fn main() {
 	assert other_retained[0].id == 1003
 	drop_owned(other_retained)
 }
-')
-	assert output == 'drop 1\ndrop 101\ndrop 2\ndrop 102\nother 3\nother 1003'
+
+fn main() {
+	println("generic_optional")
+	check_generic_optional()
+${calls.join('\n')}
+	println("inactive")
+	check_inactive()
+}
+'
+	expected << 'inactive\nok'
+	output := borrow_storage_run('wrapped_mut_array', source)
+	assert output == expected.join('\n')
 }
 
 fn test_mutable_array_value_captures_acquire_owned_snapshots() {
