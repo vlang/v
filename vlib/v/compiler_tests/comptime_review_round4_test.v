@@ -143,8 +143,8 @@ fn round4_check_runtime(name string, cases []Round4RuntimeCase) {
 	}
 }
 
-fn test_fielddata_metadata() {
-	round4_check_runtime('fielddata_metadata', [
+fn test_field_metadata_and_type_shapes() {
+	round4_check_runtime('field_metadata_and_type_shapes', [
 		Round4RuntimeCase{
 			name:     'field_metadata'
 			source:   "struct S {
@@ -197,6 +197,95 @@ fn main() {
 }
 "
 			expected: "id:true:true:true:true:false:|name:true:true:false:false:true:json: 'wire'|count:2"
+		},
+		Round4RuntimeCase{
+			name:     'field_unaliased_option'
+			source:   "type Alias = string
+
+struct S {
+	opt_alias ?Alias
+	opt_string ?string
+}
+
+fn same_type_ids(field FieldData) string {
+	return (field.typ == field.unaliased_typ).str()
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.unaliased_typ is ?string {
+			rows << field.name + ':option:' + same_type_ids(field)
+		} $else $if field.unaliased_typ is string {
+			rows << field.name + ':payload:' + same_type_ids(field)
+		} $else {
+			rows << field.name + ':other:' + same_type_ids(field)
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'opt_alias:option:false|opt_string:option:true'
+		},
+		Round4RuntimeCase{
+			name:     'generic_struct_field_is_struct'
+			source:   'struct Box[T] {
+	value T
+}
+
+struct S {
+	box Box[int]
+	name string
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.is_struct {
+			rows << field.name + ":" + field.is_struct.str()
+		} $else $if field.name == "box" {
+			missing_fn()
+		}
+	}
+	println(rows.join("|"))
+}
+'
+			expected: 'box:true'
+		},
+		Round4RuntimeCase{
+			name:     'field_type_membership_receiver'
+			source:   'struct ReflectedFields {
+	id int
+}
+
+struct GuardConfig {
+	id string
+}
+
+fn main() {
+	cfg := GuardConfig{
+		id: "text"
+	}
+	value := ReflectedFields{
+		id: 7
+	}
+	mut rows := []string{}
+	$for field in ReflectedFields.fields {
+		$if cfg.id in [string] {
+			rows << "config:string"
+		} $else {
+			rows << "config:wrong"
+		}
+		$if value.$(field.name) in [int] {
+			rows << "reflected:int"
+		} $else {
+			rows << "reflected:wrong"
+		}
+	}
+	println(rows.join("|"))
+}
+'
+			expected: 'config:string|reflected:int'
 		},
 	])
 }
@@ -349,8 +438,8 @@ fn main() {
 	assert out == 'LocalA,LocalB\nother.RemoteA,other.RemoteB\n1'
 }
 
-fn test_reflected_field_generic_helpers() {
-	round4_check_runtime('reflected_field_generic_helpers', [
+fn test_reflected_field_helpers_and_type_guards() {
+	round4_check_runtime('reflected_field_helpers_and_type_guards', [
 		Round4RuntimeCase{
 			name:     'field_generic_helper_matching_arg'
 			source:   'struct S {
@@ -403,11 +492,81 @@ fn main() {
 "
 			expected: 'ok|ok'
 		},
+		Round4RuntimeCase{
+			name:     'field_type_selectors_are_type_ids'
+			source:   'type MyInt = int
+
+struct S {
+	id int
+	alias MyInt
+}
+
+fn main() {
+	mut rows := []string{}
+	mut int_typ := 0
+	mut alias_typ := 0
+	mut alias_unaliased := 0
+	$for field in S.fields {
+		if field.name == "id" {
+			int_typ = field.typ
+			assert field.typ == field.unaliased_typ
+			assert field.typ != 0
+		}
+		if field.name == "alias" {
+			alias_typ = field.typ
+			alias_unaliased = field.unaliased_typ
+			assert field.typ != 0
+			assert field.unaliased_typ != 0
+		}
+		$if field.typ is int {
+			if field.name == "id" {
+				rows << "typ-if-id"
+			}
+		}
+		$if field.unaliased_typ is int {
+			if field.name == "alias" {
+				rows << "unaliased-if-alias"
+			}
+		}
+	}
+	assert alias_unaliased == int_typ
+	assert alias_typ != alias_unaliased
+	println(rows.join("|"))
+}
+'
+			expected: 'typ-if-id|unaliased-if-alias'
+		},
+		Round4RuntimeCase{
+			name:     'bare_field_type_guards'
+			source:   'struct S {
+	id int
+	name string
+	maybe ?string
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field is int {
+			rows << "int:" + field.name
+		}
+		$if field is string {
+			rows << "string:" + field.name
+		}
+		$if field is $option {
+			rows << "option:" + field.name
+		}
+	}
+	println(rows.join("|"))
+}
+'
+			expected: 'int:id|string:name|option:maybe'
+		},
 	])
 }
 
-fn test_comptime_loop_value_and_alias_sources() {
-	round4_check_runtime('comptime_loop_value_and_alias_sources', [
+fn test_comptime_loop_sources() {
+	round4_check_runtime('comptime_loop_sources', [
 		Round4RuntimeCase{
 			name:     'value_field_source'
 			source:   "struct Inner {
@@ -478,6 +637,74 @@ fn main() {
 }
 "
 			expected: 'value:red|value:blue|field:id'
+		},
+		Round4RuntimeCase{
+			name:     'nested_comptime_for_field_type_source'
+			source:   'struct Inner {
+	count int
+	label string
+}
+
+struct Outer {
+	id int
+	nested Inner
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in Outer.fields {
+		$if field is $struct {
+			$for sub in field.typ.fields {
+				rows << field.name + "." + sub.name
+			}
+		}
+	}
+	println(rows.join("|"))
+}
+'
+			expected: 'nested.count|nested.label'
+		},
+		Round4RuntimeCase{
+			name:     'shadowed_comptime_for'
+			source:   "struct A {
+	a int
+}
+
+struct B {
+	b int
+	c string
+}
+
+enum Outer {
+	one
+}
+
+enum Inner {
+	red
+	blue
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in A.fields {
+		rows << 'outer-field:' + field.name
+		$for field in B.fields {
+			rows << 'inner-field:' + field.name
+		}
+		$for field in Inner.values {
+			rows << 'mixed-value:' + int_str(field.value)
+		}
+	}
+	$for value in Outer.values {
+		rows << 'outer-value:' + value.name
+		$for value in Inner.values {
+			rows << 'inner-value:' + value.name
+		}
+	}
+	println(rows.join('|'))
+}
+	"
+			expected: 'outer-field:a|inner-field:b|inner-field:c|mixed-value:0|mixed-value:1|outer-value:one|inner-value:red|inner-value:blue'
 		},
 	])
 }
@@ -581,100 +808,6 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == 'qualified:nested|struct:nested'
-}
-
-fn test_reflected_field_type_shapes() {
-	round4_check_runtime('reflected_field_type_shapes', [
-		Round4RuntimeCase{
-			name:     'field_unaliased_option'
-			source:   "type Alias = string
-
-struct S {
-	opt_alias ?Alias
-	opt_string ?string
-}
-
-fn same_type_ids(field FieldData) string {
-	return (field.typ == field.unaliased_typ).str()
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field.unaliased_typ is ?string {
-			rows << field.name + ':option:' + same_type_ids(field)
-		} $else $if field.unaliased_typ is string {
-			rows << field.name + ':payload:' + same_type_ids(field)
-		} $else {
-			rows << field.name + ':other:' + same_type_ids(field)
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'opt_alias:option:false|opt_string:option:true'
-		},
-		Round4RuntimeCase{
-			name:     'generic_struct_field_is_struct'
-			source:   'struct Box[T] {
-	value T
-}
-
-struct S {
-	box Box[int]
-	name string
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field.is_struct {
-			rows << field.name + ":" + field.is_struct.str()
-		} $else $if field.name == "box" {
-			missing_fn()
-		}
-	}
-	println(rows.join("|"))
-}
-'
-			expected: 'box:true'
-		},
-		Round4RuntimeCase{
-			name:     'field_type_membership_receiver'
-			source:   'struct ReflectedFields {
-	id int
-}
-
-struct GuardConfig {
-	id string
-}
-
-fn main() {
-	cfg := GuardConfig{
-		id: "text"
-	}
-	value := ReflectedFields{
-		id: 7
-	}
-	mut rows := []string{}
-	$for field in ReflectedFields.fields {
-		$if cfg.id in [string] {
-			rows << "config:string"
-		} $else {
-			rows << "config:wrong"
-		}
-		$if value.$(field.name) in [int] {
-			rows << "reflected:int"
-		} $else {
-			rows << "reflected:wrong"
-		}
-	}
-	println(rows.join("|"))
-}
-'
-			expected: 'config:string|reflected:int'
-		},
-	])
 }
 
 fn test_comptime_for_selective_import_alias_source_unrolls() {
@@ -821,8 +954,8 @@ fn main() {
 	assert out == 'id|red'
 }
 
-fn test_value_source_pruning() {
-	round4_check_runtime('value_source_pruning', [
+fn test_field_source_and_metadata_pruning() {
+	round4_check_runtime('field_source_and_metadata_pruning', [
 		Round4RuntimeCase{
 			name:     'value_source_comptime_for_static_pruning'
 			source:   "struct Inner {
@@ -874,6 +1007,50 @@ fn main() {
 }
 "
 			expected: 'name'
+		},
+		Round4RuntimeCase{
+			name:     'untaken_metadata_if_static_code'
+			source:   'struct S {
+	id int
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field is string {
+			missing_type_branch_fn()
+		} $else {
+			rows << field.name
+		}
+		$if field.name == "missing" {
+			missing_name_branch_fn()
+		}
+	}
+	println(rows.join("|"))
+}
+'
+			expected: 'id'
+		},
+		Round4RuntimeCase{
+			name:     'fielddata_flag_static_guards'
+			source:   'struct S {
+pub mut:
+	ptr &int
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.is_pub && field.is_mut && field.indirections == 1 {
+			rows << field.name
+		} $else {
+			missing_fielddata_flag_branch_fn()
+		}
+	}
+	println(rows.join("|"))
+}
+'
+			expected: 'ptr'
 		},
 	])
 }
@@ -1040,8 +1217,8 @@ fn main() {
 	assert out == 'red:7'
 }
 
-fn test_enum_metadata_folding() {
-	round4_check_runtime('enum_metadata_folding', [
+fn test_enum_metadata_folding_and_numeric_values() {
+	round4_check_runtime('enum_metadata_folding_and_numeric_values', [
 		Round4RuntimeCase{
 			name:     'enum_value_metadata_if_prunes_else'
 			source:   "enum Color {
@@ -1095,31 +1272,8 @@ fn main() {
 "
 			expected: 'a:8|b:9'
 		},
-	])
-}
-
-fn test_enum_power_metadata_prunes_static_checker_branches() {
-	out := round4_run_good(v3_bin, 'enum_power_metadata_static_checker', 'enum Powered {
-	a = 2 ** 3
-}
-
-fn main() {
-	$for item in Powered.values {
-		$if item.value == 8 {
-			println(item.name)
-		} $else {
-			missing_from_inactive_enum_power_branch()
-		}
-	}
-}
-')
-	assert out == 'a'
-}
-
-// `item.value` is the enum value itself (as in V1), so it interpolates as the
-// field name; its numeric form, including width formatting, needs a cast.
-fn test_enum_metadata_numeric_values() {
-	round4_check_runtime('enum_metadata_numeric_values', [
+		// `item.value` is the enum value itself (as in V1), so it interpolates as the
+		// field name; its numeric form, including width formatting, needs a cast.
 		Round4RuntimeCase{
 			name:     'enum_value_metadata_numeric_interpolation'
 			source:   "enum Color {
@@ -1155,6 +1309,24 @@ fn main() {
 			expected: '1099511627776|1099511627777'
 		},
 	])
+}
+
+fn test_enum_power_metadata_prunes_static_checker_branches() {
+	out := round4_run_good(v3_bin, 'enum_power_metadata_static_checker', 'enum Powered {
+	a = 2 ** 3
+}
+
+fn main() {
+	$for item in Powered.values {
+		$if item.value == 8 {
+			println(item.name)
+		} $else {
+			missing_from_inactive_enum_power_branch()
+		}
+	}
+}
+')
+	assert out == 'a'
 }
 
 fn test_cross_module_dynamic_field_selector_uses_qualified_type() {
@@ -1255,81 +1427,6 @@ fn main() {
 	])
 }
 
-fn test_reflected_field_type_guards() {
-	round4_check_runtime('reflected_field_type_guards', [
-		Round4RuntimeCase{
-			name:     'field_type_selectors_are_type_ids'
-			source:   'type MyInt = int
-
-struct S {
-	id int
-	alias MyInt
-}
-
-fn main() {
-	mut rows := []string{}
-	mut int_typ := 0
-	mut alias_typ := 0
-	mut alias_unaliased := 0
-	$for field in S.fields {
-		if field.name == "id" {
-			int_typ = field.typ
-			assert field.typ == field.unaliased_typ
-			assert field.typ != 0
-		}
-		if field.name == "alias" {
-			alias_typ = field.typ
-			alias_unaliased = field.unaliased_typ
-			assert field.typ != 0
-			assert field.unaliased_typ != 0
-		}
-		$if field.typ is int {
-			if field.name == "id" {
-				rows << "typ-if-id"
-			}
-		}
-		$if field.unaliased_typ is int {
-			if field.name == "alias" {
-				rows << "unaliased-if-alias"
-			}
-		}
-	}
-	assert alias_unaliased == int_typ
-	assert alias_typ != alias_unaliased
-	println(rows.join("|"))
-}
-'
-			expected: 'typ-if-id|unaliased-if-alias'
-		},
-		Round4RuntimeCase{
-			name:     'bare_field_type_guards'
-			source:   'struct S {
-	id int
-	name string
-	maybe ?string
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field is int {
-			rows << "int:" + field.name
-		}
-		$if field is string {
-			rows << "string:" + field.name
-		}
-		$if field is $option {
-			rows << "option:" + field.name
-		}
-	}
-	println(rows.join("|"))
-}
-'
-			expected: 'int:id|string:name|option:maybe'
-		},
-	])
-}
-
 fn test_comptime_for_body_checks_static_code_in_metadata_if_branch() {
 	round4_check_rejections('comptime_metadata_guard_rejections', [
 		Round4Rejection{'bad_static_call_in_comptime_for_metadata_if', 'struct S {
@@ -1383,130 +1480,8 @@ fn main() {
 	])
 }
 
-fn test_field_metadata_branch_pruning() {
-	round4_check_runtime('field_metadata_branch_pruning', [
-		Round4RuntimeCase{
-			name:     'untaken_metadata_if_static_code'
-			source:   'struct S {
-	id int
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field is string {
-			missing_type_branch_fn()
-		} $else {
-			rows << field.name
-		}
-		$if field.name == "missing" {
-			missing_name_branch_fn()
-		}
-	}
-	println(rows.join("|"))
-}
-'
-			expected: 'id'
-		},
-		Round4RuntimeCase{
-			name:     'fielddata_flag_static_guards'
-			source:   'struct S {
-pub mut:
-	ptr &int
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field.is_pub && field.is_mut && field.indirections == 1 {
-			rows << field.name
-		} $else {
-			missing_fielddata_flag_branch_fn()
-		}
-	}
-	println(rows.join("|"))
-}
-'
-			expected: 'ptr'
-		},
-	])
-}
-
-fn test_nested_comptime_loop_sources() {
-	round4_check_runtime('nested_comptime_loop_sources', [
-		Round4RuntimeCase{
-			name:     'nested_comptime_for_field_type_source'
-			source:   'struct Inner {
-	count int
-	label string
-}
-
-struct Outer {
-	id int
-	nested Inner
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in Outer.fields {
-		$if field is $struct {
-			$for sub in field.typ.fields {
-				rows << field.name + "." + sub.name
-			}
-		}
-	}
-	println(rows.join("|"))
-}
-'
-			expected: 'nested.count|nested.label'
-		},
-		Round4RuntimeCase{
-			name:     'shadowed_comptime_for'
-			source:   "struct A {
-	a int
-}
-
-struct B {
-	b int
-	c string
-}
-
-enum Outer {
-	one
-}
-
-enum Inner {
-	red
-	blue
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in A.fields {
-		rows << 'outer-field:' + field.name
-		$for field in B.fields {
-			rows << 'inner-field:' + field.name
-		}
-		$for field in Inner.values {
-			rows << 'mixed-value:' + int_str(field.value)
-		}
-	}
-	$for value in Outer.values {
-		rows << 'outer-value:' + value.name
-		$for value in Inner.values {
-			rows << 'inner-value:' + value.name
-		}
-	}
-	println(rows.join('|'))
-}
-	"
-			expected: 'outer-field:a|inner-field:b|inner-field:c|mixed-value:0|mixed-value:1|outer-value:one|inner-value:red|inner-value:blue'
-		},
-	])
-}
-
-fn test_unknown_comptime_field_member_is_rejected() {
-	round4_check_rejections('field_metadata_member_rejections', [
+fn test_field_and_enum_metadata_member_rejections() {
+	round4_check_rejections('field_and_enum_metadata_member_rejections', [
 		Round4Rejection{'bad_field_member', 'struct S {
 	name int
 }
@@ -1553,11 +1528,6 @@ fn main() {
 	}
 }
 ', 'unknown FieldData member `is_function`'},
-	])
-}
-
-fn test_unknown_comptime_enum_value_member_is_rejected() {
-	round4_check_rejections('enum_metadata_member_rejections', [
 		Round4Rejection{'bad_enum_value_member', 'enum Color {
 	red
 }
@@ -1803,8 +1773,8 @@ fn main() {
 	assert out == 'id:x\nid:x'
 }
 
-fn test_reflected_method_signature_metadata() {
-	round4_check_runtime('reflected_method_signature_metadata', [
+fn test_reflected_method_signatures_and_arity() {
+	round4_check_runtime('reflected_method_signatures_and_arity', [
 		Round4RuntimeCase{
 			name:     'method_metadata_materialized'
 			source:   "struct App {}
@@ -1888,11 +1858,6 @@ fn main() {
 '
 			expected: 'empty-type:true|text-type:true|args:text|params:text|args-name:text|params-name:text'
 		},
-	])
-}
-
-fn test_reflected_method_arity() {
-	round4_check_runtime('reflected_method_arity', [
 		Round4RuntimeCase{
 			name:     'method_parameter_count_guards'
 			source:   'struct Counted {}
@@ -2048,8 +2013,8 @@ fn main() {
 	assert out == '9'
 }
 
-fn test_quoted_attribute_metadata() {
-	round4_check_runtime('quoted_attribute_metadata', [
+fn test_quoted_attribute_names_and_arguments() {
+	round4_check_runtime('quoted_attribute_names_and_arguments', [
 		Round4RuntimeCase{
 			name:     'quoted_attribute_kind'
 			source:   "@['route'; plain]
@@ -2090,6 +2055,66 @@ fn main() {
 }
 "
 			expected: 'http://x##false#string|a:b##false#string'
+		},
+		Round4RuntimeCase{
+			name:     'quoted_param_attribute_guards'
+			source:   "@[route]
+@[timeout: 5]
+struct GuardAttrs {}
+
+fn inspect(target string, other int) {
+	_ = target
+	_ = other
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for param in inspect.params {
+		\$if param.name == 'target' || 'param.typ' == 'int' {
+			rows << param.name
+		}
+	}
+	\$for attr in GuardAttrs.attributes {
+		\$if attr.name == 'route' || 'attr.has_arg' == 'true' {
+			rows << attr.name
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'target|route'
+		},
+		Round4RuntimeCase{
+			name:     'raw_string_attribute_argument'
+			source:   "@[route: r'/path']
+fn handler() {}
+
+fn main() {
+	mut rows := []string{}
+	\$for attr in handler.attributes {
+		rows << attr.name + ':' + attr.arg
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'route:/path'
+		},
+		Round4RuntimeCase{
+			name:     'attribute_guard_escaped_argument'
+			source:   '@[label: "O\'Reilly"]
+fn handler() {}
+
+fn main() {
+	mut matched := false
+	\$for attr in handler.attributes {
+		\$if attr.arg == "O\'Reilly" {
+			matched = true
+		}
+	}
+	println(matched)
+}
+'
+			expected: 'true'
 		},
 	])
 }
@@ -2566,8 +2591,8 @@ fn test_raw_string_comptime_match_literals_are_normalized() {
 	assert out == 'subject\npattern'
 }
 
-fn test_quoted_reflection_selectors() {
-	round4_check_runtime('quoted_reflection_selectors', [
+fn test_quoted_and_nested_reflection_selectors() {
+	round4_check_runtime('quoted_and_nested_reflection_selectors', [
 		Round4RuntimeCase{
 			name:     'field_condition_string_literal'
 			source:   "struct QuotedFields {
@@ -2620,6 +2645,74 @@ fn main() {
 }
 "
 			expected: 'target'
+		},
+		Round4RuntimeCase{
+			name:     'nested_field_method_guard'
+			source:   "struct Row {
+	id int
+	name string
+}
+
+struct App {}
+
+fn (a App) index() {
+	_ = a
+}
+
+fn (a App) submit() {
+	_ = a
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for field in Row.fields {
+		\$for method in App.methods {
+			\$if field.name == 'id' && method.name == 'index' {
+				rows << field.name + ':' + method.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'id:index'
+		},
+		Round4RuntimeCase{
+			name:     'nested_method_shadowing'
+			source:   'struct OuterMethods {}
+
+fn (o OuterMethods) outer(value string) string {
+	_ = o
+	return "outer:" + value
+}
+
+struct InnerMethods {}
+
+fn (i InnerMethods) alpha(value string) string {
+	_ = i
+	return "alpha:" + value
+}
+
+fn (i InnerMethods) beta(value string) string {
+	_ = i
+	return "beta:" + value
+}
+
+fn main() {
+	inner := InnerMethods{}
+	mut rows := []string{}
+	$for method in OuterMethods.methods {
+		rows << "outer:" + method.name
+		$for method in InnerMethods.methods {
+			$if method.args[0].typ is string {
+				rows << method.name + "=" + inner.$method(method.name)
+			}
+		}
+	}
+	println(rows.join("|"))
+}
+'
+			expected: 'outer:outer|alpha=alpha:alpha|beta=beta:beta'
 		},
 	])
 }
@@ -2807,73 +2900,8 @@ fn main() {
 	assert out == '2:1:7'
 }
 
-fn test_reflected_attribute_string_arguments() {
-	round4_check_runtime('reflected_attribute_string_arguments', [
-		Round4RuntimeCase{
-			name:     'quoted_param_attribute_guards'
-			source:   "@[route]
-@[timeout: 5]
-struct GuardAttrs {}
-
-fn inspect(target string, other int) {
-	_ = target
-	_ = other
-}
-
-fn main() {
-	mut rows := []string{}
-	\$for param in inspect.params {
-		\$if param.name == 'target' || 'param.typ' == 'int' {
-			rows << param.name
-		}
-	}
-	\$for attr in GuardAttrs.attributes {
-		\$if attr.name == 'route' || 'attr.has_arg' == 'true' {
-			rows << attr.name
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'target|route'
-		},
-		Round4RuntimeCase{
-			name:     'raw_string_attribute_argument'
-			source:   "@[route: r'/path']
-fn handler() {}
-
-fn main() {
-	mut rows := []string{}
-	\$for attr in handler.attributes {
-		rows << attr.name + ':' + attr.arg
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'route:/path'
-		},
-		Round4RuntimeCase{
-			name:     'attribute_guard_escaped_argument'
-			source:   '@[label: "O\'Reilly"]
-fn handler() {}
-
-fn main() {
-	mut matched := false
-	\$for attr in handler.attributes {
-		\$if attr.arg == "O\'Reilly" {
-			matched = true
-		}
-	}
-	println(matched)
-}
-'
-			expected: 'true'
-		},
-	])
-}
-
-fn test_nested_param_and_attribute_metadata() {
-	round4_check_runtime('nested_param_and_attribute_metadata', [
+fn test_nested_parameter_attribute_and_field_selectors() {
+	round4_check_runtime('nested_parameter_attribute_and_field_selectors', [
 		Round4RuntimeCase{
 			name:     'nested_param_attribute_shadowing'
 			source:   "@[outer]
@@ -2935,44 +2963,6 @@ fn main() {
 "
 			expected: 'y:x|y:q|z:x'
 		},
-	])
-}
-
-fn test_normal_string_attribute_arguments_are_unescaped() {
-	src := [
-		"@[quote: 'O\\'Reilly']",
-		"@[line: 'a\\n']",
-		"@[hex: '\\x41']",
-		"@[unicode: '\\u03bb']",
-		"@[raw: r'a\\n']",
-		'fn handler() {}',
-		'',
-		'fn main() {',
-		'\tmut rows := []string{}',
-		'\t\$for attr in handler.attributes {',
-		"\t\trows << attr.name + ':' + attr.arg.replace('\\n', '<nl>')",
-		'\t}',
-		'\tprintln(rows.join("|"))',
-		'}',
-	].join('\n')
-	out := round4_run_good(v3_bin, 'normal_string_attribute_arguments', src)
-	assert out == "quote:O'Reilly|line:a<nl>|hex:A|unicode:λ|raw:a\\n"
-	round4_run_bad(v3_bin, 'escaped_attribute_selected_guard', [
-		"@[label: 'O\\'Reilly']",
-		'fn handler() {}',
-		'',
-		'fn main() {',
-		'\t\$for attr in handler.attributes {',
-		'\t\t\$if attr.arg == "O\'Reilly" {',
-		'\t\t\tmissing_selected_escaped_attribute_fn()',
-		'\t\t}',
-		'\t}',
-		'}',
-	].join('\n'), 'unknown function: missing_selected_escaped_attribute_fn')
-}
-
-fn test_nested_attribute_and_field_selectors() {
-	round4_check_runtime('nested_attribute_and_field_selectors', [
 		Round4RuntimeCase{
 			name:     'nested_method_attribute_guard'
 			source:   "struct App {}
@@ -3057,6 +3047,39 @@ fn main() {
 			expected: 'x:id'
 		},
 	])
+}
+
+fn test_normal_string_attribute_arguments_are_unescaped() {
+	src := [
+		"@[quote: 'O\\'Reilly']",
+		"@[line: 'a\\n']",
+		"@[hex: '\\x41']",
+		"@[unicode: '\\u03bb']",
+		"@[raw: r'a\\n']",
+		'fn handler() {}',
+		'',
+		'fn main() {',
+		'\tmut rows := []string{}',
+		'\t\$for attr in handler.attributes {',
+		"\t\trows << attr.name + ':' + attr.arg.replace('\\n', '<nl>')",
+		'\t}',
+		'\tprintln(rows.join("|"))',
+		'}',
+	].join('\n')
+	out := round4_run_good(v3_bin, 'normal_string_attribute_arguments', src)
+	assert out == "quote:O'Reilly|line:a<nl>|hex:A|unicode:λ|raw:a\\n"
+	round4_run_bad(v3_bin, 'escaped_attribute_selected_guard', [
+		"@[label: 'O\\'Reilly']",
+		'fn handler() {}',
+		'',
+		'fn main() {',
+		'\t\$for attr in handler.attributes {',
+		'\t\t\$if attr.arg == "O\'Reilly" {',
+		'\t\t\tmissing_selected_escaped_attribute_fn()',
+		'\t\t}',
+		'\t}',
+		'}',
+	].join('\n'), 'unknown function: missing_selected_escaped_attribute_fn')
 }
 
 fn test_comptime_string_literal_text_is_not_resolved_as_cached_local() {
@@ -3163,79 +3186,6 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == 'param:local|attr:module_attr'
-}
-
-fn test_nested_method_selectors() {
-	round4_check_runtime('nested_method_selectors', [
-		Round4RuntimeCase{
-			name:     'nested_field_method_guard'
-			source:   "struct Row {
-	id int
-	name string
-}
-
-struct App {}
-
-fn (a App) index() {
-	_ = a
-}
-
-fn (a App) submit() {
-	_ = a
-}
-
-fn main() {
-	mut rows := []string{}
-	\$for field in Row.fields {
-		\$for method in App.methods {
-			\$if field.name == 'id' && method.name == 'index' {
-				rows << field.name + ':' + method.name
-			}
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'id:index'
-		},
-		Round4RuntimeCase{
-			name:     'nested_method_shadowing'
-			source:   'struct OuterMethods {}
-
-fn (o OuterMethods) outer(value string) string {
-	_ = o
-	return "outer:" + value
-}
-
-struct InnerMethods {}
-
-fn (i InnerMethods) alpha(value string) string {
-	_ = i
-	return "alpha:" + value
-}
-
-fn (i InnerMethods) beta(value string) string {
-	_ = i
-	return "beta:" + value
-}
-
-fn main() {
-	inner := InnerMethods{}
-	mut rows := []string{}
-	$for method in OuterMethods.methods {
-		rows << "outer:" + method.name
-		$for method in InnerMethods.methods {
-			$if method.args[0].typ is string {
-				rows << method.name + "=" + inner.$method(method.name)
-			}
-		}
-	}
-	println(rows.join("|"))
-}
-'
-			expected: 'outer:outer|alpha=alpha:alpha|beta=beta:beta'
-		},
-	])
 }
 
 fn test_generic_receiver_method_metadata_uses_concrete_args() {
