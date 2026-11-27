@@ -186,10 +186,12 @@ ${ownership_string_returned_fallback_body}
 	}
 }
 
-fn test_ownership_string_views_still_require_explicit_owned_copies_to_move() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_view_moves_${os.getpid()}')
+fn test_ownership_string_views_check_owned_copies_and_live_loans() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_view_rejections_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
+	consume := 'fn consume(value string) { _ = value }\n'
+	declarations := consume + 'fn identity(value string) string { return value }\n'
 	mut cases := []OwnershipStringViewRejection{}
 	for creation in ['"abcd".to_owned()', '"abcd"[1..].to_owned()', '(*ptr).to_owned()',
 		'original.clone()'] {
@@ -199,17 +201,9 @@ fn test_ownership_string_views_still_require_explicit_owned_copies_to_move() {
 	owned := ${creation}
 	consume(owned)
 	println(owned)'
-		cases << OwnershipStringViewRejection{ body: body, expected: 'use of moved value: `owned`' }
+		cases << OwnershipStringViewRejection{body, 'use of moved value: `owned`', consume}
 	}
-	check_ownership_string_view_rejections(root, 'fn consume(value string) { _ = value }\n',
-		cases, [[]string{}])!
-}
 
-fn test_ownership_string_views_keep_owner_borrow_until_view_expires() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_view_borrows_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	mut cases := []OwnershipStringViewRejection{}
 	for expr in ['*ptr', 'unsafe { original.substr_unsafe(0, 2) }', 'identity(*ptr)'] {
 		for invalid_action, expected in {
 			'consume(original)':                   'cannot move `original` because it is borrowed'
@@ -227,8 +221,7 @@ fn test_ownership_string_views_keep_owner_borrow_until_view_expires() {
 			cases << OwnershipStringViewRejection{ body: body, expected: expected }
 		}
 	}
-	check_ownership_string_view_rejections(root, 'fn consume(value string) { _ = value }\nfn identity(value string) string { return value }\n',
-		cases, [[]string{}])!
+	check_ownership_string_view_rejections(root, declarations, cases, [[]string{}])!
 }
 
 fn test_ownership_string_views_are_copied_at_owning_call_boundaries() {
