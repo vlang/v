@@ -263,6 +263,7 @@ pub fn (enc &Encoding) decode_string_to_string(src string) !string {
 // decode decodes `src` using the encoding `enc`. It returns the decoded bytes
 // written or a `corrupt_input_error_msg` error.
 // New line characters (\r and \n) are ignored.
+// The decoder rejects data bytes after the final group's padding.
 // Without padding, final groups of 1, 3 or 6 symbols are invalid.
 pub fn (enc &Encoding) decode(src []u8) ![]u8 {
 	stripped := strip_newlines(src)
@@ -315,11 +316,10 @@ fn (enc &Encoding) decode_(src_ []u8, mut dst []u8) !(int, bool) {
 					// return n, false, corrupt_input_error(olen)
 					return error(corrupt_input_error_msg(olen))
 				}
-				for k := 0; k < 8 - 1 - j; k++ {
-					if src.len > k && src[k] != enc.padding_char {
-						// incorrect padding
-						// return n, false, corrupt_input_error(olen - src.len + k - 1)
-						return error(corrupt_input_error_msg(olen - src.len + k - 1))
+				// The remaining bytes must all be padding, including any extra padding.
+				for k, ch in src {
+					if ch != enc.padding_char {
+						return error(corrupt_input_error_msg(olen - src.len + k))
 					}
 				}
 				dlen, end = j, true
