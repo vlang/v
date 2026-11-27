@@ -703,3 +703,34 @@ fn test_issue_27281_bare_keyword_module_names_resolve() {
 	res := os.exec([issue_20147_vexe, 'run', main_file])
 	assert res.exit_code == 0, res.output
 }
+
+// Regression test for https://github.com/vlang/v/issues/32599 :
+// with `base_url: 'src'` the submodule `foo.bar` lives at `src/bar`,
+// so `import foo.bar` must resolve there instead of failing.
+fn issue_32599_base_url_submodule_workspace() string {
+	return os.join_path(os.vtmp_dir(), 'issue_32599_base_url_submodule')
+}
+
+fn test_issue_32599_base_url_applies_to_submodule_imports() {
+	workspace := issue_32599_base_url_submodule_workspace()
+	os.rmdir_all(workspace) or {}
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	foo_dir := os.join_path(workspace, 'foo')
+	bar_dir := os.join_path(foo_dir, 'src', 'bar')
+	cmd_dir := os.join_path(foo_dir, 'cmd')
+	os.mkdir_all(bar_dir) or { panic(err) }
+	os.mkdir_all(cmd_dir) or { panic(err) }
+	issue_20147_write_file(os.join_path(foo_dir, 'v.mod'),
+		"Module {\n\tname: 'foo'\n\tbase_url: 'src'\n}\n")
+	issue_20147_write_file(os.join_path(foo_dir, 'src', 'foo.v'),
+		"module foo\n\npub const value = 'foo'\n")
+	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), "module bar\n\npub const value = 'bar'\n")
+	use_file := os.join_path(cmd_dir, 'use.v')
+	issue_20147_write_file(use_file,
+		'module main\n\nimport foo\nimport foo.bar\n\nfn main() {\n\tprintln(foo.value + bar.value)\n}\n')
+	res := os.exec([issue_20147_vexe, 'run', use_file])
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'foobar', res.output
+}

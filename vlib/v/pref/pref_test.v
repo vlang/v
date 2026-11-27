@@ -43,6 +43,30 @@ fn test_get_module_path_resolves_alias_and_submodule() {
 		'sub'))
 }
 
+fn test_get_module_path_resolves_base_url_submodule() {
+	root := os.join_path(os.vtmp_dir(), 'v3_pref_base_url_submodule_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	foo_dir := os.join_path_single(root, 'foo')
+	src_dir := os.join_path_single(foo_dir, 'src')
+	bar_dir := os.join_path_single(src_dir, 'bar')
+	os.mkdir_all(bar_dir) or { panic(err) }
+	cmd_dir := os.join_path_single(foo_dir, 'cmd')
+	os.mkdir_all(cmd_dir) or { panic(err) }
+	os.write_file(os.join_path_single(foo_dir, 'v.mod'), "Module {\n\tname: 'foo'\n\tbase_url: 'src'\n}\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path_single(src_dir, 'foo.v'), 'module foo\n') or { panic(err) }
+	os.write_file(os.join_path_single(bar_dir, 'bar.v'), 'module bar\n') or { panic(err) }
+	entry_file := os.join_path_single(cmd_dir, 'use.v')
+	os.write_file(entry_file, 'module main\n') or { panic(err) }
+	prefs := new_preferences()
+	assert prefs.get_module_path('foo', entry_file) == os.real_path(foo_dir)
+	assert prefs.get_module_path('foo.bar', entry_file) == os.real_path(bar_dir)
+}
+
 fn test_cache_recovery_sentinel_is_hidden_from_compiled_programs() {
 	name := 'V3_INTERNAL_CACHE_RECOVERY'
 	previous := os.getenv_opt(name)

@@ -26810,6 +26810,15 @@ fn resolve_ancestor_module_path(prefs &pref.Preferences, mod_name string, mod_pa
 				&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
 				return candidate
 			}
+			// A `base_url` manifest moves the top module's submodules under its
+			// source folder, so `foo.bar` lives at `<level>/foo/src/bar`.
+			ancestor_redirected := pref.base_url_redirected_module_candidate(current, mod_name)
+			if ancestor_redirected != '' {
+				if module_path_has_v_sources(ancestor_redirected, prefs)
+					&& !module_dir_belongs_to_other_project(ancestor_redirected, importer_vmod_root, mod_name) {
+					return ancestor_redirected
+				}
+			}
 		}
 		// An explicit `.v.mod.stop` ends the walk: the directories above it are
 		// not part of this project, so a module up there is not what the import
@@ -26870,13 +26879,28 @@ fn resolve_local_or_project_module_path(prefs &pref.Preferences, mod_name string
 		if module_path_has_v_sources(project_path, prefs) {
 			return project_path
 		}
+		// The project itself can be the imported module: with `base_url`, its
+		// submodules live under its source folder, not beside `v.mod`.
+		redirected := pref.base_url_submodule_candidate(project_root, mod_name)
+		if redirected != '' {
+			if module_path_has_v_sources(redirected, prefs) {
+				return redirected
+			}
+		}
 	}
 	// Preserve the existing resolver priority: explicit local `modules/` and
 	// project-root modules precede a module beside the importing file.
 	if importing_file.len > 0 {
-		relative_path := os.join_path_single(os.dir(importing_file), mod_path)
+		importer_dir := os.dir(importing_file)
+		relative_path := os.join_path_single(importer_dir, mod_path)
 		if module_path_has_v_sources(relative_path, prefs) {
 			return relative_path
+		}
+		relative_redirected := pref.base_url_redirected_module_candidate(importer_dir, mod_name)
+		if relative_redirected != '' {
+			if module_path_has_v_sources(relative_redirected, prefs) {
+				return relative_redirected
+			}
 		}
 	}
 	return ''
@@ -26935,6 +26959,12 @@ fn resolve_global_module_path(prefs &pref.Preferences, mod_name string, mod_path
 		module_path := os.join_path_single(root, mod_path)
 		if module_path_has_v_sources(module_path, prefs) {
 			return module_path
+		}
+		global_redirected := pref.base_url_redirected_module_candidate(root, mod_name)
+		if global_redirected != '' {
+			if module_path_has_v_sources(global_redirected, prefs) {
+				return global_redirected
+			}
 		}
 	}
 	return ''
