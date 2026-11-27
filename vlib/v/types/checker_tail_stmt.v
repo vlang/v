@@ -9860,6 +9860,28 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if tc.has_active_import(name) {
+		// An imported module is a namespace, not a value: `os.args` is a
+		// selector on the import, while a bare `os` (as an initializer, a
+		// call argument, or an interpolation) has no value and would only
+		// fail later in C with `'os' undeclared`.
+		parent_id := tc.direct_parent_id(id)
+		if tc.valid_node_id(parent_id) {
+			parent := tc.a.node(parent_id)
+			if parent.kind == .selector && parent.children_count > 0
+				&& tc.a.child(parent, 0) == id {
+				return
+			}
+			if parent.kind == .import_decl {
+				return
+			}
+		} else {
+			return
+		}
+		if tc.should_diagnose(id) {
+			tc.record_error_at(.unknown_ident, 'module `${name}` cannot be used as a value', id,
+				tc.node_value_diagnostic_pos(id))
+			tc.register_synth_type(id, unresolved_name_type())
+		}
 		return
 	}
 	// `qname` also keys the scope and const lookups above; probe the type tables once.
