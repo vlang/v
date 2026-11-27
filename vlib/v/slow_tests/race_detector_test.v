@@ -8,12 +8,12 @@ import math
 import os
 import runtime
 
-__global tsan_probe_succeeded bool
+__global tsan_options_variable string
 
 const vexe = os.quoted_path(@VEXE)
 const tdir = os.join_path(os.vtmp_dir(), 'race_detector_test_${os.getpid()}')
 // These fixtures join their threads, so TSan can exit without its extra shutdown wait.
-const race_report_options = 'VRACE=exitcode=7 atexit_sleep_ms=0'
+const race_report_options = 'exitcode=7 atexit_sleep_ms=0'
 
 const racy_source = 'struct Counter {
 mut:
@@ -580,30 +580,47 @@ fn race_c_compiler() string {
 // thread_sanitizer_runs reuses a successful probe. Failed probes can be transient on
 // hosts whose ASLR sometimes places the sanitizer's mappings at unsupported addresses.
 fn thread_sanitizer_runs() bool {
-	if !tsan_probe_succeeded {
-		tsan_probe_succeeded = probe_thread_sanitizer()
+	if tsan_options_variable == '' {
+		tsan_options_variable = probe_thread_sanitizer()
 	}
-	return tsan_probe_succeeded
+	return tsan_options_variable != ''
 }
 
 // probe_thread_sanitizer checks that the compiler can build a TSan binary and that the
 // runtime works on this host, including kernels whose ASLR layout some TSan versions reject.
-fn probe_thread_sanitizer() bool {
+fn probe_thread_sanitizer() string {
 	probe_c := os.join_path(tdir, 'tsan_probe.c')
 	probe_exe := os.join_path(tdir, 'tsan_probe')
-	os.write_file(probe_c, 'int main(void) { return 0; }\n') or { return false }
+	// race_options.c uses constant defaults on Clang without this attribute.
+	os.write_file(probe_c, '#include <stdio.h>
+#if defined(__clang__)
+#if !__has_attribute(disable_sanitizer_instrumentation)
+#define RACE_OPTIONS_VARIABLE "TSAN_OPTIONS"
+#endif
+#endif
+#ifndef RACE_OPTIONS_VARIABLE
+#define RACE_OPTIONS_VARIABLE "VRACE"
+#endif
+int main(void) { puts(RACE_OPTIONS_VARIABLE); return 0; }
+') or { return '' }
 	cc := race_c_compiler()
 	compiled := os.exec([cc, '-fsanitize=thread', '${probe_c}', '-o', probe_exe])
 	if compiled.exit_code != 0 {
 		eprintln('skipping: `${cc} -fsanitize=thread` does not work here:\n${compiled.output}')
-		return false
+		return ''
 	}
 	ran := os.exec([probe_exe])
 	if ran.exit_code != 0 {
 		eprintln('skipping: ThreadSanitizer programs do not run here:\n${ran.output}')
-		return false
+		return ''
 	}
-	return true
+	options_variable := ran.output.trim_space()
+	assert options_variable in ['VRACE', 'TSAN_OPTIONS'], ran.output
+	return options_variable
+}
+
+fn race_options_env(options string) string {
+	return '${tsan_options_variable}=${options}'
 }
 
 struct RaceProgramBuild {
@@ -669,13 +686,13 @@ fn test_race_detector() {
 		assert summary.contains('racy.v:8'), racy_run.output
 	}
 
-	// VRACE passes options to the race detector, like GORACE does for Go.
-	vrace_run := os.exec(['env', race_report_options, racy])
-	assert vrace_run.exit_code == 7, vrace_run.output
+	// Exercise VRACE where the option hook supports it, and TSAN_OPTIONS on older Clang.
+	configured_run := os.exec(['env', race_options_env(race_report_options), racy])
+	assert configured_run.exit_code == 7, configured_run.output
 
 	// The race runtime support is compiled on its own, and must build in strict C99 mode too.
 	racy_c99 := build_race_program('racy_c99', racy_source, '-c99')
-	racy_c99_run := os.exec(['env', race_report_options, racy_c99])
+	racy_c99_run := os.exec(['env', race_options_env(race_report_options), racy_c99])
 	assert racy_c99_run.exit_code == 7, racy_c99_run.output
 	assert racy_c99_run.output.contains('WARNING: ThreadSanitizer: data race'), racy_c99_run.output
 
@@ -736,7 +753,7 @@ fn test_race_map_value_update_is_a_write() {
 		return
 	}
 	exe := build_race_program('map_value_update', map_value_update_source)
-	res := os.exec(['env', race_report_options, exe])
+	res := os.exec(['env', race_options_env(race_report_options), exe])
 	assert res.exit_code == 7, res.output
 	assert res.output.contains('WARNING: ThreadSanitizer: data race'), res.output
 }
@@ -772,7 +789,7 @@ fn test_race_blank_reads_are_reads() {
 		// With the default trace history, ThreadSanitizer sometimes cannot restore the stack
 		// of the earlier access of the 1000 racing iterations, drops that report and never
 		// reports the address again (about 1 run in 200 on macOS). A longer history keeps it.
-		res := os.exec(['env', '${race_report_options} history_size=7', exe])
+		res := os.exec(['env', race_options_env('${race_report_options} history_size=7'), exe])
 		assert res.exit_code == 7, '${read}: ${res.output}'
 		assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${read}: ${res.output}'
 	}
@@ -806,7 +823,7 @@ fn test_race_failed_file_read_does_not_synchronize() {
 		return
 	}
 	exe := build_race_program('failed_read', failed_read_source)
-	res := os.exec(['env', race_report_options, exe])
+	res := os.exec(['env', race_options_env(race_report_options), exe])
 	assert res.output.contains('read failed'), res.output
 	assert res.exit_code == 7, res.output
 	assert res.output.contains('WARNING: ThreadSanitizer: data race'), res.output
@@ -843,7 +860,7 @@ fn test_race_select_of_closed_channels_happens_after_the_close() {
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('select -2 x 42'), res.output
 	racy := build_race_program('select_closed_racy', select_closed_source, '-d', 'write_after_close')
-	racy_res := os.exec(['env', 'VRACE=exitcode=7', racy])
+	racy_res := os.exec(['env', race_options_env(race_report_options), racy])
 	assert racy_res.exit_code == 7, racy_res.output
 	assert racy_res.output.contains('WARNING: ThreadSanitizer: data race'), racy_res.output
 }
@@ -879,7 +896,7 @@ fn test_race_channel_values_are_the_caller_memory() {
 			mode := modes[i]
 			// Like the blank-read fixtures: 1000 racing iterations can outlive the default
 			// trace history, and ThreadSanitizer then drops the report for that address.
-			res := os.exec(['env', '${race_report_options} history_size=7', exe])
+			res := os.exec(['env', race_options_env('${race_report_options} history_size=7'), exe])
 			assert res.exit_code == 7, '${mode}, optimized=${optimized}: ${res.output}'
 			assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${mode}, optimized=${optimized}: ${res.output}'
 			assert res.output.contains('${mode} done '), res.output
@@ -924,7 +941,7 @@ fn test_race_close_error_is_published_with_the_close() {
 
 // A program that only prints literals parses a reduced builtin on macOS. Its printing
 // functions call the race runtime, so a `-race` build of it needs that runtime too, and
-// with it race_options.c, which reads VRACE.
+// with it race_options.c, which reads VRACE on supported C compilers.
 fn test_race_literal_output_program_links_the_race_runtime() {
 	if !thread_sanitizer_runs() {
 		return
@@ -933,7 +950,7 @@ fn test_race_literal_output_program_links_the_race_runtime() {
 	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'literal output', res.output
-	help := os.exec(['env', 'VRACE=help=1', exe])
+	help := os.exec(['env', race_options_env('help=1'), exe])
 	assert help.exit_code == 0, help.output
 	assert help.output.contains('Available flags for ThreadSanitizer'), help.output
 }

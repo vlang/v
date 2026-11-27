@@ -2,12 +2,15 @@
 import os
 import json2
 
-fn test_addressed_string_range_headers_keep_their_type_and_values() {
+const addressed_range_compiler_args = [@VEXE, '-no-memory-limit', '-nocache', '-cc', 'clang', '-gc',
+	'none']
+
+fn test_addressed_string_ranges_keep_headers_and_retained_sources() {
 	root := os.join_path(os.vtmp_dir(), 'addressed_string_range_header_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, '@[has_globals]
+	headers := '@[has_globals]
 module main
 
 __global source_calls = 0
@@ -92,24 +95,66 @@ fn main() {
  assert end_calls == 2
  assert text == "abcdef"
 }
-')!
-	for ownership in ['', '-ownership'] {
-		for mode in ['-no-parallel', ''] {
-			output := os.join_path(root, 'program_${if ownership.len > 0 {
-				'ownership'
-			} else {
-				'regular'
-			}}_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-			compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -cc clang -gc none ${ownership} ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
-			assert compile.exit_code == 0, '${ownership} ${mode}: ${compile.output}'
-			run := os.execute(os.quoted_path(output))
-			assert run.exit_code == 0, '${ownership} ${mode}: ${run.output}'
+'
+	retained := 'type Text = string
+struct Holder { text string }
+fn reference(text &string) &string { return text }
+fn caller(text &string) &string { return &(*reference(text))[1..] }
+fn literal() &string { return &"abcdef"[1..] }
+fn check_retained_sources() {
+	copied := "abc".repeat(3)[1..]
+	assert copied == "bcabcabc"
+	owner := "abcdef".to_owned()
+	view := &owner[1..]
+	assert *view == "bcdef"
+	assert unsafe { view.str == owner.str + 1 }
+	assert *caller(&owner) == "bcdef"
+	assert *literal() == "bcdef"
+	borrowed := &owner.substr_unsafe(0, 4)[1..]
+	assert *borrowed == "bcd"
+	assert unsafe { borrowed.str == owner.str + 1 }
+	aliased := Text("abcdef".to_owned())
+	assert *(&aliased[1..]) == "bcdef"
+	holder := Holder{text: "abcdef".to_owned()}
+	assert *(&holder.text[1..]) == "bcdef"
+	texts := ["abcdef".to_owned()]
+	assert *(&texts[0][1..]) == "bcdef"
+	assert *(&(Text("abcdef"))[1..]) == "bcdef"
+	assert owner == "abcdef"
+}
+'
+	for ownership in [false, true] {
+		code := if ownership {
+			headers.replace_once('fn main() {\n', 'fn check_headers() {\n') + '\n' + retained + '
+fn main() {
+	check_headers()
+	println("headers")
+	check_retained_sources()
+	println("retained sources")
+}
+'
+		} else {
+			headers
+		}
+		os.write_file(source, code)!
+		kind := if ownership { 'ownership' } else { 'regular' }
+		flags := if ownership { ['-ownership'] } else { []string{} }
+		for mode in [['-no-parallel'], []string{}] {
+			mode_name := if mode.len > 0 { 'serial' } else { 'parallel' }
+			name := 'program_${kind}_${mode_name}'
+			output := os.join_path(root, name + $if windows { '.exe' } $else { '' })
+			compile := os.exec([...addressed_range_compiler_args, ...flags, ...mode, '-o', output,
+				source])
+			assert compile.exit_code == 0, '${kind} ${mode}: ${compile.output}'
+			run := os.exec([output])
+			assert run.exit_code == 0, '${kind} ${mode}: ${run.output}'
+			if ownership {
+				assert run.output.trim_space().split_into_lines() == ['headers', 'retained sources'], '${kind} ${mode}: ${run.output}'
+			}
 		}
 	}
 }
 
-const addressed_range_rejection_args = [@VEXE, '-no-memory-limit', '-nocache', '-ownership', '-gc',
-	'none', '-cc', 'clang']
 const addressed_range_rejection_error = 'cannot take an addressed string range from a temporary value'
 
 struct AddressedRangeRejectionDiagnostic {
@@ -169,7 +214,8 @@ fn test_ownership_addressed_string_ranges_reject_temporary_sources() {
 	for expression in expressions {
 		os.write_file(source, addressed_range_rejection_fixture(expression))!
 		for mode in [['-no-parallel'], []string{}] {
-			out := os.exec([...addressed_range_rejection_args, ...mode, '-check', source])
+			out := os.exec([...addressed_range_compiler_args, '-ownership', ...mode, '-check',
+				source])
 			assert out.exit_code != 0, '${expression}: ${out.output}'
 			assert out.output.contains(addressed_range_rejection_error), '${expression}: ${out.output}'
 		}
@@ -189,7 +235,8 @@ fn check_addressed_range_rejections_batched(root string, expressions []string) !
 	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
 	for mode in [['-no-parallel'], []string{}] {
 		// Each fixture can report two errors, so use JSON to avoid the text diagnostic limit.
-		out := os.exec([...addressed_range_rejection_args, ...mode, '-json-errors', '-check', root])
+		out := os.exec([...addressed_range_compiler_args, '-ownership', ...mode, '-json-errors',
+			'-check', root])
 		assert out.exit_code != 0, '${mode}: ${out.output}'
 		mut rejected := map[string]bool{}
 		for line in out.output.split_into_lines() {
@@ -204,43 +251,5 @@ fn check_addressed_range_rejections_batched(root string, expressions []string) !
 		for i, expression in expressions {
 			assert 'range_case_${i}.v' in rejected, '${mode}: ${expression}: ${out.output}'
 		}
-	}
-}
-
-fn test_ownership_addressed_string_ranges_keep_retained_sources() {
-	root := os.join_path(os.vtmp_dir(), 'addressed_string_range_retained_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'type Text = string
-struct Holder { text string }
-fn reference(text &string) &string { return text }
-fn caller(text &string) &string { return &(*reference(text))[1..] }
-fn literal() &string { return &"abcdef"[1..] }
-fn main() {
-	copied := "abc".repeat(3)[1..]
-	assert copied == "bcabcabc"
-	owner := "abcdef".to_owned()
-	view := &owner[1..]
-	assert *view == "bcdef"
-	assert unsafe { view.str == owner.str + 1 }
-	assert *caller(&owner) == "bcdef"
-	assert *literal() == "bcdef"
-	borrowed := &owner.substr_unsafe(0, 4)[1..]
-	assert *borrowed == "bcd"
-	assert unsafe { borrowed.str == owner.str + 1 }
-	aliased := Text("abcdef".to_owned())
-	assert *(&aliased[1..]) == "bcdef"
-	holder := Holder{text: "abcdef".to_owned()}
-	assert *(&holder.text[1..]) == "bcdef"
-	texts := ["abcdef".to_owned()]
-	assert *(&texts[0][1..]) == "bcdef"
-	assert *(&(Text("abcdef"))[1..]) == "bcdef"
-	assert owner == "abcdef"
-}
-')!
-	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} run ${os.quoted_path(source)}')
-		assert out.exit_code == 0, '${mode}: ${out.output}'
 	}
 }

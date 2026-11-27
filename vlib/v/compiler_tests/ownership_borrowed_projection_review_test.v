@@ -12,15 +12,6 @@ fn run_borrowed_projection_fixture(compiler string, mode string, source string) 
 	})
 }
 
-fn run_borrowed_projection_source(compiler string, root string, name string, source_text string) {
-	source := os.join_path(root, 'v3_borrowed_projection_${name}.v')
-	os.write_file(source, source_text) or { panic(err) }
-	for mode in ['-no-parallel', ''] {
-		out := run_borrowed_projection_fixture(compiler, mode, source)
-		assert out.exit_code == 0, '${name} (${mode}): ${out.output}'
-	}
-}
-
 fn test_borrowed_projection_regressions_by_context() {
 	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
 	v3_src := os.join_path(os.dir(@FILE), '../v.v')
@@ -33,13 +24,21 @@ fn test_borrowed_projection_regressions_by_context() {
 	root := os.join_path(os.vtmp_dir(), 'v3_borrowed_projection_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
-	common := os.read_file(os.join_path(borrowed_projection_fixture_dir, 'common.v.txt')) or {
-		panic(err)
-	}
+	common := os.read_file(os.join_path(borrowed_projection_fixture_dir, 'common.v.txt'))!
+	mut parts := [common]
+	mut checks := []string{}
 	for name in ['assignments', 'calls_and_conversions', 'collections', 'array_initializers',
 		'indexed_aliases', 'constants'] {
-		fragment := os.read_file(os.join_path(borrowed_projection_fixture_dir, '${name}.v.txt')) or { panic(err) }
-		run_borrowed_projection_source(compiler, root, name, common + '\n' + fragment)
+		fragment := os.read_file(os.join_path(borrowed_projection_fixture_dir, '${name}.v.txt'))!
+		parts << fragment.replace_once('\nfn main() {', '\nfn check_${name}() {')
+		checks << '\tcheck_${name}()'
+	}
+	parts << 'fn main() {\n${checks.join('\n')}\n}\n'
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, parts.join('\n'))!
+	for mode in ['-no-parallel', ''] {
+		out := run_borrowed_projection_fixture(compiler, mode, source)
+		assert out.exit_code == 0, '${mode}: ${out.output}'
 	}
 	run_imported_const_projection_is_cloned(compiler, root)
 }

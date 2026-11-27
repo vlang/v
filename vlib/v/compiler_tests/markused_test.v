@@ -868,6 +868,34 @@ pub fn make() int { return 9 }
 	}
 }
 
+fn run_markused_default_batch(name string, declarations string, binding string, cases map[string]string) {
+	root := os.join_path(markused_fixture_dir, name)
+	defer { os.rmdir_all(root) or {} }
+	literals := cases.keys()
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, literal in literals {
+		module_name := 'fixture_${i}'
+		dir := os.join_path(root, module_name)
+		os.mkdir_all(dir) or { panic(err) }
+		imports << 'import ${module_name}'
+		calls << "\t\t'${i}' { ${module_name}.exercise() }"
+		program := 'module ${module_name}\n\n${declarations}pub fn exercise() {\n\t${binding} := ${literal}\n\tassert ${cases[literal]} == 7\n\tprintln("ok ${i}")\n}\n'
+		os.write_file(os.join_path(dir, 'case.v'), program) or { panic(err) }
+	}
+	os.write_file(os.join_path(root, 'main.v'), "module main\n\n${imports.join('\n')}\n\nfn main() {\n\tmatch arguments()[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(root, 'prog')
+	compiled := run_markused_compiler(['-gc', 'none', '-o', bin, root])
+	assert compiled.exit_code == 0, compiled.output
+	for i, literal in literals {
+		ran := os.exec([bin, i.str()])
+		assert ran.exit_code == 0, '${literal}: ${ran.output}'
+		assert ran.output.trim_space() == 'ok ${i}', '${literal}: ${ran.output}'
+	}
+}
+
 fn test_generic_omitted_field_defaults_compile_and_run() {
 	source := os.join_path(markused_fixture_dir, 'v3_markused_generic_defaults_${os.getpid()}.c.v')
 	bin := os.join_path(markused_fixture_dir, 'v3_markused_generic_defaults_run_${os.getpid()}')
@@ -875,26 +903,30 @@ fn test_generic_omitted_field_defaults_compile_and_run() {
 		os.rm(source) or {}
 		os.rm(bin) or {}
 	}
-	cases := {
-		'Outer[Inner]{}':                   'value.inner.value'
-		'Outer[Outer[Inner]]{}':            'value.inner.inner.value'
-		'[]Outer[Inner]{len: 1}':           'value[0].inner.value'
-		'ExplicitWrapper[Inner]{}':         'value.outer.inner.value'
-		'[]ExplicitWrapper[Inner]{len: 1}': 'value[0].outer.inner.value'
-		'OuterAlias{}':                     'value.inner.value'
-		'[]OuterAlias{len: 1}':             'value[0].inner.value'
-		'Outer[InnerAlias]{}':              'value.inner.value'
-		'Outer[[2]Inner]{}':                'value.inner[1].value'
-	}
-	for literal, element in cases {
-		os.write_file(source, '
+	declarations := '
 fn default_value() int { return 7 }
 struct Inner { value int = default_value() }
 type InnerAlias = Inner
 struct Outer[T] { inner T }
 struct ExplicitWrapper[T] { outer Outer[T] = Outer[T]{} }
 type OuterAlias = Outer[Inner]
-fn main() {
+'
+	run_markused_default_batch('generic_default_batch', declarations, 'value', {
+		'Outer[Inner]{}':         'value.inner.value'
+		'Outer[Outer[Inner]]{}':  'value.inner.inner.value'
+		'[]Outer[Inner]{len: 1}': 'value[0].inner.value'
+		'OuterAlias{}':           'value.inner.value'
+		'[]OuterAlias{len: 1}':   'value[0].inner.value'
+		'Outer[InnerAlias]{}':    'value.inner.value'
+		'Outer[[2]Inner]{}':      'value.inner[1].value'
+	})
+	// Exercise explicit generic field defaults in main.
+	cases := {
+		'ExplicitWrapper[Inner]{}':         'value.outer.inner.value'
+		'[]ExplicitWrapper[Inner]{len: 1}': 'value[0].outer.inner.value'
+	}
+	for literal, element in cases {
+		os.write_file(source, declarations + 'fn main() {
 	value := ${literal}
 	assert ${element} == 7
 	println("ok")
@@ -1111,25 +1143,7 @@ fn main() {
 }
 
 fn test_alias_value_defaults_compile_and_run() {
-	source := os.join_path(markused_fixture_dir, 'v3_markused_alias_array_defaults_${os.getpid()}.v')
-	bin := os.join_path(markused_fixture_dir, 'v3_markused_alias_array_defaults_run_${os.getpid()}')
-	defer {
-		os.rm(source) or {}
-		os.rm(bin) or {}
-	}
-	cases := {
-		'FixedAlias{}':           'values[1].value'
-		'Rows{len: 1}':           'values[0].value'
-		'[]Alias{len: 1}':        'values[0].value'
-		'[2]Alias{}':             'values[1].value'
-		'[][2]Alias{len: 1}':     'values[0][1].value'
-		'Wrapper{}':              'values.box.value'
-		'FixedWrapper{}':         'values.boxes[1].value'
-		'[]FixedAlias{len: 1}':   'values[0][1].value'
-		'[]GenericAlias{len: 1}': 'values[0].value'
-	}
-	for literal, element in cases {
-		os.write_file(source, '
+	declarations := '
 fn default_value() int { return 7 }
 struct Box { value int = default_value() }
 type FirstAlias = Box
@@ -1140,18 +1154,18 @@ type Rows = []Box
 struct FixedWrapper { boxes FixedAlias }
 struct GenericBox[T] { value int = default_value() item T }
 type GenericAlias = GenericBox[int]
-fn main() {
-	values := ${literal}
-	assert ${element} == 7
-	println("ok")
-}
-') or { panic(err) }
-		compiled := run_markused_compiler(['-gc', 'none', '-o', bin, source])
-		assert compiled.exit_code == 0, '${literal}: ${compiled.output}'
-		ran := os.exec([bin])
-		assert ran.exit_code == 0, ran.output
-		assert ran.output.trim_space() == 'ok', ran.output
-	}
+'
+	run_markused_default_batch('alias_default_batch', declarations, 'values', {
+		'FixedAlias{}':           'values[1].value'
+		'[2]Alias{}':             'values[1].value'
+		'[][2]Alias{len: 1}':     'values[0][1].value'
+		'FixedWrapper{}':         'values.boxes[1].value'
+		'[]FixedAlias{len: 1}':   'values[0][1].value'
+		'Rows{len: 1}':           'values[0].value'
+		'[]Alias{len: 1}':        'values[0].value'
+		'Wrapper{}':              'values.box.value'
+		'[]GenericAlias{len: 1}': 'values[0].value'
+	})
 }
 
 // test_string_interpolation_seeds_string_plus_and_formatter_helpers

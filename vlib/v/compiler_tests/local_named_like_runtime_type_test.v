@@ -15,21 +15,44 @@ fn local_shadow_fixture_dir(name string) string {
 	return root
 }
 
-fn local_shadow_build_and_run(name string, source string) os.Result {
-	root := local_shadow_fixture_dir(name)
-	defer { os.rmdir_all(root) or {} }
-	main_v := os.join_path(root, 'main.v')
-	os.write_file(main_v, source) or { panic(err) }
-	exe := os.join_path(root, 'prog')
-	compile := os.exec([@VEXE, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
-	if compile.exit_code != 0 {
-		return compile
-	}
-	return os.exec([exe])
+struct LocalShadowCase {
+	name     string
+	source   string
+	expected []string
 }
 
-fn test_a_local_named_like_a_runtime_type_does_not_hide_it() {
-	res := local_shadow_build_and_run('slice', 'struct Arg {
+fn local_shadow_check_batch(cases []LocalShadowCase) {
+	root := local_shadow_fixture_dir('runtime')
+	defer { os.rmdir_all(root) or {} }
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		dir := os.join_path(root, case.name)
+		os.mkdir(dir) or { panic(err) }
+		imports << 'import ${case.name}'
+		calls << "\t\t'${case.name}' { ${case.name}.exercise() }"
+		source := 'module ${case.name}\n\n' + case.source
+		os.write_file(os.join_path(dir, 'case.v'), source.replace_once('\nfn main()',
+			'\npub fn exercise()')) or { panic(err) }
+	}
+	main_v := os.join_path(root, 'main.v')
+	os.write_file(main_v, "module main\n\n${imports.join('\n')}\n\nfn main() {\n\tmatch arguments()[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n") or {
+		panic(err)
+	}
+	exe := os.join_path(root, 'prog')
+	compile := os.exec([@VEXE, '-nocache', main_v, '-b', 'c', '-o', exe])
+	assert compile.exit_code == 0, compile.output
+	for case in cases {
+		run := os.exec([exe, case.name])
+		assert run.exit_code == 0, '${case.name}: ${run.output}'
+		lines := run.output.trim_space().split('\n').map(it.trim_space())
+		assert lines == case.expected, '${case.name}: expected ${case.expected}\n${run.output}'
+	}
+}
+
+fn test_local_runtime_names() {
+	local_shadow_check_batch([
+		LocalShadowCase{'slice_parameter', 'struct Arg {
 	values []int
 	cols   int
 }
@@ -42,17 +65,12 @@ fn main() {
 	a := Arg{ values: [1, 2, 3], cols: 2 }
 	println(slice_of(a))
 }
-')
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2]'], res.output
-}
-
-// Wherever such a local is introduced, the name it is declared under has to be the
-// name the body will go on using. An if guard, an if guard over several values, a
-// multi-return declaration and a smartcast each introduce one, and each of them once
-// wrote the declaration through the plain name while the body read the renamed one.
-fn test_every_way_of_introducing_such_a_local_agrees_on_its_name() {
-	res := local_shadow_build_and_run('bindings', 'struct Box {
+', ['[1, 2]']},
+		// Wherever such a local is introduced, the name it is declared under has to be the
+		// name the body will go on using. An if guard, an if guard over several values, a
+		// multi-return declaration and a smartcast each introduce one, and each of them once
+		// wrote the declaration through the plain name while the body read the renamed one.
+		LocalShadowCase{'bindings', 'struct Box {
 	n int
 }
 
@@ -102,16 +120,11 @@ fn main() {
 	println(from_multi_return())
 	println(from_smartcast(Shape(Box{ n: 9 })))
 }
-')
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['5', '7', '3', '9'], res.output
-}
-
-// A deferred closure reads the local through a slot declared at the top of the
-// function, and that slot is the local: it has to carry the same name every read of
-// it uses, or the reads inside the closure name something that was never declared.
-fn test_a_deferred_closure_reads_the_local_it_captured() {
-	res := local_shadow_build_and_run('defer', 'fn with_defer() {
+', ['5', '7', '3', '9']},
+		// A deferred closure reads the local through a slot declared at the top of the
+		// function, and that slot is the local: it has to carry the same name every read of
+		// it uses, or the reads inside the closure name something that was never declared.
+		LocalShadowCase{'deferred_binding', 'fn with_defer() {
 	array := 1
 	defer(fn) {
 		println(array)
@@ -122,18 +135,13 @@ fn test_a_deferred_closure_reads_the_local_it_captured() {
 fn main() {
 	with_defer()
 }
-')
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['body', '1'], res.output
-}
-
-// The renamed name is taken out of the namespace reserved for generated symbols
-// rather than built by adding a suffix. A suffix would bring a function that has both
-// `array` and a name spelled like the renamed one under a single name: as parameters
-// that is two parameters called the same thing, and as locals the outer one quietly
-// becomes the inner one.
-fn test_a_source_name_cannot_collide_with_the_renamed_one() {
-	res := local_shadow_build_and_run('collision', 'struct Arg {
+', ['body', '1']},
+		// The renamed name is taken out of the namespace reserved for generated symbols
+		// rather than built by adding a suffix. A suffix would bring a function that has both
+		// `array` and a name spelled like the renamed one under a single name: as parameters
+		// that is two parameters called the same thing, and as locals the outer one quietly
+		// becomes the inner one.
+		LocalShadowCase{'name_collision', 'struct Arg {
 	values []int
 }
 
@@ -151,16 +159,11 @@ fn main() {
 	println(both_params(Arg{ values: [1, 2, 3] }, 7))
 	println(both_locals())
 }
-')
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['10', '11'], res.output
-}
-
-// A mutable parameter already holds an address, so taking one of it is the parameter
-// itself, and passing it on is written as the parameter's own name. That name is the
-// renamed one, the same as every other read of it.
-fn test_a_mutable_parameter_is_passed_on_under_its_declared_name() {
-	res := local_shadow_build_and_run('mut_param', 'struct Box {
+', ['10', '11']},
+		// A mutable parameter already holds an address, so taking one of it is the parameter
+		// itself, and passing it on is written as the parameter's own name. That name is the
+		// renamed one, the same as every other read of it.
+		LocalShadowCase{'mut_parameter', 'struct Box {
 mut:
 	n int
 }
@@ -209,17 +212,11 @@ fn main() {
 	bump_it(mut b)
 	println(b.n)
 }
-')
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2, 3]', '1', '2',
-		'6'], res.output
-}
-
-// A shared local is passed as its wrapper storage, including when it is forwarded
-// as a shared argument or used as a shared receiver. That storage keeps the same
-// renamed identifier as the declaration when the source name shadows a C type.
-fn test_a_shared_local_is_forwarded_under_its_declared_name() {
-	res := local_shadow_build_and_run('shared', 'struct State {
+', ['[1, 2, 3]', '1', '2', '6']},
+		// A shared local is passed as its wrapper storage, including when it is forwarded
+		// as a shared argument or used as a shared receiver. That storage keeps the same
+		// renamed identifier as the declaration when the source name shadows a C type.
+		LocalShadowCase{'shared_local', 'struct State {
 mut:
 	n int
 }
@@ -250,9 +247,8 @@ fn main() {
 	println(forward_local_arg())
 	println(forward_local_receiver())
 }
-')
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['9', '11'], res.output
+', ['9', '11']},
+	])
 }
 
 // Main-module object wrappers declare their parameters through the normal function
