@@ -2869,34 +2869,107 @@ fn main() {
 	assert fail_map_dynamic_index_read.output.contains('use of moved value: `m[k]`'), fail_map_dynamic_index_read.output
 }
 
-fn test_ownership_array_pop_call_arguments_update_storage() {
-	v3_bin := ownership_compiler
+fn ownership_array_pop_runtime_fixture() string {
+	mut source := ''
+	mut calls := []string{cap: 8}
 	for method in ['pop', 'pop_left'] {
-		name := 'array_${method}_call_arg_storage'
-		ok := run_ownership_check(v3_bin, name, '
-fn sink(s string, original &u8) {
+		pointers := if method == 'pop' {
+			['last_ptr', 'first_ptr']
+		} else {
+			['first_ptr', 'last_ptr']
+		}
+		// Use a distinct sink for each case so its other call sites cannot affect ownership inference.
+		source += '
+fn sink_${method}_storage(s string, original &u8) {
 	assert s.str == original
 	assert s == "item"
 }
 
-fn main() {
+fn check_${method}_storage() {
 	value := "item".to_owned()
 	original := value.str
 	mut arr := [value]
-	sink(arr.${method}(), original)
+	sink_${method}_storage(arr.${method}(), original)
 	arr << "literal"
 	x := arr[0]
 	y := x
 	assert x == "literal"
 	_ = y
 }
-')
-		assert ok.exit_code == 0, ok.output
-		binary := os.join_path(ownership_work_dir, name, 'out')
-		run := os.exec([binary])
-		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == '', run.output
 
+fn sink_${method}_literal(s string) {
+	assert s == "seed" || s == "literal"
+}
+
+fn check_${method}_literal() {
+	sink_${method}_literal("seed".to_owned())
+	mut arr := ["literal"]
+	sink_${method}_literal(arr.${method}())
+	assert arr.len == 0
+}
+
+fn count_${method}() int {
+	return 0
+}
+
+fn sink_${method}_unknown_length(s string, original &u8) {
+	assert s.str == original
+	assert s == "item"
+}
+
+fn check_${method}_unknown_length() {
+	value := "item".to_owned()
+	original := value.str
+	mut arr := []string{len: count_${method}()}
+	arr << value
+	sink_${method}_unknown_length(arr.${method}(), original)
+	assert arr.len == 0
+}
+
+fn sink_${method}_consecutive(s string, original &u8) {
+	assert s.str == original
+	assert s == "first" || s == "last"
+}
+
+fn check_${method}_consecutive() {
+	first := "first".to_owned()
+	last := "last".to_owned()
+	first_ptr := first.str
+	last_ptr := last.str
+	mut arr := [first, last]
+	sink_${method}_consecutive(arr.${method}(), ${pointers[0]})
+	assert arr.len == 1
+	sink_${method}_consecutive(arr.${method}(), ${pointers[1]})
+	assert arr.len == 0
+	arr << "literal"
+	x := arr[0]
+	y := x
+	assert x == "literal"
+	_ = y
+}
+'
+		for case in ['storage', 'literal', 'unknown_length', 'consecutive'] {
+			calls << '\tcheck_${method}_${case}()'
+		}
+	}
+	return source + '\nfn main() {\n${calls.join('\n')}\n}\n'
+}
+
+fn test_ownership_array_pop_call_arguments_update_storage() {
+	v3_bin := ownership_compiler
+	name := 'array_pop_call_arguments'
+	compiled := run_ownership_check(v3_bin, name, ownership_array_pop_runtime_fixture())
+	assert compiled.exit_code == 0, compiled.output
+	binary := os.join_path(ownership_work_dir, name, 'out')
+	generated := os.read_file(binary + '.c') or { panic(err) }
+	for method in ['pop', 'pop_left'] {
+		assert generated.contains('sink_${method}_literal(string__clone('), 'missing literal clone for ${method}'
+	}
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '', run.output
+
+	for method in ['pop', 'pop_left'] {
 		remaining := run_ownership_check(v3_bin, 'array_${method}_call_arg_retains_other_owner', '
 fn sink(s string) {
 	_ = s
@@ -2913,83 +2986,6 @@ fn main() {
 ')
 		assert remaining.exit_code != 0
 		assert remaining.output.contains('use of moved value: `x`'), remaining.output
-	}
-
-	for method in ['pop', 'pop_left'] {
-		name := 'array_${method}_literal_call_arg_clone'
-		code := '
-fn sink(s string) {
-	assert s == "seed" || s == "literal"
-}
-
-fn main() {
-	sink("seed".to_owned())
-	mut arr := ["literal"]
-	sink(arr.${method}())
-	assert arr.len == 0
-}
-'
-		compiled := run_ownership_check(v3_bin, name, code)
-		assert compiled.exit_code == 0, compiled.output
-		cloned_c_path := os.join_path(ownership_work_dir, name, 'out.c')
-		cloned_c := os.read_file(cloned_c_path) or { panic(err) }
-		assert cloned_c.contains('sink(string__clone(')
-		binary := os.join_path(ownership_work_dir, name, 'out')
-		run := os.exec([binary])
-		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == '', run.output
-
-		unknown := run_ownership_check(v3_bin, 'array_${method}_unknown_length_call_arg', '
-fn count() int {
-	return 0
-}
-
-fn sink(s string, original &u8) {
-	assert s.str == original
-	assert s == "item"
-}
-
-fn main() {
-	value := "item".to_owned()
-	original := value.str
-	mut arr := []string{len: count()}
-	arr << value
-	sink(arr.${method}(), original)
-	assert arr.len == 0
-}
-')
-		assert unknown.exit_code == 0, unknown.output
-		unknown_binary := os.join_path(ownership_work_dir, 'array_${method}_unknown_length_call_arg', 'out')
-		unknown_run := os.exec([unknown_binary])
-		assert unknown_run.exit_code == 0, unknown_run.output
-
-		consecutive := run_ownership_check(v3_bin, 'array_${method}_consecutive_call_args', '
-fn sink(s string, original &u8) {
-	assert s.str == original
-	assert s == "first" || s == "last"
-}
-
-fn main() {
-	first := "first".to_owned()
-	last := "last".to_owned()
-	first_ptr := first.str
-	last_ptr := last.str
-	mut arr := [first, last]
-	sink(arr.${method}(), ${if method == 'pop' { 'last_ptr' } else { 'first_ptr' }})
-	assert arr.len == 1
-	sink(arr.${method}(), ${if method == 'pop' { 'first_ptr' } else { 'last_ptr' }})
-	assert arr.len == 0
-	arr << "literal"
-	x := arr[0]
-	y := x
-	assert x == "literal"
-	_ = y
-}
-')
-		assert consecutive.exit_code == 0, consecutive.output
-		consecutive_binary := os.join_path(ownership_work_dir, 'array_${method}_consecutive_call_args', 'out')
-		consecutive_run := os.exec([consecutive_binary])
-		assert consecutive_run.exit_code == 0, consecutive_run.output
 	}
 
 	shifted := run_ownership_check(v3_bin, 'array_pop_left_cloned_call_arg_shifts_owner', '
