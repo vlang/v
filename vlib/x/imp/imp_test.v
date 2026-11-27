@@ -186,6 +186,104 @@ fn test_hash_skip_needs_outputs_and_inputs() {
 	assert !is_unchanged(f, digest)
 }
 
+// test_depfile_discovered_inputs_invalidate_hash checks that an input named in
+// a depfile, and not declared in takes, defeats a hash flow's skip check.
+fn test_depfile_discovered_inputs_invalidate_hash() {
+	sandbox('depfile_hash')
+	os.write_file('src', '')!
+	os.write_file('header.h', 'a')!
+	mut c := new()
+	c.add_flow(
+		id:      'h'
+		takes:   ['src']
+		gives:   ['out']
+		depfile: 'out.d'
+		check:   .hash
+		flow:    fn (_ Flow) ! {
+			os.write_file('runs', (os.read_file('runs') or { '' }) + 'x')!
+			os.write_file('out', 'built')!
+			os.write_file('out.d', 'out: header.h \\\n  src')!
+		}
+	)
+	c.execute(['h'])!
+	c.execute(['h'])!
+	assert contents('runs') == 'x'
+	os.write_file('header.h', 'b')!
+	c.execute(['h'])!
+	assert contents('runs') == 'xx'
+}
+
+// test_depfile_links_discovered_producers checks that a discovered input made
+// by another flow is linked on later runs, like Ninja depfiles.
+fn test_depfile_links_discovered_producers() {
+	sandbox('depfile_link')
+	os.write_file('src', '')!
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['header.h']
+		check: .none
+		flow:  fn (_ Flow) ! { os.write_file('header.h', 'v1')! }
+	)
+	c.add_flow(
+		id:      'build'
+		takes:   ['src']
+		gives:   ['out']
+		depfile: 'out.d'
+		check:   .none
+		flow:    fn (_ Flow) ! {
+			os.write_file('out', os.read_file('header.h') or { 'missing' })!
+			os.write_file('out.d', 'out: header.h')!
+		}
+	)
+	c.execute(['build'])!
+	// the first run cannot know the discovered input; the second can
+	os.rm('out')!
+	c.execute(['build'])!
+	assert contents('out') == 'v1'
+	// on the next pass, the discovered header makes gen a producer of build
+	mut next := new()
+	next.add_flow(
+		id:    'gen'
+		gives: ['header.h']
+		check: .none
+		flow:  fn (_ Flow) ! {
+			os.write_file('header.h', 'v2')!
+		}
+	)
+	next.add_flow(
+		id:      'build'
+		takes:   ['src']
+		gives:   ['out']
+		depfile: 'out.d'
+		check:   .none
+		flow:    fn (_ Flow) ! { os.write_file('out', os.read_file('header.h')!)! }
+	)
+	next.execute(['build'])!
+	assert contents('out') == 'v2'
+}
+
+// test_depfile_bad_file_fails checks that a depfile the tool failed to write
+// ends the build instead of silently caching nothing.
+fn test_depfile_bad_file_fails() {
+	sandbox('depfile_bad')
+	mut c := new()
+	c.add_flow(
+		id:      'h'
+		gives:   ['out']
+		depfile: 'missing.d'
+		check:   .none
+		flow:    fn (_ Flow) ! {
+			os.write_file('out', 'built')!
+		}
+	)
+	c.execute(['h']) or {
+		assert err.msg().contains('bad depfile')
+		return
+	}
+	assert false
+}
+
 // test_walks_do_not_follow_links checks that a link loop in an input directory
 // cannot trap the skip checks, which take a dangling link as an entry like any
 // other.
