@@ -4056,6 +4056,59 @@ fn main() {
 	assert result.exit_code == 0
 	assert result.output.contains('21\n8\n512\n')
 
+	empty_vsh := os.join_path(os.temp_dir(), 'v3_eval_empty_${os.getpid()}.vsh')
+	os.write_file(empty_vsh, '') or { panic(err) }
+	defer {
+		os.rm(empty_vsh) or {}
+	}
+	empty_vsh_res := os.exec([v3_bin, '-b', 'eval', empty_vsh])
+	assert empty_vsh_res.exit_code == 0, empty_vsh_res.output
+	assert empty_vsh_res.output == '', empty_vsh_res.output
+
+	os_vsh := os.join_path(os.temp_dir(), 'v3_eval_os_${os.getpid()}.vsh')
+	os.write_file(os_vsh, "println(os.join_path('alpha', 'beta'))\nprintln(join_path('gamma', 'delta'))\nprintln(os.is_dir(os.temp_dir()))\n") or {
+		panic(err)
+	}
+	defer {
+		os.rm(os_vsh) or {}
+	}
+	os_vsh_res := os.exec([v3_bin, '-b', 'eval', os_vsh])
+	assert os_vsh_res.exit_code == 0, os_vsh_res.output
+	assert os_vsh_res.output == "${os.join_path('alpha', 'beta')}\n${os.join_path('gamma', 'delta')}\ntrue\n", os_vsh_res.output
+
+	c_enum_src := os.join_path(os.temp_dir(), 'v3_eval_c_enum_${os.getpid()}.v')
+	os.write_file(c_enum_src, 'import os\nfn main() {\n\tprintln(int(os.FileBufferMode.fully_buffered))\n}\n') or {
+		panic(err)
+	}
+	defer {
+		os.rm(c_enum_src) or {}
+	}
+	c_enum_res := os.exec([v3_bin, '-b', 'eval', c_enum_src])
+	assert c_enum_res.exit_code != 0, 'reading C-backed os.FileBufferMode must fail under -b eval'
+	assert c_enum_res.output.contains('os.FileBufferMode.fully_buffered'), c_enum_res.output
+
+	c_enum_short_src := os.join_path(os.temp_dir(), 'v3_eval_c_enum_short_${os.getpid()}.v')
+	os.write_file(c_enum_short_src, 'import os\nfn show(m os.FileBufferMode) {\n\tprintln(int(m))\n}\nfn main() {\n\tshow(.line_buffered)\n}\n') or {
+		panic(err)
+	}
+	defer {
+		os.rm(c_enum_short_src) or {}
+	}
+	c_enum_short_res := os.exec([v3_bin, '-b', 'eval', c_enum_short_src])
+	assert c_enum_short_res.exit_code != 0, 'shorthand C-backed os.FileBufferMode must fail under -b eval'
+	assert c_enum_short_res.output.contains('os.FileBufferMode.line_buffered'), c_enum_short_res.output
+
+	c_enum_alias_src := os.join_path(os.temp_dir(), 'v3_eval_c_enum_alias_${os.getpid()}.v')
+	os.write_file(c_enum_alias_src, 'import os\ntype Mode = os.FileBufferMode\nstruct Config {\n\tmode Mode = .line_buffered\n}\nfn main() {\n\tcfg := Config{}\n\tprintln(int(cfg.mode))\n}\n') or {
+		panic(err)
+	}
+	defer {
+		os.rm(c_enum_alias_src) or {}
+	}
+	c_enum_alias_res := os.exec([v3_bin, '-b', 'eval', c_enum_alias_src])
+	assert c_enum_alias_res.exit_code != 0, 'aliased struct default for C-backed os.FileBufferMode must fail under -b eval'
+	assert c_enum_alias_res.output.contains('os.FileBufferMode.line_buffered'), c_enum_alias_res.output
+
 	for backend in ['wasm', 'arm64'] {
 		extension := if backend == 'arm64' && os.user_os() == 'linux' {
 			'.o'

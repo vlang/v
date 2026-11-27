@@ -2,7 +2,6 @@ module eval
 
 import os
 import strconv
-import time
 import v.flat
 import v.util
 import v.parser
@@ -204,6 +203,7 @@ struct CallFrame {
 struct MaybeValue {
 	found bool
 	value Value
+	error string
 }
 
 struct SmartcastBinding {
@@ -261,6 +261,15 @@ struct FlowSignal {
 	mut_lvalues map[int]ResolvedLvalue
 }
 
+struct CInteropError {
+	Error
+	detail string
+}
+
+fn (e CInteropError) msg() string {
+	return e.detail
+}
+
 // Eval interprets v3 flat AST nodes directly for a practical subset of V.
 pub struct Eval {
 pub mut:
@@ -270,6 +279,10 @@ mut:
 	a                    &flat.FlatAst = unsafe { nil }
 	stdout_data          string
 	stderr_data          string
+	vlib_roots           []string
+	deferred_enum_fields map[string]map[string]string
+	deferred_globals     map[string]string
+	deferred_consts      map[string]string
 	functions            map[string]map[string]FunctionDef
 	consts               map[string]map[string]ConstEntry
 	globals              map[string]map[string]Value
@@ -287,6 +300,7 @@ mut:
 	module_imports       map[string][]string
 	module_order         []string
 	file_import_alias    map[string]map[string]string
+	file_import_symbols  map[string]map[string]string
 	modules              map[string]bool
 	scopes               []ScopeFrame
 	call_stack           []CallFrame
@@ -317,16 +331,11 @@ pub fn (e &Eval) stderr() string {
 	return e.stderr_data
 }
 
-// run_text parses and executes a single V source string.
+// run_text parses and executes a single V source string in memory.
 pub fn (mut e Eval) run_text(code string) ![]Value {
-	tmp_file := os.join_path(os.temp_dir(), 'v3_eval_${os.getpid()}_${time.now().unix_micro()}.v')
-	os.write_file(tmp_file, code)!
-	defer {
-		os.rm(tmp_file) or {}
-	}
 	mut p := parser.Parser.new(&e.prefs)
-	p.parse_into(tmp_file)
-	return e.run_files(p.a)
+	a := p.parse_text('<eval>.v', code)
+	return e.run_files(a)
 }
 
 // run_files executes parsed flat AST files and invokes `main.main`.
@@ -360,6 +369,30 @@ fn (mut e Eval) reset(a &flat.FlatAst) {
 	e.a = unsafe { a }
 	e.stdout_data = ''
 	e.stderr_data = ''
+	e.vlib_roots = []string{}
+	e.deferred_enum_fields = map[string]map[string]string{}
+	e.deferred_globals = map[string]string{}
+	e.deferred_consts = map[string]string{}
+	if e.prefs.vroot.len > 0 {
+		vroot_vlib := os.join_path(e.prefs.vroot, 'vlib')
+		vlib_root := (if os.exists(vroot_vlib) { os.real_path(vroot_vlib) } else { vroot_vlib }).replace('\\',
+			'/').trim_right('/')
+		if vlib_root.len > 0 {
+			e.vlib_roots << vlib_root + '/'
+		}
+	}
+	for sp in e.prefs.module_search_paths {
+		if sp.len == 0 {
+			continue
+		}
+		real_sp := (if os.exists(sp) { os.real_path(sp) } else { sp }).replace('\\', '/').trim_right('/')
+		if real_sp.ends_with('/vlib') && os.is_file(os.join_path(real_sp, 'builtin', 'builtin.v')) {
+			prefix := real_sp + '/'
+			if prefix !in e.vlib_roots {
+				e.vlib_roots << prefix
+			}
+		}
+	}
 	e.functions = map[string]map[string]FunctionDef{}
 	e.consts = map[string]map[string]ConstEntry{}
 	e.globals = map[string]map[string]Value{}
@@ -377,9 +410,24 @@ fn (mut e Eval) reset(a &flat.FlatAst) {
 	e.module_imports = map[string][]string{}
 	e.module_order = []string{}
 	e.file_import_alias = map[string]map[string]string{}
+	e.file_import_symbols = map[string]map[string]string{}
 	e.modules = map[string]bool{}
 	e.scopes = []ScopeFrame{}
 	e.call_stack = []CallFrame{}
+}
+
+fn (e &Eval) is_vlib_c_file(file_name string) bool {
+	if !file_name.ends_with('.c.v') || e.vlib_roots.len == 0 {
+		return false
+	}
+	norm := (if os.exists(file_name) { os.real_path(file_name) } else { file_name }).replace('\\',
+		'/')
+	for root in e.vlib_roots {
+		if norm.starts_with(root) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (e &Eval) node(id flat.NodeId) &flat.Node {
@@ -487,6 +535,7 @@ fn (mut e Eval) register_files() ! {
 			e.module_imports[module_name] = []string{}
 		}
 		mut import_aliases := map[string]string{}
+		mut import_symbols := map[string]string{}
 		for child_id in top_level_children {
 			child := e.node(child_id)
 			if child.kind != .import_decl {
@@ -499,8 +548,15 @@ fn (mut e Eval) register_files() ! {
 			}
 			import_aliases[child.typ_text()] = imported_module
 			import_aliases[imported_module] = imported_module
+			for symbol_id in e.children(child) {
+				symbol := e.node(symbol_id)
+				if symbol.kind == .ident {
+					import_symbols[symbol.value] = imported_module
+				}
+			}
 		}
 		e.file_import_alias[file_name] = import_aliases.clone()
+		e.file_import_symbols[file_name] = import_symbols.clone()
 		for child_id in top_level_children {
 			child := e.node(child_id)
 			match child.kind {
@@ -659,25 +715,50 @@ fn (mut e Eval) register_files() ! {
 	}
 	e.evaluate_enum_inits()!
 	e.evaluate_global_inits()!
-	if !e.has_main_function() && e.implicit_main.len == 0 {
+	if !e.has_main_function() && e.implicit_main.len == 0 && !e.a.has_vsh_source {
 		return error('v.eval: missing main.main entry point')
 	}
 }
 
 fn (mut e Eval) evaluate_enum_inits() ! {
 	for entry in e.enum_inits {
+		defer_vlib_c := entry.module_name != 'main' && e.is_vlib_c_file(entry.file_name)
 		node := e.node(entry.node)
 		mut next_value := if node.typ_text() == 'flag' { i64(1) } else { i64(0) }
+		mut prev_known := true
 		for field_id in e.children(node) {
 			field := e.node(field_id)
 			if field.kind != .enum_field {
 				continue
 			}
-			value := if field.children_count > 0 {
-				e.value_as_int(e.eval_expr_in_module(e.child(field, 0), entry.module_name,
-					entry.file_name, '<enum ${node.value}.${field.value}>')!)!
-			} else {
-				next_value
+			mut value := next_value
+			if field.children_count > 0 {
+				saved_stack := e.call_stack.len
+				saved_scopes := e.scopes.len
+				evaluated := e.eval_expr_in_module(e.child(field, 0), entry.module_name,
+					entry.file_name, '<enum ${node.value}.${field.value}>') or {
+					if defer_vlib_c && err is CInteropError {
+						e.call_stack.trim(saved_stack)
+						e.scopes.trim(saved_scopes)
+						prev_known = false
+						enum_key := '${entry.module_name}.${node.value}'
+						if enum_key !in e.deferred_enum_fields {
+							e.deferred_enum_fields[enum_key] = map[string]string{}
+						}
+						e.deferred_enum_fields[enum_key][field.value] = err.msg()
+						continue
+					}
+					return err
+				}
+				value = e.value_as_int(evaluated)!
+				prev_known = true
+			} else if !prev_known {
+				enum_key := '${entry.module_name}.${node.value}'
+				if enum_key !in e.deferred_enum_fields {
+					e.deferred_enum_fields[enum_key] = map[string]string{}
+				}
+				e.deferred_enum_fields[enum_key][field.value] = 'preceding enum member depends on C'
+				continue
 			}
 			e.consts[entry.module_name][field.value] = ConstEntry{
 				node:        field_id
@@ -775,22 +856,39 @@ fn (mut e Eval) evaluate_module_global_inits(module_name string, entries_by_modu
 		return
 	}
 	for entry in entries_by_module[module_name] {
-		e.evaluate_global_init(entry)!
+		if module_name != 'main' && e.is_vlib_c_file(entry.file_name) {
+			saved_stack := e.call_stack.len
+			saved_scopes := e.scopes.len
+			e.evaluate_global_init(entry) or {
+				if err is CInteropError {
+					e.call_stack.trim(saved_stack)
+					e.scopes.trim(saved_scopes)
+					e.deferred_globals['${module_name}.${entry.name}'] = err.msg()
+					continue
+				}
+				return err
+			}
+		} else {
+			e.evaluate_global_init(entry)!
+		}
 	}
 }
 
 fn (mut e Eval) evaluate_global_init(entry GlobalEntry) ! {
+	saved_stack := e.call_stack.len
 	e.call_stack << CallFrame{
 		module_name: entry.module_name
 		file_name:   entry.file_name
 		fn_name:     '<global ${entry.name}>'
 	}
+	defer {
+		e.call_stack.trim(saved_stack)
+	}
 	value := if int(entry.default_node) >= 0 {
 		e.eval_expr(entry.default_node)!
 	} else {
-		e.zero_value_for_type_name_in_module(entry.typ, entry.module_name)
+		e.zero_value_for_type_name_in_module(entry.typ, entry.module_name)!
 	}
-	e.call_stack.delete(e.call_stack.len - 1)
 	e.globals[entry.module_name][entry.name] = e.adapt_value_to_type_name(value, entry.typ)
 }
 
@@ -846,6 +944,23 @@ fn (mut e Eval) run_module_init(module_name string, mut visited map[string]bool,
 	visiting.delete(module_name)
 	visited[module_name] = true
 	if module_name in e.functions && 'init' in e.functions[module_name] {
+		init_def := e.functions[module_name]['init']
+		if module_name != 'main' && e.is_vlib_c_file(init_def.file_name) {
+			saved_stack := e.call_stack.len
+			saved_scopes := e.scopes.len
+			e.call_function(module_name, 'init', []Value{}) or {
+				if err is CInteropError {
+					e.call_stack.trim(saved_stack)
+					e.scopes.trim(saved_scopes)
+					for name, _ in e.global_types[module_name] {
+						e.deferred_globals['${module_name}.${name}'] = err.msg()
+					}
+					return
+				}
+				return err
+			}
+			return
+		}
 		e.call_function(module_name, 'init', []Value{})!
 	}
 }
@@ -888,8 +1003,9 @@ fn (mut e Eval) set_var(name string, value Value) ! {
 		}
 	}
 	module_name := e.current_module_name()
-	if module_name in e.globals && name in e.globals[module_name] {
+	if module_name in e.global_types && name in e.global_types[module_name] {
 		e.globals[module_name][name] = value
+		e.deferred_globals.delete('${module_name}.${name}')
 		return
 	}
 	return e.unknown_variable_error(name)
@@ -916,6 +1032,12 @@ fn (e &Eval) lookup_var(name string) MaybeValue {
 		}
 	}
 	module_name := e.current_module_name()
+	if err := e.deferred_global_error(module_name, name) {
+		return MaybeValue{
+			found: true
+			error: err.msg()
+		}
+	}
 	if module_name in e.globals && name in e.globals[module_name] {
 		return MaybeValue{
 			found: true
@@ -923,6 +1045,42 @@ fn (e &Eval) lookup_var(name string) MaybeValue {
 		}
 	}
 	return MaybeValue{}
+}
+
+fn (e &Eval) deferred_global_error(module_name string, name string) ?IError {
+	if e.deferred_globals.len == 0 {
+		return none
+	}
+	key := '${module_name}.${name}'
+	if reason := e.deferred_globals[key] {
+		return IError(CInteropError{
+			detail: 'v.eval: C-backed global `${key}` is not supported (${reason})'
+		})
+	}
+	return none
+}
+
+fn (e &Eval) deferred_const_error(module_name string, name string) ?IError {
+	if e.deferred_consts.len == 0 {
+		return none
+	}
+	key := '${module_name}.${name}'
+	if reason := e.deferred_consts[key] {
+		return IError(CInteropError{
+			detail: 'v.eval: C-backed const `${key}` is not supported (${reason})'
+		})
+	}
+	return none
+}
+
+fn (e &Eval) read_var(name string) !MaybeValue {
+	found := e.lookup_var(name)
+	if found.error != '' {
+		return IError(CInteropError{
+			detail: found.error
+		})
+	}
+	return found
 }
 
 fn (e &Eval) lookup_var_type(name string) ?u32 {
@@ -980,7 +1138,19 @@ fn (mut e Eval) call_function(module_name string, fn_name string, args []Value) 
 			values: [builtin.value]
 		}
 	}
-	target_module := if module_name == '' { e.current_module_name() } else { module_name }
+	mut target_module := if module_name == '' { e.current_module_name() } else { module_name }
+	if e.a.has_vsh_source && target_module == 'main'
+		&& (target_module !in e.functions || fn_name !in e.functions[target_module]) {
+		os_builtin := e.maybe_call_os_builtin(fn_name, args)!
+		if os_builtin.found {
+			return CallResult{
+				values: [os_builtin.value]
+			}
+		}
+		if 'os' in e.functions && fn_name in e.functions['os'] {
+			target_module = 'os'
+		}
+	}
 	if target_module !in e.functions {
 		return error('v.eval: unknown module `${target_module}`')
 	}
@@ -1443,7 +1613,12 @@ fn (mut e Eval) assignment_value(op flat.Op, lhs_id flat.NodeId, rhs_id flat.Nod
 	if op == .assign || op == .none {
 		return rhs
 	}
-	left := e.eval_expr(lhs_id) or { e.zero_value_like(rhs) }
+	left := e.eval_expr(lhs_id) or {
+		if err is CInteropError {
+			return err
+		}
+		e.zero_value_like(rhs)!
+	}
 	return match op {
 		.plus_assign { e.apply_infix(.plus, left, rhs)! }
 		.minus_assign { e.apply_infix(.minus, left, rhs)! }
@@ -2650,7 +2825,7 @@ fn (mut e Eval) eval_fn_literal(id flat.NodeId, node &flat.Node) !FnValue {
 		if child.kind != .ident {
 			break
 		}
-		found := e.lookup_var(child.value)
+		found := e.read_var(child.value)!
 		if !found.found {
 			return error('v.eval: unknown captured variable `${child.value}`')
 		}
@@ -2803,6 +2978,9 @@ fn (mut e Eval) eval_expr_flow_expected(id flat.NodeId, expected_type_id u32) !F
 	if int(id) >= 0 {
 		node := e.node(id)
 		if node.kind == .enum_val && expected_type_id != 0 {
+			if err := e.deferred_enum_field_error(expected_type_id, node.value) {
+				return err
+			}
 			if value := e.lookup_enum_value(expected_type_id, node.value) {
 				return value_flow(value)
 			}
@@ -2947,12 +3125,15 @@ fn (mut e Eval) eval_ident(name string) !Value {
 	if name == '_' {
 		return void_value()
 	}
-	found := e.lookup_var(name)
+	found := e.read_var(name)!
 	if found.found {
 		return found.value
 	}
 	if value := e.lookup_const(e.current_module_name(), name) {
 		return value
+	}
+	if err := e.deferred_const_error(e.current_module_name(), name) {
+		return err
 	}
 	mod_name := e.resolve_module_name(name)
 	if mod_name in e.modules || name in ['os', 'time', 'strings'] {
@@ -2964,6 +3145,11 @@ fn (mut e Eval) eval_ident(name string) !Value {
 		return TypeValue{
 			name: e.qualify_type_name(e.current_module_name(), flat.source_type_id(name))
 		}
+	}
+	if name == 'C' {
+		return IError(CInteropError{
+			detail: e.unknown_variable_error(name).msg()
+		})
 	}
 	return e.unknown_variable_error(name)
 }
@@ -2994,6 +3180,9 @@ fn (e &Eval) has_type_name(module_name string, name_id u32) bool {
 
 fn (mut e Eval) lookup_const(module_name string, name string) ?Value {
 	if module_name in e.consts && name in e.consts[module_name] {
+		if '${module_name}.${name}' in e.deferred_consts {
+			return none
+		}
 		mut entry := e.consts[module_name][name]
 		if entry.cached {
 			return entry.value
@@ -3005,18 +3194,24 @@ fn (mut e Eval) lookup_const(module_name string, name string) ?Value {
 		e.consts[module_name][name] = entry
 		mut value := Value(void_value())
 		if e.node(entry.node).children_count > 0 {
+			saved_stack := e.call_stack.len
+			saved_scopes := e.scopes.len
 			e.call_stack << CallFrame{
 				module_name: entry.module_name
 				file_name:   entry.file_name
 				fn_name:     '<const ${name}>'
 			}
 			value = e.eval_expr(e.child(e.node(entry.node), 0)) or {
-				e.call_stack.delete(e.call_stack.len - 1)
+				e.call_stack.trim(saved_stack)
+				e.scopes.trim(saved_scopes)
 				entry.evaluating = false
 				e.consts[module_name][name] = entry
+				if err is CInteropError {
+					e.deferred_consts['${module_name}.${name}'] = err.msg()
+				}
 				return none
 			}
-			e.call_stack.delete(e.call_stack.len - 1)
+			e.call_stack.trim(saved_stack)
 		}
 		entry.cached = true
 		entry.evaluating = false
@@ -3040,14 +3235,13 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 	}
 	callee_id := e.child(node, 0)
 	callee := e.node(callee_id)
-	if value := e.disabled_call_value(node, callee) {
-		return FlowSignal{
-			values: [value]
-		}
+	disabled := e.disabled_call_value(node, callee)!
+	if disabled.found {
+		return value_flow(disabled.value)
 	}
 	if callee.kind == .ident {
 		fn_name := callee.value_text()
-		found := e.lookup_var(fn_name)
+		found := e.read_var(fn_name)!
 		if found.found && found.value is FnValue {
 			fv := found.value as FnValue
 			args_signal := e.eval_call_arg_values(node, e.fn_value_param_type_names(fv))!
@@ -3061,8 +3255,15 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 				values: [e.call_result_value(result)]
 			}
 		}
-		expected_types := if target := e.function_def(e.current_module_name(), fn_name) {
+		call_module := e.unqualified_call_module(fn_name)
+		expected_types := if target := e.function_def(call_module, fn_name) {
 			e.function_param_type_names(target, 0)
+		} else if e.a.has_vsh_source && call_module == 'main' {
+			if os_target := e.function_def('os', fn_name) {
+				e.function_param_type_names(os_target, 0)
+			} else {
+				[]u32{}
+			}
 		} else {
 			[]u32{}
 		}
@@ -3070,7 +3271,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 		if args_signal.kind != .normal {
 			return args_signal
 		}
-		result := e.call_function(e.current_module_name(), fn_name, args_signal.values)!
+		result := e.call_function(call_module, fn_name, args_signal.values)!
 		e.write_back_mutated_args(node, result, args_signal.mut_lvalues)!
 		return FlowSignal{
 			values: [e.call_result_value(result)]
@@ -3103,10 +3304,9 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 			static_name := flat.encode_static_type_method_name(flat.source_type_name(flat.source_type_syntax(left.name).unqualified()),
 				callee.value_text())
 			static_module := e.type_value_module_name(left)
-			if value := e.disabled_function_zero_value(static_module, static_name, node) {
-				return FlowSignal{
-					values: [value]
-				}
+			disabled_static := e.disabled_function_zero_value(static_module, static_name, node)!
+			if disabled_static.found {
+				return value_flow(disabled_static.value)
 			}
 			expected_types := if target := e.function_def(static_module, static_name) {
 				e.function_param_type_names(target, 0)
@@ -3186,22 +3386,19 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 	return error('v.eval: unsupported call target `${callee.kind}`')
 }
 
-fn (mut e Eval) disabled_call_value(call_node &flat.Node, callee &flat.Node) ?Value {
+fn (mut e Eval) disabled_call_value(call_node &flat.Node, callee &flat.Node) !MaybeValue {
 	match callee.kind {
 		.ident {
-			found := e.lookup_var(callee.value_text())
+			found := e.read_var(callee.value_text())!
 			if found.found && found.value is FnValue {
-				return none
+				return MaybeValue{}
 			}
-			if value := e.disabled_function_zero_value(e.current_module_name(), callee.value_text(),
-				call_node)
-			{
-				return value
-			}
+			return e.disabled_function_zero_value(e.unqualified_call_module(callee.value_text()),
+				callee.value_text(), call_node)
 		}
 		.selector {
 			if callee.children_count == 0 {
-				return none
+				return MaybeValue{}
 			}
 			base_id := e.child(callee, 0)
 			base := e.node(base_id)
@@ -3209,30 +3406,46 @@ fn (mut e Eval) disabled_call_value(call_node &flat.Node, callee &flat.Node) ?Va
 			if receiver_type != 0 {
 				if target := e.resolve_method_target(receiver_type, callee.value_text()) {
 					if e.is_disabled_fn_name_in_module(target.module_name, target.name) {
-						return e.zero_value_for_disabled_function(call_node, target)
+						return MaybeValue{
+							found: true
+							value: e.zero_value_for_disabled_function(call_node, target)!
+						}
 					}
 				}
 			}
 			if base.kind == .ident {
 				full_name := '${base.value_text()}.${callee.value_text()}'
-				if value := e.disabled_function_zero_value(e.current_module_name(), full_name,
-					call_node)
-				{
-					return value
+				found := e.disabled_function_zero_value(e.current_module_name(), full_name,
+					call_node)!
+				if found.found {
+					return found
 				}
-				found := e.lookup_var(base.value_text())
-				if !found.found {
+				local := e.read_var(base.value_text())!
+				if !local.found {
 					module_name := e.resolve_module_name(base.value_text())
-					if value := e.disabled_function_zero_value(module_name, callee.value_text(), call_node) {
-						return value
-					}
+					return e.disabled_function_zero_value(module_name, callee.value_text(), call_node)
 				}
 			}
 		}
 		else {}
 	}
+	return MaybeValue{}
+}
 
-	return none
+fn (e &Eval) unqualified_call_module(fn_name string) string {
+	module_name := e.current_module_name()
+	if _ := e.function_def(module_name, fn_name) {
+		return module_name
+	}
+	file_name := e.current_file_name()
+	if file_name in e.file_import_symbols {
+		if imported := e.file_import_symbols[file_name][fn_name] {
+			if _ := e.function_def(imported, fn_name) {
+				return imported
+			}
+		}
+	}
+	return module_name
 }
 
 fn (e &Eval) function_def(module_name string, fn_name string) ?FunctionDef {
@@ -3388,7 +3601,7 @@ fn call_arg_value_expected_type(type_name_id u32) u32 {
 	return name
 }
 
-fn (mut e Eval) disabled_function_zero_value(module_name string, fn_name string, call_node &flat.Node) ?Value {
+fn (mut e Eval) disabled_function_zero_value(module_name string, fn_name string, call_node &flat.Node) !MaybeValue {
 	target_module := if module_name == '' { e.current_module_name() } else { module_name }
 	mut candidates := []string{cap: 3}
 	candidates << fn_name
@@ -3401,20 +3614,26 @@ fn (mut e Eval) disabled_function_zero_value(module_name string, fn_name string,
 				target := e.functions[target_module][candidate]
 				if e.is_disabled_fn_name_in_module(target.module_name, target.name)
 					|| e.is_disabled_fn_name_in_module(target_module, candidate) {
-					return e.zero_value_for_disabled_function(call_node, target)
+					return MaybeValue{
+						found: true
+						value: e.zero_value_for_disabled_function(call_node, target)!
+					}
 				}
 			}
 		}
 	}
 	for candidate in candidates {
 		if e.is_disabled_fn_name_in_module(target_module, candidate) {
-			return e.zero_value_for_disabled_return_type(call_node.typ, target_module)
+			return MaybeValue{
+				found: true
+				value: e.zero_value_for_disabled_return_type(call_node.typ, target_module)!
+			}
 		}
 	}
-	return none
+	return MaybeValue{}
 }
 
-fn (mut e Eval) zero_value_for_disabled_function(call_node &flat.Node, target FunctionDef) Value {
+fn (mut e Eval) zero_value_for_disabled_function(call_node &flat.Node, target FunctionDef) !Value {
 	target_node := e.node(target.node)
 	return e.zero_value_for_disabled_return_type(if call_node.typ != 0 {
 		call_node.typ
@@ -3423,7 +3642,7 @@ fn (mut e Eval) zero_value_for_disabled_function(call_node &flat.Node, target Fu
 	}, target.module_name)
 }
 
-fn (mut e Eval) zero_value_for_disabled_return_type(return_type_id u32, module_name string) Value {
+fn (mut e Eval) zero_value_for_disabled_return_type(return_type_id u32, module_name string) !Value {
 	if return_type_id == 0 || return_type_id == flat.source_type_void { return void_value() }
 	return e.zero_value_for_type_name_in_module(return_type_id, module_name)
 }
@@ -3661,19 +3880,32 @@ fn (mut e Eval) eval_selector(node &flat.Node) !Value {
 fn (mut e Eval) eval_selector_value(left Value, field string) !Value {
 	match left {
 		ModuleValue {
+			if err := e.deferred_global_error(left.name, field) {
+				return err
+			}
+			if left.name in e.globals && field in e.globals[left.name] {
+				return e.globals[left.name][field] or { void_value() }
+			}
 			if value := e.lookup_const(left.name, field) {
 				return value
+			}
+			if err := e.deferred_const_error(left.name, field) {
+				return err
 			}
 			return TypeValue{
 				name: flat.source_type_id('${left.name}.${field}')
 			}
 		}
 		TypeValue {
+			mod := e.type_value_module_name(left)
+			qualified_enum := e.qualify_type_name(mod, left.name)
+			if err := e.deferred_enum_field_error(qualified_enum, field) {
+				return err
+			}
 			if field == 'name' {
 				return Value(left.name_text())
 			}
-			mod := e.type_value_module_name(left)
-			if value := e.lookup_enum_value(e.qualify_type_name(mod, left.name), field) {
+			if value := e.lookup_enum_value(qualified_enum, field) {
 				return value
 			}
 			if value := e.lookup_const(mod, field) {
@@ -4096,7 +4328,7 @@ fn (mut e Eval) eval_array_init_values(len int, cap int, has_init bool, init_id 
 			}
 			values << e.adapt_value_to_type_name(flow_value(signal), elem_type_name_id)
 		} else {
-			values << e.zero_value_for_type_name(elem_type_name_id)
+			values << e.zero_value_for_type_name(elem_type_name_id)!
 		}
 	}
 	return value_flow(ArrayValue{
@@ -4208,7 +4440,7 @@ fn (mut e Eval) eval_map_init_flow(node &flat.Node) !FlowSignal {
 	mut m := MapValue{
 		key_type_name:   key_type
 		value_type_name: value_type
-		default_value:   &Value(e.zero_value_for_type_name(value_type))
+		default_value:   &Value(e.zero_value_for_type_name(value_type)!)
 	}
 	for j, key in keys {
 		m = e.map_set_value(m, key, values[j])
@@ -4246,7 +4478,22 @@ fn (mut e Eval) eval_struct_init(node &flat.Node) !Value {
 
 fn (mut e Eval) eval_struct_init_flow(node &flat.Node) !FlowSignal {
 	type_name := e.normalize_type_name(node.source_value_id())
-	mut st := e.zero_struct_value(type_name)
+	mut initialized_fields := []string{}
+	fields := e.struct_fields(type_name)
+	mut pos_init := 0
+	for child_id in e.children(node) {
+		child := e.node(child_id)
+		if child.kind != .field_init {
+			continue
+		}
+		if child.value.len > 0 {
+			initialized_fields << child.value
+		} else if pos_init < fields.len {
+			initialized_fields << fields[pos_init].name
+			pos_init++
+		}
+	}
+	mut st := e.zero_struct_value(type_name, initialized_fields)!
 	mut positional := 0
 	for child_id in e.children(node) {
 		child := e.node(child_id)
@@ -4263,7 +4510,6 @@ fn (mut e Eval) eval_struct_init_flow(node &flat.Node) !FlowSignal {
 			st.fields[child.value] = e.adapt_value_to_type_name(value, e.struct_field_type_name(st,
 				child.value))
 		} else {
-			fields := e.struct_fields(type_name)
 			if positional < fields.len {
 				field := fields[positional]
 				field_type := e.qualify_nested_type_name(field.module_name, field.typ)
@@ -4286,7 +4532,7 @@ fn (mut e Eval) eval_assoc(node &flat.Node) !Value {
 
 fn (mut e Eval) eval_assoc_flow(node &flat.Node) !FlowSignal {
 	if node.children_count == 0 {
-		return value_flow(e.zero_struct_value(node.source_value_id()))
+		return value_flow(e.zero_struct_value(node.source_value_id(), []string{})!)
 	}
 	base_signal := e.eval_expr_flow(e.child(node, 0))!
 	if base_signal.kind != .normal {
@@ -4485,7 +4731,7 @@ fn (mut e Eval) exec_match(node &flat.Node) !FlowSignal {
 		mut matched := branch.value == 'else'
 		mut matched_cond := Value(void_value())
 		for j in 0 .. cond_count {
-			cond_signal := e.eval_match_condition_flow(e.child(branch, j), target_id)!
+			cond_signal := e.eval_match_condition_flow(e.child(branch, j), target_id, target)!
 			if cond_signal.kind != .normal {
 				return cond_signal
 			}
@@ -4540,7 +4786,7 @@ fn (mut e Eval) eval_match_value_flow_expected(node &flat.Node, expected_type_id
 		mut matched := branch.value == 'else'
 		mut matched_cond := Value(void_value())
 		for j in 0 .. cond_count {
-			cond_signal := e.eval_match_condition_flow(e.child(branch, j), target_id)!
+			cond_signal := e.eval_match_condition_flow(e.child(branch, j), target_id, target)!
 			if cond_signal.kind != .normal {
 				return cond_signal
 			}
@@ -4623,17 +4869,20 @@ fn (e &Eval) smartcast_binding_from_match(target_id flat.NodeId, target Value, c
 	return none
 }
 
-fn (mut e Eval) eval_match_condition(cond_id flat.NodeId, target_id flat.NodeId) !Value {
-	return flow_value(e.eval_match_condition_flow(cond_id, target_id)!)
+fn (mut e Eval) eval_match_condition(cond_id flat.NodeId, target_id flat.NodeId, target Value) !Value {
+	return flow_value(e.eval_match_condition_flow(cond_id, target_id, target)!)
 }
 
-fn (mut e Eval) eval_match_condition_flow(cond_id flat.NodeId, target_id flat.NodeId) !FlowSignal {
+fn (mut e Eval) eval_match_condition_flow(cond_id flat.NodeId, target_id flat.NodeId, target Value) !FlowSignal {
 	cond := e.node(cond_id)
-	if cond.kind == .enum_val {
-		if enum_type_source_id := e.match_target_enum_type_name(target_id) {
-			if value := e.lookup_enum_value(enum_type_source_id, cond.value) {
-				return value_flow(value)
-			}
+	if e.is_enum_shorthand_expr(cond_id) {
+		enum_type_source_id := if target is EnumValue {
+			target.type_name
+		} else {
+			e.match_target_enum_type_name(target_id) or { u32(0) }
+		}
+		if enum_type_source_id != 0 {
+			return e.eval_expr_flow_expected(cond_id, enum_type_source_id)
 		}
 	}
 	if cond.kind == .ident && is_builtin_type_name(cond.source_value_id()) {
@@ -4695,9 +4944,78 @@ fn (e &Eval) type_value_name_from_expr(id flat.NodeId) ?u32 {
 	return none
 }
 
+fn (e &Eval) resolve_enum_type_name(type_name_id u32) u32 {
+	mut raw := eval_trimmed_source_type_id(type_name_id)
+	for flat.source_type_shape(raw).has(.optional) || flat.source_type_shape(raw).has(.pointer) {
+		raw = eval_trimmed_source_type_id(flat.source_type_syntax(raw).raw_base())
+	}
+	mut name := e.normalize_type_name(raw)
+	if name == 0 {
+		return 0
+	}
+	if first_alias := e.type_alias_info_in_module(name, e.current_module_name()) {
+		mut seen := map[u32]bool{}
+		seen[name] = true
+		name = e.qualify_declared_type_name(first_alias.module_name, first_alias.file_name,
+			first_alias.target)
+		for flat.source_type_shape(name).has(.optional)
+			|| flat.source_type_shape(name).has(.pointer) {
+			name = eval_trimmed_source_type_id(flat.source_type_syntax(name).raw_base())
+		}
+		for name != 0 && name !in seen {
+			seen[name] = true
+			if alias := e.type_alias_info_in_module(name, e.current_module_name()) {
+				name = e.qualify_declared_type_name(alias.module_name, alias.file_name, alias.target)
+				for flat.source_type_shape(name).has(.optional)
+					|| flat.source_type_shape(name).has(.pointer) {
+					name = eval_trimmed_source_type_id(flat.source_type_syntax(name).raw_base())
+				}
+			} else {
+				break
+			}
+		}
+	}
+	return name
+}
+
+fn (e &Eval) deferred_enum_field_error(enum_type_name_id u32, field string) ?IError {
+	if e.deferred_enum_fields.len == 0 {
+		return none
+	}
+	resolved := e.resolve_enum_type_name(enum_type_name_id)
+	syntax := flat.source_type_syntax(resolved)
+	raw_mod := if flat.source_type_shape(resolved).has(.dotted) {
+		flat.source_type_name(syntax.qualifier())
+	} else {
+		e.current_module_name()
+	}
+	mod := e.resolve_module_name(raw_mod)
+	unqual := flat.source_type_name(syntax.unqualified())
+	enum_key := '${mod}.${unqual}'
+	if enum_key !in e.deferred_enum_fields {
+		return none
+	}
+	if reason := e.deferred_enum_fields[enum_key][field] {
+		return IError(CInteropError{
+			detail: 'v.eval: C-backed enum field `${enum_key}.${field}` is not supported (${reason})'
+		})
+	}
+	plain := if field.starts_with('@') { field[1..] } else { field }
+	if vtoken.Token.from_string_tinyv(plain).is_keyword() {
+		alt := if field.starts_with('@') { plain } else { '@' + field }
+		if reason := e.deferred_enum_fields[enum_key][alt] {
+			return IError(CInteropError{
+				detail: 'v.eval: C-backed enum field `${enum_key}.${alt}` is not supported (${reason})'
+			})
+		}
+	}
+	return none
+}
+
 fn (mut e Eval) lookup_enum_value(enum_type_name_id u32, field string) ?Value {
-	syntax := flat.source_type_syntax(enum_type_name_id)
-	mod := if flat.source_type_shape(enum_type_name_id).has(.dotted) {
+	resolved := e.resolve_enum_type_name(enum_type_name_id)
+	syntax := flat.source_type_syntax(resolved)
+	mod := if flat.source_type_shape(resolved).has(.dotted) {
 		flat.source_type_name(syntax.qualifier())
 	} else {
 		e.current_module_name()
@@ -4710,7 +5028,7 @@ fn (mut e Eval) lookup_enum_value(enum_type_name_id u32, field string) ?Value {
 	for name in fields {
 		enum_key := '${flat.source_type_name(syntax.unqualified())}.${name}'
 		if value := e.lookup_const(mod, enum_key) {
-			return e.enum_value(e.qualify_type_name(mod, enum_type_name_id), value)
+			return e.enum_value(e.qualify_type_name(mod, resolved), value)
 		}
 	}
 	return none
@@ -5569,7 +5887,7 @@ fn (e &Eval) map_clone(receiver MapValue) MapValue {
 	}
 }
 
-fn (mut e Eval) zero_value_like(value Value) Value {
+fn (mut e Eval) zero_value_like(value Value) !Value {
 	match value {
 		bool {
 			return Value(false)
@@ -5601,13 +5919,13 @@ fn (mut e Eval) zero_value_like(value Value) Value {
 			}
 		}
 		StructValue {
-			return e.zero_struct_value(value.type_name)
+			return e.zero_struct_value(value.type_name, []string{})!
 		}
 		SumValue {
 			return SumValue{
 				type_name:    value.type_name
 				variant_name: value.variant_name
-				payload:      &Value(e.zero_value_like(value.payload))
+				payload:      &Value(e.zero_value_like(value.payload)!)
 			}
 		}
 		else {
@@ -5616,15 +5934,18 @@ fn (mut e Eval) zero_value_like(value Value) Value {
 	}
 }
 
-fn (mut e Eval) zero_value_for_type_name(type_name_id u32) Value {
+fn (mut e Eval) zero_value_for_type_name(type_name_id u32) !Value {
 	return e.zero_value_for_type_name_in_module(type_name_id, e.current_module_name())
 }
 
-fn (mut e Eval) zero_value_for_type_name_in_module(type_name_id u32, module_name string) Value {
+fn (mut e Eval) zero_value_for_type_name_in_module(type_name_id u32, module_name string) !Value {
 	name := eval_pointer_base_type_id(type_name_id)
 	if name in [u32(0), flat.source_type_void] { return void_value() }
+	// An absent option/result has no payload to resolve or initialize.
+	if flat.source_type_shape(name).has(.optional) { return void_value() }
 	if alias := e.type_alias_info_in_module(name, module_name) {
-		return e.zero_value_for_type_name_in_module(alias.target, alias.module_name)
+		return e.zero_value_for_type_name_in_module(e.qualify_declared_type_name(alias.module_name,
+			alias.file_name, alias.target), alias.module_name)
 	}
 	if name == flat.source_type_bool { return Value(false) }
 	if name in [flat.source_type_f32, flat.source_type_f64] { return Value(0.0) }
@@ -5643,7 +5964,7 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name_id u32, module_name
 		len := e.fixed_array_len_in_module(name, module_name) or { 0 }
 		return ArrayValue{
 			elem_type_name: elem_type
-			values:         []Value{len: len, cap: len, init: e.zero_value_for_type_name_in_module(elem_type, module_name)}
+			values:         []Value{len: len, cap: len, init: e.zero_value_for_type_name_in_module(elem_type, module_name)!}
 		}
 	}
 	if flat.source_type_shape(name).has(.map_type) {
@@ -5653,12 +5974,13 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name_id u32, module_name
 		return MapValue{
 			key_type_name:   qualified_key_type
 			value_type_name: qualified_value_type
-			default_value:   &Value(e.zero_value_for_type_name_in_module(qualified_value_type, module_name))
+			default_value:   &Value(e.zero_value_for_type_name_in_module(qualified_value_type, module_name)!)
 		}
 	}
-	enum_name := e.qualify_type_name(module_name, name)
+	enum_name := e.resolve_enum_type_name(e.qualify_type_name(module_name, name))
 	if fields := e.enum_fields[enum_name] {
 		if fields.len > 0 {
+			if err := e.deferred_enum_field_error(enum_name, fields[0]) { return err }
 			if value := e.lookup_enum_value(enum_name, fields[0]) { return value }
 		}
 		return EnumValue{ type_name: enum_name }
@@ -5671,7 +5993,7 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name_id u32, module_name
 		return SumValue{ type_name: name, payload: &Value(void_value()) }
 	}
 	struct_name := e.resolve_struct_type_name_in_module(name, module_name)
-	if struct_name in e.structs { return e.zero_struct_value(struct_name) }
+	if struct_name in e.structs { return e.zero_struct_value(struct_name, []string{})! }
 	return void_value()
 }
 
@@ -5718,33 +6040,42 @@ fn (e &Eval) qualify_nested_type_name(module_name string, type_name_id u32) u32 
 	return e.qualify_type_name(module_name, name)
 }
 
-fn (mut e Eval) zero_struct_value(type_name_id u32) StructValue {
+fn (mut e Eval) zero_struct_value(type_name_id u32, initialized_fields []string) !StructValue {
 	name := e.resolve_struct_type_name(type_name_id)
 	mut fields := map[string]Value{}
 	info := e.struct_info(name)
 	for field in info.fields {
+		if field.name in initialized_fields {
+			continue
+		}
 		fields[field.name] = if int(field.default_node) >= 0 {
-			e.eval_struct_field_default(field)
+			e.eval_struct_field_default(field)!
 		} else {
-			e.zero_value_for_type_name_in_module(field.typ, info.module_name)
+			e.zero_value_for_type_name_in_module(field.typ, info.module_name)!
 		}
 	}
 	return StructValue{ type_name: type_name_id, fields: fields }
 }
 
-fn (mut e Eval) eval_struct_field_default(field FieldInfo) Value {
+fn (mut e Eval) eval_struct_field_default(field FieldInfo) !Value {
+	saved_stack := e.call_stack.len
+	saved_scopes := e.scopes.len
 	e.call_stack << CallFrame{
 		module_name: field.module_name
 		file_name:   field.file_name
 		fn_name:     '<field ${field.name}>'
 	}
+	defer {
+		e.call_stack.trim(saved_stack)
+		e.scopes.trim(saved_scopes)
+	}
 	value := e.eval_expr_expected(field.default_node, field.typ) or {
-		e.call_stack.delete(e.call_stack.len - 1)
+		if err is CInteropError {
+			return err
+		}
 		return e.zero_value_for_type_name_in_module(field.typ, field.module_name)
 	}
-	adapted := e.adapt_value_to_type_name(value, field.typ)
-	e.call_stack.delete(e.call_stack.len - 1)
-	return adapted
+	return e.adapt_value_to_type_name(value, field.typ)
 }
 
 fn (e &Eval) struct_fields(type_name_id u32) []FieldInfo {
