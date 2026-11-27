@@ -19,6 +19,12 @@ fn check_capture(name string, code string, serial bool) os.Result {
 }
 
 fn check_capture_in_mode(name string, code string, serial bool, mode string) os.Result {
+	source := os.join_path(capture_tmp, '${name}.v')
+	os.write_file(source, code) or { panic(err) }
+	return run_capture(source, serial, mode)
+}
+
+fn run_capture(source string, serial bool, mode string, flags ...string) os.Result {
 	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
 	v3_src := os.join_path(os.dir(@FILE), '../v.v')
 	compiler := if os.is_file(shared) && os.is_executable(shared)
@@ -27,14 +33,12 @@ fn check_capture_in_mode(name string, code string, serial bool, mode string) os.
 	} else {
 		@VEXE
 	}
-	source := os.join_path(capture_tmp, '${name}.v')
-	os.write_file(source, code) or { panic(err) }
 	vlib := os.join_path(capture_root, 'vlib')
 	mut args := ['-nocache', mode, '-d', 'ownership', '-path', '${vlib}|@vlib|@vmodules']
 	if serial {
 		args << '-no-parallel'
 	}
-	args << ['run', source]
+	args << [...flags, 'run', source]
 	return cmdexec.run_in_merged_with_env(compiler, args, '', {
 		'VFLAGS':               ''
 		'VTOOLS_CACHE_VERBOSE': ''
@@ -160,58 +164,77 @@ fn main() {
 	}
 }
 
-fn test_capture_rejects_the_last_moved_descendant() {
-	declarations := 'struct Bundle { values []string }\nfn take_items(items []string) { assert items.len == 1 }\nfn invoke(callback fn () int) int { return callback() }\n'
-	for serial in [true, false] {
-		for lambda in [false, true] {
-			for map_root in [false, true] {
-				initial := if map_root {
-					'{"one": ["one".to_owned()]}'
-				} else {
-					'Bundle{["one".to_owned()]}'
-				}
-				member := if map_root { 'entries["one"]' } else { 'entries.values' }
-				capture := if lambda {
-					'assert invoke(|| ${member}.len) == 1'
-				} else {
-					// Explicitly capture without reading the moved child inside the body.
-					'callback := fn [entries] () {}\ncallback()'
-				}
-				result := check_capture('last_descendant_${lambda}_${map_root}', declarations + '\nfn main() {\nentries := ${initial}\ntake_items(${member})\n${capture}\n}', serial)
-				assert result.exit_code != 0, result.output
-				assert result.output.contains('use of moved value: `entries'), result.output
-				assert result.output.count(': error:') == 1, result.output
-			}
-		}
-	}
+struct CaptureRejection {
+	name     string
+	body     string
+	expected string
 }
 
-fn test_capture_rejects_borrowed_descendants_and_a_second_capture() {
-	for serial in [true, false] {
-		for lambda in [false, true] {
-			capture := if lambda {
-				'assert invoke(|| entries.values.len) == 1'
+fn test_capture_rejects_moved_or_borrowed_descendants_and_second_capture() {
+	mut cases := []CaptureRejection{}
+	for lambda in [false, true] {
+		for map_root in [false, true] {
+			initial := if map_root {
+				'{"one": ["one".to_owned()]}'
 			} else {
+				'Bundle{["one".to_owned()]}'
+			}
+			member := if map_root { 'entries["one"]' } else { 'entries.values' }
+			capture := if lambda {
+				'assert invoke(|| ${member}.len) == 1'
+			} else {
+				// Explicitly capture without reading the moved child inside the body.
 				'callback := fn [entries] () {}\ncallback()'
 			}
-			for borrowed in [false, true] {
-				before := if borrowed {
-					'borrowed := &entries.values'
-				} else {
-					capture.replace('callback', 'first')
-				}
-				after := if borrowed { 'assert borrowed.len == 1' } else { '' }
-				code := 'struct Bundle { values []string }\nfn invoke(callback fn () int) int { return callback() }\nfn main() {\nentries := Bundle{["one".to_owned()]}\n${before}\n${capture}\n${after}\n}'
-				result := check_capture('overlap_${lambda}_${borrowed}', code, serial)
-				assert result.exit_code != 0, result.output
-				expected := if borrowed {
-					'is borrowed by `borrowed`'
-				} else {
-					'use of moved value: `entries'
-				}
-				assert result.output.contains(expected), result.output
-				assert result.output.count(': error:') == 1, result.output
+			body := 'entries := ${initial}\ntake_items(${member})\n${capture}'
+			cases << CaptureRejection{'last_descendant_${lambda}_${map_root}', body, 'use of moved value: `entries'}
+		}
+		capture := if lambda {
+			'assert invoke(|| entries.values.len) == 1'
+		} else {
+			'callback := fn [entries] () {}\ncallback()'
+		}
+		for borrowed in [false, true] {
+			before := if borrowed {
+				'borrowed := &entries.values'
+			} else {
+				capture.replace('callback', 'first')
 			}
+			after := if borrowed { 'assert borrowed.len == 1' } else { '' }
+			body := 'entries := Bundle{["one".to_owned()]}\n${before}\n${capture}\n${after}'
+			expected := if borrowed {
+				'is borrowed by `borrowed`'
+			} else {
+				'use of moved value: `entries'
+			}
+			cases << CaptureRejection{'overlap_${lambda}_${borrowed}', body, expected}
+		}
+	}
+	batch := os.join_path(capture_tmp, 'rejections')
+	os.mkdir(batch)!
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		os.write_file(os.join_path(batch, '${case.name}.v'), 'module main\n\nfn ${case.name}() {\n${case.body}\n}\n')!
+		calls << '\t${case.name}()'
+	}
+	os.write_file(os.join_path(batch, 'main.v'), 'module main
+
+struct Bundle { values []string }
+fn take_items(items []string) { assert items.len == 1 }
+fn invoke(callback fn () int) int { return callback() }
+
+fn main() {
+${calls.join('\n')}
+}
+')!
+	for serial in [true, false] {
+		result := run_capture(batch, serial, '-ownership', '-nocolor')
+		assert result.exit_code != 0, result.output
+		diagnostics := result.output.split_into_lines().filter(it.contains(': error: '))
+		assert diagnostics.len == cases.len, result.output
+		for case in cases {
+			assert diagnostics.any(it.all_before(': error: ').contains('${case.name}.v:')
+				&& it.all_after(': error: ').contains(case.expected)), '${case.name}: ${result.output}'
 		}
 	}
 }
