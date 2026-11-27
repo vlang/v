@@ -4046,16 +4046,15 @@ fn main() {
 	assert res.exit_code == 0, res.output
 }
 
-fn test_ownership_retains_the_source_loan_for_a_projected_pointer() {
-	v3_bin := ownership_compiler
-	res := run_ownership_check(v3_bin, 'borrowed_pointer_projection', r'
-struct Item {
+fn test_ownership_projected_pointer_loans_reject_invalid_uses() {
+	source := r'
+struct ProjectionItem {
 mut:
 	text string
 }
 
-fn main() {
-	mut items := [Item{text: "hello".to_owned()}]
+fn check_projection_mutation() {
+	mut items := [ProjectionItem{text: "hello".to_owned()}]
 	mut bytes := unsafe { &u8(nil) }
 	unsafe {
 		item := &items[0]
@@ -4064,20 +4063,13 @@ fn main() {
 	items[0].text = "changed".to_owned()
 	unsafe { assert bytes[0] == `h` }
 }
-')
-	assert res.exit_code != 0, res.output
-	assert res.output.contains('because `items[0].text.str` is borrowed by `bytes`'), res.output
-}
 
-fn test_ownership_rejects_returning_a_projected_pointer_to_local_storage() {
-	v3_bin := ownership_compiler
-	res := run_ownership_check(v3_bin, 'return_borrowed_pointer_projection', r'
-struct Item {
+struct EscapeItem {
 	text string
 }
 
 fn escape() &u8 {
-	items := [Item{text: "hello".to_owned()}]
+	items := [EscapeItem{text: "hello".to_owned()}]
 	mut bytes := unsafe { &u8(nil) }
 	unsafe {
 		item := &items[0]
@@ -4086,25 +4078,18 @@ fn escape() &u8 {
 	return bytes
 }
 
-fn main() {
+fn check_projection_return() {
 	println(escape())
 }
-')
-	assert res.exit_code != 0, res.output
-	assert res.output.contains('cannot return a reference to local storage `items`'), res.output
-}
 
-fn test_ownership_retains_all_branch_loans_for_a_projected_pointer() {
-	v3_bin := ownership_compiler
-	res := run_ownership_check(v3_bin, 'borrowed_pointer_projection_branches', r'
-struct Item {
+struct BranchItem {
 mut:
 	text string
 }
 
 fn check(pick_right bool) {
-	mut left := [Item{text: "left".to_owned()}]
-	mut right := [Item{text: "right".to_owned()}]
+	mut left := [BranchItem{text: "left".to_owned()}]
+	mut right := [BranchItem{text: "right".to_owned()}]
 	mut bytes := unsafe { &u8(nil) }
 	unsafe {
 		mut item := &left[0]
@@ -4118,11 +4103,29 @@ fn check(pick_right bool) {
 	unsafe { println(bytes[0]) }
 }
 
-fn main() {
+fn check_projection_branches() {
 	check(false)
 }
-')
+
+fn main() {
+	check_projection_mutation()
+	check_projection_return()
+	check_projection_branches()
+}
+'
+	res := run_ownership_check(ownership_compiler, 'borrowed_pointer_projection_rejections', source)
 	assert res.exit_code != 0, res.output
-	assert res.output.contains('because `left[0].text.str` is borrowed by `bytes`'), res.output
-	assert res.output.contains('because `right[0].text.str` is borrowed by `bytes`'), res.output
+	expected := {
+		'items[0].text = "changed".to_owned()': 'because `items[0].text.str` is borrowed by `bytes`'
+		'return bytes':                         'cannot return a reference to local storage `items`'
+		'left[0].text = "changed".to_owned()':  'because `left[0].text.str` is borrowed by `bytes`'
+		'right[0].text = "changed".to_owned()': 'because `right[0].text.str` is borrowed by `bytes`'
+	}
+	lines := source.split_into_lines()
+	diagnostics := res.output.split_into_lines().filter(it.contains(': error: '))
+	for statement, message in expected {
+		line := lines.index('\t${statement}') + 1
+		assert line > 0, statement
+		assert diagnostics.any(it.contains('main.v:${line}:') && it.contains(message)), '${statement}: ${res.output}'
+	}
 }
