@@ -38,7 +38,12 @@ jobs:
           (cd baseline && make -j4 && ./v -prod -cg -o v cmd/v)
           make -j4
           ./v -prod -cg -o v cmd/v
-          ./v fmt -verify vlib/v/driver/driver.v vlib/v/driver/race.v
+          # Report the exact formatter patch on failure, without accepting a dirty tree.
+          if ! ./v fmt -verify vlib/v/driver/driver.v vlib/v/driver/race.v; then
+            ./v fmt -w vlib/v/driver/driver.v vlib/v/driver/race.v
+            git diff -- vlib/v/driver/driver.v vlib/v/driver/race.v
+            exit 1
+          fi
           clang --version
       - name: Reproduce and verify native race reports and option precedence
         shell: bash
@@ -143,7 +148,12 @@ jobs:
           set -euo pipefail
           make -j4
           ./v -prod -cg -o v cmd/v
-          ./v fmt -verify vlib/v/driver/driver.v vlib/v/driver/race.v
+          # Report the exact formatter patch on failure, without accepting a dirty tree.
+          if ! ./v fmt -verify vlib/v/driver/driver.v vlib/v/driver/race.v; then
+            ./v fmt -w vlib/v/driver/driver.v vlib/v/driver/race.v
+            git diff -- vlib/v/driver/driver.v vlib/v/driver/race.v
+            exit 1
+          fi
           VFLAGS="-cc ${{ matrix.cc }}" ./v -silent vlib/v/slow_tests/race_detector_test.v 2>&1 | tee race.log
           if grep -Fq 'skipping:' race.log; then exit 1; fi
           ./v -silent vlib/v/compiler_errors_test.v
