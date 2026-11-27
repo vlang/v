@@ -46,7 +46,8 @@ With preserved text, an optional `inline_markup` callback can handle `<!` and `<
 element. It receives the source and the byte offset of the opening `<` and returns a child node and
 the offset immediately after that markup.
 
-With `borrow_text: true` and preserved text, plain text can reference the original string.
+With `borrow_text: true`, plain ASCII attribute values and preserved entity-free character
+data can reference the original string.
 Keep the string alive until the tree is no longer used or its text has been copied.
 
 
