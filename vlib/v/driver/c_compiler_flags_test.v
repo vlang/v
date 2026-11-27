@@ -1932,7 +1932,14 @@ fn test_add_c_language_runtime_link_flags() {
 }
 
 fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure() {
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	previous_vtmp := os.vtmp_dir()
+	root := os.join_path(previous_vtmp, 'v3_test_failed_cache_artifact_${os.getpid()}')
+	os.setenv('VTMP', root, true)
+	defer {
+		os.setenv('VTMP', previous_vtmp, true)
+		os.rmdir_all(root) or {}
+	}
+	cache_dir := os.join_path(root, 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
 	object := os.join_path(cache_dir, 'atomic_deadbeef_cafe.o')
 	rejected := 'tcc: error: ${object}: unrecognized file type'
@@ -2212,7 +2219,14 @@ fn test_v3_cache_artifact_detection_includes_isolated_test_modules() {
 }
 
 fn test_v3_discard_cache_artifacts_drops_sidecars_and_link_plans() {
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	previous_vtmp := os.vtmp_dir()
+	root := os.join_path(previous_vtmp, 'v3_test_discarded_cache_artifact_${os.getpid()}')
+	os.setenv('VTMP', root, true)
+	defer {
+		os.setenv('VTMP', previous_vtmp, true)
+		os.rmdir_all(root) or {}
+	}
+	cache_dir := os.join_path(root, 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
 	token := 'v3_discard_test_${os.getpid()}'
 	object := os.join_path(cache_dir, '${token}.o')

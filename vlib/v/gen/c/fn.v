@@ -18730,7 +18730,7 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 	// In particular, some Linux headers hide pipe2 unless GNU feature macros are enabled.
 	if g.c_source_file_is_in_vlib(source_file)
 		&& cfn in ['_Exit', 'flock', 'pipe2', 'v_os_fd_write_all', 'v_os_execute_capture_start',
-			'v_os_exec_capture_start', 'v_os_exec_capture_input_start'] {
+			'v_os_exec_capture_start', 'v_os_exec_capture_input_start', 'v_cmdexec_child_has_exited'] {
 		return true
 	}
 	// A unit without system headers has no other declaration of a bodyless C function,
