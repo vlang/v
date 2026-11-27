@@ -1940,10 +1940,13 @@ fn test_reject_dynamic_arrays_for_fixed_array_expectations() {
 	])
 }
 
-fn test_array_equality_uses_semantic_element_comparison() {
+fn test_nested_collection_equality() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'semantic_array_equality', "struct Child {\n\tlabel string\n}\n\nstruct Item {\n\tname string\n\tparts []string\n\tnested [][]string\n\tchildren []Child\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := [Item{\n\t\tname: 'hi'.clone()\n\t\tparts: ['ab'.clone()]\n\t\tnested: [[join('n', 'est')]]\n\t\tchildren: [Child{\n\t\t\tlabel: 'kid'.clone()\n\t\t}]\n\t}]\n\tright := [Item{\n\t\tname: join('h', 'i')\n\t\tparts: [join('a', 'b')]\n\t\tnested: [['nest'.clone()]]\n\t\tchildren: [Child{\n\t\t\tlabel: join('k', 'id')\n\t\t}]\n\t}]\n\tmaps_left := [{\n\t\t'k': 'value'.clone()\n\t}]\n\tmaps_right := [{\n\t\t'k': join('val', 'ue')\n\t}]\n\tnested_left := [[join('y', 'o')]]\n\tnested_right := [['yo'.clone()]]\n\tchild_map_left := {\n\t\t'items': [Child{\n\t\t\tlabel: 'mapkid'.clone()\n\t\t}]\n\t}\n\tchild_map_right := {\n\t\t'items': [Child{\n\t\t\tlabel: join('map', 'kid')\n\t\t}]\n\t}\n\tneedle := Item{\n\t\tname: join('h', 'i')\n\t\tparts: [join('a', 'b')]\n\t\tnested: [['nest'.clone()]]\n\t\tchildren: [Child{\n\t\t\tlabel: join('k', 'id')\n\t\t}]\n\t}\n\tprintln(left == right)\n\tprintln(left.equals(right))\n\tprintln(maps_left == maps_right)\n\tprintln(nested_left == nested_right)\n\tprintln(child_map_left == child_map_right)\n\tprintln(needle in left)\n\tprintln(int_str(left.index(needle)))\n}\n")
-	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\n0'
+	run_good_module_batch(v3_bin, 'nested_collection_equality', [
+		TransformFixture{'semantic_array_equality', "struct Child {\n\tlabel string\n}\n\nstruct Item {\n\tname string\n\tparts []string\n\tnested [][]string\n\tchildren []Child\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := [Item{\n\t\tname: 'hi'.clone()\n\t\tparts: ['ab'.clone()]\n\t\tnested: [[join('n', 'est')]]\n\t\tchildren: [Child{\n\t\t\tlabel: 'kid'.clone()\n\t\t}]\n\t}]\n\tright := [Item{\n\t\tname: join('h', 'i')\n\t\tparts: [join('a', 'b')]\n\t\tnested: [['nest'.clone()]]\n\t\tchildren: [Child{\n\t\t\tlabel: join('k', 'id')\n\t\t}]\n\t}]\n\tmaps_left := [{\n\t\t'k': 'value'.clone()\n\t}]\n\tmaps_right := [{\n\t\t'k': join('val', 'ue')\n\t}]\n\tnested_left := [[join('y', 'o')]]\n\tnested_right := [['yo'.clone()]]\n\tchild_map_left := {\n\t\t'items': [Child{\n\t\t\tlabel: 'mapkid'.clone()\n\t\t}]\n\t}\n\tchild_map_right := {\n\t\t'items': [Child{\n\t\t\tlabel: join('map', 'kid')\n\t\t}]\n\t}\n\tneedle := Item{\n\t\tname: join('h', 'i')\n\t\tparts: [join('a', 'b')]\n\t\tnested: [['nest'.clone()]]\n\t\tchildren: [Child{\n\t\t\tlabel: join('k', 'id')\n\t\t}]\n\t}\n\tprintln(left == right)\n\tprintln(left.equals(right))\n\tprintln(maps_left == maps_right)\n\tprintln(nested_left == nested_right)\n\tprintln(child_map_left == child_map_right)\n\tprintln(needle in left)\n\tprintln(int_str(left.index(needle)))\n}\n", 'true\ntrue\ntrue\ntrue\ntrue\ntrue\n0'},
+		TransformFixture{'nested_map_semantic_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nstruct Holder {\n\titems map[string][]Item\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tmut left_map := map[string][]Item{}\n\tleft_map['items'] = [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}]\n\tmut right_map := map[string][]Item{}\n\tright_map['items'] = [Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tleft_arr := [left_map]\n\tright_arr := [right_map]\n\tleft_holder := Holder{\n\t\titems: left_map\n\t}\n\tright_holder := Holder{\n\t\titems: right_map\n\t}\n\tprintln(left_arr == right_arr)\n\tprintln(left_holder == right_holder)\n}\n", 'true\ntrue'},
+		TransformFixture{'fixed_array_semantic_equality', "fn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := [[1]string{init: 'ab'.clone()}]\n\tright := [[1]string{init: join('a', 'b')}]\n\tmut map_left := map[string][1]string{}\n\tmap_left['k'] = [1]string{init: 'cd'.clone()}\n\tmut map_right := map[string][1]string{}\n\tmap_right['k'] = [1]string{init: join('c', 'd')}\n\tmut ints_left := map[string][2]i64{}\n\tints_left['k'] = [i64(1), i64(0)]!\n\tmut ints_right := map[string][2]i64{}\n\tints_right['k'] = [i64(2), i64(0)]!\n\tprintln(left == right)\n\tprintln(left.equals(right))\n\tprintln(map_left == map_right)\n\tprintln(ints_left == ints_right)\n}\n", 'true\ntrue\ntrue\nfalse'},
+	])
 }
 
 fn test_explicitly_dereferenced_array_equality_is_not_double_dereferenced() {
@@ -4854,11 +4857,11 @@ fn main() {
 
 fn test_array_literal_separator_handling() {
 	v3_bin := build_v3_review_transform()
-	// Comma-, newline-, blank-line-, and whitespace-separated element lists parse correctly.
-	out := run_good(v3_bin, 'array_literal_separators', 'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tcommaless := [1 2 3 4]\n\toperators := [5-2 7 2*3 -4 -7*8 2*-4 9 - 4]\n\ta := 10\n\tb := 20\n\tpointers := [&a &b]\n\tdereferenced := [*pointers[0] *pointers[1]]\n\tands := [6&3 7 7 & 3]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n\tprintln(commaless)\n\tprintln(operators)\n\tprintln(pointers.len)\n\tprintln(dereferenced)\n\tprintln(ands)\n}\n')
-	assert out == '3:2:3\n[1, 2, 3, 4]\n[3, 7, 6, -4, -56, -8, 5]\n2\n[10, 20]\n[2, 7, 3]', out
-	nested_out := run_good(v3_bin, 'array_literal_nested_expressions', 'fn identity(value int) int {\n\treturn value\n}\n\nfn main() {\n\tvalues := [10, 20, 30]\n\tnested := [(3 -2) identity(5 -3) values[2 -1]]\n\tprintln(nested)\n}\n')
-	assert nested_out == '[1, 2, 20]', nested_out
+	run_good_module_batch(v3_bin, 'array_literal_separator_handling', [
+		// Comma-, newline-, blank-line-, and whitespace-separated element lists parse correctly.
+		TransformFixture{'array_literal_separators', 'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tcommaless := [1 2 3 4]\n\toperators := [5-2 7 2*3 -4 -7*8 2*-4 9 - 4]\n\ta := 10\n\tb := 20\n\tpointers := [&a &b]\n\tdereferenced := [*pointers[0] *pointers[1]]\n\tands := [6&3 7 7 & 3]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n\tprintln(commaless)\n\tprintln(operators)\n\tprintln(pointers.len)\n\tprintln(dereferenced)\n\tprintln(ands)\n}\n', '3:2:3\n[1, 2, 3, 4]\n[3, 7, 6, -4, -56, -8, 5]\n2\n[10, 20]\n[2, 7, 3]'},
+		TransformFixture{'array_literal_nested_expressions', 'fn identity(value int) int {\n\treturn value\n}\n\nfn main() {\n\tvalues := [10, 20, 30]\n\tnested := [(3 -2) identity(5 -3) values[2 -1]]\n\tprintln(nested)\n}\n', '[1, 2, 20]'},
+	])
 	run_bad(v3_bin, 'array_literal_doubled_comma', 'fn main() {\n\t_ := [1,,2]\n}\n', 'unexpected token `,`, expecting `]`')
 }
 
@@ -4871,12 +4874,6 @@ fn test_container_wrapped_import_alias_type_resolves() {
 		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\th := foo.make()\n\tmut out := int_str(h.items[0].n) + int_str(h.items[1].n)\n\tif v := h.one {\n\t\tout += int_str(v.n)\n\t}\n\tprintln(out)\n}\n'
 	}, 'main.v')
 	assert out == '127'
-}
-
-fn test_nested_map_equality_uses_declared_value_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'nested_map_semantic_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nstruct Holder {\n\titems map[string][]Item\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tmut left_map := map[string][]Item{}\n\tleft_map['items'] = [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}]\n\tmut right_map := map[string][]Item{}\n\tright_map['items'] = [Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tleft_arr := [left_map]\n\tright_arr := [right_map]\n\tleft_holder := Holder{\n\t\titems: left_map\n\t}\n\tright_holder := Holder{\n\t\titems: right_map\n\t}\n\tprintln(left_arr == right_arr)\n\tprintln(left_holder == right_holder)\n}\n")
-	assert out == 'true\ntrue'
 }
 
 fn test_map_value_lookup_constructs_default_only_for_missing_key() {
@@ -4899,22 +4896,22 @@ fn test_map_value_lookup_constructs_default_only_for_missing_key() {
 	assert run_good(v3_bin, 'map_value_lookup_lazy_default', source) == '42'
 }
 
-fn test_pointer_array_equality_uses_pointer_identity() {
+fn test_collection_pointer_equality() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'pointer_array_equality', 'struct Node {\n\tvalue int\n}\n\nfn main() {\n\tleft_node := Node{\n\t\tvalue: 5\n\t}\n\tright_node := Node{\n\t\tvalue: 5\n\t}\n\tleft_ptr := &left_node\n\tright_ptr := &right_node\n\tleft := [left_ptr]\n\tright := [right_ptr]\n\tsame := [left_ptr]\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n\tprintln(right_ptr in left)\n\tprintln(int_str(left.index(right_ptr)))\n}\n')
-	assert out == 'false\ntrue\ntrue\nfalse\n-1'
+	run_good_module_batch(v3_bin, 'collection_pointer_equality', [
+		TransformFixture{'pointer_array_equality', 'struct Node {\n\tvalue int\n}\n\nfn main() {\n\tleft_node := Node{\n\t\tvalue: 5\n\t}\n\tright_node := Node{\n\t\tvalue: 5\n\t}\n\tleft_ptr := &left_node\n\tright_ptr := &right_node\n\tleft := [left_ptr]\n\tright := [right_ptr]\n\tsame := [left_ptr]\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n\tprintln(right_ptr in left)\n\tprintln(int_str(left.index(right_ptr)))\n}\n', 'false\ntrue\ntrue\nfalse\n-1'},
+		TransformFixture{'array_pointer_equality', 'fn main() {\n\tleft := [1, 2]\n\tright := [1, 2]\n\tleft_ptr := &left\n\tright_ptr := &right\n\tsame_ptr := left_ptr\n\tprintln(left_ptr == right_ptr)\n\tprintln(left_ptr != right_ptr)\n\tprintln(left_ptr == same_ptr)\n\tprintln(*left_ptr == *right_ptr)\n}\n', 'false\ntrue\ntrue\ntrue'},
+		TransformFixture{'map_pointer_equality', "fn main() {\n\tleft := {\n\t\t'x': 1\n\t}\n\tright := {\n\t\t'x': 1\n\t}\n\tleft_ptr := &left\n\tright_ptr := &right\n\tsame_ptr := left_ptr\n\tprintln(left_ptr == right_ptr)\n\tprintln(left_ptr != right_ptr)\n\tprintln(left_ptr == same_ptr)\n\tprintln(*left_ptr == *right_ptr)\n}\n", 'false\ntrue\ntrue\ntrue'},
+	])
 }
 
-fn test_struct_pointer_equality_is_semantic() {
+fn test_struct_pointer_equality() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'struct_pointer_semantic_equality', "struct Person {\n\tname string\n\ttags []string\n}\n\nfn main() {\n\tleft := &Person{\n\t\tname: 'abc'.clone()\n\t\ttags: ['x'.clone()]\n\t}\n\tright := &Person{\n\t\tname: ('a' + 'bc')\n\t\ttags: [('x' + '')]\n\t}\n\tsame := left\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n}\n")
-	assert out == 'true\nfalse\ntrue'
-}
-
-fn test_multilevel_struct_pointer_equality_uses_pointer_identity() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'multilevel_struct_pointer_identity_equality', "struct Person {\n\tname string\n}\n\nfn main() {\n\tmut left := &Person{\n\t\tname: 'same'\n\t}\n\tmut right := &Person{\n\t\tname: 'same'\n\t}\n\tleft_slot := &left\n\tright_slot := &right\n\tsame_slot := left_slot\n\tprintln(left_slot == right_slot)\n\tprintln(left_slot != right_slot)\n\tprintln(left_slot == same_slot)\n\tprintln(*left_slot == *right_slot)\n}\n")
-	assert out == 'false\ntrue\ntrue\ntrue'
+	run_good_module_batch(v3_bin, 'struct_pointer_equality', [
+		TransformFixture{'struct_pointer_semantic_equality', "struct Person {\n\tname string\n\ttags []string\n}\n\nfn main() {\n\tleft := &Person{\n\t\tname: 'abc'.clone()\n\t\ttags: ['x'.clone()]\n\t}\n\tright := &Person{\n\t\tname: ('a' + 'bc')\n\t\ttags: [('x' + '')]\n\t}\n\tsame := left\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n}\n", 'true\nfalse\ntrue'},
+		TransformFixture{'multilevel_struct_pointer_identity_equality', "struct Person {\n\tname string\n}\n\nfn main() {\n\tmut left := &Person{\n\t\tname: 'same'\n\t}\n\tmut right := &Person{\n\t\tname: 'same'\n\t}\n\tleft_slot := &left\n\tright_slot := &right\n\tsame_slot := left_slot\n\tprintln(left_slot == right_slot)\n\tprintln(left_slot != right_slot)\n\tprintln(left_slot == same_slot)\n\tprintln(*left_slot == *right_slot)\n}\n", 'false\ntrue\ntrue\ntrue'},
+		TransformFixture{'struct_eq_pointer_field', 'struct Node {\n\tvalue int\n\tnext &Node\n}\n\nfn main() {\n\tleft := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tright := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tprintln([left] == [right])\n}\n', 'true'},
+	])
 }
 
 fn test_struct_equality_with_interface_field_compiles() {
@@ -4923,22 +4920,10 @@ fn test_struct_equality_with_interface_field_compiles() {
 	assert out == 'true'
 }
 
-fn test_array_pointer_equality_uses_pointer_identity() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'array_pointer_equality', 'fn main() {\n\tleft := [1, 2]\n\tright := [1, 2]\n\tleft_ptr := &left\n\tright_ptr := &right\n\tsame_ptr := left_ptr\n\tprintln(left_ptr == right_ptr)\n\tprintln(left_ptr != right_ptr)\n\tprintln(left_ptr == same_ptr)\n\tprintln(*left_ptr == *right_ptr)\n}\n')
-	assert out == 'false\ntrue\ntrue\ntrue'
-}
-
 fn test_pointer_u8_array_bytestr_stays_in_cgen() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'pointer_u8_array_bytestr', 'fn show(data &[]u8) string {\n\treturn data.bytestr()\n}\n\nfn main() {\n\tbytes := [u8(104), u8(105)]\n\tprintln(show(&bytes))\n}\n')
 	assert out == 'hi'
-}
-
-fn test_map_pointer_equality_uses_pointer_identity() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'map_pointer_equality', "fn main() {\n\tleft := {\n\t\t'x': 1\n\t}\n\tright := {\n\t\t'x': 1\n\t}\n\tleft_ptr := &left\n\tright_ptr := &right\n\tsame_ptr := left_ptr\n\tprintln(left_ptr == right_ptr)\n\tprintln(left_ptr != right_ptr)\n\tprintln(left_ptr == same_ptr)\n\tprintln(*left_ptr == *right_ptr)\n}\n")
-	assert out == 'false\ntrue\ntrue\ntrue'
 }
 
 fn test_cyclic_interface_default_does_not_deref_nil_global() {
@@ -4949,12 +4934,6 @@ fn test_cyclic_interface_default_does_not_deref_nil_global() {
 		'main.v':        "module main\n\nimport cycle\n\nfn main() {\n\t_ = cycle.empty_id()\n\tprintln('alive')\n}\n"
 	}, 'main.v')
 	assert out == 'alive'
-}
-
-fn test_fixed_array_values_compare_semantically() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'fixed_array_semantic_equality', "fn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := [[1]string{init: 'ab'.clone()}]\n\tright := [[1]string{init: join('a', 'b')}]\n\tmut map_left := map[string][1]string{}\n\tmap_left['k'] = [1]string{init: 'cd'.clone()}\n\tmut map_right := map[string][1]string{}\n\tmap_right['k'] = [1]string{init: join('c', 'd')}\n\tmut ints_left := map[string][2]i64{}\n\tints_left['k'] = [i64(1), i64(0)]!\n\tmut ints_right := map[string][2]i64{}\n\tints_right['k'] = [i64(2), i64(0)]!\n\tprintln(left == right)\n\tprintln(left.equals(right))\n\tprintln(map_left == map_right)\n\tprintln(ints_left == ints_right)\n}\n")
-	assert out == 'true\ntrue\ntrue\nfalse'
 }
 
 fn test_const_length_fixed_array_map_values_compare_semantically() {
@@ -4991,16 +4970,12 @@ fn test_if_expr_smartcast_selector_decl_does_not_smartcast_local() {
 	assert out == 'true'
 }
 
-fn test_comptime_type_conditions_handle_logical_ops() {
+fn test_comptime_type_conditions() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'comptime_type_condition_logical_ops', "fn classify[T](x T) int {\n\t_ := x\n\t\$if T !is string && T !is \$int && T !is []u8 {\n\t\treturn 1\n\t} \$else {\n\t\treturn 2\n\t}\n\treturn 0\n}\n\nfn grouped[T](x T) int {\n\t_ := x\n\t\$if (T is int || T is string) && T is bool {\n\t\treturn 1\n\t} \$else {\n\t\treturn 2\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(int_str(classify('abc')))\n\tprintln(int_str(classify(3)))\n\tprintln(int_str(classify([u8(1)])))\n\tprintln(int_str(classify(1.5)))\n\tprintln(int_str(grouped(3)))\n\tprintln(int_str(grouped('abc')))\n}\n")
-	assert out == '2\n2\n2\n1\n2\n2'
-}
-
-fn test_comptime_type_conditions_keep_prefix_types_compact() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'comptime_type_condition_prefix_types', 'struct Foo {}\n\nfn main() {\n\t\$if ?int is ?int {\n\t\tprintln("opt")\n\t} \$else {\n\t\tprintln("badopt")\n\t}\n\t\$if !Foo is !Foo {\n\t\tprintln("res")\n\t} \$else {\n\t\tprintln("badres")\n\t}\n}\n')
-	assert out == 'opt\nres'
+	run_good_module_batch(v3_bin, 'comptime_type_conditions', [
+		TransformFixture{'comptime_type_condition_logical_ops', "fn classify[T](x T) int {\n\t_ := x\n\t\$if T !is string && T !is \$int && T !is []u8 {\n\t\treturn 1\n\t} \$else {\n\t\treturn 2\n\t}\n\treturn 0\n}\n\nfn grouped[T](x T) int {\n\t_ := x\n\t\$if (T is int || T is string) && T is bool {\n\t\treturn 1\n\t} \$else {\n\t\treturn 2\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(int_str(classify('abc')))\n\tprintln(int_str(classify(3)))\n\tprintln(int_str(classify([u8(1)])))\n\tprintln(int_str(classify(1.5)))\n\tprintln(int_str(grouped(3)))\n\tprintln(int_str(grouped('abc')))\n}\n", '2\n2\n2\n1\n2\n2'},
+		TransformFixture{'comptime_type_condition_prefix_types', 'struct Foo {}\n\nfn main() {\n\t\$if ?int is ?int {\n\t\tprintln("opt")\n\t} \$else {\n\t\tprintln("badopt")\n\t}\n\t\$if !Foo is !Foo {\n\t\tprintln("res")\n\t} \$else {\n\t\tprintln("badres")\n\t}\n}\n', 'opt\nres'},
+	])
 }
 
 fn test_comptime_type_conditions_qualify_module_aliases() {
@@ -5026,12 +5001,6 @@ fn test_nested_comptime_field_names_do_not_replace_each_other() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'nested_comptime_field_name_prefixes', 'struct Embedded {\n\tn int\n}\n\nstruct Item {\n\tEmbedded\n\tname string\n}\n\nfn normal_fields[T]() int {\n\tmut count := 0\n\t\$for field in T.fields {\n\t\t\$if field.is_embed {\n\t\t\t\$for reserved_field in T.fields {\n\t\t\t\t\$if !reserved_field.is_embed {\n\t\t\t\t\tcount++\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\treturn count\n}\n\nfn main() {\n\tprintln(int_str(normal_fields[Item]()))\n}\n')
 	assert out == '1'
-}
-
-fn test_struct_equality_compares_pointer_fields_as_pointers() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'struct_eq_pointer_field', 'struct Node {\n\tvalue int\n\tnext &Node\n}\n\nfn main() {\n\tleft := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tright := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tprintln([left] == [right])\n}\n')
-	assert out == 'true'
 }
 
 fn test_single_module_test_file_skips_premodule_attributes() {
@@ -5070,16 +5039,12 @@ fn test_delete_last_empty_array_panics_before_tail_clear() {
 	assert run.output.contains('array.delete_last: array is empty'), run.output
 }
 
-fn test_delete_last_preserves_shared_slice_buffer() {
+fn test_array_slice_mutations() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'delete_last_preserves_shared_slice_buffer', "fn main() {\n\tmut a := [1, 2, 3, 4]\n\tb := unsafe { a[..a.len] }\n\told_data := a.data\n\ta.delete_last()\n\tassert a == [1, 2, 3]\n\tassert b == [1, 2, 3, 4]\n\tassert a.data != old_data\n\tprintln('ok')\n}\n")
-	assert out == 'ok'
-}
-
-fn test_slice_element_assignment_writes_through() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'slice_element_assignment_writes_through', "fn main() {\n\tmut a := [1, 2, 3, 4]\n\tmut s := unsafe { a[1..3] }\n\ts[0] = 42\n\ts[1] += 5\n\tassert a == [1, 42, 8, 4]\n\tassert s == [42, 8]\n\tprintln('ok')\n}\n")
-	assert out == 'ok'
+	run_good_module_batch(v3_bin, 'array_slice_mutations', [
+		TransformFixture{'delete_last_preserves_shared_slice_buffer', "fn main() {\n\tmut a := [1, 2, 3, 4]\n\tb := unsafe { a[..a.len] }\n\told_data := a.data\n\ta.delete_last()\n\tassert a == [1, 2, 3]\n\tassert b == [1, 2, 3, 4]\n\tassert a.data != old_data\n\tprintln('ok')\n}\n", 'ok'},
+		TransformFixture{'slice_element_assignment_writes_through', "fn main() {\n\tmut a := [1, 2, 3, 4]\n\tmut s := unsafe { a[1..3] }\n\ts[0] = 42\n\ts[1] += 5\n\tassert a == [1, 42, 8, 4]\n\tassert s == [42, 8]\n\tprintln('ok')\n}\n", 'ok'},
+	])
 }
 
 fn test_string_pointer_comparisons_keep_pointer_semantics() {
@@ -5094,16 +5059,13 @@ fn test_map_keys_and_values_lower_to_runtime_methods() {
 	assert out == '2\n2\n3\n1\nonly\n1\n9'
 }
 
-fn test_map_str_preserves_signed_wide_entries() {
+fn test_map_numeric_stringification() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'map_str_signed_wide_entries', "fn main() {\n\tvalue_map := {\n\t\t'x': i64(5000000000)\n\t}\n\tkey_map := {\n\t\ti64(-5000000000): 'x'\n\t}\n\tprintln(value_map.str())\n\tprintln(key_map.str())\n}\n")
-	assert out == "{'x': 5000000000}\n{-5000000000: 'x'}"
-}
-
-fn test_map_str_normalizes_alias_key_and_value_types() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'map_str_alias_kinds', "type ID = int\n\ntype Amount = f64\n\nfn main() {\n\tids := {\n\t\tID(23): 'id'\n\t}\n\tamounts := {\n\t\t'price': Amount(1.25)\n\t}\n\tprintln('\${ids}')\n\tprintln('\${amounts}')\n}\n")
-	assert out == "{23: 'id'}\n{'price': 1.25}"
+	run_good_module_batch(v3_bin, 'map_numeric_stringification', [
+		TransformFixture{'map_str_signed_wide_entries', "fn main() {\n\tvalue_map := {\n\t\t'x': i64(5000000000)\n\t}\n\tkey_map := {\n\t\ti64(-5000000000): 'x'\n\t}\n\tprintln(value_map.str())\n\tprintln(key_map.str())\n}\n", "{'x': 5000000000}\n{-5000000000: 'x'}"},
+		TransformFixture{'map_str_alias_kinds', "type ID = int\n\ntype Amount = f64\n\nfn main() {\n\tids := {\n\t\tID(23): 'id'\n\t}\n\tamounts := {\n\t\t'price': Amount(1.25)\n\t}\n\tprintln('\${ids}')\n\tprintln('\${amounts}')\n}\n", "{23: 'id'}\n{'price': 1.25}"},
+		TransformFixture{'mut_map_param_interpolation', "type Scores = map[string]int\n\nfn show(mut m map[string]int) {\n\tprintln('\${m}')\n}\n\nfn show_alias(mut m Scores) {\n\tprintln('\${m}')\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm['x'] = 3\n\tshow(mut m)\n\tmut scores := Scores(map[string]int{})\n\tscores['y'] = 4\n\tshow_alias(mut scores)\n}\n", "{'x': 3}\n{'y': 4}"},
+	])
 }
 
 fn test_chained_array_alias_stringification_uses_outer_alias_only() {
@@ -5116,12 +5078,6 @@ fn test_alias_pointer_receiver_str_gets_addressable_value() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'alias_pointer_receiver_str', "type Number = int\n\nfn (n &Number) str() string {\n\treturn 'number:' + int_str(int(*n))\n}\n\nstruct Point {\n\tx int\n}\n\ntype NamedPoint = Point\n\nfn (p &NamedPoint) str() string {\n\treturn 'point:' + int_str(p.x)\n}\n\nfn main() {\n\tn := Number(7)\n\tp := NamedPoint(Point{\n\t\tx: 9\n\t})\n\tprintln('\${n}')\n\tprintln('\${Number(8)}')\n\tprintln('\${p}')\n\tprintln('\${NamedPoint(Point{x: 10})}')\n}\n")
 	assert out == 'number:7\nnumber:8\npoint:9\npoint:10'
-}
-
-fn test_mut_map_param_interpolation_preserves_pointer() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'mut_map_param_interpolation', "type Scores = map[string]int\n\nfn show(mut m map[string]int) {\n\tprintln('\${m}')\n}\n\nfn show_alias(mut m Scores) {\n\tprintln('\${m}')\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm['x'] = 3\n\tshow(mut m)\n\tmut scores := Scores(map[string]int{})\n\tscores['y'] = 4\n\tshow_alias(mut scores)\n}\n")
-	assert out == "{'x': 3}\n{'y': 4}"
 }
 
 fn test_map_literal_stringification_evaluates_entries_once() {
@@ -5157,16 +5113,12 @@ fn test_runes_iterator_index_is_loop_scoped() {
 	assert out == '0\n1\n9'
 }
 
-fn test_array_last_index_uses_element_width() {
+fn test_array_last_index_values() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'array_last_index_element_width', 'fn main() {\n\twide := [i64(1), i64(5000000000), i64(2), i64(5000000000)]\n\tfloats := [1.25, 2.5, 1.25]\n\tflags := [true, false, true]\n\tprintln(int_str(wide.last_index(i64(5000000000))))\n\tprintln(int_str(floats.last_index(1.25)))\n\tprintln(int_str(flags.last_index(true)))\n}\n')
-	assert out == '3\n2\n2'
-}
-
-fn test_array_last_index_uses_semantic_element_comparison() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'array_last_index_semantic_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tnested := [['ab'.clone()], [join('x', 'y')], [join('a', 'b')]]\n\tnested_needle := ['ab'.clone()]\n\titems := [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}, Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tneedle := Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}\n\tprintln(int_str(nested.last_index(nested_needle)))\n\tprintln(int_str(items.last_index(needle)))\n}\n")
-	assert out == '2\n1'
+	run_good_module_batch(v3_bin, 'array_last_index_values', [
+		TransformFixture{'array_last_index_element_width', 'fn main() {\n\twide := [i64(1), i64(5000000000), i64(2), i64(5000000000)]\n\tfloats := [1.25, 2.5, 1.25]\n\tflags := [true, false, true]\n\tprintln(int_str(wide.last_index(i64(5000000000))))\n\tprintln(int_str(floats.last_index(1.25)))\n\tprintln(int_str(flags.last_index(true)))\n}\n', '3\n2\n2'},
+		TransformFixture{'array_last_index_semantic_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tnested := [['ab'.clone()], [join('x', 'y')], [join('a', 'b')]]\n\tnested_needle := ['ab'.clone()]\n\titems := [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}, Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tneedle := Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}\n\tprintln(int_str(nested.last_index(nested_needle)))\n\tprintln(int_str(items.last_index(needle)))\n}\n", '2\n1'},
+	])
 }
 
 fn test_generic_string_literal_matching_typeof_marker_is_preserved() {
@@ -5675,40 +5627,27 @@ fn main() {
 	assert out == 'true'
 }
 
-fn test_optional_string_equality_uses_payload_equality() {
+fn test_optional_payload_equality() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'optional_string_semantic_equality', "fn maybe_text(ok bool) ?string {\n\tif !ok {\n\t\treturn none\n\t}\n\tprefix := 'a'.clone()\n\treturn prefix + 'b'\n}\n\nfn main() {\n\tleft := maybe_text(true)\n\tright := maybe_text(true)\n\tmissing_left := maybe_text(false)\n\tmissing_right := maybe_text(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n")
-	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
+	run_good_module_batch(v3_bin, 'optional_payload_equality', [
+		TransformFixture{'optional_string_semantic_equality', "fn maybe_text(ok bool) ?string {\n\tif !ok {\n\t\treturn none\n\t}\n\tprefix := 'a'.clone()\n\treturn prefix + 'b'\n}\n\nfn main() {\n\tleft := maybe_text(true)\n\tright := maybe_text(true)\n\tmissing_left := maybe_text(false)\n\tmissing_right := maybe_text(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n", 'true\nfalse\nfalse\ntrue\nfalse'},
+		TransformFixture{'optional_nested_array_guarded_equality', "fn maybe_nested(ok bool) ?[][]string {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [['a'.clone()], ['b'.clone()]]\n}\n\nfn main() {\n\tleft := maybe_nested(true)\n\tright := maybe_nested(true)\n\tmissing_left := maybe_nested(false)\n\tmissing_right := maybe_nested(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n", 'true\nfalse\nfalse\ntrue\nfalse'},
+	])
 }
 
-fn test_optional_nested_array_equality_guards_payload_work() {
+fn test_optional_wrapper_values() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'optional_nested_array_guarded_equality', "fn maybe_nested(ok bool) ?[][]string {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [['a'.clone()], ['b'.clone()]]\n}\n\nfn main() {\n\tleft := maybe_nested(true)\n\tright := maybe_nested(true)\n\tmissing_left := maybe_nested(false)\n\tmissing_right := maybe_nested(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n")
-	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
-}
-
-fn test_optional_assignment_invalidates_payload_smartcast() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'optional_assignment_invalidates_payload_smartcast', 'fn main() {\n\tmut value := ?int(none)\n\tvalue = 1\n\tvalue = none\n\tresolved := value or { 42 }\n\tprintln(int_str(resolved))\n}\n')
-	assert out == '42'
-}
-
-fn test_optional_variant_to_optional_sum_cast_preserves_wrapper() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'optional_variant_to_optional_sum_cast', "struct Cat {}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\nfn maybe_dog(ok bool) ?Dog {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn Dog{\n\t\tname: 'Rex'\n\t}\n}\n\nfn maybe_animal(ok bool) ?Animal {\n\treturn maybe_dog(ok)\n}\n\nfn show(ok bool) string {\n\tanimal := maybe_animal(ok) or { return 'missing' }\n\tif animal is Dog {\n\t\treturn animal.name\n\t}\n\treturn 'cat'\n}\n\nfn main() {\n\tprintln(show(true))\n\tprintln(show(false))\n}\n")
-	assert out == 'Rex\nmissing'
+	run_good_module_batch(v3_bin, 'optional_wrapper_values', [
+		TransformFixture{'optional_assignment_invalidates_payload_smartcast', 'fn main() {\n\tmut value := ?int(none)\n\tvalue = 1\n\tvalue = none\n\tresolved := value or { 42 }\n\tprintln(int_str(resolved))\n}\n', '42'},
+		TransformFixture{'optional_variant_to_optional_sum_cast', "struct Cat {}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\nfn maybe_dog(ok bool) ?Dog {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn Dog{\n\t\tname: 'Rex'\n\t}\n}\n\nfn maybe_animal(ok bool) ?Animal {\n\treturn maybe_dog(ok)\n}\n\nfn show(ok bool) string {\n\tanimal := maybe_animal(ok) or { return 'missing' }\n\tif animal is Dog {\n\t\treturn animal.name\n\t}\n\treturn 'cat'\n}\n\nfn main() {\n\tprintln(show(true))\n\tprintln(show(false))\n}\n", 'Rex\nmissing'},
+		TransformFixture{'gated_optional_array_index_base_order', "fn get_arr(ok bool) ?[]int {\n\tprintln('get')\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [3, 7, 11]\n}\n\nfn main() {\n\tprintln(int_str(get_arr(true)#[-1] or { 40 }))\n\tprintln(int_str(get_arr(true)#[9] or { 41 }))\n\tprintln(int_str(get_arr(false)#[-1] or { 42 }))\n}\n", 'get\n11\nget\n41\nget\n42'},
+	])
 }
 
 fn test_wrapped_plus_minus_continuations_consume_auto_semicolon() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'wrapped_plus_minus_continuation', 'fn add(total int, delta int) int {\n\treturn total\n\t\t+ delta\n}\n\nfn sub(total int, delta int) int {\n\treturn total\n\t\t- delta\n}\n\nfn main() {\n\tprintln(int_str(add(3, 4)))\n\tprintln(int_str(sub(9, 2)))\n}\n')
 	assert out == '7\n7'
-}
-
-fn test_gated_optional_array_index_materializes_base_before_wrap() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'gated_optional_array_index_base_order', "fn get_arr(ok bool) ?[]int {\n\tprintln('get')\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [3, 7, 11]\n}\n\nfn main() {\n\tprintln(int_str(get_arr(true)#[-1] or { 40 }))\n\tprintln(int_str(get_arr(true)#[9] or { 41 }))\n\tprintln(int_str(get_arr(false)#[-1] or { 42 }))\n}\n")
-	assert out == 'get\n11\nget\n41\nget\n42'
 }
 
 fn test_normalized_option_result_fixed_array_names_keep_outer_wrapper() {
