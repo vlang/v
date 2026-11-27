@@ -63,7 +63,9 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 	}
 	mut metadata_callbacks := map[string]OpenApiHandlerCallback{}
 	mut metadata_names := map[string]string{}
+	mut method_attr_strings := map[string][]string{}
 	$for method in A.methods {
+		method_attr_strings[method.name] = route_attrs_strings(method.attributes)
 		$for attr in method.attributes {
 			$if attr is OpenApi {
 				metadata_names[method.name] = attr.handler
@@ -97,7 +99,7 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 			path:                  openapi_join_path('', route.path)
 			methods:               route.methods
 			host:                  route.host
-			description:           route_description(route.attrs)
+			description:           route_description(method_attr_strings[name])
 			parameter_names:       route.parameter_names
 			parameter_types:       kinds
 			parameter_schemas:     schemas

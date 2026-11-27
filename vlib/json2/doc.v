@@ -207,7 +207,7 @@ fn reflect_into[T](value Any, mut out T, params DecoderOptions) {
 		// `$for` unrolls to straight-line code, so the field logic is nested
 		// `if`s rather than a loop with `continue`.
 		$for field in T.fields {
-			key := field_key_name(field.name, field.attrs)
+			key := field_key_name(field.name, field.attributes)
 			if key != '' {
 				$if field.is_embed {
 					$if field.unaliased_typ is $struct {
@@ -240,7 +240,7 @@ fn reflect_value[T](value Any, mut out T, params DecoderOptions) {
 	}
 }
 
-fn field_key_name(name string, attrs []string) string {
+fn field_key_name(name string, attrs []VAttribute) string {
 	info := encoder_field_info(name, attrs)
 	return if info.is_skip { '' } else { info.key_name }
 }

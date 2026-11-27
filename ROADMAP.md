@@ -48,7 +48,7 @@ For a list of all features and fixes, check out the changelog.
 
 ## [Version 0.6]
 
-- [ ] Custom attributes
+- [x] Custom attributes
 - [ ] Contexts that are passed implicitly (e.g. for custom allocation/memory management)
 - [x] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
 - [x] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
