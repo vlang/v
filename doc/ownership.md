@@ -562,6 +562,9 @@ every concrete implementation when it is used as that interface. Within a checke
 thread group, the method can create fresh callbacks from the same factory while
 earlier callbacks are still running. Other access to the factory waits for the join.
 
+Storing a factory as an interface field retains its borrows. The borrowed state
+must outlive the struct that holds the field, including when the field is reassigned.
+
 The method may take one transferable value by value and move it directly into one
 field of the callback. This lets the caller take a job from a separate pool before
 creating the visitor. The job moves with the callback and the borrow stays tied to

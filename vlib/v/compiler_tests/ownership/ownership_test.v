@@ -6940,6 +6940,39 @@ fn test_ownership_scoped_factory_pool_borrows_synchronized_record() {
 	assert run.exit_code == 0, run.output
 }
 
+fn test_ownership_scoped_factory_field_requires_its_state_to_outlive_the_wrapper() {
+	v3_bin := ownership_build_v3()
+	fixture := scoped_factory_record_pool_fixture + r'
+struct Wrapper[^scope] {
+mut:
+	factory RecordPoolFactory[^scope]
+}
+
+fn main() {
+	outer := RecordPoolState{calls: arc.new_atomic(0), stats: arc.new_mutex(0)}
+	initial := RecordJobFactory[^scope]{state: &outer}
+	mut wrapper := Wrapper[^scope]{factory: initial}
+	mut count := 0
+	{
+		inner := RecordPoolState{calls: arc.new_atomic(0), stats: arc.new_mutex(0)}
+		replacement := RecordJobFactory[^scope]{state: &STATE}
+		STORE
+	}
+}
+'
+	for assignment in ['wrapper = Wrapper[^scope]{factory: replacement}',
+		'wrapper.factory = replacement', 'wrapper.factory, count = replacement, count + 1'] {
+		source := fixture.replace('STORE', assignment)
+		valid := run_ownership_check_c_only(v3_bin, 'scoped_factory_field_valid',
+			source.replace('&STATE', '&outer'))
+		assert valid.exit_code == 0, valid.output
+		invalid := run_ownership_check_c_only(v3_bin, 'scoped_factory_field_too_short',
+			source.replace('&STATE', '&inner'))
+		assert invalid.exit_code != 0, '${assignment}: ${invalid.output}'
+		assert invalid.output.contains('cannot store `wrapper.factory` because it borrows `inner`'), invalid.output
+	}
+}
+
 fn test_ownership_scoped_factory_record_pool_rejects_reachable_sync_handles() {
 	v3_bin := ownership_build_v3()
 	for field in ['other arc.Mutex[int]', 'other arc.Arc[NestedPoolState]', 'other []RecordPoolState'] {
