@@ -13,7 +13,7 @@ struct OwnershipStringViewDiagnostic {
 	message  string
 }
 
-const ownership_string_view_rejection_args = [@VEXE, '-nocache', '-ownership', '-d', 'ownership']
+const ownership_string_view_args = [@VEXE, '-nocache', '-ownership', '-d', 'ownership']
 const ownership_string_returned_fallback_body = '	mut original := "fallback".to_owned()
 	mut result := "".to_owned()
 	{
@@ -32,7 +32,7 @@ fn check_ownership_string_view_rejections(root string, declarations string, case
 			case_declarations := case.standalone_declarations or { declarations }
 			os.write_file(main, case_declarations + 'fn main() {\n${case.body}\n}\n')!
 			for mode in modes {
-				out := os.exec([...ownership_string_view_rejection_args, ...mode, '-check', main])
+				out := os.exec([...ownership_string_view_args, ...mode, '-check', main])
 				assert out.exit_code != 0, '${mode}: ${case.body}\n${out.output}'
 				assert out.output.contains(case.expected), '${mode}: ${case.body}\n${out.output}'
 			}
@@ -47,8 +47,7 @@ fn check_ownership_string_view_rejections(root string, declarations string, case
 	}
 	os.write_file(main, 'module main\n\n' + declarations + 'fn main() {\n${calls.join('\n')}\n}\n')!
 	for mode in modes {
-		out := os.exec([...ownership_string_view_rejection_args, ...mode, '-json-errors', '-check',
-			root])
+		out := os.exec([...ownership_string_view_args, ...mode, '-json-errors', '-check', root])
 		assert out.exit_code != 0, '${mode}: ${out.output}'
 		mut diagnostics := []OwnershipStringViewDiagnostic{}
 		for line in out.output.split_into_lines() {
@@ -237,7 +236,7 @@ fn test_ownership_string_views_are_copied_at_owning_call_boundaries() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	fixture := 'fn identity(value string) string { return value }
+	declarations := 'fn identity(value string) string { return value }
 fn read(value string) (int, voidptr) {
 	return value.len, unsafe { voidptr(value.str) }
 }
@@ -252,9 +251,8 @@ fn escape() (string, voidptr) {
 	ptr := &local
 	return identity(*ptr), unsafe { voidptr(local.str) }
 }
-fn main() {
-	OWNED_CALLS_START
-	local := "second owner".to_owned()
+'
+	borrowed_calls := '	local := "second owner".to_owned()
 	ptr := &local
 	borrowed := *ptr
 	alias := borrowed
@@ -295,12 +293,8 @@ fn main() {
 	assert slice_len == 3
 	assert unsafe { slice_ptr != voidptr(slice.str) }
 	assert slice == "sec"
-	assert local == "second owner"
-	OWNED_CALLS_END
-	println("ok")
-}
-'
-	owned_calls := 'taken := identity("owned argument".to_owned())
+	assert local == "second owner"'
+	owned_calls := '	taken := identity("owned argument".to_owned())
 	assert taken == "owned argument"
 	owned_len, _ := read("owned reader".to_owned())
 	assert owned_len == 12
@@ -308,17 +302,28 @@ fn main() {
 	owned_args := ["owned argument".to_owned()]
 	array_len, _ := read_spread(...owned_args)
 	assert array_len == 14'
-	for first in [true, false] {
-		os.write_file(source, fixture.replace('OWNED_CALLS_START', if first {
-			owned_calls
-		} else {
-			''
-		}).replace('OWNED_CALLS_END', if first { '' } else { owned_calls }))!
-		for mode in ['-no-parallel', ''] {
-			out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
-			assert out.exit_code == 0, '${mode}: ${out.output}'
-			assert out.output.trim_space() == 'ok', out.output
-		}
+	os.write_file(source, declarations + '
+fn check_owned_first() {
+${owned_calls}
+${borrowed_calls}
+	println("owned first")
+}
+
+fn check_owned_last() {
+${borrowed_calls}
+${owned_calls}
+	println("owned last")
+}
+
+fn main() {
+	check_owned_first()
+	check_owned_last()
+}
+')!
+	for mode in [['-no-parallel'], []string{}] {
+		out := os.exec([...ownership_string_view_args, '-cc', 'clang', ...mode, 'run', source])
+		assert out.exit_code == 0, '${mode}: ${out.output}'
+		assert out.output.trim_space().split_into_lines() == ['owned first', 'owned last'], '${mode}: ${out.output}'
 	}
 }
 
@@ -409,12 +414,12 @@ ${ownership_string_returned_fallback_body}
 }
 '
 	os.write_file(source, fixture.replace('LAST_USE', 'assert result == "all"'))!
-	success := os.exec([...ownership_string_view_rejection_args, '-cc', 'clang', 'run', source])
+	success := os.exec([...ownership_string_view_args, '-cc', 'clang', 'run', source])
 	assert !success.output.contains('cannot assign to `original`'), success.output
 	assert success.exit_code == 0, success.output
 	os.write_file(source, fixture.replace('LAST_USE', 'consume(result)\n\tprintln(result)'))!
 	for mode in [['-no-parallel'], []string{}] {
-		out := os.exec([...ownership_string_view_rejection_args, ...mode, '-check', source])
+		out := os.exec([...ownership_string_view_args, ...mode, '-check', source])
 		assert !out.output.contains('cannot assign to `original`'), out.output
 		assert out.exit_code != 0, out.output
 		assert out.output.contains('use of moved value: `result`'), out.output
