@@ -983,7 +983,7 @@ fn read[T](value T) int {
 fn main() {
 	_ := read(HasValue{})
 }
-', 'argument count mismatch for `value.value`: expected 0, got 1')
+', 'expected 0 arguments, but got 1')
 	run_bad(v3_bin, 'bad_generic_receiver_method_return_context', 'struct HasValue {}
 
 fn (v HasValue) value() int {
@@ -1082,7 +1082,7 @@ fn main() {
 		cb: fn (n int) {}
 	})
 }
-', 'argument count mismatch for `value.cb`: expected 1, got 0')
+', 'expected 1 argument, but got 0')
 	run_bad(v3_bin, 'bad_generic_receiver_params_field_type', '@[params]
 struct OpenOptions {
 	limit int

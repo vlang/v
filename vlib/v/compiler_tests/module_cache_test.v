@@ -5997,7 +5997,7 @@ pub fn unused_but_cached() int {
 	assert changed_after_layout[0].starts_with('bar_'), changed_after_layout.str()
 	assert changed_after_layout[1].starts_with('foo_'), changed_after_layout.str()
 
-	bar_stamp_path := module_cache_artifact(cache_dir, 'bar_', '.o.stamp')
+	bar_stamp_path := module_cache_artifact(cache_dir, 'bar_', '.body.stamp')
 	assert bar_stamp_path.len > 0
 	bar_stamp_before := module_cache_object_hash(bar_stamp_path)
 	current_foo_header := os.read_file(foo_header_path) or { panic(err) }
@@ -6009,7 +6009,11 @@ pub fn unused_but_cached() int {
 	assert run_module_cache_binary(signature_bin) == '44\n16\n17\n23\ntrue'
 	assert module_cache_object_hash(bar_stamp_path) != bar_stamp_before
 	signature_hashes := module_cache_object_hashes(cache_dir)
-	assert changed_module_cache_objects(layout_hashes, signature_hashes).len == 0
+	// A new dependency signature can publish a variant; previous builds keep their objects.
+	changed_after_signature := changed_module_cache_objects(layout_hashes, signature_hashes)
+	assert changed_after_signature.len == 1, changed_after_signature.str()
+	assert changed_after_signature[0].starts_with('bar_'), changed_after_signature.str()
+	assert changed_after_signature[0] !in layout_hashes, changed_after_signature.str()
 
 	alternate_main_file := os.join_path(root, 'alternate_main.v')
 	write_module_cache_file(root, 'alternate_main.v', 'module main
