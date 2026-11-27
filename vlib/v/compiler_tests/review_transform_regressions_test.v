@@ -736,9 +736,10 @@ fn main() {
 	])
 }
 
-fn test_interface_field_receiver_preserves_smartcast_projection() {
+fn test_interface_field_smartcast_and_storage() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_field_receiver_smartcast', 'interface Reader {
+	run_good_module_batch(v3_bin, 'interface_field_smartcast_and_storage', [
+		TransformFixture{'interface_field_receiver_smartcast', 'interface Reader {
 	read() int
 }
 
@@ -771,8 +772,49 @@ fn main() {
 	})
 	println(read_value(value))
 }
-')
-	assert out == '37'
+', '37'},
+		TransformFixture{'pointer_interface_field_as_interface_storage', 'interface Layout {
+	size() int
+}
+
+interface Widget {
+	size() int
+	draw()
+}
+
+interface Application {
+	layout &Layout
+}
+
+struct Item {}
+
+fn (_ Item) size() int {
+	return 7
+}
+
+fn (_ Item) draw() {}
+
+struct App {
+	layout &Layout
+}
+
+fn application_widget(app Application) Widget {
+	if app.layout is Widget {
+		widget := app.layout as Widget
+		return widget
+	}
+	return Widget(Item{})
+}
+
+fn main() {
+	layout := Layout(Item{})
+	app := Application(App{
+		layout: &layout
+	})
+	println(application_widget(app).size())
+}
+', '7'},
+	])
 }
 
 fn test_result_c_payload_does_not_use_colliding_interface() {
@@ -885,9 +927,10 @@ pub fn new() &App {
 	}, '')
 }
 
-fn test_return_match_map_lookup_guard_keeps_presence_check() {
+fn test_building_v_match_branch_types() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_with_flags(v3_bin, 'return_match_map_lookup_guard', '-building-v', 'struct Local {
+	run_good_module_batch_with_flags(v3_bin, 'building_v_match_branch_types', '-building-v', [
+		TransformFixture{'return_match_map_lookup_guard', 'struct Local {
 	typ string
 }
 
@@ -929,54 +972,39 @@ fn main() {
 	println(local_parser.infer("known") or { panic(err) })
 	println(constant_parser.infer("known") or { panic(err) })
 }
-')
-	assert out == 'local\nconstant'
+', 'local\nconstant'},
+		TransformFixture{'nested_match_smartcast_nearest_variant', 'struct Assoc {
+	exprs []Expr
 }
 
-fn test_pointer_interface_field_as_interface_uses_storage_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'pointer_interface_field_as_interface_storage', 'interface Layout {
-	size() int
-}
+struct Empty {}
+struct Other {}
 
-interface Widget {
-	size() int
-	draw()
-}
+type Expr = Assoc | Empty
+type Node = Expr | Other
 
-interface Application {
-	layout &Layout
-}
-
-struct Item {}
-
-fn (_ Item) size() int {
-	return 7
-}
-
-fn (_ Item) draw() {}
-
-struct App {
-	layout &Layout
-}
-
-fn application_widget(app Application) Widget {
-	if app.layout is Widget {
-		widget := app.layout as Widget
-		return widget
+fn child_count(node Node) int {
+	if node is Expr {
+		match node {
+			Assoc {
+				assoc := node
+				return assoc.exprs.len
+			}
+			Empty {
+				return 0
+			}
+		}
 	}
-	return Widget(Item{})
+	return 0
 }
 
 fn main() {
-	layout := Layout(Item{})
-	app := Application(App{
-		layout: &layout
-	})
-	println(application_widget(app).size())
+	println(child_count(Expr(Assoc{
+		exprs: [Expr(Empty{})]
+	})))
 }
-')
-	assert out == '7'
+', '1'},
+	])
 }
 
 fn test_c_pointer_zero_argument_stays_null() {
@@ -3586,9 +3614,10 @@ fn test_immediately_invoked_closure_keeps_aliased_integer_capture_address_alive(
 	assert out == '42'
 }
 
-fn test_immediately_invoked_closure_keeps_aliased_result_error_alive() {
+fn test_immediate_closure_aliased_results() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct CaptureError {
+	run_good_module_batch(v3_bin, 'immediate_closure_aliased_results', [
+		TransformFixture{'immediate_closure_aliased_result_error', 'struct CaptureError {
 	Error
 	ptr &int
 }
@@ -3611,23 +3640,16 @@ fn main() {
 	}
 	println(int_str(value))
 }
-'
-	out := run_good(v3_bin, 'immediate_closure_aliased_result_error', source)
-	assert out == '42'
-}
-
-fn test_immediately_invoked_closure_keeps_aliased_slice_result_alive() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn main() {
+', '42'},
+		TransformFixture{'immediate_closure_aliased_slice', 'fn main() {
 	fixed := [41, 42, 43]!
 	slice := (fn [fixed] () []int {
 		return fixed[..]
 	})()
 	println(slice)
 }
-'
-	out := run_good(v3_bin, 'immediate_closure_aliased_slice', source)
-	assert out == '[41, 42, 43]'
+', '[41, 42, 43]'},
+	])
 }
 
 fn test_immediately_invoked_closure_keeps_aliased_string_result_alive() {
@@ -4258,9 +4280,10 @@ pub:
 	assert out == 'base 3,base 4,base 3'
 }
 
-fn test_local_immutable_pointer_receiver_method_value_borrows_receiver() {
+fn test_pointer_receiver_method_value_lifetimes() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'local_immutable_pointer_receiver_borrows', 'struct Foo {
+	run_good_module_batch(v3_bin, 'pointer_receiver_method_value_lifetimes', [
+		TransformFixture{'local_immutable_pointer_receiver_borrows', 'struct Foo {
 mut:
 	value int
 }
@@ -4277,8 +4300,56 @@ fn main() {
 	foo.value = 2
 	println(int_str(callback()))
 }
-')
-	assert out == '2'
+', '2'},
+		TransformFixture{'callback_argument_mutable_local_receiver', '@[heap]
+struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) next() int {
+	counter.value++
+	return counter.value
+}
+
+struct Holder {
+mut:
+	callback fn () int
+}
+
+fn install(mut holder Holder, callback fn () int) {
+	holder.callback = callback
+}
+
+fn make_callback(mut holder Holder) {
+	mut counter := Counter{
+		value: 40
+	}
+	install(mut holder, counter.next)
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	mut holder := Holder{
+		callback: fn () int {
+			return 0
+		}
+	}
+	make_callback(mut holder)
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(holder.callback()))
+	println(int_str(holder.callback()))
+}
+', '41\n42'},
+	])
 }
 
 fn test_escaping_pointer_receiver_method_value_copies_addressable_local() {
@@ -4389,63 +4460,10 @@ fn main() {
 	assert out == '73'
 }
 
-fn test_callback_argument_method_value_keeps_mutable_local_receiver_alive() {
+fn test_callback_argument_receiver_identity() {
 	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (mut counter Counter) next() int {
-	counter.value++
-	return counter.value
-}
-
-struct Holder {
-mut:
-	callback fn () int
-}
-
-fn install(mut holder Holder, callback fn () int) {
-	holder.callback = callback
-}
-
-fn make_callback(mut holder Holder) {
-	mut counter := Counter{
-		value: 40
-	}
-	install(mut holder, counter.next)
-}
-
-fn overwrite_stack() {
-	mut values := [512]int{}
-	for i in 0 .. values.len {
-		values[i] = i
-	}
-}
-
-fn main() {
-	mut holder := Holder{
-		callback: fn () int {
-			return 0
-		}
-	}
-	make_callback(mut holder)
-	for _ in 0 .. 100 {
-		overwrite_stack()
-	}
-	println(int_str(holder.callback()))
-	println(int_str(holder.callback()))
-}
-'
-	out := run_good(v3_bin, 'callback_argument_mutable_local_receiver', source)
-	assert out == '41\n42'
-}
-
-fn test_callback_argument_method_value_preserves_mutable_receiver_identity() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
+	run_good_module_batch(v3_bin, 'callback_argument_receiver_identity', [
+		TransformFixture{'callback_argument_mutable_receiver_identity', '@[heap]
 struct Counter {
 mut:
 	value int
@@ -4465,14 +4483,8 @@ fn main() {
 	println(int_str(invoke(counter.next)))
 	println(int_str(counter.value))
 }
-'
-	out := run_good(v3_bin, 'callback_argument_mutable_receiver_identity', source)
-	assert out == '1\n1'
-}
-
-fn test_callback_aggregate_argument_preserves_pointer_receiver_identity() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
+', '1\n1'},
+		TransformFixture{'callback_aggregate_argument_receiver_identity', '@[heap]
 struct Counter {
 mut:
 	value int
@@ -4499,14 +4511,14 @@ fn main() {
 	println(int_str(value))
 	println(int_str(counter.value))
 }
-'
-	out := run_good(v3_bin, 'callback_aggregate_argument_receiver_identity', source)
-	assert out == '1\n1'
+', '1\n1'},
+	])
 }
 
-fn test_returned_mut_fixed_array_capture_uses_durable_context_storage() {
+fn test_escaping_mut_fixed_array_capture_storage() {
 	v3_bin := build_v3_review_transform()
-	source := 'fn make_counter() fn () int {
+	run_good_module_batch(v3_bin, 'escaping_mut_fixed_array_capture_storage', [
+		TransformFixture{'returned_mut_fixed_array_capture', 'fn make_counter() fn () int {
 	mut values := [1, 20]!
 	return fn [mut values] () int {
 		values[0]++
@@ -4529,14 +4541,8 @@ fn main() {
 	println(int_str(callback()))
 	println(int_str(callback()))
 }
-'
-	out := run_good(v3_bin, 'returned_mut_fixed_array_capture', source)
-	assert out == '22\n23'
-}
-
-fn test_void_installer_mut_fixed_array_capture_uses_durable_storage() {
-	v3_bin := build_v3_review_transform()
-	source := 'struct Holder {
+', '22\n23'},
+		TransformFixture{'void_installer_mut_fixed_array_capture', 'struct Holder {
 mut:
 	callback fn () int
 }
@@ -4569,9 +4575,8 @@ fn main() {
 	println(int_str(holder.callback()))
 	println(int_str(holder.callback()))
 }
-'
-	out := run_good(v3_bin, 'void_installer_mut_fixed_array_capture', source)
-	assert out == '22\n23'
+', '22\n23'},
+	])
 }
 
 fn test_local_mut_fixed_array_capture_is_not_heap_promoted() {
@@ -5391,16 +5396,12 @@ fn test_chained_array_alias_stringification_uses_outer_alias_only() {
 	assert out == 'B([1, 2])'
 }
 
-fn test_map_literal_stringification_evaluates_entries_once() {
+fn test_map_literal_entries_evaluate_once() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_with_flags(v3_bin, 'map_literal_str_side_effects', '-enable-globals', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'k' + int_str(key_calls)\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tprintln({\n\t\tnext_key(): next_val()\n\t})\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
-	assert out == "{'k1': 10}\n1,1"
-}
-
-fn test_map_literal_declaration_evaluates_entries_once() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_with_flags(v3_bin, 'map_literal_decl_side_effects', '-enable-globals', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'key'\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tvalues := {\n\t\tnext_key(): next_val()\n\t}\n\tprintln(int_str(values['key']))\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
-	assert out == '10\n1,1'
+	run_good_module_batch_with_flags(v3_bin, 'map_literal_entries_evaluate_once', '-enable-globals', [
+		TransformFixture{'map_literal_str_side_effects', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'k' + int_str(key_calls)\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tprintln({\n\t\tnext_key(): next_val()\n\t})\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n", "{'k1': 10}\n1,1"},
+		TransformFixture{'map_literal_decl_side_effects', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'key'\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tvalues := {\n\t\tnext_key(): next_val()\n\t}\n\tprintln(int_str(values['key']))\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n", '10\n1,1'},
+	])
 }
 
 fn test_shadowed_minmaxof_calls_are_not_rewritten() {
@@ -5496,9 +5497,10 @@ fn main() {
 	assert out == 'Foo\ntrue\nBar\ntrue'
 }
 
-fn test_interface_to_interface_conversion_preserves_fields() {
+fn test_interface_conversion_field_storage() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_to_interface_preserves_fields', 'interface Named {
+	run_good_module_batch(v3_bin, 'interface_conversion_field_storage', [
+		TransformFixture{'interface_to_interface_preserves_fields', 'interface Named {
 	name string
 }
 
@@ -5531,13 +5533,8 @@ fn main() {
 	named := as_named(rich)
 	println(named.name)
 }
-')
-	assert out == 'Ada\nAda'
-}
-
-fn test_pointer_interface_conversion_heap_copies_converted_interface() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'pointer_interface_conversion_heap_copy', 'interface Named {
+', 'Ada\nAda'},
+		TransformFixture{'pointer_interface_conversion_heap_copy', 'interface Named {
 	name string
 }
 
@@ -5575,13 +5572,14 @@ fn main() {
 	println(read_named(named))
 	println(named.name)
 }
-')
-	assert out == 'Ada\nAda'
+', 'Ada\nAda'},
+	])
 }
 
-fn test_interface_implicit_str_dispatch_preserves_receiver_values() {
+fn test_interface_implicit_str_receivers_and_aliases() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_implicit_str_receiver_values', 'interface Printable {
+	run_good_module_batch(v3_bin, 'interface_implicit_str_receivers_and_aliases', [
+		TransformFixture{'interface_implicit_str_receiver_values', 'interface Printable {
 	str() string
 }
 
@@ -5643,13 +5641,8 @@ fn main() {
 	println(text.contains("custom:12"))
 	println(text.contains("alias:Ada"))
 }
-')
-	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
-}
-
-fn test_interface_implicit_str_dispatch_stringifies_collection_aliases() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_implicit_str_collection_aliases', 'interface Printable {
+', 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'},
+		TransformFixture{'interface_implicit_str_collection_aliases', 'interface Printable {
 	str() string
 }
 
@@ -5666,8 +5659,8 @@ fn main() {
 	println(count_text.contains("a"))
 	println(count_text.contains("3"))
 }
-')
-	assert out == '[1, 2]\ntrue\ntrue'
+', '[1, 2]\ntrue\ntrue'},
+	])
 }
 
 fn test_empty_interface_stringification_distinguishes_array_element_types() {
@@ -11559,9 +11552,10 @@ fn main() {
 	assert out == 'external'
 }
 
-fn test_array_sort_mixed_pointer_depth_comparator_arguments() {
+fn test_array_sort_pointer_comparator_arguments() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Thing {
+	run_good_module_batch(v3_bin, 'array_sort_pointer_comparator_arguments', [
+		TransformFixture{'array_sort_mixed_pointer_depth_comparator', 'struct Thing {
 	value int
 }
 
@@ -11573,14 +11567,8 @@ fn main() {
 	items.sort_with_compare(compare)
 	println(int_str(items[0].value) + "," + int_str(items[1].value) + "," + int_str(items[2].value))
 }
-'
-	out := run_good(v3_bin, 'array_sort_mixed_pointer_depth_comparator', source)
-	assert out == '1,2,3'
-}
-
-fn test_array_sort_pointer_alias_comparator_arguments() {
-	v3_bin := build_v3_review_transform()
-	source := 'struct Thing {
+', '1,2,3'},
+		TransformFixture{'array_sort_pointer_alias_comparator', 'struct Thing {
 	value int
 }
 
@@ -11597,9 +11585,8 @@ fn main() {
 	items.sort_with_compare(compare)
 	println(int_str(items[0].value) + "," + int_str(items[1].value) + "," + int_str(items[2].value))
 }
-'
-	out := run_good(v3_bin, 'array_sort_pointer_alias_comparator', source)
-	assert out == '1,2,3'
+', '1,2,3'},
+	])
 }
 
 fn test_array_sort_pointer_value_comparator_expression_shapes() {
@@ -12360,42 +12347,6 @@ fn test_none_literal_str_method() {
 }
 ')
 	assert out == '<none>'
-}
-
-fn test_nested_match_smartcast_declaration_uses_nearest_variant() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_with_flags(v3_bin, 'nested_match_smartcast_nearest_variant', '-building-v', 'struct Assoc {
-	exprs []Expr
-}
-
-struct Empty {}
-struct Other {}
-
-type Expr = Assoc | Empty
-type Node = Expr | Other
-
-fn child_count(node Node) int {
-	if node is Expr {
-		match node {
-			Assoc {
-				assoc := node
-				return assoc.exprs.len
-			}
-			Empty {
-				return 0
-			}
-		}
-	}
-	return 0
-}
-
-fn main() {
-	println(child_count(Expr(Assoc{
-		exprs: [Expr(Empty{})]
-	})))
-}
-')
-	assert out == '1'
 }
 
 fn test_building_v_keeps_valid_match_and_filtered_array_expression_types() {
