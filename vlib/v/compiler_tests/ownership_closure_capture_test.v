@@ -45,19 +45,21 @@ fn run_capture(source string, serial bool, mode string, flags ...string) os.Resu
 	})
 }
 
-fn test_nested_array_lambda_capture_can_be_regenerated_for_assertions() {
-	code := r'fn invoke(callback fn () string) string { return callback() }
-fn main() {
+fn nested_array_lambda_capture(name string) string {
+	return 'fn ${name}() {
  first := [["one".to_owned()], ["two".to_owned()]]
  assert invoke(|| first[0][0] + first[1][0]) == "onetwo"
  second := [["three".to_owned()], ["four".to_owned()]]
  assert invoke(|| second[0][0] + second[1][0]) == "threefour"
 }'
+}
+
+fn test_autofree_nested_array_lambda_capture_can_be_regenerated_for_assertions() {
+	code := 'fn invoke(callback fn () string) string { return callback() }\n' +
+		nested_array_lambda_capture('main')
 	for serial in [true, false] {
-		for mode in ['-ownership', '-autofree'] {
-			result := check_capture_in_mode('nested_array_lambda', code, serial, mode)
-			assert result.exit_code == 0, '${mode}: ${result.output}'
-		}
+		result := check_capture_in_mode('nested_array_lambda', code, serial, '-autofree')
+		assert result.exit_code == 0, result.output
 	}
 }
 
@@ -102,6 +104,8 @@ ${after}'
 			rejections << CaptureRejection{'source_${lambda}_${kind}', body, expected}
 		}
 	}
+	accepted += '\n' + nested_array_lambda_capture('check_nested_array_lambda_capture') + '\n'
+	calls << '\tcheck_nested_array_lambda_capture()'
 	accepted += '\nfn main() {\n${calls.join('\n')}\n}\n'
 	for serial in [true, false] {
 		result := check_capture('aggregate_capture', accepted, serial)
