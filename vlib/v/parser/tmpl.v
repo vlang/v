@@ -1203,7 +1203,7 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	path := p.resolve_veb_template_path(is_html, arg)
 	if !os.is_file(path) {
 		message := if is_html {
-			'veb HTML template "${arg}" not found'
+			'veb HTML template "${path}" not found'
 		} else {
 			'template file "${arg}" not found'
 		}
