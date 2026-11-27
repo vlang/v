@@ -339,7 +339,7 @@ fn main() {
 ')
 	assert out == 'true,true|2'
 
-	round4_check_rejections('variant_metadata_rejections', [
+	round4_check_rejections('variant_and_selected_method_metadata_rejections', [
 		Round4Rejection{'bad_variant_name_member', 'struct A {}
 struct B {}
 
@@ -396,6 +396,52 @@ fn check(value Value) {
 
 fn main() {}
 ', '`bad_sum_is_enum_value_loop_variable.Value` has no variant `bad_sum_is_enum_value_loop_variable.item`'},
+		Round4Rejection{'method_metadata_location_selected_guard', 'struct Located {}
+
+fn (item Located) run() {
+	_ = item
+}
+
+fn main() {
+	$for method in Located.methods {
+		$if method.location != "" {
+			missing_selected_method_location_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_method_location_fn'},
+		Round4Rejection{'generic_receiver_selected_name_branch', 'struct Box[T] {}
+
+fn (b Box[T]) get(value T) T {
+	_ = b
+	return value
+}
+
+fn main() {
+	box := Box[int]{}
+	$for method in box.methods {
+		$if method.name == "get" {
+			missing_generic_method_name_branch()
+		}
+	}
+}
+', 'unknown function: missing_generic_method_name_branch'},
+		Round4Rejection{'generic_receiver_selected_param_branch', 'struct Box[T] {}
+
+fn (b Box[T]) get(value T) T {
+	_ = b
+	return value
+}
+
+fn main() {
+	box := Box[int]{}
+	$for method in box.methods {
+		$if method.args[0].typ is int {
+			missing_generic_method_param_branch()
+		}
+	}
+}
+', 'unknown function: missing_generic_method_param_branch'},
 	])
 }
 
@@ -1055,8 +1101,8 @@ fn main() {
 	])
 }
 
-fn test_metadata_call_arguments_are_checked_against_callee_types() {
-	round4_check_rejections('comptime_metadata_argument_rejections', [
+fn test_field_and_enum_metadata_argument_and_member_rejections() {
+	round4_check_rejections('field_and_enum_metadata_argument_and_member_rejections', [
 		Round4Rejection{'bad_metadata_call_arg_type', 'struct S {
 	id int
 }
@@ -1081,11 +1127,83 @@ fn main() {
 	}
 }
 ', 'cannot use `i64` as argument 1 to `takes_string`; expected `string`'},
+		Round4Rejection{'bad_field_member', 'struct S {
+	name int
+}
+
+fn main() {
+	$for field in S.fields {
+		println(field.nmae)
+	}
+}
+	', 'unknown FieldData member `nmae`'},
+		Round4Rejection{'bad_outer_field_member_in_nested_loop', 'struct Foo {
+	id int
+}
+
+struct Bar {
+	name string
+}
+
+fn main() {
+	$for field in Foo.fields {
+		$for other in Bar.fields {
+			println(field.nmae + other.name)
+		}
+	}
+}
+	', 'unknown FieldData member `nmae`'},
+		Round4Rejection{'bad_field_is_interface', 'struct S {
+		name int
+	}
+
+fn main() {
+	$for field in S.fields {
+		println(field.is_interface)
+	}
+}
+', 'unknown FieldData member `is_interface`'},
+		Round4Rejection{'bad_field_is_function', 'struct S {
+		name int
+	}
+
+fn main() {
+	$for field in S.fields {
+		println(field.is_function)
+	}
+}
+', 'unknown FieldData member `is_function`'},
+		Round4Rejection{'bad_enum_value_member', 'enum Color {
+	red
+}
+
+fn main() {
+	$for item in Color.values {
+		println(item.nmae)
+	}
+}
+	', 'unknown EnumData member `nmae`'},
+		Round4Rejection{'bad_nested_enum_value_member', 'struct S {
+	id int
+}
+
+enum Color {
+	red
+}
+
+fn main() {
+	$for field in S.fields {
+		$for item in Color.values {
+			println(item.nmae)
+		}
+	}
+}
+	', 'unknown EnumData member `nmae`'},
 	])
 }
 
-fn test_deferred_metadata_call_arguments_are_checked_against_callee_types() {
-	round4_check_rejections('deferred_reflection_body_rejections', [
+fn test_deferred_reflection_body_and_selected_branch_rejections() {
+	round4_check_rejections('deferred_reflection_body_and_selected_branch_rejections', [
 		Round4Rejection{'bad_method_metadata_call_arg_type', 'struct App {}
 
 fn (app App) run() {
@@ -1155,6 +1273,94 @@ fn main() {
 	}
 }
 ', 'unknown function: missing_attribute_loop_fn'},
+		Round4Rejection{'method_loop_selected_branch_error', 'struct App {}
+
+fn (app App) run() {
+	_ = app
+}
+
+fn main() {
+	$for method in App.methods {
+		$if method.name == "run" {
+			missing_selected_method_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_method_fn'},
+		Round4Rejection{'method_loop_selected_missing_param_branch_error', 'struct App {}
+
+fn (app App) run() {
+	_ = app
+}
+
+fn main() {
+	$for method in App.methods {
+		$if method.args[1].name == "" {
+			missing_selected_method_param_slot_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_method_param_slot_fn'},
+		Round4Rejection{'param_loop_selected_branch_error', 'fn consume(value int) {
+	_ = value
+}
+
+fn main() {
+	$for param in consume.params {
+		$if param.name == "value" {
+			missing_selected_param_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_param_fn'},
+		Round4Rejection{'attribute_loop_selected_branch_error', '@[route]
+struct App {}
+
+fn main() {
+	$for attr in App.attributes {
+		$if attr.name == "route" {
+			missing_selected_attribute_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_attribute_fn'},
+		Round4Rejection{'method_loop_selected_is_pub_branch_error', 'struct App {}
+
+pub fn (app App) run() {
+	_ = app
+}
+
+fn main() {
+	$for method in App.methods {
+		$if method.is_pub {
+			missing_selected_public_method_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_public_method_fn'},
+		Round4Rejection{'param_loop_selected_typ_branch_error', 'fn consume(value string) {
+	_ = value
+}
+
+fn main() {
+	$for param in consume.params {
+		$if param.typ is string {
+			missing_selected_string_param_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_string_param_fn'},
+		Round4Rejection{'attribute_loop_selected_arg_branch_error', "@[route: '/path']
+struct App {}
+
+fn main() {
+	\$for attr in App.attributes {
+		\$if attr.arg == '/path' {
+			missing_selected_attribute_arg_fn()
+		}
+	}
+}
+", 'unknown function: missing_selected_attribute_arg_fn'},
 	])
 }
 
@@ -1193,8 +1399,9 @@ fn main() {
 	assert out == 'items'
 }
 
-fn test_enum_value_metadata_call_arguments_use_enumdata_types() {
-	out := round4_run_good(v3_bin, 'enum_value_metadata_call_args', "enum Color {
+fn test_enum_metadata_calls_and_power_pruning() {
+	round4_check_runtime('enum_metadata_calls_and_power_pruning', [
+		Round4RuntimeCase{'enum_value_metadata_call_args', "enum Color {
 	red = 7
 }
 
@@ -1213,8 +1420,22 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == 'red:7'
+", 'red:7'},
+		Round4RuntimeCase{'enum_power_metadata_static_checker', 'enum Powered {
+	a = 2 ** 3
+}
+
+fn main() {
+	$for item in Powered.values {
+		$if item.value == 8 {
+			println(item.name)
+		} $else {
+			missing_from_inactive_enum_power_branch()
+		}
+	}
+}
+', 'a'},
+	])
 }
 
 fn test_enum_metadata_folding_and_numeric_values() {
@@ -1311,24 +1532,6 @@ fn main() {
 	])
 }
 
-fn test_enum_power_metadata_prunes_static_checker_branches() {
-	out := round4_run_good(v3_bin, 'enum_power_metadata_static_checker', 'enum Powered {
-	a = 2 ** 3
-}
-
-fn main() {
-	$for item in Powered.values {
-		$if item.value == 8 {
-			println(item.name)
-		} $else {
-			missing_from_inactive_enum_power_branch()
-		}
-	}
-}
-')
-	assert out == 'a'
-}
-
 fn test_cross_module_dynamic_field_selector_uses_qualified_type() {
 	out := round4_run_good_project(v3_bin, 'cross_module_dynamic_field_selector_type', {
 		'v.mod':     "Module { name: 'cross_module_dynamic_field_selector_type' }\n"
@@ -1390,8 +1593,8 @@ fn main() {
 	assert out == 'int|string'
 }
 
-fn test_comptime_for_body_checks_static_code() {
-	round4_check_rejections('comptime_for_static_body_rejections', [
+fn test_comptime_for_static_body_and_metadata_guard_rejections() {
+	round4_check_rejections('comptime_for_static_body_and_metadata_guard_rejections', [
 		Round4Rejection{'bad_static_code_in_comptime_for', 'struct S {
 	id int
 }
@@ -1424,11 +1627,6 @@ fn main() {
 	}
 }
 ', 'unknown function: missing_fn'},
-	])
-}
-
-fn test_comptime_for_body_checks_static_code_in_metadata_if_branch() {
-	round4_check_rejections('comptime_metadata_guard_rejections', [
 		Round4Rejection{'bad_static_call_in_comptime_for_metadata_if', 'struct S {
 	id int
 }
@@ -1477,83 +1675,6 @@ fn main() {
 	}
 }
 	", 'unknown EnumData member `nmae`'},
-	])
-}
-
-fn test_field_and_enum_metadata_member_rejections() {
-	round4_check_rejections('field_and_enum_metadata_member_rejections', [
-		Round4Rejection{'bad_field_member', 'struct S {
-	name int
-}
-
-fn main() {
-	$for field in S.fields {
-		println(field.nmae)
-	}
-}
-	', 'unknown FieldData member `nmae`'},
-		Round4Rejection{'bad_outer_field_member_in_nested_loop', 'struct Foo {
-	id int
-}
-
-struct Bar {
-	name string
-}
-
-fn main() {
-	$for field in Foo.fields {
-		$for other in Bar.fields {
-			println(field.nmae + other.name)
-		}
-	}
-}
-	', 'unknown FieldData member `nmae`'},
-		Round4Rejection{'bad_field_is_interface', 'struct S {
-		name int
-	}
-
-fn main() {
-	$for field in S.fields {
-		println(field.is_interface)
-	}
-}
-', 'unknown FieldData member `is_interface`'},
-		Round4Rejection{'bad_field_is_function', 'struct S {
-		name int
-	}
-
-fn main() {
-	$for field in S.fields {
-		println(field.is_function)
-	}
-}
-', 'unknown FieldData member `is_function`'},
-		Round4Rejection{'bad_enum_value_member', 'enum Color {
-	red
-}
-
-fn main() {
-	$for item in Color.values {
-		println(item.nmae)
-	}
-}
-	', 'unknown EnumData member `nmae`'},
-		Round4Rejection{'bad_nested_enum_value_member', 'struct S {
-	id int
-}
-
-enum Color {
-	red
-}
-
-fn main() {
-	$for field in S.fields {
-		$for item in Color.values {
-			println(item.nmae)
-		}
-	}
-}
-	', 'unknown EnumData member `nmae`'},
 	])
 }
 
@@ -1711,8 +1832,9 @@ fn main() {
 	assert out == 'S'
 }
 
-fn test_comptime_shared_type_group_is_checked_like_transformer() {
-	out := round4_run_good(v3_bin, 'shared_type_group', "struct Counter {}
+fn test_shared_and_voidptr_type_groups() {
+	round4_check_runtime('shared_and_voidptr_type_groups', [
+		Round4RuntimeCase{'shared_type_group', "struct Counter {}
 
 fn main() {
 	$if shared Counter is $shared {
@@ -1721,20 +1843,16 @@ fn main() {
 		println(unknown_symbol)
 	}
 }
-")
-	assert out == 'shared'
-}
-
-fn test_comptime_voidptr_type_group_is_checked_like_transformer() {
-	out := round4_run_good(v3_bin, 'voidptr_type_group', "fn main() {
+", 'shared'},
+		Round4RuntimeCase{'voidptr_type_group', "fn main() {
 	$if voidptr is $voidptr {
 		println('voidptr')
 	} $else {
 		println(unknown_symbol)
 	}
 }
-")
-	assert out == 'voidptr'
+", 'voidptr'},
+	])
 }
 
 fn test_cached_values_do_not_replace_reflection_guard_identifiers() {
@@ -1944,54 +2062,6 @@ fn main() {
 }
 ')
 	assert out == 'true\ntrue\nrun'
-	round4_check_rejections('selected_method_metadata_rejections', [
-		Round4Rejection{'method_metadata_location_selected_guard', 'struct Located {}
-
-fn (item Located) run() {
-	_ = item
-}
-
-fn main() {
-	$for method in Located.methods {
-		$if method.location != "" {
-			missing_selected_method_location_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_method_location_fn'},
-		Round4Rejection{'generic_receiver_selected_name_branch', 'struct Box[T] {}
-
-fn (b Box[T]) get(value T) T {
-	_ = b
-	return value
-}
-
-fn main() {
-	box := Box[int]{}
-	$for method in box.methods {
-		$if method.name == "get" {
-			missing_generic_method_name_branch()
-		}
-	}
-}
-', 'unknown function: missing_generic_method_name_branch'},
-		Round4Rejection{'generic_receiver_selected_param_branch', 'struct Box[T] {}
-
-fn (b Box[T]) get(value T) T {
-	_ = b
-	return value
-}
-
-fn main() {
-	box := Box[int]{}
-	$for method in box.methods {
-		$if method.args[0].typ is int {
-			missing_generic_method_param_branch()
-		}
-	}
-}
-', 'unknown function: missing_generic_method_param_branch'},
-	])
 }
 
 fn test_optional_reflected_for_iterable_with_fallback_is_not_unwrapped_twice() {
@@ -2228,8 +2298,9 @@ fn main() {
 	assert out == 'direct:endpoint|local:endpoint|type:group'
 }
 
-fn test_comptime_pseudo_value_is_not_resolved_as_cached_local() {
-	out := round4_run_good(v3_bin, 'pseudo_value_cached_local', "fn main() {
+fn test_comptime_pseudo_values_and_define_shadowing() {
+	round4_check_runtime('comptime_pseudo_values_and_define_shadowing', [
+		Round4RuntimeCase{'pseudo_value_cached_local', "fn main() {
 	c := 'js'
 	_ = c
 	\$if @BACKEND == 'c' {
@@ -2238,8 +2309,18 @@ fn test_comptime_pseudo_value_is_not_resolved_as_cached_local() {
 		println('wrong')
 	}
 }
-")
-	assert out == 'ok'
+", 'ok'},
+		Round4RuntimeCase{'define_builtin_cached_local', "fn main() {
+	d := false
+	_ = d
+	\$if \$d('v3_parser_cached_d_regression', true) {
+		println('ok')
+	} \$else {
+		println('wrong')
+	}
+}
+", 'ok'},
+	])
 }
 
 fn test_build_pseudo_values_expand_in_comptime_conditions() {
@@ -2368,20 +2449,6 @@ fn test_attribute_line_pseudo_values_use_their_token_positions() {
 	assert out == 'line|file-line'
 }
 
-fn test_comptime_define_builtin_is_not_resolved_as_cached_local() {
-	out := round4_run_good(v3_bin, 'define_builtin_cached_local', "fn main() {
-	d := false
-	_ = d
-	\$if \$d('v3_parser_cached_d_regression', true) {
-		println('ok')
-	} \$else {
-		println('wrong')
-	}
-}
-")
-	assert out == 'ok'
-}
-
 fn test_fn_literal_comptime_values_do_not_leak_to_outer_scope() {
 	out := round4_run_good(v3_bin, 'fn_literal_comptime_value_scope', "fn main() {
 	f := fn () {
@@ -2399,8 +2466,9 @@ fn test_fn_literal_comptime_values_do_not_leak_to_outer_scope() {
 	assert out == 'ok'
 }
 
-fn test_cached_char_literals_match_scanner_values() {
-	out := round4_run_good(v3_bin, 'cached_char_literals', "const cached_char = `a`
+fn test_cached_and_shadowed_char_literals() {
+	round4_check_runtime('cached_and_shadowed_char_literals', [
+		Round4RuntimeCase{'cached_char_literals', "const cached_char = `a`
 
 fn main() {
 	local_char := `b`
@@ -2416,12 +2484,8 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == 'const-if|local-match'
-}
-
-fn test_comptime_char_literal_operand_is_not_replaced_by_cached_local() {
-	out := round4_run_good(v3_bin, 'char_literal_cached_local_collision', "fn main() {
+", 'const-if|local-match'},
+		Round4RuntimeCase{'char_literal_cached_local_collision', "fn main() {
 	a := `b`
 	ch := `a`
 	_ = a
@@ -2431,8 +2495,8 @@ fn test_comptime_char_literal_operand_is_not_replaced_by_cached_local() {
 		println('wrong')
 	}
 }
-")
-	assert out == 'ok'
+", 'ok'},
+	])
 }
 
 fn test_dynamic_selector_outside_reflection_loop_is_rejected() {
@@ -2562,8 +2626,9 @@ fn main() {
 	assert out == 'item|guard|true|true'
 }
 
-fn test_raw_string_operand_is_normalized_before_comptime_folding() {
-	out := round4_run_good(v3_bin, 'raw_string_comptime_local_collision', "fn main() {
+fn test_raw_and_quoted_string_literal_shadowing() {
+	round4_check_runtime('raw_and_quoted_string_literal_shadowing', [
+		Round4RuntimeCase{'raw_string_comptime_local_collision', "fn main() {
 	r := 'wrong'
 	_ = r
 	\$if r'abc' == 'abc' {
@@ -2572,8 +2637,18 @@ fn test_raw_string_operand_is_normalized_before_comptime_folding() {
 		println('wrong')
 	}
 }
-")
-	assert out == 'ok'
+", 'ok'},
+		Round4RuntimeCase{'comptime_string_literal_cached_local', "fn main() {
+	x := 'y'
+	_ = x
+	\$if 'x' == 'y' {
+		println('wrong')
+	} \$else {
+		println('ok')
+	}
+}
+", 'ok'},
+	])
 }
 
 fn test_raw_string_comptime_match_literals_are_normalized() {
@@ -3082,20 +3157,6 @@ fn test_normal_string_attribute_arguments_are_unescaped() {
 	].join('\n'), 'unknown function: missing_selected_escaped_attribute_fn')
 }
 
-fn test_comptime_string_literal_text_is_not_resolved_as_cached_local() {
-	out := round4_run_good(v3_bin, 'comptime_string_literal_cached_local', "fn main() {
-	x := 'y'
-	_ = x
-	\$if 'x' == 'y' {
-		println('wrong')
-	} \$else {
-		println('ok')
-	}
-}
-")
-	assert out == 'ok'
-}
-
 fn test_params_reflection_resolves_import_alias_source() {
 	out := round4_run_good_project(v3_bin, 'params_reflection_import_alias', {
 		'v.mod':     "Module { name: 'params_reflection_import_alias' }\n"
@@ -3339,99 +3400,6 @@ fn test_comptime_string_comparisons_normalize_escapes() {
 	assert out == 'if quote\nconst quote\nif slash\nconst slash\nmatch quote\nmatch slash'
 }
 
-fn test_deferred_reflection_loops_check_selected_metadata_branches() {
-	round4_check_rejections('selected_reflection_branch_rejections', [
-		Round4Rejection{'method_loop_selected_branch_error', 'struct App {}
-
-fn (app App) run() {
-	_ = app
-}
-
-fn main() {
-	$for method in App.methods {
-		$if method.name == "run" {
-			missing_selected_method_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_method_fn'},
-		Round4Rejection{'method_loop_selected_missing_param_branch_error', 'struct App {}
-
-fn (app App) run() {
-	_ = app
-}
-
-fn main() {
-	$for method in App.methods {
-		$if method.args[1].name == "" {
-			missing_selected_method_param_slot_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_method_param_slot_fn'},
-		Round4Rejection{'param_loop_selected_branch_error', 'fn consume(value int) {
-	_ = value
-}
-
-fn main() {
-	$for param in consume.params {
-		$if param.name == "value" {
-			missing_selected_param_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_param_fn'},
-		Round4Rejection{'attribute_loop_selected_branch_error', '@[route]
-struct App {}
-
-fn main() {
-	$for attr in App.attributes {
-		$if attr.name == "route" {
-			missing_selected_attribute_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_attribute_fn'},
-		Round4Rejection{'method_loop_selected_is_pub_branch_error', 'struct App {}
-
-pub fn (app App) run() {
-	_ = app
-}
-
-fn main() {
-	$for method in App.methods {
-		$if method.is_pub {
-			missing_selected_public_method_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_public_method_fn'},
-		Round4Rejection{'param_loop_selected_typ_branch_error', 'fn consume(value string) {
-	_ = value
-}
-
-fn main() {
-	$for param in consume.params {
-		$if param.typ is string {
-			missing_selected_string_param_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_string_param_fn'},
-		Round4Rejection{'attribute_loop_selected_arg_branch_error', "@[route: '/path']
-struct App {}
-
-fn main() {
-	\$for attr in App.attributes {
-		\$if attr.arg == '/path' {
-			missing_selected_attribute_arg_fn()
-		}
-	}
-}
-", 'unknown function: missing_selected_attribute_arg_fn'},
-	])
-}
-
 fn test_deferred_reflection_branch_pruning() {
 	round4_check_runtime('deferred_reflection_branch_pruning', [
 		Round4RuntimeCase{
@@ -3520,7 +3488,8 @@ fn main() {
 }
 
 fn test_empty_deferred_reflection_loops_skip_static_body_checks() {
-	out := round4_run_good(v3_bin, 'empty_deferred_reflection_loops', 'struct Empty {}
+	round4_check_runtime('empty_deferred_and_interface_attribute_loops', [
+		Round4RuntimeCase{'empty_deferred_reflection_loops', 'struct Empty {}
 
 fn no_params() {}
 
@@ -3536,8 +3505,18 @@ fn main() {
 	}
 	println("ok")
 }
-')
-	assert out == 'ok'
+', 'ok'},
+		Round4RuntimeCase{'empty_interface_attribute_loop', 'interface EmptyInterface {}
+
+fn main() {
+	$for attr in EmptyInterface.attributes {
+		missing_empty_interface_attribute_fn()
+		$compile_error("empty interface attribute loop should not run")
+	}
+	println("ok")
+}
+', 'ok'},
+	])
 	imported_out := round4_run_good_project(v3_bin, 'empty_imported_deferred_reflection_loops', {
 		'v.mod':            "Module { name: 'empty_imported_deferred_reflection_loops' }\n"
 		'pkg/pkg.v':        'module pkg
@@ -3581,18 +3560,4 @@ fn main() {
 '
 	}, '')
 	assert imported_out == 'imported ok'
-}
-
-fn test_empty_interface_attribute_loop_skips_static_body_checks() {
-	out := round4_run_good(v3_bin, 'empty_interface_attribute_loop', 'interface EmptyInterface {}
-
-fn main() {
-	$for attr in EmptyInterface.attributes {
-		missing_empty_interface_attribute_fn()
-		$compile_error("empty interface attribute loop should not run")
-	}
-	println("ok")
-}
-')
-	assert out == 'ok'
 }
