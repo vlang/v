@@ -1498,6 +1498,30 @@ enum HelperKind {
 
 fn main() {}
 ', '[noreturn] functions cannot use return statements'},
+		ReviewRejection{'single_letter_enum_name', 'enum E {
+	item
+}
+
+fn main() {}
+', 'single letter capital names are reserved for generic template types.'},
+		ReviewRejection{'unbacked_enum_integer_overflow', 'enum Huge {
+	value = 18446744073709551616
+}
+
+fn main() {}
+', 'integer literal 18446744073709551616 overflows int'},
+		ReviewRejection{'enum_helper_immutable_local_assignment', 'fn value() int {
+	x := 1
+	x = 2
+	return x
+}
+
+enum HelperKind {
+	item = value()
+}
+
+fn main() {}
+', 'immutable, declare it with `mut`'},
 	])
 }
 
@@ -1518,12 +1542,6 @@ fn main() {
 
 fn test_single_letter_enum_names_are_rejected() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'single_letter_enum_name', 'enum E {
-	item
-}
-
-fn main() {}
-', 'single letter capital names are reserved for generic template types.')
 }
 
 fn test_nested_sum_is_check_evaluates_subject_once() {
@@ -4174,18 +4192,6 @@ fn test_unimported_main_types_are_not_visible_in_modules() {
 
 fn test_enum_helper_folding_tracks_local_declarations() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'enum_helper_immutable_local_assignment', 'fn value() int {
-	x := 1
-	x = 2
-	return x
-}
-
-enum HelperKind {
-	item = value()
-}
-
-fn main() {}
-', 'immutable, declare it with `mut`')
 }
 
 fn test_enum_initializer_helper_cannot_redefine_builtin() {
@@ -6041,17 +6047,6 @@ fn check_unqualified_types() {
 // names the local, not the global's own uses on the lines around it.
 fn test_shadowed_global_local_is_rejected_inside_a_block() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'shadowed_global_local_rename_scoped', '__global foo int
-
-fn main() {
-	foo = 1
-	if true {
-		foo := 3
-		println(int_str(foo))
-	}
-	println(int_str(foo))
-}
-', 'variable `foo` shadows a global variable')
 }
 
 fn test_capturing_fn_literal_aliases_are_scoped_to_lambda() {
@@ -6442,7 +6437,6 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	// global and be scoped to its block. The declaration is an error now; the
 	// compound assignment to the global after the block still has to parse for
 	// the error to be the only complaint.
-	run_bad(v3_bin, 'review_shadowed_global_nested_scope', '__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n', 'variable `score` shadows a global variable')
 	fixed_field_out := run_good(v3_bin, 'review_capital_field_const_fixed_array', '@[translated]\nmodule main\n\nconst n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
 	assert fixed_field_out == '7'
 }
@@ -8895,12 +8889,6 @@ fn main() {
 
 fn test_unbacked_enum_field_keeps_integer_overflow_diagnostic() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'unbacked_enum_integer_overflow', 'enum Huge {
-	value = 18446744073709551616
-}
-
-fn main() {}
-', 'integer literal 18446744073709551616 overflows int')
 }
 
 fn test_diagnostic_footer_uses_deduplicated_error_count() {
@@ -9494,6 +9482,18 @@ fn main() {
 	}
 }
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+		ReviewRejection{'shadowed_global_local_rename_scoped', '__global foo int
+
+fn main() {
+	foo = 1
+	if true {
+		foo := 3
+		println(int_str(foo))
+	}
+	println(int_str(foo))
+}
+', 'variable `foo` shadows a global variable'},
+		ReviewRejection{'review_shadowed_global_nested_scope', '__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n', 'variable `score` shadows a global variable'},
 	])
 }
 

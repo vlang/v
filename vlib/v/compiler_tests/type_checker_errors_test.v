@@ -135,10 +135,6 @@ fn run_runtime_bad_cases(compiler string, name string, src string, cases map[str
 	}
 }
 
-fn test_nested_local_redefinition_is_rejected() {
-	run_bad(v3_bin, 'nested_local_redefinition', 'fn main() {\n\ta := 10\n\t{\n\t\ta := 20\n\t}\n}\n', 'redefinition of `a`')
-}
-
 // write_project_file writes project file output for v3 tests.
 fn write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
@@ -307,6 +303,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 		// value where a `Box_int*` is required), so it is rejected rather than silently typed
 		// as `&Box[int]`.
 		TypeCheckerRejection{'bad_value_literal_pointer_expectation', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\t_ := make()\n}\n', 'fn `make` expects you to return a reference type `&bad_value_literal_pointer_expectation.Box[int]`, but you are returning `bad_value_literal_pointer_expectation.Box[int]` instead'},
+		TypeCheckerRejection{'nested_local_redefinition', 'fn main() {\n\ta := 10\n\t{\n\t\ta := 20\n\t}\n}\n', 'redefinition of `a`'},
+		TypeCheckerRejection{'bad_container_recursive_alias', 'type A = []A\n\nfn main() {}\n', 'recursive declarations of aliases are not allowed - the alias `A` is used in the array'},
+		TypeCheckerRejection{'bad_cyclic_recursive_aliases', 'type A = B\ntype B = A\n\nfn main() {}\n', 'alias `A` forms a cycle through `B`'},
 	])
 	run_good_module_batch(v3_bin, 'interface_variadics_and_core_semantics', [
 		TypeCheckerRuntimeCase{'v_array_and_interface_mut_compatibility', 'interface Writer {
@@ -449,7 +448,6 @@ fn main() {
 }
 ', '1.5\n2\n-2.0\n-1.0'},
 	])
-	run_bad(v3_bin, 'bad_sum_constructor_extra_arg', 'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n', 'unexpected `,`')
 	run_bad(v3_bin, 'bad_sum_constructor_extra_arg_as_call_arg', 'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn use(t Tree[int]) {}\nfn main() {\n\tuse(Tree[int](Empty{}, side_effect()))\n}\n', 'invalid expression: unexpected token `)`')
 	run_bad_project(v3_bin, 'bad_imported_sum_constructor_extra_arg', {
 		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
@@ -888,6 +886,7 @@ fn main() {
 	use(count: 1)
 }
 ', 'cannot instantiate interface `Runnable`'},
+		TypeCheckerRejection{'bad_sum_constructor_extra_arg', 'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n', 'unexpected `,`'},
 	])
 	// Earlier errors stop compilation before the concrete generic calls are checked.
 	run_bad_module_batch(v3_bin, [
@@ -1416,14 +1415,11 @@ fn test_match_multi_return_tails_require_explicit_tuple() {
 		// A `[flag]` enum match that lists only single-field branches is NOT exhaustive
 		// (combined/zero values fall through), so a non-void fn needs `else`/missing-return.
 		TypeCheckerRejection{'bad_flag_enum_match_not_exhaustive', '@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n', 'missing return'},
+		TypeCheckerRejection{'bad_multi_return_if_tail_return', 'fn pair(flag bool) (int, int) {\n\treturn if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\t3\n\t\t4\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n', 'if expression branches cannot produce multiple return values'},
 	])
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_tail_return', 'fn pair(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple return values', '-check')
-}
-
-fn test_return_if_tuple_tail_multi_return_is_rejected() {
-	run_bad(v3_bin, 'bad_multi_return_if_tail_return', 'fn pair(flag bool) (int, int) {\n\treturn if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\t3\n\t\t4\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n', 'if expression branches cannot produce multiple return values')
 }
 
 fn test_pr_review_struct_sum_scope_and_gated_regressions() {
@@ -2102,8 +2098,6 @@ fn test_defer_result_review_regressions() {
 
 fn test_recursive_alias_review_regressions() {
 	run_bad(v3_bin, 'bad_direct_recursive_alias', 'type A = A\n\nfn main() {}\n', 'a type alias can not refer to itself: A')
-	run_bad(v3_bin, 'bad_container_recursive_alias', 'type A = []A\n\nfn main() {}\n', 'recursive declarations of aliases are not allowed - the alias `A` is used in the array')
-	run_bad(v3_bin, 'bad_cyclic_recursive_aliases', 'type A = B\ntype B = A\n\nfn main() {}\n', 'alias `A` forms a cycle through `B`')
 	valid_callback := run_good(v3_bin, 'good_callback_guarded_recursive_alias', 'type Handlers = map[string]fn (Handlers)\n\nfn main() {\n\thandlers := Handlers{}\n\tprintln(int_str(handlers.len))\n}\n')
 	assert valid_callback == '0'
 }
