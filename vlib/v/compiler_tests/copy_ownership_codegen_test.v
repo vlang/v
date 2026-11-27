@@ -39,24 +39,25 @@ fn copy_ownership_compile(name string, src string) os.Result {
 		'${out}', path])
 }
 
-fn copy_ownership_run(name string, src string) string {
-	build := copy_ownership_compile(name, src)
-	assert build.exit_code == 0, build.output
-	run := os.exec([os.join_path(copy_ownership_tmp_dir, name)])
-	assert run.exit_code == 0, run.output
-	return run.output.trim_space()
-}
-
-fn test_copy_clones_owned_elements_and_drops_replaced_values() {
-	output := copy_ownership_run('copy_owned_elements', copy_ownership_drop_decls + '
-fn make() []Res {
+fn copy_ownership_element_copy_fixture() string {
+	return 'fn make() []Res {
 	return [Res{7}, Res{8}]
 }
 
 fn check_resource_copies() {
 	{
-		mut dst := [Res{1}, Res{2}]
-		src := [Res{10}, Res{20}, Res{30}]
+		// Copy chooses its drop direction from the backing array addresses.
+		mut dst := []Res{cap: 3}
+		mut src := []Res{cap: 3}
+		if uint(dst.data) > uint(src.data) {
+			// Swap the empty backing buffers without cloning either one.
+			unsafe { dst, src = src, dst }
+		}
+		dst << Res{1}
+		dst << Res{2}
+		src << Res{10}
+		src << Res{20}
+		src << Res{30}
 		println("n=\${copy(mut dst, src)}")
 		println("src \${src[2].id}, dst \${dst[0].id} \${dst[1].id}")
 	}
@@ -69,7 +70,7 @@ fn check_resource_copies() {
 	println("end")
 }
 
-fn words() []string {
+fn copy_words() []string {
 	return ["t".repeat(2), "u".repeat(2)]
 }
 
@@ -79,7 +80,7 @@ fn check_string_and_nested_copies() {
 	assert copy(mut dst, src) == 2
 	assert dst == ["xxx", "yyy"]
 	assert src == ["xxx", "yyy", "zzz"]
-	assert copy(mut dst, words()) == 2
+	assert copy(mut dst, copy_words()) == 2
 	assert dst == ["tt", "uu"]
 	assert copy(mut dst[1..], src[2..]) == 1
 	assert dst == ["tt", "zzz"]
@@ -94,31 +95,7 @@ fn check_string_and_nested_copies() {
 	println("ok")
 }
 
-fn main() {
-	check_resource_copies()
-	check_string_and_nested_copies()
-}
-')
-	assert output.split_into_lines() == [
-		'drop 1',
-		'drop 2',
-		'n=2',
-		'src 30, dst 110 120',
-		'drop 10',
-		'drop 20',
-		'drop 30',
-		'drop 110',
-		'drop 120',
-		'--- temporary',
-		'drop 3',
-		'drop 7',
-		'drop 8',
-		'n=1',
-		'dst 107',
-		'drop 107',
-		'end',
-		'ok',
-	]
+'
 }
 
 fn test_copy_rejects_owned_elements_without_clone() {
@@ -603,8 +580,7 @@ fn check_map_and_accessors() {
 
 ' + copy_ownership_fixed_array_order_fixture() + '\n' +
 		copy_ownership_fixed_array_allocator_fixture('inspect_plain', 'retain_plain',
-			'check_runtime_allocations', 'allocations') + '
-fn main() {
+			'check_runtime_allocations', 'allocations') + '\n' + copy_ownership_element_copy_fixture() + 'fn main() {
 	match arguments()[1] {
 		"direct" { check_direct() }
 		"slice" { check_slice() }
@@ -615,6 +591,10 @@ fn main() {
 		"order_and_allocators" {
 			check_callee_order()
 			check_runtime_allocations()
+		}
+		"copy_owned_elements" {
+			check_resource_copies()
+			check_string_and_nested_copies()
 		}
 		else { panic("unknown fixed-array view case") }
 	}
@@ -635,6 +615,9 @@ fn main() {
 			'drop 30', 'drop 40', 'drop 40', 'drop 41', 'drop 41', 'drop 50', 'drop 50', 'drop 51',
 			'drop 51']
 		'order_and_allocators':    ['order', 'allocations']
+		'copy_owned_elements':     ['drop 1', 'drop 2', 'n=2', 'src 30, dst 110 120', 'drop 10',
+			'drop 20', 'drop 30', 'drop 110', 'drop 120', '--- temporary', 'drop 3', 'drop 7',
+			'drop 8', 'n=1', 'dst 107', 'drop 107', 'end', 'ok']
 	}
 	for case, expected in expected_output {
 		run := os.exec([binary, case])
