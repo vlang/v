@@ -23,10 +23,11 @@ fn (r &Res) clone() Res {
 }
 '
 
-const borrow_storage_uncloneable_decls = 'interface Drop { mut: drop() }
-struct Handle implements Drop { id int }
+const borrow_storage_handle_decls = 'struct Handle implements Drop { id int }
 fn (mut h Handle) drop() {}
 '
+const borrow_storage_uncloneable_decls = 'interface Drop { mut: drop() }
+' + borrow_storage_handle_decls
 const borrow_storage_clone_error = 'requires ownership destruction but has no compatible `clone()` method'
 
 fn testsuite_begin() {
@@ -831,37 +832,6 @@ fn check_${name}() {
 '
 }
 
-fn test_uncloneable_mut_array_prepend_and_insert_reject_receiver_aliases() {
-	operations := {
-		'prepend': 'values.prepend(values)'
-		'insert':  'values.insert(0, values)'
-	}
-	mut rejected_source := borrow_storage_uncloneable_decls
-	mut rejected_calls := []string{}
-	mut rejected_lines := []int{}
-	for action, operation in operations {
-		for borrowed in [false, true] {
-			name := '${action}_${borrowed}'
-			// The operation follows the blank line and function signature.
-			rejected_lines << rejected_source.count('\n') + 3
-			rejected_source += borrow_storage_bulk_copy_case(name, operation, borrowed)
-			rejected_calls << '\tcheck_${name}()'
-		}
-	}
-	rejected_source += 'fn main() {
-${rejected_calls.join('\n')}
-}
-'
-	build := borrow_storage_compile_with_flags('uncloneable_bulk_rejected', rejected_source, '-nocolor')
-	assert build.exit_code == 1, build.output
-	errors := build.output.split_into_lines().filter(it.contains(': error: ')).map(it.all_after('.v:'))
-	assert errors.map(it.all_before(':').int()) == rejected_lines, build.output
-	for diagnostic in errors {
-		assert diagnostic.contains('cannot copy receiver-aliased `[]Handle` value'), build.output
-		assert diagnostic.contains(borrow_storage_clone_error), build.output
-	}
-}
-
 fn test_owned_sum_box_and_array_trim_cleanup_match_gc_allocators() {
 	declarations := '@[has_globals]
 module main
@@ -952,7 +922,7 @@ ${branches.join('\n')}
 	}
 }
 
-fn test_result_storage_aliases_and_nested_optional_sum_cast_are_rejected() {
+fn test_array_storage_rejects_result_aliases_nested_casts_and_bulk_receiver_aliases() {
 	mut source := borrow_storage_drop_decls + '
 struct Fault implements IClone, Drop { id int }
 fn (r Fault) msg() string { return "failed" }
@@ -1031,23 +1001,40 @@ fn check_${case_id}() {
 			calls << '\tcheck_${case_id}()'
 		}
 	}
-	source += '
-fn main() {
-	check_array_result()
-${calls.join('\n')}
-	_ = absent()
-}
-'
 	nested_cast_line := source.count('\n') + 3
 	source += '
 type Bucket = []int | int
 fn absent() ?Bucket { return ?Bucket(?Bucket(none)) }
 '
-	name := 'result_storage_aliases'
+	bulk_start_line := source.count('\n') + 1
+	source += '\n' + borrow_storage_handle_decls
+	mut bulk_lines := []int{}
+	for action, operation in {
+		'prepend': 'values.prepend(values)'
+		'insert':  'values.insert(0, values)'
+	} {
+		for borrowed in [false, true] {
+			name := '${action}_${borrowed}'
+			// The operation follows the blank line and function signature.
+			bulk_lines << source.count('\n') + 3
+			source += borrow_storage_bulk_copy_case(name, operation, borrowed)
+			calls << '\tcheck_${name}()'
+		}
+	}
+	bulk_end_line := source.count('\n')
+	source += '
+fn main() {
+	check_array_result()
+	_ = absent()
+${calls.join('\n')}
+}
+'
+	name := 'array_storage_rejected'
 	build := borrow_storage_compile_with_flags(name, source, '-nocolor -message-limit 100')
-	assert build.exit_code != 0, build.output
+	assert build.exit_code == 1, build.output
 	mut rejected_lines := []int{}
 	mut rejected_fail_lines := []int{}
+	mut rejected_bulk_lines := []int{}
 	diagnostics := build.output.split('${name}.v:')
 	for diagnostic in diagnostics {
 		line := diagnostic.all_before(':').int()
@@ -1058,6 +1045,11 @@ fn absent() ?Bucket { return ?Bucket(?Bucket(none)) }
 		if diagnostic.contains(': error: fail() returns `![]Res`') {
 			rejected_fail_lines << line
 		}
+		if line >= bulk_start_line && line <= bulk_end_line && diagnostic.contains(': error: ') {
+			assert diagnostic.contains('cannot copy receiver-aliased `[]Handle` value'), build.output
+			assert diagnostic.contains(borrow_storage_clone_error), build.output
+			rejected_bulk_lines << line
+		}
 	}
 	for line, case_name in alias_lines {
 		assert line in rejected_lines, '${case_name}: ${build.output}'
@@ -1065,6 +1057,7 @@ fn absent() ?Bucket { return ?Bucket(?Bucket(none)) }
 	assert rejected_fail_lines.sorted() == fail_lines, build.output
 	assert diagnostics.any(it.all_before(':').int() == nested_cast_line
 		&& it.contains(': error: cannot cast `?Bucket` to `?Bucket`')), build.output
+	assert rejected_bulk_lines == bulk_lines, build.output
 }
 
 fn test_invalid_owned_array_growth_and_deletion_preserve_diagnostics() {
