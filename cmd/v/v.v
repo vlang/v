@@ -12,6 +12,7 @@ import v.util
 
 const v_version = '0.5.2'
 const external_commands = [
+	'api',
 	'ast',
 	'bin2v',
 	'bug',
