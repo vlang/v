@@ -215,6 +215,20 @@ fn run_bad_module_batch(v3_bin string, name string, cases []ReviewRejection) {
 		write_project_file(root, '${module_name}/${case.name}.v', 'module ${module_name}\n\n' + case.source)
 	}
 	write_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')
+	check_rejected_project(v3_bin, root, name, cases)
+}
+
+// run_bad_file_batch keeps fixtures that need main-module diagnostics in separate source files.
+fn run_bad_file_batch(v3_bin string, name string, cases []ReviewRejection) {
+	root := '${tmp_test_path(name)}_project'
+	for case in cases {
+		write_project_file(root, '${case.name}.v', case.source)
+	}
+	write_project_file(root, 'main.v', 'fn main() {}\n')
+	check_rejected_project(v3_bin, root, name, cases)
+}
+
+fn check_rejected_project(v3_bin string, root string, name string, cases []ReviewRejection) {
 	compile := os.exec([v3_bin, root, '-json-errors', '-b', 'c', '-o', tmp_test_path(name)])
 	assert compile.exit_code != 0, '${name}: expected compile failure\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
@@ -7386,42 +7400,40 @@ fn main() {}
 
 fn test_recursive_str_short_circuit_progress_is_conditional() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_logical_and_rhs_progress', 'struct Item {
+	run_bad_file_batch(v3_bin, 'recursive_str_short_circuit_rejections', [
+		ReviewRejection{'recursive_str_logical_and_rhs_progress', 'struct AndItem {
 mut:
 	remaining int
 }
 
-fn advance(mut item Item) bool {
+fn and_advance(mut item AndItem) bool {
 	item.remaining--
 	return true
 }
 
-fn (item Item) str() string {
+fn (item AndItem) str() string {
 	mut copy := item
-	_ = false && advance(mut copy)
+	_ = false && and_advance(mut copy)
 	return copy.str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_logical_or_rhs_progress', 'struct Item {
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_logical_or_rhs_progress', 'struct OrItem {
 mut:
 	remaining int
 }
 
-fn advance(mut item Item) bool {
+fn or_advance(mut item OrItem) bool {
 	item.remaining--
 	return true
 }
 
-fn (item Item) str() string {
+fn (item OrItem) str() string {
 	mut copy := item
-	_ = true || advance(mut copy)
+	_ = true || or_advance(mut copy)
 	return copy.str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively'},
+	])
 	out := run_good(v3_bin, 'recursive_str_unreachable_short_circuit_call', 'struct Item {}
 
 fn (item Item) str() string {
@@ -7670,32 +7682,30 @@ fn main() {}
 
 fn test_recursive_str_spawn_mutation_is_not_synchronous_progress() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_spawned_mutation', 'struct Item {
+	run_bad_file_batch(v3_bin, 'recursive_str_spawn_rejections', [
+		ReviewRejection{'recursive_str_spawned_mutation', 'struct SpawnMutationItem {
 mut:
 	remaining int
 }
 
-fn advance(mut item Item) {
+fn advance(mut item SpawnMutationItem) {
 	item.remaining--
 }
 
-fn (item Item) str() string {
+fn (item SpawnMutationItem) str() string {
 	mut copy := item
 	spawn advance(mut copy)
 	return copy.str()
 }
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_spawned_call', 'struct SpawnCallItem {}
 
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_spawned_call', 'struct Item {}
-
-fn (item Item) str() string {
+fn (item SpawnCallItem) str() string {
 	t := spawn item.str()
 	return t.wait()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively'},
+	])
 }
 
 fn test_recursive_str_assertion_mutation_is_not_guaranteed_progress() {
@@ -7787,12 +7797,13 @@ fn main() {}
 
 fn test_recursive_str_deferred_calls_use_scope_exit_state_in_lifo_order() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_deferred_call_exit_state', 'struct Item {
+	run_bad_file_batch(v3_bin, 'recursive_str_defer_order_rejections', [
+		ReviewRejection{'recursive_str_deferred_call_exit_state', 'struct ExitStateItem {
 mut:
 	remaining int
 }
 
-fn (item Item) str() string {
+fn (item ExitStateItem) str() string {
 	mut next := item
 	next.remaining--
 	defer {
@@ -7801,15 +7812,13 @@ fn (item Item) str() string {
 	next = item
 	return ""
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_deferred_call_before_mutation', 'struct Item {
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_deferred_call_before_mutation', 'struct BeforeMutationItem {
 mut:
 	remaining int
 }
 
-fn (item Item) str() string {
+fn (item BeforeMutationItem) str() string {
 	mut next := item
 	defer {
 		next.remaining--
@@ -7819,9 +7828,8 @@ fn (item Item) str() string {
 	}
 	return ""
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively'},
+	])
 	out := run_good(v3_bin, 'recursive_str_deferred_mutation_before_call', 'struct Item {
 mut:
 	remaining int
@@ -8199,81 +8207,75 @@ fn main() {
 
 fn test_recursive_str_noop_mutations_do_not_count_as_progress() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_add_zero_noop', 'struct Item {
+	run_bad_file_batch(v3_bin, 'recursive_str_noop_rejections', [
+		ReviewRejection{'recursive_str_add_zero_noop', 'struct AddZeroItem {
 mut:
 	remaining int
 }
 
-fn (item Item) str() string {
+fn (item AddZeroItem) str() string {
 	mut copy := item
 	copy.remaining += 0
 	return copy.str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_multiply_one_noop', 'struct Item {
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_multiply_one_noop', 'struct MultiplyOneItem {
 mut:
 	remaining int
 }
 
-fn (item Item) str() string {
+fn (item MultiplyOneItem) str() string {
 	mut copy := item
 	copy.remaining *= 1
 	return copy.str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_helper_add_zero_noop', 'struct Item {
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_helper_add_zero_noop', 'struct HelperAddZeroItem {
 mut:
 	remaining int
 }
 
-fn unchanged(mut item Item) {
+fn unchanged(mut item HelperAddZeroItem) {
 	item.remaining += 0
 }
 
-fn (item Item) str() string {
+fn (item HelperAddZeroItem) str() string {
 	mut copy := item
 	unchanged(mut copy)
 	return copy.str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively'},
+	])
 }
 
 fn test_recursive_str_reversed_mutations_do_not_count_as_progress() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_reversed_increment', 'struct Item {
+	run_bad_file_batch(v3_bin, 'recursive_str_reversed_rejections', [
+		ReviewRejection{'recursive_str_reversed_increment', 'struct ReversedIncrementItem {
 mut:
 	remaining int
 }
 
-fn (item Item) str() string {
+fn (item ReversedIncrementItem) str() string {
 	mut copy := item
 	copy.remaining--
 	copy.remaining++
 	return copy.str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_reversed_compound_assignment', 'struct Item {
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_reversed_compound_assignment', 'struct ReversedAssignmentItem {
 mut:
 	remaining int
 }
 
-fn (item Item) str() string {
+fn (item ReversedAssignmentItem) str() string {
 	mut copy := item
 	copy.remaining += 2
 	copy.remaining -= 2
 	return copy.str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively'},
+	])
 }
 
 fn test_recursive_str_nested_helper_mutations_count_as_progress() {
@@ -8764,122 +8766,108 @@ fn main() {}
 
 fn test_recursive_str_preserves_multi_return_slots_and_aggregate_clones() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_multi_return_slot_provenance', 'struct Item {}
+	run_bad_file_batch(v3_bin, 'recursive_str_return_and_clone_rejections', [
+		ReviewRejection{'recursive_str_multi_return_slot_provenance', 'struct ReturnedSlotItem {}
 
-fn carry(item Item) (Item, int) {
+fn returned_slot_carry(item ReturnedSlotItem) (ReturnedSlotItem, int) {
 	return item, 0
 }
 
-fn (item Item) str() string {
-	copy, _ := carry(item)
+fn (item ReturnedSlotItem) str() string {
+	copy, _ := returned_slot_carry(item)
 	return copy.str()
 }
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_multi_return_assign_slot_provenance', 'struct AssignedSlotItem {}
 
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_multi_return_assign_slot_provenance', 'struct Item {}
-
-fn carry(item Item) (Item, int) {
+fn assigned_slot_carry(item AssignedSlotItem) (AssignedSlotItem, int) {
 	return item, 0
 }
 
-fn (item Item) str() string {
-	mut copy := Item{}
-	copy, _ = carry(item)
+fn (item AssignedSlotItem) str() string {
+	mut copy := AssignedSlotItem{}
+	copy, _ = assigned_slot_carry(item)
 	return copy.str()
 }
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_clone_element_provenance', 'struct ArrayCloneItem {}
 
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_array_clone_element_provenance', 'struct Item {}
-
-fn (item Item) str() string {
+fn (item ArrayCloneItem) str() string {
 	copies := [item].clone()
 	return copies[0].str()
 }
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_map_clone_element_provenance', 'struct MapCloneItem {}
 
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_map_clone_element_provenance', 'struct Item {}
-
-fn (item Item) str() string {
+fn (item MapCloneItem) str() string {
 	copies := {"self": item}.clone()
 	return copies["self"].str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively'},
+	])
 }
 
 fn test_recursive_str_preserves_wrapper_append_and_helper_aggregate_provenance() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_wrapper_field_provenance', 'struct Item {}
+	run_bad_file_batch(v3_bin, 'recursive_str_aggregate_provenance_rejections', [
+		ReviewRejection{'recursive_str_wrapper_field_provenance', 'struct WrappedItem {}
 
-struct Wrapper {
-	value Item
+struct WrappedWrapper {
+	value WrappedItem
 }
 
-fn (item Item) str() string {
-	wrapped := Wrapper{
+fn (item WrappedItem) str() string {
+	wrapped := WrappedWrapper{
 		value: item
 	}
 	return wrapped.value.str()
 }
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_append_provenance', 'struct AppendedItem {}
 
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_array_append_provenance', 'struct Item {}
-
-fn (item Item) str() string {
-	mut items := []Item{}
+fn (item AppendedItem) str() string {
+	mut items := []AppendedItem{}
 	items << item
 	return items[0].str()
 }
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_helper_array_provenance', 'struct ArrayHelperItem {}
 
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_helper_array_provenance', 'struct Item {}
-
-fn wrap(item Item) []Item {
+fn array_helper_wrap(item ArrayHelperItem) []ArrayHelperItem {
 	return [item]
 }
 
-fn (item Item) str() string {
-	return wrap(item)[0].str()
+fn (item ArrayHelperItem) str() string {
+	return array_helper_wrap(item)[0].str()
 }
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_helper_map_provenance', 'struct MapHelperItem {}
 
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_helper_map_provenance', 'struct Item {}
-
-fn wrap(item Item) map[string]Item {
+fn map_helper_wrap(item MapHelperItem) map[string]MapHelperItem {
 	return {"self": item}
 }
 
-fn (item Item) str() string {
-	return wrap(item)["self"].str()
+fn (item MapHelperItem) str() string {
+	return map_helper_wrap(item)["self"].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_helper_wrapper_provenance', 'struct WrapperHelperItem {}
+
+struct WrapperHelperWrapper {
+	value WrapperHelperItem
 }
 
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_helper_wrapper_provenance', 'struct Item {}
-
-struct Wrapper {
-	value Item
-}
-
-fn wrap(item Item) Wrapper {
-	return Wrapper{
+fn wrapper_helper_wrap(item WrapperHelperItem) WrapperHelperWrapper {
+	return WrapperHelperWrapper{
 		value: item
 	}
 }
 
-fn (item Item) str() string {
-	return wrap(item).value.str()
+fn (item WrapperHelperItem) str() string {
+	return wrapper_helper_wrap(item).value.str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively'},
+	])
 }
 
 fn test_recursive_str_preserves_qualified_helper_args_and_slot_replacements() {
@@ -8889,69 +8877,63 @@ fn test_recursive_str_preserves_qualified_helper_args_and_slot_replacements() {
 		'helpers/helpers.v': 'module helpers\n\npub interface Stringer {\n\tstr() string\n}\n\npub fn render(value Stringer) string {\n\treturn value.str()\n}\n'
 		'main.v':            'module main\n\nimport helpers\n\nstruct Item {}\n\nfn (item Item) str() string {\n\treturn helpers.render(item)\n}\n\nfn main() {}\n'
 	}, ['main.v'], 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_static_helper_args', 'struct Helpers {}
+	run_bad_file_batch(v3_bin, 'recursive_str_slot_provenance_rejections', [
+		ReviewRejection{'recursive_str_static_helper_args', 'struct Helpers {}
 
-struct Item {}
+struct StaticItem {}
 
-fn Helpers.render(item Item) string {
+fn Helpers.render(item StaticItem) string {
 	return item.str()
 }
 
-fn (item Item) str() string {
+fn (item StaticItem) str() string {
 	return Helpers.render(item)
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_array_slot_replacement', 'struct Item {
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_slot_replacement', 'struct ArraySlotItem {
 	remaining int
 }
 
-fn (item Item) str() string {
-	mut items := [Item{
+fn (item ArraySlotItem) str() string {
+	mut items := [ArraySlotItem{
 		remaining: 0
 	}]
 	items[0] = item
 	return items[0].str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_map_slot_replacement', 'struct Item {
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_map_slot_replacement', 'struct MapSlotItem {
 	remaining int
 }
 
-fn (item Item) str() string {
-	mut items := {"self": Item{
+fn (item MapSlotItem) str() string {
+	mut items := {"self": MapSlotItem{
 		remaining: 0
 	}}
 	items["self"] = item
 	return items["self"].str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_wrapper_field_replacement', 'struct Item {
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_wrapper_field_replacement', 'struct WrapperFieldItem {
 	remaining int
 }
 
 struct Wrapper {
 mut:
-	value Item
+	value WrapperFieldItem
 }
 
-fn (item Item) str() string {
+fn (item WrapperFieldItem) str() string {
 	mut wrapped := Wrapper{
-		value: Item{
+		value: WrapperFieldItem{
 			remaining: 0
 		}
 	}
 	wrapped.value = item
 	return wrapped.value.str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively'},
+	])
 }
 
 fn test_recursive_str_noreturn_branch_does_not_fall_through() {
@@ -9828,48 +9810,44 @@ fn main() {
 
 fn test_recursive_str_updates_array_provenance_after_mutators() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_array_delete_shift', 'struct Item {
+	run_bad_file_batch(v3_bin, 'recursive_str_array_mutator_rejections', [
+		ReviewRejection{'recursive_str_array_delete_shift', 'struct DeletedItem {
 	remaining int
 }
 
-fn (item Item) str() string {
-	mut items := [Item{
+fn (item DeletedItem) str() string {
+	mut items := [DeletedItem{
 		remaining: item.remaining - 1
 	}, item]
 	items.delete(0)
 	return items[0].str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_array_reverse_in_place', 'struct Item {
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_reverse_in_place', 'struct ReversedItem {
 	remaining int
 }
 
-fn (item Item) str() string {
-	mut items := [item, Item{
+fn (item ReversedItem) str() string {
+	mut items := [item, ReversedItem{
 		remaining: item.remaining - 1
 	}]
 	items.reverse_in_place()
 	return items[1].str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_array_prepend_shift', 'struct Item {
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_prepend_shift', 'struct PrependedItem {
 	remaining int
 }
 
-fn (item Item) str() string {
+fn (item PrependedItem) str() string {
 	mut items := [item]
-	items.prepend(Item{
+	items.prepend(PrependedItem{
 		remaining: item.remaining - 1
 	})
 	return items[1].str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively'},
+	])
 	out := run_good(v3_bin, 'recursive_str_array_delete_progress', 'struct Item {
 	remaining int
 }
@@ -10210,38 +10188,34 @@ fn main() {}
 
 fn test_recursive_str_tracks_for_in_values_and_array_slices() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'recursive_str_for_in_value', 'struct Item {}
+	run_bad_file_batch(v3_bin, 'recursive_str_iteration_and_slice_rejections', [
+		ReviewRejection{'recursive_str_for_in_value', 'struct ForValueItem {}
 
-fn (item Item) str() string {
+fn (item ForValueItem) str() string {
 	for copy in [item] {
 		return copy.str()
 	}
 	return ""
 }
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_for_in_index_and_value', 'struct ForIndexValueItem {}
 
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_for_in_index_and_value', 'struct Item {}
-
-fn (item Item) str() string {
+fn (item ForIndexValueItem) str() string {
 	for _, copy in [item] {
 		return copy.str()
 	}
 	return ""
 }
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_slice_receiver', 'struct SlicedItem {}
 
-fn main() {}
-', 'cannot call `str()` method recursively')
-	run_bad(v3_bin, 'recursive_str_array_slice_receiver', 'struct Item {}
-
-fn (item Item) str() string {
+fn (item SlicedItem) str() string {
 	items := [item]
 	slice := items[0..1]
 	return slice[0].str()
 }
-
-fn main() {}
-', 'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively'},
+	])
 	out := run_good(v3_bin, 'recursive_str_array_slice_terminal_index', 'struct Item {
 	done bool
 }
