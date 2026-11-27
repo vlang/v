@@ -24,7 +24,7 @@ fn cold_build(root string, mode string, full_header bool) !(string, string) {
 		os.setenv('V3_CACHE_FULL_HEADER', '1', true)
 	}
 	exe := os.join_path(dir, 'main')
-	result := os.exec([@VEXE, '-new-compiler', '-o', exe, source])
+	result := os.exec([@VEXE, '-o', exe, source])
 	assert result.exit_code == 0, result.output
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
