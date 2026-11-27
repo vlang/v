@@ -988,7 +988,23 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				named_initializer := g.render_named_struct_initializer(named_parameter_type, call_args[named_start..]) or { continue }
 				direct_arguments << named_initializer
 			} else {
+				insert_argument := match method_c_name {
+					'builtin__array_insert' { 1 }
+					'builtin__array_prepend' { 0 }
+					else { -1 }
+				}
 				for argument_index, argument in call_args {
+					if argument_index == insert_argument {
+						if element := g.array_element_type(g.underlying_alias_type(receiver_type)) {
+							if fastc_is_pointer_type(g.underlying_alias_type(element)) {
+								value := g.render_call_argument_expression(argument, element) or { continue }
+								// The array runtime copies an element-sized slot, including
+								// when the slot itself stores a pointer.
+								direct_arguments << '((${g.collection_storage_type(element)}[]){${value}})'
+								continue
+							}
+						}
+					}
 					if argument_index == 0 && tokens[i].lit == 'delete'
 						&& g.map_type_of(receiver_type) != none {
 						key_type_source_id, _ := g.map_key_value_types(fastc_trim_pointer_type(receiver_type)) or {

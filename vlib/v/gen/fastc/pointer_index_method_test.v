@@ -51,7 +51,35 @@ fn mut_array_methods(mut names []string) string {
 	return names[0].to_upper() + names[1][0].ascii_str()
 }
 
+struct PointList {
+mut:
+	items []&Point
+}
+
+fn (mut list PointList) add_point(point &Point) {
+	if list.items.len == 0 {
+		list.items << point
+	} else {
+		list.items.insert(list.items.len, point)
+	}
+}
+
+fn check_pointer_insertion() {
+	first := &Point{x: 5, y: 7}
+	second := &Point{x: 3, y: 9}
+	mut list := PointList{}
+	list.add_point(first)
+	list.add_point(second)
+	assert voidptr(list.items[0]) == voidptr(first)
+	assert voidptr(list.items[1]) == voidptr(second)
+	list.items.prepend(second)
+	assert voidptr(list.items[0]) == voidptr(second)
+	assert voidptr(list.items[1]) == voidptr(first)
+	assert voidptr(list.items[2]) == voidptr(second)
+}
+
 fn main() {
+	check_pointer_insertion()
 	points := [Point{1, 2}, Point{3, 4}]
 	assert point_methods(&points[0], 2) == 17
 	words := ["abc", "b", "x"]
