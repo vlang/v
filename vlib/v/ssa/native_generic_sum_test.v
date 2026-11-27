@@ -6,7 +6,7 @@ import v.parser
 import v.pref
 import v.types
 
-fn test_recursive_generic_sum_layouts_keep_concrete_variants() {
+fn test_generic_sum_layouts_keep_concrete_variants() {
 	path := os.join_path(os.vtmp_dir(), 'ssa_generic_sum_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	os.write_file(path, 'module main
@@ -17,6 +17,7 @@ struct Node[T] {
     right Tree[T]
 }
 type Tree[T] = Empty | &Node[T]
+type Value[T] = T | bool
 ')!
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_file(path)
@@ -54,4 +55,11 @@ type Tree[T] = Empty | &Node[T]
 		assert b.sum_variant_index(tree_name, flat.source_type_id('Empty')) == 1
 		assert b.sum_variant_index(tree_name, flat.source_type_id('&Node[${scalar}]')) == 2
 	}
+	value := b.resolve_type(flat.source_type_id('Value[[3]i64]'))
+	layout := m.type_store.types[value]
+	assert layout.field_names == ['typ', '_payload']
+	payload := layout.fields.last()
+	assert m.type_store.types[payload].fields[0] == m.type_store.get_array(b.i64_type, 3)
+	assert m.type_size(payload) == 24
+	assert m.type_size(value) == 32
 }

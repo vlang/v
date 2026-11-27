@@ -1028,7 +1028,7 @@ fn (mut b Builder) register_checker_sum_type_inner(name_id u32) TypeID {
 	mut field_names := []string{cap: variants.len}
 	mut has_pointer_variant := false
 	for variant in variants {
-		field_type := b.resolve_type(variant)
+		field_type := b.resolve_struct_storage_type(variant, b.cur_module)
 		has_pointer_variant = has_pointer_variant || b.is_pointer_type(field_type)
 		field_types << field_type
 		field_names << sum_variant_field_name(flat.source_type_name(variant),
