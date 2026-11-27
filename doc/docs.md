@@ -7054,6 +7054,15 @@ allocation, so allocation counters also observe warmed small-object allocations.
 platform C compiler unless `-cc` selects one explicitly. This option preserves compiler selection
 when GC is disabled or `-d dynamic_boehm` is enabled; an empty define value does not enable a flag.
 
+For programs whose live heap keeps growing, `-d gc_proportional_growth` makes the Boehm runtime
+grow the heap in proportion to its size when free space runs low. This avoids one full collection
+per 8 MiB of growth, at the cost of using up to about twice the live heap.
+
+With `-gc vgc`, `-d vgc_parallel_mark` enables helper threads for the mark phase (up to four).
+Mark bits are updated with 32-bit atomic compare-and-swap; only the shared work queue is locked,
+so this is opt-in because queue contention can cost more than it saves on small heaps. The
+GreenTea span queue (`-d vgc_greentea`) remains single-threaded.
+
 The second way is autofree, it can be enabled with `-autofree`. It takes care of most objects
 (~90-100%): the compiler inserts necessary free calls automatically during compilation.
 Remaining small percentage of objects is freed via GC. The developer doesn't need to change
