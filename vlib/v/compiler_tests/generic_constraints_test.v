@@ -117,6 +117,9 @@ fn test_generic_constraint_function_and_method_diagnostics() {
 		constraint_closures_case(),
 		alias_constraints_case(),
 		set_rejections_case(),
+		body_members_case(),
+		constraint_type_checks_case(),
+		constraint_propagation_case(),
 	]
 	mut sources := map[string]string{}
 	for case in cases {
@@ -360,12 +363,11 @@ fn main() {
 	assert error_lines(res.output) == [], res.output
 }
 
-fn test_constrained_bodies_reject_undeclared_members() {
+fn body_members_case() ConstraintDiagnosticCase {
 	// Check values derived from constrained parameters in uncalled generic
 	// functions. Values derived from U keep its Named constraint through
 	// guards, calls and array methods, even when the callee uses T.
-	// Raise the message limit so all 29 errors are printed.
-	res := check_program('body_members', "fn derived[T Named](a T, b T, items []T, m map[string]T, c bool, n int) int {
+	source := "fn derived[T Named](a T, b T, items []T, m map[string]T, c bool, n int) int {
 	x := a
 	mut total := x.age
 	mut y := a
@@ -477,11 +479,10 @@ fn mixed[T Greeter, U Named](g T, n U, b Box[U]) int {
 }
 
 fn main() {}
-", '-message-limit', '100')
-	assert res.exit_code == 1, res.output
+"
 	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
 	no_caller_age := 'type `U` has no field named `age`: its constraint `Named` does not declare it'
-	assert error_lines(res.output) == [
+	expected := [
 		'3:17: ${no_age}',
 		'6:13: ${no_age}',
 		'8:13: ${no_age}',
@@ -511,7 +512,8 @@ fn main() {}
 		'109:11: ${no_caller_age}',
 		'109:19: ${no_caller_age}',
 		'109:33: ${no_caller_age}',
-	], res.output
+	]
+	return ConstraintDiagnosticCase{'body_members', source, expected}
 }
 
 fn constraint_operations_case() ConstraintDiagnosticCase {
@@ -686,12 +688,11 @@ fn main() {
 	return ConstraintDiagnosticCase{'constraint_operations', source, expected}
 }
 
-fn test_comptime_and_runtime_type_checks_on_constrained_values() {
+fn constraint_type_checks_case() ConstraintDiagnosticCase {
 	// Compile-time conditions can narrow types and values. A condition such
 	// as debug leaves the type set intact. Runtime type tests require a sum
 	// type or interface value, and a match reports its first invalid type pattern.
-	// Raise the message limit so all 21 errors are printed.
-	res := check_program('constraint_type_checks', 'type Number = int | f64
+	source := 'type Number = int | f64
 
 fn narrow[T Number](x T, y T) T {
 	$if T is f64 {
@@ -839,12 +840,11 @@ fn values[T Number](value T) string {
 }
 
 fn main() {}
-', '-message-limit', '100')
-	assert res.exit_code == 1, res.output
+'
 	modulo_error := 'operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it'
 	shift_error := 'operator `<<` is not defined on type `T` and `int literal`: `f64`, in its constraint `Number`, does not have it'
 	age_error := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
-	assert error_lines(res.output) == [
+	expected := [
 		'5:13: ${modulo_error}',
 		'10:13: type `T` has no field named `len`: `int`, in its constraint `Number`, does not have it',
 		'21:13: ${shift_error}',
@@ -866,15 +866,15 @@ fn main() {}
 		'132:3: matching by type can only be done on sum type or interface values, not `T`: `Square`, in its constraint `Shape`, is neither; test `T` with `\$if s is Circle`',
 		'138:9: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named`, in its constraint `Two`, does not have to be one; test `T` with `\$if x is User`',
 		'143:13: type `T` has no method `nme`: `int`, in its constraint `Number`, does not have it',
-	], res.output
+	]
+	return ConstraintDiagnosticCase{'constraint_type_checks', source, expected}
 }
 
-fn test_generic_types_and_methods_propagate_required_constraints() {
+fn constraint_propagation_case() ConstraintDiagnosticCase {
 	// A type argument's constraint must satisfy the constraint at its use.
 	// When all type parameters are constrained, a method body is checked like
 	// a function with both the receiver and method parameters.
-	// Raise the message limit so all 29 errors are printed.
-	res := check_program('constraint_propagation', "struct Box[T Named] {
+	source := "struct Box[T Named] {
 	item T
 }
 
@@ -1082,10 +1082,9 @@ fn main() {
 	println(q.map[int](to_int))
 	println(map_fn[int, int](q, to_int))
 }
-", '-message-limit', '100')
-	assert res.exit_code == 1, res.output
+"
 	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
-	assert error_lines(res.output) == [
+	expected := [
 		'6:9: `Box[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
 		'5:17: `Box[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
 		'22:9: `Box[T]` needs `T` to implement `Named`: its constraint `Other` does not',
@@ -1115,7 +1114,8 @@ fn main() {
 		"205:10: `int` doesn't implement field `name` of interface `Named`",
 		"206:16: `int` doesn't implement field `name` of interface `Named`",
 		"207:22: `int` doesn't implement field `name` of interface `Named`",
-	], res.output
+	]
+	return ConstraintDiagnosticCase{'constraint_propagation', source, expected}
 }
 
 fn interface_calls_case() ConstraintDiagnosticCase {
