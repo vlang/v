@@ -143,16 +143,8 @@ fn main() {
 	assert build.output.contains('cannot copy `Handle` elements: `Handle` requires ownership destruction but has no compatible `clone()` method'), build.output
 }
 
-fn test_fixed_array_borrows_preserve_original_owners() {
-	mut source := '@[has_globals]
-module main
-
-__global handle_dropped = false
-
-interface Drop {
-mut:
-	drop()
-}
+fn copy_ownership_fixed_array_borrow_fixture() string {
+	mut source := '__global handle_dropped = false
 
 struct Handle implements Drop {
 mut:
@@ -189,64 +181,47 @@ fn check_${name}() {
 }
 '
 	}
-	source += '
-__global next_id = 0
+	return source + '
+__global next_borrowed_id = 0
 __global cloned = 0
-__global dropped = map[int]bool{}
+__global borrowed_dropped = map[int]bool{}
 
-struct Resource implements IClone, Drop {
+struct BorrowedResource implements IClone, Drop {
 	id int
 }
 
-fn fresh() Resource {
-	next_id++
-	return Resource{next_id}
+fn fresh_borrowed() BorrowedResource {
+	next_borrowed_id++
+	return BorrowedResource{next_borrowed_id}
 }
 
-fn (r &Resource) clone() Resource {
+fn (r &BorrowedResource) clone() BorrowedResource {
 	cloned++
-	return fresh()
+	return fresh_borrowed()
 }
 
-fn (mut r Resource) drop() {
-	assert !dropped[r.id]
-	dropped[r.id] = true
+fn (mut r BorrowedResource) drop() {
+	assert !borrowed_dropped[r.id]
+	borrowed_dropped[r.id] = true
 }
 
-fn inspect(values &[]Resource) int {
+fn inspect(values &[]BorrowedResource) int {
 	return values[0].id
 }
 
 fn check_immutable() {
-	values := [fresh()]!
+	values := [fresh_borrowed()]!
 	original_id := values[0].id
 	assert inspect(values) == original_id
 	assert cloned == 0
 	assert values[0].id == original_id
-	assert !dropped[original_id]
+	assert !borrowed_dropped[original_id]
 	drop_owned(values)
-	assert dropped[original_id]
+	assert borrowed_dropped[original_id]
 	println("immutable")
 }
 
-fn main() {
-	match arguments()[1] {
-		"direct" { check_direct() }
-		"slice" { check_slice() }
-		"immutable" { check_immutable() }
-		else { panic("unknown fixed-array borrow case") }
-	}
-}
 '
-	name := 'fixed_array_borrows'
-	build := copy_ownership_compile(name, source)
-	assert build.exit_code == 0, build.output
-	binary := os.join_path(copy_ownership_tmp_dir, name)
-	for case in ['direct', 'slice', 'immutable'] {
-		run := os.exec([binary, case])
-		assert run.exit_code == 0, '${case}: ${run.output}'
-		assert run.output.trim_space() == case, '${case}: ${run.output}'
-	}
 }
 
 fn test_nonownership_fixed_array_views_do_not_root_unused_destructors() {
@@ -465,14 +440,13 @@ fn main() {
 	assert output.split_into_lines() == ['order', 'allocations']
 }
 
-fn test_owned_fixed_array_views_acquire_independent_owners() {
+fn test_fixed_array_views_preserve_borrowed_and_independent_owners() {
 	source := '@[has_globals]
 module main
 
 import builtin.closure
 
-' + copy_ownership_drop_decls + '
-__global next_owned_id = 0
+' + copy_ownership_drop_decls + '\n' + copy_ownership_fixed_array_borrow_fixture() + '__global next_owned_id = 0
 __global dropped_ids = map[int]bool{}
 
 struct Tracked implements IClone, Drop {
@@ -634,18 +608,24 @@ fn check_map_and_accessors() {
 
 fn main() {
 	match arguments()[1] {
+		"direct" { check_direct() }
+		"slice" { check_slice() }
+		"immutable" { check_immutable() }
 		"returned_views" { check_returned_views() }
 		"references_and_captures" { check_references_and_captures() }
 		"map_and_accessors" { check_map_and_accessors() }
-		else { panic("unknown fixed-array retention case") }
+		else { panic("unknown fixed-array view case") }
 	}
 }
 '
-	name := 'fixed_array_retention'
+	name := 'fixed_array_views'
 	build := copy_ownership_compile(name, source)
 	assert build.exit_code == 0, build.output
 	binary := os.join_path(copy_ownership_tmp_dir, name)
 	expected_output := {
+		'direct':                  ['direct']
+		'slice':                   ['slice']
+		'immutable':               ['immutable']
 		'returned_views':          ['returned_views']
 		'references_and_captures': ['references_and_captures']
 		'map_and_accessors':       ['drop 10', 'drop 110', 'drop 120', 'drop 130', 'drop 140',
