@@ -130,9 +130,12 @@ jobs:
           set -euo pipefail
           cc=/tmp/musl-cpp-toolchain/bin/x86_64-linux-musl-gcc
           fixture=vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v
-          # Keep the original C++17 assertions and musl/GC flags. Static C++ and GCC
-          # runtimes avoid loading the host's glibc-target libstdc++ into a musl process.
-          env -u VFLAGS ./v -cc "$cc" -gc none -d use_bundled_libgc -ldflags '-static-libstdc++ -static-libgcc' -showcc -show-c-output -no-retry-compilation -b c "$fixture" 2>&1 | tee /tmp/musl-cpp-candidate.log
+          # The V driver links with gcc, not g++. gcc leaves an explicit
+          # -lstdc++ dynamic even with -static-libstdc++. Match the successful
+          # static C caller above for this isolated C++ capability diagnostic.
+          # Do not apply this flag to the existing legacy sanitizer lane.
+          env -u VFLAGS ./v -cc "$cc" -gc none -d use_bundled_libgc -ldflags '-static' -showcc -show-c-output -no-retry-compilation -b c "$fixture" 2>&1 | tee /tmp/musl-cpp-candidate.log
+          grep -E ' > .*x86_64-linux-musl-gcc .* -static( |$)' /tmp/musl-cpp-candidate.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
