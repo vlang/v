@@ -4668,7 +4668,8 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 					}
 				}
 			}
-			if p.tok == .lpar {
+			if p.tok == .lpar || p.tok == .lcbr {
+				is_brace := p.tok == .lcbr
 				attr_name := piece
 				call_attrs_start := attrs.len
 				mut has_base_arg := false
@@ -4676,7 +4677,8 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 				mut base_kind := piece_kind
 				mut positional_arg_idx := 1
 				p.next()
-				for p.tok != .rpar && p.tok != .eof {
+				close_tok := if is_brace { token.Token.rcbr } else { token.Token.rpar }
+				for p.tok != close_tok && p.tok != .eof {
 					if p.tok == .comma {
 						p.next()
 						continue
@@ -4687,13 +4689,44 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 						p.next()
 						p.check(.colon)
 					}
-					arg_kind := parsed_attribute_kind(p.tok)
-					mut arg := p.lit.trim_space()
+					// Parse one argument value, desugaring both call and
+					// struct-literal spellings to the same flattened pieces.
+					// Supported values are string/integer/bool literals,
+					// dot-prefixed enum shorthands, negative integers, and
+					// bare or module-qualified const names (RFC 013, Phase 0).
+					mut arg_kind := 0
+					mut arg := ''
 					if p.tok == .dot && p.peek() == .name {
+						arg_kind = parsed_attribute_kind(p.tok)
 						p.next()
 						arg = '.' + p.lit
+						p.next()
+					} else if p.tok == .name && p.peek() == .dot {
+						saved := p.lit
+						p.next()
+						if p.tok == .dot && p.peek() == .name {
+							p.next()
+							arg = saved + '.' + p.lit
+							arg_kind = 0
+							p.next()
+						} else {
+							arg = saved
+							arg_kind = 0
+						}
+					} else if p.tok == .minus && p.peek() == .number {
+						p.next()
+						arg = '-' + p.lit.trim_space()
+						arg_kind = parsed_attribute_kind(p.tok)
+						p.next()
+					} else {
+						arg_kind = parsed_attribute_kind(p.tok)
+						arg = p.lit.trim_space()
+						if p.tok == .dot && p.peek() == .name {
+							p.next()
+							arg = '.' + p.lit
+						}
+						p.next()
 					}
-					p.next()
 					if attr_name == 'deprecated' && arg_name == 'msg' {
 						if has_base_arg && !p.prefs.is_fmt {
 							p.record_diagnostic_span('duplicate `msg` argument for `@[deprecated(...)]` attribute',
@@ -4715,7 +4748,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 						positional_arg_idx++
 					}
 				}
-				p.check(.rpar)
+				p.check(close_tok)
 				attrs.insert(call_attrs_start, base_attr)
 				kinds.insert(call_attrs_start, base_kind)
 				continue
