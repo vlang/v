@@ -12845,12 +12845,32 @@ fn (mut tc TypeChecker) ownership_mark_index_move_read_in(id flat.NodeId, name s
 	node := tc.a.nodes[int(id)]
 	if node.kind == .index && node.value != 'range' && tc.ownership_expr_ident_name(id) == name
 		&& tc.ownership_type_requires_destruction(tc.resolve_type(id)) {
+		if tc.autofree_mode && tc.ownership_autofree_clone_index_read(id) {
+			return
+		}
 		tc.ownership_state().index_move_reads[int(id)] = true
 		return
 	}
 	for i in 0 .. node.children_count {
 		tc.ownership_mark_index_move_read_in(tc.a.child(&node, i), name)
 	}
+}
+
+// ownership_autofree_clone_index_read gives the reader of a container element a clone
+// under -autofree, instead of moving the element out and clearing its slot. Autofree
+// keeps V1's aliasing semantics (see ownership_report_moved): the container is still
+// used after the read, so it must keep its element.
+fn (mut tc TypeChecker) ownership_autofree_clone_index_read(id flat.NodeId) bool {
+	typ := tc.resolve_type(id)
+	mut seen := map[u32]bool{}
+	if tc.ownership_owned_storage_contains_pointer_sum(typ, 0, mut seen) {
+		return false
+	}
+	if _ := tc.ownership_borrowed_copy_missing_clone(id, typ) {
+		return false
+	}
+	tc.ownership_state().borrowed_projection_actions[int(id)] = .clone_value
+	return true
 }
 
 // ownership_index_read_moves_value reports whether ownership analysis consumed the
