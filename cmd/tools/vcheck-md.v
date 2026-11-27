@@ -22,7 +22,7 @@ const non_option_args = cmdline.only_non_options(os.args[2..])
 const is_verbose = os.getenv('VERBOSE') != ''
 const vcheckfolder = os.join_path(os.vtmp_dir(), 'vcheck_${os.getpid()}')
 const should_autofix = os.getenv('VAUTOFIX') != '' || '-fix' in os.args
-const vexe = @VEXE
+const vexe = os.getenv_opt('VEXE') or { @VEXE }
 
 struct CheckResult {
 pub mut:
