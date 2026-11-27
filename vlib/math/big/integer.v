@@ -51,29 +51,10 @@ fn (x Integer) clone() Integer {
 	}
 }
 
-fn int_signum(value int) int {
-	if value == 0 {
-		return 0
-	}
-	return if value < 0 { -1 } else { 1 }
-}
-
 // integer_from_int creates a new `big.Integer` from the given int value.
+// An `int` can be wider than one digit, so the value goes through `integer_from_i64`.
 pub fn integer_from_int(value int) Integer {
-	if value == 0 {
-		return zero_int
-	}
-	if value == min_int {
-		return Integer{
-			digits: [u64(0x80000000)]
-			signum: -1
-		}
-	} else {
-		return Integer{
-			digits: [u64(iabs(value))]
-			signum: int_signum(value)
-		}
-	}
+	return integer_from_i64(i64(value))
 }
 
 // integer_from_u32 creates a new `big.Integer` from the given u32 value.

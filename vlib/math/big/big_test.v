@@ -634,6 +634,51 @@ fn test_integer_from() {
 	}
 }
 
+// A digit holds `big.digit_bits` bits, so each constructor is checked at the limits of its
+// input type and on both sides of the first digit boundary.
+fn test_integer_from_fixed_width_limits() {
+	digit_boundary := i64(1) << big.digit_bits
+	assert big.integer_from_u32(0).str() == '0'
+	assert big.integer_from_u32(max_u32).str() == '4294967295'
+	for value in [i64(0), 1, -1, max_i32, min_i32, i64(max_i32) + 1, i64(min_i32) - 1, i64(max_u32),
+		i64(max_u32) + 1, digit_boundary - 1, digit_boundary, digit_boundary + 1,
+		-(digit_boundary - 1), -digit_boundary, -(digit_boundary + 1), max_i64 - 1, max_i64,
+		min_i64 + 1, min_i64] {
+		a := big.integer_from_i64(value)
+		assert a.str() == value.str()
+		assert a == big.integer_from_string(value.str())!
+		assert (a + big.one_int) - big.one_int == a
+	}
+	for value in [u64(0), 1, max_u32, u64(max_u32) + 1, u64(digit_boundary) - 1, u64(digit_boundary),
+		u64(digit_boundary) + 1, u64(max_i64), u64(max_i64) + 1, max_u64 - 1, max_u64] {
+		a := big.integer_from_u64(value)
+		assert a.str() == value.str()
+		assert a == big.integer_from_string(value.str())!
+		assert (a + big.one_int) - big.one_int == a
+	}
+}
+
+// `int` is as wide as `i64` on most targets, so `integer_from_int` gets the same values there.
+fn test_integer_from_int_matches_integer_from_i64() {
+	mut values := [0, 1, -1, int(max_i32), int(min_i32), max_int - 1, max_int, min_int + 1, min_int]
+	if sizeof(int) == sizeof(i64) {
+		digit_boundary := i64(1) << big.digit_bits
+		for value in [i64(max_i32) + 1, i64(min_i32) - 1, i64(max_u32), i64(max_u32) + 1,
+			digit_boundary - 1, digit_boundary, digit_boundary + 1, -(digit_boundary - 1),
+			-digit_boundary, -(digit_boundary + 1), digit_boundary << 1] {
+			values << int(value)
+		}
+	}
+	for value in values {
+		a := big.integer_from_int(value)
+		assert a.str() == value.str()
+		assert a == big.integer_from_i64(i64(value))
+		assert a == big.integer_from_string(value.str())!
+		assert (a + big.one_int) - big.one_int == a
+		assert (a * big.two_int).right_shift(1) == a
+	}
+}
+
 fn test_integer_from_string_rejects_no_digits() {
 	// an empty digit sequence is not a number: Go's big.Int.SetString
 	// returns _, false for all three
