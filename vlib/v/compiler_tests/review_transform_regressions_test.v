@@ -379,9 +379,9 @@ fn main() {
 	assert out == 'true'
 }
 
-fn test_aggregate_boxed_value_equality() {
+fn test_boxed_and_nested_collection_equality() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'aggregate_boxed_value_equality', [
+	run_good_module_batch(v3_bin, 'boxed_and_nested_collection_equality', [
 		TransformFixture{'map_interface_equality_typed_get', 'interface Value {
 	n int
 }
@@ -405,12 +405,15 @@ fn main() {
 }
 ', 'true'},
 		TransformFixture{'struct_eq_interface_field', "interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\nstruct Box {\n\tthing Thing\n\tlabel string\n}\n\nfn main() {\n\titem := Item{\n\t\tn: 7\n\t}\n\tleft := Box{\n\t\tthing: item\n\t\tlabel: 'same'\n\t}\n\tright := left\n\tprintln(left == right)\n}\n", 'true'},
+		TransformFixture{'semantic_array_equality', "struct Child {\n\tlabel string\n}\n\nstruct Item {\n\tname string\n\tparts []string\n\tnested [][]string\n\tchildren []Child\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := [Item{\n\t\tname: 'hi'.clone()\n\t\tparts: ['ab'.clone()]\n\t\tnested: [[join('n', 'est')]]\n\t\tchildren: [Child{\n\t\t\tlabel: 'kid'.clone()\n\t\t}]\n\t}]\n\tright := [Item{\n\t\tname: join('h', 'i')\n\t\tparts: [join('a', 'b')]\n\t\tnested: [['nest'.clone()]]\n\t\tchildren: [Child{\n\t\t\tlabel: join('k', 'id')\n\t\t}]\n\t}]\n\tmaps_left := [{\n\t\t'k': 'value'.clone()\n\t}]\n\tmaps_right := [{\n\t\t'k': join('val', 'ue')\n\t}]\n\tnested_left := [[join('y', 'o')]]\n\tnested_right := [['yo'.clone()]]\n\tchild_map_left := {\n\t\t'items': [Child{\n\t\t\tlabel: 'mapkid'.clone()\n\t\t}]\n\t}\n\tchild_map_right := {\n\t\t'items': [Child{\n\t\t\tlabel: join('map', 'kid')\n\t\t}]\n\t}\n\tneedle := Item{\n\t\tname: join('h', 'i')\n\t\tparts: [join('a', 'b')]\n\t\tnested: [['nest'.clone()]]\n\t\tchildren: [Child{\n\t\t\tlabel: join('k', 'id')\n\t\t}]\n\t}\n\tprintln(left == right)\n\tprintln(left.equals(right))\n\tprintln(maps_left == maps_right)\n\tprintln(nested_left == nested_right)\n\tprintln(child_map_left == child_map_right)\n\tprintln(needle in left)\n\tprintln(int_str(left.index(needle)))\n}\n", 'true\ntrue\ntrue\ntrue\ntrue\ntrue\n0'},
+		TransformFixture{'nested_map_semantic_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nstruct Holder {\n\titems map[string][]Item\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tmut left_map := map[string][]Item{}\n\tleft_map['items'] = [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}]\n\tmut right_map := map[string][]Item{}\n\tright_map['items'] = [Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tleft_arr := [left_map]\n\tright_arr := [right_map]\n\tleft_holder := Holder{\n\t\titems: left_map\n\t}\n\tright_holder := Holder{\n\t\titems: right_map\n\t}\n\tprintln(left_arr == right_arr)\n\tprintln(left_holder == right_holder)\n}\n", 'true\ntrue'},
+		TransformFixture{'fixed_array_semantic_equality', "fn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := [[1]string{init: 'ab'.clone()}]\n\tright := [[1]string{init: join('a', 'b')}]\n\tmut map_left := map[string][1]string{}\n\tmap_left['k'] = [1]string{init: 'cd'.clone()}\n\tmut map_right := map[string][1]string{}\n\tmap_right['k'] = [1]string{init: join('c', 'd')}\n\tmut ints_left := map[string][2]i64{}\n\tints_left['k'] = [i64(1), i64(0)]!\n\tmut ints_right := map[string][2]i64{}\n\tints_right['k'] = [i64(2), i64(0)]!\n\tprintln(left == right)\n\tprintln(left.equals(right))\n\tprintln(map_left == map_right)\n\tprintln(ints_left == ints_right)\n}\n", 'true\ntrue\ntrue\nfalse'},
 	])
 }
 
-fn test_map_append_value_paths() {
+fn test_map_and_optional_append_paths() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'map_append_value_paths', [
+	run_good_module_batch(v3_bin, 'map_and_optional_append_paths', [
 		TransformFixture{'array_append_to_map_value_struct_field', 'struct Item {
 mut:
 	values []int
@@ -448,6 +451,39 @@ fn main() {
 	println(int_str(values[0][1]))
 }
 ', '1\n2'},
+		TransformFixture{'optional_append_to_map_value_copyback', 'fn next_value() ?int {
+	return 7
+}
+
+fn append_value(mut values map[string][]int) {
+	values["new"] << next_value() or { return }
+}
+
+fn main() {
+	mut values := map[string][]int{}
+	append_value(mut values)
+	println("new" in values)
+	println(int_str(values["new"][0]))
+}
+', 'true\n7'},
+		TransformFixture{'optional_map_append_evaluation_order', 'struct State {\nmut:\n\tkey   string\n\ttrace string\n}\n\nfn select_key(key string, mut state State) string {\n\tstate.trace += "key"\n\treturn key\n}\n\nfn next_value(mut state State) ?int {\n\tstate.trace += "rhs"\n\tstate.key = "changed"\n\treturn 7\n}\n\nfn main() {\n\tmut state := State{\n\t\tkey: "original"\n\t}\n\tmut values := map[string][]int{}\n\tvalues[select_key(state.key, mut state)] << next_value(mut state) or { return }\n\tprintln(state.trace)\n\tprintln(int_str(values["original"][0]))\n\tprintln("changed" in values)\n}\n', 'keyrhs\n7\nfalse'},
+		TransformFixture{'optional_shift_rhs_evaluated_once', 'struct Counter {
+mut:
+	value int
+}
+
+fn next_value(mut calls Counter) ?int {
+	calls.value++
+	return 1
+}
+
+fn main() {
+	mut calls := Counter{}
+	flags := 2
+	flags << next_value(mut calls) or { return }
+	println(int_str(calls.value))
+}
+', '1'},
 	])
 }
 
@@ -1112,11 +1148,34 @@ fn gen_c_from_project_with_flags(v3_bin string, name string, flags string, files
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn test_mutable_parameter_interpolation() {
+fn test_mutable_parameter_and_closure_captures() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'mutable_parameter_interpolation', [
+	run_good_module_batch(v3_bin, 'mutable_parameter_and_closure_captures', [
 		TransformFixture{'lifted_literal_mut_param_interpolation', 'struct Counter {\n\tvalue int\n}\n\nfn main() {\n\tmut counter := Counter{\n\t\tvalue: 7\n\t}\n\tf := fn (mut value Counter) {\n\t\tprintln("\${value.value}")\n\t}\n\tf(mut counter)\n}\n', '7'},
 		TransformFixture{'fn_literal_mut_param_interp', "struct Counter {\n\tvalue int\n}\n\nfn show(mut counter Counter) {\n\t_ := fn () {}\n\tprintln('\${counter.value}')\n}\n\nfn main() {\n\tmut counter := Counter{\n\t\tvalue: 42\n\t}\n\tshow(mut counter)\n}\n", '42'},
+		// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a
+		// genuine `&S` local: its rvalue uses must not be over-dereferenced, so a call that
+		// expects the pointer still receives it (regression for gating the pointer-value
+		// rvalue/lvalue flags on `capture_by_ref` instead of every `capture_mut`).
+		TransformFixture{'mut_pointer_capture', 'struct S {\n\tn int\n}\n\nfn takes_ptr(p &S) int {\n\treturn p.n\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut p := &S{\n\t\tn: 5\n\t}\n\tcall(fn [mut p] () {\n\t\tprintln(int_str(takes_ptr(p)))\n\t})\n}\n', '5'},
+		// `[mut value]` gives each closure its own copy: 52 + 141 + 41.
+		TransformFixture{'nested_capture_of_mut_capture', 'fn main() {
+	mut value := 41
+	outer := fn [mut value] () int {
+		inner := fn [mut value] () int {
+			value += 10
+			return value + 1
+		}
+		first := inner()
+		snapshot := fn [value] () int {
+			return value + 100
+		}
+		return first + snapshot() + value
+	}
+	println(int_str(outer()))
+	println(int_str(value))
+}
+', '234\n41'},
 	])
 }
 
@@ -1597,9 +1656,9 @@ fn test_nested_inferred_fixed_array_literal_parses() {
 	run_bad(v3_bin, 'ragged_nested_inferred_fixed_array_literal', 'fn main() {\n\t_ := [..][..]int[[1], [2, 3]]\n}\n', 'inferred fixed-array literal rows must have the same size')
 }
 
-fn test_shared_fields_and_mutating_methods() {
+fn test_shared_field_and_receiver_access() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'shared_fields_and_mutating_methods', [
+	run_good_module_batch(v3_bin, 'shared_field_and_receiver_access', [
 		TransformFixture{'shared_field_without_sync_import', 'struct S {\nmut:\n\ta shared int\n}\n\nfn main() {\n\tmut s := S{}\n\tlock s.a {\n\t\ts.a = 7\n\t\tprintln(int_str(s.a))\n\t}\n}\n', '7'},
 		TransformFixture{'direct_shared_lock_mut_receiver_and_append', 'struct State {
 mut:
@@ -1627,12 +1686,16 @@ fn main() {
 	println(int_str(len))
 }
 ', '1\n1'},
+		TransformFixture{'nested_shared_field_lock', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut coordinator := Coordinator{}\n\tlock coordinator.state {\n\t\tcoordinator.state.value = 7\n\t}\n\tmut value := 0\n\trlock coordinator.state {\n\t\tvalue = coordinator.state.value\n\t}\n\tprintln(int_str(value))\n}\n', '7'},
+		TransformFixture{'nested_shared_field_lock_distinct_literal_index', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut items := [&first, &second]\n\tlock items[0].state {\n\t\titems[1] = &first\n\t\titems[0].state.value = 7\n\t\tprintln(int_str(items[0].state.value))\n\t}\n}\n', '7'},
+		TransformFixture{'nested_shared_field_lock_distinct_explicit_capture_pointer', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tcallback := fn [mut holder, mut unrelated, replacement] () {\n\t\tlock holder.current.state {\n\t\t\tunrelated.current = &replacement\n\t\t\tholder.current.state.value = 31\n\t\t\tprintln(int_str(holder.current.state.value))\n\t\t}\n\t}\n\tcallback()\n}\n', '31'},
+		TransformFixture{'nested_shared_field_lock_distinct_indirect_pointer_write', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut slot := &unrelated\n\tlock holder.current.state {\n\t\tunsafe {\n\t\t\t*slot = &Holder{\n\t\t\t\tcurrent: &replacement\n\t\t\t}\n\t\t}\n\t\tholder.current.state.value = 23\n\t\tprintln(int_str(holder.current.state.value))\n\t}\n}\n', '23'},
 	])
 }
 
-fn test_sum_smartcast_scopes() {
+fn test_sum_boxing_and_smartcast_scopes() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'sum_smartcast_scopes', [
+	run_good_module_batch(v3_bin, 'sum_boxing_and_smartcast_scopes', [
 		TransformFixture{'unsafe_block_tail_lexical_smartcast', 'struct LambdaNode {
 mut:
 	value int
@@ -1655,16 +1718,34 @@ fn main() {
 ', '7'},
 		TransformFixture{'negative_is_return_smartcast', 'struct MapKind {\n\tkey_type int\n\tvalue_type int\n}\nstruct OtherKind {}\ntype Kind = MapKind | OtherKind\n\nfn passthrough(k Kind) Kind {\n\treturn k\n}\n\nfn score(k Kind) int {\n\tclean := passthrough(k)\n\tif clean !is MapKind {\n\t\treturn 0\n\t}\n\treturn clean.key_type + clean.value_type\n}\n\nfn main() {\n\tprintln(int_str(score(Kind(MapKind{\n\t\tkey_type: 2\n\t\tvalue_type: 5\n\t}))))\n\tprintln(int_str(score(Kind(OtherKind{}))))\n}\n', '7\n0'},
 		TransformFixture{'if_expr_selector_decl_smartcast_local', 'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\ntype Animal = Cat | Dog\n\nstruct Ident {\n\tobj Animal\n}\n\nfn has_age(cat Cat) bool {\n\treturn cat.age == 3\n}\n\nfn main() {\n\tleft := Ident{\n\t\tobj: Animal(Cat{\n\t\t\tage: 2\n\t\t})\n\t}\n\tmut obj := if left.obj is Cat {\n\t\tleft.obj\n\t} else {\n\t\tCat{}\n\t}\n\tif true {\n\t\tobj = Cat{\n\t\t\tage: 3\n\t\t}\n\t}\n\tprintln(has_age(obj))\n}\n', 'true'},
-	])
+		TransformFixture{'recursive_sum_same_type_cast', 'type Tree = int | []Tree
+
+fn leaf(value int) Tree {
+	return Tree(value)
 }
 
-fn test_nested_shared_field_access() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'nested_shared_field_access', [
-		TransformFixture{'nested_shared_field_lock', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut coordinator := Coordinator{}\n\tlock coordinator.state {\n\t\tcoordinator.state.value = 7\n\t}\n\tmut value := 0\n\trlock coordinator.state {\n\t\tvalue = coordinator.state.value\n\t}\n\tprintln(int_str(value))\n}\n', '7'},
-		TransformFixture{'nested_shared_field_lock_distinct_literal_index', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut items := [&first, &second]\n\tlock items[0].state {\n\t\titems[1] = &first\n\t\titems[0].state.value = 7\n\t\tprintln(int_str(items[0].state.value))\n\t}\n}\n', '7'},
-		TransformFixture{'nested_shared_field_lock_distinct_explicit_capture_pointer', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tcallback := fn [mut holder, mut unrelated, replacement] () {\n\t\tlock holder.current.state {\n\t\t\tunrelated.current = &replacement\n\t\t\tholder.current.state.value = 31\n\t\t\tprintln(int_str(holder.current.state.value))\n\t\t}\n\t}\n\tcallback()\n}\n', '31'},
-		TransformFixture{'nested_shared_field_lock_distinct_indirect_pointer_write', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut slot := &unrelated\n\tlock holder.current.state {\n\t\tunsafe {\n\t\t\t*slot = &Holder{\n\t\t\t\tcurrent: &replacement\n\t\t\t}\n\t\t}\n\t\tholder.current.state.value = 23\n\t\tprintln(int_str(holder.current.state.value))\n\t}\n}\n', '23'},
+fn main() {
+	tree := Tree([leaf(1), leaf(2)])
+	assert tree == Tree([Tree(1), Tree(2)])
+	println("ok")
+}
+', 'ok'},
+		TransformFixture{'call_arg_sum_temp_before_block', 'struct Item {}
+
+struct Other {}
+
+type Node = Item | Other
+
+fn inspect(node &Node, data voidptr) {
+	println(node is Item)
+	println(data == unsafe { nil })
+}
+
+fn main() {
+	item := &Item{}
+	inspect(Node(*item), unsafe { nil })
+}
+', 'true\ntrue'},
 	])
 }
 
@@ -1966,9 +2047,9 @@ fn test_nested_shared_field_lock_rejects_overloaded_index() {
 	run_bad(v3_bin, 'nested_shared_field_lock_overloaded_index', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Registry {\n\tentries []&Coordinator\n}\n\nfn (registry Registry) [] (key int) &Coordinator {\n\treturn registry.entries[key]\n}\n\nfn main() {\n\tmut coordinator := Coordinator{}\n\tmut registry := Registry{\n\t\tentries: [&coordinator]\n\t}\n\tkey := 0\n\tlock registry[key].state {\n\t\tregistry[key].state.value = 7\n\t}\n}\n', 'selector bases and indices must be stable expressions')
 }
 
-fn test_pointer_value_storage() {
+fn test_pointer_values_and_storage() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'pointer_value_storage', [
+	run_good_module_batch(v3_bin, 'pointer_values_and_storage', [
 		TransformFixture{'reassigned_nil_pointer', 'fn main() {\n\tmut pointer := &int(unsafe { nil })\n\tmut value := 7\n\tpointer = &value\n\tprintln(int_str(*pointer))\n}\n', '7'},
 		TransformFixture{'address_of_nil_pointer_cast_storage', 'struct Holder {
 	ptr voidptr
@@ -2007,6 +2088,8 @@ fn main() {
 	println(handle == RawHandle(unsafe { nil }))
 }
 ', '9\ntrue\ntrue'},
+		TransformFixture{'pointer_u8_array_bytestr', 'fn show(data &[]u8) string {\n\treturn data.bytestr()\n}\n\nfn main() {\n\tbytes := [u8(104), u8(105)]\n\tprintln(show(&bytes))\n}\n', 'hi'},
+		TransformFixture{'string_pointer_comparison', "fn main() {\n\tleft := 'same'.clone()\n\tright := 'same'.clone()\n\tpleft := &left\n\tpright := &right\n\tprintln(pleft == pright)\n\tprintln(pleft != pright)\n\tprintln(*pleft == *pright)\n}\n", 'false\ntrue\ntrue'},
 	])
 }
 
@@ -2055,15 +2138,6 @@ fn test_reject_dynamic_arrays_for_fixed_array_expectations() {
 			source:   'fn take(a [4]int) int {\n\treturn a[0] + a[1] + a[2] + a[3]\n}\n\nfn main() {\n\tprintln(int_str(take([4]int{init: index * index})))\n}\n'
 			expected: '14'
 		},
-	])
-}
-
-fn test_nested_collection_equality() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'nested_collection_equality', [
-		TransformFixture{'semantic_array_equality', "struct Child {\n\tlabel string\n}\n\nstruct Item {\n\tname string\n\tparts []string\n\tnested [][]string\n\tchildren []Child\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := [Item{\n\t\tname: 'hi'.clone()\n\t\tparts: ['ab'.clone()]\n\t\tnested: [[join('n', 'est')]]\n\t\tchildren: [Child{\n\t\t\tlabel: 'kid'.clone()\n\t\t}]\n\t}]\n\tright := [Item{\n\t\tname: join('h', 'i')\n\t\tparts: [join('a', 'b')]\n\t\tnested: [['nest'.clone()]]\n\t\tchildren: [Child{\n\t\t\tlabel: join('k', 'id')\n\t\t}]\n\t}]\n\tmaps_left := [{\n\t\t'k': 'value'.clone()\n\t}]\n\tmaps_right := [{\n\t\t'k': join('val', 'ue')\n\t}]\n\tnested_left := [[join('y', 'o')]]\n\tnested_right := [['yo'.clone()]]\n\tchild_map_left := {\n\t\t'items': [Child{\n\t\t\tlabel: 'mapkid'.clone()\n\t\t}]\n\t}\n\tchild_map_right := {\n\t\t'items': [Child{\n\t\t\tlabel: join('map', 'kid')\n\t\t}]\n\t}\n\tneedle := Item{\n\t\tname: join('h', 'i')\n\t\tparts: [join('a', 'b')]\n\t\tnested: [['nest'.clone()]]\n\t\tchildren: [Child{\n\t\t\tlabel: join('k', 'id')\n\t\t}]\n\t}\n\tprintln(left == right)\n\tprintln(left.equals(right))\n\tprintln(maps_left == maps_right)\n\tprintln(nested_left == nested_right)\n\tprintln(child_map_left == child_map_right)\n\tprintln(needle in left)\n\tprintln(int_str(left.index(needle)))\n}\n", 'true\ntrue\ntrue\ntrue\ntrue\ntrue\n0'},
-		TransformFixture{'nested_map_semantic_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nstruct Holder {\n\titems map[string][]Item\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tmut left_map := map[string][]Item{}\n\tleft_map['items'] = [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}]\n\tmut right_map := map[string][]Item{}\n\tright_map['items'] = [Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tleft_arr := [left_map]\n\tright_arr := [right_map]\n\tleft_holder := Holder{\n\t\titems: left_map\n\t}\n\tright_holder := Holder{\n\t\titems: right_map\n\t}\n\tprintln(left_arr == right_arr)\n\tprintln(left_holder == right_holder)\n}\n", 'true\ntrue'},
-		TransformFixture{'fixed_array_semantic_equality', "fn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := [[1]string{init: 'ab'.clone()}]\n\tright := [[1]string{init: join('a', 'b')}]\n\tmut map_left := map[string][1]string{}\n\tmap_left['k'] = [1]string{init: 'cd'.clone()}\n\tmut map_right := map[string][1]string{}\n\tmap_right['k'] = [1]string{init: join('c', 'd')}\n\tmut ints_left := map[string][2]i64{}\n\tints_left['k'] = [i64(1), i64(0)]!\n\tmut ints_right := map[string][2]i64{}\n\tints_right['k'] = [i64(2), i64(0)]!\n\tprintln(left == right)\n\tprintln(left.equals(right))\n\tprintln(map_left == map_right)\n\tprintln(ints_left == ints_right)\n}\n", 'true\ntrue\ntrue\nfalse'},
 	])
 }
 
@@ -2176,35 +2250,6 @@ fn test_heap_attribute_does_not_promote_channel_with_imported_pointer_element() 
 		'main.v':       'module main\n\nimport items\n\nfn main() {\n\tch := chan &items.Item{cap: 1}\n\tch <- &items.Item{\n\t\tvalue: 42\n\t}\n\titem := <-ch\n\tprintln(int_str(item.value))\n}\n'
 	}, 'main.v')
 	assert out == '42'
-}
-
-fn test_mutable_closure_captures() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'mutable_closure_captures', [
-		// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a
-		// genuine `&S` local: its rvalue uses must not be over-dereferenced, so a call that
-		// expects the pointer still receives it (regression for gating the pointer-value
-		// rvalue/lvalue flags on `capture_by_ref` instead of every `capture_mut`).
-		TransformFixture{'mut_pointer_capture', 'struct S {\n\tn int\n}\n\nfn takes_ptr(p &S) int {\n\treturn p.n\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut p := &S{\n\t\tn: 5\n\t}\n\tcall(fn [mut p] () {\n\t\tprintln(int_str(takes_ptr(p)))\n\t})\n}\n', '5'},
-		// `[mut value]` gives each closure its own copy: 52 + 141 + 41.
-		TransformFixture{'nested_capture_of_mut_capture', 'fn main() {
-	mut value := 41
-	outer := fn [mut value] () int {
-		inner := fn [mut value] () int {
-			value += 10
-			return value + 1
-		}
-		first := inner()
-		snapshot := fn [value] () int {
-			return value + 100
-		}
-		return first + snapshot() + value
-	}
-	println(int_str(outer()))
-	println(int_str(value))
-}
-', '234\n41'},
-	])
 }
 
 fn test_non_escaping_local_closures_are_reclaimed_in_hot_loop() {
@@ -5052,14 +5097,6 @@ fn test_aggregate_pointer_equality() {
 	])
 }
 
-fn test_pointer_array_and_string_values() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'pointer_array_and_string_values', [
-		TransformFixture{'pointer_u8_array_bytestr', 'fn show(data &[]u8) string {\n\treturn data.bytestr()\n}\n\nfn main() {\n\tbytes := [u8(104), u8(105)]\n\tprintln(show(&bytes))\n}\n', 'hi'},
-		TransformFixture{'string_pointer_comparison', "fn main() {\n\tleft := 'same'.clone()\n\tright := 'same'.clone()\n\tpleft := &left\n\tpright := &right\n\tprintln(pleft == pright)\n\tprintln(pleft != pright)\n\tprintln(*pleft == *pright)\n}\n", 'false\ntrue\ntrue'},
-	])
-}
-
 fn test_cyclic_interface_default_does_not_deref_nil_global() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'cyclic_interface_default', {
@@ -5092,11 +5129,60 @@ fn test_array_repeat_safe_wrapper_compiles_in_prod() {
 	run_bad_with_flags(v3_bin, 'array_repeat_to_depth_prod', '-prod', 'fn main() {\n\t_ := [1, 2, 3].repeat_to_depth(2, 0)\n}\n', 'must be called from an `unsafe` block')
 }
 
-fn test_comptime_type_conditions() {
+fn test_comptime_type_conditions_and_inference() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'comptime_type_conditions', [
+	run_good_module_batch(v3_bin, 'comptime_type_conditions_and_inference', [
 		TransformFixture{'comptime_type_condition_logical_ops', "fn classify[T](x T) int {\n\t_ := x\n\t\$if T !is string && T !is \$int && T !is []u8 {\n\t\treturn 1\n\t} \$else {\n\t\treturn 2\n\t}\n\treturn 0\n}\n\nfn grouped[T](x T) int {\n\t_ := x\n\t\$if (T is int || T is string) && T is bool {\n\t\treturn 1\n\t} \$else {\n\t\treturn 2\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(int_str(classify('abc')))\n\tprintln(int_str(classify(3)))\n\tprintln(int_str(classify([u8(1)])))\n\tprintln(int_str(classify(1.5)))\n\tprintln(int_str(grouped(3)))\n\tprintln(int_str(grouped('abc')))\n}\n", '2\n2\n2\n1\n2\n2'},
 		TransformFixture{'comptime_type_condition_prefix_types', 'struct Foo {}\n\nfn main() {\n\t\$if ?int is ?int {\n\t\tprintln("opt")\n\t} \$else {\n\t\tprintln("badopt")\n\t}\n\t\$if !Foo is !Foo {\n\t\tprintln("res")\n\t} \$else {\n\t\tprintln("badres")\n\t}\n}\n', 'opt\nres'},
+		TransformFixture{'generic_marker_string_literal', "fn marker_and_type[T](value T) string {\n\tmarker := '__v3_generic_type_name:T'\n\treturn marker + '|' + typeof(value).name\n}\n\nfn main() {\n\tprintln(marker_and_type(7))\n}\n", '__v3_generic_type_name:T|int'},
+		TransformFixture{'generic_typeof_idx_comparison', 'fn pick_idx[T]() int {
+	$if typeof[T]().idx == typeof[int]().idx {
+		return 42
+	} $else {
+		return T.missing_method()
+	}
+}
+
+fn concrete_idx() int {
+	$if typeof[int]().idx == typeof[int]().idx {
+		return 1
+	} $else {
+		return 2
+	}
+}
+
+fn main() {
+	println(concrete_idx())
+	println(pick_idx[int]())
+}
+', '1\n42'},
+		TransformFixture{'comptime_field_generic_shadowing_local', 'struct Sample {
+	values map[string]int
+}
+
+fn inferred_type[T](value T) string {
+	_ = value
+	return typeof[T]().name
+}
+
+fn main() {
+	sample := Sample{
+		values: {
+			"one": 1
+		}
+	}
+	$for field in Sample.fields {
+		$if field.is_map {
+			for key, value in sample.$(field.name) {
+				_ = key
+				_ = value
+			}
+			key := 1.5
+			println(inferred_type(key))
+		}
+	}
+}
+', 'f64'},
 	])
 }
 
@@ -5215,9 +5301,9 @@ fn test_array_slice_and_last_index() {
 	])
 }
 
-fn test_map_iteration_and_access() {
+fn test_map_iteration_and_stringification() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'map_iteration_and_access', [
+	run_good_module_batch(v3_bin, 'map_iteration_and_stringification', [
 		TransformFixture{'map_keys_values_lowering', "fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tsingle := {\n\t\t'only': 9\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n\tprintln(int_str(single.keys().len))\n\tprintln(single.keys()[0])\n\tprintln(int_str(single.values().len))\n\tprintln(int_str(single.values()[0]))\n}\n", '2\n2\n3\n1\nonly\n1\n9'},
 		TransformFixture{'mut_map_for_in_writeback_continue_break', 'struct Box {
 mut:
@@ -5243,12 +5329,6 @@ fn main() {
 	println(once["x"].n)
 }
 ', '11\n12\n9'},
-	])
-}
-
-fn test_map_numeric_stringification() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'map_numeric_stringification', [
 		TransformFixture{'map_str_signed_wide_entries', "fn main() {\n\tvalue_map := {\n\t\t'x': i64(5000000000)\n\t}\n\tkey_map := {\n\t\ti64(-5000000000): 'x'\n\t}\n\tprintln(value_map.str())\n\tprintln(key_map.str())\n}\n", "{'x': 5000000000}\n{-5000000000: 'x'}"},
 		TransformFixture{'map_str_alias_kinds', "type ID = int\n\ntype Amount = f64\n\nfn main() {\n\tids := {\n\t\tID(23): 'id'\n\t}\n\tamounts := {\n\t\t'price': Amount(1.25)\n\t}\n\tprintln('\${ids}')\n\tprintln('\${amounts}')\n}\n", "{23: 'id'}\n{'price': 1.25}"},
 		TransformFixture{'mut_map_param_interpolation', "type Scores = map[string]int\n\nfn show(mut m map[string]int) {\n\tprintln('\${m}')\n}\n\nfn show_alias(mut m Scores) {\n\tprintln('\${m}')\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm['x'] = 3\n\tshow(mut m)\n\tmut scores := Scores(map[string]int{})\n\tscores['y'] = 4\n\tshow_alias(mut scores)\n}\n", "{'x': 3}\n{'y': 4}"},
@@ -5286,61 +5366,6 @@ fn test_runes_iterator_index_is_loop_scoped() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'runes_iterator_index_scope', "fn main() {\n\tfor i, r in 'ab'.runes_iterator() {\n\t\t_ := r\n\t\tprintln(int_str(i))\n\t}\n\ti := 9\n\tprintln(int_str(i))\n}\n")
 	assert out == '0\n1\n9'
-}
-
-fn test_comptime_type_inference() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'comptime_type_inference', [
-		TransformFixture{'generic_marker_string_literal', "fn marker_and_type[T](value T) string {\n\tmarker := '__v3_generic_type_name:T'\n\treturn marker + '|' + typeof(value).name\n}\n\nfn main() {\n\tprintln(marker_and_type(7))\n}\n", '__v3_generic_type_name:T|int'},
-		TransformFixture{'generic_typeof_idx_comparison', 'fn pick_idx[T]() int {
-	$if typeof[T]().idx == typeof[int]().idx {
-		return 42
-	} $else {
-		return T.missing_method()
-	}
-}
-
-fn concrete_idx() int {
-	$if typeof[int]().idx == typeof[int]().idx {
-		return 1
-	} $else {
-		return 2
-	}
-}
-
-fn main() {
-	println(concrete_idx())
-	println(pick_idx[int]())
-}
-', '1\n42'},
-		TransformFixture{'comptime_field_generic_shadowing_local', 'struct Sample {
-	values map[string]int
-}
-
-fn inferred_type[T](value T) string {
-	_ = value
-	return typeof[T]().name
-}
-
-fn main() {
-	sample := Sample{
-		values: {
-			"one": 1
-		}
-	}
-	$for field in Sample.fields {
-		$if field.is_map {
-			for key, value in sample.$(field.name) {
-				_ = key
-				_ = value
-			}
-			key := 1.5
-			println(inferred_type(key))
-		}
-	}
-}
-', 'f64'},
-	])
 }
 
 fn test_parallel_monomorphization_grows_uneven_worker_regions() {
@@ -5789,12 +5814,29 @@ fn test_hierarchical_import_runtime_inits_before_importer_init() {
 	assert out == '41'
 }
 
-fn test_emitted_generic_specializations() {
+fn test_generic_array_arguments_and_specializations() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'emitted_generic_specializations', [
+	run_good_module_batch(v3_bin, 'generic_array_arguments_and_specializations', [
 		TransformFixture{'lowered_generic_operator_call_records_specialization', 'struct Box[T] {\n\tv T\n}\n\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\n\nfn main() {\n\tleft := Box[int]{\n\t\tv: 2\n\t}\n\tright := Box[int]{\n\t\tv: 5\n\t}\n\tresult := left + right\n\tprintln(int_str(result.v))\n}\n', '7'},
 		TransformFixture{'late_inferred_generic_call_emits_specialization', 'fn make[T]() T {\n\treturn T(41)\n}\n\nfn use[T](value T) T {\n\treturn value + T(1)\n}\n\nfn main() {\n\tx := make[int]()\n\tprintln(int_str(use(x)))\n}\n', '42'},
 		TransformFixture{'late_reachable_body_generic_call_emits_specialization', 'fn identity[T](value T) T {\n\treturn value\n}\n\nfn late_helper() int {\n\treturn identity[int](42)\n}\n\nfn outer[T]() int {\n\treturn late_helper()\n}\n\nfn main() {\n\tprintln(int_str(outer[int]()))\n}\n', '42'},
+		TransformFixture{'explicit_nested_array_generic_argument', 'fn make[T]() T {
+	return T{}
+}
+
+fn main() {
+	value := make[[][]int]()
+	println(typeof(value).name)
+}
+', '[][]int'},
+		TransformFixture{'for_in_generic_call_nested_array_element', 'import arrays
+
+fn main() {
+	for part in arrays.chunk("ABCD".bytes(), 2) {
+		println(part[0])
+	}
+}
+', '65\n67'},
 	])
 }
 
@@ -5880,45 +5922,6 @@ fn main() {
 	println(nested)
 }
 ', '[[1, 2, 3, 4, 5, 6]]'},
-	])
-}
-
-fn test_optional_map_and_array_append() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'optional_map_and_array_append', [
-		TransformFixture{'optional_append_to_map_value_copyback', 'fn next_value() ?int {
-	return 7
-}
-
-fn append_value(mut values map[string][]int) {
-	values["new"] << next_value() or { return }
-}
-
-fn main() {
-	mut values := map[string][]int{}
-	append_value(mut values)
-	println("new" in values)
-	println(int_str(values["new"][0]))
-}
-', 'true\n7'},
-		TransformFixture{'optional_map_append_evaluation_order', 'struct State {\nmut:\n\tkey   string\n\ttrace string\n}\n\nfn select_key(key string, mut state State) string {\n\tstate.trace += "key"\n\treturn key\n}\n\nfn next_value(mut state State) ?int {\n\tstate.trace += "rhs"\n\tstate.key = "changed"\n\treturn 7\n}\n\nfn main() {\n\tmut state := State{\n\t\tkey: "original"\n\t}\n\tmut values := map[string][]int{}\n\tvalues[select_key(state.key, mut state)] << next_value(mut state) or { return }\n\tprintln(state.trace)\n\tprintln(int_str(values["original"][0]))\n\tprintln("changed" in values)\n}\n', 'keyrhs\n7\nfalse'},
-		TransformFixture{'optional_shift_rhs_evaluated_once', 'struct Counter {
-mut:
-	value int
-}
-
-fn next_value(mut calls Counter) ?int {
-	calls.value++
-	return 1
-}
-
-fn main() {
-	mut calls := Counter{}
-	flags := 2
-	flags << next_value(mut calls) or { return }
-	println(int_str(calls.value))
-}
-', '1'},
 	])
 }
 
@@ -11939,66 +11942,9 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
-fn test_sum_value_boxing() {
+fn test_struct_initializers_and_params_arguments() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'sum_value_boxing', [
-		TransformFixture{'recursive_sum_same_type_cast', 'type Tree = int | []Tree
-
-fn leaf(value int) Tree {
-	return Tree(value)
-}
-
-fn main() {
-	tree := Tree([leaf(1), leaf(2)])
-	assert tree == Tree([Tree(1), Tree(2)])
-	println("ok")
-}
-', 'ok'},
-		TransformFixture{'call_arg_sum_temp_before_block', 'struct Item {}
-
-struct Other {}
-
-type Node = Item | Other
-
-fn inspect(node &Node, data voidptr) {
-	println(node is Item)
-	println(data == unsafe { nil })
-}
-
-fn main() {
-	item := &Item{}
-	inspect(Node(*item), unsafe { nil })
-}
-', 'true\ntrue'},
-	])
-}
-
-fn test_generic_nested_array_arguments() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'generic_nested_array_arguments', [
-		TransformFixture{'explicit_nested_array_generic_argument', 'fn make[T]() T {
-	return T{}
-}
-
-fn main() {
-	value := make[[][]int]()
-	println(typeof(value).name)
-}
-', '[][]int'},
-		TransformFixture{'for_in_generic_call_nested_array_element', 'import arrays
-
-fn main() {
-	for part in arrays.chunk("ABCD".bytes(), 2) {
-		println(part[0])
-	}
-}
-', '65\n67'},
-	])
-}
-
-fn test_struct_initializer_contexts() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'struct_initializer_contexts', [
+	run_good_module_batch(v3_bin, 'struct_initializers_and_params_arguments', [
 		TransformFixture{'flag_enum_struct_field_default', '@[flag]
 enum Mode {
 	read
@@ -12052,6 +11998,58 @@ fn main() {
 	}
 }
 ', '7\n5\n3\ntrue'},
+		TransformFixture{'params_struct_branch_field_order', 'struct Config {
+	size  int
+	color int
+}
+
+fn draw(text string, config Config) {
+	println(text + ":" + int_str(config.size) + ":" + int_str(config.color))
+}
+
+fn main() {
+	enabled := true
+	draw(if enabled { "yes" } else { "no" },
+		size:  if enabled { 16 } else { 20 }
+		color: if enabled { 1 } else { 2 }
+	)
+}
+', 'yes:16:1'},
+		TransformFixture{'params_struct_bound_method_values', 'type Callback = fn (voidptr)
+
+struct Config {
+	init_fn  Callback
+	frame_fn Callback
+}
+
+@[heap]
+struct App {
+mut:
+	trace string
+}
+
+fn (mut app App) init() {
+	app.trace += "init"
+}
+
+fn (mut app App) frame(_ voidptr) {
+	app.trace += ":frame"
+}
+
+fn run(config Config) {
+	config.init_fn(unsafe { nil })
+	config.frame_fn(unsafe { nil })
+}
+
+fn main() {
+	mut app := &App{}
+	run(
+		init_fn:  app.init
+		frame_fn: app.frame
+	)
+	println(app.trace)
+}
+', 'init:frame'},
 	])
 }
 
@@ -13485,62 +13483,4 @@ pub fn slice_indexes_equal(left SliceIndex, right SliceIndex) bool {
 '
 	}, 'main.v')
 	assert out == 'true'
-}
-
-fn test_params_struct_call_arguments() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'params_struct_call_arguments', [
-		TransformFixture{'params_struct_branch_field_order', 'struct Config {
-	size  int
-	color int
-}
-
-fn draw(text string, config Config) {
-	println(text + ":" + int_str(config.size) + ":" + int_str(config.color))
-}
-
-fn main() {
-	enabled := true
-	draw(if enabled { "yes" } else { "no" },
-		size:  if enabled { 16 } else { 20 }
-		color: if enabled { 1 } else { 2 }
-	)
-}
-', 'yes:16:1'},
-		TransformFixture{'params_struct_bound_method_values', 'type Callback = fn (voidptr)
-
-struct Config {
-	init_fn  Callback
-	frame_fn Callback
-}
-
-@[heap]
-struct App {
-mut:
-	trace string
-}
-
-fn (mut app App) init() {
-	app.trace += "init"
-}
-
-fn (mut app App) frame(_ voidptr) {
-	app.trace += ":frame"
-}
-
-fn run(config Config) {
-	config.init_fn(unsafe { nil })
-	config.frame_fn(unsafe { nil })
-}
-
-fn main() {
-	mut app := &App{}
-	run(
-		init_fn:  app.init
-		frame_fn: app.frame
-	)
-	println(app.trace)
-}
-', 'init:frame'},
-	])
 }
