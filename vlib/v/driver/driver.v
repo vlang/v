@@ -638,10 +638,20 @@ fn add_c_language_runtime_link_flags(mut prepared []string, original []string, l
 }
 
 fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primary_compiler_flags []string, optimization_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) ![]string {
+	return prepare_c_flags_for_link_with_race_hook(flags, environment_c_flags, primary_compiler_flags,
+		optimization_flags, c99, no_std, pic_flag, target_args, target, c_compiler,
+		use_platform_non_c_compiler, uncached_dir, '', mut stats)
+}
+
+fn prepare_c_flags_for_link_with_race_hook(flags []string, environment_c_flags []string, primary_compiler_flags []string, optimization_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, race_hook_source string, mut stats CObjectCacheStats) ![]string {
+	// Only the selected vlib's early TSan initialization hook needs its own
+	// uninstrumented object. The generated program and all other inputs keep TSan.
+	has_race_hook := race_hook_source != '' && c_link_input_indices(flags).any(
+		v3_is_race_options_source(flags[it].trim_space(), race_hook_source))
 	// Nothing to cache: without object-file or native-source flags the link
 	// plan adds no value, and preparing it costs a compiler-identity probe
 	// (subprocess) plus plan-file signatures on every build.
-	mut has_cacheable_flag := false
+	mut has_cacheable_flag := has_race_hook
 	for index in c_link_input_indices(flags) {
 		clean := flags[index].trim_space()
 		if c_flag_is_object_file(clean) || clean.ends_with('.mm') {
@@ -673,7 +683,9 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		target_args, target, c_compiler, use_platform_non_c_compiler, mut stats)
 	// Tracing intentionally walks the object manifests so every requested
 	// object's cache decision remains visible.
-	if os.getenv('V3_CACHE_TRACE') == '' {
+	// Old link plans can still contain the hook as an instrumented C input.
+	// The separately compiled object's own manifest remains reusable.
+	if !has_race_hook && os.getenv('V3_CACHE_TRACE') == '' {
 		if plan := valid_c_link_plan(plan_path, mut stats) {
 			stats.link_plan_signature = modulecache.file_signature(plan_path)
 			stats.requests = plan.requests
@@ -738,6 +750,17 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 				uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
 			add_c_language_runtime_link_flags(mut prepared, flags, adjacent_language, target)
+		} else if has_race_hook && v3_is_race_options_source(clean, race_hook_source) {
+			stats.requests++
+			hook_plan := CObjectFlagPlan{
+				...compile_plan
+				common_flags: [...compile_plan.common_flags, '-fno-sanitize=thread', '-fno-lto',
+					'-DV_RACE_EARLY_INIT_OBJECT=1']
+			}
+			object_path := ensure_c_source_object(clean, 'c', &hook_plan, c99, no_std,
+				pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
+				uncached_dir, mut stats)!
+			append_c_link_object(mut prepared, object_path, active_language)
 		} else if !clean.starts_with('-') && clean.ends_with('.mm') {
 			stats.requests++
 			language := c_source_language(clean, active_language)
@@ -762,7 +785,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 	if c_link_flags_use_objective_c_language(prepared) {
 		add_c_language_runtime_link_flags(mut prepared, flags, 'objective-c', target)
 	}
-	if stats.dependency_scan_fallbacks == 0 && stats.temporary_objects.len == 0 {
+	if !has_race_hook && stats.dependency_scan_fallbacks == 0 && stats.temporary_objects.len == 0 {
 		write_c_link_plan(plan_path, prepared, stats) or {}
 		stats.link_plan_signature = modulecache.file_signature(plan_path)
 	}
@@ -15638,10 +15661,16 @@ pub fn run(args []string) {
 				early_dumped_flags << resolved_c_flags
 				write_v3_c_flags_dump(dump_c_flags, early_dumped_flags, cc_dir)
 			}
-			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
-				primary_object_compiler_flags, object_optimization_flags, prefs.c99, no_std,
-				pic_flag, target_args, prefs.target, c_compiler, use_implicit_tcc_semantics, cc_dir,
-				mut c_object_cache_stats) or {
+			// C-only/exported project flags still describe the original source inputs.
+			race_hook_source := if race && !c_only && !is_o && generate_c_project.len == 0 {
+				os.join_path(prefs.vroot, 'vlib', 'builtin', 'race_options.c')
+			} else {
+				''
+			}
+			resolved_c_flags = prepare_c_flags_for_link_with_race_hook(generated_c_flags,
+				environment_c_flags, primary_object_compiler_flags, object_optimization_flags,
+				prefs.c99, no_std, pic_flag, target_args, prefs.target, c_compiler,
+				use_implicit_tcc_semantics, cc_dir, race_hook_source, mut c_object_cache_stats) or {
 				message := err.msg()
 				if retry_compilation && explicit_tcc {
 					fallback := v3_platform_c_compiler_command(host_os)
