@@ -55,6 +55,26 @@ jobs:
           # Use the original GCC generation, a pinned musl release and upstream source hashes.
           printf '%s\n' 'TARGET = x86_64-linux-musl' 'GCC_VER = 9.4.0' 'MUSL_VER = 1.1.24' 'OUTPUT = /tmp/musl-cpp-toolchain' 'COMMON_CONFIG += CFLAGS="-g0 -O2" CXXFLAGS="-g0 -O2"' > config.mak
           cat config.mak
+          # The pinned upstream old-musl security backport contains one literal
+          # conflict separator. Keep all three security fixes; repair only the
+          # spurious added line and the affected unified-diff coordinates.
+          p=patches/musl-1.1.24/cve-2026-40200-old.diff
+          test "$(git hash-object "$p")" = 8af133e8f3123b85ffa132597d44a828f45d7b84
+          test "$(grep -Fxc '+=======' "$p")" = 1
+          sed -i -e '/^+=======$/d' \
+            -e 's/^@@ -88,10 +88,17 @@/@@ -88,10 +88,16 @@/' \
+            -e 's/^@@ -103,16 +110,16 @@/@@ -103,16 +109,16 @@/' \
+            -e 's/^@@ -120,7 +127,7 @@/@@ -120,7 +126,7 @@/' \
+            -e 's/^@@ -141,7 +148,7 @@/@@ -141,7 +147,7 @@/' \
+            -e 's/^@@ -149,7 +156,7 @@/@@ -149,7 +155,7 @@/' "$p"
+          git diff -- "$p"
+          make musl-1.1.24
+          qsort=musl-1.1.24/src/stdlib/qsort.c
+          test -f "$qsort"
+          if grep -nE '^(<{7}|={7}|>{7})( |$)' "$qsort"; then exit 1; fi
+          grep -F 'if (p[0] != 1) return ntz(p[0] - 1);' "$qsort"
+          grep -F 'ar[i++ & AR_MASK] = stepson;' "$qsort"
+          test "$(grep -Fc 'if (!n) return;' "$qsort")" -eq 2
           make -j4
           make -j4 install
       - name: Prove target and C++17 runtime before running V
