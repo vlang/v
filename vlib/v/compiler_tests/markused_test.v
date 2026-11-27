@@ -1143,12 +1143,6 @@ fn main() {
 }
 
 fn test_alias_value_defaults_compile_and_run() {
-	source := os.join_path(markused_fixture_dir, 'v3_markused_alias_array_defaults_${os.getpid()}.v')
-	bin := os.join_path(markused_fixture_dir, 'v3_markused_alias_array_defaults_run_${os.getpid()}')
-	defer {
-		os.rm(source) or {}
-		os.rm(bin) or {}
-	}
 	declarations := '
 fn default_value() int { return 7 }
 struct Box { value int = default_value() }
@@ -1161,32 +1155,17 @@ struct FixedWrapper { boxes FixedAlias }
 struct GenericBox[T] { value int = default_value() item T }
 type GenericAlias = GenericBox[int]
 '
-	run_markused_default_batch('fixed_alias_default_batch', declarations, 'values', {
-		'FixedAlias{}':         'values[1].value'
-		'[2]Alias{}':           'values[1].value'
-		'[][2]Alias{len: 1}':   'values[0][1].value'
-		'FixedWrapper{}':       'values.boxes[1].value'
-		'[]FixedAlias{len: 1}': 'values[0][1].value'
-	})
-	cases := {
+	run_markused_default_batch('alias_default_batch', declarations, 'values', {
+		'FixedAlias{}':           'values[1].value'
+		'[2]Alias{}':             'values[1].value'
+		'[][2]Alias{len: 1}':     'values[0][1].value'
+		'FixedWrapper{}':         'values.boxes[1].value'
+		'[]FixedAlias{len: 1}':   'values[0][1].value'
 		'Rows{len: 1}':           'values[0].value'
 		'[]Alias{len: 1}':        'values[0].value'
 		'Wrapper{}':              'values.box.value'
 		'[]GenericAlias{len: 1}': 'values[0].value'
-	}
-	for literal, element in cases {
-		os.write_file(source, declarations + 'fn main() {
-	values := ${literal}
-	assert ${element} == 7
-	println("ok")
-}
-') or { panic(err) }
-		compiled := run_markused_compiler(['-gc', 'none', '-o', bin, source])
-		assert compiled.exit_code == 0, '${literal}: ${compiled.output}'
-		ran := os.exec([bin])
-		assert ran.exit_code == 0, ran.output
-		assert ran.output.trim_space() == 'ok', ran.output
-	}
+	})
 }
 
 // test_string_interpolation_seeds_string_plus_and_formatter_helpers
