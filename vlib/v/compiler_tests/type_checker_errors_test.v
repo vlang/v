@@ -984,83 +984,7 @@ fn main() {
 		TypeCheckerRejection{'bad_generic_array_elem_unimplemented_interface', 'interface HasId {\n\tid int\n}\n\nstruct NoId {\n\tv int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\t_ := take([NoId{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]bad_generic_array_elem_unimplemented_interface.NoId', '[]bad_generic_array_elem_unimplemented_interface.HasId')},
 	])
 
-	// Keep the remaining rejections as entry-point programs for C generation.
-	run_bad(v3_bin, 'bad_generic_missing_explicit_call', 'fn invoke[T]() {
-	missing[T]()
-}
-
-fn main() {
-	invoke[int]()
-}
-', 'unknown function `missing')
-	run_bad(v3_bin, 'bad_generic_missing_array_receiver_method', 'fn invoke[T](value T) {
-	value.no_such()
-}
-
-fn main() {
-	invoke([]int{})
-}
-', 'unknown function `value.no_such`')
-	run_bad(v3_bin, 'bad_generic_array_pop_argument_count', 'fn invoke[T](mut value T) {
-	value.pop(1)
-}
-
-fn main() {
-	mut values := [1, 2]
-	invoke(mut values)
-}
-', 'argument count mismatch for `value.pop`: expected 0, got 1')
-	run_bad(v3_bin, 'bad_generic_is_on_concrete_non_sum', 'fn matches[T](value int) bool {
-	return value is T
-}
-
-fn main() {
-	_ := matches[string](1)
-}
-', '`is` can only be used with sum type or interface values, not `int`')
-	run_bad(v3_bin, 'bad_generic_is_pattern_for_sum', 'struct Cat {}
-struct Dog {}
-
-type Animal = Cat | Dog
-
-fn matches[T](value Animal) bool {
-	return value is T
-}
-
-fn main() {
-	_ := matches[string](Animal(Cat{}))
-}
-', '`string` is not a variant of sum type `Animal`')
-	run_bad(v3_bin, 'bad_generic_is_pattern_for_interface', 'interface Shape {
-	area() int
-}
-
-struct Rect {}
-
-fn (r Rect) area() int {
-	return 1
-}
-
-struct Other {}
-
-fn matches[T](value Shape) bool {
-	return value is T
-}
-
-fn main() {
-	_ := matches[Other](Rect{})
-}
-', '`Other` is not compatible with interface `Shape`')
-	run_bad(v3_bin, 'bad_generic_is_pattern_for_ierror', 'struct NotError {}
-
-fn matches[T](value IError) bool {
-	return value is T
-}
-
-fn main() {
-	_ := matches[NotError](error("x"))
-}
-', '`NotError` is not compatible with `IError`')
+	// These receiver-context fixtures include identical diagnostic messages.
 	run_bad(v3_bin, 'bad_generic_receiver_method_argument_count', 'struct HasValue {}
 
 fn (v HasValue) value() int {
@@ -1174,7 +1098,122 @@ fn main() {
 	})
 }
 ', 'argument count mismatch for `value.cb`: expected 1, got 0')
-	run_bad(v3_bin, 'bad_generic_receiver_params_field_type', '@[params]
+}
+
+// These diagnostics are emitted after instantiation without source locations.
+fn check_generic_instantiation_rejections(cases []TypeCheckerRejection) {
+	root := unique_temp_path('generic_instantiation_rejections')
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		name := case.name
+		imports << 'import ${name}'
+		calls << '\t${name}.exercise()'
+		source := 'module ${name}\n\n' + case.source.replace_once('\nfn main()', '\npub fn exercise()')
+		write_project_file(root, '${name}/${name}.v', source)
+	}
+	write_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')
+	result := run_type_checker_compiler(v3_bin, ['-nocache', root, '-json-errors', '-b', 'c', '-o',
+		unique_temp_path('rejected_program')])
+	assert result.exit_code != 0, result.output
+	assert !result.output.contains('C compilation failed'), result.output
+	project_prefix := os.file_name(root) + '.'
+	mut errors := map[string]int{}
+	for line in result.output.split_into_lines() {
+		if !line.starts_with('{') {
+			continue
+		}
+		diagnostic := json2.decode[TypeCheckerDiagnostic](line) or { panic(err) }
+		if diagnostic.severity == 'error' {
+			errors[diagnostic.message.replace(project_prefix, '')]++
+		}
+	}
+	// Every fixture in this batch has a distinct diagnostic.
+	for case in cases {
+		assert errors[case.expected] == 1, '${case.name}: expected `${case.expected}` once\n${result.output}'
+	}
+	assert errors.len == cases.len, result.output
+}
+
+fn test_generic_instantiation_rejections() {
+	check_generic_instantiation_rejections([
+		TypeCheckerRejection{'bad_generic_missing_explicit_call', 'fn invoke[T]() {
+	missing[T]()
+}
+
+fn main() {
+	invoke[int]()
+}
+', 'unknown function `missing[int]`'},
+		TypeCheckerRejection{'bad_generic_missing_array_receiver_method', 'fn invoke[T](value T) {
+	value.no_such()
+}
+
+fn main() {
+	invoke([]int{})
+}
+', 'unknown function `value.no_such`'},
+		TypeCheckerRejection{'bad_generic_array_pop_argument_count', 'fn invoke[T](mut value T) {
+	value.pop(1)
+}
+
+fn main() {
+	mut values := [1, 2]
+	invoke(mut values)
+}
+', 'argument count mismatch for `value.pop`: expected 0, got 1'},
+		TypeCheckerRejection{'bad_generic_is_on_concrete_non_sum', 'fn matches[T](value int) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[string](1)
+}
+', '`is` can only be used with sum type or interface values, not `int`'},
+		TypeCheckerRejection{'bad_generic_is_pattern_for_sum', 'struct Cat {}
+struct Dog {}
+
+type Animal = Cat | Dog
+
+fn matches[T](value Animal) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[string](Animal(Cat{}))
+}
+', '`string` is not a variant of sum type `bad_generic_is_pattern_for_sum.Animal`'},
+		TypeCheckerRejection{'bad_generic_is_pattern_for_interface', 'interface Shape {
+	area() int
+}
+
+struct Rect {}
+
+fn (r Rect) area() int {
+	return 1
+}
+
+struct Other {}
+
+fn matches[T](value Shape) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[Other](Rect{})
+}
+', '`bad_generic_is_pattern_for_interface.Other` is not compatible with interface `bad_generic_is_pattern_for_interface.Shape`'},
+		TypeCheckerRejection{'bad_generic_is_pattern_for_ierror', 'struct NotError {}
+
+fn matches[T](value IError) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[NotError](error("x"))
+}
+', '`bad_generic_is_pattern_for_ierror.NotError` is not compatible with `IError`'},
+		TypeCheckerRejection{'bad_generic_receiver_params_field_type', '@[params]
 struct OpenOptions {
 	limit int
 }
@@ -1190,8 +1229,8 @@ fn invoke[T](service T) {
 fn main() {
 	invoke(Service{})
 }
-', 'cannot initialize field `limit` with `string`; expected `int`')
-	run_bad(v3_bin, 'bad_generic_receiver_params_unknown_field', '@[params]
+', 'cannot initialize field `limit` with `string`; expected `int`'},
+		TypeCheckerRejection{'bad_generic_receiver_params_unknown_field', '@[params]
 struct OpenOptions {
 	limit int
 }
@@ -1207,8 +1246,8 @@ fn invoke[T](service T) {
 fn main() {
 	invoke(Service{})
 }
-', 'unknown field `missing` in `OpenOptions`')
-	run_bad(v3_bin, 'bad_generic_receiver_narrow_unsigned_literal', 'struct Sink {}
+', 'unknown field `missing` in `OpenOptions`'},
+		TypeCheckerRejection{'bad_generic_receiver_narrow_unsigned_literal', 'struct Sink {}
 
 fn (s Sink) take(value u8) {}
 
@@ -1219,8 +1258,8 @@ fn invoke[T](sink T) {
 fn main() {
 	invoke(Sink{})
 }
-', 'cannot use `int` as argument 1 to `sink.take`; expected `u8`')
-	run_bad(v3_bin, 'bad_generic_receiver_narrow_signed_literal', 'struct Sink {}
+', 'cannot use `int` as argument 1 to `sink.take`; expected `u8`'},
+		TypeCheckerRejection{'bad_generic_receiver_narrow_signed_literal', 'struct Sink {}
 
 fn (s Sink) take(value i8) {}
 
@@ -1231,7 +1270,8 @@ fn invoke[T](sink T) {
 fn main() {
 	invoke(Sink{})
 }
-', 'cannot use `int` as argument 1 to `sink.take`; expected `i8`')
+', 'cannot use `int` as argument 1 to `sink.take`; expected `i8`'},
+	])
 }
 
 // Regression tests for the post-PR review fixes: fixed-array literals must match
