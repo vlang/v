@@ -28,6 +28,18 @@ pub:
 	required bool
 }
 
+// Dep declares an explicit dependency on a file or on a flow. A `path` adds an
+// input to the skip check and links the flow producing it. An `id` links a flow
+// directly without a shared path. An `after` flow is order-only: it runs first,
+// but changes in it do not defeat the skip check.
+@[params]
+pub struct Dep {
+pub:
+	path  string
+	id    string
+	after string
+}
+
 // Flag is a boolean `--id` command line switch, declared by the flows reading
 // it. It may appear anywhere on the command line, and reaches a declaring flow
 // even when that flow only runs as a dependency. A set flag defeats the skip
@@ -62,6 +74,7 @@ pub:
 	name  string // display name, derived from the id when unset
 	help  string
 	takes []string // input files and directories
+	deps  []Dep    // explicit dependencies, beyond those inferred from takes
 	gives []string // output files and directories
 	check Check = .mtime
 	pre   []FlowDep // hooks run before this flow
@@ -281,13 +294,38 @@ fn (c &Context) find(id string) !Flow {
 	return error('unknown flow `${id}`')
 }
 
-// producers returns the flows whose outputs overlap the inputs of `flow`.
-// These are its implicit dependencies.
+// dep_inputs returns the paths of `f` that take part in its skip check: its
+// declared inputs plus the paths of explicit path dependencies. An order-only
+// path is deliberately absent: it controls sequencing, not freshness.
+fn dep_inputs(f Flow) []string {
+	mut inputs := f.takes.clone()
+	for dep in f.deps {
+		if dep.path != '' {
+			inputs << dep.path
+		}
+	}
+	return inputs
+}
+
+// producers returns the flows that must run before `flow`. Besides flows
+// inferred from overlapping paths, this includes explicit path and id
+// dependencies, including order-only ones.
 fn (c &Context) producers(flow Flow) []string {
 	mut ids := []string{}
 	for other in c.flows {
-		if other.id != flow.id && flow.takes.any(overlaps_any(it, other.gives)) {
+		if other.id == flow.id {
+			continue
+		}
+		if flow.takes.any(overlaps_any(it, other.gives)) {
 			ids << other.id
+			continue
+		}
+		for dep in flow.deps {
+			if dep.after == other.id || dep.id == other.id
+				|| (dep.path != '' && overlaps_any(dep.path, other.gives)) {
+				ids << other.id
+				break
+			}
 		}
 	}
 	return ids
@@ -323,6 +361,13 @@ fn (c &Context) validate() ! {
 	for f in c.flows {
 		c.check_hooks(f, 'pre', f.pre)!
 		c.check_hooks(f, 'post', f.post)!
+		for dep in f.deps {
+			for id in [dep.id, dep.after] {
+				if id != '' && !c.flows.any(it.id == id) {
+					return error('flow `${f.id}` has unknown dependency `${id}`')
+				}
+			}
+		}
 	}
 	mut state := map[string]int{} // 1: on the current path, 2: finished
 	for f in c.flows {
@@ -760,7 +805,7 @@ fn excluded_keys(f Flow) []string {
 fn (c &Context) digest(f Flow) string {
 	mut lines := []string{}
 	excluded := excluded_keys(f)
-	for path in f.takes {
+	for path in dep_inputs(f) {
 		hash_path(path, path_key(path), excluded, mut lines)
 	}
 	lines.sort()
@@ -795,7 +840,7 @@ fn hash_path(path string, key string, excluded []string, mut lines []string) {
 // is_unchanged reports whether a hash flow can be skipped. Like mtime flows, it
 // needs outputs and all inputs present.
 fn is_unchanged(f Flow, digest string) bool {
-	if f.gives.len == 0 || f.takes.any(!os.exists(it)) || f.gives.any(!os.exists(it)) {
+	if f.gives.len == 0 || dep_inputs(f).any(!os.exists(it)) || f.gives.any(!os.exists(it)) {
 		return false
 	}
 	return (os.read_file(stamp_path(f)) or { '' }) == digest
@@ -810,7 +855,7 @@ fn is_unchanged(f Flow, digest string) bool {
 // of one second, so a tie counts as out of date: a needless rebuild beats a
 // stale binary.
 fn is_up_to_date(f Flow) bool {
-	if f.gives.len == 0 || f.takes.any(!os.exists(it)) || f.gives.any(!os.exists(it)) {
+	if f.gives.len == 0 || dep_inputs(f).any(!os.exists(it)) || f.gives.any(!os.exists(it)) {
 		return false
 	}
 	excluded := excluded_keys(f)
@@ -819,7 +864,7 @@ fn is_up_to_date(f Flow) bool {
 		oldest_output = min_i64_of(oldest_output, oldest_mtime(path))
 	}
 	mut newest_input := i64(0)
-	for path in f.takes {
+	for path in dep_inputs(f) {
 		newest_input = max_i64_of(newest_input, newest_mtime(path, path_key(path), excluded))
 	}
 	return newest_input < oldest_output
