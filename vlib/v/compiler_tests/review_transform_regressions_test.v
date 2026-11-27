@@ -289,9 +289,10 @@ fn main() {
 	assert out == 'true'
 }
 
-fn test_map_interface_equality_keeps_typed_map_get() {
+fn test_aggregate_boxed_value_equality() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'map_interface_equality_typed_get', 'interface Value {
+	run_good_module_batch(v3_bin, 'aggregate_boxed_value_equality', [
+		TransformFixture{'map_interface_equality_typed_get', 'interface Value {
 	n int
 }
 
@@ -312,8 +313,9 @@ fn main() {
 	}
 	println(left == right)
 }
-')
-	assert out == 'true'
+', 'true'},
+		TransformFixture{'struct_eq_interface_field', "interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\nstruct Box {\n\tthing Thing\n\tlabel string\n}\n\nfn main() {\n\titem := Item{\n\t\tn: 7\n\t}\n\tleft := Box{\n\t\tthing: item\n\t\tlabel: 'same'\n\t}\n\tright := left\n\tprintln(left == right)\n}\n", 'true'},
+	])
 }
 
 fn test_map_append_value_paths() {
@@ -444,9 +446,10 @@ fn main() {
 	])
 }
 
-fn test_interface_pointer_receiver_dispatch_preserves_pointer_depth() {
+fn test_pointer_receiver_dispatch() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_pointer_receiver_dispatch', 'interface Reader {
+	run_good_module_batch(v3_bin, 'pointer_receiver_dispatch', [
+		TransformFixture{'interface_pointer_receiver_dispatch', 'interface Reader {
 	read() int
 }
 
@@ -468,8 +471,9 @@ fn main() {
 	})
 	println(use(&reader))
 }
-')
-	assert out == '42'
+', '42'},
+		TransformFixture{'alias_pointer_receiver_str', "type Number = int\n\nfn (n &Number) str() string {\n\treturn 'number:' + int_str(int(*n))\n}\n\nstruct Point {\n\tx int\n}\n\ntype NamedPoint = Point\n\nfn (p &NamedPoint) str() string {\n\treturn 'point:' + int_str(p.x)\n}\n\nfn main() {\n\tn := Number(7)\n\tp := NamedPoint(Point{\n\t\tx: 9\n\t})\n\tprintln('\${n}')\n\tprintln('\${Number(8)}')\n\tprintln('\${p}')\n\tprintln('\${NamedPoint(Point{x: 10})}')\n}\n", 'number:7\nnumber:8\npoint:9\npoint:10'},
+	])
 }
 
 fn test_interface_field_receiver_preserves_smartcast_projection() {
@@ -715,9 +719,10 @@ fn main() {
 	assert out == '7'
 }
 
-fn test_interface_dispatch_reboxes_result_pointer_payload() {
+fn test_result_payload_storage() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_dispatch_result_pointer_payload', 'interface Connection {
+	run_good_module_batch(v3_bin, 'result_payload_storage', [
+		TransformFixture{'interface_dispatch_result_pointer_payload', 'interface Connection {
 	close() !
 }
 
@@ -741,8 +746,9 @@ fn main() {
 	connection.close() or { panic(err) }
 	println("ok")
 }
-')
-	assert out == 'ok'
+', 'ok'},
+		TransformFixture{'normalized_option_result_fixed_array', "struct Foo {\n\tn int\n}\n\nfn opt_values(ok bool) ?[2]int {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [1, 2]!\n}\n\nfn res_values(ok bool) ![2]Foo {\n\tif !ok {\n\t\treturn error('x')\n\t}\n\treturn [Foo{\n\t\tn: 3\n\t}, Foo{\n\t\tn: 4\n\t}]!\n}\n\nfn main() {\n\ta := opt_values(true) or { [0, 0]! }\n\tb := res_values(true) or { [Foo{\n\t\tn: 0\n\t}, Foo{\n\t\tn: 0\n\t}]! }\n\tmissing_a := opt_values(false) or { [5, 6]! }\n\tmissing_b := res_values(false) or { [Foo{\n\t\tn: 7\n\t}, Foo{\n\t\tn: 8\n\t}]! }\n\tprintln(int_str(a[0] + a[1] + b[0].n + b[1].n))\n\tprintln(int_str(missing_a[0] + missing_a[1] + missing_b[0].n + missing_b[1].n))\n}\n", '10\n26'},
+	])
 }
 
 fn test_generic_value_storage() {
@@ -1118,9 +1124,10 @@ fn main() {
 	assert !out.contains('Value(...)'), out
 }
 
-fn test_interface_fn_field_argument_keeps_parameter_offset_zero() {
+fn test_interface_method_pointer_arguments() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_fn_field_argument_offset', 'interface Value {
+	run_good_module_batch(v3_bin, 'interface_method_pointer_arguments', [
+		TransformFixture{'interface_fn_field_argument_offset', 'interface Value {
 	value() int
 }
 
@@ -1148,13 +1155,8 @@ fn main() {
 		n: 7
 	})
 }
-')
-	assert out == '7'
-}
-
-fn test_interface_method_mut_arguments_use_pointer_storage() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_method_mut_arguments', 'interface Writer {
+', '7'},
+		TransformFixture{'interface_method_mut_arguments', 'interface Writer {
 	write(mut counter Counter, mut bytes []u8)
 }
 
@@ -1183,8 +1185,32 @@ fn main() {
 	println(int_str(counter.value))
 	println(int_str(bytes[0]))
 }
-')
-	assert out == '7\n7'
+', '7\n7'},
+		TransformFixture{'mut_interface_argument_concrete_source', 'interface Counter {
+mut:
+	inc()
+}
+
+struct State {
+mut:
+	n int
+}
+
+fn (mut s State) inc() {
+	s.n++
+}
+
+fn bump(mut counter Counter) {
+	counter.inc()
+}
+
+fn main() {
+	mut state := State{}
+	bump(mut state)
+	println(int_str(state.n))
+}
+', '1'},
+	])
 }
 
 fn test_folded_string_constant_ifs_keep_branch_scopes() {
@@ -1303,21 +1329,44 @@ fn main() {
 	assert out == '0'
 }
 
-fn test_for_in_smartcast_interface_field_keeps_interface_element_type() {
+fn test_interface_smartcast_in_match_and_iteration() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'for_in_smartcast_interface_field', 'interface Widget {\n\tid int\n}\n\nstruct Stack {\n\tid       int\n\tchildren []Widget\n}\n\nstruct Leaf {\n\tid int\n}\n\nfn total(w Widget) int {\n\tif w is Stack {\n\t\tmut value := w.id\n\t\tfor child in w.children {\n\t\t\tvalue += total(child)\n\t\t}\n\t\treturn value\n\t}\n\treturn w.id\n}\n\nfn main() {\n\tw := Widget(Stack{\n\t\tid: 1\n\t\tchildren: [Widget(Leaf{\n\t\t\tid: 2\n\t\t})]\n\t})\n\tprintln(int_str(total(w)))\n}\n')
-	assert out == '3'
+	run_good_module_batch(v3_bin, 'interface_smartcast_in_match_and_iteration', [
+		TransformFixture{'for_in_smartcast_interface_field', 'interface Widget {\n\tid int\n}\n\nstruct Stack {\n\tid       int\n\tchildren []Widget\n}\n\nstruct Leaf {\n\tid int\n}\n\nfn total(w Widget) int {\n\tif w is Stack {\n\t\tmut value := w.id\n\t\tfor child in w.children {\n\t\t\tvalue += total(child)\n\t\t}\n\t\treturn value\n\t}\n\treturn w.id\n}\n\nfn main() {\n\tw := Widget(Stack{\n\t\tid: 1\n\t\tchildren: [Widget(Leaf{\n\t\t\tid: 2\n\t\t})]\n\t})\n\tprintln(int_str(total(w)))\n}\n', '3'},
+		TransformFixture{'interface_extension_match_smartcast_receiver', 'interface Named {
+	number() int
 }
 
-fn test_interface_smartcast_rebuilds_richer_interface_fields() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_smartcast_richer_fields', 'interface Base {\n\tx int\n}\n\ninterface Extended {\n\tBase\n\ty    int\n\tnext ?Extended\n}\n\nstruct Item {\n\tx    int\n\ty    int\n\tnext ?Extended\n}\n\nfn value(base Base) int {\n\tif base is Extended {\n\t\treturn base.x + base.y\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(int_str(value(Base(Item{\n\t\tx: 2\n\t\ty: 3\n\t}))))\n}\n')
-	assert out == '5'
+struct Alpha {}
+
+fn (_ &Alpha) number() int {
+	return 1
 }
 
-fn test_interface_smartcast_nil_pointer_zero_fills_richer_fields() {
+fn (_ &Alpha) str() string {
+	return "alpha"
+}
+
+fn (value &Named) str() string {
+	match value {
+		Alpha { return value.str() }
+		else { return "unknown" }
+	}
+}
+
+fn main() {
+	value := Named(&Alpha{})
+	println(value.str())
+}
+', '&alpha'},
+	])
+}
+
+fn test_interface_smartcast_field_storage() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_smartcast_nil_pointer_richer_fields', 'interface Base {
+	run_good_module_batch(v3_bin, 'interface_smartcast_field_storage', [
+		TransformFixture{'interface_smartcast_richer_fields', 'interface Base {\n\tx int\n}\n\ninterface Extended {\n\tBase\n\ty    int\n\tnext ?Extended\n}\n\nstruct Item {\n\tx    int\n\ty    int\n\tnext ?Extended\n}\n\nfn value(base Base) int {\n\tif base is Extended {\n\t\treturn base.x + base.y\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(int_str(value(Base(Item{\n\t\tx: 2\n\t\ty: 3\n\t}))))\n}\n', '5'},
+		TransformFixture{'interface_smartcast_nil_pointer_richer_fields', 'interface Base {
 	value() int
 }
 
@@ -1345,8 +1394,8 @@ fn main() {
 	item := unsafe { &Item(nil) }
 	println(int_str(read(Base(item))))
 }
-')
-	assert out == '0'
+', '0'},
+	])
 }
 
 fn test_mut_interface_smartcast_field_assignment_uses_storage_interface() {
@@ -1386,35 +1435,6 @@ fn main() {
 }
 ')
 	assert out == '9'
-}
-
-fn test_mut_interface_argument_shares_concrete_source() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'mut_interface_argument_concrete_source', 'interface Counter {
-mut:
-	inc()
-}
-
-struct State {
-mut:
-	n int
-}
-
-fn (mut s State) inc() {
-	s.n++
-}
-
-fn bump(mut counter Counter) {
-	counter.inc()
-}
-
-fn main() {
-	mut state := State{}
-	bump(mut state)
-	println(int_str(state.n))
-}
-')
-	assert out == '1'
 }
 
 fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization() {
@@ -4994,12 +5014,6 @@ fn test_struct_pointer_equality() {
 	])
 }
 
-fn test_struct_equality_with_interface_field_compiles() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'struct_eq_interface_field', "interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\nstruct Box {\n\tthing Thing\n\tlabel string\n}\n\nfn main() {\n\titem := Item{\n\t\tn: 7\n\t}\n\tleft := Box{\n\t\tthing: item\n\t\tlabel: 'same'\n\t}\n\tright := left\n\tprintln(left == right)\n}\n")
-	assert out == 'true'
-}
-
 fn test_pointer_array_and_string_values() {
 	v3_bin := build_v3_review_transform()
 	run_good_module_batch(v3_bin, 'pointer_array_and_string_values', [
@@ -5067,10 +5081,54 @@ fn test_imported_generic_indirections_conditions_keep_integer_literals() {
 	assert out == '0\n1'
 }
 
-fn test_nested_comptime_field_names_do_not_replace_each_other() {
+fn test_comptime_reflected_fields() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'nested_comptime_field_name_prefixes', 'struct Embedded {\n\tn int\n}\n\nstruct Item {\n\tEmbedded\n\tname string\n}\n\nfn normal_fields[T]() int {\n\tmut count := 0\n\t\$for field in T.fields {\n\t\t\$if field.is_embed {\n\t\t\t\$for reserved_field in T.fields {\n\t\t\t\t\$if !reserved_field.is_embed {\n\t\t\t\t\tcount++\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\treturn count\n}\n\nfn main() {\n\tprintln(int_str(normal_fields[Item]()))\n}\n')
-	assert out == '1'
+	run_good_module_batch(v3_bin, 'comptime_reflected_fields', [
+		TransformFixture{'nested_comptime_field_name_prefixes', 'struct Embedded {\n\tn int\n}\n\nstruct Item {\n\tEmbedded\n\tname string\n}\n\nfn normal_fields[T]() int {\n\tmut count := 0\n\t\$for field in T.fields {\n\t\t\$if field.is_embed {\n\t\t\t\$for reserved_field in T.fields {\n\t\t\t\t\$if !reserved_field.is_embed {\n\t\t\t\t\tcount++\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\treturn count\n}\n\nfn main() {\n\tprintln(int_str(normal_fields[Item]()))\n}\n', '1'},
+		TransformFixture{'comptime_generic_embedded_field_name', 'struct Embedded[T] {
+	value T
+}
+
+struct Container {
+	Embedded[int]
+}
+
+fn main() {
+	$for field in Container.fields {
+		$if field.is_embed {
+			println(field.name)
+		}
+	}
+}
+', 'Embedded'},
+		TransformFixture{'comptime_reflected_enum_integer_assignment', 'enum Role {
+	worker
+	manager
+}
+
+struct Config {
+	role Role
+}
+
+fn decoded_number() int {
+	return 1
+}
+
+fn decode[T]() T {
+	mut value := T{}
+	$for field in T.fields {
+		$if field.is_enum {
+			value.$(field.name) = decoded_number()
+		}
+	}
+	return value
+}
+
+fn main() {
+	println(decode[Config]().role)
+}
+', 'manager'},
+	])
 }
 
 fn test_single_module_test_file_skips_premodule_attributes() {
@@ -5136,12 +5194,6 @@ fn test_chained_array_alias_stringification_uses_outer_alias_only() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'chained_array_alias_str', "type A = []int\n\ntype B = A\n\nfn main() {\n\tvalue := B([1, 2])\n\tprintln('\${value}')\n}\n")
 	assert out == 'B([1, 2])'
-}
-
-fn test_alias_pointer_receiver_str_gets_addressable_value() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'alias_pointer_receiver_str', "type Number = int\n\nfn (n &Number) str() string {\n\treturn 'number:' + int_str(int(*n))\n}\n\nstruct Point {\n\tx int\n}\n\ntype NamedPoint = Point\n\nfn (p &NamedPoint) str() string {\n\treturn 'point:' + int_str(p.x)\n}\n\nfn main() {\n\tn := Number(7)\n\tp := NamedPoint(Point{\n\t\tx: 9\n\t})\n\tprintln('\${n}')\n\tprintln('\${Number(8)}')\n\tprintln('\${p}')\n\tprintln('\${NamedPoint(Point{x: 10})}')\n}\n")
-	assert out == 'number:7\nnumber:8\npoint:9\npoint:10'
 }
 
 fn test_map_literal_stringification_evaluates_entries_once() {
@@ -5293,9 +5345,10 @@ fn main() {
 	])
 }
 
-fn test_recursive_closure_assignment_refreshes_self_capture() {
+fn test_callback_capture_state() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'recursive_closure_assignment', 'fn main() {
+	run_good_module_batch(v3_bin, 'callback_capture_state', [
+		TransformFixture{'recursive_closure_assignment', 'fn main() {
 	one := 1
 	mut factorial := fn (n int) int {
 		return 1
@@ -5308,8 +5361,23 @@ fn test_recursive_closure_assignment_refreshes_self_capture() {
 	}
 	println(int_str(factorial(5)))
 }
-')
-	assert out == '120'
+', '120'},
+		TransformFixture{'array_filter_map_capturing_callback_state', 'fn main() {
+	mut filter_calls := 0
+	filtered := [1, 2, 3].filter(fn [mut filter_calls] (value int) bool {
+		filter_calls++
+		return filter_calls > 1
+	})
+	mut map_calls := 0
+	mapped := [10, 20, 30].map(fn [mut map_calls] (value int) int {
+		map_calls++
+		return value + map_calls
+	})
+	println(filtered)
+	println(mapped)
+}
+', '[2, 3]\n[11, 22, 33]'},
+	])
 }
 
 fn test_typeof_idx_uses_active_smartcast() {
@@ -5699,12 +5767,6 @@ fn test_wrapped_plus_minus_continuations_consume_auto_semicolon() {
 	assert out == '7\n7'
 }
 
-fn test_normalized_option_result_fixed_array_names_keep_outer_wrapper() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'normalized_option_result_fixed_array', "struct Foo {\n\tn int\n}\n\nfn opt_values(ok bool) ?[2]int {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [1, 2]!\n}\n\nfn res_values(ok bool) ![2]Foo {\n\tif !ok {\n\t\treturn error('x')\n\t}\n\treturn [Foo{\n\t\tn: 3\n\t}, Foo{\n\t\tn: 4\n\t}]!\n}\n\nfn main() {\n\ta := opt_values(true) or { [0, 0]! }\n\tb := res_values(true) or { [Foo{\n\t\tn: 0\n\t}, Foo{\n\t\tn: 0\n\t}]! }\n\tmissing_a := opt_values(false) or { [5, 6]! }\n\tmissing_b := res_values(false) or { [Foo{\n\t\tn: 7\n\t}, Foo{\n\t\tn: 8\n\t}]! }\n\tprintln(int_str(a[0] + a[1] + b[0].n + b[1].n))\n\tprintln(int_str(missing_a[0] + missing_a[1] + missing_b[0].n + missing_b[1].n))\n}\n")
-	assert out == '10\n26'
-}
-
 fn test_hierarchical_import_runtime_inits_before_importer_init() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project_with_flags(v3_bin, 'hierarchical_runtime_init_order', '-enable-globals', {
@@ -6025,27 +6087,6 @@ fn main() {
 	assert out == 'value\ntrue\ntrue\nmain_attr'
 }
 
-fn test_comptime_generic_embedded_field_uses_short_reflected_name() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'comptime_generic_embedded_field_name', 'struct Embedded[T] {
-	value T
-}
-
-struct Container {
-	Embedded[int]
-}
-
-fn main() {
-	$for field in Container.fields {
-		$if field.is_embed {
-			println(field.name)
-		}
-	}
-}
-')
-	assert out == 'Embedded'
-}
-
 fn test_comptime_main_enum_field_matches_enum_type_group() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'comptime_main_enum_field_type_group', 'enum State {
@@ -6176,26 +6217,6 @@ fn test_moved_module_alias_uses_target_module_identity() {
 		'main.v':             'module main\n\nimport legacy\n\nfn main() {\n\tprintln(int_str(legacy.answer()))\n}\n'
 	}, 'main.v')
 	assert out == '42'
-}
-
-fn test_array_filter_and_map_reuse_capturing_callback_state() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'array_filter_map_capturing_callback_state', 'fn main() {
-	mut filter_calls := 0
-	filtered := [1, 2, 3].filter(fn [mut filter_calls] (value int) bool {
-		filter_calls++
-		return filter_calls > 1
-	})
-	mut map_calls := 0
-	mapped := [10, 20, 30].map(fn [mut map_calls] (value int) int {
-		map_calls++
-		return value + map_calls
-	})
-	println(filtered)
-	println(mapped)
-}
-')
-	assert out == '[2, 3]\n[11, 22, 33]'
 }
 
 fn test_array_filter_and_map_hoist_bound_method_callbacks() {
@@ -12155,37 +12176,6 @@ fn main() {
 	assert out == '42'
 }
 
-fn test_interface_extension_method_uses_match_smartcast_receiver() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_extension_match_smartcast_receiver', 'interface Named {
-	number() int
-}
-
-struct Alpha {}
-
-fn (_ &Alpha) number() int {
-	return 1
-}
-
-fn (_ &Alpha) str() string {
-	return "alpha"
-}
-
-fn (value &Named) str() string {
-	match value {
-		Alpha { return value.str() }
-		else { return "unknown" }
-	}
-}
-
-fn main() {
-	value := Named(&Alpha{})
-	println(value.str())
-}
-')
-	assert out == '&alpha'
-}
-
 fn test_struct_literal_implicit_reference_and_option_or_mut_receiver() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'struct_literal_ref_and_option_or_mut_receiver', 'import net
@@ -13098,38 +13088,6 @@ fn main() {
 	assert out == 'ready\nready'
 }
 
-fn test_comptime_reflected_enum_field_accepts_integer_decoder_result() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'comptime_reflected_enum_integer_assignment', 'enum Role {
-	worker
-	manager
-}
-
-struct Config {
-	role Role
-}
-
-fn decoded_number() int {
-	return 1
-}
-
-fn decode[T]() T {
-	mut value := T{}
-	$for field in T.fields {
-		$if field.is_enum {
-			value.$(field.name) = decoded_number()
-		}
-	}
-	return value
-}
-
-fn main() {
-	println(decode[Config]().role)
-}
-')
-	assert out == 'manager'
-}
-
 fn test_imported_generic_default_uses_main_struct_defaults_after_short_name_collision() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'generic_main_default_short_name_collision', {
@@ -13483,9 +13441,10 @@ fn main() {
 	assert out == 'route'
 }
 
-fn test_implicit_clone_ignores_incompatible_user_clone_method() {
+fn test_clone_method_selection() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'incompatible_user_clone_method', 'struct Item {
+	run_good_module_batch(v3_bin, 'clone_method_selection', [
+		TransformFixture{'incompatible_user_clone_method', 'struct Item {
 mut:
 	name string
 }
@@ -13503,13 +13462,8 @@ fn main() {
 	items << item
 	println(items[0].name)
 }
-')
-	assert out == 'ok'
-}
-
-fn test_append_uses_explicit_zero_argument_variadic_clone_method() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'zero_argument_variadic_clone_method', 'struct Item {
+', 'ok'},
+		TransformFixture{'zero_argument_variadic_clone_method', 'struct Item {
 	name string
 }
 
@@ -13529,8 +13483,8 @@ fn main() {
 	items << item.clone()
 	println(items[1].name)
 }
-')
-	assert out == 'ok\ncustom:ok'
+', 'ok\ncustom:ok'},
+	])
 }
 
 fn test_generic_inference_prefers_local_over_same_named_function() {
@@ -13647,9 +13601,10 @@ pub fn slice_indexes_equal(left SliceIndex, right SliceIndex) bool {
 	assert out == 'true'
 }
 
-fn test_params_struct_branch_fields_keep_call_argument_order() {
+fn test_params_struct_call_arguments() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'params_struct_branch_field_order', 'struct Config {
+	run_good_module_batch(v3_bin, 'params_struct_call_arguments', [
+		TransformFixture{'params_struct_branch_field_order', 'struct Config {
 	size  int
 	color int
 }
@@ -13665,13 +13620,8 @@ fn main() {
 		color: if enabled { 1 } else { 2 }
 	)
 }
-')
-	assert out == 'yes:16:1'
-}
-
-fn test_adjacent_bound_method_params_struct_fields_keep_function_types() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'params_struct_bound_method_values', 'type Callback = fn (voidptr)
+', 'yes:16:1'},
+		TransformFixture{'params_struct_bound_method_values', 'type Callback = fn (voidptr)
 
 struct Config {
 	init_fn  Callback
@@ -13705,6 +13655,6 @@ fn main() {
 	)
 	println(app.trace)
 }
-')
-	assert out == 'init:frame'
+', 'init:frame'},
+	])
 }
