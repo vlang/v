@@ -239,9 +239,9 @@ fn main() {
 	])
 }
 
-fn test_generic_result_contexts() {
+fn test_generic_result_and_value_storage() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'generic_result_contexts', [
+	run_good_module_batch(v3_bin, 'generic_result_and_value_storage', [
 		TransformFixture{'explicit_generic_call_result_context', 'import time
 
 fn identity[T](value T) T {
@@ -301,6 +301,54 @@ fn main() {
 	println(result['answer'])
 }
 ", 'ready\nready'},
+		TransformFixture{'generic_shared_parameter_value_copy', 'struct State {
+	label string
+}
+
+fn destroy(shared state State) {
+	rlock state {
+		drop_owned(state)
+	}
+}
+
+fn main() {
+	shared state := State{
+		label: "ok"
+	}
+	destroy(shared state)
+	println("done")
+}
+', 'done'},
+		TransformFixture{'generic_pointer_struct_default', 'struct Item {
+	value int = 7
+}
+
+fn make_default[T]() T {
+	return T{}
+}
+
+fn main() {
+	item := make_default[&Item]()
+	println(item.value)
+}
+', '7'},
+		TransformFixture{'specialized_generic_or_alias_storage', 'type Label = string
+
+struct Box[T] {
+	value T
+}
+
+fn make_box[T](value T) !Box[T] {
+	return Box[T]{
+		value: value
+	}
+}
+
+fn main() {
+	box := make_box[Label](Label("ok")) or { Box[Label]{} }
+	println(box.value)
+}
+', 'ok'},
 	])
 }
 
@@ -403,9 +451,9 @@ fn main() {
 	])
 }
 
-fn test_match_and_result_payloads() {
+fn test_result_payload_and_match_storage() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'match_and_result_payloads', [
+	run_good_module_batch(v3_bin, 'result_payload_and_match_storage', [
 		TransformFixture{'or_block_match_break', 'struct NoIdle {}
 
 fn (_ NoIdle) msg() string {
@@ -485,12 +533,38 @@ fn main() {
 	}
 }
 ', '7\n9'},
+		TransformFixture{'interface_dispatch_result_pointer_payload', 'interface Connection {
+	close() !
+}
+
+struct TcpConn {}
+
+fn (_ &TcpConn) close() ! {}
+
+interface Dialer {
+	dial(string) !Connection
+}
+
+struct Proxy {}
+
+fn (_ &Proxy) dial(_ string) !&TcpConn {
+	return &TcpConn{}
+}
+
+fn main() {
+	dialer := Dialer(&Proxy{})
+	connection := dialer.dial("") or { panic(err) }
+	connection.close() or { panic(err) }
+	println("ok")
+}
+', 'ok'},
+		TransformFixture{'normalized_option_result_fixed_array', "struct Foo {\n\tn int\n}\n\nfn opt_values(ok bool) ?[2]int {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [1, 2]!\n}\n\nfn res_values(ok bool) ![2]Foo {\n\tif !ok {\n\t\treturn error('x')\n\t}\n\treturn [Foo{\n\t\tn: 3\n\t}, Foo{\n\t\tn: 4\n\t}]!\n}\n\nfn main() {\n\ta := opt_values(true) or { [0, 0]! }\n\tb := res_values(true) or { [Foo{\n\t\tn: 0\n\t}, Foo{\n\t\tn: 0\n\t}]! }\n\tmissing_a := opt_values(false) or { [5, 6]! }\n\tmissing_b := res_values(false) or { [Foo{\n\t\tn: 7\n\t}, Foo{\n\t\tn: 8\n\t}]! }\n\tprintln(int_str(a[0] + a[1] + b[0].n + b[1].n))\n\tprintln(int_str(missing_a[0] + missing_a[1] + missing_b[0].n + missing_b[1].n))\n}\n", '10\n26'},
 	])
 }
 
-fn test_pointer_receiver_dispatch() {
+fn test_pointer_receiver_and_argument_calls() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'pointer_receiver_dispatch', [
+	run_good_module_batch(v3_bin, 'pointer_receiver_and_argument_calls', [
 		TransformFixture{'interface_pointer_receiver_dispatch', 'interface Reader {
 	read() int
 }
@@ -515,6 +589,89 @@ fn main() {
 }
 ', '42'},
 		TransformFixture{'alias_pointer_receiver_str', "type Number = int\n\nfn (n &Number) str() string {\n\treturn 'number:' + int_str(int(*n))\n}\n\nstruct Point {\n\tx int\n}\n\ntype NamedPoint = Point\n\nfn (p &NamedPoint) str() string {\n\treturn 'point:' + int_str(p.x)\n}\n\nfn main() {\n\tn := Number(7)\n\tp := NamedPoint(Point{\n\t\tx: 9\n\t})\n\tprintln('\${n}')\n\tprintln('\${Number(8)}')\n\tprintln('\${p}')\n\tprintln('\${NamedPoint(Point{x: 10})}')\n}\n", 'number:7\nnumber:8\npoint:9\npoint:10'},
+		TransformFixture{'interface_fn_field_argument_offset', 'interface Value {
+	value() int
+}
+
+struct Item {
+	n int
+}
+
+fn (item Item) value() int {
+	return item.n
+}
+
+struct Handler {
+	callback fn (Value)
+}
+
+fn print_value(value Value) {
+	println(int_str(value.value()))
+}
+
+fn main() {
+	handler := Handler{
+		callback: print_value
+	}
+	handler.callback(Item{
+		n: 7
+	})
+}
+', '7'},
+		TransformFixture{'interface_method_mut_arguments', 'interface Writer {
+	write(mut counter Counter, mut bytes []u8)
+}
+
+struct IncrementWriter {}
+
+struct Counter {
+mut:
+	value int
+}
+
+fn (_ IncrementWriter) write(mut counter Counter, mut bytes []u8) {
+	counter.value++
+	bytes << u8(counter.value)
+}
+
+fn apply(writer Writer, mut counter Counter, mut bytes []u8) {
+	writer.write(mut counter, mut bytes)
+}
+
+fn main() {
+	mut counter := Counter{
+		value: 6
+	}
+	mut bytes := []u8{}
+	apply(IncrementWriter{}, mut counter, mut bytes)
+	println(int_str(counter.value))
+	println(int_str(bytes[0]))
+}
+', '7\n7'},
+		TransformFixture{'mut_interface_argument_concrete_source', 'interface Counter {
+mut:
+	inc()
+}
+
+struct State {
+mut:
+	n int
+}
+
+fn (mut s State) inc() {
+	s.n++
+}
+
+fn bump(mut counter Counter) {
+	counter.inc()
+}
+
+fn main() {
+	mut state := State{}
+	bump(mut state)
+	println(int_str(state.n))
+}
+', '1'},
 	])
 }
 
@@ -759,92 +916,6 @@ fn main() {
 }
 ')
 	assert out == '7'
-}
-
-fn test_result_payload_storage() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'result_payload_storage', [
-		TransformFixture{'interface_dispatch_result_pointer_payload', 'interface Connection {
-	close() !
-}
-
-struct TcpConn {}
-
-fn (_ &TcpConn) close() ! {}
-
-interface Dialer {
-	dial(string) !Connection
-}
-
-struct Proxy {}
-
-fn (_ &Proxy) dial(_ string) !&TcpConn {
-	return &TcpConn{}
-}
-
-fn main() {
-	dialer := Dialer(&Proxy{})
-	connection := dialer.dial("") or { panic(err) }
-	connection.close() or { panic(err) }
-	println("ok")
-}
-', 'ok'},
-		TransformFixture{'normalized_option_result_fixed_array', "struct Foo {\n\tn int\n}\n\nfn opt_values(ok bool) ?[2]int {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [1, 2]!\n}\n\nfn res_values(ok bool) ![2]Foo {\n\tif !ok {\n\t\treturn error('x')\n\t}\n\treturn [Foo{\n\t\tn: 3\n\t}, Foo{\n\t\tn: 4\n\t}]!\n}\n\nfn main() {\n\ta := opt_values(true) or { [0, 0]! }\n\tb := res_values(true) or { [Foo{\n\t\tn: 0\n\t}, Foo{\n\t\tn: 0\n\t}]! }\n\tmissing_a := opt_values(false) or { [5, 6]! }\n\tmissing_b := res_values(false) or { [Foo{\n\t\tn: 7\n\t}, Foo{\n\t\tn: 8\n\t}]! }\n\tprintln(int_str(a[0] + a[1] + b[0].n + b[1].n))\n\tprintln(int_str(missing_a[0] + missing_a[1] + missing_b[0].n + missing_b[1].n))\n}\n", '10\n26'},
-	])
-}
-
-fn test_generic_value_storage() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'generic_value_storage', [
-		TransformFixture{'generic_shared_parameter_value_copy', 'struct State {
-	label string
-}
-
-fn destroy(shared state State) {
-	rlock state {
-		drop_owned(state)
-	}
-}
-
-fn main() {
-	shared state := State{
-		label: "ok"
-	}
-	destroy(shared state)
-	println("done")
-}
-', 'done'},
-		TransformFixture{'generic_pointer_struct_default', 'struct Item {
-	value int = 7
-}
-
-fn make_default[T]() T {
-	return T{}
-}
-
-fn main() {
-	item := make_default[&Item]()
-	println(item.value)
-}
-', '7'},
-		TransformFixture{'specialized_generic_or_alias_storage', 'type Label = string
-
-struct Box[T] {
-	value T
-}
-
-fn make_box[T](value T) !Box[T] {
-	return Box[T]{
-		value: value
-	}
-}
-
-fn main() {
-	box := make_box[Label](Label("ok")) or { Box[Label]{} }
-	println(box.value)
-}
-', 'ok'},
-	])
 }
 
 fn test_c_pointer_zero_argument_stays_null() {
@@ -1166,95 +1237,6 @@ fn main() {
 	assert !out.contains('Value(...)'), out
 }
 
-fn test_interface_method_pointer_arguments() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'interface_method_pointer_arguments', [
-		TransformFixture{'interface_fn_field_argument_offset', 'interface Value {
-	value() int
-}
-
-struct Item {
-	n int
-}
-
-fn (item Item) value() int {
-	return item.n
-}
-
-struct Handler {
-	callback fn (Value)
-}
-
-fn print_value(value Value) {
-	println(int_str(value.value()))
-}
-
-fn main() {
-	handler := Handler{
-		callback: print_value
-	}
-	handler.callback(Item{
-		n: 7
-	})
-}
-', '7'},
-		TransformFixture{'interface_method_mut_arguments', 'interface Writer {
-	write(mut counter Counter, mut bytes []u8)
-}
-
-struct IncrementWriter {}
-
-struct Counter {
-mut:
-	value int
-}
-
-fn (_ IncrementWriter) write(mut counter Counter, mut bytes []u8) {
-	counter.value++
-	bytes << u8(counter.value)
-}
-
-fn apply(writer Writer, mut counter Counter, mut bytes []u8) {
-	writer.write(mut counter, mut bytes)
-}
-
-fn main() {
-	mut counter := Counter{
-		value: 6
-	}
-	mut bytes := []u8{}
-	apply(IncrementWriter{}, mut counter, mut bytes)
-	println(int_str(counter.value))
-	println(int_str(bytes[0]))
-}
-', '7\n7'},
-		TransformFixture{'mut_interface_argument_concrete_source', 'interface Counter {
-mut:
-	inc()
-}
-
-struct State {
-mut:
-	n int
-}
-
-fn (mut s State) inc() {
-	s.n++
-}
-
-fn bump(mut counter Counter) {
-	counter.inc()
-}
-
-fn main() {
-	mut state := State{}
-	bump(mut state)
-	println(int_str(state.n))
-}
-', '1'},
-	])
-}
-
 fn test_folded_expression_scopes() {
 	v3_bin := build_v3_review_transform()
 	run_good_module_batch(v3_bin, 'folded_expression_scopes', [
@@ -1382,9 +1364,9 @@ fn main() {
 	assert out == '0'
 }
 
-fn test_interface_smartcast_in_match_and_iteration() {
+fn test_interface_smartcast_storage_and_control_flow() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'interface_smartcast_in_match_and_iteration', [
+	run_good_module_batch(v3_bin, 'interface_smartcast_storage_and_control_flow', [
 		TransformFixture{'for_in_smartcast_interface_field', 'interface Widget {\n\tid int\n}\n\nstruct Stack {\n\tid       int\n\tchildren []Widget\n}\n\nstruct Leaf {\n\tid int\n}\n\nfn total(w Widget) int {\n\tif w is Stack {\n\t\tmut value := w.id\n\t\tfor child in w.children {\n\t\t\tvalue += total(child)\n\t\t}\n\t\treturn value\n\t}\n\treturn w.id\n}\n\nfn main() {\n\tw := Widget(Stack{\n\t\tid: 1\n\t\tchildren: [Widget(Leaf{\n\t\t\tid: 2\n\t\t})]\n\t})\n\tprintln(int_str(total(w)))\n}\n', '3'},
 		TransformFixture{'interface_extension_match_smartcast_receiver', 'interface Named {
 	number() int
@@ -1412,12 +1394,6 @@ fn main() {
 	println(value.str())
 }
 ', '&alpha'},
-	])
-}
-
-fn test_interface_smartcast_field_storage() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'interface_smartcast_field_storage', [
 		TransformFixture{'interface_smartcast_richer_fields', 'interface Base {\n\tx int\n}\n\ninterface Extended {\n\tBase\n\ty    int\n\tnext ?Extended\n}\n\nstruct Item {\n\tx    int\n\ty    int\n\tnext ?Extended\n}\n\nfn value(base Base) int {\n\tif base is Extended {\n\t\treturn base.x + base.y\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(int_str(value(Base(Item{\n\t\tx: 2\n\t\ty: 3\n\t}))))\n}\n', '5'},
 		TransformFixture{'interface_smartcast_nil_pointer_richer_fields', 'interface Base {
 	value() int
@@ -1593,12 +1569,15 @@ fn test_nested_string_array_literal_keeps_alias_element_type() {
 	assert out == '/*\n*/'
 }
 
-fn test_array_literal_inference() {
+fn test_array_literal_types_and_separators() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'array_literal_inference', [
+	run_good_module_batch(v3_bin, 'array_literal_types_and_separators', [
 		TransformFixture{'generic_array_retype_temp_scope', "enum ChildSize {\n\tcompact\n}\n\nfn delimiters() [][]string {\n\treturn [['/*', '*/']]\n}\n\nfn child_sizes(len int) []ChildSize {\n\treturn [ChildSize.compact].repeat(len)\n}\n\nfn main() {\n\tvalues := delimiters()\n\tsizes := child_sizes(2)\n\tprintln(values[0][0])\n\tprintln(values[0][1])\n\tprintln(int_str(sizes.len))\n}\n", '/*\n*/\n2'},
 		TransformFixture{'nested_inferred_fixed_array_literal', 'fn main() {\n\tvalues := [..][..]int[[1, 2], [3, 4]]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n', '10'},
 		TransformFixture{'nested_inferred_fixed_array_literal_rows', 'fn main() {\n\trow1 := [..]int[1, 2]\n\trow2 := [..]int[3, 4]\n\tvalues := [..][..]int[row1, row2]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n', '10'},
+		// Comma-, newline-, blank-line-, and whitespace-separated element lists parse correctly.
+		TransformFixture{'array_literal_separators', 'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tcommaless := [1 2 3 4]\n\toperators := [5-2 7 2*3 -4 -7*8 2*-4 9 - 4]\n\ta := 10\n\tb := 20\n\tpointers := [&a &b]\n\tdereferenced := [*pointers[0] *pointers[1]]\n\tands := [6&3 7 7 & 3]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n\tprintln(commaless)\n\tprintln(operators)\n\tprintln(pointers.len)\n\tprintln(dereferenced)\n\tprintln(ands)\n}\n', '3:2:3\n[1, 2, 3, 4]\n[3, 7, 6, -4, -56, -8, 5]\n2\n[10, 20]\n[2, 7, 3]'},
+		TransformFixture{'array_literal_nested_expressions', 'fn identity(value int) int {\n\treturn value\n}\n\nfn main() {\n\tvalues := [10, 20, 30]\n\tnested := [(3 -2) identity(5 -3) values[2 -1]]\n\tprintln(nested)\n}\n', '[1, 2, 20]'},
 	])
 }
 
@@ -4555,9 +4534,9 @@ fn main() {
 ', 'cannot modify constant `counter`')
 }
 
-fn test_callback_selector_captures() {
+fn test_callback_state_and_selector_captures() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'callback_selector_captures', [
+	run_good_module_batch(v3_bin, 'callback_state_and_selector_captures', [
 		// A `[mut s]` value capture used as a call argument nested inside a selector base
 		// (`wrap(s).s.n`) must still be lowered to its value; the selector-base deref
 		// suppression applies only to the direct receiver ident, not to nested expressions.
@@ -4567,6 +4546,35 @@ fn test_callback_selector_captures() {
 		// the selector emits arrow access. Otherwise the inner `s` is auto-dereferenced to
 		// `*s` while the selector still emits `->`, producing an invalid `(*s)->n`.
 		TransformFixture{'mut_capture_paren_selector_base', 'struct S {\n\tn int\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str((s).n))\n\t})\n}\n', '7'},
+		TransformFixture{'recursive_closure_assignment', 'fn main() {
+	one := 1
+	mut factorial := fn (n int) int {
+		return 1
+	}
+	factorial = fn [one, factorial] (n int) int {
+		if n <= 1 {
+			return one
+		}
+		return n * factorial(n - 1)
+	}
+	println(int_str(factorial(5)))
+}
+', '120'},
+		TransformFixture{'array_filter_map_capturing_callback_state', 'fn main() {
+	mut filter_calls := 0
+	filtered := [1, 2, 3].filter(fn [mut filter_calls] (value int) bool {
+		filter_calls++
+		return filter_calls > 1
+	})
+	mut map_calls := 0
+	mapped := [10, 20, 30].map(fn [mut map_calls] (value int) int {
+		map_calls++
+		return value + map_calls
+	})
+	println(filtered)
+	println(mapped)
+}
+', '[2, 3]\n[11, 22, 33]'},
 	])
 }
 
@@ -4998,11 +5006,6 @@ fn main() {
 
 fn test_array_literal_separator_handling() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'array_literal_separator_handling', [
-		// Comma-, newline-, blank-line-, and whitespace-separated element lists parse correctly.
-		TransformFixture{'array_literal_separators', 'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tcommaless := [1 2 3 4]\n\toperators := [5-2 7 2*3 -4 -7*8 2*-4 9 - 4]\n\ta := 10\n\tb := 20\n\tpointers := [&a &b]\n\tdereferenced := [*pointers[0] *pointers[1]]\n\tands := [6&3 7 7 & 3]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n\tprintln(commaless)\n\tprintln(operators)\n\tprintln(pointers.len)\n\tprintln(dereferenced)\n\tprintln(ands)\n}\n', '3:2:3\n[1, 2, 3, 4]\n[3, 7, 6, -4, -56, -8, 5]\n2\n[10, 20]\n[2, 7, 3]'},
-		TransformFixture{'array_literal_nested_expressions', 'fn identity(value int) int {\n\treturn value\n}\n\nfn main() {\n\tvalues := [10, 20, 30]\n\tnested := [(3 -2) identity(5 -3) values[2 -1]]\n\tprintln(nested)\n}\n', '[1, 2, 20]'},
-	])
 	run_bad(v3_bin, 'array_literal_doubled_comma', 'fn main() {\n\t_ := [1,,2]\n}\n', 'unexpected token `,`, expecting `]`')
 }
 
@@ -5037,18 +5040,12 @@ fn test_map_value_lookup_constructs_default_only_for_missing_key() {
 	assert run_good(v3_bin, 'map_value_lookup_lazy_default', source) == '42'
 }
 
-fn test_collection_pointer_equality() {
+fn test_aggregate_pointer_equality() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'collection_pointer_equality', [
+	run_good_module_batch(v3_bin, 'aggregate_pointer_equality', [
 		TransformFixture{'pointer_array_equality', 'struct Node {\n\tvalue int\n}\n\nfn main() {\n\tleft_node := Node{\n\t\tvalue: 5\n\t}\n\tright_node := Node{\n\t\tvalue: 5\n\t}\n\tleft_ptr := &left_node\n\tright_ptr := &right_node\n\tleft := [left_ptr]\n\tright := [right_ptr]\n\tsame := [left_ptr]\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n\tprintln(right_ptr in left)\n\tprintln(int_str(left.index(right_ptr)))\n}\n', 'false\ntrue\ntrue\nfalse\n-1'},
 		TransformFixture{'array_pointer_equality', 'fn main() {\n\tleft := [1, 2]\n\tright := [1, 2]\n\tleft_ptr := &left\n\tright_ptr := &right\n\tsame_ptr := left_ptr\n\tprintln(left_ptr == right_ptr)\n\tprintln(left_ptr != right_ptr)\n\tprintln(left_ptr == same_ptr)\n\tprintln(*left_ptr == *right_ptr)\n}\n', 'false\ntrue\ntrue\ntrue'},
 		TransformFixture{'map_pointer_equality', "fn main() {\n\tleft := {\n\t\t'x': 1\n\t}\n\tright := {\n\t\t'x': 1\n\t}\n\tleft_ptr := &left\n\tright_ptr := &right\n\tsame_ptr := left_ptr\n\tprintln(left_ptr == right_ptr)\n\tprintln(left_ptr != right_ptr)\n\tprintln(left_ptr == same_ptr)\n\tprintln(*left_ptr == *right_ptr)\n}\n", 'false\ntrue\ntrue\ntrue'},
-	])
-}
-
-fn test_struct_pointer_equality() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'struct_pointer_equality', [
 		TransformFixture{'struct_pointer_semantic_equality', "struct Person {\n\tname string\n\ttags []string\n}\n\nfn main() {\n\tleft := &Person{\n\t\tname: 'abc'.clone()\n\t\ttags: ['x'.clone()]\n\t}\n\tright := &Person{\n\t\tname: ('a' + 'bc')\n\t\ttags: [('x' + '')]\n\t}\n\tsame := left\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n}\n", 'true\nfalse\ntrue'},
 		TransformFixture{'multilevel_struct_pointer_identity_equality', "struct Person {\n\tname string\n}\n\nfn main() {\n\tmut left := &Person{\n\t\tname: 'same'\n\t}\n\tmut right := &Person{\n\t\tname: 'same'\n\t}\n\tleft_slot := &left\n\tright_slot := &right\n\tsame_slot := left_slot\n\tprintln(left_slot == right_slot)\n\tprintln(left_slot != right_slot)\n\tprintln(left_slot == same_slot)\n\tprintln(*left_slot == *right_slot)\n}\n", 'false\ntrue\ntrue\ntrue'},
 		TransformFixture{'struct_eq_pointer_field', 'struct Node {\n\tvalue int\n\tnext &Node\n}\n\nfn main() {\n\tleft := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tright := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tprintln([left] == [right])\n}\n', 'true'},
@@ -5208,11 +5205,13 @@ fn test_delete_last_empty_array_panics_before_tail_clear() {
 	assert run.output.contains('array.delete_last: array is empty'), run.output
 }
 
-fn test_array_slice_mutations() {
+fn test_array_slice_and_last_index() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'array_slice_mutations', [
+	run_good_module_batch(v3_bin, 'array_slice_and_last_index', [
 		TransformFixture{'delete_last_preserves_shared_slice_buffer', "fn main() {\n\tmut a := [1, 2, 3, 4]\n\tb := unsafe { a[..a.len] }\n\told_data := a.data\n\ta.delete_last()\n\tassert a == [1, 2, 3]\n\tassert b == [1, 2, 3, 4]\n\tassert a.data != old_data\n\tprintln('ok')\n}\n", 'ok'},
 		TransformFixture{'slice_element_assignment_writes_through', "fn main() {\n\tmut a := [1, 2, 3, 4]\n\tmut s := unsafe { a[1..3] }\n\ts[0] = 42\n\ts[1] += 5\n\tassert a == [1, 42, 8, 4]\n\tassert s == [42, 8]\n\tprintln('ok')\n}\n", 'ok'},
+		TransformFixture{'array_last_index_element_width', 'fn main() {\n\twide := [i64(1), i64(5000000000), i64(2), i64(5000000000)]\n\tfloats := [1.25, 2.5, 1.25]\n\tflags := [true, false, true]\n\tprintln(int_str(wide.last_index(i64(5000000000))))\n\tprintln(int_str(floats.last_index(1.25)))\n\tprintln(int_str(flags.last_index(true)))\n}\n', '3\n2\n2'},
+		TransformFixture{'array_last_index_semantic_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tnested := [['ab'.clone()], [join('x', 'y')], [join('a', 'b')]]\n\tnested_needle := ['ab'.clone()]\n\titems := [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}, Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tneedle := Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}\n\tprintln(int_str(nested.last_index(nested_needle)))\n\tprintln(int_str(items.last_index(needle)))\n}\n", '2\n1'},
 	])
 }
 
@@ -5287,14 +5286,6 @@ fn test_runes_iterator_index_is_loop_scoped() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'runes_iterator_index_scope', "fn main() {\n\tfor i, r in 'ab'.runes_iterator() {\n\t\t_ := r\n\t\tprintln(int_str(i))\n\t}\n\ti := 9\n\tprintln(int_str(i))\n}\n")
 	assert out == '0\n1\n9'
-}
-
-fn test_array_last_index_values() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'array_last_index_values', [
-		TransformFixture{'array_last_index_element_width', 'fn main() {\n\twide := [i64(1), i64(5000000000), i64(2), i64(5000000000)]\n\tfloats := [1.25, 2.5, 1.25]\n\tflags := [true, false, true]\n\tprintln(int_str(wide.last_index(i64(5000000000))))\n\tprintln(int_str(floats.last_index(1.25)))\n\tprintln(int_str(flags.last_index(true)))\n}\n', '3\n2\n2'},
-		TransformFixture{'array_last_index_semantic_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tnested := [['ab'.clone()], [join('x', 'y')], [join('a', 'b')]]\n\tnested_needle := ['ab'.clone()]\n\titems := [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}, Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tneedle := Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}\n\tprintln(int_str(nested.last_index(nested_needle)))\n\tprintln(int_str(items.last_index(needle)))\n}\n", '2\n1'},
-	])
 }
 
 fn test_comptime_type_inference() {
@@ -5457,41 +5448,6 @@ fn main() {
 	println(first_two_fn_type_name)
 }
 ', 'fn () [3]int\nfn ([3]int) [2]int\nfn () [3]int\nfn ([3]int) [2]int'},
-	])
-}
-
-fn test_callback_capture_state() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'callback_capture_state', [
-		TransformFixture{'recursive_closure_assignment', 'fn main() {
-	one := 1
-	mut factorial := fn (n int) int {
-		return 1
-	}
-	factorial = fn [one, factorial] (n int) int {
-		if n <= 1 {
-			return one
-		}
-		return n * factorial(n - 1)
-	}
-	println(int_str(factorial(5)))
-}
-', '120'},
-		TransformFixture{'array_filter_map_capturing_callback_state', 'fn main() {
-	mut filter_calls := 0
-	filtered := [1, 2, 3].filter(fn [mut filter_calls] (value int) bool {
-		filter_calls++
-		return filter_calls > 1
-	})
-	mut map_calls := 0
-	mapped := [10, 20, 30].map(fn [mut map_calls] (value int) int {
-		map_calls++
-		return value + map_calls
-	})
-	println(filtered)
-	println(mapped)
-}
-', '[2, 3]\n[11, 22, 33]'},
 	])
 }
 
@@ -5804,17 +5760,11 @@ fn main() {
 	assert out == 'true'
 }
 
-fn test_optional_payload_equality() {
+fn test_optional_wrapper_and_payload_values() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'optional_payload_equality', [
+	run_good_module_batch(v3_bin, 'optional_wrapper_and_payload_values', [
 		TransformFixture{'optional_string_semantic_equality', "fn maybe_text(ok bool) ?string {\n\tif !ok {\n\t\treturn none\n\t}\n\tprefix := 'a'.clone()\n\treturn prefix + 'b'\n}\n\nfn main() {\n\tleft := maybe_text(true)\n\tright := maybe_text(true)\n\tmissing_left := maybe_text(false)\n\tmissing_right := maybe_text(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n", 'true\nfalse\nfalse\ntrue\nfalse'},
 		TransformFixture{'optional_nested_array_guarded_equality', "fn maybe_nested(ok bool) ?[][]string {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [['a'.clone()], ['b'.clone()]]\n}\n\nfn main() {\n\tleft := maybe_nested(true)\n\tright := maybe_nested(true)\n\tmissing_left := maybe_nested(false)\n\tmissing_right := maybe_nested(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n", 'true\nfalse\nfalse\ntrue\nfalse'},
-	])
-}
-
-fn test_optional_wrapper_values() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'optional_wrapper_values', [
 		TransformFixture{'optional_assignment_invalidates_payload_smartcast', 'fn main() {\n\tmut value := ?int(none)\n\tvalue = 1\n\tvalue = none\n\tresolved := value or { 42 }\n\tprintln(int_str(resolved))\n}\n', '42'},
 		TransformFixture{'optional_variant_to_optional_sum_cast', "struct Cat {}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\nfn maybe_dog(ok bool) ?Dog {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn Dog{\n\t\tname: 'Rex'\n\t}\n}\n\nfn maybe_animal(ok bool) ?Animal {\n\treturn maybe_dog(ok)\n}\n\nfn show(ok bool) string {\n\tanimal := maybe_animal(ok) or { return 'missing' }\n\tif animal is Dog {\n\t\treturn animal.name\n\t}\n\treturn 'cat'\n}\n\nfn main() {\n\tprintln(show(true))\n\tprintln(show(false))\n}\n", 'Rex\nmissing'},
 		TransformFixture{'gated_optional_array_index_base_order', "fn get_arr(ok bool) ?[]int {\n\tprintln('get')\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [3, 7, 11]\n}\n\nfn main() {\n\tprintln(int_str(get_arr(true)#[-1] or { 40 }))\n\tprintln(int_str(get_arr(true)#[9] or { 41 }))\n\tprintln(int_str(get_arr(false)#[-1] or { 42 }))\n}\n", 'get\n11\nget\n41\nget\n42'},
@@ -12105,9 +12055,9 @@ fn main() {
 	])
 }
 
-fn test_sum_smartcast_array_operations() {
+fn test_sum_smartcast_array_and_method_access() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'sum_smartcast_array_operations', [
+	run_good_module_batch(v3_bin, 'sum_smartcast_array_and_method_access', [
 		TransformFixture{'array_map_in_sum_smartcast', 'type Value = int | []int
 
 fn normalize(value Value) Value {
@@ -12145,6 +12095,55 @@ fn main() {
 	println(values(Size([1.5, 2.5])))
 }
 ', '[1.5, 2.5]'},
+		TransformFixture{'smartcast_sum_method_receiver', 'struct Square {}
+
+struct Circle {}
+
+type Shape = Circle | Square
+
+fn (shape Shape) shape_name() string {
+	return match shape {
+		Circle { "circle" }
+		Square { "square" }
+	}
+}
+
+fn print_name(shape Shape) {
+	if shape is Square {
+		println(shape.shape_name())
+	}
+}
+
+fn main() {
+	print_name(Square{})
+}
+', 'square'},
+		TransformFixture{'smartcast_nested_sum_method_receiver', 'struct Integer {}
+
+struct Text {}
+
+struct Empty {}
+
+type Expr = Integer | Text
+type Node = Empty | Expr
+
+fn (expr Expr) expr_name() string {
+	return match expr {
+		Integer { "integer" }
+		Text { "text" }
+	}
+}
+
+fn print_name(node Node) {
+	if node is Expr {
+		println(node.expr_name())
+	}
+}
+
+fn main() {
+	print_name(Expr(Integer{}))
+}
+', 'integer'},
 	])
 }
 
@@ -12415,61 +12414,6 @@ fn test_none_literal_str_method() {
 }
 ')
 	assert out == '<none>'
-}
-
-fn test_sum_smartcast_method_receivers() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'sum_smartcast_method_receivers', [
-		TransformFixture{'smartcast_sum_method_receiver', 'struct Square {}
-
-struct Circle {}
-
-type Shape = Circle | Square
-
-fn (shape Shape) shape_name() string {
-	return match shape {
-		Circle { "circle" }
-		Square { "square" }
-	}
-}
-
-fn print_name(shape Shape) {
-	if shape is Square {
-		println(shape.shape_name())
-	}
-}
-
-fn main() {
-	print_name(Square{})
-}
-', 'square'},
-		TransformFixture{'smartcast_nested_sum_method_receiver', 'struct Integer {}
-
-struct Text {}
-
-struct Empty {}
-
-type Expr = Integer | Text
-type Node = Empty | Expr
-
-fn (expr Expr) expr_name() string {
-	return match expr {
-		Integer { "integer" }
-		Text { "text" }
-	}
-}
-
-fn print_name(node Node) {
-	if node is Expr {
-		println(node.expr_name())
-	}
-}
-
-fn main() {
-	print_name(Expr(Integer{}))
-}
-', 'integer'},
-	])
 }
 
 fn test_nested_match_smartcast_declaration_uses_nearest_variant() {
