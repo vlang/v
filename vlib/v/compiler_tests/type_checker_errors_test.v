@@ -375,6 +375,70 @@ fn main() {
 	])
 }
 
+fn test_deferred_returns_and_pointer_escapes() {
+	run_good_module_batch(v3_bin, 'deferred_returns_and_pointer_escapes', [
+		TypeCheckerRuntimeCase{'function_defer_runs_each_loop_execution', '__global hit int\n\nfn run() {\n\tfor _ in 0 .. 3 {\n\t\tdefer(fn) {\n\t\t\thit += 100\n\t\t}\n\t}\n}\n\nfn main() {\n\trun()\n\tprintln(int_str(hit))\n}\n', '300'},
+		// An interface-returning function with a pending `defer` saves its return value into a temp
+		// before running the defers. That temp must hold the boxed interface value (`_typ`/`_object`),
+		// not a zeroed `(Iface){0}`; otherwise the later dynamic dispatch panics. The boxing must match
+		// the direct (defer-free) return path.
+		TypeCheckerRuntimeCase{'good_interface_return_with_defer', 'interface Speaker {\n\tspeak() int\n}\nstruct Dog {\n\tvolume int\n}\nfn (d Dog) speak() int {\n\treturn d.volume\n}\nfn make() Speaker {\n\tdefer {\n\t\t_ := 0\n\t}\n\treturn Dog{\n\t\tvolume: 42\n\t}\n}\nfn main() {\n\ts := make()\n\tprintln(int_str(s.speak()))\n}\n', '42'},
+		// A local whose address escapes (returned via a pointer) is moved to the heap, so the local is
+		// now a `&T`. Its compound (`v += 1`) and postfix (`v++`) mutations must store through the
+		// pointer (`*v += 1`, `(*v)++`), not perform pointer arithmetic; the returned pointer reflects
+		// the mutated value.
+		TypeCheckerRuntimeCase{'good_heaped_local_compound_mutation', "fn compound() int {\n\tmut v := 1\n\tp := &v\n\tv += 1\n\treturn *p\n}\nfn postfix() int {\n\tmut v := 5\n\tp := &v\n\tv++\n\tv++\n\treturn *p\n}\nfn main() {\n\tprintln(int_str(compound()) + ',' + int_str(postfix()))\n}\n", '2,7'},
+		TypeCheckerRuntimeCase{'good_defer_result_prefixed_local', 'fn f() int {\n\t__v3_defer_result := 7\n\t__v3_defer_result_value := 8\n\treturn __v3_defer_result + __v3_defer_result_value\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '15'},
+		TypeCheckerRuntimeCase{'good_defer_result_value', 'fn f() int {\n\tdefer {\n\t\tprintln(int_str($res()))\n\t}\n\treturn 9\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '9\n9'},
+		TypeCheckerRuntimeCase{'good_indexed_defer_result_value', 'fn f() (int, int) {\n\tdefer {\n\t\tprintln(int_str($res(1)))\n\t}\n\treturn 4, 5\n}\nfn main() {\n\ta, b := f()\n\tprintln(int_str(a) + "," + int_str(b))\n}\n', '5\n4,5'},
+		// A value local whose address escapes (`p := &v` with `p` returned) is moved to the heap at
+		// its declaration, so a mutation between the alias and the return is observed by the caller —
+		// matching V's auto-heap semantics. Copying eagerly at `p := &v` returned stale data (x == 1).
+		TypeCheckerRuntimeCase{
+			name:     'good_escaped_pointer_alias_mutation'
+			source:   'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tv.x = 2\n\treturn p\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n'
+			expected: '2'
+		},
+		// A static-method call returning a fixed array (`Type.make() [N]T`) is lowered to a selector
+		// whose base is a type, not a receiver value; its `_v_ret_*` wrapper must still be unwrapped to
+		// `.ret_arr`, so the assignment/indexing below sees the array, not the wrapper struct.
+		TypeCheckerRuntimeCase{
+			name:     'good_static_method_fixed_array_return'
+			source:   'struct Maker {}\nfn Maker.make() [3]int {\n\treturn [10, 20, 30]!\n}\nfn main() {\n\ta := Maker.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n'
+			expected: '60'
+		},
+		// An escaping pointer returned through a copy (`p := &v; q := p; return q`) must still move
+		// `v` to the heap, so a mutation after the alias is seen by the caller (not a dangling stack
+		// pointer). The pointer-alias chain is followed when deciding what escapes.
+		TypeCheckerRuntimeCase{
+			name:     'good_returned_pointer_alias_heap'
+			source:   'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tq := p\n\tv.x = 2\n\treturn q\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n'
+			expected: '2'
+		},
+		// An interface method returning a fixed array gets its dispatch stub declared with the
+		// `_v_ret_*` wrapper, not a bare `Array_fixed_*` (a C function cannot return an array). This
+		// holds both when only the concrete implementer is called and through a real interface call.
+		TypeCheckerRuntimeCase{
+			name:     'good_iface_fixed_array_concrete_only'
+			source:   'interface Maker {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [1, 2, 3]!\n}\nfn main() {\n\ts := S{}\n\ta := s.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n'
+			expected: '6'
+		},
+		TypeCheckerRuntimeCase{
+			name:     'good_iface_fixed_array_dispatch'
+			source:   'interface Maker {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [4, 5, 6]!\n}\nfn use_iface(i Maker) int {\n\ta := i.make()\n\treturn a[0] + a[1] + a[2]\n}\nfn main() {\n\ts := S{}\n\tprintln(int_str(use_iface(s)))\n}\n'
+			expected: '15'
+		},
+		// A pointer-receiver method value taken on an rvalue base (`Foo{..}.tick`) copies the receiver
+		// into durable static storage instead of capturing `&(temporary)` that dies before the
+		// callback runs.
+		TypeCheckerRuntimeCase{
+			name:     'good_ptr_receiver_method_value_rvalue'
+			source:   'struct Foo {\nmut:\n\tn int\n}\nfn (f &Foo) tick() int {\n\treturn f.n\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(run(Foo{\n\t\tn: 5\n\t}.tick)))\n}\n'
+			expected: '5'
+		},
+	])
+}
+
 // test_type_checker_reports_core_semantic_errors validates this v3 regression case.
 fn test_type_checker_reports_core_semantic_errors() {
 	run_bad_module_batch(v3_bin, [
@@ -599,22 +663,6 @@ pub fn trace(x int) {}
 '
 	}, 'main.v')
 	assert disabled_if_out == '0\n0\n0\n7'
-	run_good_module_batch(v3_bin, 'defer_returns_and_local_values', [
-		TypeCheckerRuntimeCase{'function_defer_runs_each_loop_execution', '__global hit int\n\nfn run() {\n\tfor _ in 0 .. 3 {\n\t\tdefer(fn) {\n\t\t\thit += 100\n\t\t}\n\t}\n}\n\nfn main() {\n\trun()\n\tprintln(int_str(hit))\n}\n', '300'},
-		// An interface-returning function with a pending `defer` saves its return value into a temp
-		// before running the defers. That temp must hold the boxed interface value (`_typ`/`_object`),
-		// not a zeroed `(Iface){0}`; otherwise the later dynamic dispatch panics. The boxing must match
-		// the direct (defer-free) return path.
-		TypeCheckerRuntimeCase{'good_interface_return_with_defer', 'interface Speaker {\n\tspeak() int\n}\nstruct Dog {\n\tvolume int\n}\nfn (d Dog) speak() int {\n\treturn d.volume\n}\nfn make() Speaker {\n\tdefer {\n\t\t_ := 0\n\t}\n\treturn Dog{\n\t\tvolume: 42\n\t}\n}\nfn main() {\n\ts := make()\n\tprintln(int_str(s.speak()))\n}\n', '42'},
-		// A local whose address escapes (returned via a pointer) is moved to the heap, so the local is
-		// now a `&T`. Its compound (`v += 1`) and postfix (`v++`) mutations must store through the
-		// pointer (`*v += 1`, `(*v)++`), not perform pointer arithmetic; the returned pointer reflects
-		// the mutated value.
-		TypeCheckerRuntimeCase{'good_heaped_local_compound_mutation', "fn compound() int {\n\tmut v := 1\n\tp := &v\n\tv += 1\n\treturn *p\n}\nfn postfix() int {\n\tmut v := 5\n\tp := &v\n\tv++\n\tv++\n\treturn *p\n}\nfn main() {\n\tprintln(int_str(compound()) + ',' + int_str(postfix()))\n}\n", '2,7'},
-		TypeCheckerRuntimeCase{'good_defer_result_prefixed_local', 'fn f() int {\n\t__v3_defer_result := 7\n\t__v3_defer_result_value := 8\n\treturn __v3_defer_result + __v3_defer_result_value\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '15'},
-		TypeCheckerRuntimeCase{'good_defer_result_value', 'fn f() int {\n\tdefer {\n\t\tprintln(int_str($res()))\n\t}\n\treturn 9\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '9\n9'},
-		TypeCheckerRuntimeCase{'good_indexed_defer_result_value', 'fn f() (int, int) {\n\tdefer {\n\t\tprintln(int_str($res(1)))\n\t}\n\treturn 4, 5\n}\nfn main() {\n\ta, b := f()\n\tprintln(int_str(a) + "," + int_str(b))\n}\n', '5\n4,5'},
-	])
 	run_bad_project(v3_bin, 'array_append_distinct_module_types', {
 		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmut xs := []moda.Foo{}\n\tys := []modb.Foo{}\n\txs << ys\n}\n'
 		'moda/moda.v': 'module moda\n\npub struct Foo {\n\ta int\n}\n'
@@ -1184,8 +1232,8 @@ fn main() {
 ', 'cannot use `int` as argument 1 to `sink.take`; expected `i8`')
 }
 
-fn test_fixed_array_lengths_and_dimensions() {
-	run_good_module_batch(v3_bin, 'fixed_array_lengths_and_dimensions', [
+fn test_fixed_array_dimensions_and_thread_values() {
+	run_good_module_batch(v3_bin, 'fixed_array_dimensions_and_thread_values', [
 		// Correct fixed-array length is accepted and round-trips.
 		TypeCheckerRuntimeCase{'good_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0] + a[1] + a[2] + a[3]\n}\nfn main() {\n\tprintln(int_str(take4([10, 20, 30, 40])))\n}\n', '100'},
 		// Bare array literals are dynamic `[]T`, so different-length branches are fine.
@@ -1222,6 +1270,39 @@ fn test_fixed_array_lengths_and_dimensions() {
 		TypeCheckerRuntimeCase{'good_const_len_fixed_array_decl_len', "const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\tr[0] = 10\n\treturn r\n}\nfn main() {\n\ta := f()\n\tprintln(int_str(a[0]) + ',' + int_str(a.len))\n}\n", '10,3'},
 		// An expression length (`[segs + 1]int`) likewise folds, iterates, and indexes correctly.
 		TypeCheckerRuntimeCase{'good_expr_len_fixed_array', "const segs = 2\nfn f() [segs + 1]int {\n\tmut r := [segs + 1]int{}\n\tr[0] = 5\n\tr[1] = 6\n\tr[2] = 7\n\treturn r\n}\nfn main() {\n\ta := f()\n\tmut sum := 0\n\tfor x in a {\n\t\tsum += x\n\t}\n\tprintln(int_str(a.len) + ',' + int_str(a[1]) + ',' + int_str(sum))\n}\n", '3,6,18'},
+		// Regression tests for the post-PR review fixes: const-expression fixed-array
+		// lengths must be folded to a literal (not c_name-mangled into `segs_+_1`), and the
+		// `[]thread T.wait()` helper name must sanitize a pointer payload C type (`Foo*`).
+		// `[segs + 1]f32` must emit `[5]` for both the array dimension and `.len`.
+		TypeCheckerRuntimeCase{
+			name:     'good_const_expr_fixed_array_len'
+			source:   'const segs = 4\nfn main() {\n\tmut x := [segs + 1]f32{}\n\tx[0] = 1.5\n\tx[segs] = 2.5\n\tprintln(int_str(x.len))\n\tprintln(int_str(int(x[0] + x[segs])))\n}\n'
+			expected: '5\n4'
+		},
+		// `[]thread &Foo.wait()` returns `[]&Foo`; the wait helper symbol must not contain
+		// the `*` from the `Foo*` payload C type.
+		TypeCheckerRuntimeCase{
+			name:     'good_thread_ptr_payload_wait'
+			source:   'struct Foo {\n\tx int\n}\nfn work(n int) &Foo {\n\treturn &Foo{\n\t\tx: n\n\t}\n}\nfn main() {\n\tmut threads := []thread &Foo{}\n\tthreads << spawn work(40)\n\tthreads << spawn work(2)\n\tresults := threads.wait()\n\tmut sum := 0\n\tfor r in results {\n\t\tsum += r.x\n\t}\n\tprintln(int_str(sum))\n}\n'
+			expected: '42'
+		},
+		// A bare heap generic literal (`&Box{v: 1}` where `&Box[int]` is expected) must read its
+		// omitted-field defaults from the concrete instance key: monomorphization drops the bare `Box`
+		// entry, so an omitted `items []T` needs its `array_new` default or the field has invalid
+		// zeroed array metadata (here a later append would silently drop the elements).
+		TypeCheckerRuntimeCase{
+			name:     'good_heap_generic_omitted_array_default'
+			source:   "struct Box[T] {\n\tv T\nmut:\n\titems []T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\tmut b := make()\n\tb.items << 10\n\tb.items << 20\n\tprintln(int_str(b.v) + ',' + int_str(b.items.len) + ',' + int_str(b.items[0]) + ',' + int_str(b.items[1]))\n}\n"
+			expected: '1,2,10,20'
+		},
+		// `[]thread T.wait()` recovers the spawned return type from the thread name; a fixed-array
+		// return with a non-decimal length (`[0x10]u8`) must reconstruct the same `_v_ret_*` wrapper
+		// ABI type the spawn wrapper stored, not a bogus generic application of `u8`.
+		TypeCheckerRuntimeCase{
+			name:     'good_thread_wait_nondecimal_fixed_array'
+			source:   "fn work() [0x10]u8 {\n\tmut r := [0x10]u8{}\n\tr[0] = 42\n\tr[15] = 7\n\treturn r\n}\nfn main() {\n\tmut threads := []thread [0x10]u8{}\n\tthreads << spawn work()\n\tresults := threads.wait()\n\tprintln(int_str(results[0][0]) + ',' + int_str(results[0][15]))\n}\n"
+			expected: '42,7'
+		},
 	])
 }
 
@@ -1269,15 +1350,21 @@ fn test_fixed_array_length_checks() {
 	assert shadowed_compact.contains('returnfixture__xs[0];'), shadowed_c
 }
 
+fn test_conditional_and_exhaustive_bool_runtime() {
+	run_good_module_batch(v3_bin, 'conditional_and_exhaustive_bool_runtime', [
+		TypeCheckerRuntimeCase{'statement_if_mixed_tail_exprs', "fn main() {\n\tmut n := 0\n\tmut errors := []string{}\n\tif true {\n\t\tn++\n\t} else {\n\t\terrors << 'bad'\n\t}\n\tprintln(int_str(n + errors.len))\n}\n", '1'},
+		TypeCheckerRuntimeCase{'good_bool_match_single_branch_exhaustive', 'fn f(b bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n', '2'},
+		TypeCheckerRuntimeCase{'good_bool_alias_match_single_branch_exhaustive', 'type Flag = bool\nfn f(b Flag) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n', '2'},
+	])
+}
+
 fn test_statement_if_branch_tails_are_not_value_checked() {
-	statement_if := run_good(v3_bin, 'statement_if_mixed_tail_exprs', "fn main() {\n\tmut n := 0\n\tmut errors := []string{}\n\tif true {\n\t\tn++\n\t} else {\n\t\terrors << 'bad'\n\t}\n\tprintln(int_str(n + errors.len))\n}\n")
-	assert statement_if == '1'
 	run_bad(v3_bin, 'bad_if_branch_primitive_mismatch', "fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n", 'mismatched types `int literal` and `string`')
 	run_bad(v3_bin, 'bad_if_branch_value_pointer_mismatch', 'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n', 'mismatched types `Foo` and `&Foo`')
 }
 
-fn test_result_branches_and_or_fallback_values() {
-	run_good_module_batch(v3_bin, 'result_branches_and_or_fallback_values', [
+fn test_result_and_or_block_runtime() {
+	run_good_module_batch(v3_bin, 'result_and_or_block_runtime', [
 		TypeCheckerRuntimeCase{'good_result_if_error_branch', "fn f(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", '1\nbad'},
 		TypeCheckerRuntimeCase{'good_result_const_if_error_branch', "fn f() !int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {\n\t_ := f() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", 'bad'},
 		TypeCheckerRuntimeCase{'good_option_or_error_in_result_match', "fn maybe_number(text string) ?f64 {\n\treturn text.f64()\n}\n\nfn convert(text string) !f64 {\n\treturn match text {\n\t\t'' { 0.0 }\n\t\telse { maybe_number(text) or { error('bad number') } }\n\t}\n}\n\nfn main() {\n\tprintln(convert('2.5') or { 0.0 })\n}\n", '2.5'},
@@ -1300,6 +1387,40 @@ fn main() {
 	println(answer)
 }
 ', '42'},
+		// Regression tests for the second PR-review batch (vlang/v#27557).
+		// or-block binds `err` (IError) only inside the or-body; an outer `err` keeps its
+		// type afterwards (was emitted as `err.message` on an int).
+		TypeCheckerRuntimeCase{
+			name:     'good_or_block_err_scope'
+			source:   'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\terr := 7\n\t_ := maybe() or { 0 }\n\tprintln(int_str(err))\n}\n'
+			expected: '7'
+		},
+		// Generic receiver params are substituted by declared name: `Pair[L, R].right()`
+		// returns `R` (int), not the first arg `L` (string).
+		TypeCheckerRuntimeCase{
+			name:     'good_generic_receiver_param_by_name'
+			source:   "struct Pair[L, R] {\n\tleft  L\n\tright R\n}\nfn (p Pair[L, R]) right_val() R {\n\treturn p.right\n}\nfn main() {\n\tp := Pair[string, int]{\n\t\tleft:  'hi'\n\t\tright: 42\n\t}\n\tprintln(int_str(p.right_val()))\n}\n"
+			expected: '42'
+		},
+		// `[flag]` enum stringification renders combined values as `Enum{.a | .b}`.
+		TypeCheckerRuntimeCase{
+			name:     'good_flag_enum_str'
+			source:   '@[flag]\nenum Perm {\n\tread\n\twrite\n\texec\n}\nfn main() {\n\ta := Perm.read | Perm.write\n\tprintln(a.str())\n\tb := Perm.read\n\tprintln(b.str())\n}\n'
+			expected: 'Perm{.read | .write}\nPerm{.read}'
+		},
+		// spawn of an option-returning fn stores/reads the `__v_option_T` ABI layout.
+		TypeCheckerRuntimeCase{
+			name:     'good_spawn_option_return'
+			source:   "fn work() ?string {\n\treturn 'hello'\n}\nfn main() {\n\tmut ts := []thread ?string{}\n\tts << spawn work()\n\trs := ts.wait() or { []string{} }\n\tx := rs[0] or { 'none' }\n\tprintln(x)\n}\n"
+			expected: 'hello'
+		},
+		// A global V function passed to a method `fn ()` param keeps the function-pointer
+		// typedef (not `(void*)`).
+		TypeCheckerRuntimeCase{
+			name:     'good_method_fn_ptr_arg'
+			source:   "struct S {\n\tn int\n}\nfn (s S) run(cb fn ()) {\n\tcb()\n}\nfn greet() {\n\tprintln('hi')\n}\nfn main() {\n\ts := S{\n\t\tn: 1\n\t}\n\ts.run(greet)\n}\n"
+			expected: 'hi'
+		},
 	])
 }
 
@@ -1311,8 +1432,8 @@ fn test_if_error_branches_require_result_returns() {
 	])
 }
 
-fn test_multi_return_if_assignments_and_early_exits() {
-	run_good_module_batch(v3_bin, 'multi_return_if_assignments_and_early_exits', [
+fn test_conditional_multi_return_runtime() {
+	run_good_module_batch(v3_bin, 'conditional_multi_return_runtime', [
 		TypeCheckerRuntimeCase{'good_result_multi_return_error_return', "fn pair(fail bool) !(int, int) {\n\tif fail {\n\t\treturn error('x')\n\t}\n\treturn 1, 2\n}\nfn main() {\n\ta, b := pair(false) or { panic(err.msg()) }\n\tprintln(int_str(a + b))\n\t_, _ := pair(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", '3\nx'},
 		TypeCheckerRuntimeCase{'good_multi_return_if_common_pointer_tail', 'fn main() {\n\tx := 7\n\tp, n := if false {\n\t\tnil\n\t\t0\n\t} else {\n\t\t&x\n\t\t1\n\t}\n\tprintln(typeof(p).name)\n\tprintln(int_str(n))\n}\n', 'voidptr\n1'},
 		TypeCheckerRuntimeCase{'good_multi_return_if_promoted_numeric_tail', 'fn main() {\n\tcond := false\n\tx, _ := if cond {\n\t\t1\n\t\t0\n\t} else {\n\t\t1.5\n\t\t0\n\t}\n\tprintln(typeof(x).name)\n\tprintln((x > 1.4).str())\n}\n', 'f64\ntrue'},
@@ -1325,20 +1446,6 @@ fn test_multi_return_if_assignments_and_early_exits() {
 		TypeCheckerRuntimeCase{'good_multi_return_if_branch_return_values', "fn choose(cond bool) (string, string) {\n\ta, b := if cond {\n\t\treturn 'x', 'y'\n\t} else {\n\t\t1\n\t\t2\n\t}\n\treturn int_str(a), int_str(b)\n}\n\nfn main() {\n\ta, b := choose(false)\n\tprintln(a + ':' + b)\n\tc, d := choose(true)\n\tprintln(c + ':' + d)\n}\n", '1:2\nx:y'},
 		TypeCheckerRuntimeCase{'good_multi_return_if_branch_bare_return', "fn emit(cond bool) {\n\ta, b := if cond {\n\t\treturn\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n\nfn main() {\n\temit(false)\n\tprintln('done')\n}\n", '7\ndone'},
 		TypeCheckerRuntimeCase{'good_multi_return_if_branch_panic_tail', "fn main() {\n\tbad := false\n\ta, b := if bad {\n\t\tpanic('x')\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n", '11'},
-	])
-}
-
-fn test_multi_return_if_tail_infers_common_type() {
-	run_bad(v3_bin, 'bad_multi_return_if_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n', 'expression evaluated but not used')
-	run_bad(v3_bin, 'bad_multi_return_if_void_tail_decl_assign', 'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n', 'multi-return assignment mismatch')
-}
-
-fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
-	run_bad_with_flags(v3_bin, 'bad_nested_mixed_tuple_tail_branch_type', "fn pair() (int, string) {\n\treturn 1, 'pair'\n}\nfn main() {\n\touter := false\n\tinner := false\n\ta, b := if outer {\n\t\tpair()\n\t} else {\n\t\tif inner {\n\t\t\t1\n\t\t\t'a'\n\t\t} else {\n\t\t\ttrue\n\t\t\t'b'\n\t\t}\n\t}\n\tprintln(int_str(a) + b)\n}\n", 'mismatched types `(int, string)` and `string`', '-check')
-}
-
-fn test_multi_rhs_if_expr_is_not_multi_return() {
-	run_good_module_batch(v3_bin, 'conditional_multi_value_contexts', [
 		TypeCheckerRuntimeCase{'good_multi_rhs_if_expr_decl_assign', 'fn main() {\n\tcond := true\n\ta, b := if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n', '4'},
 		TypeCheckerRuntimeCase{'good_multi_rhs_if_expr_assign', 'fn main() {\n\tcond := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n', '5'},
 		TypeCheckerRuntimeCase{'good_multi_return_match_call_return', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn pick(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a + b))\n}\n', '7'},
@@ -1349,6 +1456,15 @@ fn test_multi_rhs_if_expr_is_not_multi_return() {
 		TypeCheckerRuntimeCase{'good_multi_return_match_call_promoted_numeric_types', 'fn pair_int() (int, int) {\n\treturn 1, 2\n}\nfn pair_f64() (f64, int) {\n\treturn 1.5, 2\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair_int()\n\t\t}\n\t\tfalse {\n\t\t\tpair_f64()\n\t\t}\n\t}\n\tprintln(int_str(b))\n\tprintln(a)\n}\n', '2\n1.0'},
 		TypeCheckerRuntimeCase{'good_multi_return_match_call_compatible_alias_assign', "type Count = int\n\nfn pair_alias() (Count, string) {\n\treturn Count(3), 'alias'\n}\n\nfn pair_int() (int, string) {\n\treturn 4, 'int'\n}\n\nfn main() {\n\tflag := false\n\tmut n := Count(0)\n\tmut label := ''\n\tn, label = match flag {\n\t\ttrue {\n\t\t\tpair_alias()\n\t\t}\n\t\tfalse {\n\t\t\tpair_int()\n\t\t}\n\t}\n\tprintln(int_str(n) + ':' + label)\n}\n", '4:int'},
 	])
+}
+
+fn test_multi_return_if_tail_infers_common_type() {
+	run_bad(v3_bin, 'bad_multi_return_if_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n', 'expression evaluated but not used')
+	run_bad(v3_bin, 'bad_multi_return_if_void_tail_decl_assign', 'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n', 'multi-return assignment mismatch')
+}
+
+fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
+	run_bad_with_flags(v3_bin, 'bad_nested_mixed_tuple_tail_branch_type', "fn pair() (int, string) {\n\treturn 1, 'pair'\n}\nfn main() {\n\touter := false\n\tinner := false\n\ta, b := if outer {\n\t\tpair()\n\t} else {\n\t\tif inner {\n\t\t\t1\n\t\t\t'a'\n\t\t} else {\n\t\t\ttrue\n\t\t\t'b'\n\t\t}\n\t}\n\tprintln(int_str(a) + b)\n}\n", 'mismatched types `(int, string)` and `string`', '-check')
 }
 
 fn test_match_multi_return_tails_require_explicit_tuple() {
@@ -1368,15 +1484,22 @@ fn test_return_if_tuple_tail_multi_return_is_rejected() {
 	run_bad(v3_bin, 'bad_multi_return_if_tail_return', 'fn pair(flag bool) (int, int) {\n\treturn if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\t3\n\t\t4\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n', 'if expression branches cannot produce multiple return values')
 }
 
+fn test_variadic_struct_and_voidptr_runtime() {
+	run_good_module_batch(v3_bin, 'variadic_struct_and_voidptr_runtime', [
+		TypeCheckerRuntimeCase{'good_variadic_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points ...Point) int {\n\treturn points[0].x + points[0].y\n}\n\nfn main() {\n\tprintln(int_str(total(x: 3, y: 4)))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_gated_scalar_and_fixed_array_indexes', 'struct Box {\n\titems [10]int\n}\n\nfn main() {\n\ta := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\n\tprintln(int_str(a#[-1]))\n\tprintln(int_str(a#[-11] or { 42 }))\n\tprintln(a#[-2..].str())\n\tprintln("0123456789"#[-1].ascii_str())\n\tfixed := [10]int{init: index}\n\tprintln(int_str(fixed#[-1]))\n\tprintln(fixed#[-2..].str())\n\tbox := Box{\n\t\titems: fixed\n\t}\n\tprintln(int_str(box.items#[-1]))\n}\n', '9\n42\n[8, 9]\n9\n9\n[8, 9]\n9'},
+		TypeCheckerRuntimeCase{'good_voidptr_variadic_voidptr_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tx := 7\n\txs := [voidptr(&x)]\n\tprintln(int_str(sink(...xs)))\n\tprintln(int_str(sink(1)))\n}\n', '1\n1'},
+		// `char` values passed through `...voidptr` use the same int-width storage as other small
+		// integer varargs, so callees that read `%c`/small-integer slots do not read past the value.
+		TypeCheckerRuntimeCase{'good_voidptr_variadic_char_promotes_to_int', 'fn sink(args ...voidptr) int {\n\treturn unsafe { *(&int(args[0])) }\n}\nfn main() {\n\tch := char(66)\n\tprintln(int_str(sink(ch)))\n}\n', '66'},
+	])
+}
+
 fn test_pr_review_struct_sum_scope_and_gated_regressions() {
 	run_bad_module_batch(v3_bin, [
 		TypeCheckerRejection{'bad_non_variadic_array_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points []Point) int {\n\treturn points.len\n}\n\nfn main() {\n\t_ := total(x: 1, y: 2)\n}\n', 'cannot use `key: value` arguments as `[]bad_non_variadic_array_struct_field_args.Point`'},
 		TypeCheckerRejection{'bad_nested_pointer_struct_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\nfn read_box[T](b &&Box[T]) T {\n\treturn b.v\n}\n\nfn main() {\n\t_ := read_box(v: 7)\n}\n', 'cannot use `key: value` arguments as `&&bad_nested_pointer_struct_field_args.Box[int]` in call to `read_box`'},
 		TypeCheckerRejection{'bad_nested_pointer_struct_alias_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\ntype BoxRef = &&Box[int]\n\nfn read_box_alias(b BoxRef) {}\n\nfn main() {\n\tread_box_alias(v: 7)\n}\n', 'cannot use `key: value` arguments as `bad_nested_pointer_struct_alias_field_args.BoxRef` in call to `read_box_alias`'},
-	])
-	run_good_module_batch(v3_bin, 'variadic_struct_and_gated_indexes', [
-		TypeCheckerRuntimeCase{'good_variadic_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points ...Point) int {\n\treturn points[0].x + points[0].y\n}\n\nfn main() {\n\tprintln(int_str(total(x: 3, y: 4)))\n}\n', '7'},
-		TypeCheckerRuntimeCase{'good_gated_scalar_and_fixed_array_indexes', 'struct Box {\n\titems [10]int\n}\n\nfn main() {\n\ta := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\n\tprintln(int_str(a#[-1]))\n\tprintln(int_str(a#[-11] or { 42 }))\n\tprintln(a#[-2..].str())\n\tprintln("0123456789"#[-1].ascii_str())\n\tfixed := [10]int{init: index}\n\tprintln(int_str(fixed#[-1]))\n\tprintln(fixed#[-2..].str())\n\tbox := Box{\n\t\titems: fixed\n\t}\n\tprintln(int_str(box.items#[-1]))\n}\n', '9\n42\n[8, 9]\n9\n9\n[8, 9]\n9'},
 	])
 	run_bad_project(v3_bin, 'bad_module_type_does_not_bind_main_type', {
 		'v.mod':  "Module { name: 'module_unknown_scope' }\n"
@@ -1648,10 +1771,6 @@ fn test_module_local_error_type_shadows_builtin_error() {
 }
 
 fn test_bool_match_single_branch_is_exhaustive() {
-	run_good_module_batch(v3_bin, 'exhaustive_bool_matches', [
-		TypeCheckerRuntimeCase{'good_bool_match_single_branch_exhaustive', 'fn f(b bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n', '2'},
-		TypeCheckerRuntimeCase{'good_bool_alias_match_single_branch_exhaustive', 'type Flag = bool\nfn f(b Flag) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n', '2'},
-	])
 	run_bad(v3_bin, 'bad_bool_pointer_match_not_exhaustive', 'fn f(b &bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut b := true\n\tprintln(int_str(f(&b)))\n}\n', 'missing return')
 }
 
@@ -1663,12 +1782,6 @@ fn test_voidptr_variadic_spread_requires_voidptr_array() {
 		TypeCheckerRejection{'bad_voidptr_variadic_multi_return_arg', 'fn pair() (int, int) {\n\treturn 1, 2\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(pair())))\n}\n', 'cannot use `(int, int)`'},
 		TypeCheckerRejection{'bad_voidptr_variadic_enum_shorthand_arg', 'enum Color {\n\tred\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(.red)))\n}\n', 'cannot use `int`'},
 	])
-	run_good_module_batch(v3_bin, 'voidptr_variadic_values_and_spreads', [
-		TypeCheckerRuntimeCase{'good_voidptr_variadic_voidptr_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tx := 7\n\txs := [voidptr(&x)]\n\tprintln(int_str(sink(...xs)))\n\tprintln(int_str(sink(1)))\n}\n', '1\n1'},
-		// `char` values passed through `...voidptr` use the same int-width storage as other small
-		// integer varargs, so callees that read `%c`/small-integer slots do not read past the value.
-		TypeCheckerRuntimeCase{'good_voidptr_variadic_char_promotes_to_int', 'fn sink(args ...voidptr) int {\n\treturn unsafe { *(&int(args[0])) }\n}\nfn main() {\n\tch := char(66)\n\tprintln(int_str(sink(ch)))\n}\n', '66'},
-	])
 }
 
 // Regression tests for the post-PR review fixes around generic struct receivers
@@ -1678,83 +1791,6 @@ fn test_generic_struct_receiver_and_heap_init() {
 	// not satisfy an expected `Box[int]` (value or pointer form).
 	run_bad(v3_bin, 'bad_generic_concrete_value_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `Box[string]` as `Box[int]` in argument 1 to `use_int`')
 	run_bad(v3_bin, 'bad_generic_concrete_ptr_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := &Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `&Box[string]` as `&Box[int]` in argument 1 to `use_int`')
-}
-
-// Regression tests for the post-PR review fixes: const-expression fixed-array
-// lengths must be folded to a literal (not c_name-mangled into `segs_+_1`), and the
-// `[]thread T.wait()` helper name must sanitize a pointer payload C type (`Foo*`).
-fn test_const_expr_fixed_array_and_thread_ptr_wait() {
-	run_good_module_batch(v3_bin, 'fixed_array_and_pointer_thread_values', [
-		// `[segs + 1]f32` must emit `[5]` for both the array dimension and `.len`.
-		TypeCheckerRuntimeCase{
-			name:     'good_const_expr_fixed_array_len'
-			source:   'const segs = 4\nfn main() {\n\tmut x := [segs + 1]f32{}\n\tx[0] = 1.5\n\tx[segs] = 2.5\n\tprintln(int_str(x.len))\n\tprintln(int_str(int(x[0] + x[segs])))\n}\n'
-			expected: '5\n4'
-		},
-		// `[]thread &Foo.wait()` returns `[]&Foo`; the wait helper symbol must not contain
-		// the `*` from the `Foo*` payload C type.
-		TypeCheckerRuntimeCase{
-			name:     'good_thread_ptr_payload_wait'
-			source:   'struct Foo {\n\tx int\n}\nfn work(n int) &Foo {\n\treturn &Foo{\n\t\tx: n\n\t}\n}\nfn main() {\n\tmut threads := []thread &Foo{}\n\tthreads << spawn work(40)\n\tthreads << spawn work(2)\n\tresults := threads.wait()\n\tmut sum := 0\n\tfor r in results {\n\t\tsum += r.x\n\t}\n\tprintln(int_str(sum))\n}\n'
-			expected: '42'
-		},
-		// A bare heap generic literal (`&Box{v: 1}` where `&Box[int]` is expected) must read its
-		// omitted-field defaults from the concrete instance key: monomorphization drops the bare `Box`
-		// entry, so an omitted `items []T` needs its `array_new` default or the field has invalid
-		// zeroed array metadata (here a later append would silently drop the elements).
-		TypeCheckerRuntimeCase{
-			name:     'good_heap_generic_omitted_array_default'
-			source:   "struct Box[T] {\n\tv T\nmut:\n\titems []T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\tmut b := make()\n\tb.items << 10\n\tb.items << 20\n\tprintln(int_str(b.v) + ',' + int_str(b.items.len) + ',' + int_str(b.items[0]) + ',' + int_str(b.items[1]))\n}\n"
-			expected: '1,2,10,20'
-		},
-		// `[]thread T.wait()` recovers the spawned return type from the thread name; a fixed-array
-		// return with a non-decimal length (`[0x10]u8`) must reconstruct the same `_v_ret_*` wrapper
-		// ABI type the spawn wrapper stored, not a bogus generic application of `u8`.
-		TypeCheckerRuntimeCase{
-			name:     'good_thread_wait_nondecimal_fixed_array'
-			source:   "fn work() [0x10]u8 {\n\tmut r := [0x10]u8{}\n\tr[0] = 42\n\tr[15] = 7\n\treturn r\n}\nfn main() {\n\tmut threads := []thread [0x10]u8{}\n\tthreads << spawn work()\n\tresults := threads.wait()\n\tprintln(int_str(results[0][0]) + ',' + int_str(results[0][15]))\n}\n"
-			expected: '42,7'
-		},
-	])
-}
-
-// Regression tests for the second PR-review batch (vlang/v#27557).
-fn test_pr_review_codegen_batch_two() {
-	run_good_module_batch(v3_bin, 'or_generic_enum_and_callback_runtime', [
-		// or-block binds `err` (IError) only inside the or-body; an outer `err` keeps its
-		// type afterwards (was emitted as `err.message` on an int).
-		TypeCheckerRuntimeCase{
-			name:     'good_or_block_err_scope'
-			source:   'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\terr := 7\n\t_ := maybe() or { 0 }\n\tprintln(int_str(err))\n}\n'
-			expected: '7'
-		},
-		// Generic receiver params are substituted by declared name: `Pair[L, R].right()`
-		// returns `R` (int), not the first arg `L` (string).
-		TypeCheckerRuntimeCase{
-			name:     'good_generic_receiver_param_by_name'
-			source:   "struct Pair[L, R] {\n\tleft  L\n\tright R\n}\nfn (p Pair[L, R]) right_val() R {\n\treturn p.right\n}\nfn main() {\n\tp := Pair[string, int]{\n\t\tleft:  'hi'\n\t\tright: 42\n\t}\n\tprintln(int_str(p.right_val()))\n}\n"
-			expected: '42'
-		},
-		// `[flag]` enum stringification renders combined values as `Enum{.a | .b}`.
-		TypeCheckerRuntimeCase{
-			name:     'good_flag_enum_str'
-			source:   '@[flag]\nenum Perm {\n\tread\n\twrite\n\texec\n}\nfn main() {\n\ta := Perm.read | Perm.write\n\tprintln(a.str())\n\tb := Perm.read\n\tprintln(b.str())\n}\n'
-			expected: 'Perm{.read | .write}\nPerm{.read}'
-		},
-		// spawn of an option-returning fn stores/reads the `__v_option_T` ABI layout.
-		TypeCheckerRuntimeCase{
-			name:     'good_spawn_option_return'
-			source:   "fn work() ?string {\n\treturn 'hello'\n}\nfn main() {\n\tmut ts := []thread ?string{}\n\tts << spawn work()\n\trs := ts.wait() or { []string{} }\n\tx := rs[0] or { 'none' }\n\tprintln(x)\n}\n"
-			expected: 'hello'
-		},
-		// A global V function passed to a method `fn ()` param keeps the function-pointer
-		// typedef (not `(void*)`).
-		TypeCheckerRuntimeCase{
-			name:     'good_method_fn_ptr_arg'
-			source:   "struct S {\n\tn int\n}\nfn (s S) run(cb fn ()) {\n\tcb()\n}\nfn greet() {\n\tprintln('hi')\n}\nfn main() {\n\ts := S{\n\t\tn: 1\n\t}\n\ts.run(greet)\n}\n"
-			expected: 'hi'
-		},
-	])
 }
 
 fn test_method_values_and_function_pointer_returns() {
@@ -1818,8 +1854,8 @@ fn test_pr_review_codegen_batch_three() {
 	run_bad(v3_bin, 'bad_flag_enum_match_not_exhaustive', '@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n', 'missing return')
 }
 
-fn test_generic_and_positional_heap_literals() {
-	run_good_module_batch(v3_bin, 'generic_and_positional_heap_literals', [
+fn test_generic_array_and_heap_initializers() {
+	run_good_module_batch(v3_bin, 'generic_array_and_heap_initializers', [
 		TypeCheckerRuntimeCase{'good_bare_generic_literal_return', 'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n', '7'},
 		TypeCheckerRuntimeCase{'good_bare_generic_literal_heap_return', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 9\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n', '9'},
 		TypeCheckerRuntimeCase{'good_bare_generic_literal_multi_param', "struct Pair[L, R] {\n\tl L\n\tr R\n}\nfn make() Pair[string, int] {\n\treturn Pair{\n\t\tl: 'hi'\n\t\tr: 5\n\t}\n}\nfn main() {\n\tp := make()\n\tprintln(p.l)\n\tprintln(int_str(p.r))\n}\n", 'hi\n5'},
@@ -1855,6 +1891,20 @@ fn test_generic_and_positional_heap_literals() {
 			source:   'struct Point {\n\tx int\n\ty int\n}\nfn main() {\n\tmut arr := []&Point{}\n\tarr << &Point{1, 2}\n\tprintln(int_str(arr[0].x + arr[0].y))\n}\n'
 			expected: '3'
 		},
+		// A bare generic struct literal (`Box{..}`) inside an array literal whose expected type is
+		// a concrete generic instance (`[]Box[int]`) must carry that concrete element type into the
+		// array storage AND each element: the array literal emitter passes the element type as the
+		// expected type per element so the element is emitted as `Box_int`, not the open `Box` (which
+		// has no C type), and the storage and element agree. Covers the reviewer's return example plus
+		// the argument and struct-field positions.
+		TypeCheckerRuntimeCase{'good_generic_struct_array_literal_positions', "struct Box[T] {\n\tv T\n}\nfn first(a []Box[int]) int {\n\treturn a[0].v\n}\nstruct Holder {\n\titems []Box[int]\n}\nfn make() []Box[int] {\n\treturn [Box{\n\t\tv: 1\n\t}, Box{\n\t\tv: 2\n\t}]\n}\nfn main() {\n\tr := make()\n\ta := first([Box{\n\t\tv: 3\n\t}, Box{\n\t\tv: 4\n\t}])\n\th := Holder{\n\t\titems: [Box{\n\t\t\tv: 5\n\t\t}]\n\t}\n\tprintln(int_str(r[0].v + r[1].v) + ',' + int_str(a) + ',' + int_str(h.items[0].v))\n}\n", '3,3,5'},
+		// Elements that only differ in spelling (a registered alias next to its base
+		// type, one level down) are storage-identical, so the same slot must keep
+		// compiling.
+		TypeCheckerRuntimeCase{'good_generic_array_elem_alias_return', 'type NodeId = int\n\nfn take[T](rows [][]T) [][]NodeId {\n\treturn rows\n}\n\nfn main() {\n\trows := take([[1, 2], [3]])\n\tprintln(int_str(rows.len + rows[0].len))\n}\n', '4'},
+		TypeCheckerRuntimeCase{'good_generic_array_elem_interface_field', 'interface HasId {\n\tid int\n}\n\nstruct WithId {\n\tid int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([WithId{\n\t\tid: 7\n\t}])[0].id))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_generic_array_elem_interface_method', "interface Speaker {\n\tspeak() string\n}\n\nstruct Dog {}\n\nfn (d Dog) speak() string {\n\treturn 'woof'\n}\n\nfn take[T](items []T) []Speaker {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([Dog{}])[0].speak())\n}\n", 'woof'},
+		TypeCheckerRuntimeCase{'good_generic_array_elem_sum_variant', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tw int\n}\n\ntype FB = Bar | Foo\n\nfn take[T](items []T) []FB {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([Foo{\n\t\tv: 3\n\t}]).len))\n}\n', '1'},
 	])
 }
 
@@ -1909,8 +1959,8 @@ fn test_pr_review_codegen_batch_four() {
 	run_bad(v3_bin, 'bad_generic_pointer_shape_arg', 'struct Box[T] {\n\tv T\n}\nfn take(b Box[int]) int {\n\treturn b.v\n}\nfn main() {\n\t_ := take(&Box{\n\t\tv: 1\n\t})\n}\n', 'cannot use')
 }
 
-fn test_fixed_array_length_operators_and_callbacks() {
-	run_good_module_batch(v3_bin, 'fixed_array_length_operators_and_callbacks', [
+fn test_fixed_array_length_and_operator_runtime() {
+	run_good_module_batch(v3_bin, 'fixed_array_length_and_operator_runtime', [
 		// 4 + 2 + 17 + 8 = 31
 		TypeCheckerRuntimeCase{'good_const_expr_fixed_array_divmod', 'const segs = 8\nstruct Buf {\n\ta [segs / 2]u8\n\tb [segs % 3]u8\n\tc [segs * 2 + 1]u8\n\td [segs / 2 * 2]u8\n}\nfn main() {\n\tx := Buf{}\n\tprintln(int_str(x.a.len + x.b.len + x.c.len + x.d.len))\n}\n', '31'},
 		// 4 + 4 + 8 = 16
@@ -1930,36 +1980,7 @@ fn test_fixed_array_length_operators_and_callbacks() {
 		// struct field.
 		TypeCheckerRuntimeCase{'good_fn_ptr_returns_fixed_string_array', "type MakeArr = fn () [2]string\nfn mk() [2]string {\n\treturn ['hi', 'there']!\n}\nfn run(f MakeArr) string {\n\tr := f()\n\treturn r[0]\n}\nstruct Holder {\n\tf MakeArr\n}\nfn main() {\n\th := Holder{\n\t\tf: mk\n\t}\n\tprintln(run(mk) + h.f()[1])\n}\n", 'hithere'},
 		TypeCheckerRuntimeCase{'good_fn_ptr_returns_fixed_struct_array', 'struct P {\n\tx int\n}\ntype MakeP = fn () [2]P\nfn mkp() [2]P {\n\treturn [P{\n\t\tx: 3\n\t}, P{\n\t\tx: 4\n\t}]!\n}\nfn runp(f MakeP) int {\n\tr := f()\n\treturn r[0].x + r[1].x\n}\nfn main() {\n\tprintln(int_str(runp(mkp)))\n}\n', '7'},
-	])
-}
-
-// Regression tests for the fifth PR-review batch (vlang/v#27557).
-fn test_pr_review_codegen_batch_five() {
-	// A const-expression fixed-array length using `/` and `%` (and mixed precedence)
-	// must fold to the right literal, not mangle the raw expression into an identifier:
-	// `segs / 2` = 4, `segs % 3` = 2, `segs * 2 + 1` = 17, `segs / 2 * 2` = 8.
-	// A bare `[]thread` (threads with no return value) joins to `void`: `.wait()` is a
-	// valid statement that runs every spawned thread to completion.
-	void_wait := run_good(v3_bin, 'good_bare_thread_void_wait', "fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tthreads << spawn work()\n\tthreads.wait()\n\tprintln('done')\n}\n")
-	assert void_wait.contains('done')
-	// Because a bare `[]thread`.wait() is `void` (not the receiver `[]thread`), its
-	// result cannot be bound to a variable — guards against the old fallback that typed
-	// the call as the receiver array.
-	run_bad(v3_bin, 'bad_bare_thread_void_wait_assign', "fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tx := threads.wait()\n\tprintln(x)\n}\n", 'assignment mismatch: 1 variable but `wait()` returns 0 values')
-}
-
-// Regression tests for the sixth PR-review batch (vlang/v#27557).
-fn test_pr_review_codegen_batch_six() {
-	// A bare generic struct literal with POSITIONAL fields (`Box{'str'}`) must validate
-	// each value against the struct field order before adopting the expected concrete
-	// instance; a wrong positional type is a definite mismatch, not a silent adoption
-	// that codegen would init an `int` field from a string.
-	run_bad(v3_bin, 'bad_positional_generic_literal_field_mismatch', "struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{'str'}\n}\nfn main() {\n\t_ := make()\n}\n", 'cannot use `Box[string]` as type `Box[int]` in return argument')
-}
-
-// Regression tests for the seventh PR-review batch (vlang/v#27557).
-fn test_pr_review_codegen_batch_seven() {
-	run_good_module_batch(v3_bin, 'array_lengths_and_generic_operators', [
+		// Regression tests for the seventh PR-review batch (vlang/v#27557).
 		// A parenthesized const fixed-array length must fold by ignoring operators inside the
 		// parentheses: `2 * (segs + 1)` is 10 (not split at the inner `+`), `(segs + 2) / 2`
 		// is 5, so the array dimensions are real numbers, not mangled raw text.
@@ -1987,6 +2008,30 @@ fn test_pr_review_codegen_batch_seven() {
 			expected: '3\nhi'
 		},
 	])
+}
+
+// Regression tests for the fifth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_five() {
+	// A const-expression fixed-array length using `/` and `%` (and mixed precedence)
+	// must fold to the right literal, not mangle the raw expression into an identifier:
+	// `segs / 2` = 4, `segs % 3` = 2, `segs * 2 + 1` = 17, `segs / 2 * 2` = 8.
+	// A bare `[]thread` (threads with no return value) joins to `void`: `.wait()` is a
+	// valid statement that runs every spawned thread to completion.
+	void_wait := run_good(v3_bin, 'good_bare_thread_void_wait', "fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tthreads << spawn work()\n\tthreads.wait()\n\tprintln('done')\n}\n")
+	assert void_wait.contains('done')
+	// Because a bare `[]thread`.wait() is `void` (not the receiver `[]thread`), its
+	// result cannot be bound to a variable — guards against the old fallback that typed
+	// the call as the receiver array.
+	run_bad(v3_bin, 'bad_bare_thread_void_wait_assign', "fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tx := threads.wait()\n\tprintln(x)\n}\n", 'assignment mismatch: 1 variable but `wait()` returns 0 values')
+}
+
+// Regression tests for the sixth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_six() {
+	// A bare generic struct literal with POSITIONAL fields (`Box{'str'}`) must validate
+	// each value against the struct field order before adopting the expected concrete
+	// instance; a wrong positional type is a definite mismatch, not a silent adoption
+	// that codegen would init an `int` field from a string.
+	run_bad(v3_bin, 'bad_positional_generic_literal_field_mismatch', "struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{'str'}\n}\nfn main() {\n\t_ := make()\n}\n", 'cannot use `Box[string]` as type `Box[int]` in return argument')
 }
 
 // Regression tests for the eighth PR-review batch (vlang/v#27557).
@@ -2031,25 +2076,6 @@ fn test_pr_review_codegen_batch_fifteen() {
 	run_bad(v3_bin, 'bad_shift_add_precedence_literal_len', 'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4]!)\n}\n', 'cannot use')
 }
 
-fn test_pr_review_codegen_batch_sixteen() {
-	run_good_module_batch(v3_bin, 'generic_array_element_inference', [
-		// A bare generic struct literal (`Box{..}`) inside an array literal whose expected type is
-		// a concrete generic instance (`[]Box[int]`) must carry that concrete element type into the
-		// array storage AND each element: the array literal emitter passes the element type as the
-		// expected type per element so the element is emitted as `Box_int`, not the open `Box` (which
-		// has no C type), and the storage and element agree. Covers the reviewer's return example plus
-		// the argument and struct-field positions.
-		TypeCheckerRuntimeCase{'good_generic_struct_array_literal_positions', "struct Box[T] {\n\tv T\n}\nfn first(a []Box[int]) int {\n\treturn a[0].v\n}\nstruct Holder {\n\titems []Box[int]\n}\nfn make() []Box[int] {\n\treturn [Box{\n\t\tv: 1\n\t}, Box{\n\t\tv: 2\n\t}]\n}\nfn main() {\n\tr := make()\n\ta := first([Box{\n\t\tv: 3\n\t}, Box{\n\t\tv: 4\n\t}])\n\th := Holder{\n\t\titems: [Box{\n\t\t\tv: 5\n\t\t}]\n\t}\n\tprintln(int_str(r[0].v + r[1].v) + ',' + int_str(a) + ',' + int_str(h.items[0].v))\n}\n", '3,3,5'},
-		// Elements that only differ in spelling (a registered alias next to its base
-		// type, one level down) are storage-identical, so the same slot must keep
-		// compiling.
-		TypeCheckerRuntimeCase{'good_generic_array_elem_alias_return', 'type NodeId = int\n\nfn take[T](rows [][]T) [][]NodeId {\n\treturn rows\n}\n\nfn main() {\n\trows := take([[1, 2], [3]])\n\tprintln(int_str(rows.len + rows[0].len))\n}\n', '4'},
-		TypeCheckerRuntimeCase{'good_generic_array_elem_interface_field', 'interface HasId {\n\tid int\n}\n\nstruct WithId {\n\tid int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([WithId{\n\t\tid: 7\n\t}])[0].id))\n}\n', '7'},
-		TypeCheckerRuntimeCase{'good_generic_array_elem_interface_method', "interface Speaker {\n\tspeak() string\n}\n\nstruct Dog {}\n\nfn (d Dog) speak() string {\n\treturn 'woof'\n}\n\nfn take[T](items []T) []Speaker {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([Dog{}])[0].speak())\n}\n", 'woof'},
-		TypeCheckerRuntimeCase{'good_generic_array_elem_sum_variant', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tw int\n}\n\ntype FB = Bar | Foo\n\nfn take[T](items []T) []FB {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([Foo{\n\t\tv: 3\n\t}]).len))\n}\n', '1'},
-	])
-}
-
 fn test_pr_review_codegen_batch_seventeen() {
 	// Static method `Type.method(...)` calls now lower their arguments through the ordinary
 	// argument path, so a parameter that needs coercion is emitted against its expected type.
@@ -2062,71 +2088,15 @@ fn test_pr_review_codegen_batch_seventeen() {
 	assert out == '42,7'
 }
 
-fn test_pr_review_codegen_batch_eighteen() {
-	// A method-value local retains its receiver when returned or appended to an array.
+fn test_local_and_stored_method_value_runtime() {
 	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\n'
-	run_good_module_batch(v3_bin, 'local_method_value_escapes', [
+	iface_mv := 'interface Runner {\n\trun() int\n}\n\nstruct Job {\n\tid int\n}\n\nfn (j Job) run() int {\n\treturn j.id\n}\n\nstruct Holder {\nmut:\n\tcb fn () int\n}\n'
+	run_good_module_batch(v3_bin, 'local_and_stored_method_value_runtime', [
+		// A method-value local retains its receiver when returned or appended to an array.
 		TypeCheckerRuntimeCase{'good_method_value_local_return_escape', mv + 'fn make_callback(c Counter) fn () int {\n\tcb := c.report\n\treturn cb\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(cb()))\n}\n', '1'},
 		TypeCheckerRuntimeCase{'good_method_value_local_append_escape', mv + 'fn collect(c Counter) []fn () int {\n\tmut arr := []fn () int{}\n\tcb := c.report\n\tarr << cb\n\treturn arr\n}\nfn main() {\n\tarr := collect(Counter{\n\t\tid: 2\n\t})\n\tprintln(int_str(arr[0]()))\n}\n', '2'},
 		// A method-value local passed straight to a callback parameter does not escape and stays valid.
 		TypeCheckerRuntimeCase{'good_method_value_local_direct_use', mv + 'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tcb := c.report\n\tprintln(int_str(invoke(cb)))\n}\n', '7'},
-	])
-}
-
-fn test_pointer_escapes_and_fixed_array_returns() {
-	run_good_module_batch(v3_bin, 'pointer_escapes_and_fixed_array_returns', [
-		// A value local whose address escapes (`p := &v` with `p` returned) is moved to the heap at
-		// its declaration, so a mutation between the alias and the return is observed by the caller —
-		// matching V's auto-heap semantics. Copying eagerly at `p := &v` returned stale data (x == 1).
-		TypeCheckerRuntimeCase{
-			name:     'good_escaped_pointer_alias_mutation'
-			source:   'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tv.x = 2\n\treturn p\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n'
-			expected: '2'
-		},
-		// A static-method call returning a fixed array (`Type.make() [N]T`) is lowered to a selector
-		// whose base is a type, not a receiver value; its `_v_ret_*` wrapper must still be unwrapped to
-		// `.ret_arr`, so the assignment/indexing below sees the array, not the wrapper struct.
-		TypeCheckerRuntimeCase{
-			name:     'good_static_method_fixed_array_return'
-			source:   'struct Maker {}\nfn Maker.make() [3]int {\n\treturn [10, 20, 30]!\n}\nfn main() {\n\ta := Maker.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n'
-			expected: '60'
-		},
-		// An escaping pointer returned through a copy (`p := &v; q := p; return q`) must still move
-		// `v` to the heap, so a mutation after the alias is seen by the caller (not a dangling stack
-		// pointer). The pointer-alias chain is followed when deciding what escapes.
-		TypeCheckerRuntimeCase{
-			name:     'good_returned_pointer_alias_heap'
-			source:   'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tq := p\n\tv.x = 2\n\treturn q\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n'
-			expected: '2'
-		},
-		// An interface method returning a fixed array gets its dispatch stub declared with the
-		// `_v_ret_*` wrapper, not a bare `Array_fixed_*` (a C function cannot return an array). This
-		// holds both when only the concrete implementer is called and through a real interface call.
-		TypeCheckerRuntimeCase{
-			name:     'good_iface_fixed_array_concrete_only'
-			source:   'interface Maker {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [1, 2, 3]!\n}\nfn main() {\n\ts := S{}\n\ta := s.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n'
-			expected: '6'
-		},
-		TypeCheckerRuntimeCase{
-			name:     'good_iface_fixed_array_dispatch'
-			source:   'interface Maker {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [4, 5, 6]!\n}\nfn use_iface(i Maker) int {\n\ta := i.make()\n\treturn a[0] + a[1] + a[2]\n}\nfn main() {\n\ts := S{}\n\tprintln(int_str(use_iface(s)))\n}\n'
-			expected: '15'
-		},
-		// A pointer-receiver method value taken on an rvalue base (`Foo{..}.tick`) copies the receiver
-		// into durable static storage instead of capturing `&(temporary)` that dies before the
-		// callback runs.
-		TypeCheckerRuntimeCase{
-			name:     'good_ptr_receiver_method_value_rvalue'
-			source:   'struct Foo {\nmut:\n\tn int\n}\nfn (f &Foo) tick() int {\n\treturn f.n\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(run(Foo{\n\t\tn: 5\n\t}.tick)))\n}\n'
-			expected: '5'
-		},
-	])
-}
-
-fn test_pr_review_codegen_batch_twenty() {
-	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\n'
-	iface_mv := 'interface Runner {\n\trun() int\n}\n\nstruct Job {\n\tid int\n}\n\nfn (j Job) run() int {\n\treturn j.id\n}\n\nstruct Holder {\nmut:\n\tcb fn () int\n}\n'
-	run_good_module_batch(v3_bin, 'method_values', [
 		// Struct fields, array elements, and reassigned callback locals retain the
 		// per-instance context when the method value escapes.
 		TypeCheckerRuntimeCase{'good_method_value_struct_field_assign', mv + 'struct Holder {\nmut:\n\tcb fn () int\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut h := Holder{}\n\th.cb = c.report\n\tprintln(int_str(h.cb()))\n}\n', '5'},
@@ -2144,9 +2114,9 @@ fn test_pr_review_codegen_batch_twenty() {
 	])
 }
 
-fn test_pr_review_codegen_batch_twentythree() {
+fn test_pointer_assignments_and_escaping_aliases() {
 	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn plain() int {\n\treturn 0\n}\n'
-	run_good_module_batch(v3_bin, 'escaping_pointer_assignments', [
+	run_good_module_batch(v3_bin, 'pointer_assignments_and_escaping_aliases', [
 		// A concrete generic with multiple arguments including a later pointer argument
 		// (`Pair[int, &Node]`) must parse as a generic instance, not a fixed array: the `&` only
 		// leads a type argument because of the preceding comma, so a comma-bearing bracket is never
@@ -2161,11 +2131,6 @@ fn test_pr_review_codegen_batch_twentythree() {
 		// An unconditional reassignment to a non-method value dominates the later use, so the marker
 		// is cleared and the (now plain) callback is accepted.
 		TypeCheckerRuntimeCase{'good_method_value_unconditional_reassign', mv + 'fn build_cb(c Counter) int {\n\tmut cb := c.report\n\tcb = plain\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(build_cb(Counter{\n\t\tid: 1\n\t})))\n}\n', '0'},
-	])
-}
-
-fn test_pr_review_codegen_batch_twentysix() {
-	run_good_module_batch(v3_bin, 'escaping_pointer_assignments_and_aliases', [
 		// The escape prepass must only heap-move a local whose address is *actually returned*. A
 		// pointer that merely appears in a consuming expression (comparison/boolean here, or a deref)
 		// does not escape, so its source local must stay a plain value — otherwise codegen reads it as
