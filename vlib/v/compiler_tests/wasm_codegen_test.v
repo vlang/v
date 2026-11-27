@@ -1,3 +1,4 @@
+import hash
 import os
 import v.tempname
 
@@ -375,6 +376,7 @@ assert.equal(e.sum(), 1368n);
 }
 
 fn test_wasm_user_functions_keep_other_runtime_names() {
+	native_hash := hash.wyhash64_c(3, 4)
 	assert_wasm_source_before_and_after_optimization('other_runtime_names', '
 import hash
 fn wyhash64(a u64, b u64) u64 { return a + b }
@@ -399,7 +401,7 @@ assert.equal(e.prealloc_malloc(5), 24);
 assert.equal(e.join_path(5), 28);
 assert.equal(e.name_list(5), 34);
 assert.equal(e.call_hash(), 7n);
-assert.equal(e.runtime_control(), 725283166682890696n);
+assert.equal(e.runtime_control(), ${native_hash}n);
 ')
 }
 
