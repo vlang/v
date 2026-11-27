@@ -120,7 +120,12 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Add dependencies
-        run: apt-get update && apt-get install -y libsqlite3-dev pkgconf
+        run: apt-get update && apt-get install -y libsqlite3-dev pkgconf g++
+      - name: Verify original C++17 object compilation in the musl lane
+        run: |
+          g++ --version
+          cc -print-prog-name=cc1plus
+          ./v -cc musl-gcc -gc none -d use_bundled_libgc -showcc -silent -b c vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v
       - name: Build musl-native SQLite for V database tests
         run: |
           set -eu
