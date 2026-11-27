@@ -218,6 +218,9 @@ pub fn integer_from_radix(all_characters string, radix u32) !Integer {
 	}
 	characters := all_characters.to_lower()
 	validate_string(characters, radix)!
+	if radix == 10 {
+		return integer_from_decimal_string(characters)
+	}
 	return integer_from_regular_string(characters, radix)
 }
 
@@ -225,11 +228,23 @@ pub fn integer_from_radix(all_characters string, radix u32) !Integer {
 fn validate_string(characters string, radix u32) ! {
 	sign_present := characters.len > 0 && (characters[0] == `+` || characters[0] == `-`)
 
-	start_index := if sign_present { 1 } else { 0 }
+	mut start_index := if sign_present { 1 } else { 0 }
 
 	// a sign on its own is not a number, nor is an empty string
 	if start_index >= characters.len {
 		return error('math.big: No digits in the given string')
+	}
+
+	// Check decimal digits directly, retaining the generic errors for invalid input.
+	if radix == 10 {
+		mut index := start_index
+		for index < characters.len && characters[index] >= `0` && characters[index] <= `9` {
+			index++
+		}
+		if index == characters.len {
+			return
+		}
+		start_index = index
 	}
 
 	for index := start_index; index < characters.len; index++ {
