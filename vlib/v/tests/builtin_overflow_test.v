@@ -1,4 +1,5 @@
 // vtest build: tinyc && !self_sandboxed_packaging? && !sanitized_job?
+import math
 import os
 import time
 import term
@@ -502,6 +503,123 @@ fn test_checked_negation_division_shifts_and_casts() {
 			[]
 		})
 		errors += run_cases('casts (${suffix})', casts_exe, casts_cases(checked))
+	}
+	assert errors == 0
+}
+
+// The cases below combine an integer of every type, at zero, seven, minus seven
+// and its limits, with an `f64` and an `f32` on either side of `+ - * /`. The
+// result is a float, which the checked build must compute as the build without
+// the flag does. A float result is printed as its bits, so that the cases do not
+// depend on float formatting.
+
+fn float_operands_source() string {
+	mut sb := []string{}
+	sb << 'import os\nimport math\n\ntype Count = int\ntype Meters = f64\ntype Ratio = Meters\n'
+	sb << 'struct Box {\n\tm Meters\n}\n'
+	sb << 'const static_product = u64(3) * 0.5\n\nconst runtime_product = three() * 0.5\n'
+	sb << 'fn three() u64 {\n\treturn 3\n}\n'
+	sb << 'fn scale[T, U](a T, b U) f64 {\n\treturn f64(a * b)\n}\n'
+	sb << 'fn bits(x f64) u64 {\n\treturn math.f64_bits(x)\n}\n'
+	for typ in all_int_types {
+		parse := if typ.starts_with('u') { 'u64' } else { 'i64' }
+		sb << 'fn parse_${typ}(s string) ${typ} {\n\treturn ${typ}(s.${parse}())\n}\n'
+		sb << 'fn float_ops_${typ}(x ${typ}, h f64) {\n\tg := f32(h)'
+		for expr in ['x + h', 'h + x', 'x - h', 'h - x', 'x * h', 'h * x', 'x / h'] {
+			sb << '\tprintln(bits(${expr}))'
+		}
+		sb << '\tprintln(if x != 0 { bits(h / x).str() } else { "skip" })'
+		for expr in ['x + g', 'g + x', 'x - g', 'g - x', 'x * g', 'g * x', 'x / g'] {
+			sb << '\tprintln(math.f32_bits(${expr}))'
+		}
+		sb << '\tprintln(if x != 0 { math.f32_bits(g / x).str() } else { "skip" })'
+		sb << '\tprintln(bits(x + 0.5))\n\tprintln(bits(x * -0.5))\n}\n'
+	}
+	sb << 'fn main() {\n\tkind := os.args[1]\n\ta := os.args[2]\n\tb := os.args[3]\n\tmatch kind {'
+	for typ in all_int_types {
+		sb << '\t\t"${typ}" { float_ops_${typ}(parse_${typ}(a), f64(b.i64()) / 1000) }'
+	}
+	sb << '\t\t"reported" {\n\t\t\tx := u64(3)\n\t\t\thalf := 0.5\n\t\t\ti := 7'
+	sb << '\t\t\tprintln("\${bits(x * half)} \${bits(half * x)} \${bits(i * half)} \${bits(i + half)} \${bits(i - half)} \${bits(7 * half)} \${bits(7 * 0.5)}")\n\t\t}'
+	sb << '\t\t"aliases" {\n\t\t\tc := Count(7)\n\t\t\tm := Meters(0.5)\n\t\t\tr := Ratio(0.5)\n\t\t\ti := 7'
+	sb << '\t\t\tbox := Box{\n\t\t\t\tm: 0.5\n\t\t\t}\n\t\t\tms := [Meters(0.5)]'
+	sb << '\t\t\tprintln("\${bits(c * m)} \${bits(m * c)} \${bits(c + m)} \${bits(c - 0.5)} \${bits(i + m)}")'
+	sb << '\t\t\tprintln("\${bits(i * r)} \${bits(i * box.m)} \${bits(i * ms[0])} \${bits(scale(i, m))}")\n\t\t}'
+	sb << '\t\t"generic" { println("\${bits(scale(7, 0.5))} \${bits(scale(u64(3), f32(0.5)))} \${bits(scale(i8(-4), 0.5))}") }'
+	sb << '\t\t"chain" {\n\t\t\ti := 7\n\t\t\thalf := 0.5\n\t\t\tprintln(bits(i * half + i - half))\n\t\t}'
+	sb << '\t\t"compound" {\n\t\t\tmut acc := 0.5\n\t\t\tacc += 7\n\t\t\tacc *= u64(3)\n\t\t\tacc -= i8(2)\n\t\t\tacc /= i16(5)'
+	sb << '\t\t\tmut acc32 := f32(0.5)\n\t\t\tacc32 += 7\n\t\t\tacc32 /= u8(2)\n\t\t\tacc32 -= i64(1)'
+	sb << '\t\t\tprintln("\${bits(acc)} \${math.f32_bits(acc32)}")\n\t\t}'
+	sb << '\t\t"consts" { println("\${bits(static_product)} \${bits(runtime_product)}") }'
+	sb << '\t\t"add_i8" { println(parse_i8(a) + parse_i8(b)) }'
+	sb << '\t\t"mul_i64" { println(parse_i64(a) * 2) }'
+	sb << '\t\telse { panic("unknown case") }\n\t}\n}\n'
+	return sb.join('\n')
+}
+
+fn f64_bits_line(values ...f64) string {
+	return values.map(math.f64_bits(it).str()).join(' ')
+}
+
+fn float_operands_cases(checked bool) []OpCase {
+	mut cases := []OpCase{}
+	for typ in all_int_types {
+		unsigned := typ.starts_with('u')
+		bits := int_type_bits(typ)
+		max := if unsigned { '${max_u64 >> (64 - bits)}' } else { signed_max(bits) }
+		mut values := ['0', '7', max]
+		if !unsigned {
+			values << ['-7', signed_min(bits)]
+		}
+		for value in values {
+			x := if unsigned { f64(value.u64()) } else { f64(value.i64()) }
+			x32 := if unsigned { f32(value.u64()) } else { f32(value.i64()) }
+			h32 := f32(0.5)
+			mut lines := [x + 0.5, 0.5 + x, x - 0.5, 0.5 - x, x * 0.5, 0.5 * x, x / 0.5].map(math.f64_bits(it).str())
+			lines << if value == '0' { 'skip' } else { math.f64_bits(0.5 / x).str() }
+			for v in [x32 + h32, h32 + x32, x32 - h32, h32 - x32, x32 * h32, h32 * x32, x32 / h32] {
+				lines << math.f32_bits(v).str()
+			}
+			lines << if value == '0' { 'skip' } else { math.f32_bits(h32 / x32).str() }
+			lines << math.f64_bits(x + 0.5).str()
+			lines << math.f64_bits(x * -0.5).str()
+			cases << ok_case(lines.join('\n'), typ, value, '500')
+		}
+	}
+	cases << ok_case(f64_bits_line(1.5, 1.5, 3.5, 7.5, 6.5, 3.5, 3.5), 'reported', '0', '0')
+	cases << ok_case('${f64_bits_line(3.5, 3.5, 7.5, 6.5, 7.5)}\n${f64_bits_line(3.5, 3.5, 3.5, 3.5)}', 'aliases', '0', '0')
+	cases << ok_case(f64_bits_line(3.5, 1.5, -2.0), 'generic', '0', '0')
+	cases << ok_case(f64_bits_line(10.0), 'chain', '0', '0')
+	cases << ok_case('${math.f64_bits(f64(20.5) / 5)} ${math.f32_bits(2.75)}', 'compound', '0',
+		'0')
+	cases << ok_case(f64_bits_line(1.5, 1.5), 'consts', '0', '0')
+	// Integer operations stay checked, also with an untyped literal.
+	if checked {
+		cases << panic_case('attempt to add with overflow(i8(100) + i8(100))', 'add_i8', '100',
+			'100')
+		cases << panic_case('attempt to mul with overflow(i64(${signed_max(64)}) * i64(2))',
+			'mul_i64', signed_max(64), '0')
+	} else {
+		cases << ok_case('-56', 'add_i8', '100', '100')
+		cases << ok_case('-2', 'mul_i64', signed_max(64), '0')
+	}
+	return cases
+}
+
+fn test_checked_integer_with_float() {
+	work_dir := os.join_path(os.vtmp_dir(), 'overflow_float_${os.getpid()}')
+	os.mkdir_all(work_dir)!
+	defer {
+		os.rmdir_all(work_dir) or {}
+	}
+	source := os.join_path(work_dir, 'float_operands.v')
+	os.write_file(source, float_operands_source())!
+	mut errors := 0
+	for checked in [true, false] {
+		suffix := if checked { 'checked' } else { 'plain' }
+		exe := os.join_path(work_dir, 'float_operands_${suffix}.exe')
+		compile_case_program(source, exe, if checked { ['-check-overflow'] } else { [] })
+		errors += run_cases('integer with float (${suffix})', exe, float_operands_cases(checked))
 	}
 	assert errors == 0
 }

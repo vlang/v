@@ -29262,6 +29262,10 @@ fn (mut g FlatGen) gen_checked_integer_infix(id flat.NodeId, node flat.Node, lhs
 			}
 			translated_ct = g.translated_numeric_c_type(id, result_type)
 		}
+	} else if unalias_type(rhs_type).is_float() {
+		// An integer and a float make a float: `u64(3) * 0.5` is 1.5. An integer
+		// helper would convert 0.5 to 0 and multiply integers.
+		return false
 	}
 	helper := g.integer_overflow_helper(helper_type, node.op) or { return false }
 	g.write('${helper}(')
