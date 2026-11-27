@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_if_guard_else_err_undefined_err.vv:12:11: error: undefined ident: `err` (an Option carries no error, so `err` is not bound when it fails; return a Result `!T` to get the error)
+   10 |         println(b)
+   11 |     } else {
+   12 |         println(err.msg())
+      |                 ~~~
+   13 |     }
+   14 | }

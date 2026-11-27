@@ -9892,11 +9892,14 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			return
 		}
 		is_match_subject := tc.ident_is_match_subject(id)
-		message := if tc.fn_context.undefined_variable_context_depth > 0 && !is_match_subject
+		mut message := if tc.fn_context.undefined_variable_context_depth > 0 && !is_match_subject
 			&& !name.starts_with('_') {
 			'undefined variable: `${name}`'
 		} else {
 			'undefined ident: `${name}`'
+		}
+		if name == 'err' && tc.option_failure_block_holds(id) {
+			message += ' (an Option carries no error, so `err` is not bound when it fails; return a Result `!T` to get the error)'
 		}
 		tc.record_error_at(.unknown_ident, message, id,
 			tc.checker_fixture_template_ident_pos(id, node.pos))
