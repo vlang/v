@@ -192,13 +192,17 @@ jobs:
               echo "PARTIAL_STATUS $role $variant $rc"
               if [[ $role == candidate ]]; then
                 test "$rc" -eq 0
-                ! grep -E 'failed to build cached module object|V3 module cache fallback' "$root/partial.log"
+                if grep -E 'failed to build cached module object|V3 module cache fallback' "$root/partial.log"; then
+                  exit 1
+                fi
                 test "$("$root/partial")" = 1
                 find "$root/cache" -name 'datatypes_*.o' -type f -print | tee "$root/objects.txt"
                 test -s "$root/objects.txt"
                 "$exe" "${flags[@]}" -o "$root/warm" "$root/main.v" 2>&1 | tee "$root/warm.log"
                 test "$("$root/warm")" = 1
-                ! grep -E 'failed to build cached module object|V3 module cache fallback|V3 module cache object miss|V3 module cache dependency miss|Caching module ' "$root/warm.log"
+                if grep -E 'failed to build cached module object|V3 module cache fallback|V3 module cache object miss|V3 module cache dependency miss|Caching module ' "$root/warm.log"; then
+                  exit 1
+                fi
                 grep -F 'parsed .v files' "$root/warm.log" | tail -n 1 | grep -E 'parsed \.v files[[:space:]]+1([[:space:]]|$)'
               fi
             done
@@ -235,6 +239,7 @@ jobs:
         if: always()
         with:
           name: partial-cache-real-object-logs
+          include-hidden-files: true
           path: |
             ${{ runner.temp }}/partial-cache-native/**/*.log
             ${{ runner.temp }}/partial-cache-native/**/*.status
