@@ -1309,8 +1309,12 @@ fn (t &Transformer) if_expr_branch_type_overrides(branch_typ_id u32, stale_typ_i
 fn (t &Transformer) if_expr_branch_result_type(node flat.Node) u32 {
 	mut result := u32(0)
 	if node.children_count >= 2 {
-		then_smartcasts :=
+		mut then_smartcasts :=
 			t.smartcast_contexts_from_is_exprs(t.extract_all_is_exprs(t.a.child(&node, 0)))
+		// An if-guard declares a fresh binding for the then-branch. Resolve the
+		// branch through that binding so an earlier, out-of-scope variable with
+		// the same name cannot leak into the if-expression value type.
+		then_smartcasts << t.if_guard_binding_smartcasts(t.a.child(&node, 0))
 		then_type_source_id := t.stmt_value_type_with_smartcasts(t.a.child(&node, 1), then_smartcasts)
 
 		if then_type_source_id != 0 {
@@ -1370,6 +1374,103 @@ fn (t &Transformer) smartcast_contexts_from_is_exprs(infos []IsExprInfo) []Smart
 		}
 	}
 	return result
+}
+
+// if_guard_binding_smartcasts returns smartcast contexts that bind the variables of an
+// if-guard condition (`if x := rhs`) to the payload type of `rhs` while the then-branch
+// value is typed. The guard declares a fresh binding for its branch: without these
+// contexts the branch would resolve the name through the transformer's function-wide
+// bindings, where an earlier, out-of-scope variable with the same name (e.g. a
+// `for`-body local) may still be recorded, and the if-expression value temporary would
+// take that stale type instead of the guard's own type.
+fn (t &Transformer) if_guard_binding_smartcasts(cond_id flat.NodeId) []SmartcastContext {
+	if int(cond_id) < 0 {
+		return []SmartcastContext{}
+	}
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind != .decl_assign || cond.children_count < 2 {
+		return []SmartcastContext{}
+	}
+	lhs_ids := t.multi_assign_lhs_ids(cond)
+	if lhs_ids.len == 0 {
+		return []SmartcastContext{}
+	}
+	rhs_id := t.a.child(&cond, 1)
+	if lhs_ids.len == 1 {
+		lhs := t.a.nodes[int(lhs_ids[0])]
+		if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+			return []SmartcastContext{}
+		}
+		payload := t.if_guard_rhs_payload_source_id(rhs_id) or { return []SmartcastContext{} }
+		if payload == 0 || payload in [flat.source_type_void, flat.source_type_unknown] {
+			return []SmartcastContext{}
+		}
+		return [
+			SmartcastContext{
+				type_texts:    t.var_type_texts
+				expr_name:     lhs.value
+				variant_name:  payload
+				sum_type_name: t.var_type_text_id(option_unwrap_marker)
+			},
+		]
+	}
+	payloads := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) or { return []SmartcastContext{} }
+	mut result := []SmartcastContext{cap: lhs_ids.len}
+	for i, lhs_id in lhs_ids {
+		if i >= payloads.len {
+			break
+		}
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+			continue
+		}
+		payload := t.normalize_type_alias(payloads[i].source_type_id())
+		if payload == 0 || payload in [flat.source_type_void, flat.source_type_unknown] {
+			continue
+		}
+		result << SmartcastContext{
+			type_texts:    t.var_type_texts
+			expr_name:     lhs.value
+			variant_name:  payload
+			sum_type_name: t.var_type_text_id(option_unwrap_marker)
+		}
+	}
+	return result
+}
+
+// if_guard_rhs_payload_source_id returns the value type bound by a single-variable
+// if-guard `if x := rhs`: the option/result payload, or the map value, array element,
+// or channel element type for index and receive guards. It mirrors the bindings the
+// guard expansion declares (see try_expand_if_guard_with_tail).
+fn (t &Transformer) if_guard_rhs_payload_source_id(rhs_id flat.NodeId) ?u32 {
+	if int(rhs_id) < 0 {
+		return none
+	}
+	rhs := t.a.nodes[int(rhs_id)]
+	if rhs.kind == .prefix && rhs.op == .arrow && rhs.children_count > 0 {
+		// A channel receive guard binds the element type as-is; unlike option,
+		// map, and array guards there is no presence wrapper to unwrap.
+		payload := t.node_type(rhs_id)
+		if payload == 0 || payload in [flat.source_type_void, flat.source_type_unknown] {
+			return none
+		}
+		return payload
+	}
+	rhs_type := t.node_type(rhs_id)
+	if rhs_type == 0 {
+		return none
+	}
+	if t.is_optional_type_name(rhs_type) {
+		base := t.optional_base_type(t.qualify_optional_type(rhs_type))
+		if base == 0 || base == flat.source_type_void {
+			return none
+		}
+		return base
+	}
+	if rhs_type in [flat.source_type_void, flat.source_type_unknown] {
+		return none
+	}
+	return rhs_type
 }
 
 // stmt_value_type_with_smartcasts
