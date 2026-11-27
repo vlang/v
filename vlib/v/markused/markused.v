@@ -931,6 +931,19 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				enqueue('overflow.${op}_${typ}', mut used, mut queue)
 			}
 		}
+		// Saturating `@[overflow: 'saturating']` functions call the same way.
+		for op in ['add_sat', 'sub_sat', 'mul_sat'] {
+			for typ in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64'] {
+				enqueue('builtin.overflow.${op}_${typ}', mut used, mut queue)
+				enqueue('overflow.${op}_${typ}', mut used, mut queue)
+			}
+		}
+		for op in ['neg_sat', 'div_sat', 'mod_sat'] {
+			for typ in ['i8', 'i16', 'i32', 'i64'] {
+				enqueue('builtin.overflow.${op}_${typ}', mut used, mut queue)
+				enqueue('overflow.${op}_${typ}', mut used, mut queue)
+			}
+		}
 		for name in ['cast_overflow_signed', 'cast_overflow_unsigned'] {
 			enqueue('builtin.overflow.${name}', mut used, mut queue)
 			enqueue('overflow.${name}', mut used, mut queue)

@@ -10305,6 +10305,23 @@ fn (mut g FlatGen) gen_translated_numeric_compound_value(lhs_text string, lhs_id
 
 fn (mut g FlatGen) gen_checked_integer_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
 	value_type := g.assign_rhs_expected_type(lhs_id, lhs_type)
+	if g.fn_overflow_saturating() {
+		sat_helper := g.integer_overflow_sat_helper(value_type, op) or { return false }
+		sat_c_type := g.value_c_type(value_type)
+		if sat_c_type.len == 0 {
+			return false
+		}
+		sat_address := g.tmp_name()
+		g.write('{ ${sat_c_type}* ${sat_address} = &(')
+		if g.assign_lhs_needs_deref(lhs_id, lhs_type, rhs_type, op) {
+			g.write('*')
+		}
+		gen_expr_lvalue(mut g, lhs_id)
+		g.write('); *${sat_address} = ${sat_helper}(*${sat_address}, ')
+		g.gen_expr_with_expected_type(rhs_id, value_type)
+		g.writeln('); }')
+		return true
+	}
 	helper := g.integer_overflow_helper(value_type, op) or { return false }
 	c_type := g.value_c_type(value_type)
 	if c_type.len == 0 {
@@ -10326,7 +10343,8 @@ fn (mut g FlatGen) gen_checked_integer_assign(lhs_id flat.NodeId, rhs_id flat.No
 // `-check-overflow` the way `x = x / y` is written: a zero divisor panics, and so
 // does a signed `min / -1`.
 fn (mut g FlatGen) gen_checked_integer_division_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
-	if op !in [.div_assign, .mod_assign] || !g.has_builtins || !g.overflow_checks_active()
+	if op !in [.div_assign, .mod_assign] || !g.has_builtins
+		|| (!g.overflow_checks_active() && !g.fn_overflow_saturating())
 		|| g.expr_is_in_translated_file(lhs_id) {
 		return false
 	}

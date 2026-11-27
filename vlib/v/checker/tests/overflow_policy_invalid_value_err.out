@@ -1,0 +1,5 @@
+vlib/v/checker/tests/overflow_policy_invalid_value_err.vv:1:3: error: invalid value 'bogus' for attribute 'overflow': expected 'checked', 'wrapping' or 'saturating'
+    1 | @[overflow: 'bogus']
+      |   ~~~~~~~~
+    2 | fn f(x i8) i8 {
+    3 |     return x + 1

@@ -132,6 +132,7 @@ struct FlatCgenSelectArgs {
 	module_name             string
 	direct_array_access_fns DirectArrayAccessFns
 	ignore_overflow_fns     DirectArrayAccessFns
+	overflow_policy_fns     OverflowPolicyFns
 	program_modules         map[string]bool
 mut:
 	candidates []FlatFnGenCandidate
@@ -161,7 +162,7 @@ fn flat_cgen_select_thread(arg voidptr) voidptr {
 	master := unsafe { &FlatGen(a.g) }
 	mut view := master.new_collect_gen_info_view()
 	nodes := unsafe { &[]i32(a.nodes_ptr) }
-	candidates := view.collect_fn_gen_candidates_range(*nodes, a.start, a.end, a.file, a.module_name, a.direct_array_access_fns, a.ignore_overflow_fns, a.program_modules)
+	candidates := view.collect_fn_gen_candidates_range(*nodes, a.start, a.end, a.file, a.module_name, a.direct_array_access_fns, a.ignore_overflow_fns, a.overflow_policy_fns, a.program_modules)
 	cgen_worker_scope_leave(scratch)
 	if scratch == unsafe { nil } {
 		a.candidates = moved_fn_gen_candidates(candidates)
@@ -206,6 +207,7 @@ fn own_fn_gen_candidates(scratch voidptr, candidates []FlatFnGenCandidate) []Fla
 				is_program:                candidate.item.is_program
 				direct_array_access:       candidate.item.direct_array_access
 				ignore_overflow:           candidate.item.ignore_overflow
+				overflow_policy:           candidate.item.overflow_policy
 				cost:                      candidate.item.cost
 				skip_prelude_scan:         candidate.item.skip_prelude_scan
 			}
@@ -1423,10 +1425,10 @@ fn flat_cgen_dynamic_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {
+fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, overflow_policy_fns OverflowPolicyFns, program_modules map[string]bool) []FlatFnGenCandidate {
 	nodes := g.top_level_nodes()
 	if isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0 || nodes.len < 2048 {
-		return g.collect_fn_gen_candidates_range(nodes, 0, nodes.len, '', '', direct_array_access_fns, ignore_overflow_fns, program_modules)
+		return g.collect_fn_gen_candidates_range(nodes, 0, nodes.len, '', '', direct_array_access_fns, ignore_overflow_fns, overflow_policy_fns, program_modules)
 	}
 	mut n_jobs := g.a.worker_pool.size() + 1
 	if n_jobs > max_flat_cgen_select_jobs {
@@ -1465,6 +1467,7 @@ fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns Di
 			module_name:             modules[job]
 			direct_array_access_fns: direct_array_access_fns
 			ignore_overflow_fns:     ignore_overflow_fns
+			overflow_policy_fns:     overflow_policy_fns
 			program_modules:         program_modules
 			candidates:              []FlatFnGenCandidate{}
 			scope:                   unsafe { nil }
@@ -2129,6 +2132,7 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 					is_program:                item.is_program
 					direct_array_access:       item.direct_array_access
 					ignore_overflow:           item.ignore_overflow
+					overflow_policy:           item.overflow_policy
 				}
 			}
 			g.fn_gen_items = owned_items

@@ -784,3 +784,511 @@ fn sub_f64(x f64, y f64) f64 {
 fn mul_f64(x f64, y f64) f64 {
 	return x * y
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////
+// Saturating arithmetic for `@[overflow: 'saturating']` functions. These clamp the
+// result to the limits of the type instead of panicking like the checked helpers
+// above, and instead of wrapping like the default arithmetic does.
+
+// add_sat_i8 computes `x` + `y` for i8 values, saturating at the type limits
+@[inline]
+fn add_sat_i8(x i8, y i8) i8 {
+	res := x + y
+	if x > 0 && y > 0 && res < 0 {
+		return max_i8
+	}
+	if x < 0 && y < 0 && res >= 0 {
+		return min_i8
+	}
+	return res
+}
+
+// add_sat_u8 computes `x` + `y` for u8 values, saturating at the type limits
+@[inline]
+fn add_sat_u8(x u8, y u8) u8 {
+	res := x + y
+	if res < x {
+		return max_u8
+	}
+	return res
+}
+
+// sub_sat_i8 computes `x` - `y` for i8 values, saturating at the type limits
+@[inline]
+fn sub_sat_i8(x i8, y i8) i8 {
+	res := x - y
+	if x >= 0 && y < 0 && res < 0 {
+		return max_i8
+	}
+	if x < 0 && y > 0 && res > 0 {
+		return min_i8
+	}
+	return res
+}
+
+// sub_sat_u8 computes `x` - `y` for u8 values, saturating at the type limits
+@[inline]
+fn sub_sat_u8(x u8, y u8) u8 {
+	if y > x {
+		return min_u8
+	}
+	return x - y
+}
+
+// mul_sat_i8 computes `x` * `y` for i8 values, saturating at the type limits
+@[inline]
+fn mul_sat_i8(x i8, y i8) i8 {
+	res := x * y
+	if x == 0 || y == 0 {
+		return res
+	}
+	mut is_overflow := false
+	if x == min_i8 {
+		is_overflow = y != 1
+	} else if y == min_i8 {
+		is_overflow = x != 1
+	} else if x > 0 {
+		if y > 0 {
+			is_overflow = x > max_i8 / y
+		} else {
+			is_overflow = y < min_i8 / x
+		}
+	} else if x < 0 {
+		if y > 0 {
+			is_overflow = x < min_i8 / y
+		} else {
+			is_overflow = y < max_i8 / x
+		}
+	}
+	if is_overflow {
+		if (x < 0) == (y < 0) {
+			return max_i8
+		}
+		return min_i8
+	}
+	return res
+}
+
+// mul_sat_u8 computes `x` * `y` for u8 values, saturating at the type limits
+@[inline]
+fn mul_sat_u8(x u8, y u8) u8 {
+	res := x * y
+	if y != 0 && x > max_u8 / y {
+		return max_u8
+	}
+	return res
+}
+
+// add_sat_i16 computes `x` + `y` for i16 values, saturating at the type limits
+@[inline]
+fn add_sat_i16(x i16, y i16) i16 {
+	res := x + y
+	if x > 0 && y > 0 && res < 0 {
+		return max_i16
+	}
+	if x < 0 && y < 0 && res >= 0 {
+		return min_i16
+	}
+	return res
+}
+
+// add_sat_u16 computes `x` + `y` for u16 values, saturating at the type limits
+@[inline]
+fn add_sat_u16(x u16, y u16) u16 {
+	res := x + y
+	if res < x {
+		return max_u16
+	}
+	return res
+}
+
+// sub_sat_i16 computes `x` - `y` for i16 values, saturating at the type limits
+@[inline]
+fn sub_sat_i16(x i16, y i16) i16 {
+	res := x - y
+	if x >= 0 && y < 0 && res < 0 {
+		return max_i16
+	}
+	if x < 0 && y > 0 && res > 0 {
+		return min_i16
+	}
+	return res
+}
+
+// sub_sat_u16 computes `x` - `y` for u16 values, saturating at the type limits
+@[inline]
+fn sub_sat_u16(x u16, y u16) u16 {
+	if y > x {
+		return min_u16
+	}
+	return x - y
+}
+
+// mul_sat_i16 computes `x` * `y` for i16 values, saturating at the type limits
+@[inline]
+fn mul_sat_i16(x i16, y i16) i16 {
+	res := x * y
+	if x == 0 || y == 0 {
+		return res
+	}
+	mut is_overflow := false
+	if x == min_i16 {
+		is_overflow = y != 1
+	} else if y == min_i16 {
+		is_overflow = x != 1
+	} else if x > 0 {
+		if y > 0 {
+			is_overflow = x > max_i16 / y
+		} else {
+			is_overflow = y < min_i16 / x
+		}
+	} else if x < 0 {
+		if y > 0 {
+			is_overflow = x < min_i16 / y
+		} else {
+			is_overflow = y < max_i16 / x
+		}
+	}
+	if is_overflow {
+		if (x < 0) == (y < 0) {
+			return max_i16
+		}
+		return min_i16
+	}
+	return res
+}
+
+// mul_sat_u16 computes `x` * `y` for u16 values, saturating at the type limits
+@[inline]
+fn mul_sat_u16(x u16, y u16) u16 {
+	res := x * y
+	if y != 0 && x > max_u16 / y {
+		return max_u16
+	}
+	return res
+}
+
+// add_sat_i32 computes `x` + `y` for i32 values, saturating at the type limits
+@[inline]
+fn add_sat_i32(x i32, y i32) i32 {
+	res := x + y
+	if x > 0 && y > 0 && res < 0 {
+		return max_i32
+	}
+	if x < 0 && y < 0 && res >= 0 {
+		return min_i32
+	}
+	return res
+}
+
+// add_sat_u32 computes `x` + `y` for u32 values, saturating at the type limits
+@[inline]
+fn add_sat_u32(x u32, y u32) u32 {
+	res := x + y
+	if res < x {
+		return max_u32
+	}
+	return res
+}
+
+// sub_sat_i32 computes `x` - `y` for i32 values, saturating at the type limits
+@[inline]
+fn sub_sat_i32(x i32, y i32) i32 {
+	res := x - y
+	if x >= 0 && y < 0 && res < 0 {
+		return max_i32
+	}
+	if x < 0 && y > 0 && res > 0 {
+		return min_i32
+	}
+	return res
+}
+
+// sub_sat_u32 computes `x` - `y` for u32 values, saturating at the type limits
+@[inline]
+fn sub_sat_u32(x u32, y u32) u32 {
+	if y > x {
+		return min_u32
+	}
+	return x - y
+}
+
+// mul_sat_i32 computes `x` * `y` for i32 values, saturating at the type limits
+@[inline]
+fn mul_sat_i32(x i32, y i32) i32 {
+	res := x * y
+	if x == 0 || y == 0 {
+		return res
+	}
+	mut is_overflow := false
+	if x == min_i32 {
+		is_overflow = y != 1
+	} else if y == min_i32 {
+		is_overflow = x != 1
+	} else if x > 0 {
+		if y > 0 {
+			is_overflow = x > max_i32 / y
+		} else {
+			is_overflow = y < min_i32 / x
+		}
+	} else if x < 0 {
+		if y > 0 {
+			is_overflow = x < min_i32 / y
+		} else {
+			is_overflow = y < max_i32 / x
+		}
+	}
+	if is_overflow {
+		if (x < 0) == (y < 0) {
+			return max_i32
+		}
+		return min_i32
+	}
+	return res
+}
+
+// mul_sat_u32 computes `x` * `y` for u32 values, saturating at the type limits
+@[inline]
+fn mul_sat_u32(x u32, y u32) u32 {
+	res := x * y
+	if y != 0 && x > max_u32 / y {
+		return max_u32
+	}
+	return res
+}
+
+// add_sat_i64 computes `x` + `y` for i64 values, saturating at the type limits
+@[inline]
+fn add_sat_i64(x i64, y i64) i64 {
+	res := x + y
+	if x > 0 && y > 0 && res < 0 {
+		return max_i64
+	}
+	if x < 0 && y < 0 && res >= 0 {
+		return min_i64
+	}
+	return res
+}
+
+// add_sat_u64 computes `x` + `y` for u64 values, saturating at the type limits
+@[inline]
+fn add_sat_u64(x u64, y u64) u64 {
+	res := x + y
+	if res < x {
+		return max_u64
+	}
+	return res
+}
+
+// sub_sat_i64 computes `x` - `y` for i64 values, saturating at the type limits
+@[inline]
+fn sub_sat_i64(x i64, y i64) i64 {
+	res := x - y
+	if x >= 0 && y < 0 && res < 0 {
+		return max_i64
+	}
+	if x < 0 && y > 0 && res > 0 {
+		return min_i64
+	}
+	return res
+}
+
+// sub_sat_u64 computes `x` - `y` for u64 values, saturating at the type limits
+@[inline]
+fn sub_sat_u64(x u64, y u64) u64 {
+	if y > x {
+		return min_u64
+	}
+	return x - y
+}
+
+// mul_sat_i64 computes `x` * `y` for i64 values, saturating at the type limits
+@[inline]
+fn mul_sat_i64(x i64, y i64) i64 {
+	res := x * y
+	if x == 0 || y == 0 {
+		return res
+	}
+	mut is_overflow := false
+	if x == min_i64 {
+		is_overflow = y != 1
+	} else if y == min_i64 {
+		is_overflow = x != 1
+	} else if x > 0 {
+		if y > 0 {
+			is_overflow = x > max_i64 / y
+		} else {
+			is_overflow = y < min_i64 / x
+		}
+	} else if x < 0 {
+		if y > 0 {
+			is_overflow = x < min_i64 / y
+		} else {
+			is_overflow = y < max_i64 / x
+		}
+	}
+	if is_overflow {
+		if (x < 0) == (y < 0) {
+			return max_i64
+		}
+		return min_i64
+	}
+	return res
+}
+
+// mul_sat_u64 computes `x` * `y` for u64 values, saturating at the type limits
+@[inline]
+fn mul_sat_u64(x u64, y u64) u64 {
+	res := x * y
+	if y != 0 && x > max_u64 / y {
+		return max_u64
+	}
+	return res
+}
+
+// neg_sat_i8 computes -`x` for i8 values, saturating at the type limits
+@[inline]
+fn neg_sat_i8(x i8) i8 {
+	if x == min_i8 {
+		return max_i8
+	}
+	return -x
+}
+
+// neg_sat_i16 computes -`x` for i16 values, saturating at the type limits
+@[inline]
+fn neg_sat_i16(x i16) i16 {
+	if x == min_i16 {
+		return max_i16
+	}
+	return -x
+}
+
+// neg_sat_i32 computes -`x` for i32 values, saturating at the type limits
+@[inline]
+fn neg_sat_i32(x i32) i32 {
+	if x == min_i32 {
+		return max_i32
+	}
+	return -x
+}
+
+// neg_sat_i64 computes -`x` for i64 values, saturating at the type limits
+@[inline]
+fn neg_sat_i64(x i64) i64 {
+	if x == min_i64 {
+		return max_i64
+	}
+	return -x
+}
+
+// div_sat_i8 computes `x` / `y` for i8 values, saturating at the type limits
+@[inline]
+fn div_sat_i8(x i8, y i8) i8 {
+	if y == 0 {
+		panic('division by zero')
+	}
+	if y == -1 && x == min_i8 {
+		return max_i8
+	}
+	return x / y
+}
+
+// mod_sat_i8 computes `x` % `y` for i8 values, saturating at the type limits
+@[inline]
+fn mod_sat_i8(x i8, y i8) i8 {
+	if y == 0 {
+		panic('modulo by zero')
+	}
+	if y == -1 {
+		return 0
+	}
+	return x % y
+}
+
+// div_sat_i16 computes `x` / `y` for i16 values, saturating at the type limits
+@[inline]
+fn div_sat_i16(x i16, y i16) i16 {
+	if y == 0 {
+		panic('division by zero')
+	}
+	if y == -1 && x == min_i16 {
+		return max_i16
+	}
+	return x / y
+}
+
+// mod_sat_i16 computes `x` % `y` for i16 values, saturating at the type limits
+@[inline]
+fn mod_sat_i16(x i16, y i16) i16 {
+	if y == 0 {
+		panic('modulo by zero')
+	}
+	if y == -1 {
+		return 0
+	}
+	return x % y
+}
+
+// div_sat_i32 computes `x` / `y` for i32 values, saturating at the type limits
+@[inline]
+fn div_sat_i32(x i32, y i32) i32 {
+	if y == 0 {
+		panic('division by zero')
+	}
+	if y == -1 && x == min_i32 {
+		return max_i32
+	}
+	return x / y
+}
+
+// mod_sat_i32 computes `x` % `y` for i32 values, saturating at the type limits
+@[inline]
+fn mod_sat_i32(x i32, y i32) i32 {
+	if y == 0 {
+		panic('modulo by zero')
+	}
+	if y == -1 {
+		return 0
+	}
+	return x % y
+}
+
+// div_sat_i64 computes `x` / `y` for i64 values, saturating at the type limits
+@[inline]
+fn div_sat_i64(x i64, y i64) i64 {
+	if y == 0 {
+		panic('division by zero')
+	}
+	if y == -1 && x == min_i64 {
+		return max_i64
+	}
+	return x / y
+}
+
+// mod_sat_i64 computes `x` % `y` for i64 values, saturating at the type limits
+@[inline]
+fn mod_sat_i64(x i64, y i64) i64 {
+	if y == 0 {
+		panic('modulo by zero')
+	}
+	if y == -1 {
+		return 0
+	}
+	return x % y
+}
+
+@[inline; markused]
+fn add_sat_int(x int, y int) int {
+	return add_sat_i32(x, y)
+}
+
+@[inline; markused]
+fn sub_sat_int(x int, y int) int {
+	return sub_sat_i32(x, y)
+}
+
+@[inline; markused]
+fn mul_sat_int(x int, y int) int {
+	return mul_sat_i32(x, y)
+}

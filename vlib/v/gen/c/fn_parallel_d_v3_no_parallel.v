@@ -70,10 +70,10 @@ fn (mut g FlatGen) collect_gen_info_fn_preps(_ []i32, _ bool, _ bool) CollectGen
 	return CollectGenFnPreps{}
 }
 
-fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {
+fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, overflow_policy_fns OverflowPolicyFns, program_modules map[string]bool) []FlatFnGenCandidate {
 	nodes := g.top_level_nodes()
 	return g.collect_fn_gen_candidates_range(nodes, 0, nodes.len, '', '', direct_array_access_fns,
-		ignore_overflow_fns, program_modules)
+		ignore_overflow_fns, overflow_policy_fns, program_modules)
 }
 
 // gen_fns_dispatch emits all functions serially when v3 is built with the
