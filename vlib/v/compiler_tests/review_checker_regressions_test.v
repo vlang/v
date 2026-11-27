@@ -93,30 +93,22 @@ fn check_review_rejections(name string, cases []ReviewFixture) {
 	}
 }
 
-fn check_review_runtime(name string, cases []ReviewFixture) {
-	root := write_review_batch(name, cases, true)
+fn compile_review_runtime(root string) string {
 	bin_path := os.join_path(root, 'program')
 	compile := run_review_checker(v3_bin, ['-enable-globals', root, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
+	return bin_path
+}
+
+fn check_review_runtime(name string, cases []ReviewFixture) {
+	root := write_review_batch(name, cases, true)
+	bin_path := compile_review_runtime(root)
 	for case in cases {
 		result := os.exec([bin_path, case.name])
 		assert result.exit_code == 0, '${case.name}: ${result.output}'
 		assert result.output.trim_space() == case.expected, '${case.name}: expected ${case.expected}\n${result.output}'
 	}
-}
-
-fn run_good(compiler string, name string, src string) string {
-	good_src := os.join_path(review_checker_fixture_dir, 'v3_${name}.v')
-	os.write_file(good_src, src) or { panic(err) }
-	good_bin := os.join_path(review_checker_fixture_dir, 'v3_${name}')
-	compile := run_review_checker(compiler, ['-enable-globals', '${good_src}', '-b', 'c', '-o',
-		good_bin])
-	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
-	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.exec([good_bin])
-	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
-	return run.output.trim_space()
 }
 
 fn run_good_project(compiler string, name string, files map[string]string) string {
@@ -151,27 +143,6 @@ fn run_runtime_bad(compiler string, name string, src string) string {
 	run := os.exec([bad_bin])
 	assert run.exit_code != 0, '${name}: expected runtime failure, got success\n${run.output}'
 	return run.output.trim_space()
-}
-
-fn test_recursive_str_allows_smartcast_sum_variant_formatting() {
-	out := run_good(v3_bin, 'recursive_str_smartcast_sum_variant', 'type Scalar = bool | int | string
-
-fn (value Scalar) str() string {
-	return value.display()
-}
-
-fn (value Scalar) display() string {
-	return match value {
-		bool, int { value.str() }
-		string { value }
-	}
-}
-
-fn main() {
-	println(Scalar(7).str())
-}
-')
-	assert out == '7'
 }
 
 fn test_sum_option_and_result_value_contexts() {
@@ -600,30 +571,6 @@ fn main() {
 }
 ', '42'},
 	])
-}
-
-fn test_shared_globals_keep_lockable_storage_metadata() {
-	out := run_good(v3_bin, 'shared_global_storage', '@[has_globals]
-module main
-
-struct Counter {
-mut:
-	value int
-}
-
-__global counter shared Counter
-
-fn main() {
-	lock counter {
-		counter.value = 42
-	}
-	value := rlock counter {
-		counter.value
-	}
-	println(value)
-}
-')
-	assert out == '42'
 }
 
 fn test_generic_factory_can_initialize_its_own_noinit_struct_for_external_callers() {
@@ -1120,25 +1067,6 @@ fn main() {
 false
 2.5'},
 	])
-	out := run_good(v3_bin, 'heap_method_value_and_translated_const', '@[translated]
-module main
-
-const Red = 2
-
-@[heap]
-struct Foo {}
-
-fn (foo &Foo) ref() int {
-	return 1
-}
-
-fn main() {
-	foo := Foo{}
-	callback := foo.ref
-	println(callback() + Red)
-}
-')
-	assert out == '3'
 }
 
 fn test_pointer_fixed_array_and_variadic_argument_rejections() {
@@ -1186,148 +1114,6 @@ fn main() {
 	])
 }
 
-fn test_reject_fixed_array_decay_to_pointer() {
-	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_return',
-		'@[translated]\nmodule main\n\nfn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
-		'you are returning `[2]int` instead')
-	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_element_assignment',
-		'@[translated]\nmodule main\n\nfn main() {\n\tmut ptr := &int(0)\n\tptr = [u16(1), 2]!\n}\n',
-		'mismatched types `&int` and `[2]u16`')
-	byte_out := run_good(v3_bin, 'good_fixed_array_pointer_inside_unsafe',
-		'type Fixed = [2]u8\n\nfn main() {\n\tbuf := Fixed([u8(65), 66]!)\n\tptr := unsafe { &buf }\n\tprintln(int_str(int((*ptr)[0])))\n}\n')
-	assert byte_out == '65'
-	out := run_good(v3_bin, 'good_translated_fixed_array_pointer_assignment',
-		'@[translated]\nmodule main\n\nfn main() {\n\tmut values := [1, 2]!\n\tmut ptr := unsafe { &values[0] }\n\tprintln(int_str(*ptr))\n}\n')
-	assert out == '1'
-}
-
-fn test_enum_in_list_and_nested_array_address_match_v1() {
-	insert_header := os.join_path(review_checker_fixture_dir, 'v3_review_checker_insert.h')
-	os.write_file(insert_header,
-		'static inline int v3_review_checker_inserted(void) { return 6; }\n') or { panic(err) }
-	out := run_good(v3_bin, 'good_enum_in_list_and_nested_array_address', '
-#insert "@DIR/v3_review_checker_insert.h"
-
-fn C.v3_review_checker_inserted() int
-
-const max_bytes = 32 * 1024 * 1024
-
-enum FormulaKind {
-	text
-	number
-	date_time
-}
-
-struct Sheet {
-	value int
-}
-
-struct Workbook {
-	sheets []Sheet
-}
-
-struct Evaluator {
-	workbook &Workbook
-}
-
-struct LocalHolder {
-	evaluator &Evaluator
-}
-
-struct CopyValue {
-	value int
-}
-
-fn pair() (int, int) {
-	return 4, 5
-}
-
-fn number_value(value f64) f64 {
-	return value
-}
-
-fn parse_number(text string) !f64 {
-	return match text {
-		"42" { text.f64() }
-		else { error("not a number") }
-	}
-}
-
-fn clone_value(original &CopyValue) CopyValue {
-	return CopyValue{
-		...original
-	}
-}
-
-fn contains_value(value string, mut values []string) bool {
-	return value in values
-}
-
-fn item_count(values []int) int {
-	return values.len
-}
-
-fn shifted_value(base string) ?string {
-	shifted := {
-		"a": "A"
-	}
-	return shifted[base] or { none }
-}
-
-fn (mut evaluator Evaluator) keep_pointer_locally() {
-	holder := LocalHolder{
-		evaluator: evaluator
-	}
-	println(holder.evaluator.workbook.sheets[0].value)
-}
-
-fn inspect(evaluator &Evaluator, kind FormulaKind) {
-	if kind in [.number, .date_time] {
-		println("enum")
-	}
-	sheet := &evaluator.workbook.sheets[0]
-	println(sheet.value)
-	ch := "a"[0]
-	assert ch >= `a` && ch <= `z`
-	assert ch in [`a`, `b`]
-	quote := `a`
-	assert ch == quote
-	assert u64(10) < max_bytes
-	first, second := if ch == `a` {
-		pair()
-	} else {
-		1, 2
-	}
-	println(first + second)
-}
-
-fn main() {
-	workbook := &Workbook{
-		sheets: [Sheet{
-			value: 42
-		}]
-	}
-	mut evaluator := Evaluator{
-		workbook: workbook
-	}
-	mut values := ["value"]
-	inspect(&evaluator, .number)
-	evaluator.keep_pointer_locally()
-	println(number_value(values.len))
-	println(parse_number("42") or { 0 })
-	println(clone_value(&CopyValue{
-		value: 8
-	}).value)
-	println(contains_value("value", mut values))
-	println(item_count([]))
-	println(shifted_value("a") or { "none" })
-	println(shifted_value("b") or { "none" })
-	println(C.v3_review_checker_inserted())
-}
-')
-	assert out == 'enum\n42\n9\n42\n1.0\n42.0\n8\ntrue\n0\nA\nnone\n6'
-}
-
 fn test_function_returns_control_flow_and_option_result_rejections() {
 	check_review_rejections('function_returns_control_flow_and_option_result_rejections', [
 		ReviewFixture{'bad_result_value_in_option_return', 'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n', 'cannot use `!int` as type `?int` in return argument'},
@@ -1358,21 +1144,6 @@ fn test_function_returns_control_flow_and_option_result_rejections() {
 		ReviewFixture{'bad_shadowed_os_exit_return_value', 'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) int {\n\treturn code + 1\n}\nfn f(os OsLike) int {\n\treturn os.exit(4)\n}\nfn main() {\n\tprintln(int_str(f(OsLike{})))\n}\n', 'duplicate of an import symbol `os`'},
 		ReviewFixture{'bad_called_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {\n\t_ := f[int]()\n}\n', 'missing return at end of function `f`'},
 	])
-}
-
-fn test_assignment_selector_diagnostic_accepts_wide_columns() {
-	indent := ' '.repeat(32768)
-	run_bad(v3_bin, 'wide_assignment_selector_diagnostic', 'struct Holder {
-	item ?string
-}
-
-fn main() {
-	holder := Holder{}
-	mut value := 0
-${indent}value = holder.item or { "" }
-}
-',
-		'cannot assign to `value`: expected `int`, not `string`')
 }
 
 fn test_return_types_abi_wrappers_and_numeric_receivers() {
@@ -1495,83 +1266,11 @@ fn test_called_generic_functions_report_missing_return() {
 		'missing return at end of function `f`')
 }
 
-fn test_builtin_panic_auto_stringifies_nested_generic_struct_during_static_checks() {
-	out := run_good(v3_bin, 'panic_nested_generic_auto_str', 'struct StaticPanicNode[T] {
-	value T
-}
-
-struct StaticPanicContainer[T] {
-	values []StaticPanicNode[T]
-}
-
-fn maybe_panic_nested_generic(should_panic bool) {
-	if should_panic {
-		panic(StaticPanicContainer[string]{})
-	}
-}
-
-fn main() {
-	maybe_panic_nested_generic(false)
-	println("ok")
-}
-')
-	assert out == 'ok'
-}
-
 fn test_return_panic_with_defer_evaluates_call_before_cleanup() {
 	out := run_runtime_bad(v3_bin, 'bad_return_panic_defer_order',
 		"fn f() int {\n\tdefer {\n\t\tprintln('cleanup-ran')\n\t}\n\treturn panic('boom')\n}\nfn main() {\n\t_ := f()\n}\n")
 	assert out.contains('boom')
 	assert !out.contains('cleanup-ran')
-}
-
-fn test_match_const_int_does_not_narrow_subject_type() {
-	out := run_good(v3_bin, 'match_const_int_no_subject_narrow',
-		'const size_224 = 28\n\nstruct E {\n\tsize int\n}\n\nfn check(hash_size int) !E {\n\tmatch hash_size {\n\t\tsize_224 {\n\t\t\treturn E{\n\t\t\t\tsize: hash_size\n\t\t\t}\n\t\t}\n\t\telse {}\n\t}\n\treturn E{\n\t\tsize: 0\n\t}\n}\n\nfn main() {\n\tprintln(int_str(check(28)!.size))\n}\n')
-	assert out == '28'
-}
-
-fn test_fn_field_param_mutability_survives_type_identity_paths() {
-	source_prefix := 'struct Counter {
-mut:
-	value int
-}
-
-struct Holder {
-	callback fn (mut Counter)
-}
-
-fn increment(mut counter Counter) {
-	counter.value++
-}
-'
-	out := run_good(v3_bin, 'good_fn_field_mut_param', source_prefix +
-		'
-fn main() {
-	holder := Holder{
-		callback: increment
-	}
-	mut counter := Counter{
-		value: 4
-	}
-	holder.callback(mut counter)
-	println(int_str(counter.value))
-}
-')
-	assert out == '5'
-	run_bad(v3_bin, 'bad_fn_field_missing_mut_arg', source_prefix +
-		'
-fn main() {
-	holder := Holder{
-		callback: increment
-	}
-	mut counter := Counter{
-		value: 4
-	}
-	holder.callback(counter)
-}
-',
-		'is `mut`, so use `mut counter` instead')
 }
 
 fn test_vexeroot_insert_and_generated_function_name_exemptions() {
@@ -1630,9 +1329,412 @@ fn main() {
 ", '2\n1'},
 		ReviewFixture{'good_array_insert_prepend_many_operands', "type Strings = []string\n\nfn main() {\n\tmut a := [3, 4]\n\ta.insert(0, [1, 2])\n\tb := [5, 6]\n\ta.insert(1, b)\n\ta.prepend([0])\n\tfixed := [7, 8]!\n\ta.insert(a.len, fixed)\n\tassert a == [0, 1, 5, 6, 2, 3, 4, 7, 8]\n\tmut strs := Strings(['hi'])\n\tstrs.insert(0, ['there'])\n\tstrs.prepend(['hello'])\n\tassert strs == ['hello', 'there', 'hi']\n\tprintln('ok')\n}\n", 'ok'},
 	])
-	run_bad(v3_bin, 'bad_source_function_name_with_generic_marker', 'fn bad_T_Name() {}
+}
 
-fn main() {}
-',
-		'function name `bad_T_Name` cannot contain uppercase letters, use snake_case instead')
+fn write_review_sources(name string, files map[string]string) string {
+	root := os.join_path(review_checker_fixture_dir, name)
+	os.mkdir(root) or { panic(err) }
+	for file, contents in files {
+		os.write_file(os.join_path(root, file), contents) or { panic(err) }
+	}
+	return root
+}
+
+fn check_review_main_runtime(name string, files map[string]string, expected map[string]string) {
+	root := write_review_sources(name, files)
+	bin_path := compile_review_runtime(root)
+	for case, output in expected {
+		result := os.exec([bin_path, case])
+		assert result.exit_code == 0, '${case}: ${result.output}'
+		assert result.output.trim_space() == output, '${case}: expected ${output}\n${result.output}'
+	}
+}
+
+fn check_review_main_rejections(name string, files map[string]string, expected []string) {
+	root := write_review_sources(name, files)
+	result := run_review_checker(v3_bin, [root, '-b', 'c', '-o', os.join_path(root, 'program')])
+	assert result.exit_code != 0, result.output
+	assert !result.output.contains('C compilation failed'), result.output
+	for diagnostic in expected {
+		assert result.output.contains(diagnostic), 'expected ${diagnostic}\n${result.output}'
+	}
+}
+
+const review_callback_fixture = 'struct Counter {
+mut:
+	value int
+}
+
+struct Holder {
+	callback fn (mut Counter)
+}
+
+fn increment(mut counter Counter) {
+	counter.value++
+}
+
+'
+
+fn test_review_shared_runtime_fixtures() {
+	check_review_main_runtime('runtime_batch', {
+		'recursive_str.v':            'type Scalar = bool | int | string
+
+fn (value Scalar) str() string {
+	return value.display()
+}
+
+fn (value Scalar) display() string {
+	return match value {
+		bool, int { value.str() }
+		string { value }
+	}
+}
+
+fn case_recursive_str() {
+	println(Scalar(7).str())
+}
+'
+		'shared_global.v':            '@[has_globals]
+module main
+
+struct SharedCounter {
+mut:
+	value int
+}
+
+__global shared_counter shared SharedCounter
+
+fn case_shared_global() {
+	lock shared_counter {
+		shared_counter.value = 42
+	}
+	value := rlock shared_counter {
+		shared_counter.value
+	}
+	println(value)
+}
+'
+		'unsafe_fixed.v':             'type Fixed = [2]u8
+
+fn case_unsafe_fixed() {
+	buf := Fixed([u8(65), 66]!)
+	ptr := unsafe { &buf }
+	println(int_str(int((*ptr)[0])))
+}
+'
+		'enum_and_array.v':           '
+#insert "@DIR/v3_review_checker_insert.h"
+
+fn C.v3_review_checker_inserted() int
+
+const max_bytes = 32 * 1024 * 1024
+
+enum FormulaKind {
+	text
+	number
+	date_time
+}
+
+struct Sheet {
+	value int
+}
+
+struct Workbook {
+	sheets []Sheet
+}
+
+struct Evaluator {
+	workbook &Workbook
+}
+
+struct LocalHolder {
+	evaluator &Evaluator
+}
+
+struct CopyValue {
+	value int
+}
+
+fn pair() (int, int) {
+	return 4, 5
+}
+
+fn number_value(value f64) f64 {
+	return value
+}
+
+fn parse_number(text string) !f64 {
+	return match text {
+		"42" { text.f64() }
+		else { error("not a number") }
+	}
+}
+
+fn clone_value(original &CopyValue) CopyValue {
+	return CopyValue{
+		...original
+	}
+}
+
+fn contains_value(value string, mut values []string) bool {
+	return value in values
+}
+
+fn item_count(values []int) int {
+	return values.len
+}
+
+fn shifted_value(base string) ?string {
+	shifted := {
+		"a": "A"
+	}
+	return shifted[base] or { none }
+}
+
+fn (mut evaluator Evaluator) keep_pointer_locally() {
+	holder := LocalHolder{
+		evaluator: evaluator
+	}
+	println(holder.evaluator.workbook.sheets[0].value)
+}
+
+fn inspect(evaluator &Evaluator, kind FormulaKind) {
+	if kind in [.number, .date_time] {
+		println("enum")
+	}
+	sheet := &evaluator.workbook.sheets[0]
+	println(sheet.value)
+	ch := "a"[0]
+	assert ch >= `a` && ch <= `z`
+	assert ch in [`a`, `b`]
+	quote := `a`
+	assert ch == quote
+	assert u64(10) < max_bytes
+	first, second := if ch == `a` {
+		pair()
+	} else {
+		1, 2
+	}
+	println(first + second)
+}
+
+fn case_enum_and_array() {
+	workbook := &Workbook{
+		sheets: [Sheet{
+			value: 42
+		}]
+	}
+	mut evaluator := Evaluator{
+		workbook: workbook
+	}
+	mut values := ["value"]
+	inspect(&evaluator, .number)
+	evaluator.keep_pointer_locally()
+	println(number_value(values.len))
+	println(parse_number("42") or { 0 })
+	println(clone_value(&CopyValue{
+		value: 8
+	}).value)
+	println(contains_value("value", mut values))
+	println(item_count([]))
+	println(shifted_value("a") or { "none" })
+	println(shifted_value("b") or { "none" })
+	println(C.v3_review_checker_inserted())
+}
+'
+		'nested_panic.v':             'struct StaticPanicNode[T] {
+	value T
+}
+
+struct StaticPanicContainer[T] {
+	values []StaticPanicNode[T]
+}
+
+fn maybe_panic_nested_generic(should_panic bool) {
+	if should_panic {
+		panic(StaticPanicContainer[string]{})
+	}
+}
+
+fn case_nested_panic() {
+	maybe_panic_nested_generic(false)
+	println("ok")
+}
+'
+		'mutable_callback.v':         review_callback_fixture + 'fn case_mutable_callback() {
+	holder := Holder{
+		callback: increment
+	}
+	mut counter := Counter{
+		value: 4
+	}
+	holder.callback(mut counter)
+	println(int_str(counter.value))
+}
+'
+		'v3_review_checker_insert.h': 'static inline int v3_review_checker_inserted(void) { return 6; }
+'
+		// Keep the constant-match case in main so its Result unwrap uses main propagation.
+		'main.v':                     "const size_224 = 28
+
+struct E {
+	size int
+}
+
+fn check(hash_size int) !E {
+	match hash_size {
+		size_224 {
+			return E{
+				size: hash_size
+			}
+		}
+		else {}
+	}
+	return E{
+		size: 0
+	}
+}
+
+fn main() {
+	match arguments()[1] {
+		'recursive_str' { case_recursive_str() }
+		'shared_global' { case_shared_global() }
+		'unsafe_fixed' { case_unsafe_fixed() }
+		'enum_and_array' { case_enum_and_array() }
+		'nested_panic' { case_nested_panic() }
+		'match_const' {
+			println(int_str(check(28)!.size))
+		}
+		'mutable_callback' { case_mutable_callback() }
+		else { panic('unknown fixture') }
+	}
+}
+"
+	}, {
+		'recursive_str':    '7'
+		'shared_global':    '42'
+		'unsafe_fixed':     '65'
+		'enum_and_array':   'enum\n42\n9\n42\n1.0\n42.0\n8\ntrue\n0\nA\nnone\n6'
+		'nested_panic':     'ok'
+		'match_const':      '28'
+		'mutable_callback': '5'
+	})
+}
+
+fn test_review_shared_rejection_fixtures() {
+	check_review_main_rejections('rejections_batch', {
+		'wide_assignment.v': 'struct WideAssignmentHolder {
+	item ?string
+}
+
+fn case_wide_assignment() {
+	holder := WideAssignmentHolder{}
+	mut value := 0
+' + ' '.repeat(32768) + 'value = holder.item or { "" }
+}
+'
+		'missing_mut.v':     review_callback_fixture + 'fn case_missing_mut() {
+	holder := Holder{
+		callback: increment
+	}
+	mut counter := Counter{
+		value: 4
+	}
+	holder.callback(counter)
+}
+'
+		'function_name.v':   'fn bad_T_Name() {}
+
+fn case_function_name() {}
+'
+		'main.v':            'module main
+
+fn main() {
+	case_wide_assignment()
+	case_missing_mut()
+	case_function_name()
+}
+'
+	}, [
+		'wide_assignment.v:8:32784: error: cannot assign to `value`: expected `int`, not `string`',
+		'missing_mut.v:21:18: error: method `callback` parameter 1 is `mut`, so use `mut counter` instead',
+		'function_name.v:1:1: error: function name `bad_T_Name` cannot contain uppercase letters, use snake_case instead',
+	])
+}
+
+fn test_review_translated_runtime_fixtures() {
+	check_review_main_runtime('translated_runtime_batch', {
+		'heap_method.v':        '@[translated]
+module main
+
+const Red = 2
+
+@[heap]
+struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn case_heap_method() {
+	foo := Foo{}
+	callback := foo.ref
+	println(callback() + Red)
+}
+'
+		'pointer_assignment.v': '@[translated]
+module main
+
+fn case_pointer_assignment() {
+	mut values := [1, 2]!
+	mut ptr := unsafe { &values[0] }
+	println(int_str(*ptr))
+}
+'
+		'main.v':               "module main
+
+fn main() {
+	match arguments()[1] {
+		'heap_method' { case_heap_method() }
+		'pointer_assignment' { case_pointer_assignment() }
+		else { panic('unknown fixture') }
+	}
+}
+"
+	}, {
+		'heap_method':        '3'
+		'pointer_assignment': '1'
+	})
+}
+
+fn test_review_translated_rejection_fixtures() {
+	check_review_main_rejections('translated_rejections_batch', {
+		'pointer_return.v':     '@[translated]
+module main
+
+fn make_pointer() &int {
+	return [1, 2]!
+}
+
+fn case_pointer_return() {}
+'
+		'pointer_assignment.v': '@[translated]
+module main
+
+fn case_pointer_assignment() {
+	mut ptr := &int(0)
+	ptr = [u16(1), 2]!
+}
+'
+		'main.v':               'module main
+
+fn main() {
+	case_pointer_return()
+	case_pointer_assignment()
+}
+'
+	}, [
+		'pointer_return.v:5:9: error: fn `make_pointer` expects you to return a reference type `&int`, but you are returning `[2]int` instead',
+		'pointer_assignment.v:6:6: error: mismatched types `&int` and `[2]u16`',
+	])
 }
