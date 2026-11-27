@@ -23,6 +23,12 @@ fn (r &Res) clone() Res {
 }
 '
 
+const borrow_storage_uncloneable_decls = 'interface Drop { mut: drop() }
+struct Handle implements Drop { id int }
+fn (mut h Handle) drop() {}
+'
+const borrow_storage_clone_error = 'requires ownership destruction but has no compatible `clone()` method'
+
 fn testsuite_begin() {
 	os.mkdir_all(borrow_storage_tmp_dir) or { panic(err) }
 }
@@ -219,18 +225,16 @@ fn check_empty_growth() {
 	}
 }
 
-fn test_owned_borrowed_array_nonempty_uncloneable_views_fail_when_owning() {
+fn test_uncloneable_array_views_and_bulk_append_preserve_runtime_diagnostics() {
 	operations := {
 		'append':  'values << Handle{2}'
 		'reserve': 'values.ensure_cap(values.cap + 1)'
 		'return':  'return values'
 		'capture': 'reader := fn [values] () int { return values[0].id }; _ = reader'
 	}
-	mut source := 'interface Drop { mut: drop() }
-struct Handle implements Drop { id int }
-fn (mut h Handle) drop() {}
-'
-	mut branches := []string{cap: operations.len * 2}
+	mut source := borrow_storage_uncloneable_decls
+	mut branches := []string{}
+	mut succeeds := map[string]bool{}
 	for action, operation in operations {
 		tail := if action == 'return' { '' } else { 'return []Handle{}' }
 		for borrowed in [false, true] {
@@ -248,21 +252,25 @@ fn own_${name}(mut values []Handle) []Handle {
 			result := own_${name}(mut ${receiver})
 			assert result.len == 0
 		}'
+			// Mutating an unsliced owner does not require independent element owners.
+			succeeds[name] = !borrowed && action in ['append', 'reserve']
 		}
 	}
+	for borrowed in [false, true] {
+		name := 'append_${borrowed}'
+		source += borrow_storage_bulk_copy_case(name, 'values << values', borrowed)
+		branches << '\t\t"duplicate_${name}" { check_${name}() }'
+		succeeds['duplicate_${name}'] = false
+	}
 	binary := borrow_storage_compile_dispatch('uncloneable_boundary', source, branches)
-	for action, _ in operations {
-		for borrowed in [false, true] {
-			name := '${action}_${borrowed}'
-			run := os.exec([binary, name])
-			if !borrowed && action in ['append', 'reserve'] {
-				// Mutating an unsliced owner does not require independent element owners.
-				assert run.exit_code == 0, '${name}: ${run.output}'
-				continue
-			}
-			assert run.exit_code != 0, '${name}: ${run.output}'
-			assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), '${name}: ${run.output}'
+	for name, should_succeed in succeeds {
+		run := os.exec([binary, name])
+		if should_succeed {
+			assert run.exit_code == 0, '${name}: ${run.output}'
+			continue
 		}
+		assert run.exit_code != 0, '${name}: ${run.output}'
+		assert run.output.contains(borrow_storage_clone_error), '${name}: ${run.output}'
 	}
 }
 
@@ -820,25 +828,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_uncloneable_mut_array_bulk_copies_fail_before_duplicating_owners() {
-	operations := {
-		'append':  'values << values'
-		'prepend': 'values.prepend(values)'
-		'insert':  'values.insert(0, values)'
-	}
-	declarations := 'interface Drop { mut: drop() }
-struct Handle implements Drop { id int }
-fn (mut h Handle) drop() {}
-'
-	mut append_source := declarations
-	mut rejected_source := declarations
-	mut append_branches := []string{}
-	mut rejected_calls := []string{}
-	mut rejected_lines := []int{}
-	for action, operation in operations {
-		for borrowed in [false, true] {
-			name := '${action}_${borrowed}'
-			source := '
+fn borrow_storage_bulk_copy_case(name string, operation string, borrowed bool) string {
+	return '
 fn duplicate_${name}(mut values []Handle) {
 	${operation}
 }
@@ -848,19 +839,25 @@ fn check_${name}() {
 }
 
 '
-			if action == 'append' {
-				append_source += source
-				append_branches << '		"${name}" { check_${name}() }'
-			} else {
-				// The checker already rejects receiver-aliased prepend/insert copies.
-				// The operation follows the blank line and function signature.
-				rejected_lines << rejected_source.count('\n') + 3
-				rejected_source += source
-				rejected_calls << '	check_${name}()'
-			}
+}
+
+fn test_uncloneable_mut_array_prepend_and_insert_reject_receiver_aliases() {
+	operations := {
+		'prepend': 'values.prepend(values)'
+		'insert':  'values.insert(0, values)'
+	}
+	mut rejected_source := borrow_storage_uncloneable_decls
+	mut rejected_calls := []string{}
+	mut rejected_lines := []int{}
+	for action, operation in operations {
+		for borrowed in [false, true] {
+			name := '${action}_${borrowed}'
+			// The operation follows the blank line and function signature.
+			rejected_lines << rejected_source.count('\n') + 3
+			rejected_source += borrow_storage_bulk_copy_case(name, operation, borrowed)
+			rejected_calls << '\tcheck_${name}()'
 		}
 	}
-	clone_error := 'requires ownership destruction but has no compatible `clone()` method'
 	rejected_source += 'fn main() {
 ${rejected_calls.join('\n')}
 }
@@ -871,15 +868,7 @@ ${rejected_calls.join('\n')}
 	assert errors.map(it.all_before(':').int()) == rejected_lines, build.output
 	for diagnostic in errors {
 		assert diagnostic.contains('cannot copy receiver-aliased `[]Handle` value'), build.output
-		assert diagnostic.contains(clone_error), build.output
-	}
-
-	binary := borrow_storage_compile_dispatch('uncloneable_bulk_append', append_source, append_branches)
-	for borrowed in [false, true] {
-		name := 'append_${borrowed}'
-		run := os.exec([binary, name])
-		assert run.exit_code != 0, '${name}: ${run.output}'
-		assert run.output.contains(clone_error), '${name}: ${run.output}'
+		assert diagnostic.contains(borrow_storage_clone_error), build.output
 	}
 }
 
