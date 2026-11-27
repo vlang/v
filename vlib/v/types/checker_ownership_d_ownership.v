@@ -11605,8 +11605,10 @@ fn (mut tc TypeChecker) ownership_retain_interface_payload_loans(target string, 
 		} else {
 			id
 		}
-		// Loans from an existing box already follow its move or call result.
-		if cast_target_interface(tc.resolve_type(payload)) != none {
+		// This is a by-value box. Existing boxes and reference conversions
+		// use their own move and borrow rules.
+		payload_type := unalias_type(tc.resolve_type(payload))
+		if payload_type is Interface || payload_type is Pointer {
 			return
 		}
 	}
