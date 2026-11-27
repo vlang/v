@@ -1,0 +1,14 @@
+import sync
+
+struct Store {
+mut:
+	mu    sync.Mutex
+	value int @[guarded_by: 'mu']
+}
+
+fn main() {
+	mut s := Store{}
+	lock s.mu {
+		s.value = 42
+	}
+}

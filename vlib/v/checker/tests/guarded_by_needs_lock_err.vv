@@ -1,0 +1,13 @@
+import sync
+
+struct Store {
+mut:
+	mu      sync.Mutex
+	entries map[string]int @[guarded_by: 'mu']
+}
+
+fn main() {
+	mut s := Store{}
+	s.entries['a'] = 1
+	println(s.entries['a'])
+}

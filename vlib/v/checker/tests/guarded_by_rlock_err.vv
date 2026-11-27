@@ -1,0 +1,15 @@
+import sync
+
+struct Store {
+mut:
+	mu    sync.RwMutex
+	value int @[guarded_by: 'mu']
+}
+
+fn main() {
+	mut s := Store{}
+	s.mu.rlock()
+	s.value = 42
+	s.mu.runlock()
+	println(s.value)
+}

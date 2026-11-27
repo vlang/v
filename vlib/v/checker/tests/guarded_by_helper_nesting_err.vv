@@ -1,0 +1,26 @@
+import sync
+
+struct Store {
+mut:
+	mu      sync.Mutex
+	entries map[string]int @[guarded_by: 'mu']
+}
+
+@[requires_lock: 'mu']
+fn (s &Store) get(key string) int {
+	return s.entries[key]
+}
+
+@[requires_lock: 'mu']
+fn (s &Store) helper(key string) int {
+	return s.get(key)
+}
+
+fn main() {
+	mut s := Store{}
+	s.mu.lock()
+	s.entries['a'] = 1
+	println(s.helper('a'))
+	s.mu.unlock()
+	println(s.helper('a'))
+}
