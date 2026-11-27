@@ -18610,11 +18610,6 @@ fn v3_cache_artifact_roots() []string {
 
 fn v3_cache_artifact_directories() []string {
 	temp_root := os.real_path(os.abs_path(os.vtmp_dir()))
-	configured_root := if configured := os.getenv_opt('V3CACHE') {
-		os.real_path(os.abs_path(configured))
-	} else {
-		''
-	}
 	mut directories := []string{}
 	roots := v3_cache_artifact_roots().map(os.real_path(os.abs_path(it)))
 	for root in roots {
@@ -18622,7 +18617,7 @@ fn v3_cache_artifact_directories() []string {
 			continue
 		}
 		for name in os.ls(root) or { []string{} } {
-			if !v3_cache_artifact_dir_name(name, root == temp_root || root == configured_root) {
+			if !v3_cache_artifact_dir_name(name, root == temp_root) {
 				continue
 			}
 			candidate := os.join_path_single(root, name)
