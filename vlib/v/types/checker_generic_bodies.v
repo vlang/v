@@ -33,7 +33,7 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 			// As the check of its instances, for the program's own functions: a
 			// library function that the program reaches costs it no check here.
 			if tc.diagnostic_files.len == 0 || tc.cur_file in tc.diagnostic_files {
-				tc.check_generic_fn_body_visibility(node, fn_idx)
+				tc.check_generic_fn_body_visibility(node, fn_idx, params)
 			}
 			return
 		}
@@ -161,10 +161,19 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 // for `s lib.S` is as wrong in `fn f[T](mut s lib.S, x T)` as in a function
 // without type parameters. A member reached through a type parameter has no
 // type in that check, and is left to the instances with the rest of the body.
-fn (mut tc TypeChecker) check_generic_fn_body_visibility(node flat.Node, fn_idx int) {
+// An undeclared name is wrong in every instance too, so the check also reports
+// an unknown identifier of a statement that does not depend on the type
+// parameters: `arr` in `new_len := arr.len * n` is undefined whether `T` is
+// `int` or `string`.
+fn (mut tc TypeChecker) check_generic_fn_body_visibility(node flat.Node, fn_idx int, params map[u32]bool) {
 	open := tc.check_generic_fn_body_as(node, fn_idx, map[u32]u32{})
+	dependent := tc.type_param_dependent_names(node, params)
+	mut statements := map[int]bool{}
 	for err in open.errors {
-		if is_visibility_error(err.msg) {
+		if is_visibility_error(err.msg)
+			|| (err.kind == .unknown_ident
+				&& !tc.diagnostic_depends_on_type_params(err.node, fn_idx, dependent, params, mut
+					statements)) {
 			tc.errors << err
 		}
 	}
