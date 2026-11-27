@@ -12987,6 +12987,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 				tc.check_struct_implements(flat.NodeId(i), node)
 				tc.check_struct_field_defaults(node_id, node)
+				tc.check_wire_structs(node_id, node)
 				if tc.declaration_has_attribute(node_id, 'attribute') {
 					tc.check_attribute_schema_decl(node_id, node)
 				}
@@ -19358,6 +19359,7 @@ const builtin_attribute_names = [
 	'unscoped',
 	'version',
 	'wasm_import_namespace',
+	'wire',
 	'doc',
 	'xdoc',
 ]
@@ -20638,6 +20640,150 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 		}
 	}
 	tc.fn_context.generic_params = saved_generic_params
+}
+
+// check_wire_structs validates `@[wire: ...]` struct declarations: an explicit
+// byte order plus a fixed, padding-free layout. Field declaration order is the
+// encode order. Every field must be a fixed-width scalar (u8/u16/u32/u64,
+// i8/i16/i32/i64, bool, f32/f64), an enum with an explicit fixed-size backing,
+// a fixed array of those, or a nested struct that is itself a wire struct.
+fn (mut tc TypeChecker) check_wire_structs(node_id flat.NodeId, node flat.Node) {
+	if !tc.declaration_has_attribute(node_id, 'wire') {
+		return
+	}
+	raw := tc.declaration_attribute_value(node_id, 'wire') or { '' }
+	order := attribute_string_unquote(raw.trim_space())
+	if order != 'little_endian' && order != 'big_endian' {
+		lo, hi := attribute_use_window(node)
+		tc.record_error_at(.assignment_mismatch, "wire byte order must be 'little_endian' or 'big_endian', not `${order}`", node_id, tc.attribute_use_pos(node, 'wire', lo, hi))
+		return
+	}
+	if node.generic_params().len > 0 {
+		tc.record_error_at(.assignment_mismatch, 'wire struct `${node.value}` cannot have generic parameters', node_id, tc.type_declaration_name_pos(node_id))
+		return
+	}
+	for i in 0 .. node.children_count {
+		field_id := tc.a.child(&node, i)
+		field := tc.a.child_node(&node, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		field_type_id := if field.typ != 0 { field.typ } else { field.source_value_id() }
+		if source_field_decl_is_embed(field, field_type_id) {
+			tc.record_error_at(.assignment_mismatch, 'wire struct `${node.value}` cannot embed structs', field_id, tc.struct_field_declaration_pos(*field))
+			continue
+		}
+		if struct_field_has_attr(*field, 'required') {
+			tc.record_error_at(.assignment_mismatch, 'wire field `${node.value}.${field.value}` cannot be required: wire decoding zero-initializes the struct', field_id, tc.struct_field_declaration_pos(*field))
+			continue
+		}
+		field_type := unalias_type(tc.parse_type(field_type_id))
+		if field_type is Unknown {
+			continue
+		}
+		tc.check_wire_field_type(node_id, node, field_id, *field, field_type_id, field_type)
+	}
+}
+
+// check_wire_field_type validates one wire struct field against its semantic
+// type, recording a precise error for the first unsupported shape. Fixed array
+// elements recurse so `[N]T` composes with every other wire-compatible kind.
+fn (mut tc TypeChecker) check_wire_field_type(node_id flat.NodeId, node flat.Node, field_id flat.NodeId, field flat.Node, field_type_id u32, field_type &Type) {
+	clean := unalias_type(field_type)
+	if clean is Primitive {
+		if clean.props.has(.boolean) {
+			return
+		}
+		if clean.props.has(.integer) && clean.size in [u8(8), u8(16), u8(32), u8(64)] {
+			return
+		}
+		if clean.props.has(.float) && clean.size in [u8(32), u8(64)] {
+			return
+		}
+	} else if clean is Enum {
+		if tc.wire_enum_backing_is_fixed(clean.source_type_id()) {
+			return
+		}
+		type_name := flat.source_type_name(field_type_id)
+		tc.record_error_at(.assignment_mismatch, 'wire field `${node.value}.${field.value}` has enum type `${type_name}` without explicit fixed-size backing: declare it as `enum ${type_name.all_after_last('.')} as u8` (or u16, u32, u64, i8, i16, i32, i64)', field_id, tc.struct_field_type_pos(field))
+		return
+	} else if clean is ArrayFixed {
+		tc.check_wire_array_elem_type(node_id, node, field_id, field, field_type_id, clean.elem_type)
+		return
+	} else if clean is Struct {
+		spelling := clean.source_type_id()
+		// Instantiated generics like `PlainGeneric[u16]` have no direct index
+		// entry (declarations are indexed by base); resolve through
+		// source_struct_decl_id_for_name which strips the generic application,
+		// and never treat a lookup miss as success. Generic applications are
+		// rejected outright: wire layout must be fully concrete.
+		if !flat.source_type_syntax(trimmed_source_type_id(spelling)).application_valid() {
+			if nested_id := tc.source_struct_decl_id_for_name(spelling) {
+				if tc.declaration_has_attribute(nested_id, 'wire') {
+					return
+				}
+			}
+		}
+		type_name := flat.source_type_name(field_type_id)
+		tc.record_error_at(.assignment_mismatch, "wire field `${node.value}.${field.value}` has type `${type_name}` which is not a wire struct: nested structs must also carry @[wire: 'little_endian'] or @[wire: 'big_endian']", field_id, tc.struct_field_type_pos(field))
+		return
+	}
+	type_name := flat.source_type_name(field_type_id)
+	tc.record_error_at(.assignment_mismatch, 'wire field `${node.value}.${field.value}` has unsupported type `${type_name}`: wire structs support u8, u16, u32, u64, i8, i16, i32, i64, bool, f32, f64, enums with explicit fixed-size backing, fixed arrays, and nested wire structs', field_id, tc.struct_field_type_pos(field))
+}
+
+// check_wire_array_elem_type validates the element of a fixed array wire field.
+fn (mut tc TypeChecker) check_wire_array_elem_type(node_id flat.NodeId, node flat.Node, field_id flat.NodeId, field flat.Node, field_type_id u32, elem_type &Type) {
+	clean := unalias_type(elem_type)
+	if clean is Primitive {
+		if clean.props.has(.boolean) {
+			return
+		}
+		if clean.props.has(.integer) && clean.size in [u8(8), u8(16), u8(32), u8(64)] {
+			return
+		}
+		if clean.props.has(.float) && clean.size in [u8(32), u8(64)] {
+			return
+		}
+	} else if clean is Enum {
+		if tc.wire_enum_backing_is_fixed(clean.source_type_id()) {
+			return
+		}
+	} else if clean is ArrayFixed {
+		tc.check_wire_array_elem_type(node_id, node, field_id, field, field_type_id, clean.elem_type)
+		return
+	} else if clean is Struct {
+		spelling := clean.source_type_id()
+		// Same as above: never treat a lookup miss as success, and reject
+		// generic applications outright.
+		if !flat.source_type_syntax(trimmed_source_type_id(spelling)).application_valid() {
+			if nested_id := tc.source_struct_decl_id_for_name(spelling) {
+				if tc.declaration_has_attribute(nested_id, 'wire') {
+					return
+				}
+			}
+		}
+	}
+	type_name := flat.source_type_name(field_type_id)
+	tc.record_error_at(.assignment_mismatch, 'wire field `${node.value}.${field.value}` has unsupported array element type in `${type_name}`: fixed arrays support u8, u16, u32, u64, i8, i16, i32, i64, bool, f32, f64, enums with explicit fixed-size backing, and nested wire structs', field_id, tc.struct_field_type_pos(field))
+}
+
+// wire_enum_backing_is_fixed reports whether the enum named by `spelling`
+// declares an explicit backing of fixed width (u8/u16/u32/u64/i8/i16/i32/i64).
+// Enums without a declaration or without `as ...` fail: their layout is not
+// stable across targets.
+fn (tc &TypeChecker) wire_enum_backing_is_fixed(spelling u32) bool {
+	decl_id := tc.attribute_enum_decl(spelling, tc.cur_module) or { return false }
+	decl := tc.a.node(decl_id)
+	backing_id := decl.enum_backing_type_id()
+	if backing_id == 0 {
+		return false
+	}
+	backing := unalias_type(tc.parse_type(backing_id))
+	if backing is Primitive {
+		return backing.props.has(.integer) && backing.size in [u8(8), u8(16), u8(32), u8(64)]
+	}
+	return false
 }
 
 fn (tc &TypeChecker) struct_field_type_uses_comptime_define(field_id flat.NodeId, field_type_id u32) bool {

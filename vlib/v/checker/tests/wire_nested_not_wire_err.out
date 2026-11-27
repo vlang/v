@@ -1,0 +1,7 @@
+vlib/v/checker/tests/wire_nested_not_wire_err.vv:9:8: error: wire field `BadNested.inner` has type `Plain` which is not a wire struct: nested structs must also carry @[wire: 'little_endian'] or @[wire: 'big_endian']
+    7 | @[wire: 'little_endian']
+    8 | struct BadNested {
+    9 |     inner Plain
+      |           ~~~~~
+   10 | }
+   11 |

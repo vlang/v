@@ -1,0 +1,7 @@
+vlib/v/checker/tests/wire_bad_order_err.vv:3:3: error: wire byte order must be 'little_endian' or 'big_endian', not `middle_endian`
+    1 | module main
+    2 | 
+    3 | @[wire: 'middle_endian']
+      |   ~~~~
+    4 | struct BadOrder {
+    5 |     a u8

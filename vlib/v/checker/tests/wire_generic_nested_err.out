@@ -1,0 +1,14 @@
+vlib/v/checker/tests/wire_generic_nested_err.vv:9:8: error: wire field `BadGenericField.inner` has type `PlainGeneric[u16]` which is not a wire struct: nested structs must also carry @[wire: 'little_endian'] or @[wire: 'big_endian']
+    7 | @[wire: 'little_endian']
+    8 | struct BadGenericField {
+    9 |     inner PlainGeneric[u16]
+      |           ~~~~~~~~~~~~~~~~~
+   10 | }
+   11 |
+vlib/v/checker/tests/wire_generic_nested_err.vv:14:8: error: wire field `BadGenericArray.items` has unsupported array element type in `[2]PlainGeneric[u16]`: fixed arrays support u8, u16, u32, u64, i8, i16, i32, i64, bool, f32, f64, enums with explicit fixed-size backing, and nested wire structs
+   12 | @[wire: 'little_endian']
+   13 | struct BadGenericArray {
+   14 |     items [2]PlainGeneric[u16]
+      |           ~~~~~~~~~~~~~~~~~~~~
+   15 | }
+   16 |
