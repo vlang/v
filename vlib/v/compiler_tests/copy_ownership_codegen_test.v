@@ -252,11 +252,8 @@ fn main() {
 	assert output.output.trim_space() == 'ok'
 }
 
-fn test_fixed_array_borrows_preserve_order_and_allocators() {
-	callee_order := '@[has_globals]
-module main
-
-__global order = []string{}
+fn copy_ownership_fixed_array_order_fixture() string {
+	return '__global order = []string{}
 
 struct Item implements IClone {
 	id int
@@ -340,8 +337,10 @@ fn check_callee_order() {
 	println("order")
 }
 '
-	allocators := 'interface Drop { mut: drop() }
-struct PlainCell implements Drop { value int }
+}
+
+fn copy_ownership_fixed_array_allocator_fixture(inspect_name string, retain_name string, entry_point string, marker string) string {
+	return 'struct PlainCell implements Drop { value int }
 fn (mut cell PlainCell) drop() {}
 struct PlainHolder { values [2]PlainCell label string }
 @[aligned: 64]
@@ -349,9 +348,9 @@ struct AlignedCell implements Drop { value int }
 fn (mut cell AlignedCell) drop() {}
 struct AlignedHolder { values [2]AlignedCell label string }
 struct NestedHolder { inner AlignedHolder }
-fn inspect(values &[]PlainCell) int { return values[0].value }
+fn ${inspect_name}(values &[]PlainCell) int { return values[0].value }
 fn inspect_aligned(values &[]AlignedCell) int { return values[0].value }
-fn retain(values &[]PlainCell) &[]PlainCell { return values }
+fn ${retain_name}(values &[]PlainCell) &[]PlainCell { return values }
 fn retain_aligned(values &[]AlignedCell) &[]AlignedCell { return values }
 fn grow(mut values []PlainCell) {
 	values.ensure_cap(1)
@@ -366,7 +365,7 @@ fn make_aligned() AlignedHolder {
 }
 fn plain_scope() {
 	holder := make_plain()
-	assert inspect(retain(holder.values)) == 1
+	assert ${inspect_name}(${retain_name}(holder.values)) == 1
 }
 fn aligned_call_scope() {
 	holder := make_aligned()
@@ -382,13 +381,13 @@ fn nested_literal_scope() {
 }
 fn plain_borrow_scope() {
 	holder := make_plain()
-	assert inspect(holder.values) == 1
+	assert ${inspect_name}(holder.values) == 1
 }
 fn aligned_borrow_scope() {
 	holder := make_aligned()
 	assert inspect_aligned(holder.values) == 1
 }
-fn main() {
+fn ${entry_point}() {
 	mut empty := []PlainCell{}
 	grow(mut empty)
 	plain_scope()
@@ -397,9 +396,14 @@ fn main() {
 	nested_literal_scope()
 	plain_borrow_scope()
 	aligned_borrow_scope()
-	println("ok")
+	println("${marker}")
 }
 '
+}
+
+fn test_fixed_array_allocators_generate_windows_c() {
+	allocators := 'interface Drop { mut: drop() }\n' +
+		copy_ownership_fixed_array_allocator_fixture('inspect', 'retain', 'main', 'ok')
 	path := os.join_path(copy_ownership_tmp_dir, 'fixed_root_windows.v')
 	cpath := os.join_path(copy_ownership_tmp_dir, 'fixed_root_windows.c')
 	os.write_file(path, allocators)!
@@ -429,15 +433,6 @@ fn main() {
 		assert !body.contains('v_free(holder);'), body
 		assert !body.contains('v3_aligned_free(holder);'), body
 	}
-	runtime := callee_order + '\n' + allocators.replace('fn main() {', 'fn check_runtime_allocations() {').replace('println("ok")',
-		'println("allocations")') + '
-fn main() {
-	check_callee_order()
-	check_runtime_allocations()
-}
-'
-	output := copy_ownership_run('fixed_order_and_allocators', runtime)
-	assert output.split_into_lines() == ['order', 'allocations']
 }
 
 fn test_fixed_array_views_preserve_borrowed_and_independent_owners() {
@@ -606,6 +601,9 @@ fn check_map_and_accessors() {
 	check_holder(true)
 }
 
+' + copy_ownership_fixed_array_order_fixture() + '\n' +
+		copy_ownership_fixed_array_allocator_fixture('inspect_plain', 'retain_plain',
+			'check_runtime_allocations', 'allocations') + '
 fn main() {
 	match arguments()[1] {
 		"direct" { check_direct() }
@@ -614,6 +612,10 @@ fn main() {
 		"returned_views" { check_returned_views() }
 		"references_and_captures" { check_references_and_captures() }
 		"map_and_accessors" { check_map_and_accessors() }
+		"order_and_allocators" {
+			check_callee_order()
+			check_runtime_allocations()
+		}
 		else { panic("unknown fixed-array view case") }
 	}
 }
@@ -632,10 +634,13 @@ fn main() {
 			'drop 141', 'drop 150', 'drop 151', 'drop 20', 'drop 20', 'drop 240', 'drop 250', 'drop 30',
 			'drop 30', 'drop 40', 'drop 40', 'drop 41', 'drop 41', 'drop 50', 'drop 50', 'drop 51',
 			'drop 51']
+		'order_and_allocators':    ['order', 'allocations']
 	}
 	for case, expected in expected_output {
 		run := os.exec([binary, case])
 		assert run.exit_code == 0, '${case}: ${run.output}'
-		assert run.output.trim_space().split_into_lines().sorted() == expected, '${case}: ${run.output}'
+		lines := run.output.trim_space().split_into_lines()
+		actual := if case == 'map_and_accessors' { lines.sorted() } else { lines }
+		assert actual == expected, '${case}: ${run.output}'
 	}
 }
