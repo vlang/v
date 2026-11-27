@@ -246,3 +246,122 @@ jobs:
             ${{ runner.temp }}/partial-cache-native/**/main.v
             ${{ runner.temp }}/partial-cache-native/**/datatypes_*.c
             ${{ runner.temp }}/partial-cache-native/**/objects.txt
+
+  # Diagnose the independently failing generic Set constructor. Keep the
+  # existing real-object gate intact, and do not use -keepc for cache builds:
+  # the driver explicitly disables the module cache with that flag.
+  generic-set-diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    container:
+      image: thevlang/vlang:ubuntu-build
+    env:
+      V_CI_MUSL: 1
+      V_CI_UBUNTU_MUSL: 1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build candidate
+        run: |
+          make -j4
+          ./v -prod -cg -o v cmd/v
+      - uses: actions/checkout@v7
+        with:
+          ref: 02b6b90e8093b36c3f640efe855eeb7fb89c7c72
+          path: baseline
+          persist-credentials: false
+      - name: Compare source-only and partial-cache generic map defaults
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$(pwd -P)/v"
+          (cd baseline && make -j4 && ./v -prod -cg -o v cmd/v)
+          baseline="$(pwd -P)/baseline/v"
+          logs="$RUNNER_TEMP/generic-set-diagnostics"
+          mkdir -p "$logs"
+          unset VFLAGS VEXE V3_CACHE_FORCE_SOURCE V3_INTERNAL_CACHE_FORCE_SOURCE
+          flags=(-cc musl-gcc -gc none -d use_bundled_libgc -no-retry-compilation -showcc -show-timings)
+          failed=0
+          for role in baseline candidate; do
+            if [[ $role == baseline ]]; then exe="$baseline"; else exe="$candidate"; fi
+            "$exe" version
+            for mode in serial parallel; do
+              for variant in direct set; do
+                root="$logs/$role-$mode-$variant"
+                mkdir -p "$root/cache"
+                export VTMP="$root/cache" V3CACHE="$root/cache" V3_CACHE_TRACE=1 VJOBS=2
+                mode_flags=()
+                if [[ $mode == serial ]]; then mode_flags=(-no-parallel); export VJOBS=1; fi
+                if [[ $variant == set ]]; then
+                  cat > "$root/main.v" <<'V'
+          import datatypes
+          fn main() {
+              mut set := datatypes.Set[[2]string]{}
+              key := ['first', 'second']!
+              set.add(key)
+              assert set.exists(['first', 'second']!)
+              println(set.size())
+          }
+          V
+                else
+                  cat > "$root/main.v" <<'V'
+          fn main() {
+              mut counts := map[[2]string]int{}
+              key := ['first', 'second']!
+              counts[key] = 1
+              assert counts[['first', 'second']!] == 1
+              println(counts[key])
+          }
+          V
+                fi
+                echo "CASE $role $mode $variant"
+                gen_rc=0
+                V3_CACHE_FORCE_SOURCE=1 "$exe" "${flags[@]}" "${mode_flags[@]}" -o "$root/source.c" "$root/main.v" > "$root/source-c.log" 2>&1 || gen_rc=$?
+                cat "$root/source-c.log"
+                source_rc=0
+                V3_CACHE_FORCE_SOURCE=1 "$exe" "${flags[@]}" "${mode_flags[@]}" -o "$root/source" "$root/main.v" > "$root/source.log" 2>&1 || source_rc=$?
+                cat "$root/source.log"
+                if [[ $source_rc == 0 ]]; then
+                  if ! test "$("$root/source")" = 1; then source_rc=99; fi
+                fi
+                # Warm only builtin, then import datatypes. Do not use source
+                # mode or -keepc for these commands.
+                printf '%s\n' 'fn main() { println(1) }' > "$root/cold.v"
+                "$exe" "${flags[@]}" "${mode_flags[@]}" -o "$root/cold" "$root/cold.v" > "$root/cold.log" 2>&1
+                test "$("$root/cold")" = 1
+                test -z "$(find "$root/cache" -name 'datatypes_*.o' -print -quit)"
+                partial_rc=0
+                "$exe" "${flags[@]}" "${mode_flags[@]}" -o "$root/partial" "$root/main.v" > "$root/partial.log" 2>&1 || partial_rc=$?
+                cat "$root/partial.log"
+                if [[ $partial_rc == 0 ]]; then
+                  if ! test "$("$root/partial")" = 1; then partial_rc=99; fi
+                fi
+                echo "RESULT $role $mode $variant generated=$gen_rc source=$source_rc partial=$partial_rc" | tee "$root/result.txt"
+                # Print all actual occurrences (including prototypes,
+                # definitions and uses) and preserve C for offline comparison.
+                while IFS= read -r -d '' c; do
+                  if grep -q 'Array_fixed_string_2_map_key_' "$c"; then
+                    echo "HELPERS $c"
+                    grep -n 'Array_fixed_string_2_map_key_' "$c"
+                  fi
+                done < <(find "$root" -name '*.c' -type f -print0)
+                if [[ $role == candidate ]]; then
+                  if [[ $gen_rc != 0 || $source_rc != 0 || $partial_rc != 0 ]]; then failed=1; fi
+                  if grep -E 'failed to build cached module object|V3 module cache fallback' "$root/partial.log"; then failed=1; fi
+                  if [[ $variant == set ]] && ! find "$root/cache" -name 'datatypes_*.o' -type f -print | grep -q .; then failed=1; fi
+                fi
+              done
+            done
+          done
+          test "$failed" -eq 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: generic-set-diagnostics
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/generic-set-diagnostics/**/*.log
+            ${{ runner.temp }}/generic-set-diagnostics/**/*.txt
+            ${{ runner.temp }}/generic-set-diagnostics/**/*.v
+            ${{ runner.temp }}/generic-set-diagnostics/**/*.c
