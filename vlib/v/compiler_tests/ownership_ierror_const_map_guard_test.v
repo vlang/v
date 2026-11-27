@@ -89,38 +89,41 @@ fn main() {
 }
 
 fn test_issue_programs_pass_autofree_check() {
-	programs := {
-		'net':     'import net
+	source := ownership_ierror_const_source('issue_programs', 'import net
+import net.mbedtls
+import toml
 
-fn main() {
+fn check_net() {
 	mut conn := net.dial_tcp("127.0.0.1:9") or { return }
 	mut buf := []u8{len: 16}
 	_ := conn.read(mut buf) or { return }
 }
-'
-		'mbedtls': 'import net.mbedtls
 
-fn main() {
+fn check_mbedtls() {
 	mut listener := mbedtls.new_ssl_listener("127.0.0.1:0", mbedtls.SSLConnectConfig{}, mbedtls.SSLListenerOptions{}) or {
 		return
 	}
 	mut conn := listener.accept() or { return }
 	conn.close() or {}
 }
-'
-		'toml':    'import toml
 
-fn main() {
+fn check_toml() {
 	_ := toml.parse_text("[a.b]\\nc = 1\\n") or { return }
 }
-'
+
+fn main() {
+	check_net()
+	check_mbedtls()
+	check_toml()
+}
+') or {
+		panic(err)
 	}
-	for name, code in programs {
-		source := ownership_ierror_const_source(name, code) or { panic(err) }
-		out := ownership_ierror_const_compile('-autofree -check', source)
+	defer {
 		ownership_ierror_const_cleanup(source)
-		assert out.exit_code == 0, '${name}: ${out.output}'
 	}
+	out := ownership_ierror_const_compile('-autofree -check', source)
+	assert out.exit_code == 0, out.output
 }
 
 fn test_map_guard_through_a_mutable_borrowed_alias_is_a_view() {
