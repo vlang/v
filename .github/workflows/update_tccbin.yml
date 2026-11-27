@@ -1099,7 +1099,7 @@ jobs:
           tar -czf /tmp/tccbin-macos-amd64.tar.gz -C "$PAYLOAD_ROOT" .
       - name: Upload tar archive artifact (macOS amd64)
         if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true' && steps.phase_a.outputs.eligible == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: tccbin-macos-amd64-tar
           path: /tmp/tccbin-macos-amd64.tar.gz
@@ -1118,7 +1118,7 @@ jobs:
 
       - name: Upload TCC bundle artifact
         if: matrix.id != 'macos-amd64' && steps.rebuild.outputs.skip != 'true' && steps.phase_a.outputs.eligible == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: tccbin-${{ matrix.id }}
           path: ${{ steps.phase_a.outputs.payload_root }}
