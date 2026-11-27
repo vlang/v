@@ -8095,13 +8095,22 @@ fn (mut t Transformer) substitute_array_sort_vars_named(id flat.NodeId, a_name s
 	for i in 0 .. node.children_count {
 		children << t.substitute_array_sort_vars_named(t.a.child(&node, i), a_name, b_name, a_expr, b_expr)
 	}
+	// A placeholder can inherit pointer access from an unrelated variable with
+	// the same name. Infer access again from the replacement array element.
+	mut op := node.op
+	if node.kind == .selector && op == .arrow {
+		base := t.a.child_node(&node, 0)
+		if base.kind == .ident && (base.value == a_name || base.value == b_name) {
+			op = .none
+		}
+	}
 	start := t.a.children.len
 	for child in children {
 		t.a.children << child
 	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
-		op:             node.op
+		op:             op
 		children_start: start
 		children_count: node.children_count
 		pos:            node.pos

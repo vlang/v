@@ -11935,6 +11935,24 @@ fn main() {
 	assert out == '1,2,3\n1,2,3\n1,2,3\n1,2,3'
 }
 
+fn test_json_map_sort_ignores_pointer_names_in_the_caller() {
+	v3_bin := build_v3_review_transform()
+	source := 'import json2
+
+struct SortReference {
+	n int
+}
+
+a := &SortReference{n: 1}
+b := &SortReference{n: 2}
+assert a.n + b.n == 3
+value := json2.Any({"b": json2.Any(1), "a": json2.Any(2)})
+println(json2.encode(value))
+'
+	out := run_good(v3_bin, 'json_map_sort_pointer_names', source)
+	assert out == '{"a":2,"b":1}'
+}
+
 fn test_array_map_drops_source_for_unrelated_pointer_result() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
