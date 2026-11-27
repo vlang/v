@@ -1,5 +1,7 @@
 module os
 
+#include <sys/stat.h>
+
 pub struct C.stat {
 	st_dev        u64    // 8
 	st_ino        u64    // 8

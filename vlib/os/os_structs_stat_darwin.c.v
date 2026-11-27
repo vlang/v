@@ -1,5 +1,7 @@
 module os
 
+#include <sys/stat.h>
+
 pub struct C.stat {
 	st_dev           i32
 	st_mode          u16
