@@ -64,6 +64,15 @@ fn test_v3_gc_mode_is_disabled_when_requested() {
 	}
 }
 
+fn test_v3_self_build_requires_explicit_boehm_and_no_prealloc() {
+	assert v3_compiler_requests_boehm('c', 'boehm', true)
+	assert v3_compiler_requests_boehm('c', 'boehm_incr_opt', true)
+	assert !v3_compiler_requests_boehm('c', 'boehm', false)
+	assert !v3_compiler_requests_boehm('c', '', true)
+	assert !v3_compiler_requests_boehm('c', 'none', true)
+	assert !v3_compiler_requests_boehm('fastc', 'boehm', true)
+}
+
 fn test_v3_gc_is_disabled_for_cross_compilation() {
 	host := pref.host_target()
 	cross_os := if host.os == 'linux' { 'macos' } else { 'linux' }

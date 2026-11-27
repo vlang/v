@@ -25,6 +25,10 @@ fn v3_gc_mode_defines(gc_mode string, disable_gc bool) ![]string {
 	return defines
 }
 
+fn v3_compiler_requests_boehm(backend string, gc_mode string, no_prealloc bool) bool {
+	return backend == 'c' && no_prealloc && gc_mode.starts_with('boehm')
+}
+
 // v3_gc_is_disabled reports whether the collector of `gc_mode` must be left out of
 // the build.
 // A build for another OS or architecture has no Boehm collector: the bundled
