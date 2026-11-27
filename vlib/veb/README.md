@@ -1195,6 +1195,11 @@ veb will handle requests in the following order:
 4. Execute global "after" middleware
 5. Execute "after" middleware that matches the requested route
 
+Static files are served between steps `1` and `2`: the main app's static
+files take precedence over controllers and routes, and the global "before"
+and "after" middleware applies to them. A "before" middleware that sends a
+response refuses the static file the same way it refuses a route.
+
 In each step, except for step `3`, veb will evaluate the middleware in the order that
 they are registered; when you call `app.use` or `app.route_use`.
 

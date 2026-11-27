@@ -401,28 +401,23 @@ fn handle_request_and_route_with_writer[A, X](mut app A, req http.Request, _clie
 	}
 	$if A is StaticApp {
 		ctx.custom_mime_types_ref = unsafe { &app.static_mime_types }
-		if serve_if_static[X](static_handler_config(app.static_files, app.static_mime_types,
-			app.static_hosts, app.static_prefixes, app.enable_static_gzip, app.enable_static_zstd,
-			app.enable_static_compression, app.static_compression_max_size,
-			app.static_compression_mime_types, app.enable_markdown_negotiation), mut user_context,
-			url, host)
-		{
-			// Preserve the handled context on the heap before the stack-local user context goes away.
-			ctx.preserve_for_response_writer(mut user_context.Context)
-			return ctx
-		}
 	}
 	$if trace_prealloc ? {
 		unsafe { prealloc_scope_checkpoint(c'veb pre-route static checked') }
 	}
-	// Match controller paths first
+	// Match controller paths first, unless the main app serves this path
+	// statically: app static files take precedence over controllers, and are
+	// served from dispatch_route below, after the global middleware runs.
 	$if A is ControllerInterface {
-		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut url, host) {
-			mut armed := unsafe { &Context(completed_context) }
-			if !params.defer_after_timer {
-				armed.spawn_after_timer_if_armed()
+		if !app_serves_static_file(&app, req.header.get(.accept) or { '' }, url.path, host) {
+			if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut url,
+				host) {
+				mut armed := unsafe { &Context(completed_context) }
+				if !params.defer_after_timer {
+					armed.spawn_after_timer_if_armed()
+				}
+				return completed_context
 			}
-			return completed_context
 		}
 	}
 	// Create a new user context and pass veb's context
