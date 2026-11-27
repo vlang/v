@@ -226,7 +226,7 @@ fn check_empty_growth() {
 	}
 }
 
-fn test_uncloneable_array_views_and_bulk_append_preserve_runtime_diagnostics() {
+fn test_array_view_operations_preserve_ownership_and_bounds_diagnostics() {
 	operations := {
 		'append':  'values << Handle{2}'
 		'reserve': 'values.ensure_cap(values.cap + 1)'
@@ -263,7 +263,11 @@ fn own_${name}(mut values []Handle) []Handle {
 		branches << '\t\t"duplicate_${name}" { check_${name}() }'
 		succeeds['duplicate_${name}'] = false
 	}
-	binary := borrow_storage_compile_dispatch('uncloneable_boundary', source, branches)
+	invalid_source, invalid_branches, diagnostics := borrow_storage_invalid_array_operations()
+	binary := borrow_storage_compile_dispatch('array_view_operations', source + invalid_source, [
+		...branches,
+		...invalid_branches,
+	])
 	for name, should_succeed in succeeds {
 		run := os.exec([binary, name])
 		if should_succeed {
@@ -272,6 +276,12 @@ fn own_${name}(mut values []Handle) []Handle {
 		}
 		assert run.exit_code != 0, '${name}: ${run.output}'
 		assert run.output.contains(borrow_storage_clone_error), '${name}: ${run.output}'
+	}
+	for name, diagnostic in diagnostics {
+		run := os.exec([binary, name])
+		assert run.exit_code != 0, '${name}: ${run.output}'
+		assert !run.output.contains('unexpected clone'), '${name}: ${run.output}'
+		assert run.output.contains(diagnostic), '${name}: ${run.output}'
 	}
 }
 
@@ -1056,11 +1066,8 @@ ${calls.join('\n')}
 	assert rejected_bulk_lines == bulk_lines, build.output
 }
 
-fn test_invalid_owned_array_growth_and_deletion_preserve_diagnostics() {
-	mut source := 'interface Drop { mut: drop() }
-struct Handle implements Drop { id int }
-fn (mut h Handle) drop() {}
-
+fn borrow_storage_invalid_array_operations() (string, []string, map[string]string) {
+	mut source := '
 struct CloneableHandle implements Drop { id int }
 fn (mut h CloneableHandle) drop() {}
 fn (h &CloneableHandle) clone() CloneableHandle { println("unexpected clone"); return CloneableHandle{h.id + 100} }
@@ -1115,11 +1122,5 @@ fn grow_${name}(mut values []${element}, amount int) {
 		}'
 		diagnostics[name] = 'array.delete: index out of range (i,a.len):${index}, 1'
 	}
-	binary := borrow_storage_compile_dispatch('invalid_array_operations', source, branches)
-	for name, diagnostic in diagnostics {
-		run := os.exec([binary, name])
-		assert run.exit_code != 0, '${name}: ${run.output}'
-		assert !run.output.contains('unexpected clone'), '${name}: ${run.output}'
-		assert run.output.contains(diagnostic), '${name}: ${run.output}'
-	}
+	return source, branches, diagnostics
 }
