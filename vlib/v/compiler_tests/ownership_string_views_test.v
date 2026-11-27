@@ -327,8 +327,8 @@ fn main() {
 	}
 }
 
-fn test_ownership_string_calls_preserve_move_semantics() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_call_moves_${os.getpid()}')
+fn test_ownership_string_calls_preserve_moves_and_owner_loans() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_call_rejections_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	identity := 'fn identity(value string) string { return value }\n'
@@ -338,7 +338,8 @@ fn test_ownership_string_calls_preserve_move_semantics() {
 	user_method := 'struct Source {}
 fn (source Source) substr_unsafe() string { return "independent".to_owned() }
 '
-	declarations := identity + consume + consume_many + first_value + user_method
+	pointer_calls := 'fn pointer(value &string) &string { return value }\nfn forward(value &string) &string { return value }\n'
+	declarations := identity + consume + consume_many + first_value + user_method + pointer_calls
 	moved_result := 'use of moved value: `result`'
 	moved_owned := 'use of moved value: `owned`'
 	mut cases := [
@@ -374,17 +375,6 @@ fn (source Source) substr_unsafe() string { return "independent".to_owned() }
 			cases << OwnershipStringViewRejection{body, moved_owned, consume}
 		}
 	}
-	check_ownership_string_view_rejections(root, declarations, cases, [
-		['-no-parallel'],
-		[]string{},
-	])!
-}
-
-fn test_ownership_dereferenced_pointer_calls_retain_string_owner_loans() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_pointer_call_view_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	mut cases := []OwnershipStringViewRejection{}
 	for expression in ['*pointer(&original)', '*forward(pointer(&original))'] {
 		for action, diagnostic in {
 			'original = "replacement".to_owned()': 'cannot assign to `original` because it is borrowed'
@@ -395,11 +385,13 @@ fn test_ownership_dereferenced_pointer_calls_retain_string_owner_loans() {
 	view := ${expression}
 	${action}
 	assert view == "owned text"'
-			cases << OwnershipStringViewRejection{ body: body, expected: diagnostic }
+			cases << OwnershipStringViewRejection{body, diagnostic, pointer_calls + consume}
 		}
 	}
-	check_ownership_string_view_rejections(root, 'fn pointer(value &string) &string { return value }\nfn forward(value &string) &string { return value }\nfn consume(value string) { _ = value }\n',
-		cases, [['-no-parallel'], []string{}])!
+	check_ownership_string_view_rejections(root, declarations, cases, [
+		['-no-parallel'],
+		[]string{},
+	])!
 }
 
 fn test_ownership_cloned_returned_fallback_detaches_source_loan() {
