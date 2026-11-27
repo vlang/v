@@ -16,7 +16,7 @@ fn test_config_defaults_and_required() {
 	assert !defaults.debug
 
 	load[ServerConfig](env_prefix: 'VLIB_TEST_UNSET_') or {
-		assert err.msg() == 'config: required key `token` was not provided'
+		assert err.msg() == 'config: `token` [missing]: expected string: required key was not provided'
 		return
 	}
 	assert false, 'missing required field must error'
@@ -98,7 +98,7 @@ fn test_config_env_beats_file() {
 
 fn test_config_invalid_int() {
 	load[ServerConfig](cli: ['--port=abc', '--token=tok'], env_prefix: 'VLIB_TEST_BAD_') or {
-		assert err.msg() == 'config: `port` is not a valid int: `abc`'
+		assert err.msg() == 'config: `port` [cli]: expected int: not a valid int: `abc`'
 		return
 	}
 	assert false, 'bad int must error'
@@ -106,7 +106,7 @@ fn test_config_invalid_int() {
 
 fn test_config_invalid_bool() {
 	load[ServerConfig](cli: ['--debug=maybe', '--token=tok'], env_prefix: 'VLIB_TEST_BAD_') or {
-		assert err.msg() == 'config: `debug` is not a valid bool: `maybe`'
+		assert err.msg() == 'config: `debug` [cli]: expected bool: not a valid bool: `maybe`'
 		return
 	}
 	assert false, 'bad bool must error'
@@ -122,14 +122,14 @@ fn test_config_missing_file() {
 
 fn test_config_integer_boundaries_and_overflow() {
 	for raw in ['2147483647', '-2147483648', '0', '-0', '00010'] {
-		assert parse_config_int('port', raw)! == raw.int()
+		assert parse_config_int('port', raw, 'test', false)! == raw.int()
 	}
 	for raw in ['2147483648', '-2147483649', '4294967296', '18446744073709551616',
 		'999999999999999999999999999999', '-', '+1', '1_000', ' 1'] {
-		if _ := parse_config_int('port', raw) {
+		if _ := parse_config_int('port', raw, 'test', false) {
 			assert false, 'must reject ${raw}'
 		} else {
-			assert err.msg() == 'config: `port` is not a valid int: `${raw}`'
+			assert err.msg() == 'config: `port` [test]: expected int: not a valid int: `${raw}`'
 		}
 	}
 }
@@ -167,10 +167,10 @@ fn test_unsupported_field_type_is_a_compile_error() ! {
 		os.rmdir_all(fixture_root) or {}
 	}
 	fixture := os.join_path(fixture_root, 'unsupported.v')
-	os.write_file(fixture, "import config\nstruct UnsupportedConfig { value f64 @[default: '1.0'] }\nfn main() { cfg := config.load[UnsupportedConfig](config.LoadOptions{})! println(cfg) }\n")!
+	os.write_file(fixture, "import config\nstruct UnsupportedConfig { value u8 @[default: '1'] }\nfn main() { cfg := config.load[UnsupportedConfig](config.LoadOptions{})! println(cfg) }\n")!
 	module_path := os.join_path(@VMODROOT, 'vlib') + '|@vlib|@vmodules'
 	result := os.exec([@VEXE, '-enable-globals', '-path', module_path, '-o',
 		os.join_path(fixture_root, 'unsupported'), fixture])
 	assert result.exit_code != 0, result.output
-	assert result.output.contains('config: unsupported field type; use string, int or bool'), result.output
+	assert result.output.contains('config: unsupported field type; use string, int, bool, u16, i64, f64'), result.output
 }
