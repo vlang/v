@@ -43,55 +43,32 @@ instead, for example `postgresql@18`. Use the exact name reported by
 gem install pg -- --with-pg-config=/opt/local/lib/postgresql[version number]/bin/pg_config
 ```
 
-## Installing libpq-dev or its equivalent for your OS
+## Installing the libpq runtime
 
-**Ubuntu/Debian**: `sudo apt install libpq-dev`
+`db.pg` loads libpq at runtime, so compiling a program does not require PostgreSQL
+development headers, `pkg-config` metadata, or an unversioned linker library. Only the libpq runtime
+library is needed when the program connects to a database.
 
-**Red Hat Linux (RHEL)**: `yum install postgresql-devel`
+**Ubuntu/Debian**: `sudo apt install libpq5`
 
-**OpenSuse**: `zypper in postgresql-devel`
+**Red Hat Linux (RHEL)**: `sudo dnf install libpq`
 
-**ArchLinux**: `pacman -S postgresql-libs`
+**OpenSuse**: `sudo zypper in libpq5`
+
+**ArchLinux**: `sudo pacman -S postgresql-libs`
 
 **FreeBSD**: `pkg install postgresql18-client`
 
 **OpenBSD**: `pkg_add postgresql-client`
 
+Set `V_PQ_LIB` to a full library path when libpq is installed outside the system loader's search
+path. The loader reads it once, immediately before the first connection attempt.
+
 **Windows**:
 
-The directory structure of the `@VEXEROOT/thirdparty/pg` folder will look like the following
-after following all instructions. Create the `pg` folder yourself if it does not exist yet.
-```
-@VEXEROOT/thirdparty/pg
-├───libpq
-│       libpq-fe.h
-│       pg_config.h
-│       postgres_ext.h
-│
-└───win64
-    ├───mingw
-    │       libpq.dll.a
-    │
-    └───msvc
-            libpq.lib
-```
+Add the PostgreSQL `bin` directory to `PATH`, or copy `libpq.dll` next to the executable. The
+PostgreSQL client also needs these runtime DLLs from the same directory:
 
-Installation instructions are as follows
-```
-Download the latest PostgreSQL version from the official website
-(currently https://www.enterprisedb.com/downloads/postgres-postgresql-downloads)
-
-In one of the steps in the installer, tick the following boxes:
-[X] PostgreSQL Server
-[ ] pgAdmin 4
-[ ] Stack Builder
-[X] Command Line Tools
-
-We need PostgreSQL Server because it brings with it the C header files
-needed for building programs that link to `libpq.dll`.
-
-After finishing installation, add the folder `C:/Program Files/PostgreSQL/<version>/bin` to PATH.
-Any program that wants to use postgres client functionality require these DLLs found in `/bin`:
 - libcrypto-3-x64.dll
 - libiconv-2.dll
 - libintl-9.dll
@@ -99,32 +76,9 @@ Any program that wants to use postgres client functionality require these DLLs f
 - libssl-3-x64.dll
 - libwinpthread-1.dll
 
-If you want to compile with MSVC, copy
-`C:/Program Files/PostgreSQL/<version>/bin/libpq.lib` into the
-`@VEXEROOT/thirdparty/pg/win64/msvc` directory.
-
-GCC and TCC cannot use the MSVC import library. For these compilers, copy a MinGW-compatible
-`libpq.dll.a` into `@VEXEROOT/thirdparty/pg/win64/mingw`. You can install one with the MSYS2
-`mingw-w64-x86_64-postgresql` package, or generate it from `libpq.dll` with `gendef` and `dlltool`:
-
-```powershell
-gendef "C:/Program Files/PostgreSQL/<version>/bin/libpq.dll"
-dlltool -d libpq.def -l libpq.dll.a -D libpq.dll
-```
-
-Navigate to `C:/Program Files/PostgreSQL/<version>/include`. There you will find the files:
-- `libpq-fe.h`
-- `pg_config.h`
-- `postgres_ext.h`
-
-Copy the header files into `@VEXEROOT/thirdparty/pg/libpq`. You can now compile programs using the `db.pg` module.
-
----
-
 After building an executable that uses `db.pg`, you may want to distribute it to others
 who might not have the postgres DLLs installed on their machine. All you need to do is to
 make sure a copy of all the required DLLs are in the same folder as your executable.
-```
 
 ## Getting Started with [PostgreSQL](https://www.postgresqltutorial.com/postgresql-getting-started)
 
