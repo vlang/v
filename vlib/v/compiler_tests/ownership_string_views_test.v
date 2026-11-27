@@ -28,6 +28,13 @@ const ownership_string_returned_fallback_body = '	mut original := "fallback".to_
 		assert unsafe { result.str != view.str }
 	}
 	original = "replacement".to_owned()'
+const ownership_string_returned_fallback_check = '
+fn check_cloned_returned_fallback() {
+${ownership_string_returned_fallback_body}
+	assert result == "all"
+	println("fallback")
+}
+'
 
 fn check_ownership_string_view_rejections(root string, declarations string, cases []OwnershipStringViewRejection, mode []string) ! {
 	os.mkdir_all(root)!
@@ -175,18 +182,11 @@ fn main() {
 	CHECK_FALLBACK
 }
 '
-	fallback := '
-fn check_cloned_returned_fallback() {
-${ownership_string_returned_fallback_body}
-	assert result == "all"
-	println("fallback")
-}
-'
 	for mode in [['-no-parallel'], []string{}] {
 		// The default-mode fixtures exercise their original string cleanup separately.
 		serial := mode.len > 0
 		check := if serial { '\tcheck_cloned_returned_fallback()\n' } else { '' }
-		extra := if serial { fallback } else { '' }
+		extra := if serial { ownership_string_returned_fallback_check } else { '' }
 		os.write_file(source, views.replace('\tCHECK_FALLBACK\n', check) + extra)!
 		out := os.exec([@VEXE, '-nocache', '-ownership', '-d', 'ownership', '-cc', 'clang', ...mode,
 			'run', source])
@@ -238,7 +238,7 @@ fn ownership_string_view_copy_and_loan_cases(consume string) []OwnershipStringVi
 	return cases
 }
 
-fn test_ownership_string_views_are_copied_at_owning_call_boundaries() {
+fn test_ownership_string_call_boundaries_and_fallback_preserve_storage() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_string_view_mixed_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -309,7 +309,7 @@ fn escape() (string, voidptr) {
 	owned_args := ["owned argument".to_owned()]
 	array_len, _ := read_spread(...owned_args)
 	assert array_len == 14'
-	os.write_file(source, declarations + '
+	fixture := declarations + '
 fn check_owned_first() {
 ${owned_calls}
 ${borrowed_calls}
@@ -326,11 +326,34 @@ fn main() {
 	check_owned_first()
 	check_owned_last()
 }
-')!
+'
 	for mode in [['-no-parallel'], []string{}] {
-		out := os.exec([...ownership_string_view_args, '-cc', 'clang', ...mode, 'run', source])
+		serial := mode.len > 0
+		code := if serial {
+			fixture
+		} else {
+			fixture.replace_once('fn main() {\n', 'fn main() {
+	if arguments().len > 1 {
+		check_cloned_returned_fallback()
+		return
+	}
+') + ownership_string_returned_fallback_check
+		}
+		os.write_file(source, code)!
+		name := if serial { 'program_serial' } else { 'program_parallel' }
+		executable := os.join_path(root, name + $if windows { '.exe' } $else { '' })
+		build := os.exec([...ownership_string_view_args, '-cc', 'clang', ...mode, '-o', executable,
+			source])
+		assert build.exit_code == 0, '${mode}: ${build.output}'
+		out := os.exec([executable])
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		assert out.output.trim_space().split_into_lines() == ['owned first', 'owned last'], '${mode}: ${out.output}'
+		if !serial {
+			assert !build.output.contains(ownership_string_fallback_loan_error), build.output
+			fallback := os.exec([executable, 'fallback'])
+			assert fallback.exit_code == 0, fallback.output
+			assert fallback.output.trim_space() == 'fallback', fallback.output
+		}
 	}
 }
 
@@ -431,19 +454,4 @@ fn (source Source) substr_unsafe() string { return "independent".to_owned() }
 	default_cases << cases
 	check_ownership_string_view_rejections(os.join_path(root, 'default'), declarations +
 		ownership_string_view_identity, default_cases, [])!
-}
-
-fn test_ownership_cloned_returned_fallback_detaches_source_loan() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_returned_fallback_loan_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, ownership_string_view_consume + 'fn main() {
-${ownership_string_returned_fallback_body}
-	assert result == "all"
-}
-')!
-	success := os.exec([...ownership_string_view_args, '-cc', 'clang', 'run', source])
-	assert !success.output.contains(ownership_string_fallback_loan_error), success.output
-	assert success.exit_code == 0, success.output
 }
