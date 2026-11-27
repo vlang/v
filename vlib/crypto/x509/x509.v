@@ -7,8 +7,8 @@ import encoding.utf8
 // Certificate is a parsed X.509 certificate: identity (issuer/subject),
 // validity window, and DNS names from the subject alternative names. It is
 // the V-idiomatic equivalent of the parsing half of Go's crypto/x509.
-// Chain building and full verification are follow-ups (they need the trust
-// store design of #28405); check_host covers the hostname step.
+// Chain building and full verification live in verify.v (build_chain,
+// verify_chain); check_host covers the hostname step.
 pub struct Certificate {
 pub:
 	version    int
@@ -18,8 +18,51 @@ pub:
 	not_before time.Time
 	not_after  time.Time
 	dns_names  []string
-	raw        []u8
-	has_san    bool
+	// ip_addresses holds raw IP SANs (4 bytes IPv4 or 16 bytes IPv6).
+	ip_addresses [][]u8
+	raw          []u8
+	has_san      bool
+	// tbs_der is the full TBS TLV (tag+length+value) for signature checks.
+	tbs_der []u8
+	// issuer_der and subject_der are the full Name TLVs for chain matching.
+	issuer_der  []u8
+	subject_der []u8
+	// sig_alg_oid is the dotted OID of the outer signature algorithm.
+	sig_alg_oid string
+	// sig_alg_val holds the signatureAlgorithm SEQUENCE value bytes so
+	// verifiers can enforce single-OID (no-parameters) encodings.
+	sig_alg_val []u8
+	// signature holds the raw signature bytes (BIT STRING minus pad byte).
+	signature []u8
+	// key_usage is an RFC 5280 bitmask (bit 0 = digitalSignature from the
+	// LSB side); only meaningful when has_key_usage is set.
+	key_usage     u16
+	has_key_usage bool
+	// ext_key_usage holds EKU dotted OIDs (e.g. '1.3.6.1.5.5.7.3.1').
+	ext_key_usage []string
+	// is_ca reports basicConstraints cA; has_basic_constraints tracks
+	// whether the extension was present at all.
+	is_ca                 bool
+	has_basic_constraints bool
+	// path_len caps following CA certs; only set when has_path_len.
+	path_len     int
+	has_path_len bool
+	// Name-constraint subtrees (dNSName strings, iP raw addr++mask).
+	permitted_dns        []string
+	permitted_ips        [][]u8
+	excluded_dns         []string
+	excluded_ips         [][]u8
+	has_name_constraints bool
+	// policies holds certificatePolicies OIDs (anyPolicy passthrough).
+	policies               []string
+	has_policies           bool
+	has_policy_constraints bool
+	// authority_key_id / subject_key_id are raw KeyIdentifiers.
+	authority_key_id []u8
+	subject_key_id   []u8
+	// crl_distribution_points and ocsp_urls hold extracted URIs.
+	crl_distribution_points []string
+	ocsp_urls               []string
 }
 
 // Well-known attribute OIDs.
@@ -106,10 +149,12 @@ pub fn parse_der(der []u8) !Certificate {
 	}
 	pos = skip_tlv(tbs, pos)!
 	issuer := parse_name(expect_tag(tbs, pos, tag_seq, 'issuer')!)!
+	issuer_der, _ := split_tlv(tbs, pos)!
 	pos = skip_tlv(tbs, pos)!
 	not_before, not_after := parse_validity(expect_tag(tbs, pos, tag_seq, 'validity')!)!
 	pos = skip_tlv(tbs, pos)!
 	subject := parse_name(expect_tag(tbs, pos, tag_seq, 'subject')!)!
+	subject_der, _ := split_tlv(tbs, pos)!
 	pos = skip_tlv(tbs, pos)!
 	spki := expect_tag(tbs, pos, tag_seq, 'subjectPublicKeyInfo')!
 	parse_algorithm(expect_tag(spki, 0, tag_seq, 'public key algorithm')!)!
@@ -129,8 +174,7 @@ pub fn parse_der(der []u8) !Certificate {
 			pos = skip_tlv(tbs, pos)!
 		}
 	}
-	mut dns_names := []string{}
-	mut has_san := false
+	mut parsed_exts := ParsedExtensions{}
 	if pos < tbs.len && tbs[pos] == tag_ctx3 {
 		if version != 3 {
 			return error('x509: extensions require version 3')
@@ -140,22 +184,51 @@ pub fn parse_der(der []u8) !Certificate {
 		if skip_tlv(ext_outer, 0)! != ext_outer.len {
 			return error('x509: trailing extensions data')
 		}
-		dns_names, has_san = parse_extensions(exts)!
+		parsed_exts = parse_extensions(exts)!
 		pos = skip_tlv(tbs, pos)!
 	}
 	if pos != tbs.len {
 		return error('x509: unexpected TBSCertificate field')
 	}
+	tbs_full, _ := split_tlv(cert_body, 0)!
+	sig_oid := oid_string(expect_tag(outer_algorithm, 0, tag_oid, 'algorithm OID')!)!
+	sig_bytes := signature[1..].clone()
 	return Certificate{
-		version:    version
-		serial:     serial
-		issuer:     issuer
-		subject:    subject
-		not_before: not_before
-		not_after:  not_after
-		dns_names:  dns_names
-		raw:        der.clone()
-		has_san:    has_san
+		version:                 version
+		serial:                  serial
+		issuer:                  issuer
+		subject:                 subject
+		not_before:              not_before
+		not_after:               not_after
+		dns_names:               parsed_exts.dns_names
+		ip_addresses:            parsed_exts.ip_addresses
+		raw:                     der.clone()
+		has_san:                 parsed_exts.has_san
+		tbs_der:                 tbs_full.clone()
+		issuer_der:              issuer_der.clone()
+		subject_der:             subject_der.clone()
+		sig_alg_oid:             sig_oid
+		sig_alg_val:             outer_algorithm.clone()
+		signature:               sig_bytes
+		key_usage:               parsed_exts.key_usage
+		has_key_usage:           parsed_exts.has_key_usage
+		ext_key_usage:           parsed_exts.ext_key_usage
+		is_ca:                   parsed_exts.is_ca
+		has_basic_constraints:   parsed_exts.has_basic_constraints
+		path_len:                parsed_exts.path_len
+		has_path_len:            parsed_exts.has_path_len
+		permitted_dns:           parsed_exts.permitted_dns
+		permitted_ips:           parsed_exts.permitted_ips
+		excluded_dns:            parsed_exts.excluded_dns
+		excluded_ips:            parsed_exts.excluded_ips
+		has_name_constraints:    parsed_exts.has_name_constraints
+		policies:                parsed_exts.policies
+		has_policies:            parsed_exts.has_policies
+		has_policy_constraints:  parsed_exts.has_policy_constraints
+		authority_key_id:        parsed_exts.authority_key_id
+		subject_key_id:          parsed_exts.subject_key_id
+		crl_distribution_points: parsed_exts.crl_distribution_points
+		ocsp_urls:               parsed_exts.ocsp_urls
 	}
 }
 
@@ -193,7 +266,16 @@ pub fn (c &Certificate) organization() string {
 // only when the SAN extension is absent. Wildcards match one leftmost label.
 // It does not verify signatures, trust, validity periods, or IP address identities.
 pub fn (c &Certificate) check_host(name string) ! {
-	if !valid_dns_name(name, false) || is_ip_name(name) {
+	if is_ip_name(name) {
+		want := parse_ip_literal(name) or { return error('x509: invalid IP literal `${name}`') }
+		for ip in c.ip_addresses {
+			if ip == want {
+				return
+			}
+		}
+		return error('x509: `${name}` is not covered by IP SANs')
+	}
+	if !valid_dns_name(name, false) {
 		return error('x509: invalid DNS hostname `${name}`')
 	}
 	if c.has_san || c.dns_names.len > 0 {
@@ -234,6 +316,155 @@ fn is_ip_name(name string) bool {
 		}
 	}
 	return true
+}
+
+// is_ip_literal reports whether name is an IPv4 or IPv6 address literal
+// (TLS callers use it to skip the SNI extension, which must not carry
+// literal IPs — RFC 6066 §3).
+pub fn is_ip_literal(name string) bool {
+	return is_ip_name(name)
+}
+
+// parse_ip_literal parses an IPv4 dotted quad or IPv6 literal (with one
+// optional :: compression run and optional embedded IPv4 tail) into 4 or
+// 16 raw bytes. Zone IDs and other forms are rejected.
+fn parse_ip_literal(name string) ![]u8 {
+	if !name.contains(':') {
+		parts := name.split('.')
+		if parts.len != 4 {
+			return error('x509: invalid IPv4 literal')
+		}
+		mut out := []u8{len: 4}
+		for i, p in parts {
+			if p.len == 0 || p.len > 3 {
+				return error('x509: invalid IPv4 literal')
+			}
+			for c in p.bytes() {
+				if c < `0` || c > `9` {
+					return error('x509: invalid IPv4 literal')
+				}
+			}
+			v := p.int()
+			if v > 255 {
+				return error('x509: invalid IPv4 literal')
+			}
+			out[i] = u8(v)
+		}
+		return out
+	}
+	if name.contains('%') {
+		return error('x509: IPv6 zone IDs not supported')
+	}
+	halves := name.split('::')
+	if halves.len > 2 {
+		return error('x509: invalid IPv6 literal')
+	}
+	mut left := []string{}
+	mut right := []string{}
+	if halves[0].len > 0 {
+		left = halves[0].split(':')
+	}
+	if halves.len == 2 && halves[1].len > 0 {
+		right = halves[1].split(':')
+	}
+	has_compression := halves.len == 2
+	// An embedded IPv4 tail is allowed only as the single final group.
+	// A dot anywhere else corrupts the group count below and overruns
+	// `out` (e.g. `1.2.3.4:5::6`), so reject it before counting.
+	mut tails := 0
+	for i, g in left {
+		if g.contains('.') {
+			if i != left.len - 1 || right.len > 0 {
+				return error('x509: misplaced embedded IPv4')
+			}
+			tails++
+		}
+	}
+	for i, g in right {
+		if g.contains('.') {
+			if i != right.len - 1 {
+				return error('x509: misplaced embedded IPv4')
+			}
+			tails++
+		}
+	}
+	if tails > 1 {
+		return error('x509: misplaced embedded IPv4')
+	}
+	// An embedded IPv4 tail counts as two 16-bit groups.
+	mut groups := left.len + right.len
+	if groups > 0 {
+		last := if right.len > 0 { right.last() } else { left.last() }
+		if last.contains('.') {
+			groups++
+		}
+	}
+	need := 8 - groups
+	if (!has_compression && need != 0) || (has_compression && need <= 0) {
+		return error('x509: invalid IPv6 literal')
+	}
+	mut out := []u8{len: 16}
+	mut pos := 0
+	parse_group := fn (g string) !u16 {
+		if g.len == 0 || g.len > 4 {
+			return error('x509: invalid IPv6 group')
+		}
+		mut v := 0
+		for c in g.bytes() {
+			d := if c >= `0` && c <= `9` {
+				int(c - `0`)
+			} else if c >= `a` && c <= `f` {
+				int(c - `a`) + 10
+			} else if c >= `A` && c <= `F` {
+				int(c - `A`) + 10
+			} else {
+				return error('x509: invalid IPv6 group')
+			}
+			v = v * 16 + d
+		}
+		return u16(v)
+	}
+	for g in left {
+		if g.contains('.') {
+			tail := parse_ip_literal(g)!
+			if tail.len != 4 {
+				return error('x509: invalid embedded IPv4')
+			}
+			out[pos] = tail[0]
+			out[pos + 1] = tail[1]
+			out[pos + 2] = tail[2]
+			out[pos + 3] = tail[3]
+			pos += 4
+			continue
+		}
+		v := parse_group(g)!
+		out[pos] = u8(v >> 8)
+		out[pos + 1] = u8(v)
+		pos += 2
+	}
+	pos += need * 2
+	for g in right {
+		if g.contains('.') {
+			tail := parse_ip_literal(g)!
+			if tail.len != 4 {
+				return error('x509: invalid embedded IPv4')
+			}
+			out[pos] = tail[0]
+			out[pos + 1] = tail[1]
+			out[pos + 2] = tail[2]
+			out[pos + 3] = tail[3]
+			pos += 4
+			continue
+		}
+		v := parse_group(g)!
+		out[pos] = u8(v >> 8)
+		out[pos + 1] = u8(v)
+		pos += 2
+	}
+	if pos != 16 {
+		return error('x509: invalid IPv6 literal')
+	}
+	return out
 }
 
 fn valid_dns_name(name string, wildcard bool) bool {
@@ -495,59 +726,5 @@ fn parse_time(tlv []u8) !time.Time {
 	return time.new(time.Time{ year: year, month: month, day: day, hour: hour, minute: minute, second: second })
 }
 
-// parse_extensions collects DNS names and tracks SAN presence to avoid CN fallback.
-fn parse_extensions(body []u8) !([]string, bool) {
-	mut dns := []string{}
-	mut seen := map[string]bool{}
-	mut pos := 0
-	for pos < body.len {
-		inner := expect_tag(body, pos, tag_seq, 'extension')!
-		pos = skip_tlv(body, pos)!
-		oid := oid_string(expect_tag(inner, 0, tag_oid, 'extension OID')!)!
-		if oid in seen {
-			return error('x509: duplicate extension `${oid}`')
-		}
-		seen[oid] = true
-		mut ip := skip_tlv(inner, 0)!
-		if ip < inner.len && inner[ip] == 0x01 {
-			critical := expect_tag(inner, ip, 0x01, 'critical BOOLEAN')!
-			if critical.len != 1 || critical[0] != 0xff {
-				return error('x509: invalid critical BOOLEAN')
-			}
-			ip = skip_tlv(inner, ip)!
-		}
-		octets := expect_tag(inner, ip, tag_octet_string, 'extension value')!
-		if skip_tlv(inner, ip)! != inner.len {
-			return error('x509: trailing extension data')
-		}
-		if oid == oid_san {
-			dns = parse_san(octets)!
-		}
-	}
-	return dns, oid_san in seen
-}
-
-fn parse_san(body []u8) ![]string {
-	names_body := expect_tag(body, 0, tag_seq, 'SAN list')!
-	if skip_tlv(body, 0)! != body.len || names_body.len == 0 {
-		return error('x509: invalid SAN list')
-	}
-	mut dns := []string{}
-	mut pos := 0
-	for pos < names_body.len {
-		gn, next := split_tlv(names_body, pos)!
-		pos = next
-		if gn[0] !in [u8(0xa0), 0x81, 0x82, 0xa3, 0xa4, 0xa5, 0x86, 0x87, 0x88] {
-			return error('x509: invalid GeneralName tag')
-		}
-		if gn[0] == tag_dnsname {
-			content := expect_tag(gn, 0, tag_dnsname, 'dNSName')!
-			name := content.bytestr()
-			if !valid_dns_name(name, true) {
-				return error('x509: invalid dNSName')
-			}
-			dns << name
-		}
-	}
-	return dns
-}
+// parse_extensions lives in extensions.v: it enforces unknown-critical
+// rejection and fills ParsedExtensions for chain validation.

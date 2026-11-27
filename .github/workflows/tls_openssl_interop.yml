@@ -1,0 +1,496 @@
+# OpenSSL interop for the pure-V TLS 1.3 stack.
+# Triggers only on TLS/crypto path changes; asserts the three RFC 8446
+# suites (TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384,
+# TLS_CHACHA20_POLY1305_SHA256) interoperate with the system OpenSSL in both
+# directions, that session resumption reports resumed=true, and that mTLS
+# accepts a valid client cert while rejecting a missing one. RSA and ECDSA
+# (P-384) fixtures go through OpenSSL; ML-DSA-65 goes V-to-V so the job does
+# not depend on runner OpenSSL ML-DSA support. Reuses the existing fixtures
+# in vlib/net/tls/testdata/ and generates no new binaries or CAs.
+# CI-only change: no runtime behavior is affected.
+name: TLS OpenSSL interop
+
+on:
+  push:
+    paths:
+      - 'vlib/net/tls/**'
+      - 'vlib/crypto/**'
+      - 'vlib/net/dtls/**'
+      - 'vlib/net/tls12/**'
+  pull_request:
+    paths:
+      - 'vlib/net/tls/**'
+      - 'vlib/crypto/**'
+      - 'vlib/net/dtls/**'
+      - 'vlib/net/tls12/**'
+
+permissions:
+  contents: read
+
+jobs:
+  openssl-interop:
+    name: openssl interop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15]
+    env:
+      VJOBS: '4'
+    defaults:
+      run:
+        # Git Bash on Windows (setup-v prepends it to PATH); native bash
+        # on Linux/macOS. One shell keeps the interop script identical.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Reuses .github/workflows/prepare_v.sh logic via the shared action.
+      - name: Build V
+        uses: ./.github/actions/setup-v
+
+      - name: Provide OpenSSL 3+ (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew list --version openssl@3 >/dev/null 2>&1 || brew install openssl@3
+          echo "$(brew --prefix openssl@3)/bin" >> "$GITHUB_PATH"
+          export PATH="$(brew --prefix openssl@3)/bin:$PATH"
+          openssl version
+
+      - name: Check openssl and fixtures
+        run: |
+          set -euo pipefail
+          openssl version
+          openssl ciphers -v | grep -q 'TLS_AES_128_GCM_SHA256' || {
+            echo 'openssl lacks TLS 1.3 cipher suites'; exit 1; }
+          for f in rsa_leaf_cert.pem rsa_leaf_pkcs8_key.pem rsa_ca_cert.pem \
+            p384_leaf_cert.pem p384_leaf_key.pem p384_ca_cert.pem \
+            mldsa65_leaf_cert.pem mldsa65_leaf_key.pem mldsa65_ca_cert.pem; do
+            test -f "vlib/net/tls/testdata/$f" || { echo "missing fixture $f"; exit 1; }
+          done
+
+      - name: Build pure-V interop helpers
+        run: |
+          set -euo pipefail
+          cat > tls_interop_server.v <<'EOF'
+          // CI-only helper: fixed-port pure-V TLS 1.3 server for openssl
+          // s_client interop. Env: V_TLS_PORT, V_TLS_CERT, V_TLS_KEY,
+          // V_TLS_SUITE, V_TLS_NCONN (default 1), V_TLS_MTLS=1 plus
+          // V_TLS_CLIENT_CA for mTLS. Fails closed on any handshake error.
+          import net
+          import net.tls
+          import crypto.pem
+          import crypto.rand
+          import crypto.x509
+          import os
+
+          fn load_store(path string) tls.CertStore {
+          	txt := os.read_file(path) or {
+          		eprintln('read ca failed: ${err}')
+          		exit(1)
+          	}
+          	block, _ := pem.decode(txt) or {
+          		eprintln('pem decode failed')
+          		exit(1)
+          	}
+          	cert := x509.parse_der(block.data) or {
+          		eprintln('parse ca failed: ${err}')
+          		exit(1)
+          	}
+          	return tls.CertStore{
+          		roots: [cert]
+          	}
+          }
+
+          fn suite_from_name(s string) tls.CipherSuite {
+          	if s == 'TLS_AES_256_GCM_SHA384' {
+          		return tls.CipherSuite.tls_aes_256_gcm_sha384
+          	}
+          	if s == 'TLS_CHACHA20_POLY1305_SHA256' {
+          		return tls.CipherSuite.tls_chacha20_poly1305_sha256
+          	}
+          	return tls.CipherSuite.tls_aes_128_gcm_sha256
+          }
+
+          fn make_cfg(cert string, key string, suite tls.CipherSuite, ticket []u8) tls.Config {
+          	mut cfg := tls.Config{
+          		cert:          cert
+          		key:           key
+          		cipher_suites: [suite]
+          		verify:        false
+          	}
+          	if os.getenv('V_TLS_MTLS') == '1' {
+          		ca := os.getenv('V_TLS_CLIENT_CA')
+          		if ca == '' {
+          			eprintln('V_TLS_CLIENT_CA required for mTLS')
+          			exit(1)
+          		}
+          		cfg.verify_client = true
+          		cfg.verify_chain = true
+          		cfg.ca_store = load_store(ca)
+          	}
+          	cfg.ticket_key = ticket.clone()
+          	return cfg
+          }
+
+          fn main() {
+          	port := os.getenv('V_TLS_PORT')
+          	cert := os.getenv('V_TLS_CERT')
+          	key := os.getenv('V_TLS_KEY')
+          	if port == '' || cert == '' || key == '' {
+          		eprintln('V_TLS_PORT/CERT/KEY required')
+          		exit(1)
+          	}
+          	suite := suite_from_name(os.getenv('V_TLS_SUITE'))
+          	mut want := os.getenv('V_TLS_NCONN').int()
+          	if want < 1 {
+          		want = 1
+          	}
+          	ticket := rand.bytes(32) or {
+          		eprintln('rand failed: ${err}')
+          		exit(1)
+          	}
+          	mut ln := net.listen_tcp(.ip, '127.0.0.1:${port}') or {
+          		eprintln('listen failed: ${err}')
+          		exit(1)
+          	}
+          	eprintln('READY port=${port}')
+          	for _ in 0 .. want {
+          		mut tcp := ln.accept() or {
+          			eprintln('accept failed: ${err}')
+          			exit(1)
+          		}
+          		mut cfg := make_cfg(cert, key, suite, ticket)
+          		mut c := tls.accept(tcp, cfg) or {
+          			eprintln('tls accept failed: ${err}')
+          			exit(1)
+          		}
+          		c.handshake() or {
+          			eprintln('handshake failed: ${err}')
+          			exit(1)
+          		}
+          		eprintln('HANDSHAKE_OK suite=${c.negotiated_cipher()} resumed=${c.resumed()}')
+          		mut buf := []u8{len: 1024}
+          		n := c.read(mut buf) or {
+          			eprintln('read failed: ${err}')
+          			exit(1)
+          		}
+          		c.write(buf[..n]) or {
+          			eprintln('write failed: ${err}')
+          			exit(1)
+          		}
+          		eprintln('ECHO_OK')
+          		c.close() or {}
+          	}
+          }
+          EOF
+          cat > tls_interop_client.v <<'EOF'
+          // CI-only helper: pure-V TLS 1.3 client for openssl s_server
+          // interop and V-to-V resumption. Env: V_TLS_PORT, V_TLS_SUITE,
+          // V_TLS_MODE (hs|echo|resume), V_TLS_CA (optional trust anchor),
+          // V_TLS_CLIENT_CERT/KEY (optional mTLS credential).
+          import net.tls
+          import crypto.pem
+          import crypto.x509
+          import os
+
+          fn load_store(path string) tls.CertStore {
+          	txt := os.read_file(path) or {
+          		eprintln('read ca failed: ${err}')
+          		exit(1)
+          	}
+          	block, _ := pem.decode(txt) or {
+          		eprintln('pem decode failed')
+          		exit(1)
+          	}
+          	cert := x509.parse_der(block.data) or {
+          		eprintln('parse ca failed: ${err}')
+          		exit(1)
+          	}
+          	return tls.CertStore{
+          		roots: [cert]
+          	}
+          }
+
+          fn suite_from_name(s string) tls.CipherSuite {
+          	if s == 'TLS_AES_256_GCM_SHA384' {
+          		return tls.CipherSuite.tls_aes_256_gcm_sha384
+          	}
+          	if s == 'TLS_CHACHA20_POLY1305_SHA256' {
+          		return tls.CipherSuite.tls_chacha20_poly1305_sha256
+          	}
+          	return tls.CipherSuite.tls_aes_128_gcm_sha256
+          }
+
+          fn make_cfg(suite tls.CipherSuite) tls.Config {
+          	mut cfg := tls.Config{
+          		server_name:   'localhost'
+          		cipher_suites: [suite]
+          	}
+          	ca := os.getenv('V_TLS_CA')
+          	if ca != '' {
+          		cfg.verify = true
+          		cfg.verify_chain = true
+          		cfg.ca_store = load_store(ca)
+          	} else {
+          		cfg.verify = false
+          	}
+          	if os.getenv('V_TLS_CLIENT_CERT') != '' {
+          		cfg.client_cert = os.getenv('V_TLS_CLIENT_CERT')
+          		cfg.client_key = os.getenv('V_TLS_CLIENT_KEY')
+          	}
+          	return cfg
+          }
+
+          fn main() {
+          	port := os.getenv('V_TLS_PORT')
+          	if port == '' {
+          		eprintln('V_TLS_PORT required')
+          		exit(1)
+          	}
+          	suite := suite_from_name(os.getenv('V_TLS_SUITE'))
+          	mode := os.getenv('V_TLS_MODE')
+          	if mode == 'resume' {
+          		mut c1 := tls.dial('127.0.0.1', port.int(), make_cfg(suite)) or {
+          			eprintln('dial1 failed: ${err}')
+          			exit(1)
+          		}
+          		c1.handshake() or {
+          			eprintln('handshake1 failed: ${err}')
+          			exit(1)
+          		}
+          		c1.write('ping'.bytes()) or {
+          			eprintln('write1 failed: ${err}')
+          			exit(1)
+          		}
+          		mut buf := []u8{len: 1024}
+          		_ := c1.read(mut buf) or {
+          			eprintln('read1 failed: ${err}')
+          			exit(1)
+          		}
+          		st := c1.session_state() or {
+          			eprintln('no ticket received')
+          			exit(1)
+          		}
+          		c1.close() or {}
+          		mut cfg2 := make_cfg(suite)
+          		cfg2.resume_from = st
+          		mut c2 := tls.dial('127.0.0.1', port.int(), cfg2) or {
+          			eprintln('dial2 failed: ${err}')
+          			exit(1)
+          		}
+          		c2.handshake() or {
+          			eprintln('handshake2 failed: ${err}')
+          			exit(1)
+          		}
+          		if !c2.resumed() {
+          			eprintln('resumed=false, expected true')
+          			exit(1)
+          		}
+          		eprintln('RESUMED=true suite=${c2.negotiated_cipher()}')
+          		c2.write('pong'.bytes()) or {
+          			eprintln('write2 failed: ${err}')
+          			exit(1)
+          		}
+          		mut buf2 := []u8{len: 1024}
+          		n2 := c2.read(mut buf2) or {
+          			eprintln('read2 failed: ${err}')
+          			exit(1)
+          		}
+          		if buf2[..n2].bytestr() != 'pong' {
+          			eprintln('echo mismatch')
+          			exit(1)
+          		}
+          		eprintln('ECHO_OK')
+          		c2.close() or {}
+          		return
+          	}
+          	mut c := tls.dial('127.0.0.1', port.int(), make_cfg(suite)) or {
+          		eprintln('dial failed: ${err}')
+          		exit(1)
+          	}
+          	c.handshake() or {
+          		eprintln('handshake failed: ${err}')
+          		exit(1)
+          	}
+          	eprintln('HANDSHAKE_OK suite=${c.negotiated_cipher()}')
+          	if mode == 'echo' {
+          		c.write('ping'.bytes()) or {
+          			eprintln('write failed: ${err}')
+          			exit(1)
+          		}
+          		mut ebuf := []u8{len: 1024}
+          		en := c.read(mut ebuf) or {
+          			eprintln('read failed: ${err}')
+          			exit(1)
+          		}
+          		if ebuf[..en].bytestr() != 'ping' {
+          			eprintln('echo mismatch')
+          			exit(1)
+          		}
+          		eprintln('ECHO_OK')
+          	}
+          	c.close() or {}
+          }
+          EOF
+          v -o tls_interop_server tls_interop_server.v
+          v -o tls_interop_client tls_interop_client.v
+          rm -f tls_interop_server.v tls_interop_client.v
+
+      - name: Suite interop (openssl both directions)
+        run: |
+          set -euo pipefail
+          TD='vlib/net/tls/testdata'
+          EXE=''
+          if [ "$RUNNER_OS" = 'Windows' ]; then EXE='.exe'; fi
+          SRV="./tls_interop_server$EXE"
+          CLI="./tls_interop_client$EXE"
+          # Wait up to $3 seconds for pattern $2 to appear in log file $1.
+          # Proves the server is listening instead of hoping a blind sleep
+          # is long enough on slow runners.
+          wait_for_log() {
+            i=0
+            while [ "$i" -lt "$3" ]; do
+              if grep -q "$2" "$1" 2>/dev/null; then return 0; fi
+              sleep 1
+              i=$((i + 1))
+            done
+            return 1
+          }
+          i=0
+          for suite in TLS_AES_128_GCM_SHA256 TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256; do
+            i=$((i + 1))
+            p1=$((15430 + i))
+            p2=$((15440 + i))
+            # openssl client against the pure-V server (RSA fixture).
+            V_TLS_PORT="$p1" V_TLS_CERT="$TD/rsa_leaf_cert.pem" V_TLS_KEY="$TD/rsa_leaf_pkcs8_key.pem" \
+              V_TLS_SUITE="$suite" V_TLS_NCONN=1 "$SRV" >"srv_$suite.log" 2>&1 &
+            srvpid=$!
+            wait_for_log "srv_$suite.log" 'READY' 60 || { echo "V server did not start for $suite"; cat "srv_$suite.log"; kill "$srvpid" 2>/dev/null || true; exit 1; }
+            # s_client exits nonzero on the server close_notify EOF; the
+            # fail-closed asserts below (not the exit code) decide.
+            printf 'ping' | openssl s_client -connect "127.0.0.1:$p1" -tls1_3 -ciphersuites "$suite" \
+              -CAfile "$TD/rsa_ca_cert.pem" -verify_return_error -quiet >"cli_$suite.log" 2>&1 || true
+            wait "$srvpid" || { echo "V server failed for $suite"; cat "srv_$suite.log"; exit 1; }
+            grep -q 'HANDSHAKE_OK' "srv_$suite.log" || { echo "no V handshake for $suite"; cat "srv_$suite.log"; exit 1; }
+            grep -q 'ECHO_OK' "srv_$suite.log" || { echo "no V echo for $suite"; cat "srv_$suite.log"; exit 1; }
+            grep -q 'ping' "cli_$suite.log" || { echo "no openssl echo for $suite"; cat "cli_$suite.log"; exit 1; }
+            # pure-V client against openssl server (handshake only; s_server
+            # is not an echo server). s_server consumes stdin every loop
+            # iteration: a pipe with no data (e.g. `sleep 30 |`) makes it
+            # never reach accept on Windows, while a closed stdin makes it
+            # abort the connection before ServerHello. Feeding empty lines
+            # keeps the accept loop running on every platform.
+            yes '' | openssl s_server -accept "$p2" -tls1_3 -ciphersuites "$suite" \
+              -cert "$TD/rsa_leaf_cert.pem" -key "$TD/rsa_leaf_pkcs8_key.pem" \
+              -naccept 1 >"ssrv_$suite.log" 2>&1 &
+            ssrvpid=$!
+            wait_for_log "ssrv_$suite.log" 'ACCEPT' 60 || { echo "openssl server did not start for $suite"; cat "ssrv_$suite.log" || true; kill "$ssrvpid" 2>/dev/null || true; exit 1; }
+            V_TLS_PORT="$p2" V_TLS_SUITE="$suite" V_TLS_MODE=hs "$CLI" >"vcli_$suite.log" 2>&1 || {
+              echo "V client failed for $suite"; cat "vcli_$suite.log"; echo "--- ssrv log ---"; cat "ssrv_$suite.log" || true; kill "$ssrvpid" 2>/dev/null || true; exit 1; }
+            grep -q 'HANDSHAKE_OK' "vcli_$suite.log" || { echo "no V-client handshake for $suite"; cat "vcli_$suite.log"; exit 1; }
+            wait "$ssrvpid" || true
+          done
+          # ECDSA P-384 fixture through openssl (one suite suffices for the
+          # credential type; RSA already covered all three suites).
+          V_TLS_PORT=15451 V_TLS_CERT="$TD/p384_leaf_cert.pem" V_TLS_KEY="$TD/p384_leaf_key.pem" \
+            V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_NCONN=1 "$SRV" >srv_ec.log 2>&1 &
+          srvpid=$!
+          wait_for_log 'srv_ec.log' 'READY' 60 || { echo 'V server did not start for ECDSA'; cat srv_ec.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
+          printf 'ping' | openssl s_client -connect '127.0.0.1:15451' -tls1_3 \
+            -ciphersuites TLS_AES_128_GCM_SHA256 -CAfile "$TD/p384_ca_cert.pem" \
+            -verify_return_error -quiet >cli_ec.log 2>&1 || true
+          wait "$srvpid" || { echo 'V server failed for ECDSA'; cat srv_ec.log; exit 1; }
+          grep -q 'HANDSHAKE_OK' srv_ec.log || { echo 'no V handshake for ECDSA'; cat srv_ec.log; exit 1; }
+          grep -q 'ping' cli_ec.log || { echo 'no openssl echo for ECDSA'; cat cli_ec.log; exit 1; }
+          echo 'SUITES_OK'
+
+      - name: Resumption and ML-DSA fixture
+        run: |
+          set -euo pipefail
+          TD='vlib/net/tls/testdata'
+          EXE=''
+          if [ "$RUNNER_OS" = 'Windows' ]; then EXE='.exe'; fi
+          SRV="./tls_interop_server$EXE"
+          CLI="./tls_interop_client$EXE"
+          wait_for_log() {
+            i=0
+            while [ "$i" -lt "$3" ]; do
+              if grep -q "$2" "$1" 2>/dev/null; then return 0; fi
+              sleep 1
+              i=$((i + 1))
+            done
+            return 1
+          }
+          # Stateless-ticket resumption between two pure-V endpoints must
+          # report resumed=true on the second handshake.
+          V_TLS_PORT=15452 V_TLS_CERT="$TD/rsa_leaf_cert.pem" V_TLS_KEY="$TD/rsa_leaf_pkcs8_key.pem" \
+            V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_NCONN=2 "$SRV" >srv_resume.log 2>&1 &
+          srvpid=$!
+          wait_for_log 'srv_resume.log' 'READY' 60 || { echo 'resumption server did not start'; cat srv_resume.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
+          V_TLS_PORT=15452 V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_MODE=resume "$CLI" >cli_resume.log 2>&1 || {
+            echo 'resumption client failed'; cat cli_resume.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
+          wait "$srvpid" || { echo 'resumption server failed'; cat srv_resume.log; exit 1; }
+          grep -q 'RESUMED=true' cli_resume.log || { echo 'no resumed=true'; cat cli_resume.log; exit 1; }
+          # ML-DSA-65 credential goes V-to-V so the job never depends on
+          # runner OpenSSL ML-DSA support.
+          V_TLS_PORT=15453 V_TLS_CERT="$TD/mldsa65_leaf_cert.pem" V_TLS_KEY="$TD/mldsa65_leaf_key.pem" \
+            V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_NCONN=1 "$SRV" >srv_ml.log 2>&1 &
+          srvpid=$!
+          wait_for_log 'srv_ml.log' 'READY' 60 || { echo 'ML-DSA server did not start'; cat srv_ml.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
+          V_TLS_PORT=15453 V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_MODE=echo "$CLI" >cli_ml.log 2>&1 || {
+            echo 'ML-DSA client failed'; cat cli_ml.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
+          wait "$srvpid" || { echo 'ML-DSA server failed'; cat srv_ml.log; exit 1; }
+          grep -q 'HANDSHAKE_OK' srv_ml.log || { echo 'no ML-DSA handshake'; cat srv_ml.log; exit 1; }
+          grep -q 'ECHO_OK' cli_ml.log || { echo 'no ML-DSA echo'; cat cli_ml.log; exit 1; }
+          echo 'RESUMPTION_AND_MLDSA_OK'
+
+      - name: mTLS accept and reject
+        run: |
+          set -euo pipefail
+          TD='vlib/net/tls/testdata'
+          EXE=''
+          if [ "$RUNNER_OS" = 'Windows' ]; then EXE='.exe'; fi
+          SRV="./tls_interop_server$EXE"
+          wait_for_log() {
+            i=0
+            while [ "$i" -lt "$3" ]; do
+              if grep -q "$2" "$1" 2>/dev/null; then return 0; fi
+              sleep 1
+              i=$((i + 1))
+            done
+            return 1
+          }
+          # Accept: openssl presents a P-384 client cert the V server trusts.
+          V_TLS_PORT=15454 V_TLS_CERT="$TD/rsa_leaf_cert.pem" V_TLS_KEY="$TD/rsa_leaf_pkcs8_key.pem" \
+            V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_NCONN=1 V_TLS_MTLS=1 \
+            V_TLS_CLIENT_CA="$TD/p384_ca_cert.pem" "$SRV" >srv_mtls_ok.log 2>&1 &
+          srvpid=$!
+          wait_for_log 'srv_mtls_ok.log' 'READY' 60 || { echo 'mTLS server did not start'; cat srv_mtls_ok.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
+          printf 'ping' | openssl s_client -connect '127.0.0.1:15454' -tls1_3 \
+            -ciphersuites TLS_AES_128_GCM_SHA256 -CAfile "$TD/rsa_ca_cert.pem" \
+            -cert "$TD/p384_leaf_cert.pem" -key "$TD/p384_leaf_key.pem" \
+            -verify_return_error -quiet >cli_mtls_ok.log 2>&1 || true
+          wait "$srvpid" || { echo 'mTLS accept server failed'; cat srv_mtls_ok.log; exit 1; }
+          grep -q 'HANDSHAKE_OK' srv_mtls_ok.log || { echo 'no mTLS handshake'; cat srv_mtls_ok.log; exit 1; }
+          grep -q 'ECHO_OK' srv_mtls_ok.log || { echo 'no mTLS echo'; cat srv_mtls_ok.log; exit 1; }
+          grep -q 'ping' cli_mtls_ok.log || { echo 'no mTLS openssl echo'; cat cli_mtls_ok.log; exit 1; }
+          # Reject: no client cert must never echo; the server must fail.
+          V_TLS_PORT=15455 V_TLS_CERT="$TD/rsa_leaf_cert.pem" V_TLS_KEY="$TD/rsa_leaf_pkcs8_key.pem" \
+            V_TLS_SUITE=TLS_AES_128_GCM_SHA256 V_TLS_NCONN=1 V_TLS_MTLS=1 \
+            V_TLS_CLIENT_CA="$TD/p384_ca_cert.pem" "$SRV" >srv_mtls_no.log 2>&1 &
+          srvpid=$!
+          wait_for_log 'srv_mtls_no.log' 'READY' 60 || { echo 'mTLS reject server did not start'; cat srv_mtls_no.log; kill "$srvpid" 2>/dev/null || true; exit 1; }
+          printf 'ping' | openssl s_client -connect '127.0.0.1:15455' -tls1_3 \
+            -ciphersuites TLS_AES_128_GCM_SHA256 -CAfile "$TD/rsa_ca_cert.pem" \
+            -verify_return_error -quiet >cli_mtls_no.log 2>&1 || true
+          wait "$srvpid" && { echo 'mTLS server unexpectedly accepted'; cat srv_mtls_no.log; exit 1; } || true
+          grep -q 'ECHO_OK' srv_mtls_no.log && { echo 'mTLS reject failed: server echoed'; cat srv_mtls_no.log; exit 1; } || true
+          grep -qi 'certificate' srv_mtls_no.log || { echo 'expected certificate failure'; cat srv_mtls_no.log; exit 1; }
+          echo 'MTLS_OK'
+          rm -f tls_interop_server tls_interop_server.exe tls_interop_client tls_interop_client.exe \
+            srv_*.log cli_*.log vcli_*.log ssrv_*.log
