@@ -289,8 +289,8 @@ jobs:
             for mode in serial parallel; do
               for variant in direct set; do
                 root="$logs/$role-$mode-$variant"
-                mkdir -p "$root/cache"
-                export VTMP="$root/cache" V3CACHE="$root/cache" V3_CACHE_TRACE=1 VJOBS=2
+                mkdir -p "$root/cache" "$root/source-cache"
+                export VTMP="$root/source-cache" V3CACHE="$root/source-cache" V3_CACHE_TRACE=1 VJOBS=2
                 mode_flags=()
                 if [[ $mode == serial ]]; then mode_flags=(-no-parallel); export VJOBS=1; fi
                 if [[ $variant == set ]]; then
@@ -327,10 +327,13 @@ jobs:
                 fi
                 # Warm only builtin, then import datatypes. Do not use source
                 # mode or -keepc for these commands.
-                printf '%s\n' 'fn main() { println(1) }' > "$root/cold.v"
-                "$exe" "${flags[@]}" "${mode_flags[@]}" -o "$root/cold" "$root/cold.v" > "$root/cold.log" 2>&1
+                export VTMP="$root/cache" V3CACHE="$root/cache"
+                cp "$root/main.v" "$root/fixture.txt"
+                printf '%s\n' 'fn main() { println(1) }' > "$root/main.v"
+                "$exe" "${flags[@]}" "${mode_flags[@]}" -o "$root/cold" "$root/main.v" > "$root/cold.log" 2>&1
                 test "$("$root/cold")" = 1
                 test -z "$(find "$root/cache" -name 'datatypes_*.o' -print -quit)"
+                cp "$root/fixture.txt" "$root/main.v"
                 partial_rc=0
                 "$exe" "${flags[@]}" "${mode_flags[@]}" -o "$root/partial" "$root/main.v" > "$root/partial.log" 2>&1 || partial_rc=$?
                 cat "$root/partial.log"
@@ -349,7 +352,7 @@ jobs:
                 if [[ $role == candidate ]]; then
                   if [[ $gen_rc != 0 || $source_rc != 0 || $partial_rc != 0 ]]; then failed=1; fi
                   if grep -E 'failed to build cached module object|V3 module cache fallback' "$root/partial.log"; then failed=1; fi
-                  if [[ $variant == set ]] && ! find "$root/cache" -name 'datatypes_*.o' -type f -print | grep -q .; then failed=1; fi
+                  if [[ $variant == set ]] && [[ -z $(find "$root/cache" -name 'datatypes_*.o' -type f -print -quit) ]]; then failed=1; fi
                 fi
               done
             done
