@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
@@ -50,6 +53,23 @@ static inline uintptr_t vgc_read_candidate(const void* address) {
     uintptr_t candidate;
     memcpy(&candidate, address, sizeof(candidate));
     return candidate;
+}
+
+static inline unsigned vgc_ctz64(uint64_t x) {
+#if defined(_MSC_VER) && defined(_M_X64)
+    unsigned long index = 0;
+    _BitScanForward64(&index, x);
+    return (unsigned)index;
+#elif defined(__GNUC__) || defined(__clang__)
+    return (unsigned)__builtin_ctzll(x);
+#else
+    unsigned n = 0;
+    while ((x & 1u) == 0) {
+        x >>= 1;
+        ++n;
+    }
+    return n;
+#endif
 }
 
 static inline void* vgc_current_fake_stack(void) {

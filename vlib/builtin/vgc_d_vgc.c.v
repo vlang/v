@@ -124,11 +124,24 @@ mut:
 	// 0 when no thread does. Only that thread changes the span's alloc bits, and the sweep
 	// skips the span.
 	cached_by int
-	// Linked list pointers for central free lists
+	// Linked list pointers for central free lists. In vgc_greentea mode,
+	// `next` doubles as the span work-queue link while `queued` is set.
 	next &VGC_Span = unsafe { nil }
 	prev &VGC_Span = unsafe { nil }
-	// Storage for alloc_bits (the first half) and mark_bits (the second half).
-	bits [256]u8
+	// GreenTea span-queue state (only used behind -d vgc_greentea):
+	// mark_bits is the "seen" bitmap. A second bitmap holds the "scanned"
+	// bits, so pending objects are seen & ~scanned; we need no third bitmap.
+	// The span is on the FIFO work queue at most once at a time (queued
+	// flag), so pointers found while it waits accumulate into a single
+	// locality-friendly pass. `hit` means two objects were seen while the
+	// span was queued; without it the representative is scanned directly.
+	scanned_bits &u8 = unsafe { nil }
+	queued       bool
+	hit          bool
+	rep_addr     uint // representative object address when the span was enqueued
+	// Storage for alloc/mark (first 256 bytes) and scanned (last 128 bytes)
+	// in greentea mode. Kept unconditional so the struct layout is simple for C.
+	bits [384]u8
 }
 
 // VGC_Cache is a per-thread allocation cache.
@@ -256,6 +269,18 @@ mut:
 	work_full  &VGC_WorkBuf = unsafe { nil }
 	work_empty &VGC_WorkBuf = unsafe { nil }
 	work_lock  u32
+	// GreenTea span work queue (only used behind -d vgc_greentea).
+	// The work_full/work_empty object queues above stay for the default
+	// object-centric path and as the fallback when the span bitmap is
+	// unavailable (large objects).
+	spanq_head &VGC_Span = unsafe { nil }
+	spanq_tail &VGC_Span = unsafe { nil }
+	spanq_len  u64
+	// GreenTea counters: density measured at dequeue.
+	gc_span_enqueues    u64
+	gc_span_dequeues    u64
+	gc_multi_obj_spans  u64
+	gc_single_obj_spans u64
 	// GC worker coordination
 	gc_workers_done u32 // atomic
 	gc_nworkers     int
@@ -263,6 +288,13 @@ mut:
 	gc_stop_epoch   u32 // atomic: numbers the stop-the-world requests, skipping 0
 	// Sweep state
 	sweep_done u32 // atomic
+	// GreenTea baseline metrics (P0): object-queue density proxy.
+	// Counted with vgc_counter_add (cheap volatile add on 64-bit, atomic
+	// on 32-bit), read with vgc_counter_load. No behavior change.
+	gc_work_puts     u64 // objects enqueued for scanning
+	gc_work_gets     u64 // objects dequeued for scanning
+	gc_spans_visited u64 // dequeued objects whose span was scanable
+	gc_objs_scanned  u64 // objects actually scanned (precise or conservative)
 	// Default GC trigger: collect when heap doubles (GOGC=100 equivalent)
 	gc_percent int // like Go's GOGC, default 100
 }
@@ -560,6 +592,10 @@ fn vgc_put_free_span(mut span VGC_Span) {
 	span.has_ptrmap = false
 	span.ptrmap = 0
 	span.ptr_words = 0
+	// A recycled span must not inherit span-queue state from an aborted cycle.
+	span.queued = false
+	span.hit = false
+	span.rep_addr = 0
 	// Decommit pages to return physical memory to OS
 	page_bytes := uint(npages) * vgc_page_size
 	C.vgc_os_decommit(voidptr(span.base), page_bytes)
@@ -787,6 +823,9 @@ fn vgc_span_init(mut span VGC_Span, class_idx u8, noscan bool) {
 fn vgc_span_set_bitmaps(mut span VGC_Span) {
 	span.alloc_bits = unsafe { &u8(&span.bits[0]) }
 	span.mark_bits = unsafe { &u8(&span.bits[vgc_bitmap_bytes]) }
+	$if vgc_greentea ? {
+		span.scanned_bits = unsafe { &u8(&span.bits[vgc_bitmap_bytes * 2]) }
+	}
 }
 
 // Find a free slot in a span and allocate it
@@ -822,6 +861,12 @@ fn vgc_span_alloc_obj(mut span VGC_Span) voidptr {
 					}
 					span.alloc_count++
 					span.free_index = i + 1
+					$if vgc_greentea ? {
+						scanned := unsafe { span.scanned_bits }
+						if scanned != unsafe { nil } {
+							C.vgc_bitmap_clear(scanned, i)
+						}
+					}
 					addr := span.base + uint(i) * uint(span.elem_size)
 					return unsafe { voidptr(addr) }
 				}
