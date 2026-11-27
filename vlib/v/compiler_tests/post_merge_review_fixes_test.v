@@ -1739,9 +1739,10 @@ fn main() {
 	assert out == 'false\ntrue'
 }
 
-fn test_select_receive_assignment_checks_lhs_type() {
+fn test_select_receive_type_rejections() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'select_receive_assign_bool_mismatch', 'fn main() {
+	run_bad_module_batch(v3_bin, 'select_receive_type_rejections', [
+		ReviewRejection{'select_receive_assign_bool_mismatch', 'fn main() {
 	ch := chan int{}
 	mut value := false
 	select {
@@ -1750,8 +1751,9 @@ fn test_select_receive_assignment_checks_lhs_type() {
 	}
 	println(value.str())
 }
-', 'cannot assign `int` to `bool`')
-	run_bad(v3_bin, 'select_receive_assign_string_mismatch', "fn main() {\n\tch := chan int{}\n\tmut value := ''\n\tselect {\n\t\tvalue = <-ch {}\n\t\telse {}\n\t}\n\tprintln(value)\n}\n", 'cannot assign `int` to `string`')
+', 'cannot assign `int` to `bool`'},
+		ReviewRejection{'select_receive_assign_string_mismatch', "fn main() {\n\tch := chan int{}\n\tmut value := ''\n\tselect {\n\t\tvalue = <-ch {}\n\t\telse {}\n\t}\n\tprintln(value)\n}\n", 'cannot assign `int` to `string`'},
+	])
 }
 
 fn test_select_receive_conversions() {
@@ -2043,9 +2045,10 @@ fn test_select_lowering_roots_array_free() {
 	assert out == ''
 }
 
-fn test_select_compound_receive_assignment_is_rejected() {
+fn test_select_receive_lhs_rejections() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'select_compound_receive_assign', 'fn main() {
+	run_bad_module_batch(v3_bin, 'select_receive_lhs_rejections', [
+		ReviewRejection{'select_compound_receive_assign', 'fn main() {
 	ch := chan int{}
 	mut value := 1
 	select {
@@ -2054,7 +2057,17 @@ fn test_select_compound_receive_assignment_is_rejected() {
 	}
 	println(int_str(value))
 }
-', 'compound receive assignment `+=` is not supported in `select`')
+', 'compound receive assignment `+=` is not supported in `select`'},
+		ReviewRejection{'select_receive_decl_index_lhs', 'fn main() {
+	ch := chan int{}
+	mut values := [0]
+	select {
+		values[0] := <-ch {}
+		else {}
+	}
+}
+', 'select receive declaration requires a plain identifier on the left side'},
+	])
 }
 
 fn test_select_assignment_cases_require_receive_rhs() {
@@ -2077,7 +2090,7 @@ fn test_select_assignment_cases_require_receive_rhs() {
 	run_bad_module_batch(v3_bin, 'select_non_receive_rejections', cases)
 }
 
-fn test_select_rejects_else_and_timeout_in_either_order() {
+fn test_select_timeout_rejections() {
 	v3_bin := build_v3()
 	run_bad_module_batch(v3_bin, 'select_timeout_rejections', [
 		ReviewRejection{
@@ -2106,12 +2119,7 @@ fn main() {
 '
 			expected: 'timeout `> t` and `else` are mutually exclusive `select` keys'
 		},
-	])
-}
-
-fn test_select_rejects_duplicate_timeouts() {
-	v3_bin := build_v3()
-	run_bad(v3_bin, 'select_duplicate_timeouts', 'import time
+		ReviewRejection{'select_duplicate_timeouts', 'import time
 
 fn main() {
 	select {
@@ -2119,20 +2127,8 @@ fn main() {
 		20 * time.millisecond {}
 	}
 }
-', 'at most one timeout branch allowed in `select` block')
-}
-
-fn test_select_receive_declaration_requires_identifier() {
-	v3_bin := build_v3()
-	run_bad(v3_bin, 'select_receive_decl_index_lhs', 'fn main() {
-	ch := chan int{}
-	mut values := [0]
-	select {
-		values[0] := <-ch {}
-		else {}
-	}
-}
-', 'select receive declaration requires a plain identifier on the left side')
+', 'at most one timeout branch allowed in `select` block'},
+	])
 }
 
 fn test_comptime_if_threads_expression_is_deferred() {
@@ -3029,6 +3025,42 @@ fn test_qualified_enum_str_requires_exact_receiver() {
 	assert out == 'red\ncustom'
 }
 
+fn test_array_and_map_receiver_rejections() {
+	v3_bin := build_v3()
+	run_bad_module_batch(v3_bin, 'array_and_map_receiver_rejections', [
+		ReviewRejection{
+			name:     'fixed_array_pointers_rejects_rvalue_receiver'
+			source:   'fn make_fixed() [2]int {\n\treturn [7, 8]!\n}\n\nfn main() {\n\t_ := unsafe { make_fixed().pointers() }\n}\n'
+			expected: 'fixed array receiver for `pointers` must be addressable'
+		},
+		ReviewRejection{
+			name:     'fixed_array_pointers_rejects_map_index_receiver'
+			source:   'fn main() {\n\tmut m := map[string][2]int{}\n\tm["x"] = [1, 2]!\n\t_ := unsafe { m["x"].pointers() }\n}\n'
+			expected: 'fixed array receiver for `pointers` must be addressable'
+		},
+		ReviewRejection{
+			name:     'fixed_array_pointers_rejects_extra_arg'
+			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut fixed := [3]int{}\n\t_ := unsafe { fixed.pointers(extra_arg()) }\n}\n'
+			expected: 'expected 0 arguments, but got 1'
+		},
+		ReviewRejection{
+			name:     'map_keys_rejects_extra_arg'
+			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\t_ := m.keys(extra_arg())\n}\n'
+			expected: '`.keys()` does not have any arguments'
+		},
+		ReviewRejection{
+			name:     'map_delete_rejects_bad_key_type'
+			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.delete(123)\n}\n'
+			expected: 'cannot use `int literal` as `string` in argument 1 to `Map.delete`'
+		},
+		ReviewRejection{
+			name:     'map_reserve_rejects_bad_count_type'
+			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.reserve("bad")\n}\n'
+			expected: 'cannot use `string` as `u32` in argument 1 to `map[string]int.reserve`'
+		},
+	])
+}
+
 fn test_array_builtin_method_fallback_keeps_return_type() {
 	v3_bin := build_v3()
 	run_good_module_batch(v3_bin, 'array_receiver_methods', [
@@ -3090,23 +3122,6 @@ fn main() {
 	run_bad(v3_bin, 'exact_array_first_method_checked_before_builtin', 'struct Num {}\n\nfn (a []Num) first() string {\n\treturn "bad"\n}\n\nfn take_int(x int) {}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\ttake_int(nums.first())\n}\n', 'cannot use `string` as `int` in argument 1 to `take_int`')
 	fixed_expr_out := run_good_with_flags(v3_bin, 'fixed_array_pointers_evaluates_receiver_once', '-enable-globals', '__global calls int\n\nfn next() int {\n\tcalls = calls + 1\n\treturn 0\n}\n\nfn main() {\n\tmut rows := [1][2]int{}\n\trows[0][0] = 5\n\tptrs := unsafe { rows[next()].pointers() }\n\tunsafe {\n\t\tp0 := &int(ptrs[0])\n\t\t*p0 = 8\n\t}\n\tprintln(int_str(calls))\n\tprintln(int_str(rows[0][0]))\n}\n')
 	assert fixed_expr_out == '1\n8'
-	run_bad_module_batch(v3_bin, 'array_receiver_rejections', [
-		ReviewRejection{
-			name:     'fixed_array_pointers_rejects_rvalue_receiver'
-			source:   'fn make_fixed() [2]int {\n\treturn [7, 8]!\n}\n\nfn main() {\n\t_ := unsafe { make_fixed().pointers() }\n}\n'
-			expected: 'fixed array receiver for `pointers` must be addressable'
-		},
-		ReviewRejection{
-			name:     'fixed_array_pointers_rejects_map_index_receiver'
-			source:   'fn main() {\n\tmut m := map[string][2]int{}\n\tm["x"] = [1, 2]!\n\t_ := unsafe { m["x"].pointers() }\n}\n'
-			expected: 'fixed array receiver for `pointers` must be addressable'
-		},
-		ReviewRejection{
-			name:     'fixed_array_pointers_rejects_extra_arg'
-			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut fixed := [3]int{}\n\t_ := unsafe { fixed.pointers(extra_arg()) }\n}\n'
-			expected: 'expected 0 arguments, but got 1'
-		},
-	])
 }
 
 fn test_alias_receiver_method_value_escape_is_supported() {
@@ -3229,23 +3244,6 @@ fn main() {
 
 fn test_map_builtin_method_fallback_checks_arguments() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'map_receiver_rejections', [
-		ReviewRejection{
-			name:     'map_keys_rejects_extra_arg'
-			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\t_ := m.keys(extra_arg())\n}\n'
-			expected: '`.keys()` does not have any arguments'
-		},
-		ReviewRejection{
-			name:     'map_delete_rejects_bad_key_type'
-			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.delete(123)\n}\n'
-			expected: 'cannot use `int literal` as `string` in argument 1 to `Map.delete`'
-		},
-		ReviewRejection{
-			name:     'map_reserve_rejects_bad_count_type'
-			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.reserve("bad")\n}\n'
-			expected: 'cannot use `string` as `u32` in argument 1 to `map[string]int.reserve`'
-		},
-	])
 	run_good_module_batch(v3_bin, 'map_receiver_methods', [
 		ReviewRuntimeCase{'map_builtin_method_fallback', 'fn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tmut moved := m.move()\n\tprintln(int_str(m.len))\n\tmoved.clear()\n\tmoved.reserve(6)\n\tmoved.delete("x")\n\tkeys := moved.keys()\n\tvalues := moved.values()\n\tcloned := moved.clone()\n\tprintln(int_str(keys.len + values.len + cloned.len))\n}\n', '0\n0'},
 		ReviewRuntimeCase{'map_empty_keys_values_keep_elem_size', "struct State {\n\tlabels map[string]string\n}\n\nfn main() {\n\ts := State{}\n\tmut keys := s.labels.keys()\n\tkeys << 'abc'\n\tprintln(keys[0])\n\tmut values := s.labels.values()\n\tvalues << 'def'\n\tprintln(values[0])\n}\n", 'abc\ndef'},
@@ -8936,9 +8934,10 @@ fn main() {}
 	assert out == ''
 }
 
-fn test_map_rebind_clears_unsafe_alias_provenance() {
+fn test_map_alias_creation_and_rebind_rejections() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'map_rebind_clears_unsafe_alias', 'fn main() {
+	run_bad_module_batch(v3_bin, 'map_alias_creation_and_rebind_rejections', [
+		ReviewRejection{'map_rebind_clears_unsafe_alias', 'fn main() {
 	mut original := {
 		"value": 1
 	}
@@ -8947,7 +8946,14 @@ fn test_map_rebind_clears_unsafe_alias_provenance() {
 	copy := alias
 	println(copy.len)
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+		ReviewRejection{'fresh_unsafe_map_is_not_reference_alias', 'fn main() {
+	mut alias := unsafe { map[string]int{} }
+	copy := alias
+	println(copy.len)
+}
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+	])
 }
 
 fn test_map_alias_control_flow() {
@@ -9038,9 +9044,9 @@ fn main() {
 	])
 }
 
-fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
+fn test_map_alias_conditional_evaluation_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'map_alias_assert_rejections', [
+	run_bad_module_batch(v3_bin, 'map_alias_conditional_evaluation_rejections', [
 		ReviewRejection{
 			name:     'unsafe_map_alias_assert_message_assignment'
 			source:   'fn main() {
@@ -9081,17 +9087,51 @@ fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
 '
 			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
 		},
+		ReviewRejection{
+			name:     'unsafe_map_alias_skipped_logical_and_rhs'
+			source:   'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if false && (if true {
+		alias = unsafe { original }
+		true
+	} else {
+		alias = unsafe { original }
+		true
+	}) {}
+	copy := alias
+	println(copy.len)
+}
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+		ReviewRejection{
+			name:     'unsafe_map_alias_skipped_logical_or_rhs'
+			source:   'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if true || (if true {
+		alias = unsafe { original }
+		true
+	} else {
+		alias = unsafe { original }
+		true
+	}) {}
+	copy := alias
+	println(copy.len)
+}
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
 	])
 }
 
 fn test_fresh_unsafe_map_is_not_reference_alias() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'fresh_unsafe_map_is_not_reference_alias', 'fn main() {
-	mut alias := unsafe { map[string]int{} }
-	copy := alias
-	println(copy.len)
-}
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	out := run_good(v3_bin, 'unsafe_map_reference_alias', 'fn main() {
 	mut original := {
 		"value": 1
@@ -9155,44 +9195,10 @@ fn main() {
 	])
 }
 
-fn test_unsafe_map_alias_unconditional_loop_has_no_zero_iteration_path() {
+fn test_map_alias_control_flow_rejections() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'map_alias_loop_runtime', [
-		ReviewRuntimeCase{
-			name:     'unsafe_map_alias_unconditional_loop'
-			source:   'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	for {
-		alias = unsafe { original }
-		break
-	}
-	copy := alias
-	println(copy.len)
-}
-'
-			expected: '1'
-		},
-		ReviewRuntimeCase{
-			name:     'unsafe_map_alias_skipped_loop_post'
-			source:   'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := unsafe { original }
-	for ;; alias = map[string]int{} {
-		break
-	}
-	copy := alias
-	println(copy.len)
-}
-'
-			expected: '1'
-		},
-	])
-	run_bad(v3_bin, 'unsafe_map_alias_conditional_loop_zero_path', 'fn branch(cond bool) {
+	run_bad_module_batch(v3_bin, 'map_alias_control_flow_rejections', [
+		ReviewRejection{'unsafe_map_alias_conditional_loop_zero_path', 'fn branch(cond bool) {
 	mut original := {
 		"value": 1
 	}
@@ -9208,12 +9214,8 @@ fn test_unsafe_map_alias_unconditional_loop_has_no_zero_iteration_path() {
 fn main() {
 	branch(false)
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-}
-
-fn test_unsafe_map_alias_loop_break_before_assignment_is_rejected() {
-	v3_bin := build_v3()
-	run_bad(v3_bin, 'unsafe_map_alias_break_before_assignment', 'fn branch(cond bool) {
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+		ReviewRejection{'unsafe_map_alias_break_before_assignment', 'fn branch(cond bool) {
 	mut original := {
 		"value": 1
 	}
@@ -9231,58 +9233,7 @@ fn test_unsafe_map_alias_loop_break_before_assignment_is_rejected() {
 fn main() {
 	branch(true)
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-}
-
-fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'map_alias_short_circuit_rejections', [
-		ReviewRejection{
-			name:     'unsafe_map_alias_skipped_logical_and_rhs'
-			source:   'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	if false && (if true {
-		alias = unsafe { original }
-		true
-	} else {
-		alias = unsafe { original }
-		true
-	}) {}
-	copy := alias
-	println(copy.len)
-}
-'
-			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
-		},
-		ReviewRejection{
-			name:     'unsafe_map_alias_skipped_logical_or_rhs'
-			source:   'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	if true || (if true {
-		alias = unsafe { original }
-		true
-	} else {
-		alias = unsafe { original }
-		true
-	}) {}
-	copy := alias
-	println(copy.len)
-}
-'
-			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
-		},
-	])
-}
-
-fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'map_alias_flow_rejections', [
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
 		ReviewRejection{
 			name:     'unsafe_map_alias_if_return_path'
 			source:   'fn branch(cond bool) {
@@ -9349,6 +9300,49 @@ fn main() {
 			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
 		},
 	])
+}
+
+fn test_unsafe_map_alias_unconditional_loop_has_no_zero_iteration_path() {
+	v3_bin := build_v3()
+	run_good_module_batch(v3_bin, 'map_alias_loop_runtime', [
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_unconditional_loop'
+			source:   'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for {
+		alias = unsafe { original }
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+'
+			expected: '1'
+		},
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_skipped_loop_post'
+			source:   'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	for ;; alias = map[string]int{} {
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+'
+			expected: '1'
+		},
+	])
+}
+
+fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {
+	v3_bin := build_v3()
 	run_good_module_batch(v3_bin, 'map_alias_flow_runtime', [
 		ReviewRuntimeCase{
 			name:     'unsafe_map_alias_all_if_paths'
@@ -9399,9 +9393,10 @@ fn main() {
 	])
 }
 
-fn test_unsafe_map_alias_provenance_isolates_or_fallback() {
+fn test_map_alias_branch_isolation_rejections() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'unsafe_map_alias_or_fallback_success_path', 'fn maybe(ok bool) ?int {
+	run_bad_module_batch(v3_bin, 'map_alias_branch_isolation_rejections', [
+		ReviewRejection{'unsafe_map_alias_or_fallback_success_path', 'fn maybe(ok bool) ?int {
 	if ok {
 		return 1
 	}
@@ -9424,12 +9419,8 @@ fn branch(ok bool) {
 fn main() {
 	branch(true)
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-}
-
-fn test_unsafe_map_alias_provenance_delays_defer_effects() {
-	v3_bin := build_v3()
-	run_bad(v3_bin, 'unsafe_map_alias_deferred_assignment', 'fn main() {
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+		ReviewRejection{'unsafe_map_alias_deferred_assignment', 'fn main() {
 	mut original := {
 		"value": 1
 	}
@@ -9440,12 +9431,8 @@ fn test_unsafe_map_alias_provenance_delays_defer_effects() {
 	copy := alias
 	println(copy.len)
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-}
-
-fn test_unsafe_map_alias_provenance_isolates_select_branches() {
-	v3_bin := build_v3()
-	run_bad(v3_bin, 'unsafe_map_alias_select_branch_isolation', 'fn main() {
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+		ReviewRejection{'unsafe_map_alias_select_branch_isolation', 'fn main() {
 	mut original := {
 		"value": 1
 	}
@@ -9461,7 +9448,8 @@ fn test_unsafe_map_alias_provenance_isolates_select_branches() {
 		}
 	}
 }
-', 'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+	])
 }
 
 fn test_recursive_str_storage_mutation_rejections() {
@@ -9801,9 +9789,9 @@ fn main() {
 	])
 }
 
-fn test_recursive_str_detects_implicit_print_formatting() {
+fn test_str_formatting_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'str_print_rejections', [
+	run_bad_module_batch(v3_bin, 'str_formatting_rejections', [
 		ReviewRejection{
 			name:     'recursive_str_print_receiver'
 			source:   'struct Item {}
@@ -9824,6 +9812,42 @@ fn main() {}
 fn (item Item) str() string {
 	eprintln([item])
 	return ""
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_interpolated_receiver'
+			source:   'struct Item {}
+
+fn (item Item) str() string {
+	return "\${item}"
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_interpolated_aggregate_receiver'
+			source:   'struct Item {}
+
+fn (item Item) str() string {
+	return "\${[item]}"
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_formatted_receiver'
+			source:   'struct Item {}
+
+fn (item Item) str() string {
+	return "\${item:10}"
 }
 
 fn main() {}
@@ -9882,51 +9906,9 @@ fn (item SlicedItem) str() string {
 	])
 }
 
-fn test_recursive_str_detects_string_interpolation_formatting() {
+fn test_str_aggregate_conversion_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'str_interpolation_rejections', [
-		ReviewRejection{
-			name:     'recursive_str_interpolated_receiver'
-			source:   'struct Item {}
-
-fn (item Item) str() string {
-	return "\${item}"
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-		ReviewRejection{
-			name:     'recursive_str_interpolated_aggregate_receiver'
-			source:   'struct Item {}
-
-fn (item Item) str() string {
-	return "\${[item]}"
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-		ReviewRejection{
-			name:     'recursive_str_formatted_receiver'
-			source:   'struct Item {}
-
-fn (item Item) str() string {
-	return "\${item:10}"
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-	])
-}
-
-fn test_recursive_str_detects_explicit_aggregate_stringification() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'str_aggregate_rejections', [
+	run_bad_module_batch(v3_bin, 'str_aggregate_conversion_rejections', [
 		ReviewRejection{
 			name:     'recursive_str_explicit_array_str'
 			source:   'struct Item {}
@@ -9955,7 +9937,40 @@ fn main() {}
 '
 			expected: 'cannot call `str()` method recursively'
 		},
+		ReviewRejection{
+			name:     'recursive_str_nonzero_repeated_array'
+			source:   'struct Item {}
+
+fn (item Item) str() string {
+	values := []Item{len: 1, init: item}
+	return values.str()
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_helper_nonzero_repeated_array'
+			source:   'struct Item {}
+
+fn repeat(item Item) []Item {
+	return []Item{len: 1, init: item}
+}
+
+fn (item Item) str() string {
+	return repeat(item).str()
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
 	])
+}
+
+fn test_recursive_str_detects_explicit_aggregate_stringification() {
+	v3_bin := build_v3()
 	run_good_module_batch(v3_bin, 'str_aggregate_runtime', [
 		ReviewRuntimeCase{
 			name:     'recursive_str_explicit_array_str_progress'
@@ -10041,37 +10056,6 @@ fn main() {
 }
 '
 			expected: '[]'
-		},
-	])
-	run_bad_module_batch(v3_bin, 'str_repeated_array_rejections', [
-		ReviewRejection{
-			name:     'recursive_str_nonzero_repeated_array'
-			source:   'struct Item {}
-
-fn (item Item) str() string {
-	values := []Item{len: 1, init: item}
-	return values.str()
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-		ReviewRejection{
-			name:     'recursive_str_helper_nonzero_repeated_array'
-			source:   'struct Item {}
-
-fn repeat(item Item) []Item {
-	return []Item{len: 1, init: item}
-}
-
-fn (item Item) str() string {
-	return repeat(item).str()
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
 		},
 	])
 }
