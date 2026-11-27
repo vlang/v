@@ -21,11 +21,16 @@ fn test_immediate_string_slice_consumers() {
 	c := os.read_file(generated)!
 	for name in ['slice_equal', 'slice_reversed', 'slice_unequal', 'slice_open', 'slice_empty',
 		'slice_unicode', 'emit_range', 'emit_open', 'copy_range', 'ordered_equal', 'ordered_write',
-		'ordered_copy', 'guarded_equal', 'guarded_or', 'snapshot_header'] {
+		'ordered_copy', 'nested_copy', 'guarded_equal', 'guarded_or', 'snapshot_header'] {
 		body := slice_consumer_function(c, name)
 		assert body.contains('string__substr_borrowed('), '${name}: ${body}'
 		assert !body.contains('string__substr('), '${name}: ${body}'
 	}
+	// C leaves argument order unspecified. The runtime copy must be its own statement.
+	nested := slice_consumer_function(c, 'nested_copy')
+	copy_pos := nested.index('copy(') or { panic(nested) }
+	overwrite_pos := nested.index('overwrite(') or { panic(nested) }
+	assert copy_pos < overwrite_pos && nested[copy_pos..overwrite_pos].contains(';'), nested
 	assert slice_consumer_function(c, 'emit_range').contains('write_string_borrowed(')
 	// Rewritten propagation expressions lack the source ancestry needed by the
 	// immediate-consumer proof and deliberately retain the ordinary slice.

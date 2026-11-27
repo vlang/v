@@ -60,6 +60,24 @@ fn ordered_copy(mut dst []u8, mut t Trace) int {
 	return copy(mut dst[1..], t.source()[t.lower()..t.upper()])
 }
 
+struct CopySource {
+mut:
+	data []u8
+}
+
+fn (mut s CopySource) overwrite() int {
+	s.data[1] = `X`
+	return 0
+}
+
+fn add_counts(a int, b int) int { return a + b }
+
+fn nested_copy(mut dst []u8, mut source CopySource) int {
+	// The array stays live while the second argument mutates the shared bytes.
+	text := unsafe { tos(source.data.data, source.data.len) }
+	return add_counts(copy(mut dst, text[1..4]), source.overwrite())
+}
+
 fn guarded_equal(mut t Trace, run bool) bool {
 	return run && t.source()[t.lower()..t.upper()] == 'bcd'
 }
@@ -117,6 +135,10 @@ fn main() {
 	mut dst := '----'.bytes()
 	if ordered_copy(mut dst, mut t) != 3 || t.log != 'slh' || dst.bytestr() != '-bcd' {
 		panic('copy order: ' + t.log)
+	}
+	mut source := CopySource{data: 'abcdef'.bytes()}
+	if nested_copy(mut dst, mut source) != 3 || dst.bytestr() != 'bcdd' || source.data[1] != `X` {
+		panic('nested copy order')
 	}
 	if copy_range(mut dst, 'aé\x00z', 1, 4) != 3 || dst.bytestr() != 'é\x00d' {
 		panic('copy range bytes')

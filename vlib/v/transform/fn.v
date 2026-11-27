@@ -15491,7 +15491,12 @@ fn (mut t Transformer) try_lower_copy_call(call_id flat.NodeId, node flat.Node) 
 		return t.lower_owned_copy_call(dst, src, t.copy_source_is_temporary(src_arg_id),
 			elem_type, array_type)
 	}
-	return t.make_call_typed('copy', [dst, src], flat.source_type_int)
+	result := t.make_call_typed('copy', [dst, src], flat.source_type_int)
+	if borrowed_source != flat.empty_node {
+		// Consume the borrowed bytes before evaluating any later enclosing operands.
+		return t.stable_transformed_expr_for_reuse(result, flat.source_type_int, 'copy_result')
+	}
+	return result
 }
 
 // lower_owned_copy_call copies elements that need ownership destruction one by one:
