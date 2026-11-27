@@ -608,16 +608,6 @@ pub fn check() {
 	}
 }
 
-fn test_nested_optional_sum_cast_is_rejected() {
-	nested := borrow_storage_compile('nested_optional_sum_cast', '
-type Bucket = []int | int
-fn absent() ?Bucket { return ?Bucket(?Bucket(none)) }
-fn main() { _ = absent() }
-')
-	assert nested.exit_code != 0
-	assert nested.output.contains('cannot cast `?Bucket` to `?Bucket`')
-}
-
 fn test_mutable_wrapped_array_storage_preserves_payloads_and_specializations() {
 	wrappers := {
 		'option':       '?[]Res'
@@ -962,7 +952,7 @@ ${branches.join('\n')}
 	}
 }
 
-fn test_result_storage_aliases_require_immediate_unwrapping() {
+fn test_result_storage_aliases_and_nested_optional_sum_cast_are_rejected() {
 	mut source := borrow_storage_drop_decls + '
 struct Fault implements IClone, Drop { id int }
 fn (r Fault) msg() string { return "failed" }
@@ -1045,14 +1035,21 @@ fn check_${case_id}() {
 fn main() {
 	check_array_result()
 ${calls.join('\n')}
+	_ = absent()
 }
+'
+	nested_cast_line := source.count('\n') + 3
+	source += '
+type Bucket = []int | int
+fn absent() ?Bucket { return ?Bucket(?Bucket(none)) }
 '
 	name := 'result_storage_aliases'
 	build := borrow_storage_compile_with_flags(name, source, '-nocolor -message-limit 100')
 	assert build.exit_code != 0, build.output
 	mut rejected_lines := []int{}
 	mut rejected_fail_lines := []int{}
-	for diagnostic in build.output.split('${name}.v:') {
+	diagnostics := build.output.split('${name}.v:')
+	for diagnostic in diagnostics {
 		line := diagnostic.all_before(':').int()
 		if diagnostic.contains(': error: cannot make an alias of Result type')
 			&& diagnostic.contains('Details: Result types cannot be stored and have to be unwrapped immediately') {
@@ -1066,6 +1063,8 @@ ${calls.join('\n')}
 		assert line in rejected_lines, '${case_name}: ${build.output}'
 	}
 	assert rejected_fail_lines.sorted() == fail_lines, build.output
+	assert diagnostics.any(it.all_before(':').int() == nested_cast_line
+		&& it.contains(': error: cannot cast `?Bucket` to `?Bucket`')), build.output
 }
 
 fn test_invalid_owned_array_growth_and_deletion_preserve_diagnostics() {
