@@ -624,3 +624,124 @@ jobs:
           name: sort-selector-matched-instruction-evidence
           path: ${{ runner.temp }}/sort-selector-benchmark/
           if-no-files-found: error
+
+  upstream-vtl-verification:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+        backend: [pure, cblas]
+        shard: [1]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      VFLAGS: -no-parallel
+      VJOBS: 1
+      VTL_CI_BACKEND: ${{ matrix.backend }}
+      VTL_CI_SHARD_INDEX: ${{ matrix.shard }}
+      VTL_CI_SHARD_COUNT: '3'
+      VSL_CI_REVISION: d60f9c36df5e9d3ef73e4c6876d83474b6e2953b
+      VTL_CI_REVISION: 7ba41eb7ecb3fa206ff3ae0ed7b88350d45bdce9
+      # Fixes complaints about $TERM not being set when running the vtl test script
+      # (a warning on Linux, but an error on macOS).
+      TERM: xterm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 8ffbb86408235aa1e8026a4b223fd479f5227c8a
+          persist-credentials: false
+      - name: Verify the actual upstream fixed source and original shard adapter
+        run: |
+          set -eu
+          test "$(git rev-parse HEAD)" = 8ffbb86408235aa1e8026a4b223fd479f5227c8a
+          test "$(git rev-parse HEAD:vlib/v/transform/array.v)" = 031a47823b93eba222d16ae2e5547c37378e9b82
+          test "$(git rev-parse HEAD:ci/vtl_v_shard.py)" = 8acfe329ff9f0471c23e713672c38612506b596c
+          python3 cmd/tools/vtl_ci_test.py
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cache-apt-packages-action
+      - name: Cache Homebrew downloads
+        if: runner.os == 'macOS'
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-vtl-${{ hashFiles('.github/workflows/vsl_and_vtl_compile_ci.yml') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-vtl-
+            brew-${{ matrix.os }}-
+      - name: Build V
+        id: build
+        uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'false'
+      - name: Install dependencies
+        run: |
+          if [ "$RUNNER_OS" == 'Linux' ]; then
+            .github/workflows/disable_azure_mirror.sh
+            v retry -- sudo apt -qq update
+            v retry -- sudo apt -qq install \
+              libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev
+          else
+            v retry brew install coreutils hdf5 open-mpi openblas lapack opencl-headers
+          fi
+      - name: Install vtl
+        run: |
+          vtl_dir="$HOME/.vmodules/vtl"
+          git init "$vtl_dir"
+          git -C "$vtl_dir" remote add origin https://github.com/vlang/vtl.git
+          v retry -- git -C "$vtl_dir" fetch --depth=1 origin "$VTL_CI_REVISION:refs/remotes/origin/ci-pinned"
+          git -C "$vtl_dir" checkout --detach "$VTL_CI_REVISION"
+          v retry -- git -C "$vtl_dir" submodule update --init --recursive --depth=1
+          cd "$vtl_dir"
+          # Install the pinned VTL manifest's dependencies, including its VSL version.
+          v retry -- v install
+      - name: Use VSL revision shared with VSL CI
+        run: |
+          # VTL's tagged VSL dependency predates APIs required by current VTL.
+          # Replace the manifest-installed version with the revision that all
+          # VSL and VTL backends/shards agreed on before this run started.
+          vsl_dir="$HOME/.vmodules/vsl"
+          test -d "$vsl_dir/.git" || { echo "VTL did not install the VSL dependency" >&2; exit 1; }
+          v retry -- git -C "$vsl_dir" fetch --depth=1 origin "$VSL_CI_REVISION:refs/remotes/origin/ci-pinned"
+          git -C "$vsl_dir" checkout --detach "$VSL_CI_REVISION"
+          v retry -- git -C "$vsl_dir" submodule update --init --recursive --depth=1
+      - name: Confirm pinned dependency revisions and run original example
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C "$HOME/.vmodules/vtl" rev-parse HEAD)" = "$VTL_CI_REVISION"
+          test "$(git -C "$HOME/.vmodules/vsl" rev-parse HEAD)" = "$VSL_CI_REVISION"
+          ./v version
+          example="$HOME/.vmodules/vtl/examples/vtl_basic_usage/main.v"
+          flags=()
+          if [ "$VTL_CI_BACKEND" = cblas ]; then flags=(-d cblas); fi
+          ./v "${flags[@]}" -no-parallel -no-retry-compilation -showcc -o "$RUNNER_TEMP/vtl-original.bin" "$example"
+          "$RUNNER_TEMP/vtl-original.bin"
+          ./v -no-parallel vlib/json2/encode_map_order_test.v
+      - name: Skip optional Vulkan examples on macOS
+        if: runner.os == 'macOS'
+        run: |
+          for file in "$HOME"/.vmodules/vtl/examples/*vulkan*/*.v; do
+            [ -e "$file" ] || continue
+            mv "$file" "${file%.v}_not_ci.v"
+          done
+      - name: Test VTL with ${{ matrix.backend }} backend (shard ${{ matrix.shard }})
+        run: |
+          # Keep upstream's scoped discovery, example builds, and smoke runs.
+          # The PATH adapter assigns each target to one job without raising VJOBS.
+          shard_bin="$RUNNER_TEMP/vtl-shard-bin"
+          mkdir -p "$shard_bin"
+          cp ci/vtl_v_shard.py "$shard_bin/v"
+          chmod +x "$shard_bin/v"
+          export VTL_CI_ROOT="$HOME/.vmodules/vtl"
+          export VTL_CI_VEXE="$GITHUB_WORKSPACE/v"
+          export VTL_CI_PATH="$PATH"
+          export PATH="$shard_bin:$PATH"
+          if [ "$VTL_CI_BACKEND" = "pure" ]; then
+            ~/.vmodules/vtl/bin/test
+          elif [ "$VTL_CI_BACKEND" = "cblas" ]; then
+            ~/.vmodules/vtl/bin/test --use-cblas
+          else
+            echo "Unsupported VTL backend: $VTL_CI_BACKEND" >&2
+            exit 1
+          fi
