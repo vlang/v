@@ -10,6 +10,7 @@ import crypto.sha256
 import crypto.sha512
 import encoding.base64
 import json2
+import net.mbedtls
 import time
 
 // Algorithm represents the cryptographic signing algorithm used in the JWS/JWT.
@@ -18,6 +19,7 @@ pub enum Algorithm {
 	hs384
 	hs512
 	eddsa
+	rs256
 }
 
 // str returns the standard string identifier (e.g. 'HS256', 'EdDSA') for the algorithm.
@@ -27,6 +29,7 @@ pub fn (a Algorithm) str() string {
 		.hs384 { 'HS384' }
 		.hs512 { 'HS512' }
 		.eddsa { 'EdDSA' }
+		.rs256 { 'RS256' }
 	}
 }
 
@@ -37,6 +40,7 @@ pub fn parse_algorithm(name string) !Algorithm {
 		'HS384' { Algorithm.hs384 }
 		'HS512' { Algorithm.hs512 }
 		'EdDSA' { Algorithm.eddsa }
+		'RS256' { Algorithm.rs256 }
 		else { error('unsupported or invalid JWT algorithm: ${name}') }
 	}
 }
@@ -156,6 +160,9 @@ pub fn sign_raw(header Header, payload_json string, key []u8) !string {
 			}
 			ed25519.sign(key, signing_input.bytes())!
 		}
+		.rs256 {
+			rsa_sign_pkcs1v15_sha256(key, signing_input.bytes())!
+		}
 	}
 	encoded_sig := base64.url_encode(sig)
 	return '${signing_input}.${encoded_sig}'
@@ -231,6 +238,12 @@ pub fn verify_raw(token string, key []u8, options VerifyOptions) !string {
 				return error('invalid public key length for EdDSA (expected 32 bytes)')
 			}
 			valid := ed25519.verify(key, signing_input.bytes(), expected_sig) or { false }
+			if !valid {
+				return error('invalid token signature')
+			}
+		}
+		.rs256 {
+			valid := rsa_verify_pkcs1v15_sha256(key, signing_input.bytes(), expected_sig) or { false }
 			if !valid {
 				return error('invalid token signature')
 			}
@@ -375,6 +388,9 @@ fn decode_segment(encoded string) ![]u8 {
 	return decoded
 }
 
+// C binding not exposed by net.mbedtls for public keys.
+fn C.mbedtls_pk_parse_public_key(ctx &C.mbedtls_pk_context, key &u8, keylen uint) i32
+
 // decode_object also rejects duplicate top-level members, including escaped spellings of a key.
 fn decode_object(source string, label string) !map[string]json2.Any {
 	value := json2.decode[map[string]json2.Any](source, strict: true) or {
@@ -414,4 +430,70 @@ fn decode_object(source string, label string) !map[string]json2.Any {
 		i++
 	}
 	return value
+}
+
+// rsa_sign_pkcs1v15_sha256 signs `data` with an RSA private key (PEM or DER)
+// using PKCS#1 v1.5 padding and SHA-256 (RS256).
+fn rsa_sign_pkcs1v15_sha256(key []u8, data []u8) ![]u8 {
+	mut pk := C.mbedtls_pk_context{}
+	C.mbedtls_pk_init(&pk)
+	defer {
+		C.mbedtls_pk_free(&pk)
+	}
+
+	mut entropy := C.mbedtls_entropy_context{}
+	mut ctr := C.mbedtls_ctr_drbg_context{}
+	C.mbedtls_entropy_init(&entropy)
+	C.mbedtls_ctr_drbg_init(&ctr)
+	defer {
+		C.mbedtls_ctr_drbg_free(&ctr)
+		C.mbedtls_entropy_free(&entropy)
+	}
+	seed_ret := C.mbedtls_ctr_drbg_seed(&ctr, C.mbedtls_entropy_func, &entropy, unsafe { nil }, 0)
+	if seed_ret != 0 {
+		return error('mbedtls_ctr_drbg_seed failed: ${seed_ret}')
+	}
+
+	mut keybuf := key.clone()
+	if key.bytestr().contains('-----BEGIN') {
+		keybuf << 0
+	}
+	parse_ret := C.mbedtls_pk_parse_key(&pk, unsafe { &keybuf[0] }, keybuf.len, unsafe { nil }, 0,
+		C.mbedtls_ctr_drbg_random, &ctr)
+	if parse_ret != 0 {
+		return error('mbedtls_pk_parse_key failed: ${parse_ret}')
+	}
+
+	hash := sha256.sum(data)
+	mut sig := []u8{len: 1024}
+	mut sig_len := uint(0)
+	ret := C.mbedtls_pk_sign_ext(1, &pk, 9, unsafe { &hash[0] }, hash.len, unsafe { &sig[0] }, sig.len,
+		&sig_len, C.mbedtls_ctr_drbg_random, &ctr)
+	if ret != 0 {
+		return error('mbedtls_pk_sign_ext failed: ${ret}')
+	}
+	return sig[..int(sig_len)].clone()
+}
+
+// rsa_verify_pkcs1v15_sha256 verifies an RS256 signature with an RSA public
+// key (PEM or DER).
+fn rsa_verify_pkcs1v15_sha256(key []u8, data []u8, sig []u8) !bool {
+	mut pk := C.mbedtls_pk_context{}
+	C.mbedtls_pk_init(&pk)
+	defer {
+		C.mbedtls_pk_free(&pk)
+	}
+
+	mut keybuf := key.clone()
+	if key.bytestr().contains('-----BEGIN') {
+		keybuf << 0
+	}
+	parse_ret := C.mbedtls_pk_parse_public_key(&pk, unsafe { &keybuf[0] }, keybuf.len)
+	if parse_ret != 0 {
+		return error('mbedtls_pk_parse_public_key failed: ${parse_ret}')
+	}
+
+	hash := sha256.sum(data)
+	ret := C.mbedtls_pk_verify(&pk, 9, unsafe { &hash[0] }, hash.len, unsafe { &sig[0] }, sig.len)
+	return ret == 0
 }
