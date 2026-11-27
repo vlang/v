@@ -86,11 +86,14 @@ pub fn check() {
 	assert value(mut holder) == "value"
 }
 '
-	fixtures := {
+	run_owned_storage_checks(root, {
 		'local_return':   local_return
 		'mutable_return': mutable_return
 		'chained_return': chained_return
-	}
+	})!
+}
+
+fn run_owned_storage_checks(root string, fixtures map[string]string) ! {
 	mut imports := []string{cap: fixtures.len}
 	mut calls := []string{cap: fixtures.len}
 	for name, fixture in fixtures {
@@ -205,26 +208,28 @@ fn escaped() Holder {
 }
 fn main() {}
 ', [local_storage_return_error]}
-	cases << OwnedStorageRejection{owned_storage_map_source_fixture(true), [
+	cases << OwnedStorageRejection{owned_storage_map_source_fixture(true) + 'fn main() { _ = escaped() }\n', [
 		'cannot return a reference to local storage `source`',
 	]}
 	cases << OwnedStorageRejection{owned_storage_overwrite_fixture('Holder{target: local.reference()}',
-		'no_op(mut holder, 42)'), [local_storage_return_error]}
+		'no_op(mut holder, 42)', 'fn main()'), [local_storage_return_error]}
 	cases << OwnedStorageRejection{owned_storage_overwrite_fixture('Holder{target: &Builder{number: 0}}',
-		'store_borrowed(mut holder, local.reference())'), [local_storage_return_error]}
+		'store_borrowed(mut holder, local.reference())', 'fn main()'), [local_storage_return_error]}
 	check_owned_storage_rejections(root, cases)!
 }
 
-fn test_ownership_mutable_map_sources_preserve_owned_values() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_mutable_map_source_${os.getpid()}')
+fn test_ownership_storage_preserves_owned_map_sources_and_overwrites() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_storage_acceptance_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
-	os.write_file(source_path, owned_storage_map_source_fixture(false))!
-	for mode in ['-no-parallel', ''] {
-		result := run_owned_storage_summary(source_path, mode, 'run')
-		assert result.exit_code == 0, '${mode}: ${result.output}'
-	}
+	owned_source := owned_storage_map_source_fixture(false) +
+		'pub fn check() { assert escaped().value["key"] == "value" }\n'
+	overwritten := owned_storage_overwrite_fixture('Holder{target: local.reference()}',
+		'store_number(mut holder, 42)', 'pub fn check()')
+	run_owned_storage_checks(root, {
+		'owned_source': owned_source
+		'overwritten':  overwritten
+	})!
 }
 
 fn owned_storage_map_source_fixture(borrowed_header bool) string {
@@ -237,11 +242,6 @@ fn owned_storage_map_source_fixture(borrowed_header bool) string {
 	store_body := if borrowed_header { '_ = holder; _ = number' } else { 'holder.value = source' }
 	initial := if borrowed_header { 'Holder{value: &source}' } else { 'Holder{}' }
 	argument := if borrowed_header { '0' } else { 'mut source' }
-	main_body := if borrowed_header {
-		'_ = escaped()'
-	} else {
-		'assert escaped().value["key"] == "value"'
-	}
 	return 'struct Holder { mut: value ${field_type} }
 fn store(mut holder Holder, ${params}) { ${store_body} }
 fn escaped() Holder {
@@ -250,7 +250,6 @@ fn escaped() Holder {
 	store(mut holder, ${argument})
 	return holder
 }
-fn main() { ${main_body} }
 '
 }
 
@@ -379,20 +378,7 @@ fn check_scalar_projections() {
 	}
 }
 
-fn test_ownership_storage_queries_preserve_overwrites() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_storage_proof_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
-	os.write_file(source_path, owned_storage_overwrite_fixture('Holder{target: local.reference()}',
-		'store_number(mut holder, 42)'))!
-	for mode in ['-no-parallel', ''] {
-		result := run_owned_storage_summary(source_path, mode, 'run')
-		assert result.exit_code == 0, '${mode}: ${result.output}'
-	}
-}
-
-fn owned_storage_overwrite_fixture(initial string, setter string) string {
+fn owned_storage_overwrite_fixture(initial string, setter string, entry_point string) string {
 	return 'struct Builder { mut: number int }
 fn (mut builder Builder) reference() &Builder { return builder }
 struct Holder { mut: target &Builder }
@@ -405,7 +391,7 @@ fn escaped() Holder {
 	${setter}
 	return holder
 }
-fn main() { assert escaped().target.number == 42 }
+${entry_point} { assert escaped().target.number == 42 }
 '
 }
 
