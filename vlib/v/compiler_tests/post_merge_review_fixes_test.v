@@ -486,27 +486,11 @@ fn main() {
 	assert out == '2\n0\n4\n0'
 }
 
-fn test_multi_return_assignment_requires_option_result_handling() {
+fn test_multiple_return_values() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'multi_return_rejections', [
-		ReviewRejection{
-			name:     'unhandled_result_multi_decl_assign'
-			source:   "fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n"
-			expected: 'pair() returns `!(int, string)`, so it should have either an `or {}` block, or `!` at the end'
-		},
-		ReviewRejection{
-			name:     'unhandled_result_multi_assign'
-			source:   "fn pair() !(int, string) {\n\treturn 4, 'ok'\n}\n\nfn main() {\n\tmut a := 0\n\tmut b := ''\n\ta, b = pair()\n\tprintln(int_str(a) + b)\n}\n"
-			expected: 'requires `or {}`, `!`, or `?` handling'
-		},
-	])
-	out := run_good(v3_bin, 'handled_result_multi_decl_assign', "fn pair() !(int, string) {\n\treturn 5, 'ok'\n}\n\nfn main() {\n\ta, b := pair() or { panic(err) }\n\tprintln(int_str(a) + b)\n}\n")
-	assert out == '5ok'
-}
-
-fn test_multi_assignment_checks_all_rhs_before_invalidating_smartcasts() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'multi_assign_smartcast_rhs', 'struct Foo {
+	run_good_module_batch(v3_bin, 'multiple_return_values', [
+		ReviewRuntimeCase{'handled_result_multi_decl_assign', "fn pair() !(int, string) {\n\treturn 5, 'ok'\n}\n\nfn main() {\n\ta, b := pair() or { panic(err) }\n\tprintln(int_str(a) + b)\n}\n", '5ok'},
+		ReviewRuntimeCase{'multi_assign_smartcast_rhs', 'struct Foo {
 	field int
 }
 
@@ -528,8 +512,52 @@ fn main() {
 	}
 	println(int_str(y))
 }
-')
-	assert out == '7'
+', '7'},
+		ReviewRuntimeCase{'forwarded_multi_return_container_slots', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_values() ([]Value, int) {
+	return [Value{
+		n: 3
+	}], 7
+}
+
+fn forward_values() ([]IValue, int) {
+	return make_values()
+}
+
+fn main() {
+	values, n := forward_values()
+	println(int_str(values[0].get()))
+	println(int_str(n))
+}
+', '3\n7'},
+	])
+}
+
+fn test_multi_return_assignment_requires_option_result_handling() {
+	v3_bin := build_v3()
+	run_bad_module_batch(v3_bin, 'multi_return_rejections', [
+		ReviewRejection{
+			name:     'unhandled_result_multi_decl_assign'
+			source:   "fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n"
+			expected: 'pair() returns `!(int, string)`, so it should have either an `or {}` block, or `!` at the end'
+		},
+		ReviewRejection{
+			name:     'unhandled_result_multi_assign'
+			source:   "fn pair() !(int, string) {\n\treturn 4, 'ok'\n}\n\nfn main() {\n\tmut a := 0\n\tmut b := ''\n\ta, b = pair()\n\tprintln(int_str(a) + b)\n}\n"
+			expected: 'requires `or {}`, `!`, or `?` handling'
+		},
+	])
 }
 
 fn test_sum_type_checks_pointer_variant_identity() {
@@ -997,35 +1025,6 @@ fn main() {
 
 fn test_forwarded_multi_return_container_slots_are_converted() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'forwarded_multi_return_container_slots', 'interface IValue {
-	get() int
-}
-
-struct Value {
-	n int
-}
-
-fn (value Value) get() int {
-	return value.n
-}
-
-fn make_values() ([]Value, int) {
-	return [Value{
-		n: 3
-	}], 7
-}
-
-fn forward_values() ([]IValue, int) {
-	return make_values()
-}
-
-fn main() {
-	values, n := forward_values()
-	println(int_str(values[0].get()))
-	println(int_str(n))
-}
-')
-	assert out == '3\n7'
 	// A map is not converted entry by entry: since #30815 a `map[string]Value` is
 	// not a `map[string]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
 	run_bad(v3_bin, 'forwarded_multi_return_map_interface_slot', 'interface IValue {
@@ -1992,9 +1991,10 @@ fn main() {
 	])
 }
 
-fn test_select_dereferences_pointer_channels() {
+fn test_select_pointer_channels_and_timeouts() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'select_pointer_channels', 'fn receive(ch &chan int) int {
+	run_good_module_batch(v3_bin, 'select_pointer_channels_and_timeouts', [
+		ReviewRuntimeCase{'select_pointer_channels', 'fn receive(ch &chan int) int {
 	select {
 		value := <-ch {
 			return value
@@ -2016,8 +2016,20 @@ fn main() {
 	send(&ch, 5)
 	println(int_str(<-ch))
 }
-')
-	assert out == '3\n5'
+', '3\n5'},
+		ReviewRuntimeCase{'select_timeout_only', 'import time
+
+fn main() {
+	mut fired := false
+	select {
+		time.millisecond {
+			fired = true
+		}
+	}
+	println(fired.str())
+}
+', 'true'},
+	])
 }
 
 fn test_select_lowering_roots_array_free() {
@@ -2108,23 +2120,6 @@ fn main() {
 	}
 }
 ', 'at most one timeout branch allowed in `select` block')
-}
-
-fn test_select_timeout_only_waits_and_runs_branch() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'select_timeout_only', 'import time
-
-fn main() {
-	mut fired := false
-	select {
-		time.millisecond {
-			fired = true
-		}
-	}
-	println(fired.str())
-}
-')
-	assert out == 'true'
 }
 
 fn test_select_receive_declaration_requires_identifier() {
@@ -2343,9 +2338,10 @@ fn test_comptime_if_threads_counts_spawns_in_imported_modules() {
 	assert nested_out == 'threads'
 }
 
-fn test_select_receive_assignment_invalidates_smartcast_before_branch_body() {
+fn test_select_receive_smartcasts() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'select_receive_assign_invalidates_smartcast', 'struct Foo {
+	run_good_module_batch(v3_bin, 'select_receive_smartcasts', [
+		ReviewRuntimeCase{'select_receive_assign_invalidates_smartcast', 'struct Foo {
 	value int
 }
 
@@ -2373,41 +2369,8 @@ fn main() {
 		}
 	}
 }
-')
-	assert out == '2'
-}
-
-fn test_select_receive_assignment_does_not_invalidate_sibling_smartcasts() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'select_receive_assign_sibling_smartcast', 'struct Foo {
-	value int
-}
-
-struct Bar {}
-
-type Item = Bar | Foo
-
-fn main() {
-	mut item := Item(Foo{
-		value: 7
-	})
-	ch := chan Item{}
-	if item is Foo {
-		select {
-			item = <-ch {}
-			else {
-				println(int_str(item.value))
-			}
-		}
-	}
-}
-')
-	assert out == '7'
-}
-
-fn test_select_receive_declaration_shadows_outer_smartcast_only_in_branch() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'select_receive_decl_shadows_smartcast', 'struct Foo {
+', '2'},
+		ReviewRuntimeCase{'select_receive_decl_shadows_smartcast', 'struct Foo {
 	value int
 }
 
@@ -2436,8 +2399,36 @@ fn main() {
 		println(int_str(item.value))
 	}
 }
+', '2\n1'},
+	])
+}
+
+fn test_select_receive_assignment_does_not_invalidate_sibling_smartcasts() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_assign_sibling_smartcast', 'struct Foo {
+	value int
+}
+
+struct Bar {}
+
+type Item = Bar | Foo
+
+fn main() {
+	mut item := Item(Foo{
+		value: 7
+	})
+	ch := chan Item{}
+	if item is Foo {
+		select {
+			item = <-ch {}
+			else {
+				println(int_str(item.value))
+			}
+		}
+	}
+}
 ')
-	assert out == '2\n1'
+	assert out == '7'
 }
 
 fn test_select_exception_branches_flush_defers() {
@@ -2854,9 +2845,10 @@ fn free_strings() {
 	assert !free_strings_body.contains('string__free(&s);'), free_strings_body
 }
 
-fn test_assert_capture_preserves_inferred_wide_const_type() {
+fn test_constant_dependencies() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'assert_capture_inferred_wide_const_type', 'type Duration = i64
+	run_good_module_batch(v3_bin, 'constant_dependencies', [
+		ReviewRuntimeCase{'assert_capture_inferred_wide_const_type', 'type Duration = i64
 
 const nanosecond = Duration(1)
 const microsecond = 1000 * nanosecond
@@ -2872,8 +2864,31 @@ fn main() {
 	assert config.value == timeout
 	println(config.value.str())
 }
-')
-	assert out == '10000000000'
+', '10000000000'},
+		ReviewRuntimeCase{'const_deps_receiver_method', 'struct B {}
+
+fn (b B) value() int {
+	return 7
+}
+
+struct A {}
+
+fn (a A) value() int {
+	return dep + 1
+}
+
+fn seed() int {
+	return 41
+}
+
+const result = A{}.value()
+const dep = seed()
+
+fn main() {
+	println(int_str(result))
+}
+', '42'},
+	])
 }
 
 fn test_c_pointer_receiver_str_is_used_for_reference_field() {
@@ -3152,9 +3167,10 @@ fn main() {
 	])
 }
 
-fn test_interface_method_value_escape_is_supported() {
+fn test_runtime_callback_arguments() {
 	v3_bin := build_v3()
-	interface_method := run_good(v3_bin, 'review_interface_method_value_escape', 'interface Runner {
+	run_good_module_batch(v3_bin, 'runtime_callback_arguments', [
+		ReviewRuntimeCase{'review_interface_method_value_escape', 'interface Runner {
 	run() int
 }
 
@@ -3179,8 +3195,36 @@ fn main() {
 	}
 	println(int_str(h.cb()))
 }
-')
-	assert interface_method == '1'
+', '1'},
+		ReviewRuntimeCase{'capturing_fn_literal_cast_parameters', 'type Callback = fn (int)
+
+fn main() {
+	mut total := 0
+callback := fn [mut total] (value int) {
+	total += value
+	println(int_str(total))
+}
+typed := Callback(callback)
+typed(4)
+println(int_str(total))
+}
+', '4\n0'},
+		ReviewRuntimeCase{'voidptr_function_value_argument', 'type Mapper = fn (f64) f64
+
+fn apply(mapper Mapper) f64 {
+	return mapper(2)
+}
+
+fn double(value f64) f64 {
+	return value * 2
+}
+
+fn main() {
+	value := voidptr(double)
+	println(apply(value))
+}
+', '4.0'},
+	])
 }
 
 fn test_map_builtin_method_fallback_checks_arguments() {
@@ -3263,34 +3307,6 @@ fn test_runtime_inits_run_before_module_init() {
 	assert out == '5\n7'
 }
 
-fn test_const_dependencies_follow_receiver_method() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'const_deps_receiver_method', 'struct B {}
-
-fn (b B) value() int {
-	return 7
-}
-
-struct A {}
-
-fn (a A) value() int {
-	return dep + 1
-}
-
-fn seed() int {
-	return 41
-}
-
-const result = A{}.value()
-const dep = seed()
-
-fn main() {
-	println(int_str(result))
-}
-')
-	assert out == '42'
-}
-
 fn test_aligned_alias_heap_cast_uses_aligned_memdup() {
 	v3_bin := build_v3()
 	source := '@[aligned: 64]
@@ -3330,9 +3346,10 @@ fn test_unimported_main_types_are_not_visible_in_modules() {
 	}, ['main.v'], 'unknown type `Box`')
 }
 
-fn test_backed_enum_cast_qualifies_member_reference() {
+fn test_enum_member_qualification() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'backed_enum_cast_member_reference', 'const a = 1
+	run_good_module_batch(v3_bin, 'enum_member_qualification', [
+		ReviewRuntimeCase{'backed_enum_cast_member_reference', 'const a = 1
 
 enum BackedKind as u64 {
 	a = 1
@@ -3342,8 +3359,19 @@ enum BackedKind as u64 {
 fn main() {
 	println(int_str(int(BackedKind.b)))
 }
-')
-	assert out == '2'
+', '2'},
+		ReviewRuntimeCase{'flag_enum_autostr_member_reference', '@[flag]
+@[_allow_multiple_values]
+enum Permission {
+	a = 1
+	b = .a
+}
+
+fn main() {
+	println(Permission.b.str())
+}
+', 'Permission{.a}'},
+	])
 }
 
 fn test_enum_helper_folding_tracks_local_declarations() {
@@ -3394,22 +3422,6 @@ fn main() {}
 ', '[noreturn] functions cannot use return statements')
 }
 
-fn test_flag_enum_autostr_deduplicates_member_references() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'flag_enum_autostr_member_reference', '@[flag]
-@[_allow_multiple_values]
-enum Permission {
-	a = 1
-	b = .a
-}
-
-fn main() {
-	println(Permission.b.str())
-}
-')
-	assert out == 'Permission{.a}'
-}
-
 fn test_string_index_type_is_u8() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'string_index_type_is_u8', "fn main() {\n\ts := 'ABC'\n\tprintln(typeof(s[0]).name)\n\tprintln('\${s[2]}')\n}\n")
@@ -3424,16 +3436,12 @@ fn test_numeric_map_stringification() {
 	])
 }
 
-fn test_map_equality_uses_semantic_value_comparison() {
+fn test_semantic_collection_equality() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'map_semantic_value_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := {\n\t\t'x': Item{\n\t\t\tname: 'hello'.clone()\n\t\t\tparts: ['ab'.clone()]\n\t\t}\n\t}\n\tright := {\n\t\t'x': Item{\n\t\t\tname: join('he', 'llo')\n\t\t\tparts: [join('a', 'b')]\n\t\t}\n\t}\n\tarr_left := {\n\t\t'y': ['cd'.clone()]\n\t}\n\tarr_right := {\n\t\t'y': [join('c', 'd')]\n\t}\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(arr_left == arr_right)\n}\n")
-	assert out == 'true\nfalse\ntrue'
-}
-
-fn test_array_equality_marks_struct_operator_used() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'array_eq_struct_operator_used', 'struct Item {\n\tvalue int\n}\n\nfn (a Item) == (b Item) bool {\n\treturn a.value % 10 == b.value % 10\n}\n\nfn main() {\n\tleft := [Item{value: 12}]\n\tright := [Item{value: 2}]\n\tprintln(left == right)\n}\n')
-	assert out == 'true'
+	run_good_module_batch(v3_bin, 'semantic_collection_equality', [
+		ReviewRuntimeCase{'map_semantic_value_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := {\n\t\t'x': Item{\n\t\t\tname: 'hello'.clone()\n\t\t\tparts: ['ab'.clone()]\n\t\t}\n\t}\n\tright := {\n\t\t'x': Item{\n\t\t\tname: join('he', 'llo')\n\t\t\tparts: [join('a', 'b')]\n\t\t}\n\t}\n\tarr_left := {\n\t\t'y': ['cd'.clone()]\n\t}\n\tarr_right := {\n\t\t'y': [join('c', 'd')]\n\t}\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(arr_left == arr_right)\n}\n", 'true\nfalse\ntrue'},
+		ReviewRuntimeCase{'array_eq_struct_operator_used', 'struct Item {\n\tvalue int\n}\n\nfn (a Item) == (b Item) bool {\n\treturn a.value % 10 == b.value % 10\n}\n\nfn main() {\n\tleft := [Item{value: 12}]\n\tright := [Item{value: 2}]\n\tprintln(left == right)\n}\n', 'true'},
+	])
 }
 
 fn test_formatted_interpolation_values() {
@@ -3445,10 +3453,12 @@ fn test_formatted_interpolation_values() {
 	])
 }
 
-fn test_formatted_interpolation_alias_uses_string_representation() {
+fn test_runtime_composite_formatting() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'formatted_interpolation_alias_string', 'import time\n\nfn main() {\n\tduration := time.Duration(10)\n\tprintln("|\${duration:10s}|")\n}\n')
-	assert out == '|      10ns|'
+	run_good_module_batch(v3_bin, 'runtime_composite_formatting', [
+		ReviewRuntimeCase{'formatted_interpolation_alias_string', 'import time\n\nfn main() {\n\tduration := time.Duration(10)\n\tprintln("|\${duration:10s}|")\n}\n', '|      10ns|'},
+		ReviewRuntimeCase{'composite_string_format_width', 'fn main() {\n\tprintln("|\${[1, 2]:-12s}|")\n}\n', '|[1, 2]      |'},
+	])
 }
 
 fn test_callback_pointer_return_is_compatible_with_voidptr_return() {
@@ -4845,9 +4855,10 @@ fn main() {
 	assert out == 'platform|custom'
 }
 
-fn test_overloaded_index_compound_assignment_caches_operands() {
+fn test_overloaded_index_runtime() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'overloaded_index_compound_assignment_caches_operands', 'struct IntList {
+	run_good_module_batch(v3_bin, 'overloaded_index_runtime', [
+		ReviewRuntimeCase{'overloaded_index_compound_assignment_caches_operands', 'struct IntList {
 mut:
 	values []int
 }
@@ -4886,8 +4897,48 @@ fn main() {
 	println(int_str(env.list_index_calls) + "," + int_str(env.index_calls))
 	println(int_str(lists[0].values[0]) + "," + int_str(lists[0].values[1]))
 }
-')
-	assert out == '1,1\n11,20'
+', '1,1\n11,20'},
+		ReviewRuntimeCase{'generic_overloaded_index_specialized_methods', 'struct Box[T] {
+mut:
+	items []T
+}
+
+fn (b Box[T]) [] (index int) T {
+	return b.items[index]
+}
+
+fn (mut b Box[T]) []= (index int, value T) {
+	b.items[index] = value
+}
+
+fn main() {
+	mut b := Box[int]{
+		items: [1, 2]
+	}
+	println(int_str(b[0]))
+	b[1] = 7
+	b[0] += 3
+	println(int_str(b[0]) + "," + int_str(b[1]))
+}
+', '1\n4,7'},
+		ReviewRuntimeCase{'explicit_generic_method_index_callee', 'struct Tool {}
+
+struct Config {
+	x int
+}
+
+fn (t Tool) pick[T](value T) T {
+	return value
+}
+
+fn main() {
+	tool := Tool{}
+	println(int_str(tool.pick[int](7)))
+	cfg := tool.pick[Config](x: 9)
+	println(int_str(cfg.x))
+}
+', '7\n9'},
+	])
 }
 
 fn test_overloaded_index_compound_assignment_uses_v_operators() {
@@ -5240,34 +5291,6 @@ fn main() {
 	])
 }
 
-fn test_generic_overloaded_index_uses_specialized_methods() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'generic_overloaded_index_specialized_methods', 'struct Box[T] {
-mut:
-	items []T
-}
-
-fn (b Box[T]) [] (index int) T {
-	return b.items[index]
-}
-
-fn (mut b Box[T]) []= (index int, value T) {
-	b.items[index] = value
-}
-
-fn main() {
-	mut b := Box[int]{
-		items: [1, 2]
-	}
-	println(int_str(b[0]))
-	b[1] = 7
-	b[0] += 3
-	println(int_str(b[0]) + "," + int_str(b[1]))
-}
-')
-	assert out == '1\n4,7'
-}
-
 fn test_unused_generic_receiver_method_is_not_instantiated() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'unused_generic_receiver_method', 'struct Item {}
@@ -5289,28 +5312,6 @@ fn main() {
 }
 ')
 	assert out == ''
-}
-
-fn test_explicit_generic_method_index_callee_codegen() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'explicit_generic_method_index_callee', 'struct Tool {}
-
-struct Config {
-	x int
-}
-
-fn (t Tool) pick[T](value T) T {
-	return value
-}
-
-fn main() {
-	tool := Tool{}
-	println(int_str(tool.pick[int](7)))
-	cfg := tool.pick[Config](x: 9)
-	println(int_str(cfg.x))
-}
-')
-	assert out == '7\n9'
 }
 
 fn test_isreftype_parenthesized_type_args() {
@@ -5935,9 +5936,10 @@ fn main() {
 	assert out == '7'
 }
 
-fn test_map_index_value_can_be_implicit_non_mut_reference_argument() {
+fn test_implicit_reference_arguments() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'review_map_index_implicit_ref_arg', 'struct Image {
+	run_good_module_batch(v3_bin, 'implicit_reference_arguments', [
+		ReviewRuntimeCase{'review_map_index_implicit_ref_arg', 'struct Image {
 	value int
 }
 
@@ -5951,8 +5953,27 @@ fn main() {
 	}
 	println(draw(images["avatar"]))
 }
-')
-	assert out == '9'
+', '9'},
+		ReviewRuntimeCase{'review_multi_level_implicit_addresses', 'fn set_double(pp &&int) {\n\tunsafe {\n\t\t**pp = 5\n\t}\n}\n\nfn set_triple(pp &&&int) {\n\tunsafe {\n\t\t***pp = 7\n\t}\n}\n\nfn main() {\n\tmut x := 1\n\tset_double(x)\n\tmut y := 2\n\tp := &y\n\tset_triple(p)\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n', '5\n7'},
+		ReviewRuntimeCase{'interface_mut_array_argument', 'interface Reader {
+mut:
+	read(mut buf []u8)
+}
+
+struct Source {}
+
+fn (mut source Source) read(mut buf []u8) {
+	buf[0] = 7
+}
+
+fn main() {
+	mut reader := Reader(Source{})
+	mut buf := []u8{len: 1}
+	reader.read(mut buf)
+	println(buf[0])
+}
+', '7'},
+	])
 }
 
 fn test_cross_module_mut_receiver_checks_visible_mutation() {
@@ -5968,12 +5989,6 @@ fn test_cross_module_mut_receiver_checks_visible_mutation() {
 		'main.v':        'module main\n\nimport other\n\nfn main() {\n\tmut state := other.State{}\n\tstate.bump()\n\tprintln(int_str(state.value()))\n}\n'
 	}, 'main.v')
 	assert private_out == '1'
-}
-
-fn test_implicit_reference_materializes_required_pointer_levels() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'review_multi_level_implicit_addresses', 'fn set_double(pp &&int) {\n\tunsafe {\n\t\t**pp = 5\n\t}\n}\n\nfn set_triple(pp &&&int) {\n\tunsafe {\n\t\t***pp = 7\n\t}\n}\n\nfn main() {\n\tmut x := 1\n\tset_double(x)\n\tmut y := 2\n\tp := &y\n\tset_triple(p)\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n')
-	assert out == '5\n7'
 }
 
 fn test_discard_assignment_preserves_array_return_type() {
@@ -10158,24 +10173,6 @@ fn main() {
 	assert progressed_out.len > 0
 }
 
-fn test_capturing_fn_literal_cast_keeps_declared_parameters() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'capturing_fn_literal_cast_parameters', 'type Callback = fn (int)
-
-fn main() {
-	mut total := 0
-callback := fn [mut total] (value int) {
-	total += value
-	println(int_str(total))
-}
-typed := Callback(callback)
-typed(4)
-println(int_str(total))
-}
-')
-	assert out == '4\n0'
-}
-
 fn test_return_control_expression_forwards_matching_result() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'return_control_expression_result_forward', "fn bytes(ok bool) ![]u8 {
@@ -10293,12 +10290,6 @@ fn test_top_level_statements_with_postinclude_generate_main() {
 	assert out == 'ok'
 }
 
-fn test_composite_string_format_accepts_width_and_alignment() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'composite_string_format_width', 'fn main() {\n\tprintln("|\${[1, 2]:-12s}|")\n}\n')
-	assert out == '|[1, 2]      |'
-}
-
 fn test_comptime_define_field_default_is_not_fixed_array_initializer() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'comptime_define_field_default', 'struct Job {\n\tid string = \$d("id", "Job")\n}\n\nstruct App {\n\tjobs [\$d("jobs", 2)]Job\n}\n\nfn main() {\n\tapp := App{}\n\tprintln(app.jobs[0].id)\n}\n')
@@ -10346,49 +10337,6 @@ run(callback: app.callback, user_data: app)
 println(app.called)
 ')
 	assert out == 'true'
-}
-
-fn test_voidptr_function_value_argument_skips_pointer_depth_mismatch() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'voidptr_function_value_argument', 'type Mapper = fn (f64) f64
-
-fn apply(mapper Mapper) f64 {
-	return mapper(2)
-}
-
-fn double(value f64) f64 {
-	return value * 2
-}
-
-fn main() {
-	value := voidptr(double)
-	println(apply(value))
-}
-')
-	assert out == '4.0'
-}
-
-fn test_interface_mut_array_argument_uses_pointer_storage() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_mut_array_argument', 'interface Reader {
-mut:
-	read(mut buf []u8)
-}
-
-struct Source {}
-
-fn (mut source Source) read(mut buf []u8) {
-	buf[0] = 7
-}
-
-fn main() {
-	mut reader := Reader(Source{})
-	mut buf := []u8{len: 1}
-	reader.read(mut buf)
-	println(buf[0])
-}
-')
-	assert out == '7'
 }
 
 fn test_array_generic_specialization_is_recovered_from_lowered_callee() {
