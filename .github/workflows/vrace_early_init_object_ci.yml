@@ -96,7 +96,7 @@ jobs:
           done
           # The early initialization object itself must have no sanitizer calls.
           # The final instrumented program is independently checked above.
-          key="$(sed -n 's/.*key=\(race_options_o_[0-9a-f]*\.o\) .*/\1/p' "$out/candidate-build.log" | sort -u)"
+          key="$(sed -n 's/.*key=\(race_options_c_o_[0-9a-f]*\.o\) .*/\1/p' "$out/candidate-build.log" | sort -u)"
           test -n "$key"
           test "$(printf '%s\n' "$key" | wc -l)" -eq 1
           object="$(find /tmp "$RUNNER_TEMP" -type f -name "$key" -print -quit)"
@@ -142,6 +142,10 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+        if: runner.os == 'Linux'
+        with:
+          profile: full
       - name: Build, format and native regression
         shell: bash
         run: |
