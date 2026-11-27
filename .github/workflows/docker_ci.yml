@@ -209,6 +209,17 @@ jobs:
           test "$(git hash-object vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v)" = 1a928bb60f08a66dd538e370afb131562cc1e682
           test "$(git hash-object vlib/v/tests/project_with_cpp_code/implementation.cpp)" = 7743bcee013aeaa3e52f5e7483d014dd59fcf685
           ./v -cc musl-gcc -gc none -d use_bundled_libgc -showcc -silent -b c vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v
+      - name: Verify original SLH-DSA tests with musl OpenSSL
+        run: |
+          set -eu
+          export PATH="$RUNNER_TEMP/musl-cxx:$PATH"
+          test "$(git hash-object vlib/x/crypto/slhdsa/base_test.v)" = 58174b7ee7fdf5f5197bec88b9a22c6c58c3a8b6
+          test "$(git hash-object vlib/x/crypto/slhdsa/usage_test.v)" = 224b7e59e21f67278678696d0e8b1d02b9eb4309
+          test -f /usr/local/include/openssl/obj_mac.h
+          ./v fmt -verify vlib/x/crypto/slhdsa/slhdsa.c.v
+          # Exercise the precise failing cached compilation, not only the C toolchain.
+          ./v -cc musl-gcc -gc none -d use_bundled_libgc -showcc -silent -no-retry-compilation vlib/x/crypto/slhdsa/usage_test.v
+          ./v -cc musl-gcc -gc none -d use_bundled_libgc -showcc -silent -no-retry-compilation vlib/x/crypto/slhdsa/base_test.v
       - name: Test V fixed tests
         run: |
           export PATH="$RUNNER_TEMP/musl-cxx:$PATH"
