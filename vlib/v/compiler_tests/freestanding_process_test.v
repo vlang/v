@@ -28,7 +28,8 @@ fn test_freestanding_process_syscalls_and_child_lifetimes() ! {
 			command << ['-o', binary, source]
 			built := os.exec(command)
 			assert built.exit_code == 0, '${mode}/${optimized}: ${built.output}'
-			ran := os.exec([binary])
+			// Keep a sparse inherited descriptor open, as a test runner can.
+			ran := os.exec(['sh', '-c', 'exec "\$1" 9</dev/null', 'sh', binary])
 			assert ran.exit_code == 0, '${mode}/${optimized}: ${ran.output}'
 			assert ran.output.trim_space() == 'freestanding Process passed', ran.output
 		}

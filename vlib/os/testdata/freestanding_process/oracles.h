@@ -35,9 +35,14 @@ static void process_restore_stdio(void) {
 static int process_limit_files(int room) {
     if (getrlimit(RLIMIT_NOFILE, &process_saved_files)) return -1;
     struct rlimit limit = process_saved_files;
-    /* The fixture opens only consecutive low descriptors. Reserve a partial
-     * pipe set, so rollback has real descriptors to close before the failure. */
-    limit.rlim_cur = (rlim_t)(process_fd_count() + room);
+    /* RLIMIT_NOFILE bounds descriptor numbers. Find the first vacant slot
+     * beyond the requested room even if the runner left open descriptors. */
+    int fd = -1;
+    for (int i = 0; i <= room; ++i) {
+        fd = fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, fd + 1);
+        if (fd < 0 || close(fd) < 0) return -1;
+    }
+    limit.rlim_cur = (rlim_t)fd;
     return setrlimit(RLIMIT_NOFILE, &limit);
 }
 static void process_restore_files(void) { setrlimit(RLIMIT_NOFILE, &process_saved_files); }
