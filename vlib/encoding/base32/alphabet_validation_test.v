@@ -22,3 +22,13 @@ fn test_high_byte_custom_alphabet_round_trip() {
 	input := 'hello'.bytes()
 	assert enc.decode(enc.encode(input))! == input
 }
+
+fn test_encoding_keeps_a_copy_of_its_alphabet() {
+	mut alphabet := std_alphabet.clone()
+	enc := new_encoding(alphabet)
+	input := [u8(0)]
+	alphabet[0] = `!`
+
+	assert enc.encode_to_string(input) == 'AA======'
+	assert enc.decode_string('AA======')! == input
+}

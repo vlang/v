@@ -19,7 +19,7 @@ pub const hex_alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUV'.bytes()
 
 struct Encoding {
 	padding_char u8
-	alphabet     []u8
+	alphabet     [32]u8
 mut:
 	decode_map [256]u8
 }
@@ -99,6 +99,7 @@ pub fn new_encoding(alphabet []u8) Encoding {
 
 // new_encoding_with_padding returns a Base32 `Encoding` with specified
 // encoding `alphabet`s and a specified `padding_char`.
+// The encoding keeps its own copy of the alphabet.
 // Panics unless the alphabet has exactly 32 distinct bytes without CR or LF.
 // The `padding_char` must not be '\r' or '\n', must not
 // be contained in the `Encoding`'s alphabet and must be a rune equal or
@@ -110,12 +111,14 @@ pub fn new_encoding_with_padding(alphabet []u8, padding_char u8) Encoding {
 	for i in 0 .. decode_map.len {
 		decode_map[i] = 0xff
 	}
-	for i in 0 .. alphabet.len {
-		decode_map[alphabet[i]] = u8(i)
+	mut symbols := [32]u8{}
+	for i, ch in alphabet {
+		symbols[i] = ch
+		decode_map[ch] = u8(i)
 	}
 
 	return Encoding{
-		alphabet:     alphabet
+		alphabet:     symbols
 		padding_char: padding_char
 		decode_map:   decode_map
 	}
