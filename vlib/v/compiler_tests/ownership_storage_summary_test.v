@@ -60,7 +60,7 @@ struct Holder { mut: target &Builder }
 	}
 }
 
-fn test_ownership_map_returns_preserve_storage_summaries() {
+fn test_ownership_map_returns_and_overwrites_preserve_storage() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_map_returns_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -107,10 +107,16 @@ pub fn check() {
 	assert value(mut holder) == "value"
 }
 '
+	owned_source := owned_storage_map_source_fixture(false) +
+		'pub fn check() { assert escaped().value["key"] == "value" }\n'
+	overwritten := owned_storage_overwrite_fixture('Holder{target: local.reference()}',
+		'store_number(mut holder, 42)', 'pub fn check()')
 	run_owned_storage_checks(root, {
 		'local_return':   local_return
 		'mutable_return': mutable_return
 		'chained_return': chained_return
+		'owned_source':   owned_source
+		'overwritten':    overwritten
 	})!
 }
 
@@ -237,20 +243,6 @@ fn main() {}
 	cases << OwnedStorageRejection{owned_storage_overwrite_fixture('Holder{target: &Builder{number: 0}}',
 		'store_borrowed(mut holder, local.reference())', 'fn main()'), [local_storage_return_error]}
 	check_owned_storage_rejections(root, cases)!
-}
-
-fn test_ownership_storage_preserves_owned_map_sources_and_overwrites() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_storage_acceptance_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	owned_source := owned_storage_map_source_fixture(false) +
-		'pub fn check() { assert escaped().value["key"] == "value" }\n'
-	overwritten := owned_storage_overwrite_fixture('Holder{target: local.reference()}',
-		'store_number(mut holder, 42)', 'pub fn check()')
-	run_owned_storage_checks(root, {
-		'owned_source': owned_source
-		'overwritten':  overwritten
-	})!
 }
 
 fn owned_storage_map_source_fixture(borrowed_header bool) string {
