@@ -1,0 +1,17 @@
+@[xeprecated]
+fn cross_letter_near_miss_suggests() {}
+
+@[xut]
+fn short_cross_letter_no_hint() {}
+
+@[ninline]
+fn tie_prefers_same_first_letter() {}
+
+@[deprecatd]
+fn same_letter_hint_unchanged() {}
+
+@[xeprecatec]
+fn cross_letter_at_max_minus_one_suggests() {}
+
+@[xeprecatxx]
+fn cross_letter_at_max_no_hint() {}

@@ -20057,8 +20057,9 @@ fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node f
 // for an unknown attribute name, or an empty string, per the RFC sample
 // wording. An exact same-named schema in another module beats fuzzy
 // matching: the qualified form is the fix per "Name resolution across
-// modules". Otherwise a name sharing the first letter within the edit
-// budget suggests the closest schema short name or builtin.
+// modules". Otherwise the closest schema short name or builtin within the
+// edit budget is suggested; names sharing the first letter use the full
+// budget, others only a stricter one, with ties preferring the same letter.
 fn (tc &TypeChecker) attribute_unknown_hint(name string, module string) string {
 	mut qualified := []string{}
 	if name.contains('.') {
@@ -20080,22 +20081,42 @@ fn (tc &TypeChecker) attribute_unknown_hint(name string, module string) string {
 		return ' Did you mean `${qualified[0]}`?'
 	}
 	mut candidates := builtin_attribute_names.clone()
-	for short, _ in tc.attribute_schemas {
+	// Sort schema-derived candidates: map key iteration order is not stable,
+	// so keep candidate order (and hence tie-breaking) deterministic.
+	mut schema_names := tc.attribute_schemas.keys()
+	schema_names.sort()
+	for short in schema_names {
 		candidates << short
 	}
 	mut closest := ''
 	mut closest_distance := name.len + 1
+	mut closest_first_match := false
 	lower_name := name.to_lower()
 	for candidate in candidates {
 		lower_candidate := candidate.to_lower()
-		if lower_name.len == 0 || lower_candidate.len == 0 || lower_name[0] != lower_candidate[0] {
+		if lower_name.len == 0 || lower_candidate.len == 0 {
 			continue
 		}
+		// First-letter mismatch is allowed but penalized: prefer candidates
+		// that share the first letter, then fall back to any candidate.
+		// Byte indexing is fine here: attribute names are ASCII identifiers,
+		// so [0] is the first character.
+		first_letter_match := lower_name[0] == lower_candidate[0]
 		distance := strings.levenshtein_distance(lower_name, lower_candidate)
 		max_distance := if name.len <= 3 { 1 } else { int_max(1, name.len / 3) }
-		if distance <= max_distance && distance < closest_distance {
+		// Allow a cross-first-letter suggestion only when it is very close:
+		// strictly inside the same-letter budget. Short names
+		// (max_distance == 1) therefore never cross-suggest.
+		allowed := if first_letter_match {
+			max_distance
+		} else {
+			max_distance - 1
+		}
+		if allowed > 0 && distance <= allowed
+			&& (distance < closest_distance || (distance == closest_distance && first_letter_match && !closest_first_match)) {
 			closest = candidate
 			closest_distance = distance
+			closest_first_match = first_letter_match
 		}
 	}
 	if closest.len > 0 {
