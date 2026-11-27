@@ -6,6 +6,21 @@ import time
 // noop is a flow body that does nothing.
 fn noop(_ Flow) ! {}
 
+// is_up_to_date_default checks a flow using the default state directory.
+fn is_up_to_date_default(f Flow) bool {
+	return is_up_to_date(f, default_cache_dir)
+}
+
+// stamp_path_default is the default state path of a flow's hash digest.
+fn stamp_path_default(f Flow) string {
+	return stamp_path(f, default_cache_dir)
+}
+
+// dirty_path_default is the default state path of a flow's dirty mark.
+fn dirty_path_default(f Flow) string {
+	return dirty_path(f, default_cache_dir)
+}
+
 // sandbox changes to a new empty temporary directory and returns its path.
 fn sandbox(name string) string {
 	dir := os.join_path(os.vtmp_dir(), 'imp_test_${os.getpid()}_${name}')
@@ -108,43 +123,43 @@ fn mtime_fixture(name string) Flow {
 
 // test_up_to_date_when_outputs_are_newer checks the skipping case.
 fn test_up_to_date_when_outputs_are_newer() {
-	assert is_up_to_date(mtime_fixture('fresh'))
+	assert is_up_to_date_default(mtime_fixture('fresh'))
 }
 
 // test_stale_on_nested_change checks that directories are walked.
 fn test_stale_on_nested_change() {
 	f := mtime_fixture('changed')
 	set_mtime('src/sub/a.v', -10)
-	assert !is_up_to_date(f)
+	assert !is_up_to_date_default(f)
 }
 
 // test_stale_on_nested_creation_and_removal checks directory mtimes are used.
 fn test_stale_on_nested_creation_and_removal() {
 	f := mtime_fixture('created')
 	os.write_file('src/sub/b.v', '')!
-	assert !is_up_to_date(f)
+	assert !is_up_to_date_default(f)
 
 	g := mtime_fixture('removed')
 	os.rm('src/sub/a.v')!
-	assert !is_up_to_date(g)
+	assert !is_up_to_date_default(g)
 }
 
 // test_stale_on_missing_paths checks that missing paths never skip.
 fn test_stale_on_missing_paths() {
 	f := mtime_fixture('missing_out')
 	os.rm('out')!
-	assert !is_up_to_date(f)
+	assert !is_up_to_date_default(f)
 
 	g := mtime_fixture('missing_in')
 	os.rmdir_all('src')!
-	assert !is_up_to_date(g)
+	assert !is_up_to_date_default(g)
 }
 
 // test_stale_on_same_second checks that a tie counts as out of date.
 fn test_stale_on_same_second() {
 	f := mtime_fixture('tie')
 	set_mtime('src', -50)
-	assert !is_up_to_date(f)
+	assert !is_up_to_date_default(f)
 }
 
 // test_output_inside_input_dir_is_not_an_input checks outputs are excluded.
@@ -154,13 +169,13 @@ fn test_output_inside_input_dir_is_not_an_input() {
 	set_mtime('src/sub', -100)
 	set_mtime('src', -100)
 	set_mtime('src/out', -50)
-	assert is_up_to_date(Flow{ ...f, gives: ['src/out'] })
+	assert is_up_to_date_default(Flow{ ...f, gives: ['src/out'] })
 }
 
 // test_no_outputs_is_never_up_to_date checks a flow without gives always runs.
 fn test_no_outputs_is_never_up_to_date() {
 	f := mtime_fixture('no_gives')
-	assert !is_up_to_date(Flow{ ...f, gives: [] })
+	assert !is_up_to_date_default(Flow{ ...f, gives: [] })
 }
 
 // test_hash_skip_needs_outputs_and_inputs checks that, like an mtime flow, a
@@ -178,12 +193,39 @@ fn test_hash_skip_needs_outputs_and_inputs() {
 	}
 	c := new()
 	digest := c.digest(f)
-	os.mkdir_all(os.dir(stamp_path(f)))!
-	os.write_file(stamp_path(f), digest)!
-	assert is_unchanged(f, digest)
-	assert !is_unchanged(Flow{ ...f, gives: [] }, digest)
+	os.mkdir_all(os.dir(stamp_path_default(f)))!
+	os.write_file(stamp_path_default(f), digest)!
+	assert is_unchanged(f, digest, default_cache_dir)
+	assert !is_unchanged(Flow{ ...f, gives: [] }, digest, default_cache_dir)
 	os.rm('src')!
-	assert !is_unchanged(f, digest)
+	assert !is_unchanged(f, digest, default_cache_dir)
+}
+
+// test_custom_cache_dir_keeps_state_out_of_default checks that state is written
+// under Context.cache_dir and that the default directory stays untouched.
+fn test_custom_cache_dir_keeps_state_out_of_default() {
+	sandbox('custom_cache')
+	os.write_file('src', '')!
+	body := fn (f Flow) ! {
+		os.write_file('runs', (os.read_file('runs') or { '' }) + 'x')!
+		record(f)!
+	}
+	mut c := new()
+	c.cache_dir = 'build-state'
+	c.add_flow(id: 'build', takes: ['src'], gives: ['out'], check: .hash, flow: body)
+	c.execute(['build'])!
+	assert contents('runs') == 'x'
+	assert os.exists(os.join_path('build-state', 'digest', 'build'))
+	assert !os.exists(os.join_path(default_cache_dir, 'digest', 'build'))
+	// the same custom directory can reuse the digest
+	c.execute(['--cache-dir=build-state', 'build'])!
+	assert contents('runs') == 'x'
+	// a different directory has no state, so the flow runs again
+	mut other := new()
+	other.cache_dir = 'other-state'
+	other.add_flow(id: 'build', takes: ['src'], gives: ['out'], check: .hash, flow: body)
+	other.execute(['build'])!
+	assert contents('runs') == 'xx'
 }
 
 // test_walks_do_not_follow_links checks that a link loop in an input directory
@@ -205,7 +247,7 @@ fn test_walks_do_not_follow_links() {
 		gives: ['out']
 		flow:  noop
 	}
-	assert is_up_to_date(f)
+	assert is_up_to_date_default(f)
 	c := new()
 	digest := c.digest(f)
 	assert c.digest(f) == digest
@@ -743,7 +785,7 @@ fn test_failed_mtime_flow_reruns() {
 	c.execute(['build'])!
 	assert contents('out') == 'done'
 	// success clears the mark, so the flow can be skipped again
-	assert is_up_to_date(c.find('build')!) && !os.exists(dirty_path(c.find('build')!))
+	assert is_up_to_date_default(c.find('build')!) && !os.exists(dirty_path_default(c.find('build')!))
 }
 
 // test_flag_of_another_flow_does_not_defeat_a_skip checks that a set flag only
@@ -2227,12 +2269,12 @@ fn (mut r Lcg) next(n int) int {
 // random graph costs more than the graph's own file operations.
 fn clear_keeping_state_dirs(dir string) ! {
 	for entry in os.ls(dir)! {
-		if entry != stamp_dir {
+		if entry != default_cache_dir {
 			remove(os.join_path(dir, entry))!
 			continue
 		}
-		for kind in os.ls(os.join_path(dir, stamp_dir))! {
-			kind_dir := os.join_path(dir, stamp_dir, kind)
+		for kind in os.ls(os.join_path(dir, default_cache_dir))! {
+			kind_dir := os.join_path(dir, default_cache_dir, kind)
 			for name in os.ls(kind_dir)! {
 				os.rm(os.join_path(kind_dir, name))!
 			}
@@ -2637,13 +2679,16 @@ fn test_hash_flow_over_own_state_dir() {
 // own, in the directory of its kind, even on a case-insensitive file system,
 // while plain ids keep readable names.
 fn test_state_files_never_clash() {
-	plain := state_file('digest', Flow{ id: 'build-2_x', flow: noop })
-	assert plain == os.join_path(stamp_dir, 'digest', 'build-2_x')
+	plain := state_file('digest', Flow{ id: 'build-2_x', flow: noop }, default_cache_dir)
+	assert plain == os.join_path(default_cache_dir, 'digest', 'build-2_x')
 	mut seen := map[string]string{}
 	for id in ['a/b', 'a_b', 'a\\b', 'a%2Fb', 'A_b', 'a.b', '.', '..', 'a b', 'é'] {
-		path := state_file('digest', Flow{ id: id, flow: noop })
+		path := state_file('digest', Flow{ id: id, flow: noop }, default_cache_dir)
 		name := os.file_name(path)
-		assert os.dir(path) == os.join_path(stamp_dir, 'digest') && name !in ['.', '..'], path
+		assert os.dir(path) == os.join_path(default_cache_dir, 'digest') && name !in [
+			'.',
+			'..',
+		], path
 		key := name.to_lower()
 		assert key !in seen, '`${id}` and `${seen[key]}` share `${name}`'
 		seen[key] = id
@@ -2657,12 +2702,12 @@ fn test_long_ids_get_bounded_state_files() {
 	long := 'A'.repeat(86)
 	mut names := map[string]bool{}
 	for id in [long, long + 'B', 'A'.repeat(200), 'é'.repeat(100), 'a'.repeat(128), 'a'.repeat(129)] {
-		name := os.file_name(state_file('dirty', Flow{ id: id, flow: noop }))
+		name := os.file_name(state_file('dirty', Flow{ id: id, flow: noop }, default_cache_dir))
 		assert name.len <= max_state_name, name
 		assert name.to_lower() !in names, name
 		names[name.to_lower()] = true
 	}
-	assert os.file_name(state_file('dirty', Flow{ id: 'a'.repeat(128), flow: noop })) == 'a'.repeat(128)
+	assert os.file_name(state_file('dirty', Flow{ id: 'a'.repeat(128), flow: noop }, default_cache_dir)) == 'a'.repeat(128)
 	sandbox('state_long')
 	os.write_file('src', '')!
 	set_mtime('src', -10)

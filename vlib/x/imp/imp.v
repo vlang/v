@@ -90,17 +90,20 @@ pub fn (f Flow) display_name() string {
 // Context holds the targets, flows and flags of a build script.
 pub struct Context {
 mut:
-	targets  []string
-	flows    []Flow
-	autos    []AutoFlow
-	defaults []string
-	enabled  []string
-	flags    []Flag
+	targets   []string
+	flows     []Flow
+	autos     []AutoFlow
+	defaults  []string
+	enabled   []string
+	flags     []Flag
+	cache_dir string // where flow state is kept, relative to the working directory
 }
 
 // new returns an empty build context.
 pub fn new() Context {
-	return Context{}
+	return Context{
+		cache_dir: '.imp'
+	}
 }
 
 // add_target registers a build product, for the auto flows to act on.
@@ -189,7 +192,14 @@ fn (mut c Context) resolve_auto_flows() {
 
 // execute parses the command line arguments and runs the flows they name.
 fn (mut c Context) execute(args []string) ! {
-	mut argv := args.clone()
+	mut argv := []string{}
+	for arg in args {
+		if arg.starts_with('--cache-dir=') {
+			c.cache_dir = arg.all_after('--cache-dir=')
+		} else {
+			argv << arg
+		}
+	}
 	if argv.len > 0 && argv[0] in ['help', '-h', '--help'] {
 		if !c.flows.any(it.id == 'help') {
 			c.print_help()
@@ -660,9 +670,11 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 	// checked here and not earlier: a required pre hook or a dependency may
 	// have just removed or rebuilt the outputs
 	digest := if f.check == .hash { c.digest(f) } else { '' }
-	skip := !os.exists(dirty_path(f)) && match f.check {
-		.mtime { !f.flags.any(it.id in c.enabled) && is_up_to_date(f) }
-		.hash { is_unchanged(f, digest) }
+	skip := !os.exists(dirty_path(f, c.cache_dir)) && match f.check {
+		.mtime {
+			!f.flags.any(it.id in c.enabled) && is_up_to_date(f, c.cache_dir)
+		}
+		.hash { is_unchanged(f, digest, c.cache_dir) }
 		.none { false }
 	}
 	if skip {
@@ -676,8 +688,8 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 	if f.check != .none {
 		// marked first, so that a failed or interrupted run, which may have left
 		// newer or partial outputs, is never mistaken for a good one
-		os.mkdir_all(os.dir(dirty_path(f)))!
-		os.write_file(dirty_path(f), '')!
+		os.mkdir_all(os.dir(dirty_path(f, c.cache_dir)))!
+		os.write_file(dirty_path(f, c.cache_dir), '')!
 	}
 	runnable := Flow{
 		...f
@@ -691,26 +703,26 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 		}
 	}
 	if f.check == .hash {
-		os.mkdir_all(os.dir(stamp_path(f)))!
-		os.write_file(stamp_path(f), digest)!
+		os.mkdir_all(os.dir(stamp_path(f, c.cache_dir)))!
+		os.write_file(stamp_path(f, c.cache_dir), digest)!
 	}
 	if f.check != .none {
-		os.rm(dirty_path(f))!
+		os.rm(dirty_path(f, c.cache_dir))!
 	}
 	return f.post.map(it.id)
 }
 
-// stamp_dir holds the state of flows between runs, relative to the working
+// default_cache_dir holds flow state between runs, relative to the working
 // directory. It is never an input, or keeping state would itself be a change.
-const stamp_dir = '.imp'
+const default_cache_dir = '.imp'
 
-// state_file names the file of a flow under a subdirectory of `stamp_dir`. Bytes
+// state_file names the file of a flow under a subdirectory of `cache_dir`. Bytes
 // of the id other than lowercase letters, digits, `-` and `_` are percent-encoded,
 // so that distinct ids never share a file, even on a case-insensitive file system.
 // A name longer than `max_state_name` is cut short and ends in `+` and a digest
 // of the whole id instead, as file systems limit the length of a name, commonly
 // to 255 bytes. Encoding never produces `+`, so the two forms cannot meet.
-fn state_file(kind string, f Flow) string {
+fn state_file(kind string, f Flow, cache_dir string) string {
 	mut name := ''
 	for b in f.id {
 		name += if (b >= `a` && b <= `z`) || b.is_digit() || b in [`-`, `_`] {
@@ -729,7 +741,7 @@ fn state_file(kind string, f Flow) string {
 		}
 		name = '${head}+${digest}'
 	}
-	return os.join_path(stamp_dir, kind, name)
+	return os.join_path(cache_dir, kind, name)
 }
 
 // max_state_name is the longest state file name, well under the limits of common
@@ -737,20 +749,20 @@ fn state_file(kind string, f Flow) string {
 const max_state_name = 128
 
 // stamp_path is where a hash flow keeps the digest of its last successful run.
-fn stamp_path(f Flow) string {
-	return state_file('digest', f)
+fn stamp_path(f Flow, cache_dir string) string {
+	return state_file('digest', f, cache_dir)
 }
 
 // dirty_path marks a flow whose body started but did not finish successfully.
-fn dirty_path(f Flow) string {
-	return state_file('dirty', f)
+fn dirty_path(f Flow, cache_dir string) string {
+	return state_file('dirty', f, cache_dir)
 }
 
 // excluded_keys are the paths left out of the inputs of `f`: its outputs, and
 // the state imp keeps.
-fn excluded_keys(f Flow) []string {
+fn excluded_keys(f Flow, cache_dir string) []string {
 	mut keys := f.gives.map(path_key(it))
-	keys << path_key(stamp_dir)
+	keys << path_key(cache_dir)
 	return keys
 }
 
@@ -759,7 +771,7 @@ fn excluded_keys(f Flow) []string {
 // enough for inputs of hundreds of megabytes.
 fn (c &Context) digest(f Flow) string {
 	mut lines := []string{}
-	excluded := excluded_keys(f)
+	excluded := excluded_keys(f, c.cache_dir)
 	for path in f.takes {
 		hash_path(path, path_key(path), excluded, mut lines)
 	}
@@ -794,11 +806,11 @@ fn hash_path(path string, key string, excluded []string, mut lines []string) {
 
 // is_unchanged reports whether a hash flow can be skipped. Like mtime flows, it
 // needs outputs and all inputs present.
-fn is_unchanged(f Flow, digest string) bool {
+fn is_unchanged(f Flow, digest string, cache_dir string) bool {
 	if f.gives.len == 0 || f.takes.any(!os.exists(it)) || f.gives.any(!os.exists(it)) {
 		return false
 	}
-	return (os.read_file(stamp_path(f)) or { '' }) == digest
+	return (os.read_file(stamp_path(f, cache_dir)) or { '' }) == digest
 }
 
 // is_up_to_date reports whether an mtime flow can be skipped. It needs outputs
@@ -809,11 +821,11 @@ fn is_unchanged(f Flow, digest string) bool {
 // inside an input directory is not an input to itself. mtimes have a resolution
 // of one second, so a tie counts as out of date: a needless rebuild beats a
 // stale binary.
-fn is_up_to_date(f Flow) bool {
+fn is_up_to_date(f Flow, cache_dir string) bool {
 	if f.gives.len == 0 || f.takes.any(!os.exists(it)) || f.gives.any(!os.exists(it)) {
 		return false
 	}
-	excluded := excluded_keys(f)
+	excluded := excluded_keys(f, cache_dir)
 	mut oldest_output := max_i64
 	for path in f.gives {
 		oldest_output = min_i64_of(oldest_output, oldest_mtime(path))
