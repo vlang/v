@@ -4784,7 +4784,61 @@ fn (mut e Eval) maybe_call_builtin(module_name string, fn_name string, args []Va
 	if module_name == 'os' {
 		return e.maybe_call_os_builtin(fn_name, args)
 	}
+	if module_name == 'strconv' && fn_name in ['common_parse_int', 'parse_int'] {
+		return e.call_signed_integer_parser(fn_name, args)
+	}
 	return MaybeValue{}
+}
+
+fn (e &Eval) call_signed_integer_parser(fn_name string, args []Value) !MaybeValue {
+	expected_args := if fn_name == 'parse_int' { 3 } else { 5 }
+	if args.len != expected_args {
+		return error('v.eval: strconv.${fn_name} expects ${expected_args} arguments')
+	}
+	input := e.expect_string_arg(args, 0)!
+	base := int(e.value_as_int(args[1])!)
+	bit_size := int(e.value_as_int(args[2])!)
+	width := if bit_size == 0 {
+		int(e.sizeof_type_layout(flat.source_type_int, 'builtin', []).size) * 8
+	} else {
+		bit_size
+	}
+	// The evaluator stores integers as i64, so it cannot compare the parser's u64 cutoff.
+	mut parsed := i64(0)
+	if fn_name == 'parse_int' {
+		parsed = strconv.parse_int(input, base, width) or { return signed_parser_error(err) }
+	} else {
+		error_on_non_digit := e.value_as_bool(args[3])!
+		error_on_high_digit := e.value_as_bool(args[4])!
+		parsed = strconv.common_parse_int(input, base, width, error_on_non_digit, error_on_high_digit) or {
+			return signed_parser_error(err)
+		}
+	}
+	return MaybeValue{
+		found: true
+		value: e.adapt_value_to_type_name(Value(parsed), flat.source_type_id('!i64'))
+	}
+}
+
+// signed_parser_error is the evaluator's Result value for a host parser error.
+fn signed_parser_error(err IError) MaybeValue {
+	return MaybeValue{
+		found: true
+		value: StructValue{
+			type_name: eval_type_result
+			fields:    {
+				'is_error': Value(true)
+				'err':      Value(StructValue{
+					type_name: flat.source_type_id('MessageError')
+					fields:    {
+						'msg':  Value(err.msg())
+						'code': Value(i64(err.code()))
+					}
+				})
+				'data':     void_value()
+			}
+		}
+	}
 }
 
 fn (mut e Eval) maybe_call_os_builtin(fn_name string, args []Value) !MaybeValue {
@@ -5158,6 +5212,12 @@ fn (mut e Eval) apply_infix_operator_overload(op flat.Op, left Value, right Valu
 }
 
 fn (mut e Eval) call_string_method(receiver string, method_name string, args []Value) !Value {
+	if method_name in ['int', 'i8', 'i16', 'i32', 'i64'] {
+		if target := e.resolve_method_target(flat.source_type_string, method_name) {
+			result := e.call_method_target(Value(receiver), target, args)!
+			return result.value
+		}
+	}
 	match method_name {
 		// string.int() accepts `1_000`; strconv.parse_int rejects underscores in base 10.
 		'int' {
