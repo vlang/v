@@ -383,7 +383,7 @@ fn test_native_modulecache_metadata_helper_uses_hash_fallback() {
 	for f in m.funcs {
 		if f.name == 'v3_modulecache_file_metadata' {
 			assert !f.is_c_extern
-			assert f.params.len == 8
+			assert f.params.len == 9
 			assert f.blocks.len == 1
 			return
 		}

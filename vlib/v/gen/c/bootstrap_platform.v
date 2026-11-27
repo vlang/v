@@ -3,7 +3,7 @@ module c
 // headerless_compiler_platform_helpers supplies SDK-independent native facades
 // for a portable compiler snapshot. Each facade follows the consumer's platform.
 fn (mut g FlatGen) headerless_compiler_platform_helpers() {
-	g.emit_c_runtime_declarations(['stat'])
+	g.emit_c_runtime_declarations(['stat', 'lstat'])
 	g.writeln('#if defined(__FreeBSD__) || defined(__OpenBSD__)')
 	g.emit_c_runtime_declarations(['sysctl'])
 	g.writeln('#endif')
@@ -91,12 +91,12 @@ static int v3_linux_name_worker(void) {
 // BSD and Windows retain the existing content-signature fallback. On Darwin
 // and Linux the standalone stat layout exposes the same timestamps as the SDK.
 const headerless_compiler_file_metadata = r'
-static int v3_modulecache_file_metadata(const char* path, u64* device, u64* inode,
+static int v3_modulecache_file_metadata(const char* path, int nofollow, u64* device, u64* inode,
 	u64* size, u64* mtime_seconds, u64* mtime_nanoseconds,
 	u64* ctime_seconds, u64* ctime_nanoseconds) {
 #if defined(__APPLE__) || defined(__linux__)
 	struct stat info;
-	if (stat(path, &info) != 0) return 0;
+	if ((nofollow ? lstat(path, &info) : stat(path, &info)) != 0) return 0;
 	*device = (u64)info.st_dev;
 	*inode = (u64)info.st_ino;
 	*size = (u64)info.st_size;
@@ -104,9 +104,10 @@ static int v3_modulecache_file_metadata(const char* path, u64* device, u64* inod
 	*mtime_nanoseconds = (u64)info.st_mtimensec;
 	*ctime_seconds = (u64)info.st_ctime;
 	*ctime_nanoseconds = (u64)info.st_ctimensec;
-	return 1;
+	return nofollow && S_ISLNK(info.st_mode) ? 2 : 1;
 #else
 	(void)path;
+	(void)nofollow;
 	(void)device;
 	(void)inode;
 	(void)size;

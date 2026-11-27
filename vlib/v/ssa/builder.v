@@ -5872,8 +5872,9 @@ fn (mut b Builder) register_file_check_stubs() {
 fn (mut b Builder) register_modulecache_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_u64 := b.m.type_store.get_ptr(b.u64_type)
-	mut params := []TypeID{cap: 8}
+	mut params := []TypeID{cap: 9}
 	params << ptr_i8
+	params << b.i64_type
 	for _ in 0 .. 7 {
 		params << ptr_u64
 	}
