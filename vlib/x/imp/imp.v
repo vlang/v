@@ -61,6 +61,7 @@ pub:
 	id    string @[required]
 	name  string // display name, derived from the id when unset
 	help  string
+	cmd   string   // command identity; bump when the body changes, to defeat skips
 	takes []string // input files and directories
 	gives []string // output files and directories
 	check Check = .mtime
@@ -96,11 +97,39 @@ mut:
 	defaults []string
 	enabled  []string
 	flags    []Flag
+	tool_key string // identity of the running build program
 }
 
 // new returns an empty build context.
 pub fn new() Context {
-	return Context{}
+	return Context{
+		tool_key: tool_identity()
+	}
+}
+
+// tool_identity returns a digest of the running build program. Rebuilding the
+// script or upgrading the compiler changes it, so that a flow cannot be skipped
+// on the strength of its inputs alone when the program that produces the
+// output has changed. The executable's name, size and modification time stand
+// in for its contents: they change whenever it is rebuilt, and reading a whole
+// executable on every run would be wasteful.
+fn tool_identity() string {
+	exe := os.args[0]
+	mut size := u64(0)
+	mut mtime := i64(0)
+	// the path as invoked may no longer resolve (the binary can replace itself,
+	// or a launcher can pass a relative name), so fall back to the name alone
+	if os.exists(exe) {
+		size = os.file_size(exe)
+		mtime = os.file_last_mod_unix(exe)
+	}
+	return hash.sum64_string('${@VHASH}\n${exe}\n${size}\n${mtime}', 0).hex_full()
+}
+
+// identity returns the part of a flow's cache key that comes from the build
+// program and the flow's own command declaration, rather than from its inputs.
+fn (c &Context) identity(f Flow) string {
+	return '${c.tool_key}\n${f.cmd}'
 }
 
 // add_target registers a build product, for the auto flows to act on.
@@ -661,7 +690,9 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 	// have just removed or rebuilt the outputs
 	digest := if f.check == .hash { c.digest(f) } else { '' }
 	skip := !os.exists(dirty_path(f)) && match f.check {
-		.mtime { !f.flags.any(it.id in c.enabled) && is_up_to_date(f) }
+		.mtime {
+			!f.flags.any(it.id in c.enabled) && is_up_to_date(f) && c.identity_unchanged(f)
+		}
 		.hash { is_unchanged(f, digest) }
 		.none { false }
 	}
@@ -693,6 +724,10 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 	if f.check == .hash {
 		os.mkdir_all(os.dir(stamp_path(f)))!
 		os.write_file(stamp_path(f), digest)!
+	}
+	if f.check == .mtime {
+		os.mkdir_all(os.dir(identity_path(f)))!
+		os.write_file(identity_path(f), c.identity(f))!
 	}
 	if f.check != .none {
 		os.rm(dirty_path(f))!
@@ -746,6 +781,21 @@ fn dirty_path(f Flow) string {
 	return state_file('dirty', f)
 }
 
+// identity_path is where an mtime flow keeps the build program identity of its
+// last successful run. Hash flows carry the same information inside their
+// digest instead.
+fn identity_path(f Flow) string {
+	return state_file('identity', f)
+}
+
+// identity_unchanged reports whether the build program that last produced the
+// outputs is the one running now. A missing stamp means the flow has never
+// completed, so it cannot be skipped.
+fn (c &Context) identity_unchanged(f Flow) bool {
+	stored := os.read_file(identity_path(f)) or { return false }
+	return stored == c.identity(f)
+}
+
 // excluded_keys are the paths left out of the inputs of `f`: its outputs, and
 // the state imp keeps.
 fn excluded_keys(f Flow) []string {
@@ -754,9 +804,9 @@ fn excluded_keys(f Flow) []string {
 	return keys
 }
 
-// digest identifies the inputs of a flow and the flags that can affect it.
-// wyhash is not cryptographic, but it only has to notice changes, and is fast
-// enough for inputs of hundreds of megabytes.
+// digest identifies the inputs of a flow, the flags that can affect it and the
+// build program that produces it. wyhash is not cryptographic, but it only has
+// to notice changes, and is fast enough for inputs of hundreds of megabytes.
 fn (c &Context) digest(f Flow) string {
 	mut lines := []string{}
 	excluded := excluded_keys(f)
@@ -769,6 +819,7 @@ fn (c &Context) digest(f Flow) string {
 	})
 	flags.sort()
 	lines << 'flags ${flags.join(' ')}'
+	lines << 'identity ${c.identity(f)}'
 	return hash.sum64_string(lines.join('\n'), 0).hex_full()
 }
 

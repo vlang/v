@@ -186,6 +186,75 @@ fn test_hash_skip_needs_outputs_and_inputs() {
 	assert !is_unchanged(f, digest)
 }
 
+// test_hash_flow_reruns_when_cmd_changes checks that a change in the declared
+// command identity invalidates a hash flow even when inputs are untouched.
+fn test_hash_flow_reruns_when_cmd_changes() {
+	sandbox('hash_cmd')
+	os.write_file('src', '')!
+	mut c := new()
+	c.add_flow(id: 'h', cmd: 'v1', takes: ['src'], gives: ['out'], check: .hash, flow: record)
+	c.execute(['h'])!
+	c.execute(['h'])!
+	assert contents('log') == 'h '
+	// the same id and inputs under a new build program with a different command
+	mut next := new()
+	next.add_flow(id: 'h', cmd: 'v2', takes: ['src'], gives: ['out'], check: .hash, flow: record)
+	next.execute(['h'])!
+	assert contents('log') == 'h h '
+}
+
+// test_hash_flow_reruns_when_tool_key_changes checks that recompiling the build
+// program invalidates a hash flow even when inputs are untouched.
+fn test_hash_flow_reruns_when_tool_key_changes() {
+	sandbox('hash_tool_key')
+	os.write_file('src', '')!
+	mut c := new()
+	c.add_flow(id: 'h', takes: ['src'], gives: ['out'], check: .hash, flow: record)
+	c.execute(['h'])!
+	c.execute(['h'])!
+	assert contents('log') == 'h '
+	c.tool_key = 'another build program'
+	c.execute(['h'])!
+	assert contents('log') == 'h h '
+}
+
+// test_mtime_flow_reruns_when_cmd_changes checks that the declared command
+// identity is part of an mtime flow's skip decision.
+fn test_mtime_flow_reruns_when_cmd_changes() {
+	sandbox('mtime_cmd')
+	os.write_file('src', '')!
+	os.write_file('out', '')!
+	set_mtime('src', -100)
+	set_mtime('out', -50)
+	mut c := new()
+	c.add_flow(id: 'f', cmd: 'v1', takes: ['src'], gives: ['out'], flow: record)
+	c.execute(['f'])!
+	c.execute(['f'])!
+	assert contents('log') == 'f '
+	mut next := new()
+	next.add_flow(id: 'f', cmd: 'v2', takes: ['src'], gives: ['out'], flow: record)
+	next.execute(['f'])!
+	assert contents('log') == 'f f '
+}
+
+// test_mtime_flow_reruns_when_tool_key_changes checks that recompiling the build
+// program invalidates an mtime flow whose outputs are otherwise up to date.
+fn test_mtime_flow_reruns_when_tool_key_changes() {
+	sandbox('mtime_tool_key')
+	os.write_file('src', '')!
+	os.write_file('out', '')!
+	set_mtime('src', -100)
+	set_mtime('out', -50)
+	mut c := new()
+	c.add_flow(id: 'f', takes: ['src'], gives: ['out'], flow: record)
+	c.execute(['f'])!
+	c.execute(['f'])!
+	assert contents('log') == 'f '
+	c.tool_key = 'another build program'
+	c.execute(['f'])!
+	assert contents('log') == 'f f '
+}
+
 // test_walks_do_not_follow_links checks that a link loop in an input directory
 // cannot trap the skip checks, which take a dangling link as an entry like any
 // other.
@@ -766,8 +835,12 @@ fn test_flag_of_another_flow_does_not_defeat_a_skip() {
 		flow:  noop
 	)
 	c.execute(['hashed'])!
+	// mtime flows record the build program identity on their first successful
+	// run; prime it so the assertion below isolates the effect of the flag
+	c.execute(['timed'])!
+	os.write_file('log', '')!
 	c.execute(['timed', 'hashed', '--fast'])!
-	assert contents('log') == 'hashed '
+	assert contents('log') == ''
 }
 
 // test_hash_flow_reruns_when_a_script_flag_changes checks that the flags of the
