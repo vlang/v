@@ -5655,6 +5655,22 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 				return
 			}
 		}
+		if !fn_param_is_voidptr_type(target)
+			&& target_name_id !in [flat.source_type_byteptr, flat.source_type_charptr]
+			&& !tc.translated_files[tc.cur_file]
+			&& !tc.cur_file.ends_with('.c.v') {
+			if tc.cast_operand_is_null_pointer(child_id) && tc.unsafe_depth == 0
+				&& !tc.expr_is_inside_unsafe_block(id)
+				&& !tc.expr_is_explicit_unsafe_value(child_id) {
+				kind := if struct_type_from_type(target_base) != none {
+					'a struct pointer'
+				} else {
+					'a pointer'
+				}
+				tc.record_error_at(.assignment_mismatch, 'cannot null cast ${kind}, use ${target_name}(unsafe { nil })', id, tc.cast_expression_diagnostic_pos(node, target_name))
+				return
+			}
+		}
 		// Match the established checker: only raw void pointers require an unsafe cast.
 		// Pointer aliases retain their declared type, and void-pointer aliases are valid
 		// cast targets without an unsafe block.
@@ -6619,6 +6635,21 @@ fn (tc &TypeChecker) cast_operand_is_zero(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
+	// Compile-time zero expressions such as `1 - 1` are null too, while a
+	// computed address like `u64(buf) + offset` involves a runtime value and
+	// stays allowed for struct pointer targets.
+	if value := tc.const_int_expr(id, tc.cur_module, []) {
+		if value != 0 {
+			return false
+		}
+		// The signed fold ignores integer cast widths and signedness, so
+		// `u64(~u32(0)) + 1` wrongly folds to zero. Only treat the operand
+		// as null when wrapping 64-bit evaluation agrees.
+		if unsigned_value := tc.const_uint_expr(id, tc.cur_module, []) {
+			return unsigned_value == 0
+		}
+		return false
+	}
 	node := tc.a.node(id)
 	if node.kind == .int_literal {
 		return numeric_literal_is_zero(node.value)
@@ -6630,7 +6661,15 @@ fn (tc &TypeChecker) cast_operand_is_zero(id flat.NodeId) bool {
 		return false
 	}
 	if value := tc.const_int_value(node.value, []string{}) {
-		return value == 0
+		if value != 0 {
+			return false
+		}
+		// As above, a named const may hold a mistyped nonzero address such as
+		// `u64(~u32(0)) + 1`; confirm with wrapping 64-bit evaluation.
+		if unsigned_value := tc.const_uint_expr(id, tc.cur_module, []) {
+			return unsigned_value == 0
+		}
+		return false
 	}
 	file := tc.a.source_files[node.pos.id] or { return false }
 	source := tc.source_texts_by_file[file.name] or { return false }
@@ -6638,6 +6677,58 @@ fn (tc &TypeChecker) cast_operand_is_zero(id flat.NodeId) bool {
 	for needle in ['${node.value} := 0', '${node.value} = 0'] {
 		if source[..end].last_index(needle) != none {
 			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) cast_operand_is_null_pointer(id flat.NodeId) bool {
+	value_id := tc.unwrap_paren_expr_id(id)
+	if !tc.valid_node_id(value_id) {
+		return false
+	}
+	value := tc.a.node(value_id)
+	if value.kind == .selector && value.value == 'NULL' && value.children_count == 1 {
+		base := tc.a.child_node(value, 0)
+		if base.kind == .ident && base.value == 'C' {
+			return true
+		}
+	}
+	if value.kind == .cast_expr && value.children_count == 1
+		&& value.source_value_id() == flat.source_type_voidptr {
+		inner_id := tc.unwrap_paren_expr_id(tc.a.child(value, 0))
+		if !tc.valid_node_id(inner_id) {
+			return false
+		}
+		if tc.is_zero_literal(inner_id) {
+			return true
+		}
+		inner := tc.a.node(inner_id)
+		if inner.kind == .selector && inner.value == 'NULL' && inner.children_count == 1 {
+			base := tc.a.child_node(inner, 0)
+			if base.kind == .ident && base.value == 'C' {
+				return true
+			}
+		}
+		if inner.kind == .ident && inner.value.len > 0 {
+			if const_value := tc.const_int_value(inner.value, []string{}) {
+				if const_value != 0 {
+					return false
+				}
+				if unsigned_value := tc.const_uint_expr(inner_id, tc.cur_module, []) {
+					return unsigned_value == 0
+				}
+				return false
+			}
+		}
+		if const_value := tc.const_int_expr(inner_id, tc.cur_module, []) {
+			if const_value != 0 {
+				return false
+			}
+			if unsigned_value := tc.const_uint_expr(inner_id, tc.cur_module, []) {
+				return unsigned_value == 0
+			}
+			return false
 		}
 	}
 	return false

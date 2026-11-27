@@ -18954,6 +18954,55 @@ fn v_int_literal_value(s string) ?int {
 	return value
 }
 
+// v_uint_literal_value parses an integer literal with wrapping 64-bit arithmetic,
+// so `0xffffffffffffffff` folds to 18446744073709551615 instead of -1.
+fn v_uint_literal_value(s string) ?u64 {
+	if s == '' {
+		return none
+	}
+	// Most literals have no separators; skip the copy `replace` makes even then.
+	t := if s.contains_u8(`_`) { s.replace('_', '') } else { s }
+	if t.len == 0 {
+		return none
+	}
+	mut base := u64(10)
+	mut digits := t
+	if t.len >= 2 && t[0] == `0` {
+		c := t[1]
+		if c == `x` || c == `X` {
+			base = 16
+			digits = t[2..]
+		} else if c == `o` || c == `O` {
+			base = 8
+			digits = t[2..]
+		} else if c == `b` || c == `B` {
+			base = 2
+			digits = t[2..]
+		}
+	}
+	if digits.len == 0 {
+		return none
+	}
+	mut value := u64(0)
+	for ch in digits {
+		mut d := u64(0)
+		if ch >= `0` && ch <= `9` {
+			d = u64(ch - `0`)
+		} else if ch >= `a` && ch <= `f` {
+			d = u64(ch - `a`) + 10
+		} else if ch >= `A` && ch <= `F` {
+			d = u64(ch - `A`) + 10
+		} else {
+			return none
+		}
+		if d >= base {
+			return none
+		}
+		value = value * base + d
+	}
+	return value
+}
+
 // is_bare_generic_param reports whether is bare generic param applies in types.
 @[direct_array_access; inline]
 fn is_bare_generic_param(typ string) bool {

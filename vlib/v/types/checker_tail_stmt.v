@@ -11023,8 +11023,8 @@ fn (tc &TypeChecker) expr_tail_is_nil(id flat.NodeId) bool {
 }
 
 // null_constant_expr_text returns how `id` spells a compile-time null pointer: `nil`,
-// `0` or `voidptr(0)`, with or without parentheses around it. Anything else, including
-// `unsafe { nil }`, yields an empty string.
+// `0`, `voidptr(0)` or `C.NULL`, with or without parentheses around it. Anything
+// else, including `unsafe { nil }`, yields an empty string.
 fn (tc &TypeChecker) null_constant_expr_text(id flat.NodeId) string {
 	value_id := tc.unwrap_paren_expr_id(id)
 	if !tc.valid_node_id(value_id) {
@@ -11037,8 +11037,14 @@ fn (tc &TypeChecker) null_constant_expr_text(id flat.NodeId) string {
 	if value.kind == .int_literal && numeric_literal_is_zero(value.value) {
 		return '0'
 	}
+	if value.kind == .selector && value.value == 'NULL' && value.children_count == 1 {
+		base := tc.a.child_node(value, 0)
+		if base.kind == .ident && base.value == 'C' {
+			return 'C.NULL'
+		}
+	}
 	if value.kind == .cast_expr && value.source_value_id() == flat.source_type_voidptr && value.children_count == 1
-		&& tc.is_zero_literal(tc.unwrap_paren_expr_id(tc.a.child(value, 0))) {
+		&& tc.cast_operand_is_null_pointer(value_id) {
 		return 'voidptr(0)'
 	}
 	return ''
@@ -12477,6 +12483,91 @@ fn const_eval_plain_identifier(name string) bool {
 	return true
 }
 
+// const_decl_key_in_module resolves `name` to its const definition key and the
+// module holding the definition, using the same candidate order as
+// const_int_value_in_module. It returns none when no definition is visible;
+// an ambiguous import alias also yields none, like the signed evaluator.
+fn (tc &TypeChecker) const_decl_key_in_module(name string, module_name string, seen []string) ?(string, string) {
+	has_dot := name.contains('.')
+	if module_name != '' && module_name != 'main' && module_name != 'builtin' && !has_dot {
+		// This is the first candidate for an unqualified name in its module.
+		key := '${module_name}.${name}'
+		if key !in seen {
+			if _ := tc.const_exprs[key] {
+				return key, tc.const_modules[key] or { module_name }
+			}
+		}
+	}
+	mut candidates := []string{}
+	if has_dot {
+		alias_key, ambiguous := tc.const_import_alias_key(name.all_before_last('.'),
+			name.all_after_last('.'))
+		if ambiguous {
+			return none
+		}
+		if alias_key.len > 0 {
+			// An import alias takes precedence over a module with the same name.
+			candidates << alias_key
+		}
+	}
+	if key := tc.shadowed_builtin_const_key_in_module(name, module_name) {
+		candidates << key
+	}
+	if tc.bare_const_key_is_visible_in_module(name, module_name) {
+		candidates << name
+	}
+	qname := tc.qualify_name(name)
+	if qname != name {
+		candidates << qname
+	}
+	if key := tc.const_key_for_suffix(name) {
+		candidates << key
+	}
+	for key in candidates {
+		if key in seen || !tc.bare_const_key_is_visible_in_module(key, module_name) {
+			continue
+		}
+		if _ := tc.const_exprs[key] {
+			return key, tc.const_modules[key] or { module_name }
+		}
+	}
+	return none
+}
+
+// const_uint_value_in_module folds a named const with wrapping 64-bit
+// arithmetic, so `const k = u64(~u32(0)) + 1` keeps its true nonzero value
+// instead of the signed fold's mistyped zero.
+fn (tc &TypeChecker) const_uint_value_in_module(name string, module_name string, seen []string) ?u64 {
+	if name in seen {
+		return none
+	}
+	if tc.const_expr_short_names_count == tc.const_exprs.len
+		&& const_eval_plain_identifier(name) && name !in tc.const_expr_short_names {
+		return none
+	}
+	// Literals cannot name declarations. Underscore-prefixed identifiers still
+	// need lookup first: the integer parser also accepts their stripped digits.
+	if name.len > 0 && name[0] >= `0` && name[0] <= `9` {
+		if value := v_uint_literal_value(name) {
+			return value
+		}
+	}
+	if key, const_module := tc.const_decl_key_in_module(name, module_name, seen) {
+		mut next_seen := seen.clone()
+		next_seen << key
+		if expr_id := tc.const_exprs[key] {
+			return tc.const_uint_expr(expr_id, const_module, next_seen)
+		}
+	}
+	if v := v_uint_literal_value(name) {
+		return v
+	}
+	if v := tc.const_int_enum_selector_value(name) {
+		return u64(v)
+	}
+	return none
+}
+
 // const_int_value_in_module supports const int value handling for a specific module.
 pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name string, seen []string) ?int {
 	if name in seen {
@@ -12852,6 +12943,263 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []s
 						return none
 					}
 					return int(u64(left) >> right)
+				}
+				else {
+					return none
+				}
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+// const_uint_power folds `base ** exponent` with wrapping 64-bit arithmetic.
+fn const_uint_power(base u64, exponent u64) u64 {
+	mut exp := exponent
+	mut power := base
+	mut value := u64(1)
+	for exp > 0 {
+		if exp & 1 != 0 {
+			value *= power
+		}
+		power *= power
+		exp >>= 1
+	}
+	return value
+}
+
+// const_integer_bit_width returns the bit width of an already-unaliased integer
+// type, or none when the value does not fit in the 64-bit const evaluator.
+fn const_integer_bit_width(t &Type) ?int {
+	if t is Primitive {
+		if !t.props.has(.integer) {
+			return none
+		}
+		if t.size == 0 {
+			return platform_int_bits()
+		}
+		if t.size >= 8 && t.size <= 64 {
+			return int(t.size)
+		}
+		return none
+	}
+	if t is Char {
+		return 8
+	}
+	if t is Rune {
+		return 32
+	}
+	if t is ISize || t is USize {
+		return platform_int_bits()
+	}
+	return none
+}
+
+// const_uint_width_mask returns a mask keeping the lowest `bits` bits.
+@[inline]
+fn const_uint_width_mask(bits int) u64 {
+	if bits >= 64 {
+		return u64(0xffffffffffffffff)
+	}
+	if bits <= 0 {
+		return 0
+	}
+	return (u64(1) << bits) - 1
+}
+
+// const_uint_bit_not folds `~value` where the operand is an integer cast to
+// `bits` width. Sub-int operands follow C codegen promotion: the masked value
+// is extended to int (sign-extended for signed types), flipped in 32 bits,
+// then the int result is sign-extended back to 64 bits. Wider operands keep
+// their width mask, matching the emitted C exactly.
+fn const_uint_bit_not(value u64, operand_type &Type, bits int) ?u64 {
+	if bits < 32 {
+		if operand_type is Primitive && operand_type.props.has(.integer) {
+			low := value & const_uint_width_mask(bits)
+			extended := if operand_type.props.has(.unsigned) {
+				low
+			} else {
+				sign_extend_uint(low, bits)
+			}
+			r32 := ~extended & const_uint_width_mask(32)
+			if r32 & u64(0x80000000) != 0 {
+				return r32 | u64(0xffffffff00000000)
+			}
+			return r32
+		}
+		// A `char` cast promotes with implementation-defined signedness;
+		// abstain instead of guessing.
+		return none
+	}
+	return ~value & const_uint_width_mask(bits)
+}
+
+// sign_extend_uint sign-extends the lowest `bits` bits of `value` to 64 bits.
+@[inline]
+fn sign_extend_uint(value u64, bits int) u64 {
+	if bits >= 64 || bits <= 0 {
+		return value
+	}
+	if value & (u64(1) << bits >> 1) == 0 {
+		return value
+	}
+	return value | ~const_uint_width_mask(bits)
+}
+
+// const_uint_expr folds a const integer expression with wrapping 64-bit
+// arithmetic, masking each integer cast to its target width. Unlike
+// const_int_expr it represents `~u32(0)` as 4294967295 rather than -1, so a
+// zero found by both evaluators is a faithful null instead of a mistyped
+// nonzero address.
+fn (tc &TypeChecker) const_uint_expr(id flat.NodeId, module_name string, seen []string) ?u64 {
+	if int(id) < 0 {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.int_literal {
+			if v := v_uint_literal_value(node.value) {
+				return v
+			}
+		}
+		.char_literal {
+			if v := match_char_literal_value(node.value) {
+				return u64(v)
+			}
+		}
+		.ident {
+			if v := tc.const_uint_value_in_module(node.value, module_name, seen) {
+				return v
+			}
+		}
+		.paren {
+			if node.children_count > 0 {
+				return tc.const_uint_expr(tc.a.child(&node, 0), module_name, seen)
+			}
+		}
+		.cast_expr {
+			if node.children_count == 0 {
+				return none
+			}
+			cast_type := unalias_type(tc.parse_type(node.source_value_id()))
+			if !cast_type.is_integer() {
+				return none
+			}
+			value := tc.const_uint_expr(tc.a.child(&node, 0), module_name, seen) or {
+				return none
+			}
+			if bits := const_integer_bit_width(cast_type) {
+				if bits < 64 {
+					return value & const_uint_width_mask(bits)
+				}
+			}
+			return value
+		}
+		.enum_val {
+			if v := tc.const_int_enum_selector_value(node.value) {
+				return u64(v)
+			}
+		}
+		.selector {
+			if v := tc.const_uint_value_in_module(tc.source_text_for_node(id), module_name,
+				seen) {
+				return v
+			}
+		}
+		.sizeof_expr {
+			if v := tc.const_sizeof_type_value(node.source_value_id()) {
+				return u64(v)
+			}
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return none
+			}
+			value := tc.const_uint_expr(tc.a.child(&node, 0), module_name, seen) or {
+				return none
+			}
+			return match node.op {
+				.minus { u64(0) - value }
+				.plus { value }
+				.bit_not {
+					operand_id := tc.unwrap_paren_expr_id(tc.a.child(&node, 0))
+					operand := tc.a.node(operand_id)
+					if operand.kind == .cast_expr && operand.children_count > 0 {
+						operand_type := unalias_type(tc.parse_type(operand.source_value_id()))
+						if bits := const_integer_bit_width(operand_type) {
+							if bits < 64 {
+								return const_uint_bit_not(value, operand_type, bits)
+							}
+						}
+					}
+					~value
+				}
+				else { none }
+			}
+		}
+		.infix {
+			if node.children_count < 2 {
+				return none
+			}
+			left := tc.const_uint_expr(tc.a.child(&node, 0), module_name, seen) or {
+				return none
+			}
+			right := tc.const_uint_expr(tc.a.child(&node, 1), module_name, seen) or {
+				return none
+			}
+			match node.op {
+				.plus {
+					return left + right
+				}
+				.minus {
+					return left - right
+				}
+				.mul {
+					return left * right
+				}
+				.power {
+					return const_uint_power(left, right)
+				}
+				.div {
+					if right == 0 {
+						return none
+					}
+					return left / right
+				}
+				.mod {
+					if right == 0 {
+						return none
+					}
+					return left % right
+				}
+				.amp {
+					return left & right
+				}
+				.pipe {
+					return left | right
+				}
+				.xor {
+					return left ^ right
+				}
+				.left_shift {
+					if right >= 64 {
+						return none
+					}
+					return left << right
+				}
+				.right_shift {
+					if right >= 64 {
+						return none
+					}
+					return left >> right
+				}
+				.right_shift_unsigned {
+					if right >= 64 {
+						return none
+					}
+					return left >> right
 				}
 				else {
 					return none
