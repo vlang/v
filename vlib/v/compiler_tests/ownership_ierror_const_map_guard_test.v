@@ -174,8 +174,8 @@ fn main() {
 	}
 }
 
-fn test_borrowed_error_without_a_compatible_clone_is_still_rejected() {
-	source := ownership_ierror_const_source('no_clone', 'struct DetailError {
+fn test_borrowed_error_copy_and_map_move_are_rejected() {
+	source := ownership_ierror_const_source('borrowed_rejections', 'struct DetailError {
 	Error
 	detail string
 }
@@ -204,6 +204,7 @@ fn busy() ! {
 fn main() {
 	detailed() or { println(err.msg()) }
 	busy() or { println(err.msg()) }
+	borrowed_map_guard()
 }
 ') or {
 		panic(err)
@@ -211,21 +212,12 @@ fn main() {
 	defer {
 		ownership_ierror_const_cleanup(source)
 	}
-	for flags in ['-autofree -check', '-ownership -d ownership -check'] {
-		out := ownership_ierror_const_compile(flags, source)
-		assert out.exit_code != 0, '${flags}: ${out.output}'
-		assert out.output.contains('main.v:20:9: error: cannot copy borrowed `IError` value: `DetailError` requires ownership destruction but has no compatible `clone()` method'), '${flags}: ${out.output}'
-		// `err_busy` comes from builtin `error_with_code()` and always holds a MessageError.
-		assert !out.output.contains('main.v:24:'), '${flags}: ${out.output}'
-	}
-}
-
-fn test_owned_value_moved_out_of_a_borrowed_map_is_still_rejected() {
-	source := ownership_ierror_const_source('owned_guard', 'struct Entry {
+	root := os.dir(source)
+	os.write_file(os.join_path(root, 'map_guard.v'), 'struct Entry {
 	name string
 }
 
-fn main() {
+fn borrowed_map_guard() {
 	mut m := map[string]Entry{}
 	m["a"] = Entry{"x".repeat(3)}
 	mut t := &m
@@ -236,15 +228,13 @@ fn main() {
 	}
 	println(m.len)
 }
-') or {
-		panic(err)
-	}
-	defer {
-		ownership_ierror_const_cleanup(source)
-	}
+')!
 	for flags in ['-autofree -check', '-ownership -d ownership -check'] {
-		out := ownership_ierror_const_compile(flags, source)
+		out := ownership_ierror_const_compile(flags, root)
 		assert out.exit_code != 0, '${flags}: ${out.output}'
-		assert out.output.contains('cannot move `t[a]` because it borrows `m[a]`; attempted move to `val`'), '${flags}: ${out.output}'
+		assert out.output.contains('main.v:20:9: error: cannot copy borrowed `IError` value: `DetailError` requires ownership destruction but has no compatible `clone()` method'), '${flags}: ${out.output}'
+		// `err_busy` comes from builtin `error_with_code()` and always holds a MessageError.
+		assert !out.output.contains('main.v:24:'), '${flags}: ${out.output}'
+		assert out.output.contains('map_guard.v:10:20: error: cannot move `t[a]` because it borrows `m[a]`; attempted move to `val`'), '${flags}: ${out.output}'
 	}
 }
