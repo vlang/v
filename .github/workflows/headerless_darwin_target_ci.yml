@@ -1,6 +1,7 @@
 name: Headerless Darwin target regression
 
 on:
+  workflow_call:
   pull_request:
     paths:
       - 'vlib/v/gen/c/headerless_program_test.v'

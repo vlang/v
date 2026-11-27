@@ -2,6 +2,12 @@ name: Docker CI
 
 on:
   workflow_call:
+  pull_request:
+    paths:
+      - '.github/workflows/docker_ci.yml'
+      - '.github/workflows/headerless_darwin_target_ci.yml'
+      - 'vlib/v/gen/c/cached_interface_dispatch_test.v'
+      - 'cmd/tools/vtest-self.v'
 
 concurrency:
   group: docker-docker_ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -150,10 +156,17 @@ jobs:
           echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
       - name: All code is formatted
         run: ./v -silent test-cleancode
+      - name: Verify cached interface dispatch against musl-native SQLite
+        run: env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/gen/c/cached_interface_dispatch_test.v
       - name: Set up Node.js for WebAssembly tests
         uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: Verify Wasm host runtime and original tests
+        run: |
+          node --version
+          node --input-type=module -e "import assert from 'node:assert/strict'; import { readFileSync } from 'node:fs'; assert.equal(typeof readFileSync, 'function'); assert.throws(() => assert.equal(1, '1')); assert.ok(WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0])))"
+          ./v -silent test vlib/v/gen/wasm/shapes_test.v vlib/v/gen/wasm/e2e_test.v vlib/v/gen/wasm/stub_audit_test.v
       - name: Set up the musl C++ toolchain
         run: |
           set -eu
@@ -190,7 +203,25 @@ jobs:
           exec /usr/bin/musl-gcc "$@"
           SH
           chmod +x "$compiler_dir/musl-gcc"
+      - name: Verify original C++17 object compilation in the musl lane
+        run: |
+          export PATH="$RUNNER_TEMP/musl-cxx:$PATH"
+          ./v -cc musl-gcc -gc none -d use_bundled_libgc -showcc -silent -b c vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v
+      - name: Verify original SLH-DSA tests with musl OpenSSL
+        run: |
+          set -eu
+          export PATH="$RUNNER_TEMP/musl-cxx:$PATH"
+          test -f /usr/local/include/openssl/obj_mac.h
+          ./v fmt -verify vlib/x/crypto/slhdsa/slhdsa.c.v
+          # Exercise the precise failing cached compilation, not only the C toolchain.
+          ./v -cc musl-gcc -gc none -d use_bundled_libgc -showcc -silent -no-retry-compilation vlib/x/crypto/slhdsa/usage_test.v
+          ./v -cc musl-gcc -gc none -d use_bundled_libgc -showcc -silent -no-retry-compilation vlib/x/crypto/slhdsa/base_test.v
       - name: Test V fixed tests
         run: |
           export PATH="$RUNNER_TEMP/musl-cxx:$PATH"
           ./v -silent test-self vlib
+
+  # Preserve the legacy image and its full suite; exercise Darwin targets with
+  # the modern Clang gate that supports their TLS and deployment macros.
+  ubuntu-musl-headerless:
+    uses: ./.github/workflows/headerless_darwin_target_ci.yml
