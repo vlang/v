@@ -2266,7 +2266,7 @@ fn (mut b Builder) register_functions() {
 
 	// A `fn C.x() Rect` in module `macos` names `macos.Rect`: resolve its types
 	// in the module that declares it.
-	saved_c_decl_module := b.cur_module
+	saved_module := b.cur_module
 	mut c_decl_module := ''
 	for node in b.a.nodes {
 		if node.kind == .file {
@@ -2319,7 +2319,6 @@ fn (mut b Builder) register_functions() {
 			}
 		}
 	}
-	b.cur_module = saved_c_decl_module
 
 	c_variant_names := b.c_variant_function_names()
 	mut cur_module := ''
@@ -2363,6 +2362,8 @@ fn (mut b Builder) register_functions() {
 				&& !b.source_fn_is_used(node.value_text(), cur_module) && !is_export_shadow {
 				continue
 			}
+			// Materialize concrete signature types before workers inherit their layouts.
+			b.cur_module = cur_module
 			ret_type := b.checker_return_type(node.value_text(), cur_module) or {
 				b.resolve_type_in_module(node.typ, cur_module)
 			}
@@ -2398,6 +2399,7 @@ fn (mut b Builder) register_functions() {
 			}
 		}
 	}
+	b.cur_module = saved_module
 	// Source functions exist now; complete any shadow binding the runtime
 	// stubs below need while resolving their libc names.
 	b.bind_export_fn_shadows()
