@@ -4789,10 +4789,21 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 			return
 		}
 	}
-	if !fast_valid_build && module_name in ['', 'main'] && !node.value.contains('.') {
+	if !fast_valid_build && module_name in ['', 'main'] && !node.value.contains('.')
+		&& node.value != 'new_map' {
 		if visibility := tc.declaration_visibility['builtin.${node.value}'] {
 			if visibility.is_pub {
 				tc.record_error_at(.duplicate_decl, 'cannot redefine builtin public function `${node.value}`', flat.NodeId(fn_idx), tc.fn_declaration_diagnostic_pos(node))
+				return
+			}
+			// A private builtin function shares its bare C symbol with a same-named
+			// `main` function, so the user declaration would be silently replaced
+			// by the builtin body. Refuse it the way public names are refused.
+			// `new_map` is exempt: codegen renames a `main` `new_map` to
+			// `main__new_map` (see `qualified_fn_name_in_module_c`), so shadowing
+			// it is safe and relied upon by tests.
+			if visibility.kind == .fn_decl {
+				tc.record_error_at(.duplicate_decl, 'cannot redefine builtin private function `${node.value}`', flat.NodeId(fn_idx), tc.fn_declaration_diagnostic_pos(node))
 				return
 			}
 		}
