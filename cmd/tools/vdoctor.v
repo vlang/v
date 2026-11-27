@@ -154,6 +154,7 @@ fn (mut a App) collect_info() {
 	if os_kind == 'windows' {
 		// Check for MSVC on windows
 		a.line('msvc version', a.cmd(command: ['cl']))
+		a.line('Win32 long paths', doctor_long_paths_status())
 	}
 	a.report_tcc_version('thirdparty/tcc')
 	a.line('emcc version', a.cmd(command: ['emcc', '--version']))
@@ -395,6 +396,17 @@ fn is_same_dir(a string, b string) bool {
 		real_b = real_b.to_lower()
 	}
 	return real_a == real_b
+}
+
+// doctor_long_paths_status summarizes the machine Win32 long-path policy for
+// `v doctor`. Past-MAX_PATH files fail the CRT and plain Win32 calls while it
+// is disabled, which is what `v enable-long-paths` changes.
+fn doctor_long_paths_status() string {
+	return match os.long_paths_status() {
+		.enabled { 'enabled' }
+		.disabled { 'disabled (run `v enable-long-paths` in an administrator terminal to enable)' }
+		.unknown { 'unknown' }
+	}
 }
 
 fn main() {

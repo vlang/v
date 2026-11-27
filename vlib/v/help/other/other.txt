@@ -28,6 +28,10 @@ Other less frequently used commands supported by V include:
 
   doctor           Display some useful info about your system to help reporting bugs.
 
+  enable-long-paths
+                   Enable the Windows long-path policy, so paths past
+                   MAX_PATH work. Needs an administrator terminal.
+
   env               Print the environment variables that steer the V compiler
                    and its tools, with the value V would use for each.
 

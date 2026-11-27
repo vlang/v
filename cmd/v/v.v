@@ -30,6 +30,7 @@ const external_commands = [
 	'doc',
 	'doctor',
 	'download',
+	'enable-long-paths',
 	'env',
 	'fmt',
 	'generate',
