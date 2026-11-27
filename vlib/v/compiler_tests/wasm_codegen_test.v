@@ -915,34 +915,241 @@ fn test_wasm_import_aliases_are_file_scoped() {
 	run_wasi_expect(out_wasm, ['100', '200'])
 }
 
-fn test_wasm_numeric_type_aliases() {
-	v3_bin := v3_binary()
-	// Scalar aliases must classify as their base type: the alias-typed function
-	// is emitted, and Byte(u16(300)) wraps to u8 (44) rather than keeping 300.
-	src := 'type Byte = u8\ntype MyInt = int\n\nfn val() Byte {\n\treturn Byte(u16(300))\n}\n\nfn add(a MyInt, b MyInt) MyInt {\n\treturn a + b\n}\n\nfn main() {\n\tprintln(int(val()))\n\tprintln(int(add(3, 4)))\n\tmut x := Byte(250)\n\tx += Byte(10)\n\tprintln(int(x))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_alias_types')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['44', '7', '4'])
+fn test_wasm_numeric_operations() {
+	wasm := compile_to_wasm(v3_binary(), "type Byte = u8
+type MyInt = int
+
+fn val() Byte {
+	return Byte(u16(300))
 }
 
-fn test_wasm_float_to_unsigned_cast_saturates() {
-	v3_bin := v3_binary()
-	// V's float->int casts saturate: u64(-1.0) -> 0, 2^63 keeps the high bit,
-	// 2^64 saturates to max. Signedness comes from the target type.
-	src := 'fn main() {\n\tprintln(u64(-1.0))\n\tprintln(u64(9223372036854775808.0))\n\tprintln(u64(18446744073709551616.0))\n\tprintln(int(f32(3.9)))\n\tprintln(int(f32(-2.7)))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_fcast')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['0', '9223372036854775808', '18446744073709551615', '3', '-2'])
+fn add(a MyInt, b MyInt) MyInt {
+	return a + b
 }
 
-fn test_wasm_shift_keeps_lhs_width() {
-	v3_bin := v3_binary()
-	// The shift result keeps the lhs width even with a wider count: a u32 shift
-	// by 40 is over-width (>= 32) -> 0, while a u64 shift by 40 is valid.
-	src := 'fn w32() u32 {\n\treturn u32(40)\n}\n\nfn w64() u64 {\n\treturn u64(40)\n}\n\nfn main() {\n\ta := u32(1)\n\tprintln(a << w64())\n\tb := u64(1)\n\tprintln(b << w32())\n\tmut e := u32(1)\n\te <<= w64()\n\tprintln(e)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_shiftwidth')
+// Scalar aliases must classify as their base type: the alias-typed function
+// is emitted, and Byte(u16(300)) wraps to u8 (44) rather than keeping 300.
+fn numeric_type_aliases() {
+	println(int(val()))
+	println(int(add(3, 4)))
+	mut x := Byte(250)
+	x += Byte(10)
+	println(int(x))
+}
+
+// V's float->int casts saturate: u64(-1.0) -> 0, 2^63 keeps the high bit,
+// 2^64 saturates to max. Signedness comes from the target type.
+fn float_to_unsigned_cast_saturates() {
+	println(u64(-1.0))
+	println(u64(9223372036854775808.0))
+	println(u64(18446744073709551616.0))
+	println(int(f32(3.9)))
+	println(int(f32(-2.7)))
+}
+
+// `1 + u64(x)` promotes to u64, so it must print unsigned, not as a signed
+// int. Also a u32 sum with the high bit set must zero-extend.
+fn mixed_numeric_println_promotes() {
+	println(1 + u64(9223372036854775808))
+	println(u64(9223372036854775808) + 1)
+	a := u32(4000000000)
+	println(1 + a)
+}
+
+// An unsigned operand makes / and % unsigned even when the lhs is an
+// untyped/signed literal; signed div/rem still works for signed operands.
+fn unsigned_division_promotes() {
+	println(4000000000 / u32(2))
+	println(4000000001 % u32(3))
+	println(-10 / 3)
+	println(-10 % 3)
+}
+
+// A non-negative literal beyond i64 max must keep its magnitude/sign when
+// cast to a float (the integer path would wrap it negative first).
+fn float_cast_of_large_literal() {
+	println(int(f64(9223372036854775808) > 0.0))
+	println(int(f64(18446744073709551615) > 0.0))
+	println(int(f64(9223372036854775808) == 9223372036854775808.0))
+}
+
+// Mixed signed/unsigned comparisons compare by mathematical value, so a
+// negative signed operand is smaller than any unsigned operand.
+fn mixed_signed_unsigned_comparison() {
+	println(int(i64(-89) <= u64(567)))
+	println(int(int(-1) != u32(0xffffffff)))
+	println(int(u64(0xfffffffffffffffe) == i64(-2)))
+	println(int(u32(8543) > int(-7523)))
+	println(int(i16(-27) < u32(65463356)))
+}
+
+// Negating a literal outside i32 range must keep i64 width (and wrap on
+// overflow like V's cast), not truncate to 32 bits.
+fn unary_minus_large_literal() {
+	println(i64(-9223372036854775808))
+	println(i64(-9223372036854775809))
+	println(-9223372036854775807)
+	println(i64(-5))
+}
+
+fn main() {
+	println('numeric_type_aliases')
+	numeric_type_aliases()
+	println('float_to_unsigned_cast_saturates')
+	float_to_unsigned_cast_saturates()
+	println('mixed_numeric_println_promotes')
+	mixed_numeric_println_promotes()
+	println('unsigned_division_promotes')
+	unsigned_division_promotes()
+	println('float_cast_of_large_literal')
+	float_cast_of_large_literal()
+	println('mixed_signed_unsigned_comparison')
+	mixed_signed_unsigned_comparison()
+	println('unary_minus_large_literal')
+	unary_minus_large_literal()
+}
+", 'wasm_numeric_operations')
 	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['0', '1099511627776', '0'])
+	run_wasi_expect(wasm, [
+		'numeric_type_aliases',
+		'44',
+		'7',
+		'4',
+		'float_to_unsigned_cast_saturates',
+		'0',
+		'9223372036854775808',
+		'18446744073709551615',
+		'3',
+		'-2',
+		'mixed_numeric_println_promotes',
+		'9223372036854775809',
+		'9223372036854775809',
+		'4000000001',
+		'unsigned_division_promotes',
+		'2000000000',
+		'2',
+		'-3',
+		'-1',
+		'float_cast_of_large_literal',
+		'1',
+		'1',
+		'1',
+		'mixed_signed_unsigned_comparison',
+		'1',
+		'1',
+		'0',
+		'1',
+		'1',
+		'unary_minus_large_literal',
+		'-9223372036854775808',
+		'9223372036854775807',
+		'-9223372036854775807',
+		'-5',
+	])
+}
+
+fn test_wasm_bitwise_operations() {
+	wasm := compile_to_wasm(v3_binary(), "fn w32() u32 {
+	return u32(40)
+}
+
+fn w64() u64 {
+	return u64(40)
+}
+
+// The shift result keeps the lhs width even with a wider count: a u32 shift
+// by 40 is over-width (>= 32) -> 0, while a u64 shift by 40 is valid.
+fn shift_keeps_lhs_width() {
+	a := u32(1)
+	println(a << w64())
+	b := u64(1)
+	println(b << w32())
+	mut e := u32(1)
+	e <<= w64()
+	println(e)
+}
+
+// `>>>` on a signed narrow operand works on the 8/16-bit pattern, so the
+// sign-extension bits must be masked off first.
+fn unsigned_right_shift_masks_narrow() {
+	println(int(i8(-5) >>> 1))
+	println(int(i16(-5) >>> 1))
+	println(int(u8(250) >>> 1))
+}
+
+fn allset() u8 {
+	return ~u8(0)
+}
+
+// ~ keeps the operand width: ~u8(0) is 255, ~u16(0) is 65535, and a u8
+// return carries the narrowed value.
+fn bit_not_narrows_result() {
+	println(~u8(0))
+	println(~u16(0))
+	println(allset())
+}
+
+// `>>>=` on a signed narrow local must shift the 8/16-bit pattern, not the
+// sign-extended i32.
+fn unsigned_shift_assign_masks_narrow() {
+	mut x := i8(-5)
+	x >>>= 1
+	println(int(x))
+	mut y := i16(-5)
+	y >>>= 1
+	println(int(y))
+}
+
+fn rc(n int) int {
+	return n
+}
+
+// V promotes narrow types to int for shifts, so i8(-1) >> 8 stays -1 (the
+// computation width is 32), while full-width over-width shifts zero out.
+fn shift_over_width_semantics() {
+	println(int(i8(-1) >> rc(8)))
+	println(u32(1) << rc(32))
+	a := u64(1)
+	println(a << rc(64))
+	println(int(i8(-5) >>> rc(1)))
+}
+
+fn main() {
+	println('shift_keeps_lhs_width')
+	shift_keeps_lhs_width()
+	println('unsigned_right_shift_masks_narrow')
+	unsigned_right_shift_masks_narrow()
+	println('bit_not_narrows_result')
+	bit_not_narrows_result()
+	println('unsigned_shift_assign_masks_narrow')
+	unsigned_shift_assign_masks_narrow()
+	println('shift_over_width_semantics')
+	shift_over_width_semantics()
+}
+", 'wasm_bitwise_operations')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, [
+		'shift_keeps_lhs_width',
+		'0',
+		'1099511627776',
+		'0',
+		'unsigned_right_shift_masks_narrow',
+		'125',
+		'32765',
+		'125',
+		'bit_not_narrows_result',
+		'255',
+		'65535',
+		'255',
+		'unsigned_shift_assign_masks_narrow',
+		'125',
+		'32765',
+		'shift_over_width_semantics',
+		'-1',
+		'0',
+		'0',
+		'125',
+	])
 }
 
 fn test_wasm_multi_decl_buffers_rhs() {
@@ -954,26 +1161,6 @@ fn test_wasm_multi_decl_buffers_rhs() {
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_multidecl')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['6', '7'])
-}
-
-fn test_wasm_unsigned_right_shift_masks_narrow() {
-	v3_bin := v3_binary()
-	// `>>>` on a signed narrow operand works on the 8/16-bit pattern, so the
-	// sign-extension bits must be masked off first.
-	src := 'fn main() {\n\tprintln(int(i8(-5) >>> 1))\n\tprintln(int(i16(-5) >>> 1))\n\tprintln(int(u8(250) >>> 1))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_urshift')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['125', '32765', '125'])
-}
-
-fn test_wasm_bit_not_narrows_result() {
-	v3_bin := v3_binary()
-	// ~ keeps the operand width: ~u8(0) is 255, ~u16(0) is 65535, and a u8
-	// return carries the narrowed value.
-	src := 'fn allset() u8 {\n\treturn ~u8(0)\n}\n\nfn main() {\n\tprintln(~u8(0))\n\tprintln(~u16(0))\n\tprintln(allset())\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_bitnot')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['255', '65535', '255'])
 }
 
 fn test_wasm_output_path_is_exact() {
@@ -991,16 +1178,6 @@ fn test_wasm_output_path_is_exact() {
 	assert os.exists(out_path), 'expected exact output ${out_path}'
 	assert !os.exists(out_path + '.wasm'), 'unexpected ${out_path}.wasm'
 	assert_valid_wasm(out_path)
-}
-
-fn test_wasm_mixed_numeric_println_promotes() {
-	v3_bin := v3_binary()
-	// `1 + u64(x)` promotes to u64, so it must print unsigned, not as a signed
-	// int. Also a u32 sum with the high bit set must zero-extend.
-	src := 'fn main() {\n\tprintln(1 + u64(9223372036854775808))\n\tprintln(u64(9223372036854775808) + 1)\n\ta := u32(4000000000)\n\tprintln(1 + a)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_promote')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['9223372036854775809', '9223372036854775809', '4000000001'])
 }
 
 fn test_wasm_nested_module_import_call() {
@@ -1026,16 +1203,6 @@ fn test_wasm_nested_module_import_call() {
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported call'), res.output
 	run_wasi_expect(out_wasm, ['42', '7'])
-}
-
-fn test_wasm_unsigned_shift_assign_masks_narrow() {
-	v3_bin := v3_binary()
-	// `>>>=` on a signed narrow local must shift the 8/16-bit pattern, not the
-	// sign-extended i32.
-	src := 'fn main() {\n\tmut x := i8(-5)\n\tx >>>= 1\n\tprintln(int(x))\n\tmut y := i16(-5)\n\ty >>>= 1\n\tprintln(int(y))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_urshift_assign')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['125', '32765'])
 }
 
 fn test_wasm_if_expression_value() {
@@ -1070,16 +1237,6 @@ fn test_wasm_top_level_const_inlined() {
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_const')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['42', '9223372036854775808', '43'])
-}
-
-fn test_wasm_unsigned_division_promotes() {
-	v3_bin := v3_binary()
-	// An unsigned operand makes / and % unsigned even when the lhs is an
-	// untyped/signed literal; signed div/rem still works for signed operands.
-	src := 'fn main() {\n\tprintln(4000000000 / u32(2))\n\tprintln(4000000001 % u32(3))\n\tprintln(-10 / 3)\n\tprintln(-10 % 3)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_udiv')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['2000000000', '2', '-3', '-1'])
 }
 
 fn test_wasm_nested_imported_modules() {
@@ -1138,47 +1295,6 @@ fn test_wasm_user_function_named_memory() {
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_memname')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['7'])
-}
-
-fn test_wasm_float_cast_of_large_literal() {
-	v3_bin := v3_binary()
-	// A non-negative literal beyond i64 max must keep its magnitude/sign when
-	// cast to a float (the integer path would wrap it negative first).
-	src := 'fn main() {\n\tprintln(int(f64(9223372036854775808) > 0.0))\n\tprintln(int(f64(18446744073709551615) > 0.0))\n\tprintln(int(f64(9223372036854775808) == 9223372036854775808.0))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_fcastlit')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['1', '1', '1'])
-}
-
-fn test_wasm_shift_over_width_semantics() {
-	v3_bin := v3_binary()
-	// V promotes narrow types to int for shifts, so i8(-1) >> 8 stays -1 (the
-	// computation width is 32), while full-width over-width shifts zero out.
-	src := 'fn rc(n int) int {\n\treturn n\n}\n\nfn main() {\n\tprintln(int(i8(-1) >> rc(8)))\n\tprintln(u32(1) << rc(32))\n\ta := u64(1)\n\tprintln(a << rc(64))\n\tprintln(int(i8(-5) >>> rc(1)))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_shiftsem')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['-1', '0', '0', '125'])
-}
-
-fn test_wasm_mixed_signed_unsigned_comparison() {
-	v3_bin := v3_binary()
-	// Mixed signed/unsigned comparisons compare by mathematical value, so a
-	// negative signed operand is smaller than any unsigned operand.
-	src := 'fn main() {\n\tprintln(int(i64(-89) <= u64(567)))\n\tprintln(int(int(-1) != u32(0xffffffff)))\n\tprintln(int(u64(0xfffffffffffffffe) == i64(-2)))\n\tprintln(int(u32(8543) > int(-7523)))\n\tprintln(int(i16(-27) < u32(65463356)))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_mixedcmp')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['1', '1', '0', '1', '1'])
-}
-
-fn test_wasm_unary_minus_large_literal() {
-	v3_bin := v3_binary()
-	// Negating a literal outside i32 range must keep i64 width (and wrap on
-	// overflow like V's cast), not truncate to 32 bits.
-	src := 'fn main() {\n\tprintln(i64(-9223372036854775808))\n\tprintln(i64(-9223372036854775809))\n\tprintln(-9223372036854775807)\n\tprintln(i64(-5))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_negbig')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['-9223372036854775808', '9223372036854775807', '-9223372036854775807',
-		'-5'])
 }
 
 fn test_wasm_init_runs_before_main() {
