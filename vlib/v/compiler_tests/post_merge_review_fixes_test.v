@@ -634,9 +634,12 @@ fn main() {
 	])
 }
 
-fn test_interface_equality_includes_implicit_return_boxes() {
+fn test_interface_return_boxes() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_implicit_return_box', 'interface IValue {}
+	run_good_module_batch(v3_bin, 'interface_return_boxes', [
+		ReviewRuntimeCase{
+			name:     'interface_eq_implicit_return_box'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -670,13 +673,12 @@ fn main() {
 	println(same(make_value()).str())
 	println(same(make_assigned_value()).str())
 }
-')
-	assert out == 'true\ntrue'
-}
-
-fn test_interface_equality_includes_function_literal_return_boxes() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_function_literal_return_boxes', 'interface IValue {}
+'
+			expected: 'true\ntrue'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_function_literal_return_boxes'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -701,13 +703,18 @@ fn main() {
 		n: 4
 	}))).str())
 }
-')
-	assert out == 'true\ntrue'
+'
+			expected: 'true\ntrue'
+		},
+	])
 }
 
-fn test_interface_equality_includes_container_literal_boxes() {
+fn test_interface_array_element_boxes() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_container_literal_box', 'interface IValue {}
+	run_good_module_batch(v3_bin, 'interface_array_element_boxes', [
+		ReviewRuntimeCase{
+			name:     'interface_eq_container_literal_box'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -723,8 +730,32 @@ fn main() {
 	})]
 	println(same(values).str())
 }
-')
-	assert out == 'true'
+'
+			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_appended_element_box'
+			source:   'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	mut values := []IValue{}
+	values << Value{
+		n: 3
+	}
+	println(same(values[0]).str())
+}
+'
+			expected: 'true'
+		},
+	])
 }
 
 fn test_interface_equality_includes_option_result_return_boxes() {
@@ -809,9 +840,12 @@ fn main() {
 	assert same_body.contains('ResultValue*'), same_body
 }
 
-fn test_interface_equality_includes_multi_return_boxes() {
+fn test_interface_multi_return_boxes() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_multi_return_box', 'interface IValue {}
+	run_good_module_batch(v3_bin, 'interface_multi_return_boxes', [
+		ReviewRuntimeCase{
+			name:     'interface_eq_multi_return_box'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -832,13 +866,12 @@ fn main() {
 	println(same(value).str())
 	println(int_str(n))
 }
-')
-	assert out == 'true\n7'
-}
-
-fn test_interface_equality_includes_multi_return_assignment_slot_boxes() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_multi_return_assignment_slot_box', 'interface IValue {}
+'
+			expected: 'true\n7'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_multi_return_assignment_slot_box'
+			source:   'interface IValue {}
 
 struct Initial {}
 
@@ -863,13 +896,12 @@ fn main() {
 	println(same(value).str())
 	println(int_str(n))
 }
-')
-	assert out == 'true\n7'
-}
-
-fn test_interface_equality_includes_forwarded_multi_return_slot_boxes() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_forwarded_multi_return_slot_box', 'interface IValue {}
+'
+			expected: 'true\n7'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_forwarded_multi_return_slot_box'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -894,15 +926,14 @@ fn main() {
 	println(same(value).str())
 	println(int_str(n))
 }
-')
-	assert out == 'true\n7'
-}
-
-fn test_interface_equality_includes_forwarded_multi_return_container_slot_boxes() {
-	// Only dynamic arrays are converted element by element; a map or fixed array slot
-	// must keep its element types (see test_forwarded_multi_return_container_slots_are_converted).
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_forwarded_multi_return_container_slot_box', 'interface IValue {}
+'
+			expected: 'true\n7'
+		},
+		// Only dynamic arrays are converted element by element; a map or fixed array slot
+		// must keep its element types (see test_forwarded_multi_return_container_slots_are_converted).
+		ReviewRuntimeCase{
+			name:     'interface_eq_forwarded_multi_return_container_slot_box'
+			source:   'interface IValue {}
 
 struct ArrayValue {
 	n int
@@ -944,8 +975,10 @@ fn main() {
 	println(same(fixed_dynamic[0]).str())
 	println(int_str(fixed_dynamic_n))
 }
-')
-	assert out == 'true\n7\ntrue\n17'
+'
+			expected: 'true\n7\ntrue\n17'
+		},
+	])
 }
 
 fn test_forwarded_multi_return_container_slots_are_converted() {
@@ -1046,9 +1079,12 @@ fn main() {
 ', 'cannot use `[1]Value` as type `[1]IValue` in return argument')
 }
 
-fn test_forwarded_multi_return_option_result_payloads_are_converted() {
+fn test_forwarded_wrapped_multi_return_conversions() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'forwarded_multi_return_option_result_payloads', 'interface IValue {
+	run_good_module_batch(v3_bin, 'forwarded_wrapped_multi_return_conversions', [
+		ReviewRuntimeCase{
+			name:     'forwarded_multi_return_option_result_payloads'
+			source:   'interface IValue {
 	get() int
 }
 
@@ -1090,13 +1126,12 @@ fn main() {
 	println(int_str(result_payload.get()))
 	println(int_str(result_n))
 }
-')
-	assert out == '3\n5\n7\n11'
-}
-
-fn test_forwarded_wrapped_multi_return_slots_are_converted() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'forwarded_wrapped_multi_return_slots', 'interface IValue {
+'
+			expected: '3\n5\n7\n11'
+		},
+		ReviewRuntimeCase{
+			name:     'forwarded_wrapped_multi_return_slots'
+			source:   'interface IValue {
 	get() int
 }
 
@@ -1144,31 +1179,10 @@ fn main() {
 	println(int_str(result_value.get()))
 	println(int_str(result_n))
 }
-')
-	assert out == '3\n5\n7\n11'
-}
-
-fn test_interface_equality_includes_appended_element_boxes() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_appended_element_box', 'interface IValue {}
-
-struct Value {
-	n int
-}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn main() {
-	mut values := []IValue{}
-	values << Value{
-		n: 3
-	}
-	println(same(values[0]).str())
-}
-')
-	assert out == 'true'
+'
+			expected: '3\n5\n7\n11'
+		},
+	])
 }
 
 fn test_interface_equality_includes_channel_send_and_default_field_boxes() {
@@ -1225,9 +1239,12 @@ fn main() {
 	])
 }
 
-fn test_interface_equality_includes_struct_field_boxes() {
+fn test_interface_struct_field_boxes() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_struct_field_box', 'interface IValue {}
+	run_good_module_batch(v3_bin, 'interface_struct_field_boxes', [
+		ReviewRuntimeCase{
+			name:     'interface_eq_struct_field_box'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -1249,13 +1266,76 @@ fn main() {
 	}
 	println(same(holder.value).str())
 }
-')
-	assert out == 'true'
+'
+			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_variadic_struct_call_field_boxes'
+			source:   'interface IValue {}
+
+struct Value {
+	n int
 }
 
-fn test_interface_equality_includes_or_fallback_boxes() {
+struct Holder {
+	value IValue
+	n     int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(items ...Holder) bool {
+	return items.len == 1 && items[0].n == 7 && same(items[0].value)
+}
+
+fn main() {
+	println(sink(value: Value{
+		n: 3
+	}, n: 7).str())
+}
+'
+			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_regular_struct_call_field_boxes'
+			source:   'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Holder {
+	value IValue
+	n     int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(holder Holder) bool {
+	return holder.n == 7 && same(holder.value)
+}
+
+fn main() {
+	println(sink(value: Value{
+		n: 3
+	}, n: 7).str())
+}
+'
+			expected: 'true'
+		},
+	])
+}
+
+fn test_interface_or_boxes() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_or_fallback_box', 'interface IValue {}
+	run_good_module_batch(v3_bin, 'interface_or_boxes', [
+		ReviewRuntimeCase{
+			name:     'interface_eq_or_fallback_box'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -1277,13 +1357,12 @@ fn main() {
 	}
 	println(same(value).str())
 }
-')
-	assert out == 'true'
-}
-
-fn test_interface_equality_includes_or_success_boxes() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_or_success_box', 'interface IValue {}
+'
+			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_or_success_box'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -1306,8 +1385,10 @@ fn make_value() IValue {
 fn main() {
 	println(same(make_value()).str())
 }
-')
-	assert out == 'true'
+'
+			expected: 'true'
+		},
+	])
 }
 
 fn test_interface_auto_str_preludes_stay_inside_tag_guards() {
@@ -1459,9 +1540,12 @@ fn main() {
 	assert out == 'false\ntrue'
 }
 
-fn test_interface_equality_includes_receiver_method_call_boxes() {
+fn test_interface_call_argument_boxes() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_receiver_method_call_box', 'interface IValue {}
+	run_good_module_batch(v3_bin, 'interface_call_argument_boxes', [
+		ReviewRuntimeCase{
+			name:     'interface_eq_receiver_method_call_box'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -1480,8 +1564,37 @@ fn main() {
 		n: 3
 	}).str())
 }
-')
-	assert out == 'true'
+'
+			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_variadic_call_boxes'
+			source:   'interface IValue {}
+
+struct Single {}
+struct First {}
+struct Second {}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn all_same(values ...IValue) bool {
+	mut ok := true
+	for value in values {
+		ok = ok && same(value)
+	}
+	return ok
+}
+
+fn main() {
+	println(all_same(Single{}).str())
+	println(all_same(First{}, Second{}).str())
+}
+'
+			expected: 'true\ntrue'
+		},
+	])
 }
 
 fn test_interface_equality_includes_veb_handler_call_boxes() {
@@ -1530,67 +1643,12 @@ fn main() {
 	assert out == 'true'
 }
 
-fn test_interface_equality_includes_variadic_call_boxes() {
+fn test_interface_params_field_boxes() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_variadic_call_boxes', 'interface IValue {}
-
-struct Single {}
-struct First {}
-struct Second {}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn all_same(values ...IValue) bool {
-	mut ok := true
-	for value in values {
-		ok = ok && same(value)
-	}
-	return ok
-}
-
-fn main() {
-	println(all_same(Single{}).str())
-	println(all_same(First{}, Second{}).str())
-}
-')
-	assert out == 'true\ntrue'
-}
-
-fn test_interface_equality_includes_variadic_struct_call_field_boxes() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_variadic_struct_call_field_boxes', 'interface IValue {}
-
-struct Value {
-	n int
-}
-
-struct Holder {
-	value IValue
-	n     int
-}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn sink(items ...Holder) bool {
-	return items.len == 1 && items[0].n == 7 && same(items[0].value)
-}
-
-fn main() {
-	println(sink(value: Value{
-		n: 3
-	}, n: 7).str())
-}
-')
-	assert out == 'true'
-}
-
-fn test_interface_equality_includes_params_call_field_boxes() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_params_call_field_boxes', 'interface IValue {}
+	run_good_module_batch(v3_bin, 'interface_params_field_boxes', [
+		ReviewRuntimeCase{
+			name:     'interface_eq_params_call_field_boxes'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -1615,43 +1673,12 @@ fn main() {
 		n: 3
 	}, n: 7).str())
 }
-')
-	assert out == 'true'
-}
-
-fn test_interface_equality_includes_regular_struct_call_field_boxes() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_regular_struct_call_field_boxes', 'interface IValue {}
-
-struct Value {
-	n int
-}
-
-struct Holder {
-	value IValue
-	n     int
-}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn sink(holder Holder) bool {
-	return holder.n == 7 && same(holder.value)
-}
-
-fn main() {
-	println(sink(value: Value{
-		n: 3
-	}, n: 7).str())
-}
-')
-	assert out == 'true'
-}
-
-fn test_interface_equality_includes_omitted_params_default_boxes() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_omitted_params_default_box', 'interface IValue {}
+'
+			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_omitted_params_default_box'
+			source:   'interface IValue {}
 
 struct Value {
 	n int
@@ -1677,8 +1704,10 @@ fn main() {
 	println(sink().str())
 	println(sink(n: 7).str())
 }
-')
-	assert out == 'true\ntrue'
+'
+			expected: 'true\ntrue'
+		},
+	])
 }
 
 fn test_empty_interface_equality_does_not_accept_unregistered_payloads() {
@@ -1712,9 +1741,12 @@ fn test_select_receive_assignment_checks_lhs_type() {
 	run_bad(v3_bin, 'select_receive_assign_string_mismatch', "fn main() {\n\tch := chan int{}\n\tmut value := ''\n\tselect {\n\t\tvalue = <-ch {}\n\t\telse {}\n\t}\n\tprintln(value)\n}\n", 'cannot assign `int` to `string`')
 }
 
-fn test_select_receive_assignment_applies_destination_conversions() {
+fn test_select_receive_conversions() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'select_receive_assign_conversions', 'interface IValue {
+	run_good_module_batch(v3_bin, 'select_receive_conversions', [
+		ReviewRuntimeCase{
+			name:     'select_receive_assign_conversions'
+			source:   'interface IValue {
 	get() int
 }
 
@@ -1829,13 +1861,12 @@ fn main() {
 	println(int_str(sum_n(aliased_sum_value)))
 	println(int_str(interface_n(interface_source_value)))
 }
-')
-	assert out == '3\n5\n7\n9\n11\n13\n15'
-}
-
-fn test_select_receive_assignment_converts_container_elements() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'select_receive_assign_container_conversions', 'interface IValue {
+'
+			expected: '3\n5\n7\n9\n11\n13\n15'
+		},
+		ReviewRuntimeCase{
+			name:     'select_receive_assign_container_conversions'
+			source:   'interface IValue {
 	get() int
 }
 
@@ -1859,41 +1890,12 @@ fn main() {
 
 	println(int_str(values[0].get()))
 }
-')
-	assert out == '3'
-}
-
-fn test_select_dereferences_pointer_channels() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'select_pointer_channels', 'fn receive(ch &chan int) int {
-	select {
-		value := <-ch {
-			return value
-		}
-	}
-	return -1
-}
-
-fn send(ch &chan int, value int) {
-	select {
-		ch <- value {}
-	}
-}
-
-fn main() {
-	ch := chan int{cap: 1}
-	ch <- 3
-	println(int_str(receive(&ch)))
-	send(&ch, 5)
-	println(int_str(<-ch))
-}
-')
-	assert out == '3\n5'
-}
-
-fn test_select_receive_assignment_reboxes_option_result_payloads() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'select_receive_reboxes_option_result_payloads', 'interface IValue {
+'
+			expected: '3'
+		},
+		ReviewRuntimeCase{
+			name:     'select_receive_reboxes_option_result_payloads'
+			source:   'interface IValue {
 	get() int
 }
 
@@ -1942,13 +1944,12 @@ fn main() {
 	result_payload := result_value or { panic(err) }
 	println(int_str(result_payload.get()))
 }
-')
-	assert out == '3\n7'
-}
-
-fn test_interface_equality_includes_select_receive_assignment_boxes() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_eq_select_receive_assignment_box', 'interface IValue {}
+'
+			expected: '3\n7'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_select_receive_assignment_box'
+			source:   'interface IValue {}
 
 struct Initial {}
 
@@ -1971,8 +1972,38 @@ fn main() {
 	}
 	println(same(value).str())
 }
+'
+			expected: 'true'
+		},
+	])
+}
+
+fn test_select_dereferences_pointer_channels() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_pointer_channels', 'fn receive(ch &chan int) int {
+	select {
+		value := <-ch {
+			return value
+		}
+	}
+	return -1
+}
+
+fn send(ch &chan int, value int) {
+	select {
+		ch <- value {}
+	}
+}
+
+fn main() {
+	ch := chan int{cap: 1}
+	ch <- 3
+	println(int_str(receive(&ch)))
+	send(&ch, 5)
+	println(int_str(<-ch))
+}
 ')
-	assert out == 'true'
+	assert out == '3\n5'
 }
 
 fn test_select_lowering_roots_array_free() {
@@ -6810,9 +6841,12 @@ fn main() {
 	])
 }
 
-fn test_map_retains_address_of_local_after_return() {
+fn test_map_retained_local_addresses() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'map_retains_address_of_local_after_return', 'struct Item {
+	run_good_module_batch(v3_bin, 'map_retained_local_addresses', [
+		ReviewRuntimeCase{
+			name:     'map_retains_address_of_local_after_return'
+			source:   'struct Item {
 	value int
 }
 
@@ -6832,13 +6866,12 @@ fn main() {
 	println(int_str(cache["alias"].value))
 	println(int_str(cache["direct"].value))
 }
-')
-	assert out == '7\n7'
-}
-
-fn test_map_retains_addresses_of_same_named_branch_locals() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'map_retains_addresses_of_same_named_branch_locals', 'struct Item {
+'
+			expected: '7\n7'
+		},
+		ReviewRuntimeCase{
+			name:     'map_retains_addresses_of_same_named_branch_locals'
+			source:   'struct Item {
 mut:
 	value int
 }
@@ -6873,8 +6906,10 @@ fn main() {
 	println(int_str(cache["second"].value))
 	println(int_str(cache["outer"].value))
 }
-')
-	assert out == '11\n22\n33'
+'
+			expected: '11\n22\n33'
+		},
+	])
 }
 
 fn test_lambda_capture_counts_as_local_use_without_counting_shadowed_parameters() {
