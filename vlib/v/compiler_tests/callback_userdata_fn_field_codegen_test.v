@@ -334,8 +334,8 @@ fn main() {
 	assert autofree_c.contains('main__frame((main__App*)arg0);'), autofree_c
 	assert autofree_c.contains('main__on_event(arg0, (main__App*)arg1);'), autofree_c
 
-	homonym_root := os.join_path(root, 'homonym')
-	callback_write_project_file(homonym_root, 'left/left.v', 'module left
+	symbol_root := os.join_path(root, 'callback_symbols')
+	callback_write_project_file(symbol_root, 'left/left.v', 'module left
 
 pub struct App {
 pub mut:
@@ -346,7 +346,7 @@ pub fn hit(mut app App) {
 	app.hits += 10
 }
 ')
-	callback_write_project_file(homonym_root, 'right/right.v', 'module right
+	callback_write_project_file(symbol_root, 'right/right.v', 'module right
 
 pub struct App {
 pub mut:
@@ -357,7 +357,7 @@ pub fn hit(mut app App) {
 	app.hits += 100
 }
 ')
-	homonym_main := callback_write_project_file(homonym_root, 'main.v', 'module main
+	symbol_src := callback_write_project_file(symbol_root, 'main.v', 'module main
 
 import left
 import right
@@ -370,30 +370,6 @@ struct Config {
 fn run(cfg Config) {
 	cfg.cb(cfg.user_data)
 }
-
-fn main() {
-	_ := left.App{}
-	mut app := right.App{}
-	cfg := Config{
-		cb: right.hit
-		user_data: voidptr(&app)
-	}
-	run(cfg)
-	println(int_str(app.hits))
-}
-')
-	homonym_out := os.join_path(root, 'homonym_out')
-	homonym_compile := os.exec([v3_bin, '${homonym_main}', '-b', 'c', '-o', '${homonym_out}'])
-	assert homonym_compile.exit_code == 0, homonym_compile.output
-	homonym_run := os.exec([homonym_out])
-	assert homonym_run.exit_code == 0, homonym_run.output
-	assert homonym_run.output.trim_space() == '100'
-	homonym_c := os.read_file(homonym_out + '.c') or { panic(err) }
-	assert homonym_c.contains('right__hit_callback_adapter'), homonym_c
-	assert homonym_c.contains('right__hit((right__App*)arg0);'), homonym_c
-	assert !homonym_c.contains('left__hit_callback_adapter'), homonym_c
-
-	c_fn_src := callback_write_source(root, 'c_fn_value', 'module main
 
 fn C.abs(int) int
 
@@ -411,22 +387,37 @@ fn call_c(cb fn (int) int) int {
 	return cb(-3)
 }
 
-fn main() {
+fn check_c_function_value() {
 	_ := App{}
 	rc := call_c(C.abs)
 	println(int_str(rc))
 }
+
+fn main() {
+	_ := left.App{}
+	mut app := right.App{}
+	cfg := Config{
+		cb: right.hit
+		user_data: voidptr(&app)
+	}
+	run(cfg)
+	println(int_str(app.hits))
+	check_c_function_value()
+}
 ')
-	c_fn_out := os.join_path(root, 'c_fn')
-	c_fn_compile := os.exec([v3_bin, '${c_fn_src}', '-b', 'c', '-o', '${c_fn_out}'])
-	assert c_fn_compile.exit_code == 0, c_fn_compile.output
-	c_fn_run := os.exec([c_fn_out])
-	assert c_fn_run.exit_code == 0, c_fn_run.output
-	assert c_fn_run.output.trim_space() == '3'
-	c_fn_c := os.read_file(c_fn_out + '.c') or { panic(err) }
-	assert c_fn_c.contains('call_c(abs)'), c_fn_c
-	assert !c_fn_c.contains('call_c((_fn_ptr'), c_fn_c
-	assert !c_fn_c.contains('int abs(App*'), c_fn_c
+	symbol_out := os.join_path(root, 'callback_symbols_out')
+	symbol_compile := os.exec([v3_bin, symbol_src, '-b', 'c', '-o', symbol_out])
+	assert symbol_compile.exit_code == 0, symbol_compile.output
+	symbol_run := os.exec([symbol_out])
+	assert symbol_run.exit_code == 0, symbol_run.output
+	assert symbol_run.output.trim_space().split_into_lines() == ['100', '3'], symbol_run.output
+	symbols := os.read_file(symbol_out + '.c') or { panic(err) }
+	assert symbols.contains('right__hit_callback_adapter'), symbols
+	assert symbols.contains('right__hit((right__App*)arg0);'), symbols
+	assert !symbols.contains('left__hit_callback_adapter'), symbols
+	assert symbols.contains('call_c(abs)'), symbols
+	assert !symbols.contains('call_c((_fn_ptr'), symbols
+	assert !symbols.contains('int abs(App*'), symbols
 }
 
 fn test_callback_parallel_wrapper_names_are_stable() {
