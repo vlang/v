@@ -275,7 +275,7 @@ fn own_${name}(mut values []Handle) []Handle {
 	}
 }
 
-fn test_borrowed_owned_array_storage_scope_and_retained_headers() {
+fn test_borrowed_owned_array_storage_scope_retained_headers_and_captures() {
 	source := '@[has_globals]
 module main
 import builtin.closure
@@ -580,17 +580,77 @@ pub fn check() {
 	println(@MOD)
 }
 '
+	capture_source := '@[has_globals]
+module main
+import builtin.closure
+__global next_id = 0
+__global clones = 0
+__global dropped = map[int]bool{}
+interface Drop { mut: drop() }
+struct Resource implements IClone, Drop { id int mut: value int }
+fn fresh() Resource { next_id++; return Resource{next_id, 0} }
+fn (r &Resource) clone() Resource { clones++; return Resource{fresh().id, r.value} }
+fn (mut r Resource) drop() {
+	assert !dropped[r.id], "double drop"
+	dropped[r.id] = true
+}
+fn capture(mut values []Resource) fn () int {
+	return fn [values] () int {
+		assert !dropped[values[0].id]
+		return values[0].value
+	}
+}
+fn make_capture(borrowed bool) fn () int {
+	mut owner := [fresh()]
+	kept := if borrowed { capture(mut owner[..]) } else { capture(mut owner) }
+	owner[0].value = 7
+	return kept
+}
+fn check_capture(borrowed bool) {
+	kept := make_capture(borrowed)
+	assert kept() == 0
+}
+fn capture_pointer(values &[]Resource) fn () int {
+	return fn [values] () int { return values[0].value }
+}
+fn check_pointer_capture() {
+	mut owner := [fresh()]
+	kept := capture_pointer(&owner)
+	owner[0].value = 9
+	assert kept() == 9
+}
+fn capture_ints(mut values []int) fn () int {
+	return fn [values] () int { return values[0] }
+}
+fn check_primitive_capture() {
+	mut owner := [401]
+	kept := capture_ints(mut owner)
+	owner[0] = 402
+	assert kept() == 401
+}
+pub fn check() {
+	mut lifetime := closure.new_lifetime()
+	lifetime.frame(fn () {
+		for borrowed in [false, true] { check_capture(borrowed) }
+		check_pointer_capture()
+		check_primitive_capture()
+	}) or { panic(err) }
+	lifetime.dispose() or { panic(err) }
+	assert clones == 2
+	assert dropped.len == next_id
+	println("ok")
+}
+'
 	project := 'retained_array_headers'
 	root := os.join_path(borrow_storage_tmp_dir, project)
-	variants := ['owned_header', 'borrowed_header']
+	variants := {
+		'owned_header':    source.replace('mut holder.values[..]', 'mut holder.values')
+		'borrowed_header': source
+		'array_capture':   capture_source
+	}
 	mut imports := []string{cap: variants.len}
 	mut branches := []string{cap: variants.len}
-	for name in variants {
-		input := if name == 'owned_header' {
-			source.replace('mut holder.values[..]', 'mut holder.values')
-		} else {
-			source
-		}
+	for name, input in variants {
 		dir := os.join_path(root, name)
 		os.mkdir_all(dir) or { panic(err) }
 		os.write_file(os.join_path(dir, 'check.v'), input.replace('module main', 'module ${name}')) or {
@@ -602,10 +662,11 @@ pub fn check() {
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: '${project}' }\n") or { panic(err) }
 	binary := borrow_storage_compile_dispatch(os.join_path(project, 'main'), imports.join('\n') + '\n\n',
 		branches)
-	for name in variants {
+	for name, _ in variants {
 		run := os.exec([binary, name])
 		assert run.exit_code == 0, '${name}: ${run.output}'
-		assert run.output.trim_space() == name, '${name}: ${run.output}'
+		expected := if name == 'array_capture' { 'ok' } else { name }
+		assert run.output.trim_space() == expected, '${name}: ${run.output}'
 	}
 }
 
@@ -752,71 +813,6 @@ ${calls.join('\n')}
 	expected << 'optional_bucket\ndrop 101\ndrop 1\nstring_sum\nok'
 	output := borrow_storage_run('wrapped_mut_array', source)
 	assert output == expected.join('\n')
-}
-
-fn test_mutable_array_value_captures_acquire_owned_snapshots() {
-	output := borrow_storage_run('array_capture_storage', '@[has_globals]
-module main
-import builtin.closure
-__global next_id = 0
-__global clones = 0
-__global dropped = map[int]bool{}
-interface Drop { mut: drop() }
-struct Resource implements IClone, Drop { id int mut: value int }
-fn fresh() Resource { next_id++; return Resource{next_id, 0} }
-fn (r &Resource) clone() Resource { clones++; return Resource{fresh().id, r.value} }
-fn (mut r Resource) drop() {
-	assert !dropped[r.id], "double drop"
-	dropped[r.id] = true
-}
-fn capture(mut values []Resource) fn () int {
-	return fn [values] () int {
-		assert !dropped[values[0].id]
-		return values[0].value
-	}
-}
-fn make_capture(borrowed bool) fn () int {
-	mut owner := [fresh()]
-	kept := if borrowed { capture(mut owner[..]) } else { capture(mut owner) }
-	owner[0].value = 7
-	return kept
-}
-fn check_capture(borrowed bool) {
-	kept := make_capture(borrowed)
-	assert kept() == 0
-}
-fn capture_pointer(values &[]Resource) fn () int {
-	return fn [values] () int { return values[0].value }
-}
-fn check_pointer_capture() {
-	mut owner := [fresh()]
-	kept := capture_pointer(&owner)
-	owner[0].value = 9
-	assert kept() == 9
-}
-fn capture_ints(mut values []int) fn () int {
-	return fn [values] () int { return values[0] }
-}
-fn check_primitive_capture() {
-	mut owner := [401]
-	kept := capture_ints(mut owner)
-	owner[0] = 402
-	assert kept() == 401
-}
-fn main() {
-	mut lifetime := closure.new_lifetime()
-	lifetime.frame(fn () {
-		for borrowed in [false, true] { check_capture(borrowed) }
-		check_pointer_capture()
-		check_primitive_capture()
-	}) or { panic(err) }
-	lifetime.dispose() or { panic(err) }
-	assert clones == 2
-	assert dropped.len == next_id
-	println("ok")
-}
-')
-	assert output == 'ok'
 }
 
 fn borrow_storage_bulk_copy_case(name string, operation string, borrowed bool) string {
