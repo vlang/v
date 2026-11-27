@@ -34,6 +34,26 @@ fn ownership_value_semantics_c(mode string, source string) !string {
 	return os.read_file(c_file)!
 }
 
+fn ownership_value_semantics_run_with_c(source string) !(string, os.Result) {
+	root := os.dir(source)
+	name := os.file_name(root)
+	binary := os.join_path(root, name)
+	tmp := os.vtmp_dir()
+	existing := os.ls(tmp)!.filter(it.starts_with('${name}.') && it.ends_with('.tmp.c'))
+	out := ownership_value_semantics_v('', ['-gc', 'none', '-cc', 'clang', '-keepc', '-o', binary,
+		'run', source])
+	retained := os.ls(tmp)!.filter(it.starts_with('${name}.') && it.ends_with('.tmp.c')
+		&& it !in existing)
+	defer {
+		for file in retained {
+			os.rm(os.join_path(tmp, file)) or {}
+		}
+	}
+	assert out.exit_code == 0, out.output
+	assert retained.len == 1, 'expected one retained C file for ${binary}, got ${retained}'
+	return os.read_file(os.join_path(tmp, retained[0]))!, out
+}
+
 // ownership_value_semantics_c_fn returns the definition of the C function `name`.
 fn ownership_value_semantics_c_fn(c string, name string) string {
 	mut lines := []string{}
@@ -109,8 +129,9 @@ fn main() {
 }
 ')!
 	defer { ownership_value_semantics_cleanup(source) }
+	default_c, out := ownership_value_semantics_run_with_c(source)!
 	for mode in ['-no-parallel', ''] {
-		c := ownership_value_semantics_c(mode, source)!
+		c := if mode == '' { default_c } else { ownership_value_semantics_c(mode, source)! }
 		// `h.data[i] = h.data[i + 1]` replaces an entry whose strings the next slot still shares.
 		delete_at := ownership_value_semantics_c_fn(c, 'http__Header__delete_at')
 		assert !delete_at.contains('__drop_assign'), '${mode}: ${delete_at}'
@@ -133,8 +154,6 @@ fn main() {
 		request_head := ownership_value_semantics_c_fn(c, 'http__parse_request_head_str')
 		assert !request_head.contains('map_old_value'), '${mode}: ${request_head}'
 	}
-	out := ownership_value_semantics_v('', ['-gc', 'none', '-cc', 'clang', 'run', source])
-	assert out.exit_code == 0, out.output
 	assert out.output.trim_space() == 'ok', out.output
 }
 
@@ -153,13 +172,12 @@ fn main() {
 }
 ')!
 	defer { ownership_value_semantics_cleanup(source) }
+	default_c, out := ownership_value_semantics_run_with_c(source)!
 	for mode in ['-no-parallel', ''] {
-		c := ownership_value_semantics_c(mode, source)!
+		c := if mode == '' { default_c } else { ownership_value_semantics_c(mode, source)! }
 		atoi_check := ownership_value_semantics_c_fn(c, 'strconv__atoi_common_check')
 		assert atoi_check.contains('string__clone('), '${mode}: ${atoi_check}'
 	}
-	out := ownership_value_semantics_v('', ['-gc', 'none', '-cc', 'clang', 'run', source])
-	assert out.exit_code == 0, out.output
 	assert out.output.split_into_lines() == ['custom failure', 'strconv.atoi: parsing "": empty string'], out.output
 }
 
