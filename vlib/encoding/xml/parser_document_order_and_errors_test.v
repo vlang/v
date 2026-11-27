@@ -281,3 +281,26 @@ fn test_inline_markup_result_must_consume_input_and_end_within_the_source() {
 		}
 	}
 }
+
+fn test_string_parser_borrows_only_plain_attribute_values_on_request() {
+	source := '<root a="borrowed" b="x&amp;y" c="café"><item a="nested"/></root>'
+	document, consumed := xml.XMLDocument.from_string_with_consumed(source, borrow_text: true)!
+	assert consumed == source.len
+	assert document.version == '1.0'
+	assert document.encoding == 'UTF-8'
+	assert document.comments.len == 0
+	assert document.doctype.name == ''
+	assert document.root.attributes['b'] or { '' } == 'x&y'
+	assert document.root.attributes['c'] or { '' } == 'café'
+
+	plain := document.root.attributes['a'] or { panic('missing root attribute') }
+	item := document.root.children[0] as xml.XMLNode
+	nested := item.attributes['a'] or { panic('missing nested attribute') }
+	assert voidptr(plain.str) == voidptr(source.substr_unsafe(9, 17).str)
+	nested_start := source.index('nested') or { panic('missing nested attribute in fixture') }
+	assert voidptr(nested.str) == voidptr(source.substr_unsafe(nested_start, nested_start + 6).str)
+
+	owned := xml.XMLDocument.from_string(source)!.root.attributes['a'] or { panic('missing owned attribute') }
+	assert owned == plain
+	assert voidptr(owned.str) != voidptr(plain.str)
+}

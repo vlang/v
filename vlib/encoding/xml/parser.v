@@ -31,7 +31,7 @@ mut:
 }
 
 fn parse_attributes(attribute_contents string) !map[string]string {
-	return parse_attributes_with_entities(attribute_contents, default_entities)
+	return parse_attributes_with_entities(attribute_contents, default_entities, false)
 }
 
 // Borrow the trimmed span only until the current XML field is decoded.
@@ -48,7 +48,7 @@ fn xml_trim_view(value string) string {
 	return value.substr_unsafe(start, end)
 }
 
-fn parse_attributes_with_entities(attribute_contents string, entities map[string]string) !map[string]string {
+fn parse_attributes_with_entities(attribute_contents string, entities map[string]string, borrow_text bool) !map[string]string {
 	if attribute_contents.contains_u8(`<`) {
 		return error('Malformed XML. Found "<" in attribute string: "${attribute_contents}"')
 	}
@@ -92,8 +92,12 @@ fn parse_attributes_with_entities(attribute_contents string, entities map[string
 		if key in attributes {
 			return error('Duplicate XML attribute: ${key}')
 		}
-		value := attribute_contents[value_start..value_start + value_end]
-		attributes[key] = decode_owned_text(value, entities)!
+		value := attribute_contents.substr_unsafe(value_start, value_start + value_end)
+		if !value.contains_u8(`&`) && value.is_pure_ascii() {
+			attributes[key] = if borrow_text { value } else { value.clone() }
+		} else {
+			attributes[key] = unescape_text(value, entities: entities)!
+		}
 		position = value_start + value_end + 1
 	}
 
@@ -850,12 +854,12 @@ fn parse_node_with_entities(
 		// We're not looking for children and inner text
 		return XMLNode{
 			name:       name
-			attributes: parse_attributes_with_entities(xml_trim_view(tag_contents.substr_unsafe(name.len, tag_contents.len - 1)), entities)!
+			attributes: parse_attributes_with_entities(xml_trim_view(tag_contents.substr_unsafe(name.len, tag_contents.len - 1)), entities, reader.options.borrow_text)!
 		}
 	}
 
 	attribute_string := xml_trim_view(tag_contents.substr_unsafe(name.len, tag_contents.len))
-	attributes := parse_attributes_with_entities(attribute_string, entities)!
+	attributes := parse_attributes_with_entities(attribute_string, entities, reader.options.borrow_text)!
 
 	if reader.options.preserve_text {
 		return parse_preserved_children(name, attributes, entities, nesting_depth, mut reader) or {
@@ -915,8 +919,8 @@ pub:
 	strict_markup bool
 	// Override inline <! and <? parsing while preserving character data.
 	inline_markup ?XMLInlineMarkup
-	// Borrow entity-free text from the input. Keep the source alive until all
-	// consumers have finished reading or copied the returned text.
+	// Borrow entity-free character data and plain ASCII attribute values.
+	// Keep the input alive until consumers finish reading or copy those values.
 	borrow_text bool
 }
 
@@ -926,6 +930,13 @@ pub fn XMLDocument.from_string_with_consumed(raw_contents string, options XMLStr
 		return error('Inline XML markup requires preserved text.')
 	}
 	mut input := XMLInput{ source: raw_contents, options: options }
+	// A document that starts with the root element uses the default prolog
+	// and entities. Enter the same node parser directly in that case.
+	if raw_contents.len >= 2 && raw_contents[0] == `<` && raw_contents[1] !in [`?`, `!`] {
+		input.position = 2
+		root := parse_node_with_entities(raw_contents[1], default_entities, 1, mut input)!
+		return XMLDocument{ root: root }, input.position
+	}
 	document := xml_document_from_input(mut input)!
 	return document, input.position
 }
