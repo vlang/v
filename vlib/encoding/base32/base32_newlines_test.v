@@ -5,10 +5,7 @@ struct WrappedCase {
 	want    string
 }
 
-// Base32 output is normally wrapped at a line boundary. The `decode`
-// documentation says "\r and \n are ignored", but the strip_newlines call
-// was commented out and the `0xFF` sentinel is unreachable, so a wrapped
-// payload was rejected as corrupt input instead of decoding.
+// Exercise CR and LF before, after, and inside the encoded payload.
 const wrapped_cases = [
 	WrappedCase{'MZXW6===', 'foo'},
 	WrappedCase{'MZXW6===\r\n', 'foo'},
@@ -29,10 +26,6 @@ fn test_decode_ignores_newlines_as_documented() {
 	}
 }
 
-// NOTE: a byte outside the alphabet is *not* rejected — the decoder only
-// reports the `0xFF` sentinel, which nothing in the decode map produces, so
-// `?` is silently read as digit 0. That is a separate defect and is pinned in
-// base32_extended_test.v rather than asserted here.
 fn test_decode_leaves_a_clean_payload_unchanged() {
 	e := new_std_encoding()
 	assert e.decode_string_to_string('MZXW6===')! == 'foo'
