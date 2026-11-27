@@ -6,7 +6,7 @@
 // choice over a second hand-written implementation of the same algorithm.
 module quic
 
-import hash.huffman
+import compress.huffman
 
 // qpack_huffman_eos is the index of the EOS (end-of-string) symbol in the
 // HPACK Huffman table (RFC 7541 Appendix B).
@@ -18,7 +18,7 @@ const qpack_huffman_eos = 256
 const qpack_max_code_bits = 30
 
 // qpack_huffman_table holds the canonical HPACK Huffman codes, rebuilt at
-// startup from the per-symbol bit lengths via the shared hash.huffman
+// startup from the per-symbol bit lengths via the shared compress.huffman
 // builder. The codes are MSB-first (the order they appear on the wire).
 const qpack_huffman_table = build_qpack_huffman_table()
 
