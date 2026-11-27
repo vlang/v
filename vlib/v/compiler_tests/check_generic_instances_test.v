@@ -29,8 +29,8 @@ fn check_program(name string, source string, flags ...string) os.Result {
 	return os.exec([@VEXE, '-check', '-nocolor', ...flags, path])
 }
 
-// error_lines returns `line:col: message` for every error of a check output.
-fn error_lines(output string) []string {
+// error_lines returns `line:col: message` for errors in the given basenames, or in all files.
+fn error_lines(output string, files ...string) []string {
 	mut lines := []string{}
 	for line in output.split_into_lines() {
 		if !line.contains(': error: ') {
@@ -40,13 +40,15 @@ fn error_lines(output string) []string {
 		if location.len < 3 {
 			continue
 		}
+		if files.len > 0 && os.file_name(location[..location.len - 2].join(':')) !in files {
+			continue
+		}
 		lines << '${location[location.len - 2]}:${location[location.len - 1]}: ${line.all_after(': error: ')}'
 	}
 	return lines
 }
 
-fn test_instances_report_missing_fields_and_methods() {
-	res := check_program('missing_members', "fn show[T](x T) string {
+const missing_member_program = "fn show_name[T](x T) string {
 	return x.name
 }
 
@@ -58,11 +60,11 @@ fn call[T](x T) string {
 	return x.greet()
 }
 
-struct Box[T] {
+struct MemberBox[T] {
 	v T
 }
 
-fn (b Box[T]) label() string {
+fn (b MemberBox[T]) label() string {
 	return b.v.name
 }
 
@@ -77,28 +79,19 @@ fn (el Elm[T]) size() int {
 }
 
 fn main() {
-	println(show(1))
+	println(show_name(1))
 	println(misspelled(User{ name: 'a' }))
 	println(call(User{ name: 'a' }))
 	println(call(1))
-	println(Box[User]{ v: User{ name: 'a' } }.label())
-	println(Box[int]{ v: 1 }.label())
+	println(MemberBox[User]{ v: User{ name: 'a' } }.label())
+	println(MemberBox[int]{ v: 1 }.label())
 
 	el := Elm[Octet]{
 		val: Octet('xx')
 	}
 	println(el.size())
 }
-")
-	assert res.exit_code == 1, res.output
-	errors := error_lines(res.output)
-	assert errors.len == 5, res.output
-	assert '11:11: `int` has no property `name`' in errors, res.output
-	assert errors.any(it.starts_with('15:11: type `User` has no field named `nme`')), res.output
-	assert '19:11: unknown method or field: `int.greet`.' in errors, res.output
-	assert '27:13: `int` has no property `name`' in errors, res.output
-	assert '37:16: unknown method or field: `string.size`' in errors, res.output
-}
+"
 
 // Specializations resolve fields and methods on concrete types and keep the
 // methods declared on a type argument such as the Octet alias.
@@ -498,8 +491,7 @@ fn build_program_with_env(name string, source string, env []string, flags ...str
 
 // Both check and build diagnose invalid expressions in a generic body when
 // the function is specialized.
-fn test_instances_report_member_operator_and_guard_errors() {
-	source := "fn show[T](x T) string {
+const invalid_expression_program = "fn show_misspelled_field[T](x T) string {
 	return x.nme
 }
 
@@ -514,22 +506,11 @@ fn guard[T](a T) {
 }
 
 fn main() {
-	println(show(User{ name: 'a' }))
+	println(show_misspelled_field(User{ name: 'a' }))
 	println(add(1))
 	guard(User{ name: 'a' })
 }
 "
-	for res in [check_program('instance_expr_check', source),
-		build_program('instance_expr_build', source)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		errors := error_lines(res.output)
-		assert errors.len == 3, res.output
-		assert errors.any(it.starts_with('11:11: type `User` has no field named `nme`')), res.output
-		assert '15:9: operator `+` cannot concatenate `int` and `string`' in errors, res.output
-		assert '19:10: expression should either return an Option or a Result' in errors, res.output
-	}
-}
 
 // Both check and build report incompatible returns when generic functions,
 // closures, and methods are specialized. A local initialized from a parameter
@@ -585,15 +566,6 @@ const return_errors = ['11:9: cannot use `int` as type `bool` in return argument
 	'24:10: cannot use `string` as type `!int` in return argument',
 	'34:9: cannot use `int` as type `bool` in return argument',
 	'39:9: cannot use `int` as type `bool` in return argument']
-
-fn test_an_instance_that_returns_a_value_of_another_type_is_reported() {
-	for res in [check_program('return_check', return_program),
-		build_program('return_build', return_program)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == return_errors, res.output
-	}
-}
 
 // Returns whose types depend on a call, a type parameter literal, or a value
 // narrowed by `is` stay valid when the generic functions are specialized.
@@ -784,24 +756,7 @@ fn main() {
 
 // An instance reports its error where the source's `#line` directive maps the
 // returned value, as the code generated from another language does.
-fn test_an_instance_error_is_reported_at_its_line_directive() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_check_generic_instances_line_${os.getpid()}')
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.write_file(os.join_path(dir, 'view.txt'), 'first\nsecond\nvalid = count\n') or {
-		panic(err)
-	}
-	path := os.join_path(dir, 'main.v')
-	os.write_file(path, generic_prelude +
-		'fn valid[T](x T) bool {\n#line 3 "view.txt"\n\treturn x.name\n}\n\nfn main() {\n\tprintln(valid(User{}))\n}\n') or {
-		panic(err)
-	}
-	res := os.exec([@VEXE, '-check', '-nocolor', path])
-	assert res.exit_code == 1, res.output
-	assert res.output.contains('view.txt:3:9: error: cannot use `string` as type `bool` in return argument'), res.output
-}
+const line_directive_program = 'fn valid[T](x T) bool {\n#line 3 "view.txt"\n\treturn x.name\n}\n\nfn main() {\n\tprintln(valid(User{}))\n}\n'
 
 // call_arg_program passes names and fields of the wrong type from generic
 // bodies: a `bool` to a `string` parameter of a function, an `int` to a method
@@ -842,18 +797,18 @@ fn send[T](x T, k Sink) {
 	k.put(x)
 }
 
-fn later[T](x T) {
+fn send_later[T](x T) {
 	f := fn [x] [T] () int {
 		return take(x)
 	}
 	_ = f
 }
 
-struct Box[T] {
+struct ArgumentBox[T] {
 	v T
 }
 
-fn (b Box[T]) send() int {
+fn (b ArgumentBox[T]) send() int {
 	return take(b.v)
 }
 
@@ -883,8 +838,8 @@ fn main() {
 	println(label(mut app))
 	submit(mut app)
 	send(1, Sink{})
-	later(2)
-	println(Box[bool]{ v: true }.send())
+	send_later(2)
+	println(ArgumentBox[bool]{ v: true }.send())
 	from_param([u64(1)])
 	from_alias([u64(1)])
 	from_literal(u64(1))
@@ -900,17 +855,6 @@ const call_arg_errors = ['32:14: cannot use `bool` as `string` in argument 1 to 
 	'63:11: cannot use `u64` as `u8` in argument 1 to `take_u8`',
 	'70:11: cannot use `u64` as `u8` in argument 1 to `take_u8`',
 	'76:11: cannot use `u64` as `u8` in argument 1 to `take_u8`']
-
-// A plain argument of an instance with another type than its parameter is
-// reported for that instance, in a check and in a build, at the argument.
-fn test_an_instance_that_passes_an_argument_of_another_type_is_reported() {
-	for res in [check_program('call_arg_check', call_arg_program),
-		build_program('call_arg_build', call_arg_program)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == call_arg_errors, res.output
-	}
-}
 
 // Arguments of the types their parameters take stay valid, converted or not,
 // and so do the arguments that a clone cannot judge from its concrete types: a
@@ -1242,7 +1186,7 @@ const wrapped_layout_calls = '	println(opt[u64]([u64(1)]))
 
 // Check and build report each element-type mismatch at its use in the
 // generic body, including wrapped arrays, mutable arguments, and appends.
-fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() {
+fn invalid_layout_program() string {
 	bad_wrapped_layout_calls := '	println(opt[u8]([u8(1)]))
 	println(res([u8(1)]) or { [] })
 	println(fixed([u8(1), 2, 3]!))
@@ -1251,33 +1195,10 @@ fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() 
 	grow(mut narrow)
 	println(append([u8(1)]))
 '
-	source := layout_declarations + wrapped_layout_declarations + container_types +
+	return layout_declarations + wrapped_layout_declarations + container_types +
 		container_conversions + container_nest_and_count + 'fn main() {\n' + layout_calls +
 		bad_layout_calls + wrapped_layout_calls + bad_wrapped_layout_calls +
 		container_type_calls + bad_container_type_calls + '}\n'
-	wrapped_errors := [
-		'61:9: cannot use `?[]u8` as type `?[]u64` in return argument',
-		'65:9: cannot use `[]u8` as type `![]u64` in return argument',
-		'69:9: cannot use `[3]u8` as type `[3]u64` in return argument',
-		'73:9: cannot use `[][]u8` as type `[][]u64` in return argument',
-		'81:15: cannot use `&[]u8` as `&[]u64` in argument 1 to `take_mut`',
-		'86:9: cannot append `[]u8` to `[][]u64`',
-	]
-	container_errors := container_errors_at(['111:9', '115:9', '123:18', '26:6', '32:3', '128:9',
-		'133:9'])
-	// The fixture reports more errors than the default diagnostic limit.
-	flags := ['-message-limit', '100']
-	for res in [check_program('layout_check', source, ...flags),
-		build_program('layout_build', source, ...flags)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		errors := error_lines(res.output)
-		// The compiler can interleave the groups. Check the order within each group.
-		assert errors.len == layout_errors.len + wrapped_errors.len + container_errors.len, res.output
-		assert errors.filter(it in layout_errors) == layout_errors, res.output
-		assert errors.filter(it in wrapped_errors) == wrapped_errors, res.output
-		assert errors.filter(it in container_errors) == container_errors, res.output
-	}
 }
 
 // Arrays and maps with the expected elements stay valid, including wrapped
@@ -1461,7 +1382,7 @@ fn main() {
 
 // A map cast preserves element types. A local array in a compile-time loop
 // has the element type of its specialization, in both returns and arguments.
-fn test_map_cast_and_comptime_for_instances_reject_wrong_element_types() {
+fn invalid_map_cast_program() string {
 	source := map_cast_comptime_for_program + "	println(to_counts({
 		'a': 258
 	}))
@@ -1469,15 +1390,108 @@ fn test_map_cast_and_comptime_for_instances_reject_wrong_element_types() {
 	println(count(Foo{ a: 2 }))
 }
 "
-	for res in [check_program('map_cast_comptime_for_check', source),
-		build_program('map_cast_comptime_for_build', source)] {
-		assert res.exit_code != 0, res.output
+	// Distinguish these types and the wrapper from the layout fixture's declarations.
+	return source.replace_each(['Foo', 'CastInput', 'Bar', 'CastOutput', 'wrap[', 'wrap_cast_array[',
+		'wrap(', 'wrap_cast_array('])
+}
+
+fn run_concrete_instance_rejections(sources map[string]string, check bool) os.Result {
+	mode := if check { 'check' } else { 'build' }
+	dir := os.join_path(os.vtmp_dir(), 'v3_concrete_instance_rejections_${mode}_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+
+	// Share User through main.v and keep the standalone fixtures' source line numbers.
+	prefix := 'module main\n' + '\n'.repeat(generic_prelude.count('\n') - 1)
+	mut calls := []string{cap: sources.len}
+	for name, source in sources {
+		entry := 'run_${name}'
+		calls << '\t${entry}()\n'
+		file := os.join_path(dir, '${name}.v')
+		os.write_file(file, prefix + source.replace_once('fn main() {', 'fn ${entry}() {')) or {
+			panic(err)
+		}
+	}
+	os.write_file(os.join_path(dir, 'main.v'), generic_prelude + 'fn main() {\n${calls.join('')}}\n') or {
+		panic(err)
+	}
+
+	// The layout fixture alone exceeds the default diagnostic limit.
+	mut flags := ['-nocolor', '-message-limit', '100']
+	if check {
+		os.write_file(os.join_path(dir, 'view.txt'), 'first\nsecond\nvalid = count\n') or {
+			panic(err)
+		}
+		flags << '-check'
+	} else {
+		flags << ['-o', os.join_path(dir, 'main')]
+	}
+	return os.exec([@VEXE, ...flags, dir])
+}
+
+fn test_instances_reject_invalid_concrete_types() {
+	wrapped_errors := [
+		'61:9: cannot use `?[]u8` as type `?[]u64` in return argument',
+		'65:9: cannot use `[]u8` as type `![]u64` in return argument',
+		'69:9: cannot use `[3]u8` as type `[3]u64` in return argument',
+		'73:9: cannot use `[][]u8` as type `[][]u64` in return argument',
+		'81:15: cannot use `&[]u8` as `&[]u64` in argument 1 to `take_mut`',
+		'86:9: cannot append `[]u8` to `[][]u64`',
+	]
+	container_errors := container_errors_at(['111:9', '115:9', '123:18', '26:6', '32:3', '128:9',
+		'133:9'])
+	map_errors := [
+		'11:9: cannot cast map `map[string]int` to `map[string]u8`',
+		'29:10: cannot use `[]CastInput` as type `[]CastOutput` in return argument',
+		'37:20: cannot use `[]CastInput` as `[]CastOutput` in argument 1 to `take_bars`',
+	]
+	for check in [true, false] {
+		mut sources := {
+			'instance_expr':        invalid_expression_program
+			'wrong_returns':        return_program
+			'wrong_arguments':      call_arg_program
+			'wrong_layouts':        invalid_layout_program()
+			'map_and_comptime_for': invalid_map_cast_program()
+		}
+		if check {
+			sources['missing_members'] = missing_member_program
+			sources['line_directive'] = line_directive_program
+		}
+		res := run_concrete_instance_rejections(sources, check)
+		assert res.exit_code == 1, res.output
 		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'11:9: cannot cast map `map[string]int` to `map[string]u8`',
-			'29:10: cannot use `[]Foo` as type `[]Bar` in return argument',
-			'37:20: cannot use `[]Foo` as `[]Bar` in argument 1 to `take_bars`',
-		], res.output
+
+		expressions := error_lines(res.output, 'instance_expr.v')
+		assert expressions.len == 3, res.output
+		assert expressions.any(it.starts_with('11:11: type `User` has no field named `nme`')), res.output
+		assert '15:9: operator `+` cannot concatenate `int` and `string`' in expressions, res.output
+		assert '19:10: expression should either return an Option or a Result' in expressions, res.output
+		assert error_lines(res.output, 'wrong_returns.v') == return_errors, res.output
+		assert error_lines(res.output, 'wrong_arguments.v') == call_arg_errors, res.output
+		assert error_lines(res.output, 'map_and_comptime_for.v') == map_errors, res.output
+
+		layout := error_lines(res.output, 'wrong_layouts.v')
+		// The compiler can interleave the groups. Check the order within each group.
+		assert layout.len == layout_errors.len + wrapped_errors.len + container_errors.len, res.output
+		assert layout.filter(it in layout_errors) == layout_errors, res.output
+		assert layout.filter(it in wrapped_errors) == wrapped_errors, res.output
+		assert layout.filter(it in container_errors) == container_errors, res.output
+
+		mut expected_count := expressions.len + return_errors.len + call_arg_errors.len +
+			map_errors.len + layout.len
+		if check {
+			members := error_lines(res.output, 'missing_members.v')
+			assert members.len == 5, res.output
+			assert '11:11: `int` has no property `name`' in members, res.output
+			assert members.any(it.starts_with('15:11: type `User` has no field named `nme`')), res.output
+			assert '19:11: unknown method or field: `int.greet`.' in members, res.output
+			assert '27:13: `int` has no property `name`' in members, res.output
+			assert '37:16: unknown method or field: `string.size`' in members, res.output
+			mapped := error_lines(res.output, 'view.txt')
+			assert mapped == ['3:9: cannot use `string` as type `bool` in return argument'], res.output
+			expected_count += members.len + mapped.len
+		}
+		assert error_lines(res.output).len == expected_count, res.output
 	}
 }
 
