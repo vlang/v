@@ -9230,6 +9230,9 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 		tc.ownership_add_borrow(borrow_name, target_name, pos, false)
 		return false
 	}
+	if tc.autofree_mode && tc.ownership_mark_autofree_field_copy(target_name, expr_id, id, pos) {
+		return true
+	}
 	source_name := tc.ownership_expr_ident_name(tc.ownership_sum_wrapped_value(id, target_type))
 	if source_name.len > 0 {
 		if moved := tc.ownership_moved_conflict(source_name) {
@@ -9290,6 +9293,34 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 		return true
 	}
 	return false
+}
+
+// ownership_mark_autofree_field_copy stores a copy of a variable in a field under
+// -autofree. Autofree keeps V1's aliasing semantics (see ownership_report_moved):
+// the variable is still used, and freed, by its owner after this, which can be the
+// caller of a borrowed parameter, so the field must not share its storage.
+fn (mut tc TypeChecker) ownership_mark_autofree_field_copy(target_name string, expr_id flat.NodeId, clean_id flat.NodeId, pos flat.NodeId) bool {
+	if tc.a.nodes[int(clean_id)].kind != .ident {
+		return false
+	}
+	typ := tc.resolve_type(clean_id)
+	if !tc.ownership_type_requires_destruction(typ) {
+		return false
+	}
+	// A sum with a pointer variant, even nested in the value, carries a loan that
+	// must move with it rather than be cloned.
+	mut seen := map[u32]bool{}
+	if tc.ownership_owned_storage_contains_pointer_sum(typ, 0, mut seen) {
+		return false
+	}
+	if _ := tc.ownership_borrowed_copy_missing_clone(clean_id, typ) {
+		return false
+	}
+	mut st := tc.ownership_state()
+	st.borrowed_projection_actions[int(expr_id)] = .clone_value
+	st.borrowed_projection_actions[int(clean_id)] = .clone_value
+	tc.ownership_mark_owned(target_name, typ, pos)
+	return true
 }
 
 fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name string, pos flat.NodeId) bool {
