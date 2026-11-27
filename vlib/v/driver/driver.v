@@ -646,8 +646,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 fn prepare_c_flags_for_link_with_race_hook(flags []string, environment_c_flags []string, primary_compiler_flags []string, optimization_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, race_hook_source string, mut stats CObjectCacheStats) ![]string {
 	// Only the selected vlib's early TSan initialization hook needs its own
 	// uninstrumented object. The generated program and all other inputs keep TSan.
-	has_race_hook := race_hook_source != '' && c_link_input_indices(flags).any(
-		v3_is_race_options_source(flags[it].trim_space(), race_hook_source))
+	has_race_hook := race_hook_source != '' && c_link_input_indices(flags).any(v3_is_race_options_source(flags[it].trim_space(), race_hook_source))
 	// Nothing to cache: without object-file or native-source flags the link
 	// plan adds no value, and preparing it costs a compiler-identity probe
 	// (subprocess) plus plan-file signatures on every build.
