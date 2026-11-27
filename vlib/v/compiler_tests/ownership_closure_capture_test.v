@@ -67,42 +67,47 @@ fn take_map(entries map[string][]string) { assert entries.len == 2 }
 fn take_items(items []string) { assert items.len == 1 }
 fn invoke(callback fn () string) string { return callback() }
 '
-	for serial in [true, false] {
-		for lambda in [false, true] {
-			capture := if lambda {
-				'assert invoke(|| entries["one"][0]) == "one"'
-			} else {
-				'callback := fn [entries] () string { return entries["one"][0] }
+	mut accepted := declarations
+	mut calls := []string{}
+	mut rejections := []CaptureRejection{}
+	for lambda in [false, true] {
+		capture := if lambda {
+			'assert invoke(|| entries["one"][0]) == "one"'
+		} else {
+			'callback := fn [entries] () string { return entries["one"][0] }
 assert callback() == "one"'
+		}
+		for kind, before in ['', 'take_map(entries)', 'take_items(entries["one"])',
+			'borrowed := &entries', ''] {
+			after := match kind {
+				3 { 'assert borrowed.len == 2' }
+				4 { 'assert entries.len == 2' }
+				else { '' }
 			}
-			for kind, before in ['', 'take_map(entries)', 'take_items(entries["one"])',
-				'borrowed := &entries', ''] {
-				after := match kind {
-					3 { 'assert borrowed.len == 2' }
-					4 { 'assert entries.len == 2' }
-					else { '' }
-				}
-				code := declarations + '\nfn main() {
-entries := {"one": ["one".to_owned()], "two": ["two".to_owned()]}
+			body := 'entries := {"one": ["one".to_owned()], "two": ["two".to_owned()]}
 ${before}
 ${capture}
-${after}
-}\n'
-				result := check_capture('source_${lambda}_${kind}', code, serial)
-				if kind == 0 {
-					assert result.exit_code == 0, result.output
-				} else {
-					assert result.exit_code != 0, result.output
-					expected := if kind == 3 {
-						'cannot move `entries` because it is borrowed by `borrowed`'
-					} else {
-						'use of moved value: `entries'
-					}
-					assert result.output.contains(expected), result.output
-				}
+${after}'
+			if kind == 0 {
+				name := if lambda { 'check_lambda_capture' } else { 'check_literal_capture' }
+				accepted += '\nfn ${name}() {\n${body}\n}\n'
+				calls << '\t${name}()'
+				continue
 			}
+			expected := if kind == 3 {
+				'cannot move `entries` because it is borrowed by `borrowed`'
+			} else {
+				'use of moved value: `entries'
+			}
+			rejections << CaptureRejection{'source_${lambda}_${kind}', body, expected}
 		}
 	}
+	accepted += '\nfn main() {\n${calls.join('\n')}\n}\n'
+	for serial in [true, false] {
+		result := check_capture('aggregate_capture', accepted, serial)
+		assert result.exit_code == 0, result.output
+	}
+	check_capture_rejections('aggregate_capture_rejections', declarations, rejections)!
 }
 
 fn test_captured_aggregate_descendants_are_released_once() {
@@ -210,23 +215,22 @@ fn test_capture_rejects_moved_or_borrowed_descendants_and_second_capture() {
 			cases << CaptureRejection{'overlap_${lambda}_${borrowed}', body, expected}
 		}
 	}
-	batch := os.join_path(capture_tmp, 'rejections')
+	declarations := 'struct Bundle { values []string }
+fn take_items(items []string) { assert items.len == 1 }
+fn invoke(callback fn () int) int { return callback() }
+'
+	check_capture_rejections('rejections', declarations, cases)!
+}
+
+fn check_capture_rejections(name string, declarations string, cases []CaptureRejection) ! {
+	batch := os.join_path(capture_tmp, name)
 	os.mkdir(batch)!
 	mut calls := []string{cap: cases.len}
 	for case in cases {
 		os.write_file(os.join_path(batch, '${case.name}.v'), 'module main\n\nfn ${case.name}() {\n${case.body}\n}\n')!
 		calls << '\t${case.name}()'
 	}
-	os.write_file(os.join_path(batch, 'main.v'), 'module main
-
-struct Bundle { values []string }
-fn take_items(items []string) { assert items.len == 1 }
-fn invoke(callback fn () int) int { return callback() }
-
-fn main() {
-${calls.join('\n')}
-}
-')!
+	os.write_file(os.join_path(batch, 'main.v'), 'module main\n\n${declarations}\nfn main() {\n${calls.join('\n')}\n}\n')!
 	for serial in [true, false] {
 		result := run_capture(batch, serial, '-ownership', '-nocolor')
 		assert result.exit_code != 0, result.output
