@@ -150,7 +150,8 @@ bypassing scoped arenas and preallocation without changing the current allocator
 nil and negative sizes panic. The caller must keep the pointer reachable for as long as it is
 used; this function does not create a GC root. It is useful for persistent metadata that must
 survive a scoped allocator. The existing `vcalloc` and explicit arena allocation APIs retain
-their current allocator selection.
+their current allocator selection. Use `vcalloc_heap_nothrow(n)` when allocation failure
+must return nil to the caller.
 
 Release ordinary-heap allocations with unsafe `vfree_heap(ptr)`. It follows the configured
 GC/manual release policy while bypassing preallocation's free no-op, preserves scoped allocator

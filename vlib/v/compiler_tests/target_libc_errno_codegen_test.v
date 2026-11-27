@@ -39,8 +39,8 @@ fn main() {}
 		// Linux's bare runtime supplies one accessor. Its declaration and body
 		// must remain without a second declaration from the bodyless C binding.
 		expected := if name == '__errno_location' { 1 } else { 0 }
-		assert code.count(' ${name}(void);') == expected, name
-		assert code.count(' ${name}(void) {') == expected, name
+		assert code.count(' ${name}(void);') + code.count(' (${name})(void);') == expected, name
+		assert code.count(' ${name}(void) {') + code.count(' (${name})(void) {') == expected, name
 	}
 	gcc := os.find_abs_path_of_executable('arm-none-eabi-gcc') or { return }
 	object := os.join_path(root, 'out.o')

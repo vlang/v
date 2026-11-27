@@ -466,6 +466,11 @@ pub fn vcalloc_heap(n int) &u8 {
 	return vcalloc_scoped_impl(n, false, false, false)
 }
 
+// vcalloc_heap_nothrow allocates like vcalloc_heap and returns nil if allocation fails.
+pub fn vcalloc_heap_nothrow(n int) &u8 {
+	return vcalloc_scoped_impl(n, false, false, true)
+}
+
 @[inline]
 fn vcalloc_scoped_impl(n int, use_arena bool, use_prealloc bool, can_fail bool) &u8 {
 	$if trace_vcalloc ? {

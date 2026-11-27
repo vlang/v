@@ -1,6 +1,6 @@
 module builtin
 
-$if !i386 {
+$if amd64 || arm64 {
 	// vlibc_cas_u32 compares and exchanges a word with acquire/release ordering.
 	@[inline]
 	pub fn vlibc_cas_u32(ptr &u32, old u32, new u32) bool {

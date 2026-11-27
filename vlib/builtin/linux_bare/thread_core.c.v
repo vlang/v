@@ -1,7 +1,7 @@
 module builtin
 
 // Shared by hosted vlibc and freestanding builds. Only the latter owns ELF TLS.
-$if !i386 {
+$if amd64 || arm64 {
 	// bare_cas_u32 compares and exchanges a word with acquire/release ordering.
 	@[inline]
 	fn bare_cas_u32(ptr &u32, old u32, new u32) bool {

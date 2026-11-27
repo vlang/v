@@ -89,7 +89,7 @@ $if (linux || (macos && amd64)) && !native && !i386 {
 		if name.len > max_int - header || value.len > max_int - header - name.len {
 			return unsafe { nil }
 		}
-		storage := vcalloc_heap(header + name.len + value.len)
+		storage := vcalloc_heap_nothrow(header + name.len + value.len)
 		if storage == unsafe { nil } { return unsafe { nil } }
 		unsafe {
 			key := storage + sizeof(FSysEnvironmentEntry)

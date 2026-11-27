@@ -7,6 +7,7 @@ import arena
 #include "@VMODROOT/vlib/os/testdata/freestanding_process/oracles.h"
 
 fn C.process_fd_count() i32
+fn C.process_isolate_inherited_fds() i32
 fn C.process_close_stdio() i32
 fn C.process_restore_stdio()
 fn C.process_limit_files(i32) i32
@@ -89,6 +90,9 @@ fn main() {
 	if os.args.len > 1 && os.args[1] == 'child' {
 		child()
 		return
+	}
+	$if process_test_hooks ? {
+		require(C.process_isolate_inherited_fds() == 0, 'isolate inherited descriptors')
 	}
 	$if process_track_alloc ? {
 		C.process_track_allocator()

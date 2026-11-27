@@ -13,6 +13,14 @@ static int process_fd_count(void) {
     for (int i = 0; i < 256; ++i) if (fcntl(i, F_GETFD) >= 0) ++n;
     return n;
 }
+/* Keep descriptors supplied by the runner out of the child leak check. */
+static int process_isolate_inherited_fds(void) {
+    for (int i = 3; i < 256; ++i) {
+        int flags = fcntl(i, F_GETFD);
+        if (flags >= 0 && fcntl(i, F_SETFD, flags | FD_CLOEXEC) < 0) return -1;
+    }
+    return 0;
+}
 static int process_close_stdio(void) {
     for (int i = 0; i < 3; ++i) {
         process_saved_stdio[i] = fcntl(i, F_DUPFD_CLOEXEC, 100);
