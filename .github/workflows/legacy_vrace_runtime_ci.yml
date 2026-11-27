@@ -119,6 +119,75 @@ jobs:
           if grep -Fq 'skipping:' "$out/original.log"; then bad=1; fi
           test "$original_rc" -eq 0
           test "$bad" -eq 0
+      - name: Diagnose separate early-init hook object with original race tests
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/legacy-vrace"
+          test -f "$out/racy.v"
+          test -x ./v
+          export VRACE_REAL_CLANG="$(command -v clang)"
+          export VRACE_HOOK_OBJECT="$out/race_options_early_init.o"
+          export VRACE_HOOK_TRACE="$out/split-hook.trace"
+          # Diagnostic only: the existing early initialization hook must run
+          # before TSan is initialized. Compile just this translation unit
+          # without instrumentation, keeping the full user program instrumented.
+          "$VRACE_REAL_CLANG" -std=gnu11 -O2 -DV_RACE_TSAN=1 \
+            -DV_RACE_NO_INSTRUMENTATION= -c vlib/builtin/race_options.c \
+            -o "$VRACE_HOOK_OBJECT"
+          nm "$VRACE_HOOK_OBJECT" | tee "$out/split-hook.symbols"
+          nm -u "$VRACE_HOOK_OBJECT" | tee "$out/split-hook.undefined"
+          grep -Fq '__tsan_default_options' "$out/split-hook.symbols"
+          if grep -q '__tsan_' "$out/split-hook.undefined"; then
+            echo 'early-init object unexpectedly calls TSan' >&2
+            exit 1
+          fi
+          mkdir -p "$out/wrapper"
+          cat > "$out/wrapper/clang" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          args=()
+          for arg in "$@"; do
+            case "$arg" in
+              */vlib/builtin/race_options.c)
+                args+=(-x none "$VRACE_HOOK_OBJECT")
+                printf '%s\n' "replaced $arg with $VRACE_HOOK_OBJECT" >> "$VRACE_HOOK_TRACE"
+                ;;
+              *) args+=("$arg") ;;
+            esac
+          done
+          exec "$VRACE_REAL_CLANG" "${args[@]}"
+          SH
+          chmod +x "$out/wrapper/clang"
+          export PATH="$out/wrapper:$PATH"
+          env -u VFLAGS ./v -race -showcc -show-c-output -keepc -no-retry-compilation -o "$out/racy-split" "$out/racy.v" > "$out/split-build.log" 2>&1 || { cat "$out/split-build.log"; exit 1; }
+          cat "$out/split-build.log"
+          test -s "$VRACE_HOOK_TRACE"
+          nm "$out/racy-split" > "$out/split-v.symbols"
+          grep -Fq '__tsan_default_options' "$out/split-v.symbols"
+          grep -Eq '__tsan_(read|write)' "$out/split-v.symbols"
+          bad=0
+          for mode in default vrace tsan both; do
+            rc=0
+            case "$mode" in
+              default) expected=66; env -u VRACE -u TSAN_OPTIONS "$out/racy-split" > "$out/split-$mode.log" 2>&1 || rc=$? ;;
+              vrace) expected=7; env -u TSAN_OPTIONS VRACE='exitcode=7 atexit_sleep_ms=0' "$out/racy-split" > "$out/split-$mode.log" 2>&1 || rc=$? ;;
+              tsan) expected=8; env -u VRACE TSAN_OPTIONS='exitcode=8 atexit_sleep_ms=0' "$out/racy-split" > "$out/split-$mode.log" 2>&1 || rc=$? ;;
+              both) expected=8; env VRACE='exitcode=7 atexit_sleep_ms=0' TSAN_OPTIONS='exitcode=8 atexit_sleep_ms=0' "$out/racy-split" > "$out/split-$mode.log" 2>&1 || rc=$? ;;
+            esac
+            echo "split $mode actual=$rc expected=$expected" | tee "$out/split-$mode.status"
+            cat "$out/split-$mode.log"
+            if [ "$rc" -ne "$expected" ] || ! grep -Fq 'WARNING: ThreadSanitizer: data race' "$out/split-$mode.log" || ! grep -Fq 'joined true' "$out/split-$mode.log"; then bad=1; fi
+          done
+          rc=0
+          env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/slow_tests/race_detector_test.v > "$out/split-original.log" 2>&1 || rc=$?
+          echo "split original test exit=$rc"
+          cat "$out/split-original.log"
+          cat "$VRACE_HOOK_TRACE"
+          if grep -Fq 'skipping:' "$out/split-original.log"; then bad=1; fi
+          test "$rc" -eq 0
+          test "$bad" -eq 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
