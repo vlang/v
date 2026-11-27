@@ -676,9 +676,9 @@ fn main() {
 	])
 }
 
-fn test_interface_return_boxes() {
+fn test_interface_return_value_boxes() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_return_boxes', [
+	run_good_module_batch(v3_bin, 'interface_return_value_boxes', [
 		ReviewRuntimeCase{
 			name:     'interface_eq_implicit_return_box'
 			source:   'interface IValue {}
@@ -748,143 +748,6 @@ fn main() {
 '
 			expected: 'true\ntrue'
 		},
-	])
-}
-
-fn test_interface_array_element_boxes() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_array_element_boxes', [
-		ReviewRuntimeCase{
-			name:     'interface_eq_container_literal_box'
-			source:   'interface IValue {}
-
-struct Value {
-	n int
-}
-
-fn same(values []IValue) bool {
-	return values == values
-}
-
-fn main() {
-	values := [IValue(Value{
-		n: 3
-	})]
-	println(same(values).str())
-}
-'
-			expected: 'true'
-		},
-		ReviewRuntimeCase{
-			name:     'interface_eq_appended_element_box'
-			source:   'interface IValue {}
-
-struct Value {
-	n int
-}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn main() {
-	mut values := []IValue{}
-	values << Value{
-		n: 3
-	}
-	println(same(values[0]).str())
-}
-'
-			expected: 'true'
-		},
-	])
-}
-
-fn test_interface_equality_includes_option_result_return_boxes() {
-	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'interface_eq_option_result_return_boxes', 'interface IValue {}
-
-struct OptionValue {
-	n int
-}
-
-struct ResultValue {
-	n int
-}
-
-fn make_option() ?IValue {
-	return OptionValue{
-		n: 3
-	}
-}
-
-fn make_result() !IValue {
-	return ResultValue{
-		n: 4
-	}
-}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn main() {
-	option_value := make_option() or { panic("missing option") }
-	result_value := make_result() or { panic(err) }
-	println(same(option_value).str())
-	println(same(result_value).str())
-}
-')
-	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
-	assert same_body.contains('OptionValue*'), same_body
-	assert same_body.contains('ResultValue*'), same_body
-}
-
-fn test_interface_equality_includes_wrapped_option_result_boxes() {
-	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'interface_eq_wrapped_option_result_boxes', 'interface IValue {}
-
-struct OptionValue {
-	n int
-}
-
-struct ResultValue {
-	n int
-}
-
-fn make_option() ?OptionValue {
-	return OptionValue{
-		n: 3
-	}
-}
-
-fn make_result() !ResultValue {
-	return ResultValue{
-		n: 4
-	}
-}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn main() {
-	mut option_value := ?IValue(none)
-	option_value = make_option()
-	option_payload := option_value or { panic("missing option") }
-	println(same(option_payload).str())
-	result_payload := make_result() or { panic(err) }
-	println(same(result_payload).str())
-}
-')
-	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
-	assert same_body.contains('OptionValue*'), same_body
-	assert same_body.contains('ResultValue*'), same_body
-}
-
-fn test_interface_multi_return_boxes() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_multi_return_boxes', [
 		ReviewRuntimeCase{
 			name:     'interface_eq_multi_return_box'
 			source:   'interface IValue {}
@@ -1021,6 +884,137 @@ fn main() {
 			expected: 'true\n7\ntrue\n17'
 		},
 	])
+}
+
+fn test_interface_array_element_boxes() {
+	v3_bin := build_v3()
+	run_good_module_batch(v3_bin, 'interface_array_element_boxes', [
+		ReviewRuntimeCase{
+			name:     'interface_eq_container_literal_box'
+			source:   'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(values []IValue) bool {
+	return values == values
+}
+
+fn main() {
+	values := [IValue(Value{
+		n: 3
+	})]
+	println(same(values).str())
+}
+'
+			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_appended_element_box'
+			source:   'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	mut values := []IValue{}
+	values << Value{
+		n: 3
+	}
+	println(same(values[0]).str())
+}
+'
+			expected: 'true'
+		},
+	])
+}
+
+fn test_interface_equality_includes_option_result_return_boxes() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'interface_eq_option_result_return_boxes', 'interface IValue {}
+
+struct OptionValue {
+	n int
+}
+
+struct ResultValue {
+	n int
+}
+
+fn make_option() ?IValue {
+	return OptionValue{
+		n: 3
+	}
+}
+
+fn make_result() !IValue {
+	return ResultValue{
+		n: 4
+	}
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	option_value := make_option() or { panic("missing option") }
+	result_value := make_result() or { panic(err) }
+	println(same(option_value).str())
+	println(same(result_value).str())
+}
+')
+	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
+	assert same_body.contains('OptionValue*'), same_body
+	assert same_body.contains('ResultValue*'), same_body
+}
+
+fn test_interface_equality_includes_wrapped_option_result_boxes() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'interface_eq_wrapped_option_result_boxes', 'interface IValue {}
+
+struct OptionValue {
+	n int
+}
+
+struct ResultValue {
+	n int
+}
+
+fn make_option() ?OptionValue {
+	return OptionValue{
+		n: 3
+	}
+}
+
+fn make_result() !ResultValue {
+	return ResultValue{
+		n: 4
+	}
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	mut option_value := ?IValue(none)
+	option_value = make_option()
+	option_payload := option_value or { panic("missing option") }
+	println(same(option_payload).str())
+	result_payload := make_result() or { panic(err) }
+	println(same(result_payload).str())
+}
+')
+	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
+	assert same_body.contains('OptionValue*'), same_body
+	assert same_body.contains('ResultValue*'), same_body
 }
 
 fn test_forwarded_multi_return_container_slots_are_converted() {
@@ -1198,9 +1192,9 @@ fn main() {
 	])
 }
 
-fn test_interface_equality_includes_channel_send_and_default_field_boxes() {
+fn test_interface_argument_and_channel_boxes() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_channel_and_default_boxes', [
+	run_good_module_batch(v3_bin, 'interface_argument_and_channel_boxes', [
 		ReviewRuntimeCase{
 			name:     'interface_eq_channel_send_box'
 			source:   'interface IValue {}
@@ -1249,12 +1243,63 @@ fn main() {
 '
 			expected: 'true'
 		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_receiver_method_call_box'
+			source:   'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Comparator {}
+
+fn (c Comparator) same(value IValue) bool {
+	_ = c
+	return value == value
+}
+
+fn main() {
+	comparator := Comparator{}
+	println(comparator.same(Value{
+		n: 3
+	}).str())
+}
+'
+			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_variadic_call_boxes'
+			source:   'interface IValue {}
+
+struct Single {}
+struct First {}
+struct Second {}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn all_same(values ...IValue) bool {
+	mut ok := true
+	for value in values {
+		ok = ok && same(value)
+	}
+	return ok
+}
+
+fn main() {
+	println(all_same(Single{}).str())
+	println(all_same(First{}, Second{}).str())
+}
+'
+			expected: 'true\ntrue'
+		},
 	])
 }
 
-fn test_interface_struct_field_boxes() {
+fn test_interface_field_value_boxes() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_struct_field_boxes', [
+	run_good_module_batch(v3_bin, 'interface_field_value_boxes', [
 		ReviewRuntimeCase{
 			name:     'interface_eq_struct_field_box'
 			source:   'interface IValue {}
@@ -1339,6 +1384,67 @@ fn main() {
 }
 '
 			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_params_call_field_boxes'
+			source:   'interface IValue {}
+
+struct Value {
+	n int
+}
+
+@[params]
+struct SinkConfig {
+	value IValue
+	n     int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(config SinkConfig) bool {
+	return config.n == 7 && same(config.value)
+}
+
+fn main() {
+	println(sink(value: Value{
+		n: 3
+	}, n: 7).str())
+}
+'
+			expected: 'true'
+		},
+		ReviewRuntimeCase{
+			name:     'interface_eq_omitted_params_default_box'
+			source:   'interface IValue {}
+
+struct Value {
+	n int
+}
+
+@[params]
+struct SinkConfig {
+	value IValue = Value{
+		n: 3
+	}
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(config SinkConfig) bool {
+	return same(config.value)
+}
+
+fn main() {
+	println(sink().str())
+	println(sink(n: 7).str())
+}
+'
+			expected: 'true\ntrue'
 		},
 	])
 }
@@ -1553,63 +1659,6 @@ fn main() {
 	assert out == 'false\ntrue'
 }
 
-fn test_interface_call_argument_boxes() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_call_argument_boxes', [
-		ReviewRuntimeCase{
-			name:     'interface_eq_receiver_method_call_box'
-			source:   'interface IValue {}
-
-struct Value {
-	n int
-}
-
-struct Comparator {}
-
-fn (c Comparator) same(value IValue) bool {
-	_ = c
-	return value == value
-}
-
-fn main() {
-	comparator := Comparator{}
-	println(comparator.same(Value{
-		n: 3
-	}).str())
-}
-'
-			expected: 'true'
-		},
-		ReviewRuntimeCase{
-			name:     'interface_eq_variadic_call_boxes'
-			source:   'interface IValue {}
-
-struct Single {}
-struct First {}
-struct Second {}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn all_same(values ...IValue) bool {
-	mut ok := true
-	for value in values {
-		ok = ok && same(value)
-	}
-	return ok
-}
-
-fn main() {
-	println(all_same(Single{}).str())
-	println(all_same(First{}, Second{}).str())
-}
-'
-			expected: 'true\ntrue'
-		},
-	])
-}
-
 fn test_interface_equality_includes_veb_handler_call_boxes() {
 	v3_bin := build_v3()
 	out := run_good_project(v3_bin, 'interface_eq_veb_handler_call_box', {
@@ -1656,73 +1705,6 @@ fn main() {
 	assert out == 'true'
 }
 
-fn test_interface_params_field_boxes() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_params_field_boxes', [
-		ReviewRuntimeCase{
-			name:     'interface_eq_params_call_field_boxes'
-			source:   'interface IValue {}
-
-struct Value {
-	n int
-}
-
-@[params]
-struct SinkConfig {
-	value IValue
-	n     int
-}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn sink(config SinkConfig) bool {
-	return config.n == 7 && same(config.value)
-}
-
-fn main() {
-	println(sink(value: Value{
-		n: 3
-	}, n: 7).str())
-}
-'
-			expected: 'true'
-		},
-		ReviewRuntimeCase{
-			name:     'interface_eq_omitted_params_default_box'
-			source:   'interface IValue {}
-
-struct Value {
-	n int
-}
-
-@[params]
-struct SinkConfig {
-	value IValue = Value{
-		n: 3
-	}
-	n int
-}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn sink(config SinkConfig) bool {
-	return same(config.value)
-}
-
-fn main() {
-	println(sink().str())
-	println(sink(n: 7).str())
-}
-'
-			expected: 'true\ntrue'
-		},
-	])
-}
-
 fn test_empty_interface_equality_does_not_accept_unregistered_payloads() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'empty_interface_unregistered_payload_equality', 'interface Any {}
@@ -1756,9 +1738,9 @@ fn test_select_receive_type_rejections() {
 	])
 }
 
-fn test_select_receive_conversions() {
+fn test_select_receive_runtime() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'select_receive_conversions', [
+	run_good_module_batch(v3_bin, 'select_receive_runtime', [
 		ReviewRuntimeCase{
 			name:     'select_receive_assign_conversions'
 			source:   'interface IValue {
@@ -1990,6 +1972,65 @@ fn main() {
 '
 			expected: 'true'
 		},
+		ReviewRuntimeCase{'select_receive_assign_invalidates_smartcast', 'struct Foo {
+	value int
+}
+
+struct Bar {
+	value int
+}
+
+type Item = Bar | Foo
+
+fn main() {
+	mut item := Item(Foo{
+		value: 1
+	})
+	ch := chan Item{cap: 1}
+	ch <- Item(Bar{
+		value: 2
+	})
+	if item is Foo {
+		select {
+			item = <-ch {
+				if item is Bar {
+					println(int_str(item.value))
+				}
+			}
+		}
+	}
+}
+', '2'},
+		ReviewRuntimeCase{'select_receive_decl_shadows_smartcast', 'struct Foo {
+	value int
+}
+
+struct Bar {
+	value int
+}
+
+type Item = Bar | Foo
+
+fn main() {
+	item := Item(Foo{
+		value: 1
+	})
+	ch := chan Item{cap: 1}
+	ch <- Item(Bar{
+		value: 2
+	})
+	if item is Foo {
+		select {
+			item := <-ch {
+				if item is Bar {
+					println(int_str(item.value))
+				}
+			}
+		}
+		println(int_str(item.value))
+	}
+}
+', '2\n1'},
 	])
 }
 
@@ -2332,71 +2373,6 @@ fn test_comptime_if_threads_counts_spawns_in_imported_modules() {
 		'main.v':        'module main\n\nimport foo.bar\n\nfn main() {\n\tbar.start()\n\tmode := $if threads { "threads" } $else { "single" }\n\tprintln(mode)\n}\n'
 	}, 'main.v')
 	assert nested_out == 'threads'
-}
-
-fn test_select_receive_smartcasts() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'select_receive_smartcasts', [
-		ReviewRuntimeCase{'select_receive_assign_invalidates_smartcast', 'struct Foo {
-	value int
-}
-
-struct Bar {
-	value int
-}
-
-type Item = Bar | Foo
-
-fn main() {
-	mut item := Item(Foo{
-		value: 1
-	})
-	ch := chan Item{cap: 1}
-	ch <- Item(Bar{
-		value: 2
-	})
-	if item is Foo {
-		select {
-			item = <-ch {
-				if item is Bar {
-					println(int_str(item.value))
-				}
-			}
-		}
-	}
-}
-', '2'},
-		ReviewRuntimeCase{'select_receive_decl_shadows_smartcast', 'struct Foo {
-	value int
-}
-
-struct Bar {
-	value int
-}
-
-type Item = Bar | Foo
-
-fn main() {
-	item := Item(Foo{
-		value: 1
-	})
-	ch := chan Item{cap: 1}
-	ch <- Item(Bar{
-		value: 2
-	})
-	if item is Foo {
-		select {
-			item := <-ch {
-				if item is Bar {
-					println(int_str(item.value))
-				}
-			}
-		}
-		println(int_str(item.value))
-	}
-}
-', '2\n1'},
-	])
 }
 
 fn test_select_receive_assignment_does_not_invalidate_sibling_smartcasts() {
@@ -3511,9 +3487,9 @@ fn test_alias_interface_str_dispatch_marks_alias_method_used() {
 	assert out == 'label:7'
 }
 
-fn test_interface_str_receiver_types() {
+fn test_interface_str_receiver_dispatch() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_str_receiver_types', [
+	run_good_module_batch(v3_bin, 'interface_str_receiver_dispatch', [
 		ReviewRuntimeCase{'implicit_interface_str_dispatch_receiver', 'interface Printable {
 	str() string
 }
@@ -3558,238 +3534,6 @@ fn main() {
 	println(value.str())
 }
 ', 'red'},
-	])
-}
-
-fn test_implicit_interface_str_dispatch_stringifies_struct_alias() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_struct_alias', 'interface Printable {
-	str() string
-}
-
-struct Foo {
-	x int
-}
-
-type AliasFoo = Foo
-
-fn main() {
-	aliased := AliasFoo(Foo{
-		x: 7
-	})
-	value := Printable(aliased)
-	println(value.str())
-}
-')
-	assert out.contains('x: 7')
-	assert !out.contains('Foo{}')
-}
-
-fn test_interface_str_collection_values() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_str_collection_values', [
-		ReviewRuntimeCase{'implicit_interface_str_dispatch_collection_aliases', 'interface Printable {
-	str() string
-}
-
-type Items = []int
-type Counts = map[string]int
-type Pair = [2]int
-type Words = []string
-
-fn main() {
-	items := Printable(Items([1, 2]))
-	counts := Printable(Counts({
-		"a": 3
-	}))
-	pair := Printable(Pair([4, 5]!))
-	words := Printable(Words(["x", "y"]))
-	println(items.str())
-	println(counts.str())
-	println(pair.str())
-	println(words.str())
-}
-', "[1, 2]\n{'a': 3}\n[4, 5]\n['x', 'y']"},
-		ReviewRuntimeCase{'implicit_interface_str_dispatch_collections', 'interface Printable {
-	str() string
-}
-
-struct Foo {
-	nums []int
-	labels map[string]int
-	fixed [2]int
-	words []string
-}
-
-fn main() {
-	value := Printable(Foo{
-		nums: [1, 2]
-		labels: {
-			"a": 3
-		}
-		fixed: [4, 5]!
-		words: ["x", "y"]
-	})
-	println(value.str())
-}
-', "Foo{\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n    words: ['x', 'y']\n}"},
-	])
-}
-
-fn test_empty_interface_str_dispatch_stringifies_boxed_map() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'empty_interface_str_dispatch_boxed_map', 'interface Any {}
-
-fn show(value Any) string {
-	return "\${value}"
-}
-
-fn main() {
-	value := Any({
-		"answer": 42
-	})
-	println(show(value))
-}
-')
-	assert out == "Any({'answer': 42})"
-}
-
-fn test_implicit_interface_str_dispatch_rejects_sum_without_dispatch_id() {
-	v3_bin := build_v3()
-	run_bad(v3_bin, 'implicit_interface_str_dispatch_rejects_sum', 'interface Printable {
-	str() string
-}
-
-type Value = int | string
-
-fn main() {
-	value := Value(1)
-	_ := Printable(value)
-}
-', 'does not implement interface')
-}
-
-fn test_interface_str_aggregate_fields() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_str_aggregate_fields', [
-		ReviewRuntimeCase{'implicit_interface_str_dispatch_nested_struct', 'interface Printable {
-	str() string
-}
-
-struct Bar {
-	x int
-}
-
-struct Foo {
-	bar Bar
-}
-
-fn main() {
-	value := Printable(Foo{
-		bar: Bar{
-			x: 7
-		}
-	})
-	println(value.str())
-}
-', 'Foo{\n    bar: Bar{\n        x: 7\n    }\n}'},
-		ReviewRuntimeCase{'implicit_interface_str_dispatch_aliased_fields', 'interface Printable {
-	str() string
-}
-
-struct Bar {
-	x int
-}
-
-type MyBar = Bar
-type MyNums = []int
-type MyLabels = map[string]int
-type MyFixed = [2]int
-
-struct Foo {
-	bar MyBar
-	nums MyNums
-	labels MyLabels
-	fixed MyFixed
-}
-
-fn main() {
-	value := Printable(Foo{
-		bar: MyBar(Bar{
-			x: 7
-		})
-		nums: MyNums([1, 2])
-		labels: MyLabels({
-			"a": 3
-		})
-		fixed: MyFixed([4, 5]!)
-	})
-	println(value.str())
-}
-', "Foo{\n    bar: Bar{\n        x: 7\n    }\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n}"},
-	])
-}
-
-fn test_implicit_interface_str_dispatch_stringifies_typed_map_fields() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_typed_map_fields', 'interface Printable {
-	str() string
-}
-
-struct Bar {
-	x int
-}
-
-struct Foo {
-	m map[string]Bar
-}
-
-fn main() {
-	value := Printable(Foo{
-		m: {
-			"one": Bar{
-				x: 7
-			}
-		}
-	})
-	println(value.str())
-}
-')
-	assert out.contains("'one': Bar{"), out
-	assert out.contains('x: 7'), out
-	assert !out.contains('<map value>'), out
-	assert !out.contains('Bar{}'), out
-}
-
-fn test_implicit_interface_str_dispatch_stringifies_optional_fields() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_optional_fields', 'interface Printable {
-	str() string
-}
-
-struct Foo {
-	present ?int
-	missing ?int
-	text    ?string
-}
-
-fn main() {
-	value := Printable(Foo{
-		present: ?int(7)
-		text: ?string("hi")
-	})
-	println(value.str())
-}
-')
-	assert out.contains('present: Option(7)'), out
-	assert out.contains('missing: Option(none)'), out
-	assert out.contains("text: Option('hi')"), out
-	assert !out.contains('?int{}'), out
-}
-
-fn test_interface_str_custom_pointer_methods() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_str_custom_pointer_methods', [
 		ReviewRuntimeCase{'implicit_interface_str_dispatch_pointer_custom_str', 'interface Printable {
 	str() string
 }
@@ -3903,6 +3647,226 @@ fn main() {
 }
 ', 'Foo{\n    ref: ref:7\n    refbox: refbox:9\n}'},
 	])
+}
+
+fn test_implicit_interface_str_dispatch_stringifies_struct_alias() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_struct_alias', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	x int
+}
+
+type AliasFoo = Foo
+
+fn main() {
+	aliased := AliasFoo(Foo{
+		x: 7
+	})
+	value := Printable(aliased)
+	println(value.str())
+}
+')
+	assert out.contains('x: 7')
+	assert !out.contains('Foo{}')
+}
+
+fn test_interface_str_collection_and_field_values() {
+	v3_bin := build_v3()
+	run_good_module_batch(v3_bin, 'interface_str_collection_and_field_values', [
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_collection_aliases', 'interface Printable {
+	str() string
+}
+
+type Items = []int
+type Counts = map[string]int
+type Pair = [2]int
+type Words = []string
+
+fn main() {
+	items := Printable(Items([1, 2]))
+	counts := Printable(Counts({
+		"a": 3
+	}))
+	pair := Printable(Pair([4, 5]!))
+	words := Printable(Words(["x", "y"]))
+	println(items.str())
+	println(counts.str())
+	println(pair.str())
+	println(words.str())
+}
+', "[1, 2]\n{'a': 3}\n[4, 5]\n['x', 'y']"},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_collections', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	nums []int
+	labels map[string]int
+	fixed [2]int
+	words []string
+}
+
+fn main() {
+	value := Printable(Foo{
+		nums: [1, 2]
+		labels: {
+			"a": 3
+		}
+		fixed: [4, 5]!
+		words: ["x", "y"]
+	})
+	println(value.str())
+}
+', "Foo{\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n    words: ['x', 'y']\n}"},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_nested_struct', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+struct Foo {
+	bar Bar
+}
+
+fn main() {
+	value := Printable(Foo{
+		bar: Bar{
+			x: 7
+		}
+	})
+	println(value.str())
+}
+', 'Foo{\n    bar: Bar{\n        x: 7\n    }\n}'},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_aliased_fields', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+type MyBar = Bar
+type MyNums = []int
+type MyLabels = map[string]int
+type MyFixed = [2]int
+
+struct Foo {
+	bar MyBar
+	nums MyNums
+	labels MyLabels
+	fixed MyFixed
+}
+
+fn main() {
+	value := Printable(Foo{
+		bar: MyBar(Bar{
+			x: 7
+		})
+		nums: MyNums([1, 2])
+		labels: MyLabels({
+			"a": 3
+		})
+		fixed: MyFixed([4, 5]!)
+	})
+	println(value.str())
+}
+', "Foo{\n    bar: Bar{\n        x: 7\n    }\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n}"},
+	])
+}
+
+fn test_empty_interface_str_dispatch_stringifies_boxed_map() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'empty_interface_str_dispatch_boxed_map', 'interface Any {}
+
+fn show(value Any) string {
+	return "\${value}"
+}
+
+fn main() {
+	value := Any({
+		"answer": 42
+	})
+	println(show(value))
+}
+')
+	assert out == "Any({'answer': 42})"
+}
+
+fn test_implicit_interface_str_dispatch_rejects_sum_without_dispatch_id() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'implicit_interface_str_dispatch_rejects_sum', 'interface Printable {
+	str() string
+}
+
+type Value = int | string
+
+fn main() {
+	value := Value(1)
+	_ := Printable(value)
+}
+', 'does not implement interface')
+}
+
+fn test_implicit_interface_str_dispatch_stringifies_typed_map_fields() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_typed_map_fields', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+struct Foo {
+	m map[string]Bar
+}
+
+fn main() {
+	value := Printable(Foo{
+		m: {
+			"one": Bar{
+				x: 7
+			}
+		}
+	})
+	println(value.str())
+}
+')
+	assert out.contains("'one': Bar{"), out
+	assert out.contains('x: 7'), out
+	assert !out.contains('<map value>'), out
+	assert !out.contains('Bar{}'), out
+}
+
+fn test_implicit_interface_str_dispatch_stringifies_optional_fields() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_optional_fields', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	present ?int
+	missing ?int
+	text    ?string
+}
+
+fn main() {
+	value := Printable(Foo{
+		present: ?int(7)
+		text: ?string("hi")
+	})
+	println(value.str())
+}
+')
+	assert out.contains('present: Option(7)'), out
+	assert out.contains('missing: Option(none)'), out
+	assert out.contains("text: Option('hi')"), out
+	assert !out.contains('?int{}'), out
 }
 
 fn test_interface_str_pointer_fields() {
@@ -8125,9 +8089,9 @@ fn main() {
 	])
 }
 
-fn test_recursive_str_exhaustive_match_progress() {
+fn test_recursive_str_match_progress() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_exhaustive_match_progress', [
+	run_good_module_batch(v3_bin, 'recursive_str_match_progress', [
 		ReviewRuntimeCase{'recursive_str_exhaustive_enum_match_progress', 'enum Mode {
 	one
 	two
@@ -8193,12 +8157,6 @@ fn main() {
 	}.str())
 }
 ', 'done'},
-	])
-}
-
-fn test_recursive_str_direct_exhaustive_match_progress() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_direct_exhaustive_match_progress', [
 		ReviewRuntimeCase{'recursive_str_direct_exhaustive_enum_match', 'enum Mode {
 	one
 	two
@@ -9302,9 +9260,9 @@ fn main() {
 	])
 }
 
-fn test_unsafe_map_alias_unconditional_loop_has_no_zero_iteration_path() {
+fn test_map_alias_control_flow_runtime() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'map_alias_loop_runtime', [
+	run_good_module_batch(v3_bin, 'map_alias_control_flow_runtime', [
 		ReviewRuntimeCase{
 			name:     'unsafe_map_alias_unconditional_loop'
 			source:   'fn main() {
@@ -9338,12 +9296,6 @@ fn test_unsafe_map_alias_unconditional_loop_has_no_zero_iteration_path() {
 '
 			expected: '1'
 		},
-	])
-}
-
-fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'map_alias_flow_runtime', [
 		ReviewRuntimeCase{
 			name:     'unsafe_map_alias_all_if_paths'
 			source:   'fn branch(cond bool) {
@@ -9567,9 +9519,9 @@ fn (item PrependedItem) str() string {
 	])
 }
 
-fn test_recursive_str_struct_rebuild_progress() {
+fn test_recursive_str_struct_update_progress() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_struct_rebuild_progress', [
+	run_good_module_batch(v3_bin, 'recursive_str_struct_update_progress', [
 		ReviewRuntimeCase{'recursive_str_changed_struct_literal', 'struct Item {
 	remaining int
 }
@@ -9609,12 +9561,6 @@ fn main() {
 	}.str())
 }
 ', ''},
-	])
-}
-
-fn test_recursive_str_guarded_nonnumeric_struct_update_progress() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_guarded_nonnumeric_struct_update_progress', [
 		ReviewRuntimeCase{'recursive_str_guarded_bool_struct_update', 'struct Item {
 	done bool
 }
@@ -9969,9 +9915,9 @@ fn main() {}
 	])
 }
 
-fn test_recursive_str_detects_explicit_aggregate_stringification() {
+fn test_recursive_str_aggregate_runtime() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'str_aggregate_runtime', [
+	run_good_module_batch(v3_bin, 'recursive_str_aggregate_runtime', [
 		ReviewRuntimeCase{
 			name:     'recursive_str_explicit_array_str_progress'
 			source:   'struct Item {
@@ -10018,12 +9964,6 @@ fn main() {
 '
 			expected: 'safe'
 		},
-	])
-}
-
-fn test_recursive_str_skips_zero_length_repeated_array_provenance() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'str_empty_repeated_array_runtime', [
 		ReviewRuntimeCase{
 			name:     'recursive_str_zero_length_repeated_array'
 			source:   'struct Item {}
