@@ -3592,8 +3592,9 @@ fn (mut b Builder) generate_int_format_body(func_id int, is_signed bool, has_rad
 // generate_string_int_body supports generate string int body handling for Builder.
 //
 // It mirrors strconv.common_parse_int as driven by builtin.string_int_base, so a
-// wasm build parses what a native `s.int()` does: an optional sign, a base chosen
-// from a 0x/0b/0o prefix, digits validated against that base, and the 2^31-1 clamp.
+// wasm or native build parses what a C `s.int()` does: an optional sign, a base chosen
+// from a 0x/0b/0o prefix, digits validated against that base, and a clamp at the
+// limits of the target's `int`, 32 bits on wasm32 and 64 bits on the native targets.
 // A byte the base cannot use stops the parse and keeps the value accumulated so far,
 // which is the partial result common_parse_uint2 returns on a bad digit. An illicit
 // underscore instead yields 0, matching the same rule in the reference.
@@ -3632,6 +3633,10 @@ fn (mut b Builder) generate_string_int_body(func_id int) {
 	max_i32 := b.m.get_or_add_const(b.i64_type, '2147483647')
 	min_i32 := b.m.get_or_add_const(b.i64_type, '-2147483648')
 	max_u32 := b.m.get_or_add_const(b.i64_type, '4294967295')
+	max_i64 := b.m.get_or_add_const(b.i64_type, '9223372036854775807')
+	min_i64 := b.m.get_or_add_const(b.i64_type, '-9223372036854775808')
+	// A 64-bit `int` keeps the accumulated value as u64 bits, as strconv does at bit size 64.
+	wide := b.resolve_type(flat.source_type_int) == b.i64_type
 	ascii_minus := b.m.get_or_add_const(b.i8_type, '45')
 	ascii_plus := b.m.get_or_add_const(b.i8_type, '43')
 	ascii_underscore := b.m.get_or_add_const(b.i8_type, '95')
@@ -3792,10 +3797,21 @@ fn (mut b Builder) generate_string_int_body(func_id int) {
 	scale_base := b.block_instr1(.load, accumulate, b.i64_type, base_slot)
 	scaled := b.block_instr2(.mul, accumulate, b.i64_type, cur, scale_base)
 	accumulated := b.block_instr2(.add, accumulate, b.i64_type, scaled, folded)
-	// The reference stops immediately on u32 overflow, before inspecting any suffix.
-	// Keeping this bound also prevents the next multiply/add from overflowing i64.
-	overflow := b.block_instr2(.gt, accumulate, b.i1_type, accumulated, max_u32)
-	bounded := b.block_instr3(.select, accumulate, b.i64_type, overflow, max_u32, accumulated)
+	// The reference stops immediately on overflow of the unsigned range of `int`,
+	// before inspecting any suffix. For 32 bits, keeping this bound also prevents the
+	// next multiply/add from overflowing i64. For 64 bits the product overflows when
+	// cur exceeds max_u64 / base, and the sum when it wraps below the product.
+	overflow := if wide {
+		limit := b.block_instr2(.udiv, accumulate, b.i64_type, minus_one, scale_base)
+		mul_overflow := b.block_instr2(.ugt, accumulate, b.i1_type, cur, limit)
+		add_overflow := b.block_instr2(.ult, accumulate, b.i1_type, accumulated, scaled)
+		b.block_instr2(.or_, accumulate, b.i1_type, mul_overflow, add_overflow)
+	} else {
+		b.block_instr2(.gt, accumulate, b.i1_type, accumulated, max_u32)
+	}
+	unsigned_max := if wide { minus_one } else { max_u32 }
+	bounded := b.block_instr3(.select, accumulate, b.i64_type, overflow, unsigned_max,
+		accumulated)
 	b.block_instr2(.store, accumulate, b.void_type, bounded, result_slot)
 	b.block_instr3(.br, accumulate, b.void_type, overflow, ValueID(stop), ValueID(step))
 
@@ -3806,15 +3822,28 @@ fn (mut b Builder) generate_string_int_body(func_id int) {
 	b.block_instr2(.store, stop_zero, b.void_type, zero64, result_slot)
 	b.block_instr1(.jmp, stop_zero, b.void_type, ValueID(stop))
 
-	// common_parse_int clamps at 2^31 rather than wrapping or erroring, so the range
-	// check happens on the signed value.
+	// common_parse_int clamps at the signed limits rather than wrapping or erroring.
+	// For 32 bits the range check happens on the signed value. For 64 bits the
+	// parsed value is u64 bits: a positive one from 2^63 on reads as negative, and a
+	// negative one may reach 2^63 itself.
 	parsed := b.block_instr1(.load, stop, b.i64_type, result_slot)
 	sign := b.block_instr1(.load, stop, b.i64_type, sign_slot)
 	signed_val := b.block_instr2(.mul, stop, b.i64_type, parsed, sign)
-	too_big := b.block_instr2(.gt, stop, b.i1_type, signed_val, max_i32)
-	too_small := b.block_instr2(.lt, stop, b.i1_type, signed_val, min_i32)
-	high := b.block_instr3(.select, stop, b.i64_type, too_big, max_i32, signed_val)
-	clamped := b.block_instr3(.select, stop, b.i64_type, too_small, min_i32, high)
+	clamped := if wide {
+		is_minus_sign := b.block_instr2(.lt, stop, b.i1_type, sign, zero64)
+		positive_too_big := b.block_instr2(.lt, stop, b.i1_type, parsed, zero64)
+		positive_value := b.block_instr3(.select, stop, b.i64_type, positive_too_big, max_i64,
+			parsed)
+		negative_too_big := b.block_instr2(.ugt, stop, b.i1_type, parsed, min_i64)
+		negative_value := b.block_instr3(.select, stop, b.i64_type, negative_too_big, min_i64,
+			signed_val)
+		b.block_instr3(.select, stop, b.i64_type, is_minus_sign, negative_value, positive_value)
+	} else {
+		too_big := b.block_instr2(.gt, stop, b.i1_type, signed_val, max_i32)
+		too_small := b.block_instr2(.lt, stop, b.i1_type, signed_val, min_i32)
+		high := b.block_instr3(.select, stop, b.i64_type, too_big, max_i32, signed_val)
+		b.block_instr3(.select, stop, b.i64_type, too_small, min_i32, high)
+	}
 	b.block_instr1(.ret, stop, b.void_type, clamped)
 }
 

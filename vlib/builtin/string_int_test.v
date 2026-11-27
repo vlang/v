@@ -28,6 +28,36 @@ fn test_common_atoi() {
 	}
 }
 
+fn test_string_int_uses_target_width() {
+	if sizeof(int) == sizeof(i64) {
+		assert i64('+2147483648'.int()) == i64(2147483648)
+		assert i64('-2147483649'.int()) == i64(-2147483649)
+		assert i64('0x80000000'.int()) == i64(2147483648)
+		assert i64('-0O20000000001'.int()) == i64(-2147483649)
+		assert i64('+0b10000000000000000000000000000000'.int()) == i64(2147483648)
+		assert i64('9223372036854775807'.int()) == max_i64
+		assert i64('-9223372036854775808'.int()) == min_i64
+		assert i64('9223372036854775808'.int()) == '9223372036854775808'.i64()
+		assert i64('-9223372036854775809'.int()) == '-9223372036854775809'.i64()
+	} else {
+		assert '+2147483648'.int() == max_i32
+		assert '-2147483649'.int() == min_i32
+		assert '0x80000000'.int() == max_i32
+		assert '-0O20000000001'.int() == min_i32
+	}
+}
+
+fn test_string_int_formats_at_target_width() {
+	if sizeof(int) == sizeof(i64) {
+		for value in ['3000000000', '-3000000000', '9223372036854775807', '-9223372036854775808'] {
+			assert value.int().str() == value
+		}
+	} else {
+		assert '3000000000'.int().str() == '2147483647'
+		assert '-3000000000'.int().str() == '-2147483648'
+	}
+}
+
 fn test_unsigned_cast() {
 	// tests for u16
 

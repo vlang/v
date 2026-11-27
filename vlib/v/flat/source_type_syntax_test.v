@@ -1973,7 +1973,7 @@ fn test_source_type_syntax_sparse_scalars_and_flags_cross_word_boundaries() {
 }
 
 fn test_source_type_syntax_sparse_signed_integer_queries_preserve_bits() {
-	// string.int() currently parses 32 bits even on targets where int is wider.
+	// string.int() parses at the width of int, so the values below depend on the target.
 	// These spellings must retain the cold parser's conversion behavior exactly.
 	for raw in ['-9223372036854775808', '-9223372036854775807', '-4294967296', '-2147483648', '-7',
 		'0', '7', '2147483647', '4294967296', '9223372036854775807', '__expr_-9223372036854775808',

@@ -177,3 +177,46 @@ fn main() {
 		}
 	}
 }
+
+fn test_native_string_int_parses_at_the_width_of_int() {
+	$if macos && arm64 {
+		path := os.join_path(os.vtmp_dir(), 'arm64_string_int_${os.getpid()}.v')
+		output := path.all_before_last('.')
+		defer {
+			os.rm(path) or {}
+			os.rm(output) or {}
+			os.rm(output + '_c') or {}
+		}
+		os.write_file(path, 'fn main() {
+	inputs := ["0", "7", "-7", "2147483647", "2147483648", "-2147483648", "-2147483649",
+		"3000000000", "4294967295", "4294967296", "-4294967296", "9223372036854775807",
+		"9223372036854775808", "-9223372036854775808", "-9223372036854775809",
+		"18446744073709551615", "18446744073709551616", "-18446744073709551616",
+		"99999999999999999999", "0x7fffffffffffffff", "0x8000000000000000", "0xffffffffffffffff",
+		"0x10000000000000000", "-0x8000000000000000", "-0x8000000000000001",
+		"0o777777777777777777777", "0o1777777777777777777777", "0o2000000000000000000000",
+		"0b1111111111111111111111111111111111111111111111111111111111111111",
+		"0b10000000000000000000000000000000000000000000000000000000000000000", "4294967296_",
+		"18446744073709551616_", "1_000", "_1", "1__0", "1.5", "12 ", "-", "+", "", "x", "0x",
+		"0x_f", "+0b101", "-0O17", "007"]
+	assert sizeof(int) == 8
+	assert i64("3000000000".int()) == 3000000000
+	assert i64("9223372036854775808".int()) == max_i64
+	assert i64("-9223372036854775809".int()) == min_i64
+	for s in inputs {
+		println(s)
+		println(s.int())
+	}
+}
+')!
+		native := os.exec([@VEXE, '-b', 'arm64', '-gc', 'none', '-o', output, path])
+		assert native.exit_code == 0, native.output
+		c := os.exec([@VEXE, '-b', 'c', '-nocache', '-gc', 'none', '-o', output + '_c', path])
+		assert c.exit_code == 0, c.output
+		native_result := os.exec([output])
+		c_result := os.exec([output + '_c'])
+		assert native_result.exit_code == 0, native_result.output
+		assert c_result.exit_code == 0, c_result.output
+		assert native_result.output == c_result.output
+	}
+}

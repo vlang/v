@@ -745,7 +745,7 @@ pub fn (s string) i32() i32 {
 // Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) int() int {
-	return int(strconv.common_parse_int(s, string_int_base(s), 32, false, false) or { 0 })
+	return int(strconv.common_parse_int(s, string_int_base(s), 0, false, false) or { 0 })
 }
 
 // i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.

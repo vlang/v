@@ -9,9 +9,8 @@
 // Each case compiles one small V program through the pipeline the backend's own
 // path uses - parser, checker, transform, the shared SSA builder, SSAGen -
 // runs the module under node with WASI fd_write/proc_exit stubs, and compares
-// the module's stdout against the same source compiled and run natively. The
-// assertion is always the VALUE: a wasm value that disagrees with native is a
-// finding, not a compile problem. Every audited program also exports primitive
+// both runs against expected output. Cases with different native and wasm32
+// integer widths specify separate expected values. Every audited program also exports primitive
 // wrappers and prints them itself, so a wrong value shows up in the module
 // stdout and in a channel a host could call.
 //
@@ -643,6 +642,8 @@ struct StubCase {
 	stub   string
 	source string
 	native string
+	// native_64 overrides the shared native and wasm32 expectation on 64-bit C.
+	native_64 string
 	// refuses, when non-empty, is the fragment of the compiler's own output this
 	// case must see instead of a value. Two shapes end here: a wasm build that
 	// reaches a runtime function the stub set never registered panics the SSA
@@ -774,17 +775,20 @@ fn stub_cases() []StubCase {
 			native: 'true\nfalse\n516\n602\n'
 		},
 		StubCase{
-			tag:    'string_int'
-			stub:   'string.int (generate_string_int_body)'
-			source: stub_source_string_int
-			native: '0\n42\n-42\n42\n0\n31\n31\n5\n15\n12\n1000\n2147483647\n' +
+			tag:       'string_int'
+			stub:      'string.int (generate_string_int_body)'
+			source:    stub_source_string_int
+			native:    '0\n42\n-42\n42\n0\n31\n31\n5\n15\n12\n1000\n2147483647\n' +
 				'-2147483648\n0\n0\n-16\n0\n0\n0\n0\n42\n-42\n31\n5\n15\n0\n' +
 				'12\n1000\n2147483647\n49\n'
+			native_64: '0\n42\n-42\n42\n0\n31\n31\n5\n15\n12\n1000\n9223372036854775807\n' +
+				'-9223372036854775808\n0\n0\n-16\n0\n0\n0\n0\n42\n-42\n31\n5\n15\n0\n' +
+				'12\n1000\n9223372036854775807\n49\n'
 		},
 		StubCase{
-			tag:    'string_int_overflow'
-			stub:   'string.int stops at unsigned 32-bit overflow before signed clamping'
-			source: '
+			tag:       'string_int_overflow'
+			stub:      'string.int stops at unsigned 32-bit overflow before signed clamping'
+			source:    '
 fn parse(prefix string, last int, suffix string) int {
 	s := prefix + last.str() + suffix
 	return s.int()
@@ -805,7 +809,9 @@ fn main() {
 	println(parse("0o777777777777777777777", 7, ""))
 }
 '
-			native: '2147483647\n-2147483648\n2147483647\n0\n2147483647\n-2147483648\n0\n0\n2147483647\n-2147483648\n2147483647\n2147483647\n'
+			native:    '2147483647\n-2147483648\n2147483647\n0\n2147483647\n-2147483648\n0\n0\n2147483647\n-2147483648\n2147483647\n2147483647\n'
+			native_64: '9223372036854775807\n-9223372036854775808\n9223372036854775807\n0\n0\n0\n0\n0\n' +
+				'9223372036854775807\n-9223372036854775808\n9223372036854775807\n9223372036854775807\n'
 		},
 		StubCase{
 			tag:    'string_plus'
@@ -925,11 +931,16 @@ fn stub_child_refusal(child string) string {
 	return child.trim_space()
 }
 
-fn stub_audit_case(c StubCase, mut wrong []string) {
+fn stub_audit_case(c StubCase, native_int_size string, mut wrong []string) {
 	stub_enter_workspace()
 	native := stub_native(c.tag, c.source)
-	if native != c.native {
-		wrong << '${c.tag}: native printed `${stub_show(native)}`, expected `${stub_show(c.native)}`'
+	expected_native := if native_int_size == '8' && c.native_64.len > 0 {
+		c.native_64
+	} else {
+		c.native
+	}
+	if native != expected_native {
+		wrong << '${c.tag}: native printed `${stub_show(native)}`, expected `${stub_show(expected_native)}`'
 		return
 	}
 	child := stub_child_build(c.tag)
@@ -958,7 +969,7 @@ fn stub_audit_case(c StubCase, mut wrong []string) {
 	}
 	wasm_stdout := decoded.bytestr()
 	if wasm_stdout != c.native {
-		wrong << '${c.tag}: wasm printed `${stub_show(wasm_stdout)}`, native `${stub_show(c.native)}`'
+		wrong << '${c.tag}: wasm printed `${stub_show(wasm_stdout)}`, expected `${stub_show(c.native)}`'
 		return
 	}
 	println('  ${c.tag} MATCH')
@@ -966,9 +977,11 @@ fn stub_audit_case(c StubCase, mut wrong []string) {
 
 fn test_stub_audit() {
 	stub_enter_workspace()
+	native_int_size := stub_native('native_int_size', 'fn main() { println(sizeof(int)) }').trim_space()
+	assert native_int_size in ['4', '8']
 	mut wrong := []string{}
 	for c in stub_all_cases() {
-		stub_audit_case(c, mut wrong)
+		stub_audit_case(c, native_int_size, mut wrong)
 	}
 	total := stub_all_cases().len
 	println('STUB_AUDIT_DONE cases=${total} wrong=${wrong.len}')
