@@ -5,6 +5,12 @@ import v.token
 // ValueID aliases value id values used by ssa.
 pub type ValueID = int
 
+// ir_version is the version of the SSA text format described in
+// vlib/v/ssa/ir_spec.md and implemented in vlib/v/ssa/ir_text.v.
+// Bump it on any incompatible format change; module_from_text
+// rejects versions it does not understand.
+pub const ir_version = 1
+
 // TypeID aliases type id values used by ssa.
 pub type TypeID = int
 
