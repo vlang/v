@@ -10187,6 +10187,14 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					i += 2
 					continue
 				}
+				if node.op == .assign && g.assign_lhs_needs_rhs_first(lhs_id)
+					&& !g.assert_operand_is_pure(rhs_id) {
+					if g.gen_index_lvalue_rhs_first_assign(lhs_id, rhs_id, lhs_type, rhs_type) {
+						g.expected_enum = 0
+						i += 2
+						continue
+					}
+				}
 				if g.assign_lhs_needs_deref(g.a.child(&node, i), lhs_type, rhs_type, node.op) {
 					g.write('*')
 				}
@@ -10574,6 +10582,67 @@ fn (g &FlatGen) mut_value_param_pointer_rebind(lhs_id flat.NodeId, lhs_type &typ
 		else { return false }
 	}
 	return unalias_type(lhs_pointer.base_type).source_type_id() == unalias_type(rhs_pointer.base_type).source_type_id()
+}
+
+// assign_lhs_needs_rhs_first reports whether the left-hand side of a plain `=`
+// assignment reads through an index (an array, string, or map element, possibly
+// under selectors), so the generated C must evaluate the right-hand side before
+// taking the address of the indexed element. C leaves the evaluation order of
+// `lhs = rhs` unsequenced; when `rhs` reallocates the indexed container (as in
+// `a[i].field = f()` where `f` appends to `a`), an address taken first dangles
+// and the stored value is lost.
+fn (g &FlatGen) assign_lhs_needs_rhs_first(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .index {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if g.assign_lhs_needs_rhs_first(g.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+// gen_index_lvalue_rhs_first_assign emits a plain `=` assignment whose left-hand
+// side reads through an index as `{ <rhs type> <tmp> = <rhs>; <lhs> = <tmp>; }`,
+// so the right-hand side (which may reallocate the indexed container) runs before
+// the address of the indexed element is taken. It returns false when the value
+// cannot live in a temporary (fixed arrays, function values with a field ABI
+// adapter), leaving the caller on the previous single-statement output.
+fn (mut g FlatGen) gen_index_lvalue_rhs_first_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	rhs_expected_type := if g.mut_value_param_pointer_rebind(lhs_id, lhs_type, rhs_type,
+		flat.Op.assign) {
+		lhs_type
+	} else {
+		g.assign_rhs_expected_type(lhs_id, lhs_type)
+	}
+	if _ := fn_type_from(rhs_expected_type) {
+		return false
+	}
+	if _ := array_fixed_type(unalias_type(rhs_expected_type)) {
+		return false
+	}
+	rhs_ct := g.value_c_type(rhs_expected_type)
+	if rhs_ct.len == 0 {
+		return false
+	}
+	if lhs_type is types.Enum {
+		g.expected_enum = lhs_type.source_type_id()
+	}
+	rhs_tmp := g.tmp_name()
+	g.write('{ ${rhs_ct} ${rhs_tmp} = ')
+	g.gen_expr_with_expected_type(rhs_id, rhs_expected_type)
+	g.write('; ')
+	if g.assign_lhs_needs_deref(lhs_id, lhs_type, rhs_type, flat.Op.assign) {
+		g.write('*')
+	}
+	gen_expr_lvalue(mut g, lhs_id)
+	g.writeln(' = ${rhs_tmp}; }')
+	return true
 }
 
 // gen_multi_return_assign emits multi return assign output for c.
