@@ -53,3 +53,53 @@ fn main() {
 	run := cmdexec.run_with_timeout(output, []string{}, 5000)
 	assert run.exit_code == 0, run.output
 }
+
+fn test_enum_from_ownership_only_drops_source_scopes() {
+	root := os.join_path(os.vtmp_dir(), 'enum_from_ownership_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, r"enum Choice {
+	first
+	second
+}
+
+interface Drop {
+mut:
+	drop()
+}
+
+struct Owned implements Drop { value int }
+
+fn (mut x Owned) drop() { println('drop ${x.value}') }
+
+fn choose(n int) Choice {
+	return Choice.from(n) or {
+		owned := Owned{value: 7}
+		println(owned.value)
+		Choice.first
+	}
+}
+
+fn as_result(n int) !Choice {
+	if n >= 0 {
+		return Choice.from(n)
+	}
+	later := Owned{value: 8}
+	println(later.value)
+	return .first
+}
+
+fn main() {
+	assert choose(1) == .second
+	assert choose(9) == .first
+	assert as_result(1)! == .second
+	if _ := as_result(9) { panic('unexpected success') }
+	assert as_result(-1)! == .first
+}
+")!
+	result := cmdexec.run(@VEXE, ['-ownership', '-gc', 'none', '-o', os.join_path(root, 'program'),
+		'run', source])
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == '7\ndrop 7\n8\ndrop 8', result.output
+}

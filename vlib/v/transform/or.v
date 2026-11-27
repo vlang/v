@@ -876,8 +876,7 @@ fn (mut t Transformer) transform_enum_from_or_expr(id flat.NodeId, node flat.Nod
 	} else {
 		flat.empty_node
 	}
-	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
-		info.enum_type, node.value, failure))
+	else_block := t.make_or_else_block(node.value, t.lower_or_body_to_stmts_with_err_expr(body_id, val_name, info.enum_type, node.value, failure))
 	conversion := t.enum_from_conversion(info, members, arg_name, val_name, '', else_block)
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
@@ -916,7 +915,7 @@ fn (mut t Transformer) try_lower_enum_from_call(call_id flat.NodeId, _node flat.
 		info.enum_type)
 	prelude << t.make_decl_assign_typed(ok_name, t.make_bool_literal(false), flat.source_type_bool)
 
-	else_block := t.make_block([]flat.NodeId{})
+	else_block := t.make_block_skip_scope_drops([]flat.NodeId{})
 	conversion := t.enum_from_conversion(info, members, arg_name, val_name, ok_name, else_block)
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
@@ -932,8 +931,8 @@ fn (mut t Transformer) try_lower_enum_from_call(call_id flat.NodeId, _node flat.
 		err_expr := t.make_call_typed('error', [t.make_string_literal('invalid value')], flat.source_type_id('IError'))
 		failure := t.make_optional_none_with_err(optional_type, err_expr)
 		t.pending_stmts << t.make_if(t.make_ident(ok_name),
-			t.make_block([t.make_assign(t.make_ident(result_name), success)]),
-			t.make_block([t.make_assign(t.make_ident(result_name), failure)]))
+			t.make_block_skip_scope_drops([t.make_assign(t.make_ident(result_name), success)]),
+			t.make_block_skip_scope_drops([t.make_assign(t.make_ident(result_name), failure)]))
 		result := t.make_ident(result_name)
 		t.set_node_typ(int(result), optional_type)
 		return result
@@ -972,7 +971,7 @@ fn (mut t Transformer) enum_from_conversion(info EnumFromInfo, members []EnumVal
 		cond := t.make_infix(.eq, unknown, t.make_int_literal_typed('0', typ))
 		accepted << t.make_assign(t.make_ident(val_name), t.make_cast(info.enum_type,
 			t.make_ident(arg_name), info.enum_type))
-		return t.make_if(cond, t.make_block(accepted), fallback)
+		return t.make_if(cond, t.make_block_skip_scope_drops(accepted), fallback)
 	}
 	for i := members.len - 1; i >= 0; i-- {
 		value := t.enum_from_member_value(info, members[i])
@@ -985,11 +984,11 @@ fn (mut t Transformer) enum_from_conversion(info EnumFromInfo, members []EnumVal
 		}
 		mut success := accepted.clone()
 		success << t.make_assign(t.make_ident(val_name), value)
-		conversion = t.make_if(cond, t.make_block(success), conversion)
+		conversion = t.make_if(cond, t.make_block_skip_scope_drops(success), conversion)
 	}
 	if info.flag_enum {
 		cond := t.make_call_typed('string__eq', [t.make_ident(arg_name), t.make_string_literal('')], flat.source_type_bool)
-		conversion = t.make_if(cond, t.make_block(accepted), conversion)
+		conversion = t.make_if(cond, t.make_block_skip_scope_drops(accepted), conversion)
 	}
 	return conversion
 }
