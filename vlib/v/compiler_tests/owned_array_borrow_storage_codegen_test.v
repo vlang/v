@@ -873,7 +873,7 @@ ${rejected_calls.join('\n')}
 }
 
 fn test_owned_sum_box_and_array_trim_cleanup_match_gc_allocators() {
-	source := '@[has_globals]
+	declarations := '@[has_globals]
 module main
 ' + borrow_storage_drop_decls + '
 __global calls = 0
@@ -904,41 +904,26 @@ fn check_trim() {
 
 type Bucket = Res | int
 
-fn main() {
+'
+	trim_range := 'fn trim_at(mut values []Res, index int) {
+	values.trim(index)
+	println("ok")
+	exit(0)
+}
+
+'
+	main_start := 'fn main() {
 	case_name := arguments()[1]
 	if case_name == "trim" {
 		check_trim()
 		return
 	}
-	assert case_name == "sum_box"
+'
+	sum_box := '	assert case_name == "sum_box"
 	bucket := Bucket(Res{1})
 	drop_owned(bucket)
 	mut direct := Res{2}
 	if direct.id == 0 { direct.drop() }
-}
-'
-	outputs := {
-		'sum_box': 'drop 1\ndrop 2'
-		'trim':    'ok'
-	}
-	for i, flags in ['', '-gc none'] {
-		name := 'owned_cleanup_allocator_${i}'
-		build := borrow_storage_compile_with_flags(name, source, flags)
-		assert build.exit_code == 0, '${name}: ${build.output}'
-		for case_name, expected in outputs {
-			run := os.exec([os.join_path(borrow_storage_tmp_dir, name), case_name])
-			assert run.exit_code == 0, '${name} ${case_name}: ${run.output}'
-			assert run.output.trim_space() == expected, '${name} ${case_name}: ${run.output}'
-		}
-	}
-}
-
-fn test_owned_array_trim_drops_only_a_valid_range() {
-	source := borrow_storage_drop_decls + '
-fn trim_at(mut values []Res, index int) {
-	values.trim(index)
-	println("ok")
-	exit(0)
 }
 '
 	indices := [-1, 0, 1, 2]
@@ -949,12 +934,31 @@ fn trim_at(mut values []Res, index int) {
 			trim_at(mut values, ${index})
 		}'
 	}
-	binary := borrow_storage_compile_dispatch('trim_drop_range', source, branches)
-	for index in indices {
-		run := os.exec([binary, index.str()])
-		expected := if index == 0 { 'drop 1\nok' } else { 'ok' }
-		assert run.exit_code == 0, '${index}: ${run.output}'
-		assert run.output.trim_space() == expected, '${index}: ${run.output}'
+	range_dispatch := '	match case_name {
+${branches.join('\n')}
+		else {}
+	}
+'
+	for i, flags in ['', '-gc none'] {
+		name := 'owned_cleanup_allocator_${i}'
+		mut source := declarations + main_start + sum_box
+		mut outputs := {
+			'sum_box': 'drop 1\ndrop 2'
+			'trim':    'ok'
+		}
+		if flags == '' {
+			source = declarations + trim_range + main_start + range_dispatch + sum_box
+			for index in indices {
+				outputs[index.str()] = if index == 0 { 'drop 1\nok' } else { 'ok' }
+			}
+		}
+		build := borrow_storage_compile_with_flags(name, source, flags)
+		assert build.exit_code == 0, '${name}: ${build.output}'
+		for case_name, expected in outputs {
+			run := os.exec([os.join_path(borrow_storage_tmp_dir, name), case_name])
+			assert run.exit_code == 0, '${name} ${case_name}: ${run.output}'
+			assert run.output.trim_space() == expected, '${name} ${case_name}: ${run.output}'
+		}
 	}
 }
 
