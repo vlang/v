@@ -76,8 +76,8 @@ fn run_ownership_regression(source string) {
 	}
 }
 
-fn test_ownership_arc_literal_transfers_nested_fields_once() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_arc_literal_${os.getpid()}')
+fn test_ownership_arc_literal_transfer_and_receiver_return() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_arc_regressions_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
@@ -92,34 +92,20 @@ struct Pair implements IClone {
 	right Value
 }
 
-struct Holder implements IClone {
+struct PairHolder implements IClone {
 	inner arc.Arc[Pair]
 }
 
-fn hold(left Value, right Value) Holder {
-	return Holder{
+fn hold(left Value, right Value) PairHolder {
+	return PairHolder{
 		inner: arc.new(Pair{left: left, right: right})
 	}
 }
 
-fn main() {
+fn check_arc_literal() {
 	holder := hold(Value{"left".to_owned()}, Value{"right".to_owned()})
 	assert holder.inner.get().left.text == "left"
 	assert holder.inner.get().right.text == "right"
-}
-')!
-	run_ownership_regression(source)
-}
-
-fn test_ownership_replacing_arc_field_can_return_receiver_reference() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_arc_receiver_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'import sync.arc
-
-struct Value implements IClone {
-	text string
 }
 
 struct Holder {
@@ -132,10 +118,15 @@ fn (mut holder Holder) replace(value Value) &Holder {
 	return holder
 }
 
-fn main() {
+fn check_arc_receiver() {
 	mut holder := Holder{arc.new(Value{"old".to_owned()})}
 	updated := holder.replace(Value{"new".to_owned()})
 	assert updated.inner.get().text == "new"
+}
+
+fn main() {
+	check_arc_literal()
+	check_arc_receiver()
 }
 ')!
 	run_ownership_regression(source)
