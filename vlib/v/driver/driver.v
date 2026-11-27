@@ -2645,10 +2645,60 @@ fn c_compiler_target_args(target pref.Target, c_compiler string, compiler_explic
 	return error('linking target ${target.os}/${target.arch} from host ${host.os}/${host.arch} is not supported by the default C compiler; use -o file.c and compile it with a target toolchain')
 }
 
+// cleanup_c_build_dir removes the C build directory of a build that is over, and it is where
+// a `-cg` build that did not finish gives back the directory it had set aside (see
+// v3_set_aside_c_debug_dir). A failure that ends the process without coming here leaves that
+// to the exit hook, which calls this (see v3_give_back_c_debug_dir_at_exit).
 fn cleanup_c_build_dir(dir string) {
-	if dir.len > 0 {
-		os.rmdir_all(dir) or {}
+	if dir.len == 0 {
+		return
 	}
+	// A `-cg` build that was refused changed nothing, and no cleanup of this process may:
+	// the directory is not this build's, it is the one of the executable in place.
+	if dir == v3_untouched_c_debug_dir() {
+		return
+	}
+	// The watched directory is also what a signal handler gives back, on a thread of its
+	// own on Windows: the build takes the directories before it touches them, and a handler
+	// that has them keeps them (see v3_begin_c_debug_dir_rollback).
+	watched := dir == v3_watched_c_debug_dir()
+	owned := watched && v3_begin_c_debug_dir_rollback()
+	gave_back := v3_give_back_c_build_dir(dir)
+	if watched && gave_back {
+		// Nothing is set aside for this process any more. A build it starts next (the
+		// restart paths) sets the directory aside for itself, and an interrupt that
+		// reaches both must find one of them giving it back, not two.
+		v3_c_debug_dir_watched_len = 0
+	}
+	if owned {
+		v3_end_c_debug_dir_rollback(if gave_back { c_debug_dir_idle } else { c_debug_dir_armed })
+	} else if watched && gave_back {
+		v3_disarm_c_debug_dir_signals()
+	}
+}
+
+// v3_give_back_c_build_dir removes `dir` and moves back what was set aside for it, and says
+// whether that was done. Whoever calls it has the directories. A set-aside directory that
+// was retired is the sources of an executable that was replaced: it is not given back, and
+// is removed when it can be.
+fn v3_give_back_c_build_dir(dir string) bool {
+	os.rmdir_all(dir) or {}
+	if !os.is_dir(v3_c_debug_dir_set_aside(dir)) {
+		return false
+	}
+	if !v3_c_debug_dir_is_set_aside(dir) {
+		v3_drop_retired_c_debug_dir(dir)
+		return false
+	}
+	if os.exists(dir) {
+		// What the build had written could not be removed (a file in it is open). The
+		// directory that was set aside stays where it is: os.rename moves INTO a directory
+		// that exists, and the old sources would be inside what is left of the new ones,
+		// found by nothing. Set aside, they are what the next build of this output keeps.
+		return false
+	}
+	os.rename(v3_c_debug_dir_set_aside(dir), dir) or {}
+	return true
 }
 
 fn run_test_binary(bin_file string) int {
@@ -6372,6 +6422,104 @@ fn v3_short_build_dir_for(dir string, windows_host bool, root string) (string, b
 		return dir, false
 	}
 	return short, true
+}
+
+// v3_cc_dir_name returns the name of the hidden C build directory beside the output `base`.
+// A `-cg` build names the directory after the output alone: it is kept for the debugger, so
+// one directory per output is replaced by the next build instead of a new one piling up.
+// Other builds use `token`, and remove their directory after the link.
+fn v3_cc_dir_name(base string, is_c_debug bool, token string) string {
+	return if is_c_debug { '.${base}.v3cc.cg' } else { '.${base}.v3cc.${token}' }
+}
+
+// v3_c_debug_dir_set_aside is where the directory of the last finished `-cg` build of an output
+// waits while the next build of that output runs.
+fn v3_c_debug_dir_set_aside(cc_dir string) string {
+	return cc_dir + '.prev'
+}
+
+// v3_set_aside_c_debug_dir makes room in `cc_dir` for a new `-cg` build without losing the
+// sources of the last one. The executable that is in place names them in its C debug
+// information, and it stays in place when the new build fails, so they are moved aside, not
+// removed: cleanup_c_build_dir moves them back, and v3_keep_new_c_debug_dir removes them once
+// a new executable has replaced the old one. A directory that is already set aside was left by
+// a build that was interrupted; it is the one to keep, and `cc_dir` holds what that build left.
+// From here on the exit hook looks after `cc_dir`, for the failures that do not clean up.
+//
+// It returns '' when the build may go on. A build that would have to change `cc_dir` without
+// a way to give it back is REFUSED before it changes anything, and the reason is returned:
+// the caller prints it and ends. `cc_dir` then holds the sources of the executable in place,
+// and stays as it is: it is not watched, and cleanup_c_build_dir leaves it alone for the rest
+// of this process (v3_keep_c_debug_dir_untouched), whichever exit is taken.
+fn v3_set_aside_c_debug_dir(cc_dir string) string {
+	v3_forget_untouched_c_debug_dir()
+	// what an interrupted build of this output left (see c_debug_dir_signal.c.v)
+	os.rmdir_all(v3_c_debug_dir_interrupted(cc_dir)) or {}
+	set_aside := v3_c_debug_dir_set_aside(cc_dir)
+	// A set-aside directory with the retired mark is what a build that SUCCEEDED could not
+	// take away: the sources of an executable that was replaced, not of the one in place.
+	// It goes now. While it cannot, its name is taken, and the sources of the executable in
+	// place have nowhere to be set aside.
+	if !v3_drop_retired_c_debug_dir(cc_dir) {
+		if os.exists(cc_dir) {
+			return v3_refuse_c_debug_build(cc_dir, '${set_aside} holds the C sources of an executable that was replaced earlier, and cannot be removed')
+		}
+		// Nothing is in place to lose. The build goes on with nothing set aside; the mark
+		// stays, so what is under that name is still not given back.
+		v3_watch_c_debug_dir(cc_dir)
+		return ''
+	}
+	// From here to the end of this function the directories are being changed, and a signal
+	// waits (`setting aside`): the watch is set, so that nothing done here is left without
+	// someone to give it back, and it is armed only when the directories are at rest. Armed
+	// earlier, a handler on another thread acts in the middle of what follows: it gives back
+	// what is set aside while this function goes on to remove or move what is in place.
+	v3_watch_c_debug_dir_as(cc_dir, c_debug_dir_setting_aside)
+	if os.is_dir(set_aside) {
+		// A build that was interrupted left this set aside: it is the one to keep, and what
+		// is in place is what that build left.
+		os.rmdir_all(cc_dir) or {}
+		v3_end_c_debug_dir_setup(c_debug_dir_armed)
+		return ''
+	}
+	if os.exists(cc_dir) {
+		os.rename(cc_dir, set_aside) or {}
+		if os.exists(cc_dir) || !os.is_dir(set_aside) {
+			// It could not be moved (a file in it is open, or the name it would take is
+			// taken). Removing it instead would lose what a failure has to give back.
+			// The directory is out of every cleanup before the word is let go: a signal
+			// that waited is raised by that, and ends the process.
+			message := v3_refuse_c_debug_build(cc_dir, 'it cannot be moved to ${set_aside}')
+			v3_c_debug_dir_watched_len = 0
+			v3_end_c_debug_dir_setup(c_debug_dir_idle)
+			return message
+		}
+		v3_end_c_debug_dir_setup(c_debug_dir_armed)
+		return ''
+	}
+	v3_end_c_debug_dir_setup(c_debug_dir_armed)
+	return ''
+}
+
+// v3_refuse_c_debug_build keeps `cc_dir` out of every cleanup of this process and returns the
+// message of a `-cg` build that was not started.
+fn v3_refuse_c_debug_build(cc_dir string, why string) string {
+	v3_keep_c_debug_dir_untouched(cc_dir)
+	return 'error: -cg did not start this build, because it could not keep the C sources of the executable that is in place.\n' +
+		'  ${cc_dir} holds them, and a build that fails has to give them back: ${why}.\n' +
+		'  Close the program that has a file there open (a debugger, an editor) or remove that directory, and build again. Nothing was changed.'
+}
+
+// v3_keep_new_c_debug_dir is called when the new executable is in place: the sources of the
+// one it replaced are no longer named by anything.
+fn v3_keep_new_c_debug_dir(cc_dir string) {
+	v3_end_c_debug_dir_publication(cc_dir, true)
+	v3_unwatch_c_debug_dir()
+}
+
+// v3_c_debug_dir_note is the one line a `-cg` build prints to say where it keeps its C sources.
+fn v3_c_debug_dir_note(cc_dir string) string {
+	return 'note: -cg keeps the C sources for the debugger in ${cc_dir} (replaced by the next -cg build of this output that succeeds)'
 }
 
 // v3_mkdir_all_shared creates `dir` and its parents, also when a concurrent build creates
@@ -16562,7 +16710,8 @@ pub fn run(args []string) {
 		cc_output_name := c_compiler_output_name_for_target(prefs.normalized_target_os(), is_shared,
 			is_o)
 		if !c_only {
-			cc_dir = os.join_path_single(v3_output_dir(bin_file), '.${os.base(bin_file)}.v3cc.${tempname.unique_token()}')
+			cc_dir = os.join_path_single(v3_output_dir(bin_file), v3_cc_dir_name(os.base(bin_file),
+				is_c_debug, tempname.unique_token()))
 			// tcc.exe is not long-path aware, so a build dir near MAX_PATH cannot hold its files.
 			// Only a dir this long moves to the short root; shorter dirs keep their place,
 			// since moving them can break builds that work today. A flag with a relative path
@@ -16570,10 +16719,24 @@ pub fn run(args []string) {
 			if program_executable_output_dir.len == 0 {
 				cc_dir, cc_dir_moved = v3_short_build_dir(cc_dir)
 			}
+			if is_c_debug {
+				// The directory of an earlier `-cg` build of this output is replaced when this
+				// build succeeds, and given back when it fails. When it could not be given
+				// back, the build is not started.
+				refusal := v3_set_aside_c_debug_dir(cc_dir)
+				if refusal.len > 0 {
+					eprintln(refusal)
+					exit(1)
+				}
+			}
 			// The output directory may not exist yet, and mkdir would fail on it.
 			v3_mkdir_all_shared(cc_dir) or {
 				eprintln('failed to create C build directory ${cc_dir}: ${err}')
+				cleanup_c_build_dir(cc_dir)
 				exit(1)
+			}
+			if is_c_debug {
+				eprintln(v3_c_debug_dir_note(cc_dir))
 			}
 			cc_src = os.join_path_single(cc_dir, 'src.c')
 			cc_out = os.join_path_single(cc_dir, cc_output_name)
@@ -16632,6 +16795,7 @@ pub fn run(args []string) {
 		// stops the build here, before C generation takes it to the C compiler
 		// (see start_program_instance_check).
 		if program_instance_check.finish() == 1 {
+			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
 		// A compiler switch does not add diagnostics to an invalid program. Wait
@@ -18318,10 +18482,21 @@ Please install the corresponding development package/libraries and make sure the
 						os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs'), unchanged_build_cache_dir]))
 		}
 		print_post_link_step(verbose || show_cc, post_link_move_step(staged_binary, bin_file))
+		if is_c_debug {
+			// From here until the directory that was set aside is let go, a signal waits:
+			// which sources belong to the executable in place changes with this move.
+			v3_begin_c_debug_dir_publication()
+		}
 		os.mv(staged_binary, bin_file) or {
 			eprintln('failed to finalize ${bin_file}: ${err}')
+			if is_c_debug {
+				v3_end_c_debug_dir_publication(cc_dir, false)
+			}
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
+		}
+		if is_c_debug {
+			v3_keep_new_c_debug_dir(cc_dir)
 		}
 		$if windows {
 			// MSVC's startup dbghelp.dll hangs with a long TMP in a longPathAware
