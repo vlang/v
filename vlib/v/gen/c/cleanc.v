@@ -7071,7 +7071,10 @@ fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source stri
 			return include_arg == '<windows.h>'
 				|| (g.target.os in ['macos', 'linux', 'android', 'termux', 'freebsd', 'openbsd',
 					'dragonfly', 'ios']
-					&& normalized_c_include_arg_path(include_arg) == root + '/vlib/v/cmdexec/cmdexec_poll.h')
+					&& normalized_c_include_arg_path(include_arg) in [
+						root + '/vlib/v/cmdexec/cmdexec_poll.h',
+						root + '/vlib/v/cmdexec/cmdexec_wait.h',
+					])
 		}
 		'time/time_windows.c.v' {
 			return include_arg == '<time.h>'
