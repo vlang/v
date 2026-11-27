@@ -1064,9 +1064,9 @@ fn main() {
 	])
 }
 
-fn test_wrapped_and_forwarded_return_rejections() {
+fn test_return_type_and_unreachable_code_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'wrapped_and_forwarded_return_rejections', [
+	run_bad_module_batch(v3_bin, 'return_type_and_unreachable_code_rejections', [
 		ReviewRejection{
 			name:     'unhandled_result_multi_decl_assign'
 			source:   "fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n"
@@ -1172,6 +1172,41 @@ fn main() {
 	println(int_str(fixed_n))
 }
 ', 'cannot use `[1]fixture_9.Value` as type `[1]fixture_9.IValue` in return argument'},
+		ReviewRejection{
+			name:     'explicit_return_semicolon_unreachable'
+			source:   'fn stop() {
+	return;
+	println("unreachable")
+}
+fn main() {}
+'
+			expected: 'unreachable code'
+		},
+		ReviewRejection{
+			name:     'nested_explicit_return_semicolon_unreachable'
+			source:   'fn stop(ok bool) {
+	if ok {
+		return;
+		println("unreachable")
+	}
+}
+fn main() {}
+'
+			expected: 'unreachable code'
+		},
+		ReviewRejection{
+			name:     'nested_return_semicolon_unreachable'
+			source:   'fn stop(ok bool) {
+	if ok {
+		return;
+	}
+	return
+	println("unreachable")
+}
+fn main() {}
+'
+			expected: 'unreachable code'
+		},
 	])
 }
 
@@ -2285,9 +2320,9 @@ fn test_select_lowering_roots_array_free() {
 	assert out == ''
 }
 
-fn test_select_assignment_cases_require_receive_rhs() {
+fn test_select_case_syntax_rejections() {
 	v3_bin := build_v3()
-	mut cases := []ReviewRejection{cap: 3}
+	mut cases := []ReviewRejection{cap: 6}
 	for op in [':=', '=', '+='] {
 		cases << ReviewRejection{
 			name:     'select_non_receive_${op.replace('=', 'eq').replace(':', 'decl').replace('+', 'plus')}'
@@ -2302,12 +2337,7 @@ fn test_select_assignment_cases_require_receive_rhs() {
 			expected: 'select key: receive expression expected'
 		}
 	}
-	run_bad_module_batch(v3_bin, 'select_non_receive_rejections', cases)
-}
-
-fn test_select_timeout_rejections() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'select_timeout_rejections', [
+	cases << [
 		ReviewRejection{
 			name:     'select_else_before_timeout'
 			source:   'import time
@@ -2343,7 +2373,8 @@ fn main() {
 	}
 }
 ', 'at most one timeout branch allowed in `select` block'},
-	])
+	]
+	run_bad_module_batch(v3_bin, 'select_case_syntax_rejections', cases)
 }
 
 fn test_comptime_if_threads_expression_is_deferred() {
@@ -3413,47 +3444,6 @@ fn main() {
 	assert out.contains('chan int{\n        cap: 0, closed: false\n    }')
 }
 
-fn test_explicit_return_semicolon_keeps_unreachable_check() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'return_semicolon_rejections', [
-		ReviewRejection{
-			name:     'explicit_return_semicolon_unreachable'
-			source:   'fn stop() {
-	return;
-	println("unreachable")
-}
-fn main() {}
-'
-			expected: 'unreachable code'
-		},
-		ReviewRejection{
-			name:     'nested_explicit_return_semicolon_unreachable'
-			source:   'fn stop(ok bool) {
-	if ok {
-		return;
-		println("unreachable")
-	}
-}
-fn main() {}
-'
-			expected: 'unreachable code'
-		},
-		ReviewRejection{
-			name:     'nested_return_semicolon_unreachable'
-			source:   'fn stop(ok bool) {
-	if ok {
-		return;
-	}
-	return
-	println("unreachable")
-}
-fn main() {}
-'
-			expected: 'unreachable code'
-		},
-	])
-}
-
 fn test_qualified_enum_str_requires_exact_receiver() {
 	v3_bin := build_v3()
 	out := run_good_project(v3_bin, 'qualified_enum_str_exact_receiver', {
@@ -3462,42 +3452,6 @@ fn test_qualified_enum_str_requires_exact_receiver() {
 		'modb/modb.v': "module modb\n\npub enum Color {\n\tblue\n}\n\npub fn (c Color) str() string {\n\treturn 'custom'\n}\n"
 	}, 'main.v')
 	assert out == 'red\ncustom'
-}
-
-fn test_array_and_map_receiver_rejections() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'array_and_map_receiver_rejections', [
-		ReviewRejection{
-			name:     'fixed_array_pointers_rejects_rvalue_receiver'
-			source:   'fn make_fixed() [2]int {\n\treturn [7, 8]!\n}\n\nfn main() {\n\t_ := unsafe { make_fixed().pointers() }\n}\n'
-			expected: 'fixed array receiver for `pointers` must be addressable'
-		},
-		ReviewRejection{
-			name:     'fixed_array_pointers_rejects_map_index_receiver'
-			source:   'fn main() {\n\tmut m := map[string][2]int{}\n\tm["x"] = [1, 2]!\n\t_ := unsafe { m["x"].pointers() }\n}\n'
-			expected: 'fixed array receiver for `pointers` must be addressable'
-		},
-		ReviewRejection{
-			name:     'fixed_array_pointers_rejects_extra_arg'
-			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut fixed := [3]int{}\n\t_ := unsafe { fixed.pointers(extra_arg()) }\n}\n'
-			expected: 'expected 0 arguments, but got 1'
-		},
-		ReviewRejection{
-			name:     'map_keys_rejects_extra_arg'
-			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\t_ := m.keys(extra_arg())\n}\n'
-			expected: '`.keys()` does not have any arguments'
-		},
-		ReviewRejection{
-			name:     'map_delete_rejects_bad_key_type'
-			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.delete(123)\n}\n'
-			expected: 'cannot use `int literal` as `string` in argument 1 to `Map.delete`'
-		},
-		ReviewRejection{
-			name:     'map_reserve_rejects_bad_count_type'
-			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.reserve("bad")\n}\n'
-			expected: 'cannot use `string` as `u32` in argument 1 to `map[string]int.reserve`'
-		},
-	])
 }
 
 fn test_array_builtin_method_fallback_keeps_return_type() {
@@ -4470,9 +4424,9 @@ fn main() {
 	assert out == '2'
 }
 
-fn test_interface_pointer_and_voidptr_rejections() {
+fn test_interface_arguments_and_collection_receivers() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'interface_pointer_and_voidptr_rejections', [
+	run_bad_module_batch(v3_bin, 'interface_arguments_and_collection_receivers', [
 		ReviewRejection{
 			name:     'interface_pointer_shape_mismatch'
 			source:   'interface Sink {\n\tput(x &int)\n}\n\nstruct Bad {}\n\nfn (b Bad) put(x int) {}\n\nfn main() {\n\t_ := Sink(Bad{})\n}\n'
@@ -4507,6 +4461,36 @@ fn main() {
 	take(Color.red)
 }
 ', 'cannot use `fixture_4.Color` as `voidptr` in argument 1 to `fixture_4.take`'},
+		ReviewRejection{
+			name:     'fixed_array_pointers_rejects_rvalue_receiver'
+			source:   'fn make_fixed() [2]int {\n\treturn [7, 8]!\n}\n\nfn main() {\n\t_ := unsafe { make_fixed().pointers() }\n}\n'
+			expected: 'fixed array receiver for `pointers` must be addressable'
+		},
+		ReviewRejection{
+			name:     'fixed_array_pointers_rejects_map_index_receiver'
+			source:   'fn main() {\n\tmut m := map[string][2]int{}\n\tm["x"] = [1, 2]!\n\t_ := unsafe { m["x"].pointers() }\n}\n'
+			expected: 'fixed array receiver for `pointers` must be addressable'
+		},
+		ReviewRejection{
+			name:     'fixed_array_pointers_rejects_extra_arg'
+			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut fixed := [3]int{}\n\t_ := unsafe { fixed.pointers(extra_arg()) }\n}\n'
+			expected: 'expected 0 arguments, but got 1'
+		},
+		ReviewRejection{
+			name:     'map_keys_rejects_extra_arg'
+			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\t_ := m.keys(extra_arg())\n}\n'
+			expected: '`.keys()` does not have any arguments'
+		},
+		ReviewRejection{
+			name:     'map_delete_rejects_bad_key_type'
+			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.delete(123)\n}\n'
+			expected: 'cannot use `int literal` as `string` in argument 1 to `Map.delete`'
+		},
+		ReviewRejection{
+			name:     'map_reserve_rejects_bad_count_type'
+			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.reserve("bad")\n}\n'
+			expected: 'cannot use `string` as `u32` in argument 1 to `map[string]int.reserve`'
+		},
 	])
 }
 
@@ -5598,7 +5582,7 @@ fn main() {
 		ReviewRuntimeCase{'review_interface_rvalue_upcasts', 'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n', 'call\nif\nindex'},
 		ReviewRuntimeCase{'review_embedded_interface_fields_and_ptr_upcast', 'interface Base {\n\tname string\n\tlabel() string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name + ":label"\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn use_ptr(b &Base) string {\n\treturn b.name + ":" + b.label()\n}\n\nfn describe(base Base) string {\n\treturn match base {\n\t\tChild { base.name + ":" + base.child().str() }\n\t\telse { "else" }\n\t}\n}\n\nfn main() {\n\tchild := Child(User{\n\t\tname: "Ada"\n\t})\n\tbase := Base(User{\n\t\tname: "Bea"\n\t})\n\tprintln(child.name)\n\tprintln(use_ptr(child))\n\tprintln(describe(base))\n}\n', 'Ada\nAda:Ada:label\nBea:3'},
 	])
-	run_bad_module_batch(v3_bin, 'overloaded_index_write_rejections', [
+	run_bad_module_batch(v3_bin, 'overloaded_index_access_and_assignment_rejections', [
 		ReviewRejection{
 			name:     'overloaded_index_compound_assignment_checks_getter_index'
 			source:   mismatched_getter_src + '
@@ -5687,6 +5671,31 @@ fn main() {
 	d["name"] += 1
 }
 ', 'index assignment requires a `[]=` overload on type `fixture_7.Dict`'},
+		ReviewRejection{
+			name:     'review_setter_only_compound_index_assignment'
+			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'compound index assignment requires a `[]` overload'
+		},
+		ReviewRejection{
+			name:     'review_getter_only_index_assignment'
+			source:   "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] = 1\n}\n"
+			expected: 'index assignment requires a `[]=` overload'
+		},
+		ReviewRejection{
+			name:     'review_getter_only_compound_index_assignment'
+			source:   "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'index assignment requires a `[]=` overload'
+		},
+		ReviewRejection{
+			name:     'review_compound_index_getter_key_mismatch'
+			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'cannot use `string` as overloaded index; expected `int`'
+		},
+		ReviewRejection{
+			name:     'review_compound_index_getter_value_mismatch'
+			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'compound index assignment getter returns `string`, which cannot be used as setter value `int`'
+		},
 	])
 }
 
@@ -6182,33 +6191,6 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	// compound assignment to the global after the block still has to parse for
 	// the error to be the only complaint.
 	run_bad(v3_bin, 'review_shadowed_global_nested_scope', '__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n', 'variable `score` shadows a global variable')
-	run_bad_module_batch(v3_bin, 'review_index_rejections', [
-		ReviewRejection{
-			name:     'review_setter_only_compound_index_assignment'
-			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
-			expected: 'compound index assignment requires a `[]` overload'
-		},
-		ReviewRejection{
-			name:     'review_getter_only_index_assignment'
-			source:   "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] = 1\n}\n"
-			expected: 'index assignment requires a `[]=` overload'
-		},
-		ReviewRejection{
-			name:     'review_getter_only_compound_index_assignment'
-			source:   "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
-			expected: 'index assignment requires a `[]=` overload'
-		},
-		ReviewRejection{
-			name:     'review_compound_index_getter_key_mismatch'
-			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
-			expected: 'cannot use `string` as overloaded index; expected `int`'
-		},
-		ReviewRejection{
-			name:     'review_compound_index_getter_value_mismatch'
-			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
-			expected: 'compound index assignment getter returns `string`, which cannot be used as setter value `int`'
-		},
-	])
 	fixed_field_out := run_good(v3_bin, 'review_capital_field_const_fixed_array', '@[translated]\nmodule main\n\nconst n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
 	assert fixed_field_out == '7'
 }
@@ -7333,9 +7315,9 @@ fn same_scope() {
 	assert four_b[0].line == 14, p.diagnostics.str()
 }
 
-fn test_recursive_str_control_flow_and_progress_rejections() {
+fn test_recursive_str_control_flow_and_aggregate_rejections() {
 	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_control_flow_and_progress_rejections', [
+	run_bad_file_batch(v3_bin, 'recursive_str_control_flow_and_aggregate_rejections', [
 		ReviewRejection{'recursive_str_helper_early_return', 'struct EarlyReturnItem {
 mut:
 	remaining int
@@ -7522,6 +7504,141 @@ fn (item OrItem) str() string {
 	return copy.str()
 }
 ', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_multi_return_slot_provenance', 'struct ReturnedSlotItem {}
+
+fn returned_slot_carry(item ReturnedSlotItem) (ReturnedSlotItem, int) {
+	return item, 0
+}
+
+fn (item ReturnedSlotItem) str() string {
+	copy, _ := returned_slot_carry(item)
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_multi_return_assign_slot_provenance', 'struct AssignedSlotItem {}
+
+fn assigned_slot_carry(item AssignedSlotItem) (AssignedSlotItem, int) {
+	return item, 0
+}
+
+fn (item AssignedSlotItem) str() string {
+	mut copy := AssignedSlotItem{}
+	copy, _ = assigned_slot_carry(item)
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_clone_element_provenance', 'struct ArrayCloneItem {}
+
+fn (item ArrayCloneItem) str() string {
+	copies := [item].clone()
+	return copies[0].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_map_clone_element_provenance', 'struct MapCloneItem {}
+
+fn (item MapCloneItem) str() string {
+	copies := {"self": item}.clone()
+	return copies["self"].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_static_helper_args', 'struct Helpers {}
+
+struct StaticItem {}
+
+fn Helpers.render(item StaticItem) string {
+	return item.str()
+}
+
+fn (item StaticItem) str() string {
+	return Helpers.render(item)
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_slot_replacement', 'struct ArraySlotItem {
+	remaining int
+}
+
+fn (item ArraySlotItem) str() string {
+	mut items := [ArraySlotItem{
+		remaining: 0
+	}]
+	items[0] = item
+	return items[0].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_map_slot_replacement', 'struct MapSlotItem {
+	remaining int
+}
+
+fn (item MapSlotItem) str() string {
+	mut items := {"self": MapSlotItem{
+		remaining: 0
+	}}
+	items["self"] = item
+	return items["self"].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_wrapper_field_replacement', 'struct WrapperFieldItem {
+	remaining int
+}
+
+struct Wrapper {
+mut:
+	value WrapperFieldItem
+}
+
+fn (item WrapperFieldItem) str() string {
+	mut wrapped := Wrapper{
+		value: WrapperFieldItem{
+			remaining: 0
+		}
+	}
+	wrapped.value = item
+	return wrapped.value.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_constant_local_receiver_index', 'struct ConstantIndexItem {}
+
+fn (item ConstantIndexItem) str() string {
+	items := [item, ConstantIndexItem{}]
+	index := 0
+	return items[index].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_mutated_local_receiver_index', 'struct MutatedIndexItem {}
+
+fn (item MutatedIndexItem) str() string {
+	items := [item, MutatedIndexItem{}]
+	mut index := 1
+	index--
+	return items[index].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_for_in_value', 'struct ForValueItem {}
+
+fn (item ForValueItem) str() string {
+	for copy in [item] {
+		return copy.str()
+	}
+	return ""
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_for_in_index_and_value', 'struct ForIndexValueItem {}
+
+fn (item ForIndexValueItem) str() string {
+	for _, copy in [item] {
+		return copy.str()
+	}
+	return ""
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_slice_receiver', 'struct SlicedItem {}
+
+fn (item SlicedItem) str() string {
+	items := [item]
+	slice := items[0..1]
+	return slice[0].str()
+}
+', 'cannot call `str()` method recursively'},
 	])
 }
 
@@ -7595,9 +7712,9 @@ fn main() {
 	assert out == ''
 }
 
-fn test_recursive_str_helper_and_container_provenance_rejections() {
+fn test_recursive_str_provenance_and_storage_mutation_rejections() {
 	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_helper_and_container_provenance_rejections', [
+	run_bad_file_batch(v3_bin, 'recursive_str_provenance_and_storage_mutation_rejections', [
 		ReviewRejection{'recursive_str_helper_return_alias', 'struct ReturnedAliasItem {}
 
 fn same(item ReturnedAliasItem) ReturnedAliasItem {
@@ -7765,6 +7882,181 @@ fn wrapper_helper_wrap(item WrapperHelperItem) WrapperHelperWrapper {
 
 fn (item WrapperHelperItem) str() string {
 	return wrapper_helper_wrap(item).value.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_spawned_mutation', 'struct SpawnMutationItem {
+mut:
+	remaining int
+}
+
+fn advance(mut item SpawnMutationItem) {
+	item.remaining--
+}
+
+fn (item SpawnMutationItem) str() string {
+	mut copy := item
+	spawn advance(mut copy)
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_spawned_call', 'struct SpawnCallItem {}
+
+fn (item SpawnCallItem) str() string {
+	t := spawn item.str()
+	return t.wait()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_deferred_mutation', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	defer {
+		copy.remaining--
+	}
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_deferred_call_exit_state', 'struct ExitStateItem {
+mut:
+	remaining int
+}
+
+fn (item ExitStateItem) str() string {
+	mut next := item
+	next.remaining--
+	defer {
+		_ := next.str()
+	}
+	next = item
+	return ""
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_deferred_call_before_mutation', 'struct BeforeMutationItem {
+mut:
+	remaining int
+}
+
+fn (item BeforeMutationItem) str() string {
+	mut next := item
+	defer {
+		next.remaining--
+	}
+	defer {
+		_ := next.str()
+	}
+	return ""
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_literal_provenance', 'struct LiteralItem {
+	remaining int
+}
+
+fn (item LiteralItem) str() string {
+	return LiteralItem{
+		remaining: item.remaining
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_update_provenance', 'struct UpdateItem {
+	value int
+}
+
+fn (item UpdateItem) str() string {
+	return UpdateItem{
+		...item
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_update_noop_field', 'struct NoopUpdateItem {
+	remaining int
+}
+
+fn (item NoopUpdateItem) str() string {
+	return NoopUpdateItem{
+		...item
+		remaining: item.remaining + 0
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_update_helper_provenance', 'struct HelperUpdateItem {
+	value int
+}
+
+fn helper_update_same(value HelperUpdateItem) HelperUpdateItem {
+	return value
+}
+
+fn (item HelperUpdateItem) str() string {
+	return helper_update_same(HelperUpdateItem{
+		...item
+	}).str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_helper_returned_struct_update', 'struct ReturnedUpdateItem {
+	value int
+}
+
+fn returned_update_same(item ReturnedUpdateItem) ReturnedUpdateItem {
+	return ReturnedUpdateItem{
+		...item
+	}
+}
+
+fn (item ReturnedUpdateItem) str() string {
+	return returned_update_same(item).str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_guarded_bool_noop_struct_update', 'struct GuardedUpdateItem {
+	done bool
+}
+
+fn (item GuardedUpdateItem) str() string {
+	if !item.done {
+		return "done"
+	}
+	return GuardedUpdateItem{
+		...item
+		done: true
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_delete_shift', 'struct DeletedItem {
+	remaining int
+}
+
+fn (item DeletedItem) str() string {
+	mut items := [DeletedItem{
+		remaining: item.remaining - 1
+	}, item]
+	items.delete(0)
+	return items[0].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_reverse_in_place', 'struct ReversedItem {
+	remaining int
+}
+
+fn (item ReversedItem) str() string {
+	mut items := [item, ReversedItem{
+		remaining: item.remaining - 1
+	}]
+	items.reverse_in_place()
+	return items[1].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_prepend_shift', 'struct PrependedItem {
+	remaining int
+}
+
+fn (item PrependedItem) str() string {
+	mut items := [item]
+	items.prepend(PrependedItem{
+		remaining: item.remaining - 1
+	})
+	return items[1].str()
 }
 ', 'cannot call `str()` method recursively'},
 	])
@@ -8274,187 +8566,6 @@ fn (item Item) str() string {
 fn main() {}
 ')
 	assert helper_out == ''
-}
-
-fn test_recursive_str_delayed_and_storage_mutation_rejections() {
-	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_delayed_and_storage_mutation_rejections', [
-		ReviewRejection{'recursive_str_spawned_mutation', 'struct SpawnMutationItem {
-mut:
-	remaining int
-}
-
-fn advance(mut item SpawnMutationItem) {
-	item.remaining--
-}
-
-fn (item SpawnMutationItem) str() string {
-	mut copy := item
-	spawn advance(mut copy)
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_spawned_call', 'struct SpawnCallItem {}
-
-fn (item SpawnCallItem) str() string {
-	t := spawn item.str()
-	return t.wait()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_deferred_mutation', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	mut copy := item
-	defer {
-		copy.remaining--
-	}
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_deferred_call_exit_state', 'struct ExitStateItem {
-mut:
-	remaining int
-}
-
-fn (item ExitStateItem) str() string {
-	mut next := item
-	next.remaining--
-	defer {
-		_ := next.str()
-	}
-	next = item
-	return ""
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_deferred_call_before_mutation', 'struct BeforeMutationItem {
-mut:
-	remaining int
-}
-
-fn (item BeforeMutationItem) str() string {
-	mut next := item
-	defer {
-		next.remaining--
-	}
-	defer {
-		_ := next.str()
-	}
-	return ""
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_struct_literal_provenance', 'struct LiteralItem {
-	remaining int
-}
-
-fn (item LiteralItem) str() string {
-	return LiteralItem{
-		remaining: item.remaining
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_struct_update_provenance', 'struct UpdateItem {
-	value int
-}
-
-fn (item UpdateItem) str() string {
-	return UpdateItem{
-		...item
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_struct_update_noop_field', 'struct NoopUpdateItem {
-	remaining int
-}
-
-fn (item NoopUpdateItem) str() string {
-	return NoopUpdateItem{
-		...item
-		remaining: item.remaining + 0
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_struct_update_helper_provenance', 'struct HelperUpdateItem {
-	value int
-}
-
-fn helper_update_same(value HelperUpdateItem) HelperUpdateItem {
-	return value
-}
-
-fn (item HelperUpdateItem) str() string {
-	return helper_update_same(HelperUpdateItem{
-		...item
-	}).str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_helper_returned_struct_update', 'struct ReturnedUpdateItem {
-	value int
-}
-
-fn returned_update_same(item ReturnedUpdateItem) ReturnedUpdateItem {
-	return ReturnedUpdateItem{
-		...item
-	}
-}
-
-fn (item ReturnedUpdateItem) str() string {
-	return returned_update_same(item).str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_guarded_bool_noop_struct_update', 'struct GuardedUpdateItem {
-	done bool
-}
-
-fn (item GuardedUpdateItem) str() string {
-	if !item.done {
-		return "done"
-	}
-	return GuardedUpdateItem{
-		...item
-		done: true
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_delete_shift', 'struct DeletedItem {
-	remaining int
-}
-
-fn (item DeletedItem) str() string {
-	mut items := [DeletedItem{
-		remaining: item.remaining - 1
-	}, item]
-	items.delete(0)
-	return items[0].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_reverse_in_place', 'struct ReversedItem {
-	remaining int
-}
-
-fn (item ReversedItem) str() string {
-	mut items := [item, ReversedItem{
-		remaining: item.remaining - 1
-	}]
-	items.reverse_in_place()
-	return items[1].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_prepend_shift', 'struct PrependedItem {
-	remaining int
-}
-
-fn (item PrependedItem) str() string {
-	mut items := [item]
-	items.prepend(PrependedItem{
-		remaining: item.remaining - 1
-	})
-	return items[1].str()
-}
-', 'cannot call `str()` method recursively'},
-	])
 }
 
 fn test_recursive_str_deferred_calls_use_scope_exit_state_in_lifo_order() {
@@ -9115,76 +9226,6 @@ body { color: red; }
 </style>"
 }
 
-fn test_recursive_str_bound_method_value_preserves_receiver_provenance() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'str_bound_method_rejections', [
-		ReviewRejection{
-			name:     'recursive_str_bound_method_value'
-			source:   'struct Item {}
-
-fn (item Item) str() string {
-	recurse := item.str
-	return recurse()
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-		ReviewRejection{
-			name:     'recursive_str_indexed_bound_method_value'
-			source:   'struct Item {}
-
-fn (item Item) str() string {
-	recurse := item.str
-	callbacks := [recurse]
-	return callbacks[0]()
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-		ReviewRejection{
-			name:     'recursive_str_interface_bound_method_value'
-			source:   'interface Printable {
-	str() string
-}
-
-struct Item {}
-
-fn (item Item) str() string {
-	printable := Printable(item)
-	recurse := printable.str
-	return recurse()
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-		ReviewRejection{
-			name:     'recursive_str_function_field_bound_method_value'
-			source:   'struct Holder {
-	cb fn () string
-}
-
-struct Item {}
-
-fn (item Item) str() string {
-	holder := Holder{
-		cb: item.str
-	}
-	return holder.cb()
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-	])
-}
-
 fn test_user_c_string_function_is_not_inferred_unsafe() {
 	v3_bin := build_v3()
 	src_path := '${tmp_test_path('user_c_strlen_not_unsafe')}.v'
@@ -9202,147 +9243,6 @@ fn main() {
 		os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('must be called from an `unsafe` block'), compile.output
-}
-
-fn test_recursive_str_aggregate_transfer_and_lookup_rejections() {
-	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_aggregate_transfer_and_lookup_rejections', [
-		ReviewRejection{'recursive_str_multi_return_slot_provenance', 'struct ReturnedSlotItem {}
-
-fn returned_slot_carry(item ReturnedSlotItem) (ReturnedSlotItem, int) {
-	return item, 0
-}
-
-fn (item ReturnedSlotItem) str() string {
-	copy, _ := returned_slot_carry(item)
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_multi_return_assign_slot_provenance', 'struct AssignedSlotItem {}
-
-fn assigned_slot_carry(item AssignedSlotItem) (AssignedSlotItem, int) {
-	return item, 0
-}
-
-fn (item AssignedSlotItem) str() string {
-	mut copy := AssignedSlotItem{}
-	copy, _ = assigned_slot_carry(item)
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_clone_element_provenance', 'struct ArrayCloneItem {}
-
-fn (item ArrayCloneItem) str() string {
-	copies := [item].clone()
-	return copies[0].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_map_clone_element_provenance', 'struct MapCloneItem {}
-
-fn (item MapCloneItem) str() string {
-	copies := {"self": item}.clone()
-	return copies["self"].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_static_helper_args', 'struct Helpers {}
-
-struct StaticItem {}
-
-fn Helpers.render(item StaticItem) string {
-	return item.str()
-}
-
-fn (item StaticItem) str() string {
-	return Helpers.render(item)
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_slot_replacement', 'struct ArraySlotItem {
-	remaining int
-}
-
-fn (item ArraySlotItem) str() string {
-	mut items := [ArraySlotItem{
-		remaining: 0
-	}]
-	items[0] = item
-	return items[0].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_map_slot_replacement', 'struct MapSlotItem {
-	remaining int
-}
-
-fn (item MapSlotItem) str() string {
-	mut items := {"self": MapSlotItem{
-		remaining: 0
-	}}
-	items["self"] = item
-	return items["self"].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_wrapper_field_replacement', 'struct WrapperFieldItem {
-	remaining int
-}
-
-struct Wrapper {
-mut:
-	value WrapperFieldItem
-}
-
-fn (item WrapperFieldItem) str() string {
-	mut wrapped := Wrapper{
-		value: WrapperFieldItem{
-			remaining: 0
-		}
-	}
-	wrapped.value = item
-	return wrapped.value.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_constant_local_receiver_index', 'struct ConstantIndexItem {}
-
-fn (item ConstantIndexItem) str() string {
-	items := [item, ConstantIndexItem{}]
-	index := 0
-	return items[index].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_mutated_local_receiver_index', 'struct MutatedIndexItem {}
-
-fn (item MutatedIndexItem) str() string {
-	items := [item, MutatedIndexItem{}]
-	mut index := 1
-	index--
-	return items[index].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_for_in_value', 'struct ForValueItem {}
-
-fn (item ForValueItem) str() string {
-	for copy in [item] {
-		return copy.str()
-	}
-	return ""
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_for_in_index_and_value', 'struct ForIndexValueItem {}
-
-fn (item ForIndexValueItem) str() string {
-	for _, copy in [item] {
-		return copy.str()
-	}
-	return ""
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_slice_receiver', 'struct SlicedItem {}
-
-fn (item SlicedItem) str() string {
-	items := [item]
-	slice := items[0..1]
-	return slice[0].str()
-}
-', 'cannot call `str()` method recursively'},
-	])
 }
 
 fn test_recursive_str_preserves_qualified_helper_args_and_slot_replacements() {
@@ -9664,9 +9564,9 @@ fn main() {
 	assert out == ''
 }
 
-fn test_recursive_str_formatting_and_aggregate_rejections() {
+fn test_recursive_str_formatting_and_bound_method_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'recursive_str_formatting_and_aggregate_rejections', [
+	run_bad_module_batch(v3_bin, 'recursive_str_formatting_and_bound_method_rejections', [
 		ReviewRejection{
 			name:     'recursive_str_print_receiver'
 			source:   'struct Item {}
@@ -9780,6 +9680,70 @@ fn repeat(item Item) []Item {
 
 fn (item Item) str() string {
 	return repeat(item).str()
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_bound_method_value'
+			source:   'struct Item {}
+
+fn (item Item) str() string {
+	recurse := item.str
+	return recurse()
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_indexed_bound_method_value'
+			source:   'struct Item {}
+
+fn (item Item) str() string {
+	recurse := item.str
+	callbacks := [recurse]
+	return callbacks[0]()
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_interface_bound_method_value'
+			source:   'interface Printable {
+	str() string
+}
+
+struct Item {}
+
+fn (item Item) str() string {
+	printable := Printable(item)
+	recurse := printable.str
+	return recurse()
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_function_field_bound_method_value'
+			source:   'struct Holder {
+	cb fn () string
+}
+
+struct Item {}
+
+fn (item Item) str() string {
+	holder := Holder{
+		cb: item.str
+	}
+	return holder.cb()
 }
 
 fn main() {}

@@ -2258,9 +2258,9 @@ fn main() {
 	])
 }
 
-fn test_shared_lock_locator_rejections() {
+fn test_shared_lock_location_and_projection_rejections() {
 	v3_bin := build_v3_review_transform()
-	run_bad_module_batch(v3_bin, 'shared_lock_locator_rejections', [
+	run_bad_module_batch(v3_bin, 'shared_lock_location_and_projection_rejections', [
 		TransformFixture{
 			name:     'nested_shared_field_lock_base_reassignment'
 			source:   'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut p := &first\n\tlock p.state {\n\t\tp = &second\n\t\tp.state.value = 7\n\t}\n}\n'
@@ -2273,12 +2273,6 @@ fn test_shared_lock_locator_rejections() {
 		},
 		TransformFixture{'nested_shared_field_lock_call_base', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn pick() &Coordinator {\n\treturn &Coordinator{}\n}\n\nfn main() {\n\tlock pick().state {\n\t\tpick().state.value = 7\n\t}\n}\n', 'selector bases and indices must be stable expressions'},
 		TransformFixture{'nested_shared_field_lock_overloaded_index', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Registry {\n\tentries []&Coordinator\n}\n\nfn (registry Registry) [] (key int) &Coordinator {\n\treturn registry.entries[key]\n}\n\nfn main() {\n\tmut coordinator := Coordinator{}\n\tmut registry := Registry{\n\t\tentries: [&coordinator]\n\t}\n\tkey := 0\n\tlock registry[key].state {\n\t\tregistry[key].state.value = 7\n\t}\n}\n', 'selector bases and indices must be stable expressions'},
-	])
-}
-
-fn test_shared_lock_index_and_projection_alias_rejections() {
-	v3_bin := build_v3_review_transform()
-	run_bad_module_batch(v3_bin, 'shared_lock_index_and_projection_alias_rejections', [
 		TransformFixture{
 			name:     'nested_shared_field_lock_aliased_index_mutation'
 			source:   'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut items := [&first, &second]\n\ti := 0\n\tlock items[i].state {\n\t\titems[0] = &second\n\t\titems[i].state.value = 7\n\t}\n}\n'
@@ -2296,7 +2290,7 @@ fn test_shared_lock_index_and_projection_alias_rejections() {
 
 fn test_nested_shared_field_lock_rejects_pointer_alias_mutation() {
 	v3_bin := build_v3_review_transform()
-	run_bad_module_batch(v3_bin, 'shared_lock_alias_rejections', [
+	run_bad_module_batch(v3_bin, 'shared_lock_alias_and_iteration_rejections', [
 		TransformFixture{
 			name:     'nested_shared_field_lock_cross_assignment_alias_mutation'
 			source:   'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := holder\n\talias, unrelated = unrelated, alias\n\tlock holder.current.state {\n\t\tunrelated.current = &replacement\n\t\tholder.current.state.value++\n\t}\n}\n'
@@ -2402,23 +2396,17 @@ fn test_nested_shared_field_lock_rejects_pointer_alias_mutation() {
 			source:   'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut second := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := holder\n\tvalues := []int{}\n\tfor _ in values {\n\t\talias = unrelated\n\t}\n\tlock holder.current.state {\n\t\talias.current = &second\n\t\tholder.current.state.value = 7\n\t}\n}\n'
 			expected: 'may alias locked shared value `holder.current.state`'
 		},
-	])
-	run_good(v3_bin, 'nested_shared_field_lock_skipped_short_circuit_mut_call', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn maybe_replace(mut current &Holder, replacement &Holder) bool {\n\tcurrent = replacement\n\treturn true\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := &Holder{\n\t\tcurrent: &first\n\t}\n\tif false && maybe_replace(mut alias, holder) {}\n\tskipped := true || maybe_replace(mut alias, holder)\n\tassert skipped\n\tlock holder.current.state {\n\t\talias.current = &replacement\n\t\tholder.current.state.value++\n\t}\n}\n')
-}
-
-fn test_shared_lock_iteration_and_receive_alias_rejections() {
-	v3_bin := build_v3_review_transform()
-	run_bad_module_batch(v3_bin, 'shared_lock_iteration_and_receive_alias_rejections', [
 		TransformFixture{'nested_shared_field_lock_continue_pointer_alias_mutation', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn choose() bool {\n\treturn true\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := unrelated\n\tfor i := 0; i < 1; i++ {\n\t\tif choose() {\n\t\t\talias = holder\n\t\t\tcontinue\n\t\t}\n\t\talias = unrelated\n\t}\n\tlock holder.current.state {\n\t\talias.current = &replacement\n\t\tholder.current.state.value++\n\t}\n}\n', 'may alias locked shared value `holder.current.state`'},
 		TransformFixture{'nested_shared_field_lock_loop_post_pointer_alias_mutation', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut candidate := unrelated\n\tmut alias := unrelated\n\tmut i := 0\n\tfor ; i < 1; i, alias = i + 1, candidate {\n\t\tcandidate = holder\n\t}\n\tlock holder.current.state {\n\t\talias.current = &replacement\n\t\tholder.current.state.value++\n\t}\n}\n', 'may alias locked shared value `holder.current.state`'},
 		TransformFixture{'nested_shared_field_lock_select_receive_pointer_alias_mutation', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tholders := chan &Holder{cap: 1}\n\tholders <- holder\n\tmut alias := unrelated\n\tselect {\n\t\talias = <-holders {}\n\t\telse {}\n\t}\n\tlock holder.current.state {\n\t\talias.current = &replacement\n\t\tholder.current.state.value++\n\t}\n}\n', 'may alias locked shared value `holder.current.state`'},
 		TransformFixture{'nested_shared_field_lock_pointer_iteration_alias_mutation', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut holders := [holder]\n\tfor mut alias in holders {\n\t\tlock holder.current.state {\n\t\t\talias.current = &replacement\n\t\t\tholder.current.state.value++\n\t\t}\n\t}\n}\n', 'may alias locked shared value `holder.current.state`'},
 	])
+	run_good(v3_bin, 'nested_shared_field_lock_skipped_short_circuit_mut_call', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn maybe_replace(mut current &Holder, replacement &Holder) bool {\n\tcurrent = replacement\n\treturn true\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := &Holder{\n\t\tcurrent: &first\n\t}\n\tif false && maybe_replace(mut alias, holder) {}\n\tskipped := true || maybe_replace(mut alias, holder)\n\tassert skipped\n\tlock holder.current.state {\n\t\talias.current = &replacement\n\t\tholder.current.state.value++\n\t}\n}\n')
 }
 
-fn test_shared_lock_closure_and_indirect_write_rejections() {
+fn test_shared_lock_closure_and_jump_rejections() {
 	v3_bin := build_v3_review_transform()
-	run_bad_module_batch(v3_bin, 'shared_lock_closure_and_indirect_write_rejections', [
+	run_bad_module_batch(v3_bin, 'shared_lock_closure_and_jump_rejections', [
 		TransformFixture{'nested_shared_field_lock_lambda_parameter_alias_mutation', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn apply(callback fn (&Holder, &Holder) int, locked &Holder, other &Holder) {\n\t_ := callback(locked, other)\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := holder\n\tapply(|mut locked, mut other| if true {\n\t\tmut replacement := Coordinator{}\n\t\tlock locked.current.state {\n\t\t\tother.current = &replacement\n\t\t\tlocked.current.state.value++\n\t\t}\n\t\t0\n\t} else {\n\t\t0\n\t}, holder, alias)\n}\n', 'may alias locked shared value `locked.current.state`'},
 		TransformFixture{'nested_shared_field_lock_explicit_capture_pointer_alias_mutation', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := holder\n\tcallback := fn [mut holder, mut alias, replacement] () {\n\t\tlock holder.current.state {\n\t\t\talias.current = &replacement\n\t\t\tholder.current.state.value++\n\t\t}\n\t}\n\tcallback()\n}\n', 'may alias locked shared value `holder.current.state`'},
 		TransformFixture{
@@ -2431,12 +2419,6 @@ fn test_shared_lock_closure_and_indirect_write_rejections() {
 			source:   'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := unrelated\n\tmut slot := &alias\n\tunsafe {\n\t\t*slot = holder\n\t}\n\tlock holder.current.state {\n\t\talias.current = &replacement\n\t\tholder.current.state.value++\n\t}\n}\n'
 			expected: 'may alias locked shared value `holder.current.state`'
 		},
-	])
-}
-
-fn test_shared_lock_jump_alias_rejections() {
-	v3_bin := build_v3_review_transform()
-	run_bad_module_batch(v3_bin, 'shared_lock_jump_alias_rejections', [
 		TransformFixture{
 			name:     'nested_shared_field_lock_goto_pointer_alias_mutation'
 			source:   'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut holder := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut unrelated := &Holder{\n\t\tcurrent: &first\n\t}\n\tmut alias := holder\n\tunsafe {\n\t\tgoto locked\n\t}\n\talias = unrelated\n\tlocked:\n\tlock holder.current.state {\n\t\talias.current = &replacement\n\t\tholder.current.state.value++\n\t}\n}\n'
