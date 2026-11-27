@@ -256,8 +256,8 @@ fn main() {
 	assert out.exit_code == 0, out.output
 }
 
-fn test_ownership_dereferenced_pointer_call_retains_string_source_loan() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_pointer_call_view_${os.getpid()}')
+fn test_ownership_string_pointer_loans_and_owned_method_returns() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_loans_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
@@ -288,6 +288,19 @@ fn main() {
 			cases << OwnershipReviewRejection{fixture, expected}
 		}
 	}
+	for method in ['substr_unsafe', 'owned_text'] {
+		fixture := 'struct Source {}
+fn (source Source) ${method}() string { return "independent".to_owned() }
+fn consume(value string) { _ = value }
+fn main() {
+	source := Source{}
+	value := source.${method}()
+	consume(value)
+	println(value)
+}
+'
+		cases << OwnershipReviewRejection{fixture, 'use of moved value: `value`'}
+	}
 	check_ownership_review_rejections(root, cases)!
 	os.write_file(source, 'fn pointer(value &string) &string { return value }
 fn main() {
@@ -299,28 +312,6 @@ fn main() {
 ')!
 	out := run_ownership_review_fixture(source, ['-d', 'ownership', 'run'])
 	assert out.exit_code == 0, out.output
-}
-
-fn test_ownership_user_substr_unsafe_method_preserves_owned_return() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_user_substr_unsafe_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	for method in ['substr_unsafe', 'owned_text'] {
-		os.write_file(source, 'struct Source {}
-fn (source Source) ${method}() string { return "independent".to_owned() }
-fn consume(value string) { _ = value }
-fn main() {
-	source := Source{}
-	value := source.${method}()
-	consume(value)
-	println(value)
-}
-')!
-		out := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
-		assert out.exit_code != 0, '${method}: ${out.output}'
-		assert out.output.contains('use of moved value: `value`'), '${method}: ${out.output}'
-	}
 }
 
 fn ownership_review_aggregate_alias_rejections() []OwnershipReviewRejection {
