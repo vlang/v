@@ -342,8 +342,8 @@ fn main() {
 	])
 }
 
-fn test_sum_smartcast_and_variant_field_rejections() {
-	check_review_rejections('sum_smartcast_and_variant_field_rejections', [
+fn test_sum_smartcast_and_interface_checker_rejections() {
+	check_review_rejections('sum_smartcast_and_interface_checker_rejections', [
 		ReviewFixture{'forwarded_mut_sum_argument_invalidates_smartcast', 'struct First {
 	value int
 }
@@ -397,6 +397,83 @@ fn main() {
 }
 ', 'field `value` does not exist'},
 		ReviewFixture{'bad_unsmartcasted_unique_sum_field', 'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype Kind = A | B\nfn main() {\n\tk := Kind(B{})\n\t_ := k.only_on_a\n}\n', 'field `only_on_a` does not exist or have the same type in these sumtype `bad_unsmartcasted_unique_sum_field.Kind` variants'},
+		ReviewFixture{'bad_concrete_comptime_if_selected_call', 'fn main() {\n\t$if int is int {\n\t\tmissing_selected_symbol()\n\t}\n}\n', 'unknown function: missing_selected_symbol'},
+		ReviewFixture{'bad_comptime_match_parameter_shadows_const', "const mode = 'a'\n\nfn choose(mode string) {\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n\nfn main() {}\n", 'definition of `mode` is unknown at compile time'},
+		ReviewFixture{'bad_comptime_match_mutable_local_shadows_const', "const mode = 'a'\n\nfn main() {\n\tmut mode := 'b'\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n", '`mode` is mut and may have changed since its definition'},
+		ReviewFixture{'bad_shared_parameter_missing_marker', 'struct State {}
+
+fn take(shared state State) {}
+
+fn main() {
+	shared state := State{}
+	take(state)
+}
+', 'function `take` parameter `state` is `shared`, so use `shared state` instead'},
+		ReviewFixture{'bad_shared_parameter_forwarded_unlocked', 'struct State {
+	value int
+}
+
+fn read(state State) int {
+	return state.value
+}
+
+fn forward(shared state State) int {
+	return read(state)
+}
+
+fn main() {}
+', '`state` is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument'},
+		ReviewFixture{'bad_interface_option_alias_return', 'type MyInt = int
+
+interface Provider {
+	value() ?MyInt
+}
+
+struct IntProvider {}
+
+fn (_ IntProvider) value() ?int {
+	return 1
+}
+
+fn main() {
+	_ := Provider(IntProvider{})
+}
+', 'expected return type `?bad_interface_option_alias_return.MyInt`'},
+		ReviewFixture{'bad_interface_result_alias_return', 'type MyInt = int
+
+interface Provider {
+	value() !MyInt
+}
+
+struct IntProvider {}
+
+fn (_ IntProvider) value() !int {
+	return 1
+}
+
+fn main() {
+	_ := Provider(IntProvider{})
+}
+', 'expected return type `!bad_interface_result_alias_return.MyInt`'},
+		ReviewFixture{'bad_operator_if_attribute_return', 'struct Value {
+	n int
+}
+
+@[if debug]
+fn (a Value) +(b Value) Value {
+	return Value{
+		n: a.n + b.n
+	}
+}
+
+fn main() {}
+', 'only functions that do NOT return values can have `@[if debug]` tags'},
+		ReviewFixture{'bad_pointer_cast_to_map_alias', 'type FooMap = map[string]int
+
+fn main() {
+	_ := &FooMap(map[string]int{})
+}
+', 'cannot cast to alias pointer `&FooMap` because `map[string]int` is a value'},
 	])
 }
 
@@ -613,8 +690,20 @@ fn test_immutable_fields_and_result_storage_are_rejected() {
 		'cannot use chan with Result type')
 }
 
-fn test_declaration_and_immutable_reference_rejections() {
-	check_review_rejections('declaration_and_immutable_reference_rejections', [
+fn test_method_value_option_alias_and_const_names_match_v1() {
+	embedded_source := 'struct Base {
+	id int
+}
+
+fn (b &Base) ref() int {
+	return b.id
+}
+
+struct Plain {
+	Base
+}
+'
+	check_review_rejections('declaration_receiver_and_reference_rejections', [
 		ReviewFixture{'immutable_reference_in_mut_field', 'struct Holder {
 mut:
 	ptr &int
@@ -695,23 +784,6 @@ enum ForwardValue {
 fn main() {}
 ', '`ForwardValue.c` should be declared before using it'},
 		ReviewFixture{'immutable_struct_field', 'struct S {\n\tread_only int\nmut:\n\twritable int\n}\n\nfn main() {\n\tmut s := S{}\n\ts.read_only = 1\n}\n', 'field `read_only` of struct `immutable_struct_field.S` is immutable'},
-	])
-}
-
-fn test_method_value_option_alias_and_const_names_match_v1() {
-	embedded_source := 'struct Base {
-	id int
-}
-
-fn (b &Base) ref() int {
-	return b.id
-}
-
-struct Plain {
-	Base
-}
-'
-	check_review_rejections('method_and_receiver_binding_rejections', [
 		ReviewFixture{'non_heap_pointer_receiver_method_value', 'struct Foo {}
 
 fn (foo &Foo) ref() int {
@@ -1036,16 +1108,11 @@ fn main() {
 	assert out == '3'
 }
 
-fn test_pointer_and_value_context_rejections() {
-	check_review_rejections('pointer_and_value_context_rejections', [
+fn test_pointer_fixed_array_and_variadic_argument_rejections() {
+	check_review_rejections('pointer_fixed_array_and_variadic_argument_rejections', [
 		ReviewFixture{'bad_return_pointer_to_value', 'fn f() int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'you are returning `&int` instead'},
 		ReviewFixture{'bad_voidptr_scalar_arg', 'fn f(p voidptr) {}\n\nfn main() {\n\tf(1)\n}\n', 'expression cannot be passed as `voidptr`'},
 		ReviewFixture{'bad_if_expr_pointer_value_branch', 'struct Foo {}\n\nfn main() {\n\t_ := if true {\n\t\tFoo{}\n\t} else {\n\t\t&Foo{}\n\t}\n}\n', 'mismatched types `bad_if_expr_pointer_value_branch.Foo` and `&bad_if_expr_pointer_value_branch.Foo`'},
-	])
-}
-
-fn test_fixed_array_and_variadic_argument_rejections() {
-	check_review_rejections('fixed_array_and_variadic_argument_rejections', [
 		ReviewFixture{'bad_fixed_array_pointer_argument', 'fn consume(value &int) {}\n\nfn main() {\n\tconsume([1, 2]!)\n}\n', 'cannot use `[2]int` as `&int` in argument 1 to `bad_fixed_array_pointer_argument.consume`'},
 		ReviewFixture{'bad_fixed_array_pointer_return', 'fn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n', 'you are returning `[2]int` instead'},
 		ReviewFixture{'bad_addressed_fixed_u8_array_pointer_argument', 'fn consume(value &u8) {}\n\nfn main() {\n\tbuf := [u8(1), 2]!\n\tconsume(&buf)\n}\n', 'cannot use `&[2]u8`'},
@@ -1217,8 +1284,8 @@ fn main() {
 	assert out == 'enum\n42\n9\n42\n1.0\n42.0\n8\ntrue\n0\nA\nnone\n6'
 }
 
-fn test_option_result_type_and_expression_rejections() {
-	check_review_rejections('option_result_type_and_expression_rejections', [
+fn test_function_returns_control_flow_and_option_result_rejections() {
+	check_review_rejections('function_returns_control_flow_and_option_result_rejections', [
 		ReviewFixture{'bad_result_value_in_option_return', 'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n', 'cannot use `!int` as type `?int` in return argument'},
 		ReviewFixture{'bad_result_value_in_optional_pointer_return', 'struct Item {}\n\nfn convert(res !Item) ?&Item {\n\treturn res\n}\n\nfn main() {}\n', 'cannot use `!bad_result_value_in_optional_pointer_return.Item` as type `?&bad_result_value_in_optional_pointer_return.Item` in return argument'},
 		ReviewFixture{'bad_option_value_in_result_pointer_return', 'struct Item {}\n\nfn convert(opt ?Item) !&Item {\n\treturn opt\n}\n\nfn main() {}\n', 'cannot use `?bad_option_value_in_result_pointer_return.Item` as type `!&bad_option_value_in_result_pointer_return.Item` in return argument'},
@@ -1232,6 +1299,19 @@ fn test_option_result_type_and_expression_rejections() {
 		ReviewFixture{'bad_optional_string_concat', "fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := 'hello ' + maybe_name()\n}\n", '`?string` cannot be used as `string`, unwrap the option first'},
 		ReviewFixture{'bad_result_string_concat', "fn result_name() !string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := result_name() + '!'\n}\n", 'unwrapped Result cannot be used in an infix expression'},
 		ReviewFixture{'result_function_parameter', 'fn consume(value !int) {}\n\nfn main() {}\n', 'result type arguments are not supported'},
+		ReviewFixture{'bad_int_alias_float_variable_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_variable_return.Id` in return argument'},
+		ReviewFixture{'bad_int_alias_float_expression_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x + 1.0\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_expression_return.Id` in return argument'},
+		ReviewFixture{'bad_fn_value_integer_return_abi', 'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n', 'cannot use `fn () u64`'},
+		ReviewFixture{'bad_fn_value_array_return_payload', 'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n', 'cannot use `fn () []int`'},
+		ReviewFixture{'bad_shadowed_os_exit_missing_return', 'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f(os OsLike) int {\n\tos.exit()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
+		ReviewFixture{'bad_local_os_exit_missing_return', 'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f() int {\n\tos := OsLike{}\n\tos.exit()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
+		ReviewFixture{'bad_shadowed_exit_fn_value_missing_return', 'fn f() int {\n\texit := fn () int { return 1 }\n\texit()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
+		ReviewFixture{'bad_shadowed_panic_fn_value_missing_return', 'fn f() int {\n\tpanic := fn () int { return 1 }\n\tpanic()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
+		ReviewFixture{'bad_nested_shadowed_exit_fn_value_missing_return', 'fn f() int {\n\t{\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n}\nfn main() {}\n', 'missing return at end of function `f`'},
+		ReviewFixture{'bad_shadowed_exit_multi_return_branch', 'fn main() {\n\texit := fn () int { return 1 }\n\tflag := true\n\ta, b := if flag {\n\t\t1, 2\n\t} else {\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n', 'multi-return assignment mismatch'},
+		ReviewFixture{'bad_nested_shadowed_exit_multi_return_branch', 'fn main() {\n\tflag := true\n\ta, b := if flag {\n\t\t1, 2\n\t} else {\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n', 'multi-return assignment mismatch'},
+		ReviewFixture{'bad_shadowed_import_os_exit_missing_return', 'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) {}\nfn f(os OsLike) int {\n\tos.exit(0)\n}\nfn main() {}\n', 'missing return at end of function `f`'},
+		ReviewFixture{'bad_shadowed_os_exit_return_value', 'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) int {\n\treturn code + 1\n}\nfn f(os OsLike) int {\n\treturn os.exit(4)\n}\nfn main() {\n\tprintln(int_str(f(OsLike{})))\n}\n', 'duplicate of an import symbol `os`'},
 	])
 }
 
@@ -1334,8 +1414,8 @@ fn main() {
 	])
 }
 
-fn test_power_and_synthetic_method_rejections() {
-	check_review_rejections('power_and_synthetic_method_rejections', [
+fn test_synthetic_methods_and_collection_operations_rejections() {
+	check_review_rejections('synthetic_methods_and_collection_operations_rejections', [
 		ReviewFixture{'bad_bool_power', 'fn main() {\n\t_ := true ** 2\n}\n', 'operator `**` requires numeric operands; got `bool` and `int`'},
 		ReviewFixture{'bad_array_power', 'fn main() {\n\t_ := [1] ** 2\n}\n', 'operator `**` requires numeric operands; got `[]int` and `int`'},
 		ReviewFixture{'bad_string_power', "fn main() {\n\t_ := 'x' ** 2\n}\n", 'operator `**` requires numeric operands; got `string` and `int`'},
@@ -1351,29 +1431,6 @@ fn test_power_and_synthetic_method_rejections() {
 		ReviewFixture{'bad_pointer_hex_method', 'fn main() {\n\tx := 1\n\tp := &x\n\t_ := p.hex()\n}\n', 'unknown function'},
 		ReviewFixture{'bad_numeric_hex_arg', 'fn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := u8(1).hex(side_effect())\n}\n', 'expected 0 arguments, but got 1'},
 		ReviewFixture{'bad_auto_str_arg', 'struct S {\n\tx int\n}\n\nfn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := S{\n\t\tx: 1\n\t}.str(side_effect())\n}\n', 'expected 0 arguments, but got 1'},
-	])
-}
-
-fn test_function_return_type_and_control_flow_rejections() {
-	check_review_rejections('function_return_type_and_control_flow_rejections', [
-		ReviewFixture{'bad_int_alias_float_variable_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_variable_return.Id` in return argument'},
-		ReviewFixture{'bad_int_alias_float_expression_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn x + 1.0\n}\n\nfn main() {}\n', 'cannot use `f64` as type `bad_int_alias_float_expression_return.Id` in return argument'},
-		ReviewFixture{'bad_fn_value_integer_return_abi', 'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n', 'cannot use `fn () u64`'},
-		ReviewFixture{'bad_fn_value_array_return_payload', 'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n', 'cannot use `fn () []int`'},
-		ReviewFixture{'bad_shadowed_os_exit_missing_return', 'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f(os OsLike) int {\n\tos.exit()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
-		ReviewFixture{'bad_local_os_exit_missing_return', 'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f() int {\n\tos := OsLike{}\n\tos.exit()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
-		ReviewFixture{'bad_shadowed_exit_fn_value_missing_return', 'fn f() int {\n\texit := fn () int { return 1 }\n\texit()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
-		ReviewFixture{'bad_shadowed_panic_fn_value_missing_return', 'fn f() int {\n\tpanic := fn () int { return 1 }\n\tpanic()\n}\nfn main() {}\n', 'missing return at end of function `f`'},
-		ReviewFixture{'bad_nested_shadowed_exit_fn_value_missing_return', 'fn f() int {\n\t{\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n}\nfn main() {}\n', 'missing return at end of function `f`'},
-		ReviewFixture{'bad_shadowed_exit_multi_return_branch', 'fn main() {\n\texit := fn () int { return 1 }\n\tflag := true\n\ta, b := if flag {\n\t\t1, 2\n\t} else {\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n', 'multi-return assignment mismatch'},
-		ReviewFixture{'bad_nested_shadowed_exit_multi_return_branch', 'fn main() {\n\tflag := true\n\ta, b := if flag {\n\t\t1, 2\n\t} else {\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n', 'multi-return assignment mismatch'},
-		ReviewFixture{'bad_shadowed_import_os_exit_missing_return', 'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) {}\nfn f(os OsLike) int {\n\tos.exit(0)\n}\nfn main() {}\n', 'missing return at end of function `f`'},
-		ReviewFixture{'bad_shadowed_os_exit_return_value', 'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) int {\n\treturn code + 1\n}\nfn f(os OsLike) int {\n\treturn os.exit(4)\n}\nfn main() {\n\tprintln(int_str(f(OsLike{})))\n}\n', 'duplicate of an import symbol `os`'},
-	])
-}
-
-fn test_collection_call_and_copy_rejections() {
-	check_review_rejections('collection_call_and_copy_rejections', [
 		ReviewFixture{'bad_map_keys_arg', 'fn main() {\n\tm := map[string]int{}\n\t_ := m.keys(123)\n}\n', '`.keys()` does not have any arguments'},
 		ReviewFixture{'bad_map_values_arg', "fn main() {\n\tm := map[string]int{}\n\t_ := m.values('x')\n}\n", '`.values()` does not have any arguments'},
 		ReviewFixture{'bad_array_prepend_missing_arg', 'fn main() {\n\tmut a := [1, 2]\n\ta.prepend()\n}\n', '`array.prepend()` should have 1 argument'},
@@ -1399,88 +1456,6 @@ fn main() {
 	copy << 2
 }
 ', 'use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)'},
-	])
-}
-
-fn test_comptime_and_interface_checker_rejections() {
-	check_review_rejections('comptime_and_interface_checker_rejections', [
-		ReviewFixture{'bad_concrete_comptime_if_selected_call', 'fn main() {\n\t$if int is int {\n\t\tmissing_selected_symbol()\n\t}\n}\n', 'unknown function: missing_selected_symbol'},
-		ReviewFixture{'bad_comptime_match_parameter_shadows_const', "const mode = 'a'\n\nfn choose(mode string) {\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n\nfn main() {}\n", 'definition of `mode` is unknown at compile time'},
-		ReviewFixture{'bad_comptime_match_mutable_local_shadows_const', "const mode = 'a'\n\nfn main() {\n\tmut mode := 'b'\n\t\$match mode {\n\t\t'a' {}\n\t\t\$else {}\n\t}\n}\n", '`mode` is mut and may have changed since its definition'},
-		ReviewFixture{'bad_shared_parameter_missing_marker', 'struct State {}
-
-fn take(shared state State) {}
-
-fn main() {
-	shared state := State{}
-	take(state)
-}
-', 'function `take` parameter `state` is `shared`, so use `shared state` instead'},
-		ReviewFixture{'bad_shared_parameter_forwarded_unlocked', 'struct State {
-	value int
-}
-
-fn read(state State) int {
-	return state.value
-}
-
-fn forward(shared state State) int {
-	return read(state)
-}
-
-fn main() {}
-', '`state` is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument'},
-		ReviewFixture{'bad_interface_option_alias_return', 'type MyInt = int
-
-interface Provider {
-	value() ?MyInt
-}
-
-struct IntProvider {}
-
-fn (_ IntProvider) value() ?int {
-	return 1
-}
-
-fn main() {
-	_ := Provider(IntProvider{})
-}
-', 'expected return type `?bad_interface_option_alias_return.MyInt`'},
-		ReviewFixture{'bad_interface_result_alias_return', 'type MyInt = int
-
-interface Provider {
-	value() !MyInt
-}
-
-struct IntProvider {}
-
-fn (_ IntProvider) value() !int {
-	return 1
-}
-
-fn main() {
-	_ := Provider(IntProvider{})
-}
-', 'expected return type `!bad_interface_result_alias_return.MyInt`'},
-		ReviewFixture{'bad_operator_if_attribute_return', 'struct Value {
-	n int
-}
-
-@[if debug]
-fn (a Value) +(b Value) Value {
-	return Value{
-		n: a.n + b.n
-	}
-}
-
-fn main() {}
-', 'only functions that do NOT return values can have `@[if debug]` tags'},
-		ReviewFixture{'bad_pointer_cast_to_map_alias', 'type FooMap = map[string]int
-
-fn main() {
-	_ := &FooMap(map[string]int{})
-}
-', 'cannot cast to alias pointer `&FooMap` because `map[string]int` is a value'},
 	])
 }
 
