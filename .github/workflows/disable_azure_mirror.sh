@@ -75,8 +75,14 @@ for source in "${sources[@]}"; do
     cat "$source"
 done
 
+# Hosted runners also carry the Microsoft product feed (packages.microsoft.com),
+# which can answer `apt-get update` with 429 Too Many Requests. It is not needed
+# by CI prerequisites (e.g. sassc comes from Ubuntu universe), so disable it
+# alongside the optional Azure CLI feeds before any update runs.
 for source in "$apt_root/sources.list.d/azure-cli.list" \
-    "$apt_root/sources.list.d/azure-cli.sources"; do
+    "$apt_root/sources.list.d/azure-cli.sources" \
+    "$apt_root/sources.list.d/microsoft-prod.list" \
+    "$apt_root/sources.list.d/microsoft-prod.sources"; do
     if [ -f "$source" ]; then
         echo "DISABLE OPTIONAL APT SOURCE: $source"
         as_root mv "$source" "$source.disabled"

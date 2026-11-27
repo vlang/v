@@ -74,6 +74,10 @@ printf '%s\n' 'deb https://packages.microsoft.com/repos/azure-cli noble main' \
     >"$work/apt/sources.list.d/azure-cli.list"
 printf '%s\n' 'URIs: https://packages.microsoft.com/repos/azure-cli' \
     >"$work/apt/sources.list.d/azure-cli.sources"
+printf '%s\n' 'deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main' \
+    >"$work/apt/sources.list.d/microsoft-prod.list"
+printf '%s\n' 'URIs: https://packages.microsoft.com/ubuntu/24.04/prod' \
+    >"$work/apt/sources.list.d/microsoft-prod.sources"
 
 V_CI_APT_ROOT="$work/apt" bash "$repo_root/.github/workflows/disable_azure_mirror.sh" >"$work/setup.log"
 
@@ -98,6 +102,10 @@ test ! -e "$work/apt/sources.list.d/azure-cli.list"
 test ! -e "$work/apt/sources.list.d/azure-cli.sources"
 test -f "$work/apt/sources.list.d/azure-cli.list.disabled"
 test -f "$work/apt/sources.list.d/azure-cli.sources.disabled"
+test ! -e "$work/apt/sources.list.d/microsoft-prod.list"
+test ! -e "$work/apt/sources.list.d/microsoft-prod.sources"
+test -f "$work/apt/sources.list.d/microsoft-prod.list.disabled"
+test -f "$work/apt/sources.list.d/microsoft-prod.sources.disabled"
 
 apt-config -c "$work/apt/apt.conf.d/80-v-ci-network" dump >"$work/config.dump"
 grep -Fxq 'Acquire::Retries "3";' "$work/config.dump"
