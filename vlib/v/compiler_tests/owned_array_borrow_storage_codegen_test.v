@@ -50,14 +50,6 @@ fn borrow_storage_compile_with_flags(name string, src string, flags string) os.R
 		...(os.split_args(flags) or { panic(err) }), '-o', '${out}', path])
 }
 
-fn borrow_storage_run(name string, src string) string {
-	build := borrow_storage_compile(name, src)
-	assert build.exit_code == 0, '${name}: ${build.output}'
-	run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
-	assert run.exit_code == 0, '${name}: ${run.output}'
-	return run.output.trim_space()
-}
-
 fn borrow_storage_compile_dispatch(name string, declarations string, branches []string) string {
 	source := declarations + 'fn main() {
 	match arguments()[1] {
@@ -680,14 +672,14 @@ pub fn check() {
 	}
 }
 
-fn test_mutable_wrapped_array_storage_preserves_payloads_and_specializations() {
+fn borrow_storage_wrapped_array_cases() (string, string) {
 	wrappers := {
 		'option':       '?[]Res'
 		'sum':          'Storage'
 		'optional_sum': '?Storage'
 		'wrapped_sum':  'WrappedStorage'
 	}
-	mut source := borrow_storage_drop_decls + '
+	mut source := '
 type Storage = []Res | int
 type WrappedStorage = ?[]Res | int
 '
@@ -773,10 +765,10 @@ fn check_generic_optional() {
 	drop_owned(other_retained)
 }
 
-type Bucket = []Res | int
-fn keep_bucket(mut values []Res) ?Bucket { return ?Bucket(Bucket(values)) }
-fn absent() ?Bucket { return none }
-fn explicit_absent() ?Bucket { return ?Bucket(none) }
+type OptionalArrayBucket = []Res | int
+fn keep_bucket(mut values []Res) ?OptionalArrayBucket { return ?OptionalArrayBucket(OptionalArrayBucket(values)) }
+fn absent() ?OptionalArrayBucket { return none }
+fn explicit_absent() ?OptionalArrayBucket { return ?OptionalArrayBucket(none) }
 fn check_optional_bucket() {
 	assert absent() == none
 	assert explicit_absent() == none
@@ -807,7 +799,7 @@ fn check_string_sum() {
 	println("ok")
 }
 
-fn main() {
+fn check_wrapped_arrays() {
 	println("generic_optional")
 	check_generic_optional()
 ${calls.join('\n')}
@@ -821,8 +813,7 @@ ${calls.join('\n')}
 '
 	expected << 'inactive\nok'
 	expected << 'optional_bucket\ndrop 101\ndrop 1\nstring_sum\nok'
-	output := borrow_storage_run('wrapped_mut_array', source)
-	assert output == expected.join('\n')
+	return source, expected.join('\n')
 }
 
 fn borrow_storage_bulk_copy_case(name string, operation string, borrowed bool) string {
@@ -900,11 +891,16 @@ type Bucket = Res | int
 			trim_at(mut values, ${index})
 		}'
 	}
-	range_dispatch := '	match case_name {
+	default_dispatch := '	if case_name == "wrapped_arrays" {
+		check_wrapped_arrays()
+		return
+	}
+	match case_name {
 ${branches.join('\n')}
 		else {}
 	}
 '
+	wrapped_source, wrapped_output := borrow_storage_wrapped_array_cases()
 	for i, flags in ['', '-gc none'] {
 		name := 'owned_cleanup_allocator_${i}'
 		mut source := declarations + main_start + sum_box
@@ -913,7 +909,8 @@ ${branches.join('\n')}
 			'trim':    'ok'
 		}
 		if flags == '' {
-			source = declarations + trim_range + main_start + range_dispatch + sum_box
+			source = declarations + trim_range + wrapped_source + main_start + default_dispatch + sum_box
+			outputs['wrapped_arrays'] = wrapped_output
 			for index in indices {
 				outputs[index.str()] = if index == 0 { 'drop 1\nok' } else { 'ok' }
 			}
