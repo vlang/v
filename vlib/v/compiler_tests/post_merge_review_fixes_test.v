@@ -4742,12 +4742,14 @@ fn main() {
 	small_last_bit := Small(-1) >>> 7
 	println(small_last_bit.str())
 	println(typeof(small_last_bit).name)
-	println((Small(-1) >>> 8).str())
+	// Constant oversized counts are covered by checker fixtures.
+	small_runtime_count := 8
+	println((Small(-1) >>> small_runtime_count).str())
 	mut small_assign := Small(-1)
 	small_assign >>>= 7
 	println(int_str(small_assign))
 	mut small_oversized := Small(-1)
-	small_oversized >>>= 8
+	small_oversized >>>= small_runtime_count
 	println(int_str(small_oversized))
 }
 '

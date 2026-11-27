@@ -1,0 +1,40 @@
+fn shift[T]() T {
+	return T(1) << 8
+}
+
+fn forwarded[T]() T {
+	return shift[T]()
+}
+
+fn compound[T]() T {
+	mut value := T(1)
+	value >>>= 8
+	return value
+}
+
+fn conditional[T]() {
+	$if T is u16 {
+		conditional[u8]()
+	} $else {
+		println(T(1) << 8)
+	}
+}
+
+fn main() {
+	conditional[u16]()
+	println(shift[u8]())
+	println(shift[u16]())
+	println(forwarded[u8]())
+	println(compound[u8]())
+	println(compound[u16]())
+	println(only_forwarded[u16]())
+}
+
+// Only an instance forwarded by `only_forwarded` reaches this body.
+fn shift_wide[T]() T {
+	return T(1) << 16
+}
+
+fn only_forwarded[T]() T {
+	return shift_wide[T]()
+}

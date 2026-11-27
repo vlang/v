@@ -1,0 +1,18 @@
+const large = max_u64
+const quotient = max_u64 / u64(2)
+const high_bit = u64(1) << 63
+
+const character_count = `A`
+
+fn main() {
+	println(u64(1) << character_count)
+	println(u64(1) << large)
+	println(u64(1) >> quotient)
+	println(u64(1) >>> high_bit)
+	println(u64(1) << 18446744073709551615)
+	mut n := u64(1)
+	n <<= large
+	n >>= quotient
+	n >>>= high_bit
+	println(n)
+}

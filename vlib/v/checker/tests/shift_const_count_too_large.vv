@@ -1,0 +1,69 @@
+import strconv
+
+const bits_8 = 8
+const bits_16 = 16
+const bits_32 = 32
+const bits_64 = 64
+const below_64 = bits_64 - 1
+
+type Word = u32
+
+fn left_shifts() {
+	println(i8(1) << (bits_8 - 1))
+	println(i8(1) << bits_8)
+	println(u8(1) << (bits_8 - 1))
+	println(u8(1) << bits_8)
+	println(i16(1) << (bits_16 - 1))
+	println(i16(1) << bits_16)
+	println(u16(1) << (bits_16 - 1))
+	println(u16(1) << bits_16)
+	println(i32(1) << (bits_32 - 1))
+	println(i32(1) << bits_32)
+	println(u32(1) << (bits_32 - 1))
+	println(u32(1) << bits_32)
+	println(i64(1) << below_64)
+	println(i64(1) << bits_64)
+	println(u64(1) << below_64)
+	println(u64(1) << (bits_32 * 2))
+	println(1 << below_64)
+	println(1 << bits_64)
+	println(Word(1) << bits_32)
+	println(u16(1) << strconv.digits)
+	println(u64(1) << max_i64)
+}
+
+fn right_shifts() {
+	x := u64(1)
+	println(x >> below_64)
+	println(x >> bits_64)
+	println(x >>> below_64)
+	println(x >>> bits_64)
+	println(0xff >>> 64)
+}
+
+fn compound_assignments() {
+	mut x := u32(1)
+	x <<= bits_32 - 1
+	x <<= bits_32
+	x >>= bits_32
+	x >>>= bits_32
+	x <<= 32
+	println(x)
+}
+
+fn counts_not_known_at_compile_time(n int) {
+	x := u64(1)
+	local := 64
+	println(x << local)
+	println(x << n)
+	mut y := u32(1)
+	y <<= n
+	println(y)
+}
+
+fn main() {
+	left_shifts()
+	right_shifts()
+	compound_assignments()
+	counts_not_known_at_compile_time(64)
+}

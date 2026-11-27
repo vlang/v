@@ -1,0 +1,21 @@
+fn character_shift[T](value T) T {
+	return value << `a`
+}
+
+fn main() {
+	value := u8(1)
+	_ = value << `a`
+	_ = value >> `a`
+	_ = value >>> `a`
+	mut assigned := value
+	assigned <<= `a`
+	assigned >>= `a`
+	assigned >>>= `a`
+	_ = character_shift[u8](value)
+	_ = value << `\x01`
+	_ = value >> `\x01`
+	_ = value >>> `\x01`
+	assigned <<= `\x01`
+	assigned >>= `\x01`
+	assigned >>>= `\x01`
+}

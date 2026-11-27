@@ -1,0 +1,17 @@
+type Small = i8
+
+const alias_bits = 8
+
+fn main() {
+	_ = Small(-1) >>> 8
+	mut literal := Small(-1)
+	literal >>>= 8
+	_ = Small(-1) >>> alias_bits
+	mut named := Small(-1)
+	named >>>= alias_bits
+
+	local_bits := 8
+	_ = Small(-1) >>> local_bits
+	mut dynamic := Small(-1)
+	dynamic >>>= local_bits
+}

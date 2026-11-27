@@ -1,0 +1,7 @@
+vlib/v/checker/tests/with_check_option/shift_const_count_128_enum.vv:6:20: error: shift count for type `u64` too large (maximum: 63 bits)
+    4 |
+    5 | fn main() {
+    6 |     println(u64(1) << u128(Count.value))
+      |                       ~~~~~~~~~~~~~~~~~
+    7 |     println(u64(1) << u8(Count.value))
+    8 | }

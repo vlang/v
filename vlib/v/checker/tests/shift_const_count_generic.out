@@ -1,0 +1,27 @@
+vlib/v/checker/tests/shift_const_count_generic.vv:2:17: error: shift count for type `u8` too large (maximum: 7 bits)
+    1 | fn shift[T]() T {
+    2 |     return T(1) << 8
+      |                    ^
+    3 | }
+    4 |
+vlib/v/checker/tests/shift_const_count_generic.vv:11:13: error: shift count for type `u8` too large (maximum: 7 bits)
+    9 | fn compound[T]() T {
+   10 |     mut value := T(1)
+   11 |     value >>>= 8
+      |                ^
+   12 |     return value
+   13 | }
+vlib/v/checker/tests/shift_const_count_generic.vv:19:19: error: shift count for type `u8` too large (maximum: 7 bits)
+   17 |         conditional[u8]()
+   18 |     } $else {
+   19 |         println(T(1) << 8)
+      |                         ^
+   20 |     }
+   21 | }
+vlib/v/checker/tests/shift_const_count_generic.vv:35:17: error: shift count for type `u16` too large (maximum: 15 bits)
+   33 | // Only an instance forwarded by `only_forwarded` reaches this body.
+   34 | fn shift_wide[T]() T {
+   35 |     return T(1) << 16
+      |                    ~~
+   36 | }
+   37 |

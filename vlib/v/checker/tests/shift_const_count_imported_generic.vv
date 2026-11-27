@@ -1,0 +1,6 @@
+import v.checker.tests.shift_const_values as lib
+
+fn main() {
+	println(lib.shift[u8]())
+	println(lib.shift[u16]())
+}

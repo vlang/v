@@ -1,0 +1,28 @@
+vlib/v/checker/tests/shift_const_count_alias_logical.vv:6:20: error: shift count for type `Small` too large (maximum: 7 bits)
+    4 |
+    5 | fn main() {
+    6 |     _ = Small(-1) >>> 8
+      |                       ^
+    7 |     mut literal := Small(-1)
+    8 |     literal >>>= 8
+vlib/v/checker/tests/shift_const_count_alias_logical.vv:8:15: error: shift count for type `Small` too large (maximum: 7 bits)
+    6 |     _ = Small(-1) >>> 8
+    7 |     mut literal := Small(-1)
+    8 |     literal >>>= 8
+      |                  ^
+    9 |     _ = Small(-1) >>> alias_bits
+   10 |     mut named := Small(-1)
+vlib/v/checker/tests/shift_const_count_alias_logical.vv:9:20: error: shift count for type `Small` too large (maximum: 7 bits)
+    7 |     mut literal := Small(-1)
+    8 |     literal >>>= 8
+    9 |     _ = Small(-1) >>> alias_bits
+      |                       ~~~~~~~~~~
+   10 |     mut named := Small(-1)
+   11 |     named >>>= alias_bits
+vlib/v/checker/tests/shift_const_count_alias_logical.vv:11:13: error: shift count for type `Small` too large (maximum: 7 bits)
+    9 |     _ = Small(-1) >>> alias_bits
+   10 |     mut named := Small(-1)
+   11 |     named >>>= alias_bits
+      |                ~~~~~~~~~~
+   12 |
+   13 |     local_bits := 8

@@ -1,0 +1,48 @@
+vlib/v/checker/tests/shift_const_count_character.vv:2:18: error: shift count for type `u8` too large (maximum: 7 bits)
+    1 | fn character_shift[T](value T) T {
+    2 |     return value << `a`
+      |                     ~~~
+    3 | }
+    4 |
+vlib/v/checker/tests/shift_const_count_character.vv:7:15: error: shift count for type `u8` too large (maximum: 7 bits)
+    5 | fn main() {
+    6 |     value := u8(1)
+    7 |     _ = value << `a`
+      |                  ~~~
+    8 |     _ = value >> `a`
+    9 |     _ = value >>> `a`
+vlib/v/checker/tests/shift_const_count_character.vv:8:15: error: shift count for type `u8` too large (maximum: 7 bits)
+    6 |     value := u8(1)
+    7 |     _ = value << `a`
+    8 |     _ = value >> `a`
+      |                  ~~~
+    9 |     _ = value >>> `a`
+   10 |     mut assigned := value
+vlib/v/checker/tests/shift_const_count_character.vv:9:16: error: shift count for type `u8` too large (maximum: 7 bits)
+    7 |     _ = value << `a`
+    8 |     _ = value >> `a`
+    9 |     _ = value >>> `a`
+      |                   ~~~
+   10 |     mut assigned := value
+   11 |     assigned <<= `a`
+vlib/v/checker/tests/shift_const_count_character.vv:11:15: error: shift count for type `u8` too large (maximum: 7 bits)
+    9 |     _ = value >>> `a`
+   10 |     mut assigned := value
+   11 |     assigned <<= `a`
+      |                  ~~~
+   12 |     assigned >>= `a`
+   13 |     assigned >>>= `a`
+vlib/v/checker/tests/shift_const_count_character.vv:12:15: error: shift count for type `u8` too large (maximum: 7 bits)
+   10 |     mut assigned := value
+   11 |     assigned <<= `a`
+   12 |     assigned >>= `a`
+      |                  ~~~
+   13 |     assigned >>>= `a`
+   14 |     _ = character_shift[u8](value)
+vlib/v/checker/tests/shift_const_count_character.vv:13:16: error: shift count for type `u8` too large (maximum: 7 bits)
+   11 |     assigned <<= `a`
+   12 |     assigned >>= `a`
+   13 |     assigned >>>= `a`
+      |                   ~~~
+   14 |     _ = character_shift[u8](value)
+   15 |     _ = value << `\x01`

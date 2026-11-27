@@ -1,0 +1,18 @@
+const bits_8 = 8
+const bits_16 = 16
+const negative_one = -1
+
+fn main() {
+	x := u64(1)
+	println(x << 0)
+	println(x << -1)
+	println(x >> negative_one)
+	println(x >>> negative_one)
+	println(x << (bits_8 - bits_16))
+	println(x << min_i64)
+	println(1 << -1)
+	mut y := u32(1)
+	y <<= bits_8 - bits_16
+	y >>= negative_one
+	println(y)
+}

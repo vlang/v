@@ -6545,6 +6545,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_diagnostics_after_error(call_
 }
 
 fn (mut tc TypeChecker) check_instantiated_generic_compile_errors(call_id flat.NodeId, call flat.Node, instantiation GenericCompileErrorInstantiation) {
+	tc.check_instantiated_const_shift_count(instantiation)
 	mut messages := []string{}
 	tc.collect_instantiated_compile_errors(instantiation.decl_id, instantiation, mut messages)
 	for message in messages {

@@ -1,0 +1,133 @@
+vlib/v/checker/tests/shift_const_count_too_large.vv:13:19: error: shift count for type `i8` too large (maximum: 7 bits)
+   11 | fn left_shifts() {
+   12 |     println(i8(1) << (bits_8 - 1))
+   13 |     println(i8(1) << bits_8)
+      |                      ~~~~~~
+   14 |     println(u8(1) << (bits_8 - 1))
+   15 |     println(u8(1) << bits_8)
+vlib/v/checker/tests/shift_const_count_too_large.vv:15:19: error: shift count for type `u8` too large (maximum: 7 bits)
+   13 |     println(i8(1) << bits_8)
+   14 |     println(u8(1) << (bits_8 - 1))
+   15 |     println(u8(1) << bits_8)
+      |                      ~~~~~~
+   16 |     println(i16(1) << (bits_16 - 1))
+   17 |     println(i16(1) << bits_16)
+vlib/v/checker/tests/shift_const_count_too_large.vv:17:20: error: shift count for type `i16` too large (maximum: 15 bits)
+   15 |     println(u8(1) << bits_8)
+   16 |     println(i16(1) << (bits_16 - 1))
+   17 |     println(i16(1) << bits_16)
+      |                       ~~~~~~~
+   18 |     println(u16(1) << (bits_16 - 1))
+   19 |     println(u16(1) << bits_16)
+vlib/v/checker/tests/shift_const_count_too_large.vv:19:20: error: shift count for type `u16` too large (maximum: 15 bits)
+   17 |     println(i16(1) << bits_16)
+   18 |     println(u16(1) << (bits_16 - 1))
+   19 |     println(u16(1) << bits_16)
+      |                       ~~~~~~~
+   20 |     println(i32(1) << (bits_32 - 1))
+   21 |     println(i32(1) << bits_32)
+vlib/v/checker/tests/shift_const_count_too_large.vv:21:20: error: shift count for type `i32` too large (maximum: 31 bits)
+   19 |     println(u16(1) << bits_16)
+   20 |     println(i32(1) << (bits_32 - 1))
+   21 |     println(i32(1) << bits_32)
+      |                       ~~~~~~~
+   22 |     println(u32(1) << (bits_32 - 1))
+   23 |     println(u32(1) << bits_32)
+vlib/v/checker/tests/shift_const_count_too_large.vv:23:20: error: shift count for type `u32` too large (maximum: 31 bits)
+   21 |     println(i32(1) << bits_32)
+   22 |     println(u32(1) << (bits_32 - 1))
+   23 |     println(u32(1) << bits_32)
+      |                       ~~~~~~~
+   24 |     println(i64(1) << below_64)
+   25 |     println(i64(1) << bits_64)
+vlib/v/checker/tests/shift_const_count_too_large.vv:25:20: error: shift count for type `i64` too large (maximum: 63 bits)
+   23 |     println(u32(1) << bits_32)
+   24 |     println(i64(1) << below_64)
+   25 |     println(i64(1) << bits_64)
+      |                       ~~~~~~~
+   26 |     println(u64(1) << below_64)
+   27 |     println(u64(1) << (bits_32 * 2))
+vlib/v/checker/tests/shift_const_count_too_large.vv:27:20: error: shift count for type `u64` too large (maximum: 63 bits)
+   25 |     println(i64(1) << bits_64)
+   26 |     println(u64(1) << below_64)
+   27 |     println(u64(1) << (bits_32 * 2))
+      |                       ~~~~~~~~~~~~~
+   28 |     println(1 << below_64)
+   29 |     println(1 << bits_64)
+vlib/v/checker/tests/shift_const_count_too_large.vv:29:15: error: shift count for type `int literal` too large (maximum: 63 bits)
+   27 |     println(u64(1) << (bits_32 * 2))
+   28 |     println(1 << below_64)
+   29 |     println(1 << bits_64)
+      |                  ~~~~~~~
+   30 |     println(Word(1) << bits_32)
+   31 |     println(u16(1) << strconv.digits)
+vlib/v/checker/tests/shift_const_count_too_large.vv:30:21: error: shift count for type `Word` too large (maximum: 31 bits)
+   28 |     println(1 << below_64)
+   29 |     println(1 << bits_64)
+   30 |     println(Word(1) << bits_32)
+      |                        ~~~~~~~
+   31 |     println(u16(1) << strconv.digits)
+   32 |     println(u64(1) << max_i64)
+vlib/v/checker/tests/shift_const_count_too_large.vv:31:20: error: shift count for type `u16` too large (maximum: 15 bits)
+   29 |     println(1 << bits_64)
+   30 |     println(Word(1) << bits_32)
+   31 |     println(u16(1) << strconv.digits)
+      |                       ~~~~~~~~~~~~~~
+   32 |     println(u64(1) << max_i64)
+   33 | }
+vlib/v/checker/tests/shift_const_count_too_large.vv:32:20: error: shift count for type `u64` too large (maximum: 63 bits)
+   30 |     println(Word(1) << bits_32)
+   31 |     println(u16(1) << strconv.digits)
+   32 |     println(u64(1) << max_i64)
+      |                       ~~~~~~~
+   33 | }
+   34 |
+vlib/v/checker/tests/shift_const_count_too_large.vv:38:15: error: shift count for type `u64` too large (maximum: 63 bits)
+   36 |     x := u64(1)
+   37 |     println(x >> below_64)
+   38 |     println(x >> bits_64)
+      |                  ~~~~~~~
+   39 |     println(x >>> below_64)
+   40 |     println(x >>> bits_64)
+vlib/v/checker/tests/shift_const_count_too_large.vv:40:16: error: shift count for type `u64` too large (maximum: 63 bits)
+   38 |     println(x >> bits_64)
+   39 |     println(x >>> below_64)
+   40 |     println(x >>> bits_64)
+      |                   ~~~~~~~
+   41 |     println(0xff >>> 64)
+   42 | }
+vlib/v/checker/tests/shift_const_count_too_large.vv:41:19: error: shift count for type `int literal` too large (maximum: 63 bits)
+   39 |     println(x >>> below_64)
+   40 |     println(x >>> bits_64)
+   41 |     println(0xff >>> 64)
+      |                      ~~
+   42 | }
+   43 |
+vlib/v/checker/tests/shift_const_count_too_large.vv:47:8: error: shift count for type `u32` too large (maximum: 31 bits)
+   45 |     mut x := u32(1)
+   46 |     x <<= bits_32 - 1
+   47 |     x <<= bits_32
+      |           ~~~~~~~
+   48 |     x >>= bits_32
+   49 |     x >>>= bits_32
+vlib/v/checker/tests/shift_const_count_too_large.vv:48:8: error: shift count for type `u32` too large (maximum: 31 bits)
+   46 |     x <<= bits_32 - 1
+   47 |     x <<= bits_32
+   48 |     x >>= bits_32
+      |           ~~~~~~~
+   49 |     x >>>= bits_32
+   50 |     x <<= 32
+vlib/v/checker/tests/shift_const_count_too_large.vv:49:9: error: shift count for type `u32` too large (maximum: 31 bits)
+   47 |     x <<= bits_32
+   48 |     x >>= bits_32
+   49 |     x >>>= bits_32
+      |            ~~~~~~~
+   50 |     x <<= 32
+   51 |     println(x)
+vlib/v/checker/tests/shift_const_count_too_large.vv:50:8: error: shift count for type `u32` too large (maximum: 31 bits)
+   48 |     x >>= bits_32
+   49 |     x >>>= bits_32
+   50 |     x <<= 32
+      |           ~~
+   51 |     println(x)
+   52 | }
