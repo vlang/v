@@ -32,6 +32,24 @@ doc := xml.XMLDocument.from_file('test/sample.xml')!
 
 Attribute names must be unique within an element. Repeated attribute names produce a parse error.
 
+### Parsing One XML Document from a String
+
+Use `XMLDocument.from_string_with_consumed` to get both the document and the byte offset
+immediately after its root element. Check the remaining input when it must contain only XML
+whitespace.
+
+Pass `preserve_text: true` to retain literal leading and trailing whitespace and line endings in
+character data. `strict_markup: true` requires exact opening-tag and empty-element delimiters and
+rejects a CDATA terminator in ordinary text in this mode.
+
+With preserved text, an optional `inline_markup` callback can handle `<!` and `<?` inside the root
+element. It receives the source and the byte offset of the opening `<` and returns a child node and
+the offset immediately after that markup.
+
+With `borrow_text: true` and preserved text, plain text can reference the original string.
+Keep the string alive until the tree is no longer used or its text has been copied.
+
+
 ### External DOCTYPE Identifiers
 
 `SYSTEM` and `PUBLIC` DOCTYPE identifiers are accepted with or without an XML declaration.
@@ -70,4 +88,4 @@ XML attributes require a name and a quoted value. Missing values, unterminated q
 attributes without a name produce parse errors. Values may contain the other kind of quote.
 Text, comments and CDATA retain their document order and the separator whitespace between
 fragments. Truncated nodes and markup produce errors naming the construct that was left open.
-Processing instructions are reported as unsupported.
+The default parser reports processing instructions as unsupported.

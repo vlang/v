@@ -247,3 +247,37 @@ fn test_attribute_assignment_without_a_complete_value_is_an_error() {
 	}
 	assert parse_error('<a ="v"/>') == 'XML attribute is missing name.'
 }
+
+fn test_string_parser_reports_the_end_of_the_document_and_preserves_text_on_request() {
+	source := '<r>  a\r\nb  </r> trailing'
+	document, consumed := xml.XMLDocument.from_string_with_consumed(source, preserve_text: true)!
+	assert document.root.children == [xml.XMLNodeContents('  a\r\nb  ')]
+	assert source[consumed..] == ' trailing'
+	assert xml.XMLDocument.from_string(source)!.root.children == [xml.XMLNodeContents('a\nb')]
+}
+
+fn test_inline_markup_result_must_consume_input_and_end_within_the_source() {
+	source := '<r>text<?work?> done</r>'
+	handler := fn (input string, start int) !xml.XMLInlineMarkupResult {
+		assert input[start..start + 8] == '<?work?>'
+		return xml.XMLInlineMarkupResult{ node: xml.XMLComment{'work'}, end: start + 8 }
+	}
+	document, consumed := xml.XMLDocument.from_string_with_consumed(source,
+		preserve_text: true
+		inline_markup: handler
+	)!
+	assert consumed == source.len
+	assert document.root.children == [xml.XMLNodeContents('text'),
+		xml.XMLNodeContents(xml.XMLComment{'work'}), xml.XMLNodeContents(' done')]
+	for advance in [1, source.len + 1] {
+		bad_handler := fn [advance] (_ string, start int) !xml.XMLInlineMarkupResult {
+			return xml.XMLInlineMarkupResult{ node: xml.XMLComment{'work'}, end: start + advance }
+		}
+		if _, _ := xml.XMLDocument.from_string_with_consumed(source,
+			preserve_text: true
+			inline_markup: bad_handler
+		) {
+			assert false, 'expected an invalid inline markup extent'
+		}
+	}
+}
