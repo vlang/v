@@ -12,6 +12,7 @@ module slhdsa
 // Standard path
 #flag linux -I/usr/local/include/openssl
 #flag linux -I/usr/local/include/crypto
+#flag linux -I/usr/local/include
 #flag linux -L/usr/local/lib64
 
 #flag darwin -L /opt/homebrew/opt/openssl/lib -I /opt/homebrew/opt/openssl/include
