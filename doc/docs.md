@@ -1287,6 +1287,14 @@ fn hash_step(h u32, b u8) u32 {
 }
 ```
 
+For `+`, `-` and `*` on signed integer constants, the compiler gives a notice at compile time
+where it is sure that `-check-overflow` would stop the operation at run time, like
+`x := max_i64 + 1` or `return i8(100) * 2`. Like that check it uses the left operand's type,
+so `1 + i8(127)` is not reported. It reports only an expression that its statement always
+evaluates (not an arm of `if` or `match`, a loop body, a call argument or a constant's
+initializer), outside generic functions and functions tagged `@[ignore_overflow]`, and it does
+not find every such overflow. The program builds as before.
+
 ### Arrays
 
 Returning a new array through helper calls preserves each helper's parameter scope.

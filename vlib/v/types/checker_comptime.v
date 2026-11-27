@@ -3088,6 +3088,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 	}
 	if node.kind == .infix {
 		tc.check_infix(id, node)
+		tc.check_const_int_overflow(id, node)
 	}
 	$if ownership ? {
 		if !tc.ownership_aggregate_consumption_deferred(id) {

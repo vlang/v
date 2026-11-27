@@ -1,0 +1,23 @@
+module main
+
+const high = i8(100)
+const top = i64(9223372036854775807)
+const kilo = i64(1024)
+const mega = kilo * kilo
+
+fn wide() int {
+	return high + high // checked at the left operand's type, i8
+}
+
+fn main() {
+	x := high + high
+	y := top + 1
+	z := -high - high
+	w := i8(100) * 2
+	println(x)
+	println(y)
+	println(z)
+	println(w)
+	println(wide())
+	println(mega)
+}
