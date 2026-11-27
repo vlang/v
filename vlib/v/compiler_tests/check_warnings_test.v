@@ -149,12 +149,25 @@ fn notice_lines(output string) []string {
 	return lines
 }
 
-// A check prints the warnings of a program without errors too: they are
-// diagnostics like the others, and an editor shows nothing it is not given.
-fn test_check_prints_the_warnings_of_a_program_without_errors() {
-	res := check_output('clean', 'module main\n\nfn main() {\n\tunused := 1\n\tprintln(2)\n}\n')
+// An editor needs warnings and unused-declaration notices from error-free programs too.
+fn test_check_reports_warnings_and_notices_without_errors() {
+	res := check_output('clean', 'module main
+
+const limit = 3
+
+fn helper() int {
+	return 1
+}
+
+fn main() {
+	unused := 1
+	println(2)
+}
+')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('warning: unused variable: `unused`'), res.output
+	assert res.output.contains('notice: unused constant: `limit`'), res.output
+	assert res.output.contains('notice: unused function: `helper`'), res.output
 }
 
 fn test_check_prints_warnings_next_to_errors() {
@@ -162,15 +175,6 @@ fn test_check_prints_warnings_next_to_errors() {
 	assert res.exit_code == 1, res.output
 	assert res.output.contains('warning: unused variable: `unused`'), res.output
 	assert res.output.contains('error: infix expr'), res.output
-}
-
-// A build reports the private functions and constants that nothing uses; a
-// check has to report them too.
-fn test_check_reports_unused_private_declarations() {
-	res := check_output('unused', "module main\n\nconst limit = 3\n\nfn helper() int {\n\treturn 1\n}\n\nfn main() {\n\tprintln('hi')\n}\n")
-	assert res.exit_code == 0, res.output
-	assert res.output.contains('notice: unused constant: `limit`'), res.output
-	assert res.output.contains('notice: unused function: `helper`'), res.output
 }
 
 fn test_check_reports_the_unused_declarations_a_build_reports() {

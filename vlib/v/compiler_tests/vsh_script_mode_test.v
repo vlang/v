@@ -20,32 +20,7 @@ fn run_vsh_script(name string, source string) os.Result {
 	return os.exec([@VEXE, '-gc', 'none', '-silent', '${script}'])
 }
 
-// A `.vsh` script gets `import os` implicitly, and every `os` function, generic
-// function and constant is usable without the module prefix.
-fn test_vsh_script_uses_os_symbols_unqualified() {
-	result := run_vsh_script('script', "script_dir := join_path(temp_dir(), 'v3_vsh_script_mode_data_\${getpid()}')
-mkdir_all(script_dir)!
-defer {
-	rmdir_all(script_dir) or {}
-}
-payload := join_path(script_dir, 'payload.bin')
-write_file_array(payload, [u8(1), 2, 3])!
-println(read_file_array[u8](payload))
-println(exists(payload))
-println(args.len > 0)
-println(path_separator.len)
-// `getenv` must resolve to the `os` wrapper, not to the `fn C.getenv` declaration
-// whose bare name is also registered while `os` is compiled.
-setenv('V3_VSH_SCRIPT_MODE_VALUE', 'from-env', true)
-println(getenv('V3_VSH_SCRIPT_MODE_VALUE'))
-value := getenv('V3_VSH_SCRIPT_MODE_VALUE')
-println(value.len)
-")
-	assert result.exit_code == 0, result.output
-	assert result.output.split_into_lines() == ['[1, 2, 3]', 'true', 'true', '1', 'from-env', '8'], result.output
-}
-
-fn test_vsh_script_can_import_local_module_without_explicit_main() {
+fn test_vsh_script_resolves_selective_imports_and_implicit_os() {
 	root := os.join_path(os.vtmp_dir(), 'v3_vsh_import_module_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer {
@@ -68,15 +43,44 @@ pub fn free(values []int) ![]string {
 }
 ") or { panic(err) }
 	script := os.join_path(root, 'import_module.vsh')
-	os.write_file(script, 'import helper { ls, free }
+	os.write_file(script, "import helper { ls, free }
 
 println(helper.message())
-println(ls("custom")!.filter(it.len > 0).join(","))
-println(free([2, 3])!.filter(it == "3"))
-') or { panic(err) }
+println(ls('custom')!.filter(it.len > 0).join(','))
+println(free([2, 3])!.filter(it == '3'))
+
+// Functions and constants from the implicit os import are usable unqualified.
+script_dir := join_path(temp_dir(), 'v3_vsh_script_mode_data_\${getpid()}')
+mkdir_all(script_dir)!
+defer {
+	rmdir_all(script_dir) or {}
+}
+payload := join_path(script_dir, 'payload.bin')
+write_file_array(payload, [u8(1), 2, 3])!
+println(read_file_array[u8](payload))
+println(exists(payload))
+println(args.len > 0)
+println(path_separator.len)
+// `getenv` must resolve to the `os` wrapper, not to the `fn C.getenv` declaration
+// whose bare name is also registered while `os` is compiled.
+setenv('V3_VSH_SCRIPT_MODE_VALUE', 'from-env', true)
+println(getenv('V3_VSH_SCRIPT_MODE_VALUE'))
+value := getenv('V3_VSH_SCRIPT_MODE_VALUE')
+println(value.len)
+") or { panic(err) }
 	result := os.exec([@VEXE, '-gc', 'none', '-silent', '${script}'])
 	assert result.exit_code == 0, result.output
-	assert result.output.split_into_lines() == ['from helper', 'custom', "['3']"], result.output
+	assert result.output.split_into_lines() == [
+		'from helper',
+		'custom',
+		"['3']",
+		'[1, 2, 3]',
+		'true',
+		'true',
+		'1',
+		'from-env',
+		'8',
+	], result.output
 	shadow_script := os.join_path(root, 'shadow_import.vsh')
 	os.write_file(shadow_script, 'import helper { ls }
 
@@ -91,29 +95,24 @@ println(ls("custom")!.join(","))
 	assert shadow_result.output.trim_space() == 'local custom', shadow_result.output
 }
 
-// Script mode is a last resort: a declaration in the script itself keeps its
-// meaning even when `os` exports the same name.
-fn test_vsh_script_declaration_shadows_os_symbol() {
-	result := run_vsh_script('shadow', "fn exists(path string) string {
+fn test_vsh_script_local_declaration_and_closure_scope() {
+	result := run_vsh_script('local_scope', "fn exists(path string) string {
 	return 'local ' + path
 }
 
+// The local declaration shadows the implicit os symbol.
 println(exists('exists'))
 println(os.exists(temp_dir()))
-")
-	assert result.exit_code == 0, result.output
-	assert result.output.split_into_lines() == ['local exists', 'true'], result.output
-}
 
-fn test_vsh_script_closure_captures_preceding_top_level_local() {
-	result := run_vsh_script('closure_capture', "message := 'captured'
+// The closure can capture a preceding top-level local.
+message := 'captured'
 callback := fn [message] () {
 	println(message)
 }
 callback()
 ")
 	assert result.exit_code == 0, result.output
-	assert result.output.trim_space() == 'captured', result.output
+	assert result.output.split_into_lines() == ['local exists', 'true', 'captured'], result.output
 }
 
 // `-raw-vsh-tmp-prefix` compiles an input without the `.vsh` extension as a V script

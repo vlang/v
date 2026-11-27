@@ -10,52 +10,7 @@ fn fixed_array_write_project(name string, fixture_src string, main_src string) s
 	return root
 }
 
-fn test_fixed_array_typedefs_fold_module_const_lengths() {
-	run_root := fixed_array_write_project('run', 'module fixture
-
-const max_items = 8
-const rows = 6
-const cols = 16
-
-pub struct Widget {
-mut:
-	images [max_items]int
-}
-
-pub struct Nested {
-mut:
-	cells [rows][cols]int
-}
-
-pub fn score() int {
-	mut w := Widget{}
-	mut n := Nested{}
-	w.images[0] = 3
-	n.cells[1][2] = 5
-	return w.images[0] + n.cells[1][2]
-}
-', 'module main
-
-import fixture
-
-fn main() {
-	println(int_str(fixture.score()))
-}
-')
-	defer { os.rmdir_all(run_root) or {} }
-	run_bin := os.join_path(run_root, 'out')
-	run_compile := os.exec([@VEXE, run_root, '-b', 'c', '-o', run_bin])
-	assert run_compile.exit_code == 0, run_compile.output
-	run_c := os.read_file(run_bin + '.c') or { panic(err) }
-	assert !run_c.contains('[max_items]'), run_c
-	assert !run_c.contains('[rows]'), run_c
-	assert !run_c.contains('[cols]'), run_c
-	assert run_c.contains('images[8]'), run_c
-	assert run_c.contains('cells[6][16]'), run_c
-	run := os.exec([run_bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '8'
-
+fn test_fixed_array_typedefs_fold_extern_struct_const_lengths() {
 	shape_root := fixed_array_write_project('shape', 'module fixture
 
 const max_items = 8
@@ -151,8 +106,30 @@ fn main() {
 	assert !generated.contains('Array_fixed_math__'), generated
 }
 
-fn test_sizeof_fixed_array_typedef_dependency_order() {
-	root := fixed_array_write_project('sizeof_order', 'module fixture
+fn test_fixed_array_typedef_lengths_and_dependency_order() {
+	root := fixed_array_write_project('lengths_and_order', 'module fixture
+
+const max_items = 8
+const rows = 6
+const cols = 16
+
+pub struct Widget {
+mut:
+	images [max_items]int
+}
+
+pub struct Nested {
+mut:
+	cells [rows][cols]int
+}
+
+pub fn const_length_score() int {
+	mut w := Widget{}
+	mut n := Nested{}
+	w.images[0] = 3
+	n.cells[1][2] = 5
+	return w.images[0] + n.cells[1][2]
+}
 
 pub type Callback = fn ([sizeof(int)]u8) int
 
@@ -212,6 +189,7 @@ fn check_pointer_callbacks() {
 }
 
 fn main() {
+	println(int_str(fixture.const_length_score()))
 	println(fixture.call())
 	check_pointer_callbacks()
 	println(fixture.score())
@@ -223,8 +201,13 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '7\n17', run.output
+	assert run.output.trim_space().split_into_lines() == ['8', '7', '17'], run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert !generated.contains('[max_items]'), generated
+	assert !generated.contains('[rows]'), generated
+	assert !generated.contains('[cols]'), generated
+	assert generated.contains('images[8]'), generated
+	assert generated.contains('cells[6][16]'), generated
 	size_pos := generated.index('struct fixture__ZSize {') or { -1 }
 	typedef_pos := generated.index('typedef u8 Array_fixed_u8_sizeof_fixture__ZSize') or { -1 }
 	holder_pos := generated.index('struct fixture__ZZHolder {') or { -1 }
@@ -306,7 +289,7 @@ fn main() {
 	assert run.output.trim_space() == 'one\ntrue\ntrue\ntrue', run.output
 }
 
-fn test_backed_enum_callbacks_are_passed_and_invoked() {
+fn test_backed_enum_callbacks_preserve_array_payloads() {
 	root := fixed_array_write_project('enum_callback_calls', 'module fixture
 pub enum Mode as i32 {
 	one = 7
@@ -368,7 +351,7 @@ fn c_first(modes [2]fixture.Mode) i32 {
 fn c_forward(cb fn (modes [2]fixture.Mode) i32) i32 {
 	return cb([fixture.Mode.one, fixture.Mode.two]!) + 1
 }
-fn main() {
+fn check_callback_calls() {
 	assert invoke(first) == 26
 	assert invoke(Callback(first)) == 26
 	assert nested(forward) == 27
@@ -378,6 +361,49 @@ fn main() {
 	assert C.foreign_invoke(c_first) == 26
 	assert C.foreign_nested(c_forward) == 27
 }
+
+type OptionalMaker = fn () ?[2]fixture.Mode
+type ResultMaker = fn () ![2]fixture.Mode
+
+fn make_option() ?[2]fixture.Mode {
+	return [fixture.Mode.one, fixture.Mode.two]!
+}
+fn none_option() ?[2]fixture.Mode {
+	return none
+}
+fn make_result() ![2]fixture.Mode {
+	return [fixture.Mode.one, fixture.Mode.two]!
+}
+fn error_result() ![2]fixture.Mode {
+	return error(\'missing modes\')
+}
+fn invoke_option(cb fn () ?[2]fixture.Mode) int {
+	modes := cb() or { return -1 }
+	return int(modes[0]) + int(modes[1])
+}
+fn invoke_result(cb fn () ![2]fixture.Mode) int {
+	modes := cb() or { return -1 }
+	return int(modes[0]) + int(modes[1])
+}
+fn result_error_message(cb fn () ![2]fixture.Mode) string {
+	cb() or { return err.msg() }
+	return \'ok\'
+}
+
+fn main() {
+	check_callback_calls()
+	assert invoke_option(make_option) == 26
+	assert invoke_option(OptionalMaker(make_option)) == 26
+	assert invoke_option(none_option) == -1
+	assert invoke_option(OptionalMaker(none_option)) == -1
+	assert invoke_result(make_result) == 26
+	assert invoke_result(ResultMaker(make_result)) == 26
+	assert invoke_result(error_result) == -1
+	assert invoke_result(ResultMaker(error_result)) == -1
+	assert result_error_message(error_result) == \'missing modes\'
+	assert result_error_message(ResultMaker(error_result)) == \'missing modes\'
+	assert result_error_message(make_result) == \'ok\'
+}
 ') or { panic(err) }
 	exe_suffix := $if windows { '.exe' } $else { '' }
 	bin := os.join_path(root, 'out${exe_suffix}')
@@ -385,68 +411,8 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert !generated.contains('Array_fixed_int_2'), generated
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-}
-
-fn test_backed_enum_optional_result_callbacks_keep_payload_types() {
-	root := fixed_array_write_project('enum_optional_callback_calls', 'module fixture
-pub enum Mode as i32 {
- one = 7
- two = 19
-}
-', "module main
-import fixture
-
-type OptionalMaker = fn () ?[2]fixture.Mode
-type ResultMaker = fn () ![2]fixture.Mode
-
-fn make_option() ?[2]fixture.Mode {
- return [fixture.Mode.one, fixture.Mode.two]!
-}
-fn none_option() ?[2]fixture.Mode {
- return none
-}
-fn make_result() ![2]fixture.Mode {
- return [fixture.Mode.one, fixture.Mode.two]!
-}
-fn error_result() ![2]fixture.Mode {
- return error('missing modes')
-}
-fn invoke_option(cb fn () ?[2]fixture.Mode) int {
- modes := cb() or { return -1 }
- return int(modes[0]) + int(modes[1])
-}
-fn invoke_result(cb fn () ![2]fixture.Mode) int {
- modes := cb() or { return -1 }
- return int(modes[0]) + int(modes[1])
-}
-fn result_error_message(cb fn () ![2]fixture.Mode) string {
- cb() or { return err.msg() }
- return 'ok'
-}
-fn main() {
- assert invoke_option(make_option) == 26
- assert invoke_option(OptionalMaker(make_option)) == 26
- assert invoke_option(none_option) == -1
- assert invoke_option(OptionalMaker(none_option)) == -1
- assert invoke_result(make_result) == 26
- assert invoke_result(ResultMaker(make_result)) == 26
- assert invoke_result(error_result) == -1
- assert invoke_result(ResultMaker(error_result)) == -1
- assert result_error_message(error_result) == 'missing modes'
- assert result_error_message(ResultMaker(error_result)) == 'missing modes'
- assert result_error_message(make_result) == 'ok'
-}
-")
-	defer { os.rmdir_all(root) or {} }
-	exe_suffix := $if windows { '.exe' } $else { '' }
-	bin := os.join_path(root, 'out${exe_suffix}')
-	compile := os.exec([@VEXE, '-b', 'c', '-o', bin, root])
-	assert compile.exit_code == 0, compile.output
-	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert !generated.contains('Array_fixed_int_2'), generated
-	assert generated.contains('Array_fixed_fixture__Mode_2 (*_fn_ptr_'), generated
+	assert generated.contains('typedef struct __v_option_Array_fixed_fixture__Mode_2 (*_fn_ptr_'), generated
+	assert generated.contains('typedef struct __v_result_Array_fixed_fixture__Mode_2 (*_fn_ptr_'), generated
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }

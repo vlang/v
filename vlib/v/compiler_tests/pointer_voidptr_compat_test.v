@@ -238,59 +238,31 @@ fn main() {
 	assert c_source.count('sizeof(main__Item)') >= 2, c_source
 }
 
-fn test_c_voidptr_struct_argument_passes_its_address() {
+fn test_c_voidptr_arguments_accept_struct_and_allocated_buffer() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_pointer_voidptr_${tempname.unique_token()}')
 	os.mkdir(dir)!
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	header := os.join_path(dir, 'v3_c_voidptr_struct.h')
-	source := os.join_path(dir, 'v3_c_voidptr_struct.v')
-	bin := os.join_path(dir, 'v3_c_voidptr_struct')
-	os.write_file(header, 'static int v3_read_cfg(void *ptr) { return *((int *)ptr); }\n') or {
-		panic(err)
-	}
-	os.write_file(source, '#insert "${header}"
+	header := os.join_path(dir, 'v3_c_voidptr_arguments.h')
+	os.write_file(header, 'static int v3_read_cfg(void *ptr) { return *((int *)ptr); }
+static int v3_read_byte(void *ptr) { return *((unsigned char *)ptr); }
+')!
+	source := '#insert "${header}"
 
 struct Cfg {
 	value int
 }
 
 fn C.v3_read_cfg(voidptr) int
+fn C.v3_read_byte(&voidptr) int
 
 fn main() {
 	cfg := Cfg{
 		value: 17
 	}
 	println(int_str(C.v3_read_cfg(cfg)))
-}
-') or {
-		panic(err)
-	}
-	compile := os.exec([@VEXE, source, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '17'
-}
 
-fn test_c_pointer_to_voidptr_argument_accepts_allocated_buffer() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_pointer_voidptr_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	header := os.join_path(dir, 'v3_c_pointer_to_voidptr.h')
-	source := os.join_path(dir, 'v3_c_pointer_to_voidptr.v')
-	bin := os.join_path(dir, 'v3_c_pointer_to_voidptr')
-	os.write_file(header, 'static int v3_read_byte(void *ptr) { return *((unsigned char *)ptr); }\n') or {
-		panic(err)
-	}
-	os.write_file(source, '#insert "${header}"
-
-fn C.v3_read_byte(&voidptr) int
-
-fn main() {
 	buffer := vcalloc(1)
 	unsafe {
 		buffer[0] = 19
@@ -300,14 +272,9 @@ fn main() {
 		free(buffer)
 	}
 }
-') or {
-		panic(err)
-	}
-	compile := os.exec([@VEXE, source, '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '19'
+'
+	out := pointer_voidptr_run_good(dir, 'c_voidptr_arguments', source)
+	assert out == '17\n19', out
 }
 
 fn test_pointer_to_voidptr_return_keeps_pointer_value() {

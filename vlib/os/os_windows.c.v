@@ -428,7 +428,19 @@ pub fn ls(path string) ![]string {
 	return dir_files
 }
 
-fn C.GetFileInformationByHandleEx(hFile voidptr, file_information_class int, lpFileInformation voidptr, dwBufferSize u32) i32
+// The pinned TCC import library does not export GetFileInformationByHandleEx.
+// Use the real SDK calling convention when invoking the resolved address.
+#define v_os_walk_file_info(address, handle, info_class, buffer, size) (((BOOL (WINAPI *)(HANDLE, int, LPVOID, DWORD))(address))((handle), (info_class), (buffer), (size)))
+
+fn C.v_os_walk_file_info(address voidptr, handle voidptr, info_class int, buffer voidptr, size u32) i32
+
+fn walk_file_info_address() voidptr {
+	kernel32 := C.GetModuleHandleA(c'kernel32.dll')
+	if kernel32 == 0 {
+		return unsafe { nil }
+	}
+	return C.GetProcAddress(kernel32, c'GetFileInformationByHandleEx')
+}
 
 // FILE_LIST_DIRECTORY: the right to list a directory.
 const walk_access_list = u32(1)
@@ -518,7 +530,8 @@ fn walk_attributes(handle voidptr, wpath &u16, first_way int) u32 {
 	if first_way <= 1 {
 		// FILE_ATTRIBUTE_TAG_INFO: the attributes, then the tag of a link.
 		tag_info := [2]u32{}
-		if C.GetFileInformationByHandleEx(handle, walk_info_attribute_tag, voidptr(&tag_info[0]),
+		address := walk_file_info_address()
+		if address != unsafe { nil } && C.v_os_walk_file_info(address, handle, walk_info_attribute_tag, voidptr(&tag_info[0]),
 			u32(sizeof(tag_info))) != 0 {
 			return tag_info[0]
 		}
@@ -539,10 +552,14 @@ fn walk_attributes(handle voidptr, wpath &u16, first_way int) u32 {
 // to get what a file system gives that does not offer this listing.
 fn walk_list_handle(handle voidptr, path string, first_class int, mut remaining []WalkPending) bool {
 	// 32 KiB of entries per call into the kernel, aligned as the entries need it.
+	address := walk_file_info_address()
+	if address == unsafe { nil } {
+		return false
+	}
 	buffer := [4096]u64{}
 	mut info_class := first_class
 	for {
-		if C.GetFileInformationByHandleEx(handle, info_class, voidptr(&buffer[0]), u32(sizeof(buffer))) == 0 {
+		if C.v_os_walk_file_info(address, handle, info_class, voidptr(&buffer[0]), u32(sizeof(buffer))) == 0 {
 			return info_class == walk_info_next
 		}
 		info_class = walk_info_next

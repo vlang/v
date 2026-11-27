@@ -8694,7 +8694,7 @@ fn main() {
 	assert c_source.contains('if (__vf_op.state) {'), c_source
 	assert c_source.count('println(_S("cleanup"));') == 2, c_source
 	assert !c_source.contains('if (__vf_op.state) { return 1; }'), c_source
-	used := fastc_collect_referenced_function_names([], prefs, map[string]FastcFunctionSignature{})
+	used := fastc_collect_referenced_function_names([], prefs, map[string]bool{})
 	assert used['panic_result_not_set']
 }
 

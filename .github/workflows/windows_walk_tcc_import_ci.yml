@@ -1,0 +1,460 @@
+name: Windows walk TCC import regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/os/os_windows.c.v'
+      - 'vlib/os/walk_windows_test.c.v'
+      - 'vlib/os/walk_links_test.v'
+      - '.github/workflows/windows_walk_tcc_import_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate master CI gate contracts
+        run: |
+          python3 .github/workflows/ci_gate_paths.py validate
+          python3 .github/workflows/ci_gate_paths_test.py
+
+  tcc-multiwindow:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
+      # Four test workers fit comfortably: a worker peaks near 0.25 GB and
+      # the runner has 4 CPUs and 16 GB, so this is CPU-bound, not
+      # memory-bound.
+      VJOBS: '4'
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v7
+        id: uses_checkout_v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - name: Build with makev.bat -tcc
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
+        id: build_with_makev_bat_tcc
+        run: |
+          .\makev.bat -tcc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe symlink
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare optimized V compiler
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Checkout pinned Windows TCC bundle
+        id: checkout_pinned_windows_tcc_bundle
+        if: ${{ success() && !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: vlang/tccbin
+          ref: f48b48b2a2a027ee91cec7634395d1ec48d3e325
+          path: .ci/tccbin-windows-amd64
+          persist-credentials: false
+      - name: Route TCC validation to pinned bundle
+        id: route_tcc_validation_to_pinned_bundle
+        if: ${{ success() && !cancelled() && steps.checkout_pinned_windows_tcc_bundle.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $expectedSha = 'f48b48b2a2a027ee91cec7634395d1ec48d3e325'
+          $bundle = (Resolve-Path '.\.ci\tccbin-windows-amd64').Path
+          $actualSha = (git -C $bundle rev-parse HEAD).Trim()
+          if ($actualSha -cne $expectedSha) {
+            throw "expected tccbin $expectedSha, got $actualSha"
+          }
+
+          $tcc = Join-Path $bundle 'tcc.exe'
+          if (-not (Test-Path -LiteralPath $tcc -PathType Leaf)) {
+            throw "pinned TCC executable is missing: $tcc"
+          }
+
+          $tccLink = Join-Path $env:GITHUB_WORKSPACE 'thirdparty\tcc'
+          if (Test-Path -LiteralPath $tccLink) {
+            Remove-Item -LiteralPath $tccLink -Recurse -Force
+          }
+          New-Item -ItemType Junction -Path $tccLink -Target $bundle | Out-Null
+          $junctionTarget = [string](Get-Item -LiteralPath $tccLink).Target
+          if ([IO.Path]::GetFullPath($junctionTarget) -cne [IO.Path]::GetFullPath($bundle)) {
+            throw "thirdparty/tcc does not target the pinned bundle: $junctionTarget"
+          }
+
+          Add-Content -Path $env:GITHUB_PATH -Value $bundle
+          Add-Content -Path $env:GITHUB_ENV -Value "PINNED_TCC=$tcc"
+          Add-Content -Path $env:GITHUB_ENV `
+            -Value "VFLAGS=-cc $tcc -no-retry-compilation"
+      - name: Verify pinned TCC command resolution
+        id: verify_pinned_tcc_command_resolution
+        if: ${{ success() && !cancelled() && steps.route_tcc_validation_to_pinned_bundle.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $resolvedTcc = (Get-Command tcc.exe -CommandType Application -ErrorAction Stop).Source
+          if ([IO.Path]::GetFullPath($resolvedTcc) -cne [IO.Path]::GetFullPath($env:PINNED_TCC)) {
+            throw "tcc.exe resolved to '$resolvedTcc', expected '$env:PINNED_TCC'"
+          }
+          Write-Host "Pinned TCC command: $resolvedTcc"
+      - name: Rebuild and validate Windows directory queries
+        shell: pwsh
+        run: |
+          .\v.exe -cc $env:PINNED_TCC -no-retry-compilation self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe fmt -w vlib/os/os_windows.c.v vlib/os/walk_windows_test.c.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe fmt -verify vlib/os/os_windows.c.v vlib/os/walk_windows_test.c.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe -cc $env:PINNED_TCC -no-retry-compilation -silent test vlib/os/walk_windows_test.c.v vlib/os/walk_links_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Legacy gg import multiwindow isolation
+        id: legacy_gg_import_multiwindow_isolation
+        if: ${{ success() && !cancelled() && steps.verify_pinned_tcc_command_resolution.outcome == 'success' }}
+        run: v test vlib/gg/legacy_import_multiwindow_isolation_test.v
+      - name: Public gg Win32 services no-flag contract
+        id: public_gg_win32_services_no_flag_contract
+        if: ${{ success() && !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
+        run: v test vlib/gg/multiwindow_win32_public_services_contract_windows_test.v
+      - name: Win32 W3 native/public GREEN contracts
+        id: win32_w3_native_public_green_contracts
+        if: ${{ success() && !cancelled() && steps.public_gg_win32_services_no_flag_contract.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          .\.github\workflows\run_multiwindow_win32_w3_green.ps1 -Compiler tcc `
+            -ExpectedCompositeSha256 'd0d7a9b22f096fe0b2ca9946528869c078768307f6ea946b6c3831838f736ad6' `
+            -ExpectedRunnerSha256 '81239b57fe28268ac90008aeb53d6a2f1a1adbe0873e5a4a13465b16984b2715'
+      - name: Multiwindow render runtime contract
+        id: multiwindow_render_runtime_contract
+        if: ${{ success() && !cancelled() && steps.win32_w3_native_public_green_contracts.outcome == 'success' }}
+        run: .\v.exe -silent vlib\gg\multiwindow_render_runtime_contract_test.v
+      - name: Public gg Win32 proven W1 services enabled contract
+        id: public_gg_win32_proven_w1_services_enabled_contract
+        if: ${{ success() && !cancelled() && steps.multiwindow_render_runtime_contract.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $testFile = (Resolve-Path `
+            '.\vlib\gg\multiwindow_win32_public_services_contract_windows_test.v').Path
+          $discoveredTests = @(
+            Select-String -LiteralPath $testFile -Pattern '^fn (test_[A-Za-z0-9_]+)\(\)' |
+              ForEach-Object { $_.Matches[0].Groups[1].Value }
+          )
+          if ($discoveredTests.Count -eq 0) {
+            throw "no public Win32 service tests were discovered in $testFile"
+          }
+          $noFlagOnlyTest = 'test_win32_public_services_stay_disabled_without_opt_in'
+          $diagnosticTest = 'test_win32_public_controls_publish_observed_state_red'
+          $w3GreenTest = 'test_win32_public_monitor_projection_and_event_order_red'
+          $w4RedTest = 'test_win32_public_clipboard_cf_unicodetext_bmp_astral_roundtrip_red'
+          $tests = @(
+            'test_win32_public_hwnd_borrow_route_red'
+            'test_win32_public_conditional_focus_refusal_is_not_a_capability_error_red'
+            'test_win32_public_partial_focus_is_never_reported_as_success_red'
+          )
+          $classifiedTests = @($noFlagOnlyTest) + $tests + @(
+            $diagnosticTest
+            $w3GreenTest
+            $w4RedTest
+          )
+          $missingTests = @(
+            $classifiedTests | Where-Object { $discoveredTests -cnotcontains $_ }
+          )
+          $unclassifiedTests = @(
+            $discoveredTests | Where-Object { $classifiedTests -cnotcontains $_ }
+          )
+          if ($missingTests.Count -ne 0 -or $unclassifiedTests.Count -ne 0) {
+            throw "public Win32 service test classification mismatch: missing=$($missingTests -join ',') unclassified=$($unclassifiedTests -join ',')"
+          }
+
+          foreach ($test in $tests) {
+            Write-Host "W1_TCC_CASE_BEGIN name=$test"
+            $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $startInfo.FileName = (Resolve-Path '.\v.exe').Path
+            $startInfo.UseShellExecute = $false
+            $startInfo.RedirectStandardOutput = $true
+            $startInfo.RedirectStandardError = $true
+            $startInfo.CreateNoWindow = $true
+            foreach ($argument in @(
+              '-d', 'gg_multiwindow',
+              '-run-only', $test,
+              'test', $testFile
+            )) {
+              [void]$startInfo.ArgumentList.Add($argument)
+            }
+
+            $process = [System.Diagnostics.Process]::new()
+            $process.StartInfo = $startInfo
+            try {
+              if (-not $process.Start()) {
+                throw "failed to start public Win32 service test $test"
+              }
+              $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+              $stderrTask = $process.StandardError.ReadToEndAsync()
+              $timedOut = -not $process.WaitForExit(45000)
+              if ($timedOut) {
+                $process.Kill($true)
+                [void]$process.WaitForExit(5000)
+              } else {
+                $process.WaitForExit()
+              }
+              $stdout = $stdoutTask.GetAwaiter().GetResult()
+              $stderr = $stderrTask.GetAwaiter().GetResult()
+              if ($stdout) {
+                Write-Host $stdout.TrimEnd()
+              }
+              if ($stderr) {
+                [Console]::Error.WriteLine($stderr.TrimEnd())
+              }
+              $exitCode = if ($timedOut) { 'timeout' } else { [string]$process.ExitCode }
+              Write-Host "W1_TCC_CASE_END name=$test timeout=$timedOut exit=$exitCode"
+              if ($timedOut) {
+                throw "public Win32 service test timed out: $test"
+              }
+              if ($process.ExitCode -ne 0) {
+                throw "first failing public Win32 service test: $test (exit $($process.ExitCode))"
+              }
+              $summaryLines = @(
+                ([string]$stdout -split "\r?\n") |
+                  Where-Object { $_ -cmatch '^Summary for all V _test\.v files:' }
+              )
+              $combinedOutput = ([string]$stdout) + "`n" + ([string]$stderr)
+              $selectionAnomalies = @(
+                ($combinedOutput -split "\r?\n") |
+                  Where-Object { $_ -match '(?i)\bretrying\b|\bSKIP(?:PED)?\b' }
+              )
+              $summaryMatchesSelection = (
+                $summaryLines.Count -eq 1 -and
+                $summaryLines[0] -cmatch '^Summary for all V _test\.v files: 1 passed, 1 total\.' -and
+                $selectionAnomalies.Count -eq 0
+              )
+              if (-not $summaryMatchesSelection) {
+                $foundSummary = if ($summaryLines.Count -eq 0) {
+                  '<none>'
+                } else {
+                  $summaryLines -join ' | '
+                }
+                $foundAnomalies = if ($selectionAnomalies.Count -eq 0) {
+                  '<none>'
+                } else {
+                  $selectionAnomalies -join ' | '
+                }
+                throw "selection/summary mismatch for ${test}: expected exactly one '1 passed, 1 total' summary without skip/retry; summary=$foundSummary anomalies=$foundAnomalies"
+              }
+            } finally {
+              $process.Dispose()
+            }
+          }
+      - name: Package 2 native Win32 RED matrix
+        id: package_2_native_win32_red_matrix
+        if: ${{ success() && !cancelled() && steps.public_gg_win32_proven_w1_services_enabled_contract.outcome == 'success' }}
+        shell: pwsh
+        run: .\.github\workflows\run_multiwindow_win32_package2_red.ps1 -Compiler tcc
+      - name: Win32 W4 clipboard contracts
+        id: win32_w4_clipboard_contracts
+        if: ${{ success() && !cancelled() && steps.package_2_native_win32_red_matrix.outcome == 'success' }}
+        shell: pwsh
+        env:
+          VFLAGS: ''
+        run: |
+          .\.github\workflows\run_multiwindow_win32_w4.ps1 `
+            -Compiler tcc `
+            -Expectation Green `
+            -ExpectedOracleSha256 '2884f7b9b9d9b64852dae48718126368c6bfed9026813298505512bbed3b64ab' `
+            -ExpectedNativeTestSha256 'd394e8641ec422f354de0c611a57a3b86bf0b38ca7691cb2771cb5a00cafde70' `
+            -ExpectedPublicTestSha256 'aae9e07b56175987fb94f794380c1bf0b36c53fb7ef8c7e77efc423879b43234' `
+            -ExpectedNoOptProbeSha256 '288f148ca15b6694481f117c03be5f80c4045baf76d3b0e90db61b5e0596741c' `
+            -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
+            -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
+            -ExpectedWin32BackendSha256 'ccec71a1438683523cdd4d3583426b3477af2f36206733c74c77eda682bb2128' `
+            -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
+            -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
+            -ExpectedRedSurfaceSha256 'fe7fa76370ee25883e4da25e72b339daeba9d1b47ff70b8b56b0ada87a0027c6' `
+            -ExpectedGreenSurfaceSha256 'e35dc0154c627c87e71845643e68dcc7c65e6b8bc4e6402ee6d4df48b4b5a980' `
+            -ExpectedRunnerSha256 '60df7476bd1d87127d92d38caf19ae2bed1ed01110341dc067c9ea5bf117bf29'
+      - name: Win32 W5 raw-input A0 preflight
+        id: win32_w5_raw_input_a0_preflight
+        if: ${{ success() && !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          .\.github\workflows\run_multiwindow_win32_w5_a0.ps1 -Compiler tcc `
+            -ExpectedHeaderSha256 '9decdc2e825c91da2b9d2ce0c98cb8ccdad5c4800a690863d166135eb188e916' `
+            -ExpectedMainSha256 '5f30869ae97f680032e622273ea69986d612cc82cad2adf53e4c3b1415154301' `
+            -ExpectedTupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
+            -ExpectedRunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68'
+      - name: Win32 W5 raw-input A1 public GREEN
+        id: win32_w5_raw_input_a1_public_green
+        if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a0_preflight.outcome == 'success' }}
+        shell: pwsh
+        env:
+          VFLAGS: ''
+        run: |
+          .\.github\workflows\run_multiwindow_win32_w5_a1.ps1 -Compiler tcc `
+            -Expectation Green `
+            -ExpectedTestSha256 '6433293aebf40873ce1ff1932d9dfc128cc5ab387f8bd9b5b22dd0e9f1bc7ff2' `
+            -ExpectedOracleSha256 '7362f17f06ea6b0ab5a64c74abf2407a0e284cbace2c10809a5235d406d16461' `
+            -ExpectedTupleSha256 'af89fd676dd05fa054fc64d3df1e09cb792f56f2a3ec27f26586d6f2bcfe9698' `
+            -ExpectedA0HeaderSha256 '9decdc2e825c91da2b9d2ce0c98cb8ccdad5c4800a690863d166135eb188e916' `
+            -ExpectedA0MainSha256 '5f30869ae97f680032e622273ea69986d612cc82cad2adf53e4c3b1415154301' `
+            -ExpectedA0TupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
+            -ExpectedA0RunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68' `
+            -ExpectedGgFacadeSha256 '3b3042842f713da99d1e25b144ac7d89637f83c90d99c735267cc85275c3a87b' `
+            -ExpectedGgNoFlagSha256 'ad528c64cf18bce9415dd0e50513fb87d8d0b58c8ac4a99025a5c8955e7d9549' `
+            -ExpectedGgServiceTypesSha256 '9f17334ba5e5aff51f26d55476c83878856a8494a890aa64ee6434a52c1ecfeb' `
+            -ExpectedAppSha256 'af32eec55c119907a8bbf544842131018d36d3887347e26486e067a79d78a946' `
+            -ExpectedTypesSha256 '0a9058ba7928945e24284c867eb6182336ea3b1d41e1337786c71105b1fe93b3' `
+            -ExpectedBackendSha256 '89fd92942d02a2a78d37d4c7698a63813db788a03cced1b80f9c141dc6e373ca' `
+            -ExpectedServiceApiSha256 'b7e4bc26e85f897a72387e82f4a7a3d545f21230be5c6b9df4fa40a4c82b701f' `
+            -ExpectedServiceTypesSha256 'cd8326b81201727618e758d79970b7a77223fd6418e18afda44a526a3b0b4267' `
+            -ExpectedServiceRegistrySha256 'db244497fd23974c1739d6c7a8bc57a2e3137c8765d4bc7f789efd80a59066b7' `
+            -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
+            -ExpectedPublicRoutingSurfaceSha256 'e52eae27edfb90fd6b55fb3de6e82e1b541b69ba6de98751d76f707fe095bcad' `
+            -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
+            -ExpectedEventDispatchSha256 '7ef6c7cbd34511d6c19c1a3a269b46876db791b9412bb88e3a8d4dcd543bfd4e' `
+            -ExpectedWin32BackendSha256 'ccec71a1438683523cdd4d3583426b3477af2f36206733c74c77eda682bb2128' `
+            -ExpectedWin32BackendHelpersSha256 '2265a247f626621d69e823c09a79a5611dd187880120ba493636e73858c74a4d' `
+            -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
+            -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
+            -ExpectedGreenProductionSurfaceSha256 '2c929f3cddfe4ed6544678de10d9fbe3319f589ee08c0d2e4c8911fcd3738a22' `
+            -ExpectedRunnerSha256 '34867c90b94e8b69a93f59806da580b70f9789823cada3bc82f3ca715c81eba4'
+      - name: Public gg Win32 controls/state native diagnostic
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          $testFile = (Resolve-Path `
+            '.\vlib\gg\multiwindow_win32_public_services_contract_windows_test.v').Path
+          $test = 'test_win32_public_controls_publish_observed_state_red'
+          $discoveredTests = @(
+            Select-String -LiteralPath $testFile -Pattern '^fn (test_[A-Za-z0-9_]+)\(\)' |
+              ForEach-Object { $_.Matches[0].Groups[1].Value }
+          )
+          if ($discoveredTests -cnotcontains $test) {
+            throw "controls/state native diagnostic test was not discovered: $test"
+          }
+
+          Write-Host "W1_TCC_NATIVE_DIAG_BEGIN name=$test"
+          $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+          $startInfo.FileName = (Resolve-Path '.\v.exe').Path
+          $startInfo.UseShellExecute = $false
+          $startInfo.RedirectStandardOutput = $true
+          $startInfo.RedirectStandardError = $true
+          $startInfo.CreateNoWindow = $true
+          foreach ($argument in @(
+            '-d', 'gg_multiwindow',
+            '-run-only', $test,
+            'test', $testFile
+          )) {
+            [void]$startInfo.ArgumentList.Add($argument)
+          }
+
+          $process = [System.Diagnostics.Process]::new()
+          $process.StartInfo = $startInfo
+          try {
+            if (-not $process.Start()) {
+              throw "failed to start controls/state native diagnostic $test"
+            }
+            $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+            $stderrTask = $process.StandardError.ReadToEndAsync()
+            $timedOut = -not $process.WaitForExit(45000)
+            if ($timedOut) {
+              $process.Kill($true)
+              [void]$process.WaitForExit(5000)
+            } else {
+              $process.WaitForExit()
+            }
+            $stdout = $stdoutTask.GetAwaiter().GetResult()
+            $stderr = $stderrTask.GetAwaiter().GetResult()
+            if ($stdout) {
+              Write-Host $stdout.TrimEnd()
+            }
+            if ($stderr) {
+              [Console]::Error.WriteLine($stderr.TrimEnd())
+            }
+            $exitCode = if ($timedOut) { 'timeout' } else { [string]$process.ExitCode }
+            Write-Host "W1_TCC_NATIVE_DIAG_END name=$test timeout=$timedOut exit=$exitCode"
+            if ($timedOut) {
+              throw "controls/state native diagnostic timed out: $test"
+            }
+            if ($process.ExitCode -ne 0) {
+              throw "controls/state native diagnostic failed: $test (exit $($process.ExitCode))"
+            }
+            $summaryLines = @(
+              ([string]$stdout -split "\r?\n") |
+                Where-Object { $_ -cmatch '^Summary for all V _test\.v files:' }
+            )
+            $combinedOutput = ([string]$stdout) + "`n" + ([string]$stderr)
+            $selectionAnomalies = @(
+              ($combinedOutput -split "\r?\n") |
+                Where-Object { $_ -match '(?i)\bretrying\b|\bSKIP(?:PED)?\b' }
+            )
+            $summaryMatchesSelection = (
+              $summaryLines.Count -eq 1 -and
+              $summaryLines[0] -cmatch '^Summary for all V _test\.v files: 1 passed, 1 total\.' -and
+              $selectionAnomalies.Count -eq 0
+            )
+            if (-not $summaryMatchesSelection) {
+              $foundSummary = if ($summaryLines.Count -eq 0) {
+                '<none>'
+              } else {
+                $summaryLines -join ' | '
+              }
+              $foundAnomalies = if ($selectionAnomalies.Count -eq 0) {
+                '<none>'
+              } else {
+                $selectionAnomalies -join ' | '
+              }
+              throw "selection/summary mismatch for ${test}: expected exactly one '1 passed, 1 total' summary without skip/retry; summary=$foundSummary anomalies=$foundAnomalies"
+            }
+          } finally {
+            $process.Dispose()
+          }
+
+  native-walk:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, msvc]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        if: matrix.cc == 'msvc'
+      - name: Build V
+        shell: pwsh
+        run: |
+          if ('${{ matrix.cc }}' -eq 'msvc') {
+            .\makev.bat -msvc
+          } else {
+            .\makev.bat -gcc
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe -cc ${{ matrix.cc }} -no-retry-compilation self
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify directory queries and original gg failures
+        shell: pwsh
+        run: |
+          .\v.exe fmt -verify vlib/os/os_windows.c.v vlib/os/walk_windows_test.c.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:VFLAGS = '-cc ${{ matrix.cc }} -no-retry-compilation'
+          .\v.exe -cc ${{ matrix.cc }} -no-retry-compilation -silent test vlib/os/walk_windows_test.c.v vlib/os/walk_links_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe test vlib/gg/legacy_import_multiwindow_isolation_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe -d gg_multiwindow -run-only test_win32_public_controls_publish_observed_state_red test vlib/gg/multiwindow_win32_public_services_contract_windows_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

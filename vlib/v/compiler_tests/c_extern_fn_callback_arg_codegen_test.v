@@ -77,15 +77,15 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
 	src := extern_cb_write_source(root)
-	c_path := src + '.c'
 	mut exe := src + '.out'
 	$if windows {
 		exe += '.exe'
 	}
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', c_path])
+	compile := os.exec([@VEXE, '-b', 'c', '-o', exe, src])
 	assert compile.exit_code == 0, compile.output
+	assert os.is_file(exe), 'compiler did not produce ${exe}: ${compile.output}'
 
-	c_code := os.read_file(c_path) or { panic(err) }
+	c_code := os.read_file(exe + '.c') or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	// A `C.` function goes into the callback slot by name: C already has its real
 	// prototype, and a cast to the V-declared signature would drop the parameter's
@@ -114,9 +114,6 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 	// to the C-ABI adapter instead of directly to its V-ABI `__anon_fn` target.
 	assert compact.contains('closure__closure_create_with_data(__anon_fn_0_callback_adapter_'), c_code
 
-	build_program := os.exec([@VEXE, '-o', exe, '${src}'])
-	assert build_program.exit_code == 0, build_program.output
-	assert os.is_file(exe), 'compiler did not produce ${exe}: ${build_program.output}'
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['8', '8', '8', '8', '3', '3', '2', '9']

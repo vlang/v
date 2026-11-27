@@ -1,8 +1,8 @@
 import os
 import v.tempname
 
-fn test_plain_v_header_owned_c_structs_are_not_redeclared() {
-	root := os.join_path(os.vtmp_dir(), 'v3_header_owned_struct_${tempname.unique_token()}')
+fn test_header_owned_c_structs_and_repeated_includes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_owned_and_repeated_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
 
@@ -20,10 +20,24 @@ typedef struct V3HeaderOwnedTag {
 #endif
 ')!
 	os.write_file(os.join_path(root, 'wrapper.h'), '#include "types.h"\n')!
+	os.write_file(os.join_path(root, 'library.h'), '#ifndef V3_SINGLE_HEADER_DECLARATION
+#define V3_SINGLE_HEADER_DECLARATION
+int v3_single_header_value(void);
+#endif
+
+#ifdef V3_SINGLE_HEADER_IMPLEMENTATION
+int v3_single_header_value(void) {
+	return 42;
+}
+#endif
+')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main
 
 #flag -I @DIR
 #include "wrapper.h"
+#include "library.h"
+#define V3_SINGLE_HEADER_IMPLEMENTATION
+#include "library.h"
 
 @[typedef]
 struct C.V3HeaderOwnedAlias {
@@ -39,6 +53,8 @@ struct C.V3HeaderOwnedTag {
 	value int
 }
 
+fn C.v3_single_header_value() int
+
 fn main() {
 	alias := C.V3HeaderOwnedAlias{
 		value: 20
@@ -50,47 +66,6 @@ fn main() {
 		value: 2
 	}
 	println(alias.value + private_alias.value + tag.value)
-}
-')!
-	out := os.join_path(root, 'out')
-	compile := os.exec([@VEXE, '--no-parallel', os.join_path(root, 'main.v'), '-b', 'c', '-o',
-		'${out}'])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42', run.output
-	generated := os.read_file(out + '.c')!
-	assert !generated.contains('typedef struct V3HeaderOwnedAlias V3HeaderOwnedAlias;'), generated
-	assert !generated.contains('struct V3HeaderOwnedAlias {'), generated
-	assert !generated.contains('struct _V3HeaderOwnedAlias'), generated
-	assert !generated.contains('struct V3HeaderOwnedTag {'), generated
-}
-
-fn test_repeated_header_after_define_preserves_preprocessor_semantics() {
-	root := os.join_path(os.vtmp_dir(), 'v3_repeated_header_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	os.write_file(os.join_path(root, 'library.h'), '#ifndef V3_SINGLE_HEADER_DECLARATION
-#define V3_SINGLE_HEADER_DECLARATION
-int v3_single_header_value(void);
-#endif
-
-#ifdef V3_SINGLE_HEADER_IMPLEMENTATION
-int v3_single_header_value(void) {
-	return 42;
-}
-#endif
-')!
-	os.write_file(os.join_path(root, 'main.v'), 'module main
-
-#flag -I @DIR
-#include "library.h"
-#define V3_SINGLE_HEADER_IMPLEMENTATION
-#include "library.h"
-
-fn C.v3_single_header_value() int
-
-fn main() {
 	println(C.v3_single_header_value())
 }
 ')!
@@ -100,8 +75,13 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42', run.output
+	assert run.output.trim_space() == '42\n42', run.output
 	generated := os.read_file(out + '.c')!
+	assert !generated.contains('typedef struct V3HeaderOwnedAlias V3HeaderOwnedAlias;'), generated
+	assert !generated.contains('struct V3HeaderOwnedAlias {'), generated
+	assert !generated.contains('struct _V3HeaderOwnedAlias'), generated
+	assert !generated.contains('struct V3HeaderOwnedTag {'), generated
+
 	// library.h sits beside main.v, and the generated C is compiled elsewhere,
 	// so the include names the header by its resolved path.
 	header := os.real_path(os.join_path(root, 'library.h')).replace('\\', '/')

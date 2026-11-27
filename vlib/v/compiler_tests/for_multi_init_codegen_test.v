@@ -7,16 +7,16 @@ fn for_multi_init_fixture_dir() string {
 	return root
 }
 
-fn for_multi_init_run_bad(name string, source string, expected string) {
+fn for_multi_init_run_bad(name string, source string) string {
 	root := for_multi_init_fixture_dir()
 	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'v3_for_multi_init_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(root, 'v3_for_multi_init_${name}')
-	result := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
+	result := os.exec([@VEXE, src, '-b', 'c', '-nocolor', '-o', bin])
 	assert result.exit_code != 0, result.output
-	assert result.output.contains(expected), result.output
 	assert !result.output.contains('C compilation failed'), result.output
+	return result.output
 }
 
 fn for_multi_init_gen_c(name string, source string) string {
@@ -31,11 +31,12 @@ fn for_multi_init_gen_c(name string, source string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn test_c_style_for_multi_init_does_not_swallow_following_fn() {
+// The empty-post loop must leave following_iterator as a top-level declaration.
+fn test_c_style_for_runtime_fixtures() {
 	root := for_multi_init_fixture_dir()
 	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_multi_init_input.v')
-	os.write_file(src, "struct Iter {
+	src := os.join_path(root, 'v3_for_loop_runtime.v')
+	os.write_file(src, 'struct Iter {
 	label string
 }
 
@@ -51,7 +52,7 @@ fn scan_empty_post() int {
 
 fn following_iterator() Iter {
 	return Iter{
-		label: 'ok'
+		label: "ok"
 	}
 }
 
@@ -73,32 +74,68 @@ fn indexed_for_in_score() int {
 	return total
 }
 
-fn main() {
+fn pair() (int, int) {
+	return 1, 2
+}
+
+fn check_init_call() {
+	mut total := 0
+	for a, b := pair(); a == 1; {
+		total = a + b
+		break
+	}
+	assert total == 3
+}
+
+fn step(a int, b int) (int, int) {
+	return a + 1, b + 2
+}
+
+fn check_post_call() {
+	mut a := 0
+	mut b := 0
+	mut n := 0
+	for ; n < 3; a, b = step(a, b) {
+		n++
+		if n < 3 {
+			continue
+		}
+	}
+	assert a == 3
+	assert b == 6
+}
+
+struct Pair {
+mut:
+	x int
+	y int
+}
+
+fn check_init_selectors() {
+	mut a := Pair{}
+	mut total := 0
+	for a.x, a.y = 0, 1; a.x < 3; {
+		total += a.x + a.y
+		a.x += 1
+		a.y += 2
+	}
+	assert total == 12
+	assert a.x == 3
+	assert a.y == 7
+}
+
+fn check_multi_init_and_post_assignments() {
 	assert scan_empty_post() == 6
-	assert following_iterator().label == 'ok'
+	assert following_iterator().label == "ok"
 	assert scan_with_post() == 6
 	assert indexed_for_in_score() == 16
-	println('ok')
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_for_multi_init_input')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	check_init_call()
+	check_post_call()
+	check_init_selectors()
+	println("ok")
 }
 
-fn test_unsigned_inclusive_for_bound_evaluates_once_per_iteration() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_unsigned_inclusive_bound.v')
-	os.write_file(src, 'struct Calls {
+struct Calls {
 mut:
 	value int
 }
@@ -108,7 +145,7 @@ fn next_bound(mut calls Calls) u8 {
 	return u8(2)
 }
 
-fn main() {
+fn check_bound_evaluation() {
 	mut calls := Calls{}
 	mut sum := 0
 	for i := u8(0); i <= next_bound(mut calls); i++ {
@@ -116,27 +153,9 @@ fn main() {
 	}
 	assert sum == 3
 	assert calls.value == 4
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_for_unsigned_inclusive_bound')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
 }
 
-fn test_unsigned_inclusive_for_mutable_bound_keeps_post_semantics() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_unsigned_mutable_bound.v')
-	os.write_file(src, 'fn main() {
+fn check_post_after_mutation() {
 	mut hi := u8(1)
 	mut i := u8(0)
 	mut hits := 0
@@ -168,27 +187,15 @@ fn test_unsigned_inclusive_for_mutable_bound_keeps_post_semantics() {
 		j = 1
 	}
 	assert j == 0
+}
+
+fn check_unsigned_inclusive_for() {
+	check_bound_evaluation()
+	check_post_after_mutation()
 	println("ok")
 }
-') or {
-		panic(err)
-	}
 
-	bin := os.join_path(root, 'v3_for_unsigned_mutable_bound')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_labeled_c_style_for_multi_init_flow_targets_named_loop() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_multi_init_labeled.v')
-	os.write_file(src, 'fn main() {
+fn check_labeled_init_flow() {
 	mut out := ""
 	outer: for x, stop := 0, 3; x < stop; x++ {
 		for y := 0; y < 3; y++ {
@@ -221,30 +228,13 @@ fn test_labeled_c_style_for_multi_init_flow_targets_named_loop() {
 	assert hits == 1
 	println(out)
 }
-	') or {
-		panic(err)
-	}
 
-	bin := os.join_path(root, 'v3_for_multi_init_labeled')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '0:0;0:1;0:2;2:0;'
-}
-
-fn test_c_style_for_post_respects_labeled_continue_target() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_post_labeled_continue.v')
-	os.write_file(src, 'struct Posts {
+struct Posts {
 mut:
 	value int
 }
 
-fn step(mut posts Posts, a int, b int) (int, int) {
+fn counted_step(mut posts Posts, a int, b int) (int, int) {
 	posts.value++
 	return a + 1, b + 1
 }
@@ -254,7 +244,7 @@ fn continue_same_loop() {
 	mut a := 0
 	mut b := 0
 	mut hits := 0
-	loop: for ; a < 3; a, b = step(mut posts, a, b) {
+	loop: for ; a < 3; a, b = counted_step(mut posts, a, b) {
 		hits++
 		if a < 2 {
 			continue loop
@@ -273,7 +263,7 @@ fn continue_outer_loop() {
 	outer_loop: for ; outer < 2; outer++ {
 		mut a := 0
 		mut b := 0
-		for ; a < 2; a, b = step(mut inner_posts, a, b) {
+		for ; a < 2; a, b = counted_step(mut inner_posts, a, b) {
 			hits++
 			continue outer_loop
 		}
@@ -283,113 +273,7 @@ fn continue_outer_loop() {
 	assert inner_posts.value == 0
 }
 
-fn main() {
-	continue_same_loop()
-	continue_outer_loop()
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_for_post_labeled_continue')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_c_style_for_multi_init_rejects_extra_rhs() {
-	for_multi_init_run_bad('extra_rhs', 'fn bump(n int) int {
-	println(n.str())
-	return n
-}
-
-fn main() {
-	for a, b := bump(1), bump(2), bump(3); false; {
-		println(a)
-		println(b)
-	}
-}
-',
-		'multi-return assignment mismatch: 3 variables but `int` has 1 values')
-}
-
-fn test_c_style_for_multi_init_allows_multi_return_call() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_multi_init_pair.v')
-	os.write_file(src, 'fn pair() (int, int) {
-	return 1, 2
-}
-
-fn main() {
-	mut total := 0
-	for a, b := pair(); a == 1; {
-		total = a + b
-		break
-	}
-	assert total == 3
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_for_multi_init_pair')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_c_style_for_post_allows_multi_return_call() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_post_pair.v')
-	os.write_file(src, 'fn step(a int, b int) (int, int) {
-	return a + 1, b + 2
-}
-
-fn main() {
-	mut a := 0
-	mut b := 0
-	mut n := 0
-	for ; n < 3; a, b = step(a, b) {
-		n++
-		if n < 3 {
-			continue
-		}
-	}
-	assert a == 3
-	assert b == 6
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_for_post_pair')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_c_style_for_post_runs_before_match_and_select_branch_continue() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_post_branch_continue.v')
-	os.write_file(src, 'fn step(a int, b int) (int, int) {
+fn control_flow_step(a int, b int) (int, int) {
 	return a + 1, b + 1
 }
 
@@ -397,7 +281,7 @@ fn continue_in_match() {
 	mut a := 0
 	mut b := 0
 	mut guard := 0
-	for ; a < 3; a, b = step(a, b) {
+	for ; a < 3; a, b = control_flow_step(a, b) {
 		guard++
 		if guard > 5 {
 			break
@@ -418,7 +302,7 @@ fn continue_in_select() {
 	mut a := 0
 	mut b := 0
 	mut guard := 0
-	for ; a < 3; a, b = step(a, b) {
+	for ; a < 3; a, b = control_flow_step(a, b) {
 		guard++
 		if guard > 5 {
 			break
@@ -434,23 +318,118 @@ fn continue_in_select() {
 	assert guard == 3
 }
 
-fn main() {
+fn check_loop_control_flow_and_post_updates() {
+	check_labeled_init_flow()
+	continue_same_loop()
+	continue_outer_loop()
+	println("ok")
 	continue_in_match()
 	continue_in_select()
 	println("ok")
+}
+
+fn main() {
+	check_multi_init_and_post_assignments()
+	check_unsigned_inclusive_for()
+	check_loop_control_flow_and_post_updates()
 }
 ') or {
 		panic(err)
 	}
 
-	bin := os.join_path(root, 'v3_for_post_branch_continue')
+	bin := os.join_path(root, 'v3_for_loop_runtime')
 	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	assert run.output.trim_space().split_into_lines() == [
+		'ok',
+		'ok',
+		'0:0;0:1;0:2;2:0;',
+		'ok',
+		'ok',
+	], run.output
+}
+
+fn test_c_style_for_rejects_invalid_assignments_and_smartcasts() {
+	source := 'fn bump(n int) int {
+	println(n.str())
+	return n
+}
+
+fn extra_init_rhs() {
+	for a, b := bump(1), bump(2), bump(3); false; {
+		println(a)
+		println(b)
+	}
+}
+
+fn extra_post_rhs() {
+	mut i := 0
+	for ; i < 1; i = bump(1), bump(2) {
+		i++
+	}
+}
+
+fn scalar_post_rhs() {
+	mut a := 0
+	mut b := 0
+	for ; a < 1; a, b = 1 {
+		break
+	}
+	println(b)
+}
+
+struct Foo {
+	foo int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+fn stale_post_smartcast() {
+	mut x := Value(Foo{
+		foo: 1
+	})
+	for ; x is Foo; x.foo {
+		x = Bar{}
+	}
+}
+
+fn missing_init_rhs() {
+	for a, b := 1; false; {
+		println(a)
+		println(b)
+	}
+}
+
+fn main() {
+	extra_init_rhs()
+	extra_post_rhs()
+	scalar_post_rhs()
+	stale_post_smartcast()
+	missing_init_rhs()
+}
+'
+	output := for_multi_init_run_bad('header_rejections', source)
+	expected := {
+		'for a, b := bump(1), bump(2), bump(3); false; {': 'multi-return assignment mismatch: 3 variables but `int` has 1 values'
+		'for ; i < 1; i = bump(1), bump(2) {':             'for post assignment mismatch: 1 variables but 2 values'
+		'for ; a < 1; a, b = 1 {':                         'multi-return assignment mismatch: 2 variables but `int` has 1 values'
+		'for ; x is Foo; x.foo {':                         'field `foo` does not exist or have the same type in these sumtype `Value` variants'
+		'for a, b := 1; false; {':                         'multi-return assignment mismatch: 2 variables but `int` has 1 values'
+	}
+	lines := source.split_into_lines()
+	diagnostics := output.split_into_lines().filter(it.contains(': error: '))
+	for header, message in expected {
+		line := lines.index('\t${header}') + 1
+		assert line > 0, header
+		location := 'v3_for_multi_init_header_rejections.v:${line}:'
+		assert diagnostics.any(it.contains(location) && it.contains(message)), 'expected ${message} at ${location}\n${output}'
+	}
 }
 
 fn test_c_style_for_post_continue_in_lock_runs_post_after_unlock() {
@@ -501,106 +480,8 @@ fn main() {
 	assert label_idx < step_idx, post_tail
 }
 
-fn test_c_style_for_post_rejects_extra_rhs() {
-	for_multi_init_run_bad('post_extra_rhs', 'fn bump(n int) int {
-	println(n.str())
-	return n
-}
-
-fn main() {
-	mut i := 0
-	for ; i < 1; i = bump(1), bump(2) {
-		i++
-	}
-}
-',
-		'for post assignment mismatch: 1 variables but 2 values')
-}
-
-fn test_c_style_for_post_rejects_scalar_rhs_for_multi_assign() {
-	for_multi_init_run_bad('post_scalar_rhs', 'fn main() {
-	mut a := 0
-	mut b := 0
-	for ; a < 1; a, b = 1 {
-		break
-	}
-	println(b)
-}
-',
-		'multi-return assignment mismatch: 2 variables but `int` has 1 values')
-}
-
-fn test_c_style_for_post_does_not_use_condition_smartcast() {
-	for_multi_init_run_bad('post_stale_condition_smartcast', 'struct Foo {
-	foo int
-}
-
-struct Bar {}
-
-type Value = Bar | Foo
-
-fn main() {
-	mut x := Value(Foo{
-		foo: 1
-	})
-	for ; x is Foo; x.foo {
-		x = Bar{}
-	}
-}
-',
-		'field `foo` does not exist or have the same type in these sumtype `Value` variants')
-}
-
-fn test_c_style_for_multi_init_allows_selector_lhs_after_comma() {
-	root := for_multi_init_fixture_dir()
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'v3_for_multi_init_selector_lhs.v')
-	os.write_file(src, 'struct Pair {
-mut:
-	x int
-	y int
-}
-
-fn main() {
-	mut a := Pair{}
-	mut total := 0
-	for a.x, a.y = 0, 1; a.x < 3; {
-		total += a.x + a.y
-		a.x += 1
-		a.y += 2
-	}
-	assert total == 12
-	assert a.x == 3
-	assert a.y == 7
-	println("ok")
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'v3_for_multi_init_selector_lhs')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
-
-fn test_c_style_for_multi_init_rejects_missing_rhs() {
-	for_multi_init_run_bad('missing_rhs', 'fn main() {
-	for a, b := 1; false; {
-		println(a)
-		println(b)
-	}
-}
-',
-		'multi-return assignment mismatch: 2 variables but `int` has 1 values')
-}
-
 fn test_for_in_rejects_selector_value_var_after_comma() {
-	for_multi_init_run_bad('for_in_selector_value', 'struct Box {
+	output := for_multi_init_run_bad('for_in_selector_value', 'struct Box {
 mut:
 	x int
 }
@@ -612,6 +493,6 @@ fn main() {
 		println(i)
 	}
 }
-',
-		'invalid for-in header: expected identifiers before `in`')
+')
+	assert output.contains('invalid for-in header: expected identifiers before `in`'), output
 }

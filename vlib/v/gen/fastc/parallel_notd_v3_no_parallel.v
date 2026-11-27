@@ -47,13 +47,14 @@ mut:
 }
 
 fn fastc_start_referenced_function_names(sources []FastcSourceFile, prefs &pref.Preferences, functions map[string]FastcFunctionSignature) FastcPendingReferences {
+	candidates := fastc_reference_candidates(functions, prefs)
 	if fastc_parallel_job_count(sources.len, prefs) <= 1 {
 		return FastcPendingReferences{
-			references: fastc_collect_referenced_function_names(sources, prefs, functions)
+			references: fastc_collect_referenced_function_names(sources, prefs, candidates)
 		}
 	}
 	return FastcPendingReferences{
-		workers: [spawn fastc_collect_referenced_function_names(sources, prefs, functions)]
+		workers: [spawn fastc_collect_referenced_function_names(sources, prefs, candidates)]
 	}
 }
 

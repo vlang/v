@@ -1,8 +1,8 @@
 import os
 import v.tempname
 
-fn test_ierror_dispatch_uses_promoted_receivers() {
-	root := os.join_path(os.vtmp_dir(), 'v3_ierror_promoted_methods_${tempname.unique_token()}')
+fn test_interface_dispatch_uses_promoted_receivers() {
+	root := os.join_path(os.vtmp_dir(), 'v3_promoted_receiver_dispatch_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'main.v')
@@ -120,6 +120,33 @@ fn fail_fallback() !int {
 	}
 }
 
+interface HasNumber {
+	m() int
+}
+
+struct Inner {
+	n int
+}
+
+fn (inner Inner) m() int {
+	return inner.n
+}
+
+// Embedded structs must come first in a struct body.
+struct Mid {
+	Inner
+	pad int
+}
+
+struct Outer {
+	Mid
+	tag int
+}
+
+fn use(item HasNumber) int {
+	return item.m()
+}
+
 fn main() {
 	fail_value() or {
 		println(err.msg() + ':' + err.code().str())
@@ -133,6 +160,17 @@ fn main() {
 	fail_fallback() or {
 		println(err.msg() + ':' + err.code().str())
 	}
+
+	item := Outer{
+		tag: 100
+		Mid: Mid{
+			pad: 200
+			Inner: Inner{
+				n: 42
+			}
+		}
+	}
+	println(int_str(use(item)))
 }
 ") or {
 		panic(err)
@@ -152,71 +190,11 @@ fn main() {
 	assert c_code.contains('FallbackBaseErr__code(((main__FallbackWrapErr*)i->_object)->FallbackBaseErr)'), c_code
 	assert !c_code.contains('return FallbackWrapErr__msg(*(main__FallbackWrapErr*)i->_object)'), c_code
 	assert !c_code.contains('return FallbackWrapErr__code(*(main__FallbackWrapErr*)i->_object)'), c_code
-
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'promoted:42\npointer:7\nnested:8\nembedded:7', run.output
-}
-
-// Embedded structs must come first in a struct body.
-fn test_interface_dispatch_uses_nested_promoted_receiver_path() {
-	root := os.join_path(os.vtmp_dir(), 'v3_interface_nested_promoted_receiver_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'interface HasNumber {
-	m() int
-}
-
-struct Inner {
-	n int
-}
-
-fn (inner Inner) m() int {
-	return inner.n
-}
-
-struct Mid {
-	Inner
-	pad int
-}
-
-struct Outer {
-	Mid
-	tag int
-}
-
-fn use(item HasNumber) int {
-	return item.m()
-}
-
-fn main() {
-	item := Outer{
-		tag: 100
-		Mid: Mid{
-			pad: 200
-			Inner: Inner{
-				n: 42
-			}
-		}
-	}
-	println(int_str(use(item)))
-}
-') or {
-		panic(err)
-	}
-
-	bin := os.join_path(root, 'app')
-	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-
-	c_code := os.read_file('${bin}.c') or { '' }
 	assert c_code.contains('Inner__m((((main__Outer*)i->_object)->Mid).Inner)'), c_code
 
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42'
+	assert run.output.trim_space() == 'promoted:42\npointer:7\nnested:8\nembedded:7\n42', run.output
 }
 
 fn test_ierror_embed_compatible_method_dependencies_are_marked_used() {
