@@ -3,6 +3,7 @@ import json2
 
 const ownership_review_default_flags = os.getenv('VFLAGS').trim_space() in ['', '-gc none']
 const ownership_review_compiler = find_ownership_review_compiler()
+const ownership_review_local_receiver_error = 'cannot return a reference to local storage `local`'
 
 fn find_ownership_review_compiler() string {
 	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
@@ -154,8 +155,8 @@ fn main() {
 	run_ownership_regression(source)
 }
 
-fn test_ownership_local_receiver_cannot_escape_in_wrapped_or_aggregate_returns() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_wrapped_receiver_${os.getpid()}')
+fn test_ownership_local_receiver_cannot_escape_in_returns_or_aliases() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_receiver_escape_review_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	mut cases := []OwnershipReviewRejection{}
@@ -185,8 +186,9 @@ fn escaped() ${return_type} {
 }
 fn main() {}
 '
-		cases << OwnershipReviewRejection{fixture, 'cannot return a reference to local storage `local`'}
+		cases << OwnershipReviewRejection{fixture, ownership_review_local_receiver_error}
 	}
+	cases << ownership_review_aggregate_alias_rejections()
 	check_ownership_review_rejections(root, cases)!
 }
 
@@ -321,10 +323,7 @@ fn main() {
 	}
 }
 
-fn test_ownership_local_receiver_cannot_escape_through_aggregate_aliases() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_aggregate_alias_receiver_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
+fn ownership_review_aggregate_alias_rejections() []OwnershipReviewRejection {
 	mut cases := []OwnershipReviewRejection{}
 	for name, body in {
 		'named':       'held := Holder{target: local.set(42)}; return held'
@@ -361,9 +360,9 @@ fn escaped() ${return_type} {
 }
 fn main() {}
 '
-		cases << OwnershipReviewRejection{fixture, 'cannot return a reference to local storage `local`'}
+		cases << OwnershipReviewRejection{fixture, ownership_review_local_receiver_error}
 	}
-	check_ownership_review_rejections(root, cases)!
+	return cases
 }
 
 fn test_ownership_copied_fallback_detaches_loan_and_retains_owned_result() {
