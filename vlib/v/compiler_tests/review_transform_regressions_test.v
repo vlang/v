@@ -1659,9 +1659,9 @@ fn main() {
 	assert !out.contains('Value(...)'), out
 }
 
-fn test_folded_expression_scopes() {
+fn test_comptime_types_and_expression_scopes() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'folded_expression_scopes', [
+	run_good_module_batch(v3_bin, 'comptime_types_and_expression_scopes', [
 		TransformFixture{'folded_string_constant_if_branch_scopes', "fn main() {\n\tif 'left' == 'left' {\n\t\tx := 20\n\t\tprintln(int_str(x))\n\t}\n\tif 'right' == 'right' {\n\t\tx := 22\n\t\tprintln(int_str(x))\n\t}\n}\n", '20\n22'},
 		TransformFixture{'selected_comptime_block_value_tail', "fn main() {
 	value := if true {
@@ -1673,6 +1673,101 @@ fn test_folded_expression_scopes() {
 }
 ", 'other'},
 		TransformFixture{'nested_string_interpolation', "fn main() {\n\tvalue := 'ok'\n\tprintln('outer \${if value.len > 0 { 'inner \${value}' } else { 'empty' }} done')\n}\n", 'outer inner ok done'},
+		TransformFixture{'comptime_type_condition_logical_ops', "fn classify[T](x T) int {\n\t_ := x\n\t\$if T !is string && T !is \$int && T !is []u8 {\n\t\treturn 1\n\t} \$else {\n\t\treturn 2\n\t}\n\treturn 0\n}\n\nfn grouped[T](x T) int {\n\t_ := x\n\t\$if (T is int || T is string) && T is bool {\n\t\treturn 1\n\t} \$else {\n\t\treturn 2\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(int_str(classify('abc')))\n\tprintln(int_str(classify(3)))\n\tprintln(int_str(classify([u8(1)])))\n\tprintln(int_str(classify(1.5)))\n\tprintln(int_str(grouped(3)))\n\tprintln(int_str(grouped('abc')))\n}\n", '2\n2\n2\n1\n2\n2'},
+		TransformFixture{'comptime_type_condition_prefix_types', 'struct Foo {}\n\nfn main() {\n\t\$if ?int is ?int {\n\t\tprintln("opt")\n\t} \$else {\n\t\tprintln("badopt")\n\t}\n\t\$if !Foo is !Foo {\n\t\tprintln("res")\n\t} \$else {\n\t\tprintln("badres")\n\t}\n}\n', 'opt\nres'},
+		TransformFixture{'generic_marker_string_literal', "fn marker_and_type[T](value T) string {\n\tmarker := '__v3_generic_type_name:T'\n\treturn marker + '|' + typeof(value).name\n}\n\nfn main() {\n\tprintln(marker_and_type(7))\n}\n", '__v3_generic_type_name:T|int'},
+		TransformFixture{'generic_typeof_idx_comparison', 'fn pick_idx[T]() int {
+	$if typeof[T]().idx == typeof[int]().idx {
+		return 42
+	} $else {
+		return T.missing_method()
+	}
+}
+
+fn concrete_idx() int {
+	$if typeof[int]().idx == typeof[int]().idx {
+		return 1
+	} $else {
+		return 2
+	}
+}
+
+fn main() {
+	println(concrete_idx())
+	println(pick_idx[int]())
+}
+', '1\n42'},
+		TransformFixture{'comptime_field_generic_shadowing_local', 'struct Sample {
+	values map[string]int
+}
+
+fn inferred_type[T](value T) string {
+	_ = value
+	return typeof[T]().name
+}
+
+fn main() {
+	sample := Sample{
+		values: {
+			"one": 1
+		}
+	}
+	$for field in Sample.fields {
+		$if field.is_map {
+			for key, value in sample.$(field.name) {
+				_ = key
+				_ = value
+			}
+			key := 1.5
+			println(inferred_type(key))
+		}
+	}
+}
+', 'f64'},
+		TransformFixture{'nested_comptime_field_name_prefixes', 'struct Embedded {\n\tn int\n}\n\nstruct Item {\n\tEmbedded\n\tname string\n}\n\nfn normal_fields[T]() int {\n\tmut count := 0\n\t\$for field in T.fields {\n\t\t\$if field.is_embed {\n\t\t\t\$for reserved_field in T.fields {\n\t\t\t\t\$if !reserved_field.is_embed {\n\t\t\t\t\tcount++\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\treturn count\n}\n\nfn main() {\n\tprintln(int_str(normal_fields[Item]()))\n}\n', '1'},
+		TransformFixture{'comptime_generic_embedded_field_name', 'struct Embedded[T] {
+	value T
+}
+
+struct Container {
+	Embedded[int]
+}
+
+fn main() {
+	$for field in Container.fields {
+		$if field.is_embed {
+			println(field.name)
+		}
+	}
+}
+', 'Embedded'},
+		TransformFixture{'comptime_reflected_enum_integer_assignment', 'enum Role {
+	worker
+	manager
+}
+
+struct Config {
+	role Role
+}
+
+fn decoded_number() int {
+	return 1
+}
+
+fn decode[T]() T {
+	mut value := T{}
+	$for field in T.fields {
+		$if field.is_enum {
+			value.$(field.name) = decoded_number()
+		}
+	}
+	return value
+}
+
+fn main() {
+	println(decode[Config]().role)
+}
+', 'manager'},
 	])
 }
 
@@ -5343,107 +5438,6 @@ fn test_array_repeat_safe_wrapper_compiles_in_prod() {
 	run_bad_with_flags(v3_bin, 'array_repeat_to_depth_prod', '-prod', 'fn main() {\n\t_ := [1, 2, 3].repeat_to_depth(2, 0)\n}\n', 'must be called from an `unsafe` block')
 }
 
-fn test_comptime_types_and_reflected_fields() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'comptime_types_and_reflected_fields', [
-		TransformFixture{'comptime_type_condition_logical_ops', "fn classify[T](x T) int {\n\t_ := x\n\t\$if T !is string && T !is \$int && T !is []u8 {\n\t\treturn 1\n\t} \$else {\n\t\treturn 2\n\t}\n\treturn 0\n}\n\nfn grouped[T](x T) int {\n\t_ := x\n\t\$if (T is int || T is string) && T is bool {\n\t\treturn 1\n\t} \$else {\n\t\treturn 2\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(int_str(classify('abc')))\n\tprintln(int_str(classify(3)))\n\tprintln(int_str(classify([u8(1)])))\n\tprintln(int_str(classify(1.5)))\n\tprintln(int_str(grouped(3)))\n\tprintln(int_str(grouped('abc')))\n}\n", '2\n2\n2\n1\n2\n2'},
-		TransformFixture{'comptime_type_condition_prefix_types', 'struct Foo {}\n\nfn main() {\n\t\$if ?int is ?int {\n\t\tprintln("opt")\n\t} \$else {\n\t\tprintln("badopt")\n\t}\n\t\$if !Foo is !Foo {\n\t\tprintln("res")\n\t} \$else {\n\t\tprintln("badres")\n\t}\n}\n', 'opt\nres'},
-		TransformFixture{'generic_marker_string_literal', "fn marker_and_type[T](value T) string {\n\tmarker := '__v3_generic_type_name:T'\n\treturn marker + '|' + typeof(value).name\n}\n\nfn main() {\n\tprintln(marker_and_type(7))\n}\n", '__v3_generic_type_name:T|int'},
-		TransformFixture{'generic_typeof_idx_comparison', 'fn pick_idx[T]() int {
-	$if typeof[T]().idx == typeof[int]().idx {
-		return 42
-	} $else {
-		return T.missing_method()
-	}
-}
-
-fn concrete_idx() int {
-	$if typeof[int]().idx == typeof[int]().idx {
-		return 1
-	} $else {
-		return 2
-	}
-}
-
-fn main() {
-	println(concrete_idx())
-	println(pick_idx[int]())
-}
-', '1\n42'},
-		TransformFixture{'comptime_field_generic_shadowing_local', 'struct Sample {
-	values map[string]int
-}
-
-fn inferred_type[T](value T) string {
-	_ = value
-	return typeof[T]().name
-}
-
-fn main() {
-	sample := Sample{
-		values: {
-			"one": 1
-		}
-	}
-	$for field in Sample.fields {
-		$if field.is_map {
-			for key, value in sample.$(field.name) {
-				_ = key
-				_ = value
-			}
-			key := 1.5
-			println(inferred_type(key))
-		}
-	}
-}
-', 'f64'},
-		TransformFixture{'nested_comptime_field_name_prefixes', 'struct Embedded {\n\tn int\n}\n\nstruct Item {\n\tEmbedded\n\tname string\n}\n\nfn normal_fields[T]() int {\n\tmut count := 0\n\t\$for field in T.fields {\n\t\t\$if field.is_embed {\n\t\t\t\$for reserved_field in T.fields {\n\t\t\t\t\$if !reserved_field.is_embed {\n\t\t\t\t\tcount++\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\treturn count\n}\n\nfn main() {\n\tprintln(int_str(normal_fields[Item]()))\n}\n', '1'},
-		TransformFixture{'comptime_generic_embedded_field_name', 'struct Embedded[T] {
-	value T
-}
-
-struct Container {
-	Embedded[int]
-}
-
-fn main() {
-	$for field in Container.fields {
-		$if field.is_embed {
-			println(field.name)
-		}
-	}
-}
-', 'Embedded'},
-		TransformFixture{'comptime_reflected_enum_integer_assignment', 'enum Role {
-	worker
-	manager
-}
-
-struct Config {
-	role Role
-}
-
-fn decoded_number() int {
-	return 1
-}
-
-fn decode[T]() T {
-	mut value := T{}
-	$for field in T.fields {
-		$if field.is_enum {
-			value.$(field.name) = decoded_number()
-		}
-	}
-	return value
-}
-
-fn main() {
-	println(decode[Config]().role)
-}
-', 'manager'},
-	])
-}
-
 fn test_comptime_type_conditions_qualify_module_aliases() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'comptime_type_condition_module_alias', {
@@ -6415,8 +6409,8 @@ fn main() {
 	assert !main_body.contains('array__free(&(__map_source_'), main_body
 }
 
-fn test_array_map_local_pointer_aliases() {
-	run_array_map_ownership_batch('array_map_local_pointer_aliases', [
+fn test_array_map_local_pointer_initialization_and_assignment() {
+	run_array_map_ownership_batch('array_map_local_pointer_initialization_and_assignment', [
 		TransformFixture{
 			name:     'array_map_local_pointer_alias'
 			source:   'struct Item {
@@ -6518,6 +6512,109 @@ fn main() {
 '
 			expected: 'source'
 		},
+		TransformFixture{
+			name:     'array_map_decl_initializer_pointer_origin'
+			source:   'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			changed := replace(mut alias, &saved)
+			assert changed
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+			expected: '0\nsource'
+		},
+		TransformFixture{
+			name:     'array_map_assignment_rhs_pointer_origin'
+			source:   'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			mut changed := false
+			changed = replace(mut alias, &saved)
+			assert changed
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+			expected: '0\nsource'
+		},
 	])
 }
 
@@ -6566,8 +6663,8 @@ fn main() {
 	assert out == 'external'
 }
 
-fn test_array_map_aggregate_selector_origins() {
-	run_array_map_ownership_batch('array_map_aggregate_selector_origins', [
+fn test_array_map_aggregate_and_nested_selector_origins() {
+	run_array_map_ownership_batch('array_map_aggregate_and_nested_selector_origins', [
 		TransformFixture{
 			name:     'array_map_local_aggregate_selector_alias'
 			source:   'struct Item {
@@ -6745,11 +6842,195 @@ fn main() {
 '
 			expected: '0\nsource\n0\nsource'
 		},
+		TransformFixture{
+			name:     'array_map_nested_local_selector_chain'
+			source:   'struct Item {
+	text string
+}
+
+struct PointerBox {
+	value &Item
+}
+
+struct Outer {
+	inner PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			outer := Outer{
+				inner: PointerBox{
+					value: unsafe { &it }
+				}
+			}
+			outer.inner.value
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+}
+'
+			expected: 'source'
+		},
+		TransformFixture{
+			name:     'array_map_nested_selector_write'
+			source:   'struct Item {
+	text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+struct Outer {
+	mut:
+	inner PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut outer := Outer{
+				inner: PointerBox{
+					value: unsafe { &external }
+				}
+			}
+			outer.inner.value = unsafe { &it }
+			outer.inner.value
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+}
+'
+			expected: 'source'
+		},
+		TransformFixture{
+			name:     'array_map_nested_mutating_call'
+			source:   'struct Item {
+	text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn store(mut box PointerBox, value &Item) {
+	box.value = value
+}
+
+fn (mut box PointerBox) set(value &Item) {
+	store(mut box, value)
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.set(unsafe { &it })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+			expected: 'source'
+		},
+		TransformFixture{
+			name:     'array_map_mutator_local_alias'
+			source:   'struct Item {
+	text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn (mut box PointerBox) set(value &Item) {
+	pointer := unsafe { value }
+	box.value = pointer
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.set(unsafe { &it })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+			expected: 'source'
+		},
 	])
 }
 
-fn test_array_map_direct_and_mutating_pointer_writes() {
-	run_array_map_ownership_batch('array_map_direct_and_mutating_pointer_writes', [
+fn test_array_map_pointer_writes_and_mutating_calls() {
+	run_array_map_ownership_batch('array_map_pointer_writes_and_mutating_calls', [
 		TransformFixture{
 			name:     'array_map_direct_selector_write'
 			source:   'struct Item {
@@ -6955,11 +7236,151 @@ fn main() {
 '
 			expected: 'source'
 		},
+		TransformFixture{
+			name:     'array_map_mutator_or_success'
+			source:   'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn may_fail(ok bool) ! {
+	if !ok {
+		return error("failed")
+	}
+}
+
+fn (mut box PointerBox) store_or_replace(value &Item, replacement &Item, ok bool) {
+	box.value = value
+	may_fail(ok) or {
+		box.value = replacement
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map(match true {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.store_or_replace(unsafe { &it }, unsafe { &external }, true)
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+			expected: 'source'
+		},
+		TransformFixture{
+			name:     'array_map_all_mutator_targets'
+			source:   'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Pair {
+mut:
+	first  PointerBox
+	second PointerBox
+}
+
+struct IndexedBox {
+mut:
+	values []&Item
+}
+
+fn route(mut first PointerBox, mut second PointerBox, value &Item) {
+	_ = first
+	second.value = value
+}
+
+fn pick_index() int {
+	return 0
+}
+
+fn store_at_computed_index(mut box IndexedBox, value &Item) {
+	box.values[pick_index()] = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	pairs := make_items().map(match true {
+		true {
+			mut pair := Pair{
+				first: PointerBox{
+					value: unsafe { &external }
+				}
+				second: PointerBox{
+					value: unsafe { &external }
+				}
+			}
+			route(mut pair.first, mut pair.second, unsafe { &it })
+			pair
+		}
+		else {
+			Pair{
+				first:  PointerBox{
+					value: unsafe { &external }
+				}
+				second: PointerBox{
+					value: unsafe { &external }
+				}
+			}
+		}
+	})
+	indexed := make_items().map(match true {
+		true {
+			mut box := IndexedBox{
+				values: [unsafe { &external }]
+			}
+			store_at_computed_index(mut box, unsafe { &it })
+			box
+		}
+		else {
+			IndexedBox{}
+		}
+	})
+	println(pairs[0].second.value.text)
+	println(indexed[0].values[0].text)
+}
+'
+			expected: 'source\nsource'
+		},
 	])
 }
 
-fn test_array_map_jump_and_loop_exit_origins() {
-	run_array_map_ownership_batch('array_map_jump_and_loop_exit_origins', [
+fn test_array_map_control_flow_and_condition_aliases() {
+	run_array_map_ownership_batch('array_map_control_flow_and_condition_aliases', [
 		TransformFixture{
 			name:     'array_map_forward_goto_origin'
 			source:   'struct Item {
@@ -7160,200 +7581,213 @@ fn main() {
 '
 			expected: '0\nsource'
 		},
+		TransformFixture{
+			name:     'array_map_condition_pointer_alias_update'
+			source:   'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			if replace(mut alias, &saved) {
+				alias.value = unsafe { &it }
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+			expected: '0\nsource'
+		},
+		TransformFixture{
+			name:     'array_map_nested_condition_pointer_alias_update'
+			source:   'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	flag := true
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			if flag && replace(mut alias, &saved) {
+				alias.value = unsafe { &it }
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+			expected: '0\nsource'
+		},
+		TransformFixture{
+			name:     'array_map_infix_operand_pointer_alias_update'
+			source:   'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			if replace(mut alias, &saved) == true {
+				alias.value = unsafe { &it }
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+			expected: '0\nsource'
+		},
+		TransformFixture{
+			name:     'array_map_match_subject_pointer_alias_update'
+			source:   'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			match replace(mut alias, &saved) {
+				true { alias.value = unsafe { &it } }
+				else {}
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+			expected: '0\nsource'
+		},
 	])
 }
 
-fn test_array_map_nested_selector_and_mutator_aliases() {
-	run_array_map_ownership_batch('array_map_nested_selector_and_mutator_aliases', [
-		TransformFixture{
-			name:     'array_map_nested_local_selector_chain'
-			source:   'struct Item {
-	text string
-}
-
-struct PointerBox {
-	value &Item
-}
-
-struct Outer {
-	inner PointerBox
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	flag := true
-	selected := make_items().map(match flag {
-		true {
-			outer := Outer{
-				inner: PointerBox{
-					value: unsafe { &it }
-				}
-			}
-			outer.inner.value
-		}
-		else {
-			&external
-		}
-	})
-	println(selected[0].text)
-}
-'
-			expected: 'source'
-		},
-		TransformFixture{
-			name:     'array_map_nested_selector_write'
-			source:   'struct Item {
-	text string
-}
-
-struct PointerBox {
-	mut:
-	value &Item
-}
-
-struct Outer {
-	mut:
-	inner PointerBox
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	flag := true
-	selected := make_items().map(match flag {
-		true {
-			mut outer := Outer{
-				inner: PointerBox{
-					value: unsafe { &external }
-				}
-			}
-			outer.inner.value = unsafe { &it }
-			outer.inner.value
-		}
-		else {
-			&external
-		}
-	})
-	println(selected[0].text)
-}
-'
-			expected: 'source'
-		},
-		TransformFixture{
-			name:     'array_map_nested_mutating_call'
-			source:   'struct Item {
-	text string
-}
-
-struct PointerBox {
-	mut:
-	value &Item
-}
-
-fn store(mut box PointerBox, value &Item) {
-	box.value = value
-}
-
-fn (mut box PointerBox) set(value &Item) {
-	store(mut box, value)
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	flag := true
-	selected := make_items().map(match flag {
-		true {
-			mut box := PointerBox{
-				value: unsafe { &external }
-			}
-			box.set(unsafe { &it })
-			box
-		}
-		else {
-			PointerBox{
-				value: unsafe { &external }
-			}
-		}
-	})
-	println(selected[0].value.text)
-}
-'
-			expected: 'source'
-		},
-		TransformFixture{
-			name:     'array_map_mutator_local_alias'
-			source:   'struct Item {
-	text string
-}
-
-struct PointerBox {
-	mut:
-	value &Item
-}
-
-fn (mut box PointerBox) set(value &Item) {
-	pointer := unsafe { value }
-	box.value = pointer
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	flag := true
-	selected := make_items().map(match flag {
-		true {
-			mut box := PointerBox{
-				value: unsafe { &external }
-			}
-			box.set(unsafe { &it })
-			box
-		}
-		else {
-			PointerBox{
-				value: unsafe { &external }
-			}
-		}
-	})
-	println(selected[0].value.text)
-}
-'
-			expected: 'source'
-		},
-	])
-}
-
-fn test_array_map_mutator_results_and_call_rebinding() {
-	run_array_map_ownership_batch('array_map_mutator_results_and_call_rebinding', [
+fn test_array_map_helper_and_mutator_call_results() {
+	run_array_map_ownership_batch('array_map_helper_and_mutator_call_results', [
 		TransformFixture{
 			name:     'array_map_mutating_method_selector_result'
 			source:   'struct Item {
@@ -7575,6 +8009,120 @@ fn main() {
 '
 			expected: '0\nsource\n0\n0\nsource'
 		},
+		TransformFixture{
+			name:     'array_map_external_pointer_in_call_result'
+			source:   'struct Item {
+text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+	mut:
+	primary   &PointerBox
+	secondary &PointerBox
+}
+
+fn make_holder(box &PointerBox) Holder {
+	return Holder{
+		primary: box
+		secondary: box
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut holder := make_holder(&saved)
+			holder.secondary.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+			expected: '0\nsource'
+		},
+		TransformFixture{
+			name:     'array_map_nested_helper_rebind'
+			source:   'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn rebind(mut alias &PointerBox, target &PointerBox) {
+	alias = target
+}
+
+fn store(mut target &PointerBox, value &Item) {
+	target.value = value
+}
+
+fn forward(mut target PointerBox, value &Item) {
+	local_item := Item{
+		text: "local"
+	}
+	mut local := PointerBox{
+		value: unsafe { &local_item }
+	}
+	mut alias := &local
+	rebind(mut alias, &target)
+	store(mut alias, value)
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	result := make_items().map(match true {
+		true {
+			forward(mut saved, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(result[0])
+	println(saved.value.text)
+}
+'
+			expected: '0\nsource'
+		},
 	])
 }
 
@@ -7631,8 +8179,8 @@ fn main() {
 	assert out == 'external'
 }
 
-fn test_array_map_external_pointer_sinks_and_aliases() {
-	run_array_map_ownership_batch('array_map_external_pointer_sinks_and_aliases', [
+fn test_array_map_external_and_concurrent_pointer_sinks() {
+	run_array_map_ownership_batch('array_map_external_and_concurrent_pointer_sinks', [
 		TransformFixture{
 			name:     'array_map_external_mutator_escape'
 			source:   'struct Item {
@@ -7878,6 +8426,142 @@ fn main() {
 '
 			expected: '0\nsource\n0\nsource'
 		},
+		TransformFixture{
+			name:     'array_map_channel_pointer_sink'
+			source:   'struct Item {
+text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	saved := chan &Item{cap: 1}
+	selected := make_items().map(match true {
+		true {
+			saved <- unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	retained := <-saved
+	println(retained.text)
+}
+'
+			expected: '0\nsource'
+		},
+		TransformFixture{
+			name:     'array_map_local_channel_alias_sink'
+			source:   'struct Item {
+text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	saved := chan &Item{cap: 1}
+	selected := make_items().map(match true {
+		true {
+			alias := saved
+			alias <- unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	retained := <-saved
+	println(retained.text)
+}
+'
+			expected: '0\nsource'
+		},
+		TransformFixture{
+			name:     'array_map_spawn_pointer_sink'
+			source:   'struct Item {
+text string
+}
+
+fn hold(item &Item, gate chan bool, saved chan string) {
+	if <-gate {
+		saved <- item.text
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	gate := chan bool{cap: 1}
+	saved := chan string{cap: 1}
+	selected := make_items().map(match true {
+		true {
+			spawn hold(unsafe { &it }, gate, saved)
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	gate <- true
+	println(<-saved)
+}
+'
+			expected: '0\nsource'
+		},
+		TransformFixture{
+			name:     'array_map_spawn_pointer_receiver'
+			source:   'struct Item {
+text string
+}
+
+fn (item &Item) hold(gate chan bool, saved chan string) {
+	if <-gate {
+		saved <- item.text
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	gate := chan bool{cap: 1}
+	saved := chan string{cap: 1}
+	selected := make_items().map(match true {
+		true {
+			pointer := unsafe { &it }
+			spawn pointer.hold(gate, saved)
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	gate <- true
+	println(<-saved)
+}
+'
+			expected: '0\nsource'
+		},
 	])
 }
 
@@ -8051,125 +8735,6 @@ fn main() {
 	assert if_source_drop_pos >= 0 && if_source_drop_pos < if_result_pos, main_body
 	assert match_source_drop_pos > if_result_pos && match_source_drop_pos < match_result_pos, main_body
 	assert out == '0\n0'
-}
-
-fn test_array_map_helper_call_origins() {
-	run_array_map_ownership_batch('array_map_helper_call_origins', [
-		TransformFixture{
-			name:     'array_map_external_pointer_in_call_result'
-			source:   'struct Item {
-text string
-}
-
-@[heap]
-struct PointerBox {
-mut:
-	value &Item
-}
-
-struct Holder {
-	mut:
-	primary   &PointerBox
-	secondary &PointerBox
-}
-
-fn make_holder(box &PointerBox) Holder {
-	return Holder{
-		primary: box
-		secondary: box
-	}
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	mut saved := PointerBox{
-		value: unsafe { &external }
-	}
-	selected := make_items().map(match true {
-		true {
-			mut holder := make_holder(&saved)
-			holder.secondary.value = unsafe { &it }
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	println(saved.value.text)
-}
-'
-			expected: '0\nsource'
-		},
-		TransformFixture{
-			name:     'array_map_nested_helper_rebind'
-			source:   'struct Item {
-	text string
-}
-
-@[heap]
-struct PointerBox {
-mut:
-	value &Item
-}
-
-fn rebind(mut alias &PointerBox, target &PointerBox) {
-	alias = target
-}
-
-fn store(mut target &PointerBox, value &Item) {
-	target.value = value
-}
-
-fn forward(mut target PointerBox, value &Item) {
-	local_item := Item{
-		text: "local"
-	}
-	mut local := PointerBox{
-		value: unsafe { &local_item }
-	}
-	mut alias := &local
-	rebind(mut alias, &target)
-	store(mut alias, value)
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	mut saved := PointerBox{
-		value: unsafe { &external }
-	}
-	result := make_items().map(match true {
-		true {
-			forward(mut saved, unsafe { &it })
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(result[0])
-	println(saved.value.text)
-}
-'
-			expected: '0\nsource'
-		},
-	])
 }
 
 fn test_array_map_tracks_call_result_pointer_origins_per_field() {
@@ -8424,8 +8989,8 @@ fn main() {
 	assert callback_out == '0\nsource'
 }
 
-fn test_array_map_expression_and_multi_assignment_order() {
-	run_array_map_ownership_batch('array_map_expression_and_multi_assignment_order', [
+fn test_array_map_evaluation_order_and_collection_origins() {
+	run_array_map_ownership_batch('array_map_evaluation_order_and_collection_origins', [
 		TransformFixture{
 			name:     'array_map_earlier_argument_target_effect'
 			source:   'struct Item {
@@ -8629,26 +9194,15 @@ fn main() {
 '
 			expected: '0\nsource'
 		},
-	])
-}
-
-fn test_array_map_initializer_and_assignment_origins() {
-	run_array_map_ownership_batch('array_map_initializer_and_assignment_origins', [
 		TransformFixture{
-			name:     'array_map_decl_initializer_pointer_origin'
+			name:     'array_map_external_pointer_in_local_map'
 			source:   'struct Item {
-	text string
+text string
 }
 
-@[heap]
 struct PointerBox {
 mut:
 	value &Item
-}
-
-fn replace(mut target &PointerBox, replacement &PointerBox) bool {
-	target = replacement
-	return true
 }
 
 fn make_items() []Item {
@@ -8666,13 +9220,10 @@ fn main() {
 	}
 	selected := make_items().map(match true {
 		true {
-			mut local := PointerBox{
-				value: unsafe { &external }
+			mut holder := {
+				"box": unsafe { &saved }
 			}
-			mut alias := &local
-			changed := replace(mut alias, &saved)
-			assert changed
-			alias.value = unsafe { &it }
+			holder["box"].value = unsafe { &it }
 			0
 		}
 		else {
@@ -8686,20 +9237,14 @@ fn main() {
 			expected: '0\nsource'
 		},
 		TransformFixture{
-			name:     'array_map_assignment_rhs_pointer_origin'
+			name:     'array_map_delimiter_map_key'
 			source:   'struct Item {
 	text string
 }
 
-@[heap]
 struct PointerBox {
 mut:
 	value &Item
-}
-
-fn replace(mut target &PointerBox, replacement &PointerBox) bool {
-	target = replacement
-	return true
 }
 
 fn make_items() []Item {
@@ -8717,69 +9262,11 @@ fn main() {
 	}
 	selected := make_items().map(match true {
 		true {
-			mut local := PointerBox{
-				value: unsafe { &external }
+			mut holder := {
+				"x]": unsafe { &saved }
 			}
-			mut alias := &local
-			mut changed := false
-			changed = replace(mut alias, &saved)
-			assert changed
-			alias.value = unsafe { &it }
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	println(saved.value.text)
-}
-'
-			expected: '0\nsource'
-		},
-	])
-}
-
-fn test_array_map_condition_infix_and_match_alias_updates() {
-	run_array_map_ownership_batch('array_map_condition_infix_and_match_alias_updates', [
-		TransformFixture{
-			name:     'array_map_condition_pointer_alias_update'
-			source:   'struct Item {
-	text string
-}
-
-struct PointerBox {
-mut:
-	value &Item
-}
-
-fn replace(mut target &PointerBox, replacement &PointerBox) bool {
-	target = replacement
-	return true
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	mut saved := PointerBox{
-		value: unsafe { &external }
-	}
-	selected := make_items().map(match true {
-		true {
-			mut local := PointerBox{
-				value: unsafe { &external }
-			}
-			mut alias := &local
-			if replace(mut alias, &saved) {
-				alias.value = unsafe { &it }
-			}
+			key := "x]"
+			holder[key].value = unsafe { &it }
 			0
 		}
 		else {
@@ -8793,19 +9280,14 @@ fn main() {
 			expected: '0\nsource'
 		},
 		TransformFixture{
-			name:     'array_map_nested_condition_pointer_alias_update'
+			name:     'array_map_dynamic_local_array_index'
 			source:   'struct Item {
-	text string
+text string
 }
 
 struct PointerBox {
 mut:
 	value &Item
-}
-
-fn replace(mut target &PointerBox, replacement &PointerBox) bool {
-	target = replacement
-	return true
 }
 
 fn make_items() []Item {
@@ -8821,16 +9303,12 @@ fn main() {
 	mut saved := PointerBox{
 		value: unsafe { &external }
 	}
-	flag := true
 	selected := make_items().map(match true {
 		true {
-			mut local := PointerBox{
-				value: unsafe { &external }
-			}
-			mut alias := &local
-			if flag && replace(mut alias, &saved) {
-				alias.value = unsafe { &it }
-			}
+			mut holder := [1]&PointerBox{}
+			holder[0] = unsafe { &saved }
+			index := 0
+			holder[index].value = unsafe { &it }
 			0
 		}
 		else {
@@ -8844,19 +9322,14 @@ fn main() {
 			expected: '0\nsource'
 		},
 		TransformFixture{
-			name:     'array_map_infix_operand_pointer_alias_update'
+			name:     'array_map_dynamic_assignment_replaces_exact_origin'
 			source:   'struct Item {
-	text string
+text string
 }
 
 struct PointerBox {
 mut:
 	value &Item
-}
-
-fn replace(mut target &PointerBox, replacement &PointerBox) bool {
-	target = replacement
-	return true
 }
 
 fn make_items() []Item {
@@ -8869,18 +9342,19 @@ fn main() {
 	external := Item{
 		text: "external"
 	}
+	mut local := PointerBox{
+		value: unsafe { &external }
+	}
 	mut saved := PointerBox{
 		value: unsafe { &external }
 	}
 	selected := make_items().map(match true {
 		true {
-			mut local := PointerBox{
-				value: unsafe { &external }
-			}
-			mut alias := &local
-			if replace(mut alias, &saved) == true {
-				alias.value = unsafe { &it }
-			}
+			mut holder := [1]&PointerBox{}
+			holder[0] = unsafe { &local }
+			index := 0
+			holder[index] = unsafe { &saved }
+			holder[0].value = unsafe { &it }
 			0
 		}
 		else {
@@ -8894,19 +9368,14 @@ fn main() {
 			expected: '0\nsource'
 		},
 		TransformFixture{
-			name:     'array_map_match_subject_pointer_alias_update'
+			name:     'array_map_repeated_local_array_initializer'
 			source:   'struct Item {
-	text string
+text string
 }
 
 struct PointerBox {
 mut:
 	value &Item
-}
-
-fn replace(mut target &PointerBox, replacement &PointerBox) bool {
-	target = replacement
-	return true
 }
 
 fn make_items() []Item {
@@ -8924,14 +9393,8 @@ fn main() {
 	}
 	selected := make_items().map(match true {
 		true {
-			mut local := PointerBox{
-				value: unsafe { &external }
-			}
-			mut alias := &local
-			match replace(mut alias, &saved) {
-				true { alias.value = unsafe { &it } }
-				else {}
-			}
+			mut holder := []&PointerBox{len: 1, init: unsafe { &saved }}
+			holder[0].value = unsafe { &it }
 			0
 		}
 		else {
@@ -9910,226 +10373,8 @@ fn main() {
 	assert out == 'source'
 }
 
-fn test_array_map_local_map_and_array_origins() {
-	run_array_map_ownership_batch('array_map_local_map_and_array_origins', [
-		TransformFixture{
-			name:     'array_map_external_pointer_in_local_map'
-			source:   'struct Item {
-text string
-}
-
-struct PointerBox {
-mut:
-	value &Item
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	mut saved := PointerBox{
-		value: unsafe { &external }
-	}
-	selected := make_items().map(match true {
-		true {
-			mut holder := {
-				"box": unsafe { &saved }
-			}
-			holder["box"].value = unsafe { &it }
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	println(saved.value.text)
-}
-'
-			expected: '0\nsource'
-		},
-		TransformFixture{
-			name:     'array_map_delimiter_map_key'
-			source:   'struct Item {
-	text string
-}
-
-struct PointerBox {
-mut:
-	value &Item
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	mut saved := PointerBox{
-		value: unsafe { &external }
-	}
-	selected := make_items().map(match true {
-		true {
-			mut holder := {
-				"x]": unsafe { &saved }
-			}
-			key := "x]"
-			holder[key].value = unsafe { &it }
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	println(saved.value.text)
-}
-'
-			expected: '0\nsource'
-		},
-		TransformFixture{
-			name:     'array_map_dynamic_local_array_index'
-			source:   'struct Item {
-text string
-}
-
-struct PointerBox {
-mut:
-	value &Item
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	mut saved := PointerBox{
-		value: unsafe { &external }
-	}
-	selected := make_items().map(match true {
-		true {
-			mut holder := [1]&PointerBox{}
-			holder[0] = unsafe { &saved }
-			index := 0
-			holder[index].value = unsafe { &it }
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	println(saved.value.text)
-}
-'
-			expected: '0\nsource'
-		},
-		TransformFixture{
-			name:     'array_map_dynamic_assignment_replaces_exact_origin'
-			source:   'struct Item {
-text string
-}
-
-struct PointerBox {
-mut:
-	value &Item
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	mut local := PointerBox{
-		value: unsafe { &external }
-	}
-	mut saved := PointerBox{
-		value: unsafe { &external }
-	}
-	selected := make_items().map(match true {
-		true {
-			mut holder := [1]&PointerBox{}
-			holder[0] = unsafe { &local }
-			index := 0
-			holder[index] = unsafe { &saved }
-			holder[0].value = unsafe { &it }
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	println(saved.value.text)
-}
-'
-			expected: '0\nsource'
-		},
-		TransformFixture{
-			name:     'array_map_repeated_local_array_initializer'
-			source:   'struct Item {
-text string
-}
-
-struct PointerBox {
-mut:
-	value &Item
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	mut saved := PointerBox{
-		value: unsafe { &external }
-	}
-	selected := make_items().map(match true {
-		true {
-			mut holder := []&PointerBox{len: 1, init: unsafe { &saved }}
-			holder[0].value = unsafe { &it }
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	println(saved.value.text)
-}
-'
-			expected: '0\nsource'
-		},
-	])
-}
-
-fn test_array_map_select_pointer_rebinding() {
-	run_array_map_ownership_batch('array_map_select_pointer_rebinding', [
+fn test_array_map_select_and_closure_pointer_origins() {
+	run_array_map_ownership_batch('array_map_select_and_closure_pointer_origins', [
 		TransformFixture{
 			name:     'array_map_select_pointer_origins'
 			source:   'struct Item {
@@ -10220,6 +10465,100 @@ fn main() {
 				}
 				else {}
 			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+			expected: '0\nsource'
+		},
+		TransformFixture{
+			name:     'array_map_returned_closure_capture'
+			source:   'struct Item {
+	text string
+}
+
+struct Callback {
+	run fn () string
+}
+
+struct PointerBox {
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			box := PointerBox{
+				value: unsafe { &it }
+			}
+			Callback{
+				run: fn [box] () string {
+					return box.value.text
+				}
+			}
+		}
+		else {
+			box := PointerBox{
+				value: unsafe { &external }
+			}
+			Callback{
+				run: fn [box] () string {
+					return box.value.text
+				}
+			}
+		}
+	})
+	println(selected[0].run())
+}
+'
+			expected: 'source'
+		},
+		TransformFixture{
+			name:     'array_map_invoked_closure_capture'
+			source:   'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := &PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			p := unsafe { &it }
+			fn [p, mut saved] () {
+				saved.value = p
+			}()
 			0
 		}
 		else {
@@ -10483,147 +10822,6 @@ fn main() {
 	compact_apply := apply_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_apply.contains('array__free(&(__map_source_'), apply_body
 	assert out == '0\nsource'
-}
-
-fn test_array_map_channel_and_spawn_pointer_sinks() {
-	run_array_map_ownership_batch('array_map_channel_and_spawn_pointer_sinks', [
-		TransformFixture{
-			name:     'array_map_channel_pointer_sink'
-			source:   'struct Item {
-text string
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	saved := chan &Item{cap: 1}
-	selected := make_items().map(match true {
-		true {
-			saved <- unsafe { &it }
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	retained := <-saved
-	println(retained.text)
-}
-'
-			expected: '0\nsource'
-		},
-		TransformFixture{
-			name:     'array_map_local_channel_alias_sink'
-			source:   'struct Item {
-text string
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	saved := chan &Item{cap: 1}
-	selected := make_items().map(match true {
-		true {
-			alias := saved
-			alias <- unsafe { &it }
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	retained := <-saved
-	println(retained.text)
-}
-'
-			expected: '0\nsource'
-		},
-		TransformFixture{
-			name:     'array_map_spawn_pointer_sink'
-			source:   'struct Item {
-text string
-}
-
-fn hold(item &Item, gate chan bool, saved chan string) {
-	if <-gate {
-		saved <- item.text
-	}
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	gate := chan bool{cap: 1}
-	saved := chan string{cap: 1}
-	selected := make_items().map(match true {
-		true {
-			spawn hold(unsafe { &it }, gate, saved)
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	gate <- true
-	println(<-saved)
-}
-'
-			expected: '0\nsource'
-		},
-		TransformFixture{
-			name:     'array_map_spawn_pointer_receiver'
-			source:   'struct Item {
-text string
-}
-
-fn (item &Item) hold(gate chan bool, saved chan string) {
-	if <-gate {
-		saved <- item.text
-	}
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	gate := chan bool{cap: 1}
-	saved := chan string{cap: 1}
-	selected := make_items().map(match true {
-		true {
-			pointer := unsafe { &it }
-			spawn pointer.hold(gate, saved)
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	gate <- true
-	println(<-saved)
-}
-'
-			expected: '0\nsource'
-		},
-	])
 }
 
 fn test_array_map_drops_temporary_source_after_external_pointer_alias_overwrite() {
@@ -10923,151 +11121,6 @@ fn main() {
 	assert out == '7\nsource'
 }
 
-fn test_array_map_mutating_call_origins() {
-	run_array_map_ownership_batch('array_map_mutating_call_origins', [
-		TransformFixture{
-			name:     'array_map_mutator_or_success'
-			source:   'struct Item {
-text string
-}
-
-struct PointerBox {
-mut:
-	value &Item
-}
-
-fn may_fail(ok bool) ! {
-	if !ok {
-		return error("failed")
-	}
-}
-
-fn (mut box PointerBox) store_or_replace(value &Item, replacement &Item, ok bool) {
-	box.value = value
-	may_fail(ok) or {
-		box.value = replacement
-	}
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	selected := make_items().map(match true {
-		true {
-			mut box := PointerBox{
-				value: unsafe { &external }
-			}
-			box.store_or_replace(unsafe { &it }, unsafe { &external }, true)
-			box
-		}
-		else {
-			PointerBox{
-				value: unsafe { &external }
-			}
-		}
-	})
-	println(selected[0].value.text)
-}
-'
-			expected: 'source'
-		},
-		TransformFixture{
-			name:     'array_map_all_mutator_targets'
-			source:   'struct Item {
-text string
-}
-
-struct PointerBox {
-mut:
-	value &Item
-}
-
-struct Pair {
-mut:
-	first  PointerBox
-	second PointerBox
-}
-
-struct IndexedBox {
-mut:
-	values []&Item
-}
-
-fn route(mut first PointerBox, mut second PointerBox, value &Item) {
-	_ = first
-	second.value = value
-}
-
-fn pick_index() int {
-	return 0
-}
-
-fn store_at_computed_index(mut box IndexedBox, value &Item) {
-	box.values[pick_index()] = value
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	pairs := make_items().map(match true {
-		true {
-			mut pair := Pair{
-				first: PointerBox{
-					value: unsafe { &external }
-				}
-				second: PointerBox{
-					value: unsafe { &external }
-				}
-			}
-			route(mut pair.first, mut pair.second, unsafe { &it })
-			pair
-		}
-		else {
-			Pair{
-				first:  PointerBox{
-					value: unsafe { &external }
-				}
-				second: PointerBox{
-					value: unsafe { &external }
-				}
-			}
-		}
-	})
-	indexed := make_items().map(match true {
-		true {
-			mut box := IndexedBox{
-				values: [unsafe { &external }]
-			}
-			store_at_computed_index(mut box, unsafe { &it })
-			box
-		}
-		else {
-			IndexedBox{}
-		}
-	})
-	println(pairs[0].second.value.text)
-	println(indexed[0].values[0].text)
-}
-'
-			expected: 'source\nsource'
-		},
-	])
-}
-
 fn test_array_map_keeps_temporary_source_through_mutator_target_alias() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
@@ -11275,105 +11328,6 @@ fn main() {
 	result_move_pos := main_body.index('Array selected = ') or { -1 }
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
 	assert out == 'external'
-}
-
-fn test_array_map_closure_capture_origins() {
-	run_array_map_ownership_batch('array_map_closure_capture_origins', [
-		TransformFixture{
-			name:     'array_map_returned_closure_capture'
-			source:   'struct Item {
-	text string
-}
-
-struct Callback {
-	run fn () string
-}
-
-struct PointerBox {
-	value &Item
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	flag := true
-	selected := make_items().map(match flag {
-		true {
-			box := PointerBox{
-				value: unsafe { &it }
-			}
-			Callback{
-				run: fn [box] () string {
-					return box.value.text
-				}
-			}
-		}
-		else {
-			box := PointerBox{
-				value: unsafe { &external }
-			}
-			Callback{
-				run: fn [box] () string {
-					return box.value.text
-				}
-			}
-		}
-	})
-	println(selected[0].run())
-}
-'
-			expected: 'source'
-		},
-		TransformFixture{
-			name:     'array_map_invoked_closure_capture'
-			source:   'struct Item {
-text string
-}
-
-struct PointerBox {
-	mut:
-	value &Item
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	mut saved := &PointerBox{
-		value: unsafe { &external }
-	}
-	selected := make_items().map(match true {
-		true {
-			p := unsafe { &it }
-			fn [p, mut saved] () {
-				saved.value = p
-			}()
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	println(saved.value.text)
-}
-'
-			expected: '0\nsource'
-		},
-	])
 }
 
 fn test_array_map_drops_temporary_source_for_projected_passthrough_parameter() {
@@ -12435,8 +12389,8 @@ fn test_parallel_transform_merges_generic_call_metadata() {
 	assert out == expected.str()
 }
 
-fn test_array_map_loop_carried_origins() {
-	run_array_map_ownership_batch('array_map_loop_carried_origins', [
+fn test_array_map_loop_pointer_origins_and_control() {
+	run_array_map_ownership_batch('array_map_loop_pointer_origins_and_control', [
 		TransformFixture{
 			name:     'array_map_loop_carried_pointer_origin'
 			source:   'struct Item {
@@ -12533,11 +12487,6 @@ fn main() {
 '
 			expected: '0\nsource'
 		},
-	])
-}
-
-fn test_array_map_loop_control_helper_origins() {
-	run_array_map_ownership_batch('array_map_loop_control_helper_origins', [
 		TransformFixture{
 			name:     'array_map_conditional_continue_helper_origin'
 			source:   'struct Item {
