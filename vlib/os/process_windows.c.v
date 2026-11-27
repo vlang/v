@@ -169,6 +169,14 @@ fn (mut p Process) win_spawn_process() int {
 		sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 		sa.b_inherit_handle = true
 	}
+	// CreateProcessW copies every inheritable handle open in this process at
+	// that instant into the child. Serialise pipe/file creation with the spawn
+	// and the parent-side close of the write ends, so a concurrent spawn cannot
+	// capture another Process's pipe and keep its reader from seeing EOF.
+	v_os_execute_lock()
+	defer {
+		v_os_execute_unlock()
+	}
 	if p.has_stdin_path {
 		stdin_path_wide := p.stdin_path.to_wide()
 		to_be_freed << stdin_path_wide
