@@ -443,20 +443,39 @@ fn main() {
 	assert out == '7\n7'
 }
 
-fn test_empty_fixed_array_of_function_arrays_resolves_element_type() {
+fn test_fixed_array_element_and_alias_runtime() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'empty_fixed_array_of_function_arrays', 'fn main() {
+	run_good_module_batch(v3_bin, 'fixed_array_element_and_alias_runtime', [
+		ReviewRuntimeCase{'empty_fixed_array_of_function_arrays', 'fn main() {
 	callbacks := [2][]fn (){}
 	println(int_str(callbacks[0].len))
 	println(int_str(callbacks[1].len))
 }
-')
-	assert out == '0\n0'
+', '0\n0'},
+		ReviewRuntimeCase{'fixed_array_alias_clone_dispatch', 'type FixedClone = [2]int
+
+fn (value FixedClone) clone() FixedClone {
+	return FixedClone([value[1], value[0]]!)
 }
 
-fn test_indexed_shift_assignments_guard_oversized_counts() {
+fn make_fixed_clone() FixedClone {
+	return FixedClone([1, 2]!)
+}
+
+fn main() {
+	value := make_fixed_clone()
+	cloned := value.clone()
+	println(int_str(cloned[0]))
+	println(int_str(cloned[1]))
+}
+', '2\n1'},
+	])
+}
+
+fn test_indexed_scalar_types_and_shift_bounds() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'indexed_shift_assign_oversized_counts', 'struct Counter {
+	run_good_module_batch(v3_bin, 'indexed_scalar_types_and_shift_bounds', [
+		ReviewRuntimeCase{'indexed_shift_assign_oversized_counts', 'struct Counter {
 mut:
 	value int
 }
@@ -482,8 +501,9 @@ fn main() {
 	println(int_str(calls.value))
 	println(right[0].str())
 }
-')
-	assert out == '2\n0\n4\n0'
+', '2\n0\n4\n0'},
+		ReviewRuntimeCase{'string_index_type_is_u8', "fn main() {\n\ts := 'ABC'\n\tprintln(typeof(s[0]).name)\n\tprintln('\${s[2]}')\n}\n", 'u8\n67'},
+	])
 }
 
 fn test_wrapped_return_and_branch_values() {
@@ -1667,9 +1687,10 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
-fn test_ierror_aggregate_equality_preserves_message_and_code() {
+fn test_ierror_aggregate_equality() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'ierror_aggregate_equality_message_code', 'struct Box {
+	run_good_module_batch(v3_bin, 'ierror_aggregate_equality', [
+		ReviewRuntimeCase{'ierror_aggregate_equality_message_code', 'struct Box {
 	err IError
 }
 
@@ -1690,13 +1711,8 @@ fn main() {
 	println((first == different_code).str())
 	println((first == equal).str())
 }
-')
-	assert out == 'false\nfalse\ntrue'
-}
-
-fn test_ierror_aggregate_equality_roots_custom_dispatch_methods() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'ierror_aggregate_equality_custom_dispatch_roots', 'struct CustomError {
+', 'false\nfalse\ntrue'},
+		ReviewRuntimeCase{'ierror_aggregate_equality_custom_dispatch_roots', 'struct CustomError {
 	message string
 	n       int
 }
@@ -1735,8 +1751,8 @@ fn main() {
 	println((first == different).str())
 	println((first == equal).str())
 }
-')
-	assert out == 'false\ntrue'
+', 'false\ntrue'},
+	])
 }
 
 fn test_interface_equality_includes_veb_handler_call_boxes() {
@@ -2571,10 +2587,12 @@ fn main() {
 	assert out == '7'
 }
 
-fn test_array_alias_free_uses_array_builtin_inside_alias_method() {
+fn test_array_return_and_alias_builtin_runtime() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'array_alias_free_builtin', 'import strings\n\nfn main() {\n\tmut b := strings.new_builder(4)\n\tb.write_string("ok")\n\tunsafe { b.free() }\n\tprintln("ok")\n}\n')
-	assert out == 'ok'
+	run_good_module_batch(v3_bin, 'array_return_and_alias_builtin_runtime', [
+		ReviewRuntimeCase{'array_alias_free_builtin', 'import strings\n\nfn main() {\n\tmut b := strings.new_builder(4)\n\tb.write_string("ok")\n\tunsafe { b.free() }\n\tprintln("ok")\n}\n', 'ok'},
+		ReviewRuntimeCase{'discard_array_return_no_context', "fn values() []string {\n\treturn ['a', 'b']\n}\n\nfn main() {\n\t_ = values()\n\tprintln('ok')\n}\n", 'ok'},
+	])
 }
 
 fn test_dynamic_enum_array_literal_keeps_enum_element_width() {
@@ -2876,9 +2894,10 @@ fn main() {
 	])
 }
 
-fn test_c_pointer_receiver_str_is_used_for_reference_field() {
+fn test_reference_str_runtime() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'c_pointer_receiver_str_for_reference_field', "struct C.Opaque {}
+	run_good_module_batch(v3_bin, 'reference_str_runtime', [
+		ReviewRuntimeCase{'c_pointer_receiver_str_for_reference_field', "struct C.Opaque {}
 
 struct Holder {
 	ptr &C.Opaque
@@ -2892,8 +2911,13 @@ fn main() {
 	holder := unsafe { Holder{&C.Opaque(123)} }
 	println(holder.str().contains('&C.Opaque(0x7b)'))
 }
-")
-	assert out == 'true'
+", 'true'},
+		ReviewRuntimeCase{'channel_reference_auto_str', 'fn main() {
+	ch := chan int{cap: 2}
+	println(&ch)
+}
+', 'chan int{\n    cap: 2, closed: false\n}'},
+	])
 }
 
 fn test_channel_alias_close_method_wins_over_builtin() {
@@ -2919,16 +2943,6 @@ fn main() {
 	assert main_body.contains('sync__Channel__close(*p,'), main_body
 	assert main_body.contains('sizeof(IError)'), main_body
 	assert !main_body.contains('sync__Channel__close(*p);'), main_body
-}
-
-fn test_channel_reference_auto_str_reads_channel_value() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'channel_reference_auto_str', 'fn main() {
-	ch := chan int{cap: 2}
-	println(&ch)
-}
-')
-	assert out == 'chan int{\n    cap: 2, closed: false\n}'
 }
 
 fn test_channel_alias_reference_auto_str_reads_channel_value() {
@@ -3404,12 +3418,6 @@ fn main() {}
 ', '[noreturn] functions cannot use return statements')
 }
 
-fn test_string_index_type_is_u8() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'string_index_type_is_u8', "fn main() {\n\ts := 'ABC'\n\tprintln(typeof(s[0]).name)\n\tprintln('\${s[2]}')\n}\n")
-	assert out == 'u8\n67'
-}
-
 fn test_numeric_map_and_interpolation_formatting() {
 	v3_bin := build_v3()
 	run_good_module_batch(v3_bin, 'numeric_map_and_interpolation_formatting', [
@@ -3469,10 +3477,37 @@ fn test_driver_accepts_cdebug_alias() {
 	assert out == 'debug'
 }
 
-fn test_alias_interface_str_dispatch_marks_alias_method_used() {
+fn test_interface_str_roots_concrete_methods() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'alias_interface_str_dispatch', "interface Printer {\n\tstr() string\n}\n\ntype Label = int\n\nfn (l Label) str() string {\n\treturn 'label:' + int_str(int(l))\n}\n\nfn make() Printer {\n\tl := Label(7)\n\treturn l\n}\n\nfn main() {\n\tp := make()\n\tprintln('\${p}')\n}\n")
-	assert out == 'label:7'
+	run_good_module_batch(v3_bin, 'interface_str_roots_concrete_methods', [
+		ReviewRuntimeCase{'alias_interface_str_dispatch', "interface Printer {\n\tstr() string\n}\n\ntype Label = int\n\nfn (l Label) str() string {\n\treturn 'label:' + int_str(int(l))\n}\n\nfn make() Printer {\n\tl := Label(7)\n\treturn l\n}\n\nfn main() {\n\tp := make()\n\tprintln('\${p}')\n}\n", 'label:7'},
+		ReviewRuntimeCase{'interface_match_concrete_str', 'interface Value {
+	number() int
+}
+
+struct Item {}
+
+fn (_ &Item) number() int {
+	return 7
+}
+
+fn (_ &Item) str() string {
+	return "item"
+}
+
+fn (value &Value) str() string {
+	match value {
+		Item { return value.str() }
+		else { return "unknown" }
+	}
+}
+
+fn main() {
+	value := Value(&Item{})
+	println(value.str())
+}
+', '&item'},
+	])
 }
 
 fn test_interface_str_dispatch_and_fields() {
@@ -4065,16 +4100,12 @@ fn main() {
 	assert out == '2'
 }
 
-fn test_empty_interface_is_matches_alias_equivalent_type_ids() {
+fn test_empty_interface_box_type_ids() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'empty_interface_alias_type_id', 'interface Any {}\n\ntype MyInt = int\n\nfn main() {\n\tvalue := MyInt(1)\n\ta := Any(value)\n\tprintln((a is MyInt).str())\n\tprintln((a is int).str())\n\tplain := int(2)\n\tb := Any(plain)\n\tprintln((b is MyInt).str())\n\tprintln((b is int).str())\n}\n')
-	assert out == 'true\ntrue\ntrue\ntrue'
-}
-
-fn test_empty_interface_box_preserves_enum_type_id() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'empty_interface_enum_type_id', 'interface Any {}\n\nenum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tx := Any(Color.red)\n\tprintln((x is Color).str())\n\tprintln((x is int).str())\n}\n')
-	assert out == 'true\nfalse'
+	run_good_module_batch(v3_bin, 'empty_interface_box_type_ids', [
+		ReviewRuntimeCase{'empty_interface_alias_type_id', 'interface Any {}\n\ntype MyInt = int\n\nfn main() {\n\tvalue := MyInt(1)\n\ta := Any(value)\n\tprintln((a is MyInt).str())\n\tprintln((a is int).str())\n\tplain := int(2)\n\tb := Any(plain)\n\tprintln((b is MyInt).str())\n\tprintln((b is int).str())\n}\n', 'true\ntrue\ntrue\ntrue'},
+		ReviewRuntimeCase{'empty_interface_enum_type_id', 'interface Any {}\n\nenum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tx := Any(Color.red)\n\tprintln((x is Color).str())\n\tprintln((x is int).str())\n}\n', 'true\nfalse'},
+	])
 }
 
 fn test_interface_pointer_casts_and_calls() {
@@ -5531,9 +5562,10 @@ fn main() {
 	])
 }
 
-fn test_unused_generic_receiver_method_is_not_instantiated() {
+fn test_generic_specialization_runtime() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'unused_generic_receiver_method', 'struct Item {}
+	run_good_module_batch(v3_bin, 'generic_specialization_runtime', [
+		ReviewRuntimeCase{'unused_generic_receiver_method', 'struct Item {}
 
 struct Box[T] {
 	items []T
@@ -5550,8 +5582,23 @@ fn (box Box[T]) ordered() bool {
 fn main() {
 	_ = Box[Item]{}.len()
 }
-')
-	assert out == ''
+', ''},
+		ReviewRuntimeCase{'generic_pointer_sizeof', 'struct SizeBox[T] {
+	value T
+}
+
+fn main() {
+	first := &SizeBox[int]{
+		value: 1
+	}
+	lhs := [2]&SizeBox[int]{init: first}
+	rhs := [2]&SizeBox[int]{init: first}
+	println(sizeof(&SizeBox[int]) == sizeof(voidptr))
+	println(sizeof([2]&SizeBox[int]) == 2 * sizeof(voidptr))
+	println(lhs == rhs)
+}
+', 'true\ntrue\ntrue'},
+	])
 }
 
 fn test_isreftype_parenthesized_type_args() {
@@ -5703,9 +5750,10 @@ fn main() {
 	assert out == '2'
 }
 
-fn test_interface_rvalue_upcast_to_embedded_base_argument() {
+fn test_interface_fields_and_embedded_base_arguments() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_rvalue_upcast_to_embedded_base_argument', 'interface Base {
+	run_good_module_batch(v3_bin, 'interface_fields_and_embedded_base_arguments', [
+		ReviewRuntimeCase{'interface_rvalue_upcast_to_embedded_base_argument', 'interface Base {
 	value() int
 }
 
@@ -5742,8 +5790,39 @@ fn main() {
 	children := [make_child(9)]
 	println(int_str(take_base(children[0])))
 }
-	')
-	assert out == '7\n8\n9'
+	', '7\n8\n9'},
+		ReviewRuntimeCase{'nested_interface_field_assign', 'struct Metadata {
+mut:
+	links u64
+}
+
+interface Resource {
+mut:
+	metadata Metadata
+}
+
+struct FileResource {
+mut:
+	metadata Metadata
+}
+
+struct Node {
+mut:
+	resource Resource
+}
+
+fn main() {
+	mut file := &FileResource{
+		metadata: Metadata{links: 1}
+	}
+	mut node := Node{
+		resource: file
+	}
+	node.resource.metadata.links = 2
+	println(file.metadata.links)
+}
+', '2'},
+	])
 }
 
 fn test_interface_upcast_copies_promoted_struct_fields() {
@@ -6176,12 +6255,6 @@ fn test_cross_module_mut_receiver_checks_visible_mutation() {
 	assert private_out == '1'
 }
 
-fn test_discard_assignment_preserves_array_return_type() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'discard_array_return_no_context', "fn values() []string {\n\treturn ['a', 'b']\n}\n\nfn main() {\n\t_ = values()\n\tprintln('ok')\n}\n")
-	assert out == 'ok'
-}
-
 fn test_late_resolution_and_promoted_init_regressions() {
 	v3_bin := build_v3()
 	typeof_out := run_good_with_flags(v3_bin, 'runtime_sum_typeof', '-enable-globals', '__global typeof_calls int
@@ -6591,48 +6664,6 @@ fn test_external_bare_macro_objective_c_guards_remain_possible() {
 		'main.v':          'module main\n\n#flag -UV3_FORCED_FEATURE\n#flag -include @VMODROOT/forced.h\n\n#undef V3_HEADER_FEATURE\n#include "config.h"\n#if V3_HEADER_FEATURE\n#include "active.m"\n#endif\n\n#include "source_defs.c"\n#if V3_SOURCE_FEATURE\n#include "source_active.m"\n#endif\n\n#if V3_FORCED_FEATURE\n#include "active.mm"\n#endif\n\nfn C.answer_from_header_macro_guard() int\nfn C.answer_from_source_macro_guard() int\n@[c_extern]\nfn C.answer_from_forced_macro_guard() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_header_macro_guard() + C.answer_from_source_macro_guard() + C.answer_from_forced_macro_guard()))\n}\n'
 	}, 'main.v')
 	assert out == '75'
-}
-
-fn test_review_fixed_array_alias_clone_dispatch() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'fixed_array_alias_clone_dispatch', 'type FixedClone = [2]int
-
-fn (value FixedClone) clone() FixedClone {
-	return FixedClone([value[1], value[0]]!)
-}
-
-fn make_fixed_clone() FixedClone {
-	return FixedClone([1, 2]!)
-}
-
-fn main() {
-	value := make_fixed_clone()
-	cloned := value.clone()
-	println(int_str(cloned[0]))
-	println(int_str(cloned[1]))
-}
-')
-	assert out == '2\n1'
-}
-
-fn test_review_generic_pointer_sizeof() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'generic_pointer_sizeof', 'struct SizeBox[T] {
-	value T
-}
-
-fn main() {
-	first := &SizeBox[int]{
-		value: 1
-	}
-	lhs := [2]&SizeBox[int]{init: first}
-	rhs := [2]&SizeBox[int]{init: first}
-	println(sizeof(&SizeBox[int]) == sizeof(voidptr))
-	println(sizeof([2]&SizeBox[int]) == 2 * sizeof(voidptr))
-	println(lhs == rhs)
-}
-')
-	assert out == 'true\ntrue\ntrue'
 }
 
 fn test_followup_review_pointer_call_and_equality_semantics() {
@@ -9881,37 +9912,6 @@ fn main() {
 	assert out.contains('value: 7')
 }
 
-fn test_interface_match_smartcast_prefers_concrete_str_method() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'interface_match_concrete_str', 'interface Value {
-	number() int
-}
-
-struct Item {}
-
-fn (_ &Item) number() int {
-	return 7
-}
-
-fn (_ &Item) str() string {
-	return "item"
-}
-
-fn (value &Value) str() string {
-	match value {
-		Item { return value.str() }
-		else { return "unknown" }
-	}
-}
-
-fn main() {
-	value := Value(&Item{})
-	println(value.str())
-}
-')
-	assert out == '&item'
-}
-
 fn test_imported_struct_default_wraps_scalar_sum_variant() {
 	v3_bin := build_v3()
 	out := run_good_project(v3_bin, 'imported_struct_default_scalar_sum', {
@@ -10122,45 +10122,10 @@ fn test_global_beats_unrelated_same_named_const() {
 	assert out == '4'
 }
 
-fn test_nested_interface_field_assignment_updates_boxed_object() {
+fn test_interface_object_identity() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'nested_interface_field_assign', 'struct Metadata {
-mut:
-	links u64
-}
-
-interface Resource {
-mut:
-	metadata Metadata
-}
-
-struct FileResource {
-mut:
-	metadata Metadata
-}
-
-struct Node {
-mut:
-	resource Resource
-}
-
-fn main() {
-	mut file := &FileResource{
-		metadata: Metadata{links: 1}
-	}
-	mut node := Node{
-		resource: file
-	}
-	node.resource.metadata.links = 2
-	println(file.metadata.links)
-}
-')
-	assert out == '2'
-}
-
-fn test_smartcast_between_interfaces_preserves_object_identity() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'smartcast_interface_identity', 'interface Resource {
+	run_good_module_batch(v3_bin, 'interface_object_identity', [
+		ReviewRuntimeCase{'smartcast_interface_identity', 'interface Resource {
 mut:
 	set(int)
 	get() int
@@ -10206,13 +10171,8 @@ fn main() {
 	println(resource.get())
 	println(socket.get())
 }
-')
-	assert out == '2\n2\n2'
-}
-
-fn test_unsafe_block_pointer_to_interface_preserves_object_identity() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'unsafe_block_pointer_interface_identity', 'interface Resource {
+', '2\n2\n2'},
+		ReviewRuntimeCase{'unsafe_block_pointer_interface_identity', 'interface Resource {
 mut:
 	set(int)
 	get() int
@@ -10248,8 +10208,8 @@ fn main() {
 	println(concrete.value)
 	println(node.resource.get())
 }
-')
-	assert out == '2\n2'
+', '2\n2'},
+	])
 }
 
 // A `@[_naked]` function is its own prologue and epilogue: without
