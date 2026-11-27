@@ -905,6 +905,10 @@ fn main() {}
 	missing[T]()
 }
 ', 'unknown function: missing[T]'},
+		// Two *different concrete* instantiations are incompatible: `Box[string]` must
+		// not satisfy an expected `Box[int]` (value or pointer form).
+		TypeCheckerRejection{'bad_generic_concrete_value_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `bad_generic_concrete_value_arg.Box[string]` as `bad_generic_concrete_value_arg.Box[int]` in argument 1 to `bad_generic_concrete_value_arg.use_int`'},
+		TypeCheckerRejection{'bad_generic_concrete_ptr_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := &Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `&bad_generic_concrete_ptr_arg.Box[string]` as `&bad_generic_concrete_ptr_arg.Box[int]` in argument 1 to `bad_generic_concrete_ptr_arg.use_int`'},
 	])
 	// Earlier errors stop compilation before the concrete generic calls are checked.
 	run_bad_module_batch(v3_bin, [
@@ -981,6 +985,25 @@ fn main() {
 	invoke(Sink{}, ["bad"])
 }
 ', 'cannot use `...string` as `...int` in argument 1 to `bad_generic_receiver_variadic_spread_type.Sink.take`'},
+		// A generic template body is never return-checked on its own (`[]T` can legally
+		// become any `[]U` once `T` is known), so an incompatible element type in a
+		// specialization used to reach the transform unreported and be lowered into an
+		// element-copy loop between unrelated C types - the build then failed inside the
+		// generated C instead of naming the offending return.
+		TypeCheckerRejection{'bad_generic_array_elem_return_mismatch', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tv int\n}\n\nfn take[T](items []T) []Bar {\n\treturn items\n}\n\nfn main() {\n\t_ := take([Foo{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]bad_generic_array_elem_return_mismatch.Foo', '[]bad_generic_array_elem_return_mismatch.Bar')},
+		TypeCheckerRejection{'bad_generic_array_elem_return_unrelated_scalar', 'fn take[T](items []T) []string {\n\treturn items\n}\n\nfn main() {\n\t_ := take([1, 2])\n}\n', generic_array_return_error('[]int', '[]string')},
+		// Elements of another number or enum type are not converted either: the array
+		// would be read with the wrong element size, so a specialization is rejected as
+		// `fn f(items []int) []f64 { return items }` is, an integer array also for a
+		// `@[flag]` enum array.
+		TypeCheckerRejection{'bad_generic_array_elem_int_to_float', 'fn take[T](items []T) []f64 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1, 2, 3])[0] + 0.5)\n}\n', generic_array_return_error('[]int', '[]f64')},
+		TypeCheckerRejection{'bad_generic_array_elem_float_to_float', 'fn take[T](items []T) []f32 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1.5, 2.5])[0])\n}\n', generic_array_return_error('[]f64', '[]f32')},
+		TypeCheckerRejection{'bad_generic_array_elem_int_to_flag_enum', '@[flag]\nenum Access {\n\tread\n\twrite\n}\n\nfn take[T](items []T) []Access {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([1, 2]).len))\n}\n', generic_array_return_error('[]int', '[]bad_generic_array_elem_int_to_flag_enum.Access')},
+		TypeCheckerRejection{'bad_generic_array_elem_int_to_enum', 'enum Color {\n\tred\n\tgreen\n}\n\nfn take[T](items []T) []Color {\n\treturn items\n}\n\nfn main() {\n\t_ := take([0, 1])\n}\n', generic_array_return_error('[]int', '[]bad_generic_array_elem_int_to_enum.Color')},
+		// Having a lowering is not the same as being legal: the element copy boxes
+		// any struct into an interface, so an element that does not implement the
+		// target has to be rejected here rather than at `.id = src.id` in the C.
+		TypeCheckerRejection{'bad_generic_array_elem_unimplemented_interface', 'interface HasId {\n\tid int\n}\n\nstruct NoId {\n\tv int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\t_ := take([NoId{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]bad_generic_array_elem_unimplemented_interface.NoId', '[]bad_generic_array_elem_unimplemented_interface.HasId')},
 	])
 
 	// Keep the remaining rejections as entry-point programs for C generation.
@@ -1316,6 +1339,11 @@ fn test_fixed_array_length_checks() {
 		TypeCheckerRejection{'bad_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n', 'cannot use `[]int` as `[4]int` in argument 1 to `bad_fixed_array_arg_len.take4`'},
 		// Genuine fixed arrays of different lengths in if-branches must mismatch.
 		TypeCheckerRejection{'bad_if_branch_fixed_array_len', 'fn main() {\n\ta := [2]int{}\n\tb := [3]int{}\n\tc := true\n\t_ := if c { a } else { b }\n}\n', 'mismatched types `[2]int` and `[3]int`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_int_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\txs := [1, 2]\n\tprintln(int_str(sink(...xs)))\n}\n', 'cannot use `...int` as `...voidptr` in argument 1 to `bad_voidptr_variadic_int_spread.sink`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_void_arg', 'fn side() {}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(side())))\n}\n', 'cannot use `void`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_none_arg', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(none)))\n}\n', 'cannot use `?void`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_multi_return_arg', 'fn pair() (int, int) {\n\treturn 1, 2\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(pair())))\n}\n', 'cannot use `(int, int)`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_enum_shorthand_arg', 'enum Color {\n\tred\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(.red)))\n}\n', 'cannot use `int`'},
 	])
 	mixed_const_src := 'const xs = [1, 2, 3]\nfn first() int {\n\treturn xs[0]\n}\nfn length_score() int {\n\treturn xs.len\n}\nfn all() []int {\n\treturn xs\n}\nfn main() {\n\tys := all()\n\tprintln(int_str(first() + length_score() + ys.len + ys[2]))\n}\n'
 	mixed_const_name := 'good_indexed_const_returned_dynamic_array'
@@ -1359,10 +1387,17 @@ fn test_conditional_and_exhaustive_bool_runtime() {
 	])
 }
 
-fn test_if_branch_type_mismatches() {
+fn test_if_branch_and_smartcast_rejections() {
 	run_bad_module_batch(v3_bin, [
 		TypeCheckerRejection{'bad_if_branch_primitive_mismatch', "fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n", 'mismatched types `int literal` and `string`'},
 		TypeCheckerRejection{'bad_if_branch_value_pointer_mismatch', 'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n', 'mismatched types `bad_if_branch_value_pointer_mismatch.Foo` and `&bad_if_branch_value_pointer_mismatch.Foo`'},
+		// A write to the loop-narrowed value inside the body drops the narrowing for the
+		// rest of that iteration; the lexical loop fallback must not reconstruct it.
+		TypeCheckerRejection{'bad_for_loop_smartcast_after_write', 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{})\n\tfor x is Foo {\n\t\tx = Bar{}\n\t\tprintln(x.foo)\n\t}\n}\n', 'field `foo` does not exist or have the same type in these sumtype `bad_for_loop_smartcast_after_write.FB` variants:'},
+		// A recorded `p.value is Foo` reads the sum through an immutable pointer; the pointee
+		// can be reassigned through another alias before the guard, so the smartcast must not
+		// be reused for `p.value` in the then-branch.
+		TypeCheckerRejection{'bad_bool_condition_alias_pointer_pointee', 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nstruct Holder {\nmut:\n\tvalue FB\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: Foo{}\n\t}\n\tp := &holder\n\twas_foo := p.value is Foo\n\tholder.value = Bar{}\n\tif was_foo {\n\t\tprintln(p.value.foo)\n\t}\n}\n', 'field `foo` does not exist or have the same type in these sumtype `bad_bool_condition_alias_pointer_pointee.FB` variants:'},
 	])
 }
 
@@ -1427,11 +1462,16 @@ fn main() {
 	])
 }
 
-fn test_if_error_branches_require_result_returns() {
+fn test_result_return_and_void_assignment_rejections() {
 	run_bad_module_batch(v3_bin, [
 		TypeCheckerRejection{'bad_option_if_error_branch', "fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
 		TypeCheckerRejection{'bad_option_const_if_error_branch', "fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
 		TypeCheckerRejection{'bad_option_return_error', "fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n", 'Option and Result types have been split'},
+		// Because a bare `[]thread`.wait() is `void` (not the receiver `[]thread`), its
+		// result cannot be bound to a variable — guards against the old fallback that typed
+		// the call as the receiver array.
+		TypeCheckerRejection{'bad_bare_thread_void_wait_assign', "fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tx := threads.wait()\n\tprintln(x)\n}\n", 'assignment mismatch: 1 variable but `wait()` returns 0 values'},
+		TypeCheckerRejection{'bad_multi_return_if_void_tail_decl_assign', 'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n', 'multi-return assignment mismatch'},
 	])
 }
 
@@ -1461,16 +1501,6 @@ fn test_conditional_multi_return_runtime() {
 	])
 }
 
-fn test_void_result_assignment_rejections() {
-	run_bad_module_batch(v3_bin, [
-		// Because a bare `[]thread`.wait() is `void` (not the receiver `[]thread`), its
-		// result cannot be bound to a variable — guards against the old fallback that typed
-		// the call as the receiver array.
-		TypeCheckerRejection{'bad_bare_thread_void_wait_assign', "fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tx := threads.wait()\n\tprintln(x)\n}\n", 'assignment mismatch: 1 variable but `wait()` returns 0 values'},
-		TypeCheckerRejection{'bad_multi_return_if_void_tail_decl_assign', 'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n', 'multi-return assignment mismatch'},
-	])
-}
-
 fn test_multi_return_if_tail_infers_common_type() {
 	run_bad(v3_bin, 'bad_multi_return_if_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n', 'expression evaluated but not used')
 }
@@ -1486,6 +1516,10 @@ fn test_match_multi_return_tails_require_explicit_tuple() {
 		TypeCheckerRejection{'bad_multi_return_match_call_non_exhaustive_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive'},
 		TypeCheckerRejection{'bad_multi_return_match_preceding_expr_decl_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values'},
 		TypeCheckerRejection{'bad_multi_return_match_preceding_expr_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values'},
+		TypeCheckerRejection{'bad_bool_pointer_match_not_exhaustive', 'fn f(b &bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut b := true\n\tprintln(int_str(f(&b)))\n}\n', 'missing return'},
+		// A `[flag]` enum match that lists only single-field branches is NOT exhaustive
+		// (combined/zero values fall through), so a non-void fn needs `else`/missing-return.
+		TypeCheckerRejection{'bad_flag_enum_match_not_exhaustive', '@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n', 'missing return'},
 	])
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
 	run_bad_with_flags(v3_bin, 'bad_multi_return_match_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
@@ -1512,23 +1546,6 @@ fn test_pr_review_struct_sum_scope_and_gated_regressions() {
 		TypeCheckerRejection{'bad_non_variadic_array_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points []Point) int {\n\treturn points.len\n}\n\nfn main() {\n\t_ := total(x: 1, y: 2)\n}\n', 'cannot use `key: value` arguments as `[]bad_non_variadic_array_struct_field_args.Point`'},
 		TypeCheckerRejection{'bad_nested_pointer_struct_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\nfn read_box[T](b &&Box[T]) T {\n\treturn b.v\n}\n\nfn main() {\n\t_ := read_box(v: 7)\n}\n', 'cannot use `key: value` arguments as `&&bad_nested_pointer_struct_field_args.Box[int]` in call to `read_box`'},
 		TypeCheckerRejection{'bad_nested_pointer_struct_alias_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\ntype BoxRef = &&Box[int]\n\nfn read_box_alias(b BoxRef) {}\n\nfn main() {\n\tread_box_alias(v: 7)\n}\n', 'cannot use `key: value` arguments as `bad_nested_pointer_struct_alias_field_args.BoxRef` in call to `read_box_alias`'},
-	])
-	run_bad_project(v3_bin, 'bad_module_type_does_not_bind_main_type', {
-		'v.mod':  "Module { name: 'module_unknown_scope' }\n"
-		'main.v': 'module main\n\nimport m\n\nstruct Foo {}\n\nfn main() {\n\t_ = m.consume(Foo{})\n}\n'
-		'm/m.v':  'module m\n\npub const value = 1\n\npub fn consume(x Foo) int {\n\treturn value\n}\n'
-	}, 'main.v', 'unknown type')
-	aliased_sum := run_good_project(v3_bin, 'good_aliased_sum_uses_full_suffix', {
-		'v.mod':           "Module { name: 'aliased_sum_full_suffix' }\n"
-		'main.v':          'module main\n\nimport other as _\nimport sub.tast\n\nfn main() {\n\tvalue := tast.make_beta()\n\tif value is tast.Beta {\n\t\tprintln(int_str(value.n))\n\t} else {\n\t\tprintln("wrong")\n\t}\n}\n'
-		'other/other.v':   'module other\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Beta | Alpha\n'
-		'sub/tast/tast.v': 'module tast\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Alpha | Beta\n\npub fn make_beta() Value {\n\treturn Beta{\n\t\tn: 9\n\t}\n}\n'
-	}, 'main.v')
-	assert aliased_sum == '9'
-}
-
-fn test_collapsed_struct_fields_use_positional_target() {
-	run_bad_module_batch(v3_bin, [
 		TypeCheckerRejection{'bad_plain_collapsed_struct_field_type', 'struct Config {
 	cap int
 }
@@ -1726,7 +1743,21 @@ fn main() {
 }
 ', 'cannot instantiate interface `Runnable`'},
 	])
+	run_bad_project(v3_bin, 'bad_module_type_does_not_bind_main_type', {
+		'v.mod':  "Module { name: 'module_unknown_scope' }\n"
+		'main.v': 'module main\n\nimport m\n\nstruct Foo {}\n\nfn main() {\n\t_ = m.consume(Foo{})\n}\n'
+		'm/m.v':  'module m\n\npub const value = 1\n\npub fn consume(x Foo) int {\n\treturn value\n}\n'
+	}, 'main.v', 'unknown type')
+	aliased_sum := run_good_project(v3_bin, 'good_aliased_sum_uses_full_suffix', {
+		'v.mod':           "Module { name: 'aliased_sum_full_suffix' }\n"
+		'main.v':          'module main\n\nimport other as _\nimport sub.tast\n\nfn main() {\n\tvalue := tast.make_beta()\n\tif value is tast.Beta {\n\t\tprintln(int_str(value.n))\n\t} else {\n\t\tprintln("wrong")\n\t}\n}\n'
+		'other/other.v':   'module other\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Beta | Alpha\n'
+		'sub/tast/tast.v': 'module tast\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Alpha | Beta\n\npub fn make_beta() Value {\n\treturn Beta{\n\t\tn: 9\n\t}\n}\n'
+	}, 'main.v')
+	assert aliased_sum == '9'
+}
 
+fn test_collapsed_struct_fields_use_positional_target() {
 	interface_src := 'interface Runnable {
 	run()
 }
@@ -1780,34 +1811,6 @@ fn test_module_local_error_type_shadows_builtin_error() {
 		'fixture/fi.v': "module fixture\n\npub struct Error {\n\tmessage string\n}\n\npub fn make_error() Error {\n\treturn Error{\n\t\tmessage: 'local'\n\t}\n}\n\npub fn (err Error) msg() string {\n\treturn err.message\n}\n"
 	}, 'main.v')
 	assert out == 'local'
-}
-
-fn test_match_nonexhaustive_pointer_and_flags() {
-	run_bad_module_batch(v3_bin, [
-		TypeCheckerRejection{'bad_bool_pointer_match_not_exhaustive', 'fn f(b &bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut b := true\n\tprintln(int_str(f(&b)))\n}\n', 'missing return'},
-		// A `[flag]` enum match that lists only single-field branches is NOT exhaustive
-		// (combined/zero values fall through), so a non-void fn needs `else`/missing-return.
-		TypeCheckerRejection{'bad_flag_enum_match_not_exhaustive', '@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n', 'missing return'},
-	])
-}
-
-fn test_voidptr_variadic_spread_requires_voidptr_array() {
-	run_bad_module_batch(v3_bin, [
-		TypeCheckerRejection{'bad_voidptr_variadic_int_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\txs := [1, 2]\n\tprintln(int_str(sink(...xs)))\n}\n', 'cannot use `...int` as `...voidptr` in argument 1 to `bad_voidptr_variadic_int_spread.sink`'},
-		TypeCheckerRejection{'bad_voidptr_variadic_void_arg', 'fn side() {}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(side())))\n}\n', 'cannot use `void`'},
-		TypeCheckerRejection{'bad_voidptr_variadic_none_arg', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(none)))\n}\n', 'cannot use `?void`'},
-		TypeCheckerRejection{'bad_voidptr_variadic_multi_return_arg', 'fn pair() (int, int) {\n\treturn 1, 2\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(pair())))\n}\n', 'cannot use `(int, int)`'},
-		TypeCheckerRejection{'bad_voidptr_variadic_enum_shorthand_arg', 'enum Color {\n\tred\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(.red)))\n}\n', 'cannot use `int`'},
-	])
-}
-
-fn test_generic_concrete_instance_mismatches() {
-	run_bad_module_batch(v3_bin, [
-		// Two *different concrete* instantiations are incompatible: `Box[string]` must
-		// not satisfy an expected `Box[int]` (value or pointer form).
-		TypeCheckerRejection{'bad_generic_concrete_value_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `bad_generic_concrete_value_arg.Box[string]` as `bad_generic_concrete_value_arg.Box[int]` in argument 1 to `bad_generic_concrete_value_arg.use_int`'},
-		TypeCheckerRejection{'bad_generic_concrete_ptr_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := &Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `&bad_generic_concrete_ptr_arg.Box[string]` as `&bad_generic_concrete_ptr_arg.Box[int]` in argument 1 to `bad_generic_concrete_ptr_arg.use_int`'},
-	])
 }
 
 fn test_method_values_and_function_pointer_returns() {
@@ -1918,7 +1921,7 @@ fn test_generic_array_and_heap_initializers() {
 	])
 }
 
-fn test_generic_struct_literal_field_mismatches() {
+fn test_generic_struct_literal_mismatches() {
 	run_bad_module_batch(v3_bin, [
 		// A field whose type does not match the concrete instantiation is rejected by the
 		// checker (rather than adopting the type and emitting broken C).
@@ -1928,6 +1931,14 @@ fn test_generic_struct_literal_field_mismatches() {
 		// instance; a wrong positional type is a definite mismatch, not a silent adoption
 		// that codegen would init an `int` field from a string.
 		TypeCheckerRejection{'bad_positional_generic_literal_field_mismatch', "struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{'str'}\n}\nfn main() {\n\t_ := make()\n}\n", 'cannot use `bad_positional_generic_literal_field_mismatch.Box[string]` as type `bad_positional_generic_literal_field_mismatch.Box[int]` in return argument'},
+		// A `&Box{...}` value must not be accepted where a `Box[int]` value is expected
+		// (pointer shape must match in the generic-base relaxation).
+		TypeCheckerRejection{'bad_generic_pointer_shape_arg', 'struct Box[T] {\n\tv T\n}\nfn take(b Box[int]) int {\n\treturn b.v\n}\nfn main() {\n\t_ := take(&Box{\n\t\tv: 1\n\t})\n}\n', 'cannot use `&bad_generic_pointer_shape_arg.Box[int]` as `bad_generic_pointer_shape_arg.Box[int]` in argument 1 to `bad_generic_pointer_shape_arg.take`'},
+		// A bare *value* generic literal must not adopt a *pointer* expectation: `&Box[int]`
+		// expected from a plain `Box{...}` is a definite mismatch (cgen would emit a `Box_int`
+		// value where a `Box_int*` is required), so it is rejected rather than silently typed
+		// as `&Box[int]`.
+		TypeCheckerRejection{'bad_value_literal_pointer_expectation', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\t_ := make()\n}\n', 'fn `make` expects you to return a reference type `&bad_value_literal_pointer_expectation.Box[int]`, but you are returning `bad_value_literal_pointer_expectation.Box[int]` instead'},
 	])
 }
 
@@ -1964,19 +1975,6 @@ fn test_method_value_callbacks_and_storage() {
 		// factories or stored in struct fields.
 		TypeCheckerRuntimeCase{'good_method_value_return_escape', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn make_callback(c Counter) fn () int {\n\treturn c.report\n}\nfn main() {\n\tcb := make_callback(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(cb()))\n}\n', '1'},
 		TypeCheckerRuntimeCase{'good_method_value_struct_field_escape', 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nstruct Engine {\n\tcb fn () int\n}\nfn main() {\n\te := Engine{\n\t\tcb: Counter{\n\t\t\tid: 2\n\t\t}.report\n\t}\n\tprintln(int_str(e.cb()))\n}\n', '2'},
-	])
-}
-
-fn test_generic_struct_literal_pointer_mismatches() {
-	run_bad_module_batch(v3_bin, [
-		// A `&Box{...}` value must not be accepted where a `Box[int]` value is expected
-		// (pointer shape must match in the generic-base relaxation).
-		TypeCheckerRejection{'bad_generic_pointer_shape_arg', 'struct Box[T] {\n\tv T\n}\nfn take(b Box[int]) int {\n\treturn b.v\n}\nfn main() {\n\t_ := take(&Box{\n\t\tv: 1\n\t})\n}\n', 'cannot use `&bad_generic_pointer_shape_arg.Box[int]` as `bad_generic_pointer_shape_arg.Box[int]` in argument 1 to `bad_generic_pointer_shape_arg.take`'},
-		// A bare *value* generic literal must not adopt a *pointer* expectation: `&Box[int]`
-		// expected from a plain `Box{...}` is a definite mismatch (cgen would emit a `Box_int`
-		// value where a `Box_int*` is required), so it is rejected rather than silently typed
-		// as `&Box[int]`.
-		TypeCheckerRejection{'bad_value_literal_pointer_expectation', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\t_ := make()\n}\n', 'fn `make` expects you to return a reference type `&bad_value_literal_pointer_expectation.Box[int]`, but you are returning `bad_value_literal_pointer_expectation.Box[int]` instead'},
 	])
 }
 
@@ -2042,7 +2040,7 @@ fn test_pr_review_codegen_batch_five() {
 	assert void_wait.contains('done')
 }
 
-fn test_shift_fixed_array_literal_length_mismatches() {
+fn test_shift_and_nondecimal_fixed_array_length_mismatches() {
 	run_bad_module_batch(v3_bin, [
 		// The fixed-array literal length guard evaluates a shift length: `[1, 2]` (two
 		// elements) does not match an expected `[1 << 2]int` (four), so it is rejected.
@@ -2054,11 +2052,6 @@ fn test_shift_fixed_array_literal_length_mismatches() {
 		// The fixed-array literal-length guard evaluates `>>>` too: `[1, 2]` (two elements)
 		// does not match an expected `[8 >>> 1]int` (four), so it is rejected.
 		TypeCheckerRejection{'bad_unsigned_shift_fixed_array_literal_len', 'fn take(a [8 >>> 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use `[2]int` as `[8 >>> 1]int` in argument 1 to `bad_unsigned_shift_fixed_array_literal_len.take`'},
-	])
-}
-
-fn test_fixed_array_literal_const_length_mismatches() {
-	run_bad_module_batch(v3_bin, [
 		// Non-decimal integer literals (hex `0x`, octal `0o`, binary `0b`) fold in const
 		// fixed-array lengths: `0xF & 6` = 6, `0b1100 >> 1` = 6, `0o17 & 8` = 8.
 		// The length guard evaluates non-decimal too: `[1, 2]` does not match `[0xF & 6]int`.
@@ -2180,14 +2173,10 @@ fn test_defer_result_review_regressions() {
 		TypeCheckerRejection{'bad_out_of_range_multi_return_defer_result', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(2)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', 'index 2 out of range of 2 return types'},
 		TypeCheckerRejection{'bad_indexed_scalar_defer_result', 'fn f() int {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n', '`res` index can only be used with multi-return functions'},
 	])
+	// Parser errors would hide the type-checker diagnostics above.
 	run_bad_module_batch(v3_bin, [
 		TypeCheckerRejection{'bad_defer_result_trailing_argument_tokens', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', 'expected `)` immediately after the `$res` index'},
 		TypeCheckerRejection{'bad_bare_defer_result', 'fn f() int {\n\tdefer {\n\t\t_ := $res\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n', 'expected `(` after `$res`'},
-	])
-}
-
-fn test_defer_result_requires_function_exit_defer() {
-	run_bad_module_batch(v3_bin, [
 		TypeCheckerRejection{'bad_nested_block_defer_result', 'fn f() int {\n\t{\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '`res` can only be used in function-exit defer blocks'},
 		TypeCheckerRejection{'bad_loop_defer_result', 'fn f() int {\n\tfor _ in 0 .. 1 {\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '`res` can only be used in function-exit defer blocks'},
 	])
@@ -2230,18 +2219,6 @@ fn test_module_qualified_type_chaining_only_allows_enums() {
 	}, 'main.v', '`model.Item` must be initialized')
 }
 
-fn test_smartcast_invalidation_rejections() {
-	run_bad_module_batch(v3_bin, [
-		// A write to the loop-narrowed value inside the body drops the narrowing for the
-		// rest of that iteration; the lexical loop fallback must not reconstruct it.
-		TypeCheckerRejection{'bad_for_loop_smartcast_after_write', 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{})\n\tfor x is Foo {\n\t\tx = Bar{}\n\t\tprintln(x.foo)\n\t}\n}\n', 'field `foo` does not exist or have the same type in these sumtype `bad_for_loop_smartcast_after_write.FB` variants:'},
-		// A recorded `p.value is Foo` reads the sum through an immutable pointer; the pointee
-		// can be reassigned through another alias before the guard, so the smartcast must not
-		// be reused for `p.value` in the then-branch.
-		TypeCheckerRejection{'bad_bool_condition_alias_pointer_pointee', 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nstruct Holder {\nmut:\n\tvalue FB\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: Foo{}\n\t}\n\tp := &holder\n\twas_foo := p.value is Foo\n\tholder.value = Bar{}\n\tif was_foo {\n\t\tprintln(p.value.foo)\n\t}\n}\n', 'field `foo` does not exist or have the same type in these sumtype `bad_bool_condition_alias_pointer_pointee.FB` variants:'},
-	])
-}
-
 fn test_for_loop_smartcast_survives_until_write() {
 	// Uses that precede the write stay narrowed, so the fallback must still apply there.
 	good := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{\n\t\tfoo: 7\n\t})\n\tfor x is Foo {\n\t\tprintln(x.foo)\n\t\tx = Bar{}\n\t\tbreak\n\t}\n}\n'
@@ -2254,30 +2231,6 @@ fn test_bool_condition_alias_preserves_immutable_smartcast() {
 	good := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tx := FB(Foo{\n\t\tfoo: 7\n\t})\n\twas_foo := x is Foo\n\tif was_foo {\n\t\tprintln(x.foo)\n\t}\n}\n'
 	output := run_good(v3_bin, 'good_bool_condition_alias_immutable_local', good)
 	assert output == '7'
-}
-
-// A generic template body is never return-checked on its own (`[]T` can legally
-// become any `[]U` once `T` is known), so an incompatible element type in a
-// specialization used to reach the transform unreported and be lowered into an
-// element-copy loop between unrelated C types - the build then failed inside the
-// generated C instead of naming the offending return.
-fn test_generic_specialization_rejects_incompatible_array_element_return() {
-	run_bad_module_batch(v3_bin, [
-		TypeCheckerRejection{'bad_generic_array_elem_return_mismatch', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tv int\n}\n\nfn take[T](items []T) []Bar {\n\treturn items\n}\n\nfn main() {\n\t_ := take([Foo{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]bad_generic_array_elem_return_mismatch.Foo', '[]bad_generic_array_elem_return_mismatch.Bar')},
-		TypeCheckerRejection{'bad_generic_array_elem_return_unrelated_scalar', 'fn take[T](items []T) []string {\n\treturn items\n}\n\nfn main() {\n\t_ := take([1, 2])\n}\n', generic_array_return_error('[]int', '[]string')},
-		// Elements of another number or enum type are not converted either: the array
-		// would be read with the wrong element size, so a specialization is rejected as
-		// `fn f(items []int) []f64 { return items }` is, an integer array also for a
-		// `@[flag]` enum array.
-		TypeCheckerRejection{'bad_generic_array_elem_int_to_float', 'fn take[T](items []T) []f64 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1, 2, 3])[0] + 0.5)\n}\n', generic_array_return_error('[]int', '[]f64')},
-		TypeCheckerRejection{'bad_generic_array_elem_float_to_float', 'fn take[T](items []T) []f32 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1.5, 2.5])[0])\n}\n', generic_array_return_error('[]f64', '[]f32')},
-		TypeCheckerRejection{'bad_generic_array_elem_int_to_flag_enum', '@[flag]\nenum Access {\n\tread\n\twrite\n}\n\nfn take[T](items []T) []Access {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([1, 2]).len))\n}\n', generic_array_return_error('[]int', '[]bad_generic_array_elem_int_to_flag_enum.Access')},
-		TypeCheckerRejection{'bad_generic_array_elem_int_to_enum', 'enum Color {\n\tred\n\tgreen\n}\n\nfn take[T](items []T) []Color {\n\treturn items\n}\n\nfn main() {\n\t_ := take([0, 1])\n}\n', generic_array_return_error('[]int', '[]bad_generic_array_elem_int_to_enum.Color')},
-		// Having a lowering is not the same as being legal: the element copy boxes
-		// any struct into an interface, so an element that does not implement the
-		// target has to be rejected here rather than at `.id = src.id` in the C.
-		TypeCheckerRejection{'bad_generic_array_elem_unimplemented_interface', 'interface HasId {\n\tid int\n}\n\nstruct NoId {\n\tv int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\t_ := take([NoId{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]bad_generic_array_elem_unimplemented_interface.NoId', '[]bad_generic_array_elem_unimplemented_interface.HasId')},
-	])
 }
 
 // generic_array_return_error is the error for an array of `actual` returned as
