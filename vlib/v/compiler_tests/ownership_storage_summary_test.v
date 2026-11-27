@@ -14,12 +14,12 @@ struct OwnedStorageDiagnostic {
 	message  string
 }
 
-fn test_ownership_return_does_not_recheck_earlier_chained_receiver_after_move() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_chained_receiver_return_${os.getpid()}')
+fn test_ownership_compile_checks_cover_chained_receivers_and_recursive_setters() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_storage_compile_checks_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source_path := os.join_path(root, 'main.v')
-	os.write_file(source_path, 'fn parse_array_key(key string) (string, int) {
+	chained_receiver := 'fn parse_array_key(key string) (string, int) {
 	mut index := -1
 	mut k := key
 	if k.contains("[") {
@@ -32,8 +32,29 @@ fn main() {
 	key, index := parse_array_key("entry[0]")
 	assert key == "entry" && index == 0
 }
-')!
+'
+	mut recursive_setters := '
+struct Builder { number int }
+struct Holder { mut: target &Builder }
+'
+	for i in 0 .. 18 {
+		next := (i + 1) % 18
+		recursive_setters += 'fn store${i}(mut holder Holder, number int) {
+	if number > 0 { store${next}(mut holder, number - 1); store${next}(mut holder, number - 1) }
+	holder.target = &Builder{number: number}
+}
+'
+	}
+	recursive_setters += 'fn escaped() Holder {
+	mut holder := Holder{target: &Builder{number: 0}}
+	store0(mut holder, 0)
+	return holder
+}
+'
 	for mode in ['-no-parallel', ''] {
+		// The recursive setter cycle exercises the default checker.
+		source := if mode == '' { chained_receiver + recursive_setters } else { chained_receiver }
+		os.write_file(source_path, source)!
 		result := run_owned_storage_summary(source_path, mode, '-check')
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
@@ -393,34 +414,6 @@ fn escaped() Holder {
 }
 ${entry_point} { assert escaped().target.number == 42 }
 '
-}
-
-fn test_ownership_storage_queries_handle_recursive_setters() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_storage_cycle_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
-	mut source := 'struct Builder { number int }
-struct Holder { mut: target &Builder }
-'
-	for i in 0 .. 18 {
-		next := (i + 1) % 18
-		source += 'fn store${i}(mut holder Holder, number int) {
-	if number > 0 { store${next}(mut holder, number - 1); store${next}(mut holder, number - 1) }
-	holder.target = &Builder{number: number}
-}
-'
-	}
-	source += 'fn escaped() Holder {
-	mut holder := Holder{target: &Builder{number: 0}}
-	store0(mut holder, 0)
-	return holder
-}
-fn main() {}
-'
-	os.write_file(source_path, source)!
-	result := run_owned_storage_summary(source_path, '', '-check')
-	assert result.exit_code == 0, result.output
 }
 
 fn check_owned_storage_rejections(root string, cases []OwnedStorageRejection) ! {
