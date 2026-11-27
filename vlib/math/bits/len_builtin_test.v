@@ -1,8 +1,11 @@
+// vtest vflags: -check-overflow
 module bits
 
 // The C backend computes len_16/32/64 with count-leading-zeros builtins; they
 // must agree with the portable table versions for every u16, at every bit
 // boundary and for a pseudo-random sample of wider values.
+// The pseudo-random generator deliberately wraps modulo 2^64.
+@[ignore_overflow]
 fn test_len_builtins_match_table_versions() {
 	for x in 0 .. 65536 {
 		assert len_16(u16(x)) == len_16_default(u16(x))

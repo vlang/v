@@ -462,6 +462,7 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 	return mul_64_default(x, y)
 }
 
+@[ignore_overflow]
 fn mul_64_default(x u64, y u64) (u64, u64) {
 	x0 := x & mask32
 	x1 := x >> 32
@@ -501,7 +502,7 @@ pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
 	return mul_add_64_default(x, y, z)
 }
 
-@[inline]
+@[ignore_overflow; inline]
 fn mul_add_64_default(x u64, y u64, z u64) (u64, u64) {
 	h, l := mul_64(x, y)
 	lo := l + z
@@ -541,6 +542,7 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	return div_64_default(hi, lo, y1)
 }
 
+@[ignore_overflow]
 fn div_64_default(hi u64, lo u64, y1 u64) (u64, u64) {
 	mut y := y1
 	if y == 0 {

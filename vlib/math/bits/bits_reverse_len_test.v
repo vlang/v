@@ -1,3 +1,4 @@
+// vtest vflags: -check-overflow
 module bits
 
 // reverse_bytes_16(0xAABB) == 0xBBAA and the function is an involution: applying it
@@ -160,7 +161,7 @@ fn test_len_covers_every_bit_below_it() {
 	}
 	for n in 1 .. 65 {
 		lowest := u64(1) << u64(n - 1)
-		highest := (u64(1) << u64(n)) - 1
+		highest := max_u64 >> u32(64 - n)
 		assert len_64(lowest) == n
 		assert len_64(highest) == n
 		if n < 64 {

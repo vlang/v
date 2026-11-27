@@ -701,7 +701,7 @@ pub fn (a Integer) < (b Integer) bool {
 
 // get_bit checks whether the bit at the given index is set in the infinite
 // two's-complement representation. Negative integers have set bits above their magnitude.
-@[direct_array_access]
+@[direct_array_access; ignore_overflow]
 pub fn (a Integer) get_bit(i u32) bool {
 	target_index := i / digit_bits
 	offset := i % digit_bits
