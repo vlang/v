@@ -1487,6 +1487,17 @@ fn main() {}
 '
 			expected: 'unreachable code'
 		},
+		ReviewRejection{'enum_helper_noreturn_validation', '@[noreturn]
+fn value() int {
+	return 1
+}
+
+enum HelperKind {
+	item = value()
+}
+
+fn main() {}
+', '[noreturn] functions cannot use return statements'},
 	])
 }
 
@@ -4196,17 +4207,6 @@ fn main() {
 
 fn test_enum_initializer_helper_keeps_noreturn_validation() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'enum_helper_noreturn_validation', '@[noreturn]
-fn value() int {
-	return 1
-}
-
-enum HelperKind {
-	item = value()
-}
-
-fn main() {}
-', '[noreturn] functions cannot use return statements')
 }
 
 fn test_callback_pointer_return_is_compatible_with_voidptr_return() {
@@ -4678,17 +4678,6 @@ fn main() {
 
 fn test_implicit_interface_str_dispatch_rejects_sum_without_dispatch_id() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'implicit_interface_str_dispatch_rejects_sum', 'interface Printable {
-	str() string
-}
-
-type Value = int | string
-
-fn main() {
-	value := Value(1)
-	_ := Printable(value)
-}
-', 'does not implement interface')
 }
 
 fn test_implicit_interface_str_dispatch_stringifies_typed_map_fields() {
@@ -4939,6 +4928,21 @@ fn main() {
 			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.reserve("bad")\n}\n'
 			expected: 'cannot use `string` as `u32` in argument 1 to `map[string]int.reserve`'
 		},
+		ReviewRejection{'review_voidptr_interface_cast', 'interface Sink {
+	sink()
+}
+
+struct S {}
+
+fn (s S) sink() {}
+
+fn main() {
+	x := 1
+	p := voidptr(&x)
+	_ := Sink(p)
+}
+	', 'does not implement interface'},
+		ReviewRejection{'comptime_define_fixed_array_initializer', 'struct App {\n\tjobs [\$d("jobs", 2)]int = [1, 2]!\n}\n\nfn main() {}\n', 'cannot initialize a fixed size array field that uses `$d()` as size quantifier'},
 	])
 }
 
@@ -5438,13 +5442,6 @@ fn main() {
 }
 ')
 	assert out == '7'
-	run_bad(v3_bin, 'overloaded_index_rejects_wrong_key_type', overloaded_index_getter_source + '
-
-fn main() {
-	d := Dict{}
-	println(int_str(d[1]))
-}
-', 'cannot use `int` as overloaded index; expected `string`')
 }
 
 fn test_overloaded_index_assignment_uses_setter_signature() {
@@ -5958,6 +5955,13 @@ fn main() {
 			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
 			expected: 'compound index assignment getter returns `string`, which cannot be used as setter value `int`'
 		},
+		ReviewRejection{'overloaded_index_rejects_wrong_key_type', overloaded_index_getter_source + '
+
+fn main() {
+	d := Dict{}
+	println(int_str(d[1]))
+}
+', 'cannot use `int` as overloaded index; expected `string`'},
 	])
 }
 
@@ -6430,20 +6434,6 @@ fn main() {
 	assert str_out.contains("m: {'a': 3}"), str_out
 	assert str_out.contains('bar: Bar'), str_out
 	assert str_out.contains('x: 7'), str_out
-	run_bad(v3_bin, 'review_voidptr_interface_cast', 'interface Sink {
-	sink()
-}
-
-struct S {}
-
-fn (s S) sink() {}
-
-fn main() {
-	x := 1
-	p := voidptr(&x)
-	_ := Sink(p)
-}
-	', 'does not implement interface')
 }
 
 fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
@@ -9720,6 +9710,17 @@ fn main() {}
 '
 			expected: 'cannot call `str()` method recursively'
 		},
+		ReviewRejection{'implicit_interface_str_dispatch_rejects_sum', 'interface Printable {
+	str() string
+}
+
+type Value = int | string
+
+fn main() {
+	value := Value(1)
+	_ := Printable(value)
+}
+', 'does not implement interface'},
 	])
 }
 
@@ -9852,7 +9853,6 @@ fn test_comptime_define_field_default_is_not_fixed_array_initializer() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'comptime_define_field_default', 'struct Job {\n\tid string = \$d("id", "Job")\n}\n\nstruct App {\n\tjobs [\$d("jobs", 2)]Job\n}\n\nfn main() {\n\tapp := App{}\n\tprintln(app.jobs[0].id)\n}\n')
 	assert out == 'Job'
-	run_bad(v3_bin, 'comptime_define_fixed_array_initializer', 'struct App {\n\tjobs [\$d("jobs", 2)]int = [1, 2]!\n}\n\nfn main() {}\n', 'cannot initialize a fixed size array field that uses `$d()` as size quantifier')
 }
 
 fn test_comptime_define_call_is_not_parenthesized_condition_warning() {

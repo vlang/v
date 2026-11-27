@@ -474,6 +474,22 @@ fn main() {
 	_ := &FooMap(map[string]int{})
 }
 ', 'cannot cast to alias pointer `&FooMap` because `map[string]int` is a value'},
+		ReviewFixture{'bad_smartcasted_fn_sum_variant_arity', 'type Callback = fn () int | fn (int) int
+
+fn no_args() int {
+	return 7
+}
+
+fn invoke(cb Callback) {
+	if cb is fn () int {
+		_ := cb(1)
+	}
+}
+
+fn main() {
+	invoke(Callback(no_args))
+}
+', 'expected 0 arguments, but got 1'},
 	])
 }
 
@@ -608,11 +624,6 @@ fn main() {
 }
 ')
 	assert out == '42'
-}
-
-fn test_source_field_names_require_snake_case() {
-	run_bad(v3_bin, 'uppercase_struct_field', 'struct S {\n\tFoo int\n}\n\nfn main() {}\n',
-		'field name `Foo` cannot contain uppercase letters, use snake_case instead')
 }
 
 fn test_generic_factory_can_initialize_its_own_noinit_struct_for_external_callers() {
@@ -950,6 +961,28 @@ fn main() {
 	_ := ppp.value()
 }
 ', 'cannot use receiver `&&&bad_pointer_receiver_extra_pointer_layers.S` as `&bad_pointer_receiver_extra_pointer_layers.S`'},
+		ReviewFixture{'uppercase_struct_field', 'struct S {\n\tFoo int\n}\n\nfn main() {}\n', 'field name `Foo` cannot contain uppercase letters, use snake_case instead'},
+		ReviewFixture{'forwarded_pointer_preserves_immutable_alias', 'struct State {
+mut:
+	values []int
+}
+
+fn identity(state &State) &State {
+	return state
+}
+
+fn forward(state &State) &State {
+	return identity(state)
+}
+
+fn main() {
+	state := State{
+		values: [1]
+	}
+	mut alias := forward(state)
+	alias.values[0] = 2
+}
+', 'aliases mutable data from an immutable value'},
 	])
 	check_review_runtime('receiver_calls_method_values_and_closure_captures', [
 		ReviewFixture{'heap_pointer_receiver_method_value', 'struct Foo {}
@@ -1139,6 +1172,17 @@ fn (receiver Receiver) forward(values ...int) {
 fn main() {}
 ', 'when forwarding a variadic variable, it must be the final argument'},
 		ReviewFixture{'bad_explicit_generic_too_many_type_args', 'fn id[T](x T) T {\n\treturn x\n}\n\nfn main() {\n\t_ := id[int, string](1)\n}\n', 'expected 1 generic parameter, got 2'},
+		ReviewFixture{'bad_generic_channel_alias_element', 'type Ch[T] = chan T
+
+fn receive(ch Ch[int]) int {
+	return <-ch
+}
+
+fn main() {
+	ch := chan string{cap: 1}
+	_ := receive(ch)
+}
+', 'cannot use `chan string`'},
 	])
 }
 
@@ -1312,6 +1356,7 @@ fn test_function_returns_control_flow_and_option_result_rejections() {
 		ReviewFixture{'bad_nested_shadowed_exit_multi_return_branch', 'fn main() {\n\tflag := true\n\ta, b := if flag {\n\t\t1, 2\n\t} else {\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n', 'multi-return assignment mismatch'},
 		ReviewFixture{'bad_shadowed_import_os_exit_missing_return', 'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) {}\nfn f(os OsLike) int {\n\tos.exit(0)\n}\nfn main() {}\n', 'missing return at end of function `f`'},
 		ReviewFixture{'bad_shadowed_os_exit_return_value', 'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) int {\n\treturn code + 1\n}\nfn f(os OsLike) int {\n\treturn os.exit(4)\n}\nfn main() {\n\tprintln(int_str(f(OsLike{})))\n}\n', 'duplicate of an import symbol `os`'},
+		ReviewFixture{'bad_called_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {\n\t_ := f[int]()\n}\n', 'missing return at end of function `f`'},
 	])
 }
 
@@ -1328,21 +1373,6 @@ ${indent}value = holder.item or { "" }
 }
 ',
 		'cannot assign to `value`: expected `int`, not `string`')
-}
-
-fn test_generic_alias_substitutes_channel_element() {
-	run_bad(v3_bin, 'bad_generic_channel_alias_element', 'type Ch[T] = chan T
-
-fn receive(ch Ch[int]) int {
-	return <-ch
-}
-
-fn main() {
-	ch := chan string{cap: 1}
-	_ := receive(ch)
-}
-',
-		'cannot use `chan string`')
 }
 
 fn test_return_types_abi_wrappers_and_numeric_receivers() {
@@ -1459,30 +1489,7 @@ fn main() {
 	])
 }
 
-fn test_smartcasted_fn_sum_call_keeps_active_variant_arity() {
-	run_bad(v3_bin, 'bad_smartcasted_fn_sum_variant_arity', 'type Callback = fn () int | fn (int) int
-
-fn no_args() int {
-	return 7
-}
-
-fn invoke(cb Callback) {
-	if cb is fn () int {
-		_ := cb(1)
-	}
-}
-
-fn main() {
-	invoke(Callback(no_args))
-}
-',
-		'expected 0 arguments, but got 1')
-}
-
 fn test_called_generic_functions_report_missing_return() {
-	run_bad(v3_bin, 'bad_called_generic_missing_return',
-		'fn f[T]() int {\n}\nfn main() {\n\t_ := f[int]()\n}\n',
-		'missing return at end of function `f`')
 	run_bad(v3_bin, 'bad_generic_comptime_branch_missing_return',
 		'fn f[T]() int {\n\t$if T is int {\n\t\treturn 1\n\t}\n}\nfn main() {\n\t_ := f[string]()\n}\n',
 		'missing return at end of function `f`')
@@ -1628,29 +1635,4 @@ fn main() {
 fn main() {}
 ',
 		'function name `bad_T_Name` cannot contain uppercase letters, use snake_case instead')
-}
-
-fn test_forwarded_pointer_result_preserves_immutable_alias() {
-	run_bad(v3_bin, 'forwarded_pointer_preserves_immutable_alias', 'struct State {
-mut:
-	values []int
-}
-
-fn identity(state &State) &State {
-	return state
-}
-
-fn forward(state &State) &State {
-	return identity(state)
-}
-
-fn main() {
-	state := State{
-		values: [1]
-	}
-	mut alias := forward(state)
-	alias.values[0] = 2
-}
-',
-		'aliases mutable data from an immutable value')
 }
