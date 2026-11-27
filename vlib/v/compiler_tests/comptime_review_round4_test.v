@@ -287,32 +287,7 @@ fn main() {
 '
 			expected: 'config:string|reflected:int'
 		},
-	])
-}
-
-fn test_comptime_match_accepts_type_group_patterns() {
-	out := round4_run_good(v3_bin, 'comptime_match_type_group_patterns', 'struct S {}
-
-fn classify[T](value T) string {
-	_ = value
-	$match T {
-		$int { return "int" }
-		$struct { return "struct" }
-		$else { return "other" }
-	}
-	return "unreachable"
-}
-
-fn main() {
-	println(classify(1))
-	println(classify(S{}))
-}
-')
-	assert out == 'int\nstruct'
-}
-
-fn test_comptime_variant_metadata_only_exposes_typ() {
-	out := round4_run_good(v3_bin, 'variant_metadata_typ', 'struct A {}
+		Round4RuntimeCase{'variant_metadata_typ', 'struct A {}
 struct B {}
 
 type Value = A | B
@@ -336,9 +311,11 @@ fn main() {
 	}
 	println(type_ids_match.join(",") + "|" + int_str(count))
 }
-')
-	assert out == 'true,true|2'
+', 'true,true|2'},
+	])
+}
 
+fn test_comptime_variant_metadata_only_exposes_typ() {
 	round4_check_rejections('variant_and_selected_method_metadata_rejections', [
 		Round4Rejection{'bad_variant_name_member', 'struct A {}
 struct B {}
@@ -608,6 +585,23 @@ fn main() {
 '
 			expected: 'int:id|string:name|option:maybe'
 		},
+		Round4RuntimeCase{'typeof_dynamic_field_selector_in_comptime_for', "struct Foo {
+	id int
+	name string
+}
+
+fn main() {
+	foo := Foo{
+		id: 1
+		name: 'Ada'
+	}
+	mut rows := []string{}
+	$for field in Foo.fields {
+		rows << typeof(foo.$(field.name)).name
+	}
+	println(rows.join('|'))
+}
+", 'int|string'},
 	])
 }
 
@@ -752,6 +746,21 @@ fn main() {
 	"
 			expected: 'outer-field:a|inner-field:b|inner-field:c|mixed-value:0|mixed-value:1|outer-value:one|inner-value:red|inner-value:blue'
 		},
+		Round4RuntimeCase{'optional_reflected_for_fallback', 'struct OptionalRows {
+	values ?[]int
+}
+
+fn main() {
+	rows := OptionalRows{}
+	mut total := 0
+	$for field in OptionalRows.fields {
+		for value in rows.$(field.name) or { [4, 5] } {
+			total += value
+		}
+	}
+	println(total)
+}
+', '9'},
 	])
 }
 
@@ -967,39 +976,6 @@ fn main() {
 	assert out == 'id:ok'
 }
 
-fn test_unreachable_generic_call_in_metadata_if_does_not_skip_comptime_for() {
-	out := round4_run_good(v3_bin, 'unreachable_generic_call_in_comptime_for', "struct S {
-	id int
-}
-
-enum Color {
-	red
-}
-
-fn generic_fn[T]() string {
-	return 'bad'
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field.name == 'missing' {
-			rows << generic_fn[int]()
-		}
-		rows << field.name
-	}
-	$for item in Color.values {
-		$if item.name == 'missing' {
-			rows << generic_fn[int]()
-		}
-		rows << item.name
-	}
-	println(rows.join('|'))
-}
-")
-	assert out == 'id|red'
-}
-
 fn test_field_source_and_metadata_pruning() {
 	round4_check_runtime('field_source_and_metadata_pruning', [
 		Round4RuntimeCase{
@@ -1098,6 +1074,67 @@ fn main() {
 '
 			expected: 'ptr'
 		},
+		Round4RuntimeCase{'unreachable_generic_call_in_comptime_for', "struct S {
+	id int
+}
+
+enum Color {
+	red
+}
+
+fn generic_fn[T]() string {
+	return 'bad'
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.name == 'missing' {
+			rows << generic_fn[int]()
+		}
+		rows << field.name
+	}
+	$for item in Color.values {
+		$if item.name == 'missing' {
+			rows << generic_fn[int]()
+		}
+		rows << item.name
+	}
+	println(rows.join('|'))
+}
+", 'id|red'},
+		Round4RuntimeCase{'cached_reflection_guard_identifiers', "struct Foo {
+	id    int
+	title string
+}
+
+fn selector_member_collision() string {
+	name := 'x'
+	mut found := ''
+	$for field in Foo.fields {
+		$if field.name == 'id' {
+			found = field.name
+		}
+	}
+	return found + ':' + name
+}
+
+fn loop_var_collision() string {
+	field := 'x'
+	mut found := ''
+	$for field in Foo.fields {
+		$if field.name == 'id' {
+			found = field.name
+		}
+	}
+	return found + ':' + field
+}
+
+fn main() {
+	println(selector_member_collision())
+	println(loop_var_collision())
+}
+", 'id:x\nid:x'},
 	])
 }
 
@@ -1572,27 +1609,6 @@ fn main() {
 	assert out == 'child:9'
 }
 
-fn test_comptime_for_typeof_dynamic_field_selector_is_preserved() {
-	out := round4_run_good(v3_bin, 'typeof_dynamic_field_selector_in_comptime_for', "struct Foo {
-	id int
-	name string
-}
-
-fn main() {
-	foo := Foo{
-		id: 1
-		name: 'Ada'
-	}
-	mut rows := []string{}
-	$for field in Foo.fields {
-		rows << typeof(foo.$(field.name)).name
-	}
-	println(rows.join('|'))
-}
-")
-	assert out == 'int|string'
-}
-
 fn test_comptime_for_static_body_and_metadata_guard_rejections() {
 	round4_check_rejections('comptime_for_static_body_and_metadata_guard_rejections', [
 		Round4Rejection{'bad_static_code_in_comptime_for', 'struct S {
@@ -1676,37 +1692,6 @@ fn main() {
 }
 	", 'unknown EnumData member `nmae`'},
 	])
-}
-
-fn test_comptime_member_lookalikes_in_guard_strings_are_ignored() {
-	out := round4_run_good(v3_bin, 'guard_member_text_literal', "struct S {
-	id int
-}
-
-enum Color {
-	red
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field.name == 'field.nmae' {
-			rows << 'bad'
-		} $else {
-			rows << field.name
-		}
-	}
-	$for item in Color.values {
-		$if item.name == 'item.nmae' {
-			rows << 'bad'
-		} $else {
-			rows << item.name
-		}
-	}
-	println(rows.join('|'))
-}
-	")
-	assert out == 'id|red'
 }
 
 fn test_enum_values_use_const_from_declaring_module() {
@@ -1852,43 +1837,24 @@ fn main() {
 	}
 }
 ", 'voidptr'},
-	])
-}
+		Round4RuntimeCase{'comptime_match_type_group_patterns', 'struct S {}
 
-fn test_cached_values_do_not_replace_reflection_guard_identifiers() {
-	out := round4_run_good(v3_bin, 'cached_reflection_guard_identifiers', "struct Foo {
-	id    int
-	title string
-}
-
-fn selector_member_collision() string {
-	name := 'x'
-	mut found := ''
-	$for field in Foo.fields {
-		$if field.name == 'id' {
-			found = field.name
-		}
+fn classify[T](value T) string {
+	_ = value
+	$match T {
+		$int { return "int" }
+		$struct { return "struct" }
+		$else { return "other" }
 	}
-	return found + ':' + name
-}
-
-fn loop_var_collision() string {
-	field := 'x'
-	mut found := ''
-	$for field in Foo.fields {
-		$if field.name == 'id' {
-			found = field.name
-		}
-	}
-	return found + ':' + field
+	return "unreachable"
 }
 
 fn main() {
-	println(selector_member_collision())
-	println(loop_var_collision())
+	println(classify(1))
+	println(classify(S{}))
 }
-")
-	assert out == 'id:x\nid:x'
+', 'int\nstruct'},
+	])
 }
 
 fn test_reflected_method_signatures_and_arity() {
@@ -2035,6 +2001,35 @@ fn main() {
 '
 			expected: 'xxx|ab'
 		},
+		Round4RuntimeCase{'generic_receiver_method_metadata', 'struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) get(value T) T {
+	_ = b
+	return value
+}
+
+fn reflected_method_metadata[T]() string {
+	mut rows := []string{}
+	$for method in T.methods {
+		$if method.return_type is int {
+			rows << "return"
+		}
+		$if method.params[0].typ is int {
+			rows << "param"
+		}
+		if method.typ == typeof[fn (int) int]().idx {
+			rows << "signature"
+		}
+	}
+	return rows.join("|")
+}
+
+fn main() {
+	println(reflected_method_metadata[Box[int]]())
+}
+', 'return|param|signature'},
 	])
 }
 
@@ -2062,25 +2057,6 @@ fn main() {
 }
 ')
 	assert out == 'true\ntrue\nrun'
-}
-
-fn test_optional_reflected_for_iterable_with_fallback_is_not_unwrapped_twice() {
-	out := round4_run_good(v3_bin, 'optional_reflected_for_fallback', 'struct OptionalRows {
-	values ?[]int
-}
-
-fn main() {
-	rows := OptionalRows{}
-	mut total := 0
-	$for field in OptionalRows.fields {
-		for value in rows.$(field.name) or { [4, 5] } {
-			total += value
-		}
-	}
-	println(total)
-}
-')
-	assert out == '9'
 }
 
 fn test_quoted_attribute_names_and_arguments() {
@@ -2320,6 +2296,19 @@ fn test_comptime_pseudo_values_and_define_shadowing() {
 	}
 }
 ", 'ok'},
+		Round4RuntimeCase{'fn_literal_comptime_value_scope', "fn main() {
+	f := fn () {
+		x := 'inside'
+		_ = x
+	}
+	_ = f
+	\$if x == 'inside' {
+		println('wrong')
+	} \$else {
+		println('ok')
+	}
+}
+", 'ok'},
 	])
 }
 
@@ -2447,23 +2436,6 @@ fn test_attribute_line_pseudo_values_use_their_token_positions() {
 	lines << '}'
 	out := round4_run_good(v3_bin, name, lines.join('\n') + '\n')
 	assert out == 'line|file-line'
-}
-
-fn test_fn_literal_comptime_values_do_not_leak_to_outer_scope() {
-	out := round4_run_good(v3_bin, 'fn_literal_comptime_value_scope', "fn main() {
-	f := fn () {
-		x := 'inside'
-		_ = x
-	}
-	_ = f
-	\$if x == 'inside' {
-		println('wrong')
-	} \$else {
-		println('ok')
-	}
-}
-")
-	assert out == 'ok'
 }
 
 fn test_cached_and_shadowed_char_literals() {
@@ -2648,6 +2620,33 @@ fn test_raw_and_quoted_string_literal_shadowing() {
 	}
 }
 ", 'ok'},
+		Round4RuntimeCase{'guard_member_text_literal', "struct S {
+	id int
+}
+
+enum Color {
+	red
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.name == 'field.nmae' {
+			rows << 'bad'
+		} $else {
+			rows << field.name
+		}
+	}
+	$for item in Color.values {
+		$if item.name == 'item.nmae' {
+			rows << 'bad'
+		} $else {
+			rows << item.name
+		}
+	}
+	println(rows.join('|'))
+}
+	", 'id|red'},
 	])
 }
 
@@ -3249,60 +3248,7 @@ fn main() {
 	assert out == 'param:local|attr:module_attr'
 }
 
-fn test_generic_receiver_method_metadata_uses_concrete_args() {
-	out := round4_run_good(v3_bin, 'generic_receiver_method_metadata', 'struct Box[T] {
-	value T
-}
-
-fn (b Box[T]) get(value T) T {
-	_ = b
-	return value
-}
-
-fn reflected_method_metadata[T]() string {
-	mut rows := []string{}
-	$for method in T.methods {
-		$if method.return_type is int {
-			rows << "return"
-		}
-		$if method.params[0].typ is int {
-			rows << "param"
-		}
-		if method.typ == typeof[fn (int) int]().idx {
-			rows << "signature"
-		}
-	}
-	return rows.join("|")
-}
-
-fn main() {
-	println(reflected_method_metadata[Box[int]]())
-}
-')
-	assert out == 'return|param|signature'
-}
-
 fn test_generic_reflection_compile_error_waits_for_selected_branch() {
-	out := round4_run_good(v3_bin, 'generic_reflection_unselected_compile_error', "struct App {}
-
-fn (app App) present() {
-	_ = app
-}
-
-fn validate[T]() {
-	\$for method in T.methods {
-		\$if method.name == 'missing' {
-			\$compile_error('missing method selected')
-		}
-	}
-}
-
-fn main() {
-	validate[App]()
-	println('ok')
-}
-")
-	assert out == 'ok'
 	round4_run_bad(v3_bin, 'generic_reflection_selected_compile_error', "struct App {}
 
 fn (app App) present() {
@@ -3484,6 +3430,25 @@ fn main() {
 '
 			expected: 'run|value|route'
 		},
+		Round4RuntimeCase{'generic_reflection_unselected_compile_error', "struct App {}
+
+fn (app App) present() {
+	_ = app
+}
+
+fn validate[T]() {
+	\$for method in T.methods {
+		\$if method.name == 'missing' {
+			\$compile_error('missing method selected')
+		}
+	}
+}
+
+fn main() {
+	validate[App]()
+	println('ok')
+}
+", 'ok'},
 	])
 }
 
