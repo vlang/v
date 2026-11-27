@@ -59,7 +59,7 @@ fn test_ownership_mut_receiver_returns_keep_local_storage_checks() {
 		assert shadow.exit_code != 0, shadow.output
 		assert shadow.output.contains(mut_receiver_shadow_error), shadow.output
 	}
-	check_mut_receiver_deep_return_aliases(os.join_path(root, 'deep'), batched)!
+	check_mut_receiver_deep_local_return(os.join_path(root, 'deep'), batched)!
 }
 
 fn check_mut_receiver_escape_batch(root string, expressions []string) ! {
@@ -71,7 +71,7 @@ fn check_mut_receiver_escape_batch(root string, expressions []string) ! {
 		calls << '\t{\n\t\tmut drops := 0\n\t\t_ = ${name}(&drops)\n\t}'
 	}
 	os.write_file(os.join_path(root, 'deep_case.v'), 'module main\n\n' +
-		mut_receiver_deep_alias_declarations('DeepBuilder', 'deep_reference', false))!
+		mut_receiver_deep_local_alias_declarations('DeepBuilder', 'deep_reference'))!
 	calls << '\tassert deep_reference().value == 42'
 	os.write_file(os.join_path(root, 'shadow_case.v'), 'module main\n\n' +
 		mut_receiver_shadow_declarations('ShadowBuilder'))!
@@ -152,23 +152,28 @@ fn main() {
 	assert builder.value == 42
 	assert heap_branch_reference(true).value == 42
 	assert heap_branch_reference(false).value == 41
+	assert deep_heap_reference().value == 42
 }
-')!
-	for mode in ['-no-parallel', ''] {
-		result := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+' + mut_receiver_deep_alias_functions('Builder', 'deep_heap_reference', true))!
+	for mode in [['-no-parallel'], []string{}] {
+		result := os.exec([...mut_receiver_escape_args, '-cc', 'clang', ...mode, 'run', source])
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
 }
 
-fn mut_receiver_deep_alias_declarations(typ string, name string, heap bool) string {
+fn mut_receiver_deep_local_alias_declarations(typ string, name string) string {
+	return 'struct ${typ} { mut: value int }
+fn (mut builder ${typ}) set(value int) &${typ} { builder.value = value; return builder }
+' + mut_receiver_deep_alias_functions(typ, name, false)
+}
+
+fn mut_receiver_deep_alias_functions(typ string, name string, heap bool) string {
 	mut expression := 'builder.set(42)'
 	for _ in 0 .. 80 {
 		expression = 'identity(${expression})'
 	}
 	pointer := if heap { '&' } else { '' }
-	return 'struct ${typ} { mut: value int }
-fn (mut builder ${typ}) set(value int) &${typ} { builder.value = value; return builder }
-fn identity(builder &${typ}) &${typ} { return builder }
+	return 'fn identity(builder &${typ}) &${typ} { return builder }
 fn ${name}() &${typ} {
 	mut builder := ${pointer}${typ}{}
 	return ${expression}
@@ -176,23 +181,15 @@ fn ${name}() &${typ} {
 '
 }
 
-fn check_mut_receiver_deep_return_aliases(root string, batched bool) ! {
+fn check_mut_receiver_deep_local_return(root string, batched bool) ! {
 	os.mkdir_all(root)!
 	source := os.join_path(root, 'main.v')
-	for heap in [false, true] {
-		os.write_file(source, mut_receiver_deep_alias_declarations('Builder', 'reference', heap) +
-			'fn main() { assert reference().value == 42 }\n')!
-		for mode in [['-no-parallel'], []string{}] {
-			if !heap && batched && mode.len == 0 {
-				continue
-			}
-			out := os.exec([...mut_receiver_escape_args, ...mode, '-check', source])
-			if heap {
-				assert out.exit_code == 0, out.output
-			} else {
-				assert out.exit_code != 0, out.output
-				assert out.output.contains('cannot return a reference to local storage `builder`'), out.output
-			}
-		}
+	os.write_file(source, mut_receiver_deep_local_alias_declarations('Builder', 'reference') +
+		'fn main() { assert reference().value == 42 }\n')!
+	modes := if batched { [['-no-parallel']] } else { [['-no-parallel'], []string{}] }
+	for mode in modes {
+		out := os.exec([...mut_receiver_escape_args, ...mode, '-check', source])
+		assert out.exit_code != 0, out.output
+		assert out.output.contains('${mut_receiver_escape_error} `builder`'), out.output
 	}
 }
