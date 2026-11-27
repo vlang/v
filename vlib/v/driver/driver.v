@@ -9336,6 +9336,7 @@ const v3_cache_compiler_runtime_inputs = [
 	'vlib/runtime/free_memory_openbsd.c',
 	'vlib/v/diagserver/syscalls_linux.c',
 	'vlib/v/modulecache/file_metadata.c',
+	'vlib/v/cmdexec/cmdexec_wait.c',
 	'vlib/builtin/segfault_handler_nix.c',
 	'vlib/builtin/segfault_handler_nix.h',
 	'vlib/v/driver/run_signals_nix.c',

@@ -84,9 +84,8 @@ fn v3_pinned_web_native_interfaces_digests(vroot string, mut digests map[string]
 
 // These compiler-shipped headers declare inline helpers over system types only:
 // `pthread_helper.h` (pthread wrappers whose out-of-line copies `v.workers` links
-// from the separate `pthread_helper.o` #flag object), `cmdexec_poll.h` and
-// `cmdexec_wait.h` (wrappers for poll and waitid). No cached unit owns native state
-// through them. Like the
+// from the separate `pthread_helper.o` #flag object) and `cmdexec_poll.h` (a
+// `poll` wrapper). No cached unit owns native state through them. Like the
 // mbedTLS contract above, this one is explicit: V never opens a header to infer it.
 // The digests pin their audited content for TinyCC, which cannot diagnose
 // date/time macros (see v3_pinned_web_native_interfaces). Editing a header keeps
@@ -95,7 +94,6 @@ fn v3_pinned_web_native_interfaces_digests(vroot string, mut digests map[string]
 const v3_compiler_native_interfaces = {
 	'vlib/v/pthread_helper.h':       'bb67db81eb0b7cb4dffde870368b3bd9a5ed0cc7f9ae73ab7a14aca21a490f1c'
 	'vlib/v/cmdexec/cmdexec_poll.h': '84e10482377fb00a9b9e7705dea55d3797a07d2f7df459be2886b7933ab31e90'
-	'vlib/v/cmdexec/cmdexec_wait.h': '6ff4997b9aa9c22be1ff016dedb7fcdca7301c397e02b5cb8aa4bc37de7c729d'
 }
 
 fn v3_compiler_native_interface_path(vroot string, relative string) string {

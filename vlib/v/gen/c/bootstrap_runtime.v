@@ -54,6 +54,9 @@ fn (mut g FlatGen) headerless_compiler_runtime_helpers() {
 	// This V-owned process facade already declares posix_spawn's opaque actions
 	// and contains no include directives. Its libc dependencies are declared above.
 	g.write($embed_file('@VEXEROOT/vlib/os/execute_capture_nix.h').to_string())
+	// The headerless compiler has no target siginfo_t layout.
+	g.writeln('static int v_cmdexec_child_has_exited(int pid) { (void)pid; return -1; }')
+	g.collect_preserved_c_fns(['v_cmdexec_child_has_exited'])
 	g.writeln('#endif')
 	g.write(headerless_compiler_detached_thread_helpers)
 	g.collect_preserved_c_fns(['getrusage', 'pthread_attr_set_qos_class_np', 'v3_pthread_zero',
@@ -172,11 +175,6 @@ fn (mut g FlatGen) headerless_cmdexec_poll_helper() {
 	}
 	g.write(headerless_cmdexec_poll)
 	g.collect_preserved_c_fns(['v_cmdexec_poll_revents'])
-	if cmdexec {
-		// Without the target's siginfo_t layout, use cmdexec's fallback for an unknown exit state.
-		g.writeln('static inline int v_cmdexec_child_has_exited(int pid) { (void)pid; return -1; }')
-		g.collect_preserved_c_fns(['v_cmdexec_child_has_exited'])
-	}
 	if os_poll {
 		g.writeln('static inline short v_os_fd_poll_revents(int fd, short events) { return v_cmdexec_poll_revents(fd, events); }')
 		g.collect_preserved_c_fns(['v_os_fd_poll_revents'])

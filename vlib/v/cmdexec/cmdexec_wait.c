@@ -1,5 +1,7 @@
-#ifndef V_CMDEXEC_WAIT_H
-#define V_CMDEXEC_WAIT_H
+#ifndef _WIN32
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -12,7 +14,7 @@
 // A child that has ended and was not reaped keeps its pid and, as the leader of a process
 // group, the group's id: a signal sent to the group afterwards cannot reach a stranger.
 // waitpid(WNOHANG), which os.Process.is_alive uses, reaps what it finds.
-static inline int v_cmdexec_child_has_exited(int pid) {
+int v_cmdexec_child_has_exited(int pid) {
 // (P_PID is an enumerator in glibc and musl, not a macro: it cannot be asked for here.)
 #if defined(WNOWAIT) && defined(WEXITED)
 	siginfo_t info;

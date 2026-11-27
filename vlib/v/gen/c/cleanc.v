@@ -7071,10 +7071,7 @@ fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source stri
 			return include_arg == '<windows.h>'
 				|| (g.target.os in ['macos', 'linux', 'android', 'termux', 'freebsd', 'openbsd',
 					'dragonfly', 'ios']
-					&& normalized_c_include_arg_path(include_arg) in [
-						root + '/vlib/v/cmdexec/cmdexec_poll.h',
-						root + '/vlib/v/cmdexec/cmdexec_wait.h',
-					])
+					&& normalized_c_include_arg_path(include_arg) == root + '/vlib/v/cmdexec/cmdexec_poll.h')
 		}
 		'time/time_windows.c.v' {
 			return include_arg == '<time.h>'
@@ -21198,6 +21195,11 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	// which is `int64_t` here and not `long long` on every target.
 	g.writeln('#define V_PEAK_RSS_INT i64')
 	g.write($embed_file('@VEXEROOT/vlib/v/bench/peak_rss.h').to_string())
+	if g.output_cross_c && !g.object_file_mode {
+		cmdexec_wait_source := $embed_file('@VEXEROOT/vlib/v/cmdexec/cmdexec_wait.c').to_string()
+		g.write(cmdexec_wait_source.replace('int v_cmdexec_child_has_exited(', 'static int v_cmdexec_child_has_exited('))
+		g.collect_preserved_c_fns(['v_cmdexec_child_has_exited'])
+	}
 	capture_source := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.c').to_string()
 	capture_header := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.h').to_string()
 	g.write(capture_source.replace('#define V_OS_EXECUTE_SCOPE\n', '')

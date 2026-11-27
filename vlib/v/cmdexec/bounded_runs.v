@@ -19,7 +19,7 @@ import time
 // - The thread that owns a run sees the flag in its read loop and kills the run's group, as
 //   it does at the deadline. A run is not started once the flag is set.
 //   A run whose output is at its end is finished by the same thread under one rule: its
-//   leader is seen to have ended WITHOUT being reaped (cmdexec_wait.h), and the flag is read
+//   leader is seen to have ended WITHOUT being reaped (cmdexec_wait.c), and the flag is read
 //   after that. A cancellation recorded before the leader ended therefore always ends the
 //   group, while the leader's pid is still its own; one recorded after that read finds a
 //   run that had ended by itself.
