@@ -4,6 +4,10 @@ pub struct Connection {
 mut:
 	henv C.SQLHENV = C.SQLHENV(C.SQL_NULL_HENV) // Environment
 	hdbc C.SQLHDBC = C.SQLHDBC(C.SQL_NULL_HDBC) // Connection handle
+	// last_insert_id holds the identity captured by the last INSERT batch on
+	// this connection. SCOPE_IDENTITY() is scoped to its batch, so it is read
+	// back in the same batch that ran the INSERT (see exec).
+	last_insert_id int
 pub mut:
 	conn_str string
 }
@@ -63,34 +67,87 @@ pub fn (mut conn Connection) close() {
 	}
 }
 
-// query executes a sql query
+// query executes a sql query without parameters
 pub fn (mut conn Connection) query(q string) !Result {
+	return conn.exec(q, [])
+}
+
+// is_insert_stmt reports whether q is a plain INSERT batch that returns no
+// rows. Leading whitespace and case are ignored. Batches with an OUTPUT
+// clause are excluded: they already return rows, which exec passes through
+// unchanged.
+fn is_insert_stmt(q string) bool {
+	upper := q.trim_space().to_upper()
+	if !upper.starts_with('INSERT') {
+		return false
+	}
+	return !upper.contains('OUTPUT INSERTED') && !upper.contains('OUTPUT DELETED')
+}
+
+// insert_batch_query appends a same-batch identity lookup to an INSERT so the
+// generated id can be read back before the batch (scope) ends. The appended
+// lookup takes no parameters, so the bind count of the batch is unchanged.
+fn insert_batch_query(q string) string {
+	return '${q}; SELECT SCOPE_IDENTITY()'
+}
+
+// exec executes a sql query, binding one value per `?` marker. A none value is
+// bound as SQL NULL. The values stay alive until the statement has executed.
+pub fn (mut conn Connection) exec(q string, params []?string) !Result {
 	mut hstmt := new_hstmt(conn.hdbc)!
 	defer {
 		hstmt.close()
 	}
 
-	hstmt.exec(q)!
+	capture_id := is_insert_stmt(q)
+	batch_q := if capture_id { insert_batch_query(q) } else { q }
+
+	if params.len > 0 {
+		hstmt.prepare(batch_q)!
+		// Preallocate the indicator storage before binding: ODBC retains each
+		// indicator address until SQLExecute, so the array must not move while
+		// binds are handed out.
+		hstmt.reserve_param_indicators(params.len)
+		for i, param in params {
+			hstmt.bind_parameter(i + 1, param)!
+		}
+		hstmt.execute()!
+	} else {
+		hstmt.exec(batch_q)!
+	}
 
 	affected := hstmt.retrieve_affected_rows()!
 
-	hstmt.prepare_read()!
-	names := hstmt.read_column_names()!
-	raw_rows := hstmt.read_rows()!
-
-	mut res := Result{
-		names:             names
-		rows:              []Row{}
-		num_rows_affected: affected
-	}
-
-	for rr in raw_rows {
-		res.rows << Row{
-			vals: rr
+	if capture_id {
+		// Read the identity from the same batch (scope) that ran the INSERT,
+		// then report the INSERT result shape callers already expect: no rows.
+		// A separate `SELECT SCOPE_IDENTITY()` batch would see NULL because a
+		// new batch is a new scope.
+		if hstmt.more_results()! {
+			conn.last_insert_id = hstmt.read_single_int() or { 0 }
+		}
+		return Result{
+			names:             []string{}
+			rows:              []Row{}
+			num_rows_affected: affected
 		}
 	}
 
-	return res
+	hstmt.prepare_read()!
+	names := hstmt.read_column_names()!
+	rows := hstmt.read_rows()!
+
+	return Result{
+		names:             names
+		rows:              rows
+		num_rows_affected: affected
+	}
+}
+
+// last_id returns the identity value captured by the last INSERT batch on this
+// connection, or zero when no INSERT has produced one yet.
+pub fn (mut conn Connection) last_id() int {
+	return conn.last_insert_id
 }
 
 // check_error checks odbc return code and extract error string if available
