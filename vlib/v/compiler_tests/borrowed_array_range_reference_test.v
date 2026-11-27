@@ -174,8 +174,8 @@ fn main() {
 	}
 }
 
-fn test_borrowed_array_and_string_ranges_cannot_escape_local_owners() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_range_local_owner_${os.getpid()}')
+fn test_borrowed_ranges_reject_local_escapes_and_live_loan_mutations() {
+	root := os.join_path(os.vtmp_dir(), 'borrowed_range_rejections_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	cases := [
@@ -215,10 +215,11 @@ fn escaped[^a](values []Resource) &^a []Resource { return &values[1..] }',
 		'fn escaped(choose bool) &string { return if choose { local := "abcdef".to_owned(); &local[1..] } else { local := "ghijkl".to_owned(); &local[1..] } }',
 		'fn escaped(choose bool) &string { return match choose { true { local := "abcdef".to_owned(); &local[1..] } false { local := "ghijkl".to_owned(); &local[1..] } } }',
 	]
-	check_borrowed_range_rejections(root, cases.map(BorrowedRangeRejection{
+	escapes := cases.map(BorrowedRangeRejection{
 		source:   it + '\nfn main() {}\n'
 		expected: 'cannot return a reference to local storage'
-	}))!
+	})
+	check_borrowed_range_rejections(root, [...escapes, ...borrowed_range_source_loan_rejections()])!
 }
 
 fn check_borrowed_range_rejections(root string, cases []BorrowedRangeRejection) ! {
@@ -247,7 +248,9 @@ fn check_borrowed_range_rejections(root string, cases []BorrowedRangeRejection) 
 	}
 	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
 	for mode in modes {
-		compile := os.exec([...borrowed_range_compiler_args, ...mode, '-check', root])
+		// A single check must report every fixture's error past the default display limit.
+		compile := os.exec([...borrowed_range_compiler_args, ...mode, '-message-limit', '100',
+			'-check', root])
 		assert compile.exit_code != 0, '${mode}: ${compile.output}'
 		diagnostics := compile.output.split_into_lines().filter(it.contains('error: '))
 		for i, case in cases {
@@ -362,10 +365,7 @@ fn main() {
 	}
 }
 
-fn test_borrowed_string_and_mutable_array_ranges_keep_source_loans_live() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_range_source_loan_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
+fn borrowed_range_source_loan_rejections() []BorrowedRangeRejection {
 	mut cases := []BorrowedRangeRejection{}
 	for mutation, expected in {
 		'text = "replacement".to_owned()': 'cannot assign to `text` because `text[1]` is borrowed by `view`'
@@ -396,5 +396,5 @@ fn main() {
 			cases << BorrowedRangeRejection{fixture, 'borrowed by `result`'}
 		}
 	}
-	check_borrowed_range_rejections(root, cases)!
+	return cases
 }
