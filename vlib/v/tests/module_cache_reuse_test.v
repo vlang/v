@@ -518,6 +518,47 @@ fn test_cached_builtin_declares_string_comparison_before_fixed_array_map_helpers
 	assert run_built(root, 'third') == '3'
 }
 
+fn test_partial_cache_build_declares_fixed_array_key_helpers_before_module_objects() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	root := new_project('module_cache_partial_fixed_array_keys')
+	saved := pin_module_cache(os.join_path(root, 'cache'))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'fn main() { println(1) }') or { panic(err) }
+	cold := build(root, ['-cc', 'cc'], main_file, 'first')
+	assert parsed_source_files(cold) > 1, cold
+	assert run_built(root, 'first') == '1'
+	assert module_objects(root).filter(os.file_name(it).starts_with('datatypes_')).len == 0
+	os.write_file(main_file, 'import datatypes
+
+fn main() {
+	mut stack := datatypes.Stack[int]{}
+	stack.push(7)
+	mut counts := map[[2]string]int{}
+	key := ["first", "second"]!
+	counts[key] = stack.len()
+	assert counts[["first", "second"]!] == 1
+	println(counts[key])
+}
+') or { panic(err) }
+	partial := build(root, ['-cc', 'cc', '-no-retry-compilation'], main_file, 'second')
+	assert !partial.contains('failed to build cached module object'), partial
+	assert !partial.contains('V3 module cache fallback'), partial
+	assert module_objects(root).filter(os.file_name(it).starts_with('datatypes_')).len > 0
+	assert run_built(root, 'second') == '1'
+	warm := build(root, ['-cc', 'cc', '-no-retry-compilation'], main_file, 'third')
+	assert_reused_modules(warm)
+	assert run_built(root, 'third') == '1'
+}
+
 fn test_incremental_program_reuses_shared_literals_and_keeps_new_literals() {
 	$if !macos {
 		return

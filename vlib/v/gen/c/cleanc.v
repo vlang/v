@@ -4925,11 +4925,14 @@ fn (mut g FlatGen) gen_pre_body_support_declarations() {
 	support_start := g.sb.len
 	g.fixed_array_map_key_definitions()
 	g.gen_ownership_recursive_drop_helpers()
-	if g.cache_decl_demand {
+	if g.cache_decl_demand || g.cache_const_source_modules.len > 0 {
 		// Support helpers can be the only callers of cached builtin functions.
-		// Select and emit those prototypes before the helper definitions.
+		// In a partial cache build, unfiltered cached prototypes must also
+		// precede the helper definitions in each newly compiled module object.
 		support := g.sb.cut_to(support_start)
-		g.cache_collect_declaration_refs(support)
+		if g.cache_decl_demand {
+			g.cache_collect_declaration_refs(support)
+		}
 		g.cached_header_forward_decls()
 		g.write(support)
 	} else {
