@@ -1,0 +1,22 @@
+@[sendable]
+struct SendablePoint {
+	x int
+	y int
+}
+
+@[sendable]
+struct SendableBad {
+	p &int
+}
+
+fn main() {
+	good := chan SendablePoint{cap: 1}
+	good <- SendablePoint{ x: 1, y: 2 }
+	p := <-good
+	println(p.x + p.y)
+	bad := chan SendableBad{cap: 1}
+	mut v := 5
+	bad <- SendableBad{ p: &v }
+	b := <-bad
+	println('done')
+}

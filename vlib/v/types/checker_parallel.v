@@ -2507,6 +2507,9 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					}
 					tc.check_decl_type_strings(flat.NodeId(i), node)
 					tc.check_struct_implements(flat.NodeId(i), node)
+					if tc.declaration_has_attribute(node_id, 'sendable') {
+						tc.check_sendable_struct_decl(node_id, node)
+					}
 					if tc.declaration_has_attribute(node_id, 'attribute') {
 						tc.check_attribute_schema_decl(node_id, node)
 					}
@@ -4207,7 +4210,8 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 			|| (is_concrete_if_guard_error(err.msg) && tc.operand_is_plain(err.node)
 				&& !tc.concrete_guard_options[err.node])
 			|| tc.is_container_layout_error(err.msg)
-			|| tc.is_container_type_error(err.msg) {
+			|| tc.is_container_type_error(err.msg)
+			|| is_concrete_sendable_error(err.msg) {
 			kept << err
 		}
 	}
@@ -4215,6 +4219,16 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	tc.errors << kept
 	tc.notices.trim(notices_start)
 	tc.concrete_guard_options = map[flat.NodeId]bool{}
+}
+
+// is_concrete_sendable_error reports whether `msg` is an RFC 008 sendability
+// diagnostic. Generic bodies are checked again as concrete clones with their
+// type arguments substituted, so a transfer of `Parcel[&int]` fails there even
+// when the open `Parcel[T]` body cannot judge it. These diagnostics name
+// concrete types and are reliable in the clone, unlike most other clone
+// diagnostics which the filter drops.
+fn is_concrete_sendable_error(msg string) bool {
+	return msg.contains('is not sendable') || msg.contains('non-sendable type')
 }
 
 // member_of_an_alias_argument reports whether the member error `msg` names the
