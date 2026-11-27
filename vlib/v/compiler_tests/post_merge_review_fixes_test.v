@@ -665,9 +665,9 @@ fn main() {
 	])
 }
 
-fn test_wrapper_and_multi_return_rejections() {
+fn test_wrapped_and_forwarded_return_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'wrapper_and_multi_return_rejections', [
+	run_bad_module_batch(v3_bin, 'wrapped_and_forwarded_return_rejections', [
 		ReviewRejection{
 			name:     'unhandled_result_multi_decl_assign'
 			source:   "fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n"
@@ -708,6 +708,71 @@ fn test_wrapper_and_multi_return_rejections() {
 			source:   'fn maybe_void() ? {\n\treturn\n}\n\nfn f(n int) ?int {\n\treturn match n {\n\t\t0 { maybe_void() }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(0) or { 0 }\n}\n'
 			expected: 'return type mismatch, it should be `int`, but it is instead `?void`'
 		},
+		// A map is not converted entry by entry: since #30815 a `map[string]Value` is
+		// not a `map[string]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
+		ReviewRejection{'forwarded_multi_return_map_interface_slot', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_values() ([]Value, map[string]Value, int) {
+	return [Value{
+		n: 3
+	}], {
+		"item": Value{
+			n: 5
+		}
+	}, 7
+}
+
+fn forward_values() ([]IValue, map[string]IValue, int) {
+	return make_values()
+}
+
+fn main() {
+	values, indexed, n := forward_values()
+	println(int_str(values[0].get()))
+	println(int_str(indexed["item"].get()))
+	println(int_str(n))
+}
+', 'cannot use `map[string]fixture_8.Value` as type `map[string]fixture_8.IValue` in return argument'},
+		// A fixed array is not converted element by element: since #30863 a `[1]Value`
+		// is not a `[1]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
+		ReviewRejection{'forwarded_multi_return_fixed_interface_slot', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_fixed() ([1]Value, int) {
+	return [Value{
+		n: 11
+	}]!, 13
+}
+
+fn forward_fixed() ([1]IValue, int) {
+	return make_fixed()
+}
+
+fn main() {
+	fixed, fixed_n := forward_fixed()
+	println(int_str(fixed[0].get()))
+	println(int_str(fixed_n))
+}
+', 'cannot use `[1]fixture_9.Value` as type `[1]fixture_9.IValue` in return argument'},
 	])
 }
 
@@ -1504,77 +1569,6 @@ fn main() {
 	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
 	assert same_body.contains('OptionValue*'), same_body
 	assert same_body.contains('ResultValue*'), same_body
-}
-
-fn test_forwarded_multi_return_container_slots_are_converted() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'forwarded_container_slot_rejections', [
-		// A map is not converted entry by entry: since #30815 a `map[string]Value` is
-		// not a `map[string]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
-		ReviewRejection{'forwarded_multi_return_map_interface_slot', 'interface IValue {
-	get() int
-}
-
-struct Value {
-	n int
-}
-
-fn (value Value) get() int {
-	return value.n
-}
-
-fn make_values() ([]Value, map[string]Value, int) {
-	return [Value{
-		n: 3
-	}], {
-		"item": Value{
-			n: 5
-		}
-	}, 7
-}
-
-fn forward_values() ([]IValue, map[string]IValue, int) {
-	return make_values()
-}
-
-fn main() {
-	values, indexed, n := forward_values()
-	println(int_str(values[0].get()))
-	println(int_str(indexed["item"].get()))
-	println(int_str(n))
-}
-', 'cannot use `map[string]fixture_0.Value` as type `map[string]fixture_0.IValue` in return argument'},
-		// A fixed array is not converted element by element: since #30863 a `[1]Value`
-		// is not a `[1]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
-		ReviewRejection{'forwarded_multi_return_fixed_interface_slot', 'interface IValue {
-	get() int
-}
-
-struct Value {
-	n int
-}
-
-fn (value Value) get() int {
-	return value.n
-}
-
-fn make_fixed() ([1]Value, int) {
-	return [Value{
-		n: 11
-	}]!, 13
-}
-
-fn forward_fixed() ([1]IValue, int) {
-	return make_fixed()
-}
-
-fn main() {
-	fixed, fixed_n := forward_fixed()
-	println(int_str(fixed[0].get()))
-	println(int_str(fixed_n))
-}
-', 'cannot use `[1]fixture_1.Value` as type `[1]fixture_1.IValue` in return argument'},
-	])
 }
 
 fn test_interface_auto_str_preludes_stay_inside_tag_guards() {
@@ -4160,9 +4154,9 @@ fn main() {
 	])
 }
 
-fn test_interface_cast_rejects_pointer_shape_mismatch() {
+fn test_interface_pointer_and_voidptr_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'interface_pointer_rejections', [
+	run_bad_module_batch(v3_bin, 'interface_pointer_and_voidptr_rejections', [
 		ReviewRejection{
 			name:     'interface_pointer_shape_mismatch'
 			source:   'interface Sink {\n\tput(x &int)\n}\n\nstruct Bad {}\n\nfn (b Bad) put(x int) {}\n\nfn main() {\n\t_ := Sink(Bad{})\n}\n'
@@ -4178,6 +4172,25 @@ fn test_interface_cast_rejects_pointer_shape_mismatch() {
 			source:   'interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nstruct Bad {}\n\nfn main() {\n\t_ := SinkAlias(Bad{})\n}\n'
 			expected: 'does not implement interface'
 		},
+		ReviewRejection{'c_voidptr_does_not_auto_address', 'fn C.take(voidptr)
+
+fn main() {
+	value := 7
+	C.take(value)
+}
+', 'cannot use `int` as `voidptr` in argument 1 to `C.take`'},
+		ReviewRejection{'v_voidptr_enum_value_does_not_auto_address', 'enum Color {
+	red
+}
+
+fn take(value voidptr) {
+	_ = value
+}
+
+fn main() {
+	take(Color.red)
+}
+', 'cannot use `fixture_4.Color` as `voidptr` in argument 1 to `fixture_4.take`'},
 	])
 }
 
@@ -5243,9 +5256,7 @@ fn main() {
 	assert out == 'ok'
 }
 
-fn test_overloaded_index_accepts_declared_key_type() {
-	v3_bin := build_v3()
-	dict_src := 'struct Dict {
+const overloaded_index_getter_source = 'struct Dict {
 	values map[string]int
 }
 
@@ -5253,7 +5264,10 @@ fn (d Dict) [] (key string) int {
 	return d.values[key]
 }
 '
-	out := run_good(v3_bin, 'overloaded_index_accepts_declared_key_type', dict_src + '
+
+fn test_overloaded_index_accepts_declared_key_type() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'overloaded_index_accepts_declared_key_type', overloaded_index_getter_source + '
 
 fn main() {
 	d := Dict{
@@ -5265,29 +5279,13 @@ fn main() {
 }
 ')
 	assert out == '7'
-	run_bad(v3_bin, 'overloaded_index_rejects_wrong_key_type', dict_src + '
+	run_bad(v3_bin, 'overloaded_index_rejects_wrong_key_type', overloaded_index_getter_source + '
 
 fn main() {
 	d := Dict{}
 	println(int_str(d[1]))
 }
 ', 'cannot use `int` as overloaded index; expected `string`')
-	run_bad_module_batch(v3_bin, 'overloaded_index_setter_rejections', [
-		ReviewRejection{'overloaded_index_assignment_requires_setter', dict_src + '
-
-fn main() {
-	mut d := Dict{}
-	d["name"] = 1
-}
-', 'index assignment requires a `[]=` overload on type `fixture_0.Dict`'},
-		ReviewRejection{'overloaded_index_compound_assignment_requires_setter', dict_src + '
-
-fn main() {
-	mut d := Dict{}
-	d["name"] += 1
-}
-', 'index assignment requires a `[]=` overload on type `fixture_1.Dict`'},
-	])
 }
 
 fn test_overloaded_index_assignment_uses_setter_signature() {
@@ -5456,7 +5454,7 @@ fn main() {
 		ReviewRuntimeCase{'review_interface_rvalue_upcasts', 'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n', 'call\nif\nindex'},
 		ReviewRuntimeCase{'review_embedded_interface_fields_and_ptr_upcast', 'interface Base {\n\tname string\n\tlabel() string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name + ":label"\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn use_ptr(b &Base) string {\n\treturn b.name + ":" + b.label()\n}\n\nfn describe(base Base) string {\n\treturn match base {\n\t\tChild { base.name + ":" + base.child().str() }\n\t\telse { "else" }\n\t}\n}\n\nfn main() {\n\tchild := Child(User{\n\t\tname: "Ada"\n\t})\n\tbase := Base(User{\n\t\tname: "Bea"\n\t})\n\tprintln(child.name)\n\tprintln(use_ptr(child))\n\tprintln(describe(base))\n}\n', 'Ada\nAda:Ada:label\nBea:3'},
 	])
-	run_bad_module_batch(v3_bin, 'index_setter_rejections', [
+	run_bad_module_batch(v3_bin, 'overloaded_index_write_rejections', [
 		ReviewRejection{
 			name:     'overloaded_index_compound_assignment_checks_getter_index'
 			source:   mismatched_getter_src + '
@@ -5531,6 +5529,20 @@ fn main() {
 '
 			expected: 'postfix mutation is not supported for overloaded index expressions'
 		},
+		ReviewRejection{'overloaded_index_assignment_requires_setter', overloaded_index_getter_source + '
+
+fn main() {
+	mut d := Dict{}
+	d["name"] = 1
+}
+', 'index assignment requires a `[]=` overload on type `fixture_6.Dict`'},
+		ReviewRejection{'overloaded_index_compound_assignment_requires_setter', overloaded_index_getter_source + '
+
+fn main() {
+	mut d := Dict{}
+	d["name"] += 1
+}
+', 'index assignment requires a `[]=` overload on type `fixture_7.Dict`'},
 	])
 }
 
@@ -6724,31 +6736,6 @@ fn test_external_bare_macro_objective_c_guards_remain_possible() {
 		'main.v':          'module main\n\n#flag -UV3_FORCED_FEATURE\n#flag -include @VMODROOT/forced.h\n\n#undef V3_HEADER_FEATURE\n#include "config.h"\n#if V3_HEADER_FEATURE\n#include "active.m"\n#endif\n\n#include "source_defs.c"\n#if V3_SOURCE_FEATURE\n#include "source_active.m"\n#endif\n\n#if V3_FORCED_FEATURE\n#include "active.mm"\n#endif\n\nfn C.answer_from_header_macro_guard() int\nfn C.answer_from_source_macro_guard() int\n@[c_extern]\nfn C.answer_from_forced_macro_guard() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_header_macro_guard() + C.answer_from_source_macro_guard() + C.answer_from_forced_macro_guard()))\n}\n'
 	}, 'main.v')
 	assert out == '75'
-}
-
-fn test_followup_review_pointer_call_and_equality_semantics() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'voidptr_argument_rejections', [
-		ReviewRejection{'c_voidptr_does_not_auto_address', 'fn C.take(voidptr)
-
-fn main() {
-	value := 7
-	C.take(value)
-}
-', 'cannot use `int` as `voidptr` in argument 1 to `C.take`'},
-		ReviewRejection{'v_voidptr_enum_value_does_not_auto_address', 'enum Color {
-	red
-}
-
-fn take(value voidptr) {
-	_ = value
-}
-
-fn main() {
-	take(Color.red)
-}
-', 'cannot use `fixture_1.Color` as `voidptr` in argument 1 to `fixture_1.take`'},
-	])
 }
 
 fn test_map_retained_and_fresh_aliases() {
@@ -9242,9 +9229,9 @@ fn main() {}
 	assert out == ''
 }
 
-fn test_map_alias_initialization_and_conditional_rejections() {
+fn test_map_alias_initialization_and_control_flow_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'map_alias_initialization_and_conditional_rejections', [
+	run_bad_module_batch(v3_bin, 'map_alias_initialization_and_control_flow_rejections', [
 		ReviewRejection{'map_rebind_clears_unsafe_alias', 'fn main() {
 	mut original := {
 		"value": 1
@@ -9341,6 +9328,160 @@ fn test_map_alias_initialization_and_conditional_rejections() {
 '
 			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
 		},
+		ReviewRejection{'unsafe_map_alias_conditional_loop_zero_path', 'fn branch(cond bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for cond {
+		alias = unsafe { original }
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(false)
+}
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+		ReviewRejection{'unsafe_map_alias_break_before_assignment', 'fn branch(cond bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for {
+		if cond {
+			break
+		}
+		alias = unsafe { original }
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(true)
+}
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+		ReviewRejection{
+			name:     'unsafe_map_alias_if_return_path'
+			source:   'fn branch(cond bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if cond {
+		alias = unsafe { original }
+		return
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(false)
+}
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+		ReviewRejection{
+			name:     'unsafe_map_alias_match_return_path'
+			source:   'fn branch(value int) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	match value {
+		0 {
+			alias = unsafe { original }
+			return
+		}
+		else {}
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(1)
+}
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+		ReviewRejection{
+			name:     'unsafe_map_alias_loop_zero_path'
+			source:   'fn branch(values []int) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for _ in values {
+		alias = unsafe { original }
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch([]int{})
+}
+'
+			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
+		},
+		ReviewRejection{'unsafe_map_alias_or_fallback_success_path', 'fn maybe(ok bool) ?int {
+	if ok {
+		return 1
+	}
+	return none
+}
+
+fn branch(ok bool) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	_ := maybe(ok) or {
+		alias = unsafe { original }
+		0
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(true)
+}
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+		ReviewRejection{'unsafe_map_alias_deferred_assignment', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	defer {
+		alias = unsafe { original }
+	}
+	copy := alias
+	println(copy.len)
+}
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+		ReviewRejection{'unsafe_map_alias_select_branch_isolation', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	ch := chan int{cap: 1}
+	select {
+		ch <- 1 {
+			alias = unsafe { original }
+		}
+		else {
+			copy := alias
+			println(copy.len)
+		}
+	}
+}
+', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
 	])
 }
 
@@ -9553,166 +9694,6 @@ fn main() {
 '
 			expected: '1'
 		},
-	])
-}
-
-fn test_map_alias_branch_and_control_flow_rejections() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'map_alias_branch_and_control_flow_rejections', [
-		ReviewRejection{'unsafe_map_alias_conditional_loop_zero_path', 'fn branch(cond bool) {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	for cond {
-		alias = unsafe { original }
-		break
-	}
-	copy := alias
-	println(copy.len)
-}
-
-fn main() {
-	branch(false)
-}
-', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
-		ReviewRejection{'unsafe_map_alias_break_before_assignment', 'fn branch(cond bool) {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	for {
-		if cond {
-			break
-		}
-		alias = unsafe { original }
-	}
-	copy := alias
-	println(copy.len)
-}
-
-fn main() {
-	branch(true)
-}
-', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
-		ReviewRejection{
-			name:     'unsafe_map_alias_if_return_path'
-			source:   'fn branch(cond bool) {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	if cond {
-		alias = unsafe { original }
-		return
-	}
-	copy := alias
-	println(copy.len)
-}
-
-fn main() {
-	branch(false)
-}
-'
-			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
-		},
-		ReviewRejection{
-			name:     'unsafe_map_alias_match_return_path'
-			source:   'fn branch(value int) {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	match value {
-		0 {
-			alias = unsafe { original }
-			return
-		}
-		else {}
-	}
-	copy := alias
-	println(copy.len)
-}
-
-fn main() {
-	branch(1)
-}
-'
-			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
-		},
-		ReviewRejection{
-			name:     'unsafe_map_alias_loop_zero_path'
-			source:   'fn branch(values []int) {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	for _ in values {
-		alias = unsafe { original }
-	}
-	copy := alias
-	println(copy.len)
-}
-
-fn main() {
-	branch([]int{})
-}
-'
-			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
-		},
-		ReviewRejection{'unsafe_map_alias_or_fallback_success_path', 'fn maybe(ok bool) ?int {
-	if ok {
-		return 1
-	}
-	return none
-}
-
-fn branch(ok bool) {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	_ := maybe(ok) or {
-		alias = unsafe { original }
-		0
-	}
-	copy := alias
-	println(copy.len)
-}
-
-fn main() {
-	branch(true)
-}
-', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
-		ReviewRejection{'unsafe_map_alias_deferred_assignment', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	defer {
-		alias = unsafe { original }
-	}
-	copy := alias
-	println(copy.len)
-}
-', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
-		ReviewRejection{'unsafe_map_alias_select_branch_isolation', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	ch := chan int{cap: 1}
-	select {
-		ch <- 1 {
-			alias = unsafe { original }
-		}
-		else {
-			copy := alias
-			println(copy.len)
-		}
-	}
-}
-', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
 	])
 }
 
