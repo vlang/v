@@ -37,7 +37,11 @@ fn round4_run_good(compiler string, name string, src string) string {
 	compile := run_round4_compiler(compiler, [src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
-	run := os.exec([bin_path])
+	return round4_run_binary(name, bin_path)
+}
+
+fn round4_run_binary(name string, bin_path string, args ...string) string {
+	run := os.exec([bin_path, ...args])
 	assert run.exit_code == 0, '${name}: ${run.output}'
 	return run.output.trim_space()
 }
@@ -93,6 +97,11 @@ fn round4_check_rejections(name string, cases []Round4Rejection) {
 }
 
 fn round4_run_good_project(compiler string, name string, files map[string]string, input string) string {
+	bin_path := round4_compile_good_project(compiler, name, files, input)
+	return round4_run_binary(name, bin_path)
+}
+
+fn round4_compile_good_project(compiler string, name string, files map[string]string, input string) string {
 	root := '${round4_tmp_path(name)}_project'
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -106,13 +115,39 @@ fn round4_run_good_project(compiler string, name string, files map[string]string
 	compile := run_round4_compiler(compiler, [input_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, '${name}: ${run.output}'
-	return run.output.trim_space()
+	return bin_path
 }
 
-fn test_comptime_field_metadata_records_modifiers_and_attrs() {
-	out := round4_run_good(v3_bin, 'field_metadata', "struct S {
+struct Round4RuntimeCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn round4_check_runtime(name string, cases []Round4RuntimeCase) {
+	mut files := map[string]string{}
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		source := 'module ${module_name}\n\n' + case.source
+		files['${module_name}/${case.name}.v'] = source.replace_once('\nfn main()', '\npub fn exercise()')
+	}
+	files['main.v'] = "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	bin_path := round4_compile_good_project(v3_bin, name, files, '')
+	for case in cases {
+		out := round4_run_binary(case.name, bin_path, case.name)
+		assert out == case.expected, '${case.name}: expected ${case.expected}\n${out}'
+	}
+}
+
+fn test_fielddata_metadata() {
+	round4_check_runtime('fielddata_metadata', [
+		Round4RuntimeCase{
+			name:     'field_metadata'
+			source:   "struct S {
 	private int
 pub:
 	public string
@@ -131,33 +166,12 @@ fn main() {
 	}
 	println(rows.join('|'))
 	}
-	")
-	assert out == "private:false:false:|public:false:true:|mutable:true:false:|pub_mut:true:true:|attr:true:true:json: 'wire'"
-}
-
-fn test_comptime_match_accepts_type_group_patterns() {
-	out := round4_run_good(v3_bin, 'comptime_match_type_group_patterns', 'struct S {}
-
-fn classify[T](value T) string {
-	_ = value
-	$match T {
-		$int { return "int" }
-		$struct { return "struct" }
-		$else { return "other" }
-	}
-	return "unreachable"
-}
-
-fn main() {
-	println(classify(1))
-	println(classify(S{}))
-}
-')
-	assert out == 'int\nstruct'
-}
-
-fn test_bare_comptime_field_materializes_fielddata() {
-	out := round4_run_good(v3_bin, 'bare_fielddata', "type WireName = string
+	"
+			expected: "private:false:false:|public:false:true:|mutable:true:false:|pub_mut:true:true:|attr:true:true:json: 'wire'"
+		},
+		Round4RuntimeCase{
+			name:     'bare_fielddata'
+			source:   "type WireName = string
 
 struct S {
 pub:
@@ -181,8 +195,31 @@ fn main() {
 	rows << 'count:' + int_str(items.len)
 	println(rows.join('|'))
 }
-")
-	assert out == "id:true:true:true:true:false:|name:true:true:false:false:true:json: 'wire'|count:2"
+"
+			expected: "id:true:true:true:true:false:|name:true:true:false:false:true:json: 'wire'|count:2"
+		},
+	])
+}
+
+fn test_comptime_match_accepts_type_group_patterns() {
+	out := round4_run_good(v3_bin, 'comptime_match_type_group_patterns', 'struct S {}
+
+fn classify[T](value T) string {
+	_ = value
+	$match T {
+		$int { return "int" }
+		$struct { return "struct" }
+		$else { return "other" }
+	}
+	return "unreachable"
+}
+
+fn main() {
+	println(classify(1))
+	println(classify(S{}))
+}
+')
+	assert out == 'int\nstruct'
 }
 
 fn test_comptime_variant_metadata_only_exposes_typ() {
@@ -652,8 +689,11 @@ fn main() {
 	assert out == 'id|red'
 }
 
-fn test_value_source_comptime_for_static_pruning_resolves_field_path() {
-	out := round4_run_good(v3_bin, 'value_source_comptime_for_static_pruning', "struct Inner {
+fn test_value_source_pruning() {
+	round4_check_runtime('value_source_pruning', [
+		Round4RuntimeCase{
+			name:     'value_source_comptime_for_static_pruning'
+			source:   "struct Inner {
 	id int
 }
 
@@ -676,12 +716,12 @@ fn collect(param Outer) []string {
 fn main() {
 	println(collect(Outer{}).join('|'))
 }
-")
-	assert out == 'id'
-}
-
-fn test_shadowed_comptime_for_substitutes_nested_source_type() {
-	out := round4_run_good(v3_bin, 'shadowed_comptime_for_nested_source', "struct Inner {
+"
+			expected: 'id'
+		},
+		Round4RuntimeCase{
+			name:     'shadowed_comptime_for_nested_source'
+			source:   "struct Inner {
 	name string
 }
 
@@ -700,8 +740,10 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == 'name'
+"
+			expected: 'name'
+		},
+	])
 }
 
 fn test_metadata_call_arguments_are_checked_against_callee_types() {
@@ -837,8 +879,11 @@ fn main() {
 		'cannot use `i64` as argument 1 to `takes_string`; expected `string`')
 }
 
-fn test_enum_value_metadata_if_prunes_untaken_branches() {
-	out := round4_run_good(v3_bin, 'enum_value_metadata_if_prunes_else', "enum Color {
+fn test_enum_metadata_folding() {
+	round4_check_runtime('enum_metadata_folding', [
+		Round4RuntimeCase{
+			name:     'enum_value_metadata_if_prunes_else'
+			source:   "enum Color {
 	only
 }
 
@@ -853,12 +898,12 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == 'only'
-}
-
-fn test_enum_value_metadata_handles_unsigned_shift() {
-	out := round4_run_good(v3_bin, 'enum_value_metadata_unsigned_shift', "enum Shifted {
+"
+			expected: 'only'
+		},
+		Round4RuntimeCase{
+			name:     'enum_value_metadata_unsigned_shift'
+			source:   "enum Shifted {
 	a = 8 >>> 1
 }
 
@@ -869,12 +914,12 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == '4'
-}
-
-fn test_enum_value_metadata_folds_power() {
-	out := round4_run_good(v3_bin, 'enum_value_metadata_power', "enum Powered {
+"
+			expected: '4'
+		},
+		Round4RuntimeCase{
+			name:     'enum_value_metadata_power'
+			source:   "enum Powered {
 	a = 2 ** 3
 	b
 }
@@ -886,8 +931,10 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == 'a:8|b:9'
+"
+			expected: 'a:8|b:9'
+		},
+	])
 }
 
 fn test_enum_power_metadata_prunes_static_checker_branches() {
@@ -910,8 +957,11 @@ fn main() {
 
 // `item.value` is the enum value itself (as in V1), so it interpolates as the
 // field name; its numeric form, including width formatting, needs a cast.
-fn test_enum_value_metadata_interpolation_stays_numeric() {
-	out := round4_run_good(v3_bin, 'enum_value_metadata_numeric_interpolation', "enum Color {
+fn test_enum_metadata_numeric_values() {
+	round4_check_runtime('enum_metadata_numeric_values', [
+		Round4RuntimeCase{
+			name:     'enum_value_metadata_numeric_interpolation'
+			source:   "enum Color {
 	red = 7
 	blue = 42
 }
@@ -923,12 +973,12 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == 'red=7:   7|blue=42:  42'
-}
-
-fn test_enum_value_metadata_preserves_wide_backed_values() {
-	out := round4_run_good(v3_bin, 'enum_value_metadata_wide_backed', "enum Wide as u64 {
+"
+			expected: 'red=7:   7|blue=42:  42'
+		},
+		Round4RuntimeCase{
+			name:     'enum_value_metadata_wide_backed'
+			source:   "enum Wide as u64 {
 	big = u64(1) << 40
 	next
 }
@@ -940,8 +990,10 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == '1099511627776|1099511627777'
+"
+			expected: '1099511627776|1099511627777'
+		},
+	])
 }
 
 fn test_field_loop_specializes_multi_parameter_generic_helper() {
@@ -1076,8 +1128,11 @@ fn main() {
 		'unknown function: missing_fn')
 }
 
-fn test_comptime_field_type_selectors_are_type_ids() {
-	out := round4_run_good(v3_bin, 'field_type_selectors_are_type_ids', 'type MyInt = int
+fn test_reflected_field_type_guards() {
+	round4_check_runtime('reflected_field_type_guards', [
+		Round4RuntimeCase{
+			name:     'field_type_selectors_are_type_ids'
+			source:   'type MyInt = int
 
 struct S {
 	id int
@@ -1116,12 +1171,12 @@ fn main() {
 	assert alias_typ != alias_unaliased
 	println(rows.join("|"))
 }
-')
-	assert out == 'typ-if-id|unaliased-if-alias'
-}
-
-fn test_comptime_bare_field_type_guards_are_folded() {
-	out := round4_run_good(v3_bin, 'bare_field_type_guards', 'struct S {
+'
+			expected: 'typ-if-id|unaliased-if-alias'
+		},
+		Round4RuntimeCase{
+			name:     'bare_field_type_guards'
+			source:   'struct S {
 	id int
 	name string
 	maybe ?string
@@ -1142,8 +1197,10 @@ fn main() {
 	}
 	println(rows.join("|"))
 }
-')
-	assert out == 'int:id|string:name|option:maybe'
+'
+			expected: 'int:id|string:name|option:maybe'
+		},
+	])
 }
 
 fn test_comptime_for_body_checks_static_code_in_metadata_if_branch() {
@@ -1175,8 +1232,11 @@ fn main() {
 	])
 }
 
-fn test_comptime_for_static_check_skips_untaken_metadata_if_branch() {
-	out := round4_run_good(v3_bin, 'untaken_metadata_if_static_code', 'struct S {
+fn test_field_metadata_branch_pruning() {
+	round4_check_runtime('field_metadata_branch_pruning', [
+		Round4RuntimeCase{
+			name:     'untaken_metadata_if_static_code'
+			source:   'struct S {
 	id int
 }
 
@@ -1194,12 +1254,12 @@ fn main() {
 	}
 	println(rows.join("|"))
 }
-')
-	assert out == 'id'
-}
-
-fn test_comptime_for_static_check_folds_fielddata_flags() {
-	out := round4_run_good(v3_bin, 'fielddata_flag_static_guards', 'struct S {
+'
+			expected: 'id'
+		},
+		Round4RuntimeCase{
+			name:     'fielddata_flag_static_guards'
+			source:   'struct S {
 pub mut:
 	ptr &int
 }
@@ -1215,8 +1275,10 @@ fn main() {
 	}
 	println(rows.join("|"))
 }
-')
-	assert out == 'ptr'
+'
+			expected: 'ptr'
+		},
+	])
 }
 
 fn test_comptime_field_is_struct_for_generic_struct_instance() {
@@ -1244,8 +1306,11 @@ fn main() {
 	assert out == 'box:true'
 }
 
-fn test_nested_comptime_for_uses_substituted_field_type_source() {
-	out := round4_run_good(v3_bin, 'nested_comptime_for_field_type_source', 'struct Inner {
+fn test_nested_comptime_loop_sources() {
+	round4_check_runtime('nested_comptime_loop_sources', [
+		Round4RuntimeCase{
+			name:     'nested_comptime_for_field_type_source'
+			source:   'struct Inner {
 	count int
 	label string
 }
@@ -1266,12 +1331,12 @@ fn main() {
 	}
 	println(rows.join("|"))
 }
-')
-	assert out == 'nested.count|nested.label'
-}
-
-fn test_nested_comptime_for_shadowed_loop_variables() {
-	out := round4_run_good(v3_bin, 'shadowed_comptime_for', "struct A {
+'
+			expected: 'nested.count|nested.label'
+		},
+		Round4RuntimeCase{
+			name:     'shadowed_comptime_for'
+			source:   "struct A {
 	a int
 }
 
@@ -1308,8 +1373,10 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-	")
-	assert out == 'outer-field:a|inner-field:b|inner-field:c|mixed-value:0|mixed-value:1|outer-value:one|inner-value:red|inner-value:blue'
+	"
+			expected: 'outer-field:a|inner-field:b|inner-field:c|mixed-value:0|mixed-value:1|outer-value:one|inner-value:red|inner-value:blue'
+		},
+	])
 }
 
 fn test_unknown_comptime_field_member_is_rejected() {
@@ -1719,8 +1786,11 @@ fn main() {
 	assert out == "2|2|get,host: 'example.com'|get,host|typed:handle"
 }
 
-fn test_method_parameter_count_guards_are_folded() {
-	out := round4_run_good(v3_bin, 'method_parameter_count_guards', 'struct Counted {}
+fn test_reflected_method_arity() {
+	round4_check_runtime('reflected_method_arity', [
+		Round4RuntimeCase{
+			name:     'method_parameter_count_guards'
+			source:   'struct Counted {}
 
 fn (item Counted) empty() {
 	_ = item
@@ -1743,12 +1813,12 @@ fn main() {
 	}
 	println(rows.join("|"))
 }
-')
-	assert out == 'params:empty|args:one'
-}
-
-fn test_comptime_method_calls_accept_spread_and_variadic_arity() {
-	out := round4_run_good(v3_bin, 'method_call_spread_and_variadic_arity', 'struct Calls {}
+'
+			expected: 'params:empty|args:one'
+		},
+		Round4RuntimeCase{
+			name:     'method_call_spread_and_variadic_arity'
+			source:   'struct Calls {}
 
 fn (calls Calls) fixed(value string, count int) string {
 	_ = calls
@@ -1774,8 +1844,10 @@ fn main() {
 	}
 	println(rows.join("|"))
 }
-')
-	assert out == 'xxx|ab'
+'
+			expected: 'xxx|ab'
+		},
+	])
 }
 
 fn test_method_metadata_locations_are_materialized() {
@@ -1873,8 +1945,11 @@ fn main() {
 	assert out == '9'
 }
 
-fn test_quoted_attribute_preserves_structured_kind() {
-	out := round4_run_good(v3_bin, 'quoted_attribute_kind', "@['route'; plain]
+fn test_quoted_attribute_metadata() {
+	round4_check_runtime('quoted_attribute_metadata', [
+		Round4RuntimeCase{
+			name:     'quoted_attribute_kind'
+			source:   "@['route'; plain]
 struct Tagged {}
 
 fn describe_attribute(attr VAttribute) string {
@@ -1888,12 +1963,12 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == 'route:string:false|plain:plain:false'
-}
-
-fn test_string_attribute_names_preserve_colons() {
-	out := round4_run_good(v3_bin, 'string_attribute_names_with_colons', "@['http://x'; 'a:b']
+"
+			expected: 'route:string:false|plain:plain:false'
+		},
+		Round4RuntimeCase{
+			name:     'string_attribute_names_with_colons'
+			source:   "@['http://x'; 'a:b']
 struct ColonNamedAttrs {}
 
 fn describe_colon_named_attr(attr VAttribute) string {
@@ -1910,8 +1985,10 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == 'http://x##false#string|a:b##false#string'
+"
+			expected: 'http://x##false#string|a:b##false#string'
+		},
+	])
 }
 
 fn test_qualified_single_letter_type_is_a_concrete_generic_argument() {
@@ -2431,8 +2508,11 @@ fn test_raw_string_comptime_match_literals_are_normalized() {
 	assert out == 'subject\npattern'
 }
 
-fn test_field_condition_substitution_skips_string_literals() {
-	out := round4_run_good(v3_bin, 'field_condition_string_literal', "struct QuotedFields {
+fn test_quoted_reflection_selectors() {
+	round4_check_runtime('quoted_reflection_selectors', [
+		Round4RuntimeCase{
+			name:     'field_condition_string_literal'
+			source:   "struct QuotedFields {
 pub:
 	id int
 }
@@ -2451,12 +2531,12 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == 'id|real-selector'
-}
-
-fn test_method_condition_substitution_skips_string_literals() {
-	out := round4_run_good(v3_bin, 'method_condition_string_literal', "struct QuotedMethods {}
+"
+			expected: 'id|real-selector'
+		},
+		Round4RuntimeCase{
+			name:     'method_condition_string_literal'
+			source:   "struct QuotedMethods {}
 
 pub fn (q QuotedMethods) target() {
 	_ = q
@@ -2480,8 +2560,10 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == 'target'
+"
+			expected: 'target'
+		},
+	])
 }
 
 fn test_vmod_file_expands_in_comptime_conditions() {
