@@ -127,6 +127,10 @@ pub const closure_thunk = $if cross ? {
         0xa6, 0x03, 0xc9, 0x7d,	// mtctr  %r14
         0x20, 0x04, 0x80, 0x4e,	// bctr
     ]!
+} $else $if mips64le {
+    // MIPS64LE has no closure thunk yet. Capturing closures are rejected before codegen;
+    // never fall through to the PowerPC32 negation branch below.
+    [u8(0)]!
 } $else $if !ppc64le && !amd64 && !i386 && !arm64 && !arm32 && !rv64 && !rv32 && !s390x && !loongarch64 {
     // ppc (32-bit PowerPC) - expressed as negation of all other arches for bootstrap compat
     [
@@ -237,6 +241,9 @@ pub const closure_thunk = $if cross ? {
 // (`vc/v.c`), V emits a fixed C array whose size is inferred from the first branch.
 const closure_get_data_bytes = $if cross ? {
     portable_closure_get_data_bytes()
+} $else $if mips64le {
+    // No MIPS get-data stub exists; keep foreign instructions out of mips64le C.
+    [u8(0)]!
 } $else $if !ppc64le && !amd64 && !i386 && !arm64 && !arm32 && !rv64 && !rv32 && !s390x && !loongarch64 {
     // ppc (32-bit PowerPC) - expressed as negation of all other arches for bootstrap compat
     [

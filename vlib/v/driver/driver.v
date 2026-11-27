@@ -7862,7 +7862,7 @@ fn v3_test_build_fact_name(name string) bool {
 		'termux', 'solaris', 'haiku', 'qnx', 'serenity', 'vinix', 'wasm32_emscripten', 'tinyc',
 		'tcc', 'clang', 'gcc', 'mingw', 'msvc', 'cplusplus', 'amd64', 'arm64', 'arm32', 'x86',
 		'i386', 'rv32', 'riscv32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le', 's390x', 'loongarch64',
-		'sparc64', 'wasm32', 'prod']
+		'mips64le', 'sparc64', 'wasm32', 'prod']
 }
 
 fn v3_test_build_facts(target pref.Target, ccompiler string, is_prod bool) []string {
@@ -7882,6 +7882,9 @@ fn v3_test_build_facts(target pref.Target, ccompiler string, is_prod bool) []str
 		facts['rv32'] = true
 	} else if target.arch == 'riscv64' {
 		facts['rv64'] = true
+	} else if target.arch == 'mips64le' {
+		facts['mips64'] = true
+		facts['mips64el'] = true
 	}
 	if is_prod {
 		facts['prod'] = true
@@ -8553,9 +8556,9 @@ fn v3_source_is_pure_v(path string) bool {
 	actual_language := if language == before_dot_v { language_with_underscore } else { language }
 	return actual_language !in ['c', 'js', 'amd64', 'x86_64', 'x64', 'x86', 'aarch64', 'arm64',
 		'aarch32', 'arm32', 'arm', 'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v', 'rv32', 'riscv32',
-		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64', 'ppc64le', 'sparc64',
-		'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node', 'js_browser', 'js_freestanding', 'wasm32',
-		'wasm']
+		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64', 'mips64le',
+		'mips64', 'mips64el', 'ppc64le', 'sparc64', 'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node',
+		'js_browser', 'js_freestanding', 'wasm32', 'wasm']
 }
 
 fn v3_type_text_uses_interop_namespace(type_id u32, namespace string) bool {
@@ -15092,6 +15095,11 @@ pub fn run(args []string) {
 		}
 	} else {
 		// C backend (default)
+		if msg := unsupported_closure_target_error(a, used_fns, user_files, prefs.target) {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			eprintln(msg)
+			exit(1)
+		}
 		if msg := cgen.manual_stdlib_c_headers_error() {
 			if cgen.uses_manual_stdlib_c_headers(a, &pre_tc, prefs, user_c_flags, is_o) {
 				eprintln(msg)
@@ -21343,6 +21351,61 @@ fn backend_fn_location(a &flat.FlatAst, node flat.Node) string {
 		return '${source_pos}: '
 	}
 	return ''
+}
+
+// target_closure_unsupported_message is the shared diagnostic for a target that still lacks
+// closure thunk bytes. Keep it recognizable so the cross-target regression test can assert it.
+fn target_closure_unsupported_message(target pref.Target) string {
+	return 'capturing closures are not supported for the `${target.arch}` target yet; the runtime has no thunk bytes for it, so generated C would copy foreign instructions into executable memory - use plain function pointers instead'
+}
+
+// unsupported_closure_target_error rejects a C build that needs the runtime closure thunk for
+// a target whose closure module has no instruction sequence. It gates on the closure helper
+// being used; an unused capturing closure cannot emit any thunk bytes.
+fn unsupported_closure_target_error(a &flat.FlatAst, used_fns map[string]bool, user_files []string, target pref.Target) ?string {
+	if pref.target_supports_capturing_closures(target) {
+		return none
+	}
+	if !('closure.closure_create_with_data' in used_fns
+		|| 'closure__closure_create_with_data' in used_fns) {
+		return none
+	}
+	// Lowered closure creations carry a synthetic position, so first look for a call
+	// in user source, then fall back to the enclosing user function's position.
+	mut location := ''
+	for node in a.nodes {
+		if node.kind != .call || node.children_count == 0 {
+			continue
+		}
+		if !user_source_file(a, node.pos.id, user_files) {
+			continue
+		}
+		callee := a.node(a.child(&node, 0)).value_text()
+		if callee.contains('closure_create_with_data') || callee.ends_with('closure_create') {
+			location = backend_node_location(a, node)
+			break
+		}
+	}
+	if location.len == 0 {
+		for node in a.nodes {
+			if node.kind != .fn_decl || node.value != 'main' {
+				continue
+			}
+			if user_source_file(a, node.pos.id, user_files) {
+				location = backend_node_location(a, node)
+				break
+			}
+		}
+	}
+	if location.len > 0 {
+		return '${location}error: ${target_closure_unsupported_message(target)}'
+	}
+	return 'error: ${target_closure_unsupported_message(target)}'
+}
+
+fn user_source_file(a &flat.FlatAst, pos_id int, user_files []string) bool {
+	file := a.source_files[pos_id] or { return false }
+	return file.name in user_files
 }
 
 // msvc_inline_asm_error returns a located diagnostic for the first inline assembly block

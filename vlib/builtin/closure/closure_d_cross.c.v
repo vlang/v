@@ -24,6 +24,9 @@ fn portable_closure_thunk() []u8 {
 	        0xa6, 0x03, 0xc9, 0x7d,	// mtctr  %r14
 	        0x20, 0x04, 0x80, 0x4e,	// bctr
 	    ]
+	} $else $if mips64le {
+	    // Portable C compiled for mips64le has no thunk yet; do not emit PPC bytes.
+	    return [u8(0)]
 	} $else $if !ppc64le && !amd64 && !i386 && !arm64 && !arm32 && !rv64 && !rv32 && !s390x && !loongarch64 {
 	    // ppc (32-bit PowerPC) - expressed as negation of all other arches for bootstrap compat
 	    return [
@@ -134,7 +137,10 @@ fn portable_closure_thunk() []u8 {
 // portable_closure_get_data_bytes returns the code that reads the closure data
 // pointer, for the target that compiles the C.
 fn portable_closure_get_data_bytes() []u8 {
-	$if !ppc64le && !amd64 && !i386 && !arm64 && !arm32 && !rv64 && !rv32 && !s390x && !loongarch64 {
+	$if mips64le {
+	    // No portable MIPS get-data stub exists yet.
+	    return [u8(0)]
+	} $else $if !ppc64le && !amd64 && !i386 && !arm64 && !arm32 && !rv64 && !rv32 && !s390x && !loongarch64 {
 	    // ppc (32-bit PowerPC) - expressed as negation of all other arches for bootstrap compat
 	    return [
 	    u8(0x94), 0x21, 0xff, 0xf0,	// stwu   %r1, -16(%r1)
