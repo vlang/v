@@ -446,9 +446,9 @@ fn main() {
 	assert out == '7\n7'
 }
 
-fn test_array_aliases_and_collection_methods() {
+fn test_collection_methods_and_map_alias_storage() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'array_aliases_and_collection_methods', [
+	run_good_module_batch(v3_bin, 'collection_methods_and_map_alias_storage', [
 		ReviewRuntimeCase{'empty_fixed_array_of_function_arrays', 'fn main() {
 	callbacks := [2][]fn (){}
 	println(int_str(callbacks[0].len))
@@ -548,6 +548,286 @@ fn main() {
 ', '88\n99'},
 		ReviewRuntimeCase{'map_semantic_value_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := {\n\t\t'x': Item{\n\t\t\tname: 'hello'.clone()\n\t\t\tparts: ['ab'.clone()]\n\t\t}\n\t}\n\tright := {\n\t\t'x': Item{\n\t\t\tname: join('he', 'llo')\n\t\t\tparts: [join('a', 'b')]\n\t\t}\n\t}\n\tarr_left := {\n\t\t'y': ['cd'.clone()]\n\t}\n\tarr_right := {\n\t\t'y': [join('c', 'd')]\n\t}\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(arr_left == arr_right)\n}\n", 'true\nfalse\ntrue'},
 		ReviewRuntimeCase{'array_eq_struct_operator_used', 'struct Item {\n\tvalue int\n}\n\nfn (a Item) == (b Item) bool {\n\treturn a.value % 10 == b.value % 10\n}\n\nfn main() {\n\tleft := [Item{value: 12}]\n\tright := [Item{value: 2}]\n\tprintln(left == right)\n}\n', 'true'},
+		ReviewRuntimeCase{
+			name:     'map_retains_address_of_local_after_return'
+			source:   'struct Item {
+	value int
+}
+
+fn make_cache() map[string]&Item {
+	mut cache := map[string]&Item{}
+	mut local := Item{
+		value: 7
+	}
+	ptr := &local
+	cache["alias"] = ptr
+	cache["direct"] = &local
+	return cache
+}
+
+fn main() {
+	cache := make_cache()
+	println(int_str(cache["alias"].value))
+	println(int_str(cache["direct"].value))
+}
+'
+			expected: '7\n7'
+		},
+		ReviewRuntimeCase{
+			name:     'map_retains_addresses_of_same_named_branch_locals'
+			source:   'struct Item {
+mut:
+	value int
+}
+
+fn make_cache() map[string]&Item {
+	mut cache := map[string]&Item{}
+	mut outer := Item{
+		value: 3
+	}
+	cache["outer"] = &outer
+	if true {
+		mut local := Item{
+			value: 1
+		}
+		cache["first"] = &local
+		local.value = 11
+	}
+	if true {
+		mut local := Item{
+			value: 2
+		}
+		cache["second"] = &local
+		local.value = 22
+	}
+	outer.value = 33
+	return cache
+}
+
+fn main() {
+	cache := make_cache()
+	println(int_str(cache["first"].value))
+	println(int_str(cache["second"].value))
+	println(int_str(cache["outer"].value))
+}
+'
+			expected: '11\n22\n33'
+		},
+		ReviewRuntimeCase{'unsafe_map_reference_alias', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	copy := alias
+	println(copy.len)
+}
+', '1'},
+		ReviewRuntimeCase{'unsafe_map_alias_assert_message_rebind', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	assert true, unsafe {
+		alias = map[string]int{}
+		"failed"
+	}
+	copy := alias
+	println(copy.len)
+}
+', '1'},
+		ReviewRuntimeCase{'unsafe_map_alias_required_logical_rhs', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if true && (if true {
+		alias = unsafe { original }
+		true
+	} else {
+		alias = unsafe { original }
+		true
+	}) {}
+	copy := alias
+	println(copy.len)
+}
+', '1'},
+		ReviewRuntimeCase{'unsafe_map_alias_all_or_paths', 'fn maybe() ?int {
+	return none
+}
+
+fn main() {
+	mut first := {
+		"value": 1
+	}
+	mut second := {
+		"value": 2
+	}
+	mut alias := unsafe { first }
+	_ := maybe() or {
+		alias = unsafe { second }
+		0
+	}
+	copy := alias
+	println(copy.len)
+}
+', '1'},
+		ReviewRuntimeCase{'unsafe_map_alias_deferred_rebind', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	defer {
+		alias = map[string]int{}
+	}
+	copy := alias
+	println(copy.len)
+}
+', '1'},
+		ReviewRuntimeCase{'unsafe_map_alias_all_select_paths', 'fn main() {
+	mut first := {
+		"value": 1
+	}
+	mut second := {
+		"value": 2
+	}
+	mut alias := map[string]int{}
+	ch := chan int{cap: 1}
+	select {
+		ch <- 1 {
+			alias = unsafe { first }
+		}
+		else {
+			alias = unsafe { second }
+		}
+	}
+	copy := alias
+	println(copy.len)
+}
+', '1'},
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_if_expression'
+			source:   'fn choose(cond bool) {
+	mut left := {
+		"value": 1
+	}
+	mut right := {
+		"value": 2
+	}
+	alias := if cond { (unsafe { left }) } else { (unsafe { right }) }
+	copy := alias
+	println(copy["value"])
+}
+
+fn main() {
+	choose(true)
+	choose(false)
+}
+'
+			expected: '1\n2'
+		},
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_match_expression'
+			source:   'fn choose(value int) {
+	mut left := {
+		"value": 1
+	}
+	mut right := {
+		"value": 2
+	}
+	alias := match value {
+		0 { (unsafe { left }) }
+		else { (unsafe { right }) }
+	}
+	copy := alias
+	println(copy["value"])
+}
+
+fn main() {
+	choose(0)
+	choose(1)
+}
+'
+			expected: '1\n2'
+		},
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_unconditional_loop'
+			source:   'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	for {
+		alias = unsafe { original }
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+'
+			expected: '1'
+		},
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_skipped_loop_post'
+			source:   'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	for ;; alias = map[string]int{} {
+		break
+	}
+	copy := alias
+	println(copy.len)
+}
+'
+			expected: '1'
+		},
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_all_if_paths'
+			source:   'fn branch(cond bool) {
+	mut first := {
+		"value": 1
+	}
+	mut second := {
+		"value": 2
+	}
+	mut alias := map[string]int{}
+	if cond {
+		alias = unsafe { first }
+	} else {
+		alias = unsafe { second }
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch(false)
+}
+'
+			expected: '1'
+		},
+		ReviewRuntimeCase{
+			name:     'unsafe_map_alias_loop_return_path'
+			source:   'fn branch(values []int) {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	for _ in values {
+		alias = map[string]int{}
+		return
+	}
+	copy := alias
+	println(copy.len)
+}
+
+fn main() {
+	branch([]int{})
+}
+'
+			expected: '1'
+		},
 	])
 }
 
@@ -1064,9 +1344,9 @@ fn main() {
 	])
 }
 
-fn test_wrapped_and_forwarded_return_rejections() {
+fn test_return_type_and_unreachable_code_rejections() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'wrapped_and_forwarded_return_rejections', [
+	run_bad_module_batch(v3_bin, 'return_type_and_unreachable_code_rejections', [
 		ReviewRejection{
 			name:     'unhandled_result_multi_decl_assign'
 			source:   "fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n"
@@ -1172,6 +1452,76 @@ fn main() {
 	println(int_str(fixed_n))
 }
 ', 'cannot use `[1]fixture_9.Value` as type `[1]fixture_9.IValue` in return argument'},
+		ReviewRejection{
+			name:     'explicit_return_semicolon_unreachable'
+			source:   'fn stop() {
+	return;
+	println("unreachable")
+}
+fn main() {}
+'
+			expected: 'unreachable code'
+		},
+		ReviewRejection{
+			name:     'nested_explicit_return_semicolon_unreachable'
+			source:   'fn stop(ok bool) {
+	if ok {
+		return;
+		println("unreachable")
+	}
+}
+fn main() {}
+'
+			expected: 'unreachable code'
+		},
+		ReviewRejection{
+			name:     'nested_return_semicolon_unreachable'
+			source:   'fn stop(ok bool) {
+	if ok {
+		return;
+	}
+	return
+	println("unreachable")
+}
+fn main() {}
+'
+			expected: 'unreachable code'
+		},
+		ReviewRejection{'enum_helper_noreturn_validation', '@[noreturn]
+fn value() int {
+	return 1
+}
+
+enum HelperKind {
+	item = value()
+}
+
+fn main() {}
+', '[noreturn] functions cannot use return statements'},
+		ReviewRejection{'single_letter_enum_name', 'enum E {
+	item
+}
+
+fn main() {}
+', 'single letter capital names are reserved for generic template types.'},
+		ReviewRejection{'unbacked_enum_integer_overflow', 'enum Huge {
+	value = 18446744073709551616
+}
+
+fn main() {}
+', 'integer literal 18446744073709551616 overflows int'},
+		ReviewRejection{'enum_helper_immutable_local_assignment', 'fn value() int {
+	x := 1
+	x = 2
+	return x
+}
+
+enum HelperKind {
+	item = value()
+}
+
+fn main() {}
+', 'immutable, declare it with `mut`'},
 	])
 }
 
@@ -1192,12 +1542,6 @@ fn main() {
 
 fn test_single_letter_enum_names_are_rejected() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'single_letter_enum_name', 'enum E {
-	item
-}
-
-fn main() {}
-', 'single letter capital names are reserved for generic template types.')
 }
 
 fn test_nested_sum_is_check_evaluates_subject_once() {
@@ -1230,246 +1574,9 @@ fn main() {
 	assert out == '1'
 }
 
-fn test_pointer_aliases_casts_and_calls() {
+fn test_interface_boxing_and_struct_initializers() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'pointer_aliases_casts_and_calls', [
-		ReviewRuntimeCase{
-			name:     'is_pointer_alias_sum'
-			source:   'struct Foo {
-		value int
-	}
-
-struct Bar {}
-
-type Value = Bar | Foo
-type ValueRef = &Value
-
-fn main() {
-	mut value := Value(Foo{
-		value: 7
-	})
-	r := ValueRef(&value)
-	if r is Foo {
-		println("foo")
-	} else {
-		println("other")
-	}
-}
-'
-			expected: 'foo'
-		},
-		ReviewRuntimeCase{
-			name:     'is_pointer_alias_interface'
-			source:   'interface Runner {
-	run() int
-}
-
-struct Job {
-	n int
-}
-
-fn (j Job) run() int {
-	return j.n
-}
-
-type RunnerRef = &Runner
-
-fn main() {
-	mut runner := Runner(Job{
-		n: 3
-	})
-	r := RunnerRef(&runner)
-	if r is Job {
-		println("job")
-	} else {
-		println("other")
-	}
-}
-'
-			expected: 'job'
-		},
-		ReviewRuntimeCase{'pointer_arithmetic_deref', 'fn main() {\n\tmut nums := [1, 2]!\n\tp := unsafe { &nums[0] }\n\tv := unsafe { *(p + 1) }\n\tprintln(int_str(v))\n}\n', '2'},
-		ReviewRuntimeCase{'parenthesized_pointer_cast_deref', "fn load(s charptr, offset u64) u8 {\n\treturn u8(unsafe { *(charptr(u64(s) + offset)) })\n}\n\nfn main() {\n\ts := c'VinixV3!'\n\tmut result := ''\n\tfor i in u64(0) .. u64(8) {\n\t\tresult += rune(load(s, i)).str()\n\t}\n\tprintln(result)\n}\n", 'VinixV3!'},
-		ReviewRuntimeCase{'generic_mut_pointer_cast_slot_address', 'fn address[T](mut value T) voidptr {\n\tif sizeof(T) == 8 {\n\t\treturn voidptr(value)\n\t}\n\treturn unsafe { nil }\n}\n\nfn main() {\n\tmut n := 7\n\tmut pointers := unsafe { [1]&int{} }\n\tpointers[0] = &n\n\tresult := address[&int](mut &pointers[0])\n\tprintln(result == voidptr(&pointers[0]))\n\tprintln(result == voidptr(pointers[0]))\n}\n', 'true\nfalse'},
-		ReviewRuntimeCase{'review_pointer_value_receiver_str', "struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n", '&custom:7'},
-		ReviewRuntimeCase{'review_interface_smartcast_pointer_str', "interface Named {\n\tname() string\n}\n\nstruct Item {}\n\nfn (i Item) name() string {\n\treturn 'item'\n}\n\nfn (i Item) str() string {\n\treturn i.name()\n}\n\nfn describe(value Named) string {\n\treturn match value {\n\t\tItem { value.str() }\n\t\telse { 'unknown' }\n\t}\n}\n\nfn main() {\n\tvalue := Named(&Item{})\n\tprintln(describe(value))\n\tboxed := Named(Item{})\n\tprintln(describe(boxed))\n}\n", '&item\nitem'},
-		ReviewRuntimeCase{'review_one_level_implicit_address', 'fn take(p &int) int {\n\treturn *p\n}\n\nfn main() {\n\tmut n := 3\n\tprintln(int_str(take(n)))\n}\n', '3'},
-		ReviewRuntimeCase{'review_alias_struct_implicit_interface_str', "interface Printable {\n\tstr() string\n}\n\nstruct Foo {\n\tx int\n}\n\ntype AliasFoo = Foo\n\nfn main() {\n\tvalue := Printable(AliasFoo(Foo{\n\t\tx: 7\n\t}))\n\ttext := value.str()\n\tprintln(text.contains('Foo'))\n\tprintln(text.contains('x: 7'))\n}\n", 'true\ntrue'},
-		ReviewRuntimeCase{'review_alias_fields_implicit_interface_str', 'interface Printable {\n\tstr() string\n}\n\nstruct Bar {\n\tx int\n}\n\ntype MyBar = Bar\ntype MyNums = []int\ntype MyFixed = [2]int\ntype MyName = string\n\nstruct Foo {\n\tbar   MyBar\n\tnums  MyNums\n\tfixed MyFixed\n\tname  MyName\n}\n\nfn main() {\n\tvalue := Printable(Foo{\n\t\tbar: MyBar(Bar{\n\t\t\tx: 7\n\t\t})\n\t\tnums: MyNums([1, 2])\n\t\tfixed: MyFixed([3, 4]!)\n\t\tname: MyName(\'Ada\')\n\t})\n\ttext := value.str()\n\tprintln(text.contains(\'x: 7\'))\n\tprintln(text.contains(\'[1, 2]\'))\n\tprintln(text.contains(\'[3, 4]\'))\n\tprintln(text.contains("\'Ada\'"))\n}\n', 'true\ntrue\ntrue\ntrue'},
-		ReviewRuntimeCase{'review_call_return_pointer_not_arg_alias', 'fn choose(a &int, b &int) &int {\n\t_ = a\n\treturn b\n}\n\nfn make() &int {\n\tx := 10\n\ty := 20\n\tp := choose(&x, &y)\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n', '20'},
-		ReviewRuntimeCase{'review_mut_param_pointer_alias_return', 'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain[T](mut x T) &T {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep[int](mut a)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain[int](mut b)\n\tunsafe {\n\t\t*q = 8\n\t}\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n', '7\n7\n8\n8'},
-		ReviewRuntimeCase{'review_map_index_implicit_ref_arg', 'struct Image {
-	value int
-}
-
-fn draw(image &Image) int {
-	return image.value
-}
-
-fn main() {
-	images := {
-		"avatar": Image{value: 9}
-	}
-	println(draw(images["avatar"]))
-}
-', '9'},
-		ReviewRuntimeCase{'review_multi_level_implicit_addresses', 'fn set_double(pp &&int) {\n\tunsafe {\n\t\t**pp = 5\n\t}\n}\n\nfn set_triple(pp &&&int) {\n\tunsafe {\n\t\t***pp = 7\n\t}\n}\n\nfn main() {\n\tmut x := 1\n\tset_double(x)\n\tmut y := 2\n\tp := &y\n\tset_triple(p)\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n', '5\n7'},
-		ReviewRuntimeCase{'interface_mut_array_argument', 'interface Reader {
-mut:
-	read(mut buf []u8)
-}
-
-struct Source {}
-
-fn (mut source Source) read(mut buf []u8) {
-	buf[0] = 7
-}
-
-fn main() {
-	mut reader := Reader(Source{})
-	mut buf := []u8{len: 1}
-	reader.read(mut buf)
-	println(buf[0])
-}
-', '7'},
-		ReviewRuntimeCase{'interface_pointer_voidptr_cast_escape_hatch', 'interface Sink {\n\tput()\n}\n\nfn main() {\n\tp := unsafe { voidptr(0) }\n\t_ := &Sink(p)\n\tprintln("ok")\n}\n', 'ok'},
-		ReviewRuntimeCase{'interface_pointer_nil_cast', "interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nfn main() {\n\t_ := Sink(nil)\n\t_ := &Sink(nil)\n\t_ := &SinkAlias(nil)\n\tprintln('ok')\n}\n", 'ok'},
-		ReviewRuntimeCase{'interface_pointer_nil_argument', "interface Item {\n\tname string\n}\n\nfn take(item &Item) {\n\tassert item == unsafe { nil }\n}\n\nfn main() {\n\tvalue := unsafe { nil }\n\ttake(value)\n\ttake(unsafe { nil })\n\tprintln('ok')\n}\n", 'ok'},
-		ReviewRuntimeCase{'v_voidptr_auto_address', 'const voidptr_const_value = 9
-
-fn take(value voidptr) int {
-	return unsafe { *(&int(value)) }
-}
-
-fn main() {
-	value := 7
-	println(int_str(take(value)))
-	println(int_str(take(voidptr_const_value)))
-}
-', '7\n9'},
-		ReviewRuntimeCase{'mut_pointer_for_in_arg', 'struct PointerItem {
-mut:
-	value int
-}
-
-fn increment(mut item PointerItem) {
-	item.value++
-}
-
-fn main() {
-	mut first := PointerItem{
-		value: 1
-	}
-	mut second := PointerItem{
-		value: 2
-	}
-	mut items := [&first, &second]
-	for mut item in items {
-		increment(mut item)
-	}
-	println(int_str(first.value))
-	println(int_str(second.value))
-}
-', '2\n3'},
-		ReviewRuntimeCase{'optional_pointer_equality_semantics', 'struct Item {
-	value int
-}
-
-struct Bag {
-	items []int
-}
-
-type BagRef = &Bag
-
-fn main() {
-	a := 7
-	b := 7
-	item_a := Item{
-		value: 7
-	}
-	item_b := Item{
-		value: 7
-	}
-	opt_a := unsafe { ?&int(&a) }
-	opt_b := unsafe { ?&int(&b) }
-	opt_item_a := unsafe { ?&Item(&item_a) }
-	opt_item_b := unsafe { ?&Item(&item_b) }
-	bag_a := &Bag{
-		items: [1]
-	}
-	bag_b := &Bag{
-		items: [1]
-	}
-	nil_bag := &Bag(unsafe { nil })
-	opt_bag_a := unsafe { ?&Bag(bag_a) }
-	opt_bag_b := unsafe { ?&Bag(bag_b) }
-	opt_nil_bag := unsafe { ?&Bag(nil_bag) }
-	opt_alias_bag_a := unsafe { ?BagRef(BagRef(bag_a)) }
-	opt_alias_bag_b := unsafe { ?BagRef(BagRef(bag_b)) }
-	opt_alias_nil_bag := unsafe { ?BagRef(BagRef(nil_bag)) }
-	println(opt_a == opt_b)
-	println(opt_a == opt_a)
-	println(opt_item_a == opt_item_b)
-	println(opt_nil_bag == opt_bag_a)
-	println(opt_nil_bag == opt_nil_bag)
-	println(opt_bag_a == opt_bag_b)
-	println(opt_alias_bag_a == opt_alias_bag_b)
-	println(opt_alias_nil_bag == opt_alias_bag_a)
-	println(opt_alias_nil_bag == opt_alias_nil_bag)
-}
-', 'false\ntrue\ntrue\nfalse\ntrue\ntrue\ntrue\nfalse\ntrue'},
-		ReviewRuntimeCase{'mut_pointer_iteration_rebinds_slots', 'struct Item {
-mut:
-	value int
-}
-
-fn increment(mut item Item) {
-	item.value++
-}
-
-fn main() {
-	first := &Item{
-		value: 1
-	}
-	mut second := &Item{
-		value: 2
-	}
-	mut dynamic := [first]
-	for mut item in dynamic {
-		item = second
-		increment(mut item)
-	}
-	mut fixed := [first]!
-	for mut item in fixed {
-		item = second
-		increment(mut *item)
-	}
-	second.value = 9
-	println(int_str(dynamic[0].value))
-	println(int_str(fixed[0].value))
-}
-', '9\n9'},
-		ReviewRuntimeCase{'ordinary_pointer_value_param', 'struct PointerCallItem {
-	value int
-}
-
-fn take_value(item PointerCallItem) int {
-	return item.value
-}
-
-fn main() {
-	item := &PointerCallItem{
-		value: 7
-	}
-	println(int_str(take_value(item)))
-}
-', '7'},
-	])
-}
-
-fn test_interface_boxing_and_type_identity() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_boxing_and_type_identity', [
+	run_good_module_batch(v3_bin, 'interface_boxing_and_struct_initializers', [
 		ReviewRuntimeCase{
 			name:     'interface_eq_implicit_return_box'
 			source:   'interface IValue {}
@@ -2030,6 +2137,428 @@ fn main() {
 	println(same(Any(1), Any(1)).str())
 }
 ', 'false\ntrue'},
+		ReviewRuntimeCase{
+			name:     'anonymous_struct_literal_typed_shape'
+			source:   'fn take_int(value struct {
+	x int
+}) int {
+	return value.x
+}
+
+fn take_string(value struct {
+	x string
+}) string {
+	return value.x
+}
+
+fn take_i64(value struct {
+	x i64
+}) i64 {
+	return value.x
+}
+
+fn take_grouped(value struct {
+	x, y int
+}) int {
+	return value.x * 10 + value.y
+}
+
+fn call_late_i64() i64 {
+	return take_late_i64(struct { x: 11 })
+}
+
+fn take_late_i64(value struct {
+	x i64
+}) i64 {
+	return value.x
+}
+
+fn main() {
+	println(int_str(take_int(struct { x: 7 })))
+	println(take_string(struct { x: "right" }))
+	println(take_i64(struct { x: i64(9) }))
+	println(int_str(take_grouped(struct { x: 2, y: 3 })))
+	println(call_late_i64().str())
+	mut values := []struct {
+		x int
+	}{}
+	values << struct { x: 13 }
+	println(int_str(values[0].x))
+}
+	'
+			expected: '7\nright\n9\n23\n11\n13'
+		},
+		ReviewRuntimeCase{
+			name:     'anonymous_struct_inferred_literal_typed_shape'
+			source:   'fn main() {\n\ta := struct { x: 1 }\n\tb := struct { x: "typed" }\n\tprintln(int_str(a.x))\n\tprintln(b.x)\n}\n'
+			expected: '1\ntyped'
+		},
+		ReviewRuntimeCase{'promoted_embed_struct_init', 'struct Inner {
+	count int = 3
+	items []int
+	value int
+}
+
+struct Outer {
+	Inner
+}
+
+fn main() {
+	value := Outer{
+		value: 7
+	}
+	heap := &Outer{
+		value: 8
+	}
+	println(int_str(value.count))
+	println(int_str(value.value))
+	println(int_str(value.items.len))
+	println(int_str(heap.count))
+	println(int_str(heap.value))
+	println(int_str(heap.items.len))
+}
+', '3\n7\n0\n3\n8\n0'},
+		ReviewRuntimeCase{'promoted_embed_declared_struct_default', 'struct DefaultInner {
+	a int
+	b int
+}
+
+struct DefaultOuter {
+	DefaultInner = DefaultInner{
+		a: 3
+		b: 4
+	}
+}
+
+struct NestedDefaultInner {
+	x int
+	y int
+}
+
+struct NestedDefaultMid {
+	NestedDefaultInner
+}
+
+struct NestedDefaultOuter {
+	NestedDefaultMid = NestedDefaultMid{
+		NestedDefaultInner: NestedDefaultInner{
+			x: 1
+			y: 2
+		}
+	}
+}
+
+fn main() {
+	value := DefaultOuter{
+		b: 7
+	}
+	heap := &DefaultOuter{
+		b: 8
+	}
+	println(int_str(value.a))
+	println(int_str(value.b))
+	println(int_str(heap.a))
+	println(int_str(heap.b))
+	nested := NestedDefaultOuter{
+		x: 9
+	}
+	nested_heap := &NestedDefaultOuter{
+		x: 10
+	}
+	println(int_str(nested.x))
+	println(int_str(nested.y))
+	println(int_str(nested_heap.x))
+	println(int_str(nested_heap.y))
+}
+', '3\n7\n3\n8\n9\n2\n10\n2'},
+		ReviewRuntimeCase{'promoted_default_value_prelude', 'struct PromotedArrayInner {
+	promoted_values []int
+}
+
+fn make_promoted_array_inner() PromotedArrayInner {
+	return PromotedArrayInner{
+		promoted_values: [0]
+	}
+}
+
+struct PromotedArrayOuter {
+	PromotedArrayInner = make_promoted_array_inner()
+}
+
+fn main() {
+	value := PromotedArrayOuter{
+		promoted_values: [2, 3]
+	}
+	println(int_str(value.PromotedArrayInner.promoted_values.len))
+	println(int_str(value.PromotedArrayInner.promoted_values[0]))
+}
+', '2\n2'},
+		ReviewRuntimeCase{'promoted_embed_positional_default', 'struct PositionalInner {
+	a int
+	b int
+}
+
+struct PositionalOuter {
+	PositionalInner = PositionalInner{3, 4}
+}
+
+fn main() {
+	value := PositionalOuter{
+		a: 7
+	}
+	heap := &PositionalOuter{
+		a: 8
+	}
+	println(int_str(value.a))
+	println(int_str(value.b))
+	println(int_str(heap.a))
+	println(int_str(heap.b))
+}
+', '7\n4\n8\n4'},
+		ReviewRuntimeCase{'promoted_fixed_array_struct_init', 'struct FixedInner {
+	values [2]int
+}
+
+struct FixedOuter {
+	FixedInner
+}
+
+fn main() {
+	values := [1, 2]!
+	value := FixedOuter{
+		values: values
+	}
+	heap := &FixedOuter{
+		values: [3, 4]!
+	}
+	println(int_str(value.FixedInner.values[0] + value.FixedInner.values[1]))
+	println(int_str(heap.FixedInner.values[0] + heap.FixedInner.values[1]))
+}
+', '3\n7'},
+		ReviewRuntimeCase{'promoted_pointer_embed_struct_init', 'struct PointerInner {
+	count int = 4
+	items []int
+	value int
+}
+
+type PointerInnerRef = &PointerInner
+
+struct PointerOuter {
+	PointerInnerRef
+}
+
+fn main() {
+	value := PointerOuter{
+		value: 9
+	}
+	heap := &PointerOuter{
+		value: 10
+	}
+	println(int_str(value.PointerInnerRef.count))
+	println(int_str(value.PointerInnerRef.value))
+	println(int_str(value.PointerInnerRef.items.len))
+	println(int_str(heap.PointerInnerRef.count))
+	println(int_str(heap.PointerInnerRef.value))
+	println(int_str(heap.PointerInnerRef.items.len))
+}
+', '4\n9\n0\n4\n10\n0'},
+		ReviewRuntimeCase{'promoted_pointer_embed_call_default_escape', 'struct EscapingPointerInner {
+	a int
+	b int
+}
+
+type EscapingPointerInnerRef = &EscapingPointerInner
+
+struct EscapingPointerOuter {
+	EscapingPointerInnerRef = make_escaping_pointer_inner()
+}
+
+fn make_escaping_pointer_inner() EscapingPointerInnerRef {
+	return &EscapingPointerInner{
+		a: 5
+		b: 6
+	}
+}
+
+fn make_escaping_pointer_outer(b int) EscapingPointerOuter {
+	return EscapingPointerOuter{
+		b: b
+	}
+}
+
+fn main() {
+	first := make_escaping_pointer_outer(7)
+	second := make_escaping_pointer_outer(8)
+	println(int_str(first.EscapingPointerInnerRef.a))
+	println(int_str(first.EscapingPointerInnerRef.b))
+	println(int_str(second.EscapingPointerInnerRef.a))
+	println(int_str(second.EscapingPointerInnerRef.b))
+}
+', '5\n7\n5\n8'},
+		ReviewRuntimeCase{'interface_rvalue_upcast_to_embedded_base_argument', 'interface Base {
+	value() int
+}
+
+interface Child {
+	Base
+	extra() int
+}
+
+struct Item {
+	n int
+}
+
+fn (i Item) value() int {
+	return i.n
+}
+
+fn (i Item) extra() int {
+	return i.n + 1
+}
+
+fn make_child(n int) Child {
+	return Child(Item{
+		n: n
+	})
+}
+
+fn take_base(b Base) int {
+	return b.value()
+}
+
+fn main() {
+	println(int_str(take_base(make_child(7))))
+	println(int_str(take_base(if true { make_child(8) } else { make_child(0) })))
+	children := [make_child(9)]
+	println(int_str(take_base(children[0])))
+}
+	', '7\n8\n9'},
+		ReviewRuntimeCase{'nested_interface_field_assign', 'struct Metadata {
+mut:
+	links u64
+}
+
+interface Resource {
+mut:
+	metadata Metadata
+}
+
+struct FileResource {
+mut:
+	metadata Metadata
+}
+
+struct Node {
+mut:
+	resource Resource
+}
+
+fn main() {
+	mut file := &FileResource{
+		metadata: Metadata{links: 1}
+	}
+	mut node := Node{
+		resource: file
+	}
+	node.resource.metadata.links = 2
+	println(file.metadata.links)
+}
+', '2'},
+		ReviewRuntimeCase{'smartcast_interface_identity', 'interface Resource {
+mut:
+	set(int)
+	get() int
+}
+
+interface Socket {
+mut:
+	set(int)
+	get() int
+	extra() int
+}
+
+struct UnixSocket {
+mut:
+	n int
+}
+
+fn (mut socket UnixSocket) set(n int) {
+	socket.n = n
+}
+
+fn (socket UnixSocket) get() int {
+	return socket.n
+}
+
+fn (socket UnixSocket) extra() int {
+	return 9
+}
+
+fn as_socket(mut resource Resource) &Socket {
+	if mut resource is UnixSocket {
+		return &Socket(resource)
+	}
+	panic("not a socket")
+}
+
+fn main() {
+	mut concrete := &UnixSocket{n: 1}
+	mut resource := Resource(concrete)
+	mut socket := as_socket(mut resource)
+	socket.set(2)
+	println(concrete.n)
+	println(resource.get())
+	println(socket.get())
+}
+', '2\n2\n2'},
+		ReviewRuntimeCase{'unsafe_block_pointer_interface_identity', 'interface Resource {
+mut:
+	set(int)
+	get() int
+}
+
+struct Concrete {
+mut:
+	value int
+}
+
+fn (mut concrete Concrete) set(value int) {
+	concrete.value = value
+}
+
+fn (concrete Concrete) get() int {
+	return concrete.value
+}
+
+struct Node {
+mut:
+	resource &Resource = unsafe { nil }
+}
+
+fn (mut concrete Concrete) install(mut node Node) {
+	node.resource = unsafe { concrete }
+}
+
+fn main() {
+	mut concrete := &Concrete{value: 1}
+	mut node := Node{}
+	concrete.install(mut node)
+	concrete.set(2)
+	println(concrete.value)
+	println(node.resource.get())
+}
+', '2\n2'},
+		ReviewRuntimeCase{'anonymous_struct_volatile_field_name', 'fn read(value struct {
+	volatile u8
+}) u8 {
+	return value.volatile
+}
+
+fn main() {
+	value := struct { volatile: u8(73) }
+	println(read(value))
+}
+', '73'},
 	])
 }
 
@@ -2285,9 +2814,9 @@ fn test_select_lowering_roots_array_free() {
 	assert out == ''
 }
 
-fn test_select_assignment_cases_require_receive_rhs() {
+fn test_select_case_syntax_rejections() {
 	v3_bin := build_v3()
-	mut cases := []ReviewRejection{cap: 3}
+	mut cases := []ReviewRejection{cap: 6}
 	for op in [':=', '=', '+='] {
 		cases << ReviewRejection{
 			name:     'select_non_receive_${op.replace('=', 'eq').replace(':', 'decl').replace('+', 'plus')}'
@@ -2302,12 +2831,7 @@ fn test_select_assignment_cases_require_receive_rhs() {
 			expected: 'select key: receive expression expected'
 		}
 	}
-	run_bad_module_batch(v3_bin, 'select_non_receive_rejections', cases)
-}
-
-fn test_select_timeout_rejections() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'select_timeout_rejections', [
+	cases << [
 		ReviewRejection{
 			name:     'select_else_before_timeout'
 			source:   'import time
@@ -2343,7 +2867,8 @@ fn main() {
 	}
 }
 ', 'at most one timeout branch allowed in `select` block'},
-	])
+	]
+	run_bad_module_batch(v3_bin, 'select_case_syntax_rejections', cases)
 }
 
 fn test_comptime_if_threads_expression_is_deferred() {
@@ -2908,9 +3433,9 @@ fn free_strings() {
 	assert !free_strings_body.contains('string__free(&s);'), free_strings_body
 }
 
-fn test_constant_expressions_and_codegen_values() {
+fn test_constant_expressions_and_numeric_stringification() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'constant_expressions_and_codegen_values', [
+	run_good_module_batch(v3_bin, 'constant_expressions_and_numeric_stringification', [
 		ReviewRuntimeCase{'assert_capture_inferred_wide_const_type', 'type Duration = i64
 
 const nanosecond = Duration(1)
@@ -3320,12 +3845,6 @@ fn main() {
 	println((first == equal).str())
 }
 ', 'false\ntrue'},
-	])
-}
-
-fn test_reference_and_numeric_stringification() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'reference_and_numeric_stringification', [
 		ReviewRuntimeCase{'c_pointer_receiver_str_for_reference_field', "struct C.Opaque {}
 
 struct Holder {
@@ -3353,6 +3872,7 @@ fn main() {
 		ReviewRuntimeCase{'formatted_interpolation_integer_alias_character_code', "type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n", 'ABC'},
 		ReviewRuntimeCase{'formatted_interpolation_alias_string', 'import time\n\nfn main() {\n\tduration := time.Duration(10)\n\tprintln("|\${duration:10s}|")\n}\n', '|      10ns|'},
 		ReviewRuntimeCase{'composite_string_format_width', 'fn main() {\n\tprintln("|\${[1, 2]:-12s}|")\n}\n', '|[1, 2]      |'},
+		ReviewRuntimeCase{'comptime_define_field_default', 'struct Job {\n\tid string = \$d("id", "Job")\n}\n\nstruct App {\n\tjobs [\$d("jobs", 2)]Job\n}\n\nfn main() {\n\tapp := App{}\n\tprintln(app.jobs[0].id)\n}\n', 'Job'},
 	])
 }
 
@@ -3413,47 +3933,6 @@ fn main() {
 	assert out.contains('chan int{\n        cap: 0, closed: false\n    }')
 }
 
-fn test_explicit_return_semicolon_keeps_unreachable_check() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'return_semicolon_rejections', [
-		ReviewRejection{
-			name:     'explicit_return_semicolon_unreachable'
-			source:   'fn stop() {
-	return;
-	println("unreachable")
-}
-fn main() {}
-'
-			expected: 'unreachable code'
-		},
-		ReviewRejection{
-			name:     'nested_explicit_return_semicolon_unreachable'
-			source:   'fn stop(ok bool) {
-	if ok {
-		return;
-		println("unreachable")
-	}
-}
-fn main() {}
-'
-			expected: 'unreachable code'
-		},
-		ReviewRejection{
-			name:     'nested_return_semicolon_unreachable'
-			source:   'fn stop(ok bool) {
-	if ok {
-		return;
-	}
-	return
-	println("unreachable")
-}
-fn main() {}
-'
-			expected: 'unreachable code'
-		},
-	])
-}
-
 fn test_qualified_enum_str_requires_exact_receiver() {
 	v3_bin := build_v3()
 	out := run_good_project(v3_bin, 'qualified_enum_str_exact_receiver', {
@@ -3462,42 +3941,6 @@ fn test_qualified_enum_str_requires_exact_receiver() {
 		'modb/modb.v': "module modb\n\npub enum Color {\n\tblue\n}\n\npub fn (c Color) str() string {\n\treturn 'custom'\n}\n"
 	}, 'main.v')
 	assert out == 'red\ncustom'
-}
-
-fn test_array_and_map_receiver_rejections() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'array_and_map_receiver_rejections', [
-		ReviewRejection{
-			name:     'fixed_array_pointers_rejects_rvalue_receiver'
-			source:   'fn make_fixed() [2]int {\n\treturn [7, 8]!\n}\n\nfn main() {\n\t_ := unsafe { make_fixed().pointers() }\n}\n'
-			expected: 'fixed array receiver for `pointers` must be addressable'
-		},
-		ReviewRejection{
-			name:     'fixed_array_pointers_rejects_map_index_receiver'
-			source:   'fn main() {\n\tmut m := map[string][2]int{}\n\tm["x"] = [1, 2]!\n\t_ := unsafe { m["x"].pointers() }\n}\n'
-			expected: 'fixed array receiver for `pointers` must be addressable'
-		},
-		ReviewRejection{
-			name:     'fixed_array_pointers_rejects_extra_arg'
-			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut fixed := [3]int{}\n\t_ := unsafe { fixed.pointers(extra_arg()) }\n}\n'
-			expected: 'expected 0 arguments, but got 1'
-		},
-		ReviewRejection{
-			name:     'map_keys_rejects_extra_arg'
-			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\t_ := m.keys(extra_arg())\n}\n'
-			expected: '`.keys()` does not have any arguments'
-		},
-		ReviewRejection{
-			name:     'map_delete_rejects_bad_key_type'
-			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.delete(123)\n}\n'
-			expected: 'cannot use `int literal` as `string` in argument 1 to `Map.delete`'
-		},
-		ReviewRejection{
-			name:     'map_reserve_rejects_bad_count_type'
-			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.reserve("bad")\n}\n'
-			expected: 'cannot use `string` as `u32` in argument 1 to `map[string]int.reserve`'
-		},
-	])
 }
 
 fn test_array_builtin_method_fallback_keeps_return_type() {
@@ -3761,18 +4204,6 @@ fn test_unimported_main_types_are_not_visible_in_modules() {
 
 fn test_enum_helper_folding_tracks_local_declarations() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'enum_helper_immutable_local_assignment', 'fn value() int {
-	x := 1
-	x = 2
-	return x
-}
-
-enum HelperKind {
-	item = value()
-}
-
-fn main() {}
-', 'immutable, declare it with `mut`')
 }
 
 fn test_enum_initializer_helper_cannot_redefine_builtin() {
@@ -3794,17 +4225,6 @@ fn main() {
 
 fn test_enum_initializer_helper_keeps_noreturn_validation() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'enum_helper_noreturn_validation', '@[noreturn]
-fn value() int {
-	return 1
-}
-
-enum HelperKind {
-	item = value()
-}
-
-fn main() {}
-', '[noreturn] functions cannot use return statements')
 }
 
 fn test_callback_pointer_return_is_compatible_with_voidptr_return() {
@@ -4276,17 +4696,6 @@ fn main() {
 
 fn test_implicit_interface_str_dispatch_rejects_sum_without_dispatch_id() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'implicit_interface_str_dispatch_rejects_sum', 'interface Printable {
-	str() string
-}
-
-type Value = int | string
-
-fn main() {
-	value := Value(1)
-	_ := Printable(value)
-}
-', 'does not implement interface')
 }
 
 fn test_implicit_interface_str_dispatch_stringifies_typed_map_fields() {
@@ -4470,9 +4879,9 @@ fn main() {
 	assert out == '2'
 }
 
-fn test_interface_pointer_and_voidptr_rejections() {
+fn test_interface_arguments_and_collection_receivers() {
 	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'interface_pointer_and_voidptr_rejections', [
+	run_bad_module_batch(v3_bin, 'interface_arguments_and_collection_receivers', [
 		ReviewRejection{
 			name:     'interface_pointer_shape_mismatch'
 			source:   'interface Sink {\n\tput(x &int)\n}\n\nstruct Bad {}\n\nfn (b Bad) put(x int) {}\n\nfn main() {\n\t_ := Sink(Bad{})\n}\n'
@@ -4507,6 +4916,51 @@ fn main() {
 	take(Color.red)
 }
 ', 'cannot use `fixture_4.Color` as `voidptr` in argument 1 to `fixture_4.take`'},
+		ReviewRejection{
+			name:     'fixed_array_pointers_rejects_rvalue_receiver'
+			source:   'fn make_fixed() [2]int {\n\treturn [7, 8]!\n}\n\nfn main() {\n\t_ := unsafe { make_fixed().pointers() }\n}\n'
+			expected: 'fixed array receiver for `pointers` must be addressable'
+		},
+		ReviewRejection{
+			name:     'fixed_array_pointers_rejects_map_index_receiver'
+			source:   'fn main() {\n\tmut m := map[string][2]int{}\n\tm["x"] = [1, 2]!\n\t_ := unsafe { m["x"].pointers() }\n}\n'
+			expected: 'fixed array receiver for `pointers` must be addressable'
+		},
+		ReviewRejection{
+			name:     'fixed_array_pointers_rejects_extra_arg'
+			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut fixed := [3]int{}\n\t_ := unsafe { fixed.pointers(extra_arg()) }\n}\n'
+			expected: 'expected 0 arguments, but got 1'
+		},
+		ReviewRejection{
+			name:     'map_keys_rejects_extra_arg'
+			source:   'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\t_ := m.keys(extra_arg())\n}\n'
+			expected: '`.keys()` does not have any arguments'
+		},
+		ReviewRejection{
+			name:     'map_delete_rejects_bad_key_type'
+			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.delete(123)\n}\n'
+			expected: 'cannot use `int literal` as `string` in argument 1 to `Map.delete`'
+		},
+		ReviewRejection{
+			name:     'map_reserve_rejects_bad_count_type'
+			source:   'fn main() {\n\tmut m := map[string]int{}\n\tm.reserve("bad")\n}\n'
+			expected: 'cannot use `string` as `u32` in argument 1 to `map[string]int.reserve`'
+		},
+		ReviewRejection{'review_voidptr_interface_cast', 'interface Sink {
+	sink()
+}
+
+struct S {}
+
+fn (s S) sink() {}
+
+fn main() {
+	x := 1
+	p := voidptr(&x)
+	_ := Sink(p)
+}
+	', 'does not implement interface'},
+		ReviewRejection{'comptime_define_fixed_array_initializer', 'struct App {\n\tjobs [\$d("jobs", 2)]int = [1, 2]!\n}\n\nfn main() {}\n', 'cannot initialize a fixed size array field that uses `$d()` as size quantifier'},
 	])
 }
 
@@ -4786,439 +5240,6 @@ fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 	}
 }
 
-fn test_struct_initializers_and_interface_fields() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'struct_initializers_and_interface_fields', [
-		ReviewRuntimeCase{
-			name:     'anonymous_struct_literal_typed_shape'
-			source:   'fn take_int(value struct {
-	x int
-}) int {
-	return value.x
-}
-
-fn take_string(value struct {
-	x string
-}) string {
-	return value.x
-}
-
-fn take_i64(value struct {
-	x i64
-}) i64 {
-	return value.x
-}
-
-fn take_grouped(value struct {
-	x, y int
-}) int {
-	return value.x * 10 + value.y
-}
-
-fn call_late_i64() i64 {
-	return take_late_i64(struct { x: 11 })
-}
-
-fn take_late_i64(value struct {
-	x i64
-}) i64 {
-	return value.x
-}
-
-fn main() {
-	println(int_str(take_int(struct { x: 7 })))
-	println(take_string(struct { x: "right" }))
-	println(take_i64(struct { x: i64(9) }))
-	println(int_str(take_grouped(struct { x: 2, y: 3 })))
-	println(call_late_i64().str())
-	mut values := []struct {
-		x int
-	}{}
-	values << struct { x: 13 }
-	println(int_str(values[0].x))
-}
-	'
-			expected: '7\nright\n9\n23\n11\n13'
-		},
-		ReviewRuntimeCase{
-			name:     'anonymous_struct_inferred_literal_typed_shape'
-			source:   'fn main() {\n\ta := struct { x: 1 }\n\tb := struct { x: "typed" }\n\tprintln(int_str(a.x))\n\tprintln(b.x)\n}\n'
-			expected: '1\ntyped'
-		},
-		ReviewRuntimeCase{'promoted_embed_struct_init', 'struct Inner {
-	count int = 3
-	items []int
-	value int
-}
-
-struct Outer {
-	Inner
-}
-
-fn main() {
-	value := Outer{
-		value: 7
-	}
-	heap := &Outer{
-		value: 8
-	}
-	println(int_str(value.count))
-	println(int_str(value.value))
-	println(int_str(value.items.len))
-	println(int_str(heap.count))
-	println(int_str(heap.value))
-	println(int_str(heap.items.len))
-}
-', '3\n7\n0\n3\n8\n0'},
-		ReviewRuntimeCase{'promoted_embed_declared_struct_default', 'struct DefaultInner {
-	a int
-	b int
-}
-
-struct DefaultOuter {
-	DefaultInner = DefaultInner{
-		a: 3
-		b: 4
-	}
-}
-
-struct NestedDefaultInner {
-	x int
-	y int
-}
-
-struct NestedDefaultMid {
-	NestedDefaultInner
-}
-
-struct NestedDefaultOuter {
-	NestedDefaultMid = NestedDefaultMid{
-		NestedDefaultInner: NestedDefaultInner{
-			x: 1
-			y: 2
-		}
-	}
-}
-
-fn main() {
-	value := DefaultOuter{
-		b: 7
-	}
-	heap := &DefaultOuter{
-		b: 8
-	}
-	println(int_str(value.a))
-	println(int_str(value.b))
-	println(int_str(heap.a))
-	println(int_str(heap.b))
-	nested := NestedDefaultOuter{
-		x: 9
-	}
-	nested_heap := &NestedDefaultOuter{
-		x: 10
-	}
-	println(int_str(nested.x))
-	println(int_str(nested.y))
-	println(int_str(nested_heap.x))
-	println(int_str(nested_heap.y))
-}
-', '3\n7\n3\n8\n9\n2\n10\n2'},
-		ReviewRuntimeCase{'promoted_default_value_prelude', 'struct PromotedArrayInner {
-	promoted_values []int
-}
-
-fn make_promoted_array_inner() PromotedArrayInner {
-	return PromotedArrayInner{
-		promoted_values: [0]
-	}
-}
-
-struct PromotedArrayOuter {
-	PromotedArrayInner = make_promoted_array_inner()
-}
-
-fn main() {
-	value := PromotedArrayOuter{
-		promoted_values: [2, 3]
-	}
-	println(int_str(value.PromotedArrayInner.promoted_values.len))
-	println(int_str(value.PromotedArrayInner.promoted_values[0]))
-}
-', '2\n2'},
-		ReviewRuntimeCase{'promoted_embed_positional_default', 'struct PositionalInner {
-	a int
-	b int
-}
-
-struct PositionalOuter {
-	PositionalInner = PositionalInner{3, 4}
-}
-
-fn main() {
-	value := PositionalOuter{
-		a: 7
-	}
-	heap := &PositionalOuter{
-		a: 8
-	}
-	println(int_str(value.a))
-	println(int_str(value.b))
-	println(int_str(heap.a))
-	println(int_str(heap.b))
-}
-', '7\n4\n8\n4'},
-		ReviewRuntimeCase{'promoted_fixed_array_struct_init', 'struct FixedInner {
-	values [2]int
-}
-
-struct FixedOuter {
-	FixedInner
-}
-
-fn main() {
-	values := [1, 2]!
-	value := FixedOuter{
-		values: values
-	}
-	heap := &FixedOuter{
-		values: [3, 4]!
-	}
-	println(int_str(value.FixedInner.values[0] + value.FixedInner.values[1]))
-	println(int_str(heap.FixedInner.values[0] + heap.FixedInner.values[1]))
-}
-', '3\n7'},
-		ReviewRuntimeCase{'promoted_pointer_embed_struct_init', 'struct PointerInner {
-	count int = 4
-	items []int
-	value int
-}
-
-type PointerInnerRef = &PointerInner
-
-struct PointerOuter {
-	PointerInnerRef
-}
-
-fn main() {
-	value := PointerOuter{
-		value: 9
-	}
-	heap := &PointerOuter{
-		value: 10
-	}
-	println(int_str(value.PointerInnerRef.count))
-	println(int_str(value.PointerInnerRef.value))
-	println(int_str(value.PointerInnerRef.items.len))
-	println(int_str(heap.PointerInnerRef.count))
-	println(int_str(heap.PointerInnerRef.value))
-	println(int_str(heap.PointerInnerRef.items.len))
-}
-', '4\n9\n0\n4\n10\n0'},
-		ReviewRuntimeCase{'promoted_pointer_embed_call_default_escape', 'struct EscapingPointerInner {
-	a int
-	b int
-}
-
-type EscapingPointerInnerRef = &EscapingPointerInner
-
-struct EscapingPointerOuter {
-	EscapingPointerInnerRef = make_escaping_pointer_inner()
-}
-
-fn make_escaping_pointer_inner() EscapingPointerInnerRef {
-	return &EscapingPointerInner{
-		a: 5
-		b: 6
-	}
-}
-
-fn make_escaping_pointer_outer(b int) EscapingPointerOuter {
-	return EscapingPointerOuter{
-		b: b
-	}
-}
-
-fn main() {
-	first := make_escaping_pointer_outer(7)
-	second := make_escaping_pointer_outer(8)
-	println(int_str(first.EscapingPointerInnerRef.a))
-	println(int_str(first.EscapingPointerInnerRef.b))
-	println(int_str(second.EscapingPointerInnerRef.a))
-	println(int_str(second.EscapingPointerInnerRef.b))
-}
-', '5\n7\n5\n8'},
-		ReviewRuntimeCase{'interface_rvalue_upcast_to_embedded_base_argument', 'interface Base {
-	value() int
-}
-
-interface Child {
-	Base
-	extra() int
-}
-
-struct Item {
-	n int
-}
-
-fn (i Item) value() int {
-	return i.n
-}
-
-fn (i Item) extra() int {
-	return i.n + 1
-}
-
-fn make_child(n int) Child {
-	return Child(Item{
-		n: n
-	})
-}
-
-fn take_base(b Base) int {
-	return b.value()
-}
-
-fn main() {
-	println(int_str(take_base(make_child(7))))
-	println(int_str(take_base(if true { make_child(8) } else { make_child(0) })))
-	children := [make_child(9)]
-	println(int_str(take_base(children[0])))
-}
-	', '7\n8\n9'},
-		ReviewRuntimeCase{'nested_interface_field_assign', 'struct Metadata {
-mut:
-	links u64
-}
-
-interface Resource {
-mut:
-	metadata Metadata
-}
-
-struct FileResource {
-mut:
-	metadata Metadata
-}
-
-struct Node {
-mut:
-	resource Resource
-}
-
-fn main() {
-	mut file := &FileResource{
-		metadata: Metadata{links: 1}
-	}
-	mut node := Node{
-		resource: file
-	}
-	node.resource.metadata.links = 2
-	println(file.metadata.links)
-}
-', '2'},
-		ReviewRuntimeCase{'smartcast_interface_identity', 'interface Resource {
-mut:
-	set(int)
-	get() int
-}
-
-interface Socket {
-mut:
-	set(int)
-	get() int
-	extra() int
-}
-
-struct UnixSocket {
-mut:
-	n int
-}
-
-fn (mut socket UnixSocket) set(n int) {
-	socket.n = n
-}
-
-fn (socket UnixSocket) get() int {
-	return socket.n
-}
-
-fn (socket UnixSocket) extra() int {
-	return 9
-}
-
-fn as_socket(mut resource Resource) &Socket {
-	if mut resource is UnixSocket {
-		return &Socket(resource)
-	}
-	panic("not a socket")
-}
-
-fn main() {
-	mut concrete := &UnixSocket{n: 1}
-	mut resource := Resource(concrete)
-	mut socket := as_socket(mut resource)
-	socket.set(2)
-	println(concrete.n)
-	println(resource.get())
-	println(socket.get())
-}
-', '2\n2\n2'},
-		ReviewRuntimeCase{'unsafe_block_pointer_interface_identity', 'interface Resource {
-mut:
-	set(int)
-	get() int
-}
-
-struct Concrete {
-mut:
-	value int
-}
-
-fn (mut concrete Concrete) set(value int) {
-	concrete.value = value
-}
-
-fn (concrete Concrete) get() int {
-	return concrete.value
-}
-
-struct Node {
-mut:
-	resource &Resource = unsafe { nil }
-}
-
-fn (mut concrete Concrete) install(mut node Node) {
-	node.resource = unsafe { concrete }
-}
-
-fn main() {
-	mut concrete := &Concrete{value: 1}
-	mut node := Node{}
-	concrete.install(mut node)
-	concrete.set(2)
-	println(concrete.value)
-	println(node.resource.get())
-}
-', '2\n2'},
-	])
-}
-
-fn test_anonymous_struct_type_allows_volatile_field_name() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'anonymous_struct_volatile_field_name', 'fn read(value struct {
-	volatile u8
-}) u8 {
-	return value.volatile
-}
-
-fn main() {
-	value := struct { volatile: u8(73) }
-	println(read(value))
-}
-')
-	assert out == '73'
-}
-
 fn test_selected_compile_error_in_void_fn_has_clean_diagnostic() {
 	v3_bin := build_v3()
 	bad_src := '${tmp_test_path('selected_compile_error_void_fn')}.v'
@@ -5423,13 +5444,6 @@ fn main() {
 }
 ')
 	assert out == '7'
-	run_bad(v3_bin, 'overloaded_index_rejects_wrong_key_type', overloaded_index_getter_source + '
-
-fn main() {
-	d := Dict{}
-	println(int_str(d[1]))
-}
-', 'cannot use `int` as overloaded index; expected `string`')
 }
 
 fn test_overloaded_index_assignment_uses_setter_signature() {
@@ -5484,7 +5498,238 @@ fn (mut d Dict) []= (key string, value int) {
 	d.values[key] = value
 }
 '
-	run_good_module_batch(v3_bin, 'index_overloads_and_setter_runtime', [
+	run_good_module_batch(v3_bin, 'pointer_casts_and_index_overloads', [
+		ReviewRuntimeCase{
+			name:     'is_pointer_alias_sum'
+			source:   'struct Foo {
+		value int
+	}
+
+struct Bar {}
+
+type Value = Bar | Foo
+type ValueRef = &Value
+
+fn main() {
+	mut value := Value(Foo{
+		value: 7
+	})
+	r := ValueRef(&value)
+	if r is Foo {
+		println("foo")
+	} else {
+		println("other")
+	}
+}
+'
+			expected: 'foo'
+		},
+		ReviewRuntimeCase{
+			name:     'is_pointer_alias_interface'
+			source:   'interface Runner {
+	run() int
+}
+
+struct Job {
+	n int
+}
+
+fn (j Job) run() int {
+	return j.n
+}
+
+type RunnerRef = &Runner
+
+fn main() {
+	mut runner := Runner(Job{
+		n: 3
+	})
+	r := RunnerRef(&runner)
+	if r is Job {
+		println("job")
+	} else {
+		println("other")
+	}
+}
+'
+			expected: 'job'
+		},
+		ReviewRuntimeCase{'pointer_arithmetic_deref', 'fn main() {\n\tmut nums := [1, 2]!\n\tp := unsafe { &nums[0] }\n\tv := unsafe { *(p + 1) }\n\tprintln(int_str(v))\n}\n', '2'},
+		ReviewRuntimeCase{'parenthesized_pointer_cast_deref', "fn load(s charptr, offset u64) u8 {\n\treturn u8(unsafe { *(charptr(u64(s) + offset)) })\n}\n\nfn main() {\n\ts := c'VinixV3!'\n\tmut result := ''\n\tfor i in u64(0) .. u64(8) {\n\t\tresult += rune(load(s, i)).str()\n\t}\n\tprintln(result)\n}\n", 'VinixV3!'},
+		ReviewRuntimeCase{'generic_mut_pointer_cast_slot_address', 'fn address[T](mut value T) voidptr {\n\tif sizeof(T) == 8 {\n\t\treturn voidptr(value)\n\t}\n\treturn unsafe { nil }\n}\n\nfn main() {\n\tmut n := 7\n\tmut pointers := unsafe { [1]&int{} }\n\tpointers[0] = &n\n\tresult := address[&int](mut &pointers[0])\n\tprintln(result == voidptr(&pointers[0]))\n\tprintln(result == voidptr(pointers[0]))\n}\n', 'true\nfalse'},
+		ReviewRuntimeCase{'review_pointer_value_receiver_str', "struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n", '&custom:7'},
+		ReviewRuntimeCase{'review_interface_smartcast_pointer_str', "interface Named {\n\tname() string\n}\n\nstruct Item {}\n\nfn (i Item) name() string {\n\treturn 'item'\n}\n\nfn (i Item) str() string {\n\treturn i.name()\n}\n\nfn describe(value Named) string {\n\treturn match value {\n\t\tItem { value.str() }\n\t\telse { 'unknown' }\n\t}\n}\n\nfn main() {\n\tvalue := Named(&Item{})\n\tprintln(describe(value))\n\tboxed := Named(Item{})\n\tprintln(describe(boxed))\n}\n", '&item\nitem'},
+		ReviewRuntimeCase{'review_one_level_implicit_address', 'fn take(p &int) int {\n\treturn *p\n}\n\nfn main() {\n\tmut n := 3\n\tprintln(int_str(take(n)))\n}\n', '3'},
+		ReviewRuntimeCase{'review_alias_struct_implicit_interface_str', "interface Printable {\n\tstr() string\n}\n\nstruct Foo {\n\tx int\n}\n\ntype AliasFoo = Foo\n\nfn main() {\n\tvalue := Printable(AliasFoo(Foo{\n\t\tx: 7\n\t}))\n\ttext := value.str()\n\tprintln(text.contains('Foo'))\n\tprintln(text.contains('x: 7'))\n}\n", 'true\ntrue'},
+		ReviewRuntimeCase{'review_alias_fields_implicit_interface_str', 'interface Printable {\n\tstr() string\n}\n\nstruct Bar {\n\tx int\n}\n\ntype MyBar = Bar\ntype MyNums = []int\ntype MyFixed = [2]int\ntype MyName = string\n\nstruct Foo {\n\tbar   MyBar\n\tnums  MyNums\n\tfixed MyFixed\n\tname  MyName\n}\n\nfn main() {\n\tvalue := Printable(Foo{\n\t\tbar: MyBar(Bar{\n\t\t\tx: 7\n\t\t})\n\t\tnums: MyNums([1, 2])\n\t\tfixed: MyFixed([3, 4]!)\n\t\tname: MyName(\'Ada\')\n\t})\n\ttext := value.str()\n\tprintln(text.contains(\'x: 7\'))\n\tprintln(text.contains(\'[1, 2]\'))\n\tprintln(text.contains(\'[3, 4]\'))\n\tprintln(text.contains("\'Ada\'"))\n}\n', 'true\ntrue\ntrue\ntrue'},
+		ReviewRuntimeCase{'review_call_return_pointer_not_arg_alias', 'fn choose(a &int, b &int) &int {\n\t_ = a\n\treturn b\n}\n\nfn make() &int {\n\tx := 10\n\ty := 20\n\tp := choose(&x, &y)\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n', '20'},
+		ReviewRuntimeCase{'review_mut_param_pointer_alias_return', 'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain[T](mut x T) &T {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep[int](mut a)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain[int](mut b)\n\tunsafe {\n\t\t*q = 8\n\t}\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n', '7\n7\n8\n8'},
+		ReviewRuntimeCase{'review_map_index_implicit_ref_arg', 'struct Image {
+	value int
+}
+
+fn draw(image &Image) int {
+	return image.value
+}
+
+fn main() {
+	images := {
+		"avatar": Image{value: 9}
+	}
+	println(draw(images["avatar"]))
+}
+', '9'},
+		ReviewRuntimeCase{'review_multi_level_implicit_addresses', 'fn set_double(pp &&int) {\n\tunsafe {\n\t\t**pp = 5\n\t}\n}\n\nfn set_triple(pp &&&int) {\n\tunsafe {\n\t\t***pp = 7\n\t}\n}\n\nfn main() {\n\tmut x := 1\n\tset_double(x)\n\tmut y := 2\n\tp := &y\n\tset_triple(p)\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n', '5\n7'},
+		ReviewRuntimeCase{'interface_mut_array_argument', 'interface Reader {
+mut:
+	read(mut buf []u8)
+}
+
+struct Source {}
+
+fn (mut source Source) read(mut buf []u8) {
+	buf[0] = 7
+}
+
+fn main() {
+	mut reader := Reader(Source{})
+	mut buf := []u8{len: 1}
+	reader.read(mut buf)
+	println(buf[0])
+}
+', '7'},
+		ReviewRuntimeCase{'interface_pointer_voidptr_cast_escape_hatch', 'interface Sink {\n\tput()\n}\n\nfn main() {\n\tp := unsafe { voidptr(0) }\n\t_ := &Sink(p)\n\tprintln("ok")\n}\n', 'ok'},
+		ReviewRuntimeCase{'interface_pointer_nil_cast', "interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nfn main() {\n\t_ := Sink(nil)\n\t_ := &Sink(nil)\n\t_ := &SinkAlias(nil)\n\tprintln('ok')\n}\n", 'ok'},
+		ReviewRuntimeCase{'interface_pointer_nil_argument', "interface Item {\n\tname string\n}\n\nfn take(item &Item) {\n\tassert item == unsafe { nil }\n}\n\nfn main() {\n\tvalue := unsafe { nil }\n\ttake(value)\n\ttake(unsafe { nil })\n\tprintln('ok')\n}\n", 'ok'},
+		ReviewRuntimeCase{'v_voidptr_auto_address', 'const voidptr_const_value = 9
+
+fn take(value voidptr) int {
+	return unsafe { *(&int(value)) }
+}
+
+fn main() {
+	value := 7
+	println(int_str(take(value)))
+	println(int_str(take(voidptr_const_value)))
+}
+', '7\n9'},
+		ReviewRuntimeCase{'mut_pointer_for_in_arg', 'struct PointerItem {
+mut:
+	value int
+}
+
+fn increment(mut item PointerItem) {
+	item.value++
+}
+
+fn main() {
+	mut first := PointerItem{
+		value: 1
+	}
+	mut second := PointerItem{
+		value: 2
+	}
+	mut items := [&first, &second]
+	for mut item in items {
+		increment(mut item)
+	}
+	println(int_str(first.value))
+	println(int_str(second.value))
+}
+', '2\n3'},
+		ReviewRuntimeCase{'optional_pointer_equality_semantics', 'struct Item {
+	value int
+}
+
+struct Bag {
+	items []int
+}
+
+type BagRef = &Bag
+
+fn main() {
+	a := 7
+	b := 7
+	item_a := Item{
+		value: 7
+	}
+	item_b := Item{
+		value: 7
+	}
+	opt_a := unsafe { ?&int(&a) }
+	opt_b := unsafe { ?&int(&b) }
+	opt_item_a := unsafe { ?&Item(&item_a) }
+	opt_item_b := unsafe { ?&Item(&item_b) }
+	bag_a := &Bag{
+		items: [1]
+	}
+	bag_b := &Bag{
+		items: [1]
+	}
+	nil_bag := &Bag(unsafe { nil })
+	opt_bag_a := unsafe { ?&Bag(bag_a) }
+	opt_bag_b := unsafe { ?&Bag(bag_b) }
+	opt_nil_bag := unsafe { ?&Bag(nil_bag) }
+	opt_alias_bag_a := unsafe { ?BagRef(BagRef(bag_a)) }
+	opt_alias_bag_b := unsafe { ?BagRef(BagRef(bag_b)) }
+	opt_alias_nil_bag := unsafe { ?BagRef(BagRef(nil_bag)) }
+	println(opt_a == opt_b)
+	println(opt_a == opt_a)
+	println(opt_item_a == opt_item_b)
+	println(opt_nil_bag == opt_bag_a)
+	println(opt_nil_bag == opt_nil_bag)
+	println(opt_bag_a == opt_bag_b)
+	println(opt_alias_bag_a == opt_alias_bag_b)
+	println(opt_alias_nil_bag == opt_alias_bag_a)
+	println(opt_alias_nil_bag == opt_alias_nil_bag)
+}
+', 'false\ntrue\ntrue\nfalse\ntrue\ntrue\ntrue\nfalse\ntrue'},
+		ReviewRuntimeCase{'mut_pointer_iteration_rebinds_slots', 'struct Item {
+mut:
+	value int
+}
+
+fn increment(mut item Item) {
+	item.value++
+}
+
+fn main() {
+	first := &Item{
+		value: 1
+	}
+	mut second := &Item{
+		value: 2
+	}
+	mut dynamic := [first]
+	for mut item in dynamic {
+		item = second
+		increment(mut item)
+	}
+	mut fixed := [first]!
+	for mut item in fixed {
+		item = second
+		increment(mut *item)
+	}
+	second.value = 9
+	println(int_str(dynamic[0].value))
+	println(int_str(fixed[0].value))
+}
+', '9\n9'},
+		ReviewRuntimeCase{'ordinary_pointer_value_param', 'struct PointerCallItem {
+	value int
+}
+
+fn take_value(item PointerCallItem) int {
+	return item.value
+}
+
+fn main() {
+	item := &PointerCallItem{
+		value: 7
+	}
+	println(int_str(take_value(item)))
+}
+', '7'},
 		ReviewRuntimeCase{
 			name:     'overloaded_index_assignment_write_only_setter'
 			source:   setter_only_src + '
@@ -5598,7 +5843,7 @@ fn main() {
 		ReviewRuntimeCase{'review_interface_rvalue_upcasts', 'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n', 'call\nif\nindex'},
 		ReviewRuntimeCase{'review_embedded_interface_fields_and_ptr_upcast', 'interface Base {\n\tname string\n\tlabel() string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name + ":label"\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn use_ptr(b &Base) string {\n\treturn b.name + ":" + b.label()\n}\n\nfn describe(base Base) string {\n\treturn match base {\n\t\tChild { base.name + ":" + base.child().str() }\n\t\telse { "else" }\n\t}\n}\n\nfn main() {\n\tchild := Child(User{\n\t\tname: "Ada"\n\t})\n\tbase := Base(User{\n\t\tname: "Bea"\n\t})\n\tprintln(child.name)\n\tprintln(use_ptr(child))\n\tprintln(describe(base))\n}\n', 'Ada\nAda:Ada:label\nBea:3'},
 	])
-	run_bad_module_batch(v3_bin, 'overloaded_index_write_rejections', [
+	run_bad_module_batch(v3_bin, 'overloaded_index_access_and_assignment_rejections', [
 		ReviewRejection{
 			name:     'overloaded_index_compound_assignment_checks_getter_index'
 			source:   mismatched_getter_src + '
@@ -5687,6 +5932,38 @@ fn main() {
 	d["name"] += 1
 }
 ', 'index assignment requires a `[]=` overload on type `fixture_7.Dict`'},
+		ReviewRejection{
+			name:     'review_setter_only_compound_index_assignment'
+			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'compound index assignment requires a `[]` overload'
+		},
+		ReviewRejection{
+			name:     'review_getter_only_index_assignment'
+			source:   "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] = 1\n}\n"
+			expected: 'index assignment requires a `[]=` overload'
+		},
+		ReviewRejection{
+			name:     'review_getter_only_compound_index_assignment'
+			source:   "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'index assignment requires a `[]=` overload'
+		},
+		ReviewRejection{
+			name:     'review_compound_index_getter_key_mismatch'
+			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'cannot use `string` as overloaded index; expected `int`'
+		},
+		ReviewRejection{
+			name:     'review_compound_index_getter_value_mismatch'
+			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
+			expected: 'compound index assignment getter returns `string`, which cannot be used as setter value `int`'
+		},
+		ReviewRejection{'overloaded_index_rejects_wrong_key_type', overloaded_index_getter_source + '
+
+fn main() {
+	d := Dict{}
+	println(int_str(d[1]))
+}
+', 'cannot use `int` as overloaded index; expected `string`'},
 	])
 }
 
@@ -5766,17 +6043,6 @@ fn check_unqualified_types() {
 // names the local, not the global's own uses on the lines around it.
 fn test_shadowed_global_local_is_rejected_inside_a_block() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'shadowed_global_local_rename_scoped', '__global foo int
-
-fn main() {
-	foo = 1
-	if true {
-		foo := 3
-		println(int_str(foo))
-	}
-	println(int_str(foo))
-}
-', 'variable `foo` shadows a global variable')
 }
 
 fn test_capturing_fn_literal_aliases_are_scoped_to_lambda() {
@@ -5960,22 +6226,6 @@ fn main() {
 
 fn test_non_generic_reflection_compile_error_waits_for_selected_branch() {
 	v3_bin := build_v3()
-	good := run_good(v3_bin, 'non_generic_reflection_unselected_compile_error', "struct App {}
-
-fn (app App) present() {
-	_ = app
-}
-
-fn main() {
-	\$for method in App.methods {
-		\$if method.name == 'missing' {
-			\$compile_error('missing method selected')
-		}
-	}
-	println('ok')
-}
-")
-	assert good == 'ok'
 	run_bad(v3_bin, 'non_generic_reflection_selected_compile_error', "struct App {}
 
 fn (app App) present() {
@@ -6159,20 +6409,6 @@ fn main() {
 	assert str_out.contains("m: {'a': 3}"), str_out
 	assert str_out.contains('bar: Bar'), str_out
 	assert str_out.contains('x: 7'), str_out
-	run_bad(v3_bin, 'review_voidptr_interface_cast', 'interface Sink {
-	sink()
-}
-
-struct S {}
-
-fn (s S) sink() {}
-
-fn main() {
-	x := 1
-	p := voidptr(&x)
-	_ := Sink(p)
-}
-	', 'does not implement interface')
 }
 
 fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
@@ -6181,34 +6417,6 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	// global and be scoped to its block. The declaration is an error now; the
 	// compound assignment to the global after the block still has to parse for
 	// the error to be the only complaint.
-	run_bad(v3_bin, 'review_shadowed_global_nested_scope', '__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n', 'variable `score` shadows a global variable')
-	run_bad_module_batch(v3_bin, 'review_index_rejections', [
-		ReviewRejection{
-			name:     'review_setter_only_compound_index_assignment'
-			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
-			expected: 'compound index assignment requires a `[]` overload'
-		},
-		ReviewRejection{
-			name:     'review_getter_only_index_assignment'
-			source:   "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] = 1\n}\n"
-			expected: 'index assignment requires a `[]=` overload'
-		},
-		ReviewRejection{
-			name:     'review_getter_only_compound_index_assignment'
-			source:   "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
-			expected: 'index assignment requires a `[]=` overload'
-		},
-		ReviewRejection{
-			name:     'review_compound_index_getter_key_mismatch'
-			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
-			expected: 'cannot use `string` as overloaded index; expected `int`'
-		},
-		ReviewRejection{
-			name:     'review_compound_index_getter_value_mismatch'
-			source:   "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n"
-			expected: 'compound index assignment getter returns `string`, which cannot be used as setter value `int`'
-		},
-	])
 	fixed_field_out := run_good(v3_bin, 'review_capital_field_const_fixed_array', '@[translated]\nmodule main\n\nconst n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
 	assert fixed_field_out == '7'
 }
@@ -6684,292 +6892,6 @@ fn test_external_bare_macro_objective_c_guards_remain_possible() {
 	assert out == '75'
 }
 
-fn test_map_alias_storage_and_control_flow() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'map_alias_storage_and_control_flow', [
-		ReviewRuntimeCase{
-			name:     'map_retains_address_of_local_after_return'
-			source:   'struct Item {
-	value int
-}
-
-fn make_cache() map[string]&Item {
-	mut cache := map[string]&Item{}
-	mut local := Item{
-		value: 7
-	}
-	ptr := &local
-	cache["alias"] = ptr
-	cache["direct"] = &local
-	return cache
-}
-
-fn main() {
-	cache := make_cache()
-	println(int_str(cache["alias"].value))
-	println(int_str(cache["direct"].value))
-}
-'
-			expected: '7\n7'
-		},
-		ReviewRuntimeCase{
-			name:     'map_retains_addresses_of_same_named_branch_locals'
-			source:   'struct Item {
-mut:
-	value int
-}
-
-fn make_cache() map[string]&Item {
-	mut cache := map[string]&Item{}
-	mut outer := Item{
-		value: 3
-	}
-	cache["outer"] = &outer
-	if true {
-		mut local := Item{
-			value: 1
-		}
-		cache["first"] = &local
-		local.value = 11
-	}
-	if true {
-		mut local := Item{
-			value: 2
-		}
-		cache["second"] = &local
-		local.value = 22
-	}
-	outer.value = 33
-	return cache
-}
-
-fn main() {
-	cache := make_cache()
-	println(int_str(cache["first"].value))
-	println(int_str(cache["second"].value))
-	println(int_str(cache["outer"].value))
-}
-'
-			expected: '11\n22\n33'
-		},
-		ReviewRuntimeCase{'unsafe_map_reference_alias', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := unsafe { original }
-	copy := alias
-	println(copy.len)
-}
-', '1'},
-		ReviewRuntimeCase{'unsafe_map_alias_assert_message_rebind', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := unsafe { original }
-	assert true, unsafe {
-		alias = map[string]int{}
-		"failed"
-	}
-	copy := alias
-	println(copy.len)
-}
-', '1'},
-		ReviewRuntimeCase{'unsafe_map_alias_required_logical_rhs', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	if true && (if true {
-		alias = unsafe { original }
-		true
-	} else {
-		alias = unsafe { original }
-		true
-	}) {}
-	copy := alias
-	println(copy.len)
-}
-', '1'},
-		ReviewRuntimeCase{'unsafe_map_alias_all_or_paths', 'fn maybe() ?int {
-	return none
-}
-
-fn main() {
-	mut first := {
-		"value": 1
-	}
-	mut second := {
-		"value": 2
-	}
-	mut alias := unsafe { first }
-	_ := maybe() or {
-		alias = unsafe { second }
-		0
-	}
-	copy := alias
-	println(copy.len)
-}
-', '1'},
-		ReviewRuntimeCase{'unsafe_map_alias_deferred_rebind', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := unsafe { original }
-	defer {
-		alias = map[string]int{}
-	}
-	copy := alias
-	println(copy.len)
-}
-', '1'},
-		ReviewRuntimeCase{'unsafe_map_alias_all_select_paths', 'fn main() {
-	mut first := {
-		"value": 1
-	}
-	mut second := {
-		"value": 2
-	}
-	mut alias := map[string]int{}
-	ch := chan int{cap: 1}
-	select {
-		ch <- 1 {
-			alias = unsafe { first }
-		}
-		else {
-			alias = unsafe { second }
-		}
-	}
-	copy := alias
-	println(copy.len)
-}
-', '1'},
-		ReviewRuntimeCase{
-			name:     'unsafe_map_alias_if_expression'
-			source:   'fn choose(cond bool) {
-	mut left := {
-		"value": 1
-	}
-	mut right := {
-		"value": 2
-	}
-	alias := if cond { (unsafe { left }) } else { (unsafe { right }) }
-	copy := alias
-	println(copy["value"])
-}
-
-fn main() {
-	choose(true)
-	choose(false)
-}
-'
-			expected: '1\n2'
-		},
-		ReviewRuntimeCase{
-			name:     'unsafe_map_alias_match_expression'
-			source:   'fn choose(value int) {
-	mut left := {
-		"value": 1
-	}
-	mut right := {
-		"value": 2
-	}
-	alias := match value {
-		0 { (unsafe { left }) }
-		else { (unsafe { right }) }
-	}
-	copy := alias
-	println(copy["value"])
-}
-
-fn main() {
-	choose(0)
-	choose(1)
-}
-'
-			expected: '1\n2'
-		},
-		ReviewRuntimeCase{
-			name:     'unsafe_map_alias_unconditional_loop'
-			source:   'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	for {
-		alias = unsafe { original }
-		break
-	}
-	copy := alias
-	println(copy.len)
-}
-'
-			expected: '1'
-		},
-		ReviewRuntimeCase{
-			name:     'unsafe_map_alias_skipped_loop_post'
-			source:   'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := unsafe { original }
-	for ;; alias = map[string]int{} {
-		break
-	}
-	copy := alias
-	println(copy.len)
-}
-'
-			expected: '1'
-		},
-		ReviewRuntimeCase{
-			name:     'unsafe_map_alias_all_if_paths'
-			source:   'fn branch(cond bool) {
-	mut first := {
-		"value": 1
-	}
-	mut second := {
-		"value": 2
-	}
-	mut alias := map[string]int{}
-	if cond {
-		alias = unsafe { first }
-	} else {
-		alias = unsafe { second }
-	}
-	copy := alias
-	println(copy.len)
-}
-
-fn main() {
-	branch(false)
-}
-'
-			expected: '1'
-		},
-		ReviewRuntimeCase{
-			name:     'unsafe_map_alias_loop_return_path'
-			source:   'fn branch(values []int) {
-	mut original := {
-		"value": 1
-	}
-	mut alias := unsafe { original }
-	for _ in values {
-		alias = map[string]int{}
-		return
-	}
-	copy := alias
-	println(copy.len)
-}
-
-fn main() {
-	branch([]int{})
-}
-'
-			expected: '1'
-		},
-	])
-}
-
 fn test_lambda_capture_counts_as_local_use_without_counting_shadowed_parameters() {
 	check_src := '${tmp_test_path('lambda_capture_local_usage')}.v'
 	os.write_file(check_src, 'fn apply(f fn (int) int, value int) int {
@@ -7333,9 +7255,9 @@ fn same_scope() {
 	assert four_b[0].line == 14, p.diagnostics.str()
 }
 
-fn test_recursive_str_control_flow_and_progress_rejections() {
+fn test_recursive_str_control_flow_and_aggregate_rejections() {
 	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_control_flow_and_progress_rejections', [
+	run_bad_file_batch(v3_bin, 'recursive_str_control_flow_and_aggregate_rejections', [
 		ReviewRejection{'recursive_str_helper_early_return', 'struct EarlyReturnItem {
 mut:
 	remaining int
@@ -7522,6 +7444,141 @@ fn (item OrItem) str() string {
 	return copy.str()
 }
 ', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_multi_return_slot_provenance', 'struct ReturnedSlotItem {}
+
+fn returned_slot_carry(item ReturnedSlotItem) (ReturnedSlotItem, int) {
+	return item, 0
+}
+
+fn (item ReturnedSlotItem) str() string {
+	copy, _ := returned_slot_carry(item)
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_multi_return_assign_slot_provenance', 'struct AssignedSlotItem {}
+
+fn assigned_slot_carry(item AssignedSlotItem) (AssignedSlotItem, int) {
+	return item, 0
+}
+
+fn (item AssignedSlotItem) str() string {
+	mut copy := AssignedSlotItem{}
+	copy, _ = assigned_slot_carry(item)
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_clone_element_provenance', 'struct ArrayCloneItem {}
+
+fn (item ArrayCloneItem) str() string {
+	copies := [item].clone()
+	return copies[0].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_map_clone_element_provenance', 'struct MapCloneItem {}
+
+fn (item MapCloneItem) str() string {
+	copies := {"self": item}.clone()
+	return copies["self"].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_static_helper_args', 'struct Helpers {}
+
+struct StaticItem {}
+
+fn Helpers.render(item StaticItem) string {
+	return item.str()
+}
+
+fn (item StaticItem) str() string {
+	return Helpers.render(item)
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_slot_replacement', 'struct ArraySlotItem {
+	remaining int
+}
+
+fn (item ArraySlotItem) str() string {
+	mut items := [ArraySlotItem{
+		remaining: 0
+	}]
+	items[0] = item
+	return items[0].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_map_slot_replacement', 'struct MapSlotItem {
+	remaining int
+}
+
+fn (item MapSlotItem) str() string {
+	mut items := {"self": MapSlotItem{
+		remaining: 0
+	}}
+	items["self"] = item
+	return items["self"].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_wrapper_field_replacement', 'struct WrapperFieldItem {
+	remaining int
+}
+
+struct Wrapper {
+mut:
+	value WrapperFieldItem
+}
+
+fn (item WrapperFieldItem) str() string {
+	mut wrapped := Wrapper{
+		value: WrapperFieldItem{
+			remaining: 0
+		}
+	}
+	wrapped.value = item
+	return wrapped.value.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_constant_local_receiver_index', 'struct ConstantIndexItem {}
+
+fn (item ConstantIndexItem) str() string {
+	items := [item, ConstantIndexItem{}]
+	index := 0
+	return items[index].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_mutated_local_receiver_index', 'struct MutatedIndexItem {}
+
+fn (item MutatedIndexItem) str() string {
+	items := [item, MutatedIndexItem{}]
+	mut index := 1
+	index--
+	return items[index].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_for_in_value', 'struct ForValueItem {}
+
+fn (item ForValueItem) str() string {
+	for copy in [item] {
+		return copy.str()
+	}
+	return ""
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_for_in_index_and_value', 'struct ForIndexValueItem {}
+
+fn (item ForIndexValueItem) str() string {
+	for _, copy in [item] {
+		return copy.str()
+	}
+	return ""
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_slice_receiver', 'struct SlicedItem {}
+
+fn (item SlicedItem) str() string {
+	items := [item]
+	slice := items[0..1]
+	return slice[0].str()
+}
+', 'cannot call `str()` method recursively'},
 	])
 }
 
@@ -7567,37 +7624,9 @@ fn main() {
 	assert compile.output.contains('generic struct cannot be used in non-generic function'), compile.output
 }
 
-fn test_recursive_str_comptime_if_uses_selected_branch() {
+fn test_recursive_str_provenance_and_storage_mutation_rejections() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_selected_comptime_progress', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	mut copy := item
-	$if threads {
-	} $else {
-		copy.remaining--
-	}
-	return copy.str()
-}
-
-fn main() {
-	println(Item{
-		remaining: 2
-	}.str())
-}
-')
-	assert out == ''
-}
-
-fn test_recursive_str_helper_and_container_provenance_rejections() {
-	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_helper_and_container_provenance_rejections', [
+	run_bad_file_batch(v3_bin, 'recursive_str_provenance_and_storage_mutation_rejections', [
 		ReviewRejection{'recursive_str_helper_return_alias', 'struct ReturnedAliasItem {}
 
 fn same(item ReturnedAliasItem) ReturnedAliasItem {
@@ -7767,6 +7796,181 @@ fn (item WrapperHelperItem) str() string {
 	return wrapper_helper_wrap(item).value.str()
 }
 ', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_spawned_mutation', 'struct SpawnMutationItem {
+mut:
+	remaining int
+}
+
+fn advance(mut item SpawnMutationItem) {
+	item.remaining--
+}
+
+fn (item SpawnMutationItem) str() string {
+	mut copy := item
+	spawn advance(mut copy)
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_spawned_call', 'struct SpawnCallItem {}
+
+fn (item SpawnCallItem) str() string {
+	t := spawn item.str()
+	return t.wait()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_deferred_mutation', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut copy := item
+	defer {
+		copy.remaining--
+	}
+	return copy.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_deferred_call_exit_state', 'struct ExitStateItem {
+mut:
+	remaining int
+}
+
+fn (item ExitStateItem) str() string {
+	mut next := item
+	next.remaining--
+	defer {
+		_ := next.str()
+	}
+	next = item
+	return ""
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_deferred_call_before_mutation', 'struct BeforeMutationItem {
+mut:
+	remaining int
+}
+
+fn (item BeforeMutationItem) str() string {
+	mut next := item
+	defer {
+		next.remaining--
+	}
+	defer {
+		_ := next.str()
+	}
+	return ""
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_literal_provenance', 'struct LiteralItem {
+	remaining int
+}
+
+fn (item LiteralItem) str() string {
+	return LiteralItem{
+		remaining: item.remaining
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_update_provenance', 'struct UpdateItem {
+	value int
+}
+
+fn (item UpdateItem) str() string {
+	return UpdateItem{
+		...item
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_update_noop_field', 'struct NoopUpdateItem {
+	remaining int
+}
+
+fn (item NoopUpdateItem) str() string {
+	return NoopUpdateItem{
+		...item
+		remaining: item.remaining + 0
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_struct_update_helper_provenance', 'struct HelperUpdateItem {
+	value int
+}
+
+fn helper_update_same(value HelperUpdateItem) HelperUpdateItem {
+	return value
+}
+
+fn (item HelperUpdateItem) str() string {
+	return helper_update_same(HelperUpdateItem{
+		...item
+	}).str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_helper_returned_struct_update', 'struct ReturnedUpdateItem {
+	value int
+}
+
+fn returned_update_same(item ReturnedUpdateItem) ReturnedUpdateItem {
+	return ReturnedUpdateItem{
+		...item
+	}
+}
+
+fn (item ReturnedUpdateItem) str() string {
+	return returned_update_same(item).str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_guarded_bool_noop_struct_update', 'struct GuardedUpdateItem {
+	done bool
+}
+
+fn (item GuardedUpdateItem) str() string {
+	if !item.done {
+		return "done"
+	}
+	return GuardedUpdateItem{
+		...item
+		done: true
+	}.str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_delete_shift', 'struct DeletedItem {
+	remaining int
+}
+
+fn (item DeletedItem) str() string {
+	mut items := [DeletedItem{
+		remaining: item.remaining - 1
+	}, item]
+	items.delete(0)
+	return items[0].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_reverse_in_place', 'struct ReversedItem {
+	remaining int
+}
+
+fn (item ReversedItem) str() string {
+	mut items := [item, ReversedItem{
+		remaining: item.remaining - 1
+	}]
+	items.reverse_in_place()
+	return items[1].str()
+}
+', 'cannot call `str()` method recursively'},
+		ReviewRejection{'recursive_str_array_prepend_shift', 'struct PrependedItem {
+	remaining int
+}
+
+fn (item PrependedItem) str() string {
+	mut items := [item]
+	items.prepend(PrependedItem{
+		remaining: item.remaining - 1
+	})
+	return items[1].str()
+}
+', 'cannot call `str()` method recursively'},
 	])
 }
 
@@ -7894,9 +8098,9 @@ fn (item ReversedAssignmentItem) str() string {
 	])
 }
 
-fn test_recursive_str_control_flow_and_inactive_paths() {
+fn test_recursive_str_progress_and_inactive_paths() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_control_flow_and_inactive_paths', [
+	run_good_module_batch(v3_bin, 'recursive_str_progress_and_inactive_paths', [
 		ReviewRuntimeCase{'recursive_str_progressed_invoked_helper_call', 'struct Item {
 mut:
 	remaining int
@@ -8203,429 +8407,6 @@ fn main() {
 	}.str())
 }
 ', ''},
-	])
-}
-
-fn test_recursive_str_invoked_helper_calls_are_analyzed() {
-	v3_bin := build_v3()
-	cycle_out := run_good(v3_bin, 'recursive_str_helper_analysis_cycle_guard', 'struct Item {}
-
-fn ping(item Item, remaining int) string {
-	if remaining <= 0 {
-		return "done"
-	}
-	return pong(item, remaining - 1)
-}
-
-fn pong(item Item, remaining int) string {
-	return ping(item, remaining)
-}
-
-fn (item Item) str() string {
-	return ping(item, 1)
-}
-
-fn main() {}
-')
-	assert cycle_out == ''
-}
-
-fn test_recursive_str_constant_true_branch_has_no_fallthrough() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_constant_true_branch', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	mut copy := item
-	if true {
-		copy.remaining--
-	}
-	return copy.str()
-}
-
-	fn main() {}
-')
-	assert out == ''
-	helper_out := run_good(v3_bin, 'recursive_str_helper_constant_true_branch', 'struct Item {
-mut:
-	remaining int
-}
-
-fn advance(mut item Item) {
-	if true {
-		item.remaining--
-	}
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	mut copy := item
-	advance(mut copy)
-	return copy.str()
-}
-
-fn main() {}
-')
-	assert helper_out == ''
-}
-
-fn test_recursive_str_delayed_and_storage_mutation_rejections() {
-	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_delayed_and_storage_mutation_rejections', [
-		ReviewRejection{'recursive_str_spawned_mutation', 'struct SpawnMutationItem {
-mut:
-	remaining int
-}
-
-fn advance(mut item SpawnMutationItem) {
-	item.remaining--
-}
-
-fn (item SpawnMutationItem) str() string {
-	mut copy := item
-	spawn advance(mut copy)
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_spawned_call', 'struct SpawnCallItem {}
-
-fn (item SpawnCallItem) str() string {
-	t := spawn item.str()
-	return t.wait()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_deferred_mutation', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	mut copy := item
-	defer {
-		copy.remaining--
-	}
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_deferred_call_exit_state', 'struct ExitStateItem {
-mut:
-	remaining int
-}
-
-fn (item ExitStateItem) str() string {
-	mut next := item
-	next.remaining--
-	defer {
-		_ := next.str()
-	}
-	next = item
-	return ""
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_deferred_call_before_mutation', 'struct BeforeMutationItem {
-mut:
-	remaining int
-}
-
-fn (item BeforeMutationItem) str() string {
-	mut next := item
-	defer {
-		next.remaining--
-	}
-	defer {
-		_ := next.str()
-	}
-	return ""
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_struct_literal_provenance', 'struct LiteralItem {
-	remaining int
-}
-
-fn (item LiteralItem) str() string {
-	return LiteralItem{
-		remaining: item.remaining
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_struct_update_provenance', 'struct UpdateItem {
-	value int
-}
-
-fn (item UpdateItem) str() string {
-	return UpdateItem{
-		...item
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_struct_update_noop_field', 'struct NoopUpdateItem {
-	remaining int
-}
-
-fn (item NoopUpdateItem) str() string {
-	return NoopUpdateItem{
-		...item
-		remaining: item.remaining + 0
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_struct_update_helper_provenance', 'struct HelperUpdateItem {
-	value int
-}
-
-fn helper_update_same(value HelperUpdateItem) HelperUpdateItem {
-	return value
-}
-
-fn (item HelperUpdateItem) str() string {
-	return helper_update_same(HelperUpdateItem{
-		...item
-	}).str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_helper_returned_struct_update', 'struct ReturnedUpdateItem {
-	value int
-}
-
-fn returned_update_same(item ReturnedUpdateItem) ReturnedUpdateItem {
-	return ReturnedUpdateItem{
-		...item
-	}
-}
-
-fn (item ReturnedUpdateItem) str() string {
-	return returned_update_same(item).str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_guarded_bool_noop_struct_update', 'struct GuardedUpdateItem {
-	done bool
-}
-
-fn (item GuardedUpdateItem) str() string {
-	if !item.done {
-		return "done"
-	}
-	return GuardedUpdateItem{
-		...item
-		done: true
-	}.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_delete_shift', 'struct DeletedItem {
-	remaining int
-}
-
-fn (item DeletedItem) str() string {
-	mut items := [DeletedItem{
-		remaining: item.remaining - 1
-	}, item]
-	items.delete(0)
-	return items[0].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_reverse_in_place', 'struct ReversedItem {
-	remaining int
-}
-
-fn (item ReversedItem) str() string {
-	mut items := [item, ReversedItem{
-		remaining: item.remaining - 1
-	}]
-	items.reverse_in_place()
-	return items[1].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_prepend_shift', 'struct PrependedItem {
-	remaining int
-}
-
-fn (item PrependedItem) str() string {
-	mut items := [item]
-	items.prepend(PrependedItem{
-		remaining: item.remaining - 1
-	})
-	return items[1].str()
-}
-', 'cannot call `str()` method recursively'},
-	])
-}
-
-fn test_recursive_str_deferred_calls_use_scope_exit_state_in_lifo_order() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_deferred_mutation_before_call', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	mut next := item
-	defer {
-		_ := next.str()
-	}
-	defer {
-		next.remaining--
-	}
-	return ""
-}
-
-fn main() {}
-')
-	assert out == ''
-}
-
-fn test_recursive_str_does_not_execute_stored_closure_bodies() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_stored_closure_bodies', 'struct LambdaItem {}
-
-fn (item LambdaItem) str() string {
-	callback := || item.str()
-	_ = callback
-	return "lambda"
-}
-
-struct LiteralItem {}
-
-fn (item LiteralItem) str() string {
-	callback := fn [item] () string {
-		return item.str()
-	}
-	_ = callback
-	return "literal"
-}
-
-fn main() {
-	println(LambdaItem{}.str())
-	println(LiteralItem{}.str())
-}
-')
-	assert out == 'lambda\nliteral'
-}
-
-fn test_unbacked_enum_field_keeps_integer_overflow_diagnostic() {
-	v3_bin := build_v3()
-	run_bad(v3_bin, 'unbacked_enum_integer_overflow', 'enum Huge {
-	value = 18446744073709551616
-}
-
-fn main() {}
-', 'integer literal 18446744073709551616 overflows int')
-}
-
-fn test_diagnostic_footer_uses_deduplicated_error_count() {
-	v3_bin := build_v3()
-	mut source := ''
-	for index in 0 .. 15 {
-		source += 'fn broken_${index}[U](value T) {
-	_ := T{}
-}
-
-'
-	}
-	source += 'fn main() {}
-'
-	bad_src := '${tmp_test_path('deduplicated_error_footer')}.v'
-	os.write_file(bad_src, source) or { panic(err) }
-	bad_bin := tmp_test_path('deduplicated_error_footer')
-	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.count('generic type name `T` is not mentioned in fn') == 15, compile.output
-	assert !compile.output.contains('unknown struct `T`'), compile.output
-	assert !compile.output.contains('more errors'), compile.output
-}
-
-fn test_parameter_redefinition_only_suppresses_related_unused_notices() {
-	v3_bin := build_v3()
-	src := 'fn broken(value int, value string) {
-	same_function_unused := 1
-}
-
-fn unrelated() {
-	unused := 1
-}
-
-fn main() {}
-'
-	bad_src := '${tmp_test_path('parameter_redefinition_unrelated_notice')}.vv'
-	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := tmp_test_path('parameter_redefinition_unrelated_notice')
-	compile := os.exec([v3_bin, '-checker-fixture', '${bad_src}', '-b', 'c', '-o', bad_bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('redefinition of parameter `value`'), compile.output
-	assert compile.output.contains('unused variable: `same_function_unused`'), compile.output
-	assert compile.output.contains('unused variable: `unused`'), compile.output
-}
-
-fn test_malformed_function_call_suppresses_its_unused_notice() {
-	v3_bin := build_v3()
-	src := 'fn bad(value int, value int) int {
-	return value
-}
-
-fn caller() {
-	unused := bad(1, 2)
-}
-
-fn main() {}
-'
-	bad_src := '${tmp_test_path('malformed_function_call_unused_notice')}.vv'
-	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := tmp_test_path('malformed_function_call_unused_notice')
-	compile := os.exec([v3_bin, '-checker-fixture', '${bad_src}', '-b', 'c', '-o', bad_bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('redefinition of parameter `value`'), compile.output
-	assert !compile.output.contains('unused variable: `unused`'), compile.output
-}
-
-fn test_optional_typed_map_rejects_populated_braces() {
-	path := '${tmp_test_path('optional_typed_map_populated')}.v'
-	os.write_file(path, "fn main() {\n\t_ := ?map[string]int{'x': 1}\n}\n") or { panic(err) }
-	prefs := pref.new_preferences()
-	mut p := parser.Parser.new(prefs)
-	p.parse_file(path)
-	assert p.diagnostics.any(it.message == '`}` expected; explicit `map` initialization does not support parameters'), p.diagnostics.str()
-
-	empty_path := '${tmp_test_path('optional_typed_map_empty')}.v'
-	os.write_file(empty_path, 'fn main() {
-	_ := ?map[string]int{}
-}
-') or { panic(err) }
-	mut empty_parser := parser.Parser.new(prefs)
-	empty_parser.parse_file(empty_path)
-	assert !empty_parser.diagnostics.any(it.message.contains('explicit `map` initialization does not support parameters')), empty_parser.diagnostics.str()
-}
-
-fn test_undefined_variable_preserves_unrelated_unused_import() {
-	check_src := '${tmp_test_path('undefined_variable_unrelated_import')}.v'
-	os.write_file(check_src, 'import os
-
-fn main() {
-	value := value
-	println(value)
-}
-') or {
-		panic(err)
-	}
-	prefs := pref.new_preferences()
-	mut p := parser.Parser.new(prefs)
-	mut a := p.parse_file(check_src)
-	mut tc := types.TypeChecker.new(a)
-	tc.collect(a)
-	tc.check_semantics()
-	assert tc.errors.any(it.msg.starts_with('undefined variable') && it.node_value == 'value'), tc.errors.str()
-
-	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
-}
-
-fn test_recursive_str_array_struct_and_child_progress() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_array_struct_and_child_progress', [
 		ReviewRuntimeCase{'recursive_str_array_append_progress', 'struct Item {
 mut:
 	items []int
@@ -8934,7 +8715,292 @@ fn main() {
 	println(Item{}.str())
 }
 ', 'done'},
+		ReviewRuntimeCase{'non_generic_reflection_unselected_compile_error', "struct App {}
+
+fn (app App) present() {
+	_ = app
+}
+
+fn main() {
+	\$for method in App.methods {
+		\$if method.name == 'missing' {
+			\$compile_error('missing method selected')
+		}
+	}
+	println('ok')
+}
+", 'ok'},
+		ReviewRuntimeCase{'recursive_str_selected_comptime_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	$if threads {
+	} $else {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+', ''},
+		ReviewRuntimeCase{'recursive_str_stored_closure_bodies', 'struct LambdaItem {}
+
+fn (item LambdaItem) str() string {
+	callback := || item.str()
+	_ = callback
+	return "lambda"
+}
+
+struct LiteralItem {}
+
+fn (item LiteralItem) str() string {
+	callback := fn [item] () string {
+		return item.str()
+	}
+	_ = callback
+	return "literal"
+}
+
+fn main() {
+	println(LambdaItem{}.str())
+	println(LiteralItem{}.str())
+}
+', 'lambda\nliteral'},
+		ReviewRuntimeCase{'recursive_str_buffered_channel_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	copy.remaining--
+	ch := chan Item{cap: 1}
+	ch <- copy
+	return (<-ch).str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+', ''},
 	])
+}
+
+fn test_recursive_str_invoked_helper_calls_are_analyzed() {
+	v3_bin := build_v3()
+	cycle_out := run_good(v3_bin, 'recursive_str_helper_analysis_cycle_guard', 'struct Item {}
+
+fn ping(item Item, remaining int) string {
+	if remaining <= 0 {
+		return "done"
+	}
+	return pong(item, remaining - 1)
+}
+
+fn pong(item Item, remaining int) string {
+	return ping(item, remaining)
+}
+
+fn (item Item) str() string {
+	return ping(item, 1)
+}
+
+fn main() {}
+')
+	assert cycle_out == ''
+}
+
+fn test_recursive_str_constant_true_branch_has_no_fallthrough() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_constant_true_branch', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	if true {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+	fn main() {}
+')
+	assert out == ''
+	helper_out := run_good(v3_bin, 'recursive_str_helper_constant_true_branch', 'struct Item {
+mut:
+	remaining int
+}
+
+fn advance(mut item Item) {
+	if true {
+		item.remaining--
+	}
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	advance(mut copy)
+	return copy.str()
+}
+
+fn main() {}
+')
+	assert helper_out == ''
+}
+
+fn test_recursive_str_deferred_calls_use_scope_exit_state_in_lifo_order() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'recursive_str_deferred_mutation_before_call', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	mut next := item
+	defer {
+		_ := next.str()
+	}
+	defer {
+		next.remaining--
+	}
+	return ""
+}
+
+fn main() {}
+')
+	assert out == ''
+}
+
+fn test_unbacked_enum_field_keeps_integer_overflow_diagnostic() {
+	v3_bin := build_v3()
+}
+
+fn test_diagnostic_footer_uses_deduplicated_error_count() {
+	v3_bin := build_v3()
+	mut source := ''
+	for index in 0 .. 15 {
+		source += 'fn broken_${index}[U](value T) {
+	_ := T{}
+}
+
+'
+	}
+	source += 'fn main() {}
+'
+	bad_src := '${tmp_test_path('deduplicated_error_footer')}.v'
+	os.write_file(bad_src, source) or { panic(err) }
+	bad_bin := tmp_test_path('deduplicated_error_footer')
+	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.count('generic type name `T` is not mentioned in fn') == 15, compile.output
+	assert !compile.output.contains('unknown struct `T`'), compile.output
+	assert !compile.output.contains('more errors'), compile.output
+}
+
+fn test_parameter_redefinition_only_suppresses_related_unused_notices() {
+	v3_bin := build_v3()
+	src := 'fn broken(value int, value string) {
+	same_function_unused := 1
+}
+
+fn unrelated() {
+	unused := 1
+}
+
+fn main() {}
+'
+	bad_src := '${tmp_test_path('parameter_redefinition_unrelated_notice')}.vv'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('parameter_redefinition_unrelated_notice')
+	compile := os.exec([v3_bin, '-checker-fixture', '${bad_src}', '-b', 'c', '-o', bad_bin])
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('redefinition of parameter `value`'), compile.output
+	assert compile.output.contains('unused variable: `same_function_unused`'), compile.output
+	assert compile.output.contains('unused variable: `unused`'), compile.output
+}
+
+fn test_malformed_function_call_suppresses_its_unused_notice() {
+	v3_bin := build_v3()
+	src := 'fn bad(value int, value int) int {
+	return value
+}
+
+fn caller() {
+	unused := bad(1, 2)
+}
+
+fn main() {}
+'
+	bad_src := '${tmp_test_path('malformed_function_call_unused_notice')}.vv'
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := tmp_test_path('malformed_function_call_unused_notice')
+	compile := os.exec([v3_bin, '-checker-fixture', '${bad_src}', '-b', 'c', '-o', bad_bin])
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('redefinition of parameter `value`'), compile.output
+	assert !compile.output.contains('unused variable: `unused`'), compile.output
+}
+
+fn test_optional_typed_map_rejects_populated_braces() {
+	path := '${tmp_test_path('optional_typed_map_populated')}.v'
+	os.write_file(path, "fn main() {\n\t_ := ?map[string]int{'x': 1}\n}\n") or { panic(err) }
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_file(path)
+	assert p.diagnostics.any(it.message == '`}` expected; explicit `map` initialization does not support parameters'), p.diagnostics.str()
+
+	empty_path := '${tmp_test_path('optional_typed_map_empty')}.v'
+	os.write_file(empty_path, 'fn main() {
+	_ := ?map[string]int{}
+}
+') or { panic(err) }
+	mut empty_parser := parser.Parser.new(prefs)
+	empty_parser.parse_file(empty_path)
+	assert !empty_parser.diagnostics.any(it.message.contains('explicit `map` initialization does not support parameters')), empty_parser.diagnostics.str()
+}
+
+fn test_undefined_variable_preserves_unrelated_unused_import() {
+	check_src := '${tmp_test_path('undefined_variable_unrelated_import')}.v'
+	os.write_file(check_src, 'import os
+
+fn main() {
+	value := value
+	println(value)
+}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.any(it.msg.starts_with('undefined variable') && it.node_value == 'value'), tc.errors.str()
+
+	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
 }
 
 fn test_duplicate_function_diagnostics_survive_body_errors() {
@@ -9115,76 +9181,6 @@ body { color: red; }
 </style>"
 }
 
-fn test_recursive_str_bound_method_value_preserves_receiver_provenance() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'str_bound_method_rejections', [
-		ReviewRejection{
-			name:     'recursive_str_bound_method_value'
-			source:   'struct Item {}
-
-fn (item Item) str() string {
-	recurse := item.str
-	return recurse()
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-		ReviewRejection{
-			name:     'recursive_str_indexed_bound_method_value'
-			source:   'struct Item {}
-
-fn (item Item) str() string {
-	recurse := item.str
-	callbacks := [recurse]
-	return callbacks[0]()
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-		ReviewRejection{
-			name:     'recursive_str_interface_bound_method_value'
-			source:   'interface Printable {
-	str() string
-}
-
-struct Item {}
-
-fn (item Item) str() string {
-	printable := Printable(item)
-	recurse := printable.str
-	return recurse()
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-		ReviewRejection{
-			name:     'recursive_str_function_field_bound_method_value'
-			source:   'struct Holder {
-	cb fn () string
-}
-
-struct Item {}
-
-fn (item Item) str() string {
-	holder := Holder{
-		cb: item.str
-	}
-	return holder.cb()
-}
-
-fn main() {}
-'
-			expected: 'cannot call `str()` method recursively'
-		},
-	])
-}
-
 fn test_user_c_string_function_is_not_inferred_unsafe() {
 	v3_bin := build_v3()
 	src_path := '${tmp_test_path('user_c_strlen_not_unsafe')}.v'
@@ -9202,147 +9198,6 @@ fn main() {
 		os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('must be called from an `unsafe` block'), compile.output
-}
-
-fn test_recursive_str_aggregate_transfer_and_lookup_rejections() {
-	v3_bin := build_v3()
-	run_bad_file_batch(v3_bin, 'recursive_str_aggregate_transfer_and_lookup_rejections', [
-		ReviewRejection{'recursive_str_multi_return_slot_provenance', 'struct ReturnedSlotItem {}
-
-fn returned_slot_carry(item ReturnedSlotItem) (ReturnedSlotItem, int) {
-	return item, 0
-}
-
-fn (item ReturnedSlotItem) str() string {
-	copy, _ := returned_slot_carry(item)
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_multi_return_assign_slot_provenance', 'struct AssignedSlotItem {}
-
-fn assigned_slot_carry(item AssignedSlotItem) (AssignedSlotItem, int) {
-	return item, 0
-}
-
-fn (item AssignedSlotItem) str() string {
-	mut copy := AssignedSlotItem{}
-	copy, _ = assigned_slot_carry(item)
-	return copy.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_clone_element_provenance', 'struct ArrayCloneItem {}
-
-fn (item ArrayCloneItem) str() string {
-	copies := [item].clone()
-	return copies[0].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_map_clone_element_provenance', 'struct MapCloneItem {}
-
-fn (item MapCloneItem) str() string {
-	copies := {"self": item}.clone()
-	return copies["self"].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_static_helper_args', 'struct Helpers {}
-
-struct StaticItem {}
-
-fn Helpers.render(item StaticItem) string {
-	return item.str()
-}
-
-fn (item StaticItem) str() string {
-	return Helpers.render(item)
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_slot_replacement', 'struct ArraySlotItem {
-	remaining int
-}
-
-fn (item ArraySlotItem) str() string {
-	mut items := [ArraySlotItem{
-		remaining: 0
-	}]
-	items[0] = item
-	return items[0].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_map_slot_replacement', 'struct MapSlotItem {
-	remaining int
-}
-
-fn (item MapSlotItem) str() string {
-	mut items := {"self": MapSlotItem{
-		remaining: 0
-	}}
-	items["self"] = item
-	return items["self"].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_wrapper_field_replacement', 'struct WrapperFieldItem {
-	remaining int
-}
-
-struct Wrapper {
-mut:
-	value WrapperFieldItem
-}
-
-fn (item WrapperFieldItem) str() string {
-	mut wrapped := Wrapper{
-		value: WrapperFieldItem{
-			remaining: 0
-		}
-	}
-	wrapped.value = item
-	return wrapped.value.str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_constant_local_receiver_index', 'struct ConstantIndexItem {}
-
-fn (item ConstantIndexItem) str() string {
-	items := [item, ConstantIndexItem{}]
-	index := 0
-	return items[index].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_mutated_local_receiver_index', 'struct MutatedIndexItem {}
-
-fn (item MutatedIndexItem) str() string {
-	items := [item, MutatedIndexItem{}]
-	mut index := 1
-	index--
-	return items[index].str()
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_for_in_value', 'struct ForValueItem {}
-
-fn (item ForValueItem) str() string {
-	for copy in [item] {
-		return copy.str()
-	}
-	return ""
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_for_in_index_and_value', 'struct ForIndexValueItem {}
-
-fn (item ForIndexValueItem) str() string {
-	for _, copy in [item] {
-		return copy.str()
-	}
-	return ""
-}
-', 'cannot call `str()` method recursively'},
-		ReviewRejection{'recursive_str_array_slice_receiver', 'struct SlicedItem {}
-
-fn (item SlicedItem) str() string {
-	items := [item]
-	slice := items[0..1]
-	return slice[0].str()
-}
-', 'cannot call `str()` method recursively'},
-	])
 }
 
 fn test_recursive_str_preserves_qualified_helper_args_and_slot_replacements() {
@@ -9634,39 +9489,24 @@ fn main() {
 	}
 }
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
+		ReviewRejection{'shadowed_global_local_rename_scoped', '__global foo int
+
+fn main() {
+	foo = 1
+	if true {
+		foo := 3
+		println(int_str(foo))
+	}
+	println(int_str(foo))
+}
+', 'variable `foo` shadows a global variable'},
+		ReviewRejection{'review_shadowed_global_nested_scope', '__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n', 'variable `score` shadows a global variable'},
 	])
 }
 
-fn test_recursive_str_preserves_provenance_through_buffered_channels() {
+fn test_recursive_str_formatting_and_bound_method_rejections() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_buffered_channel_progress', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	mut copy := item
-	copy.remaining--
-	ch := chan Item{cap: 1}
-	ch <- copy
-	return (<-ch).str()
-}
-
-fn main() {
-	println(Item{
-		remaining: 2
-	}.str())
-}
-')
-	assert out == ''
-}
-
-fn test_recursive_str_formatting_and_aggregate_rejections() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'recursive_str_formatting_and_aggregate_rejections', [
+	run_bad_module_batch(v3_bin, 'recursive_str_formatting_and_bound_method_rejections', [
 		ReviewRejection{
 			name:     'recursive_str_print_receiver'
 			source:   'struct Item {}
@@ -9786,6 +9626,81 @@ fn main() {}
 '
 			expected: 'cannot call `str()` method recursively'
 		},
+		ReviewRejection{
+			name:     'recursive_str_bound_method_value'
+			source:   'struct Item {}
+
+fn (item Item) str() string {
+	recurse := item.str
+	return recurse()
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_indexed_bound_method_value'
+			source:   'struct Item {}
+
+fn (item Item) str() string {
+	recurse := item.str
+	callbacks := [recurse]
+	return callbacks[0]()
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_interface_bound_method_value'
+			source:   'interface Printable {
+	str() string
+}
+
+struct Item {}
+
+fn (item Item) str() string {
+	printable := Printable(item)
+	recurse := printable.str
+	return recurse()
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{
+			name:     'recursive_str_function_field_bound_method_value'
+			source:   'struct Holder {
+	cb fn () string
+}
+
+struct Item {}
+
+fn (item Item) str() string {
+	holder := Holder{
+		cb: item.str
+	}
+	return holder.cb()
+}
+
+fn main() {}
+'
+			expected: 'cannot call `str()` method recursively'
+		},
+		ReviewRejection{'implicit_interface_str_dispatch_rejects_sum', 'interface Printable {
+	str() string
+}
+
+type Value = int | string
+
+fn main() {
+	value := Value(1)
+	_ := Printable(value)
+}
+', 'does not implement interface'},
 	])
 }
 
@@ -9912,13 +9827,6 @@ fn test_top_level_statements_with_postinclude_generate_main() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'top_level_postinclude_main', '#postinclude <limits.h>\n\n@[export: "v3_exported_helper"]\nfn exported_helper() {}\n\nprintln("ok")\n')
 	assert out == 'ok'
-}
-
-fn test_comptime_define_field_default_is_not_fixed_array_initializer() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'comptime_define_field_default', 'struct Job {\n\tid string = \$d("id", "Job")\n}\n\nstruct App {\n\tjobs [\$d("jobs", 2)]Job\n}\n\nfn main() {\n\tapp := App{}\n\tprintln(app.jobs[0].id)\n}\n')
-	assert out == 'Job'
-	run_bad(v3_bin, 'comptime_define_fixed_array_initializer', 'struct App {\n\tjobs [\$d("jobs", 2)]int = [1, 2]!\n}\n\nfn main() {}\n', 'cannot initialize a fixed size array field that uses `$d()` as size quantifier')
 }
 
 fn test_comptime_define_call_is_not_parenthesized_condition_warning() {
