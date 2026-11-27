@@ -101,9 +101,56 @@ jobs:
           ./v -silent test vlib/v/
           ./v -silent test vlib/v/gen/c/
 
+  counter_capability:
+    name: Hardware counter capability (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, ubuntu-24.04]
+    steps:
+      - name: Probe real process hardware counters before any compiler build
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/counter-capability"
+          mkdir -p "$out"
+          uname -a | tee "$out/environment.txt"
+          if [ "$(uname -s)" = Darwin ]; then
+            sw_vers | tee -a "$out/environment.txt"
+            /usr/bin/time -l -o "$out/probe.txt" /usr/bin/awk 'BEGIN { for(i=0;i<1000000;i++) s+=i; print s }'
+            cat "$out/probe.txt"
+            awk '/instructions retired/ { n++; if ($1+0>0) p++ } /cycles elapsed/ { c++; if ($1+0>0) q++ } END { exit !(n==1 && p==1 && c==1 && q==1) }' "$out/probe.txt"
+          else
+            cat /proc/sys/kernel/perf_event_paranoid | tee -a "$out/environment.txt"
+            ls /sys/bus/event_source/devices | tee -a "$out/environment.txt"
+            command -v perf
+            rc=0
+            LC_ALL=C perf stat --no-big-num -x, -e instructions,cycles -o "$out/probe.txt" -- /usr/bin/awk 'BEGIN { for(i=0;i<1000000;i++) s+=i; print s }' || rc=$?
+            cat "$out/probe.txt"
+            test "$rc" -eq 0
+            awk -F, '$3=="instructions" { n++; if ($1+0>0) p++ } $3=="cycles" { c++; if ($1+0>0) q++ } END { exit !(n==1 && p==1 && c==1 && q==1) }' "$out/probe.txt"
+          fi
+      - name: Preserve capability evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: counter-capability-${{ matrix.os }}
+          path: ${{ runner.temp }}/counter-capability/
+          if-no-files-found: error
   matched_instructions:
     runs-on: macos-15
     steps:
+      - name: Require hardware counters before building matched compilers
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/intel-asm-benchmark"
+          mkdir -p "$out"
+          uname -a | tee "$out/counter-preflight.environment.txt"
+          /usr/bin/time -l -o "$out/counter-preflight.txt" /usr/bin/awk 'BEGIN { for(i=0;i<1000000;i++) s+=i; print s }'
+          cat "$out/counter-preflight.txt"
+          awk '/instructions retired/ { n++; if ($1+0>0) p++ } /cycles elapsed/ { c++; if ($1+0>0) q++ } END { exit !(n==1 && p==1 && c==1 && q==1) }' "$out/counter-preflight.txt"
       - uses: actions/checkout@v7
         with:
           ref: a80dbfba37fd9f8b740ca5e3ef8632a554ccbeec
