@@ -113,12 +113,70 @@ jobs:
           git fetch --no-tags --depth=1 origin ee48d9cb04fcaedd0a9d5c8925bdd633af9eb94b
           git show FETCH_HEAD:vlib/v/slow_tests/race_detector_test.v > "$out/original_race_detector_test.v"
           test "$(git hash-object "$out/original_race_detector_test.v")" = 9c125e9126438bb7345ec4a0a7cabc8100af38d2
-          env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent "$out/original_race_detector_test.v" > "$out/original.log" 2>&1 || { cat "$out/original.log"; exit 1; }
+          # Compare the exact original map race source on both compiler roles.
+          cat > "$out/map_value_update.v" <<'V'
+          struct P {
+          mut:
+          	x int
+          }
+          
+          struct Cell {
+          mut:
+          	m map[int]P
+          }
+          
+          fn main() {
+          	mut c := &Cell{}
+          	c.m[1] = P{}
+          	t := spawn fn (mut c Cell) {
+          		for _ in 0 .. 100 {
+          			c.m[1].x += 1
+          		}
+          	}(mut c)
+          	mut n := 0
+          	for _ in 0 .. 100 {
+          		n += c.m.len
+          	}
+          	t.wait()
+          	println("len ${n}")
+          }
+          V
+          map_failed=0
+          for role in baseline candidate; do
+            v=./v
+            if [ "$role" = baseline ]; then v=./baseline/v; fi
+            env -u VFLAGS V3_CACHE_TRACE=1 "$v" -race -showcc -keepc -no-retry-compilation -o "$out/map-$role" "$out/map_value_update.v" > "$out/map-$role-build.log" 2>&1 || { cat "$out/map-$role-build.log"; exit 1; }
+            cat "$out/map-$role-build.log"
+            nm "$out/map-$role" > "$out/map-$role.symbols"
+            for mode in tsan vrace; do
+              if [ "$role" = baseline ] && [ "$mode" = vrace ]; then expected=66; else expected=7; fi
+              for attempt in 1 2 3 4 5; do
+                rc=0
+                log="$out/map-$role-$mode-$attempt.log"
+                if [ "$mode" = tsan ]; then
+                  env -u VRACE TSAN_OPTIONS="exitcode=7 atexit_sleep_ms=0" "$out/map-$role" > "$log" 2>&1 || rc=$?
+                else
+                  env -u TSAN_OPTIONS VRACE="exitcode=7 atexit_sleep_ms=0" "$out/map-$role" > "$log" 2>&1 || rc=$?
+                fi
+                echo "map $role $mode attempt=$attempt actual=$rc expected=$expected"
+                cat "$log"
+                if [ "$role" = candidate ]; then
+                  if [ "$rc" -ne "$expected" ] || ! grep -Fq "WARNING: ThreadSanitizer: data race" "$log"; then map_failed=1; fi
+                fi
+              done
+            done
+          done
+          original_rc=0
+          env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent "$out/original_race_detector_test.v" > "$out/original.log" 2>&1 || original_rc=$?
           cat "$out/original.log"
-          if grep -Fq 'skipping:' "$out/original.log"; then exit 1; fi
-          env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/slow_tests/race_detector_test.v > "$out/current.log" 2>&1 || { cat "$out/current.log"; exit 1; }
+          current_rc=0
+          env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/slow_tests/race_detector_test.v > "$out/current.log" 2>&1 || current_rc=$?
           cat "$out/current.log"
-          if grep -Fq 'skipping:' "$out/current.log"; then exit 1; fi
+          echo "map_failed=$map_failed original_rc=$original_rc current_rc=$current_rc"
+          test "$map_failed" -eq 0
+          test "$original_rc" -eq 0
+          test "$current_rc" -eq 0
+          if grep -Fq 'skipping:' "$out/original.log" "$out/current.log"; then exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -146,6 +204,9 @@ jobs:
         if: runner.os == 'Linux'
         with:
           profile: full
+      - name: Install Objective-C compiler regression dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y gobjc libobjc-14-dev
       - name: Build, format and native regression
         shell: bash
         run: |
