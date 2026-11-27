@@ -7399,6 +7399,53 @@ recurse:
 	])
 }
 
+fn test_recursive_str_inactive_calls() {
+	v3_bin := build_v3()
+	run_good_module_batch(v3_bin, 'recursive_str_inactive_calls', [
+		ReviewRuntimeCase{'recursive_str_unreachable_short_circuit_call', 'struct Item {}
+
+fn (item Item) str() string {
+	if false && item.str() == "never" {
+		return "unreachable"
+	}
+	if true || item.str() == "never" {
+		return "ok"
+	}
+	return "unreachable"
+}
+
+fn main() {
+	println(Item{}.str())
+}
+', 'ok'},
+		ReviewRuntimeCase{'recursive_str_inactive_comptime_call', 'struct Item {}
+
+fn (item Item) str() string {
+	$if threads {
+		return item.str()
+	} $else {
+		return "ok"
+	}
+}
+
+fn main() {
+	println(Item{}.str())
+}
+', 'ok'},
+		ReviewRuntimeCase{'recursive_str_unreachable_assert_message', 'struct Item {}
+
+fn (item Item) str() string {
+	assert true, item.str()
+	return "ok"
+}
+
+fn main() {
+	println(Item{}.str())
+}
+', 'ok'},
+	])
+}
+
 fn test_recursive_str_short_circuit_progress_is_conditional() {
 	v3_bin := build_v3()
 	run_bad_file_batch(v3_bin, 'recursive_str_short_circuit_rejections', [
@@ -7435,23 +7482,6 @@ fn (item OrItem) str() string {
 }
 ', 'cannot call `str()` method recursively'},
 	])
-	out := run_good(v3_bin, 'recursive_str_unreachable_short_circuit_call', 'struct Item {}
-
-fn (item Item) str() string {
-	if false && item.str() == "never" {
-		return "unreachable"
-	}
-	if true || item.str() == "never" {
-		return "ok"
-	}
-	return "unreachable"
-}
-
-fn main() {
-	println(Item{}.str())
-}
-')
-	assert out == 'ok'
 }
 
 fn test_recursive_str_comptime_if_uses_selected_branch() {
@@ -7480,21 +7510,6 @@ fn main() {
 }
 ')
 	assert out == ''
-	inactive_call_out := run_good(v3_bin, 'recursive_str_inactive_comptime_call', 'struct Item {}
-
-fn (item Item) str() string {
-	$if threads {
-		return item.str()
-	} $else {
-		return "ok"
-	}
-}
-
-fn main() {
-	println(Item{}.str())
-}
-')
-	assert inactive_call_out == 'ok'
 }
 
 fn test_recursive_str_returned_alias_rejections() {
@@ -7582,9 +7597,10 @@ fn (item MapCallbackItem) str() string {
 	])
 }
 
-fn test_recursive_str_invoked_helper_calls_are_analyzed() {
+fn test_recursive_str_progress_through_helpers() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_progressed_invoked_helper_call', 'struct Item {
+	run_good_module_batch(v3_bin, 'recursive_str_progress_through_helpers', [
+		ReviewRuntimeCase{'recursive_str_progressed_invoked_helper_call', 'struct Item {
 mut:
 	remaining int
 }
@@ -7607,8 +7623,40 @@ fn main() {
 		remaining: 1
 	}.str())
 }
-')
-	assert out == 'done'
+', 'done'},
+		ReviewRuntimeCase{'recursive_str_nested_helper_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn decrement(mut item Item) {
+	item.remaining--
+}
+
+fn advance(mut item Item) {
+	decrement(mut item)
+}
+
+fn (item Item) str() string {
+	if item.remaining == 0 {
+		return "done"
+	}
+	mut copy := item
+	advance(mut copy)
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 1
+	}.str())
+}
+', 'done'},
+	])
+}
+
+fn test_recursive_str_invoked_helper_calls_are_analyzed() {
+	v3_bin := build_v3()
 	cycle_out := run_good(v3_bin, 'recursive_str_helper_analysis_cycle_guard', 'struct Item {}
 
 fn ping(item Item, remaining int) string {
@@ -7789,18 +7837,6 @@ fn (item AssertMessageItem) str() string {
 }
 ', 'cannot call `str()` method recursively'},
 	])
-	out := run_good(v3_bin, 'recursive_str_unreachable_assert_message', 'struct Item {}
-
-fn (item Item) str() string {
-	assert true, item.str()
-	return "ok"
-}
-
-fn main() {
-	println(Item{}.str())
-}
-')
-	assert out == 'ok'
 }
 
 fn test_recursive_str_deferred_mutation_does_not_count_as_progress() {
@@ -8021,9 +8057,10 @@ fn main() {
 	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
 }
 
-fn test_recursive_str_array_append_counts_as_progress() {
+fn test_recursive_str_array_mutation_progress() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_array_append_progress', 'struct Item {
+	run_good_module_batch(v3_bin, 'recursive_str_array_mutation_progress', [
+		ReviewRuntimeCase{'recursive_str_array_append_progress', 'struct Item {
 mut:
 	items []int
 }
@@ -8040,8 +8077,29 @@ fn (item Item) str() string {
 fn main() {
 	println(Item{}.str())
 }
-')
-	assert out == 'done'
+', 'done'},
+		ReviewRuntimeCase{'recursive_str_array_delete_progress', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut items := [item, Item{
+		remaining: item.remaining - 1
+	}]
+	items.delete(0)
+	return items[0].str()
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+', ''},
+	])
 }
 
 fn test_recursive_str_exhaustive_match_progress() {
@@ -8249,39 +8307,6 @@ fn (item ReversedAssignmentItem) str() string {
 }
 ', 'cannot call `str()` method recursively'},
 	])
-}
-
-fn test_recursive_str_nested_helper_mutations_count_as_progress() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_nested_helper_progress', 'struct Item {
-mut:
-	remaining int
-}
-
-fn decrement(mut item Item) {
-	item.remaining--
-}
-
-fn advance(mut item Item) {
-	decrement(mut item)
-}
-
-fn (item Item) str() string {
-	if item.remaining == 0 {
-		return "done"
-	}
-	mut copy := item
-	advance(mut copy)
-	return copy.str()
-}
-
-fn main() {
-	println(Item{
-		remaining: 1
-	}.str())
-}
-')
-	assert out == 'done'
 }
 
 fn test_duplicate_function_diagnostics_survive_body_errors() {
@@ -8551,9 +8576,10 @@ fn main() {
 	assert !compile.output.contains('must be called from an `unsafe` block'), compile.output
 }
 
-fn test_recursive_str_allows_recursing_into_child_values() {
+fn test_recursive_str_child_values() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_child_value', 'struct Tree {
+	run_good_module_batch(v3_bin, 'recursive_str_child_values', [
+		ReviewRuntimeCase{'recursive_str_child_value', 'struct Tree {
 	children []Tree
 }
 
@@ -8569,13 +8595,8 @@ fn main() {
 		children: [Tree{}]
 	}.str())
 }
-')
-	assert out == 'leaf'
-}
-
-fn test_recursive_str_helper_returned_descendant_is_distinct() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_helper_returned_child', 'struct Tree {
+', 'leaf'},
+		ReviewRuntimeCase{'recursive_str_helper_returned_child', 'struct Tree {
 	children []Tree
 }
 
@@ -8595,8 +8616,8 @@ fn main() {
 		children: [Tree{}]
 	}.str())
 }
-')
-	assert out == 'leaf'
+', 'leaf'},
+	])
 }
 
 fn test_recursive_str_container_provenance_rejections() {
@@ -8627,9 +8648,10 @@ fn (item BufferedChannelItem) str() string {
 	])
 }
 
-fn test_recursive_str_preserves_provenance_through_array_elements() {
+fn test_recursive_str_index_and_slice_values() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_array_indexed_progress', 'struct Item {
+	run_good_module_batch(v3_bin, 'recursive_str_index_and_slice_values', [
+		ReviewRuntimeCase{'recursive_str_array_indexed_progress', 'struct Item {
 mut:
 	remaining int
 }
@@ -8648,8 +8670,60 @@ fn main() {
 		remaining: 2
 	}.str())
 }
-')
-	assert out == ''
+', ''},
+		ReviewRuntimeCase{'recursive_str_constant_local_terminal_index', 'struct Item {
+	done bool
+}
+
+fn (item Item) str() string {
+	if item.done {
+		return ""
+	}
+	items := [item, Item{
+		done: true
+	}]
+	index := 1
+	return items[index].str()
+}
+
+fn main() {
+	print(Item{}.str())
+}
+', ''},
+		ReviewRuntimeCase{'recursive_str_array_slice_terminal_index', 'struct Item {
+	done bool
+}
+
+fn (item Item) str() string {
+	if item.done {
+		return ""
+	}
+	items := [item, Item{
+		done: true
+	}]
+	start := 1
+	end := 2
+	slice := items[start..end]
+	return slice[0].str()
+}
+
+fn main() {
+	_ = Item{}.str()
+}
+', ''},
+		ReviewRuntimeCase{'recursive_str_repeated_empty_slice', 'struct Item {}
+
+fn (item Item) str() string {
+	items := [3]Item{init: item}
+	empty := items[0..0]
+	return empty.str()
+}
+
+fn main() {
+	_ = Item{}.str()
+}
+', ''},
+	])
 }
 
 fn test_recursive_str_preserves_multi_return_slots_and_aggregate_clones() {
@@ -8865,6 +8939,94 @@ fn test_map_rebind_clears_unsafe_alias_provenance() {
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 }
 
+fn test_map_alias_control_flow() {
+	v3_bin := build_v3()
+	run_good_module_batch(v3_bin, 'map_alias_control_flow', [
+		ReviewRuntimeCase{'unsafe_map_alias_assert_message_rebind', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	assert true, unsafe {
+		alias = map[string]int{}
+		"failed"
+	}
+	copy := alias
+	println(copy.len)
+}
+', '1'},
+		ReviewRuntimeCase{'unsafe_map_alias_required_logical_rhs', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := map[string]int{}
+	if true && (if true {
+		alias = unsafe { original }
+		true
+	} else {
+		alias = unsafe { original }
+		true
+	}) {}
+	copy := alias
+	println(copy.len)
+}
+', '1'},
+		ReviewRuntimeCase{'unsafe_map_alias_all_or_paths', 'fn maybe() ?int {
+	return none
+}
+
+fn main() {
+	mut first := {
+		"value": 1
+	}
+	mut second := {
+		"value": 2
+	}
+	mut alias := unsafe { first }
+	_ := maybe() or {
+		alias = unsafe { second }
+		0
+	}
+	copy := alias
+	println(copy.len)
+}
+', '1'},
+		ReviewRuntimeCase{'unsafe_map_alias_deferred_rebind', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	defer {
+		alias = map[string]int{}
+	}
+	copy := alias
+	println(copy.len)
+}
+', '1'},
+		ReviewRuntimeCase{'unsafe_map_alias_all_select_paths', 'fn main() {
+	mut first := {
+		"value": 1
+	}
+	mut second := {
+		"value": 2
+	}
+	mut alias := map[string]int{}
+	ch := chan int{cap: 1}
+	select {
+		ch <- 1 {
+			alias = unsafe { first }
+		}
+		else {
+			alias = unsafe { second }
+		}
+	}
+	copy := alias
+	println(copy.len)
+}
+', '1'},
+	])
+}
+
 fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
 	v3_bin := build_v3()
 	run_bad_module_batch(v3_bin, 'map_alias_assert_rejections', [
@@ -8909,20 +9071,6 @@ fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
 			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
 		},
 	])
-	out := run_good(v3_bin, 'unsafe_map_alias_assert_message_rebind', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := unsafe { original }
-	assert true, unsafe {
-		alias = map[string]int{}
-		"failed"
-	}
-	copy := alias
-	println(copy.len)
-}
-')
-	assert out == '1'
 }
 
 fn test_fresh_unsafe_map_is_not_reference_alias() {
@@ -9119,23 +9267,6 @@ fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {
 			expected: 'cannot copy map: call `move` or `clone` method (or use a reference)'
 		},
 	])
-	out := run_good(v3_bin, 'unsafe_map_alias_required_logical_rhs', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := map[string]int{}
-	if true && (if true {
-		alias = unsafe { original }
-		true
-	} else {
-		alias = unsafe { original }
-		true
-	}) {}
-	copy := alias
-	println(copy.len)
-}
-')
-	assert out == '1'
 }
 
 fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {
@@ -9283,27 +9414,6 @@ fn main() {
 	branch(true)
 }
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-	out := run_good(v3_bin, 'unsafe_map_alias_all_or_paths', 'fn maybe() ?int {
-	return none
-}
-
-fn main() {
-	mut first := {
-		"value": 1
-	}
-	mut second := {
-		"value": 2
-	}
-	mut alias := unsafe { first }
-	_ := maybe() or {
-		alias = unsafe { second }
-		0
-	}
-	copy := alias
-	println(copy.len)
-}
-')
-	assert out == '1'
 }
 
 fn test_unsafe_map_alias_provenance_delays_defer_effects() {
@@ -9320,19 +9430,6 @@ fn test_unsafe_map_alias_provenance_delays_defer_effects() {
 	println(copy.len)
 }
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-	out := run_good(v3_bin, 'unsafe_map_alias_deferred_rebind', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := unsafe { original }
-	defer {
-		alias = map[string]int{}
-	}
-	copy := alias
-	println(copy.len)
-}
-')
-	assert out == '1'
 }
 
 fn test_unsafe_map_alias_provenance_isolates_select_branches() {
@@ -9354,28 +9451,6 @@ fn test_unsafe_map_alias_provenance_isolates_select_branches() {
 	}
 }
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)')
-	out := run_good(v3_bin, 'unsafe_map_alias_all_select_paths', 'fn main() {
-	mut first := {
-		"value": 1
-	}
-	mut second := {
-		"value": 2
-	}
-	mut alias := map[string]int{}
-	ch := chan int{cap: 1}
-	select {
-		ch <- 1 {
-			alias = unsafe { first }
-		}
-		else {
-			alias = unsafe { second }
-		}
-	}
-	copy := alias
-	println(copy.len)
-}
-')
-	assert out == '1'
 }
 
 fn test_recursive_str_struct_construction_rejections() {
@@ -9457,9 +9532,10 @@ fn (item GuardedUpdateItem) str() string {
 	])
 }
 
-fn test_recursive_str_struct_literal_preserves_receiver_provenance() {
+fn test_recursive_str_struct_rebuild_progress() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_changed_struct_literal', 'struct Item {
+	run_good_module_batch(v3_bin, 'recursive_str_struct_rebuild_progress', [
+		ReviewRuntimeCase{'recursive_str_changed_struct_literal', 'struct Item {
 	remaining int
 }
 
@@ -9477,8 +9553,28 @@ fn main() {
 		remaining: 2
 	}.str())
 }
-')
-	assert out == ''
+', ''},
+		ReviewRuntimeCase{'recursive_str_progressed_struct_update', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	return Item{
+		...item
+		remaining: item.remaining - 1
+	}.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+', ''},
+	])
 }
 
 fn test_recursive_str_unconditional_loop_rejections() {
@@ -9523,34 +9619,10 @@ fn (item BreakLoopItem) str() string {
 	])
 }
 
-fn test_recursive_str_struct_update_preserves_receiver_provenance() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_progressed_struct_update', 'struct Item {
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	return Item{
-		...item
-		remaining: item.remaining - 1
-	}.str()
-}
-
-fn main() {
-	println(Item{
-		remaining: 2
-	}.str())
-}
-')
-	assert out == ''
-}
-
 fn test_recursive_str_guarded_nonnumeric_struct_update_progress() {
 	v3_bin := build_v3()
-	bool_out := run_good(v3_bin, 'recursive_str_guarded_bool_struct_update', 'struct Item {
+	run_good_module_batch(v3_bin, 'recursive_str_guarded_nonnumeric_struct_update_progress', [
+		ReviewRuntimeCase{'recursive_str_guarded_bool_struct_update', 'struct Item {
 	done bool
 }
 
@@ -9567,9 +9639,8 @@ fn (item Item) str() string {
 fn main() {
 	println(Item{}.str())
 }
-')
-	assert bool_out == 'done'
-	enum_out := run_good(v3_bin, 'recursive_str_guarded_enum_struct_update', 'enum State {
+', 'done'},
+		ReviewRuntimeCase{'recursive_str_guarded_enum_struct_update', 'enum State {
 	active
 	done
 }
@@ -9591,13 +9662,14 @@ fn (item Item) str() string {
 fn main() {
 	println(Item{}.str())
 }
-')
-	assert enum_out == 'done'
+', 'done'},
+	])
 }
 
-fn test_recursive_str_helper_unconditional_loop_progress() {
+fn test_recursive_str_progress_in_unconditional_loops() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_helper_unconditional_loop_progress', 'struct Item {
+	run_good_module_batch(v3_bin, 'recursive_str_progress_in_unconditional_loops', [
+		ReviewRuntimeCase{'recursive_str_helper_unconditional_loop_progress', 'struct Item {
 mut:
 	remaining int
 }
@@ -9623,13 +9695,8 @@ fn main() {
 		remaining: 2
 	}.str())
 }
-')
-	assert out == ''
-}
-
-fn test_recursive_str_unconditional_loop_has_no_zero_iteration_path() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_unconditional_loop_progress', 'struct Item {
+', ''},
+		ReviewRuntimeCase{'recursive_str_unconditional_loop_progress', 'struct Item {
 mut:
 	remaining int
 }
@@ -9651,8 +9718,8 @@ fn main() {
 		remaining: 2
 	}.str())
 }
-')
-	assert out == ''
+', ''},
+	])
 }
 
 fn test_recursive_str_preserves_provenance_through_buffered_channels() {
@@ -9722,7 +9789,13 @@ fn (item PrependedItem) str() string {
 }
 ', 'cannot call `str()` method recursively'},
 	])
-	out := run_good(v3_bin, 'recursive_str_array_delete_progress', 'struct Item {
+}
+
+fn test_recursive_str_implicit_stringification() {
+	v3_bin := build_v3()
+	run_good_module_batch(v3_bin, 'recursive_str_implicit_stringification', [
+		ReviewRuntimeCase{'recursive_str_print_progressed_receiver', 'struct Item {
+mut:
 	remaining int
 }
 
@@ -9730,11 +9803,10 @@ fn (item Item) str() string {
 	if item.remaining <= 0 {
 		return ""
 	}
-	mut items := [item, Item{
-		remaining: item.remaining - 1
-	}]
-	items.delete(0)
-	return items[0].str()
+	mut next := item
+	next.remaining--
+	print(next)
+	return ""
 }
 
 fn main() {
@@ -9742,8 +9814,28 @@ fn main() {
 		remaining: 2
 	}.str())
 }
-')
-	assert out == ''
+', ''},
+		ReviewRuntimeCase{'recursive_str_interpolated_progressed_receiver', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut next := item
+	next.remaining--
+	return "\${next}"
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+', ''},
+	])
 }
 
 fn test_recursive_str_detects_implicit_print_formatting() {
@@ -9776,52 +9868,10 @@ fn main() {}
 			expected: 'cannot call `str()` method recursively'
 		},
 	])
-	out := run_good(v3_bin, 'recursive_str_print_progressed_receiver', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	mut next := item
-	next.remaining--
-	print(next)
-	return ""
-}
-
-fn main() {
-	print(Item{
-		remaining: 2
-	}.str())
-}
-')
-	assert out == ''
 }
 
 fn test_recursive_str_resolves_constant_local_array_indexes() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_constant_local_terminal_index', 'struct Item {
-	done bool
-}
-
-fn (item Item) str() string {
-	if item.done {
-		return ""
-	}
-	items := [item, Item{
-		done: true
-	}]
-	index := 1
-	return items[index].str()
-}
-
-fn main() {
-	print(Item{}.str())
-}
-')
-	assert out == ''
 	run_bad_file_batch(v3_bin, 'recursive_str_local_index_rejections', [
 		ReviewRejection{'recursive_str_constant_local_receiver_index', 'struct ConstantIndexItem {}
 
@@ -9883,27 +9933,6 @@ fn main() {}
 			expected: 'cannot call `str()` method recursively'
 		},
 	])
-	out := run_good(v3_bin, 'recursive_str_interpolated_progressed_receiver', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	mut next := item
-	next.remaining--
-	return "\${next}"
-}
-
-fn main() {
-	print(Item{
-		remaining: 2
-	}.str())
-}
-')
-	assert out == ''
 }
 
 fn test_recursive_str_detects_explicit_aggregate_stringification() {
@@ -10088,41 +10117,6 @@ fn (item SlicedItem) str() string {
 }
 ', 'cannot call `str()` method recursively'},
 	])
-	out := run_good(v3_bin, 'recursive_str_array_slice_terminal_index', 'struct Item {
-	done bool
-}
-
-fn (item Item) str() string {
-	if item.done {
-		return ""
-	}
-	items := [item, Item{
-		done: true
-	}]
-	start := 1
-	end := 2
-	slice := items[start..end]
-	return slice[0].str()
-}
-
-fn main() {
-	_ = Item{}.str()
-}
-')
-	assert out == ''
-	empty_slice_out := run_good(v3_bin, 'recursive_str_repeated_empty_slice', 'struct Item {}
-
-fn (item Item) str() string {
-	items := [3]Item{init: item}
-	empty := items[0..0]
-	return empty.str()
-}
-
-fn main() {
-	_ = Item{}.str()
-}
-')
-	assert empty_slice_out == ''
 }
 
 fn test_recursive_str_dump_formatting_runs() {
