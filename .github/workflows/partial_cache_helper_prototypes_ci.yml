@@ -111,47 +111,133 @@ jobs:
   real-object:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    # Match the legacy Ubuntu musl lane that actually emitted the diagnostic.
+    container:
+      image: thevlang/vlang:ubuntu-build
+      env:
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc -gc none -d use_bundled_libgc
+    env:
+      V_CI_MUSL: 1
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: ./.github/actions/cache-apt-packages-action
-        with:
-          profile: full
-      - uses: ./.github/actions/setup-v
-        with:
-          use-prebuilt: false
-          symlink: false
-      - name: Rebuild candidate and verify regression formatting
+      - name: Build candidate in the original musl environment
         run: |
-          ./v self
+          musl-gcc --version
+          make -j4
+          ./v -prod -cg -o v cmd/v
           ./v fmt -verify vlib/v/tests/module_cache_reuse_test.v
       - uses: actions/checkout@v7
         with:
           ref: 02b6b90e8093b36c3f640efe855eeb7fb89c7c72
           path: baseline
           persist-credentials: false
-      - name: Compare real partial module object against unchanged baseline
+      - name: Compare real partial module objects with the original musl flags
         shell: bash
         run: |
           set -euo pipefail
-          make -C baseline -j4
-          cp vlib/v/tests/module_cache_reuse_test.v baseline/vlib/v/tests/module_cache_reuse_test.v
-          selector=main.test_partial_cache_build_declares_fixed_array_key_helpers_before_module_objects
-          set +e
-          (cd baseline && ./v -cc clang -run-only "$selector" vlib/v/tests/module_cache_reuse_test.v) > "$RUNNER_TEMP/real-object-baseline.log" 2>&1
-          baseline_rc=$?
-          set -e
-          cat "$RUNNER_TEMP/real-object-baseline.log"
-          ./v -cc clang -run-only "$selector" vlib/v/tests/module_cache_reuse_test.v 2>&1 | tee "$RUNNER_TEMP/real-object-candidate.log"
-          test "$baseline_rc" -ne 0
-          grep -F 'failed to build cached module object' "$RUNNER_TEMP/real-object-baseline.log"
-          grep -F 'datatypes_' "$RUNNER_TEMP/real-object-baseline.log"
-          grep -F 'fast_string_eq' "$RUNNER_TEMP/real-object-baseline.log"
+          candidate="$(pwd -P)/v"
+          (cd baseline && make -j4 && ./v -prod -cg -o v cmd/v)
+          baseline="$(pwd -P)/baseline/v"
+          logs="$RUNNER_TEMP/partial-cache-native"
+          mkdir -p "$logs"
+          unset VFLAGS VEXE V3_CACHE_FORCE_SOURCE V3_INTERNAL_CACHE_FORCE_SOURCE
+          flags=(-cc musl-gcc -gc none -d use_bundled_libgc -no-retry-compilation -showcc -show-timings)
+
+          # Use standalone programs rather than a silent test selector. The
+          # second case also instantiates the fixed-array map inside datatypes.
+          for role in baseline candidate; do
+            if [[ $role == baseline ]]; then exe="$baseline"; else exe="$candidate"; fi
+            "$exe" version
+            for variant in stack set; do
+              root="$logs/$role-$variant"
+              mkdir -p "$root/cache"
+              export VTMP="$root/cache" V3CACHE="$root/cache" V3_CACHE_TRACE=1
+              printf '%s\n' 'fn main() { println(1) }' > "$root/main.v"
+              "$exe" "${flags[@]}" -o "$root/cold" "$root/main.v" 2>&1 | tee "$root/cold.log"
+              test "$("$root/cold")" = 1
+              test -z "$(find "$root/cache" -name 'datatypes_*.o' -print -quit)"
+              if [[ $variant == stack ]]; then
+                cat > "$root/main.v" <<'V'
+          import datatypes
+          fn main() {
+              mut stack := datatypes.Stack[int]{}
+              stack.push(7)
+              mut counts := map[[2]string]int{}
+              key := ['first', 'second']!
+              counts[key] = stack.len()
+              assert counts[['first', 'second']!] == 1
+              println(counts[key])
+          }
+          V
+              else
+                cat > "$root/main.v" <<'V'
+          import datatypes
+          fn main() {
+              mut set := datatypes.Set[[2]string]{}
+              key := ['first', 'second']!
+              set.add(key)
+              assert set.exists(['first', 'second']!)
+              println(set.size())
+          }
+          V
+              fi
+              echo "EXECUTING $role $variant partial object"
+              rc=0
+              "$exe" "${flags[@]}" -o "$root/partial" "$root/main.v" > "$root/partial.log" 2>&1 || rc=$?
+              cat "$root/partial.log"
+              echo "$rc" > "$root/partial.status"
+              echo "PARTIAL_STATUS $role $variant $rc"
+              if [[ $role == candidate ]]; then
+                test "$rc" -eq 0
+                ! grep -E 'failed to build cached module object|V3 module cache fallback' "$root/partial.log"
+                test "$("$root/partial")" = 1
+                find "$root/cache" -name 'datatypes_*.o' -type f -print | tee "$root/objects.txt"
+                test -s "$root/objects.txt"
+                "$exe" "${flags[@]}" -o "$root/warm" "$root/main.v" 2>&1 | tee "$root/warm.log"
+                test "$("$root/warm")" = 1
+                ! grep -E 'failed to build cached module object|V3 module cache fallback|V3 module cache object miss|V3 module cache dependency miss|Caching module ' "$root/warm.log"
+                grep -F 'parsed .v files' "$root/warm.log" | tail -n 1 | grep -E 'parsed \.v files[[:space:]]+1([[:space:]]|$)'
+              fi
+            done
+          done
+
+          # The historical failure was a *recovered* object compilation error,
+          # so a zero top-level exit is not sufficient to call the baseline good.
+          # Require the exact compiler diagnostic and the matching candidate C
+          # file with a real published object, not merely a synthetic assertion.
+          matched=0
+          for variant in stack set; do
+            old="$logs/baseline-$variant/partial.log"
+            if grep -E 'failed to build cached module object .*datatypes_.*\.o' "$old" &&
+               grep -E 'conflicting types for .*fast_string_eq|implicit declaration of .*fast_string_eq' "$old"; then
+              grep -F 'fast_string_eq((*left)[i], (*right)[i])' "$old"
+              new="$logs/candidate-$variant"
+              ordered=0
+              while IFS= read -r c; do
+                test -f "${c%.c}.o" || continue
+                use=$(grep -n -m 1 -F 'fast_string_eq((*left)[i], (*right)[i])' "$c" | cut -d: -f1 || true)
+                [[ -n $use ]] || continue
+                proto=$(grep -n -m 1 -E '^[[:space:]]*bool fast_string_eq\(' "$c" | cut -d: -f1 || true)
+                test -n "$proto"
+                test "$proto" -lt "$use"
+                echo "ORDERED $variant $c prototype=$proto call=$use"
+                ordered=1
+              done < <(find "$new/cache" -name 'datatypes_*.c' -type f)
+              test "$ordered" -eq 1
+              matched=1
+            fi
+          done
+          test "$matched" -eq 1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: partial-cache-real-object-logs
           path: |
-            ${{ runner.temp }}/real-object-baseline.log
-            ${{ runner.temp }}/real-object-candidate.log
+            ${{ runner.temp }}/partial-cache-native/**/*.log
+            ${{ runner.temp }}/partial-cache-native/**/*.status
+            ${{ runner.temp }}/partial-cache-native/**/main.v
+            ${{ runner.temp }}/partial-cache-native/**/datatypes_*.c
+            ${{ runner.temp }}/partial-cache-native/**/objects.txt
