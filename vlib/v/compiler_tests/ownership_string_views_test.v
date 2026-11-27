@@ -14,6 +14,8 @@ struct OwnershipStringViewDiagnostic {
 }
 
 const ownership_string_view_args = [@VEXE, '-nocache', '-ownership', '-d', 'ownership']
+// Keep the loan cases' identity function separate from the owning call cases.
+const ownership_string_view_identity = 'fn view_identity(value string) string { return value }\n'
 const ownership_string_returned_fallback_body = '	mut original := "fallback".to_owned()
 	mut result := "".to_owned()
 	{
@@ -24,18 +26,17 @@ const ownership_string_returned_fallback_body = '	mut original := "fallback".to_
 	}
 	original = "replacement".to_owned()'
 
-fn check_ownership_string_view_rejections(root string, declarations string, cases []OwnershipStringViewRejection, modes [][]string) ! {
+fn check_ownership_string_view_rejections(root string, declarations string, cases []OwnershipStringViewRejection, mode []string) ! {
+	os.mkdir_all(root)!
 	main := os.join_path(root, 'main.v')
 	// Custom flags can limit diagnostics or change how a project is resolved.
 	if os.getenv('VFLAGS').trim_space() !in ['', '-gc none'] {
 		for case in cases {
 			case_declarations := case.standalone_declarations or { declarations }
 			os.write_file(main, case_declarations + 'fn main() {\n${case.body}\n}\n')!
-			for mode in modes {
-				out := os.exec([...ownership_string_view_args, ...mode, '-check', main])
-				assert out.exit_code != 0, '${mode}: ${case.body}\n${out.output}'
-				assert out.output.contains(case.expected), '${mode}: ${case.body}\n${out.output}'
-			}
+			out := os.exec([...ownership_string_view_args, ...mode, '-check', main])
+			assert out.exit_code != 0, '${mode}: ${case.body}\n${out.output}'
+			assert out.output.contains(case.expected), '${mode}: ${case.body}\n${out.output}'
 		}
 		return
 	}
@@ -46,20 +47,19 @@ fn check_ownership_string_view_rejections(root string, declarations string, case
 		calls << '\t${name}()'
 	}
 	os.write_file(main, 'module main\n\n' + declarations + 'fn main() {\n${calls.join('\n')}\n}\n')!
-	for mode in modes {
-		out := os.exec([...ownership_string_view_args, ...mode, '-json-errors', '-check', root])
-		assert out.exit_code != 0, '${mode}: ${out.output}'
-		mut diagnostics := []OwnershipStringViewDiagnostic{}
-		for line in out.output.split_into_lines() {
-			if line.starts_with('{') {
-				diagnostics << json2.decode[OwnershipStringViewDiagnostic](line)!
-			}
+	// JSON includes every error even when the batch exceeds the text diagnostic limit.
+	out := os.exec([...ownership_string_view_args, ...mode, '-json-errors', '-check', root])
+	assert out.exit_code != 0, '${mode}: ${out.output}'
+	mut diagnostics := []OwnershipStringViewDiagnostic{}
+	for line in out.output.split_into_lines() {
+		if line.starts_with('{') {
+			diagnostics << json2.decode[OwnershipStringViewDiagnostic](line)!
 		}
-		for i, case in cases {
-			filename := 'view_case_${i}.v'
-			assert diagnostics.any(it.severity == 'error' && os.file_name(it.file) == filename
-				&& it.message.contains(case.expected)), '${mode}: ${case.body}\n${out.output}'
-		}
+	}
+	for i, case in cases {
+		filename := 'view_case_${i}.v'
+		assert diagnostics.any(it.severity == 'error' && os.file_name(it.file) == filename
+			&& it.message.contains(case.expected)), '${mode}: ${case.body}\n${out.output}'
 	}
 }
 
@@ -186,12 +186,8 @@ ${ownership_string_returned_fallback_body}
 	}
 }
 
-fn test_ownership_string_views_check_owned_copies_and_live_loans() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_view_rejections_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	consume := 'fn consume(value string) { _ = value }\n'
-	declarations := consume + 'fn identity(value string) string { return value }\n'
+fn ownership_string_view_copy_and_loan_cases(consume string) []OwnershipStringViewRejection {
+	declarations := consume + ownership_string_view_identity
 	mut cases := []OwnershipStringViewRejection{}
 	for creation in ['"abcd".to_owned()', '"abcd"[1..].to_owned()', '(*ptr).to_owned()',
 		'original.clone()'] {
@@ -204,7 +200,7 @@ fn test_ownership_string_views_check_owned_copies_and_live_loans() {
 		cases << OwnershipStringViewRejection{body, 'use of moved value: `owned`', consume}
 	}
 
-	for expr in ['*ptr', 'unsafe { original.substr_unsafe(0, 2) }', 'identity(*ptr)'] {
+	for expr in ['*ptr', 'unsafe { original.substr_unsafe(0, 2) }', 'view_identity(*ptr)'] {
 		for invalid_action, expected in {
 			'consume(original)':                   'cannot move `original` because it is borrowed'
 			'original = "replacement".to_owned()': 'cannot assign to `original` because it is borrowed'
@@ -218,10 +214,10 @@ fn test_ownership_string_views_check_owned_copies_and_live_loans() {
 	}
 	${invalid_action}
 	assert view.len > 0'
-			cases << OwnershipStringViewRejection{ body: body, expected: expected }
+			cases << OwnershipStringViewRejection{body, expected, declarations}
 		}
 	}
-	check_ownership_string_view_rejections(root, declarations, cases, [[]string{}])!
+	return cases
 }
 
 fn test_ownership_string_views_are_copied_at_owning_call_boundaries() {
@@ -320,9 +316,8 @@ fn main() {
 	}
 }
 
-fn test_ownership_string_calls_preserve_moves_and_owner_loans() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_call_rejections_${os.getpid()}')
-	os.mkdir_all(root)!
+fn test_ownership_string_view_and_call_rejections() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_rejections_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
 	identity := 'fn identity(value string) string { return value }\n'
 	consume := 'fn consume(value string) { _ = value }\n'
@@ -381,10 +376,13 @@ fn (source Source) substr_unsafe() string { return "independent".to_owned() }
 			cases << OwnershipStringViewRejection{body, diagnostic, pointer_calls + consume}
 		}
 	}
-	check_ownership_string_view_rejections(root, declarations, cases, [
-		['-no-parallel'],
-		[]string{},
+	check_ownership_string_view_rejections(os.join_path(root, 'serial'), declarations, cases, [
+		'-no-parallel',
 	])!
+	mut default_cases := ownership_string_view_copy_and_loan_cases(consume)
+	default_cases << cases
+	check_ownership_string_view_rejections(os.join_path(root, 'default'), declarations +
+		ownership_string_view_identity, default_cases, [])!
 }
 
 fn test_ownership_cloned_returned_fallback_detaches_source_loan() {
