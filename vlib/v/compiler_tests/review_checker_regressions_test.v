@@ -173,8 +173,9 @@ fn main() {
 	assert out == '7'
 }
 
-fn test_explicit_mut_sum_smartcasts_preserve_concrete_variant_fields() {
-	out := run_good(v3_bin, 'explicit_mut_sum_smartcasts', 'struct First {
+fn test_sum_smartcast_fields_and_reference_arguments() {
+	check_review_runtime('sum_smartcast_fields_and_reference_arguments', [
+		ReviewFixture{'explicit_mut_sum_smartcasts', 'struct First {
 mut:
 	value int
 }
@@ -205,9 +206,28 @@ fn main() {
 		println(values[0].value)
 	}
 }
-')
-	assert out == '8
-12'
+', '8
+12'},
+		ReviewFixture{'as_cast_implicit_reference', 'struct First {
+	value int
+}
+
+struct Second {}
+
+type Value = First | Second
+
+fn inspect(value &First) int {
+	return value.value
+}
+
+fn main() {
+	value := Value(First{
+		value: 7
+	})
+	println(inspect(value as First))
+}
+', '7'},
+	])
 }
 
 fn test_forwarded_mut_sum_parameter_invalidates_smartcast() {
@@ -267,8 +287,9 @@ fn main() {
 	])
 }
 
-fn test_mut_index_alias_updates_original_storage() {
-	out := run_good(v3_bin, 'mut_index_alias', 'struct Item {
+fn test_mutable_index_and_pointer_loop_bindings() {
+	check_review_runtime('mutable_index_and_pointer_loop_bindings', [
+		ReviewFixture{'mut_index_alias', 'struct Item {
 mut:
 	value int
 }
@@ -281,8 +302,28 @@ fn main() {
 	item.value++
 	println(items[0].value)
 }
-')
-	assert out == '1'
+', '1'},
+		ReviewFixture{'mut_pointer_local_after_mut_pointer_loop', 'struct Item {
+mut:
+	value int
+}
+
+fn missing_item() &Item {
+	return &Item(unsafe { nil })
+}
+
+fn main() {
+	mut items := []&Item{}
+	for mut item in items {
+		item.value++
+	}
+	mut item := missing_item()
+	if item == unsafe { nil } {
+		println("nil")
+	}
+}
+', 'nil'},
+	])
 }
 
 fn test_shared_globals_keep_lockable_storage_metadata() {
@@ -608,8 +649,9 @@ fn main() {
 	])
 }
 
-fn test_pointer_struct_and_spawn_safety_match_v1() {
-	out := run_good(v3_bin, 'unsafe_pointer_write', 'fn main() {
+fn test_pointer_writes_and_fresh_results() {
+	check_review_runtime('pointer_writes_and_fresh_results', [
+		ReviewFixture{'unsafe_pointer_write', 'fn main() {
 	mut value := 0
 	p := &value
 	unsafe {
@@ -618,8 +660,28 @@ fn test_pointer_struct_and_spawn_safety_match_v1() {
 	}
 	println(value)
 }
-')
-	assert out == '2'
+', '2'},
+		ReviewFixture{'fresh_pointer_not_immutable_alias', 'struct State {
+mut:
+	values []int
+}
+
+fn fresh(seed &int) &State {
+	return &State{
+		values: [*seed]
+	}
+}
+
+fn main() {
+	seed := 1
+	mut state := fresh(&seed)
+	for i, value in state.values {
+		state.values[i] = value + 1
+	}
+	println(state.values[0])
+}
+', '2'},
+	])
 }
 
 fn test_mutable_references_and_enum_order_match_v1() {
@@ -982,19 +1044,6 @@ ${indent}value = holder.item or { "" }
 }
 
 fn test_generic_alias_substitutes_channel_element() {
-	out := run_good(v3_bin, 'generic_channel_alias_element', 'type Ch[T] = chan T
-
-fn receive(ch Ch[int]) int {
-	return <-ch
-}
-
-fn main() {
-	ch := chan int{cap: 1}
-	ch <- 42
-	println(int_str(receive(ch)))
-}
-')
-	assert out == '42'
 	run_bad(v3_bin, 'bad_generic_channel_alias_element', 'type Ch[T] = chan T
 
 fn receive(ch Ch[int]) int {
@@ -1081,26 +1130,6 @@ fn test_power_requires_numeric_operands_or_an_overload() {
 		ReviewFixture{'bad_array_power_assign', 'fn main() {\n\tmut values := [1]\n\tvalues **= [2]\n}\n', 'operator `**=` requires numeric operands; got `[]int` and `[]int`'},
 		ReviewFixture{'bad_string_power_assign', "fn main() {\n\tmut value := 'x'\n\tvalue **= 'y'\n}\n", 'operator `**=` requires numeric operands; got `string` and `string`'},
 	])
-	out := run_good(v3_bin, 'good_overloaded_power', 'struct Exponent {
-	value int
-}
-
-fn (a Exponent) ** (b Exponent) Exponent {
-	return Exponent{
-		value: a.value * b.value
-	}
-}
-
-fn main() {
-	value := Exponent{
-		value: 2
-	} ** Exponent{
-		value: 3
-	}
-	println(int_str(value.value))
-}
-')
-	assert out == '6'
 }
 
 fn test_if_expr_pointer_and_value_branches_are_incompatible() {
@@ -1109,10 +1138,11 @@ fn test_if_expr_pointer_and_value_branches_are_incompatible() {
 		'mismatched types `Foo` and `&Foo`')
 }
 
-fn test_reject_narrowed_interface_method_parameters() {
-	out := run_good(v3_bin, 'good_exact_interface_method_param',
-		'interface Base {\n\tbase() int\n}\n\ninterface Handler {\n\thandle(value Base) int\n}\n\nstruct Value {}\n\nfn (v Value) base() int {\n\treturn 7\n}\n\nstruct Service {}\n\nfn (s Service) handle(value Base) int {\n\treturn value.base()\n}\n\nfn main() {\n\tprintln(Handler(Service{}).handle(Base(Value{})))\n}\n')
-	assert out == '7'
+fn test_interface_and_voidptr_arguments() {
+	check_review_runtime('interface_and_voidptr_arguments', [
+		ReviewFixture{'good_exact_interface_method_param', 'interface Base {\n\tbase() int\n}\n\ninterface Handler {\n\thandle(value Base) int\n}\n\nstruct Value {}\n\nfn (v Value) base() int {\n\treturn 7\n}\n\nstruct Service {}\n\nfn (s Service) handle(value Base) int {\n\treturn value.base()\n}\n\nfn main() {\n\tprintln(Handler(Service{}).handle(Base(Value{})))\n}\n', '7'},
+		ReviewFixture{'good_voidptr_pointer_arg', 'fn f(p voidptr) int {\n\t_ = p\n\treturn 7\n}\n\nfn main() {\n\tx := 1\n\tprintln(int_str(f(&x)))\n}\n', '7'},
+	])
 }
 
 fn test_synthetic_str_and_hex_method_rejections() {
@@ -1125,6 +1155,7 @@ fn test_synthetic_str_and_hex_method_rejections() {
 		ReviewFixture{'bad_float_hex_method', 'fn main() {\n\t_ := f32(1.5).hex()\n}\n', 'unknown function'},
 		ReviewFixture{'bad_pointer_hex_method', 'fn main() {\n\tx := 1\n\tp := &x\n\t_ := p.hex()\n}\n', 'unknown function'},
 		ReviewFixture{'bad_numeric_hex_arg', 'fn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := u8(1).hex(side_effect())\n}\n', 'expected 0 arguments, but got 1'},
+		ReviewFixture{'bad_auto_str_arg', 'struct S {\n\tx int\n}\n\nfn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := S{\n\t\tx: 1\n\t}.str(side_effect())\n}\n', 'expected 0 arguments, but got 1'},
 	])
 }
 
@@ -1150,19 +1181,44 @@ fn test_numeric_and_callback_return_types() {
 		ReviewFixture{'good_float_alias_int_return', 'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n', '1.0'},
 		ReviewFixture{'good_explicit_float_to_int_alias_return', 'type Id = int\n\nfn f(x f64) Id {\n\treturn Id(x)\n}\n\nfn main() {\n\tprintln(int_str(f(1.5)))\n}\n', '1'},
 		ReviewFixture{'good_fn_value_matching_integer_return_abi', 'fn letter() rune {\n\treturn `A`\n}\n\nfn invoke(callback fn () u32) u32 {\n\treturn callback()\n}\n\nfn main() {\n\tprintln(int_str(int(invoke(letter))))\n}\n', '65'},
+		ReviewFixture{'good_overloaded_power', 'struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * b.value
+	}
+}
+
+fn main() {
+	value := Exponent{
+		value: 2
+	} ** Exponent{
+		value: 3
+	}
+	println(int_str(value.value))
+}
+', '6'},
 	])
 }
 
-fn test_alias_with_nested_type_separator_stays_alias() {
-	out := run_good(v3_bin, 'good_alias_nested_type_separator',
-		'type Bits = [1 | 2]int\n\nfn values() Bits {\n\treturn [1, 2, 3]!\n}\n\nfn main() {\n\tbits := values()\n\tprintln(int_str(bits[0] + bits[1] + bits[2]))\n}\n')
-	assert out == '6'
+fn test_nested_and_generic_alias_runtime() {
+	check_review_runtime('nested_and_generic_alias_runtime', [
+		ReviewFixture{'good_alias_nested_type_separator', 'type Bits = [1 | 2]int\n\nfn values() Bits {\n\treturn [1, 2, 3]!\n}\n\nfn main() {\n\tbits := values()\n\tprintln(int_str(bits[0] + bits[1] + bits[2]))\n}\n', '6'},
+		ReviewFixture{'generic_channel_alias_element', 'type Ch[T] = chan T
+
+fn receive(ch Ch[int]) int {
+	return <-ch
 }
 
-fn test_voidptr_params_accept_pointer_values() {
-	out := run_good(v3_bin, 'good_voidptr_pointer_arg',
-		'fn f(p voidptr) int {\n\t_ = p\n\treturn 7\n}\n\nfn main() {\n\tx := 1\n\tprintln(int_str(f(&x)))\n}\n')
-	assert out == '7'
+fn main() {
+	ch := chan int{cap: 1}
+	ch <- 42
+	println(int_str(receive(ch)))
+}
+', '42'},
+	])
 }
 
 fn test_receiver_and_reference_arguments() {
@@ -1229,12 +1285,6 @@ false
 	])
 }
 
-fn test_auto_str_rejects_arguments() {
-	run_bad(v3_bin, 'bad_auto_str_arg',
-		'struct S {\n\tx int\n}\n\nfn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := S{\n\t\tx: 1\n\t}.str(side_effect())\n}\n',
-		'expected 0 arguments, but got 1')
-}
-
 fn test_collection_call_argument_rejections() {
 	check_review_rejections('collection_call_argument_rejections', [
 		ReviewFixture{'bad_map_keys_arg', 'fn main() {\n\tm := map[string]int{}\n\t_ := m.keys(123)\n}\n', '`.keys()` does not have any arguments'},
@@ -1284,13 +1334,8 @@ fn main() {
 	println(int_str(source.len))
 }
 ", '2\n1'},
+		ReviewFixture{'good_array_insert_prepend_many_operands', "type Strings = []string\n\nfn main() {\n\tmut a := [3, 4]\n\ta.insert(0, [1, 2])\n\tb := [5, 6]\n\ta.insert(1, b)\n\ta.prepend([0])\n\tfixed := [7, 8]!\n\ta.insert(a.len, fixed)\n\tassert a == [0, 1, 5, 6, 2, 3, 4, 7, 8]\n\tmut strs := Strings(['hi'])\n\tstrs.insert(0, ['there'])\n\tstrs.prepend(['hello'])\n\tassert strs == ['hello', 'there', 'hi']\n\tprintln('ok')\n}\n", 'ok'},
 	])
-}
-
-fn test_array_insert_and_prepend_accept_many_operands() {
-	out := run_good(v3_bin, 'good_array_insert_prepend_many_operands',
-		"type Strings = []string\n\nfn main() {\n\tmut a := [3, 4]\n\ta.insert(0, [1, 2])\n\tb := [5, 6]\n\ta.insert(1, b)\n\ta.prepend([0])\n\tfixed := [7, 8]!\n\ta.insert(a.len, fixed)\n\tassert a == [0, 1, 5, 6, 2, 3, 4, 7, 8]\n\tmut strs := Strings(['hi'])\n\tstrs.insert(0, ['there'])\n\tstrs.prepend(['hello'])\n\tassert strs == ['hello', 'there', 'hi']\n\tprintln('ok')\n}\n")
-	assert out == 'ok'
 }
 
 fn test_comptime_condition_and_match_rejections() {
@@ -1441,6 +1486,21 @@ fn main() {
 }
 ', 'true
 7'},
+		ReviewFixture{'pointer_sum_type_pattern_membership', 'struct First {}
+
+struct Second {}
+
+type Node = First | Second
+
+fn accepts(node &Node) bool {
+	return node in [First, Second]
+}
+
+fn main() {
+	mut node := Node(First{})
+	println(accepts(&node))
+}
+', 'true'},
 	])
 }
 
@@ -1534,22 +1594,17 @@ fn test_shadowed_exit_and_panic_rejections() {
 	])
 }
 
-fn test_local_identifiers_shadow_module_consts() {
-	out := run_good(v3_bin, 'good_const_shadowed_by_param_and_local',
-		"const shadowed_value = 'const'\n\nfn param_shadow(shadowed_value int) int {\n\treturn shadowed_value + 1\n}\n\nfn local_shadow() int {\n\tshadowed_value := 2\n\treturn shadowed_value + 1\n}\n\nfn main() {\n\tprintln(int_str(param_shadow(1)))\n\tprintln(int_str(local_shadow()))\n\tprintln(shadowed_value)\n}\n")
-	assert out == '2\n3\nconst'
+fn test_local_and_builtin_name_resolution() {
+	check_review_runtime('local_and_builtin_name_resolution', [
+		ReviewFixture{'good_const_shadowed_by_param_and_local', "const shadowed_value = 'const'\n\nfn param_shadow(shadowed_value int) int {\n\treturn shadowed_value + 1\n}\n\nfn local_shadow() int {\n\tshadowed_value := 2\n\treturn shadowed_value + 1\n}\n\nfn main() {\n\tprintln(int_str(param_shadow(1)))\n\tprintln(int_str(local_shadow()))\n\tprintln(shadowed_value)\n}\n", '2\n3\nconst'},
+		ReviewFixture{'builtin_fn_unrelated_const_suffix', 'import math\nfn main() {\n\t_ = math.pi\n\tprintln(f32(1).eq_epsilon(f32(1)))\n}\n', 'true'},
+	])
 }
 
 fn test_match_const_int_does_not_narrow_subject_type() {
 	out := run_good(v3_bin, 'match_const_int_no_subject_narrow',
 		'const size_224 = 28\n\nstruct E {\n\tsize int\n}\n\nfn check(hash_size int) !E {\n\tmatch hash_size {\n\t\tsize_224 {\n\t\t\treturn E{\n\t\t\t\tsize: hash_size\n\t\t\t}\n\t\t}\n\t\telse {}\n\t}\n\treturn E{\n\t\tsize: 0\n\t}\n}\n\nfn main() {\n\tprintln(int_str(check(28)!.size))\n}\n')
 	assert out == '28'
-}
-
-fn test_builtin_function_callee_wins_over_unrelated_const_suffix() {
-	out := run_good(v3_bin, 'builtin_fn_unrelated_const_suffix',
-		'import math\nfn main() {\n\t_ = math.pi\n\tprintln(f32(1).eq_epsilon(f32(1)))\n}\n')
-	assert out == 'true'
 }
 
 fn test_fn_field_param_mutability_survives_type_identity_paths() {
@@ -1714,96 +1769,6 @@ fn main() {
 fn main() {}
 ',
 		'function name `bad_T_Name` cannot contain uppercase letters, use snake_case instead')
-}
-
-fn test_mut_pointer_local_after_mut_pointer_loop_keeps_pointer_type() {
-	out := run_good(v3_bin, 'mut_pointer_local_after_mut_pointer_loop', 'struct Item {
-mut:
-	value int
-}
-
-fn missing_item() &Item {
-	return &Item(unsafe { nil })
-}
-
-fn main() {
-	mut items := []&Item{}
-	for mut item in items {
-		item.value++
-	}
-	mut item := missing_item()
-	if item == unsafe { nil } {
-		println("nil")
-	}
-}
-')
-	assert out == 'nil'
-}
-
-fn test_pointer_to_sum_supports_type_pattern_membership() {
-	out := run_good(v3_bin, 'pointer_sum_type_pattern_membership', 'struct First {}
-
-struct Second {}
-
-type Node = First | Second
-
-fn accepts(node &Node) bool {
-	return node in [First, Second]
-}
-
-fn main() {
-	mut node := Node(First{})
-	println(accepts(&node))
-}
-')
-	assert out == 'true'
-}
-
-fn test_as_cast_value_can_bind_to_immutable_reference_parameter() {
-	out := run_good(v3_bin, 'as_cast_implicit_reference', 'struct First {
-	value int
-}
-
-struct Second {}
-
-type Value = First | Second
-
-fn inspect(value &First) int {
-	return value.value
-}
-
-fn main() {
-	value := Value(First{
-		value: 7
-	})
-	println(inspect(value as First))
-}
-')
-	assert out == '7'
-}
-
-fn test_fresh_pointer_result_does_not_alias_immutable_pointer_argument() {
-	out := run_good(v3_bin, 'fresh_pointer_not_immutable_alias', 'struct State {
-mut:
-	values []int
-}
-
-fn fresh(seed &int) &State {
-	return &State{
-		values: [*seed]
-	}
-}
-
-fn main() {
-	seed := 1
-	mut state := fresh(&seed)
-	for i, value in state.values {
-		state.values[i] = value + 1
-	}
-	println(state.values[0])
-}
-')
-	assert out == '2'
 }
 
 fn test_forwarded_pointer_result_preserves_immutable_alias() {
