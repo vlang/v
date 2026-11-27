@@ -5,6 +5,7 @@ struct OwnershipStringViewRejection {
 	body                    string
 	expected                string
 	standalone_declarations ?string
+	unexpected              string
 }
 
 struct OwnershipStringViewDiagnostic {
@@ -14,6 +15,8 @@ struct OwnershipStringViewDiagnostic {
 }
 
 const ownership_string_view_args = [@VEXE, '-nocache', '-ownership', '-d', 'ownership']
+const ownership_string_view_consume = 'fn consume(value string) { _ = value }\n'
+const ownership_string_fallback_loan_error = 'cannot assign to `original`'
 // Keep the loan cases' identity function separate from the owning call cases.
 const ownership_string_view_identity = 'fn view_identity(value string) string { return value }\n'
 const ownership_string_returned_fallback_body = '	mut original := "fallback".to_owned()
@@ -35,6 +38,9 @@ fn check_ownership_string_view_rejections(root string, declarations string, case
 			case_declarations := case.standalone_declarations or { declarations }
 			os.write_file(main, case_declarations + 'fn main() {\n${case.body}\n}\n')!
 			out := os.exec([...ownership_string_view_args, ...mode, '-check', main])
+			if case.unexpected != '' {
+				assert !out.output.contains(case.unexpected), '${mode}: ${case.body}\n${out.output}'
+			}
 			assert out.exit_code != 0, '${mode}: ${case.body}\n${out.output}'
 			assert out.output.contains(case.expected), '${mode}: ${case.body}\n${out.output}'
 		}
@@ -58,6 +64,10 @@ fn check_ownership_string_view_rejections(root string, declarations string, case
 	}
 	for i, case in cases {
 		filename := 'view_case_${i}.v'
+		if case.unexpected != '' {
+			assert !diagnostics.any(os.file_name(it.file) == filename
+				&& it.message.contains(case.unexpected)), '${mode}: ${case.body}\n${out.output}'
+		}
 		assert diagnostics.any(it.severity == 'error' && os.file_name(it.file) == filename
 			&& it.message.contains(case.expected)), '${mode}: ${case.body}\n${out.output}'
 	}
@@ -197,7 +207,11 @@ fn ownership_string_view_copy_and_loan_cases(consume string) []OwnershipStringVi
 	owned := ${creation}
 	consume(owned)
 	println(owned)'
-		cases << OwnershipStringViewRejection{body, 'use of moved value: `owned`', consume}
+		cases << OwnershipStringViewRejection{
+			body:                    body
+			expected:                'use of moved value: `owned`'
+			standalone_declarations: consume
+		}
 	}
 
 	for expr in ['*ptr', 'unsafe { original.substr_unsafe(0, 2) }', 'view_identity(*ptr)'] {
@@ -214,7 +228,11 @@ fn ownership_string_view_copy_and_loan_cases(consume string) []OwnershipStringVi
 	}
 	${invalid_action}
 	assert view.len > 0'
-			cases << OwnershipStringViewRejection{body, expected, declarations}
+			cases << OwnershipStringViewRejection{
+				body:                    body
+				expected:                expected
+				standalone_declarations: declarations
+			}
 		}
 	}
 	return cases
@@ -320,7 +338,7 @@ fn test_ownership_string_view_and_call_rejections() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_string_rejections_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
 	identity := 'fn identity(value string) string { return value }\n'
-	consume := 'fn consume(value string) { _ = value }\n'
+	consume := ownership_string_view_consume
 	consume_many := 'fn consume_many(values ...string) int { return values.len }\n'
 	first_value := 'fn first(values ...string) string { return values[0] }\n'
 	user_method := 'struct Source {}
@@ -331,27 +349,43 @@ fn (source Source) substr_unsafe() string { return "independent".to_owned() }
 	moved_result := 'use of moved value: `result`'
 	moved_owned := 'use of moved value: `owned`'
 	mut cases := [
-		OwnershipStringViewRejection{'
+		OwnershipStringViewRejection{
+			body:                    '
 	owned := identity("owned argument".to_owned())
 	assert owned.len > 0
 	original := "borrowed argument".to_owned()
 	ptr := &original
 	result := identity(*ptr)
 	consume(result)
-	println(result)', moved_result, identity + consume},
-		OwnershipStringViewRejection{'
+	println(result)'
+			expected:                moved_result
+			standalone_declarations: identity + consume
+		},
+		OwnershipStringViewRejection{
+			body:                    '
 	owned := ["owned argument".to_owned()]
 	assert consume_many(...owned) == 1
-	println(owned.len)', moved_owned, consume_many},
-		OwnershipStringViewRejection{'
+	println(owned.len)'
+			expected:                moved_owned
+			standalone_declarations: consume_many
+		},
+		OwnershipStringViewRejection{
+			body:                    '
 	owned := ["owned argument".to_owned()]
 	result := first(...owned)
 	consume(result)
-	println(result)', moved_result, first_value + consume},
-		OwnershipStringViewRejection{'
+	println(result)'
+			expected:                moved_result
+			standalone_declarations: first_value + consume
+		},
+		OwnershipStringViewRejection{
+			body:                    '
 	result := Source{}.substr_unsafe()
 	consume(result)
-	println(result)', moved_result, user_method + consume},
+	println(result)'
+			expected:                moved_result
+			standalone_declarations: user_method + consume
+		},
 	]
 
 	for first in ['owned', 'if owned.len > 0 { owned } else { "fallback" }'] {
@@ -360,7 +394,11 @@ fn (source Source) substr_unsafe() string { return "independent".to_owned() }
 	owned := "owned argument".to_owned()
 	consume(${first})
 	${next}'
-			cases << OwnershipStringViewRejection{body, moved_owned, consume}
+			cases << OwnershipStringViewRejection{
+				body:                    body
+				expected:                moved_owned
+				standalone_declarations: consume
+			}
 		}
 	}
 	for expression in ['*pointer(&original)', '*forward(pointer(&original))'] {
@@ -373,8 +411,18 @@ fn (source Source) substr_unsafe() string { return "independent".to_owned() }
 	view := ${expression}
 	${action}
 	assert view == "owned text"'
-			cases << OwnershipStringViewRejection{body, diagnostic, pointer_calls + consume}
+			cases << OwnershipStringViewRejection{
+				body:                    body
+				expected:                diagnostic
+				standalone_declarations: pointer_calls + consume
+			}
 		}
+	}
+	cases << OwnershipStringViewRejection{
+		body:                    '${ownership_string_returned_fallback_body}\n\tconsume(result)\n\tprintln(result)'
+		expected:                moved_result
+		standalone_declarations: consume
+		unexpected:              ownership_string_fallback_loan_error
 	}
 	check_ownership_string_view_rejections(os.join_path(root, 'serial'), declarations, cases, [
 		'-no-parallel',
@@ -390,21 +438,12 @@ fn test_ownership_cloned_returned_fallback_detaches_source_loan() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	fixture := 'fn consume(value string) { _ = value }
-fn main() {
+	os.write_file(source, ownership_string_view_consume + 'fn main() {
 ${ownership_string_returned_fallback_body}
-	LAST_USE
+	assert result == "all"
 }
-'
-	os.write_file(source, fixture.replace('LAST_USE', 'assert result == "all"'))!
+')!
 	success := os.exec([...ownership_string_view_args, '-cc', 'clang', 'run', source])
-	assert !success.output.contains('cannot assign to `original`'), success.output
+	assert !success.output.contains(ownership_string_fallback_loan_error), success.output
 	assert success.exit_code == 0, success.output
-	os.write_file(source, fixture.replace('LAST_USE', 'consume(result)\n\tprintln(result)'))!
-	for mode in [['-no-parallel'], []string{}] {
-		out := os.exec([...ownership_string_view_args, ...mode, '-check', source])
-		assert !out.output.contains('cannot assign to `original`'), out.output
-		assert out.exit_code != 0, out.output
-		assert out.output.contains('use of moved value: `result`'), out.output
-	}
 }
