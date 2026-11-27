@@ -19,8 +19,7 @@ fn ownership_ierror_const_compile(flags string, source string) os.Result {
 	return os.exec([@VEXE, '-nocache', ...flags.split(' '), source])
 }
 
-fn test_returned_error_constants_give_the_caller_its_own_copy() {
-	source := ownership_ierror_const_source('returns', 'import net
+const ownership_ierror_const_return_fixture = 'import net
 
 const err_busy = error_with_code("busy", 7)
 const err_alias = err_busy
@@ -72,20 +71,21 @@ fn main() {
 	}
 	println("\${err_busy.msg()} \${err_busy.code()} \${net.err_timed_out.msg()}")
 }
-') or {
+'
+
+const ownership_ierror_const_return_output = 'busy\n7\nnet: op timed out\nbusy\nother\nbusy\nnet: port out of range\nbusy busy 7\n'.repeat(3) +
+	'busy 7 net: op timed out'
+
+fn test_returned_error_constants_give_the_caller_its_own_copy() {
+	source := ownership_ierror_const_source('returns', ownership_ierror_const_return_fixture) or {
 		panic(err)
 	}
 	defer {
 		ownership_ierror_const_cleanup(source)
 	}
-	once := 'busy\n7\nnet: op timed out\nbusy\nother\nbusy\nnet: port out of range\nbusy busy 7'
-	expected := [once, once, once, 'busy 7 net: op timed out'].join('\n')
-	for flags in ['-autofree -cc clang -no-parallel run', '-autofree -cc clang run',
-		'-ownership -d ownership -cc clang run'] {
-		out := ownership_ierror_const_compile(flags, source)
-		assert out.exit_code == 0, '${flags}: ${out.output}'
-		assert out.output.trim_space() == expected, '${flags}: ${out.output}'
-	}
+	out := ownership_ierror_const_compile('-ownership -d ownership -cc clang run', source)
+	assert out.exit_code == 0, out.output
+	assert out.output.trim_space() == ownership_ierror_const_return_output, out.output
 }
 
 fn test_issue_programs_pass_autofree_check() {
@@ -126,8 +126,9 @@ fn main() {
 	assert out.exit_code == 0, out.output
 }
 
-fn test_map_guard_through_a_mutable_borrowed_alias_is_a_view() {
-	source := ownership_ierror_const_source('map_guard', 'type Value = map[string]Value | string | int
+fn test_autofree_error_constants_and_map_guard_preserve_owners() {
+	code := ownership_ierror_const_return_fixture.replace('fn main()', 'fn check_error_constants()') + '
+type Value = map[string]Value | string | int
 
 fn is_all_tables(table map[string]Value, keys []string) bool {
 	unsafe {
@@ -147,7 +148,7 @@ fn is_all_tables(table map[string]Value, keys []string) bool {
 	return true
 }
 
-fn main() {
+fn check_map_guard() {
 	mut inner := map[string]Value{}
 	inner["c"] = Value("x".repeat(3))
 	mut root := map[string]Value{}
@@ -159,14 +160,20 @@ fn main() {
 	}
 	println(root)
 }
-') or {
+
+fn main() {
+	check_error_constants()
+	check_map_guard()
+}
+'
+	source := ownership_ierror_const_source('autofree_error_and_map', code) or {
 		panic(err)
 	}
 	defer {
 		ownership_ierror_const_cleanup(source)
 	}
 	once := 'true\nfalse\nfalse'
-	expected := [once, once, "{'a': Value({'c': Value('xxx')})}"].join('\n')
+	expected := [ownership_ierror_const_return_output, once, once, "{'a': Value({'c': Value('xxx')})}"].join('\n')
 	for flags in ['-autofree -cc clang -no-parallel run', '-autofree -cc clang run'] {
 		out := ownership_ierror_const_compile(flags, source)
 		assert out.exit_code == 0, '${flags}: ${out.output}'
