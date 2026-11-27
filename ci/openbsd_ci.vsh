@@ -161,4 +161,10 @@ const all_tasks = {
 	'build_examples':        Task{build_examples, 'Build examples'}
 }
 
+// The hosted OpenBSD guest has limited swap. Avoid two simultaneous C compilers
+// in test-self/build-examples; keep all tests and their assertions enabled.
+if common.is_github_job {
+	os.setenv('VJOBS', '1', true)
+}
+
 common.run(all_tasks)
