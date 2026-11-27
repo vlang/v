@@ -13,8 +13,7 @@ fn test_cg_skill_claim_keeps_the_c_sources_beside_the_output() {
 	$if windows {
 		executable += '.exe'
 	}
-	result := os.exec([@VEXE, '-new-compiler', '-cg', '-gc', 'none', '-nocache', '-o', executable,
-		source])
+	result := os.exec([@VEXE, '-cg', '-gc', 'none', '-nocache', '-o', executable, source])
 	assert result.exit_code == 0, result.output
 	kept := os.join_path(root, '.${os.base(executable)}.v3cc.cg')
 	assert os.is_dir(kept), 'no ${kept} after a -cg build:\n${result.output}'

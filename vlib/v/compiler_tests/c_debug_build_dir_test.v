@@ -3,8 +3,7 @@ import time
 
 // build_with_c_debug builds `source` into `executable` with `-cg` and returns the build output.
 fn build_with_c_debug(source string, executable string) string {
-	result := os.exec([@VEXE, '-new-compiler', '-cg', '-gc', 'none', '-nocache', '-o', executable,
-		source])
+	result := os.exec([@VEXE, '-cg', '-gc', 'none', '-nocache', '-o', executable, source])
 	assert result.exit_code == 0, result.output
 	return result.output
 }
@@ -39,7 +38,7 @@ fn test_a_build_without_c_debug_names_no_directory_and_leaves_none() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() { println("plain") }')!
 	executable := os.join_path(root, 'program')
-	result := os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-nocache', '-o', executable, source])
+	result := os.exec([@VEXE, '-gc', 'none', '-nocache', '-o', executable, source])
 	assert result.exit_code == 0, result.output
 	assert !result.output.contains('.v3cc.'), result.output
 	assert os.ls(root)!.filter(it.contains('.v3cc.')).len == 0
@@ -67,8 +66,7 @@ fn test_a_rebuild_that_could_not_give_the_sources_back_is_not_started_and_change
 	in_the_way := kept + '.prev'
 	os.write_file(in_the_way, 'in the way')!
 	os.write_file(source, 'fn main() { println("second build") }')!
-	result := os.exec([@VEXE, '-new-compiler', '-cg', '-gc', 'none', '-nocache', '-o', executable,
-		source])
+	result := os.exec([@VEXE, '-cg', '-gc', 'none', '-nocache', '-o', executable, source])
 	assert result.exit_code == 1, result.output
 	assert result.output.contains('did not start this build'), result.output
 	assert result.output.contains(kept) && result.output.contains(in_the_way), result.output
@@ -105,7 +103,7 @@ fn test_a_failed_rebuild_keeps_the_sources_of_the_executable_in_place() {
 	assert first_c.contains('first build')
 	// The program changes, and the link cannot succeed: the library does not exist.
 	os.write_file(source, 'fn main() { println("second build") }')!
-	failed := os.exec([@VEXE, '-new-compiler', '-cg', '-gc', 'none', '-nocache', '-ldflags',
+	failed := os.exec([@VEXE, '-cg', '-gc', 'none', '-nocache', '-ldflags',
 		'-lv3_c_debug_dir_test_no_such_library', '-o', executable, source])
 	assert failed.exit_code != 0, 'the build with a missing library succeeded:\n${failed.output}'
 	assert os.read_bytes(executable)! == first_executable, 'a failed build changed the executable'
@@ -144,8 +142,7 @@ fn test_a_rebuild_that_fails_a_generic_instance_check_keeps_the_sources_too() {
 	first_executable := os.read_bytes(executable)!
 	// `is_set[int]` returns an int as a bool: its instance is refused.
 	os.write_file(source, 'fn is_set[T](x T) bool {\n\treturn x\n}\n\nfn main() {\n\tprintln(is_set(1))\n}\n')!
-	failed := os.exec([@VEXE, '-new-compiler', '-cg', '-gc', 'none', '-nocache', '-o', executable,
-		source])
+	failed := os.exec([@VEXE, '-cg', '-gc', 'none', '-nocache', '-o', executable, source])
 	assert failed.exit_code != 0, 'the build of a generic instance that does not check succeeded:\n${failed.output}'
 	// the build got as far as its new directory: it said where it keeps the C sources
 	assert failed.output.contains(first_dirs[0]), failed.output
@@ -200,8 +197,7 @@ fn test_an_interrupted_rebuild_keeps_the_sources_of_the_executable_in_place() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() { println("first build") }')!
 	executable := os.join_path(root, 'program')
-	build_args := ['-new-compiler', '-cg', '-cc', gcc, '-gc', 'none', '-nocache', '-o', executable,
-		source]
+	build_args := ['-cg', '-cc', gcc, '-gc', 'none', '-nocache', '-o', executable, source]
 	mut first_args := [@VEXE]
 	first_args << build_args
 	first := os.exec(first_args)
@@ -326,8 +322,7 @@ fn test_an_interrupt_after_the_executable_is_in_place_keeps_the_new_sources() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() { println("first build") }')!
 	executable := os.join_path(root, 'program')
-	build_args := ['-new-compiler', '-cg', '-cc', real_gcc, '-gc', 'none', '-nocache', '-o',
-		executable, source]
+	build_args := ['-cg', '-cc', real_gcc, '-gc', 'none', '-nocache', '-o', executable, source]
 	mut first_args := [@VEXE]
 	first_args << build_args
 	first := os.exec(first_args)
