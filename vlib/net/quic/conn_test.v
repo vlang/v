@@ -1639,9 +1639,10 @@ fn test_ack_ranges_are_kept_until_the_ack_carrying_them_is_acknowledged() {
 	}], 'packets 0 and 1 must still be acknowledged: no ACK carrying them was acknowledged'
 
 	// One peer ACK acknowledges both carriers, of ACK [0, 1] and ACK [0, 2];
-	// the larger Largest Acknowledged, 2, is what may be forgotten.
+	// the larger Largest Acknowledged, 2, is what may be forgotten. It covers the
+	// stream packets too, so none of them is lost and sent again.
 	mut payload := encode_ack_frame([AckRange{
-		smallest: first_carrier
+		smallest: 0
 		largest:  second_carrier
 	}], 0, none)!
 	payload << ack_test_ping
@@ -2273,7 +2274,7 @@ fn test_lost_retire_connection_id_is_resent_until_acknowledged() {
 	// next packet or after any timer.
 	acked := retire_test_ack(mut c, resend, resend, now)!
 	assert retire_test_seqs(mut c, acked)!.len == 0
-	assert c.retire_cids_in_flight.len == 0, 'an acknowledged retirement is still tracked'
+	assert c.app_sent_frames.in_flight.len == 0, 'an acknowledged retirement is still tracked'
 	quiet := cid_test_send(mut c, ack_test_ping, now)!
 	assert retire_test_seqs(mut c, quiet)!.len == 0
 	timed := c.process_timeouts(now + 5 * u64(time.second))!
@@ -2312,42 +2313,47 @@ fn test_two_retirements_and_two_path_responses_share_one_packet() {
 	}
 	assert retired == [u64(0), 1], 'both retirements belong in the last datagram'
 	assert responses == 2, 'one PATH_RESPONSE per PATH_CHALLENGE'
-	recorded := c.retire_cids_in_flight[carrier] or { []u64{} }
-	assert recorded == [u64(0), 1]
+	assert retire_test_recorded(c, carrier)! == [u64(0), 1]
 }
 
-// note_retire_cids_acked and requeue_lost_retire_cids act only on 1-RTT
-// packets, on every packet of the list, and on every sequence a packet
-// carried; a sequence already queued is not queued twice.
-fn test_retire_cid_tracking_follows_each_listed_packet() {
+// retire_test_recorded returns the sequence numbers of the
+// RETIRE_CONNECTION_ID frames recorded for 1-RTT packet `pn`.
+fn retire_test_recorded(c &QuicConn, pn u64) ![]u64 {
+	mut seqs := []u64{}
+	for sent in c.app_sent_frames.in_flight[pn] or { return seqs } {
+		for f in parse_frames(sent.bytes)! {
+			if f is RetireConnectionIdFrame {
+				seqs << f.sequence_number
+			}
+		}
+	}
+	return seqs
+}
+
+// An ACK or a loss in one packet number space leaves the frames of the same
+// packet number in the other spaces alone.
+fn test_sent_frames_are_tracked_per_space() {
 	mut c, _, _ := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
-	three := [SentPacketInfo{
-		packet_number: 1
-	}, SentPacketInfo{
+	for space in [QuicPacketNumberSpace.initial, .handshake, .application_data] {
+		mut sent := c.sent_frames(space)
+		sent.record(2, [&SentFrame{
+			bytes: space.str().bytes()
+		}])
+	}
+	for space in [QuicPacketNumberSpace.initial, .handshake, .application_data] {
+		assert c.sent_frames(space).oldest_unacked().map(it.bytes.bytestr()) == [
+			space.str(),
+		]
+	}
+	c.sent_frames(.handshake).on_acked([SentPacketInfo{
 		packet_number: 2
-	}, SentPacketInfo{
-		packet_number: 3
-	}]
-	c.retire_cids_in_flight[2] = [u64(5), 6]
-	// A Handshake or Initial packet 2 is another packet.
-	c.note_retire_cids_acked(.handshake, three)
-	c.requeue_lost_retire_cids(.initial, three)
-	assert c.retire_cids_in_flight.len == 1
-	assert c.pending_retire_cids.len == 0
-	c.note_retire_cids_acked(.application_data, three)
-	assert c.retire_cids_in_flight.len == 0, 'the middle packet of an ACK was not forgotten'
-
-	c.retire_cids_in_flight[2] = [u64(5), 6]
-	c.pending_retire_cids = [u64(7)]
-	c.requeue_lost_retire_cids(.application_data, three)
-	assert c.pending_retire_cids == [u64(7), 5, 6], 'the middle lost packet, both of its sequences'
-	assert c.retire_cids_in_flight.len == 0
-	c.retire_cids_in_flight[3] = [u64(6)]
-	c.requeue_lost_retire_cids(.application_data, three)
-	assert c.pending_retire_cids == [u64(7), 5, 6], 'a sequence already queued was queued twice'
+	}])
+	assert c.sent_frames(.handshake).oldest_unacked().len == 0
+	assert c.sent_frames(.initial).oldest_unacked().len == 1
+	assert c.sent_frames(.application_data).oldest_unacked().len == 1
 }
 
 // A drain too large for one packet records under each packet number only the
@@ -2376,11 +2382,11 @@ fn test_retire_cids_split_over_packets_are_recorded_per_packet() {
 		size += frame.len
 		fit++
 	}
-	first := c.retire_cids_in_flight[before] or { []u64{} }
+	first := retire_test_recorded(c, before)!
 	assert first == seqs[..fit], 'the first packet recorded other retirements than it carries'
 	mut all := []u64{}
 	for i in 0 .. sent {
-		all << c.retire_cids_in_flight[before + u64(i)] or { []u64{} }
+		all << retire_test_recorded(c, before + u64(i))!
 	}
 	assert all == seqs, 'the packets together did not record each retirement once'
 }
@@ -2402,4 +2408,669 @@ fn test_retire_connection_id_lost_by_timer_is_resent() {
 	timed := c.process_timeouts(now + 2 * u64(time.second))!
 	assert retire_test_seqs(mut c, timed)! == [u64(0)], 'the lost retirement was not sent again'
 	assert !cid_test_sent_frames(mut c, timed)!.any(it is PathResponseFrame), 'PATH_RESPONSE was sent again'
+}
+
+// resend_test_crypto returns the CRYPTO frames in an Initial or Handshake
+// datagram the client sent, decrypted with the client's own `keys`.
+fn resend_test_crypto(datagram QuicDatagram, keys QuicPacketProtectionKeys) ![]CryptoFrame {
+	mut found := []CryptoFrame{}
+	for frame in resend_test_frames(datagram, keys)! {
+		if frame is CryptoFrame {
+			found << frame
+		}
+	}
+	return found
+}
+
+// resend_test_frames returns every frame of such a datagram.
+fn resend_test_frames(datagram QuicDatagram, keys QuicPacketProtectionKeys) ![]QuicFrame {
+	mut packet := datagram.bytes.clone()
+	_, offset := parse_long_header(datagram.bytes)!
+	opened := unprotect_packet(mut packet, offset, .long, keys, none)!
+	return parse_frames(opened.payload)!
+}
+
+fn resend_test_dial() !&QuicConn {
+	mut c, _ := dial(DialParams{
+		server_name:    'example.com'
+		ca_bundle_pem:  conn_test_cert_pem
+		alpn_protocols: ['h3']
+	}, u64(1000))!
+	return c
+}
+
+fn resend_test_ack(mut c QuicConn, space QuicPacketNumberSpace, smallest u64, largest u64, now u64) {
+	c.handle_ack_frame(space, AckFrame{
+		largest_acknowledged: largest
+		ranges:               [AckRange{
+			smallest: smallest
+			largest:  largest
+		}]
+	}, now)
+}
+
+// resend_test_pings sends `n` packets that carry nothing to repair.
+fn resend_test_pings(mut c QuicConn, space QuicPacketNumberSpace, n int, now u64) ! {
+	for _ in 0 .. n {
+		c.build_packet(space, ack_test_ping, true, now)!
+	}
+}
+
+// resend_test_handshake gives `c` Handshake keys and has it send `data` as
+// its Handshake CRYPTO stream, in packet 0.
+fn resend_test_handshake(mut c QuicConn, data []u8, now u64) !QuicPacketProtectionKeys {
+	keys := c.initial_keys_client
+	c.handshake_keys_client = keys
+	c.pending_handshake_crypto = data.clone()
+	sent := c.poll(none, now)!
+	assert resend_test_crypto(sent.outgoing[0], keys)![0].data == data
+	return keys
+}
+
+// event_test_start returns a connection with one frame to repair in flight
+// in `space`, its packet number, the frame as event_test_frames shows it, and
+// the time.
+fn event_test_start(space QuicPacketNumberSpace) !(&QuicConn, u64, string, u64) {
+	if space == .application_data {
+		mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+		pn := retire_test_retire_sequence_zero(mut c, now)!
+		return c, pn, 'RETIRE 0', now
+	}
+	mut c := resend_test_dial()!
+	if space == .initial {
+		return c, u64(0), 'CRYPTO 0 ${c.client_hello.hex()}', u64(1000)
+	}
+	resend_test_handshake(mut c, 'fin'.bytes(), 1000)!
+	return c, u64(0), 'CRYPTO 0 ${'fin'.bytes().hex()}', u64(1000)
+}
+
+// event_test_frames shows every frame sent in `result` but ACK and PADDING,
+// each prefixed with the kind of packet that carried it unless `space` did.
+fn event_test_frames(mut c QuicConn, space QuicPacketNumberSpace, result PollResult) ![]string {
+	mut shown := []string{}
+	for d in result.outgoing {
+		mut sent_in := QuicPacketNumberSpace.application_data
+		mut frames := []QuicFrame{}
+		if d.bytes[0] & 0x80 == 0 {
+			keys := c.app_write_keys or { return error('a 1-RTT packet without keys') }
+			frames = conn_test_decrypt_one_rtt(d.bytes, c.dcid.len, keys)!
+		} else {
+			// Packet types of RFC 9000 §17.2: 0 is Initial, 2 is Handshake.
+			sent_in = if (d.bytes[0] >> 4) & 3 == 0 {
+				QuicPacketNumberSpace.initial
+			} else {
+				QuicPacketNumberSpace.handshake
+			}
+			frames = resend_test_frames(d, c.initial_keys_client)!
+		}
+		where := if sent_in == space { '' } else { '${sent_in}: ' }
+		for f in frames {
+			match f {
+				CryptoFrame { shown << '${where}CRYPTO ${f.offset} ${f.data.hex()}' }
+				RetireConnectionIdFrame { shown << '${where}RETIRE ${f.sequence_number}' }
+				PingFrame { shown << '${where}PING' }
+				PathResponseFrame { shown << '${where}PATH_RESPONSE' }
+				StreamFrame {
+					shown << '${where}STREAM ${f.stream_id} ${f.offset} ${f.data.bytestr()} ${f.fin}'
+				}
+				ResetStreamFrame {
+					shown << '${where}RESET ${f.stream_id} ${f.error_code} ${f.final_size}'
+				}
+				MaxDataFrame { shown << '${where}MAX_DATA ${f.maximum_data}' }
+				MaxStreamDataFrame {
+					shown << '${where}MAX_STREAM_DATA ${f.stream_id} ${f.maximum_stream_data}'
+				}
+				StreamsBlockedFrame {
+					shown << '${where}STREAMS_BLOCKED ${f.direction} ${f.maximum_streams}'
+				}
+				else {}
+			}
+		}
+	}
+	return shown
+}
+
+// event_test_probe is what a PTO probe of `space` sends.
+fn event_test_probe(mut c QuicConn, space QuicPacketNumberSpace, now u64) ![]string {
+	mut result := PollResult{}
+	c.send_pto_probe(space, now, mut result)!
+	return event_test_frames(mut c, space, result)!
+}
+
+// event_test_lose has `pn` declared lost by packet threshold, without sending.
+fn event_test_lose(mut c QuicConn, space QuicPacketNumberSpace, pn u64, now u64) ! {
+	resend_test_pings(mut c, space, 3, now)!
+	resend_test_ack(mut c, space, pn + 1, pn + 3, now)
+	assert c.sent_frames(space).in_flight.len == 0, '${space}: not declared lost'
+	assert c.sent_frames(space).lost.len == 1, '${space}: not queued'
+}
+
+const event_test_spaces = [QuicPacketNumberSpace.initial, .handshake, .application_data]
+
+// An acknowledged frame is forgotten: nothing is sent, a probe is a PING.
+fn test_acknowledged_frame_is_not_sent_again_in_every_space() {
+	for space in event_test_spaces {
+		mut c, pn, _, now := event_test_start(space)!
+		defer {
+			c.handshake.free()
+		}
+		resend_test_ack(mut c, space, pn, pn, now)
+		assert c.sent_frames(space).in_flight.len == 0, '${space}'
+		polled := c.poll(none, now)!
+		assert event_test_frames(mut c, space, polled)! == [], '${space}'
+		assert event_test_probe(mut c, space, now)! == ['PING'], '${space}'
+	}
+}
+
+// A frame lost by packet threshold (RFC 9002 §6.1.1) is sent again once.
+fn test_frame_lost_by_ack_is_sent_again_once_in_every_space() {
+	for space in event_test_spaces {
+		mut c, pn, want, now := event_test_start(space)!
+		defer {
+			c.handshake.free()
+		}
+		event_test_lose(mut c, space, pn, now)!
+		polled := c.poll(none, now)!
+		assert event_test_frames(mut c, space, polled)! == [want], '${space}'
+		again := c.poll(none, now)!
+		assert event_test_frames(mut c, space, again)! == [], '${space}'
+	}
+}
+
+// So is a frame lost by the loss timer (RFC 9002 §6.1.2), and not before it.
+fn test_frame_lost_by_timer_is_sent_again_in_every_space() {
+	for space in event_test_spaces {
+		mut c, pn, want, now := event_test_start(space)!
+		defer {
+			c.handshake.free()
+		}
+		resend_test_pings(mut c, space, 1, now)!
+		resend_test_ack(mut c, space, pn + 1, pn + 1, now + 1000)
+		early := c.poll(none, now + 1000)!
+		assert event_test_frames(mut c, space, early)! == [], '${space}'
+		assert c.sent_frames(space).in_flight.len == 1, '${space}: lost before the timer'
+		timed := c.process_timeouts(now + 2 * u64(time.second))!
+		assert event_test_frames(mut c, space, timed)! == [want], '${space}'
+	}
+}
+
+// A probe carries the frame each time, and once one copy is acknowledged the
+// loss of the others sends nothing.
+fn test_probe_copy_acknowledged_ends_the_frame_in_every_space() {
+	for space in event_test_spaces {
+		mut c, pn, want, now := event_test_start(space)!
+		defer {
+			c.handshake.free()
+		}
+		assert event_test_probe(mut c, space, now)! == [want], '${space}'
+		assert event_test_probe(mut c, space, now)! == [want], '${space}'
+		resend_test_pings(mut c, space, 3, now)!
+		resend_test_ack(mut c, space, pn + 2, pn + 5, now)
+		assert c.sent_frames(space).in_flight.len == 0, '${space}: not declared lost'
+		polled := c.poll(none, now)!
+		assert event_test_frames(mut c, space, polled)! == [], '${space}'
+	}
+}
+
+// Discarding a space's keys forgets its frame, in flight or waiting to be
+// sent again, and the space is not probed any more (RFC 9000 §13.3: CRYPTO
+// data is not sent again once its keys are discarded).
+fn test_key_discard_forgets_the_frame() {
+	for space in [QuicPacketNumberSpace.initial, .handshake] {
+		for lost in [false, true] {
+			mut c, pn, _, now := event_test_start(space)!
+			defer {
+				c.handshake.free()
+			}
+			if lost {
+				event_test_lose(mut c, space, pn, now)!
+			}
+			if space == .initial {
+				c.discard_initial_keys()
+			} else {
+				c.discard_handshake_keys()
+			}
+			assert c.sent_frames(space).in_flight.len == 0, '${space} lost=${lost}'
+			assert c.sent_frames(space).lost.len == 0, '${space} lost=${lost}'
+			polled := c.poll(none, now)!
+			assert event_test_frames(mut c, space, polled)! == [], '${space} lost=${lost}'
+			assert event_test_probe(mut c, space, now)! == [], '${space} lost=${lost}'
+		}
+	}
+}
+
+// A draining connection sends nothing again (RFC 9000 §10.2.2).
+fn test_draining_connection_sends_no_frame_again() {
+	for space in event_test_spaces {
+		mut c, pn, _, now := event_test_start(space)!
+		defer {
+			c.handshake.free()
+		}
+		event_test_lose(mut c, space, pn, now)!
+		c.enter_draining(now)
+		assert c.poll(none, now)!.outgoing.len == 0, '${space}'
+		assert c.process_timeouts(now)!.outgoing.len == 0, '${space}'
+	}
+}
+
+// A Retry sends the ClientHello once, whether the first one was in flight or
+// already waiting to be sent again. A probe repeats the new one, and nothing
+// once that is acknowledged.
+fn test_retry_sends_the_client_hello_once() {
+	for lost in [false, true] {
+		mut c, pn, want, now := event_test_start(.initial)!
+		defer {
+			c.handshake.free()
+		}
+		if lost {
+			event_test_lose(mut c, .initial, pn, now)!
+		}
+		mut retry := [u8(0xf0), 0, 0, 0, 1, u8(c.scid.len)]
+		retry << c.scid
+		retry << [u8(4), 0x51, 0x52, 0x53, 0x54]
+		retry << [u8(0x70), 0x71, 0x72, 0x73]
+		retry << compute_retry_integrity_tag(c.original_dcid, retry)!
+		result := c.poll(retry, now)!
+		assert c.retry_accepted
+		assert event_test_frames(mut c, .initial, result)! == [want], 'lost=${lost}'
+		assert c.poll(none, now)!.outgoing.len == 0, 'lost=${lost}: sent again without a loss'
+		sent := c.last_sent_pn(.initial)
+		assert event_test_probe(mut c, .initial, now)! == [want], 'lost=${lost}'
+		resend_test_ack(mut c, .initial, sent, sent, now)
+		assert event_test_probe(mut c, .initial, now)! == ['PING'], 'lost=${lost}'
+	}
+}
+
+// Lost frames are sent before new data.
+fn test_lost_frame_is_sent_before_new_stream_data() {
+	mut c, pn, want, now := event_test_start(.application_data)!
+	defer {
+		c.handshake.free()
+	}
+	event_test_lose(mut c, .application_data, pn, now)!
+	stream_id := c.open_stream(true)!
+	c.write_stream(stream_id, 'new'.bytes(), true)!
+	result := c.poll(none, now)!
+	assert event_test_frames(mut c, .application_data, result)! == [want,
+		'STREAM ${stream_id} 0 new true']
+}
+
+// RFC 9002 §6.2.4: the PTO probe carries the unacknowledged ClientHello, on
+// every timeout: a server that never saw it cannot answer a PING.
+fn test_pto_probe_resends_lost_client_hello() {
+	mut c := resend_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	for round in 0 .. 3 {
+		t := c.compute_next_timeout() or { panic('no timer in round ${round}') }
+		result := c.process_timeouts(t)!
+		assert result.outgoing.len == 1
+		assert result.outgoing[0].bytes.len >= min_initial_datagram_size
+		crypto := resend_test_crypto(result.outgoing[0], c.initial_keys_client)!
+		assert crypto.len == 1, 'probe ${round} carries no ClientHello'
+		assert crypto[0].offset == 0
+		assert crypto[0].data == c.client_hello
+	}
+}
+
+// RFC 9000 §13.3: CRYPTO data is sent again when its packet is declared
+// lost, here by the packet threshold.
+fn test_client_hello_lost_by_ack_is_sent_again_once() {
+	mut c := resend_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	resend_test_pings(mut c, .initial, 3, 1000)!
+	resend_test_ack(mut c, .initial, 1, 3, 1000)
+	result := c.poll(none, 1000)!
+	assert result.outgoing.len == 1, 'the lost ClientHello was not sent again'
+	crypto := resend_test_crypto(result.outgoing[0], c.initial_keys_client)!
+	assert crypto.len == 1
+	assert crypto[0].offset == 0
+	assert crypto[0].data == c.client_hello
+	assert c.poll(none, 1000)!.outgoing.len == 0
+	// The copy, packet 4, is lost too, and sent again.
+	resend_test_pings(mut c, .initial, 3, 1000)!
+	resend_test_ack(mut c, .initial, 5, 7, 1000)
+	again := c.poll(none, 1000)!
+	assert again.outgoing.len == 1
+	assert resend_test_crypto(again.outgoing[0], c.initial_keys_client)![0].data == c.client_hello
+	// Acknowledged, it is forgotten.
+	resend_test_ack(mut c, .initial, 8, 8, 1000)
+	assert c.sent_frames(.initial).in_flight.len == 0
+}
+
+// Handshake CRYPTO, by probe and by loss, keeps its offset and bytes.
+fn test_handshake_crypto_is_sent_again() {
+	mut c := resend_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	keys := resend_test_handshake(mut c, 'client-finished'.bytes(), 1000)!
+	mut probe := PollResult{}
+	c.send_pto_probe(.handshake, 1000, mut probe)!
+	assert probe.outgoing.len == 1
+	probed := resend_test_crypto(probe.outgoing[0], keys)!
+	assert probed.len == 1
+	assert probed[0].offset == 0
+	assert probed[0].data == 'client-finished'.bytes()
+	// Packets 0 and 1 carry it; 2 to 4 do not, and their ACK loses both.
+	resend_test_pings(mut c, .handshake, 3, 1000)!
+	resend_test_ack(mut c, .handshake, 2, 4, 1000)
+	// Packet 1 is exactly three below 4, so it is lost by packet threshold.
+	result := c.poll(none, 1000)!
+	assert result.outgoing.len == 1
+	crypto := resend_test_crypto(result.outgoing[0], keys)!
+	assert crypto.len == 1
+	assert crypto[0].offset == 0
+	assert crypto[0].data == 'client-finished'.bytes()
+	// The resend did not move the CRYPTO send offset.
+	assert c.handshake_crypto_send_offset == u64('client-finished'.len)
+}
+
+// One lost frame larger than max_control_frame_payload goes out alone, with
+// no empty packet before it.
+fn test_large_lost_crypto_is_one_packet() {
+	mut c := resend_test_dial()!
+	defer {
+		c.handshake.free()
+	}
+	data := []u8{len: max_control_frame_payload + 100, init: u8(index)}
+	keys := resend_test_handshake(mut c, data, 1000)!
+	resend_test_pings(mut c, .handshake, 3, 1000)!
+	resend_test_ack(mut c, .handshake, 1, 3, 1000)
+	result := c.poll(none, 1000)!
+	assert result.outgoing.len == 1
+	assert resend_test_crypto(result.outgoing[0], keys)![0].data == data
+}
+
+// The PTO probe repeats an unacknowledged RETIRE_CONNECTION_ID, and never
+// the PATH_RESPONSE that shared its packet (RFC 9000 §13.3).
+fn test_pto_probe_resends_retirement_but_not_path_response() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	retire_test_retire_sequence_zero(mut c, now)!
+	mut probe := PollResult{}
+	c.send_pto_probe(.application_data, now, mut probe)!
+	assert probe.outgoing.len == 1
+	assert retire_test_seqs(mut c, probe)! == [u64(0)]
+	assert !cid_test_sent_frames(mut c, probe)!.any(it is PathResponseFrame)
+}
+
+// A lost batch larger than one packet goes out in several.
+fn test_lost_frames_are_packed_into_packets() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut frames := []&SentFrame{}
+	mut want := []u64{}
+	for seq in u64(0x4000) .. u64(0x4000) + 300 {
+		want << seq
+		frames << &SentFrame{
+			bytes: encode_retire_connection_id_frame(seq)!
+		}
+	}
+	mut sent := c.sent_frames(.application_data)
+	sent.record(900, frames)
+	sent.on_lost([SentPacketInfo{
+		packet_number: 900
+	}])
+	result := c.poll(none, now)!
+	assert result.outgoing.len == 2
+	for d in result.outgoing {
+		assert d.bytes.len <= min_initial_datagram_size
+	}
+	assert retire_test_seqs(mut c, result)! == want
+	assert c.sent_frames(.application_data).lost.len == 0
+}
+
+const stream_test_kinds = ['STREAM', 'RESET', 'MAX_DATA', 'MAX_STREAM_DATA', 'STREAMS_BLOCKED bidi',
+	'STREAMS_BLOCKED uni']
+
+// stream_test_start returns a connection with one frame of `kind` in flight,
+// its packet number, the frame as event_test_frames shows it, its stream (0
+// if it has none) and the time.
+fn stream_test_start(kind string) !(&QuicConn, u64, string, u64, u64) {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	id := c.open_stream(true)!
+	match kind {
+		'STREAM' {
+			c.write_stream(id, 'hello'.bytes(), true)!
+		}
+		'RESET' {
+			c.handle_stop_sending_frame(StopSendingFrame{
+				stream_id:  id
+				error_code: 7
+			})
+		}
+		'MAX_DATA' {
+			stream_test_read(mut c.conn_recv_window)!
+		}
+		'MAX_STREAM_DATA' {
+			stream_test_read(mut c.stream_recv_windows[id] or { return error('no window') })!
+		}
+		'STREAMS_BLOCKED bidi' {
+			c.peer_max_streams_bidi = c.streams.next_local_bidi
+			c.open_stream(true) or {}
+		}
+		else {
+			c.peer_max_streams_uni = c.streams.next_local_uni
+			c.open_stream(false) or {}
+		}
+	}
+
+	shown := event_test_frames(mut c, .application_data, c.poll(none, now)!)!
+	assert shown.len == 1, '${kind}: ${shown}'
+	assert shown[0].starts_with(kind.all_before(' ')), '${kind}: ${shown}'
+	return c, ack_test_largest_sent_pn(c), shown[0], id, now
+}
+
+// stream_test_read makes `window` due for a raise.
+fn stream_test_read(mut window ReceiveWindow) ! {
+	window.note_received(window.advertised)!
+	window.note_read((window.advertised + 1) / 2)
+}
+
+// Every frame that carries stream data or a limit is sent again once when it
+// is lost, by acknowledgment or by timer, spending no more credit, and a probe
+// repeats it. An acknowledgment of either copy ends it.
+fn test_stream_frames_are_sent_again_on_every_event() {
+	for kind in stream_test_kinds {
+		for event in ['acknowledged', 'lost by ACK', 'lost by timer', 'probe'] {
+			mut c, pn, want, id, now := stream_test_start(kind)!
+			defer {
+				c.handshake.free()
+			}
+			name := '${kind} ${event}'
+			credit := c.conn_send_window.available()
+			mut sent := PollResult{}
+			mut expected := [want]
+			match event {
+				'acknowledged' {
+					resend_test_ack(mut c, .application_data, pn, pn, now)
+					c.send_pto_probe(.application_data, now, mut sent)!
+					expected = ['PING']
+				}
+				'lost by ACK' {
+					event_test_lose(mut c, .application_data, pn, now)!
+					sent = c.poll(none, now)!
+				}
+				'lost by timer' {
+					resend_test_pings(mut c, .application_data, 1, now)!
+					resend_test_ack(mut c, .application_data, pn + 1, pn + 1, now + 1000)
+					assert event_test_frames(mut c, .application_data, c.poll(none, now + 1000)!)! == [], name
+					sent = c.process_timeouts(now + 2 * u64(time.second))!
+				}
+				else {
+					c.send_pto_probe(.application_data, now, mut sent)!
+				}
+			}
+
+			assert event_test_frames(mut c, .application_data, sent)! == expected, name
+			assert c.conn_send_window.available() == credit, name
+			if kind == 'STREAM' {
+				stream := c.streams.get(id) or { panic('no stream') }
+				assert stream.send.offset == 5, name
+			}
+			last := ack_test_largest_sent_pn(c)
+			resend_test_pings(mut c, .application_data, 3, now)!
+			resend_test_ack(mut c, .application_data, last, last + 3, now)
+			assert c.sent_frames(.application_data).in_flight.len == 0, name
+			assert event_test_frames(mut c, .application_data, c.poll(none, now)!)! == [], name
+		}
+	}
+}
+
+// stream_test_makes_obsolete has `c` need the frame of `kind` no longer, and
+// returns what it sends by that.
+fn stream_test_makes_obsolete(mut c QuicConn, kind string, id u64, now u64) ![]string {
+	match kind {
+		'STREAM' {
+			c.handle_stop_sending_frame(StopSendingFrame{
+				stream_id:  id
+				error_code: 7
+			})
+		}
+		'MAX_DATA' {
+			stream_test_read(mut c.conn_recv_window)!
+		}
+		'MAX_STREAM_DATA' {
+			stream_test_read(mut c.stream_recv_windows[id] or { return error('no window') })!
+		}
+		'MAX_STREAM_DATA size known' {
+			mut stream := c.streams.get(id) or { return error('no stream') }
+			stream.recv.state = .size_known
+		}
+		'MAX_STREAM_DATA reset' {
+			mut stream := c.streams.get(id) or { return error('no stream') }
+			stream.recv.mark_reset_recvd(1, 0)!
+		}
+		'STREAMS_BLOCKED bidi' {
+			c.peer_max_streams_bidi++
+		}
+		else {
+			c.peer_max_streams_uni++
+		}
+	}
+
+	return event_test_frames(mut c, .application_data, c.poll(none, now)!)!
+}
+
+// RFC 9000 §13.3: data of a reset stream, a limit that was raised since, a
+// stream's limit once its size is known, and a blocked frame once the limit
+// moved are not sent again, when lost or by a probe. What replaced the frame
+// is, and only that.
+fn test_obsolete_stream_frames_are_not_sent_again() {
+	for kind in ['STREAM', 'MAX_DATA', 'MAX_STREAM_DATA', 'MAX_STREAM_DATA size known',
+		'MAX_STREAM_DATA reset', 'STREAMS_BLOCKED bidi', 'STREAMS_BLOCKED uni'] {
+		for event in ['lost', 'probe', 'queued'] {
+			base := if kind.starts_with('MAX_STREAM') { 'MAX_STREAM_DATA' } else { kind }
+			mut c, pn, old, id, now := stream_test_start(base)!
+			defer {
+				c.handshake.free()
+			}
+			name := '${kind} ${event}'
+			if event == 'queued' {
+				event_test_lose(mut c, .application_data, pn, now)!
+				sent := stream_test_makes_obsolete(mut c, kind, id, now)!
+				// A limit is sent before the raise that this poll is due.
+				assert (old in sent) == (kind in ['MAX_DATA', 'MAX_STREAM_DATA']), name
+				continue
+			}
+			replaced := stream_test_makes_obsolete(mut c, kind, id, now)!
+			if event == 'probe' {
+				want := if replaced.len > 0 { replaced } else { ['PING'] }
+				assert event_test_probe(mut c, .application_data, now)! == want, name
+				continue
+			}
+			last := ack_test_largest_sent_pn(c)
+			resend_test_pings(mut c, .application_data, 3, now)!
+			resend_test_ack(mut c, .application_data, last + 1, last + 3, now)
+			assert event_test_frames(mut c, .application_data, c.poll(none, now)!)! == replaced, name
+		}
+	}
+}
+
+// A draining connection sends no stream frame again (RFC 9000 §10.2.2).
+fn test_draining_connection_sends_no_stream_frame_again() {
+	for kind in stream_test_kinds {
+		mut c, pn, _, _, now := stream_test_start(kind)!
+		defer {
+			c.handshake.free()
+		}
+		event_test_lose(mut c, .application_data, pn, now)!
+		c.enter_draining(now)
+		assert c.poll(none, now)!.outgoing.len == 0, kind
+		assert c.process_timeouts(now)!.outgoing.len == 0, kind
+	}
+}
+
+// A frame lost before a key update is sent again under the new keys.
+fn test_stream_frames_survive_a_key_update() {
+	for kind in stream_test_kinds {
+		mut c, pn, want, _, now := stream_test_start(kind)!
+		defer {
+			c.handshake.free()
+		}
+		event_test_lose(mut c, .application_data, pn, now)!
+		server_keys := c.app_read_keys or { panic('no keys') }
+		secret := derive_updated_secret(server_keys.current_secret)!
+		keys := derive_updated_packet_protection_keys(secret, server_keys.current_keys.hp)!
+		packet := build_fake_one_rtt_packet(c.scid, conn_test_next_app_pn(c), ack_test_ping, keys, true)!
+		result := c.poll(packet.bytes, now)!
+		assert c.app_write_generation == 1, kind
+		assert want in event_test_frames(mut c, .application_data, result)!, kind
+	}
+}
+
+// A probe leaves out each obsolete frame of a packet that carries several.
+fn test_probe_leaves_out_every_obsolete_frame_of_a_packet() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut ids := []u64{}
+	for text in ['a', 'b', 'c'] {
+		id := c.open_stream(true)!
+		c.write_stream(id, text.bytes(), true)!
+		ids << id
+	}
+	c.poll(none, now)!
+	last := ack_test_largest_sent_pn(c)
+	resend_test_pings(mut c, .application_data, 3, now)!
+	resend_test_ack(mut c, .application_data, last + 1, last + 3, now)
+	resent := c.poll(none, now)!
+	assert resent.outgoing.len == 1
+	shown := event_test_frames(mut c, .application_data, resent)!
+	assert shown.len == 3, shown.str()
+	for id in [ids[0], ids[2]] {
+		c.handle_stop_sending_frame(StopSendingFrame{
+			stream_id:  id
+			error_code: 7
+		})
+	}
+	assert event_test_probe(mut c, .application_data, now)! == ['STREAM ${ids[1]} 0 b true']
+}
+
+// Both directions can be blocked in one poll, and each is sent again.
+fn test_both_streams_blocked_frames_are_sent_again() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	c.peer_max_streams_bidi = c.streams.next_local_bidi
+	c.peer_max_streams_uni = c.streams.next_local_uni
+	c.open_stream(true) or {}
+	c.open_stream(false) or {}
+	sent := event_test_frames(mut c, .application_data, c.poll(none, now)!)!
+	assert sent.len == 2, sent.str()
+	assert sent[0].contains('bidirectional') && sent[1].contains('unidirectional'), sent.str()
+	last := ack_test_largest_sent_pn(c)
+	resend_test_pings(mut c, .application_data, 3, now)!
+	resend_test_ack(mut c, .application_data, last + 1, last + 3, now)
+	assert event_test_frames(mut c, .application_data, c.poll(none, now)!)! == sent
 }

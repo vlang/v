@@ -157,12 +157,11 @@ mut:
 	// owed to the peer, sent by drain_pending_cid_and_path_frames.
 	pending_retire_cids    []u64
 	pending_path_responses [][]u8
-	// retire_cids_in_flight maps a sent 1-RTT packet number to the
-	// RETIRE_CONNECTION_ID sequence numbers it carried. An entry is dropped
-	// when the packet is acknowledged, and its sequence numbers are queued
-	// again when the packet is declared lost (RFC 9000 §13.3). It holds only
-	// packets still awaiting an acknowledgment.
-	retire_cids_in_flight         map[u64][]u64
+	// *_sent_frames hold, per space, the frames sent again if they are lost
+	// (RFC 9000 §13.3): CRYPTO and RETIRE_CONNECTION_ID.
+	initial_sent_frames           SentFrames
+	handshake_sent_frames         SentFrames
+	app_sent_frames               SentFrames
 	peer_scid                     []u8
 	token                         []u8
 	retry_accepted                bool
@@ -523,8 +522,11 @@ pub fn dial(params DialParams, now u64) !(&QuicConn, QuicDatagram) {
 		local_max_streams_uni:    own_params.initial_max_streams_uni or { u64(0) }
 	}
 
-	crypto_frame := encode_crypto_frame(0, client_hello)!
-	datagram := c.build_initial_packet(crypto_frame, true, now)!
+	datagram := c.send_frames(.initial, [
+		&SentFrame{
+			bytes: encode_crypto_frame(0, client_hello)!
+		},
+	], now)!
 	return c, datagram
 }
 
@@ -617,7 +619,7 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 			}
 		} else if timeout_result.lost.len > 0 {
 			c.congestion_control.on_packets_lost(timeout_result.lost, false, now)
-			c.requeue_lost_retire_cids(timeout_result.loss_space, timeout_result.lost)
+			c.sent_frames(timeout_result.loss_space).on_lost(timeout_result.lost)
 		}
 
 		if c.state == .handshaking || c.state == .established {
@@ -719,6 +721,7 @@ fn (mut c QuicConn) process_retry(raw []u8) ! {
 	// control and loss recovery state, including resetting any pending
 	// timers." Only Initial packets can have been sent before a Retry.
 	c.loss_detection.discard_space(.initial)
+	c.initial_sent_frames = SentFrames{}
 	c.congestion_control = new_newreno_congestion_control()
 	c.pending_initial_crypto = c.client_hello
 }
@@ -1352,10 +1355,10 @@ fn (mut c QuicConn) handle_ack_frame(space QuicPacketNumberSpace, frame AckFrame
 		c.received_set(space).forget_through(forget_through)
 	}
 	c.congestion_control.on_packets_acked(result.newly_acked)
-	c.note_retire_cids_acked(space, result.newly_acked)
+	c.sent_frames(space).on_acked(result.newly_acked)
 	if result.lost.len > 0 {
 		c.congestion_control.on_packets_lost(result.lost, result.persistent_congestion, now)
-		c.requeue_lost_retire_cids(space, result.lost)
+		c.sent_frames(space).on_lost(result.lost)
 	}
 	if counts := frame.ecn_counts {
 		c.ecn.note_ack_ecn_counts(counts)
@@ -1478,6 +1481,7 @@ fn (mut c QuicConn) discard_initial_keys() {
 	c.initial_received = ReceivedPacketSet{}
 	c.initial_ack_eliciting_pending = false
 	c.pending_initial_crypto = none
+	c.initial_sent_frames = SentFrames{}
 }
 
 // discard_handshake_keys implements RFC 9001 §4.9.2, with the same RFC 9002
@@ -1489,6 +1493,7 @@ fn (mut c QuicConn) discard_handshake_keys() {
 	c.handshake_received = ReceivedPacketSet{}
 	c.handshake_ack_eliciting_pending = false
 	c.pending_handshake_crypto = none
+	c.handshake_sent_frames = SentFrames{}
 }
 
 // -------------------------------------------------------------------------
@@ -1496,10 +1501,13 @@ fn (mut c QuicConn) discard_handshake_keys() {
 // -------------------------------------------------------------------------
 
 fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
+	c.drain_lost_frames(.initial, now, mut result)!
 	if data := c.pending_initial_crypto {
-		crypto_frame := encode_crypto_frame(0, data)!
-		datagram := c.build_initial_packet(crypto_frame, true, now)!
-		result.outgoing << datagram
+		result.outgoing << c.send_frames(.initial, [
+			&SentFrame{
+				bytes: encode_crypto_frame(0, data)!
+			},
+		], now)!
 		c.pending_initial_crypto = none
 	}
 	// RFC 9000 §13.2.1: gated on *_ack_eliciting_pending, not just
@@ -1518,11 +1526,15 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 		c.initial_ack_eliciting_pending = false
 	}
 
+	c.drain_lost_frames(.handshake, now, mut result)!
 	if data := c.pending_handshake_crypto {
 		crypto_frame := encode_crypto_frame(c.handshake_crypto_send_offset, data)!
 		c.handshake_crypto_send_offset += u64(data.len)
-		datagram := c.build_handshake_packet(crypto_frame, true, now)!
-		result.outgoing << datagram
+		result.outgoing << c.send_frames(.handshake, [
+			&SentFrame{
+				bytes: crypto_frame
+			},
+		], now)!
 		c.pending_handshake_crypto = none
 		c.handshake_completion.mark_own_finished_sent()
 	}
@@ -1546,6 +1558,7 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 			result.outgoing << datagram
 			c.app_ack_eliciting_pending = false
 		}
+		c.drain_lost_frames(.application_data, now, mut result)!
 		c.drain_pending_cid_and_path_frames(now, mut result)!
 		c.drain_pending_stream_writes(now, mut result)!
 		c.drain_pending_stream_resets(now, mut result)!
@@ -1575,8 +1588,13 @@ fn (mut c QuicConn) drain_pending_stream_writes(now u64, mut result PollResult) 
 		mut stream := c.streams.get(stream_id) or { continue }
 		offset := stream.send.offset
 		stream_frame := encode_stream_frame(stream_id, offset, pending.data, pending.fin, true)!
-		datagram := c.build_one_rtt_packet(stream_frame, true, now)!
-		result.outgoing << datagram
+		result.outgoing << c.send_frames(.application_data, [
+			&SentFrame{
+				bytes: stream_frame
+				kind:  .stream
+				id:    stream_id
+			},
+		], now)!
 		send_window.consume(needed)!
 		c.conn_send_window.consume(needed)!
 		stream.send.mark_data_queued()
@@ -1597,8 +1615,11 @@ fn (mut c QuicConn) drain_pending_stream_resets(now u64, mut result PollResult) 
 	for stream_id, error_code in c.pending_stream_reset {
 		stream := c.streams.get(stream_id) or { continue }
 		reset_frame := encode_reset_stream_frame(stream_id, error_code, stream.send.offset)!
-		datagram := c.build_one_rtt_packet(reset_frame, true, now)!
-		result.outgoing << datagram
+		result.outgoing << c.send_frames(.application_data, [
+			&SentFrame{
+				bytes: reset_frame
+			},
+		], now)!
 		c.pending_stream_reset.delete(stream_id)
 	}
 }
@@ -1622,8 +1643,8 @@ fn (mut c QuicConn) handle_new_connection_id_frame(f NewConnectionIdFrame) ! {
 	// RFC 9000 §19.15: a sequence number already below Retire Prior To is
 	// retired straight away and never added to the peer's connection IDs.
 	// Its retirement is held only until it is sent, and then in
-	// retire_cids_in_flight until that packet is acknowledged or lost, so a
-	// peer cannot grow this connection's memory beyond its packets in flight.
+	// app_sent_frames until that packet is acknowledged or lost, so a peer
+	// cannot grow this connection's memory beyond its packets in flight.
 	if f.sequence_number < c.largest_retire_prior_to {
 		c.pending_retire_cids << f.sequence_number
 		return
@@ -1732,9 +1753,9 @@ fn (mut c QuicConn) switch_to_lowest_peer_cid() ! {
 
 // drain_pending_cid_and_path_frames sends queued RETIRE_CONNECTION_ID and
 // PATH_RESPONSE frames, packed together into as few 1-RTT packets as fit.
-// RFC 9000 §13.3: the retired sequence numbers each packet carries are kept
-// in retire_cids_in_flight until it is acknowledged, and sent again if it is
-// lost (requeue_lost_retire_cids); a PATH_RESPONSE is never sent again.
+// RFC 9000 §13.3: the RETIRE_CONNECTION_ID frames each packet carries are
+// kept in app_sent_frames until it is acknowledged, and sent again if it is
+// lost; a PATH_RESPONSE is never sent again.
 fn (mut c QuicConn) drain_pending_cid_and_path_frames(now u64, mut result PollResult) ! {
 	if c.pending_retire_cids.len == 0 && c.pending_path_responses.len == 0 {
 		return
@@ -1757,20 +1778,22 @@ fn (mut c QuicConn) drain_pending_cid_and_path_frames(now u64, mut result PollRe
 	// size of 1200 bytes" (a client has no anti-amplification limit).
 	mut payload := []u8{}
 	mut has_path_response := false
-	mut packet_retires := []u64{}
+	mut packet_retires := []&SentFrame{}
 	for i, frame in frames {
 		if payload.len > 0 && payload.len + frame.len > max_control_frame_payload {
 			c.send_cid_and_path_packet(payload, has_path_response, packet_retires, now, mut
 				result)!
 			payload = []u8{}
 			has_path_response = false
-			packet_retires = []u64{}
+			packet_retires = []&SentFrame{}
 		}
 		payload << frame
 		if i >= first_path_response {
 			has_path_response = true
 		} else {
-			packet_retires << retiring[i]
+			packet_retires << &SentFrame{
+				bytes: frame
+			}
 		}
 	}
 	if payload.len > 0 {
@@ -1780,43 +1803,107 @@ fn (mut c QuicConn) drain_pending_cid_and_path_frames(now u64, mut result PollRe
 }
 
 // send_cid_and_path_packet builds one 1-RTT packet of drain_pending_cid_and_path_frames
-// and records the retired sequence numbers it carries under its packet number.
-fn (mut c QuicConn) send_cid_and_path_packet(payload []u8, has_path_response bool, retires []u64, now u64, mut result PollResult) ! {
+// and records the RETIRE_CONNECTION_ID frames it carries.
+fn (mut c QuicConn) send_cid_and_path_packet(payload []u8, has_path_response bool, retires []&SentFrame, now u64, mut result PollResult) ! {
 	result.outgoing << c.build_one_rtt_packet_padded(payload, true, if has_path_response {
 		min_initial_datagram_size
 	} else {
 		0
 	}, now)!
-	if retires.len > 0 {
-		c.retire_cids_in_flight[c.pn_spaces.application_data.next_send_pn - 1] = retires.clone()
+	c.app_sent_frames.record(c.last_sent_pn(.application_data), retires)
+}
+
+// sent_frames returns `space`'s frames to send again if they are lost.
+fn (mut c QuicConn) sent_frames(space QuicPacketNumberSpace) &SentFrames {
+	match space {
+		.initial { return &c.initial_sent_frames }
+		.handshake { return &c.handshake_sent_frames }
+		.application_data { return &c.app_sent_frames }
 	}
 }
 
-// note_retire_cids_acked forgets the retirements carried by acknowledged
-// 1-RTT packets: the peer has them.
-fn (mut c QuicConn) note_retire_cids_acked(space QuicPacketNumberSpace, acked []SentPacketInfo) {
-	if space != .application_data || c.retire_cids_in_flight.len == 0 {
-		return
-	}
-	for info in acked {
-		c.retire_cids_in_flight.delete(info.packet_number)
+// last_sent_pn is the packet number of the packet just built in `space`.
+fn (c &QuicConn) last_sent_pn(space QuicPacketNumberSpace) u64 {
+	return match space {
+		.initial { c.pn_spaces.initial.next_send_pn - 1 }
+		.handshake { c.pn_spaces.handshake.next_send_pn - 1 }
+		.application_data { c.pn_spaces.application_data.next_send_pn - 1 }
 	}
 }
 
-// requeue_lost_retire_cids queues again the retirements carried by lost
-// 1-RTT packets (RFC 9000 §13.3), skipping any already queued.
-fn (mut c QuicConn) requeue_lost_retire_cids(space QuicPacketNumberSpace, lost []SentPacketInfo) {
-	if space != .application_data || c.retire_cids_in_flight.len == 0 {
-		return
+// build_packet builds one packet of `space`.
+fn (mut c QuicConn) build_packet(space QuicPacketNumberSpace, payload []u8, is_ack_eliciting bool, now u64) !QuicDatagram {
+	return match space {
+		.initial { c.build_initial_packet(payload, is_ack_eliciting, now)! }
+		.handshake { c.build_handshake_packet(payload, is_ack_eliciting, now)! }
+		.application_data { c.build_one_rtt_packet(payload, is_ack_eliciting, now)! }
 	}
-	for info in lost {
-		seqs := c.retire_cids_in_flight[info.packet_number] or { continue }
-		c.retire_cids_in_flight.delete(info.packet_number)
-		for seq in seqs {
-			if seq !in c.pending_retire_cids {
-				c.pending_retire_cids << seq
-			}
+}
+
+// send_frames builds one packet of `space` carrying `frames`, and records
+// them to be sent again if it is lost (RFC 9000 §13.3).
+fn (mut c QuicConn) send_frames(space QuicPacketNumberSpace, frames []&SentFrame, now u64) !QuicDatagram {
+	mut payload := []u8{}
+	for frame in frames {
+		payload << frame.bytes
+	}
+	datagram := c.build_packet(space, payload, true, now)!
+	mut sent := c.sent_frames(space)
+	sent.record(c.last_sent_pn(space), frames)
+	return datagram
+}
+
+// is_obsolete reports whether `frame` need not be sent again although it was
+// not acknowledged (RFC 9000 §13.3): data of a stream that was reset, a limit
+// that was raised since or that its stream no longer needs, and a blocked
+// frame for a limit the peer has raised.
+fn (c &QuicConn) is_obsolete(frame &SentFrame) bool {
+	match frame.kind {
+		.other {
+			return false
 		}
+		.stream {
+			stream := c.streams.get(frame.id) or { return true }
+			return stream.send.state == .reset_sent
+		}
+		.max_data {
+			return frame.limit != c.conn_recv_window.advertised_limit()
+		}
+		.max_stream_data {
+			window := c.stream_recv_windows[frame.id] or { return true }
+			stream := c.streams.get(frame.id) or { return true }
+			return stream.recv.state != .recv || frame.limit != window.advertised_limit()
+		}
+		.streams_blocked_bidi {
+			return frame.limit != c.peer_max_streams_bidi
+		}
+		.streams_blocked_uni {
+			return frame.limit != c.peer_max_streams_uni
+		}
+	}
+}
+
+// drain_lost_frames sends `space`'s lost frames again, in as few packets as
+// fit, but those that are obsolete. A CRYPTO or STREAM frame keeps the size it
+// was first sent with.
+fn (mut c QuicConn) drain_lost_frames(space QuicPacketNumberSpace, now u64, mut result PollResult) ! {
+	mut sent := c.sent_frames(space)
+	mut packet := []&SentFrame{}
+	mut size := 0
+	for frame in sent.take_lost() {
+		if c.is_obsolete(frame) {
+			continue
+		}
+		if packet.len > 0 && size + frame.bytes.len > max_control_frame_payload {
+			result.outgoing << c.send_frames(space, packet, now)!
+			packet = []&SentFrame{}
+			size = 0
+		}
+		packet << frame
+		size += frame.bytes.len
+	}
+	if packet.len > 0 {
+		result.outgoing << c.send_frames(space, packet, now)!
 	}
 }
 
@@ -1830,8 +1917,17 @@ fn (mut c QuicConn) drain_pending_streams_blocked(now u64, mut result PollResult
 			c.peer_max_streams_uni
 		}
 		blocked_frame := encode_streams_blocked_frame(direction, limit)!
-		datagram := c.build_one_rtt_packet(blocked_frame, true, now)!
-		result.outgoing << datagram
+		result.outgoing << c.send_frames(.application_data, [
+			&SentFrame{
+				bytes: blocked_frame
+				kind:  if direction == .bidirectional {
+					.streams_blocked_bidi
+				} else {
+					.streams_blocked_uni
+				}
+				limit: limit
+			},
+		], now)!
 	}
 	c.pending_streams_blocked = []StreamDirection{}
 }
@@ -1844,16 +1940,27 @@ fn (mut c QuicConn) drain_flow_control_raises(now u64, mut result PollResult) ! 
 	if c.conn_recv_window.should_advertise_more() {
 		new_limit := c.conn_recv_window.next_advertised_limit()
 		max_data_frame := encode_max_data_frame(new_limit)!
-		datagram := c.build_one_rtt_packet(max_data_frame, true, now)!
-		result.outgoing << datagram
+		result.outgoing << c.send_frames(.application_data, [
+			&SentFrame{
+				bytes: max_data_frame
+				kind:  .max_data
+				limit: new_limit
+			},
+		], now)!
 		c.conn_recv_window.mark_advertised(new_limit)
 	}
 	for stream_id, mut recv_window in c.stream_recv_windows {
 		if recv_window.should_advertise_more() {
 			new_limit := recv_window.next_advertised_limit()
 			msd_frame := encode_max_stream_data_frame(stream_id, new_limit)!
-			datagram := c.build_one_rtt_packet(msd_frame, true, now)!
-			result.outgoing << datagram
+			result.outgoing << c.send_frames(.application_data, [
+				&SentFrame{
+					bytes: msd_frame
+					kind:  .max_stream_data
+					id:    stream_id
+					limit: new_limit
+				},
+			], now)!
 			recv_window.mark_advertised(new_limit)
 		}
 	}
@@ -1880,12 +1987,7 @@ fn (mut c QuicConn) note_ack_sent(space QuicPacketNumberSpace) {
 	if ranges.len == 0 {
 		return
 	}
-	pn := match space {
-		.initial { c.pn_spaces.initial.next_send_pn - 1 }
-		.handshake { c.pn_spaces.handshake.next_send_pn - 1 }
-		.application_data { c.pn_spaces.application_data.next_send_pn - 1 }
-	}
-	c.loss_detection.note_ack_frame_sent(space, pn, ranges[0].largest)
+	c.loss_detection.note_ack_frame_sent(space, c.last_sent_pn(space), ranges[0].largest)
 }
 
 // build_initial_packet builds one Initial-space packet, always padded to
@@ -2025,36 +2127,42 @@ fn (mut c QuicConn) build_one_rtt_packet_padded(payload []u8, is_ack_eliciting b
 	}
 }
 
-// send_pto_probe sends a minimal, always-legal RFC 9002 §6.2 PTO probe
-// (a PING frame) in the space the timer identified. v1 scope
-// simplification: always probes with PING rather than retransmitting
-// specific unacked data -- correct (RFC 9002 explicitly permits this) but
-// not the most bandwidth-efficient choice; a real send/retransmission
-// buffer is a documented follow-up, not a Phase 9a blocker.
+// send_pto_probe sends one RFC 9002 §6.2.4 PTO probe in the space the timer
+// identified: the oldest unacknowledged frames of that space, or a PING when
+// it has none to send again. A PING alone would never deliver a lost
+// ClientHello or Finished.
 fn (mut c QuicConn) send_pto_probe(space QuicPacketNumberSpace, now u64, mut result PollResult) ! {
-	ping := encode_varint(frame_type_ping)!
 	match space {
 		.initial {
 			if c.initial_keys_discarded {
 				return
 			}
-			datagram := c.build_initial_packet(ping, true, now)!
-			result.outgoing << datagram
 		}
 		.handshake {
 			if c.handshake_keys_discarded {
 				return
 			}
 			_ := c.handshake_keys_client or { return }
-			datagram := c.build_handshake_packet(ping, true, now)!
-			result.outgoing << datagram
 		}
 		.application_data {
 			_ := c.app_write_keys or { return }
-			datagram := c.build_one_rtt_packet(ping, true, now)!
-			result.outgoing << datagram
 		}
 	}
+
+	mut sent := c.sent_frames(space)
+	for _, mut in_packet in sent.in_flight {
+		for mut frame in in_packet {
+			if c.is_obsolete(frame) {
+				frame.acked = true
+			}
+		}
+	}
+	frames := sent.oldest_unacked()
+	if frames.len > 0 {
+		result.outgoing << c.send_frames(space, frames, now)!
+		return
+	}
+	result.outgoing << c.build_packet(space, encode_varint(frame_type_ping)!, true, now)!
 }
 
 // closing_or_draining_deadline computes the RFC 9000 §10.2 closing/draining
