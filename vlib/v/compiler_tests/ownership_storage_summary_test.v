@@ -14,11 +14,7 @@ struct OwnedStorageDiagnostic {
 	message  string
 }
 
-fn test_ownership_compile_checks_cover_chained_receivers_and_recursive_setters() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_storage_compile_checks_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
+fn owned_storage_compile_check_fixtures() (string, string) {
 	chained_receiver := 'fn parse_array_key(key string) (string, int) {
 	mut index := -1
 	mut k := key
@@ -28,7 +24,7 @@ fn test_ownership_compile_checks_cover_chained_receivers_and_recursive_setters()
 	}
 	return k, index
 }
-fn main() {
+fn check_chained_receiver() {
 	key, index := parse_array_key("entry[0]")
 	assert key == "entry" && index == 0
 }
@@ -51,13 +47,7 @@ struct Holder { mut: target &Builder }
 	return holder
 }
 '
-	for mode in ['-no-parallel', ''] {
-		// The recursive setter cycle exercises the default checker.
-		source := if mode == '' { chained_receiver + recursive_setters } else { chained_receiver }
-		os.write_file(source_path, source)!
-		result := run_owned_storage_summary(source_path, mode, '-check')
-		assert result.exit_code == 0, '${mode}: ${result.output}'
-	}
+	return chained_receiver, recursive_setters
 }
 
 fn test_ownership_storage_preserves_map_returns_overwrites_and_projections() {
@@ -131,8 +121,13 @@ fn run_owned_storage_checks(root string, fixtures map[string]string) ! {
 		imports << 'import ${name}'
 		calls << '\t${name}.check()'
 	}
-	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')!
+	chained_receiver, recursive_setters := owned_storage_compile_check_fixtures()
+	source := 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n\n' +
+		chained_receiver
+	main := os.join_path(root, 'main.v')
 	for mode in ['-no-parallel', ''] {
+		// The recursive setter cycle exercises the default checker.
+		os.write_file(main, if mode == '' { source + recursive_setters } else { source })!
 		result := run_owned_storage_summary(root, mode, 'run')
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
