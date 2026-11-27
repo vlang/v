@@ -31,7 +31,7 @@ struct OwnershipReviewDiagnostic {
 	message  string
 }
 
-fn check_ownership_review_rejections(root string, cases []OwnershipReviewRejection) ! {
+fn check_ownership_review_rejections(root string, cases []OwnershipReviewRejection, forbidden ...string) ! {
 	// Custom flags can change import resolution or limit diagnostics.
 	if !ownership_review_default_flags {
 		source := os.join_path(root, 'main.v')
@@ -40,6 +40,7 @@ fn check_ownership_review_rejections(root string, cases []OwnershipReviewRejecti
 			out := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
 			assert out.exit_code != 0, '${case.source}\n${out.output}'
 			assert out.output.contains(case.expected), '${case.source}\n${out.output}'
+			assert forbidden.all(!out.output.contains(it)), '${case.source}\n${out.output}'
 		}
 		return
 	}
@@ -56,6 +57,7 @@ fn check_ownership_review_rejections(root string, cases []OwnershipReviewRejecti
 	os.write_file(os.join_path(batch, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
 	out := run_ownership_review_fixture(batch, ['-d', 'ownership', '-json-errors', '-check'])
 	assert out.exit_code != 0, out.output
+	assert forbidden.all(!out.output.contains(it)), out.output
 	mut diagnostics := []OwnershipReviewDiagnostic{}
 	for line in out.output.split_into_lines() {
 		if line.starts_with('{') {
@@ -369,36 +371,36 @@ fn test_ownership_copied_fallback_detaches_loan_and_retains_owned_result() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
+	prelude := 'fn consume(value string) { _ = value }
+fn pointer(value &string) &string { return value }
+'
+	mut accepted := prelude
+	mut calls := []string{}
+	mut rejections := []OwnershipReviewRejection{}
 	for creation, text in {
 		'*pointer(&original)':                     'fallback'
 		'unsafe { original.substr_unsafe(1, 4) }': 'all'
 	} {
-		for action, expected in {
-			'assert result == "${text}"':       ''
-			'consume(result); println(result)': 'use of moved value: `result`'
-		} {
-			os.write_file(source, 'fn consume(value string) { _ = value }
-fn pointer(value &string) &string { return value }
-fn main() {
-	mut original := "fallback".to_owned()
+		body := '	mut original := "fallback".to_owned()
 	mut view := ${creation}
 	result := "abc".substr_or(0, 4, view)
 	assert view == "${text}"
 	view = ""
-	original = "replacement".to_owned()
-	${action}
+	original = "replacement".to_owned()'
+		accepted += '\nfn check_${text}_copy() {\n${body}
+	assert result == "${text}"
 }
-')!
-			out := run_ownership_review_fixture(source, ['-d', 'ownership', '-check'])
-			if expected.len == 0 {
-				assert out.exit_code == 0, out.output
-				completed := run_ownership_review_fixture(source, ['-d', 'ownership', 'run'])
-				assert completed.exit_code == 0, completed.output
-			} else {
-				assert out.exit_code != 0, out.output
-				assert out.output.contains(expected), out.output
-				assert !out.output.contains('cannot assign to `original`'), out.output
-			}
-		}
+'
+		calls << '\tcheck_${text}_copy()'
+		rejections << OwnershipReviewRejection{prelude + 'fn main() {\n${body}
+	consume(result); println(result)
+}
+', 'use of moved value: `result`'}
 	}
+	os.write_file(source, accepted + '\nfn main() {\n${calls.join('\n')}\n}\n')!
+	for command in ['-check', 'run'] {
+		out := run_ownership_review_fixture(source, ['-d', 'ownership', command])
+		assert out.exit_code == 0, '${command}: ${out.output}'
+	}
+	check_ownership_review_rejections(root, rejections, 'cannot assign to `original`')!
 }
