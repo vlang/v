@@ -713,9 +713,10 @@ jobs:
           test "$(git -C "$HOME/.vmodules/vsl" rev-parse HEAD)" = "$VSL_CI_REVISION"
           ./v version
           example="$HOME/.vmodules/vtl/examples/vtl_basic_usage/main.v"
-          flags=()
-          if [ "$VTL_CI_BACKEND" = cblas ]; then flags=(-d cblas); fi
-          ./v "${flags[@]}" -no-parallel -no-retry-compilation -showcc -o "$RUNNER_TEMP/vtl-original.bin" "$example"
+          # macOS Bash 3.2 treats an empty array as unset under nounset.
+          flags=(-no-parallel -no-retry-compilation -showcc)
+          if [ "$VTL_CI_BACKEND" = cblas ]; then flags=(-d cblas "${flags[@]}"); fi
+          ./v "${flags[@]}" -o "$RUNNER_TEMP/vtl-original.bin" "$example"
           "$RUNNER_TEMP/vtl-original.bin"
           ./v -no-parallel vlib/json2/encode_map_order_test.v
       - name: Skip optional Vulkan examples on macOS
