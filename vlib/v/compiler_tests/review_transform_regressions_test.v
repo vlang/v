@@ -201,23 +201,6 @@ fn run_good_with_env_and_flags(v3_bin string, name string, env string, flags str
 	return run.output.trim_space()
 }
 
-fn test_recursive_interface_equality_stops_expanding_seen_interfaces() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'recursive_interface_equality', 'interface Value {}
-
-struct Box {
-	values []Value
-}
-
-fn main() {
-	left := Value(Box{})
-	right := Value(Box{})
-	println(left == right)
-}
-')
-	assert out == 'true'
-}
-
 fn test_array_and_struct_initializers() {
 	v3_bin := build_v3_review_transform()
 	run_good_module_batch(v3_bin, 'array_and_struct_initializers', [
@@ -737,6 +720,7 @@ fn main() {
 	println(decode[Config]().role)
 }
 ', 'manager'},
+		TransformFixture{'wrapped_plus_minus_continuation', 'fn add(total int, delta int) int {\n\treturn total\n\t\t+ delta\n}\n\nfn sub(total int, delta int) int {\n\treturn total\n\t\t- delta\n}\n\nfn main() {\n\tprintln(int_str(add(3, 4)))\n\tprintln(int_str(sub(9, 2)))\n}\n', '7\n7'},
 	])
 }
 
@@ -807,6 +791,18 @@ fn main() {
 		TransformFixture{'struct_pointer_semantic_equality', "struct Person {\n\tname string\n\ttags []string\n}\n\nfn main() {\n\tleft := &Person{\n\t\tname: 'abc'.clone()\n\t\ttags: ['x'.clone()]\n\t}\n\tright := &Person{\n\t\tname: ('a' + 'bc')\n\t\ttags: [('x' + '')]\n\t}\n\tsame := left\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n}\n", 'true\nfalse\ntrue'},
 		TransformFixture{'multilevel_struct_pointer_identity_equality', "struct Person {\n\tname string\n}\n\nfn main() {\n\tmut left := &Person{\n\t\tname: 'same'\n\t}\n\tmut right := &Person{\n\t\tname: 'same'\n\t}\n\tleft_slot := &left\n\tright_slot := &right\n\tsame_slot := left_slot\n\tprintln(left_slot == right_slot)\n\tprintln(left_slot != right_slot)\n\tprintln(left_slot == same_slot)\n\tprintln(*left_slot == *right_slot)\n}\n", 'false\ntrue\ntrue\ntrue'},
 		TransformFixture{'struct_eq_pointer_field', 'struct Node {\n\tvalue int\n\tnext &Node\n}\n\nfn main() {\n\tleft := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tright := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tprintln([left] == [right])\n}\n', 'true'},
+		TransformFixture{'recursive_interface_equality', 'interface Value {}
+
+struct Box {
+	values []Value
+}
+
+fn main() {
+	left := Value(Box{})
+	right := Value(Box{})
+	println(left == right)
+}
+', 'true'},
 	])
 }
 
@@ -941,6 +937,11 @@ fn main() {
 		TransformFixture{'map_str_signed_wide_entries', "fn main() {\n\tvalue_map := {\n\t\t'x': i64(5000000000)\n\t}\n\tkey_map := {\n\t\ti64(-5000000000): 'x'\n\t}\n\tprintln(value_map.str())\n\tprintln(key_map.str())\n}\n", "{'x': 5000000000}\n{-5000000000: 'x'}"},
 		TransformFixture{'map_str_alias_kinds', "type ID = int\n\ntype Amount = f64\n\nfn main() {\n\tids := {\n\t\tID(23): 'id'\n\t}\n\tamounts := {\n\t\t'price': Amount(1.25)\n\t}\n\tprintln('\${ids}')\n\tprintln('\${amounts}')\n}\n", "{23: 'id'}\n{'price': 1.25}"},
 		TransformFixture{'mut_map_param_interpolation', "type Scores = map[string]int\n\nfn show(mut m map[string]int) {\n\tprintln('\${m}')\n}\n\nfn show_alias(mut m Scores) {\n\tprintln('\${m}')\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm['x'] = 3\n\tshow(mut m)\n\tmut scores := Scores(map[string]int{})\n\tscores['y'] = 4\n\tshow_alias(mut scores)\n}\n", "{'x': 3}\n{'y': 4}"},
+		TransformFixture{'runes_iterator_index_scope', "fn main() {\n\tfor i, r in 'ab'.runes_iterator() {\n\t\t_ := r\n\t\tprintln(int_str(i))\n\t}\n\ti := 9\n\tprintln(int_str(i))\n}\n", '0\n1\n9'},
+		TransformFixture{'none_literal_str', 'fn main() {
+	println(none.str())
+}
+', '<none>'},
 	])
 }
 
@@ -5697,12 +5698,6 @@ fn test_shadowed_minmaxof_calls_are_not_rewritten() {
 	assert out == '7\n-7'
 }
 
-fn test_runes_iterator_index_is_loop_scoped() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'runes_iterator_index_scope', "fn main() {\n\tfor i, r in 'ab'.runes_iterator() {\n\t\t_ := r\n\t\tprintln(int_str(i))\n\t}\n\ti := 9\n\tprintln(int_str(i))\n}\n")
-	assert out == '0\n1\n9'
-}
-
 fn test_parallel_monomorphization_grows_uneven_worker_regions() {
 	$if windows {
 		return
@@ -5885,12 +5880,6 @@ fn main() {
 }
 ')
 	assert out == 'true'
-}
-
-fn test_wrapped_plus_minus_continuations_consume_auto_semicolon() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'wrapped_plus_minus_continuation', 'fn add(total int, delta int) int {\n\treturn total\n\t\t+ delta\n}\n\nfn sub(total int, delta int) int {\n\treturn total\n\t\t- delta\n}\n\nfn main() {\n\tprintln(int_str(add(3, 4)))\n\tprintln(int_str(sub(9, 2)))\n}\n')
-	assert out == '7\n7'
 }
 
 fn test_hierarchical_import_runtime_inits_before_importer_init() {
@@ -12274,15 +12263,6 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == '99\n7'
-}
-
-fn test_none_literal_str_method() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'none_literal_str', 'fn main() {
-	println(none.str())
-}
-')
-	assert out == '<none>'
 }
 
 fn test_building_v_keeps_valid_match_and_filtered_array_expression_types() {

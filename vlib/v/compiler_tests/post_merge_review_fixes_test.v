@@ -2548,6 +2548,17 @@ fn main() {
 	println(node.resource.get())
 }
 ', '2\n2'},
+		ReviewRuntimeCase{'anonymous_struct_volatile_field_name', 'fn read(value struct {
+	volatile u8
+}) u8 {
+	return value.volatile
+}
+
+fn main() {
+	value := struct { volatile: u8(73) }
+	println(read(value))
+}
+', '73'},
 	])
 }
 
@@ -3861,6 +3872,7 @@ fn main() {
 		ReviewRuntimeCase{'formatted_interpolation_integer_alias_character_code', "type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n", 'ABC'},
 		ReviewRuntimeCase{'formatted_interpolation_alias_string', 'import time\n\nfn main() {\n\tduration := time.Duration(10)\n\tprintln("|\${duration:10s}|")\n}\n', '|      10ns|'},
 		ReviewRuntimeCase{'composite_string_format_width', 'fn main() {\n\tprintln("|\${[1, 2]:-12s}|")\n}\n', '|[1, 2]      |'},
+		ReviewRuntimeCase{'comptime_define_field_default', 'struct Job {\n\tid string = \$d("id", "Job")\n}\n\nstruct App {\n\tjobs [\$d("jobs", 2)]Job\n}\n\nfn main() {\n\tapp := App{}\n\tprintln(app.jobs[0].id)\n}\n', 'Job'},
 	])
 }
 
@@ -5228,22 +5240,6 @@ fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 	}
 }
 
-fn test_anonymous_struct_type_allows_volatile_field_name() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'anonymous_struct_volatile_field_name', 'fn read(value struct {
-	volatile u8
-}) u8 {
-	return value.volatile
-}
-
-fn main() {
-	value := struct { volatile: u8(73) }
-	println(read(value))
-}
-')
-	assert out == '73'
-}
-
 fn test_selected_compile_error_in_void_fn_has_clean_diagnostic() {
 	v3_bin := build_v3()
 	bad_src := '${tmp_test_path('selected_compile_error_void_fn')}.v'
@@ -6230,22 +6226,6 @@ fn main() {
 
 fn test_non_generic_reflection_compile_error_waits_for_selected_branch() {
 	v3_bin := build_v3()
-	good := run_good(v3_bin, 'non_generic_reflection_unselected_compile_error', "struct App {}
-
-fn (app App) present() {
-	_ = app
-}
-
-fn main() {
-	\$for method in App.methods {
-		\$if method.name == 'missing' {
-			\$compile_error('missing method selected')
-		}
-	}
-	println('ok')
-}
-")
-	assert good == 'ok'
 	run_bad(v3_bin, 'non_generic_reflection_selected_compile_error', "struct App {}
 
 fn (app App) present() {
@@ -7644,34 +7624,6 @@ fn main() {
 	assert compile.output.contains('generic struct cannot be used in non-generic function'), compile.output
 }
 
-fn test_recursive_str_comptime_if_uses_selected_branch() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_selected_comptime_progress', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	mut copy := item
-	$if threads {
-	} $else {
-		copy.remaining--
-	}
-	return copy.str()
-}
-
-fn main() {
-	println(Item{
-		remaining: 2
-	}.str())
-}
-')
-	assert out == ''
-}
-
 fn test_recursive_str_provenance_and_storage_mutation_rejections() {
 	v3_bin := build_v3()
 	run_bad_file_batch(v3_bin, 'recursive_str_provenance_and_storage_mutation_rejections', [
@@ -8763,6 +8715,89 @@ fn main() {
 	println(Item{}.str())
 }
 ', 'done'},
+		ReviewRuntimeCase{'non_generic_reflection_unselected_compile_error', "struct App {}
+
+fn (app App) present() {
+	_ = app
+}
+
+fn main() {
+	\$for method in App.methods {
+		\$if method.name == 'missing' {
+			\$compile_error('missing method selected')
+		}
+	}
+	println('ok')
+}
+", 'ok'},
+		ReviewRuntimeCase{'recursive_str_selected_comptime_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	$if threads {
+	} $else {
+		copy.remaining--
+	}
+	return copy.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+', ''},
+		ReviewRuntimeCase{'recursive_str_stored_closure_bodies', 'struct LambdaItem {}
+
+fn (item LambdaItem) str() string {
+	callback := || item.str()
+	_ = callback
+	return "lambda"
+}
+
+struct LiteralItem {}
+
+fn (item LiteralItem) str() string {
+	callback := fn [item] () string {
+		return item.str()
+	}
+	_ = callback
+	return "literal"
+}
+
+fn main() {
+	println(LambdaItem{}.str())
+	println(LiteralItem{}.str())
+}
+', 'lambda\nliteral'},
+		ReviewRuntimeCase{'recursive_str_buffered_channel_progress', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut copy := item
+	copy.remaining--
+	ch := chan Item{cap: 1}
+	ch <- copy
+	return (<-ch).str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+', ''},
 	])
 }
 
@@ -8857,34 +8892,6 @@ fn (item Item) str() string {
 fn main() {}
 ')
 	assert out == ''
-}
-
-fn test_recursive_str_does_not_execute_stored_closure_bodies() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_stored_closure_bodies', 'struct LambdaItem {}
-
-fn (item LambdaItem) str() string {
-	callback := || item.str()
-	_ = callback
-	return "lambda"
-}
-
-struct LiteralItem {}
-
-fn (item LiteralItem) str() string {
-	callback := fn [item] () string {
-		return item.str()
-	}
-	_ = callback
-	return "literal"
-}
-
-fn main() {
-	println(LambdaItem{}.str())
-	println(LiteralItem{}.str())
-}
-')
-	assert out == 'lambda\nliteral'
 }
 
 fn test_unbacked_enum_field_keeps_integer_overflow_diagnostic() {
@@ -9497,33 +9504,6 @@ fn main() {
 	])
 }
 
-fn test_recursive_str_preserves_provenance_through_buffered_channels() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'recursive_str_buffered_channel_progress', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	mut copy := item
-	copy.remaining--
-	ch := chan Item{cap: 1}
-	ch <- copy
-	return (<-ch).str()
-}
-
-fn main() {
-	println(Item{
-		remaining: 2
-	}.str())
-}
-')
-	assert out == ''
-}
-
 fn test_recursive_str_formatting_and_bound_method_rejections() {
 	v3_bin := build_v3()
 	run_bad_module_batch(v3_bin, 'recursive_str_formatting_and_bound_method_rejections', [
@@ -9847,12 +9827,6 @@ fn test_top_level_statements_with_postinclude_generate_main() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'top_level_postinclude_main', '#postinclude <limits.h>\n\n@[export: "v3_exported_helper"]\nfn exported_helper() {}\n\nprintln("ok")\n')
 	assert out == 'ok'
-}
-
-fn test_comptime_define_field_default_is_not_fixed_array_initializer() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'comptime_define_field_default', 'struct Job {\n\tid string = \$d("id", "Job")\n}\n\nstruct App {\n\tjobs [\$d("jobs", 2)]Job\n}\n\nfn main() {\n\tapp := App{}\n\tprintln(app.jobs[0].id)\n}\n')
-	assert out == 'Job'
 }
 
 fn test_comptime_define_call_is_not_parenthesized_condition_warning() {
