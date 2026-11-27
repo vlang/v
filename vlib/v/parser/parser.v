@@ -12837,6 +12837,20 @@ fn sql_result_type(tokens []string) u32 {
 	if tokens.len == 0 {
 		return flat.source_type_id('!void')
 	}
+	// A leading `with c as (select ... from Item) select ... from c` names a
+	// CTE alias (`c`) in the final FROM, which is not a model struct. Mirror the
+	// transform's model resolution: borrow the row type from the first table a
+	// CTE selects from, so `rows.map(it.field)` type-checks on the result.
+	if tokens[0] == 'with' {
+		for i, tok in tokens {
+			if tok == 'from' && i + 1 < tokens.len {
+				table := sql_table_type_name_from(tokens, i + 1)
+				if table.len > 0 {
+					return flat.source_type_id('![]${table}')
+				}
+			}
+		}
+	}
 	return sql_statement_result_type(tokens[sql_last_statement_start(tokens)..])
 }
 
