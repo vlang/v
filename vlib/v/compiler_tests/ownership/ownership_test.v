@@ -2969,42 +2969,46 @@ fn test_ownership_array_pop_call_arguments_update_storage() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '', run.output
 
-	for method in ['pop', 'pop_left'] {
-		remaining := run_ownership_check(v3_bin, 'array_${method}_call_arg_retains_other_owner', '
-fn sink(s string) {
+	check_ownership_array_pop_rejections(v3_bin)
+}
+
+fn check_ownership_array_pop_rejections(v3_bin string) {
+	mut source := ''
+	mut calls := []string{cap: 3}
+	mut rejected_lines := map[int]string{}
+	for case in ['pop', 'pop_left', 'pop_left_shifted'] {
+		shifted := case == 'pop_left_shifted'
+		method := if shifted { 'pop_left' } else { case }
+		setup := if shifted {
+			'\tsink_${case}("seed".to_owned())\n\tmut arr := ["literal", "owned".to_owned()]'
+		} else {
+			'\tmut arr := ["first".to_owned(), "last".to_owned()]'
+		}
+		source += '
+fn sink_${case}(s string) {
 	_ = s
 }
 
-fn main() {
-	mut arr := ["first".to_owned(), "last".to_owned()]
-	sink(arr.${method}())
+fn reject_${case}() {
+${setup}
+	sink_${case}(arr.${method}())
 	x := arr[0]
 	y := x
-	println(x)
+'
+		rejected_lines[source.count('\n') + 1] = case
+		source += '\tprintln(x)
 	_ = y
 }
-')
-		assert remaining.exit_code != 0
-		assert remaining.output.contains('use of moved value: `x`'), remaining.output
+'
+		calls << '\treject_${case}()'
 	}
-
-	shifted := run_ownership_check(v3_bin, 'array_pop_left_cloned_call_arg_shifts_owner', '
-fn sink(s string) {
-	_ = s
-}
-
-fn main() {
-	sink("seed".to_owned())
-	mut arr := ["literal", "owned".to_owned()]
-	sink(arr.pop_left())
-	x := arr[0]
-	y := x
-	println(x)
-	_ = y
-}
-')
-	assert shifted.exit_code != 0
-	assert shifted.output.contains('use of moved value: `x`'), shifted.output
+	source += '\nfn main() {\n${calls.join('\n')}\n}\n'
+	result := run_ownership_check(v3_bin, 'array_pop_rejections', source)
+	assert result.exit_code != 0, result.output
+	diagnostics := result.output.split_into_lines().filter(it.contains(': error: use of moved value: `x`'))
+	for line, case in rejected_lines {
+		assert diagnostics.any(it.contains('main.v:${line}:')), '${case}: ${result.output}'
+	}
 }
 
 fn test_ownership_array_alias_builtin_method_keeps_receiver() {
