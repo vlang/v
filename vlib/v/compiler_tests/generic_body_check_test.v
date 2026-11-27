@@ -111,8 +111,51 @@ fn main() {
 	assert errors[1].starts_with('main.v:12:2: error: unexpected name `asd`'), errors[1]
 }
 
-fn test_a_generic_body_whose_type_parameters_all_have_constraints_is_checked() {
-	errors := check('independent', "module main
+struct GenericBodyDiagnosticCase {
+	name     string
+	source   string
+	prefixes []string
+}
+
+fn check_body_batch(name string, sources map[string]string) map[string][]string {
+	dir := os.join_path(work_dir, name)
+	os.mkdir_all(dir) or { panic(err) }
+	mut imports := []string{cap: sources.len}
+	mut calls := []string{cap: sources.len}
+	mut diagnostics := map[string][]string{}
+	for label, source in sources {
+		mod_dir := os.join_path(dir, label)
+		os.mkdir_all(mod_dir) or { panic(err) }
+		fixture := source.replace_once('module main\n', 'module ${label}\n').replace_once('\nfn main()',
+			'\npub fn exercise()')
+		os.write_file(os.join_path(mod_dir, 'main.v'), fixture) or { panic(err) }
+		imports << 'import ${label}'
+		calls << '\t${label}.exercise()'
+		diagnostics[label] = []
+	}
+	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
+		panic(err)
+	}
+	res := cmdexec.run_in(@VEXE, ['-check', '-nocolor', '.'], dir)
+	assert res.exit_code != 0, res.output
+	for line in res.output.split_into_lines() {
+		if !line.contains(': error: ') && !line.contains(': warning: ') {
+			continue
+		}
+		label := line.all_before('/main.v:')
+		assert label in diagnostics, line
+		// Keep source locations and resolve the added module qualification in diagnostics.
+		diagnostics[label] << line.all_after('/').replace_each(['${name}.${label}.', '', '${label}.',
+			''])
+	}
+	return diagnostics
+}
+
+fn test_generic_body_function_and_method_diagnostics() {
+	cases := [
+		GenericBodyDiagnosticCase{
+			name:     'independent'
+			source:   "module main
 
 type Numeric = int | f64
 
@@ -149,17 +192,18 @@ fn main() {
 	println(named(User{'a'}))
 	println(wrong_return(User{'b'}))
 }
-")
-	assert errors.len == 3, errors.str()
-	assert errors[0].starts_with('main.v:19:2: error: unexpected name `asd`'), errors[0]
-	assert errors[1].starts_with('main.v:23:9: error: operator `+` cannot concatenate `int` and `string`'), errors[1]
-	assert errors[2].starts_with('main.v:30:9: error: cannot use `int literal` as type `string` in return argument'), errors[2]
-}
-
-fn test_a_compile_time_in_decides_the_branch_that_a_type_checks() {
-	// `$if x in [int]` and `$if T !in [f64]` choose code by the type, as `is`
-	// does: each check of the body takes the branch that its type takes.
-	errors := check('comptime_in', 'module main
+"
+			prefixes: [
+				'main.v:19:2: error: unexpected name `asd`',
+				'main.v:23:9: error: operator `+` cannot concatenate `int` and `string`',
+				'main.v:30:9: error: cannot use `int literal` as type `string` in return argument',
+			]
+		},
+		// `$if x in [int]` and `$if T !in [f64]` choose code by the type, as `is`
+		// does: each check of the body takes the branch that its type takes.
+		GenericBodyDiagnosticCase{
+			name:     'comptime_in'
+			source:   'module main
 
 type Number = int | f64
 
@@ -193,17 +237,18 @@ fn main() {
 	println(with_type_not_in(2))
 	println(describe(3))
 }
-')
-	assert errors.len == 2, errors.str()
-	assert errors[0].starts_with('main.v:11:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`'), errors[0]
-	assert errors[1].starts_with('main.v:18:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`'), errors[1]
-}
-
-fn test_an_interface_constraint_checks_the_branch_of_a_type_that_implements_it() {
-	// With an interface as its constraint, the body is checked with the interface,
-	// where `x is User` is false: the branch of each type that a `$if` tests and
-	// that implements the interface is checked with that type as well.
-	errors := check('iface_branch', 'module main
+'
+			prefixes: [
+				'main.v:11:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`',
+				'main.v:18:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`',
+			]
+		},
+		// With an interface as its constraint, the body is checked with the interface,
+		// where `x is User` is false: the branch of each type that a `$if` tests and
+		// that implements the interface is checked with that type as well.
+		GenericBodyDiagnosticCase{
+			name:     'iface_branch'
+			source:   'module main
 
 interface Named {
 	name string
@@ -244,15 +289,16 @@ fn main() {
 	println(describe(User{"ana", 30}))
 	println(level_of(Admin{"bob", 2}))
 }
-')
-	assert errors.len == 1, errors.str()
-	assert errors[0].starts_with('main.v:23:20: error: cannot use `string` as `int` in argument 1 to `takes_int`: when `T` is `User`, which implements `Named`'), errors[0]
-}
-
-fn test_a_constraint_that_names_its_type_parameter_is_checked_too() {
-	// `[T Comparable[T]]`: `T` is any type that implements `Comparable` of
-	// itself; the body is checked with that interface, `T` open inside it.
-	errors := check('self_constraint', 'module main
+'
+			prefixes: [
+				'main.v:23:20: error: cannot use `string` as `int` in argument 1 to `takes_int`: when `T` is `User`, which implements `Named`',
+			]
+		},
+		// `[T Comparable[T]]`: `T` is any type that implements `Comparable` of
+		// itself; the body is checked with that interface, `T` open inside it.
+		GenericBodyDiagnosticCase{
+			name:     'self_constraint'
+			source:   'module main
 
 interface Comparable[T] {
 	less(other T) bool
@@ -290,10 +336,99 @@ fn main() {
 	println(smallest_index([Version{2}, Version{1}]))
 	println(smallest([Version{2}, Version{1}]))
 }
-')
-	assert errors.len == 1, errors.str()
-	assert errors[0].starts_with('main.v:19:11: error: cannot assign to `best`: expected `int`'), errors[0]
-	assert errors[0].contains('`T` is any type that implements `Comparable[T]`'), errors[0]
+'
+			prefixes: [
+				'main.v:19:11: error: cannot assign to `best`: expected `int`',
+			]
+		},
+		// `y := x` holds the `T` of `x`: `$if y is User` has a branch for `User`.
+		GenericBodyDiagnosticCase{
+			name:     'local_is'
+			source:   'module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn takes_int(n int) int {
+	return n
+}
+
+fn describe[T Named](x T) int {
+	y := x
+	\$if y is User {
+		return takes_int(y.name)
+	}
+	return 0
+}
+
+fn main() {
+	println(describe(User{"ana", 30}))
+}
+'
+			prefixes: [
+				'main.v:19:20: error: cannot use `string` as `int` in argument 1 to `takes_int`: when `T` is `User`, which implements `Named`',
+			]
+		},
+		// 6 x 6 combinations: the error is there only when `T` is `f64` and `U`
+		// is `string`, and neither of them is the first type of its set.
+		GenericBodyDiagnosticCase{
+			name:     'combinations'
+			source:   'module main
+
+type Num6 = int | i8 | i16 | i32 | i64 | f64
+
+type Val6 = int | i8 | i16 | i32 | i64 | string
+
+fn mix[T Num6, U Val6](a T, b U) string {
+	\$if T is f64 {
+		\$if U is string {
+			return a
+		}
+	}
+	return ""
+}
+
+fn main() {
+	println(mix(1.5, "b"))
+}
+'
+			prefixes: [
+				'main.v:10:11: error: cannot use `f64` as type `string` in return argument',
+			]
+		},
+	]
+	mut sources := map[string]string{}
+	for case in cases {
+		sources[case.name] = case.source
+	}
+	function_errors := check_body_batch('body_functions', sources)
+
+	mut forms := map[string]method_form.MethodForm{}
+	for case in cases {
+		form := method_form.of(case.source) or { panic('missing method form for ${case.name}') }
+		forms[case.name] = form
+		sources[case.name] = form.source
+	}
+	method_errors := check_body_batch('body_methods', sources)
+	for case in cases {
+		errors := function_errors[case.name]
+		assert errors.len == case.prefixes.len, '${case.name}: ${errors}'
+		for i, expected in case.prefixes {
+			assert errors[i].starts_with(expected), '${case.name}: ${errors[i]}'
+		}
+		difference := forms[case.name].differences(errors.map(it.all_after('main.v:')),
+			method_errors[case.name].map(it.all_after('main.v:')))
+		assert difference == '', 'the method form of `${case.name}`: ${difference}'
+	}
+	assert function_errors['self_constraint'][0].contains('`T` is any type that implements `Comparable[T]`'), function_errors['self_constraint'][0]
+	assert function_errors['combinations'][0].contains('when `T` is `f64`'), function_errors['combinations'][0]
+	assert function_errors['combinations'][0].contains('when `U` is `string`'), function_errors['combinations'][0]
 }
 
 fn test_a_constraint_that_names_another_type_parameter_is_checked_too() {
@@ -321,67 +456,6 @@ fn main() {}
 ')
 	assert errors.len == 1, errors.str()
 	assert errors[0].starts_with('main.v:16:9: error: cannot use `int` as type `string` in return argument'), errors[0]
-}
-
-fn test_a_local_that_a_compile_time_is_tests_checks_the_branch_of_its_type() {
-	// `y := x` holds the `T` of `x`: `$if y is User` has a branch for `User`.
-	errors := check('local_is', 'module main
-
-interface Named {
-	name string
-}
-
-struct User {
-	name string
-	age  int
-}
-
-fn takes_int(n int) int {
-	return n
-}
-
-fn describe[T Named](x T) int {
-	y := x
-	\$if y is User {
-		return takes_int(y.name)
-	}
-	return 0
-}
-
-fn main() {
-	println(describe(User{"ana", 30}))
-}
-')
-	assert errors.len == 1, errors.str()
-	assert errors[0].starts_with('main.v:19:20: error: cannot use `string` as `int` in argument 1 to `takes_int`: when `T` is `User`, which implements `Named`'), errors[0]
-}
-
-fn test_every_combination_of_the_types_of_the_constraints_is_checked() {
-	// 6 x 6 combinations: the error is there only when `T` is `f64` and `U`
-	// is `string`, and neither of them is the first type of its set.
-	errors := check('combinations', 'module main
-
-type Num6 = int | i8 | i16 | i32 | i64 | f64
-
-type Val6 = int | i8 | i16 | i32 | i64 | string
-
-fn mix[T Num6, U Val6](a T, b U) string {
-	\$if T is f64 {
-		\$if U is string {
-			return a
-		}
-	}
-	return ""
-}
-
-fn main() {
-	println(mix(1.5, "b"))
-}
-')
-	assert errors.len == 1, errors.str()
-	assert errors[0].starts_with('main.v:10:11: error: cannot use `f64` as type `string` in return argument'), errors[0]
-	assert errors[0].contains('when `T` is `f64`'), errors[0]
-	assert errors[0].contains('when `U` is `string`'), errors[0]
 }
 
 fn test_past_the_budget_every_way_the_compile_time_ifs_can_go_is_checked() {
