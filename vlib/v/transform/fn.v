@@ -1724,8 +1724,16 @@ fn (t &Transformer) generic_call_type_args(index_node flat.Node) []u32 {
 	if index_node.kind != .index || index_node.children_count < 2 || index_node.value == 'range' {
 		return []u32{}
 	}
-	// What the brackets hold first: `xs[0]` or `xs[i + 1]` name no type, and
-	// telling a value index from a generic call resolves types.
+	// Inspect the argument syntax before resolving types to distinguish value indexes.
+	args := t.generic_index_type_args(index_node)
+	if args.len == 0 || t.index_callee_is_value_index(index_node) {
+		return []u32{}
+	}
+	return args
+}
+
+// generic_index_type_args reads the type spellings carried by the brackets.
+fn (t &Transformer) generic_index_type_args(index_node flat.Node) []u32 {
 	mut args := []u32{cap: int(index_node.children_count) - 1}
 	for i in 1 .. index_node.children_count {
 		arg := t.generic_call_type_arg_name(t.a.child(&index_node, i))
@@ -1733,9 +1741,6 @@ fn (t &Transformer) generic_call_type_args(index_node flat.Node) []u32 {
 			return []u32{}
 		}
 		args << arg
-	}
-	if t.index_callee_is_value_index(index_node) {
-		return []u32{}
 	}
 	return args
 }

@@ -664,7 +664,9 @@ fn (mut t Transformer) explicit_generic_method_value_specialization(id flat.Node
 	if (t.tc.fn_generic_params[method_key] or { []u32{} }).len == 0 {
 		return none
 	}
-	type_args := t.generic_call_type_args(node)
+	// The checker resolved the index as a method value. The selector alone can
+	// still have a cached indexable type from a method parameter.
+	type_args := t.generic_index_type_args(node)
 	if type_args.len == 0 || t.type_args_have_enclosing_generic_param(id, type_args) {
 		return none
 	}

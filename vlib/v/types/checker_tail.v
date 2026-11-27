@@ -8105,6 +8105,11 @@ fn (tc &TypeChecker) known_sum_constructor_name(name_id u32) ?u32 {
 	if tc.sum_types.contains(name_id) {
 		return name_id
 	}
+	// A lowered generic method has a name such as Tree[int].insert.
+	syntax := flat.source_type_syntax(name_id)
+	if syntax.application_valid() && syntax.bracket_prefix() != name_id {
+		return none
+	}
 	base_name := strip_generic_args_id(name_id)
 	if tc.sum_types.contains(base_name) {
 		return name_id

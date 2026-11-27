@@ -122,9 +122,8 @@ fn test_json_errors_of_a_build_are_only_json() {
 	assert !os.exists(os.join_path(dir, 'main_bin.exe'))
 }
 
-// An error found while generic functions are specialized, after the checker, is a
-// diagnostic without a position.
-fn test_json_errors_reports_errors_of_the_monomorphization() {
+// Errors found in a concrete specialization point back to the generic source.
+fn test_json_errors_positions_generic_method_arity_errors() {
 	dir := write_project('monomorph', {
 		'main.v': 'fn add[T](a T, b T) T {
 	return a.plus(b, 1)
@@ -150,9 +149,11 @@ fn main() {
 	assert res.exit_code == 1, res.output
 	diagnostics := decode_diagnostics(res.output)
 	assert diagnostics.len == 1, res.output
-	assert diagnostics[0].file == ''
-	assert diagnostics[0].severity == 'error'
-	assert diagnostics[0].message == 'argument count mismatch for `a.plus`: expected 1, got 2'
+	assert diagnostics[0].file == 'main.v', res.output
+	assert diagnostics[0].line == 2, res.output
+	assert diagnostics[0].col == 19, res.output
+	assert diagnostics[0].severity == 'error', res.output
+	assert diagnostics[0].message == 'expected 1 argument, but got 2', res.output
 }
 
 fn test_json_errors_positions_compile_errors_selected_by_generic_reflection() {
