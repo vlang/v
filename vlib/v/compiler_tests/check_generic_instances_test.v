@@ -95,8 +95,7 @@ fn main() {
 
 // Specializations resolve fields and methods on concrete types and keep the
 // methods declared on a type argument such as the Octet alias.
-fn test_instances_use_members_of_concrete_types_and_aliases() {
-	source := "fn show[T](x T) string {
+const valid_member_program = "fn show[T](x T) string {
 	return x.name
 }
 
@@ -128,12 +127,6 @@ fn main() {
 	println(el.pack())
 }
 "
-	for res in [check_program('instance_members_check', source),
-		build_program('instance_members_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
 
 // A library module outside the program, where ~/.vmodules keeps them. A check
 // checks the instances of the program's generics only, so the body of an
@@ -467,14 +460,7 @@ fn test_a_library_that_imports_a_module_of_the_program_keeps_every_body() {
 	assert check.trace[1].ends_with('imports the module `progmod` of the program'), check.trace.str()
 }
 
-// build_program builds `source` with the prelude, with no V1 to fall back on when
-// the C compiler fails.
-fn build_program(name string, source string, flags ...string) os.Result {
-	return build_program_with_env(name, source, [], ...flags)
-}
-
-// build_program_with_env is build_program with the environment variables `env`
-// (`NAME=value`) set for the build.
+// build_program_with_env builds the fixture with the given NAME=value environment entries.
 fn build_program_with_env(name string, source string, env []string, flags ...string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_build_generic_instances_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
@@ -569,14 +555,13 @@ const return_errors = ['11:9: cannot use `int` as type `bool` in return argument
 
 // Returns whose types depend on a call, a type parameter literal, or a value
 // narrowed by `is` stay valid when the generic functions are specialized.
-fn test_instances_return_values_and_local_callbacks() {
-	source := "type Value = int | string
+const valid_return_program = "type Value = int | string
 
 fn same[T](x T) T {
 	return x
 }
 
-fn widen[T](x T) i64 {
+fn widen_return[T](x T) i64 {
 	return x
 }
 
@@ -618,8 +603,8 @@ fn forwarded_callback[T](x T) fn () !int {
 fn main() {
 	println(same(1))
 	println(same('a'))
-	println(widen(i32(2)))
-	println(widen(u8(3)))
+	println(widen_return(i32(2)))
+	println(widen_return(u8(3)))
 	println(greeting(User{ name: 'c' }))
 	println(zero[map[string]int]())
 	println(pick(Value(4), 0))
@@ -630,17 +615,10 @@ fn main() {
 	assert g()! == 2
 }
 "
-	for res in [check_program('return_valid_check', source),
-		build_program('return_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
 
 // Check the operator in the active compile-time branch and option guards over
 // parameters, map indexes, and smartcast values.
-fn test_valid_operators_and_option_guards_in_instances() {
-	source := "fn join[T](a T, b T) T {
+const valid_operator_program = "fn join[T](a T, b T) T {
 	return a + b
 }
 
@@ -659,7 +637,7 @@ fn plain[T](a T) string {
 	return 'none'
 }
 
-fn opt[T](a ?T) string {
+fn guard_opt[T](a ?T) string {
 	if v := a {
 		return '\${v}'
 	}
@@ -735,7 +713,7 @@ fn main() {
 
 	x := ?int(3)
 	println(plain(x))
-	println(opt[int](4))
+	println(guard_opt[int](4))
 	mut y := ?string('s')
 	println(mut_opt(mut y))
 	println(index({
@@ -747,12 +725,6 @@ fn main() {
 	println(Box[int]{ val: 7 }.get())
 }
 "
-	for res in [check_program('operators_and_guards_check', source),
-		build_program('operators_and_guards_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
 
 // An instance reports its error where the source's `#line` directive maps the
 // returned value, as the code generated from another language does.
@@ -862,8 +834,7 @@ const call_arg_errors = ['32:14: cannot use `bool` as `string` in argument 1 to 
 // `$for`, a spread `...args`, and a local initialized by a `match` or a fn
 // literal, which a clone can type as an `int` and as the literal's return type.
 // Loop values also keep the element type inferred from a `match`.
-fn test_instances_that_pass_arguments_of_their_types_stay_valid() {
-	source := "type Value = int | string
+const valid_argument_program = "type ArgumentValue = int | string
 
 interface Greeter {
 	greet() string
@@ -885,7 +856,7 @@ fn speak(g Greeter) string {
 	return g.greet()
 }
 
-fn store(v Value) int {
+fn store(v ArgumentValue) int {
 	return if v is int { v } else { 0 }
 }
 
@@ -893,7 +864,7 @@ fn show_any[U](u U) string {
 	return '\${u}'
 }
 
-fn grow(mut a []int) {
+fn grow_argument(mut a []int) {
 	a << 1
 }
 
@@ -901,7 +872,7 @@ fn names[T](x T) int {
 	return take(x.name)
 }
 
-fn widen[T](x T) i64 {
+fn widen_argument[T](x T) i64 {
 	return take_i64(x)
 }
 
@@ -909,16 +880,16 @@ fn greet_all[T](x T) string {
 	return speak(x)
 }
 
-fn wrap[T](x T) int {
+fn wrap_argument[T](x T) int {
 	return store(x)
 }
 
-fn pass[T](x T) string {
+fn pass_argument[T](x T) string {
 	return show_any(x)
 }
 
 fn update[T](mut x T) {
-	grow(mut x)
+	grow_argument(mut x)
 }
 
 fn later[T](x T) int {
@@ -932,7 +903,7 @@ fn via_call[T](x T) int {
 	return take(x.greet())
 }
 
-fn narrowed[T](v Value, fallback T) int {
+fn narrowed[T](v ArgumentValue, fallback T) int {
 	if v is string {
 		return take(v)
 	}
@@ -981,14 +952,14 @@ fn spread[T](args ...T) int {
 	return pair(...args)
 }
 
-fn callback[T](x T) int {
+fn pass_callback[T](x T) int {
 	make := fn () !int {
 		return 1
 	}
 	return run(make)
 }
 
-fn fields[T](x T, v Value) int {
+fn fields[T](x T, v ArgumentValue) int {
 	mut n := 0
 	\$for f in T.fields {
 		\$if f.typ is string {
@@ -1005,31 +976,25 @@ fn main() {
 		name: 'a'
 	}
 	println(names(u))
-	println(widen(i32(2)))
-	println(widen(u8(3)))
+	println(widen_argument(i32(2)))
+	println(widen_argument(u8(3)))
 	println(greet_all(u))
-	println(wrap(4))
-	println(wrap('c'))
-	println(pass(5))
-	println(pass(u))
+	println(wrap_argument(4))
+	println(wrap_argument('c'))
+	println(pass_argument(5))
+	println(pass_argument(u))
 	mut nums := [1]
 	update(mut nums)
 	println(later(u))
 	println(via_call(u))
-	println(narrowed(Value('d'), 0))
-	println(fields(Named{ label: 'e' }, Value('f')))
+	println(narrowed(ArgumentValue('d'), 0))
+	println(fields(Named{ label: 'e' }, ArgumentValue('f')))
 	println(sized(1))
 	check_loop_lengths(u8(1))
 	println(spread(1, 2))
-	println(callback(u))
+	println(pass_callback(u))
 }
 "
-	for res in [check_program('call_arg_valid_check', source),
-		build_program('call_arg_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
 
 // The layout fixtures specialize arrays and maps of `T` with the element types
 // the body expects and with elements of a different size.
@@ -1203,15 +1168,10 @@ fn invalid_layout_program() string {
 
 // Arrays and maps with the expected elements stay valid, including wrapped
 // arrays. An array can also be converted element by element to an interface array.
-fn test_instances_with_the_expected_elements_stay_valid() {
-	source := layout_declarations + wrapped_layout_declarations + container_types +
+fn valid_layout_program() string {
+	return layout_declarations + wrapped_layout_declarations + container_types +
 		container_conversions + container_nest_and_count + 'fn main() {\n' +
 		layout_calls + wrapped_layout_calls + container_type_calls + '}\n'
-	for res in [check_program('layout_valid_check', source),
-		build_program('layout_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
 }
 
 // A build that cannot fork, as on Windows, checks the instances of its generics
@@ -1395,12 +1355,7 @@ fn invalid_map_cast_program() string {
 		'wrap(', 'wrap_cast_array('])
 }
 
-fn run_concrete_instance_rejections(sources map[string]string, check bool) os.Result {
-	mode := if check { 'check' } else { 'build' }
-	dir := os.join_path(os.vtmp_dir(), 'v3_concrete_instance_rejections_${mode}_${os.getpid()}')
-	os.mkdir_all(dir) or { panic(err) }
-	defer { os.rmdir_all(dir) or {} }
-
+fn write_concrete_instance_fixtures(dir string, sources map[string]string, main_source string) {
 	// Share User through main.v and keep the standalone fixtures' source line numbers.
 	prefix := 'module main\n' + '\n'.repeat(generic_prelude.count('\n') - 1)
 	mut calls := []string{cap: sources.len}
@@ -1412,9 +1367,35 @@ fn run_concrete_instance_rejections(sources map[string]string, check bool) os.Re
 			panic(err)
 		}
 	}
-	os.write_file(os.join_path(dir, 'main.v'), generic_prelude + 'fn main() {\n${calls.join('')}}\n') or {
-		panic(err)
+	main_body := main_source.replace_once('fn main() {\n', 'fn main() {\n${calls.join('')}')
+	os.write_file(os.join_path(dir, 'main.v'), generic_prelude + main_body) or { panic(err) }
+}
+
+fn test_instances_accept_valid_concrete_types() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_concrete_instance_success_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	// The callback assertions propagate Results from main.
+	write_concrete_instance_fixtures(dir, {
+		'members':   valid_member_program
+		'operators': valid_operator_program
+		'arguments': valid_argument_program
+		'layouts':   valid_layout_program()
+	}, valid_return_program)
+	for args in [['-check'], ['-o', os.join_path(dir, 'main')]] {
+		res := os.exec([@VEXE, '-nocolor', ...args, dir])
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
 	}
+}
+
+fn run_concrete_instance_rejections(sources map[string]string, check bool) os.Result {
+	mode := if check { 'check' } else { 'build' }
+	dir := os.join_path(os.vtmp_dir(), 'v3_concrete_instance_rejections_${mode}_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+
+	write_concrete_instance_fixtures(dir, sources, 'fn main() {\n}\n')
 
 	// The layout fixture alone exceeds the default diagnostic limit.
 	mut flags := ['-nocolor', '-message-limit', '100']
