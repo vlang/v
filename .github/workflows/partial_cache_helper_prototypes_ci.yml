@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - vlib/v/gen/c/cleanc.v
+      - vlib/v/gen/c/struct.v
+      - vlib/v/tests/builtin_maps/map_fixed_array_keys_struct_default_test.v
       - vlib/v/gen/c/cache_declarations_test.v
       - vlib/v/tests/module_cache_reuse_test.v
       - .github/workflows/partial_cache_helper_prototypes_ci.yml
@@ -27,8 +29,8 @@ jobs:
       - name: Rebuild candidate and verify formatting
         run: |
           ./v self
-          if ! ./v fmt -verify vlib/v/gen/c/cleanc.v vlib/v/gen/c/cache_declarations_test.v vlib/v/tests/module_cache_reuse_test.v; then
-            ./v fmt -w vlib/v/gen/c/cleanc.v vlib/v/gen/c/cache_declarations_test.v vlib/v/tests/module_cache_reuse_test.v
+          if ! ./v fmt -verify vlib/v/gen/c/cleanc.v vlib/v/gen/c/struct.v vlib/v/gen/c/cache_declarations_test.v vlib/v/tests/module_cache_reuse_test.v vlib/v/tests/builtin_maps/map_fixed_array_keys_struct_default_test.v; then
+            ./v fmt -w vlib/v/gen/c/cleanc.v vlib/v/gen/c/struct.v vlib/v/gen/c/cache_declarations_test.v vlib/v/tests/module_cache_reuse_test.v vlib/v/tests/builtin_maps/map_fixed_array_keys_struct_default_test.v
             git diff
             exit 1
           fi
@@ -70,6 +72,7 @@ jobs:
         run: |
           ./v -cc clang vlib/v/gen/c/cache_declarations_test.v
           ./v -cc clang vlib/v/tests/builtin_maps/map_fixed_array_keys_test.v
+          ./v -cc clang -nocache vlib/v/tests/builtin_maps/map_fixed_array_keys_struct_default_test.v
           ./v -cc clang vlib/v/tests/module_cache_reuse_test.v
       - name: Install Objective-C dependencies
         run: sudo apt-get install -y gobjc libobjc-14-dev
@@ -317,10 +320,10 @@ jobs:
                 fi
                 echo "CASE $role $mode $variant"
                 gen_rc=0
-                V3_CACHE_FORCE_SOURCE=1 "$exe" "${flags[@]}" "${mode_flags[@]}" -o "$root/source.c" "$root/main.v" > "$root/source-c.log" 2>&1 || gen_rc=$?
+                V3_CACHE_FORCE_SOURCE=1 "$exe" "${flags[@]}" "${mode_flags[@]}" -nocache -o "$root/source.c" "$root/main.v" > "$root/source-c.log" 2>&1 || gen_rc=$?
                 cat "$root/source-c.log"
                 source_rc=0
-                V3_CACHE_FORCE_SOURCE=1 "$exe" "${flags[@]}" "${mode_flags[@]}" -o "$root/source" "$root/main.v" > "$root/source.log" 2>&1 || source_rc=$?
+                V3_CACHE_FORCE_SOURCE=1 "$exe" "${flags[@]}" "${mode_flags[@]}" -nocache -o "$root/source" "$root/main.v" > "$root/source.log" 2>&1 || source_rc=$?
                 cat "$root/source.log"
                 if [[ $source_rc == 0 ]]; then
                   if ! test "$("$root/source")" = 1; then source_rc=99; fi

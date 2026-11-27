@@ -6778,6 +6778,23 @@ fn (mut g FlatGen) precompute_fixed_array_map_key_types() {
 		}
 		g.register_fixed_array_map_key_type(g.tc.parse_type(key_size.source_value_id()))
 	}
+	// Omitted struct fields synthesize new_map during lowering, without a
+	// corresponding new_map AST node. Discover concrete map fields here so
+	// the parallel declaration worker has their callbacks before it emits C.
+	for _, fields in g.tc.structs {
+		for field in fields {
+			if field.typ !is types.Map && field.typ !is types.Alias {
+				continue
+			}
+			clean := unalias_type(field.typ)
+			if clean is types.Map {
+				key := unalias_type(clean.key_type)
+				if key is types.ArrayFixed && !g.type_contains_generic_placeholder(key) {
+					g.register_fixed_array_map_key_type(key)
+				}
+			}
+		}
+	}
 }
 
 fn (mut g FlatGen) register_fixed_array_map_key_type(typ types.Type) {
