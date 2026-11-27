@@ -7,7 +7,7 @@ import v.tempname
 // recorded as `bench.Thing` used to be alias-expanded a second time on its way
 // to C and landed on the same-named struct in `x.bench`.
 
-fn alias_shadow_build_and_run(name string, files map[string]string) os.Result {
+fn alias_shadow_build_and_run(name string, files map[string]string, input string) os.Result {
 	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_${name}_${tempname.unique_token()}')
 	os.mkdir(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
@@ -16,9 +16,9 @@ fn alias_shadow_build_and_run(name string, files map[string]string) os.Result {
 		os.mkdir_all(os.dir(full)) or { panic(err) }
 		os.write_file(full, content) or { panic(err) }
 	}
-	main_v := os.join_path(root, 'main.v')
+	path := os.join_path(root, input)
 	exe := os.join_path(root, 'prog')
-	compile := os.exec([@VEXE, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
+	compile := os.exec([@VEXE, '-nocache', path, '-b', 'c', '-o', exe])
 	if compile.exit_code != 0 {
 		return compile
 	}
@@ -30,24 +30,9 @@ fn test_a_shadowed_module_keeps_its_own_type() {
 		'bench/bench.v':   'module bench\n\npub struct Thing {\npub mut:\n\tn int\n}\n\npub fn start() Thing {\n\treturn Thing{\n\t\tn: 1\n\t}\n}\n'
 		'x/bench/bench.v': 'module bench\n\npub struct Thing {\npub mut:\n\tm int\n}\n'
 		'main.v':          'module main\n\nimport x.bench\nimport bench as jj\n\nfn main() {\n\tb := jj.start()\n\tprintln(b.n)\n}\n'
-	})
+	}, 'main.v')
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '1', res.output
-}
-
-// The canonical name can live in a nested module, so the check has to compare
-// whole module paths: with `import x.foo` the first segment alone (`foo`) never
-// matches the real module `foo.bar`, and `foo.bar.Thing` would be rebased onto
-// `x.foo` and resolve to `x.foo.bar.Thing`.
-fn test_a_shadowed_nested_module_keeps_its_own_type() {
-	res := alias_shadow_build_and_run('nested', {
-		'foo/bar/bar.v':   'module bar\n\npub struct Thing {\npub mut:\n\tn int\n}\n\npub fn start() Thing {\n\treturn Thing{\n\t\tn: 42\n\t}\n}\n'
-		'x/foo/foo.v':     'module foo\n\npub fn ping() int {\n\treturn 0\n}\n'
-		'x/foo/bar/bar.v': 'module bar\n\npub struct Thing {\npub mut:\n\tm int\n}\n'
-		'main.v':          'module main\n\nimport x.foo\nimport x.foo.bar\nimport foo.bar as jj\n\nfn main() {\n\tb := jj.start()\n\tprintln(b.n)\n\tc := bar.Thing{\n\t\tm: 7\n\t}\n\tprintln(c.m)\n\tprintln(foo.ping())\n}\n'
-	})
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['42', '7', '0'], res.output
 }
 
 // A pointer annotation carries a wrapper, so the module check has to look at the
@@ -59,7 +44,7 @@ fn test_a_shadowed_module_keeps_its_own_type_through_a_pointer() {
 		'bench/bench.v':   'module bench\n\npub struct Thing {\npub mut:\n\tn int\n}\n\npub fn start() &Thing {\n\treturn &Thing{\n\t\tn: 5\n\t}\n}\n'
 		'x/bench/bench.v': 'module bench\n\npub struct Thing {\npub mut:\n\tm int\n}\n'
 		'main.v':          'module main\n\nimport x.bench\nimport bench as jj\n\nfn main() {\n\tb := jj.start()\n\tprintln(b.n)\n}\n'
-	})
+	}, 'main.v')
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '5', res.output
 }
@@ -72,7 +57,7 @@ fn test_a_transitive_shadowed_module_keeps_its_own_type() {
 		'bridge/bridge.v': 'module bridge\n\nimport bench\n\npub fn start() bench.Thing {\n\treturn bench.Thing{\n\t\tn: 17\n\t}\n}\n'
 		'x/bench/bench.v': 'module bench\n\npub struct Thing {\npub mut:\n\tm int\n}\n'
 		'main.v':          'module main\n\nimport bridge\nimport x.bench\n\nfn main() {\n\tb := bridge.start()\n\tprintln(b.n)\n\tprintln(bench.Thing{\n\t\tm: 3\n\t}.m)\n}\n'
-	})
+	}, 'main.v')
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['17', '3'], res.output
 }
@@ -82,32 +67,34 @@ fn test_a_shadowed_module_keeps_its_declared_alias() {
 		'bench/bench.v':   'module bench\n\npub struct Thing {\npub mut:\n\tn int\n}\n\npub type Alias = Thing\n\npub fn start() Alias {\n\treturn Alias(Thing{\n\t\tn: 23\n\t})\n}\n'
 		'x/bench/bench.v': 'module bench\n\npub struct Thing {\npub mut:\n\tm int\n}\n\npub type Alias = Thing\n'
 		'main.v':          'module main\n\nimport x.bench\nimport bench as jj\n\nfn main() {\n\tb := jj.start()\n\tprintln(b.n)\n}\n'
-	})
+	}, 'main.v')
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '23', res.output
 }
 
-// A cast's checker sidecar records the canonical target even though its
-// `node.value` still has the import spelling used in source.
-fn test_a_source_cast_uses_the_shadowing_import() {
-	res := alias_shadow_build_and_run('source_cast', {
-		'foo/foo.v':   'module foo\n\npub type Value = int\n'
-		'x/foo/foo.v': 'module foo\n\npub type Value = u8\n'
-		'main.v':      'module main\n\nimport x.foo\nimport foo as jj\n\nfn main() {\n\t_ = jj.Value(1)\n\tmut value := foo.Value(200)\n\tvalue += foo.Value(100)\n\tprintln(value)\n}\n'
-	})
+fn test_shadowed_imports() {
+	res := alias_shadow_build_and_run('shadowed_imports', {
+		'foo/bar/bar.v':   'module bar\n\npub struct Thing {\npub mut:\n\tn int\n}\n\npub fn start() Thing {\n\treturn Thing{\n\t\tn: 42\n\t}\n}\n'
+		'x/foo/foo.v':     'module foo\n\npub fn ping() int {\n\treturn 0\n}\n'
+		'x/foo/bar/bar.v': 'module bar\n\npub struct Thing {\npub mut:\n\tm int\n}\n'
+		'foo/foo.v':       'module foo\n\npub struct Box[T] {\npub mut:\n\tvalue T\n}\n\npub fn start() Box[int] {\n\treturn Box[int]{\n\t\tvalue: 31\n\t}\n}\n'
+		'foo/casts.v':     'module foo\n\npub type Value = int\n'
+		'x/foo/casts.v':   'module foo\n\npub type Value = u8\n'
+		'x/foo/generic.v': 'module foo\n\npub struct Box[T] {\npub mut:\n\tother T\n}\n'
+		// The canonical name can live in a nested module, so the check has to compare
+		// whole module paths: with `import x.foo` the first segment alone (`foo`) never
+		// matches the real module `foo.bar`, and `foo.bar.Thing` would be rebased onto
+		// `x.foo` and resolve to `x.foo.bar.Thing`.
+		'nested.v':        'module main\n\nimport x.foo\nimport x.foo.bar\nimport foo.bar as jj\n\nfn check_nested() {\n\tb := jj.start()\n\tprintln(b.n)\n\tc := bar.Thing{\n\t\tm: 7\n\t}\n\tprintln(c.m)\n\tprintln(foo.ping())\n}\n'
+		// A cast's checker sidecar records the canonical target even though its
+		// `node.value` still has the import spelling used in source.
+		'source_cast.v':   'module main\n\nimport x.foo\nimport foo as jj\n\nfn check_source_cast() {\n\t_ = jj.Value(1)\n\tmut value := foo.Value(200)\n\tvalue += foo.Value(100)\n\tprintln(value)\n}\n'
+		// Generic checker annotations retain the canonical module on their base and
+		// arguments. Re-entering the source parser for `foo.Box[int]` would otherwise
+		// bind `foo` to the colliding `x.foo` import.
+		'generic.v':       'module main\n\nimport x.foo\nimport foo as jj\n\nfn check_generic() {\n\tb := jj.start()\n\tprintln(b.value)\n}\n'
+		'main.v':          'module main\n\nfn main() {\n\tcheck_nested()\n\tcheck_source_cast()\n\tcheck_generic()\n}\n'
+	}, '.')
 	assert res.exit_code == 0, res.output
-	assert res.output.trim_space() == '44', res.output
-}
-
-// Generic checker annotations retain the canonical module on their base and
-// arguments. Re-entering the source parser for `foo.Box[int]` would otherwise
-// bind `foo` to the colliding `x.foo` import.
-fn test_a_shadowed_module_keeps_its_generic_type() {
-	res := alias_shadow_build_and_run('generic', {
-		'foo/foo.v':   'module foo\n\npub struct Box[T] {\npub mut:\n\tvalue T\n}\n\npub fn start() Box[int] {\n\treturn Box[int]{\n\t\tvalue: 31\n\t}\n}\n'
-		'x/foo/foo.v': 'module foo\n\npub struct Box[T] {\npub mut:\n\tother T\n}\n'
-		'main.v':      'module main\n\nimport x.foo\nimport foo as jj\n\nfn main() {\n\tb := jj.start()\n\tprintln(b.value)\n}\n'
-	})
-	assert res.exit_code == 0, res.output
-	assert res.output.trim_space() == '31', res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['42', '7', '0', '44', '31'], res.output
 }
