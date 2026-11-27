@@ -362,8 +362,8 @@ fn main() {
 	}
 }
 
-fn test_borrowed_string_ranges_keep_source_loans_live() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_string_range_loan_${os.getpid()}')
+fn test_borrowed_string_and_mutable_array_ranges_keep_source_loans_live() {
+	root := os.join_path(os.vtmp_dir(), 'borrowed_range_source_loan_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	mut cases := []BorrowedRangeRejection{}
@@ -380,14 +380,6 @@ fn main() {
 '
 		cases << BorrowedRangeRejection{fixture, expected}
 	}
-	check_borrowed_range_rejections(root, cases)!
-}
-
-fn test_mixed_mutable_array_reference_returns_keep_source_loans_live() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_array_range_loan_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	mut cases := []BorrowedRangeRejection{}
 	for argument in ['owner', 'owner[..]'] {
 		for mutation in ['drop_owned(owner)', 'owner = ["replacement".to_owned()]'] {
 			fixture := 'fn choose_view(mut values []string, whole bool) &[]string {
