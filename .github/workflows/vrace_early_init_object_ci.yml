@@ -50,8 +50,8 @@ jobs:
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/vrace-early-init"
-          mkdir -p "$out"
-          cat > "$out/racy.v" <<'V'
+          mkdir -p "$out/simple" "$out/map" "$out/original"
+          cat > "$out/simple/racy.v" <<'V'
           struct Counter {
           mut:
               n int
@@ -73,7 +73,7 @@ jobs:
           for role in baseline candidate; do
             v=./v
             if [ "$role" = baseline ]; then v=./baseline/v; fi
-            env -u VFLAGS V3_CACHE_TRACE=1 "$v" -race -cc clang -showcc -keepc -no-retry-compilation -o "$out/$role" "$out/racy.v" > "$out/$role-build.log" 2>&1 || { cat "$out/$role-build.log"; exit 1; }
+            env -u VFLAGS V3_CACHE_TRACE=1 "$v" -race -cc clang -showcc -keepc -no-retry-compilation -o "$out/$role" "$out/simple/racy.v" > "$out/$role-build.log" 2>&1 || { cat "$out/$role-build.log"; exit 1; }
             cat "$out/$role-build.log"
             nm "$out/$role" > "$out/$role.symbols"
             grep -Fq '__tsan_default_options' "$out/$role.symbols"
@@ -111,10 +111,10 @@ jobs:
           grep -F "$key" "$out/candidate-build.log" | grep -F -- '-fsanitize=thread'
           cp "$object" "$out/early-init.o"
           git fetch --no-tags --depth=1 origin ee48d9cb04fcaedd0a9d5c8925bdd633af9eb94b
-          git show FETCH_HEAD:vlib/v/slow_tests/race_detector_test.v > "$out/original_race_detector_test.v"
-          test "$(git hash-object "$out/original_race_detector_test.v")" = 9c125e9126438bb7345ec4a0a7cabc8100af38d2
+          git show FETCH_HEAD:vlib/v/slow_tests/race_detector_test.v > "$out/original/original_race_detector_test.v"
+          test "$(git hash-object "$out/original/original_race_detector_test.v")" = 9c125e9126438bb7345ec4a0a7cabc8100af38d2
           # Compare the exact original map race source on both compiler roles.
-          cat > "$out/map_value_update.v" <<'V'
+          cat > "$out/map/map_value_update.v" <<'V'
           struct P {
           mut:
           	x int
@@ -145,7 +145,7 @@ jobs:
           for role in baseline candidate; do
             v=./v
             if [ "$role" = baseline ]; then v=./baseline/v; fi
-            env -u VFLAGS V3_CACHE_TRACE=1 "$v" -race -showcc -keepc -no-retry-compilation -o "$out/map-$role" "$out/map_value_update.v" > "$out/map-$role-build.log" 2>&1 || { cat "$out/map-$role-build.log"; exit 1; }
+            env -u VFLAGS V3_CACHE_TRACE=1 "$v" -race -showcc -keepc -no-retry-compilation -o "$out/map-$role" "$out/map/map_value_update.v" > "$out/map-$role-build.log" 2>&1 || { cat "$out/map-$role-build.log"; exit 1; }
             cat "$out/map-$role-build.log"
             nm "$out/map-$role" > "$out/map-$role.symbols"
             for mode in tsan vrace; do
@@ -167,7 +167,7 @@ jobs:
             done
           done
           original_rc=0
-          env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent "$out/original_race_detector_test.v" > "$out/original.log" 2>&1 || original_rc=$?
+          env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent "$out/original/original_race_detector_test.v" > "$out/original.log" 2>&1 || original_rc=$?
           cat "$out/original.log"
           current_rc=0
           env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/slow_tests/race_detector_test.v > "$out/current.log" 2>&1 || current_rc=$?
