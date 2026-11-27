@@ -446,9 +446,9 @@ fn main() {
 	assert out == '7\n7'
 }
 
-fn test_fixed_array_element_and_alias_runtime() {
+fn test_array_elements_aliases_and_returns() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'fixed_array_element_and_alias_runtime', [
+	run_good_module_batch(v3_bin, 'array_elements_aliases_and_returns', [
 		ReviewRuntimeCase{'empty_fixed_array_of_function_arrays', 'fn main() {
 	callbacks := [2][]fn (){}
 	println(int_str(callbacks[0].len))
@@ -472,40 +472,8 @@ fn main() {
 	println(int_str(cloned[1]))
 }
 ', '2\n1'},
-	])
-}
-
-fn test_indexed_scalar_types_and_shift_bounds() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'indexed_scalar_types_and_shift_bounds', [
-		ReviewRuntimeCase{'indexed_shift_assign_oversized_counts', 'struct Counter {
-mut:
-	value int
-}
-
-fn next(mut calls Counter) int {
-	calls.value++
-	return 0
-}
-
-fn shift(mut calls Counter) u64 {
-	calls.value++
-	return 64
-}
-
-fn main() {
-	mut calls := Counter{}
-	mut left := [u64(1)]
-	left[next(mut calls)] <<= shift(mut calls)
-	println(int_str(calls.value))
-	println(left[0].str())
-	mut right := [u64(8)]
-	right[next(mut calls)] >>= shift(mut calls)
-	println(int_str(calls.value))
-	println(right[0].str())
-}
-', '2\n0\n4\n0'},
-		ReviewRuntimeCase{'string_index_type_is_u8', "fn main() {\n\ts := 'ABC'\n\tprintln(typeof(s[0]).name)\n\tprintln('\${s[2]}')\n}\n", 'u8\n67'},
+		ReviewRuntimeCase{'array_alias_free_builtin', 'import strings\n\nfn main() {\n\tmut b := strings.new_builder(4)\n\tb.write_string("ok")\n\tunsafe { b.free() }\n\tprintln("ok")\n}\n', 'ok'},
+		ReviewRuntimeCase{'discard_array_return_no_context', "fn values() []string {\n\treturn ['a', 'b']\n}\n\nfn main() {\n\t_ = values()\n\tprintln('ok')\n}\n", 'ok'},
 	])
 }
 
@@ -903,9 +871,9 @@ fn main() {
 	])
 }
 
-fn test_interface_return_and_container_boxes() {
+fn test_interface_storage_and_argument_boxes() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_return_and_container_boxes', [
+	run_good_module_batch(v3_bin, 'interface_storage_and_argument_boxes', [
 		ReviewRuntimeCase{
 			name:     'interface_eq_implicit_return_box'
 			source:   'interface IValue {}
@@ -1208,165 +1176,6 @@ fn main() {
 '
 			expected: 'true'
 		},
-	])
-}
-
-fn test_interface_equality_includes_option_result_return_boxes() {
-	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'interface_eq_option_result_return_boxes', 'interface IValue {}
-
-struct OptionValue {
-	n int
-}
-
-struct ResultValue {
-	n int
-}
-
-fn make_option() ?IValue {
-	return OptionValue{
-		n: 3
-	}
-}
-
-fn make_result() !IValue {
-	return ResultValue{
-		n: 4
-	}
-}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn main() {
-	option_value := make_option() or { panic("missing option") }
-	result_value := make_result() or { panic(err) }
-	println(same(option_value).str())
-	println(same(result_value).str())
-}
-')
-	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
-	assert same_body.contains('OptionValue*'), same_body
-	assert same_body.contains('ResultValue*'), same_body
-}
-
-fn test_interface_equality_includes_wrapped_option_result_boxes() {
-	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'interface_eq_wrapped_option_result_boxes', 'interface IValue {}
-
-struct OptionValue {
-	n int
-}
-
-struct ResultValue {
-	n int
-}
-
-fn make_option() ?OptionValue {
-	return OptionValue{
-		n: 3
-	}
-}
-
-fn make_result() !ResultValue {
-	return ResultValue{
-		n: 4
-	}
-}
-
-fn same(value IValue) bool {
-	return value == value
-}
-
-fn main() {
-	mut option_value := ?IValue(none)
-	option_value = make_option()
-	option_payload := option_value or { panic("missing option") }
-	println(same(option_payload).str())
-	result_payload := make_result() or { panic(err) }
-	println(same(result_payload).str())
-}
-')
-	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
-	assert same_body.contains('OptionValue*'), same_body
-	assert same_body.contains('ResultValue*'), same_body
-}
-
-fn test_forwarded_multi_return_container_slots_are_converted() {
-	v3_bin := build_v3()
-	run_bad_module_batch(v3_bin, 'forwarded_container_slot_rejections', [
-		// A map is not converted entry by entry: since #30815 a `map[string]Value` is
-		// not a `map[string]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
-		ReviewRejection{'forwarded_multi_return_map_interface_slot', 'interface IValue {
-	get() int
-}
-
-struct Value {
-	n int
-}
-
-fn (value Value) get() int {
-	return value.n
-}
-
-fn make_values() ([]Value, map[string]Value, int) {
-	return [Value{
-		n: 3
-	}], {
-		"item": Value{
-			n: 5
-		}
-	}, 7
-}
-
-fn forward_values() ([]IValue, map[string]IValue, int) {
-	return make_values()
-}
-
-fn main() {
-	values, indexed, n := forward_values()
-	println(int_str(values[0].get()))
-	println(int_str(indexed["item"].get()))
-	println(int_str(n))
-}
-', 'cannot use `map[string]fixture_0.Value` as type `map[string]fixture_0.IValue` in return argument'},
-		// A fixed array is not converted element by element: since #30863 a `[1]Value`
-		// is not a `[1]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
-		ReviewRejection{'forwarded_multi_return_fixed_interface_slot', 'interface IValue {
-	get() int
-}
-
-struct Value {
-	n int
-}
-
-fn (value Value) get() int {
-	return value.n
-}
-
-fn make_fixed() ([1]Value, int) {
-	return [Value{
-		n: 11
-	}]!, 13
-}
-
-fn forward_fixed() ([1]IValue, int) {
-	return make_fixed()
-}
-
-fn main() {
-	fixed, fixed_n := forward_fixed()
-	println(int_str(fixed[0].get()))
-	println(int_str(fixed_n))
-}
-', 'cannot use `[1]fixture_1.Value` as type `[1]fixture_1.IValue` in return argument'},
-	])
-}
-
-fn test_interface_argument_channel_and_field_boxes() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_argument_channel_and_field_boxes', [
 		ReviewRuntimeCase{
 			name:     'interface_eq_channel_send_box'
 			source:   'interface IValue {}
@@ -1615,6 +1424,159 @@ fn main() {
 	])
 }
 
+fn test_interface_equality_includes_option_result_return_boxes() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'interface_eq_option_result_return_boxes', 'interface IValue {}
+
+struct OptionValue {
+	n int
+}
+
+struct ResultValue {
+	n int
+}
+
+fn make_option() ?IValue {
+	return OptionValue{
+		n: 3
+	}
+}
+
+fn make_result() !IValue {
+	return ResultValue{
+		n: 4
+	}
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	option_value := make_option() or { panic("missing option") }
+	result_value := make_result() or { panic(err) }
+	println(same(option_value).str())
+	println(same(result_value).str())
+}
+')
+	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
+	assert same_body.contains('OptionValue*'), same_body
+	assert same_body.contains('ResultValue*'), same_body
+}
+
+fn test_interface_equality_includes_wrapped_option_result_boxes() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'interface_eq_wrapped_option_result_boxes', 'interface IValue {}
+
+struct OptionValue {
+	n int
+}
+
+struct ResultValue {
+	n int
+}
+
+fn make_option() ?OptionValue {
+	return OptionValue{
+		n: 3
+	}
+}
+
+fn make_result() !ResultValue {
+	return ResultValue{
+		n: 4
+	}
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	mut option_value := ?IValue(none)
+	option_value = make_option()
+	option_payload := option_value or { panic("missing option") }
+	println(same(option_payload).str())
+	result_payload := make_result() or { panic(err) }
+	println(same(result_payload).str())
+}
+')
+	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
+	assert same_body.contains('OptionValue*'), same_body
+	assert same_body.contains('ResultValue*'), same_body
+}
+
+fn test_forwarded_multi_return_container_slots_are_converted() {
+	v3_bin := build_v3()
+	run_bad_module_batch(v3_bin, 'forwarded_container_slot_rejections', [
+		// A map is not converted entry by entry: since #30815 a `map[string]Value` is
+		// not a `map[string]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
+		ReviewRejection{'forwarded_multi_return_map_interface_slot', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_values() ([]Value, map[string]Value, int) {
+	return [Value{
+		n: 3
+	}], {
+		"item": Value{
+			n: 5
+		}
+	}, 7
+}
+
+fn forward_values() ([]IValue, map[string]IValue, int) {
+	return make_values()
+}
+
+fn main() {
+	values, indexed, n := forward_values()
+	println(int_str(values[0].get()))
+	println(int_str(indexed["item"].get()))
+	println(int_str(n))
+}
+', 'cannot use `map[string]fixture_0.Value` as type `map[string]fixture_0.IValue` in return argument'},
+		// A fixed array is not converted element by element: since #30863 a `[1]Value`
+		// is not a `[1]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
+		ReviewRejection{'forwarded_multi_return_fixed_interface_slot', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_fixed() ([1]Value, int) {
+	return [Value{
+		n: 11
+	}]!, 13
+}
+
+fn forward_fixed() ([1]IValue, int) {
+	return make_fixed()
+}
+
+fn main() {
+	fixed, fixed_n := forward_fixed()
+	println(int_str(fixed[0].get()))
+	println(int_str(fixed_n))
+}
+', 'cannot use `[1]fixture_1.Value` as type `[1]fixture_1.IValue` in return argument'},
+	])
+}
+
 fn test_interface_auto_str_preludes_stay_inside_tag_guards() {
 	v3_bin := build_v3()
 	source := 'interface IValue {}
@@ -1692,74 +1654,6 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
-fn test_ierror_aggregate_equality() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'ierror_aggregate_equality', [
-		ReviewRuntimeCase{'ierror_aggregate_equality_message_code', 'struct Box {
-	err IError
-}
-
-fn main() {
-	first := Box{
-		err: error_with_code("same", 1)
-	}
-	different_message := Box{
-		err: error_with_code("different", 1)
-	}
-	different_code := Box{
-		err: error_with_code("same", 2)
-	}
-	equal := Box{
-		err: error_with_code("same", 1)
-	}
-	println((first == different_message).str())
-	println((first == different_code).str())
-	println((first == equal).str())
-}
-', 'false\nfalse\ntrue'},
-		ReviewRuntimeCase{'ierror_aggregate_equality_custom_dispatch_roots', 'struct CustomError {
-	message string
-	n       int
-}
-
-fn (err CustomError) msg() string {
-	return err.message
-}
-
-fn (err CustomError) code() int {
-	return err.n
-}
-
-struct Box {
-	err IError
-}
-
-fn main() {
-	first := Box{
-		err: CustomError{
-			message: "first"
-			n: 1
-		}
-	}
-	different := Box{
-		err: CustomError{
-			message: "different"
-			n: 2
-		}
-	}
-	equal := Box{
-		err: CustomError{
-			message: "first"
-			n: 1
-		}
-	}
-	println((first == different).str())
-	println((first == equal).str())
-}
-', 'false\ntrue'},
-	])
-}
-
 fn test_interface_equality_includes_veb_handler_call_boxes() {
 	v3_bin := build_v3()
 	out := run_good_project(v3_bin, 'interface_eq_veb_handler_call_box', {
@@ -1804,22 +1698,6 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == 'true'
-}
-
-fn test_empty_interface_equality_does_not_accept_unregistered_payloads() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'empty_interface_unregistered_payload_equality', 'interface Any {}
-
-fn same(left Any, right Any) bool {
-	return left == right
-}
-
-fn main() {
-	println(same(Any([1]), Any([2])).str())
-	println(same(Any(1), Any(1)).str())
-}
-')
-	assert out == 'false\ntrue'
 }
 
 fn test_select_receive_assignment_rejections() {
@@ -2592,14 +2470,6 @@ fn main() {
 	assert out == '7'
 }
 
-fn test_array_return_and_alias_builtin_runtime() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'array_return_and_alias_builtin_runtime', [
-		ReviewRuntimeCase{'array_alias_free_builtin', 'import strings\n\nfn main() {\n\tmut b := strings.new_builder(4)\n\tb.write_string("ok")\n\tunsafe { b.free() }\n\tprintln("ok")\n}\n', 'ok'},
-		ReviewRuntimeCase{'discard_array_return_no_context', "fn values() []string {\n\treturn ['a', 'b']\n}\n\nfn main() {\n\t_ = values()\n\tprintln('ok')\n}\n", 'ok'},
-	])
-}
-
 fn test_dynamic_enum_array_literal_keeps_enum_element_width() {
 	v3_bin := build_v3()
 	out, c_source := run_good_with_c(v3_bin, 'dynamic_enum_array_literal_width_run', 'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
@@ -2831,9 +2701,9 @@ fn free_strings() {
 	assert !free_strings_body.contains('string__free(&s);'), free_strings_body
 }
 
-fn test_constant_dependencies_and_enum_members() {
+fn test_constants_and_indexed_scalar_runtime() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'constant_dependencies_and_enum_members', [
+	run_good_module_batch(v3_bin, 'constants_and_indexed_scalar_runtime', [
 		ReviewRuntimeCase{'assert_capture_inferred_wide_const_type', 'type Duration = i64
 
 const nanosecond = Duration(1)
@@ -2896,6 +2766,34 @@ fn main() {
 	println(Permission.b.str())
 }
 ', 'Permission{.a}'},
+		ReviewRuntimeCase{'indexed_shift_assign_oversized_counts', 'struct Counter {
+mut:
+	value int
+}
+
+fn next(mut calls Counter) int {
+	calls.value++
+	return 0
+}
+
+fn shift(mut calls Counter) u64 {
+	calls.value++
+	return 64
+}
+
+fn main() {
+	mut calls := Counter{}
+	mut left := [u64(1)]
+	left[next(mut calls)] <<= shift(mut calls)
+	println(int_str(calls.value))
+	println(left[0].str())
+	mut right := [u64(8)]
+	right[next(mut calls)] >>= shift(mut calls)
+	println(int_str(calls.value))
+	println(right[0].str())
+}
+', '2\n0\n4\n0'},
+		ReviewRuntimeCase{'string_index_type_is_u8', "fn main() {\n\ts := 'ABC'\n\tprintln(typeof(s[0]).name)\n\tprintln('\${s[2]}')\n}\n", 'u8\n67'},
 	])
 }
 
@@ -4105,11 +4003,22 @@ fn main() {
 	assert out == '2'
 }
 
-fn test_empty_interface_box_type_ids() {
+fn test_empty_interface_box_ids_and_equality() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'empty_interface_box_type_ids', [
+	run_good_module_batch(v3_bin, 'empty_interface_box_ids_and_equality', [
 		ReviewRuntimeCase{'empty_interface_alias_type_id', 'interface Any {}\n\ntype MyInt = int\n\nfn main() {\n\tvalue := MyInt(1)\n\ta := Any(value)\n\tprintln((a is MyInt).str())\n\tprintln((a is int).str())\n\tplain := int(2)\n\tb := Any(plain)\n\tprintln((b is MyInt).str())\n\tprintln((b is int).str())\n}\n', 'true\ntrue\ntrue\ntrue'},
 		ReviewRuntimeCase{'empty_interface_enum_type_id', 'interface Any {}\n\nenum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tx := Any(Color.red)\n\tprintln((x is Color).str())\n\tprintln((x is int).str())\n}\n', 'true\nfalse'},
+		ReviewRuntimeCase{'empty_interface_unregistered_payload_equality', 'interface Any {}
+
+fn same(left Any, right Any) bool {
+	return left == right
+}
+
+fn main() {
+	println(same(Any([1]), Any([2])).str())
+	println(same(Any(1), Any(1)).str())
+}
+', 'false\ntrue'},
 	])
 }
 
@@ -4828,9 +4737,9 @@ fn main() {
 	assert out == '73'
 }
 
-fn test_latest_pr_review_codegen_regressions() {
+fn test_codegen_and_ierror_value_equality() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'codegen_regressions', [
+	run_good_module_batch(v3_bin, 'codegen_and_ierror_value_equality', [
 		ReviewRuntimeCase{
 			name:     'parenthesized_small_int_comparison'
 			source:   'fn main() {
@@ -5088,6 +4997,68 @@ fn main() {
 "
 			expected: 'pointer\nalias'
 		},
+		ReviewRuntimeCase{'ierror_aggregate_equality_message_code', 'struct Box {
+	err IError
+}
+
+fn main() {
+	first := Box{
+		err: error_with_code("same", 1)
+	}
+	different_message := Box{
+		err: error_with_code("different", 1)
+	}
+	different_code := Box{
+		err: error_with_code("same", 2)
+	}
+	equal := Box{
+		err: error_with_code("same", 1)
+	}
+	println((first == different_message).str())
+	println((first == different_code).str())
+	println((first == equal).str())
+}
+', 'false\nfalse\ntrue'},
+		ReviewRuntimeCase{'ierror_aggregate_equality_custom_dispatch_roots', 'struct CustomError {
+	message string
+	n       int
+}
+
+fn (err CustomError) msg() string {
+	return err.message
+}
+
+fn (err CustomError) code() int {
+	return err.n
+}
+
+struct Box {
+	err IError
+}
+
+fn main() {
+	first := Box{
+		err: CustomError{
+			message: "first"
+			n: 1
+		}
+	}
+	different := Box{
+		err: CustomError{
+			message: "different"
+			n: 2
+		}
+	}
+	equal := Box{
+		err: CustomError{
+			message: "first"
+			n: 1
+		}
+	}
+	println((first == different).str())
+	println((first == equal).str())
+}
+', 'false\ntrue'},
 	])
 }
 
@@ -5125,96 +5096,6 @@ fn main() {
 }
 ")
 	assert out == 'platform|custom'
-}
-
-fn test_index_overloads_and_interface_upcasts() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'index_overloads_and_interface_upcasts', [
-		ReviewRuntimeCase{'overloaded_index_compound_assignment_caches_operands', 'struct IntList {
-mut:
-	values []int
-}
-
-fn (l IntList) [] (index int) int {
-	return l.values[index]
-}
-
-fn (mut l IntList) []= (index int, value int) {
-	l.values[index] = value
-}
-
-struct Env {
-mut:
-	list_index_calls int
-	index_calls      int
-}
-
-fn (mut e Env) list_idx() int {
-	e.list_index_calls++
-	return 0
-}
-
-fn (mut e Env) idx() int {
-	n := e.index_calls
-	e.index_calls++
-	return n
-}
-
-fn main() {
-	mut env := Env{}
-	mut lists := [IntList{
-			values: [1, 20]
-		}]
-	lists[env.list_idx()][env.idx()] += 10
-	println(int_str(env.list_index_calls) + "," + int_str(env.index_calls))
-	println(int_str(lists[0].values[0]) + "," + int_str(lists[0].values[1]))
-}
-', '1,1\n11,20'},
-		ReviewRuntimeCase{'generic_overloaded_index_specialized_methods', 'struct Box[T] {
-mut:
-	items []T
-}
-
-fn (b Box[T]) [] (index int) T {
-	return b.items[index]
-}
-
-fn (mut b Box[T]) []= (index int, value T) {
-	b.items[index] = value
-}
-
-fn main() {
-	mut b := Box[int]{
-		items: [1, 2]
-	}
-	println(int_str(b[0]))
-	b[1] = 7
-	b[0] += 3
-	println(int_str(b[0]) + "," + int_str(b[1]))
-}
-', '1\n4,7'},
-		ReviewRuntimeCase{'explicit_generic_method_index_callee', 'struct Tool {}
-
-struct Config {
-	x int
-}
-
-fn (t Tool) pick[T](value T) T {
-	return value
-}
-
-fn main() {
-	tool := Tool{}
-	println(int_str(tool.pick[int](7)))
-	cfg := tool.pick[Config](x: 9)
-	println(int_str(cfg.x))
-}
-', '7\n9'},
-		ReviewRuntimeCase{'review_generic_index_overload_specializes', 'struct Box[T] {\nmut:\n\tvalues []T\n}\n\nfn (b Box[T]) [] (i int) T {\n\treturn b.values[i]\n}\n\nfn (mut b Box[T]) []= (i int, value T) {\n\tb.values[i] = value\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tvalues: [1, 2]\n\t}\n\tprintln(b[1].str())\n\tb[1] = 9\n\tprintln(b[1].str())\n}\n', '2\n9'},
-		ReviewRuntimeCase{'review_explicit_generic_method_callee', 'interface Named {\n\tname() string\n}\n\nstruct Config {\n\tx int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) name() string {\n\treturn u.name\n}\n\nstruct Runner {}\n\nfn (r Runner) type_name[T]() string {\n\t_ = r\n\treturn typeof[T]().name\n}\n\nfn (r Runner) make[T](cfg T) T {\n\t_ = r\n\treturn cfg\n}\n\nfn (r Runner) pass[T](value T) T {\n\t_ = r\n\treturn value\n}\n\nfn main() {\n\tr := Runner{}\n\tprintln(r.type_name[int]())\n\tcfg := r.make[Config](x: 7)\n\tprintln(int_str(cfg.x))\n\tnamed := r.pass[Named](User{\n\t\tname: "Ada"\n\t})\n\tprintln(named.name())\n}\n', 'int\n7\nAda'},
-		ReviewRuntimeCase{'review_interface_rvalue_upcasts', 'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n', 'call\nif\nindex'},
-		ReviewRuntimeCase{'review_embedded_interface_fields_and_ptr_upcast', 'interface Base {\n\tname string\n\tlabel() string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name + ":label"\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn use_ptr(b &Base) string {\n\treturn b.name + ":" + b.label()\n}\n\nfn describe(base Base) string {\n\treturn match base {\n\t\tChild { base.name + ":" + base.child().str() }\n\t\telse { "else" }\n\t}\n}\n\nfn main() {\n\tchild := Child(User{\n\t\tname: "Ada"\n\t})\n\tbase := Base(User{\n\t\tname: "Bea"\n\t})\n\tprintln(child.name)\n\tprintln(use_ptr(child))\n\tprintln(describe(base))\n}\n', 'Ada\nAda:Ada:label\nBea:3'},
-	])
 }
 
 fn test_overloaded_index_compound_assignment_uses_v_operators() {
@@ -5461,7 +5342,7 @@ fn (mut d Dict) []= (key string, value int) {
 	d.values[key] = value
 }
 '
-	run_good_module_batch(v3_bin, 'index_setter_runtime', [
+	run_good_module_batch(v3_bin, 'index_overloads_and_setter_runtime', [
 		ReviewRuntimeCase{
 			name:     'overloaded_index_assignment_write_only_setter'
 			source:   setter_only_src + '
@@ -5490,6 +5371,90 @@ fn main() {
 '
 			expected: '9'
 		},
+		ReviewRuntimeCase{'overloaded_index_compound_assignment_caches_operands', 'struct IntList {
+mut:
+	values []int
+}
+
+fn (l IntList) [] (index int) int {
+	return l.values[index]
+}
+
+fn (mut l IntList) []= (index int, value int) {
+	l.values[index] = value
+}
+
+struct Env {
+mut:
+	list_index_calls int
+	index_calls      int
+}
+
+fn (mut e Env) list_idx() int {
+	e.list_index_calls++
+	return 0
+}
+
+fn (mut e Env) idx() int {
+	n := e.index_calls
+	e.index_calls++
+	return n
+}
+
+fn main() {
+	mut env := Env{}
+	mut lists := [IntList{
+			values: [1, 20]
+		}]
+	lists[env.list_idx()][env.idx()] += 10
+	println(int_str(env.list_index_calls) + "," + int_str(env.index_calls))
+	println(int_str(lists[0].values[0]) + "," + int_str(lists[0].values[1]))
+}
+', '1,1\n11,20'},
+		ReviewRuntimeCase{'generic_overloaded_index_specialized_methods', 'struct Box[T] {
+mut:
+	items []T
+}
+
+fn (b Box[T]) [] (index int) T {
+	return b.items[index]
+}
+
+fn (mut b Box[T]) []= (index int, value T) {
+	b.items[index] = value
+}
+
+fn main() {
+	mut b := Box[int]{
+		items: [1, 2]
+	}
+	println(int_str(b[0]))
+	b[1] = 7
+	b[0] += 3
+	println(int_str(b[0]) + "," + int_str(b[1]))
+}
+', '1\n4,7'},
+		ReviewRuntimeCase{'explicit_generic_method_index_callee', 'struct Tool {}
+
+struct Config {
+	x int
+}
+
+fn (t Tool) pick[T](value T) T {
+	return value
+}
+
+fn main() {
+	tool := Tool{}
+	println(int_str(tool.pick[int](7)))
+	cfg := tool.pick[Config](x: 9)
+	println(int_str(cfg.x))
+}
+', '7\n9'},
+		ReviewRuntimeCase{'review_generic_index_overload_specializes', 'struct Box[T] {\nmut:\n\tvalues []T\n}\n\nfn (b Box[T]) [] (i int) T {\n\treturn b.values[i]\n}\n\nfn (mut b Box[T]) []= (i int, value T) {\n\tb.values[i] = value\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tvalues: [1, 2]\n\t}\n\tprintln(b[1].str())\n\tb[1] = 9\n\tprintln(b[1].str())\n}\n', '2\n9'},
+		ReviewRuntimeCase{'review_explicit_generic_method_callee', 'interface Named {\n\tname() string\n}\n\nstruct Config {\n\tx int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) name() string {\n\treturn u.name\n}\n\nstruct Runner {}\n\nfn (r Runner) type_name[T]() string {\n\t_ = r\n\treturn typeof[T]().name\n}\n\nfn (r Runner) make[T](cfg T) T {\n\t_ = r\n\treturn cfg\n}\n\nfn (r Runner) pass[T](value T) T {\n\t_ = r\n\treturn value\n}\n\nfn main() {\n\tr := Runner{}\n\tprintln(r.type_name[int]())\n\tcfg := r.make[Config](x: 7)\n\tprintln(int_str(cfg.x))\n\tnamed := r.pass[Named](User{\n\t\tname: "Ada"\n\t})\n\tprintln(named.name())\n}\n', 'int\n7\nAda'},
+		ReviewRuntimeCase{'review_interface_rvalue_upcasts', 'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n', 'call\nif\nindex'},
+		ReviewRuntimeCase{'review_embedded_interface_fields_and_ptr_upcast', 'interface Base {\n\tname string\n\tlabel() string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name + ":label"\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn use_ptr(b &Base) string {\n\treturn b.name + ":" + b.label()\n}\n\nfn describe(base Base) string {\n\treturn match base {\n\t\tChild { base.name + ":" + base.child().str() }\n\t\telse { "else" }\n\t}\n}\n\nfn main() {\n\tchild := Child(User{\n\t\tname: "Ada"\n\t})\n\tbase := Base(User{\n\t\tname: "Bea"\n\t})\n\tprintln(child.name)\n\tprintln(use_ptr(child))\n\tprintln(describe(base))\n}\n', 'Ada\nAda:Ada:label\nBea:3'},
 	])
 	run_bad_module_batch(v3_bin, 'index_setter_rejections', [
 		ReviewRejection{
@@ -5761,9 +5726,9 @@ fn main() {
 	assert out == '2'
 }
 
-fn test_interface_fields_and_embedded_base_arguments() {
+fn test_interface_fields_and_object_identity() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_fields_and_embedded_base_arguments', [
+	run_good_module_batch(v3_bin, 'interface_fields_and_object_identity', [
 		ReviewRuntimeCase{'interface_rvalue_upcast_to_embedded_base_argument', 'interface Base {
 	value() int
 }
@@ -5833,6 +5798,90 @@ fn main() {
 	println(file.metadata.links)
 }
 ', '2'},
+		ReviewRuntimeCase{'smartcast_interface_identity', 'interface Resource {
+mut:
+	set(int)
+	get() int
+}
+
+interface Socket {
+mut:
+	set(int)
+	get() int
+	extra() int
+}
+
+struct UnixSocket {
+mut:
+	n int
+}
+
+fn (mut socket UnixSocket) set(n int) {
+	socket.n = n
+}
+
+fn (socket UnixSocket) get() int {
+	return socket.n
+}
+
+fn (socket UnixSocket) extra() int {
+	return 9
+}
+
+fn as_socket(mut resource Resource) &Socket {
+	if mut resource is UnixSocket {
+		return &Socket(resource)
+	}
+	panic("not a socket")
+}
+
+fn main() {
+	mut concrete := &UnixSocket{n: 1}
+	mut resource := Resource(concrete)
+	mut socket := as_socket(mut resource)
+	socket.set(2)
+	println(concrete.n)
+	println(resource.get())
+	println(socket.get())
+}
+', '2\n2\n2'},
+		ReviewRuntimeCase{'unsafe_block_pointer_interface_identity', 'interface Resource {
+mut:
+	set(int)
+	get() int
+}
+
+struct Concrete {
+mut:
+	value int
+}
+
+fn (mut concrete Concrete) set(value int) {
+	concrete.value = value
+}
+
+fn (concrete Concrete) get() int {
+	return concrete.value
+}
+
+struct Node {
+mut:
+	resource &Resource = unsafe { nil }
+}
+
+fn (mut concrete Concrete) install(mut node Node) {
+	node.resource = unsafe { concrete }
+}
+
+fn main() {
+	mut concrete := &Concrete{value: 1}
+	mut node := Node{}
+	concrete.install(mut node)
+	concrete.set(2)
+	println(concrete.value)
+	println(node.resource.get())
+}
+', '2\n2'},
 	])
 }
 
@@ -6702,9 +6751,9 @@ fn main() {
 	])
 }
 
-fn test_map_retained_local_addresses() {
+fn test_map_retained_and_fresh_aliases() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'map_retained_local_addresses', [
+	run_good_module_batch(v3_bin, 'map_retained_and_fresh_aliases', [
 		ReviewRuntimeCase{
 			name:     'map_retains_address_of_local_after_return'
 			source:   'struct Item {
@@ -6770,6 +6819,15 @@ fn main() {
 '
 			expected: '11\n22\n33'
 		},
+		ReviewRuntimeCase{'unsafe_map_reference_alias', 'fn main() {
+	mut original := {
+		"value": 1
+	}
+	mut alias := unsafe { original }
+	copy := alias
+	println(copy.len)
+}
+', '1'},
 	])
 }
 
@@ -7370,94 +7428,6 @@ fn main() {
 	assert compile.output.contains('generic struct cannot be used in non-generic function'), compile.output
 }
 
-fn test_recursive_str_implicit_and_inactive_paths() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_implicit_and_inactive_paths', [
-		ReviewRuntimeCase{'recursive_str_unreachable_short_circuit_call', 'struct Item {}
-
-fn (item Item) str() string {
-	if false && item.str() == "never" {
-		return "unreachable"
-	}
-	if true || item.str() == "never" {
-		return "ok"
-	}
-	return "unreachable"
-}
-
-fn main() {
-	println(Item{}.str())
-}
-', 'ok'},
-		ReviewRuntimeCase{'recursive_str_inactive_comptime_call', 'struct Item {}
-
-fn (item Item) str() string {
-	$if threads {
-		return item.str()
-	} $else {
-		return "ok"
-	}
-}
-
-fn main() {
-	println(Item{}.str())
-}
-', 'ok'},
-		ReviewRuntimeCase{'recursive_str_unreachable_assert_message', 'struct Item {}
-
-fn (item Item) str() string {
-	assert true, item.str()
-	return "ok"
-}
-
-fn main() {
-	println(Item{}.str())
-}
-', 'ok'},
-		ReviewRuntimeCase{'recursive_str_print_progressed_receiver', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	mut next := item
-	next.remaining--
-	print(next)
-	return ""
-}
-
-fn main() {
-	print(Item{
-		remaining: 2
-	}.str())
-}
-', ''},
-		ReviewRuntimeCase{'recursive_str_interpolated_progressed_receiver', 'struct Item {
-mut:
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	mut next := item
-	next.remaining--
-	return "\${next}"
-}
-
-fn main() {
-	print(Item{
-		remaining: 2
-	}.str())
-}
-', ''},
-	])
-}
-
 fn test_recursive_str_comptime_if_uses_selected_branch() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'recursive_str_selected_comptime_progress', 'struct Item {
@@ -7785,9 +7755,9 @@ fn (item ReversedAssignmentItem) str() string {
 	])
 }
 
-fn test_recursive_str_control_flow_runtime() {
+fn test_recursive_str_control_flow_and_inactive_paths() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_control_flow_runtime', [
+	run_good_module_batch(v3_bin, 'recursive_str_control_flow_and_inactive_paths', [
 		ReviewRuntimeCase{'recursive_str_progressed_invoked_helper_call', 'struct Item {
 mut:
 	remaining int
@@ -8012,6 +7982,88 @@ fn main() {
 	}.str())
 }
 ', 'done'},
+		ReviewRuntimeCase{'recursive_str_unreachable_short_circuit_call', 'struct Item {}
+
+fn (item Item) str() string {
+	if false && item.str() == "never" {
+		return "unreachable"
+	}
+	if true || item.str() == "never" {
+		return "ok"
+	}
+	return "unreachable"
+}
+
+fn main() {
+	println(Item{}.str())
+}
+', 'ok'},
+		ReviewRuntimeCase{'recursive_str_inactive_comptime_call', 'struct Item {}
+
+fn (item Item) str() string {
+	$if threads {
+		return item.str()
+	} $else {
+		return "ok"
+	}
+}
+
+fn main() {
+	println(Item{}.str())
+}
+', 'ok'},
+		ReviewRuntimeCase{'recursive_str_unreachable_assert_message', 'struct Item {}
+
+fn (item Item) str() string {
+	assert true, item.str()
+	return "ok"
+}
+
+fn main() {
+	println(Item{}.str())
+}
+', 'ok'},
+		ReviewRuntimeCase{'recursive_str_print_progressed_receiver', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut next := item
+	next.remaining--
+	print(next)
+	return ""
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+', ''},
+		ReviewRuntimeCase{'recursive_str_interpolated_progressed_receiver', 'struct Item {
+mut:
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	mut next := item
+	next.remaining--
+	return "\${next}"
+}
+
+fn main() {
+	print(Item{
+		remaining: 2
+	}.str())
+}
+', ''},
 	])
 }
 
@@ -8432,9 +8484,9 @@ fn main() {
 	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
 }
 
-fn test_recursive_str_array_and_child_values() {
+fn test_recursive_str_array_struct_and_child_progress() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_array_and_child_values', [
+	run_good_module_batch(v3_bin, 'recursive_str_array_struct_and_child_progress', [
 		ReviewRuntimeCase{'recursive_str_array_append_progress', 'struct Item {
 mut:
 	items []int
@@ -8663,6 +8715,86 @@ fn main() {
 '
 			expected: '[]'
 		},
+		ReviewRuntimeCase{'recursive_str_changed_struct_literal', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	return Item{
+		remaining: item.remaining - 1
+	}.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+', ''},
+		ReviewRuntimeCase{'recursive_str_progressed_struct_update', 'struct Item {
+	remaining int
+}
+
+fn (item Item) str() string {
+	if item.remaining <= 0 {
+		return ""
+	}
+	return Item{
+		...item
+		remaining: item.remaining - 1
+	}.str()
+}
+
+fn main() {
+	println(Item{
+		remaining: 2
+	}.str())
+}
+', ''},
+		ReviewRuntimeCase{'recursive_str_guarded_bool_struct_update', 'struct Item {
+	done bool
+}
+
+fn (item Item) str() string {
+	if item.done {
+		return "done"
+	}
+	return Item{
+		...item
+		done: true
+	}.str()
+}
+
+fn main() {
+	println(Item{}.str())
+}
+', 'done'},
+		ReviewRuntimeCase{'recursive_str_guarded_enum_struct_update', 'enum State {
+	active
+	done
+}
+
+struct Item {
+	state State
+}
+
+fn (item Item) str() string {
+	if item.state == .done {
+		return "done"
+	}
+	return Item{
+		...item
+		state: .done
+	}.str()
+}
+
+fn main() {
+	println(Item{}.str())
+}
+', 'done'},
 	])
 }
 
@@ -9424,20 +9556,6 @@ fn main() {
 	])
 }
 
-fn test_fresh_unsafe_map_is_not_reference_alias() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'unsafe_map_reference_alias', 'fn main() {
-	mut original := {
-		"value": 1
-	}
-	mut alias := unsafe { original }
-	copy := alias
-	println(copy.len)
-}
-')
-	assert out == '1'
-}
-
 fn test_map_alias_branch_and_control_flow_rejections() {
 	v3_bin := build_v3()
 	run_bad_module_batch(v3_bin, 'map_alias_branch_and_control_flow_rejections', [
@@ -9595,92 +9713,6 @@ fn main() {
 	}
 }
 ', 'cannot copy map: call `move` or `clone` method (or use a reference)'},
-	])
-}
-
-fn test_recursive_str_struct_update_progress() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'recursive_str_struct_update_progress', [
-		ReviewRuntimeCase{'recursive_str_changed_struct_literal', 'struct Item {
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	return Item{
-		remaining: item.remaining - 1
-	}.str()
-}
-
-fn main() {
-	println(Item{
-		remaining: 2
-	}.str())
-}
-', ''},
-		ReviewRuntimeCase{'recursive_str_progressed_struct_update', 'struct Item {
-	remaining int
-}
-
-fn (item Item) str() string {
-	if item.remaining <= 0 {
-		return ""
-	}
-	return Item{
-		...item
-		remaining: item.remaining - 1
-	}.str()
-}
-
-fn main() {
-	println(Item{
-		remaining: 2
-	}.str())
-}
-', ''},
-		ReviewRuntimeCase{'recursive_str_guarded_bool_struct_update', 'struct Item {
-	done bool
-}
-
-fn (item Item) str() string {
-	if item.done {
-		return "done"
-	}
-	return Item{
-		...item
-		done: true
-	}.str()
-}
-
-fn main() {
-	println(Item{}.str())
-}
-', 'done'},
-		ReviewRuntimeCase{'recursive_str_guarded_enum_struct_update', 'enum State {
-	active
-	done
-}
-
-struct Item {
-	state State
-}
-
-fn (item Item) str() string {
-	if item.state == .done {
-		return "done"
-	}
-	return Item{
-		...item
-		state: .done
-	}.str()
-}
-
-fn main() {
-	println(Item{}.str())
-}
-', 'done'},
 	])
 }
 
@@ -10133,96 +10165,6 @@ fn test_global_beats_unrelated_same_named_const() {
 		'main.v':              'module main\n\nimport consumer\nimport memory\nimport unrelated\n\nfn main() {\n\t_ = memory.value()\n\tprintln(consumer.pages(unrelated.page_size))\n}\n'
 	}, 'main.v')
 	assert out == '4'
-}
-
-fn test_interface_object_identity() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_object_identity', [
-		ReviewRuntimeCase{'smartcast_interface_identity', 'interface Resource {
-mut:
-	set(int)
-	get() int
-}
-
-interface Socket {
-mut:
-	set(int)
-	get() int
-	extra() int
-}
-
-struct UnixSocket {
-mut:
-	n int
-}
-
-fn (mut socket UnixSocket) set(n int) {
-	socket.n = n
-}
-
-fn (socket UnixSocket) get() int {
-	return socket.n
-}
-
-fn (socket UnixSocket) extra() int {
-	return 9
-}
-
-fn as_socket(mut resource Resource) &Socket {
-	if mut resource is UnixSocket {
-		return &Socket(resource)
-	}
-	panic("not a socket")
-}
-
-fn main() {
-	mut concrete := &UnixSocket{n: 1}
-	mut resource := Resource(concrete)
-	mut socket := as_socket(mut resource)
-	socket.set(2)
-	println(concrete.n)
-	println(resource.get())
-	println(socket.get())
-}
-', '2\n2\n2'},
-		ReviewRuntimeCase{'unsafe_block_pointer_interface_identity', 'interface Resource {
-mut:
-	set(int)
-	get() int
-}
-
-struct Concrete {
-mut:
-	value int
-}
-
-fn (mut concrete Concrete) set(value int) {
-	concrete.value = value
-}
-
-fn (concrete Concrete) get() int {
-	return concrete.value
-}
-
-struct Node {
-mut:
-	resource &Resource = unsafe { nil }
-}
-
-fn (mut concrete Concrete) install(mut node Node) {
-	node.resource = unsafe { concrete }
-}
-
-fn main() {
-	mut concrete := &Concrete{value: 1}
-	mut node := Node{}
-	concrete.install(mut node)
-	concrete.set(2)
-	println(concrete.value)
-	println(node.resource.get())
-}
-', '2\n2'},
-	])
 }
 
 // A `@[_naked]` function is its own prologue and epilogue: without
