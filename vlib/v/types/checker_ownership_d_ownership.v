@@ -8154,7 +8154,7 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	if tc.ownership_reject_sum_aggregate_store(lhs_name, rhs_id, lhs_type, assign_id) { return }
 	if tc.ownership_transfer_inner_sum_local(lhs_name, rhs_id, lhs_type, assign_id) { return }
 	if tc.ownership_mark_sum_borrow(lhs_name, rhs_id, lhs_type, assign_id) { return }
-	tc.ownership_retain_scoped_factory_storage(lhs_name, rhs_id, destination_type, assign_id)
+	tc.ownership_retain_interface_payload_loans(lhs_name, rhs_id, destination_type, assign_id)
 	if tc.ownership_expr_is_borrow(rhs_id) {
 		if tc.ownership_sum_value_creates_owner(rhs_id, lhs_type) {
 			tc.ownership_mark_owned(lhs_name, lhs_type, assign_id)
@@ -9469,7 +9469,7 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 	if tc.ownership_mark_sum_borrow(target_name, id, target_type, pos) {
 		return tc.ownership_sum_name_has_owner(target_name)
 	}
-	tc.ownership_retain_scoped_factory_storage(target_name, id, target_type, pos)
+	tc.ownership_retain_interface_payload_loans(target_name, id, target_type, pos)
 	tc.ownership_clone_escaping_string_view(expr_id)
 	match tc.ownership_borrowed_projection_action(expr_id, pos) {
 		.string_view {
@@ -11587,6 +11587,30 @@ fn (mut tc TypeChecker) ownership_retain_boxed_borrow(target string, arg_id flat
 		}
 	}
 	if !inherited {
+		tc.ownership_add_boxed_borrow(target, source, pos)
+	}
+}
+
+fn (mut tc TypeChecker) ownership_retain_interface_payload_loans(target string, value flat.NodeId, typ Type, pos flat.NodeId) {
+	iface := unalias_type(typ)
+	if iface !is Interface {
+		return
+	}
+	if !tc.ownership_scoped_factory_interface(iface.name_id) {
+		id := tc.ownership_unwrap_expr(value)
+		node := tc.a.node(id)
+		payload := if node.kind == .cast_expr && node.children_count == 1
+			&& cast_target_interface(tc.parse_type(node.source_value_id())) != none {
+			tc.a.child(node, 0)
+		} else {
+			id
+		}
+		// Loans from an existing box already follow its move or call result.
+		if cast_target_interface(tc.resolve_type(payload)) != none {
+			return
+		}
+	}
+	for source in tc.ownership_boxed_payload_borrow_sources(value, '', 0) {
 		tc.ownership_add_boxed_borrow(target, source, pos)
 	}
 }

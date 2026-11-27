@@ -331,10 +331,10 @@ by the interface, its result keeps the loans carried by the receiver. For exampl
 data carried by the factory. A forwarding function carries the same loans to its caller.
 A method result can also carry a loan from an argument that names the same lifetime.
 
-An interface box returned from a function can retain references in the concrete struct
-it boxes. Those field loans follow the result through local bindings and forwarding
-calls. The referenced storage must outlive the box, and its owner cannot replace the
-storage while the box uses it.
+An interface box retains references held by its concrete value. Those loans follow the
+box through local bindings, field assignments, and forwarding calls, whether it was
+created by an explicit cast or an implicit interface conversion. The referenced storage
+must outlive the box, and its owner cannot replace the storage while the box uses it.
 
 Multiple immutable borrows are allowed:
 

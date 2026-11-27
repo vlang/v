@@ -309,18 +309,6 @@ fn (tc &TypeChecker) ownership_scoped_factory_interface(iface u32) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) ownership_retain_scoped_factory_storage(target string, value flat.NodeId, typ Type, pos flat.NodeId) {
-	if tc.ownership.scoped_factory_contracts.len == 0 {
-		return
-	}
-	factory := unalias_type(typ)
-	if factory is Interface && tc.ownership_scoped_factory_interface(factory.name_id) {
-		for source in tc.ownership_boxed_payload_borrow_sources(value, '', 0) {
-			tc.ownership_add_boxed_borrow(target, source, pos)
-		}
-	}
-}
-
 fn (tc &TypeChecker) ownership_scoped_factory_conforms(name string, contract string) bool {
 	if isnil(tc.ownership) {
 		return false
