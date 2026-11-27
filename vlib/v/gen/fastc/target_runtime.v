@@ -10,9 +10,14 @@ import v.token
 // and the libc bindings supplied by target headers when requested.
 fn fastc_target_runtime_preferences(prefs &pref.Preferences) pref.Preferences {
 	mut scoped := *prefs
-	if 'fastc_backend' !in scoped.user_defines {
+	// FastC's runtime does not support the builtin arena hook table.
+	if 'fastc_backend' !in scoped.user_defines || 'no_builtin_arena' !in scoped.user_defines {
 		scoped.user_defines = scoped.user_defines.clone()
-		scoped.user_defines << 'fastc_backend'
+		for define in ['fastc_backend', 'no_builtin_arena'] {
+			if define !in scoped.user_defines {
+				scoped.user_defines << define
+			}
+		}
 	}
 	if scoped.target_libc_headers {
 		scoped.user_defines = scoped.user_defines.clone()

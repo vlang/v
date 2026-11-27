@@ -3042,7 +3042,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut extern_indexes := []int{}
 	mut extern_texts := []string{}
 	mut define_texts := []string{}
-	fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, preamble)
+	fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts,
+		preamble + '\n#define _unlikely_(condition) (condition)\n')
 	if prefs.building_v && !prefs.selfhost {
 		payloads := fastc_wait_embedded_payloads(mut pending_payloads)!
 		mut names := payloads.keys()
