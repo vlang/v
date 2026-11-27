@@ -2704,6 +2704,24 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			}
 			mut left := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
 			mut right := g.enum_field_expr_value_with_enum(g.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
+			// Narrow integer arithmetic wraps at the operand type, matching V's
+			// runtime semantics instead of being evaluated in `int`
+			// (see issue #29393).
+			if node.op in [.plus, .minus, .mul] && !isnil(g.tc) {
+				left_typ := types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).source_type_id()
+				right_typ := types.unalias_type(g.usable_expr_type(g.a.child(&node, 1))).source_type_id()
+				if left_typ == right_typ && left_typ in [flat.source_type_u8, flat.source_type_i8,
+					flat.source_type_id('byte'), flat.source_type_u16, flat.source_type_i16,
+					flat.source_type_u32, flat.source_type_i32] {
+					if node.op == .plus {
+						return g.enum_comptime_integer_cast(left + right, left_typ)
+					}
+					if node.op == .minus {
+						return g.enum_comptime_integer_cast(left - right, left_typ)
+					}
+					return g.enum_comptime_integer_cast(left * right, left_typ)
+				}
+			}
 			if node.op in [.div, .mod] && !isnil(g.tc) {
 				typ := types.unalias_type(g.usable_expr_type(id)).source_type_id()
 				left = g.enum_comptime_integer_cast(left, typ)
