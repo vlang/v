@@ -107,7 +107,11 @@ ${after}'
 		result := check_capture('aggregate_capture', accepted, serial)
 		assert result.exit_code == 0, result.output
 	}
-	check_capture_rejections('aggregate_capture_rejections', declarations, rejections)!
+	rejections << capture_descendant_rejections()
+	check_capture_rejections(declarations + '
+struct Bundle { values []string }
+fn invoke_int(callback fn () int) int { return callback() }
+', rejections)!
 }
 
 fn test_captured_aggregate_descendants_are_released_once() {
@@ -175,7 +179,7 @@ struct CaptureRejection {
 	expected string
 }
 
-fn test_capture_rejects_moved_or_borrowed_descendants_and_second_capture() {
+fn capture_descendant_rejections() []CaptureRejection {
 	mut cases := []CaptureRejection{}
 	for lambda in [false, true] {
 		for map_root in [false, true] {
@@ -186,7 +190,7 @@ fn test_capture_rejects_moved_or_borrowed_descendants_and_second_capture() {
 			}
 			member := if map_root { 'entries["one"]' } else { 'entries.values' }
 			capture := if lambda {
-				'assert invoke(|| ${member}.len) == 1'
+				'assert invoke_int(|| ${member}.len) == 1'
 			} else {
 				// Explicitly capture without reading the moved child inside the body.
 				'callback := fn [entries] () {}\ncallback()'
@@ -195,7 +199,7 @@ fn test_capture_rejects_moved_or_borrowed_descendants_and_second_capture() {
 			cases << CaptureRejection{'last_descendant_${lambda}_${map_root}', body, 'use of moved value: `entries'}
 		}
 		capture := if lambda {
-			'assert invoke(|| entries.values.len) == 1'
+			'assert invoke_int(|| entries.values.len) == 1'
 		} else {
 			'callback := fn [entries] () {}\ncallback()'
 		}
@@ -215,15 +219,11 @@ fn test_capture_rejects_moved_or_borrowed_descendants_and_second_capture() {
 			cases << CaptureRejection{'overlap_${lambda}_${borrowed}', body, expected}
 		}
 	}
-	declarations := 'struct Bundle { values []string }
-fn take_items(items []string) { assert items.len == 1 }
-fn invoke(callback fn () int) int { return callback() }
-'
-	check_capture_rejections('rejections', declarations, cases)!
+	return cases
 }
 
-fn check_capture_rejections(name string, declarations string, cases []CaptureRejection) ! {
-	batch := os.join_path(capture_tmp, name)
+fn check_capture_rejections(declarations string, cases []CaptureRejection) ! {
+	batch := os.join_path(capture_tmp, 'rejections')
 	os.mkdir(batch)!
 	mut calls := []string{cap: cases.len}
 	for case in cases {
