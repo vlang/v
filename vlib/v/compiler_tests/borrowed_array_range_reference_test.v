@@ -8,8 +8,8 @@ struct BorrowedRangeRejection {
 	expected string
 }
 
-fn test_borrowed_array_range_references_preserve_the_owner() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_array_range_reference_${os.getpid()}')
+fn test_borrowed_array_references_preserve_owners_and_parameter_headers() {
+	root := os.join_path(os.vtmp_dir(), 'borrowed_array_references_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
@@ -48,7 +48,7 @@ fn (value &Buffer) copy() []u8 {
  return value.bytes[1..3]
 }
 
-fn fill(mut bytes []u8, value u8) {
+fn fill_range(mut bytes []u8, value u8) {
  bytes[0] = value
 }
 
@@ -57,7 +57,7 @@ fn disturb_stack(seed int) int {
  return values[0] + values[3]
 }
 
-fn main() {
+fn check_range_owner() {
  mut owner := Buffer{bytes: [u8(1), 2, 3, 4]}
  address := unsafe { uint(owner.bytes.data) }
  {
@@ -68,12 +68,12 @@ fn main() {
   {
    mut second := owner.free_buffer(0)
    assert unsafe { uint(second.data) == address }
-   fill(mut second, 8)
+   fill_range(mut second, 8)
    assert owner.bytes[0] == 8
    assert second.len == 4
   }
   assert owner.bytes[0] == 8
-  fill(mut first, 9)
+  fill_range(mut first, 9)
   assert owner.bytes[1] == 9
   assert first.len == 3
  }
@@ -108,13 +108,69 @@ fn main() {
  assert owner.bytes[1] == 9
  assert copied[0] == 7
 }
+
+fn fill(mut dst []u8) {
+ dst_ptr := &dst
+ callback := fn [dst_ptr] () {
+  unsafe { (*dst_ptr)[0] = u8(9) }
+  for value in 0 .. 100 { unsafe { (*dst_ptr) << u8(value) } }
+ }
+ callback()
+ assert dst.len == 101
+ assert dst[0] == 9
+}
+fn parameter_reference[^a](mut values ^a []u8) &^a []u8 { return &values }
+struct Resource implements IClone, Drop { value int }
+fn (mut value Resource) drop() {}
+fn resource_reference[^a](mut values ^a []Resource) &^a []Resource { return &values }
+fn fill_slice(mut dst []u8) {
+ dst_ptr := &dst
+ callback := fn [dst_ptr] () { unsafe { (*dst_ptr)[0] = u8(8) } }
+ callback()
+}
+
+fn check_parameter_header() {
+ mut dst := [u8(1)]
+ {
+  reference := parameter_reference(mut dst)
+  assert voidptr(reference) == voidptr(&dst)
+  assert unsafe { reference.data == dst.data }
+ }
+ fill(mut dst)
+ assert dst.len == 101
+ assert dst[0] == 9
+ assert dst[100] == 99
+ fill_slice(mut dst[1..2])
+ assert dst[1] == 8
+ mut fixed := [u8(1), 2]!
+ fill_slice(mut fixed[..])
+ assert fixed[0] == 8
+ mut resources := [Resource{1}]
+ {
+  view := resource_reference(mut resources)
+  assert voidptr(view) == voidptr(&resources)
+  assert unsafe { view.data == resources.data }
+  assert unsafe { (*view)[0].value == 1 }
+ }
+ assert resources[0].value == 1
+}
+
+fn main() {
+ check_range_owner()
+ println("range owner")
+ check_parameter_header()
+ println("parameter header")
+}
 ')!
-	for mode in ['-no-parallel', ''] {
-		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+	for mode in [['-no-parallel'], []string{}] {
+		name := if mode.len > 0 { 'program_serial' } else { 'program_parallel' }
+		output := os.join_path(root, name + $if windows { '.exe' } $else { '' })
+		compile := os.exec([...borrowed_range_compiler_args, '-cc', 'clang', ...mode, '-o', output,
+			source])
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
-		run := os.execute(os.quoted_path(output))
+		run := os.exec([output])
 		assert run.exit_code == 0, '${mode}: ${run.output}'
+		assert run.output.trim_space().split_into_lines() == ['range owner', 'parameter header'], '${mode}: ${run.output}'
 	}
 }
 
@@ -325,66 +381,6 @@ fn main() {
 		cases << BorrowedRangeRejection{fixture, expected}
 	}
 	check_borrowed_range_rejections(root, cases)!
-}
-
-fn test_explicit_mutable_array_parameter_addresses_update_the_caller_header() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_mutable_array_header_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn fill(mut dst []u8) {
- dst_ptr := &dst
- callback := fn [dst_ptr] () {
-  unsafe { (*dst_ptr)[0] = u8(9) }
-  for value in 0 .. 100 { unsafe { (*dst_ptr) << u8(value) } }
- }
- callback()
- assert dst.len == 101
- assert dst[0] == 9
-}
-fn parameter_reference[^a](mut values ^a []u8) &^a []u8 { return &values }
-struct Resource implements IClone, Drop { value int }
-fn (mut value Resource) drop() {}
-fn resource_reference[^a](mut values ^a []Resource) &^a []Resource { return &values }
-fn fill_slice(mut dst []u8) {
- dst_ptr := &dst
- callback := fn [dst_ptr] () { unsafe { (*dst_ptr)[0] = u8(8) } }
- callback()
-}
-
-fn main() {
- mut dst := [u8(1)]
- {
-  reference := parameter_reference(mut dst)
-  assert voidptr(reference) == voidptr(&dst)
-  assert unsafe { reference.data == dst.data }
- }
- fill(mut dst)
- assert dst.len == 101
- assert dst[0] == 9
- assert dst[100] == 99
- fill_slice(mut dst[1..2])
- assert dst[1] == 8
- mut fixed := [u8(1), 2]!
- fill_slice(mut fixed[..])
- assert fixed[0] == 8
- mut resources := [Resource{1}]
- {
-  view := resource_reference(mut resources)
-  assert voidptr(view) == voidptr(&resources)
-  assert unsafe { view.data == resources.data }
-  assert unsafe { (*view)[0].value == 1 }
- }
- assert resources[0].value == 1
-}
-')!
-	for mode in ['-no-parallel', ''] {
-		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
-		assert compile.exit_code == 0, '${mode}: ${compile.output}'
-		run := os.execute(os.quoted_path(output))
-		assert run.exit_code == 0, '${mode}: ${run.output}'
-	}
 }
 
 fn test_mixed_mutable_array_reference_returns_keep_source_loans_live() {
