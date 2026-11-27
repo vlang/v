@@ -45,22 +45,6 @@ fn selective_import_compile(root string, bin string) os.Result {
 	})
 }
 
-fn selective_import_compile_run_with_extra(name string, main_src string, extra_files map[string]string) (string, string) {
-	root := selective_import_write_project_with_extra(name, main_src, extra_files)
-	return selective_import_compile_run_root(root)
-}
-
-fn selective_import_compile_run_root(root string) (string, string) {
-	defer { os.rmdir_all(root) or {} }
-	bin := os.join_path(root, 'out')
-	compile := selective_import_compile(root, bin)
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	generated := os.read_file(bin + '.c') or { panic(err) }
-	return run.output.trim_space(), generated
-}
-
 struct SelectiveImportCase {
 	name     string
 	source   string
@@ -266,8 +250,9 @@ pub fn sum(values ...int) int {
 	assert !generated.contains('mm__add_xy'), generated
 }
 
-fn test_json2_decode_calls_the_module_decoder() {
-	json2_output, json2_generated := selective_import_compile_run_with_extra('json2_decode', 'module main
+fn test_selective_import_module_homonyms() {
+	generated := selective_import_compile_batch('module_homonyms', [
+		SelectiveImportCase{'json2_decode', 'module main
 
 import json2
 
@@ -279,24 +264,8 @@ fn main() {
 	cfg := json2.decode[Config]("{\\"value\\":2}", json2.DecoderOptions{}) or { Config{value: 8} }
 	println(int_str(cfg.value))
 }
-', {
-		'json2/decode.v': 'module json2
-
-pub struct DecoderOptions {}
-
-pub fn decode[T](val string, params DecoderOptions) !T {
-	_ = val
-	_ = params
-	return T{}
-}
-'
-	})
-	assert json2_output == '0'
-	assert json2_generated.contains('json2__decode'), json2_generated
-}
-
-fn test_const_ref_expansion_uses_referenced_const_file_imports() {
-	output, generated := selective_import_compile_run_with_extra('const_ref_file_context', 'module main
+', '0'},
+		SelectiveImportCase{'const_ref_file_context', 'module main
 
 import y.other as json
 
@@ -308,7 +277,62 @@ const local_marker = json.Any{
 fn main() {
 	println(int_str(outer.value + local_marker.value))
 }
-', {
+', '42'},
+		SelectiveImportCase{'json2_encode_specialized', 'module main
+
+import json2
+
+struct User {
+	name string
+}
+
+fn main() {
+	println(json2.encode(User{name: "x"}, json2.EncoderOptions{}))
+}
+', 'pure-v'},
+		SelectiveImportCase{'fn_value_imported_homonym', 'module main
+
+import a { choose }
+import b
+
+fn main() {
+	f := choose
+	println(int_str(f()))
+}
+', '11'},
+		SelectiveImportCase{'module_homonym_signature', 'module main
+
+import foo
+
+fn value() int {
+	return 7
+}
+
+fn main() {
+	println(int_str(value()))
+	println(foo.value())
+}
+', '7\nfoo'},
+		SelectiveImportCase{'module_local_error_method_signature', 'module main
+
+import foo
+
+fn main() {
+	err := foo.make_error()
+	println(err.str())
+}
+', 'local'},
+	], {
+		'json2/decode.v':  'module json2
+
+pub struct DecoderOptions {}
+
+pub fn decode[T](val string, params DecoderOptions) !T {
+	_ = val
+	_ = params
+	return T{}
+}
+'
 		'b.v':             'module main
 
 import json2 as json
@@ -331,26 +355,7 @@ pub:
 	value int
 }
 '
-	})
-	assert output == '42'
-	assert generated.contains('json2__Any'), generated
-	assert generated.contains('other__Any'), generated
-}
-
-fn test_json2_encode_pure_v_is_specialized() {
-	output, generated := selective_import_compile_run_with_extra('json2_encode_specialized', 'module main
-
-import json2
-
-struct User {
-	name string
-}
-
-fn main() {
-	println(json2.encode(User{name: "x"}, json2.EncoderOptions{}))
-}
-', {
-		'json2/encode.v': 'module json2
+		'json2/encode.v':  'module json2
 
 pub struct EncoderOptions {}
 
@@ -360,21 +365,126 @@ pub fn encode[T](value T, options EncoderOptions) string {
 	return "pure-v"
 }
 '
-	})
-	assert output == 'pure-v'
-	assert generated.contains('json2__encode'), generated
+		'a/a.v':           'module a
+
+pub fn choose() int {
+	return 11
+}
+'
+		'b/b.v':           'module b
+
+pub fn choose() int {
+	return 99
+}
+'
+		'foo/foo.v':       'module foo
+
+pub fn value() string {
+	return "foo"
+}
+'
+		'foo/error.v':     'module foo
+
+pub struct Error {
+	message string
 }
 
-fn test_selective_import_inside_generic_clone_keeps_source_file_symbol() {
-	output, generated := selective_import_compile_run_with_extra('generic_clone_selective_import', 'module main
+pub fn make_error() Error {
+	return Error{
+		message: "local"
+	}
+}
+
+pub fn (err Error) msg() string {
+	return err.message
+}
+
+pub fn (err Error) str() string {
+	return err.msg()
+}
+'
+	})
+
+	assert generated.contains('json2__decode'), generated
+
+	assert generated.contains('json2__Any'), generated
+	assert generated.contains('other__Any'), generated
+
+	assert generated.contains('json2__encode'), generated
+
+	assert generated.contains('a__choose'), generated
+	assert !generated.contains('b__choose'), generated
+
+	assert generated.contains('i64 value(void);'), generated
+	assert generated.contains('string foo__value(void);'), generated
+	assert generated.contains('string foo__value(void) {'), generated
+	assert !generated.contains('i64 foo__value(void);'), generated
+
+	assert generated.contains('string foo__Error__msg(foo__Error err)'), generated
+	assert generated.contains('return foo__Error__msg(err);'), generated
+	assert !generated.contains('string foo__Error__msg(Error err)'), generated
+}
+
+fn test_selective_import_generic_file_scope() {
+	generated := selective_import_compile_batch('generic_file_scope', [
+		SelectiveImportCase{'generic_clone_selective_import', 'module main
 
 import worker
 
 fn main() {
 	println(int_str(worker.use_add[int](0, 2, 3)))
 }
-', {
-		'worker/worker.v': 'module worker
+', '5'},
+		SelectiveImportCase{'explicit_generic_selective_import', 'module main
+
+import util { id }
+import other
+
+fn main() {
+	println(int_str(id[int](1)))
+}
+', '1'},
+		SelectiveImportCase{'generic_clone_selective_import_fn_value', 'module main
+
+import worker
+
+fn main() {
+	println(int_str(worker.use_add_cb[int](0, 2, 3)))
+}
+', '5'},
+		SelectiveImportCase{'generic_clone_selective_import_type_signature', 'module main
+
+import worker
+
+fn main() {
+	p := worker.make_point[int](7)
+	println(int_str(worker.take_point[int](p, 2) + p.x))
+}
+', '10'},
+		SelectiveImportCase{'generic_struct_field_selective_import', 'module main
+
+import box { Box }
+import other
+
+fn main() {
+	b := Box[int]{value: 7}
+	o := other.Thing{v: 8}
+	println(int_str(b.value + o.v))
+}
+', '15'},
+		SelectiveImportCase{'generic_struct_method_signature_selective_import', 'module main
+
+import method_box { Box }
+import other
+
+fn main() {
+	b := Box[int]{value: 7}
+	_ := other.Thing{v: 1}
+	println(int_str(b.combine(b.thing)))
+}
+', '7'},
+	], {
+		'worker/worker.v':     'module worker
 
 import mymodules { add_xy }
 import other
@@ -384,56 +494,25 @@ pub fn use_add[T](marker T, x int, y int) int {
 	return add_xy(x, y)
 }
 '
-		'other/other.v':   'module other
+		'other/other.v':       'module other
 
 pub fn add_xy(x int, y int) int {
 	return x * 100 + y
 }
 '
-	})
-	assert output == '5'
-	assert generated.contains('mymodules__add_xy(x, y)'), generated
-	assert !generated.contains('other__add_xy(x, y)'), generated
-}
-
-fn test_selective_import_explicit_generic_call_keeps_selected_symbol() {
-	output, generated := selective_import_compile_run_with_extra('explicit_generic_selective_import', 'module main
-
-import util { id }
-import other
-
-fn main() {
-	println(int_str(id[int](1)))
-}
-', {
-		'util/util.v':   'module util
+		'util/util.v':         'module util
 
 pub fn id[T](x T) T {
 	return x
 }
 '
-		'other/other.v': 'module other
+		'other/identity.v':    'module other
 
 pub fn id[T](x T) T {
 	return x
 }
 '
-	})
-	assert output == '1'
-	assert generated.contains('util__id_T_v_int(1)'), generated
-	assert !generated.contains('other__id_T_v_int(1)'), generated
-}
-
-fn test_selective_import_fn_value_inside_generic_clone_keeps_source_file_symbol() {
-	output, generated := selective_import_compile_run_with_extra('generic_clone_selective_import_fn_value', 'module main
-
-import worker
-
-fn main() {
-	println(int_str(worker.use_add_cb[int](0, 2, 3)))
-}
-', {
-		'worker/worker.v': 'module worker
+		'worker/callback.v':   'module worker
 
 import mymodules { add_xy }
 import other
@@ -447,30 +526,7 @@ pub fn use_add_cb[T](marker T, x int, y int) int {
 	return takes(add_xy, x, y)
 }
 '
-		'other/other.v':   'module other
-
-pub fn add_xy(x int, y int) int {
-	return x * 100 + y
-}
-'
-	})
-	assert output == '5'
-	assert generated.contains('worker__takes(mymodules__add_xy, x, y)'), generated
-	assert !generated.contains('worker__takes(add_xy, x, y)'), generated
-	assert !generated.contains('worker__takes(other__add_xy, x, y)'), generated
-}
-
-fn test_selective_import_type_inside_generic_clone_signature_keeps_source_file_symbol() {
-	output, generated := selective_import_compile_run_with_extra('generic_clone_selective_import_type_signature', 'module main
-
-import worker
-
-fn main() {
-	p := worker.make_point[int](7)
-	println(int_str(worker.take_point[int](p, 2) + p.x))
-}
-', {
-		'worker/worker.v':     'module worker
+		'worker/point.v':      'module worker
 
 import geometry { Point }
 import pixels
@@ -501,43 +557,71 @@ pub:
 	x int
 }
 '
+		'types/types.v':       'module types
+
+pub struct Thing {
+pub:
+	v int
+}
+'
+		'other/thing.v':       'module other
+
+pub struct Thing {
+pub:
+	v int
+}
+'
+		'box/box.v':           'module box
+
+import types { Thing }
+
+pub struct Box[T] {
+pub:
+	thing Thing
+	value T
+}
+'
+		'method_box/box.v':    'module method_box
+
+import types { Thing }
+
+pub struct Box[T] {
+pub:
+	thing Thing
+	value T
+}
+
+pub fn (b Box[T]) combine(thing Thing) int {
+	return b.value + thing.v
+}
+'
 	})
-	assert output == '10'
+
+	assert generated.contains('mymodules__add_xy(x, y)'), generated
+	assert !generated.contains('other__add_xy(x, y)'), generated
+
+	assert generated.contains('util__id_T_v_int(1)'), generated
+	assert !generated.contains('other__id_T_v_int(1)'), generated
+
+	assert generated.contains('worker__takes(mymodules__add_xy, x, y)'), generated
+	assert !generated.contains('worker__takes(add_xy, x, y)'), generated
+	assert !generated.contains('worker__takes(other__add_xy, x, y)'), generated
+
 	assert generated.contains('geometry__Point worker__make_point_T_v_int(i64 x)'), generated
 	assert generated.contains('i64 worker__take_point_T_v_int(geometry__Point p, i64 x)'), generated
 	assert !generated.contains('\nPoint worker__make_point_T_v_int(i64 x)'), generated
 	assert !generated.contains('\npixels__Point worker__make_point_T_v_int(i64 x)'), generated
 	assert !generated.contains('\ni64 worker__take_point_T_v_int(Point p, i64 x)'), generated
 	assert !generated.contains('\ni64 worker__take_point_T_v_int(pixels__Point p, i64 x)'), generated
-}
 
-fn test_selective_import_function_value_roots_exact_symbol_with_imported_homonym() {
-	output, generated := selective_import_compile_run_with_extra('fn_value_imported_homonym', 'module main
+	assert generated.contains('struct box__Box_int'), generated
+	assert generated.contains('types__Thing thing;'), generated
+	assert !generated.contains('box__Thing thing;'), generated
+	assert !generated.contains('other__Thing thing;'), generated
 
-import a { choose }
-import b
-
-fn main() {
-	f := choose
-	println(int_str(f()))
-}
-', {
-		'a/a.v': 'module a
-
-pub fn choose() int {
-	return 11
-}
-'
-		'b/b.v': 'module b
-
-pub fn choose() int {
-	return 99
-}
-'
-	})
-	assert output == '11'
-	assert generated.contains('a__choose'), generated
-	assert !generated.contains('b__choose'), generated
+	assert generated.contains('i64 method_box__Box_int__combine(method_box__Box_int b, types__Thing thing)'), generated
+	assert !generated.contains('i64 method_box__Box_int__combine(method_box__Box_int b, method_box__Thing thing)'), generated
+	assert !generated.contains('i64 method_box__Box_int__combine(method_box__Box_int b, other__Thing thing)'), generated
 }
 
 fn test_selective_import_does_not_import_other_symbols_by_suffix() {
@@ -649,71 +733,6 @@ fn main() {
 }
 ')
 	assert output.contains('main.v:5:4: error: cannot redefine imported function `add_xy`'), output
-}
-
-fn test_module_homonym_function_signature_uses_module_key() {
-	output, generated := selective_import_compile_run_with_extra('module_homonym_signature', 'module main
-
-import foo
-
-fn value() int {
-	return 7
-}
-
-fn main() {
-	println(int_str(value()))
-	println(foo.value())
-}
-', {
-		'foo/foo.v': 'module foo
-
-pub fn value() string {
-	return "foo"
-}
-'
-	})
-	assert output == '7\nfoo'
-	assert generated.contains('i64 value(void);'), generated
-	assert generated.contains('string foo__value(void);'), generated
-	assert generated.contains('string foo__value(void) {'), generated
-	assert !generated.contains('i64 foo__value(void);'), generated
-}
-
-fn test_module_local_error_method_signature_uses_module_key() {
-	output, generated := selective_import_compile_run_with_extra('module_local_error_method_signature', 'module main
-
-import foo
-
-fn main() {
-	err := foo.make_error()
-	println(err.str())
-}
-', {
-		'foo/foo.v': 'module foo
-
-pub struct Error {
-	message string
-}
-
-pub fn make_error() Error {
-	return Error{
-		message: "local"
-	}
-}
-
-pub fn (err Error) msg() string {
-	return err.message
-}
-
-pub fn (err Error) str() string {
-	return err.msg()
-}
-'
-	})
-	assert output == 'local'
-	assert generated.contains('string foo__Error__msg(foo__Error err)'), generated
-	assert generated.contains('return foo__Error__msg(err);'), generated
-	assert !generated.contains('string foo__Error__msg(Error err)'), generated
 }
 
 fn test_selective_import_type_collisions_and_enum_from() {
@@ -843,101 +862,6 @@ fn main() {
 	assert flags.contains(' m = 1 | 2;'), flags
 	assert !flags.contains(' m = 1 | 4;'), flags
 	assert !flags.contains('Perm.a'), flags
-}
-
-fn test_selective_import_resolves_generic_struct_field_from_decl_file() {
-	extra := {
-		'types/types.v': 'module types
-
-pub struct Thing {
-pub:
-	v int
-}
-'
-		'other/other.v': 'module other
-
-pub struct Thing {
-pub:
-	v int
-}
-'
-		'box/box.v':     'module box
-
-import types { Thing }
-
-pub struct Box[T] {
-pub:
-	thing Thing
-	value T
-}
-'
-	}
-	output, generated := selective_import_compile_run_with_extra('generic_struct_field_selective_import', 'module main
-
-import box { Box }
-import other
-
-fn main() {
-	b := Box[int]{value: 7}
-	o := other.Thing{v: 8}
-	println(int_str(b.value + o.v))
-}
-',
-		extra)
-	assert output == '15'
-	assert generated.contains('struct box__Box_int'), generated
-	assert generated.contains('types__Thing thing;'), generated
-	assert !generated.contains('box__Thing thing;'), generated
-	assert !generated.contains('other__Thing thing;'), generated
-}
-
-fn test_selective_import_resolves_generic_struct_method_signature_from_decl_file() {
-	extra := {
-		'types/types.v': 'module types
-
-pub struct Thing {
-pub:
-	v int
-}
-'
-		'other/other.v': 'module other
-
-pub struct Thing {
-pub:
-	v int
-}
-'
-		'box/box.v':     'module box
-
-import types { Thing }
-
-pub struct Box[T] {
-pub:
-	thing Thing
-	value T
-}
-
-pub fn (b Box[T]) combine(thing Thing) int {
-	return b.value + thing.v
-}
-'
-	}
-	output, generated := selective_import_compile_run_with_extra('generic_struct_method_signature_selective_import', 'module main
-
-import box { Box }
-import other
-
-fn main() {
-	b := Box[int]{value: 7}
-	_ := other.Thing{v: 1}
-	println(int_str(b.combine(b.thing)))
-}
-',
-		extra)
-	assert output == '7'
-	assert generated.contains('i64 box__Box_int__combine(box__Box_int b, types__Thing thing)'), generated
-	assert !generated.contains('i64 box__Box_int__combine(box__Box_int b, box__Thing thing)'), generated
-	assert !generated.contains('i64 box__Box_int__combine(box__Box_int b, other__Thing thing)'), generated
 }
 
 fn test_duplicate_selective_import_type_fails() {
