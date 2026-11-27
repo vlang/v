@@ -164,22 +164,7 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value
 			return u32(0)
 		}
 	}
-	mut actual := fastc_normalize_inferred_type(inferred)
-	if fastc_trim_pointer_type(actual) == fastc_type_option {
-		// Every Option shares one C type; a generic `?T` parameter needs the payload,
-		// also through `&option`.
-		depth := flat.source_type_syntax(actual).c_pointer_depth()
-		value_tokens := if depth > 0 && argument_tokens.len > 1 && argument_tokens[0].tok == .amp {
-			argument_tokens[1..]
-		} else {
-			argument_tokens
-		}
-		payload := g.option_value_type_for_expression(value_tokens)
-		if payload != u32(0) {
-			actual = fastc_with_pointer_depth(flat.source_type_id(fastc_typed_option_type(payload)),
-				depth)
-		}
-	}
+	mut actual := g.generic_argument_type_for_expression(argument_tokens, inferred)
 	if is_mut_generic_value && tokens[0].tok == .key_mut {
 		value_tokens := fastc_strip_paren_tokens(argument_tokens)
 		if value_tokens.len > 0 && value_tokens[0].tok in [.amp, .and] {
@@ -312,6 +297,27 @@ fn fastc_mono_argument_value_tokens(expression []FastcExpressionToken) []FastcEx
 		tokens = fastc_strip_paren_tokens(tokens)
 	}
 	return tokens
+}
+
+// Generic specialization needs the payload type erased by FastC's Option ABI.
+fn (g &Parser) generic_argument_type_for_expression(argument_tokens []FastcExpressionToken, inferred u32) u32 {
+	mut actual := fastc_normalize_inferred_type(inferred)
+	if fastc_trim_pointer_type(actual) == fastc_type_option {
+		// Every Option shares one C type; a generic `?T` parameter needs the payload,
+		// also through `&option`.
+		depth := flat.source_type_syntax(actual).c_pointer_depth()
+		value_tokens := if depth > 0 && argument_tokens.len > 1 && argument_tokens[0].tok == .amp {
+			argument_tokens[1..]
+		} else {
+			argument_tokens
+		}
+		payload := g.option_value_type_for_expression(value_tokens)
+		if payload != u32(0) {
+			actual = fastc_with_pointer_depth(flat.source_type_id(fastc_typed_option_type(payload)),
+				depth)
+		}
+	}
+	return actual
 }
 
 // mono_argument_type_at infers the concrete type from one positional call argument.
