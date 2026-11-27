@@ -72,15 +72,8 @@ fn check_ownership_review_rejections(root string, cases []OwnershipReviewRejecti
 	}
 }
 
-fn run_ownership_regression(source string) {
-	for mode in [['-no-parallel'], []string{}] {
-		result := run_ownership_review_fixture(source, [...mode, 'run'])
-		assert result.exit_code == 0, '${mode}: ${result.output}'
-	}
-}
-
-fn test_ownership_arc_literal_transfer_and_receiver_return() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_arc_regressions_${os.getpid()}')
+fn test_ownership_arc_and_chained_calls_preserve_owned_values() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_arc_and_chained_calls_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
@@ -127,20 +120,7 @@ fn check_arc_receiver() {
 	assert updated.inner.get().text == "new"
 }
 
-fn main() {
-	check_arc_literal()
-	check_arc_receiver()
-}
-')!
-	run_ownership_regression(source)
-}
-
-fn test_ownership_chained_call_can_consume_argument_once() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_chained_call_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn normalize(value string) string {
+fn normalize(value string) string {
 	return value.trim_space()
 }
 
@@ -148,11 +128,20 @@ fn split(value string) []string {
 	return normalize(value).split("/")
 }
 
-fn main() {
+fn check_chained_call() {
 	assert split(" a/b ".to_owned()) == ["a", "b"]
 }
+
+fn main() {
+	check_arc_literal()
+	check_arc_receiver()
+	check_chained_call()
+}
 ')!
-	run_ownership_regression(source)
+	for mode in [['-no-parallel'], []string{}] {
+		result := run_ownership_review_fixture(source, [...mode, 'run'])
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
 }
 
 fn test_ownership_local_receiver_cannot_escape_in_returns_or_aliases() {
