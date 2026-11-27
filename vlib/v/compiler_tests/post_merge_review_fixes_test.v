@@ -96,13 +96,15 @@ fn run_good_backend(v3_bin string, name string, backend string, src string) stri
 	return run.output.trim_space()
 }
 
-fn run_bad(v3_bin string, name string, src string, expected string) {
+fn run_bad(v3_bin string, name string, src string, expected ...string) {
 	bad_src := '${tmp_test_path(name)}.v'
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := tmp_test_path(name)
 	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, '${name}: ${compile.output}'
-	assert compile.output.contains(expected), '${name}: ${compile.output}'
+	for message in expected {
+		assert compile.output.contains(message), '${name}: ${compile.output}'
+	}
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
 }
 
@@ -232,6 +234,7 @@ fn check_rejected_project(v3_bin string, root string, name string, cases []Revie
 	compile := os.exec([v3_bin, root, '-json-errors', '-b', 'c', '-o', tmp_test_path(name)])
 	assert compile.exit_code != 0, '${name}: expected compile failure\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
+	project_prefix := os.file_name(root) + '.'
 	mut errors := map[string][]string{}
 	for line in compile.output.split_into_lines() {
 		if !line.starts_with('{') {
@@ -239,7 +242,7 @@ fn check_rejected_project(v3_bin string, root string, name string, cases []Revie
 		}
 		diagnostic := json2.decode[ReviewDiagnostic](line) or { panic(err) }
 		if diagnostic.severity == 'error' {
-			errors[os.file_name(diagnostic.file)] << diagnostic.message
+			errors[os.file_name(diagnostic.file)] << diagnostic.message.replace(project_prefix, '')
 		}
 	}
 	for case in cases {
@@ -1292,9 +1295,10 @@ fn main() {
 
 fn test_forwarded_multi_return_container_slots_are_converted() {
 	v3_bin := build_v3()
-	// A map is not converted entry by entry: since #30815 a `map[string]Value` is
-	// not a `map[string]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
-	run_bad(v3_bin, 'forwarded_multi_return_map_interface_slot', 'interface IValue {
+	run_bad_module_batch(v3_bin, 'forwarded_container_slot_rejections', [
+		// A map is not converted entry by entry: since #30815 a `map[string]Value` is
+		// not a `map[string]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
+		ReviewRejection{'forwarded_multi_return_map_interface_slot', 'interface IValue {
 	get() int
 }
 
@@ -1326,10 +1330,10 @@ fn main() {
 	println(int_str(indexed["item"].get()))
 	println(int_str(n))
 }
-', 'cannot use `map[string]Value` as type `map[string]IValue` in return argument')
-	// A fixed array is not converted element by element: since #30863 a `[1]Value`
-	// is not a `[1]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
-	run_bad(v3_bin, 'forwarded_multi_return_fixed_interface_slot', 'interface IValue {
+', 'cannot use `map[string]fixture_0.Value` as type `map[string]fixture_0.IValue` in return argument'},
+		// A fixed array is not converted element by element: since #30863 a `[1]Value`
+		// is not a `[1]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
+		ReviewRejection{'forwarded_multi_return_fixed_interface_slot', 'interface IValue {
 	get() int
 }
 
@@ -1356,7 +1360,8 @@ fn main() {
 	println(int_str(fixed[0].get()))
 	println(int_str(fixed_n))
 }
-', 'cannot use `[1]Value` as type `[1]IValue` in return argument')
+', 'cannot use `[1]fixture_1.Value` as type `[1]fixture_1.IValue` in return argument'},
+	])
 }
 
 fn test_interface_argument_channel_and_field_boxes() {
@@ -5386,20 +5391,22 @@ fn main() {
 	println(int_str(d[1]))
 }
 ', 'cannot use `int` as overloaded index; expected `string`')
-	run_bad(v3_bin, 'overloaded_index_assignment_requires_setter', dict_src + '
+	run_bad_module_batch(v3_bin, 'overloaded_index_setter_rejections', [
+		ReviewRejection{'overloaded_index_assignment_requires_setter', dict_src + '
 
 fn main() {
 	mut d := Dict{}
 	d["name"] = 1
 }
-', 'index assignment requires a `[]=` overload on type `Dict`')
-	run_bad(v3_bin, 'overloaded_index_compound_assignment_requires_setter', dict_src + '
+', 'index assignment requires a `[]=` overload on type `fixture_0.Dict`'},
+		ReviewRejection{'overloaded_index_compound_assignment_requires_setter', dict_src + '
 
 fn main() {
 	mut d := Dict{}
 	d["name"] += 1
 }
-', 'index assignment requires a `[]=` overload on type `Dict`')
+', 'index assignment requires a `[]=` overload on type `fixture_1.Dict`'},
+	])
 }
 
 fn test_overloaded_index_assignment_uses_setter_signature() {
@@ -5662,9 +5669,13 @@ fn check_unqualified_types() {
 '
 	}, '')
 	assert out == 'value expr\nptr expr\nptr type\nfn type\narray type\nchan type\nthread type parsed\nqualified type\nqualified ptr type\nqualified value expr'
-	run_bad(v3_bin, 'isreftype_unknown_type_arg', 'fn main() {\n\t_ := isreftype(NoSuchType)\n}\n', 'unknown type `NoSuchType`')
-	run_bad(v3_bin, 'isreftype_unknown_array_elem_type_arg', 'fn main() {\n\t_ := isreftype([]MissingElem)\n}\n', 'unknown type `MissingElem`')
-	run_bad(v3_bin, 'isreftype_unknown_bracket_type_arg', 'fn main() {\n\t_ := isreftype[OtherMissing]()\n}\n', 'unknown type `OtherMissing`')
+	run_bad(v3_bin, 'isreftype_unknown_type_arguments', 'fn main() {
+	_ := isreftype(NoSuchType)
+	_ := isreftype([]MissingElem)
+	_ := isreftype[OtherMissing]()
+}
+',
+		'unknown type `NoSuchType`', 'unknown type `MissingElem`', 'unknown type `OtherMissing`')
 }
 
 // A local that shadows a global used to be allowed here, and this scoped it to
@@ -6668,14 +6679,15 @@ fn test_external_bare_macro_objective_c_guards_remain_possible() {
 
 fn test_followup_review_pointer_call_and_equality_semantics() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'c_voidptr_does_not_auto_address', 'fn C.take(voidptr)
+	run_bad_module_batch(v3_bin, 'voidptr_argument_rejections', [
+		ReviewRejection{'c_voidptr_does_not_auto_address', 'fn C.take(voidptr)
 
 fn main() {
 	value := 7
 	C.take(value)
 }
-', 'cannot use `int` as `voidptr` in argument 1 to `C.take`')
-	run_bad(v3_bin, 'v_voidptr_enum_value_does_not_auto_address', 'enum Color {
+', 'cannot use `int` as `voidptr` in argument 1 to `C.take`'},
+		ReviewRejection{'v_voidptr_enum_value_does_not_auto_address', 'enum Color {
 	red
 }
 
@@ -6686,7 +6698,8 @@ fn take(value voidptr) {
 fn main() {
 	take(Color.red)
 }
-', 'cannot use `Color` as `voidptr` in argument 1 to `take`')
+', 'cannot use `fixture_1.Color` as `voidptr` in argument 1 to `fixture_1.take`'},
+	])
 }
 
 fn test_map_retained_local_addresses() {
