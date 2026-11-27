@@ -1,5 +1,8 @@
 module os
 
+#include <time.h>
+
+// C.timespec is declared here for the V checker; the C compiler uses <time.h>.
 pub struct C.timespec {
 pub mut:
 	tv_sec  i64
