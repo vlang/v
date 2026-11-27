@@ -62,6 +62,7 @@ fn run_bad_module_batch(compiler string, cases []TypeCheckerRejection) {
 		'-o', unique_temp_path('rejected_program')])
 	assert result.exit_code != 0, 'expected compile failure, got success: ${result.output}'
 	assert !result.output.contains('C compilation failed'), result.output
+	project_prefix := os.file_name(root) + '.'
 	mut diagnostics := map[string][]string{}
 	for line in result.output.split_into_lines() {
 		if !line.starts_with('{') {
@@ -69,7 +70,7 @@ fn run_bad_module_batch(compiler string, cases []TypeCheckerRejection) {
 		}
 		diagnostic := json2.decode[TypeCheckerDiagnostic](line) or { panic(err) }
 		if diagnostic.severity == 'error' {
-			diagnostics[os.file_name(diagnostic.file)] << diagnostic.message
+			diagnostics[os.file_name(diagnostic.file)] << diagnostic.message.replace(project_prefix, '')
 		}
 	}
 	for case in cases {
@@ -1358,9 +1359,11 @@ fn test_conditional_and_exhaustive_bool_runtime() {
 	])
 }
 
-fn test_statement_if_branch_tails_are_not_value_checked() {
-	run_bad(v3_bin, 'bad_if_branch_primitive_mismatch', "fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n", 'mismatched types `int literal` and `string`')
-	run_bad(v3_bin, 'bad_if_branch_value_pointer_mismatch', 'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n', 'mismatched types `Foo` and `&Foo`')
+fn test_if_branch_type_mismatches() {
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_if_branch_primitive_mismatch', "fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n", 'mismatched types `int literal` and `string`'},
+		TypeCheckerRejection{'bad_if_branch_value_pointer_mismatch', 'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n', 'mismatched types `bad_if_branch_value_pointer_mismatch.Foo` and `&bad_if_branch_value_pointer_mismatch.Foo`'},
+	])
 }
 
 fn test_result_and_or_block_runtime() {
@@ -1458,9 +1461,18 @@ fn test_conditional_multi_return_runtime() {
 	])
 }
 
+fn test_void_result_assignment_rejections() {
+	run_bad_module_batch(v3_bin, [
+		// Because a bare `[]thread`.wait() is `void` (not the receiver `[]thread`), its
+		// result cannot be bound to a variable — guards against the old fallback that typed
+		// the call as the receiver array.
+		TypeCheckerRejection{'bad_bare_thread_void_wait_assign', "fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tx := threads.wait()\n\tprintln(x)\n}\n", 'assignment mismatch: 1 variable but `wait()` returns 0 values'},
+		TypeCheckerRejection{'bad_multi_return_if_void_tail_decl_assign', 'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n', 'multi-return assignment mismatch'},
+	])
+}
+
 fn test_multi_return_if_tail_infers_common_type() {
 	run_bad(v3_bin, 'bad_multi_return_if_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n', 'expression evaluated but not used')
-	run_bad(v3_bin, 'bad_multi_return_if_void_tail_decl_assign', 'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n', 'multi-return assignment mismatch')
 }
 
 fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
@@ -1770,8 +1782,13 @@ fn test_module_local_error_type_shadows_builtin_error() {
 	assert out == 'local'
 }
 
-fn test_bool_match_single_branch_is_exhaustive() {
-	run_bad(v3_bin, 'bad_bool_pointer_match_not_exhaustive', 'fn f(b &bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut b := true\n\tprintln(int_str(f(&b)))\n}\n', 'missing return')
+fn test_match_nonexhaustive_pointer_and_flags() {
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_bool_pointer_match_not_exhaustive', 'fn f(b &bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut b := true\n\tprintln(int_str(f(&b)))\n}\n', 'missing return'},
+		// A `[flag]` enum match that lists only single-field branches is NOT exhaustive
+		// (combined/zero values fall through), so a non-void fn needs `else`/missing-return.
+		TypeCheckerRejection{'bad_flag_enum_match_not_exhaustive', '@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n', 'missing return'},
+	])
 }
 
 fn test_voidptr_variadic_spread_requires_voidptr_array() {
@@ -1784,13 +1801,13 @@ fn test_voidptr_variadic_spread_requires_voidptr_array() {
 	])
 }
 
-// Regression tests for the post-PR review fixes around generic struct receivers
-// and generic heap struct literals.
-fn test_generic_struct_receiver_and_heap_init() {
-	// Two *different concrete* instantiations are incompatible: `Box[string]` must
-	// not satisfy an expected `Box[int]` (value or pointer form).
-	run_bad(v3_bin, 'bad_generic_concrete_value_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `Box[string]` as `Box[int]` in argument 1 to `use_int`')
-	run_bad(v3_bin, 'bad_generic_concrete_ptr_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := &Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `&Box[string]` as `&Box[int]` in argument 1 to `use_int`')
+fn test_generic_concrete_instance_mismatches() {
+	run_bad_module_batch(v3_bin, [
+		// Two *different concrete* instantiations are incompatible: `Box[string]` must
+		// not satisfy an expected `Box[int]` (value or pointer form).
+		TypeCheckerRejection{'bad_generic_concrete_value_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `bad_generic_concrete_value_arg.Box[string]` as `bad_generic_concrete_value_arg.Box[int]` in argument 1 to `bad_generic_concrete_value_arg.use_int`'},
+		TypeCheckerRejection{'bad_generic_concrete_ptr_arg', "struct Box[T] {\n\tval T\n}\nfn use_int(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := &Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n", 'cannot use `&bad_generic_concrete_ptr_arg.Box[string]` as `&bad_generic_concrete_ptr_arg.Box[int]` in argument 1 to `bad_generic_concrete_ptr_arg.use_int`'},
+	])
 }
 
 fn test_method_values_and_function_pointer_returns() {
@@ -1847,13 +1864,6 @@ fn test_method_values_and_function_pointer_returns() {
 	])
 }
 
-// Regression tests for the third PR-review batch (vlang/v#27557).
-fn test_pr_review_codegen_batch_three() {
-	// A `[flag]` enum match that lists only single-field branches is NOT exhaustive
-	// (combined/zero values fall through), so a non-void fn needs `else`/missing-return.
-	run_bad(v3_bin, 'bad_flag_enum_match_not_exhaustive', '@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n', 'missing return')
-}
-
 fn test_generic_array_and_heap_initializers() {
 	run_good_module_batch(v3_bin, 'generic_array_and_heap_initializers', [
 		TypeCheckerRuntimeCase{'good_bare_generic_literal_return', 'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n', '7'},
@@ -1908,12 +1918,17 @@ fn test_generic_array_and_heap_initializers() {
 	])
 }
 
-// Regression tests: a bare generic struct literal adopts a matching concrete
-// expected instance (value and heap), and a field-type mismatch is rejected.
-fn test_bare_generic_literal_adopts_expected_instance() {
-	// A field whose type does not match the concrete instantiation is rejected by the
-	// checker (rather than adopting the type and emitting broken C).
-	run_bad(v3_bin, 'bad_bare_generic_literal_field_mismatch', "struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 'str'\n\t}\n}\nfn main() {\n\t_ := make()\n}\n", 'cannot use `Box[string]` as type `Box[int]` in return argument')
+fn test_generic_struct_literal_field_mismatches() {
+	run_bad_module_batch(v3_bin, [
+		// A field whose type does not match the concrete instantiation is rejected by the
+		// checker (rather than adopting the type and emitting broken C).
+		TypeCheckerRejection{'bad_bare_generic_literal_field_mismatch', "struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 'str'\n\t}\n}\nfn main() {\n\t_ := make()\n}\n", 'cannot use `bad_bare_generic_literal_field_mismatch.Box[string]` as type `bad_bare_generic_literal_field_mismatch.Box[int]` in return argument'},
+		// A bare generic struct literal with POSITIONAL fields (`Box{'str'}`) must validate
+		// each value against the struct field order before adopting the expected concrete
+		// instance; a wrong positional type is a definite mismatch, not a silent adoption
+		// that codegen would init an `int` field from a string.
+		TypeCheckerRejection{'bad_positional_generic_literal_field_mismatch', "struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{'str'}\n}\nfn main() {\n\t_ := make()\n}\n", 'cannot use `bad_positional_generic_literal_field_mismatch.Box[string]` as type `bad_positional_generic_literal_field_mismatch.Box[int]` in return argument'},
+	])
 }
 
 fn test_method_value_callbacks_and_storage() {
@@ -1952,11 +1967,17 @@ fn test_method_value_callbacks_and_storage() {
 	])
 }
 
-// Regression tests for the fourth PR-review batch (vlang/v#27557).
-fn test_pr_review_codegen_batch_four() {
-	// A `&Box{...}` value must not be accepted where a `Box[int]` value is expected
-	// (pointer shape must match in the generic-base relaxation).
-	run_bad(v3_bin, 'bad_generic_pointer_shape_arg', 'struct Box[T] {\n\tv T\n}\nfn take(b Box[int]) int {\n\treturn b.v\n}\nfn main() {\n\t_ := take(&Box{\n\t\tv: 1\n\t})\n}\n', 'cannot use')
+fn test_generic_struct_literal_pointer_mismatches() {
+	run_bad_module_batch(v3_bin, [
+		// A `&Box{...}` value must not be accepted where a `Box[int]` value is expected
+		// (pointer shape must match in the generic-base relaxation).
+		TypeCheckerRejection{'bad_generic_pointer_shape_arg', 'struct Box[T] {\n\tv T\n}\nfn take(b Box[int]) int {\n\treturn b.v\n}\nfn main() {\n\t_ := take(&Box{\n\t\tv: 1\n\t})\n}\n', 'cannot use `&bad_generic_pointer_shape_arg.Box[int]` as `bad_generic_pointer_shape_arg.Box[int]` in argument 1 to `bad_generic_pointer_shape_arg.take`'},
+		// A bare *value* generic literal must not adopt a *pointer* expectation: `&Box[int]`
+		// expected from a plain `Box{...}` is a definite mismatch (cgen would emit a `Box_int`
+		// value where a `Box_int*` is required), so it is rejected rather than silently typed
+		// as `&Box[int]`.
+		TypeCheckerRejection{'bad_value_literal_pointer_expectation', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\t_ := make()\n}\n', 'fn `make` expects you to return a reference type `&bad_value_literal_pointer_expectation.Box[int]`, but you are returning `bad_value_literal_pointer_expectation.Box[int]` instead'},
+	])
 }
 
 fn test_fixed_array_length_and_operator_runtime() {
@@ -2019,61 +2040,33 @@ fn test_pr_review_codegen_batch_five() {
 	// valid statement that runs every spawned thread to completion.
 	void_wait := run_good(v3_bin, 'good_bare_thread_void_wait', "fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tthreads << spawn work()\n\tthreads.wait()\n\tprintln('done')\n}\n")
 	assert void_wait.contains('done')
-	// Because a bare `[]thread`.wait() is `void` (not the receiver `[]thread`), its
-	// result cannot be bound to a variable — guards against the old fallback that typed
-	// the call as the receiver array.
-	run_bad(v3_bin, 'bad_bare_thread_void_wait_assign', "fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tx := threads.wait()\n\tprintln(x)\n}\n", 'assignment mismatch: 1 variable but `wait()` returns 0 values')
 }
 
-// Regression tests for the sixth PR-review batch (vlang/v#27557).
-fn test_pr_review_codegen_batch_six() {
-	// A bare generic struct literal with POSITIONAL fields (`Box{'str'}`) must validate
-	// each value against the struct field order before adopting the expected concrete
-	// instance; a wrong positional type is a definite mismatch, not a silent adoption
-	// that codegen would init an `int` field from a string.
-	run_bad(v3_bin, 'bad_positional_generic_literal_field_mismatch', "struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{'str'}\n}\nfn main() {\n\t_ := make()\n}\n", 'cannot use `Box[string]` as type `Box[int]` in return argument')
+fn test_shift_fixed_array_literal_length_mismatches() {
+	run_bad_module_batch(v3_bin, [
+		// The fixed-array literal length guard evaluates a shift length: `[1, 2]` (two
+		// elements) does not match an expected `[1 << 2]int` (four), so it is rejected.
+		TypeCheckerRejection{'bad_shift_fixed_array_literal_len', 'fn take(a [1 << 2]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use `[2]int` as `[1 << 2]int` in argument 1 to `bad_shift_fixed_array_literal_len.take`'},
+		// V's unsigned right shift `>>>` is a valid constant-length operator. It must fold in
+		// the const evaluator (so the array dimension is emitted as a numeric literal, since
+		// `>>>` has no C form) and in the literal-length guard. `8 >>> 1` = 4, `16 >>> 2` = 4,
+		// `(1 << 5) >>> 2` = 8.
+		// The fixed-array literal-length guard evaluates `>>>` too: `[1, 2]` (two elements)
+		// does not match an expected `[8 >>> 1]int` (four), so it is rejected.
+		TypeCheckerRejection{'bad_unsigned_shift_fixed_array_literal_len', 'fn take(a [8 >>> 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use `[2]int` as `[8 >>> 1]int` in argument 1 to `bad_unsigned_shift_fixed_array_literal_len.take`'},
+	])
 }
 
-// Regression tests for the eighth PR-review batch (vlang/v#27557).
-fn test_pr_review_codegen_batch_eight() {
-	// A bare *value* generic literal must not adopt a *pointer* expectation: `&Box[int]`
-	// expected from a plain `Box{...}` is a definite mismatch (cgen would emit a `Box_int`
-	// value where a `Box_int*` is required), so it is rejected rather than silently typed
-	// as `&Box[int]`.
-	run_bad(v3_bin, 'bad_value_literal_pointer_expectation', 'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\t_ := make()\n}\n', 'fn `make` expects you to return a reference type `&Box[int]`, but you are returning `Box[int]` instead')
-	// The pointer-form success is covered by test_bare_generic_literal_adopts_expected_instance.
-}
-
-// Regression tests for the tenth PR-review batch (vlang/v#27557).
-fn test_pr_review_codegen_batch_ten() {
-	// The fixed-array literal length guard evaluates a shift length: `[1, 2]` (two
-	// elements) does not match an expected `[1 << 2]int` (four), so it is rejected.
-	run_bad(v3_bin, 'bad_shift_fixed_array_literal_len', 'fn take(a [1 << 2]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use')
-}
-
-// Regression tests for the thirteenth PR-review batch (vlang/v#27557).
-fn test_pr_review_codegen_batch_thirteen() {
-	// V's unsigned right shift `>>>` is a valid constant-length operator. It must fold in
-	// the const evaluator (so the array dimension is emitted as a numeric literal, since
-	// `>>>` has no C form) and in the literal-length guard. `8 >>> 1` = 4, `16 >>> 2` = 4,
-	// `(1 << 5) >>> 2` = 8.
-	// The fixed-array literal-length guard evaluates `>>>` too: `[1, 2]` (two elements)
-	// does not match an expected `[8 >>> 1]int` (four), so it is rejected.
-	run_bad(v3_bin, 'bad_unsigned_shift_fixed_array_literal_len', 'fn take(a [8 >>> 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use')
-}
-
-// Regression tests for the fourteenth PR-review batch (vlang/v#27557).
-fn test_pr_review_codegen_batch_fourteen() {
-	// Non-decimal integer literals (hex `0x`, octal `0o`, binary `0b`) fold in const
-	// fixed-array lengths: `0xF & 6` = 6, `0b1100 >> 1` = 6, `0o17 & 8` = 8.
-	// The length guard evaluates non-decimal too: `[1, 2]` does not match `[0xF & 6]int`.
-	run_bad(v3_bin, 'bad_non_decimal_fixed_array_literal_len', 'fn take(a [0xF & 6]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use')
-}
-
-fn test_pr_review_codegen_batch_fifteen() {
-	// The fixed-array literal-length guard uses the same folded length: a `[1 << 2 + 1]int`
-	// parameter (length 5) rejects a 4-element literal.
-	run_bad(v3_bin, 'bad_shift_add_precedence_literal_len', 'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4]!)\n}\n', 'cannot use')
+fn test_fixed_array_literal_const_length_mismatches() {
+	run_bad_module_batch(v3_bin, [
+		// Non-decimal integer literals (hex `0x`, octal `0o`, binary `0b`) fold in const
+		// fixed-array lengths: `0xF & 6` = 6, `0b1100 >> 1` = 6, `0o17 & 8` = 8.
+		// The length guard evaluates non-decimal too: `[1, 2]` does not match `[0xF & 6]int`.
+		TypeCheckerRejection{'bad_non_decimal_fixed_array_literal_len', 'fn take(a [0xF & 6]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use `[2]int` as `[0xF & 6]int` in argument 1 to `bad_non_decimal_fixed_array_literal_len.take`'},
+		// The fixed-array literal-length guard uses the same folded length: a `[1 << 2 + 1]int`
+		// parameter (length 5) rejects a 4-element literal.
+		TypeCheckerRejection{'bad_shift_add_precedence_literal_len', 'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4]!)\n}\n', 'cannot use `[4]int` as `[1 << 2 + 1]int` in argument 1 to `bad_shift_add_precedence_literal_len.take`'},
+	])
 }
 
 fn test_pr_review_codegen_batch_seventeen() {
@@ -2237,25 +2230,26 @@ fn test_module_qualified_type_chaining_only_allows_enums() {
 	}, 'main.v', '`model.Item` must be initialized')
 }
 
-fn test_for_loop_smartcast_is_dropped_after_write() {
-	// A write to the loop-narrowed value inside the body drops the narrowing for the
-	// rest of that iteration; the lexical loop fallback must not reconstruct it.
-	bad := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{})\n\tfor x is Foo {\n\t\tx = Bar{}\n\t\tprintln(x.foo)\n\t}\n}\n'
-	run_bad(v3_bin, 'bad_for_loop_smartcast_after_write', bad, 'field `foo` does not exist or have the same type in these sumtype `FB` variants')
+fn test_smartcast_invalidation_rejections() {
+	run_bad_module_batch(v3_bin, [
+		// A write to the loop-narrowed value inside the body drops the narrowing for the
+		// rest of that iteration; the lexical loop fallback must not reconstruct it.
+		TypeCheckerRejection{'bad_for_loop_smartcast_after_write', 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{})\n\tfor x is Foo {\n\t\tx = Bar{}\n\t\tprintln(x.foo)\n\t}\n}\n', 'field `foo` does not exist or have the same type in these sumtype `bad_for_loop_smartcast_after_write.FB` variants:'},
+		// A recorded `p.value is Foo` reads the sum through an immutable pointer; the pointee
+		// can be reassigned through another alias before the guard, so the smartcast must not
+		// be reused for `p.value` in the then-branch.
+		TypeCheckerRejection{'bad_bool_condition_alias_pointer_pointee', 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nstruct Holder {\nmut:\n\tvalue FB\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: Foo{}\n\t}\n\tp := &holder\n\twas_foo := p.value is Foo\n\tholder.value = Bar{}\n\tif was_foo {\n\t\tprintln(p.value.foo)\n\t}\n}\n', 'field `foo` does not exist or have the same type in these sumtype `bad_bool_condition_alias_pointer_pointee.FB` variants:'},
+	])
+}
 
+fn test_for_loop_smartcast_survives_until_write() {
 	// Uses that precede the write stay narrowed, so the fallback must still apply there.
 	good := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{\n\t\tfoo: 7\n\t})\n\tfor x is Foo {\n\t\tprintln(x.foo)\n\t\tx = Bar{}\n\t\tbreak\n\t}\n}\n'
 	output := run_good(v3_bin, 'good_for_loop_smartcast_before_write', good)
 	assert output == '7'
 }
 
-fn test_bool_condition_alias_rejects_pointer_pointee_writes() {
-	// A recorded `p.value is Foo` reads the sum through an immutable pointer; the pointee
-	// can be reassigned through another alias before the guard, so the smartcast must not
-	// be reused for `p.value` in the then-branch.
-	bad := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nstruct Holder {\nmut:\n\tvalue FB\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: Foo{}\n\t}\n\tp := &holder\n\twas_foo := p.value is Foo\n\tholder.value = Bar{}\n\tif was_foo {\n\t\tprintln(p.value.foo)\n\t}\n}\n'
-	run_bad(v3_bin, 'bad_bool_condition_alias_pointer_pointee', bad, 'field `foo` does not exist or have the same type in these sumtype `FB` variants')
-
+fn test_bool_condition_alias_preserves_immutable_smartcast() {
 	// An immutable local value cannot change, so its condition alias stays valid.
 	good := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tx := FB(Foo{\n\t\tfoo: 7\n\t})\n\twas_foo := x is Foo\n\tif was_foo {\n\t\tprintln(x.foo)\n\t}\n}\n'
 	output := run_good(v3_bin, 'good_bool_condition_alias_immutable_local', good)

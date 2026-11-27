@@ -781,10 +781,11 @@ fn main() {
 	assert out == '3'
 }
 
-fn test_reject_pointer_expressions_for_value_returns() {
-	run_bad(v3_bin, 'bad_return_pointer_to_value',
-		'fn f() int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n',
-		'you are returning `&int` instead')
+fn test_pointer_and_value_compatibility_rejections() {
+	check_review_rejections('pointer_and_value_compatibility_rejections', [
+		ReviewFixture{'bad_return_pointer_to_value', 'fn f() int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'you are returning `&int` instead'},
+		ReviewFixture{'bad_voidptr_scalar_arg', 'fn f(p voidptr) {}\n\nfn main() {\n\tf(1)\n}\n', 'expression cannot be passed as `voidptr`'},
+	])
 }
 
 fn test_fixed_array_pointer_and_element_address_rejections() {
@@ -1158,9 +1159,7 @@ fn test_alias_with_nested_type_separator_stays_alias() {
 	assert out == '6'
 }
 
-fn test_voidptr_params_reject_non_pointer_values() {
-	run_bad(v3_bin, 'bad_voidptr_scalar_arg', 'fn f(p voidptr) {}\n\nfn main() {\n\tf(1)\n}\n',
-		'expression cannot be passed as `voidptr`')
+fn test_voidptr_params_accept_pointer_values() {
 	out := run_good(v3_bin, 'good_voidptr_pointer_arg',
 		'fn f(p voidptr) int {\n\t_ = p\n\treturn 7\n}\n\nfn main() {\n\tx := 1\n\tprintln(int_str(f(&x)))\n}\n')
 	assert out == '7'
