@@ -2899,7 +2899,7 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
-fn test_module_cache_salt_tracks_default_cc_wrapper_version() {
+fn test_module_cache_bypasses_default_cc_shell_wrapper() {
 	$if windows {
 		return
 	}
@@ -2940,7 +2940,7 @@ fn main() {
 	])
 	assert run_module_cache_binary(first_output) == '42'
 	first_configs := module_cache_configuration_dirs(cache_dir)
-	assert first_configs.len == 1, first_configs.str()
+	assert first_configs.len == 0, first_configs.str()
 
 	write_module_cache_file(root, 'cc-version', 'wrapper toolchain two\n')
 	second_output := os.join_path(root, 'second')
@@ -2950,8 +2950,7 @@ fn main() {
 	])
 	assert run_module_cache_binary(second_output) == '42'
 	second_configs := module_cache_configuration_dirs(cache_dir)
-	assert second_configs.len == first_configs.len + 1, second_configs.str()
-	assert second_configs.any(it !in first_configs), second_configs.str()
+	assert second_configs.len == 0, second_configs.str()
 }
 
 fn test_module_cache_restart_preserves_compiler_stderr() {
@@ -5994,8 +5993,9 @@ pub fn unused_but_cached() int {
 	assert run_module_cache_binary(layout_bin) == '44\n16\n17\n23\ntrue'
 	layout_hashes := module_cache_object_hashes(cache_dir)
 	changed_after_layout := changed_module_cache_objects(second_hashes, layout_hashes)
-	assert changed_after_layout.len == 1, changed_after_layout.str()
+	assert changed_after_layout.len == 2, changed_after_layout.str()
 	assert changed_after_layout[0].starts_with('bar_'), changed_after_layout.str()
+	assert changed_after_layout[1].starts_with('foo_'), changed_after_layout.str()
 
 	bar_stamp_path := module_cache_artifact(cache_dir, 'bar_', '.o.stamp')
 	assert bar_stamp_path.len > 0

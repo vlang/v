@@ -50,6 +50,9 @@ jobs:
           PY
           ./v -gc none -enable-globals -silent test -run-only test_inserted_local_headers_resolve_and_keep_inline_functions,test_quoted_includes_use_earlier_and_later_include_flags,test_inserted_headers_supply_native_declarations,test_native_typedef_headers_supply_types_and_inline_functions vlib/v/compiler_tests/c_directive_order_codegen_test.v
       - name: Test compiler
+        env:
+          # Some test files build several compilers while all shards run.
+          VTEST_TIMEOUT: '900'
         run: |
           set -uo pipefail
           shards="$(nproc)"

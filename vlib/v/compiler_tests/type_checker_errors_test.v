@@ -1621,7 +1621,6 @@ fn test_bool_match_single_branch_is_exhaustive() {
 // A `match` over a plain enum must list every field or end with `else`: an
 // unlisted value would otherwise run whichever branch the generated code reaches.
 fn test_plain_enum_match_must_be_exhaustive() {
-	v3_bin := build_v3()
 	enum_kind := 'enum Kind {\n\ta\n\tb\n\tc\n}\n'
 	run_bad(v3_bin, 'bad_enum_match_expr_missing_field', enum_kind + 'fn f(k Kind) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.b { 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.c)))\n}\n', 'match must be exhaustive (add match branches for: `.c` or `else {}` at the end)')
 	run_bad(v3_bin, 'bad_enum_match_stmt_missing_fields', enum_kind + "fn main() {\n\tk := Kind.c\n\tmatch k {\n\t\t.a {\n\t\t\tprintln('a')\n\t\t}\n\t}\n}\n", 'match must be exhaustive (add match branches for: `.b`, `.c` or `else {}` at the end)')

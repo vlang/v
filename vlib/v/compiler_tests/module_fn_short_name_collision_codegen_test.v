@@ -17,7 +17,7 @@ pub struct Holder[T] {
 	node &Node[T]
 }
 
-fn new_dense_array[T](value T) &Node[T] {
+fn new_map_data[T](value T) &Node[T] {
 	return &Node[T]{
 		value: value
 	}
@@ -25,7 +25,7 @@ fn new_dense_array[T](value T) &Node[T] {
 
 pub fn make[T](value T) Holder[T] {
 	return Holder[T]{
-		node: new_dense_array(value)
+		node: new_map_data(value)
 	}
 }
 
@@ -155,17 +155,16 @@ fn test_imported_module_fn_short_name_does_not_pollute_builtin_return_type() {
 	assert run.output.trim_space() == 'ok'
 
 	generated := os.read_file(out + '.c') or { panic(err) }
-	signature := 'DenseArray new_dense_array(i64 key_bytes, i64 value_bytes, ' +
-		'u8 key_alignment, u8 value_alignment);'
+	signature := 'VMapData* new_map_data(i64 key_bytes, i64 value_bytes, '
 	storage := '.key_values = (DenseArray){' +
 		'.key_bytes = key_bytes, .value_bytes = value_bytes'
 	assert generated.contains(signature), generated
 	assert generated.contains(storage), generated
-	assert generated.contains('collisionmod__new_dense_array_T_v_int'), generated
+	assert generated.contains('collisionmod__new_map_data_T_v_int'), generated
 	assert generated.contains('localmod__helper()'), generated
 	assert generated.contains('localmod__run(command, args)'), generated
 	assert generated.contains('__v_result_localmod__Item localmod__load_item(void);'), generated
 	assert !generated.contains('localmod__run(&command, args)'), generated
-	assert !generated.contains('collisionmod__Node_int* new_dense_array(int key_bytes'), generated
-	assert !generated.contains('Array_fixed_collisionmod__Node_int* new_dense_array(int key_bytes'), generated
+	assert !generated.contains('collisionmod__Node_int* new_map_data('), generated
+	assert !generated.contains('Array_fixed_collisionmod__Node_int* new_map_data('), generated
 }

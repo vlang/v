@@ -38,7 +38,7 @@ fn wasm_gate_check(src string) string {
 		}
 		mut visited := []bool{len: a.nodes.len}
 		if msg := unsupported_backend_node_error(a, &tc, flat.NodeId(idx), 'wasm', true,
-			'', mut visited) {
+			'', false, mut visited) {
 			msgs << msg
 		}
 	}

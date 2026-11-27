@@ -245,11 +245,12 @@ fn main() {
 	// `int` is 64-bit on 64-bit targets, where `Stmt.bind_int` uses the int64 API.
 	$if x64 {
 		assert !c_code.contains('sqlite3_bind_int('), c_code
+		assert !c_code.contains('sqlite3_column_int('), c_code
 	} $else {
 		assert c_code.contains('sqlite3_bind_int('), c_code
+		assert c_code.contains('sqlite3_column_int('), c_code
 	}
 	assert c_code.contains('sqlite3_bind_int64('), c_code
-	assert c_code.contains('sqlite3_column_int('), c_code
 	assert c_code.contains('sqlite3_column_int64('), c_code
 	assert c_code.contains('orm__append_field_value_data_T_v_int('), c_code
 	assert c_code.contains('orm__append_field_value_data_T_u32('), c_code

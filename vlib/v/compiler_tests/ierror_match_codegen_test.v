@@ -298,9 +298,9 @@ fn main() {
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	classify_body := c_code.all_after('string classify(IError err) {').all_before('\n}')
 	assert classify_body.contains('err._typ == '), classify_body
-	// Interface method calls pass the typed receiver in parentheses.
+	// The interface method still receives the address of the typed receiver.
 	first_error_body := c_code.all_after('myerrs__fail(1);').all_before('\n\t}')
-	assert first_error_body.contains('IError__msg(&(err))'), first_error_body
+	assert first_error_body.contains('IError__msg(&err)'), first_error_body
 	assert !c_code.contains('err == myerrs__FirstError'), c_code
 	assert !c_code.contains('err == myerrs__SecondError'), c_code
 

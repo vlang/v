@@ -154,3 +154,42 @@ fn test_native_manifest_waiter_refreshes_dependency_digests() ! {
 	os.write_file(header, '#define VALUE 2\n')!
 	assert valid_c_object_manifest_refreshed(manifest, true, mut waiter) == none
 }
+
+fn test_c_object_cache_detects_input_change_during_compile() ! {
+	$if windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'native_object_input_race_${os.getpid()}')
+	cache := os.join_path(root, 'cache')
+	os.mkdir_all(cache)!
+	defer { os.rmdir_all(root) or {} }
+	header := os.join_path(root, 'value.h')
+	source := os.join_path(root, 'helper.c')
+	compiler := os.join_path(root, 'cc')
+	os.write_file(header, '#define RACE_VALUE 1\n')!
+	os.write_file(source, '#include "value.h"\nint race_value(void) { return RACE_VALUE; }\n')!
+	// The wrapper changes the dependency only after the object has been built.
+	os.write_file(compiler, '#!/bin/sh
+${os.quoted_path(clang)} "$@" || exit $?
+for arg do
+	if [ "$arg" = "-c" ]; then
+		printf "#define RACE_VALUE 7\\n" > ${os.quoted_path(header)}
+	fi
+done
+')!
+	os.chmod(compiler, 0o755)!
+	mut stats := CObjectCacheStats{}
+	object := compile_c_object_with_manifest(os.join_path(root, 'helper.o'), source, compiler,
+		['-x', 'c'], pref.host_target(), root, cache, mut stats)!
+	assert stats.input_snapshot_races == 1
+	assert os.dir(object) == root
+	assert os.walk_ext(cache, '.o').len == 0
+	main := os.join_path(root, 'main.c')
+	out := os.join_path(root, 'program')
+	os.write_file(main, 'int race_value(void); int main(void) { return race_value() != 1; }\n')!
+	linked := cmdexec.run(clang, [main, object, '-o', out])
+	assert linked.exit_code == 0, linked.output
+	ran := cmdexec.run(out, [])
+	assert ran.exit_code == 0, ran.output
+}

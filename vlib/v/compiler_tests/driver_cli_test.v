@@ -2497,7 +2497,7 @@ fn test_driver_cli_cross_refusal_matrix() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'hello.v')
 	os.write_file(source, "fn main() { println('ok') }\n") or { panic(err) }
 	output := os.join_path(root, 'hello_probe')
@@ -2542,7 +2542,7 @@ fn test_driver_cli_opt_level_flags() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'hello.v')
 	os.write_file(source, "fn main() { println('ok') }\n") or { panic(err) }
 	output := os.join_path(root, 'hello')
@@ -2646,7 +2646,7 @@ fn test_driver_cli_opt_level_warmed_cache() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	v3_bin := build_driver_cli_v3()
 	source := os.join_path(root, 'warm.v')
 	// NOTE: the warmed-cache fixture must be cache-eligible. A literal-only
 	// `println('ok')` program takes the minimal-literal-output fast path,

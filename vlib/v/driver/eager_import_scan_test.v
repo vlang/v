@@ -30,7 +30,7 @@ fn test_eager_discovery_preserves_initial_module_identity() {
 	prefs := pref.Preferences{
 		module_search_paths: [root]
 	}
-	mut module_path_cache := map[string]string{}
+	mut module_path_cache := map[string]V3ImportResolution{}
 	modules := discover_eager_selfhost_modules(a, &prefs, app_file, root, identity_dirs,
 		mut parsed_modules, mut module_path_cache)
 	assert modules.len == 1, modules.str()
@@ -53,7 +53,7 @@ fn eager_discovered_paths(root string, app_file string, user_defines []string) [
 		module_search_paths: [root]
 		user_defines:        user_defines
 	}
-	mut module_path_cache := map[string]string{}
+	mut module_path_cache := map[string]V3ImportResolution{}
 	modules := discover_eager_selfhost_modules(a, &prefs, app_file, root, identity_dirs,
 		mut parsed_modules, mut module_path_cache)
 	return modules.map(it.path)

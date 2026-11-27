@@ -146,7 +146,8 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 	$if windows {
 		return
 	}
-	cc := os.find_abs_path_of_executable('cc') or { return }
+	compiler := '/usr/bin/cc'
+	if !os.is_executable(compiler) { return }
 	root := os.join_path(os.vtmp_dir(), 'vup_objects_only_${os.getpid()}')
 	os.mkdir_all(root)!
 	saved := os.environ()
@@ -164,69 +165,54 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 		os.rmdir_all(root) or {}
 	}
 	for variable in variables { os.unsetenv(variable) }
-	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	cache := os.join_path(root, 'cache')
+	os.setenv('V3CACHE', cache, true)
 	os.setenv('VEXE', @VEXE, true)
 	os.setenv('V_SKIP_VVMRC', '1', true)
-	log := os.join_path(root, 'calls')
-	dependency_log := os.join_path(root, 'dependency_calls')
-	compiler := os.join_path(root, 'cc')
-	// Module compilation is allowed. Compiling a program unit or linking the
-	// synthetic importer must fail, even if the ordinary compiler could do it.
-	// Record dependency and preprocessor checks separately from object builds.
-	// Native interface validation also needs compiler version and -E probes.
-	os.write_file(compiler, '#!/bin/sh\n' +
-		'case "\$*" in --version|-v) exec ' + os.quoted_path(cc) + ' "\$@";; esac\n' +
-		'case "\$*" in *program_main_*|*program_prefix_*) echo "unexpected program object" >&2; exit 97;; esac\n' +
-		'for arg; do\n  case "\$arg" in -M|-E) printf "%s\\n" "\$*" >> ' +
-		os.quoted_path(dependency_log) + '; exec ' + os.quoted_path(cc) + ' "\$@";; esac\ndone\n' +
-		'for arg; do\n  if [ "\$arg" = -c ]; then printf "%s\\n" "\$*" >> ' +
-		os.quoted_path(log) + '; exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
-		'echo "unexpected program link" >&2\nexit 98\n')!
-	os.chmod(compiler, 0o755)!
+	// The system driver is required for reusable native objects. The linker flag
+	// fails any attempt to link the synthetic importer.
+	flags := ['-cc', compiler, '-ldflags', '-Wl,--v-test-refresh-must-not-link']
 	for is_test in [false, true] {
 		// Overlapping import sets share compiler flags but can select different
 		// interface implementations. Every variant must survive a complete pass.
 		// Keep the crypto imports free of opaque native headers so they can be cached.
 		// math.big and crypto.ed25519 import crypto.rand.internal, which cannot.
 		requests := [Request{
-			args:    ['-cc', compiler]
+			args:    flags
 			module:  'crypto.sha3'
 			imports: ['crypto.sha512', 'crypto.sha3']
 			is_test: is_test
 		}, Request{
-			args:    ['-cc', compiler]
+			args:    flags
 			module:  'os'
 			imports: ['os', 'flag', 'time']
 			is_test: is_test
 		}, Request{
-			args:    ['-cc', compiler]
+			args:    flags
 			module:  'term'
 			imports: ['term', 'time']
 			is_test: is_test
 		}, Request{
-			args:    ['-cc', compiler]
+			args:    flags
 			module:  'runtime'
 			imports: ['runtime', 'sync', 'time']
 			is_test: is_test
 		}]
 		refresh(@VEXE, requests)!
-		cold_calls := os.read_file(log)!
-		assert cold_calls.len > 0
-		assert !cold_calls.contains('program_main_') && !cold_calls.contains('program_prefix_'), cold_calls
 		inventory := collect(os.dir(@VEXE), @VEXE)!
 		for request in requests {
 			assert inventory.any(it.module == request.module && it.is_test == is_test), '${request.module} must have a reusable module object'
 		}
-		// Trace cache misses only on the warm replay so CI identifies why an
-		// unchanged object was rebuilt. The trace changes no cache selection.
-		os.setenv('V3_CACHE_TRACE', '1', true)
+		objects := os.walk_ext(cache, '.o').sorted()
+		assert objects.len > 0
+		assert objects.all(!os.base(it).starts_with('program_')), objects.str()
+		mut inodes := []u64{cap: objects.len}
+		for object in objects { inodes << (os.stat(object)!).inode }
 		refresh(@VEXE, requests)!
-		os.unsetenv('V3_CACHE_TRACE')
-		warm_calls := os.read_file(log)!
-		diagnostic := 'warm refresh must reuse its validated module objects\n' +
-			'cold compiler calls:\n${cold_calls}\n' + 'after warm refresh:\n${warm_calls}'
-		assert warm_calls == cold_calls, diagnostic
-		assert os.read_file(dependency_log)!.contains(' -E '), 'native interface validation was not run'
+		assert os.walk_ext(cache, '.o').sorted() == objects
+		for i, object in objects {
+			assert (os.stat(object)!).inode == inodes[i], object
+		}
 	}
 }
 

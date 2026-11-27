@@ -68,6 +68,7 @@ static u8* (*g_arena_alloc_hook)();
 static u8* (*g_arena_realloc_hook)();
 static bool (*g_arena_owns_hook)();
 #define atomic_load_u32(pointer) (*(pointer))
+#define _unlikely_(condition) (condition)
 ${declarations}
 static void* live[16];
 static void* bases[16];
@@ -146,9 +147,11 @@ fn main() {
 	allocate := allocator_test_c_function(generated, 'u8* v_malloc(i64 n) {')
 	copy := allocator_test_c_function(generated, 'void* memdup(void* src, i64 sz) {')
 	deallocate := allocator_test_c_function(generated, 'void v_free(void* ptr) {')
+	free_impl := allocator_test_c_function(generated, 'void free_impl(void* ptr, bool use_prealloc) {')
 	assert allocate.contains('_aligned_malloc(n, 1)'), allocate
 	assert copy.contains('v_malloc(sz)'), copy
-	assert deallocate.contains('_aligned_free(ptr)'), deallocate
+	assert deallocate.contains('free_impl(ptr, true)'), deallocate
+	assert free_impl.contains('_aligned_free(ptr)'), free_impl
 	promoted := allocator_test_c_function(generated, 'main__Holder* promoted(void) {')
 	promoted_allocation := promoted.split_into_lines()[1].trim_space()
 	assert promoted_allocation.contains('v3_aligned_memdup('), promoted_allocation
@@ -163,6 +166,7 @@ typedef struct { main__NaturalCell values[2]; } main__NaturalHolder;
 ')}
 ${allocate}
 ${copy}
+${free_impl}
 ${deallocate}
 ${allocator_test_c_function(generated, 'static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')}
 ${allocator_test_c_function(generated, 'static inline void v3_aligned_free(void* p) {')}
@@ -297,6 +301,7 @@ fn main() { implicit_aligned()
 	os.write_file(mock_source, '${allocator_test_mock_runtime(declarations)}
 ${allocator_test_c_function(generated, 'u8* v_malloc(i64 n) {')}
 ${allocator_test_c_function(generated, 'void* memdup(void* src, i64 sz) {')}
+${allocator_test_c_function(generated, 'void free_impl(void* ptr, bool use_prealloc) {')}
 ${allocator_test_c_function(generated, 'void v_free(void* ptr) {')}
 ${allocator_test_c_function(generated, 'static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')}
 ${allocator_test_c_function(generated, 'static inline void v3_aligned_free(void* p) {')}

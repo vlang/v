@@ -9322,6 +9322,7 @@ fn v3_cache_compiler_executable_identity(vexe string) string {
 // reads the files at run time, and so does a compiler that was built by an older V.
 const v3_cache_compiler_runtime_inputs = [
 	'vlib/v/gen/c/manual_stdlib_c_headers.h',
+	'vlib/v/gen/c/freestanding_panic_jump.h',
 	'vlib/v/gen/c/int128_helpers.h',
 	'vlib/v/gen/c/int128_string.h',
 	'vlib/builtin/gc_boehm_helpers.c',
@@ -11914,11 +11915,11 @@ pub fn run(args []string) {
 		// "last wins" silently pick one, the same rule as two -O flags.
 		flag_sources := [user_c_flags, environment_c_flags]
 		flag_origins := ['-cflags', 'CFLAGS']
-		for i, flags in flag_sources {
+		for source_index, flags in flag_sources {
 			for flag in flags {
 				smuggled := v3_c_flag_opt_level(flag)
 				if smuggled != '' && smuggled != c_opt_level {
-					eprintln('conflicting optimization levels: `-O${c_opt_level}` and `${flag}` (from ${flag_origins[i]})')
+					eprintln('conflicting optimization levels: `-O${c_opt_level}` and `${flag}` (from ${flag_origins[source_index]})')
 					exit(1)
 				}
 			}
@@ -18608,6 +18609,11 @@ fn v3_cache_artifact_roots() []string {
 
 fn v3_cache_artifact_directories() []string {
 	temp_root := os.real_path(os.abs_path(os.vtmp_dir()))
+	configured_root := if configured := os.getenv_opt('V3CACHE') {
+		os.real_path(os.abs_path(configured))
+	} else {
+		''
+	}
 	mut directories := []string{}
 	roots := v3_cache_artifact_roots().map(os.real_path(os.abs_path(it)))
 	for root in roots {
@@ -18615,7 +18621,7 @@ fn v3_cache_artifact_directories() []string {
 			continue
 		}
 		for name in os.ls(root) or { []string{} } {
-			if !v3_cache_artifact_dir_name(name, root == temp_root) {
+			if !v3_cache_artifact_dir_name(name, root == temp_root || root == configured_root) {
 				continue
 			}
 			candidate := os.join_path_single(root, name)

@@ -77,7 +77,8 @@ fn main() {
 			b.write_string('reused')
 			assert bytes == expected
 			if bytes.len > 0 { bytes[0] = 42 }
-			assert b.str() == 'reused'
+			reused := b.str()
+			assert reused == 'reused'
 			unsafe { bytes.free() }
 		}
 	}
@@ -95,35 +96,43 @@ fn main() {
 		assert original == expected
 		unsafe { result.free() }
 	}
-	assert from_mut(mut source) == source
+	from_mut_source := from_mut(mut source)
+	assert from_mut_source == source
 	assert from_pointer(&source) == source
 	mut h := Holder{ b: strings.new_builder(0) }
 	h.b.write_string('field')
-	assert h.b.str().bytes() == 'field'.bytes()
+	field_bytes := h.b.str().bytes()
+	assert field_bytes == 'field'.bytes()
 	h.b.write_string('receiver')
-	assert h.builder().str().bytes() == 'receiver'.bytes()
+	receiver_bytes := h.builder().str().bytes()
+	assert receiver_bytes == 'receiver'.bytes()
 	assert h.visits == 1 && h.b.len == 0
-	assert h.bytes().bytestr().bytes() == [u8(2), 0, 255]
+	holder_bytes := h.bytes().bytestr().bytes()
+	assert holder_bytes == [u8(2), 0, 255]
 	assert h.visits == 2
 	mut builders := [strings.new_builder(0)]
 	builders[0].write_string('indexed')
-	assert builders[0].str().bytes() == 'indexed'.bytes()
+	indexed_bytes := builders[0].str().bytes()
+	assert indexed_bytes == 'indexed'.bytes()
 	mut mapped := {
 		'key': strings.new_builder(0)
 	}
 	mapped['key'].write_string('mapped')
-	assert mapped['key'].str().bytes() == 'mapped'.bytes()
+	mapped_bytes := mapped['key'].str().bytes()
+	assert mapped_bytes == 'mapped'.bytes()
 	// Sliced builders must detach/reset exactly as the unfused str() call does.
 	mut raw := [u8(0), 97, 98, 99, 100]
 	mut sliced := strings.Builder(raw[1..4])
-	assert sliced.str().bytes() == [u8(97), 98, 99]
+	sliced_bytes := sliced.str().bytes()
+	assert sliced_bytes == [u8(97), 98, 99]
 	assert raw == [u8(0), 97, 98, 99, 100]
 	sliced.write_string('new')
 	assert raw == [u8(0), 97, 98, 99, 100]
 	mut shared := strings.Builder([u8(1), 2, 3])
 	// Keep a borrowed slice so clear() must preserve storage used by another view.
 	view := unsafe { shared[..2] }
-	assert shared.str().bytes() == [u8(1), 2, 3]
+	shared_bytes := shared.str().bytes()
+	assert shared_bytes == [u8(1), 2, 3]
 	assert shared.len == 0 && view == [u8(1), 2]
 	shared.write_string('replacement')
 	assert view == [u8(1), 2]
