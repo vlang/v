@@ -528,8 +528,9 @@ assert.equal(e.unsigned_wide_equal(0n), 0);
 ')
 }
 
-fn test_wasm_assignments_keep_numeric_conversions() {
-	assert_wasm_source_before_and_after_optimization('numeric_stores', '
+fn test_wasm_scalar_evaluation() {
+	assert_wasm_source_before_and_after_optimization('scalar_evaluation', '
+// Numeric assignment conversions.
 pub fn check(n int) bool {
 	mut x := f64(0)
 	x = n
@@ -561,23 +562,8 @@ pub fn unsigned_to_signed(n u32) bool {
 	x = i64(n)
 	return x > 2147483647
 }
-', '
-assert.equal(e.check(1), 1);
-assert.equal(e.check(2), 0);
-assert.equal(e.check(-1), 1);
-assert.equal(e.promoted_float(1.25), 1);
-assert.equal(e.promoted_float(1.75), 0);
-assert.equal(e.unsigned_to_float(4000000000), 4000000000.5);
-assert.equal(e.branch_float(1, 1), 1.5);
-assert.equal(e.branch_float(1, 0), 3.5);
-assert.equal(e.parallel_floats(3), 7.5);
-assert.equal(e.unsigned_to_signed(4000000000), 1);
-assert.equal(e.unsigned_to_signed(1), 0);
-')
-}
 
-fn test_wasm_indirect_call_numeric_conversions() {
-	assert_wasm_source_before_and_after_optimization('indirect_numeric', '
+// Numeric arguments in indirect calls.
 fn scale(x f64) f64 { return x * 2.0 }
 fn scale32(x f32) f32 { return x * f32(2) }
 pub fn integer_argument() f64 {
@@ -592,15 +578,8 @@ pub fn integer_to_f32_argument() f32 {
 	callback := scale32
 	return callback(3)
 }
-', '
-assert.equal(e.integer_argument(), 6);
-assert.equal(e.f32_argument(), 7);
-assert.equal(e.integer_to_f32_argument(), 6);
-')
-}
 
-fn test_wasm_unicode_rune_initializers_and_expressions() {
-	assert_wasm_source_before_and_after_optimization('runes', '
+// Unicode rune initializers and expressions.
 __global letter = `é`
 __global ideograph = `界`
 __global emoji = `😀`
@@ -611,7 +590,39 @@ pub fn direct_letter() rune { return `é` }
 pub fn direct_ideograph() rune { return `界` }
 pub fn direct_emoji() rune { return `😀` }
 pub fn newline() rune { return `\\n` }
+
+// Moduleless numeric constants.
+const base = 10
+const answer = base * 4 + 2
+const big = u64(9223372036854775808)
+__global result = answer - 1
+
+fn answer_value() int { return answer }
+fn big_value() u64 { return big }
+fn result_value() int { return result }
+
+// Signed zero under floating-point unary minus.
+pub fn negative_zero64() f64 { return -0.0 }
+pub fn negative_zero32() f32 { return -f32(0.0) }
+pub fn negate64(value f64) f64 { return -value }
+pub fn negate32(value f32) f32 { return -value }
 ', '
+assert.equal(e.check(1), 1);
+assert.equal(e.check(2), 0);
+assert.equal(e.check(-1), 1);
+assert.equal(e.promoted_float(1.25), 1);
+assert.equal(e.promoted_float(1.75), 0);
+assert.equal(e.unsigned_to_float(4000000000), 4000000000.5);
+assert.equal(e.branch_float(1, 1), 1.5);
+assert.equal(e.branch_float(1, 0), 3.5);
+assert.equal(e.parallel_floats(3), 7.5);
+assert.equal(e.unsigned_to_signed(4000000000), 1);
+assert.equal(e.unsigned_to_signed(1), 0);
+
+assert.equal(e.integer_argument(), 6);
+assert.equal(e.f32_argument(), 7);
+assert.equal(e.integer_to_f32_argument(), 6);
+
 assert.equal(e.global_letter(), 233);
 assert.equal(e.global_ideograph(), 30028);
 assert.equal(e.global_emoji(), 128512);
@@ -619,6 +630,19 @@ assert.equal(e.direct_letter(), 233);
 assert.equal(e.direct_ideograph(), 30028);
 assert.equal(e.direct_emoji(), 128512);
 assert.equal(e.newline(), 10);
+
+assert.equal(e.answer_value(), 42);
+assert.equal(BigInt.asUintN(64, e.big_value()), 9223372036854775808n);
+assert.equal(e.result_value(), 41);
+
+assert.ok(Object.is(e.negative_zero64(), -0));
+assert.ok(Object.is(e.negative_zero32(), -0));
+for (const negate of [e.negate64, e.negate32]) {
+    assert.ok(Object.is(negate(0), -0));
+    assert.ok(Object.is(negate(-0), 0));
+    assert.equal(negate(17), -17);
+    assert.equal(negate(-17), 17);
+}
 ')
 }
 
@@ -1030,15 +1054,90 @@ fn test_wasm_imported_module_alias_call() {
 	run_wasi_expect(out_wasm, ['42', '7'])
 }
 
-fn test_wasm_parallel_multi_assign_swaps_globals() {
-	v3_bin := v3_binary()
-	// Parallel assignment must buffer __global targets too and write them back
-	// with global_set + narrowing, so `a, b = b, a` swaps the globals (incl.
-	// sub-32-bit ones) instead of leaving them unchanged.
-	src := '__global a int\n__global b int\n__global p = u8(250)\n__global q = u8(10)\n\nfn main() {\n\ta = 1\n\tb = 2\n\ta, b = b, a\n\tprintln(a)\n\tprintln(b)\n\tp, q = q, p\n\tprintln(int(p))\n\tprintln(int(q))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_swap')
+fn test_wasm_global_updates() {
+	wasm := compile_to_wasm(v3_binary(), "__global a int
+__global b int
+__global p = u8(250)
+__global q = u8(10)
+
+// Evaluate both values on the right before writing either global,
+// including globals narrower than 32 bits.
+fn parallel_multi_assign_swaps_globals() {
+	a = 1
+	b = 2
+	a, b = b, a
+	println(a)
+	println(b)
+	p, q = q, p
+	println(int(p))
+	println(int(q))
+}
+
+__global counter int
+__global x = 10
+__global narrow_value u8
+
+fn inc() {
+	counter = counter + 1
+}
+
+// Check reads and writes across functions, initializers, compound
+// assignments, and narrowing for numeric globals.
+fn numeric_globals() {
+	counter = 3
+	inc()
+	inc()
+	println(counter)
+	x += 5
+	println(x)
+	narrow_value = u8(250)
+	narrow_value += u8(10)
+	println(int(narrow_value))
+}
+
+__global postfix_counter int
+__global postfix_byte = u8(250)
+
+fn bump() {
+	postfix_counter++
+}
+
+// `counter++`/`counter--` on a numeric global must read-modify-write the wasm
+// global (incl. across functions) and narrow-wrap for sub-32-bit globals.
+fn global_postfix() {
+	postfix_counter = 3
+	postfix_counter++
+	bump()
+	postfix_counter--
+	println(postfix_counter)
+	postfix_byte++
+	println(int(postfix_byte))
+}
+
+fn main() {
+	println('parallel_multi_assign_swaps_globals')
+	parallel_multi_assign_swaps_globals()
+	println('numeric_globals')
+	numeric_globals()
+	println('global_postfix')
+	global_postfix()
+}
+", 'wasm_global_updates')
 	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['2', '1', '10', '250'])
+	run_wasi_expect(wasm, [
+		'parallel_multi_assign_swaps_globals',
+		'2',
+		'1',
+		'10',
+		'250',
+		'numeric_globals',
+		'5',
+		'15',
+		'4',
+		'global_postfix',
+		'4',
+		'251',
+	])
 }
 
 fn test_wasm_import_aliases_are_file_scoped() {
@@ -1355,21 +1454,6 @@ fn test_wasm_nested_module_import_call() {
 	run_wasi_expect(out_wasm, ['42', '7'])
 }
 
-fn test_wasm_moduleless_numeric_constants_before_and_after_optimization() {
-	assert_wasm_source_before_and_after_optimization('script_numeric_consts', '
-const base = 10
-const answer = base * 4 + 2
-const big = u64(9223372036854775808)
-__global result = answer - 1
-
-fn answer_value() int { return answer }
-fn big_value() u64 { return big }
-fn result_value() int { return result }
-', 'assert.equal(e.answer_value(), 42);
-assert.equal(BigInt.asUintN(64, e.big_value()), 9223372036854775808n);
-assert.equal(e.result_value(), 41);')
-}
-
 fn test_wasm_nested_imported_modules() {
 	v3_bin := v3_binary()
 	// Nested modules imported under different aliases must resolve to their own
@@ -1550,26 +1634,6 @@ fn res_contains_unsupported(v3_bin string, src string) bool {
 	return res.output.contains('unsupported statement: label_stmt')
 }
 
-fn test_wasm_numeric_globals() {
-	v3_bin := v3_binary()
-	// __global is lowered to a wasm mutable global: reads/writes (incl. across
-	// functions), initializers, compound assigns and narrow wrapping all work.
-	src := '__global counter int\n__global x = 10\n__global b u8\n\nfn inc() {\n\tcounter = counter + 1\n}\n\nfn main() {\n\tcounter = 3\n\tinc()\n\tinc()\n\tprintln(counter)\n\tx += 5\n\tprintln(x)\n\tb = u8(250)\n\tb += u8(10)\n\tprintln(int(b))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_globals')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['5', '15', '4'])
-}
-
-fn test_wasm_global_postfix() {
-	v3_bin := v3_binary()
-	// `counter++`/`counter--` on a numeric global must read-modify-write the wasm
-	// global (incl. across functions) and narrow-wrap for sub-32-bit globals.
-	src := '__global counter int\n__global b = u8(250)\n\nfn bump() {\n\tcounter++\n}\n\nfn main() {\n\tcounter = 3\n\tcounter++\n\tbump()\n\tcounter--\n\tprintln(counter)\n\tb++\n\tprintln(int(b))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_postfix')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['4', '251'])
-}
-
 fn test_wasm_global_initializers() {
 	wasm := compile_to_wasm(v3_binary(), "__global narrow_byte = u8(u16(300))
 __global s = i8(i16(128))
@@ -1711,21 +1775,3 @@ const { instance: i } = await WebAssembly.instantiate(readFileSync(process.argv[
 const e = i.exports;
 process.stdout.write(`\${e.add(3, 4)} \${e.fib(10)} \${e.gcd(48, 36)}`);
 "
-
-fn test_wasm_float_unary_minus_preserves_signed_zero() {
-	assert_wasm_source_before_and_after_optimization('signed_zero_negation', '
-pub fn negative_zero64() f64 { return -0.0 }
-pub fn negative_zero32() f32 { return -f32(0.0) }
-pub fn negate64(value f64) f64 { return -value }
-pub fn negate32(value f32) f32 { return -value }
-', '
-assert.ok(Object.is(e.negative_zero64(), -0));
-assert.ok(Object.is(e.negative_zero32(), -0));
-for (const negate of [e.negate64, e.negate32]) {
-    assert.ok(Object.is(negate(0), -0));
-    assert.ok(Object.is(negate(-0), 0));
-    assert.equal(negate(17), -17);
-    assert.equal(negate(-17), 17);
-}
-')
-}
