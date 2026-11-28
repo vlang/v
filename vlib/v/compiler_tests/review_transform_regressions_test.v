@@ -5685,10 +5685,133 @@ fn main() {
 	], mut files)
 }
 
-fn test_string_to_owned_compiles_under_ownership_cgen() {
+fn test_ownership_dispatch_and_copies() {
 	v3_bin := build_v3_review_transform_ownership()
-	out := run_good_with_flags(v3_bin, 'string_to_owned_ownership_cgen', '-ownership', "fn main() {\n\tname := 'owned'.to_owned()\n\tcopy := name.to_owned()\n\tprintln(copy)\n}\n")
-	assert out == 'owned'
+	run_good_module_batch_with_flags(v3_bin, 'ownership_dispatch_and_copies', '-ownership', [
+		TransformFixture{'string_to_owned_ownership_cgen', "fn main() {
+	name := 'owned'.to_owned()
+	copy := name.to_owned()
+	println(copy)
+}
+", 'owned'},
+		TransformFixture{'generic_interface_log_debug_dispatch', "import log
+
+interface Sink {
+	binary_data()
+}
+
+struct Box[T] {}
+
+fn (mut b Box[T]) binary_data() {
+	_ = b
+	log.debug('hidden')
+}
+
+struct Runner {}
+
+fn (mut r Runner) run(mut s Sink) {
+	_ = r
+	s.binary_data()
+}
+
+struct Worker {
+mut:
+	runner Runner
+}
+
+fn main() {
+	mut worker := Worker{
+		runner: Runner{}
+	}
+	mut b := Box[int]{}
+	worker.runner.run(mut b)
+	println('ok')
+}
+", 'ok'},
+		TransformFixture{'generic_interface_mut_pointer_dispatch', 'interface Writer[T] {
+	write(mut value T) !bool
+}
+
+struct Text {
+mut:
+	value string
+}
+
+struct Count {
+	padding [7]u8
+mut:
+	value int
+}
+
+struct TextWriter {}
+struct CountWriter {}
+
+fn (_ TextWriter) write(mut value Text) !bool {
+	value.value = "done"
+	return true
+}
+
+fn (_ CountWriter) write(mut value Count) !bool {
+	value.value = 42
+	return true
+}
+
+fn apply[T](writer &Writer[T], mut value T) !bool {
+	return writer.write(mut value)
+}
+
+fn main() {
+	mut text := Text{
+		value: "before"
+	}
+	mut count := Count{
+		value: 1
+	}
+	assert (apply(TextWriter{}, mut text) or { panic(err.msg()) })
+	assert (apply(CountWriter{}, mut count) or { panic(err.msg()) })
+	println(text.value + ":" + int_str(count.value))
+}
+', 'done:42'},
+		TransformFixture{'generic_interface_implementer_result_dispatch', 'interface Writer {
+mut:
+	write(buf []u8) !int
+}
+
+struct Buffer {}
+
+fn (mut b Buffer) write(buf []u8) !int {
+	_ = b
+	return buf.len
+}
+
+struct CounterWriter[W] {
+mut:
+	inner W
+}
+
+fn (mut w CounterWriter[W]) write(buf []u8) !int {
+	\$if W is Writer {
+		return w.inner.write(buf)
+	} \$else {
+		return error("not a writer")
+	}
+}
+
+fn write_len(mut writer Writer) !int {
+	return writer.write([u8(1), 2, 3])
+}
+
+fn main() {
+	mut plain := Buffer{}
+	assert (write_len(mut plain) or { panic(err.msg()) }) == 3
+	mut counter := CounterWriter[Buffer]{
+		inner: Buffer{}
+	}
+	assert (write_len(mut counter) or { panic(err.msg()) }) == 3
+	println("ok")
+}
+', 'ok'},
+	])
 }
 
 fn test_owned_value_receiver_method_closure_clones_and_drops_context() {
@@ -5785,105 +5908,6 @@ fn main() {
 	assert c_source.contains('string__free(&((*ctx).text));'), c_source
 	assert c_source.contains('array__free(&((*ctx).values));'), c_source
 	assert out == '95'
-}
-
-fn test_generic_interface_method_body_marks_log_debug_dispatch() {
-	v3_bin := build_v3_review_transform_ownership()
-	out := run_good_with_flags(v3_bin, 'generic_interface_log_debug_dispatch', '-ownership', "import log\n\ninterface Sink {\n\tbinary_data()\n}\n\nstruct Box[T] {}\n\nfn (mut b Box[T]) binary_data() {\n\t_ = b\n\tlog.debug('hidden')\n}\n\nstruct Runner {}\n\nfn (mut r Runner) run(mut s Sink) {\n\t_ = r\n\ts.binary_data()\n}\n\nstruct Worker {\nmut:\n\trunner Runner\n}\n\nfn main() {\n\tmut worker := Worker{\n\t\trunner: Runner{}\n\t}\n\tmut b := Box[int]{}\n\tworker.runner.run(mut b)\n\tprintln('ok')\n}\n")
-	assert out == 'ok'
-}
-
-fn test_generic_interface_mut_pointer_parameter_uses_erased_dispatch_abi() {
-	v3_bin := build_v3_review_transform_ownership()
-	out := run_good_with_flags(v3_bin, 'generic_interface_mut_pointer_dispatch', '-ownership', 'interface Writer[T] {
-	write(mut value T) !bool
-}
-
-struct Text {
-mut:
-	value string
-}
-
-struct Count {
-	padding [7]u8
-mut:
-	value int
-}
-
-struct TextWriter {}
-struct CountWriter {}
-
-fn (_ TextWriter) write(mut value Text) !bool {
-	value.value = "done"
-	return true
-}
-
-fn (_ CountWriter) write(mut value Count) !bool {
-	value.value = 42
-	return true
-}
-
-fn apply[T](writer &Writer[T], mut value T) !bool {
-	return writer.write(mut value)
-}
-
-fn main() {
-	mut text := Text{
-		value: "before"
-	}
-	mut count := Count{
-		value: 1
-	}
-	assert apply(TextWriter{}, mut text)!
-	assert apply(CountWriter{}, mut count)!
-	println(text.value + ":" + int_str(count.value))
-}
-')
-	assert out == 'done:42'
-}
-
-fn test_generic_interface_implementer_result_uses_dispatch_abi() {
-	v3_bin := build_v3_review_transform_ownership()
-	out := run_good_with_flags(v3_bin, 'generic_interface_implementer_result_dispatch', '-ownership', 'interface Writer {
-mut:
-	write(buf []u8) !int
-}
-
-struct Buffer {}
-
-fn (mut b Buffer) write(buf []u8) !int {
-	_ = b
-	return buf.len
-}
-
-struct CounterWriter[W] {
-mut:
-	inner W
-}
-
-fn (mut w CounterWriter[W]) write(buf []u8) !int {
-	$if W is Writer {
-		return w.inner.write(buf)
-	} $else {
-		return error("not a writer")
-	}
-}
-
-fn write_len(mut writer Writer) !int {
-	return writer.write([u8(1), 2, 3])
-}
-
-fn main() {
-	mut plain := Buffer{}
-	assert write_len(mut plain)! == 3
-	mut counter := CounterWriter[Buffer]{
-		inner: Buffer{}
-	}
-	assert write_len(mut counter)! == 3
-	println("ok")
-}
-')
-	assert out == 'ok'
 }
 
 fn test_array_literal_separator_handling() {
@@ -6002,12 +6026,6 @@ fn test_cyclic_interface_default_does_not_deref_nil_global() {
 	assert out == 'alive'
 }
 
-fn test_interface_array_repeat_evaluates_receiver_once() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_with_flags(v3_bin, 'interface_repeat_side_effects', '-enable-globals', 'interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\n__global calls int\n\nfn make_item() Thing {\n\tcalls++\n\treturn Item{\n\t\tn: calls\n\t}\n}\n\nfn main() {\n\titems := [make_item()].repeat(3)\n\tprintln(int_str(calls))\n\tprintln(int_str(items[0].value() + items[1].value() + items[2].value()))\n}\n')
-	assert out == '1\n3'
-}
-
 fn test_array_repeat_safe_wrapper_compiles_in_prod() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_with_flags(v3_bin, 'array_repeat_prod', '-prod', 'fn main() {\n\tprintln([1, 2, 3].repeat(2))\n}\n')
@@ -6051,11 +6069,54 @@ fn test_delete_last_empty_array_panics_before_tail_clear() {
 	assert run.output.contains('array.delete_last: array is empty'), run.output
 }
 
-fn test_map_literal_entries_evaluate_once() {
+fn test_collection_receiver_evaluation() {
 	v3_bin := build_v3_review_transform()
-	run_good_module_batch_with_flags(v3_bin, 'map_literal_entries_evaluate_once', '-enable-globals', [
+	run_good_module_batch_with_flags(v3_bin, 'collection_receiver_evaluation', '-enable-globals', [
 		TransformFixture{'map_literal_str_side_effects', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'k' + int_str(key_calls)\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tprintln({\n\t\tnext_key(): next_val()\n\t})\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n", "{'k1': 10}\n1,1"},
 		TransformFixture{'map_literal_decl_side_effects', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'key'\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tvalues := {\n\t\tnext_key(): next_val()\n\t}\n\tprintln(int_str(values['key']))\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n", '10\n1,1'},
+		TransformFixture{'interface_repeat_side_effects', 'interface Thing {
+	value() int
+}
+
+struct Item {
+	n int
+}
+
+fn (i Item) value() int {
+	return i.n
+}
+
+__global repeat_calls int
+
+fn make_item() Thing {
+	repeat_calls++
+	return Item{
+		n: repeat_calls
+	}
+}
+
+fn main() {
+	items := [make_item()].repeat(3)
+	println(int_str(repeat_calls))
+	println(int_str(items[0].value() + items[1].value() + items[2].value()))
+}
+', '1\n3'},
+		TransformFixture{'last_lvalue_side_effecting_receiver', '__global receiver_calls int
+
+fn next() int {
+	index := receiver_calls
+	receiver_calls++
+	return index
+}
+
+fn main() {
+	mut arrays := [[[1, 2]], [[3, 4]]]
+	arrays[next()].last() << 9
+	println(int_str(receiver_calls))
+	println(arrays[0])
+	println(arrays[1])
+}
+', '1\n[[1, 2, 9]]\n[[3, 4]]'},
 	])
 }
 
@@ -12176,27 +12237,6 @@ fn main() {
 	assert out == '2\n1'
 }
 
-fn test_last_lvalue_stabilizes_side_effecting_receiver() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_with_flags(v3_bin, 'last_lvalue_side_effecting_receiver', '-enable-globals', '__global calls int
-
-fn next() int {
-	index := calls
-	calls++
-	return index
-}
-
-fn main() {
-	mut arrays := [[[1, 2]], [[3, 4]]]
-	arrays[next()].last() << 9
-	println(int_str(calls))
-	println(arrays[0])
-	println(arrays[1])
-}
-')
-	assert out == '1\n[[1, 2, 9]]\n[[3, 4]]'
-}
-
 fn check_shadowed_allocation_helper_fn_value_escape(c_source string) {
 	for fn_name in ['make_memdup', 'make_memdup_noscan', 'make_aligned_memdup'] {
 		body := c_fn_body(c_source, 'i64* ${fn_name}(void) {')
@@ -12462,10 +12502,38 @@ fn main() {
 	]
 }
 
-fn test_local_enum_equality_ignores_same_named_imported_struct() {
+fn test_homonymous_declared_types() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'local_enum_imported_struct_collision', {
-		'main.v':        'module main
+	mut files := {
+		'other/lang.v':        'module other
+
+pub struct Lang {
+pub:
+	keywords []string
+}
+'
+		'other/locale.v':      'module other
+
+pub enum Locale {
+	en
+	ru
+}
+'
+		'other/slice_index.v': 'module other
+
+pub enum SliceIndex {
+	value
+}
+'
+		'sample/sample.v':     'module sample
+
+pub fn slice_indexes_equal(left SliceIndex, right SliceIndex) bool {
+	return left == right
+}
+'
+	}
+	run_good_main_fixture_project(v3_bin, 'homonymous_declared_types', [
+		TransformFixture{'local_enum_imported_struct_collision', 'module main
 
 import other
 
@@ -12485,49 +12553,21 @@ fn main() {
 	println(lang_name(.ru))
 	_ = other.Lang{}
 }
-'
-		'other/other.v': 'module other
-
-pub struct Lang {
-pub:
-	keywords []string
-}
-'
-	}, 'main.v')
-	assert out == 'ru'
-}
-
-fn test_local_struct_equality_ignores_same_named_imported_enum() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'local_struct_imported_enum_collision', {
-		'main.v':        'module main
+', 'ru'},
+		TransformFixture{'local_struct_imported_enum_collision', 'module main
 
 import other
 
-struct Lang {
+struct Locale {
 	code int
 }
 
 fn main() {
-	println(Lang{code: 7} == Lang{code: 7})
-	_ = other.Lang.en
+	println(Locale{code: 7} == Locale{code: 7})
+	_ = other.Locale.en
 }
-'
-		'other/other.v': 'module other
-
-pub enum Lang {
-	en
-	ru
-}
-'
-	}, 'main.v')
-	assert out == 'true'
-}
-
-fn test_builtin_struct_equality_ignores_same_named_imported_enum() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'builtin_struct_imported_enum_collision', {
-		'main.v':          'module main
+', 'true'},
+		TransformFixture{'builtin_struct_imported_enum_collision', 'module main
 
 import other
 import sample
@@ -12538,19 +12578,6 @@ fn main() {
 	println(sample.slice_indexes_equal(left, right))
 	_ = other.SliceIndex.value
 }
-'
-		'other/other.v':   'module other
-
-pub enum SliceIndex {
-	value
-}
-'
-		'sample/sample.v': 'module sample
-
-pub fn slice_indexes_equal(left SliceIndex, right SliceIndex) bool {
-	return left == right
-}
-'
-	}, 'main.v')
-	assert out == 'true'
+', 'true'},
+	], mut files)
 }
