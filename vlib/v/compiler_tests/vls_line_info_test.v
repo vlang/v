@@ -1323,14 +1323,6 @@ fn constrained(code string, line int, word string, nth int) string {
 	return ask(os.join_path(work_dir, 'constraints'), code, line, word, nth)
 }
 
-fn constrained_completion(line int, col int) []Detail {
-	answer := ask_at(os.join_path(work_dir, 'constraints'), '${line}:${col}')
-	if answer == '' {
-		return []
-	}
-	return completion_details(answer)
-}
-
 fn test_a_constrained_value_has_the_members_of_its_constraint() {
 	text := constraints_program.split('\n')[19]
 	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
@@ -1388,20 +1380,33 @@ fn test_the_implicit_variables_and_lambdas_of_a_constrained_body_have_its_member
 
 fn test_a_field_of_a_constrained_type_has_the_members_of_its_constraint() {
 	// `b.item.name` in `fn (b Box[T]) label()`, `item T` of `Box[T Named]`.
-	assert constrained('hv^', 50, 'name', 0) == '{"contents":{"kind":"markdown","value":"```v\\nname string\\n```"}}'
-	assert constrained('gd^', 50, 'name', 0) == 'main.v:4:1'
-	members := constrained_completion(50, 29).map('${it.kind} ${it.label} ${it.detail}')
+	text := constraints_program.split('\n')[49]
+	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
+		word_question(text, 'hv^', 50, 'name', 0),
+		word_question(text, 'gd^', 50, 'name', 0),
+		'50:29',
+	])
+	assert answers[0] == hover_of('name string')
+	assert answers[1] == 'main.v:4:1'
+	members := completion_details(answers[2]).map('${it.kind} ${it.label} ${it.detail}')
 	assert members == ['2 greet string', '5 name string'], members.str()
 }
 
 fn test_a_constraint_name_has_a_definition_and_a_hover() {
+	lines := constraints_program.split('\n')
+	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
+		word_question(lines[26], 'gd^', 27, 'Number', 0),
+		word_question(lines[26], 'hv^', 27, 'Number', 0),
+		word_question(lines[16], 'gd^', 17, 'Number', 0),
+		word_question(lines[18], 'gd^', 19, 'Named', 0),
+	])
 	// `Number` in `describe[T Number]`: the sum type, `type Number = int | f64`.
-	assert constrained('gd^', 27, 'Number', 0) == 'main.v:17:5'
-	assert constrained('hv^', 27, 'Number', 0) == '{"contents":{"kind":"markdown","value":"```v\\ntype Number = int | f64\\n```"}}'
+	assert answers[0] == 'main.v:17:5'
+	assert answers[1] == hover_of('type Number = int | f64')
 	// On the name it declares: that declaration.
-	assert constrained('gd^', 17, 'Number', 0) == 'main.v:17:5'
+	assert answers[2] == 'main.v:17:5'
 	// `Named` in `longest[T Named]`: the interface, as any type written there.
-	assert constrained('gd^', 19, 'Named', 0) == 'main.v:3:10'
+	assert answers[3] == 'main.v:3:10'
 }
 
 fn test_a_compile_time_branch_in_a_constrained_body_leaves_the_queries_working() {
