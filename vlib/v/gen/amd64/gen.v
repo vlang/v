@@ -1836,7 +1836,13 @@ fn (mut g Gen) gen_integer_shift(op ssa.OpCode, lhs_id int, rhs_id int, result_i
 	g.load_val_to_reg(0, lhs_id)
 	g.load_val_to_reg(1, rhs_id)
 	match op {
-		.shl { asm_shl_rax_cl(mut g) }
+		.shl {
+			asm_shl_rax_cl(mut g)
+			typ := g.m.type_store.types[g.m.values[result_id].typ]
+			if typ.kind == .int_t && typ.width > 0 && typ.width < 64 {
+				g.canonicalize_narrow_int(typ)
+			}
+		}
 		.ashr { asm_sar_rax_cl(mut g) }
 		.lshr { asm_shr_rax_cl(mut g) }
 		else {}
@@ -1845,13 +1851,7 @@ fn (mut g Gen) gen_integer_shift(op ssa.OpCode, lhs_id int, rhs_id int, result_i
 	jmp_disp := g.elf.text_data.len
 	g.emit_u32(0)
 	oversized := g.elf.text_data.len
-	if op == .ashr {
-		g.load_val_to_reg(0, lhs_id)
-		asm_cqo(mut g)
-		asm_mov_rax_rdx(mut g)
-	} else {
-		asm_xor_eax_eax(mut g)
-	}
+	asm_xor_eax_eax(mut g)
 	done := g.elf.text_data.len
 	g.write_u32(jae_disp, u32(oversized - (jae_disp + 4)))
 	g.write_u32(jmp_disp, u32(done - (jmp_disp + 4)))
