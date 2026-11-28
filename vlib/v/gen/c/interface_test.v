@@ -8,6 +8,30 @@ import v.pref
 import v.transform
 import v.types
 
+fn test_indexed_interface_boxes_copy_from_array_storage() {
+	root := os.join_path(os.vtmp_dir(), 'interface_array_box_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	c_path := os.join_path(root, 'output.c')
+	source := os.join_path(@VEXEROOT, 'vlib', 'v', 'tests', 'interfaces',
+		'interface_value_semantics_test.v')
+	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	compiler := if shared_v3 != '' { shared_v3 } else { @VEXE }
+	compiled := os.exec([compiler, '-nocache', '-gc', 'none', '-o', c_path, source])
+	assert compiled.exit_code == 0, compiled.output
+	code := os.read_file(c_path)!
+	for name in ['box_dynamic_element', 'box_fixed_element'] {
+		start := code.last_index('IndexedReader ${name}(') or {
+			panic('missing definition of ${name}')
+		}
+		body := code[start..].all_before('\n}')
+		assert body.count('memdup(') == 1, body
+		assert body.count('next_box_index(') == 1, body
+		assert !body.contains('IndexedPayload __iface_src_'), body
+		assert body.contains('._object_is_boxed = true'), body
+	}
+}
+
 fn test_source_interface_dispatch_stays_available_to_cached_callers() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
