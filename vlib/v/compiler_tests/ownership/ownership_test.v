@@ -2184,40 +2184,6 @@ fn check_ownership_module_move_rejections(name string, cases []OwnershipModuleMo
 
 fn test_ownership_assignment_to_storage_consumes_rhs() {
 	v3_bin := ownership_compiler
-	fail_field := run_ownership_check(v3_bin, 'assign_field', '
-struct Holder {
-mut:
-	value string
-}
-
-fn main() {
-	mut h := Holder{value: ""}
-	r := "field".to_owned()
-	h.value = r
-	println(r)
-}
-')
-	assert fail_field.exit_code != 0
-	assert fail_field.output.contains('use of moved value: `r`'), fail_field.output
-
-	fail_field_read := run_ownership_check(v3_bin, 'assign_field_then_duplicate_read', '
-struct Holder {
-mut:
-	value string
-}
-
-fn main() {
-	mut h := Holder{value: ""}
-	r := "field".to_owned()
-	h.value = r
-	t := h.value
-	println(h.value)
-	_ = t
-}
-')
-	assert fail_field_read.exit_code != 0
-	assert fail_field_read.output.contains('use of moved value: `h.value`'), fail_field_read.output
-
 	ok_whole_overwrite_clears_field := run_ownership_check(v3_bin, 'whole_overwrite_clears_owned_field', '
 struct Holder {
 mut:
@@ -2235,40 +2201,6 @@ fn main() {
 }
 ')
 	assert ok_whole_overwrite_clears_field.exit_code == 0, ok_whole_overwrite_clears_field.output
-
-	fail_field_expr_read := run_ownership_check(v3_bin, 'assign_field_then_expression_read', '
-struct Holder {
-mut:
-	value string
-}
-
-fn main() {
-	mut h := Holder{value: ""}
-	r := "field".to_owned()
-	h.value = r
-	t := h.value
-	println(h.value + "")
-	_ = t
-}
-')
-	assert fail_field_expr_read.exit_code != 0
-	assert fail_field_expr_read.output.contains('use of moved value: `h.value`'), fail_field_expr_read.output
-
-	fail_struct_literal_field_read := run_ownership_check(v3_bin, 'struct_literal_field_then_duplicate_read', '
-struct Holder {
-	value string
-}
-
-fn main() {
-	r := "field".to_owned()
-	h := Holder{value: r}
-	t := h.value
-	println(h.value)
-	_ = t
-}
-')
-	assert fail_struct_literal_field_read.exit_code != 0
-	assert fail_struct_literal_field_read.output.contains('use of moved value: `h.value`'), fail_struct_literal_field_read.output
 
 	fail_aggregate_copy := run_ownership_check(v3_bin, 'aggregate_copy_moves_owned_field', '
 struct Holder {
@@ -2324,61 +2256,6 @@ fn main() {
 ')
 	assert fail_default_to_owned_field_read.exit_code != 0
 	assert fail_default_to_owned_field_read.output.contains('use of moved value: `h.value`'), fail_default_to_owned_field_read.output
-
-	fail_returned_default_field_read := run_ownership_check(v3_bin, 'returned_default_field_then_duplicate_read', '
-struct Holder {
-	value string = "item".to_owned()
-}
-
-fn main() {
-	h := make()
-	t := h.value
-	println(h.value)
-	_ = t
-}
-
-fn make() Holder {
-	return Holder{}
-}
-')
-	assert fail_returned_default_field_read.exit_code != 0
-	assert fail_returned_default_field_read.output.contains('use of moved value: `h.value`'), fail_returned_default_field_read.output
-
-	fail_returned_array_literal_read := run_ownership_check(v3_bin, 'returned_array_literal_then_duplicate_read', '
-fn main() {
-	arr := make()
-	t := arr[0]
-	println(arr[0])
-	_ = t
-}
-
-fn make() []string {
-	s := "item".to_owned()
-	return [s]
-}
-')
-	assert fail_returned_array_literal_read.exit_code != 0
-	assert fail_returned_array_literal_read.output.contains('use of moved value: `arr[0]`'), fail_returned_array_literal_read.output
-
-	fail_projected_return_field := run_ownership_check(v3_bin, 'projected_return_field', '
-struct Holder {
-	value string
-}
-
-fn main() {
-	s := make().value
-	t := s
-	println(s)
-	_ = t
-}
-
-fn make() Holder {
-	s := "field".to_owned()
-	return Holder{value: s}
-}
-')
-	assert fail_projected_return_field.exit_code != 0
-	assert fail_projected_return_field.output.contains('use of moved value: `s`'), fail_projected_return_field.output
 
 	ok_array_loop_dynamic_append_return := run_ownership_check(v3_bin, 'array_loop_dynamic_append_return', '
 fn split_parts(glob string) []string {
@@ -2467,18 +2344,6 @@ fn main() {
 	assert fail_array_len_init.output.contains('use of moved value: `s`'), fail_array_len_init.output
 	assert fail_array_len_init.output.contains('use of moved value: `arr[*]`'), fail_array_len_init.output
 
-	fail_map_literal_read := run_ownership_check(v3_bin, 'map_literal_then_duplicate_read', '
-fn main() {
-	s := "item".to_owned()
-	m := {"k": s}
-	t := m["k"]
-	println(m["k"])
-	_ = t
-}
-')
-	assert fail_map_literal_read.exit_code != 0
-	assert fail_map_literal_read.output.contains('use of moved value: `m[k]`'), fail_map_literal_read.output
-
 	fail_map_dynamic_index_read := run_ownership_check(v3_bin, 'map_dynamic_index_then_literal_read', '
 fn main() {
 	s := "item".to_owned()
@@ -2492,6 +2357,173 @@ fn main() {
 ')
 	assert fail_map_dynamic_index_read.exit_code != 0
 	assert fail_map_dynamic_index_read.output.contains('use of moved value: `m[k]`'), fail_map_dynamic_index_read.output
+}
+
+fn test_ownership_aggregate_storage_move_rejections() {
+	check_ownership_module_move_rejections('aggregate_storage_move_rejections', [
+		OwnershipModuleMoveRejection{'assign_field', '
+struct Holder {
+mut:
+	value string
+}
+
+fn main() {
+	mut h := Holder{value: ""}
+	r := "field".to_owned()
+	h.value = r
+	println(r)
+}
+', 'r'},
+		OwnershipModuleMoveRejection{'assign_field_then_duplicate_read', '
+struct Holder {
+mut:
+	value string
+}
+
+fn main() {
+	mut h := Holder{value: ""}
+	r := "field".to_owned()
+	h.value = r
+	t := h.value
+	println(h.value)
+	_ = t
+}
+', 'h.value'},
+		OwnershipModuleMoveRejection{'assign_field_then_expression_read', '
+struct Holder {
+mut:
+	value string
+}
+
+fn main() {
+	mut h := Holder{value: ""}
+	r := "field".to_owned()
+	h.value = r
+	t := h.value
+	println(h.value + "")
+	_ = t
+}
+', 'h.value'},
+		OwnershipModuleMoveRejection{'struct_literal_field_then_duplicate_read', '
+struct Holder {
+	value string
+}
+
+fn main() {
+	r := "field".to_owned()
+	h := Holder{value: r}
+	t := h.value
+	println(h.value)
+	_ = t
+}
+', 'h.value'},
+		OwnershipModuleMoveRejection{'returned_default_field_then_duplicate_read', '
+struct Holder {
+	value string = "item".to_owned()
+}
+
+fn main() {
+	h := make()
+	t := h.value
+	println(h.value)
+	_ = t
+}
+
+fn make() Holder {
+	return Holder{}
+}
+', 'h.value'},
+		OwnershipModuleMoveRejection{'returned_array_literal_then_duplicate_read', '
+fn main() {
+	arr := make()
+	t := arr[0]
+	println(arr[0])
+	_ = t
+}
+
+fn make() []string {
+	s := "item".to_owned()
+	return [s]
+}
+', 'arr[0]'},
+		OwnershipModuleMoveRejection{'projected_return_field', '
+struct Holder {
+	value string
+}
+
+fn main() {
+	s := make().value
+	t := s
+	println(s)
+	_ = t
+}
+
+fn make() Holder {
+	s := "field".to_owned()
+	return Holder{value: s}
+}
+', 's'},
+		OwnershipModuleMoveRejection{'map_literal_then_duplicate_read', '
+fn main() {
+	s := "item".to_owned()
+	m := {"k": s}
+	t := m["k"]
+	println(m["k"])
+	_ = t
+}
+', 'm[k]'},
+		OwnershipModuleMoveRejection{'collapsed_later_variadic_owned_field', '
+struct PlainCfg {
+	s string
+}
+
+fn dup_variadic(cfgs ...PlainCfg) {
+	t := cfgs[1].s
+	println(cfgs[1].s)
+	_ = t
+}
+
+fn main() {
+	owned := "later".to_owned()
+	dup_variadic(PlainCfg{s: "first"}, s: owned)
+}
+', 'cfgs[1].s'},
+		OwnershipModuleMoveRejection{'collapsed_variadic_return_field', "
+struct Cfg {
+	s string
+}
+
+fn get(cfgs ...Cfg) string {
+	return cfgs[1].s
+}
+
+fn main() {
+	owned := 'field'.to_owned()
+	x := get(Cfg{s: 'first'}, s: owned)
+	y := x
+	println(x)
+	_ = y
+}
+", 'x'},
+		OwnershipModuleMoveRejection{'collapsed_pointer_alias_owned_field', '
+@[params]
+struct Config {
+	s string
+}
+
+type ConfigRef = &Config
+
+fn take(config ConfigRef) {
+	_ = config
+}
+
+fn main() {
+	owned := "field".to_owned()
+	take(s: owned)
+	println(owned)
+}
+', 'owned'},
+	])
 }
 
 struct OwnershipMoveRejection {
@@ -3080,66 +3112,6 @@ fn main() {
 	assert fail_fields.output.contains('use of moved value: `params_cfg.s`'), fail_fields.output
 	assert fail_fields.output.contains('use of moved value: `plain_cfg.s`'), fail_fields.output
 	assert fail_fields.output.contains('use of moved value: `cfgs[0].s`'), fail_fields.output
-
-	fail_later_variadic := run_ownership_check(v3_bin, 'collapsed_later_variadic_owned_field', '
-struct PlainCfg {
-	s string
-}
-
-fn dup_variadic(cfgs ...PlainCfg) {
-	t := cfgs[1].s
-	println(cfgs[1].s)
-	_ = t
-}
-
-fn main() {
-	owned := "later".to_owned()
-	dup_variadic(PlainCfg{s: "first"}, s: owned)
-}
-')
-	assert fail_later_variadic.exit_code != 0
-	assert fail_later_variadic.output.contains('use of moved value: `cfgs[1].s`'), fail_later_variadic.output
-
-	fail_return := run_ownership_check(v3_bin, 'collapsed_variadic_return_field', "
-struct Cfg {
-	s string
-}
-
-fn get(cfgs ...Cfg) string {
-	return cfgs[1].s
-}
-
-fn main() {
-	owned := 'field'.to_owned()
-	x := get(Cfg{s: 'first'}, s: owned)
-	y := x
-	println(x)
-	_ = y
-}
-")
-	assert fail_return.exit_code != 0
-	assert fail_return.output.contains('use of moved value: `x`'), fail_return.output
-
-	fail_pointer_alias := run_ownership_check(v3_bin, 'collapsed_pointer_alias_owned_field', '
-@[params]
-struct Config {
-	s string
-}
-
-type ConfigRef = &Config
-
-fn take(config ConfigRef) {
-	_ = config
-}
-
-fn main() {
-	owned := "field".to_owned()
-	take(s: owned)
-	println(owned)
-}
-')
-	assert fail_pointer_alias.exit_code != 0
-	assert fail_pointer_alias.output.contains('use of moved value: `owned`'), fail_pointer_alias.output
 }
 
 fn test_ownership_callee_params_are_order_independent() {
