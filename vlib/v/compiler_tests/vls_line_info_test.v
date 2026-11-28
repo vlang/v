@@ -1524,25 +1524,38 @@ fn decl_in_builtin_array(decl string) bool {
 	return decl.replace('\\', '/').contains('builtin/array.v:')
 }
 
+fn assert_same_array_method_declaration(method string, lines []string) {
+	questions := lines.map(word_question(it, 'gd^', functions_line(it), method, 0))
+	answers := ask_answers(os.join_path(work_dir, 'functions'), questions)
+	decl := answers[0]
+	assert decl_in_builtin_array(decl), decl
+	for i, answer in answers[1..] {
+		assert answer == decl, lines[i + 1]
+	}
+}
+
 fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
 	// `xs.map()` over `xs []T` in a generic body calls the `map` of every array:
 	// the declaration and the signature of `nums.map()` over an `[]int`.
-	map_decl := function('gd^', '\tprintln(nums.map(it * 2))', 'map', 0)
-	assert decl_in_builtin_array(map_decl), map_decl
-	assert function('gd^', '\tprintln(xs.map(count))', 'map', 0) == map_decl
-	assert function('gd^', '\treturn xs.map(|x| x.name.to_upper())', 'map', 0) == map_decl
-	// Over an array literal, whose elements the checker keeps no type for.
-	assert function('gd^', '\tprintln([3, 4].map(it + 1))', 'map', 0) == map_decl
+	assert_same_array_method_declaration('map', [
+		'\tprintln(nums.map(it * 2))',
+		'\tprintln(xs.map(count))',
+		'\treturn xs.map(|x| x.name.to_upper())',
+		// Over an array literal, whose elements the checker keeps no type for.
+		'\tprintln([3, 4].map(it + 1))',
+	])
 	assert function('hv^', '\tprintln([3, 4].map(it + 1))', 'it', 0) == hover_of('it int')
 	map_hover := function('hv^', '\tprintln(nums.map(it * 2))', 'map', 0)
 	assert map_hover.contains('fn map('), map_hover
 	assert function('hv^', '\tprintln(xs.map(count))', 'map', 0) == map_hover
-	filter_decl := function('gd^', '\tprintln(nums.filter(it > 1))', 'filter', 0)
-	assert decl_in_builtin_array(filter_decl), filter_decl
-	assert function('gd^', '\tprintln(xs.filter(it.name.len > 1))', 'filter', 0) == filter_decl
-	sort_decl := function('gd^', '\tsorted.sort(a < b)', 'sort', 0)
-	assert decl_in_builtin_array(sort_decl), sort_decl
-	assert function('gd^', '\txs.sort(a.name < b.name)', 'sort', 0) == sort_decl
+	assert_same_array_method_declaration('filter', [
+		'\tprintln(nums.filter(it > 1))',
+		'\tprintln(xs.filter(it.name.len > 1))',
+	])
+	assert_same_array_method_declaration('sort', [
+		'\tsorted.sort(a < b)',
+		'\txs.sort(a.name < b.name)',
+	])
 	// A method of a generic struct, called on a `Box[T]`.
 	label := functions_line('fn (b Box[T]) label() string {')
 	assert function('gd^', '\treturn b.label()', 'label', 0) == 'main.v:${label}:14'
