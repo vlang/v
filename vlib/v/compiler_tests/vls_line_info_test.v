@@ -3735,26 +3735,21 @@ fn numbers[A Numeric, B Numeric](x A, y B) {
 fn main() {}
 '
 
-// joined_members lists the labels that completion offers after the `.` of the
-// line of joined_members_program that reads `text`.
-fn joined_members(text string) []string {
-	dir := program_dir('joined_members', joined_members_program)
-	dot := text.index('.') or { panic('`${text}` has no `.`') }
-	answer := ask_at(dir, '${line_of(joined_members_program, text)}:${dot + 1}')
-	assert answer != '', text
-	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map(it.label)
-}
-
 fn test_values_tested_together_offer_what_their_tests_leave_them() {
+	dir := program_dir('joined_members', joined_members_program)
+	questions := ['\t\tprintln(a.zz)', '\t\tprintln(b.zz)', '\t\tprintln(b.yy)', '\t\tprintln(x.zz)',
+		'\t\tprintln(y.zz)'].map('${line_of(joined_members_program, it)}:${it.index_u8(`.`) + 1}')
+	answers := ask_answers(dir, questions)
+	members := answers.map(completion_details(it).map(it.label))
 	// `$if a is User && b is Admin {`: `a` offers the members of a `User`, `b`
 	// those of an `Admin`. In `$else $if a is User {`, `b` is no `Admin`.
-	assert joined_members('\t\tprintln(a.zz)') == ['age', 'name']
-	assert joined_members('\t\tprintln(b.zz)') == ['level', 'name']
-	assert joined_members('\t\tprintln(b.yy)') == ['name']
+	assert members[0] == ['age', 'name']
+	assert members[1] == ['level', 'name']
+	assert members[2] == ['name']
 	// `in` and `!in`: `x` offers what `f32` and `f64` both have, `y` what `int`
 	// and `i8` both have.
-	assert joined_members('\t\tprintln(x.zz)') == ['eq_epsilon', 'str', 'strg', 'strlong', 'strsci']
-	assert joined_members('\t\tprintln(y.zz)') == ['hex', 'hex_full', 'str']
+	assert members[3] == ['eq_epsilon', 'str', 'strg', 'strlong', 'strsci']
+	assert members[4] == ['hex', 'hex_full', 'str']
 }
 
 const generic_forms_program = "module main
@@ -3995,9 +3990,12 @@ fn test_a_type_parameter_without_a_constraint_is_what_a_compile_time_test_makes_
 	plain := '\treturn i.hex()'
 	branch_col := branch.index('u.hex') or { panic(branch) } + 2
 	plain_col := plain.index('i.hex') or { panic(plain) } + 2
-	offered := ask_at(dir, '${line_of(generic_forms_program, branch)}:${branch_col}')
-	assert offered != ''
-	assert offered == ask_at(dir, '${line_of(generic_forms_program, plain)}:${plain_col}')
+	answers := ask_answers(dir, [
+		'${line_of(generic_forms_program, branch)}:${branch_col}',
+		'${line_of(generic_forms_program, plain)}:${plain_col}',
+	])
+	assert answers[0] != ''
+	assert answers[0] == answers[1]
 }
 
 const method_values_program = "module main
