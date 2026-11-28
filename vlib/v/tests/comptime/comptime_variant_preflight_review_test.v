@@ -27,6 +27,72 @@ fn check_variant_review_case(name string, source string, check_only bool, expect
 	assert result.exit_code == 0, result.output
 }
 
+struct VariantReviewCase {
+	name       string
+	source     string
+	check_only bool
+}
+
+// run_variant_review_cases builds the cases as modules of one program: one build runs every
+// case that runs, and one `-check` covers the check-only cases.
+fn run_variant_review_cases(name string, cases []VariantReviewCase) {
+	for check_only in [false, true] {
+		selected := cases.filter(it.check_only == check_only)
+		if selected.len == 0 {
+			continue
+		}
+		root := os.join_path(os.vtmp_dir(), 'variant_review_${name}_${check_only}_${os.getpid()}_${time.now().unix_nano()}')
+		os.mkdir_all(root) or { panic(err) }
+		defer { os.rmdir_all(root) or {} }
+		mut imports := []string{cap: selected.len}
+		mut calls := []string{cap: selected.len}
+		for case in selected {
+			module_name := 'case_${case.name}'
+			assert case.source.contains('fn main() {'), case.name
+			os.mkdir_all(os.join_path(root, module_name)) or { panic(err) }
+			os.write_file(os.join_path(root, module_name, '${module_name}.v'), 'module ${module_name}\n' +
+				case.source.replace_once('fn main() {', 'pub fn exercise() {')) or { panic(err) }
+			imports << 'import ${module_name}'
+			calls << '\t${module_name}.exercise()'
+		}
+		os.write_file(os.join_path(root, 'main.v'), '${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
+			panic(err)
+		}
+		binary := os.join_path(root, 'main')
+		args := if check_only { [@VEXE, '-check', root] } else { [@VEXE, '-o', binary, root] }
+		compiled := os.exec(args)
+		assert compiled.exit_code == 0, compiled.output
+		if !check_only {
+			result := os.exec([binary])
+			assert result.exit_code == 0, result.output
+		}
+	}
+}
+
+// Outside `main`, `value is variant` names the module's spelling of the loop variable.
+fn test_variant_guards_in_a_module_bind_each_variant() {
+	run_variant_review_cases('module_guard', [
+		VariantReviewCase{'module_guard', r'
+type Choice = int | string
+fn extract(value Choice) int {
+	$for variant in Choice.variants {
+		if value is variant {
+			$if variant.typ is int {
+				return value
+			} $else {
+				return value.len
+			}
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(Choice(42)) == 42
+	assert extract(Choice("text")) == 4
+}', false},
+	])
+}
+
 fn test_nested_variant_guards_preserve_both_payloads() {
 	run_variant_review_case('nested', r'
 type Choice = int | string
