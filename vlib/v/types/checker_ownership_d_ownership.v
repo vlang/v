@@ -8246,6 +8246,38 @@ fn (mut tc TypeChecker) ownership_register_fn_literal_signature(fn_name string, 
 	tc.ownership_register_fn_param_mut(fn_name, tc.ownership_node_param_mut_flags(node))
 }
 
+// ownership_consume_array_literal_element moves an element into an array literal. Autofree
+// keeps V1's aliasing semantics (see ownership_report_moved), where `[a, b]` leaves `a` and
+// `b` usable, so an owned local is cloned into the literal instead of being moved: each
+// then frees its own copy.
+fn (mut tc TypeChecker) ownership_consume_array_literal_element(elem_id flat.NodeId) {
+	if tc.autofree_mode && tc.ownership_mark_array_literal_local_clone(elem_id) {
+		return
+	}
+	tc.ownership_consume_expr(elem_id, 'array element', elem_id)
+}
+
+fn (mut tc TypeChecker) ownership_mark_array_literal_local_clone(elem_id flat.NodeId) bool {
+	clean_id := tc.ownership_unwrap_expr(elem_id)
+	if !tc.valid_node_id(clean_id) || tc.a.nodes[int(clean_id)].kind != .ident {
+		return false
+	}
+	mut st := tc.ownership_state()
+	if tc.ownership_expr_ident_name(clean_id) !in st.owned_vars {
+		return false
+	}
+	typ := tc.resolve_type(clean_id)
+	if !tc.ownership_type_requires_destruction(typ) {
+		return false
+	}
+	if _ := tc.ownership_borrowed_copy_missing_clone(clean_id, typ) {
+		return false
+	}
+	st.borrowed_projection_actions[int(elem_id)] = .clone_value
+	st.borrowed_projection_actions[int(clean_id)] = .clone_value
+	return true
+}
+
 fn (mut tc TypeChecker) ownership_consume_array_init_expr(node flat.Node) {
 	if node.kind != .array_init {
 		return

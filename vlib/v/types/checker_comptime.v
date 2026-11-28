@@ -3094,7 +3094,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 			if node.kind == .array_literal {
 				for i in 0 .. node.children_count {
 					elem_id := tc.a.child(&node, i)
-					tc.ownership_consume_expr(elem_id, 'array element', elem_id)
+					tc.ownership_consume_array_literal_element(elem_id)
 				}
 			} else if node.kind == .map_init {
 				for j := 0; j < node.children_count; j += 2 {
