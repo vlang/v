@@ -4352,9 +4352,19 @@ fn main() {
 	assert out == '1249975000'
 }
 
-fn test_immediately_invoked_bound_method_keeps_escaped_receiver_alive() {
+struct ImmediateClosureEscapeCase {
+	name     string
+	source   string
+	expected string
+	last_use string
+}
+
+fn test_immediately_invoked_closures_keep_escaped_captures_alive() {
 	v3_bin := build_v3_review_transform()
-	source := 'struct Registry {
+	cases := [
+		ImmediateClosureEscapeCase{
+			name:     'immediate_bound_method_escaped_receiver'
+			source:   'struct Registry {
 mut:
 	callbacks []fn () int
 }
@@ -4379,18 +4389,12 @@ fn main() {
 	println(int_str(registry.callbacks[0]()))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'immediate_bound_method_escaped_receiver', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	call_pos := main_body.index('println(int__str') or { -1 }
-	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
-	assert call_pos >= 0, main_body
-	assert destroy_pos > call_pos, main_body
-	assert out == '42'
-}
-
-fn test_immediately_invoked_closure_keeps_aliased_pointer_result_alive() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn main() {
+			expected: '42'
+			last_use: 'println(int__str'
+		},
+		ImmediateClosureEscapeCase{
+			name:     'immediate_closure_aliased_pointer'
+			source:   'fn main() {
 	x := 41
 	p := (fn [x] () &int {
 		return unsafe { &x }
@@ -4398,18 +4402,12 @@ fn test_immediately_invoked_closure_keeps_aliased_pointer_result_alive() {
 	println(int_str(unsafe { *p + 1 }))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'immediate_closure_aliased_pointer', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	deref_pos := main_body.index('*p') or { -1 }
-	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
-	assert deref_pos >= 0, main_body
-	assert destroy_pos > deref_pos, main_body
-	assert out == '42'
-}
-
-fn test_immediately_invoked_closure_keeps_integer_encoded_capture_address_alive() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn main() {
+			expected: '42'
+			last_use: '*p'
+		},
+		ImmediateClosureEscapeCase{
+			name:     'immediate_closure_integer_capture_address'
+			source:   'fn main() {
 	mut value := 41
 	address := (fn [mut value] () uint {
 		return uint(voidptr(&value))
@@ -4418,18 +4416,12 @@ fn test_immediately_invoked_closure_keeps_integer_encoded_capture_address_alive(
 	println(int_str(unsafe { *p + 1 }))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'immediate_closure_integer_capture_address', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	deref_pos := main_body.index('*p') or { -1 }
-	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
-	assert deref_pos >= 0, main_body
-	assert destroy_pos > deref_pos, main_body
-	assert out == '42'
-}
-
-fn test_immediately_invoked_closure_keeps_aliased_integer_capture_address_alive() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn main() {
+			expected: '42'
+			last_use: '*p'
+		},
+		ImmediateClosureEscapeCase{
+			name:     'immediate_closure_aliased_integer_capture_address'
+			source:   'fn main() {
 	mut value := 41
 	address := (fn [mut value] () uint {
 		encoded := uint(voidptr(&value))
@@ -4439,13 +4431,164 @@ fn test_immediately_invoked_closure_keeps_aliased_integer_capture_address_alive(
 	println(int_str(unsafe { *p + 1 }))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'immediate_closure_aliased_integer_capture_address', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	deref_pos := main_body.index('*p') or { -1 }
-	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
-	assert deref_pos >= 0, main_body
-	assert destroy_pos > deref_pos, main_body
-	assert out == '42'
+			expected: '42'
+			last_use: '*p'
+		},
+		ImmediateClosureEscapeCase{
+			name:     'immediate_closure_aliased_string'
+			source:   'fn main() {
+	mut bytes := [2]u8{}
+	bytes[0] = `O`
+	bytes[1] = `K`
+	text := (fn [bytes] () string {
+		return unsafe { tos(&bytes[0], bytes.len) }
+	})()
+	println(text)
+}
+'
+			expected: 'OK'
+			last_use: 'println'
+		},
+		ImmediateClosureEscapeCase{
+			name:     'immediate_closure_spawned_capture'
+			source:   'fn main() {
+	mut value := 41
+	worker := (fn [mut value] () thread int {
+		return spawn fn [mut value] () int {
+			return value + 1
+		}()
+	})()
+	println(int_str(worker.wait()))
+}
+'
+			expected: '42'
+			last_use: '__v_thread_join'
+		},
+		ImmediateClosureEscapeCase{
+			name:     'immediate_closure_aliased_spawn_capture'
+			source:   'fn main() {
+	mut value := 42
+	worker := (fn [value] () thread int {
+		p := unsafe { &value }
+		return spawn fn [p] () int {
+			return unsafe { *p }
+		}()
+	})()
+	println(int_str(worker.wait()))
+}
+'
+			expected: '42'
+			last_use: '__v_thread_join'
+		},
+		ImmediateClosureEscapeCase{
+			name:     'immediate_closure_side_effect_escape'
+			source:   'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+fn install(mut registry Registry, callback fn () int) {
+	registry.callbacks << callback
+}
+
+fn main() {
+	mut registry := &Registry{}
+	mut value := 42
+	(fn [mut registry, mut value] () {
+		install(mut registry, fn [mut value] () int {
+			return value
+		})
+	})()
+	println(int_str(registry.callbacks[0]()))
+}
+'
+			expected: '42'
+			last_use: 'println'
+		},
+		ImmediateClosureEscapeCase{
+			name:     'immediate_factory_closure_side_effect_escape'
+			source:   'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+fn install(mut registry Registry, callback fn () int) {
+	registry.callbacks << callback
+}
+
+fn make_callback(mut registry Registry) fn () {
+	mut value := 42
+	return fn [mut registry, mut value] () {
+		install(mut registry, fn [mut value] () int {
+			return value
+		})
+	}
+}
+
+fn main() {
+	mut registry := Registry{}
+	make_callback(mut registry)()
+	println(int_str(registry.callbacks[0]()))
+}
+'
+			expected: '42'
+			last_use: 'println'
+		},
+		ImmediateClosureEscapeCase{
+			name:     'immediate_closure_projected_escapes'
+			source:   'struct PointerHolder {
+mut:
+	value &int
+}
+
+fn main() {
+	external := 0
+	mut holder := &PointerHolder{
+		value: unsafe { &external }
+	}
+	mut selector_value := 40
+	(fn [mut holder, mut selector_value] () {
+		holder.value = unsafe { &selector_value }
+	})()
+
+	mut pointers := [unsafe { &external }]!
+	mut index_value := 41
+	(fn [mut pointers, mut index_value] () {
+		pointers[0] = unsafe { &index_value }
+	})()
+
+	println(int_str(unsafe { *holder.value }))
+	println(int_str(unsafe { *pointers[0] }))
+}
+'
+			expected: '40\n41'
+			last_use: 'println'
+		},
+		ImmediateClosureEscapeCase{
+			name:     'immediate_closure_channel_escape'
+			source:   'fn main() {
+	ch := chan &int{cap: 1}
+	mut value := 42
+	(fn [ch, mut value] () {
+		ch <- unsafe { &value }
+	})()
+	p := <-ch
+	println(int_str(unsafe { *p }))
+}
+'
+			expected: '42'
+			last_use: 'println'
+		},
+	]
+	fixtures := cases.map(TransformFixture{it.name, it.source, it.expected})
+	good_bin := run_good_module_batch_with_flags(v3_bin, 'immediate_closure_escapes', '', fixtures)
+	c_source := os.read_file(good_bin + '.c') or { panic(err) }
+	for i, case in cases {
+		body := c_fn_body(c_source, 'void fixture_${i}__exercise(void) {')
+		last_use := body.last_index(case.last_use) or { -1 }
+		destroy := body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+		assert last_use >= 0 && destroy > last_use, '${case.name}: ${body}'
+	}
 }
 
 fn review_closure_result_fixtures() []TransformFixture {
@@ -4532,193 +4675,6 @@ fn main() {
 }
 ', '1\n1'},
 	]
-}
-
-fn test_immediately_invoked_closure_keeps_aliased_string_result_alive() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn main() {
-	mut bytes := [2]u8{}
-	bytes[0] = `O`
-	bytes[1] = `K`
-	text := (fn [bytes] () string {
-		return unsafe { tos(&bytes[0], bytes.len) }
-	})()
-	println(text)
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'immediate_closure_aliased_string', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	println_pos := main_body.index('println') or { -1 }
-	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
-	assert println_pos >= 0, main_body
-	assert destroy_pos > println_pos, main_body
-	assert out == 'OK'
-}
-
-fn test_immediately_invoked_closure_keeps_spawned_nested_capture_alive() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn main() {
-	mut value := 41
-	worker := (fn [mut value] () thread int {
-		return spawn fn [mut value] () int {
-			return value + 1
-		}()
-	})()
-	println(int_str(worker.wait()))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'immediate_closure_spawned_capture', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	wait_pos := main_body.index('__v_thread_join') or { -1 }
-	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
-	assert wait_pos >= 0, main_body
-	assert destroy_pos > wait_pos, main_body
-	assert out == '42'
-}
-
-fn test_immediately_invoked_closure_keeps_aliased_spawn_capture_alive() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn main() {
-	mut value := 42
-	worker := (fn [value] () thread int {
-		p := unsafe { &value }
-		return spawn fn [p] () int {
-			return unsafe { *p }
-		}()
-	})()
-	println(int_str(worker.wait()))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'immediate_closure_aliased_spawn_capture', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	wait_pos := main_body.index('__v_thread_join') or { -1 }
-	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
-	assert wait_pos >= 0, main_body
-	assert destroy_pos > wait_pos, main_body
-	assert out == '42'
-}
-
-fn test_immediately_invoked_closure_keeps_side_effect_capture_escape_alive() {
-	v3_bin := build_v3_review_transform()
-	source := 'struct Registry {
-mut:
-	callbacks []fn () int
-}
-
-fn install(mut registry Registry, callback fn () int) {
-	registry.callbacks << callback
-}
-
-fn main() {
-	mut registry := &Registry{}
-	mut value := 42
-	(fn [mut registry, mut value] () {
-		install(mut registry, fn [mut value] () int {
-			return value
-		})
-	})()
-	println(int_str(registry.callbacks[0]()))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'immediate_closure_side_effect_escape', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	println_pos := main_body.index('println') or { -1 }
-	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
-	assert println_pos >= 0, main_body
-	assert destroy_pos > println_pos, main_body
-	assert out == '42'
-}
-
-fn test_immediately_invoked_factory_closure_keeps_side_effect_capture_escape_alive() {
-	v3_bin := build_v3_review_transform()
-	source := 'struct Registry {
-mut:
-	callbacks []fn () int
-}
-
-fn install(mut registry Registry, callback fn () int) {
-	registry.callbacks << callback
-}
-
-fn make_callback(mut registry Registry) fn () {
-	mut value := 42
-	return fn [mut registry, mut value] () {
-		install(mut registry, fn [mut value] () int {
-			return value
-		})
-	}
-}
-
-fn main() {
-	mut registry := Registry{}
-	make_callback(mut registry)()
-	println(int_str(registry.callbacks[0]()))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'immediate_factory_closure_side_effect_escape', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	println_pos := main_body.index('println') or { -1 }
-	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
-	assert println_pos >= 0, main_body
-	assert destroy_pos > println_pos, main_body
-	assert out == '42'
-}
-
-fn test_immediately_invoked_closure_keeps_projected_capture_escapes_alive() {
-	v3_bin := build_v3_review_transform()
-	source := 'struct PointerHolder {
-mut:
-	value &int
-}
-
-fn main() {
-	external := 0
-	mut holder := &PointerHolder{
-		value: unsafe { &external }
-	}
-	mut selector_value := 40
-	(fn [mut holder, mut selector_value] () {
-		holder.value = unsafe { &selector_value }
-	})()
-
-	mut pointers := [unsafe { &external }]!
-	mut index_value := 41
-	(fn [mut pointers, mut index_value] () {
-		pointers[0] = unsafe { &index_value }
-	})()
-
-	println(int_str(unsafe { *holder.value }))
-	println(int_str(unsafe { *pointers[0] }))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'immediate_closure_projected_escapes', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	println_pos := main_body.last_index('println') or { -1 }
-	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
-	assert println_pos >= 0, main_body
-	assert destroy_pos > println_pos, main_body
-	assert out == '40\n41'
-}
-
-fn test_immediately_invoked_closure_keeps_channel_sent_capture_alive() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn main() {
-	ch := chan &int{cap: 1}
-	mut value := 42
-	(fn [ch, mut value] () {
-		ch <- unsafe { &value }
-	})()
-	p := <-ch
-	println(int_str(unsafe { *p }))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'immediate_closure_channel_escape', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	println_pos := main_body.index('println') or { -1 }
-	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
-	assert println_pos >= 0, main_body
-	assert destroy_pos > println_pos, main_body
-	assert out == '42'
 }
 
 fn test_fixed_array_defer_results_use_semantic_array_storage() {
