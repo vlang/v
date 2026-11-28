@@ -159,8 +159,8 @@ fn round4_check_runtime_outputs(name string, cases []Round4RuntimeCase, files ma
 	}
 }
 
-fn test_field_metadata_and_type_shapes() {
-	round4_check_runtime('field_metadata_and_type_shapes', [
+fn test_comptime_field_and_loop_metadata() {
+	round4_check_runtime('comptime_field_and_loop_metadata', [
 		Round4RuntimeCase{
 			name:     'field_metadata'
 			source:   "struct S {
@@ -328,157 +328,6 @@ fn main() {
 	println(type_ids_match.join(",") + "|" + int_str(count))
 }
 ', 'true,true|2'},
-	])
-}
-
-fn test_comptime_variant_metadata_only_exposes_typ() {
-	round4_check_rejections('variant_and_selected_method_metadata_rejections', [
-		Round4Rejection{'bad_variant_name_member', 'struct A {}
-struct B {}
-
-type Value = A | B
-
-fn use_name(name string) {}
-
-fn main() {
-	$for variant in Value.variants {
-		use_name(variant.name)
-	}
-}
-', 'unknown VariantData member `name`'},
-		Round4Rejection{'bad_variant_attrs_member', 'struct A {}
-struct B {}
-
-type Value = A | B
-
-fn use_attrs(attrs []string) {}
-
-fn main() {
-	$for variant in Value.variants {
-		use_attrs(variant.attrs)
-	}
-}
-', 'unknown VariantData member `attrs`'},
-		Round4Rejection{'bad_sum_is_field_loop_variable', 'struct A {}
-struct B {}
-struct Holder {
-	n int
-}
-type Value = A | B
-
-fn check(value Value) {
-	$for field in Holder.fields {
-		if value is field {}
-	}
-}
-
-fn main() {}
-', '`bad_sum_is_field_loop_variable.Value` has no variant `bad_sum_is_field_loop_variable.field`'},
-		Round4Rejection{'bad_sum_is_enum_value_loop_variable', 'enum EnumKind {
-	one
-}
-struct A {}
-struct B {}
-type Value = A | B
-
-fn check(value Value) {
-	$for item in EnumKind.values {
-		if value is item {}
-	}
-}
-
-fn main() {}
-', '`bad_sum_is_enum_value_loop_variable.Value` has no variant `bad_sum_is_enum_value_loop_variable.item`'},
-		Round4Rejection{'method_metadata_location_selected_guard', 'struct Located {}
-
-fn (item Located) run() {
-	_ = item
-}
-
-fn main() {
-	$for method in Located.methods {
-		$if method.location != "" {
-			missing_selected_method_location_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_method_location_fn'},
-		Round4Rejection{'generic_receiver_selected_name_branch', 'struct Box[T] {}
-
-fn (b Box[T]) get(value T) T {
-	_ = b
-	return value
-}
-
-fn main() {
-	box := Box[int]{}
-	$for method in box.methods {
-		$if method.name == "get" {
-			missing_generic_method_name_branch()
-		}
-	}
-}
-', 'unknown function: missing_generic_method_name_branch'},
-		Round4Rejection{'generic_receiver_selected_param_branch', 'struct Box[T] {}
-
-fn (b Box[T]) get(value T) T {
-	_ = b
-	return value
-}
-
-fn main() {
-	box := Box[int]{}
-	$for method in box.methods {
-		$if method.args[0].typ is int {
-			missing_generic_method_param_branch()
-		}
-	}
-}
-', 'unknown function: missing_generic_method_param_branch'},
-	])
-}
-
-fn test_comptime_variants_prefer_local_sum_over_imported_short_name() {
-	out := round4_run_good_project(v3_bin, 'variant_local_sum_precedence', {
-		'v.mod':         "Module { name: 'variant_local_sum_precedence' }\n"
-		'other/other.v': 'module other
-
-pub struct RemoteA {}
-pub struct RemoteB {}
-
-pub type Sum = RemoteA | RemoteB
-
-pub const marker = 1
-'
-		'main.v':        'module main
-
-import other
-
-struct LocalA {}
-struct LocalB {}
-
-type Sum = LocalA | LocalB
-
-fn main() {
-	mut names := []string{}
-	$for variant in Sum.variants {
-		names << typeof(variant.typ).name
-	}
-	mut remote_names := []string{}
-	$for variant in other.Sum.variants {
-		remote_names << typeof(variant.typ).name
-	}
-	println(names.join(","))
-	println(remote_names.join(","))
-	println(int_str(other.marker))
-}
-'
-	}, 'main.v')
-	assert out == 'LocalA,LocalB\nother.RemoteA,other.RemoteB\n1'
-}
-
-fn test_reflected_field_helpers_and_type_guards() {
-	round4_check_runtime('reflected_field_helpers_and_type_guards', [
 		Round4RuntimeCase{
 			name:     'field_generic_helper_matching_arg'
 			source:   'struct S {
@@ -618,11 +467,6 @@ fn main() {
 	println(rows.join('|'))
 }
 ", 'int|string'},
-	])
-}
-
-fn test_comptime_loop_sources() {
-	round4_check_runtime('comptime_loop_sources', [
 		Round4RuntimeCase{
 			name:     'value_field_source'
 			source:   "struct Inner {
@@ -777,7 +621,310 @@ fn main() {
 	println(total)
 }
 ', '9'},
+		Round4RuntimeCase{
+			name:     'value_source_comptime_for_static_pruning'
+			source:   "struct Inner {
+	id int
+}
+
+struct Outer {
+	nested Inner
+}
+
+fn collect(param Outer) []string {
+	mut rows := []string{}
+	$for field in param.nested.fields {
+		$if field is string {
+			missing_fn()
+		} $else {
+			rows << field.name
+		}
+	}
+	return rows
+}
+
+fn main() {
+	println(collect(Outer{}).join('|'))
+}
+"
+			expected: 'id'
+		},
+		Round4RuntimeCase{
+			name:     'shadowed_comptime_for_nested_source'
+			source:   "struct Inner {
+	name string
+}
+
+struct Outer {
+	nested Inner
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in Outer.fields {
+		$if field is $struct {
+			$for field in field.typ.fields {
+				rows << field.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'name'
+		},
+		Round4RuntimeCase{
+			name:     'untaken_metadata_if_static_code'
+			source:   'struct S {
+	id int
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field is string {
+			missing_type_branch_fn()
+		} $else {
+			rows << field.name
+		}
+		$if field.name == "missing" {
+			missing_name_branch_fn()
+		}
+	}
+	println(rows.join("|"))
+}
+'
+			expected: 'id'
+		},
+		Round4RuntimeCase{
+			name:     'fielddata_flag_static_guards'
+			source:   'struct S {
+pub mut:
+	ptr &int
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.is_pub && field.is_mut && field.indirections == 1 {
+			rows << field.name
+		} $else {
+			missing_fielddata_flag_branch_fn()
+		}
+	}
+	println(rows.join("|"))
+}
+'
+			expected: 'ptr'
+		},
+		Round4RuntimeCase{'unreachable_generic_call_in_comptime_for', "struct S {
+	id int
+}
+
+enum Color {
+	red
+}
+
+fn generic_fn[T]() string {
+	return 'bad'
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.name == 'missing' {
+			rows << generic_fn[int]()
+		}
+		rows << field.name
+	}
+	$for item in Color.values {
+		$if item.name == 'missing' {
+			rows << generic_fn[int]()
+		}
+		rows << item.name
+	}
+	println(rows.join('|'))
+}
+", 'id|red'},
+		Round4RuntimeCase{'cached_reflection_guard_identifiers', "struct Foo {
+	id    int
+	title string
+}
+
+fn selector_member_collision() string {
+	name := 'x'
+	mut found := ''
+	$for field in Foo.fields {
+		$if field.name == 'id' {
+			found = field.name
+		}
+	}
+	return found + ':' + name
+}
+
+fn loop_var_collision() string {
+	field := 'x'
+	mut found := ''
+	$for field in Foo.fields {
+		$if field.name == 'id' {
+			found = field.name
+		}
+	}
+	return found + ':' + field
+}
+
+fn main() {
+	println(selector_member_collision())
+	println(loop_var_collision())
+}
+", 'id:x\nid:x'},
 	])
+}
+
+fn test_comptime_variant_metadata_only_exposes_typ() {
+	round4_check_rejections('variant_and_selected_method_metadata_rejections', [
+		Round4Rejection{'bad_variant_name_member', 'struct A {}
+struct B {}
+
+type Value = A | B
+
+fn use_name(name string) {}
+
+fn main() {
+	$for variant in Value.variants {
+		use_name(variant.name)
+	}
+}
+', 'unknown VariantData member `name`'},
+		Round4Rejection{'bad_variant_attrs_member', 'struct A {}
+struct B {}
+
+type Value = A | B
+
+fn use_attrs(attrs []string) {}
+
+fn main() {
+	$for variant in Value.variants {
+		use_attrs(variant.attrs)
+	}
+}
+', 'unknown VariantData member `attrs`'},
+		Round4Rejection{'bad_sum_is_field_loop_variable', 'struct A {}
+struct B {}
+struct Holder {
+	n int
+}
+type Value = A | B
+
+fn check(value Value) {
+	$for field in Holder.fields {
+		if value is field {}
+	}
+}
+
+fn main() {}
+', '`bad_sum_is_field_loop_variable.Value` has no variant `bad_sum_is_field_loop_variable.field`'},
+		Round4Rejection{'bad_sum_is_enum_value_loop_variable', 'enum EnumKind {
+	one
+}
+struct A {}
+struct B {}
+type Value = A | B
+
+fn check(value Value) {
+	$for item in EnumKind.values {
+		if value is item {}
+	}
+}
+
+fn main() {}
+', '`bad_sum_is_enum_value_loop_variable.Value` has no variant `bad_sum_is_enum_value_loop_variable.item`'},
+		Round4Rejection{'method_metadata_location_selected_guard', 'struct Located {}
+
+fn (item Located) run() {
+	_ = item
+}
+
+fn main() {
+	$for method in Located.methods {
+		$if method.location != "" {
+			missing_selected_method_location_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_method_location_fn'},
+		Round4Rejection{'generic_receiver_selected_name_branch', 'struct Box[T] {}
+
+fn (b Box[T]) get(value T) T {
+	_ = b
+	return value
+}
+
+fn main() {
+	box := Box[int]{}
+	$for method in box.methods {
+		$if method.name == "get" {
+			missing_generic_method_name_branch()
+		}
+	}
+}
+', 'unknown function: missing_generic_method_name_branch'},
+		Round4Rejection{'generic_receiver_selected_param_branch', 'struct Box[T] {}
+
+fn (b Box[T]) get(value T) T {
+	_ = b
+	return value
+}
+
+fn main() {
+	box := Box[int]{}
+	$for method in box.methods {
+		$if method.args[0].typ is int {
+			missing_generic_method_param_branch()
+		}
+	}
+}
+', 'unknown function: missing_generic_method_param_branch'},
+	])
+}
+
+fn test_comptime_variants_prefer_local_sum_over_imported_short_name() {
+	out := round4_run_good_project(v3_bin, 'variant_local_sum_precedence', {
+		'v.mod':         "Module { name: 'variant_local_sum_precedence' }\n"
+		'other/other.v': 'module other
+
+pub struct RemoteA {}
+pub struct RemoteB {}
+
+pub type Sum = RemoteA | RemoteB
+
+pub const marker = 1
+'
+		'main.v':        'module main
+
+import other
+
+struct LocalA {}
+struct LocalB {}
+
+type Sum = LocalA | LocalB
+
+fn main() {
+	mut names := []string{}
+	$for variant in Sum.variants {
+		names << typeof(variant.typ).name
+	}
+	mut remote_names := []string{}
+	$for variant in other.Sum.variants {
+		remote_names << typeof(variant.typ).name
+	}
+	println(names.join(","))
+	println(remote_names.join(","))
+	println(int_str(other.marker))
+}
+'
+	}, 'main.v')
+	assert out == 'LocalA,LocalB\nother.RemoteA,other.RemoteB\n1'
 }
 
 fn test_comptime_import_alias_lookups() {
@@ -1053,168 +1200,6 @@ fn main() {
 "
 	}, 'main.v')
 	assert out == 'id:ok'
-}
-
-fn test_field_source_and_metadata_pruning() {
-	round4_check_runtime('field_source_and_metadata_pruning', [
-		Round4RuntimeCase{
-			name:     'value_source_comptime_for_static_pruning'
-			source:   "struct Inner {
-	id int
-}
-
-struct Outer {
-	nested Inner
-}
-
-fn collect(param Outer) []string {
-	mut rows := []string{}
-	$for field in param.nested.fields {
-		$if field is string {
-			missing_fn()
-		} $else {
-			rows << field.name
-		}
-	}
-	return rows
-}
-
-fn main() {
-	println(collect(Outer{}).join('|'))
-}
-"
-			expected: 'id'
-		},
-		Round4RuntimeCase{
-			name:     'shadowed_comptime_for_nested_source'
-			source:   "struct Inner {
-	name string
-}
-
-struct Outer {
-	nested Inner
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in Outer.fields {
-		$if field is $struct {
-			$for field in field.typ.fields {
-				rows << field.name
-			}
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'name'
-		},
-		Round4RuntimeCase{
-			name:     'untaken_metadata_if_static_code'
-			source:   'struct S {
-	id int
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field is string {
-			missing_type_branch_fn()
-		} $else {
-			rows << field.name
-		}
-		$if field.name == "missing" {
-			missing_name_branch_fn()
-		}
-	}
-	println(rows.join("|"))
-}
-'
-			expected: 'id'
-		},
-		Round4RuntimeCase{
-			name:     'fielddata_flag_static_guards'
-			source:   'struct S {
-pub mut:
-	ptr &int
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field.is_pub && field.is_mut && field.indirections == 1 {
-			rows << field.name
-		} $else {
-			missing_fielddata_flag_branch_fn()
-		}
-	}
-	println(rows.join("|"))
-}
-'
-			expected: 'ptr'
-		},
-		Round4RuntimeCase{'unreachable_generic_call_in_comptime_for', "struct S {
-	id int
-}
-
-enum Color {
-	red
-}
-
-fn generic_fn[T]() string {
-	return 'bad'
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field.name == 'missing' {
-			rows << generic_fn[int]()
-		}
-		rows << field.name
-	}
-	$for item in Color.values {
-		$if item.name == 'missing' {
-			rows << generic_fn[int]()
-		}
-		rows << item.name
-	}
-	println(rows.join('|'))
-}
-", 'id|red'},
-		Round4RuntimeCase{'cached_reflection_guard_identifiers', "struct Foo {
-	id    int
-	title string
-}
-
-fn selector_member_collision() string {
-	name := 'x'
-	mut found := ''
-	$for field in Foo.fields {
-		$if field.name == 'id' {
-			found = field.name
-		}
-	}
-	return found + ':' + name
-}
-
-fn loop_var_collision() string {
-	field := 'x'
-	mut found := ''
-	$for field in Foo.fields {
-		$if field.name == 'id' {
-			found = field.name
-		}
-	}
-	return found + ':' + field
-}
-
-fn main() {
-	println(selector_member_collision())
-	println(loop_var_collision())
-}
-", 'id:x\nid:x'},
-	])
 }
 
 fn test_field_and_enum_metadata_argument_and_member_rejections() {
@@ -1639,8 +1624,8 @@ pub fn inspect() string {
 	})
 }
 
-fn test_enum_metadata_calls_and_power_pruning() {
-	round4_check_runtime('enum_metadata_calls_and_power_pruning', [
+fn test_comptime_enum_and_literal_evaluation() {
+	round4_check_runtime('comptime_enum_and_literal_evaluation', [
 		Round4RuntimeCase{'enum_value_metadata_call_args', "enum Color {
 	red = 7
 }
@@ -1675,11 +1660,6 @@ fn main() {
 	}
 }
 ', 'a'},
-	])
-}
-
-fn test_enum_metadata_folding_and_numeric_values() {
-	round4_check_runtime('enum_metadata_folding_and_numeric_values', [
 		Round4RuntimeCase{
 			name:     'enum_value_metadata_if_prunes_else'
 			source:   "enum Color {
@@ -1769,6 +1749,123 @@ fn main() {
 "
 			expected: '1099511627776|1099511627777'
 		},
+		Round4RuntimeCase{
+			name:     'enum_member_ref_values'
+			source:   '@[_allow_multiple_values]
+enum Multi {
+	base = 100
+	same = .base
+	plus = .base + 2
+	next
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in Multi.values {
+		rows << item.name + ":" + int_str(item.value)
+	}
+	println(rows.join("|"))
+}
+'
+			expected: 'base:100|same:100|plus:102|next:103'
+		},
+		Round4RuntimeCase{
+			name:     'enum_flag_attrs'
+			source:   "@[flag]
+enum Perm {
+	read  @[json: 'r'; primary]
+	write
+	execute = 3
+}
+
+fn main() {
+	mut rows := []string{}
+	mut bare := []EnumData{}
+	$for item in Perm.values {
+		rows << item.name + ':' + i64(item.value).str() + ':' + item.attrs.join(',')
+		bare << item
+	}
+	rows << bare[0].name + ':' + bare[0].value.str() + ':' + bare[0].attrs.join(',')
+	println(rows.join('|'))
+}
+"
+			expected: "read:1:json: 'r',primary|write:2:|execute:8:|read:1:json: 'r',primary"
+		},
+		Round4RuntimeCase{'cached_char_literals', "const cached_char = `a`
+
+fn main() {
+	local_char := `b`
+	mut rows := []string{}
+	\$if cached_char == `a` {
+		rows << 'const-if'
+	} \$else {
+		rows << 'wrong-const'
+	}
+	\$match local_char {
+		`b` { rows << 'local-match' }
+		\$else { rows << 'wrong-local' }
+	}
+	println(rows.join('|'))
+}
+", 'const-if|local-match'},
+		Round4RuntimeCase{'char_literal_cached_local_collision', "fn main() {
+	a := `b`
+	ch := `a`
+	_ = a
+	\$if ch == `a` {
+		println('ok')
+	} \$else {
+		println('wrong')
+	}
+}
+", 'ok'},
+		Round4RuntimeCase{'raw_string_comptime_local_collision', "fn main() {
+	r := 'wrong'
+	_ = r
+	\$if r'abc' == 'abc' {
+		println('ok')
+	} \$else {
+		println('wrong')
+	}
+}
+", 'ok'},
+		Round4RuntimeCase{'comptime_string_literal_cached_local', "fn main() {
+	x := 'y'
+	_ = x
+	\$if 'x' == 'y' {
+		println('wrong')
+	} \$else {
+		println('ok')
+	}
+}
+", 'ok'},
+		Round4RuntimeCase{'guard_member_text_literal', "struct S {
+	id int
+}
+
+enum Color {
+	red
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.name == 'field.nmae' {
+			rows << 'bad'
+		} $else {
+			rows << field.name
+		}
+	}
+	$for item in Color.values {
+		$if item.name == 'item.nmae' {
+			rows << 'bad'
+		} $else {
+			rows << item.name
+		}
+	}
+	println(rows.join('|'))
+}
+	", 'id|red'},
 	])
 }
 
@@ -1897,53 +1994,6 @@ fn main() {
 	])
 }
 
-fn test_reflected_enum_members_and_flags() {
-	round4_check_runtime('reflected_enum_members_and_flags', [
-		Round4RuntimeCase{
-			name:     'enum_member_ref_values'
-			source:   '@[_allow_multiple_values]
-enum Multi {
-	base = 100
-	same = .base
-	plus = .base + 2
-	next
-}
-
-fn main() {
-	mut rows := []string{}
-	$for item in Multi.values {
-		rows << item.name + ":" + int_str(item.value)
-	}
-	println(rows.join("|"))
-}
-'
-			expected: 'base:100|same:100|plus:102|next:103'
-		},
-		Round4RuntimeCase{
-			name:     'enum_flag_attrs'
-			source:   "@[flag]
-enum Perm {
-	read  @[json: 'r'; primary]
-	write
-	execute = 3
-}
-
-fn main() {
-	mut rows := []string{}
-	mut bare := []EnumData{}
-	$for item in Perm.values {
-		rows << item.name + ':' + i64(item.value).str() + ':' + item.attrs.join(',')
-		bare << item
-	}
-	rows << bare[0].name + ':' + bare[0].value.str() + ':' + bare[0].attrs.join(',')
-	println(rows.join('|'))
-}
-"
-			expected: "read:1:json: 'r',primary|write:2:|execute:8:|read:1:json: 'r',primary"
-		},
-	])
-}
-
 fn test_selective_imported_enum_alias_resolves_underlying_enum() {
 	out := round4_run_good_project(v3_bin, 'selective_enum_alias', {
 		'v.mod':           "Module { name: 'selective_enum_alias' }\n"
@@ -2028,8 +2078,8 @@ fn main() {
 	])
 }
 
-fn test_reflected_method_signatures_and_arity() {
-	round4_check_runtime('reflected_method_signatures_and_arity', [
+fn test_comptime_method_and_attribute_metadata() {
+	round4_check_runtime('comptime_method_and_attribute_metadata', [
 		Round4RuntimeCase{
 			name:     'method_metadata_materialized'
 			source:   "struct App {}
@@ -2201,37 +2251,6 @@ fn main() {
 	println(reflected_method_metadata[Box[int]]())
 }
 ', 'return|param|signature'},
-	])
-}
-
-fn test_method_metadata_locations_are_materialized() {
-	out := round4_run_good(v3_bin, 'method_metadata_location', 'struct Located {}
-
-fn (item Located) run() {
-	_ = item
-}
-
-fn main() {
-	mut items := []FunctionData{}
-	mut locations := []string{}
-	mut guarded := []string{}
-	$for method in Located.methods {
-		locations << method.location
-		items << method
-		$if method.location != "" {
-			guarded << method.name
-		}
-	}
-	println(locations[0].ends_with(":3:18"))
-	println(items[0].location == locations[0])
-	println(guarded.join("|"))
-}
-')
-	assert out == 'true\ntrue\nrun'
-}
-
-fn test_quoted_attribute_names_and_arguments() {
-	round4_check_runtime('quoted_attribute_names_and_arguments', [
 		Round4RuntimeCase{
 			name:     'quoted_attribute_kind'
 			source:   "@['route'; plain]
@@ -2333,7 +2352,298 @@ fn main() {
 '
 			expected: 'true'
 		},
+		Round4RuntimeCase{
+			name:     'field_condition_string_literal'
+			source:   "struct QuotedFields {
+pub:
+	id int
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for field in QuotedFields.fields {
+		\$if 'field.is_pub' == 'true' {
+			rows << 'wrong'
+		} \$else {
+			rows << field.name
+		}
+		\$if field.name == 'id' {
+			rows << 'real-selector'
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'id|real-selector'
+		},
+		Round4RuntimeCase{
+			name:     'method_condition_string_literal'
+			source:   "struct QuotedMethods {}
+
+pub fn (q QuotedMethods) target() {
+	_ = q
+}
+
+pub fn (q QuotedMethods) other() {
+	_ = q
+}
+
+fn main() {
+	mut rows := []string{}
+	keep_serial := fn () {}
+	keep_serial()
+	value := QuotedMethods{}
+	value.target()
+	value.other()
+	\$for method in QuotedMethods.methods {
+		\$if method.name == 'target' || 'method.is_pub' == 'true' {
+			rows << method.name
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'target'
+		},
+		Round4RuntimeCase{
+			name:     'nested_field_method_guard'
+			source:   "struct Row {
+	id int
+	name string
+}
+
+struct App {}
+
+fn (a App) index() {
+	_ = a
+}
+
+fn (a App) submit() {
+	_ = a
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for field in Row.fields {
+		\$for method in App.methods {
+			\$if field.name == 'id' && method.name == 'index' {
+				rows << field.name + ':' + method.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'id:index'
+		},
+		Round4RuntimeCase{
+			name:     'nested_method_shadowing'
+			source:   'struct OuterMethods {}
+
+fn (o OuterMethods) outer(value string) string {
+	_ = o
+	return "outer:" + value
+}
+
+struct InnerMethods {}
+
+fn (i InnerMethods) alpha(value string) string {
+	_ = i
+	return "alpha:" + value
+}
+
+fn (i InnerMethods) beta(value string) string {
+	_ = i
+	return "beta:" + value
+}
+
+fn main() {
+	inner := InnerMethods{}
+	mut rows := []string{}
+	$for method in OuterMethods.methods {
+		rows << "outer:" + method.name
+		$for method in InnerMethods.methods {
+			$if method.args[0].typ is string {
+				rows << method.name + "=" + inner.$method(method.name)
+			}
+		}
+	}
+	println(rows.join("|"))
+}
+'
+			expected: 'outer:outer|alpha=alpha:alpha|beta=beta:beta'
+		},
+		Round4RuntimeCase{
+			name:     'nested_param_attribute_shadowing'
+			source:   "@[outer]
+struct OuterAttrs {}
+
+@[inner]
+struct InnerAttrs {}
+
+fn outer(first string) {
+	_ = first
+}
+
+fn inner(second int) {
+	_ = second
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for param in outer.params {
+		rows << 'outer-param:' + param.name
+		\$for param in inner.params {
+			rows << 'inner-param:' + param.name
+		}
+	}
+	\$for attr in OuterAttrs.attributes {
+		rows << 'outer-attr:' + attr.name
+		\$for attr in InnerAttrs.attributes {
+			rows << 'inner-attr:' + attr.name
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'outer-param:first|inner-param:second|outer-attr:outer|inner-attr:inner'
+		},
+		Round4RuntimeCase{
+			name:     'nested_param_guard_identifier_boundaries'
+			source:   "fn outer(y string, z int) {
+	_ = y
+	_ = z
+}
+
+fn inner(x string, q int) {
+	_ = x
+	_ = q
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for outer_param in outer.params {
+		\$for param in inner.params {
+			\$if param.name == 'x' || outer_param.name == 'y' {
+				rows << outer_param.name + ':' + param.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'y:x|y:q|z:x'
+		},
+		Round4RuntimeCase{
+			name:     'nested_method_attribute_guard'
+			source:   "struct App {}
+
+@[get]
+fn (a App) index() {
+	_ = a
+}
+
+@[post]
+fn (a App) submit() {
+	_ = a
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for method in App.methods {
+		\$for attr in method.attributes {
+			\$if method.name == 'index' && attr.name == 'get' {
+				rows << method.name + ':' + attr.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'index:get'
+		},
+		Round4RuntimeCase{
+			name:     'nested_attribute_method_guard'
+			source:   "@[route]
+struct Routes {}
+
+struct App {}
+
+fn (a App) index() {
+	_ = a
+}
+
+fn (a App) submit() {
+	_ = a
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for attr in Routes.attributes {
+		\$for method in App.methods {
+			\$if attr.name == 'route' && method.name == 'index' {
+				rows << attr.name + ':' + method.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'route:index'
+		},
+		Round4RuntimeCase{
+			name:     'nested_param_field_guard'
+			source:   "struct Row {
+	id int
+	name string
+}
+
+fn consume(x string, y int) {
+	_ = x
+	_ = y
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for param in consume.params {
+		\$for field in Row.fields {
+			\$if param.name == 'x' && field.name == 'id' {
+				rows << param.name + ':' + field.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+"
+			expected: 'x:id'
+		},
 	])
+}
+
+fn test_method_metadata_locations_are_materialized() {
+	out := round4_run_good(v3_bin, 'method_metadata_location', 'struct Located {}
+
+fn (item Located) run() {
+	_ = item
+}
+
+fn main() {
+	mut items := []FunctionData{}
+	mut locations := []string{}
+	mut guarded := []string{}
+	$for method in Located.methods {
+		locations << method.location
+		items << method
+		$if method.location != "" {
+			guarded << method.name
+		}
+	}
+	println(locations[0].ends_with(":3:18"))
+	println(items[0].location == locations[0])
+	println(guarded.join("|"))
+}
+')
+	assert out == 'true\ntrue\nrun'
 }
 
 fn test_qualified_single_letter_type_is_a_concrete_generic_argument() {
@@ -2543,39 +2853,6 @@ fn test_attribute_line_pseudo_values_use_their_token_positions() {
 	assert out == 'line|file-line'
 }
 
-fn test_cached_and_shadowed_char_literals() {
-	round4_check_runtime('cached_and_shadowed_char_literals', [
-		Round4RuntimeCase{'cached_char_literals', "const cached_char = `a`
-
-fn main() {
-	local_char := `b`
-	mut rows := []string{}
-	\$if cached_char == `a` {
-		rows << 'const-if'
-	} \$else {
-		rows << 'wrong-const'
-	}
-	\$match local_char {
-		`b` { rows << 'local-match' }
-		\$else { rows << 'wrong-local' }
-	}
-	println(rows.join('|'))
-}
-", 'const-if|local-match'},
-		Round4RuntimeCase{'char_literal_cached_local_collision', "fn main() {
-	a := `b`
-	ch := `a`
-	_ = a
-	\$if ch == `a` {
-		println('ok')
-	} \$else {
-		println('wrong')
-	}
-}
-", 'ok'},
-	])
-}
-
 fn test_dynamic_selector_outside_reflection_loop_is_rejected() {
 	round4_check_rejections('reflection_selector_rejections', [
 		Round4Rejection{'dynamic_selector_outside_reflection_loop', 'struct Item {
@@ -2617,58 +2894,6 @@ fn main() {
 	])
 }
 
-fn test_raw_and_quoted_string_literal_shadowing() {
-	round4_check_runtime('raw_and_quoted_string_literal_shadowing', [
-		Round4RuntimeCase{'raw_string_comptime_local_collision', "fn main() {
-	r := 'wrong'
-	_ = r
-	\$if r'abc' == 'abc' {
-		println('ok')
-	} \$else {
-		println('wrong')
-	}
-}
-", 'ok'},
-		Round4RuntimeCase{'comptime_string_literal_cached_local', "fn main() {
-	x := 'y'
-	_ = x
-	\$if 'x' == 'y' {
-		println('wrong')
-	} \$else {
-		println('ok')
-	}
-}
-", 'ok'},
-		Round4RuntimeCase{'guard_member_text_literal', "struct S {
-	id int
-}
-
-enum Color {
-	red
-}
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field.name == 'field.nmae' {
-			rows << 'bad'
-		} $else {
-			rows << field.name
-		}
-	}
-	$for item in Color.values {
-		$if item.name == 'item.nmae' {
-			rows << 'bad'
-		} $else {
-			rows << item.name
-		}
-	}
-	println(rows.join('|'))
-}
-	", 'id|red'},
-	])
-}
-
 fn test_raw_string_comptime_match_literals_are_normalized() {
 	out := round4_run_good(v3_bin, 'raw_string_comptime_match_literals', "fn main() {
 	\$match r'abc' {
@@ -2682,132 +2907,6 @@ fn test_raw_string_comptime_match_literals_are_normalized() {
 }
 ")
 	assert out == 'subject\npattern'
-}
-
-fn test_quoted_and_nested_reflection_selectors() {
-	round4_check_runtime('quoted_and_nested_reflection_selectors', [
-		Round4RuntimeCase{
-			name:     'field_condition_string_literal'
-			source:   "struct QuotedFields {
-pub:
-	id int
-}
-
-fn main() {
-	mut rows := []string{}
-	\$for field in QuotedFields.fields {
-		\$if 'field.is_pub' == 'true' {
-			rows << 'wrong'
-		} \$else {
-			rows << field.name
-		}
-		\$if field.name == 'id' {
-			rows << 'real-selector'
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'id|real-selector'
-		},
-		Round4RuntimeCase{
-			name:     'method_condition_string_literal'
-			source:   "struct QuotedMethods {}
-
-pub fn (q QuotedMethods) target() {
-	_ = q
-}
-
-pub fn (q QuotedMethods) other() {
-	_ = q
-}
-
-fn main() {
-	mut rows := []string{}
-	keep_serial := fn () {}
-	keep_serial()
-	value := QuotedMethods{}
-	value.target()
-	value.other()
-	\$for method in QuotedMethods.methods {
-		\$if method.name == 'target' || 'method.is_pub' == 'true' {
-			rows << method.name
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'target'
-		},
-		Round4RuntimeCase{
-			name:     'nested_field_method_guard'
-			source:   "struct Row {
-	id int
-	name string
-}
-
-struct App {}
-
-fn (a App) index() {
-	_ = a
-}
-
-fn (a App) submit() {
-	_ = a
-}
-
-fn main() {
-	mut rows := []string{}
-	\$for field in Row.fields {
-		\$for method in App.methods {
-			\$if field.name == 'id' && method.name == 'index' {
-				rows << field.name + ':' + method.name
-			}
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'id:index'
-		},
-		Round4RuntimeCase{
-			name:     'nested_method_shadowing'
-			source:   'struct OuterMethods {}
-
-fn (o OuterMethods) outer(value string) string {
-	_ = o
-	return "outer:" + value
-}
-
-struct InnerMethods {}
-
-fn (i InnerMethods) alpha(value string) string {
-	_ = i
-	return "alpha:" + value
-}
-
-fn (i InnerMethods) beta(value string) string {
-	_ = i
-	return "beta:" + value
-}
-
-fn main() {
-	inner := InnerMethods{}
-	mut rows := []string{}
-	$for method in OuterMethods.methods {
-		rows << "outer:" + method.name
-		$for method in InnerMethods.methods {
-			$if method.args[0].typ is string {
-				rows << method.name + "=" + inner.$method(method.name)
-			}
-		}
-	}
-	println(rows.join("|"))
-}
-'
-			expected: 'outer:outer|alpha=alpha:alpha|beta=beta:beta'
-		},
-	])
 }
 
 fn test_vmod_file_expands_in_comptime_conditions() {
@@ -2991,155 +3090,6 @@ fn main() {
 '
 	}, '')
 	assert out == '2:1:7'
-}
-
-fn test_nested_parameter_attribute_and_field_selectors() {
-	round4_check_runtime('nested_parameter_attribute_and_field_selectors', [
-		Round4RuntimeCase{
-			name:     'nested_param_attribute_shadowing'
-			source:   "@[outer]
-struct OuterAttrs {}
-
-@[inner]
-struct InnerAttrs {}
-
-fn outer(first string) {
-	_ = first
-}
-
-fn inner(second int) {
-	_ = second
-}
-
-fn main() {
-	mut rows := []string{}
-	\$for param in outer.params {
-		rows << 'outer-param:' + param.name
-		\$for param in inner.params {
-			rows << 'inner-param:' + param.name
-		}
-	}
-	\$for attr in OuterAttrs.attributes {
-		rows << 'outer-attr:' + attr.name
-		\$for attr in InnerAttrs.attributes {
-			rows << 'inner-attr:' + attr.name
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'outer-param:first|inner-param:second|outer-attr:outer|inner-attr:inner'
-		},
-		Round4RuntimeCase{
-			name:     'nested_param_guard_identifier_boundaries'
-			source:   "fn outer(y string, z int) {
-	_ = y
-	_ = z
-}
-
-fn inner(x string, q int) {
-	_ = x
-	_ = q
-}
-
-fn main() {
-	mut rows := []string{}
-	\$for outer_param in outer.params {
-		\$for param in inner.params {
-			\$if param.name == 'x' || outer_param.name == 'y' {
-				rows << outer_param.name + ':' + param.name
-			}
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'y:x|y:q|z:x'
-		},
-		Round4RuntimeCase{
-			name:     'nested_method_attribute_guard'
-			source:   "struct App {}
-
-@[get]
-fn (a App) index() {
-	_ = a
-}
-
-@[post]
-fn (a App) submit() {
-	_ = a
-}
-
-fn main() {
-	mut rows := []string{}
-	\$for method in App.methods {
-		\$for attr in method.attributes {
-			\$if method.name == 'index' && attr.name == 'get' {
-				rows << method.name + ':' + attr.name
-			}
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'index:get'
-		},
-		Round4RuntimeCase{
-			name:     'nested_attribute_method_guard'
-			source:   "@[route]
-struct Routes {}
-
-struct App {}
-
-fn (a App) index() {
-	_ = a
-}
-
-fn (a App) submit() {
-	_ = a
-}
-
-fn main() {
-	mut rows := []string{}
-	\$for attr in Routes.attributes {
-		\$for method in App.methods {
-			\$if attr.name == 'route' && method.name == 'index' {
-				rows << attr.name + ':' + method.name
-			}
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'route:index'
-		},
-		Round4RuntimeCase{
-			name:     'nested_param_field_guard'
-			source:   "struct Row {
-	id int
-	name string
-}
-
-fn consume(x string, y int) {
-	_ = x
-	_ = y
-}
-
-fn main() {
-	mut rows := []string{}
-	\$for param in consume.params {
-		\$for field in Row.fields {
-			\$if param.name == 'x' && field.name == 'id' {
-				rows << param.name + ':' + field.name
-			}
-		}
-	}
-	println(rows.join('|'))
-}
-"
-			expected: 'x:id'
-		},
-	])
 }
 
 fn test_normal_string_attribute_arguments_are_unescaped() {
