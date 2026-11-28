@@ -190,6 +190,7 @@ fn test_explicit_pointer_patterns_require_dereferencing_for_value_returns() {
 	path := os.join_path(os.vtmp_dir(), 'interface_pointer_pattern_return_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	preamble := 'interface Named { name() string }\nstruct Record { label string }\nfn (r &Record) name() string { return r.label }\nstruct Holder { item Named }\n'
+	mut functions := [][]string{len: 3}
 	for body in [
 		'Record { if item is PATTERN { return VALUE }; return Record{} }',
 		'Record { return if item is PATTERN { VALUE } else { Record{} } }',
@@ -220,18 +221,7 @@ fn test_explicit_pointer_patterns_require_dereferencing_for_value_returns() {
 		for mode in 0 .. 3 {
 			pattern := if mode == 2 { 'Record' } else { '&Record' }
 			value := if mode == 1 { '*item' } else { 'item' }
-			declaration := body.replace('PATTERN', pattern).replace('VALUE', value)
-			os.write_file(path, '${preamble}\nfn value(item Named, flag bool) ${declaration}\nfn main() {}\n')!
-			result := os.exec([@VEXE, '-check', path])
-			if mode == 0 {
-				assert result.exit_code != 0, declaration
-				assert result.output.contains('&Record')
-					&& (result.output.contains('non reference type')
-						|| result.output.contains('return type mismatch')
-						|| result.output.contains('cannot use')), result.output
-			} else {
-				assert result.exit_code == 0, '${declaration}\n${result.output}'
-			}
+			functions[mode] << 'fn value(item Named, flag bool) ${body.replace('PATTERN', pattern).replace('VALUE', value)}'
 		}
 	}
 	for receiver in ['holder.item', 'items[0]'] {
@@ -243,11 +233,44 @@ fn test_explicit_pointer_patterns_require_dereferencing_for_value_returns() {
 			for mode in 0 .. 3 {
 				pattern := if mode == 2 { 'Record' } else { '&Record' }
 				value := if mode == 1 { '*${receiver}' } else { receiver }
-				body := 'holder := Holder{item}\nitems := [item]\n${tail.replace('PATTERN', pattern).replace('VALUE', value)}'
-				os.write_file(path, '${preamble}\nfn value(item Named) Record { ${body} }\nfn main() {}\n')!
-				result := os.exec([@VEXE, '-check', path])
-				assert (result.exit_code == 0) == (mode != 0), '${body}\n${result.output}'
+				functions[mode] << 'fn value(item Named) Record { holder := Holder{item}\nitems := [item]\n${tail.replace('PATTERN', pattern).replace('VALUE', value)} }'
 			}
 		}
+	}
+	// Mode 0 returns the `&Record` that every function must reject; the others are valid.
+	for mode, mode_functions in functions {
+		check_value_functions(path, preamble, mode_functions, mode == 0)
+	}
+}
+
+// check_value_functions checks every `fn value` as a function of its own in one file.
+// Rejected functions must each report the reference returned as a value in their lines.
+fn check_value_functions(path string, preamble string, functions []string, rejected bool) {
+	mut source := preamble
+	mut first_lines := []int{cap: functions.len}
+	mut last_lines := []int{cap: functions.len}
+	for i, function in functions {
+		first_lines << source.count('\n') + 1
+		source += function.replace_once('fn value(', 'fn value_${i}(') + '\n'
+		last_lines << source.count('\n')
+	}
+	os.write_file(path, source + 'fn main() {}\n') or { panic(err) }
+	result := os.exec([@VEXE, '-message-limit', '1000', '-check', path])
+	if !rejected {
+		assert result.exit_code == 0, result.output
+		return
+	}
+	assert result.exit_code != 0, result.output
+	mut error_lines := []int{}
+	for diagnostic in result.output.split_into_lines() {
+		if diagnostic.contains(': error: ') && diagnostic.contains('&Record')
+			&& (diagnostic.contains('non reference type')
+				|| diagnostic.contains('return type mismatch') || diagnostic.contains('cannot use')) {
+			location := diagnostic.all_before(': error: ').split(':')
+			error_lines << location[location.len - 2].int()
+		}
+	}
+	for i, function in functions {
+		assert error_lines.any(it >= first_lines[i] && it <= last_lines[i]), '${function}\n${result.output}'
 	}
 }
