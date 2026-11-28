@@ -1319,10 +1319,6 @@ fn test_a_server_child_that_grew_answers_its_last_question_and_leaves() {
 	assert p.code == 0
 }
 
-fn constrained(code string, line int, word string, nth int) string {
-	return ask(os.join_path(work_dir, 'constraints'), code, line, word, nth)
-}
-
 fn test_a_constrained_value_has_the_members_of_its_constraint() {
 	text := constraints_program.split('\n')[19]
 	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
@@ -1412,8 +1408,13 @@ fn test_a_constraint_name_has_a_definition_and_a_hover() {
 fn test_a_compile_time_branch_in_a_constrained_body_leaves_the_queries_working() {
 	// `$if T is f64 {` in `half[T Number]`: the walk of the body narrows `T` in
 	// each branch, and the program still answers the editor's queries.
-	assert constrained('hv^', 37, 'Number', 0) == '{"contents":{"kind":"markdown","value":"```v\\ntype Number = int | f64\\n```"}}'
-	assert constrained('gd^', 39, 'x', 0) == 'main.v:37:18'
+	lines := constraints_program.split('\n')
+	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
+		word_question(lines[36], 'hv^', 37, 'Number', 0),
+		word_question(lines[38], 'gd^', 39, 'x', 0),
+	])
+	assert answers[0] == hover_of('type Number = int | f64')
+	assert answers[1] == 'main.v:37:18'
 }
 
 fn test_many_compile_time_branches_in_constrained_bodies_leave_the_queries_working() {
@@ -3097,15 +3098,26 @@ fn test_a_type_parameter_of_an_unknown_constraint_says_nothing_more() {
 
 fn test_a_type_parameter_shows_its_constraint_and_what_it_is_there() {
 	half := 'fn half[T Number3](x T, y T, xs []T) f64 {'
+	half_line := line_of(narrowing_program, half)
+	condition := '\t\$if T is f64 {'
+	branch := '\t\tzero := T(0)'
+	call := '\tprintln(half(1.0, 2.0, [3.0]))'
+	answers := ask_answers(program_dir('narrowing', narrowing_program), [
+		word_question(half, 'hv^', half_line, 'T', 0),
+		word_question(half, 'hv^', half_line, 'T', 3),
+		word_question(condition, 'hv^', line_of(narrowing_program, condition), 'T', 0),
+		word_question(branch, 'hv^', line_of(narrowing_program, branch), 'T', 0),
+		word_question(call, 'hv^', line_of(narrowing_program, call), 'half', 0),
+	])
 	all := '[T Number3]\\nT: int | i64 | f64'
 	// Where it is declared, in the types of the parameters and in a `$if`.
-	assert narrowed('hv^', half, 'T', 0) == hover_of(all)
-	assert narrowed('hv^', half, 'T', 3) == hover_of(all)
-	assert narrowed('hv^', '\t\$if T is f64 {', 'T', 0) == hover_of(all)
+	assert answers[0] == hover_of(all)
+	assert answers[1] == hover_of(all)
+	assert answers[2] == hover_of(all)
 	// In the branch of that `$if`, `f64`.
-	assert narrowed('hv^', '\t\tzero := T(0)', 'T', 0) == hover_of('[T Number3]\\nT: f64')
+	assert answers[3] == hover_of('[T Number3]\\nT: f64')
 	// A function writes its type parameters, with their constraints.
-	assert narrowed('hv^', '\tprintln(half(1.0, 2.0, [3.0]))', 'half', 0) == hover_of('fn half[T Number3](x T, y T, xs []T) f64')
+	assert answers[4] == hover_of('fn half[T Number3](x T, y T, xs []T) f64')
 }
 
 fn test_a_value_in_the_condition_of_a_compile_time_if_is_a_value_there() {
