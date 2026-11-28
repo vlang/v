@@ -1575,14 +1575,6 @@ fn main() {}
 	assert ask(dir, 'gd^', 34, 'name', 0) == 'main.v:4:1'
 }
 
-// function asks about the `nth` `word` of the line of functions_program that
-// reads `text`.
-fn function(code string, text string, word string, nth int) string {
-	dir := os.join_path(work_dir, 'functions')
-	line := functions_line(text)
-	return ask(dir, code, line, word, nth)
-}
-
 // functions_line is the 1-based number of the line of functions_program that
 // reads `text`.
 fn functions_line(text string) int {
@@ -1668,8 +1660,12 @@ fn test_the_callee_of_a_call_through_a_value_is_that_value() {
 	assert answers[4] == hover_of('f fn (int) int')
 	// A generic function called with its type arguments is that function.
 	longest := functions_line('fn longest[T Named](a T, b T) T {')
-	assert function('hv^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == hover_of('fn longest[T Named](a T, b T) T')
-	assert function('gd^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == 'main.v:${longest}:3'
+	longest_call := '\tprintln(longest[User](u, u).name)'
+	longest_answers := ask_answers(dir, [
+		function_hover_question(longest_call, 'longest'),
+		word_question(longest_call, 'gd^', functions_line(longest_call), 'longest', 0),
+	])
+	assert longest_answers == [hover_of('fn longest[T Named](a T, b T) T'), 'main.v:${longest}:3']
 	// A function literal in a generic body takes a `T`, written by its name.
 	count := hover_of('count fn (T) int\\nT: implements main.Named')
 	assert ask_answers(dir, [
@@ -1679,9 +1675,14 @@ fn test_the_callee_of_a_call_through_a_value_is_that_value() {
 }
 
 fn test_a_static_method_is_declared_by_its_name() {
-	new := functions_line('fn User.new(name string) User {')
-	assert function('gd^', 'fn User.new(name string) User {', 'new', 0) == 'main.v:${new}:8'
-	assert function('gd^', "\tu := User.new('eva')", 'new', 0) == 'main.v:${new}:8'
+	new_decl := 'fn User.new(name string) User {'
+	new_call := "\tu := User.new('eva')"
+	new := functions_line(new_decl)
+	answers := ask_answers(os.join_path(work_dir, 'functions'), [
+		word_question(new_decl, 'gd^', new, 'new', 0),
+		word_question(new_call, 'gd^', functions_line(new_call), 'new', 0),
+	])
+	assert answers == ['main.v:${new}:8', 'main.v:${new}:8']
 }
 
 fn test_a_chain_of_array_methods_in_a_generic_body_keeps_its_elements() {
@@ -4350,11 +4351,14 @@ fn test_a_method_of_an_interface_is_its_member_generic_or_not() {
 	assert answers[5] == get_at
 	// A method named without a call also refers to the interface member.
 	greeter := '\tgreeter := n.greet'
+	greet_hover := hover_of('fn greet() string')
 	greet_at := 'main.v:${line_of(interface_methods_program, '\tgreet() string')}:1'
-	assert ask_at(dir, interface_method_question('hv^', greeter, 'greet')) == hover_of('fn greet() string')
-	assert ask_at(dir, interface_method_question('gd^', greeter, 'greet')) == greet_at
-	// As before: a method of an interface, called on a value of it or of a type
-	// parameter that it constrains.
-	assert ask_at(dir, interface_method_question('hv^', '\treturn n.greet() + greeter()', 'greet')) == hover_of('fn greet() string')
-	assert ask_at(dir, interface_method_question('gd^', '\treturn x.greet()', 'greet')) == greet_at
+	greet_answers := ask_answers(dir, [
+		interface_method_question('hv^', greeter, 'greet'),
+		interface_method_question('gd^', greeter, 'greet'),
+		// Calls on the interface or on a type parameter it constrains.
+		interface_method_question('hv^', '\treturn n.greet() + greeter()', 'greet'),
+		interface_method_question('gd^', '\treturn x.greet()', 'greet'),
+	])
+	assert greet_answers == [greet_hover, greet_at, greet_hover, greet_at]
 }
