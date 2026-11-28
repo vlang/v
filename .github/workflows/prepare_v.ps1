@@ -56,7 +56,20 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "The optimized compiler failed its version check (exit $LASTEXITCODE)"
     }
-    Move-Item -LiteralPath $production -Destination '.\v.exe' -Force
+    # A scanner can briefly lock either executable after the version check.
+    $destination = Join-Path (Get-Location) 'v.exe'
+    for ($attempt = 0; ; $attempt++) {
+        try {
+            [IO.File]::Move($production, $destination, $true)
+            break
+        } catch [IO.IOException] {
+            $win32Error = $_.Exception.GetBaseException().HResult -band 0xffff
+            if ($attempt -ge 12 -or $win32Error -notin @(32, 33)) {
+                throw
+            }
+            Start-Sleep -Milliseconds 500
+        }
+    }
 } finally {
     [Environment]::SetEnvironmentVariable('VFLAGS', $savedVFlags, 'Process')
     [Environment]::SetEnvironmentVariable('VEXE', $savedVExe, 'Process')
