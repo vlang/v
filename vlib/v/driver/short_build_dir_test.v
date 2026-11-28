@@ -14,29 +14,54 @@ fn dir_of_len(len int) string {
 fn test_short_build_dir_boundary_is_the_short_root_len() {
 	below := dir_of_len(v3_cc_dir_short_root_len - 1)
 	assert below.len == 239
-	dir, moved := v3_short_build_dir_for(below, true, short_root)
+	dir, moved := v3_short_build_dir_for(below, '', true, short_root)
 	assert !moved
 	assert dir == below
 	at := dir_of_len(v3_cc_dir_short_root_len)
 	assert at.len == 240
-	moved_dir, moved_at := v3_short_build_dir_for(at, true, short_root)
+	moved_dir, moved_at := v3_short_build_dir_for(at, '', true, short_root)
 	assert moved_at
 	assert moved_dir.starts_with(short_root + '\\')
 }
 
+// test_short_build_dir_counts_the_output_name is a directory short enough to stay, with a
+// DLL whose name (which the C compiler writes in it) makes the whole path too long for tcc.
+fn test_short_build_dir_counts_the_output_name() {
+	dir := dir_of_len(224)
+	dll := 'l'.repeat(76) + '.dll'
+	assert dll.len == 80
+	kept_dir, kept := v3_short_build_dir_for(dir, 'out', true, short_root)
+	assert !kept
+	assert kept_dir == dir
+	moved_dir, moved := v3_short_build_dir_for(dir, dll, true, short_root)
+	assert moved
+	assert moved_dir.starts_with(short_root + '\\')
+	assert (moved_dir + '\\' + dll).len < v3_max_path
+	// The longest output path that fits keeps the directory, one more moves it.
+	fits := 'f'.repeat(v3_max_path - 1 - dir.len - 1)
+	assert (dir + '\\' + fits).len == v3_max_path - 1
+	_, fits_moved := v3_short_build_dir_for(dir, fits, true, short_root)
+	assert !fits_moved
+	_, over_moved := v3_short_build_dir_for(dir, fits + 'f', true, short_root)
+	assert over_moved
+	// Only Windows has the MAX_PATH limit.
+	_, other_host := v3_short_build_dir_for(dir, dll, false, short_root)
+	assert !other_host
+}
+
 fn test_short_build_dir_moves_a_long_dir_only_on_a_windows_host() {
 	long := dir_of_len(400)
-	moved_dir, moved := v3_short_build_dir_for(long, true, short_root)
+	moved_dir, moved := v3_short_build_dir_for(long, '', true, short_root)
 	assert moved
 	// The name is a digest, so it is short however long the output's name is, and it is
 	// the same for the same directory.
 	assert moved_dir.len == short_root.len + 1 + 16
-	again, _ := v3_short_build_dir_for(long, true, short_root)
+	again, _ := v3_short_build_dir_for(long, '', true, short_root)
 	assert again == moved_dir
-	other, _ := v3_short_build_dir_for(dir_of_len(401), true, short_root)
+	other, _ := v3_short_build_dir_for(dir_of_len(401), '', true, short_root)
 	assert other != moved_dir
 	// Only Windows has the MAX_PATH limit, so any other host keeps the directory.
-	kept_dir, kept := v3_short_build_dir_for(long, false, short_root)
+	kept_dir, kept := v3_short_build_dir_for(long, '', false, short_root)
 	assert !kept
 	assert kept_dir == long
 }
@@ -44,7 +69,7 @@ fn test_short_build_dir_moves_a_long_dir_only_on_a_windows_host() {
 fn test_short_build_dir_stays_without_a_usable_root() {
 	long := dir_of_len(400)
 	for root in ['', 'C:\\' + 'r'.repeat(v3_cc_dir_short_root_len)] {
-		dir, moved := v3_short_build_dir_for(long, true, root)
+		dir, moved := v3_short_build_dir_for(long, '', true, root)
 		assert !moved
 		assert dir == long
 	}

@@ -4658,9 +4658,18 @@ fn c_executable_bin_file_for_target(path string, target_os string, is_shared boo
 	return with_executable_postfix(path, target_os)
 }
 
-fn c_compiler_output_name_for_target(target_os string, is_shared bool, is_o bool) string {
+// c_compiler_output_name_for_target is the name of the file that the C compiler
+// writes in the build directory, which is moved to `bin_file` afterwards. A
+// Windows DLL is written with its own name, since the linker puts that name in
+// the DLL's export table, and programs linked against the DLL look for it by
+// that name. GNU ld takes the name from the LIBRARY line of a .def file
+// instead, but lld (llvm-mingw) and MSVC always use the name of the file.
+fn c_compiler_output_name_for_target(target_os string, is_shared bool, is_o bool, bin_file string) string {
 	if is_o && pref.normalized_os(target_os) == 'windows' {
 		return 'out.obj'
+	}
+	if is_shared && pref.normalized_os(target_os) == 'windows' {
+		return os.base(bin_file)
 	}
 	if !is_shared && !is_o && pref.normalized_os(target_os) == 'windows' {
 		return 'out.exe'
@@ -5283,15 +5292,20 @@ fn v3_program_executable_link_signature(link_ld_flags []string, links_with_tcc b
 // to the short root: close enough to MAX_PATH that tcc's own file names would overflow it.
 const v3_cc_dir_short_root_len = 240
 
+// v3_max_path is MAX_PATH on Windows: a path that tcc writes must be shorter than it,
+// since that includes the terminating NUL.
+const v3_max_path = 260
+
 // v3_short_build_dir returns `dir` unchanged, except on Windows when `dir` is too long for
-// tcc and for a CreateProcess working folder: then it returns a short name for it under
-// `%LOCALAPPDATA%\v3cc`, which only the user can write to. The bool reports whether the
-// directory moved.
-fn v3_short_build_dir(dir string) (string, bool) {
+// tcc and for a CreateProcess working folder, or when `output_name` (the file that the C
+// compiler writes in `dir`, or '' for none) would be too long in it: then it returns a
+// short name for it under `%LOCALAPPDATA%\v3cc`, which only the user can write to. The
+// bool reports whether the directory moved.
+fn v3_short_build_dir(dir string, output_name string) (string, bool) {
 	if os.user_os() != 'windows' {
 		return dir, false
 	}
-	return v3_short_build_dir_for(dir, true, v3_short_build_root())
+	return v3_short_build_dir_for(dir, output_name, true, v3_short_build_root())
 }
 
 // v3_short_build_root returns the per-user folder that long build directories move to,
@@ -5308,8 +5322,14 @@ fn v3_short_build_root() string {
 // short root `root`, so that both hosts can be checked on either one. The directory keeps
 // its place when the root is missing or would not make it short enough. The new name is a
 // digest of the old one, so that it stays unique without the length of the output's name.
-fn v3_short_build_dir_for(dir string, windows_host bool, root string) (string, bool) {
-	if !windows_host || dir.len < v3_cc_dir_short_root_len || root == '' {
+// A Windows DLL is written with its own name, which can be long enough to overflow MAX_PATH
+// in a directory that is itself short enough, so the whole path of `output_name` counts too.
+fn v3_short_build_dir_for(dir string, output_name string, windows_host bool, root string) (string, bool) {
+	if !windows_host || root == '' {
+		return dir, false
+	}
+	output_too_long := output_name != '' && dir.len + 1 + output_name.len >= v3_max_path
+	if dir.len < v3_cc_dir_short_root_len && !output_too_long {
 		return dir, false
 	}
 	short := root + '\\' + sha256.sum(dir.bytes()).hex()[..16]
@@ -7766,7 +7786,8 @@ fn v3_implicit_tcc_preflight(vroot string, tcc_path string, bundled_tcc string, 
 	}
 	// tcc runs with this as its working folder, and CreateProcess cannot start one past
 	// MAX_PATH, so a long temp root moves the probe to the short root.
-	dir, _ := v3_short_build_dir(os.join_path(os.vtmp_dir(), 'v3_tcc_preflight_${tempname.unique_token()}'))
+	dir, _ := v3_short_build_dir(os.join_path(os.vtmp_dir(), 'v3_tcc_preflight_${tempname.unique_token()}'),
+		'')
 	v3_mkdir_all_shared(dir) or { return none }
 	defer {
 		cleanup_c_build_dir(dir)
@@ -9461,7 +9482,7 @@ $if !skip_fastc ? {
 		if !uses_prestarted {
 			// tcc runs in this directory, so a long output path moves it to the short root.
 			build_dir, _ = v3_short_build_dir(os.join_path_single(os.dir(os.real_path(bin_file)),
-				'.${os.file_name(bin_file)}.fastc.${tempname.unique_token()}'))
+				'.${os.file_name(bin_file)}.fastc.${tempname.unique_token()}'), '')
 		}
 		if !uses_prestarted {
 			v3_mkdir_all_shared(build_dir) or { return V3FastCCompileResult{} }
@@ -9470,7 +9491,7 @@ $if !skip_fastc ? {
 			cleanup_c_build_dir(build_dir)
 		}
 		source_file := os.join_path_single(build_dir, 'src.c')
-		staged_output_name := c_compiler_output_name_for_target(prefs.normalized_target_os(), false, false)
+		staged_output_name := c_compiler_output_name_for_target(prefs.normalized_target_os(), false, false, '')
 		staged_binary := os.join_path_single(build_dir, staged_output_name)
 		unit_prefix := os.join_path_single(build_dir, 'src')
 		mut rendering_units := fastc.FastcRenderingCUnits{}
@@ -11581,7 +11602,7 @@ pub fn run(args []string) {
 						mut anticipated_compile_args := c_object_compile_flags(anticipated_cc_args)
 						anticipated_compile_args << c_object_compile_flags(user_c_flags)
 						prestart_dir, _ := v3_short_build_dir(os.join_path_single(os.dir(os.real_path(bin_file)),
-							'.${os.file_name(bin_file)}.fastc.${tempname.unique_token()}'))
+							'.${os.file_name(bin_file)}.fastc.${tempname.unique_token()}'), '')
 						prestart_workers << spawn fastc.fastc_prestart_c_units(tcc_path, anticipated_compile_args, prestart_dir, prestart_jobs)
 					}
 				}
@@ -15143,7 +15164,7 @@ pub fn run(args []string) {
 		mut cc_src := output_file
 		mut cc_out := ''
 		cc_output_name := c_compiler_output_name_for_target(prefs.normalized_target_os(), is_shared,
-			is_o)
+			is_o, bin_file)
 		if !c_only {
 			cc_dir = os.join_path_single(v3_output_dir(bin_file), '.${os.base(bin_file)}.v3cc.${tempname.unique_token()}')
 			// tcc.exe is not long-path aware, so a build dir near MAX_PATH cannot hold its files.
@@ -15151,7 +15172,7 @@ pub fn run(args []string) {
 			// since moving them can break builds that work today. A flag with a relative path
 			// that leaves the directory names a file beside the output, so the dir stays then.
 			if program_executable_output_dir.len == 0 {
-				cc_dir, cc_dir_moved = v3_short_build_dir(cc_dir)
+				cc_dir, cc_dir_moved = v3_short_build_dir(cc_dir, cc_output_name)
 			}
 			// The output directory may not exist yet, and mkdir would fail on it.
 			v3_mkdir_all_shared(cc_dir) or {
