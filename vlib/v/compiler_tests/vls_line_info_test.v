@@ -734,6 +734,10 @@ fn test_definition_prints_the_position_of_the_declaration() {
 		word_question(lines[37], 'gd^', 38, 'x', 0),
 		word_question(lines[43], 'gd^', 44, 'limit', 0),
 		word_question(lines[51], 'gd^', 52, 'v', 0),
+		// `err` comes from the `{` of its block, and `it` from its method.
+		word_question(lines[47], 'gd^', 48, 'err', 0),
+		word_question(lines[53], 'gd^', 54, 'err', 0),
+		word_question(lines[55], 'gd^', 56, 'it', 0),
 	])
 	assert answers == [
 		'main.v:41:1',
@@ -745,14 +749,10 @@ fn test_definition_prints_the_position_of_the_declaration() {
 		'main.v:9:1',
 		'main.v:6:6',
 		'main.v:51:4',
+		'main.v:47:25',
+		'main.v:53:8',
+		'main.v:56:15',
 	]
-	// `err` comes from the `{` of its block, and `it` from its method.
-	implicit := ask_answers(work_dir, [
-		word_question(lines[47], 'gd^', 48, 'err', 0),
-		word_question(lines[53], 'gd^', 54, 'err', 0),
-		word_question(lines[55], 'gd^', 56, 'it', 0),
-	])
-	assert implicit == ['main.v:47:25', 'main.v:53:8', 'main.v:56:15']
 }
 
 struct DeclarationExpectation {
@@ -1571,7 +1571,11 @@ fn decl_in_builtin_array(decl string) bool {
 	return decl.replace('\\', '/').contains('builtin/array.v:')
 }
 
-fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
+fn function_hover_question(text string, word string) string {
+	return word_question(text, 'hv^', functions_line(text), word, 0)
+}
+
+fn test_function_members_callees_and_static_methods() {
 	// `xs.map()` over `xs []T` in a generic body calls the `map` of every array:
 	// the declaration and the signature of `nums.map()` over an `[]int`.
 	array_methods := {
@@ -1604,36 +1608,13 @@ fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
 		word_question(box_call, 'gd^', functions_line(box_call), 'label', 0),
 		function_hover_question(box_call, 'label'),
 	]
-	answers := ask_answers(os.join_path(work_dir, 'functions'), questions)
-	mut offset := 0
-	for _, lines in array_methods {
-		decl := answers[offset]
-		assert decl_in_builtin_array(decl), decl
-		for i, line in lines[1..] {
-			assert answers[offset + i + 1] == decl, line
-		}
-		offset += lines.len
-	}
-	member_answers := answers[offset..]
-	assert member_answers[0] == hover_of('it int')
-	map_hover := member_answers[1]
-	assert map_hover.contains('fn map('), map_hover
-	assert member_answers[2] == map_hover
-	label := functions_line('fn (b Box[T]) label() string {')
-	assert member_answers[3] == 'main.v:${label}:14'
-	assert member_answers[4] == hover_of('fn label() string')
-}
 
-fn function_hover_question(text string, word string) string {
-	return word_question(text, 'hv^', functions_line(text), word, 0)
-}
-
-fn test_the_callee_of_a_call_through_a_value_is_that_value() {
+	callee_start := questions.len
 	// A local that holds a function literal, a method value, an instance of a
 	// generic function and a parameter of a function type are described where
 	// they are called as where they are declared.
 	longest_call := '\tprintln(longest[User](u, u).name)'
-	answers := ask_answers(os.join_path(work_dir, 'functions'), [
+	questions << [
 		function_hover_question('\tprintln(double(4))', 'double'),
 		function_hover_question('\tprintln(g())', 'g'),
 		function_hover_question('\tf := longest[User]', 'f'),
@@ -1645,28 +1626,49 @@ fn test_the_callee_of_a_call_through_a_value_is_that_value() {
 		// A function literal in a generic body takes a `T`, written by its name.
 		function_hover_question('\tprintln(xs.map(count))', 'count'),
 		function_hover_question('\tcount := fn (x T) int {', 'count'),
-	])
-	assert answers[0] == hover_of('double fn (int) int')
-	assert answers[1] == hover_of('g fn () string')
-	instance := answers[2]
-	assert instance.contains('f fn ('), instance
-	assert answers[3] == instance
-	assert answers[4] == hover_of('f fn (int) int')
-	longest := functions_line('fn longest[T Named](a T, b T) T {')
-	assert answers[5..7] == [hover_of('fn longest[T Named](a T, b T) T'), 'main.v:${longest}:3']
-	count := hover_of('count fn (T) int\\nT: implements main.Named')
-	assert answers[7..] == [count, count]
-}
+	]
 
-fn test_a_static_method_is_declared_by_its_name() {
+	static_start := questions.len
 	new_decl := 'fn User.new(name string) User {'
 	new_call := "\tu := User.new('eva')"
 	new := functions_line(new_decl)
-	answers := ask_answers(os.join_path(work_dir, 'functions'), [
+	questions << [
 		word_question(new_decl, 'gd^', new, 'new', 0),
 		word_question(new_call, 'gd^', functions_line(new_call), 'new', 0),
-	])
-	assert answers == ['main.v:${new}:8', 'main.v:${new}:8']
+	]
+
+	answers := ask_answers(os.join_path(work_dir, 'functions'), questions)
+	mut offset := 0
+	for _, lines in array_methods {
+		decl := answers[offset]
+		assert decl_in_builtin_array(decl), decl
+		for i, line in lines[1..] {
+			assert answers[offset + i + 1] == decl, line
+		}
+		offset += lines.len
+	}
+	member_answers := answers[offset..callee_start]
+	assert member_answers[0] == hover_of('it int')
+	map_hover := member_answers[1]
+	assert map_hover.contains('fn map('), map_hover
+	assert member_answers[2] == map_hover
+	label := functions_line('fn (b Box[T]) label() string {')
+	assert member_answers[3] == 'main.v:${label}:14'
+	assert member_answers[4] == hover_of('fn label() string')
+
+	callee_answers := answers[callee_start..static_start]
+	assert callee_answers[0] == hover_of('double fn (int) int')
+	assert callee_answers[1] == hover_of('g fn () string')
+	instance := callee_answers[2]
+	assert instance.contains('f fn ('), instance
+	assert callee_answers[3] == instance
+	assert callee_answers[4] == hover_of('f fn (int) int')
+	longest := functions_line('fn longest[T Named](a T, b T) T {')
+	assert callee_answers[5..7] == [hover_of('fn longest[T Named](a T, b T) T'), 'main.v:${longest}:3']
+	count := hover_of('count fn (T) int\\nT: implements main.Named')
+	assert callee_answers[7..] == [count, count]
+
+	assert answers[static_start..] == ['main.v:${new}:8', 'main.v:${new}:8']
 }
 
 fn test_a_chain_of_array_methods_in_a_generic_body_keeps_its_elements() {
@@ -1902,15 +1904,13 @@ fn test_a_method_named_like_an_array_one_declares_no_variable() {
 	it := line_of(src, '\tit := 3')
 	sort_call := '\tprintln(s.sort(a))'
 	map_call := '\tprintln(s.map(it))'
-	named_method_answers := ask_answers(dir, [
+	mut questions := [
 		word_question(sort_call, 'gd^', line_of(src, sort_call), 'a', 0),
 		word_question(map_call, 'gd^', line_of(src, map_call), 'it', 0),
-	])
-	assert named_method_answers == ['main.v:${a}:1', 'main.v:${it}:1']
+	]
+	mut positions := ['main.v:${a}:1', 'main.v:${it}:1']
 	// The methods of an array declare them, over an `[]int` and over the `[]T`
 	// of a generic body, and over a value there that nothing types.
-	mut questions := []string{}
-	mut positions := []string{}
 	for text, word in {
 		'\tsorted.sort(a < b)':            'a'
 		'\tprintln(nums.map(it * 2))':     'it'
@@ -3440,13 +3440,13 @@ fn test_a_local_of_a_generic_body_that_no_type_parameter_decides_has_its_type() 
 		HoverExpectation{ret, 'local', 'local string'},
 		HoverExpectation{"\tlocal := sep + '?'", 'local', 'local string'},
 		HoverExpectation{'\tcount := local.len', 'count', 'count int'},
+		// A local that depends on a type parameter keeps that parameter.
+		HoverExpectation{'\tsame := number', 'same', 'same T\\nT: int | f64'},
 	])
 	// Also in a branch that the parse left out, asked alone.
 	js := '\t\treturn separator.integer + local'
 	assert generic_local(js, 'separator', 0) == hover_of('separator main.Separator')
 	assert generic_local(js, 'local', 0) == hover_of('local string')
-	// One that depends on them stays as it was.
-	assert generic_local('\tsame := number', 'same', 0) == hover_of('same T\\nT: int | f64')
 }
 
 const joined_program = "module main
@@ -4165,7 +4165,7 @@ fn test_a_method_named_without_a_call_is_the_method() {
 	// generic struct, as `p.label()` is: its hover and its declaration.
 	codes := ['hv^', 'gd^']
 	calls := '\tprintln(p.label() + p.describe() + b.label())'
-	mut questions := []string{cap: 10}
+	mut questions := []string{cap: 18}
 	for code in codes {
 		questions << [
 			method_value_question(code, calls, 'label', 0),
@@ -4173,11 +4173,16 @@ fn test_a_method_named_without_a_call_is_the_method() {
 			method_value_question(code, '\tplain_label := p.label', 'label', 0),
 			method_value_question(code, '\tbox_label := b.label', 'label', 0),
 			method_value_question(code, '\tagain := b.label', 'label', 0),
+			method_value_question(code, calls, 'describe', 0),
+			method_value_question(code, '\tprintln(plain_describe() + shown.describe() + shown_describe())',
+				'describe', 0),
+			method_value_question(code, '\tplain_describe := p.describe', 'describe', 0),
+			method_value_question(code, '\tshown_describe := shown.describe', 'describe', 0),
 		]
 	}
 	batched := ask_answers(program_dir('method_values', method_values_program), questions)
 	for i, code in codes {
-		answers := batched[i * 5..(i + 1) * 5]
+		answers := batched[i * 9..(i + 1) * 9]
 		plain := answers[0]
 		boxed := answers[1]
 		assert plain != '' && boxed != ''
@@ -4187,30 +4192,19 @@ fn test_a_method_named_without_a_call_is_the_method() {
 		assert answers[2] == plain
 		assert answers[3] == boxed
 		assert answers[4] == boxed
-	}
-}
 
-fn test_a_method_named_without_a_call_is_the_one_its_call_is() {
-	// A method promoted from an embedded struct, `p.describe`, and the own method
-	// of an alias of that struct, `shown.describe`: without a call, the method
-	// that the call is, not the one of the aliased struct.
-	dir := program_dir('method_values', method_values_program)
-	for code in ['hv^', 'gd^'] {
-		answers := ask_answers(dir, [
-			method_value_question(code, '\tprintln(p.label() + p.describe() + b.label())', 'describe', 0),
-			method_value_question(code, '\tprintln(plain_describe() + shown.describe() + shown_describe())',
-				'describe', 0),
-			method_value_question(code, '\tplain_describe := p.describe', 'describe', 0),
-			method_value_question(code, '\tshown_describe := shown.describe', 'describe', 0),
-		])
-		promoted := answers[0]
-		shown := answers[1]
+		// A method promoted from an embedded struct, `p.describe`, and the own method
+		// of an alias of that struct, `shown.describe`: without a call, the method
+		// that the call is, not the one of the aliased struct.
+		descriptions := answers[5..]
+		promoted := descriptions[0]
+		shown := descriptions[1]
 		assert promoted != '' && shown != ''
 		if code == 'gd^' {
 			assert promoted != shown
 		}
-		assert answers[2] == promoted
-		assert answers[3] == shown
+		assert descriptions[2] == promoted
+		assert descriptions[3] == shown
 	}
 }
 
