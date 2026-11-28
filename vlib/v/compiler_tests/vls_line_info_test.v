@@ -3348,12 +3348,14 @@ fn test_a_local_of_a_generic_body_that_no_type_parameter_decides_has_its_type() 
 	// whose value does not depend on the type parameters has the type that
 	// every instance gives it, with or without constraints.
 	ret := '\treturn number.str() + separator.integer + local + same.str()'
-	assert generic_local('\tseparator := match sep {', 'separator', 0) == hover_of('separator main.Separator')
-	assert generic_local(ret, 'separator', 0) == hover_of('separator main.Separator')
-	assert generic_local("\tlocal := sep + '!'", 'local', 0) == hover_of('local string')
-	assert generic_local(ret, 'local', 0) == hover_of('local string')
-	assert generic_local("\tlocal := sep + '?'", 'local', 0) == hover_of('local string')
-	assert generic_local('\tcount := local.len', 'count', 0) == hover_of('count int')
+	assert_hovers('generic_locals', generic_locals_program, [
+		HoverExpectation{'\tseparator := match sep {', 'separator', 'separator main.Separator'},
+		HoverExpectation{ret, 'separator', 'separator main.Separator'},
+		HoverExpectation{"\tlocal := sep + '!'", 'local', 'local string'},
+		HoverExpectation{ret, 'local', 'local string'},
+		HoverExpectation{"\tlocal := sep + '?'", 'local', 'local string'},
+		HoverExpectation{'\tcount := local.len', 'count', 'count int'},
+	])
 	// Also in a branch that the parse left out, asked alone.
 	js := '\t\treturn separator.integer + local'
 	assert generic_local(js, 'separator', 0) == hover_of('separator main.Separator')
