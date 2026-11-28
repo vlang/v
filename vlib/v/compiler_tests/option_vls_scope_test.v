@@ -23,18 +23,24 @@ fn main() {
 	defer { os.rm(path) or {} }
 	lines := source.split_into_lines()
 	declaration := lines.index("	err := 'outer'") + 1
+	mut questions := []string{}
 	for i, line in lines {
 		if !line.contains('println(err)') {
 			continue
 		}
 		column := line.index('err') or { panic('missing identifier') }
 		position := '${path}:${i + 1}:'
-		spec := '${position}hv^${column + 1}\t${position}gd^${column + 1}'
-		result := cmdexec.run(@VEXE, ['-check', '-vls-mode', '-line-info', spec, path])
-		assert result.exit_code == 0, result.output
-		answers := result.output.trim_space().split_into_lines()
-		assert answers.len == 2, result.output
-		assert answers[0].starts_with('0\t') && answers[0].contains('err string'), answers[0]
-		assert answers[1].starts_with('1\t') && answers[1].contains(':${declaration}:1'), answers[1]
+		questions << '${position}hv^${column + 1}'
+		questions << '${position}gd^${column + 1}'
+	}
+	result := cmdexec.run(@VEXE, ['-check', '-vls-mode', '-line-info', questions.join('\t'), path])
+	assert result.exit_code == 0, result.output
+	answers := result.output.trim_space().split_into_lines()
+	assert answers.len == questions.len, result.output
+	for i, answer in answers {
+		prefix := '${i}\t'
+		assert answer.starts_with(prefix), answer
+		expected := if i % 2 == 0 { 'err string' } else { ':${declaration}:1' }
+		assert answer[prefix.len..].contains(expected), '${questions[i]}: ${answer}'
 	}
 }

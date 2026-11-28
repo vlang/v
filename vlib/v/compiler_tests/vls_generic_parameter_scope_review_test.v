@@ -44,25 +44,37 @@ fn test_type_parameter_hover_and_definition_stay_in_their_declaration_scope() {
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'scope.v')
 	os.write_file(path, scope_review_program)!
-	for position in ['11:16', '17:22', '21:21', '23:13'] {
-		hover, definition := scope_review_hover_and_definition(path, position)
-		assert hover.contains('struct T'), hover
-		assert !hover.contains('[T]'), hover
-		assert definition == '${path}:3:7'
+	module_t := '3:7'
+	declarations := {
+		'11:16': module_t
+		'17:22': module_t
+		'21:21': module_t
+		'23:13': module_t
+		'7:12':  '7:12'
+		'7:17':  '7:12'
+		'7:20':  '7:12'
+		'13:14': '13:14'
+		'14:6':  '13:14'
+		'19:19': '19:12'
 	}
-	for position in ['7:12', '7:17', '7:20'] {
-		hover, definition := scope_review_hover_and_definition(path, position)
-		assert hover.contains('[T]')
-		assert definition == '${path}:7:12'
+	positions := declarations.keys()
+	mut questions := []string{cap: positions.len * 2}
+	for position in positions {
+		questions << scope_review_question(path, position, 'hv')
+		questions << scope_review_question(path, position, 'gd')
 	}
-	for position in ['13:14', '14:6'] {
-		hover, definition := scope_review_hover_and_definition(path, position)
-		assert hover.contains('[T]')
-		assert definition == '${path}:13:14'
+	answers := scope_review_answers(path, questions)
+	for i, position in positions {
+		declaration := declarations[position]
+		hover := answers[2 * i]
+		if declaration == module_t {
+			assert hover.contains('struct T'), '${position}: ${hover}'
+			assert !hover.contains('[T]'), '${position}: ${hover}'
+		} else {
+			assert hover.contains('[T]'), '${position}: ${hover}'
+		}
+		assert answers[2 * i + 1] == '${path}:${declaration}', position
 	}
-	hover, definition := scope_review_hover_and_definition(path, '19:19')
-	assert hover.contains('[T]')
-	assert definition == '${path}:19:12'
 }
 
 // receiver_scope_layouts put right before a method of `Box[T]` each kind of
