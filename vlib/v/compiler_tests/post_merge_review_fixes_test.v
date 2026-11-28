@@ -986,9 +986,18 @@ fn main() {
 	])
 }
 
-fn test_wrapped_returns_and_select_values() {
+fn test_post_merge_runtime_fixtures() {
 	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'wrapped_returns_and_select_values', [
+	mut cases := wrapped_returns_and_select_values_fixtures()
+	cases << interface_boxing_and_struct_initializers_fixtures()
+	cases << constant_expressions_and_numeric_stringification_fixtures()
+	cases << callback_values_and_generic_specializations_fixtures()
+	cases << interface_str_dispatch_and_concrete_methods_fixtures()
+	run_good_module_batch(v3_bin, 'post_merge_runtime_fixtures', cases)
+}
+
+fn wrapped_returns_and_select_values_fixtures() []ReviewRuntimeCase {
+	return [
 		ReviewRuntimeCase{'handled_result_multi_decl_assign', "fn pair() !(int, string) {\n\treturn 5, 'ok'\n}\n\nfn main() {\n\ta, b := pair() or { panic(err) }\n\tprintln(int_str(a) + b)\n}\n", '5ok'},
 		ReviewRuntimeCase{'multi_assign_smartcast_rhs', 'struct Foo {
 	field int
@@ -1496,7 +1505,7 @@ fn main() {
 	println(fired.str())
 }
 ', 'true'},
-	])
+	]
 }
 
 fn test_return_type_and_unreachable_code_rejections() {
@@ -1729,9 +1738,8 @@ fn main() {
 	assert out == '1'
 }
 
-fn test_interface_boxing_and_struct_initializers() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_boxing_and_struct_initializers', [
+fn interface_boxing_and_struct_initializers_fixtures() []ReviewRuntimeCase {
+	return [
 		ReviewRuntimeCase{
 			name:     'interface_eq_implicit_return_box'
 			source:   'interface IValue {}
@@ -2714,7 +2722,7 @@ fn main() {
 	println(read(value))
 }
 ', '73'},
-	])
+	]
 }
 
 fn test_interface_equality_includes_option_result_return_boxes() {
@@ -3504,9 +3512,8 @@ pub fn check() {
 	assert out == 'ok\nok'
 }
 
-fn test_constant_expressions_and_numeric_stringification() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'constant_expressions_and_numeric_stringification', [
+fn constant_expressions_and_numeric_stringification_fixtures() []ReviewRuntimeCase {
+	return [
 		ReviewRuntimeCase{'assert_capture_inferred_wide_const_type', 'type Duration = i64
 
 const nanosecond = Duration(1)
@@ -3944,7 +3951,7 @@ fn main() {
 		ReviewRuntimeCase{'formatted_interpolation_alias_string', 'import time\n\nfn main() {\n\tduration := time.Duration(10)\n\tprintln("|\${duration:10s}|")\n}\n', '|      10ns|'},
 		ReviewRuntimeCase{'composite_string_format_width', 'fn main() {\n\tprintln("|\${[1, 2]:-12s}|")\n}\n', '|[1, 2]      |'},
 		ReviewRuntimeCase{'comptime_define_field_default', 'struct Job {\n\tid string = \$d("id", "Job")\n}\n\nstruct App {\n\tjobs [\$d("jobs", 2)]Job\n}\n\nfn main() {\n\tapp := App{}\n\tprintln(app.jobs[0].id)\n}\n', 'Job'},
-	])
+	]
 }
 
 fn test_main_module_builtin_dispatch() {
@@ -4029,9 +4036,8 @@ fn test_array_builtin_method_fallback_keeps_return_type() {
 	assert fixed_expr_out == '1\n8'
 }
 
-fn test_callback_values_and_generic_specializations() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'callback_values_and_generic_specializations', [
+fn callback_values_and_generic_specializations_fixtures() []ReviewRuntimeCase {
+	return [
 		ReviewRuntimeCase{
 			name:     'alias_receiver_underlying_method_value_escape'
 			source:   'struct Runner {
@@ -4196,7 +4202,7 @@ fn main() {
 	println(lhs == rhs)
 }
 ', 'true\ntrue\ntrue'},
-	])
+	]
 }
 
 fn test_map_builtin_method_fallback_checks_arguments() {
@@ -4300,9 +4306,8 @@ fn test_driver_accepts_cdebug_alias() {
 	assert out == 'debug'
 }
 
-fn test_interface_str_dispatch_and_concrete_methods() {
-	v3_bin := build_v3()
-	run_good_module_batch(v3_bin, 'interface_str_dispatch_and_concrete_methods', [
+fn interface_str_dispatch_and_concrete_methods_fixtures() []ReviewRuntimeCase {
+	return [
 		ReviewRuntimeCase{'alias_interface_str_dispatch', "interface Printer {\n\tstr() string\n}\n\ntype Label = int\n\nfn (l Label) str() string {\n\treturn 'label:' + int_str(int(l))\n}\n\nfn make() Printer {\n\tl := Label(7)\n\treturn l\n}\n\nfn main() {\n\tp := make()\n\tprintln('\${p}')\n}\n", 'label:7'},
 		ReviewRuntimeCase{'interface_match_concrete_str', 'interface Value {
 	number() int
@@ -4676,7 +4681,7 @@ fn main() {
 	println(value.str())
 }
 ', "Foo{\n    labels: {'a': 3}\n    fixed: [4, 5]\n}"},
-	])
+	]
 }
 
 fn test_implicit_interface_str_dispatch_stringifies_struct_alias() {
