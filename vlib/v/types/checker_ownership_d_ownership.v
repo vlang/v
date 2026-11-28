@@ -8531,9 +8531,60 @@ fn (mut tc TypeChecker) ownership_mark_array_append_expr(array_id flat.NodeId, e
 	tc.ownership_mark_array_append_element(array_name, array_id, elem_id, pos)
 }
 
+// ownership_autofree_element_clone makes `a << b[i]`, `a.insert(j, b[i])` and
+// `a.prepend(b[i])` store a clone of the element under -autofree. Autofree
+// keeps V1's aliasing semantics, so nothing empties `b[i]` after the read, and
+// `b` still drops it later (for example in `b.delete(i)`). Sharing the element
+// would leave `a` with freed storage. It returns the element's type when the
+// value is cloned.
+fn (mut tc TypeChecker) ownership_autofree_element_clone(raw_id flat.NodeId, elem_id flat.NodeId) ?Type {
+	if !tc.autofree_mode {
+		return none
+	}
+	clean_id := tc.ownership_unwrap_expr(elem_id)
+	if !tc.valid_node_id(clean_id) || tc.a.nodes[int(clean_id)].kind != .index {
+		return none
+	}
+	typ := tc.resolve_type(clean_id)
+	// A sum with a pointer variant carries an explicit runtime owner, so a copy
+	// moves that owner and keeps the pointer's identity.
+	if !tc.ownership_type_requires_destruction(typ) || tc.sum_escape_has_pointer_variant(typ) {
+		return none
+	}
+	if _ := tc.ownership_borrowed_copy_missing_clone(clean_id, typ) {
+		return none
+	}
+	mut st := tc.ownership_state()
+	for node_id in [raw_id, elem_id, clean_id] {
+		st.borrowed_projection_actions[int(node_id)] = .clone_value
+	}
+	return typ
+}
+
+// ownership_autofree_clone_insert_value clones an indexed value passed to
+// `array.insert` or `array.prepend`. Autofree skips the rest of the call
+// argument bookkeeping (see ownership_after_call).
+fn (mut tc TypeChecker) ownership_autofree_clone_insert_value(id flat.NodeId, node flat.Node, info CallInfo) {
+	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(id) }
+	value_idx := match call_name {
+		'array.insert' { 2 }
+		'array.prepend' { 1 }
+		else { return }
+	}
+	if node.children_count <= value_idx {
+		return
+	}
+	raw_id := tc.a.child(&node, value_idx)
+	_ = tc.ownership_autofree_element_clone(raw_id, tc.call_arg_value(raw_id))
+}
+
 fn (mut tc TypeChecker) ownership_mark_array_append_element(array_name string, array_id flat.NodeId, elem_id flat.NodeId, pos flat.NodeId) {
 	elem_key := tc.ownership_array_append_key(array_name)
 	elem_type := tc.ownership_array_append_elem_type(array_id, elem_id)
+	if typ := tc.ownership_autofree_element_clone(elem_id, elem_id) {
+		tc.ownership_mark_owned(elem_key, typ, pos)
+		return
+	}
 	if tc.ownership_mark_storage_from_expr(elem_key, elem_id, elem_type, pos) {
 		return
 	}
@@ -10136,6 +10187,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 		return
 	}
 	if tc.autofree_mode {
+		tc.ownership_autofree_clone_insert_value(id, node, info)
 		return
 	}
 	mut st := tc.ownership_state()
