@@ -14017,6 +14017,13 @@ pub fn (tc &TypeChecker) call_param_storage_source_params(id flat.NodeId, target
 	decl := tc.visible_mutation_fn_decl(call_name, decl_module) or {
 		return tc.indirect_call_param_storage_source_params(call, target_param_idx)
 	}
+	if !isnil(tc.callback_param_flows) {
+		if targets := tc.callback_param_flows.storage_sources[decl.idx] {
+			if sources := targets[target_param_idx] {
+				return sources
+			}
+		}
+	}
 	mut visiting := map[u64]bool{}
 	return tc.param_storage_source_params_for_decl(decl, target_param_idx, mut visiting)
 }
@@ -14043,14 +14050,18 @@ pub fn (tc &TypeChecker) call_param_flows_to_callback(id flat.NodeId, callback_p
 	return tc.visible_fn_param_flows_to_callback(decl, callback_param_idx, source_param_idx, mut visiting)
 }
 
-// CallbackParamFlows holds call_param_flows_to_callback results computed while the
-// function bodies were still as checked.
+// CallbackParamFlows holds call_param_flows_to_callback and
+// call_param_storage_source_params results computed while the function bodies were
+// still as checked.
 @[heap]
 struct CallbackParamFlows {
 mut:
 	// fn_decl node index -> callback_param_flow_key -> whether the source parameter
 	// reaches an invocation of the callback parameter. A missing pair was not computed.
 	flows map[int]map[u32]bool
+	// fn_decl node index -> mutable target parameter index -> the parameters whose
+	// values the function may store into that target. A missing target was not computed.
+	storage_sources map[int]map[int][]int
 }
 
 fn callback_param_flow_key(callback_param_idx int, source_param_idx int) u32 {
@@ -14058,12 +14069,16 @@ fn callback_param_flow_key(callback_param_idx int, source_param_idx int) u32 {
 }
 
 // prepare_callback_param_flows computes call_param_flows_to_callback for each
-// function-valued parameter of every source function before transform runs.
+// function-valued parameter of every source function, and the `mut` parameter storage
+// sources of the callees of functions that call `.map()`, before transform runs.
 // Transform lowers bodies in place, in parallel workers, so a later query can read
 // a callee that is already lowered or being lowered: `chosen := match c { true {
 // callback } else { other } }` then reads `chosen := __match_val_1`, and the flow
-// from `callback` to `chosen(value)` is lost. Only functions in `used_fns` are
-// summarized when it is not empty: the queries come from calls in reachable bodies.
+// from `callback` to `chosen(value)` is lost. Likewise a lowered helper that stores a
+// parameter through a rebound `mut` alias no longer shows that store, and lowering a
+// `.map()` then frees a source whose element address the helper kept. Only functions in
+// `used_fns` are summarized when it is not empty: the queries come from calls in
+// reachable bodies.
 // Queries for other pairs and functions, such as generic specializations created
 // later, still walk the body.
 pub fn (mut tc TypeChecker) prepare_callback_param_flows(used_fns map[string]bool) {
@@ -14089,6 +14104,7 @@ pub fn (mut tc TypeChecker) prepare_callback_param_flows(used_fns map[string]boo
 					}
 				}
 				tc.cur_module = if cur_mod.len > 0 { cur_mod } else { 'main' }
+				tc.prepare_array_map_callee_storage_sources(flat.NodeId(i), mut summary)
 				mut params := []flat.Node{}
 				for j in 0 .. node.children_count {
 					child := tc.a.child_node(&node, j)
@@ -14129,6 +14145,56 @@ pub fn (mut tc TypeChecker) prepare_callback_param_flows(used_fns map[string]boo
 	tc.cur_file = old_file
 	tc.cur_module = old_module
 	tc.callback_param_flows = summary
+}
+
+// prepare_array_map_callee_storage_sources records call_param_storage_source_params for
+// the callees of a function that calls `.map()`. Transform asks about them only while it
+// lowers such a call, to learn whether a callee keeps the address of a mapped element.
+fn (mut tc TypeChecker) prepare_array_map_callee_storage_sources(fn_id flat.NodeId, mut summary CallbackParamFlows) {
+	mut stack := [fn_id]
+	mut calls := []flat.NodeId{}
+	mut maps_array := false
+	for stack.len > 0 {
+		id := stack.pop()
+		if !tc.valid_node_id(id) {
+			continue
+		}
+		node := tc.a.nodes[int(id)]
+		if node.kind == .call && node.children_count > 0 {
+			calls << id
+			callee := tc.a.child_node(&node, 0)
+			if callee.kind == .selector && callee.value == 'map' {
+				maps_array = true
+			}
+		}
+		for i in 0 .. node.children_count {
+			stack << tc.a.child(&node, i)
+		}
+	}
+	if !maps_array {
+		return
+	}
+	for id in calls {
+		call := tc.a.nodes[int(id)]
+		call_name := tc.resolved_call_name(id) or { continue }
+		decl := tc.visible_mutation_fn_decl(call_name, tc.visible_mutation_call_module(call,
+			call_name)) or { continue }
+		if decl.idx in summary.storage_sources {
+			continue
+		}
+		mut storage := map[int][]int{}
+		mut target_idx := 0
+		for {
+			param := tc.visible_mutation_fn_param(decl, target_idx) or { break }
+			if param.is_mut {
+				mut visiting := map[u64]bool{}
+				storage[target_idx] = tc.param_storage_source_params_for_decl(decl, target_idx, mut
+					visiting)
+			}
+			target_idx++
+		}
+		summary.storage_sources[decl.idx] = storage.move()
+	}
 }
 
 fn (tc &TypeChecker) visible_fn_param_flows_to_callback(decl VisibleMutationFnDecl, callback_param_idx int, source_param_idx int, mut visiting map[u64]bool) bool {

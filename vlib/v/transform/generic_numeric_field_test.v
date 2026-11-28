@@ -5,16 +5,14 @@ import os
 fn generic_numeric_field_program(directory string, name string, source string, check bool) os.Result {
 	path := os.join_path(directory, name + '.v')
 	os.write_file(path, source) or { panic(err) }
-	mut args := [@VEXE, '-b', 'c']
+	mut args := [@VEXE, '-b', 'c', '-message-limit', '1000']
 	if check { args << '-check' }
 	args << ['-o', os.join_path(directory, name), path]
 	return os.exec(args)
 }
 
 fn test_generic_numeric_field_assignments_reject_incompatible_concrete_values() {
-	directory := os.join_path(os.vtmp_dir(), 'generic_numeric_fields_${os.getpid()}')
-	os.mkdir_all(directory) or { panic(err) }
-	defer { os.rmdir_all(directory) or {} }
+	mut programs := map[string]GenericNumericRejection{}
 	for index, entry in [
 		['f64', 'true', 'bool'],
 		['f64', "'12'", 'string'],
@@ -27,15 +25,42 @@ fn test_generic_numeric_field_assignments_reject_incompatible_concrete_values() 
 			} else {
 				'return Number{width: value}.width'
 			}
-			source := 'module main\nstruct Number { width ${entry[0]} }\nfn number[T](value T) ${entry[0]} { ${body} }\nfn main() { _ = number(${entry[1]}) }\n'
-			for check in [false, true] {
-				name := 'invalid_${index}_${capture}_${check}'
-				result := generic_numeric_field_program(directory, name, source, check)
-				assert result.exit_code != 0, 'invalid numeric field compiled: ${source}'
-				assert result.output.contains(name + '.v:'), result.output
-				assert result.output.contains('cannot assign to field `width`'), result.output
-				assert result.output.contains('not `${entry[2]}`'), result.output
-			}
+			programs['invalid_${index}_${capture}'] = GenericNumericRejection{'module main\nstruct Number { width ${entry[0]} }\nfn number[T](value T) ${entry[0]} { ${body} }\nfn main() { _ = number(${entry[1]}) }\n', 'not `${entry[2]}`'}
+		}
+	}
+	check_generic_numeric_rejections('generic_numeric_fields', programs)
+}
+
+struct GenericNumericRejection {
+	source   string
+	mismatch string
+}
+
+// check_generic_numeric_rejections builds every program as a module of one project, once
+// with -check and once without, and expects the `width` error of each in its own file.
+fn check_generic_numeric_rejections(name string, programs map[string]GenericNumericRejection) {
+	directory := os.join_path(os.vtmp_dir(), '${name}_${os.getpid()}')
+	os.mkdir_all(directory) or { panic(err) }
+	defer { os.rmdir_all(directory) or {} }
+	mut imports := []string{cap: programs.len}
+	mut calls := []string{cap: programs.len}
+	for module_name, program in programs {
+		assert program.source.starts_with('module main\n') && program.source.contains('\nfn main() {')
+		os.mkdir_all(os.join_path(directory, module_name)) or { panic(err) }
+		os.write_file(os.join_path(directory, module_name, module_name + '.v'), 'module ${module_name}\n' +
+			program.source.all_after('module main\n').replace_once('\nfn main() {', '\npub fn exercise() {')) or {
+			panic(err)
+		}
+		imports << 'import ${module_name}'
+		calls << '${module_name}.exercise()'
+	}
+	source := '${imports.join('\n')}\nfn main() {\n\t${calls.join('\n\t')}\n}\n'
+	for check in [false, true] {
+		result := generic_numeric_field_program(directory, 'main_${check}', source, check)
+		assert result.exit_code != 0, 'invalid numeric fields compiled: ${result.output}'
+		diagnostics := result.output.split_into_lines().filter(it.contains('cannot assign to field `width`'))
+		for module_name, program in programs {
+			assert diagnostics.any(it.contains(module_name + '.v:') && it.contains(program.mismatch)), '${module_name}: ${result.output}'
 		}
 	}
 }
@@ -385,22 +410,14 @@ fn main() {
 }
 
 fn test_generic_numeric_fields_reject_references_to_incompatible_values() {
-	directory := os.join_path(os.vtmp_dir(), 'generic_numeric_bad_references_${os.getpid()}')
-	os.mkdir_all(directory) or { panic(err) }
-	defer { os.rmdir_all(directory) or {} }
+	mut programs := map[string]GenericNumericRejection{}
 	for index, entry in [
 		['int', "'wrong'", 'string'],
 		['int', 'true', 'bool'],
 		['int', '1.5', 'f64'],
 		['f64', '1', 'int'],
 	] {
-		source := 'module main\nstruct Number { width ${entry[0]} }\nfn number[T](value &T) Number { return Number{width: value} }\nfn main() { value := ${entry[1]} _ = number(value) }\n'
-		for check in [false, true] {
-			result := generic_numeric_field_program(directory, 'bad_ref_${index}_${check}', source,
-				check)
-			assert result.exit_code != 0, result.output
-			assert result.output.contains('cannot assign to field `width`'), result.output
-			assert result.output.contains('expected `${entry[0]}`, not `&${entry[2]}`'), result.output
-		}
+		programs['bad_ref_${index}'] = GenericNumericRejection{'module main\nstruct Number { width ${entry[0]} }\nfn number[T](value &T) Number { return Number{width: value} }\nfn main() { value := ${entry[1]} _ = number(value) }\n', 'expected `${entry[0]}`, not `&${entry[2]}`'}
 	}
+	check_generic_numeric_rejections('generic_numeric_bad_references', programs)
 }

@@ -3,12 +3,27 @@ import v.cmdexec
 
 const scope_review_program = 'module main\n\nstruct T {\n\tvalue int\n}\n\nfn identity[T](x T) T {\n\treturn x\n}\n\n__global number T = T{}\n\nstruct Holder[T] {\n\titem T\n}\n\n__global after_struct T = T{}\n\ntype Values[T] = []T\n\n__global after_alias T = T{}\n\nfn consume(x T) T {\n\treturn x\n}\n\nfn main() {\n\tprintln(number.value)\n}\n'
 
-fn scope_review_query(path string, position string, method string) string {
-	query := '${path}:${position.all_before(':')}:${method}^${position.all_after(':')}'
+fn scope_review_output(path string, query string) string {
 	result := cmdexec.run(@VEXE, ['-no-memory-limit', '-enable-globals', '-check', '-vls-mode',
 		'-line-info', query, path])
 	assert result.exit_code == 0, result.output
 	return result.output.trim_space()
+}
+
+fn scope_review_question(path string, position string, method string) string {
+	return '${path}:${position.all_before(':')}:${method}^${position.all_after(':')}'
+}
+
+fn scope_review_answers(path string, questions []string) []string {
+	lines := scope_review_output(path, questions.join('\t')).split_into_lines()
+	assert lines.len == questions.len, lines.str()
+	mut answers := []string{cap: lines.len}
+	for i, line in lines {
+		prefix := '${i}\t'
+		assert line.starts_with(prefix), line
+		answers << line[prefix.len..]
+	}
+	return answers
 }
 
 fn test_type_parameter_hover_and_definition_stay_in_their_declaration_scope() {
@@ -17,22 +32,37 @@ fn test_type_parameter_hover_and_definition_stay_in_their_declaration_scope() {
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'scope.v')
 	os.write_file(path, scope_review_program)!
-	for position in ['11:16', '17:22', '21:21', '23:13'] {
-		hover := scope_review_query(path, position, 'hv')
-		assert hover.contains('struct T'), hover
-		assert !hover.contains('[T]'), hover
-		assert scope_review_query(path, position, 'gd') == '${path}:3:7'
+	module_t := '3:7'
+	declarations := {
+		'11:16': module_t
+		'17:22': module_t
+		'21:21': module_t
+		'23:13': module_t
+		'7:12':  '7:12'
+		'7:17':  '7:12'
+		'7:20':  '7:12'
+		'13:14': '13:14'
+		'14:6':  '13:14'
+		'19:19': '19:12'
 	}
-	for position in ['7:12', '7:17', '7:20'] {
-		assert scope_review_query(path, position, 'hv').contains('[T]')
-		assert scope_review_query(path, position, 'gd') == '${path}:7:12'
+	positions := declarations.keys()
+	mut questions := []string{cap: positions.len * 2}
+	for position in positions {
+		questions << scope_review_question(path, position, 'hv')
+		questions << scope_review_question(path, position, 'gd')
 	}
-	for position in ['13:14', '14:6'] {
-		assert scope_review_query(path, position, 'hv').contains('[T]')
-		assert scope_review_query(path, position, 'gd') == '${path}:13:14'
+	answers := scope_review_answers(path, questions)
+	for i, position in positions {
+		declaration := declarations[position]
+		hover := answers[2 * i]
+		if declaration == module_t {
+			assert hover.contains('struct T'), '${position}: ${hover}'
+			assert !hover.contains('[T]'), '${position}: ${hover}'
+		} else {
+			assert hover.contains('[T]'), '${position}: ${hover}'
+		}
+		assert answers[2 * i + 1] == '${path}:${declaration}', position
 	}
-	assert scope_review_query(path, '19:19', 'hv').contains('[T]')
-	assert scope_review_query(path, '19:19', 'gd') == '${path}:19:12'
 }
 
 // receiver_scope_layouts put right before a method of `Box[T]` each kind of
@@ -78,16 +108,31 @@ fn test_a_type_parameter_in_a_method_receiver_belongs_to_the_method() {
 		source := 'module main\n\nstruct Box[T] {\n\tvalue T\n}\n\n${layout}fn (b Box[T]) get() T {\n\t_ := []T{}\n\treturn b.value\n}\n\nfn main() {\n\tprintln(Box[int]{}.get())\n}\n'
 		os.write_file(path, source)!
 		receiver := word_position(source, 'fn (b Box[T]) get', 'T', 0)
-		for position in [receiver, word_position(source, 'fn (b Box[T]) get', 'T', 1),
-			word_position(source, '\t_ := []T{}', 'T', 0)] {
-			assert scope_review_query(path, position, 'hv').contains('[T]'), 'layout ${i} at ${position}'
-			assert scope_review_query(path, position, 'gd') == '${path}:${receiver}', 'layout ${i} at ${position}'
-		}
+		positions := [receiver, word_position(source, 'fn (b Box[T]) get', 'T', 1),
+			word_position(source, '\t_ := []T{}', 'T', 0)]
+		mut questions := positions.map(scope_review_question(path, it, 'hv'))
+		questions << positions.map(scope_review_question(path, it, 'gd'))
+		mut expected := []string{len: positions.len, init: '${path}:${receiver}'}
 		if layout.starts_with('fn (b Box[T]) first') {
 			first := word_position(source, 'fn (b Box[T]) first', 'T', 0)
-			assert scope_review_query(path, first, 'gd') == '${path}:${first}'
+			questions << scope_review_question(path, first, 'gd')
+			expected << '${path}:${first}'
+		}
+		answers := scope_review_answers(path, questions)
+		for j, position in positions {
+			assert answers[j].contains('[T]'), 'layout ${i} at ${position}'
+		}
+		for j, definition in answers[positions.len..] {
+			assert definition == expected[j], 'layout ${i}: ${questions[positions.len + j]}'
 		}
 	}
+}
+
+struct ReceiverScopeParameter {
+	prefix   string
+	name     string
+	declared string
+	used     string
 }
 
 fn test_type_parameters_in_receivers_of_every_form_belong_to_their_method() {
@@ -97,6 +142,8 @@ fn test_type_parameters_in_receivers_of_every_form_belong_to_their_method() {
 	path := os.join_path(root, 'forms.v')
 	source := receiver_forms_program
 	os.write_file(path, source)!
+	mut parameters := []ReceiverScopeParameter{}
+	mut questions := []string{}
 	for prefix, names in {
 		'fn (p Pair[K, V]) entry': ['K', 'V']
 		'fn (mut b Box[T]) set':   ['T']
@@ -105,22 +152,39 @@ fn test_type_parameters_in_receivers_of_every_form_belong_to_their_method() {
 	} {
 		for name in names {
 			declared := word_position(source, prefix, name, 0)
-			hover := scope_review_query(path, declared, 'hv')
-			assert hover.contains('[${name}]'), '${prefix}: ${hover}'
-			assert !hover.contains('struct'), '${prefix}: ${hover}'
-			assert scope_review_query(path, declared, 'gd') == '${path}:${declared}', prefix
 			// Its next use in the signature leads to the receiver too.
 			used := word_position(source, prefix, name, 1)
-			assert scope_review_query(path, used, 'gd') == '${path}:${declared}', '${prefix} ${used}'
+			parameters << ReceiverScopeParameter{prefix, name, declared, used}
+			questions << [
+				scope_review_question(path, declared, 'hv'),
+				scope_review_question(path, declared, 'gd'),
+				scope_review_question(path, used, 'gd'),
+			]
 		}
 	}
 	// The own type parameter of the method is declared after its name.
 	own := word_position(source, 'fn (b Box[T]) convert', 'U', 0)
 	result := word_position(source, 'fn (b Box[T]) convert', 'U', 2)
-	assert scope_review_query(path, result, 'gd') == '${path}:${own}'
 	// A declaration after the methods still finds the module type `T`.
 	after := word_position(source, '__global after_methods', 'T', 0)
-	hover := scope_review_query(path, after, 'hv')
+	signature_count := questions.len
+	questions << [
+		scope_review_question(path, result, 'gd'),
+		scope_review_question(path, after, 'hv'),
+		scope_review_question(path, after, 'gd'),
+	]
+	answers := scope_review_answers(path, questions)
+	for i, parameter in parameters {
+		offset := 3 * i
+		hover := answers[offset]
+		assert hover.contains('[${parameter.name}]'), '${parameter.prefix}: ${hover}'
+		assert !hover.contains('struct'), '${parameter.prefix}: ${hover}'
+		assert answers[offset + 1] == '${path}:${parameter.declared}', parameter.prefix
+		assert answers[offset + 2] == '${path}:${parameter.declared}', '${parameter.prefix} ${parameter.used}'
+	}
+	other_answers := answers[signature_count..]
+	assert other_answers[0] == '${path}:${own}'
+	hover := other_answers[1]
 	assert hover.contains('struct T') && !hover.contains('[T]'), hover
-	assert scope_review_query(path, after, 'gd') == '${path}:3:7'
+	assert other_answers[2] == '${path}:3:7'
 }

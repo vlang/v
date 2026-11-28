@@ -20,15 +20,6 @@ fn testsuite_end() {
 	os.rmdir_all(work_dir) or {}
 }
 
-// check checks `source` as the main.v of a directory of its own, as an editor
-// does, and returns the lines of its errors and warnings. Its method form has to
-// report the same (see same_with_methods).
-fn check(name string, source string) []string {
-	lines := check_form(name, source)
-	same_with_methods(name, source, lines, check_form)
-	return lines
-}
-
 fn check_form(name string, source string) []string {
 	dir := os.join_path(work_dir, name)
 	os.mkdir_all(dir) or { panic(err) }
@@ -48,14 +39,6 @@ fn check_fixture_form(name string, source string) []string {
 		&& (it.contains(': error: ') || it.contains(': warning: ')))
 }
 
-// build builds `source` as the main.v of a directory of its own and returns the
-// lines of its errors. Its method form has to report the same.
-fn build(name string, source string) []string {
-	lines := build_form(name, source)
-	same_with_methods(name, source, lines, build_form)
-	return lines
-}
-
 fn build_form(name string, source string) []string {
 	dir := os.join_path(work_dir, name)
 	os.mkdir_all(dir) or { panic(err) }
@@ -65,23 +48,16 @@ fn build_form(name string, source string) []string {
 		&& it.contains(': error: '))
 }
 
-// same_with_methods checks, with `check`, the method form of `source`: its generic
-// functions written as methods of a struct without type parameters, whose own
-// type parameters have to behave as those of the functions, with their
-// constraints. It has to report the lines that `lines` are, where it moves them
-// (see method_form.MethodForm).
-fn same_with_methods(name string, source string, lines []string, check fn (string, string) []string) {
-	form := method_form.of(source) or { return }
-	method_lines := check('${name}_methods', form.source)
-	difference := form.differences(lines.map(it.all_after('main.v:')), method_lines.map(it.all_after('main.v:')))
-	assert difference == '', 'the method form of `${name}`: ${difference}'
+fn assert_body_method_diagnostics(name string, form method_form.MethodForm, functions []string, methods []string) {
+	difference := form.differences(functions.map(it.all_after('main.v:')), methods.map(it.all_after('main.v:')))
+	assert difference == '', 'the method form of ${name}: ${difference}'
 }
 
 fn test_a_build_checks_a_generic_body_whose_type_parameters_all_have_constraints() {
 	// As it checks the body of any other function: the errors are V's, not
 	// those of the C compiler, and `e = x` is one although `main` only asks for
 	// the instance with `int`.
-	errors := build('build', 'module main
+	source := 'module main
 
 type Number = int | f64
 
@@ -105,10 +81,17 @@ fn main() {
 	println(typo(2))
 	println(plain(3))
 }
-')
+'
+	form := method_form.of(source) or { panic('missing method form for build') }
+	diagnostics := check_body_batch('build_forms', {
+		'build':         source
+		'build_methods': form.source
+	}, '', ['-o', 'prog'])
+	errors := diagnostics['build']
 	assert errors.len == 2, errors.str()
 	assert errors[0].starts_with('main.v:7:6: error: cannot assign to `e`: expected `int`, not `f64`: when `T` is `f64`, in its constraint `Number`'), errors[0]
 	assert errors[1].starts_with('main.v:12:2: error: unexpected name `asd`'), errors[1]
+	assert_body_method_diagnostics('build', form, errors, diagnostics['build_methods'])
 }
 
 struct GenericBodyDiagnosticCase {
@@ -117,13 +100,22 @@ struct GenericBodyDiagnosticCase {
 	prefixes []string
 }
 
-fn check_body_batch(name string, sources map[string]string) map[string][]string {
+fn check_body_batch(name string, sources map[string]string, main_fixture string, flags []string) map[string][]string {
 	dir := os.join_path(work_dir, name)
 	os.mkdir_all(dir) or { panic(err) }
 	mut imports := []string{cap: sources.len}
 	mut calls := []string{cap: sources.len}
 	mut diagnostics := map[string][]string{}
 	for label, source in sources {
+		diagnostics[label] = []
+		if label == main_fixture {
+			// The unused constrained bodies need main-module resolution.
+			entry := 'exercise_${label}'
+			fixture := source.replace_once('\nfn main()', '\nfn ${entry}()')
+			os.write_file(os.join_path(dir, '${label}.v'), fixture) or { panic(err) }
+			calls << '\t${entry}()'
+			continue
+		}
 		mod_dir := os.join_path(dir, label)
 		os.mkdir_all(mod_dir) or { panic(err) }
 		fixture := source.replace_once('module main\n', 'module ${label}\n').replace_once('\nfn main()',
@@ -131,22 +123,31 @@ fn check_body_batch(name string, sources map[string]string) map[string][]string 
 		os.write_file(os.join_path(mod_dir, 'main.v'), fixture) or { panic(err) }
 		imports << 'import ${label}'
 		calls << '\t${label}.exercise()'
-		diagnostics[label] = []
 	}
 	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
 		panic(err)
 	}
-	res := cmdexec.run_in(@VEXE, ['-check', '-nocolor', '.'], dir)
+	res := cmdexec.run_in(@VEXE, ['-nocolor', '-message-limit', '100', ...flags, '.'], dir)
 	assert res.exit_code != 0, res.output
+	assert !res.output.contains('C compilation error'), res.output
 	for line in res.output.split_into_lines() {
 		if !line.contains(': error: ') && !line.contains(': warning: ') {
 			continue
 		}
-		label := line.all_before('/main.v:')
+		file := line.all_before(':')
+		label := if file.ends_with('/main.v') {
+			file.all_before('/main.v')
+		} else {
+			file.all_before('.v')
+		}
 		assert label in diagnostics, line
-		// Keep source locations and resolve the added module qualification in diagnostics.
-		diagnostics[label] << line.all_after('/').replace_each(['${name}.${label}.', '', '${label}.',
-			''])
+		// Normalize the fixture path while preserving line and column.
+		diagnostics[label] << 'main.v:' + line.all_after('${file}:').replace_each([
+			'${name}.${label}.',
+			'',
+			'${label}.',
+			'',
+		])
 	}
 	return diagnostics
 }
@@ -541,32 +542,52 @@ fn main() {
 	for case in cases {
 		sources[case.name] = case.source
 	}
-	function_errors := check_body_batch('body_functions', sources)
+	sources['unused_bodies'] = generic_unused_bodies_source
+	sources['branches'] = generic_branch_budget_source
+	sources['untested'] = generic_untested_parameter_source
+	function_errors := check_body_batch('body_functions', sources, 'unused_bodies', ['-check'])
 
 	mut forms := map[string]method_form.MethodForm{}
-	for case in cases {
-		form := method_form.of(case.source) or { panic('missing method form for ${case.name}') }
-		forms[case.name] = form
-		sources[case.name] = form.source
+	mut method_sources := map[string]string{}
+	for name, source in sources {
+		form := method_form.of(source) or { panic('missing method form for ${name}') }
+		forms[name] = form
+		method_sources[name] = form.source
 	}
-	method_errors := check_body_batch('body_methods', sources)
+	method_errors := check_body_batch('body_methods', method_sources, 'unused_bodies', ['-check'])
 	for case in cases {
 		errors := function_errors[case.name]
 		assert errors.len == case.prefixes.len, '${case.name}: ${errors}'
 		for i, expected in case.prefixes {
 			assert errors[i].starts_with(expected), '${case.name}: ${errors[i]}'
 		}
-		difference := forms[case.name].differences(errors.map(it.all_after('main.v:')),
-			method_errors[case.name].map(it.all_after('main.v:')))
-		assert difference == '', 'the method form of `${case.name}`: ${difference}'
+	}
+	for name, form in forms {
+		assert_body_method_diagnostics(name, form, function_errors[name], method_errors[name])
 	}
 	assert function_errors['self_constraint'][0].contains('`T` is any type that implements `Comparable[T]`'), function_errors['self_constraint'][0]
 	assert function_errors['combinations'][0].contains('when `T` is `f64`'), function_errors['combinations'][0]
 	assert function_errors['combinations'][0].contains('when `U` is `string`'), function_errors['combinations'][0]
+
+	unused_errors := function_errors['unused_bodies']
+	assert unused_errors.len == 3, unused_errors.str()
+	assert unused_errors[0].starts_with('main.v:20:9: error: cannot use `int` as type `string` in return argument'), unused_errors[0]
+	assert unused_errors[1] == 'main.v:27:11: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`', unused_errors[1]
+	assert unused_errors[2] == 'main.v:43:9: error: cannot use `T` as type `int` in return argument: `C` is any type that implements `Container[T]`, and `T` is any type that implements `Wrapper[C]`', unused_errors[2]
+
+	branch_errors := function_errors['branches']
+	assert branch_errors.len == 4, branch_errors.str()
+	assert branch_errors[0] == 'main.v:9:12: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', branch_errors[0]
+	assert branch_errors[1] == 'main.v:22:12: error: cannot use `f64` as type `int` in return argument: when `A` is not `i8`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', branch_errors[1]
+	assert branch_errors[2] == 'main.v:33:12: error: cannot use `f32` as type `int` in return argument: when `A` is `f32` or `f64`, in its constraint `Number`, and when `B` is `f32` or `f64`, in its constraint `Number`, and when `C` is `f32`, in its constraint `Number`', branch_errors[2]
+	assert branch_errors[3] == 'main.v:42:10: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', branch_errors[3]
+
+	untested_errors := function_errors['untested']
+	assert untested_errors.len == 1, untested_errors.str()
+	assert untested_errors[0].starts_with('main.v:12:21: error: cannot use `f32` as `i64` in argument 1 to `takes_i64`: '), untested_errors[0]
 }
 
-fn test_unused_generic_body_diagnostics() {
-	errors := check('unused_bodies', 'module main
+const generic_unused_bodies_source = 'module main
 
 type Number = i8 | i16 | i32 | int | i64 | u8 | u16 | u32 | f32 | f64
 
@@ -612,19 +633,13 @@ fn loop_types[C Container[T], T Wrapper[C]](c C) int {
 }
 
 fn main() {}
-')
-	assert errors.len == 3, errors.str()
-	assert errors[0].starts_with('main.v:20:9: error: cannot use `int` as type `string` in return argument'), errors[0]
-	assert errors[1] == 'main.v:27:11: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`', errors[1]
-	assert errors[2] == 'main.v:43:9: error: cannot use `T` as type `int` in return argument: `C` is any type that implements `Container[T]`, and `T` is any type that implements `Wrapper[C]`', errors[2]
-}
+'
 
-fn test_past_the_budget_every_way_the_compile_time_ifs_can_go_is_checked() {
-	// 10 * 10 * 10 = 1000 combinations, past the budget: every two type
-	// parameters meet with every two of their types, but a branch that `$if`s on
-	// three of them lead to needs three types at once. Each way that the `$if`s
-	// can go is checked too: through an `$else`, a group, a list or a `&&`.
-	errors := check('branches', 'module main
+// 10 * 10 * 10 = 1000 combinations, past the budget: every two type
+// parameters meet with every two of their types, but a branch that `$if`s on
+// three of them lead to needs three types at once. Each way that the `$if`s
+// can go is checked too: through an `$else`, a group, a list or a `&&`.
+const generic_branch_budget_source = 'module main
 
 type Number = i8 | i16 | i32 | int | i64 | u8 | u16 | u32 | f32 | f64
 
@@ -671,19 +686,12 @@ fn joined[A Number, B Number, C Number](a A, b B, c C) int {
 }
 
 fn main() {}
-')
-	assert errors.len == 4, errors.str()
-	assert errors[0] == 'main.v:9:12: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[0]
-	assert errors[1] == 'main.v:22:12: error: cannot use `f64` as type `int` in return argument: when `A` is not `i8`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[1]
-	assert errors[2] == 'main.v:33:12: error: cannot use `f32` as type `int` in return argument: when `A` is `f32` or `f64`, in its constraint `Number`, and when `B` is `f32` or `f64`, in its constraint `Number`, and when `C` is `f32`, in its constraint `Number`', errors[2]
-	assert errors[3] == 'main.v:42:10: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[3]
-}
+'
 
-fn test_in_each_way_the_compile_time_ifs_go_every_type_is_checked() {
-	// Past the budget, a branch that `$if`s on `A` and `B` lead to is checked with
-	// each type of `C` too, which no `$if` tests: `takes_i64(c)` fails only when
-	// `C` is `f32` or `f64`, neither the first type of `Number`.
-	errors := check('untested', 'module main
+// Past the budget, a branch that `$if`s on `A` and `B` lead to is checked with
+// each type of `C` too, which no `$if` tests: `takes_i64(c)` fails only when
+// `C` is `f32` or `f64`, neither the first type of `Number`.
+const generic_untested_parameter_source = 'module main
 
 type Number = i8 | i16 | i32 | int | i64 | u8 | u16 | u32 | f32 | f64
 
@@ -701,14 +709,10 @@ fn wide[A Number, B Number, C Number](a A, b B, c C) i64 {
 }
 
 fn main() {}
-')
-	assert errors.len == 1, errors.str()
-	assert errors[0].starts_with('main.v:12:21: error: cannot use `f32` as `i64` in argument 1 to `takes_i64`: '), errors[0]
-}
+'
 
-fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
-	// As before: V checks such a body in each of its instances, not open.
-	errors := check('unconstrained', "module main
+// As before: V checks such a body in each of its instances, not open.
+const generic_unconstrained_source = "module main
 
 interface Named {
 	name string
@@ -760,16 +764,7 @@ fn main() {
 	println(Box[int]{3}.get())
 	println(Shelf[User]{User{'b'}}.pick(4))
 }
-")
-	// The open body reports nothing; each function reports its argument once,
-	// from its instance.
-	assert errors == [
-		'main.v:24:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
-		'main.v:30:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
-		'main.v:36:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
-		'main.v:42:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
-	], errors.str()
-}
+"
 
 fn test_a_generic_body_without_a_constraint_reports_what_is_private_to_another_module() {
 	// Whether a name of another module is private does not depend on `T`: a
@@ -834,10 +829,9 @@ fn (s S) private_method() int {
 	}
 }
 
-fn test_a_generic_body_reports_nothing_the_type_parameters_decide() {
-	// Each statement below depends on `T`: the checks against the constraints
-	// say what is wrong there, and nothing is wrong here.
-	errors := check('dependent', "module main
+// Each statement below depends on `T`: the checks against the constraints
+// say what is wrong there, and nothing is wrong here.
+const generic_dependent_source = "module main
 
 type Numeric = int | f64
 
@@ -877,6 +871,32 @@ fn main() {
 	println(describe(10))
 	println(first([User{'b'}]))
 }
-")
-	assert errors == []string{}
+"
+
+fn test_generic_body_instance_diagnostics() {
+	// The unconstrained instances report late errors. The other fixture has to
+	// reach the same checking stage with no diagnostics in either form.
+	sources := {
+		'unconstrained': generic_unconstrained_source
+		'dependent':     generic_dependent_source
+	}
+	mut fixtures := sources.clone()
+	mut forms := map[string]method_form.MethodForm{}
+	for name, source in sources {
+		form := method_form.of(source) or { panic('missing method form for ${name}') }
+		forms[name] = form
+		fixtures['${name}_methods'] = form.source
+	}
+	diagnostics := check_body_batch('instance_checks', fixtures, '', ['-check'])
+	for name, form in forms {
+		assert_body_method_diagnostics(name, form, diagnostics[name], diagnostics['${name}_methods'])
+	}
+	errors := diagnostics['unconstrained']
+	assert errors == [
+		'main.v:24:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
+		'main.v:30:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
+		'main.v:36:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
+		'main.v:42:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
+	], errors.str()
+	assert diagnostics['dependent'] == []string{}
 }

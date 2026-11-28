@@ -1,7 +1,7 @@
 // vtest ownership
 import os
 
-fn test_map_value_address_or_preserves_storage_and_handles_missing_keys() {
+fn test_map_address_fallbacks_and_contextual_enum_branches() {
 	root := os.join_path(os.vtmp_dir(), 'map_address_or_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -26,6 +26,7 @@ fn use_fallback(mut calls Calls, value &int) &int {
 	return value
 }
 fn main() {
+	check_contextual_enum_branch()
 	decoders := {"x": Decoder(Simple{})}
 	decoder := unsafe { &decoders["x"] or { panic("missing") } }
 	assert decoder.decode() == 42
@@ -54,10 +55,27 @@ fn main() {
 	assert nil_value == unsafe { nil }
 }
 ')!
-	for ownership in ['', '-ownership -d ownership'] {
-		for mode in ['', '-no-parallel'] {
-			result := os.execute('${os.quoted_path(@VEXE)} -nocache ${ownership} ${mode} run ${os.quoted_path(source)}')
-			assert result.exit_code == 0, result.output
+	os.write_file(os.join_path(root, 'enum_branch.v'), 'enum Choice { never auto always }
+struct Args { mut: choice Choice }
+fn choose(value string, mut args Args) ! {
+	args.choice = match value {
+		"never" { .never }
+		"auto" { .auto }
+		"always" { .always }
+		else { return error("unrecognized") }
+	}
+}
+fn check_contextual_enum_branch() {
+	mut args := Args{}
+	choose("always", mut args) or { panic(err) }
+	assert args.choice == .always
+	choose("invalid", mut args) or { assert err.msg() == "unrecognized" }
+}
+')!
+	for ownership in [[]string{}, ['-ownership', '-d', 'ownership']] {
+		for mode in [[]string{}, ['-no-parallel']] {
+			result := os.exec([@VEXE, '-nocache', ...ownership, ...mode, 'run', root])
+			assert result.exit_code == 0, '${ownership} ${mode}: ${result.output}'
 		}
 	}
 }

@@ -159,12 +159,22 @@ fn optional_flag() ?bool { return true }
 	for translated in [false, true] {
 		prefix := if translated { '@[translated]\n' } else { '' }
 		cases := if translated { translated_cases } else { ordinary_cases }
-		for body in cases {
-			os.write_file(source, prefix + declarations + 'fn main() { translated_marker(); ${body} }\n')!
-			for flags in [[]string{}, ['-no-parallel']] {
-				result := os.exec([@VEXE, '-no-retry-compilation', ...flags, '-check', root])
-				assert result.exit_code != 0, '${body}: ${result.output}'
-				assert result.output.contains('assert can be used only with `bool` expressions'), '${body}: ${result.output}'
+		// Each case gets a function of its own in one file, so one check covers all of them.
+		mut functions := []string{cap: cases.len}
+		mut calls := []string{cap: cases.len}
+		for i, body in cases {
+			functions << 'fn case_${i}() { translated_marker(); ${body} }'
+			calls << 'case_${i}()'
+		}
+		header := prefix + declarations
+		os.write_file(source, header + functions.join('\n') + '\nfn main() { ${calls.join('; ')} }\n')!
+		for flags in [[]string{}, ['-no-parallel']] {
+			result := os.exec([@VEXE, '-no-retry-compilation', ...flags, '-check', root])
+			assert result.exit_code != 0, result.output
+			diagnostics := result.output.split_into_lines().filter(it.contains('assert can be used only with `bool` expressions'))
+			for i, body in cases {
+				location := 'main.v:${header.count('\n') + i + 1}:'
+				assert diagnostics.any(it.contains(location)), '${body}: ${result.output}'
 			}
 		}
 	}

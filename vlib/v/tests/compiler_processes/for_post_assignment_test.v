@@ -60,31 +60,41 @@ fn main() {
 	check_propagation() or { println("propagated") }
 }
 '
+	// The translated and plain variants, with and without `continue`, are modules of one
+	// program, so each mode builds and runs once.
+	mut imports := []string{}
+	mut calls := []string{}
 	for translated in [false, true] {
 		attribute := if translated { '@[translated]\n' } else { '' }
-		source := os.join_path(root, 'main.v')
 		for take_continue in [false, true] {
+			name := 'post_${translated}_${take_continue}'
 			code := program.replace('// BODY_CONTINUE', if take_continue { 'continue' } else { '' })
-			os.write_file(source, '${attribute}module main\n${code}')!
-			for autofree in [false, true] {
-				for serial in [false, true] {
-					mut args := ['-gc', 'none', '-cc', @CCOMPILER]
-					if autofree { args << '-autofree' }
-					if serial { args << '-no-parallel' }
-					args << ['run', source]
-					result := cmdexec.run(@VEXE, args)
-					mode := 'translated=${translated}, autofree=${autofree}, serial=${serial}, continue=${take_continue}'
-					assert result.exit_code == 0, '${mode}: ${result.output}'
-					expected := if autofree {
-						'body_0\ndrop 10\nbody_1\ndrop 11\nafter break\ndrop 90\n' +
-							'body_0\ndrop 20\nbody_1\ndrop 21\ndrop 91\n' +
-							'body_0\ndrop 30\nbody_1\ndrop 31\ndrop 92\npropagated\n'
-					} else {
-						'body_0\nbody_1\nafter break\nbody_0\nbody_1\nbody_0\nbody_1\npropagated\n'
-					}
-					assert result.output == expected, '${mode}: ${result.output}'
-				}
+			os.mkdir_all(os.join_path(root, name))!
+			os.write_file(os.join_path(root, name, '${name}.v'), '${attribute}module ${name}\n' +
+				code.replace_once('\nfn main() {', '\npub fn exercise() {'))!
+			imports << 'import ${name}'
+			calls << '\t${name}.exercise()'
+		}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'module main\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')!
+	for autofree in [false, true] {
+		for serial in [false, true] {
+			mut args := ['-gc', 'none', '-cc', @CCOMPILER]
+			if autofree { args << '-autofree' }
+			if serial { args << '-no-parallel' }
+			args << ['run', source]
+			result := cmdexec.run(@VEXE, args)
+			mode := 'autofree=${autofree}, serial=${serial}'
+			assert result.exit_code == 0, '${mode}: ${result.output}'
+			expected := if autofree {
+				'body_0\ndrop 10\nbody_1\ndrop 11\nafter break\ndrop 90\n' +
+					'body_0\ndrop 20\nbody_1\ndrop 21\ndrop 91\n' +
+					'body_0\ndrop 30\nbody_1\ndrop 31\ndrop 92\npropagated\n'
+			} else {
+				'body_0\nbody_1\nafter break\nbody_0\nbody_1\nbody_0\nbody_1\npropagated\n'
 			}
+			assert result.output == expected.repeat(calls.len), '${mode}: ${result.output}'
 		}
 	}
 }

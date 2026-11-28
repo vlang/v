@@ -36,101 +36,6 @@ fn main() {
 	assert lines[3] == 'V panic: Assertion failed...', result.output
 }
 
-// test_failed_asserts_in_test_files_report_operands_once checks that the values of
-// failed asserts in test files are reported without evaluating the operands again.
-fn test_failed_asserts_in_test_files_report_operands_once() {
-	result := run_assert_failure_source('values_test.v', "struct Point {
-	x int
-	y int
-}
-
-fn next(mut calls []string) string {
-	calls << 'next'
-	return 'call \${calls.len}'
-}
-
-fn check_answer(x int) {
-	assert x == 42
-}
-
-fn test_call_operand() {
-	mut calls := []string{}
-	assert next(mut calls) == 'call 2', 'calls: \${calls}'
-}
-
-fn test_struct_operands() {
-	assert Point{1, 2} == Point{1, 3}
-}
-
-fn test_string_order() {
-	assert 'abc' > 'xyz'
-}
-
-fn test_array_operands() {
-	values := [3]
-	assert values == [1, 2]
-}
-
-fn test_message_without_values() {
-	ok := false
-	assert ok, 'ok is false'
-}
-
-fn test_assert_in_helper() {
-	check_answer(1)
-}
-")
-	assert result.exit_code != 0, result.output
-	output := result.output
-	assert output.contains("     Left value (len: 6): `call 1`\n    Right value (len: 6): `call 2`\n        Message: calls: ['next']\n"), output
-	assert output.contains('     Left value (len: 26): `Point{\n    x: 1\n    y: 2\n}`\n    Right value (len: 26): `Point{\n    x: 1\n    y: 3\n}`\n'), output
-	assert output.contains('     Left value (len: 3): `abc`\n    Right value (len: 3): `xyz`\n'), output
-	assert output.contains('     Left value (len: 3): `[3]`\n    Right value (len: 6): `[1, 2]`\n'), output
-	assert output.contains("    assert ok, 'ok is false'\n        Message: ok is false\n"), output
-	assert output.contains(': fn check_answer\n   > assert x == 42\n     Left value (len: 1): `1`\n'), output
-	assert !output.contains('V panic'), output
-}
-
-// test_failed_assert_reads_left_operand_before_right checks that capturing a right
-// operand with side effects does not run it before the left operand is read.
-fn test_failed_assert_reads_left_operand_before_right() {
-	result := run_assert_failure_source('order_test.v', "struct Box {
-mut:
-	n int
-	s string
-}
-
-fn bump(mut b Box) int {
-	b.n++
-	return b.n
-}
-
-fn grow(mut b Box) string {
-	b.s += 'b'
-	return b.s
-}
-
-fn test_int_operands() {
-	mut b := Box{}
-	assert b.n == bump(mut b)
-}
-
-fn test_string_operands() {
-	mut b := Box{
-		s: 'a'
-	}
-	assert b.s == grow(mut b)
-}
-")
-	assert result.exit_code != 0, result.output
-	output := result.output
-	assert output.contains('     Left value (len: 1): `0`\n    Right value (len: 1): `1`\n'), output
-	assert output.contains('     Left value (len: 1): `a`\n    Right value (len: 2): `ab`\n'), output
-}
-
-// test_failed_assert_reports_operands_with_hidden_calls_once checks that operands, which
-// call functions that are not visible among their children (defaults of the fields
-// of nested, generic and embedded structs, and `[]` methods), are not evaluated again.
 fn test_failed_assert_reports_operands_with_hidden_calls_once() {
 	result := run_assert_failure_source_with_flags('hidden_calls.v', "__global calls = 0
 
@@ -358,24 +263,96 @@ fn main() {
 	assert lines[11] == '  right value: q = 1.2', result.output
 }
 
-// test_failed_assert_reports_f32_operands_with_f32_digits_in_test_files covers the
-// report of a failed assert in a test file.
-fn test_failed_assert_reports_f32_operands_with_f32_digits_in_test_files() {
-	result := run_assert_failure_source('f32_operands_test.v', 'fn test_f32() {
+fn assert_failure_reports(output string) map[string]string {
+	mut reports := map[string]string{}
+	mut name := ''
+	for line in output.split_into_lines() {
+		if line.contains('assert_reports_test.v:') && line.contains(': fn ') {
+			name = line.all_after(': fn ')
+		}
+		if name != '' {
+			reports[name] += line + '\n'
+		}
+	}
+	return reports
+}
+
+fn test_failed_asserts_in_test_files_report_case_values() {
+	result := run_assert_failure_source('assert_reports_test.v', "struct Point {
+	x int
+	y int
+}
+
+fn next(mut calls []string) string {
+	calls << 'next'
+	return 'call \${calls.len}'
+}
+
+fn check_answer(x int) {
+	assert x == 42
+}
+
+fn test_call_operand() {
+	mut calls := []string{}
+	assert next(mut calls) == 'call 2', 'calls: \${calls}'
+}
+
+fn test_struct_operands() {
+	assert Point{1, 2} == Point{1, 3}
+}
+
+fn test_string_order() {
+	assert 'abc' > 'xyz'
+}
+
+fn test_array_operands() {
+	values := [3]
+	assert values == [1, 2]
+}
+
+fn test_message_without_values() {
+	ok := false
+	assert ok, 'ok is false'
+}
+
+fn test_assert_in_helper() {
+	check_answer(1)
+}
+
+struct Box {
+mut:
+	n int
+	s string
+}
+
+fn bump(mut b Box) int {
+	b.n++
+	return b.n
+}
+
+fn grow(mut b Box) string {
+	b.s += 'b'
+	return b.s
+}
+
+fn test_int_operands() {
+	mut b := Box{}
+	assert b.n == bump(mut b)
+}
+
+fn test_string_operands() {
+	mut b := Box{
+		s: 'a'
+	}
+	assert b.s == grow(mut b)
+}
+
+fn test_f32() {
 	p := f32(1.2)
 	assert p + 1 == 1.3
 }
-')
-	assert result.exit_code != 0, result.output
-	output := result.output.replace('\r\n', '\n')
-	assert output.contains('     Left value (len: 3): `2.2`\n'), output
-	assert !output.contains('2.200000047683716'), output
-}
 
-// test_failed_assert_reports_borrowed_slice_operands checks that optimized comparisons
-// retain their operand values and evaluate the slice bounds only once.
-fn test_failed_assert_reports_borrowed_slice_operands() {
-	result := run_assert_failure_source('slice_values_test.v', "fn start(mut calls []int) int {
+fn start(mut calls []int) int {
 	calls[0]++
 	return 1
 }
@@ -402,8 +379,30 @@ fn test_slice_unequal_reversed() {
 }
 ")
 	assert result.exit_code == 1, result.output
-	output := result.output
-	assert output.contains('     Left value (len: 3): `his`\n    Right value (len: 6): `abcdef`\n        Message: calls: 1\n'), output
-	assert output.contains('     Left value (len: 6): `abcdef`\n    Right value (len: 3): `his`\n'), output
-	assert output.count('     Left value (len: 3): `his`\n    Right value (len: 3): `his`\n') == 2, output
+	output := result.output.replace('\r\n', '\n')
+	reports := assert_failure_reports(output)
+
+	// Report the operands without evaluating them again.
+	assert reports['test_call_operand'].contains("     Left value (len: 6): `call 1`\n    Right value (len: 6): `call 2`\n        Message: calls: ['next']\n"), output
+	assert reports['test_struct_operands'].contains('     Left value (len: 26): `Point{\n    x: 1\n    y: 2\n}`\n    Right value (len: 26): `Point{\n    x: 1\n    y: 3\n}`\n'), output
+	assert reports['test_string_order'].contains('     Left value (len: 3): `abc`\n    Right value (len: 3): `xyz`\n'), output
+	assert reports['test_array_operands'].contains('     Left value (len: 3): `[3]`\n    Right value (len: 6): `[1, 2]`\n'), output
+	assert reports['test_message_without_values'].contains("    assert ok, 'ok is false'\n        Message: ok is false\n"), output
+	assert reports['check_answer'].contains(': fn check_answer\n   > assert x == 42\n     Left value (len: 1): `1`\n'), output
+
+	// Read the left operand before evaluating a mutating right operand.
+	assert reports['test_int_operands'].contains('     Left value (len: 1): `0`\n    Right value (len: 1): `1`\n'), output
+	assert reports['test_string_operands'].contains('     Left value (len: 1): `a`\n    Right value (len: 2): `ab`\n'), output
+
+	// Use the shortest digits at f32 precision.
+	assert reports['test_f32'].contains('     Left value (len: 3): `2.2`\n'), output
+	assert !reports['test_f32'].contains('2.200000047683716'), output
+
+	// Keep the slice operands and evaluate the bounds once.
+	assert reports['test_slice_equal'].contains('     Left value (len: 3): `his`\n    Right value (len: 6): `abcdef`\n        Message: calls: 1\n'), output
+	assert reports['test_slice_equal_reversed'].contains('     Left value (len: 6): `abcdef`\n    Right value (len: 3): `his`\n'), output
+	for name in ['test_slice_unequal', 'test_slice_unequal_reversed'] {
+		assert reports[name].contains('     Left value (len: 3): `his`\n    Right value (len: 3): `his`\n'), output
+	}
+	assert !output.contains('V panic'), output
 }
