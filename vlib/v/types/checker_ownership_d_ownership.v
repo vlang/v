@@ -5753,6 +5753,19 @@ fn (mut tc TypeChecker) ownership_consume_fn_literal_capture(name string, fn_nam
 		names << name
 	}
 	names << tc.ownership_owned_descendant_names(name)
+	// `-autofree` keeps V's aliasing semantics: the local stays usable after the
+	// closure is made, and releasing the closure frees its context. Give the context
+	// its own copy, whether or not the local owns its value, and move nothing.
+	if tc.autofree_mode && tc.ownership_autofree_clone_capture(pos, source_type) {
+		for source_name in names {
+			captures << OwnershipCaptureBinding{
+				name:      source_name
+				type_name: tc.ownership_type_name_for_var(source_name)
+				pos:       pos
+			}
+		}
+		return captures
+	}
 	// A capture transfers one subtree. Check every source before recording moves so that
 	// its root and descendants cannot conflict with transfers from this same capture.
 	for source_name in names {
@@ -5775,6 +5788,23 @@ fn (mut tc TypeChecker) ownership_consume_fn_literal_capture(name string, fn_nam
 		tc.ownership_record_var_move(source_name, fn_name, pos, false, '', true)
 	}
 	return captures
+}
+
+// ownership_autofree_clone_capture marks the capture at `pos` to be copied into the
+// closure context. Pointer sums and types without a usable clone still move.
+fn (mut tc TypeChecker) ownership_autofree_clone_capture(pos flat.NodeId, typ Type) bool {
+	if !tc.ownership_type_requires_destruction(typ) {
+		return false
+	}
+	mut seen := map[u32]bool{}
+	if tc.ownership_owned_storage_contains_pointer_sum(typ, 0, mut seen) {
+		return false
+	}
+	if _ := tc.ownership_borrowed_copy_missing_clone(pos, typ) {
+		return false
+	}
+	tc.ownership_state().borrowed_projection_actions[int(pos)] = .clone_value
+	return true
 }
 
 fn ownership_fn_literal_name(cur_fn string, id flat.NodeId) string {

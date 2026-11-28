@@ -14282,6 +14282,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_pointer_value_aliases := map[string]bool{}
 	mut capture_mut_pointer_params := map[string]bool{}
 	mut capture_is_ref_param := map[string]bool{}
+	mut capture_ids := map[string]flat.NodeId{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
@@ -14395,6 +14396,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 					capture_type = normalized_capture_type_source_id
 				}
 				capture_names << child.value
+				capture_ids[child.value] = child_id
 				is_mut_capture := child.is_mut
 				is_ref_capture := is_mut_capture && !flat.source_type_shape(capture_type).has(.pointer)
 					&& !t.is_fn_pointer_type_name(capture_type)
@@ -14687,6 +14689,18 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		} else if capture_by_ref[capture_name] or { false } && flat.source_type_shape(context_field_type).has(.pointer) {
 			value = t.make_prefix(.amp, value)
 			t.set_node_typ(int(value), context_field_type)
+		}
+		// The checker asks for a copy when the closure must not share the local's
+		// storage (`-autofree`, where the local stays usable and owned).
+		if !flat.source_type_shape(context_field_type).has(.pointer) {
+			if capture_id := capture_ids[capture_name] {
+				if t.borrowed_projection_clone_required(capture_id, context_field_type) {
+					value = t.make_compiler_default_borrowed_clone_value(value, context_field_type,
+						true)
+					context_fields << t.make_named_field_init(capture_name, value, context_field_type)
+					continue
+				}
+			}
 		}
 		if flat.source_type_shape(t.comptime_normalize_type_alias_chain(context_field_type)).has(.array_type) {
 			value = if capture_array_param_snapshots[capture_name] or { false } {
