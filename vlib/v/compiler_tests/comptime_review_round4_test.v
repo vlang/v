@@ -888,19 +888,9 @@ fn main() {
 	])
 }
 
-fn test_comptime_variants_prefer_local_sum_over_imported_short_name() {
-	out := round4_run_good_project(v3_bin, 'variant_local_sum_precedence', {
-		'v.mod':         "Module { name: 'variant_local_sum_precedence' }\n"
-		'other/other.v': 'module other
-
-pub struct RemoteA {}
-pub struct RemoteB {}
-
-pub type Sum = RemoteA | RemoteB
-
-pub const marker = 1
-'
-		'main.v':        'module main
+fn test_comptime_qualified_type_identity() {
+	round4_check_main_runtime('comptime_qualified_type_identity', [
+		Round4RuntimeCase{'variant_local_sum_precedence', 'module main
 
 import other
 
@@ -922,9 +912,179 @@ fn main() {
 	println(remote_names.join(","))
 	println(int_str(other.marker))
 }
+', 'LocalA,LocalB\nother.RemoteA,other.RemoteB\n1'},
+		Round4RuntimeCase{'field_typ_guard_decl_module', 'module main
+
+import pkg
+
+fn main() {
+	mut rows := []string{}
+	$for field in pkg.Outer.fields {
+		$if field.typ is pkg.Inner {
+			rows << "qualified:" + field.name
+		}
+		$if field.typ is $struct {
+			rows << "struct:" + field.name
+		}
+	}
+	println(rows.join("|"))
+}
+', 'qualified:nested|struct:nested'},
+		Round4RuntimeCase{'selective_comptime_for_alias_chain', 'module main
+
+import colors { StructTint, Tint }
+
+fn main() {
+	mut rows := []string{}
+	$for item in Tint.values {
+		rows << "value:" + item.name
+	}
+	$for field in StructTint.fields {
+		rows << "field:" + field.name
+	}
+	println(rows.join("|"))
+}
+', 'value:red|value:blue|field:id'},
+		Round4RuntimeCase{'generic_short_name_false_positive', "module main
+
+import helpers
+
+struct S {
+	id int
+}
+
+fn encode() string {
+	return 'ok'
+}
+
+fn main() {
+	warm := encode()
+	generic_warm := helpers.encode(1)
+	mut rows := []string{}
+	if warm.len == 0 {
+		rows << warm
+	}
+	if generic_warm.len == 0 {
+		rows << generic_warm
+	}
+	$for field in S.fields {
+		rows << field.name + ':' + encode()
+	}
+	println(rows.join('|'))
+}
+", 'id:ok'},
+		Round4RuntimeCase{'qualified_single_letter_generic_arg', 'module main
+
+import letter
+
+struct Box[X] {
+	value X
+}
+
+fn decode[X](value X) Box[X] {
+	return Box[X]{
+		value: value
+	}
+}
+
+fn read(box Box[letter.T]) int {
+	return box.value.n
+}
+
+fn main() {
+	value := letter.T{
+		n: 7
+	}
+	direct := Box[letter.T]{
+		value: value
+	}
+	decoded := decode[letter.T](value)
+	println(int_str(read(direct) + read(decoded)))
+}
+', '14'},
+		Round4RuntimeCase{'generic_method_reflection_main_origin', 'module main
+
+import pkg
+
+struct App {}
+
+fn (app App) main_method() {
+	_ = app
+}
+
+fn main() {
+	println(pkg.method_names[App]())
+}
+', 'main_method'},
+	], {
+		'v.mod':             "Module { name: 'comptime_qualified_type_identity' }\n"
+		'other/other.v':     'module other
+
+pub struct RemoteA {}
+pub struct RemoteB {}
+
+pub type Sum = RemoteA | RemoteB
+
+pub const marker = 1
 '
-	}, 'main.v')
-	assert out == 'LocalA,LocalB\nother.RemoteA,other.RemoteB\n1'
+		'pkg/pkg.v':         'module pkg
+
+pub struct Inner {
+pub:
+	id int
+}
+
+pub struct Outer {
+pub:
+	nested Inner
+}
+
+pub struct App {}
+
+fn (app App) package_method() {
+	_ = app
+}
+
+pub fn method_names[T]() string {
+	mut names := []string{}
+	$for method in T.methods {
+		names << method.name
+	}
+	return names.join(",")
+}
+'
+		'colors/colors.v':   'module colors
+
+pub enum Color {
+	red
+	blue
+}
+
+pub type Shade = Color
+pub type Tint = Shade
+
+pub struct S {
+pub:
+	id int
+}
+
+pub type StructAlias = S
+pub type StructTint = StructAlias
+'
+		'helpers/helpers.v': "module helpers
+
+pub fn encode[T](value T) string {
+	return 'generic'
+}
+"
+		'letter/letter.v':   'module letter
+
+pub struct T {
+pub:
+	n int
+}
+'
+	})
 }
 
 fn test_comptime_import_alias_lookups() {
@@ -1083,123 +1243,6 @@ pub fn handler() {}
 pub struct Controller {}
 '
 	})
-}
-
-fn test_comptime_field_typ_guards_use_declaring_module_type() {
-	out := round4_run_good_project(v3_bin, 'field_typ_guard_decl_module', {
-		'v.mod':     "Module { name: 'field_typ_guard_decl_module' }\n"
-		'pkg/pkg.v': 'module pkg
-
-pub struct Inner {
-pub:
-	id int
-}
-
-pub struct Outer {
-pub:
-	nested Inner
-}
-'
-		'main.v':    'module main
-
-import pkg
-
-fn main() {
-	mut rows := []string{}
-	$for field in pkg.Outer.fields {
-		$if field.typ is pkg.Inner {
-			rows << "qualified:" + field.name
-		}
-		$if field.typ is $struct {
-			rows << "struct:" + field.name
-		}
-	}
-	println(rows.join("|"))
-}
-'
-	}, 'main.v')
-	assert out == 'qualified:nested|struct:nested'
-}
-
-fn test_comptime_for_selective_import_alias_source_unrolls() {
-	out := round4_run_good_project(v3_bin, 'selective_comptime_for_alias_chain', {
-		'v.mod':           "Module { name: 'selective_comptime_for_alias_chain' }\n"
-		'colors/colors.v': 'module colors
-
-pub enum Color {
-	red
-	blue
-}
-
-pub type Shade = Color
-pub type Tint = Shade
-
-pub struct S {
-pub:
-	id int
-}
-
-pub type StructAlias = S
-pub type StructTint = StructAlias
-'
-		'main.v':          'module main
-
-import colors { StructTint, Tint }
-
-fn main() {
-	mut rows := []string{}
-	$for item in Tint.values {
-		rows << "value:" + item.name
-	}
-	$for field in StructTint.fields {
-		rows << "field:" + field.name
-	}
-	println(rows.join("|"))
-}
-'
-	}, 'main.v')
-	assert out == 'value:red|value:blue|field:id'
-}
-
-fn test_non_generic_call_matching_generic_short_name_does_not_skip_comptime_for() {
-	out := round4_run_good_project(v3_bin, 'generic_short_name_false_positive', {
-		'v.mod':             "Module { name: 'generic_short_name_false_positive' }\n"
-		'helpers/helpers.v': "module helpers
-
-pub fn encode[T](value T) string {
-	return 'generic'
-}
-"
-		'main.v':            "module main
-
-import helpers
-
-struct S {
-	id int
-}
-
-fn encode() string {
-	return 'ok'
-}
-
-fn main() {
-	warm := encode()
-	generic_warm := helpers.encode(1)
-	mut rows := []string{}
-	if warm.len == 0 {
-		rows << warm
-	}
-	if generic_warm.len == 0 {
-		rows << generic_warm
-	}
-	$for field in S.fields {
-		rows << field.name + ':' + encode()
-	}
-	println(rows.join('|'))
-}
-"
-	}, 'main.v')
-	assert out == 'id:ok'
 }
 
 fn test_field_and_enum_metadata_argument_and_member_rejections() {
@@ -2019,25 +2062,6 @@ fn main() {
 	assert out == 'red'
 }
 
-fn test_operator_overload_struct_pseudovar() {
-	out := round4_run_good(v3_bin, 'operator_overload_struct_pseudovar', 'struct S {
-	name string
-}
-
-fn (a S) + (b S) S {
-	return S{
-		name: @STRUCT
-	}
-}
-
-fn main() {
-	res := S{} + S{}
-	println(res.name)
-}
-')
-	assert out == 'S'
-}
-
 fn test_shared_and_voidptr_type_groups() {
 	round4_check_runtime('shared_and_voidptr_type_groups', [
 		Round4RuntimeCase{'shared_type_group', "struct Counter {}
@@ -2646,49 +2670,6 @@ fn main() {
 	assert out == 'true\ntrue\nrun'
 }
 
-fn test_qualified_single_letter_type_is_a_concrete_generic_argument() {
-	out := round4_run_good_project(v3_bin, 'qualified_single_letter_generic_arg', {
-		'v.mod':           "Module { name: 'qualified_single_letter_generic_arg' }\n"
-		'letter/letter.v': 'module letter
-
-pub struct T {
-pub:
-	n int
-}
-'
-		'main.v':          'module main
-
-import letter
-
-struct Box[X] {
-	value X
-}
-
-fn decode[X](value X) Box[X] {
-	return Box[X]{
-		value: value
-	}
-}
-
-fn read(box Box[letter.T]) int {
-	return box.value.n
-}
-
-fn main() {
-	value := letter.T{
-		n: 7
-	}
-	direct := Box[letter.T]{
-		value: value
-	}
-	decoded := decode[letter.T](value)
-	println(int_str(read(direct) + read(decoded)))
-}
-'
-	}, 'main.v')
-	assert out == '14'
-}
-
 fn test_comptime_pseudo_values_and_define_shadowing() {
 	round4_check_runtime('comptime_pseudo_values_and_define_shadowing', [
 		Round4RuntimeCase{'pseudo_value_cached_local', "fn main() {
@@ -2909,10 +2890,21 @@ fn test_raw_string_comptime_match_literals_are_normalized() {
 	assert out == 'subject\npattern'
 }
 
-fn test_vmod_file_expands_in_comptime_conditions() {
-	out := round4_run_good_project(v3_bin, 'vmod_file_comptime_conditions', {
-		'v.mod':  "Module { name: 'vmod_file_comptime_conditions' }\n"
-		'main.v': "module main
+fn test_comptime_pseudo_values_and_conditions() {
+	escaped_comparisons := [
+		'const quote = "\'"',
+		"const slash = '\\\\'",
+		'fn main() {',
+		'\t\$if "\'" == \'\\\'\' { println(\'if quote\') } \$else { println(\'bad if quote\') }',
+		"\t\$if quote == '\\'' { println('const quote') } \$else { println('bad const quote') }",
+		"\t\$if '\\\\' == '\\x5c' { println('if slash') } \$else { println('bad if slash') }",
+		"\t\$if slash == '\\x5c' { println('const slash') } \$else { println('bad const slash') }",
+		'\t\$match "\'" { \'\\\'\' { println(\'match quote\') } \$else { println(\'bad match quote\') } }',
+		"\t\$match '\\\\' { '\\x5c' { println('match slash') } \$else { println('bad match slash') } }",
+		'}',
+	].join('\n')
+	round4_check_main_runtime('comptime_pseudo_values_and_conditions', [
+		Round4RuntimeCase{'vmod_file_comptime_conditions', "module main
 
 fn main() {
 	mut rows := []string{}
@@ -2927,9 +2919,48 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-"
-	}, 'main.v')
-	assert out == 'if|match'
+", 'if|match'},
+		Round4RuntimeCase{'comptime_if_expr_setup_statements', "module main
+
+fn main() {
+	x := \$if true {
+		println('then setup')
+		tmp := 1
+		tmp + 1
+	} \$else {
+		0
+	}
+	y := \$if false {
+		0
+	} \$else {
+		println('else setup')
+		tmp := 3
+		tmp
+	}
+	println(int_str(x) + ':' + int_str(y))
+}
+", 'then setup\nelse setup\n2:3'},
+		Round4RuntimeCase{'comptime_escaped_string_comparisons', 'module main\n\n' + escaped_comparisons, 'if quote\nconst quote\nif slash\nconst slash\nmatch quote\nmatch slash'},
+		Round4RuntimeCase{'operator_overload_struct_pseudovar', 'module main
+
+struct S {
+	name string
+}
+
+fn (a S) + (b S) S {
+	return S{
+		name: @STRUCT
+	}
+}
+
+fn main() {
+	res := S{} + S{}
+	println(res.name)
+}
+', 'S'},
+	], {
+		'v.mod': "Module { name: 'comptime_pseudo_values_and_conditions' }\n"
+	})
 }
 
 fn test_vmod_file_comptime_condition_without_project_is_compile_error() {
@@ -2980,8 +3011,11 @@ pub fn value() string {
 	assert out == 'if|match|pkg'
 }
 
-fn test_soa_attribute_and_static_method_reflection_distinction() {
-	out := round4_run_good(v3_bin, 'soa_and_static_method_distinction', "@[soa]
+fn test_soa_companion_declarations() {
+	round4_check_main_runtime('soa_companion_declarations', [
+		Round4RuntimeCase{'soa_and_static_method_distinction', "module main
+
+@[soa]
 struct SoaItem {
 	value int
 }
@@ -3021,12 +3055,10 @@ fn main() {
 	}
 	println(rows.join('|'))
 }
-")
-	assert out == '3:1:3|run:1'
-}
+", '3:1:3|run:1'},
+		Round4RuntimeCase{'v_owned_matching_soa_companion', "module main
 
-fn test_v_owned_matching_soa_companion_declaration_is_preserved() {
-	out := round4_run_good(v3_bin, 'v_owned_matching_soa_companion', "@[soa]
+@[soa]
 struct VOwnedSoaItem {
 	value int
 }
@@ -3049,13 +3081,24 @@ fn main() {
 	println(soa.cap.str() + ':' + soa.len.str() + ':' + item.value.str())
 	C.VOwnedSoaItem_SOA_free(&soa)
 }
-")
-	assert out == '2:1:5'
+", '2:1:5'},
+		Round4RuntimeCase{'header_backed_soa_companion', 'module main
+
+@[soa]
+struct HeaderSoaItem {
+	value int
 }
 
-fn test_header_backed_soa_companion_uses_native_typedef() {
-	out := round4_run_good_project(v3_bin, 'header_backed_soa_companion', {
-		'v.mod':           "Module { name: 'header_backed_soa_companion' }\n"
+fn main() {
+	mut soa := C.HeaderSoaItem_SOA_new(0, 2)
+	C.HeaderSoaItem_SOA_push(&soa, HeaderSoaItem{value: 7})
+	item := C.HeaderSoaItem_SOA_get(soa, 0)
+	println(soa.cap.str() + ":" + soa.len.str() + ":" + item.value.str())
+	C.HeaderSoaItem_SOA_free(&soa)
+}
+', '2:1:7'},
+	], {
+		'v.mod':           "Module { name: 'soa_companion_declarations' }\n"
 		'soa.h':           '#ifndef HEADER_BACKED_SOA_H\n#define HEADER_BACKED_SOA_H\n#include <stdint.h>\ntypedef struct HeaderSoaItem_SOA {\n\tint len;\n\tint cap;\n\tint64_t* value;\n} HeaderSoaItem_SOA;\n#endif\n'
 		'soa_binding.c.v': 'module main
 
@@ -3073,23 +3116,7 @@ fn C.HeaderSoaItem_SOA_push(&C.HeaderSoaItem_SOA, HeaderSoaItem)
 fn C.HeaderSoaItem_SOA_get(C.HeaderSoaItem_SOA, int) HeaderSoaItem
 fn C.HeaderSoaItem_SOA_free(&C.HeaderSoaItem_SOA)
 '
-		'main.v':          'module main
-
-@[soa]
-struct HeaderSoaItem {
-	value int
-}
-
-fn main() {
-	mut soa := C.HeaderSoaItem_SOA_new(0, 2)
-	C.HeaderSoaItem_SOA_push(&soa, HeaderSoaItem{value: 7})
-	item := C.HeaderSoaItem_SOA_get(soa, 0)
-	println(soa.cap.str() + ":" + soa.len.str() + ":" + item.value.str())
-	C.HeaderSoaItem_SOA_free(&soa)
-}
-'
-	}, '')
-	assert out == '2:1:7'
+	})
 }
 
 fn test_normal_string_attribute_arguments_are_unescaped() {
@@ -3145,82 +3172,6 @@ fn main() {
 }
 ",
 		'compile-time error: present method selected')
-}
-
-fn test_generic_method_reflection_preserves_main_specialization_origin() {
-	out := round4_run_good_project(v3_bin, 'generic_method_reflection_main_origin', {
-		'v.mod':     "Module { name: 'generic_method_reflection_main_origin' }\n"
-		'pkg/pkg.v': 'module pkg
-
-pub struct App {}
-
-fn (app App) package_method() {
-	_ = app
-}
-
-pub fn method_names[T]() string {
-	mut names := []string{}
-	$for method in T.methods {
-		names << method.name
-	}
-	return names.join(",")
-}
-'
-		'main.v':    'module main
-
-import pkg
-
-struct App {}
-
-fn (app App) main_method() {
-	_ = app
-}
-
-fn main() {
-	println(pkg.method_names[App]())
-}
-'
-	}, 'main.v')
-	assert out == 'main_method'
-}
-
-fn test_selected_comptime_if_expression_keeps_setup_statements() {
-	out := round4_run_good(v3_bin, 'comptime_if_expr_setup_statements', "fn main() {
-	x := \$if true {
-		println('then setup')
-		tmp := 1
-		tmp + 1
-	} \$else {
-		0
-	}
-	y := \$if false {
-		0
-	} \$else {
-		println('else setup')
-		tmp := 3
-		tmp
-	}
-	println(int_str(x) + ':' + int_str(y))
-}
-")
-	assert out == 'then setup\nelse setup\n2:3'
-}
-
-fn test_comptime_string_comparisons_normalize_escapes() {
-	src := [
-		'const quote = "\'"',
-		"const slash = '\\\\'",
-		'fn main() {',
-		'\t\$if "\'" == \'\\\'\' { println(\'if quote\') } \$else { println(\'bad if quote\') }',
-		"\t\$if quote == '\\'' { println('const quote') } \$else { println('bad const quote') }",
-		"\t\$if '\\\\' == '\\x5c' { println('if slash') } \$else { println('bad if slash') }",
-		"\t\$if slash == '\\x5c' { println('const slash') } \$else { println('bad const slash') }",
-		'\t\$match "\'" { \'\\\'\' { println(\'match quote\') } \$else { println(\'bad match quote\') } }',
-		"\t\$match '\\\\' { '\\x5c' { println('match slash') } \$else { println('bad match slash') } }",
-		'}',
-	].join('\n')
-	out := round4_run_good(v3_bin, 'comptime_escaped_string_comparisons', src)
-	assert out == 'if quote\nconst quote\nif slash\nconst slash\nmatch quote\nmatch slash'
 }
 
 fn test_deferred_reflection_branch_pruning() {
