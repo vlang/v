@@ -33,6 +33,33 @@ fn test_constant_fold_preserves_float_comparisons() {
 	}
 }
 
+fn test_reduce_unsigned_div_rem_by_high_bit() {
+	for i, op in [ssa.OpCode.udiv, .urem] {
+		mut m := ssa.Module.new()
+		typ := m.type_store.get_uint(64)
+		func_id := m.new_function('high_bit_divisor', typ)
+		entry := m.add_block(func_id, 'entry')
+		value := m.add_value(.argument, typ, 'value', 0)
+		m.func_add_param(func_id, value)
+		divisor := m.get_or_add_const(typ, '9223372036854775808')
+		operation := m.add_instr(op, entry, typ, [value, divisor])
+		ret := m.add_instr(.ret, entry, ssa.TypeID(0), [operation])
+
+		optimize_with_options(mut m, OptimizeOptions{
+			strict_verify: true
+		})
+
+		assert m.blocks[entry].instrs == [operation, ret]
+		instr := m.instrs[m.values[operation].index]
+		assert instr.op == [ssa.OpCode.lshr, .and_][i]
+		assert instr.operands[0] == value
+		constant := m.values[instr.operands[1]]
+		assert constant.kind == .constant
+		assert constant.typ == typ
+		assert constant.name == ['63', '9223372036854775807'][i]
+	}
+}
+
 fn test_constant_fold_preserves_float_precision() {
 	// These differ as f64 values but round to the same f32 value.
 	for width in [32, 64] {
