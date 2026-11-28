@@ -949,8 +949,8 @@ fn impl_walk_ext(path string, ext string, mut out []string, opts WalkParams) {
 // walk traverses the given directory `path`.
 // When a file is encountered, it will call the callback `f` with current file as argument.
 // A link is passed to `f` too, and is not followed, also when it leads to a directory.
-// Except on Windows, whether a directory is a link is looked up right before the walk lists
-// it, so a directory that another process replaces by a link between that lookup and the
+// Except on Windows and Linux, whether a directory is a link is looked up right before the walk
+// lists it, so a directory that another process replaces by a link between that lookup and the
 // listing is still entered.
 // The entries of each directory are visited in the order of `os.ls`, which is not sorted and
 // differs between platforms and filesystems. For a walk in lexical order, see: `os.walk_dir`
@@ -959,7 +959,7 @@ fn impl_walk_ext(path string, ext string, mut out []string, opts WalkParams) {
 // it is and listed, so a directory that was replaced by a link is not entered. On a file system
 // that can not list a directory through what was opened, the directory is listed by its name
 // once it has said that it is no link, and is entered when it is replaced by a link right then,
-// as on other systems. An entry that
+// as on systems other than Windows and Linux. An entry that
 // was listed as a file or as a link is passed to `f` and not entered, also when the callback
 // or another process has replaced it by a directory before the walk reaches it, and also when
 // its name ends in a dot or a space and a directory has that name without the ending.
@@ -967,12 +967,25 @@ fn impl_walk_ext(path string, ext string, mut out []string, opts WalkParams) {
 // directory that has the name of a device, such as `NUL` or `CON`, and one whose name ends
 // in a space, is entered like any other.
 // A root that is only separators, such as `\` or `/`, is not walked.
+// On Linux, what an entry is comes from the listing of its directory too, where the file system
+// says it there. What was listed as a directory is opened without following a link, so a
+// directory that was replaced by a link is not entered. An entry that was listed as a file or
+// as a link is passed to `f` and not entered, also when it has been replaced by a directory
+// before the walk reaches it. An entry whose kind the listing does not say is looked up by name,
+// as on other systems, and is entered when it is a directory by then.
+// On Windows and on Linux, that a link is not followed holds for the directory that is opened.
+// A directory is opened by its path, so when a directory above it is replaced by a link while
+// its entries are still to be visited, the walk goes through that link, as on other systems.
 // Note: walk can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`
 pub fn walk(path string, f fn (string)) {
 	$if windows && !js {
 		walk_windows(path, f)
+		return
+	}
+	$if linux && !js && !freestanding && !syscalls {
+		walk_linux(path, f)
 		return
 	}
 	if path == '' {
@@ -1133,8 +1146,8 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // passing it the arbitrary `context` in its first parameter,
 // and the path to the file in its second parameter.
 // A link is passed to `fcb` too, and is not followed, also when it leads to a directory.
-// Except on Windows, whether a directory is a link is looked up right before the walk lists
-// it, so a directory that another process replaces by a link between that lookup and the
+// Except on Windows and Linux, whether a directory is a link is looked up right before the walk
+// lists it, so a directory that another process replaces by a link between that lookup and the
 // listing is still entered.
 // The entries of each directory are visited in the order of `os.ls`, which is not sorted and
 // differs between platforms and filesystems. For a walk in lexical order, see: `os.walk_dir`
@@ -1143,20 +1156,34 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // it is and listed, so a directory that was replaced by a link is not entered. On a file system
 // that can not list a directory through what was opened, the directory is listed by its name
 // once it has said that it is no link, and is entered when it is replaced by a link right then,
-// as on other systems. An entry that
+// as on systems other than Windows and Linux. An entry that
 // was listed as a file or as a link is passed to `fcb` and not entered, also when the callback
-// or another process has replaced it by a directory before the walk reaches it, and also when
+// or another process has replaced it by a directory before the walk reaches it, also when `fcb`
+// does so on being passed it, and also when
 // its name ends in a dot or a space and a directory has that name without the ending.
 // A directory, the root included, is opened under its name with a separator after it, so a
 // directory that has the name of a device, such as `NUL` or `CON`, and one whose name ends
 // in a space, is entered like any other.
 // A root that is only separators, such as `\` or `/`, is not walked.
+// On Linux, what an entry is comes from the listing of its directory too, where the file system
+// says it there. What was listed as a directory is opened without following a link, so a
+// directory that was replaced by a link is not entered. An entry that was listed as a file or
+// as a link is passed to `fcb` and not entered, also when it has been replaced by a directory
+// before the walk reaches it, or by `fcb` on being passed it. An entry whose kind the listing does
+// not say is looked up by name, as on other systems, and is entered when it is a directory by then.
+// On Windows and on Linux, that a link is not followed holds for the directory that is opened.
+// A directory is opened by its path, so when a directory above it is replaced by a link while
+// its entries are still to be visited, the walk goes through that link, as on other systems.
 // Note: walk_with_context can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 	$if windows && !js {
 		walk_with_context_windows(path, context, fcb)
+		return
+	}
+	$if linux && !js && !freestanding && !syscalls {
+		walk_with_context_linux(path, context, fcb)
 		return
 	}
 	if path == '' {

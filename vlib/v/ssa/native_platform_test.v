@@ -19,6 +19,34 @@ fn test_native_linux_constants_do_not_inherit_different_darwin_values() {
 	assert native_darwin_constant('O_FSYNC')? == 128
 }
 
+// The values are those of the kernel's headers: include/uapi/asm-generic/fcntl.h for amd64, and
+// arch/arm64/include/uapi/asm/fcntl.h, which gives O_DIRECTORY and O_NOFOLLOW other bits.
+fn test_native_linux_open_flags_follow_the_target_architecture() {
+	amd64 := TargetData{
+		os:   'linux'
+		arch: 'amd64'
+	}
+	arm64 := TargetData{
+		os:   'linux'
+		arch: 'arm64'
+	}
+	assert native_platform_constant('O_DIRECTORY', amd64)? == 0x10000
+	assert native_platform_constant('O_NOFOLLOW', amd64)? == 0x20000
+	assert native_platform_constant('O_DIRECTORY', arm64)? == 0x4000
+	assert native_platform_constant('O_NOFOLLOW', arm64)? == 0x8000
+	// On arm64 the amd64 values are O_DIRECT and O_LARGEFILE.
+	assert native_platform_constant('O_DIRECTORY', arm64)? | native_platform_constant('O_NOFOLLOW',
+		arm64)? | native_platform_constant('O_CLOEXEC', arm64)? == 0x8c000
+	for name in ['O_RDONLY', 'O_WRONLY', 'O_RDWR', 'O_CREAT', 'O_EXCL', 'O_NOCTTY', 'O_TRUNC',
+		'O_APPEND', 'O_NONBLOCK', 'O_NDELAY', 'O_DSYNC', 'O_ASYNC', 'O_CLOEXEC', 'O_SYNC', 'O_FSYNC'] {
+		assert native_platform_constant(name, arm64)? == native_platform_constant(name,
+			amd64)?, name
+	}
+	// A macOS target is not affected by its architecture.
+	assert native_platform_constant('O_DIRECTORY', TargetData{ os: 'macos', arch: 'arm64' })? == 0x100000
+	assert native_platform_constant('O_NOFOLLOW', TargetData{ os: 'macos', arch: 'arm64' })? == 0x100
+}
+
 fn test_native_fcntl_and_signal_constants_are_resolved() {
 	for name, value in {
 		'F_SETFD':    i64(2)
