@@ -10,20 +10,32 @@ fn scope_review_output(path string, query string) string {
 	return result.output.trim_space()
 }
 
+fn scope_review_question(path string, position string, method string) string {
+	return '${path}:${position.all_before(':')}:${method}^${position.all_after(':')}'
+}
+
 fn scope_review_query(path string, position string, method string) string {
-	query := '${path}:${position.all_before(':')}:${method}^${position.all_after(':')}'
-	return scope_review_output(path, query)
+	return scope_review_output(path, scope_review_question(path, position, method))
+}
+
+fn scope_review_answers(path string, questions []string) []string {
+	lines := scope_review_output(path, questions.join('\t')).split_into_lines()
+	assert lines.len == questions.len, lines.str()
+	mut answers := []string{cap: lines.len}
+	for i, line in lines {
+		prefix := '${i}\t'
+		assert line.starts_with(prefix), line
+		answers << line[prefix.len..]
+	}
+	return answers
 }
 
 fn scope_review_hover_and_definition(path string, position string) (string, string) {
-	prefix := '${path}:${position.all_before(':')}:'
-	column := position.all_after(':')
-	query := '${prefix}hv^${column}\t${prefix}gd^${column}'
-	answers := scope_review_output(path, query).split_into_lines()
-	assert answers.len == 2, answers.str()
-	assert answers[0].starts_with('0\t'), answers[0]
-	assert answers[1].starts_with('1\t'), answers[1]
-	return answers[0][2..], answers[1][2..]
+	answers := scope_review_answers(path, [
+		scope_review_question(path, position, 'hv'),
+		scope_review_question(path, position, 'gd'),
+	])
+	return answers[0], answers[1]
 }
 
 fn test_type_parameter_hover_and_definition_stay_in_their_declaration_scope() {
@@ -123,13 +135,18 @@ fn test_type_parameters_in_receivers_of_every_form_belong_to_their_method() {
 	} {
 		for name in names {
 			declared := word_position(source, prefix, name, 0)
-			hover := scope_review_query(path, declared, 'hv')
-			assert hover.contains('[${name}]'), '${prefix}: ${hover}'
-			assert !hover.contains('struct'), '${prefix}: ${hover}'
-			assert scope_review_query(path, declared, 'gd') == '${path}:${declared}', prefix
 			// Its next use in the signature leads to the receiver too.
 			used := word_position(source, prefix, name, 1)
-			assert scope_review_query(path, used, 'gd') == '${path}:${declared}', '${prefix} ${used}'
+			answers := scope_review_answers(path, [
+				scope_review_question(path, declared, 'hv'),
+				scope_review_question(path, declared, 'gd'),
+				scope_review_question(path, used, 'gd'),
+			])
+			hover := answers[0]
+			assert hover.contains('[${name}]'), '${prefix}: ${hover}'
+			assert !hover.contains('struct'), '${prefix}: ${hover}'
+			assert answers[1] == '${path}:${declared}', prefix
+			assert answers[2] == '${path}:${declared}', '${prefix} ${used}'
 		}
 	}
 	// The own type parameter of the method is declared after its name.
