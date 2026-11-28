@@ -139,3 +139,49 @@ fn test_default_pipeline_lists_expected_passes() {
 	plain := default_pipeline(OptimizeOptions{}).map(it.label())
 	assert plain == ['input', '', '', '', 'final']
 }
+
+fn test_phi_elimination_splits_only_edges_entering_phi_blocks() {
+	for with_phi in [false, true] {
+		mut m := ssa.Module.new()
+		int_type := m.type_store.get_int(32)
+		bool_type := m.type_store.get_int(1)
+		function := m.new_function('select', int_type)
+		condition := m.add_value(.argument, bool_type, 'condition', 0)
+		m.func_add_param(function, condition)
+		entry := m.add_block(function, 'entry')
+		body := m.add_block(function, 'body')
+		join := m.add_block(function, 'join')
+		seven := m.get_or_add_const(int_type, '7')
+		nine := m.get_or_add_const(int_type, '9')
+		branch := m.add_instr(.br, entry, 0, [condition, ssa.ValueID(body), ssa.ValueID(join)])
+		m.add_instr(.jmp, body, 0, [ssa.ValueID(join)])
+		result := if with_phi {
+			m.add_instr(.phi, join, int_type, [seven, ssa.ValueID(entry), nine, ssa.ValueID(body)])
+		} else {
+			seven
+		}
+		m.add_instr(.ret, join, 0, [result])
+
+		optimize_with_options(mut m, OptimizeOptions{
+			mem2reg:          true
+			eliminate_phis:   true
+			verify_each_pass: true
+			strict_verify:    true
+		})
+
+		branch_targets := m.instrs[m.values[branch].index].operands
+		if with_phi {
+			assert m.funcs[function].blocks.len == 4
+			split := m.blocks[branch_targets[2]]
+			assert split.preds == [entry]
+			assert split.succs == [join]
+			assert split.instrs.len == 2
+			copy := m.instrs[m.values[split.instrs[0]].index]
+			assert copy.op == .assign
+			assert copy.operands == [result, seven]
+		} else {
+			assert m.funcs[function].blocks == [entry, body, join]
+			assert branch_targets[2] == join
+		}
+	}
+}
