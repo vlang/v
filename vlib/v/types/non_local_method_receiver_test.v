@@ -49,20 +49,57 @@ fn check_non_local_receiver(name string, source string, flags []string) os.Resul
 	return os.exec([@VEXE, ...flags, '-check', root])
 }
 
+// check_non_local_receiver_cases checks every source, a `main` file that imports `foreign`,
+// as a module of one project. It returns the diagnostics of each case, in order.
+fn check_non_local_receiver_cases(name string, sources []string, flags []string) (os.Result, [][]string) {
+	root := os.join_path(os.vtmp_dir(), 'non_local_receivers_${name}_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'foreign')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'non_local_receiver' }\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'foreign', 'foreign.v'), non_local_receiver_module) or {
+		panic(err)
+	}
+	mut imports := []string{cap: sources.len}
+	mut calls := []string{cap: sources.len}
+	for i, source in sources {
+		module_name := 'case_${i}'
+		assert source.contains('\nfn main() {}\n'), source
+		os.mkdir_all(os.join_path(root, module_name)) or { panic(err) }
+		os.write_file(os.join_path(root, module_name, '${module_name}.v'), 'module ${module_name}\n' +
+			source.replace('\nfn main() {}\n', '\npub fn touch() {}\n')) or { panic(err) }
+		imports << 'import ${module_name}'
+		calls << '\t${module_name}.touch()'
+	}
+	os.write_file(os.join_path(root, 'main.v'), '${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
+		panic(err)
+	}
+	result := os.exec([@VEXE, ...flags, '-message-limit', '10000', '-check', root])
+	lines := result.output.split_into_lines()
+	mut diagnostics := [][]string{len: sources.len}
+	for i in 0 .. sources.len {
+		diagnostics[i] = lines.filter(it.contains('case_${i}.v:'))
+	}
+	return result, diagnostics
+}
+
 fn test_methods_on_imported_named_types_are_rejected() {
-	for flags in [[]string{}, ['-no-parallel'], ['-prod']] {
-		for receiver in ['foreign.Mode', '&foreign.Mode', '&&foreign.Mode', 'foreign.Record',
-			'&foreign.Record', '&&foreign.Record', '&&&foreign.Record', 'mut foreign.Record',
-			'mut &&foreign.Record', 'shared &&foreign.Record', 'foreign.Readable', '&&foreign.Readable',
-			'foreign.Value', '&&foreign.Value', 'foreign.Count', '&&foreign.Count', 'foreign.Box[T]',
-			'&&foreign.Box[T]'] {
-			type_text := receiver.trim_string_left('mut ').trim_string_left('shared ')
-			parameter := if receiver.starts_with('mut ') || receiver.starts_with('shared ') {
-				'${receiver.all_before(' ')} value ${type_text}'
-			} else {
-				'value ${type_text}'
-			}
-			result := check_non_local_receiver('imported', 'import foreign
+	receivers := ['foreign.Mode', '&foreign.Mode', '&&foreign.Mode', 'foreign.Record', '&foreign.Record',
+		'&&foreign.Record', '&&&foreign.Record', 'mut foreign.Record', 'mut &&foreign.Record',
+		'shared &&foreign.Record', 'foreign.Readable', '&&foreign.Readable', 'foreign.Value',
+		'&&foreign.Value', 'foreign.Count', '&&foreign.Count', 'foreign.Box[T]', '&&foreign.Box[T]']
+	mut sources := []string{cap: receivers.len}
+	for receiver in receivers {
+		type_text := receiver.trim_string_left('mut ').trim_string_left('shared ')
+		parameter := if receiver.starts_with('mut ') || receiver.starts_with('shared ') {
+			'${receiver.all_before(' ')} value ${type_text}'
+		} else {
+			'value ${type_text}'
+		}
+		sources << 'import foreign
 
 struct Record {}
 
@@ -71,10 +108,15 @@ pub fn (${parameter}) str() string {
 }
 
 fn main() {}
-', flags)
-			assert result.exit_code != 0, '${receiver}: ${result.output}'
-			assert result.output.contains('cannot define new methods on non-local type ${type_text}'), result.output
-			assert result.output.contains('Define an alias and use that instead'), result.output
+'
+	}
+	for flags in [[]string{}, ['-no-parallel'], ['-prod']] {
+		result, diagnostics := check_non_local_receiver_cases('imported', sources, flags)
+		assert result.exit_code != 0, result.output
+		for i, receiver in receivers {
+			type_text := receiver.trim_string_left('mut ').trim_string_left('shared ')
+			assert diagnostics[i].any(it.contains('cannot define new methods on non-local type ${type_text}')
+				&& it.contains('Define an alias and use that instead')), '${receiver}: ${result.output}'
 		}
 	}
 }
@@ -96,48 +138,59 @@ fn main() {}
 }
 
 fn test_alias_hints_declare_only_the_receivers_generic_parameters() {
-	for flags in [[]string{}, ['-no-parallel'], ['-prod']] {
-		for receiver, params in {
-			'foreign.Box[T]':          'T'
-			'&&foreign.Box[T]':        'T'
-			'shared &&foreign.Box[T]': 'T'
-			'foreign.Box[[]T]':        'T'
-			'foreign.Pair[T, U]':      'T, U'
-			'foreign.Pair[U, T]':      'T, U'
-			'foreign.Pair[string, T]': 'T'
-			'foreign.Box[int]':        ''
-			'foreign.Record':          ''
-		} {
-			type_text := receiver.trim_string_left('shared ')
-			parameter := if receiver.starts_with('shared ') {
-				'shared value ${type_text}'
-			} else {
-				'value ${type_text}'
-			}
-			result := check_non_local_receiver('alias_hint', 'import foreign
+	hints := {
+		'foreign.Box[T]':          'T'
+		'&&foreign.Box[T]':        'T'
+		'shared &&foreign.Box[T]': 'T'
+		'foreign.Box[[]T]':        'T'
+		'foreign.Pair[T, U]':      'T, U'
+		'foreign.Pair[U, T]':      'T, U'
+		'foreign.Pair[string, T]': 'T'
+		'foreign.Box[int]':        ''
+		'foreign.Record':          ''
+	}
+	receivers := hints.keys()
+	mut sources := []string{cap: receivers.len}
+	for receiver in receivers {
+		type_text := receiver.trim_string_left('shared ')
+		parameter := if receiver.starts_with('shared ') {
+			'shared value ${type_text}'
+		} else {
+			'value ${type_text}'
+		}
+		sources << 'import foreign
 
 fn (${parameter}) label[X](other X) string { return "local" }
 
 fn main() {}
-', flags)
-			assert result.exit_code != 0, result.output
+'
+	}
+	for flags in [[]string{}, ['-no-parallel'], ['-prod']] {
+		result, diagnostics := check_non_local_receiver_cases('alias_hint', sources, flags)
+		assert result.exit_code != 0, result.output
+		mut fixed_sources := []string{cap: receivers.len}
+		for i, receiver in receivers {
+			params := hints[receiver]
+			type_text := receiver.trim_string_left('shared ')
 			alias_name := if params == '' { 'AliasName' } else { 'AliasName[${params}]' }
-			assert result.output.contains('Define an alias and use that instead like `type ${alias_name} = ${type_text}`'), result.output
+			hint := diagnostics[i].filter(it.contains('Define an alias and use that instead like `type ${alias_name} = ${type_text}`'))
+			assert hint.len > 0, '${receiver}: ${result.output}'
 			if params != '' {
-				assert result.output.contains('use `${alias_name}` as the receiver'), result.output
+				assert hint[0].contains('use `${alias_name}` as the receiver'), hint[0]
 			}
-			alias_declaration := result.output.all_after('instead like `').all_before('`')
+			alias_declaration := hint[0].all_after('instead like `').all_before('`')
 			method_params := if params == '' { 'X' } else { '${params}, X' }
-			fixed := check_non_local_receiver('alias_hint_fixed', 'import foreign
+			fixed_sources << 'import foreign
 
 ${alias_declaration}
 
 fn (value ${alias_name}) label[${method_params}](other X) string { return "local" }
 
 fn main() {}
-', flags)
-			assert fixed.exit_code == 0, fixed.output
+'
 		}
+		fixed, _ := check_non_local_receiver_cases('alias_hint_fixed', fixed_sources, flags)
+		assert fixed.exit_code == 0, fixed.output
 	}
 }
 
@@ -178,17 +231,19 @@ fn main() {
 }
 
 fn test_unknown_receivers_keep_the_unknown_type_diagnostic() {
-	for receiver in ['Abc', 'foreign.Missing', '&foreign.Missing', '&&foreign.Missing'] {
-		result := check_non_local_receiver('unknown', 'import foreign
+	receivers := ['Abc', 'foreign.Missing', '&foreign.Missing', '&&foreign.Missing']
+	sources := receivers.map('import foreign
 
-fn (value ${receiver}) label() string { return "unknown" }
+fn (value ${it}) label() string { return "unknown" }
 
 fn main() {}
-', [])
-		assert result.exit_code != 0, result.output
-		assert result.output.contains('unknown type'), result.output
-		assert !result.output.contains('cannot define new methods on non-local type'), result.output
+')
+	result, diagnostics := check_non_local_receiver_cases('unknown', sources, [])
+	assert result.exit_code != 0, result.output
+	for i, receiver in receivers {
+		assert diagnostics[i].any(it.contains('unknown type')), '${receiver}: ${result.output}'
 	}
+	assert !result.output.contains('cannot define new methods on non-local type'), result.output
 }
 
 fn test_local_receiver_ownership_across_files() {
