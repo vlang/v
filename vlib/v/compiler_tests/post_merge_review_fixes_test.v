@@ -6912,191 +6912,66 @@ fn test_duplicate_static_function_diagnostic_uses_source_name() {
 	assert !tc.errors.any(it.msg.contains('@static@')), tc.errors.str()
 }
 
-fn test_repeated_template_lines_keep_distinct_diagnostic_positions() {
+fn test_template_diagnostics_keep_source_positions() {
 	v3_bin := build_v3()
-	root := '${tmp_test_path('repeated_template_line_diagnostics')}_project'
-	os.rmdir_all(root) or {}
+	root := '${tmp_test_path('template_diagnostic_positions')}_project'
 	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
+	defer { os.rmdir_all(root) or {} }
+	templates := {
+		'repeated.txt':         '@unknown_var\nmiddle\n@unknown_var\n'
+		'columns.txt':          '@unknown @unknown\n'
+		'explicit_columns.txt': '@{missing} @(absent)\n'
+		'dollar_columns.txt':   '\${first} @second\n'
+		'translation.html':     '%title\n'
+		'control.txt':          '@if missing {\nvalue\n@end\n@for item in missing_items {\n@item\n@end\n'
+		'inline_control.txt':   '@if true { @missing_if }\n@for item in [1] { @missing_for }\n'
 	}
-	write_project_file(root, 'main.v', "module main
+	mut calls := []string{cap: templates.len}
+	for file, text in templates {
+		name := file.all_before_last('.')
+		write_project_file(root, file, text)
+		write_project_file(root, '${name}.v', "module main
 
-fn main() {
-	\$tmpl('repeated.txt')
+fn check_${name}() {
+	\$tmpl('${file}')
 }
 ")
-	write_project_file(root, 'repeated.txt', '@unknown_var
-middle
-@unknown_var
-')
-	output := tmp_test_path('repeated_template_line_diagnostics')
-	compile :=
-		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('repeated.txt:1:3: error: undefined ident: `unknown_var`'), compile.output
-
-	assert compile.output.contains('repeated.txt:3:3: error: undefined ident: `unknown_var`'), compile.output
-}
-
-fn test_template_interpolations_keep_distinct_columns() {
-	v3_bin := build_v3()
-	root := '${tmp_test_path('template_interpolation_columns')}_project'
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
+		calls << '\tcheck_${name}()'
 	}
-	write_project_file(root, 'main.v', "module main
-
-fn main() {
-	\$tmpl('columns.txt')
-}
-")
-	write_project_file(root, 'columns.txt', '@unknown @unknown
-')
-	output := tmp_test_path('template_interpolation_columns')
-	compile :=
-		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
+	write_project_file(root, 'main.v', 'module main\n\nfn main() {\n${calls.join('\n')}\n}\n')
+	// Interpolation errors also emit diagnostics for the missing expression values.
+	compile := os.exec([v3_bin, '-message-limit', '50', root, '-b', 'c', '-o',
+		tmp_test_path('template_diagnostic_positions')])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('columns.txt:1:3: error: undefined ident: `unknown`'), compile.output
-	assert compile.output.contains('columns.txt:1:12: error: undefined ident: `unknown`'), compile.output
-	assert compile.output.contains('    1 | @unknown @unknown\n      |  ~~~~~~~'), compile.output
-}
-
-fn test_explicit_template_interpolations_use_expression_columns() {
-	v3_bin := build_v3()
-	root := '${tmp_test_path('explicit_template_interpolation_columns')}_project'
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
+	for expected in [
+		'repeated.txt:1:3: error: undefined ident: `unknown_var`',
+		'repeated.txt:3:3: error: undefined ident: `unknown_var`',
+		'columns.txt:1:3: error: undefined ident: `unknown`',
+		'columns.txt:1:12: error: undefined ident: `unknown`',
+		'explicit_columns.txt:1:4: error: undefined ident: `missing`',
+		'explicit_columns.txt:1:15: error: undefined ident: `absent`',
+		'dollar_columns.txt:1:4: error: undefined ident: `first`',
+		'dollar_columns.txt:1:12: error: undefined ident: `second`',
+		'control.txt:1:5: error: undefined ident: `missing`',
+		'control.txt:4:14: error: undefined ident: `missing_items`',
+		'inline_control.txt:1:14: error: undefined ident: `missing_if`',
+		'inline_control.txt:2:22: error: undefined ident: `missing_for`',
+	] {
+		assert compile.output.contains(expected), '${expected}\n${compile.output}'
 	}
-	write_project_file(root, 'main.v', "module main
-
-fn main() {
-	\$tmpl('explicit_columns.txt')
-}
-")
-	write_project_file(root, 'explicit_columns.txt', '@{missing} @(absent)
-')
-	output := tmp_test_path('explicit_template_interpolation_columns')
-	compile :=
-		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('explicit_columns.txt:1:4: error: undefined ident: `missing`'), compile.output
-
-	assert compile.output.contains('explicit_columns.txt:1:15: error: undefined ident: `absent`'), compile.output
-	assert compile.output.contains('    1 | @{missing} @(absent)\n      |   ~~~~~~~'), compile.output
-}
-
-fn test_dollar_template_interpolations_use_expression_columns() {
-	v3_bin := build_v3()
-	root := '${tmp_test_path('dollar_template_interpolation_columns')}_project'
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
+	assert compile.output.split_into_lines().any(it.contains('translation.html:1:')
+		&& it.contains('error: undefined ident: `ctx`')), compile.output
+	for excerpt in [
+		'    1 | @unknown @unknown\n      |  ~~~~~~~',
+		'    1 | @{missing} @(absent)\n      |   ~~~~~~~',
+		'    1 | \${first} @second\n      |   ~~~~~',
+	] {
+		assert compile.output.contains(excerpt), compile.output
 	}
-	write_project_file(root, 'main.v', "module main
-
-fn main() {
-	\$tmpl('dollar_columns.txt')
-}
-")
-	write_project_file(root, 'dollar_columns.txt', '\${first} @second
-')
-	output := tmp_test_path('dollar_template_interpolation_columns')
-	compile :=
-		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('dollar_columns.txt:1:4: error: undefined ident: `first`'), compile.output
-	assert compile.output.contains('dollar_columns.txt:1:12: error: undefined ident: `second`'), compile.output
-	assert compile.output.contains('    1 | \${first} @second\n      |   ~~~~~'), compile.output
-}
-
-fn test_template_translation_shorthand_diagnostics_use_template_source() {
-	v3_bin := build_v3()
-	root := '${tmp_test_path('template_translation_shorthand_diagnostics')}_project'
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
+	for name in ['translation', 'control', 'inline_control'] {
+		assert compile.output.split_into_lines().any(it.starts_with('called from ')
+			&& it.ends_with('${os.path_separator}${name}.v:4:2')), compile.output
 	}
-	write_project_file(root, 'main.v', "module main
-
-fn main() {
-	\$tmpl('translation.html')
-}
-")
-	write_project_file(root, 'translation.html', '%title
-')
-	output := tmp_test_path('template_translation_shorthand_diagnostics')
-	compile :=
-		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('translation.html:1:'), compile.output
-	assert compile.output.contains('undefined ident: `ctx`'), compile.output
-	assert compile.output.contains('called from ') && compile.output.contains('${os.path_separator}main.v:4:2'), compile.output
-	assert !compile.output.contains('<veb-template>'), compile.output
-}
-
-fn test_template_control_diagnostics_use_template_source() {
-	v3_bin := build_v3()
-	root := '${tmp_test_path('template_control_diagnostics')}_project'
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	write_project_file(root, 'main.v', "module main
-
-fn main() {
-	\$tmpl('control.txt')
-}
-")
-	write_project_file(root, 'control.txt', '@if missing {
-value
-@end
-@for item in missing_items {
-@item
-@end
-')
-	output := tmp_test_path('template_control_diagnostics')
-	compile :=
-		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('control.txt:1:5: error: undefined ident: `missing`'), compile.output
-	assert compile.output.contains('control.txt:4:14: error: undefined ident: `missing_items`'), compile.output
-	assert compile.output.contains('called from ') && compile.output.contains('${os.path_separator}main.v:4:2'), compile.output
-}
-
-fn test_inline_template_control_bodies_use_template_source() {
-	v3_bin := build_v3()
-	root := '${tmp_test_path('inline_template_control_diagnostics')}_project'
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	write_project_file(root, 'main.v', "module main
-
-fn main() {
-	\$tmpl('inline_control.txt')
-}
-")
-	write_project_file(root, 'inline_control.txt', '@if true { @missing_if }
-@for item in [1] { @missing_for }
-')
-	output := tmp_test_path('inline_template_control_diagnostics')
-	compile :=
-		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('inline_control.txt:1:14: error: undefined ident: `missing_if`'), compile.output
-
-	assert compile.output.contains('inline_control.txt:2:22: error: undefined ident: `missing_for`'), compile.output
-
-	assert compile.output.contains('called from ') && compile.output.contains('${os.path_separator}main.v:4:2'), compile.output
 	assert !compile.output.contains('<veb-template>'), compile.output
 }
 
@@ -8834,7 +8709,7 @@ fn test_diagnostic_footer_uses_deduplicated_error_count() {
 	assert !compile.output.contains('more errors'), compile.output
 }
 
-fn test_parameter_redefinition_only_suppresses_related_unused_notices() {
+fn test_parameter_redefinition_suppresses_only_malformed_call_unused_notice() {
 	v3_bin := build_v3()
 	src := 'fn broken(value int, value string) {
 	same_function_unused := 1
@@ -8844,37 +8719,28 @@ fn unrelated() {
 	unused := 1
 }
 
-fn main() {}
-'
-	bad_src := '${tmp_test_path('parameter_redefinition_unrelated_notice')}.vv'
-	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := tmp_test_path('parameter_redefinition_unrelated_notice')
-	compile := os.exec([v3_bin, '-checker-fixture', '${bad_src}', '-b', 'c', '-o', bad_bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('redefinition of parameter `value`'), compile.output
-	assert compile.output.contains('unused variable: `same_function_unused`'), compile.output
-	assert compile.output.contains('unused variable: `unused`'), compile.output
-}
-
-fn test_malformed_function_call_suppresses_its_unused_notice() {
-	v3_bin := build_v3()
-	src := 'fn bad(value int, value int) int {
+fn bad(value int, value int) int {
 	return value
 }
 
 fn caller() {
-	unused := bad(1, 2)
+	call_unused := bad(1, 2)
 }
 
 fn main() {}
 '
-	bad_src := '${tmp_test_path('malformed_function_call_unused_notice')}.vv'
+	bad_src := '${tmp_test_path('parameter_redefinition_notices')}.vv'
 	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := tmp_test_path('malformed_function_call_unused_notice')
-	compile := os.exec([v3_bin, '-checker-fixture', '${bad_src}', '-b', 'c', '-o', bad_bin])
+	bad_bin := tmp_test_path('parameter_redefinition_notices')
+	compile := os.exec([v3_bin, '-checker-fixture', bad_src, '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('redefinition of parameter `value`'), compile.output
-	assert !compile.output.contains('unused variable: `unused`'), compile.output
+	for line in [1, 9] {
+		assert compile.output.split_into_lines().any(it.contains('.vv:${line}:')
+			&& it.contains('redefinition of parameter `value`')), compile.output
+	}
+	assert compile.output.contains('unused variable: `same_function_unused`'), compile.output
+	assert compile.output.contains('unused variable: `unused`'), compile.output
+	assert !compile.output.contains('unused variable: `call_unused`'), compile.output
 }
 
 fn test_optional_typed_map_rejects_populated_braces() {
