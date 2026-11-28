@@ -1,11 +1,11 @@
-vlib/v/checker/tests/orm_sql_insert_only_dynamic.vv:15:5: error: ORM: cannot update insert-only field `InsertOnlyUser.creator` (@[sql_insert_only])
+vlib/v/checker/tests/orm_immutable_dynamic.vv:15:5: error: ORM: cannot update insert-only field `InsertOnlyUser.creator` (@[immutable])
    13 |         dynamic update InsertOnlyUser set {
    14 |             if enabled {
    15 |                 creator == 'other'
       |                 ~~~~~~~
    16 |             }
    17 |         } where id == 1
-vlib/v/checker/tests/orm_sql_insert_only_dynamic.vv:20:3: error: ORM: cannot update insert-only field `InsertOnlyUser.creator` (@[sql_insert_only])
+vlib/v/checker/tests/orm_immutable_dynamic.vv:20:3: error: ORM: cannot update insert-only field `InsertOnlyUser.creator` (@[immutable])
    18 |     }!
    19 |     assignments := {
    20 |         creator == 'other'

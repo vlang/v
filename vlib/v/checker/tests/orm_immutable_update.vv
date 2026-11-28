@@ -1,12 +1,12 @@
 import db.sqlite
 
 struct AuditFields {
-	creator string @[sql_insert_only; sql: 'created_by']
+	creator string @[immutable; sql: 'created_by']
 }
 
 struct InsertOnlyUser {
 	AuditFields
-	id int @[primary; sql_insert_only]
+	id   int @[primary; immutable]
 	name string
 }
 

@@ -1828,7 +1828,7 @@ pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	return qb
 }
 
-// save updates mapped fields except sql_insert_only fields, using the primary key or `id`.
+// save updates mapped fields except immutable fields, using the primary key or `id`.
 pub fn save[T](conn Connection, value T) ! {
 	mut qb := new_query_internal[T](conn)
 	data, where := build_save_query_data[T](qb.meta, qb.config.table.name, value)!
@@ -1853,7 +1853,7 @@ fn build_save_query_data[T](meta []TableField, table_name string, value T) !(Que
 			where_data.data << data.data[i]
 			continue
 		}
-		if orm_insert_only_field(meta, field_name) != none {
+		if orm_immutable_field(meta, field_name) != none {
 			continue
 		}
 		update_data.fields << field_name
@@ -1868,11 +1868,11 @@ fn build_save_query_data[T](meta []TableField, table_name string, value T) !(Que
 	return update_data, where_data
 }
 
-fn orm_insert_only_field(meta []TableField, name string) ?TableField {
+fn orm_immutable_field(meta []TableField, name string) ?TableField {
 	// Callers have already mapped V field names to their SQL column names.
 	for field in meta {
 		for attr in field.attrs {
-			if attr.name == 'sql_insert_only'
+			if attr.name == 'immutable'
 				&& sql_field_name(field).to_lower() == name.to_lower() {
 				return field
 			}
@@ -1883,8 +1883,8 @@ fn orm_insert_only_field(meta []TableField, name string) ?TableField {
 
 fn validate_update_fields[T](meta []TableField, fields []string) ! {
 	for name in fields {
-		if field := orm_insert_only_field(meta, name) {
-			return error('ORM: cannot update insert-only field `${T.name}.${field.name}` (@[sql_insert_only])')
+		if field := orm_immutable_field(meta, name) {
+			return error('ORM: cannot update insert-only field `${T.name}.${field.name}` (@[immutable])')
 		}
 	}
 }
@@ -1892,7 +1892,7 @@ fn validate_update_fields[T](meta []TableField, fields []string) ! {
 fn filter_insert_only_update_fields(data QueryData, meta []TableField) QueryData {
 	mut out := QueryData{}
 	for i, name in data.fields {
-		if orm_insert_only_field(meta, name) != none {
+		if orm_immutable_field(meta, name) != none {
 			continue
 		}
 		out.fields << name
@@ -2720,7 +2720,7 @@ fn fill_data_with_struct[T](value T, meta []TableField) QueryData {
 	return qb
 }
 
-// update updates records, rejecting assignments to sql_insert_only fields.
+// update updates records, rejecting assignments to immutable fields.
 pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	defer {
@@ -2737,8 +2737,8 @@ pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 
 // update_many updates multiple records by a key field, using batch CASE WHEN for efficiency.
 // key_field is the column used to match rows (e.g. 'id').
-// field_names selects columns to update; sql_insert_only fields are rejected.
-// If empty, all mapped fields except key_field and sql_insert_only fields are updated.
+// field_names selects columns to update; immutable fields are rejected.
+// If empty, all mapped fields except key_field and immutable fields are updated.
 pub fn update_many[T](mut conn Connection, values []T, key_field string, field_names ...string) ! {
 	if values.len == 0 {
 		return error('${@FN}(): need at least one record')
@@ -2758,7 +2758,7 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 		if field == key_name {
 			key_index = i
 		} else if (selected_fields.len == 0 || field in selected_fields)
-			&& orm_insert_only_field(qb.meta, field) == none {
+			&& orm_immutable_field(qb.meta, field) == none {
 			value_fields << field
 			value_indexes << i
 		}
