@@ -162,57 +162,6 @@ fn main() {
 fn test_ownership_move_on_assign_and_clone_escape() {
 	v3_bin := ownership_compiler
 
-	fail_if_expr_owned := run_ownership_check(v3_bin, 'if_expr_owned_result', "
-fn main() {
-	cond := true
-	s := 'hello'.to_owned()
-	x := if cond { s } else { 'fallback'.to_owned() }
-	println(s)
-	y := x
-	println(x)
-	_ = y
-}
-")
-	assert fail_if_expr_owned.exit_code != 0
-	assert fail_if_expr_owned.output.contains('use of moved value: `s`'), fail_if_expr_owned.output
-	assert fail_if_expr_owned.output.contains('use of moved value: `x`'), fail_if_expr_owned.output
-
-	fail_match_expr_owned := run_ownership_check(v3_bin, 'match_expr_owned_result', "
-fn main() {
-	n := 0
-	s := 'hello'.to_owned()
-	x := match n {
-		0 { s }
-		else { 'fallback'.to_owned() }
-	}
-	println(s)
-	y := x
-	println(x)
-	_ = y
-}
-")
-	assert fail_match_expr_owned.exit_code != 0
-	assert fail_match_expr_owned.output.contains('use of moved value: `s`'), fail_match_expr_owned.output
-	assert fail_match_expr_owned.output.contains('use of moved value: `x`'), fail_match_expr_owned.output
-
-	fail_or_fallback_owned := run_ownership_check(v3_bin, 'or_fallback_owned_result', "
-fn maybe() ?string {
-	return none
-}
-
-fn main() {
-	s := 'hello'.to_owned()
-	x := maybe() or { s }
-	println(s)
-	y := x
-	println(x)
-	_ = y
-}
-")
-	assert fail_or_fallback_owned.exit_code != 0
-	assert fail_or_fallback_owned.output.contains('use of moved value: `s`'), fail_or_fallback_owned.output
-	assert fail_or_fallback_owned.output.contains('use of moved value: `x`'), fail_or_fallback_owned.output
-
 	fail_user_string_receiver := run_ownership_check(v3_bin, 'user_string_receiver_moves', '
 fn (s string) consume() {
 	_ = s
@@ -1522,39 +1471,6 @@ fn write_ownership_module_cases(root string, cases []OwnershipModuleCase) string
 
 fn test_ownership_assignment_to_storage_consumes_rhs() {
 	v3_bin := ownership_compiler
-
-	fail_aggregate_copy := run_ownership_check(v3_bin, 'aggregate_copy_moves_owned_field', '
-struct Holder {
-	value string
-}
-
-fn main() {
-	s := "field".to_owned()
-	h := Holder{value: s}
-	h2 := h
-	t := h2.value
-	println(h2.value)
-	println(h.value)
-	_ = t
-}
-')
-	assert fail_aggregate_copy.exit_code != 0
-	assert fail_aggregate_copy.output.contains('use of moved value: `h2.value`'), fail_aggregate_copy.output
-	assert fail_aggregate_copy.output.contains('use of moved value: `h`'), fail_aggregate_copy.output
-
-	fail_array_len_init := run_ownership_check(v3_bin, 'array_len_init_owned_element', '
-fn main() {
-	s := "item".to_owned()
-	arr := []string{len: 2, init: s}
-	println(s)
-	t := arr[0]
-	println(arr[0])
-	_ = t
-}
-')
-	assert fail_array_len_init.exit_code != 0
-	assert fail_array_len_init.output.contains('use of moved value: `s`'), fail_array_len_init.output
-	assert fail_array_len_init.output.contains('use of moved value: `arr[*]`'), fail_array_len_init.output
 }
 
 fn test_ownership_aggregate_storage_move_rejections() {
@@ -2383,24 +2299,6 @@ fn main() {
 
 fn test_ownership_rejects_moving_a_borrowed_params_argument() {
 	v3_bin := ownership_compiler
-	fail_params_field_borrow_move := run_ownership_check(v3_bin, 'params_field_borrow_then_move', '
-@[params]
-struct Cfg {
-	r &string
-	v string
-}
-
-fn foo(cfg Cfg) {
-	_ = cfg
-}
-
-fn main() {
-	s := "field".to_owned()
-	foo(r: &s, v: s)
-}
-')
-	assert fail_params_field_borrow_move.exit_code != 0
-	assert fail_params_field_borrow_move.output.contains('cannot move `s` because it is borrowed'), fail_params_field_borrow_move.output
 }
 
 fn test_ownership_branch_moves_are_isolated_between_siblings() {
@@ -2456,36 +2354,6 @@ fn main() {
 	dropped_ids := distinct_field_run.output.fields()
 	assert '2' in dropped_ids, distinct_field_run.output
 	assert '3' in dropped_ids, distinct_field_run.output
-
-	fail_loop_post_body_local := run_ownership_check(v3_bin, 'loop_post_body_local_scope', '
-fn main() {
-	mut cond := true
-	for ; cond; j++ {
-		mut j := 0
-		cond = false
-		_ = j
-	}
-	}
-')
-	assert fail_loop_post_body_local.exit_code != 0
-	assert fail_loop_post_body_local.output.contains('undefined variable `j`'), fail_loop_post_body_local.output
-
-	fail_branch_borrow := run_ownership_check(v3_bin, 'branch_borrow_merge', "
-fn main() {
-	cond := true
-	other := 'other'.to_owned()
-	s := 'hello'.to_owned()
-	mut r := &other
-	if cond {
-		r = &s
-	}
-	u := s
-	println(u)
-	_ = r
-}
-")
-	assert fail_branch_borrow.exit_code != 0
-	assert fail_branch_borrow.output.contains('cannot move `s` because it is borrowed by `r`'), fail_branch_borrow.output
 }
 
 fn test_ownership_conditional_move_rejections() {
@@ -2681,35 +2549,6 @@ pub struct Result {}
 
 fn test_ownership_struct_marker_and_copy_marker() {
 	v3_bin := ownership_compiler
-	fail := run_ownership_check(v3_bin, 'owned_struct', '
-struct Resource implements Owned {
-	id int
-}
-
-fn main() {
-	r := Resource{id: 1}
-	r2 := r
-	println(r.id)
-	_ = r2
-}
-')
-	assert fail.exit_code != 0
-	assert fail.output.contains('use of moved value: `r`'), fail.output
-
-	fail_generic := run_ownership_check(v3_bin, 'generic_owned_struct', '
-struct Box[T] implements Owned {
-	value T
-}
-
-fn main() {
-	b := Box[string]{value: "x"}
-	b2 := b
-	println(b.value)
-	_ = b2
-}
-')
-	assert fail_generic.exit_code != 0
-	assert fail_generic.output.contains('use of moved value: `b`'), fail_generic.output
 
 	fail_generic_interface_marker := run_ownership_check(v3_bin, 'generic_interface_owned_marker', '
 interface Marker[T, U] {}
@@ -3806,5 +3645,163 @@ fn main() {
 	_ = t
 }
 "},
+	])
+}
+
+fn test_ownership_owned_result_and_marker_rejections() {
+	check_ownership_module_multi_rejections('owned_result_and_marker_rejections', [
+		OwnershipModuleRejections{'if_expr_owned_result', "
+fn main() {
+	cond := true
+	s := 'hello'.to_owned()
+	x := if cond { s } else { 'fallback'.to_owned() }
+	println(s)
+	y := x
+	println(x)
+	_ = y
+}
+", [
+			OwnershipRejectionSite{'println(s)', 'use of moved value: `s`'},
+			OwnershipRejectionSite{'println(x)', 'use of moved value: `x`'},
+		]},
+		OwnershipModuleRejections{'match_expr_owned_result', "
+fn main() {
+	n := 0
+	s := 'hello'.to_owned()
+	x := match n {
+		0 { s }
+		else { 'fallback'.to_owned() }
+	}
+	println(s)
+	y := x
+	println(x)
+	_ = y
+}
+", [
+			OwnershipRejectionSite{'println(s)', 'use of moved value: `s`'},
+			OwnershipRejectionSite{'println(x)', 'use of moved value: `x`'},
+		]},
+		OwnershipModuleRejections{'or_fallback_owned_result', "
+fn maybe() ?string {
+	return none
+}
+
+fn main() {
+	s := 'hello'.to_owned()
+	x := maybe() or { s }
+	println(s)
+	y := x
+	println(x)
+	_ = y
+}
+", [
+			OwnershipRejectionSite{'println(s)', 'use of moved value: `s`'},
+			OwnershipRejectionSite{'println(x)', 'use of moved value: `x`'},
+		]},
+		OwnershipModuleRejections{'aggregate_copy_moves_owned_field', '
+struct Holder {
+	value string
+}
+
+fn main() {
+	s := "field".to_owned()
+	h := Holder{value: s}
+	h2 := h
+	t := h2.value
+	println(h2.value)
+	println(h.value)
+	_ = t
+}
+', [
+			OwnershipRejectionSite{'println(h2.value)', 'use of moved value: `h2.value`'},
+			OwnershipRejectionSite{'println(h.value)', 'use of moved value: `h`'},
+		]},
+		OwnershipModuleRejections{'array_len_init_owned_element', '
+fn main() {
+	s := "item".to_owned()
+	arr := []string{len: 2, init: s}
+	println(s)
+	t := arr[0]
+	println(arr[0])
+	_ = t
+}
+', [
+			OwnershipRejectionSite{'println(s)', 'use of moved value: `s`'},
+			OwnershipRejectionSite{'println(arr[0])', 'use of moved value: `arr[*]`'},
+		]},
+		OwnershipModuleRejections{'loop_post_body_local_scope', '
+fn main() {
+	mut cond := true
+	for ; cond; j++ {
+		mut j := 0
+		cond = false
+		_ = j
+	}
+	}
+', [
+			OwnershipRejectionSite{'for ; cond; j++ {', 'undefined variable `j`'},
+		]},
+		OwnershipModuleRejections{'branch_borrow_merge', "
+fn main() {
+	cond := true
+	other := 'other'.to_owned()
+	s := 'hello'.to_owned()
+	mut r := &other
+	if cond {
+		r = &s
+	}
+	u := s
+	println(u)
+	_ = r
+}
+", [
+			OwnershipRejectionSite{'u := s', 'cannot move `s` because it is borrowed by `r`'},
+		]},
+		OwnershipModuleRejections{'params_field_borrow_then_move', '
+@[params]
+struct Cfg {
+	r &string
+	v string
+}
+
+fn foo(cfg Cfg) {
+	_ = cfg
+}
+
+fn main() {
+	s := "field".to_owned()
+	foo(r: &s, v: s)
+}
+', [
+			OwnershipRejectionSite{'foo(r: &s, v: s)', 'cannot move `s` because it is borrowed'},
+		]},
+		OwnershipModuleRejections{'owned_struct', '
+struct Resource implements Owned {
+	id int
+}
+
+fn main() {
+	r := Resource{id: 1}
+	r2 := r
+	println(r.id)
+	_ = r2
+}
+', [
+			OwnershipRejectionSite{'println(r.id)', 'use of moved value: `r`'},
+		]},
+		OwnershipModuleRejections{'generic_owned_struct', '
+struct Box[T] implements Owned {
+	value T
+}
+
+fn main() {
+	b := Box[string]{value: "x"}
+	b2 := b
+	println(b.value)
+	_ = b2
+}
+', [
+			OwnershipRejectionSite{'println(b.value)', 'use of moved value: `b`'},
+		]},
 	])
 }
