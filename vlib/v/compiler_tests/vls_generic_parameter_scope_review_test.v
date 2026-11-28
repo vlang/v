@@ -110,8 +110,9 @@ fn test_a_type_parameter_in_a_method_receiver_belongs_to_the_method() {
 		receiver := word_position(source, 'fn (b Box[T]) get', 'T', 0)
 		positions := [receiver, word_position(source, 'fn (b Box[T]) get', 'T', 1),
 			word_position(source, '\t_ := []T{}', 'T', 0)]
-		for position in positions {
-			assert scope_review_query(path, position, 'hv').contains('[T]'), 'layout ${i} at ${position}'
+		hover_questions := positions.map(scope_review_question(path, it, 'hv'))
+		for j, hover in scope_review_answers(path, hover_questions) {
+			assert hover.contains('[T]'), 'layout ${i} at ${positions[j]}'
 		}
 		mut questions := positions.map(scope_review_question(path, it, 'gd'))
 		mut expected := []string{len: positions.len, init: '${path}:${receiver}'}
