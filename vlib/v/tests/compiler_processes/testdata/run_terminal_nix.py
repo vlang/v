@@ -253,15 +253,14 @@ int main(int argc, char **argv) {
         send((shlex.join([str(binary), str(ready)]) + " & job=$!; echo JOB:$job\n").encode())
         read_until(b"\r\nJOB:")
         compiler = int(read_until(b"\r\n").strip())
-        # The TOSTOP child must stop before fg. Otherwise the shell can give a
-        # still-running job the terminal before the driver observes that stop.
-        read_published_text(ready)
+        read_until(b"VPTY> ")
+        child = int(read_published_text(ready))
+        # Let the helper observe SIGTTOU and stop before foregrounding its job.
         wait_job_stopped()
         send(b"fg; echo EARLY_STATUS:$?\n")
         read_until(b"EARLY_WRITE_OK")
         read_until(b"EARLY_STATUS:0")
         read_until(b"VPTY> ")
-        child = int(ready.read_text())
     set_tostop(False)
     print("PTY deterministic early TOSTOP write recovered: native and headerless", flush=True)
 

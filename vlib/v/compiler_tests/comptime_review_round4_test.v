@@ -144,7 +144,7 @@ fn round4_check_main_runtime(name string, cases []Round4RuntimeCase, extra_files
 	mut files := extra_files.clone()
 	mut calls := []string{cap: cases.len}
 	for case in cases {
-		files['${case.name}.v'] = case.source.replace_once('\nfn main()', '\nfn ${case.name}()')
+		files['${case.name}.v'] = case.source.replace_once('fn main() {', 'fn ${case.name}() {')
 		calls << "\t\t'${case.name}' { ${case.name}() }"
 	}
 	files['main.v'] = "module main\n\nimport os\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
@@ -781,8 +781,8 @@ fn main() {
 	])
 }
 
-fn test_comptime_variant_metadata_only_exposes_typ() {
-	round4_check_rejections('variant_and_selected_method_metadata_rejections', [
+fn test_comptime_reflection_rejections() {
+	round4_check_rejections('comptime_reflection_rejections', [
 		Round4Rejection{'bad_variant_name_member', 'struct A {}
 struct B {}
 
@@ -885,6 +885,387 @@ fn main() {
 	}
 }
 ', 'unknown function: missing_generic_method_param_branch'},
+		Round4Rejection{'bad_metadata_call_arg_type', 'struct S {
+	id int
+}
+
+fn takes_int(x int) {}
+
+fn main() {
+	$for field in S.fields {
+		takes_int(field.name)
+	}
+}
+', 'cannot use `string` as argument 1 to `takes_int`; expected `int`'},
+		Round4Rejection{'bad_enum_value_metadata_arg_type', 'enum Color {
+	red
+}
+
+fn takes_string(value string) {}
+
+fn main() {
+	$for item in Color.values {
+		takes_string(item.value)
+	}
+}
+', 'cannot use `i64` as argument 1 to `takes_string`; expected `string`'},
+		Round4Rejection{'bad_field_member', 'struct S {
+	name int
+}
+
+fn main() {
+	$for field in S.fields {
+		println(field.nmae)
+	}
+}
+	', 'unknown FieldData member `nmae`'},
+		Round4Rejection{'bad_outer_field_member_in_nested_loop', 'struct Foo {
+	id int
+}
+
+struct Bar {
+	name string
+}
+
+fn main() {
+	$for field in Foo.fields {
+		$for other in Bar.fields {
+			println(field.nmae + other.name)
+		}
+	}
+}
+	', 'unknown FieldData member `nmae`'},
+		Round4Rejection{'bad_field_is_interface', 'struct S {
+		name int
+	}
+
+fn main() {
+	$for field in S.fields {
+		println(field.is_interface)
+	}
+}
+', 'unknown FieldData member `is_interface`'},
+		Round4Rejection{'bad_field_is_function', 'struct S {
+		name int
+	}
+
+fn main() {
+	$for field in S.fields {
+		println(field.is_function)
+	}
+}
+', 'unknown FieldData member `is_function`'},
+		Round4Rejection{'bad_enum_value_member', 'enum Color {
+	red
+}
+
+fn main() {
+	$for item in Color.values {
+		println(item.nmae)
+	}
+}
+	', 'unknown EnumData member `nmae`'},
+		Round4Rejection{'bad_nested_enum_value_member', 'struct S {
+	id int
+}
+
+enum Color {
+	red
+}
+
+fn main() {
+	$for field in S.fields {
+		$for item in Color.values {
+			println(item.nmae)
+		}
+	}
+}
+	', 'unknown EnumData member `nmae`'},
+		Round4Rejection{'bad_method_metadata_call_arg_type', 'struct App {}
+
+fn (app App) run() {
+	_ = app
+}
+
+fn takes_int(value int) {}
+
+fn main() {
+	$for method in App.methods {
+		takes_int(method.name)
+	}
+}
+', 'cannot use `string` as argument 1 to `takes_int`; expected `int`'},
+		Round4Rejection{'bad_param_metadata_call_arg_type', 'fn consume(value int) {
+	_ = value
+}
+
+fn takes_string(value string) {}
+
+fn main() {
+	$for param in consume.params {
+		takes_string(param.typ)
+	}
+}
+', 'cannot use `int` as argument 1 to `takes_string`; expected `string`'},
+		Round4Rejection{'bad_attribute_metadata_call_arg_type', "@[route: '/']
+struct App {}
+
+fn takes_bool(value bool) {}
+
+fn main() {
+	\$for attr in App.attributes {
+		takes_bool(attr.arg)
+	}
+}
+", 'cannot use `string` as argument 1 to `takes_bool`; expected `bool`'},
+		Round4Rejection{'method_loop_static_body_error', 'struct App {}
+
+fn (app App) run(value int) {
+	_ = app
+	_ = value
+}
+
+fn main() {
+	$for method in App.methods {
+		missing_method_loop_fn()
+	}
+}
+', 'unknown function: missing_method_loop_fn'},
+		Round4Rejection{'param_loop_static_body_error', 'fn consume(value int) {
+	_ = value
+}
+
+fn main() {
+	$for param in consume.params {
+		missing_param_loop_fn()
+	}
+}
+', 'unknown function: missing_param_loop_fn'},
+		Round4Rejection{'attribute_loop_static_body_error', '@[route]
+struct App {}
+
+fn main() {
+	$for attr in App.attributes {
+		missing_attribute_loop_fn()
+	}
+}
+', 'unknown function: missing_attribute_loop_fn'},
+		Round4Rejection{'method_loop_selected_branch_error', 'struct App {}
+
+fn (app App) run() {
+	_ = app
+}
+
+fn main() {
+	$for method in App.methods {
+		$if method.name == "run" {
+			missing_selected_method_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_method_fn'},
+		Round4Rejection{'method_loop_selected_missing_param_branch_error', 'struct App {}
+
+fn (app App) run() {
+	_ = app
+}
+
+fn main() {
+	$for method in App.methods {
+		$if method.args[1].name == "" {
+			missing_selected_method_param_slot_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_method_param_slot_fn'},
+		Round4Rejection{'param_loop_selected_branch_error', 'fn consume(value int) {
+	_ = value
+}
+
+fn main() {
+	$for param in consume.params {
+		$if param.name == "value" {
+			missing_selected_param_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_param_fn'},
+		Round4Rejection{'attribute_loop_selected_branch_error', '@[route]
+struct App {}
+
+fn main() {
+	$for attr in App.attributes {
+		$if attr.name == "route" {
+			missing_selected_attribute_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_attribute_fn'},
+		Round4Rejection{'method_loop_selected_is_pub_branch_error', 'struct App {}
+
+pub fn (app App) run() {
+	_ = app
+}
+
+fn main() {
+	$for method in App.methods {
+		$if method.is_pub {
+			missing_selected_public_method_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_public_method_fn'},
+		Round4Rejection{'param_loop_selected_typ_branch_error', 'fn consume(value string) {
+	_ = value
+}
+
+fn main() {
+	$for param in consume.params {
+		$if param.typ is string {
+			missing_selected_string_param_fn()
+		}
+	}
+}
+', 'unknown function: missing_selected_string_param_fn'},
+		Round4Rejection{'attribute_loop_selected_arg_branch_error', "@[route: '/path']
+struct App {}
+
+fn main() {
+	\$for attr in App.attributes {
+		\$if attr.arg == '/path' {
+			missing_selected_attribute_arg_fn()
+		}
+	}
+}
+", 'unknown function: missing_selected_attribute_arg_fn'},
+		Round4Rejection{'bad_static_code_in_comptime_for', 'struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		missing_fn()
+	}
+}
+', 'unknown function: missing_fn'},
+		Round4Rejection{'bad_static_code_in_comptime_for_if_branch', 'struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		if field.name == "id" {
+			missing_branch_fn()
+		}
+	}
+}
+', 'unknown function: missing_branch_fn'},
+		Round4Rejection{'bad_static_call_in_comptime_for_mixed_expr', 'struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		missing_fn(field.name)
+	}
+}
+', 'unknown function: missing_fn'},
+		Round4Rejection{'bad_static_call_in_comptime_for_metadata_if', 'struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		$if field.name == "id" {
+			missing_metadata_guard_fn()
+		}
+	}
+}
+', 'unknown function: missing_metadata_guard_fn'},
+		Round4Rejection{'bad_static_call_in_comptime_for_type_if', 'struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		$if field is int {
+			missing_type_guard_fn()
+		}
+	}
+}
+', 'unknown function: missing_type_guard_fn'},
+		Round4Rejection{'bad_field_guard_member', "struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		$if field.nmae == 'id' {
+			println(field.name)
+		}
+	}
+}
+	", 'unknown FieldData member `nmae`'},
+		Round4Rejection{'bad_enum_guard_member', "enum Color {
+	red
+}
+
+fn main() {
+	$for item in Color.values {
+		$if item.nmae == 'red' {
+			println(item.name)
+		}
+	}
+}
+	", 'unknown EnumData member `nmae`'},
+		Round4Rejection{'dynamic_selector_outside_reflection_loop', 'struct Item {
+	name string
+}
+
+fn main() {
+	item := Item{
+		name: "Ada"
+	}
+	name := "name"
+	println(item.$(name))
+}
+', 'expected selector expression e.g. `$(field.name)`'},
+		Round4Rejection{'shorthand_method_selector_outside_loop', 'struct Item {}
+
+fn (item Item) run() {
+	_ = item
+}
+
+fn main() {
+	item := Item{}
+	item.$method()
+}
+', 'unknown identifier `method`'},
+		Round4Rejection{'misspelled_shorthand_method_selector', 'struct Item {}
+
+fn (item Item) run() {
+	_ = item
+}
+
+fn main() {
+	item := Item{}
+	$for method in Item.methods {
+		item.$methd()
+	}
+}
+', 'unknown identifier `methd`'},
+		Round4Rejection{'escaped_attribute_selected_guard', [
+			"@[label: 'O\\'Reilly']",
+			'fn handler() {}',
+			'',
+			'fn main() {',
+			'\t\$for attr in handler.attributes {',
+			'\t\t\$if attr.arg == "O\'Reilly" {',
+			'\t\t\tmissing_selected_escaped_attribute_fn()',
+			'\t\t}',
+			'\t}',
+			'}',
+		].join('\n'), 'unknown function: missing_selected_escaped_attribute_fn'},
 	])
 }
 
@@ -1243,269 +1624,6 @@ pub fn handler() {}
 pub struct Controller {}
 '
 	})
-}
-
-fn test_field_and_enum_metadata_argument_and_member_rejections() {
-	round4_check_rejections('field_and_enum_metadata_argument_and_member_rejections', [
-		Round4Rejection{'bad_metadata_call_arg_type', 'struct S {
-	id int
-}
-
-fn takes_int(x int) {}
-
-fn main() {
-	$for field in S.fields {
-		takes_int(field.name)
-	}
-}
-', 'cannot use `string` as argument 1 to `takes_int`; expected `int`'},
-		Round4Rejection{'bad_enum_value_metadata_arg_type', 'enum Color {
-	red
-}
-
-fn takes_string(value string) {}
-
-fn main() {
-	$for item in Color.values {
-		takes_string(item.value)
-	}
-}
-', 'cannot use `i64` as argument 1 to `takes_string`; expected `string`'},
-		Round4Rejection{'bad_field_member', 'struct S {
-	name int
-}
-
-fn main() {
-	$for field in S.fields {
-		println(field.nmae)
-	}
-}
-	', 'unknown FieldData member `nmae`'},
-		Round4Rejection{'bad_outer_field_member_in_nested_loop', 'struct Foo {
-	id int
-}
-
-struct Bar {
-	name string
-}
-
-fn main() {
-	$for field in Foo.fields {
-		$for other in Bar.fields {
-			println(field.nmae + other.name)
-		}
-	}
-}
-	', 'unknown FieldData member `nmae`'},
-		Round4Rejection{'bad_field_is_interface', 'struct S {
-		name int
-	}
-
-fn main() {
-	$for field in S.fields {
-		println(field.is_interface)
-	}
-}
-', 'unknown FieldData member `is_interface`'},
-		Round4Rejection{'bad_field_is_function', 'struct S {
-		name int
-	}
-
-fn main() {
-	$for field in S.fields {
-		println(field.is_function)
-	}
-}
-', 'unknown FieldData member `is_function`'},
-		Round4Rejection{'bad_enum_value_member', 'enum Color {
-	red
-}
-
-fn main() {
-	$for item in Color.values {
-		println(item.nmae)
-	}
-}
-	', 'unknown EnumData member `nmae`'},
-		Round4Rejection{'bad_nested_enum_value_member', 'struct S {
-	id int
-}
-
-enum Color {
-	red
-}
-
-fn main() {
-	$for field in S.fields {
-		$for item in Color.values {
-			println(item.nmae)
-		}
-	}
-}
-	', 'unknown EnumData member `nmae`'},
-	])
-}
-
-fn test_deferred_reflection_body_and_selected_branch_rejections() {
-	round4_check_rejections('deferred_reflection_body_and_selected_branch_rejections', [
-		Round4Rejection{'bad_method_metadata_call_arg_type', 'struct App {}
-
-fn (app App) run() {
-	_ = app
-}
-
-fn takes_int(value int) {}
-
-fn main() {
-	$for method in App.methods {
-		takes_int(method.name)
-	}
-}
-', 'cannot use `string` as argument 1 to `takes_int`; expected `int`'},
-		Round4Rejection{'bad_param_metadata_call_arg_type', 'fn consume(value int) {
-	_ = value
-}
-
-fn takes_string(value string) {}
-
-fn main() {
-	$for param in consume.params {
-		takes_string(param.typ)
-	}
-}
-', 'cannot use `int` as argument 1 to `takes_string`; expected `string`'},
-		Round4Rejection{'bad_attribute_metadata_call_arg_type', "@[route: '/']
-struct App {}
-
-fn takes_bool(value bool) {}
-
-fn main() {
-	\$for attr in App.attributes {
-		takes_bool(attr.arg)
-	}
-}
-", 'cannot use `string` as argument 1 to `takes_bool`; expected `bool`'},
-		Round4Rejection{'method_loop_static_body_error', 'struct App {}
-
-fn (app App) run(value int) {
-	_ = app
-	_ = value
-}
-
-fn main() {
-	$for method in App.methods {
-		missing_method_loop_fn()
-	}
-}
-', 'unknown function: missing_method_loop_fn'},
-		Round4Rejection{'param_loop_static_body_error', 'fn consume(value int) {
-	_ = value
-}
-
-fn main() {
-	$for param in consume.params {
-		missing_param_loop_fn()
-	}
-}
-', 'unknown function: missing_param_loop_fn'},
-		Round4Rejection{'attribute_loop_static_body_error', '@[route]
-struct App {}
-
-fn main() {
-	$for attr in App.attributes {
-		missing_attribute_loop_fn()
-	}
-}
-', 'unknown function: missing_attribute_loop_fn'},
-		Round4Rejection{'method_loop_selected_branch_error', 'struct App {}
-
-fn (app App) run() {
-	_ = app
-}
-
-fn main() {
-	$for method in App.methods {
-		$if method.name == "run" {
-			missing_selected_method_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_method_fn'},
-		Round4Rejection{'method_loop_selected_missing_param_branch_error', 'struct App {}
-
-fn (app App) run() {
-	_ = app
-}
-
-fn main() {
-	$for method in App.methods {
-		$if method.args[1].name == "" {
-			missing_selected_method_param_slot_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_method_param_slot_fn'},
-		Round4Rejection{'param_loop_selected_branch_error', 'fn consume(value int) {
-	_ = value
-}
-
-fn main() {
-	$for param in consume.params {
-		$if param.name == "value" {
-			missing_selected_param_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_param_fn'},
-		Round4Rejection{'attribute_loop_selected_branch_error', '@[route]
-struct App {}
-
-fn main() {
-	$for attr in App.attributes {
-		$if attr.name == "route" {
-			missing_selected_attribute_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_attribute_fn'},
-		Round4Rejection{'method_loop_selected_is_pub_branch_error', 'struct App {}
-
-pub fn (app App) run() {
-	_ = app
-}
-
-fn main() {
-	$for method in App.methods {
-		$if method.is_pub {
-			missing_selected_public_method_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_public_method_fn'},
-		Round4Rejection{'param_loop_selected_typ_branch_error', 'fn consume(value string) {
-	_ = value
-}
-
-fn main() {
-	$for param in consume.params {
-		$if param.typ is string {
-			missing_selected_string_param_fn()
-		}
-	}
-}
-', 'unknown function: missing_selected_string_param_fn'},
-		Round4Rejection{'attribute_loop_selected_arg_branch_error', "@[route: '/path']
-struct App {}
-
-fn main() {
-	\$for attr in App.attributes {
-		\$if attr.arg == '/path' {
-			missing_selected_attribute_arg_fn()
-		}
-	}
-}
-", 'unknown function: missing_selected_attribute_arg_fn'},
-	])
 }
 
 fn test_comptime_declaring_module_lookups() {
@@ -1950,91 +2068,6 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == 'child:9'
-}
-
-fn test_comptime_for_static_body_and_metadata_guard_rejections() {
-	round4_check_rejections('comptime_for_static_body_and_metadata_guard_rejections', [
-		Round4Rejection{'bad_static_code_in_comptime_for', 'struct S {
-	id int
-}
-
-fn main() {
-	$for field in S.fields {
-		missing_fn()
-	}
-}
-', 'unknown function: missing_fn'},
-		Round4Rejection{'bad_static_code_in_comptime_for_if_branch', 'struct S {
-	id int
-}
-
-fn main() {
-	$for field in S.fields {
-		if field.name == "id" {
-			missing_branch_fn()
-		}
-	}
-}
-', 'unknown function: missing_branch_fn'},
-		Round4Rejection{'bad_static_call_in_comptime_for_mixed_expr', 'struct S {
-	id int
-}
-
-fn main() {
-	$for field in S.fields {
-		missing_fn(field.name)
-	}
-}
-', 'unknown function: missing_fn'},
-		Round4Rejection{'bad_static_call_in_comptime_for_metadata_if', 'struct S {
-	id int
-}
-
-fn main() {
-	$for field in S.fields {
-		$if field.name == "id" {
-			missing_metadata_guard_fn()
-		}
-	}
-}
-', 'unknown function: missing_metadata_guard_fn'},
-		Round4Rejection{'bad_static_call_in_comptime_for_type_if', 'struct S {
-	id int
-}
-
-fn main() {
-	$for field in S.fields {
-		$if field is int {
-			missing_type_guard_fn()
-		}
-	}
-}
-', 'unknown function: missing_type_guard_fn'},
-		Round4Rejection{'bad_field_guard_member', "struct S {
-	id int
-}
-
-fn main() {
-	$for field in S.fields {
-		$if field.nmae == 'id' {
-			println(field.name)
-		}
-	}
-}
-	", 'unknown FieldData member `nmae`'},
-		Round4Rejection{'bad_enum_guard_member', "enum Color {
-	red
-}
-
-fn main() {
-	$for item in Color.values {
-		$if item.nmae == 'red' {
-			println(item.name)
-		}
-	}
-}
-	", 'unknown EnumData member `nmae`'},
-	])
 }
 
 fn test_selective_imported_enum_alias_resolves_underlying_enum() {
@@ -2644,8 +2677,34 @@ fn main() {
 	])
 }
 
-fn test_method_metadata_locations_are_materialized() {
-	out := round4_run_good(v3_bin, 'method_metadata_location', 'struct Located {}
+fn test_comptime_source_locations_and_attributes() {
+	previous_epoch := os.getenv_opt('SOURCE_DATE_EPOCH')
+	os.setenv('SOURCE_DATE_EPOCH', '0', true)
+	defer {
+		if epoch := previous_epoch {
+			os.setenv('SOURCE_DATE_EPOCH', epoch, true)
+		} else {
+			os.unsetenv('SOURCE_DATE_EPOCH')
+		}
+	}
+	attribute_arguments := [
+		"@[quote: 'O\\'Reilly']",
+		"@[line: 'a\\n']",
+		"@[hex: '\\x41']",
+		"@[unicode: '\\u03bb']",
+		"@[raw: r'a\\n']",
+		'fn handler() {}',
+		'',
+		'fn main() {',
+		'\tmut rows := []string{}',
+		'\t\$for attr in handler.attributes {',
+		"\t\trows << attr.name + ':' + attr.arg.replace('\\n', '<nl>')",
+		'\t}',
+		'\tprintln(rows.join("|"))',
+		'}',
+	].join('\n')
+	round4_check_main_runtime('comptime_source_locations_and_attributes', [
+		Round4RuntimeCase{'method_metadata_location', 'struct Located {}
 
 fn (item Located) run() {
 	_ = item
@@ -2666,8 +2725,114 @@ fn main() {
 	println(items[0].location == locations[0])
 	println(guarded.join("|"))
 }
-')
-	assert out == 'true\ntrue\nrun'
+', 'true\ntrue\nrun'},
+		Round4RuntimeCase{'build_pseudo_values_in_comptime_conditions', "fn main() {
+	mut rows := []string{}
+	\$if @BUILD_TIMESTAMP == '0' {
+		rows << 'timestamp'
+	} \$else {
+		rows << 'wrong-timestamp'
+	}
+	\$if @BUILD_DATE == '1970-01-01' {
+		rows << 'date'
+	} \$else {
+		rows << 'wrong-date'
+	}
+	\$match @BUILD_TIME {
+		'00:00:00' { rows << 'time' }
+		\$else { rows << 'wrong-time' }
+	}
+	println(rows.join('|'))
+}
+", 'timestamp|date|time'},
+		Round4RuntimeCase{'path_pseudo_values_in_comptime_conditions', "fn main() {
+	mut rows := []string{}
+	\$if @FILE != '@FILE' {
+		rows << 'file'
+	}
+	\$if @DIR != '@DIR' {
+		rows << 'dir'
+	}
+	\$if @LINE != '@LINE' {
+		rows << 'line'
+	}
+	\$if @FILE_LINE != '@FILE_LINE' {
+		rows << 'file-line'
+	}
+	\$if @VEXE != '@VEXE' {
+		rows << 'vexe'
+	}
+	\$if @VEXEROOT != '@VEXEROOT' {
+		rows << 'vexeroot'
+	}
+	\$if @VMODROOT != '@VMODROOT' {
+		rows << 'vmodroot'
+	}
+	\$if @LOCATION != '@LOCATION' {
+		rows << 'location'
+	}
+	\$if @VHASH == '' && @VCURRENTHASH == '' {
+		rows << 'hashes'
+	}
+	\$match @FILE {
+		'@FILE' { rows << 'wrong-match' }
+		\$else { rows << 'match' }
+	}
+	println(rows.join('|'))
+}
+", 'file|dir|line|file-line|vexe|vexeroot|vmodroot|location|match'},
+		Round4RuntimeCase{'comptime_line_pseudo_token_positions', comptime_line_pseudo_token_positions_source('comptime_line_pseudo_token_positions'), 'if-line|if-file-line|match-line|match-file-line'},
+		Round4RuntimeCase{'attribute_line_pseudo_token_positions', attribute_line_pseudo_token_positions_source('attribute_line_pseudo_token_positions'), 'line|file-line'},
+		Round4RuntimeCase{'normal_string_attribute_arguments', attribute_arguments, "quote:O'Reilly|line:a<nl>|hex:A|unicode:λ|raw:a\\n"},
+	], map[string]string{})
+}
+
+fn comptime_line_pseudo_token_positions_source(name string) string {
+	src_file_name := '${name}.v'
+	mut lines := ['fn main() {', '\tmut rows := []string{}']
+	if_line := lines.len + 1
+	lines << "\t\$if @LINE == '${if_line}'"
+	lines << '\t{'
+	lines << "\t\trows << 'if-line'"
+	lines << '\t}'
+	file_line := lines.len + 1
+	lines << "\t\$if @FILE_LINE == '${src_file_name}:${file_line}'"
+	lines << '\t{'
+	lines << "\t\trows << 'if-file-line'"
+	lines << '\t}'
+	match_line := lines.len + 1
+	lines << '\t\$match @LINE'
+	lines << '\t{'
+	lines << "\t\t'${match_line}' { rows << 'match-line' }"
+	lines << "\t\t\$else { rows << 'wrong-match-line' }"
+	lines << '\t}'
+	match_file_line := lines.len + 1
+	lines << '\t\$match @FILE_LINE'
+	lines << '\t{'
+	lines << "\t\t'${src_file_name}:${match_file_line}' { rows << 'match-file-line' }"
+	lines << "\t\t\$else { rows << 'wrong-match-file-line' }"
+	lines << '\t}'
+	lines << "\tprintln(rows.join('|'))"
+	lines << '}'
+	return lines.join('\n') + '\n'
+}
+
+fn attribute_line_pseudo_token_positions_source(name string) string {
+	src_file_name := '${name}.v'
+	mut lines := []string{}
+	line := lines.len + 1
+	lines << "@[if @LINE == '${line}'"
+	lines << ']'
+	lines << "const selected_line = 'line'"
+	file_line := lines.len + 1
+	lines << "@[if @FILE_LINE == '${src_file_name}:${file_line}'"
+	lines << ']'
+	lines << "const selected_file_line = 'file-line'"
+	lines << ''
+	lines << 'fn main() {'
+	lines << "\tprintln(selected_line + '|' + selected_file_line)"
+	lines << '}'
+	return lines.join('\n') + '\n'
 }
 
 fn test_comptime_pseudo_values_and_define_shadowing() {
@@ -2705,173 +2870,6 @@ fn test_comptime_pseudo_values_and_define_shadowing() {
 	}
 }
 ", 'ok'},
-	])
-}
-
-fn test_build_pseudo_values_expand_in_comptime_conditions() {
-	previous_epoch := os.getenv_opt('SOURCE_DATE_EPOCH')
-	os.setenv('SOURCE_DATE_EPOCH', '0', true)
-	defer {
-		if epoch := previous_epoch {
-			os.setenv('SOURCE_DATE_EPOCH', epoch, true)
-		} else {
-			os.unsetenv('SOURCE_DATE_EPOCH')
-		}
-	}
-	out := round4_run_good(v3_bin, 'build_pseudo_values_in_comptime_conditions', "fn main() {
-	mut rows := []string{}
-	\$if @BUILD_TIMESTAMP == '0' {
-		rows << 'timestamp'
-	} \$else {
-		rows << 'wrong-timestamp'
-	}
-	\$if @BUILD_DATE == '1970-01-01' {
-		rows << 'date'
-	} \$else {
-		rows << 'wrong-date'
-	}
-	\$match @BUILD_TIME {
-		'00:00:00' { rows << 'time' }
-		\$else { rows << 'wrong-time' }
-	}
-	println(rows.join('|'))
-}
-")
-	assert out == 'timestamp|date|time'
-}
-
-fn test_path_pseudo_values_expand_in_comptime_conditions() {
-	out := round4_run_good(v3_bin, 'path_pseudo_values_in_comptime_conditions', "fn main() {
-	mut rows := []string{}
-	\$if @FILE != '@FILE' {
-		rows << 'file'
-	}
-	\$if @DIR != '@DIR' {
-		rows << 'dir'
-	}
-	\$if @LINE != '@LINE' {
-		rows << 'line'
-	}
-	\$if @FILE_LINE != '@FILE_LINE' {
-		rows << 'file-line'
-	}
-	\$if @VEXE != '@VEXE' {
-		rows << 'vexe'
-	}
-	\$if @VEXEROOT != '@VEXEROOT' {
-		rows << 'vexeroot'
-	}
-	\$if @VMODROOT != '@VMODROOT' {
-		rows << 'vmodroot'
-	}
-	\$if @LOCATION != '@LOCATION' {
-		rows << 'location'
-	}
-	\$if @VHASH == '' && @VCURRENTHASH == '' {
-		rows << 'hashes'
-	}
-	\$match @FILE {
-		'@FILE' { rows << 'wrong-match' }
-		\$else { rows << 'match' }
-	}
-	println(rows.join('|'))
-}
-")
-	assert out == 'file|dir|line|file-line|vexe|vexeroot|vmodroot|location|match'
-}
-
-fn test_comptime_line_pseudo_values_use_their_token_positions() {
-	name := 'comptime_line_pseudo_token_positions'
-	src_path := '${round4_tmp_path(name)}.v'
-	src_file_name := os.file_name(src_path)
-	mut lines := ['fn main() {', '\tmut rows := []string{}']
-	if_line := lines.len + 1
-	lines << "\t\$if @LINE == '${if_line}'"
-	lines << '\t{'
-	lines << "\t\trows << 'if-line'"
-	lines << '\t}'
-	file_line := lines.len + 1
-	lines << "\t\$if @FILE_LINE == '${src_file_name}:${file_line}'"
-	lines << '\t{'
-	lines << "\t\trows << 'if-file-line'"
-	lines << '\t}'
-	match_line := lines.len + 1
-	lines << '\t\$match @LINE'
-	lines << '\t{'
-	lines << "\t\t'${match_line}' { rows << 'match-line' }"
-	lines << "\t\t\$else { rows << 'wrong-match-line' }"
-	lines << '\t}'
-	match_file_line := lines.len + 1
-	lines << '\t\$match @FILE_LINE'
-	lines << '\t{'
-	lines << "\t\t'${src_file_name}:${match_file_line}' { rows << 'match-file-line' }"
-	lines << "\t\t\$else { rows << 'wrong-match-file-line' }"
-	lines << '\t}'
-	lines << "\tprintln(rows.join('|'))"
-	lines << '}'
-	out := round4_run_good(v3_bin, name, lines.join('\n') + '\n')
-	assert out == 'if-line|if-file-line|match-line|match-file-line'
-}
-
-fn test_attribute_line_pseudo_values_use_their_token_positions() {
-	name := 'attribute_line_pseudo_token_positions'
-	src_path := '${round4_tmp_path(name)}.v'
-	src_file_name := os.file_name(src_path)
-	mut lines := []string{}
-	line := lines.len + 1
-	lines << "@[if @LINE == '${line}'"
-	lines << ']'
-	lines << "const selected_line = 'line'"
-	file_line := lines.len + 1
-	lines << "@[if @FILE_LINE == '${src_file_name}:${file_line}'"
-	lines << ']'
-	lines << "const selected_file_line = 'file-line'"
-	lines << ''
-	lines << 'fn main() {'
-	lines << "\tprintln(selected_line + '|' + selected_file_line)"
-	lines << '}'
-	out := round4_run_good(v3_bin, name, lines.join('\n') + '\n')
-	assert out == 'line|file-line'
-}
-
-fn test_dynamic_selector_outside_reflection_loop_is_rejected() {
-	round4_check_rejections('reflection_selector_rejections', [
-		Round4Rejection{'dynamic_selector_outside_reflection_loop', 'struct Item {
-	name string
-}
-
-fn main() {
-	item := Item{
-		name: "Ada"
-	}
-	name := "name"
-	println(item.$(name))
-}
-', 'expected selector expression e.g. `$(field.name)`'},
-		Round4Rejection{'shorthand_method_selector_outside_loop', 'struct Item {}
-
-fn (item Item) run() {
-	_ = item
-}
-
-fn main() {
-	item := Item{}
-	item.$method()
-}
-', 'unknown identifier `method`'},
-		Round4Rejection{'misspelled_shorthand_method_selector', 'struct Item {}
-
-fn (item Item) run() {
-	_ = item
-}
-
-fn main() {
-	item := Item{}
-	$for method in Item.methods {
-		item.$methd()
-	}
-}
-', 'unknown identifier `methd`'},
 	])
 }
 
@@ -3117,39 +3115,6 @@ fn C.HeaderSoaItem_SOA_get(C.HeaderSoaItem_SOA, int) HeaderSoaItem
 fn C.HeaderSoaItem_SOA_free(&C.HeaderSoaItem_SOA)
 '
 	})
-}
-
-fn test_normal_string_attribute_arguments_are_unescaped() {
-	src := [
-		"@[quote: 'O\\'Reilly']",
-		"@[line: 'a\\n']",
-		"@[hex: '\\x41']",
-		"@[unicode: '\\u03bb']",
-		"@[raw: r'a\\n']",
-		'fn handler() {}',
-		'',
-		'fn main() {',
-		'\tmut rows := []string{}',
-		'\t\$for attr in handler.attributes {',
-		"\t\trows << attr.name + ':' + attr.arg.replace('\\n', '<nl>')",
-		'\t}',
-		'\tprintln(rows.join("|"))',
-		'}',
-	].join('\n')
-	out := round4_run_good(v3_bin, 'normal_string_attribute_arguments', src)
-	assert out == "quote:O'Reilly|line:a<nl>|hex:A|unicode:λ|raw:a\\n"
-	round4_run_bad(v3_bin, 'escaped_attribute_selected_guard', [
-		"@[label: 'O\\'Reilly']",
-		'fn handler() {}',
-		'',
-		'fn main() {',
-		'\t\$for attr in handler.attributes {',
-		'\t\t\$if attr.arg == "O\'Reilly" {',
-		'\t\t\tmissing_selected_escaped_attribute_fn()',
-		'\t\t}',
-		'\t}',
-		'}',
-	].join('\n'), 'unknown function: missing_selected_escaped_attribute_fn')
 }
 
 fn test_generic_reflection_compile_error_waits_for_selected_branch() {

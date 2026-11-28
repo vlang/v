@@ -145,8 +145,17 @@ fn run_runtime_bad(compiler string, name string, src string) string {
 	return run.output.trim_space()
 }
 
-fn test_sum_option_and_result_value_contexts() {
-	check_review_runtime('sum_option_and_result_value_contexts', [
+fn test_checker_review_runtime_contexts() {
+	mut cases := sum_option_and_result_value_contexts_fixtures()
+	cases << reference_pointer_and_mutable_loop_bindings_fixtures()
+	cases << receiver_calls_method_values_and_closure_captures_fixtures()
+	cases << return_types_abi_wrappers_and_numeric_receivers_fixtures()
+	cases << comptime_name_resolution_and_collection_lowering_fixtures()
+	check_review_runtime('checker_review_runtime_contexts', cases)
+}
+
+fn sum_option_and_result_value_contexts_fixtures() []ReviewFixture {
+	return [
 		ReviewFixture{'explicit_mut_sum_smartcasts', 'struct First {
 mut:
 	value int
@@ -310,11 +319,19 @@ fn main() {
 		ReviewFixture{'good_constant_error_branch_in_result_return', "fn make_result() !int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := make_result() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n", 'bad'},
 		ReviewFixture{'good_error_branch_in_result_return', "fn make_result(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(make_result(false) or { -1 }))\n\tprintln(int_str(make_result(true) or { -1 }))\n}\n", '1\n-1'},
 		ReviewFixture{'good_map_or_and_unwrapped_string_concat', "fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\tnames := {\n\t\t'first': 'Grace'\n\t}\n\tprintln(names['first'] or { 'unknown' })\n\tprintln('hello ' + (maybe_name() or { 'unknown' }))\n}\n", 'Grace\nhello Ada'},
-	])
+	]
 }
 
-fn test_sum_smartcast_and_interface_checker_rejections() {
-	check_review_rejections('sum_smartcast_and_interface_checker_rejections', [
+fn test_checker_review_semantic_rejections() {
+	mut cases := sum_smartcast_and_interface_checker_rejections_fixtures()
+	cases << pointer_fixed_array_and_variadic_argument_rejections_fixtures()
+	cases << function_returns_control_flow_and_option_result_rejections_fixtures()
+	cases << synthetic_methods_and_collection_operations_rejections_fixtures()
+	check_review_rejections('checker_review_semantic_rejections', cases)
+}
+
+fn sum_smartcast_and_interface_checker_rejections_fixtures() []ReviewFixture {
+	return [
 		ReviewFixture{'forwarded_mut_sum_argument_invalidates_smartcast', 'struct First {
 	value int
 }
@@ -461,11 +478,11 @@ fn main() {
 	invoke(Callback(no_args))
 }
 ', 'expected 0 arguments, but got 1'},
-	])
+	]
 }
 
-fn test_reference_pointer_and_mutable_loop_bindings() {
-	check_review_runtime('reference_pointer_and_mutable_loop_bindings', [
+fn reference_pointer_and_mutable_loop_bindings_fixtures() []ReviewFixture {
+	return [
 		ReviewFixture{'mut_index_alias', 'struct Item {
 mut:
 	value int
@@ -570,7 +587,7 @@ fn main() {
 	println(int_str(receive(ch)))
 }
 ', '42'},
-	])
+	]
 }
 
 fn test_generic_factory_can_initialize_its_own_noinit_struct_for_external_callers() {
@@ -648,8 +665,7 @@ fn test_immutable_fields_and_result_storage_are_rejected() {
 		'cannot use chan with Result type')
 }
 
-fn test_method_value_option_alias_and_const_names_match_v1() {
-	embedded_source := 'struct Base {
+const review_embedded_receiver_source = 'struct Base {
 	id int
 }
 
@@ -661,6 +677,8 @@ struct Plain {
 	Base
 }
 '
+
+fn test_method_value_option_alias_and_const_names_match_v1() {
 	check_review_rejections('declaration_receiver_and_reference_rejections', [
 		ReviewFixture{'immutable_reference_in_mut_field', 'struct Holder {
 mut:
@@ -769,7 +787,7 @@ fn make() fn () int {
 
 fn main() {}
 ', 'method `Foo.ref` cannot be used as a variable outside `unsafe` blocks'},
-		ReviewFixture{'embedded_non_heap_pointer_receiver_method_value', embedded_source + 'fn make() fn () int {
+		ReviewFixture{'embedded_non_heap_pointer_receiver_method_value', review_embedded_receiver_source + 'fn make() fn () int {
 	p := Plain{}
 	return p.ref
 }
@@ -931,7 +949,10 @@ fn main() {
 }
 ', 'aliases mutable data from an immutable value'},
 	])
-	check_review_runtime('receiver_calls_method_values_and_closure_captures', [
+}
+
+fn receiver_calls_method_values_and_closure_captures_fixtures() []ReviewFixture {
+	return [
 		ReviewFixture{'heap_pointer_receiver_method_value', 'struct Foo {}
 
 fn (foo &Foo) ref() int {
@@ -944,7 +965,7 @@ fn main() {
 	println(callback())
 }
 ', '1'},
-		ReviewFixture{'embedded_heap_pointer_receiver_method_value', embedded_source + 'fn main() {
+		ReviewFixture{'embedded_heap_pointer_receiver_method_value', review_embedded_receiver_source + 'fn main() {
 	p := &Plain{
 		Base: Base{3}
 	}
@@ -1066,11 +1087,11 @@ fn main() {
 ', 'false
 false
 2.5'},
-	])
+	]
 }
 
-fn test_pointer_fixed_array_and_variadic_argument_rejections() {
-	check_review_rejections('pointer_fixed_array_and_variadic_argument_rejections', [
+fn pointer_fixed_array_and_variadic_argument_rejections_fixtures() []ReviewFixture {
+	return [
 		ReviewFixture{'bad_return_pointer_to_value', 'fn f() int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'you are returning `&int` instead'},
 		ReviewFixture{'bad_voidptr_scalar_arg', 'fn f(p voidptr) {}\n\nfn main() {\n\tf(1)\n}\n', 'expression cannot be passed as `voidptr`'},
 		ReviewFixture{'bad_if_expr_pointer_value_branch', 'struct Foo {}\n\nfn main() {\n\t_ := if true {\n\t\tFoo{}\n\t} else {\n\t\t&Foo{}\n\t}\n}\n', 'mismatched types `bad_if_expr_pointer_value_branch.Foo` and `&bad_if_expr_pointer_value_branch.Foo`'},
@@ -1111,11 +1132,11 @@ fn main() {
 	_ := receive(ch)
 }
 ', 'cannot use `chan string`'},
-	])
+	]
 }
 
-fn test_function_returns_control_flow_and_option_result_rejections() {
-	check_review_rejections('function_returns_control_flow_and_option_result_rejections', [
+fn function_returns_control_flow_and_option_result_rejections_fixtures() []ReviewFixture {
+	return [
 		ReviewFixture{'bad_result_value_in_option_return', 'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n', 'cannot use `!int` as type `?int` in return argument'},
 		ReviewFixture{'bad_result_value_in_optional_pointer_return', 'struct Item {}\n\nfn convert(res !Item) ?&Item {\n\treturn res\n}\n\nfn main() {}\n', 'cannot use `!bad_result_value_in_optional_pointer_return.Item` as type `?&bad_result_value_in_optional_pointer_return.Item` in return argument'},
 		ReviewFixture{'bad_option_value_in_result_pointer_return', 'struct Item {}\n\nfn convert(opt ?Item) !&Item {\n\treturn opt\n}\n\nfn main() {}\n', 'cannot use `?bad_option_value_in_result_pointer_return.Item` as type `!&bad_option_value_in_result_pointer_return.Item` in return argument'},
@@ -1143,11 +1164,11 @@ fn test_function_returns_control_flow_and_option_result_rejections() {
 		ReviewFixture{'bad_shadowed_import_os_exit_missing_return', 'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) {}\nfn f(os OsLike) int {\n\tos.exit(0)\n}\nfn main() {}\n', 'missing return at end of function `f`'},
 		ReviewFixture{'bad_shadowed_os_exit_return_value', 'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) int {\n\treturn code + 1\n}\nfn f(os OsLike) int {\n\treturn os.exit(4)\n}\nfn main() {\n\tprintln(int_str(f(OsLike{})))\n}\n', 'duplicate of an import symbol `os`'},
 		ReviewFixture{'bad_called_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {\n\t_ := f[int]()\n}\n', 'missing return at end of function `f`'},
-	])
+	]
 }
 
-fn test_return_types_abi_wrappers_and_numeric_receivers() {
-	check_review_runtime('return_types_abi_wrappers_and_numeric_receivers', [
+fn return_types_abi_wrappers_and_numeric_receivers_fixtures() []ReviewFixture {
+	return [
 		ReviewFixture{'receiver_method_tail_multi_return', 'struct Receiver {}\n\nfn pair() (int, int) {\n\treturn 2, 3\n}\n\nfn (receiver Receiver) use(a int, b int) int {\n\treturn a * 10 + b\n}\n\nfn (receiver Receiver) use_with_prefix(prefix int, a int, b int) int {\n\treturn prefix * 100 + a * 10 + b\n}\n\nfn main() {\n\tprintln(int_str(Receiver{}.use(pair())))\n\tprintln(int_str(Receiver{}.use_with_prefix(1, pair())))\n}\n', '23\n123'},
 		ReviewFixture{'good_multi_return_if_pointer_value_tail', 'struct S {\n\tn int\n}\nfn pick(ok bool) (S, int) {\n\ts := S{\n\t\tn: 5\n\t}\n\treturn if ok {\n\t\t&s\n\t\t1\n\t} else {\n\t\t&s\n\t\t2\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a.n) + "," + int_str(b))\n}\n', '5,2'},
 		ReviewFixture{'assignment_or_nested_match_returns', 'struct NestedFallbackAnswer {
@@ -1212,11 +1233,11 @@ fn main() {
 	println(int_str(value.value))
 }
 ', '6'},
-	])
+	]
 }
 
-fn test_synthetic_methods_and_collection_operations_rejections() {
-	check_review_rejections('synthetic_methods_and_collection_operations_rejections', [
+fn synthetic_methods_and_collection_operations_rejections_fixtures() []ReviewFixture {
+	return [
 		ReviewFixture{'bad_bool_power', 'fn main() {\n\t_ := true ** 2\n}\n', 'operator `**` requires numeric operands; got `bool` and `int`'},
 		ReviewFixture{'bad_array_power', 'fn main() {\n\t_ := [1] ** 2\n}\n', 'operator `**` requires numeric operands; got `[]int` and `int`'},
 		ReviewFixture{'bad_string_power', "fn main() {\n\t_ := 'x' ** 2\n}\n", 'operator `**` requires numeric operands; got `string` and `int`'},
@@ -1257,7 +1278,7 @@ fn main() {
 	copy << 2
 }
 ', 'use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)'},
-	])
+	]
 }
 
 fn test_called_generic_functions_report_missing_return() {
@@ -1273,8 +1294,8 @@ fn test_return_panic_with_defer_evaluates_call_before_cleanup() {
 	assert !out.contains('cleanup-ran')
 }
 
-fn test_vexeroot_insert_and_generated_function_name_exemptions() {
-	check_review_runtime('comptime_name_resolution_and_collection_lowering', [
+fn comptime_name_resolution_and_collection_lowering_fixtures() []ReviewFixture {
+	return [
 		ReviewFixture{'good_generic_comptime_if_unselected_branch_is_not_checked', "fn ok() {}\n\nfn f[T]() {\n\t$if T is int {\n\t\tok()\n\t} $else {\n\t\tonly_for_other_t()\n\t}\n}\n\nfn main() {\n\tf[int]()\n\tprintln('ok')\n}\n", 'ok'},
 		ReviewFixture{'good_comptime_match_known_local', "fn main() {\n\tmode := 'b'\n\t\$match mode {\n\t\t'b' { println('ok') }\n\t\t\$else { println('bad') }\n\t}\n}\n", 'ok'},
 		ReviewFixture{'good_comptime_match_generic_parameter_type', "fn classify[T](value T) string {\n\t\$match value {\n\t\tint { return 'int' }\n\t\t\$else { return 'other' }\n\t}\n}\n\nfn main() {\n\tprintln(classify(1))\n}\n", 'int'},
@@ -1328,7 +1349,7 @@ fn main() {
 }
 ", '2\n1'},
 		ReviewFixture{'good_array_insert_prepend_many_operands', "type Strings = []string\n\nfn main() {\n\tmut a := [3, 4]\n\ta.insert(0, [1, 2])\n\tb := [5, 6]\n\ta.insert(1, b)\n\ta.prepend([0])\n\tfixed := [7, 8]!\n\ta.insert(a.len, fixed)\n\tassert a == [0, 1, 5, 6, 2, 3, 4, 7, 8]\n\tmut strs := Strings(['hi'])\n\tstrs.insert(0, ['there'])\n\tstrs.prepend(['hello'])\n\tassert strs == ['hello', 'there', 'hi']\n\tprintln('ok')\n}\n", 'ok'},
-	])
+	]
 }
 
 fn write_review_sources(name string, files map[string]string) string {

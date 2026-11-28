@@ -31,7 +31,7 @@ jobs:
         run: |
           ./v self
           python3 -m py_compile vlib/v/tests/compiler_processes/testdata/run_terminal_nix.py
-      - name: Compare original and corrected native PTY regression
+      - name: Compare historical harness and exact upstream correction
         shell: bash
         run: |
           set -euo pipefail
@@ -40,7 +40,10 @@ jobs:
           path=vlib/v/tests/compiler_processes/testdata/run_terminal_nix.py
           logs="$RUNNER_TEMP/pty-regression"
           mkdir -p "$logs"
-          cp "$path" "$logs/candidate.py"
+          test "$(git hash-object "$path")" = 3a0694a9c7b1128c0cb65748c4617d24205c900d
+          git show 0f68c7e0009f744bc4d457d5596fb93c0cec3fc9:"$path" > "$logs/candidate.py"
+          cmp "$path" "$logs/candidate.py"
+          printf 'Upstream PTY correction: %s\n' 106aa010295252a6072278dfad3b8f22745e5fcb
           git show 2df2b303bc622429bc81e43582b57d83e8b3ccc8:"$path" > "$logs/original.py"
           test "$(git hash-object "$logs/original.py")" = 709850ec9f7a7a53f3a4aee1e5aed91c8e4d11db
           trap 'cp "$logs/candidate.py" "$path"' EXIT

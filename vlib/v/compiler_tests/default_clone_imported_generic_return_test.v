@@ -46,13 +46,46 @@ fn main() {
 }
 '
 
-fn test_default_clone_preserves_imported_generic_borrowed_return_type() {
-	root := os.join_path(os.vtmp_dir(), 'imported_stats_clone_${os.getpid()}')
-	write_imported_stats_fixture(root, 'implements IClone')
+const alias_call_returns_fixture = 'import time
+
+type Span = i64
+
+fn (span Span) seconds() f64 { return f64(span) }
+fn new_span() Span { return Span(3) }
+fn optional_span() ?Span { return Span(5) }
+fn result_span() !Span { return Span(7) }
+
+fn total[T](value T) f64 {
+ _ = value
+ span := new_span()
+ copied := span
+ optional := optional_span() or { Span(0) }
+ result := result_span() or { Span(0) }
+ elapsed := time.since(time.now())
+ assert elapsed.seconds() >= 0
+ return span.seconds() + copied.seconds() + optional.seconds() + result.seconds()
+}
+
+fn main() {
+ assert total(1) == 18
+ assert total(true) == 18
+}
+'
+
+fn test_generic_call_returns_keep_borrowed_and_nominal_types() {
+	root := os.join_path(os.vtmp_dir(), 'generic_call_returns_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	compiler := imported_stats_fixture_vexe()
-	os.write_file(source, 'import model
+	for ownership in [[]string{}, ['-ownership']] {
+		dir := os.join_path(root, if ownership.len > 0 { 'ownership' } else { 'regular' })
+		os.mkdir_all(dir)!
+		source := os.join_path(dir, 'main.v')
+		mut input := source
+		mut compiler := @VEXE
+		if ownership.len > 0 {
+			compiler = imported_stats_fixture_vexe()
+			input = dir
+			write_imported_stats_fixture(dir, 'implements IClone')
+			os.write_file(source, 'import model
 
 struct Stats {
  unrelated bool
@@ -73,17 +106,24 @@ fn main() {
  assert owner.stats().bytes[0] == 2
  assert copied.bytes[0] == 9
  check_named_generic_type_cast()
+ check_generic_alias_call_returns()
 }
 
-' + imported_stats_named_cast_fixture.replace('fn main()', 'fn check_named_generic_type_cast()'))!
-	for mode in ['-no-parallel', ''] {
-		check := os.execute('${os.quoted_path(compiler)} -no-memory-limit -nocache -gc none -ownership ${mode} -check ${os.quoted_path(source)}')
-		assert check.exit_code == 0, '${mode}: ${check.output}'
-		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(compiler)} -no-memory-limit -nocache -gc none -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
-		assert compile.exit_code == 0, '${mode}: ${compile.output}'
-		run := os.execute(os.quoted_path(output))
-		assert run.exit_code == 0, '${mode}: ${run.output}'
+' + imported_stats_named_cast_fixture.replace_once('fn main()', 'fn check_named_generic_type_cast()'))!
+			os.write_file(os.join_path(dir, 'alias_returns.v'), alias_call_returns_fixture.replace_once('fn main()', 'fn check_generic_alias_call_returns()'))!
+		} else {
+			os.write_file(source, alias_call_returns_fixture)!
+		}
+		for mode in [['-no-parallel'], []string{}] {
+			flags := ['-no-memory-limit', '-nocache', '-gc', 'none', ...ownership, ...mode]
+			check := os.exec([compiler, ...flags, '-check', input])
+			assert check.exit_code == 0, '${flags}: ${check.output}'
+			output := os.join_path(dir, 'program_${mode.len}')
+			compile := os.exec([compiler, ...flags, '-cc', 'clang', '-o', output, input])
+			assert compile.exit_code == 0, '${flags}: ${compile.output}'
+			run := os.exec([output])
+			assert run.exit_code == 0, '${flags}: ${run.output}'
+		}
 	}
 }
 
