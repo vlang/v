@@ -2,7 +2,7 @@ module main
 
 import os
 
-const vexe = @VEXE
+const vexe = os.getenv_opt('VEXE') or { @VEXE }
 
 const known_skip_patterns_env = os.getenv('VKNOWN_SKIP_PATTERNS')
 
