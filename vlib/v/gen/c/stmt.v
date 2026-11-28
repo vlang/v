@@ -986,7 +986,15 @@ fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node, id flat.Node
 	if g.pending_return_scope_drops.len == 0 {
 		return entries
 	}
-	mut combined := g.pending_return_scope_drops.clone()
+	// A tail return also carries the drops of the branch scopes it leaves. The checker's
+	// snapshot for a source `return` already lists every live owner, including those
+	// scope locals, so only add the scope drops it does not name, or they are freed twice.
+	mut combined := []types.OwnershipDropEntry{}
+	for pending in g.pending_return_scope_drops {
+		if !entries.any(it.name == pending.name) {
+			combined << pending
+		}
+	}
 	for entry in entries {
 		combined << entry
 	}
