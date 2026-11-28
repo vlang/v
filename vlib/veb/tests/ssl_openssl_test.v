@@ -10,6 +10,8 @@ const https_port = 13014
 const https_timeout_seconds = 1
 const slow_head_close_limit = https_timeout_seconds * time.second + 800 * time.millisecond
 
+type ReloadCertificate = fn () !
+
 pub struct Context {
 	veb.Context
 }
@@ -17,7 +19,15 @@ pub struct Context {
 pub struct App {
 	veb.Middleware[Context]
 	started  chan bool
-	activity chan string = chan string{cap: 16}
+	activity chan string            = chan string{cap: 16}
+	reload   chan ReloadCertificate = chan ReloadCertificate{cap: 1}
+}
+
+// register_tls_certificate_reload records the live listener callback.
+pub fn (mut app App) register_tls_certificate_reload(address string, reload fn () !) fn () {
+	assert address == '127.0.0.1:${https_port}'
+	app.reload <- reload
+	return fn () {}
 }
 
 // before_handle_request records entry into TLS dispatch.
@@ -62,6 +72,14 @@ fn test_veb_serves_https_requests() ! {
 		}
 		5 * time.second {
 			return error('OpenSSL HTTPS server did not start in time')
+		}
+	}
+	select {
+		reload := <-app.reload {
+			reload()!
+		}
+		5 * time.second {
+			return error('OpenSSL HTTPS server did not register a reload callback')
 		}
 	}
 	res := http.fetch(

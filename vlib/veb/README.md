@@ -261,6 +261,14 @@ fn main() {
 }
 ```
 
+### Reload an OpenSSL listener certificate
+
+With `-d use_openssl`, an app can implement `veb.TlsCertificateReloadApp` to receive a
+reload callback for each listener address. Invoke the callback after replacing the
+configured certificate chain and key files. The registration method returns a function
+that removes the callback when the listener exits. Successful reloads apply to new TLS
+sessions, and existing connections can continue using their negotiated sessions.
+
 ## Graceful shutdown
 
 When running with `-d new_veb`, the underlying server supports graceful

@@ -261,3 +261,84 @@ fn test_ssl_listener_negotiates_alpn() ! {
 	client.shutdown() or {}
 	server_thread.wait()
 }
+
+fn C.X509_cmp(a &C.X509, b &C.X509) int
+
+fn dial_reload_test_client(port int) !&SSLConn {
+	mut client := new_ssl_conn(SSLConnectConfig{
+		alpn_protocols: ['http/1.1']
+	})!
+	client.set_read_timeout(2 * time.second)
+	client.dial('127.0.0.1', port) or {
+		client.close() or {}
+		return err
+	}
+	return client
+}
+
+fn test_ssl_listener_reloads_certificate_without_interrupting_existing_connection() ! {
+	cert_path := os.join_path(os.temp_dir(), 'v_reload_${os.getpid()}.crt')
+	key_path := os.join_path(os.temp_dir(), 'v_reload_${os.getpid()}.key')
+	defer {
+		os.rm(cert_path) or {}
+		os.rm(key_path) or {}
+	}
+	os.write_file(cert_path, load_test_certificate_pem()!)!
+	os.write_file(key_path, load_test_private_key_pem()!)!
+	mut listener := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
+		cert:           cert_path
+		cert_key:       key_path
+		alpn_protocols: ['http/1.1']
+	})!
+	defer { listener.shutdown() or {} }
+	port := listener.tcp_listener.addr()!.port()!
+
+	old_dial := spawn dial_reload_test_client(port)
+	mut old_server := listener.accept()!
+	defer { old_server.close() or {} }
+	mut old_client := old_dial.wait()!
+	defer { old_client.close() or {} }
+	old_cert := C.v_net_openssl_get1_peer_certificate(old_client.ssl)
+	assert old_cert != unsafe { nil }
+	defer { C.X509_free(old_cert) }
+
+	next_cert := os.read_file(os.join_path(@VMODROOT, 'examples', 'grpc', 'cert', 'server.crt'))!
+	next_key := os.read_file(os.join_path(@VMODROOT, 'examples', 'grpc', 'cert', 'server.key'))!
+	os.write_file(cert_path, next_cert)!
+	os.write_file(key_path, next_key)!
+	listener.reload_certificate()!
+
+	new_dial := spawn dial_reload_test_client(port)
+	mut new_server := listener.accept()!
+	defer { new_server.close() or {} }
+	mut new_client := new_dial.wait()!
+	defer { new_client.close() or {} }
+	new_cert := C.v_net_openssl_get1_peer_certificate(new_client.ssl)
+	assert new_cert != unsafe { nil }
+	defer { C.X509_free(new_cert) }
+	assert C.X509_cmp(old_cert, new_cert) != 0
+	assert new_client.negotiated_alpn() == 'http/1.1'
+
+	// A valid key belonging to a different certificate must not replace the live context.
+	os.write_file(key_path, load_test_private_key_pem()!)!
+	if _ := listener.reload_certificate() {
+		assert false, 'listener accepted a mismatched private key'
+	}
+	rollback_dial := spawn dial_reload_test_client(port)
+	mut rollback_server := listener.accept()!
+	defer { rollback_server.close() or {} }
+	mut rollback_client := rollback_dial.wait()!
+	defer { rollback_client.close() or {} }
+	rollback_cert := C.v_net_openssl_get1_peer_certificate(rollback_client.ssl)
+	assert rollback_cert != unsafe { nil }
+	defer { C.X509_free(rollback_cert) }
+	assert C.X509_cmp(new_cert, rollback_cert) == 0
+
+	mut buf := []u8{len: 1}
+	old_server.write_string('a')!
+	assert old_client.read(mut buf)! == 1
+	assert buf[0] == `a`
+	old_client.write_string('b')!
+	assert old_server.read(mut buf)! == 1
+	assert buf[0] == `b`
+}

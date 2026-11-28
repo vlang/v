@@ -17,6 +17,13 @@ PEM data instead of file paths. Missing or invalid trust roots fail the upgrade
 when validation is enabled. Set `alpn_protocols` to the protocols the server may
 select during the handshake; each protocol name must contain 1 to 255 bytes.
 
+## Reload a listener certificate
+
+`listener.reload_certificate()` rereads the configured certificate chain and private key
+files. Update both files before calling it. New TLS sessions use the replacement context
+after validation succeeds. Existing sessions retain their original context, and a failed
+reload leaves the active context in place.
+
 ## Thread safety
 
 `SSLConn` does not synchronize access to its TLS context. Serialize calls on the same

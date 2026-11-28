@@ -1,6 +1,7 @@
 module openssl
 
 import net
+import sync
 
 // SSLListener is the SSL listener implementation for OpenSSL.
 pub struct SSLListener {
@@ -8,6 +9,8 @@ pub struct SSLListener {
 	config  SSLConnectConfig
 	options SSLListenerOptions
 mut:
+	context_mu   &sync.Mutex      = sync.new_mutex()
+	reload_mu    &sync.Mutex      = sync.new_mutex()
 	tcp_listener &net.TcpListener = unsafe { nil }
 	sslctx       &C.SSL_CTX       = unsafe { nil }
 }
@@ -60,96 +63,129 @@ fn listen_ssl_tcp(saddr string, family net.AddrFamily, options net.ListenOptions
 }
 
 fn (mut l SSLListener) init() ! {
-	if l.config.cert == '' || l.config.cert_key == '' {
+	ctx := new_server_ssl_context(l.config)!
+	l.tcp_listener = listen_ssl_tcp(l.saddr, l.options.family, net.ListenOptions{}) or {
+		C.SSL_CTX_free(ctx)
+		return err
+	}
+	l.sslctx = ctx
+}
+
+fn new_server_ssl_context(config SSLConnectConfig) !&C.SSL_CTX {
+	if config.cert == '' || config.cert_key == '' {
 		return error('net.openssl SSLListener.init, no certificate or key provided')
 	}
-	if l.config.validate && l.config.verify == '' {
+	if config.validate && config.verify == '' {
 		return error('net.openssl SSLListener.init, no root CA provided')
 	}
 
-	l.tcp_listener = listen_ssl_tcp(l.saddr, l.options.family, net.ListenOptions{})!
-
-	l.sslctx = unsafe { C.SSL_CTX_new(C.v_net_openssl_TLS_server_method()) }
-	if l.sslctx == 0 {
-		l.tcp_listener.close() or {}
+	ctx := unsafe { C.SSL_CTX_new(C.v_net_openssl_TLS_server_method()) }
+	if ctx == 0 {
 		return error('net.openssl SSLListener.init, could not get ssl context')
 	}
-	C.SSL_CTX_set_options(l.sslctx, C.SSL_OP_NO_COMPRESSION | C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3)
+	mut ready := false
+	defer {
+		if !ready { C.SSL_CTX_free(ctx) }
+	}
+	C.SSL_CTX_set_options(ctx, C.SSL_OP_NO_COMPRESSION | C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3)
 
-	if l.config.in_memory_verification {
-		mut res := C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(l.sslctx,
-			l.config.cert.str, uint(l.config.cert.len))
+	if config.in_memory_verification {
+		mut res := C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(ctx,
+			config.cert.str, uint(config.cert.len))
 		if res != 1 {
-			l.shutdown() or {}
 			return error('net.openssl SSLListener.init, could not load certificate from memory')
 		}
-		res = C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(l.sslctx, l.config.cert_key.str,
-			uint(l.config.cert_key.len))
+		res = C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(ctx, config.cert_key.str,
+			uint(config.cert_key.len))
 		if res != 1 {
-			l.shutdown() or {}
 			return error('net.openssl SSLListener.init, could not load private key from memory')
 		}
-		if l.config.validate {
-			res = C.v_net_openssl_SSL_CTX_load_verify_memory(l.sslctx, l.config.verify.str,
-				uint(l.config.verify.len))
+		if config.validate {
+			res = C.v_net_openssl_SSL_CTX_load_verify_memory(ctx, config.verify.str,
+				uint(config.verify.len))
 			if res != 1 {
-				l.shutdown() or {}
 				return error('net.openssl SSLListener.init, could not load root CA from memory')
 			}
 		}
 	} else {
-		mut res := C.SSL_CTX_use_certificate_chain_file(voidptr(l.sslctx), &char(l.config.cert.str))
+		mut res := C.SSL_CTX_use_certificate_chain_file(voidptr(ctx), &char(config.cert.str))
 		if res != 1 {
-			l.shutdown() or {}
 			return error('net.openssl SSLListener.init, SSL_CTX_use_certificate_chain_file failed')
 		}
-		res = C.SSL_CTX_use_PrivateKey_file(voidptr(l.sslctx), &char(l.config.cert_key.str),
+		res = C.SSL_CTX_use_PrivateKey_file(voidptr(ctx), &char(config.cert_key.str),
 			C.SSL_FILETYPE_PEM)
 		if res != 1 {
-			l.shutdown() or {}
 			return error('net.openssl SSLListener.init, SSL_CTX_use_PrivateKey_file failed')
 		}
 	}
 
-	mut res := C.SSL_CTX_check_private_key(voidptr(l.sslctx))
+	mut res := C.SSL_CTX_check_private_key(voidptr(ctx))
 	if res != 1 {
-		l.shutdown() or {}
 		return error('net.openssl SSLListener.init, SSL_CTX_check_private_key failed')
 	}
 
-	if l.config.validate {
-		if !l.config.in_memory_verification {
-			res = C.SSL_CTX_load_verify_locations(voidptr(l.sslctx), &char(l.config.verify.str),
+	if config.validate {
+		if !config.in_memory_verification {
+			res = C.SSL_CTX_load_verify_locations(voidptr(ctx), &char(config.verify.str),
 				unsafe { nil })
 			if res != 1 {
-				l.shutdown() or {}
 				return error('net.openssl SSLListener.init, SSL_CTX_load_verify_locations failed')
 			}
-			res = C.v_net_openssl_SSL_CTX_load_client_CA_file(l.sslctx, &char(l.config.verify.str))
+			res = C.v_net_openssl_SSL_CTX_load_client_CA_file(ctx, &char(config.verify.str))
 			if res != 1 {
-				l.shutdown() or {}
 				return error('net.openssl SSLListener.init, SSL_load_client_CA_file failed')
 			}
 		}
-		C.SSL_CTX_set_verify(voidptr(l.sslctx),
+		C.SSL_CTX_set_verify(voidptr(ctx),
 			C.SSL_VERIFY_PEER | C.SSL_VERIFY_FAIL_IF_NO_PEER_CERT, unsafe { nil })
 	}
 
-	if l.config.alpn_protocols.len > 0 {
+	if config.alpn_protocols.len > 0 {
 		mut wire := []u8{cap: 64}
-		for proto in l.config.alpn_protocols {
+		for proto in config.alpn_protocols {
 			if proto.len == 0 || proto.len > 255 {
-				l.shutdown() or {}
 				return error('net.openssl SSLListener.init, invalid ALPN protocol "${proto}"')
 			}
 			wire << u8(proto.len)
 			wire << proto.bytes()
 		}
-		if C.v_net_openssl_SSL_CTX_set_alpn_select_protos(l.sslctx, wire.data, u32(wire.len)) == unsafe { nil } {
-			l.shutdown() or {}
+		if C.v_net_openssl_SSL_CTX_set_alpn_select_protos(ctx, wire.data, u32(wire.len)) == unsafe { nil } {
 			return error('net.openssl SSLListener.init, failed to configure ALPN protocols (requires OpenSSL >= 1.0.2)')
 		}
 	}
+	ready = true
+	return ctx
+}
+
+// reload_certificate rereads the configured certificate chain and private key files.
+// A failed reload leaves the current TLS context active. SSL_new retains a
+// reference to the context it uses, so existing sessions keep their context.
+pub fn (mut l SSLListener) reload_certificate() ! {
+	if l.config.in_memory_verification {
+		return error('net.openssl SSLListener.reload_certificate: file-backed credentials are required')
+	}
+	l.reload_mu.@lock()
+	defer { l.reload_mu.unlock() }
+	candidate := new_server_ssl_context(l.config)!
+	l.context_mu.@lock()
+	previous := l.sslctx
+	if previous == unsafe { nil } {
+		l.context_mu.unlock()
+		C.SSL_CTX_free(candidate)
+		return error('net.openssl SSLListener.reload_certificate: listener is closed')
+	}
+	l.sslctx = candidate
+	l.context_mu.unlock()
+	C.SSL_CTX_free(previous)
+}
+
+fn (mut l SSLListener) new_ssl() &C.SSL {
+	l.context_mu.@lock()
+	defer { l.context_mu.unlock() }
+	if l.sslctx == unsafe { nil } {
+		return unsafe { nil }
+	}
+	return unsafe { &C.SSL(C.SSL_new(l.sslctx)) }
 }
 
 // accept accepts a new TCP connection and performs the SSL handshake.
@@ -166,7 +202,7 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 pub fn (mut l SSLListener) accept_without_handshake() !&SSLConn {
 	mut tcp_conn := l.tcp_listener.accept()!
 
-	ssl := unsafe { &C.SSL(C.SSL_new(l.sslctx)) }
+	ssl := l.new_ssl()
 	if ssl == 0 {
 		tcp_conn.close() or {}
 		return error('net.openssl SSLListener.accept, could not create SSL instance')
@@ -231,9 +267,12 @@ pub fn (mut conn SSLConn) accept_handshake() ! {
 
 // shutdown shuts down the SSL listener and releases the context.
 pub fn (mut l SSLListener) shutdown() ! {
-	if l.sslctx != 0 {
-		C.SSL_CTX_free(l.sslctx)
-		l.sslctx = unsafe { nil }
+	l.context_mu.@lock()
+	ctx := l.sslctx
+	l.sslctx = unsafe { nil }
+	l.context_mu.unlock()
+	if ctx != unsafe { nil } {
+		C.SSL_CTX_free(ctx)
 	}
 	if l.tcp_listener != unsafe { nil } {
 		l.tcp_listener.close()!
