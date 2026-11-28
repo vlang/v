@@ -3248,28 +3248,34 @@ fn main() {
 // skipped asks about the `nth` `word` of the line of skipped_branches_program
 // that reads `text`.
 fn skipped(code string, text string, word string, nth int) string {
-	dir := os.join_path(work_dir, 'skipped_branches')
-	if !os.exists(dir) {
-		os.mkdir_all(dir) or { panic(err) }
-		os.write_file(os.join_path(dir, 'main.v'), skipped_branches_program) or { panic(err) }
-	}
-	line := skipped_branches_program.split('\n').index(text) + 1
-	assert line > 0, '`${text}` is not a line of skipped_branches_program'
-	return ask(dir, code, line, word, nth)
+	dir := program_dir('skipped_branches', skipped_branches_program)
+	return ask_at(dir, skipped_question(code, text, word, nth))
+}
+
+fn skipped_question(code string, text string, word string, nth int) string {
+	return word_question(text, code, line_of(skipped_branches_program, text), word, nth)
 }
 
 fn test_a_branch_that_the_parse_left_out_answers_as_the_others_do() {
 	// The branch of `$if js {` of a check for C, where a `$if` on `T` decides
 	// what the value of `T` is, as in the branches that are checked.
+	dir := program_dir('skipped_branches', skipped_branches_program)
 	then_line := '\t\t\treturn number.str() + sep'
 	else_line := "\t\t\treturn number.str() + sep + '.'"
-	assert skipped('hv^', then_line, 'number', 0) == hover_of('number T\\nT: f32 | f64')
-	assert skipped('hv^', else_line, 'number', 0) == hover_of('number T\\nT: int | i64')
-	assert skipped('gd^', then_line, 'number', 0) == 'main.v:9:20'
-	// A type parameter in the condition of a `$if` of that branch.
 	condition := '\t\t\$if T is f32 || T is f64 {'
-	assert skipped('hv^', condition, 'T', 0) == hover_of('[T Number]\\nT: int | i64 | f32 | f64')
-	assert skipped('gd^', condition, 'T', 0) == 'main.v:9:10'
+	answers := ask_answers(dir, [
+		skipped_question('hv^', then_line, 'number', 0),
+		skipped_question('hv^', else_line, 'number', 0),
+		skipped_question('gd^', then_line, 'number', 0),
+		// A type parameter in the condition of a `$if` of that branch.
+		skipped_question('hv^', condition, 'T', 0),
+		skipped_question('gd^', condition, 'T', 0),
+	])
+	assert answers[0] == hover_of('number T\\nT: f32 | f64')
+	assert answers[1] == hover_of('number T\\nT: int | i64')
+	assert answers[2] == 'main.v:9:20'
+	assert answers[3] == hover_of('[T Number]\\nT: int | i64 | f32 | f64')
+	assert answers[4] == 'main.v:9:10'
 	// A local of the code that is checked, a field of its type, and a parameter.
 	joined_line := '\t\treturn parts.join(separator.integer)'
 	assert skipped('hv^', joined_line, 'separator', 0) == hover_of('separator main.Separator')
@@ -3288,11 +3294,15 @@ fn test_a_branch_that_the_parse_left_out_answers_as_the_others_do() {
 	// come first.
 	live_line := "\t\treturn number.str() + sep + ','"
 	live := hover_of('number T\\nT: int | i64 | f32')
-	assert skipped('hv^', live_line, 'number', 0) == live
-	assert skipped('hv^', '\ttotal := count * 2', 'total', 0) == hover_of('total int')
+	live_answers := ask_answers(dir, [
+		skipped_question('hv^', live_line, 'number', 0),
+		skipped_question('hv^', '\ttotal := count * 2', 'total', 0),
+	])
+	assert live_answers[0] == live
+	assert live_answers[1] == hover_of('total int')
 	lines := skipped_branches_program.split('\n')
 	both := '${lines.index(then_line) + 1}:hv^14\tmain.v:${lines.index(live_line) + 1}:hv^13'
-	assert ask_at(os.join_path(work_dir, 'skipped_branches'), both) == '0\t${hover_of('number T\\nT: f32 | f64')}\n1\t${live}'
+	assert ask_at(dir, both) == '0\t${hover_of('number T\\nT: f32 | f64')}\n1\t${live}'
 }
 
 const generic_locals_program = "module main
